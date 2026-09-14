@@ -3,11 +3,12 @@ id: 3470
 title: Wire credential scan into the FEAT-3182 EvidenceBundle
 type: ENH
 priority: P1
-status: open
+status: done
 discovered_date: '2026-09-13'
+completed_at: '2026-09-14T18:18:16Z'
 parent: ENH-3466
 depends_on:
-- 3469
+- ENH-3469
 labels:
 - goal-7,security,verification
 decision_needed: false
@@ -31,6 +32,41 @@ own non-evidentiary context section**, records `tool`/`version`/`rules_sha`
 and redacted hits, and turns any hit into an explicit `GapEntry` plus a
 non-zero exit from `ll-loop evidence`. No `scanned_at` field is added: the
 bundle's byte-identical reproducibility invariant stands unchanged.
+
+## Current Behavior
+
+`assemble_bundle` (`scripts/little_loops/cli/loop/evidence.py:193`) builds
+`EvidenceBundle` from exactly three evidentiary sources (git, history.db,
+archived run directory) and never scans any of that data for credentials.
+`ll-loop evidence` archives `state.json`, `events.jsonl`, `summary.json`,
+and `probe-*.json` — including `events.jsonl`'s verbatim
+`llm_prompt`/`raw`/`reason`/`evidence` fields — into a bundle with no
+credential-pattern check, so a leaked credential quoted in a loop
+transcript is redistributed undetected.
+
+## Expected Behavior
+
+The bundle scans archived run-dir files and the `loop_runs.error` context
+entry with ENH-3469's `scan_text`, adds `credential_scan.tool`/`version`/
+`rules_sha`/`hit_count`/`hits` entries with `source="scanner"`, and appends
+a `GapEntry("credential_hits", ...)` when any hit is found. `ll-loop
+evidence` still writes and prints the bundle but returns exit code `2`
+instead of `0` when `credential_hits` is present, per Design › Fail
+behavior.
+
+## Impact
+
+- **Priority**: P1 — closes a credential-leak-detection gap in the
+  evidence bundle produced by every loop run.
+- **Effort**: Medium — one file (`evidence.py`) touched plus doc updates;
+  the scanner primitive this issue calls already exists and is done.
+- **Risk**: Low — additive `EvidenceEntry`/`GapEntry` shapes, a new
+  keyword-only `context_extra` parameter with a default, and the
+  reproducibility invariant is explicitly preserved (see Design ›
+  `scanned_at`).
+- **Breaking Change**: No — existing `assemble_bundle` callers are
+  unaffected by the new defaulted parameter; `cmd_evidence` gains one new
+  non-zero exit code (`2`) that fires only on a genuine credential hit.
 
 ## Parent Issue
 
@@ -304,6 +340,13 @@ None. Formerly blocked by `ENH-3469` (credential-pattern scanner in
 exist in `pii.py` exactly as this issue's Program Design cites them
 (confirmed 2026-09-14, see Integration Map findings).
 
+## Scope Boundaries
+
+In scope: wiring the ENH-3469 scanner into `assemble_bundle`/
+`cmd_evidence`, the `credential_scan.*` entry shape, the `credential_hits`
+gap and exit-code-2 behavior, and the doc/test updates listed in
+Integration Map. Out of scope: see `## Out of Scope` below.
+
 ## Out of Scope
 
 - `scanned_at` (dropped; see Design).
@@ -312,6 +355,40 @@ exist in `pii.py` exactly as this issue's Program Design cites them
 - Redacting matched spans inside `context_non_evidentiary` when hits are
   found. The bundle flags; it does not scrub. If wanted, file a follow-up
   that changes the context section's verbatim contract explicitly.
+
+## Resolution
+
+Implemented exactly as designed. `_scan_for_credentials()` (new, `evidence.py`)
+scans the archived run-dir files (`state.json`/`events.jsonl`/`summary.json`/
+`probe-*.json`, `errors="replace"`) plus `context_extra`'s string/stringifiable
+entries with `little_loops.pii.scan_text`, emitting the five
+`credential_scan.*` `EvidenceEntry` rows (`source="scanner"`) and a
+`credential_hits` `GapEntry` on any hit — called on both the `missing_run_dir`
+early-return path and the normal end of `assemble_bundle()`, so every bundle
+carries a scan record. `context_extra` (renamed from the post-hoc
+`bundle.context_non_evidentiary.extend(...)` in `cmd_evidence`) is now a
+keyword-only `assemble_bundle()` parameter applied before the
+`missing_run_dir` early return. `cmd_evidence` returns exit code `2` when
+`credential_hits` is present (still writes `--output`/prints `--json`); exit
+`1` remains "run not found." `scanned_at` was deliberately dropped per Design
+— `version`/`rules_sha` already make scans comparable, and the
+reproducibility invariant (`canonical_json()` byte-identical across reruns)
+stands unchanged, now verified with a hit-bearing fixture too.
+
+Added 11 new tests to `test_feat3182_evidence_bundle.py` (clean run, hit in
+`events.jsonl`, hit in `context_extra`, no double counting, missing-run-dir
+scan record, reproducibility with hits, segregation, exit-code-2) plus
+extended the existing source-enforcement test for the `"scanner"` value.
+Updated `docs/reference/CLI.md` and `docs/reference/API.md` per the
+Integration Map. Full suite: `python -m pytest scripts/tests/` — 24276
+passed, 51 skipped; the only 2 failures (`test_no_malformed_dependency_entries_in_repo`,
+`test_no_new_unverifiable_evidence`) are pre-existing repo-gate issues in
+unrelated issue files (ENH-3463/ENH-3464, ENH-3467), confirmed present on
+unmodified `main` before this change.
+
+## Status
+
+**Done** | Created: 2026-09-13 | Priority: P1
 
 ## Confidence Check Notes
 
@@ -338,6 +415,8 @@ concern below._
   `/ll:confidence-check` pass will recompute the readiness score.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-14T18:17:35 - `4b1da6cb-cda6-4875-933f-04e458d61037.jsonl`
+- `/ll:ready-issue` - 2026-09-14T18:05:57 - `d435daa7-da8c-4618-a2cd-999e842b398f.jsonl`
 - `/ll:confidence-check` - 2026-09-14T17:58:09 - `ed6df677-344b-44cd-8920-d8f25b2d204a.jsonl`
 - `/ll:refine-issue` - 2026-09-14T17:45:45 - `e90ca231-3500-40d5-a5ba-5eac5bbda47d.jsonl`
 - `/ll:confidence-check` - 2026-09-14T16:52:58 - `b233366b-10ab-4e31-a82f-311f95b747f5.jsonl`

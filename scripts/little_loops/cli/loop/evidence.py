@@ -1,15 +1,17 @@
 """ll-loop evidence: deterministic verification-evidence bundle export (FEAT-3182).
 
-Assembles a plain-JSON attestation for a `verify-issue-loop` run from three
+Assembles a plain-JSON attestation for a `verify-issue-loop` run from four
 deterministic sources only — git predicates, the `loop_runs` row in
-`history.db`, and the archived run-directory files under
-`.loops/.history/<run_id>/`. LLM-graded verdicts (criterion pass/fail,
-`break_found`) are never treated as evidentiary content (Option A, decided
-`## Proposed Solution`); they are attached as a segregated, explicitly
-labeled `context_non_evidentiary` section for human context only. Promoted
-from `scripts/tests/spike/verify_evidence_bundle/` — the spike's 7 tests
-proved the segregation mechanism; this module extends it with the allowlist,
-gap taxonomy, and run-time git-fact wiring the Program Design decided.
+`history.db`, the archived run-directory files under
+`.loops/.history/<run_id>/`, and a credential-pattern scan (ENH-3470) of
+those archived files plus the `loop_runs.error` context. LLM-graded verdicts
+(criterion pass/fail, `break_found`) are never treated as evidentiary content
+(Option A, decided `## Proposed Solution`); they are attached as a
+segregated, explicitly labeled `context_non_evidentiary` section for human
+context only. Promoted from `scripts/tests/spike/verify_evidence_bundle/` —
+the spike's 7 tests proved the segregation mechanism; this module extends it
+with the allowlist, gap taxonomy, and run-time git-fact wiring the Program
+Design decided.
 """
 
 from __future__ import annotations
@@ -22,13 +24,16 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-_EVIDENTIARY_SOURCES = frozenset({"git_ref", "history_db_row", "run_dir_file"})
+from little_loops.pii import CREDENTIAL_SCANNER_VERSION, credential_rules_sha, scan_text
+
+_EVIDENTIARY_SOURCES = frozenset({"git_ref", "history_db_row", "run_dir_file", "scanner"})
 
 _BUNDLE_COMMENT = (
     "Deterministic verification-evidence bundle (FEAT-3182). Regenerate with "
     "`ll-loop evidence <run>`. `evidentiary` holds only facts re-derivable from "
-    "git, history.db, and the archived run directory -- no LLM self-evaluation "
-    "contributes to it. `context_non_evidentiary` holds LLM-graded verdicts, "
+    "git, history.db, the archived run directory, and a credential-pattern scan "
+    "of that data -- no LLM self-evaluation contributes to it. "
+    "`context_non_evidentiary` holds LLM-graded verdicts, "
     "labeled as such, for human context only. `worktree_digest` covers tracked "
     "file content plus untracked file *names* -- not untracked file content. "
     "This file is evidence, not a cache: it is not safe to delete-and-regenerate "
@@ -59,7 +64,7 @@ class EvidenceEntry:
 
     key: str
     value: Any
-    source: str  # "git_ref" | "history_db_row" | "run_dir_file"
+    source: str  # "git_ref" | "history_db_row" | "run_dir_file" | "scanner"
 
     def to_dict(self) -> dict[str, Any]:
         return {"key": self.key, "value": self.value, "source": self.source}
@@ -190,23 +195,99 @@ def allowlisted_loop_run_dict(loop_runs_row_raw: dict[str, Any]) -> dict[str, An
     return {k: loop_runs_row_raw.get(k) for k in _LOOP_RUN_ALLOWLIST}
 
 
+def _scan_for_credentials(
+    bundle: EvidenceBundle,
+    run_dir: Path | None,
+    context_extra: list[ContextEntry] | None,
+) -> None:
+    """Credential-pattern scan (ENH-3470): archived run-dir files plus
+    *context_extra* (the ``loop_runs.error`` entry in practice). Runs on
+    every bundle, including the ``missing_run_dir`` path, so every bundle
+    carries a scan record -- never a second absence case to reason about.
+    """
+    hits: list[dict[str, Any]] = []
+
+    if run_dir is not None and run_dir.is_dir():
+        targets = [
+            (name, run_dir / name) for name in ("state.json", "events.jsonl", "summary.json")
+        ]
+        targets.extend((p.name, p) for p in sorted(run_dir.glob("probe-*.json")))
+        for target, path in targets:
+            if not path.exists():
+                continue
+            text = path.read_text(encoding="utf-8", errors="replace")
+            for finding in scan_text(text):
+                hits.append(
+                    {
+                        "target": target,
+                        "line": finding.line,
+                        "rule": finding.rule,
+                        "fingerprint": finding.fingerprint,
+                    }
+                )
+
+    for entry in context_extra or []:
+        value = entry.value
+        if value is None or isinstance(value, (int, float, bool)):
+            continue
+        text = value if isinstance(value, str) else json.dumps(value, sort_keys=True, default=str)
+        target = f"context:{entry.key}"
+        for finding in scan_text(text):
+            hits.append(
+                {
+                    "target": target,
+                    "line": finding.line,
+                    "rule": finding.rule,
+                    "fingerprint": finding.fingerprint,
+                }
+            )
+
+    hits.sort(key=lambda h: (h["target"], h["line"], h["rule"], h["fingerprint"]))
+
+    bundle.evidentiary.append(EvidenceEntry("credential_scan.tool", "little_loops.pii", "scanner"))
+    bundle.evidentiary.append(
+        EvidenceEntry("credential_scan.version", CREDENTIAL_SCANNER_VERSION, "scanner")
+    )
+    bundle.evidentiary.append(
+        EvidenceEntry("credential_scan.rules_sha", credential_rules_sha(), "scanner")
+    )
+    bundle.evidentiary.append(EvidenceEntry("credential_scan.hit_count", len(hits), "scanner"))
+    bundle.evidentiary.append(EvidenceEntry("credential_scan.hits", hits, "scanner"))
+
+    if hits:
+        targets_str = ", ".join(sorted({h["target"] for h in hits}))
+        bundle.gaps.append(
+            GapEntry(
+                "credential_hits",
+                f"{len(hits)} credential-pattern hit(s) in {targets_str}",
+            )
+        )
+
+
 def assemble_bundle(
     loop_runs_row: dict[str, Any] | None,
     run_dir: Path | None,
     git_predicates: dict[str, str],
+    *,
+    context_extra: list[ContextEntry] | None = None,
 ) -> EvidenceBundle:
-    """Assemble an Option A bundle from three plain-data inputs.
+    """Assemble an Option A bundle from three plain-data inputs plus a
+    credential-pattern scan (ENH-3470).
 
     *loop_runs_row* is expected pre-allowlisted (``allowlisted_loop_run_dict``);
     the raw row's non-deterministic fields (``error``, ``evaluator_score``) are
     the caller's responsibility to segregate via ``_loop_run_context`` and pass
-    separately -- this function never sees them. *git_predicates* are
-    export-time-computed git facts (ref liveness, ancestry, issue blob hash),
-    distinct from the run-time facts recorded on ``loop_start`` (read from
-    *run_dir*'s ``events.jsonl`` below). Any input being absent or incomplete
-    produces an explicit `GapEntry` rather than a bundle that silently omits it.
+    as *context_extra* -- this function never sees them via *loop_runs_row*.
+    *git_predicates* are export-time-computed git facts (ref liveness,
+    ancestry, issue blob hash), distinct from the run-time facts recorded on
+    ``loop_start`` (read from *run_dir*'s ``events.jsonl`` below). Any input
+    being absent or incomplete produces an explicit `GapEntry` rather than a
+    bundle that silently omits it.
     """
     bundle = EvidenceBundle()
+
+    if context_extra:
+        bundle.context_non_evidentiary.extend(context_extra)
 
     for gk, gv in sorted(git_predicates.items()):
         bundle.evidentiary.append(EvidenceEntry(key=f"git.{gk}", value=gv, source="git_ref"))
@@ -225,6 +306,7 @@ def assemble_bundle(
         bundle.gaps.append(
             GapEntry("missing_run_dir", f"archived run directory not found: {run_dir}")
         )
+        _scan_for_credentials(bundle, None, context_extra)
         return bundle
 
     for name in ("state.json", "events.jsonl", "summary.json"):
@@ -404,6 +486,7 @@ def assemble_bundle(
                     ContextEntry(key=f"evaluate.{state}.{field_name}", value=event[field_name])
                 )
 
+    _scan_for_credentials(bundle, run_dir, context_extra)
     return bundle
 
 
@@ -452,6 +535,10 @@ def _print_human_summary(bundle: EvidenceBundle, run_id: str) -> None:
             break
     print(f"evidentiary entries: {len(bundle.evidentiary)}")
     print(f"context (non-evidentiary): {len(bundle.context_non_evidentiary)}")
+    for entry in bundle.evidentiary:
+        if entry.key == "credential_scan.hit_count":
+            print(f"credential hits: {entry.value}")
+            break
     if bundle.has_gaps:
         print(f"gaps: {len(bundle.gaps)}")
         for g in bundle.gaps:
@@ -502,8 +589,7 @@ def cmd_evidence(args: argparse.Namespace, loops_dir: Path) -> int:
 
     git_predicates = compute_git_predicates(Path.cwd(), head_sha, issue_path)
 
-    bundle = assemble_bundle(loop_runs_row, run_dir, git_predicates)
-    bundle.context_non_evidentiary.extend(context_extra)
+    bundle = assemble_bundle(loop_runs_row, run_dir, git_predicates, context_extra=context_extra)
 
     canonical = bundle.canonical_json()
     output_path = getattr(args, "output", None)
@@ -518,4 +604,6 @@ def cmd_evidence(args: argparse.Namespace, loops_dir: Path) -> int:
     if output_path is not None:
         print(f"Wrote: {output_path}")
 
+    if any(g.category == "credential_hits" for g in bundle.gaps):
+        return 2
     return 0

@@ -4495,16 +4495,17 @@ def scaffold_verify(issue_id: str, adversarial: bool) -> ScaffoldResult
 bundle for an archived `verify-issue-loop` run. Option A (decided
 `## Proposed Solution` on the issue): `evidentiary` holds only structural
 facts a reviewer can re-derive independently — git predicates, the
-`loop_runs` row, and archived run-directory files — never an LLM-graded
-verdict. LLM-graded content (criterion pass/fail, `break_found`) is attached
-separately, always labeled non-evidentiary.
+`loop_runs` row, archived run-directory files, and a credential-pattern scan
+of that data (ENH-3470) — never an LLM-graded verdict. LLM-graded content
+(criterion pass/fail, `break_found`) is attached separately, always labeled
+non-evidentiary.
 
 ```python
 @dataclass
 class EvidenceEntry:
     key: str
     value: Any
-    source: str  # "git_ref" | "history_db_row" | "run_dir_file"
+    source: str  # "git_ref" | "history_db_row" | "run_dir_file" | "scanner"
 
 @dataclass
 class ContextEntry:
@@ -4533,6 +4534,8 @@ def assemble_bundle(
     loop_runs_row: dict[str, Any] | None,
     run_dir: Path | None,
     git_predicates: dict[str, str],
+    *,
+    context_extra: list[ContextEntry] | None = None,
 ) -> EvidenceBundle
 def allowlisted_loop_run_dict(loop_runs_row_raw: dict[str, Any]) -> dict[str, Any]
 def compute_git_predicates(
@@ -4546,11 +4549,15 @@ def cmd_evidence(args: argparse.Namespace, loops_dir: Path) -> int
   beyond a fixture directory. `loop_runs_row` must already be allowlist-
   projected (`allowlisted_loop_run_dict()`) — `error`/`evaluator_score` are
   never guaranteed deterministic in origin and are the caller's responsibility
-  to segregate into `context_non_evidentiary` instead (`cmd_evidence` does
-  this). `git_predicates` are export-time-only facts (`compute_git_predicates()`:
-  ref liveness, ancestry, the issue file's blob hash at `head_sha`) — distinct
-  from the run-time `head_sha`/`branch`/`worktree_digest` read from the
-  archived `loop_start` event, which are never recomputed at export time.
+  to segregate into `context_extra` instead (`cmd_evidence` does this via
+  `_loop_run_context()`); the segregated entries land in
+  `context_non_evidentiary` (extended before the `missing_run_dir` early
+  return, so they survive a pruned run dir) and are also fed to the
+  credential scan. `git_predicates` are export-time-only facts
+  (`compute_git_predicates()`: ref liveness, ancestry, the issue file's blob
+  hash at `head_sha`) — distinct from the run-time
+  `head_sha`/`branch`/`worktree_digest` read from the archived `loop_start`
+  event, which are never recomputed at export time.
 - Gap taxonomy (each an explicit `GapEntry`, never a silent omission):
   `missing_run_dir`, `missing_loop_runs_row`, `missing_head_sha`,
   `missing_issue_path`, `issue_not_committed_at_head`,
@@ -4559,7 +4566,22 @@ def cmd_evidence(args: argparse.Namespace, loops_dir: Path) -> int
   digest mismatch), `missing_probe_files` (adversarial mode only — zero
   probes in criteria mode is not a gap), `missing_loop_complete`,
   `loop_runs_row_stale` (a resumed run's `INSERT OR IGNORE`-frozen row
-  disagreeing with the last `loop_complete` event).
+  disagreeing with the last `loop_complete` event), `credential_hits` (the
+  credential-pattern scan, ENH-3470, found one or more matches).
+- Credential-pattern scan (ENH-3470, `_scan_for_credentials()`): scans the
+  archived run-dir files (`state.json`/`events.jsonl`/`summary.json`/
+  `probe-*.json`, decoded with `errors="replace"`) plus `context_extra`'s
+  string/stringifiable entries (numeric values, e.g.
+  `loop_runs.evaluator_score`, are skipped) with `little_loops.pii.scan_text`.
+  Runs on every bundle, including the `missing_run_dir` path, so
+  `credential_scan.tool`/`.version`/`.rules_sha`/`.hit_count`/`.hits`
+  (`source="scanner"`) are always present. `hits` is a list of
+  `{target, line, rule, fingerprint}` sorted by
+  `(target, line, rule, fingerprint)`; `target` is the run-dir file name or
+  `context:<key>`. No excerpt field, ever — the finding never re-leaks the
+  secret. The no-leak invariant is scoped to the scanner's own output: the
+  `context_non_evidentiary` section still carries the matched text verbatim
+  (the scan flags, it does not redact).
 - `worktree_digest` (recorded by `FSMExecutor`, see below) is a
   tracked-content-plus-untracked-*names* digest — `git status --porcelain`
   lists untracked file names only, `git diff HEAD` excludes untracked

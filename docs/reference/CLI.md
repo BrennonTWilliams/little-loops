@@ -1296,7 +1296,7 @@ ll-loop audit --latest autodev --max-steps 40
 
 #### `ll-loop evidence`
 
-Export a deterministic verification-evidence bundle for an archived `verify-issue-loop` run (FEAT-3182). `evidentiary` holds only facts a reviewer can re-derive from git, `history.db`, and the archived run directory — no LLM-graded verdict ever lands there (Option A: "a check was attempted," not "the check passed"). LLM-graded criterion/probe verdicts are attached separately as labeled `context_non_evidentiary` entries. Incomplete evidence produces an explicit `gaps` entry rather than a bundle that silently looks smaller.
+Export a deterministic verification-evidence bundle for an archived `verify-issue-loop` run (FEAT-3182). `evidentiary` holds only facts a reviewer can re-derive from git, `history.db`, the archived run directory, and a credential-pattern scan of that data (ENH-3470) — no LLM-graded verdict ever lands there (Option A: "a check was attempted," not "the check passed"). LLM-graded criterion/probe verdicts are attached separately as labeled `context_non_evidentiary` entries. Incomplete evidence produces an explicit `gaps` entry rather than a bundle that silently looks smaller.
 
 | Flag | Short | Description |
 |------|-------|-------------|
@@ -1305,13 +1305,13 @@ Export a deterministic verification-evidence bundle for an archived `verify-issu
 | `--output PATH` | | Write the canonical bundle JSON to PATH (in addition to stdout output) |
 | `--json` | `-j` | Print the canonical bundle JSON to stdout instead of the human summary |
 
-**Bundle shape:** `schema_version` (int), `_comment` (regeneration/provenance note — no timestamp field exists anywhere in the shape, by design, so reruns over unchanged inputs are byte-identical), `evidentiary` (list of `{key, value, source}`, `source` ∈ `git_ref` \| `history_db_row` \| `run_dir_file`), `context_non_evidentiary` (list of `{key, value, llm_sourced}`), `gaps` (list of `{category, detail}`), `has_gaps` (bool).
+**Bundle shape:** `schema_version` (int), `_comment` (regeneration/provenance note — no timestamp field exists anywhere in the shape, by design, so reruns over unchanged inputs are byte-identical), `evidentiary` (list of `{key, value, source}`, `source` ∈ `git_ref` \| `history_db_row` \| `run_dir_file` \| `scanner`), `context_non_evidentiary` (list of `{key, value, llm_sourced}`), `gaps` (list of `{category, detail}`), `has_gaps` (bool). `evidentiary` always includes `credential_scan.tool`/`.version`/`.rules_sha`/`.hit_count`/`.hits` (source `scanner`) — a credential-pattern scan (`little_loops.pii.scan_text`) of the archived run-dir files and the `loop_runs.error` context entry; `hits` is a list of `{target, line, rule, fingerprint}` with no excerpt, ever.
 
-**Gap categories:** `missing_run_dir`, `missing_loop_runs_row`, `missing_head_sha`, `missing_issue_path`, `issue_not_committed_at_head`, `head_sha_changed_across_resume`, `worktree_changed_during_run`, `missing_probe_files` (adversarial-mode only — zero probe files in criteria mode is not a gap), `missing_loop_complete`, `loop_runs_row_stale` (a resumed run's `loop_runs` row disagreeing with the last `loop_complete` event).
+**Gap categories:** `missing_run_dir`, `missing_loop_runs_row`, `missing_head_sha`, `missing_issue_path`, `issue_not_committed_at_head`, `head_sha_changed_across_resume`, `worktree_changed_during_run`, `missing_probe_files` (adversarial-mode only — zero probe files in criteria mode is not a gap), `missing_loop_complete`, `loop_runs_row_stale` (a resumed run's `loop_runs` row disagreeing with the last `loop_complete` event), `credential_hits` (the scan found one or more credential-pattern matches).
 
 `head_sha`/`branch`/`worktree_digest` and the loop-YAML path/sha256 are read from the run's own `loop_start` event (recorded at run time by `ll-loop run` when it constructed the executor — never recomputed at export time); export-time `git` is used only for ref-liveness/ancestry predicates and the issue file's blob hash at `head_sha`. `worktree_digest` covers tracked-file content plus untracked file *names*, not untracked file content.
 
-**Exit codes:** 0 = bundle assembled (gaps, if any, are reported inside it — a gap is not a command failure); 1 = run directory could not be resolved.
+**Exit codes:** 0 = bundle assembled (gaps, if any, other than `credential_hits`, are reported inside it — not a command failure); 1 = run directory could not be resolved; 2 = bundle assembled and written, but `credential_hits` is present.
 
 **Examples:**
 ```bash

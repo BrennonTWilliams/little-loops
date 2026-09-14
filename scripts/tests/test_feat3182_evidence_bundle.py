@@ -20,6 +20,7 @@ from typing import Any
 
 from little_loops.cli.loop.evidence import (
     _EVIDENTIARY_SOURCES,
+    ContextEntry,
     allowlisted_loop_run_dict,
     assemble_bundle,
     cmd_evidence,
@@ -157,6 +158,11 @@ class TestEvidenceEntryTracing:
         assert bundle.evidentiary, "fixture must produce at least one evidentiary entry"
         for entry in bundle.evidentiary:
             assert entry.source in _EVIDENTIARY_SOURCES
+        for entry in bundle.evidentiary:
+            if entry.key.startswith("credential_scan."):
+                assert entry.source == "scanner"
+            else:
+                assert entry.source != "scanner"
 
     def test_bundle_is_plain_json_no_custom_types(self, tmp_path: Path) -> None:
         run_dir = build_archive_dir(tmp_path)
@@ -296,6 +302,135 @@ class TestGapTaxonomy:
         assert count_entry.value == 3
 
 
+def _fake_aws_key() -> str:
+    """Fragment-assembled fake AWS access key -- never a committed literal."""
+    return "".join(["AKIA", "1234", "ABCD", "5678", "WXYZ"])
+
+
+class TestCredentialScan:
+    def test_clean_run_has_zero_hits_and_scalar_keys(self, tmp_path: Path) -> None:
+        run_dir = build_archive_dir(tmp_path)
+        bundle = assemble_bundle(_LOOP_RUNS_ROW, run_dir, _GIT_PREDICATES)
+
+        scan_entries = {
+            e.key: e for e in bundle.evidentiary if e.key.startswith("credential_scan.")
+        }
+        assert scan_entries["credential_scan.hit_count"].value == 0
+        assert scan_entries["credential_scan.hits"].value == []
+        for key in ("tool", "version", "rules_sha", "hit_count", "hits"):
+            assert scan_entries[f"credential_scan.{key}"].source == "scanner"
+        assert not any(g.category == "credential_hits" for g in bundle.gaps)
+
+    def test_hit_in_events_jsonl(self, tmp_path: Path) -> None:
+        token = _fake_aws_key()
+        events = [
+            _loop_start(),
+            {
+                "event": "evaluate",
+                "state": "verify-criterion-1",
+                "llm_model": "claude-sonnet-5",
+                "raw": {"quoted": token},
+            },
+            _loop_complete(),
+        ]
+        run_dir = build_archive_dir(tmp_path, events=events)
+        bundle = assemble_bundle(_LOOP_RUNS_ROW, run_dir, _GIT_PREDICATES)
+
+        hits = next(e for e in bundle.evidentiary if e.key == "credential_scan.hits").value
+        assert len(hits) == 1
+        assert hits[0]["target"] == "events.jsonl"
+        assert hits[0]["rule"] == "aws_access_key"
+        assert any(g.category == "credential_hits" for g in bundle.gaps)
+        assert bundle.has_gaps
+
+        for entry in bundle.evidentiary:
+            if entry.key.startswith("credential_scan."):
+                assert token not in json.dumps(entry.value)
+        for gap in bundle.gaps:
+            assert token not in gap.detail
+        assert any(token in json.dumps(c.value) for c in bundle.context_non_evidentiary)
+
+    def test_hit_in_context_extra(self, tmp_path: Path) -> None:
+        token = _fake_aws_key()
+        run_dir = build_archive_dir(tmp_path)
+        context_extra = [
+            ContextEntry(key="loop_runs.error", value=f"boom: {token}", llm_sourced=False)
+        ]
+        bundle = assemble_bundle(
+            _LOOP_RUNS_ROW, run_dir, _GIT_PREDICATES, context_extra=context_extra
+        )
+
+        hits = next(e for e in bundle.evidentiary if e.key == "credential_scan.hits").value
+        assert any(h["target"] == "context:loop_runs.error" for h in hits)
+
+    def test_no_double_counting_for_context_covered_by_file_scan(self, tmp_path: Path) -> None:
+        token = _fake_aws_key()
+        events = [
+            _loop_start(),
+            {
+                "event": "evaluate",
+                "state": "verify-criterion-1",
+                "llm_model": "claude-sonnet-5",
+                "raw": {"quoted": token},
+            },
+            _loop_complete(),
+        ]
+        run_dir = build_archive_dir(tmp_path, events=events)
+        bundle = assemble_bundle(_LOOP_RUNS_ROW, run_dir, _GIT_PREDICATES)
+
+        hits = next(e for e in bundle.evidentiary if e.key == "credential_scan.hits").value
+        assert len(hits) == 1
+        assert not any(h["target"].startswith("context:evaluate.") for h in hits)
+
+    def test_missing_run_dir_still_emits_scan_record_and_scans_context_extra(
+        self, tmp_path: Path
+    ) -> None:
+        token = _fake_aws_key()
+        absent = tmp_path / "no-such-run"
+        context_extra = [
+            ContextEntry(key="loop_runs.error", value=f"boom: {token}", llm_sourced=False)
+        ]
+        bundle = assemble_bundle(_LOOP_RUNS_ROW, absent, {}, context_extra=context_extra)
+
+        scan_keys = {e.key for e in bundle.evidentiary if e.key.startswith("credential_scan.")}
+        assert scan_keys == {
+            "credential_scan.tool",
+            "credential_scan.version",
+            "credential_scan.rules_sha",
+            "credential_scan.hit_count",
+            "credential_scan.hits",
+        }
+        assert any(c.key == "loop_runs.error" for c in bundle.context_non_evidentiary)
+        hits = next(e for e in bundle.evidentiary if e.key == "credential_scan.hits").value
+        assert any(h["target"] == "context:loop_runs.error" for h in hits)
+        assert any(g.category == "missing_run_dir" for g in bundle.gaps)
+        assert any(g.category == "credential_hits" for g in bundle.gaps)
+
+    def test_reproducibility_with_hits_is_byte_identical(self, tmp_path: Path) -> None:
+        token = _fake_aws_key()
+        events = [
+            _loop_start(),
+            {
+                "event": "evaluate",
+                "state": "verify-criterion-1",
+                "llm_model": "claude-sonnet-5",
+                "raw": {"quoted": token},
+            },
+            _loop_complete(),
+        ]
+        run_dir = build_archive_dir(tmp_path, events=events)
+        first = assemble_bundle(_LOOP_RUNS_ROW, run_dir, _GIT_PREDICATES).canonical_json()
+        second = assemble_bundle(_LOOP_RUNS_ROW, run_dir, _GIT_PREDICATES).canonical_json()
+        assert first == second
+
+    def test_segregation_credential_scan_keys_never_in_context(self, tmp_path: Path) -> None:
+        run_dir = build_archive_dir(tmp_path)
+        bundle = assemble_bundle(_LOOP_RUNS_ROW, run_dir, _GIT_PREDICATES)
+
+        context_keys = {c.key for c in bundle.context_non_evidentiary}
+        assert not any(k.startswith("credential_scan.") for k in context_keys)
+
+
 class TestComputeGitPredicates:
     def test_no_head_sha_returns_empty(self, tmp_path: Path) -> None:
         assert compute_git_predicates(tmp_path, None, None) == {}
@@ -401,3 +536,65 @@ class TestCmdEvidenceEndToEnd:
         loops_dir = tmp_path / ".loops"
         args = argparse.Namespace(run="no-such-run", latest=None, output=None, json=False)
         assert cmd_evidence(args, loops_dir) == 1
+
+    def test_credential_hit_returns_exit_2_and_still_writes_output(
+        self, tmp_path: Path, monkeypatch: Any
+    ) -> None:
+        import argparse
+
+        from little_loops.session_store import record_loop_run_summary, resolve_history_db
+
+        token = _fake_aws_key()
+        repo = copy_git_template(tmp_path)
+        issue_rel = ".issues/features/P2-FEAT-3182-sample.md"
+        issue_path = repo / issue_rel
+        issue_path.parent.mkdir(parents=True, exist_ok=True)
+        issue_path.write_text("# FEAT-3182\n", encoding="utf-8")
+        subprocess.run(["git", "add", "."], cwd=repo, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "commit", "-q", "-m", "init"], cwd=repo, capture_output=True, check=True
+        )
+        head_sha = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True, check=True
+        ).stdout.strip()
+
+        monkeypatch.chdir(repo)
+        loops_dir = repo / ".loops"
+        history_dir = loops_dir / ".history"
+        run_id = "20260902T120000-verify-feat-3182"
+        archive_dir = history_dir / run_id
+        archive_dir.mkdir(parents=True)
+        state = {
+            "loop_name": "verify-feat-3182",
+            "context": {"issue_id": "FEAT-3182", "issue_path": issue_rel},
+            "captured": {},
+        }
+        (archive_dir / "state.json").write_text(json.dumps(state), encoding="utf-8")
+        events = [
+            _loop_start(head_sha=head_sha, branch="main"),
+            {"event": "evaluate", "state": "s1", "llm_model": "claude-sonnet-5", "raw": token},
+            _loop_complete(worktree_digest="digest-start"),
+        ]
+        (archive_dir / "events.jsonl").write_text(_events_jsonl(events), encoding="utf-8")
+
+        db_path = resolve_history_db()
+        record_loop_run_summary(
+            db_path,
+            run_id=run_id,
+            loop_name="verify-feat-3182",
+            terminated_by="terminal",
+            final_state="done",
+            iterations=4,
+            head_sha=head_sha,
+            branch="main",
+        )
+
+        output_path = tmp_path / "bundle.json"
+        args = argparse.Namespace(run=run_id, latest=None, output=output_path, json=False)
+        exit_code = cmd_evidence(args, loops_dir)
+
+        assert exit_code == 2
+        assert output_path.exists()
+        written = json.loads(output_path.read_text(encoding="utf-8"))
+        assert written["has_gaps"]
+        assert any(g["category"] == "credential_hits" for g in written["gaps"])
