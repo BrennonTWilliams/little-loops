@@ -41,6 +41,14 @@ Files, callers, conventions, and tests relevant to fixing the `_add()` normalize
 - `scripts/little_loops/cli/issues/check_design.py:32, 40` — a second consumer, backs `ll-issues check-design` via `design_gate_failed(gaps)`
 - `scripts/tests/spike/program_design_specificity/program_design.py:124` — a standalone, non-imported ENH-2852 spike copy carrying the identical bug (informational only; not a production dependent)
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/issues/research_triage.py:380-427` — `_program_design_unmet()` imports `grade_issue_section` (`:390`) and calls it directly (`:423`), a **second real production entry point** not previously listed. Its result feeds the BUG-3003 override inside `triage_research_axes()` that forces the `analyzer` axis to `covered=False, reason="program_design_unmet"` during `/ll:refine-issue` Step 3, re-spawning `codebase-locator`/`codebase-analyzer`/`codebase-pattern-finder`. Today, any issue whose Call Path names only private helpers is spuriously forced through this override (extra agent fan-out on every `/ll:refine-issue` pass); after the fix such issues can correctly grade specific and skip the re-spawn — a genuine behavior-surface change at a call site this fix touches without touching code there.
+- `scripts/little_loops/issue_parser.py` — additional anchors beyond `:1008-1013`: `FormatGaps.program_design_nonspecific` field (`:535`), `has_gaps` check (`:574`), `to_dict()` serialization (`:619`), `design_gate_failed()` predicate definition (`:644`, consumed by `check_design.py`/`deferred_triage.py`/the loops below)
+- `scripts/little_loops/issue_lifecycle.py:88` — `DeferReason.DESIGN_GATE_FAILED = "design_gate_failed"`, the enum value all `design_gate_failed` string literals below ultimately trace back to
+- `scripts/little_loops/cli/issues/deferred_triage.py:33` — `"design_gate_failed": 6` entry in a deferral-reason priority/ordering table
+- `scripts/little_loops/loops/autodev.yaml` — FSM loop gates on the literal string `design_gate_failed` at multiple routing/deferral points (lines 1322, 1873, 1923, 1925, 1965, 2202, 2274, 2276, 2412); no code change needed here, but the gate category this loop reads becomes more accurate post-fix
+- `skills/confidence-check/SKILL.md:140` — shells out to extract the `program_design_nonspecific` JSON key from `ll-issues format-check` output
+
 ### Conventions in Force
 - Prior narrow fixes in this file cite the fixing bug's ID in an inline comment at the changed site — evidence: `program_design.py:74-77` ("BUG-3071"), `:302-304`/`:356-358` ("BUG-3273").
 - Normalizer-level tests call the pure function directly with an inline resolver stand-in; no fixture repo is used unless testing `git_grep_resolver()` itself — evidence: `test_program_design_gate.py::TestGrading`/`TestDuplicateCallPathAnchors` (no fixture) vs `::TestRealRepoResolution` (real git repo fixture).
@@ -50,6 +58,12 @@ Files, callers, conventions, and tests relevant to fixing the `_add()` normalize
 - `scripts/tests/test_program_design_gate.py::TestDuplicateCallPathAnchors` (`:236-265`) — direct `extract_call_path_anchors(body)` calls
 - `scripts/tests/test_program_design_gate.py::TestRealRepoResolution::test_real_repo_anchors_resolve_via_git_grep` (`:434-475`) — real git-repo fixture, named in this issue's own `## Tests` section as the extension point
 - `scripts/tests/test_ll_issues_format_check.py`, `scripts/tests/test_ll_issues_check_design.py`, `scripts/tests/test_autodev_loop.py` — exercise the CLI/gate wiring around `program_design_nonspecific`/`design_gate_failed`
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_issue_parser.py:4270-4320` — `TestDesignGateFailed`-style tests exercise `design_gate_failed()` against various `FormatGaps(program_design_nonspecific=...)` combinations; regression-check after the normalizer change
+- `scripts/tests/test_research_triage.py:446, 512` and `::TestProgramDesignGateOverride::test_program_design_unmet_reason` (`:631-635`) — exercises `_program_design_unmet()`'s call into `grade_issue_section()` (the new production entry point noted above); include in the fix's regression run
+- `scripts/tests/test_issue_lifecycle.py:1983, 1993` — asserts `DeferReason.DESIGN_GATE_FAILED.value == "design_gate_failed"`; unaffected but confirms the enum root is stable
+- `scripts/tests/test_autodev_loop.py:591` — indexes `"design_gate_failed"` inside `autodev.yaml`'s design-gate content; regression-check
 
 ### Documentation
 - `docs/reference/API.md` — documents `program_design_nonspecific` gap category, `check-design` CLI row, `design_gate_failed` gate-priority prose
@@ -108,5 +122,6 @@ _Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-14T22:50:06 - `bac75f45-b587-45bb-bf3c-443b0c5e805a.jsonl`
 - `/ll:refine-issue` - 2026-09-14T21:57:11 - `76fd614d-af9c-461c-9480-143acb792f32.jsonl`
 - `/ll:format-issue` - 2026-09-14T21:47:59 - `b8b46581-a38f-4aa7-a1ba-71f0319e7405.jsonl`
