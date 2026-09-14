@@ -459,6 +459,10 @@ _Added by `/ll:refine-issue` — 2026-09-13 — based on codebase analysis:_
 - **Out of scope, deferred to a child issue (D4)**: persisting `channels`/side-effect results to `harness_events` and everything downstream of that column (migration, manifest, DES variant, reader dataclass, doctor drift, migration-table docs).
 - **Out of scope**: `loops/harness-optimize.yaml`'s benchmark-score capture reads `captured.benchmark_score.output` directly and never calls `ll-harness`/`_grade()` — not a consumer of this code path.
 
+## Blocks
+
+- ENH-3463 — deterministic grader tests build on the `_grade()` shape this issue settled (satisfied: this issue is `done`)
+
 ## Status
 
 **Open** | Created: 2026-09-13 | Priority: P3
