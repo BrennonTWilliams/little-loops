@@ -21,7 +21,7 @@ Add a small, named set of efficiency dimensions to the verdict — tokens, tool 
 
 ## Current Behavior
 
-`ll-harness` reports one of pass, fail, or abstain per run. Two runners that both satisfy the same semantic criterion are indistinguishable in the verdict, even when one spent several times the tool calls, tokens, and wall-clock of the other. Most of the raw quantities are already logged, but not surfaced as named dimensions of the verdict.
+`ll-harness` reports one of pass, fail, or abstain per run. Two runners that both satisfy the same semantic criterion are indistinguishable in the verdict, even when one spent several times the tool calls, tokens, and wall-clock of the other. Only wall-clock (`duration_ms`) is captured and persisted today. Tokens and tool calls are present in the host CLI's stdout that the harness already captures (stream-json `result`/`tool_use` events on the skill path, the single JSON blob's `usage` on the prompt path) but are never parsed, surfaced, or persisted.
 
 ## Expected Behavior
 
@@ -29,7 +29,20 @@ The verdict carries a small, named, stable set of efficiency dimensions — toke
 
 ## Design
 
-- Most of the raw quantities are already logged; the work is mostly surfacing them as dimensions of a specific run's verdict, and deciding what a comparison across two runs is allowed to conclude.
+- Wall-clock is already captured (`duration_ms`); tokens and tool calls are present in captured stdout but never parsed. The work is (a) parsing them off `RunnerResult.stdout` in the runners, (b) threading them alongside `duration_ms` into the outcome and the persisted attempt row, and (c) surfacing them in `--output json`, the text summary, and the N-sample per-sample entries. Cross-run comparison semantics are **not** defined here (see Scope Boundaries).
+
+### Decisions (resolved 2026-09-14, review pass)
+
+1. **Capture is post hoc from stdout, not via streaming callbacks.** The two harness paths that invoke an LLM already capture the usage data: `_run_skill()`'s default blocking branch (`runner_spec.py:250-262`) runs `build_streaming()` so stdout is stream-json (a `result` event carrying `usage`, plus one `tool_use` content block per tool call); `_run_prompt()` (`:422-435`) runs `build_blocking_json()` so stdout is one JSON object carrying `usage` and `num_turns`. Parse those after `subprocess.run()` returns. Do **not** wire `on_usage`/`on_usage_detailed` into the runners: `_run_cmd()`/`_run_mcp()` never invoke a host CLI, and the skill/prompt paths would need a streaming restructure for no gain. The earlier wiring directive below is superseded by this decision.
+2. **Where the numbers are born and how they flow.** New trailing fields `RunnerResult.input_tokens`, `output_tokens`, `cache_read_tokens`, `tool_calls` (all `int | None = None`) are populated inside `runner_spec.py` by the runner that knows its stdout format. `cli/harness.py` threads them to `_record_harness_event()` exactly the way `duration_ms` is threaded today (computed at the `_invoke()` wrapper, **bypassing** `_grade()`), and additionally stamps them onto `HarnessEvalOutcome` so `--output json` and the N-sample summary can show them. The "through `_grade()`" call path in Program Design is replaced by this.
+3. **Token fields are split, not summed.** Mirror `TokenUsage` (`subprocess_utils.py`): `input_tokens`, `output_tokens`, `cache_read_tokens`. A single `tokens` sum is ambiguous (cache-read inclusion) and would not be "named and stable". Consumers derive totals.
+4. **`tool_calls` on the PROMPT/DSL path is `None`.** `--output-format json` emits no `tool_use` events (only `num_turns`, which is not a tool-call count). Accept `None` rather than switching `_run_prompt()` to stream-json. CMD/MCP runners leave all four fields `None`; `_STOCHASTIC_RUNNERS` (`runner_spec.py:79`) is the existing predicate for "may be populated" vs "inherently `None`".
+5. **Timed-out and errored runs leave the fields `None`.** `duration_ms` stays populated for the same row (it is measured by the caller). No partial capture is attempted.
+6. **Subject-side cost only.** The judge call's `llm_latency_ms` (`fsm/evaluators.py`) and its tokens are excluded, matching what `duration_ms` measures today. Document this on the fields.
+7. **Persistence is in scope for this issue** (not split the way ENH-3462 → ENH-3476 was). The stated consumer is history.db analytics, so a field with no column delivers nothing. Adds `harness_events` columns via a new `_MIGRATIONS` entry.
+8. **One shared parsing helper.** Add `usage_from_stream_lines(lines) -> TokenUsage | None` and `tool_call_count_from_stream_lines(lines) -> int` (or one combined helper) to `subprocess_utils.py`, handling the Claude `result` shape and the Codex `turn.completed` shape, and refactor `_process_line`'s inline `result`/`turn.completed` handling to call it. The harness must not become the fourth inline tally (`cli/loop/audit.py`, `subprocess_utils.py`, `fsm/executor.py` each have their own today).
+9. **Migration coordination with ENH-3476.** Both issues append a `harness_events` migration after v50. Whichever lands second renumbers to the next version; if implemented back-to-back, prefer one combined migration. Check `_MIGRATIONS`'s tail before writing.
+
 - **Efficiency must not silently become a gate.** A run that passes expensively still passes; the dimension is reporting, not a second pass/fail hiding behind one.
 - The dimensions attach to the run model shipped as ENH-3397 — an attempt recorded against a named cell (task × repetition × subject) is the unit these measurements belong to.
 - The precedent is a tournament fitness function that is deliberately multi-dimensional, with three of its four named criteria (resource efficiency, advancement speed, composition) existing to catch candidates that win wastefully — on the stated grounds that a wasteful winner is the wrong parent for the next generation. Naming the failure modes in advance is also what makes a post-mortem legible: the analyst matches observations against a known taxonomy rather than free-associating.
@@ -104,18 +117,21 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ### Types
 
-- `HarnessEvent`: already tracks `duration_ms: int | None` (wall-clock, since ENH-2741); needs new `tokens: int | None`, `tool_calls: int | None` fields (`scripts/little_loops/history_reader/harness.py:53`)
-- `RunnerResult.tool_trace: list[dict] | None` — ordered tool-call trace, currently trace-mode-only and not persisted to `harness_events` (`scripts/little_loops/runner_spec.py:100`)
-- `HarnessEvalOutcome`: `passed: bool`, `verdict: str | None`, ... — where the new efficiency dimensions attach alongside the pass/fail/abstain outcome (`scripts/little_loops/cli/harness.py:863`)
+- `RunnerResult` (`scripts/little_loops/runner_spec.py:100`): new trailing fields `input_tokens: int | None = None`, `output_tokens: int | None = None`, `cache_read_tokens: int | None = None`, `tool_calls: int | None = None`, populated by `_run_skill()` (default blocking branch, parsed from stream-json stdout) and `_run_prompt()` (parsed from the JSON blob's `usage`; `tool_calls` stays `None`). The existing `tool_trace` field is trace-mode-only and unrelated; leave it alone.
+- `HarnessEvalOutcome` (`scripts/little_loops/cli/harness.py:863`): same four fields, trailing, `None` default, so `--output json` / N-sample entries carry them beside `passed`/`verdict`.
+- `HarnessEvent` (`scripts/little_loops/history_reader/harness.py:53`): already tracks `duration_ms: int | None` (ENH-2741); append the same four fields with an `# ENH-3464` comment, and add the four column names to `_HARNESS_EVENT_COLUMNS` in the same order.
+- `TokenUsage` (`scripts/little_loops/subprocess_utils.py`): reused as the return shape of the new shared parsing helper; no changes.
 
 ### Signatures
 
 - `authoritative_attempt(db_path, cell_key, repetition)` / `authoritative_attempts(db_path, cell_key)` (`scripts/little_loops/history_reader/harness.py:170`, `:198`) — the existing cell-keyed (task × repetition × subject) lookup the efficiency dimensions attach to
-- `_grade(runner_label, result: RunnerResult, args, *, expected_grade=None, side_effects=None) -> tuple[int, HarnessEvalOutcome]` (`scripts/little_loops/cli/harness.py:1224`) — where tokens/tool-calls would be read off `result` and folded into the outcome
+- `usage_from_stream_lines(lines: Iterable[str]) -> tuple[TokenUsage | None, int | None]` (new, `scripts/little_loops/subprocess_utils.py`) — shared parser for the Claude `result`/`tool_use` and Codex `turn.completed` shapes; returns `(usage, tool_call_count)`; `_process_line` refactored to use it
+- `_record_harness_event(..., duration_ms: int, ...)` (`scripts/little_loops/cli/harness.py:216`) — gains trailing `input_tokens=None, output_tokens=None, cache_read_tokens=None, tool_calls=None` kwargs, forwarded to `record_attempt()`/`record_harness_event()` (`session_store/writers.py`)
+- `_grade(...)` (`scripts/little_loops/cli/harness.py:1224`) — **unchanged**; efficiency fields never enter grading
 
 ### Call Path
 
-`_grade()` (`harness.py:1224`) reads `RunnerResult`/`tool_trace` -> populates new efficiency fields on `HarnessEvalOutcome` -> persisted onto `HarnessEvent` (`history_reader/harness.py:53`) -> read back via `authoritative_attempt()`/`authoritative_attempts()` for cross-run comparison.
+`_run_skill()`/`_run_prompt()` (`runner_spec.py`) parse captured stdout via `usage_from_stream_lines()` -> populate `RunnerResult.{input_tokens,output_tokens,cache_read_tokens,tool_calls}` -> each `cmd_*` `_invoke()` wrapper in `cli/harness.py` reads them off the result next to its `time.monotonic()` `duration_ms` -> passed to `_record_harness_event()` (10 call sites) and stamped onto `HarnessEvalOutcome` for `--output json` -> persisted as `harness_events` columns via `record_attempt()` -> read back on `HarnessEvent` via `authoritative_attempt()`/`authoritative_attempts()`. `_grade()`, `_band_samples()`, and `evaluate()` never read the fields.
 
 ### Codebase Research Findings
 
@@ -158,9 +174,30 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Implementation Steps
 
+1. `subprocess_utils.py`: add `usage_from_stream_lines()` (Decision 8); refactor `_process_line`'s `result`/`turn.completed` branches to call it. Unit-test it directly against a Claude stream-json fixture (with two `tool_use` blocks), a Claude `--output-format json` blob fixture, a Codex `turn.completed` fixture, and non-JSON noise lines.
+2. `runner_spec.py`: add the four trailing `RunnerResult` fields; populate them in `_run_skill()`'s default blocking branch and in `_run_prompt()` from captured stdout. Leave `_run_cmd()`/`_run_mcp()`/the `stream_callback`/`trace_mode` branches untouched. Update `test_runner_spec.py::TestRunActionDispatch`'s two dataclass-equality tests if they now see non-`None` values.
+3. `session_store/schema.py`: append a migration adding nullable `input_tokens`, `output_tokens`, `cache_read_tokens`, `tool_calls` INTEGER columns to `harness_events` (no `DEFAULT`, no backfill, `# ENH-3464` comment). Check the tail of `_MIGRATIONS` for an ENH-3476 entry first (Decision 9). Add the `TestSchemaV50BaselineConditions`-shaped triad.
+4. `session_store/writers.py`: trailing-default kwargs on `record_harness_event()`/`record_attempt()`/`_insert_harness_event()`, passed through uncoerced like `duration_ms`.
+5. `history_reader/harness.py`: append the four fields to `HarnessEvent` and `_HARNESS_EVENT_COLUMNS`; add a round-trip test beside `test_harness_event_carries_id_and_v49_fields`.
+6. `cli/harness.py`: add the four fields to `HarnessEvalOutcome`; extend `_record_harness_event()`'s signature; at each of the 10 call sites read the values off the `RunnerResult` and pass them alongside `duration_ms`; include them in the `--output json` payload, the per-sample entries of the N-sample summary, and the text summary line (e.g. `tokens in/out=1234/567 tool_calls=8 duration_ms=...`, omitting fields that are `None`).
+7. Docs: `docs/reference/API.md` (`HarnessEvent` field list, backfilling missing v50 fields), `docs/reference/CLI.md` (`--output json` and per-sample field lists under `### ll-harness`), `docs/reference/EVENT-SCHEMA.md` (rewrite the "only `timed_out` is persisted" claim), `docs/ARCHITECTURE.md` (migration table row, backfilling the missing v50 row), `docs/guides/EVALUATION_GUIDE.md` ("Across runs" column list), `docs/guides/HISTORY_SESSION_GUIDE.md` (schema-version table).
+8. Run `python -m pytest scripts/tests/` and the three focused files listed under Tests.
+
+## Acceptance Criteria
+
+- [ ] `RunnerResult`, `HarnessEvalOutcome`, and `HarnessEvent` each carry `input_tokens`, `output_tokens`, `cache_read_tokens`, `tool_calls` as trailing `int | None = None` fields.
+- [ ] After `ll-harness skill ...` completes normally, the recorded `harness_events` row has non-`None` token fields and a non-`None` `tool_calls`; after `ll-harness prompt ...`/`dsl ...`, token fields are non-`None` and `tool_calls` is `None`.
+- [ ] CMD and MCP runs, timed-out runs, and errored runs record all four fields as `None` while `duration_ms` is still populated.
+- [ ] `--output json` and the N-sample per-sample entries include the four fields; the text summary shows them when present.
+- [ ] No test asserting `passed`, `verdict`, `abstained`, or a `cmd_*` exit code changes. A new test constructs a `RunnerResult` with large token/tool-call values and asserts `_grade()`'s outcome and exit code are identical to the same result with the fields `None` (the `TestGapClassAdvisory::test_testable_only_gap_is_advisory_not_blocking` shape).
+- [ ] New-DB shape / upgrade-from-v50 shape / NULL-on-pre-migration-rows triad passes in `test_session_store_schema.py`, using subset (`<=`) column assertions.
+- [ ] `usage_from_stream_lines()` is the only stream-usage parser; `_process_line` calls it and its existing `on_usage`/`on_usage_detailed` behavior is unchanged (`test_issue_manager.py::TestRunClaudeCommand`, `TestRunWithContinuation` still pass).
+- [ ] The six documentation files in step 7 are updated.
+- [ ] `python -m pytest scripts/tests/` exits 0.
+
 ### Codebase Research Findings
 
-_Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
+_Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis. Items 1–9 below are findings that informed the steps above, not steps themselves; where they conflict with the Decisions in Design, the Decisions win (notably: item 1's `on_usage` framing and item 8's timeout concern are resolved by Decision 1)._
 
 1. Token counts and tool-call counts are captured from a harness runner invocation — today neither reaches `RunnerResult` for any of `_run_skill`/`_run_cmd`/`_run_mcp`/`_run_prompt` (`runner_spec.py`); token capture exists only via `on_usage`/`on_usage_detailed` callbacks into `run_claude_command()`, which no harness runner passes.
 2. Wall-clock, tokens, and tool-calls are named, stable fields on the outcome the run model attaches to — following the `ChannelRecord`/`HarnessEvalOutcome.channels` precedent (a field added first, persistence tracked as a distinct follow-up per the ENH-3462/ENH-3476 split) or threaded directly to `HarnessEvent` the way `duration_ms` already is.
@@ -179,8 +216,8 @@ _Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-- Wire `on_usage`/`on_usage_detailed` token capture into `runner_spec.py`'s `_run_skill`/`_run_cmd`/`_run_mcp`/`_run_prompt`, following the mocking pattern in `test_issue_manager.py::TestRunClaudeCommand`/`TestRunWithContinuation` and patching `little_loops.subprocess_utils.run_claude_command` at its module-local import site
-- Add direct test coverage for `_run_skill()`'s `trace_mode`/`stream_callback` branches (`runner_spec.py:196-248`) in `test_runner_spec.py`, currently untested
+- ~~Wire `on_usage`/`on_usage_detailed` token capture into `runner_spec.py`'s `_run_skill`/`_run_cmd`/`_run_mcp`/`_run_prompt`~~ — **superseded by Design Decision 1** (2026-09-14 review): `_run_cmd`/`_run_mcp` never invoke a host CLI, and the skill/prompt paths already capture the usage data in stdout. Parse post hoc from `RunnerResult.stdout`; no callback wiring. The `TestRunClaudeCommand`/`TestRunWithContinuation` tests remain relevant only as regression coverage for the `_process_line` refactor.
+- Add direct test coverage for `_run_skill()`'s default blocking branch (`runner_spec.py:250-262`) and `_run_prompt()` (`:422-435`) in `test_runner_spec.py`, patching `subprocess.run` to return fixture stdout (stream-json / JSON blob) and asserting the four new `RunnerResult` fields; the `trace_mode`/`stream_callback` branches stay untouched and out of scope
 - Update `test_runner_spec.py::TestRunActionDispatch::test_skill_dispatch_matches_legacy_shape`/`::test_prompt_dispatch_matches_legacy_shape` (`:151-188`) if new trailing `RunnerResult` fields populate with non-`None` values on these dispatch paths, since both assert dataclass `==` equality
 - Add the new `harness_events` migration to `docs/ARCHITECTURE.md`'s schema-migration table (also backfilling the missing v50/ENH-3435 row while there) and update `docs/reference/API.md`'s `HarnessEvent` field list (also backfilling the missing v50 fields)
 - Update `docs/reference/EVENT-SCHEMA.md`'s exhaustiveness claim about what `RunnerResult` fields are persisted to `harness_events`
@@ -188,20 +225,21 @@ _These touchpoints were identified by wiring analysis and must be included in th
 ## Impact
 
 - **Priority**: P3 — the instrument that certifies runner correctness is currently silent on cost, and downstream cost-trend analytics over `.ll/history.db` need this per-run record as input, but no active selection decision is blocked on it yet.
-- **Effort**: Small-Medium — most raw quantities (tokens, tool calls, wall-clock) are already logged per this issue's Design section; the work is surfacing them as named, stable verdict dimensions and defining what a cross-run comparison is allowed to conclude.
-- **Risk**: Low — additive reporting; must not become a gate (see Design: "Efficiency must not silently become a gate").
+- **Effort**: Medium — only wall-clock is captured today. Touches 5 source files (`subprocess_utils.py`, `runner_spec.py`, `cli/harness.py` incl. 10 `_record_harness_event` call sites, `session_store/schema.py` + `writers.py`, `history_reader/harness.py`), one migration, 6 test files, and 6 docs. The parsing itself is small; the breadth is in threading and docs.
+- **Risk**: Low — additive reporting; must not become a gate (see Design: "Efficiency must not silently become a gate"). One coordination risk: migration numbering against ENH-3476 (Decision 9).
 - **Breaking Change**: No
 
 ## Scope Boundaries
 
-- **In scope**: naming and stabilizing tokens/tool-calls/wall-clock as verdict dimensions, attached to the ENH-3397 run model (attempt × task × repetition × subject).
-- **Out of scope**: turning efficiency into a pass/fail gate — a run that passes expensively still passes; defining the downstream cost-trend analytics consumer over `.ll/history.db` (separate work).
+- **In scope**: capturing, naming, surfacing (`--output json`, text summary, N-sample per-sample entries), and persisting `input_tokens`/`output_tokens`/`cache_read_tokens`/`tool_calls` beside the existing `duration_ms`, attached to the ENH-3397 run model (attempt × task × repetition × subject). Subject-side cost only.
+- **Out of scope**: turning efficiency into a pass/fail gate — a run that passes expensively still passes; any cross-run or cross-sample comparison semantics (aggregates, deltas, "cheaper than" verdicts) — this issue records per-run values only; judge-side (evaluator) cost; switching `_run_prompt()` to stream-json to obtain `tool_calls` on the PROMPT/DSL path; the downstream cost-trend analytics consumer over `.ll/history.db` (separate work).
 
 ## Status
 
 **Open** | Created: 2026-09-13 | Priority: P3
 
 ## Session Log
+- manual review pass - 2026-09-14 - resolved 9 design decisions, superseded the on_usage wiring directive, added Acceptance Criteria, re-estimated effort
 - `/ll:refine-issue` - 2026-09-14T22:51:27 - `73b0db27-1e1a-4004-aaed-c305e94ddb77.jsonl`
 - `/ll:refine-issue` - 2026-09-14T21:18:34 - `b80e42ca-40bb-4d8a-b6d8-3b9dab6f1bf1.jsonl`
 - `/ll:wire-issue` - 2026-09-14T20:51:04 - `df520d06-750a-40b3-acb9-fb846e40ee7a.jsonl`
