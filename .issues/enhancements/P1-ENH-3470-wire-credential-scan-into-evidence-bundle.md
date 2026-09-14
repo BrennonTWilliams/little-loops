@@ -11,9 +11,9 @@ depends_on:
 labels:
 - goal-7,security,verification
 decision_needed: false
-confidence_score: 80
-outcome_confidence: 89
-score_complexity: 14
+confidence_score: 95
+outcome_confidence: 93
+score_complexity: 18
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 25
@@ -25,7 +25,7 @@ score_change_surface: 25
 
 Add `credential_scan.*` entries to `EvidenceBundle`
 (`scripts/little_loops/cli/loop/evidence.py`), backed by the scanner built
-in ENH-3469 (blocked on it — this issue calls the scanner, it does not
+in ENH-3469 (now `done` — this issue calls the scanner, it does not
 build it). The bundle re-reads the **archived run-directory files and its
 own non-evidentiary context section**, records `tool`/`version`/`rules_sha`
 and redacted hits, and turns any hit into an explicit `GapEntry` plus a
@@ -52,20 +52,28 @@ scans nothing useful. The real leak surface is:
    `scan_text`, one call per file so `line` is meaningful. `events.jsonl`
    is the important one: it carries `llm_prompt`, `raw`, `reason`, and
    `evidence` verbatim.
-2. **`context_non_evidentiary`**: every `ContextEntry.value` (stringified
-   via `json.dumps(value, sort_keys=True, default=str)` when not already a
-   `str`), scanned after the section is complete.
+2. **`context_extra` only** — the `loop_runs.error` entry sourced from
+   `history.db`. Its value is stringified via
+   `json.dumps(value, sort_keys=True, default=str)` when not already a
+   `str` and scanned as target `context:loop_runs.error`. The other context
+   entries (`captured.*`, `evaluate.*`) are **not** scanned separately: they
+   are copied out of `state.json`/`events.jsonl`, which the file scan already
+   covers, so scanning them again would double-count every hit.
+   `loop_runs.evaluator_score` is numeric and is skipped.
 
 The `loop_runs.error`/`evaluator_score` context entries are currently
 appended by `cmd_evidence` **after** `assemble_bundle` returns
 (`evidence.py:506`). Move that `extend` into `assemble_bundle` via a new
 `context_extra: list[ContextEntry] | None = None` parameter so the scan
-sees the full section; `cmd_evidence` passes what it already computes.
+sees it; `cmd_evidence` passes what it already computes. **The extend must
+happen before the `missing_run_dir` early return** (`evidence.py:224-228`),
+otherwise a bundle for a pruned run dir silently loses `loop_runs.error` —
+a regression from today's behavior.
 
 ### Entry shape
 
-Flat keys with scalar values, matching the existing convention
-(`file.state.json.sha256`, `probe_file_count`), all with a new `source`
+Flat keys matching the existing convention (`file.state.json.sha256`,
+`probe_file_count`), scalar-valued except `hits`, all with a new `source`
 value `"scanner"`:
 
 | key | value |
@@ -74,17 +82,38 @@ value `"scanner"`:
 | `credential_scan.version` | `CREDENTIAL_SCANNER_VERSION` (int) |
 | `credential_scan.rules_sha` | `credential_rules_sha()` |
 | `credential_scan.hit_count` | int |
-| `credential_scan.hits` | list of `{"target", "line", "rule", "fingerprint"}`, sorted |
+| `credential_scan.hits` | list of `{"target", "line", "rule", "fingerprint"}`, sorted by `(target, line, rule, fingerprint)` |
 
 `target` is the run-dir file name (`events.jsonl`) or the context key
-(`context:evaluate.probe-1.raw`). **No excerpt, ever** — `CredentialFinding`
-has no excerpt field by design (ENH-3469); do not reconstruct one here.
+(`context:loop_runs.error`). The sort key is stated explicitly because
+`scan_text` only orders findings *within* one target; cross-target order
+must be defined for `hits` to be reproducible, not incidentally stable.
+Run-dir files are visited in the fixed tuple order then `sorted(glob)`
+order, matching the existing loops. **No excerpt, ever** —
+`CredentialFinding` has no excerpt field by design (ENH-3469); do not
+reconstruct one here.
 
-Append these entries in `assemble_bundle` as the last evidentiary step,
-after the `context_non_evidentiary` section is fully built. When the run
-dir is missing the function already returns early with `missing_run_dir`;
-no `credential_scan.*` entries are emitted in that case (absence is the gap,
-same as every other run-dir-derived fact).
+The four scalar entries (`tool`, `version`, `rules_sha`, `hit_count`) plus
+`hits` are emitted on **every** bundle, including the `missing_run_dir`
+early-return path — the scan runs over whatever inputs exist (possibly only
+`context_extra`, possibly nothing). This gives one invariant, "every bundle
+carries a scan record," instead of a second absence case to reason about.
+Structure the scan as a helper called from both the early-return branch and
+the end of `assemble_bundle`, or restructure so the scan is the final step
+on both paths.
+
+### Bundle-level leak vs. scanner-level leak (resolved)
+
+The bundle copies `evaluate.<state>.raw`/`.reason`/`.evidence`/`.llm_prompt`
+and `loop_runs.error` into `context_non_evidentiary` **verbatim**
+(`evidence.py:392-405`, `:179`). A credential that the scan finds in
+`events.jsonl` therefore *will* also appear in `canonical_json()` through
+the context section. This issue does **not** change that: the scan's job is
+to flag the bundle as unsafe to redistribute (the parent's stated intent),
+not to redact it. Consequently the no-leak invariant is scoped to what the
+scanner itself emits — no `credential_scan.*` entry value and no
+`GapEntry.detail` may contain the matched text. Redacting matched spans in
+the context section is a possible follow-up (see Out of Scope).
 
 ### `_EVIDENTIARY_SOURCES` and the "three sources" text
 
@@ -122,6 +151,13 @@ in the Resolution when closing.
   bundle is the record of the failure), then returns exit code `2` when
   `credential_hits` is present. Exit `1` stays reserved for the existing
   "run not found" path.
+- **Exit `2` is deliberate** (answering the refine-issue finding below):
+  `1` is already taken by "run not found" for this subcommand, and the only
+  other `2` under `cli/loop/` belongs to a different subcommand
+  (`edit-routes`, "loop not found"), so there is no collision within
+  `ll-loop evidence`'s own contract. The CLI.md line "a gap is not a command
+  failure" must be rewritten to name `credential_hits` as the single
+  exception.
 - `_print_human_summary` prints `credential hits: <n>` after the entry
   counts.
 
@@ -146,13 +182,27 @@ in the Resolution when closing.
 **Documentation**
 - `docs/reference/CLI.md:1297-1322` — the "no timestamp field" sentence
   stays true; extend the `source` enumeration with `scanner`, add the
-  `credential_scan.*` keys to the "Bundle shape" list, and document exit
-  code 2.
+  `credential_scan.*` keys to the "Bundle shape" list, add `credential_hits`
+  to the "Gap categories" list, and rewrite the exit-code line: `0` = bundle
+  assembled (gaps other than `credential_hits` are not a command failure);
+  `1` = run not found; `2` = bundle assembled and written, but
+  `credential_hits` present.
 - `docs/reference/API.md:4504-4568` — `assemble_bundle` signature
   (`context_extra`), the fourth source value, the `credential_scan.*` entry
-  keys, and the no-excerpt rule.
+  keys, `credential_hits` in the gap-taxonomy bullet, the no-excerpt rule,
+  and a sentence that the context section stays verbatim (the scan flags,
+  it does not redact).
 - `docs/ARCHITECTURE.md` — no direct bundle-shape reference found; no
   change expected.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
+
+- ENH-3469 (credential-pattern scanner in `pii.py`) is now `done`: `scan_text(text, rules=CREDENTIAL_RULES) -> list[CredentialFinding]` (`pii.py:84`), `credential_rules_sha(rules=CREDENTIAL_RULES) -> str` (`pii.py:115`), and `CREDENTIAL_SCANNER_VERSION: int = 1` (`pii.py:71`) all exist exactly as this issue's Program Design cites them; `CredentialFinding` (`pii.py:75`) confirmed to have only `rule`/`line`/`fingerprint` fields, no `excerpt`.
+- `scan_text`/`credential_rules_sha` have no production call site in this codebase today (only their own definitions, the package re-export, and `test_pii.py`). The one other `little_loops.pii` production consumer is `redact_pii` in `_redact_input_context` (`cli/logs.py:1840`), which silently redacts and returns `(text, bool)` with no report/gate — a different contract from `scan_text`'s return-a-list-of-findings shape, so this issue is greenfield wiring with no existing "scan and gate" convention in this codebase to match.
+- Every current `GapEntry.category` in `evidence.py` names an absence, disagreement, or staleness (`missing_*`, `*_changed_*`, `*_stale`, `*_not_committed_*` — enumerated across all ~10 construction sites in `assemble_bundle`, `evidence.py:215-368`); none names a positive "found N things" condition. `credential_hits` is the first category of that shape in the taxonomy — a convention departure worth the implementer noting, not a defect.
+- `cmd_evidence`'s own documented contract (`docs/reference/CLI.md:1314`) is "0 = bundle assembled (gaps, if any, are reported inside it — a gap is not a command failure); 1 = run directory could not be resolved," matching the code exactly (`return 1` only at `evidence.py:472` for unresolved run, `return 0` unconditionally at `evidence.py:521`). No other command under `cli/loop/` uses exit `2` to mean "ran successfully but found a hit" — the one `return 2` in that directory (`edit_routes.py:48`) means "loop not found." Two nearby CLI families disagree with each other too: `ll-verify-*` uses exit `1` for an unsuppressed finding; `ll-issues check-*` reserves `2` for "target issue not found" and uses `1` for "check failed." This issue's proposed exit `2` for `credential_hits` matches neither existing convention family — confirm the choice is deliberate (distinguishing "gap-only" from "gap-with-credential-hit" via a still-higher severity code) rather than an accidental collision with the `check-*` family's "not found" meaning.
 
 ## Program Design
 
@@ -190,8 +240,9 @@ param) so the scan step, appended as the last evidentiary step in
 `assemble_bundle`, sees the full `context_non_evidentiary` section → for each
 run-dir file (`state.json`/`events.jsonl`/`summary.json`/`probe-*.json`,
 already enumerated by `assemble_bundle`'s existing `for name in (...)` loop
-and `run_dir.glob("probe-*.json")`) and each `ContextEntry.value`, call
-`scan_text` (ENH-3469) → any hit appends an `EvidenceEntry` with
+and `run_dir.glob("probe-*.json")`) and each string-valued `context_extra`
+entry (not the `captured.*`/`evaluate.*` entries, which the file scan
+already covers), call `scan_text` (ENH-3469) → any hit appends an `EvidenceEntry` with
 `source="scanner"` and a `GapEntry("credential_hits", ...)` (`GapEntry` —
 `evidence.py:82`) → back in `cmd_evidence`, `bundle.has_gaps`
 (`EvidenceBundle.has_gaps` — `evidence.py:102`) is checked to select exit
@@ -201,6 +252,12 @@ code `2` instead of the existing `return 0` (`evidence.py:521`).
 
 N/A — no new classification logic; `hit_count > 0` is the only branch,
 already covered under Design › Fail behavior.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
+
+- `_read_json_file` (`evidence.py:122-128`) catches only `(json.JSONDecodeError, OSError)`, and `_read_events` (`evidence.py:131-145`) only catches per-line `json.JSONDecodeError` — neither catches `UnicodeDecodeError` (a `ValueError` subclass), so a non-UTF8-decodable run-dir file already raises uncaught in current code today, independent of this issue's change. `pii.py`'s own `scan_file()` wrapper (`pii.py:108-112`) decodes with `errors="replace"`, tolerating invalid UTF-8. Since the new scan step must turn each run-dir file's bytes into `str` for `scan_text`, decoding with `errors="replace"` (matching `scan_file`'s own tolerance) avoids inheriting the existing crash-on-invalid-UTF8 gap in `_read_json_file`/`_read_events` for files the scan step reads that those two helpers don't already read cleanly (e.g. `probe-*.json`, which today is only glob-counted, never opened).
 
 ## Tests
 
@@ -217,9 +274,20 @@ committed literal), per ENH-3469 Design › gitleaks. Add to
   `has_gaps` true.
 - **Hit in context_extra**: `loop_runs.error` passed via `context_extra`
   containing a fake token → hit with `target == "context:loop_runs.error"`.
-- **No-leak invariant**: in both hit tests, the assembled fake token string
-  does not appear anywhere in `canonical_json()`. This is the test that
-  matters most.
+- **No-leak invariant (scanner-scoped)**: in both hit tests, the assembled
+  fake token string does not appear in any `credential_scan.*` entry value
+  nor in any `GapEntry.detail`. It **will** appear in
+  `context_non_evidentiary` (verbatim by existing design — see Design ›
+  Bundle-level leak); assert that too, so the test documents the boundary
+  rather than accidentally passing on a fixture that never reaches the
+  context section. This is the test that matters most.
+- **No double counting**: a token present once in an `evaluate` event's
+  `raw` yields exactly one hit (`events.jsonl`), not a second
+  `context:evaluate.*` hit.
+- **Missing run dir**: `assemble_bundle(row, None, {}, context_extra=[...])`
+  still emits all four scalar `credential_scan.*` keys, still carries
+  `loop_runs.error` in `context_non_evidentiary`, and a token in that error
+  is reported as `context:loop_runs.error` alongside `missing_run_dir`.
 - **Reproducibility with hits**: two `assemble_bundle` calls over the
   hit fixture produce byte-identical `canonical_json()`.
 - **Exit code**: `cmd_evidence` over a hit fixture returns 2 and still
@@ -230,15 +298,20 @@ committed literal), per ENH-3469 Design › gitleaks. Add to
 
 ## Blocked By
 
-ENH-3469 (credential-pattern scanner in `pii.py`) — this issue imports
-`scan_text`, `credential_rules_sha`, and `CREDENTIAL_SCANNER_VERSION`; it
-cannot be implemented until those exist.
+None. Formerly blocked by `ENH-3469` (credential-pattern scanner in
+`pii.py`, providing `scan_text`, `credential_rules_sha`, and
+`CREDENTIAL_SCANNER_VERSION`) — that issue is now `done` and all three
+exist in `pii.py` exactly as this issue's Program Design cites them
+(confirmed 2026-09-14, see Integration Map findings).
 
 ## Out of Scope
 
 - `scanned_at` (dropped; see Design).
 - The longitudinal `history.db` leakage signal (parent's third consumer) —
   not covered by either child; see ENH-3466 Resolution.
+- Redacting matched spans inside `context_non_evidentiary` when hits are
+  found. The bundle flags; it does not scrub. If wanted, file a follow-up
+  that changes the context section's verbatim contract explicitly.
 
 ## Confidence Check Notes
 
@@ -254,19 +327,20 @@ resolved. Readiness moves from STOP to PROCEED WITH CAUTION on the remaining
 concern below._
 
 ### Concerns
-- Critical dependency still unresolved: ENH-3469 (credential-pattern scanner
-  in `pii.py`) is still `open`; this issue's design imports `scan_text`,
-  `credential_rules_sha`, and `CREDENTIAL_SCANNER_VERSION` from it and cannot
-  be implemented until ENH-3469 lands. Criterion 5 (Dependencies Satisfied) is
-  scored 0 on this basis.
-- That dependency is tracked via `depends_on: [3469]` in frontmatter, not
-  `blocked_by`. The BUG-3051 Dependencies Hard Override (Phase 1.7) only
-  inspects `blocked_by`, so it stays inert here despite the dependency being
-  genuinely blocking. Consider adding `blocked_by: [3469]` alongside
-  `depends_on` so this gate (and `ll-auto`'s pre-flight check) catch it
-  automatically instead of relying on the prose `## Blocked By` section.
+- _Superseded 2026-09-14 by `/ll:refine-issue`_: ENH-3469 (credential-pattern
+  scanner in `pii.py`) is now `done` — `scan_text`, `credential_rules_sha`,
+  and `CREDENTIAL_SCANNER_VERSION` all exist in `pii.py` exactly as this
+  issue's Program Design cites them (confirmed against source). Criterion 5
+  (Dependencies Satisfied) should no longer score 0 on this basis; the
+  `blocked_by` vs. `depends_on` gate-inspection question below is now moot
+  for this issue since the dependency has resolved, though it may still be
+  worth raising as a general gate-coverage question elsewhere. A fresh
+  `/ll:confidence-check` pass will recompute the readiness score.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-14T17:58:09 - `ed6df677-344b-44cd-8920-d8f25b2d204a.jsonl`
+- `/ll:refine-issue` - 2026-09-14T17:45:45 - `e90ca231-3500-40d5-a5ba-5eac5bbda47d.jsonl`
 - `/ll:confidence-check` - 2026-09-14T16:52:58 - `b233366b-10ab-4e31-a82f-311f95b747f5.jsonl`
 - `/ll:issue-size-review` - 2026-09-13T17:50:41 - `d24791a3-28b5-4b07-851d-ac809549dbb5.jsonl`
+- manual review - 2026-09-14 - scoped no-leak invariant to scanner output (context section is verbatim), dropped context-section rescan (double counting), emit scan entries on missing_run_dir path, context_extra before early return, explicit hits sort key, confirmed exit 2, doc gap-category updates
 - manual review - 2026-09-13 - resolved scan target, dropped scanned_at, fixed entry shape/source/fail behavior, added no-leak test
