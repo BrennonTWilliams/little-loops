@@ -751,6 +751,7 @@ See [Configuration Reference → Extensions](docs/reference/CONFIGURATION.md#ext
 - Mock external dependencies (subprocess, file I/O)
 - Test both success and error paths
 - Aim for meaningful coverage, not just line coverage
+- A new `evaluate_*` grader in `fsm/evaluators.py` must be classified in `scripts/tests/test_grader_coverage.py` (in-scope or exempt) and, if in-scope, carry pass/fail/boundary tests tagged with `@pytest.mark.grader_case` (ENH-3463)
 
 ### Snapshot Testing
 

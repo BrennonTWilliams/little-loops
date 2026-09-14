@@ -66,6 +66,8 @@ class TestExitCodeEvaluator:
             (255, "error"),
         ],
     )
+    @pytest.mark.grader_case("evaluate_exit_code", "pass")
+    @pytest.mark.grader_case("evaluate_exit_code", "fail")
     def test_exit_code_mapping(self, exit_code: int, expected: str) -> None:
         """Exit codes map to correct verdicts."""
         result = evaluate_exit_code(exit_code)
@@ -98,6 +100,7 @@ class TestExitCodeEvaluator:
 class TestOutputNumericEvaluator:
     """Tests for output_numeric evaluator."""
 
+    @pytest.mark.grader_case("evaluate_output_numeric", "pass")
     def test_equal_passes(self) -> None:
         """eq operator passes when values equal."""
         result = evaluate_output_numeric("5", "eq", 5)
@@ -105,6 +108,7 @@ class TestOutputNumericEvaluator:
         assert result.details["value"] == 5
         assert result.details["target"] == 5
 
+    @pytest.mark.grader_case("evaluate_output_numeric", "fail")
     def test_equal_fails(self) -> None:
         """eq operator fails when values differ."""
         result = evaluate_output_numeric("3", "eq", 5)
@@ -125,6 +129,7 @@ class TestOutputNumericEvaluator:
         result = evaluate_output_numeric("3", "lt", 5)
         assert result.verdict == "yes"
 
+    @pytest.mark.grader_case("evaluate_output_numeric", "boundary")
     def test_less_than_fails(self) -> None:
         """lt operator fails when value >= target."""
         result = evaluate_output_numeric("5", "lt", 5)
@@ -150,6 +155,7 @@ class TestOutputNumericEvaluator:
         result = evaluate_output_numeric("5", "gt", 5)
         assert result.verdict == "no"
 
+    @pytest.mark.grader_case("evaluate_output_numeric", "boundary")
     def test_greater_equal_passes(self) -> None:
         """ge operator passes when value >= target."""
         result = evaluate_output_numeric("5", "ge", 5)
@@ -284,12 +290,28 @@ class TestExtractJsonPath:
 class TestOutputJsonEvaluator:
     """Tests for output_json evaluator."""
 
+    @pytest.mark.grader_case("evaluate_output_json", "pass")
     def test_simple_numeric_comparison(self) -> None:
         """Simple numeric JSON comparison works."""
         output = '{"count": 5}'
         result = evaluate_output_json(output, ".count", "eq", 5)
         assert result.verdict == "yes"
         assert result.details["value"] == 5
+
+    @pytest.mark.grader_case("evaluate_output_json", "fail")
+    def test_verdict_no_on_numeric_mismatch(self) -> None:
+        """eq comparison returns 'no' verdict when values differ (ENH-3463)."""
+        output = '{"count": 5}'
+        result = evaluate_output_json(output, ".count", "eq", 10)
+        assert result.verdict == "no"
+
+    @pytest.mark.grader_case("evaluate_output_json", "boundary")
+    def test_boundary_value_exactly_at_lt_threshold(self) -> None:
+        """lt operator: value exactly at target fails, mirroring
+        evaluate_output_numeric's test_less_than_fails boundary case (ENH-3463)."""
+        output = '{"count": 5}'
+        result = evaluate_output_json(output, ".count", "lt", 5)
+        assert result.verdict == "no"
 
     def test_nested_path(self) -> None:
         """Nested JSON path extraction works."""
@@ -358,12 +380,14 @@ class TestOutputJsonEvaluator:
 class TestOutputContainsEvaluator:
     """Tests for output_contains evaluator."""
 
+    @pytest.mark.grader_case("evaluate_output_contains", "pass")
     def test_substring_match(self) -> None:
         """Substring found returns success."""
         result = evaluate_output_contains("Hello World", "World")
         assert result.verdict == "yes"
         assert result.details["matched"] is True
 
+    @pytest.mark.grader_case("evaluate_output_contains", "fail")
     def test_substring_not_found(self) -> None:
         """Substring not found returns failure."""
         result = evaluate_output_contains("Hello World", "Goodbye")
@@ -546,6 +570,7 @@ class TestConvergenceEvaluator:
 class TestClassifyEvaluator:
     """Tests for classify evaluator."""
 
+    @pytest.mark.grader_case("evaluate_classify", "pass")
     def test_last_line_default(self) -> None:
         """Last non-empty line is returned as verdict by default."""
         result = evaluate_classify("first\nsecond\nWIRE")
@@ -572,6 +597,7 @@ class TestClassifyEvaluator:
         result = evaluate_classify("A\nB\nC", line=-1)
         assert result.verdict == "C"
 
+    @pytest.mark.grader_case("evaluate_classify", "fail")
     def test_integer_index_out_of_range(self) -> None:
         """Out-of-range integer index returns empty verdict."""
         result = evaluate_classify("A\nB", line=10)
@@ -1015,6 +1041,7 @@ class TestLLMStructuredEvaluator:
         assert result.details.get("missing_dependency") is True
         assert "CLI not found" in result.details["error"]
 
+    @pytest.mark.grader_case("evaluate_llm_structured", "pass")
     def test_success_verdict(self, mock_cli) -> None:
         """LLM returns success verdict."""
         mock_run, mock_result = mock_cli
@@ -1090,6 +1117,7 @@ class TestLLMStructuredEvaluator:
         assert "--no-session-persistence" not in call_args
         assert result.verdict == "yes"
 
+    @pytest.mark.grader_case("evaluate_llm_structured", "fail")
     def test_failure_verdict(self, mock_cli) -> None:
         """LLM returns failure verdict."""
         mock_run, mock_result = mock_cli
@@ -1117,6 +1145,18 @@ class TestLLMStructuredEvaluator:
         result = evaluate_llm_structured("Completed items 1 and 2")
 
         assert result.verdict == "partial"
+
+    @pytest.mark.grader_case("evaluate_llm_structured", "boundary")
+    def test_confidence_exactly_at_min_confidence_is_confident(self, mock_cli) -> None:
+        """confidence == min_confidence is confident (>=, not >), so no
+        _uncertain suffix is appended even when uncertain_suffix=True (ENH-3463)."""
+        mock_run, mock_result = mock_cli
+        mock_result.stdout = self._cli_stdout("yes", 0.7, "Right at the line")
+
+        result = evaluate_llm_structured("...", min_confidence=0.7, uncertain_suffix=True)
+
+        assert result.verdict == "yes"
+        assert result.details["confident"] is True
 
     def test_low_confidence_without_suffix(self, mock_cli) -> None:
         """Low confidence without uncertain_suffix keeps original verdict."""
@@ -2213,6 +2253,8 @@ class TestMcpResultEvaluator:
             ('{"isError": true}', 0, "tool_error"),
         ],
     )
+    @pytest.mark.grader_case("evaluate_mcp_result", "pass")
+    @pytest.mark.grader_case("evaluate_mcp_result", "fail")
     def test_mcp_result_routing(self, output: str, exit_code: int, expected_verdict: str) -> None:
         """MCP result routing covers all expected verdicts."""
         result = evaluate_mcp_result(output, exit_code)
@@ -2322,6 +2364,7 @@ class TestBlindComparator:
             mock_run.return_value = proc
             yield mock_run, proc
 
+    @pytest.mark.grader_case("evaluate_blind_comparator", "pass")
     def test_both_pass(self, mock_cli) -> None:
         """Both outputs pass — verdict_a=yes, verdict_b=yes."""
         mock_run, proc = mock_cli
@@ -2331,6 +2374,7 @@ class TestBlindComparator:
         assert result["baseline_pass"] is True
         assert result["confidence"] == 0.9
 
+    @pytest.mark.grader_case("evaluate_blind_comparator", "fail")
     def test_both_fail(self, mock_cli) -> None:
         """Both outputs fail — verdict_a=no, verdict_b=no."""
         mock_run, proc = mock_cli
@@ -2497,6 +2541,7 @@ class TestComparatorEvaluator:
         result = evaluate(config, output="new output", exit_code=0, context=ctx)
         assert result.verdict == "no_baseline"
 
+    @pytest.mark.grader_case("evaluate_comparator", "pass")
     def test_harness_wins(self, baseline_with_file: Path) -> None:
         """Majority harness_pass=True → yes verdict."""
         config = EvaluateConfig(type="comparator", baseline_path=str(baseline_with_file))
@@ -2513,6 +2558,7 @@ class TestComparatorEvaluator:
         assert result.details["harness_wins"] == 1
         assert result.details["baseline_wins"] == 0
 
+    @pytest.mark.grader_case("evaluate_comparator", "fail")
     def test_baseline_wins(self, baseline_with_file: Path) -> None:
         """Majority baseline_pass=True → no verdict."""
         config = EvaluateConfig(type="comparator", baseline_path=str(baseline_with_file))
@@ -2628,6 +2674,7 @@ class TestContractEvaluator:
             mock_run.return_value = mock_result
             yield mock_run, mock_result
 
+    @pytest.mark.grader_case("evaluate_contract", "pass")
     def test_aligned_pair_returns_yes(self, mock_cli, tmp_path) -> None:
         """Single aligned pair returns yes verdict."""
         mock_run, mock_result = mock_cli
@@ -2655,6 +2702,7 @@ class TestContractEvaluator:
         assert len(result.details["pair_results"]) == 1
         assert result.details["pair_results"][0]["verdict"] == "yes"
 
+    @pytest.mark.grader_case("evaluate_contract", "fail")
     def test_mismatched_pair_returns_no(self, mock_cli, tmp_path) -> None:
         """Mismatched pair (LLM returns no) yields no verdict."""
         mock_run, mock_result = mock_cli

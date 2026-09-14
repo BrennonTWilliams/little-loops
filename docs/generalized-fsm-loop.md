@@ -1998,7 +1998,21 @@ class TestExecutor:
         assert mock_action_runner.last_action == "mypy src/"
 ```
 
-### 4. Test File Organization
+### 4. Grader Coverage Gate
+
+`scripts/tests/test_grader_coverage.py` (ENH-3463) enforces that every grader
+used by a live-model probe — the `evaluate_*` functions in `fsm/evaluators.py`
+that decide pass/fail for a subject, as opposed to loop-control evaluators like
+`evaluate_convergence` — carries deterministic, zero-API-call unit tests for a
+clear pass, a clear fail, and (where the grader has a numeric threshold) the
+exact boundary value. Tests declare which case they cover with
+`@pytest.mark.grader_case(grader, kind)`; the meta-test AST-scans
+`scripts/tests/*.py` for these markers (never pytest session state, so it stays
+correct under `-k`, `--lf`, or a single-file run) and fails naming the grader
+and the missing kind. Adding a new `evaluate_*` function without classifying it
+as in-scope or exempt also fails the gate.
+
+### 5. Test File Organization
 
 ```
 scripts/tests/

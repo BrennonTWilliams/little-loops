@@ -4,8 +4,9 @@ title: Unit-test an eval's grading logic deterministically before it is allowed 
   grade a live-model run
 type: ENH
 priority: P3
-status: open
+status: done
 discovered_date: '2026-09-13'
+completed_at: '2026-09-14T23:08:09Z'
 labels: []
 blocked_by:
 - ENH-3462
@@ -248,11 +249,64 @@ mistaken EVALUATION_GUIDE.md correction, completed the 17-function grader invent
 with an explicit exemption list, rewrote Acceptance as six testable criteria, and
 spun the `verdict="error"` conflation out as BUG-3477.
 
+## Resolution
+
+Implemented exactly per Design: `scripts/tests/test_grader_coverage.py` is a new
+CI-tier pytest meta-test, no production code changed.
+
+- **`scripts/tests/test_grader_coverage.py`** (new): holds the 11-grader
+  in-scope table and 6-function exempt list from Design; AST-scans
+  `scripts/tests/*.py` for `@pytest.mark.grader_case(grader, kind)` decorators
+  (never `session.items`); asserts full kind coverage per grader and that
+  every `evaluate_*` in `fsm/evaluators.py` is classified. Its own detection
+  logic is tested against synthetic source strings (`TestGraderCoverageMetaTestItself`).
+- **`scripts/pyproject.toml`**: registered `grader_case(grader, kind)` in
+  `[tool.pytest.ini_options] markers`.
+- Tagged existing pass/fail/boundary tests for all 11 in-scope graders across
+  `test_fsm_evaluators.py` and `test_benchmark_fragment.py`.
+- **`TestOutputJsonEvaluator`**: added `test_verdict_no_on_numeric_mismatch`
+  (fail) and `test_boundary_value_exactly_at_lt_threshold` (boundary, mirrors
+  `evaluate_output_numeric`'s `test_less_than_fails` shape).
+- **`TestLLMStructuredEvaluator`**: added
+  `test_confidence_exactly_at_min_confidence_is_confident` — `confidence ==
+  min_confidence` stays `confident=True`/no `_uncertain` suffix, since
+  `evaluators.py:1132` uses `>=`.
+- **AC 6 (inverted-comparison detection)**: `mutmut run` (installed console
+  script, scoped to `little_loops/fsm/evaluators.py` via a temporary
+  `paths_to_mutate` edit) failed in this environment before any mutant ran —
+  `ModuleNotFoundError: little_loops.pytest_history_plugin` when mutmut's
+  pytest subprocess loads the `pytest11` entry point inside its mirrored
+  `mutants/` tree. This reproduces independent of this issue's changes and
+  looks like an environment/packaging gap in how mutmut's mirrored run
+  resolves the editable install's entry points, not something introduced
+  here — worth its own issue if mutation testing is wanted repo-wide.
+  Fell back to AC 6's explicit fallback: hand-inverted `"ge": lambda v, t: v
+  >= t` to `v < t` in `evaluate_output_numeric` (`evaluators.py:172`),
+  confirmed `test_greater_equal_passes` (tagged `boundary`) and
+  `test_greater_equal_fails` both fail, then reverted (`git diff` clean
+  after revert). `paths_to_mutate` and the generated `mutants/`/`.mutmut-cache`
+  scratch dirs were restored/removed, no trace left in the tree.
+- **Docs**: added a "Grader Coverage Gate" subsection to
+  `docs/generalized-fsm-loop.md`'s `## Testing Strategy` (renumbered the
+  following "Test File Organization" subsection); added one line to
+  `CONTRIBUTING.md`'s Testing Guidelines.
+
+**Known pre-existing, unrelated test failure**: the full-suite run has one
+failure, `test_verify_evidence.py::TestRepoGate::test_no_new_unverifiable_evidence`,
+flagging 3 unverifiable evidence spans inside `BUG-3477.md`/`BUG-3478.md`
+(issue files this issue never touches). Confirmed via `git stash` that this
+failure reproduces identically with none of this issue's changes applied —
+those two issue files carry concurrent, uncommitted edits from other
+automation in this shared local-editable checkout (per `.claude/CLAUDE.md`'s
+note on concurrent work). Out of scope for ENH-3463; not fixed here.
+
 ## Status
 
 **Open** | Created: 2026-09-13 | Priority: P3
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-14T23:07:52 - `bac75f45-b587-45bb-bf3c-443b0c5e805a.jsonl`
+- `/ll:ready-issue` - 2026-09-14T22:41:08 - `1fc0bcc7-4704-4af8-af39-0924d89e0e1e.jsonl`
 - `/ll:confidence-check` - 2026-09-14T21:57:28 - `76fd614d-af9c-461c-9480-143acb792f32.jsonl`
 - `/ll:verify-issues` - 2026-09-14T21:55:28 - `38ae2e66-1c37-4dba-9a6d-42c3e2738df2.jsonl`
 - `/ll:confidence-check` - 2026-09-14T21:49:02 - `213a0053-67dd-4147-8bdb-b54b20072e38.jsonl`

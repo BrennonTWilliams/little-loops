@@ -28,6 +28,7 @@ from little_loops.fsm.schema import EvaluateConfig
 class TestEvaluateHarborScorerVerdicts:
     """Unit tests for the evaluate_harbor_scorer evaluator function."""
 
+    @pytest.mark.grader_case("evaluate_harbor_scorer", "pass")
     def test_exit_zero_with_float_gives_yes(self) -> None:
         result = evaluate_harbor_scorer("0.85\n", 0)
         assert result.verdict == "yes"
@@ -44,6 +45,7 @@ class TestEvaluateHarborScorerVerdicts:
         assert result.verdict == "yes"
         assert result.details["score"] == pytest.approx(0.0)
 
+    @pytest.mark.grader_case("evaluate_harbor_scorer", "fail")
     def test_nonzero_exit_gives_no(self) -> None:
         result = evaluate_harbor_scorer("", 1)
         assert result.verdict == "no"
