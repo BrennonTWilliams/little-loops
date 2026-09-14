@@ -13,6 +13,13 @@ labels:
 - reliability
 blocked_by:
 - ENH-3462
+reconcile_attempted: true
+confidence_score: 80
+outcome_confidence: 97
+score_complexity: 22
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-3476: Persist ll-harness widened evidence (channels + side effects) to harness_events
@@ -44,7 +51,6 @@ Follow the v49/v50 `_MIGRATIONS` precedent (`session_store/schema.py:1390-1415`,
 - `scripts/little_loops/session_store/writers.py` — `_insert_harness_event()` (:1109-1207) and `record_harness_event()` (:1210-1299).
 - `scripts/little_loops/cli/harness.py` — `_record_harness_event()` (:214-261), the assembly point on the dominant `record_attempt()` write path (6 of 7 call sites: :1762, :1896, :2016, :2135, :2299, :2382; `record_harness_event()` used only at :2276).
 - `scripts/little_loops/history_reader/harness.py` — `HarnessEvent` dataclass (:53-98) and `_HARNESS_EVENT_COLUMNS` (:101-108).
-- `scripts/little_loops/observability/schema.py` — `HarnessEventVariant` (:731-734, registered in the `DESVariant` registry at :884).
 - `scripts/little_loops/session_store/schema_manifest.json` (`harness_events` entry, `:1089`).
 
 ### Dependent Files (Callers/Importers)
@@ -52,7 +58,8 @@ Follow the v49/v50 `_MIGRATIONS` precedent (`session_store/schema.py:1390-1415`,
 - `scripts/little_loops/session_store/__init__.py` and `scripts/little_loops/history_reader/__init__.py` — package-level re-export points; no code change expected, confirm the public surface stays in sync.
 
 ### Similar Patterns
-- v44 `verdict_events.abstention_reason` (`session_store/schema.py:1178-1237`) — the closest end-to-end precedent for a persisted enum/nullable-column addition with an explicit SQL-NULL-vs-Python-None contract documented on both the writer kwarg and reader field.
+- `semantic_evidence: str | None` (`session_store/writers.py:1180`) — the closest precedent for `channels_json`/`side_effects_json`: a free-text/JSON `harness_events` column that passes through with zero NULL-coercion code on either the write (`writers.py`) or read (`history_reader/_base.py:87-91`) side.
+- v49/v50 plain `ALTER TABLE ADD COLUMN` (`session_store/schema.py`) — the applicable migration-mechanism precedent, since no `CHECK` constraint is contemplated on the new columns; the v44 full-table-rebuild pattern does not apply here.
 
 ### Tests
 - `scripts/tests/test_session_store_schema.py` — `TestHarnessEventsTable`, `TestHarnessEventsRunModelColumns` (~:1692), `TestHarnessEventsContentPinColumns` (~:2183), `TestHarnessEventsBaselineConditionColumns` (~:3332); the schema-manifest gate classes `test_schema_manifest_matches_checked_in_file` (:3152) and `test_manifest_schema_version_matches_live_schema_version` (:3169); a backfill test modeled on `test_v43_db_upgrades_preserving_existing_rows` (:2753-2787).
@@ -65,6 +72,16 @@ Follow the v49/v50 `_MIGRATIONS` precedent (`session_store/schema.py:1390-1415`,
 - `docs/ARCHITECTURE.md` — schema-migration table (rows through v49/v50, e.g. :670/:682); add the new version row.
 - `docs/guides/HISTORY_SESSION_GUIDE.md` — an independent copy of the same migration table (:57-99); already stale ("Current schema version: 45" at :57 vs. code's 50 — fix this drift while touching the table, not just adding a row).
 - `docs/reference/EVENT-SCHEMA.md` § "CLI exit-code conventions" (:1795) — states *"Only `RunnerResult.timed_out` is persisted to `harness_events`; `RunnerResult.error` has no column."* — update once new fields are persisted.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
+
+- `_insert_harness_event()`'s INSERT column order (`writers.py:1156-1164`) is 29 columns; the free-text `semantic_evidence: str | None` column — the closest existing precedent for `channels_json`/`side_effects_json` — passes through with zero NULL-coercion code (`writers.py:1180`); only the 3 bool-typed kwargs (`semantic_passed`, `timed_out`, `dirty`) get explicit `None if x is None else int(x)` handling. The new JSON columns need no special-case coercion.
+- `record_attempt()` (`writers.py:1367-1452`) forwards an unvalidated `**event_fields` dict straight through to `_insert_harness_event()` — confirmed directly. A new kwarg `_record_harness_event()` passes (e.g. `channels_json`) flows through `record_attempt()` with **no code change required inside `record_attempt()`'s own body**.
+- Read side: `_row_to_dataclass()` (`history_reader/_base.py:87-91`) does a plain `row[k] for k in field_names if k in row.keys()` mapping; sqlite3's default adapter maps SQL `NULL` to Python `None` automatically for any column type. The `semantic_evidence` precedent carries no custom NULL-handling code on either the write or read side — the same zero-special-casing applies to the new columns.
+- `ll-doctor`'s schema-drift check (`cli/doctor.py` ~:520-591) replays `_MIGRATIONS` to the DB's recorded version and diffs against the live PRAGMA schema — a new `_MIGRATIONS` entry alone is sufficient for drift detection to pick up the new columns; no separate registration step in `doctor.py` is needed. `schema_manifest.json`'s `"harness_events"` entry (:1089-1273, 29 column objects today) still needs a manual two-entry append, or `test_schema_manifest_matches_checked_in_file` (`test_session_store_schema.py:3152`) fails.
+- Confirmed by direct code read (not just issue frontmatter): ENH-3462 has **not landed**. `ChannelRecord` and `HarnessEvalOutcome.channels` do not exist anywhere in `scripts/` (repo-wide grep, zero hits); `HarnessEvalOutcome` (`cli/harness.py:796-804`) is unchanged from its pre-ENH-3462 shape (`passed`, `verdict`, `eval_result`, `abstained`, `sample_pass_rate`, `samples` only). This confirms the `blocked_by: ENH-3462` edge is accurate and current, not stale.
 
 ## Program Design
 
@@ -85,15 +102,21 @@ Follow the v49/v50 `_MIGRATIONS` precedent (`session_store/schema.py:1390-1415`,
 
 `_record_harness_event` (`cli/harness.py:214`, sourcing `outcome.channels` from `HarnessEvalOutcome`) → `record_attempt` (`session_store/writers.py:1367`, the dominant 6-of-7 write path) → `_insert_harness_event` (`session_store/writers.py:1109`) → read back via `HarnessEvent` / `_HARNESS_EVENT_COLUMNS` (`history_reader/harness.py:53-108`).
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
+
+- Migration-pattern precision: v49's `attempt_kind` column (`session_store/schema.py`) adds a `CHECK` constraint inline on a **new** column via `ALTER TABLE harness_events ADD COLUMN attempt_kind TEXT CHECK (...)` — SQLite permits a `CHECK` on a column added via `ADD COLUMN`; the v44 full-table-rebuild is only required to add a `CHECK` to an **already-existing** column. Since `channels_json`/`side_effects_json` are plain nullable TEXT with no constraint contemplated, the v49/v50 plain-`ALTER TABLE`-per-column pattern applies outright — even a future `CHECK` on these new columns themselves would still not require the v44 rebuild pattern.
+- `HarnessEventVariant` (`observability/schema.py:731-734`) and its base `DESVariant` (:21-30) carry no column-level fields for *any* existing `harness_events` column, including the v49/v50 columns already shipped — the class is a one-field (`type: Literal["harness_event"]`) audit-registry entry confirming a write call site is covered, not a per-column schema declaration. Adding `channels_json`/`side_effects_json` does not require touching this file. See `⚠ Superseded` marker under Implementation Steps.
+
 ## Implementation Steps
 
-1. Design the persisted shape for `outcome.channels` (JSON-serialized `ChannelRecord` list) and side-effect results; decide plain `ALTER TABLE` vs. full-table-rebuild based on whether a `CHECK` constraint is needed.
+1. Add `channels_json: str | None` and `side_effects_json: str | None` as plain nullable `TEXT` columns via the v49/v50 `ALTER TABLE ADD COLUMN` pattern — no `CHECK` constraint is needed, so the v44 full-table-rebuild path does not apply.
 2. Add the `SCHEMA_VERSION` bump and migration entry in `session_store/schema.py`; update `schema_manifest.json`.
-3. Thread the new field(s) through `_insert_harness_event()` → `record_harness_event()`/`record_attempt()` → `_record_harness_event()` in `cli/harness.py`, sourcing from `HarnessEvalOutcome.channels`.
+3. Thread the new field(s) through `_insert_harness_event()` → `record_harness_event()`/`record_attempt()` → `_record_harness_event()` in `cli/harness.py`, sourcing from `HarnessEvalOutcome.channels`. No NULL-coercion handling is needed, mirroring `semantic_evidence`.
 4. Add the trailing-default fields to `HarnessEvent` and extend `_HARNESS_EVENT_COLUMNS`.
-5. Register the new columns on `HarnessEventVariant` (`observability/schema.py`).
-6. Update `docs/ARCHITECTURE.md`, `docs/guides/HISTORY_SESSION_GUIDE.md`, `docs/reference/EVENT-SCHEMA.md`.
-7. Tests per Integration Map; full suite passes.
+5. Update `docs/ARCHITECTURE.md`, `docs/guides/HISTORY_SESSION_GUIDE.md`, `docs/reference/EVENT-SCHEMA.md`.
+6. Tests per Integration Map; full suite passes.
 
 ## Impact
 
@@ -117,6 +140,19 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 **Open** | Created: 2026-09-14 | Priority: P3
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-14_
+
+**Readiness Score**: 80/100 → STOP — ADDRESS GAPS (Dependencies Hard Override)
+**Outcome Confidence**: 97/100 → HIGH CONFIDENCE
+
+### Gaps to Address
+- `blocked_by: ENH-3462` is unresolved (status: open). `ChannelRecord`/`HarnessEvalOutcome.channels` do not exist in `scripts/` yet, so this issue cannot begin implementation until ENH-3462 ships. Otherwise-well-specified (Criteria 1-4 all scored 20/20); this is the sole blocker.
+
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-14T18:58:05 - `cef18a0e-5855-4ab1-ba23-37a7d36518ff.jsonl`
+- `/ll:reconcile-issue` - 2026-09-14T18:55:40 - `6c2e05b8-05cf-4d8d-b2b6-1b2ad05e6c8f.jsonl`
+- `/ll:refine-issue` - 2026-09-14T18:53:00 - `20027762-fa98-4cf8-8ef8-31f8f3facf83.jsonl`
 - `/ll:format-issue` - 2026-09-14T18:46:16 - `6d894000-c098-410e-9d4d-4df5e3c75319.jsonl`
