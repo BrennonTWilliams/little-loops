@@ -1,5 +1,5 @@
 ---
-id: 3462
+id: ENH-3462
 title: "Widen the ll-harness evidence surface beyond stdout \u2014 stderr, written\
   \ files, and named side effects"
 type: ENH
@@ -9,8 +9,7 @@ discovered_date: '2026-09-13'
 labels:
 - evals
 - reliability
-verify_verdict: NON_VALID
-size: Very Large
+size: Large
 parent: EPIC-3475
 epic: EPIC-3475
 ---
@@ -33,6 +32,23 @@ The precedent this follows is a production tournament harness over a stochastic 
 Distinct from adjacent verdict work: scope-of-claim envelope work bounds what a verdict *asserts*; triage-vs-verdict score separation changes how scores are used; failure-evidence ranking orders evidence for classification. All three operate on evidence the harness already has. None enlarges the set of channels it reads.
 
 Composes with the n-run redundancy requirement (ENH-3415, shipped): redundancy is only worth its cost if each run yields more than a boolean, and each of the n runs should yield the widened evidence, not only the first.
+
+### Decisions (review pass, 2026-09-14)
+
+The research passes below surfaced several open forks. They are resolved here so the implementer does not have to re-derive them; later research sections that describe alternatives are context, not options.
+
+- **D1 — Declaration syntax lives in `_add_evaluator_flags()`, on all five subparsers.** New flags: `--evidence {stdout,stderr}` (repeatable; default when absent is `stdout` only, preserving today's behavior), `--expect-git-clean` (store_true). The existing inert FEAT-2878 flags `--require-artifact PATH` (repeatable) and `--forbid-path PATH` (repeatable) **move** from `_add_trace_flags()` into `_add_evaluator_flags()` and become the declared-artifact mechanism — enforced, not just fingerprinted. Paths resolve relative to the process cwd (or the trace-mode workspace when `--trace-mode` is set, unchanged). `--trace-mode`, `--require-order`, `--keep-workspace`, `--hosts` stay in `_add_trace_flags()` and stay out of scope. Rationale: building a parallel `--expect-file` beside a dead `--require-artifact` is the duplication the wiring pass warned against; reusing the flag names keeps `_conditions_fp()` and `logs.py`'s fixture round-trip stable.
+- **D2 — Channel provenance is an in-memory record on the outcome, not a reuse of `EvidenceBundle`.** Add `ChannelRecord(name: str, examined: bool, content: str | None, note: str | None = None)` (dataclass in `cli/harness.py`) and `HarnessEvalOutcome.channels: list[ChannelRecord]`. `examined=False, content=None` means never read; `examined=True, content=""` means read and empty. `_evaluate_and_report()` renders the list in both the human report and the `--json` payload. `cli/loop/evidence.py`'s `EvidenceBundle`/`GapEntry` is the wrong module and the wrong shape (a gap list, not a per-channel status) — cite it as precedent, do not import it.
+- **D3 — Judge evidence is pre-composed in `_grade()`; `evaluate_llm_structured()`, `evaluate()`, `FSMExecutor._evaluate()`, and `cli/queue.py` are not touched.** `_grade()` builds one string from the declared channels, each wrapped in its own tag (`<stdout>`, `<stderr>`, `<artifact path="...">`), joined by blank lines, and passes it as `output=`. Each channel gets its **own** 4000-char truncation budget (the `evaluate_contract()` per-file precedent), applied before composition; `evaluate_llm_structured()`'s own truncation then sees a string it may truncate again — acceptable, since the per-channel cap already bounds it and the `<action_output>` wrapper stays as-is. The FSM executor's identical gap is a separate issue.
+- **D4 — Persistence is deferred to a follow-up child issue under EPIC-3475.** No `harness_events` column, no `SCHEMA_VERSION` bump, no `HarnessEvent`/manifest/DES/doctor changes in this issue. The follow-up persists `outcome.channels` (JSON) and the side-effect results. This issue's deliverable is the widened verdict plus the report/JSON record.
+- **D5 — Side-effect semantics.**
+  - `--require-artifact PATH`: after the run, `PATH` must exist and be a regular file; its content is read (per-channel budget) and appended to the judge evidence when `--semantic` is set. Missing or unreadable → `passed=False`, record `examined=True, content=None, note="missing"` / `note="unreadable: <err>"`.
+  - `--forbid-path PATH`: after the run, `PATH` must **not** exist, or, if it existed before the run, must be byte-identical to its pre-run content. Snapshot pre-run existence + sha256 for each declared path.
+  - `--expect-git-clean`: means "the run introduced no new changes," **not** "the tree is clean afterward." Take `porcelain_paths()` (`git_operations.py:552`) before and after; fail if the post-run set minus the pre-run set is non-empty. Do not use `_git_dirty()` for this criterion; it stays as descriptive provenance only.
+  - Every side effect that fails sets `passed=False` (exit 1), same precedence as `--exit-code`; they never abstain.
+- **D6 — Undeclared channels never influence the verdict.** An `--exit-code 0` run with warnings on stderr keeps passing unless `--evidence stderr` is declared; stderr is then judged only through `--semantic`. There is no built-in "stderr must be empty" rule.
+- **D7 — `tool_trace` is out of scope.** It is populated only in trace mode, which is unreachable from the CLI today.
+- **D8 — `--samples N` (ENH-3415) runs the side-effect checks per sample**, re-snapshotting before each sample, so each of the n runs yields the widened evidence.
 
 ## Why it matters
 
@@ -126,6 +142,11 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/cli/harness.py` — `_record_harness_event()` (:214-261) and its `record_attempt()` call (:264) is the harness CLI's own wrapper; needs new kwargs added and threaded from `_grade()`'s new evidence data.
 - `scripts/little_loops/history_reader/harness.py` — read-side consumer of the same schema: `HarnessEvent` dataclass (:53-98, needs new trailing-default fields per its own v49/v50-precedent docstring at :61-64/:92-94) and `_HARNESS_EVENT_COLUMNS` (:101-108, the single SQL column-list string reused by every reader — `recent_harness_events`, `harness_event_by_id`, `authoritative_attempt(s)`, `baseline_for`). Also imports `SampleTally` from `cli.harness` at :367 (bidirectional coupling with `cli/harness.py`, not previously noted).
 
+_Wiring pass added by `/ll:wire-issue` — 2026-09-14:_
+- `scripts/little_loops/observability/schema.py` — `HarnessEventVariant(DESVariant)` (:731-734, registered in the `DESVariant` registry list at :884, docstring `"""record_harness_event writes to harness_events (ll-harness, ENH-2739)."""`) is a second, independent enumeration of the `harness_events` row shape — a Data-Event-Schema audit registration distinct from `session_store/schema.py`'s migration list and `schema_manifest.json`'s column list. A new evidence column needs reflecting here too, or the DES audit drifts from the live schema.
+- `scripts/little_loops/cli/logs.py` — `_build_eval_fixture()`/`_fixture_to_harness_argv()` (:1857-1910, FEAT-1971) round-trip a subset of the `ll-harness` CLI flag surface (`runner_args`, `exit_code`, `semantic`, `timeout`, `samples`) for eval-fixture export/import. A new evidence-declaration CLI flag silently drops out of this round-trip unless added here too.
+- `scripts/little_loops/session_store/writers.py` — `record_attempt()` (:1367-1452, ENH-3407) is the actual write path for 6 of `_record_harness_event()`'s 7 call sites in `cli/harness.py` (:1762, :1896, :2016, :2135, :2299, :2382); `record_harness_event()` (already listed above) is used only at :2276. Confirmed by direct read: `record_attempt()` forwards `**event_fields` straight into `_insert_harness_event()`, so it needs **no code change** itself — but it means `_record_harness_event()` in `cli/harness.py` is the real assembly point for new evidence kwargs on the dominant write path, not `record_harness_event()` alone as the existing bullet above implies in isolation.
+
 ### Documentation
 
 _Wiring pass added by `/ll:wire-issue`:_
@@ -133,6 +154,10 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `docs/guides/HISTORY_SESSION_GUIDE.md` — an independent, separate copy of the same schema-migration table (:57-99, e.g. `| v31 | ENH-2739 | harness_events table... |` at :91). This table already reads "Current schema version: 45" at :57 while code is at `SCHEMA_VERSION = 50` — already stale by several migrations; a new v51 row is one more it needs.
 - `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` § "Contract Gates (`check_contract`)" — comparison table at :189-194 documents the current limitation in prose (`| Reads files | No — evaluates action stdout | Yes — reads both files directly |`, :192); this specific row/anchor should be updated once the gap it describes is closed.
 - `docs/reference/EVENT-SCHEMA.md` § "CLI exit-code conventions" (:1795) — prose paragraph explicitly stating *"Only `RunnerResult.timed_out` is persisted to `harness_events`; `RunnerResult.error` has no column."* — becomes stale the moment new evidence fields are persisted.
+
+_Wiring pass added by `/ll:wire-issue` — 2026-09-14:_
+- `scripts/little_loops/init/writers.py:207-216` — `_LL_COMMANDS` tuple's `ll-harness` entry (`"One-shot runner evaluation (skill, cmd, mcp, prompt, dsl) with exit-code and semantic criteria"`) is written verbatim into every consuming project's generated `CLAUDE.md`/`AGENTS.md` via `ll-init`; update this phrasing alongside `docs/reference/CLI.md` if the criterion vocabulary widens.
+- `skills/create-eval-from-issues/SKILL.md:4` — same "exit-code and semantic criteria" phrasing describing `ll-harness`'s current flag surface. Host-adapter mirrors (`.qwen/skills/...`, `.kimi-code/skills/...`, `.gemini/skills/...`) carry the identical line but sync from this file via `ll-adapt --apply` — edit only the canonical `skills/` copy, not the mirrors.
 
 ### Tests
 
@@ -144,6 +169,11 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_feat3182_evidence_bundle.py` `TestGapTaxonomy` (:204+) — concrete pattern (`test_missing_run_dir_produces_explicit_gap`, :205-211) of one `any(g.category == "<taxonomy-string>" for g in bundle.gaps)` assertion per gap kind plus `any(e.source == "<channel>" for e in bundle.evidentiary)` for provenance — the model for testing a new "examined vs never-examined" taxonomy, since no such convention exists anywhere else in the repo today (confirmed by repo-wide search).
 - `scripts/tests/test_cli_e2e.py` `TestLlHarnessE2E::test_cmd_echo_hello_passes` (:472-488) — the only subprocess-level e2e test for `ll-harness` in the repo; exercises `cmd` + `--exit-code` only, no `--semantic`, no stderr assertion, no file-artifact declaration. A new e2e test exercising the widened evidence surface (real subprocess writing a file / producing stderr / leaving git status dirty, graded end-to-end) is the concrete gap here.
 - `scripts/little_loops/cli/harness.py:660,667` — `--require-artifact`/`--forbid-path` (FEAT-2878) are parsed and folded into `_conditions_fp()`'s fingerprint but have **zero enforcement code path anywhere in the tree** and **zero test coverage** (confirmed by repo-wide, unfiltered search). Flagged as an adjacent, currently-inert declared-artifact surface with overlapping naming — new work should not collide with or silently duplicate this flag's eventual implementation.
+
+_Wiring pass added by `/ll:wire-issue` — 2026-09-14:_
+- `scripts/tests/test_session_store_writers.py::TestRecordAttemptAndAdmitRetry` (:2492-2723, ENH-3407) — the actual write-path test class for `record_attempt()`, the function that 6 of `_record_harness_event()`'s 7 call sites route through (see Dependent Files above). Extend this class, not `TestRecordHarnessEvent`, for write-path coverage of new evidence kwargs on the dominant path.
+- `scripts/tests/test_cli_doctor_install_checks.py::TestSchemaDrift` (:333-533, ENH-3242) — covers `doctor.py::_schema_drift_data()`, which calls `_schema_manifest()`/`_reference_manifest_at()` against a live `.ll/history.db`. A new `harness_events` column needs this class's drift-detection coverage extended alongside `test_schema_manifest_matches_checked_in_file`.
+- Gap: no test anywhere calls the real (unpatched) `_git_dirty()` implementation (`harness.py:90-119`) — all 11 references in `test_cli_harness.py` mock it out (`patch("little_loops.cli.harness._git_dirty", ...)`, e.g. :1022, :2083, :2892). If this issue makes git-cleanliness an assertable criterion, add a test exercising the real subprocess-based implementation via a temp git repo fixture, not only the mocked pass-through.
 
 ## Program Design
 
@@ -165,7 +195,16 @@ _Added by `/ll:refine-issue` — 2026-09-13 — based on codebase analysis:_
 `cmd_skill`/`cmd_cmd`/`cmd_mcp`/`cmd_prompt`/`cmd_dsl` -> `run_action()` (`runner_spec.py`) -> `RunnerResult(stdout, stderr, exit_code, tool_trace)` -> `_grade()` (`harness.py:916`, reads `exit_code` + `stdout` only) -> `evaluate_llm_structured(output=result.stdout, ...)` (`fsm/evaluators.py:1067`) -> `EvaluationResult` -> `_evaluate_and_report()`/`_run_sample_loop()` -> printed report / `harness_events` persistence (`session_store/schema.py:718`, no stderr/artifact/channel-provenance columns).
 
 **Decision Rules**
-N/A — no new decision logic proposed with concrete, resolvable inputs. The issue names the *shape* of a new decision surface (a criterion-language way to name which channel it asserts over; a declared-artifact set a criterion checks against) but does not fix the literal syntax, keyword set, or threshold — those are open implementation choices the issue's own Design section leaves to be resolved, not facts research can pin down from the current codebase.
+Resolved in `## Design → Decisions (D1–D8)`. Summary of the verdict logic `_grade()` gains:
+- `passed = False` if any `--require-artifact` path is missing/unreadable, any `--forbid-path` was created or modified, or `--expect-git-clean` sees new porcelain paths (D5). Precedence: fail > abstain > pass, unchanged.
+- Judge input = composition of declared channels only (D3, D6); default declaration is `stdout`.
+- `outcome.channels` always lists `stdout`, `stderr`, each `--require-artifact` path, each `--forbid-path` path, and `git` — with `examined=False` for any that was not declared (D2).
+
+**New types / signatures**
+- `ChannelRecord` dataclass (`cli/harness.py`): `name`, `examined`, `content`, `note`; `to_dict()` for the JSON payload.
+- `HarnessEvalOutcome.channels: list[ChannelRecord] = field(default_factory=list)` (trailing default, additive).
+- `_snapshot_side_effects(args, cwd) -> SideEffectSnapshot` (pre-run: per-path exists/sha256, porcelain path set) and `_check_side_effects(snapshot, args, cwd) -> list[ChannelRecord]` (post-run). `_grade()` gains a keyword-only `side_effects: list[ChannelRecord] | None = None` parameter; both call sites (`_evaluate_and_report()`, `_run_sample_loop()`) pass it.
+- `_compose_judge_evidence(result, args, side_effects) -> str` — tag-wrap, per-channel 4000-char truncation, blank-line join.
 
 _Added by `/ll:refine-issue` — 2026-09-13 — based on codebase analysis:_
 
@@ -187,26 +226,49 @@ _Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
 
 _Added by `/ll:refine-issue` — 2026-09-13 — based on codebase analysis:_
 
-1. `_grade()` (`harness.py:916`) forms its verdict from more than `result.exit_code` + `result.stdout` — `result.stderr` and, where captured, `result.tool_trace` become inputs to the decision, not only to the printed report. `test_cli_harness.py`'s existing stdout/stderr fixture helpers (`_make_completed`, :1-80) already parametrize both independently.
-2. The verdict's evidence record distinguishes an unexamined channel from an examined-and-empty one. The closest existing analog is `EvidenceEntry`/`GapEntry`'s source-traced, explicit-gap convention (`cli/loop/evidence.py:56-119`); whether to reuse or diverge from it is left open (see Program Design → Decision Rules).
-3. A run can declare the artifacts/side effects it expects to produce, and a criterion asserts against that declaration rather than scraping arbitrary changes. `ArtifactOutput`/`promote_run_artifact()` (`fsm/schema.py:1330-1373`, `fsm/persistence.py:741-791`) is the closest existing "declared, not scraped" precedent in this codebase, scoped to a single promoted file rather than a criterion-checkable set.
-4. The criterion language gains a way to name which channel(s) it is asserting over. `--require-artifact`/`--forbid-path`/`--trace-mode` (`harness.py:639-672`) are parsed today only on `skill_p` and consumed only by `_conditions_fp()`'s fingerprint (:1215-1243) — not wired to the other four command parsers or to any runtime assertion.
-5. `python -m pytest scripts/tests/test_cli_harness.py scripts/tests/test_runner_spec.py -v` passes.
+⚠ Superseded — the original five research-derived steps (grade on `tool_trace`, leave the evidence-record shape open, leave the declaration syntax open) were replaced on 2026-09-14 by the concrete steps below, which follow Decisions D1–D8. The `docs/reference/API.md` staleness noted under Integration Map (`timeout: int = 30` vs. 1800, missing `model` param, `SCHEMA_VERSION` 45 vs. 50) is a doc defect to fix in step 6, not a reason to distrust the code citations.
+
+1. **Flags (D1).** Add `--evidence` and `--expect-git-clean` to `_add_evaluator_flags()`; move `--require-artifact`/`--forbid-path` there from `_add_trace_flags()`. Add `evidence` and `expect_git_clean` to `_conditions_fp()`'s payload (`require_artifact`/`forbid_path` are already in it).
+2. **Types (D2).** Add `ChannelRecord`; add `channels` to `HarnessEvalOutcome`.
+3. **Snapshot/check (D5).** Add `_snapshot_side_effects()` / `_check_side_effects()`; call the snapshot before `run_action()` and the check after it in `_evaluate_and_report()` and per sample in `_run_sample_loop()` (D8).
+4. **Grade (D3, D6).** `_grade()` takes `side_effects`, folds their pass/fail, builds the channel list, and calls `evaluate_llm_structured(output=_compose_judge_evidence(...))` when `--semantic` is set. `tool_trace` is not read (D7).
+5. **Report.** `_evaluate_and_report()` prints a `Channels:` block (`name  examined|not examined  <n> chars | missing | note`) and adds `"channels": [...]` to the `--json` payload; `_run_sample_loop()` attaches `channels` to each sample dict.
+6. **Docs.** `docs/reference/CLI.md` `### ll-harness` flag table + a widened-evidence example; `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md:192` "Reads files" row; `init/writers.py` `_LL_COMMANDS` and `skills/create-eval-from-issues/SKILL.md:4` phrasing; `docs/reference/API.md` `HarnessEvalOutcome`/`_grade()` entries.
+7. **Follow-up (D4).** Capture a child issue under EPIC-3475 for persisting `channels` + side-effect results to `harness_events` (v51 migration, manifest, DES variant, `HarnessEvent`, doctor drift test, EVENT-SCHEMA/ARCHITECTURE/HISTORY_SESSION_GUIDE tables).
+8. `python -m pytest scripts/tests/test_cli_harness.py scripts/tests/test_cli_e2e.py -k harness scripts/tests/test_runner_spec.py -v` passes; full suite passes.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
-_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+_Touchpoints from the wiring passes, filtered by the Decisions block. Items struck by a decision are listed under "Not touched" so they are not re-added._
 
-- Update `scripts/little_loops/fsm/executor.py` — `FSMExecutor._evaluate()`'s two call sites (:3108-3113, :3152-3158) to pass the widened evidence (stderr, declared artifacts) once `evaluate_llm_structured()`/`evaluate()` accept it; `action_result.stderr` is already captured (:3059/:3070) but unused here.
-- Update `scripts/little_loops/fsm/evaluators.py` — the `evaluate()` dispatcher (:1827-1833) signature, since every non-`llm_structured` evaluator branch (`mcp_result`, `contract`, `comparator`, `classify`) is routed through it and must tolerate the new parameter.
-- Update `scripts/little_loops/cli/queue.py` — `_run_loop_action`'s direct `RunnerResult` construction (:433) to populate any new evidence field, since it bypasses `runner_spec.run_action()` and won't inherit the change automatically.
-- Update `scripts/little_loops/cli/harness.py` — `_conditions_fp()`'s payload dict (:1229-1241) to include any new evidence-declaration CLI flag, so runs under different declarations don't collide on the same baseline fingerprint.
-- If evidence gains `harness_events` persistence: bump `SCHEMA_VERSION` in `scripts/little_loops/session_store/schema.py` (:25, currently 50) and add a `_MIGRATIONS` entry; thread new columns through `session_store/writers.py`'s `_insert_harness_event()`/`record_harness_event()`, `cli/harness.py`'s `_record_harness_event()`, and `history_reader/harness.py`'s `HarnessEvent` dataclass + `_HARNESS_EVENT_COLUMNS`.
-- Update `docs/ARCHITECTURE.md` and `docs/guides/HISTORY_SESSION_GUIDE.md` schema-migration tables with the new migration row (note: the latter is already stale at "v45" vs. code's v50 — fix opportunistically, not required by this issue's scope).
-- Update `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md`'s Contract Gates comparison table (:189-194) once the "evaluates action stdout only" row it documents is no longer accurate.
-- Update `docs/reference/EVENT-SCHEMA.md`'s "Only `RunnerResult.timed_out` is persisted" sentence (:1795) once more fields are persisted.
-- Add an e2e test to `scripts/tests/test_cli_e2e.py`'s `TestLlHarnessE2E` exercising the widened surface via real subprocess (stderr, a declared artifact, dirty git status), since today's sole e2e test only covers `cmd` + `--exit-code`.
-- Add taxonomy-style gap tests to a new test class modeled on `test_feat3182_evidence_bundle.py`'s `TestGapTaxonomy` (:204+) for the "examined vs never-examined" channel distinction — no such convention exists elsewhere to reuse directly.
+**In scope**
+- Update `scripts/little_loops/cli/harness.py` — `_conditions_fp()`'s payload dict (:1229-1241) to include `evidence` and `expect_git_clean`, so runs under different declarations don't collide on the same baseline fingerprint (`require_artifact`/`forbid_path` are already present).
+- Update `scripts/little_loops/cli/logs.py`'s `_fixture_to_harness_argv()`/`_build_eval_fixture()` (:1857-1910) to round-trip `evidence`, `require_artifact`, `forbid_path`, `expect_git_clean`, or eval-fixture export/import silently drops them.
+- Update `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md`'s Contract Gates comparison table (:189-194) — the "evaluates action stdout only" row is no longer accurate.
+- Update `scripts/little_loops/init/writers.py`'s `_LL_COMMANDS` `ll-harness` entry (:207-216) and `skills/create-eval-from-issues/SKILL.md:4` — both describe today's "exit-code and semantic criteria" surface. Edit only the canonical `skills/` copy; run `ll-adapt --apply` for mirrors.
+- Add an e2e test to `scripts/tests/test_cli_e2e.py`'s `TestLlHarnessE2E` exercising the widened surface via real subprocess (stderr, a declared artifact, a forbidden path, new git changes), since today's sole e2e test only covers `cmd` + `--exit-code`.
+- Add a `TestChannelRecords` class in `test_cli_harness.py` modeled on `test_feat3182_evidence_bundle.py::TestGapTaxonomy` (:204+) — one method per (declared / not declared) × (present / empty / missing) cell, asserting by membership over `outcome.channels`.
+- Add a real (unpatched) side-effect test via a temp git repo fixture (`git init`, commit, run, assert the new-path set) — today's 11 `_git_dirty()` references all mock it out, and D5's snapshot/diff path needs real-subprocess coverage.
+
+**Not touched (per Decisions)**
+- `fsm/executor.py` `FSMExecutor._evaluate()`, `fsm/evaluators.py` `evaluate()`/`evaluate_llm_structured()` signatures, `cli/queue.py` `_run_loop_action` — D3 pre-composes in `_grade()`; no evaluator signature widens. The FSM executor's identical gap is a separate issue.
+- `session_store/schema.py`, `session_store/writers.py`, `cli/harness.py::_record_harness_event()`, `history_reader/harness.py`, `schema_manifest.json`, `observability/schema.py::HarnessEventVariant`, `cli/doctor.py`, `test_session_store_writers.py::TestRecordAttemptAndAdmitRetry`, `test_cli_doctor_install_checks.py::TestSchemaDrift`, `docs/ARCHITECTURE.md` / `HISTORY_SESSION_GUIDE.md` migration tables, `docs/reference/EVENT-SCHEMA.md:1795` — D4 defers persistence to the follow-up child issue, which inherits this list verbatim.
+
+## Acceptance Criteria
+
+- [ ] AC1 — `ll-harness cmd ... --semantic "..." --evidence stderr` sends stderr to the judge: the prompt passed to `evaluate_llm_structured` contains a `<stderr>` block with the run's stderr, and a `<stdout>` block only if `stdout` was also declared (it is, by default, unless `--evidence` names only `stderr`).
+- [ ] AC2 — With no new flags, `_grade()`'s judge input and verdict are byte-identical to today for the same `RunnerResult` (regression test pins the composed string equals `result.stdout`).
+- [ ] AC3 — `--require-artifact PATH` with a missing path → exit 1, `outcome.passed is False`, channel `PATH` recorded `examined=True, content=None, note="missing"`. With the path present and `--semantic` set, the judge prompt contains `<artifact path="PATH">` with the file's content.
+- [ ] AC4 — `--forbid-path PATH`: created during the run → exit 1; pre-existing and byte-identical after → pass; pre-existing and modified → exit 1.
+- [ ] AC5 — `--expect-git-clean`: a repo dirty before the run and unchanged by it passes; a run that adds one untracked or modified path fails with that path named in the channel note.
+- [ ] AC6 — Every `HarnessEvalOutcome` carries `channels` covering `stdout`, `stderr`, every declared path, and `git`; undeclared entries are `examined=False, content=None`; an examined-but-empty stderr is `examined=True, content=""`. The `--json` payload includes `"channels"` and the human report prints a `Channels:` block.
+- [ ] AC7 — `--exit-code 0` with non-empty stderr and no `--evidence stderr` passes (D6).
+- [ ] AC8 — `--samples 3` re-snapshots side effects before each sample; each sample dict carries its own `channels`.
+- [ ] AC9 — Two runs differing only in `--evidence`/`--expect-git-clean` produce different `conditions_fp` values; `ll-logs` eval-fixture export/import round-trips all four declaration flags.
+- [ ] AC10 — Each channel is truncated to 4000 chars independently before composition; a test with 6000-char stdout and 6000-char stderr asserts both tags are present and each body ≤ 4000.
+- [ ] AC11 — `--require-artifact`/`--forbid-path` are accepted by all five subparsers (`skill`, `cmd`, `mcp`, `prompt`, `dsl`); `--trace-mode`/`--require-order` remain skill/prompt-only.
+- [ ] AC12 — One subprocess-level e2e test in `TestLlHarnessE2E` covers a real command that writes a declared file, emits stderr, and dirties git.
+- [ ] AC13 — A child issue for `harness_events` persistence exists under EPIC-3475 and is linked from this issue's Session Log before this issue is marked done.
 
 ## Tests
 
@@ -232,11 +294,14 @@ _Added by `/ll:refine-issue` — 2026-09-13 — based on codebase analysis:_
 _Added by `/ll:refine-issue` — 2026-09-13 — based on codebase analysis:_
 
 - **Priority**: P3 (set) — widens grading fidelity for an internal evaluation tool rather than fixing a user-facing defect; justified as non-critical but compounding, since every downstream consumer of a `_grade()` verdict inherits the same blind spot.
-- **Effort**: Medium — the codebase already holds close analogs to reuse (`EvidenceEntry`/`GapEntry` source-traced-evidence-with-gaps convention, `cli/loop/evidence.py:56-119`; `ArtifactOutput`/`promote_run_artifact()` declared-artifact convention, `fsm/schema.py:1330-1373`; an established XML-tag-wrapped multi-section judge-prompt convention shared by `evaluate_llm_structured()`/`evaluate_contract()`/the blind comparator, `fsm/evaluators.py:1102`/`:1461-1469`/`:1209-1213`) — but the change touches multiple call sites (`_grade()`, `evaluate_llm_structured()`, the `evaluate()` dispatcher, five CLI subparsers) and, if evidence is meant to persist, a `harness_events` schema migration (`session_store/schema.py`, currently `SCHEMA_VERSION = 50`).
-- **Risk**: Low-to-Medium — additive by construction (existing stdout-only grading keeps working when no new channel is declared); the schema-migration precedent in this codebase is fix-forward, nullable, no-default; the concrete risk is regressing the existing 4000-char truncation budget shared by every judge-prompt call site (`fsm/evaluators.py:1100`,`:1199-1200`,`:1440`,`:1458`) if new sections are concatenated without re-deriving that budget across channels.
-- **Breaking Change**: No — existing `--semantic` runs with no declared channel keep evaluating `result.stdout` alone.
+- **Effort**: Large (matches `size:`) — confined to `cli/harness.py` plus `logs.py`'s fixture round-trip, docs, and tests, after D3 (no evaluator signature widening) and D4 (persistence deferred) removed the FSM executor, `evaluate()` dispatcher, `queue.py`, and the schema-migration surface. The remaining work is one file's flag/grade/report/snapshot changes plus a real-git e2e test.
+- **Risk**: Low — additive by construction (existing stdout-only grading keeps working when no new channel is declared, AC2 pins it); the concrete risk is the per-channel 4000-char budget (D3) interacting with `evaluate_llm_structured()`'s own truncation (`fsm/evaluators.py:1100`) — AC10 covers it. Moving `--require-artifact`/`--forbid-path` between flag helpers changes their subparser membership, but they had no enforcement or tests to break.
+- **Breaking Change**: No — existing `--semantic` runs with no declared channel keep evaluating `result.stdout` alone. `--require-artifact`/`--forbid-path` go from inert to enforced; any existing invocation passing them (none found in-repo) would start failing on missing artifacts, which is the documented intent of the flag.
 
 ## Session Log
+- review pass (manual) - 2026-09-14 - AC13: created ENH-3476 (persist `outcome.channels`/side-effect results to `harness_events`) under EPIC-3475, blocked-by this issue
+- review pass (manual) - 2026-09-14 - resolved D1–D8, added Acceptance Criteria, pruned wiring per decisions, cleared stale `verify_verdict: NON_VALID` (re-run `/ll:verify-issues` to re-derive), size Very Large → Large
+- `/ll:wire-issue` - 2026-09-14T18:08:39 - `2c4c9b5c-4176-4456-8fbd-bcd820d953fc.jsonl`
 - `/ll:refine-issue` - 2026-09-14T17:57:00 - `ed6df677-344b-44cd-8920-d8f25b2d204a.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-09-13T21:28:46 - `23df08cc-836b-4f77-a1e2-bfb5aedb0f55.jsonl`
 - `/ll:refine-issue:gap-analysis` - 2026-09-13T20:01:33 - `ba1e78b0-d003-48c9-ad54-d85428e37f7d.jsonl`
@@ -249,7 +314,13 @@ _Added by `/ll:refine-issue` — 2026-09-13 — based on codebase analysis:_
 
 _Added by `/ll:refine-issue` — 2026-09-13 — based on codebase analysis:_
 
-- **In scope**: widening `_grade()`/`_evaluate_and_report()` (`harness.py`) to treat `result.stderr` as a distinct gradable channel; making a declared-written file's content available as judge/criterion evidence; making a named side effect (file exists, path changed, git status clean via the existing `_git_dirty()` primitive, `harness.py:90`) an assertable criterion outcome; and an evidence record that distinguishes unexamined from examined-and-empty channels.
-- **Out of scope, adjacent**: completing the pre-existing, already-CLI-surfaced but unenforced `--require-artifact`/`--forbid-path`/`--require-order`/`--trace-mode` plumbing (`harness.py:639-688`, `runner_spec.py:196-230`) — those flags exist and are already fingerprinted into `conditions_fp` but have zero enforcement code path anywhere in the tree (confirmed by repo-wide search); wiring them from inert to enforced is a distinguishable unit of work, not a prerequisite for this issue.
-- **Out of scope, adjacent**: `FSMExecutor._evaluate()`'s identical single-channel gap (`fsm/executor.py:3092-3116`, `evaluate_llm_structured(action_result.output, ...)` at `:3108`) — a different action-result type (`ActionResult`, not `runner_spec.RunnerResult`), a different call site, and a different consumer (FSM loop states, not the `ll-harness` CLI). Already flagged as a dependent-files wiring touchpoint by `/ll:wire-issue`, but the fix itself belongs to whichever issue owns the FSM executor's evaluation path.
+- **In scope**: widening `_grade()`/`_evaluate_and_report()` (`harness.py`) to treat `result.stderr` as a distinct, declarable judge channel; making a declared-written file's content available as judge evidence; making named side effects assertable (`--require-artifact` exists, `--forbid-path` untouched, `--expect-git-clean` no new porcelain paths via a pre/post `porcelain_paths()` snapshot — **not** `_git_dirty()`, which stays descriptive); and an in-memory `channels` record on the outcome that distinguishes unexamined from examined-and-empty (D1–D8).
+- **In scope (pulled in by D1)**: enforcing the previously inert `--require-artifact`/`--forbid-path` flags and moving them to `_add_evaluator_flags()` so all five subparsers accept them. They are the declared-artifact mechanism; no parallel `--expect-file` flag.
+- **Out of scope, adjacent**: `--trace-mode`/`--require-order`/`--keep-workspace` (`harness.py:639-688`, `runner_spec.py:196-230`) and `RunnerResult.tool_trace` — the trace-mode workspace path stays unreachable from the CLI and is a separate unit of work (D7).
+- **Out of scope, adjacent**: `FSMExecutor._evaluate()`'s identical single-channel gap (`fsm/executor.py:3092-3116`) — a different action-result type, call site, and consumer; D3 keeps every evaluator signature unchanged so this issue does not touch it.
+- **Out of scope, deferred to a child issue (D4)**: persisting `channels`/side-effect results to `harness_events` and everything downstream of that column (migration, manifest, DES variant, reader dataclass, doctor drift, migration-table docs).
 - **Out of scope**: `loops/harness-optimize.yaml`'s benchmark-score capture reads `captured.benchmark_score.output` directly and never calls `ll-harness`/`_grade()` — not a consumer of this code path.
+
+## Status
+
+**Open** | Created: 2026-09-13 | Priority: P3

@@ -22,3 +22,4 @@ Group of 4 related issues: widen the ll-harness evidence surface beyond stdout �
 - **ENH-3463** — Unit-test an eval's grading logic deterministically before it is allowed to grade a live-model run (open)
 - **ENH-3464** — Score harness runs on a named efficiency vector, not only on a pass/fail outcome (open)
 - **ENH-3465** — Benchmark every self-improvement candidate against a frozen external baseline, not only the incumbent (open)
+- **ENH-3476** — Persist ll-harness widened evidence (channels + side effects) to harness_events (open)

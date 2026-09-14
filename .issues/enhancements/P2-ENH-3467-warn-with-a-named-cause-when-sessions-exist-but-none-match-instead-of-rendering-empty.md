@@ -1,11 +1,12 @@
 ---
-id: 3467
+id: ENH-3467
 title: Warn with a named cause when sessions exist but none match, instead of rendering
   empty
 type: ENH
 priority: P2
 status: open
 verify_verdict: EVIDENCE_UNVERIFIED
+reconcile_attempted: true
 discovered_date: '2026-09-13'
 labels:
 - observability
@@ -18,11 +19,24 @@ size: Very Large
 
 Split them. When session files exist on disk but every one was rejected for the current workspace, emit a warning visible without `--verbose` that says so and names the likely cause — agent launched from a different directory, project moved since the sessions were written, unrecognized path encoding. "No data" and "I found data and rejected all of it, here is why" should never print the same thing.
 
+## Current Behavior
+
+Discovery collapses every rejection cause into the same silent-or-generic result. `_get_claude_project_folder()`/`_detect_claude_sessions()` return a bare `[]`/`None` whether the encoded directory never existed, existed but matched no session files, or matched only agent-type sessions — no diagnostic structure carries a reason past that point (`scripts/little_loops/session_store/sessions.py`, `scripts/little_loops/user_messages.py`). Three call sites currently surface this differently and none names a cause: `_detect_project_handles()` (`cli/logs.py:569-584`) logs a generic `"No sessions found for:"` via `logger.error()`, which happens to be visible today only because `ll-logs` leaves `Logger.verbose` at its default `True`; `main_messages()` (`cli/messages.py:191`) logs the identical generic text but constructs `Logger(verbose=args.verbose)` (default `False`), so it is silenced by default; and `main_session()`'s Codex backfill branches (`cli/session.py:694`, `:747`) have no zero-handles check at all — an empty `detect_sessions()` result is passed straight into `backfill_incremental()`/`backfill()` and silently absorbed.
+
+## Expected Behavior
+
+When session files exist on disk but every one was rejected for the current workspace, each of the three call sites above emits a warning — visible without `--verbose` — that names the likely cause (munging mismatch, project moved since the sessions were written, run launched from a subdirectory, or unrecognized path encoding), distinguishing that state from genuine "no sessions recorded anywhere for this cwd." The two states must never render identically again.
+
 ## Why it matters
 
 This defends a class rather than an instance. The precedent is a multi-runtime session visualizer that hit exactly this failure: a vendor change inflated the first line of its rollout files past a fixed read buffer, cwd extraction failed, sessions were skipped, and the panel rendered empty with no error at all. Raising the buffer fixed that one instance; the named-cause warning is what makes the next break in discovery announce itself instead of presenting as absence.
 
 Cheap, self-contained, and independent of the larger ingestion work — the session-watcher seam shipped as FEAT-3417 changes where sessions are read from, not what the zero-match path reports. Distinct from run-to-transcript pairing precision (which fixes *which* transcript is chosen, not what happens when none is) and from malformed-input tolerance (which survives bad input rather than reporting why input was rejected).
+
+## Scope Boundaries
+
+- **In scope**: distinguishing "sessions exist, none matched this cwd" from "no sessions recorded anywhere" at the three call sites named in Current Behavior (`_detect_project_handles()`, `main_messages()`, `main_session()`'s Codex backfill branches); making that warning visible without `--verbose` for `ll-logs`/`ll-messages`; preserving the `"No sessions found for:"` grep contract `ll-logs-telemetry-digest.yaml` depends on.
+- **Out of scope**: the session-watcher/ingestion seam shipped as FEAT-3417 (changes where sessions are read from, not what the zero-match path reports); run-to-transcript pairing precision (which transcript is chosen, not what happens when none is); malformed-input tolerance (surviving bad input rather than reporting why it was rejected); the exact cause taxonomy, precedence among causes, and any "how close counts as a match" threshold — explicitly left to implementer judgment per Program Design → Decision Rules.
 
 ## Proposed Solution
 
@@ -169,6 +183,7 @@ _Added by `/ll:refine-issue` — 2026-09-13 — based on codebase analysis:_
 1. Discovery reports which of "no sessions recorded anywhere for this cwd" vs "sessions exist but none matched this cwd" occurred; covered by a new/updated test in `scripts/tests/test_ll_logs.py` that exercises both branches distinctly (closest existing shape: `test_stale_worktree_path_emits_no_warning`, `scripts/tests/test_ll_logs.py:344-380`).
 2. The rejected-sessions case is visible on stderr for `ll-logs` without any `--verbose` flag (none exists today), and is no longer silenced by default for `ll-messages` (`scripts/little_loops/cli/messages.py:191`, whose `Logger(verbose=args.verbose)` defaults to `False`); covered by `scripts/tests/test_logger.py`-style `capsys` assertions.
 3. The literal string `"No sessions found for:"` that `scripts/little_loops/loops/ll-logs-telemetry-digest.yaml:64-71` greps for either stays intact or is updated together with `scripts/tests/test_bug_3216_telemetry_digest_invocations.py:177-189`; covered by that test continuing to pass.
+   > ⚠ Superseded — the path is `.loops/ll-logs-telemetry-digest.yaml` (a project-local loop, not under `scripts/little_loops/loops/`), and the grep is at line 68 (`if grep -q "No sessions found for:" "$ERR"; then`), not lines 64-71. See § Integration Map Codebase Research Findings.
 4. `python -m pytest scripts/tests/test_ll_logs.py scripts/tests/test_logger.py scripts/tests/test_bug_3216_telemetry_digest_invocations.py scripts/tests/test_session_discovery.py -v` passes.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
@@ -181,7 +196,20 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Extend `scripts/tests/test_ll_logs.py::test_sequences_project_not_found_returns_1` and `::test_extract_project_not_found_returns_1` to assert on the new named-cause message/visibility, not just the return code.
 - If a return-shape change is adopted for `detect_sessions()`/`_detect_project_handles()` (see Program Design → Decision Rules), update the mocks in `test_cli_ctx_stats.py`, `test_cli_messages.py`, `test_cli.py`, and the `enh3430_workspace_union` spike tests, plus the signature doc at `docs/reference/API.md:9580-9583`.
 
+## Impact
+
+- **Priority**: P2 - a diagnostic gap, not a functional regression; the failure mode it masks (silent data loss presenting as "no data") is what makes it worth fixing ahead of lower-priority backlog
+- **Effort**: Very Large - per frontmatter `size`; touches three independently-shaped call sites (`logs.py`, `messages.py`, `session.py`) across two failure-surfacing patterns (`None`-return-plus-log vs. no check at all), plus an open return-shape decision that, if taken, requires updating mocks in `test_cli_ctx_stats.py`, `test_cli_messages.py`, `test_cli.py`, and the `enh3430_workspace_union` spike tests
+- **Risk**: Low - additive diagnostic surface with no behavior change to the success path; the one hard constraint is preserving the `"No sessions found for:"` grep contract in `ll-logs-telemetry-digest.yaml`
+- **Breaking Change**: No, unless the implementer opts into changing `detect_sessions()`'s/`_detect_project_handles()`'s return shape (see Program Design → Decision Rules), which is explicitly left open rather than mandated
+
+## Status
+
+**Open** | Created: 2026-09-13 | Priority: P2
+
 ## Session Log
+- `/ll:refine-issue` - 2026-09-14T18:23:22 - `83d2895b-9b1c-4543-8457-386ded6cffca.jsonl`
+- `/ll:format-issue` - 2026-09-14T18:18:23 - `4b1da6cb-cda6-4875-933f-04e458d61037.jsonl`
 - `/ll:verify-issues` - 2026-09-13T18:24:25 - `c49d7797-7184-419e-a2e8-da9638c4b681.jsonl`
 - `/ll:refine-issue:gap-analysis` - 2026-09-13T18:19:14 - `c9fb0170-7dbc-4578-b415-f8d274a2d15e.jsonl`
 - `/ll:verify-issues` - 2026-09-13T18:12:57 - `3d7594a5-487a-4a88-b194-74b9a2895ed5.jsonl`
