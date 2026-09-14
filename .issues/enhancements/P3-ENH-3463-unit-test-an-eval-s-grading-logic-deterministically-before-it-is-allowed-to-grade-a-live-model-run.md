@@ -253,6 +253,8 @@ spun the `verdict="error"` conflation out as BUG-3477.
 **Open** | Created: 2026-09-13 | Priority: P3
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-14T21:57:28 - `76fd614d-af9c-461c-9480-143acb792f32.jsonl`
+- `/ll:verify-issues` - 2026-09-14T21:55:28 - `38ae2e66-1c37-4dba-9a6d-42c3e2738df2.jsonl`
 - `/ll:confidence-check` - 2026-09-14T21:49:02 - `213a0053-67dd-4147-8bdb-b54b20072e38.jsonl`
 - `/ll:verify-issues` - 2026-09-14T21:46:46 - `d75e579c-77cd-483a-b66a-e89390b5429b.jsonl`
 - `/ll:verify-issues` - 2026-09-14T21:32:26 - `f4a1cb05-beaf-4c89-a67b-0a34555443d6.jsonl`
