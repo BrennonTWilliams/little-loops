@@ -1,13 +1,20 @@
 ---
 id: BUG-3481
 type: BUG
-title: xdist worker crash under --dist loadfile deadlocks the controller (replacement worker gets empty runtests)
+title: xdist worker crash under --dist loadfile deadlocks the controller (replacement
+  worker gets empty runtests)
 priority: P2
 status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-09-15'
 captured_at: '2026-09-15T21:54:42Z'
 program_design_not_applicable: true
+confidence_score: 98
+outcome_confidence: 91
+score_complexity: 23
+score_test_coverage: 23
+score_ambiguity: 23
+score_change_surface: 22
 ---
 
 # BUG-3481: xdist worker crash under --dist loadfile deadlocks the controller (replacement worker gets empty runtests)
@@ -344,6 +351,7 @@ Verdict at time of check: **NEEDS_UPDATE** (corrections applied in this pass).
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-15T23:25:38 - `327c38c3-cd69-4287-90f2-4d0c76733f97.jsonl`
 - `/ll:verify-issues` - 2026-09-15T23:20:02 - `4aed0df2-a263-4d28-ae34-d555931852b6.jsonl`
 - `/ll:verify-issues` - 2026-09-15T22:29:03 - `74d0e714-5fa8-4d36-8d26-f70b1e11f439.jsonl`
 - `/ll:wire-issue` - 2026-09-15T22:22:26 - `d2ee88e4-436e-400b-a42b-568c16a51760.jsonl`
