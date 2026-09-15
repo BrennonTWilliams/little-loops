@@ -252,24 +252,43 @@ so it can be dropped once a fixed `pytest-xdist` release is pinned.
   `returncode != 0` and that stdout contains the full xdist 3.7.0 line
   `worker 'gw<N>' crashed while running 'test_crash_exit.py::test_b'`
   (match on `"crashed while running 'test_crash_exit.py::test_b'"`).
-  Two constraints that differ from a naive port of the template:
+  Four constraints that differ from a naive port of the template:
   - **Guard the project config, not xdist.** Do not pass
     `--max-worker-restart=0` explicitly; the test must fail if someone
     deletes the flag from the config. Load
     `[tool.pytest.ini_options].addopts` from `scripts/pyproject.toml` with
     `tomllib`, pass that list through, and append `-n 2` (a later `-n`
     overrides the addopts' `-n logical`) plus the tmp tree's own
-    `-c pytest.ini --rootdir=<tmp_path>`. Also assert the root `pytest.ini`
-    stub's `addopts` contains `--max-worker-restart=0`; no test currently
-    checks the two config files stay in sync.
+    `-c <tmp_path>/pytest.ini --rootdir=<tmp_path>`. Also assert the root
+    `pytest.ini` stub's `addopts` contains `--max-worker-restart=0`; no
+    test currently checks the two config files stay in sync. (Verified
+    2026-09-15: this exact pass-through invocation exits 1 in ~3s with the
+    flag present.)
+  - **Run with `cwd=tmp_path` and an absolute `-c` path, not
+    `cwd=repo_root` as the template does.** With the repo root as cwd, a
+    relative `-c pytest.ini` resolves to the repo-root stub instead of the
+    synthetic tree, and the `ll_history` entry-point plugin
+    (`scripts/pyproject.toml:136-139`, gated on `Path.cwd() / ".ll"` in
+    `pytest_history_plugin.py:47`) would record the synthetic crash run
+    into the project's `history.db` as a real test-run event. With
+    `cwd=tmp_path` there is no `.ll/` and the plugin stays inert.
   - **Do NOT mark `no_parallel`.** Under the default `-n logical` addopts
     a `no_parallel` test is skipped outright (the controller never runs
     tests; see `conftest.py::pytest_collection_modifyitems` docstring), so
     the regression test would never execute in the normal suite. A nested
     `-n 2 --dist loadfile` pytest run works from inside an xdist worker
     (verified 2026-09-15: outer `-n 2` worker → inner `-n 2` repro, passes
-    in ~4s). Keep only the recursion sentinel env var, exactly as the
-    template does.
+    in ~4s). The template's recursion-sentinel `skipif` is unnecessary
+    here: the inner run collects only the synthetic tree, never the repo,
+    so it cannot recurse. Omit it.
+  - **Kill the process group on timeout.** The test's own failure mode is
+    "wedged xdist workers": if the flag is missing, the inner controller
+    and its two workers sit idle until `timeout=60` fires, and
+    `subprocess.run`'s timeout kills only the controller, leaving the
+    workers orphaned. Use `subprocess.Popen(..., start_new_session=True)`,
+    `communicate(timeout=60)`, and on `TimeoutExpired` call
+    `os.killpg(proc.pid, signal.SIGKILL)` before failing with the captured
+    output.
 - `scripts/tests/test_conftest_cap.py` — no change expected; only touch if
   the flag is wired through `pytest_xdist_auto_num_workers` instead of addopts
 
@@ -292,7 +311,9 @@ so it can be dropped once a fixed `pytest-xdist` release is pinned.
    comment citing this issue and xdist #784/#1327 (fix PRs #1328/#1371,
    unreleased as of 3.8.0). Mirror in root `pytest.ini`.
 2. Add `scripts/tests/test_xdist_crash_fail_fast.py` (new) per the Tests section
-   (addopts read from `scripts/pyproject.toml`, no `no_parallel` marker).
+   (addopts read from `scripts/pyproject.toml`, `cwd=tmp_path`, absolute
+   `-c`, no `no_parallel` marker, no recursion sentinel, process-group kill
+   on timeout).
    Confirm it fails (wedge → `TimeoutExpired`) with the flag removed from
    pyproject and passes with it; confirm it actually runs (not skipped) under
    the default `-n logical` invocation.
@@ -317,6 +338,8 @@ occurrence reports the nodeid directly.
   near zero. A first-file crash now fails the run instead of being retried;
   BUG-2524's `no_parallel` routing is the intended handling for such tests.
   Remaining tests after the crash are not run (see Proposed Solution).
+  Bonus: the >120s-subprocess respawn loop (see Motivation) also becomes a
+  single bounded failure instead of leaking an orphan every ~2 minutes.
 - **Breaking Change**: No.
 
 ## Related Key Documentation
@@ -357,6 +380,15 @@ Verdict at time of check: **NEEDS_UPDATE** (corrections applied in this pass).
   documented the post-crash unreported-test count gap. Confirmed neither
   config file contains `max-worker-restart` today and all cited line ranges
   (pyproject, pytest.ini, TESTING.md, TROUBLESHOOTING.md, ci.yml) resolve.
+- 2026-09-15 second pre-implementation review: re-confirmed the repro
+  (baseline wedge; flag → exit 1, `1 failed, 31 passed`, 2.7s) and confirmed
+  pytest-xdist 3.8.0 is still the newest release on PyPI. Verified the
+  addopts pass-through test invocation end-to-end (rc 1, 3.1s). Added: the
+  `cwd=tmp_path` / absolute `-c` requirement (repo-root cwd would pick the
+  root `pytest.ini` stub and let the `ll_history` plugin record the synthetic
+  run), dropped the moot recursion sentinel, added the process-group kill on
+  timeout, and folded in the >120s-subprocess respawn-loop failure mode that
+  the same flag fixes.
 
 ## Status
 
