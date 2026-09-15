@@ -12,6 +12,12 @@ labels:
 - harness
 - baseline
 - evaluation
+confidence_score: 100
+outcome_confidence: 89
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # BUG-3479: _incumbent_content_hash strips the HEAD blob so it never matches _hash_file rows; skill --compare-baseline HEAD resolution is dead
@@ -134,6 +140,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-15T15:44:55 - `8f700f7e-5b5d-454d-a2bf-9aff2b1c8830.jsonl`
 - `/ll:wire-issue` - 2026-09-15T15:08:04 - `eb318cee-ddb1-40b6-a7a9-f7f1b403ae44.jsonl`
 - `/ll:refine-issue` - 2026-09-15T14:58:55 - `a770d268-1a31-4c89-8452-2802b7501458.jsonl`
 - `/ll:format-issue` - 2026-09-15T14:38:24 - `6634e3cc-f741-4813-a1cf-617029cd83fa.jsonl`
