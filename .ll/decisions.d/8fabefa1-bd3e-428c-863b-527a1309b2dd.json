@@ -1,0 +1,11 @@
+{
+  "id": "156b9ed8-f8ac-480b-9f27-5defdcfe91d9",
+  "type": "decision",
+  "timestamp": "2026-09-15T19:28:41Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Phase 4 prompts exclude whole known files and Phase 5 diff is file-granular; key symbols seeded only from issue text",
+  "rule": "Captured: wire-issue first pass misses call sites inside already-known files",
+  "scope": "issue",
+  "issue": "ENH-3480"
+}

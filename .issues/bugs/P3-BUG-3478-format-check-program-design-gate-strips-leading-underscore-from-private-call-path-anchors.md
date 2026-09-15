@@ -22,9 +22,13 @@ relates_to:
 
 `extract_call_path_anchors()` (`scripts/little_loops/issues/program_design.py:262`) normalizes each token with `token.strip().strip("`*_")` (`:272`). The `_` in that strip set was meant to remove markdown emphasis underscores, but it also removes the leading underscore of a private Python identifier. `git_grep_resolver()` (`:295`) then greps for `def grade(` / `class grade`, which does not exist, and the anchor fails. `_IDENT` (`:126`) explicitly allows a leading `_`, so the intent to accept private names is already there; only the normalization defeats it.
 
+The same strip also breaks dunders, which are the most common underscore-wrapped anchors in the corpus (24 `__init__` occurrences in `### Call Path` subsections, plus `__call__`, `__exit__`, `__version__`): bare `__init__` strips to `init`, and dotted `BRConfig.__init__` strips to `BRConfig.__init` (short symbol `__init`), neither of which resolves.
+
 ## Expected Behavior
 
-`_grade` resolves as `def _grade(`. Emphasis underscores should be stripped only when they are paired markdown delimiters (`_foo_`, `__foo__`), not when they are part of the identifier. A Call Path naming only private functions that all exist must pass the resolution check.
+`_grade` resolves as `def _grade(`; `Foo.__init__` and bare `__init__` resolve as `def __init__(`. Underscores are never stripped from a Call Path token — they are identifier characters, not markdown decoration. This is safe because backticked tokens (the `_BACKTICKED` path) can never carry markdown emphasis (`_` is literal inside a code span), and a corpus sweep of every `### Call Path` subsection in `.issues/` found zero `_word_`-style emphasis tokens on the chain-split path. A Call Path naming only private functions or dunders that all exist must pass the resolution check.
+
+Deliberately rejected alternative: stripping underscores only for symmetric `_x_` / `__x__` tokens. That rule would still turn bare `__init__`/`__call__`/`__exit__` into unresolvable `init`/`call`/`exit`, trading a real (24-occurrence) breakage for a hypothetical (0-occurrence) one. Accepted consequence: `__init__` resolves trivially against any Python repo; that is fine because resolution already keys on the short symbol (`Foo.bar` resolves if any `def bar(` exists) and the gate is resolution-indifferent for new identifiers.
 
 ## Integration Map
 
@@ -103,7 +107,7 @@ _Wiring pass added by `/ll:wire-issue` (second pass):_
 
 ### Signatures
 
-- `extract_call_path_anchors(body: str) -> list[str]` (`scripts/little_loops/issues/program_design.py:262`): unchanged signature; the inner `_add()` normalizer changes from `strip("`*_")` to stripping backticks and asterisks, then removing underscores only when the token is wrapped symmetrically (`_x_` / `__x__`) and the inner text is still a valid identifier.
+- `extract_call_path_anchors(body: str) -> list[str]` (`scripts/little_loops/issues/program_design.py:262`): unchanged signature; the inner `_add()` normalizer changes from `strip("`*_")` to `strip("`*")`. Underscores are left in place unconditionally — no paired-delimiter logic (see Expected Behavior for why). Leave an inline `BUG-3478` comment at the changed site per the file's convention.
 - `git_grep_resolver(symbol: str, root: Path | None = None) -> bool` (`:295`): unchanged.
 
 ### Call Path
@@ -136,7 +140,7 @@ _Added by `/ll:refine-issue` — 2026-09-15 — based on codebase analysis:_
 ## Impact
 
 - **Priority**: P3 - every issue whose hooks are private helpers either fails the readiness gate spuriously or is padded with an unrelated public anchor to get past it, which weakens the gate's signal.
-- **Effort**: Small - one normalizer change and three tests.
+- **Effort**: Small - a one-character normalizer change and three tests.
 - **Risk**: Low - resolution can only become more permissive for identifiers that actually exist; unresolvable tokens still fail.
 - **Breaking Change**: No
 
@@ -149,9 +153,9 @@ _Added by `/ll:refine-issue` — 2026-09-15 — based on codebase analysis:_
 
 ## Tests
 
-- `scripts/tests/test_program_design_gate.py::TestGrading` — add `test_private_function_anchor_resolves`: a Call Path naming only `` `_grade()` `` against a fixture repo defining `def _grade(` passes.
-- Same class — add `test_markdown_emphasis_underscores_still_stripped`: `_evaluate_` (emphasis) normalizes to `evaluate`.
-- `TestRealRepoResolution::test_real_repo_anchors_resolve_via_git_grep` (`:437`) — extend with a private-function anchor.
+- `scripts/tests/test_program_design_gate.py::TestGrading` — add `test_private_function_anchor_resolves`: a Call Path naming only `` `_grade()` `` graded with an inline resolver stand-in that answers `True` only for `"_grade"` (and `False` for `"grade"`) is specific. No fixture repo — this class uses inline resolvers per the Conventions section.
+- `scripts/tests/test_program_design_gate.py::TestDuplicateCallPathAnchors` (or a new `TestAnchorNormalization` class beside it) — add `test_underscores_survive_normalization`, calling `extract_call_path_anchors()` directly and asserting: `` `_grade()` `` → `_grade`; `` `Foo.__init__` `` → `Foo.__init__`; `` `__call__` `` → `__call__`; `` `Cls._helper()` `` → `Cls._helper`. Backticks and asterisks around a token are still stripped (`**_grade**` → `_grade`).
+- `TestRealRepoResolution::test_real_repo_anchors_resolve_via_git_grep` (`:437`) — extend the fixture repo with `def _private_helper(` and a class with `def __init__(`, and assert both `_private_helper` and `Cls.__init__` anchors resolve via `git_grep_resolver()`.
 
 ## Status
 
