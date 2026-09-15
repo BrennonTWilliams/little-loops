@@ -12,8 +12,7 @@ labels:
 - regression
 parent: EPIC-3475
 epic: EPIC-3475
-blocked_by:
-- BUG-3479
+blocked_by: []
 confidence_score: 100
 outcome_confidence: 89
 score_complexity: 14
@@ -49,7 +48,13 @@ The guard is structural: a candidate is measured against two opponents — the i
 - **Out of scope**: any change to `evaluate_convergence()`'s `reference` field or the FSM evaluator layer (see D1).
 - **Out of scope**: `evaluate_comparator()`'s `.loops/baselines/` file mechanism — unrelated and unwired; left untouched.
 - **Out of scope (follow-up)**: a `--measure-pin` mode that materialises the pinned blob into the working tree, measures it, and restores the file. This issue documents the manual procedure (D8) instead.
-- **Blocked by BUG-3479**: `_incumbent_content_hash()` currently hashes the *stripped* `git show` output while measured rows carry `_hash_file()`'s raw-bytes hash, so on a real checkout the two never match. The pin stores the former and the frozen arm looks rows up by it, so until BUG-3479 lands the frozen arm fails closed forever. Do not start implementation before that fix is on `main`.
+- **BUG-3479 is resolved (landed on `main`)**: `_incumbent_content_hash()` used to hash the *stripped* `git show` output while measured rows carried `_hash_file()`'s raw-bytes hash, so on a real checkout the two never matched — the pin stores the former and the frozen arm looks rows up by it, so before this fix landed the frozen arm would have failed closed forever. The fix shipped in commit `295078de4` (2026-09-15); `_incumbent_content_hash()` now hashes raw blob bytes and matches `_hash_file()` (see Codebase Research Findings below). Implementation may proceed.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-15 — based on codebase analysis:_
+
+- BUG-3479 landed on `main` (commit `295078de4`, "fix(harness): hash raw HEAD blob bytes for skill baseline incumbent resolution", 2026-09-15T11:03:47-05:00); its issue file's `status` is `done`. `_incumbent_content_hash()` (`cli/harness.py:1732`) now calls a new `_git_blob(rel, *, ref="HEAD")` helper (`cli/harness.py:92-114`) and hashes the raw blob bytes via `_hash_bytes()`, confirmed equal to `_hash_file()`'s hash for an unmodified tracked file (`TestIncumbentContentHashRealGit`, `test_cli_harness.py:3662`, real temp-git-repo, unmocked). The blocking condition this bullet describes no longer holds — `blocked_by: BUG-3479` has been removed from frontmatter accordingly.
 
 ## Design
 
@@ -103,6 +108,11 @@ _Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
 - When multiple call sites need one verdict vocabulary, the convention is a shared module of string-tuple constants plus a predicate helper, not independent per-site enums — evidence: `fsm/verdicts.py` (`DEFAULT_VERDICT_ENUM`, `is_abstention_verdict`), created specifically because three schemas had previously disagreed on verdict counts. Non-LLM evaluators like `convergence`/`comparator` do not use this shared vocabulary today — their verdict strings are declared inline at each `elif eval_type ==` branch.
 - Re-pinning a stored value happens two ways in this codebase for the same file (`.loops/baselines/<loop>/output.txt`): an explicit CLI verb (`ll-loop promote-baseline` → `cmd_promote_baseline()`, `cli/loop/info.py:1256-1308`) and an implicit auto-overwrite gated by a boolean config field (`EvaluateConfig.auto_promote`, defaulting to `False`) inside `evaluate_comparator()` (`fsm/evaluators.py:1690-1691`). No `frozen=True` dataclass anywhere in the codebase pairs with a separate "unfreeze"/re-pin constructor — `frozen=True` is used only for identity/match-key hashability (e.g. `BaselineKey`), never for a write-once value with an audit trail.
 - Extending the evaluator dispatch table with a new outcome (the `convergence` case is the direct precedent) touches five sites, not one: the `elif eval_type ==` branch itself, an `_EXIT_CODE_AWARE_EVALUATORS` allowlist entry if non-zero exit codes need custom handling, a companion `EvaluateConfig` field's four manual touch points (docstring, `to_dict`, `from_dict`, and MR-2's `_has_baseline_reference` candidates list), and a structural test asserting the field on the parsed loop-YAML dict directly (no JSON Schema layer exists for `EvaluateConfig`).
+
+_Added by `/ll:refine-issue` — 2026-09-15 — based on codebase analysis:_
+
+- BUG-3479's fix commit (`295078de4`) shifted every downstream anchor in `scripts/little_loops/cli/harness.py` by ~25 lines beyond the issue's most recent verification pass (2026-09-15T14:43:53, which pre-dated this commit). Confirmed current anchors (grep + `ll-code`, both fresh as of 2026-09-15T15:59:40Z, post-commit): `class BaselineDelta` :1610, `_baseline_flag_refusal()` :1706, `_incumbent_content_hash()` :1732, `read_baseline()` :1786, `_run_baseline_phase()` :1816, `_compare_baseline_refusal()` :1889, `_run_compare_arm()` :1907, `_report_samples()` :1455, `cmd_skill` :2232, `cmd_cmd` :2378, `cmd_mcp` :2492, `cmd_prompt` :2640, `cmd_dsl` :2747, `class SampleTally` :838, `_add_evaluator_flags` :560 (`dest="compare_baseline"` at :652). `history_reader/harness.py` anchors (`BaselineKey` :255, `BaselineConditions` :272, `BaselineResult` :293, `baseline_for()` :330) are unaffected — the drift is isolated to `cli/harness.py`.
+- New helper `_git_blob(rel: str, *, ref: str = "HEAD") -> bytes | None` (`cli/harness.py:92`) is the source of the shift — a plumbing sibling of `_git_output()` (`:67`, unmodified) that runs `git cat-file blob <ref>:<rel>` with `text=False` and treats `b""` (an empty tracked file) as a valid non-`None` result, unlike `_git_output`'s `.strip() or None` idiom.
 
 ### Files to Modify
 - `scripts/little_loops/cli/harness.py` — `BaselineDelta` (`:1585-1598`, additive widening), `_run_compare_arm()` (`:1880`, `frozen=` parameter), `_report_samples()` (`:1430`, render the second arm; factor `_baseline_payload()` out of `:1477-1498`), `_add_evaluator_flags` (`:614-650`, add `--pin-baseline`/`--pin-reason`/`--force`), `_baseline_flag_refusal()` (`:1681`, refuse pin+measure/compare/retry combos), the four `cmd_skill`/`cmd_cmd`/`cmd_mcp`/`cmd_prompt` baseline branches (`:2231-2687`, a `pin_baseline` branch alongside `measure_baseline`, plus `read_pin()` + second refusal in the compare branch), `cmd_dsl` (`:2733`, extend the existing measure/compare refusal to `--pin-baseline`), new `BaselinePin`/`read_pin`/`write_pin`/`_arm_verdict`/`_pair_outcome`/`_run_pin_phase`
@@ -190,6 +200,14 @@ _Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
   - _Correction (review, 2026-09-14):_ the roll-forward lives in the **callers** (every call site derives the hash from HEAD), not in `baseline_for()` itself, which filters on whatever `target_content_hash` it is handed. A pin record that stores the hash at pin time and passes it through is sufficient; no new reader or store is needed (Design D3). The rest of the finding stands.
 - No production code enforces "capture once" for any FSM `capture:` key — every capture site in `fsm/executor.py` (`:1275`, `:1282`, `:2681`, `:2207-2208`) performs an unconditional overwrite with no existing-value guard. The only "must stay frozen" enforcement anywhere is a test-side scan of one loop's static YAML (`test_only_baseline_score_captures_baseline`, `test_harness_optimize.py:140-148`) — it does not generalize to other loops or other capture keys and has no runtime counterpart.
 
+_Added by `/ll:refine-issue` — 2026-09-15 — based on codebase analysis:_
+
+- No existing precedent for a single committed file holding a growing `{"pins": [...]}` list exists anywhere in the codebase (repo-wide search, zero hits beyond this issue's own text). Every append-only JSON convention that ships today is one-file-per-entry-in-a-directory instead: `.ll/decisions.d/<uuid4>.json` (`decisions.py` `add_entry()`, one `atomic_write_json()` call per fragment, unioned on read) and `.loops/.queue/*.json` (`cli/loop/queue.py:23`, gitignored/per-machine). `atomic_write_json()` (`file_utils.py:35`) is the shared write primitive either shape would use, but no existing helper reads-appends-rewrites a single growing list in place.
+- `resolve_ll_dir(start=None, create=False)` (`scripts/little_loops/paths.py:45`, built on `find_project_root()` at `:14`) is a second, more direct existing precedent for project-root-anchored `.ll/`-relative resolution, alongside the `resolve_history_db()` (`session_store/db.py:121`) path this issue's D6 already cites.
+- Confirmed D4's own caveat: no existing function performs two-independent-Wilson-interval overlap comparison. `paired_direction()` (`stats.py:43-79`) is architecturally different — it computes one Wilson CI on the discordant split of *paired* per-item outcomes and checks straddle against a fixed 0.5 threshold, not disjointness between two independently-tallied proportions' intervals. `wilson_ci(k, n, z=1.96)` (`stats.py:14`) itself is the sole reusable primitive; it raises `ValueError` for `n<=0` or out-of-range `k` rather than returning a sentinel.
+- The elif-chain precedent D5 cites (`cli/issues/impact_effort.py:194-211`) is confirmed accurate: two independent boolean-derived axes combined via a flat `if/elif/elif/else` written directly in application code, each branch testing both axis conditions explicitly — no dict-lookup or combinator-helper alternative exists in the codebase for this shape.
+- The refusal-function precedent (`_baseline_flag_refusal()`/`_compare_baseline_refusal()`) is confirmed byte-for-byte in current code: pure `str | None` return, zero side effects, identical `if refusal is not None: print(..., file=sys.stderr); return 2` call-site shape at all four `cmd_*` sites.
+
 ### Documentation
 
 _Wiring pass added by `/ll:wire-issue`:_
@@ -231,6 +249,12 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - `test_delta_json_payload`, `test_delta_reported_with_provenance`, `test_delta_null_when_candidate_ungraded` (`test_cli_harness.py`) must keep passing unmodified — D7 makes the widening additive
 - ~~Add a `test_only_baseline_score_captures_<new-key>`-shaped scan test~~ — _not applicable; no loop gains a new capture under this issue (deferred to the step-7 follow-up)._
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-15 — based on codebase analysis:_
+
+- Step 0's precondition is now satisfied: BUG-3479 is `done` on `main` (commit `295078de4`), and `_incumbent_content_hash(path) == _hash_file(path)` for an unmodified tracked file is directly confirmed by `TestIncumbentContentHashRealGit` (`test_cli_harness.py:3662`), which the fix commit added — five methods against a real temp git repo, unmocked, covering newline-terminated/trailing-whitespace/empty tracked-file content plus untracked-file/directory `None` cases. Step 5's test list should reference this existing class rather than re-adding an equivalent AC0 assertion; it is a disjoint concern from Step 5's own planned pin/dual-arm/re-pin tests, none of which exist yet (confirmed zero hits for `BaselinePin`/`read_pin`/`write_pin`/`_arm_verdict`/`_pair_outcome`/`--pin-baseline` anywhere outside this issue's own file).
+
 ## Acceptance Criteria
 
 0. BUG-3479 is `done` before this issue starts; `_incumbent_content_hash(path) == _hash_file(path)` for an unmodified tracked file in a real git repo.
@@ -249,7 +273,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - **Priority**: P4 — addresses a slow, cross-run drift failure mode rather than an active incident; no loop consumes `--compare-baseline` yet, so the signal has no automated consumer until the step-7 follow-up.
 - **Effort**: Small-Medium — no new store or reader (D3), no FSM-layer change (D1); the work is a pin record + CLI verb, two pure classification helpers, an additive widening of `BaselineDelta`/report, tests, and docs.
 - **Risk**: Low — additive report shape (D7); the one behavioural change (fail-closed refusal when a pin exists but is unmeasured) only fires for users who have explicitly pinned, and the pin-time measurement gate (D6) plus the documented re-measure procedure (D8) keep that refusal recoverable. Re-pin monotonicity (D6) closes the backdoor the earlier draft warned about.
-- **Dependency**: blocked by BUG-3479 (hash mismatch in `_incumbent_content_hash()`); the frozen arm is unmatchable until it lands.
+- **Dependency**: none outstanding — BUG-3479 (hash mismatch in `_incumbent_content_hash()`) landed on `main` in commit `295078de4` (2026-09-15).
 - **Breaking Change**: No
 
 ## Verification Notes
@@ -352,6 +376,7 @@ Manual review before implementation; the corrections are folded into the section
 - Pin storage resolves from the project root, not cwd; `.gitignore` needs no change.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-15T16:14:43 - `3b8644e0-9ff1-4797-b13a-5a6cc7062fde.jsonl`
 - `/ll:verify-issues` - 2026-09-15T14:43:53 - `6634e3cc-f741-4813-a1cf-617029cd83fa.jsonl`
 - `/ll:confidence-check` - 2026-09-15T04:04:42 - `7423eb62-0f94-449e-b32a-9262654643bd.jsonl`
 - `/ll:verify-issues` - 2026-09-15T03:54:03 - `bd6fcb1a-598c-4be7-8f16-9ee73f80016e.jsonl`
