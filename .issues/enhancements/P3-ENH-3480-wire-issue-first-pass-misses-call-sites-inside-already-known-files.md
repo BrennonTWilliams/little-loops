@@ -37,9 +37,9 @@ Minor contributing factor: `harness.py` grew several hundred lines between passe
 - (0) Add a `known_sites: [path:symbol]` field to Phase 3 `EXISTING_WIRING`, extracted from every existing Integration Map bullet of the form `` `path` — ... `symbol()` ``. This is the dedup key for everything below; without it, intra-file findings are re-reported on every pass.
 - (a) Change the Phase 4 exclusion wording in Agent 1 and Agent 2 from "exclude known files" to "exclude already-cited `path:symbol` sites in `known_sites`; report additional call sites, tests, or doc locations inside known files as new." Add a matching new instruction to Agent 3, which has no exclusion wording today.
 - (b) Add a `sites_to_add` category to Phase 5 `MISSING_WIRING` (`path:line` + symbol within a known file, filtered against `known_sites`) and render it in Phase 8a with the `_Wiring pass added by \`/ll:wire-issue\`:_` marker (destinations pinned in Proposed Solution).
-- (c) Expand `key_symbols` one bounded hop before Phase 4 (required, not optional — it addresses cause 1, which explains most pass-2 findings): for each symbol in `files_to_modify`, grep its callers inside those same files only and add the enclosing function names to the seed set. One hop, no recursion, no files outside `files_to_modify`.
+- (c) Expand `key_symbols` to a **caller-closure fixpoint within `files_to_modify`** before Phase 4 (required, not optional — it addresses cause 1, which explains most pass-2 findings): for each seed symbol, grep its callers inside `files_to_modify` only, add the enclosing function names to the seed set, and repeat until no new names appear. Never search files outside `files_to_modify`. A single "one hop" expansion was rejected (review 2026-09-15): Phase 3 re-seeds from issue text every pass, so hop-derived names rendered by pass 1 become pass-2 seeds and hop again — the set still grows by one hop per pass and the smoke check below fails by design. The fixpoint is finite (bounded by the files' own call graph) and idempotent: pass 2's seeds are a subset of the closure pass 1 already computed. Noise from wide closures (e.g. everything reachable from `main()`) is cut by the caller-suitability gate.
 
-**Acceptance (deterministic gate):** `scripts/tests/test_wiring_skills_and_commands.py` gains `DOC_STRINGS_PRESENT` rows for `sites_to_add` in `skills/wire-issue/SKILL.md`, `docs/reference/COMMANDS.md`, **and `skills/wire-issue/output-report.md`** (so the Wiring Phase's `output-report.md` table-row requirement is itself gated, not just documented), plus a `known_sites` present row and a `DOC_STRINGS_ABSENT` row for the old sentence `Exclude files already in the "already known" lists.`; the full suite passes; `ll-verify-skills` keeps `SKILL.md` at or under 500 lines. **Manual smoke check (not a gate):** running `/ll:wire-issue` twice back-to-back on a freshly refined issue, with no refine run or code change in between, yields "No missing wiring found" for intra-file sites on the second pass.
+**Acceptance (deterministic gate):** `scripts/tests/test_wiring_skills_and_commands.py` gains `DOC_STRINGS_PRESENT` rows for `sites_to_add` in `skills/wire-issue/SKILL.md`, `docs/reference/COMMANDS.md`, **and `skills/wire-issue/output-report.md`** (so the Wiring Phase's `output-report.md` table-row requirement is itself gated, not just documented), plus a `known_sites` present row and **two** `DOC_STRINGS_ABSENT` rows — one for Agent 1's old sentence `Exclude files already in the "already known" lists.` and one for Agent 2's `Exclude files already known from the issue.` (a single row would let a half-regression pass); the full suite passes; `ll-verify-skills` keeps `SKILL.md` at or under 500 lines. **Manual smoke check (not a gate):** running `/ll:wire-issue` twice back-to-back on a freshly refined issue, with no refine run or code change in between, yields "No missing wiring found" for intra-file sites on the second pass.
 
 
 ## Current Behavior
@@ -85,12 +85,22 @@ table rows:
   Integration Map bullets (`` `path` — ... `symbol()` ``). Bullets with no
   symbol contribute the bare path only. This is the dedup key for
   `sites_to_add`; the exclusion wording in (a) references it by name.
+  **Round-trip rules (required, or the dedup key never matches what pass 1
+  wrote and every site is re-reported):** the parser strips a trailing
+  `:line` or `:start-end` suffix from the path before keying, because
+  `sites_to_add` bullets are rendered as `` `path:line` ``; and every
+  `sites_to_add` render template must put the enclosing symbol in backticks
+  on the same bullet (`` `path:line` — ... in `symbol()` ``) so the parser
+  can recover the `path:symbol` pair on the next pass.
 - (a) **Phase 4 wording**: reword Agent 1 (`SKILL.md:180`) and Agent 2
   (`SKILL.md:212`) from "exclude known files" to "exclude `path:symbol`
   sites already in `known_sites`; report additional call sites, tests, or
   doc locations inside known files as new, citing `path:line` and the
   enclosing symbol." Add the same instruction to Agent 3
-  (`SKILL.md:223-253`), which has no exclusion wording today.
+  (`SKILL.md:223-253`), which has no exclusion wording today — **and pass
+  `key_symbols` (post-expansion) into Agent 3's prompt**, which today
+  receives only `files_to_modify` and `known_tests`; without the symbols the
+  new instruction cannot locate specific test functions.
 - (b) **`sites_to_add` category** (Phase 5, `SKILL.md:269-281`): entries are
   `path:line` + enclosing symbol + which known file, filtered against
   `known_sites`. Render in **Phase 8a** (`SKILL.md:342-398`) with the
@@ -102,15 +112,24 @@ table rows:
   - site in a `known_tests` file (a specific test function) → `### Tests`
   - site in a `known_docs` file (a specific section) → `### Documentation`
   `sites_to_add` entries also feed Phase 8b `### Wiring Phase` bullets, and
-  the caller-suitability gate (ENH-3258, `caller-suitability-gate.md`)
-  applies to them exactly as it does to `callers_to_add`.
-- (c) **Bounded one-hop `key_symbols` expansion** (Phase 3, before Phase 4,
-  `SKILL.md:108-132`) — required, not optional, since cause 1 explains most
-  pass-2 findings: for each seed symbol, grep its callers inside
-  `files_to_modify` only and add the enclosing function names to the seed
-  set. Exactly one hop; the expanded names are not themselves expanded; no
-  files outside `files_to_modify` are searched. Without this bound the seed
-  set grows without limit across passes.
+  both the evidence-confirmation layer (BUG-3260,
+  `evidence-confirmation.md`) and the caller-suitability gate (ENH-3258,
+  `caller-suitability-gate.md`) apply to them exactly as they do to
+  `callers_to_add`.
+- (c) **Caller-closure fixpoint `key_symbols` expansion within
+  `files_to_modify`** (Phase 3, before Phase 4, `SKILL.md:108-132`) —
+  required, not optional, since cause 1 explains most pass-2 findings: for
+  each seed symbol, grep its callers inside `files_to_modify` only, add the
+  enclosing function names to the seed set, and repeat until no new names
+  appear. No files outside `files_to_modify` are ever searched. **Why a
+  fixpoint and not one hop:** Phase 3 re-seeds from issue text on every
+  pass, so a one-hop scheme has pass 2 seed the hop-derived names pass 1
+  rendered and hop once more (`_report_samples()` → `cmd_compare()` in pass
+  1, `cmd_compare()` → `main()` in pass 2). Routing hop results only into
+  `sites_to_add` does not help either — the backtick scanner still picks the
+  rendered names up as seeds. The closure is finite and idempotent: pass 2's
+  seeds are a subset of what pass 1 already closed over, so the smoke check
+  holds. Wide closures are pruned by the caller-suitability gate.
 - **Line budget**: `SKILL.md` is at the 500-line cap. Put the `known_sites`
   extraction rules, the one-hop expansion procedure, and the `sites_to_add`
   render templates in a new companion `skills/wire-issue/intra-file-sites.md`,
@@ -121,6 +140,13 @@ table rows:
   FOUND" table alongside the new `sites_to_add` row (two lines in a file
   already being edited). `cli_coupling`'s missing Phase 8a render stays out
   of scope.
+- **`output-report.md` row label (pinned)**: the table uses display labels
+  (`Callers/Importers`, `Tests (update)`), not category keys, so the
+  `DOC_STRINGS_PRESENT` row for `"sites_to_add"` only passes if the key
+  appears literally. Use `| Intra-file sites (\`sites_to_add\`) | N | [brief
+  list] |`, and the same shape for the two drive-by rows:
+  `| Gate consumers (\`gate_consumers\`) | ... |` and
+  `| Conditional branches (\`conditional_branches\`) | ... |`.
 
 ### Codebase Research Findings
 
@@ -194,10 +220,11 @@ _Wiring pass added by `/ll:wire-issue`:_
   added) — this closes the gap where the Wiring Phase's `output-report.md`
   requirement was otherwise undocumented by any test row. Also add a
   `("skills/wire-issue/SKILL.md", "known_sites", "ENH-3480")` present row and
-  a `DOC_STRINGS_ABSENT` row for the old sentence `Exclude files already in
-  the "already known" lists.` so a regression that restores whole-file
-  exclusion fails the suite. These rows are the deterministic acceptance
-  gate for this issue.
+  two `DOC_STRINGS_ABSENT` rows — Agent 1's `Exclude files already in the
+  "already known" lists.` and Agent 2's `Exclude files already known from
+  the issue.` — so a regression that restores whole-file exclusion in either
+  prompt fails the suite. These rows are the deterministic acceptance gate
+  for this issue.
 
 ### Documentation
 
@@ -229,25 +256,30 @@ _Added by `/ll:refine-issue` — 2026-09-15 — based on codebase analysis:_
 ## Implementation Steps
 
 1. Create `skills/wire-issue/intra-file-sites.md` with three sections:
-   `known_sites` extraction rules, the bounded one-hop `key_symbols`
+   `known_sites` extraction rules (including the `:line` / `:start-end`
+   path-suffix strip and the backticked-enclosing-symbol render rule so
+   the key round-trips), the caller-closure fixpoint `key_symbols`
    expansion procedure, and the `sites_to_add` render templates for
    `### Files to Modify` / `### Tests` / `### Documentation`.
 2. Phase 3 (`SKILL.md:108-132`): add `known_sites: [path:symbol]` to the
    `EXISTING_WIRING` block and a one-line pointer to the companion for both
-   the extraction rules and the one-hop expansion (run before Phase 4;
-   one hop, `files_to_modify` only, no recursion).
+   the extraction rules and the fixpoint expansion (run before Phase 4;
+   iterate to closure, `files_to_modify` only, no outside files).
 3. Reword the Phase 4 exclusion instructions in Agent 1 (`SKILL.md:180`,
    Caller and Importer Tracer) and Agent 2 (`SKILL.md:212`, Side-Effect
    Surface Tracer) to exclude `path:symbol` sites in `known_sites` instead
    of whole known files, and to cite `path:line` + enclosing symbol for
    intra-file finds. Add the same instruction to Agent 3 (Test Gap Finder,
-   prompt lines 223-253), which carries no exclusion wording today.
+   prompt lines 223-253), which carries no exclusion wording today, and add
+   a `Key symbols: {{key_symbols from Phase 3}}` line to Agent 3's prompt
+   (it currently receives none).
 4. Add the `sites_to_add` `MISSING_WIRING` category to the Phase 5 block
    (`SKILL.md:269-281`), filtered against `known_sites`; render it in
    **Phase 8a** (`SKILL.md:342-398`) per the routing in Proposed Solution,
    adding the `_Wiring pass added by \`/ll:wire-issue\`:_` marker to the
    `### Files to Modify` append block; note in Phase 8b that `sites_to_add`
-   feeds Wiring Phase bullets under the caller-suitability gate.
+   feeds Wiring Phase bullets under both the evidence-confirmation layer
+   and the caller-suitability gate.
 5. Reclaim lines so `SKILL.md` stays at or under 500: move the Phase 8a
    example blocks the companion now owns out of `SKILL.md`.
 6. Verify (deterministic gate): add the test rows described under Tests;
@@ -264,8 +296,8 @@ _Added by `/ll:refine-issue` — 2026-09-15 — based on codebase analysis:_
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
 - Update `docs/reference/COMMANDS.md:281-289` — add a `sites_to_add` bullet to the `/ll:wire-issue` entry's "Wiring categories searched" list, matching the Behavior Parity (line 287) / `gate_consumers` (line 288) precedent
-- Update `skills/wire-issue/output-report.md` — add a `sites_to_add` row to the Phase 10 "MISSING WIRING FOUND" table so the category isn't silently dropped from the end-of-run report
-- Update `scripts/tests/test_wiring_skills_and_commands.py` — add the three `DOC_STRINGS_PRESENT` tuples (`SKILL.md`, `docs/reference/COMMANDS.md`, and `skills/wire-issue/output-report.md`, each asserting `"sites_to_add"`), a `known_sites` present row, and a `DOC_STRINGS_ABSENT` row for the old whole-file exclusion sentence, alongside the existing ENH-3050 rows at lines 249-251
+- Update `skills/wire-issue/output-report.md` — add a `| Intra-file sites (\`sites_to_add\`) |` row to the Phase 10 "MISSING WIRING FOUND" table (label must contain the literal key for the test row to pass) so the category isn't silently dropped from the end-of-run report
+- Update `scripts/tests/test_wiring_skills_and_commands.py` — add the three `DOC_STRINGS_PRESENT` tuples (`SKILL.md`, `docs/reference/COMMANDS.md`, and `skills/wire-issue/output-report.md`, each asserting `"sites_to_add"`), a `known_sites` present row, and two `DOC_STRINGS_ABSENT` rows for the old whole-file exclusion sentences (Agent 1 and Agent 2), alongside the existing ENH-3050 rows at lines 249-251
 
 ## Impact
 
@@ -295,9 +327,10 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Scope Boundaries
 
-- **In scope**: Phase 3 `known_sites` extraction and bounded one-hop
-  `key_symbols` expansion (required), Phase 4 exclusion wording for all
-  three agents, Phase 5 `MISSING_WIRING` `sites_to_add` category and Phase
+- **In scope**: Phase 3 `known_sites` extraction and caller-closure
+  fixpoint `key_symbols` expansion within `files_to_modify` (required),
+  Phase 4 exclusion wording for all three agents (plus `key_symbols` input
+  for Agent 3), Phase 5 `MISSING_WIRING` `sites_to_add` category and Phase
   8a/8b rendering (Phase 7 is display/confirmation-only and performs no
   file edits), the new `intra-file-sites.md` companion, the
   `output-report.md` table rows (including the ENH-3050 `gate_consumers` /
@@ -306,7 +339,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 - **Out of scope**: Any Python code change beyond test-table rows; the
   missing Phase 8a render for `cli_coupling`; changes to other skills'
   known-file exclusion patterns; changes to the FSM loops that invoke
-  wire-issue; expansion beyond one hop or outside `files_to_modify`.
+  wire-issue; expansion outside `files_to_modify`.
 
 ## API/Interface
 

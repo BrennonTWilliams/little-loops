@@ -359,12 +359,13 @@ _Added by `/ll:confidence-check` on 2026-09-15_
 **Outcome Confidence**: 59/100 → LOW
 
 ### Outcome Risk Factors
-- Broad enumeration across 16+ distinct change sites: `_grade()`, the `HarnessEvalOutcome` field/two new properties, `_evaluate_and_report()`, `_run_sample_loop()`, five DB-recording call sites, `_rc_from_event()`, `harness_eval_pass_rate()`, `harness_eval_abstention_rate()`, `_read_target_history()`, plus six documentation files reconciling the exit-code/verdict-set contract
+- Broad enumeration across 17+ distinct change sites: `_grade()`, the `HarnessEvalOutcome` field/two new properties, `_evaluate_and_report()`, `_run_sample_loop()`, five DB-recording call sites, `cmd_dsl`'s summary-line addition, `_rc_from_event()`, `harness_eval_pass_rate()`, `harness_eval_abstention_rate()`, `_read_target_history()`, plus six documentation files reconciling the exit-code/verdict-set contract
 - Very wide blast radius (11+ callers/dependents): six `_report_samples()` call sites, four independent readers of persisted `semantic_passed`/`semantic_verdict` rows that must apply the same `IS NOT 'error'` rule in lockstep (`_rc_from_event()`, `harness_eval_pass_rate()`, `harness_eval_abstention_rate()`, `_read_target_history()`), plus `cli/__init__.py` and `history_reader/__init__.py` re-export importers
 
-Note: the prior `missing_behavior_parity` gap on `scripts/little_loops/history_reader/harness.py` that previously capped Criterion 4 at 10 is resolved — the "### Behavior Parity" subsection now documents what each reader replaces; `format-check`'s `missing_behavior_parity`/`stale_symbol_ref`/`stale_cli_flag`/`unapplied_decision`/structure keys are all empty, so Readiness rose from 90 to 100. Outcome Confidence is unchanged (complexity/coverage/ambiguity/change-surface are unaffected by that gap).
+Note: re-run after the fourth-pass manual review (`cmd_dsl` consequence + stale-citation corrections, session log below). Gate checks (`format-check`, `check-design`, `blocked_by`, learning-test targets, `unproven_mechanism`) are all clean/inert, and the added `cmd_dsl` scope was already covered by the prior run's "16+ sites" framing, so both scores are unchanged from the 2026-09-15T20:09:38 run.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-15T20:24:15 - `688ce7f2-70f1-44fe-b722-7b7e2a3bdab4.jsonl`
 - manual review (fourth pass) - 2026-09-15 - dropped the nonexistent flags-only `grader_error_detail` shape (every `BlockingJsonError` site sets `"error"`); added the `cmd_dsl` consequence (one judge-error task → whole run exits 2, task leaves `failures`) with an `errored:` summary-line AC and test, and noted the accepted `_update_aggregate()` divergence; corrected the six remaining stale citations (`_grade()` callers, `_run_compare_arm()`, `_band_samples()` call sites, `_read_target_history()` rate calls, test class lines)
 - `/ll:confidence-check` - 2026-09-15T20:09:38 - `81c87ace-97af-4b20-a8f9-1d736588bd88.jsonl`
 - `/ll:verify-issues` - 2026-09-15T20:03:53 - `1585335e-fdc3-4eb0-97db-7596cb49731c.jsonl`
