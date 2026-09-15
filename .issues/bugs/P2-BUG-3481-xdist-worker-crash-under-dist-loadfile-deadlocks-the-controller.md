@@ -84,6 +84,14 @@ to produce the identical externally-visible symptom (a session "waiting for
 the background test run" forever), so without a fix it will keep recurring
 and keep being misdiagnosed as BUG-3208.
 
+The same restart path also produces a second, previously-observed failure
+mode: a test that blocks in `subprocess.run` past the 120s thread-method
+timeout kills its worker, xdist restarts the worker, the replacement re-runs
+the same test, and the cycle repeats. Each iteration leaks one orphaned
+grandchild (reparented to launchd) every ~124s, with the pytest tree at ~0%
+CPU and `-x` never tripping because a lost worker is rescheduled rather than
+reported. Disabling restarts turns that loop into a single fail-fast too.
+
 ## Root Cause
 
 - **File**: `<site-packages>/xdist/scheduler/loadscope.py` (`pytest-xdist` 3.7.0),
@@ -188,14 +196,19 @@ so it can be dropped once a fixed `pytest-xdist` release is pinned.
 
 ### Files to Modify
 - `scripts/pyproject.toml` (`[tool.pytest.ini_options]` addopts) — add
-  `--max-worker-restart=0` with rationale comment
+  `--max-worker-restart=0` with rationale comment. While editing that
+  comment block, update the stale "~13.7k-test suite" figure in the
+  `--dist loadfile` rationale (the suite is ~24.5k tests today)
 - `pytest.ini` (repo root) — mirror the addopts change; this stub duplicates
   the pyproject addopts and says to keep the two in sync
 - `docs/development/TROUBLESHOOTING.md` — add a third "suite wedges at the
   tail" entry next to § "xdist flake: subprocess signal-handling test times
   out" (`:821-835`) and § "Full-suite run makes macOS sluggish (beachball)"
-  (`:837-846`), with the idle-0% vs busy-spin-97-99% discriminator and the
-  post-fix "passed+failed < collected after a worker crash" count gap
+  (`:837-846`), with the idle-0% vs busy-spin-97-99% discriminator, the
+  post-fix "passed+failed < collected after a worker crash" count gap, and
+  the respawn-loop variant (orphaned `ppid 1` grandchildren spaced ~2 min
+  apart from a test whose subprocess outruns the 120s timeout) that the same
+  flag turns into a single fail-fast
 - `docs/development/TESTING.md` § "Live Host-CLI Spawn Guard" (~lines
   1105-1109) — currently conflates the un-killable BUG-3208 hang with the
   busy-spin signature only; mention this idle-wedge signature and the

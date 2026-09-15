@@ -35,7 +35,7 @@ A third class is **infra/signal-driven** and also uses `"error"`: the FATAL_ERRO
 
 - Attempt-batch failures continue to produce `terminated_by="error"` (unchanged — every existing consumer keeps working).
 - Decision-step failures produce `terminated_by="no_route"` with the same `error=` message they carry today.
-- An exception raised from `_evaluate()`/`_route()` into the generic `except Exception` clause is classified as `"no_route"`; an exception raised from action execution into that same clause stays `"error"`.
+- An exception raised from `_evaluate()`/`_route()` into any of `run()`'s three `except` clauses (`HeredocCollisionError`, `InterpolationError`, generic `Exception`) is classified as `"no_route"`; an exception raised from action execution or from a pre-action dispatch (sub-loop, `human_approval`, `learning`, context build, tamper snapshot, baseline) into those same clauses stays `"error"`.
 - Consumers that must treat both classes as "the child died" (sub-loop `on_error` routing, waste attribution) are widened to include `"no_route"`.
 
 ## Motivation
@@ -46,6 +46,7 @@ Waste-attribution and sub-loop routing consumers currently can't distinguish "th
 
 - **In scope**: introducing the single value `"no_route"`; classifying the direct `_finish("error")` call at `:981` and the generic `except Exception` clause; widening the consumers enumerated in Implementation Steps; updating the affected tests and docs.
 - **Out of scope**: renaming or re-sorting the attempt-batch class (stays `"error"`); the infra/signal-driven `"error"` sites (`:897`, sub-loop-missing, stop-event) stay `"error"`; every other `terminated_by` value is untouched; checkpoint-artifact wiring (ENH-3473).
+- **Deliberately deferred — fleet-review outcome bucketing**: `cli/logs.py::_derive_loop_outcome()` (`:2058-2083`) buckets any `loop_complete` event carrying an `error` key as `"error"` *before* it reads `terminated_by`. Because `_finish()` still passes `error=` for `no_route`, `ll-logs fleet-review` will continue to lump `no_route` runs into its `"error"` bucket after this issue. The Motivation's fleet-review payoff therefore lands only once a follow-up splits that bucket; this issue only makes the value *available* (`loop_runs.terminated_by`, `group_by="terminated_by"` rollups, sub-loop routing). Do not change `_derive_loop_outcome()` here — its `"error"` bucket is load-bearing for `docs/runbooks/FLEET_LOOP_REVIEW.md` and `test_ll_logs.py`.
 
 ## Parent Issue
 
@@ -66,9 +67,15 @@ Keep `"error"` for the attempt-batch class and add exactly one new value, `"no_r
 The earlier draft of this issue assumed both classes flow through the `except` funnel at `:1027-1041` and proposed an exception-subclass chain. That is wrong for the decision-step class, which is a direct `_finish()` call at `:981`, not a raised exception. The correct mechanism:
 
 1. **Call-site literal change** — `fsm/executor.py:981` becomes `self._finish("no_route", error="No valid transition")`. This alone covers every decision-step test in the Tests section (missing route, missing `on_partial`/`on_blocked`/extra route, `cannot_judge` shorthand, `before_route` veto).
-2. **Phase marker for the shared generic clause** — add an instance attribute `self._phase: str` set to `"action"` immediately before `_run_action_or_route()` is called (`:2078`, `:2147`) and to `"decide"` immediately before `_evaluate()` (`:2157`) and the routing calls that follow. The generic `except Exception as exc:` at `:1040` becomes `return self._finish("no_route" if self._phase == "decide" else "error", error=str(exc))`. The `HeredocCollisionError`/`InterpolationError` clauses are attempt-batch by construction (they originate in action interpolation) and keep `"error"`.
+2. **Phase marker for the shared `except` clauses** — add an instance attribute `self._phase: str`. It is **reset to `"action"` as the first statement of `_execute_state()`** (`:2011`), then set to `"decide"` immediately before `_evaluate()` (`:2157`) and left there through the routing block. All three `except` clauses at `:1027-1041` compute the reason from the marker: `reason = "no_route" if self._phase == "decide" else "error"` and pass `reason` to `_finish()` (keeping each clause's existing `error=` message).
+
+   **Why the reset must be at the top of `_execute_state()`, not at the action call sites:** the marker is an instance attribute that survives across states. After state N finishes routing it is left at `"decide"`; if state N+1 raises *before* any action site is reached — sub-loop dispatch (`:2024`, missing-YAML `FileNotFoundError` re-raised at `:2029`), `human_approval` (`:2036`) or `learning` (`:2043`) dispatch, `_build_context()` (`:2021`), the tamper-guard snapshot (`:2060-2066`), or `_execute_with_baseline()` (`:2141`) — a marker set only at `:2078`/`:2147` would misclassify that raise as `no_route`. Resetting at entry covers every pre-action raise site in one line and keeps the missing-sub-loop-YAML case at `"error"` per Scope Boundaries.
+
+   **Why all three clauses consult the marker, not just the generic one:** `InterpolationError` is *not* attempt-batch by construction. `_route()` interpolates route targets at `:3319`, so a target like `on_yes: "${context.target}"` with the variable missing raises `InterpolationError` from the decide phase into the `:1032` clause. (`_evaluate()` itself is safe — it swallows its own `InterpolationError` at `:3134`.) `HeredocCollisionError` can only originate in action heredoc handling, so consulting the marker there is a no-op but keeps the three clauses uniform.
 
    Precedent for a stored-attribute classifier consulted at a shared exit: `self._pending_error` (`:897`), `self._summary_state_executed`/`self._iteration_summary_executed` (`:976-980`) — all instance flags set earlier and read at the `_finish()` decision point. This is the same shape.
+
+3. **Throttle `__STOP__` needs no handling** — `_check_throttle()` sets `self._pending_error` before returning `"__STOP__"` (`:1593-1597`), and `run()` checks `_pending_error` at `:897` *before* the `None` check at `:981`, so it stays `"error"` (infra class) without touching the marker.
 
 ### Codebase Research Findings (retained, condensed)
 
@@ -80,13 +87,13 @@ The earlier draft of this issue assumed both classes flow through the `except` f
 
 ### Types
 - `ExecutionResult.terminated_by: str` (`scripts/little_loops/fsm/types.py:59`) — add `"no_route"` to the docstring vocabulary (`:35-43`) and the inline comment (`:59`).
-- `FSMExecutor._phase: str` (new instance attribute, `"action"` | `"decide"`, default `"action"`) — set in `_execute_state()` before the action call and before the evaluate/route calls.
+- `FSMExecutor._phase: str` (new instance attribute, `"action"` | `"decide"`, default `"action"`) — reset to `"action"` at the top of `_execute_state()`, set to `"decide"` before `_evaluate()` and left there through routing.
 
 ### Signatures
 - `FSMExecutor._finish(self, terminated_by: str, error: str | None = None) -> ExecutionResult` (`fsm/executor.py:4264`) — unchanged signature; receives `"no_route"` from the two new sites.
 
 ### Call Path
-`FSMExecutor.run()` → `FSMExecutor._execute_state()` → either `FSMExecutor._run_action_or_route()` (attempt-batch; re-raises into `run()`'s `except` clauses at `fsm/executor.py:1027-1041` with `_phase == "action"` → `_finish("error")`) or `FSMExecutor._evaluate()` / `FSMExecutor._route()` (decision-step; a `None` return reaches the direct call at `:981` → `_finish("no_route")`, a raise reaches the generic clause with `_phase == "decide"` → `_finish("no_route")`) → `FSMExecutor._finish()` → `record_loop_run_summary()` (writes the `loop_runs` row).
+`FSMExecutor.run()` → `FSMExecutor._execute_state()` (resets `_phase = "action"`) → either `FSMExecutor._run_action_or_route()` / a pre-action dispatch (attempt-batch; re-raises into `run()`'s `except` clauses at `fsm/executor.py:1027-1041` with `_phase == "action"` → `_finish("error")`) or `FSMExecutor._evaluate()` / `FSMExecutor._route()` (decision-step; a `None` return reaches the direct call at `:981` → `_finish("no_route")`, a raise reaches any of the three clauses with `_phase == "decide"` → `_finish("no_route")`) → `FSMExecutor._finish()` → `record_loop_run_summary()` (writes the `loop_runs` row).
 
 ## Integration Map
 
@@ -113,21 +120,22 @@ The earlier draft of this issue assumed both classes flow through the `except` f
 
 ### Confirmed Not Affected
 
-- `scripts/little_loops/cli/logs.py::_derive_loop_outcome()` (`:2058-2083`) — checks `if "error" in event` before `terminated_by`; `_finish()` still sets `error=` for `no_route`, so the `"error"` bucket fires unchanged. `docs/runbooks/FLEET_LOOP_REVIEW.md`'s vocabulary and `test_ll_logs.py` assertions are unaffected.
+- `scripts/little_loops/cli/logs.py::_derive_loop_outcome()` (`:2058-2083`) — checks `if "error" in event` before `terminated_by`; `_finish()` still sets `error=` for `no_route`, so the `"error"` bucket fires unchanged. `docs/runbooks/FLEET_LOOP_REVIEW.md`'s vocabulary and `test_ll_logs.py` assertions are unaffected. See the deferred-bucketing note under Scope Boundaries — this is a known limitation, not an oversight.
+- `FSMExecutor._check_throttle()` `"__STOP__"` return (`fsm/executor.py:1593-1597`, consumed at `:2082`/`:2151`) — sets `_pending_error`, which `run()` checks at `:897` before the `None` check at `:981`; stays `"error"` with no marker interaction.
 - `transport.py:1749-1753`, `cli/loop/{feed.py,testing.py,audit.py,signals.py}`, `history_reader/runs.py:331-401` (`group_by="terminated_by"` rollup gains a bucket automatically), `mcp_server/tasks.py`, `cli/loop/evidence.py` — generic string pass-through.
 
 ## Implementation Steps
 
-1. Add `self._phase = "action"` in `FSMExecutor.__init__`; set `"action"` before each `_run_action_or_route()` call (`fsm/executor.py:2078`, `:2147`) and `"decide"` before `_evaluate()` (`:2157`) and the subsequent routing block. Change the generic `except Exception` at `:1040` to pick `"no_route"` when `_phase == "decide"`, else `"error"`.
+1. Add `self._phase = "action"` in `FSMExecutor.__init__`; **reset it to `"action"` as the first statement of `_execute_state()`** (`fsm/executor.py:2011`, before `_build_context()`); set `"decide"` immediately before `_evaluate()` (`:2157`) and leave it through the routing block. Change all three `except` clauses at `:1027-1041` to compute `reason = "no_route" if self._phase == "decide" else "error"` and pass `reason` to `_finish()`, keeping each clause's existing `error=` message. Do **not** set the marker at the `_run_action_or_route()` call sites — the entry reset already covers them and every pre-action dispatch (see Design § Mechanism).
 2. Change `fsm/executor.py:981` to `_finish("no_route", error="No valid transition")`. Leave `:897` (FATAL_ERROR) as `"error"`.
 3. Re-point the existing decision-step assertions in `scripts/tests/test_fsm_executor.py` from `"error"` to `"no_route"`: `test_no_valid_route_terminates_with_error` (:2027), `test_on_partial_missing_falls_through_to_error` (:2110), `test_on_blocked_missing_falls_through_to_error` (:2177), `test_extra_routes_missing_falls_through_to_error` (:2241), `test_undeclared_cannot_judge_shorthand_no_on_error_terminates_loud` (:2382), `test_no_valid_transition_returns_error` (:5552), `test_before_route_veto_terminates_with_error` (:7534). Rename the tests to say `no_route`. **Leave every attempt-batch assertion (`test_exception_during_execution_returns_error_result`, `..._emits_error_in_loop_complete_event`, `test_exception_in_branch_c_without_on_error_reraises`, `test_heredoc_collision_halts_run_even_with_on_error_set`, `test_missing_context_variable_produces_friendly_message`, `test_missing_capture_returns_error`, `test_missing_required_fragment_param_terminates_with_error`) and every infra-driven assertion (`test_fatal_error_signal_*`, `test_sub_loop_missing_loop_without_on_error`, `test_stop_event_emitted_beyond_hard_max`) unchanged at `"error"`.**
-4. Add two new tests in `test_fsm_executor.py` (one method per raise-site, the file's convention): (a) an evaluator that raises inside `_evaluate()` produces `terminated_by == "no_route"` with the exception text in `result.error`; (b) an action that raises with no `on_error` still produces `"error"` (pins the phase marker so a later refactor can't flip it).
+4. Add four new tests in `test_fsm_executor.py` (one method per raise-site, the file's convention): (a) an evaluator that raises inside `_evaluate()` produces `terminated_by == "no_route"` with the exception text in `result.error`; (b) an action that raises with no `on_error` still produces `"error"` (pins the phase marker so a later refactor can't flip it); (c) **marker-leak regression**: a two-state loop where state 1 is a normal action+evaluate state that routes to state 2, and state 2 is a `type: loop` sub-loop whose YAML is missing and has no `on_error` — asserts `terminated_by == "error"` (fails if the reset is placed at the action call sites instead of `_execute_state()` entry); (d) **route-target interpolation**: a state whose `on_yes` is `"${context.missing_target}"` with the variable unset — asserts `terminated_by == "no_route"` and that `result.error` still carries the existing "Missing context variable … Run with: ll-loop run" message from the `InterpolationError` clause.
 5. Widen `_execute_sub_loop()`'s two tuples (`fsm/executor.py:1304`, `:1320`) to include `"no_route"`; add a `test_fsm_executor.py` sub-loop test asserting a child ending in `no_route` routes to the parent's `on_error` and yields `verdict == "error"`.
 6. Add `"no_route": 1` to `EXIT_CODES` (`cli/loop/runner.py:39-55`); add a `test_cli_loop_lifecycle.py::TestCmdResumeExitCodes` case on the `test_workdir_vanished_returns_exit_code_1` shape.
 7. Add `'no_route'` to `_WASTED_RUN_PREDICATE` (`history_reader/usage.py:310-316`); extend `test_history_reader_usage.py::TestWasteAttribution` with a `no_route` run (the file's `_seed_run`-helper convention).
 8. Add `*:no_route` to the `refine-to-ready-issue.yaml:1043-1046` case arm; add a `test_builtin_loops.py` case exercising that alternation with `failure_terminal != "True"` (none exists today — `test_write_failure_evidence_attributes_sub_loop_failure` :2200-2220 only covers the `True:*` arm).
 9. Add a `"no_route" → "failed"` case to `test_fsm_persistence.py::test_archive_run_only_maps_terminated_by_to_status` (:1071-1102).
-10. Update `fsm/types.py` docstring (`:35-43`) and inline comment (`:59`), fixing the pre-existing drift while there.
+10. Update `fsm/types.py` docstring (`:35-43`), the `error:` field docstring line (`:52`, currently `Error message if terminated_by is "error"` — now `"error"` or `"no_route"`), and the inline comment (`:59`), fixing the pre-existing drift while there. Also update the `RouteDecision(None)` docstring line at `fsm/executor.py:202` from `→ _finish("error")` to `→ _finish("no_route")`.
 11. Update the documentation and skill files enumerated in the Integration Map, regenerate `loop_complete.json`, and resync the three `create-loop` mirrors with `ll-adapt`. Update `test_debug_loop_run_synthesis.py::test_eval_error_termination_inline_no_eval_no_new_signal` (:591-604) and the docstring of `test_builtin_loops.py::test_resolve_decision_call_states_declare_on_error_matching_on_failure` (~8807-8814) to match the new prose.
 12. `python -m pytest scripts/tests/test_fsm_executor.py scripts/tests/test_builtin_loops.py scripts/tests/test_fsm_persistence.py scripts/tests/test_debug_loop_run_synthesis.py scripts/tests/test_history_reader_usage.py scripts/tests/test_cli_loop_lifecycle.py scripts/tests/test_verify_host_map.py -v` passes.
 
@@ -184,6 +192,7 @@ Graph: provider=`codegraph` freshness=`fresh` (not used for this check; grep/Rea
 sufficed and gave exact confirmation).
 
 ## Session Log
+- Manual review - 2026-09-15 - four corrections: (1) `_phase` must reset at `_execute_state()` entry, not at the action call sites, or a stale `"decide"` misclassifies pre-action raises (missing sub-loop YAML, HITL/learning dispatch, baseline at `:2141`); (2) `InterpolationError` clause is not attempt-batch-only — `_route()` interpolates targets at `:3319` — so all three `except` clauses consult the marker; (3) fleet-review bucketing via `_derive_loop_outcome()` explicitly deferred; (4) added `types.py:52` and `executor.py:202` docstring sites. Added tests 4(c)/4(d) and a throttle `__STOP__` non-interaction note.
 - `/ll:confidence-check` - 2026-09-15T23:19:58 - `4aed0df2-a263-4d28-ae34-d555931852b6.jsonl`
 - `/ll:verify-issues` - 2026-09-15T23:13:49 - `0f995d07-641d-467b-93d8-b6a178acbacb.jsonl`
 - Manual review rewrite - 2026-09-15 - corrected the mechanism (decision-step failures are direct `_finish()` calls at `executor.py:981`, not exceptions); pinned the value name `no_route`; decided supplement-not-replace so attempt-batch stays `error`.
