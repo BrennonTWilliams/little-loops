@@ -848,6 +848,18 @@ See `.issues/bugs/P2-BUG-2523-sigint-subprocess-test-flakes-under-xdist.md` for 
 
 **Environment knobs**: `PYTEST_XDIST_AUTO_NUM_WORKERS=<N>` (clamped to `cpus-2`), `LL_TEST_NO_NICE=1`, `-n 0` for serial, `LL_FUZZ=full` for full hypothesis fuzz depth (the automated verify gate sets this itself).
 
+### Full-suite run wedges at the tail (idle, 0% CPU, no exit code)
+
+**Symptom**: `python -m pytest scripts/tests/` stops making progress near the end of the run and never exits. `ps` shows the controller and all `[pytest-xdist idle]` workers alive at **0% CPU**. This is the discriminator against BUG-3208 (closed): that bug's workers **busy-spin at 97-99% CPU**; this one's workers are truly idle.
+
+**Cause**: an xdist worker process died mid-run (thread-timeout `os._exit(1)`, a test calling `os._exit`, a segfault) after it had already completed at least one file — nearly guaranteed under `--dist loadfile`. pytest-xdist 3.7.0's `LoadScopeScheduling.remove_node` re-queues the crashed worker's *entire* `assigned_work`, including already-finished files. The replacement worker is handed a work unit with zero pending indices, never reports completion, and the controller never reschedules the real pending work — both sides idle forever (upstream xdist #784/#1327, fixed by #1328/#1371, unreleased through 3.8.0). See BUG-3481.
+
+**Solution**: `scripts/pyproject.toml` and root `pytest.ini` both set `--max-worker-restart=0`, so a worker crash reports `worker 'gw<N>' crashed while running '<nodeid>'` and exits non-zero instead of wedging. **Known side effect**: the run stops at the crash — tests after the crash point (in the same file, and any work units still queued) are never run or reported, so `passed + failed` will be below the collected count. The exit code is still non-zero, so every gate that reads it (ready-issue, manage-issue, epic-verify) still fails correctly; this count gap is expected, not lost tests.
+
+**Respawn-loop variant**: if `--max-worker-restart=0` is *absent* and a test's subprocess outruns the 120s `--timeout=120` watchdog, the same re-queue bug causes the replacement worker to re-run the same test, time out again, and repeat — leaking one orphaned grandchild (reparented to launchd, `ppid 1`) roughly every ~124s while the tree sits at ~0% CPU. `--max-worker-restart=0` turns this into a single fail-fast instead of an indefinite leak.
+
+**Diagnostic note**: worker fd 1 is redirected to `/dev/null` by execnet under xdist, so pytest-timeout's `+++ Timeout +++` thread-method stack dump is never visible in captured output — its absence does not mean the 120s watchdog didn't fire.
+
 ---
 
 ## Loop Issues

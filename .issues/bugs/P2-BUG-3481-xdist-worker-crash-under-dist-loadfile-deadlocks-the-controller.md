@@ -4,10 +4,11 @@ type: BUG
 title: xdist worker crash under --dist loadfile deadlocks the controller (replacement
   worker gets empty runtests)
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-15'
 captured_at: '2026-09-15T21:54:42Z'
+completed_at: '2026-09-15T23:52:52Z'
 program_design_not_applicable: true
 confidence_score: 98
 outcome_confidence: 91
@@ -390,12 +391,51 @@ Verdict at time of check: **NEEDS_UPDATE** (corrections applied in this pass).
   timeout, and folded in the >120s-subprocess respawn-loop failure mode that
   the same flag fixes.
 
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-09-15
+- **Status**: Completed
+
+### Changes Made
+- `scripts/pyproject.toml`: added `--max-worker-restart=0` to
+  `[tool.pytest.ini_options].addopts` with a rationale comment citing xdist
+  #784/#1327 (fix PRs #1328/#1371); also corrected the stale "~13.7k-test
+  suite" figure to ~24.5k
+- `pytest.ini`: mirrored `--max-worker-restart=0` in the root stub's addopts
+- `scripts/tests/test_xdist_crash_fail_fast.py` (new): regression test that
+  loads `scripts/pyproject.toml`'s addopts (not a hardcoded flag), runs the
+  synthetic crash tree from the issue's repro as a nested xdist invocation,
+  and asserts non-zero exit + the `worker 'gw<N>' crashed while running
+  'test_crash_exit.py::test_b'` message within 60s (process-group killed on
+  timeout to avoid orphaning nested workers); a second test asserts
+  `pytest.ini`'s addopts stay in sync with the flag
+- `docs/development/TROUBLESHOOTING.md`: added "Full-suite run wedges at the
+  tail (idle, 0% CPU, no exit code)" entry with the idle-vs-busy-spin
+  discriminator against BUG-3208, the post-fix count-gap note, and the
+  respawn-loop variant
+- `docs/development/TESTING.md`: clarified the "Live Host-CLI Spawn Guard"
+  section's BUG-3208 reference to the busy-spin signature specifically and
+  cross-referenced the new idle-wedge signature / `--max-worker-restart=0`
+  fix
+
+### Verification Results
+- Tests: PASS (`python -m pytest scripts/tests/` — 24492 passed, 51 skipped,
+  exit 0; new regression test confirmed Red pre-fix — wedged past 60s — and
+  Green post-fix — 3.2s)
+- Lint: PASS (`ruff check scripts/`)
+- Types: PASS (`python -m mypy scripts/little_loops/`)
+- Integration: PASS (config-only change scoped to the pytest addopts; no
+  runtime code paths touched)
+
 ## Status
 
 **Open** | Created: 2026-09-15 | Priority: P2
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-15T23:52:52 - `15c11526-6e5c-4398-9f64-39e8bf7cd514.jsonl`
+- `/ll:ready-issue` - 2026-09-15T23:42:52 - `be65ad0a-1660-471c-ad34-2cd5659b8d15.jsonl`
 - `/ll:confidence-check` - 2026-09-15T23:25:38 - `327c38c3-cd69-4287-90f2-4d0c76733f97.jsonl`
 - `/ll:verify-issues` - 2026-09-15T23:20:02 - `4aed0df2-a263-4d28-ae34-d555931852b6.jsonl`
 - `/ll:verify-issues` - 2026-09-15T22:29:03 - `74d0e714-5fa8-4d36-8d26-f70b1e11f439.jsonl`

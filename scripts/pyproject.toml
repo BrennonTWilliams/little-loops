@@ -259,8 +259,15 @@ python_functions = ["test_*"]
 # with xdist worker process management.
 # --dist loadfile gives each test file worker affinity: far fewer
 # controller<->worker scheduling round-trips than the default per-test `load`
-# on a ~13.7k-test suite, and per-file fixtures (git repos, subprocess envs)
+# on a ~24.5k-test suite, and per-file fixtures (git repos, subprocess envs)
 # stay on one worker.
+# --max-worker-restart=0: pytest-xdist's LoadScopeScheduling.remove_node
+# re-queues a crashed worker's entire assigned_work, including files it
+# already finished; the replacement worker gets a work unit with zero
+# pending indices, never reports completion, and controller + worker idle
+# forever (upstream xdist #784/#1327, fixed by #1328/#1371, unreleased
+# through 3.8.0 -- BUG-3481). Disabling restart makes a worker crash fail
+# fast with the killed test named, instead of wedging the suite.
 addopts = [
     "--strict-markers",
     "--strict-config",
@@ -270,6 +277,7 @@ addopts = [
     "logical",
     "--dist",
     "loadfile",
+    "--max-worker-restart=0",
 ]
 # Keep only failed-test tmp dirs, and only the last session's tree. The default
 # (keep everything, retain 3 sessions) makes pytest rmtree three full

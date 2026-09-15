@@ -1105,8 +1105,16 @@ this exists for.
 The same `conftest.py` fixture stack also collapses the rate-limit backoff
 ladder (`_DEFAULT_RATE_LIMIT_LONG_WAIT_LADDER` / `_MAX_WAIT_SECONDS`) to zero
 suite-wide, so a rate-limit test that forgets to patch it locally cannot wedge
-a worker on the real 300s sleep (the un-killable BUG-3208 hang) — it just
-runs fast instead.
+a worker on the real 300s sleep (the BUG-3208 hang, workers busy-spinning at
+97-99% CPU) — it just runs fast instead.
+
+A tail-of-run wedge can also come from a *different* root cause with a
+different signature: BUG-3481, where a crashed xdist worker under `--dist
+loadfile` leaves the controller and all workers idle at 0% CPU (not
+busy-spinning) with no exit code. `--max-worker-restart=0` in
+`scripts/pyproject.toml` / root `pytest.ini` turns that into a fail-fast
+instead of a wedge — see `docs/development/TROUBLESHOOTING.md` § "Full-suite
+run wedges at the tail" for the idle-vs-busy-spin discriminator.
 
 ### Testing Best Practices
 
