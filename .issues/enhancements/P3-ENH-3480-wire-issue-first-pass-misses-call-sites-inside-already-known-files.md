@@ -96,8 +96,27 @@ _Added by `/ll:refine-issue` — 2026-09-15 — based on codebase analysis:_
 
 ### Files to Modify
 - `skills/wire-issue/SKILL.md` — Phase 3 `key_symbols` seeding
-  (lines 108-132), Phase 4 exclusion wording (lines 180, 212), Phase 5
-  `MISSING_WIRING` categories (lines 270-278)
+  (lines 108-132), Phase 4 exclusion wording (Agent 1/2: lines 180, 212;
+  Agent 3: new instruction, lines 223-253), Phase 5 `MISSING_WIRING` block
+  (lines 269-281), Phase 8a rendering (lines 342-398). The file is
+  currently exactly 500 lines — at the `ll-verify-skills` cap — so any
+  net-additive change here needs an equal-or-greater removal elsewhere or
+  extraction to a companion file, following the existing pattern
+  (`behavior-parity.md`, `static-coupling-layer.md`,
+  `graph-discovery-layer.md`, `prose-dependency-gate.md`,
+  `evidence-confirmation.md`, `caller-suitability-gate.md`,
+  `learning-targets.md`, `output-report.md`).
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `skills/wire-issue/output-report.md` — the Phase 10 "MISSING WIRING FOUND"
+  table has one row per `MISSING_WIRING` category (Callers/Importers,
+  Registrations/Manifests, Documentation, Tests (update), Tests (new),
+  Config/Schema, Impl Step gaps); a `sites_to_add` row is needed or the new
+  category is silently dropped from the end-of-run report even though it's
+  rendered into the issue file by Phase 8a. Pre-existing gap, not caused by
+  this issue: the table also has no row for the `gate_consumers` /
+  `conditional_branches` categories added by ENH-3050 — worth fixing in the
+  same pass if convenient, but out of this issue's scope if not.
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/loops/refine-to-ready-issue.yaml`,
@@ -111,14 +130,37 @@ _Added by `/ll:refine-issue` — 2026-09-15 — based on codebase analysis:_
   Phase 4/5 prompts; no sibling skill uses the same file-granular exclusion
 
 ### Tests
-- `scripts/tests/test_wire_issue_static_layer.py`,
-  `scripts/tests/test_wiring_skills_and_commands.py` — existing coverage
-  that must keep passing; extend with a case asserting a second pass on a
-  fixture issue yields no `sites_to_add` findings
+- `scripts/tests/test_wire_issue_static_layer.py` — tests only
+  `little_loops.decisions.load_coupling_entries()` (Phase 3.5 static
+  coupling layer); unaffected by this change, no edits needed.
+- `scripts/tests/test_wiring_skills_and_commands.py` — has parametrized
+  `DOC_STRINGS_PRESENT`/`DOC_STRINGS_ABSENT` tables (ENH-3050) but does not
+  pin the exact Phase 4 exclusion sentences, the full `MISSING_WIRING`
+  category list, or the `_Wiring pass added by...` marker string. Extend
+  these tables with entries for the reworded Phase 4 instructions and the
+  new `sites_to_add` category; this is additive, not a conflicting-assertion
+  change.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_wiring_skills_and_commands.py:249-251` — the
+  ENH-3050 precedent for a new `MISSING_WIRING` category is a pair of
+  `DOC_STRINGS_PRESENT` tuples right after the existing
+  `gate_consumers`/`conditional_branches` rows: one asserting
+  `"sites_to_add"` appears in `skills/wire-issue/SKILL.md`, one asserting it
+  appears in `docs/reference/COMMANDS.md` (once the Documentation-section
+  bullet above is added). Follow this exact two-tuple shape rather than a
+  single assertion.
 
 ### Documentation
-- N/A — `SKILL.md` prompt text is the only user-facing surface; no `docs/`
-  page describes wire-issue's exclusion behavior at this level of detail
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/COMMANDS.md:281-289` — the `/ll:wire-issue` entry's "Wiring
+  categories searched" bulleted list documents each `MISSING_WIRING` category
+  one bullet at a time (Behavior Parity added at line 287 for ENH-3045;
+  `gate_consumers`/`conditional_branches` added at lines 288-289 for
+  ENH-3050). Adding `sites_to_add` needs a matching new bullet here following
+  the same precedent — currently the only doc surface that enumerates
+  wire-issue's categories by name, and it has no entry for this one.
 
 ### Configuration
 - N/A
@@ -157,6 +199,14 @@ _Added by `/ll:refine-issue` — 2026-09-15 — based on codebase analysis:_
    `scripts/tests/test_wiring_skills_and_commands.py`; confirm
    `ll-verify-skills` keeps `SKILL.md` under the 500-line cap.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `docs/reference/COMMANDS.md:281-289` — add a `sites_to_add` bullet to the `/ll:wire-issue` entry's "Wiring categories searched" list, matching the Behavior Parity (line 287) / `gate_consumers` (line 288) precedent
+- Update `skills/wire-issue/output-report.md` — add a `sites_to_add` row to the Phase 10 "MISSING WIRING FOUND" table so the category isn't silently dropped from the end-of-run report
+- Update `scripts/tests/test_wiring_skills_and_commands.py` — add the two `DOC_STRINGS_PRESENT` tuples (`SKILL.md` and `docs/reference/COMMANDS.md` each asserting `"sites_to_add"`) alongside the existing ENH-3050 rows at lines 249-251
+
 ## Impact
 
 - **Priority**: P3 - Wastes agent time/cost on affected issues (a full
@@ -185,7 +235,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ## Scope Boundaries
 
 - **In scope**: Phase 4 exclusion wording, Phase 5 `MISSING_WIRING`
-  `sites_to_add` category and Phase 7 rendering, optional Phase 3
+  `sites_to_add` category and Phase 8a rendering (Phase 7 is
+  display/confirmation-only and performs no file edits), optional Phase 3
   `key_symbols` one-hop expansion — all confined to
   `skills/wire-issue/SKILL.md`.
 - **Out of scope**: Any Python code change (the issue's own proposed fix is
@@ -199,6 +250,8 @@ a single skill file, not a code interface)
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-15T19:43:51 - `ea70bb0b-2e90-4a29-af8a-b28bd4b966d9.jsonl`
+- `/ll:reconcile-issue` - 2026-09-15T19:39:29 - `5090e718-cdfc-48c3-9991-3d61d838280d.jsonl`
 - `/ll:refine-issue` - 2026-09-15T19:37:17 - `cdbb07d4-56af-4822-8c99-6c7b4578265d.jsonl`
 - `/ll:format-issue` - 2026-09-15T19:32:03 - `f46aa9fa-d555-454b-872b-89355e6b8675.jsonl`
 - `/ll:capture-issue` - 2026-09-15T19:28:41 - `a935744c-43bf-4d30-9969-892325ab65a6.jsonl`
