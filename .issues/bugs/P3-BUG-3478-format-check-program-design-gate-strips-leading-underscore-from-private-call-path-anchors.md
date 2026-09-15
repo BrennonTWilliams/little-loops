@@ -57,6 +57,11 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/loops/autodev.yaml` — FSM loop gates on the literal string `design_gate_failed` at multiple routing/deferral points (lines 1322, 1873, 1923, 1925, 1965, 2202, 2274, 2276, 2412); no code change needed here, but the gate category this loop reads becomes more accurate post-fix
 - `skills/confidence-check/SKILL.md:140` — shells out to extract the `program_design_nonspecific` JSON key from `ll-issues format-check` output
 
+_Wiring pass added by `/ll:wire-issue` (second pass):_
+- `scripts/little_loops/loops/rn-remediate.yaml:98-119` (`ensure_formatted` state) — runs `ll-issues format-check "$ID"` and gates on exit code; comment at `:102` names `program_design_nonspecific` as a gap class this reflects. Inherits the fix transparently (exit-code-only consumer), no code change needed.
+- `scripts/little_loops/loops/refine-to-ready-issue.yaml:518-528` (`check_design` state) — runs `ll-issues check-design ${captured.issue_id.output:shell}`, exit-code gate; comment cites `design_gate_failed()`. Same posture as `autodev.yaml`, no code change needed.
+- `scripts/little_loops/issue_parser.py:388` — a second, unrelated import of `SECTION_TITLE, program_design_gate_active` from `program_design.py`, inside `_gate_program_design()`. Governs whether "Program Design" is a required section at all (cutover-arming/grandfathering); never calls or is called by `extract_call_path_anchors()`. Checked, no change needed.
+
 ### Conventions in Force
 - Prior narrow fixes in this file cite the fixing bug's ID in an inline comment at the changed site — evidence: `program_design.py:74-77` ("BUG-3071"), `:302-304`/`:356-358` ("BUG-3273").
 - Normalizer-level tests call the pure function directly with an inline resolver stand-in; no fixture repo is used unless testing `git_grep_resolver()` itself — evidence: `test_program_design_gate.py::TestGrading`/`TestDuplicateCallPathAnchors` (no fixture) vs `::TestRealRepoResolution` (real git repo fixture).
@@ -73,9 +78,22 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_issue_lifecycle.py:1983, 1993` — asserts `DeferReason.DESIGN_GATE_FAILED.value == "design_gate_failed"`; unaffected but confirms the enum root is stable
 - `scripts/tests/test_autodev_loop.py:591` — indexes `"design_gate_failed"` inside `autodev.yaml`'s design-gate content; regression-check
 
+_Wiring pass added by `/ll:wire-issue` (second pass):_
+- `scripts/tests/test_ll_issues_check_design.py` (whole file, e.g. `:9,29,33,113,120`) — dedicated `cmd_check_design()`/`ll-issues check-design` suite, not previously listed despite `check_design.py` itself being known; include in regression sweep.
+- `scripts/tests/test_ll_issues_format_check.py:334,2790` — asserts an empty `program_design_nonspecific: []` JSON fixture and the text-mode line prefix; regression-check.
+- `scripts/tests/test_set_status_cli.py:344` — asserts `"design_gate_failed"` is a valid `--reason` value for `set-status`; unaffected, confirms enum stability.
+- `scripts/tests/test_issues_cli.py:7125-7146` `test_design_gate_failed_ranked_between_readiness_stagnated_and_low_readiness` — deferral-reason display ranking; unaffected.
+- `scripts/tests/test_builtin_loops.py:7815` — asserts a `deferred_reason: "design_gate_failed"` JSON fixture round-trips through loop-builtin plumbing; unaffected.
+- `scripts/tests/test_refine_issue_command.py:498,506-508` — asserts `/ll:refine-issue` command prose mentions `program_design_nonspecific`; documentation-text assertion, unaffected.
+
 ### Documentation
 - `docs/reference/API.md` — documents `program_design_nonspecific` gap category, `check-design` CLI row, `design_gate_failed` gate-priority prose
 - `docs/reference/CLI.md` — documents `ll-issues format-check` flags/output including `program_design_nonspecific`
+
+_Wiring pass added by `/ll:wire-issue` (second pass):_
+- `docs/reference/ISSUE_TEMPLATE.md` — Program Design footnote describing the Call Path resolution rule categorically (no underscore-stripping specifics or example anchors); checked, no update needed.
+- `docs/reference/DEFERRAL_CODES.md:25` — `design_gate_failed` row describes the reason purely in boolean/categorical terms; checked, no update needed.
+- `docs/guides/LOOPS_REFERENCE.md` (claim-verification gate chain, ENH-3031) — describes `check_design`'s routing/exit-code semantics only, not resolution content; checked, no update needed.
 
 ## Program Design
 
@@ -103,6 +121,10 @@ _Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
 - Real production caller chain, correcting the graph seed's "no importers found" gap (the graph indexes symbol/file edges, not this cross-module function-call chain): `ll-issues format-check` → `check_format_gaps()` (`issue_parser.py:1008-1013`) → `grade_issue_section()` (`program_design.py:543-546`) → `grade_program_design()` (`:402-441`, calls `extract_call_path_anchors()` at `:422`) → the `_add()` normalizer.
 - Convention: prior narrow fixes to this exact file leave an inline comment citing the bug ID at the fixed site — evidence: `program_design.py:74-77` ("BUG-3071"), `:302-304`/`:356-358` ("BUG-3273"), `test_program_design_gate.py:236-244` docstring ("BUG-3245's fix routes new heading-emission through a containment check...").
 - Testing convention: normalizer-level fixes in this file are unit-tested directly on the pure function with an inline resolver stand-in — no fixture repo needed (`TestGrading`, `TestDuplicateCallPathAnchors`, `test_program_design_gate.py:236-431`). Only resolver-level behavior (`git_grep_resolver()` itself) uses the real-git-repo fixture in `TestRealRepoResolution` (`:434-475`). No existing test in either class currently exercises a leading-underscore/private identifier.
+
+_Added by `/ll:wire-issue` (second pass) — based on codebase analysis:_
+
+- Closer analog than "no pattern exists" for the paired-delimiter stripping this fix needs: `scripts/little_loops/cli/harness.py:456-473` `_normalize_answer()` strips a quote/backtick only when the same delimiter appears on *both* ends (`if text.startswith(quote) and text.endswith(quote): text = text[1:-1]`) — the same symmetric-stripping shape, in a different module, with no dedicated unit test of its own (only exercised indirectly via `cmd_dsl`, `test_cli_harness.py:1816-1834`). Confirms the issue's "no *shared* helper to delegate to" claim while giving implementation a closer shape to model than a blank slate.
 
 _Added by `/ll:refine-issue` — 2026-09-15 — based on codebase analysis:_
 
@@ -137,6 +159,7 @@ _Added by `/ll:refine-issue` — 2026-09-15 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-15T19:24:37 - `6d7823a0-f459-448f-abfd-383d591b75f3.jsonl`
 - `/ll:refine-issue` - 2026-09-15T17:59:03 - `87cb899f-60d1-4042-81cb-33c78f6d04d3.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-09-15T16:12:43 - `31c45f73-3f1c-4df6-a475-d59f9b1efee6.jsonl`
 - `/ll:wire-issue` - 2026-09-14T22:50:06 - `bac75f45-b587-45bb-bf3c-443b0c5e805a.jsonl`

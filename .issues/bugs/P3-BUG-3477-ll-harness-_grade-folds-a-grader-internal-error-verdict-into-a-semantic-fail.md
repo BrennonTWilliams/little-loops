@@ -77,6 +77,9 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/cli/harness.py` — per-sample result label dict inside `_run_sample_loop()`: `label = {2: "ERROR", 3: "ABSTAIN", 0: "PASS"}.get(rc, "FAIL")`, a second, independent rc→label banding (distinct from the aggregate `_band_samples()` verdict) used for each sample's entry in the JSON `results` array; falls through to `"FAIL"` for any unrecognized rc.
 - `scripts/little_loops/cli/harness.py:2032` — `_run_sample_loop()` also calls `_band_samples(tally)` directly (a second `_band_samples()` call site beyond `_run_baseline_phase()`'s at `:1837`).
 - `scripts/little_loops/cli/harness.py:1907-1968` — `_run_compare_arm()` (ENH-3435) reads `res.tally.passed`/`res.tally.graded` directly (`candidate_rate = res.tally.passed / res.tally.graded if res.tally.graded else None`) to compute `BaselineDelta`; a `SampleTally`-field consumer not previously listed.
+- `scripts/little_loops/cli/harness.py:1991-1992` — `_run_baseline_phase()`'s reused-baseline branch calls `_band_samples(existing.tally)` then `_report_samples(...)` directly — a second `_band_samples()` call site beyond `_run_sample_loop()`'s.
+- `scripts/little_loops/cli/harness.py:2030, 2373, 2840, 2954, 3082, 3209` — six more `_report_samples()` call sites: `_run_baseline_phase()`'s freshly-sampled branch, `_run_compare_arm()`, and each of `cmd_skill`/`cmd_cmd`/`cmd_mcp`/`cmd_prompt`.
+- `scripts/little_loops/cli/harness.py:2826, 2948, 3076, 3203, 2852, 2966, 3094, 3221, 3404` — `_run_compare_arm()` and `_evaluate_and_report()` callers across all five runner subcommands (`cmd_skill`, `cmd_cmd`, `cmd_mcp`, `cmd_prompt`, plus `cmd_dsl` for `_evaluate_and_report()`); previously only `_evaluate_and_report()`'s own call into `_grade()` was cited, not its callers.
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/cli/harness.py:2000` — `_run_sample_loop()` calls `_grade()`
@@ -115,6 +118,15 @@ _Wiring pass added by `/ll:wire-issue`:_
 - New test needed: `_report_samples()` `samples_line` assertion for the new bucket, mirroring `test_errored_sample_does_not_stop_loop`'s literal `"1 errored"` check
 - Flag for explicit decision, not silent: `TestBandSamples::test_all_errored_is_error`/`::test_two_pass_one_errored_is_inconclusive` currently lock the existing `errored` bucket to rc==2 infra errors only — if `grader_error` is folded into the same `SampleTally.errored` counter rather than a new field, these tests' semantics silently widen to also mean "judge crashed"
 
+_Wiring pass added by `/ll:wire-issue` (second pass):_
+- `scripts/tests/test_cli_harness.py:4765-4831` `TestHarnessEvalOutcomeEfficiencyFields` (ENH-3464) — calls `_grade()` directly 6 times, asserting on `outcome.input_tokens`/`output_tokens`/`duration_ms`/etc.; not in this issue's Tests list, needs a regression check once `_grade()`'s branching changes.
+- `scripts/tests/test_cli_harness.py:3369-3437` — module-level `_tally()` helper constructs `SampleTally` directly (never sets `errored`/`abstained`), consumed by `TestArmVerdict`/`TestDriftReachability`; a `SampleTally`-construction site outside `_grade()`'s own path — confirm dataclass-default compatibility once a `grader_error` field is added.
+- `scripts/tests/test_fsm_evaluators.py:1435` `class TestAbstentionVerdict` — same class name as, but a different file from, the known `test_cli_harness.py::TestAbstentionVerdict`; tests `evaluate_llm_structured()`'s `"cannot_judge"` verdict one layer below `_grade()`. Unaffected by the fix, flagged only to avoid confusion when searching by class name.
+- `scripts/tests/test_cli_harness.py:821-842` `TestSemanticEvaluator::test_semantic_non_yes_fails` — parametrized `verdict in ["no", "blocked", "partial"]`, asserts exit 1 / `"FAIL"` in stdout for every non-yes value. Constrains the fix: the new branch must match `verdict == "error"` specifically, not widen the existing `!= "yes"` fallthrough, or this test breaks.
+- Gap: no test drives the candidate arm through a semantic `verdict="error"` grade into `_run_compare_arm()`'s `BaselineDelta`/`res.tally.passed`/`res.tally.graded` computation — existing coverage (`TestBaselineCompare.test_delta_null_when_candidate_ungraded`, `test_cli_harness.py:3358-3366`) only exercises the runner-timeout rc=2 path, not a semantic grader error.
+- Gap: no test asserts on `_report_samples()`'s `errored`/`grader_error` extras line or the `--output json` `"samples"` dict's `errored` key for a non-PASS case beyond the existing runner-timeout `test_errored_sample_does_not_stop_loop`.
+- Gap: no test asserts on the per-sample JSON `results[i]["result"]` label built by `_run_sample_loop()`'s `label = {2: "ERROR", 3: "ABSTAIN", 0: "PASS"}.get(rc, "FAIL")` dict; add coverage once a `grader_error` rc/label is introduced.
+
 ### Documentation
 - `docs/guides/EVALUATION_GUIDE.md:449` — documents `harness_eval_pass_rate` counting rows with non-NULL `semantic_passed` "on every non-abstained run"; will need a note once a grader-error bucket exists that is also non-abstained but not gradeable
 
@@ -125,6 +137,15 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `docs/reference/CLI.md:262-331` — the exit-code table, `--output json` payload shape (`"result"`: PASS/FAIL/ABSTAIN/ERROR/INCONCLUSIVE), and the n-sample `"samples"` object's exact field list; more exposed than the already-known `EVALUATION_GUIDE.md:442-448` note since it's the CLI reference doc users read for the JSON contract
 - `docs/reference/EVENT-SCHEMA.md` — the `ll-harness` "JSON output conventions" bullet enumerates the invocation-level verdict set (PASS/FAIL/ABSTAIN/ERROR/INCONCLUSIVE), a third location stating the same set
 - `docs/ARCHITECTURE.md` (`v31 harness_events` schema-history row) — checked, no update needed: encoding `grader_error` via existing `semantic_verdict='error'`/`semantic_passed=NULL` implies no new column
+
+_Wiring pass added by `/ll:wire-issue` (second pass):_
+- `docs/reference/API.md:6179-6194` — `evaluate_exit_code()`/`abstain_on_exit_3` doc block states the same exit-code contract (`0`=pass,`1`=fail,`3`=abstained; notes `ll-harness` treats `2` as infra error) — a fourth location alongside `EVALUATION_GUIDE.md`/`CLI.md`/`EVENT-SCHEMA.md`.
+- `docs/reference/API.md:9169` — `harness_eval_pass_rate()` narrative restates the same "`semantic_passed IS NULL` = abstained" convention already flagged at `EVALUATION_GUIDE.md:449`, in a separate doc file.
+- `docs/reference/API.md:9275-9279` — `BaselineDelta` note ("the run's exit code always comes from the candidate tally's own banding") describes `_run_compare_arm()` behavior that a `grader_error` bucket changes.
+- `docs/generalized-fsm-loop.md:623-651` — a fifth location documenting the same ABSTAIN exit-code contract, near-duplicate of `API.md:6179-6194`.
+- `docs/reference/CLI.md:332-370` — extends the already-known `:262-331` citation: the literal `"samples"` object field list (`requested`/`graded`/`passed`/`failed`/`abstained`/`errored`/`ci_lo`/`ci_hi`), `PASS`-vs-`INCONCLUSIVE` precedence prose, and the `ll-harness dsl` exit-code table (`:365-370`).
+- `scripts/little_loops/loops/lib/common.yaml:23-37` — the `harness_exit` fragment's `description:` block repeats the same ABSTAIN exit-code contract; loop-authoring reference material, not user docs, but the same claim to reconcile.
+- `docs/guides/HISTORY_SESSION_GUIDE.md:91` — a second copy of the `v31 harness_events` schema-history row already checked at `docs/ARCHITECTURE.md`; same conclusion applies (no update needed, no new column).
 
 ## Program Design
 
@@ -163,6 +184,16 @@ _Added by `/ll:refine-issue` — 2026-09-15 — based on codebase analysis:_
 - Three coexisting test styles for grading/verdict logic in `test_cli_harness.py`, none used exclusively: (1) pure-function unit test on `SampleTally`/`_band_samples()` with no mocking (`TestBandSamples`, `harness.py:965`), (2) direct `_grade()` call with a mocked `evaluate_llm_structured` (`TestGradeEvidenceChannels`, `:4381`), (3) end-to-end `cmd_cmd()` + `capsys` stdout assertions with a mocked judge (`TestAbstentionVerdict`, `:870`). No existing test in this file constructs `EvaluationResult(verdict="error", ...)` — confirmed via file-wide grep, zero matches.
 - No `Enum`/`StrEnum` convention found for a grading/verdict tri-state field anywhere in `harness.py` or `fsm/verdicts.py` — every existing tri-state precedent (`HarnessEvalOutcome.abstained`, `ChannelRecord.passed`) uses a plain `bool` or `bool | None` field, not an enum.
 - `_run_sample_loop()`/`_evaluate_and_report()` (Call Path above, cited `harness.py:1969`/`:2070`) are now defined at `:2403`/`:2504` respectively.
+
+### Wiring Phase (added by `/ll:wire-issue`, second pass)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Add test: drive a semantic `verdict="error"` grade through `_run_compare_arm()`'s candidate arm and assert `BaselineDelta`/`res.tally.passed`/`res.tally.graded` behave correctly (existing coverage only exercises the runner-timeout rc=2 path).
+- Add test: `_report_samples()`'s `errored`/`grader_error` extras line and `--output json` `"samples"` dict key for a non-PASS case driven by a semantic error (not just a runner timeout).
+- Add test: per-sample JSON `results[i]["result"]` label for a `grader_error` rc/label inside `_run_sample_loop()`.
+- Verify `TestSemanticEvaluator::test_semantic_non_yes_fails` (`test_cli_harness.py:821-842`) still passes unchanged — confirms the new branch is scoped to `verdict == "error"` only.
+- Reconcile the exit-code/verdict-set contract across `docs/reference/API.md:6179-6194,9169,9275-9279`, `docs/generalized-fsm-loop.md:623-651`, `docs/reference/CLI.md:332-370`, and `scripts/little_loops/loops/lib/common.yaml:23-37` once the `grader_error` bucket's exit-code/label is decided.
 
 ## Impact
 
@@ -217,6 +248,7 @@ directly (above).
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-15T19:24:37 - `6d7823a0-f459-448f-abfd-383d591b75f3.jsonl`
 - `/ll:refine-issue` - 2026-09-15T17:59:03 - `87cb899f-60d1-4042-81cb-33c78f6d04d3.jsonl`
 - `/ll:verify-issues` - 2026-09-15T15:57:34 - `fe401c2e-e475-43b1-b588-44df23082884.jsonl`
 - `/ll:wire-issue` - 2026-09-14T22:50:06 - `bac75f45-b587-45bb-bf3c-443b0c5e805a.jsonl`
