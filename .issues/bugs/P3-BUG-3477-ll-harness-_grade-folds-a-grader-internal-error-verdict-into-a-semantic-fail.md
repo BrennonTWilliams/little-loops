@@ -231,6 +231,30 @@ Verdict at time of check: **OUTDATED** (corrections below applied in the same
 pass, so the issue as it now reads is up to date — this section is a record
 of what was wrong and fixed, not an outstanding action item).
 
+**2026-09-15 (later pass):** re-checked every citation in the Integration Map
+and Program Design sections against current HEAD (working tree clean, no
+commits to `harness.py`/`history_reader/harness.py` since `1db97bfac`) — all
+confirmed accurate: `_grade()` def `:1331`, `HarnessEvalOutcome` `:961`
+(`abstained` field `:967`), `SampleTally` `:876`, `_band_samples()` `:1474`,
+the five DB-recording call sites `:2741/:2907/:3035/:3162/:3438` plus the
+second `cmd_dsl` site `:3341`, `_run_sample_loop()` def `:2403` (calls
+`_grade()` `:2434`, `_band_samples()` `:2466`), `_evaluate_and_report()` def
+`:2504` (calls `_grade()` `:2526`), `_run_compare_arm()` def `:2323` (reads
+`tally.passed`/`tally.graded` `:2352`), the per-sample label dict `:2439`,
+`_rc_from_event()` `history_reader/harness.py:314-327`, `baseline_for()`'s
+`tally.record()` call `:387`, `harness_eval_abstention_rate()` `:451`,
+`is_abstention_verdict()` `fsm/verdicts.py:25`, `BlockingJsonError` catch
+`fsm/evaluators.py:1123`, and the FSM `on_error`/`route.error` citations in
+`fsm/executor.py` (`:2346, :2371, :3276, :3289`). One stale citation found
+and corrected below: this section's own inline reference to the error-fold
+branch (previously `harness.py:1382-1385`) is now `harness.py:1426-1428` —
+confirmed by direct read, branch text unchanged
+(`elif eval_result.verdict != "yes": passed = False`). `grader_error`
+confirmed absent repo-wide. `ll-verify-evidence --json` returned clean
+(`"ok": true, "count": 0`) — no unverifiable spans. No active required
+decision rules found in `.ll/decisions.yaml`/`.ll/decisions.d` to check
+against.
+
 Three commits landed after this issue was captured (`b17eabb54`
 "widen ll-harness evidence surface beyond stdout", `80d2d38d0` "score
 ll-harness runs on a named efficiency vector", `e3739238b` "persist
@@ -247,7 +271,7 @@ DB-recording call sites at `:2285, 2427, 2555, 2682, 2951`, `_rc_from_event()`
 at `history_reader/harness.py:314-326`, etc.).
 
 The underlying claim is unchanged and confirmed still true: `_grade()`
-(`harness.py:1382-1385`, current `elif eval_result.verdict != "yes": passed =
+(`harness.py:1426-1428`, current `elif eval_result.verdict != "yes": passed =
 False` branch) still folds a grader-internal `"error"` verdict into
 `passed = False` identically to a semantic `"no"` — the fix this issue
 describes is still needed, at the corrected locations. Files not touched by
@@ -271,6 +295,7 @@ directly (above).
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-15T19:37:30 - `cdbb07d4-56af-4822-8c99-6c7b4578265d.jsonl`
 - manual review - 2026-09-15 - decided grader error → rc 2 / `errored` bucket, precedence fail > grader_error > abstain > pass; added Acceptance Criteria; corrected `_evaluate_and_report()` "renders PASS" → FAIL; flagged `harness_eval_abstention_rate()` denominator; replaced five-site threading with a `semantic_passed_row` property; `_rc_from_event()` verdict-first ordering re-bands pre-fix rows
 - `/ll:wire-issue` - 2026-09-15T19:24:37 - `6d7823a0-f459-448f-abfd-383d591b75f3.jsonl`
 - `/ll:refine-issue` - 2026-09-15T17:59:03 - `87cb899f-60d1-4042-81cb-33c78f6d04d3.jsonl`

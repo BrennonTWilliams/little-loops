@@ -9,6 +9,7 @@ discovered_date: '2026-09-15'
 captured_at: '2026-09-15T19:28:33Z'
 testable: false
 program_design_not_applicable: true
+reconcile_attempted: true
 ---
 
 # ENH-3480: wire-issue first pass misses call sites inside already-known files
@@ -84,6 +85,13 @@ In `skills/wire-issue/SKILL.md` only — no Python:
   callers inside those same files and add the enclosing function names to
   the seed set, so pass 1 reaches what pass 2 currently does.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-15 — based on codebase analysis:_
+
+- Correction to (a): only Agent 1 (`SKILL.md:180`) and Agent 2 (`SKILL.md:212`) carry whole-file exclusion wording to change. Agent 3 (Test Gap Finder, `SKILL.md:223-253`) has no exclusion instruction today — it needs a new instruction to report intra-file test/doc sites, not a rewording of an existing one.
+- Correction to (b): the render target is Phase 8a (`### Integration Map Updates`, `SKILL.md:342-398`), not Phase 7. Phase 7 (`SKILL.md:302-332`) only displays a summary/confirmation prompt and performs no file edits; it explicitly skips straight to Phase 8 in Auto Mode.
+
 ## Integration Map
 
 ### Files to Modify
@@ -115,13 +123,32 @@ In `skills/wire-issue/SKILL.md` only — no Python:
 ### Configuration
 - N/A
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-15 — based on codebase analysis:_
+
+- `skills/wire-issue/SKILL.md` is currently exactly 500 lines (confirmed to EOF) — already at the `ll-verify-skills` cap. Any net-additive change (new `sites_to_add` category, its rendering, wording edits) needs either an equal-or-greater removal elsewhere or extraction to a companion file; the file already uses this pattern for `behavior-parity.md`, `static-coupling-layer.md`, `graph-discovery-layer.md`, `prose-dependency-gate.md`, `evidence-confirmation.md`, `caller-suitability-gate.md`, `learning-targets.md`, `output-report.md`.
+- Phase 4's exclusion wording is not uniform across the three agent prompts: Agent 1 (`SKILL.md:180`, Caller and Importer Tracer) and Agent 2 (`SKILL.md:212`, Side-Effect Surface Tracer) each carry an explicit "Exclude files already..." instruction; Agent 3 (Test Gap Finder, prompt lines 223-253) has no exclusion instruction at all — it only supplies `known_tests` as context. Only two prompts need rewording; Agent 3's prompt needs a new instruction to report intra-file test/doc sites, since it has no exclusion wording to remove.
+- The `MISSING_WIRING` block (`SKILL.md:269-281`) has 11 categories, not 9 — the range `270-278` cited elsewhere in this issue covers `callers_to_add` through `gate_consumers` but omits `conditional_branches` (279) and `new_impl_steps` (280), both also file-granular and candidates for a matching site-level variant if the granularity change is meant to be complete.
+- `cli_coupling` (`SKILL.md:276`) is defined in Phase 5 but has no rendering destination anywhere in Phase 8a — it is never referenced again after its definition. Pre-existing gap, unrelated to intra-file-site detection; a new `sites_to_add` category should not repeat this omission.
+- Rendering of `MISSING_WIRING` findings into the issue file happens in **Phase 8a** (`SKILL.md:342-398`, `### Integration Map Updates`), not Phase 7. Phase 7 (`SKILL.md:302-332`) is display/confirmation-only and performs no `Edit` calls — it explicitly skips to Phase 8 in Auto Mode (`SKILL.md:304`).
+- The `_Wiring pass added by \`/ll:wire-issue\`:_` marker is not applied uniformly in Phase 8a: it appears for `### Dependent Files (Callers/Importers)`, `### Documentation`, `### Tests`, and `### Configuration` appends, but the `### Files to Modify` append for `registrations_to_add` (`SKILL.md:356-361`) shows no marker, and Phase 8b's `### Wiring Phase` block (`SKILL.md:400-416`) uses different marker text ("_These touchpoints were identified by wiring analysis and must be included in the implementation:_", line 410).
+- `scripts/tests/test_wire_issue_static_layer.py` tests only `little_loops.decisions.load_coupling_entries()` (the Phase 3.5 static coupling layer) — no assertions about Phase 4 exclusion wording or Phase 5 `MISSING_WIRING` categories, so it is unaffected by this change.
+- `scripts/tests/test_wiring_skills_and_commands.py` has parametrized `DOC_STRINGS_PRESENT`/`DOC_STRINGS_ABSENT` tables asserting `gate_consumers` and `conditional_branches` are present in `SKILL.md` (ENH-3050) but does not pin the exact Phase 4 exclusion sentences, the full `MISSING_WIRING` category list, or the `_Wiring pass added by...` marker string — implementing this issue means extending these tables, not modifying conflicting existing assertions.
+
 ## Implementation Steps
 
-1. Update Phase 4 exclusion wording in all three agent prompts
-   (`SKILL.md:180,212`) to exclude cited `path:symbol` sites instead of
-   whole known files.
-2. Add the `sites_to_add` `MISSING_WIRING` category and its Phase 7
-   Integration Map rendering (`SKILL.md:270-278`).
+1. Reword the Phase 4 exclusion instructions in Agent 1 (`SKILL.md:180`,
+   Caller and Importer Tracer) and Agent 2 (`SKILL.md:212`, Side-Effect
+   Surface Tracer) to exclude cited `path:symbol` sites instead of whole
+   known files. Add a new instruction to Agent 3 (Test Gap Finder, prompt
+   lines 223-253) — which carries no exclusion wording today — to report
+   intra-file test/doc sites.
+2. Add the `sites_to_add` `MISSING_WIRING` category to the Phase 5 block
+   (`SKILL.md:269-281`) and render it in **Phase 8a** `### Integration Map
+   Updates` (`SKILL.md:342-398`), using the same
+   `_Wiring pass added by \`/ll:wire-issue\`:_` marker used elsewhere in
+   that phase.
 3. Optionally add the one-hop `key_symbols` caller expansion in Phase 3
    (`SKILL.md:108-132`).
 4. Verify: run `/ll:wire-issue` twice on a freshly refined issue and confirm
@@ -172,5 +199,6 @@ a single skill file, not a code interface)
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-15T19:37:17 - `cdbb07d4-56af-4822-8c99-6c7b4578265d.jsonl`
 - `/ll:format-issue` - 2026-09-15T19:32:03 - `f46aa9fa-d555-454b-872b-89355e6b8675.jsonl`
 - `/ll:capture-issue` - 2026-09-15T19:28:41 - `a935744c-43bf-4d30-9969-892325ab65a6.jsonl`
