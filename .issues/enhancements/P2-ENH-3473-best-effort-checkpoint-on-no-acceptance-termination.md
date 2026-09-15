@@ -49,6 +49,15 @@ _Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
 - The codebase's established per-iteration artifact convention is a directory per iteration (`iter-N/`, tracked via an `.iter_counter`/`.iter` sentinel file — `canvas-sketch-generator.yaml:293-320`, `vega-viz.yaml:500-509`, documented generically in `loops/lib/common.yaml:243`) or a flat `*-iter-N.*` filename (`docs/guides/LOOPS_REFERENCE.md:1899`) — not a single `iter_<N>_*.json` file. No file anywhere in the repo follows the `iter_<N>_*.json` shape this issue's Signatures section proposes, and no `metadata.best_effort=True`-style tag exists on any written artifact today (confirmed by repo-wide search — the only `best_effort` hits are unrelated test names about best-effort DB writes).
 - Confirmed: no existing test covers "context-compaction failure stays hard-terminal" — `test_session_store_lifecycle.py::TestCompactSession`, `test_compaction.py`, `test_pre_compact.py` were searched directly with no match on this boundary. `session_store/lifecycle.py::compact_session()` (:679-710) wraps its call to `_compact_session_conn()` in a bare `try/finally` (only closing the connection) with no `except` clause, and `cli/compact_session.py::main_compact_session()` (:55-96) calls `compact_session(...)` with no surrounding try/except either — confirming the issue's claim that a compaction failure propagates as a raised exception rather than being converted into any kind of partial artifact.
 
+_Added by `/ll:refine-issue` — 2026-09-15 — based on codebase analysis:_
+
+- Correction to the Design section's escape hatch: `scripts/little_loops/hooks/pre_compact.py::handle()` is a structurally separate mechanism from `session_store/lifecycle.py::compact_session()` — it preserves `.ll/ll-precompact-state.json` ahead of the *host's own* built-in context compaction, and never calls `compact_session()`/`_compact_session_conn()`. Its own top-level `try/except Exception: return LLHookResult(exit_code=0)` only guards its own state-write logic. `compact_session()` (`session_store/lifecycle.py:679-710`) has exactly one production caller, `cli/compact_session.py::main_compact_session()` (:55-96, calls it at :70 with no surrounding try/except) — that is the actual hard-terminal call chain this issue's escape hatch is about; `hooks/pre_compact.py` is unrelated to it and should not be cited as part of the same mechanism.
+- `write_best_effort_checkpoint` confirmed genuinely nonexistent anywhere in source (repo-wide search, no glob/type filter) — new surface area, matching the issue's own claim.
+- `map_final_status()` (`fsm/persistence.py:132-168`) confirmed still a closed 5-value contract (`completed`/`failed`/`interrupted`/`timed_out`/`awaiting_continuation`), free-form `str`, no enum/Literal constraint. Confirmed 4 production call sites: `transport.py:1750`, `fsm/persistence.py:1184` (inside `archive_run_only()`), `fsm/persistence.py:1246` (inside `PersistentExecutor.run()` itself), and `session_store/writers.py:2934` (drifted from the issue's cited `:2891`, which today is inside the unrelated `_derive_transition()`).
+- Citation drift confirmed: `cli/logs.py::_derive_loop_outcome()` is currently at lines 2058-2083 (issue cites `2037-2062`; line 2037 today falls inside the preceding function `_builtin_loop_paths()`'s docstring). The function's behavior matches the issue's description exactly once located: `if "error" in event: return "error"` fires first (2060-2061), before any `terminated_by` check, falling through to the `final_state` keyword heuristic (2080-2082) and defaulting to `"converged"` (2083) for an unrecognized terminal name — confirming the issue's core wiring concern is real.
+- `canvas-sketch-generator.yaml`'s `finalize` state is confirmed at lines 34 (`on_max_steps: finalize`) and 344 (state body) — but line 293 (also cited by the issue alongside 34/344) is actually the `snapshot:` state header, not another `finalize` occurrence; the citation should read `:34,344` for `finalize` specifically.
+- `general-task.yaml`'s `on_max_steps: summarize_partial` → `partial` precedent (cited `:1219,1244,1303`) is confirmed byte-for-byte at those lines, but with a caveat the Design section doesn't currently note: on the literal `on_max_steps` cap-hit path, the executor terminates right after `summarize_partial` runs a prose `summary.md` — `write_partial_summary` (:1244, the state that actually writes the JSON-verdict `summary.json`) is reached only via the sibling `final_verify.on_error` path, not via `on_max_steps` itself. The JSON-artifact-on-cap-hit precedent this issue models itself on is slightly weaker than currently stated.
+
 ## Program Design
 
 ### Types
@@ -68,6 +77,13 @@ _Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
 
 ### Call Path
 `PersistentExecutor.run()` (`fsm/persistence.py:1212`) → `write_best_effort_checkpoint()` (new) → `StatePersistence` write helper (existing, `fsm/persistence.py:502-523`) → `map_final_status()` (`fsm/persistence.py:132-168`) → `_derive_loop_outcome()` (`cli/logs.py:2037-2062`).
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-15 — based on codebase analysis:_
+
+- Confirmed: `PersistentExecutor._save_state()` (`fsm/persistence.py:1129-1159`) still overwrites a single fixed per-instance state file via `StatePersistence.save_state()` (:502-523, atomic `os.replace`) — no per-iteration accumulation logic present anywhere in `StatePersistence`, matching the issue's own claim.
+- Confirmed: no existing type, `metadata`-wrapper key, or boolean tagging convention (e.g. `"is_best"`, `"provisional"`, `"draft"`) exists on any loop-written checkpoint artifact anywhere in `scripts/little_loops/loops/` — the closest existing analog is string-`"verdict"` plus integer-count fields (e.g. `general-task.yaml`'s `"verdict"`/`"abandoned"` in `summary.json`), not boolean metadata tags. No loop uses an `iter_<N>_*.json` flat-filename shape; the two established per-iteration conventions are a directory-per-iteration (`iter-N/`, `.iter_counter`/`.iter` sentinel) or a flat `*-iter-N.*` name — neither matches this issue's proposed `iter_<N>_best_effort.json` shape.
 
 ## Wiring
 
@@ -108,12 +124,18 @@ _Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
 
 - `map_final_status()` has a fourth caller not previously enumerated here: `fsm/persistence.py:1184` inside `archive_run_only()` — the signal-handler-safe force-exit path (invoked from `cli/loop/signals.py`'s `_loop_signal_handler()`). Any new outcome bucket or value this issue adds to `map_final_status()`'s closed contract must also be sane for that path, which runs outside the normal `PersistentExecutor.run()` completion flow.
 
+_Added by `/ll:refine-issue` — 2026-09-15 — based on codebase analysis:_
+
+- Line-drift corrections confirmed against current tree: `cli/loop/evidence.py::_scan_for_credentials()` def at :198 (span ~198-254, issue cited ~198-249); sha256 hashing lines actually at :315 and :317 (issue cited ~312-318); `cli/loop/audit.py::_AUX_EXCLUDED_NAMES` (:23) and `_scan_aux_mutations()` (:144, exclusion check at :166) confirmed close to cited `~23-30, ~144-174`; `generate_schemas.py`'s `terminated_by` schema entries span :607-636 (issue cited :615-634).
+- `PersistentExecutor.archive_run_only()` (:1161-1210) and its one caller `cli/loop/signals.py:60` (hardcodes `terminated_by="interrupted_force"`, guarded by a narrower `except OSError: pass` at the call site per `cli/loop/signals.py:58-62`) reconfirmed unchanged — genuinely out of scope per the issue's own "Confirmed Not Affected" note, since it builds `LoopState` directly and has no `ExecutionResult` to pass to the new checkpoint writer.
+
 ## Implementation Steps
 
 1. Pick and document a "closest attempt to objective" selection metric (Design → no shared utility exists; do not assume one).
 2. Decide and document which `terminated_by` values (built on ENH-3471's new vocabulary) qualify as "no acceptance," per the Decision Rules above.
 3. On a qualifying no-acceptance termination, write exactly one checkpoint artifact tagged `best_effort` (e.g. `iter_<N>_best_effort.json` with `metadata.best_effort=True`) — verified by a test asserting the artifact exists after a simulated cap-hit with no acceptance.
 4. Add a test asserting NO such artifact is produced for a hard-terminal case this pattern must not cover — specifically context-compaction failure (`hooks/pre_compact.py`, `session_store/lifecycle.py::compact_session()`) staying hard-terminal. No existing test covers this boundary today.
+   > ⚠ Superseded — `hooks/pre_compact.py` is unrelated; the actual hard-terminal call chain is `cli/compact_session.py::main_compact_session()` → `session_store/lifecycle.py::compact_session()` only; see § Codebase Research Findings under Design
 5. Apply the Wiring section's updates (`map_final_status`, `_WASTED_RUN_PREDICATE`, `_derive_loop_outcome`, `EXIT_CODES`/`_is_success`, `audit-loop-run/SKILL.md`, docs/schema rows for this new value).
 6. `python -m pytest scripts/tests/test_fsm_executor.py scripts/tests/test_fsm_persistence.py scripts/tests/test_builtin_loops.py scripts/tests/test_ll_logs.py -v` passes.
 
@@ -146,6 +168,7 @@ _Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
 **Note** (added by `/ll:audit-issue-conflicts`): This issue's `_WASTED_RUN_PREDICATE` (usage.py:310-316) edit shares the same `IN (...)` membership list as ENH-3471's edit to the same predicate. Already sequenced via `depends_on: [ENH-3471]`, but implement this issue's edit as an additive diff against whatever shape ENH-3471 actually lands (not against the pre-3471 line numbers cited above), since both issues touch the same list.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-15T22:19:37 - `a0a3cae8-46b6-4741-b032-8859dea7a727.jsonl`
 - `/ll:wire-issue` - 2026-09-14T20:29:41 - `8cf1df9b-8fca-46d9-b751-f28d170c6572.jsonl`
 - `/ll:refine-issue` - 2026-09-14T19:32:06 - `93b68600-9c57-4c65-a431-1e887e42f117.jsonl`
 - `/ll:format-issue` - 2026-09-14T19:19:10 - `b113a2f7-29c0-4877-96df-0ecdfe92bfb9.jsonl`

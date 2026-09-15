@@ -50,6 +50,12 @@ _Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
 - Neither `_run_action_or_route()` (attempt-batch, `fsm/executor.py:3773-3801`) nor `_evaluate()`/`_route()`/`_resolve_route()` (decision-step, `fsm/executor.py:3076-3169`, `:3233`, `:3307`) wrap exceptions of their own beyond `_run_action_or_route()`'s local `on_error` reroute — an exception from either path reaches the same three `except` clauses in `run()` today.
 - On the open Literal-vs-str design choice: even where this codebase does use a `Literal[...]`-typed "why didn't this succeed" field (`ConsultOutcome.skipped_reason`, `advisor.py:306-337`), the value flattens back to plain `str` at its own persistence boundary — `AdvisorConsultRow.outcome` (`history_reader/events.py:212`) is untyped `str`, matching `ExecutionResult.terminated_by`'s existing convention. A third convention also exists: `FailureType(Enum)` (`issue_lifecycle.py:141-176`), consumed via `.value` and exposed to loop YAML as `${captured.<state>.failure_type}` (`fsm/executor.py:2691-2699`) — a separate, already-shipped classifier for "why did this action fail" (BUG-2826), orthogonal to `terminated_by`. All three conventions collapse to a bare string at the interpolation/YAML/persistence boundary; that boundary has no typed-vocabulary convention, only string equality/membership checks.
 
+_Added by `/ll:refine-issue` — 2026-09-15 — based on codebase analysis:_
+
+- Additional precedent for "which stage raised" distinction beyond the already-cited exception-subclass chain: `advisor.py::consult_for_trigger()` (~540-590) maps four distinct exception types to four distinct `Literal[...]`-typed reason values, one per `except` clause (not a subclass hierarchy) — `AdvisorNotConfigured` → `"not_configured"`, `CapabilityFloorViolation` → `"floor_violation"`, `HostNotConfigured` → `"failed"`, `BlockingJsonError` → inspects `exc.details.get("timeout")` to choose between `"timeout"`/`"failed"` within a single except clause. This is a closer analog to threading a named reason through a shared funnel than the `HeredocCollisionError`/`InterpolationError` chain alone, which today customizes only the `error=` message, not `terminated_by`.
+- Confirmed: `StrEnum` has zero usage anywhere in `scripts/little_loops` (only a comment in `issue_lifecycle.py:124-125` mentions the term). `abort_reason` as a field/attribute name is absent from source entirely — it only appears as prose in sibling issue files (`.issues/enhancements/P2-ENH-3473-*.md`, `P2-ENH-3468-*.md`), not as a shipped identifier.
+- Repo-wide search for a fourth exception-classification mechanism (beyond subclass-chain, per-except-clause literal assignment, and string/content classification) found none — no `isinstance(exc, ...)`/`isinstance(e, ...)` dispatch pattern exists in any `except` block.
+
 ## Program Design
 
 ### Types
@@ -60,6 +66,13 @@ _Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
 
 ### Call Path
 `FSMExecutor.run()` (attempt-batch exception via `_run_action_or_route()` re-raise, or decision-step exception via `_evaluate()`/`_route()`/`_resolve_route()`) → outer `except Exception as exc: return self._finish("error", ...)` (`:1027-1041`) → `_finish()` → `record_loop_run_summary()` (writes `loop_runs` row).
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-15 — based on codebase analysis:_
+
+- Citation correction: the `ExecutionResult.terminated_by` docstring's vocabulary enumeration (`fsm/types.py`) actually spans lines 35-43, not 35-49 — lines 44-49 are the docstring entries for `duration_ms` and the start of `captured`/`failure_terminal`, not further `terminated_by` values.
+- Pre-existing inconsistency adjacent to this field: the inline vocabulary comment at `fsm/types.py:59` (10 values) already omits several values present in both the class docstring and actual `executor.py` string literals — `stall_detected`, `host_pressure_abort`, `host_budget_exceeded`, `workdir_vanished` (all in the docstring, :35-43) and `cost_ceiling_exceeded` (used at `executor.py:958`, not in the docstring either). This is a pre-existing three-way drift between the inline comment, the docstring prose, and the actual literals already in use — worth keeping in mind since this issue adds yet more values to the same field.
 
 ## Integration Map
 
@@ -94,6 +107,12 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Update `scripts/little_loops/loops/auto-refine-and-implement.yaml` (~365-366, ~613) and `scripts/little_loops/loops/autodev.yaml` (~699) — stale comment prose describing the old "error"-only funnel
 - After editing `skills/create-loop/reference.md` (Step 8), run `ll-adapt --host qwen --apply`, `ll-adapt --host kimi-code --apply`, `ll-adapt --host gemini --apply` to resync the three mirror copies
 - Add a `test_builtin_loops.py` case exercising `refine-to-ready-issue.yaml:1043-1046`'s `*:error|*:timeout|*:max_steps` alternation directly (not just the sibling `True:*` arm already covered)
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-15 — based on codebase analysis:_
+
+- `docs/reference/API.md` citations re-verified against current content (2026-09-15): all three cited passages still match verbatim, only line numbers drifted by 2-3 lines each (unrelated edits elsewhere in the file) — usage example now at :6369 (was :6367), field comment now at :6379 (was :6377), waste_attribution prose now at :8820-8823 (was :8818-8822). No other Integration Map citation (loop YAMLs, three skill mirrors, canonical `skills/create-loop/reference.md`, `test_builtin_loops.py`) has drifted — all confirmed exact.
 
 ## Implementation Steps
 
@@ -130,6 +149,7 @@ _Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
 - Two established testing conventions exist for exception-to-reason mapping and neither supersedes the other: (a) one dedicated test method per raise-site scenario with full `FSMLoop`/`StateConfig` construction (the shape `test_fsm_executor.py`'s existing `terminated_by=="error"` assertions already use, e.g. `test_no_valid_route_terminates_with_error` at :2027, `test_exception_during_execution_returns_error_result` at :3532); (b) a single `@pytest.mark.parametrize("exc,expected_reason", [...])` method mapping exception instances to expected reason strings (`test_advisor.py::test_maps_each_exception_to_skipped_reason`, :475-503; `test_issue_lifecycle.py`'s `classify_failure()` parametrization, :963-1050). The new tests for this issue's abort-reason split should follow convention (a), matching the file's own existing `terminated_by` assertion shape.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-15T22:16:07 - `a0a3cae8-46b6-4741-b032-8859dea7a727.jsonl`
 - `/ll:wire-issue` - 2026-09-14T20:29:41 - `8cf1df9b-8fca-46d9-b751-f28d170c6572.jsonl`
 - `/ll:refine-issue` - 2026-09-14T19:32:05 - `93b68600-9c57-4c65-a431-1e887e42f117.jsonl`
 - `/ll:format-issue` - 2026-09-14T19:18:19 - `e03a4d3e-6e32-492e-b751-6c3a912f41aa.jsonl`
