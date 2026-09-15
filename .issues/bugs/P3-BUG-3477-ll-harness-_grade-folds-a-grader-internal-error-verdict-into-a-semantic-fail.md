@@ -46,12 +46,19 @@ A grader-internal error is neither a pass nor a fail of the subject. `_grade()` 
 
 **Precedence: fail > grader_error > abstain > pass.** Unlike the timeout early-return (which outranks everything because nothing was graded), a judge crash after a deterministic `--exit-code`, `expected:`, or side-effect failure still reports FAIL/exit 1 — the subject demonstrably failed. Record this as an explicit "A > B > C" comment at the branch, per the convention below.
 
+**Known, accepted divergence (review 2026-09-15, third pass):** a hard-fail + grader-error run is rc 1 at run time but reconstructs as rc 2 from its persisted row. `semantic_passed_row` writes `NULL` (grader error), and `_rc_from_event()` is verdict-first, so `baseline_for()` bands it `errored`. This is forced: the row cannot be distinguished from a pre-fix `semantic_verdict="error"`/`semantic_passed=0` row (the expected exit code is not persisted), and the identical divergence already exists for fail + abstain (`NULL` → 3). Do **not** "fix" `semantic_passed_row` to return `False` on hard-fail — that produces the pre-fix shape and is re-banded to 2 anyway. Document it in the `_rc_from_event()` docstring instead (see Acceptance Criteria).
+
+**Non-goal (review 2026-09-15, third pass):** `--retry-of` admissibility. `_retry_refusal()` (`cli/harness.py:215`) admits a retry only when the prior row `timed_out`, and `_record_harness_event()` hardcodes `reason="timeout"` (`:305`). A grader-error row therefore remains **not** `--retry-of` admissible after this fix, even though it now shares exit code 2 with a runner timeout. Extending the gate (admit `semantic_verdict == "error"` with `reason="grader_error"`) is a separate ENH; this issue does not touch `_retry_refusal()` or the hardcoded reason. Note the exclusion in the `--retry-of` help text only if it is otherwise touched — no doc change required here.
+
 ## Acceptance Criteria
 
 - [ ] `_grade()` on `EvaluationResult(verdict="error", ...)` returns rc `2` and an outcome with `grader_error=True`, `passed=False`, `abstained=False`, `verdict="error"`, `eval_result` populated (not `None`).
 - [ ] The new branch matches `verdict == "error"` only; `TestSemanticEvaluator::test_semantic_non_yes_fails` (`no`/`blocked`/`partial` → FAIL/exit 1) passes unchanged.
 - [ ] Precedence fail > grader_error > abstain > pass: an `--exit-code` mismatch (or failing side effect) combined with `verdict="error"` still returns rc `1`.
 - [ ] `_evaluate_and_report()` (n=1) has an explicit ERROR branch: stdout `Result` and `--output json` `"result"` read `ERROR` (not `FAIL`, not `PASS`) and a grader-error detail line is printed. The detail is rendered from whichever keys `eval_result.details` actually carries (`error`, or the `BlockingJsonError` flags `timeout`/`missing_dependency`/`api_error`/`empty_output`/`raw_preview`, or the raw judge fields when the model omitted `verdict`) with a fallback of `unknown grader error` — never `details["error"]` unguarded.
+- [ ] `grader_error_detail` is size-bounded on the model-omitted-`verdict` shape: that path returns the full success-shaped `details` dict (`evaluators.py:1167-1181`: `raw`, `llm_raw_output` = entire judge stdout, `llm_prompt`, ...). The property renders `details["reason"]` when non-empty, else `json.dumps(details["raw"])` truncated to 200 chars, and **never** includes `llm_raw_output` or `llm_prompt`. Test: a `details` dict with a 10 KB `llm_raw_output` and empty `reason` yields a detail string ≤ ~220 chars containing none of the raw stdout.
+- [ ] The `_grade()` branch matches exactly `verdict == "error"` and carries a one-line comment explaining why the `error_uncertain` suffix form (`evaluate_llm_structured`'s `uncertain_suffix` path, `evaluators.py:1164`) is not matched: `_grade()` never passes `uncertain_suffix=True`, so the suffixed form cannot reach it. Do not widen to `startswith("error_")`.
+- [ ] `_rc_from_event()` docstring states the accepted hard-fail + grader-error divergence (run-time rc 1, reconstructed rc 2) and that it mirrors the pre-existing fail + abstain divergence (`NULL` → 3). Test: an event row `semantic_verdict="error"`, `semantic_passed=None`, `exit_code=1`, `timed_out=False` returns `2` (documents, does not "fix", the divergence).
 - [ ] n>1: the sample is tallied under `SampleTally.errored`, the per-sample JSON `results[i]["result"]` label is `ERROR`, the per-sample `results[i]["error"]` key carries the same grader-error detail (not `null`), and `_report_samples()`'s `extras` line / `"samples"."errored"` key reflect it (no new tally field).
 - [ ] All five DB-recording call sites write `semantic_verdict="error"`, `semantic_passed=NULL` via a single shared property on `HarnessEvalOutcome` (see Program Design) — no per-site `None if outcome.abstained ...` expression remains.
 - [ ] `history_reader/harness.py:_rc_from_event()` returns `2` for an error row in **both** shapes: the new shape (`semantic_verdict="error"`, `semantic_passed=NULL`) and the pre-fix shape (`semantic_verdict="error"`, `semantic_passed=0`). No migration/backfill.
@@ -94,8 +101,9 @@ Line-number drift corrections (this pass) — `cli/harness.py` has grown ~38-490
 - Confirmed repo-wide (unfiltered grep): no `grader_error` symbol exists anywhere in `scripts/little_loops/` outside this issue file and one cross-reference in ENH-3476 — the fix described here has not been implemented yet
 
 ### Files to Modify
-- `scripts/little_loops/cli/harness.py` — `_grade()` (`:1293-1416`), `HarnessEvalOutcome` (`:923-941`), `SampleTally`/`.record()` (`:838-865`), `_band_samples()` (`:1436-1451`); five DB-recording call sites at `:2285, 2427, 2555, 2682, 2951`
-- `scripts/little_loops/history_reader/harness.py` — `_rc_from_event()` (`:314-326`), which independently mirrors the same banding over persisted rows
+- `scripts/little_loops/cli/harness.py` — `_grade()` (`:1331-1452`), `HarnessEvalOutcome` (`:961-979`), `SampleTally`/`.record()` (`:876-903`), `_band_samples()` (`:1474-1490`); five DB-recording call sites at `:2741, 2907, 3035, 3162, 3438` (line numbers re-verified 2026-09-15, third pass)
+- `scripts/little_loops/history_reader/harness.py` — `_rc_from_event()` (`:314-327`), which independently mirrors the same banding over persisted rows
+- **Not modified** (explicit non-goal, see Expected Behavior): `_retry_refusal()` (`cli/harness.py:194-222`) and the hardcoded `reason="timeout"` in `_record_harness_event()` (`:305`).
 
 _Added by manual review — 2026-09-15 (second pass):_
 - `scripts/little_loops/cli/harness.py:1044-1047` — `_read_target_history()` is a third, previously unlisted reader of persisted `semantic_passed`/`semantic_verdict`: it hand-computes `pass_scored`/`judged_scored` from `recent_harness_events()` to gate the `_HISTORY_MIN_SCORED` suppression and reports them as `history_pass_rate_runs`/`history_judged_runs`. Must exclude `semantic_verdict == "error"` rows in lockstep with the two rate functions or the reported run counts diverge from the rates' denominators.
@@ -153,6 +161,9 @@ _Wiring pass added by `/ll:wire-issue`:_
 - New test needed: `harness_eval_pass_rate()` with one `yes`/`semantic_passed=1` row, one `no`/`semantic_passed=0` row, one pre-fix `error`/`semantic_passed=0` row reports 0.5, not 1/3; and an exit-code-only row (`semantic_verdict=NULL`, `semantic_passed=1`) still counts.
 - New test needed: `_read_target_history()` with `_HISTORY_MIN_SCORED` met only when error rows are included asserts the history lines are suppressed (error rows do not count toward `history_pass_rate_runs`/`history_judged_runs`).
 - New test needed: `_run_sample_loop()` JSON `results[i]["error"]` is a non-null string for a `verdict="error"` sample, and `HarnessEvalOutcome.grader_error_detail` for each of the four `details` shapes (`{"error": ...}`, `BlockingJsonError`-style flags with no `error` key, raw judge fields with no `verdict`, `{}` → `unknown grader error`).
+- New test needed (third pass): `grader_error_detail` on the success-shaped dict with empty `reason` and a 10 KB `llm_raw_output` returns a bounded string (≤ ~220 chars) that contains none of the raw stdout; with non-empty `reason` returns `reason`.
+- New test needed (third pass): `_rc_from_event()` on `semantic_verdict="error"`, `semantic_passed=None`, `exit_code=1`, `timed_out=False` returns `2` — locks the documented hard-fail + grader-error divergence.
+- New test needed (third pass): `_retry_refusal()` still refuses a prior row with `semantic_verdict="error"`, `timed_out=False` ("attempt did not time out") — locks the `--retry-of` non-goal so a later widening is a deliberate change.
 
 _Wiring pass added by `/ll:wire-issue` (second pass):_
 - `scripts/tests/test_cli_harness.py:4765-4831` `TestHarnessEvalOutcomeEfficiencyFields` (ENH-3464) — calls `_grade()` directly 6 times, asserting on `outcome.input_tokens`/`output_tokens`/`duration_ms`/etc.; not in this issue's Tests list, needs a regression check once `_grade()`'s branching changes.
@@ -187,7 +198,7 @@ _Wiring pass added by `/ll:wire-issue` (second pass):_
 
 ### Types
 
-- `HarnessEvalOutcome` (`scripts/little_loops/cli/harness.py:961`, `abstained` field at `:967`): add `grader_error: bool = False` (decided 2026-09-15: plain `bool` per the `abstained` precedent, not an enum and not `bool | None`). Add a read-only property `semantic_passed_row -> bool | None` returning `None` when `abstained or grader_error`, else `passed` — the single expression the five DB-recording call sites use in place of their hand-copied `None if outcome.abstained else outcome.passed`. Add a second read-only property `grader_error_detail -> str | None`: `None` unless `grader_error`; otherwise a one-line rendering of `eval_result.details` that tolerates every shape `evaluate_llm_structured()` actually produces — `details["error"]` when present; else the set `BlockingJsonError` flags (`timeout`/`missing_dependency`/`api_error`/`empty_output`, plus `raw_preview` if any); else the raw judge fields when the model omitted `verdict` (`evaluators.py:1130`); else the literal `unknown grader error`. Both `_evaluate_and_report()` and `_run_sample_loop()` render through this property so the n=1 and n>1 outputs agree.
+- `HarnessEvalOutcome` (`scripts/little_loops/cli/harness.py:961`, `abstained` field at `:967`): add `grader_error: bool = False` (decided 2026-09-15: plain `bool` per the `abstained` precedent, not an enum and not `bool | None`). Add a read-only property `semantic_passed_row -> bool | None` returning `None` when `abstained or grader_error`, else `passed` — the single expression the five DB-recording call sites use in place of their hand-copied `None if outcome.abstained else outcome.passed`. Returns `None` even when `passed=False` from a hard fail (see the accepted divergence under Expected Behavior). Add a second read-only property `grader_error_detail -> str | None`: `None` unless `grader_error`; otherwise a one-line rendering of `eval_result.details` that tolerates every shape `evaluate_llm_structured()` actually produces — `details["error"]` when present; else the set `BlockingJsonError` flags (`timeout`/`missing_dependency`/`api_error`/`empty_output`, plus `raw_preview` if any); else, for the model-omitted-`verdict` shape (`evaluators.py:1130` → the success-shaped dict at `:1167-1181`), `details["reason"]` when non-empty or `json.dumps(details["raw"])[:200]` — never `llm_raw_output`/`llm_prompt`, which can be kilobytes; else the literal `unknown grader error`. Both `_evaluate_and_report()` and `_run_sample_loop()` render through this property so the n=1 and n>1 outputs agree.
 - `SampleTally` (`harness.py:876`): unchanged shape; `errored` now also counts judge errors (docstring update only).
 - `EvaluationResult` (`scripts/little_loops/fsm/evaluators.py:56`): unchanged; `verdict="error"` is already the signal.
 
@@ -197,10 +208,21 @@ _Wiring pass added by `/ll:wire-issue` (second pass):_
 - `_evaluate_and_report(...)` (`harness.py:2504`): unchanged signature; after `_grade()`, branch `if outcome.grader_error: overall = "ERROR"` ahead of the existing `if not passed` chain, and print `outcome.grader_error_detail` (text mode: a `Grader error: ...` line after the status block; JSON mode: an `"error"` key on the payload, matching `_report()`'s existing ERROR payload shape).
 - `_run_sample_loop(...)` (`harness.py:2403`): unchanged signature; the per-sample `error` expression (`:2440-2442`) becomes `result.error` → `"timeout"` → `outcome.grader_error_detail` → `None`.
 - `_read_target_history(target: str) -> dict | None` (`harness.py:~1015`): unchanged signature; `pass_scored`/`judged_scored` comprehensions (`:1046-1047`) each gain `and e.semantic_verdict != "error"`.
-- `_rc_from_event(event: HarnessEvent) -> int` (`history_reader/harness.py:314`): unchanged signature; insert `if event.semantic_verdict == "error": return 2` **before** the `semantic_passed is None` check so pre-fix rows (`semantic_passed=0`) are re-banded too.
+- `_rc_from_event(event: HarnessEvent) -> int` (`history_reader/harness.py:314`): unchanged signature; insert `if event.semantic_verdict == "error": return 2` **before** the `semantic_passed is None` check so pre-fix rows (`semantic_passed=0`) are re-banded too. Docstring gains the accepted-divergence note: a hard-fail + grader-error run (run-time rc 1) reconstructs as 2 here, mirroring how fail + abstain (run-time rc 1) already reconstructs as 3 — the persisted row carries no expected exit code, so neither can be recovered.
+- `_grade()` error branch comment: `elif eval_result.verdict == "error":  # exact match; the `_uncertain` suffix (evaluators.py uncertain_suffix) never reaches here because _grade() does not set it`.
 - `harness_eval_pass_rate(...)` (`history_reader/harness.py:410`): unchanged signature; numerator becomes `SUM(CASE WHEN semantic_passed = 1 AND semantic_verdict IS NOT 'error' THEN 1 ELSE 0 END)` and denominator `COUNT(CASE WHEN semantic_verdict IS NOT 'error' THEN semantic_passed END)` (`IS NOT` so NULL-verdict exit-code-only rows stay counted). Docstring widened per Acceptance Criteria.
 - `harness_eval_abstention_rate(...)` (`history_reader/harness.py:451`): unchanged signature; denominator becomes `COUNT(CASE WHEN semantic_verdict IS NOT 'error' THEN semantic_verdict END)` (or equivalent).
 - `is_abstention_verdict(verdict: str) -> bool` (`fsm/verdicts.py:25`): unchanged; `"error"` is not an abstention.
+
+### Behavior Parity
+
+What each changed reader in `scripts/little_loops/history_reader/harness.py` replaces, and what stays byte-identical:
+
+- `_rc_from_event()`: the existing `semantic_passed is None → 3 if semantic_verdict else 2` rule is kept verbatim; the new verdict-first `== "error" → 2` check is inserted **ahead** of it. Rows with any other verdict (`yes`/`no`/`cannot_judge*`/`NULL`) reconstruct exactly as before.
+- `harness_eval_pass_rate()`: replaces `SUM(CASE WHEN semantic_passed = 1 ...)` / `COUNT(semantic_passed)` with the same two aggregates guarded by `semantic_verdict IS NOT 'error'`. For any population with no `error` rows the result is identical; `IS NOT` keeps NULL-verdict exit-code-only rows in both aggregates.
+- `harness_eval_abstention_rate()`: replaces `COUNT(semantic_verdict)` with `COUNT(CASE WHEN semantic_verdict IS NOT 'error' THEN semantic_verdict END)`; numerator unchanged. Identical for populations without `error` rows.
+- `baseline_for()`: untouched; inherits the new banding through `_rc_from_event()` only. An all-grader-error baseline now returns `None` (`tally.graded == 0`) instead of a 0/n FAIL baseline — intended.
+- Not replaced: `recent_harness_events()`, `harness_event_by_id()`, `_AUTHORITATIVE_PREDICATE`, and the `_retry_refusal()` timed_out-only gate in `cli/harness.py` (explicit non-goal).
 
 ### Call Path
 
@@ -275,20 +297,30 @@ confirmed absent repo-wide. `ll-verify-evidence --json` returned clean
 decision rules found in `.ll/decisions.yaml`/`.ll/decisions.d` to check
 against.
 
+**2026-09-15 (third pass, manual review):** re-read `_grade()` (`:1331-1452`),
+`_run_sample_loop()` (`:2403-2474`), `_evaluate_and_report()` (`:2504-2549`),
+`_read_target_history()` (`:1044-1047`), `cmd_dsl`'s per-task tally
+(`:3414-3423`), `_rc_from_event()`/both rate functions
+(`history_reader/harness.py:314-499`), `evaluate_llm_structured()`'s error
+sites and success-shaped `details` (`evaluators.py:1123-1181`), and
+`_retry_refusal()` (`cli/harness.py:194-222`). Design confirmed sound; added
+four items: the `--retry-of` non-goal, a size bound on `grader_error_detail`
+for the model-omitted-`verdict` shape, the accepted hard-fail + grader-error
+history divergence, and the `error_uncertain` exact-match note. The
+"Files to Modify" block now carries current line numbers (the historical
+`:1293`/`:2285…` set below is superseded).
+
 Three commits landed after this issue was captured (`b17eabb54`
 "widen ll-harness evidence surface beyond stdout", `80d2d38d0` "score
 ll-harness runs on a named efficiency vector", `e3739238b` "persist
 ll-harness widened evidence to harness_events" — all 2026-09-14, after the
 21:36–22:50 capture/refine/wire window) and added ~180 net lines to
-`scripts/little_loops/cli/harness.py` ahead of `_grade()`. A currently
-uncommitted working-tree change (BUG-3479's `_git_blob()` helper) adds a
-further ~27 lines earlier still. Every `harness.py`/`history_reader/harness.py`
-line citation in this issue's Integration Map and Program Design sections was
-stale as a result; all have been corrected against the current file state
-(`_grade()` now at `:1293-1416`, `HarnessEvalOutcome` at `:923-941`,
-`SampleTally` at `:838-865`, `_band_samples()` at `:1436-1451`, the five
-DB-recording call sites at `:2285, 2427, 2555, 2682, 2951`, `_rc_from_event()`
-at `history_reader/harness.py:314-326`, etc.).
+`scripts/little_loops/cli/harness.py` ahead of `_grade()`. A then-uncommitted
+working-tree change (BUG-3479's `_git_blob()` helper) added a further ~27
+lines earlier still. Every `harness.py`/`history_reader/harness.py` line
+citation was stale as a result and was corrected at the time to the
+now-historical `:1293`/`:923`/`:838`/`:1436`/`:2285…` set; the current
+numbers are in "Files to Modify" and the 2026-09-15 drift-correction list.
 
 The underlying claim is unchanged and confirmed still true: `_grade()`
 (`harness.py:1426-1428`, current `elif eval_result.verdict != "yes": passed =
@@ -326,6 +358,8 @@ _Added by `/ll:confidence-check` on 2026-09-15_
 - `missing_behavior_parity` gap flagged for `scripts/little_loops/history_reader/harness.py` (format-check), capping Criterion 4 — the file lacks an explicit "what this replaces" subsection despite four call sites there changing denominator semantics
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-15T20:03:53 - `1585335e-fdc3-4eb0-97db-7596cb49731c.jsonl`
+- manual review (third pass) - 2026-09-15 - added `--retry-of` non-goal (`_retry_refusal()` timed_out-only gate, hardcoded `reason="timeout"`); bounded `grader_error_detail` on the success-shaped `details` (never `llm_raw_output`/`llm_prompt`); documented the accepted hard-fail + grader-error history divergence (rc 1 → reconstructed 2, mirrors fail + abstain → 3); `error_uncertain` exact-match note; refreshed "Files to Modify" line numbers; three matching tests
 - `/ll:confidence-check` - 2026-09-15T19:54:15 - `1128b02a-8c77-4be4-8556-ad5cf2f4fa84.jsonl`
 - manual review (second pass) - 2026-09-15 - `harness_eval_pass_rate()` now re-bands pre-fix error rows by SQL (supersedes "accepted, no backfill"); added `_read_target_history()` as an unlisted reader; per-sample `results[i]["error"]` must carry the grader detail; added `grader_error_detail` property tolerant of every `details` shape; simplified the exit-code chain to a single `hard_fail` capture; widened in-code NULL-⇒-abstained docstrings; added matching tests
 - `/ll:verify-issues` - 2026-09-15T19:37:30 - `cdbb07d4-56af-4822-8c99-6c7b4578265d.jsonl`
