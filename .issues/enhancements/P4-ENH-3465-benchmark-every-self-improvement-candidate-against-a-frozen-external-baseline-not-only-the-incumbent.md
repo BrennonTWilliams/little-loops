@@ -412,6 +412,7 @@ Manual review before implementation; the corrections are folded into the section
 - Effort re-rated Medium; stale "others via `--baseline-of`" note in the first pass struck.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-15T17:01:21 - `383e91ec-89eb-4a53-ac56-e40203c5bf0b.jsonl`
 - `/ll:confidence-check` - 2026-09-15T16:40:59 - `616933e2-7191-4604-9d84-781e86714f4a.jsonl`
 - `/ll:refine-issue` - 2026-09-15T16:14:43 - `3b8644e0-9ff1-4797-b13a-5a6cc7062fde.jsonl`
 - `/ll:verify-issues` - 2026-09-15T14:43:53 - `6634e3cc-f741-4813-a1cf-617029cd83fa.jsonl`
