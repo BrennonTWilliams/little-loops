@@ -287,6 +287,7 @@ Post-refinement wiring pass that completes an issue's **Integration Map** — th
 - **Behavior Parity** (ENH-3045): when the issue rewrites, deletes, or delegates away an existing file, each of that file's behaviors is enumerated with a preserved/changed/dropped disposition
 - **`gate_consumers`** (ENH-3050): when the change adds/alters a field in a CLI's `--format json` output or an exit-code condition, every loop/hook/skill/command/doc file that reads that CLI's output — traced by grepping the invocation string, not the Python symbol
 - **`conditional_branches`** (ENH-3050): when the plan states a conditional fallback naming an alternate implementation target ("if X overflows, do Y"), that target's own touchpoints are wired as first-class
+- **`sites_to_add`** (ENH-3480): additional call sites, test functions, or doc sections *inside* a file the issue already names — a whole-file exclusion previously made these unreportable until a second pass
 
 **Arguments:**
 - `issue_id` (optional): Issue ID to wire (e.g., `FEAT-948`, `ENH-277`). Reads most recent active issue if omitted.

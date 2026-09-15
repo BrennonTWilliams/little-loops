@@ -27,6 +27,9 @@ WIRE ISSUE: {{ISSUE_ID}}
 | Tests (update) | N | [brief list] |
 | Tests (new) | N | [brief list] |
 | Config/Schema | N | [brief list] |
+| Intra-file sites (`sites_to_add`) | N | [brief list] |
+| Gate consumers (`gate_consumers`) | N | [brief list] |
+| Conditional branches (`conditional_branches`) | N | [brief list] |
 | Impl Step gaps | N | [brief descriptions] |
 
 ## INTEGRATION MAP CHANGES

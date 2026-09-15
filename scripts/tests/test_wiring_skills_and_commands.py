@@ -249,6 +249,14 @@ DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     ("skills/wire-issue/SKILL.md", "gate_consumers", "ENH-3050"),
     ("skills/wire-issue/SKILL.md", "conditional_branches", "ENH-3050"),
     ("docs/reference/COMMANDS.md", "gate_consumers", "ENH-3050"),
+    # ENH-3480: wire-issue's first pass structurally missed call sites inside
+    # already-known files — a `known_sites` dedup key plus a `sites_to_add`
+    # category closes the gap, so a first pass reaches parity a second pass
+    # used to be needed for.
+    ("skills/wire-issue/SKILL.md", "known_sites", "ENH-3480"),
+    ("skills/wire-issue/SKILL.md", "sites_to_add", "ENH-3480"),
+    ("docs/reference/COMMANDS.md", "sites_to_add", "ENH-3480"),
+    ("skills/wire-issue/output-report.md", "sites_to_add", "ENH-3480"),
     # ENH-3126: verify-issues gains graph-assisted anchor drift and
     # negative-claim checks, gated behind Bash(ll-code:*).
     ("commands/verify-issues.md", "Bash(ll-code:*)", "ENH-3126"),
@@ -346,6 +354,7 @@ DOC_STRINGS_ABSENT: list[tuple[str, str, str]] = [
     ("agents/codebase-analyzer.md", "file:line", "ENH-1299"),
     ("agents/codebase-pattern-finder.md", "file:line", "ENH-1299"),
     ("skills/wire-issue/SKILL.md", "file:line", "ENH-1299"),
+    ("skills/wire-issue/intra-file-sites.md", "file:line", "ENH-1299"),
     ("skills/manage-issue/templates.md", "file:line", "ENH-1299"),
     ("commands/refine-issue.md", "file:line", "ENH-1299"),
     ("skills/product-analyzer/SKILL.md", "Remove findings marked as duplicates", "ENH-1403"),
@@ -386,6 +395,18 @@ DOC_STRINGS_ABSENT: list[tuple[str, str, str]] = [
     # ENH-3049: wire may only insert markers, never delete one — refine's
     # "Bounded marker-removal right" (ENH-2995) does not port to wire.
     ("skills/wire-issue/SKILL.md", "Bounded marker-removal right", "ENH-3049"),
+    # ENH-3480: the old whole-file exclusion sentences must not silently
+    # return — either one reappearing restores the bug this issue fixes.
+    (
+        "skills/wire-issue/SKILL.md",
+        'Exclude files already in the "already known" lists.',
+        "ENH-3480",
+    ),
+    (
+        "skills/wire-issue/SKILL.md",
+        "Exclude files already known from the issue.",
+        "ENH-3480",
+    ),
 ]
 
 
@@ -724,7 +745,7 @@ SPAWN_SITE_INVENTORY: frozenset[tuple[str, int]] = frozenset(
         ("skills/audit-claude-config/wave1-prompts.md", 9),
         ("skills/audit-issue-conflicts/SKILL.md", 205),
         ("skills/audit-issue-conflicts/SKILL.md", 252),
-        ("skills/wire-issue/SKILL.md", 148),
+        ("skills/wire-issue/SKILL.md", 152),
         ("skills/manage-issue/SKILL.md", 110),
         ("skills/go-no-go/SKILL.md", 176),
         ("skills/go-no-go/SKILL.md", 276),

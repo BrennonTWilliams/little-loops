@@ -3,7 +3,8 @@ id: ENH-3480
 type: ENH
 title: wire-issue first pass misses call sites inside already-known files
 priority: P3
-status: open
+status: done
+completed_at: '2026-09-15T22:00:00Z'
 discovered_by: ll-issues-create
 discovered_date: '2026-09-15'
 captured_at: '2026-09-15T19:28:33Z'
@@ -437,7 +438,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Status
 
-**Open** | Created: 2026-09-15 | Priority: P3
+**Done** | Created: 2026-09-15 | Priority: P3
 
 ## Success Metrics
 
@@ -487,6 +488,7 @@ _Added by `/ll:confidence-check` on 2026-09-15_
 - Criterion 4 capped at 10 (advisory, not a blocker): `known_sites` and `sites_to_add` are claimed in `scripts/tests/test_wiring_skills_and_commands.py` but don't yet resolve there — expected for forward-looking test-row claims the issue proposes adding, not itself a defect. Re-run `/ll:confidence-check ENH-3480` after implementation to clear this cap.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-09-15T21:11:21 - `fc2b54c8-0b67-468e-a250-f8fe53e40140.jsonl`
 - `/ll:confidence-check` - 2026-09-15T21:00:14 - `b73bc3fc-fcbd-4a6c-bf75-411abfcf31a5.jsonl`
 - `/ll:confidence-check` - 2026-09-15T20:46:29 - `9b499bde-1533-41c8-98c0-d62949b35992.jsonl`
 - `/ll:confidence-check` - 2026-09-15T20:31:12 - `0e1ad2b9-a2fb-47cc-ace3-ad4639d2e06c.jsonl`

@@ -116,6 +116,7 @@ EXISTING_WIRING:
   known_tests: [list]
   known_docs: [list]
   key_symbols: [function/class/module names extracted from issue text]
+  known_sites: [(path, enclosing_symbol) pairs — dedup key for sites_to_add]
 ```
 
 **Replacement parity (ENH-3045)**: also extract `REPLACED_ARTIFACTS` — files
@@ -129,6 +130,7 @@ work it drives: [behavior-parity.md](behavior-parity.md).
 - Extract module names from `import` or `from X import` snippets if present
 - Extract CLI command names from usage examples
 - These symbols drive the wiring search in Phase 4
+- `known_sites` extraction (round-trip rules, dedup key): [intra-file-sites.md](intra-file-sites.md)
 
 ---
 
@@ -140,7 +142,9 @@ Run `ll-issues decisions list --type=coupling --format=json 2>/dev/null`. Skip s
 Seed Phase 4 candidates (callers, importers, impacted files) from `ll-code --json` before manual tracing, then confirm each hit with one targeted Grep at its `path:line`. Three safety rules, verbatim: **(1) silent fallback** — if `ll-code --json status` reports `available: false` or a query exits `2`, skip and run the current Phase 4 flow (zero regression); **(2) confirm-before-map** — every positive hit is a hint, verified by one Grep before it enters the Integration Map; **(3) never trust negatives** — exit `1` ("no callers") is never trusted alone, run the current exploratory pass for that target. If `freshness == "stale"`, treat all candidates as leads and widen confirmation. Confirmed candidates feed Phase 4 Agent 1's "Already-known callers:" and "Key symbols to trace:" slots. Full procedure in [graph-discovery-layer.md](graph-discovery-layer.md).
 ---
 
-## Phase 3.7: Prose Dependency Gate (FEAT-2849) — see [prose-dependency-gate.md](prose-dependency-gate.md).
+## Phase 3.7: Caller-Closure Key-Symbol Expansion (ENH-3480) — see [intra-file-sites.md](intra-file-sites.md#2-caller-closure-key_symbols-expansion-phase-37).
+
+## Phase 3.8: Prose Dependency Gate (FEAT-2849) — see [prose-dependency-gate.md](prose-dependency-gate.md).
 ---
 ## Phase 4: Run Wiring Research (3 Parallel Agents)
 
@@ -176,7 +180,9 @@ Return file paths grouped by:
 - Registration / manifest files
 - Config files
 
-Exclude files already in the "already known" lists.
+Exclude only `path:symbol` sites already in `known_sites` (Phase 3). Report
+additional call sites, tests, or doc locations *inside* known files as new —
+cite `path:line` and the enclosing symbol, not by line number alone (ENH-1299).
 
 IMPORTANT: If you see "File unchanged since last read" when reading a file,
 do NOT re-read it — use the content from your earlier read.
@@ -208,7 +214,9 @@ Analyze:
 6. Gate consumers (ENH-3050): if the change adds/alters a field in a CLI's `--format json` output or an exit-code condition, grep the CLI invocation string (not the Python symbol) across `scripts/little_loops/loops/`, `hooks/`, `skills/`, `commands/`, `docs/`.
 
 Return analysis with specific anchor-based references (function/class names) for each coupling found.
-Exclude files already known from the issue.
+Exclude only `path:symbol` sites already in `known_sites` (Phase 3). Report
+additional call sites, tests, or doc locations *inside* known files as new —
+cite `path:line` and the enclosing symbol, not by line number alone (ENH-1299).
 
 IMPORTANT: If you see "File unchanged since last read" when reading a file,
 do NOT re-read it — use the content from your earlier read.
@@ -230,6 +238,7 @@ Find existing test coverage and identify test gaps for the planned changes in th
 Issue: {{ISSUE_ID}} — {{issue title}}
 Files being changed: {{files_to_modify from Phase 3}}
 Already-known tests: {{known_tests from Phase 3}}
+Key symbols: {{key_symbols from Phase 3, post-closure}}
 
 Find:
 1. Existing test files that cover the files being changed (by naming convention or import analysis)
@@ -241,6 +250,9 @@ Find:
 
 Return examples with anchor-based references (function/class names).
 Distinguish between: existing tests to update vs. new tests to write vs. tests that may break.
+Exclude only `path:symbol` sites already in `known_sites` (Phase 3) — report
+additional test functions or doc sections inside already-known files as new,
+citing the enclosing test function or section, not by line number alone (ENH-1299).
 
 IMPORTANT: If you see "File unchanged since last read" when reading a file,
 do NOT re-read it — use the content from your earlier read.
@@ -276,6 +288,7 @@ MISSING_WIRING:
   schema_coupling: [config/schema files from Agent 2 that need updating]
   gate_consumers: [loop/hook/skill/command/doc files reading a changed CLI JSON field or exit code]
   conditional_branches: [touchpoints of an alternate implementation target named by a conditional fallback]
+  sites_to_add: [path:line + enclosing symbol inside a known file, filtered against known_sites]
   new_impl_steps: [phases that should be added to Implementation Steps based on missing files]
 ```
 
@@ -311,6 +324,7 @@ Wiring Gaps Found for {{ISSUE_ID}}:
   Registration/manifest files missing: N
   Docs that need updating: N
   Tests to add or update: N
+  Intra-file sites: N
   Implementation Steps gaps: N
 ```
 
@@ -340,60 +354,43 @@ Update the issue using the Edit tool with the following rules:
 
 ### 8a: Integration Map Updates
 
-Locate the `## Integration Map` section (or `### Files to Modify` subsection). Add missing entries:
+Locate the `## Integration Map` section (or `### Files to Modify` subsection). Add missing entries. `sites_to_add` (ENH-3480) routes into these same subsections by which kind of known file the site lives in; render templates and the round-trip rule its bullets must follow: [intra-file-sites.md](intra-file-sites.md#3-sites_to_add-rendering-phase-8a).
 
 **Callers / importers** — append to the "Dependent Files (Callers/Importers)" subsection (create it if absent). `gate_consumers` and `conditional_branches` (ENH-3050) also route here, not to a new heading:
-
 ```markdown
 ### Dependent Files (Callers/Importers)
-
 _Wiring pass added by `/ll:wire-issue`:_
 - `path/to/caller.py` — calls `affected_function()` in `handle_request()` [Agent 1 finding]
-- `path/to/importer.py` — imports `affected_module` in `module_init()` [Agent 1 finding]
 ```
 
 **Registration / manifest files** — append to "Files to Modify" (these must be edited as part of the implementation):
-
 ```markdown
+_Wiring pass added by `/ll:wire-issue`:_
 - `path/to/plugin.json` — register new skill/command entry [Agent 1 finding]
-- `path/to/__init__.py` — export new public symbol [Agent 1 finding]
 ```
 
 **Documentation** — append to a "Documentation" subsection:
-
 ```markdown
 ### Documentation
-
 _Wiring pass added by `/ll:wire-issue`:_
-- `docs/relevant.md` — describes `affected_function()` under section "Function Reference" [Agent 2 finding]
-- `commands/some-command.md` — mentions the old CLI flag, needs updating [Agent 2 finding]
+- `docs/relevant.md` — describes `affected_function()` in `Function Reference` [Agent 2 finding]
 ```
 
 **Tests** — append to a "Tests" subsection:
-
 ```markdown
 ### Tests
-
 _Wiring pass added by `/ll:wire-issue`:_
 - `tests/test_affected.py` — existing coverage, update for new behavior [Agent 3 finding]
-- `tests/test_new_feature.py` — new test file needed, follow pattern in `tests/test_similar.py` [Agent 3 finding]
-- `tests/test_integration.py` — calls old API in `test_handle_request()`, will break — update [Agent 3 finding]
+- `tests/test_integration.py` — calls old API, will break, update in `test_handle_request()` [Agent 3 finding]
 ```
 
-**Behavior Parity** (ENH-3045) — when `REPLACED_ARTIFACTS` (Phase 3) is
-non-empty, append a `### Behavior Parity` subsection — bare heading, one
-table per issue, replaced artifact as a table column (never heading text).
-Skip if `REPLACED_ARTIFACTS` is empty or `behavior_parity_not_applicable:
-true` is set. Full template and rationale: [behavior-parity.md](behavior-parity.md).
+**Behavior Parity** (ENH-3045) — when `REPLACED_ARTIFACTS` (Phase 3) is non-empty, append a `### Behavior Parity` subsection (bare heading, replaced artifact as a table column, never heading text); skip if empty or `behavior_parity_not_applicable: true` is set. Full template and rationale: [behavior-parity.md](behavior-parity.md).
 
 **Config / schema** — append to a "Configuration" subsection:
-
 ```markdown
 ### Configuration
-
 _Wiring pass added by `/ll:wire-issue`:_
 - `config-schema.json` — add new config key definition [Agent 2 finding]
-- `.ll/ll-config.json` — update default values section [Agent 2 finding]
 ```
 
 ### 8b: Implementation Steps Updates
