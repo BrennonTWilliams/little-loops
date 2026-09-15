@@ -38,9 +38,9 @@ A grader-internal error is neither a pass nor a fail of the subject. `_grade()` 
 
 ## Steps to Reproduce
 
-1. In `scripts/tests/test_cli_harness.py::TestGradeEvidenceChannels`, patch `little_loops.cli.harness.evaluate_llm_structured` to return `EvaluationResult(verdict="error", details={"error": "BlockingJsonError"})`.
+1. In `scripts/tests/test_cli_harness.py::TestGradeEvidenceChannels`, patch `little_loops.cli.harness.evaluate_llm_structured` to return `EvaluationResult(verdict="error", details={"error": "BlockingJsonError"})`. <!-- ll-evidence-ok: hypothetical repro construct, not a verbatim quote of existing test code -->
 2. Call `_grade()` with `args.semantic` set and `args.exit_code` unset against a synthetic `RunnerResult` with exit code 0.
-3. Observe `HarnessEvalOutcome.passed is False` and `abstained is False` — identical to a semantic `"no"`.
+3. Observe `HarnessEvalOutcome.passed is False` and `abstained is False` — identical to a semantic `"no"`. <!-- ll-evidence-ok: hypothetical repro outcome description, not a verbatim quote of existing test code -->
 
 ## Integration Map
 
@@ -49,6 +49,23 @@ A grader-internal error is neither a pass nor a fail of the subject. `_grade()` 
 _Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
 
 Files, callers, conventions, and tests relevant to threading a `grader_error` outcome through `_grade()`, `harness_events`, and `_rc_from_event()`.
+
+_Added by `/ll:refine-issue` — 2026-09-15 — based on codebase analysis:_
+
+Line-number drift corrections (this pass) — `cli/harness.py` has grown ~38-490 lines since the issue's last refine (three commits landed 2026-09-14 after the 21:36-22:50 capture/refine/wire window, plus an uncommitted BUG-3479 `_git_blob()` helper); every citation below supersedes the equivalent one in "Files to Modify" above:
+- `_grade()` now at `harness.py:1331` (was `:1293`)
+- `HarnessEvalOutcome` now at `harness.py:961` (was `:923`)
+- `SampleTally`/`.record()` now at `harness.py:876` (was `:838`)
+- `_band_samples()` now at `harness.py:1474` (was `:1436`)
+- Five DB-recording call sites now at `harness.py:2741` (`cmd_skill`), `:2907` (`cmd_cmd`), `:3035` (`cmd_mcp`), `:3162` (`cmd_prompt`), `:3438` (`cmd_dsl`) — corrects `:2285, 2427, 2555, 2682, 2951`
+- New finding: `cmd_dsl` now has a SECOND `_record_harness_event()` call site at `harness.py:3341` (the malformed-task early-write path), which hardcodes `semantic_verdict=None` and is unaffected by this bug — only the per-task graded write at `:3438` inherits the fold this issue describes
+- `_run_sample_loop()` (def now `harness.py:2403`) calls `_grade()` at `:2434` (was `:1969`/`:2000` — two different stale values were previously cited); its `_band_samples()` call is at `:2466` (was `:2032`)
+- `_evaluate_and_report()` (def now `harness.py:2504`) calls `_grade()` at `:2526` (was `:2070`/`:2092`)
+- `_run_compare_arm()` defined at `harness.py:2323`, reads `res.tally.passed`/`res.tally.graded` at `:2352` (was `:1907-1968`)
+- Confirmed unchanged (no drift): `history_reader/harness.py:_rc_from_event()` (`:314-326`), `harness_eval_pass_rate()`/`harness_eval_abstention_rate()` (`:410`/`:451`), `fsm/verdicts.py:is_abstention_verdict()` (`:25`), `fsm/evaluators.py`'s `BlockingJsonError` catch (`:1123`), `fsm/executor.py`'s `is_abstention_verdict` call (`:2371`), `session_store/writers.py` param blocks (`:1116-1117, 1173, 1189-1190, 1242-1243, 1311-1312`), `session_store/schema.py` (`:724-725, 1004-1012, 1130`), `schema_manifest.json` (`:156-158, 1122, 1128`), `test_fsm_verdicts.py:32-34`, `test_session_store_writers.py:2403-2404, 2426-2427`, `test_session_store_schema.py:1636-1637`
+- `TestGradeEvidenceChannels` now at `test_cli_harness.py:4381` (was `:3682-3768`/`:3696`); `TestBandSamples` at `:965`; `TestAbstentionVerdict` at `:870`; `TestSampleTallyRecord` at `:1012`
+- `EVALUATION_GUIDE.md`'s non-NULL-`semantic_passed` note is now at `:501-502` (was `:449`)
+- Confirmed repo-wide (unfiltered grep): no `grader_error` symbol exists anywhere in `scripts/little_loops/` outside this issue file and one cross-reference in ENH-3476 — the fix described here has not been implemented yet
 
 ### Files to Modify
 - `scripts/little_loops/cli/harness.py` — `_grade()` (`:1293-1416`), `HarnessEvalOutcome` (`:923-941`), `SampleTally`/`.record()` (`:838-865`), `_band_samples()` (`:1436-1451`); five DB-recording call sites at `:2285, 2427, 2555, 2682, 2951`
@@ -138,6 +155,15 @@ _Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
 - Existing test-style precedents in `test_cli_harness.py`: `TestAbstentionVerdict` (`:864-919`) drives `cmd_cmd()` + `capsys` output assertions; `TestBandSamples` (`:959-1005`) unit-tests `_band_samples()` directly via explicit `SampleTally(...)` construction; `TestGradeEvidenceChannels` (`:3696`) calls `_grade()` directly with a mocked `evaluate_llm_structured`. No existing test in this file constructs `EvaluationResult(verdict="error", ...)`.
 - Related: sibling issues ENH-3463 and ENH-3464 reference this same `_grade()` / `evaluate_llm_structured()` / `is_abstention_verdict()` call chain; parent epic EPIC-3475 ("harden ll-harness verdicts") covers this bucket of work.
 
+_Added by `/ll:refine-issue` — 2026-09-15 — based on codebase analysis:_
+
+- A second, independent tri-state precedent in this same file disagrees in shape with `HarnessEvalOutcome.abstained`: `ChannelRecord.passed: bool | None = None` (`harness.py:906-925`), documented in its own docstring as "internal fold state" — `None` when a channel carries no verdict of its own. `abstained` uses a plain `bool = False`; `ChannelRecord.passed` uses `bool | None = None`. Both exist as precedent in this file for a non-strict-pass/fail field, and they disagree on shape — an implementer choosing between them is making a real decision, not following one established convention.
+- Verdict banding is independently re-implemented at five sites in this codebase, none calling into another: `_grade()`'s per-sample exit-code chain (`harness.py:1446-1451`), `_band_samples()` (`:1474-1490`), `_evaluate_and_report()`'s n=1 report block (`:2543-2548`), the per-sample rc→label dict inside `_run_sample_loop()` (`label = {2: "ERROR", 3: "ABSTAIN", 0: "PASS"}.get(rc, "FAIL")`, `:2439`), and `_rc_from_event()` (`history_reader/harness.py:314-327`, whose own docstring says it "mirrors the run-time banding" rather than calling it). None of the five currently distinguishes `verdict="error"` from a semantic `"no"` — a fix threading `grader_error` through only `_grade()` would leave the other four sites banding it as an ordinary fail.
+- FSM routing (`fsm/executor.py`) already treats `verdict == "error"` as a distinct destination in both its `route:` table form (`route.error`, confirmed `:3276`) and its shorthand form (`on_error`, confirmed `:3289`, plus a third occurrence at `:2346`) — separate from `on_no`/`route.routes["no"]`. Confirms `"error"` is already a first-class, separately-routed verdict value elsewhere in this codebase, not a novel concept this fix introduces.
+- Three coexisting test styles for grading/verdict logic in `test_cli_harness.py`, none used exclusively: (1) pure-function unit test on `SampleTally`/`_band_samples()` with no mocking (`TestBandSamples`, `harness.py:965`), (2) direct `_grade()` call with a mocked `evaluate_llm_structured` (`TestGradeEvidenceChannels`, `:4381`), (3) end-to-end `cmd_cmd()` + `capsys` stdout assertions with a mocked judge (`TestAbstentionVerdict`, `:870`). No existing test in this file constructs `EvaluationResult(verdict="error", ...)` — confirmed via file-wide grep, zero matches.
+- No `Enum`/`StrEnum` convention found for a grading/verdict tri-state field anywhere in `harness.py` or `fsm/verdicts.py` — every existing tri-state precedent (`HarnessEvalOutcome.abstained`, `ChannelRecord.passed`) uses a plain `bool` or `bool | None` field, not an enum.
+- `_run_sample_loop()`/`_evaluate_and_report()` (Call Path above, cited `harness.py:1969`/`:2070`) are now defined at `:2403`/`:2504` respectively.
+
 ## Impact
 
 - **Priority**: P3 - judge infrastructure failures are miscounted as subject failures, skewing n-sample pass rates; no incident traced yet.
@@ -191,6 +217,7 @@ directly (above).
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-15T17:59:03 - `87cb899f-60d1-4042-81cb-33c78f6d04d3.jsonl`
 - `/ll:verify-issues` - 2026-09-15T15:57:34 - `fe401c2e-e475-43b1-b588-44df23082884.jsonl`
 - `/ll:wire-issue` - 2026-09-14T22:50:06 - `bac75f45-b587-45bb-bf3c-443b0c5e805a.jsonl`
 - `/ll:refine-issue` - 2026-09-14T21:57:11 - `76fd614d-af9c-461c-9480-143acb792f32.jsonl`

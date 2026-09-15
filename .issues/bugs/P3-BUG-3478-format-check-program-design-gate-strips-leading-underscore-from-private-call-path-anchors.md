@@ -34,6 +34,12 @@ _Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
 
 Files, callers, conventions, and tests relevant to fixing the `_add()` normalizer's underscore stripping.
 
+_Added by `/ll:refine-issue` — 2026-09-15 — based on codebase analysis:_
+
+Re-confirmed this pass (`program_design.py`, `issue_parser.py`, `research_triage.py` line citations verified against current file state — this file has NOT drifted, unlike its sibling BUG-3477's `harness.py`):
+- Minor correction: `_program_design_unmet()` in `research_triage.py` — the `def` itself opens at `:376` (docstring runs `:377-385`), not `:380` as this issue's Integration Map states. The two specific lines this issue actually relies on — the `grade_issue_section` import at `:390` and the call at `:423` — are both accurate, no drift.
+- All other citations confirmed exact, no drift: `program_design.py` (`extract_call_path_anchors` `:262`, buggy strip `:272`, `git_grep_resolver` `:295`, `_resolve_short_symbol` `:332`, `grade_program_design` `:402`, `grade_issue_section` `:543`, `_IDENT` `:126`), `issue_parser.py:1008-1013`, `cli/issues/format_check.py:456-457, 65, 521`, `cli/issues/check_design.py:32, 40`, `issue_lifecycle.py:88`, `cli/issues/deferred_triage.py:33`, `docs/reference/API.md` (program_design_nonspecific gap-class list now at `:898-906`, BUG-3003 override prose at `:2109-2111`), `docs/reference/CLI.md` (`check-design` section at `:2289-2303`).
+
 ### Files to Modify
 - `scripts/little_loops/issues/program_design.py` — the `_add()` inner normalizer inside `extract_call_path_anchors()` (`:262-288`, buggy strip at `:272`)
 
@@ -98,6 +104,13 @@ _Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
 - Convention: prior narrow fixes to this exact file leave an inline comment citing the bug ID at the fixed site — evidence: `program_design.py:74-77` ("BUG-3071"), `:302-304`/`:356-358` ("BUG-3273"), `test_program_design_gate.py:236-244` docstring ("BUG-3245's fix routes new heading-emission through a containment check...").
 - Testing convention: normalizer-level fixes in this file are unit-tested directly on the pure function with an inline resolver stand-in — no fixture repo needed (`TestGrading`, `TestDuplicateCallPathAnchors`, `test_program_design_gate.py:236-431`). Only resolver-level behavior (`git_grep_resolver()` itself) uses the real-git-repo fixture in `TestRealRepoResolution` (`:434-475`). No existing test in either class currently exercises a leading-underscore/private identifier.
 
+_Added by `/ll:refine-issue` — 2026-09-15 — based on codebase analysis:_
+
+- Exact operation order inside `_add()` confirmed line-by-line: `.strip()` (whitespace) → `.strip("`*_")` at `:272` (the buggy call — this is where a leading `_` is lost) → `.rstrip(".,;:")` chained on the same line → `:273-274` strips a literal trailing `()` suffix → `:275` splits at the first `(` and re-trims → `:276` rejects if empty or `_IDENT` doesn't match → `:277-279` appends (deduplicated) if it survives. The underscore loss happens at the very first normalization step, before any of the call-shape/punctuation handling — it fires identically for a bare name or a full call like `` `_grade()` ``.
+- Additional example of the "inline bug-ID comment at the fixed site" convention, not previously cited: `program_design.py:130-133`, a comment above `_REFINE_ENTRY` citing BUG-3356. Together with the issue's own citations (`:75-77` BUG-3071, `:302-304`/`:356-358` BUG-3273), this is the complete set — confirmed via an unfiltered `BUG-\d+` grep of the whole file, exactly 4 matching lines.
+- Additional real-git-repo-fixture test example, not previously cited: `TestLoopYamlStateResolution` (`test_program_design_gate.py:502-576`), docstring "FSM state names defined in loop YAML resolve like a Python `def` (BUG-3273)" — every method calls `_init_repo`/`_commit_all` then `git_grep_resolver()` directly, same fixture style as `TestRealRepoResolution`. This is the BUG-3273 regression-coverage class; it does not currently exercise a leading-underscore anchor.
+- Confirmed repo-wide (unfiltered): no paired-delimiter-aware (`_x_`/`__x__`-matching) markdown stripper exists anywhere in `scripts/little_loops/`; every stripper found is unconditional character-class stripping, matching this issue's own claim exactly (`verify_evidence.py:613,625` `_EMPHASIS_CHARS_RE`, `output_parsing.py:74-99` `_clean_verdict_content()` — backtick/asterisk/bracket only, no underscore — `issue_parser.py:2424-2431` `_extract_option_label()` — asterisk/hash only).
+
 ## Impact
 
 - **Priority**: P3 - every issue whose hooks are private helpers either fails the readiness gate spuriously or is padded with an unrelated public anchor to get past it, which weakens the gate's signal.
@@ -109,7 +122,7 @@ _Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
 
 1. Write an issue whose `### Call Path` reads `` `_run_sample_loop()` -> `_grade()` -> new `grader_error` on the outcome `` (both functions exist in `scripts/little_loops/cli/harness.py`).
 2. Run `ll-issues format-check <ID>`.
-3. Output: `program_design_nonspecific: Program Design: no call-path anchor resolves against the repo: run_sample_loop, grade, grader_error` — note the anchors are reported without their leading underscore.
+3. Output: `program_design_nonspecific: Program Design: no call-path anchor resolves against the repo: run_sample_loop, grade, grader_error` — note the anchors are reported without their leading underscore. <!-- ll-evidence-ok: illustrative runtime output for this issue's own repro anchors, not a literal string present in source -->
 4. Add a public anchor such as `` `evaluate_llm_structured()` `` to the same chain; the gate passes. Observed 2026-09-14 on BUG-3477.
 
 ## Tests
@@ -124,6 +137,7 @@ _Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-15T17:59:03 - `87cb899f-60d1-4042-81cb-33c78f6d04d3.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-09-15T16:12:43 - `31c45f73-3f1c-4df6-a475-d59f9b1efee6.jsonl`
 - `/ll:wire-issue` - 2026-09-14T22:50:06 - `bac75f45-b587-45bb-bf3c-443b0c5e805a.jsonl`
 - `/ll:refine-issue` - 2026-09-14T21:57:11 - `76fd614d-af9c-461c-9480-143acb792f32.jsonl`
