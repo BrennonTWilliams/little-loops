@@ -31,10 +31,24 @@ ENH-3471 introduces `terminated_by="no_route"` for decision-step failures (no va
 
 ## Impact
 
-- **Priority**: [P0-P5] - [Justification]
-- **Effort**: [Small/Medium/Large] - [Justification]
-- **Risk**: [Low/Medium/High] - [Justification]
-- **Breaking Change**: [Yes/No]
+- **Priority**: P3 - Reporting-only follow-up; no runtime behavior changes, so it doesn't block other work, but the ENH-3471 payoff (surfacing loop-authoring bugs separately from runtime failures) stays invisible in fleet-review until this lands.
+- **Effort**: Small - One reordered branch in `_derive_loop_outcome()`, one new bucket label threaded through the report renderer, one runbook paragraph, one new test case.
+- **Risk**: Low - Pure bucketing/labeling change with no effect on loop execution, `ExecutionResult`, or the executor; existing `"error"` bucket assertions are preserved per Expected Behavior.
+- **Breaking Change**: No - Additive: fleet-review gains a bucket label; no field, schema, or CLI flag is removed.
+
+## Program Design
+
+### Types
+
+- No new types — reuses the existing `str` outcome-bucket return type of `_derive_loop_outcome()`.
+
+### Signatures
+
+- `_derive_loop_outcome(event: dict) -> str` — check `event.get("terminated_by") == "no_route"` and return `"no_route"` before the existing `if "error" in event: return "error"` fallback (`scripts/little_loops/cli/logs.py:2058-2083`).
+
+### Call Path
+
+`_cmd_fleet_review()` -> `_derive_loop_outcome()` -> `_render_fleet_review_report()` (bucket aggregation/labeling at `scripts/little_loops/cli/logs.py:2478`)
 
 ## Scope Boundaries
 
@@ -48,3 +62,7 @@ Decomposed from ENH-3468. Follow-up to ENH-3471, which explicitly defers this un
 ## Status
 
 **Open** | Created: 2026-09-15 | Priority: P3
+
+
+## Session Log
+- `/ll:format-issue` - 2026-09-15T23:38:43 - `40022929-8f22-431e-874e-951b8ed315e8.jsonl`
