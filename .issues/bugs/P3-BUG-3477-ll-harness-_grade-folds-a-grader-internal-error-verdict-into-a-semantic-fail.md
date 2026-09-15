@@ -7,6 +7,12 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-09-14'
 captured_at: '2026-09-14T21:36:04Z'
+confidence_score: 90
+outcome_confidence: 59
+score_complexity: 9
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 0
 ---
 
 # BUG-3477: ll-harness _grade() folds a grader-internal error verdict into a semantic fail
@@ -307,8 +313,20 @@ directly (above).
 
 **Open** | Created: 2026-09-14 | Priority: P3
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-15_
+
+**Readiness Score**: 90/100 → PROCEED
+**Outcome Confidence**: 59/100 → LOW
+
+### Outcome Risk Factors
+- Broad enumeration across 16+ distinct change sites: `_grade()`, the `HarnessEvalOutcome` field/two new properties, `_evaluate_and_report()`, `_run_sample_loop()`, five DB-recording call sites, `_rc_from_event()`, `harness_eval_pass_rate()`, `harness_eval_abstention_rate()`, `_read_target_history()`, plus six documentation files reconciling the exit-code/verdict-set contract
+- Very wide blast radius (11+ callers/dependents): six `_report_samples()` call sites, four independent readers of persisted `semantic_passed`/`semantic_verdict` rows that must apply the same `IS NOT 'error'` rule in lockstep (`_rc_from_event()`, `harness_eval_pass_rate()`, `harness_eval_abstention_rate()`, `_read_target_history()`), plus `cli/__init__.py` and `history_reader/__init__.py` re-export importers
+- `missing_behavior_parity` gap flagged for `scripts/little_loops/history_reader/harness.py` (format-check), capping Criterion 4 — the file lacks an explicit "what this replaces" subsection despite four call sites there changing denominator semantics
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-15T19:54:15 - `1128b02a-8c77-4be4-8556-ad5cf2f4fa84.jsonl`
 - manual review (second pass) - 2026-09-15 - `harness_eval_pass_rate()` now re-bands pre-fix error rows by SQL (supersedes "accepted, no backfill"); added `_read_target_history()` as an unlisted reader; per-sample `results[i]["error"]` must carry the grader detail; added `grader_error_detail` property tolerant of every `details` shape; simplified the exit-code chain to a single `hard_fail` capture; widened in-code NULL-⇒-abstained docstrings; added matching tests
 - `/ll:verify-issues` - 2026-09-15T19:37:30 - `cdbb07d4-56af-4822-8c99-6c7b4578265d.jsonl`
 - manual review - 2026-09-15 - decided grader error → rc 2 / `errored` bucket, precedence fail > grader_error > abstain > pass; added Acceptance Criteria; corrected `_evaluate_and_report()` "renders PASS" → FAIL; flagged `harness_eval_abstention_rate()` denominator; replaced five-site threading with a `semantic_passed_row` property; `_rc_from_event()` verdict-first ordering re-bands pre-fix rows

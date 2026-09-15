@@ -10,6 +10,12 @@ discovered_date: '2026-09-14'
 captured_at: '2026-09-14T21:45:35Z'
 relates_to:
 - EPIC-2856
+confidence_score: 100
+outcome_confidence: 100
+score_complexity: 25
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # BUG-3478: format-check Program Design gate strips leading underscore from private Call Path anchors
@@ -163,6 +169,7 @@ _Added by `/ll:refine-issue` — 2026-09-15 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-15T19:53:38 - `765ece35-015d-4459-b408-26bba4731f59.jsonl`
 - `/ll:verify-issues` - 2026-09-15T19:35:57 - `cdbb07d4-56af-4822-8c99-6c7b4578265d.jsonl`
 - `/ll:wire-issue` - 2026-09-15T19:24:37 - `6d7823a0-f459-448f-abfd-383d591b75f3.jsonl`
 - `/ll:refine-issue` - 2026-09-15T17:59:03 - `87cb899f-60d1-4042-81cb-33c78f6d04d3.jsonl`
