@@ -7,184 +7,148 @@ status: open
 discovered_date: '2026-09-13'
 labels: []
 parent: ENH-3468
-depends_on: [ENH-3471]
+depends_on: [ENH-3472]
 reconcile_attempted: true
 ---
 
 ## Summary
 
-When a loop's budget ends with no acceptance (a qualifying no-acceptance `terminated_by`), nothing is written beyond the cap-hit itself — the attempt that came closest to the objective is discarded even though it was already paid for. This issue adds a `best_effort`-tagged checkpoint on that path, so every outer iteration produces exactly one artifact whether or not the run succeeded, matching the pattern already used ad hoc by `canvas-sketch-generator.yaml`'s `finalize` state.
+When a loop's budget ends with no acceptance (`max_steps`, `max_iterations_reached`, `timeout`, `stall_detected`, `cycle_detected`), nothing is written beyond the cap-hit itself — the run's final captured state is discarded even though it was already paid for. This issue makes `PersistentExecutor.run()` write one fixed-name artifact, `best_effort.json`, into `run_dir` on those terminations, tagged `metadata.best_effort: true` and holding the run's last attempt (final state, captured values, termination reason). It is an **artifact only**: no new `terminated_by` value, no new `map_final_status()` bucket, no new exit code. The run is still a `max_steps` (etc.) run; it just leaves a salvage file behind.
 
-**Depends on ENH-3471**: "which `terminated_by` values qualify as no-acceptance" is only answerable once ENH-3471's named attempt-batch/decision-step vocabulary exists — implement this child after that one lands.
+**Depends on ENH-3472**: the write lands inside the tail of `PersistentExecutor.run()` that ENH-3472 guards, and must itself never fail the run. It does **not** depend on ENH-3471 — the qualifying values are budget-exhaustion values that already exist; an action crash (`error`) or a routing failure (`no_route`) is not a "closest attempt" and gets no checkpoint.
 
 ## Current Behavior
 
-When a loop's budget ends with no acceptance (a qualifying no-acceptance `terminated_by`), nothing is written beyond the cap-hit itself — the attempt that came closest to the objective is discarded even though it was already paid for. `PersistentExecutor._save_state()` (`fsm/persistence.py:1129-1159`) only overwrites a single fixed per-instance state file on each `state_enter`/`loop_complete`/`baseline_complete` event; there is no per-iteration accumulation anywhere in `StatePersistence`, and no type representing a `best_effort`-tagged checkpoint artifact exists anywhere in the codebase.
+`PersistentExecutor._save_state()` (`fsm/persistence.py:1129-1159`) overwrites a single fixed per-instance state file on each `state_enter`/`loop_complete`/`baseline_complete` event; `archive_run()` (`:585-644`) copies `state.json`, `events.jsonl`, `summary.json`, `probe-*.json`, and `prepatch_evidence_*.json` from `run_dir` into `.loops/.history/`. No runner-written file records "this run ran out of budget; here is what it had when it stopped." Loops that want that behavior implement it bespoke in YAML (`canvas-sketch-generator.yaml`'s `finalize`, `general-task.yaml`'s `summarize_partial`/`partial`), and every other loop gets nothing.
 
 ## Expected Behavior
 
-On a qualifying no-acceptance termination (per the `terminated_by` vocabulary ENH-3471 introduces), the executor writes exactly one `best_effort`-tagged checkpoint artifact (e.g. `iter_<N>_best_effort.json` with `metadata.best_effort=True`) holding the closest-to-objective attempt — so every outer iteration produces exactly one artifact whether or not the run succeeded, mirroring `canvas-sketch-generator.yaml`'s `finalize` pattern. Context-compaction failure (`hooks/pre_compact.py`, `session_store/lifecycle.py::compact_session()`) must stay hard-terminal and must NOT produce a best-effort checkpoint.
+- On a qualifying no-acceptance termination, `PersistentExecutor.run()` writes exactly one `best_effort.json` into `run_dir` before `save_state()`/`archive_run()` run, so `archive_run()` copies it into `.loops/.history/`.
+- On every other termination (`terminal` success or failure, `error`, `no_route`, `interrupted`, `user_stopped`, `handoff`, `workdir_vanished`, …) no file is written.
+- When `run_dir` is absent from context, the write is skipped silently.
+- A failure writing the file is logged and never fails the run (it lives inside ENH-3472's guarded tail).
+- Downstream durable-artifact consumers (archive copy-list, credential scan, evidence hashing, aux-mutation audit, handoff fallback) know the fixed name.
 
 ## Parent Issue
 
 Decomposed from ENH-3468: Every loop iteration writes a checkpoint, never zero: salvage paid work and tag the best-effort attempt.
 
-This child covers **Implementation Step 3** and its directly-dependent wiring (checkpoint-artifact consumers — the attempt-batch/decision-step vocabulary wiring belongs to ENH-3471).
+This child covers **Implementation Step 3** and the checkpoint-artifact consumer wiring.
 
 ## Design
 
-Pattern taken from a production search-loop framework over an expensive stochastic subject, whose failure-handling discipline is: *every failure mode has a designated resting place, and none of them is an exception escaping the loop.* On the no-acceptance path it writes an `iter_<N>_best_effort.json` checkpoint with `metadata.best_effort=True` — "every outer iter produces a checkpoint, never zero."
+### Decision 1: artifact only — no vocabulary change
+An earlier draft wavered between "new artifact" and "new `terminated_by` value / new `map_final_status()` bucket." The latter would ripple through `map_final_status`, `_derive_loop_outcome`, `EXIT_CODES`, `_WASTED_RUN_PREDICATE`, `_execute_sub_loop`, `mcp_server/tasks.py`, `_FLAG_OUTCOMES`, the `refine-to-ready` case arm, and the `test_ll_logs` parity list — for no consumer benefit, since the run *is* still budget-exhausted and should still count as wasted, still route to `on_timeout`/`on_no`, still exit 1. Decision: **no vocabulary change.** All of that wiring is out of scope.
 
-Closest existing analog: `scripts/little_loops/loops/canvas-sketch-generator.yaml:34,293,344` — `on_max_steps: finalize` plus `snapshot`/`finalize` states, where `finalize` always publishes the highest-scored iteration (`scores.tsv`, `sort -k2,2n -k1,1n | tail -1`) as `best.html`, reached on both a passing gate and step-cap exhaustion — but this is bespoke shell logic local to one loop, not a shared executor primitive. `general-task.yaml`'s `on_max_steps: summarize_partial` / `partial` terminal (ENH-2575, `:1219,1244,1303`) is precedent for "a run that hits its cap must still emit a graded artifact and land on its own terminal," not for the checkpoint-per-iteration mechanism itself.
+### Decision 2: qualifying set
+`_NO_ACCEPTANCE_TERMINATIONS = frozenset({"max_steps", "max_iterations_reached", "timeout", "stall_detected", "cycle_detected"})`, a module-level constant in `fsm/persistence.py`. These are the values where the executor stopped a run that was still trying. Excluded: `terminal` (the loop decided, pass or fail), `error`/`no_route`/`workdir_vanished` (died), `interrupted`/`user_stopped`/`system_signal`/`handoff`/`host_pressure_abort`/`host_budget_exceeded`/`cost_ceiling_exceeded` (deliberate or external stops that already have their own resting place). Anyone widening the set edits one constant.
 
-**No shared "closest attempt to objective" scoring utility exists anywhere in the codebase** (confirmed by repo-wide search) — every existing per-loop instance reimplements the comparison independently in a different shape (deterministic shell sort, LLM-narrated score-history read, model self-report). This issue must pick or build one rather than assuming a reusable utility exists.
+### Decision 3: fixed filename `best_effort.json`, not `iter_<N>_best_effort.json`
+`run_dir` is per run instance (`runs/<loop>-<stamp>/`); the "outer iteration N" of the source framework has no counterpart here, and `ExecutionResult.iterations` is the FSM step count, not an outer-loop index. A fixed name matches the existing runner-written convention (`state.json`, `summary.json`, `usage.jsonl`) and turns every consumer edit into a plain name addition rather than a glob/prefix check. The step count is recorded *inside* the file.
 
-**Escape hatch — must NOT apply this pattern to context-compaction failure**: `scripts/little_loops/hooks/pre_compact.py`, `session_store/lifecycle.py::compact_session()` (called from `cli/compact_session.py::main_compact_session()`, no surrounding try/except) must stay hard-terminal. Compaction's own internal LCM escalation already guarantees a leaf node is produced, so a `best_effort`-tagged partial result there would misrepresent a failure as salvaged.
+### Decision 4: no "closest to objective" scoring
+The executor has no scores; no shared "best of N" utility exists anywhere (confirmed by repo-wide search — every hit is an unrelated domain or a bespoke loop-YAML state). The checkpoint is the **last attempt**: what `ExecutionResult` carries when the budget ran out. Loops with a numeric score keep their bespoke per-loop selection (`canvas-sketch-generator.yaml`'s `scores.tsv` sort, `vega-viz.yaml`'s in-place `best.html`); the runner does not attempt to generalize it.
 
-### Codebase Research Findings
+### File shape
+```json
+{
+  "metadata": {"best_effort": true, "loop_name": "<name>", "written_at": "<iso8601>"},
+  "terminated_by": "max_steps",
+  "final_state": "<state>",
+  "iterations": 42,
+  "duration_ms": 123456,
+  "captured": { ... },
+  "error": null
+}
+```
+Written via `ExecutionResult.to_dict()` plus the `metadata` wrapper, atomically (`tempfile` + `os.replace`, the same pattern as `StatePersistence.save_state()` `:502-523`).
 
-_Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
+### Escape hatch (non-goal, not a test target)
+Context-compaction failure (`cli/compact_session.py::main_compact_session()` → `session_store/lifecycle.py::compact_session()`, `:679-710`, no surrounding try/except) stays hard-terminal. That code path never touches `PersistentExecutor` and gains no checkpoint by construction; it is stated here so nobody extends the pattern there, but it is not a boundary this issue can test. (`hooks/pre_compact.py` is a separate host-compaction hook, unrelated.)
 
-- Confirmed via repo-wide search: no shared "best of N" / "closest attempt to objective" scoring utility exists in `fsm/`, `cli/`, or any shared module. Every hit for candidate names (`best_of_n`, `select_best`, `BestAttempt`, `rank`, `top_n`, `highest_scor*`) belongs to an unrelated domain (host-model tiers in `advisor.py:83`, issue-priority ranking in `queue_store.py:300`, skill-keyword matching in `cli/verify_triggers.py:225`, epic-title picking in `cli/issues/link_epics.py:231`) or is a bespoke loop-YAML state name (`select_best` in `interactive-component-generator.yaml:363`, `apo-beam.yaml:39`) with no backing Python utility.
-- Two disagreeing precedent conventions exist for "which iteration is closest to the objective," and this issue must pick one knowingly rather than assume either is canonical: (a) deterministic shell-side numeric comparison against a machine-written score file — `canvas-sketch-generator.yaml`'s `finalize` state (`sort -k2,2n -k1,1n scores.tsv | tail -1`, :344-363) and `vega-viz.yaml`'s incremental `record` state, which overwrites `best.html`/`best_score.txt` in place whenever a new score beats the stored best (:485-538, "the best result survives even if the loop ends by hitting max_iterations mid-cycle"); (b) LLM-narrated selection with no programmatic verification — `generator-evaluator.yaml`/`generator-evaluator-flux.yaml`'s `max_steps_summary` state, which hands the model a plain-text `.score_history` file and has it narrate the best iteration (:210-236, :335-359).
-- The codebase's established per-iteration artifact convention is a directory per iteration (`iter-N/`, tracked via an `.iter_counter`/`.iter` sentinel file — `canvas-sketch-generator.yaml:293-320`, `vega-viz.yaml:500-509`, documented generically in `loops/lib/common.yaml:243`) or a flat `*-iter-N.*` filename (`docs/guides/LOOPS_REFERENCE.md:1899`) — not a single `iter_<N>_*.json` file. No file anywhere in the repo follows the `iter_<N>_*.json` shape this issue's Signatures section proposes, and no `metadata.best_effort=True`-style tag exists on any written artifact today (confirmed by repo-wide search — the only `best_effort` hits are unrelated test names about best-effort DB writes).
-- Confirmed: no existing test covers "context-compaction failure stays hard-terminal" — `test_session_store_lifecycle.py::TestCompactSession`, `test_compaction.py`, `test_pre_compact.py` were searched directly with no match on this boundary. `session_store/lifecycle.py::compact_session()` (:679-710) wraps its call to `_compact_session_conn()` in a bare `try/finally` (only closing the connection) with no `except` clause, and `cli/compact_session.py::main_compact_session()` (:55-96) calls `compact_session(...)` with no surrounding try/except either — confirming the issue's claim that a compaction failure propagates as a raised exception rather than being converted into any kind of partial artifact.
+### Codebase Research Findings (retained, condensed)
 
-_Added by `/ll:refine-issue` — 2026-09-15 — based on codebase analysis:_
-
-- Correction to the Design section's escape hatch: `scripts/little_loops/hooks/pre_compact.py::handle()` is a structurally separate mechanism from `session_store/lifecycle.py::compact_session()` — it preserves `.ll/ll-precompact-state.json` ahead of the *host's own* built-in context compaction, and never calls `compact_session()`/`_compact_session_conn()`. Its own top-level `try/except Exception: return LLHookResult(exit_code=0)` only guards its own state-write logic. `compact_session()` (`session_store/lifecycle.py:679-710`) has exactly one production caller, `cli/compact_session.py::main_compact_session()` (:55-96, calls it at :70 with no surrounding try/except) — that is the actual hard-terminal call chain this issue's escape hatch is about; `hooks/pre_compact.py` is unrelated to it and should not be cited as part of the same mechanism.
-- `write_best_effort_checkpoint` confirmed genuinely nonexistent anywhere in source (repo-wide search, no glob/type filter) — new surface area, matching the issue's own claim.
-- `map_final_status()` (`fsm/persistence.py:132-168`) confirmed still a closed 5-value contract (`completed`/`failed`/`interrupted`/`timed_out`/`awaiting_continuation`), free-form `str`, no enum/Literal constraint. Confirmed 4 production call sites: `transport.py:1750`, `fsm/persistence.py:1184` (inside `archive_run_only()`), `fsm/persistence.py:1246` (inside `PersistentExecutor.run()` itself), and `session_store/writers.py:2934` (drifted from the issue's cited `:2891`, which today is inside the unrelated `_derive_transition()`).
-- Citation drift confirmed: `cli/logs.py::_derive_loop_outcome()` is currently at lines 2058-2083 (issue cites `2037-2062`; line 2037 today falls inside the preceding function `_builtin_loop_paths()`'s docstring). The function's behavior matches the issue's description exactly once located: `if "error" in event: return "error"` fires first (2060-2061), before any `terminated_by` check, falling through to the `final_state` keyword heuristic (2080-2082) and defaulting to `"converged"` (2083) for an unrecognized terminal name — confirming the issue's core wiring concern is real.
-- `canvas-sketch-generator.yaml`'s `finalize` state is confirmed at lines 34 (`on_max_steps: finalize`) and 344 (state body) — but line 293 (also cited by the issue alongside 34/344) is actually the `snapshot:` state header, not another `finalize` occurrence; the citation should read `:34,344` for `finalize` specifically.
-- `general-task.yaml`'s `on_max_steps: summarize_partial` → `partial` precedent (cited `:1219,1244,1303`) is confirmed byte-for-byte at those lines, but with a caveat the Design section doesn't currently note: on the literal `on_max_steps` cap-hit path, the executor terminates right after `summarize_partial` runs a prose `summary.md` — `write_partial_summary` (:1244, the state that actually writes the JSON-verdict `summary.json`) is reached only via the sibling `final_verify.on_error` path, not via `on_max_steps` itself. The JSON-artifact-on-cap-hit precedent this issue models itself on is slightly weaker than currently stated.
+- `canvas-sketch-generator.yaml` `finalize` (`:34` `on_max_steps: finalize`, `:344` state body) and `vega-viz.yaml` `record` (`:485-538`) are per-loop precedents for "publish the best iteration on cap-hit"; `general-task.yaml`'s `on_max_steps: summarize_partial` (`:1219`) writes a prose `summary.md` on the cap path — the JSON `summary.json` writer (`:1244`) is reached only via `final_verify.on_error`. None is a shared primitive.
+- No `metadata.best_effort`-style tag or `iter_<N>_*.json` file exists anywhere today; established per-iteration conventions are `iter-N/` directories or `*-iter-N.*` names. `vega-viz.yaml:571` globs `iter-*/` directories; no collision with a flat `best_effort.json`.
+- `map_final_status()` (`fsm/persistence.py:132-168`) is a closed 5-value contract with four callers (`transport.py:1750`, `persistence.py:1184,1246`, `session_store/writers.py:2934`) — untouched by Decision 1.
+- `cli/logs.py::_derive_loop_outcome()` (`:2058-2083`) — untouched by Decision 1; a `max_steps` run still buckets as `max-steps`.
 
 ## Program Design
 
 ### Types
-- No existing type represents a `best_effort`-tagged checkpoint artifact anywhere in this codebase (confirmed by repo-wide search) — this is new surface area, not a rename of an existing mechanism. No `metadata.best_effort=True`-style tag, `iter_<N>_*.json` filename convention, `abort_reason`/`AbortReason` symbol, or literal `attempt_batch`/`decision_step` identifier exists today.
-
-### Existing per-iteration persistence (do not reuse for this)
-- `PersistentExecutor._save_state()` (`fsm/persistence.py:1129-1159`) is an existing per-iteration checkpoint mechanism, but it overwrites a single fixed file (`StatePersistence.save_state()`, `:502-523`, atomic `os.replace` over `<running_dir>/<instance_id>.state.json`) on every `state_enter`/`loop_complete`/`baseline_complete` event — there is no existing per-iteration accumulation anywhere in `StatePersistence`. A checkpoint that must survive past the next iteration needs a **new** write path, not a modification of this one. `usage.jsonl`/`messages.jsonl` (also written from `_handle_event()`, `:1020-1049`/`:1051-1062`) are the actual append-only per-event logs that already accumulate the "already-paid traces" this issue is salvaging.
-
-### Decision Rules (must be resolved before/during implementation)
-- **Which `terminated_by` values qualify for a "no acceptance" checkpoint** — not every value is a failure needing salvage (e.g. `handoff`/`user_stopped` are deliberate stops). Per the `general-task.yaml` `partial`-terminal precedent, whichever values qualify must route to a terminal distinct from both `done` and `failed`, since sub-loop routing treats `done` as `on_yes`. Depends on ENH-3471's new vocabulary being available.
-- **"Closest to the objective" selection metric** — no established comparison rule to reuse generically (see Design above); pick one and document it.
+- `_NO_ACCEPTANCE_TERMINATIONS: frozenset[str]` (new, `scripts/little_loops/fsm/persistence.py`).
+- `BEST_EFFORT_FILENAME = "best_effort.json"` (new constant, `scripts/little_loops/fsm/persistence.py`) — imported by `cli/loop/evidence.py` and `cli/loop/audit.py` so the name has one source of truth.
 
 ### Signatures
-- `write_best_effort_checkpoint(run_dir: Path, iteration: int, result: ExecutionResult) -> Path` (new, `scripts/little_loops/fsm/persistence.py`) — writes `iter_<iteration>_best_effort.json` with `metadata.best_effort=True`; called only when `terminated_by` is in the no-acceptance set ENH-3471 defines.
-- `PersistentExecutor.run(self, clear_previous: bool = True) -> ExecutionResult` (existing, `scripts/little_loops/fsm/persistence.py:1212`) — gains a branch invoking `write_best_effort_checkpoint()` on a qualifying no-acceptance termination.
-- `map_final_status(...)` (existing, `scripts/little_loops/fsm/persistence.py:132-168`) — decide whether the new outcome needs its own bucket in the closed 5-value return contract, per Wiring below.
+- `write_best_effort_checkpoint(run_dir: Path, result: ExecutionResult, loop_name: str) -> Path` (new, `scripts/little_loops/fsm/persistence.py`) — writes `run_dir / BEST_EFFORT_FILENAME` atomically; pure function, no branching on `terminated_by` (the caller decides).
+- `PersistentExecutor.run(self, clear_previous: bool = True) -> ExecutionResult` (`fsm/persistence.py:1212`) — gains, at the top of ENH-3472's guarded tail and before `save_state()`, `if result.terminated_by in _NO_ACCEPTANCE_TERMINATIONS and run_dir_str: try: write_best_effort_checkpoint(...) except Exception: logger.warning(...)`.
 
 ### Call Path
-`PersistentExecutor.run()` (`fsm/persistence.py:1212`) → `write_best_effort_checkpoint()` (new) → `StatePersistence` write helper (existing, `fsm/persistence.py:502-523`) → `map_final_status()` (`fsm/persistence.py:132-168`) → `_derive_loop_outcome()` (`cli/logs.py:2037-2062`).
-
-### Codebase Research Findings
-
-_Added by `/ll:refine-issue` — 2026-09-15 — based on codebase analysis:_
-
-- Confirmed: `PersistentExecutor._save_state()` (`fsm/persistence.py:1129-1159`) still overwrites a single fixed per-instance state file via `StatePersistence.save_state()` (:502-523, atomic `os.replace`) — no per-iteration accumulation logic present anywhere in `StatePersistence`, matching the issue's own claim.
-- Confirmed: no existing type, `metadata`-wrapper key, or boolean tagging convention (e.g. `"is_best"`, `"provisional"`, `"draft"`) exists on any loop-written checkpoint artifact anywhere in `scripts/little_loops/loops/` — the closest existing analog is string-`"verdict"` plus integer-count fields (e.g. `general-task.yaml`'s `"verdict"`/`"abandoned"` in `summary.json`), not boolean metadata tags. No loop uses an `iter_<N>_*.json` flat-filename shape; the two established per-iteration conventions are a directory-per-iteration (`iter-N/`, `.iter_counter`/`.iter` sentinel) or a flat `*-iter-N.*` name — neither matches this issue's proposed `iter_<N>_best_effort.json` shape.
+`PersistentExecutor.run()` → `write_best_effort_checkpoint()` (new) → `StatePersistence.save_state()` → `StatePersistence.archive_run()` (copies `best_effort.json` via the widened copy-list).
 
 ## Wiring
 
-- `scripts/little_loops/fsm/persistence.py::map_final_status()` (:132-168) — decide whether the no-acceptance/`best_effort` outcome needs its own bucket in the closed 5-value return contract (`completed`/`failed`/`interrupted`/`timed_out`/`awaiting_continuation`), or is acceptable in the existing `"failed"` catch-all; update the docstring's enumerated return values either way. Also called from `transport.py:1750` (OTel span attribute) and `session_store/writers.py:2891` (`loop_events.state`, BUG-3066).
-- `scripts/little_loops/history_reader/usage.py::_WASTED_RUN_PREDICATE` (:310-316) — decide whether a `best_effort`-tagged salvaged run should count as "wasted" at all (arguably not, since a usable artifact was produced), and add the value if so.
-- `scripts/little_loops/cli/logs.py::_derive_loop_outcome()` (:2037-2062) — a closed `if/elif` chain checking `"error" in event` before `terminated_by`. A no-acceptance/`best_effort` terminal that does not set `error` (the entire point of the checkpoint being "no exception, just no acceptance") falls through every branch to the `final_state` keyword heuristic (:2060-2062) and, since a best-effort terminal name is unlikely to contain "fail"/"error"/"abort", silently returns `"converged"` — misclassifying a salvaged failure as success in fleet-review output. Needs an explicit new branch.
-- `scripts/little_loops/cli/loop/runner.py` — `EXIT_CODES: dict[str, int]` (:39-55), looked up via `EXIT_CODES.get(result.terminated_by, 1)` (:585): decide the exit code for the new outcome rather than relying on the default-1 fallback. `_is_success = result.terminated_by in ("terminal", "interrupted", "handoff") and not result.failure_terminal` (:511-513): relevant only if the new outcome arrives as `terminated_by="terminal"` with `failure_terminal=True` (the `general-task.yaml` precedent) rather than a new string — needs correct `failure_terminal` to avoid being miscolored green as success.
-- `skills/audit-loop-run/SKILL.md` (~line 293) — Step 6b verdict table's `partial` row is keyed on `terminated_by == "max_steps"` AND a `max_steps_summary` event (ENH-2575 precedent this issue's checkpoint models itself on). Add an analogous new row for the `best_effort` outcome, or it gets no verdict classification.
-- `scripts/little_loops/generate_schemas.py` (:615-634) and `docs/reference/EVENT-SCHEMA.md` / `docs/guides/LOOPS_GUIDE.md` `### terminated_by exit reasons` table — add the new value's row once ENH-3471 lands the enumeration-update mechanics; this child only needs to add its own row/value to what ENH-3471 leaves in place.
+### Durable-artifact consumers (the checkpoint lives in the gitignored, ephemeral `run_dir`; each of these keeps a closed hand-maintained filename list)
 
-### Wiring Pass Additions (`/ll:wire-issue`)
+- `scripts/little_loops/fsm/persistence.py::StatePersistence.archive_run()` (`:585-644`) — add `BEST_EFFORT_FILENAME` to the fixed-name copy list (alongside `state.json`/`events.jsonl`/`summary.json`), and to the docstring at `:590-600`.
+- `scripts/little_loops/cli/loop/evidence.py::_scan_for_credentials()` (`:198-254`, tuple at `:211`) — add `BEST_EFFORT_FILENAME` to the `("state.json", "events.jsonl", "summary.json")` tuple so it is credential-scanned (ENH-3470).
+- `scripts/little_loops/cli/loop/evidence.py` sha256 hashing tuple (`:313`) — second independent copy of the same tuple; add the name so it enters the evidence bundle (FEAT-3182).
+- `scripts/little_loops/cli/loop/audit.py::_AUX_EXCLUDED_NAMES` (`:23-30`) — add `BEST_EFFORT_FILENAME` as a plain set member (fixed name; no prefix check needed). Without it every checkpoint inflates `aux_mutation_count`.
+- `scripts/little_loops/hooks/pre_compact_handoff.py::_build_fallback()` (`:103-135`) — takes the *first* file from an unordered `rd.glob("*.json")` per run dir. Prefer `summary.json` when present, else `state.json`, else the first sorted `*.json`; this is a latent nondeterminism bug independent of this issue, but the new file makes it more likely to surface `{"metadata": ...}` keys as "the" run state.
 
-_The new checkpoint file lands in the gitignored, ephemeral `run_dir`; every durable-artifact consumer below works off a closed, hand-maintained filename/glob list that does not yet know about `iter_<N>_best_effort.json`. Without these additions the checkpoint is written but never durably archived, never credential-scanned, never hashed into the evidence bundle, and gets miscounted as an unexplained mutation:_
+### Documentation
 
-- `scripts/little_loops/fsm/persistence.py::StatePersistence.archive_run()` (:585-644) — add an `iter_*_best_effort.json`-shaped glob to the existing `("probe-*.json", "prepatch_evidence_*.json")` copy-list, or the checkpoint is never copied out of `run_dir` into `.loops/.history/` and is lost when `run_dir` is discarded [Agent 2 finding]
-- `scripts/little_loops/cli/loop/evidence.py::_scan_for_credentials()` (~198-249) — add the new file to the fixed `("state.json", "events.jsonl", "summary.json")` tuple / `probe-*.json` glob so it gets credential-scanned like other checkpoint artifacts (ENH-3470) [Agent 2 finding]
-- `scripts/little_loops/cli/loop/evidence.py` sha256 hashing tuple (~312-318, a second, independently-maintained copy of the same `("state.json", "events.jsonl", "summary.json")` tuple) — add the new file so it's included in the deterministic verification-evidence bundle (FEAT-3182) [Agent 2 finding]
-- `scripts/little_loops/cli/loop/audit.py::_AUX_EXCLUDED_NAMES` / `_scan_aux_mutations()` (~23-30, ~144-174) — needs a **prefix/pattern check** (`name.startswith("iter_") and name.endswith("_best_effort.json")`), not a membership addition, since the filename is parameterized by iteration number; otherwise every best-effort checkpoint inflates `aux_mutation_count` [Agent 2 finding]
-- `scripts/little_loops/cli/logs.py` — `_FLAG_OUTCOMES` (~line 1184), `is_flagged()` (~1187-1206), `_LoopFleetAggregate`/`_aggregate_fleet_runs()` (~1122-1160), and the fleet-review "Delta vs baseline" table (~2564-2566) all consume `_derive_loop_outcome()`'s bucket vocabulary; once that function gains its new branch (already in this issue's Wiring list above), decide whether the new bucket joins `_FLAG_OUTCOMES` [Agent 1 finding]
-- `scripts/little_loops/fleet_improve.py` (imports `is_flagged` at :42; consumes `top_outcome`/`outcomes` at :243, :332-333, :344, :443-444, :552) — sidecar consumer applying the identical flagging rule; verify against once the outcome vocabulary changes [Agent 1 finding]
-- `docs/runbooks/FLEET_LOOP_REVIEW.md` (~90-97) — outcome vocabulary prose (`converged | failed | error | max-steps | stalled | interrupted | signal`) needs the new bucket documented [Agent 1 finding]
-- `docs/guides/LOOPS_GUIDE.md` `### Safety Limits` table (~line 127, `on_max_steps` row: "unset | Silent budget exhaustion...") — becomes stale once the executor writes a best-effort checkpoint on a qualifying no-acceptance termination even when `on_max_steps` is unset; this is a different section of the same file than the `terminated_by` table already listed above [Agent 2 finding]
+- `docs/reference/loops.md` § "Output Artifacts" / "Runner-written files" — the sole doc listing runner-written `run_dir` files (currently only `usage.jsonl`); add `best_effort.json` with the qualifying-set and file-shape description.
+- `docs/guides/LOOPS_GUIDE.md` `### Safety Limits` table (~127, `on_max_steps` row: "unset | Silent budget exhaustion…") — no longer silent; note the checkpoint.
+- `skills/audit-loop-run/SKILL.md` (~293) Step 6b verdict table — add a note that a `max_steps`/`timeout` run with `best_effort.json` present should be read as "salvageable partial" (prose only; `test_audit_loop_run_skill.py` is string-containment, no automated verdict logic).
 
-### Tests (added by `/ll:wire-issue`)
+### Confirmed Not Affected (per Decision 1)
 
-- Extend `scripts/tests/test_cli_loop_lifecycle.py::TestCmdResumeExitCodes` — model the new outcome's exit-code + persisted-status pair on the `test_workdir_vanished_returns_exit_code_1` (:1466) / `test_workdir_vanished_maps_to_failed_persisted_status` (:1478) two-test shape, the most recent prior addition to both `EXIT_CODES` and `map_final_status`'s fallback [Agent 3 finding]
-- Extend `scripts/tests/test_history_reader_usage.py::TestWasteAttribution` with a new dedicated test method (the file's own `_seed_run`-helper-plus-single-assertion-block convention, not `@pytest.mark.parametrize`) — same predicate ENH-3471 also adds a row to; see this issue's own Scope Boundary note above about sequencing against whatever shape ENH-3471 lands [Agent 3 finding]
-
-### Confirmed Not Affected (no action needed)
-
-- `PersistentExecutor.archive_run_only()` (:1161-1210) — its one caller (`cli/loop/signals.py:60`) hardcodes `terminated_by="interrupted_force"` and can never observe a no-acceptance value; it also has no `ExecutionResult` to pass to `write_best_effort_checkpoint()` (it builds `LoopState` directly from live executor fields). Confirmed genuinely out of scope, not merely deferred [Agent 2 finding]
-- `skills/audit-loop-run/SKILL.md`'s verdict table has no automated test anywhere (`test_audit_loop_run_skill.py`'s checks are pure string-containment on the prose); adding a `best_effort` row is documentation-only, no test infra to extend [Agent 3 finding]
-- `map_final_status()`'s closed 5-value contract has no exhaustiveness/enum-membership assertion anywhere in the suite; adding a 6th bucket won't trip any existing test [Agent 3 finding]
-- `scripts/little_loops/loops/vega-viz.yaml:571` globs iteration **directories** (`iter-*/`, dash separator, trailing slash) — does not collide with the proposed flat-file `iter_<N>_best_effort.json` (underscore separator, no directory). No loop asserts an "exactly one artifact per iteration" count that this new checkpoint would violate [wire-issue pass 2 finding]
-
-### Wiring Pass 2 Additions (`/ll:wire-issue`, second pass)
-
-_These touchpoints were found in a re-run of wiring analysis after ENH-3471's `_execute_sub_loop()`/vocabulary findings landed; all are genuinely new, not covered by the original Wiring / Wiring Pass Additions sections above:_
-
-- **`scripts/little_loops/fsm/executor.py::FSMExecutor._execute_sub_loop()` (:1284-1343)** — the engine's generic `type: loop` sub-loop dispatch. Its routing chain (`"terminal"` → yes/no by `failure_terminal`; `("error", "workdir_vanished")` → `on_error`/`on_no`; `("timeout", "max_steps", "max_iterations_reached")` → `on_timeout`/`on_no`; else → `on_no`) and its `${captured.<state>.verdict}` derivation (:1301-1310, same three-way split, else → `"no"`) both fall through to the generic catch-all for the new best_effort/no-acceptance outcome — correct by accident today (no-acceptance → `on_no` is semantically right), but this is a closed enumeration that should explicitly account for the new value(s) rather than relying on the fallthrough [wire-issue finding]
-- **Scoping consequence of the above**: `PersistentExecutor` wraps `FSMExecutor` via composition, and `_execute_sub_loop()`'s child executor (`fsm/executor.py:1226`, `FSMExecutor(...)`) is a plain, non-persistent instance — `write_best_effort_checkpoint()` (called from `PersistentExecutor.run()`) is **never reached for a nested sub-loop**. Only the outermost `ll-loop run` instance can produce a `best_effort` checkpoint; a sub-loop child that ends with no acceptance produces no checkpoint of its own regardless of this issue. Document this scope limitation explicitly rather than leaving it implicit [wire-issue finding]
-- `scripts/little_loops/loops/auto-refine-and-implement.yaml:367` (`case "${captured.delegate.terminated_by?}" in terminal) ... *) exit 1 ;; esac`) — a loop-specific closed switch on a sub-loop's `terminated_by`; the new value falls into the `*)` branch (same bucket as every other non-`terminal` outcome today) — confirmed acceptable, no change required, but worth the same explicit-accounting note as `_execute_sub_loop()` [wire-issue finding]
-- `scripts/little_loops/loops/refine-to-ready-issue.yaml:1043` diagnose-only case (`"${captured.confidence_check.failure_terminal?}:${captured.confidence_check.terminated_by?}" in True:*|*:error|*:timeout|*:max_steps)`) — if the new outcome lands with `failure_terminal=False` and a `terminated_by` string outside `error|timeout|max_steps` (rather than the `general-task.yaml`-style `failure_terminal=True` precedent this issue's Design section favors), it matches none of the arms and the diagnose report silently omits it as a distinct failing cause — resolve by picking `failure_terminal=True` per the stated precedent, or add an explicit arm [wire-issue finding]
-- **`scripts/little_loops/mcp_server/tasks.py::handle_tasks_get`** (the SEP-2663 `tasks/get` MCP protocol handler) — collapses the persisted `LoopState.status` to a binary `"completed" if run_status == "completed" else "failed"` before re-exposing it (plus the raw string) to external MCP clients. If the new outcome lands as a new `map_final_status()` bucket rather than folding into the existing `"failed"` catch-all, this external-facing protocol surface silently reports it as `"failed"` with no distinguishing signal beyond the raw string also embedded in the response — decide whether that's acceptable or needs an explicit MCP-side bucket [wire-issue finding]
-- `docs/reference/loops.md` § "Output Artifacts" / "Runner-written files" — the sole doc location describing which files the *runner itself* (as opposed to loop-authored YAML) writes into every `run_dir`; currently documents only `usage.jsonl`. Add `iter_<N>_best_effort.json` here once it exists, since it too is runner-written via `PersistentExecutor.run()` [wire-issue finding]
-- **`scripts/little_loops/hooks/pre_compact_handoff.py::_build_fallback()` (:103-135)** — for each of the 3 most-recent `.loops/runs/*/` dirs, takes the *first* file matched by an unordered `Path.glob("*.json")` and surfaces its top-3 JSON keys into the `/ll:resume` handoff prompt. Once `iter_<N>_best_effort.json` coexists with `summary.json`/`commands.json` in `run_dir`, filesystem-order-dependent globbing could pick the checkpoint file as "the" representative state, surfacing `{"metadata": ...}` keys instead of the run's actual summary — needs either an exclusion or an explicit sort/preference order over `summary.json` [wire-issue finding]
-- `scripts/tests/test_fsm_persistence.py` — `archive_run()`'s existing per-glob-pattern test convention (`test_archive_run_copies_probe_files_from_run_dir` :772-792 / `..._omits_probe_files_when_absent` :810-823) has no case yet for the new `iter_*_best_effort.json` glob added to the copy-list; add a positive-copy and negative-absence pair matching the same shape [wire-issue finding]
-- `scripts/tests/test_cli_loop_audit.py::TestAuditRun::test_aux_mutation_scan_counts_new_files` (:176-184) is the only test touching `_scan_aux_mutations()`, and asserts only that an arbitrary new file increments the count — no test proves an excluded/pattern-matched name is correctly *not* counted. Add a case proving the new `name.startswith("iter_") and name.endswith("_best_effort.json")` prefix check doesn't false-positive (and that a genuine best-effort checkpoint isn't double-counted) [wire-issue finding]
-- `scripts/tests/test_ll_logs.py::TestIsFlaggedParity::test_parity_with_flag_loops` (:6656-6676) parametrizes `top_outcome` over a **hardcoded literal list** (`["converged", "failed", "error", "max-steps", "stalled", "interrupted", "signal"]`), independent of `_FLAG_OUTCOMES` — unlike the file's other `_FLAG_OUTCOMES`-driven test, this one will not auto-pick-up a new `best_effort` bucket. If the new outcome needs `is_flagged`/`_flag_loops` parity coverage, this hardcoded list is the site to extend explicitly [wire-issue finding]
-
-### Codebase Research Findings
-
-_Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
-
-- `map_final_status()` has a fourth caller not previously enumerated here: `fsm/persistence.py:1184` inside `archive_run_only()` — the signal-handler-safe force-exit path (invoked from `cli/loop/signals.py`'s `_loop_signal_handler()`). Any new outcome bucket or value this issue adds to `map_final_status()`'s closed contract must also be sane for that path, which runs outside the normal `PersistentExecutor.run()` completion flow.
-
-_Added by `/ll:refine-issue` — 2026-09-15 — based on codebase analysis:_
-
-- Line-drift corrections confirmed against current tree: `cli/loop/evidence.py::_scan_for_credentials()` def at :198 (span ~198-254, issue cited ~198-249); sha256 hashing lines actually at :315 and :317 (issue cited ~312-318); `cli/loop/audit.py::_AUX_EXCLUDED_NAMES` (:23) and `_scan_aux_mutations()` (:144, exclusion check at :166) confirmed close to cited `~23-30, ~144-174`; `generate_schemas.py`'s `terminated_by` schema entries span :607-636 (issue cited :615-634).
-- `PersistentExecutor.archive_run_only()` (:1161-1210) and its one caller `cli/loop/signals.py:60` (hardcodes `terminated_by="interrupted_force"`, guarded by a narrower `except OSError: pass` at the call site per `cli/loop/signals.py:58-62`) reconfirmed unchanged — genuinely out of scope per the issue's own "Confirmed Not Affected" note, since it builds `LoopState` directly and has no `ExecutionResult` to pass to the new checkpoint writer.
+- `map_final_status()`, `_derive_loop_outcome()`, `_FLAG_OUTCOMES`/`is_flagged()`/`fleet_improve.py`, `EXIT_CODES`/`_is_success`, `_WASTED_RUN_PREDICATE`, `FSMExecutor._execute_sub_loop()`, `mcp_server/tasks.py::handle_tasks_get`, `refine-to-ready-issue.yaml:1043` and `auto-refine-and-implement.yaml:367` case arms, `generate_schemas.py`/`EVENT-SCHEMA.md`, `test_ll_logs.py::TestIsFlaggedParity`, `docs/runbooks/FLEET_LOOP_REVIEW.md` — no vocabulary changes, so none of these observe anything new.
+- `PersistentExecutor.archive_run_only()` (`:1161-1210`) — its one caller (`cli/loop/signals.py:60`) hardcodes `terminated_by="interrupted_force"`, which is not in the qualifying set, and it has no `ExecutionResult`; no checkpoint on the force-exit path.
+- Nested sub-loops: `_execute_sub_loop()`'s child (`fsm/executor.py:1226`) is a plain `FSMExecutor`, not a `PersistentExecutor`, so only the outermost `ll-loop run` instance writes a checkpoint. Document this in `docs/reference/loops.md`; it is a scope limitation, not a bug.
 
 ## Implementation Steps
 
-1. Pick and document a "closest attempt to objective" selection metric (Design → no shared utility exists; do not assume one).
-2. Decide and document which `terminated_by` values (built on ENH-3471's new vocabulary) qualify as "no acceptance," per the Decision Rules above.
-3. On a qualifying no-acceptance termination, write exactly one checkpoint artifact tagged `best_effort` (e.g. `iter_<N>_best_effort.json` with `metadata.best_effort=True`) — verified by a test asserting the artifact exists after a simulated cap-hit with no acceptance.
-4. Add a test asserting NO such artifact is produced for a hard-terminal case this pattern must not cover — specifically context-compaction failure (`cli/compact_session.py::main_compact_session()` → `session_store/lifecycle.py::compact_session()`) staying hard-terminal. No existing test covers this boundary today.
-5. Apply the Wiring section's updates — both the original five (`map_final_status`, `_WASTED_RUN_PREDICATE`, `_derive_loop_outcome`, `EXIT_CODES`/`_is_success`, `audit-loop-run/SKILL.md`, docs/schema rows for this new value) and the `/ll:wire-issue`-added "Wiring Pass Additions" durable-artifact-consumer updates (`archive_run()`'s copy-list, `evidence.py`'s credential-scan tuple and sha256 hashing tuple, `audit.py`'s `_AUX_EXCLUDED_NAMES`/`_scan_aux_mutations()` prefix check, `cli/logs.py`'s `_FLAG_OUTCOMES`/fleet aggregation, `fleet_improve.py`, and the `FLEET_LOOP_REVIEW.md`/`LOOPS_GUIDE.md` doc updates).
-6. Apply the "Wiring Pass 2 Additions" updates: account for the new outcome in `FSMExecutor._execute_sub_loop()`'s routing/verdict split (`fsm/executor.py:1284-1343`) and document that sub-loop children never produce a checkpoint of their own; decide `mcp_server/tasks.py::handle_tasks_get`'s external status mapping; add the new value to `docs/reference/loops.md`'s "Runner-written files" list; fix or exclude `hooks/pre_compact_handoff.py::_build_fallback()`'s unordered `glob("*.json")` pick so it doesn't surface the checkpoint instead of `summary.json`; extend `test_fsm_persistence.py`'s `archive_run()` glob tests, `test_cli_loop_audit.py`'s aux-mutation exclusion test, and `test_ll_logs.py::TestIsFlaggedParity`'s hardcoded outcome list (added by `/ll:wire-issue` pass 2).
-7. `python -m pytest scripts/tests/test_fsm_executor.py scripts/tests/test_fsm_persistence.py scripts/tests/test_builtin_loops.py scripts/tests/test_ll_logs.py scripts/tests/test_cli_loop_lifecycle.py scripts/tests/test_history_reader_usage.py scripts/tests/test_cli_loop_audit.py -v` passes.
+1. Add `_NO_ACCEPTANCE_TERMINATIONS`, `BEST_EFFORT_FILENAME`, and `write_best_effort_checkpoint()` to `fsm/persistence.py` (atomic write, `ExecutionResult.to_dict()` + `metadata` wrapper).
+2. Call it from `PersistentExecutor.run()`'s guarded tail (after ENH-3472 lands), before `save_state()`, only when `terminated_by` qualifies and `run_dir` is set; wrap in its own `except Exception  # noqa: BLE001` + `logger.warning`.
+3. Widen `archive_run()`'s copy list, both `evidence.py` tuples, and `_AUX_EXCLUDED_NAMES`, importing `BEST_EFFORT_FILENAME` rather than repeating the literal.
+4. Fix `pre_compact_handoff.py::_build_fallback()`'s file pick to prefer `summary.json` → `state.json` → first sorted `*.json`.
+5. Tests, `scripts/tests/test_fsm_persistence.py::TestPersistentExecutor` (post-construction method-assign convention):
+   - A loop that hits `max_steps` with `run_dir` in context → `best_effort.json` exists under the run dir, `json.loads` shows `metadata.best_effort is True`, `terminated_by == "max_steps"`, and `captured` matches `result.captured`.
+   - Same for `timeout` (via a tiny `timeout:`) — pins that the set is not `max_steps`-only.
+   - Negative cases: `terminal` success, `terminal` with `failure_terminal=True`, and an `error` run write **no** file.
+   - No `run_dir` in context → no file, no exception.
+   - `write_best_effort_checkpoint` patched with `side_effect=RuntimeError` → `run()` still returns the result and `save_state`/`archive_run` are still called.
+   - `archive_run()` copies `best_effort.json` when present / omits it when absent — the `test_archive_run_copies_probe_files_from_run_dir` (:772-792) / `..._omits_probe_files_when_absent` (:810-823) pair shape.
+6. Tests elsewhere: `test_cli_loop_audit.py::TestAuditRun` — a `best_effort.json` in `run_dir` does not increment `aux_mutation_count` (today's only test, `test_aux_mutation_scan_counts_new_files` :176-184, proves only the positive case); `test_feat3182_evidence_bundle.py` — the file is hashed and credential-scanned when present; a `test_pre_compact_handoff.py` case that a run dir containing both `best_effort.json` and `summary.json` surfaces `summary.json`'s keys.
+7. Update `docs/reference/loops.md`, `docs/guides/LOOPS_GUIDE.md` Safety Limits row, and `skills/audit-loop-run/SKILL.md` per Wiring; resync skill mirrors with `ll-adapt` if `test_verify_host_map.py` flags the SKILL.md edit.
+8. `python -m pytest scripts/tests/test_fsm_persistence.py scripts/tests/test_cli_loop_audit.py scripts/tests/test_feat3182_evidence_bundle.py scripts/tests/test_pre_compact_handoff.py scripts/tests/test_audit_loop_run_skill.py -v` passes.
 
 ## Tests
 
-- Content-level template for asserting on a checkpoint artifact's actual JSON content (not just YAML routing shape): `test_general_task_loop.py`'s `_load_script`/`_bash` pattern (`_load_script` extracts a state's literal `action:` shell string from the loop YAML, substitutes `${context.*}` placeholders, `_bash` executes it via `subprocess.run(["bash", "-c", ...])` against a real tmp `run_dir`), then `json.loads()`s the written file and asserts on individual keys — e.g. `test_counts_partial_progress_from_dod` (:2317), asserting `data["verdict"] == "partial"`, `data["checked"] == 2`.
-- `test_ll_logs.py`'s `test_derive_outcome_workdir_vanished_with_error`/`_without_error` (:5137-5152) — closest structural precedent for "a named cause forced to a hard outcome, immune to other branches," to model the `_derive_loop_outcome` test after.
-- Search confirmed no existing test for "context-compaction failure stays hard-terminal" (`test_session_store_lifecycle.py::TestCompactSession`, `test_compaction.py`, `test_pre_compact.py` — none assert this boundary); a new test is needed with no direct existing template.
+- `test_fsm_persistence.py::TestPersistentExecutor` (~856-925) — `test_run_saves_final_state` (:915) is the construction template; `test_drain_inbound_spoof_does_not_trigger_persistence_side_effects` (:960-968) is the method-assign template.
+- `test_fsm_executor.py::test_finish_survives_record_loop_run_summary_failure` (:3679-3699) — failure-injection shape for "checkpoint write fails, run still returns."
+- `test_cli_loop_audit.py::TestAuditRun::test_aux_mutation_scan_counts_new_files` (:176-184) — shape for the exclusion negative case.
 
 ## Scope Boundaries
 
-- **In scope**: The no-acceptance/`best_effort` checkpoint write path, the "closest attempt to objective" selection metric, and all of the Wiring section's downstream updates — the original five plus the five `/ll:wire-issue`-added "Wiring Pass Additions" (ten total).
-- **Out of scope**: `terminated_by` vocabulary itself (ENH-3471), context-compaction failure handling (must stay hard-terminal per the Design escape hatch), `PersistentExecutor._save_state()`'s existing single-file overwrite mechanism (not reused, not modified).
+- **In scope**: the `best_effort.json` write path and its five durable-artifact consumers; the handoff-fallback file-pick fix; docs.
+- **Out of scope**: any `terminated_by`/`map_final_status`/exit-code/outcome-bucket change (Decision 1); a generic scoring or "best of N" utility (Decision 4); checkpoints for nested sub-loops or the force-exit path; `PersistentExecutor._save_state()`'s existing single-file overwrite; context-compaction handling.
 
 ## Impact
 
-- **Priority**: P2 - Matches frontmatter; blocked on ENH-3471's vocabulary landing first
-- **Effort**: Medium - New write path, a selection-metric decision, and five downstream wiring updates (`map_final_status`, `_WASTED_RUN_PREDICATE`, `_derive_loop_outcome`, `EXIT_CODES`/`_is_success`, docs/schema)
-- **Risk**: Medium - Touches shared outcome-classification code (`map_final_status`, `_derive_loop_outcome`) that other consumers (OTel spans, `loop_events.state`, fleet-review) already depend on; the Design section's context-compaction escape hatch is the sharpest correctness risk if missed
-- **Breaking Change**: No
+- **Priority**: P2 - Matches frontmatter; sequenced after ENH-3472.
+- **Effort**: Small-Medium - One writer function, one guarded call, four name additions, one glob-order fix, docs, and ~10 tests.
+- **Risk**: Low - Additive file write on a path that already ends the run; no shared classification code is touched.
+- **Breaking Change**: No.
 
 ## Status
 
 **Open** | Created: 2026-09-13 | Priority: P2
 
----
-
-## Scope Boundary
-
-**Note** (added by `/ll:audit-issue-conflicts`): This issue's `_WASTED_RUN_PREDICATE` (usage.py:310-316) edit shares the same `IN (...)` membership list as ENH-3471's edit to the same predicate. Already sequenced via `depends_on: [ENH-3471]`, but implement this issue's edit as an additive diff against whatever shape ENH-3471 actually lands (not against the pre-3471 line numbers cited above), since both issues touch the same list.
-
 ## Session Log
+- Manual review rewrite - 2026-09-15 - dropped the ENH-3471 dependency (qualifying set is budget-exhaustion values that already exist) in favor of ENH-3472; decided artifact-only (no vocabulary/`map_final_status`/exit-code change), fixed filename `best_effort.json`, last-attempt semantics (no scoring); removed the untestable compaction Step 4; cut the vocabulary-driven wiring accordingly.
 - `/ll:wire-issue` - 2026-09-15T22:33:23 - `74d0e714-5fa8-4d36-8d26-f70b1e11f439.jsonl`
 - `/ll:reconcile-issue` - 2026-09-15T22:22:51 - `d2ee88e4-436e-400b-a42b-568c16a51760.jsonl`
 - `/ll:refine-issue` - 2026-09-15T22:19:37 - `a0a3cae8-46b6-4741-b032-8859dea7a727.jsonl`
