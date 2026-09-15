@@ -15,29 +15,45 @@ epic: EPIC-3475
 
 ## Summary
 
-Every improvement claim the self-improvement tooling can currently make is incumbent-relative. Successive wrapper drafts are judged against the previous draft; plan-scoring rubrics score against their own dimensions. Neither holds a fixed reference the whole lineage could fail against. That admits a specific failure mode: a lineage where each generation genuinely beats its immediate parent while the lineage as a whole drifts away from any absolute standard — every local comparison passes and the global regression is invisible.
+Every improvement comparison `ll-harness` can make today is incumbent-relative. `--compare-baseline` (ENH-3435) measures a candidate against the unmutated HEAD content of the same target, and `harness-optimize.yaml` scores each iteration against a `baseline` captured at the start of *that run*. Neither holds a reference that survives across runs: once a run commits its winner, the next run's incumbent *and* its run-start baseline are both that winner. A lineage where each run genuinely beats the previous run's winner can therefore drift away from any fixed standard while every comparison still passes — the cross-run regression is invisible because nothing outside the lineage is ever re-measured.
 
-The guard is cheap and structural: a candidate must be measured against two opponents — the incumbent (proving the lineage is still improving) and a frozen external baseline that never changes (proving "better" is still anchored outside the lineage). Beating one but not the other is a distinct, reportable outcome — not a pass — and a candidate that beats the incumbent while losing to the baseline is the signal that the lineage has entered a self-referential local optimum.
+The guard is structural: a candidate is measured against two opponents — the incumbent (is the lineage still improving?) and a **pinned** baseline whose content identity is fixed at pin time and never re-derived from HEAD (is the lineage still ahead of a fixed reference?). Each comparison is three-valued (`ahead` / `behind` / `inconclusive`, decided from the Wilson CIs `ll-harness` already computes), and the pair is reported as one named outcome. Because sampled pass rates are noisy, `ahead` of the incumbent but `behind` the pin is a reachable, reportable state — and it is the signal that the lineage has drifted below its anchor.
 
 ## Current Behavior
 
-Every improvement claim the self-improvement tooling can currently make is incumbent-relative. Successive wrapper drafts are judged against the previous draft; plan-scoring rubrics score against their own dimensions. Neither holds a fixed reference the whole lineage could fail against, so a lineage where each generation genuinely beats its immediate parent can drift away from any absolute standard while every local comparison still passes.
+- `ll-harness <runner> --compare-baseline` (`cli/harness.py:1855`, `_run_compare_arm()`) reports exactly one delta, against `baseline_for()` rows keyed on the HEAD content hash (`_incumbent_content_hash()`, `:1682`) or an explicit `--baseline-of` attempt. There is no second arm and no way to name a reference other than "current HEAD" or "one prior attempt".
+- `harness-optimize.yaml` captures `baseline` once per run (`baseline_score` state, `:111-117`) and ENH-3421's `reference:` (`gate` state, `:199`) blocks any iteration that regresses below it — so drift *within* a run is already blocked. But `${captured.baseline}` lives in the per-run context: the next run re-captures it from the freshly committed HEAD, so across runs the reference rolls forward with the lineage.
+- No comparison result anywhere is three-valued: `BaselineDelta.delta` is a raw rate difference or `None` (`cli/harness.py:1559-1574`), with no notion of an inconclusive result despite both tallies carrying Wilson CIs.
 
 ## Expected Behavior
 
-A candidate is measured against two opponents: the incumbent (proving the lineage is still improving) and a frozen external baseline that never changes (proving "better" is still anchored outside the lineage). Beating one but not the other is a distinct, reportable outcome — not a pass — and a candidate that beats the incumbent while losing to the baseline is the signal that the lineage has entered a self-referential local optimum.
+- A target can carry a **pin**: a recorded content hash of that target (plus HEAD SHA, timestamp, reason) that is written only by an explicit CLI verb and never recomputed from HEAD.
+- When a pin exists for the target, `ll-harness <runner> --compare-baseline` reports **two arms**: the existing incumbent arm and a frozen arm resolved by calling `baseline_for()` with the pinned content hash under the current conditions. Each arm is classified `ahead` / `behind` / `inconclusive` by CI comparison, and the pair is reported as one named outcome in both the text and `--json` reports.
+- The exit code is unchanged (still the candidate tally's banding alone); the dual outcome is report content, exactly as `delta` is today. The only new refusal is fail-closed: a pin that exists but has no full-n matching rows under current conditions refuses before any subject invocation with an actionable message (measure the pinned content first), mirroring `_compare_baseline_refusal()`.
+- Re-pinning is refused unless the proposed new pin has a measured pass rate at or above the current pin's under matching conditions; pin history is append-only.
 
 ## Scope Boundaries
 
-- Decide what the frozen baseline is per improvement loop: a pinned wrapper version, a shipped default, or a recorded run.
-- Decide how and when the baseline is allowed to be re-pinned, without re-pinning becoming a backdoor for drift.
-- Decide what the loop does when the two comparisons disagree.
+- **In scope**: the pin record and its CLI verb, the second arm in `ll-harness --compare-baseline`, the three-valued classification, the widened `BaselineDelta`/report/JSON shape, docs and tests.
+- **Out of scope (follow-up issue)**: wiring the dual outcome into any loop's routing (`harness-optimize.yaml` or otherwise) and deciding what a loop *does* on `ahead`/`behind`. This issue makes the signal exist and be durable; consuming it is a separate change with its own MR-lint implications.
+- **Out of scope**: any change to `evaluate_convergence()`'s `reference` field or the FSM evaluator layer (see D1).
+- **Out of scope**: `evaluate_comparator()`'s `.loops/baselines/` file mechanism — unrelated and unwired; left untouched.
 
 ## Design
 
-This is a different axis from the evaluator-hardening work (epoch-bounded objective versioning, versioned evaluator prompts over golden sets): those keep the *measuring instrument* honest; this keeps the *subject* honest by pinning a permanent second opponent. Golden sets test the evaluator; a frozen baseline tests the lineage.
+This is a different axis from the evaluator-hardening siblings in EPIC-3475 (ENH-3462/ENH-3463 keep the *measuring instrument* honest); this keeps the *subject* honest by pinning a permanent second opponent.
 
-Complements the unmutated baseline arm shipped as ENH-3435, and is a different thing: that baseline is a control arm measured inside a single harness run (it answers "did this change help relative to no change"); this issue's baseline is a standing external opponent for the lineage (it answers "is the lineage still ahead of a fixed reference"). A loop that has both can distinguish a change that helps from a lineage that is drifting. Also pairs naturally with two-number reporting of structure-vs-tuning decomposition, which needs exactly this kind of dual result as input.
+Complements the unmutated baseline arm shipped as ENH-3435, and is a different thing: that baseline is a control arm measured inside a single harness run (it answers "did this change help relative to no change"); this issue's baseline is a standing external opponent for the lineage (it answers "is the lineage still ahead of a fixed reference"). A run that has both can distinguish a change that helps from a lineage that is drifting.
+
+### Decisions
+
+- **D1 — Layer: `ll-harness` CLI, not the FSM evaluator.** The epic is "Harden ll-harness Verdicts"; `--compare-baseline` is wired into no loop or skill today, so there is no consumer to break; and the ENH-3421 decision record (`.ll/decisions.d/a2c57916-…`) already rejected stacking a second FSM-layer check on `harness-optimize.yaml`'s `gate` for cost and single-`evaluate`-per-state reasons. No `EvaluateConfig` field is added, so MR-2's `_has_baseline_reference` allowlist and `EvaluateConfig`'s `to_dict`/`from_dict`/docstring/API.md mirror are **not** touched.
+- **D2 — The frozen baseline is pinned *content*, re-measured, not a stored score.** A stored number goes stale the moment the scorer, task set, judge model, or conditions change. The pin records `target_content_hash` (the HEAD blob hash at pin time, same `_hash_bytes` as `_incumbent_content_hash()`) plus `pinned_head_sha`, `pinned_at`, `reason`. The frozen arm's rate always comes from `harness_events` rows under the *current* `conditions_fp`.
+- **D3 — Reuse `baseline_for()`; do not add a second store.** `baseline_for()` keys on whatever `target_content_hash` the caller passes. Passing the pinned hash instead of HEAD's yields the frozen arm, with the reader's existing full-n / conditions-fp / authoritative-rows guarantees and caching for free (rows measured on the pinned content are reused until conditions change). The earlier finding that "neither existing mechanism has a key component set at freeze time" is correct about the *callers*, not the reader: the pin record supplies that component. This supersedes the earlier Program Design line calling for a "new frozen-external-baseline record distinct from `BaselineResult`" — the only new type is the pin, and the frozen arm *is* a `BaselineResult`.
+- **D4 — Each comparison is three-valued, from Wilson CIs.** `ahead` if the candidate's CI lower bound exceeds the arm's CI upper bound; `behind` if the candidate's upper bound is below the arm's lower bound; else `inconclusive`. With a scalar transitive score, "beats incumbent but loses to pin" would imply the incumbent was already below the pin; the outcome is meaningful only because sampled rates are interval-valued. `paired_direction()` (`stats.py:43-79`) is the vocabulary precedent for naming an inconclusive result, but it needs paired per-item outcomes that `ll-harness` repetitions don't have, so CI-overlap on the two independent proportions is used instead. Vocabulary lives as a string-tuple constant + helper (the `fsm/verdicts.py` convention), in `cli/harness.py`.
+- **D5 — Named pair outcome.** The pair `(vs_incumbent, vs_pin)` is reported verbatim as two fields plus one derived `outcome` label: `drift` when `vs_incumbent == "ahead"` and `vs_pin == "behind"`; `regression` when `vs_pin == "behind"` otherwise; `improvement` when both are `ahead`; `inconclusive` otherwise (name follows the `q_high_low`-style bucket precedent in `cli/issues/impact_effort.py:194-211`). `drift` is the lineage-local-optimum signal this issue exists to surface.
+- **D6 — Pinning is explicit, monotone, and append-only.** New CLI verb `ll-harness pin-baseline <runner> <target> [--reason …]` writes the pin from HEAD content. Never automatic (contrast `EvaluateConfig.auto_promote`, whose rolling overwrite is the drift shape this issue guards against). Re-pinning is **refused** unless `baseline_for()` finds a full-n measurement of the new content under the current conditions with a pass rate ≥ the current pin's under the same conditions (or `--force`, which is logged in the pin's `reason`). The pin file holds a `pins: [...]` list; the last entry is active, earlier entries are never deleted. Storage: `.ll/harness-pins/<runner>--<target-slug>.json`, committed (like `.ll/decisions.d/`), not `.loops/` (per-machine).
+- **D7 — Pin absent ⇒ single-arm behaviour unchanged.** No pin means today's one-delta report, byte-for-byte for the existing keys; `test_delta_json_payload` etc. keep passing. The dual shape is additive (`baseline.vs_incumbent`, `baseline.frozen`, `baseline.vs_pin`, `baseline.outcome`), never a rename of existing keys.
 
 ### Codebase Research Findings
 
@@ -76,9 +92,10 @@ _Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
 - Extending the evaluator dispatch table with a new outcome (the `convergence` case is the direct precedent) touches five sites, not one: the `elif eval_type ==` branch itself, an `_EXIT_CODE_AWARE_EVALUATORS` allowlist entry if non-zero exit codes need custom handling, a companion `EvaluateConfig` field's four manual touch points (docstring, `to_dict`, `from_dict`, and MR-2's `_has_baseline_reference` candidates list), and a structural test asserting the field on the parsed loop-YAML dict directly (no JSON Schema layer exists for `EvaluateConfig`).
 
 ### Files to Modify
-- `scripts/little_loops/cli/harness.py` — `_run_compare_arm()` (`:1855`), `_compare_baseline_refusal()` (`:1837`), the four `cmd_skill`/`cmd_cmd`/`cmd_mcp`/`cmd_prompt` call sites (`:2292-2662`) that reach them today for the incumbent-only comparison
-- `scripts/little_loops/history_reader/harness.py` — `BaselineKey`/`BaselineConditions`/`BaselineResult`/`baseline_for()` (`:250-404`), the unmutated-arm store this issue's own Design section says the new frozen-external-baseline record must be distinct from
-- `scripts/little_loops/fsm/validation/meta_rules.py` — `_has_baseline_reference()` (`:581-596`) — a new frozen-baseline `EvaluateConfig` field (if the mechanism is wired at the FSM-evaluator layer like ENH-3421's `reference`, rather than the `ll-harness` CLI layer like ENH-3435) needs manual addition to this allowlist to be lint-recognized
+- `scripts/little_loops/cli/harness.py` — `BaselineDelta` (`:1559-1574`, additive widening), `_run_compare_arm()` (`:1855`, `frozen=` parameter), `_report_samples()` (`:1405`, render the second arm), the four `cmd_skill`/`cmd_cmd`/`cmd_mcp`/`cmd_prompt` compare branches (`:2292-2662`, `read_pin()` + second refusal), new `BaselinePin`/`read_pin`/`write_pin`/`_arm_verdict`/`_pair_outcome`/`cmd_pin_baseline` and the `pin-baseline` subparser registration
+- `scripts/little_loops/history_reader/harness.py` — `BaselineKey`/`BaselineConditions`/`BaselineResult`/`baseline_for()` (`:250-404`) — **read-only dependency, no change** (D3: the frozen arm is `baseline_for()` called with the pinned hash)
+- `scripts/little_loops/fsm/validation/meta_rules.py` — **not touched** under D1 (no `EvaluateConfig` field is added, so MR-2's `_has_baseline_reference()` allowlist at `:581-596` is unaffected)
+- `.ll/harness-pins/` — new committed directory for pin files (D6)
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/cli/harness.py:30`, `scripts/little_loops/history_reader/__init__.py:184` — importers of `history_reader/harness.py`
@@ -116,18 +133,22 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `BaselineKey`: `runner, target, input_hash, target_content_hash` (frozen) (`scripts/little_loops/history_reader/harness.py:250`)
 - `BaselineConditions`: `n, conditions_fp, semantic_prompt, semantic_model, subject_model, timeout_s, host_cli` (`scripts/little_loops/history_reader/harness.py:267`)
 - `BaselineResult`: `key, conditions, tally, attempt_ids, head_sha, measured_at, subject_model, dirty_rows, source` (`scripts/little_loops/history_reader/harness.py:288`)
-- `BaselineDelta`: `candidate, baseline, delta, source, head_sha_differs` (`scripts/little_loops/cli/harness.py:1560`)
-- New: a frozen-external-baseline record, distinct from `BaselineResult` — `BaselineResult` is an unmutated in-run control arm (ENH-3435), not a standing lineage opponent, per this issue's own Design distinction.
+- `BaselineDelta`: `candidate, baseline, delta, source, head_sha_differs` (`scripts/little_loops/cli/harness.py:1560`) — widened additively with `vs_incumbent: str`, `frozen: BaselineResult | None`, `vs_pin: str | None`, `outcome: str | None` (D5/D7).
+- New `BaselinePin` (frozen dataclass, `cli/harness.py`): `runner, target, target_content_hash, pinned_head_sha, pinned_at, reason` — the only new record (D2/D3). The frozen arm itself is an ordinary `BaselineResult` returned by `baseline_for()`.
+- New vocabulary constants in `cli/harness.py`: `ARM_VERDICTS = ("ahead", "behind", "inconclusive")`, `PAIR_OUTCOMES = ("improvement", "drift", "regression", "inconclusive")` (D4/D5).
 
 ### Signatures
 
-- `_compare_baseline_refusal(key: BaselineKey, conditions: BaselineConditions) -> str | None` — existing pre-run compare gate in `scripts/little_loops/cli/harness.py:1837`; the new frozen-baseline comparison needs an analogous refusal check against the external baseline record.
-- `baseline_for(db_path: Path | str, *, runner: str, ...) -> BaselineResult | None` — existing unmutated-arm reader in `scripts/little_loops/history_reader/harness.py:325`; the new frozen-external-baseline lookup is a distinct function, not a reuse of this one.
-- `_run_baseline_phase(runner_label: str, args: argparse.Namespace, n: int, ...)` (`cli/harness.py:1764`), `_run_compare_arm(runner_label: str, args: argparse.Namespace, n: int, ...)` (`cli/harness.py:1855`) — existing single-run control-arm comparison logic; the new incumbent-vs-frozen-baseline comparison is additive to this call path, not a replacement.
+- `_compare_baseline_refusal(key: BaselineKey, conditions: BaselineConditions) -> str | None` — existing pre-run compare gate (`cli/harness.py:1837`); called a second time with `BaselineKey(..., target_content_hash=pin.target_content_hash)` when a pin exists, so the frozen arm fails closed the same way.
+- `baseline_for(db_path: Path | str, *, runner: str, target: str, input_hash: str, target_content_hash: str, conditions: BaselineConditions) -> BaselineResult | None` (`history_reader/harness.py:325`) — **reused unchanged** for the frozen arm by passing the pinned hash (D3).
+- New `read_pin(runner: str, target: str) -> BaselinePin | None` / `write_pin(pin: BaselinePin, *, force: bool) -> str | None` (returns a refusal message on a non-monotone re-pin, D6) — `cli/harness.py`.
+- New `_arm_verdict(candidate: SampleTally, arm: SampleTally) -> str` and `_pair_outcome(vs_incumbent: str, vs_pin: str) -> str` — pure functions over Wilson CI bounds (D4/D5), unit-testable without a DB.
+- `_run_compare_arm(...)` (`cli/harness.py:1855`) gains a `frozen: BaselineResult | None` parameter; `_report_samples(...)` (`:1405`) renders the extra fields when `delta.frozen` is set.
+- New `cmd_pin_baseline(args) -> int` registered in the `ll-harness` subparser alongside the existing runners.
 
 ### Call Path
 
-Candidate result -> existing `_run_compare_arm()` (incumbent comparison, `cli/harness.py:1855`) run alongside a new frozen-baseline comparison against a record outside `baseline_for()`'s unmutated-arm store -> combined into a `BaselineDelta`-shaped pair (beats-incumbent, beats-baseline) reported as the four-way outcome this issue's Summary specifies.
+`cmd_skill`/`cmd_cmd`/`cmd_mcp`/`cmd_prompt` (compare branch) -> `read_pin()` -> if a pin exists, `_compare_baseline_refusal()` on the pinned key (fail closed) -> `_run_compare_arm(..., frozen=baseline_for(pinned hash))` -> one `_run_sample_loop()` (unchanged; the candidate is sampled exactly once) -> `_arm_verdict()` ×2, `_pair_outcome()` -> widened `BaselineDelta` -> `_report_samples()` renders `vs_incumbent`/`vs_pin`/`outcome` in text and under the existing `payload["baseline"]` object in JSON. Exit code path untouched.
 
 ### Codebase Research Findings
 
@@ -148,6 +169,7 @@ _Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
 - `_run_compare_arm()`'s candidate sampling happens exactly once per invocation, inside `_run_sample_loop()` (called at `cli/harness.py:1874`); a frozen-baseline comparison must read that same `res` rather than triggering a second sample loop. `_report_samples()` (`:1405`) and `BaselineDelta` (`:1559-1574`) each carry exactly one reference/delta pair today, and both the JSON (`:~1432-1483`) and text (`:~1486-1510`) render paths pick a single `shown` object — a second arm requires widening one or both of these shapes, not adding a parallel call path.
 - `evaluate_convergence()`'s reference-regression check folds into the existing `"stall"` verdict via a `details["regressed_vs_reference"]` marker (`fsm/evaluators.py:466-477`); that marker is unreachable downstream today. The executor persists only `eval_result.verdict` into `self.captured[state.capture]` (`fsm/executor.py:2207-2208`), never `.details`, and `STALL_DETECTED_EVENT` carries no `details` either (`executor.py:2227-2236`, `:2258-2267`). `${result.*}` interpolation only reaches the evaluating state's own `route:` table (same-state-only), so a bare `details` marker cannot drive a later state's routing — a distinct, reportable "beats-incumbent-not-baseline" outcome needs either a new verdict string (not a reuse of `"stall"`) or a change to what the executor persists into `captured`.
 - Reusing `BaselineKey`/`baseline_for()`'s existing lookup pattern unmodified for the frozen-baseline record would rediscover ENH-3435's roll-forward, not avoid it: `target_content_hash` is recomputed from current HEAD at every call site (e.g. `_incumbent_content_hash()`, `cli/harness.py:1682`), and `baseline_for()`'s match key has no field that is fixed once and never recomputed. A frozen record needs a key component set at freeze time and never re-derived from current HEAD — neither existing mechanism has one.
+  - _Correction (review, 2026-09-14):_ the roll-forward lives in the **callers** (every call site derives the hash from HEAD), not in `baseline_for()` itself, which filters on whatever `target_content_hash` it is handed. A pin record that stores the hash at pin time and passes it through is sufficient; no new reader or store is needed (Design D3). The rest of the finding stands.
 - No production code enforces "capture once" for any FSM `capture:` key — every capture site in `fsm/executor.py` (`:1275`, `:1282`, `:2681`, `:2207-2208`) performs an unconditional overwrite with no existing-value guard. The only "must stay frozen" enforcement anywhere is a test-side scan of one loop's static YAML (`test_only_baseline_score_captures_baseline`, `test_harness_optimize.py:140-148`) — it does not generalize to other loops or other capture keys and has no runtime counterpart.
 
 ### Documentation
@@ -170,33 +192,42 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Implementation Steps
 
-### Codebase Research Findings
-
-_Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
-
-1. A frozen-external-baseline record exists that is distinct from `BaselineResult` (per this issue's own Program Design line) — `BaselineResult`/`baseline_for()` roll over implicitly on `target_content_hash` change and are not a candidate to reuse for a record that must survive content changes.
-2. A candidate's comparison result names both outcomes — beats-incumbent and beats-baseline — as a single reportable value, not two separate pass/fail checks a caller must reconcile; `BaselineDelta`'s single-reference shape is not extended in place without deciding this.
-3. Beating the incumbent while losing to the frozen baseline is distinguishable, in the reported outcome, from beating both or beating neither.
-4. The mechanism does not silently disable itself the way an unresolvable-but-present frozen value would (per `evaluate_convergence()`'s fail-closed precedent for `reference`) — an absent frozen baseline and an unresolvable one are handled, and the difference between them is intentional, not an oversight.
-5. Whichever of the two existing "frozen reference" shapes (ENH-3421's FSM-evaluator `reference` field vs. `evaluate_comparator`'s standing `.loops/baselines/` file) this issue's mechanism most resembles, the Scope Boundaries' three open decisions (what the frozen baseline is per loop, how/when it's re-pinned, what happens when the two comparisons disagree) are resolved before this integrates with `_run_compare_arm()`.
-6. `python -m pytest scripts/tests/test_cli_harness.py scripts/tests/test_history_reader_harness.py scripts/tests/test_harness_optimize.py -v` passes.
+1. **Pure verdict helpers first (TDD).** Add `ARM_VERDICTS`/`PAIR_OUTCOMES`, `_arm_verdict()`, `_pair_outcome()` to `cli/harness.py` with table-driven unit tests over hand-built `SampleTally` CI bounds: disjoint-above → `ahead`, disjoint-below → `behind`, overlapping → `inconclusive`, zero-graded candidate → `inconclusive`; all 9 `(vs_incumbent, vs_pin)` combinations map to the D5 label.
+2. **Pin record.** Add `BaselinePin`, `read_pin()`, `write_pin()` (append-only `pins` list under `.ll/harness-pins/`, monotone-refusal per D6 using `baseline_for()` for both old and new content under the current `BaselineConditions`), and `cmd_pin_baseline` with `--reason` and `--force`. Refusal exits 2 with zero DB writes, following the `_baseline_flag_refusal` / `--retry-of` precedent.
+3. **Second arm.** In the four `cmd_*` compare branches, call `read_pin()`; when present, run `_compare_baseline_refusal()` on the pinned key, then pass `frozen=read_baseline(pinned_key, conditions)` into `_run_compare_arm()`. When the pin's content hash equals the incumbent hash, set `frozen` to the same `BaselineResult` (no second query) and note it in the report.
+4. **Widen `BaselineDelta` and reporting.** Add the four optional fields; in `_report_samples()` render `Arms: vs-incumbent=<v> vs-pin=<v> → <outcome>` plus the frozen arm's rate/CI/provenance in text, and `vs_incumbent`/`frozen`/`vs_pin`/`outcome` keys inside the existing `payload["baseline"]` object in JSON. Existing keys and `Delta:` lines unchanged (D7).
+5. **Tests.** Extend `TestBaselineCompare` (`test_cli_harness.py:3081-3239`): no-pin path byte-identical (existing three `test_delta_*` tests untouched and passing); pin present + full-n rows → dual report and JSON keys; pin present + no rows → exit 2, zero subject invocations, stderr names `pin-baseline`/`--measure-baseline`; re-pin refused when new content measures below the current pin, allowed when ≥ or `--force`; pin history never shrinks.
+6. **Docs.** `docs/reference/CLI.md` (new `pin-baseline` command doc next to `:233-239`; `--compare-baseline` row gains the dual-arm sentence), `docs/guides/EVALUATION_GUIDE.md:386,400-404` (companion frozen-arm paragraph), `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md:305-314` (cross-link from the ENH-3421 frozen-reference subsection: within-run vs cross-run anchoring), `docs/reference/API.md` (document `BaselineDelta`/`BaselineResult`/`BaselineKey`/`BaselinePin` — none exist there today), `CHANGELOG.md` one-liner in the current release section (never `[Unreleased]`). Register each new doc string in `scripts/tests/test_wiring_reference_docs.py`.
+7. **Follow-up issue.** Open a child of EPIC-3475 for loop consumption: wiring `ll-harness --compare-baseline --output json` into `harness-optimize.yaml` and routing on `outcome` (`drift`/`regression` → `revert_and_log`). Link it from this issue's Session Log on landing.
+8. `python -m pytest scripts/tests/test_cli_harness.py scripts/tests/test_history_reader_harness.py scripts/tests/test_harness_optimize.py scripts/tests/test_wiring_reference_docs.py -v` passes; `ruff check scripts/` and `python -m mypy scripts/little_loops/` clean.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-- Read `.ll/decisions.d/a2c57916-aa1c-48db-86ad-cf1c3964d62d.json` and `.issues/enhancements/P3-ENH-3421-*.md`'s prior-art discussion before choosing a design — ENH-3421 explicitly rejected wiring `check_comparator` into `harness-optimize.yaml`'s `gate` state as a second required check, the design shape closest to this issue's own proposal
-- If the mechanism is added to `EvaluateConfig`, extend `_has_baseline_reference`'s hand-maintained `candidates` list (`meta_rules.py:588-590`) plus the docstring, `to_dict`, and `from_dict` sites on `EvaluateConfig` (`fsm/schema.py`) — MR-14 needs no update since it derives its field list dynamically
-- Update `docs/reference/API.md`'s `EvaluateConfig` verbatim mirror and add `BaselineDelta`/`BaselineResult`/`BaselineKey` documentation, which does not exist there today
+- Read `.ll/decisions.d/a2c57916-aa1c-48db-86ad-cf1c3964d62d.json` and `.issues/enhancements/P3-ENH-3421-*.md`'s prior-art discussion before choosing a design — ENH-3421 explicitly rejected wiring `check_comparator` into `harness-optimize.yaml`'s `gate` state as a second required check, the design shape closest to this issue's own proposal. _(Resolved by D1: this issue stays at the `ll-harness` CLI layer.)_
+- ~~If the mechanism is added to `EvaluateConfig`, extend `_has_baseline_reference`'s hand-maintained `candidates` list (`meta_rules.py:588-590`) plus the docstring, `to_dict`, and `from_dict` sites on `EvaluateConfig` (`fsm/schema.py`)~~ — _not applicable under D1; no `EvaluateConfig` field is added._
+- Update `docs/reference/API.md` to add `BaselineDelta`/`BaselineResult`/`BaselineKey`/`BaselinePin` documentation, which does not exist there today (the `EvaluateConfig` mirror is untouched under D1)
 - Register any new doc strings in `scripts/tests/test_wiring_reference_docs.py` so the doc coupling is durably enforced
-- Update `test_delta_json_payload`, `test_delta_reported_with_provenance`, `test_delta_null_when_candidate_ungraded` (`test_cli_harness.py`) if `BaselineDelta`'s shape changes to a dual/four-way outcome
-- Add a `test_only_baseline_score_captures_<new-key>`-shaped scan test (mirroring `test_harness_optimize.py:140-148`) for whichever loop gains the frozen-external-baseline capture
+- `test_delta_json_payload`, `test_delta_reported_with_provenance`, `test_delta_null_when_candidate_ungraded` (`test_cli_harness.py`) must keep passing unmodified — D7 makes the widening additive
+- ~~Add a `test_only_baseline_score_captures_<new-key>`-shaped scan test~~ — _not applicable; no loop gains a new capture under this issue (deferred to the step-7 follow-up)._
+
+## Acceptance Criteria
+
+1. `ll-harness pin-baseline <runner> <target>` writes a pin whose `target_content_hash` equals `_incumbent_content_hash()` of the target at that moment; a second invocation appends rather than replaces, and the file's `pins` list never loses an entry.
+2. Re-pinning is refused (exit 2, no write) when the new content's full-n rate under current conditions is below the active pin's, and allowed when it is ≥ or `--force` is given; a forced re-pin records `force` in the entry.
+3. With no pin, `--compare-baseline` text and `--json` output are unchanged from ENH-3435 for every existing key and line (the three existing `test_delta_*` tests pass unmodified).
+4. With a pin and full-n rows for the pinned content, the report carries `vs_incumbent`, `vs_pin` ∈ `{ahead, behind, inconclusive}` and `outcome` ∈ `{improvement, drift, regression, inconclusive}`, computed from Wilson CI bounds per D4/D5, in both text and JSON.
+5. With a pin but no full-n rows for the pinned content under current conditions, the run refuses before any subject invocation (exit 2, zero candidate rows written) and the message names how to measure the pinned content.
+6. A candidate whose CI is wholly above the incumbent's and wholly below the pin's reports `outcome: drift`; the exit code is still the candidate tally's banding alone.
+7. The candidate is sampled exactly once per invocation (one `_run_sample_loop()` call) regardless of how many arms are reported.
+8. Docs listed in step 6 carry the new strings and `test_wiring_reference_docs.py` enforces them; `CHANGELOG.md` has the entry.
 
 ## Impact
 
-- **Priority**: P4 — the guard is cheap and structural but addresses a slow-drift failure mode rather than an active incident; the Scope Boundaries section leaves baseline-pinning mechanics as open decisions still to be made.
-- **Effort**: Medium — depends on the outstanding Scope Boundaries decisions (what the frozen baseline is per loop, how/when it's re-pinned, what happens when the two comparisons disagree) before implementation can start.
-- **Risk**: Low-Medium — a poorly chosen re-pinning policy could itself become the drift backdoor this issue is designed to prevent.
+- **Priority**: P4 — addresses a slow, cross-run drift failure mode rather than an active incident; no loop consumes `--compare-baseline` yet, so the signal has no automated consumer until the step-7 follow-up.
+- **Effort**: Small-Medium — no new store or reader (D3), no FSM-layer change (D1); the work is a pin record + CLI verb, two pure classification helpers, an additive widening of `BaselineDelta`/report, tests, and docs.
+- **Risk**: Low — additive report shape (D7); the one behavioural change (fail-closed refusal when a pin exists but is unmeasured) only fires for users who have explicitly pinned. Re-pin monotonicity (D6) closes the backdoor the earlier draft warned about.
 - **Breaking Change**: No
 
 ## Verification Notes
