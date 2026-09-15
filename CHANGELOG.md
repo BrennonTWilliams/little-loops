@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **BUG-3448**: Main suite red: priority-regex allowlist drift in `mcp_server/tools.py` and corpus baseline 569>562
 - **BUG-3451**: `VerdictCache` found-entries never revalidate — stale local cache masks evidence-gate regressions that CI then fails
 - **BUG-3452**: CI run 34628255906 triage — oversized-test payloads, stale evidence spans, verdict-cache masking
+- **BUG-3479**: `_incumbent_content_hash` hashed stripped `git show` stdout instead of raw blob bytes, so it never matched `_hash_file` rows — `ll-harness skill --compare-baseline` HEAD resolution was dead
 
 ### Changed
 

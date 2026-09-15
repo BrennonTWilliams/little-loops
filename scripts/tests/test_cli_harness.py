@@ -2754,10 +2754,9 @@ def _harness_rows() -> list[dict[str, Any]]:
 
 def _make_git_stub(
     head: str = "sha0",
-    head_content: str | None = None,
     toplevel: str = "/repo",
 ):
-    """Patch target for _git_output: answers rev-parse/show for incumbent resolution."""
+    """Patch target for _git_output: answers rev-parse for incumbent resolution."""
 
     def _git(*args: str) -> str | None:
         if args == ("rev-parse", "HEAD"):
@@ -2766,11 +2765,20 @@ def _make_git_stub(
             return toplevel
         if args == ("rev-parse", "--abbrev-ref", "HEAD"):
             return "main"
-        if args[0] == "show" and len(args) > 1 and args[1].startswith("HEAD:"):
-            return head_content
         return None
 
     return _git
+
+
+def _make_git_blob_stub(head_content: str | None = None):
+    """Patch target for _git_blob: answers the HEAD:<rel> blob read for incumbent resolution."""
+
+    def _git_blob(rel: str, *, ref: str = "HEAD") -> bytes | None:
+        if head_content is None:
+            return None
+        return head_content.encode("utf-8")
+
+    return _git_blob
 
 
 def _seed_baseline_row(
@@ -3087,9 +3095,11 @@ class TestBaselineCompare:
         self.skill_file = tmp_path / "SKILL.md"
         self.skill_file.write_text("# mutated\n")  # working tree differs from HEAD
         self.incumbent_hash = _hash_of("# incumbent\n")
-        git = _make_git_stub(head="sha0", head_content="# incumbent\n", toplevel=str(tmp_path))
+        git = _make_git_stub(head="sha0", toplevel=str(tmp_path))
+        git_blob = _make_git_blob_stub("# incumbent\n")
         with (
             patch("little_loops.cli.harness._git_output", side_effect=git),
+            patch("little_loops.cli.harness._git_blob", side_effect=git_blob),
             patch("little_loops.cli.harness._git_dirty", return_value=False),
         ):
             yield
@@ -3249,7 +3259,8 @@ class TestBaselineIncumbentResolution:
         incumbent_hash = _hash_of("# incumbent\n")
         rejected_hash = _hash_of("# mutation-2\n")
         candidate_hash = _hash_of("# mutation-1\n")
-        git = _make_git_stub(head="sha0", head_content="# incumbent\n", toplevel=str(tmp_path))
+        git = _make_git_stub(head="sha0", toplevel=str(tmp_path))
+        git_blob = _make_git_blob_stub("# incumbent\n")
         args = _make_namespace(
             runner="skill",
             target="check-code",
@@ -3283,6 +3294,7 @@ class TestBaselineIncumbentResolution:
         calls = [_make_completed(returncode=0, stdout="ok") for _ in range(3)]
         with (
             patch("little_loops.cli.harness._git_output", side_effect=git),
+            patch("little_loops.cli.harness._git_blob", side_effect=git_blob),
             patch("little_loops.cli.harness._git_dirty", return_value=True),
             patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
             patch("subprocess.run", side_effect=calls) as mock_run,
@@ -3381,10 +3393,10 @@ class TestBaselineStoreBidirectional:
         incumbent_hash = _hash_of("# incumbent\n")
 
         def _git(*args: str) -> str | None:
-            stub = _make_git_stub(
-                head=head[0], head_content="# incumbent\n", toplevel=str(tmp_path)
-            )
+            stub = _make_git_stub(head=head[0], toplevel=str(tmp_path))
             return stub(*args)
+
+        git_blob = _make_git_blob_stub("# incumbent\n")
 
         compare_args = _make_namespace(
             runner="skill",
@@ -3406,6 +3418,7 @@ class TestBaselineStoreBidirectional:
         calls = [_make_completed(returncode=0, stdout="ok") for _ in range(3)]
         with (
             patch("little_loops.cli.harness._git_output", side_effect=_git),
+            patch("little_loops.cli.harness._git_blob", side_effect=git_blob),
             patch("little_loops.cli.harness._git_dirty", return_value=False),
             patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
             patch("subprocess.run", side_effect=calls),
@@ -3480,7 +3493,7 @@ class TestBaselineDegrade:
     def _stub_git(self, tmp_path: Path) -> Any:
         self.skill_file = tmp_path / "SKILL.md"
         self.skill_file.write_text("# incumbent\n")
-        git = _make_git_stub(head="sha0", head_content="# incumbent\n", toplevel=str(tmp_path))
+        git = _make_git_stub(head="sha0", toplevel=str(tmp_path))
         with (
             patch("little_loops.cli.harness._git_output", side_effect=git),
             patch("little_loops.cli.harness._git_dirty", return_value=False),
@@ -3644,6 +3657,104 @@ class TestBaselineFlaglessUnchanged:
             _conditions_fp(with_timeout),
         }
         assert len(fps) == 4
+
+
+class TestIncumbentContentHashRealGit:
+    """BUG-3479: _incumbent_content_hash must equal _hash_file for unmodified HEAD content."""
+
+    def _repo(self, tmp_path: Path) -> None:
+        subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+        subprocess.run(["git", "config", "user.email", "t@example.com"], cwd=tmp_path, check=True)
+        subprocess.run(["git", "config", "user.name", "Test"], cwd=tmp_path, check=True)
+
+    def _commit(self, tmp_path: Path, rel: str) -> None:
+        subprocess.run(["git", "add", rel], cwd=tmp_path, check=True)
+        subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=tmp_path, check=True)
+
+    def test_matches_hash_file_for_newline_terminated_content(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from little_loops.cli.harness import _hash_file, _incumbent_content_hash
+
+        self._repo(tmp_path)
+        f = tmp_path / "a.txt"
+        f.write_text("hello\n")
+        self._commit(tmp_path, "a.txt")
+        monkeypatch.chdir(tmp_path)
+        assert _incumbent_content_hash(f) == _hash_file(f)
+
+    def test_matches_hash_file_for_trailing_whitespace_content(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from little_loops.cli.harness import _hash_file, _incumbent_content_hash
+
+        self._repo(tmp_path)
+        f = tmp_path / "b.txt"
+        f.write_text("hello   \n")
+        self._commit(tmp_path, "b.txt")
+        monkeypatch.chdir(tmp_path)
+        assert _incumbent_content_hash(f) == _hash_file(f)
+
+    def test_matches_hash_file_for_empty_content(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from little_loops.cli.harness import _hash_file, _incumbent_content_hash
+
+        self._repo(tmp_path)
+        f = tmp_path / "empty.txt"
+        f.write_text("")
+        self._commit(tmp_path, "empty.txt")
+        monkeypatch.chdir(tmp_path)
+        assert _incumbent_content_hash(f) == _hash_file(f) is not None
+
+    def test_untracked_file_returns_none(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from little_loops.cli.harness import _incumbent_content_hash
+
+        self._repo(tmp_path)
+        f = tmp_path / "untracked.txt"
+        f.write_text("nope\n")
+        monkeypatch.chdir(tmp_path)
+        assert _incumbent_content_hash(f) is None
+
+    def test_committed_directory_path_returns_none(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from little_loops.cli.harness import _incumbent_content_hash
+
+        self._repo(tmp_path)
+        d = tmp_path / "subdir"
+        d.mkdir()
+        (d / "file.txt").write_text("x\n")
+        self._commit(tmp_path, "subdir/file.txt")
+        monkeypatch.chdir(tmp_path)
+        assert _incumbent_content_hash(d) is None
+
+
+class TestCmdSkillCompareUnresolvableIncumbentRefusal:
+    """BUG-3479: cmd_skill's untracked/no-git-repo refusal message actually fires."""
+
+    def test_untracked_file_refuses_with_cannot_resolve_message(
+        self, capsys: pytest.CaptureFixture, tmp_path: Path
+    ) -> None:
+        skill_file = tmp_path / "SKILL.md"
+        skill_file.write_text("# untracked\n")
+        args = _make_namespace(
+            runner="skill",
+            target="check-code",
+            runner_args=[],
+            compare_baseline=True,
+            samples=3,
+        )
+        with (
+            patch("little_loops.cli.harness._git_output", return_value=None),
+            patch("little_loops.cli.harness._git_dirty", return_value=False),
+            patch("little_loops.cli.harness._resolve_skill_target_path", return_value=skill_file),
+        ):
+            result = cmd_skill(args)
+        assert result == 2
+        assert "cannot resolve incumbent content" in capsys.readouterr().err
 
 
 # ---------------------------------------------------------------------------

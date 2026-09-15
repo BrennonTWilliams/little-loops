@@ -21,7 +21,7 @@ Surfaced during `/ll:refine-issue` research for ENH-3463 (deterministic grader t
 
 ## Current Behavior
 
-`_grade()` (`harness.py:~1311`) handles the semantic verdict as:
+`_grade()` (`harness.py:1293`) handles the semantic verdict as:
 
 ```python
 if is_abstention_verdict(eval_result.verdict):
@@ -51,34 +51,34 @@ _Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
 Files, callers, conventions, and tests relevant to threading a `grader_error` outcome through `_grade()`, `harness_events`, and `_rc_from_event()`.
 
 ### Files to Modify
-- `scripts/little_loops/cli/harness.py` — `_grade()` (`:1224-1329`), `HarnessEvalOutcome` (`:862-872`), `SampleTally`/`.record()` (`:800-828`), `_band_samples()` (`:1351-1367`); five DB-recording call sites at `:2144, 2278, 2398, 2517, 2777`
-- `scripts/little_loops/history_reader/harness.py` — `_rc_from_event()` (`:299-312`), which independently mirrors the same banding over persisted rows
+- `scripts/little_loops/cli/harness.py` — `_grade()` (`:1293-1416`), `HarnessEvalOutcome` (`:923-941`), `SampleTally`/`.record()` (`:838-865`), `_band_samples()` (`:1436-1451`); five DB-recording call sites at `:2285, 2427, 2555, 2682, 2951`
+- `scripts/little_loops/history_reader/harness.py` — `_rc_from_event()` (`:314-326`), which independently mirrors the same banding over persisted rows
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/cli/harness.py` — `_evaluate_and_report()` (n=1 CLI report): independently re-derives an exhaustive `passed`/`abstained` pair (`if not passed: overall = "FAIL" elif abstained: overall = "ABSTAIN" else: overall = "PASS"`) feeding both the `--output json` `"result"` key and the human-readable `status_block()` `"Result"` field. This is the third exhaustive-pair site (alongside `_grade()` and `_band_samples()`) and, left untouched, would render a grader error as `"PASS"` — the exact class of bug this issue exists to fix, resurfacing at the n=1 reporting layer. `TestAbstentionVerdict::test_semantic_abstain_exits_3`/`::test_exit_code_fail_dominates_semantic_abstain` already assert literal `"ABSTAIN"`/`"FAIL"` stdout from this function.
 - `scripts/little_loops/cli/harness.py` — `_report_samples()` (n>1 CLI report): the `--output json` `"samples"` dict is hand-enumerated (`requested`, `graded`, `passed`, `failed`, `abstained`, `errored`, `ci_lo`, `ci_hi`) and the human-readable `samples_line` builds `extras` only from `tally.errored`/`tally.abstained` (`if tally.errored: extras.append(...)`); a distinct `grader_error` tally field needs its own key/line here or it is silently absent from both outputs. `test_errored_sample_does_not_stop_loop` asserts literal `"1 errored"` against this function's output.
 - `scripts/little_loops/cli/harness.py` — per-sample result label dict inside `_run_sample_loop()`: `label = {2: "ERROR", 3: "ABSTAIN", 0: "PASS"}.get(rc, "FAIL")`, a second, independent rc→label banding (distinct from the aggregate `_band_samples()` verdict) used for each sample's entry in the JSON `results` array; falls through to `"FAIL"` for any unrecognized rc.
-- `scripts/little_loops/cli/harness.py:1937` — `_run_sample_loop()` also calls `_band_samples(tally)` directly (a second `_band_samples()` call site beyond `_run_baseline_phase()`'s at `:1750`).
-- `scripts/little_loops/cli/harness.py:1820-1862` — `_run_compare_arm()` (ENH-3435) reads `res.tally.passed`/`res.tally.graded` directly (`candidate_rate = res.tally.passed / res.tally.graded if res.tally.graded else None`) to compute `BaselineDelta`; a `SampleTally`-field consumer not previously listed.
+- `scripts/little_loops/cli/harness.py:2032` — `_run_sample_loop()` also calls `_band_samples(tally)` directly (a second `_band_samples()` call site beyond `_run_baseline_phase()`'s at `:1837`).
+- `scripts/little_loops/cli/harness.py:1907-1968` — `_run_compare_arm()` (ENH-3435) reads `res.tally.passed`/`res.tally.graded` directly (`candidate_rate = res.tally.passed / res.tally.graded if res.tally.graded else None`) to compute `BaselineDelta`; a `SampleTally`-field consumer not previously listed.
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/cli/harness.py:1913` — `_run_sample_loop()` calls `_grade()`
-- `scripts/little_loops/cli/harness.py:1965` — `_evaluate_and_report()` calls `_grade()`
-- `scripts/little_loops/history_reader/harness.py:372` — `baseline_for()` calls `tally.record(_rc_from_event(event))`
+- `scripts/little_loops/cli/harness.py:2000` — `_run_sample_loop()` calls `_grade()`
+- `scripts/little_loops/cli/harness.py:2092` — `_evaluate_and_report()` calls `_grade()`
+- `scripts/little_loops/history_reader/harness.py:387` — `baseline_for()` calls `tally.record(_rc_from_event(event))`
 - `scripts/little_loops/session_store/writers.py:1116-1171, 1217-1275` — `harness_events` row writer taking `semantic_verdict`/`semantic_passed` params
 - `scripts/little_loops/fsm/evaluators.py:1123-1124` — `evaluate_llm_structured()`'s `BlockingJsonError` catch, one of the origins of `verdict="error"`
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/cli/__init__.py:69` — `from little_loops.cli.harness import main_harness`, direct importer of the modified module
 - `scripts/little_loops/history_reader/__init__.py:184` — re-export block importing from `history_reader/harness.py`
-- `scripts/little_loops/cli/harness.py:944, 949` — reporting block calls `harness_eval_pass_rate(...)`/`harness_eval_abstention_rate(...)`
-- `scripts/little_loops/history_reader/harness.py:395-434` (`harness_eval_pass_rate()`) and `:436-465` (`harness_eval_abstention_rate()`) — both read `semantic_passed`/`semantic_verdict` off persisted rows; their docstrings encode the current two-bucket assumption (`semantic_passed IS NULL` ⇒ abstained). A `grader_error` bucket changes what "abstained" means to these readers — `harness_eval_pass_rate()`'s denominator (`COUNT(semantic_passed)`) shrinks automatically (matches the already-known `EVALUATION_GUIDE.md:442-448` note); `harness_eval_abstention_rate()` keys only on `semantic_verdict` (already non-NULL `"error"` today) so its behavior is unaffected.
+- `scripts/little_loops/cli/harness.py:1013, 1018` — reporting block calls `harness_eval_pass_rate(...)`/`harness_eval_abstention_rate(...)`
+- `scripts/little_loops/history_reader/harness.py:410-450` (`harness_eval_pass_rate()`) and `:451-501` (`harness_eval_abstention_rate()`) — both read `semantic_passed`/`semantic_verdict` off persisted rows; their docstrings encode the current two-bucket assumption (`semantic_passed IS NULL` ⇒ abstained). A `grader_error` bucket changes what "abstained" means to these readers — `harness_eval_pass_rate()`'s denominator (`COUNT(semantic_passed)`) shrinks automatically (matches the already-known `EVALUATION_GUIDE.md:449` note); `harness_eval_abstention_rate()` keys only on `semantic_verdict` (already non-NULL `"error"` today) so its behavior is unaffected.
 - `scripts/little_loops/session_store/schema.py:724-725, 1004-1012, 1130` — DDL definition of `harness_events.semantic_verdict TEXT`/`semantic_passed INTEGER` and the `idx_harness_semantic_verdict` index; comments at `:1004-1012` document "`semantic_passed = NULL` for an abstained row" as the existing 2-bucket convention `harness_eval_pass_rate()`/`harness_eval_abstention_rate()` rely on. Columns are unconstrained (no CHECK/enum), so no migration is needed to persist a `grader_error` bucket via `semantic_verdict='error'`/`semantic_passed=NULL`.
 - `scripts/little_loops/session_store/schema_manifest.json:156-158, 1122, 1128` — manifest mirror of the same column/index definitions.
 
 ### Conventions in Force
-- A "third outcome" on this dataclass is added as a plain `bool` field with a `False` default (the `abstained` field's own shape), checked in an `if`/`elif` chain ahead of the `passed = False` fallthrough — not as a new enum type — evidence: `HarnessEvalOutcome.abstained` (`harness.py:867`).
-- Precedence between outcome buckets is stated as an explicit "A > B > C" comment wherever a state can satisfy more than one bucket — evidence: `_grade()`'s "fail > abstain > pass" comment (`harness.py:1305-1308`), `_band_samples()`'s docstring precedence list (`:1351-1358`).
+- A "third outcome" on this dataclass is added as a plain `bool` field with a `False` default (the `abstained` field's own shape), checked in an `if`/`elif` chain ahead of the `passed = False` fallthrough — not as a new enum type — evidence: `HarnessEvalOutcome.abstained` (`harness.py:929`).
+- Precedence between outcome buckets is stated as an explicit "A > B > C" comment wherever a state can satisfy more than one bucket — evidence: `_grade()`'s "fail > abstain > pass" comment (`harness.py:1382-1385`), `_band_samples()`'s docstring precedence list (`:1437-1444`).
 
 ### Tests
 - `scripts/tests/test_cli_harness.py::TestGradeEvidenceChannels` (`:3682-3768`) — direct `_grade()` calls
@@ -99,7 +99,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - Flag for explicit decision, not silent: `TestBandSamples::test_all_errored_is_error`/`::test_two_pass_one_errored_is_inconclusive` currently lock the existing `errored` bucket to rc==2 infra errors only — if `grader_error` is folded into the same `SampleTally.errored` counter rather than a new field, these tests' semantics silently widen to also mean "judge crashed"
 
 ### Documentation
-- `docs/guides/EVALUATION_GUIDE.md:442-448` — documents `harness_eval_pass_rate` counting rows with non-NULL `semantic_passed` "on every non-abstained run"; will need a note once a grader-error bucket exists that is also non-abstained but not gradeable
+- `docs/guides/EVALUATION_GUIDE.md:449` — documents `harness_eval_pass_rate` counting rows with non-NULL `semantic_passed` "on every non-abstained run"; will need a note once a grader-error bucket exists that is also non-abstained but not gradeable
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `docs/guides/EVALUATION_GUIDE.md:78` — exit-code contract line ("`0` PASS, `1` FAIL, `2` internal error or timeout, `3` ABSTAIN or ... INCONCLUSIVE") needs reconciling with where a grader-error bucket lands
@@ -113,29 +113,29 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ### Types
 
-- `HarnessEvalOutcome` (`scripts/little_loops/cli/harness.py:863`): add `grader_error: bool = False` (or widen `abstained` into a tri-state outcome enum; decide at implementation).
+- `HarnessEvalOutcome` (`scripts/little_loops/cli/harness.py:923`, `abstained` field at `:929`): add `grader_error: bool = False` (or widen `abstained` into a tri-state outcome enum; decide at implementation).
 - `EvaluationResult` (`scripts/little_loops/fsm/evaluators.py:56`): unchanged; `verdict="error"` is already the signal.
 
 ### Signatures
 
-- `_grade(runner_label, result, args, *, expected_grade=None, side_effects=None) -> tuple[int, HarnessEvalOutcome]` (`harness.py:1224`): unchanged signature; new branch `elif eval_result.verdict == "error": grader_error = True` placed before the `!= "yes"` fall-through.
+- `_grade(runner_label, result, args, *, expected_grade=None, side_effects=None, duration_ms=None) -> tuple[int, HarnessEvalOutcome]` (`harness.py:1293`): unchanged signature; new branch `elif eval_result.verdict == "error": grader_error = True` placed before the `!= "yes"` fall-through.
 - `is_abstention_verdict(verdict: str) -> bool` (`fsm/verdicts.py:25`): unchanged; `"error"` is not an abstention.
 
 ### Call Path
 
-`_run_sample_loop()`/`_evaluate_and_report()` (`harness.py:1913`/`:1965`) -> `_grade()` -> `evaluate_llm_structured()` returns `verdict="error"` -> `is_abstention_verdict()` returns False -> new `grader_error` on the outcome -> sample tally and `harness_events` writer report it as a distinct bucket; `history_reader/harness.py:_rc_from_event` (`:299-312`) mirrors the banding and must gain the same bucket.
+`_run_sample_loop()`/`_evaluate_and_report()` (`harness.py:1969`/`:2070`) -> `_grade()` -> `evaluate_llm_structured()` returns `verdict="error"` -> `is_abstention_verdict()` returns False -> new `grader_error` on the outcome -> sample tally and `harness_events` writer report it as a distinct bucket; `history_reader/harness.py:_rc_from_event` (`:314-326`) mirrors the banding and must gain the same bucket.
 
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
 
-- `SampleTally` already has a structurally distinct `errored: int = 0` field and `_band_samples()` (`harness.py:800-828`, `:1351-1367`) already has an `ERROR` band — but it is populated only by `rc==2` from the top-of-function infra guard (`_grade()`, `harness.py:1246-1247`: `result.timed_out or result.error is not None`), not by a judge-internal error. A grader error never reaches this existing bucket today.
-- `ChannelRecord.passed: bool | None = None` (`harness.py:831-859`) is an existing precedent in this same file for a tri-state "carries no verdict of its own" field on a result dataclass, documented in its own docstring as "internal fold state."
+- `SampleTally` already has a structurally distinct `errored: int = 0` field and `_band_samples()` (`harness.py:838-865`, `:1436-1451`) already has an `ERROR` band — but it is populated only by `rc==2` from the top-of-function infra guard (`_grade()`, `harness.py:1323`: `result.timed_out or result.error is not None`), not by a judge-internal error. A grader error never reaches this existing bucket today.
+- `ChannelRecord.passed: bool | None = None` (`harness.py:869-909`) is an existing precedent in this same file for a tri-state "carries no verdict of its own" field on a result dataclass, documented in its own docstring as "internal fold state."
 - `is_abstention_verdict()` (`fsm/verdicts.py:25-27`) is a shared predicate also consumed by FSM routing (`fsm/executor.py:2371`) and locked by `test_fsm_verdicts.py:32-34`, which asserts `is_abstention_verdict("error") is False`. Any grader-error handling in `_grade()` must be additive alongside this predicate, not a redefinition of it.
 - FSM state routing (`fsm/executor.py:3253-3304`) already treats `verdict == "error"` as a distinct destination (`route.error`/`on_error`), separate from `on_no`. `"error"` is already a first-class, separately-routed verdict elsewhere in this codebase (`evaluate_llm_structured()` returns it from dozens of internal failure sites in `fsm/evaluators.py`); `_grade()` is the one place found that folds it into `passed=False`.
-- Every DB-recording call site independently repeats the same expression rather than sharing one: `semantic_passed=None if outcome.abstained else outcome.passed` at `harness.py:2144, 2278, 2398, 2517, 2777` (one per runner subcommand: `cmd_skill`, `cmd_cmd`, `cmd_mcp`, `cmd_prompt`, `cmd_dsl`). Any new outcome dimension (e.g. `grader_error`) must be threaded through all five, not just through `_grade()`.
-- `_rc_from_event()` (`history_reader/harness.py:299-312`) is a second, independent re-implementation of the pass/fail/abstain/error banding, operating on persisted `HarnessEvent` rows. Its docstring states it "mirrors the run-time banding," kept in sync by hand-written comment cross-reference (e.g. "ENH-3435") rather than a shared function — the new bucket has to be added here too, by the same convention, not by calling shared code.
-- Existing test-style precedents in `test_cli_harness.py`: `TestAbstentionVerdict` (`:863-911`) drives `cmd_cmd()` + `capsys` output assertions; `TestBandSamples` (`:958-989`) unit-tests `_band_samples()` directly via explicit `SampleTally(...)` construction; `TestGradeEvidenceChannels` (`:3682`) calls `_grade()` directly with a mocked `evaluate_llm_structured`. No existing test in this file constructs `EvaluationResult(verdict="error", ...)`.
+- Every DB-recording call site independently repeats the same expression rather than sharing one: `semantic_passed=None if outcome.abstained else outcome.passed` at `harness.py:2285, 2427, 2555, 2682, 2951` (one per runner subcommand: `cmd_skill`, `cmd_cmd`, `cmd_mcp`, `cmd_prompt`, `cmd_dsl`). Any new outcome dimension (e.g. `grader_error`) must be threaded through all five, not just through `_grade()`.
+- `_rc_from_event()` (`history_reader/harness.py:314-326`) is a second, independent re-implementation of the pass/fail/abstain/error banding, operating on persisted `HarnessEvent` rows. Its docstring states it "mirrors the run-time banding," kept in sync by hand-written comment cross-reference (e.g. "ENH-3435") rather than a shared function — the new bucket has to be added here too, by the same convention, not by calling shared code.
+- Existing test-style precedents in `test_cli_harness.py`: `TestAbstentionVerdict` (`:864-919`) drives `cmd_cmd()` + `capsys` output assertions; `TestBandSamples` (`:959-1005`) unit-tests `_band_samples()` directly via explicit `SampleTally(...)` construction; `TestGradeEvidenceChannels` (`:3696`) calls `_grade()` directly with a mocked `evaluate_llm_structured`. No existing test in this file constructs `EvaluationResult(verdict="error", ...)`.
 - Related: sibling issues ENH-3463 and ENH-3464 reference this same `_grade()` / `evaluate_llm_structured()` / `is_abstention_verdict()` call chain; parent epic EPIC-3475 ("harden ll-harness verdicts") covers this bucket of work.
 
 ## Impact
@@ -145,12 +145,53 @@ _Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
 - **Risk**: Medium - changes grading semantics; `history_reader/harness.py:_rc_from_event` mirrors the banding and must be reconciled.
 - **Breaking Change**: No
 
+## Verification Notes
+
+Verdict at time of check: **OUTDATED** (corrections below applied in the same
+pass, so the issue as it now reads is up to date — this section is a record
+of what was wrong and fixed, not an outstanding action item).
+
+Three commits landed after this issue was captured (`b17eabb54`
+"widen ll-harness evidence surface beyond stdout", `80d2d38d0` "score
+ll-harness runs on a named efficiency vector", `e3739238b` "persist
+ll-harness widened evidence to harness_events" — all 2026-09-14, after the
+21:36–22:50 capture/refine/wire window) and added ~180 net lines to
+`scripts/little_loops/cli/harness.py` ahead of `_grade()`. A currently
+uncommitted working-tree change (BUG-3479's `_git_blob()` helper) adds a
+further ~27 lines earlier still. Every `harness.py`/`history_reader/harness.py`
+line citation in this issue's Integration Map and Program Design sections was
+stale as a result; all have been corrected against the current file state
+(`_grade()` now at `:1293-1416`, `HarnessEvalOutcome` at `:923-941`,
+`SampleTally` at `:838-865`, `_band_samples()` at `:1436-1451`, the five
+DB-recording call sites at `:2285, 2427, 2555, 2682, 2951`, `_rc_from_event()`
+at `history_reader/harness.py:314-326`, etc.).
+
+The underlying claim is unchanged and confirmed still true: `_grade()`
+(`harness.py:1382-1385`, current `elif eval_result.verdict != "yes": passed =
+False` branch) still folds a grader-internal `"error"` verdict into
+`passed = False` identically to a semantic `"no"` — the fix this issue
+describes is still needed, at the corrected locations. Files not touched by
+the recent commits (`fsm/evaluators.py`, `fsm/verdicts.py`, `session_store/writers.py`,
+`session_store/schema.py`, `schema_manifest.json`, `cli/__init__.py`,
+`history_reader/__init__.py`) were checked and their citations are unchanged.
+
+`ll-verify-evidence --json` flagged two spans in `## Steps to Reproduce`
+(the `EvaluationResult(verdict="error", ...)` patch instruction and the
+`HarnessEvalOutcome.passed is False` expected-observation line) as
+unverifiable against `test_cli_harness.py`. Reviewed: both are reproduction
+*instructions*/expected outputs, not quotes claimed to already exist verbatim
+in that file — the tool's nearest-file attribution heuristic misread
+procedural prose as an evidence quote. Not treated as `EVIDENCE_UNVERIFIED`;
+the underlying claim was independently confirmed by reading `_grade()`
+directly (above).
+
 ## Status
 
 **Open** | Created: 2026-09-14 | Priority: P3
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-15T15:57:34 - `fe401c2e-e475-43b1-b588-44df23082884.jsonl`
 - `/ll:wire-issue` - 2026-09-14T22:50:06 - `bac75f45-b587-45bb-bf3c-443b0c5e805a.jsonl`
 - `/ll:refine-issue` - 2026-09-14T21:57:11 - `76fd614d-af9c-461c-9480-143acb792f32.jsonl`
 - `/ll:format-issue` - 2026-09-14T21:47:59 - `b8b46581-a38f-4aa7-a1ba-71f0319e7405.jsonl`

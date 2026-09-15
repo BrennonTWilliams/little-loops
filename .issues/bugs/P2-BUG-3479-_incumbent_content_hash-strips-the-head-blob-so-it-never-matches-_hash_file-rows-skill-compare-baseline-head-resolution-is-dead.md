@@ -4,10 +4,11 @@ type: BUG
 title: _incumbent_content_hash strips the HEAD blob so it never matches _hash_file
   rows; skill --compare-baseline HEAD resolution is dead
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-15'
 captured_at: '2026-09-15T14:19:48Z'
+completed_at: '2026-09-15T16:03:25Z'
 labels:
 - harness
 - baseline
@@ -134,12 +135,37 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Add a `cmd_skill`-level test asserting the "cannot resolve incumbent content ... untracked file or no git repo" refusal fires (no existing coverage).
 - Append a `- **BUG-3479**: ...` bullet to `CHANGELOG.md`'s existing `### Fixed` subsection under `## [1.164.0] - 2026-09-13`.
 
+## Resolution
+
+Added `_git_blob(rel, *, ref="HEAD")` (`scripts/little_loops/cli/harness.py`), which
+runs `git cat-file blob <ref>:<rel>` with `text=False` and returns raw bytes
+(`b""` is a valid result, not collapsed to `None`). `_incumbent_content_hash()`
+now hashes `_git_blob(rel)`'s bytes directly instead of the stripped stdout of
+`git show HEAD:<rel>`, so it equals `_hash_file()` for any unmodified tracked
+file, including an empty one. `_git_output()` is untouched — its `.strip()`
+contract still serves every `rev-parse`-style caller.
+
+Split `_make_git_stub()` in `scripts/tests/test_cli_harness.py` into a
+rev-parse-only stub (kept name) and a new `_make_git_blob_stub()`; repointed
+`TestBaselineCompare`, `TestBaselineIncumbentResolution::test_dirty_tree_compare_reads_only_head_incumbent`,
+and `TestBaselineStoreBidirectional::test_measure_after_commit_reuses_candidate_rows_across_head`
+at the new target. Added `TestIncumbentContentHashRealGit` (real temp git repo,
+no mocking) covering newline-terminated, trailing-whitespace, and empty
+tracked files plus untracked-file and committed-directory `None` cases, and
+`TestCmdSkillCompareUnresolvableIncumbentRefusal` asserting the
+"cannot resolve incumbent content" refusal message fires. Updated that
+refusal string and `_incumbent_content_hash()`'s docstring to say
+`git cat-file blob` instead of `git show`. Added the `CHANGELOG.md` bullet
+under `## [1.164.0]` § Fixed per the Wiring Phase note. No `## Program Design`
+deviations — implementation matches the documented design exactly.
+
 ## Status
 
 **Open** | Created: 2026-09-15 | Priority: P2
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-15T16:02:33 - `89f68324-c064-4b13-9993-24cb6db7a0d8.jsonl`
 - `/ll:confidence-check` - 2026-09-15T15:44:55 - `8f700f7e-5b5d-454d-a2bf-9aff2b1c8830.jsonl`
 - `/ll:wire-issue` - 2026-09-15T15:08:04 - `eb318cee-ddb1-40b6-a7a9-f7f1b403ae44.jsonl`
 - `/ll:refine-issue` - 2026-09-15T14:58:55 - `a770d268-1a31-4c89-8452-2802b7501458.jsonl`

@@ -89,6 +89,31 @@ def _git_output(*args: str) -> str | None:
     return proc.stdout.strip() or None
 
 
+def _git_blob(rel: str, *, ref: str = "HEAD") -> bytes | None:
+    """Return the raw bytes of ``<ref>:<rel>``, or None on any failure (BUG-3479).
+
+    Uses ``git cat-file blob`` (plumbing), not ``git show`` (porcelain):
+    ``show`` honors ``.gitattributes`` textconv filters and prints a tree
+    listing for a directory path, while ``cat-file blob`` emits raw bytes on
+    a blob or exits non-zero on anything else. Unlike :func:`_git_output`,
+    does not strip the result — an empty tracked file must hash the same via
+    this path as via :func:`_hash_file`, so ``b""`` is a valid, non-None
+    return. Same best-effort ``except Exception`` contract as `_git_output`.
+    """
+    try:
+        proc = subprocess.run(
+            ["git", "cat-file", "blob", f"{ref}:{rel}"],
+            capture_output=True,
+            text=False,
+            timeout=5,
+        )
+    except Exception:  # noqa: BLE001 — best-effort, never raises
+        return None
+    if proc.returncode != 0:
+        return None
+    return proc.stdout
+
+
 def _git_dirty() -> bool | None:
     """Return whether the working tree has tracked modifications, or None on failure.
 
@@ -1709,10 +1734,12 @@ def _incumbent_content_hash(target_path: Path | None) -> str | None:
 
     For the ``skill`` runner the incumbent is the HEAD version of the target
     file — ``harness-optimize.yaml`` commits accepted candidates and reverts
-    rejected ones, so the incumbent always equals HEAD content. Reads a blob
-    via ``git show``; never checks out or stashes anything. Returns None when
-    git is unavailable, the file is untracked, or the path is not file-shaped,
-    so the caller can produce the refusal message.
+    rejected ones, so the incumbent always equals HEAD content. Reads the raw
+    blob via :func:`_git_blob` (BUG-3479: not ``git show``, whose text-mode
+    strip mismatched :func:`_hash_file`'s raw-byte hash); never checks out or
+    stashes anything. Returns None when git is unavailable, the file is
+    untracked, or the path is not file-shaped, so the caller can produce the
+    refusal message.
     """
     if target_path is None:
         return None
@@ -1723,10 +1750,10 @@ def _incumbent_content_hash(target_path: Path | None) -> str | None:
         rel = os.path.relpath(target_path, root)
     except ValueError:
         return None
-    content = _git_output("show", f"HEAD:{rel}")
-    if content is None:
+    blob = _git_blob(rel)
+    if blob is None:
         return None
-    return _hash_bytes(content.encode("utf-8"))
+    return _hash_bytes(blob)
 
 
 def _resolve_baseline_of(attempt_id: int, *, current_input_hash: str) -> BaselineKey | str:
@@ -2299,7 +2326,7 @@ def cmd_skill(args: argparse.Namespace) -> int:
             if incumbent is None:
                 print(
                     f"error: --compare-baseline: cannot resolve incumbent content for "
-                    f"skill {args.target} (git show HEAD:<target> unavailable — "
+                    f"skill {args.target} (git cat-file blob HEAD:<target> unavailable — "
                     "untracked file or no git repo)",
                     file=sys.stderr,
                 )
