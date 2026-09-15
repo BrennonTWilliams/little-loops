@@ -86,12 +86,16 @@ No code change is required in these three files — they already handle exit cod
 - No documentation anywhere describes the current crash-on-persistence-failure behavior, so no doc file goes stale from this fix [Agent 2 finding]
 - No test asserts the current (pre-fix) propagation behavior, so nothing needs inverting or removing [Agent 3 finding]
 - Other unguarded `else`-branch-shaped call sites exist in `fsm/persistence.py` (`archive_run_only()` :1161-1210, `_reconcile_stale_running()` :279-305, `save_state()` at :709) but are explicitly out of this issue's Scope Boundaries — reported for awareness only, not proposed as scope additions [Agent 2 finding]
+- `docs/reference/API.md:4449-4450` (SIGINT/SIGTERM graceful-shutdown row), `docs/reference/API.md:6780,6787` (`save_state`/`archive_run` semantics table), `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md:1196-1204,1234` — all narrate this exact code path's happy-path/force-exit contract; the guard is behavior-preserving on the success path, so none of these go stale — traced but confirmed no edit needed [wire-issue pass 2 finding]
+- `scripts/little_loops/cli/loop/lifecycle.py::_stop_instance()` (:466,483,493, the `ll-loop stop` handler) and `PersistentExecutor.archive_run_only()`'s own unguarded `save_state()`/`archive_run()` pair (`fsm/persistence.py:1161-1210`, called only from `cli/loop/signals.py:60` with a narrower outer `except OSError: pass`) share the identical unguarded assumption this issue fixes, but are separate call chains from `PersistentExecutor.run()`'s `else` branch and are already excluded by this issue's own Scope Boundaries — flagged for awareness only, not a scope addition [wire-issue pass 2 finding]
+- `scripts/little_loops/mcp_server/tasks.py::handle_tasks_get` (reads persisted status via `read_run_status()`) and `scripts/little_loops/cli/loop/lifecycle.py::read_run_status()`/`_status_single()` (:138-156, :211-226) — disk-read consumers of the already-persisted `LoopState.status`; unaffected since this fix only changes whether persistence succeeds, not the shape of what's persisted [wire-issue pass 2 finding]
 
 ## Implementation Steps
 
 1. Guard `PersistentExecutor.run()`'s `save_state()`/`archive_run()` calls (`fsm/persistence.py:1279-1281`) following the `except Exception  # noqa: BLE001` precedent above — log the failure and return the already-computed `ExecutionResult` rather than letting the exception propagate.
 2. Add a test in `scripts/tests/test_fsm_persistence.py` covering this branch (no existing test does — `TestWorkdirVanished` in `test_fsm_executor.py` (:14155+) only exercises a raw `FSMExecutor`, never `PersistentExecutor`). Follow the file's own post-construction method-assign convention (see `test_drain_inbound_spoof_does_not_trigger_persistence_side_effects`, :960-968): set `executor.persistence.save_state = MagicMock(side_effect=RuntimeError("disk full"))` before calling `executor.run()`, and assert the result is still returned rather than an exception propagating.
-3. `python -m pytest scripts/tests/test_fsm_persistence.py -v` passes.
+3. Run `scripts/tests/test_cost_ceiling_enforcement.py`, `scripts/tests/test_usage_journal.py` (both construct a real `PersistentExecutor` and call `.run()` end-to-end), and `scripts/tests/test_fsm_executor.py::TestWorkdirVanished::test_persistent_executor_cwd_deletion_reports_clean_abort` (the one existing test exercising the sibling `workdir_vanished`/`OSError` branch) to confirm no regression (added by `/ll:wire-issue` pass 2).
+4. `python -m pytest scripts/tests/test_fsm_persistence.py scripts/tests/test_cost_ceiling_enforcement.py scripts/tests/test_usage_journal.py -v` passes.
 
 ## Tests
 
@@ -128,6 +132,7 @@ _Added by `/ll:refine-issue` — 2026-09-15 — based on codebase analysis:_
 **Open** | Created: 2026-09-13 | Priority: P2
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-15T22:32:31 - `74d0e714-5fa8-4d36-8d26-f70b1e11f439.jsonl`
 - `/ll:refine-issue` - 2026-09-15T22:18:25 - `a0a3cae8-46b6-4741-b032-8859dea7a727.jsonl`
 - `/ll:wire-issue` - 2026-09-14T20:29:41 - `8cf1df9b-8fca-46d9-b751-f28d170c6572.jsonl`
 - `/ll:refine-issue` - 2026-09-14T19:32:05 - `93b68600-9c57-4c65-a431-1e887e42f117.jsonl`

@@ -132,7 +132,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_conftest_cap.py` (`TestXdistAutoNumWorkers`, `TestPytestConfigureNice`, `TestRateLimitLadderCollapsed`, `TestNoParallelMarkerRouting`) — existing tests to update if a fix touches `pytest_xdist_auto_num_workers`, `pytest_configure`, or `_collapse_rate_limit_ladder`, all three already named in this issue's Dependent Files
-- `scripts/tests/test_hook_session_start.py:669-763` (`TestAmbientAutomationEnvHermeticity.test_suite_passes_with_ambient_ll_automation`) — closest existing template for a watchdog-style test: spawns `python -m pytest` as a real subprocess with `timeout=300` and asserts `returncode == 0`, sentinel-guarded against recursion and pinned to `-n 0` to avoid nesting inside an xdist worker. Model any Proposed Solution #3 test after this, not from scratch
+- `scripts/tests/test_hook_session_start.py:712-765` (`TestAmbientAutomationEnvHermeticity.test_suite_passes_with_ambient_ll_automation`) — closest existing template for a watchdog-style test: spawns `python -m pytest` as a real subprocess with `timeout=300` and asserts `returncode == 0`, sentinel-guarded against recursion and pinned to `-n 0` to avoid nesting inside an xdist worker. Model any Proposed Solution #3 test after this, not from scratch
 - `scripts/tests/test_policy_builder_node_gate.py:53-79` (`test_node_conformance_suite_passes`) — the repo's general "subprocess.run(..., timeout=N) + assert returncode == 0, skip-if-tool-absent" template (CLAUDE.md's external-toolchain-gate policy), a simpler analog to the above
 - `scripts/tests/test_worktree_utils.py:1452-1541` (`TestVerifyEpicBranchBeforeMerge`) — existing coverage for the `worktree_utils.py:755` call site newly added to Dependent Files above; exercises a different flake (not the idle-wedge scenario), would need extending if that call site is where a fix lands
 
@@ -225,12 +225,37 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
+## Verification Notes
+
+Verdict at time of check: **NEEDS_UPDATE** (correction below applied in the same
+pass, so the issue as it now reads is up to date — this section is a record of
+what was wrong and fixed, not an outstanding action item)
+
+- Every other file/line citation in Integration Map, Implementation Steps, and
+  Root Cause checked against current codebase state (graph: provider=`codegraph`
+  freshness=`fresh`) — all accurate, including `worktree_utils.py:755`'s missing
+  `timeout=` kwarg, `general-task.yaml:911`'s `timeout: 1800` with no
+  `idle_timeout:`, the `pytest-xdist>=3.0,<3.8` pin, BUG-3208's closed status and
+  distinct root cause, and BUG-2524's content.
+- `ll-verify-evidence --json`: clean (`ok: true`, 0 findings) — no fabricated
+  evidence quotes.
+- No active required decision rules to check against (`ll-issues decisions list`
+  returned none).
+- One citation had drifted: `scripts/tests/test_hook_session_start.py:669-763`
+  actually starts inside the *preceding* unrelated class
+  (`TestSessionStartDesignTokensValidation`); `TestAmbientAutomationEnvHermeticity`
+  itself spans 712-765. Corrected in the Tests section above.
+- `## Proposed Solution` is explicitly non-prescriptive (three "candidate
+  directions... not yet chosen") — the proposal-vs-code consequence check (B6)
+  does not apply; there is no single as-written change to trace.
+
 ## Status
 
 **Open** | Created: 2026-09-15 | Priority: P2
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-15T22:29:03 - `74d0e714-5fa8-4d36-8d26-f70b1e11f439.jsonl`
 - `/ll:wire-issue` - 2026-09-15T22:22:26 - `d2ee88e4-436e-400b-a42b-568c16a51760.jsonl`
 - `/ll:refine-issue` - 2026-09-15T22:12:30 - `1daaf7af-e74b-4b5d-b1aa-a57797ab5fda.jsonl`
 - `/ll:format-issue` - 2026-09-15T22:08:41 - `4ed27b03-8e1c-4cb5-ad0c-8aea21116e0d.jsonl`
