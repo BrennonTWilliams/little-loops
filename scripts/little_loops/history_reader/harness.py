@@ -105,6 +105,10 @@ class HarnessEvent:
     cache_read_tokens: int | None = None
     cache_creation_tokens: int | None = None
     tool_calls: int | None = None
+    # ENH-3476 v52 column (trailing-default, same pattern as v49/v50/v51
+    # above): JSON array of ChannelRecord.to_row_dict() objects, or None when
+    # the row has no graded channel evidence.
+    channels_json: str | None = None
 
 
 _HARNESS_EVENT_COLUMNS = (
@@ -114,7 +118,8 @@ _HARNESS_EVENT_COLUMNS = (
     "target_content_hash, target_path, dirty, "
     "cell_key, repetition, attempt_kind, continuations, superseded_by, "
     "timeout_s, host_cli, subject_model, input_hash, conditions_fp, "
-    "input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, tool_calls"
+    "input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, tool_calls, "
+    "channels_json"
 )
 
 

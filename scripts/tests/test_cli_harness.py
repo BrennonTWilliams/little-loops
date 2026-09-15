@@ -15,6 +15,7 @@ import pytest
 
 from little_loops.cli.harness import (
     ChannelRecord,
+    _channels_json,
     _check_side_effects,
     _grade,
     _parse_harness_args,
@@ -4263,3 +4264,205 @@ class TestRecordHarnessEventEfficiencyFields:
         assert row.input_tokens is None
         assert row.tool_calls is None
         assert row.duration_ms is not None
+
+
+class TestChannelRecordSerializers:
+    """AC4/AC5: ChannelRecord.to_row_dict() and the _channels_json() helper (ENH-3476)."""
+
+    def test_to_row_dict_shape_excludes_content(self) -> None:
+        ch = ChannelRecord(name="art.txt", examined=True, content="secret bytes", passed=True)
+        row = ch.to_row_dict()
+        assert row == {
+            "name": "art.txt",
+            "examined": True,
+            "chars": len("secret bytes"),
+            "note": None,
+            "passed": True,
+        }
+        assert "content" not in row
+
+    def test_to_dict_unchanged_by_to_row_dict_addition(self) -> None:
+        ch = ChannelRecord(name="stdout", examined=True, content="ok", passed=None)
+        assert ch.to_dict() == {"name": "stdout", "examined": True, "chars": 2, "note": None}
+        assert "passed" not in ch.to_dict()
+
+    def test_channels_json_empty_list_is_none(self) -> None:
+        assert _channels_json([]) is None
+
+    def test_channels_json_round_trips_to_row_dict_shape(self) -> None:
+        channels = [
+            ChannelRecord(name="stdout", examined=True, content="ok", passed=None),
+            ChannelRecord(
+                name="art.txt", examined=True, content=None, note="missing", passed=False
+            ),
+        ]
+        encoded = _channels_json(channels)
+        assert encoded is not None
+        decoded = json.loads(encoded)
+        assert decoded == [c.to_row_dict() for c in channels]
+
+
+class TestRecordHarnessEventChannelsJson:
+    """AC6/AC7/AC8: outcome.channels persists as harness_events.channels_json (ENH-3476)."""
+
+    def test_skill_run_persists_channels_json(self) -> None:
+        from little_loops.history_reader import recent_harness_events
+        from little_loops.session_store import DEFAULT_DB_PATH, resolve_history_db
+
+        args = _make_namespace(runner="skill", target="check-code", runner_args=[], output="text")
+        with (
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
+            patch("subprocess.run", return_value=_make_completed(returncode=0, stdout="ok")),
+        ):
+            result = cmd_skill(args)
+
+        assert result == 0
+        row = recent_harness_events(
+            runner="skill", target="check-code", db=resolve_history_db(DEFAULT_DB_PATH)
+        )[0]
+        assert row.channels_json is not None
+        names = {c["name"] for c in json.loads(row.channels_json)}
+        assert {"stdout", "stderr", "git"} <= names
+
+    def test_mcp_run_persists_channels_json(self) -> None:
+        from little_loops.history_reader import recent_harness_events
+        from little_loops.session_store import DEFAULT_DB_PATH, resolve_history_db
+
+        args = _make_namespace(runner="mcp", target="srv:tool", mcp_args="{}", output="text")
+        with patch(
+            "little_loops.runner_spec.call_mcp_tool",
+            return_value=({"content": [{"type": "text", "text": "ok"}]}, 0),
+        ):
+            result = cmd_mcp(args)
+
+        assert result == 0
+        row = recent_harness_events(
+            runner="mcp", target="srv:tool", db=resolve_history_db(DEFAULT_DB_PATH)
+        )[0]
+        assert row.channels_json is not None
+        names = {c["name"] for c in json.loads(row.channels_json)}
+        assert {"stdout", "stderr", "git"} <= names
+
+    def test_prompt_run_persists_channels_json(self) -> None:
+        from little_loops.history_reader import recent_harness_events
+        from little_loops.session_store import DEFAULT_DB_PATH, resolve_history_db
+
+        args = _make_namespace(runner="prompt", target="hello", output="text")
+        with (
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
+            patch("subprocess.run", return_value=_make_completed(returncode=0, stdout="hi")),
+        ):
+            result = cmd_prompt(args)
+
+        assert result == 0
+        row = recent_harness_events(
+            runner="prompt", target="hello", db=resolve_history_db(DEFAULT_DB_PATH)
+        )[0]
+        assert row.channels_json is not None
+        names = {c["name"] for c in json.loads(row.channels_json)}
+        assert {"stdout", "stderr", "git"} <= names
+
+    def test_cmd_run_with_side_effects_persists_full_channel_set(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """AC6: --require-artifact/--forbid-path decode with the expected pass/fail."""
+        monkeypatch.chdir(tmp_path)
+        artifact = tmp_path / "art.txt"
+        forbidden = tmp_path / "forbidden.txt"
+        artifact.write_text("v1")
+        forbidden.write_text("v1")
+
+        args = _make_namespace(
+            runner="cmd",
+            target="true",
+            require_artifact=["art.txt"],
+            forbid_path=["forbidden.txt"],
+            output="text",
+        )
+        mock_proc = _make_selector_mock_process(returncode=0)
+        sel = _make_ready_selector()
+
+        def _popen_side_effect(*_a: object, **_kw: object) -> MagicMock:
+            # Simulate the invoked command touching both declared paths.
+            artifact.write_text("v2")
+            forbidden.write_text("v2")
+            return mock_proc
+
+        with (
+            # _git_output()/_git_dirty() shell out via the same real `subprocess`
+            # module that `little_loops.runner_spec.subprocess.Popen` patches
+            # (it's not a separate copy) -- left unstubbed, cmd_cmd's pre-invoke
+            # git calls would trip `_popen_side_effect` before the pre-invoke
+            # snapshot is even taken, corrupting the before/after comparison.
+            patch("little_loops.cli.harness._git_output", return_value="sha0"),
+            patch("little_loops.cli.harness._git_dirty", return_value=False),
+            patch("little_loops.runner_spec.subprocess.Popen", side_effect=_popen_side_effect),
+            patch("little_loops.runner_spec.selectors.DefaultSelector", return_value=sel),
+        ):
+            result = cmd_cmd(args)
+
+        assert result == 1  # forbidden.txt was modified -> a failed side effect
+        rows = _harness_rows()
+        row = rows[-1]
+        assert row["channels_json"] is not None
+        channels = {c["name"]: c for c in json.loads(row["channels_json"])}
+        assert channels["stdout"]["examined"] is True
+        assert channels["stderr"]["examined"] is False
+        assert channels["stderr"]["chars"] is None
+        assert channels["art.txt"]["passed"] is True
+        assert channels["forbidden.txt"]["passed"] is False
+        assert "git" in channels
+
+    def test_dsl_task_run_persists_channels_json(self, tmp_path: Path) -> None:
+        task_file = tmp_path / "task.yaml"
+        task_file.write_text(
+            "prompt: hi\nblanks: []\nexpected: {}\nsource_dsl: loop\ntask_type: t\n"
+        )
+        args = _make_namespace(runner="dsl", path=str(task_file))
+
+        with (
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
+            patch("subprocess.run", return_value=_make_completed(returncode=0, stdout="{}")),
+        ):
+            cmd_dsl(args)
+
+        rows = _harness_rows()
+        task_row = next(r for r in rows if r["runner"] == "dsl-task")
+        assert task_row["channels_json"] is not None
+        names = {c["name"] for c in json.loads(task_row["channels_json"])}
+        assert {"stdout", "stderr", "git"} <= names
+
+    def test_timeout_run_persists_null_channels_json(self) -> None:
+        args = _make_namespace(runner="skill", target="check-code", runner_args=[])
+        with (
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
+            patch(
+                "subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="claude", timeout=120)
+            ),
+        ):
+            result = cmd_skill(args)
+
+        assert result == 2
+        rows = _harness_rows()
+        assert rows[-1]["channels_json"] is None
+
+    def test_dsl_aggregate_and_malformed_rows_persist_null_channels_json(
+        self, tmp_path: Path
+    ) -> None:
+        good = tmp_path / "a-task.yaml"
+        good.write_text("prompt: hi\nblanks: []\nexpected: {}\nsource_dsl: loop\ntask_type: t\n")
+        bad = tmp_path / "b-task.yaml"
+        bad.write_text("prompt: [unterminated\n")
+        args = _make_namespace(runner="dsl", path=str(tmp_path))
+
+        with (
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
+            patch("subprocess.run", return_value=_make_completed(returncode=0, stdout="{}")),
+        ):
+            cmd_dsl(args)
+
+        rows = _harness_rows()
+        aggregate = next(r for r in rows if r["runner"] == "dsl")
+        malformed = next(r for r in rows if r["runner"] == "dsl-task" and r["target"] == bad.name)
+        assert aggregate["channels_json"] is None
+        assert malformed["channels_json"] is None

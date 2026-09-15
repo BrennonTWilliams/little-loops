@@ -1444,6 +1444,33 @@ class TestSkillStatsAndNewKinds:
         out = capsys.readouterr().out
         assert "my-target" in out
 
+    def test_recent_kind_harness_json_includes_channels_json(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """ENH-3476 AC10: `--json` output surfaces `channels_json` (asdict() is generic)."""
+        import json as _json
+
+        from little_loops.session_store import record_harness_event
+
+        db = tmp_path / "history.db"
+        record_harness_event(
+            db,
+            ts="2026-07-01T12:00:00Z",
+            runner="cli",
+            target="my-target",
+            exit_code=0,
+            channels_json='[{"name": "stdout", "examined": true, "chars": 2, "note": null, '
+            '"passed": null}]',
+        )
+        with patch(
+            "sys.argv",
+            ["ll-session", "--db", str(db), "recent", "--kind", "harness", "--json"],
+        ):
+            assert main_session() == 0
+        payload = _json.loads(capsys.readouterr().out)
+        assert "channels_json" in payload[0]
+        assert _json.loads(payload[0]["channels_json"])[0]["name"] == "stdout"
+
     def test_search_kind_harness_matches_indexed_rows(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:

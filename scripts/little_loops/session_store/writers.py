@@ -1143,6 +1143,7 @@ def _insert_harness_event(
     cache_read_tokens: int | None = None,
     cache_creation_tokens: int | None = None,
     tool_calls: int | None = None,
+    channels_json: str | None = None,
 ) -> int:
     """INSERT one ``harness_events`` row + FTS index entry on *conn*, no commit.
 
@@ -1161,6 +1162,11 @@ def _insert_harness_event(
     ``output_tokens``, ``cache_read_tokens``, ``cache_creation_tokens``,
     ``tool_calls``), all default None, passed through uncoerced like
     ``duration_ms`` (reporting only — never read by a pass/fail gate).
+
+    ENH-3476 adds the v52 ``channels_json`` kwarg (default None): a JSON
+    array of ``ChannelRecord.to_row_dict()`` objects, or None when the run
+    graded no channel evidence. Passed through uncoerced, mirroring
+    ``semantic_evidence``.
     """
     cursor = conn.execute(
         "INSERT INTO harness_events("
@@ -1171,9 +1177,10 @@ def _insert_harness_event(
         "target_content_hash, target_path, dirty, "
         "cell_key, repetition, attempt_kind, continuations, superseded_by, "
         "timeout_s, host_cli, subject_model, input_hash, conditions_fp, "
-        "input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, tool_calls"
+        "input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, tool_calls, "
+        "channels_json"
         ") VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
-        "?, ?, ?, ?, ?, ?, ?)",
+        "?, ?, ?, ?, ?, ?, ?, ?)",
         (
             ts,
             runner,
@@ -1209,6 +1216,7 @@ def _insert_harness_event(
             cache_read_tokens,
             cache_creation_tokens,
             tool_calls,
+            channels_json,
         ),
     )
     summary = f"{runner or 'harness'} {target or ''} exit={exit_code}".strip()
@@ -1261,6 +1269,7 @@ def record_harness_event(
     cache_read_tokens: int | None = None,
     cache_creation_tokens: int | None = None,
     tool_calls: int | None = None,
+    channels_json: str | None = None,
 ) -> int:
     """Write one row to ``harness_events`` and index it in ``search_index``.
 
@@ -1288,6 +1297,8 @@ def record_harness_event(
     ENH-3464 adds five nullable v51 efficiency-vector kwargs (``input_tokens``
     / ``output_tokens`` / ``cache_read_tokens`` / ``cache_creation_tokens`` /
     ``tool_calls``), all default ``None``.
+
+    ENH-3476 adds the nullable v52 ``channels_json`` kwarg, default ``None``.
     """
     conn = _pkg.connect(db_path)
     try:
@@ -1327,6 +1338,7 @@ def record_harness_event(
             cache_read_tokens=cache_read_tokens,
             cache_creation_tokens=cache_creation_tokens,
             tool_calls=tool_calls,
+            channels_json=channels_json,
         )
         conn.commit()
         return new_id

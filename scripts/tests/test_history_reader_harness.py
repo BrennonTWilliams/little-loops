@@ -309,6 +309,26 @@ class TestHarnessEventReaders:
         assert row.cache_creation_tokens is None
         assert row.tool_calls is None
 
+    def test_harness_event_carries_v52_channels_json(self, tmp_path: Path) -> None:
+        """ENH-3476: channels_json round-trips through record_harness_event()."""
+        db = tmp_path / "history.db"
+        payload = '[{"name": "stdout", "examined": true, "chars": 2, "note": null, "passed": null}]'
+        record_harness_event(
+            db,
+            ts="2026-09-15T00:00:00Z",
+            runner="skill",
+            target="foo",
+            channels_json=payload,
+        )
+        row = recent_harness_events(db=db)[0]
+        assert row.channels_json == payload
+
+    def test_harness_event_channels_json_defaults_none(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        record_harness_event(db, ts="2026-09-15T00:00:00Z", runner="cmd", target="foo")
+        row = recent_harness_events(db=db)[0]
+        assert row.channels_json is None
+
 
 class TestHarnessEventById:
     """ENH-3407: harness_event_by_id() — used by the --retry-of gate."""

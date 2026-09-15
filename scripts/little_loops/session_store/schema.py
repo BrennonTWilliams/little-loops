@@ -22,7 +22,7 @@ from little_loops.session_store.db import DEFAULT_DB_PATH, _resolve_db_path
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 51
+SCHEMA_VERSION = 52
 
 VALID_KINDS: tuple[str, ...] = (
     "tool",
@@ -1425,6 +1425,15 @@ _MIGRATIONS: list[str] = [
     ALTER TABLE harness_events ADD COLUMN cache_read_tokens INTEGER;
     ALTER TABLE harness_events ADD COLUMN cache_creation_tokens INTEGER;
     ALTER TABLE harness_events ADD COLUMN tool_calls INTEGER;
+    """,
+    # v52 (ENH-3476): persist ENH-3462's widened evidence (stdout/stderr/
+    # declared-artifact/git-clean channels, plus per-side-effect pass/fail
+    # carried as `passed` on each channel) as a single nullable JSON column.
+    # One column, not two -- side-effect results are already ChannelRecords,
+    # so channels_json alone carries both concerns. No DEFAULT, no backfill
+    # (fix-forward: pre-migration rows and ungraded rows alike keep NULL).
+    """
+    ALTER TABLE harness_events ADD COLUMN channels_json TEXT;
     """,
 ]
 

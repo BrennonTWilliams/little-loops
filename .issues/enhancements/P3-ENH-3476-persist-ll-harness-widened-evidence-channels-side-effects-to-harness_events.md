@@ -3,10 +3,11 @@ id: ENH-3476
 type: ENH
 title: Persist ll-harness widened evidence (channels + side effects) to harness_events
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-14'
 captured_at: '2026-09-14T18:43:06Z'
+completed_at: '2026-09-15T04:38:56Z'
 parent: EPIC-3475
 labels:
 - evals
@@ -309,7 +310,31 @@ what was wrong and fixed, not an outstanding action item).
   an added free-text column with zero special-casing, mirroring
   `semantic_evidence`. No `PROPOSAL_UNSOUND` finding.
 
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-09-15
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/session_store/schema.py`: v52 migration — `ALTER TABLE harness_events ADD COLUMN channels_json TEXT`; `SCHEMA_VERSION` 51 → 52.
+- `scripts/little_loops/session_store/writers.py`: `_insert_harness_event()` and `record_harness_event()` each gain a `channels_json: str | None = None` kwarg, threaded into the INSERT column list/params.
+- `scripts/little_loops/cli/harness.py`: `ChannelRecord.to_row_dict()` (persisted `{name, examined, chars, note, passed}` shape) and module-level `_channels_json()` helper; `_record_harness_event()` gains the `channels_json` kwarg; all five `cmd_*`/`cmd_dsl` graded-task call sites pass `channels_json=_channels_json(outcome.channels)`. The DSL aggregate row and DSL malformed-task row are unchanged (no `outcome` to serialize — `channels_json` stays `NULL`, D3).
+- `scripts/little_loops/history_reader/harness.py`: `HarnessEvent` gains the trailing-default `channels_json` field; `_HARNESS_EVENT_COLUMNS` extended (covers all five SELECTs).
+- `scripts/little_loops/session_store/schema_manifest.json`: regenerated via the `TestSchemaManifest` docstring one-liner.
+- Docs: `docs/ARCHITECTURE.md` (v52 row), `docs/guides/HISTORY_SESSION_GUIDE.md` (v52 row + fixed the stale "Current schema version: 45" → 52), `docs/reference/EVENT-SCHEMA.md` (channels_json note beside the ENH-3464 efficiency-field sentence).
+- Tests: `test_session_store_schema.py` (new `TestSchemaV52ChannelsColumn`, plus bulk-bumped every hardcoded `SCHEMA_VERSION == 51` / `== 51` literal to 52 across this file, `test_session_store_writers.py`, and `test_assistant_messages.py`, mirroring the v51 landing's precedent), `test_history_reader_harness.py` (round-trip + default-None), `test_cli_harness.py` (`TestChannelRecordSerializers`, `TestRecordHarnessEventChannelsJson` covering AC6-AC8), `test_ll_session.py` (`--json` surfaces `channels_json`), `test_issue_parser.py` (updated two stale line-number allowlist entries shifted by the `writers.py` edit).
+
+### Verification Results
+- Tests: PASS (`python -m pytest scripts/tests/` — 24389 passed, 51 skipped; the one remaining failure, `test_verify_evidence.py::TestRepoGate::test_no_new_unverifiable_evidence`, is pre-existing and reproduces identically on a clean `main` checkout with none of this issue's changes applied — unrelated to ENH-3476, attributed to unrelated issue files BUG-3477/BUG-3478)
+- Lint: PASS (`ruff check scripts/`)
+- Types: PASS (`python -m mypy scripts/little_loops/`)
+- Run: N/A (schema/library change, no standalone entry point)
+- Integration: PASS (no duplication; follows the v49/v50/v51 `_MIGRATIONS`/kwarg-threading precedent exactly; `record_attempt()` body unchanged per AC12)
+
 ## Session Log
+- `/ll:manage-issue` - 2026-09-15T04:38:49 - `7c8b6cc4-5d6f-484c-9d97-2acf041f3439.jsonl`
+- `/ll:ready-issue` - 2026-09-15T04:03:46 - `00e11b74-a2df-42be-9410-e02ebf915c2b.jsonl`
 - `/ll:verify-issues` - 2026-09-15T04:00:27 - `0f83c176-40fa-4a35-a08d-d5149dc5394e.jsonl`
 - `/ll:confidence-check` - 2026-09-15T03:47:32 - `88716449-4fa1-4681-9160-79d70fab2d25.jsonl`
 - `/ll:verify-issues` - 2026-09-15T01:51:08 - `d4c1049e-2c84-4263-aafc-1dbf7f3be2c3.jsonl`

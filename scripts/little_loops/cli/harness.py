@@ -242,6 +242,7 @@ def _record_harness_event(
     cache_read_tokens: int | None = None,
     cache_creation_tokens: int | None = None,
     tool_calls: int | None = None,
+    channels_json: str | None = None,
 ) -> int | None:
     """Record one attempt against *cell_key* via :func:`record_attempt` (ENH-3407).
 
@@ -300,6 +301,7 @@ def _record_harness_event(
             cache_read_tokens=cache_read_tokens,
             cache_creation_tokens=cache_creation_tokens,
             tool_calls=tool_calls,
+            channels_json=channels_json,
         )
 
     if retry_of is not None or loud:
@@ -867,6 +869,29 @@ class ChannelRecord:
             "chars": None if self.content is None else len(self.content),
             "note": self.note,
         }
+
+    def to_row_dict(self) -> dict[str, Any]:
+        """Render the persisted `harness_events.channels_json` shape (ENH-3476 D2).
+
+        `{name, examined, chars, note, passed}` — adds `passed` on top of
+        `to_dict()`'s `--json` shape (needed to persist per-side-effect
+        pass/fail) but still never includes raw `content`.
+        """
+        row = self.to_dict()
+        row["passed"] = self.passed
+        return row
+
+
+def _channels_json(channels: list[ChannelRecord]) -> str | None:
+    """Serialize *channels* for `harness_events.channels_json`, or `None` if empty (ENH-3476 D3/D4).
+
+    `None` means "no graded channel evidence" uniformly for pre-v52 rows and
+    ungraded rows (timeout/runner-error, DSL aggregate, DSL malformed-task)
+    alike -- never the string `"[]"`.
+    """
+    if not channels:
+        return None
+    return json.dumps([c.to_row_dict() for c in channels])
 
 
 @dataclass
@@ -2247,6 +2272,7 @@ def cmd_skill(args: argparse.Namespace) -> int:
             cache_read_tokens=result.cache_read_tokens,
             cache_creation_tokens=result.cache_creation_tokens,
             tool_calls=result.tool_calls,
+            channels_json=_channels_json(outcome.channels),
             **record_extras,
         )
 
@@ -2385,6 +2411,7 @@ def cmd_cmd(args: argparse.Namespace) -> int:
             cache_read_tokens=result.cache_read_tokens,
             cache_creation_tokens=result.cache_creation_tokens,
             tool_calls=result.tool_calls,
+            channels_json=_channels_json(outcome.channels),
             **record_extras,
         )
 
@@ -2512,6 +2539,7 @@ def cmd_mcp(args: argparse.Namespace) -> int:
             cache_read_tokens=result.cache_read_tokens,
             cache_creation_tokens=result.cache_creation_tokens,
             tool_calls=result.tool_calls,
+            channels_json=_channels_json(outcome.channels),
             **record_extras,
         )
 
@@ -2638,6 +2666,7 @@ def cmd_prompt(args: argparse.Namespace) -> int:
             cache_read_tokens=result.cache_read_tokens,
             cache_creation_tokens=result.cache_creation_tokens,
             tool_calls=result.tool_calls,
+            channels_json=_channels_json(outcome.channels),
             **record_extras,
         )
 
@@ -2907,6 +2936,7 @@ def cmd_dsl(args: argparse.Namespace) -> int:  # noqa: PLR0912, PLR0915 — grad
                 cache_read_tokens=result.cache_read_tokens,
                 cache_creation_tokens=result.cache_creation_tokens,
                 tool_calls=result.tool_calls,
+                channels_json=_channels_json(outcome.channels),
             )
             if written_id is not None:
                 written_ids.append(written_id)
