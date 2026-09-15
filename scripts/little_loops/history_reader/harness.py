@@ -317,7 +317,22 @@ def _rc_from_event(event: HarnessEvent) -> int:
     Mirrors the run-time banding: timeout or a missing process exit code is
     an infra error (2); a judge abstention (NULL ``semantic_passed`` with a
     verdict) is 3; otherwise ``semantic_passed`` decides pass (0) / fail (1).
+
+    BUG-3477: ``semantic_verdict == "error"`` (a grader-internal error) is
+    checked verdict-first, ahead of the ``semantic_passed is None`` rule, so
+    both the new row shape (``semantic_passed`` NULL) and the pre-fix shape
+    (``semantic_passed = 0``, written before this fix existed) re-band to 2
+    without a migration/backfill.
+
+    Known, accepted divergence: a hard-fail + grader-error run is rc 1 at
+    run time (fail outranks grader_error there) but reconstructs as rc 2
+    here, because the persisted row carries no expected exit code and is
+    indistinguishable from a pure grader-error row. This mirrors the
+    pre-existing fail + abstain divergence (run-time rc 1, reconstructed
+    rc 3, same root cause) and is not "fixed" here.
     """
+    if event.semantic_verdict == "error":
+        return 2
     if event.timed_out:
         return 2
     if event.exit_code is None:
@@ -418,10 +433,17 @@ def harness_eval_pass_rate(
     Counts every non-superseded row with a non-NULL ``semantic_passed``
     (ENH-3408: a retry chain contributes its surviving attempt's verdict
     once, not one row per attempt). ``cli/harness.py`` sets
-    ``semantic_passed`` on every non-abstained run regardless of whether
-    ``--semantic`` was supplied (exit-code-only runs included), so the
-    denominator is *all non-abstained authoritative runs* for *target*, not
-    only the ``check_semantic`` verdict path (ENH-3223).
+    ``semantic_passed`` on every non-abstained, non-grader-error run
+    regardless of whether ``--semantic`` was supplied (exit-code-only runs
+    included), so the denominator is *all non-abstained, non-grader-error
+    authoritative runs* for *target*, not only the ``check_semantic`` verdict
+    path (ENH-3223).
+
+    BUG-3477: both aggregates additionally exclude ``semantic_verdict =
+    'error'`` rows, so a pre-fix row (written before this fix existed, with
+    ``semantic_passed = 0`` instead of NULL) is re-banded out of both the
+    numerator and denominator the same way `_rc_from_event()` re-bands it --
+    the two readers must never disagree on the same row.
     """
     db_path = Path(db)
     conn = _connect_readonly(db_path)
@@ -429,8 +451,9 @@ def harness_eval_pass_rate(
         return None
     try:
         sql = (
-            "SELECT SUM(CASE WHEN semantic_passed = 1 THEN 1 ELSE 0 END) AS successes, "
-            "COUNT(semantic_passed) AS scored "
+            "SELECT SUM(CASE WHEN semantic_passed = 1 AND semantic_verdict IS NOT 'error' "
+            "THEN 1 ELSE 0 END) AS successes, "
+            "COUNT(CASE WHEN semantic_verdict IS NOT 'error' THEN semantic_passed END) AS scored "
             f"FROM harness_events WHERE target = ? AND {_AUTHORITATIVE_PREDICATE}"
         )
         params: list[Any] = [target]
@@ -461,11 +484,17 @@ def harness_eval_abstention_rate(
     (callers write ``semantic_passed = NULL`` for a ``cannot_judge`` verdict)
     -- this function reports that excluded slice as its own rate rather than
     letting it silently deflate the pass rate. ``scored`` here counts every
-    non-superseded row with a non-NULL ``semantic_verdict`` (pass, fail, and
-    abstain; ENH-3408 excludes superseded rows so this denominator converges
-    on the same population as ``harness_eval_pass_rate()``'s), unlike
-    ``harness_eval_pass_rate()``'s ``scored`` which only counts non-abstained
-    rows -- the two denominators are deliberately different questions.
+    non-superseded row with a non-NULL, non-``'error'`` ``semantic_verdict``
+    (pass, fail, and abstain; ENH-3408 excludes superseded rows so this
+    denominator converges on the same population as
+    ``harness_eval_pass_rate()``'s), unlike ``harness_eval_pass_rate()``'s
+    ``scored`` which only counts non-abstained, non-grader-error rows -- the
+    two denominators are deliberately different questions.
+
+    BUG-3477: ``semantic_verdict = 'error'`` rows (grader-internal errors)
+    are excluded from ``scored`` -- a judge crash is harness infrastructure,
+    not a subject abstention, and including it would deflate the reported
+    abstention rate.
     """
     db_path = Path(db)
     conn = _connect_readonly(db_path)
@@ -477,7 +506,7 @@ def harness_eval_abstention_rate(
         sql = (
             "SELECT SUM(CASE WHEN semantic_verdict = ? OR semantic_verdict LIKE ? ESCAPE '\\' "
             "THEN 1 ELSE 0 END) AS abstentions, "
-            "COUNT(semantic_verdict) AS scored "
+            "COUNT(CASE WHEN semantic_verdict IS NOT 'error' THEN semantic_verdict END) AS scored "
             f"FROM harness_events WHERE target = ? AND {_AUTHORITATIVE_PREDICATE}"
         )
         params: list[Any] = [CANNOT_JUDGE, f"{CANNOT_JUDGE}\\_%", target]

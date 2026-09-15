@@ -262,9 +262,11 @@ a `--semantic` abstention — see `docs/guides/EVALUATION_GUIDE.md`). A task wit
 **ungraded**: excluded from the pass-rate denominator and reported on its own line, not
 counted as a pass (BUG-3196).
 
-**Exit codes:** `0` = PASS, `1` = FAIL, `2` = internal error / timeout, `3` = ABSTAIN/INCONCLUSIVE
-(no failure, but the semantic judge could not evaluate the check, or an n-sample rate landed
-between clear pass and clear fail — ENH-3415; see "N-sample redundancy" below).
+**Exit codes:** `0` = PASS, `1` = FAIL, `2` = harness or judge error (internal error, timeout,
+or a grader-internal error such as a crashed/unparseable judge — BUG-3477), `3` =
+ABSTAIN/INCONCLUSIVE (no failure, but the semantic judge could not evaluate the check, or an
+n-sample rate landed between clear pass and clear fail — ENH-3415; see "N-sample redundancy"
+below).
 
 **`--output json` payload fields (`skill`/`cmd`/`mcp`/`prompt` runners, effective n = 1):**
 always present: `runner`, `exit_code`, `exit_code_check`, `semantic`, `result`, `stdout`,
@@ -278,6 +280,7 @@ passes expensively still passes. Additive, present only when applicable:
 | Field | Present when |
 |-------|--------------|
 | `expected` | An `expected:` grade was evaluated (DSL tasks) |
+| `error` | `result` is `ERROR` from a grader-internal error (`--semantic` judge crashed/timed out/returned unparseable JSON) — a one-line rendering of the failure, never the raw judge stdout/prompt (BUG-3477) |
 | `prepatch_evidence` | `--issue-id` was given and a persisted pre-patch check bundle exists |
 | `history_pass_rate`, `history_pass_rate_runs` | `.ll/history.db` has ≥3 non-abstained **authoritative** prior runs for this target in the last 30 days (ENH-3223, ENH-3408) |
 | `history_abstention_rate`, `history_judged_runs` | `.ll/history.db` has ≥3 prior `--semantic`-judged **authoritative** runs for this target in the last 30 days (ENH-3223, ENH-3408) |
@@ -337,9 +340,12 @@ denominator), `passed`, `failed`, `abstained`, `errored`, `ci_lo`/`ci_hi` (Wilso
 `exit_code_check`/`semantic`/`result`/`error`, the same per-sample efficiency vector as the
 n=1 shape above (`duration_ms`/`input_tokens`/`output_tokens`/`cache_read_tokens`/
 `cache_creation_tokens`/`tool_calls`, ENH-3464); `stdout`/`stderr` added per entry only under
-`--verbose` or when that sample did not pass). `PASS` requires every requested sample to be
-graded and pass — a pass alongside any abstention or error is `INCONCLUSIVE`, not a softened
-`PASS`, since that outcome could not distinguish a real capability from a lucky sample. The
+`--verbose` or when that sample did not pass). Each entry's `error` is `null` unless that
+sample timed out, the runner reported an error, or the grader itself errored (BUG-3477), in
+which case it carries a one-line detail (never the raw judge stdout/prompt). `PASS` requires
+every requested sample to be graded and pass — a pass alongside any abstention or harness/judge
+error is `INCONCLUSIVE`, not a softened `PASS`, since that outcome could not distinguish a real
+capability from a lucky sample. The
 sample loop never stops early on a pass: all N samples always run. Each sample is persisted as
 its own `attempt_kind='repetition'` `harness_events` row, so the intra-invocation
 `sample_pass_rate` and the cross-invocation `history_pass_rate` above are the same statistic
@@ -362,12 +368,13 @@ one row to `n`, using the surviving (non-superseded) attempt's verdict, not one 
 attempt. This is what makes the reported `n` sound: before ENH-3408, an infra retry inflated
 the sample size and its superseded predecessor counted as a failure in the pass rate.
 
-For `ll-harness dsl` specifically, exit `2` covers four distinct "the run could not produce
+For `ll-harness dsl` specifically, exit `2` covers five distinct "the run could not produce
 a measurement" triggers: the given path does not exist, the task directory has no `.yaml`
-files, every task in the set is ungraded, or ≥1 task hit a per-task infra error (host
-timeout or crash). Exit `1` also covers a run where some tasks were ungraded even if no
-graded task failed. Exit `3` fires only when ≥1 task abstained and nothing failed or was
-ungraded.
+files, every task in the set is ungraded, or ≥1 task hit a per-task infra or judge error (host
+timeout, crash, or a grader-internal error — BUG-3477; the summary gains an `errored: N
+(<task names>)` line naming the affected tasks). Exit `1` also covers a run where some tasks
+were ungraded even if no graded task failed. Exit `3` fires only when ≥1 task abstained and
+nothing failed or was ungraded.
 
 **Examples:**
 ```bash

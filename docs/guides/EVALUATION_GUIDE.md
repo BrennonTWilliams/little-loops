@@ -75,8 +75,9 @@ one — see [N-sample redundancy for stochastic subjects](#n-sample-redundancy-f
 below for the pass-rate verdict surface, `--samples` override, and the preflight-vs-promotion
 boundary. `cmd`/`mcp` stay one-shot by default.
 
-Exit codes are the contract: `0` PASS, `1` FAIL, `2` internal error or timeout, `3` ABSTAIN or
-(ENH-3415) INCONCLUSIVE.
+Exit codes are the contract: `0` PASS, `1` FAIL, `2` harness or judge error (internal error,
+timeout, or a grader-internal error such as a crashed/unparseable judge — BUG-3477), `3` ABSTAIN
+or (ENH-3415) INCONCLUSIVE.
 
 Two independent gates, both optional:
 
@@ -136,9 +137,9 @@ declares no `expected` needs `--semantic` to be graded at all; without either, i
 exits nonzero rather than silently reporting a perfect score. See exit codes below.
 
 **Exit codes:** `0` all graded tasks passed; `1` a graded task failed, or ≥1 task was
-ungraded; `2` every task was ungraded, or ≥1 task hit a per-task infra error (host timeout
-or crash); `3` ≥1 task abstained (the `--semantic` judge could not decide) and nothing
-failed or was ungraded.
+ungraded; `2` every task was ungraded, or ≥1 task hit a per-task infra or judge error (host
+timeout, crash, or a grader-internal error — BUG-3477); `3` ≥1 task abstained (the
+`--semantic` judge could not decide) and nothing failed or was ungraded.
 
 Of that infra-error bucket, only a genuine **timeout** is retriable today: `--retry-of`'s
 admissibility gate (ENH-3407) reads the persisted `timed_out` column, and a host crash or
@@ -346,10 +347,11 @@ direction on any runner. The sample loop never stops early on a pass — all N s
 run, so a flaky subject can't get lucky on run 1 and skip the rest.
 
 The verdict bands on the raw tally, not a confidence-interval threshold: `PASS` requires every
-requested sample to be graded and pass (a pass alongside any abstention or timeout is
+requested sample to be graded and pass (a pass alongside any abstention or harness/judge error is
 `INCONCLUSIVE`, exit 3, not a softened pass); `FAIL` requires every graded sample to fail;
-anything else — including all-abstained (`ABSTAIN`, exit 3) or all-errored (`ERROR`, exit 2) —
-falls to `INCONCLUSIVE`/exit 3. Operating characteristic to keep in mind when choosing N: a
+anything else — including all-abstained (`ABSTAIN`, exit 3) or all-errored (`ERROR`, exit 2 —
+a runner timeout/infra error or a grader-internal error, BUG-3477) — falls to
+`INCONCLUSIVE`/exit 3. Operating characteristic to keep in mind when choosing N: a
 runner with a true per-run pass probability *p* still slips through a `PASS` at *pⁿ*
 (0.7³ ≈ 0.34, 0.7⁵ ≈ 0.17) — raise `--samples` for tighter certification, at the cost of
 `--timeout`-multiplied wall time and host-CLI/judge-call cost.
@@ -499,9 +501,11 @@ harness_eval_pass_rate("check-code", since="2026-08-01")   # None if nothing sco
 ```
 
 `harness_eval_pass_rate` counts every **authoritative** (non-superseded) row with a non-NULL
-`semantic_passed` — `ll-harness` sets this on every non-abstained run, including ones gated
-solely on `--exit-code` with no `--semantic` at all, so its denominator is *all non-abstained
-authoritative runs* for the target, not only the semantically-judged ones. A `--retry-of`
+`semantic_passed` and `semantic_verdict != 'error'` — `ll-harness` sets `semantic_passed` on
+every non-abstained, non-grader-error run, including ones gated solely on `--exit-code` with
+no `--semantic` at all, so its denominator is *all non-abstained, non-grader-error
+authoritative runs* for the target, not only the semantically-judged ones (BUG-3477: a
+grader-internal error is excluded the same way an abstention is). A `--retry-of`
 chain contributes exactly one row (ENH-3408): the surviving attempt, not one row per attempt,
 and its superseded predecessor never counts as a failure. A target with zero scored runs
 returns `None`, not `1.0`.

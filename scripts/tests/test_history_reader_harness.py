@@ -159,6 +159,37 @@ class TestHarnessEventReaders:
         rate = harness_eval_pass_rate("foo", db=db)
         assert rate == 1.0
 
+    def test_harness_eval_pass_rate_excludes_grader_error_rows(self, tmp_path: Path) -> None:
+        """BUG-3477: a pre-fix `error`/`semantic_passed=0` row is re-banded out of
+        both the numerator and denominator, matching `_rc_from_event()`."""
+        db = tmp_path / "history.db"
+        record_harness_event(
+            db,
+            ts="2026-09-15T10:00:00Z",
+            target="foo",
+            semantic_verdict="yes",
+            semantic_passed=True,
+        )
+        record_harness_event(
+            db,
+            ts="2026-09-15T10:01:00Z",
+            target="foo",
+            semantic_verdict="no",
+            semantic_passed=False,
+        )
+        # Pre-fix shape: written before this fix existed, semantic_passed=0
+        # instead of NULL.
+        record_harness_event(
+            db,
+            ts="2026-09-15T10:02:00Z",
+            target="foo",
+            semantic_verdict="error",
+            semantic_passed=False,
+        )
+
+        rate = harness_eval_pass_rate("foo", db=db)
+        assert rate == 0.5  # not 1/3
+
     def test_harness_eval_abstention_rate(self, tmp_path: Path) -> None:
         """ENH-3185 AC4: abstention is queryable as its own rate, separate from pass rate."""
 
@@ -267,6 +298,37 @@ class TestHarnessEventReaders:
         db = tmp_path / "history.db"
         assert harness_eval_abstention_rate("foo", db=db) is None
 
+    def test_harness_eval_abstention_rate_excludes_grader_error_rows(self, tmp_path: Path) -> None:
+        """BUG-3477: a grader-internal error is harness infra, not a subject
+        abstention -- it must not deflate the reported abstention rate."""
+        db = tmp_path / "history.db"
+        record_harness_event(
+            db,
+            ts="2026-09-15T10:00:00Z",
+            target="foo",
+            semantic_verdict="cannot_judge",
+            semantic_passed=None,
+        )
+        record_harness_event(
+            db,
+            ts="2026-09-15T10:01:00Z",
+            target="foo",
+            semantic_verdict="yes",
+            semantic_passed=True,
+        )
+        record_harness_event(
+            db,
+            ts="2026-09-15T10:02:00Z",
+            target="foo",
+            semantic_verdict="error",
+            semantic_passed=None,
+        )
+
+        result = harness_eval_abstention_rate("foo", db=db)
+        assert result is not None
+        assert result["scored"] == 2  # not 3
+        assert abs(result["abstention_rate"] - 0.5) < 1e-9  # not 1/3
+
     def test_harness_event_carries_id_and_v49_fields(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
         record_harness_event(db, ts="2026-08-01T00:00:00Z", runner="cmd", target="foo")
@@ -328,6 +390,62 @@ class TestHarnessEventReaders:
         record_harness_event(db, ts="2026-09-15T00:00:00Z", runner="cmd", target="foo")
         row = recent_harness_events(db=db)[0]
         assert row.channels_json is None
+
+
+class TestRcFromEvent:
+    """BUG-3477: `_rc_from_event()` re-bands a grader-internal error to rc 2."""
+
+    def test_new_shape_semantic_passed_null(self, tmp_path: Path) -> None:
+        from little_loops.history_reader.harness import _rc_from_event
+
+        db = tmp_path / "history.db"
+        record_harness_event(
+            db,
+            ts="2026-09-15T10:00:00Z",
+            target="foo",
+            exit_code=0,
+            semantic_verdict="error",
+            semantic_passed=None,
+            timed_out=False,
+        )
+        event = recent_harness_events(target="foo", db=db)[0]
+        assert _rc_from_event(event) == 2
+
+    def test_pre_fix_shape_semantic_passed_zero(self, tmp_path: Path) -> None:
+        """A row written before this fix existed (`semantic_passed=0`) still re-bands
+        to 2 -- no migration/backfill needed."""
+        from little_loops.history_reader.harness import _rc_from_event
+
+        db = tmp_path / "history.db"
+        record_harness_event(
+            db,
+            ts="2026-09-15T10:00:00Z",
+            target="foo",
+            exit_code=0,
+            semantic_verdict="error",
+            semantic_passed=False,
+            timed_out=False,
+        )
+        event = recent_harness_events(target="foo", db=db)[0]
+        assert _rc_from_event(event) == 2
+
+    def test_hard_fail_plus_grader_error_divergence_documented(self, tmp_path: Path) -> None:
+        """Known, accepted divergence: a hard-fail + grader-error run is rc 1 at
+        run time but reconstructs as rc 2 here (mirrors fail + abstain -> 3)."""
+        from little_loops.history_reader.harness import _rc_from_event
+
+        db = tmp_path / "history.db"
+        record_harness_event(
+            db,
+            ts="2026-09-15T10:00:00Z",
+            target="foo",
+            exit_code=1,
+            semantic_verdict="error",
+            semantic_passed=None,
+            timed_out=False,
+        )
+        event = recent_harness_events(target="foo", db=db)[0]
+        assert _rc_from_event(event) == 2
 
 
 class TestHarnessEventById:

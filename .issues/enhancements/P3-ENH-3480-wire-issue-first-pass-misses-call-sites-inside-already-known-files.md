@@ -10,7 +10,7 @@ captured_at: '2026-09-15T19:28:33Z'
 testable: true
 program_design_not_applicable: true
 reconcile_attempted: true
-confidence_score: 85
+confidence_score: 100
 outcome_confidence: 79
 score_complexity: 18
 score_test_coverage: 18
@@ -91,7 +91,13 @@ table rows:
   `sites_to_add` bullets are rendered as `` `path:line` ``; and every
   `sites_to_add` render template must put the enclosing symbol in backticks
   on the same bullet (`` `path:line` — ... in `symbol()` ``) so the parser
-  can recover the `path:symbol` pair on the next pass.
+  can recover the `path:symbol` pair on the next pass. **Multi-symbol
+  bullets (pinned, review 2026-09-15):** real bullets carry several
+  backticked names (`` `harness.py:412` — `_report_samples()` called from
+  `cmd_compare()` ``), so the parser treats **every** backticked `name()` or
+  `ClassName` on a bullet as a `path:symbol` known site for that bullet's
+  path — not just the first or last. Over-suppression is the safe direction
+  for a dedup key; under-suppression re-reports sites every pass.
 - (a) **Phase 4 wording**: reword Agent 1 (`SKILL.md:180`) and Agent 2
   (`SKILL.md:212`) from "exclude known files" to "exclude `path:symbol`
   sites already in `known_sites`; report additional call sites, tests, or
@@ -130,8 +136,22 @@ table rows:
   rendered names up as seeds. The closure is finite and idempotent: pass 2's
   seeds are a subset of what pass 1 already closed over, so the smoke check
   holds. Wide closures are pruned by the caller-suitability gate.
+  **Entry-point stop-list (review 2026-09-15):** in `harness.py` every seed
+  closes upward to `main()` within a few hops, and the suitability gate
+  prunes only at render time, after Agent 1 has already traced callers of
+  `main` repo-wide. The companion's closure procedure therefore excludes
+  from the *seed set handed to agents* any closure-derived name that is
+  `main`, matches `cmd_*`, or is a registered CLI entry point in
+  `scripts/pyproject.toml`; such names still terminate the closure walk,
+  they just are not searched for. **Accelerator:** Phase 3.6 already has
+  `ll-code --json` caller queries — the closure procedure uses them when
+  `available: true` and falls back to Grep otherwise, under Phase 3.6's
+  existing silent-fallback rule (no new primitive).
+- **Phase 7 summary line (optional, not gated)**: add an
+  `Intra-file sites: N` line to the Phase 7 interactive summary block
+  (`SKILL.md:309-316`) so interactive mode reports the new category.
 - **Line budget**: `SKILL.md` is at the 500-line cap. Put the `known_sites`
-  extraction rules, the one-hop expansion procedure, and the `sites_to_add`
+  extraction rules, the caller-closure fixpoint procedure, and the `sites_to_add`
   render templates in a new companion `skills/wire-issue/intra-file-sites.md`,
   and leave one-line pointers in Phases 3, 5, and 8a, following the
   `behavior-parity.md` pattern.
@@ -170,9 +190,16 @@ _Added by `/ll:refine-issue` — 2026-09-15 — based on codebase analysis:_
   `evidence-confirmation.md`, `caller-suitability-gate.md`,
   `learning-targets.md`, `output-report.md`).
 - `skills/wire-issue/intra-file-sites.md` — **new** companion file holding
-  the `known_sites` extraction rules, the bounded one-hop `key_symbols`
-  expansion, and the `sites_to_add` Phase 8a render templates; `SKILL.md`
-  keeps one-line pointers to it in Phases 3, 5, and 8a.
+  the `known_sites` extraction rules, the caller-closure fixpoint
+  `key_symbols` expansion (with entry-point stop-list and `ll-code`
+  accelerator), and the `sites_to_add` Phase 8a render templates;
+  `SKILL.md` keeps one-line pointers to it in Phases 3, 5, and 8a.
+- `scripts/tests/test_enh494_skill_companions.py` — `EXPECTED_COMPANIONS`
+  lists the wire-issue companions explicitly and asserts each exists, is
+  non-empty, and is linked by name from `SKILL.md`. Add
+  `SKILLS_DIR / "wire-issue" / "intra-file-sites.md"` to the list (the
+  `behavior-parity.md` precedent is *not* in the list; do not copy that
+  omission).
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `skills/wire-issue/output-report.md` — the Phase 10 "MISSING WIRING FOUND"
@@ -258,9 +285,13 @@ _Added by `/ll:refine-issue` — 2026-09-15 — based on codebase analysis:_
 1. Create `skills/wire-issue/intra-file-sites.md` with three sections:
    `known_sites` extraction rules (including the `:line` / `:start-end`
    path-suffix strip and the backticked-enclosing-symbol render rule so
-   the key round-trips), the caller-closure fixpoint `key_symbols`
-   expansion procedure, and the `sites_to_add` render templates for
-   `### Files to Modify` / `### Tests` / `### Documentation`.
+   the key round-trips, and the every-backticked-name-is-a-site rule for
+   multi-symbol bullets), the caller-closure fixpoint `key_symbols`
+   expansion procedure (entry-point stop-list; `ll-code --json` callers
+   with Grep fallback), and the `sites_to_add` render templates for
+   `### Files to Modify` / `### Tests` / `### Documentation`. Register the
+   new file in `EXPECTED_COMPANIONS` in
+   `scripts/tests/test_enh494_skill_companions.py`.
 2. Phase 3 (`SKILL.md:108-132`): add `known_sites: [path:symbol]` to the
    `EXISTING_WIRING` block and a one-line pointer to the companion for both
    the extraction rules and the fixpoint expansion (run before Phase 4;
@@ -281,12 +312,18 @@ _Added by `/ll:refine-issue` — 2026-09-15 — based on codebase analysis:_
    feeds Wiring Phase bullets under both the evidence-confirmation layer
    and the caller-suitability gate.
 5. Reclaim lines so `SKILL.md` stays at or under 500: move the Phase 8a
-   example blocks the companion now owns out of `SKILL.md`.
-6. Verify (deterministic gate): add the test rows described under Tests;
+   example blocks the companion now owns out of `SKILL.md`. Optionally add
+   the `Intra-file sites: N` line to the Phase 7 summary if budget allows.
+6. Re-sync host mirrors — editing `skills/` trips the adapter mirror
+   gates: run `ll-adapt --host gemini --apply`, `ll-adapt --host kimi-code
+   --apply`, `ll-adapt --host qwen --apply` before the full suite, or the
+   "full suite passes" gate fails for a reason unrelated to this change.
+7. Verify (deterministic gate): add the test rows described under Tests;
    run `python -m pytest scripts/tests/test_wiring_skills_and_commands.py
+   scripts/tests/test_enh494_skill_companions.py
    scripts/tests/test_wire_issue_static_layer.py scripts/tests/test_caller_suitability_gate.py`
    then the full suite; run `ll-verify-skills`.
-7. Manual smoke check (not a gate): run `/ll:wire-issue` twice back-to-back
+8. Manual smoke check (not a gate): run `/ll:wire-issue` twice back-to-back
    on a freshly refined issue with no refine or code change in between and
    confirm the second pass reports "No missing wiring found" for intra-file
    sites.
@@ -332,7 +369,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
   Phase 4 exclusion wording for all three agents (plus `key_symbols` input
   for Agent 3), Phase 5 `MISSING_WIRING` `sites_to_add` category and Phase
   8a/8b rendering (Phase 7 is display/confirmation-only and performs no
-  file edits), the new `intra-file-sites.md` companion, the
+  file edits), the new `intra-file-sites.md` companion (plus its
+  `EXPECTED_COMPANIONS` registration), the entry-point stop-list, the
   `output-report.md` table rows (including the ENH-3050 `gate_consumers` /
   `conditional_branches` drive-by), the `COMMANDS.md` bullet, and the
   test-table rows.
@@ -359,6 +397,8 @@ _Added by `/ll:confidence-check` on 2026-09-15_
 - Criterion 4 capped at 10 (advisory, not a blocker): `known_sites` and `sites_to_add` are claimed in `scripts/tests/test_wiring_skills_and_commands.py` but don't yet resolve there — expected for forward-looking test-row claims the issue proposes adding, not itself a defect. Re-run `/ll:confidence-check ENH-3480` after implementation to clear this cap.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-15T20:46:29 - `9b499bde-1533-41c8-98c0-d62949b35992.jsonl`
+- `/ll:confidence-check` - 2026-09-15T20:31:12 - `0e1ad2b9-a2fb-47cc-ace3-ad4639d2e06c.jsonl`
 - `/ll:confidence-check` - 2026-09-15T20:09:12 - `a50e53ee-eaa5-4308-b45d-3ce023bd2a61.jsonl`
 - `/ll:verify-issues` - 2026-09-15T20:02:59 - `889d831f-7992-4797-b0a1-b744fe43c6bc.jsonl`
 - `/ll:wire-issue` - 2026-09-15T19:43:51 - `ea70bb0b-2e90-4a29-af8a-b28bd4b966d9.jsonl`

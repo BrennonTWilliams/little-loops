@@ -919,6 +919,174 @@ class TestAbstentionVerdict:
 
 
 # ---------------------------------------------------------------------------
+# TestGraderError (BUG-3477)
+# ---------------------------------------------------------------------------
+
+
+class TestGraderError:
+    """A grader-internal error (`verdict="error"`) is neither pass nor fail (BUG-3477)."""
+
+    def test_grade_verdict_error_is_grader_error_rc2(self) -> None:
+        args = _make_namespace(semantic="some criterion", target="cmd x")
+        result = RunnerResult(stdout="hi", stderr="", exit_code=0)
+        with patch(
+            "little_loops.cli.harness.evaluate_llm_structured",
+            return_value=EvaluationResult(verdict="error", details={"error": "judge crashed"}),
+        ):
+            rc, outcome = _grade("cmd x", result, args)
+
+        assert rc == 2
+        assert outcome.grader_error is True
+        assert outcome.passed is False
+        assert outcome.abstained is False
+        assert outcome.verdict == "error"
+        assert outcome.eval_result is not None
+
+    def test_grade_non_yes_still_fails_unchanged(self) -> None:
+        """The new branch matches `verdict == "error"` only -- a semantic "no" is
+        still an ordinary fail, not a grader error."""
+        args = _make_namespace(semantic="some criterion", target="cmd x")
+        result = RunnerResult(stdout="hi", stderr="", exit_code=0)
+        with patch(
+            "little_loops.cli.harness.evaluate_llm_structured",
+            return_value=EvaluationResult(verdict="no", details={}),
+        ):
+            rc, outcome = _grade("cmd x", result, args)
+
+        assert rc == 1
+        assert outcome.grader_error is False
+        assert outcome.passed is False
+
+    def test_grade_hard_fail_outranks_grader_error(self) -> None:
+        """Precedence fail > grader_error > abstain > pass: an --exit-code
+        mismatch combined with a grader error still returns rc 1."""
+        args = _make_namespace(exit_code=0, semantic="some criterion", target="cmd x")
+        result = RunnerResult(stdout="hi", stderr="", exit_code=99)
+        with patch(
+            "little_loops.cli.harness.evaluate_llm_structured",
+            return_value=EvaluationResult(verdict="error", details={"error": "judge crashed"}),
+        ):
+            rc, outcome = _grade("cmd x", result, args)
+
+        assert rc == 1
+        assert outcome.grader_error is True  # still recorded, just outranked
+        assert outcome.passed is False
+
+    def test_evaluate_and_report_text_error_branch(self, capsys: pytest.CaptureFixture) -> None:
+        args = _make_namespace(runner="cmd", target="echo hi", semantic="some criterion")
+        mock_proc = _make_selector_mock_process(["hi\n"])
+        sel = _make_ready_selector()
+
+        with (
+            patch("little_loops.runner_spec.subprocess.Popen", return_value=mock_proc),
+            patch("little_loops.runner_spec.selectors.DefaultSelector", return_value=sel),
+            patch(
+                "little_loops.cli.harness.evaluate_llm_structured",
+                return_value=EvaluationResult(verdict="error", details={"error": "judge crashed"}),
+            ),
+        ):
+            result = cmd_cmd(args)
+
+        assert result == 2
+        out = capsys.readouterr().out
+        assert "ERROR" in out
+        assert "FAIL" not in out
+        assert "Grader error: judge crashed" in out
+
+    def test_evaluate_and_report_json_error_payload(self, capsys: pytest.CaptureFixture) -> None:
+        args = _make_namespace(
+            runner="cmd", target="echo hi", semantic="some criterion", output="json"
+        )
+        mock_proc = _make_selector_mock_process(["hi\n"])
+        sel = _make_ready_selector()
+
+        with (
+            patch("little_loops.runner_spec.subprocess.Popen", return_value=mock_proc),
+            patch("little_loops.runner_spec.selectors.DefaultSelector", return_value=sel),
+            patch(
+                "little_loops.cli.harness.evaluate_llm_structured",
+                return_value=EvaluationResult(verdict="error", details={"error": "judge crashed"}),
+            ),
+        ):
+            result = cmd_cmd(args)
+
+        assert result == 2
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["result"] == "ERROR"
+        assert payload["error"] == "judge crashed"
+
+
+class TestHarnessEvalOutcomeGraderErrorProperties:
+    """Unit tests for `HarnessEvalOutcome.semantic_passed_row`/`.grader_error_detail`."""
+
+    @staticmethod
+    def _outcome(**kwargs: Any):
+        from little_loops.cli.harness import HarnessEvalOutcome
+
+        base: dict[str, Any] = {"passed": False, "verdict": "error", "eval_result": None}
+        base.update(kwargs)
+        return HarnessEvalOutcome(**base)
+
+    def test_semantic_passed_row_none_when_abstained(self) -> None:
+        outcome = self._outcome(abstained=True, verdict="cannot_judge")
+        assert outcome.semantic_passed_row is None
+
+    def test_semantic_passed_row_none_when_grader_error(self) -> None:
+        outcome = self._outcome(grader_error=True)
+        assert outcome.semantic_passed_row is None
+
+    def test_semantic_passed_row_carries_hard_fail(self) -> None:
+        outcome = self._outcome(passed=False, verdict=None)
+        assert outcome.semantic_passed_row is False
+
+    def test_semantic_passed_row_carries_pass(self) -> None:
+        outcome = self._outcome(passed=True, verdict="yes")
+        assert outcome.semantic_passed_row is True
+
+    def test_grader_error_detail_none_when_not_grader_error(self) -> None:
+        outcome = self._outcome(grader_error=False)
+        assert outcome.grader_error_detail is None
+
+    def test_grader_error_detail_uses_error_key(self) -> None:
+        outcome = self._outcome(
+            grader_error=True,
+            eval_result=EvaluationResult(verdict="error", details={"error": "BlockingJsonError"}),
+        )
+        assert outcome.grader_error_detail == "BlockingJsonError"
+
+    def test_grader_error_detail_empty_details_is_unknown(self) -> None:
+        outcome = self._outcome(
+            grader_error=True, eval_result=EvaluationResult(verdict="error", details={})
+        )
+        assert outcome.grader_error_detail == "unknown grader error"
+
+    def test_grader_error_detail_uses_reason_when_present(self) -> None:
+        details = {"reason": "the model refused to answer", "raw": {"big": "x" * 10_000}}
+        outcome = self._outcome(
+            grader_error=True, eval_result=EvaluationResult(verdict="error", details=details)
+        )
+        assert outcome.grader_error_detail == "the model refused to answer"
+
+    def test_grader_error_detail_bounded_and_excludes_raw_stdout(self) -> None:
+        """Model-omitted-`verdict` shape: empty reason, huge llm_raw_output --
+        the rendered detail is bounded and never leaks the raw judge stdout."""
+        details = {
+            "reason": "",
+            "raw": {"verdict": "error"},
+            "llm_raw_output": "X" * 10_000,
+            "llm_prompt": "Y" * 1000,
+        }
+        outcome = self._outcome(
+            grader_error=True, eval_result=EvaluationResult(verdict="error", details=details)
+        )
+        detail = outcome.grader_error_detail
+        assert detail is not None
+        assert len(detail) <= 220
+        assert "X" * 10_000 not in detail
+        assert "Y" * 1000 not in detail
+
+
+# ---------------------------------------------------------------------------
 # TestSampleLoop (ENH-3415)
 # ---------------------------------------------------------------------------
 
@@ -1735,6 +1903,38 @@ class TestCmdDsl:
         assert result == 2
         out = capsys.readouterr().out
         assert "abstained" not in out
+
+    def test_cmd_dsl_grader_error_task_lands_in_errored_summary(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture
+    ) -> None:
+        """BUG-3477: one judge-error task among N drops out of `failures` into a
+        named `errored:` summary line and the run exits 2."""
+        self._make_task_yaml_no_expected(tmp_path, "task-a-yes.yaml")
+        self._make_task_yaml_no_expected(tmp_path, "task-b-error.yaml")
+        args = _make_namespace(runner="dsl", path=str(tmp_path), semantic="some criterion")
+
+        verdicts = iter(
+            [
+                EvaluationResult(verdict="yes", details={}),
+                EvaluationResult(verdict="error", details={"error": "judge crashed"}),
+            ]
+        )
+
+        with (
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
+            patch("subprocess.run", return_value=_make_completed(returncode=0, stdout="anything")),
+            patch(
+                "little_loops.cli.harness.evaluate_llm_structured",
+                side_effect=lambda **_kwargs: next(verdicts),
+            ),
+        ):
+            result = cmd_dsl(args)
+
+        assert result == 2
+        out = capsys.readouterr().out
+        assert "1/1" in out
+        assert "errored: 1 (task-b-error.yaml)" in out
+        assert "failed:" not in out  # the errored task never lands in `failures`
 
     def test_cmd_dsl_malformed_yaml_grades_fail_and_run_continues(
         self, tmp_path: Path, capsys: pytest.CaptureFixture
@@ -2659,6 +2859,37 @@ class TestReadTargetHistory:
 
         assert history is not None
         assert "history_admissions" not in history
+
+    def test_grader_error_rows_excluded_from_both_counts(self) -> None:
+        """BUG-3477: a grader-error row must not count toward `history_pass_rate_runs`
+        or `history_judged_runs` -- suppression only fires once enough *real*
+        scored rows exist, in lockstep with the two rate functions' SQL."""
+        from little_loops.cli.harness import _HISTORY_MIN_SCORED, _read_target_history
+
+        now = datetime.now(UTC)
+        rows = [
+            {
+                "ts": (now - timedelta(days=i + 1)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "runner": "cmd",
+                "semantic_verdict": "yes",
+                "semantic_passed": True,
+            }
+            for i in range(_HISTORY_MIN_SCORED - 1)
+        ]
+        # Extra grader-error rows: if counted, they would clear the suppression
+        # threshold on their own -- they must not.
+        rows.extend(
+            {
+                "ts": (now - timedelta(days=i + 20)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "runner": "cmd",
+                "semantic_verdict": "error",
+                "semantic_passed": None,
+            }
+            for i in range(5)
+        )
+        self._seed("some-target", rows)
+
+        assert _read_target_history("some-target") is None
 
 
 class TestFormatTargetHistoryLine:
@@ -4667,6 +4898,33 @@ class TestSampleLoopSideEffects:
             next(c["note"] for c in e["channels"] if c["name"] == "art.txt") for e in res.entries
         ]
         assert notes == [None, "pre-existing, unchanged", None]
+
+
+class TestSampleLoopGraderError:
+    """BUG-3477: a grader-internal error tallies as `errored`, not a semantic fail."""
+
+    def test_grader_error_sample_tallies_errored_with_label_and_detail(self) -> None:
+        args = _make_namespace(semantic="some criterion", target="cmd x")
+
+        def invoke() -> tuple[RunnerResult, int]:
+            return RunnerResult(stdout="ok", stderr="", exit_code=0), 1
+
+        def record(result: RunnerResult, duration_ms: int, outcome: Any) -> int | None:
+            return None
+
+        with (
+            patch("little_loops.cli.harness._read_target_history", return_value=None),
+            patch(
+                "little_loops.cli.harness.evaluate_llm_structured",
+                return_value=EvaluationResult(verdict="error", details={"error": "judge crashed"}),
+            ),
+        ):
+            res = _run_sample_loop("cmd x", args, 1, invoke, record)
+
+        assert res.tally.errored == 1
+        assert res.tally.graded == 0
+        assert res.entries[0]["result"] == "ERROR"
+        assert res.entries[0]["error"] == "judge crashed"
 
 
 class TestChannelsReportAndJson:

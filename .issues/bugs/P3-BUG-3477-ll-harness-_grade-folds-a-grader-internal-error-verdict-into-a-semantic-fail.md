@@ -3,10 +3,11 @@ id: BUG-3477
 type: BUG
 title: ll-harness _grade() folds a grader-internal error verdict into a semantic fail
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-14'
 captured_at: '2026-09-14T21:36:04Z'
+completed_at: '2026-09-15T20:57:14Z'
 confidence_score: 100
 outcome_confidence: 59
 score_complexity: 9
@@ -347,6 +348,45 @@ procedural prose as an evidence quote. Not treated as `EVIDENCE_UNVERIFIED`;
 the underlying claim was independently confirmed by reading `_grade()`
 directly (above).
 
+## Resolution
+
+Implemented per the Program Design exactly as specified:
+
+- `HarnessEvalOutcome` gained `grader_error: bool = False` plus the
+  `semantic_passed_row`/`grader_error_detail` properties; all five
+  DB-recording call sites (`cmd_skill`, `cmd_cmd`, `cmd_mcp`, `cmd_prompt`,
+  `cmd_dsl`) now use `outcome.semantic_passed_row` instead of their
+  hand-copied `None if outcome.abstained else outcome.passed` expression.
+- `_grade()` gained an exact-match `verdict == "error"` branch and a
+  `hard_fail`-captured precedence chain: fail > grader_error > abstain >
+  pass, returning rc 2 for a grader error.
+- `_evaluate_and_report()` gained an `ERROR` report branch (text: `Grader
+  error: ...` line; JSON: `"error"` key) ahead of the FAIL branch.
+  `_run_sample_loop()`'s per-sample `error` field now falls through to
+  `outcome.grader_error_detail`.
+- `cmd_dsl` gained an `errored: N (<task names>)` summary line; the per-task
+  tally already routed rc 2 to `errored_count`, so no other DSL code changed.
+- `_rc_from_event()` checks `semantic_verdict == "error"` verdict-first (ahead
+  of the `semantic_passed is None` rule) so both the new row shape and the
+  pre-fix `semantic_passed = 0` shape re-band to 2 with no migration.
+  `harness_eval_pass_rate()`, `harness_eval_abstention_rate()`, and
+  `_read_target_history()` all exclude `semantic_verdict = 'error'` rows from
+  their denominators in lockstep.
+- Widened exit-code-2 wording ("harness or judge error") across
+  `EVALUATION_GUIDE.md`, `CLI.md`, `EVENT-SCHEMA.md`, and `API.md`.
+- `_retry_refusal()`/`cmd_dsl`'s `_update_aggregate()` were intentionally not
+  touched, per the issue's non-goals.
+
+New/updated tests: `TestGraderError`, `TestHarnessEvalOutcomeGraderErrorProperties`,
+`TestSampleLoopGraderError`, `TestCmdDsl::test_cmd_dsl_grader_error_task_lands_in_errored_summary`,
+`TestReadTargetHistory::test_grader_error_rows_excluded_from_both_counts`
+(`test_cli_harness.py`); `TestRcFromEvent`,
+`test_harness_eval_pass_rate_excludes_grader_error_rows`,
+`test_harness_eval_abstention_rate_excludes_grader_error_rows`
+(`test_history_reader_harness.py`). Full suite: `python -m pytest
+scripts/tests/` — 24480 passed, 51 skipped. `ruff check`/`ruff format
+--check` and `mypy` clean on all touched files.
+
 ## Status
 
 **Open** | Created: 2026-09-14 | Priority: P3
@@ -365,6 +405,8 @@ _Added by `/ll:confidence-check` on 2026-09-15_
 Note: re-run after the fourth-pass manual review (`cmd_dsl` consequence + stale-citation corrections, session log below). Gate checks (`format-check`, `check-design`, `blocked_by`, learning-test targets, `unproven_mechanism`) are all clean/inert, and the added `cmd_dsl` scope was already covered by the prior run's "16+ sites" framing, so both scores are unchanged from the 2026-09-15T20:09:38 run.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-15T20:57:07 - `0e1ad2b9-a2fb-47cc-ace3-ad4639d2e06c.jsonl`
+- `/ll:ready-issue` - 2026-09-15T20:30:14 - `595f8dff-6a03-4963-8a8a-db38c6d8fc6e.jsonl`
 - `/ll:confidence-check` - 2026-09-15T20:24:15 - `688ce7f2-70f1-44fe-b722-7b7e2a3bdab4.jsonl`
 - manual review (fourth pass) - 2026-09-15 - dropped the nonexistent flags-only `grader_error_detail` shape (every `BlockingJsonError` site sets `"error"`); added the `cmd_dsl` consequence (one judge-error task → whole run exits 2, task leaves `failures`) with an `errored:` summary-line AC and test, and noted the accepted `_update_aggregate()` divergence; corrected the six remaining stale citations (`_grade()` callers, `_run_compare_arm()`, `_band_samples()` call sites, `_read_target_history()` rate calls, test class lines)
 - `/ll:confidence-check` - 2026-09-15T20:09:38 - `81c87ace-97af-4b20-a8f9-1d736588bd88.jsonl`

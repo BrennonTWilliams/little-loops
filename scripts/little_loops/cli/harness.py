@@ -877,7 +877,10 @@ class SampleTally:
     """Aggregated per-sample grading counts for an n-sample invocation (ENH-3415 D8).
 
     `graded` is `passed + failed` (D3) -- abstained/errored samples are
-    recorded but excluded from the graded denominator.
+    recorded but excluded from the graded denominator. BUG-3477: `errored`
+    counts both a runner-level infra error (rc 2 from timeout/`result.error`)
+    and a grader-internal judge error (rc 2 from `HarnessEvalOutcome.
+    grader_error`) -- harness or judge error, not just infra.
     """
 
     requested: int
@@ -965,6 +968,11 @@ class HarnessEvalOutcome:
     verdict: str | None
     eval_result: EvaluationResult | None
     abstained: bool = False
+    # BUG-3477: a grader-internal error (`verdict="error"`) is neither a pass
+    # nor a semantic fail of the subject -- always paired with `passed=False`
+    # (see `_grade()`'s docstring); consumers that read only `passed`
+    # intentionally still see a non-pass.
+    grader_error: bool = False
     sample_pass_rate: float | None = None
     samples: SampleTally | None = None
     channels: list[ChannelRecord] = field(default_factory=list)
@@ -977,6 +985,45 @@ class HarnessEvalOutcome:
     cache_read_tokens: int | None = None
     cache_creation_tokens: int | None = None
     tool_calls: int | None = None
+
+    @property
+    def semantic_passed_row(self) -> bool | None:
+        """The `semantic_passed` value to persist to `harness_events` (BUG-3477).
+
+        `None` for an abstained or grader-error row (neither is a subject
+        verdict), else `passed` -- including a hard-fail `False`. Replaces
+        each DB-recording call site's own `None if outcome.abstained else
+        outcome.passed` expression.
+        """
+        return None if (self.abstained or self.grader_error) else self.passed
+
+    @property
+    def grader_error_detail(self) -> str | None:
+        """One-line rendering of a grader error's `eval_result.details` (BUG-3477).
+
+        `None` unless `grader_error`. Every `BlockingJsonError` site
+        (`host_runner.py`) and the invalid-verdict site (`evaluators.py`) set
+        `details["error"]`; the model-omitted-`verdict` shape instead carries
+        the full success-shaped `details` dict, so this renders
+        `details["reason"]` when non-empty, else a 200-char-bounded
+        `json.dumps(details["raw"])`, else `"unknown grader error"` -- never
+        `llm_raw_output`/`llm_prompt`, which can be kilobytes.
+        """
+        if not self.grader_error:
+            return None
+        details = self.eval_result.details if self.eval_result is not None else None
+        if not details:
+            return "unknown grader error"
+        error = details.get("error")
+        if error:
+            return str(error)
+        reason = details.get("reason")
+        if reason:
+            return str(reason)
+        raw = details.get("raw")
+        if raw is not None:
+            return json.dumps(raw)[:200]
+        return "unknown grader error"
 
 
 def _read_prepatch_evidence(issue_id: str | None) -> dict | None:
@@ -1043,8 +1090,19 @@ def _read_target_history(target: str) -> dict | None:
     # denominators for the AC7 suppression check without duplicating their SQL.
     events = recent_harness_events(target=target, since=since, limit=1000, db=db_path)
     authoritative_events = [e for e in events if e.superseded_by is None]
-    pass_scored = sum(1 for e in authoritative_events if e.semantic_passed is not None)
-    judged_scored = sum(1 for e in authoritative_events if e.semantic_verdict is not None)
+    # BUG-3477: exclude grader-error rows from both counts, in lockstep with
+    # harness_eval_pass_rate()/harness_eval_abstention_rate()'s SQL, so these
+    # reported run counts never diverge from the rates' own denominators.
+    pass_scored = sum(
+        1
+        for e in authoritative_events
+        if e.semantic_passed is not None and e.semantic_verdict != "error"
+    )
+    judged_scored = sum(
+        1
+        for e in authoritative_events
+        if e.semantic_verdict is not None and e.semantic_verdict != "error"
+    )
 
     history: dict[str, Any] = {}
     if pass_scored >= _HISTORY_MIN_SCORED:
@@ -1401,6 +1459,12 @@ def _grade(
     if any(c.passed is False for c in channels):
         passed = False
 
+    # BUG-3477: captured before the --semantic block so a hard fail already
+    # folded above (--exit-code, expected:, side effect) outranks a grader
+    # error decided below -- fail > grader_error > abstain > pass.
+    hard_fail = not passed
+    grader_error = False
+
     require_artifact = getattr(args, "require_artifact", None) or []
     if args.semantic is not None:
         # ENH-3435: pass the judge model explicitly so the value recorded as
@@ -1421,10 +1485,19 @@ def _grade(
             )
         # ENH-3185 AC9: an abstention is neither a pass nor a failure — report
         # it separately rather than folding it into `passed = False`. Precedence
-        # is fail > abstain > pass, so a mixed exit_code-fail + semantic-abstain
-        # run still reports FAIL/exit 1.
+        # is fail > grader_error > abstain > pass, so a mixed exit_code-fail +
+        # semantic-abstain/error run still reports FAIL/exit 1.
         if is_abstention_verdict(eval_result.verdict):
             abstained = True
+        elif eval_result.verdict == "error":
+            # BUG-3477: a grader-internal error (crashed/timed-out/unparseable
+            # judge) is harness infrastructure, not a subject verdict -- exact
+            # match only. The `_uncertain`-suffixed form
+            # (`evaluate_llm_structured`'s `uncertain_suffix` path) is not
+            # matched here: `_grade()` never passes `uncertain_suffix=True`,
+            # so `"error_uncertain"` cannot reach this branch.
+            grader_error = True
+            passed = False
         elif eval_result.verdict != "yes":
             passed = False
 
@@ -1433,6 +1506,7 @@ def _grade(
         verdict=eval_result.verdict if eval_result is not None else None,
         eval_result=eval_result,
         abstained=abstained,
+        grader_error=grader_error,
         channels=channels,
         duration_ms=duration_ms,
         input_tokens=result.input_tokens,
@@ -1441,9 +1515,15 @@ def _grade(
         cache_creation_tokens=result.cache_creation_tokens,
         tool_calls=result.tool_calls,
     )
-    # ENH-3185 AC9: 0=pass, 1=fail (unchanged), 2=harness/infra error (already
-    # taken above, never reused here), 3=inconclusive (no failure, >=1 abstention).
-    if not passed:
+    # ENH-3185/BUG-3477: fail > grader_error > abstain > pass. `hard_fail`
+    # (captured above, before the --semantic block) always outranks
+    # `grader_error` since nothing about the judge changes an already-folded
+    # --exit-code/expected:/side-effect failure.
+    if hard_fail:
+        exit_code = 1
+    elif grader_error:
+        exit_code = 2
+    elif not passed:
         exit_code = 1
     elif abstained:
         exit_code = 3
@@ -1478,6 +1558,8 @@ def _band_samples(tally: SampleTally) -> tuple[str, int]:
     sample (all abstained) -> ABSTAIN/3; every requested sample graded and
     passed -> PASS/0; every graded sample failed -> FAIL/1; otherwise
     (mixed, or passes alongside any abstention/error) -> INCONCLUSIVE/3.
+    BUG-3477: "errored" here means harness or judge error (runner infra
+    error or grader-internal error), not just infra.
     """
     if tally.graded == 0 and tally.errored > 0:
         return "ERROR", 2
@@ -2438,7 +2520,9 @@ def _run_sample_loop(
         record(result, duration_ms, outcome)
         label = {2: "ERROR", 3: "ABSTAIN", 0: "PASS"}.get(rc, "FAIL")
         error = (
-            result.error if result.error is not None else ("timeout" if result.timed_out else None)
+            result.error
+            if result.error is not None
+            else ("timeout" if result.timed_out else outcome.grader_error_detail)
         )
         entry: dict[str, Any] = {
             "index": i,
@@ -2540,7 +2624,13 @@ def _evaluate_and_report(
         exit_code_display = f"{result.exit_code} (expected {args.exit_code})"
     semantic_display = eval_result.verdict if eval_result is not None else "[not checked]"
 
-    if not passed:
+    if outcome.grader_error:
+        # BUG-3477: a grader-internal error is distinct from a subject FAIL --
+        # `passed` is always False here too, but this branch takes precedence
+        # in the report so a crashed/timed-out/unparseable judge doesn't read
+        # as the subject failing the criteria.
+        overall = "ERROR"
+    elif not passed:
         overall = "FAIL"
     elif abstained:
         overall = "ABSTAIN"
@@ -2596,6 +2686,8 @@ def _evaluate_and_report(
         }
         if expected_display is not None:
             payload["expected"] = expected_display
+        if outcome.grader_error:
+            payload["error"] = outcome.grader_error_detail
         if prepatch_evidence is not None:
             payload["prepatch_evidence"] = prepatch_evidence
         if target_history is not None:
@@ -2611,6 +2703,8 @@ def _evaluate_and_report(
             status_fields["Expected"] = expected_display
         status_fields["Result"] = overall
         print(status_block(status_fields))
+        if outcome.grader_error:
+            print(f"Grader error: {outcome.grader_error_detail}")
         if prepatch_evidence is not None:
             print(f"Pre-patch check: {prepatch_evidence.get('verdict', 'unknown')}")
         if target_history is not None:
@@ -2743,7 +2837,7 @@ def cmd_skill(args: argparse.Namespace) -> int:
             target=args.target,
             exit_code=result.exit_code,
             semantic_verdict=outcome.verdict,
-            semantic_passed=None if outcome.abstained else outcome.passed,
+            semantic_passed=outcome.semantic_passed_row,
             timed_out=result.timed_out,
             duration_ms=duration_ms,
             head_sha=head_sha,
@@ -2909,7 +3003,7 @@ def cmd_cmd(args: argparse.Namespace) -> int:
             target=args.target,
             exit_code=result.exit_code,
             semantic_verdict=outcome.verdict,
-            semantic_passed=None if outcome.abstained else outcome.passed,
+            semantic_passed=outcome.semantic_passed_row,
             timed_out=result.timed_out,
             duration_ms=duration_ms,
             head_sha=head_sha,
@@ -3037,7 +3131,7 @@ def cmd_mcp(args: argparse.Namespace) -> int:
             target=args.target,
             exit_code=result.exit_code,
             semantic_verdict=outcome.verdict,
-            semantic_passed=None if outcome.abstained else outcome.passed,
+            semantic_passed=outcome.semantic_passed_row,
             timed_out=result.timed_out,
             duration_ms=duration_ms,
             head_sha=head_sha,
@@ -3164,7 +3258,7 @@ def cmd_prompt(args: argparse.Namespace) -> int:
             target=args.target,
             exit_code=result.exit_code,
             semantic_verdict=outcome.verdict,
-            semantic_passed=None if outcome.abstained else outcome.passed,
+            semantic_passed=outcome.semantic_passed_row,
             timed_out=result.timed_out,
             duration_ms=duration_ms,
             head_sha=head_sha,
@@ -3308,6 +3402,7 @@ def cmd_dsl(args: argparse.Namespace) -> int:  # noqa: PLR0912, PLR0915 — grad
     abstain_count = 0
     errored_count = 0
     failures: list[str] = []
+    errored: list[str] = []
     written_ids: list[int] = []
 
     aggregate_ts = _now_iso()
@@ -3415,6 +3510,7 @@ def cmd_dsl(args: argparse.Namespace) -> int:  # noqa: PLR0912, PLR0915 — grad
             ungraded_count += 1
         elif rc == 2:
             errored_count += 1
+            errored.append(task_file.name)
         elif rc == 3:
             abstain_count += 1
         else:
@@ -3440,7 +3536,7 @@ def cmd_dsl(args: argparse.Namespace) -> int:  # noqa: PLR0912, PLR0915 — grad
                 target=task_file.name,
                 exit_code=result.exit_code,
                 semantic_verdict=outcome.verdict,
-                semantic_passed=None if outcome.abstained else outcome.passed,
+                semantic_passed=outcome.semantic_passed_row,
                 timed_out=result.timed_out,
                 duration_ms=duration_ms,
                 head_sha=head_sha,
@@ -3507,6 +3603,8 @@ def cmd_dsl(args: argparse.Namespace) -> int:  # noqa: PLR0912, PLR0915 — grad
         )
     if failures:
         lines.append("  failed: " + "\n          ".join(failures))
+    if errored_count > 0:
+        lines.append(f"  errored: {errored_count} ({', '.join(errored)})")
     admissions = admissions_by_reason(resolve_history_db(DEFAULT_DB_PATH), written_ids)
     if admissions:
         breakdown = ", ".join(
