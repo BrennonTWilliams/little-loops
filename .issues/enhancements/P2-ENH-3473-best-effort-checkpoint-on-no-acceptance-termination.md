@@ -1,14 +1,22 @@
 ---
 id: ENH-3473
-title: 'Write a best_effort-tagged checkpoint when a loop ends with no acceptance, so no outer iteration produces zero artifacts'
+title: Write a best_effort-tagged checkpoint when a loop ends with no acceptance,
+  so no outer iteration produces zero artifacts
 type: ENH
 priority: P2
 status: open
 discovered_date: '2026-09-13'
 labels: []
 parent: ENH-3468
-depends_on: [ENH-3472]
+depends_on:
+- ENH-3472
 reconcile_attempted: true
+confidence_score: 95
+outcome_confidence: 82
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 ## Summary
@@ -148,6 +156,7 @@ Context-compaction failure (`cli/compact_session.py::main_compact_session()` →
 **Open** | Created: 2026-09-13 | Priority: P2
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-15T23:20:00 - `4aed0df2-a263-4d28-ae34-d555931852b6.jsonl`
 - `/ll:verify-issues` - 2026-09-15T23:13:48 - `0f995d07-641d-467b-93d8-b6a178acbacb.jsonl`
 - Manual review rewrite - 2026-09-15 - dropped the ENH-3471 dependency (qualifying set is budget-exhaustion values that already exist) in favor of ENH-3472; decided artifact-only (no vocabulary/`map_final_status`/exit-code change), fixed filename `best_effort.json`, last-attempt semantics (no scoring); removed the untestable compaction Step 4; cut the vocabulary-driven wiring accordingly.
 - `/ll:wire-issue` - 2026-09-15T22:33:23 - `74d0e714-5fa8-4d36-8d26-f70b1e11f439.jsonl`

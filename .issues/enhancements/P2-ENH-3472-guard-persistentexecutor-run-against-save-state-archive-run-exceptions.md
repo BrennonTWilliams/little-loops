@@ -1,12 +1,19 @@
 ---
 id: ENH-3472
-title: 'Guard PersistentExecutor.run() so a save_state/archive_run exception cannot discard an already-computed ExecutionResult'
+title: Guard PersistentExecutor.run() so a save_state/archive_run exception cannot
+  discard an already-computed ExecutionResult
 type: ENH
 priority: P2
 status: open
 discovered_date: '2026-09-13'
 labels: []
 parent: ENH-3468
+confidence_score: 100
+outcome_confidence: 96
+score_complexity: 21
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 ## Summary
@@ -136,6 +143,7 @@ Call these out in the PR description.
 **Open** | Created: 2026-09-13 | Priority: P2
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-15T23:19:59 - `4aed0df2-a263-4d28-ae34-d555931852b6.jsonl`
 - `/ll:verify-issues` - 2026-09-15T23:13:30 - `0f995d07-641d-467b-93d8-b6a178acbacb.jsonl`
 - Manual review rewrite - 2026-09-15 - guard `save_state`/`archive_run` independently; collapse the two branches; add stale-`running` self-heal note and `failure_terminal` exit-code test; declare ENH-3473's dependency on this issue.
 - `/ll:wire-issue` - 2026-09-15T22:32:31 - `74d0e714-5fa8-4d36-8d26-f70b1e11f439.jsonl`

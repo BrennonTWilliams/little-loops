@@ -1,12 +1,19 @@
 ---
 id: ENH-3471
-title: 'Named abort reason distinguishes attempt-batch vs decision-step failures instead of collapsing both to "error"'
+title: Named abort reason distinguishes attempt-batch vs decision-step failures instead
+  of collapsing both to "error"
 type: ENH
 priority: P2
 status: open
 discovered_date: '2026-09-13'
 labels: []
 parent: ENH-3468
+confidence_score: 100
+outcome_confidence: 81
+score_complexity: 13
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 ## Summary
@@ -177,6 +184,7 @@ Graph: provider=`codegraph` freshness=`fresh` (not used for this check; grep/Rea
 sufficed and gave exact confirmation).
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-15T23:19:58 - `4aed0df2-a263-4d28-ae34-d555931852b6.jsonl`
 - `/ll:verify-issues` - 2026-09-15T23:13:49 - `0f995d07-641d-467b-93d8-b6a178acbacb.jsonl`
 - Manual review rewrite - 2026-09-15 - corrected the mechanism (decision-step failures are direct `_finish()` calls at `executor.py:981`, not exceptions); pinned the value name `no_route`; decided supplement-not-replace so attempt-batch stays `error`.
 - `/ll:wire-issue` - 2026-09-15T22:31:53 - `74d0e714-5fa8-4d36-8d26-f70b1e11f439.jsonl`
