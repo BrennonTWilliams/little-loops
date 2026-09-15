@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from little_loops.stats import paired_direction, wilson_ci
+from little_loops.stats import paired_direction, proportion_diff_ci, wilson_ci
 
 
 class TestWilsonCI:
@@ -170,3 +170,45 @@ class TestPairedDirection:
         assert direction == "harness"
         assert b == 8
         assert c == 0
+
+
+class TestProportionDiffCi:
+    """Tests for proportion_diff_ci() -- Newcombe method 10 (ENH-3465 D4)."""
+
+    def test_three_of_three_vs_zero_of_three(self) -> None:
+        """The case the old CI-overlap rule got wrong: classifies decisively ahead."""
+        lo, hi = proportion_diff_ci(3, 3, 0, 3)
+        assert lo == pytest.approx(0.2059, abs=1e-3)
+        assert hi == pytest.approx(1.0)
+
+    def test_ten_of_ten_vs_five_of_ten(self) -> None:
+        lo, _hi = proportion_diff_ci(10, 10, 5, 10)
+        assert lo == pytest.approx(0.1174, abs=1e-3)
+
+    def test_eight_of_ten_vs_three_of_ten(self) -> None:
+        lo, _hi = proportion_diff_ci(8, 10, 3, 10)
+        assert lo == pytest.approx(0.0665, abs=1e-3)
+
+    def test_symmetric_case_is_negative(self) -> None:
+        """Swapping the arguments negates and mirrors the interval."""
+        lo, hi = proportion_diff_ci(0, 3, 3, 3)
+        assert lo == pytest.approx(-1.0)
+        assert hi == pytest.approx(-0.2059, abs=1e-3)
+
+    def test_equal_proportions_straddles_zero(self) -> None:
+        lo, hi = proportion_diff_ci(1, 3, 1, 3)
+        assert lo < 0 < hi
+
+    def test_raises_on_zero_n1(self) -> None:
+        with pytest.raises(ValueError, match="n must be positive"):
+            proportion_diff_ci(0, 0, 1, 3)
+
+    def test_raises_on_zero_n2(self) -> None:
+        with pytest.raises(ValueError, match="n must be positive"):
+            proportion_diff_ci(1, 3, 0, 0)
+
+    def test_custom_z_widens_interval(self) -> None:
+        lo_95, hi_95 = proportion_diff_ci(2, 5, 1, 5, z=1.96)
+        lo_99, hi_99 = proportion_diff_ci(2, 5, 1, 5, z=2.576)
+        assert lo_99 < lo_95
+        assert hi_99 > hi_95

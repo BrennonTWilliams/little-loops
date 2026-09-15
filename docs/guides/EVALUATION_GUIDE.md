@@ -421,6 +421,59 @@ No loop in this repo invokes this sequence yet (`harness-optimize.yaml` scores t
 the documented contract a follow-up can wire as that scorer. The JSON `baseline.delta` field
 is the loop-consumable output.
 
+### A standing anchor across runs (ENH-3465)
+
+`--compare-baseline`'s incumbent arm is relative to whatever HEAD holds *right now*. Once a
+run commits its winner, the next run's incumbent — and the within-run `baseline`/`reference`
+guard `harness-optimize.yaml` already has (ENH-3421) — both roll forward to that same winner.
+A lineage that beats its own prior winner every single run can still drift below a fixed
+standard while every comparison keeps passing, because nothing outside the lineage is ever
+re-measured. A **pin** is that fixed, external reference:
+
+```bash
+# once, on a target you trust: freeze its current HEAD content
+ll-harness skill check-code --pin-baseline --samples 10 --pin-reason "known-good v1"
+
+# every later --compare-baseline on this target now reports two arms
+ll-harness skill check-code --compare-baseline --samples 10
+```
+
+- **Pinning is `skill`-only and requires a prior measurement.** `--pin-baseline` records the
+  target's current HEAD blob content hash; it refuses (exit 2, no write) unless that content
+  already has a full `n >= 2` measurement under the current input/conditions, or the working
+  tree differs from HEAD (this refusal is never bypassed by `--pin-force` — a pin of content
+  that cannot be measured on disk is never useful). `prompt`/`cmd`/`mcp`/`dsl` refuse
+  `--pin-baseline` outright: `prompt`/`cmd`'s target *is* its content (a mutation changes the
+  target, so a pin keyed on it could never be found again), and `cmd`/`mcp` record no content
+  hash at all.
+- **The pin is content, re-measured, not a stored score.** Like the incumbent arm, the frozen
+  arm is read via `baseline_for()` under the *current* conditions — a pin serves every input
+  and every evaluator configuration; changing either just means the pinned content needs
+  measuring under it (see the refusal message below).
+- **Re-pinning never lowers the anchor.** A new pin is refused unless its measured pass rate is
+  at or above the active pin's under the current conditions; `--pin-force` overrides (the entry
+  records `forced: true`). Pin history is append-only — a later pin never rewrites or deletes an
+  earlier one.
+- **Each arm is `ahead`/`behind`/`inconclusive` from a Newcombe difference interval, not CI
+  overlap.** At `ll-harness` sample sizes, requiring the two Wilson 95% CIs to be disjoint is
+  almost never reachable (3/3 vs 0/3 is "inconclusive" under that rule); the Newcombe interval
+  on the *difference* of the two rates classifies it correctly (`ahead`). The pair
+  `(vs_incumbent, vs_pin)` combines into one `outcome`: `improvement` (ahead of both), `drift`
+  (ahead of the incumbent but behind the pin — the lineage-local-optimum signal this exists to
+  surface), `regression` (behind either arm), or `inconclusive`.
+- **`drift` needs `n >= 6` to be reachable at all** (exhaustive enumeration), and is only
+  broadly reachable from `n ~= 12`. **Pin and compare at `--samples 10` or more** — below `n=6`
+  the report carries a note that the outcome is at most `regression`/`inconclusive`.
+- **A pin whose content has moved out of HEAD needs manual re-measurement.** Once the lineage
+  commits past the pinned content, or a condition changes (judge model, `n`, timeout), the
+  frozen arm's rows no longer match and the compare refuses (exit 2, zero invocations) with the
+  exact procedure: `git show <pinned_head_sha>:<path> > <path>`, then `--measure-baseline` at
+  `--samples` >= the compare's n, then `git checkout -- <path>` to restore the working tree.
+
+With no pin, `--compare-baseline`'s report is byte-identical to the single-arm ENH-3435 shape
+above — the dual arm is additive. No loop wires the dual outcome into routing yet; that is a
+follow-up to this issue, same as the single-arm delta above.
+
 ### Across runs
 
 Every `ll-harness` invocation writes a row to the `harness_events` table in `.ll/history.db`

@@ -317,6 +317,18 @@ routes the same as any other `stall` (`gate.route.stall → revert_and_log →
 write_trajectory_rejected`), which ends the whole-file run or closes the current queued
 state's segment — see `write_trajectory_rejected`'s routing in the state table above.
 
+`reference` is a **within-run** anchor: it is seeded once per run from `baseline_score`, but
+the next run's own `baseline_score` re-captures from the freshly committed HEAD, so the anchor
+itself rolls forward across runs. ENH-3465's `ll-harness skill --pin-baseline`/
+`--compare-baseline` dual arm is the **cross-run** counterpart — a pin's content hash is fixed
+at pin time and never re-derived from HEAD, so it survives exactly the run boundary `reference`
+doesn't. The two are complementary, not overlapping: `reference` guards a single
+`harness-optimize.yaml` run's candidates against regressing within that run; a pin guards the
+lineage itself against drifting below a fixed external standard across many runs. See
+"A standing anchor across runs (ENH-3465)" in `docs/guides/EVALUATION_GUIDE.md` for the CLI
+workflow; wiring the pin's `outcome` into this loop's routing is a follow-up, not part of this
+guard.
+
 Artifacts isolate per run under `${context.run_dir}/states/<state>/trajectory.jsonl`
 (resolved by the loop runner, not hard-coded by the doc; the actual default for `harness-optimize` is `.ll/runs/harness-optimize-<timestamp>/...`),
 recording every iteration's score and accept/reject verdict — so the trajectory survives

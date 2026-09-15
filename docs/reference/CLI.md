@@ -235,8 +235,11 @@ Runner evaluation CLI that invokes a skill, shell command, MCP tool, or raw Clau
 | `--retry-of ID` | Mark this run as a retry of attempt `ID` (`harness_events.id`); see "Retrying a run" below (ENH-3407) |
 | `--samples N` | Run the subject N times and grade a pass-rate instead of one pass/fail (ENH-3415). Default: 3 for the stochastic `skill`/`prompt` runners (an LLM host CLI drives the subject), 1 for the deterministic `cmd`/`mcp` runners. An explicit value overrides in either direction and scales wall time / `--timeout` budget by N. Forced to 1 when `--retry-of` is given without an explicit `--samples` (a retry supersedes exactly one attempt); refused with exit 1 on the `dsl` runner (see its row below) and when combined with an explicit `--samples` > 1 alongside `--retry-of`. |
 | `--measure-baseline` | Run the effective N repetitions on the subject as it exists on disk and record them as the baseline for that content (ENH-3435). A full, condition-matched baseline is reused without re-running the subject. The exit code follows the normal banding — a 0/N baseline exits 1 and is still recorded. Refused (exit 2) on `dsl`, combined with `--compare-baseline` or `--retry-of`. |
-| `--compare-baseline` | Run N repetitions on the (mutated) subject and report a delta against the measured baseline for the incumbent content (ENH-3435). Refuses with exit 2 **before any invocation** when no condition-matched baseline exists — it never compares against a remembered number and never re-measures. `skill` resolves the incumbent from the HEAD blob of the target file (and refuses an unmutated subject); `prompt`/`cmd`/`mcp` require `--baseline-of`. Also refused (exit 2) at effective N=1. |
+| `--compare-baseline` | Run N repetitions on the (mutated) subject and report a delta against the measured baseline for the incumbent content (ENH-3435). Refuses with exit 2 **before any invocation** when no condition-matched baseline exists — it never compares against a remembered number and never re-measures. `skill` resolves the incumbent from the HEAD blob of the target file (and refuses an unmutated subject); `prompt`/`cmd`/`mcp` require `--baseline-of`. Also refused (exit 2) at effective N=1. On `skill`, when a pin exists for the target (see `--pin-baseline`), the report also carries a second, frozen arm compared against the pinned content (ENH-3465) — see "Frozen external baseline" below. |
 | `--baseline-of ID` | Attempt id (`harness_events.id`) whose `(runner, target, input, content)` names the baseline to compare against (ENH-3435). Required for `--compare-baseline` on `prompt`/`cmd`/`mcp`; an explicit override of the HEAD resolution on `skill`. Refused (exit 2) when the attempt is missing, predates baseline support, or was measured on a different input than the current invocation. |
+| `--pin-baseline` | `skill`-only (exit 2 on `prompt`/`cmd`/`mcp`/`dsl`): write a frozen external-baseline pin recording the target's current HEAD blob content hash (ENH-3465). Refused (exit 2, no write) when the content has no full `n>=2` measurement under the current input/conditions, when the working tree differs from HEAD (even with `--pin-force`), when no project root (`.ll/`) resolves, or when combined with `--measure-baseline`/`--compare-baseline`/`--retry-of`. Re-pinning additionally requires the new content's measured pass rate to be at or above the active pin's (the anchor never moves down); `--pin-force` overrides. A pin measured at `--samples N` only satisfies a later `--compare-baseline` whose N <= that N — pin and compare at `--samples 10` or more so `drift` (which needs N >= 6) is reachable. See "Frozen external baseline" below. |
+| `--pin-reason TEXT` | Free-text reason recorded on the pin entry (ENH-3465). Requires `--pin-baseline`. |
+| `--pin-force` | Bypass the pin-write measurement and re-pin monotonicity gates — never the dirty-working-tree check (ENH-3465). The entry records `forced: true`. Requires `--pin-baseline`. |
 | `--evidence {stderr}` | Additional channel(s) to send to the `--semantic` judge, beyond stdout (always examined); repeatable (ENH-3462). See "Widened evidence surface" below. |
 | `--require-artifact PATH` | Path (relative to the process cwd) that must have been written by the run; repeatable (ENH-3462, moved here from trace-mode-only in FEAT-2878). Enforced: missing, unreadable, or pre-existing-and-untouched fails the run. |
 | `--forbid-path PATH` | Path (relative to the process cwd) that must NOT be created or content-modified by the run; repeatable (ENH-3462, moved here from trace-mode-only). A pre-existing directory passes (existence-only); a newly created one fails. |
@@ -292,6 +295,36 @@ pass rate, `null` when the candidate arm has zero graded samples), `candidate_pa
 `candidate_ci` — a delta is never a banded verdict; the run's exit code still comes from the
 candidate tally's banding alone. Baseline refusals (no/partial/mismatched baseline, `n` < 2,
 flag combinations, unmutated subject) exit 2 before any subject invocation.
+
+**Frozen external baseline (ENH-3465):** `--compare-baseline`'s incumbent arm answers "is
+this candidate better than the unmutated HEAD content" — but once a lineage's winner is
+committed, the next run's incumbent *is* that winner, so a lineage that keeps beating its own
+prior winner can drift below any fixed standard while every comparison still passes. A pin
+(`ll-harness skill <target> --pin-baseline`) records a `skill` target's content hash at a
+point in time; every later `--compare-baseline` on that target then reports a **second**,
+frozen arm measured against the pinned content, in addition to the incumbent arm. Each arm is
+classified `ahead`/`behind`/`inconclusive` from a Newcombe difference interval on the two
+Wilson-CI'd pass rates (not simple CI-overlap, which is unreachable at these sample sizes), and
+the pair is combined into one `outcome`: `improvement` (ahead of both), `drift` (ahead of the
+incumbent, behind the pin — the lineage-local-optimum signal this exists to surface),
+`regression` (behind either arm), or `inconclusive`. `drift` needs `n >= 6` to be reachable at
+all; below that floor the report carries a note that the outcome is at most
+`regression`/`inconclusive`.
+
+The `--output json` `baseline` object gains `vs_incumbent`, `vs_pin`, `outcome`, and a nested
+`frozen` object (the same shape as `baseline` itself, plus `delta`/`pinned_head_sha`/
+`pinned_at`/`reason`/`forced`, and no `head_sha_differs`). Text mode adds a `Pinned:` line (the
+frozen arm's rate/CI) and an `Arms: vs-incumbent=<v> (Δ<d>) vs-pin=<v> (Δ<d>) → <outcome>` line.
+With no pin, the report is unchanged from ENH-3435 — the dual arm is additive.
+
+A pin whose content has since moved out of HEAD and has no measured rows under the current
+conditions refuses the compare (exit 2, zero invocations) with the exact re-measure procedure:
+check out the pinned blob (`git show <pinned_head_sha>:<path> > <path>`), run
+`--measure-baseline` at `--samples` >= the n the compare will use, then `git checkout -- <path>`
+to restore the working tree. Pins are scoped to the `skill` runner only — `prompt`/`cmd` have no
+content identity independent of their target, and `cmd`/`mcp` record no content hash at all —
+and are stored append-only, one JSON fragment per pin under
+`.ll/harness-pins/skill--<target>/`, resolved from the project root regardless of cwd.
 
 **N-sample redundancy (ENH-3415):** when the effective sample count (`--samples`, or the
 runner's default) is > 1, the shape above does not apply. There is no top-level `exit_code`/

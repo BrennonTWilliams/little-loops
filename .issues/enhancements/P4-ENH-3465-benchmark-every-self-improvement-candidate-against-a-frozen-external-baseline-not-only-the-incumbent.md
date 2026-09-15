@@ -4,7 +4,8 @@ title: Benchmark every self-improvement candidate against a frozen external base
   not only the incumbent
 type: ENH
 priority: P4
-status: open
+status: done
+completed_at: 2026-09-15T00:00:00Z
 discovered_date: '2026-09-13'
 labels:
 - evaluation
@@ -217,7 +218,7 @@ _Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
 _Added by `/ll:refine-issue` — 2026-09-15 — based on codebase analysis:_
 
 - No existing precedent for a single committed file holding a growing `{"pins": [...]}` list exists anywhere in the codebase (repo-wide search, zero hits beyond this issue's own text). Every append-only JSON convention that ships today is one-file-per-entry-in-a-directory instead: `.ll/decisions.d/<uuid4>.json` (`decisions.py` `add_entry()`, one `atomic_write_json()` call per fragment, unioned on read) and `.loops/.queue/*.json` (`cli/loop/queue.py:23`, gitignored/per-machine). `atomic_write_json()` (`file_utils.py:35`) is the shared write primitive either shape would use, but no existing helper reads-appends-rewrites a single growing list in place.
-- `resolve_ll_dir(start=None, create=False)` (`scripts/little_loops/paths.py:45`, built on `find_project_root()` at `:14`) is a second, more direct existing precedent for project-root-anchored `.ll/`-relative resolution, alongside the `resolve_history_db()` (`session_store/db.py:121`) path this issue's D6 already cites.
+- `def resolve_ll_dir(start: Path | None = None, create: bool = False) -> Path | None:` (`scripts/little_loops/paths.py:45`, built on `find_project_root()` at `:14`) is a second, more direct existing precedent for project-root-anchored `.ll/`-relative resolution, alongside the `resolve_history_db()` (`session_store/db.py:121`) path this issue's D6 already cites.
 - Confirmed D4's own caveat: no existing function performs two-independent-Wilson-interval overlap comparison. `paired_direction()` (`stats.py:43-79`) is architecturally different — it computes one Wilson CI on the discordant split of *paired* per-item outcomes and checks straddle against a fixed 0.5 threshold, not disjointness between two independently-tallied proportions' intervals. `wilson_ci(k, n, z=1.96)` (`stats.py:14`) itself is the sole reusable primitive; it raises `ValueError` for `n<=0` or out-of-range `k` rather than returning a sentinel.
 - The elif-chain precedent D5 cites (`cli/issues/impact_effort.py:194-211`) is confirmed accurate: two independent boolean-derived axes combined via a flat `if/elif/elif/else` written directly in application code, each branch testing both axis conditions explicitly — no dict-lookup or combinator-helper alternative exists in the codebase for this shape.
 - The refusal-function precedent (`_baseline_flag_refusal()`/`_compare_baseline_refusal()`) is confirmed byte-for-byte in current code: pure `str | None` return, zero side effects, identical `if refusal is not None: print(..., file=sys.stderr); return 2` call-site shape at all four `cmd_*` sites.
@@ -412,6 +413,7 @@ Manual review before implementation; the corrections are folded into the section
 - Effort re-rated Medium; stale "others via `--baseline-of`" note in the first pass struck.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-09-15T17:10:34 - `1e745605-d2f8-44f9-8582-74b8e47c1a25.jsonl`
 - `/ll:confidence-check` - 2026-09-15T17:01:21 - `383e91ec-89eb-4a53-ac56-e40203c5bf0b.jsonl`
 - `/ll:confidence-check` - 2026-09-15T16:40:59 - `616933e2-7191-4604-9d84-781e86714f4a.jsonl`
 - `/ll:refine-issue` - 2026-09-15T16:14:43 - `3b8644e0-9ff1-4797-b13a-5a6cc7062fde.jsonl`

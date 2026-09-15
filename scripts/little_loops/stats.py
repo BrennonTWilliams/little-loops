@@ -40,6 +40,36 @@ def wilson_ci(k: int, n: int, z: float = 1.96) -> tuple[float, float]:
     return max(0.0, center - margin), min(1.0, center + margin)
 
 
+def proportion_diff_ci(k1: int, n1: int, k2: int, n2: int, z: float = 1.96) -> tuple[float, float]:
+    """Newcombe (1998, method 10) score interval for the difference ``p1 - p2``.
+
+    Built from the two independent Wilson bounds (:func:`wilson_ci`), not a
+    naive CI-overlap test: at ``ll-harness`` sample sizes (n=3-10), requiring
+    the two 95% Wilson intervals to be disjoint is unreachable in almost every
+    case (ENH-3465 D4) -- this interval on the *difference* is the correct
+    test at small n.
+
+    Args:
+        k1, n1: Successes/trials for the first proportion (e.g. the candidate).
+        k2, n2: Successes/trials for the second proportion (e.g. an arm).
+        z: Z-score for confidence level (default 1.96 for 95%).
+
+    Returns:
+        (lower, upper) bounds on ``p1 - p2``.
+
+    Raises:
+        ValueError: If n1 <= 0 or n2 <= 0 (propagated from ``wilson_ci``).
+    """
+    l1, u1 = wilson_ci(k1, n1, z)
+    l2, u2 = wilson_ci(k2, n2, z)
+    p1 = k1 / n1
+    p2 = k2 / n2
+    d = p1 - p2
+    lower = d - math.sqrt((p1 - l1) ** 2 + (u2 - p2) ** 2)
+    upper = d + math.sqrt((u1 - p1) ** 2 + (p2 - l2) ** 2)
+    return lower, upper
+
+
 def paired_direction(
     per_item: list[dict[str, Any]],
     *,

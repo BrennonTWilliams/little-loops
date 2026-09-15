@@ -231,6 +231,15 @@ DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     ("docs/reference/EVENT-SCHEMA.md", "### `parallel.queue_changed`", "ENH-3346"),
     ("docs/reference/API.md", "#### WorkerBlockedReason", "ENH-3346"),
     ("docs/reference/API.md", "#### MergeOutcome", "ENH-3346"),
+    ("docs/reference/CLI.md", "--pin-baseline", "ENH-3465"),
+    ("docs/reference/CLI.md", "--pin-reason TEXT", "ENH-3465"),
+    ("docs/reference/CLI.md", "--pin-force", "ENH-3465"),
+    ("docs/reference/CLI.md", "Frozen external baseline", "ENH-3465"),
+    ("docs/guides/EVALUATION_GUIDE.md", "A standing anchor across runs", "ENH-3465"),
+    ("docs/guides/EVALUATION_GUIDE.md", "--pin-baseline", "ENH-3465"),
+    ("docs/guides/HARNESS_OPTIMIZATION_GUIDE.md", "ENH-3465", "ENH-3465"),
+    ("docs/reference/API.md", "### BaselinePin / read_pin / write_pin", "ENH-3465"),
+    ("docs/reference/API.md", "def proportion_diff_ci", "ENH-3465"),
 ]
 
 

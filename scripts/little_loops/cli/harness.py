@@ -12,8 +12,9 @@ import re
 import subprocess
 import sys
 import time
+import uuid
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timedelta
 from enum import Enum
 from pathlib import Path
@@ -23,6 +24,7 @@ import yaml
 
 from little_loops.cli.history import _positive_int
 from little_loops.cli.output import configure_output, print_json, status_block, use_color_enabled
+from little_loops.file_utils import atomic_write_json
 from little_loops.fsm.evaluators import EvaluationResult, evaluate_llm_structured
 from little_loops.fsm.schema import DEFAULT_LLM_MODEL as _JUDGE_MODEL
 from little_loops.fsm.verdicts import is_abstention_verdict
@@ -34,6 +36,7 @@ from little_loops.history_reader.harness import (
     baseline_for,
 )
 from little_loops.logger import Logger
+from little_loops.paths import resolve_ll_dir
 from little_loops.runner_spec import (
     DEFAULT_STOCHASTIC_SAMPLES,
     ActionSpec,
@@ -50,7 +53,7 @@ from little_loops.session_store import (
     record_harness_event,
 )
 from little_loops.skill_expander import _find_plugin_root, _resolve_content_path
-from little_loops.stats import wilson_ci
+from little_loops.stats import proportion_diff_ci, wilson_ci
 
 __all__ = [
     "RunnerResult",
@@ -659,6 +662,41 @@ Exit codes:
                 "remembered number, never re-measures. skill resolves the "
                 "incumbent from HEAD; prompt/cmd/mcp require --baseline-of. "
                 "Not supported on the dsl runner."
+            ),
+        )
+        p.add_argument(
+            "--pin-baseline",
+            dest="pin_baseline",
+            action="store_true",
+            help=(
+                "Write a frozen external-baseline pin for this skill target's HEAD "
+                "content (ENH-3465, skill runner only). Refused (exit 2, no write) "
+                "unless the pinned content already has a full n>=2 measurement "
+                "under the current input and conditions; also refused when the "
+                "working tree differs from HEAD (even with --pin-force), when no "
+                "project root resolves, or when combined with --measure-baseline, "
+                "--compare-baseline, or --retry-of. Re-pinning additionally "
+                "requires the new content's measured pass rate to be at or above "
+                "the active pin's; --pin-force overrides. A pin measured at "
+                "--samples N only satisfies a later --compare-baseline whose n <= N."
+            ),
+        )
+        p.add_argument(
+            "--pin-reason",
+            dest="pin_reason",
+            type=str,
+            default=None,
+            metavar="TEXT",
+            help="Free-text reason recorded on the pin entry (requires --pin-baseline)",
+        )
+        p.add_argument(
+            "--pin-force",
+            dest="pin_force",
+            action="store_true",
+            help=(
+                "Bypass the pin-write measurement and re-pin monotonicity gates "
+                "(never the dirty-working-tree check); the entry records "
+                "forced: true. Requires --pin-baseline."
             ),
         )
         p.add_argument(
@@ -1452,6 +1490,34 @@ def _band_samples(tally: SampleTally) -> tuple[str, int]:
     return "INCONCLUSIVE", 3
 
 
+def _baseline_payload(shown: BaselineResult) -> dict[str, Any]:
+    """Build the JSON sub-object for one baseline/frozen arm (ENH-3435; ENH-3465 D7 factor-out).
+
+    Shared by the incumbent ``baseline`` object and the frozen ``baseline.frozen``
+    object -- the caller adds ``head_sha_differs`` (incumbent only, D7) and
+    ``delta``/pin fields (frozen only) on top of this common shape.
+    """
+    return {
+        "source": shown.source,
+        "n": shown.tally.requested,
+        "conditions": {
+            "semantic_prompt": shown.conditions.semantic_prompt,
+            "semantic_model": shown.conditions.semantic_model,
+            "subject_model": shown.conditions.subject_model,
+            "timeout_s": shown.conditions.timeout_s,
+            "host_cli": shown.conditions.host_cli,
+        },
+        "conditions_fp": shown.conditions.conditions_fp,
+        "head_sha": shown.head_sha,
+        "attempt_ids": shown.attempt_ids,
+        "notes": _baseline_notes(shown),
+        "baseline_pass_rate": (
+            shown.tally.passed / shown.tally.graded if shown.tally.graded else None
+        ),
+        "baseline_ci": [shown.tally.ci_lo, shown.tally.ci_hi],
+    }
+
+
 def _report_samples(
     runner_label: str,
     tally: SampleTally,
@@ -1499,32 +1565,40 @@ def _report_samples(
         if baseline is not None or delta is not None:
             shown = delta.baseline if delta is not None else baseline
             assert shown is not None  # guarded by the or above
-            baseline_payload: dict[str, Any] = {
-                "source": shown.source,
-                "n": shown.tally.requested,
-                "conditions": {
-                    "semantic_prompt": shown.conditions.semantic_prompt,
-                    "semantic_model": shown.conditions.semantic_model,
-                    "subject_model": shown.conditions.subject_model,
-                    "timeout_s": shown.conditions.timeout_s,
-                    "host_cli": shown.conditions.host_cli,
-                },
-                "conditions_fp": shown.conditions.conditions_fp,
-                "head_sha": shown.head_sha,
-                "head_sha_differs": bool(
-                    delta.head_sha_differs if delta is not None else head_sha_differs
-                ),
-                "attempt_ids": shown.attempt_ids,
-                "notes": _baseline_notes(shown),
-                "baseline_pass_rate": (
-                    shown.tally.passed / shown.tally.graded if shown.tally.graded else None
-                ),
-                "baseline_ci": [shown.tally.ci_lo, shown.tally.ci_hi],
-            }
+            baseline_payload = _baseline_payload(shown)
+            baseline_payload["head_sha_differs"] = bool(
+                delta.head_sha_differs if delta is not None else head_sha_differs
+            )
             if delta is not None:
                 baseline_payload["delta"] = delta.delta
                 baseline_payload["candidate_pass_rate"] = sample_pass_rate
                 baseline_payload["candidate_ci"] = [tally.ci_lo, tally.ci_hi]
+                if delta.frozen is not None:
+                    frozen_payload = _baseline_payload(delta.frozen)
+                    frozen_rate = (
+                        delta.frozen.tally.passed / delta.frozen.tally.graded
+                        if delta.frozen.tally.graded
+                        else None
+                    )
+                    frozen_payload["delta"] = (
+                        None
+                        if sample_pass_rate is None or frozen_rate is None
+                        else sample_pass_rate - frozen_rate
+                    )
+                    if delta.pin is not None:
+                        frozen_payload["pinned_head_sha"] = delta.pin.pinned_head_sha
+                        frozen_payload["pinned_at"] = delta.pin.pinned_at
+                        frozen_payload["reason"] = delta.pin.reason
+                        frozen_payload["forced"] = delta.pin.forced
+                    baseline_payload["vs_incumbent"] = delta.vs_incumbent
+                    baseline_payload["frozen"] = frozen_payload
+                    baseline_payload["vs_pin"] = delta.vs_pin
+                    baseline_payload["outcome"] = delta.outcome
+                    if tally.requested < 6:
+                        baseline_payload["notes"] = [
+                            *baseline_payload["notes"],
+                            _drift_floor_note(tally.requested),
+                        ]
             payload["baseline"] = baseline_payload
         if prepatch_evidence is not None:
             payload["prepatch_evidence"] = prepatch_evidence
@@ -1573,6 +1647,35 @@ def _report_samples(
                 f"(candidate {sample_pass_rate:.2f} {candidate_ci} "
                 f"vs baseline {baseline_rate:.2f} {baseline_ci})"
             )
+        if delta.frozen is not None:
+            frozen = delta.frozen
+            frozen_rate = frozen.tally.passed / frozen.tally.graded if frozen.tally.graded else None
+            pin_line = f"Pinned: n={frozen.tally.requested}"
+            if delta.pin is not None:
+                pin_line += (
+                    f" pinned_head_sha={delta.pin.pinned_head_sha} pinned_at={delta.pin.pinned_at}"
+                )
+            if frozen.attempt_ids:
+                pin_line += "  attempts=" + ",".join(str(i) for i in frozen.attempt_ids)
+            if frozen_rate is not None:
+                frozen_ci = f"[{frozen.tally.ci_lo:.2f}, {frozen.tally.ci_hi:.2f}]"
+                pin_line += f" rate={frozen_rate:.2f} {frozen_ci}"
+            print(pin_line)
+            for note in _baseline_notes(frozen):
+                print(f"  {note}")
+            vs_incumbent_delta_str = "n/a" if delta.delta is None else f"{delta.delta:+.2f}"
+            frozen_delta = (
+                None
+                if sample_pass_rate is None or frozen_rate is None
+                else sample_pass_rate - frozen_rate
+            )
+            frozen_delta_str = "n/a" if frozen_delta is None else f"{frozen_delta:+.2f}"
+            print(
+                f"Arms: vs-incumbent={delta.vs_incumbent} (Δ{vs_incumbent_delta_str}) "
+                f"vs-pin={delta.vs_pin} (Δ{frozen_delta_str}) → {delta.outcome}"
+            )
+            if tally.requested < 6:
+                print(f"  note: {_drift_floor_note(tally.requested)}")
     if prepatch_evidence is not None:
         print(f"Pre-patch check: {prepatch_evidence.get('verdict', 'unknown')}")
     if target_history is not None:
@@ -1614,6 +1717,12 @@ class BaselineDelta:
     when the candidate arm has zero graded samples. Never a banded verdict —
     the run's exit code still comes from ``_band_samples`` on the candidate
     tally alone.
+
+    ENH-3465 D7 widens this additively with the frozen-pin arm: ``frozen``/
+    ``pin`` are set only when a pin exists for the target, in which case
+    ``vs_incumbent``/``vs_pin``/``outcome`` carry the D4/D5 classification.
+    All five default to ``None`` so every existing constructor call (no pin)
+    stays valid and the no-pin report is byte-identical to before.
     """
 
     candidate: SampleTally
@@ -1621,6 +1730,11 @@ class BaselineDelta:
     delta: float | None
     source: str
     head_sha_differs: bool
+    vs_incumbent: str | None = None
+    frozen: BaselineResult | None = None
+    pin: BaselinePin | None = None
+    vs_pin: str | None = None
+    outcome: str | None = None
 
 
 def _resolved_host_cli() -> str | None:
@@ -1706,10 +1820,39 @@ def _baseline_record_extras(args: argparse.Namespace, *, input_hash: str) -> dic
 def _baseline_flag_refusal(
     args: argparse.Namespace, n: int, *, runner: str, file_shaped: bool
 ) -> str | None:
-    """Refuse invalid baseline-flag combinations before any work (ENH-3435, exit 2)."""
+    """Refuse invalid baseline-flag combinations before any work (ENH-3435, exit 2).
+
+    ENH-3465 D6 adds the ``--pin-baseline`` rules: skill-only, mutually
+    exclusive with ``--measure-baseline``/``--compare-baseline``/``--retry-of``,
+    ``n >= 2``, and ``--pin-force``/``--pin-reason`` require ``--pin-baseline``.
+    """
     measure = getattr(args, "measure_baseline", False)
     compare = getattr(args, "compare_baseline", False)
     retry_of = getattr(args, "retry_of", None)
+    pin = getattr(args, "pin_baseline", False)
+    pin_force = getattr(args, "pin_force", False)
+    pin_reason = getattr(args, "pin_reason", None)
+    if pin_force and not pin:
+        return "error: --pin-force requires --pin-baseline"
+    if pin_reason is not None and not pin:
+        return "error: --pin-reason requires --pin-baseline"
+    if pin:
+        if runner != "skill":
+            return f"error: --pin-baseline: not supported on the {runner} runner (skill only)"
+        if measure or compare or retry_of is not None:
+            other = (
+                "--measure-baseline"
+                if measure
+                else "--compare-baseline"
+                if compare
+                else f"--retry-of {retry_of}"
+            )
+            return f"error: --pin-baseline cannot be combined with {other}"
+        if n < 2:
+            return (
+                "error: --pin-baseline: requires n >= 2 (a single-sample pin is "
+                "not a measurement); use --samples N >= 2"
+            )
     if measure and compare:
         return "error: --measure-baseline and --compare-baseline cannot be combined"
     if (measure or compare) and retry_of is not None:
@@ -1813,6 +1956,17 @@ def _baseline_notes(baseline: BaselineResult) -> list[str]:
     return notes
 
 
+def _drift_floor_note(n: int) -> str:
+    """The D4 drift-floor note text, shared by the JSON and text renders (ENH-3465).
+
+    ``drift`` is unreachable below ``n=6`` (exhaustive enumeration, D4), so a
+    pin/compare below that floor can report at most ``regression``/
+    ``inconclusive`` -- never ``drift`` or ``improvement`` in a way that's
+    distinguishable from noise at this sample size.
+    """
+    return f"n={n} is below the drift floor (6); outcome is at most regression/inconclusive"
+
+
 def _run_baseline_phase(
     runner_label: str,
     args: argparse.Namespace,
@@ -1904,6 +2058,268 @@ def _compare_baseline_refusal(key: BaselineKey, conditions: BaselineConditions) 
     return None
 
 
+# ---------------------------------------------------------------------------
+# ENH-3465: the pinned frozen-baseline arm. A pin (D2/D3) records *which*
+# content is frozen; the frozen arm itself is an ordinary BaselineResult read
+# via the existing baseline_for() (D3) -- no second store.
+# ---------------------------------------------------------------------------
+
+ARM_VERDICTS = ("ahead", "behind", "inconclusive")
+PAIR_OUTCOMES = ("improvement", "drift", "regression", "inconclusive")
+
+
+@dataclass(frozen=True)
+class BaselinePin:
+    """A frozen external-baseline pin for one ``skill`` target (ENH-3465 D2/D3/D6).
+
+    ``runner`` is always ``"skill"`` under this issue -- kept as a field so
+    the on-disk shape does not change if other runners gain pins later.
+    ``target_path`` is the repo-relative path, carried so refusal messages
+    can name it for the D8 re-measure procedure.
+    """
+
+    runner: str
+    target: str
+    target_path: str
+    target_content_hash: str
+    pinned_head_sha: str | None
+    pinned_at: str
+    reason: str | None
+    forced: bool
+
+
+def _pin_dir(runner: str, target: str) -> Path | None:
+    """Return the pin-fragment directory for ``(runner, target)``, or None (D6).
+
+    Resolves ``.ll/`` from the project root via :func:`resolve_ll_dir` --
+    never from ``Path.cwd()`` -- so pins land in the same place regardless of
+    which subdirectory the invocation runs from.
+    """
+    ll_dir = resolve_ll_dir()
+    if ll_dir is None:
+        return None
+    return ll_dir / "harness-pins" / f"{runner}--{target}"
+
+
+def read_pin(runner: str, target: str) -> BaselinePin | None:
+    """Return the active pin for ``(runner, target)``, or None (ENH-3465 D6).
+
+    The active pin is the fragment with the greatest ``pinned_at``, ties
+    broken by full filename (deterministic, uuid-ordered rather than
+    write-ordered -- two pins in the same second is not a real workflow).
+    Returns None when no project root resolves, the directory is absent, or
+    every fragment is malformed.
+    """
+    pin_dir = _pin_dir(runner, target)
+    if pin_dir is None or not pin_dir.is_dir():
+        return None
+    best_key: tuple[str, str] | None = None
+    best_pin: BaselinePin | None = None
+    for frag in sorted(pin_dir.glob("*.json")):
+        try:
+            data = json.loads(frag.read_text(encoding="utf-8"))
+            pin = BaselinePin(**data)
+        except (json.JSONDecodeError, TypeError, OSError):
+            continue
+        candidate_key = (pin.pinned_at, frag.name)
+        if best_key is None or candidate_key > best_key:
+            best_key = candidate_key
+            best_pin = pin
+    return best_pin
+
+
+def write_pin(pin: BaselinePin) -> Path:
+    """Write one new pin fragment; never touches existing fragments (ENH-3465 D6).
+
+    One file per entry (the ``.ll/decisions.d/`` convention), so concurrent
+    pins from divergent branches merge cleanly instead of conflicting on a
+    single growing list. Raises ``FileNotFoundError`` when no project root
+    resolves -- callers should have already refused via ``_pin_dir``/
+    ``resolve_ll_dir`` before reaching this point.
+    """
+    pin_dir = _pin_dir(pin.runner, pin.target)
+    if pin_dir is None:
+        raise FileNotFoundError("no project root (.ll/) found")
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    path = pin_dir / f"{stamp}-{uuid.uuid4()}.json"
+    atomic_write_json(path, asdict(pin))
+    return path
+
+
+def _frozen_baseline_refusal(
+    pin: BaselinePin, key: BaselineKey, conditions: BaselineConditions
+) -> str | None:
+    """Pre-run frozen-arm gate: refuse unless the pinned content has rows (ENH-3465 D8).
+
+    A separate function from :func:`_compare_baseline_refusal`: that
+    function's message ("run --measure-baseline on the unmutated subject")
+    is wrong advice here -- once the lineage has moved past the pin, the
+    pinned blob is no longer on disk, so the message spells out the manual
+    re-measure procedure instead (checkout the pinned blob, measure, restore).
+    """
+    baseline = read_baseline(key, conditions)
+    if baseline is None:
+        return (
+            f"error: --compare-baseline: no measured rows for the pinned content "
+            f"{key.target_content_hash} of {key.runner} {key.target} under the "
+            "current conditions; re-measure the pinned content:\n"
+            f"  git show {pin.pinned_head_sha}:{pin.target_path} > {pin.target_path}\n"
+            f"  ll-harness skill {pin.target} --measure-baseline "
+            f"--samples {conditions.n}\n"
+            f"  git checkout -- {pin.target_path}"
+        )
+    return None
+
+
+def _pin_refusal(
+    pin: BaselinePin,
+    active: BaselinePin | None,
+    key: BaselineKey,
+    conditions: BaselineConditions,
+    *,
+    working_hash: str | None,
+    force: bool,
+) -> str | None:
+    """The D6 pin-write gate, evaluated in order (ENH-3465).
+
+    1. Dirty working tree (never bypassed by ``force`` -- a pin of content
+       that cannot be measured on disk is never useful).
+    2. The content being pinned has no full-n measurement under the current
+       input/conditions.
+    3. Re-pinning the same content as the active pin (no-op).
+    4. The active pin has no full-n measurement under the current
+       conditions (the >= comparison below is undefined).
+    5. The new content's measured rate is below the active pin's (the
+       anchor must never move down).
+
+    ``force`` bypasses 2-5, never 1.
+    """
+    if working_hash != pin.target_content_hash:
+        return (
+            "error: --pin-baseline: target is modified in the working tree; "
+            f"commit or `git checkout -- {pin.target_path}` before pinning"
+        )
+    new_measurement = read_baseline(key, conditions)
+    if new_measurement is None and not force:
+        return _frozen_baseline_refusal(pin, key, conditions)
+    if active is None:
+        return None
+    if active.target_content_hash == pin.target_content_hash:
+        if force:
+            return None
+        return (
+            f"error: --pin-baseline: content {pin.target_content_hash} is "
+            "already the active pin (no-op); use --pin-force to write anyway"
+        )
+    active_key = BaselineKey(pin.runner, pin.target, key.input_hash, active.target_content_hash)
+    active_measurement = read_baseline(active_key, conditions)
+    if active_measurement is None:
+        if force:
+            return None
+        return _frozen_baseline_refusal(active, active_key, conditions)
+    if force:
+        return None
+    active_rate = active_measurement.tally.passed / active_measurement.tally.graded
+    if new_measurement is not None:
+        new_rate = new_measurement.tally.passed / new_measurement.tally.graded
+        if new_rate < active_rate:
+            return (
+                f"error: --pin-baseline: new content's measured pass rate "
+                f"({new_rate:.2f}) is below the active pin's ({active_rate:.2f}); "
+                "the anchor must not move down; use --pin-force to override "
+                "or re-pin at a larger --samples"
+            )
+    return None
+
+
+def _run_pin_phase(
+    target: str,
+    target_path: Path,
+    key: BaselineKey,
+    conditions: BaselineConditions,
+    head_sha: str | None,
+    args: argparse.Namespace,
+) -> int:
+    """Write a new frozen-baseline pin for a ``skill`` target (ENH-3465 D6).
+
+    No subject invocation and no ``harness_events`` write on either path --
+    a pin only ever reads existing rows and writes a pin fragment.
+    """
+    if resolve_ll_dir() is None:
+        print(
+            "error: --pin-baseline: no project root (.ll/) found; run from inside the project",
+            file=sys.stderr,
+        )
+        return 2
+    active = read_pin("skill", target)
+    force = bool(getattr(args, "pin_force", False))
+    candidate = BaselinePin(
+        runner="skill",
+        target=target,
+        target_path=str(target_path),
+        target_content_hash=key.target_content_hash,
+        pinned_head_sha=head_sha,
+        pinned_at=_now_iso(),
+        reason=getattr(args, "pin_reason", None),
+        forced=force,
+    )
+    refusal = _pin_refusal(
+        candidate,
+        active,
+        key,
+        conditions,
+        working_hash=_hash_file(target_path),
+        force=force,
+    )
+    if refusal is not None:
+        print(refusal, file=sys.stderr)
+        return 2
+    path = write_pin(candidate)
+    if args.output == "json":
+        print_json({"pin": asdict(candidate)})
+    else:
+        print(
+            f"Pinned {target} at {candidate.target_content_hash} "
+            f"(head {candidate.pinned_head_sha}); wrote {path}"
+        )
+    return 0
+
+
+def _arm_verdict(candidate: SampleTally, arm: SampleTally) -> str:
+    """Classify one arm from a Newcombe difference interval, not CI overlap (ENH-3465 D4).
+
+    Reads only ``passed``/``graded`` -- never ``ci_lo``/``ci_hi``, which are
+    ``None`` until :func:`_report_samples` assigns them, after this is
+    called. A zero-graded tally on either side is ``inconclusive`` (checked
+    before calling ``proportion_diff_ci``, which raises on ``n <= 0``).
+    """
+    if candidate.graded == 0 or arm.graded == 0:
+        return "inconclusive"
+    lower, upper = proportion_diff_ci(candidate.passed, candidate.graded, arm.passed, arm.graded)
+    if lower > 0:
+        return "ahead"
+    if upper < 0:
+        return "behind"
+    return "inconclusive"
+
+
+def _pair_outcome(vs_incumbent: str, vs_pin: str) -> str:
+    """Combine the two arm verdicts into one named outcome (ENH-3465 D5).
+
+    Precedence: ``drift`` (ahead of the incumbent, behind the pin -- the
+    lineage-local-optimum signal this issue exists to surface) before
+    ``regression`` (behind *either* arm) before ``improvement`` (ahead of
+    both) before ``inconclusive``.
+    """
+    if vs_incumbent == "ahead" and vs_pin == "behind":
+        return "drift"
+    if vs_incumbent == "behind" or vs_pin == "behind":
+        return "regression"
+    if vs_incumbent == "ahead" and vs_pin == "ahead":
+        return "improvement"
+    return "inconclusive"
+
+
 def _run_compare_arm(
     runner_label: str,
     args: argparse.Namespace,
@@ -1912,6 +2328,9 @@ def _run_compare_arm(
     record: Callable[[RunnerResult, int, HarnessEvalOutcome], int | None],
     baseline: BaselineResult | None,
     head_sha: str | None,
+    *,
+    frozen: BaselineResult | None = None,
+    pin: BaselinePin | None = None,
 ) -> int:
     """Run the candidate arm and report the delta against *baseline* (ENH-3435).
 
@@ -1920,6 +2339,9 @@ def _run_compare_arm(
     here would mean the candidate rows the next baseline reuses silently
     never landed). The exit code comes from the candidate tally's banding
     alone; the delta is additive report content.
+
+    ENH-3465: *frozen*/*pin* are set only when a pin exists for the target;
+    the candidate is still sampled exactly once (D4/AC7) regardless.
     """
     assert baseline is not None  # the pre-run gate refused when None
     try:
@@ -1929,12 +2351,24 @@ def _run_compare_arm(
         return 1
     candidate_rate = res.tally.passed / res.tally.graded if res.tally.graded else None
     baseline_rate = baseline.tally.passed / baseline.tally.graded
+    vs_incumbent: str | None = None
+    vs_pin: str | None = None
+    outcome: str | None = None
+    if frozen is not None:
+        vs_incumbent = _arm_verdict(res.tally, baseline.tally)
+        vs_pin = _arm_verdict(res.tally, frozen.tally)
+        outcome = _pair_outcome(vs_incumbent, vs_pin)
     delta = BaselineDelta(
         candidate=res.tally,
         baseline=baseline,
         delta=None if candidate_rate is None else candidate_rate - baseline_rate,
         source=baseline.source,
         head_sha_differs=baseline.head_sha is not None and baseline.head_sha != head_sha,
+        vs_incumbent=vs_incumbent,
+        frozen=frozen,
+        pin=pin,
+        vs_pin=vs_pin,
+        outcome=outcome,
     )
     _report_samples(
         runner_label,
@@ -2248,18 +2682,45 @@ def cmd_skill(args: argparse.Namespace) -> int:
     if baseline_refusal is not None:
         print(baseline_refusal, file=sys.stderr)
         return 2
-    refusal = _retry_gate(retry_of, cell_key)
-    if refusal is not None:
-        print(refusal, file=sys.stderr)
-        return 1
     skill_path = _resolve_skill_target_path(args.target)
     target_path_str = str(skill_path) if skill_path is not None else None
     target_hash = _hash_file(skill_path) if skill_path is not None else None
     measure_baseline = getattr(args, "measure_baseline", False)
     compare_baseline = getattr(args, "compare_baseline", False)
+    pin_baseline = getattr(args, "pin_baseline", False)
     input_hash = _input_hash(runner_args)
     baseline_mode = bool(measure_baseline or compare_baseline)
     record_extras = _baseline_record_extras(args, input_hash=input_hash) if baseline_mode else {}
+
+    # ENH-3465: --pin-baseline never invokes the subject or writes a
+    # harness_events row, so it is handled before the retry gate (which only
+    # matters to invocations that do) -- mirroring the ENH-3435 rationale
+    # above for --measure-baseline/--compare-baseline.
+    if pin_baseline:
+        if skill_path is None:
+            print(
+                f"error: --pin-baseline: cannot resolve target path for skill {args.target}",
+                file=sys.stderr,
+            )
+            return 2
+        incumbent = _incumbent_content_hash(skill_path)
+        if incumbent is None:
+            print(
+                f"error: --pin-baseline: cannot resolve incumbent content for "
+                f"skill {args.target} (git cat-file blob HEAD:<target> unavailable — "
+                "untracked file or no git repo)",
+                file=sys.stderr,
+            )
+            return 2
+        pin_key = BaselineKey("skill", args.target, input_hash, incumbent)
+        return _run_pin_phase(
+            args.target, skill_path, pin_key, _baseline_conditions(args, n), head_sha, args
+        )
+
+    refusal = _retry_gate(retry_of, cell_key)
+    if refusal is not None:
+        print(refusal, file=sys.stderr)
+        return 1
 
     def _invoke() -> tuple[RunnerResult, int]:
         spec = ActionSpec(
@@ -2346,8 +2807,32 @@ def cmd_skill(args: argparse.Namespace) -> int:
         if cmp_refusal is not None:
             print(cmp_refusal, file=sys.stderr)
             return 2
+        incumbent_result = read_baseline(resolved, conditions)
+        # ENH-3465: attach the frozen pin arm, on both the HEAD-resolved and
+        # --baseline-of incumbent paths (D8/AC4). A pin whose content equals
+        # the incumbent's reuses that same result rather than a second query.
+        pin = read_pin("skill", args.target)
+        frozen: BaselineResult | None = None
+        if pin is not None:
+            if pin.target_content_hash == resolved.target_content_hash:
+                frozen = incumbent_result
+            else:
+                pinned_key = BaselineKey("skill", args.target, input_hash, pin.target_content_hash)
+                frozen_refusal = _frozen_baseline_refusal(pin, pinned_key, conditions)
+                if frozen_refusal is not None:
+                    print(frozen_refusal, file=sys.stderr)
+                    return 2
+                frozen = read_baseline(pinned_key, conditions)
         return _run_compare_arm(
-            runner_label, args, n, _invoke, _record, read_baseline(resolved, conditions), head_sha
+            runner_label,
+            args,
+            n,
+            _invoke,
+            _record,
+            incumbent_result,
+            head_sha,
+            frozen=frozen,
+            pin=pin,
         )
 
     if n > 1:
@@ -2756,11 +3241,18 @@ def cmd_dsl(args: argparse.Namespace) -> int:  # noqa: PLR0912, PLR0915 — grad
     # ENH-3435 Scope Boundaries: a DSL baseline arm is a task-set-breadth
     # question, not a repetition-depth one (the dsl runner has no per-task n
     # of the shape the baseline phase needs), so both flags are refused here;
-    # a follow-up issue defines the DSL baseline arm.
-    if getattr(args, "measure_baseline", False) or getattr(args, "compare_baseline", False):
+    # a follow-up issue defines the DSL baseline arm. ENH-3465: --pin-baseline
+    # is skill-only for the same reason (no stable target-name-plus-content
+    # identity to pin), refused here too.
+    if (
+        getattr(args, "measure_baseline", False)
+        or getattr(args, "compare_baseline", False)
+        or getattr(args, "pin_baseline", False)
+    ):
         print(
-            "error: --measure-baseline/--compare-baseline: not supported on the dsl "
-            "runner (a DSL baseline arm is a follow-up)",
+            "error: --measure-baseline/--compare-baseline/--pin-baseline: not "
+            "supported on the dsl runner (a DSL baseline arm is a follow-up; "
+            "--pin-baseline is skill-only)",
             file=sys.stderr,
         )
         return 2

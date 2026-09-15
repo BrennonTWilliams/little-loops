@@ -14,10 +14,14 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from little_loops.cli.harness import (
+    BaselinePin,
     ChannelRecord,
+    SampleTally,
+    _arm_verdict,
     _channels_json,
     _check_side_effects,
     _grade,
+    _pair_outcome,
     _parse_harness_args,
     _run_sample_loop,
     _snapshot_side_effects,
@@ -27,6 +31,8 @@ from little_loops.cli.harness import (
     cmd_prompt,
     cmd_skill,
     main_harness,
+    read_pin,
+    write_pin,
 )
 from little_loops.fsm.evaluators import EvaluationResult
 from little_loops.host_runner import HostInvocation
@@ -2928,6 +2934,118 @@ class TestBaselineFlagRefusals:
         assert "--baseline-of 4242" in capsys.readouterr().err
 
 
+class TestPinBaselineFlagRefusals:
+    """ENH-3465 D6/AC2/AC3: --pin-baseline flag-combination refusals, all exit 2."""
+
+    def test_pin_force_without_pin_baseline_refused(self, capsys: pytest.CaptureFixture) -> None:
+        args = _make_namespace(runner="skill", target="check-code", runner_args=[], pin_force=True)
+        with patch("little_loops.cli.harness.run_action") as mock_run:
+            result = cmd_skill(args)
+        assert result == 2
+        mock_run.assert_not_called()
+        assert "--pin-force requires --pin-baseline" in capsys.readouterr().err
+
+    def test_pin_reason_without_pin_baseline_refused(self, capsys: pytest.CaptureFixture) -> None:
+        args = _make_namespace(
+            runner="skill", target="check-code", runner_args=[], pin_reason="why"
+        )
+        with patch("little_loops.cli.harness.run_action") as mock_run:
+            result = cmd_skill(args)
+        assert result == 2
+        mock_run.assert_not_called()
+        assert "--pin-reason requires --pin-baseline" in capsys.readouterr().err
+
+    def test_pin_combined_with_measure_refused(self, capsys: pytest.CaptureFixture) -> None:
+        args = _make_namespace(
+            runner="skill",
+            target="check-code",
+            runner_args=[],
+            pin_baseline=True,
+            measure_baseline=True,
+            samples=3,
+        )
+        with patch("little_loops.cli.harness.run_action") as mock_run:
+            result = cmd_skill(args)
+        assert result == 2
+        mock_run.assert_not_called()
+        assert "cannot be combined" in capsys.readouterr().err
+
+    def test_pin_combined_with_compare_refused(self, capsys: pytest.CaptureFixture) -> None:
+        args = _make_namespace(
+            runner="skill",
+            target="check-code",
+            runner_args=[],
+            pin_baseline=True,
+            compare_baseline=True,
+            samples=3,
+        )
+        with patch("little_loops.cli.harness.run_action") as mock_run:
+            result = cmd_skill(args)
+        assert result == 2
+        mock_run.assert_not_called()
+        assert "cannot be combined" in capsys.readouterr().err
+
+    def test_pin_combined_with_retry_of_refused(self, capsys: pytest.CaptureFixture) -> None:
+        args = _make_namespace(
+            runner="skill",
+            target="check-code",
+            runner_args=[],
+            pin_baseline=True,
+            retry_of=1,
+        )
+        with patch("little_loops.cli.harness.run_action") as mock_run:
+            result = cmd_skill(args)
+        assert result == 2
+        mock_run.assert_not_called()
+        assert "cannot be combined" in capsys.readouterr().err
+
+    def test_pin_at_samples_1_refused(self, capsys: pytest.CaptureFixture) -> None:
+        args = _make_namespace(
+            runner="skill", target="check-code", runner_args=[], pin_baseline=True, samples=1
+        )
+        with patch("little_loops.cli.harness.run_action") as mock_run:
+            result = cmd_skill(args)
+        assert result == 2
+        mock_run.assert_not_called()
+        assert "n >= 2" in capsys.readouterr().err
+
+    def test_pin_on_cmd_runner_refused(self, capsys: pytest.CaptureFixture) -> None:
+        args = _make_namespace(runner="cmd", target="echo hi", pin_baseline=True, samples=3)
+        with patch("little_loops.cli.harness.run_action") as mock_run:
+            result = cmd_cmd(args)
+        assert result == 2
+        mock_run.assert_not_called()
+        assert "skill only" in capsys.readouterr().err
+
+    def test_pin_on_mcp_runner_refused(self, capsys: pytest.CaptureFixture) -> None:
+        args = _make_namespace(
+            runner="mcp", target="srv:tool", mcp_args="{}", pin_baseline=True, samples=3
+        )
+        with patch("little_loops.cli.harness.run_action") as mock_run:
+            result = cmd_mcp(args)
+        assert result == 2
+        mock_run.assert_not_called()
+        assert "skill only" in capsys.readouterr().err
+
+    def test_pin_on_prompt_runner_refused(self, capsys: pytest.CaptureFixture) -> None:
+        args = _make_namespace(runner="prompt", target="hello", pin_baseline=True, samples=3)
+        with patch("little_loops.cli.harness.run_action") as mock_run:
+            result = cmd_prompt(args)
+        assert result == 2
+        mock_run.assert_not_called()
+        assert "skill only" in capsys.readouterr().err
+
+    def test_pin_on_dsl_runner_refused(self, capsys: pytest.CaptureFixture, tmp_path: Path) -> None:
+        task_file = tmp_path / "task.yaml"
+        task_file.write_text(
+            "prompt: hi\nblanks: []\nexpected: {}\nsource_dsl: loop\ntask_type: t\n"
+        )
+        args = _make_namespace(runner="dsl", path=str(task_file), samples=1, pin_baseline=True)
+        result = cmd_dsl(args)
+        assert result == 2
+        assert "not supported on the dsl runner" in capsys.readouterr().err
+
+
 class TestBaselineMeasure:
     """AC1: --measure-baseline records condition-complete rows, reuses, stays loud."""
 
@@ -3246,6 +3364,290 @@ class TestBaselineCompare:
         assert result == 2  # ERROR band on the candidate tally alone
         out = capsys.readouterr().out
         assert "Delta: n/a" in out
+
+
+def _tally(requested: int, passed: int, graded: int | None = None) -> SampleTally:
+    """Build a SampleTally with ci_lo/ci_hi left None (ENH-3465 D4: _arm_verdict must
+    classify correctly without them -- they're only assigned in _report_samples)."""
+    g = requested if graded is None else graded
+    return SampleTally(requested=requested, graded=g, passed=passed, failed=g - passed)
+
+
+class TestArmVerdict:
+    """ENH-3465 D4: _arm_verdict() classifies from a Newcombe difference interval."""
+
+    def test_three_of_three_vs_zero_of_three_is_ahead(self) -> None:
+        """The case the old CI-overlap rule got wrong (disjoint-interval test says
+        inconclusive here; the Newcombe difference interval says ahead)."""
+        assert _arm_verdict(_tally(3, 3), _tally(3, 0)) == "ahead"
+
+    def test_zero_of_three_vs_three_of_three_is_behind(self) -> None:
+        assert _arm_verdict(_tally(3, 0), _tally(3, 3)) == "behind"
+
+    def test_two_of_three_vs_one_of_three_is_inconclusive(self) -> None:
+        assert _arm_verdict(_tally(3, 2), _tally(3, 1)) == "inconclusive"
+
+    def test_zero_graded_candidate_is_inconclusive(self) -> None:
+        assert _arm_verdict(_tally(3, 0, graded=0), _tally(3, 3)) == "inconclusive"
+
+    def test_zero_graded_arm_is_inconclusive(self) -> None:
+        assert _arm_verdict(_tally(3, 3), _tally(3, 0, graded=0)) == "inconclusive"
+
+
+class TestPairOutcome:
+    """ENH-3465 D5: the full (vs_incumbent, vs_pin) -> outcome table."""
+
+    @pytest.mark.parametrize(
+        ("vs_incumbent", "vs_pin", "expected"),
+        [
+            ("ahead", "ahead", "improvement"),
+            ("ahead", "behind", "drift"),
+            ("ahead", "inconclusive", "inconclusive"),
+            ("behind", "ahead", "regression"),
+            ("behind", "behind", "regression"),
+            ("behind", "inconclusive", "regression"),
+            ("inconclusive", "ahead", "inconclusive"),
+            ("inconclusive", "behind", "regression"),
+            ("inconclusive", "inconclusive", "inconclusive"),
+        ],
+    )
+    def test_full_table(self, vs_incumbent: str, vs_pin: str, expected: str) -> None:
+        assert _pair_outcome(vs_incumbent, vs_pin) == expected
+
+
+class TestDriftReachability:
+    """ENH-3465 D4: `drift` is unreachable at n<=5 (measured 2026-09-15); first
+    reachable at n=6. Guards the sample-size floor from silently moving."""
+
+    def test_no_drift_cell_at_n3(self) -> None:
+        n = 3
+        for cand in range(n + 1):
+            for inc in range(n + 1):
+                for pin in range(n + 1):
+                    vs_incumbent = _arm_verdict(_tally(n, cand), _tally(n, inc))
+                    vs_pin = _arm_verdict(_tally(n, cand), _tally(n, pin))
+                    assert _pair_outcome(vs_incumbent, vs_pin) != "drift", (cand, inc, pin)
+
+    def test_drift_reachable_at_n6(self) -> None:
+        n = 6
+        vs_incumbent = _arm_verdict(_tally(n, 3), _tally(n, 0))
+        vs_pin = _arm_verdict(_tally(n, 3), _tally(n, 6))
+        assert vs_incumbent == "ahead"
+        assert vs_pin == "behind"
+        assert _pair_outcome(vs_incumbent, vs_pin) == "drift"
+
+
+def _init_pin_repo(tmp_path: Path, skill_rel: str = "SKILL.md", content: str = "# v1\n") -> Path:
+    """A real git repo with a `.ll/` marker and one committed skill file (ENH-3465).
+
+    Mirrors ``TestIncumbentContentHashRealGit``'s real-git precedent: pin logic
+    calls the real ``_incumbent_content_hash``/``resolve_ll_dir`` (not mocked),
+    so the fixture needs both a real ``.git`` and a real ``.ll`` for
+    ``find_project_root`` to resolve a root.
+    """
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "config", "user.email", "t@example.com"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=tmp_path, check=True)
+    (tmp_path / ".ll").mkdir(exist_ok=True)
+    skill_path = tmp_path / skill_rel
+    skill_path.write_text(content)
+    subprocess.run(["git", "add", skill_rel], cwd=tmp_path, check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=tmp_path, check=True)
+    return skill_path
+
+
+class TestDualArmCompare:
+    """ENH-3465 AC4/AC5/AC6/AC7/AC8: --compare-baseline attaches the frozen pin arm."""
+
+    @pytest.fixture(autouse=True)
+    def _stub_git(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Any:
+        monkeypatch.chdir(tmp_path)  # read_pin/write_pin resolve .ll/ from real cwd
+        (tmp_path / ".ll").mkdir()
+        self.skill_file = tmp_path / "SKILL.md"
+        self.skill_file.write_text("# mutated\n")
+        self.incumbent_hash = _hash_of("# incumbent\n")
+        self.pinned_hash = _hash_of("# pinned\n")
+        git = _make_git_stub(head="sha0", toplevel=str(tmp_path))
+        git_blob = _make_git_blob_stub("# incumbent\n")
+        with (
+            patch("little_loops.cli.harness._git_output", side_effect=git),
+            patch("little_loops.cli.harness._git_blob", side_effect=git_blob),
+            patch("little_loops.cli.harness._git_dirty", return_value=False),
+        ):
+            yield
+
+    def _skill_args(self, **kwargs: Any) -> Any:
+        defaults = {
+            "runner": "skill",
+            "target": "check-code",
+            "runner_args": [],
+            "compare_baseline": True,
+            "samples": 3,
+        }
+        defaults.update(kwargs)
+        return _make_namespace(**defaults)
+
+    def _seed(self, args: Any, content_hash: str, *, n: int, passed: bool) -> None:
+        for i in range(n):
+            _seed_baseline_row(
+                runner="skill",
+                target="check-code",
+                content_hash=content_hash,
+                conditions_fp=_baseline_fp(args),
+                passed=passed,
+                ts=f"2026-09-1{'0' if content_hash == self.incumbent_hash else '1'}T00:00:{i:02d}Z",
+            )
+
+    def _write_pin(self, content_hash: str) -> None:
+        write_pin(
+            BaselinePin(
+                runner="skill",
+                target="check-code",
+                target_path=str(self.skill_file),
+                target_content_hash=content_hash,
+                pinned_head_sha="pinsha",
+                pinned_at="2026-09-01T00:00:00Z",
+                reason=None,
+                forced=False,
+            )
+        )
+
+    def _run_compare(self, args: Any, results: list[Any] | None = None):
+        n = getattr(args, "samples", 3)
+        calls = results or [_make_completed(returncode=0, stdout="ok") for _ in range(n)]
+        with (
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
+            patch("subprocess.run", side_effect=calls) as mock_run,
+            patch(
+                "little_loops.cli.harness._resolve_skill_target_path",
+                return_value=self.skill_file,
+            ),
+        ):
+            result = cmd_skill(args)
+        return result, mock_run
+
+    def test_no_pin_report_unaffected(self, capsys: pytest.CaptureFixture) -> None:
+        """D7: without a pin, the report has no Arms:/Pinned: lines or dual keys."""
+        args = self._skill_args(output="json")
+        self._seed(args, self.incumbent_hash, n=3, passed=False)
+        result, _ = self._run_compare(args)
+        assert result == 0
+        payload = json.loads(capsys.readouterr().out.strip())
+        assert "frozen" not in payload["baseline"]
+        assert "outcome" not in payload["baseline"]
+
+    def test_dual_arm_improvement_reported_in_text(self, capsys: pytest.CaptureFixture) -> None:
+        args = self._skill_args()
+        self._seed(args, self.incumbent_hash, n=3, passed=False)  # incumbent 0/3
+        self._seed(args, self.pinned_hash, n=3, passed=False)  # pin 0/3
+        self._write_pin(self.pinned_hash)
+        result, mock_run = self._run_compare(args)  # candidate 3/3
+        assert result == 0
+        assert mock_run.call_count == 3  # AC7: sampled exactly once
+        out = capsys.readouterr().out
+        assert "Arms: vs-incumbent=ahead" in out
+        assert "vs-pin=ahead" in out
+        assert "→ improvement" in out
+        assert "Pinned: n=3" in out
+        assert "(measured at a different HEAD)" not in out.split("Pinned:")[1].split("\n")[0]
+
+    def test_dual_arm_json_payload_shape(self) -> None:
+        args = self._skill_args(output="json")
+        self._seed(args, self.incumbent_hash, n=3, passed=False)
+        self._seed(args, self.pinned_hash, n=3, passed=False)
+        self._write_pin(self.pinned_hash)
+        import io
+        import sys as _sys
+
+        buf = io.StringIO()
+        old_stdout = _sys.stdout
+        _sys.stdout = buf
+        try:
+            result, _ = self._run_compare(args)
+        finally:
+            _sys.stdout = old_stdout
+        assert result == 0
+        payload = json.loads(buf.getvalue().strip())
+        baseline = payload["baseline"]
+        assert baseline["vs_incumbent"] == "ahead"
+        assert baseline["vs_pin"] == "ahead"
+        assert baseline["outcome"] == "improvement"
+        frozen = baseline["frozen"]
+        assert frozen["delta"] == 1.0  # 3/3 candidate vs 0/3 pin
+        assert frozen["pinned_head_sha"] == "pinsha"
+        assert frozen["forced"] is False
+        assert "head_sha_differs" not in frozen
+
+    def test_drift_outcome_reported(self, capsys: pytest.CaptureFixture) -> None:
+        """AC6: ahead of the incumbent, behind the pin -> outcome: drift."""
+        args = self._skill_args(samples=6, exit_code=0)
+        self._seed(args, self.incumbent_hash, n=6, passed=False)  # incumbent 0/6
+        self._seed(args, self.pinned_hash, n=6, passed=True)  # pin 6/6
+        self._write_pin(self.pinned_hash)
+        calls = [_make_completed(returncode=0 if i < 3 else 1) for i in range(6)]  # candidate 3/6
+        result, mock_run = self._run_compare(args, results=calls)
+        assert mock_run.call_count == 6
+        out = capsys.readouterr().out
+        assert "vs-incumbent=ahead" in out
+        assert "vs-pin=behind" in out
+        assert "→ drift" in out
+        assert "drift floor" not in out  # n=6 clears the floor
+
+    def test_drift_floor_note_below_n6(self, capsys: pytest.CaptureFixture) -> None:
+        args = self._skill_args(samples=3)  # below the n>=6 drift floor
+        self._seed(args, self.incumbent_hash, n=3, passed=False)
+        self._seed(args, self.pinned_hash, n=3, passed=False)
+        self._write_pin(self.pinned_hash)
+        self._run_compare(args)
+        out = capsys.readouterr().out
+        assert "drift floor" in out
+
+    def test_frozen_arm_refused_when_pin_unmeasured(self, capsys: pytest.CaptureFixture) -> None:
+        args = self._skill_args()
+        self._seed(args, self.incumbent_hash, n=3, passed=False)  # incumbent measured
+        self._write_pin(self.pinned_hash)  # pin present, but never measured
+        result, mock_run = self._run_compare(args)
+        assert result == 2
+        mock_run.assert_not_called()
+        err = capsys.readouterr().err
+        assert "git show" in err
+        assert "pinsha" in err
+
+    def test_baseline_of_with_pin_attaches_frozen_arm(self, capsys: pytest.CaptureFixture) -> None:
+        """D8: --baseline-of still attaches the frozen pin arm."""
+        args = self._skill_args()
+        attempt_id = _seed_baseline_row(
+            runner="skill",
+            target="check-code",
+            content_hash=self.incumbent_hash,
+            conditions_fp=_baseline_fp(args),
+        )
+        for i in range(2):
+            _seed_baseline_row(
+                runner="skill",
+                target="check-code",
+                content_hash=self.incumbent_hash,
+                conditions_fp=_baseline_fp(args),
+                ts=f"2026-09-10T00:01:{i:02d}Z",
+            )
+        self._seed(args, self.pinned_hash, n=3, passed=False)
+        self._write_pin(self.pinned_hash)
+        baseline_of_args = self._skill_args(baseline_of=attempt_id)
+        result, _ = self._run_compare(baseline_of_args)
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "Arms:" in out
+        assert "Pinned:" in out
+
+    def test_pin_matching_incumbent_reuses_result(self, capsys: pytest.CaptureFixture) -> None:
+        """When the pin's content equals the incumbent's, no second DB query is needed."""
+        args = self._skill_args()
+        self._seed(args, self.incumbent_hash, n=3, passed=True)
+        self._write_pin(self.incumbent_hash)  # pin == incumbent content
+        result, _ = self._run_compare(args)
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "Arms:" in out
 
 
 class TestBaselineIncumbentResolution:
@@ -3657,6 +4059,191 @@ class TestBaselineFlaglessUnchanged:
             _conditions_fp(with_timeout),
         }
         assert len(fps) == 4
+
+
+def _pin_args(**kwargs: Any) -> Any:
+    return _make_namespace(
+        runner="skill",
+        target="check-code",
+        runner_args=[],
+        pin_baseline=True,
+        samples=2,
+        output="text",
+        **kwargs,
+    )
+
+
+class TestPinBaselineCli:
+    """ENH-3465 AC1/AC2: `ll-harness skill <target> --pin-baseline` end to end.
+
+    Uses a real git repo + real ``.ll/`` (mirrors ``TestIncumbentContentHashRealGit``):
+    pin logic calls the real ``resolve_ll_dir``/``_incumbent_content_hash``, not
+    mocked. The isolated-history-db fixture (``_isolate_history_db``) points
+    ``LL_HISTORY_DB`` at ``tmp_path/.ll/history.db`` whenever a test requests
+    ``tmp_path`` -- the same root ``resolve_ll_dir()`` walks to from a chdir'd cwd.
+    """
+
+    def _measure_and_seed(
+        self, args: Any, content_hash: str, *, n: int = 2, passed: bool = True
+    ) -> None:
+        for i in range(n):
+            _seed_baseline_row(
+                runner="skill",
+                target="check-code",
+                content_hash=content_hash,
+                conditions_fp=_baseline_fp(args),
+                passed=passed,
+                ts=f"2026-09-15T00:00:{i:02d}Z",
+            )
+
+    def test_write_refused_when_content_unmeasured(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+    ) -> None:
+        skill_path = _init_pin_repo(tmp_path, content="# v1\n")
+        monkeypatch.chdir(tmp_path)
+        args = _pin_args()
+        with patch("little_loops.cli.harness._resolve_skill_target_path", return_value=skill_path):
+            result = cmd_skill(args)
+        assert result == 2
+        err = capsys.readouterr().err
+        assert "git show" in err
+        assert "--measure-baseline" in err
+        assert "--samples" in err
+        assert read_pin("skill", "check-code") is None
+
+    def test_write_succeeds_after_measurement(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+    ) -> None:
+        skill_path = _init_pin_repo(tmp_path, content="# v1\n")
+        monkeypatch.chdir(tmp_path)
+        args = _pin_args()
+        self._measure_and_seed(args, _hash_of("# v1\n"))
+        with patch("little_loops.cli.harness._resolve_skill_target_path", return_value=skill_path):
+            result = cmd_skill(args)
+        assert result == 0
+        assert "Pinned" in capsys.readouterr().out
+        pin = read_pin("skill", "check-code")
+        assert pin is not None
+        assert pin.target_content_hash == _hash_of("# v1\n")
+        assert pin.forced is False
+
+    def test_write_refused_with_dirty_working_tree_even_with_force(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+    ) -> None:
+        skill_path = _init_pin_repo(tmp_path, content="# v1\n")
+        skill_path.write_text("# mutated, uncommitted\n")  # working tree now differs from HEAD
+        monkeypatch.chdir(tmp_path)
+        args = _pin_args(pin_force=True)
+        self._measure_and_seed(args, _hash_of("# v1\n"))
+        with patch("little_loops.cli.harness._resolve_skill_target_path", return_value=skill_path):
+            result = cmd_skill(args)
+        assert result == 2
+        assert "modified in the working tree" in capsys.readouterr().err
+        assert read_pin("skill", "check-code") is None
+
+    def test_write_refused_with_no_project_root(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+    ) -> None:
+        subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+        subprocess.run(["git", "config", "user.email", "t@example.com"], cwd=tmp_path, check=True)
+        subprocess.run(["git", "config", "user.name", "Test"], cwd=tmp_path, check=True)
+        skill_path = tmp_path / "SKILL.md"
+        skill_path.write_text("# v1\n")
+        subprocess.run(["git", "add", "SKILL.md"], cwd=tmp_path, check=True)
+        subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=tmp_path, check=True)
+        monkeypatch.chdir(tmp_path)  # no .ll/ anywhere above this tree
+        args = _pin_args()
+        with patch("little_loops.cli.harness._resolve_skill_target_path", return_value=skill_path):
+            result = cmd_skill(args)
+        assert result == 2
+        assert "no project root" in capsys.readouterr().err
+
+    def test_second_pin_adds_fragment_without_touching_first(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        skill_path = _init_pin_repo(tmp_path, content="# v1\n")
+        monkeypatch.chdir(tmp_path)
+        args = _pin_args()
+        self._measure_and_seed(args, _hash_of("# v1\n"), passed=True)
+        with (
+            patch("little_loops.cli.harness._resolve_skill_target_path", return_value=skill_path),
+            patch(
+                "little_loops.cli.harness._now_iso",
+                side_effect=["2026-01-01T00:00:00Z", "2026-01-01T00:00:01Z"],
+            ),
+        ):
+            assert cmd_skill(args) == 0
+            skill_path.write_text("# v2\n")
+            subprocess.run(["git", "add", "SKILL.md"], cwd=tmp_path, check=True)
+            subprocess.run(["git", "commit", "-q", "-m", "v2"], cwd=tmp_path, check=True)
+            self._measure_and_seed(args, _hash_of("# v2\n"), passed=True)
+            assert cmd_skill(args) == 0
+
+        pin_dir = tmp_path / ".ll" / "harness-pins" / "skill--check-code"
+        fragments = sorted(pin_dir.glob("*.json"))
+        assert len(fragments) == 2
+        first_bytes = fragments[0].read_bytes()
+        active = read_pin("skill", "check-code")
+        assert active is not None
+        assert active.target_content_hash == _hash_of("# v2\n")
+        assert fragments[0].read_bytes() == first_bytes  # untouched by the second write
+
+    def test_repin_same_content_refused_as_noop(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+    ) -> None:
+        skill_path = _init_pin_repo(tmp_path, content="# v1\n")
+        monkeypatch.chdir(tmp_path)
+        args = _pin_args()
+        self._measure_and_seed(args, _hash_of("# v1\n"))
+        with patch("little_loops.cli.harness._resolve_skill_target_path", return_value=skill_path):
+            assert cmd_skill(args) == 0
+            result = cmd_skill(args)  # same HEAD content, re-pin attempt
+        assert result == 2
+        assert "no-op" in capsys.readouterr().err
+
+    def test_repin_refused_when_new_rate_below_active(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+    ) -> None:
+        skill_path = _init_pin_repo(tmp_path, content="# v1\n")
+        monkeypatch.chdir(tmp_path)
+        args = _pin_args()
+        self._measure_and_seed(args, _hash_of("# v1\n"), passed=True)  # active rate 1.0
+        with patch("little_loops.cli.harness._resolve_skill_target_path", return_value=skill_path):
+            assert cmd_skill(args) == 0
+            skill_path.write_text("# v2\n")
+            subprocess.run(["git", "add", "SKILL.md"], cwd=tmp_path, check=True)
+            subprocess.run(["git", "commit", "-q", "-m", "v2"], cwd=tmp_path, check=True)
+            self._measure_and_seed(args, _hash_of("# v2\n"), passed=False)  # rate 0.0 < 1.0
+            result = cmd_skill(args)
+        assert result == 2
+        assert "below the active pin's" in capsys.readouterr().err
+        assert read_pin("skill", "check-code").target_content_hash == _hash_of("# v1\n")
+
+    def test_repin_force_overrides_monotonicity(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        skill_path = _init_pin_repo(tmp_path, content="# v1\n")
+        monkeypatch.chdir(tmp_path)
+        args = _pin_args()
+        self._measure_and_seed(args, _hash_of("# v1\n"), passed=True)
+        with (
+            patch("little_loops.cli.harness._resolve_skill_target_path", return_value=skill_path),
+            patch(
+                "little_loops.cli.harness._now_iso",
+                side_effect=["2026-01-01T00:00:00Z", "2026-01-01T00:00:01Z"],
+            ),
+        ):
+            assert cmd_skill(args) == 0
+            skill_path.write_text("# v2\n")
+            subprocess.run(["git", "add", "SKILL.md"], cwd=tmp_path, check=True)
+            subprocess.run(["git", "commit", "-q", "-m", "v2"], cwd=tmp_path, check=True)
+            self._measure_and_seed(args, _hash_of("# v2\n"), passed=False)
+            force_args = _pin_args(pin_force=True)
+            result = cmd_skill(force_args)
+        assert result == 0
+        pin = read_pin("skill", "check-code")
+        assert pin.target_content_hash == _hash_of("# v2\n")
+        assert pin.forced is True
 
 
 class TestIncumbentContentHashRealGit:

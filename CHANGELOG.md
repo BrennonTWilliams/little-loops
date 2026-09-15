@@ -38,6 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **ENH-3459**: Second divergent fake host + composition test suite
 - **ENH-3460**: Doc sync for the second test-only host runner (ARCHITECTURE, API, CONFORMANCE, TESTING)
 - **ENH-3461**: `ll-issues sequence` excludes EPIC issue IDs
+- **ENH-3465**: `ll-harness skill --pin-baseline`/`--compare-baseline` add a frozen external-baseline arm so self-improvement lineages are benchmarked against a fixed reference, not only the incumbent
 
 ### Maintenance
 

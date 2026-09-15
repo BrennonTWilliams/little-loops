@@ -9178,6 +9178,106 @@ Read-side API for `harness_events` rows (ENH-2739's schema, written by `record_h
 
 `history_pass_rate` (above) is a **cross-invocation** rate: it pools every past *authoritative* run for a target, read once per invocation before that invocation's own runs are recorded. ENH-3415 adds a distinct **intra-invocation** `sample_pass_rate` when a stochastic runner (`skill`/`prompt`) is graded over N>1 samples in one `ll-harness` call — the fraction of *that call's own* samples that passed. Each sample is still persisted as its own `attempt_kind='repetition'` row via the same write path, so the two rates are the same statistic computed over different windows (one invocation's samples vs. every invocation's history) rather than two different metrics.
 
+### BaselineKey / BaselineConditions / BaselineResult / baseline_for
+
+```python
+@dataclass(frozen=True)
+class BaselineKey:
+    runner: str
+    target: str
+    input_hash: str
+    target_content_hash: str
+
+@dataclass(frozen=True)
+class BaselineConditions:
+    n: int
+    conditions_fp: str
+    semantic_prompt: str | None = None
+    semantic_model: str | None = None
+    subject_model: str | None = None
+    timeout_s: int | None = None
+    host_cli: str | None = None
+
+@dataclass
+class BaselineResult:
+    key: BaselineKey
+    conditions: BaselineConditions
+    tally: Any  # cli.harness.SampleTally
+    attempt_ids: list[int]
+    head_sha: str | None
+    measured_at: str
+    subject_model: str | None = None
+    dirty_rows: bool = False
+    source: str = "reused"
+
+def baseline_for(
+    db_path: Path | str,
+    *,
+    runner: str,
+    target: str,
+    input_hash: str,
+    target_content_hash: str,
+    conditions: BaselineConditions,
+) -> BaselineResult | None
+```
+
+`ll-harness`'s `--measure-baseline`/`--compare-baseline` (ENH-3435) read-side match/aggregate
+layer, in `little_loops.history_reader.harness`. `BaselineKey` is the match key —
+`(runner, target, input_hash, target_content_hash)`, deliberately without `head_sha` (provenance
+only, not a match field) or `cell_key` (both arms of a compare share it). `BaselineConditions.n`
+is a *threshold*, not a matched field: rows don't carry `n`, so a match requires at least `n`
+rows sharing `conditions_fp` and reuses the most recent `n`. `baseline_for()` filters on
+`(runner, target, input_hash, target_content_hash, conditions_fp)` over **authoritative** rows
+only (`superseded_by IS NULL`) and returns `None` when fewer than `conditions.n` rows match or
+none is graded — it deliberately ignores `head_sha`, so a lookup never re-pays a measurement
+just written under a different HEAD (`test_ignores_head_sha_and_cell_key`). This is a
+content-identity-keyed **rolling** cache, not a permanently-pinned record: a `BaselineResult`
+simply stops matching, with no explicit invalidation step, the moment `target_content_hash`
+changes at any call site — see `BaselinePin` below for the frozen counterpart (ENH-3465).
+
+### BaselinePin / read_pin / write_pin
+
+```python
+@dataclass(frozen=True)
+class BaselinePin:
+    runner: str
+    target: str
+    target_path: str
+    target_content_hash: str
+    pinned_head_sha: str | None
+    pinned_at: str
+    reason: str | None
+    forced: bool
+
+def read_pin(runner: str, target: str) -> BaselinePin | None
+def write_pin(pin: BaselinePin) -> Path
+```
+
+`ll-harness skill <target> --pin-baseline`'s (ENH-3465) storage layer, in
+`little_loops.cli.harness`. Unlike `BaselineKey`/`baseline_for()` above, a pin's
+`target_content_hash` is set once at pin time and never re-derived from HEAD — the standing
+external reference a self-improvement lineage is measured against across runs, complementing
+(not replacing) the rolling incumbent arm. `runner` is always `"skill"` under ENH-3465 — the
+only runner whose target is a stable *name* with a content identity separate from that name
+(`prompt`/`cmd`'s target *is* the content; `cmd`/`mcp` record no content hash at all).
+
+`read_pin()` returns the active pin — the fragment with the greatest `pinned_at`, ties broken
+by filename — or `None` when no project root resolves, the pin directory is absent, or every
+fragment is malformed. `write_pin()` writes one new `<compact-UTC-stamp>-<uuid4>.json` fragment
+under `<project-root>/.ll/harness-pins/<runner>--<target>/` via `atomic_write_json()`; existing
+fragments are never touched or deleted — the same append-only-fragment convention as
+`.ll/decisions.d/`, chosen so pins from divergent `ll-parallel` epic branches merge cleanly
+instead of conflicting on a single growing list. Raises `FileNotFoundError` when
+`resolve_ll_dir()` finds no project root; callers refuse (exit 2) before reaching this point.
+The frozen arm itself is an ordinary `BaselineResult`, read via `baseline_for()` with the pin's
+`target_content_hash` in place of the incumbent's — no second store.
+
+`ll-harness`'s report-side `BaselineDelta` (`cli/harness.py`) carries `candidate`, `baseline`,
+`delta`, `source`, `head_sha_differs` (ENH-3435) plus, additively, `vs_incumbent`, `frozen`,
+`pin`, `vs_pin`, `outcome` (ENH-3465) — all five default to `None`, so a no-pin compare's
+constructor call and report are unchanged. `delta`/`outcome` are never banded verdicts; the
+run's exit code always comes from the candidate tally's own banding.
+
 ### VerdictEvent / recent_verdict_events / verdict_pass_rate
 
 ```python
@@ -12171,7 +12271,7 @@ Estimates cost in USD for a token usage event. Returns `None` if `model` is not 
 Statistical utilities for loop evaluation reporting. Provides Wilson 95% binomial confidence intervals for honest uncertainty reporting at small sample sizes, where naive ±√(p(1-p)/n) estimates are unreliable near 0 or 1.
 
 ```python
-from little_loops.stats import paired_direction, wilson_ci
+from little_loops.stats import paired_direction, proportion_diff_ci, wilson_ci
 ```
 
 ### wilson_ci
@@ -12226,6 +12326,35 @@ delta sign.
 passed and baseline failed, `c` is the count where baseline passed and
 harness failed. `"inconclusive"` is returned when there are no discordant
 pairs (`b + c == 0`) or `wilson_ci(b, b + c)` brackets `0.5`.
+
+---
+
+### proportion_diff_ci
+
+```python
+def proportion_diff_ci(k1: int, n1: int, k2: int, n2: int, z: float = 1.96) -> tuple[float, float]
+```
+
+Newcombe (1998, method 10) score interval for the difference of two
+proportions, `p1 - p2` (ENH-3465 D4). Built from the two independent
+`wilson_ci()` bounds `(l1, u1)`, `(l2, u2)`: with `d = p1 - p2`,
+`lower = d - sqrt((p1-l1)^2 + (u2-p2)^2)` and
+`upper = d + sqrt((u1-p1)^2 + (p2-l2)^2)`. Used by `ll-harness`'s
+`_arm_verdict()` to classify a candidate against an incumbent/pinned arm —
+requiring the two Wilson 95% CIs to be *disjoint* is unreachable in almost
+every case at `ll-harness` sample sizes (n=3-10); this interval on the
+difference is the correct test.
+
+**Parameters:**
+
+- `k1, n1` — successes/trials for the first proportion (e.g. the candidate).
+- `k2, n2` — successes/trials for the second proportion (e.g. an arm).
+- `z` — z-score for the confidence level (default `1.96` for 95%).
+
+**Returns:** `(lower, upper)` bounds on `p1 - p2`.
+
+**Raises:** `ValueError` if `n1 <= 0` or `n2 <= 0` (propagated from
+`wilson_ci`).
 
 ---
 
