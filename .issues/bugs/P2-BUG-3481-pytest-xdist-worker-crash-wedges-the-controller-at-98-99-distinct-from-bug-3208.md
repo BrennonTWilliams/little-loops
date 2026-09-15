@@ -108,19 +108,49 @@ finalize here. Candidate directions to evaluate, not yet chosen:
 - `scripts/tests/conftest.py` (`pytest_xdist_auto_num_workers`, `pytest_configure` renice, `_collapse_rate_limit_ladder`)
 - Any `ll-auto`/`manage-issue` finalize/re-drive prompt path that shells out to run the test suite in the foreground
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/issue_manager.py:97-115` (`FINALIZE_RETRY_PROMPT`) — the literal `ll-auto` finalize/re-drive prompt text instructing the agent to "Run the test suite in the FOREGROUND and wait for it to finish"; the concrete resolution of the vague "Any ll-auto/manage-issue..." bullet above
+- `scripts/little_loops/issue_manager.py:704` (`process_issue_inplace`), `:1537-1567` — the re-drive call site that invokes `FINALIZE_RETRY_PROMPT` via `run_claude_command` (`:144-206`)
+- `skills/manage-issue/SKILL.md:376-400` ("Headless-Safe Final Test Run") — documents this same foreground-blocking test-run step as driven by `ll-auto`, `ll-parallel`, and `ll-sprint` via a single non-interactive `claude -p` turn
+- `scripts/little_loops/worktree_utils.py:624-769` (`verify_epic_branch_before_merge`), `subprocess.run(...)` at `:755` — the epic-verify merge gate that runs `project.test_cmd` against a worktree with **no `timeout=` kwarg**; a second, independent foreground-blocking call site at risk of the same wedge
+- `scripts/little_loops/parallel/orchestrator.py:1634-1653` (`_verify_epic_branch_before_merge`) — caller of the above
+- `scripts/little_loops/fleet_improve.py:694-708` (`gate()`) — the only literal `-x`/exitfirst pytest invocation found in the tree; relevant to Proposed Solution #2's exitfirst question but scoped to `test_builtin_loops.py`/`test_builtin_loop_hardcode_gate.py`, not the full `scripts/tests/` suite
+- FSM loop YAMLs that independently shell out to `project.test_cmd` and block on its exit code (same wedge risk at each): `scripts/little_loops/loops/general-task.yaml:52-80,911-921` (`run_final_tests`), `dead-code-cleanup.yaml:18-41,126`, `incremental-refactor.yaml:23-114`, `test-coverage-improvement.yaml:134-147`, `harness-multi-item.yaml:88-98`, `harness-single-shot.yaml:58-69`, `harness-plan-research-implement-report.yaml:126-135`, `rl-coding-agent.yaml:58-62`, `mechanize-skills.yaml:124-146`, `evaluation-quality.yaml:54-57`, `oracles/code-run-gate.yaml:79,155-259`, `auto-refine-and-implement.yaml:454-568,793`
+- `scripts/little_loops/fsm/runners.py` (shell-command runner, ~lines 365-464) — the existing `idle_timeout`/wall-`timeout` dual-kill primitive (`output="idle_timeout"` vs. `subprocess.TimeoutExpired`) that any wrapper-level watchdog (Proposed Solution #3) would attach to, rather than inventing a new mechanism
+- `scripts/little_loops/loops/lib/common.yaml:83-89` (`shell_exit` fragment doc block) — documents the existing `idle_timeout:` vs. `timeout:` convention ("prefer idle_timeout when the real risk is a wedged process") that Proposed Solution #3 should extend, not duplicate
+
 ### Similar Patterns
 - BUG-3208 (closed) — same externally-visible "suite wedges near 98-99%"
   symptom, different root cause (stale pytest 9 vs. worker crash). Any fix
   here should preserve BUG-3208's pin rationale in `scripts/pyproject.toml`.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- BUG-2524 (closed, `P3-BUG-2524-xdist-worker-crash-on-rate-limit-test.md`) — a prior, distinct-root-cause "xdist worker crashed" bug (single slow test exceeding xdist's tolerance under load). Fixed via `@pytest.mark.no_parallel` rerouting rather than a crash/recovery-path test; its own findings note no regression test was added asserting on the literal `worker 'gw<N>' crashed` string — same verification-gap pattern this issue would face
+
 ### Tests
 - N/A until a specific slow/hung test is identified per Proposed Solution #1
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_conftest_cap.py` (`TestXdistAutoNumWorkers`, `TestPytestConfigureNice`, `TestRateLimitLadderCollapsed`, `TestNoParallelMarkerRouting`) — existing tests to update if a fix touches `pytest_xdist_auto_num_workers`, `pytest_configure`, or `_collapse_rate_limit_ladder`, all three already named in this issue's Dependent Files
+- `scripts/tests/test_hook_session_start.py:669-763` (`TestAmbientAutomationEnvHermeticity.test_suite_passes_with_ambient_ll_automation`) — closest existing template for a watchdog-style test: spawns `python -m pytest` as a real subprocess with `timeout=300` and asserts `returncode == 0`, sentinel-guarded against recursion and pinned to `-n 0` to avoid nesting inside an xdist worker. Model any Proposed Solution #3 test after this, not from scratch
+- `scripts/tests/test_policy_builder_node_gate.py:53-79` (`test_node_conformance_suite_passes`) — the repo's general "subprocess.run(..., timeout=N) + assert returncode == 0, skip-if-tool-absent" template (CLAUDE.md's external-toolchain-gate policy), a simpler analog to the above
+- `scripts/tests/test_worktree_utils.py:1452-1541` (`TestVerifyEpicBranchBeforeMerge`) — existing coverage for the `worktree_utils.py:755` call site newly added to Dependent Files above; exercises a different flake (not the idle-wedge scenario), would need extending if that call site is where a fix lands
 
 ### Documentation
 - N/A pending root cause
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `pytest.ini` (repo root) — a stub that duplicates `scripts/pyproject.toml`'s `[tool.pytest.ini_options]` addopts (`--timeout=120 --timeout-method=thread`, `-n logical --dist loadfile`) and says to keep the two in sync; any addopts change must be mirrored here
+- `docs/development/TESTING.md` § "Live Host-CLI Spawn Guard" (~lines 1105-1109) — currently conflates "un-killable BUG-3208 hang" with the busy-spin signature only; needs updating to distinguish busy-spin vs. this issue's idle-wedge signature once a fix lands
+- `docs/development/TROUBLESHOOTING.md` § "xdist flake: subprocess signal-handling test times out" (`:821-835`) and § "Full-suite run makes macOS sluggish (beachball)" (`:837-846`) — the existing "suite wedges at the tail" family entries; neither covers this issue's signature today, a fix should add a third entry here
+- `docs/observability/streaming-parity-traces.md:73` — secondary, low-priority consumer of the same `--timeout=120` value
+
 ### Configuration
 - N/A
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `.ll/learning-tests/pytest-timeout.md` — a "proven" learning-test record (dated 2026-09-12) asserting as fact that `--timeout-method=thread` calls `os._exit(1)` and orphans in-flight subprocess children; if a fix changes `--timeout-method` away from `thread`, this record's claims would need re-proving or marking `status: stale`
+- `.github/workflows/ci.yml:81-88` (pin-assertion step) — greps `scripts/pyproject.toml` for the literal `pytest-xdist.*<3.8` pin string; would break independently of the actual fix if a fix direction changes that pin's spelling or bounds
 
 ## Implementation Steps
 
@@ -133,6 +163,17 @@ finalize here. Candidate directions to evaluate, not yet chosen:
    foreground test-suite step so a future occurrence of this class of wedge
    fails loudly with a bounded timeout instead of hanging indefinitely.
 4. Re-run the full suite to confirm a clean finish with no idle-wedge.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Audit `scripts/little_loops/worktree_utils.py:755` (`verify_epic_branch_before_merge`) — its `subprocess.run(...)` call has no `timeout=` kwarg, an independent foreground-blocking call site at risk of the same wedge as the `ll-auto`/`manage-issue` path
+- If Proposed Solution #3 (wrapper-level watchdog) is chosen, extend the existing `idle_timeout`/`timeout` dual-kill primitive in `scripts/little_loops/fsm/runners.py` and the `shell_exit` fragment convention in `scripts/little_loops/loops/lib/common.yaml:83-89` rather than adding a new mechanism; the concrete edit target is `scripts/little_loops/loops/general-task.yaml:911-921`'s `run_final_tests` state (currently `timeout: 1800`, no `idle_timeout:`)
+- Update `pytest.ini` (repo root) to mirror any `scripts/pyproject.toml` `[tool.pytest.ini_options]` addopts change
+- Update `scripts/tests/test_conftest_cap.py` if the fix touches `pytest_xdist_auto_num_workers`, `pytest_configure`, or `_collapse_rate_limit_ladder`
+- Add a third `docs/development/TROUBLESHOOTING.md` entry for this wedge signature, distinct from the existing xdist-flake and beachball entries
+- Re-examine `.ll/learning-tests/pytest-timeout.md` for staleness if `--timeout-method` changes
 
 ## Impact
 
@@ -187,3 +228,9 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ## Status
 
 **Open** | Created: 2026-09-15 | Priority: P2
+
+
+## Session Log
+- `/ll:wire-issue` - 2026-09-15T22:22:26 - `d2ee88e4-436e-400b-a42b-568c16a51760.jsonl`
+- `/ll:refine-issue` - 2026-09-15T22:12:30 - `1daaf7af-e74b-4b5d-b1aa-a57797ab5fda.jsonl`
+- `/ll:format-issue` - 2026-09-15T22:08:41 - `4ed27b03-8e1c-4cb5-ad0c-8aea21116e0d.jsonl`

@@ -8,6 +8,7 @@ discovered_date: '2026-09-13'
 labels: []
 parent: ENH-3468
 depends_on: [ENH-3471]
+reconcile_attempted: true
 ---
 
 ## Summary
@@ -134,10 +135,9 @@ _Added by `/ll:refine-issue` — 2026-09-15 — based on codebase analysis:_
 1. Pick and document a "closest attempt to objective" selection metric (Design → no shared utility exists; do not assume one).
 2. Decide and document which `terminated_by` values (built on ENH-3471's new vocabulary) qualify as "no acceptance," per the Decision Rules above.
 3. On a qualifying no-acceptance termination, write exactly one checkpoint artifact tagged `best_effort` (e.g. `iter_<N>_best_effort.json` with `metadata.best_effort=True`) — verified by a test asserting the artifact exists after a simulated cap-hit with no acceptance.
-4. Add a test asserting NO such artifact is produced for a hard-terminal case this pattern must not cover — specifically context-compaction failure (`hooks/pre_compact.py`, `session_store/lifecycle.py::compact_session()`) staying hard-terminal. No existing test covers this boundary today.
-   > ⚠ Superseded — `hooks/pre_compact.py` is unrelated; the actual hard-terminal call chain is `cli/compact_session.py::main_compact_session()` → `session_store/lifecycle.py::compact_session()` only; see § Codebase Research Findings under Design
-5. Apply the Wiring section's updates (`map_final_status`, `_WASTED_RUN_PREDICATE`, `_derive_loop_outcome`, `EXIT_CODES`/`_is_success`, `audit-loop-run/SKILL.md`, docs/schema rows for this new value).
-6. `python -m pytest scripts/tests/test_fsm_executor.py scripts/tests/test_fsm_persistence.py scripts/tests/test_builtin_loops.py scripts/tests/test_ll_logs.py -v` passes.
+4. Add a test asserting NO such artifact is produced for a hard-terminal case this pattern must not cover — specifically context-compaction failure (`cli/compact_session.py::main_compact_session()` → `session_store/lifecycle.py::compact_session()`) staying hard-terminal. No existing test covers this boundary today.
+5. Apply the Wiring section's updates — both the original five (`map_final_status`, `_WASTED_RUN_PREDICATE`, `_derive_loop_outcome`, `EXIT_CODES`/`_is_success`, `audit-loop-run/SKILL.md`, docs/schema rows for this new value) and the `/ll:wire-issue`-added "Wiring Pass Additions" durable-artifact-consumer updates (`archive_run()`'s copy-list, `evidence.py`'s credential-scan tuple and sha256 hashing tuple, `audit.py`'s `_AUX_EXCLUDED_NAMES`/`_scan_aux_mutations()` prefix check, `cli/logs.py`'s `_FLAG_OUTCOMES`/fleet aggregation, `fleet_improve.py`, and the `FLEET_LOOP_REVIEW.md`/`LOOPS_GUIDE.md` doc updates).
+6. `python -m pytest scripts/tests/test_fsm_executor.py scripts/tests/test_fsm_persistence.py scripts/tests/test_builtin_loops.py scripts/tests/test_ll_logs.py scripts/tests/test_cli_loop_lifecycle.py scripts/tests/test_history_reader_usage.py -v` passes.
 
 ## Tests
 
@@ -147,7 +147,7 @@ _Added by `/ll:refine-issue` — 2026-09-15 — based on codebase analysis:_
 
 ## Scope Boundaries
 
-- **In scope**: The no-acceptance/`best_effort` checkpoint write path, the "closest attempt to objective" selection metric, and the Wiring section's five downstream updates.
+- **In scope**: The no-acceptance/`best_effort` checkpoint write path, the "closest attempt to objective" selection metric, and all of the Wiring section's downstream updates — the original five plus the five `/ll:wire-issue`-added "Wiring Pass Additions" (ten total).
 - **Out of scope**: `terminated_by` vocabulary itself (ENH-3471), context-compaction failure handling (must stay hard-terminal per the Design escape hatch), `PersistentExecutor._save_state()`'s existing single-file overwrite mechanism (not reused, not modified).
 
 ## Impact
@@ -168,6 +168,7 @@ _Added by `/ll:refine-issue` — 2026-09-15 — based on codebase analysis:_
 **Note** (added by `/ll:audit-issue-conflicts`): This issue's `_WASTED_RUN_PREDICATE` (usage.py:310-316) edit shares the same `IN (...)` membership list as ENH-3471's edit to the same predicate. Already sequenced via `depends_on: [ENH-3471]`, but implement this issue's edit as an additive diff against whatever shape ENH-3471 actually lands (not against the pre-3471 line numbers cited above), since both issues touch the same list.
 
 ## Session Log
+- `/ll:reconcile-issue` - 2026-09-15T22:22:51 - `d2ee88e4-436e-400b-a42b-568c16a51760.jsonl`
 - `/ll:refine-issue` - 2026-09-15T22:19:37 - `a0a3cae8-46b6-4741-b032-8859dea7a727.jsonl`
 - `/ll:wire-issue` - 2026-09-14T20:29:41 - `8cf1df9b-8fca-46d9-b751-f28d170c6572.jsonl`
 - `/ll:refine-issue` - 2026-09-14T19:32:06 - `93b68600-9c57-4c65-a431-1e887e42f117.jsonl`
