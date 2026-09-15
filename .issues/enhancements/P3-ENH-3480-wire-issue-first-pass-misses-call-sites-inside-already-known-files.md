@@ -305,8 +305,66 @@ a single skill file, not a code interface)
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-15T20:02:59 - `889d831f-7992-4797-b0a1-b744fe43c6bc.jsonl`
 - `/ll:wire-issue` - 2026-09-15T19:43:51 - `ea70bb0b-2e90-4a29-af8a-b28bd4b966d9.jsonl`
 - `/ll:reconcile-issue` - 2026-09-15T19:39:29 - `5090e718-cdfc-48c3-9991-3d61d838280d.jsonl`
 - `/ll:refine-issue` - 2026-09-15T19:37:17 - `cdbb07d4-56af-4822-8c99-6c7b4578265d.jsonl`
 - `/ll:format-issue` - 2026-09-15T19:32:03 - `f46aa9fa-d555-454b-872b-89355e6b8675.jsonl`
 - `/ll:capture-issue` - 2026-09-15T19:28:41 - `a935744c-43bf-4d30-9969-892325ab65a6.jsonl`
+
+## Verification Notes
+
+Verdict: **NEEDS_UPDATE**
+
+- **Structural diagnosis and all `SKILL.md` line citations verified accurate.**
+  Confirmed against the file at HEAD (500 lines exactly, matching the
+  "at the cap" claim): line 180's exact sentence
+  ("Exclude files already in the "already known" lists."), line 212's
+  ("Exclude files already known from the issue."), Agent 3's prompt
+  (223-253) genuinely carries no exclusion instruction, the 11-category
+  `MISSING_WIRING` block (269-281, confirming `conditional_branches`/
+  `new_impl_steps` are the two the 270-278 range omits), `cli_coupling`
+  (276) has no Phase 8a rendering, and the `registrations_to_add` append
+  (356-361) lacks the `_Wiring pass added by...` marker that the other
+  three Phase 8a appends carry. `docs/reference/COMMANDS.md:281-289` and
+  the `test_wiring_skills_and_commands.py:249-251` ENH-3050 precedent for
+  the proposed test-row shape both check out as described.
+
+- **Summary's central evidence claim is overstated — the issue's own cited
+  evidence contradicts it.** The Summary states "Every BUG-3477 pass-2
+  finding was an intra-file site in one of four already-listed files
+  (`harness.py`, `test_cli_harness.py`, `docs/reference/API.md`,
+  `docs/reference/CLI.md`)." Reading BUG-3477's own `/ll:wire-issue`
+  "(second pass)" blocks directly: the Tests second pass also names
+  `scripts/tests/test_fsm_evaluators.py:1435` (a file never in the four-file
+  list, and not previously known to the issue at all), and the
+  Documentation second pass names `docs/generalized-fsm-loop.md:623-651`,
+  `scripts/little_loops/loops/lib/common.yaml:23-37`, and
+  `docs/guides/HISTORY_SESSION_GUIDE.md:91` — three more files outside the
+  four-file list and outside `known_docs` before pass 2. These are new-file
+  discoveries from the widened pass-2 `key_symbols` search net, not
+  intra-file misses inside already-known files — a different phenomenon
+  than the one the whole-file-exclusion mechanism (cause 2) explains. This
+  doesn't undermine causes 1/2 or the proposed fix (which only targets
+  intra-file misses and doesn't claim to fix cross-file discovery order),
+  but the "every finding" framing should be softened to "most findings" or
+  scoped explicitly to the intra-file subset, since as written it is
+  falsified by the issue's own evidence.
+
+- **Possible AC-coverage gap (check B.6):** the Integration Map's Wiring
+  Phase lists `skills/wire-issue/output-report.md` as needing a new
+  `sites_to_add` row (plus the drive-by `gate_consumers`/
+  `conditional_branches` rows) in its Phase 10 "MISSING WIRING FOUND"
+  table, but neither the Proposed Solution's deterministic Acceptance
+  paragraph nor the enumerated `DOC_STRINGS_PRESENT`/`DOC_STRINGS_ABSENT`
+  test rows mention asserting on `output-report.md`'s content — and
+  `test_wiring_skills_and_commands.py` currently has zero assertions
+  referencing `output-report.md` at all (confirmed by grep). Without an
+  explicit test row, this Wiring Phase item has no deterministic gate and
+  could land un-updated with no test catching it. Consider adding a
+  `DOC_STRINGS_PRESENT` tuple for `("skills/wire-issue/output-report.md",
+  "sites_to_add", "ENH-3480")` alongside the other two, or note explicitly
+  why it's out of scope for the deterministic gate.
+
+**Remaining:** the two items above (Summary overstatement, AC-coverage gap)
+are not corrected in this pass — verification only, no content rewrite.
