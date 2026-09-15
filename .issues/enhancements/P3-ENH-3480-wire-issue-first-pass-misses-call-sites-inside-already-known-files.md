@@ -10,6 +10,12 @@ captured_at: '2026-09-15T19:28:33Z'
 testable: true
 program_design_not_applicable: true
 reconcile_attempted: true
+confidence_score: 85
+outcome_confidence: 79
+score_complexity: 18
+score_test_coverage: 18
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # ENH-3480: wire-issue first pass misses call sites inside already-known files
@@ -303,8 +309,20 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 N/A - No public API changes (prompt-text and report-category change within
 a single skill file, not a code interface)
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-15_
+
+**Readiness Score**: 85/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 79/100 → MODERATE
+
+### Concerns
+- Summary overstatement flagged by `/ll:verify-issues`: the claim "every BUG-3477 pass-2 finding was an intra-file site in one of four already-listed files" is contradicted by the same pass-2 run's own Tests/Documentation findings (`test_fsm_evaluators.py`, `docs/generalized-fsm-loop.md`, `scripts/little_loops/loops/lib/common.yaml`, `docs/guides/HISTORY_SESSION_GUIDE.md` — new-file discoveries, not intra-file misses). Soften to "most findings" or scope explicitly to the intra-file subset.
+- AC-coverage gap: the Wiring Phase lists `skills/wire-issue/output-report.md` needing a new `sites_to_add` table row, but neither the deterministic Acceptance paragraph nor the enumerated `DOC_STRINGS_PRESENT`/`DOC_STRINGS_ABSENT` test rows assert on it, and the test file currently has zero assertions referencing `output-report.md`. This Wiring Phase item has no deterministic gate and could land un-updated undetected.
+- Criterion 4 capped at 10 (advisory, not a blocker): `known_sites` and `sites_to_add` are claimed in `scripts/tests/test_wiring_skills_and_commands.py` but don't yet resolve there — expected for forward-looking test-row claims the issue proposes adding, not itself a defect.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-15T20:09:12 - `a50e53ee-eaa5-4308-b45d-3ce023bd2a61.jsonl`
 - `/ll:verify-issues` - 2026-09-15T20:02:59 - `889d831f-7992-4797-b0a1-b744fe43c6bc.jsonl`
 - `/ll:wire-issue` - 2026-09-15T19:43:51 - `ea70bb0b-2e90-4a29-af8a-b28bd4b966d9.jsonl`
 - `/ll:reconcile-issue` - 2026-09-15T19:39:29 - `5090e718-cdfc-48c3-9991-3d61d838280d.jsonl`

@@ -7,7 +7,7 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-09-14'
 captured_at: '2026-09-14T21:36:04Z'
-confidence_score: 90
+confidence_score: 100
 outcome_confidence: 59
 score_complexity: 9
 score_test_coverage: 25
@@ -349,15 +349,17 @@ directly (above).
 
 _Added by `/ll:confidence-check` on 2026-09-15_
 
-**Readiness Score**: 90/100 → PROCEED
+**Readiness Score**: 100/100 → PROCEED
 **Outcome Confidence**: 59/100 → LOW
 
 ### Outcome Risk Factors
 - Broad enumeration across 16+ distinct change sites: `_grade()`, the `HarnessEvalOutcome` field/two new properties, `_evaluate_and_report()`, `_run_sample_loop()`, five DB-recording call sites, `_rc_from_event()`, `harness_eval_pass_rate()`, `harness_eval_abstention_rate()`, `_read_target_history()`, plus six documentation files reconciling the exit-code/verdict-set contract
 - Very wide blast radius (11+ callers/dependents): six `_report_samples()` call sites, four independent readers of persisted `semantic_passed`/`semantic_verdict` rows that must apply the same `IS NOT 'error'` rule in lockstep (`_rc_from_event()`, `harness_eval_pass_rate()`, `harness_eval_abstention_rate()`, `_read_target_history()`), plus `cli/__init__.py` and `history_reader/__init__.py` re-export importers
-- `missing_behavior_parity` gap flagged for `scripts/little_loops/history_reader/harness.py` (format-check), capping Criterion 4 — the file lacks an explicit "what this replaces" subsection despite four call sites there changing denominator semantics
+
+Note: the prior `missing_behavior_parity` gap on `scripts/little_loops/history_reader/harness.py` that previously capped Criterion 4 at 10 is resolved — the "### Behavior Parity" subsection now documents what each reader replaces; `format-check`'s `missing_behavior_parity`/`stale_symbol_ref`/`stale_cli_flag`/`unapplied_decision`/structure keys are all empty, so Readiness rose from 90 to 100. Outcome Confidence is unchanged (complexity/coverage/ambiguity/change-surface are unaffected by that gap).
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-15T20:09:38 - `81c87ace-97af-4b20-a8f9-1d736588bd88.jsonl`
 - `/ll:verify-issues` - 2026-09-15T20:03:53 - `1585335e-fdc3-4eb0-97db-7596cb49731c.jsonl`
 - manual review (third pass) - 2026-09-15 - added `--retry-of` non-goal (`_retry_refusal()` timed_out-only gate, hardcoded `reason="timeout"`); bounded `grader_error_detail` on the success-shaped `details` (never `llm_raw_output`/`llm_prompt`); documented the accepted hard-fail + grader-error history divergence (rc 1 → reconstructed 2, mirrors fail + abstain → 3); `error_uncertain` exact-match note; refreshed "Files to Modify" line numbers; three matching tests
 - `/ll:confidence-check` - 2026-09-15T19:54:15 - `1128b02a-8c77-4be4-8556-ad5cf2f4fa84.jsonl`
