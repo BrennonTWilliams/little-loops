@@ -22,7 +22,7 @@ score_change_surface: 25
 
 ## Summary
 
-`/ll:wire-issue`'s first pass systematically misses call sites that live inside files the issue already names; a second pass on the same issue then "discovers" them. Observed on BUG-3477 and BUG-3478: pass 1 (2026-09-14, session `bac75f45`) vs pass 2 (2026-09-15, session `6d7823a0`). Every BUG-3477 pass-2 finding was an intra-file site in one of four already-listed files (`scripts/little_loops/cli/harness.py`, `scripts/tests/test_cli_harness.py`, `docs/reference/API.md`, `docs/reference/CLI.md`).
+`/ll:wire-issue`'s first pass systematically misses call sites that live inside files the issue already names; a second pass on the same issue then "discovers" them. Observed on BUG-3477 and BUG-3478: pass 1 (2026-09-14, session `bac75f45`) vs pass 2 (2026-09-15, session `6d7823a0`). Most BUG-3477 pass-2 findings were intra-file sites in one of four already-listed files (`scripts/little_loops/cli/harness.py`, `scripts/tests/test_cli_harness.py`, `docs/reference/API.md`, `docs/reference/CLI.md`). A few pass-2 findings (`scripts/tests/test_fsm_evaluators.py`, `docs/generalized-fsm-loop.md`, `scripts/little_loops/loops/lib/common.yaml`, `docs/guides/HISTORY_SESSION_GUIDE.md`) were new-file discoveries from the widened pass-2 `key_symbols` search net, not intra-file misses — a separate phenomenon this fix does not target (see cause 2 below for the scope of the intra-file subset).
 
 Two structural causes in `skills/wire-issue/SKILL.md`:
 
@@ -39,7 +39,7 @@ Minor contributing factor: `harness.py` grew several hundred lines between passe
 - (b) Add a `sites_to_add` category to Phase 5 `MISSING_WIRING` (`path:line` + symbol within a known file, filtered against `known_sites`) and render it in Phase 8a with the `_Wiring pass added by \`/ll:wire-issue\`:_` marker (destinations pinned in Proposed Solution).
 - (c) Expand `key_symbols` one bounded hop before Phase 4 (required, not optional — it addresses cause 1, which explains most pass-2 findings): for each symbol in `files_to_modify`, grep its callers inside those same files only and add the enclosing function names to the seed set. One hop, no recursion, no files outside `files_to_modify`.
 
-**Acceptance (deterministic gate):** `scripts/tests/test_wiring_skills_and_commands.py` gains `DOC_STRINGS_PRESENT` rows for `sites_to_add` and `known_sites` and a `DOC_STRINGS_ABSENT` row for the old sentence `Exclude files already in the "already known" lists.`; the full suite passes; `ll-verify-skills` keeps `SKILL.md` at or under 500 lines. **Manual smoke check (not a gate):** running `/ll:wire-issue` twice back-to-back on a freshly refined issue, with no refine run or code change in between, yields "No missing wiring found" for intra-file sites on the second pass.
+**Acceptance (deterministic gate):** `scripts/tests/test_wiring_skills_and_commands.py` gains `DOC_STRINGS_PRESENT` rows for `sites_to_add` in `skills/wire-issue/SKILL.md`, `docs/reference/COMMANDS.md`, **and `skills/wire-issue/output-report.md`** (so the Wiring Phase's `output-report.md` table-row requirement is itself gated, not just documented), plus a `known_sites` present row and a `DOC_STRINGS_ABSENT` row for the old sentence `Exclude files already in the "already known" lists.`; the full suite passes; `ll-verify-skills` keeps `SKILL.md` at or under 500 lines. **Manual smoke check (not a gate):** running `/ll:wire-issue` twice back-to-back on a freshly refined issue, with no refine run or code change in between, yields "No missing wiring found" for intra-file sites on the second pass.
 
 
 ## Current Behavior
@@ -188,12 +188,16 @@ _Wiring pass added by `/ll:wire-issue`:_
   `gate_consumers`/`conditional_branches` rows: one asserting
   `"sites_to_add"` appears in `skills/wire-issue/SKILL.md`, one asserting it
   appears in `docs/reference/COMMANDS.md` (once the Documentation-section
-  bullet above is added). Follow this exact two-tuple shape rather than a
-  single assertion. Also add a `("skills/wire-issue/SKILL.md",
-  "known_sites", "ENH-3480")` present row and a `DOC_STRINGS_ABSENT` row for
-  the old sentence `Exclude files already in the "already known" lists.` so
-  a regression that restores whole-file exclusion fails the suite. These
-  rows are the deterministic acceptance gate for this issue.
+  bullet above is added). Follow this exact two-tuple shape, plus **a third
+  tuple** asserting `"sites_to_add"` appears in
+  `skills/wire-issue/output-report.md` (once its Phase 10 table row is
+  added) — this closes the gap where the Wiring Phase's `output-report.md`
+  requirement was otherwise undocumented by any test row. Also add a
+  `("skills/wire-issue/SKILL.md", "known_sites", "ENH-3480")` present row and
+  a `DOC_STRINGS_ABSENT` row for the old sentence `Exclude files already in
+  the "already known" lists.` so a regression that restores whole-file
+  exclusion fails the suite. These rows are the deterministic acceptance
+  gate for this issue.
 
 ### Documentation
 
@@ -261,7 +265,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 - Update `docs/reference/COMMANDS.md:281-289` — add a `sites_to_add` bullet to the `/ll:wire-issue` entry's "Wiring categories searched" list, matching the Behavior Parity (line 287) / `gate_consumers` (line 288) precedent
 - Update `skills/wire-issue/output-report.md` — add a `sites_to_add` row to the Phase 10 "MISSING WIRING FOUND" table so the category isn't silently dropped from the end-of-run report
-- Update `scripts/tests/test_wiring_skills_and_commands.py` — add the two `DOC_STRINGS_PRESENT` tuples (`SKILL.md` and `docs/reference/COMMANDS.md` each asserting `"sites_to_add"`), a `known_sites` present row, and a `DOC_STRINGS_ABSENT` row for the old whole-file exclusion sentence, alongside the existing ENH-3050 rows at lines 249-251
+- Update `scripts/tests/test_wiring_skills_and_commands.py` — add the three `DOC_STRINGS_PRESENT` tuples (`SKILL.md`, `docs/reference/COMMANDS.md`, and `skills/wire-issue/output-report.md`, each asserting `"sites_to_add"`), a `known_sites` present row, and a `DOC_STRINGS_ABSENT` row for the old whole-file exclusion sentence, alongside the existing ENH-3050 rows at lines 249-251
 
 ## Impact
 
@@ -317,9 +321,9 @@ _Added by `/ll:confidence-check` on 2026-09-15_
 **Outcome Confidence**: 79/100 → MODERATE
 
 ### Concerns
-- Summary overstatement flagged by `/ll:verify-issues`: the claim "every BUG-3477 pass-2 finding was an intra-file site in one of four already-listed files" is contradicted by the same pass-2 run's own Tests/Documentation findings (`test_fsm_evaluators.py`, `docs/generalized-fsm-loop.md`, `scripts/little_loops/loops/lib/common.yaml`, `docs/guides/HISTORY_SESSION_GUIDE.md` — new-file discoveries, not intra-file misses). Soften to "most findings" or scope explicitly to the intra-file subset.
-- AC-coverage gap: the Wiring Phase lists `skills/wire-issue/output-report.md` needing a new `sites_to_add` table row, but neither the deterministic Acceptance paragraph nor the enumerated `DOC_STRINGS_PRESENT`/`DOC_STRINGS_ABSENT` test rows assert on it, and the test file currently has zero assertions referencing `output-report.md`. This Wiring Phase item has no deterministic gate and could land un-updated undetected.
-- Criterion 4 capped at 10 (advisory, not a blocker): `known_sites` and `sites_to_add` are claimed in `scripts/tests/test_wiring_skills_and_commands.py` but don't yet resolve there — expected for forward-looking test-row claims the issue proposes adding, not itself a defect.
+- ~~Summary overstatement~~ — fixed post-check: Summary now reads "most" and explicitly names the four new-file discoveries as a separate phenomenon from the intra-file-miss fix this issue targets.
+- ~~AC-coverage gap~~ — fixed post-check: the Acceptance paragraph and Tests wiring section now specify a third `DOC_STRINGS_PRESENT` tuple asserting `"sites_to_add"` in `skills/wire-issue/output-report.md`, closing the gap where that Wiring Phase item had no deterministic gate.
+- Criterion 4 capped at 10 (advisory, not a blocker): `known_sites` and `sites_to_add` are claimed in `scripts/tests/test_wiring_skills_and_commands.py` but don't yet resolve there — expected for forward-looking test-row claims the issue proposes adding, not itself a defect. Re-run `/ll:confidence-check ENH-3480` after implementation to clear this cap.
 
 ## Session Log
 - `/ll:confidence-check` - 2026-09-15T20:09:12 - `a50e53ee-eaa5-4308-b45d-3ce023bd2a61.jsonl`
