@@ -269,7 +269,9 @@ def extract_call_path_anchors(body: str) -> list[str]:
     anchors: list[str] = []
 
     def _add(token: str) -> None:
-        token = token.strip().strip("`*_").rstrip(".,;:")
+        # BUG-3478: `_` is an identifier char, not markdown decoration — stripping
+        # it here lost leading underscores on private names and mangled dunders.
+        token = token.strip().strip("`*").rstrip(".,;:")
         if token.endswith("()"):
             token = token[:-2]
         token = token.split("(", 1)[0].strip()

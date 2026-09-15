@@ -4,10 +4,11 @@ type: BUG
 title: format-check Program Design gate strips leading underscore from private Call
   Path anchors
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-14'
 captured_at: '2026-09-14T21:45:35Z'
+completed_at: '2026-09-15T20:04:12Z'
 relates_to:
 - EPIC-2856
 confidence_score: 100
@@ -163,12 +164,19 @@ _Added by `/ll:refine-issue` — 2026-09-15 — based on codebase analysis:_
 - `scripts/tests/test_program_design_gate.py::TestDuplicateCallPathAnchors` (or a new `TestAnchorNormalization` class beside it) — add `test_underscores_survive_normalization`, calling `extract_call_path_anchors()` directly and asserting: `` `_grade()` `` → `_grade`; `` `Foo.__init__` `` → `Foo.__init__`; `` `__call__` `` → `__call__`; `` `Cls._helper()` `` → `Cls._helper`. Backticks and asterisks around a token are still stripped (`**_grade**` → `_grade`).
 - `TestRealRepoResolution::test_real_repo_anchors_resolve_via_git_grep` (`:437`) — extend the fixture repo with `def _private_helper(` and a class with `def __init__(`, and assert both `_private_helper` and `Cls.__init__` anchors resolve via `git_grep_resolver()`.
 
+## Resolution
+
+Fixed in `_add()` inside `extract_call_path_anchors()` (`scripts/little_loops/issues/program_design.py:272`): the normalizer now strips only `` `*`` (backtick/asterisk markdown decoration), leaving underscores in place unconditionally as planned — no paired-delimiter logic. `_grade`, `Foo.__init__`, `__call__`, and `Cls._helper` now survive normalization and resolve via the existing `_IDENT`/`git_grep_resolver` path, which already accepted leading underscores.
+
+Added per the issue's `## Tests` section: `TestGrading::test_private_function_anchor_resolves`, a new `TestAnchorNormalization` class (`test_underscores_survive_normalization`, `test_backticks_and_asterisks_still_stripped`) beside `TestDuplicateCallPathAnchors`, and extended `TestRealRepoResolution::test_real_repo_anchors_resolve_via_git_grep` with a private helper and a class `__init__`. TDD Red confirmed (3 assertion failures, no structural errors) before the fix; full suite green after (24458 passed, 51 skipped). No `## Program Design` deviation — implementation matched the planned shape exactly.
+
 ## Status
 
 **Open** | Created: 2026-09-14 | Priority: P3
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-15T20:03:51 - `f683fb40-9423-4210-8379-3e4e1419ca0d.jsonl`
 - `/ll:confidence-check` - 2026-09-15T19:53:38 - `765ece35-015d-4459-b408-26bba4731f59.jsonl`
 - `/ll:verify-issues` - 2026-09-15T19:35:57 - `cdbb07d4-56af-4822-8c99-6c7b4578265d.jsonl`
 - `/ll:wire-issue` - 2026-09-15T19:24:37 - `6d7823a0-f459-448f-abfd-383d591b75f3.jsonl`

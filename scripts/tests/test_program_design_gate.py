@@ -287,6 +287,37 @@ class TestDuplicateCallPathAnchors:
         assert verdict.is_specific is True
 
 
+class TestAnchorNormalization:
+    """BUG-3478: underscores are identifier characters, never markdown decoration.
+
+    The old normalizer stripped `_` unconditionally, which lost the leading
+    underscore of private helpers and mangled dunders (`__init__` -> `init`).
+    """
+
+    def test_underscores_survive_normalization(self) -> None:
+        from little_loops.issues.program_design import extract_call_path_anchors
+
+        body = "\n".join(
+            [
+                "### Call Path",
+                "`_grade()` -> `Foo.__init__` -> `__call__` -> `Cls._helper()`",
+            ]
+        )
+
+        anchors = extract_call_path_anchors(body)
+
+        assert anchors == ["_grade", "Foo.__init__", "__call__", "Cls._helper"]
+
+    def test_backticks_and_asterisks_still_stripped(self) -> None:
+        from little_loops.issues.program_design import extract_call_path_anchors
+
+        body = "\n".join(["### Call Path", "`**_grade**`"])
+
+        anchors = extract_call_path_anchors(body)
+
+        assert anchors == ["_grade"]
+
+
 # ------------------------------------------------------------------------- grading
 
 
@@ -402,6 +433,31 @@ Described in words with no identifiers at all.
         still_specific = grade_program_design(with_deviations, lambda s: s == "check_format_gaps")
         assert still_specific.is_specific is True, "Deviations must not break a valid section"
 
+    def test_private_function_anchor_resolves(self) -> None:
+        """BUG-3478: a Call Path naming only private helpers must resolve as-is.
+
+        The resolver stand-in answers True only for the leading-underscore
+        form, so this fails unless the normalizer stops stripping `_`.
+        """
+        from little_loops.issues.program_design import grade_program_design
+
+        body = """
+### Signatures
+
+- `_grade(x: int) -> bool`
+
+### Call Path
+
+`_grade`
+"""
+
+        def resolver(s: str) -> bool:
+            return s == "_grade"
+
+        verdict = grade_program_design(body, resolver)
+
+        assert verdict.is_specific is True
+
     def test_nonspecific_reason_names_only_accepted_headings(self) -> None:
         """BUG-3071: every heading named in the message is one `_evidence_body` retains.
 
@@ -439,7 +495,10 @@ class TestRealRepoResolution:
 
         _init_repo(tmp_path)
         (tmp_path / "mod.py").write_text(
-            "def check_format_gaps(path):\n    return None\n\n\nclass FormatGaps:\n    pass\n",
+            "def check_format_gaps(path):\n    return None\n\n\n"
+            "class FormatGaps:\n    pass\n\n\n"
+            "def _private_helper(x):\n    return x\n\n\n"
+            "class Cls:\n    def __init__(self):\n        pass\n",
             encoding="utf-8",
         )
         _commit_all(tmp_path)
@@ -447,6 +506,8 @@ class TestRealRepoResolution:
         assert git_grep_resolver("check_format_gaps", tmp_path) is True
         assert git_grep_resolver("FormatGaps", tmp_path) is True
         assert git_grep_resolver("never_defined_anywhere", tmp_path) is False
+        assert git_grep_resolver("_private_helper", tmp_path) is True
+        assert git_grep_resolver("Cls.__init__", tmp_path) is True
 
     def test_markdown_only_signature_does_not_resolve(self, tmp_path: Path) -> None:
         """A symbol the issue *proposes* must not resolve against the issue's own text.
