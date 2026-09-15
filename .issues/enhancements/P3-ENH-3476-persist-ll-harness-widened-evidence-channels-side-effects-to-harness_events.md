@@ -13,7 +13,8 @@ labels:
 - reliability
 blocked_by: []
 reconcile_attempted: true
-confidence_score: 80
+confidence_score: 100
+verify_verdict: VALID
 outcome_confidence: 97
 score_complexity: 22
 score_test_coverage: 25
@@ -38,7 +39,7 @@ _Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
 - ENH-3462 has landed (status: Completed, confirmed 2026-09-14). `ChannelRecord` (`cli/harness.py:832`) and `HarnessEvalOutcome.channels: list[ChannelRecord]` (`cli/harness.py:872`) exist in the tree today and are fully wired: `_grade()` (`:1224`) composes the channel list every invocation (stdout/stderr at `:1269-1276`, side-effect channels at `:1277-1280`), and `_evaluate_and_report()` (`:1948`) is the sole current consumer, rendering `outcome.channels` into the `--output json` payload's `"channels"` key and the text `Channels:` block. This issue's `blocked_by: ENH-3462` is now satisfied — the persistence gap below is confirmed directly against landed code, not inferred from a not-yet-shipped dependency.
 - Confirmed precisely: `outcome.channels` is never forwarded into any of the five `_record_harness_event()`/`_record()` call sites (`cmd_skill::_record` :2225, `cmd_cmd::_record` :2366, `cmd_mcp::_record` :2493, `cmd_prompt::_record` :2619, `cmd_dsl` :2793/:2890) — each extracts only `.verdict`/`.abstained`/`.passed` from `outcome`. `_record_harness_event()` itself has no `channels`/`side_effects` parameter in its signature.
 - `_insert_harness_event()` (`session_store/writers.py:1109`) has a CLOSED keyword-only parameter list, not a `**kwargs` sink — `record_attempt()` forwards its `**event_fields` unvalidated (needs no code change for new kwargs), but `_insert_harness_event()` and `record_harness_event()` both require explicit new named parameters for `channels_json`/`side_effects_json`, or passing either today raises `TypeError: unexpected keyword argument`.
-- `_row_to_dataclass()` (`history_reader/_base.py:87-91`) does zero NULL-coercion, but it maps only columns present in `row.keys()` — the columns actually named in the SQL SELECT that produced the row. A new `harness_events` column is invisible to `HarnessEvent` construction unless added to BOTH the dataclass fields (`history_reader/harness.py:54-98`) AND the `_HARNESS_EVENT_COLUMNS` string (`:101-108`, spliced into 5 separate SELECT statements at lines 125, 160, 185, 211, 339).
+- `_row_to_dataclass()` (`history_reader/_base.py:87-91`) does zero NULL-coercion, but it maps only columns present in `row.keys()` — the columns actually named in the SQL SELECT that produced the row. A new `harness_events` column is invisible to `HarnessEvent` construction unless added to BOTH the dataclass fields (`history_reader/harness.py:54-109`) AND the `_HARNESS_EVENT_COLUMNS` string (`:110-118`, spliced into 5 separate SELECT statements at lines 135, 170, 195, 221, 349).
 
 ## Expected Behavior
 
@@ -56,9 +57,9 @@ Follow the v49/v50 `_MIGRATIONS` precedent (`session_store/schema.py:1390-1415`,
 
 ### Files to Modify
 - `scripts/little_loops/session_store/schema.py` — bump `SCHEMA_VERSION` (currently 51, after ENH-3464's same-day v51 efficiency-vector columns; this issue's migration lands as v52) and add the migration entry.
-- `scripts/little_loops/session_store/writers.py` — `_insert_harness_event()` (:1109-1207) and `record_harness_event()` (:1210-1299).
-- `scripts/little_loops/cli/harness.py` — `_record_harness_event()` (:214-261), the assembly point on the dominant `record_attempt()` write path, fed by 5 nested `_record()` call sites that currently extract only `.verdict`/`.abstained`/`.passed` from `outcome` (`cmd_skill::_record` :2139, `cmd_cmd::_record` :2273, `cmd_mcp::_record` :2393, `cmd_prompt::_record` :2512, `cmd_dsl` :2676/:2772; `record_harness_event()` used only at one of these).
-- `scripts/little_loops/history_reader/harness.py` — `HarnessEvent` dataclass (:53-98) and `_HARNESS_EVENT_COLUMNS` (:101-108).
+- `scripts/little_loops/session_store/writers.py` — `_insert_harness_event()` (:1109-1224) and `record_harness_event()` (:1227-1336).
+- `scripts/little_loops/cli/harness.py` — `_record_harness_event()` (:216-306), the assembly point on the dominant `record_attempt()` write path, fed by 5 nested `_record()` call sites that currently extract only `.verdict`/`.abstained`/`.passed` from `outcome` (`cmd_skill::_record` :2225, `cmd_cmd::_record` :2366, `cmd_mcp::_record` :2493, `cmd_prompt::_record` :2619, `cmd_dsl` :2793/:2890; `record_harness_event()` used only at one of these).
+- `scripts/little_loops/history_reader/harness.py` — `HarnessEvent` dataclass (:54-109) and `_HARNESS_EVENT_COLUMNS` (:110-118).
 - `scripts/little_loops/session_store/schema_manifest.json` (`harness_events` entry, `:1089`).
 
 ### Dependent Files (Callers/Importers)
@@ -74,11 +75,11 @@ Follow the v49/v50 `_MIGRATIONS` precedent (`session_store/schema.py:1390-1415`,
 - `scripts/tests/test_cli_harness.py` — the CLI-integration layer where the v50 baseline-condition columns' write-path round-trip tests actually live (e.g. `:2958-2964`, asserting `row["conditions_fp"]`/`row["subject_model"]` after a CLI-level `measure` invocation); add the `channels_json`/`side_effects_json` round-trip assertion here, following that precedent — not `test_session_store_writers.py::TestRecordAttemptAndAdmitRetry`, which tests retry-admission mechanics only and carries no free-text/JSON column round-tripping today.
 - `scripts/tests/test_cli_doctor_install_checks.py::TestSchemaDrift` (:333-533) — extend alongside the schema-manifest gate.
 - `scripts/tests/test_history_reader_harness.py` — read-side counterpart to `history_reader/harness.py`.
-- `scripts/tests/test_ll_session.py` (`test_recent_kind_harness_outputs_row` / `test_search_kind_harness_matches_indexed_rows`, :1380-1409) — `ll-session recent/search --kind harness` CLI-surface consumer.
+- `scripts/tests/test_ll_session.py` (`test_recent_kind_harness_outputs_row` / `test_search_kind_harness_matches_indexed_rows`, :1433/:1447) — `ll-session recent/search --kind harness` CLI-surface consumer.
 
 ### Documentation
-- `docs/ARCHITECTURE.md` — schema-migration table (rows through v49/v50, e.g. :670/:682); add the new version row.
-- `docs/guides/HISTORY_SESSION_GUIDE.md` — an independent copy of the same migration table (:57-99); already stale ("Current schema version: 45" at :57 vs. code's 50 — fix this drift while touching the table, not just adding a row).
+- `docs/ARCHITECTURE.md` — schema-migration table (rows through v49/v50/v51 at :682/:683/:684); add the new v52 row.
+- `docs/guides/HISTORY_SESSION_GUIDE.md` — an independent copy of the same migration table (:57-99); already stale ("Current schema version: 45" at :57 vs. code's 51 — fix this drift while touching the table, not just adding a row).
 - `docs/reference/EVENT-SCHEMA.md` § "CLI exit-code conventions" (:1795) — states *"Only `RunnerResult.timed_out` is persisted to `harness_events`; `RunnerResult.error` has no column."* — update once new fields are persisted.
 
 ### Codebase Research Findings
@@ -119,8 +120,8 @@ _Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
 
 _Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
 
-- `SCHEMA_VERSION` (`session_store/schema.py:25`) is a hand-maintained int, independently asserted equal to `len(_MIGRATIONS)` by `test_schema_version_matches_migrations_length` (`test_session_store_schema.py:2345-2350`, guarding against the two silently desyncing per a prior BUG-3241 finding) — must be bumped to 51 by hand alongside the new migration entry.
-- `schema_manifest.json` is auto-generated, not hand-typed: `TestSchemaManifest`'s class docstring (`test_session_store_schema.py:3132-3147`) documents a `python -c "..."` one-liner that builds a fresh DB via `ensure_db()`, calls `_schema_manifest(conn)` (`schema.py:1612`), and writes the JSON — regenerate and commit via that script rather than hand-editing the checked-in file.
+- `SCHEMA_VERSION` (`session_store/schema.py:25`) is a hand-maintained int, independently asserted equal to `len(_MIGRATIONS)` by `test_schema_version_matches_migrations_length` (`test_session_store_schema.py:2345-2350`, guarding against the two silently desyncing per a prior BUG-3241 finding) — currently 51 (ENH-3464's same-day v51 landed after this issue's capture); must be bumped to **52** by hand alongside the new migration entry.
+- `schema_manifest.json` is auto-generated, not hand-typed: `TestSchemaManifest`'s class docstring (`test_session_store_schema.py:3132-3147`) documents a `python -c "..."` one-liner that builds a fresh DB via `ensure_db()`, calls `_schema_manifest(conn)` (`schema.py:1625`), and writes the JSON — regenerate and commit via that script rather than hand-editing the checked-in file.
 - Confirmed migration-pattern choice is correct: SQLite's `ALTER TABLE` cannot add a `CHECK` to an already-existing column (v44's full-table-rebuild for `verdict_events.verdict`/`abstention_reason` exists only for that reason), but a `CHECK` on a brand-new column uses plain `ALTER TABLE ADD COLUMN` with no rebuild (v49's `attempt_kind TEXT CHECK (...)`, `schema.py:1373-1374`, is the precedent). Since `channels_json`/`side_effects_json` need no `CHECK` at all, the plain v49/v50 `ALTER TABLE` pattern applies outright.
 - Correction: the exact test class names cited in this issue's Integration Map/Tests sections do not match current code — `TestHarnessEventsRunModelColumns`, `TestHarnessEventsContentPinColumns`, and `TestHarnessEventsBaselineConditionColumns` do not exist. The actual classes are `TestSchemaV49HarnessRunModel` (`test_session_store_schema.py:1691`), `TestSchemaV39HarnessContentPin` (`:2182`), and `TestSchemaV50BaselineConditions` (`:3331`) — use these names when extending the fresh-DB/upgrade-DB/round-trip triad.
 - `TestRecordAttemptAndAdmitRetry` (`test_session_store_writers.py:2492`) tests repetition-allocation and retry-admission mechanics only — it carries no free-text/JSON column round-tripping today. The v50 baseline-condition columns' actual write-path round-trip tests instead live in `test_cli_harness.py` at the CLI-integration layer (e.g. `:2958-2964`, asserting `row["conditions_fp"]`/`row["subject_model"]` after a CLI-level `measure` invocation) — a `channels_json`/`side_effects_json` round-trip test likely belongs at that same CLI-integration layer, not inside `TestRecordAttemptAndAdmitRetry`.
@@ -160,14 +161,73 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 _Added by `/ll:confidence-check` on 2026-09-14_
 
-**Readiness Score**: 80/100 → STOP — ADDRESS GAPS (Dependencies Hard Override)
+**Readiness Score**: 80/100 (recorded 2026-09-14, before ENH-3462 landed) → the sole blocker below is resolved as of this verification pass; treat as clear to proceed
 **Outcome Confidence**: 97/100 → HIGH CONFIDENCE
 
 ### Gaps to Address
-- `blocked_by: ENH-3462` is unresolved (status: open). `ChannelRecord`/`HarnessEvalOutcome.channels` do not exist in `scripts/` yet, so this issue cannot begin implementation until ENH-3462 ships. Otherwise-well-specified (Criteria 1-4 all scored 20/20); this is the sole blocker.
+- ~~`blocked_by: ENH-3462` is unresolved (status: open). `ChannelRecord`/`HarnessEvalOutcome.channels` do not exist in `scripts/` yet, so this issue cannot begin implementation until ENH-3462 ships.~~ **Resolved** (verified 2026-09-14 by `/ll:verify-issues`): ENH-3462 has since shipped (status: Completed); `ChannelRecord`/`HarnessEvalOutcome.channels` are confirmed present and wired in `cli/harness.py`. Frontmatter `blocked_by: []` is accurate. Criteria 1-4 all scored 20/20 and no other gap was identified — this issue is clear to proceed.
 
+
+## Verification Notes
+
+_Added by `/ll:verify-issues` — 2026-09-14:_
+
+Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the same
+pass, so the issue as it now reads is up to date — this section is a record of
+what was wrong and fixed, not an outstanding action item).
+
+- **Graph**: provider=`codegraph` freshness=`stale` (dirty_files=15) — not used to
+  originate any verdict; every line-number/existence claim below was confirmed by
+  direct `Read`/`grep` against the working tree, not the graph index.
+- **Internal contradiction found and resolved**: the issue carried two
+  "Codebase Research Findings" blocks that directly disagreed — one (Current
+  Behavior) correctly stated ENH-3462 had landed, the other (Integration Map)
+  stated it had not. Confirmed directly: ENH-3462 is `status: Completed`,
+  `ChannelRecord`/`HarnessEvalOutcome.channels` exist and are fully wired in
+  `cli/harness.py`. The stale bullet is now marked superseded in place rather
+  than silently deleted.
+- **Confidence Check Notes gap resolved**: the recorded "STOP — ADDRESS GAPS"
+  verdict was keyed on the same now-resolved `blocked_by: ENH-3462` condition.
+  Struck through and annotated; frontmatter `blocked_by: []` was already
+  correct and needed no change.
+- **Line-number drift corrected throughout** (Current Behavior, Integration Map,
+  Program Design, Tests): caused by ENH-3464 landing the same day this issue was
+  captured, which added 5 new columns/fields ahead of most of this issue's cited
+  anchors in `cli/harness.py`, `session_store/writers.py`, and
+  `history_reader/harness.py`. Notably `_insert_harness_event()`'s INSERT list is
+  now 34 columns (35 with `id`), not 29, and `SCHEMA_VERSION` is now 51, not 50 —
+  this issue's migration lands as **v52**. All citations in the sections above
+  were re-verified against the current tree and updated; `docs/reference/EVENT-SCHEMA.md:1795`,
+  `cli/doctor.py` (~:537-540), and the `test_session_store_schema.py` class names/lines
+  (`TestSchemaV49HarnessRunModel` :1691, `TestSchemaV39HarnessContentPin` :2182,
+  `TestSchemaV50BaselineConditions` :3331, `test_schema_manifest_matches_checked_in_file`
+  :3152, `test_manifest_schema_version_matches_live_schema_version` :3169,
+  `test_v43_db_upgrades_preserving_existing_rows` :2753,
+  `test_schema_version_matches_migrations_length` :2345,
+  `TestRecordAttemptAndAdmitRetry` :2492) were checked and are unchanged. The
+  v44 (`schema.py:1178-1237`) and v50 (`:1390-1415`) migration-block citations
+  and the v49 `attempt_kind` CHECK (`:1373-1374`) were also checked and are
+  unchanged — they predate the v51 insertion point in the file, so only
+  citations for code *after* it drifted. `_schema_manifest()` moved from
+  `:1612` to `:1625` (fixed).
+- **Evidence check**: `ll-verify-evidence --json` returned `"ok": true`, 0
+  findings — no fabricated evidence quotes.
+- **Decisions log**: no active required rules (`ll-issues decisions list
+  --type rule --enforcement required --active-only` returned empty); no
+  conflict possible.
+- **Dependencies**: `blocked_by: []`, `parent: EPIC-3475` (exists,
+  `.issues/epics/P3-EPIC-3475-harden-ll-harness-verdicts.md`) — no broken refs,
+  no missing backlinks, no cycle.
+- **Proposal-vs-code consequence check (B6)**: no exception-handler or
+  test-fixture invalidation found; the proposed nullable `ALTER TABLE ADD
+  COLUMN` change threads through code paths (`record_attempt`'s `**event_fields`
+  passthrough, `_row_to_dataclass`'s NULL-tolerant mapping) that already handle
+  an added free-text column with zero special-casing, mirroring
+  `semantic_evidence`. No `PROPOSAL_UNSOUND` finding.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-15T03:47:32 - `88716449-4fa1-4681-9160-79d70fab2d25.jsonl`
+- `/ll:verify-issues` - 2026-09-15T01:51:08 - `d4c1049e-2c84-4263-aafc-1dbf7f3be2c3.jsonl`
 - `/ll:reconcile-issue` - 2026-09-14T21:32:26 - `f4a1cb05-beaf-4c89-a67b-0a34555443d6.jsonl`
 - `/ll:refine-issue` - 2026-09-14T21:18:34 - `b80e42ca-40bb-4d8a-b6d8-3b9dab6f1bf1.jsonl`
 - `/ll:confidence-check` - 2026-09-14T18:58:05 - `cef18a0e-5855-4ab1-ba23-37a7d36518ff.jsonl`
