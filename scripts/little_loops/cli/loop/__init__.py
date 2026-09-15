@@ -41,7 +41,9 @@ def main_loop() -> int:
             cmd_show,
         )
         from little_loops.cli.loop.lifecycle import cmd_monitor, cmd_resume, cmd_status, cmd_stop
+        from little_loops.cli.loop.cleanup import cmd_cleanup
         from little_loops.cli.loop.next_loop import cmd_next_loop
+        from little_loops.cli.loop.rename import cmd_rename
         from little_loops.cli.loop.queue import cmd_queue_list, cmd_queue_remove
         from little_loops.cli.loop.run import cmd_run
         from little_loops.cli.loop.scaffold_eval import cmd_scaffold_eval
@@ -78,6 +80,8 @@ def main_loop() -> int:
             "diagnose-evaluators",
             "promote-baseline",
             "edit-routes",
+            "rename",
+            "cleanup",
             "monitor",
             "queue",
             "audit",
@@ -940,6 +944,52 @@ Examples:
             help="Render compound policy-router decision table instead of state × verdict matrix",
         )
 
+        # Rename subcommand (ENH-2943)
+        rename_parser = subparsers.add_parser(
+            "rename",
+            help="Rename a loop YAML and rewrite all references",
+        )
+        rename_parser.set_defaults(command="rename")
+        rename_parser.add_argument("old", help="Current loop name (bare identifier, no .yaml extension)")
+        rename_parser.add_argument("new", help="New loop name (bare identifier, no .yaml extension)")
+        rename_parser.add_argument(
+            "--dry-run",
+            action="store_true",
+            help="Preview all changes without applying",
+        )
+        rename_parser.add_argument(
+            "--yes", "-y", action="store_true", help="Skip confirmation (for automation)"
+        )
+
+        # Cleanup subcommand (ENH-2943)
+        cleanup_parser = subparsers.add_parser(
+            "cleanup",
+            help="Discover and clean stuck/stale loops; emits JSON",
+        )
+        cleanup_parser.set_defaults(command="cleanup")
+        cleanup_parser.add_argument(
+            "--dry-run",
+            action="store_true",
+            help="Preview cleanup actions without applying",
+        )
+        cleanup_parser.add_argument(
+            "--threshold",
+            type=float,
+            default=15.0,
+            metavar="MINUTES",
+            help="Minutes before a status=running loop is considered stuck (default 15)",
+        )
+        cleanup_parser.add_argument(
+            "--interrupted-age",
+            type=float,
+            default=24.0,
+            metavar="HOURS",
+            help="Hours before a status=interrupted loop (no PID) is aged for archive (default 24)",
+        )
+        cleanup_parser.add_argument(
+            "-j", "--json", action="store_true", help="Emit results as JSON array"
+        )
+
         # Queue subcommand group (nested verbs: list; FEAT-2618)
         queue_parser = subparsers.add_parser(
             "queue",
@@ -1120,6 +1170,10 @@ Examples:
             return cmd_promote_baseline(args.loop, args, loops_dir)
         elif args.command == "edit-routes":
             return cmd_edit_routes(args.loop, args, loops_dir, logger)
+        elif args.command == "rename":
+            return cmd_rename(args, loops_dir, logger)
+        elif args.command == "cleanup":
+            return cmd_cleanup(args, loops_dir, logger)
         elif args.command == "monitor":
             return cmd_monitor(args, loops_dir)
         elif args.command == "audit":
