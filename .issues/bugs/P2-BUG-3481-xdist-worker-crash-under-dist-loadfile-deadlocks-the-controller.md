@@ -150,6 +150,14 @@ it reports `worker gwN crashed and worker restarting disabled`, calls
 failure entry naming the exact test the worker died on. This never enters the
 buggy clone/re-queue path.
 
+Known side effect (inherent to fail-fast, not a defect): the session stops at
+the crash. Tests after the crash point in the same file and any work units
+still queued are never run or reported, so the summary count is below the
+collected count. On the repro: `1 failed, 31 passed` of 34 collected
+(`test_c`/`test_d` unreported). The exit code is still `1`, so every gate that
+reads it fails correctly; document the count gap in TROUBLESHOOTING so it is
+not misread as lost tests.
+
 Why this over the alternatives:
 
 - `--dist load` would lose per-file worker affinity, which the pyproject
@@ -179,7 +187,8 @@ so it can be dropped once a fixed `pytest-xdist` release is pinned.
 - `docs/development/TROUBLESHOOTING.md` — add a third "suite wedges at the
   tail" entry next to § "xdist flake: subprocess signal-handling test times
   out" (`:821-835`) and § "Full-suite run makes macOS sluggish (beachball)"
-  (`:837-846`), with the idle-0% vs busy-spin-97-99% discriminator
+  (`:837-846`), with the idle-0% vs busy-spin-97-99% discriminator and the
+  post-fix "passed+failed < collected after a worker crash" count gap
 - `docs/development/TESTING.md` § "Live Host-CLI Spawn Guard" (~lines
   1105-1109) — currently conflates the un-killable BUG-3208 hang with the
   busy-spin signature only; mention this idle-wedge signature and the
@@ -219,11 +228,28 @@ so it can be dropped once a fixed `pytest-xdist` release is pinned.
   `scripts/tests/test_hook_session_start.py:712-765`
   (`TestAmbientAutomationEnvHermeticity.test_suite_passes_with_ambient_ll_automation`):
   write the synthetic tree from Steps to Reproduce into `tmp_path`, run
-  `python -m pytest` on it as a real subprocess with the project's addopts
-  plus `-n 2 --dist loadfile`, `timeout=60`, and assert `returncode != 0`
-  and `"crashed while running" in stdout` naming `test_crash_exit.py::test_b`.
-  Sentinel-guard against recursion and mark `no_parallel` (it spawns its own
-  xdist) per the existing template
+  `python -m pytest` on it as a real subprocess, `timeout=60`, and assert
+  `returncode != 0` and that stdout contains the full xdist 3.7.0 line
+  `worker 'gw<N>' crashed while running 'test_crash_exit.py::test_b'`
+  (match on `"crashed while running 'test_crash_exit.py::test_b'"`).
+  Two constraints that differ from a naive port of the template:
+  - **Guard the project config, not xdist.** Do not pass
+    `--max-worker-restart=0` explicitly; the test must fail if someone
+    deletes the flag from the config. Load
+    `[tool.pytest.ini_options].addopts` from `scripts/pyproject.toml` with
+    `tomllib`, pass that list through, and append `-n 2` (a later `-n`
+    overrides the addopts' `-n logical`) plus the tmp tree's own
+    `-c pytest.ini --rootdir=<tmp_path>`. Also assert the root `pytest.ini`
+    stub's `addopts` contains `--max-worker-restart=0`; no test currently
+    checks the two config files stay in sync.
+  - **Do NOT mark `no_parallel`.** Under the default `-n logical` addopts
+    a `no_parallel` test is skipped outright (the controller never runs
+    tests; see `conftest.py::pytest_collection_modifyitems` docstring), so
+    the regression test would never execute in the normal suite. A nested
+    `-n 2 --dist loadfile` pytest run works from inside an xdist worker
+    (verified 2026-09-15: outer `-n 2` worker → inner `-n 2` repro, passes
+    in ~4s). Keep only the recursion sentinel env var, exactly as the
+    template does.
 - `scripts/tests/test_conftest_cap.py` — no change expected; only touch if
   the flag is wired through `pytest_xdist_auto_num_workers` instead of addopts
 
@@ -245,9 +271,11 @@ so it can be dropped once a fixed `pytest-xdist` release is pinned.
 1. Add `--max-worker-restart=0` to `scripts/pyproject.toml` addopts with a
    comment citing this issue and xdist #784/#1327 (fix PRs #1328/#1371,
    unreleased as of 3.8.0). Mirror in root `pytest.ini`.
-2. Add `scripts/tests/test_xdist_crash_fail_fast.py` (new) per the Tests section.
-   Confirm it fails (wedge → `TimeoutExpired`) with the flag removed and
-   passes with it.
+2. Add `scripts/tests/test_xdist_crash_fail_fast.py` (new) per the Tests section
+   (addopts read from `scripts/pyproject.toml`, no `no_parallel` marker).
+   Confirm it fails (wedge → `TimeoutExpired`) with the flag removed from
+   pyproject and passes with it; confirm it actually runs (not skipped) under
+   the default `-n logical` invocation.
 3. Add the TROUBLESHOOTING.md entry and the TESTING.md clarification.
 4. Run the full suite once to confirm the flag does not change a clean
    run's outcome.
@@ -263,9 +291,12 @@ occurrence reports the nodeid directly.
 - **Effort**: Small. Two addopts lines, one subprocess test, two doc entries.
 - **Risk**: Low. Behavior change is limited to runs where a worker already
   died; such runs currently wedge, so any bounded failure is an improvement.
-  A crash that xdist would previously have retried successfully (transient)
-  now fails the run; BUG-2524's `no_parallel` routing is the intended
-  handling for such tests.
+  The only case where restart previously *worked* under `--dist loadfile` is
+  a worker crashing on its very first file (no completed unit to re-queue);
+  every later crash already wedged, so the practical regression surface is
+  near zero. A first-file crash now fails the run instead of being retried;
+  BUG-2524's `no_parallel` routing is the intended handling for such tests.
+  Remaining tests after the crash are not run (see Proposed Solution).
 - **Breaking Change**: No.
 
 ## Related Key Documentation
@@ -297,6 +328,15 @@ Verdict at time of check: **NEEDS_UPDATE** (corrections applied in this pass).
   `project.test_cmd` and need no edit.
 - Earlier citation correction retained: `TestAmbientAutomationEnvHermeticity`
   spans `test_hook_session_start.py:712-765`.
+- 2026-09-15 pre-implementation review: re-ran the repro (baseline wedge;
+  `--max-worker-restart=0` → exit 1, `1 failed, 31 passed`, ~2.7s) and a
+  nested run of the repro from inside an xdist worker (passes). Dropped the
+  `no_parallel` marker from the test plan (it would skip the test under the
+  default addopts), made the test load addopts from pyproject so it guards
+  the config rather than xdist, added the pytest.ini sync assertion, and
+  documented the post-crash unreported-test count gap. Confirmed neither
+  config file contains `max-worker-restart` today and all cited line ranges
+  (pyproject, pytest.ini, TESTING.md, TROUBLESHOOTING.md, ci.yml) resolve.
 
 ## Status
 

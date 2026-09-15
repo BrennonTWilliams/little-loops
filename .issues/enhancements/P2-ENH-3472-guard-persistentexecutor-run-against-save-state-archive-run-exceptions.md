@@ -136,6 +136,7 @@ Call these out in the PR description.
 **Open** | Created: 2026-09-13 | Priority: P2
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-15T23:13:30 - `0f995d07-641d-467b-93d8-b6a178acbacb.jsonl`
 - Manual review rewrite - 2026-09-15 - guard `save_state`/`archive_run` independently; collapse the two branches; add stale-`running` self-heal note and `failure_terminal` exit-code test; declare ENH-3473's dependency on this issue.
 - `/ll:wire-issue` - 2026-09-15T22:32:31 - `74d0e714-5fa8-4d36-8d26-f70b1e11f439.jsonl`
 - `/ll:refine-issue` - 2026-09-15T22:18:25 - `a0a3cae8-46b6-4741-b032-8859dea7a727.jsonl`

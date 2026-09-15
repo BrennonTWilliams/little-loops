@@ -148,6 +148,7 @@ Context-compaction failure (`cli/compact_session.py::main_compact_session()` →
 **Open** | Created: 2026-09-13 | Priority: P2
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-15T23:13:48 - `0f995d07-641d-467b-93d8-b6a178acbacb.jsonl`
 - Manual review rewrite - 2026-09-15 - dropped the ENH-3471 dependency (qualifying set is budget-exhaustion values that already exist) in favor of ENH-3472; decided artifact-only (no vocabulary/`map_final_status`/exit-code change), fixed filename `best_effort.json`, last-attempt semantics (no scoring); removed the untestable compaction Step 4; cut the vocabulary-driven wiring accordingly.
 - `/ll:wire-issue` - 2026-09-15T22:33:23 - `74d0e714-5fa8-4d36-8d26-f70b1e11f439.jsonl`
 - `/ll:reconcile-issue` - 2026-09-15T22:22:51 - `d2ee88e4-436e-400b-a42b-568c16a51760.jsonl`

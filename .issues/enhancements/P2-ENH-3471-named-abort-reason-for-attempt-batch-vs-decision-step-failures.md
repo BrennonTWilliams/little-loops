@@ -113,7 +113,7 @@ The earlier draft of this issue assumed both classes flow through the `except` f
 
 1. Add `self._phase = "action"` in `FSMExecutor.__init__`; set `"action"` before each `_run_action_or_route()` call (`fsm/executor.py:2078`, `:2147`) and `"decide"` before `_evaluate()` (`:2157`) and the subsequent routing block. Change the generic `except Exception` at `:1040` to pick `"no_route"` when `_phase == "decide"`, else `"error"`.
 2. Change `fsm/executor.py:981` to `_finish("no_route", error="No valid transition")`. Leave `:897` (FATAL_ERROR) as `"error"`.
-3. Re-point the existing decision-step assertions in `scripts/tests/test_fsm_executor.py` from `"error"` to `"no_route"`: `test_no_valid_route_terminates_with_error` (:2027/2047), `test_on_partial_missing_falls_through_to_error` (:2140), `test_on_blocked_missing_falls_through_to_error` (:2207), `test_extra_routes_missing_falls_through_to_error` (:2270), `test_undeclared_cannot_judge_shorthand_no_on_error_terminates_loud` (:2405), `test_no_valid_transition_returns_error` (:5573), `test_before_route_veto_terminates_with_error` (:7545). Rename the tests to say `no_route`. **Leave every attempt-batch assertion (`test_exception_during_execution_returns_error_result`, `..._emits_error_in_loop_complete_event`, `test_exception_in_branch_c_without_on_error_reraises`, `test_heredoc_collision_halts_run_even_with_on_error_set`, `test_missing_context_variable_produces_friendly_message`, `test_missing_capture_returns_error`, `test_missing_required_fragment_param_terminates_with_error`) and every infra-driven assertion (`test_fatal_error_signal_*`, `test_sub_loop_missing_loop_without_on_error`, `test_stop_event_emitted_beyond_hard_max`) unchanged at `"error"`.**
+3. Re-point the existing decision-step assertions in `scripts/tests/test_fsm_executor.py` from `"error"` to `"no_route"`: `test_no_valid_route_terminates_with_error` (:2027), `test_on_partial_missing_falls_through_to_error` (:2110), `test_on_blocked_missing_falls_through_to_error` (:2177), `test_extra_routes_missing_falls_through_to_error` (:2241), `test_undeclared_cannot_judge_shorthand_no_on_error_terminates_loud` (:2382), `test_no_valid_transition_returns_error` (:5552), `test_before_route_veto_terminates_with_error` (:7534). Rename the tests to say `no_route`. **Leave every attempt-batch assertion (`test_exception_during_execution_returns_error_result`, `..._emits_error_in_loop_complete_event`, `test_exception_in_branch_c_without_on_error_reraises`, `test_heredoc_collision_halts_run_even_with_on_error_set`, `test_missing_context_variable_produces_friendly_message`, `test_missing_capture_returns_error`, `test_missing_required_fragment_param_terminates_with_error`) and every infra-driven assertion (`test_fatal_error_signal_*`, `test_sub_loop_missing_loop_without_on_error`, `test_stop_event_emitted_beyond_hard_max`) unchanged at `"error"`.**
 4. Add two new tests in `test_fsm_executor.py` (one method per raise-site, the file's convention): (a) an evaluator that raises inside `_evaluate()` produces `terminated_by == "no_route"` with the exception text in `result.error`; (b) an action that raises with no `on_error` still produces `"error"` (pins the phase marker so a later refactor can't flip it).
 5. Widen `_execute_sub_loop()`'s two tuples (`fsm/executor.py:1304`, `:1320`) to include `"no_route"`; add a `test_fsm_executor.py` sub-loop test asserting a child ending in `no_route` routes to the parent's `on_error` and yields `verdict == "error"`.
 6. Add `"no_route": 1` to `EXIT_CODES` (`cli/loop/runner.py:39-55`); add a `test_cli_loop_lifecycle.py::TestCmdResumeExitCodes` case on the `test_workdir_vanished_returns_exit_code_1` shape.
@@ -137,7 +137,47 @@ The earlier draft of this issue assumed both classes flow through the `except` f
 - `scripts/tests/test_history_reader_usage.py::TestWasteAttribution` — `_seed_run` helper plus a single assertion block.
 - `scripts/tests/test_cli_loop_lifecycle.py::TestCmdResumeExitCodes` — `test_workdir_vanished_returns_exit_code_1` (:1466) shape.
 
+## Verification Notes
+
+Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the same
+pass, so the issue as it now reads is up to date — this section is a record of
+what was wrong and fixed, not an outstanding action item)
+
+All core claims confirmed against current code: `fsm/executor.py:981` is
+confirmed a direct `_finish("error", error="No valid transition")` call (not an
+exception path); the `try`/`except` funnel at `:1027` (`HeredocCollisionError`),
+`:1032` (`InterpolationError`), `:1040` (generic `except Exception`) all match
+exactly; `:897` (FATAL_ERROR), `:2078`/`:2147` (`_run_action_or_route()` call
+sites), `:2157` (`_evaluate()` call site), and `:1304`/`:1320`
+(`_execute_sub_loop()` tuples) all match exactly. `fsm/types.py:59`'s
+10-value inline comment and its omission of `stall_detected`,
+`host_pressure_abort`, `host_budget_exceeded`, `workdir_vanished`, and
+`cost_ceiling_exceeded` (present in the `:35-43` docstring) is confirmed
+accurate. `cli/loop/runner.py::EXIT_CODES` (`:39-55`) confirmed to have no
+`"error"` entry. `history_reader/usage.py::_WASTED_RUN_PREDICATE` (`:310-316`)
+confirmed. Parent `ENH-3468` confirmed to exist.
+
+Drift found: the seven decision-step test line citations in Implementation
+Step 3 (`test_no_valid_route_terminates_with_error` and six others) had drifted
+11-30 lines from intervening test-file edits; corrected in place in this pass
+(now :2027, :2110, :2177, :2241, :2382, :5552, :7534). All seven test functions
+still exist under their cited names and still assert `terminated_by == "error"`
+at the affected sites, consistent with the issue's premise.
+
+Proposal-vs-code check (B6): the phase-marker mechanism is sound —
+`_execute_state()` (which would set `self._phase`) is called from inside
+`run()`'s `try` block (opens `:627`, call at `:893`), so an exception raised
+inside `_evaluate()`/`_run_action_or_route()` propagates up through
+`_execute_state()` into `run()`'s own `except Exception` clause where
+`self._phase` (an instance attribute, not a stack-local) is still readable —
+same shape as the existing `self._pending_error`/`self._summary_state_executed`
+precedent the issue cites.
+
+Graph: provider=`codegraph` freshness=`fresh` (not used for this check; grep/Read
+sufficed and gave exact confirmation).
+
 ## Session Log
+- `/ll:verify-issues` - 2026-09-15T23:13:49 - `0f995d07-641d-467b-93d8-b6a178acbacb.jsonl`
 - Manual review rewrite - 2026-09-15 - corrected the mechanism (decision-step failures are direct `_finish()` calls at `executor.py:981`, not exceptions); pinned the value name `no_route`; decided supplement-not-replace so attempt-batch stays `error`.
 - `/ll:wire-issue` - 2026-09-15T22:31:53 - `74d0e714-5fa8-4d36-8d26-f70b1e11f439.jsonl`
 - `/ll:refine-issue` - 2026-09-15T22:16:07 - `a0a3cae8-46b6-4741-b032-8859dea7a727.jsonl`
