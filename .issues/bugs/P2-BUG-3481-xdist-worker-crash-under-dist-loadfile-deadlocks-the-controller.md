@@ -214,7 +214,7 @@ so it can be dropped once a fixed `pytest-xdist` release is pinned.
   `worker 'gw<N>' crashed` string. This issue adds that test.
 
 ### Tests
-- New `scripts/tests/test_xdist_crash_fail_fast.py` — subprocess-based
+- `scripts/tests/test_xdist_crash_fail_fast.py` (new) — subprocess-based
   regression test modeled on
   `scripts/tests/test_hook_session_start.py:712-765`
   (`TestAmbientAutomationEnvHermeticity.test_suite_passes_with_ambient_ll_automation`):
@@ -245,7 +245,7 @@ so it can be dropped once a fixed `pytest-xdist` release is pinned.
 1. Add `--max-worker-restart=0` to `scripts/pyproject.toml` addopts with a
    comment citing this issue and xdist #784/#1327 (fix PRs #1328/#1371,
    unreleased as of 3.8.0). Mirror in root `pytest.ini`.
-2. Add `scripts/tests/test_xdist_crash_fail_fast.py` per the Tests section.
+2. Add `scripts/tests/test_xdist_crash_fail_fast.py` (new) per the Tests section.
    Confirm it fails (wedge → `TimeoutExpired`) with the flag removed and
    passes with it.
 3. Add the TROUBLESHOOTING.md entry and the TESTING.md clarification.
@@ -307,4 +307,4 @@ Verdict at time of check: **NEEDS_UPDATE** (corrections applied in this pass).
 - `/ll:verify-issues` - 2026-09-15T22:29:03 - `74d0e714-5fa8-4d36-8d26-f70b1e11f439.jsonl`
 - `/ll:wire-issue` - 2026-09-15T22:22:26 - `d2ee88e4-436e-400b-a42b-568c16a51760.jsonl`
 - `/ll:refine-issue` - 2026-09-15T22:12:30 - `1daaf7af-e74b-4b5d-b1aa-a57797ab5fda.jsonl`
-- `/ll:format-issue` - 2026-09-15T22:08:41 - `4ed27b03-8e1c-4cb5-ad0c-8aea116e0d.jsonl`
+- `/ll:format-issue` - 2026-09-15T22:08:41 - `4ed27b03-8e1c-4cb5-ad0c-8aea21116e0d.jsonl`
