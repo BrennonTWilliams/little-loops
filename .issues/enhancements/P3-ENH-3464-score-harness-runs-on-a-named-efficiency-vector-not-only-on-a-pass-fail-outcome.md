@@ -8,9 +8,15 @@ discovered_date: '2026-09-13'
 labels:
 - evals
 blocked_by:
-- 'ENH-3462'
+- ENH-3462
 parent: EPIC-3475
 epic: EPIC-3475
+confidence_score: 100
+outcome_confidence: 86
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 ## Summary
@@ -119,7 +125,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 - `RunnerResult` (`scripts/little_loops/runner_spec.py:100`): new trailing fields `input_tokens: int | None = None`, `output_tokens: int | None = None`, `cache_read_tokens: int | None = None`, `tool_calls: int | None = None`, populated by `_run_skill()` (default blocking branch, parsed from stream-json stdout) and `_run_prompt()` (parsed from the JSON blob's `usage`; `tool_calls` stays `None`). The existing `tool_trace` field is trace-mode-only and unrelated; leave it alone.
 - `HarnessEvalOutcome` (`scripts/little_loops/cli/harness.py:863`): same four fields, trailing, `None` default, so `--output json` / N-sample entries carry them beside `passed`/`verdict`.
-- `HarnessEvent` (`scripts/little_loops/history_reader/harness.py:53`): already tracks `duration_ms: int | None` (ENH-2741); append the same four fields with an `# ENH-3464` comment, and add the four column names to `_HARNESS_EVENT_COLUMNS` in the same order.
+- `HarnessEvent` (`scripts/little_loops/history_reader/harness.py:54`): already tracks `duration_ms: int | None` (ENH-2741); append the same four fields with an `# ENH-3464` comment, and add the four column names to `_HARNESS_EVENT_COLUMNS` in the same order.
 - `TokenUsage` (`scripts/little_loops/subprocess_utils.py`): reused as the return shape of the new shared parsing helper; no changes.
 
 ### Signatures
@@ -234,11 +240,27 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - **In scope**: capturing, naming, surfacing (`--output json`, text summary, N-sample per-sample entries), and persisting `input_tokens`/`output_tokens`/`cache_read_tokens`/`tool_calls` beside the existing `duration_ms`, attached to the ENH-3397 run model (attempt × task × repetition × subject). Subject-side cost only.
 - **Out of scope**: turning efficiency into a pass/fail gate — a run that passes expensively still passes; any cross-run or cross-sample comparison semantics (aggregates, deltas, "cheaper than" verdicts) — this issue records per-run values only; judge-side (evaluator) cost; switching `_run_prompt()` to stream-json to obtain `tool_calls` on the PROMPT/DSL path; the downstream cost-trend analytics consumer over `.ll/history.db` (separate work).
 
+## Verification Notes
+
+Verdict at time of check: **NEEDS_UPDATE** (correction below applied in the same
+pass, so the issue as it now reads is up to date — this section is a record of
+what was wrong and fixed, not an outstanding action item).
+
+- **Graph**: provider=`codegraph` freshness=`fresh`
+- Decisions log gated (`.ll/decisions.yaml` + `.ll/decisions.d` present): `ll-issues decisions list --type rule --enforcement required --active-only` returned no active required rules — no `DECISIONS_VIOLATION`.
+- `ll-verify-evidence --json` on this file: `{"ok": true, "count": 0, "findings": []}` — no fabricated evidence spans.
+- `Blocked By: ENH-3462` — confirmed `status: done` (completed); this issue's sole dependency is satisfied.
+- Spot-checked ~16 codebase claims (file/line citations across `runner_spec.py`, `cli/harness.py`, `history_reader/harness.py`, `session_store/schema.py`, `session_store/writers.py`, `ab_writer.py`, `observability/schema.py`, `subprocess_utils.py`, docs, and 4 test files) plus the Proposal-vs-code consequence check (B6): all held exactly except one off-by-one line citation.
+- **Fixed**: Program Design → Types cited `HarnessEvent` at `history_reader/harness.py:53`; the class actually starts at line `54`. Corrected in place.
+- Confirmed no internal contradiction in the Design/Decisions/Program Design/Implementation Steps chain: `_grade()` (`cli/harness.py:1224`) reads only `result.timed_out`/`result.error`/`result.exit_code`, so the new trailing `None`-default fields cannot leak into gating, consistent with the "never a gate" requirement. The flagged test-breakage risk (`test_runner_spec.py::TestRunActionDispatch`'s two dataclass-equality assertions, lines 151-188) is real and already called out in Implementation Steps and the Wiring Phase section.
+
 ## Status
 
 **Open** | Created: 2026-09-13 | Priority: P3
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-14T23:56:04 - `6c3f1c1b-fdc2-4f21-88f4-7db6ce2294b1.jsonl`
+- `/ll:verify-issues` - 2026-09-14T23:46:14 - `56a48b35-c804-42ff-abb0-481912d354f8.jsonl`
 - manual review pass - 2026-09-14 - resolved 9 design decisions, superseded the on_usage wiring directive, added Acceptance Criteria, re-estimated effort
 - `/ll:refine-issue` - 2026-09-14T22:51:27 - `73b0db27-1e1a-4004-aaed-c305e94ddb77.jsonl`
 - `/ll:refine-issue` - 2026-09-14T21:18:34 - `b80e42ca-40bb-4d8a-b6d8-3b9dab6f1bf1.jsonl`
