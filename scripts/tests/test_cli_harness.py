@@ -4061,3 +4061,205 @@ class TestSubparsersAcceptEvidenceFlags:
         args = _parse_harness_args(["skill", "x", "--trace-mode", "--require-order", "A,B"])
         assert args.trace_mode is True
         assert args.require_order == "A,B"
+
+
+class TestHarnessEvalOutcomeEfficiencyFields:
+    """ENH-3464: HarnessEvalOutcome carries the efficiency vector, and _grade()
+    never lets it influence passed/verdict/exit_code."""
+
+    def test_grade_copies_efficiency_fields_from_result(self) -> None:
+        args = _make_namespace(target="cmd x")
+        result = RunnerResult(
+            stdout="ok",
+            stderr="",
+            exit_code=0,
+            input_tokens=100,
+            output_tokens=50,
+            cache_read_tokens=10,
+            cache_creation_tokens=5,
+            tool_calls=3,
+        )
+        rc, outcome = _grade("cmd x", result, args, duration_ms=1234)
+        assert rc == 0
+        assert outcome.input_tokens == 100
+        assert outcome.output_tokens == 50
+        assert outcome.cache_read_tokens == 10
+        assert outcome.cache_creation_tokens == 5
+        assert outcome.tool_calls == 3
+        assert outcome.duration_ms == 1234
+
+    def test_grade_efficiency_fields_never_gate(self) -> None:
+        """A run that passes/fails expensively is identical to a cheap one (AC5)."""
+        args = _make_namespace(target="cmd x")
+        cheap = RunnerResult(stdout="ok", stderr="", exit_code=0)
+        expensive = RunnerResult(
+            stdout="ok",
+            stderr="",
+            exit_code=0,
+            input_tokens=10_000_000,
+            output_tokens=10_000_000,
+            cache_read_tokens=10_000_000,
+            cache_creation_tokens=10_000_000,
+            tool_calls=10_000,
+        )
+        rc_cheap, outcome_cheap = _grade("cmd x", cheap, args)
+        rc_expensive, outcome_expensive = _grade("cmd x", expensive, args)
+        assert rc_cheap == rc_expensive
+        assert outcome_cheap.passed == outcome_expensive.passed
+        assert outcome_cheap.verdict == outcome_expensive.verdict
+        assert outcome_cheap.abstained == outcome_expensive.abstained
+
+    def test_grade_timed_out_leaves_efficiency_fields_none_but_stamps_duration(self) -> None:
+        args = _make_namespace(target="cmd x")
+        result = RunnerResult(stdout="", stderr="", exit_code=2, timed_out=True)
+        rc, outcome = _grade("cmd x", result, args, duration_ms=999)
+        assert rc == 2
+        assert outcome.input_tokens is None
+        assert outcome.tool_calls is None
+        assert outcome.duration_ms == 999
+
+    def test_grade_errored_leaves_efficiency_fields_none_but_stamps_duration(self) -> None:
+        args = _make_namespace(target="cmd x")
+        result = RunnerResult(stdout="", stderr="", exit_code=2, error="spawn failed")
+        rc, outcome = _grade("cmd x", result, args, duration_ms=42)
+        assert rc == 2
+        assert outcome.input_tokens is None
+        assert outcome.duration_ms == 42
+
+    def test_grade_defaults_duration_ms_to_none(self) -> None:
+        args = _make_namespace(target="cmd x")
+        result = RunnerResult(stdout="ok", stderr="", exit_code=0)
+        _rc, outcome = _grade("cmd x", result, args)
+        assert outcome.duration_ms is None
+
+
+class TestOutputJsonEfficiencyFields:
+    """ENH-3464: --output json / text summary surface duration_ms + the five
+    efficiency fields, null when unknown."""
+
+    def test_cmd_output_json_includes_duration_ms_and_null_tokens(
+        self, capsys: pytest.CaptureFixture
+    ) -> None:
+        args = _make_namespace(runner="cmd", target="echo hi", output="json")
+        mock_proc = _make_selector_mock_process(["hi\n"])
+        sel = _make_ready_selector()
+
+        with (
+            patch("little_loops.runner_spec.subprocess.Popen", return_value=mock_proc),
+            patch("little_loops.runner_spec.selectors.DefaultSelector", return_value=sel),
+        ):
+            result = cmd_cmd(args)
+
+        assert result == 0
+        data = json.loads(capsys.readouterr().out)
+        assert isinstance(data["duration_ms"], int)
+        assert data["input_tokens"] is None
+        assert data["output_tokens"] is None
+        assert data["cache_read_tokens"] is None
+        assert data["cache_creation_tokens"] is None
+        assert data["tool_calls"] is None
+
+    def test_skill_output_json_includes_populated_tokens(
+        self, capsys: pytest.CaptureFixture
+    ) -> None:
+        args = _make_namespace(runner="skill", target="check-code", runner_args=[], output="json")
+        stdout = (
+            '{"type": "result", "usage": {"input_tokens": 100, "output_tokens": 50, '
+            '"cache_read_input_tokens": 10, "cache_creation_input_tokens": 5}}'
+        )
+        with (
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
+            patch("subprocess.run", return_value=_make_completed(returncode=0, stdout=stdout)),
+        ):
+            result = cmd_skill(args)
+
+        assert result == 0
+        data = json.loads(capsys.readouterr().out)
+        assert data["input_tokens"] == 100
+        assert data["output_tokens"] == 50
+        assert data["cache_read_tokens"] == 10
+        assert data["cache_creation_tokens"] == 5
+        assert isinstance(data["duration_ms"], int)
+
+    def test_n_sample_entries_include_efficiency_fields(self) -> None:
+        args = _make_namespace(
+            runner="skill", target="check-code", runner_args=[], samples=3, output="json"
+        )
+        calls = [_make_completed(returncode=0, stdout="ok") for _ in range(3)]
+        import io
+        import sys as _sys
+
+        buf = io.StringIO()
+        old_stdout = _sys.stdout
+        _sys.stdout = buf
+        try:
+            with (
+                patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
+                patch("subprocess.run", side_effect=calls),
+                # Keep the 3-item skill side_effect list from being consumed by
+                # the unrelated `git` calls each sample's _record() makes
+                # (mirrors TestSampleLoopIntegration._stub_git).
+                patch("little_loops.cli.harness._git_output", return_value="abc123"),
+                patch("little_loops.cli.harness._git_dirty", return_value=False),
+            ):
+                result = cmd_skill(args)
+        finally:
+            _sys.stdout = old_stdout
+
+        assert result == 0
+        payload = json.loads(buf.getvalue().strip())
+        entry = payload["samples"]["results"][0]
+        assert "duration_ms" in entry
+        assert "input_tokens" in entry
+        assert "tool_calls" in entry
+
+
+class TestRecordHarnessEventEfficiencyFields:
+    """ENH-3464: the six _record(...) closures forward the efficiency vector
+    to _record_harness_event() -> record_attempt() -> harness_events."""
+
+    def test_skill_run_persists_efficiency_vector(self) -> None:
+        from little_loops.history_reader import recent_harness_events
+        from little_loops.session_store import DEFAULT_DB_PATH, resolve_history_db
+
+        args = _make_namespace(runner="skill", target="check-code", runner_args=[], output="text")
+        stdout = (
+            '{"type": "result", "usage": {"input_tokens": 100, "output_tokens": 50, '
+            '"cache_read_input_tokens": 10, "cache_creation_input_tokens": 5}}'
+        )
+        with (
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
+            patch("subprocess.run", return_value=_make_completed(returncode=0, stdout=stdout)),
+        ):
+            result = cmd_skill(args)
+
+        assert result == 0
+        row = recent_harness_events(
+            runner="skill", target="check-code", db=resolve_history_db(DEFAULT_DB_PATH)
+        )[0]
+        assert row.input_tokens == 100
+        assert row.output_tokens == 50
+        assert row.cache_read_tokens == 10
+        assert row.cache_creation_tokens == 5
+
+    def test_cmd_run_persists_none_efficiency_vector(self, capsys: pytest.CaptureFixture) -> None:
+        from little_loops.history_reader import recent_harness_events
+        from little_loops.session_store import DEFAULT_DB_PATH, resolve_history_db
+
+        args = _make_namespace(runner="cmd", target="echo hi", output="text")
+        mock_proc = _make_selector_mock_process(["hi\n"])
+        sel = _make_ready_selector()
+
+        with (
+            patch("little_loops.runner_spec.subprocess.Popen", return_value=mock_proc),
+            patch("little_loops.runner_spec.selectors.DefaultSelector", return_value=sel),
+        ):
+            result = cmd_cmd(args)
+
+        assert result == 0
+        row = recent_harness_events(
+            runner="cmd", target="echo hi", db=resolve_history_db(DEFAULT_DB_PATH)
+        )[0]
+        assert row.input_tokens is None
+        assert row.tool_calls is None
+        assert row.duration_ms is not None

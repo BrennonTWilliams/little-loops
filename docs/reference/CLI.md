@@ -265,8 +265,12 @@ between clear pass and clear fail — ENH-3415; see "N-sample redundancy" below)
 
 **`--output json` payload fields (`skill`/`cmd`/`mcp`/`prompt` runners, effective n = 1):**
 always present: `runner`, `exit_code`, `exit_code_check`, `semantic`, `result`, `stdout`,
-`stderr`, `channels` (ENH-3462, see "Widened evidence surface" below). Additive, present
-only when applicable:
+`stderr`, `channels` (ENH-3462, see "Widened evidence surface" below), and the efficiency
+vector `duration_ms`, `input_tokens`, `output_tokens`, `cache_read_tokens`,
+`cache_creation_tokens`, `tool_calls` (ENH-3464) — reporting only, `null` for `cmd`/`mcp`
+runs, timed-out/errored runs, and hosts other than claude-code/codex; `tool_calls` is always
+`null` on the `prompt`/`dsl` path. These never affect `exit_code` or `result` — a run that
+passes expensively still passes. Additive, present only when applicable:
 
 | Field | Present when |
 |-------|--------------|
@@ -297,7 +301,9 @@ the payload carries `result` (`PASS`/`FAIL`/`ABSTAIN`/`ERROR`/`INCONCLUSIVE`),
 `requested`, `graded` (`passed + failed`; abstained/errored samples are excluded from this
 denominator), `passed`, `failed`, `abstained`, `errored`, `ci_lo`/`ci_hi` (Wilson 95% CI over
 `graded`), and `results` (one entry per sample, in run order, with `index`/`exit_code`/
-`exit_code_check`/`semantic`/`result`/`error`; `stdout`/`stderr` added per entry only under
+`exit_code_check`/`semantic`/`result`/`error`, the same per-sample efficiency vector as the
+n=1 shape above (`duration_ms`/`input_tokens`/`output_tokens`/`cache_read_tokens`/
+`cache_creation_tokens`/`tool_calls`, ENH-3464); `stdout`/`stderr` added per entry only under
 `--verbose` or when that sample did not pass). `PASS` requires every requested sample to be
 graded and pass — a pass alongside any abstention or error is `INCONCLUSIVE`, not a softened
 `PASS`, since that outcome could not distinguish a real capability from a lucky sample. The

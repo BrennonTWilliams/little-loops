@@ -35,6 +35,8 @@ from little_loops.subprocess_utils import (
     read_continuation_prompt,
     run_claude_command,
     safe_killpg,
+    usage_from_event,
+    usage_from_stream_lines,
 )
 
 # =============================================================================
@@ -3272,3 +3274,164 @@ class TestKillProcessGroupMockPidRegression:
         mock_getpgid.assert_called_once_with(12345)
         mock_killpg.assert_called_once_with(12345, signal.SIGKILL)
         mock_process.kill.assert_not_called()
+
+
+class TestUsageFromEvent:
+    """usage_from_event() (ENH-3464): single place that knows the claude
+    `result` and codex `turn.completed` usage key names."""
+
+    def test_claude_result_event_with_usage(self) -> None:
+        event = {
+            "type": "result",
+            "model": "claude-sonnet-4-6",
+            "usage": {
+                "input_tokens": 1000,
+                "output_tokens": 200,
+                "cache_read_input_tokens": 500,
+                "cache_creation_input_tokens": 75,
+            },
+        }
+        usage = usage_from_event(event, default_model="unknown")
+        assert usage is not None
+        assert usage.input_tokens == 1000
+        assert usage.output_tokens == 200
+        assert usage.cache_read_tokens == 500
+        assert usage.cache_creation_tokens == 75
+        assert usage.model == "claude-sonnet-4-6"
+
+    def test_claude_result_event_falls_back_to_default_model(self) -> None:
+        event = {"type": "result", "usage": {"input_tokens": 1, "output_tokens": 2}}
+        usage = usage_from_event(event, default_model="detected-model")
+        assert usage is not None
+        assert usage.model == "detected-model"
+
+    def test_result_event_with_no_usage_returns_none(self) -> None:
+        assert usage_from_event({"type": "result"}, default_model="unknown") is None
+
+    def test_codex_turn_completed_event_with_usage(self) -> None:
+        event = {
+            "type": "turn.completed",
+            "usage": {
+                "input_tokens": 1000,
+                "output_tokens": 200,
+                "cached_input_tokens": 500,
+                "cache_write_input_tokens": 75,
+            },
+        }
+        usage = usage_from_event(event, default_model="unknown")
+        assert usage is not None
+        assert usage.input_tokens == 1000
+        assert usage.output_tokens == 200
+        assert usage.cache_read_tokens == 500
+        assert usage.cache_creation_tokens == 75
+
+    def test_codex_turn_completed_missing_cache_write_is_zero_not_none(self) -> None:
+        """Codex genuinely bills no cache writes when the key is absent (Decision 3)."""
+        event = {
+            "type": "turn.completed",
+            "usage": {"input_tokens": 1, "output_tokens": 2, "cached_input_tokens": 0},
+        }
+        usage = usage_from_event(event, default_model="unknown")
+        assert usage is not None
+        assert usage.cache_creation_tokens == 0
+
+    def test_turn_completed_with_no_usage_returns_none(self) -> None:
+        assert usage_from_event({"type": "turn.completed"}, default_model="unknown") is None
+
+    def test_other_event_type_returns_none(self) -> None:
+        assert usage_from_event({"type": "assistant"}, default_model="unknown") is None
+
+
+class TestUsageFromStreamLines:
+    """usage_from_stream_lines() (ENH-3464): whole-stdout parser used by
+    `_run_skill()`/`_run_prompt()` to pull tokens + tool-call count off
+    captured stdout post hoc."""
+
+    def test_claude_output_format_json_single_line_blob(self) -> None:
+        stdout = (
+            '{"type": "result", "subtype": "success", "model": "claude-sonnet-4-6", '
+            '"num_turns": 3, "usage": {"input_tokens": 100, "output_tokens": 50, '
+            '"cache_read_input_tokens": 10, "cache_creation_input_tokens": 5}}'
+        )
+        usage, tool_calls = usage_from_stream_lines(stdout)
+        assert usage is not None
+        assert usage.input_tokens == 100
+        assert usage.output_tokens == 50
+        assert usage.cache_read_tokens == 10
+        assert usage.cache_creation_tokens == 5
+        assert tool_calls is None
+
+    def test_claude_output_format_json_pretty_printed_multiline(self) -> None:
+        stdout = (
+            "{\n"
+            '  "type": "result",\n'
+            '  "model": "claude-sonnet-4-6",\n'
+            '  "usage": {\n'
+            '    "input_tokens": 100,\n'
+            '    "output_tokens": 50,\n'
+            '    "cache_read_input_tokens": 0,\n'
+            '    "cache_creation_input_tokens": 0\n'
+            "  }\n"
+            "}\n"
+        )
+        usage, tool_calls = usage_from_stream_lines(stdout)
+        assert usage is not None
+        assert usage.input_tokens == 100
+        assert tool_calls is None
+
+    def test_claude_stream_json_with_two_tool_calls(self) -> None:
+        stdout = "\n".join(
+            [
+                '{"type": "system", "subtype": "init", "model": "claude-sonnet-4-6"}',
+                (
+                    '{"type": "assistant", "message": {"content": ['
+                    '{"type": "tool_use", "id": "tu_1", "name": "Read", "input": {}},'
+                    '{"type": "text", "text": "checking"}'
+                    "]}}"
+                ),
+                (
+                    '{"type": "assistant", "message": {"content": ['
+                    '{"type": "tool_use", "id": "tu_2", "name": "Grep", "input": {}}'
+                    "]}}"
+                ),
+                (
+                    '{"type": "result", "usage": {"input_tokens": 100, "output_tokens": 50, '
+                    '"cache_read_input_tokens": 0, "cache_creation_input_tokens": 0}}'
+                ),
+            ]
+        )
+        usage, tool_calls = usage_from_stream_lines(stdout)
+        assert usage is not None
+        assert usage.input_tokens == 100
+        assert tool_calls == 2
+
+    def test_codex_turn_completed_ndjson(self) -> None:
+        stdout = "\n".join(
+            [
+                '{"type": "item.started", "item": {}}',
+                (
+                    '{"type": "turn.completed", "usage": {"input_tokens": 1000, '
+                    '"output_tokens": 200, "cached_input_tokens": 500}}'
+                ),
+            ]
+        )
+        usage, tool_calls = usage_from_stream_lines(stdout)
+        assert usage is not None
+        assert usage.cache_creation_tokens == 0
+        assert tool_calls is None
+
+    def test_non_json_noise_returns_none_none(self) -> None:
+        assert usage_from_stream_lines("ok") == (None, None)
+
+    def test_empty_stdout_returns_none_none(self) -> None:
+        assert usage_from_stream_lines("") == (None, None)
+
+    def test_assistant_events_with_no_tool_use_yields_zero_not_none(self) -> None:
+        stdout = "\n".join(
+            [
+                '{"type": "assistant", "message": {"content": [{"type": "text", "text": "hi"}]}}',
+                '{"type": "result", "usage": {"input_tokens": 1, "output_tokens": 1}}',
+            ]
+        )
+        _usage, tool_calls = usage_from_stream_lines(stdout)
+        assert tool_calls == 0

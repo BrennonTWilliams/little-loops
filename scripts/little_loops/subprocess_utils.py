@@ -18,7 +18,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from little_loops.context_window import context_window_for
 from little_loops.host_runner import (
@@ -76,6 +76,100 @@ class TokenUsage:
 
 # Detailed usage callback — receives all four token fields plus model ID.
 DetailedUsageCallback = Callable[[TokenUsage], None]
+
+
+def usage_from_event(event: dict[str, Any], *, default_model: str) -> TokenUsage | None:
+    """Parse a stream-json/NDJSON terminal event's usage block into a :class:`TokenUsage`.
+
+    The single place that knows the Claude ``result`` event's usage key names
+    (``cache_read_input_tokens``/``cache_creation_input_tokens``) and Codex's
+    ``turn.completed`` event's key names (``cached_input_tokens``/
+    ``cache_write_input_tokens``, no ``model`` field) (ENH-3464 Decision 8a).
+    Returns ``None`` when *event* isn't a recognized terminal event type or
+    carries no ``usage`` block. Codex reports no ``cache_write_input_tokens``
+    key when it bills no cache writes — that yields ``cache_creation_tokens
+    == 0`` (a real zero), not ``None`` (ENH-3464 Decision 3).
+    """
+    etype = event.get("type")
+    usage = event.get("usage")
+    if not usage:
+        return None
+    if etype == "result":
+        return TokenUsage(
+            input_tokens=usage.get("input_tokens", 0),
+            output_tokens=usage.get("output_tokens", 0),
+            cache_read_tokens=usage.get("cache_read_input_tokens", 0),
+            cache_creation_tokens=usage.get("cache_creation_input_tokens", 0),
+            model=event.get("model", default_model),
+        )
+    if etype == "turn.completed":
+        return TokenUsage(
+            input_tokens=usage.get("input_tokens", 0),
+            output_tokens=usage.get("output_tokens", 0),
+            cache_read_tokens=usage.get("cached_input_tokens", 0),
+            cache_creation_tokens=usage.get("cache_write_input_tokens", 0),
+            model=default_model,
+        )
+    return None
+
+
+def usage_from_stream_lines(stdout: str) -> tuple[TokenUsage | None, int | None]:
+    """Parse a runner's captured stdout for tokens + tool-call count (ENH-3464 Decision 8b).
+
+    Used by ``_run_skill()``/``_run_prompt()`` to derive
+    :class:`~little_loops.runner_spec.RunnerResult`'s efficiency fields post
+    hoc from already-captured stdout (no streaming callback wiring). Tries a
+    whole-string ``json.loads`` first — the shape ``claude --output-format
+    json`` produces (single JSON object, possibly pretty-printed
+    multi-line), mirroring :func:`~little_loops.host_runner.run_blocking_json`'s
+    parse-order precedent — and returns ``tool_calls=None`` in that case (the
+    PROMPT/DSL path never observes ``assistant`` events, Decision 4). If the
+    whole string doesn't parse (stream-json / Codex NDJSON, multiple
+    top-level objects), falls back to per-line parsing: the last
+    ``result``/``turn.completed`` event's usage via :func:`usage_from_event`,
+    plus a tally of ``tool_use`` blocks inside ``assistant`` events.
+    ``tool_calls`` is ``None`` when no ``assistant`` event was observed at
+    all (nothing to distinguish from an unreachable PROMPT-path 0), and an
+    integer count (possibly 0) once at least one was seen.
+    """
+    stripped = stdout.strip()
+    if not stripped:
+        return None, None
+    try:
+        envelope = json.loads(stripped)
+    except json.JSONDecodeError:
+        envelope = None
+    if isinstance(envelope, dict):
+        return usage_from_event(envelope, default_model="unknown"), None
+
+    detected_model = "unknown"
+    tool_call_count = 0
+    saw_assistant = False
+    usage: TokenUsage | None = None
+    for line in stripped.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(event, dict):
+            continue
+        etype = event.get("type")
+        if etype == "system" and event.get("subtype") == "init" and "model" in event:
+            detected_model = event["model"]
+        elif etype == "assistant":
+            saw_assistant = True
+            msg = event.get("message", {})
+            for block in msg.get("content", []):
+                if block.get("type") == "tool_use":
+                    tool_call_count += 1
+        elif etype in ("result", "turn.completed"):
+            parsed = usage_from_event(event, default_model=detected_model)
+            if parsed is not None:
+                usage = parsed
+    return usage, (tool_call_count if saw_assistant else None)
 
 
 @dataclass(frozen=True)
@@ -609,22 +703,15 @@ def run_claude_command(
                             stream_callback(sub_line, is_stderr)
                     return
                 elif etype == "result":
-                    usage = event.get("usage", {})
-                    if on_usage and usage:
-                        on_usage(
-                            usage.get("input_tokens", 0) + usage.get("cache_read_input_tokens", 0),
-                            usage.get("output_tokens", 0),
-                        )
-                    if on_usage_detailed and usage:
-                        on_usage_detailed(
-                            TokenUsage(
-                                input_tokens=usage.get("input_tokens", 0),
-                                output_tokens=usage.get("output_tokens", 0),
-                                cache_read_tokens=usage.get("cache_read_input_tokens", 0),
-                                cache_creation_tokens=usage.get("cache_creation_input_tokens", 0),
-                                model=event.get("model", detected_model),
+                    parsed_usage = usage_from_event(event, default_model=detected_model)
+                    if parsed_usage is not None:
+                        if on_usage:
+                            on_usage(
+                                parsed_usage.input_tokens + parsed_usage.cache_read_tokens,
+                                parsed_usage.output_tokens,
                             )
-                        )
+                        if on_usage_detailed:
+                            on_usage_detailed(parsed_usage)
                     if event.get("is_error"):
                         error_text = event.get("error") or event.get("result", "")
                         if error_text:
@@ -640,17 +727,9 @@ def run_claude_command(
                     # exec_events.rs::Usage in openai/codex (no cache-read
                     # split, no model field — Codex reports a single
                     # cached_input_tokens count and never echoes the model).
-                    usage = event.get("usage", {})
-                    if on_usage_detailed and usage:
-                        on_usage_detailed(
-                            TokenUsage(
-                                input_tokens=usage.get("input_tokens", 0),
-                                output_tokens=usage.get("output_tokens", 0),
-                                cache_read_tokens=usage.get("cached_input_tokens", 0),
-                                cache_creation_tokens=usage.get("cache_write_input_tokens", 0),
-                                model=detected_model,
-                            )
-                        )
+                    parsed_usage = usage_from_event(event, default_model=detected_model)
+                    if parsed_usage is not None and on_usage_detailed:
+                        on_usage_detailed(parsed_usage)
                     return  # skip other event types (item.*, etc.)
                 else:
                     return  # skip other event types (tool_use, etc.)

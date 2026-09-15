@@ -506,6 +506,100 @@ class TestRunActionDispatch:
         assert after == before
 
 
+class TestRunnerResultEfficiencyFields:
+    """ENH-3464: _run_skill()'s default blocking branch and _run_prompt()
+    parse tokens/tool_calls post hoc off captured stdout via
+    usage_from_stream_lines()."""
+
+    def test_skill_dispatch_populates_tokens_and_tool_calls(self) -> None:
+        stdout = "\n".join(
+            [
+                '{"type": "system", "subtype": "init", "model": "claude-sonnet-4-6"}',
+                (
+                    '{"type": "assistant", "message": {"content": ['
+                    '{"type": "tool_use", "id": "tu_1", "name": "Read", "input": {}}]}}'
+                ),
+                (
+                    '{"type": "result", "usage": {"input_tokens": 100, "output_tokens": 50, '
+                    '"cache_read_input_tokens": 10, "cache_creation_input_tokens": 5}}'
+                ),
+            ]
+        )
+        spec = ActionSpec(
+            name="check-code",
+            runner=RunnerType.SKILL,
+            target="check-code",
+            args={"runner_args": []},
+            timeout=120,
+        )
+        with (
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
+            patch("subprocess.run", return_value=_make_completed(returncode=0, stdout=stdout)),
+        ):
+            result = run_action(spec)
+
+        assert result.input_tokens == 100
+        assert result.output_tokens == 50
+        assert result.cache_read_tokens == 10
+        assert result.cache_creation_tokens == 5
+        assert result.tool_calls == 1
+
+    def test_skill_dispatch_non_json_stdout_leaves_fields_none(self) -> None:
+        spec = ActionSpec(
+            name="check-code",
+            runner=RunnerType.SKILL,
+            target="check-code",
+            args={"runner_args": []},
+            timeout=120,
+        )
+        with (
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
+            patch("subprocess.run", return_value=_make_completed(returncode=0, stdout="ok")),
+        ):
+            result = run_action(spec)
+
+        assert result.input_tokens is None
+        assert result.tool_calls is None
+
+    def test_prompt_dispatch_populates_tokens_but_not_tool_calls(self) -> None:
+        stdout = (
+            '{"type": "result", "usage": {"input_tokens": 42, "output_tokens": 7, '
+            '"cache_read_input_tokens": 0, "cache_creation_input_tokens": 0}}'
+        )
+        spec = ActionSpec(
+            name="p", runner=RunnerType.PROMPT, target="What is 2+2?", args={"model": None}
+        )
+        with (
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
+            patch("subprocess.run", return_value=_make_completed(returncode=0, stdout=stdout)),
+        ):
+            result = run_action(spec)
+
+        assert result.input_tokens == 42
+        assert result.output_tokens == 7
+        assert result.tool_calls is None
+
+    def test_skill_dispatch_timeout_leaves_fields_none(self) -> None:
+        spec = ActionSpec(name="x", runner=RunnerType.SKILL, target="x", timeout=1)
+        with (
+            patch("little_loops.runner_spec.resolve_host", return_value=FakeRunner()),
+            patch("subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="claude", timeout=1)),
+        ):
+            result = run_action(spec)
+
+        assert result.timed_out is True
+        assert result.input_tokens is None
+        assert result.tool_calls is None
+
+    def test_cmd_dispatch_leaves_fields_none(self) -> None:
+        """CMD runners never invoke a host CLI (ENH-3464 Decision 1)."""
+        spec = ActionSpec(name="echo hi", runner=RunnerType.CMD, target="echo hi", timeout=5)
+        result = run_action(spec)
+
+        assert result.input_tokens is None
+        assert result.tool_calls is None
+
+
 class TestScopeRunnerGuard:
     """ENH-3403: scopes declared on SKILL/PROMPT/MCP must fail loud, unspawned."""
 

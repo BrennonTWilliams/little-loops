@@ -45,7 +45,7 @@ from little_loops.host_runner import (
     resolve_scopes,
 )
 from little_loops.mcp_call import call_mcp_tool
-from little_loops.subprocess_utils import _kill_process_group
+from little_loops.subprocess_utils import _kill_process_group, usage_from_stream_lines
 
 __all__ = [
     "RunnerType",
@@ -111,6 +111,20 @@ class RunnerResult:
     # defaulted field appended after `error`, so all existing keyword-only
     # construction sites (see Decision 1's call-site survey) are unaffected.
     tool_trace: list[dict[str, Any]] | None = None
+    # ENH-3464: efficiency vector, parsed post hoc from captured stdout (no
+    # streaming callback wiring — see subprocess_utils.usage_from_stream_lines).
+    # Populated by _run_skill()'s default blocking branch and _run_prompt();
+    # _run_cmd()/_run_mcp() never invoke a host CLI so stay None. None on a
+    # timed-out or errored run (stdout is empty/unavailable in both cases).
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    cache_read_tokens: int | None = None
+    cache_creation_tokens: int | None = None
+    # tool_calls counts top-level `tool_use` blocks only (SKILL path); calls
+    # made inside an Agent-tool subagent never appear in the parent stream.
+    # Always None on the PROMPT/DSL path (claude-code's blocking JSON mode
+    # emits no tool_use blocks; codex item.* events aren't tallied).
+    tool_calls: int | None = None
 
 
 @dataclass(frozen=True)
@@ -259,7 +273,17 @@ def _run_skill(spec: ActionSpec) -> RunnerResult:
             timeout=spec.timeout,
             env=project_child_env(inv),
         )
-        return RunnerResult(stdout=proc.stdout, stderr=proc.stderr, exit_code=proc.returncode)
+        usage, tool_calls = usage_from_stream_lines(proc.stdout)
+        return RunnerResult(
+            stdout=proc.stdout,
+            stderr=proc.stderr,
+            exit_code=proc.returncode,
+            input_tokens=usage.input_tokens if usage else None,
+            output_tokens=usage.output_tokens if usage else None,
+            cache_read_tokens=usage.cache_read_tokens if usage else None,
+            cache_creation_tokens=usage.cache_creation_tokens if usage else None,
+            tool_calls=tool_calls,
+        )
     except subprocess.TimeoutExpired:
         return RunnerResult(stdout="", stderr="", exit_code=2, timed_out=True)
     except FileNotFoundError as e:
@@ -432,7 +456,17 @@ def _run_prompt(spec: ActionSpec) -> RunnerResult:
             timeout=spec.timeout,
             env=project_child_env(inv),
         )
-        return RunnerResult(stdout=proc.stdout, stderr=proc.stderr, exit_code=proc.returncode)
+        usage, tool_calls = usage_from_stream_lines(proc.stdout)
+        return RunnerResult(
+            stdout=proc.stdout,
+            stderr=proc.stderr,
+            exit_code=proc.returncode,
+            input_tokens=usage.input_tokens if usage else None,
+            output_tokens=usage.output_tokens if usage else None,
+            cache_read_tokens=usage.cache_read_tokens if usage else None,
+            cache_creation_tokens=usage.cache_creation_tokens if usage else None,
+            tool_calls=tool_calls,
+        )
     except subprocess.TimeoutExpired:
         return RunnerResult(stdout="", stderr="", exit_code=2, timed_out=True)
     except FileNotFoundError as e:

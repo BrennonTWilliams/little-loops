@@ -426,7 +426,13 @@ is the loop-consumable output.
 Every `ll-harness` invocation writes a row to the `harness_events` table in `.ll/history.db`
 (schema v31), including `semantic_verdict`, `duration_ms`, `head_sha`, `branch`, and the
 content hash of the evaluated target. The content pin is what lets you compare a skill's
-pass rate across commits without re-diffing by hand.
+pass rate across commits without re-diffing by hand. As of schema v51 (ENH-3464), each row
+also carries a reporting-only efficiency vector — `input_tokens`, `output_tokens`,
+`cache_read_tokens`, `cache_creation_tokens`, `tool_calls` — parsed post hoc from the
+subject's captured stdout on `skill`/`prompt` runs against claude-code or codex; `NULL` on
+`cmd`/`mcp` runs and on any timed-out/errored row. These never affect the pass/fail verdict —
+a run that passes expensively still passes — so a cost-trend query joins them against
+`semantic_passed` rather than filtering on them.
 
 `ll-harness` itself is now a consumer (ENH-3223, see above) — its per-run report folds in
 the target's historical rate. For anything beyond a single target's own report, query the

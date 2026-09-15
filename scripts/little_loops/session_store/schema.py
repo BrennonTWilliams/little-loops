@@ -22,7 +22,7 @@ from little_loops.session_store.db import DEFAULT_DB_PATH, _resolve_db_path
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 50
+SCHEMA_VERSION = 51
 
 VALID_KINDS: tuple[str, ...] = (
     "tool",
@@ -1412,6 +1412,19 @@ _MIGRATIONS: list[str] = [
     ALTER TABLE harness_events ADD COLUMN conditions_fp TEXT;
     CREATE INDEX IF NOT EXISTS idx_harness_baseline
         ON harness_events(runner, target, input_hash, target_content_hash, conditions_fp);
+    """,
+    # v51 (ENH-3464): efficiency-vector columns on harness_events -- tokens
+    # and tool-calls alongside the already-persisted duration_ms, so a
+    # downstream cost-trend read over .ll/history.db has the per-run record
+    # as input. Five nullable columns, no DEFAULT, no backfill (fix-forward:
+    # pre-migration rows keep NULL). Reporting only -- these columns are
+    # never read by any pass/fail gate.
+    """
+    ALTER TABLE harness_events ADD COLUMN input_tokens INTEGER;
+    ALTER TABLE harness_events ADD COLUMN output_tokens INTEGER;
+    ALTER TABLE harness_events ADD COLUMN cache_read_tokens INTEGER;
+    ALTER TABLE harness_events ADD COLUMN cache_creation_tokens INTEGER;
+    ALTER TABLE harness_events ADD COLUMN tool_calls INTEGER;
     """,
 ]
 

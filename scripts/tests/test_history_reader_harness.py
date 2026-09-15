@@ -278,6 +278,37 @@ class TestHarnessEventReaders:
         assert row.continuations is None
         assert row.superseded_by is None
 
+    def test_harness_event_carries_v51_efficiency_fields(self, tmp_path: Path) -> None:
+        """ENH-3464: efficiency-vector columns round-trip through record_harness_event()."""
+        db = tmp_path / "history.db"
+        record_harness_event(
+            db,
+            ts="2026-09-14T00:00:00Z",
+            runner="skill",
+            target="foo",
+            input_tokens=100,
+            output_tokens=50,
+            cache_read_tokens=10,
+            cache_creation_tokens=5,
+            tool_calls=3,
+        )
+        row = recent_harness_events(db=db)[0]
+        assert row.input_tokens == 100
+        assert row.output_tokens == 50
+        assert row.cache_read_tokens == 10
+        assert row.cache_creation_tokens == 5
+        assert row.tool_calls == 3
+
+    def test_harness_event_efficiency_fields_default_none(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        record_harness_event(db, ts="2026-09-14T00:00:00Z", runner="cmd", target="foo")
+        row = recent_harness_events(db=db)[0]
+        assert row.input_tokens is None
+        assert row.output_tokens is None
+        assert row.cache_read_tokens is None
+        assert row.cache_creation_tokens is None
+        assert row.tool_calls is None
+
 
 class TestHarnessEventById:
     """ENH-3407: harness_event_by_id() — used by the --retry-of gate."""

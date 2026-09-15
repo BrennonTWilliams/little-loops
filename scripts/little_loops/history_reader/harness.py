@@ -96,6 +96,15 @@ class HarnessEvent:
     subject_model: str | None = None
     input_hash: str | None = None
     conditions_fp: str | None = None
+    # ENH-3464 v51 efficiency-vector columns (trailing-default, same pattern
+    # as the v49/v50 columns above). Reporting only -- never read by a
+    # pass/fail gate. tool_calls counts top-level tool_use blocks only (SKILL
+    # path); always None on the PROMPT/DSL path and on CMD/MCP runners.
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    cache_read_tokens: int | None = None
+    cache_creation_tokens: int | None = None
+    tool_calls: int | None = None
 
 
 _HARNESS_EVENT_COLUMNS = (
@@ -104,7 +113,8 @@ _HARNESS_EVENT_COLUMNS = (
     "semantic_reason, semantic_evidence, semantic_model, "
     "target_content_hash, target_path, dirty, "
     "cell_key, repetition, attempt_kind, continuations, superseded_by, "
-    "timeout_s, host_cli, subject_model, input_hash, conditions_fp"
+    "timeout_s, host_cli, subject_model, input_hash, conditions_fp, "
+    "input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, tool_calls"
 )
 
 

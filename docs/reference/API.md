@@ -9126,6 +9126,16 @@ class HarnessEvent:
     attempt_kind: str | None = None
     continuations: int | None = None
     superseded_by: int | None = None
+    timeout_s: int | None = None
+    host_cli: str | None = None
+    subject_model: str | None = None
+    input_hash: str | None = None
+    conditions_fp: str | None = None
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    cache_read_tokens: int | None = None
+    cache_creation_tokens: int | None = None
+    tool_calls: int | None = None
 ```
 
 ```python
@@ -9161,6 +9171,8 @@ Read-side API for `harness_events` rows (ENH-2739's schema, written by `record_h
 `HarnessEvent` gained `id` plus the five v49 run-model columns (ENH-3407), all trailing-default so existing positional construction in tests keeps working. `harness_event_by_id()` looks up a single row by id — used by `ll-harness`'s `--retry-of` admissibility gate. `authoritative_attempt(cell_key, repetition)` returns the earliest non-superseded row for that `(cell_key, repetition)` pair; `authoritative_attempts(cell_key)` returns one row per repetition index (excluding superseded rows) — the set ENH-3408 counts as n. Both are per-repetition, not per-cell: a cell with three clean repetitions has three authoritative rows. All four counting/filtering sites (`harness_eval_pass_rate`, `harness_eval_abstention_rate`, `authoritative_attempt`, `authoritative_attempts`) share one predicate, `history_reader.harness._AUTHORITATIVE_PREDICATE = "superseded_by IS NULL"` — a bare boolean SQL fragment spliced in via f-string, mirroring `history_reader.usage._WASTED_RUN_PREDICATE`'s single-source-of-truth pattern.
 
 `admissions_by_reason(db_path, attempt_ids)` (ENH-3408) returns admission counts by `reason` for a caller-supplied set of attempt ids — e.g. a target's windowed history, or one `cmd_dsl` invocation's written ids — since `harness_admissions` has no target/run column of its own to scope by directly. Returns `{}` for an empty `attempt_ids` or when none match.
+
+`HarnessEvent` also carries the five v50 baseline-condition columns (`timeout_s`, `host_cli`, `subject_model`, `input_hash`, `conditions_fp`, ENH-3435) and the five v51 efficiency-vector columns (`input_tokens`, `output_tokens`, `cache_read_tokens`, `cache_creation_tokens`, `tool_calls`, ENH-3464) — all trailing-default. The efficiency columns are reporting only: populated for `SKILL`/`PROMPT` runs against a claude-code or codex host (parsed post hoc from captured stdout via `subprocess_utils.usage_from_stream_lines()`), `NULL` for `CMD`/`MCP` runs, timed-out/errored runs, and any other host. `tool_calls` is always `NULL` on the `PROMPT`/`DSL` path and counts top-level `tool_use` blocks only on the `SKILL` path (calls inside an Agent-tool subagent are not visible). None of the five are ever read by a pass/fail gate — `HarnessEvalOutcome` (in `cli/harness.py`) carries the same fields plus `duration_ms`, surfaced in `--output json`, the text summary, and the N-sample per-sample entries.
 
 **CLI:** `ll-session recent --kind harness` and `ll-session search --fts "<target>" --kind harness` work automatically via the generic `VALID_KINDS`/`_KIND_TABLE` dispatch (ENH-2739) — no CLI code change was needed for this read API. `ll-harness` itself is a consumer of both rollups (ENH-3223): `_evaluate_and_report()` folds the run's target's historical pass/abstention rate (target-scoped, 30-day window, suppressed below 3 scored authoritative runs) and, when any admission belongs to that population, a `history_admissions` map, into its `--output json` payload and text report — see [CLI Reference → `ll-harness`](CLI.md#ll-harness).
 

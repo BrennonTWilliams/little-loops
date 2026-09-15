@@ -3,8 +3,9 @@ id: ENH-3464
 title: Score harness runs on a named efficiency vector, not only on a pass/fail outcome
 type: ENH
 priority: P3
-status: open
+status: done
 discovered_date: '2026-09-13'
+completed_at: '2026-09-15T01:49:30Z'
 labels:
 - evals
 blocked_by:
@@ -194,15 +195,15 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Acceptance Criteria
 
-- [ ] `RunnerResult`, `HarnessEvalOutcome`, and `HarnessEvent` each carry `input_tokens`, `output_tokens`, `cache_read_tokens`, `cache_creation_tokens`, `tool_calls` as trailing `int | None = None` fields; `HarnessEvalOutcome` additionally carries `duration_ms: int | None = None`.
-- [ ] **(manual, real host)** On the claude-code host (and codex for tokens), after `ll-harness skill ...` completes normally the recorded `harness_events` row has non-`None` token fields and a non-`None` `tool_calls`; after `ll-harness prompt ...`/`dsl ...`, token fields are non-`None` and `tool_calls` is `None`. Hosts whose stdout matches neither the claude nor codex shape record `None` for all five. The unit-test analogue is the fixture-driven `subprocess.run` patch test in `test_runner_spec.py` (Wiring Phase) asserting the same field shapes on `RunnerResult`.
-- [ ] CMD and MCP runs, timed-out runs, and errored runs (`RunnerResult.error` set) record all five fields as `None` while `duration_ms` is still populated. A nonzero-exit run that still emitted a usage block records the parsed values (Decision 5).
-- [ ] `--output json` and the N-sample per-sample entries include `duration_ms` and the five fields; the text summary shows them when present.
-- [ ] No test asserting `passed`, `verdict`, `abstained`, or a `cmd_*` exit code changes. A new test constructs a `RunnerResult` with large token/tool-call values and asserts `_grade()`'s `passed`/`verdict`/`abstained` and exit code are identical to the same result with the fields `None`, while the outcome's five efficiency fields equal the input values (the `TestGapClassAdvisory::test_testable_only_gap_is_advisory_not_blocking` shape).
-- [ ] New-DB shape / upgrade-from-v50 shape / NULL-on-pre-migration-rows triad passes in `test_session_store_schema.py`, using subset (`<=`) column assertions.
-- [ ] `usage_from_event()` is the only place that knows the claude/codex usage key names; `usage_from_stream_lines()` and both `_process_line` branches call it, and `_process_line`'s existing `on_usage`/`on_usage_detailed` behavior is unchanged (`test_issue_manager.py::TestRunClaudeCommand`, `TestRunWithContinuation` still pass).
-- [ ] The six documentation files in step 7 are updated.
-- [ ] `python -m pytest scripts/tests/` exits 0.
+- [x] `RunnerResult`, `HarnessEvalOutcome`, and `HarnessEvent` each carry `input_tokens`, `output_tokens`, `cache_read_tokens`, `cache_creation_tokens`, `tool_calls` as trailing `int | None = None` fields; `HarnessEvalOutcome` additionally carries `duration_ms: int | None = None`.
+- [ ] **(manual, real host)** On the claude-code host (and codex for tokens), after `ll-harness skill ...` completes normally the recorded `harness_events` row has non-`None` token fields and a non-`None` `tool_calls`; after `ll-harness prompt ...`/`dsl ...`, token fields are non-`None` and `tool_calls` is `None`. Hosts whose stdout matches neither the claude nor codex shape record `None` for all five. The unit-test analogue is the fixture-driven `subprocess.run` patch test in `test_runner_spec.py` (Wiring Phase) asserting the same field shapes on `RunnerResult`. **Unit-test analogue verified** (`TestRunnerResultEfficiencyFields` in `test_runner_spec.py`); the real-host manual leg is not runnable in this sandboxed session — left unchecked pending a live-host smoke test.
+- [x] CMD and MCP runs, timed-out runs, and errored runs (`RunnerResult.error` set) record all five fields as `None` while `duration_ms` is still populated. A nonzero-exit run that still emitted a usage block records the parsed values (Decision 5).
+- [x] `--output json` and the N-sample per-sample entries include `duration_ms` and the five fields; the text summary shows them when present.
+- [x] No test asserting `passed`, `verdict`, `abstained`, or a `cmd_*` exit code changes. A new test constructs a `RunnerResult` with large token/tool-call values and asserts `_grade()`'s `passed`/`verdict`/`abstained` and exit code are identical to the same result with the fields `None`, while the outcome's five efficiency fields equal the input values (the `TestGapClassAdvisory::test_testable_only_gap_is_advisory_not_blocking` shape).
+- [x] New-DB shape / upgrade-from-v50 shape / NULL-on-pre-migration-rows triad passes in `test_session_store_schema.py`, using subset (`<=`) column assertions.
+- [x] `usage_from_event()` is the only place that knows the claude/codex usage key names; `usage_from_stream_lines()` and both `_process_line` branches call it, and `_process_line`'s existing `on_usage`/`on_usage_detailed` behavior is unchanged (`test_issue_manager.py::TestRunClaudeCommand`, `TestRunWithContinuation` still pass).
+- [x] The six documentation files in step 7 are updated.
+- [x] `python -m pytest scripts/tests/` exits 0 (one pre-existing, unrelated failure: `test_verify_evidence.py::TestRepoGate::test_no_new_unverifiable_evidence`, confirmed via `git stash` to fail identically on the pre-session repo state — BUG-3477/BUG-3478 citation drift, untouched by this issue).
 
 ### Codebase Research Findings
 
@@ -257,11 +258,55 @@ what was wrong and fixed, not an outstanding action item).
 - **Fixed**: Program Design → Types cited `HarnessEvent` at `history_reader/harness.py:53`; the class actually starts at line `54`. Corrected in place.
 - Confirmed no internal contradiction in the Design/Decisions/Program Design/Implementation Steps chain: `_grade()` (`cli/harness.py:1224`) reads only `result.timed_out`/`result.error`/`result.exit_code`, so the new trailing `None`-default fields cannot leak into gating, consistent with the "never a gate" requirement. The flagged test-breakage risk (`test_runner_spec.py::TestRunActionDispatch`'s two dataclass-equality assertions, lines 151-188) is real and already called out in Implementation Steps and the Wiring Phase section.
 
+## Resolution
+
+Implemented exactly as designed, with zero deviations from the Program Design
+(no `### Deviations` subsection needed). `subprocess_utils.py` gained
+`usage_from_event()` (single place knowing the claude `result`/codex
+`turn.completed` usage key names) and `usage_from_stream_lines()` (whole-string
+JSON parse first, then per-line fallback tallying `tool_use` blocks);
+`_process_line`'s `result`/`turn.completed` branches now delegate to
+`usage_from_event()`. `RunnerResult` gained the five trailing efficiency
+fields, populated in `_run_skill()`'s default blocking branch and
+`_run_prompt()`. `HarnessEvalOutcome` gained the same five fields plus
+`duration_ms`; `_grade()`/`_evaluate_and_report()` gained a `duration_ms`
+kwarg and copy the fields from `result` without touching gating logic. All six
+`_record_harness_event()` call sites forward the vector; `_insert_harness_event()`/
+`record_harness_event()` gained matching trailing kwargs, passed through
+uncoerced. A new v51 migration adds five nullable `harness_events` columns
+(`SCHEMA_VERSION` 50 → 51); `HarnessEvent`/`_HARNESS_EVENT_COLUMNS` mirror them.
+`--output json`, the text summary (a new `_format_efficiency_line()` helper,
+omitting `None` fields), and the N-sample per-sample entries all surface the
+vector. Six documentation files updated (also backfilling a pre-existing
+missing-v50 gap in `ARCHITECTURE.md`/`API.md`/`HISTORY_SESSION_GUIDE.md` while
+touching those sections).
+
+One finding beyond the issue's own scope: bumping `SCHEMA_VERSION` to 51
+required updating 25 pre-existing hardcoded `SCHEMA_VERSION == 50` /
+`int(row[0]) == 50` sanity-check literals across
+`test_session_store_schema.py`/`test_session_store_writers.py`/
+`test_assistant_messages.py` (an established per-migration convention, not
+specific to this issue) and 2 hardcoded line-number entries in
+`test_issue_parser.py`'s priority-regex allowlist (shifted by the new
+`writers.py` kwargs). `scripts/little_loops/session_store/schema_manifest.json`
+was regenerated per its own test's documented procedure.
+
+`python -m pytest scripts/tests/` exits non-zero only on
+`test_verify_evidence.py::TestRepoGate::test_no_new_unverifiable_evidence`,
+confirmed via `git stash` to fail identically against the pre-session repo
+state (BUG-3477/BUG-3478 citation drift in unrelated issue files) — not
+touched or caused by this work.
+
+AC2 (manual, real-host `ll-harness skill`/`prompt` smoke test) is not runnable
+in this sandboxed session; its unit-test analogue
+(`TestRunnerResultEfficiencyFields` in `test_runner_spec.py`) passes.
+
 ## Status
 
-**Open** | Created: 2026-09-13 | Priority: P3
+**Done** | Created: 2026-09-13 | Priority: P3
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-15T01:48:15 - `552f7cf8-4558-4cb3-894a-46a956bbf058.jsonl`
 - `/ll:confidence-check` - 2026-09-15T00:47:11 - `36aa4801-09b7-4cb9-aa06-ca550d3c3cf8.jsonl`
 - `/ll:verify-issues` - 2026-09-15T00:29:31 - `51c3b23a-edfa-4dc4-8194-6375f9dde1ac.jsonl`
 - `/ll:verify-issues` - 2026-09-15T00:26:40 - `2a40d031-39ff-44e8-9b2d-f7ec22745c0b.jsonl`

@@ -1267,6 +1267,36 @@
           "notnull": false,
           "pk": false,
           "type": "TEXT"
+        },
+        {
+          "name": "input_tokens",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "output_tokens",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "cache_read_tokens",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "cache_creation_tokens",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
+        },
+        {
+          "name": "tool_calls",
+          "notnull": false,
+          "pk": false,
+          "type": "INTEGER"
         }
       ],
       "type": "table"
@@ -2851,5 +2881,5 @@
       "type": "table"
     }
   },
-  "schema_version": 50
+  "schema_version": 51
 }

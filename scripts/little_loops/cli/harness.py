@@ -237,6 +237,11 @@ def _record_harness_event(
     host_cli: str | None = None,
     input_hash: str | None = None,
     conditions_fp: str | None = None,
+    input_tokens: int | None = None,
+    output_tokens: int | None = None,
+    cache_read_tokens: int | None = None,
+    cache_creation_tokens: int | None = None,
+    tool_calls: int | None = None,
 ) -> int | None:
     """Record one attempt against *cell_key* via :func:`record_attempt` (ENH-3407).
 
@@ -290,6 +295,11 @@ def _record_harness_event(
             host_cli=host_cli,
             input_hash=input_hash,
             conditions_fp=conditions_fp,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cache_read_tokens=cache_read_tokens,
+            cache_creation_tokens=cache_creation_tokens,
+            tool_calls=tool_calls,
         )
 
     if retry_of is not None or loud:
@@ -870,6 +880,15 @@ class HarnessEvalOutcome:
     sample_pass_rate: float | None = None
     samples: SampleTally | None = None
     channels: list[ChannelRecord] = field(default_factory=list)
+    # ENH-3464: efficiency vector, copied from RunnerResult (never read by any
+    # gate -- passed/verdict/abstained above are computed with no knowledge
+    # of these). duration_ms is stamped by the caller that measures it.
+    duration_ms: int | None = None
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    cache_read_tokens: int | None = None
+    cache_creation_tokens: int | None = None
+    tool_calls: int | None = None
 
 
 def _read_prepatch_evidence(issue_id: str | None) -> dict | None:
@@ -1228,6 +1247,7 @@ def _grade(
     *,
     expected_grade: ExpectedGrade | None = None,
     side_effects: list[ChannelRecord] | None = None,
+    duration_ms: int | None = None,
 ) -> tuple[int, HarnessEvalOutcome]:
     """Grade *result* against criteria. No stdout or DB writes (ENH-3415).
 
@@ -1242,9 +1262,18 @@ def _grade(
     ran (e.g. a direct `_grade()` call in a test, or a Namespace predating
     the new flags -- AC14), in which case only stdout/stderr are recorded and
     the `git` channel is synthesized as unexamined.
+
+    ENH-3464: *duration_ms* is measured by the caller (`time.monotonic()`
+    around the invocation) and copied onto the outcome verbatim -- never read
+    by any gate here. `result`'s five efficiency fields are copied the same
+    way. Both stay `None` on the timed-out/errored early return below (stdout
+    is empty/unavailable in both cases) except `duration_ms`, which is still
+    stamped -- wall-clock is measured regardless of outcome.
     """
     if result.timed_out or result.error is not None:
-        return 2, HarnessEvalOutcome(passed=False, verdict=None, eval_result=None)
+        return 2, HarnessEvalOutcome(
+            passed=False, verdict=None, eval_result=None, duration_ms=duration_ms
+        )
 
     passed = True
     abstained = False
@@ -1317,6 +1346,12 @@ def _grade(
         eval_result=eval_result,
         abstained=abstained,
         channels=channels,
+        duration_ms=duration_ms,
+        input_tokens=result.input_tokens,
+        output_tokens=result.output_tokens,
+        cache_read_tokens=result.cache_read_tokens,
+        cache_creation_tokens=result.cache_creation_tokens,
+        tool_calls=result.tool_calls,
     )
     # ENH-3185 AC9: 0=pass, 1=fail (unchanged), 2=harness/infra error (already
     # taken above, never reused here), 3=inconclusive (no failure, >=1 abstention).
@@ -1910,7 +1945,9 @@ def _run_sample_loop(
         snapshot = _snapshot_side_effects(args, cwd)
         result, duration_ms = invoke()
         side_effects = _check_side_effects(snapshot, args, cwd)
-        rc, outcome = _grade(runner_label, result, args, side_effects=side_effects)
+        rc, outcome = _grade(
+            runner_label, result, args, side_effects=side_effects, duration_ms=duration_ms
+        )
         tally.record(rc)
         record(result, duration_ms, outcome)
         label = {2: "ERROR", 3: "ABSTAIN", 0: "PASS"}.get(rc, "FAIL")
@@ -1929,6 +1966,12 @@ def _run_sample_loop(
             "result": label,
             "error": error,
             "channels": [c.to_dict() for c in outcome.channels],
+            "duration_ms": outcome.duration_ms,
+            "input_tokens": outcome.input_tokens,
+            "output_tokens": outcome.output_tokens,
+            "cache_read_tokens": outcome.cache_read_tokens,
+            "cache_creation_tokens": outcome.cache_creation_tokens,
+            "tool_calls": outcome.tool_calls,
         }
         if args.verbose or label != "PASS":
             entry["stdout"] = result.stdout
@@ -1945,6 +1988,33 @@ def _run_sample_loop(
     )
 
 
+def _format_efficiency_line(outcome: HarnessEvalOutcome) -> str | None:
+    """Render the efficiency vector as one text-summary line, omitting `None` fields.
+
+    Returns `None` when every field is `None` (nothing to show -- e.g. a
+    CMD/MCP run, or an unrecognized host stdout shape).
+    """
+    parts: list[str] = []
+    token_bits = []
+    if outcome.input_tokens is not None:
+        token_bits.append(f"in={outcome.input_tokens}")
+    if outcome.output_tokens is not None:
+        token_bits.append(f"out={outcome.output_tokens}")
+    if outcome.cache_read_tokens is not None:
+        token_bits.append(f"cache_r={outcome.cache_read_tokens}")
+    if outcome.cache_creation_tokens is not None:
+        token_bits.append(f"cache_w={outcome.cache_creation_tokens}")
+    if token_bits:
+        parts.append("tokens " + "/".join(token_bits))
+    if outcome.tool_calls is not None:
+        parts.append(f"tool_calls={outcome.tool_calls}")
+    if outcome.duration_ms is not None:
+        parts.append(f"duration_ms={outcome.duration_ms}")
+    if not parts:
+        return None
+    return "Efficiency: " + " ".join(parts)
+
+
 def _evaluate_and_report(
     runner_label: str,
     result: RunnerResult,
@@ -1953,17 +2023,27 @@ def _evaluate_and_report(
     expected_grade: ExpectedGrade | None = None,
     skip_history: bool = False,
     side_effects: list[ChannelRecord] | None = None,
+    duration_ms: int | None = None,
 ) -> tuple[int, HarnessEvalOutcome]:
     """Evaluate result against criteria and print the report. Returns (exit_code, outcome)."""
     if result.timed_out:
         _report(runner_label, result, args, error_msg="timeout")
-        return 2, HarnessEvalOutcome(passed=False, verdict=None, eval_result=None)
+        return 2, HarnessEvalOutcome(
+            passed=False, verdict=None, eval_result=None, duration_ms=duration_ms
+        )
     if result.error is not None:
         _report(runner_label, result, args, error_msg=result.error)
-        return 2, HarnessEvalOutcome(passed=False, verdict=None, eval_result=None)
+        return 2, HarnessEvalOutcome(
+            passed=False, verdict=None, eval_result=None, duration_ms=duration_ms
+        )
 
     exit_code, outcome = _grade(
-        runner_label, result, args, expected_grade=expected_grade, side_effects=side_effects
+        runner_label,
+        result,
+        args,
+        expected_grade=expected_grade,
+        side_effects=side_effects,
+        duration_ms=duration_ms,
     )
     passed = outcome.passed
     abstained = outcome.abstained
@@ -2021,6 +2101,12 @@ def _evaluate_and_report(
             "stdout": result.stdout,
             "stderr": result.stderr,
             "channels": channels_payload,
+            "duration_ms": outcome.duration_ms,
+            "input_tokens": outcome.input_tokens,
+            "output_tokens": outcome.output_tokens,
+            "cache_read_tokens": outcome.cache_read_tokens,
+            "cache_creation_tokens": outcome.cache_creation_tokens,
+            "tool_calls": outcome.tool_calls,
         }
         if expected_display is not None:
             payload["expected"] = expected_display
@@ -2057,6 +2143,9 @@ def _evaluate_and_report(
                 if ch["note"] and ch["chars"] is not None:
                     line += f" ({ch['note']})"
                 print(line)
+        efficiency_line = _format_efficiency_line(outcome)
+        if efficiency_line is not None:
+            print(efficiency_line)
         if show_output and result.stdout:
             print("---")
             sys.stdout.write(result.stdout)
@@ -2153,6 +2242,11 @@ def cmd_skill(args: argparse.Namespace) -> int:
             target_path=target_path_str,
             dirty=dirty_int,
             loud=baseline_mode,
+            input_tokens=result.input_tokens,
+            output_tokens=result.output_tokens,
+            cache_read_tokens=result.cache_read_tokens,
+            cache_creation_tokens=result.cache_creation_tokens,
+            tool_calls=result.tool_calls,
             **record_extras,
         )
 
@@ -2217,7 +2311,9 @@ def cmd_skill(args: argparse.Namespace) -> int:
         return res.exit_code
 
     result, duration_ms, side_effects = _invoke_with_side_effects(_invoke, args)
-    rc, outcome = _evaluate_and_report(runner_label, result, args, side_effects=side_effects)
+    rc, outcome = _evaluate_and_report(
+        runner_label, result, args, side_effects=side_effects, duration_ms=duration_ms
+    )
     try:
         _record(result, duration_ms, outcome)
     except Exception as exc:
@@ -2284,6 +2380,11 @@ def cmd_cmd(args: argparse.Namespace) -> int:
             target_content_hash="" if baseline_mode else None,
             dirty=dirty_int,
             loud=baseline_mode,
+            input_tokens=result.input_tokens,
+            output_tokens=result.output_tokens,
+            cache_read_tokens=result.cache_read_tokens,
+            cache_creation_tokens=result.cache_creation_tokens,
+            tool_calls=result.tool_calls,
             **record_extras,
         )
 
@@ -2323,7 +2424,9 @@ def cmd_cmd(args: argparse.Namespace) -> int:
         return res.exit_code
 
     result, duration_ms, side_effects = _invoke_with_side_effects(_invoke, args)
-    rc, outcome = _evaluate_and_report(runner_label, result, args, side_effects=side_effects)
+    rc, outcome = _evaluate_and_report(
+        runner_label, result, args, side_effects=side_effects, duration_ms=duration_ms
+    )
     try:
         _record(result, duration_ms, outcome)
     except Exception as exc:
@@ -2404,6 +2507,11 @@ def cmd_mcp(args: argparse.Namespace) -> int:
             target_content_hash="" if baseline_mode else None,
             dirty=dirty_int,
             loud=baseline_mode,
+            input_tokens=result.input_tokens,
+            output_tokens=result.output_tokens,
+            cache_read_tokens=result.cache_read_tokens,
+            cache_creation_tokens=result.cache_creation_tokens,
+            tool_calls=result.tool_calls,
             **record_extras,
         )
 
@@ -2443,7 +2551,9 @@ def cmd_mcp(args: argparse.Namespace) -> int:
         return res.exit_code
 
     result, duration_ms, side_effects = _invoke_with_side_effects(_invoke, args)
-    rc, outcome = _evaluate_and_report(runner_label, result, args, side_effects=side_effects)
+    rc, outcome = _evaluate_and_report(
+        runner_label, result, args, side_effects=side_effects, duration_ms=duration_ms
+    )
     try:
         _record(result, duration_ms, outcome)
     except Exception as exc:
@@ -2523,6 +2633,11 @@ def cmd_prompt(args: argparse.Namespace) -> int:
             target_content_hash=target_hash,
             dirty=dirty_int,
             loud=baseline_mode,
+            input_tokens=result.input_tokens,
+            output_tokens=result.output_tokens,
+            cache_read_tokens=result.cache_read_tokens,
+            cache_creation_tokens=result.cache_creation_tokens,
+            tool_calls=result.tool_calls,
             **record_extras,
         )
 
@@ -2562,7 +2677,9 @@ def cmd_prompt(args: argparse.Namespace) -> int:
         return res.exit_code
 
     result, duration_ms, side_effects = _invoke_with_side_effects(_invoke, args)
-    rc, outcome = _evaluate_and_report(runner_label, result, args, side_effects=side_effects)
+    rc, outcome = _evaluate_and_report(
+        runner_label, result, args, side_effects=side_effects, duration_ms=duration_ms
+    )
     try:
         _record(result, duration_ms, outcome)
     except Exception as exc:
@@ -2743,6 +2860,7 @@ def cmd_dsl(args: argparse.Namespace) -> int:  # noqa: PLR0912, PLR0915 — grad
             expected_grade=expected_grade,
             skip_history=True,
             side_effects=side_effects,
+            duration_ms=duration_ms,
         )
 
         if expected_grade is not None and expected_grade.status is GradeStatus.UNGRADED:
@@ -2784,6 +2902,11 @@ def cmd_dsl(args: argparse.Namespace) -> int:  # noqa: PLR0912, PLR0915 — grad
                 target_path=str(task_file),
                 target_content_hash=_hash_file(task_file),
                 dirty=dirty_int,
+                input_tokens=result.input_tokens,
+                output_tokens=result.output_tokens,
+                cache_read_tokens=result.cache_read_tokens,
+                cache_creation_tokens=result.cache_creation_tokens,
+                tool_calls=result.tool_calls,
             )
             if written_id is not None:
                 written_ids.append(written_id)
