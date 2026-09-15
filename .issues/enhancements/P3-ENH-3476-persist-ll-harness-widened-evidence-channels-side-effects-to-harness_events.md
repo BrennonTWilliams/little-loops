@@ -30,13 +30,13 @@ ENH-3462 widens `ll-harness`'s verdict to a `HarnessEvalOutcome.channels: list[C
 
 ## Current Behavior
 
-`_record_harness_event()` (`scripts/little_loops/cli/harness.py:216-306`) is the harness CLI's assembly point for `record_attempt()`/`record_harness_event()` writes; `record_attempt()` (`session_store/writers.py:1398-1483`) is the actual write path for 6 of its 7 call sites, `record_harness_event()` (`:1227`) for the 7th. `_insert_harness_event()` (`session_store/writers.py:1109-1224`) has a fixed column list (:1166-1174) with no channel-provenance or side-effect-result columns. `HarnessEvent` (`history_reader/harness.py:54-109`) and `_HARNESS_EVENT_COLUMNS` (:110-118) are the read-side counterpart. `HarnessEventVariant` (`observability/schema.py:731-734`) is a third, independent enumeration of the row shape for the DES audit. Once ENH-3462 ships, `outcome.channels` and the side-effect check results exist for every run but are discarded when the process exits — never queryable via `ll-session recent/search --kind harness`, never available to `baseline_for()` (`history_reader/harness.py:315-392`) for cross-run comparison, and absent from `ll-doctor`'s schema-drift check.
+`_record_harness_event()` (`scripts/little_loops/cli/harness.py:216-309`) is the harness CLI's assembly point for `record_attempt()`/`record_harness_event()` writes; `record_attempt()` (`session_store/writers.py:1398-1483`) is the actual write path for 6 of its 7 call sites, `record_harness_event()` (`:1227`) for the 7th. `_insert_harness_event()` (`session_store/writers.py:1109-1224`) has a fixed column list (:1166-1174) with no channel-provenance or side-effect-result columns. `HarnessEvent` (`history_reader/harness.py:54-109`) and `_HARNESS_EVENT_COLUMNS` (:110-118) are the read-side counterpart. `HarnessEventVariant` (`observability/schema.py:731-734`) is a third, independent enumeration of the row shape for the DES audit. Once ENH-3462 ships, `outcome.channels` and the side-effect check results exist for every run but are discarded when the process exits — never queryable via `ll-session recent/search --kind harness`, never available to `baseline_for()` (`history_reader/harness.py:325-404`) for cross-run comparison, and absent from `ll-doctor`'s schema-drift check.
 
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
 
-- ENH-3462 has landed (status: Completed, confirmed 2026-09-14). `ChannelRecord` (`cli/harness.py:832`) and `HarnessEvalOutcome.channels: list[ChannelRecord]` (`cli/harness.py:872`) exist in the tree today and are fully wired: `_grade()` (`:1224`) composes the channel list every invocation (stdout/stderr at `:1269-1276`, side-effect channels at `:1277-1280`), and `_evaluate_and_report()` (`:1948`) is the sole current consumer, rendering `outcome.channels` into the `--output json` payload's `"channels"` key and the text `Channels:` block. This issue's `blocked_by: ENH-3462` is now satisfied — the persistence gap below is confirmed directly against landed code, not inferred from a not-yet-shipped dependency.
+- ENH-3462 has landed (status: Completed, confirmed 2026-09-14). `ChannelRecord` (`cli/harness.py:832`) and `HarnessEvalOutcome.channels: list[ChannelRecord]` (`cli/harness.py:882`) exist in the tree today and are fully wired: `_grade()` (`:1243`) composes the channel list every invocation (stdout/stderr at `:1297-1304`, side-effect channels at `:1305-1308`), and `_evaluate_and_report()` (`:2018`) is the sole current consumer, rendering `outcome.channels` into the `--output json` payload's `"channels"` key and the text `Channels:` block. This issue's `blocked_by: ENH-3462` is now satisfied — the persistence gap below is confirmed directly against landed code, not inferred from a not-yet-shipped dependency.
 - Confirmed precisely: `outcome.channels` is never forwarded into any of the five `_record_harness_event()`/`_record()` call sites (`cmd_skill::_record` :2225, `cmd_cmd::_record` :2366, `cmd_mcp::_record` :2493, `cmd_prompt::_record` :2619, `cmd_dsl` :2793/:2890) — each extracts only `.verdict`/`.abstained`/`.passed` from `outcome`. `_record_harness_event()` itself has no `channels`/`side_effects` parameter in its signature.
 - `_insert_harness_event()` (`session_store/writers.py:1109`) has a CLOSED keyword-only parameter list, not a `**kwargs` sink — `record_attempt()` forwards its `**event_fields` unvalidated (needs no code change for new kwargs), but `_insert_harness_event()` and `record_harness_event()` both require an explicit new named parameter for `channels_json`, or passing it today raises `TypeError: unexpected keyword argument`.
 - `_row_to_dataclass()` (`history_reader/_base.py:87-91`) does zero NULL-coercion, but it maps only columns present in `row.keys()` — the columns actually named in the SQL SELECT that produced the row. A new `harness_events` column is invisible to `HarnessEvent` construction unless added to BOTH the dataclass fields (`history_reader/harness.py:54-109`) AND the `_HARNESS_EVENT_COLUMNS` string (`:110-118`, spliced into 5 separate SELECT statements at lines 135, 170, 195, 221, 349).
@@ -125,7 +125,7 @@ _Added by `/ll:refine-issue` — 2026-09-14 — based on codebase analysis:_
 
 ### Call Path
 
-`_grade` (`cli/harness.py:1224`, composes `outcome.channels`) → each `cmd_*::_record` closure (`:2225`, `:2366`, `:2493`, `:2619`, plus `cmd_dsl` `:2890`) adds `channels_json=_channels_json(outcome.channels)` → `_record_harness_event` (`cli/harness.py:216`) → `record_attempt` (`session_store/writers.py:1398`, the dominant 6-of-7 write path, `**event_fields` passthrough) → `_insert_harness_event` (`session_store/writers.py:1109`) → read back via `HarnessEvent` / `_HARNESS_EVENT_COLUMNS` (`history_reader/harness.py:54-118`). The DSL aggregate row (`record_harness_event` at `:2770`) and the DSL malformed-task row (`:2793`) pass nothing and land `NULL` (D3).
+`_grade` (`cli/harness.py:1243`, composes `outcome.channels`) → each `cmd_*::_record` closure (`:2225`, `:2366`, `:2493`, `:2619`, plus `cmd_dsl` `:2890`) adds `channels_json=_channels_json(outcome.channels)` → `_record_harness_event` (`cli/harness.py:216`) → `record_attempt` (`session_store/writers.py:1398`, the dominant 6-of-7 write path, `**event_fields` passthrough) → `_insert_harness_event` (`session_store/writers.py:1109`) → read back via `HarnessEvent` / `_HARNESS_EVENT_COLUMNS` (`history_reader/harness.py:54-118`). The DSL aggregate row (`record_harness_event` at `:2770`) and the DSL malformed-task row (`:2793`) pass nothing and land `NULL` (D3).
 
 ### Codebase Research Findings
 
@@ -206,9 +206,59 @@ _Added by `/ll:confidence-check` on 2026-09-14_
 
 _Added by `/ll:verify-issues` — 2026-09-14:_
 
-Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the same
+Verdict at time of check: **OUTDATED** (corrections below applied in the same
 pass, so the issue as it now reads is up to date — this section is a record of
 what was wrong and fixed, not an outstanding action item).
+
+- **Graph**: provider=`codegraph` freshness=`fresh` (indexed_at
+  2026-09-15T01:45:58Z, dirty_files=0) — `ll-code defines
+  scripts/little_loops/cli/harness.py` corroborated relocations but every
+  correction below was confirmed by direct `Read`/`grep` against the working
+  tree, not the graph result alone.
+- **Line-number drift found in `cli/harness.py`, despite the prior
+  2026-09-15T01:51:08 verify pass's claim that "all citations in the sections
+  above were re-verified"** — that pass evidently checked the writers.py/
+  schema.py/test-class citations it enumerated but not these `cli/harness.py`
+  anchors, which had already drifted at that time (the file's last touching
+  commit, `80d2d38d0`, predates that verify session). Corrected in place:
+  - `_grade()` def: cited `:1224` → actual `:1243` (Current Behavior findings
+    bullet and Program Design → Call Path, both fixed).
+  - stdout/stderr channel composition inside `_grade()`: cited `:1269-1276`
+    → actual `:1297-1304`.
+  - side-effect channel composition inside `_grade()`: cited `:1277-1280` →
+    actual `:1305-1308`. (D1's separate citation of the `channels.extend(
+    side_effects)` line, `:1306`, was already correct — no change.)
+  - `_evaluate_and_report()` def: cited `:1948` → actual `:2018` (a 70-line
+    drift — the largest found).
+  - `_record_harness_event()` span: cited `:216-306` → actual `:216-309`
+    (function body ends at the `except Exception: return None` block before
+    the next top-level `@dataclass`).
+  - `baseline_for()` (`history_reader/harness.py`): cited `:315-392` →
+    actual `:325-404`.
+  - `HarnessEvalOutcome.channels` field: cited `:872` → actual `:882`
+    (Current Behavior findings bullet, fixed).
+  - Checked and confirmed unchanged (no drift): `ChannelRecord` class
+    (`:842`), `_check_side_effects()` (`:1187`), all five
+    `cmd_*::_record`/`cmd_dsl` call sites (`:2225`,
+    `:2366`, `:2493`, `:2619`, `:2770`, `:2793`, `:2890`), `_insert_harness_event()`
+    (`writers.py:1109-1224`, actual end `1226` — 2-line rounding, not
+    flagged), `record_harness_event()` (`writers.py:1227-1336`, exact),
+    `record_attempt()` (`writers.py:1398-1483`, exact), `HarnessEvent`
+    class (`history_reader/harness.py:54`, exact), `_HARNESS_EVENT_COLUMNS`
+    block (`:110-118`, exact), and all five `_HARNESS_EVENT_COLUMNS` SELECT
+    citations (`:135`, `:170`, `:195`, `:221`, `:349`, all exact).
+- **Evidence check**: `ll-verify-evidence --json` returned `"ok": true`, 0
+  findings — no fabricated evidence quotes.
+- **Decisions log**: no active required rules — no conflict possible.
+- **Dependencies**: `blocked_by: []`, `parent: EPIC-3475` (exists,
+  `.issues/epics/P3-EPIC-3475-harden-ll-harness-verdicts.md`) — no broken
+  refs, no missing backlinks, no cycle.
+- **Proposal-vs-code consequence check (B6)**: re-checked against the
+  corrected line numbers above; no exception-handler or test-fixture
+  invalidation found. No `PROPOSAL_UNSOUND` finding.
+- Design content, scope, decisions (D1-D6), Program Design types/signatures,
+  and Acceptance Criteria were not affected by the line-number drift — they
+  describe shapes and behavior, not anchors, and remain accurate.
 
 - **Graph**: provider=`codegraph` freshness=`stale` (dirty_files=15) — not used to
   originate any verdict; every line-number/existence claim below was confirmed by
@@ -260,6 +310,7 @@ what was wrong and fixed, not an outstanding action item).
   `semantic_evidence`. No `PROPOSAL_UNSOUND` finding.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-15T04:00:27 - `0f83c176-40fa-4a35-a08d-d5149dc5394e.jsonl`
 - `/ll:confidence-check` - 2026-09-15T03:47:32 - `88716449-4fa1-4681-9160-79d70fab2d25.jsonl`
 - `/ll:verify-issues` - 2026-09-15T01:51:08 - `d4c1049e-2c84-4263-aafc-1dbf7f3be2c3.jsonl`
 - `/ll:reconcile-issue` - 2026-09-14T21:32:26 - `f4a1cb05-beaf-4c89-a67b-0a34555443d6.jsonl`
