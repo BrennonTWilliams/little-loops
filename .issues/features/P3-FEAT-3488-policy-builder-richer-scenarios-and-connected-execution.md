@@ -12,6 +12,8 @@ labels:
 - captured
 blocked_by:
 - BUG-3486
+- BUG-3489
+- BUG-3490
 - ENH-3487
 relates_to:
 - FEAT-3474

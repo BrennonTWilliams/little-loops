@@ -12,6 +12,7 @@ labels:
 - captured
 depends_on:
 - BUG-3486
+- BUG-3489
 relates_to:
 - FEAT-3474
 ---
