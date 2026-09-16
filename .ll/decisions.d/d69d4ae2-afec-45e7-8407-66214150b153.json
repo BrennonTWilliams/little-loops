@@ -1,0 +1,11 @@
+{
+  "id": "0cab7605-1cfb-4108-8783-c596d550b73a",
+  "type": "decision",
+  "timestamp": "2026-09-16T20:54:41Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "User requested the third policy-builder workstream: reusable scenario suites and optional host-mediated execution after correctness and persistence foundations.",
+  "rule": "Captured: Policy builder richer scenarios and connected execution",
+  "scope": "issue",
+  "issue": "FEAT-3488"
+}

@@ -1,0 +1,11 @@
+{
+  "id": "a07acaf4-1ad4-4c65-8bae-e3b808dc2157",
+  "type": "decision",
+  "timestamp": "2026-09-16T20:54:41Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "User requested the second policy-builder improvement workstream: preserve drafts and saved projects, clarify lifecycle behavior, and improve authoring interaction while retaining offline use.",
+  "rule": "Captured: Policy builder persistence and clearer interaction",
+  "scope": "issue",
+  "issue": "ENH-3487"
+}
