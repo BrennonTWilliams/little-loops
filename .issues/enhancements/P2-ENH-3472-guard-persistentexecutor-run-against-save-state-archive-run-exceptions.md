@@ -18,15 +18,15 @@ score_change_surface: 25
 
 ## Summary
 
-`PersistentExecutor.run()` (`fsm/persistence.py:1212`) wraps `FSMExecutor.run()` and, once that inner call returns a fully-formed `ExecutionResult`, calls `StatePersistence.save_state()` (`:502`) and `StatePersistence.archive_run()` (`:585`). Neither call is exception-guarded except inside the `terminated_by == "workdir_vanished"` branch (which only catches `OSError`). If either raises (e.g. disk full) outside that branch, the exception propagates out of `PersistentExecutor.run()` unhandled and discards the result — including the `events.jsonl`/`usage.jsonl` traces `archive_run()` was about to copy into `.loops/.history/`. This issue closes that gap: an already-computed result must survive a persistence-layer failure.
+`PersistentExecutor.run()` (`fsm/persistence.py:1213`) wraps `FSMExecutor.run()` and, once that inner call returns a fully-formed `ExecutionResult`, calls `StatePersistence.save_state()` (`:503`) and `StatePersistence.archive_run()` (`:586`). Neither call is exception-guarded except inside the `terminated_by == "workdir_vanished"` branch (which only catches `OSError`). If either raises (e.g. disk full) outside that branch, the exception propagates out of `PersistentExecutor.run()` unhandled and discards the result — including the `events.jsonl`/`usage.jsonl` traces `archive_run()` was about to copy into `.loops/.history/`. This issue closes that gap: an already-computed result must survive a persistence-layer failure.
 
 This child is independent of ENH-3471 (vocabulary). **ENH-3473 depends on this issue**: it adds a further write inside the same block, which must land after this guard exists.
 
 ## Current Behavior
 
-`PersistentExecutor.run()` (`fsm/persistence.py:1265-1281`) has two branches after building `final_state`:
+`PersistentExecutor.run()` (`fsm/persistence.py:1266-1282`) has two branches after building `final_state`:
 - `workdir_vanished` branch: `save_state()` + `archive_run()` inside one `try` … `except OSError` that logs a warning.
-- `else` branch (`:1279-1281`): the same two calls with no exception handling at all.
+- `else` branch (`:1280-1282`): the same two calls with no exception handling at all.
 
 A `save_state()`/`archive_run()` failure in the `else` branch raises out of `PersistentExecutor.run()` uncaught. Nothing above it intercepts: `run_foreground()` (`cli/loop/runner.py:467-489`) and `cmd_run()` (`cli/loop/run.py:659-673`) are `try/finally` only; `main_loop()` (`cli/loop/__init__.py:1088`) has no try/except. The process dies with a raw traceback and Python's default exit 1, the `ExecutionResult` is lost, and the `<instance>.state.json` file is left at `status: running`.
 
@@ -46,7 +46,7 @@ This child covers **Implementation Step 2** in full, including its dedicated wir
 
 Two coexisting conventions in this codebase express "a sink failure must never fail the run":
 
-- `except Exception as exc:  # noqa: BLE001 — <rule>` with a `logger.warning`/`logger.error` — `fsm/persistence.py:904` (`_promote_template_artifact()`, "promotion must never fail the run"), `fsm/persistence.py:85`, `worktree_utils.py:847`, `learning_tests/gate.py:79`, `skill_expander.py:163`, `parallel/worker_pool.py:1945,1970`, `cli/sprint/run.py:303`, `cli/harness.py:88,113,142,148,1190,1828`.
+- `except Exception as exc:  # noqa: BLE001 — <rule>` with a `logger.warning`/`logger.error` — `fsm/persistence.py:905` (`promote_run_artifact()`, "promotion must never fail the run"), `fsm/persistence.py:85`, `worktree_utils.py:847`, `learning_tests/gate.py:79`, `skill_expander.py:163`, `parallel/worker_pool.py:1945,1970`, `cli/sprint/run.py:303`, `cli/harness.py:88,113,142,148,1190,1828`.
 - Bare `except Exception: pass` with a `# Non-fatal (ENH-NNNN)` prose comment and no `noqa` — `fsm/executor.py:2565-2584` (ENH-3204), `:4288-4309` (ENH-2463, `record_loop_run_summary`), `:4311-4314` (ENH-2724, `record_usage_event`), `runner_spec.py:318-333`. These are the guards `_finish()` already uses so an analytics-sink failure can't discard the run — the same shape as this issue's target, one layer down.
 
 Use the first shape (logged, `noqa: BLE001` comment), since a silent `pass` would hide a disk-full condition the operator needs to see. `BLE` is not in the repo's enabled ruff rule set (`scripts/pyproject.toml` `select = ["E","F","W","I","UP","B","C4"]`), so the comment is documentation of intent, not lint-enforced.
@@ -78,15 +78,15 @@ return result
 ## Program Design
 
 ### Signatures
-- `PersistentExecutor.run(self, clear_previous: bool = True) -> ExecutionResult` (`scripts/little_loops/fsm/persistence.py:1212`) — the tail block at `:1265-1283` is restructured per the Design sketch.
-- `StatePersistence.save_state(self, state: LoopState) -> None` (`:502`), `StatePersistence.archive_run(self, run_dir: Path | None = None) -> Path | None` (`:585`) — unchanged.
+- `PersistentExecutor.run(self, clear_previous: bool = True) -> ExecutionResult` (`scripts/little_loops/fsm/persistence.py:1213`) — the tail block at `:1266-1284` is restructured per the Design sketch.
+- `StatePersistence.save_state(self, state: LoopState) -> None` (`:503`), `StatePersistence.archive_run(self, run_dir: Path | None = None) -> Path | None` (`:586`) — unchanged.
 - `record_loop_run_summary(...)` (`session_store/writers.py:1791`) — already written inside `_finish()`, before this block; only the filesystem archive is at risk here, not the DB row.
 
 ### Call Path
-`PersistentExecutor.run()` → `run_foreground()` (`cli/loop/runner.py:476`) → `cmd_run()` (`cli/loop/run.py:659-673`) → `main_loop()` (`cli/loop/__init__.py:1088`) → `ll-loop` console-script boundary (`pyproject.toml:84`). After this fix the chain always receives the `ExecutionResult`.
+`PersistentExecutor.run()` → `run_foreground()` (`cli/loop/runner.py:479`) → `cmd_run()` (`cli/loop/run.py:659-673`) → `main_loop()` (`cli/loop/__init__.py:1088`) → `ll-loop` console-script boundary (`pyproject.toml:84`). After this fix the chain always receives the `ExecutionResult`.
 
 ### Stale-`running` state after a failed `save_state()`
-If `save_state()` fails, `<running_dir>/<instance>.state.json` stays at `status: running`. `_reconcile_stale_running()` (`fsm/persistence.py:279-305`) flips it to `interrupted` on the next `cmd_status`/`list_running_loops` read once the PID is dead or `updated_at` is stale (BUG-3317). No new reconciliation logic is needed; the regression test should confirm this self-heal by asserting the on-disk status after a dead-PID read.
+If `save_state()` fails, `<running_dir>/<instance>.state.json` stays at `status: running`. `_reconcile_stale_running()` (`fsm/persistence.py:280-306`) flips it to `interrupted` on the next `cmd_status`/`list_running_loops` read once the PID is dead or `updated_at` is stale (BUG-3317). No new reconciliation logic is needed; the regression test should confirm this self-heal by asserting the on-disk status after a dead-PID read.
 
 ## Integration Map
 
@@ -107,12 +107,12 @@ Call these out in the PR description.
 ### Confirmed Not Affected
 
 - No documentation describes the current crash-on-persistence-failure behavior; `docs/reference/API.md:4449-4450,6780,6787` and `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md:1196-1204,1234` narrate the happy-path contract, which is preserved.
-- `PersistentExecutor.archive_run_only()` (`:1161-1210`) and `cli/loop/lifecycle.py::_stop_instance()` (`:466-493`) share the unguarded assumption but are separate call chains, guarded at their own call sites — out of scope.
+- `PersistentExecutor.archive_run_only()` (`:1162-1211`) and `cli/loop/lifecycle.py::_stop_instance()` (`:466-493`) share the unguarded assumption but are separate call chains, guarded at their own call sites — out of scope.
 - `mcp_server/tasks.py::handle_tasks_get` and `cli/loop/lifecycle.py::read_run_status()` read persisted status; unaffected.
 
 ## Implementation Steps
 
-1. Restructure the tail of `PersistentExecutor.run()` (`fsm/persistence.py:1265-1283`) per the Design sketch: one code path for both branches, `save_state()` and `archive_run()` each in their own `try`/`except Exception  # noqa: BLE001`, `logger.warning` with the `workdir_vanished` note when applicable, always `return result`.
+1. Restructure the tail of `PersistentExecutor.run()` (`fsm/persistence.py:1266-1284`) per the Design sketch: one code path for both branches, `save_state()` and `archive_run()` each in their own `try`/`except Exception  # noqa: BLE001`, `logger.warning` with the `workdir_vanished` note when applicable, always `return result`.
 2. Add tests in `scripts/tests/test_fsm_persistence.py::TestPersistentExecutor` using the file's post-construction method-assign convention (`test_drain_inbound_spoof_does_not_trigger_persistence_side_effects`, :960-968):
    - `save_state = MagicMock(side_effect=RuntimeError("disk full"))` → `run()` returns an `ExecutionResult` with `terminated_by == "terminal"`, **and** `archive_run` was still called once.
    - `archive_run = MagicMock(side_effect=RuntimeError("disk full"))` → `run()` returns the result; `save_state` was called once.
@@ -138,11 +138,39 @@ Call these out in the PR description.
 - **Risk**: Low - Additive exception handling; behavior-preserving on the success path.
 - **Breaking Change**: No.
 
+## Verification Notes
+
+Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the same
+pass, so the issue as it now reads is up to date — this section is a record of what
+was wrong and fixed, not an outstanding action item)
+
+- All substantive claims confirmed current: the `else` branch of
+  `PersistentExecutor.run()` still has no exception handling, the `workdir_vanished`
+  branch still catches only `OSError`, all three callers up the chain (`run_foreground`,
+  `cmd_run`, `main_loop`) remain unguarded for this exception, and every cited test
+  (`test_run_saves_final_state`, `test_run_archives_to_history_on_completion`,
+  `test_drain_inbound_spoof_does_not_trigger_persistence_side_effects`,
+  `test_finish_survives_record_loop_run_summary_failure`,
+  `test_finish_survives_record_usage_event_failure`,
+  `test_second_signal_swallows_archive_oserror`) exists as described. Integration Map
+  claims (`worker_pool.py`, `learning_tests/gate.py`, `cli/queue.py`) also confirmed.
+- `fsm/persistence.py` line numbers were all off by +1 (`3632187f3`, ENH-3471, added a
+  net one line above line 502 on 2026-09-15 after this issue's last refine pass) —
+  corrected throughout: `1212→1213`, `502→503`, `585→586`, `1265-1281→1266-1282`,
+  `1279-1281→1280-1282`, `1265-1283→1266-1284`, `904→905`, `279-305→280-306`,
+  `1161-1210→1162-1211`.
+- Design section misattributed the `# noqa: BLE001 — "promotion must never fail the
+  run"` guard to `_promote_template_artifact()`; it actually lives in the outer
+  `promote_run_artifact()` (def at `:742`) — corrected.
+- `cli/loop/runner.py:476` (Call Path, `run_foreground()`'s `executor.run()` call)
+  corrected to `:479` (pre-existing minor drift, unrelated to the ENH-3471 shift).
+
 ## Status
 
 **Open** | Created: 2026-09-13 | Priority: P2
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-16T00:48:11 - `c5682d24-7c5a-42e9-b4d1-ac64f38c4408.jsonl`
 - `/ll:confidence-check` - 2026-09-15T23:19:59 - `4aed0df2-a263-4d28-ae34-d555931852b6.jsonl`
 - `/ll:verify-issues` - 2026-09-15T23:13:30 - `0f995d07-641d-467b-93d8-b6a178acbacb.jsonl`
 - Manual review rewrite - 2026-09-15 - guard `save_state`/`archive_run` independently; collapse the two branches; add stale-`running` self-heal note and `failure_terminal` exit-code test; declare ENH-3473's dependency on this issue.
