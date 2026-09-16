@@ -51,6 +51,10 @@ An earlier draft wavered between "new artifact" and "new `terminated_by` value /
 ### Decision 2: qualifying set
 `_NO_ACCEPTANCE_TERMINATIONS = frozenset({"max_steps", "max_iterations_reached", "timeout", "stall_detected", "cycle_detected"})`, a module-level constant in `fsm/persistence.py`. These are the values where the executor stopped a run that was still trying. Excluded: `terminal` (the loop decided, pass or fail), `error`/`no_route`/`workdir_vanished` (died), `interrupted`/`user_stopped`/`system_signal`/`handoff`/`host_pressure_abort`/`host_budget_exceeded`/`cost_ceiling_exceeded` (deliberate or external stops that already have their own resting place). Anyone widening the set edits one constant.
 
+**Handler-routed caps do not qualify.** When a loop sets `on_max_steps` / `on_max_iterations`, the cap check in `fsm/executor.py:685-708` routes to the summary state instead of calling `_finish("max_steps")`, and the run then ends as `terminal` — so no checkpoint is written. This is by design: the loop declared its own salvage path (the two precedents below, `canvas-sketch-generator.yaml` and `general-task.yaml`, are exactly such loops and get no `best_effort.json`). The checkpoint fires only when no handler is configured, or when the handler state itself re-hits the cap (`_summary_state_executed` is already set, so the second hit falls through to `_finish("max_steps")`). Document this in `docs/reference/loops.md` alongside the qualifying set.
+
+`stall_detected` and `cycle_detected` map to `failed` (not `interrupted`) in `map_final_status()`; they are kept in the set because they are budget-style stops, but note the checkpoint there is low-value — a stall is by definition N identical failing attempts, so the "last attempt" equals the previous ones. Harmless, not a test-coverage priority.
+
 ### Decision 3: fixed filename `best_effort.json`, not `iter_<N>_best_effort.json`
 `run_dir` is per run instance (`runs/<loop>-<stamp>/`); the "outer iteration N" of the source framework has no counterpart here, and `ExecutionResult.iterations` is the FSM step count, not an outer-loop index. A fixed name matches the existing runner-written convention (`state.json`, `summary.json`, `usage.jsonl`) and turns every consumer edit into a plain name addition rather than a glob/prefix check. The step count is recorded *inside* the file.
 
@@ -60,7 +64,12 @@ The executor has no scores; no shared "best of N" utility exists anywhere (confi
 ### File shape
 ```json
 {
-  "metadata": {"best_effort": true, "loop_name": "<name>", "written_at": "<iso8601>"},
+  "metadata": {
+    "best_effort": true,
+    "loop_name": "<name>",
+    "started_at": "<iso8601 — ExecutionResult has no started_at; pass executor.started_at>",
+    "written_at": "<iso8601>"
+  },
   "terminated_by": "max_steps",
   "final_state": "<state>",
   "iterations": 42,
@@ -70,6 +79,10 @@ The executor has no scores; no shared "best of N" utility exists anywhere (confi
 }
 ```
 Written via `ExecutionResult.to_dict()` plus the `metadata` wrapper, atomically (`tempfile` + `os.replace`, the same pattern as `StatePersistence.save_state()` `:503-524`).
+
+**Key-presence contract.** `ExecutionResult.to_dict()` (`fsm/types.py:71-89`) omits `error`, `failure_terminal`, `handoff`, and `continuation_prompt` when falsy and includes `messages` (a `list[str]`, potentially large) only when non-empty. The writer normalizes exactly one of these: `error` is **always present** (`None` when absent) so consumers can key on it without a `.get`. Everything else keeps `to_dict()`'s conditional presence — `messages` may appear, `failure_terminal`/`handoff`/`continuation_prompt` will not on any qualifying value (none of them is a handoff or a terminal). Tests assert `"error" in data`, not the full key set.
+
+`metadata.started_at` is included because the `.loops/.history/<run_id>-<loop>/` folder name is derived from `started_at` (`derive_run_id()`), so a stray `best_effort.json` can be correlated back to its archive entry without opening `state.json`.
 
 ### Escape hatch (non-goal, not a test target)
 Context-compaction failure (`cli/compact_session.py::main_compact_session()` → `session_store/lifecycle.py::compact_session()`, `:679-710`, no surrounding try/except) stays hard-terminal. That code path never touches `PersistentExecutor` and gains no checkpoint by construction; it is stated here so nobody extends the pattern there, but it is not a boundary this issue can test. (`hooks/pre_compact.py` is a separate host-compaction hook, unrelated.)
@@ -88,7 +101,7 @@ Context-compaction failure (`cli/compact_session.py::main_compact_session()` →
 - `BEST_EFFORT_FILENAME = "best_effort.json"` (new constant, `scripts/little_loops/fsm/persistence.py`) — imported by `cli/loop/evidence.py` and `cli/loop/audit.py` so the name has one source of truth.
 
 ### Signatures
-- `write_best_effort_checkpoint(run_dir: Path, result: ExecutionResult, loop_name: str) -> Path` (new, `scripts/little_loops/fsm/persistence.py`) — writes `run_dir / BEST_EFFORT_FILENAME` atomically; pure function, no branching on `terminated_by` (the caller decides).
+- `write_best_effort_checkpoint(run_dir: Path, result: ExecutionResult, loop_name: str, started_at: str) -> Path` (new, `scripts/little_loops/fsm/persistence.py`) — writes `run_dir / BEST_EFFORT_FILENAME` atomically; pure function, no branching on `terminated_by` (the caller decides). Normalizes `error` to always-present per the key-presence contract.
 - `PersistentExecutor.run(self, clear_previous: bool = True) -> ExecutionResult` (`fsm/persistence.py:1213`) — gains, at the top of ENH-3472's guarded tail and before `save_state()`, `if result.terminated_by in _NO_ACCEPTANCE_TERMINATIONS and run_dir_str: try: write_best_effort_checkpoint(...) except Exception: logger.warning(...)`.
 
 ### Call Path
@@ -102,11 +115,15 @@ Context-compaction failure (`cli/compact_session.py::main_compact_session()` →
 - `scripts/little_loops/cli/loop/evidence.py::_scan_for_credentials()` (`:198-254`, tuple at `:212`) — add `BEST_EFFORT_FILENAME` to the `("state.json", "events.jsonl", "summary.json")` tuple so it is credential-scanned (ENH-3470).
 - `scripts/little_loops/cli/loop/evidence.py` sha256 hashing tuple (`:312`) — second independent copy of the same tuple; add the name so it enters the evidence bundle (FEAT-3182).
 - `scripts/little_loops/cli/loop/audit.py::_AUX_EXCLUDED_NAMES` (`:23-30`) — add `BEST_EFFORT_FILENAME` as a plain set member (fixed name; no prefix check needed). Without it every checkpoint inflates `aux_mutation_count`.
-- `scripts/little_loops/hooks/pre_compact_handoff.py::_build_fallback()` (`:103-135`) — takes the *first* file from an unordered `rd.glob("*.json")` per run dir. Prefer `summary.json` when present, else `state.json`, else the first sorted `*.json`; this is a latent nondeterminism bug independent of this issue, but the new file makes it more likely to surface `{"metadata": ...}` keys as "the" run state.
+- `scripts/little_loops/cli/loop/audit.py` audit report (`:190`, where it already opens `run_dir / "summary.json"`) — add a machine-readable `best_effort_present: bool` field to the audit output (`run_dir / BEST_EFFORT_FILENAME` exists). The skill-prose note below asks a human to notice the file; the audit already opens the run dir, so the flag is one `.exists()` call and lets `audit-loop-run` and fleet tooling key on it instead of on a filename.
+
+### Independent latent bug, bundled (own step, own test — may be split out as a BUG)
+
+- `scripts/little_loops/hooks/pre_compact_handoff.py::_build_fallback()` (`:103-135`, pick at `:122`) — takes the *first* file from an unordered `rd.glob("*.json")` per run dir. Prefer `summary.json` when present, else `state.json`, else the first sorted `*.json`. Nothing in the checkpoint path depends on this fix; it is bundled only because the new file makes the nondeterminism more likely to surface `{"metadata": ...}` keys as "the" run state. Keep it in its own implementation step and its own test so a regression there is not attributed to the checkpoint; splitting it into a standalone BUG and dropping it here is an acceptable alternative.
 
 ### Documentation
 
-- `docs/reference/loops.md` § "Output Artifacts" / "Runner-written files" — the sole doc listing runner-written `run_dir` files (currently only `usage.jsonl`); add `best_effort.json` with the qualifying-set and file-shape description.
+- `docs/reference/loops.md` § "Output Artifacts" / "Runner-written files" — the sole doc listing runner-written `run_dir` files (currently only `usage.jsonl`); add `best_effort.json` with the qualifying-set, the handler-routed-cap exclusion (`on_max_steps`/`on_max_iterations` loops end as `terminal` and get no checkpoint), the key-presence contract, and the nested-sub-loop limitation.
 - `docs/guides/LOOPS_GUIDE.md` `### Safety Limits` table (~127, `on_max_steps` row: "unset | Silent budget exhaustion…") — no longer silent; note the checkpoint.
 - `skills/audit-loop-run/SKILL.md` (~293) Step 6b verdict table — add a note that a `max_steps`/`timeout` run with `best_effort.json` present should be read as "salvageable partial" (prose only; `test_audit_loop_run_skill.py` is string-containment, no automated verdict logic).
 
@@ -118,18 +135,18 @@ Context-compaction failure (`cli/compact_session.py::main_compact_session()` →
 
 ## Implementation Steps
 
-1. Add `_NO_ACCEPTANCE_TERMINATIONS`, `BEST_EFFORT_FILENAME`, and `write_best_effort_checkpoint()` to `fsm/persistence.py` (atomic write, `ExecutionResult.to_dict()` + `metadata` wrapper).
-2. Call it from `PersistentExecutor.run()`'s guarded tail (after ENH-3472 lands), before `save_state()`, only when `terminated_by` qualifies and `run_dir` is set; wrap in its own `except Exception  # noqa: BLE001` + `logger.warning`.
-3. Widen `archive_run()`'s copy list, both `evidence.py` tuples, and `_AUX_EXCLUDED_NAMES`, importing `BEST_EFFORT_FILENAME` rather than repeating the literal.
-4. Fix `pre_compact_handoff.py::_build_fallback()`'s file pick to prefer `summary.json` → `state.json` → first sorted `*.json`.
-5. Tests, `scripts/tests/test_fsm_persistence.py::TestPersistentExecutor` (post-construction method-assign convention):
-   - A loop that hits `max_steps` with `run_dir` in context → `best_effort.json` exists under the run dir, `json.loads` shows `metadata.best_effort is True`, `terminated_by == "max_steps"`, and `captured` matches `result.captured`.
-   - Same for `timeout` (via a tiny `timeout:`) — pins that the set is not `max_steps`-only.
-   - Negative cases: `terminal` success, `terminal` with `failure_terminal=True`, and an `error` run write **no** file.
+1. Add `_NO_ACCEPTANCE_TERMINATIONS`, `BEST_EFFORT_FILENAME`, and `write_best_effort_checkpoint()` to `fsm/persistence.py` (atomic write, `ExecutionResult.to_dict()` + `metadata` wrapper with `loop_name`/`started_at`/`written_at`; `error` normalized to always-present).
+2. Call it from `PersistentExecutor.run()`'s guarded tail (ENH-3472 landed in `949b08712`), before `save_state()`, only when `terminated_by` qualifies and `run_dir` is set; pass `self._executor.started_at`; wrap in its own `except Exception  # noqa: BLE001` + `logger.warning`.
+3. Widen `archive_run()`'s copy list, both `evidence.py` tuples, and `_AUX_EXCLUDED_NAMES`, importing `BEST_EFFORT_FILENAME` rather than repeating the literal. Add `best_effort_present` to the `ll-loop audit` report next to the existing `summary.json` read (`audit.py:190`).
+4. Tests, `scripts/tests/test_fsm_persistence.py::TestPersistentExecutor` (post-construction method-assign convention — **stub `executor._executor.run` to return a hand-built `ExecutionResult`; do not drive real loops to a wall-clock `timeout:`**, which would sleep for whole seconds since `timeout` is integer seconds against `_now_ms()`):
+   - One parametrized test over all five qualifying values → `best_effort.json` exists under the run dir, `json.loads` shows `metadata.best_effort is True`, `metadata.started_at == executor._executor.started_at`, `terminated_by` matches, `captured` matches `result.captured`, and `"error" in data`.
+   - One parametrized test over the excluded values (`terminal` success, `terminal` with `failure_terminal=True`, `error`, `no_route`, `interrupted`, `handoff`) → **no** file.
+   - One real-loop test (not stubbed): a loop with `max_steps: 2` and **no** `on_max_steps` → file present; the same loop with `on_max_steps:` pointing at a terminal state → no file, `terminated_by == "terminal"`. Pins the handler-routed-cap exclusion.
    - No `run_dir` in context → no file, no exception.
    - `write_best_effort_checkpoint` patched with `side_effect=RuntimeError` → `run()` still returns the result and `save_state`/`archive_run` are still called.
    - `archive_run()` copies `best_effort.json` when present / omits it when absent — the `test_archive_run_copies_probe_files_from_run_dir` (:772-792) / `..._omits_probe_files_when_absent` (:810-823) pair shape.
-6. Tests elsewhere: `test_cli_loop_audit.py::TestAuditRun` — a `best_effort.json` in `run_dir` does not increment `aux_mutation_count` (today's only test, `test_aux_mutation_scan_counts_new_files` :176-184, proves only the positive case); `test_feat3182_evidence_bundle.py` — the file is hashed and credential-scanned when present; a `test_pre_compact_handoff.py` case that a run dir containing both `best_effort.json` and `summary.json` surfaces `summary.json`'s keys.
+5. Tests elsewhere: `test_cli_loop_audit.py::TestAuditRun` — a `best_effort.json` in `run_dir` does not increment `aux_mutation_count` (today's only test, `test_aux_mutation_scan_counts_new_files` :176-184, proves only the positive case) and sets `best_effort_present: true` (absent → `false`); `test_feat3182_evidence_bundle.py` — the file is hashed and credential-scanned when present.
+6. **Independent fix, own step**: `pre_compact_handoff.py::_build_fallback()` file pick → prefer `summary.json` → `state.json` → first sorted `*.json`. Own test in `test_pre_compact_handoff.py`: a run dir containing both `best_effort.json` and `summary.json` surfaces `summary.json`'s keys. (May be split into a standalone BUG; if so, remove this step and its Wiring entry rather than leaving them half-done.)
 7. Update `docs/reference/loops.md`, `docs/guides/LOOPS_GUIDE.md` Safety Limits row, and `skills/audit-loop-run/SKILL.md` per Wiring; resync skill mirrors with `ll-adapt` if `test_verify_host_map.py` flags the SKILL.md edit.
 8. `python -m pytest scripts/tests/test_fsm_persistence.py scripts/tests/test_cli_loop_audit.py scripts/tests/test_feat3182_evidence_bundle.py scripts/tests/test_pre_compact_handoff.py scripts/tests/test_audit_loop_run_skill.py -v` passes.
 
@@ -141,8 +158,8 @@ Context-compaction failure (`cli/compact_session.py::main_compact_session()` →
 
 ## Scope Boundaries
 
-- **In scope**: the `best_effort.json` write path and its five durable-artifact consumers; the handoff-fallback file-pick fix; docs.
-- **Out of scope**: any `terminated_by`/`map_final_status`/exit-code/outcome-bucket change (Decision 1); a generic scoring or "best of N" utility (Decision 4); checkpoints for nested sub-loops or the force-exit path; `PersistentExecutor._save_state()`'s existing single-file overwrite; context-compaction handling.
+- **In scope**: the `best_effort.json` write path and its five durable-artifact consumers; the `best_effort_present` audit flag; the handoff-fallback file-pick fix (bundled, separable); docs.
+- **Out of scope**: any `terminated_by`/`map_final_status`/exit-code/outcome-bucket change (Decision 1); a generic scoring or "best of N" utility (Decision 4); checkpoints for handler-routed caps (`on_max_steps`/`on_max_iterations` — Decision 2), nested sub-loops, or the force-exit path; `PersistentExecutor._save_state()`'s existing single-file overwrite; context-compaction handling.
 
 ## Impact
 
@@ -201,6 +218,7 @@ direct grep located every cited symbol).
 **Open** | Created: 2026-09-13 | Priority: P2
 
 ## Session Log
+- Manual review - 2026-09-15 - folded in: handler-routed caps (`on_max_steps`/`on_max_iterations`) end as `terminal` and get no checkpoint (Decision 2 + docs); file-shape reconciled with `to_dict()`'s conditional keys, `error` normalized always-present, `metadata.started_at` added; `timeout` test rewritten to stub `_executor.run` instead of a wall-clock `timeout:`; handoff-fallback fix isolated into its own step/test as separable; `best_effort_present` flag added to `ll-loop audit`; stall/cycle low-value note.
 - `/ll:verify-issues` - 2026-09-16T01:33:11 - `e8d5b8ef-5cc6-4d72-bc00-83f4241c6356.jsonl`
 - `/ll:confidence-check` - 2026-09-15T23:20:00 - `4aed0df2-a263-4d28-ae34-d555931852b6.jsonl`
 - `/ll:verify-issues` - 2026-09-15T23:13:48 - `0f995d07-641d-467b-93d8-b6a178acbacb.jsonl`
