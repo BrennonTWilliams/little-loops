@@ -16,6 +16,8 @@ blocked_by:
 relates_to:
 - FEAT-3474
 unproven_mechanism: true
+spike_attempted: true
+spike_completed: true
 ---
 
 # FEAT-3488: Policy builder richer scenarios and connected execution
@@ -163,11 +165,28 @@ Includes named scenario suites, deterministic explanations, local issue import, 
 | Contract | docs/reference/ARTIFACT_CONTROL_LEVELS.md | Host-mediated new-run ownership and render-target registration |
 | Guide | docs/guides/POLICY_ROUTER_GUIDE.md | Routing and limits of simulation |
 
+## Spike Results
+
+_Added by `/ll:spike` on 2026-09-16_
+
+**Retired risks**
+
+| Risk (from Outcome Risk Factors) | Proven by | Result |
+|----------------------------------|-----------|--------|
+| (a) Zero precedent: no render target has ever declared Artifact Control Level 2 | `test_submit_creates_pending_record_not_auto_decided`, `test_observe_reflects_transitions_without_synchronous_decision_in_submit`, `test_spike_does_not_import_local_bridge_transport` | ✓ pass |
+| (b) No persistent request-ID/idempotency ledger exists anywhere in the codebase | `test_duplicate_submit_returns_existing_record_without_retriggering`, `test_ledger_persists_across_process_restart` | ✓ pass |
+| Revision/project/issue-ID binding immutability and validation-failure handling untested | `test_complete_rejects_binding_mismatch`, `test_submit_rejects_missing_binding_fields`, `test_decide_reject_leaves_no_run_id`, `test_decide_accept_then_complete_exposes_run_id_and_result` | ✓ pass |
+
+**Spike location**: `scripts/tests/spike/level2_run_handoff/`
+**Verification**: 9 tests pass in the spike suite; 82 pass in `test_transport.py`; 219 pass in `test_wiring_reference_docs.py` (3 commands, all exit 0).
+**Promotion**: move to `scripts/little_loops/spike/level2_run_handoff/` in a separate PR when FEAT-3488's implementation selects the concrete host-decision transport (CLI prompt, MCP tool, etc.) — see the plan's Promotion section.
+
 ## Status
 
 **Open** | Created: 2026-09-16 | Priority: P3
 
 
 ## Session Log
+- `/ll:spike` - 2026-09-16T21:26:31 - `60e2c60c-390c-4854-b7a8-e5d6ce9f3356.jsonl`
 - `/ll:refine-issue` - 2026-09-16T21:07:55 - `7017ba73-36ea-43e3-b3d4-064b9a419b43.jsonl`
 - `/ll:capture-issue` - 2026-09-16T20:55:14 - `64af6deb-56e5-4bde-9534-85751c1782ca.jsonl`
