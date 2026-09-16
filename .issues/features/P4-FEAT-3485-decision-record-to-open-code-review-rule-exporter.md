@@ -20,7 +20,15 @@ Export active required decision rules into open-code-review's (OCR, https://gith
 
 This is piece 1 of a two-piece OCR integration; piece 2 (a delegate-mode review loop that runs `ocr delegate preview` / `ocr delegate rule` as FSM shell states) is planned separately and consumes the same `rule.json`.
 
-**Design stance (revised 2026-09-16):** OCR is not the first rule-export target — `sync_to_local_md()` (`scripts/little_loops/decisions_sync.py:31`) already is one, rendering active required `RuleEntry`s to Claude Code's rule surface. This issue therefore (a) extracts the rule-selection step both exporters share, (b) adds the one genuinely target-agnostic field the rules are missing (a path scope), and (c) adds OCR as a second thin exporter. It does **not** introduce a new intermediate `RuleRecord` type or a multi-target registry — `RuleEntry` is already the IR, and a registry waits for a third target (rule of three).
+**Design stance (revised 2026-09-16):** OCR is not the first rule-export target — `sync_to_local_md()` (`scripts/little_loops/decisions_sync.py:31`) already is one, rendering active required `RuleEntry`s to Claude Code's rule surface. This issue therefore (a) extracts the rule-selection step both exporters share, (b) adds the one genuinely target-agnostic field the rules are missing (a path scope), and (c) adds OCR as a second thin exporter. It does **not** introduce a new intermediate `RuleRecord` type or a lazy-import registry — `RuleEntry` is already the IR, and the `adapters/core.py`-style registry waits for a third target (rule of three).
+
+**Interface vs. implementation (revised 2026-09-16, review):** the *implementation* stays OCR-specific (grouping/folding logic is a consequence of OCR's first-match-wins semantics and would not be shared by per-file targets like Cursor `.mdc` or Copilot `applyTo:`), but the *user-facing surfaces* are target-keyed from day one because they are expensive to rename later (CLI subparser, docs table, config schema, `ll-adapt` mirror gates):
+
+- CLI is `ll-issues decisions export --target ocr`, not `export-ocr`. A third target is a new choice value, not a new subcommand.
+- Config key is `decisions.export.scope_globs` (target-agnostic; scope is meaningful for every target), with any future OCR-only knobs under `decisions.export.ocr.*`.
+- `decisions_export.py` exposes `export_rules(rules, target, output_dir, *, scope_globs)` dispatching over a plain `_EXPORTERS: dict[str, Callable]` with one entry. Five lines, eager imports, no Protocol.
+
+Do **not** fold this into the `ll-adapt` host emitters: OCR is a review tool, not a host, and `sync_to_local_md` has different semantics (patches a section of an existing file, auto-runs on `promote`). Sharing the selector is the right amount of coupling.
 
 ## Current Behavior
 
@@ -28,7 +36,7 @@ Decisions are recorded via `ll-issues decisions` (`.ll/decisions.yaml` / `.ll/de
 
 ## Expected Behavior
 
-`ll-issues decisions export-ocr` writes `.opencodereview/rule.json` covering all active (non-superseded) required rules, correctly shaped for OCR's first-match-wins resolution, so OCR flags violations without an agent recalling the prose. Re-running over an unchanged decision set is a no-op on file content.
+`ll-issues decisions export --target ocr` writes `.opencodereview/rule.json` covering all active (non-superseded) required rules, correctly shaped for OCR's first-match-wins resolution, so OCR flags violations without an agent recalling the prose. Re-running over an unchanged decision set is a no-op on file content.
 
 ## Motivation
 
@@ -45,7 +53,10 @@ Three layers, sized to the problem:
 
 2. **Path scope on the rule itself (target-agnostic, small schema addition).** Add `paths: list[str] = field(default_factory=list)` to `RuleEntry` (`decisions.py:106`), round-tripped in `from_dict`/`to_dict`; empty means repo-wide. Expose it on `ll-issues decisions add --type rule` and `promote` as a repeatable `--path <glob>` flag. This is the only field the current model lacks that *every* plausible rule-engine target needs (OCR `path`, Cursor `.mdc` `globs:`, Copilot `applyTo:`). Do **not** add `severity`: OCR has no severity field, `enforcement` already gates inclusion, and no target consumes a graded value.
 
-3. **OCR exporter (the only OCR-specific code).** New module `scripts/little_loops/decisions_export.py` (named for the seam, not the target — a future `export_cursor_rules` lands in the same file, and a `RuleExporter` protocol + lazy map mirroring `adapters/core.py`'s `_EMITTER_MAP` is introduced only when a third target exists) holding `export_ocr_rules(rules: list[RuleEntry], output_dir: Path, *, scope_globs: list[str] | None = None) -> Path`. Written via `atomic_write_json()`.
+3. **Target-keyed exporter seam + OCR exporter.** New module `scripts/little_loops/decisions_export.py` holding:
+   - `export_rules(rules: list[RuleEntry], target: str, output_dir: Path, *, scope_globs: list[str] | None = None) -> Path` — public entry point; looks up `target` in `_EXPORTERS: dict[str, Callable[..., Path]]` and raises `ValueError` listing `sorted(_EXPORTERS)` on an unknown target.
+   - `_export_ocr(rules, output_dir, *, scope_globs) -> Path` — the only OCR-specific code; written via `atomic_write_json()`.
+   - `_EXPORTERS = {"ocr": _export_ocr}` — plain eager dict. A future Cursor/Copilot exporter is one private function plus one dict entry. No `Protocol`, no `importlib`; the `adapters/core.py` lazy-map pattern is reserved for a third target *and* an actual import cycle.
 
 ### OCR emission rules (correctness, not cosmetics)
 
@@ -83,33 +94,33 @@ _Added by `/ll:refine-issue` — 2026-09-16 — based on codebase analysis (reta
 ### Files to Modify
 - `scripts/little_loops/decisions.py` — add `paths: list[str]` to `RuleEntry` (`:106`, `from_dict` `:125`, `to_dict` `:145`); add `active_required_rules()` next to `resolve_active()` (`:495`)
 - `scripts/little_loops/decisions_sync.py` — replace the inline filter at `:40-45` with `active_required_rules(decisions_path)`; behaviour unchanged
-- New `scripts/little_loops/decisions_export.py` — `export_ocr_rules()` plus private helpers `_group_by_glob()`, `_glob_sort_key()`, `_render_body()`
-- `scripts/little_loops/cli/issues/decisions.py` — `--path` (repeatable, `action="append"`) on `add` (`:116` region) and `promote` (`:270` region); new `export-ocr` subparser in `add_decisions_parser()` (`:15`), dispatch branch in `cmd_decisions()` (`:280`), `_cmd_export_ocr(path, output_dir, scope) -> int` following `_cmd_sync` (`:550`): lazy import in body, stderr + non-zero on failure
-- `scripts/little_loops/config-schema.json` — optional `decisions.ocr_scope_globs: string[]` (defaults to `[<project.src_dir>/**/*]` when absent); soft — CLI `--scope` flag suffices for AC
+- New `scripts/little_loops/decisions_export.py` — `export_rules()`, `_EXPORTERS`, `_export_ocr()` plus private helpers `_group_by_glob()`, `_glob_sort_key()`, `_render_body()`
+- `scripts/little_loops/cli/issues/decisions.py` — `--path` (repeatable, `action="append"`) on `add` (`:116` region) and `promote` (`:270` region); new `export` subparser in `add_decisions_parser()` (`:15`) with required `--target` (`choices` sourced from `decisions_export._EXPORTERS` keys, or a matching literal tuple guarded by a test), `--output-dir`, `--scope`; dispatch branch in `cmd_decisions()` (`:280`), `_cmd_export(path, target, output_dir, scope) -> int` following `_cmd_sync` (`:550`): lazy import in body, stderr + non-zero on failure
+- `scripts/little_loops/config-schema.json` — optional `decisions.export.scope_globs: string[]` (defaults to `[<project.src_dir>/**/*]` when absent); reserve `decisions.export.ocr` as an object for future OCR-only knobs but do not add any now; soft — CLI `--scope` flag suffices for AC
 
 ### Dependent Files (Callers/Importers)
 - `sync_to_local_md()` — the only existing consumer of the selection logic; becomes the first caller of `active_required_rules()`
-- `_cmd_promote` (`cli/issues/decisions.py:953`) calls `_cmd_sync` after promoting a required rule; consider also calling `_cmd_export_ocr` when `.opencodereview/` already exists (soft, keeps the two surfaces in step)
-- Repo-wide grep confirms zero references to `export_ocr_rules` / `decisions_export` / `active_required_rules` today
+- `_cmd_promote` (`cli/issues/decisions.py:953`) calls `_cmd_sync` after promoting a required rule; consider also calling `_cmd_export(..., target="ocr", ...)` when `.opencodereview/` already exists (soft, keeps the two surfaces in step)
+- Repo-wide grep confirms zero references to `export_rules` / `decisions_export` / `active_required_rules` today
 
 ### Similar Patterns
 - `decisions_sync.py`'s `sync_to_local_md` — the sibling exporter
 - `file_utils.py`'s `atomic_write_json()` (tested via `TestAtomicWriteJson`) — write path
-- `adapters/core.py`'s `_EMITTER_MAP` / `HostEmitter` — model for the registry to introduce at target #3, not now
+- `adapters/core.py`'s `_EMITTER_MAP` / `HostEmitter` — model for a *lazy* registry only if a third target arrives with an import cycle; `_EXPORTERS` is the eager, minimal form of the same idea
 
 ### Tests
 - `scripts/tests/test_decisions.py` — `TestRuleEntry` round-trip for `paths` (present, absent, legacy dict without the key); `TestActiveRequiredRules` (advisory excluded, superseded excluded, deterministic order); `TestSyncToLocalMd` (`:491`) unchanged and still green
-- New `scripts/tests/test_decisions_export.py` — fixture set with: two repo-wide rules, one `scripts/**/*.py` rule, one superseded rule, one advisory rule. Assert: superseded/advisory absent; exactly one entry per distinct glob; scoped entry listed before catch-all; scoped body contains both its own and the repo-wide rule texts; catch-all body contains only repo-wide; each bullet carries its decision id; second run yields byte-identical file (AC #2); `scope_globs=None` resolves to `src_dir`
-- `scripts/tests/test_cli_decisions.py` — `TestDecisionsCLIExportOcr` (writes file, exit 0; bad path → exit 1); `TestDecisionsCLIAdd` gains a `--path` case; `TestDecisionsCLINoSubcommand.test_no_subcommand` unaffected
+- New `scripts/tests/test_decisions_export.py` — fixture set with: two repo-wide rules, one `scripts/**/*.py` rule, one superseded rule, one advisory rule. Assert: superseded/advisory absent; exactly one entry per distinct glob; scoped entry listed before catch-all; scoped body contains both its own and the repo-wide rule texts; catch-all body contains only repo-wide; each bullet carries its decision id; second run yields byte-identical file (AC #2); `scope_globs=None` resolves to `src_dir`; `export_rules(..., target="nope", ...)` raises `ValueError` naming `ocr`
+- `scripts/tests/test_cli_decisions.py` — `TestDecisionsCLIExport` (`--target ocr` writes file, exit 0; bad output path → exit 1; unknown `--target` → argparse exit 2; missing `--target` → exit 2); `TestDecisionsCLIAdd` gains a `--path` case; `TestDecisionsCLINoSubcommand.test_no_subcommand` unaffected
 
 ### Documentation
-- `docs/reference/CLI.md` — `ll-issues decisions` table row for `export-ocr`, `**export-ocr flags:**` subsection, `--path` under add/promote flags, bash example line
-- `docs/reference/API.md` — `### active_required_rules`, `### export_ocr_rules`; note `paths` under `### RuleEntry`
+- `docs/reference/CLI.md` — `ll-issues decisions` table row for `export`, `**export flags:**` subsection (`--target {ocr}`, `--output-dir`, `--scope`), `--path` under add/promote flags, bash example line
+- `docs/reference/API.md` — `### active_required_rules`, `### export_rules` (document `_EXPORTERS` as the extension point); note `paths` under `### RuleEntry`
 - `docs/guides/DECISIONS_LOG_GUIDE.md` — "Exporting to OCR" section (including the first-match/system-rule-replacement caveats) + ToC entry; mention `--path`
 - `docs/ARCHITECTURE.md` — add exporter to "Key consumers" in the Decisions Log section
 
 ### Configuration
-- `decisions.ocr_scope_globs` (optional, see above)
+- `decisions.export.scope_globs` (optional, target-agnostic, see above); `decisions.export.ocr` reserved, empty
 
 ### Behavior Parity
 
@@ -130,26 +141,27 @@ The only existing behaviour touched is `sync_to_local_md()` (`scripts/little_loo
 
 ### Signatures
 
-- `active_required_rules(path: Path | None = None) -> list[RuleEntry]` — `list_entries(path, type="rule")` → keep `enforcement == "required"` → `resolve_active()` → stable sort `(timestamp, id)`. Target-agnostic; shared by `sync_to_local_md` and `export_ocr_rules`.
-- `export_ocr_rules(rules: list[RuleEntry], output_dir: Path, *, scope_globs: list[str] | None = None) -> Path` — groups by glob, orders specific-first, folds repo-wide rules into every scoped body, writes `output_dir / ".opencodereview" / "rule.json"` via `atomic_write_json`, returns the path. `scope_globs` replaces the catch-all `**/*` for repo-wide rules; `None` → `[f"{src_dir}/**/*"]` from config, falling back to `["**/*"]` when no config resolves.
+- `active_required_rules(path: Path | None = None) -> list[RuleEntry]` — `list_entries(path, type="rule")` → keep `enforcement == "required"` → `resolve_active()` → stable sort `(timestamp, id)`. Target-agnostic; shared by `sync_to_local_md` and `export_rules`.
+- `export_rules(rules: list[RuleEntry], target: str, output_dir: Path, *, scope_globs: list[str] | None = None) -> Path` — public entry point; `_EXPORTERS[target](rules, output_dir, scope_globs=scope_globs)`, `ValueError` on unknown target.
+- `_export_ocr(rules: list[RuleEntry], output_dir: Path, *, scope_globs: list[str] | None = None) -> Path` — groups by glob, orders specific-first, folds repo-wide rules into every scoped body, writes `output_dir / ".opencodereview" / "rule.json"` via `atomic_write_json`, returns the path. `scope_globs` replaces the catch-all `**/*` for repo-wide rules; `None` → `[f"{src_dir}/**/*"]` from config, falling back to `["**/*"]` when no config resolves.
 
 ### Call Path
 
-`active_required_rules()` → `export_ocr_rules()` → `.opencodereview/rule.json`
+`active_required_rules()` → `export_rules(target="ocr")` → `_export_ocr()` → `.opencodereview/rule.json`
 `active_required_rules()` → `sync_to_local_md()` → `.ll/ll.local.md` (existing, now shared)
 
 ## Implementation Steps
 
 1. Add `paths` to `RuleEntry` with round-trip tests; add `--path` to `add`/`promote`.
 2. Add `active_required_rules()`; refactor `sync_to_local_md()` onto it; confirm `TestSyncToLocalMd` stays green.
-3. Implement `decisions_export.py::export_ocr_rules()` with the grouping/ordering/folding logic and `src_dir` default scope.
-4. Wire `export-ocr` into `ll-issues decisions`; optionally call it from `_cmd_promote` when `.opencodereview/` exists.
+3. Implement `decisions_export.py`: `_export_ocr()` with the grouping/ordering/folding logic and `src_dir` default scope, `_EXPORTERS = {"ocr": _export_ocr}`, and `export_rules()` dispatch.
+4. Wire `export --target ocr` into `ll-issues decisions` (`choices` from `_EXPORTERS`); optionally call it from `_cmd_promote` when `.opencodereview/` exists.
 5. Tests per Integration Map; idempotency check by double-run comparison.
 6. Docs per Integration Map; run `ll-adapt --host <gemini|kimi-code|qwen> --apply` if any mirrored surface changed.
 
 ## Acceptance Criteria
 
-1. `ll-issues decisions export-ocr` writes `.opencodereview/rule.json` containing every active required rule and no superseded or advisory rule.
+1. `ll-issues decisions export --target ocr` writes `.opencodereview/rule.json` containing every active required rule and no superseded or advisory rule; an unknown `--target` is rejected by argparse with the valid choices listed, and `export_rules()` raises `ValueError` for the same.
 2. Idempotent: re-running over an unchanged decision set produces a byte-identical file.
 3. Exactly one `rules[]` entry per distinct path glob; more-specific globs precede the catch-all; every scoped entry's body also contains all repo-wide rules; each bullet carries its decision id.
 4. Repo-wide rules are scoped to `src_dir` by default, not `**/*`, and the scope is overridable.
@@ -182,7 +194,7 @@ P4 — small, unblocked, first of the two OCR pieces. Slightly larger than the o
 
 **Context**: A required rule has been recorded via `ll-issues decisions` but is enforced only through prose.
 
-**Goal**: Run `ll-issues decisions export-ocr` so OCR checks the rule automatically, scoped to the files it applies to.
+**Goal**: Run `ll-issues decisions export --target ocr` so OCR checks the rule automatically, scoped to the files it applies to.
 
 **Outcome**: Code review flags violations of active decisions, each traceable to its decision id, without disabling OCR's built-in language rules.
 
@@ -199,18 +211,29 @@ def active_required_rules(path: Path | None = None) -> list[RuleEntry]:
     """Active (non-superseded) required rules in deterministic order. Shared by all exporters."""
 
 # decisions_export.py
-def export_ocr_rules(
+def _export_ocr(
     rules: list[RuleEntry],
     output_dir: Path,
     *,
     scope_globs: list[str] | None = None,
 ) -> Path:
     """Write .opencodereview/rule.json. The only OCR-specific function."""
+
+_EXPORTERS: dict[str, Callable[..., Path]] = {"ocr": _export_ocr}
+
+def export_rules(
+    rules: list[RuleEntry],
+    target: str,
+    output_dir: Path,
+    *,
+    scope_globs: list[str] | None = None,
+) -> Path:
+    """Dispatch to the exporter registered for `target`; ValueError if unknown."""
 ```
 
 ```bash
 ll-issues decisions add --type rule --enforcement required --path 'scripts/little_loops/fsm/**/*.py' ...
-ll-issues decisions export-ocr [--output-dir .] [--scope 'scripts/**/*']
+ll-issues decisions export --target ocr [--output-dir .] [--scope 'scripts/**/*']
 ```
 
 ## Edge Cases
@@ -222,7 +245,7 @@ ll-issues decisions export-ocr [--output-dir .] [--scope 'scripts/**/*']
 
 ## UI/UX Details
 
-`export-ocr` prints the written path and the count of entries/rules on success, matching `sync`'s one-line output style.
+`export --target ocr` prints the written path and the count of entries/rules on success, matching `sync`'s one-line output style.
 
 ## Session Log
 - `/ll:wire-issue` - 2026-09-16T04:59:13 - `1e024021-4acc-4b11-a8a1-c8c2d8acfc34.jsonl`
