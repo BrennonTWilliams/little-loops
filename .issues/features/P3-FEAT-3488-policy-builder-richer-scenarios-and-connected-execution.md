@@ -82,6 +82,22 @@ _Added by `/ll:refine-issue` — 2026-09-16 — based on codebase analysis:_
 - `scripts/tests/test_artifact_templatize.py:13` — imports `policy_builder.py`
 - `scripts/tests/test_policy_builder_emit.py` — imports `policy_builder.py`; contains `test_golden_yaml_validates`, `test_golden_rubric_yaml_validates`, `test_golden_issue_lifecycle_yaml_validates`, each calling `load_and_validate` against static checked-in fixtures
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/templates/policy-router-builder.html.tmpl:731,773` — `updateTryIt()`/`updatePreview()` call `evaluateRules(model.rules, scores)` / `evaluateRules(compiled, scores)`; must be updated in lockstep if `evaluateRules`'s return shape changes to carry per-condition traces for `ScenarioResult.conditions`
+- `scripts/little_loops/templates/policy-router-builder.html.tmpl:787` — `renderMessages(model)` calls `detectShadows(model.rules)`
+- `scripts/little_loops/templates/policy_builder_core.mjs:1216-1237` — `window.PolicyBuilderCore` browser-global export object; byte-mirrored verbatim in `scripts/tests/fixtures/policy_builder/golden_policy_router_builder.html:1618` — any new export (e.g. `runScenarioSuite`, `evaluateScenario`, `buildRunRequest`) must be added to both
+- `scripts/little_loops/fsm/__init__.py:120,170,203,254` — re-exports `HandoffBehavior` and `load_and_validate` in its public `__all__`
+- `scripts/little_loops/fsm/validation/__init__.py:160,175` — re-exports `load_and_validate` (distinct from `structural_rules.py`, which defines it)
+- `scripts/little_loops/fsm/loop_paths.py:101,121` — `load_loop()`/`load_loop_with_spec()` call `load_and_validate`
+- `scripts/little_loops/fsm/executor.py:1087` — `FSMExecutor._execute_sub_loop()` calls `load_and_validate`
+- `scripts/little_loops/fsm/persistence.py:1018,1032` — `PersistentExecutor.__init__` constructs `HandoffHandler(HandoffBehavior(fsm.on_handoff))`, the closest existing analog to a level-2 handoff decision point
+- `scripts/little_loops/cli/loop/run.py:644-647` — `cmd_run()` constructs `ServeContext(events_url=..., interaction_url=bridge.url + "interaction")`, the only existing caller that populates `interaction_url` with a real value (vs. `serve.py`'s `None`)
+- `scripts/little_loops/cli/artifact/dashboard.py:151,342-343` — `ServeContext.interaction_url` field; `build_dashboard_html()` derives `serve_interaction_enabled`/`serve_interaction_url_js` from it
+- `scripts/little_loops/templates/dashboard.llat/manifest.yaml:49` and `template.html.j2:393` — consume the derived `serve_interaction_url_js` value via `fetch(...)`
+- `scripts/tests/test_policy_builder_corpus.py:21-28` (`test_evaluate_cases_match_canonical`) — asserts `evaluate_rules(...) == case["expected_target"]` (bare string) against `scripts/tests/fixtures/policy_builder/conformance_corpus.json`'s flat schema; this is the **Python** canonical `little_loops.fsm.policy_rules.evaluate_rules`, a separate function from the JS `evaluateRules` in `policy_builder_core.mjs` but coupled to the same corpus contract — note BUG-3486 already plans a `MatchResult`-shaped return here
+- `scripts/tests/test_handoff_handler.py` — `TestHandoffBehavior`/`TestHandoffHandler`/`TestHandoffResult` exercise `HandoffBehavior.SPAWN`/`.PAUSE`/`.TERMINATE`, the nearest existing test convention for a handoff-decision state machine
+- `scripts/tests/test_feat3304_artifact_dashboard.py:855,890,1035,1053,1082` — exercises `ServeContext(interaction_url=...)`
+
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-09-16 — based on codebase analysis:_
@@ -89,6 +105,37 @@ _Added by `/ll:refine-issue` — 2026-09-16 — based on codebase analysis:_
 - JS core logic (`evaluateRules`, `detectShadows`, `serializeLoopYaml`, `parseRuleTable`, etc.) is tested via `node:test` in `scripts/tests/js/policy_validator.test.mjs` against `scripts/tests/fixtures/policy_builder/conformance_corpus.json`, gated into the enforced pytest suite by `scripts/tests/test_policy_builder_node_gate.py` (shells out to `node --test`, skips gracefully when Node < 22, per CLAUDE.md's CI policy). `scripts/tests/test_policy_builder_emit.py` covers a different surface — `cmd_policy_builder()` HTML generation, golden-YAML validation, and structural/accessibility assertions — and does not unit-test JS logic itself. New scenario-suite JS logic belongs in the `node:test` layer; new Python-side connected-handoff/validation logic belongs in `test_policy_builder_emit.py` or a new sibling test module.
 - `docs/reference/ARTIFACT_CONTROL_LEVELS.md`'s "Declared levels by render target" table is asserted verbatim by `scripts/tests/test_wiring_reference_docs.py` (`DOC_STRINGS_PRESENT` pins `"notify"`, `"ask-to-run-prompt"`, `"host-owned"` literally) — a new policy-builder row must preserve those exact level-name strings.
 - `scripts/little_loops/cli/artifact/serve.py`'s `cmd_serve` passes `interaction_url=None` and declares Level 1 (notify) only — it has no FSM executor backing it, unlike `ll-loop run --serve` (Level 3). A new-run handoff cannot simply extend `serve.py`'s existing routes without adding the executor/interaction machinery `serve.py` today deliberately lacks.
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/CLI.md:5079-5095` (`#### ll-artifact policy-builder`) — currently documents only `-o/--output`; a new-run/connected-mode flag needs a new Flags-table row and Example line
+- `docs/reference/CLI.md:5186-5219` (`#### ll-artifact serve`) — currently documents only `--port`; needs updating if the level-2 transport is wired through `serve.py`
+- `docs/reference/API.md:11078` — `assemble_tool_catalog` cites `cli/artifact/policy_builder.py:_load_skill_catalog()` by name; stale if that function is renamed/restructured for local issue-file import
+- `docs/reference/CONFIGURATION.md:948-958` (`### artifacts`) — needs a new key-table row if an opt-in connected-mode config key is added
+- `docs/reference/EVENT-SCHEMA.md:1815-1828` (`## Reserved Event Names`) — reserves only `artifact_interaction` for level 3 today; a level-2 accept/reject/run-id status surfaced via EventBus would need a new reserved-event row and schema file (contingent on transport choice)
+
+### Tests
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/js/policy_validator.test.mjs:45-46,307-308,312-313` — asserts `evaluateRules(...)` equals a bare winning-target string; will break if the return shape changes to carry per-condition traces
+- `scripts/tests/test_policy_builder_corpus.py::test_evaluate_cases_match_canonical` — same bare-string assertion against the Python `evaluate_rules`/corpus contract (see Dependent Files)
+- `scripts/tests/fixtures/policy_builder/conformance_corpus.json` — the closest existing precedent for a named-scenario-suite-with-expected-outcome fixture (shared JS/Python consumers); model the new scenario-suite schema after this pattern
+- `scripts/tests/test_orchestrator.py:2087-2098,2268-2289` (`test_idempotent_across_calls`, `test_failure_leaves_branch_retryable`) — existing dedup-by-side-effect-count test convention for the in-memory `set()` guard; model the new request-ledger dedup test after this style
+- `scripts/tests/test_rn_refine.py:1370-1378` (`test_mark_complete_touches_done_sentinel_and_is_idempotent`) — existing sentinel-file idempotency test convention
+- No test in the repo calls an MCP tool twice and asserts a dedup/no-op outcome for `idempotent_hint` — genuine coverage gap; the new Level-2 ledger's dedup test has no MCP-layer precedent to follow
+- `scripts/tests/test_wiring_reference_docs.py` `DOC_STRINGS_PRESENT`/`DOC_FILES_MUST_EXIST` — pins literal strings against `docs/reference/ARTIFACT_CONTROL_LEVELS.md`; a new level-2 policy-builder row should extend the "Existing / planned examples" table (`docs/reference/ARTIFACT_CONTROL_LEVELS.md:56-59`), not the three-level definition table, to avoid tripping this test
+- `scripts/tests/test_fsm_schema_fuzz.py:35-80` (`malformed_evaluate_config`) and `scripts/tests/test_fsm_route_properties.py:25-37` (`route_matrix`) — closest existing Hypothesis `@st.composite` conventions to model boundary/missing-field scenario-suggestion generation after (no JS-side property-testing library exists in the repo)
+- `scripts/tests/test_policy_builder_emit.py::test_no_internal_jargon_in_visible_markup` (`:150-155`) — denylists "predicate" and other internal jargon from visible markup; new condition-explanation UI text must avoid these literal terms
+- `scripts/tests/test_policy_builder_emit.py::test_rubric_mode_has_no_dt_only_affordances` (`:209-221`) and `test_single_mode_toggle` (`:199-201`) — pin fieldset IDs and mode-switch count; a new scenario-suite fieldset needs its own ID wired into `applyModeVisibility()` without tripping these
+- **Spike promotion** (`scripts/tests/spike/level2_run_handoff/` → `scripts/little_loops/spike/level2_run_handoff/`): `test_level2_run_handoff.py:13-24` imports must move from `scripts.tests.spike.level2_run_handoff.*` to `little_loops.spike.level2_run_handoff.*`; `test_spike_does_not_import_local_bridge_transport` (`:124-147`)'s AST-based guard must travel with the promoted module. Confirmed fully isolated — nothing outside the spike's own test imports it.
+
+### Configuration
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/config-schema.json:1998-2041` — the `artifacts` object has `"additionalProperties": false`; an opt-in connected-mode key cannot be added to `.ll/ll-config.json` without a new schema key here
+- `scripts/little_loops/config/features.py:1319-1332` (`BridgeEventsConfig`) — existing precedent that `ll-artifact serve` deliberately has **no `enabled` config key** ("a config flag that refuses an explicit command is bad UX"); a connected-mode toggle should follow this CLI-flag-not-config-flag precedent or explicitly justify breaking from it
+- `scripts/little_loops/cli/artifact/__init__.py:138-148` — the `policy-builder` argparse subparser only defines `-o/--output`; a new-run/connected-mode flag or subcommand must be registered here, plus a matching Example/Exit-code line in the top-level epilog (`:79-134`)
 
 ## Program Design
 
@@ -128,6 +175,20 @@ _Added by `/ll:refine-issue` — 2026-09-16 — based on codebase analysis:_
 4. Refine and register the host-mediated transport and request/result contract using existing artifact infrastructure.
 5. Implement canonical validation, immutable revision handoff, deduplication, and observable results.
 6. Test offline functionality, project migrations, and connected success/failure paths without real LLM or implementation runs.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `scripts/little_loops/templates/policy-router-builder.html.tmpl:731,773,787` — adjust `updateTryIt()`/`updatePreview()`/`renderMessages()` calls to `evaluateRules()`/`detectShadows()` if their return shape changes
+- Update `scripts/tests/js/policy_validator.test.mjs` and `scripts/tests/test_policy_builder_corpus.py::test_evaluate_cases_match_canonical` — adapt bare-string assertions if `evaluateRules`/`evaluate_rules` return shape changes to carry per-condition traces
+- Update `scripts/tests/fixtures/policy_builder/golden_policy_router_builder.html:1618` — keep byte-identical to `window.PolicyBuilderCore`'s export list in `policy_builder_core.mjs:1216-1237` when adding `runScenarioSuite`/`evaluateScenario`/`buildRunRequest`
+- Register in `scripts/little_loops/cli/artifact/__init__.py:138-148` — add the new-run/connected-mode flag or subcommand to the `policy-builder` argparse subparser, plus a matching Example/Exit-code line in the epilog (`:79-134`)
+- Update `docs/reference/CLI.md` — new Flags-table rows for `ll-artifact policy-builder` (`:5079-5095`) and, if applicable, `ll-artifact serve` (`:5186-5219`)
+- Update `docs/reference/CONFIGURATION.md:948-958` and `scripts/little_loops/config-schema.json:1998-2041` — add the opt-in connected-mode key (`additionalProperties: false` blocks an unregistered key), following the CLI-flag-not-config-flag precedent in `scripts/little_loops/config/features.py:1319-1332` unless deliberately breaking from it
+- Extend `docs/reference/ARTIFACT_CONTROL_LEVELS.md`'s "Existing / planned examples" table (`:56-59`) with the new level-2 policy-builder row — do not touch the three-level definition table or the literal strings pinned by `scripts/tests/test_wiring_reference_docs.py`
+- Write a dedup/idempotency test for the new request ledger following the side-effect-counting style of `scripts/tests/test_orchestrator.py:2087-2098` / `scripts/tests/test_rn_refine.py:1370-1378` (no MCP-layer precedent exists for this)
+- Promote `scripts/tests/spike/level2_run_handoff/{ledger,driver}.py` to `scripts/little_loops/spike/level2_run_handoff/` when the concrete transport is selected, updating `test_level2_run_handoff.py`'s imports and carrying `test_spike_does_not_import_local_bridge_transport`'s AST guard with it
 
 ## Impact
 
@@ -189,6 +250,7 @@ _Added by `/ll:spike` on 2026-09-16_
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-16T22:32:07 - `c1fe383a-93c2-4cce-a8fa-6eeed2e54d04.jsonl`
 - `/ll:spike` - 2026-09-16T21:26:31 - `60e2c60c-390c-4854-b7a8-e5d6ce9f3356.jsonl`
 - `/ll:refine-issue` - 2026-09-16T21:07:55 - `7017ba73-36ea-43e3-b3d4-064b9a419b43.jsonl`
 - `/ll:capture-issue` - 2026-09-16T20:55:14 - `64af6deb-56e5-4bde-9534-85751c1782ca.jsonl`

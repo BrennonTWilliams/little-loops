@@ -58,6 +58,45 @@ Users cannot trust routing decisions when evidence leaks between passes or when 
 - **Risk**: Low - clean slate mirrors an existing, tested pattern; new terminal only adds a state
 - **Breaking Change**: No - valid decision-table YAML gains a `failed` state; `failed` becomes a reserved outcome name
 
+## Integration Map
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/fsm/policy_rules.py` — `parse_rules(text)` (line 98) and `evaluate_rules(rules, scores)` (line 232) are consumed by `policy_table_dispatch`; both stay on their current signatures
+- `scripts/little_loops/fsm/schema.py` — `FAILURE_TERMINAL_NAMES` (line 33) is read by `scripts/little_loops/fsm/validation/reachability.py` and `scripts/little_loops/fsm/validation/structural_rules.py`; naming the new terminal `failed` is what lets those existing checks recognize it without a schema change
+- `scripts/little_loops/fsm/route_table.py` — holds decision-table routing/operator logic that resolves `on_error`; a new `failed` terminal changes what this module's routing can point to
+- `scripts/little_loops/loops/policy-refine.yaml` and `scripts/little_loops/loops/lib/rubric-router.yaml` — consume the same `rubric-dim-*.txt` score-file convention `policy_parse_scores` writes
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-16 — based on codebase analysis:_
+
+**Files to Modify**
+- `scripts/little_loops/loops/lib/policy-router.yaml` — `policy_parse_scores` fragment (~lines 72-115) and `policy_table_dispatch` fragment (~155-208)
+- `scripts/little_loops/templates/policy_builder_core.mjs` — `_serializeDecisionTable(model)` at line 741; dispatcher call site at line 1056; precedent `_serializeIssueLifecycle(model)` at line 974
+- `scripts/little_loops/fsm/policy_parse_scores.py` — new module proposed by this issue; confirmed absent from the tree today (no existing file or symbol matches this name)
+
+**Conventions in Force**
+- Clean-slate scoring already exists once in this codebase — `frontmatter_scores.py`'s `_clean_slate()` unlinks stale score files before a fresh pass; `test_frontmatter_scores.py::TestMainHappyPath::test_two_pass_clean_slate` is the existing test for that contract
+- An explicit failure terminal already exists once in this codebase — `_serializeIssueLifecycle()` emits a `failed:` state and routes `_error: failed`; `_serializeDecisionTable()` currently does not follow this convention
+
+**Tests**
+- `scripts/tests/test_frontmatter_scores.py` — nearest precedent for the two-pass clean-slate regression test this issue's Implementation Steps calls for
+- `scripts/tests/test_policy_rules.py` — unit coverage for `parse_rules`/`evaluate_rules`
+- `scripts/tests/test_fsm_fragments.py` — fragment-level tests referencing `policy_parse_scores`/`policy-router.yaml`
+- `scripts/tests/test_fsm_validation_reachability.py` — reachability tests touching failure-terminal routing
+- `scripts/tests/test_policy_builder_emit.py`, `scripts/tests/test_policy_builder_node_gate.py`, `scripts/tests/js/policy_validator.test.mjs` — the three pinned tests this issue's Implementation Steps names for fixture regeneration
+- `scripts/tests/test_policy_builder_corpus.py`, `scripts/tests/test_ll_loop_edit_routes.py` — additional decision-table/route-table corpus coverage
+- `scripts/tests/test_enh3035_artifact_template_kit.py` — consumes `golden_policy_router_builder.html`, which this issue's Implementation Steps calls for regenerating
+
+**Documentation**
+- `docs/guides/POLICY_ROUTER_GUIDE.md` — names `policy_parse_scores`/`rubric-dim`/`on_error`; this issue's Implementation Steps already calls for updating it
+- `docs/reference/API.md`, `docs/reference/CLI.md`, `docs/ARCHITECTURE.md`, `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md`, `docs/guides/LOOPS_REFERENCE.md`, `scripts/little_loops/loops/README.md` — each references `policy_parse_scores`/`policy_table_dispatch`/`rubric-dim`/`on_error` and may need adjustment once the new terminal and clean-slate step land
+
+**Configuration**
+- `scripts/tests/fixtures/policy_builder/sample-decision-table.yaml` + `.model.json` — the pinned fixture pair this issue's Implementation Steps calls for regenerating together
+- `scripts/tests/fixtures/policy_builder/golden_policy_router_builder.html` — the pinned HTML fixture this issue's Implementation Steps calls for regenerating
+- `scripts/tests/fixtures/policy_builder/sample-issue-lifecycle.yaml` + `.model.json` — existing fixture that already emits a `failed:` terminal; usable as a comparison point for the decision-table fixture once it gains one
+
 ## Program Design
 
 ### Types
@@ -101,3 +140,7 @@ The LLM score parser lacks clean-slate handling. `_serializeDecisionTable()` nev
 ## Status
 
 **Open** | Created: 2026-09-16 | Priority: P2
+
+
+## Session Log
+- `/ll:refine-issue` - 2026-09-16T22:24:04 - `c7278f1b-df03-4464-a3c5-e94aa066b201.jsonl`
