@@ -84,6 +84,16 @@ _Added by `/ll:refine-issue` — 2026-09-16 — based on codebase analysis:_
 - `scripts/little_loops/cli/loop/lifecycle.py:568-575` — reads `RESUMABLE_STATUSES` to list resumable instances; benefits automatically once the status is corrected, no code change needed.
 - `scripts/little_loops/mcp_server/tasks.py:214-227` — `resumable` flag derived from `RESUMABLE_STATUSES` membership; benefits automatically, no code change needed.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/fsm/types.py` — `ExecutionResult` (fields + `to_dict()`) is defined here, not in `executor.py`; the `pre_cap_state` field and its `to_dict()` emission must be added in this file, not just threaded through `_finish()` [Agent 1/2 finding].
+- `scripts/little_loops/fsm/persistence.py:1241-1249` — `archive_run_only()` independently calls `map_final_status()` and constructs a second `LoopState(...)`; needs `pre_cap_state` threaded here too for consistency with the primary `run()` construction site [Agent 1/2 finding].
+- `scripts/little_loops/fsm/executor.py:822,830,984,986` — additional reads of `_summary_state_executed`/`_iteration_summary_executed` inside `run()`'s terminal-check and no-route branches (same method as the known cap-routing block, different lines) [Agent 1 finding].
+- `scripts/little_loops/fsm/executor.py:1308-1349` — `_execute_sub_loop()` reads `child_result.terminated_by` to route sub-loop verdicts; distinct method from the cap-routing block [Agent 1 finding].
+- `scripts/little_loops/cli/loop/lifecycle.py:733` — `cmd_resume()` constructs `PersistentExecutor` before calling resume machinery [Agent 1 finding].
+- `scripts/little_loops/cli/loop/lifecycle.py:161,213,468,777` — `_build_status_dict()`, `_status_single()`, `_stop_instance()`, `_print_last_state()` print/read `state.current_state` verbatim; after this fix, `current_state` on a handler-routed cap run is the stale handler-endpoint state, not what `resume()` will restart from — `ll-loop status` would show a state name that no longer matches the eventual resume target [Agent 2 finding — display correctness gap].
+- `scripts/little_loops/cli/loop/runner.py:472,515,588` — `run_foreground()` calls `executor.resume()` and reads `result.terminated_by` to color success/failure and map to `EXIT_CODES` [Agent 1 finding].
+- `scripts/little_loops/mcp_server/tasks.py:170-177` — `handle_tasks_get()` reconstructs an `ExecutionResult(...)` directly from persisted disk state, separate from the known `RESUMABLE_STATUSES` read at `:214-227`; never sets `pre_cap_state`, so it silently omits it via `to_dict()`'s conditional-emission pattern — no code change forced but noted for awareness [Agent 2 finding].
+
 ### Similar Patterns
 - The unhandled-cap path (`fsm/executor.py:685`, `:708` calling `_finish` directly) is the existing precedent for "cap termination stays resumable" — the fix brings the handler-routed path in line with it rather than inventing new behavior.
 
@@ -91,9 +101,26 @@ _Added by `/ll:refine-issue` — 2026-09-16 — based on codebase analysis:_
 - `scripts/tests/test_fsm_executor.py` — cap-routing / `on_max_steps` / `on_max_iterations` behavior.
 - `scripts/tests/test_fsm_persistence.py` — `resume()` state restoration from `pre_cap_state`, and restoration of `_summary_state_executed` / `_iteration_summary_executed` on resume. `map_final_status()` already returns `interrupted` for this path today (verified) — no test changes needed there.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_fsm_persistence.py::TestAcceptanceCriteria::test_final_status_interrupted_with_on_max_steps_summary` (:1486-1515) — existing test already proves `map_final_status()` needs no change; extend with `assert state.pre_cap_state == "check"` once the field exists [Agent 3 finding].
+- `scripts/tests/test_fsm_persistence.py::TestAcceptanceCriteria::test_run_writes_checkpoint_on_max_steps_with_handler_chaining_to_terminal` (:1947-1982) — closest existing "handler fires, chains to a terminal" fixture; extend with a `pre_cap_state` assertion [Agent 3 finding].
+- New `TestPreCapStatePersistence` class in `test_fsm_persistence.py`, modeled on `TestContextPersistence` (:3985-4167) / `TestRateLimitRetriesPersistence` (:3770-3983) — round-trip, omitted-when-none, missing-key-defaults-to-None, `_save_state` inclusion, and resume-restoration tests for the new field [Agent 3 finding].
+- A `test_resume_restores_persisted_state_not_initial`-style test (pattern at `test_fsm_persistence.py:4599-4656`) adapted to assert resume restarts from `pre_cap_state`, not the raw persisted `current_state` (the handler-endpoint state) [Agent 3 finding].
+- A two-executor, file-based cap→resume cycle test modeled on `test_signal_interrupted_loop_can_be_resumed` (`test_fsm_persistence.py:3532-3607`) — real `on_max_steps` FSM run to cap, then a second independent `PersistentExecutor.resume()`, asserting the handler does not re-execute and the pre-cap state's action runs again [Agent 3 finding].
+- `test_fsm_executor.py` — new `FSMExecutor`/`ExecutionResult`-level tests (`test_finish_records_pre_cap_state`, `test_pre_cap_state_none_on_unhandled_cap`) using the existing `_make_fsm()` (:11037) / `_make_maintain_fsm()` (:11461) fixture builders, verifying `_finish()` threads `pre_cap_state` onto `ExecutionResult` [Agent 3 finding].
+- `scripts/tests/test_cli_loop_lifecycle.py::TestCmdResume` (:675-2823) — every test mocks `PersistentExecutor`/`StatePersistence` at the class boundary, so `pre_cap_state` restoration is never exercised at the CLI layer; no integration coverage exists for `ll-loop resume` against a real cap-then-resume run — gap to close or explicitly accept [Agent 3 finding].
+- `scripts/tests/test_feat_3145_mcp_tasks.py:103,141-160` — `ExecutionResult.to_dict()` field-set test and `resumable`-flag test; confirmed additive-safe (keyword-only construction) but worth a quick check once `pre_cap_state` is added [Agent 3 finding].
+
 ### Documentation
 - `docs/reference/API.md` — `map_final_status()`, `RESUMABLE_STATUSES`, `PersistentExecutor.resume()` contracts (already listed under Related Key Documentation below).
 - `.issues/enhancements/P2-ENH-3473-*.md` — cross-reference note at line 54 should be updated once this issue lands (its own follow-up, not this issue's implementation step).
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/API.md` § `LoopState` and § `ExecutionResult` field-enumeration code blocks — need a new line for `pre_cap_state`, matching the `continuation_prompt`/`accumulated_ms` style already there [Agent 2 finding].
+- `docs/reference/json-output-contracts.md` § `ll-loop status --json` field reference table — exhaustively lists every conditionally-emitted `LoopState.to_dict()` key; adding `pre_cap_state` requires either a new row or an explicit "internal-only, omitted from CLI JSON" callout following the `context`/BUG-2485 precedent documented in that file — decision needed [Agent 2 finding].
+- `docs/guides/LOOPS_GUIDE.md` § "Stop, Resume, and Exit Reasons" table and § "What survives `ll-loop stop`/`ll-loop resume`" prose — the `max_steps`/`max_iterations_reached` rows don't yet mention `ll-loop resume`, and the prose claims resume "restores the loop to the exact state where it stopped," which is no longer true for the handler-routed path once this fix restarts from `pre_cap_state` instead [Agent 2 finding].
+- `skills/debug-loop-run/SKILL.md` — documents `current_state` as "last active state" for triage; for a handler-routed cap resume this is the stale handler-endpoint state, not the resume target [Agent 2 finding].
+- `skills/create-loop/loop-types.md:1075-1083` — documents the `on_max_steps: summarize_partial` hook pattern this issue's scenario is built on [Agent 1 finding].
 
 ### Configuration
 - N/A — no config schema changes; behavior change is internal to the FSM executor/persistence layer.
@@ -121,6 +148,20 @@ _Added by `/ll:refine-issue` — 2026-09-16 — based on codebase analysis:_
 3. Also restore (or otherwise neutralize) `_summary_state_executed` / `_iteration_summary_executed` on resume, so the resumed run neither re-fires the handler nor immediately hits `_finish("terminal")` on the stale handler-endpoint state.
 4. Add/extend tests in `test_fsm_executor.py` and `test_fsm_persistence.py` covering: resume restarts from `pre_cap_state` (not the handler-endpoint state), and the handler does not re-execute or immediately terminate on resume.
 5. Run `python -m pytest scripts/tests/` and verify the unhandled-cap resumability path is unaffected (regression check).
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Add `pre_cap_state` field and `to_dict()` emission to `ExecutionResult` in `scripts/little_loops/fsm/types.py` — the dataclass lives here, not in `executor.py`.
+- Thread `pre_cap_state=result.pre_cap_state` onto the `LoopState(...)` construction in `PersistentExecutor.run()` (`fsm/persistence.py`, alongside the `map_final_status()` call) and onto `LoopState.to_dict()`/`from_dict()`.
+- Also thread `pre_cap_state` through the second `LoopState(...)` construction site in `archive_run_only()` (`fsm/persistence.py:1241-1249`) for consistency.
+- Decide and document whether `pre_cap_state` is CLI-visible in `ll-loop status --json` (add a row to `docs/reference/json-output-contracts.md`'s field table) or internal-only like the `context` field (BUG-2485 precedent) — document the decision either way.
+- Update `docs/reference/API.md`'s `LoopState`/`ExecutionResult` field-enumeration blocks with the new field.
+- Consider whether `_status_single()`/`cmd_status()`/`_print_last_state()` (`cli/loop/lifecycle.py`) should surface `pre_cap_state` or otherwise avoid presenting the stale handler-endpoint `current_state` as the resume target during `ll-loop status`.
+- Update `test_fsm_persistence.py::test_final_status_interrupted_with_on_max_steps_summary` and `::test_run_writes_checkpoint_on_max_steps_with_handler_chaining_to_terminal` with `pre_cap_state` assertions.
+- Add `TestPreCapStatePersistence` (round-trip/defaults/resume-restoration) to `test_fsm_persistence.py`, modeled on `TestContextPersistence`/`TestRateLimitRetriesPersistence`.
+- Add a two-executor file-based cap→resume integration test modeled on `test_signal_interrupted_loop_can_be_resumed`.
 
 ## Impact
 
@@ -157,6 +198,7 @@ _Added by `/ll:refine-issue` — 2026-09-16 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-16T02:36:16 - `6b434db3-d48c-4bb4-adf2-19646e1e0d80.jsonl`
 - `/ll:reconcile-issue` - 2026-09-16T02:12:37 - `7a435e29-efad-4c49-9f3c-8d2f500cf069.jsonl`
 - `/ll:refine-issue` - 2026-09-16T02:07:09 - `7a435e29-efad-4c49-9f3c-8d2f500cf069.jsonl`
 - `/ll:format-issue` - 2026-09-16T01:54:03 - `40e731d3-d53c-4de7-b4f5-5d02be86a0f0.jsonl`
