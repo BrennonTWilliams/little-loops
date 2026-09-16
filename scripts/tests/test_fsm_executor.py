@@ -6448,9 +6448,7 @@ class TestNoRouteVsErrorClassification:
         assert result.terminated_by == "error"
         assert "action crashed" in (result.error or "")
 
-    def test_marker_does_not_leak_into_later_states_pre_action_raise(
-        self, tmp_path: Path
-    ) -> None:
+    def test_marker_does_not_leak_into_later_states_pre_action_raise(self, tmp_path: Path) -> None:
         """A state that finished normal routing (leaving self._phase ==
         'decide') must not leak that phase into a later state's pre-action
         raise. Regression guard: the reset must live at _execute_state()
@@ -6519,9 +6517,7 @@ class TestNoRouteVsErrorClassification:
         assert result.error is not None
         assert "missing_target" in result.error
 
-    def test_sub_loop_child_error_no_parent_route_terminates_no_route(
-        self, tmp_path: Path
-    ) -> None:
+    def test_sub_loop_child_error_no_parent_route_terminates_no_route(self, tmp_path: Path) -> None:
         """A child that dies with terminated_by='error' and a parent that
         declares neither on_error nor on_no is a loop-authoring bug (no
         declared route for a child death) — classifies as 'no_route', not
@@ -7103,9 +7099,7 @@ class TestSubLoopExecution:
         result = executor.run()
         assert result.final_state == "err"
 
-    def test_sub_loop_no_route_routes_to_on_error_and_verdict_error(
-        self, tmp_path: Path
-    ) -> None:
+    def test_sub_loop_no_route_routes_to_on_error_and_verdict_error(self, tmp_path: Path) -> None:
         """ENH-3471: a child ending in no_route (decision-step failure) routes to
         the parent's on_error, same as a child ending in error, and yields
         verdict == 'error' in the parent's capture dict."""

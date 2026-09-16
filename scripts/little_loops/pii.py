@@ -100,7 +100,9 @@ def scan_text(
         for rule in rules:
             for match in rule.pattern.finditer(line):
                 fingerprint = hashlib.sha256(match.group().encode()).hexdigest()[:12]
-                findings.append(CredentialFinding(rule=rule.name, line=line_no, fingerprint=fingerprint))
+                findings.append(
+                    CredentialFinding(rule=rule.name, line=line_no, fingerprint=fingerprint)
+                )
     findings.sort(key=lambda f: (f.line, f.rule))
     return findings
 

@@ -1109,7 +1109,9 @@ class _LoopRunRecord:
     run_folder: str
     final_state: str
     iterations: int
-    outcome: str  # converged / failed / error / max-steps / stalled / interrupted / signal / no_route
+    outcome: (
+        str  # converged / failed / error / max-steps / stalled / interrupted / signal / no_route
+    )
     ts: str
     attribution: str  # builtin / custom / shadowed (Decisions #10)
 
@@ -1185,9 +1187,7 @@ def _aggregate_fleet_runs(runs: list[_LoopRunRecord]) -> list[_LoopFleetAggregat
     return aggregates
 
 
-_FLAG_OUTCOMES: frozenset[str] = frozenset(
-    {"error", "max-steps", "stalled", "failed", "no_route"}
-)
+_FLAG_OUTCOMES: frozenset[str] = frozenset({"error", "max-steps", "stalled", "failed", "no_route"})
 
 
 def is_flagged(
