@@ -1,0 +1,12 @@
+{
+  "id": "578ee84e-feca-4120-810a-1421735cb94c",
+  "type": "decision",
+  "timestamp": "2026-09-16T04:48:43Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "No circular-import driver exists between the two functions (unlike adapters/core.py's confirmed core.py<->codex.py cycle); scored 12/12 vs Option B's 6/12; no codebase precedent for a two-file split at this scale absent a cycle.",
+  "rule": "Single file, eager imports (host_runner.py-style) for decisions_to_rules()/export_ocr_rules()",
+  "scope": "issue",
+  "alternatives_rejected": "Two files with lazy importlib resolution (adapters/core.py-style)",
+  "issue": "FEAT-3485"
+}

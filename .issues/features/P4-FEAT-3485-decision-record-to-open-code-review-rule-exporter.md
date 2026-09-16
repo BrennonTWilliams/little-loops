@@ -9,7 +9,7 @@ discovered_date: '2026-09-16'
 captured_at: '2026-09-16T04:15:42Z'
 learning_tests_required:
   - open-code-review
-decision_needed: true
+decision_needed: false
 ---
 
 # FEAT-3485: Decision-record to open-code-review rule exporter
@@ -52,9 +52,28 @@ _Added by `/ll:refine-issue` — 2026-09-16 — based on codebase analysis:_
 
 **Option A**: Single file, eager imports, `host_runner.py`-style — `decisions_to_rules()` and `export_ocr_rules()` live in one new module, registered directly with no lazy-import indirection.
 
+> **Selected:** Option A — scored 12/12 vs. Option B's 6/12; see Decision Rationale below.
+
 **Option B**: Two files, lazy `importlib` resolution, `adapters/core.py`-style — a generic module for `RuleRecord`/`decisions_to_rules()`, and a separate module (e.g. `export_ocr.py`) for `export_ocr_rules()`, resolved lazily.
 
 **Recommended**: Option A — `adapters/core.py`'s lazy-import split exists specifically to break a circular import between per-target modules and their shared core, per that module's own docstring. No such circular dependency exists between `decisions_to_rules()` and `export_ocr_rules()`, and this issue's own effort estimate ("a few dozen lines") does not justify a second file plus a lazy-import indirection with nothing driving it.
+
+### Decision Rationale
+
+**Selected: Option A** (single file, eager imports, `host_runner.py`-style).
+
+`decisions.py` imports nothing OCR-related and nothing that would import back from a new `export_ocr` module — there is no A→B→A cycle analogous to `adapters/core.py`'s confirmed `core.py` ↔ `codex.py` edge, which is the only reason that module uses lazy `importlib` resolution instead of eager imports. A repo-wide search found no other instance of a two-function, few-dozen-line module in `scripts/little_loops/` being split into two files absent a circular-import driver; several similarly small modules (`cache_marking_oracle.py`, 113 lines; `decisions_sync.py`, 57 lines — the issue's own closest "render decisions to an external artifact" precedent; `fsm/continuity.py`, 65 lines; `pricing.py`, 150 lines) hold multiple functions/a dataclass in one file with eager top-level imports, including eager cross-package imports.
+
+| Dimension | Option A | Option B |
+|---|---|---|
+| Consistency | 3 — matches the dominant small-module convention (eager imports, single file) | 1 — mimics `adapters/core.py`'s mechanics without its motivating circular-import cause |
+| Simplicity | 3 — no registry, no lazy-import indirection | 1 — adds a second file and lazy-resolution indirection with nothing driving it |
+| Testability | 3 — precedent tests (`TestSyncToLocalMd`, `TestGenerateSchemas`) use plain imports/`tmp_path`, no mocking | 2 — not degraded per se, but the lazy-resolution mechanism is unspecified at this scale |
+| Risk | 3 — negligible; greenfield, no existing callers either way | 2 — low but non-zero; indirection whose failure modes aren't offset by any existing caller need |
+| **Total** | **12/12** | **6/12** |
+
+Evidence for: no circular-import risk between the two functions (`decisions.py` import list contains nothing OCR-adjacent); `decisions_sync.py` (57 lines) is the issue's own cited closest precedent and is single-file/eager.
+Evidence against Option B: the only lazy-`importlib` precedent in the codebase (`adapters/core.py`) exists specifically to break a real, confirmed cycle; no precedent exists for adopting that mechanism without the cycle.
 
 ## Verify First
 
@@ -190,6 +209,7 @@ def export_ocr_rules(rules: list[RuleRecord], output_dir: Path) -> list[Path]:
 
 
 ## Session Log
+- `/ll:decide-issue` - 2026-09-16T04:49:13 - `03cedaa9-993e-49e8-a8ba-5c2ffbf2b4a2.jsonl`
 - `/ll:refine-issue` - 2026-09-16T04:42:32 - `03cedaa9-993e-49e8-a8ba-5c2ffbf2b4a2.jsonl`
 - `/ll:refine-issue` - 2026-09-16T04:29:14 - `3cab3e66-607f-42d5-a4a3-fd8f1228edab.jsonl`
 - `/ll:format-issue` - 2026-09-16T04:19:47 - `6c5fb4c3-b655-4820-8bf8-9f99b327e9fc.jsonl`
