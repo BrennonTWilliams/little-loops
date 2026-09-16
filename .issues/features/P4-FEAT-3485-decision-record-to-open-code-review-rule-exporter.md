@@ -16,168 +16,161 @@ decision_needed: false
 
 ## Summary
 
-Export little-loops decision records into open-code-review's (OCR, https://github.com/alibaba/open-code-review) rule format, so OCR's own shipped review plugins enforce little-loops decisions mechanically at review time. Decisions are currently recorded but only enforced via `.claude/CLAUDE.md` prose — nothing closes that loop mechanically.
+Export active required decision rules into open-code-review's (OCR, https://github.com/alibaba/open-code-review) `.opencodereview/rule.json`, so OCR's shipped review plugins enforce little-loops decisions mechanically at review time. Decisions are currently recorded but enforced only through prose (`.claude/CLAUDE.md`, and the `## Active Rules` block that `sync_to_local_md` writes into `.ll/ll.local.md`).
 
-This is piece 1 of a two-piece OCR integration; piece 2 (a delegate-mode review loop that runs `ocr delegate preview` / `ocr delegate rule` as FSM shell states) is planned separately, so the exported rule format must stay consumable by both.
+This is piece 1 of a two-piece OCR integration; piece 2 (a delegate-mode review loop that runs `ocr delegate preview` / `ocr delegate rule` as FSM shell states) is planned separately and consumes the same `rule.json`.
+
+**Design stance (revised 2026-09-16):** OCR is not the first rule-export target — `sync_to_local_md()` (`scripts/little_loops/decisions_sync.py:31`) already is one, rendering active required `RuleEntry`s to Claude Code's rule surface. This issue therefore (a) extracts the rule-selection step both exporters share, (b) adds the one genuinely target-agnostic field the rules are missing (a path scope), and (c) adds OCR as a second thin exporter. It does **not** introduce a new intermediate `RuleRecord` type or a multi-target registry — `RuleEntry` is already the IR, and a registry waits for a third target (rule of three).
 
 ## Current Behavior
 
-Decisions are recorded via `ll-issues decisions` (`.ll/decisions.yaml` / `.ll/decisions.d/`), but enforcement is prose-only: an agent must read and follow the corresponding guidance in `.claude/CLAUDE.md` at implementation time. Nothing consumes the decision records programmatically during code review.
+Decisions are recorded via `ll-issues decisions` (`.ll/decisions.yaml` / `.ll/decisions.d/`). The only programmatic consumer that renders them outward is `sync_to_local_md()`, which inlines the selection logic (list `type="rule"` → keep `enforcement == "required"` → `resolve_active()`) and writes free-text bullets to `.ll/ll.local.md`. Nothing consumes decision records during code review, and `RuleEntry` has no way to say which files a rule applies to.
 
 ## Expected Behavior
 
-Running the exporter emits open-code-review (OCR) rule file(s) covering all active (non-superseded) decisions, so OCR's own shipped review plugins enforce those decisions mechanically at review time — no agent has to notice and apply the prose.
+`ll-issues decisions export-ocr` writes `.opencodereview/rule.json` covering all active (non-superseded) required rules, correctly shaped for OCR's first-match-wins resolution, so OCR flags violations without an agent recalling the prose. Re-running over an unchanged decision set is a no-op on file content.
 
 ## Motivation
 
-- Closes the loop between recording a decision and enforcing it: today a required rule only affects future work if an agent reads and follows `.claude/CLAUDE.md` prose.
-- Removes reliance on agent recall for mechanical, checkable rules.
-- Establishes the rule format that piece 2 (a delegate-mode `ocr delegate preview`/`ocr delegate rule` review loop) will also consume, so the two pieces stay compatible.
+- Closes the loop between recording a decision and enforcing it mechanically.
+- Removes reliance on agent recall for checkable rules.
+- Fixes the pre-existing duplication risk: a second exporter that re-inlines `sync_to_local_md`'s selection logic would drift from it. Sharing one selector makes "what counts as an exportable rule" a single definition.
+- Establishes the `rule.json` shape piece 2 consumes.
 
 ## Proposed Solution
 
-- Reuse `resolve_active()` (`scripts/little_loops/decisions.py:495`) to select active decisions. The analysis that prompted this misattributed it to `decisions_sync.py`, which is a separate module.
-- Split the exporter into two layers instead of one OCR-coupled function, mirroring the existing little-loops pattern of a canonical form plus thin per-target adapters (`host_runner.py`'s `resolve_host()`, `ll-adapt --host <gemini|kimi-code|qwen>`):
-  1. `decisions_to_rules()` — target-agnostic. Maps `resolve_active()`'s output to a small generic `RuleRecord` IR (id, description, severity, path filters, source decision id). No knowledge of OCR's file format.
-  2. `export_ocr_rules()` — the only OCR-specific piece. Maps `RuleRecord`s to OCR's actual rule file(s)/schema.
-- Rationale: piece 2 (the delegate-mode review loop) and any future second rule-engine target can consume the same IR without caring how OCR formats it; if OCR's schema turns out different than expected once verified, only the adapter changes. Not building a multi-target registry/plugin system now — no second target is named, and that would be over-scoped for a P4/few-dozen-line issue.
+Three layers, sized to the problem:
+
+1. **Shared selector (target-agnostic, refactor of existing code).** Add `active_required_rules(path: Path | None = None) -> list[RuleEntry]` to `scripts/little_loops/decisions.py`, lifting the three-step filter out of `sync_to_local_md()` (`decisions_sync.py:40-45`) and making `sync_to_local_md` call it. Output order must be deterministic (stable on `timestamp`, then `id`) so every exporter is idempotent for free.
+
+2. **Path scope on the rule itself (target-agnostic, small schema addition).** Add `paths: list[str] = field(default_factory=list)` to `RuleEntry` (`decisions.py:106`), round-tripped in `from_dict`/`to_dict`; empty means repo-wide. Expose it on `ll-issues decisions add --type rule` and `promote` as a repeatable `--path <glob>` flag. This is the only field the current model lacks that *every* plausible rule-engine target needs (OCR `path`, Cursor `.mdc` `globs:`, Copilot `applyTo:`). Do **not** add `severity`: OCR has no severity field, `enforcement` already gates inclusion, and no target consumes a graded value.
+
+3. **OCR exporter (the only OCR-specific code).** New module `scripts/little_loops/decisions_export.py` (named for the seam, not the target — a future `export_cursor_rules` lands in the same file, and a `RuleExporter` protocol + lazy map mirroring `adapters/core.py`'s `_EMITTER_MAP` is introduced only when a third target exists) holding `export_ocr_rules(rules: list[RuleEntry], output_dir: Path, *, scope_globs: list[str] | None = None) -> Path`. Written via `atomic_write_json()`.
+
+### OCR emission rules (correctness, not cosmetics)
+
+Proven in `.ll/learning-tests/open-code-review.md` (`status: proven`): `rule.json` = `{"exclude"?: string[], "rules": [{"path": <one glob>, "rule": <free text>}, ...]}`; the **first** `rules[]` entry whose glob matches a file wins, by declaration order, not specificity; a matching project entry **replaces** OCR's embedded system rules (e.g. `python.md`) for that file; no severity field exists.
+
+Consequences the adapter must implement:
+
+- **N repo-wide rules cannot be N entries.** Only the first `**/*` entry would ever fire. Group rules by path glob; emit one `rules[]` entry per distinct glob, most specific first (fewest wildcards / longest literal prefix, then lexical for determinism); each scoped entry's `rule` body = that glob's rules **plus all repo-wide rules**, since first-match shadows anything later; the final catch-all entry holds the repo-wide set alone.
+- **A catch-all entry disables OCR's built-in language rules.** Default `scope_globs` to the project's `src_dir` from `.ll/ll-config.json` (e.g. `scripts/**/*`) rather than `**/*`, and prepend a fixed line to every emitted body reminding the reviewer that OCR's system rules for the file's language still apply. Piece 2 can override `scope_globs` if it wants true repo-wide coverage.
+- **Rule body format** per entry: one bullet per rule, `- <rule text> (decision <id>)`, so review output is traceable back to the record. `rationale` is omitted (keeps bodies short; the id is the pointer).
+- **Don't emit `exclude`.** It only gates `ocr review --preview` file selection and is a project-level choice, not a decision.
 
 ### Codebase Research Findings
 
-_Added by `/ll:refine-issue` — 2026-09-16 — based on codebase analysis:_
+_Added by `/ll:refine-issue` — 2026-09-16 — based on codebase analysis (retained, condensed):_
 
-- OCR's `.opencodereview/rule.json` has no severity field and no multi-glob-per-rule field — each `rules[]` entry is exactly one `path` glob paired with one free-text `rule` body (proven schema, see Verify First). `RuleRecord.severity` as scoped in `## Program Design` therefore has nothing to bind to in `export_ocr_rules()`'s output; it would only matter for a future non-OCR target, not this piece.
-- Because OCR resolves `rules[]` by first-match-in-declaration-order rather than specificity, `export_ocr_rules()`'s emission order is a correctness property, not cosmetic: a `RuleRecord` with a repo-wide or broad path emitted before a narrower one will silently shadow the narrower rule at review time.
-- Two established, mutually-inconsistent precedents exist in this codebase for the canonical-form-plus-per-target-adapter split this issue proposes: `host_runner.py`'s `resolve_host()` (`host_runner.py:2534`, registry `_HOST_RUNNER_REGISTRY`) keeps every per-target class in one file behind an eagerly-imported `dict[str, type[...]]`; `adapters/core.py`'s `resolve_emitter()` (`adapters/core.py:63`, registry `_EMITTER_MAP` at `:53`) keeps one file per target with lazy `importlib` resolution specifically to avoid a circular import between per-target modules and their shared core module (`adapters/core.py:47-52`'s docstring states this reason directly). Neither is a stronger precedent in the abstract; the issue as written cites only the first.
-
-**Option A**: Single file, eager imports, `host_runner.py`-style — `decisions_to_rules()` and `export_ocr_rules()` live in one new module, registered directly with no lazy-import indirection.
-
-> **Selected:** Option A — scored 12/12 vs. Option B's 6/12; see Decision Rationale below.
-
-**Option B**: Two files, lazy `importlib` resolution, `adapters/core.py`-style — a generic module for `RuleRecord`/`decisions_to_rules()`, and a separate module (e.g. `export_ocr.py`) for `export_ocr_rules()`, resolved lazily.
-
-**Recommended**: Option A — `adapters/core.py`'s lazy-import split exists specifically to break a circular import between per-target modules and their shared core, per that module's own docstring. No such circular dependency exists between `decisions_to_rules()` and `export_ocr_rules()`, and this issue's own effort estimate ("a few dozen lines") does not justify a second file plus a lazy-import indirection with nothing driving it.
+- Two canonical-form-plus-adapter precedents exist: `host_runner.py`'s `resolve_host()` (single file, eager `dict[str, type]` registry) and `adapters/core.py`'s `resolve_emitter()` (one file per target, lazy `importlib`, existing **only** to break a real circular import per its docstring at `:47-52`). Neither cycle exists here, so a single eager module is correct; the lazy pattern is the model for a registry *if and when* a third target appears.
+- `resolve_active()` (`decisions.py:495-503`) is a pure set-membership filter: it drops any entry whose `id` appears in another entry's `supersedes`. Only `RuleEntry` and `CouplingEntry` carry `supersedes`.
+- `CouplingEntry.if_changed` is the only existing glob field, but its semantic ("when X changes, audit Y" via `then_check`) has no `rule.json` equivalent and is out of scope for this exporter.
+- `generate_schemas()` (`generate_schemas.py:950-966`) and its `test_idempotent_on_second_run` (`test_generate_schemas.py:179-185`) are the write-then-compare idempotency precedent for Acceptance Criteria #2.
 
 ### Decision Rationale
 
-**Selected: Option A** (single file, eager imports, `host_runner.py`-style).
+**Selected: single eager module (`decisions_export.py`), `host_runner.py`-style.** Scored 12/12 vs. a two-file lazy-import split's 6/12 on consistency, simplicity, testability, risk. `decisions.py` imports nothing OCR-adjacent and nothing that would import back from the new module, so the only justification for lazy resolution in this codebase (`adapters/core.py`'s confirmed `core.py` ↔ `codex.py` cycle) is absent. Several similarly small modules (`decisions_sync.py`, 57 lines; `fsm/continuity.py`, 65 lines; `pricing.py`, 150 lines) hold multiple functions plus a dataclass in one file with eager imports.
 
-`decisions.py` imports nothing OCR-related and nothing that would import back from a new `export_ocr` module — there is no A→B→A cycle analogous to `adapters/core.py`'s confirmed `core.py` ↔ `codex.py` edge, which is the only reason that module uses lazy `importlib` resolution instead of eager imports. A repo-wide search found no other instance of a two-function, few-dozen-line module in `scripts/little_loops/` being split into two files absent a circular-import driver; several similarly small modules (`cache_marking_oracle.py`, 113 lines; `decisions_sync.py`, 57 lines — the issue's own closest "render decisions to an external artifact" precedent; `fsm/continuity.py`, 65 lines; `pricing.py`, 150 lines) hold multiple functions/a dataclass in one file with eager top-level imports, including eager cross-package imports.
-
-| Dimension | Option A | Option B |
-|---|---|---|
-| Consistency | 3 — matches the dominant small-module convention (eager imports, single file) | 1 — mimics `adapters/core.py`'s mechanics without its motivating circular-import cause |
-| Simplicity | 3 — no registry, no lazy-import indirection | 1 — adds a second file and lazy-resolution indirection with nothing driving it |
-| Testability | 3 — precedent tests (`TestSyncToLocalMd`, `TestGenerateSchemas`) use plain imports/`tmp_path`, no mocking | 2 — not degraded per se, but the lazy-resolution mechanism is unspecified at this scale |
-| Risk | 3 — negligible; greenfield, no existing callers either way | 2 — low but non-zero; indirection whose failure modes aren't offset by any existing caller need |
-| **Total** | **12/12** | **6/12** |
-
-Evidence for: no circular-import risk between the two functions (`decisions.py` import list contains nothing OCR-adjacent); `decisions_sync.py` (57 lines) is the issue's own cited closest precedent and is single-file/eager.
-Evidence against Option B: the only lazy-`importlib` precedent in the codebase (`adapters/core.py`) exists specifically to break a real, confirmed cycle; no precedent exists for adopting that mechanism without the cycle.
+**Rejected: a `RuleRecord` intermediate type.** It would duplicate `RuleEntry`'s fields and add two (`severity`, `path filters`) with no source on `RuleEntry` and, for `severity`, no consumer on any target. Adding `paths` directly to `RuleEntry` gives every exporter the field without a translation layer.
 
 ## Verify First
 
-Unverified claims from the prompting analysis:
-
-- OCR's actual rule/config format and how rules are consumed (file path, schema, path filters). Check the OCR repo (https://github.com/alibaba/open-code-review) docs before finalizing the export shape.
-
-### Codebase Research Findings
-
-_Added by `/ll:refine-issue` — 2026-09-16 — based on codebase analysis:_
-
-- **Resolved.** OCR's rule/config format is now proven (`.ll/learning-tests/open-code-review.md`, `status: proven`, raw output `.ll/learning-tests/raw/open-code-review.txt`): `.opencodereview/rule.json` = `{"exclude"?: string[], "rules": [{"path": <glob>, "rule": <free-text string>}, ...]}`. Resolution priority: `--rule <file>` CLI flag > project `.opencodereview/rule.json` > global `~/.opencodereview/rule.json` > embedded system rules. Within `rules[]`, the FIRST entry whose `path` glob matches wins by declaration order — not specificity (a broader glob listed first shadows a narrower one listed later). `exclude` gates only `ocr review --preview`'s file selection; it has no effect on `ocr rules check`'s rule-resolution lookup. No severity field exists anywhere in the schema.
+- ~~OCR's actual rule/config format.~~ **Resolved** — proven in `.ll/learning-tests/open-code-review.md` (raw output `.ll/learning-tests/raw/open-code-review.txt`); see "OCR emission rules" above.
+- Confirm OCR's glob dialect for `path` (does `scripts/**/*.py` match files directly under `scripts/`? brace sets like `**/*.{py,pyi}` are used by system rules, so they are supported). Extend the learning test with one assertion if the dialect matters for the specificity ordering.
 
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/decisions.py` — no changes expected; consumed via `resolve_active()`
-- New module(s) under `scripts/little_loops/` (name TBD) holding `decisions_to_rules()` (generic IR) and `export_ocr_rules()` (OCR-specific adapter) — either one file or split, sized to the "few dozen lines" estimate — or a CLI subcommand under `ll-issues decisions`
+- `scripts/little_loops/decisions.py` — add `paths: list[str]` to `RuleEntry` (`:106`, `from_dict` `:125`, `to_dict` `:145`); add `active_required_rules()` next to `resolve_active()` (`:495`)
+- `scripts/little_loops/decisions_sync.py` — replace the inline filter at `:40-45` with `active_required_rules(decisions_path)`; behaviour unchanged
+- New `scripts/little_loops/decisions_export.py` — `export_ocr_rules()` plus private helpers `_group_by_glob()`, `_glob_sort_key()`, `_render_body()`
+- `scripts/little_loops/cli/issues/decisions.py` — `--path` (repeatable, `action="append"`) on `add` (`:116` region) and `promote` (`:270` region); new `export-ocr` subparser in `add_decisions_parser()` (`:15`), dispatch branch in `cmd_decisions()` (`:280`), `_cmd_export_ocr(path, output_dir, scope) -> int` following `_cmd_sync` (`:550`): lazy import in body, stderr + non-zero on failure
+- `scripts/little_loops/config-schema.json` — optional `decisions.ocr_scope_globs: string[]` (defaults to `[<project.src_dir>/**/*]` when absent); soft — CLI `--scope` flag suffices for AC
 
 ### Dependent Files (Callers/Importers)
-- None yet — this is a new export path with no existing callers. Piece 2 (delegate-mode review loop) will call it once the rule format is finalized.
+- `sync_to_local_md()` — the only existing consumer of the selection logic; becomes the first caller of `active_required_rules()`
+- `_cmd_promote` (`cli/issues/decisions.py:953`) calls `_cmd_sync` after promoting a required rule; consider also calling `_cmd_export_ocr` when `.opencodereview/` already exists (soft, keeps the two surfaces in step)
+- Repo-wide grep confirms zero references to `export_ocr_rules` / `decisions_export` / `active_required_rules` today
 
 ### Similar Patterns
-- `decisions_sync.py`'s `sync_to_local_md` for the pattern of rendering decision entries to an external artifact
-- `host_runner.py`'s `resolve_host()` / `ll-adapt --host <gemini|kimi-code|qwen>` for the canonical-form-plus-per-target-adapter split this issue reuses
+- `decisions_sync.py`'s `sync_to_local_md` — the sibling exporter
+- `file_utils.py`'s `atomic_write_json()` (tested via `TestAtomicWriteJson`) — write path
+- `adapters/core.py`'s `_EMITTER_MAP` / `HostEmitter` — model for the registry to introduce at target #3, not now
 
 ### Tests
-- New unit test with a fixture decision set covering active/superseded filtering (Acceptance Criteria #3)
+- `scripts/tests/test_decisions.py` — `TestRuleEntry` round-trip for `paths` (present, absent, legacy dict without the key); `TestActiveRequiredRules` (advisory excluded, superseded excluded, deterministic order); `TestSyncToLocalMd` (`:491`) unchanged and still green
+- New `scripts/tests/test_decisions_export.py` — fixture set with: two repo-wide rules, one `scripts/**/*.py` rule, one superseded rule, one advisory rule. Assert: superseded/advisory absent; exactly one entry per distinct glob; scoped entry listed before catch-all; scoped body contains both its own and the repo-wide rule texts; catch-all body contains only repo-wide; each bullet carries its decision id; second run yields byte-identical file (AC #2); `scope_globs=None` resolves to `src_dir`
+- `scripts/tests/test_cli_decisions.py` — `TestDecisionsCLIExportOcr` (writes file, exit 0; bad path → exit 1); `TestDecisionsCLIAdd` gains a `--path` case; `TestDecisionsCLINoSubcommand.test_no_subcommand` unaffected
 
 ### Documentation
-- `docs/reference/API.md`, `docs/reference/CLI.md` — document the new exporter once implemented
+- `docs/reference/CLI.md` — `ll-issues decisions` table row for `export-ocr`, `**export-ocr flags:**` subsection, `--path` under add/promote flags, bash example line
+- `docs/reference/API.md` — `### active_required_rules`, `### export_ocr_rules`; note `paths` under `### RuleEntry`
+- `docs/guides/DECISIONS_LOG_GUIDE.md` — "Exporting to OCR" section (including the first-match/system-rule-replacement caveats) + ToC entry; mention `--path`
+- `docs/ARCHITECTURE.md` — add exporter to "Key consumers" in the Decisions Log section
 
 ### Configuration
-- N/A
+- `decisions.ocr_scope_globs` (optional, see above)
 
-### Codebase Research Findings
+### Behavior Parity
 
-_Added by `/ll:refine-issue` — 2026-09-16 — based on codebase analysis:_
+The only existing behaviour touched is `sync_to_local_md()` (`scripts/little_loops/decisions_sync.py:31`). After the refactor it must:
 
-- This codebase holds two competing canonical-form-plus-adapter conventions, not one, for the pattern the issue cites: `host_runner.py`'s `resolve_host()` keeps every per-target class eagerly imported in a single file behind a `dict[str, type[...]]` registry (`host_runner.py:2224`), while `ll-adapt`'s `adapters/core.py` keeps one file per target with lazy `importlib` registration specifically to avoid a circular import with its shared core module (`adapters/core.py:53`, `:63`). The issue names only the first; the second is an equally established precedent for the opposite file-layout choice.
-- A frozen `@dataclass` IR consumed by several per-target modules is an established shape in this codebase — `HostCapabilityEntry` (`adapters/capabilities.py:57`), one instance per target held in a module-level dict — consistent with the issue's proposed `RuleRecord`.
-- The one existing function matching `export_ocr_rules`'s `(rules, output_dir) -> list[Path]` write-and-report-paths shape is `generate_schemas()` (`scripts/little_loops/generate_schemas.py:950`): it iterates a source collection, writes one file per item, and accumulates/returns the written paths. Other `-> list[Path]` functions in this codebase (`_tracked_py_files`, `list_workspaces`, etc.) are read/discovery functions, not write-and-report ones.
-- `sync_to_local_md()` (`scripts/little_loops/decisions_sync.py:31`) — the issue's cited rendering precedent — narrows to `RuleEntry` instances with `enforcement == "required"` *before* calling `resolve_active()` (`decisions_sync.py:42-45`), renders only the `.rule` free-text field (no id/category/severity), writes via `atomic_write`, and returns `None` (a single fixed-path file) rather than `list[Path]`.
-- CLI wiring convention for a new `ll-issues decisions` subcommand: subparser registration in `add_decisions_parser()`, dispatch in `cmd_decisions()`, and a private `_cmd_*(path) -> int` helper that lazily imports the implementation module and translates exceptions to a printed error plus exit code (see `_cmd_sync`, `scripts/little_loops/cli/issues/decisions.py:550`).
-- Test conventions: `TestResolveActive` (`scripts/tests/test_decisions.py:395`) tests the filter itself via inline-constructed dataclass fixtures, no external fixture file. `TestSyncToLocalMd` (`scripts/tests/test_decisions.py:491`) tests a decisions-log-consuming renderer via a `tmp_path`-backed `.ll/decisions.yaml`, then asserts on the written artifact's content — the closer precedent for testing an end-to-end exporter. `TestGenerateSchemas` (`scripts/tests/test_generate_schemas.py:122`) tests idempotency of a write-and-report-paths function by calling it twice into `tmp_path` and comparing file contents — direct precedent for Acceptance Criteria #2.
+- Select exactly the same entries: `type="rule"`, `enforcement == "required"`, not superseded via `resolve_active()`. `active_required_rules()` adds a stable sort; the current implementation preserves `list_entries` order, which is already timestamp order, so rendered bullet order is unchanged for existing logs.
+- Render bullets as `- {r.rule}` only — no decision id, no `paths`, no rationale. OCR-style traceability suffixes are OCR-adapter concerns and must not leak into `ll.local.md`.
+- Keep the `## Active Rules` replace-or-append logic and `atomic_write` call untouched.
+- Guard: `TestSyncToLocalMd` (`scripts/tests/test_decisions.py:491`) passes without modification.
+
+`.ll/learning-tests/open-code-review.md` is read-only input; nothing in it is replaced.
 
 ## Program Design
 
 ### Types
 
-- Reuses the existing decision entry types from `scripts/little_loops/decisions.py` for input.
-- New: `RuleRecord` — the target-agnostic IR (id, description, severity, path filters, source decision id) that `decisions_to_rules()` emits and `export_ocr_rules()` consumes.
+- `RuleEntry` (existing, `decisions.py:106`) gains `paths: list[str] = field(default_factory=list)`. Empty = repo-wide. This is the exporter IR; no new type.
 
 ### Signatures
 
-- `decisions_to_rules(decisions: list[AnyEntry]) -> list[RuleRecord]` — target-agnostic mapping, no OCR-specific knowledge.
-- `export_ocr_rules(rules: list[RuleRecord], output_dir: Path) -> list[Path]` — the only OCR-specific function; maps `RuleRecord`s to OCR's rule file(s)/schema.
+- `active_required_rules(path: Path | None = None) -> list[RuleEntry]` — `list_entries(path, type="rule")` → keep `enforcement == "required"` → `resolve_active()` → stable sort `(timestamp, id)`. Target-agnostic; shared by `sync_to_local_md` and `export_ocr_rules`.
+- `export_ocr_rules(rules: list[RuleEntry], output_dir: Path, *, scope_globs: list[str] | None = None) -> Path` — groups by glob, orders specific-first, folds repo-wide rules into every scoped body, writes `output_dir / ".opencodereview" / "rule.json"` via `atomic_write_json`, returns the path. `scope_globs` replaces the catch-all `**/*` for repo-wide rules; `None` → `[f"{src_dir}/**/*"]` from config, falling back to `["**/*"]` when no config resolves.
 
 ### Call Path
 
-`resolve_active()` (`scripts/little_loops/decisions.py:495`) -> `decisions_to_rules()` -> `export_ocr_rules()` -> OCR rule file(s) on disk
-
-### Codebase Research Findings
-
-_Added by `/ll:refine-issue` — 2026-09-16 — based on codebase analysis:_
-
-- Neither `severity` nor a path/glob filter field exists anywhere on the four decision entry types in `scripts/little_loops/decisions.py` (`RuleEntry`, `DecisionEntry`, `ExceptionEntry`, `CouplingEntry`). The closest analogs are `enforcement` (`RuleEntry`/`CouplingEntry`, a 2-3 value string — `advisory`/`required` — not a graded severity) and `CouplingEntry.if_changed` (a glob path filter, but scoped to the separate coupling/audit entry type, not `RuleEntry`). The proposed `RuleRecord` IR's `severity` and `path filters` fields therefore have no direct source on `RuleEntry`, the type this exporter is expected to operate on — a mapping decision (e.g. derive `severity` from `enforcement`, and treat an absent path filter as "applies repo-wide") is needed before `decisions_to_rules()`'s body can be written.
-- `resolve_active()` (`decisions.py:495`) operates on the full `AnyEntry` union and returns a mix of `RuleEntry`/`DecisionEntry`/`ExceptionEntry`/`CouplingEntry` when called on an unfiltered list. The issue's stated Call Path (`resolve_active() -> decisions_to_rules()`) implies feeding its raw output directly in, but the one existing caller that renders to an external artifact (`sync_to_local_md`) pre-filters to `RuleEntry` with `enforcement == "required"` *before* calling `resolve_active()`, while the other caller (`_cmd_list`) isinstance-branches per entry type *after* calling it. `decisions_to_rules()` needs to decide which entry types map to a rule (at minimum `RuleEntry`; possibly `CouplingEntry`, which also carries `enforcement`/`supersedes`) and how to handle the rest (skip vs. raise) — the issue's Program Design section as written does not decide this.
-
-_Added by `/ll:refine-issue` — 2026-09-16 — based on codebase analysis:_
-
-- `resolve_active()` (`decisions.py:495-503`) is a pure set-membership filter over whatever list it is given: it collects every value found in any entry's `supersedes` attribute (`getattr(e, "supersedes", None)`) and returns entries whose own `id` is not in that set. It does not load entries itself, filter by type, or reason about timestamps. Only `RuleEntry` (`decisions.py:115`) and `CouplingEntry` (`:296`) declare `supersedes`; `DecisionEntry`/`ExceptionEntry` never carry it and so can never be "superseded" through this function.
-- Field inventory relevant to `RuleRecord`: `RuleEntry.enforcement: str = "advisory"` (2 values used — advisory/required) is the only enforcement-like field on `RuleEntry`. `CouplingEntry.tier: str = "soft"` (hard/soft/fyi, 3 values) is the closest thing to a graded severity in `decisions.py`, but scoped to `CouplingEntry`. `CouplingEntry.if_changed` is the only glob/path field in the module, also scoped to that one entry type. Since OCR's schema itself has no severity field (see Proposed Solution finding), `RuleRecord.severity` having no direct source on `RuleEntry` does not block this issue — nothing downstream would consume it for the OCR target.
-- The only existing `resolve_active()` caller, `sync_to_local_md()` (`decisions_sync.py:31-57`), narrows to `RuleEntry` with `enforcement == "required"` *before* calling `resolve_active()` (`:40-45`), then renders only the free-text `.rule` field. `CouplingEntry` (the only other entry type with a glob) expresses a different semantic — "when X changes, audit Y" via `then_check` — with no OCR `rule.json` equivalent, since a single (glob, rule-text) pair can't represent "go check this other set of files."
-- `generate_schemas()` (`generate_schemas.py:950-966`) is the one existing `(items, output_dir) -> list[Path]` write-and-report-paths precedent: `mkdir(parents=True, exist_ok=True)` up front, loops a source collection, writes one file per item via plain `write_text` (not `atomic_write`), accumulates and returns every path written. `test_idempotent_on_second_run` (`test_generate_schemas.py:179-185`) verifies idempotency by calling it twice into the same `tmp_path` and comparing per-file contents — direct precedent for this issue's Acceptance Criteria #2.
-- CLI wiring: `_cmd_*(path) -> int` helpers registered via `add_decisions_parser()` (`cli/issues/decisions.py:15`) / `cmd_decisions()` (`:280`) lazily import their implementation module inside the function body and translate exceptions to a printed stderr message plus a non-zero return code. `_cmd_sync` (`:550`) is the closest existing sibling, and `_cmd_promote` (`:953`) calls `_cmd_sync` directly — `_cmd_*` helpers may call each other.
+`active_required_rules()` → `export_ocr_rules()` → `.opencodereview/rule.json`
+`active_required_rules()` → `sync_to_local_md()` → `.ll/ll.local.md` (existing, now shared)
 
 ## Implementation Steps
 
-1. Confirm OCR's rule/config format (file path, schema, path filters) per Verify First.
-2. Implement `decisions_to_rules()` (generic IR, no OCR knowledge) and `export_ocr_rules()` (the OCR-specific adapter), feeding the former's output into the latter.
-3. Wire it up as a command or script per the Proposed Solution.
-4. Add the fixture-based unit test (Acceptance Criteria #3) and confirm idempotency (Acceptance Criteria #2).
+1. Add `paths` to `RuleEntry` with round-trip tests; add `--path` to `add`/`promote`.
+2. Add `active_required_rules()`; refactor `sync_to_local_md()` onto it; confirm `TestSyncToLocalMd` stays green.
+3. Implement `decisions_export.py::export_ocr_rules()` with the grouping/ordering/folding logic and `src_dir` default scope.
+4. Wire `export-ocr` into `ll-issues decisions`; optionally call it from `_cmd_promote` when `.opencodereview/` exists.
+5. Tests per Integration Map; idempotency check by double-run comparison.
+6. Docs per Integration Map; run `ll-adapt --host <gemini|kimi-code|qwen> --apply` if any mirrored surface changed.
 
 ## Acceptance Criteria
 
-1. Running the exporter emits rule file(s) covering all active (non-superseded) decisions; superseded ones are excluded via `resolve_active` semantics.
-2. Idempotent: re-running over an unchanged decision set produces identical output.
-3. Unit test with a fixture decision set covering active/superseded filtering.
+1. `ll-issues decisions export-ocr` writes `.opencodereview/rule.json` containing every active required rule and no superseded or advisory rule.
+2. Idempotent: re-running over an unchanged decision set produces a byte-identical file.
+3. Exactly one `rules[]` entry per distinct path glob; more-specific globs precede the catch-all; every scoped entry's body also contains all repo-wide rules; each bullet carries its decision id.
+4. Repo-wide rules are scoped to `src_dir` by default, not `**/*`, and the scope is overridable.
+5. `RuleEntry.paths` round-trips through YAML/JSON and legacy entries without the key still load.
+6. `sync_to_local_md()` output is unchanged after the refactor onto `active_required_rules()`.
 
 ## Priority Rationale
 
-P4 — small, unblocked, and recommended as the first of the two OCR pieces.
+P4 — small, unblocked, first of the two OCR pieces. Slightly larger than the original "few dozen lines" estimate because of the `paths` field and the grouping logic, but still a single-session change.
 
 ## Impact
 
-- **Priority**: P4 - small, unblocked, first of two planned OCR integration pieces
-- **Effort**: Small - expected a few dozen lines; reuses existing `resolve_active()`
-- **Risk**: Low - additive export path; doesn't change existing decision recording or consumption
-- **Breaking Change**: No
+- **Priority**: P4
+- **Effort**: Small–medium — ~150 lines plus tests; one schema field addition
+- **Risk**: Low — additive; the only touch to existing behaviour is the `sync_to_local_md` refactor, covered by existing tests
+- **Breaking Change**: No — `paths` defaults to empty; existing decision files load unchanged
 
 ## Related Key Documentation
 
-_No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
+- `docs/guides/DECISIONS_LOG_GUIDE.md`
+- `.ll/learning-tests/open-code-review.md`
 
 ## Status
 
@@ -187,28 +180,52 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 **Who**: A little-loops maintainer running OCR-based code review on this repo.
 
-**Context**: A decision has been recorded (e.g. a required rule via `ll-issues decisions`) but today is only enforced through `.claude/CLAUDE.md` prose.
+**Context**: A required rule has been recorded via `ll-issues decisions` but is enforced only through prose.
 
-**Goal**: Run the exporter to regenerate OCR rule file(s) from the active decision set so OCR's shipped plugins check the rule automatically.
+**Goal**: Run `ll-issues decisions export-ocr` so OCR checks the rule automatically, scoped to the files it applies to.
 
-**Outcome**: Code review flags violations of active decisions without a human or agent needing to recall the prose rule.
+**Outcome**: Code review flags violations of active decisions, each traceable to its decision id, without disabling OCR's built-in language rules.
 
 ## API/Interface
 
 ```python
-def decisions_to_rules(decisions: list[AnyEntry]) -> list[RuleRecord]:
-    """Map active decisions to a target-agnostic rule IR."""
+# decisions.py
+@dataclass
+class RuleEntry:
+    ...
+    paths: list[str] = field(default_factory=list)  # empty = repo-wide
 
-def export_ocr_rules(rules: list[RuleRecord], output_dir: Path) -> list[Path]:
-    """Emit OCR rule file(s) from the rule IR. The only OCR-specific function."""
+def active_required_rules(path: Path | None = None) -> list[RuleEntry]:
+    """Active (non-superseded) required rules in deterministic order. Shared by all exporters."""
+
+# decisions_export.py
+def export_ocr_rules(
+    rules: list[RuleEntry],
+    output_dir: Path,
+    *,
+    scope_globs: list[str] | None = None,
+) -> Path:
+    """Write .opencodereview/rule.json. The only OCR-specific function."""
+```
+
+```bash
+ll-issues decisions add --type rule --enforcement required --path 'scripts/little_loops/fsm/**/*.py' ...
+ll-issues decisions export-ocr [--output-dir .] [--scope 'scripts/**/*']
 ```
 
 ## Edge Cases
 
+- No active required rules → write `{"rules": []}` (valid, idempotent) rather than deleting the file.
+- Same glob on several rules → one entry, bullets in selector order.
+- A rule with multiple `paths` → its text appears in each glob's entry.
+- `src_dir` missing from config and no `--scope` → fall back to `**/*` with a stderr warning about system-rule replacement.
+
 ## UI/UX Details
 
+`export-ocr` prints the written path and the count of entries/rules on success, matching `sync`'s one-line output style.
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-16T04:59:13 - `1e024021-4acc-4b11-a8a1-c8c2d8acfc34.jsonl`
 - `/ll:decide-issue` - 2026-09-16T04:49:13 - `03cedaa9-993e-49e8-a8ba-5c2ffbf2b4a2.jsonl`
 - `/ll:refine-issue` - 2026-09-16T04:42:32 - `03cedaa9-993e-49e8-a8ba-5c2ffbf2b4a2.jsonl`
 - `/ll:refine-issue` - 2026-09-16T04:29:14 - `3cab3e66-607f-42d5-a4a3-fd8f1228edab.jsonl`

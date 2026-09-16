@@ -1,0 +1,12 @@
+{
+  "id": "8960c220-966d-4b1a-9f9a-4a422a082412",
+  "type": "decision",
+  "timestamp": "2026-09-16T15:28:42Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Scores 7/12 vs Option A's 4/12: the GUI need only emit declarative rule-table data targeting the already-proven lib/policy-router.yaml + fsm/policy_rules.py engine, pushing the harder queue/retry/rate-limit problem into a one-time generic-engine build rather than per-generated-artifact code generation. Option A inherits a documented gap where loop: call states cannot observe a child's rate-limit-exhaustion terminal (oracles/resolve-decision.yaml:163-181, autodev.yaml:489-494).",
+  "rule": "Option B \u2014 policy config consumed by an existing/new generic issue-lifecycle loop",
+  "scope": "issue",
+  "alternatives_rejected": "Option A: standalone FSM loop YAML generated per-artifact, requiring the generator to emit its own queue/retry/rate-limit states",
+  "issue": "FEAT-3474"
+}
