@@ -104,6 +104,7 @@ Each state object corresponds to one active or interrupted loop instance.
 | `active_sub_loop` | object or string | no | Descriptor of the sub-loop currently executing (omitted when the loop is not inside one) |
 | `reconciled_at` | string (ISO 8601) | no | Timestamp of the last reconciliation pass against on-disk truth (omitted when never reconciled) |
 | `messages` | array of strings | no | Shared append-only message log surfaced to interpolation as `${messages}` (omitted when empty) |
+| `pre_cap_state` | string | no | State the next `ll-loop resume` restarts from after a handler-routed cap (`on_max_steps`/`on_max_iterations`) termination — distinct from `current_state`, which is the handler chain's endpoint (omitted when no handler-routed cap has fired; ENH-3483) |
 | `pid` | integer or null | no | OS PID of the running process. In `ll-loop status --json` output this key is always present, emitted as `null` when not available; the raw `LoopState.to_dict()` contract omits the key entirely when unavailable |
 
 All rows marked "no" above are emitted by `LoopState.to_dict()` only when the

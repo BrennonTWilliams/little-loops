@@ -1510,9 +1510,11 @@ class TestPersistentExecutor:
 
         assert result.terminated_by == "max_steps"
         assert "echo 'summarizing'" in mock_runner.calls
+        assert result.pre_cap_state == "check"
         state = executor.persistence.load_state()
         assert state is not None
         assert state.status == "interrupted"
+        assert state.pre_cap_state == "check"
 
     def test_final_status_timed_out_on_timeout(self, tmp_loops_dir: Path) -> None:
         """Final status is 'timed_out' when loop timeout is exceeded."""
@@ -1979,6 +1981,7 @@ class TestPersistentExecutor:
 
         assert result.terminated_by == "max_steps"
         assert result.final_state == "done"
+        assert result.pre_cap_state == "fix"
         assert (run_dir / BEST_EFFORT_FILENAME).exists()
 
     def test_run_skips_checkpoint_write_and_cleanup_when_run_dir_absent(
@@ -4164,6 +4167,190 @@ class TestContextPersistence:
         # Override survives; the non-overridden persisted key is still restored.
         assert 'echo "OVERRIDE wins"' in mock_runner.calls[0]
         assert fsm.context["region"] == "us"
+
+
+class TestPreCapStatePersistence:
+    """ENH-3483: pre_cap_state round-trips through LoopState and drives resume()'s
+    current_state restoration for handler-routed cap terminations."""
+
+    def test_loop_state_pre_cap_state_roundtrip(self) -> None:
+        state = LoopState(
+            loop_name="cap-loop",
+            current_state="done",
+            iteration=3,
+            captured={},
+            prev_result=None,
+            last_result=None,
+            started_at="2026-09-16T10:30:00Z",
+            updated_at="",
+            status="interrupted",
+            pre_cap_state="check",
+        )
+        restored = LoopState.from_dict(state.to_dict())
+        assert restored.pre_cap_state == "check"
+
+    def test_loop_state_pre_cap_state_omitted_when_none(self) -> None:
+        state = LoopState(
+            loop_name="cap-loop",
+            current_state="check",
+            iteration=1,
+            captured={},
+            prev_result=None,
+            last_result=None,
+            started_at="2026-09-16T10:30:00Z",
+            updated_at="",
+            status="running",
+        )
+        assert "pre_cap_state" not in state.to_dict()
+
+    def test_loop_state_from_dict_missing_pre_cap_state_defaults_to_none(self) -> None:
+        data = {
+            "loop_name": "cap-loop",
+            "current_state": "check",
+            "iteration": 1,
+            "captured": {},
+            "prev_result": None,
+            "last_result": None,
+            "started_at": "2026-09-16T10:30:00Z",
+            "updated_at": "",
+            "status": "running",
+        }
+        assert LoopState.from_dict(data).pre_cap_state is None
+
+    def test_resume_restores_current_state_from_pre_cap_state(self, tmp_path: Path) -> None:
+        """resume() must restart from pre_cap_state, not the handler-chain endpoint
+        persisted as current_state, and must not re-run the handler. max_steps is
+        raised relative to the persisted iteration so the cap does not immediately
+        re-fire on resume -- that scenario is covered separately by
+        test_cap_raised_resume_reaches_genuine_terminal / _refires_handler."""
+        fsm = FSMLoop(
+            name="cap-resume-test",
+            initial="check",
+            max_steps=10,
+            on_max_steps="summarize",
+            states={
+                "check": StateConfig(action="echo checking", next="done"),
+                "summarize": StateConfig(action="echo summarizing", next="done"),
+                "done": StateConfig(terminal=True),
+            },
+        )
+
+        persistence = StatePersistence("cap-resume-test", tmp_path)
+        persistence.initialize()
+        persistence.save_state(
+            LoopState(
+                loop_name="cap-resume-test",
+                current_state="done",
+                iteration=3,
+                captured={},
+                prev_result=None,
+                last_result=None,
+                started_at="2026-09-16T10:30:00Z",
+                updated_at="",
+                status="interrupted",
+                pre_cap_state="check",
+            )
+        )
+
+        mock_runner = MockActionRunner()
+        executor = PersistentExecutor(fsm, persistence=persistence, action_runner=mock_runner)
+        executor.resume()
+
+        assert "echo summarizing" not in mock_runner.calls, (
+            "resume() must not re-run the on_max_steps handler when restoring from pre_cap_state"
+        )
+        assert "echo checking" in mock_runner.calls
+
+        events = executor.persistence.read_events()
+        resume_events = [e for e in events if e.get("event") == "loop_resume"]
+        assert len(resume_events) == 1
+        assert resume_events[0]["from_state"] == "check"
+
+    def test_cap_raised_resume_reaches_genuine_terminal(self, tmp_path: Path) -> None:
+        """Raising max_steps before resuming lets the resumed executor finish the
+        original work and reach a real terminal, instead of re-entering the
+        already-run handler chain."""
+
+        def make_fsm(max_steps: int) -> FSMLoop:
+            return FSMLoop(
+                name="cap-raised-resume",
+                initial="step1",
+                max_steps=max_steps,
+                on_max_steps="summarize",
+                states={
+                    "step1": StateConfig(action="s1.sh", next="step2"),
+                    "step2": StateConfig(action="s2.sh", next="step3"),
+                    "step3": StateConfig(action="s3.sh", next="done"),
+                    "summarize": StateConfig(action="sum.sh", next="done"),
+                    "done": StateConfig(terminal=True),
+                },
+            )
+
+        loops_dir = tmp_path / ".loops"
+        runner1 = MockActionRunner()
+        executor1 = PersistentExecutor(
+            make_fsm(max_steps=2), loops_dir=loops_dir, action_runner=runner1
+        )
+        result1 = executor1.run()
+
+        assert result1.terminated_by == "max_steps"
+        assert result1.final_state == "done"
+        assert result1.pre_cap_state == "step3"
+        assert runner1.calls.count("sum.sh") == 1
+
+        state = executor1.persistence.load_state()
+        assert state is not None
+        assert state.status == "interrupted"
+        assert state.pre_cap_state == "step3"
+
+        runner2 = MockActionRunner()
+        executor2 = PersistentExecutor(
+            make_fsm(max_steps=10), loops_dir=loops_dir, action_runner=runner2
+        )
+        result2 = executor2.resume()
+
+        assert result2 is not None
+        assert result2.terminated_by == "terminal"
+        assert result2.final_state == "done"
+        assert "sum.sh" not in runner2.calls, "resumed run must not re-fire the handler"
+        assert "s3.sh" in runner2.calls, "resumed run must execute the pre-cap state's action"
+
+    def test_cap_not_raised_resume_refires_handler(self, tmp_path: Path) -> None:
+        """Resuming without raising the cap re-hits it immediately and re-fires
+        the handler once, ending max_steps/interrupted again -- matching a fresh
+        cap hit and the unhandled-cap resume precedent."""
+
+        def make_fsm(max_steps: int) -> FSMLoop:
+            return FSMLoop(
+                name="cap-not-raised-resume",
+                initial="step1",
+                max_steps=max_steps,
+                on_max_steps="summarize",
+                states={
+                    "step1": StateConfig(action="s1.sh", next="step2"),
+                    "step2": StateConfig(action="s2.sh", next="step3"),
+                    "step3": StateConfig(action="s3.sh", next="done"),
+                    "summarize": StateConfig(action="sum.sh", next="done"),
+                    "done": StateConfig(terminal=True),
+                },
+            )
+
+        loops_dir = tmp_path / ".loops"
+        runner1 = MockActionRunner()
+        executor1 = PersistentExecutor(
+            make_fsm(max_steps=2), loops_dir=loops_dir, action_runner=runner1
+        )
+        executor1.run()
+
+        runner2 = MockActionRunner()
+        executor2 = PersistentExecutor(
+            make_fsm(max_steps=2), loops_dir=loops_dir, action_runner=runner2
+        )
+        result2 = executor2.resume()
+
+        assert result2 is not None
+        assert result2.terminated_by == "max_steps"
+        assert runner2.calls.count("sum.sh") == 1
 
 
 class TestReconcileStaleRuns:

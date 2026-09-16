@@ -117,6 +117,7 @@ class TestCmdStatus:
         mock_state.updated_at = "2026-02-14T10:05:00"
         mock_state.continuation_prompt = None
         mock_state.pid = None
+        mock_state.pre_cap_state = None
 
         with (
             patch(
@@ -142,6 +143,7 @@ class TestCmdStatus:
         mock_state.iteration = 3
         mock_state.started_at = "2026-02-14T10:00:00"
         mock_state.updated_at = "2026-02-14T10:05:00"
+        mock_state.pre_cap_state = None
         mock_state.continuation_prompt = "A" * 300  # Long prompt
 
         with (
@@ -156,6 +158,34 @@ class TestCmdStatus:
         print_calls = [str(c) for c in mock_print.call_args_list]
         print_text = " ".join(print_calls)
         assert "..." in print_text  # Truncated
+
+    def test_status_shows_resumes_at_when_pre_cap_state_set(self, tmp_path: Path) -> None:
+        """ENH-3483: a handler-routed cap run shows 'Resumes at' with the
+        pre-cap state, not the stale handler-endpoint current_state."""
+        logger = MagicMock()
+        mock_state = MagicMock()
+        mock_state.loop_name = "test-loop"
+        mock_state.status = "interrupted"
+        mock_state.current_state = "done"
+        mock_state.iteration = 3
+        mock_state.started_at = "2026-02-14T10:00:00"
+        mock_state.updated_at = "2026-02-14T10:05:00"
+        mock_state.continuation_prompt = None
+        mock_state.pid = None
+        mock_state.pre_cap_state = "check"
+
+        with (
+            patch(
+                "little_loops.cli.loop.lifecycle._find_instances", return_value=[(None, mock_state)]
+            ),
+            patch("builtins.print") as mock_print,
+        ):
+            result = cmd_status("test-loop", tmp_path, logger)
+
+        assert result == 0
+        print_calls = [str(c) for c in mock_print.call_args_list]
+        print_text = " ".join(print_calls)
+        assert "Resumes at: check" in print_text
 
 
 class TestCmdStop:
@@ -1920,6 +1950,7 @@ class TestCmdStatusLogFile:
         mock_state.updated_at = "2026-03-31T10:05:00"
         mock_state.continuation_prompt = None
         mock_state.pid = None
+        mock_state.pre_cap_state = None
         return mock_state
 
     def test_status_shows_log_file_details(self, tmp_path: Path) -> None:
@@ -2135,6 +2166,7 @@ class TestCmdStatusLockFilePid:
         mock_state.started_at = "2026-05-03T10:00:00"
         mock_state.updated_at = "2026-05-03T10:05:00"
         mock_state.continuation_prompt = None
+        mock_state.pre_cap_state = None
         mock_state.to_dict.return_value = {
             "loop_name": "test-loop",
             "status": "interrupted",

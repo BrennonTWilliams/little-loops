@@ -58,7 +58,9 @@ This outputs a JSON array of `LoopState` objects. Each object contains:
 - `instance_id` — per-instance timestamp stem (e.g. `fix-types-20260503T122306`); **absent from list output** — use `ll-loop status <loop_name> --json` to resolve
 - `status` — `"running"`, `"interrupted"`, `"failed"`, `"timed_out"`, `"completed"`, `"awaiting_continuation"`
 - `updated_at` — ISO 8601 timestamp of last state update
-- `current_state` — last active state
+- `current_state` — last active state. For a handler-routed cap termination
+  (`on_max_steps`/`on_max_iterations`), this is the handler chain's endpoint,
+  not the resume target — check `pre_cap_state` (ENH-3483) when present.
 - `iteration` — last iteration count
 
 **Filter** to candidate loops: keep entries where `status` is one of `"running"`, `"interrupted"`, `"failed"`, `"timed_out"`, `"awaiting_continuation"`. Sort by `updated_at` descending.

@@ -1083,7 +1083,7 @@ max_steps: 100
 on_max_steps: summarize_partial  # state to run once when cap fires
 ```
 
-The named state runs **exactly once** (the iteration budget is not extended). Use it to write a handoff artifact so the next operator or session can pick up where the run left off without re-reading 100 iterations of JSONL. `/ll:audit-loop-run` surfaces runs with this hook as verdict `partial` (summary written).
+The named state runs **exactly once** (the iteration budget is not extended). Use it to write a handoff artifact so the next operator or session can pick up where the run left off without re-reading 100 iterations of JSONL. `/ll:audit-loop-run` surfaces runs with this hook as verdict `partial` (summary written). Such a run is resumable with `ll-loop resume` after raising `max_steps`: it restarts from the state that was about to execute when the cap fired (`pre_cap_state`), not from `summarize_partial` — the handler doesn't replay (ENH-3483).
 
 ---
 

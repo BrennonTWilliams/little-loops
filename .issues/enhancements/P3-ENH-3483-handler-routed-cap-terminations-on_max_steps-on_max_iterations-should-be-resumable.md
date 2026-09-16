@@ -4,10 +4,11 @@ type: ENH
 title: Handler-routed cap terminations (on_max_steps / on_max_iterations) should be
   resumable
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-16'
 captured_at: '2026-09-16T01:44:24Z'
+completed_at: '2026-09-16T03:43:05Z'
 reconcile_attempted: true
 verify_verdict: VALID
 confidence_score: 100
@@ -258,7 +259,30 @@ what was wrong and fixed, not an outstanding action item).
 - No `## Blocked By`/`## Blocks` sections present — dependency-reference check
   skipped. Not a match to any completed issue — regression detection skipped.
 
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-09-16
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/fsm/executor.py`: new `self._pre_cap_state: str | None` instance attribute; captured before the BUG-158 flush / overwrite in both the `on_max_steps` and `on_max_iterations` cap-routing blocks; threaded into `ExecutionResult` from `_finish()`.
+- `scripts/little_loops/fsm/types.py`: `ExecutionResult` gains `pre_cap_state: str | None = None`, conditionally emitted from `to_dict()`.
+- `scripts/little_loops/fsm/persistence.py`: `LoopState` gains `pre_cap_state: str | None = None` (`to_dict()`/`from_dict()` support); threaded at both `LoopState(...)` construction sites (`run()` from `result.pre_cap_state`, `archive_run_only()` from `self._executor._pre_cap_state`); `resume()` restores `current_state` from `state.pre_cap_state or state.current_state` and uses the same value for the `loop_resume` event's `from_state`; corrected the stale `_NO_ACCEPTANCE_TERMINATIONS` comment.
+- `scripts/little_loops/cli/loop/lifecycle.py`: `_status_single` prints a "Resumes at: <state>" line when `pre_cap_state` is set (JSON output already surfaces it via `state.to_dict()`).
+- `.issues/enhancements/P2-ENH-3473-*.md`: corrected Decision 2's stale "ends as terminal" premise in place and resolved the Deviations entry's deferred conditional (no new `terminated_by` value was introduced).
+- Docs: `docs/reference/API.md` (`ExecutionResult`/`LoopState` field docs, `resume()` contract), `docs/reference/json-output-contracts.md` (`pre_cap_state` row), `docs/guides/LOOPS_GUIDE.md` (handler-routed-cap resume exception + `terminated_by` table notes), `skills/debug-loop-run/SKILL.md`, `skills/create-loop/loop-types.md` (+ regenerated `.gemini`/`.kimi-code`/`.qwen` mirrors via `ll-adapt --apply`).
+- Tests: new `pre_cap_state` coverage in `test_fsm_executor.py` (`TestMaxStepsSummaryHook`, `TestMaxIterationFullPassCap`) and `test_fsm_persistence.py` (extended two existing tests + new `TestPreCapStatePersistence`: round-trip, omission, resume restoration, two-executor cap-raised/cap-not-raised integration tests); new `_status_single` "Resumes at" test in `test_cli_loop_lifecycle.py`.
+- No `## Program Design` deviation: implementation matched the documented Types/Signatures/Call Path exactly.
+
+### Verification Results
+- Tests: PASS (`python -m pytest scripts/tests/ -m "not integration and not conformance"` — 23732 passed, 12 skipped)
+- Lint: PASS (`ruff check` on all changed files)
+- Types: PASS (`python -m mypy` on all changed source files)
+- Format: PASS (`ruff format --check` on all changed files)
+
 ## Session Log
+- `/ll:manage-issue` - 2026-09-16T03:42:42 - `af7f8be7-b96e-435b-8c10-8401f9d34ed3.jsonl`
 - `/ll:confidence-check` - 2026-09-16T02:55:51 - `cb56b179-a2ac-49b2-9026-bccc5ed37609.jsonl`
 - `/ll:verify-issues` - 2026-09-16T02:49:53 - `9f9fa6f8-45a5-41d0-954a-49cd44bc619d.jsonl`
 - `/ll:wire-issue` - 2026-09-16T02:36:16 - `6b434db3-d48c-4bb4-adf2-19646e1e0d80.jsonl`

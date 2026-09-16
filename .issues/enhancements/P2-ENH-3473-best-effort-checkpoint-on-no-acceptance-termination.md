@@ -53,7 +53,7 @@ An earlier draft wavered between "new artifact" and "new `terminated_by` value /
 ### Decision 2: qualifying set
 `_NO_ACCEPTANCE_TERMINATIONS = frozenset({"max_steps", "max_iterations_reached", "timeout", "stall_detected", "cycle_detected"})`, a module-level constant in `fsm/persistence.py`. These are the values where the executor stopped a run that was still trying. Excluded: `terminal` (the loop decided, pass or fail), `error`/`no_route`/`workdir_vanished` (died), `interrupted`/`user_stopped`/`system_signal`/`handoff`/`host_pressure_abort`/`host_budget_exceeded`/`cost_ceiling_exceeded` (deliberate or external stops that already have their own resting place). Anyone widening the set edits one constant.
 
-**Handler-routed caps do not qualify.** When a loop sets `on_max_steps` / `on_max_iterations`, the cap check in `fsm/executor.py:685-708` routes to the summary state instead of calling `_finish("max_steps")`, and the run then ends as `terminal` — so no checkpoint is written. This is by design: the loop declared its own salvage path (the two precedents below, `canvas-sketch-generator.yaml` and `general-task.yaml`, are exactly such loops and get no `best_effort.json`). The checkpoint fires only when no handler is configured, or when the handler state itself re-hits the cap (`_summary_state_executed` is already set, so the second hit falls through to `_finish("max_steps")`). Document this in `docs/reference/loops.md` alongside the qualifying set. This exclusion is **deferred, not final**: ENH-3483 (handler-routed caps should be resumable) is the follow-on; if it chooses a new `terminated_by` value for handler-routed caps, `_NO_ACCEPTANCE_TERMINATIONS` gains that one value — exactly the one-constant edit this decision promises.
+**Handler-routed caps DO qualify — corrected 2026-09-16.** The original premise here ("the cap check routes to the summary state ... and the run then ends as `terminal`") does not hold against current code: BUG-158/BUG-2204's terminal-check special-cases (`fsm/executor.py:822-835`, `:980-988`) preserve `terminated_by="max_steps"`/`"max_iterations_reached"` even after a cap-summary handler routes onward to a distinct terminal state. So a handler-routed cap termination stays in `_NO_ACCEPTANCE_TERMINATIONS` and **does** get a `best_effort.json` today — `canvas-sketch-generator.yaml` and `general-task.yaml` are not excluded from the checkpoint after all. See the `### Deviations` entry below for the verification detail. ENH-3483 (handler-routed caps should be resumable) is the follow-on for the separate `resume()` restoration gap this premise obscured; it settled on no new `terminated_by` value, so no edit to `_NO_ACCEPTANCE_TERMINATIONS` was needed.
 
 `stall_detected` and `cycle_detected` map to `failed` (not `interrupted`) in `map_final_status()`; they are kept in the set because they are budget-style stops, but note the checkpoint there is low-value — a stall is by definition N identical failing attempts, so the "last attempt" equals the previous ones. Harmless, not a test-coverage priority.
 
@@ -115,11 +115,18 @@ Context-compaction failure (`cli/compact_session.py::main_compact_session()` →
   is harmless (a checkpoint for a handler-routed cap is still a legitimate
   salvage artifact) and does not change the implementation — `docs/reference/loops.md`
   was written to describe the verified behavior instead of the original
-  premise. Left for ENH-3483 to reconsider if it introduces a new
-  `terminated_by` value for handler-routed caps. The Implementation Steps'
+  premise. The Implementation Steps'
   test-4 assertion ("on_max_steps pointing at a terminal state → no file,
   `terminated_by == terminal`") was corrected to match verified behavior in
   `test_fsm_persistence.py::TestPersistentExecutor::test_run_writes_checkpoint_on_max_steps_with_handler_chaining_to_terminal`.
+- 2026-09-16 — **Resolved by ENH-3483**: the deferred question above ("if it
+  introduces a new `terminated_by` value for handler-routed caps") is settled.
+  ENH-3483 fixed the real gap this premise obscured — `resume()` restored
+  `current_state` from the handler-chain endpoint rather than the state that
+  was about to execute when the cap fired, making resume a no-op for
+  handler-routed caps — via a new `pre_cap_state` field on `ExecutionResult`/
+  `LoopState`, not a new `terminated_by` value or `map_final_status()` change.
+  `_NO_ACCEPTANCE_TERMINATIONS` and Decision 2's qualifying set are unaffected.
 
 ### Types
 - `_NO_ACCEPTANCE_TERMINATIONS: frozenset[str]` (new, `scripts/little_loops/fsm/persistence.py`).

@@ -55,6 +55,12 @@ class ExecutionResult:
         error: Error message if terminated_by is "error" or "no_route"
         handoff: True if execution stopped due to handoff signal
         continuation_prompt: Continuation context from handoff signal
+        pre_cap_state: ENH-3483 — the state that was about to execute when a
+            handler-routed cap (on_max_steps/on_max_iterations) fired, captured
+            before current_state is overwritten with the handler state. None
+            unless a handler-routed cap fired. PersistentExecutor.resume() reads
+            this so a resumed run restarts the salvaged work, not the handler
+            chain's terminal endpoint.
     """
 
     final_state: str
@@ -67,6 +73,7 @@ class ExecutionResult:
     handoff: bool = False
     continuation_prompt: str | None = None
     messages: list[str] = field(default_factory=list)
+    pre_cap_state: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -87,6 +94,8 @@ class ExecutionResult:
             result["continuation_prompt"] = self.continuation_prompt
         if self.messages:
             result["messages"] = self.messages
+        if self.pre_cap_state is not None:
+            result["pre_cap_state"] = self.pre_cap_state
         return result
 
 

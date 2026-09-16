@@ -411,6 +411,14 @@ class FSMExecutor:
         self._iteration_count: int = 0
         self._iteration_summary_executed: bool = False
 
+        # ENH-3483: the state that was about to execute when a handler-routed
+        # cap (on_max_steps/on_max_iterations) fired, captured before
+        # current_state is overwritten with the handler state. None unless a
+        # handler-routed cap has fired this run. Read by _finish() onto
+        # ExecutionResult so PersistentExecutor.resume() can restart the
+        # salvaged work instead of the handler chain's terminal endpoint.
+        self._pre_cap_state: str | None = None
+
         # FEAT-1822: Per-item A/B comparison results accumulated during baseline
         # execution. Populated by _execute_with_baseline(), written to ab.json
         # by _finish().
@@ -644,6 +652,10 @@ class FSMExecutor:
                 # Check step limit (max_steps): caps individual state executions.
                 if self.iteration >= self.fsm.max_steps:
                     if self.fsm.on_max_steps is not None and not self._summary_state_executed:
+                        # ENH-3483: record the state about to execute before the
+                        # BUG-158 flush and before current_state is overwritten
+                        # with the handler, so resume() can restart it directly.
+                        self._pre_cap_state = self.current_state
                         # BUG-158: if we just routed from a sub-loop state
                         # (e.g. its on_error fired at the step cap),
                         # flush one pending non-sub-loop state before
@@ -694,6 +706,9 @@ class FSMExecutor:
                         self.fsm.on_max_iterations is not None
                         and not self._iteration_summary_executed
                     ):
+                        # ENH-3483: record the maintain restart target before it
+                        # is overwritten with the handler state.
+                        self._pre_cap_state = self.current_state
                         self._emit(
                             "max_iterations_reached_summary",
                             {
@@ -4409,6 +4424,7 @@ class FSMExecutor:
             failure_terminal=failure_terminal,
             error=error,
             messages=list(self.messages),
+            pre_cap_state=self._pre_cap_state,
         )
 
     def _handle_handoff(self, signal: DetectedSignal) -> ExecutionResult:

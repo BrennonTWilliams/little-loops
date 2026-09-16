@@ -260,6 +260,11 @@ def _status_single(
     print(f"Loop: {state.loop_name}")
     print(f"Status: {state.status}")
     print(f"Current state: {state.current_state}")
+    if state.pre_cap_state is not None:
+        # ENH-3483: a handler-routed cap persists current_state as the
+        # handler chain's endpoint; pre_cap_state is what ll-loop resume
+        # actually restarts from.
+        print(f"Resumes at: {state.pre_cap_state}")
     print(f"Iteration: {state.iteration}")
     print(f"Started: {state.started_at}")
     print(f"Updated: {state.updated_at}")

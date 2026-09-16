@@ -6381,6 +6381,9 @@ class ExecutionResult:
     captured: dict[str, dict[str, Any]]   # Captured variable values
     failure_terminal: bool = False        # Stopped on a `failure: true` terminal (ENH-2814)
     error: str | None = None              # Error message if failed
+    pre_cap_state: str | None = None      # State about to execute when a handler-routed
+                                            # cap fired, captured before current_state was
+                                            # overwritten with the handler state (ENH-3483)
 ```
 
 `terminated_by == "terminal"` does **not** imply success — read
@@ -6761,6 +6764,9 @@ class LoopState:
                                           # persisted for resume (BUG-2485). Kept out of the
                                           # CLI status/list --json contract: to_dict() emits it
                                           # only when include_context=True (the on-disk path).
+    pre_cap_state: str | None             # State to resume into after a handler-routed cap
+                                          # (on_max_steps/on_max_iterations); omitted from
+                                          # to_dict() when None (ENH-3483).
 ```
 
 #### StatePersistence
@@ -6816,7 +6822,7 @@ FSM Executor with state persistence and event streaming.
 | Method | Returns | Description |
 |--------|---------|-------------|
 | `run(clear_previous=True)` | `ExecutionResult` | Run with persistence |
-| `resume()` | `ExecutionResult \| None` | Resume from saved state |
+| `resume()` | `ExecutionResult \| None` | Resume from saved state. Restarts from `state.pre_cap_state` when set (a handler-routed cap termination), else from `state.current_state` (ENH-3483) |
 | `request_shutdown()` | `None` | Request graceful shutdown |
 
 **Example:**

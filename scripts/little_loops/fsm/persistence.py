@@ -68,9 +68,12 @@ ACTIVE_RUN_STATUSES: frozenset[str] = frozenset({"running", "starting"})
 # ENH-3473: terminated_by values where the executor stopped a run that was
 # still trying (budget exhaustion), as opposed to a deliberate/external stop
 # or a crash. These qualify for a best_effort.json salvage checkpoint.
-# Handler-routed caps (on_max_steps/on_max_iterations) end as "terminal"
-# instead and are excluded by construction — see write_best_effort_checkpoint
-# callers. Widening this set is a one-constant edit.
+# Handler-routed caps (on_max_steps/on_max_iterations) keep their cap
+# terminated_by value ("max_steps"/"max_iterations_reached") even when the
+# handler chains to a terminal state — they are not excluded, and are already
+# checkpointed via the "max_steps"/"max_iterations_reached" entries above (see
+# ENH-3483, which also fixed resume()'s restoration for this path). Widening
+# this set is a one-constant edit.
 _NO_ACCEPTANCE_TERMINATIONS: frozenset[str] = frozenset(
     {"max_steps", "max_iterations_reached", "timeout", "stall_detected", "cycle_detected"}
 )
@@ -342,6 +345,12 @@ class LoopState:
         accumulated_ms: Total milliseconds elapsed across all segments up to this save (used to restore
             elapsed time correctly after resume, so duration_ms and ${loop.elapsed_ms} reflect the
             full loop lifetime rather than only the most recent segment)
+        pre_cap_state: ENH-3483 — the state that was about to execute when a
+            handler-routed cap (on_max_steps/on_max_iterations) fired, threaded
+            from ExecutionResult.pre_cap_state. None unless a handler-routed cap
+            fired. resume() restores current_state from this in preference to
+            current_state, so it restarts the salvaged work rather than the
+            handler chain's terminal endpoint.
     """
 
     loop_name: str
@@ -380,6 +389,7 @@ class LoopState:
     # include_context=True, i.e. the persistence path) so the CLI status/list JSON
     # contract is unchanged.
     context: dict[str, Any] = field(default_factory=dict)
+    pre_cap_state: str | None = None
 
     def to_dict(self, include_context: bool = False) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization.
@@ -422,6 +432,8 @@ class LoopState:
             result["reconciled_at"] = self.reconciled_at
         if self.messages:
             result["messages"] = self.messages
+        if self.pre_cap_state is not None:
+            result["pre_cap_state"] = self.pre_cap_state
         if include_context and self.context:
             safe_context = _json_safe_context(self.context)
             if safe_context:
@@ -477,6 +489,7 @@ class LoopState:
             reconciled_at=data.get("reconciled_at"),
             messages=data.get("messages", []),
             context=data.get("context", {}),
+            pre_cap_state=data.get("pre_cap_state"),
         )
 
 
@@ -1261,6 +1274,7 @@ class PersistentExecutor:
             - self._executor.start_time_ms
             + self._executor.elapsed_offset_ms,
             context=dict(self.fsm.context),
+            pre_cap_state=self._executor._pre_cap_state,
         )
         self.persistence.save_state(final_state)
         run_dir_str = self.fsm.context.get("run_dir", "")
@@ -1317,6 +1331,7 @@ class PersistentExecutor:
             continuation_prompt=self._continuation_prompt,
             accumulated_ms=result.duration_ms,
             context=dict(self.fsm.context),
+            pre_cap_state=result.pre_cap_state,
         )
         run_dir_str = self.fsm.context.get("run_dir", "")
         # ENH-3472: save_state()/archive_run() must never discard an
@@ -1373,8 +1388,15 @@ class PersistentExecutor:
         if state.status not in RESUMABLE_STATUSES:
             return None  # Already completed/failed
 
-        # Restore executor state
-        self._executor.current_state = state.current_state
+        # Restore executor state. ENH-3483: a handler-routed cap persists
+        # current_state as the handler chain's endpoint (often terminal), not
+        # the state that was about to execute when the cap fired — restart
+        # from pre_cap_state when set so the salvaged work actually resumes.
+        # _summary_state_executed / _iteration_summary_executed are
+        # deliberately left False (this executor's __init__ default) so a
+        # later genuine terminal isn't misreported as another cap hit.
+        restored_current_state = state.pre_cap_state or state.current_state
+        self._executor.current_state = restored_current_state
         self._executor.iteration = state.iteration
         self._executor.captured = state.captured
         self._executor.prev_result = state.prev_result
@@ -1416,7 +1438,7 @@ class PersistentExecutor:
             "ts": _iso_now(),
             "run_id": derive_run_id(state.started_at, self.fsm.name),
             "loop": self.fsm.name,
-            "from_state": state.current_state,
+            "from_state": restored_current_state,
             "iteration": state.iteration,
         }
         if state.status == "awaiting_continuation" and state.continuation_prompt:

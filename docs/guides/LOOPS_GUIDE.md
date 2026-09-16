@@ -907,6 +907,8 @@ When a loop runs to completion, gets stopped, or hits a safety limit, you need t
 
 `ll-loop resume` restores the loop to the exact state where it stopped, including the full `fsm.context`: positional `input`, `program.md` fields, and any `--context` overrides supplied at the original start. The on-disk state file is rewritten with `include_context=True` on every state-entry, so what you see in `ll-loop status` (state name + iteration) plus what is persisted (the context) is exactly what `ll-loop resume` puts back together (BUG-2485). Resume-time `--context` overrides win over the restored values — by design, so you can retarget a resumed loop without re-running from scratch.
 
+**Exception — handler-routed caps (ENH-3483):** when a loop declares `on_max_steps` / `on_max_iterations` and the cap fires, the persisted `current_state` is the handler chain's endpoint (typically its `terminal: true` target), not the state that was about to execute. `ll-loop resume` restarts from `pre_cap_state` instead (surfaced as "Resumes at" in `ll-loop status`) and does **not** replay the handler chain — the handler is a salvage path, not the work, and it re-fires on its own if the cap is still exceeded.
+
 What does **not** survive:
 
 - The in-memory `--background` worker process (you restart a new one).
@@ -919,8 +921,8 @@ Every terminating loop sets `terminated_by` to one of these values. Inspect with
 
 | `terminated_by` | Cause | What to do |
 |-----------------|-------|------------|
-| `max_steps` | Total state budget hit (default 50) | Raise `max_steps`, or add missing `on_error` routes on states that fail |
-| `max_iterations_reached` | Per-loop `max_iterations` budget hit | Raise `max_iterations`, or accept termination as the natural endpoint |
+| `max_steps` | Total state budget hit (default 50) | Raise `max_steps`, or add missing `on_error` routes on states that fail. Resumable with `ll-loop resume`; if `on_max_steps` was declared, resume restarts from `pre_cap_state`, not the handler chain (ENH-3483) |
+| `max_iterations_reached` | Per-loop `max_iterations` budget hit | Raise `max_iterations`, or accept termination as the natural endpoint. Resumable with `ll-loop resume`; if `on_max_iterations` was declared, resume restarts from `pre_cap_state`, not the handler chain (ENH-3483) |
 | `cycle_detected` | `max_edge_revisits` (default 100) tripped — usually a missing `on_no` / `on_partial` route | Add the missing route, or lower `max_edge_revisits` to surface regressions faster |
 | `host_pressure_abort` | `host_guard` aborted an iteration | Cool down host, or relax `host_guard.critical_pct` |
 | `host_budget_exceeded` | `max_cumulative_subproc_mb` budget hit (ENH-2453) | Raise the budget, or split the loop |

@@ -11104,6 +11104,44 @@ class TestMaxStepsSummaryHook:
         summary_events = [e for e in events if e.get("event") == "max_steps_summary"]
         assert summary_events == []
 
+    def test_finish_records_pre_cap_state(self) -> None:
+        """ENH-3483: pre_cap_state captures the state that was about to execute
+        when the step cap fired, not the handler-chain endpoint."""
+        fsm = self._make_fsm()
+        runner = MockActionRunner()
+        runner.always_return(exit_code=1)  # loop never succeeds -> hits cap at step 3
+
+        executor = FSMExecutor(fsm, action_runner=runner)
+        result = executor.run()
+
+        assert result.terminated_by == "max_steps"
+        assert result.final_state == "done"
+        assert result.pre_cap_state == "loop"
+
+    def test_pre_cap_state_none_on_unhandled_cap(self) -> None:
+        """No on_max_steps handler -> pre_cap_state stays None."""
+        fsm = self._make_fsm(on_max_steps=None)
+        runner = MockActionRunner()
+        runner.always_return(exit_code=1)
+
+        executor = FSMExecutor(fsm, action_runner=runner)
+        result = executor.run()
+
+        assert result.terminated_by == "max_steps"
+        assert result.pre_cap_state is None
+
+    def test_pre_cap_state_none_on_terminal(self) -> None:
+        """A run that finishes normally (never hits the cap) leaves pre_cap_state None."""
+        fsm = self._make_fsm()
+        runner = MockActionRunner()
+        runner.set_result("work.sh", exit_code=0)  # on_yes -> done, well within cap
+
+        executor = FSMExecutor(fsm, action_runner=runner)
+        result = executor.run()
+
+        assert result.terminated_by == "terminal"
+        assert result.pre_cap_state is None
+
     def test_summary_state_executes_only_once(self) -> None:
         """The _summary_state_executed flag prevents the summary state from re-entering."""
         fsm = self._make_fsm()
@@ -11542,6 +11580,19 @@ class TestMaxIterationFullPassCap:
         assert len(cap_events) == 1
         assert cap_events[0]["summary_state"] == "iter_summary"
         assert cap_events[0]["iteration_count"] == 1
+
+    def test_finish_records_pre_cap_state_on_max_iterations(self) -> None:
+        """ENH-3483: for the iteration cap, pre_cap_state is the maintain restart
+        target (fsm.initial here), not the handler-chain endpoint."""
+        fsm = self._make_maintain_fsm(
+            max_iterations=1, max_steps=200, on_max_iterations="iter_summary"
+        )
+        runner = MockActionRunner()
+        runner.always_return(exit_code=0)
+        result = FSMExecutor(fsm, action_runner=runner).run()
+        assert result.terminated_by == "max_iterations_reached"
+        assert result.final_state == "done"
+        assert result.pre_cap_state == "work"
 
 
 class TestEvaluateLLMDisabled:
