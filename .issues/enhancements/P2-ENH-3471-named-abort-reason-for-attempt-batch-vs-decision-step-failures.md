@@ -4,8 +4,9 @@ title: Named abort reason distinguishes attempt-batch vs decision-step failures 
   of collapsing both to "error"
 type: ENH
 priority: P2
-status: open
+status: done
 discovered_date: '2026-09-13'
+completed_at: '2026-09-16T00:39:46Z'
 labels: []
 parent: ENH-3468
 confidence_score: 100
@@ -198,7 +199,36 @@ precedent the issue cites.
 Graph: provider=`codegraph` freshness=`fresh` (not used for this check; grep/Read
 sufficed and gave exact confirmation).
 
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-09-16
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/fsm/executor.py`: added `self._phase` instance attribute (reset to `"action"` at `_execute_state()` entry, flipped to `"decide"` around route-target interpolation and the `_evaluate()`/routing block); `run()`'s three `except` clauses now compute `reason = "no_route" if self._phase == "decide" else "error"`; the direct `_finish("error", error="No valid transition")` call is now `_finish("no_route", ...)`; widened both `_execute_sub_loop()` on_error/verdict tuples to include `"no_route"`; updated the `RouteDecision(None)` docstring line.
+- `scripts/little_loops/fsm/types.py`: added `"no_route"` (and the pre-existing `cost_ceiling_exceeded` drift) to the `terminated_by` docstring and inline comment.
+- `scripts/little_loops/fsm/persistence.py`: `map_final_status()` trailing comment now lists `no_route` alongside `error`.
+- `scripts/little_loops/cli/loop/runner.py`: added explicit `EXIT_CODES["no_route"] = 1`.
+- `scripts/little_loops/history_reader/usage.py`: added `'no_route'` to `_WASTED_RUN_PREDICATE`.
+- `scripts/little_loops/generate_schemas.py` + regenerated `docs/reference/schemas/loop_complete.json`: `terminated_by`/`error` field descriptions cover `no_route`.
+- `scripts/little_loops/loops/refine-to-ready-issue.yaml`: added `*:no_route` to the failure-attribution case arm.
+- `scripts/little_loops/loops/auto-refine-and-implement.yaml`, `autodev.yaml`: updated comment prose narrating the `"error"`-only funnel to include `no_route`.
+- Docs: `docs/reference/API.md`, `docs/reference/CLI.md`, `docs/reference/COMMANDS.md`, `docs/reference/EVENT-SCHEMA.md`, `docs/guides/LOOPS_GUIDE.md` (`terminated_by` table + Troubleshooting), `skills/debug-loop-run/{SKILL.md,reference.md}`, `skills/create-loop/reference.md` (+ `.qwen`/`.kimi-code`/`.gemini` mirrors via `ll-adapt --apply`).
+- Tests: re-pointed 7 existing `test_fsm_executor.py` decision-step assertions from `"error"` to `"no_route"`; added a `TestNoRouteVsErrorClassification` class (7 tests, one per raise-site); added sub-loop-tuple-widening, `EXIT_CODES`, waste-attribution, loop-YAML case-arm, and persistence-mapping tests across `test_fsm_executor.py`, `test_cli_loop_lifecycle.py`, `test_fsm_persistence.py`, `test_history_reader_usage.py`, `test_builtin_loops.py`; updated docstrings in `test_debug_loop_run_synthesis.py` and `test_builtin_loops.py` to match the new classification.
+
+### Verification Results
+- Tests: PASS (`python -m pytest scripts/tests/` — 24504 passed, 51 skipped; one unrelated xdist worker-crash flake on `test_feat3323_sse_bridge.py` reproduced clean in isolation and on re-run)
+- Lint: PASS (`ruff check scripts/`)
+- Types: PASS (`python -m mypy scripts/little_loops/` — 397 source files)
+- Run: N/A (library/FSM-engine change, no standalone entry point)
+- Integration: PASS (spot-checked every cited line number in the issue's Program Design against current `executor.py` before implementing; no design changes needed)
+
 ## Session Log
+- `/ll:manage-issue` - 2026-09-16T00:38:10 - `cc8685da-dafe-499c-ae00-e60e56afe19e.jsonl`
+- `/ll:ready-issue` - 2026-09-15T23:54:57 - `d2c237a9-94bb-4fb3-9b36-410309bd7d7c.jsonl`
 - `/ll:confidence-check` - 2026-09-15T23:39:30 - `f9b14b88-6ca5-46b6-b4a0-bf805586b764.jsonl`
 - Manual review - 2026-09-15 - pre-implementation pass: (1) `next:`-branch route interpolations (`:2122`, `:2135`) were outside the "decide" window, so `next: "${missing}"` would classify `error` while `on_yes: "${missing}"` classified `no_route` — added marker sites; (2) `_check_prepatch_check`/`_check_tamper_guard` sat inside the "decide" window in the evaluate branch but outside it in the `next:` branch — `_evaluate()` is now bracketed and "decide" re-set before the routing block; (3) sub-loop child death with no parent `on_error`/`on_no` reaches `:981` and now reports the parent as `no_route` — stated as intended and pinned; (4) specified how test 4(a) injects an evaluator raise (`_contributed_evaluators`); (5) filed the deferred fleet-review bucketing as ENH-3482 (blocked by this issue). Tests 4(e)/4(f)/4(g) added.
 - Manual review - 2026-09-15 - four corrections: (1) `_phase` must reset at `_execute_state()` entry, not at the action call sites, or a stale `"decide"` misclassifies pre-action raises (missing sub-loop YAML, HITL/learning dispatch, baseline at `:2141`); (2) `InterpolationError` clause is not attempt-batch-only — `_route()` interpolates targets at `:3319` — so all three `except` clauses consult the marker; (3) fleet-review bucketing via `_derive_loop_outcome()` explicitly deferred; (4) added `types.py:52` and `executor.py:202` docstring sites. Added tests 4(c)/4(d) and a throttle `__STOP__` non-interaction note.

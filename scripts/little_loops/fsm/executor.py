@@ -199,7 +199,7 @@ class RouteDecision:
     Return semantics for before_route:
       None (implicit)         → passthrough, routing proceeds normally
       RouteDecision("state")  → redirect, bypass _route() and use "state" directly
-      RouteDecision(None)     → veto, _execute_state() returns None → _finish("error")
+      RouteDecision(None)     → veto, _execute_state() returns None → _finish("no_route")
     """
 
     next_state: str | None  # str → redirect; None → veto
@@ -495,6 +495,13 @@ class FSMExecutor:
         # Set by _execute_state when the detector fires with on_repeated_failure="abort";
         # checked by run() to terminate via _finish("stall_detected", ...).
         self._pending_stall_abort: Stall | None = None
+
+        # ENH-3471: classifies which class of failure a raise propagating into
+        # run()'s except clauses belongs to. Reset to "action" at the top of
+        # _execute_state() and flipped to "decide" only around route-target
+        # resolution and verdict evaluation — see _execute_state() for the
+        # exact bracket boundaries.
+        self._phase: str = "action"
 
         # Memoized BRConfig for cache/deferred_tools dispatch kwargs (BUG-3009).
         # Resolved lazily from self.working_dir on first use and reused for the
@@ -978,7 +985,7 @@ class FSMExecutor:
                         return self._finish("max_steps")
                     if self._iteration_summary_executed:
                         return self._finish("max_iterations_reached")
-                    return self._finish("error", error="No valid transition")
+                    return self._finish("no_route", error="No valid transition")
 
                 # At this point next_state is guaranteed to be str
                 resolved_next: str = next_state
@@ -1025,20 +1032,32 @@ class FSMExecutor:
                         time.sleep(min(0.1, deadline - time.time()))
 
         except HeredocCollisionError as exc:
+            # ENH-3471: heredoc collisions only ever originate in action
+            # execution, so self._phase is always "action" here — consulting
+            # it is a no-op, kept for uniformity with the other two clauses.
+            reason = "no_route" if self._phase == "decide" else "error"
             return self._finish(
-                "error",
+                reason,
                 error=(f"Heredoc terminator collision in state '{self.current_state}': {exc}"),
             )
         except InterpolationError as exc:
+            # ENH-3471: _route()/_resolve_route() interpolate route targets, so
+            # this is not attempt-batch-only — consult the phase marker.
+            reason = "no_route" if self._phase == "decide" else "error"
             return self._finish(
-                "error",
+                reason,
                 error=(
                     f"Missing context variable in state '{self.current_state}': {exc}. "
                     f"Run with: ll-loop run {self.fsm.name} --context KEY=VALUE"
                 ),
             )
         except Exception as exc:
-            return self._finish("error", error=str(exc))
+            # ENH-3471: an evaluator raising inside _evaluate() lands here with
+            # self._phase == "decide" (a decision-step failure); an action or
+            # pre-action dispatch raising lands here with self._phase ==
+            # "action" (attempt-batch).
+            reason = "no_route" if self._phase == "decide" else "error"
+            return self._finish(reason, error=str(exc))
 
     def _execute_sub_loop(self, state: StateConfig, ctx: InterpolationContext) -> str | None:
         """Execute a sub-loop state by loading and running a child FSM.
@@ -1301,7 +1320,7 @@ class FSMExecutor:
         if state.capture:
             if child_result.terminated_by == "terminal":
                 _child_verdict = "no" if child_result.failure_terminal else "yes"
-            elif child_result.terminated_by in ("error", "workdir_vanished"):
+            elif child_result.terminated_by in ("error", "no_route", "workdir_vanished"):
                 # BUG-3375: a vanished working directory is a child death, not a
                 # concluded "no" — same verdict bucket as a runtime error.
                 _child_verdict = "error"
@@ -1317,7 +1336,7 @@ class FSMExecutor:
             else:
                 # Reached a terminal declared (or defaulted) failure: true
                 return interpolate(state.on_no, ctx) if state.on_no else None
-        elif child_result.terminated_by in ("error", "workdir_vanished"):
+        elif child_result.terminated_by in ("error", "no_route", "workdir_vanished"):
             # Runtime child failure (not a YAML load error). BUG-3375: a
             # vanished working directory joins this branch rather than the
             # on_no catch-all below — the child didn't conclude "no", it died,
@@ -2017,6 +2036,13 @@ class FSMExecutor:
         Returns:
             Next state name, or None if no valid transition
         """
+        # ENH-3471: reset at entry (not at the action call sites below) so a
+        # stale "decide" left over from the *previous* state's routing never
+        # misclassifies a raise from this state's pre-action dispatch (sub-loop
+        # load, human_approval/learning dispatch, context build, tamper-guard
+        # snapshot, baseline execution).
+        self._phase = "action"
+
         # Build interpolation context
         ctx = self._build_context()
 
@@ -2119,6 +2145,9 @@ class FSMExecutor:
                     return None
                 # Non-zero exit: if on_error is defined, treat next as success path only
                 if result.exit_code != 0 and state.on_error:
+                    # ENH-3471: route-target resolution — a missing context
+                    # variable here is a decision-step failure, not attempt-batch.
+                    self._phase = "decide"
                     error_target = interpolate(state.on_error, ctx)
                     if (
                         state.retryable_exit_codes is not None
@@ -2131,6 +2160,9 @@ class FSMExecutor:
                             return state.on_retry_exhausted
                         return error_target
                     return error_target
+            # ENH-3471: route-target resolution — a missing context variable
+            # here is a decision-step failure, not attempt-batch.
+            self._phase = "decide"
             return interpolate(state.next, ctx)
 
         # Execute action if present
@@ -2154,7 +2186,14 @@ class FSMExecutor:
                 return throttle_next
 
         # Evaluate
+        # ENH-3471: bracket the evaluator call — an evaluator that raises is a
+        # decision-step failure. Reset to "action" immediately after it
+        # returns because _check_prepatch_check/_check_tamper_guard below run
+        # after evaluation but are about the action's filesystem effects, not
+        # routing, and must stay classified as "error" if they raise.
+        self._phase = "decide"
         eval_result = self._evaluate(state, action_result, ctx)
+        self._phase = "action"
 
         # ENH-2997: pre-patch-check compute-on-green-exit, called before
         # `_check_tamper_guard` (below) for the same read-before-revert
@@ -2195,6 +2234,11 @@ class FSMExecutor:
             }
 
         # Route based on verdict
+        # ENH-3471: from here through _route(), any raise (e.g. an
+        # InterpolationError resolving a route target in _resolve_route()) is
+        # a decision-step failure. Left at "decide" for the rest of this
+        # method — _execute_state() resets it to "action" on next entry.
+        self._phase = "decide"
         verdict = eval_result.verdict if eval_result else "yes"
 
         # ENH-3200: write the evaluator verdict back into the already-populated

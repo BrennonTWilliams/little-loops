@@ -37,10 +37,13 @@ class ExecutionResult:
             "timeout", "interrupted" (SIGTERM/session kill), "user_stopped" (ll-loop stop wrote
             user-stop.marker before signalling, ENH-2522), "system_signal" (POSIX process killed
             by signal N with no user-stop marker — e.g. kernel OOM/SIGKILL, ENH-2522),
-            "error", "handoff", "cycle_detected", "stall_detected", "host_pressure_abort"
-            (ENH-2452), "host_budget_exceeded" (ENH-2453), "workdir_vanished" (BUG-3375:
-            the executor's working directory disappeared mid-run; failure_terminal stays
-            False for this abort — see the failure_terminal docstring below).
+            "error" (attempt-batch: the action crashed), "no_route" (ENH-3471, decision-step:
+            no valid transition, a `before_route` veto, or an evaluator crash — the executor
+            could not decide where to go next), "handoff", "cycle_detected", "stall_detected",
+            "host_pressure_abort" (ENH-2452), "host_budget_exceeded" (ENH-2453),
+            "cost_ceiling_exceeded", "workdir_vanished" (BUG-3375: the executor's working
+            directory disappeared mid-run; failure_terminal stays False for this abort — see
+            the failure_terminal docstring below).
         duration_ms: Total execution time in milliseconds
         captured: All captured variable values
         failure_terminal: True when execution stopped on a terminal state whose
@@ -49,14 +52,14 @@ class ExecutionResult:
             ``terminated_by == "terminal"`` alone does NOT imply success. Drives
             the nonzero ``ll-loop run`` exit code, the persisted
             ``final_status="failed"``, and sub-loop ``on_no`` routing.
-        error: Error message if terminated_by is "error"
+        error: Error message if terminated_by is "error" or "no_route"
         handoff: True if execution stopped due to handoff signal
         continuation_prompt: Continuation context from handoff signal
     """
 
     final_state: str
     iterations: int
-    terminated_by: str  # "terminal", "max_steps", "max_iterations_reached", "timeout", "interrupted", "user_stopped", "system_signal", "error", "handoff", "cycle_detected"
+    terminated_by: str  # "terminal", "max_steps", "max_iterations_reached", "timeout", "interrupted", "user_stopped", "system_signal", "error", "no_route", "handoff", "cycle_detected", "stall_detected", "host_pressure_abort", "host_budget_exceeded", "cost_ceiling_exceeded", "workdir_vanished"
     duration_ms: int
     captured: dict[str, dict[str, Any]]
     failure_terminal: bool = False

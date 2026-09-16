@@ -43,7 +43,7 @@
     },
     "terminated_by": {
       "type": "string",
-      "description": "What caused loop termination. One of: 'terminal', 'max_steps', 'max_iterations_reached', 'timeout', 'interrupted', 'user_stopped' (ENH-2522: ll-loop stop wrote user-stop.marker before signalling), 'system_signal' (ENH-2522: POSIX process killed by signal N, no user marker \u2014 e.g. kernel OOM/SIGKILL), 'error', 'handoff', 'cycle_detected', 'stall_detected', 'host_pressure_abort' (ENH-2452), 'host_budget_exceeded' (ENH-2453)."
+      "description": "What caused loop termination. One of: 'terminal', 'max_steps', 'max_iterations_reached', 'timeout', 'interrupted', 'user_stopped' (ENH-2522: ll-loop stop wrote user-stop.marker before signalling), 'system_signal' (ENH-2522: POSIX process killed by signal N, no user marker \u2014 e.g. kernel OOM/SIGKILL), 'error' (attempt-batch: the action crashed), 'no_route' (ENH-3471, decision-step: no valid transition, a before_route veto, or an evaluator crash \u2014 the executor could not decide where to go next), 'handoff', 'cycle_detected', 'stall_detected', 'host_pressure_abort' (ENH-2452), 'host_budget_exceeded' (ENH-2453)."
     },
     "failure_terminal": {
       "type": "boolean",
@@ -51,7 +51,7 @@
     },
     "error": {
       "type": "string",
-      "description": "Error message explaining why the loop crashed. Present only when terminated_by='error'."
+      "description": "Error message explaining why the loop crashed. Present when terminated_by='error' or terminated_by='no_route' (ENH-3471)."
     }
   },
   "additionalProperties": true

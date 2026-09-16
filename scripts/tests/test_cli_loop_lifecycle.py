@@ -1482,6 +1482,23 @@ class TestCmdResumeExitCodes:
 
         assert map_final_status("workdir_vanished", failure_terminal=False) == "failed"
 
+    def test_no_route_returns_exit_code_1(self, tmp_path: Path) -> None:
+        """ENH-3471: no_route (decision-step failure) pins the explicit
+        EXIT_CODES["no_route"] = 1 entry, same precedent as workdir_vanished."""
+        assert (
+            self._resume_with_terminated_by(
+                tmp_path, "no_route", final_state="a", failure_terminal=False
+            )
+            == 1
+        )
+
+    def test_no_route_maps_to_failed_persisted_status(self) -> None:
+        """map_final_status's default fallback persists no_route as "failed",
+        same as error (ENH-3471)."""
+        from little_loops.fsm.persistence import map_final_status
+
+        assert map_final_status("no_route", failure_terminal=False) == "failed"
+
 
 class TestCmdRunHandoffThreshold:
     """Tests for --handoff-threshold handling in cmd_run (ENH-768)."""

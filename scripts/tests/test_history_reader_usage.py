@@ -323,6 +323,26 @@ class TestWasteAttribution:
         assert rows[0]["tokens_wasted"] == 0
         assert rows[0]["runs_wasted"] == 0
 
+    def test_no_route_termination_counted_as_wasted(self, tmp_path: Path) -> None:
+        """ENH-3471: a decision-step failure (no_route) is counted as wasted,
+        same as error — a loop-authoring bug still burns tokens."""
+
+        db = tmp_path / "history.db"
+        self._seed_run(
+            db,
+            run_id="run-1",
+            loop_name="rn-refine",
+            terminated_by="no_route",
+            final_state=None,
+            input_tokens=40,
+            output_tokens=10,
+        )
+
+        rows = waste_attribution(db=db)
+        assert len(rows) == 1
+        assert rows[0]["tokens_wasted"] == 50
+        assert rows[0]["runs_wasted"] == 1
+
     def test_unjoined_usage_events_excluded(self, tmp_path: Path) -> None:
         """usage_events rows with no matching loop_runs.run_id are excluded (inner join)."""
 

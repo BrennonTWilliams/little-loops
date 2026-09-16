@@ -1041,7 +1041,7 @@ states:
       # ll-lint: mr11-ok(captured.confidence_check.failure_terminal) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       # ll-lint: mr11-ok(captured.confidence_check.terminated_by) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       case "${captured.confidence_check.failure_terminal?}:${captured.confidence_check.terminated_by?}" in
-        True:*|*:error|*:timeout|*:max_steps)
+        True:*|*:error|*:no_route|*:timeout|*:max_steps)
           [ -n "$FAILING_STATE" ] || { FAILING_STATE=confidence_check; FAILING_EXIT=sub-loop; } ;;
       esac
       {

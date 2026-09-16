@@ -6376,7 +6376,7 @@ print(result.terminated_by)   # "terminal", "max_steps", "max_iterations_reached
 class ExecutionResult:
     final_state: str                      # State when execution stopped
     iterations: int                       # Total iterations
-    terminated_by: str                    # "terminal" | "max_steps" | "max_iterations_reached" | "timeout" | "interrupted" | "cycle_detected" | "stall_detected" | "workdir_vanished" | "error"
+    terminated_by: str                    # "terminal" | "max_steps" | "max_iterations_reached" | "timeout" | "interrupted" | "cycle_detected" | "stall_detected" | "workdir_vanished" | "error" | "no_route" (ENH-3471)
     duration_ms: int                      # Total execution time
     captured: dict[str, dict[str, Any]]   # Captured variable values
     failure_terminal: bool = False        # Stopped on a `failure: true` terminal (ENH-2814)
@@ -8818,8 +8818,8 @@ Per-`loop_name` rollup of token spend vs. spend wasted on runs that produced no
 accepted artifact (ENH-2722). Joins `usage_events.run_id = loop_runs.run_id`
 (an exact equi-join, no time-range join — depends on ENH-2721/2723/2724's
 `run_id` column and live writer). A run is "wasted" when `terminated_by` is an
-infra/step-cap exit (`error` / `max_steps` / `max_iterations_reached` /
-`timeout` / `system_signal` / `interrupted`), or a normal FSM completion
+infra/step-cap exit (`error` / `no_route` (ENH-3471) / `max_steps` /
+`max_iterations_reached` / `timeout` / `system_signal` / `interrupted`), or a normal FSM completion
 (`terminated_by == "terminal"`) that stopped on a failure terminal — a
 `"terminal"` finish alone does not imply success. Since ENH-2814 failure-ness
 is read from the persisted `loop_runs.failure_terminal` flag rather than

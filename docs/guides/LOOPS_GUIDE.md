@@ -925,14 +925,15 @@ Every terminating loop sets `terminated_by` to one of these values. Inspect with
 | `host_pressure_abort` | `host_guard` aborted an iteration | Cool down host, or relax `host_guard.critical_pct` |
 | `host_budget_exceeded` | `max_cumulative_subproc_mb` budget hit (ENH-2453) | Raise the budget, or split the loop |
 | `workdir_vanished` | The executor's working directory (or process cwd) disappeared mid-run (BUG-3375) — e.g. a shared worktree was deleted while a sub-loop was running in it | Not resumable in place; investigate why the directory vanished (see the `workdir_vanished` event's `path` field) before re-running |
-| `error` | Uncaught exception in action or evaluator | The `loop_complete` event has an `error` field with the crash reason |
+| `error` | Attempt-batch failure: the action itself crashed (uncaught exception in `_run_action_or_route()` or a pre-action dispatch) with no `on_error` declared (ENH-3471) | The `loop_complete` event has an `error` field with the crash reason |
+| `no_route` | Decision-step failure: no valid transition, a `before_route` veto, or an evaluator crash — the executor could not decide where to go next (ENH-3471) | Add the missing route (`on_yes`/`on_no`/`route.default`/etc.), fix the `before_route` interceptor, or fix the evaluator; the `loop_complete` event's `error` field carries the reason |
 | `user_stopped` | `ll-loop stop` invoked (writes a `user-stop.marker` sentinel so the runner can attribute the cause even when SIGKILL races past `_finish()`) | Resume with `ll-loop resume` |
 | `system_signal` | Kernel/SIGKILL/OOM kill — `last_result.exit_code <= -1` (e.g. -9 = SIGKILL, -11 = SIGSEGV, -6 = SIGABRT) with no `user-stop.marker` present | **Not resumable** — the runner died mid-state. Reduce per-step memory footprint, split into smaller invocations, or lower `host_guard.max_cumulative_subproc_mb` so the guard trips before the kernel does; rerun |
 | `interrupted` | Ctrl-C caught by our own signal handler (the subprocess was killed by `proc.kill()`) | Resume with `ll-loop resume` |
 
 ### Evaluator verdict → recovery mapping
 
-When an action exits non-zero or an evaluator fails, the verdict is `error` and the loop routes via `on_error:` (or `route.error` / `route.default` if the state has a `route:` block). See [Evaluators](#evaluators) above for the full evaluator reference and the verdict table. The single most common cause of "the loop exited immediately" is a state whose `evaluate:` returns `yes` on entry (nothing to do) or `error` with no recovery route — both terminate with `terminated_by="error"` after a single state visit. See [Troubleshooting](#troubleshooting) below for the full diagnostic pattern.
+When an action exits non-zero or an evaluator fails, the verdict is `error` and the loop routes via `on_error:` (or `route.error` / `route.default` if the state has a `route:` block). See [Evaluators](#evaluators) above for the full evaluator reference and the verdict table. The single most common cause of "the loop exited immediately" is a state whose `evaluate:` returns `yes` on entry (nothing to do, terminates via whatever `on_yes`/`next` target it reaches) or `error` with no recovery route — the latter now terminates with `terminated_by="no_route"` (ENH-3471: a decision-step failure — no route was declared for the `error` verdict) after a single state visit. See [Troubleshooting](#troubleshooting) below for the full diagnostic pattern.
 
 ### Diagnostic commands
 
@@ -1325,13 +1326,13 @@ Branch with ternary syntax — `check_ready?run_impl:done` gives `check_ready` a
 
 ## Troubleshooting
 
-**Loop terminated with `terminated_by="error"` but no reason shown.** Open the run's `events.jsonl` (`ll-loop history <name> <run_id>`) and find the `loop_complete` event — it now includes an `error` field with the crash reason (e.g., `"Loop file not found: cua-fix-verify"`). For sub-loops that crash, the parent loop also captures the child's error string under `${captured.<state_name>.error}` so `on_error` handlers can log or surface it.
+**Loop terminated with `terminated_by="error"` or `"no_route"` but no reason shown.** Open the run's `events.jsonl` (`ll-loop history <name> <run_id>`) and find the `loop_complete` event — it now includes an `error` field with the crash reason (e.g., `"Loop file not found: cua-fix-verify"`) regardless of which of the two values fired (ENH-3471: `"error"` means the action crashed; `"no_route"` means the executor couldn't decide where to go next). For sub-loops that crash, the parent loop also captures the child's error string under `${captured.<state_name>.error}` so `on_error` handlers can log or surface it.
 
 **Loop stuck repeating the same states.** Check `ll-loop history <name>` — if the same verdict repeats, the fix action isn't changing what the evaluator sees. Adjust the fix action, or rely on the automatic guards: `max_edge_revisits` (default 100) terminates tight cycles with `terminated_by="cycle_detected"`.
 
 **`max_steps` hit unexpectedly.** Usually one work item (or one state) consuming the whole budget. Run `ll-loop history <name> --event route` to see where iterations went. Fixes: add `max_retries` + `on_retry_exhausted: advance` to the execute state (multi-item loops), or add a `diff_stall` gate so no-op iterations skip forward instead of repeating ([Stall Detection](#stall-detection)).
 
-**Loop exits on the first iteration.** The initial state's evaluator probably returned `yes` immediately (nothing to do) or `error` with no `on_error` route. Run `ll-loop test <name>` to see the action output, verdict, and routing decision for a single iteration. If the action's exit code isn't what you expect, check that the command actually fails when work remains.
+**Loop exits on the first iteration.** The initial state's evaluator probably returned `yes` immediately (nothing to do) or `error` with no `on_error` route (terminates with `terminated_by="no_route"`, ENH-3471 — a decision-step failure, not an action crash). Run `ll-loop test <name>` to see the action output, verdict, and routing decision for a single iteration. If the action's exit code isn't what you expect, check that the command actually fails when work remains.
 
 **Stall detector fires even though the loop is making progress.** This is the BUG-1674 false positive: a `check`→`work` ping-pong where `work` has no evaluator is invisible to the detector. Add `progress_paths` under `circuit.repeated_failure` listing the files `work` writes — see [Stall Detector](#stall-detector-circuit-repeated-failure).
 
@@ -1359,7 +1360,7 @@ auth_failed:
   terminal: true
 ```
 
-The `error_patterns` list on `output_contains` overrides `verdict="no"` to `verdict="error"` *only when* the main pattern did not match but any listed error pattern is found in the output (the `error_patterns` override branch in `evaluate_output_contains`, `scripts/little_loops/fsm/evaluators.py`). When the main pattern matches first, `error_patterns` is never consulted. The `verdict="error"` route reaches `on_error` without raising an exception or incrementing the retry counter. Without `on_error:`, the loop terminates with `terminated_by="error"`. `error_patterns` do not trigger a `NON_RECOVERABLE` signal; they are a shorthand for verdict-routing, not an exception path.
+The `error_patterns` list on `output_contains` overrides `verdict="no"` to `verdict="error"` *only when* the main pattern did not match but any listed error pattern is found in the output (the `error_patterns` override branch in `evaluate_output_contains`, `scripts/little_loops/fsm/evaluators.py`). When the main pattern matches first, `error_patterns` is never consulted. The `verdict="error"` route reaches `on_error` without raising an exception or incrementing the retry counter. Without `on_error:`, the loop terminates with `terminated_by="no_route"` (ENH-3471 — no route was declared for the `error` verdict, a decision-step failure, not an action crash). `error_patterns` do not trigger a `NON_RECOVERABLE` signal; they are a shorthand for verdict-routing, not an exception path.
 
 **"No state found" on resume.** The loop already completed or was never started — completed loops have no resumable state. Check `ll-loop status <name>`.
 

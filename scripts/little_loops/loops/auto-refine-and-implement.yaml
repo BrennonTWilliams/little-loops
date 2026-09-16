@@ -319,6 +319,10 @@ states:
     # classes to recheck_set, preserving ENH-2686's mid-drain residual
     # fold-back. on_error routes to a DISTINCT crash state so an infrastructure
     # failure is not laundered into a clean completion (ENH-2005 / ENH-2376).
+    # ENH-3471: this also catches a child ending in terminated_by=="no_route"
+    # (a decision-step failure, e.g. a missing route in autodev's own FSM) —
+    # _execute_sub_loop()'s widened on_error dispatch routes it here alongside
+    # terminated_by=="error".
     # ENH-2609: worktree attaches a scratch worktree to the epic branch that
     # checkout_epic_branch created (checkout_existing, branch preserved on
     # detach), so autodev's commits land on epic/<EPIC-ID>-<slug> without the

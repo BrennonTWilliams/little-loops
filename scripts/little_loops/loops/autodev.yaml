@@ -696,8 +696,9 @@ states:
     # which a loop: state never produces. So the sub-loop's
     # mark_decide_rate_limited writes a marker before exiting `failed`, and
     # this gate — reached from both call states' on_failure AND on_error, so
-    # a child that dies with terminated_by == "error" after a 429 cannot skip
-    # the check — reads it. Present: the 429 budget is exhausted; terminate
+    # a child that dies with terminated_by == "error" (or, since ENH-3471,
+    # terminated_by == "no_route" — a decision-step failure) after a 429
+    # cannot skip the check — reads it. Present: the 429 budget is exhausted; terminate
     # the run gracefully, matching every other on_rate_limit_exhausted: done
     # site in this file, rather than deferring this issue and immediately
     # walking the rest of the queue into the same exhaustion. Absent: decide

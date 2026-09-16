@@ -23,7 +23,7 @@ type) and `"ts"` (ISO 8601 timestamp) plus the type-specific fields below:
 | `throttle_warn` | `state` (str), `count` (int), `normal_max` (int), `warn_max` (int), `hard_max` (int) |
 | `throttle_hard` | `state` (str), `count` (int), `hard_max` (int), `next` (str or null) |
 | `throttle_stop` | `state` (str), `count` (int), `hard_max` (int) |
-| `loop_complete` | `terminated_by` (str), `final_state` (str), `iterations` (int), `error` (str, optional — present only when `terminated_by="error"`) |
+| `loop_complete` | `terminated_by` (str), `final_state` (str), `iterations` (int), `error` (str, optional — present when `terminated_by="error"` or `terminated_by="no_route"`, ENH-3471) |
 | `loop_resume` | `from_state` (str), `iteration` (int) |
 | `max_steps_summary` | `summary_state` (str), `iterations` (int) |
 | `max_iterations_reached_summary` | `summary_state` (str), `iteration_count` (int) |
@@ -62,16 +62,16 @@ or `evaluate` for runs archived before that field was added, and always for
 - Include: `final_state`, `iterations`, last 5 events before termination
 
 ### BUG — FATAL_ERROR termination
-- Trigger: `loop_complete` with `terminated_by == "error"` AND no `evaluate.verdict == "error"` event exists in the run (see de-duplication note under "Multiple signals on same state")
+- Trigger: `loop_complete` with `terminated_by == "error"` (ENH-3471: attempt-batch only — the action itself crashed; a decision-step failure now terminates as `no_route` instead and is covered by "Evaluate error terminated the loop" / the generic no-route case, not this rule) AND no `evaluate.verdict == "error"` event exists in the run (see de-duplication note under "Multiple signals on same state")
 - Priority: P2
 - Title: `"<loop_name> loop terminated with error in <final_state> state"`
 - Include: `final_state`, `iterations`, last 5 events before termination
 
 ### BUG — Evaluate error terminated the loop
 - **Class**: Fault signal (terminal-event handler).
-- **Trigger**: The last `evaluate` event before `loop_complete` has `verdict == "error"` — fire on the **first occurrence** (no occurrence threshold). Also fires when `terminated_by == "error"` AND any `evaluate.verdict == "error"` event exists in the run, attributing the termination to that evaluator.
+- **Trigger**: The last `evaluate` event before `loop_complete` has `verdict == "error"` — fire on the **first occurrence** (no occurrence threshold). Also fires when `terminated_by == "no_route"` (ENH-3471: an evaluator raise, or a returned `verdict == "error"` with no declared route, is a decision-step failure — the value this rule used to key off of a plain `terminated_by == "error"` before that classification existed) AND any `evaluate.verdict == "error"` event exists in the run, attributing the termination to that evaluator.
   - Practical detection: scan events in reverse from `loop_complete`; if the last `evaluate` event has `verdict == "error"`, fire this rule.
-  - De-duplication: if this rule fires AND `terminated_by == "error"` (which would also trigger FATAL_ERROR), emit **only this rule** — it is strictly more informative. FATAL_ERROR remains the catch-all for non-evaluator terminations.
+  - De-duplication: if this rule fires AND `terminated_by == "no_route"` also holds for the same `loop_complete` (an evaluator error with no declared route — the case FATAL_ERROR used to catch pre-ENH-3471), emit **only this rule** — it is strictly more informative. FATAL_ERROR remains the catch-all for non-evaluator terminations (`terminated_by == "error"`, attempt-batch: the action itself crashed).
 - **Priority**: P2
 - **Title**: `"<state> evaluator returned error and terminated <loop_name> loop (verdict=error)"`
 - **Include**: state name, `error` field from the failing `evaluate` event (fall back to `reason` if `error` is absent), `final_state`, `iterations`, last 5 events before `loop_complete`

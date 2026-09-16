@@ -178,7 +178,7 @@ after the walk.
 ### Multiple signals on same state
 If a state triggers both an action failure and an evaluate failure BUG, emit only the action failure (higher severity signal takes priority). Emit all distinct signals from different states.
 
-When both `BUG — Evaluate error terminated the loop` and `BUG — FATAL_ERROR termination` would fire on the same `loop_complete` (i.e. `terminated_by == "error"` AND `evaluate.verdict == "error"` both hold), emit only `BUG — Evaluate error terminated the loop` — it is strictly more informative and supersedes the generic FATAL_ERROR signal.
+When both `BUG — Evaluate error terminated the loop` and `BUG — FATAL_ERROR termination` would fire on the same `loop_complete` (i.e. `terminated_by == "no_route"` AND `evaluate.verdict == "error"` both hold — ENH-3471 renamed the decision-step value this rule keys off of from the old bare `terminated_by == "error"`), emit only `BUG — Evaluate error terminated the loop` — it is strictly more informative and supersedes the generic FATAL_ERROR signal.
 
 Proceed to Step 3b regardless of signal count.
 
@@ -201,7 +201,7 @@ From the ordered `state_enter` events:
 1. Build the **state visit sequence**: list of state names in encounter order (consecutive duplicates appear as separate entries)
 2. Compute **per-state visit counts**: count of `state_enter` events per unique state name
 3. Identify the **dominant state**: the state with the most `state_enter` occurrences
-4. Read `terminated_by` from the `loop_complete` event if present (`"terminal"`, `"signal"`, or `"error"`)
+4. Read `terminated_by` from the `loop_complete` event if present (`"terminal"`, `"signal"`, `"error"`, or `"no_route"`, ENH-3471)
 5. Compute the dominant state's **iteration share**: `(dominant_state_count / total_state_enter_count) × 100`
 
 ### 3b-3: Goal Alignment Assessment

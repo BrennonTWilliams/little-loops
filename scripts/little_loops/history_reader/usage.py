@@ -308,7 +308,7 @@ def cost_attribution(
 
 
 _WASTED_RUN_PREDICATE = (
-    "(lr.terminated_by IN ('error', 'max_steps', 'max_iterations_reached', "
+    "(lr.terminated_by IN ('error', 'no_route', 'max_steps', 'max_iterations_reached', "
     "'timeout', 'system_signal', 'interrupted') "
     "OR lr.failure_terminal = 1 "
     "OR (lr.failure_terminal IS NULL AND lr.terminated_by = 'terminal' "

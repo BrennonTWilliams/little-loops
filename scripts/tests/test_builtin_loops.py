@@ -2219,6 +2219,31 @@ class TestRefineToReadyIssueSubLoop:
         assert "failing_state: confidence_check" in evidence, evidence
         assert "failing_exit_code: sub-loop" in evidence, evidence
 
+    def test_write_failure_evidence_attributes_no_route_sub_loop_failure(
+        self, data: dict, tmp_path
+    ) -> None:
+        """ENH-3471: the `*:no_route` alternation (failure_terminal not "True")
+        must be caught by the same case arm as `*:error` — a confidence_check
+        sub-loop that dies with the new no_route classification still
+        populates the sub-loop fallback attribution."""
+        action = data["states"]["write_failure_evidence"]["action"]
+        script = action.replace("${context.run_dir}", str(tmp_path))
+        script = script.replace("${captured.confidence_check.failure_terminal?}", "")
+        script = script.replace("${captured.confidence_check.terminated_by?}", "no_route")
+        script = script.replace("${prev.state}", "diagnose")
+        script = script.replace("${prev.exit_code}", "0")
+        script = re.sub(r"\$\{captured\.[^}]+\?(:shell)?\}", "", script)
+        script = re.sub(r"\$\{prev\.[^}]+\?\}", "", script)
+        script = script.replace("$${", "${")
+        assert "${captured" not in script and "${prev" not in script
+        result = subprocess.run(
+            ["bash", "-c", script], capture_output=True, text=True, cwd=tmp_path
+        )
+        assert result.returncode == 0, f"script failed: {result.stderr}"
+        evidence = (tmp_path / "refine-failure-evidence.txt").read_text()
+        assert "failing_state: confidence_check" in evidence, evidence
+        assert "failing_exit_code: sub-loop" in evidence, evidence
+
     def test_diagnose_is_not_terminal(self, data: dict) -> None:
         """diagnose state must not be a terminal state."""
         state = data["states"].get("diagnose", {})
@@ -8811,7 +8836,11 @@ class TestAutodevLoop:
         on_error to the same target as on_failure (check_decide_rate_limited) — the
         regression guard for a child that dies with terminated_by == "error" after
         a 429, so it cannot skip the rate-limit marker check and get deferred as
-        decision_unresolved instead."""
+        decision_unresolved instead. ENH-3471: a child that instead dies with
+        terminated_by == "no_route" (decision-step failure) is routed the same
+        way — _execute_sub_loop()'s on_error dispatch tuple is widened to
+        include "no_route" alongside "error", so this on_error target catches
+        both classes of child death."""
         for state_name in ("resolve_decision", "resolve_decision_direct"):
             state = data["states"].get(state_name, {})
             assert state.get("loop") == "oracles/resolve-decision", (

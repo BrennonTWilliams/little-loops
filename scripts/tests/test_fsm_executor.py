@@ -2024,8 +2024,8 @@ class TestRouting:
         assert result.iterations == 3
         assert result.terminated_by == "max_steps"
 
-    def test_no_valid_route_terminates_with_error(self) -> None:
-        """Missing route causes error termination."""
+    def test_no_valid_route_terminates_with_no_route(self) -> None:
+        """Missing route causes no_route termination (ENH-3471)."""
         fsm = FSMLoop(
             name="test",
             initial="check",
@@ -2044,7 +2044,7 @@ class TestRouting:
         executor = FSMExecutor(fsm, action_runner=mock_runner)
         result = executor.run()
 
-        assert result.terminated_by == "error"
+        assert result.terminated_by == "no_route"
         assert result.error == "No valid transition"
 
     def test_on_partial_routes_correctly(self) -> None:
@@ -2107,8 +2107,8 @@ class TestRouting:
         assert result.final_state == "fix"
         assert result.terminated_by == "terminal"
 
-    def test_on_partial_missing_falls_through_to_error(self) -> None:
-        """When partial verdict has no on_partial handler, execution errors."""
+    def test_on_partial_missing_falls_through_to_no_route(self) -> None:
+        """When partial verdict has no on_partial handler, execution errors (ENH-3471: no_route)."""
         fsm = FSMLoop(
             name="test",
             initial="evaluate",
@@ -2137,7 +2137,7 @@ class TestRouting:
             executor = FSMExecutor(fsm, action_runner=mock_runner)
             result = executor.run()
 
-        assert result.terminated_by == "error"
+        assert result.terminated_by == "no_route"
         assert result.error == "No valid transition"
 
     def test_on_blocked_shorthand_routes_to_fix_state(self) -> None:
@@ -2174,8 +2174,8 @@ class TestRouting:
         assert result.final_state == "fix"
         assert result.terminated_by == "terminal"
 
-    def test_on_blocked_missing_falls_through_to_error(self) -> None:
-        """When blocked verdict has no on_blocked handler, execution errors."""
+    def test_on_blocked_missing_falls_through_to_no_route(self) -> None:
+        """When blocked verdict has no on_blocked handler, execution errors (ENH-3471: no_route)."""
         fsm = FSMLoop(
             name="test",
             initial="evaluate",
@@ -2204,7 +2204,7 @@ class TestRouting:
             executor = FSMExecutor(fsm, action_runner=mock_runner)
             result = executor.run()
 
-        assert result.terminated_by == "error"
+        assert result.terminated_by == "no_route"
         assert result.error == "No valid transition"
 
     def test_extra_routes_custom_verdict_routes_to_target(self) -> None:
@@ -2238,8 +2238,8 @@ class TestRouting:
         assert result.final_state == "final"
         assert result.terminated_by == "terminal"
 
-    def test_extra_routes_missing_falls_through_to_error(self) -> None:
-        """When a custom verdict has no matching extra_routes entry, execution errors."""
+    def test_extra_routes_missing_falls_through_to_no_route(self) -> None:
+        """When a custom verdict has no matching extra_routes entry, execution errors (ENH-3471: no_route)."""
         fsm = FSMLoop(
             name="test",
             initial="evaluate",
@@ -2267,7 +2267,7 @@ class TestRouting:
             executor = FSMExecutor(fsm, action_runner=mock_runner)
             result = executor.run()
 
-        assert result.terminated_by == "error"
+        assert result.terminated_by == "no_route"
         assert result.error == "No valid transition"
 
     def test_classify_route_dispatches_to_correct_state(self) -> None:
@@ -2381,7 +2381,8 @@ class TestAbstentionRouting:
 
     def test_undeclared_cannot_judge_shorthand_no_on_error_terminates_loud(self) -> None:
         """AC6/AC7 neither-declared case: no on_cannot_judge and no on_error —
-        cap exhaustion terminates via 'No valid transition', never a coerced no."""
+        cap exhaustion terminates via 'No valid transition' as no_route (ENH-3471),
+        never a coerced no."""
         fsm = FSMLoop(
             name="test",
             initial="evaluate",
@@ -2402,7 +2403,7 @@ class TestAbstentionRouting:
             executor = FSMExecutor(fsm, action_runner=mock_runner)
             result = executor.run()
 
-        assert result.terminated_by == "error"
+        assert result.terminated_by == "no_route"
         assert result.error == "No valid transition"
 
     def test_exit_code_abstain_on_exit_3_declared_route(self) -> None:
@@ -5549,8 +5550,8 @@ class TestRoutingEdgeCases:
 
         assert result.final_state == "fallback"
 
-    def test_no_valid_transition_returns_error(self) -> None:
-        """Returns error when no valid transition found."""
+    def test_no_valid_transition_returns_no_route(self) -> None:
+        """Returns no_route when no valid transition found (ENH-3471)."""
         fsm = FSMLoop(
             name="test",
             initial="check",
@@ -5570,7 +5571,7 @@ class TestRoutingEdgeCases:
         executor = FSMExecutor(fsm, action_runner=mock_runner)
         result = executor.run()
 
-        assert result.terminated_by == "error"
+        assert result.terminated_by == "no_route"
 
 
 class TestMaintainModeExecutor:
@@ -6388,6 +6389,198 @@ class TestInterpolationErrorHandling:
         assert "--context" in result.error or "ll-loop run" in result.error
 
 
+class TestNoRouteVsErrorClassification:
+    """ENH-3471: decision-step failures (could not route) classify as
+    terminated_by='no_route'; attempt-batch failures (action crashed) keep
+    terminated_by='error'. One test per raise-site, pinning the self._phase
+    marker's reset/bracket boundaries so a later refactor can't collapse the
+    distinction back to a single funnel."""
+
+    def test_evaluator_raise_terminates_with_no_route(self) -> None:
+        """An evaluator that raises inside _evaluate() is a decision-step
+        failure, not an attempt-batch one."""
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            states={
+                "check": StateConfig(
+                    action="check.sh",
+                    evaluate=EvaluateConfig(type="classify"),
+                    on_yes="done",
+                    on_no="done",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.set_result("check.sh", exit_code=0)
+
+        def _raising_evaluator(*_args: Any, **_kwargs: Any) -> EvaluationResult:
+            raise RuntimeError("evaluator exploded")
+
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        executor._contributed_evaluators["classify"] = _raising_evaluator
+        result = executor.run()
+
+        assert result.terminated_by == "no_route"
+        assert "evaluator exploded" in (result.error or "")
+
+    def test_action_exception_without_on_error_stays_error(self) -> None:
+        """Attempt-batch failure (action raised) keeps terminated_by='error'
+        even with the ENH-3471 phase marker in place — pins the marker so a
+        later refactor can't flip this class to 'no_route'."""
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            states={
+                "check": StateConfig(action="test.sh", on_yes="done"),
+                "done": StateConfig(terminal=True),
+            },
+        )
+
+        class FailingRunner:
+            def run(self, *_args: Any, **_kwargs: Any) -> ActionResult:
+                raise RuntimeError("action crashed")
+
+        executor = FSMExecutor(fsm, action_runner=FailingRunner())  # type: ignore[arg-type]
+        result = executor.run()
+
+        assert result.terminated_by == "error"
+        assert "action crashed" in (result.error or "")
+
+    def test_marker_does_not_leak_into_later_states_pre_action_raise(
+        self, tmp_path: Path
+    ) -> None:
+        """A state that finished normal routing (leaving self._phase ==
+        'decide') must not leak that phase into a later state's pre-action
+        raise. Regression guard: the reset must live at _execute_state()
+        entry, not at the action call sites."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        fsm = FSMLoop(
+            name="parent",
+            initial="check",
+            states={
+                "check": StateConfig(action="check.sh", on_yes="run_child", on_no="run_child"),
+                "run_child": StateConfig(loop="nonexistent"),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.set_result("check.sh", exit_code=0)
+
+        executor = FSMExecutor(fsm, action_runner=mock_runner, loops_dir=loops_dir)
+        result = executor.run()
+
+        assert result.terminated_by == "error"
+
+    def test_on_yes_route_target_interpolation_error_terminates_no_route(self) -> None:
+        """A missing route-target variable in an on_yes shorthand is a
+        decision-step failure (ENH-3471), not an attempt-batch one."""
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            states={
+                "check": StateConfig(
+                    action="check.sh",
+                    on_yes="${context.missing_target}",
+                    on_no="done",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.set_result("check.sh", exit_code=0)
+
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        result = executor.run()
+
+        assert result.terminated_by == "no_route"
+        assert result.error is not None
+        assert "missing_target" in result.error
+        assert "--context" in result.error or "ll-loop run" in result.error
+
+    def test_next_route_target_interpolation_error_terminates_no_route(self) -> None:
+        """A missing route-target variable in a `next:` template is a
+        decision-step failure too — pins the :2135-equivalent marker site."""
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            states={
+                "check": StateConfig(action="check.sh", next="${context.missing_target}"),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.set_result("check.sh", exit_code=0)
+
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        result = executor.run()
+
+        assert result.terminated_by == "no_route"
+        assert result.error is not None
+        assert "missing_target" in result.error
+
+    def test_sub_loop_child_error_no_parent_route_terminates_no_route(
+        self, tmp_path: Path
+    ) -> None:
+        """A child that dies with terminated_by='error' and a parent that
+        declares neither on_error nor on_no is a loop-authoring bug (no
+        declared route for a child death) — classifies as 'no_route', not
+        'error'. The child's own message stays available via `captured`."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "child.yaml").write_text(
+            "name: child\ninitial: boom\nstates:\n  boom:\n    action: boom.sh\n"
+        )
+
+        class FailingRunner:
+            def run(self, *_args: Any, **_kwargs: Any) -> ActionResult:
+                raise RuntimeError("child action crashed")
+
+        parent_fsm = FSMLoop(
+            name="parent",
+            initial="run_child",
+            states={"run_child": StateConfig(loop="child")},
+        )
+        executor = FSMExecutor(
+            parent_fsm,
+            action_runner=FailingRunner(),  # type: ignore[arg-type]
+            loops_dir=loops_dir,
+        )
+        result = executor.run()
+
+        assert result.terminated_by == "no_route"
+        assert result.error == "No valid transition"
+        assert "child action crashed" in executor.captured["run_child"]["error"]
+
+    def test_tamper_guard_raise_after_evaluate_stays_error(self) -> None:
+        """A tamper-guard raise after _evaluate() returns is about the
+        action's filesystem effects, not routing — it must stay 'error' even
+        though it fires from the same code region the decide-phase bracket
+        covers. Pins that the bracket resets to 'action' immediately after
+        _evaluate() returns, before _check_tamper_guard runs."""
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            states={
+                "check": StateConfig(action="check.sh", on_yes="done", on_no="done"),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.set_result("check.sh", exit_code=0)
+
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+
+        def _raise_tamper_guard(*_args: Any, **_kwargs: Any) -> str | None:
+            raise RuntimeError("tamper guard boom")
+
+        executor._check_tamper_guard = _raise_tamper_guard  # type: ignore[method-assign]
+        result = executor.run()
+
+        assert result.terminated_by == "error"
+        assert "tamper guard boom" in (result.error or "")
+
+
 class TestDefaultTimeout:
     """Tests for loop-level default_timeout fallback chain."""
 
@@ -6886,10 +7079,14 @@ class TestSubLoopExecution:
         """Sub-loop that errors at runtime routes parent to on_error when set (BUG-1017)."""
         loops_dir = tmp_path / ".loops"
         loops_dir.mkdir()
-        # Child with an action state but no routing — causes "No valid transition" error termination
+        # Child with an action state but no routing — causes "No valid transition"
+        # termination. ENH-3471: this is now the child's own no_route (decision-step)
+        # classification, not error — the parent's on_error tuple is widened to
+        # include it (see test_sub_loop_no_route_routes_to_on_error_and_verdict_error
+        # below for an explicit assertion of that widening).
         (loops_dir / "child.yaml").write_text(
             "name: child\ninitial: start\nstates:\n"
-            "  start:\n    action: 'true'\n"  # no on_yes/on_no/next → terminated_by=="error"
+            "  start:\n    action: 'true'\n"  # no on_yes/on_no/next → terminated_by=="no_route"
             "  done:\n    terminal: true"
         )
         parent_fsm = FSMLoop(
@@ -6905,6 +7102,40 @@ class TestSubLoopExecution:
         executor = FSMExecutor(parent_fsm, loops_dir=loops_dir)
         result = executor.run()
         assert result.final_state == "err"
+
+    def test_sub_loop_no_route_routes_to_on_error_and_verdict_error(
+        self, tmp_path: Path
+    ) -> None:
+        """ENH-3471: a child ending in no_route (decision-step failure) routes to
+        the parent's on_error, same as a child ending in error, and yields
+        verdict == 'error' in the parent's capture dict."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "child.yaml").write_text(
+            "name: child\ninitial: start\nstates:\n"
+            "  start:\n    action: 'true'\n"  # no route declared → child terminated_by=="no_route"
+            "  done:\n    terminal: true"
+        )
+        parent_fsm = FSMLoop(
+            name="parent",
+            initial="run_child",
+            states={
+                "run_child": StateConfig(
+                    loop="child",
+                    on_yes="ok",
+                    on_no="fail",
+                    on_error="err",
+                    capture="run_child",
+                ),
+                "ok": StateConfig(terminal=True),
+                "fail": StateConfig(terminal=True),
+                "err": StateConfig(terminal=True),
+            },
+        )
+        executor = FSMExecutor(parent_fsm, loops_dir=loops_dir)
+        result = executor.run()
+        assert result.final_state == "err"
+        assert executor.captured["run_child"]["verdict"] == "error"
 
     def test_sub_loop_context_passthrough(self, tmp_path: Path) -> None:
         """Parent context is passed to child when context_passthrough is True."""
@@ -7531,8 +7762,9 @@ class TestInterceptorDispatch:
 
         assert result.final_state == "redirected"
 
-    def test_before_route_veto_terminates_with_error(self) -> None:
-        """before_route returning RouteDecision(None) vetoes routing and terminates with error."""
+    def test_before_route_veto_terminates_with_no_route(self) -> None:
+        """before_route returning RouteDecision(None) vetoes routing and terminates
+        with no_route (ENH-3471)."""
         fsm = self._make_simple_fsm()
         mock_runner = MockActionRunner()
         mock_runner.always_return(exit_code=0)
@@ -7542,7 +7774,7 @@ class TestInterceptorDispatch:
         executor._interceptors = [interceptor]
         result = executor.run()
 
-        assert result.terminated_by == "error"
+        assert result.terminated_by == "no_route"
 
     def test_multiple_interceptors_called_in_order(self) -> None:
         """Multiple interceptors have before_route called in registration order."""

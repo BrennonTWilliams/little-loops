@@ -52,6 +52,9 @@ EXIT_CODES: dict[str, int] = {
     # arrival), so FAILURE_TERMINAL_EXIT_CODE doesn't apply — make the exit
     # code an explicit 1 rather than relying on the .get(..., 1) default.
     "workdir_vanished": 1,
+    # ENH-3471: decision-step failure (no valid route) — declared explicitly
+    # rather than relying on the .get(..., 1) default, same precedent.
+    "no_route": 1,
 }
 
 

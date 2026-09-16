@@ -162,9 +162,10 @@ def map_final_status(terminated_by: str, *, failure_terminal: bool = False) -> s
         return "timed_out"
     if terminated_by == "terminal":
         return "failed" if failure_terminal else "completed"
-    # cycle_detected, error, user_stopped, system_signal, ... — ENH-2522:
-    # user_stopped and system_signal share the "failed" bucket but remain
-    # distinct terminated_by values so audit tooling can read the cause.
+    # cycle_detected, error, no_route, user_stopped, system_signal, ... —
+    # ENH-2522: user_stopped and system_signal share the "failed" bucket but
+    # remain distinct terminated_by values so audit tooling can read the
+    # cause. ENH-3471: no_route (decision-step failure) joins error here too.
     return "failed"
 
 

@@ -617,9 +617,12 @@ SCHEMA_DEFINITIONS: dict[str, dict[str, Any]] = {
                 "'max_iterations_reached', 'timeout', 'interrupted', 'user_stopped' "
                 "(ENH-2522: ll-loop stop wrote user-stop.marker before signalling), "
                 "'system_signal' (ENH-2522: POSIX process killed by signal N, no user "
-                "marker — e.g. kernel OOM/SIGKILL), 'error', 'handoff', "
-                "'cycle_detected', 'stall_detected', 'host_pressure_abort' "
-                "(ENH-2452), 'host_budget_exceeded' (ENH-2453)."
+                "marker — e.g. kernel OOM/SIGKILL), 'error' (attempt-batch: the action "
+                "crashed), 'no_route' (ENH-3471, decision-step: no valid transition, a "
+                "before_route veto, or an evaluator crash — the executor could not "
+                "decide where to go next), 'handoff', 'cycle_detected', "
+                "'stall_detected', 'host_pressure_abort' (ENH-2452), "
+                "'host_budget_exceeded' (ENH-2453)."
             ),
             "failure_terminal": _bool(
                 "True when terminated_by='terminal' and the reached terminal state is "
@@ -630,7 +633,8 @@ SCHEMA_DEFINITIONS: dict[str, dict[str, Any]] = {
             ),
             "error": _str(
                 "Error message explaining why the loop crashed. "
-                "Present only when terminated_by='error'."
+                "Present when terminated_by='error' or terminated_by='no_route' "
+                "(ENH-3471)."
             ),
         },
         ["final_state", "iterations", "terminated_by"],

@@ -1091,6 +1091,8 @@ class TestPersistentExecutor:
             # "interrupted" but share the failed terminal bucket.
             ("user_stopped", "failed"),
             ("system_signal", "failed"),
+            # ENH-3471: no_route (decision-step failure) shares error's bucket.
+            ("no_route", "failed"),
         ]
         for terminated_by, expected_status in cases:
             executor.archive_run_only(terminated_by=terminated_by)
