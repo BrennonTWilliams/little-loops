@@ -10,7 +10,7 @@ captured_at: '2026-09-16T20:54:20Z'
 labels:
 - policy-builder
 - captured
-decision_needed: true
+decision_needed: false
 depends_on:
 - BUG-3486
 - BUG-3489
@@ -65,6 +65,8 @@ introducing a new test runner.
 
 ### Option B: Scope automated interaction testing out; verify manually
 
+> **Selected:** Option B — no repo precedent for a pinned Node/browser-automation dependency exists to extend; manual-verification-on-close is the repo's established pattern for this kind of gap.
+
 Amend `## Scope Boundaries` to explicitly exclude automated interaction-test
 coverage for undo/redo, reload-persistence, and keyboard operability from this
 issue's Acceptance Criteria; reword those ACs to describe the required behavior
@@ -74,6 +76,26 @@ browser verification (documented steps) before closing the issue.
   maintain; ships faster. Leaves these behaviors without regression protection —
   a future template/core.mjs change could silently break undo/redo or keyboard
   access with no test to catch it.
+
+### Decision Rationale
+
+**Selected:** Option B — Scope automated interaction testing out; verify manually.
+
+**Reasoning:** No `package.json` (or any pinned-Node-dependency mechanism) exists anywhere in the repo outside vendored third-party tool trees — jsdom/Playwright would be a first-of-its-kind infrastructure addition, conflicting with the project's "minimize third-party dependencies" policy. By contrast, accepting manual verification for a behavioral-testing gap on a generated-HTML artifact is a well-worn, repeatedly-accepted repo pattern (`.issues/enhancements/P3-ENH-1770-...md:115` is the directly analogous same-artifact-family precedent), and CLAUDE.md's Testing & CI Policy does not require every Acceptance Criterion to carry automated coverage. Option B's main cost — no regression protection for the new undo/redo subsystem — is real but is partially mitigated by extending the existing `TestFeat2301UsabilityStructural` string-assertion style, and is outweighed by Option A's larger, unproven infrastructure lift.
+
+| Dimension | Option A (harness) | Option B (manual) |
+|---|---|---|
+| Consistency | 1 | 3 |
+| Simplicity | 1 | 3 |
+| Testability | 2 | 1 |
+| Risk | 1 | 1 |
+| **Total** | **5/12** | **8/12** |
+
+**Key evidence:**
+- No `package.json` or pinned Node dependency exists anywhere in the repo (only vendored `node_modules/` in unrelated adapter tooling) — Option A would introduce new dependency-management infrastructure, not just a new pin.
+- `scripts/tests/js/policy_validator.test.mjs` + `scripts/tests/test_policy_builder_node_gate.py:53-79` show a `.mjs` test file is auto-picked up with zero CI-wiring changes — the only point favoring Option A.
+- Dozens of prior issues (e.g. `.issues/bugs/P1-BUG-076-...md:95`, `.issues/enhancements/P3-ENH-1770-...md:115`) accept manual verification as sufficient to close, including one directly analogous generated-HTML-artifact case.
+- The undo/redo/persistence surface (`policy_builder_core.mjs` 1237 lines, `policy-router-builder.html.tmpl` 979 lines) is larger than prior manual-fallback precedents, so the regression-risk tradeoff is real, not negligible.
 
 ## Integration Map
 
@@ -210,10 +232,10 @@ Add Save project / Open project with a versioned JSON envelope; YAML remains the
 
 ## Acceptance Criteria
 
-- [ ] Edits survive reload and round-trip mode switching; undo/redo restores rules, fields, actions, and transitions in automated interaction tests.
+- [ ] Edits survive reload and round-trip mode switching; undo/redo restores rules, fields, actions, and transitions — verified by documented manual browser testing (see Scope Boundaries: automated interaction-test coverage is out of scope for this issue).
 - [ ] Save/Open project round-trips all authoring settings and generates equivalent YAML; corrupt/unsupported imports preserve the existing draft and show an error.
 - [ ] Disabled/unavailable browser storage leaves authoring and explicit project-file saving functional, with visible save-state feedback.
-- [ ] Lifecycle hides grading-only inputs; rules precede advanced action editors; 375px and desktop viewport tests show no page-level horizontal overflow and keyboard-accessible controls.
+- [ ] Lifecycle hides grading-only inputs; rules precede advanced action editors; the layout is responsive with no page-level horizontal overflow at 375px and desktop widths, and controls are keyboard-operable — verified by documented manual browser testing (see Scope Boundaries: automated interaction-test coverage is out of scope for this issue).
 - [ ] Summaries reflect actual transitions, distinguish state steps from attempts, and clearly indicate whether implementation is followed by verification.
 - [ ] Stop-success, skip, and needs-attention destinations emit valid loops; reopening existing five-verb models preserves their behavior.
 - [ ] Project gate thresholds and skill descriptions/argument hints are displayed; optional scoring instructions appear in emitted prompts and persist through project round trips.
@@ -225,7 +247,7 @@ Automated round trips lose zero authored fields. Reload and mode changes preserv
 
 ## Scope Boundaries
 
-Includes persistent authoring, terminology/layout, action and scoring explanations, lifecycle presets/destinations, and offline export guidance. Excludes arbitrary YAML round-trip editing, named scenario suites, real issue loading through a server, and run submission. Correctness fixes and consumer discovery are a separate workstream; coordinate shared model changes rather than duplicating those fixes.
+Includes persistent authoring, terminology/layout, action and scoring explanations, lifecycle presets/destinations, and offline export guidance. Excludes arbitrary YAML round-trip editing, named scenario suites, real issue loading through a server, and run submission. Excludes automated browser/DOM interaction-test coverage for undo/redo, reload-persistence, and keyboard operability (Decision: Option B, see Proposed Solution § Decision Rationale) — these behaviors are verified via documented manual browser testing before closing the issue, not automated tests. Correctness fixes and consumer discovery are a separate workstream; coordinate shared model changes rather than duplicating those fixes.
 
 ## Related Key Documentation
 
@@ -283,6 +305,7 @@ fix, so it remains an outstanding action item).
 
 
 ## Session Log
+- `/ll:decide-issue` - 2026-09-16T22:44:17 - `764882af-9e40-4a2b-aaa1-9d51e82a0376.jsonl`
 - `/ll:verify-issues` - 2026-09-16T22:36:05 - `df96ce10-e8c8-4600-a0c4-0eee757af56b.jsonl`
 - `/ll:wire-issue` - 2026-09-16T21:29:53 - `0e35d235-ff66-480a-930e-d4d9ddd5eeb9.jsonl`
 - `/ll:refine-issue` - 2026-09-16T21:07:15 - `7e302668-e6b7-4dea-830f-330bbfd02fc0.jsonl`

@@ -1,0 +1,12 @@
+{
+  "id": "21116f72-33ec-4d5a-a60e-3036a4dc7504",
+  "type": "decision",
+  "timestamp": "2026-09-16T22:44:00Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "No package.json/pinned-Node-dependency precedent exists anywhere in the repo; jsdom/Playwright would be first-of-kind infra conflicting with the dependency-minimization policy. Manual verification on close is a well-established repo pattern for behavioral-testing gaps on generated-HTML artifacts (directly analogous precedent: ENH-1770).",
+  "rule": "Scope automated interaction testing out; verify manually",
+  "scope": "issue",
+  "alternatives_rejected": "Option A: Adopt a browser/DOM interaction test harness (jsdom or Playwright) under scripts/tests/js/ \u2014 rejected: no existing Node dependency infra to extend, heavier lift than the gap warrants.",
+  "issue": "ENH-3487"
+}
