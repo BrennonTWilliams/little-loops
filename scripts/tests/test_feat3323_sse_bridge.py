@@ -197,6 +197,14 @@ def _seed_state_change_on_connect(client: _SocketClient) -> None:
 
 
 class TestSseBridgeFanIn:
+    # BUG-3484: this test's own legitimate worst-case wall-clock budget (two
+    # producers + a full SseBridge, 5 real thread hops, generous per-step
+    # timeouts already widened twice for CPU-contention flakiness) sums to
+    # ~100-105s -- too close to the suite's global --timeout=120. When it
+    # tips over, pytest-timeout's thread-method watchdog can't interrupt a
+    # blocked recv()/thread-join and hard-kills the whole xdist worker
+    # instead of just failing this test. 180s gives real headroom.
+    @pytest.mark.timeout(180)
     def test_two_producers_reach_one_client_with_distinct_producer_pid(
         self, short_tmp_path: Path, tmp_path: Path
     ) -> None:
