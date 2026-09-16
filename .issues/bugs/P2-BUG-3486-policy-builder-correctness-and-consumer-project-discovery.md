@@ -14,6 +14,8 @@ relates_to:
 - FEAT-3474
 - BUG-3489
 - BUG-3490
+blocked_by:
+- BUG-3489
 ---
 
 # BUG-3486: Policy builder preview, validation, and editing correctness (browser/core)
@@ -47,15 +49,24 @@ Users cannot trust policy decisions when the preview disagrees with execution or
 Add a pure model-validation pipeline shared by preview/export and a compiled evaluation result that preserves winning rule identity and per-condition results. Reconcile field/operator changes and represent invalid draft inputs explicitly. Match the Python parser/encoder for the supported frontmatter subset; reject unsupported syntax rather than guessing.
 
 **Decisions (2026-09-16 review):**
-- **Reserved-name rejection, not dynamic allocation.** `validateBuilderModel` rejects user outcome names that collide with any generated state name, derived per mode from the serializers (`score`, `dispatch`, `done`, `finished`, `failed`, and whatever else each `_serialize*` emits). `_doneStateName()`'s `done`→`finished` fallback is removed. This matches the codebase's fixed-reserved-token convention (`FAILURE_TERMINAL_NAMES`, `_RESERVED`) and avoids `done_2`-style surprises in emitted YAML. `failed` must be reserved because BUG-3489 adds it as the decision-table failure terminal.
+- **Reserved-name rejection, not dynamic allocation.** `validateBuilderModel` rejects user outcome names that collide with a fixed, explicitly enumerated reserved set, exported from `policy_builder_core.mjs` as a constant (e.g. `RESERVED_STATE_NAMES`, keyed per mode) so the Node tests can pin it. Enumerated from the serializers as of 2026-09-16:
+  - decision_table: `score`, `parse_scores`, `policy_dispatch`, `finished`, `failed`
+  - rubric: `score`, `parse_scores`, `route_high`, `route_medium`, `done`
+  - issue_lifecycle: `issue_id`, `score`, `policy_dispatch`, `done`, `failed`
+  - all modes: `aggregate` (`fsm/validation/reachability.py:170` `_RESERVED`), and the route sentinels `_` / `_error`
+  This matches the codebase's fixed-reserved-token convention (`FAILURE_TERMINAL_NAMES`, `_RESERVED`) and avoids `done_2`-style surprises in emitted YAML. `failed` must be reserved because BUG-3489 adds it as the decision-table failure terminal.
+- **`done` stays a legal decision-table outcome name; the auxiliary terminal becomes a fixed `finished`.** `seedExample("decision_table")` (mjs ~450) names an outcome `done`, and `_doneStateName()` exists precisely to allow that — reserving `done` would make the default page load with an export-blocking diagnostic. So: `_doneStateName()`'s dynamic `done`→`finished` selection is replaced by the constant `finished` (reserved above), which is the only name the auxiliary `terminal: true` state is ever emitted under. Golden fixtures change only where `usedDoneState` is true (a finish outcome with a non-`none` action); `sample-decision-table.model.json` has no such outcome, so verify whether its YAML changes before regenerating.
 - **Handler logic moves into the `.mjs` core.** There is no jsdom/playwright and no npm dependency budget, so inline `.html.tmpl` handlers cannot be tested by `node:test`. The field/operator reconciliation, draft-input state, and winner lookup in (b)–(d) are extracted as pure functions in `policy_builder_core.mjs` (e.g. `reconcilePredicateForDim`, `evaluateModel`), leaving the template as thin DOM glue. "Browser-editing coverage" in the ACs means Node tests over those pure functions, not DOM tests.
 - **`priority_rank` parity follows Python:** derive it when a dimension's `raw_key == "priority_rank"` (`frontmatter_scores.py:106-115`), not when a dimension is named `priority`.
+- **Supported frontmatter subset for `parseFrontmatterBlock` (defect e), stated precisely so "supported comments" and "reject rather than guess" don't conflict:** strip `#` and the rest of the line only when the `#` is at line start or preceded by whitespace and is outside single/double quotes; split flow lists (`[a, "b, c"]`) on commas outside quotes and unquote the elements; a quoted `#` or `,` is literal. Anything else the mini-parser cannot represent (block lists, nested mappings, multi-line scalars, anchors) raises a diagnostic in the Try-it hint instead of producing routing inputs.
+- **Draft-input representation (defect d):** each predicate in the model carries `value` (last committed, always parser-valid) plus `draft: { text, error } | null`. The DOM input shows `draft.text` when present; `validateBuilderModel` emits an error diagnostic for any predicate with a non-null `draft`, so a rejected edit blocks export instead of silently exporting the previous value. `reconcilePredicateForDim(pred, newDimType)` resets `op` to the new type's default and clears `value`/`draft` when the stored op is not legal for the new type.
+- **Export surfaces:** "disable export" means the Copy button (`#copy-btn`, tmpl ~217) and the Download button (`#download-btn`, tmpl ~218) are disabled while any error-severity diagnostic exists; the YAML preview still renders alongside the diagnostics so the user can see what would be emitted.
 
 ## Integration Map
 
 - Files to modify: scripts/little_loops/templates/policy_builder_core.mjs; scripts/little_loops/templates/policy-router-builder.html.tmpl. (`cli/artifact/policy_builder.py` → BUG-3490; `loops/lib/policy-router.yaml` → BUG-3489.)
 - Dependent contracts: scripts/little_loops/fsm/policy_rules.py and scripts/little_loops/fsm/frontmatter_scores.py; generated fixtures in scripts/tests/fixtures/policy_builder/.
-- Similar patterns: frontmatter_scores clean-slate behavior; shared collect_entries and plugin-root discovery.
+- Similar patterns: `_serializeIssueLifecycle()`'s explicit `failed:` terminal; `$("add-dim").onclick`'s existing duplicate-name check (tmpl ~898) as the shape for outcome-name validation.
 - Tests: scripts/tests/test_policy_builder_emit.py, scripts/tests/test_policy_builder_corpus.py, scripts/tests/test_policy_builder_node_gate.py, scripts/tests/test_frontmatter_scores.py, scripts/tests/js/policy_validator.test.mjs; add browser-editing coverage under the local pytest gate.
 - Configuration: preserve existing project configuration and offline artifact behavior.
 - Coordination: BUG-3489 also edits `_serializeDecisionTable()` and regenerates the same golden fixtures; land BUG-3489 first (small) so this issue's reserved-name list includes `failed` and the fixtures are regenerated once.
@@ -103,13 +114,15 @@ Conventions in force (codebase-pattern-finder, evidence cited per rule):
 
 ### Types
 
-Proposed MatchResult carries ruleIndex, target, isFallback, and conditionResults; Diagnostic carries severity, field path, and message.
+Proposed MatchResult carries ruleIndex, target, isFallback, and conditionResults; Diagnostic carries severity, field path, and message. Predicate gains `draft: { text: string, error: string } | null` alongside the committed `value` (see Decisions). `RESERVED_STATE_NAMES` is an exported per-mode constant.
 
 ### Signatures
 
 Proposed new JS core contracts:
 - `validateBuilderModel(model) -> DiagnosticList`
 - `evaluateModel(model, scores) -> MatchResult`
+- `reconcilePredicateForDim(pred, newDimType) -> Predicate`
+- `export const RESERVED_STATE_NAMES: { decision_table: Set, rubric: Set, issue_lifecycle: Set }`
 
 Keep evaluateRules' existing target-returning API compatible.
 
@@ -188,7 +201,8 @@ Per-defect file:line anchors, confirmed by direct code reading:
 - [ ] Python/JS differential cases agree for boolean rules, missing fields, supported frontmatter comments/lists/quoting, derived priority, malformed targets, and nonnumeric ordered comparisons.
 - [ ] Regression tests assert actual winning row identity for repeated targets and explicit fallback matches.
 - [ ] Invalid/incomplete models show diagnostics and disable export; field changes, field removal, and rejected draft edits cannot silently export previous or incompatible values.
-- [ ] Duplicate/reserved outcome names (including every generated state name per mode and `failed`) are rejected by `validateBuilderModel`; no model can produce duplicate YAML keys or broken transitions; valid models in all three modes pass runtime validation.
+- [ ] Duplicate/reserved outcome names (the enumerated `RESERVED_STATE_NAMES` per mode, including `finished`, `failed`, and `aggregate`) are rejected by `validateBuilderModel`; `done` remains a valid decision-table outcome and the seed example loads with zero error diagnostics; no model can produce duplicate YAML keys or broken transitions; valid models in all three modes pass runtime validation.
+- [ ] Invalid/incomplete models disable both `#copy-btn` and `#download-btn`; a predicate with a non-null `draft` is an error diagnostic.
 - [ ] Editing/reconciliation logic lives in `policy_builder_core.mjs` as pure functions covered by `scripts/tests/js/policy_validator.test.mjs`; the template contains only DOM wiring.
 - [ ] Existing offline generation, theme behavior, and valid model semantics remain covered by the local Python/Node suite.
 
@@ -210,6 +224,7 @@ Includes browser/core correctness and validation feedback. Excludes runtime frag
 
 
 ## Session Log
+- review - 2026-09-16 - added `blocked_by: BUG-3489`; enumerated `RESERVED_STATE_NAMES`; `done` stays legal, auxiliary terminal fixed to `finished`; defined frontmatter subset, draft-input shape, and export surfaces; removed BUG-3490 leftovers from Integration Map
 - split - 2026-09-16 - defects f/g → BUG-3489, h → BUG-3490; decisions recorded in Proposed Solution
 - `/ll:wire-issue` - 2026-09-16T21:29:31 - `0e35d235-ff66-480a-930e-d4d9ddd5eeb9.jsonl`
 - `/ll:refine-issue` - 2026-09-16T21:10:28 - `23738f99-b471-4d7b-a1d6-399ffa424bef.jsonl`
