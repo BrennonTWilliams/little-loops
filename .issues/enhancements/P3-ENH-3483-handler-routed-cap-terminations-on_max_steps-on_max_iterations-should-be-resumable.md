@@ -8,6 +8,7 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-09-16'
 captured_at: '2026-09-16T01:44:24Z'
+reconcile_attempted: true
 ---
 
 # ENH-3483: Handler-routed cap terminations (on_max_steps / on_max_iterations) should be resumable
@@ -38,6 +39,14 @@ Two termination paths exist for cap terminations, and only one survives a resume
 - **Unhandled cap** (no `on_max_steps` / `on_max_iterations` declared): the cap check calls `self._finish("max_steps")` / `self._finish("max_iterations_reached")` directly (`fsm/executor.py:685`, `:708`). `map_final_status()` (`fsm/persistence.py:132-169`) maps both to `"interrupted"`, which is in `RESUMABLE_STATUSES` (`fsm/persistence.py:54-59`), so `ll-loop resume` picks the run back up once the cap is raised.
 - **Handler-routed cap** (`on_max_steps` / `on_max_iterations` declared): the same cap check instead overwrites `current_state` with the handler state (`fsm/executor.py:646-680` for steps, `:689-708` for iterations) and sets `_summary_state_executed` / `_iteration_summary_executed`. When that handler reaches a `terminal: true` state, `_finish("terminal")` runs instead (`fsm/executor.py:835`), `map_final_status()` maps `"terminal"` to `"completed"`/`"failed"`, and `PersistentExecutor.resume()` (`fsm/persistence.py:1299`) refuses to resume because that status is not in `RESUMABLE_STATUSES`.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-16 — based on codebase analysis:_
+
+- **Current code does not reproduce the stated `terminated_by="terminal"` path.** `scripts/tests/test_fsm_executor.py:11078-11091` (`TestMaxStepsSummaryHook::test_terminated_by_max_steps_after_summary`) and `test_summary_state_runs_on_cap` (`:11050-11060`) assert `result.terminated_by == "max_steps"` for a handler-routed cap termination, using a fixture whose `on_max_steps` handler (`summarize`, non-terminal, `next="done"` into a `terminal: true` state) matches the scenario this issue describes.
+- **Mechanism, already landed as ENH-1631/BUG-2204** (comment at `fsm/executor.py:819-821`): the terminal-state check block (`fsm/executor.py:800-835`) special-cases `_summary_state_executed`/`_iteration_summary_executed` — when either flag is set and `current_state` is not the still-pending handler state itself, it returns `_finish("max_steps")`/`_finish("max_iterations_reached")` (`:828`, `:832`) instead of falling through to `else: return self._finish("terminal")` (`:835`, reached only when BOTH flags are `False`). The `next_state is None` fallback (`:980-988`) applies the identical special-case (`:984-987`). The step-cap re-check at the top of `run()`'s loop (`:645-646`) also unconditionally routes to `_finish("max_steps")` (`:685`) on every subsequent pass once the flag is set. A handler-routed cap termination is therefore structurally incapable of reaching `_finish("terminal")` once the handler has been entered.
+- **Consequence**: `map_final_status()` (`fsm/persistence.py:152-158`) already maps `"max_steps"`/`"max_iterations_reached"` to `"interrupted"`, a `RESUMABLE_STATUSES` member (`fsm/persistence.py:54-56`). The persisted `status` for a handler-routed cap termination is already `"interrupted"`/resumable today — see the Proposed Solution finding below for the gap this leaves unaddressed.
+
 ## Expected Behavior
 
 A run that reached `max_steps` / `max_iterations` and ran its declared `on_max_steps` / `on_max_iterations` handler to a terminal state persists a resumable status (`interrupted`), exactly like the unhandled-cap path does today. Resuming that run restarts execution from the state that was current immediately before the cap fired — not by re-running the terminal summary/handler state — so raising the cap and resuming continues the original work instead of replaying the handler.
@@ -56,12 +65,20 @@ Decision needed (Option A vs Option B above) before implementation. Regardless o
 2. Make `map_final_status()` (`fsm/persistence.py:132`) return `"interrupted"` for a terminal reached via the handler route: either a new `terminated_by` value (Option A) or a `cap_handled` keyword derived from `_summary_state_executed` / `_iteration_summary_executed` (Option B).
 3. Make `PersistentExecutor.resume()` (`fsm/persistence.py:1287`) restore `current_state` from the persisted `pre_cap_state` when set, instead of unconditionally restoring the raw `LoopState.current_state` as it does today (`fsm/persistence.py:1303`) — which would otherwise re-enter the terminal handler state.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-16 — based on codebase analysis:_
+
+- **Option A/B's premise does not reproduce** (see Current Behavior finding above): `map_final_status()` already returns `"interrupted"` for a handler-routed cap termination today via the existing `"max_steps"`/`"max_iterations_reached"` branch (`fsm/persistence.py:152-158`). No new `terminated_by` value or `cap_handled` keyword is needed to fix the persisted `status`.
+- **The verified gap is entirely in `resume()`'s state restoration**, not in status mapping. `ExecutionResult.final_state`/`LoopState.current_state` at finish time is whatever state the executor was sitting on when `_finish("max_steps")` fired — the handler state itself, or whatever it last routed to (e.g. `"done"` in `test_fsm_executor.py`'s `TestMaxStepsSummaryHook` fixture) — never the original pre-cap state. `_summary_state_executed`/`_iteration_summary_executed` are not persisted on `LoopState` and not restored by `resume()` (grepped `fsm/persistence.py`: no hits for either name), so a resumed run starts from that handler-endpoint state with both flags reset to `False`. If that endpoint state is `terminal: true`, `resume()`'s re-entry into `run()` hits the terminal check (`fsm/executor.py:801`) with both flags `False` and immediately returns `_finish("terminal")` (`:835`) — the resumed run completes instantly without continuing any of the original work. This is the concrete, reproducible resumability defect.
+- **Narrowed scope**: `pre_cap_state` capture (Implementation Step 2) and its use in `resume()`'s `current_state` restoration (Step 4) remain verified-necessary. The `map_final_status()` change (Step 3) does not — a decision-maker should re-evaluate whether Option A/B remain worth deciding between before implementation, since both presume a code path (`_finish("terminal")` reached via the handler route) that does not exist in current code.
+- **Additional restoration gap surfaced by this trace**: even with `pre_cap_state` restored, `_summary_state_executed`/`_iteration_summary_executed` also need restoring (or the resumed run must otherwise be prevented from either re-firing the handler or immediately hitting `_finish("terminal")` on the stale endpoint state) — Implementation Step 4 should account for this, not just the bare `current_state` swap.
+
 ## Integration Map
 
 ### Files to Modify
 - `scripts/little_loops/fsm/executor.py` — capture `pre_cap_state` in the cap-routing block (lines 646-680, 689-708); thread it through `_finish()` (`:4308`) onto `ExecutionResult`.
-- `scripts/little_loops/fsm/persistence.py` — `map_final_status()` (`:132`) to return `interrupted` for the handler-routed case; `LoopState` (`:310`) to persist `pre_cap_state`; `resume()` (`:1287`, specifically the `current_state` restore at `:1303`) to restore from it.
-- Option A only: `scripts/little_loops/cli/loop/runner.py` (`EXIT_CODES`, `:39`), `scripts/little_loops/cli/logs.py` (`_derive_loop_outcome`, `:2062`; `_FLAG_OUTCOMES`, `:1188`), `scripts/little_loops/history_reader/usage.py` (`_WASTED_RUN_PREDICATE`, `:310`), `scripts/little_loops/fsm/executor.py` (`_execute_sub_loop` child-result match, `:1349`).
+- `scripts/little_loops/fsm/persistence.py` — `LoopState` (`:310`) to persist `pre_cap_state`; `resume()` (`:1287`, specifically the `current_state` restore at `:1303`) to restore `current_state` from it and to restore/neutralize `_summary_state_executed` / `_iteration_summary_executed` so the resumed run neither re-fires the handler nor immediately hits `_finish("terminal")` on the stale handler-endpoint state. `map_final_status()` (`:132`) needs no change — it already maps the handler-routed cap path to `interrupted` via the existing `"max_steps"`/`"max_iterations_reached"` branch (verified, see Codebase Research Findings).
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/cli/loop/lifecycle.py:568-575` — reads `RESUMABLE_STATUSES` to list resumable instances; benefits automatically once the status is corrected, no code change needed.
@@ -72,8 +89,7 @@ Decision needed (Option A vs Option B above) before implementation. Regardless o
 
 ### Tests
 - `scripts/tests/test_fsm_executor.py` — cap-routing / `on_max_steps` / `on_max_iterations` behavior.
-- `scripts/tests/test_fsm_persistence.py` — `map_final_status()`, `resume()` state restoration.
-- `scripts/tests/test_ll_logs.py:6688` (`test_parity_with_flag_loops`) — Option A only, if a new `terminated_by` value is added to the closed vocabulary.
+- `scripts/tests/test_fsm_persistence.py` — `resume()` state restoration from `pre_cap_state`, and restoration of `_summary_state_executed` / `_iteration_summary_executed` on resume. `map_final_status()` already returns `interrupted` for this path today (verified) — no test changes needed there.
 
 ### Documentation
 - `docs/reference/API.md` — `map_final_status()`, `RESUMABLE_STATUSES`, `PersistentExecutor.resume()` contracts (already listed under Related Key Documentation below).
@@ -100,13 +116,11 @@ Decision needed (Option A vs Option B above) before implementation. Regardless o
 
 ## Implementation Steps
 
-1. Resolve the Option A / Option B decision (`/ll:decide-issue ENH-3483`).
-2. Add `pre_cap_state` capture in the cap-routing block and thread it onto `ExecutionResult` / `LoopState`.
-3. Update `map_final_status()` so a handler-routed cap terminal maps to `interrupted` (new value or `cap_handled` keyword per the chosen option).
-4. Update `PersistentExecutor.resume()` to restore `current_state` from `pre_cap_state` when present.
-5. If Option A: update the closed `terminated_by` vocabulary call sites listed in Integration Map (`EXIT_CODES`, `_derive_loop_outcome`, `_FLAG_OUTCOMES`, `_WASTED_RUN_PREDICATE`, `_execute_sub_loop`) and the `test_parity_with_flag_loops` parity list.
-6. Add/extend tests in `test_fsm_executor.py` and `test_fsm_persistence.py` covering: handler-routed cap terminal persists `interrupted`, resume restarts from `pre_cap_state` (not the handler state), and the handler does not re-execute on resume.
-7. Run `python -m pytest scripts/tests/` and verify the unhandled-cap resumability path is unaffected (regression check).
+1. Add `pre_cap_state` capture in the cap-routing block (`fsm/executor.py:646-680`, `:689-708`) and thread it through `_finish()` (`:4308`) onto `ExecutionResult` / `LoopState` (`fsm/persistence.py:310`). No Option A/B decision is needed first: `map_final_status()` already returns `interrupted` for the handler-routed cap path today (verified), so neither a new `terminated_by` value nor a `cap_handled` keyword is required.
+2. Update `PersistentExecutor.resume()` (`fsm/persistence.py:1287`, `:1303`) to restore `current_state` from `pre_cap_state` when present, instead of the raw `LoopState.current_state`.
+3. Also restore (or otherwise neutralize) `_summary_state_executed` / `_iteration_summary_executed` on resume, so the resumed run neither re-fires the handler nor immediately hits `_finish("terminal")` on the stale handler-endpoint state.
+4. Add/extend tests in `test_fsm_executor.py` and `test_fsm_persistence.py` covering: resume restarts from `pre_cap_state` (not the handler-endpoint state), and the handler does not re-execute or immediately terminate on resume.
+5. Run `python -m pytest scripts/tests/` and verify the unhandled-cap resumability path is unaffected (regression check).
 
 ## Impact
 
@@ -130,8 +144,8 @@ Decision needed (Option A vs Option B above) before implementation. Regardless o
 
 ## Scope Boundaries
 
-- **In scope**: capturing `pre_cap_state` for handler-routed cap terminations; making `map_final_status()` return `interrupted` for that path; making `resume()` restart from `pre_cap_state`; updating the closed `terminated_by` vocabulary call sites if Option A is chosen.
-- **Out of scope**: automatically raising `max_steps`/`max_iterations` on resume (the user still raises the cap manually first, same as the existing unhandled-cap path); ENH-3473's `best_effort.json` checkpoint behavior (separate issue, cross-referenced but not implemented here); re-executing the summary/handler state itself on resume (resume restarts from `pre_cap_state`, never re-enters the handler).
+- **In scope**: capturing `pre_cap_state` for handler-routed cap terminations; making `resume()` restart from `pre_cap_state`; restoring `_summary_state_executed` / `_iteration_summary_executed` on resume so the handler does not re-fire or immediately terminate.
+- **Out of scope**: modifying `map_final_status()` — it already returns `interrupted` for the handler-routed cap path today (verified, see Codebase Research Findings), so no change is needed there; the Option A/B closed-`terminated_by`-vocabulary ripple (moot now that no new value is needed); automatically raising `max_steps`/`max_iterations` on resume (the user still raises the cap manually first, same as the existing unhandled-cap path); ENH-3473's `best_effort.json` checkpoint behavior (separate issue, cross-referenced but not implemented here); re-executing the summary/handler state itself on resume (resume restarts from `pre_cap_state`, never re-enters the handler).
 
 ## Backwards Compatibility
 
@@ -143,5 +157,7 @@ Decision needed (Option A vs Option B above) before implementation. Regardless o
 
 
 ## Session Log
+- `/ll:reconcile-issue` - 2026-09-16T02:12:37 - `7a435e29-efad-4c49-9f3c-8d2f500cf069.jsonl`
+- `/ll:refine-issue` - 2026-09-16T02:07:09 - `7a435e29-efad-4c49-9f3c-8d2f500cf069.jsonl`
 - `/ll:format-issue` - 2026-09-16T01:54:03 - `40e731d3-d53c-4de7-b4f5-5d02be86a0f0.jsonl`
 - `/ll:capture-issue` - 2026-09-16T01:44:32 - `7e7f4c6d-9565-4770-b859-052872972b63.jsonl`
