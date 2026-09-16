@@ -18,6 +18,12 @@ relates_to:
 - BUG-3490
 - FEAT-3474
 - FEAT-3488
+confidence_score: 90
+outcome_confidence: 73
+score_complexity: 5
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 # BUG-3489: Policy-router runtime: stale LLM scores across passes and decision-table dispatch errors route to a success outcome
@@ -226,6 +232,7 @@ what was wrong and fixed, not an outstanding action item)
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-16T23:29:28 - `993432ad-a051-4f1f-967b-f26e1cd3e891.jsonl`
 - `/ll:verify-issues` - 2026-09-16T23:10:00 - `65d3c113-1c9d-45cd-b132-c02e6bee7024.jsonl`
 - `/ll:refine-issue` - 2026-09-16T22:24:04 - `c7278f1b-df03-4464-a3c5-e94aa066b201.jsonl`
 - review - 2026-09-16 - applied architecture review: explicit error-verdict routing, upstream failure routes, partial/invalid scoring contract, serializer collision guards and migration, behavioral execution coverage, corrected runtime integration and dependency scope
