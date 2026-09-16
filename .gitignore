@@ -65,6 +65,10 @@ temp/
 .ll/ll-continue-prompt*.md
 .mcp.json
 
+# Agent/plugin configuration (host-specific experimental)
+.agents/
+.codex/
+
 # Python
 __pycache__/
 *.py[cod]

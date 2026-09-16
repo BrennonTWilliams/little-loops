@@ -84,24 +84,73 @@ A new `issue_lifecycle` mode on `policy-router-builder.html.tmpl` where:
 
 | Frontmatter key | Type | Scorer encoding |
 |---|---|---|
-| `status` | string | verbatim |
-| `priority` | string | verbatim (`P0`..`P5`) |
-| `confidence_score` | numeric | verbatim |
-| `outcome_confidence` | numeric | verbatim |
-| `decision_needed` | boolean | `100` / `0` |
-| `spike_needed` | boolean | `100` / `0` |
-| `blocked_by` | numeric | list length (0 when absent/empty) |
-| `deferred_reason` | string | verbatim, empty string when absent |
+| `status` | string | verbatim; absent → no file |
+| `priority` | string | verbatim (`P0`..`P5`); absent → no file |
+| `confidence_score` | numeric | verbatim; absent → no file |
+| `outcome_confidence` | numeric | verbatim; absent → no file |
+| `decision_needed` | boolean | `100` / `0` (string-truthiness, see Encoding Rules) |
+| `spike_needed` | boolean | `100` / `0` (string-truthiness, see Encoding Rules) |
+| `blocked_by` | numeric | list length (0 when absent/empty/`null`) |
+| `deferred_reason` | string | verbatim; absent/`null` → no file |
+
+### Encoding Rules
+
+These rules are shared verbatim by the `frontmatter_scores` fragment (Python)
+and the Try-it `encodeFrontmatterScores` mirror (JS), and are the contract the
+scorer pytest and `node --test` cases pin.
+
+- **Frontmatter values are strings.** `parse_frontmatter` loads with
+  `yaml.BaseLoader` (`scripts/little_loops/frontmatter.py:255-268`), so
+  `decision_needed: true` arrives as the string `"true"`; `coerce_types=True`
+  only turns bare digit scalars into `int`. Every rule below is defined on
+  string/list/`None` inputs, never on Python `bool`/`float`.
+- **boolean** → `100` when the value, lowercased and stripped, is one of
+  `true`, `yes`, `on`, `1`; otherwise `0` (including absent, `null`, empty,
+  and any other string). The file is always written.
+- **numeric** → scalar written verbatim (the dispatch fragment coerces to
+  float; a non-numeric scalar such as `confidence_score: high` is written
+  as-is and the engine's string fallback applies — `==`/`!=` compare as
+  strings, ordered ops evaluate False). A list value → `len(list)`. A
+  non-list scalar where a list is expected (`blocked_by: BUG-1`) → `1`.
+  Absent/`null` → **no file** (engine missing-dimension semantics: `!=`
+  matches, everything else does not).
+- **string** → `str(value).strip()` written verbatim. Absent/`null`/empty →
+  **no file**. There is deliberately no "empty string" encoding: the rule
+  grammar requires a non-empty predicate value (`_PRED_PATTERN`,
+  `fsm/policy_rules.py:32`), so `deferred_reason:==` cannot be authored, and
+  an empty file evaluates identically to a missing dimension anyway.
+- **Name normalization.** `context.frontmatter_dimensions` carries the
+  **raw** frontmatter key (case-sensitive, as the user typed it) for lookup;
+  the output filename uses the normalized form (`normalizeDimName()`:
+  lowercase, spaces→hyphens, underscores untouched) so it matches the dim
+  name `_serializeRulesText()` emits into `context.policy_rules`.
+- **String-value validation (builder side).** `parse_rules` splits the LHS
+  on `&`, partitions on the first `->`, and treats `#`-leading lines as
+  comments. The `string` type's value input must reject empty values and
+  values containing `&` or `->`. Values with internal spaces are fine
+  (`\S.*?` + `strip()`).
+- **Numeric-first coercion on `==`/`!=`.** The engine tries `float()` on both
+  sides first, so `severity:==1` matches frontmatter `severity: "1"` and
+  `severity: 1.0` alike. Pin this in the conformance corpus.
 
 ### Verb Table
 
-| Verb | Default slash command (body) |
-|---|---|
-| prepare | `/ll:format-issue ${context.issue_id}` |
-| refine | `/ll:refine-issue ${context.issue_id}` |
-| gate | `/ll:confidence-check ${context.issue_id}` |
-| implement | `/ll:manage-issue ${context.issue_id}` |
-| verify | `/ll:verify-issues ${context.issue_id}` |
+| Verb | Default slash command (body) | Default transition |
+|---|---|---|
+| prepare | `/ll:format-issue ${context.issue_id}` | rescore ("Score again") |
+| refine | `/ll:refine-issue ${context.issue_id}` | rescore ("Score again") |
+| gate | `/ll:confidence-check ${context.issue_id}` | rescore ("Score again") |
+| implement | `/ll:manage-issue ${context.issue_id}` | finish ("Stop here") |
+| verify | `/ll:verify-issues ${context.issue_id}` | finish ("Stop here") |
+
+Transitions use the shell's existing per-outcome selector (`.tmpl:383`:
+"Score again" / "Go to…" / "Stop here") and remain user-editable. `rescore`
+re-runs `frontmatter_scores` after the verb, so a loop authored as "refine,
+then gate on confidence" progresses within one run (refine-issue updates
+`confidence_score`; the next score pass routes to gate). This matches the
+template's existing outcome default (`.tmpl:656` seeds `rescore`) rather than
+forcing finish-only. `max_steps` bounds a non-converging refine cycle, exactly
+as it bounds `deep_repair → score` in `decision_table` mode.
 
 ## Motivation
 
@@ -130,17 +179,19 @@ shell state that:
 - resolves `${context.issue_id}` to a path via `ll-issues path <ID>`;
 - parses the file with `parse_frontmatter(content, coerce_types=True)`;
 - for each `name:type` pair in `${context.frontmatter_dimensions}`
-  (pipe-separated, e.g. `status:string|confidence_score:numeric|decision_needed:boolean|severity:string`)
-  writes `${context.run_dir}/rubric-dim-<normalized-name>.txt` using the
-  encoding rules: numeric → value as-is (missing → file not written, so the
-  engine's missing-dimension semantics apply); boolean → `100`/`0` (missing →
-  `0`); string → `str(value)` (missing → empty string); list-valued key with
-  numeric type → `len(list)`.
+  (pipe-separated, raw keys, e.g. `status:string|confidence_score:numeric|decision_needed:boolean|severity:string`)
+  looks up the raw key in the parsed frontmatter and writes
+  `${context.run_dir}/rubric-dim-<normalized-name>.txt` per the **Encoding
+  Rules** section above (boolean → `100`/`0` by string-truthiness, always
+  written; numeric → verbatim or list length, absent → no file; string →
+  verbatim, absent/empty → no file).
 - exits non-zero when the issue ID does not resolve (mirrors rn-remediate's
   BUG-2003 AC5 contract).
 
 Booleans are encoded 100/0 so the existing `compileBooleanPredicate` path in
-`_serializeRulesText()` is reused unchanged; no engine changes are needed.
+`_serializeRulesText()` is reused unchanged (`==true` → `>=50`, `==false` →
+`<50`; an absent boolean writes `0` and therefore satisfies `==false`); no
+engine changes are needed.
 
 ### 2. Core (`policy_builder_core.mjs`)
 
@@ -172,7 +223,9 @@ Booleans are encoded 100/0 so the existing `compileBooleanPredicate` path in
 - Third `<option>` on `#mode-switch`; `applyModeVisibility()` shows the
   dimensions/outcomes/rules fieldsets and a new `frontmatter-tryit-fieldset`
   for this mode, hides `threshold-fieldset`.
-- `#dim-type` gains a `string` option; `opsForType()` restricts it to `==`/`!=`.
+- `#dim-type` gains a `string` option; `opsForType()` restricts it to `==`/`!=`;
+  the rule-value input for `string` dims rejects empty values and values
+  containing `&` or `->` (see Encoding Rules § String-value validation).
 - Outcome fieldset in this mode shows the five verbs with their default
   slash-command bodies pre-filled and the existing skill-catalog dropdown as
   the override.
@@ -260,13 +313,18 @@ _Added by `/ll:refine-issue` — 2026-09-16 — based on codebase analysis:_
   → length, missing numeric → absent, missing string → empty).
 - `scripts/tests/fixtures/policy_builder/sample-issue-lifecycle.model.json`
   and `.yaml` — new golden fixture pair; the YAML must pass `ll-loop validate`.
-- `scripts/tests/test_policy_builder_corpus.py` — add corpus cases for
-  string `==`/`!=` predicates against the conformance corpus so the JS mirror
-  and `evaluate_rules` agree on string handling.
+- `scripts/tests/test_policy_builder_corpus.py` /
+  `scripts/tests/fixtures/policy_builder/conformance_corpus.json` — the
+  corpus is numeric-only today; add cases for string `==`/`!=` predicates,
+  missing-dimension semantics (`!=` matches, `==` does not), and the
+  numeric-first coercion case (`severity:==1` against `"1"` and `"1.0"`) so
+  the JS mirror and `evaluate_rules` agree on string handling.
 - New: a pytest for the `frontmatter_scores` fragment that builds a temp
-  issue file with built-in, custom, boolean, list, and missing fields, runs
+  issue file with built-in, custom, boolean (`true`/`yes`/`false`/absent as
+  **strings**, since `BaseLoader` never yields `bool`), list, scalar-where-
+  list-expected, non-numeric-under-numeric, `null`, and missing fields, runs
   the fragment's Python body, and asserts the exact `rubric-dim-*.txt` set
-  and contents (follow the fragment-testing pattern used for
+  and contents per the Encoding Rules (follow the fragment-testing pattern used for
   `policy_parse_scores` if one exists; otherwise extract the body to
   `little_loops.fsm.frontmatter_scores` and shell into it, matching how
   `policy_table_dispatch` imports `policy_rules`).
@@ -380,10 +438,16 @@ because the emitted loop makes no sub-loop calls.
 - [ ] The emitted YAML imports only `lib/policy-router.yaml`, declares
   `parameters: { issue_id: {...} }`, uses `frontmatter_scores` →
   `policy_table_dispatch`, and passes `ll-loop validate`.
-- [ ] `frontmatter_scores` encodes values per the Built-in Dimension Table
-  rules (boolean → 100/0, list → length, missing numeric → no file, missing
-  string → empty) and exits non-zero on an unresolved issue ID; covered by a
-  pytest.
+- [ ] `frontmatter_scores` encodes values per the Encoding Rules (boolean →
+  100/0 by string-truthiness on `true/yes/on/1`, always written; list →
+  length; scalar-where-list → 1; non-numeric scalar under `numeric` →
+  verbatim; missing/`null` numeric or string → no file) and exits non-zero
+  on an unresolved issue ID; covered by a pytest whose fixture values are
+  strings, matching `BaseLoader` output.
+- [ ] Each verb outcome seeds the Verb Table's default transition
+  (prepare/refine/gate → rescore, implement/verify → finish) and remains
+  editable via the existing outcome transition selector; the seeded example
+  progresses refine → gate within one run when `confidence_score` rises.
 - [ ] The Try-it panel accepts a pasted frontmatter block and reports the
   firing rule, agreeing with `evaluate_rules` on every conformance-corpus case.
 - [ ] The new mode's pure-function core logic ships with `node --test`
@@ -403,8 +467,9 @@ because the emitted loop makes no sub-loop calls.
 - `dimension: {name: string, type: "numeric" | "boolean" | "string"}` — the
   existing shape with `"string"` added; no `kind` discriminator.
 - `outcome: {name: "prepare" | "refine" | "gate" | "implement" | "verify",
-  actionType: "slash_command", body: string, transition: {kind: "finish"}}` —
-  existing outcome shape, seeded from the Verb Table.
+  actionType: "slash_command", body: string, transition: {kind: "rescore" | "goto" | "finish", target?: string}}`
+  — existing outcome shape, seeded from the Verb Table (rescore for
+  prepare/refine/gate, finish for implement/verify).
 - `BUILTIN_FRONTMATTER_DIMENSIONS: ReadonlyArray<dimension>` and
   `LIFECYCLE_VERBS: ReadonlyArray<outcome>` — new exported constants in
   `policy_builder_core.mjs`.
@@ -463,10 +528,16 @@ confirm which rule fires, save the YAML, and run it with
 Seeded example rules (also the `seedExample` content):
 
 ```
+status:==done -> verify
 severity:==critical & review_status:==approved -> implement
 confidence_score:>=70 -> gate
 * -> refine
 ```
+
+With the Verb Table's default transitions, a single run on an issue at
+`confidence_score: 40` goes refine → (rescore) → gate once refine-issue lifts
+the score past 70, and `status: done` after implement routes to verify on the
+next pass.
 
 ## Non-goals
 
@@ -537,6 +608,7 @@ record of what was wrong and fixed, not an outstanding action item).
 
 
 ## Session Log
+- pre-implementation review - 2026-09-16 - added Encoding Rules (BaseLoader string-truthiness for booleans, dropped unexpressable "missing string → empty" encoding, defined non-numeric/scalar-where-list cases, name-normalization and string-value validation contracts); Verb Table gains default transitions (rescore for prepare/refine/gate); corpus/test/AC bullets updated to match
 - `/ll:verify-issues` - 2026-09-16T16:43:24 - `40a29daf-d13d-4b50-8d3f-07379ec26437.jsonl`
 - review rewrite - 2026-09-16 - resolved emitted-artifact shape, added `frontmatter_scores` scorer, value-encoding rules, `string` type, verb defaults, Try-it; removed refuted directive claims
 - `/ll:refine-issue` - 2026-09-16T16:03:25 - `80866648-631d-42a2-9297-c19a0708559a.jsonl`
