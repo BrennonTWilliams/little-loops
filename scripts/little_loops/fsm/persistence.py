@@ -1263,23 +1263,24 @@ class PersistentExecutor:
             context=dict(self.fsm.context),
         )
         run_dir_str = self.fsm.context.get("run_dir", "")
-        if result.terminated_by == "workdir_vanished":
-            # BUG-3375: the run's own persistence sink (`.loops/`, run_dir, lock
-            # dir) may live inside the vanished directory (e.g. an ll-parallel
-            # worker rooted at cwd=worktree_path). Best-effort only — the abort
-            # itself must still surface cleanly to the caller.
-            try:
-                self.persistence.save_state(final_state)
-                self.persistence.archive_run(run_dir=Path(run_dir_str) if run_dir_str else None)
-            except OSError:
-                logger.warning(
-                    f"workdir_vanished: could not persist final state for "
-                    f"'{self.fsm.name}' — its persistence sink vanished with the "
-                    "working directory"
-                )
-        else:
+        # ENH-3472: save_state()/archive_run() must never discard an
+        # already-computed result — e.g. the run's own persistence sink may
+        # live inside a vanished working directory (BUG-3375), or disk may be
+        # full. Each call is guarded independently so a save_state() failure
+        # doesn't prevent archive_run() from being attempted.
+        _vanished_note = (
+            " (working directory vanished)" if result.terminated_by == "workdir_vanished" else ""
+        )
+        try:
             self.persistence.save_state(final_state)
+        except Exception as exc:  # noqa: BLE001 — persistence must never discard the result
+            logger.warning(
+                f"could not save final state for '{self.fsm.name}': {exc}{_vanished_note}"
+            )
+        try:
             self.persistence.archive_run(run_dir=Path(run_dir_str) if run_dir_str else None)
+        except Exception as exc:  # noqa: BLE001 — persistence must never discard the result
+            logger.warning(f"could not archive run for '{self.fsm.name}': {exc}{_vanished_note}")
 
         return result
 

@@ -1526,6 +1526,182 @@ class TestPersistentExecutor:
         assert (run_dirs[0] / "state.json").exists()
         assert (run_dirs[0] / "events.jsonl").exists()
 
+    def _count_save_state_calls(self, make_fsm: Any, tmp_dir: Path) -> int:
+        """Run make_fsm() to completion once, counting real save_state() calls.
+
+        Used to identify the *last* save_state() call (the tail's own) for
+        FSM shapes where the tail's status matches the last mid-run
+        state_enter's status (e.g. a plain terminal: both are "completed").
+        """
+        fsm = make_fsm()
+        persistence = StatePersistence(fsm.name, tmp_dir)
+        executor = PersistentExecutor(
+            fsm, persistence=persistence, action_runner=MockActionRunner()
+        )
+        calls = 0
+        original = executor.persistence.save_state
+
+        def _count(state: LoopState) -> None:
+            nonlocal calls
+            calls += 1
+            original(state)
+
+        executor.persistence.save_state = _count  # type: ignore[method-assign]
+        executor.run()
+        return calls
+
+    def test_run_survives_final_save_state_failure_and_still_archives(
+        self, tmp_loops_dir: Path
+    ) -> None:
+        """ENH-3472: a save_state() failure on the tail's final call must not
+        discard the result, and archive_run() must still be attempted."""
+
+        def _make_fsm() -> FSMLoop:
+            return FSMLoop(
+                name="test-loop",
+                initial="check",
+                states={
+                    "check": StateConfig(action="echo 'checking'", on_yes="done", on_no="fix"),
+                    "fix": StateConfig(action="echo 'fixing'", next="check"),
+                    "done": StateConfig(terminal=True),
+                },
+            )
+
+        total_calls = self._count_save_state_calls(_make_fsm, tmp_loops_dir / "baseline")
+
+        executor = PersistentExecutor(
+            _make_fsm(), loops_dir=tmp_loops_dir, action_runner=MockActionRunner()
+        )
+        call_count = 0
+        original_save_state = executor.persistence.save_state
+
+        def _raise_on_last(state: LoopState) -> None:
+            nonlocal call_count
+            call_count += 1
+            if call_count == total_calls:
+                raise RuntimeError("disk full")
+            original_save_state(state)
+
+        executor.persistence.save_state = _raise_on_last  # type: ignore[method-assign]
+
+        original_archive_run = executor.persistence.archive_run
+        archive_calls: list[Any] = []
+
+        def _spy_archive(*args: Any, **kwargs: Any) -> Path | None:
+            archive_calls.append((args, kwargs))
+            return original_archive_run(*args, **kwargs)
+
+        executor.persistence.archive_run = _spy_archive  # type: ignore[method-assign]
+
+        # clear_previous=False: a fresh dir has nothing to clear, and
+        # clear_all() would otherwise call archive_run() a second time
+        # (via _spy_archive) before the run even starts.
+        result = executor.run(clear_previous=False)
+
+        assert result.terminated_by == "terminal"
+        assert len(archive_calls) == 1
+
+    def test_run_survives_archive_run_failure_and_still_saves_final_state(
+        self, simple_fsm: FSMLoop, tmp_loops_dir: Path
+    ) -> None:
+        """ENH-3472: an archive_run() failure must not discard the result, and
+        the final save_state() must have already succeeded."""
+        executor = PersistentExecutor(
+            simple_fsm, loops_dir=tmp_loops_dir, action_runner=MockActionRunner()
+        )
+        executor.persistence.archive_run = MagicMock(  # type: ignore[method-assign]
+            side_effect=RuntimeError("disk full")
+        )
+
+        # clear_previous=False: a fresh dir has nothing to clear, and
+        # clear_all() would otherwise hit the mocked archive_run() before
+        # the run even starts.
+        result = executor.run(clear_previous=False)
+
+        assert result.terminated_by == "terminal"
+        state = executor.persistence.load_state()
+        assert state is not None
+        assert state.status == "completed"
+
+    def test_run_preserves_failure_terminal_result_when_final_save_fails(
+        self, tmp_loops_dir: Path
+    ) -> None:
+        """ENH-3472: result.failure_terminal survives a final save_state()
+        failure (pins the exit-code side effect in worker_pool.py/gate.py)."""
+        fsm = FSMLoop(
+            name="failing-loop",
+            initial="work",
+            states={
+                "work": StateConfig(action="echo 'working'", next="blocked"),
+                "blocked": StateConfig(terminal=True, failure=True),
+            },
+        )
+        executor = PersistentExecutor(
+            fsm, loops_dir=tmp_loops_dir, action_runner=MockActionRunner()
+        )
+        original_save_state = executor.persistence.save_state
+
+        def _raise_on_failed(state: LoopState) -> None:
+            if state.status == "failed":
+                raise RuntimeError("disk full")
+            original_save_state(state)
+
+        executor.persistence.save_state = _raise_on_failed  # type: ignore[method-assign]
+
+        result = executor.run()
+
+        assert result.terminated_by == "terminal"
+        assert result.failure_terminal is True
+
+    def test_non_terminal_final_save_failure_leaves_running_until_reconciled(
+        self, tmp_loops_dir: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """ENH-3472: a non-terminal exit's final save_state() failure leaves
+        the on-disk status at "running" (last successful mid-run write);
+        _reconcile_stale_running() self-heals it on the next read once
+        liveness cannot be confirmed."""
+        fsm = FSMLoop(
+            name="infinite-loop",
+            initial="check",
+            max_steps=2,
+            states={
+                "check": StateConfig(
+                    action="echo 'checking'",
+                    on_yes="check",
+                    on_no="check",
+                ),
+            },
+        )
+        executor = PersistentExecutor(
+            fsm, loops_dir=tmp_loops_dir, action_runner=MockActionRunner()
+        )
+        original_save_state = executor.persistence.save_state
+
+        def _raise_when_not_running(state: LoopState) -> None:
+            if state.status != "running":
+                raise RuntimeError("disk full")
+            original_save_state(state)
+
+        executor.persistence.save_state = _raise_when_not_running  # type: ignore[method-assign]
+
+        result = executor.run()
+
+        assert result.terminated_by == "max_steps"
+
+        # A fresh StatePersistence — the mocked one would raise again.
+        fresh_persistence = StatePersistence(fsm.name, tmp_loops_dir)
+        state = fresh_persistence.load_state()
+        assert state is not None
+        assert state.status == "running"
+
+        running_dir = fresh_persistence.running_dir
+        (running_dir / f"{fsm.name}.pid").write_text("999999")
+        monkeypatch.setattr("little_loops.fsm.persistence._process_alive", lambda pid: False)
+
+        reconciled = _reconcile_stale_running(state, fresh_persistence, running_dir, fsm.name)
+
+        assert reconciled.status == "interrupted"
+
     def test_meta_eval_written_on_llm_structured_in_meta_loop(self, tmp_loops_dir: Path) -> None:
         """meta-eval.jsonl is written when llm_structured evaluate fires in a meta-loop."""
         meta_fsm = FSMLoop(

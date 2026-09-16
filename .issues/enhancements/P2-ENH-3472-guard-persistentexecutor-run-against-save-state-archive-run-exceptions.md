@@ -4,8 +4,9 @@ title: Guard PersistentExecutor.run() so a save_state/archive_run exception cann
   discard an already-computed ExecutionResult
 type: ENH
 priority: P2
-status: open
+status: done
 discovered_date: '2026-09-13'
+completed_at: '2026-09-16T01:23:04Z'
 labels: []
 parent: ENH-3468
 confidence_score: 100
@@ -189,11 +190,29 @@ was wrong and fixed, not an outstanding action item)
 - `cli/loop/runner.py:476` (Call Path, `run_foreground()`'s `executor.run()` call)
   corrected to `:479` (pre-existing minor drift, unrelated to the ENH-3471 shift).
 
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-09-16
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/fsm/persistence.py`: restructured `PersistentExecutor.run()`'s tail (`:1265-1285`) into one code path — `save_state()` and `archive_run()` each in their own `try`/`except Exception  # noqa: BLE001`, logged via `logger.warning` with the `workdir_vanished` note appended when applicable. Collapses the prior `workdir_vanished`/`else` branch split (the old `except OSError` was a strict subset). Matches the Design sketch and Program Design exactly — no deviations.
+- `scripts/tests/test_fsm_persistence.py`: added four regression tests to `TestPersistentExecutor` per Implementation Step 2 — final `save_state()` failure still archives; `archive_run()` failure still saves final state; `failure_terminal=True` survives a final save failure; a non-terminal exit's final save failure leaves disk at `running` until `_reconcile_stale_running()` self-heals it.
+
+### Verification Results
+- Tests: PASS (`test_fsm_persistence.py`, `test_cost_ceiling_enforcement.py`, `test_usage_journal.py`, `test_ll_loop_execution.py`, `test_fsm_executor.py`, `test_cli_loop_background.py` — 830 passed; full suite `python -m pytest scripts/tests/` — 24471 passed, 50 skipped, 1 unrelated xdist worker-crash flake on `test_feat3323_sse_bridge.py` confirmed pre-existing and unrelated by re-running in isolation, where it passed)
+- Lint: PASS (`ruff check`)
+- Types: PASS (`mypy`)
+- Format: PASS (`ruff format --check`)
+- Integration: PASS (no other call sites reference the collapsed branch structure)
+
 ## Status
 
 **Open** | Created: 2026-09-13 | Priority: P2
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-16T01:23:04 - `b06ee659-21ec-4b98-bb84-c79806e31e7c.jsonl`
 - `/ll:verify-issues` - 2026-09-16T01:04:27 - `8bc49385-1641-422a-9ea4-71f61ae80d11.jsonl`
 - Manual review rewrite - 2026-09-15 - corrected the stale-`running` claim (terminal exits already read `completed` via mid-run `_save_state()` on `state_enter`); added the test-injection constraint (blanket `save_state` mock crashes mid-run before the tail); rewrote Step 2 accordingly (final-call-only injection, non-terminal FSM + fresh persistence for the reconcile test); noted `resume()` shares the tail; completed the sketch's second warning; recorded the `failure_terminal`→`completed` on-disk quirk as out of scope.
 - `/ll:verify-issues` - 2026-09-16T00:48:11 - `c5682d24-7c5a-42e9-b4d1-ac64f38c4408.jsonl`
