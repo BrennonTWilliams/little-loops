@@ -80,6 +80,15 @@ _Added by pre-implementation review (5th pass) — 2026-09-16 — based on codeb
 - `validate_fsm` has no INFO severity (only ERROR/WARNING across `fsm/validation/*.py`), so asserting `validate_fsm(fsm) == []` is safe.
 - The visible-markup jargon denylist is `["Axis A", "Axis B", "context.subject", "policy_rules", "predicate"]` (`test_policy_builder_emit.py:133`).
 
+_Added by pre-implementation review (6th pass) — 2026-09-16 — based on codebase analysis:_
+
+- **The per-state action timeout, when nothing is declared, is 3600 s** — the executor's own fallback chain (`executor.py:2561`: `state.timeout or fsm.default_timeout or 3600`); `StateConfig.timeout` defaults to `None` (`fsm/schema.py:718`) and `FSMLoop.default_timeout` defaults to `None` (`fsm/schema.py:1413`), so with neither set the chain bottoms out at the literal `3600`. Neither the decision-table golden nor `policy-refine.yaml` declares a `timeout`, so the lifecycle emit would inherit the 60-minute cap. `ll-auto --only` implementing one issue routinely exceeds that; rn-remediate declares top-level `timeout: 14400` (`rn-remediate.yaml:28`). Without a timeout the `implement` verb is killed mid-run and lands on `failed`. (Corrected 2026-09-16: this previously cited `fsm/schema.py:1046` as the per-state default — that line is `LLMConfig.timeout`, the `llm_structured` evaluator's own call timeout, unrelated to action-execution timeouts.)
+- **`ll-auto --only` re-applies the project's own confidence gate.** `AutoManager._process_issue` consults `readiness_status()` and refuses to implement below `commands.confidence_gate.readiness_threshold` unless `--force-implement` is passed (`issue_manager.py:817-849`); `AutoManager.run()` returns 1 whenever `--only` was given and nothing was processed (`issue_manager.py:2057-2060`). The non-zero exit is what makes `on_error: failed` on the `implement` verb meaningful, but a loop rule whose threshold is below the project's `readiness_threshold` (85 in this repo) routes every `implement` to `failed`.
+- **`fallbackState` defaults to `"done"`** (`policy_builder_core.mjs:544`). In lifecycle mode `done` is the bare terminal, not a verb; a blank model that kept that default would emit `_: done` and an empty verb set.
+- **No fragment body is executed by any test.** `scripts/tests/test_fsm_fragments.py:2364-2402` asserts only fragment structure (`action_type: shell`, `${context.run_dir}` references, classify evaluator); there is no precedent for running a fragment's Python heredoc under pytest. `policy_table_dispatch` reaches the package via `from little_loops.fsm.policy_rules import …` inside the heredoc.
+- `resolve_issue_path(config, user_input) -> Path | None` (`issue_parser.py:114`) is the shared resolver behind `ll-issues path` (`path_cmd.py:24-27` → `_resolve_issue_id`, `cli/issues/show.py:39`); it returns an absolute path and is importable from a Python heredoc, so shelling out to `ll-issues path` is not required. `BRConfig(project_root)` is the constructor (`cli/issues/__init__.py:1004`) and `find_project_root(start)` lives in `paths.py:14`.
+- `terminal_action_ok: true` (`fsm/schema.py:1485`) is the BUG-2813 suppression key. It is deliberately **not** used: the fix in `_outcomeStateLines()` makes the action run, suppression would only hide that it does not.
+
 ## Expected Behavior
 
 A new `issue_lifecycle` mode on `policy-router-builder.html.tmpl` where:
@@ -265,6 +274,16 @@ from the unknown-skill check). Selecting a catalog skill for `implement` in
 the UI switches it back to `slash_command` with the standard `<body>
 ${context.issue_id} <args>` emit.
 
+**`ll-auto` keeps its own confidence gate.** `ll-auto --only` refuses to
+implement an issue whose `confidence_score` is below the project's
+`commands.confidence_gate.readiness_threshold` and exits 1 when nothing was
+processed (6th-pass findings), so the verb lands on `failed`. The loop's
+`implement` rule threshold must therefore be **at or above** the project's
+`readiness_threshold` (the seed's `>=85` matches this repo's 85), or the
+user puts `--force-implement` in `implement`'s args to bypass the gate. The
+`implement` verb's help text names this explicitly; the builder does not
+read `.ll/ll-config.json` and cannot check it.
+
 Transitions use the shell's existing per-outcome selector (`.tmpl:383`:
 "Score again" / "Go to…" / "Stop here") and remain user-editable. `refine`
 defaults to **`goto gate`** rather than `rescore` because refine-issue does
@@ -306,9 +325,12 @@ and the template's inline script. Three pieces of work:
 Add a `frontmatter_scores` fragment alongside `policy_parse_scores`. It is a
 shell state that:
 
-- resolves `${context.issue_id}` to a path via `ll-issues path <ID> --json`
-  and joins the returned `path` onto the project root (the command prints a
-  path relative to `config.project_root`, not the shell cwd — `path_cmd.py`);
+- resolves `${context.issue_id}` to a path with
+  `resolve_issue_path(config, issue_id)` (`issue_parser.py:114`, the shared
+  resolver that `ll-issues path` reaches via `_resolve_issue_id`,
+  `cli/issues/show.py:39`), with `config = BRConfig(find_project_root(Path.cwd()))`
+  (`paths.py:14`) — no `ll-issues path` subprocess; the resolver returns an
+  absolute `Path` (`path_cmd.py:31` only relativizes it for display);
 - **deletes every `rubric-dim-*.txt` and `rubric-aggregate.txt`** in
   `${context.run_dir}` (see Encoding Rules § Clean slate);
 - parses the file with `parse_frontmatter(content, coerce_types=False)`;
@@ -336,6 +358,18 @@ shell state that:
 into a `$${LL_PYTHON:-python3} << 'PYEOF'` heredoc, and escape any literal
 bash `${...}` as `$${...}` (the FSM interpolates the whole action string
 before bash sees it).
+
+**The scorer body lives in a module, not in the heredoc.** No test in the
+repo executes a fragment's heredoc (6th-pass findings), so the encoding
+logic is a new importable module `scripts/little_loops/fsm/frontmatter_scores.py`
+exposing `encode_frontmatter_scores(fm, dims) -> dict[str, str]` (pure:
+parsed frontmatter + `[(raw_key, type), …]` → `{normalized_name: text}`,
+absent keys omitted) and `main(issue_id, dims_text, run_dir) -> int`
+(resolve, clean slate, parse, encode, write, return 0/1). The fragment's
+heredoc is three lines — read the two env vars and `${context.run_dir}`,
+`from little_loops.fsm.frontmatter_scores import main`, `sys.exit(main(...))`
+— mirroring how `policy_table_dispatch` imports `policy_rules`. The pytest
+imports the module directly; nothing shells out.
 
 Booleans are encoded 100/0 so the existing `compileBooleanPredicate` path in
 `_serializeRulesText()` is reused unchanged (`==true` → `>=50`, `==false` →
@@ -379,6 +413,18 @@ check for typo'd dimension names.
   - top-level `on_max_steps: failed`, so a refine/gate cycle that never
     converges ends on the failure terminal instead of `terminated_by:
     max_steps` (5th-pass findings).
+  - top-level `timeout: 14400` (rn-remediate's value, `rn-remediate.yaml:28`).
+    The per-state default, when undeclared, is 3600 s (executor's
+    `state.timeout or fsm.default_timeout or 3600` fallback, `executor.py:2561`
+    — corrected 2026-09-16; `fsm/schema.py:1046` is `LLMConfig.timeout`,
+    unrelated) and neither existing mode's emit declares a timeout;
+    `ll-auto --only` in the `implement` verb routinely runs past 60 minutes
+    and would otherwise be killed and routed to `failed` (6th-pass findings).
+    The value is a constant in the core, not a UI control.
+  - **Blank-model fallback is `gate`.** `fallbackState` defaults to `"done"`
+    (`policy_builder_core.mjs:544`); in this mode the fallback must be a
+    verb, so `blankModel("issue_lifecycle")` sets `fallback: "gate"` and the
+    "Otherwise" footer's selector offers only the five verbs (never `done`).
   - `initial: score` → `score: {fragment: frontmatter_scores, next:
     policy_dispatch, on_error: failed}` → `policy_dispatch` (route-map
     generation as in `_serializeDecisionTable`, except the `_error` sentinel
@@ -475,8 +521,11 @@ check for typo'd dimension names.
   say "condition"/"rule" instead.
 - Try-it: a `<textarea>` for pasted frontmatter; the page parses it with a
   minimal YAML-frontmatter reader (scalars with optional matching quotes,
-  first-`:` split, booleans, flow/dash lists — no nested maps; `""`/`null`/`~`
-  → absent; `status` synonyms canonicalized per `STATUS_SYNONYMS`), encodes
+  first-`:` split, flow/dash lists — no nested maps; every scalar stays a
+  **string** exactly as `BaseLoader` leaves it, so `true`/`false`/`yes` are
+  never converted to JS booleans and the encoder's string-truthiness rule is
+  the only boolean logic; `""`/`null`/`~` → absent; `status` synonyms
+  canonicalized per `STATUS_SYNONYMS`), encodes
   the scores (including the derived `priority_rank`), and runs the JS
   `evaluateRules` mirror over the **compiled** rule table
   (`parseRuleTable(_serializeRulesText(model))`), not `buildModel().rules`
@@ -506,6 +555,9 @@ _Added by `/ll:refine-issue` — 2026-09-16 — based on codebase analysis:_
   `frontmatter_scores` fragment (Proposed Solution §1) next to
   `policy_parse_scores`; update the header comment's fragment list and the
   "Score-source agnosticism" note to cite it as the deterministic scorer.
+- `scripts/little_loops/fsm/frontmatter_scores.py` — **new module** holding
+  the scorer body (`encode_frontmatter_scores`, `main`) that the fragment's
+  heredoc imports (Proposed Solution §1).
 - `scripts/little_loops/templates/policy_builder_core.mjs` — `mode` parameter
   on `blankModel()`/`seedExample()`; `_serializeIssueLifecycle()` (including
   the `on_error: failed` / `failed` terminal wiring); explicit
@@ -615,12 +667,14 @@ _Added by `/ll:refine-issue` — 2026-09-16 — based on codebase analysis:_
   scalar / absent → count), non-numeric-under-numeric, `priority`
   (`P2` → `priority_rank` `2`; `high` → no file), `null`, and missing
   fields, runs
-  the fragment's Python body, and asserts the exact `rubric-dim-*.txt` set
-  and contents per the Encoding Rules, including the two-pass clean-slate
-  case and the unresolved-ID non-zero exit (follow the fragment-testing pattern used for
-  `policy_parse_scores` if one exists; otherwise extract the body to
-  `little_loops.fsm.frontmatter_scores` and shell into it, matching how
-  `policy_table_dispatch` imports `policy_rules`).
+  `little_loops.fsm.frontmatter_scores.main()` directly (no subprocess —
+  there is no fragment-execution test precedent to follow, see Proposed
+  Solution §1 "The scorer body lives in a module"), and asserts the exact
+  `rubric-dim-*.txt` set and contents per the Encoding Rules, including the
+  two-pass clean-slate case and the unresolved-ID non-zero return. A
+  structural case in `test_fsm_fragments.py` (matching the existing
+  `policy_parse_scores` cases at `:2364-2402`) pins that the fragment's
+  heredoc imports that module and references `${context.run_dir}`.
 
 ### Documentation
 - `docs/guides/POLICY_ROUTER_GUIDE.md` — add the `issue_lifecycle` mode with
@@ -635,9 +689,9 @@ _Added by `/ll:refine-issue` — 2026-09-16 — based on codebase analysis:_
 
 ## Implementation Steps
 
-1. Add the `frontmatter_scores` fragment to `lib/policy-router.yaml`
-   (extracting its Python body to an importable module if that is how the
-   fragment test is written). Unit-test the encoding rules. Extend
+1. Add `scripts/little_loops/fsm/frontmatter_scores.py` (encoder + `main`)
+   and the `frontmatter_scores` fragment in `lib/policy-router.yaml` whose
+   heredoc imports it. Unit-test the encoding rules against the module. Extend
    `_validate_policy_dimensions_scored()` to read
    `context.frontmatter_dimensions`.
 2. Add the `issue_lifecycle` mode to `policy_builder_core.mjs`: `mode`
@@ -685,8 +739,9 @@ _Added by `/ll:refine-issue` — 2026-09-16 — based on codebase analysis:_
   fragment, `string` and `list` dimension types, a small pure JS frontmatter
   parser, plus new `node --test` and pytest coverage.
 - **Risk**: Low - additive third mode alongside `decision_table`/`rubric`;
-  the new fragment is additive to `lib/policy-router.yaml`; neither existing
-  mode's emitted YAML changes (verified by the existing golden fixtures).
+  the new fragment is additive to `lib/policy-router.yaml`; the `rubric`
+  golden is byte-unchanged and the `decision_table` golden changes only in
+  the deliberate BUG-2813 fix (see Breaking Change).
 - **Breaking Change**: No — the one shared-code change (`_outcomeStateLines`
   BUG-2813 fix) alters `decision_table` emitted YAML for finish-with-action
   outcomes, but only from a shape whose action never ran to one where it
@@ -738,13 +793,13 @@ because the emitted loop makes no sub-loop calls.
   `implement` default is emitted as `action_type: shell` /
   `action: ll-auto --only ${context.issue_id}`, never as
   `/ll:manage-issue <ID>` (manage-issue requires `<type> <action>`
-  positionals first). Only verbs referenced by a rule or the fallback are
-  emitted.
+  positionals first). Only verbs in the emitted-verb closure (rule targets,
+  the fallback, and `goto` targets of emitted verbs) are emitted.
 - [ ] Rules are ordered/reorderable and read as a first-match list with a
   pinned non-input "Otherwise" catch-all, per FEAT-2301/FEAT-2390's shipped
   shell conventions.
 - [ ] The emitted YAML imports only `lib/policy-router.yaml`, declares
-  `parameters: { issue_id: {...} }`, `scope: ["."]`, and
+  `parameters: { issue_id: {...} }`, `scope: ["."]`, `timeout: 14400`, and
   `pruning_profile_ok: true` (commented), uses `frontmatter_scores` →
   `policy_table_dispatch`, and passes `ll-loop validate` with **zero
   warnings of any rule** — the validator recognizes
@@ -754,8 +809,15 @@ because the emitted loop makes no sub-loop calls.
 - [ ] A verb whose transition is `finish` is emitted as a **non-terminal**
   state with `next: done` plus a bare `done: {terminal: true}`; the emitted
   YAML never pairs `action:` with `terminal: true`. The seeded example's
-  `implement` state actually invokes `/ll:manage-issue` in an end-to-end run
+  `implement` state actually runs `ll-auto --only <ID>` in an end-to-end run
   (observable in the run's events log), not a silent finish.
+- [ ] `blankModel("issue_lifecycle")` seeds `fallback: "gate"`; the
+  "Otherwise" selector in this mode offers only the five verbs, so a
+  lifecycle emit never contains `_: done`.
+- [ ] `implement`'s on-screen help states that `ll-auto` applies the
+  project's own `readiness_threshold` and that `--force-implement` in the
+  args field bypasses it; an end-to-end run against an issue scored below
+  the project threshold ends on `failed` (ll-auto exits 1), not `done`.
 - [ ] The emitted verb set is the transitive closure over rule targets, the
   fallback, and `goto` targets of emitted verbs: a `goto` to an otherwise
   unreferenced verb emits that verb's state and validates clean.
@@ -836,15 +898,16 @@ because the emitted loop makes no sub-loop calls.
 
 - `blankModel(mode = "decision_table") -> Model` — adds an optional parameter
   to the existing zero-arg function (`policy_builder_core.mjs:300`); the
-  `issue_lifecycle` branch seeds dimensions and outcomes from the constants.
+  `issue_lifecycle` branch seeds dimensions and outcomes from the constants
+  and sets `fallback: "gate"` (never the decision-table default `"done"`).
 - `seedExample(mode = "decision_table") -> Model` — same treatment
   (`policy_builder_core.mjs:247`); the example encodes the Use Case rules.
 - `serializeLoopYaml(model: Model) -> string` — new explicit
   `mode === "issue_lifecycle"` branch ahead of the decision-table fallback
   (`policy_builder_core.mjs:645`).
 - `_serializeIssueLifecycle(model: Model) -> string` — new; emits the shape
-  in Proposed Solution §2 (including `scope`, `pruning_profile_ok`, `done`,
-  `failed`), reusing `_serializeRulesText`, the route-map builder, and
+  in Proposed Solution §2 (including `scope`, `timeout`, `on_max_steps`,
+  `pruning_profile_ok`, `done`, `failed`), reusing `_serializeRulesText`, the route-map builder, and
   `_outcomeStateLines`; emits the goto-closed verb set and appends
   ` ${context.issue_id}` to each `slash_command` body.
 - `_emittedVerbs(model: Model) -> string[]` — new pure helper; transitive
@@ -865,9 +928,15 @@ because the emitted loop makes no sub-loop calls.
   exported for `node --test`.
 - `serializeFrontmatterDimensions(model: Model) -> string` — new; produces
   the `name:type|name:type` text for `context.frontmatter_dimensions`.
-- `parseFrontmatterBlock(text: string) -> Record<string, unknown>` — new pure
-  mini-parser for Try-it (scalars with optional matching quotes, first-`:`
-  split, booleans, flow and dash lists).
+- `parseFrontmatterBlock(text: string) -> Record<string, string | string[] | null>`
+  — new pure mini-parser for Try-it (scalars with optional matching quotes,
+  first-`:` split, flow and dash lists; scalars stay strings, never JS
+  booleans or numbers, mirroring `BaseLoader`).
+- `encode_frontmatter_scores(fm: dict[str, str | list | None], dims: list[tuple[str, str]]) -> dict[str, str]`
+  and `main(issue_id: str, dims_text: str, run_dir: str) -> int` — new, in
+  `scripts/little_loops/fsm/frontmatter_scores.py`; the pure encoder and the
+  resolve → clean-slate → parse → encode → write entry point the fragment's
+  heredoc calls (Proposed Solution §1).
 - `encodeFrontmatterScores(fm: Record<string, unknown>, dims: dimension[]) -> Record<string, number | string>`
   — new pure encoder mirroring the fragment's rules (including `list` count
   and the derived `priority_rank`); keys are **normalized** dim names, matching
@@ -959,8 +1028,10 @@ the implementer does not guess. Existing classes only (`rule-row`, `row`,
   input (placeholder `--auto`, blank for `implement`), and the transition
   `<select>`. `implement`'s row shows its shell default as a read-only
   `<code>ll-auto --only $ISSUE</code>` in place of a selected catalog entry
-  until the user picks a skill. Verbs stay in Verb Table order; no drag
-  handle. Help line:
+  until the user picks a skill, with a `<small class="help">` beneath it:
+  "ll-auto also applies your project's confidence threshold; add
+  `--force-implement` here to skip it." Verbs stay in Verb Table order; no
+  drag handle. Help line:
   "Every verb is available as a rule target; verbs no rule routes to are left
   out of the saved loop."
 - **Frontmatter Try-it.** `#frontmatter-tryit-fieldset` holds one
@@ -1038,12 +1109,50 @@ record of what was wrong and fixed, not an outstanding action item).
 - Graph: provider=`codegraph` freshness=`fresh` — used for anchor
   confirmation only, no verdict originated from it alone.
 
+**Re-verified 2026-09-16 (this pass) — one new correction (applied above):**
+
+- **Timeout-default citation was wrong (corrected):** the 6th-pass findings and
+  Proposed Solution §2 cited `fsm/schema.py:1046` as "the per-state timeout
+  default is 1800 s". That line is `LLMConfig.timeout` (docstring: "Timeout
+  for LLM calls in seconds") — the `llm_structured` evaluator's own call
+  timeout, not the per-state *action* timeout. `StateConfig.timeout` defaults
+  to `None` (`fsm/schema.py:718`) and `FSMLoop.default_timeout` also defaults
+  to `None` (`:1413`), so the executor's own fallback chain quoted in the same
+  sentence (`state.timeout or fsm.default_timeout or 3600`, `executor.py:2561`)
+  bottoms out at **3600 s (60 min)** when nothing is declared, not 1800 s
+  (30 min). Conclusion unaffected — `timeout: 14400` is still comfortably
+  above either figure and still needed since `ll-auto --only` can run well
+  past an hour — but the "30-minute cap" framing in Proposed Solution §2 and
+  the two `fsm/schema.py:1046` citations were factually wrong and are
+  corrected in place.
+- Spot-checked ~15 additional file:line citations across
+  `policy_builder_core.mjs` (`normalizeDimName:90`, `seedExample:247`,
+  `blankModel:300`, `_serializeRulesText:392`, `_outcomeStateLines:458`,
+  `fallbackState` default `:544`, `serializeLoopYaml:645`), `executor.py`
+  (terminal-check-precedes-action `:816`, on_error-only-on-nonzero-exit
+  `:2155-2179`), `fsm/schema.py` (`with_:` caller-side-only `:684`,
+  `terminal_action_ok` `:1485`), `fsm/policy_rules.py` (`_PRED_PATTERN:32`,
+  missing-dimension `!=`-matches semantics, numeric-first `==`/`!=`
+  coercion), `issue_parser.py` (`resolve_issue_path` returns `Path | None`
+  `:114`), and the two golden-test claims in `test_policy_builder_emit.py`
+  (ERROR-only filtering, exact jargon denylist) and
+  `test_policy_builder_node_gate.py:125` (parametrize list) — all confirmed
+  accurate.
+- Proposal-vs-code consequence check (B6): no exception-handler mismatch, no
+  test-fixture invalidation found. `resolve_issue_path` returns `None` rather
+  than raising on an unresolved ID, matching the proposed `main()`'s
+  "exits non-zero on unresolved ID" contract — no uncaught-exception gap.
+- No commits touched any file this issue cites since the prior verify pass
+  (2026-09-16T19:10:06); nothing else had drifted.
+
 ## Status
 
 **Open** | Created: 2026-09-14 | Priority: P3
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-16T19:28:08 - `78608f9a-194c-4189-8037-496c6c9a4438.jsonl`
+- pre-implementation review (6th pass) - 2026-09-16 - four gaps + four stale sentences: (1) no `timeout` anywhere — per-state default is 1800 s (schema.py:1046) and `ll-auto --only` outruns it; emit top-level `timeout: 14400` (rn-remediate:28); (2) `ll-auto` re-applies the project `readiness_threshold` and exits 1 when nothing processed (issue_manager.py:817-849, 2057-2060) — documented, `--force-implement` args override, help text + AC; (3) blank lifecycle model inherited `fallback: "done"` (mjs:544) — now `gate`, selector verb-only; (4) fragment-test branch resolved: no fragment-execution precedent (test_fsm_fragments.py:2364-2402 is structural), so the scorer body is a new `fsm/frontmatter_scores.py` module (`encode_frontmatter_scores`, `main`) resolving via `resolve_issue_path` (issue_parser.py:114) with a three-line heredoc, no `ll-issues path` subprocess. Stale text fixed: AC still said `implement` invokes `/ll:manage-issue`; Impact said no existing emit changes (contradicted BUG-2813 regen); emitted-verb AC omitted goto closure; mini-parser said "booleans" (scalars stay strings). Confirmed: `terminal_action_ok` suppression exists but the `_outcomeStateLines` fix is right; JS `evalPredicate` already does numeric-first `==`; all `ll-issues check-*` gates pass.
 - `/ll:verify-issues` - 2026-09-16T19:10:06 - `3d7f4fbe-8b24-4254-ace7-f059ce8a9849.jsonl`
 - pre-implementation review (5th pass) - 2026-09-16 - five fixes: (1) **blocking** — seed rules and Verb Table defaults never converged: refine-issue does not write `confidence_score` (only confidence-check does via `ll-issues set-scores`), so `* -> refine` + rescore spun until `max_steps` and `gate` + rescore re-fired forever; seed reordered (`>=85 -> implement`, `<85 -> refine`, `* -> gate`), `refine` defaults to goto gate, `on_max_steps: failed` emitted; (2) **blocking** — `/ll:manage-issue ${context.issue_id}` is malformed (skill requires `<type> <action>` positionals, type unknowable at emit time); `implement` now defaults to a `shell` outcome `ll-auto --only ${context.issue_id}`, matching rn-remediate:470/autodev; (3) the four slash-command verbs need `--auto` to run unattended — new per-outcome `args` field, emitted as `<skill> ${context.issue_id} <args>`; (4) BUG-2813 fix's `done` state can collide with a user outcome named `done` — `_doneStateName` helper; (5) `on_error: failed` rationale corrected (infra-only) and jargon-denylist constraint (`predicate`, `policy_rules`) recorded for new UI copy. Confirmed fine: `:shell` modifier, `scope`/`pruning_profile_ok` keys, `ll-issues path --json` shape, run pre-flight rejects missing `issue_id`, no INFO validator severity.
 - pre-implementation review (4th pass) - 2026-09-16 - seven fixes: (1) **blocking** — `finish` verbs (`implement`/`verify` defaults) were emitted terminal-with-action and the executor never runs a terminal's action (executor.py:816); now `next: done` + bare `done:`, fixed in shared `_outcomeStateLines()` (BUG-2813) with a called-out decision-table golden regen; (2) zero-warnings AC was unreachable — live validate on the decision-table golden emits BUG-2813, missing-`scope:`, and MR-12 pruning-profile warnings; emit `scope: ["."]` + commented `pruning_profile_ok: true`, and the golden pytest asserts all severities; (3) emitted-verb set is now the `goto`-transitive closure (dangling `next:` otherwise); (4) `on_error: failed` on verb states; (5) built-in dims locked against `✕` delete; (6) `ll-issues path` prints project-root-relative — fragment uses `--json` and joins; (7) validator test file named (`test_fsm_validation_reachability.py`). Confirmed no gap: fragment deep-merge preserves caller `on_error`; `parse_frontmatter` claims reproduced live.
