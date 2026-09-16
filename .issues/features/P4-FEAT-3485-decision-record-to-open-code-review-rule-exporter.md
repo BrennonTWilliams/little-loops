@@ -8,8 +8,14 @@ discovered_by: ll-issues-create
 discovered_date: '2026-09-16'
 captured_at: '2026-09-16T04:15:42Z'
 learning_tests_required:
-  - open-code-review
+- open-code-review
 decision_needed: false
+confidence_score: 100
+outcome_confidence: 86
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # FEAT-3485: Decision-record to open-code-review rule exporter
@@ -248,6 +254,7 @@ ll-issues decisions export --target ocr [--output-dir .] [--scope 'scripts/**/*'
 `export --target ocr` prints the written path and the count of entries/rules on success, matching `sync`'s one-line output style.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-16T16:19:48 - `0451feb3-8293-4e5a-aa46-79c33e20da03.jsonl`
 - `/ll:wire-issue` - 2026-09-16T04:59:13 - `1e024021-4acc-4b11-a8a1-c8c2d8acfc34.jsonl`
 - `/ll:decide-issue` - 2026-09-16T04:49:13 - `03cedaa9-993e-49e8-a8ba-5c2ffbf2b4a2.jsonl`
 - `/ll:refine-issue` - 2026-09-16T04:42:32 - `03cedaa9-993e-49e8-a8ba-5c2ffbf2b4a2.jsonl`
