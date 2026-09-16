@@ -55,12 +55,33 @@ Prevent accidental loss of authoring work and make the builder useful for ongoin
 - Tests: scripts/tests/js/policy_validator.test.mjs, scripts/tests/test_policy_builder_emit.py, scripts/tests/test_policy_builder_node_gate.py; browser workflows for reload, switching, import, undo, responsive layout, and keyboard interaction.
 - Configuration: read existing confidence-gate settings; do not add a server requirement.
 
+### Dependent Files (Callers/Importers)
+
+- `scripts/little_loops/cli/artifact/__init__.py:197` — `main_artifact` dispatches the `policy-builder` subcommand to `cmd_policy_builder`
+- `scripts/tests/test_enh3035_artifact_template_kit.py:65` — `test_policy_builder_renders_byte_identically_to_golden_fixture` calls `cmd_policy_builder` directly
+- `scripts/tests/test_policy_builder_emit.py:43,50,83` — `_emit_html`, `test_emit_writes_html`, `test_emitted_grammar_matches_canonical` call `cmd_policy_builder` directly (never the console script)
+
 ### Behavior Parity
 
 | Artifact | Preserved | Changed | Dropped |
 |---|---|---|---|
 | policy-router-builder.html.tmpl | Offline use, three modes, theme toggle, YAML export | Persistent drafts, guided layout, explicit execution semantics | Destructive implicit reseeding on mode change |
 | policy_builder_core.mjs | Valid rule semantics and YAML generation | Versioned project serialization, terminal destinations, optional scoring instructions | None |
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-16 — based on codebase analysis:_
+
+- No persistence exists today beyond the theme key: `localStorage` is used exactly once in the builder (`scripts/little_loops/templates/policy-router-builder.html.tmpl:949` read, `:965-970` write), both wrapped in `try/catch` that silently no-ops on failure — the only browser-storage pattern in this artifact-template family to extend for drafts/undo state.
+- Mode switch (`policy-router-builder.html.tmpl:868-878`) and "Start blank" (`:940-945`) both fully reassign `state = seedExample(...)`/`blankModel(...)`, discarding in-progress edits with no snapshot — documented in-code as an intentional FEAT-3474 data-loss contract (comment at `:868-872`).
+- No project (builder-state) save/open mechanism exists: no JSON export of `state`, no file importer, no File System Access API usage, no YAML→`state` parser for round-tripping. Only the final YAML text can leave the page, via clipboard copy (`:923-926`, no success/failure feedback — `navigator.clipboard.writeText` has no `.then()`/`.catch()`) or a one-shot `<a download>` Blob (`:927-935`).
+- Conventions in Force (codebase-pattern-finder, 2026-09-16):
+  - Every `localStorage` access in this codebase wraps get/set in its own try/catch with silent-degrade semantics and a single fixed, project-prefixed key — evidence: `policy-router-builder.html.tmpl:949,965-970` (`"ll-policy-builder-theme"`). This is the only localStorage use anywhere in `scripts/little_loops/templates/`; no other artifact template (including `dashboard.llat`) uses browser storage.
+  - The one existing collapsible-section precedent in this template is a native `<details>`/`<summary>` (`policy-router-builder.html.tmpl:222-225`), used to demote raw YAML behind a plain-language summary — not to hide form inputs. No existing "advanced settings" tier over fieldsets exists; every fieldset is always-rendered and toggled only per-mode via `hidden` (`applyModeVisibility`, `:837-853`).
+  - The closest existing "take current collection + an edit, return a new collection" pure-function precedent is `moveRule(model, index, direction)` (`policy_builder_core.mjs:308-319`, documented pure/non-mutating at `:287-307`) — the codebase's established shape for that kind of transform, though it is a single-array reorder, not a history/undo stack (no undo/redo or draft-history mechanism exists anywhere in this codebase, confirmed by repo-wide search).
+  - No JSON schema-version+migration pattern exists in JS anywhere in this codebase; the only version+migration precedent is SQL (`scripts/little_loops/session_store/schema.py:25,126,1492`, `SCHEMA_VERSION` + `_apply_migrations()`), not directly transferable to a JSON document model.
+  - No `@media` responsive breakpoint exists in any authored template in `scripts/little_loops/templates/`; the builder's two-column layout is a fixed CSS grid (`policy-router-builder.html.tmpl:32`, `grid-template-columns: 1fr 1fr;`) with no media query.
+  - Test conventions for this artifact: `node:test` unit tests import the shipped `policy_builder_core.mjs` directly (`scripts/tests/js/policy_validator.test.mjs`), a cross-language conformance corpus (`scripts/tests/fixtures/policy_builder/conformance_corpus.json`) pins JS-vs-Python parity, and golden `.model.json`/`.yaml` fixture pairs are asserted byte-equal to `serializeLoopYaml(model)` output both in Node and via a Python subprocess gate (`scripts/tests/test_policy_builder_node_gate.py`) that additionally round-trips generated YAML through `ll-loop validate`.
 
 ## Program Design
 
@@ -81,6 +102,19 @@ Proposed new pure JS contracts:
 
 `cmd_policy_builder` stamps project metadata and configured confidence-gate settings alongside existing grammar/catalog data. The template restores the active draft before rendering the form.
 
+Confirmed anchors (codebase-analyzer, 2026-09-16): `applyStateToForm` (`scripts/little_loops/templates/policy-router-builder.html.tmpl:858-864`), `applyModeVisibility` (`:837-853`), `updatePreview` (`:809-816`) all live in the generated-HTML template's inline module script, not in `policy_builder_core.mjs` — only `serializeLoopYaml` (`scripts/little_loops/templates/policy_builder_core.mjs:1049`) is in the pure-JS core. Today this chain has no persistence step: `applyStateToForm` is called only from the mode-switch (`:868-878`) and "Start blank" (`:940-945`) handlers, each of which fully reassigns `state = seedExample(...)`/`blankModel(...)` first — there is no draft-restore call anywhere in the current chain, and `cmd_policy_builder` (`scripts/little_loops/cli/artifact/policy_builder.py:56-107`) stamps only theme, CSS vars, grammar spec, and skill catalog — no project metadata or confidence-gate settings are read or stamped today (`ConfidenceGateConfig` exists at `scripts/little_loops/config/automation.py:155-170` but is unread by this command).
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-16 — based on codebase analysis:_
+
+New decision logic, unspecified (codebase-analyzer, 2026-09-16): Proposed Solution asks for explicit stop-success, skip, and needs-attention destinations for lifecycle policies. Today the builder emits exactly a binary terminal model, and it differs by mode:
+- `issue_lifecycle` (`_serializeIssueLifecycle`, `scripts/little_loops/templates/policy_builder_core.mjs:974-1041`): hardcodes `on_max_steps: failed` (:1002) and every verb state carries `on_error: failed` (:1031); only two terminal states are ever emitted, `done: {terminal: true}` and `failed: {terminal: true}` (:1034-1039). Reaching `done` goes through `_outcomeStateLines()` (:687-719) / `_doneStateName()` (:733-739) for any outcome whose `transition.kind === "finish"`.
+- `decision_table` (`_serializeDecisionTable`, :741-833): uses the same `_outcomeStateLines`/`_doneStateName` machinery but emits no `on_max_steps` line at all.
+- `rubric` (`_serializeRubric`, :834-909): a single `done: {terminal: true}` (:906-907) reached only via the high-threshold route (`on_yes: done`, :875); no `on_max_steps` handling either.
+- No `stop-success`, `skip`, or `needs-attention` concept exists anywhere in the builder's Python, template, or core JS today (repo-wide search, no hits).
+Exact inputs/values not yet pinned down by Proposed Solution: which frontmatter dimension(s) or rule predicates route to `skip` vs `needs-attention` vs the existing `failed`; whether `stop-success` is a new alias for `done` or a distinct terminal state; and whether `on_max_steps`/`on_error` per-mode divergence (decision_table/rubric currently define neither) is intentional or itself a gap. These are implementer decisions, not resolved here.
+
 ## Implementation Steps
 
 1. Define and test the versioned project model, import validation, per-mode draft storage, and undo/redo.
@@ -88,6 +122,15 @@ Proposed new pure JS contracts:
 3. Implement explicit destinations, grading instructions, action metadata, and project gate explanations.
 4. Add export/run guidance, accessible feedback, and responsive styling.
 5. Exercise offline persistence, round trips, and browser workflows; update fixtures and reference material.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-16 — based on codebase analysis:_
+
+- `issue_lifecycle` mode's built-in field list is `BUILTIN_FRONTMATTER_DIMENSIONS` (`scripts/little_loops/templates/policy_builder_core.mjs:85-95`, 9 fixed dims); the five action editors are a single generic `renderLifecycleOutcomes()` loop (`scripts/little_loops/templates/policy-router-builder.html.tmpl:456-552`) over the fixed `LIFECYCLE_VERBS` list (`policy_builder_core.mjs:104-140`) — not five separately-coded editors, so "collapse under advanced settings" is a layout/visibility change over this existing loop, not a rewrite of it. `renderRules()` (`policy-router-builder.html.tmpl:559-675`) is already shared unchanged across `decision_table` and `issue_lifecycle`.
+- The grading-subject field (`#f-subject`, `policy-router-builder.html.tmpl:143-144`) is shown (not hidden by `applyModeVisibility`) but never read by `_serializeIssueLifecycle()` — confirmed inert for this mode, matching the issue's Current Behavior claim.
+- `moveRule(model, index, direction)` (`policy_builder_core.mjs:308-319`, pure/non-mutating per its docstring at :287-307) is this codebase's only existing "collection + edit descriptor -> new collection" precedent and the closest analog to the proposed `applyDraftEdit(history, edit) -> DraftHistory`; no undo/redo or history-stack implementation exists anywhere else to model against (repo-wide search, no hits).
+- Existing test surfaces to extend rather than duplicate: `scripts/tests/js/policy_validator.test.mjs` (node:test, imports `policy_builder_core.mjs` exports directly, one `test()` per exported function), `scripts/tests/fixtures/policy_builder/conformance_corpus.json` (cross-language JS/Python parity corpus) and golden `.model.json`/`.yaml` fixture pairs asserted byte-equal in both `policy_validator.test.mjs` and `scripts/tests/test_policy_builder_node_gate.py` (which also round-trips generated YAML through `ll-loop validate`). `scripts/tests/test_policy_builder_emit.py` calls `cmd_policy_builder(args, logger)` directly, never the console script.
 
 ## Impact
 
@@ -133,4 +176,5 @@ Includes persistent authoring, terminology/layout, action and scoring explanatio
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-16T21:07:15 - `7e302668-e6b7-4dea-830f-330bbfd02fc0.jsonl`
 - `/ll:capture-issue` - 2026-09-16T20:55:13 - `64af6deb-56e5-4bde-9534-85751c1782ca.jsonl`
