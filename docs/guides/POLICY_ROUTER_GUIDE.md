@@ -449,15 +449,17 @@ reflect validation of the edited table. Either way, suppress with `--no-warnings
   sets produce no route), and **unknown action states** (the `→ action` column names a state the
   loop doesn't define).
 - **`ll-loop validate`** additionally warns on **unscored dimensions**: any predicate dim
-  that is not listed in `context.rubric_dimensions` (after normalization: lowercase +
-  spaces→hyphens) and is not written as `rubric-dim-<name>.txt` by a shell state is
+  that is not listed in `context.rubric_dimensions`, not encoded in
+  `context.frontmatter_dimensions` (the Issue Lifecycle Mode / FEAT-3474 `name:type|...`
+  source — see below), and not written as `rubric-dim-<name>.txt` by a shell state is
   silently inert at runtime — the dimension never reaches the scores dict, so `==` / `>=` /
   `<=` / `<` / `>` predicates on it can never match and routing falls through to the
-  catch-all. Predicate dims must be in **normalized form** (lowercase, spaces replaced by
-  hyphens) to match the score keys written by `policy_parse_scores`; `Has Citations` in a
-  predicate is inert even if `Has Citations` is listed in `rubric_dimensions` (the score key
-  is `has-citations`). Set `policy_dims_scored_ok: true` at the loop top-level to suppress
-  this check when a dynamically-named shell scorer makes static detection impossible.
+  catch-all. All three sources are normalized the same way (lowercase, spaces→hyphens)
+  before comparison. Predicate dims must be in **normalized form** to match the score keys
+  written by `policy_parse_scores`; `Has Citations` in a predicate is inert even if
+  `Has Citations` is listed in `rubric_dimensions` (the score key is `has-citations`). Set
+  `policy_dims_scored_ok: true` at the loop top-level to suppress this check when a
+  dynamically-named shell scorer makes static detection impossible.
 
 The recurring lesson across both modes: **always provide a catch-all.** In a decision table
 that's a final `* -> <state>` rule; on a dispatch state it's the `_:` route. A table without one
@@ -510,7 +512,7 @@ Tune `policy-refine` to be stricter — require a high security score before dec
 
    ```bash
    ll-loop validate policy-refine
-   ll-loop run policy-refine "artifact.md"
+   ll-loop run policy-refine --context subject=artifact.md
    ```
 
 ## See Also
