@@ -18,6 +18,7 @@ blocked_by:
 - BUG-3489
 blocks:
 - ENH-3487
+- FEAT-3488
 ---
 
 # BUG-3486: Policy builder preview, validation, and editing correctness (browser/core)
@@ -226,6 +227,7 @@ Includes browser/core correctness and validation feedback. Excludes runtime frag
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-16T22:52:47 - `56d2686a-f690-474a-8849-1b96c2edbd15.jsonl`
 - review - 2026-09-16 - added `blocked_by: BUG-3489`; enumerated `RESERVED_STATE_NAMES`; `done` stays legal, auxiliary terminal fixed to `finished`; defined frontmatter subset, draft-input shape, and export surfaces; removed BUG-3490 leftovers from Integration Map
 - split - 2026-09-16 - defects f/g → BUG-3489, h → BUG-3490; decisions recorded in Proposed Solution
 - `/ll:wire-issue` - 2026-09-16T21:29:31 - `0e35d235-ff66-480a-930e-d4d9ddd5eeb9.jsonl`

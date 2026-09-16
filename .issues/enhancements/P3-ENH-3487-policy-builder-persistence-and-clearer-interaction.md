@@ -1,7 +1,7 @@
 ---
 id: ENH-3487
 type: ENH
-title: Policy builder persistence and clearer interaction
+title: Policy builder persistence, undo/redo, and saved projects
 priority: P3
 status: open
 discovered_by: ll-issues-create
@@ -17,46 +17,47 @@ relates_to:
 - FEAT-3474
 - ENH-3491
 - ENH-3492
+blocks:
+- FEAT-3488
 ---
 
-# ENH-3487: Policy builder persistence and clearer interaction
+# ENH-3487: Policy builder persistence, undo/redo, and saved projects
 
 ## Summary
 
-Improve policy-builder persistence and interaction so users can safely maintain a policy over multiple sessions and understand what their loop will do. Preserve the self-contained offline HTML experience while adding versioned saved projects, per-mode drafts, undo/redo, and a task-oriented authoring flow.
+Improve policy-builder persistence so users can safely maintain a policy over multiple sessions. Preserve the self-contained offline HTML experience while adding per-mode drafts, versioned saved projects, undo/redo, and copy/save feedback.
 
-Captured from the 2026-09-16 review following FEAT-3474, as the second of three requested workstreams.
+Captured from the 2026-09-16 review following FEAT-3474, as the second of three requested workstreams. Split on 2026-09-16: layout, presets, responsive CSS, and execution summary moved to ENH-3491; terminal destinations, scoring instructions, and confidence-gate stamping moved to ENH-3492. This issue is the first of the three to land because BUG-3486 touches the same editing-state code.
 
 ## Current Behavior
 
-The page holds authoring state only in memory; localStorage stores the theme. Mode changes replace all work with a seed, and refresh loses edits. Only YAML is exported, with no builder-project reopening. The lifecycle page presents nine built-in fields and five verbose action editors before its rules, retains an irrelevant grading-subject input, and describes available verbs like a pipeline even though implementation stops by default. Max steps counts FSM state executions, not whole attempts. The two-column CSS lacks responsive breakpoints; Copy has no success/failure feedback.
-
-Rubric dimensions have no score definitions, skill descriptions are collected but not displayed, and lifecycle defaults hardcode a confidence threshold rather than exposing the project's implementation gate. The verify verb checks issue-file accuracy via verify-issues; it is not inherently an acceptance-test runner.
+The page holds authoring state only in memory; localStorage stores the theme. Mode changes replace all work with a seed, and refresh loses edits. Only YAML is exported, with no builder-project reopening. Copy has no success/failure feedback.
 
 ## Expected Behavior
 
-Edits survive reload and mode exploration. Users can save/reopen a portable versioned project, undo changes, choose a task preset, edit fields/rules before advanced action settings, and inspect an accurate execution summary. Offline authoring remains usable without a server or browser storage permission.
+Edits survive reload and mode exploration. Users can save/reopen a portable versioned project and undo/redo changes. Copy and save report success or failure. Offline authoring remains usable without a server or browser storage permission.
 
 ## Motivation
 
-Prevent accidental loss of authoring work and make the builder useful for ongoing policy maintenance. Users should understand stopping, repetition, verification, and export without learning internal state names or inspecting generated YAML.
+Prevent accidental loss of authoring work and make the builder useful for ongoing policy maintenance.
 
 ## Proposed Solution
 
-- Persist independent per-mode drafts with versioned project export/import and undo/redo. Validate imports before replacing a draft; report storage failures and keep explicit file saving available.
-- Reorganize lifecycle authoring as Fields, Rules, Try it, and Export; collapse action bindings and budgets under advanced settings. Present task presets for document improvement, condition-based routing, preparation, implementation, and implementation with verification.
-- Use friendly type labels and field explanations while retaining exact frontmatter keys. Hide mode-irrelevant inputs and show an accurate graph/summary of the current transitions.
-- Add explicit stop-success, skip, and needs-attention destinations for lifecycle policies. Preserve existing five-verb projects when reopening; new presets must distinguish issue validation from acceptance verification and declare the latter's configured command/result contract.
-- Show skill descriptions/argument hints, add optional dimension scoring instructions and score anchors, and expose the stamped project confidence gate alongside rule thresholds. Explain state-step budgets and default transitions.
-- Provide responsive layout, associated labels, keyboard-operable controls, live feedback, copy success/failure feedback, and exact save/validate/run instructions with required parameters.
+- Persist independent per-mode drafts in localStorage under the existing `ll-policy-builder-` key prefix (one key per mode), each get/set wrapped in its own try/catch with silent-degrade semantics, matching the theme-key precedent. Mode switch restores that mode's draft instead of reseeding; "Start blank" still reseeds but pushes a history entry first. Update the in-code comment at the mode-switch handler (tmpl `:868-872`) that documents reseeding as an intentional data-loss contract.
+- Undo/redo as a pure history stack in `policy_builder_core.mjs`: `applyDraftEdit(history, edit) -> DraftHistory` with `{past, present, future}`. Granularity: one history entry per committed field change (`change` event, rule add/move/delete, mode switch, start-blank), never per keystroke. Cap `past` at 100 entries.
+- Save project / Open project as a versioned JSON envelope `BuilderProject {schemaVersion, generatorVersion, activeMode, drafts}` via pure `serializeBuilderProject(project) -> string` and `parseBuilderProject(text) -> BuilderProject` in core.mjs. Version policy: `schemaVersion` starts at 1; reject a newer `schemaVersion` with a matchable error without touching the current draft; older versions are migrated in `parseBuilderProject` (no migrations exist at v1, but the hook is the place they go). Missing or non-object `drafts`, unknown `activeMode`, or a draft that fails the existing model validation is an import error.
+- Save uses the existing `<a download>` Blob path; Open uses `<input type=file>` + `FileReader`. No File System Access API, no server.
+- Copy reports success/failure by attaching `.then/.catch` to `navigator.clipboard.writeText` and surfacing it in a live region; the same live region shows draft-saved / storage-unavailable state.
+- Export guidance under the YAML preview gives a concrete destination path, the `ll-loop validate` command, and the `ll-loop run` command with the required issue input.
+
+Regression coverage without a DOM harness (mitigates the Option B cost below): every new contract above lives in `policy_builder_core.mjs`, not the template, and gets `node:test` cases in `scripts/tests/js/policy_validator.test.mjs` plus a golden `.project.json` fixture under `scripts/tests/fixtures/policy_builder/` asserted to round-trip byte-equal. Only the DOM wiring (event handlers, localStorage, file input) stays manually verified.
 
 ### Option A: Adopt a browser/DOM interaction test harness
 
-Add a `node:test`-driven jsdom (or Playwright) harness under `scripts/tests/js/` to
-automate the reload-persistence, undo/redo, and keyboard-operability Acceptance
-Criteria against the emitted `policy-router-builder.html`. Extends the existing
-`node:test` convention (`scripts/tests/js/policy_validator.test.mjs`) rather than
-introducing a new test runner.
+Add a jsdom (or Playwright) DOM harness to automate the reload-persistence,
+undo/redo, and keyboard-operability Acceptance Criteria against the emitted
+`policy-router-builder.html`, driven by the existing Node test runner rather than
+introducing a new one.
 - **Tradeoff**: Gives the ACs real automated coverage and a reusable harness for
   future artifact-template interaction tests. Adds a new third-party dependency
   (jsdom or Playwright) to `scripts/pyproject.toml`/Node tooling, which the
@@ -94,17 +95,17 @@ browser verification (documented steps) before closing the issue.
 
 **Key evidence:**
 - No `package.json` or pinned Node dependency exists anywhere in the repo (only vendored `node_modules/` in unrelated adapter tooling) — Option A would introduce new dependency-management infrastructure, not just a new pin.
-- `scripts/tests/js/policy_validator.test.mjs` + `scripts/tests/test_policy_builder_node_gate.py:53-79` show a `.mjs` test file is auto-picked up with zero CI-wiring changes — the only point favoring Option A.
+- `scripts/tests/test_policy_builder_node_gate.py:53-79` shows a new `.mjs` test file is auto-picked up with zero CI-wiring changes — the only point favoring Option A.
 - Dozens of prior issues (e.g. `.issues/bugs/P1-BUG-076-...md:95`, `.issues/enhancements/P3-ENH-1770-...md:115`) accept manual verification as sufficient to close, including one directly analogous generated-HTML-artifact case.
 - The undo/redo/persistence surface (`policy_builder_core.mjs` 1237 lines, `policy-router-builder.html.tmpl` 979 lines) is larger than prior manual-fallback precedents, so the regression-risk tradeoff is real, not negligible.
 
 ## Integration Map
 
-- Files to modify: scripts/little_loops/templates/policy_builder_core.mjs; scripts/little_loops/templates/policy-router-builder.html.tmpl; scripts/little_loops/cli/artifact/policy_builder.py.
+- Files to modify: scripts/little_loops/templates/policy_builder_core.mjs; scripts/little_loops/templates/policy-router-builder.html.tmpl. (`cli/artifact/policy_builder.py` is unchanged; gate stamping moved to ENH-3492.)
 - Dependent files: scripts/little_loops/artifact_template_kit.py for shared shell conventions; scripts/tests/fixtures/policy_builder/ for generated fixtures.
 - Similar patterns: existing theme storage fallback, flat JSON-friendly builder model, project-derived stamping.
-- Tests: scripts/tests/js/policy_validator.test.mjs, scripts/tests/test_policy_builder_emit.py, scripts/tests/test_policy_builder_node_gate.py; browser workflows for reload, switching, import, undo, responsive layout, and keyboard interaction.
-- Configuration: read existing confidence-gate settings; do not add a server requirement.
+- Tests: scripts/tests/js/policy_validator.test.mjs, scripts/tests/test_policy_builder_emit.py, scripts/tests/test_policy_builder_node_gate.py; manual browser workflows for reload, switching, import, undo.
+- Configuration: none; do not add a server requirement.
 
 ### Dependent Files (Callers/Importers)
 
@@ -113,27 +114,24 @@ browser verification (documented steps) before closing the issue.
 - `scripts/tests/test_policy_builder_emit.py:43,50,83` — `_emit_html`, `test_emit_writes_html`, `test_emitted_grammar_matches_canonical` call `cmd_policy_builder` directly (never the console script)
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/little_loops/fsm/context_seed.py:68` — `seed_confidence_thresholds()` reads `config.commands.confidence_gate` off an already-built `BRConfig`; this is the pattern `cmd_policy_builder` should mirror to read the confidence-gate settings it must stamp — no new import path needed, `cmd_policy_builder` already constructs `config = BRConfig(Path.cwd())` at `policy_builder.py:66` [Agent 2 finding]
-- `scripts/little_loops/fsm/frontmatter_scores.py` — `encode_frontmatter_scores()` documents itself as sharing dimension-encoding rules verbatim with `normalizeDimName()`/dim encoding in `policy_builder_core.mjs`; touch if optional scoring instructions/score anchors change `BUILTIN_FRONTMATTER_DIMENSIONS`' shape [Agent 2 finding]
+- `scripts/little_loops/fsm/frontmatter_scores.py` — unaffected: this issue does not change `BUILTIN_FRONTMATTER_DIMENSIONS`' shape (scoring instructions moved to ENH-3492) [Agent 2 finding]
 
 ### Behavior Parity
 
 | Artifact | Preserved | Changed | Dropped |
 |---|---|---|---|
-| policy-router-builder.html.tmpl | Offline use, three modes, theme toggle, YAML export | Persistent drafts, guided layout, explicit execution semantics | Destructive implicit reseeding on mode change |
-| policy_builder_core.mjs | Valid rule semantics and YAML generation | Versioned project serialization, terminal destinations, optional scoring instructions | None |
+| policy-router-builder.html.tmpl | Offline use, three modes, theme toggle, YAML export, all element ids asserted by `TestFeat2301UsabilityStructural` | Persistent drafts, undo/redo, Save/Open project, copy/save feedback | Destructive implicit reseeding on mode change |
+| policy_builder_core.mjs | Valid rule semantics and YAML generation (emitted YAML unchanged for every existing model) | New pure exports: `applyDraftEdit`, `serializeBuilderProject`, `parseBuilderProject` | None |
 
 ### Configuration
 
-_Wiring pass added by `/ll:wire-issue`:_
-- `scripts/little_loops/config/automation.py:155-170` — `ConfidenceGateConfig` is not currently imported or read by `cmd_policy_builder`. Read it via `config.commands.confidence_gate` off the already-constructed `BRConfig` (mirror `fsm/context_seed.py:68`); do **not** mirror `cli/issues/check_readiness.py:78-115`'s raw-JSON bypass — that workaround exists only because `ConfidenceGateConfig` "cannot express 'absent'" for CLI-flag-override semantics `cmd_policy_builder` doesn't have [Agent 2 finding]
-- No `config-schema.json` change is needed for this: `confidence_gate` is already fully defined at `scripts/little_loops/config-schema.json:509` [Agent 2 finding]
+No configuration changes. Confidence-gate stamping moved to ENH-3492.
 
 ### Documentation
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `docs/reference/CLI.md:5079-5095` (`#ll-artifact-policy-builder`) — the Flags table (`:5085-5087`) has only `--output`/`-o`, no Save/Open-project or import flag to document yet; prose at `:5081` describing the five lifecycle verbs as fixed/uneditable goes stale once destinations are extensible [Agent 2 finding]
-- `docs/guides/POLICY_ROUTER_GUIDE.md:198-242` ("Visual Builder (greenfield)") and `:244-356` ("Issue Lifecycle Mode") — specific passages that go stale: `:227-229,290-291` (verbs "can't be deleted and no new outcome can be added" — contradicted by stop-success/skip/needs-attention destinations), `:295-301` (Verb Table needs a new-destination column), `:234-235` ("Start blank" data-loss framing this issue's persistence work replaces), `:232-234` (YAML-behind-`<details>` framing superseded by the dedicated Export tab), `:240-242` ("builder is *greenfield-only*" framing needs a Save/Open-project caveat) [Agent 2 finding]
+- `docs/guides/POLICY_ROUTER_GUIDE.md:198-242` ("Visual Builder (greenfield)") and `:244-356` ("Issue Lifecycle Mode") — specific passages that go stale: `:234-235` ("Start blank" data-loss framing this issue's persistence work replaces), `:240-242` ("builder is *greenfield-only*" framing needs a Save/Open-project caveat). Verb-table and YAML-disclosure passages (`:227-234,290-301`) move to ENH-3491/ENH-3492 [Agent 2 finding]
 
 ### Tests
 
@@ -142,8 +140,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_policy_builder_emit.py::TestFeat2301UsabilityStructural` — `test_seed_and_blank_wiring_present` (`:203-207`), `test_rubric_mode_has_no_dt_only_affordances` (`:209-221`), `test_yaml_is_collapsed_behind_details` (`:169-184`) are at risk of breaking if the task-preset reorg renames/removes the `start-blank-btn`, `rules-fieldset`/`outcomes-fieldset`/`tryit-fieldset`, or `yaml-details`/`yaml-preview`/`yaml-summary` ids [Agent 2 finding]
 - `scripts/tests/test_policy_builder_emit.py::test_theme_resolution_order_is_stored_stamped_os_light` (`:186-197`) — asserts `initTheme()`'s `stored → __ACTIVE_THEME__ → matchMedia` source-order; new draft-restore bootstrap logic must not perturb this ordering [Agent 2 finding]
 - `scripts/tests/test_enh3035_artifact_template_kit.py::test_policy_builder_renders_byte_identically_to_golden_fixture` — will break on any template/core.mjs change; `scripts/tests/fixtures/policy_builder/golden_policy_router_builder.html` needs regeneration as part of this issue [Agent 2 + 3 finding]
-- `scripts/tests/test_policy_builder_node_gate.py::test_round_trip_yaml_validates_for_each_mode` — won't break outright (arbitrary terminal-state names are already schema-legal per `fsm/validation/structural_rules.py:26-35`) but has zero coverage of new stop-success/skip/needs-attention states; needs new `.model.json`/`.yaml` fixture(s) under `scripts/tests/fixtures/policy_builder/` plus a new parametrize entry [Agent 3 finding]
-- No browser/DOM interaction test harness exists anywhere in the repo (no Playwright/Selenium/jsdom harness — searched repo-wide, no hits). The closest existing convention for "test the emitted page without a browser" is `TestFeat2301UsabilityStructural`'s static string/regex assertions; automated interaction tests for undo/redo, reload persistence, and keyboard operability (required by this issue's Acceptance Criteria) have no precedent to extend and are greenfield [Agent 3 finding]
+- No browser/DOM interaction test harness exists anywhere in the repo (no Playwright/Selenium/jsdom harness — searched repo-wide, no hits). The closest existing convention for "test the emitted page without a browser" is `TestFeat2301UsabilityStructural`'s static string/regex assertions; automated interaction tests for undo/redo and reload persistence have no precedent to extend; resolved by Option B (manual DOM verification) plus pure-function `node:test` coverage of the history/serialization contracts in core.mjs [Agent 3 finding]
 
 ### Codebase Research Findings
 
@@ -177,7 +174,7 @@ Proposed new pure JS contracts:
 
 `applyStateToForm` -> `applyModeVisibility` -> `updatePreview` -> `serializeLoopYaml`.
 
-`cmd_policy_builder` stamps project metadata and configured confidence-gate settings alongside existing grammar/catalog data. The template restores the active draft before rendering the form.
+The template restores the active draft (after `initTheme()`) before rendering the form; every committed edit goes through `applyDraftEdit` and then persists the draft. `cmd_policy_builder` is unchanged.
 
 Confirmed anchors (codebase-analyzer, 2026-09-16): `applyStateToForm` (`scripts/little_loops/templates/policy-router-builder.html.tmpl:858-864`), `applyModeVisibility` (`:837-853`), `updatePreview` (`:809-816`) all live in the generated-HTML template's inline module script, not in `policy_builder_core.mjs` — only `serializeLoopYaml` (`scripts/little_loops/templates/policy_builder_core.mjs:1049`) is in the pure-JS core. Today this chain has no persistence step: `applyStateToForm` is called only from the mode-switch (`:868-878`) and "Start blank" (`:940-945`) handlers, each of which fully reassigns `state = seedExample(...)`/`blankModel(...)` first — there is no draft-restore call anywhere in the current chain, and `cmd_policy_builder` (`scripts/little_loops/cli/artifact/policy_builder.py:56-107`) stamps only theme, CSS vars, grammar spec, and skill catalog — no project metadata or confidence-gate settings are read or stamped today (`ConfidenceGateConfig` exists at `scripts/little_loops/config/automation.py:155-170` but is unread by this command).
 
@@ -185,30 +182,24 @@ Confirmed anchors (codebase-analyzer, 2026-09-16): `applyStateToForm` (`scripts/
 
 _Added by `/ll:refine-issue` — 2026-09-16 — based on codebase analysis:_
 
-New decision logic, unspecified (codebase-analyzer, 2026-09-16): Proposed Solution asks for explicit stop-success, skip, and needs-attention destinations for lifecycle policies. Today the builder emits exactly a binary terminal model, and it differs by mode:
-- `issue_lifecycle` (`_serializeIssueLifecycle`, `scripts/little_loops/templates/policy_builder_core.mjs:974-1041`): hardcodes `on_max_steps: failed` (:1002) and every verb state carries `on_error: failed` (:1031); only two terminal states are ever emitted, `done: {terminal: true}` and `failed: {terminal: true}` (:1034-1039). Reaching `done` goes through `_outcomeStateLines()` (:687-719) / `_doneStateName()` (:733-739) for any outcome whose `transition.kind === "finish"`.
-- `decision_table` (`_serializeDecisionTable`, :741-833): uses the same `_outcomeStateLines`/`_doneStateName` machinery but emits no `on_max_steps` line at all.
-- `rubric` (`_serializeRubric`, :834-909): a single `done: {terminal: true}` (:906-907) reached only via the high-threshold route (`on_yes: done`, :875); no `on_max_steps` handling either.
-- No `stop-success`, `skip`, or `needs-attention` concept exists anywhere in the builder's Python, template, or core JS today (repo-wide search, no hits).
-Exact inputs/values not yet pinned down by Proposed Solution: which frontmatter dimension(s) or rule predicates route to `skip` vs `needs-attention` vs the existing `failed`; whether `stop-success` is a new alias for `done` or a distinct terminal state; and whether `on_max_steps`/`on_error` per-mode divergence (decision_table/rubric currently define neither) is intentional or itself a gap. These are implementer decisions, not resolved here.
+Terminal-destination analysis (binary `done`/`failed` model, per-mode `on_max_steps`/`on_error` divergence) moved to ENH-3492 with the open decision questions.
 
 ## Implementation Steps
 
-1. Define and test the versioned project model, import validation, per-mode draft storage, and undo/redo.
-2. Reorganize the form with task presets, advanced action settings, and an accurate transition summary.
-3. Implement explicit destinations, grading instructions, action metadata, and project gate explanations.
-4. Add export/run guidance, accessible feedback, and responsive styling.
-5. Exercise offline persistence, round trips, and browser workflows; update fixtures and reference material.
+1. Add `applyDraftEdit`, `serializeBuilderProject`, `parseBuilderProject` to core.mjs with `node:test` cases and a golden `.project.json` fixture.
+2. Wire per-mode localStorage drafts, draft restore on load (after `initTheme()`, preserving the stored → stamped → OS theme order), and history push on committed edits in the template.
+3. Add Save/Open project controls, undo/redo buttons and keyboard shortcuts, the live-region feedback, and copy success/failure handling.
+4. Add export/run guidance text.
+5. Regenerate the golden HTML fixture; update CLI.md and POLICY_ROUTER_GUIDE.md passages listed in Documentation; run the documented manual browser checklist and record results in the Resolution.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-- Inject at `scripts/little_loops/cli/artifact/policy_builder.py:66-94` — read `config.commands.confidence_gate` off the already-constructed `BRConfig` (mirror `fsm/context_seed.py:68`) and stamp its `readiness_threshold`/`outcome_threshold` alongside the existing `css_vars`/`spec`/`catalog` stamping; no new import path required
 - Update `scripts/tests/fixtures/policy_builder/golden_policy_router_builder.html` — regenerate the byte-exact golden fixture consumed by `test_policy_builder_renders_byte_identically_to_golden_fixture`
-- Add `scripts/tests/fixtures/policy_builder/*.model.json`/`.yaml` fixture pair(s) for the new stop-success/skip/needs-attention terminal destinations, plus a matching parametrize entry in `test_policy_builder_node_gate.py::test_round_trip_yaml_validates_for_each_mode`
-- Establish (or explicitly scope out in Scope Boundaries) an automated browser/DOM interaction test harness for the reload-persistence, undo/redo, and keyboard-operability Acceptance Criteria — none exists in this codebase today
-- Update `docs/reference/CLI.md:5079-5095` (`#ll-artifact-policy-builder`) and `docs/guides/POLICY_ROUTER_GUIDE.md:198-356` (Visual Builder / Issue Lifecycle Mode sections) to replace stale five-verb/binary-terminal/YAML-disclosure/greenfield-only framing
+- Add a `scripts/tests/fixtures/policy_builder/*.project.json` golden fixture asserted byte-equal through `parseBuilderProject` → `serializeBuilderProject` in `policy_validator.test.mjs`
+- Automated browser/DOM interaction testing is scoped out (Option B); manual verification checklist is recorded in the Resolution on close
+- Update `docs/reference/CLI.md:5079-5095` (`#ll-artifact-policy-builder`) and `docs/guides/POLICY_ROUTER_GUIDE.md:234-242` ("Start blank" data-loss framing, "greenfield-only" framing) — five-verb/terminal/YAML-disclosure passages belong to ENH-3491/ENH-3492
 - If a new `parseBuilderProject` import-validation error is added, follow the existing "throw with a matchable message" convention (`scripts/tests/js/policy_validator.test.mjs:327-329`, `parseFrontmatterBlock`'s `Can't read line N` errors) rather than a new error-text shape
 
 ### Codebase Research Findings
@@ -223,32 +214,31 @@ _Added by `/ll:refine-issue` — 2026-09-16 — based on codebase analysis:_
 ## Impact
 
 - Priority: P3 — improves repeat use and prevents loss of unsaved authoring work.
-- Effort: Large — persistence, interaction design, and backwards-compatible model evolution.
-- Risk: Medium — migrations and reset behavior must preserve user work.
+- Effort: Medium — persistence and history stack; no emitted-YAML change.
+- Risk: Medium — draft restore and reset behavior must preserve user work.
 - Breaking change: No intended incompatibility for existing valid generated loops.
 
 ## API/Interface
 
-Add Save project / Open project with a versioned JSON envelope; YAML remains the execution export. Reject unsupported project versions without overwriting current work. Add optional dimension instructions and explicit terminal destination metadata with backward-compatible defaults for existing models. Arbitrary hand-edited YAML import is not included.
+Add Save project / Open project with a versioned JSON envelope (`schemaVersion: 1`); YAML remains the execution export. Reject newer project versions without overwriting current work. New core.mjs exports: `applyDraftEdit`, `serializeBuilderProject`, `parseBuilderProject`. Arbitrary hand-edited YAML import is not included.
 
 ## Acceptance Criteria
 
-- [ ] Edits survive reload and round-trip mode switching; undo/redo restores rules, fields, actions, and transitions — verified by documented manual browser testing (see Scope Boundaries: automated interaction-test coverage is out of scope for this issue).
-- [ ] Save/Open project round-trips all authoring settings and generates equivalent YAML; corrupt/unsupported imports preserve the existing draft and show an error.
-- [ ] Disabled/unavailable browser storage leaves authoring and explicit project-file saving functional, with visible save-state feedback.
-- [ ] Lifecycle hides grading-only inputs; rules precede advanced action editors; the layout is responsive with no page-level horizontal overflow at 375px and desktop widths, and controls are keyboard-operable — verified by documented manual browser testing (see Scope Boundaries: automated interaction-test coverage is out of scope for this issue).
-- [ ] Summaries reflect actual transitions, distinguish state steps from attempts, and clearly indicate whether implementation is followed by verification.
-- [ ] Stop-success, skip, and needs-attention destinations emit valid loops; reopening existing five-verb models preserves their behavior.
-- [ ] Project gate thresholds and skill descriptions/argument hints are displayed; optional scoring instructions appear in emitted prompts and persist through project round trips.
+- [ ] `applyDraftEdit`, `serializeBuilderProject`, `parseBuilderProject` are exported from `policy_builder_core.mjs` and covered by `node:test` cases (undo/redo restores rules, fields, actions, and transitions; a golden `.project.json` fixture round-trips byte-equal).
+- [ ] Edits survive reload and round-trip mode switching in the browser; undo/redo works via buttons and Ctrl/Cmd+Z / Shift+Z — verified by documented manual browser testing (Scope Boundaries: DOM interaction tests are out of scope).
+- [ ] Save/Open project round-trips all authoring settings and generates equivalent YAML; corrupt, non-object, or newer-`schemaVersion` imports preserve the existing draft and show a matchable error.
+- [ ] Disabled/unavailable browser storage leaves authoring and explicit project-file saving functional, with visible save-state feedback in a live region.
 - [ ] Copy success/failure is visible, and export guidance includes a concrete destination, validation command, and run command with required issue input.
+- [ ] Emitted YAML for every existing `.model.json` fixture is byte-identical; golden HTML fixture regenerated; `TestFeat2301UsabilityStructural` and theme-order test pass unchanged.
+- [ ] Manual browser checklist (reload, mode switch, undo/redo, open corrupt file, storage disabled via private window) recorded in the Resolution.
 
 ## Success Metrics
 
-Automated round trips lose zero authored fields. Reload and mode changes preserve every tested draft. Every supported mode has tested save/open and keyboard-driven export paths.
+Project round trips lose zero authored fields (node:test). Reload and mode changes preserve every draft in the manual checklist. Every supported mode has a save/open fixture.
 
 ## Scope Boundaries
 
-Includes persistent authoring, terminology/layout, action and scoring explanations, lifecycle presets/destinations, and offline export guidance. Excludes arbitrary YAML round-trip editing, named scenario suites, real issue loading through a server, and run submission. Excludes automated browser/DOM interaction-test coverage for undo/redo, reload-persistence, and keyboard operability (Decision: Option B, see Proposed Solution § Decision Rationale) — these behaviors are verified via documented manual browser testing before closing the issue, not automated tests. Correctness fixes and consumer discovery are a separate workstream; coordinate shared model changes rather than duplicating those fixes.
+Includes per-mode drafts, undo/redo, Save/Open project, copy/save feedback, and offline export guidance. Excludes layout reorganization, task presets, responsive CSS, execution summary, and skill metadata display (ENH-3491); terminal destinations, scoring instructions, and confidence-gate stamping (ENH-3492); arbitrary YAML round-trip editing, named scenario suites, real issue loading through a server, and run submission. Excludes automated browser/DOM interaction-test coverage for undo/redo and reload-persistence (Decision: Option B, see Proposed Solution § Decision Rationale) — these are verified via documented manual browser testing before closing; the pure-function contracts are still unit-tested in `node:test`. Correctness fixes (BUG-3486) touch the same editing-state code; land BUG-3486 first and coordinate shared model changes.
 
 ## Related Key Documentation
 
@@ -290,15 +280,15 @@ fix, so it remains an outstanding action item).
   - "**keyboard-accessible controls**" (implies automated a11y/interaction testing)
   - "375px and desktop **viewport tests** show no page-level horizontal overflow"
 
-  **Remaining (reformatted as a decision):** `decision_needed: true` set in frontmatter;
-  `### Option A` (adopt a browser/DOM test harness) and `### Option B` (scope automated
-  interaction testing out, verify manually) added under `## Proposed Solution`. Run
-  `/ll:decide-issue ENH-3487` to resolve before this is implementation-ready.
+  **Resolved 2026-09-16:** `/ll:decide-issue` selected Option B; `decision_needed` reset to
+  `false`. Pure-function contracts additionally get `node:test` coverage (see Proposed Solution).
 
 - **Dependency backlinks (fixed in this pass)**: `BUG-3486` and `BUG-3489` are named in this
   issue's `depends_on:`, but neither had this issue in a `blocks:` frontmatter list (the
   convention used elsewhere in `.issues/`, e.g. `FEAT-2846`). Added
-  `blocks: [ENH-3487]` to both `BUG-3486` and `BUG-3489`.
+  `blocks: [ENH-3487]` to both `BUG-3486` and `BUG-3489`. (Review 2026-09-16: the BUG-3489
+  dependency was dropped again — that bug is runtime policy-router behavior and nothing in
+  this issue touches the runtime; backlink removed from BUG-3489.)
 
 ## Status
 
@@ -306,6 +296,8 @@ fix, so it remains an outstanding action item).
 
 
 ## Session Log
+- manual review - 2026-09-16 - split into ENH-3491 (layout) and ENH-3492 (destinations); dropped BUG-3489 dependency; added node:test coverage requirement and project-envelope version policy
+- `/ll:verify-issues` - 2026-09-16T22:52:47 - `56d2686a-f690-474a-8849-1b96c2edbd15.jsonl`
 - `/ll:decide-issue` - 2026-09-16T22:44:17 - `764882af-9e40-4a2b-aaa1-9d51e82a0376.jsonl`
 - `/ll:verify-issues` - 2026-09-16T22:36:05 - `df96ce10-e8c8-4600-a0c4-0eee757af56b.jsonl`
 - `/ll:wire-issue` - 2026-09-16T21:29:53 - `0e35d235-ff66-480a-930e-d4d9ddd5eeb9.jsonl`

@@ -58,10 +58,26 @@ Then:
 
 ## Impact
 
-- **Priority**: [P0-P5] - [Justification]
-- **Effort**: [Small/Medium/Large] - [Justification]
-- **Risk**: [Low/Medium/High] - [Justification]
-- **Breaking Change**: [Yes/No]
+- **Priority**: P3 - richer lifecycle semantics; blocked on a design decision
+- **Effort**: Medium - new transition kinds, dimension metadata, config stamping
+- **Risk**: Medium - changes emitted YAML; existing fixtures must stay byte-identical
+- **Breaking Change**: No
+
+## Program Design
+
+### Types
+
+Outcome `transition.kind` gains `"stop" | "skip" | "attention"` alongside existing `"finish"`/verb targets. Dimension entries gain optional `instructions: string` and `anchors: {score: number, meaning: string}[]`. Stamped `__CONFIDENCE_GATE__ {readiness_threshold, outcome_threshold}` in the template.
+
+### Signatures
+
+- `_outcomeStateLines(model)` / `_doneStateName(model)` extended to emit `stopped`, `skipped`, `needs_attention` terminals (exact names per the decision above).
+- `serializeFrontmatterDimensions(model)` emits `instructions`/`anchors` into the grading prompt when present.
+- `cmd_policy_builder(args, logger)` reads `config.commands.confidence_gate` and stamps it.
+
+### Call Path
+
+`serializeLoopYaml` → `_serializeIssueLifecycle` → `_outcomeStateLines` → terminal-state emission. `cmd_policy_builder` → `BRConfig` → template stamping → builder displays thresholds beside rule thresholds.
 
 ## Acceptance Criteria
 
@@ -74,7 +90,7 @@ Then:
 
 ## Scope Boundaries
 
-Includes destination semantics, scoring metadata, gate stamping, and their docs. Excludes persistence (ENH-3487), layout/presets (ENH-3491), runtime policy-router fixes (BUG-3489). Depends on BUG-3489 only if the chosen semantics change how the runtime treats terminal outcomes; otherwise none.
+Includes destination semantics, scoring metadata, gate stamping, and their docs. Excludes persistence (ENH-3487), layout/presets (ENH-3491), runtime policy-router fixes (see the related runtime issue in frontmatter). If the chosen semantics change how the runtime treats terminal outcomes, promote that related issue to `depends_on`.
 
 ## Status
 

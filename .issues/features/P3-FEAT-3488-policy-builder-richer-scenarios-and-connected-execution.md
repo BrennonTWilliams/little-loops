@@ -278,12 +278,43 @@ _Added by `/ll:spike` on 2026-09-16_
 **Verification**: 9 tests pass in the spike suite; 82 pass in `test_transport.py`; 219 pass in `test_wiring_reference_docs.py` (3 commands, all exit 0).
 **Promotion (revised 2026-09-16)**: not promoted. The transport decision selected the existing `ll-queue` store, which already provides the persistence and status machine the spike prototyped. The spike's state-machine and isolation assertions are re-expressed against `queue_store` and the serve route (see Wiring Phase); the spike directory is deleted once those tests land.
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` — 2026-09-16:_
+
+**Verdict: VALID.** Every concrete file/line/symbol citation in Codebase
+Research Findings, Integration Map, Dependent Files, Program Design, and the
+Wiring Phase was checked against current HEAD (`ll-code` graph: provider
+`codegraph`, freshness `fresh`) and confirmed accurate — including the
+negative claims (no `schemaVersion`/`serializeBuilderProject`/
+`parseBuilderProject` in `policy_builder_core.mjs`; no `policy_builder`
+resource kind or `ArtifactControlLevel` field on `_ResourceEntry`; no
+`find_entry_by_request_id` in `queue_store.py` yet; no policy-builder row in
+`ARTIFACT_CONTROL_LEVELS.md`'s render-target table). No active required
+decision rules apply; `ll-verify-evidence` reported no unverifiable quotes.
+
+- **DEP_ISSUES (fixed in this pass):** `blocked_by: [BUG-3486, ENH-3487]` had
+  no matching backlink — `BUG-3486`'s `blocks:` listed only `ENH-3487`, and
+  `ENH-3487` had no `blocks:` field at all. `ll-issues link ... --reciprocal`
+  no-opped (target files unchanged) because the forward edge already existed,
+  so the backlinks were added directly: `blocks: FEAT-3488` appended to
+  `BUG-3486` and added to `ENH-3487`.
+- **Minor clarification (not blocking):** the Phase B run-request route's
+  Program Design cites `load_and_validate` without pinning
+  `raise_on_error=False`. The function's default (`raise_on_error=True`)
+  raises `ValueError` on ERROR-severity violations; Phase B's AC requires a
+  clean "validation failure" rejection (not a route crash), which needs the
+  `raise_on_error=False` form already used at
+  `scripts/little_loops/fsm/executor.py:297` — worth pinning explicitly at
+  implementation time.
+
 ## Status
 
 **Open** | Created: 2026-09-16 | Priority: P3
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-16T22:52:47 - `56d2686a-f690-474a-8849-1b96c2edbd15.jsonl`
 - manual review - 2026-09-16 - narrowed `blocked_by` to BUG-3486/ENH-3487; resolved transport to `ll-queue`; defined `requestId`/`revisionId`; built scenarios on `evaluateModel`; per-draft scenarios; unasserted state; split into Phase A/B; spike not promoted
 - `/ll:wire-issue` - 2026-09-16T22:32:07 - `c1fe383a-93c2-4cce-a8fa-6eeed2e54d04.jsonl`
 - `/ll:spike` - 2026-09-16T21:26:31 - `60e2c60c-390c-4854-b7a8-e5d6ce9f3356.jsonl`

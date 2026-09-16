@@ -50,10 +50,25 @@ Lifecycle authoring is organized as Fields, Rules, Try it, Export. Action bindin
 
 ## Impact
 
-- **Priority**: [P0-P5] - [Justification]
-- **Effort**: [Small/Medium/Large] - [Justification]
-- **Risk**: [Low/Medium/High] - [Justification]
-- **Breaking Change**: [Yes/No]
+- **Priority**: P3 - usability of repeat authoring; no correctness impact
+- **Effort**: Medium - template reorder, presets, summary function, CSS
+- **Risk**: Low - no emitted-YAML change; structural tests pin element ids
+- **Breaking Change**: No
+
+## Program Design
+
+### Types
+
+`TaskPreset {id, label, description, mode, build: () -> Model}` in `policy_builder_core.mjs`. `TransitionSummary {steps: string[], stopsAfterImplement: boolean, verifiesAfterImplement: boolean, maxStepsNote: string}`.
+
+### Signatures
+
+- `taskPresets() -> TaskPreset[]` — pure; each `build()` returns a model shaped like `seedExample(mode)` output.
+- `summarizeTransitions(model) -> TransitionSummary` — pure; derived from the same outcome/transition data `serializeLoopYaml` consumes.
+
+### Call Path
+
+Preset button → `applyStateToForm(preset.build())` → `applyModeVisibility` → `updatePreview` → `serializeLoopYaml` and `summarizeTransitions` (rendered next to the YAML preview).
 
 ## Acceptance Criteria
 
