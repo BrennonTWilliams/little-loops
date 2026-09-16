@@ -61,12 +61,38 @@ Prevent accidental loss of authoring work and make the builder useful for ongoin
 - `scripts/tests/test_enh3035_artifact_template_kit.py:65` — `test_policy_builder_renders_byte_identically_to_golden_fixture` calls `cmd_policy_builder` directly
 - `scripts/tests/test_policy_builder_emit.py:43,50,83` — `_emit_html`, `test_emit_writes_html`, `test_emitted_grammar_matches_canonical` call `cmd_policy_builder` directly (never the console script)
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/fsm/context_seed.py:68` — `seed_confidence_thresholds()` reads `config.commands.confidence_gate` off an already-built `BRConfig`; this is the pattern `cmd_policy_builder` should mirror to read the confidence-gate settings it must stamp — no new import path needed, `cmd_policy_builder` already constructs `config = BRConfig(Path.cwd())` at `policy_builder.py:66` [Agent 2 finding]
+- `scripts/little_loops/fsm/frontmatter_scores.py` — `encode_frontmatter_scores()` documents itself as sharing dimension-encoding rules verbatim with `normalizeDimName()`/dim encoding in `policy_builder_core.mjs`; touch if optional scoring instructions/score anchors change `BUILTIN_FRONTMATTER_DIMENSIONS`' shape [Agent 2 finding]
+
 ### Behavior Parity
 
 | Artifact | Preserved | Changed | Dropped |
 |---|---|---|---|
 | policy-router-builder.html.tmpl | Offline use, three modes, theme toggle, YAML export | Persistent drafts, guided layout, explicit execution semantics | Destructive implicit reseeding on mode change |
 | policy_builder_core.mjs | Valid rule semantics and YAML generation | Versioned project serialization, terminal destinations, optional scoring instructions | None |
+
+### Configuration
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/config/automation.py:155-170` — `ConfidenceGateConfig` is not currently imported or read by `cmd_policy_builder`. Read it via `config.commands.confidence_gate` off the already-constructed `BRConfig` (mirror `fsm/context_seed.py:68`); do **not** mirror `cli/issues/check_readiness.py:78-115`'s raw-JSON bypass — that workaround exists only because `ConfidenceGateConfig` "cannot express 'absent'" for CLI-flag-override semantics `cmd_policy_builder` doesn't have [Agent 2 finding]
+- No `config-schema.json` change is needed for this: `confidence_gate` is already fully defined at `scripts/little_loops/config-schema.json:509` [Agent 2 finding]
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/CLI.md:5079-5095` (`#ll-artifact-policy-builder`) — the Flags table (`:5085-5087`) has only `--output`/`-o`, no Save/Open-project or import flag to document yet; prose at `:5081` describing the five lifecycle verbs as fixed/uneditable goes stale once destinations are extensible [Agent 2 finding]
+- `docs/guides/POLICY_ROUTER_GUIDE.md:198-242` ("Visual Builder (greenfield)") and `:244-356` ("Issue Lifecycle Mode") — specific passages that go stale: `:227-229,290-291` (verbs "can't be deleted and no new outcome can be added" — contradicted by stop-success/skip/needs-attention destinations), `:295-301` (Verb Table needs a new-destination column), `:234-235` ("Start blank" data-loss framing this issue's persistence work replaces), `:232-234` (YAML-behind-`<details>` framing superseded by the dedicated Export tab), `:240-242` ("builder is *greenfield-only*" framing needs a Save/Open-project caveat) [Agent 2 finding]
+
+### Tests
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_policy_builder_corpus.py` — pins `conformance_corpus.json` against canonical Python (`evaluate_rules`/`_detect_shadows`); not in this issue's original Tests line and shares the fixture directory this issue's changes touch [Agent 2 + 3 finding]
+- `scripts/tests/test_policy_builder_emit.py::TestFeat2301UsabilityStructural` — `test_seed_and_blank_wiring_present` (`:203-207`), `test_rubric_mode_has_no_dt_only_affordances` (`:209-221`), `test_yaml_is_collapsed_behind_details` (`:169-184`) are at risk of breaking if the task-preset reorg renames/removes the `start-blank-btn`, `rules-fieldset`/`outcomes-fieldset`/`tryit-fieldset`, or `yaml-details`/`yaml-preview`/`yaml-summary` ids [Agent 2 finding]
+- `scripts/tests/test_policy_builder_emit.py::test_theme_resolution_order_is_stored_stamped_os_light` (`:186-197`) — asserts `initTheme()`'s `stored → __ACTIVE_THEME__ → matchMedia` source-order; new draft-restore bootstrap logic must not perturb this ordering [Agent 2 finding]
+- `scripts/tests/test_enh3035_artifact_template_kit.py::test_policy_builder_renders_byte_identically_to_golden_fixture` — will break on any template/core.mjs change; `scripts/tests/fixtures/policy_builder/golden_policy_router_builder.html` needs regeneration as part of this issue [Agent 2 + 3 finding]
+- `scripts/tests/test_policy_builder_node_gate.py::test_round_trip_yaml_validates_for_each_mode` — won't break outright (arbitrary terminal-state names are already schema-legal per `fsm/validation/structural_rules.py:26-35`) but has zero coverage of new stop-success/skip/needs-attention states; needs new `.model.json`/`.yaml` fixture(s) under `scripts/tests/fixtures/policy_builder/` plus a new parametrize entry [Agent 3 finding]
+- No browser/DOM interaction test harness exists anywhere in the repo (no Playwright/Selenium/jsdom harness — searched repo-wide, no hits). The closest existing convention for "test the emitted page without a browser" is `TestFeat2301UsabilityStructural`'s static string/regex assertions; automated interaction tests for undo/redo, reload persistence, and keyboard operability (required by this issue's Acceptance Criteria) have no precedent to extend and are greenfield [Agent 3 finding]
 
 ### Codebase Research Findings
 
@@ -123,6 +149,17 @@ Exact inputs/values not yet pinned down by Proposed Solution: which frontmatter 
 4. Add export/run guidance, accessible feedback, and responsive styling.
 5. Exercise offline persistence, round trips, and browser workflows; update fixtures and reference material.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Inject at `scripts/little_loops/cli/artifact/policy_builder.py:66-94` — read `config.commands.confidence_gate` off the already-constructed `BRConfig` (mirror `fsm/context_seed.py:68`) and stamp its `readiness_threshold`/`outcome_threshold` alongside the existing `css_vars`/`spec`/`catalog` stamping; no new import path required
+- Update `scripts/tests/fixtures/policy_builder/golden_policy_router_builder.html` — regenerate the byte-exact golden fixture consumed by `test_policy_builder_renders_byte_identically_to_golden_fixture`
+- Add `scripts/tests/fixtures/policy_builder/*.model.json`/`.yaml` fixture pair(s) for the new stop-success/skip/needs-attention terminal destinations, plus a matching parametrize entry in `test_policy_builder_node_gate.py::test_round_trip_yaml_validates_for_each_mode`
+- Establish (or explicitly scope out in Scope Boundaries) an automated browser/DOM interaction test harness for the reload-persistence, undo/redo, and keyboard-operability Acceptance Criteria — none exists in this codebase today
+- Update `docs/reference/CLI.md:5079-5095` (`#ll-artifact-policy-builder`) and `docs/guides/POLICY_ROUTER_GUIDE.md:198-356` (Visual Builder / Issue Lifecycle Mode sections) to replace stale five-verb/binary-terminal/YAML-disclosure/greenfield-only framing
+- If a new `parseBuilderProject` import-validation error is added, follow the existing "throw with a matchable message" convention (`scripts/tests/js/policy_validator.test.mjs:327-329`, `parseFrontmatterBlock`'s `Can't read line N` errors) rather than a new error-text shape
+
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-09-16 — based on codebase analysis:_
@@ -176,5 +213,6 @@ Includes persistent authoring, terminology/layout, action and scoring explanatio
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-16T21:29:53 - `0e35d235-ff66-480a-930e-d4d9ddd5eeb9.jsonl`
 - `/ll:refine-issue` - 2026-09-16T21:07:15 - `7e302668-e6b7-4dea-830f-330bbfd02fc0.jsonl`
 - `/ll:capture-issue` - 2026-09-16T20:55:13 - `64af6deb-56e5-4bde-9534-85751c1782ca.jsonl`

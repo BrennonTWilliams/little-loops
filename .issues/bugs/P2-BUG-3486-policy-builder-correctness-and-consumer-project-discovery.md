@@ -53,6 +53,30 @@ Add a pure model-validation pipeline shared by preview/export and a compiled eva
 - Tests: scripts/tests/test_policy_builder_emit.py, scripts/tests/test_policy_builder_corpus.py, scripts/tests/test_policy_builder_node_gate.py, scripts/tests/test_frontmatter_scores.py, scripts/tests/js/policy_validator.test.mjs; add browser-editing coverage under the local pytest gate.
 - Configuration: preserve existing project configuration and offline artifact behavior.
 
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/fsm/route_table.py` — defines `_detect_shadows()` (not `policy_rules.py`) and `PolicyRuleExtractor.extract()`; it is the actual Python oracle the conformance corpus pins JS `detectShadows()` against, and a second Python-side parser of `context.policy_rules` via `parse_rules()`. Should be named alongside `fsm/policy_rules.py` under Dependent contracts. [Agent 1 finding]
+- `scripts/little_loops/fsm/policy_rules.py` — `grammar_spec()` and `_py_pattern_to_js()` (imported at `cli/artifact/policy_builder.py:63,70,76`) are the Python oracle for the JS-side predicate regex stamped into the emitted page; `test_policy_rules.py`'s `test_ordered_op_non_numeric_raises`/`test_invalid_target_name_raises` pin the exact behaviors `parseRuleTable`/`parsePredicate` must be made to match for defect (c). [Agent 1 finding]
+- `scripts/little_loops/fsm/validation/reachability.py` — calls `parse_rules()` inside a policy-dims-scored reachability check (catches `ValueError`); a regression-risk consumer of `policy_rules.py`'s parsing contract, not itself modified by this issue. [Agent 1 finding]
+- `scripts/little_loops/fsm/schema.py` — `FAILURE_TERMINAL_NAMES` frozenset; the new decision-table failure terminal needs no schema change only if it reuses the name `"failed"` (matching `_serializeIssueLifecycle`'s existing precedent) — a different name requires either an explicit `failure: true` field on the emitted state or registration here. [Agent 2 finding]
+
+### Tests (wiring additions)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_enh3035_artifact_template_kit.py::test_policy_builder_renders_byte_identically_to_golden_fixture` — byte-exact golden-HTML comparison; breaks on any `.mjs`/`.tmpl` edit, requires regenerating `fixtures/policy_builder/golden_policy_router_builder.html`. [Agent 2/3 finding]
+- `scripts/tests/js/policy_validator.test.mjs::"serializeLoopYaml matches golden decision-table fixture"`, `scripts/tests/test_policy_builder_emit.py::test_golden_yaml_validates`, and `scripts/tests/test_policy_builder_node_gate.py::test_round_trip_yaml_validates_for_each_mode[sample-decision-table.model.json]` — all pinned to `fixtures/policy_builder/sample-decision-table.yaml`/`.model.json`, whose `_error: escalate` route will change once decision-table mode gains a dedicated failure terminal; regenerate both fixtures together. [Agent 2/3 finding]
+- `scripts/tests/test_policy_rules.py` — Python oracle tests (`test_ordered_op_non_numeric_raises`, `test_invalid_target_name_raises`, `grammar_spec`/`_py_pattern_to_js` assertions) that new JS parity tests/corpus cases must match. [Agent 1/3 finding]
+- `scripts/tests/fixtures/policy_builder/frontmatter_encoding_corpus.json` — no existing case exercises `#`-comment stripping, a quoted comma inside a flow-list, or a dimension where `priority`/`priority_rank` are decoupled; add new cases, since the current 17 cases cannot distinguish old from fixed behavior. [Agent 3 finding]
+- `scripts/tests/fixtures/policy_builder/conformance_corpus.json` — add cases targeting `parseRuleTable`'s error-raising behavior (nonnumeric ordered comparisons, malformed targets); `evaluate_cases` itself is unaffected since compiled-input evaluation behavior doesn't change. [Agent 2/3 finding]
+- No test executes `loops/lib/policy-router.yaml`'s fragments end-to-end through the FSM executor, and no `TestPolicyRouterLib`-equivalent execution-level harness exists for the `policy_parse_scores` clean-slate fix beyond structural/substring checks in `test_fsm_fragments.py`. Closest precedent is `test_frontmatter_scores.py::TestMainHappyPath.test_two_pass_clean_slate`, which requires factoring `policy_parse_scores`'s heredoc body into an importable module first (no such module exists today, unlike `frontmatter_scores.py`). [Agent 3 finding]
+
+### Documentation (wiring additions)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/CONFIGURATION.md` § `artifacts` — briefly describes catalog stamping into the policy-router/rubric builder page; review for continued accuracy once catalog discovery merges plugin + project roots. [Agent 2 finding]
+- `docs/reference/API.md` § `assemble_tool_catalog` — cites `_load_skill_catalog()` as a "single-root, never-raises" precedent; this citation becomes stale once the function gains multi-root merge behavior. [Agent 2 finding]
+
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-09-16 — based on codebase analysis:_
@@ -117,6 +141,17 @@ Catalog-merge precedent search (capability search, not name search): searched ev
 4. Resolve installed catalog content and override precedence.
 5. Update fixtures and user-facing behavior descriptions; run focused gates and the required local suite.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Regenerate `fixtures/policy_builder/golden_policy_router_builder.html` after any `.mjs`/`.tmpl` edit — required for `test_enh3035_artifact_template_kit.py` to keep passing.
+- Regenerate `fixtures/policy_builder/sample-decision-table.yaml` + `.model.json` once decision-table mode gains a dedicated failure terminal; update the three tests pinned to them (`policy_validator.test.mjs`, `test_policy_builder_emit.py::test_golden_yaml_validates`, `test_policy_builder_node_gate.py::test_round_trip_yaml_validates_for_each_mode`).
+- Decide the decision-table failure-terminal name; if it is not `"failed"` (the existing `_serializeIssueLifecycle` precedent), add an explicit `failure: true` field or register the name in `fsm/schema.py`'s `FAILURE_TERMINAL_NAMES`.
+- Add new cases to `frontmatter_encoding_corpus.json` (comment stripping, quoted comma in a flow-list, decoupled `priority`/`priority_rank`) and to `conformance_corpus.json` (`parseRuleTable` error cases for nonnumeric ordered comparisons and malformed targets) rather than modifying existing cases.
+- Cite `scripts/little_loops/fsm/route_table.py::_detect_shadows` (not `policy_rules.py`) as the Python oracle for JS `detectShadows` parity work.
+- Update `docs/reference/CONFIGURATION.md` and `docs/reference/API.md` alongside the already-planned `POLICY_ROUTER_GUIDE.md`/`CLI.md` doc updates.
+
 ## Impact
 
 - Priority: P2 — routing decisions and generated loops can be wrong despite a healthy preview.
@@ -180,5 +215,6 @@ Includes correctness, validation feedback, and installed catalog discovery. Excl
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-16T21:29:31 - `0e35d235-ff66-480a-930e-d4d9ddd5eeb9.jsonl`
 - `/ll:refine-issue` - 2026-09-16T21:10:28 - `23738f99-b471-4d7b-a1d6-399ffa424bef.jsonl`
 - `/ll:capture-issue` - 2026-09-16T20:55:13 - `64af6deb-56e5-4bde-9534-85751c1782ca.jsonl`
