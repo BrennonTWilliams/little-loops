@@ -20,6 +20,8 @@ relates_to:
 - ENH-3491
 - BUG-3489
 - FEAT-3474
+blocked_by:
+- ENH-3491
 ---
 
 # ENH-3492: Policy builder explicit terminal destinations, scoring instructions, and gate stamping
@@ -98,3 +100,7 @@ Includes destination semantics, scoring metadata, gate stamping, and their docs.
 ## Status
 
 **Open** | Created: 2026-09-16 | Priority: P3
+
+
+## Session Log
+- `/ll:audit-issue-conflicts` - 2026-09-16T23:13:05 - `e4d4d311-3a45-427a-958f-7960765e8da2.jsonl`
