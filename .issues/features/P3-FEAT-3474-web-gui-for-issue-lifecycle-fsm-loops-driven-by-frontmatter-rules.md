@@ -69,6 +69,17 @@ _Added by pre-implementation review (4th pass) — 2026-09-16 — based on codeb
 - Fragment deep-merge (`fsm/fragments.py:66-150`) is "fragment is the base, state fields override", so caller-supplied `next:`/`on_error:` on a `fragment: frontmatter_scores` state survive — confirmed, no gap.
 - `parse_frontmatter` behaviour reproduced live: `decision_needed: true` → `'true'`; `blocked_by: []` → `[]`; `blocked_by: BUG-1` → `'BUG-1'`; `deferred_reason:` → `None`; `confidence_score: 007` → `'007'` (`coerce_types=False`) / `7` (`True`); `status: completed` → `'done'`; `title: 'a: b'` → `'a: b'`. Matches the Encoding Rules.
 
+_Added by pre-implementation review (5th pass) — 2026-09-16 — based on codebase analysis:_
+
+- **`/ll:refine-issue` never writes `confidence_score`.** The only writer is `/ll:confidence-check`, via `ll-issues set-scores <ID> --confidence … --outcome …` (`skills/confidence-check/SKILL.md:398-405`); `commands/refine-issue.md` touches `decision_needed` only (`:545`). Any seed whose only path to `gate` is `confidence_score:>=N` while `refine` rescores in place can therefore never reach `gate`, and a `gate → rescore` default re-fires the same `>=N` rule forever. See the corrected Verb Table and Use Case.
+- **`/ll:manage-issue` takes `<issue_type> <action> [issue_id]` positionals, both required** (`skills/manage-issue/SKILL.md:9-16`); `/ll:manage-issue FEAT-1` parses `FEAT-1` as `issue_type`. No loop in the repo invokes `/ll:manage-issue`; both production per-issue loops implement via a shell state running `ll-auto --only "$ID"` (`rn-remediate.yaml:470-486`; autodev's `implement_current` per `autodev.yaml:29-38`).
+- **The default verb skills are interactive unless `--auto` is passed.** `format-issue` (`skills/format-issue/SKILL.md:31,51`), `refine-issue` (`commands/refine-issue.md:76`), `confidence-check` (`SKILL.md:55`), and `verify-issues` (`commands/verify-issues.md:489`) all gate non-interactive behaviour on `--auto`; rn-remediate appends it to every one of its slash-command states (`rn-remediate.yaml:132,148,619-725`).
+- A `slash_command` state reaches `on_error` only when the host CLI exits non-zero (`executor.py:2161-2179`); a skill that reports a quality failure in prose exits 0 and advances to `next`. `on_error: failed` therefore catches infra failures, not skill-level failures.
+- `on_max_steps:` is a real top-level key (`executor.py:653-697`): when the step cap is hit the executor runs that state instead of finishing with `terminated_by: max_steps`.
+- `_serializeDecisionTable` places no restriction on outcome names and `fallbackState` itself defaults to `"done"` (`policy_builder_core.mjs:544`), so a decision-table outcome may legitimately be named `done`.
+- `validate_fsm` has no INFO severity (only ERROR/WARNING across `fsm/validation/*.py`), so asserting `validate_fsm(fsm) == []` is safe.
+- The visible-markup jargon denylist is `["Axis A", "Axis B", "context.subject", "policy_rules", "predicate"]` (`test_policy_builder_emit.py:133`).
+
 ## Expected Behavior
 
 A new `issue_lifecycle` mode on `policy-router-builder.html.tmpl` where:
@@ -87,12 +98,14 @@ A new `issue_lifecycle` mode on `policy-router-builder.html.tmpl` where:
     are **new** builder types; the existing `opsForType()` only special-cases
     `boolean`.)
 - **Actions** per rule/outcome are the five lifecycle verbs — prepare, refine,
-  gate, implement, verify — each pre-bound to a default `/ll:*` slash command
-  (see Verb Table) and overridable from the same emit-time skill catalog
-  FEAT-2301's "run a skill" dropdown already surfaces. The verb set is
-  **fixed**: verbs cannot be deleted and no new outcomes can be added in this
-  mode (`#add-outcome` hidden, `✕ outcome` disabled); only the skill binding
-  and transition are editable.
+  gate, implement, verify — four pre-bound to a default `/ll:*` slash command
+  plus per-verb default args (`--auto`), and `implement` pre-bound to a shell
+  action `ll-auto --only ${context.issue_id}` (see Verb Table). Every verb is
+  overridable from the same emit-time skill catalog FEAT-2301's "run a skill"
+  dropdown already surfaces, with a free-text **args** input beside it. The
+  verb set is **fixed**: verbs cannot be deleted and no new outcomes can be
+  added in this mode (`#add-outcome` hidden, `✕ outcome` disabled); only the
+  skill binding, args, and transition are editable.
 - **Try it** panel accepts a pasted frontmatter block and shows which rule
   fires, using the same evaluator the emitted loop uses. It must evaluate the
   **compiled** rule text — `evaluateRules(parseRuleTable(_serializeRulesText(model)), scores)`
@@ -215,32 +228,54 @@ scorer pytest and `node --test` cases pin.
 
 ### Verb Table
 
-| Verb | Default skill (model `body`) | Emitted `action:` | Default transition |
-|---|---|---|---|
-| prepare | `/ll:format-issue` | `/ll:format-issue ${context.issue_id}` | rescore ("Score again") |
-| refine | `/ll:refine-issue` | `/ll:refine-issue ${context.issue_id}` | rescore ("Score again") |
-| gate | `/ll:confidence-check` | `/ll:confidence-check ${context.issue_id}` | rescore ("Score again") |
-| implement | `/ll:manage-issue` | `/ll:manage-issue ${context.issue_id}` | finish ("Stop here") |
-| verify | `/ll:verify-issues` | `/ll:verify-issues ${context.issue_id}` | finish ("Stop here") |
+| Verb | `actionType` | Default `body` | Default `args` | Emitted `action:` | Default transition |
+|---|---|---|---|---|---|
+| prepare | `slash_command` | `/ll:format-issue` | `--auto` | `/ll:format-issue ${context.issue_id} --auto` | rescore ("Score again") |
+| refine | `slash_command` | `/ll:refine-issue` | `--auto` | `/ll:refine-issue ${context.issue_id} --auto` | **goto gate** ("Go to… gate") |
+| gate | `slash_command` | `/ll:confidence-check` | `--auto` | `/ll:confidence-check ${context.issue_id} --auto` | rescore ("Score again") |
+| implement | `shell` | `ll-auto --only` | _(empty)_ | `ll-auto --only ${context.issue_id}` | finish ("Stop here") |
+| verify | `slash_command` | `/ll:verify-issues` | `--auto` | `/ll:verify-issues ${context.issue_id} --auto` | finish ("Stop here") |
 
 **Body vs. emitted action.** The outcome model stores the **bare** skill
 (`/ll:<name>`), exactly what the existing skill `<select>` (`.tmpl:366-372`)
 writes and what `renderMessages`'s unknown-skill check (`.tmpl:589-593`)
-compares against the catalog by exact string. `_serializeIssueLifecycle`
-appends ` ${context.issue_id}` when emitting each verb's `action:` line. If
-the model stored the argument-bearing form, every verb would render as an
-"unknown skill" error and be unselectable in the dropdown. All five defaults
-are in `_load_skill_catalog()`'s output (it globs both `skills/*/SKILL.md`
-and `commands/*.md`, `policy_builder.py:31-46`).
+compares against the catalog by exact string. A separate per-outcome `args`
+string (new model field, free-text input beside the skill dropdown, seeded
+from the table) carries flags. `_serializeIssueLifecycle` emits each
+`slash_command` verb as `<body> ${context.issue_id} <args>` (args omitted
+when empty). If the model stored the argument-bearing form, every verb would
+render as an "unknown skill" error and be unselectable in the dropdown. The
+four slash-command defaults are in `_load_skill_catalog()`'s output (it globs
+both `skills/*/SKILL.md` and `commands/*.md`, `policy_builder.py:31-46`).
+
+**Why `--auto`.** format-issue, refine-issue, confidence-check, and
+verify-issues are interactive by default and only run unattended with
+`--auto` (5th-pass findings); rn-remediate appends it to every one of its
+slash-command states. When the user overrides a verb with a catalog skill
+that may not accept `--auto`, they clear the args field; the builder does not
+guess.
+
+**Why `implement` is a shell action, not `/ll:manage-issue`.** manage-issue
+requires `<issue_type> <action>` positionals ahead of the ID and the type is
+unknowable at emit time; both production per-issue loops implement via
+`ll-auto --only "$ID"` (`rn-remediate.yaml:470-486`). `implement` is
+therefore emitted as `action_type: shell` with `action: ll-auto --only
+${context.issue_id}` (a `shell` `actionType` on the outcome model, exempt
+from the unknown-skill check). Selecting a catalog skill for `implement` in
+the UI switches it back to `slash_command` with the standard `<body>
+${context.issue_id} <args>` emit.
 
 Transitions use the shell's existing per-outcome selector (`.tmpl:383`:
-"Score again" / "Go to…" / "Stop here") and remain user-editable. `rescore`
-re-runs `frontmatter_scores` after the verb, so a loop authored as "refine,
-then gate on confidence" progresses within one run (refine-issue updates
-`confidence_score`; the next score pass routes to gate). This matches the
-template's existing outcome default (`.tmpl:656` seeds `rescore`) rather than
-forcing finish-only. `max_steps` bounds a non-converging refine cycle, exactly
-as it bounds `deep_repair → score` in `decision_table` mode.
+"Score again" / "Go to…" / "Stop here") and remain user-editable. `refine`
+defaults to **`goto gate`** rather than `rescore` because refine-issue does
+not write `confidence_score` — only confidence-check does (5th-pass findings)
+— so rescoring straight after refine re-fires the same rule; routing through
+`gate` first is what makes "refine, then gate on confidence" progress within
+one run (refine → confidence-check rescores the issue → the next score pass
+routes on the new value). `gate` rescores. `max_steps` bounds a
+non-converging refine/gate cycle, exactly as it bounds `deep_repair → score`
+in `decision_table` mode, and the emitted `on_max_steps: failed` (§2) makes
+that ending land on the failure terminal rather than a bare `max_steps` stop.
 
 **`finish` is emitted as `next: done`, not `terminal: true`.** A terminal
 state's action never executes (`executor.py:816`), so `implement`/`verify`
@@ -341,16 +376,22 @@ check for typo'd dimension names.
     comment (`# every verb is a /ll: skill; MR-12 would otherwise warn per
     verb state`). Both are required for the zero-warnings AC — see the 4th-pass
     findings.
+  - top-level `on_max_steps: failed`, so a refine/gate cycle that never
+    converges ends on the failure terminal instead of `terminated_by:
+    max_steps` (5th-pass findings).
   - `initial: score` → `score: {fragment: frontmatter_scores, next:
     policy_dispatch, on_error: failed}` → `policy_dispatch` (route-map
     generation as in `_serializeDecisionTable`, except the `_error` sentinel
     routes to `failed`) → **one outcome state per emitted verb** (see
     "Emitted-verb closure" below; not one per model outcome, unlike
     `_serializeDecisionTable`, which would emit all five verb states for a
-    three-verb loop), with ` ${context.issue_id}` appended to each
-    `slash_command` body and `on_error: failed` on every verb state (a
-    failing verb otherwise advances to `score`, rescoring routes back to the
-    same verb, and the loop spins until `max_steps`) → a bare
+    three-verb loop), each `slash_command` verb emitted as `<body>
+    ${context.issue_id} <args>` and the `shell` verb (`implement` default)
+    emitted as `action_type: shell` / `action: <body> ${context.issue_id}`,
+    with `on_error: failed` on every verb state (catches host-CLI /
+    `ll-auto` non-zero exits — infra failures — so they surface as `failed`
+    rather than advancing to `score`; a skill that reports a quality failure
+    in prose exits 0 and is bounded by `max_steps`/`on_max_steps` instead) → a bare
     `done: {terminal: true}` state → a fixed `failed: {terminal: true}` state
     (the unresolved-issue-ID exit; see §1). `failed` is in
     `FAILURE_TERMINAL_NAMES` (`fsm/schema.py:34`), so the run is reported as a
@@ -369,6 +410,14 @@ check for typo'd dimension names.
     byte-unchanged" AC to: unchanged **except** for the BUG-2813 fix, which
     is a deliberate, called-out regeneration.) An outcome with
     `actionType: none` and `finish` may still be emitted as a bare terminal.
+    **Done-state name collision:** decision-table outcomes may be named
+    anything, including `done` (`fallbackState` even defaults to `"done"`,
+    `policy_builder_core.mjs:544`). An outcome named `done` with an action
+    and a `finish` transition would emit `next: done` on itself plus a
+    duplicate bare `done:` key. `_outcomeStateLines`'s caller picks the
+    done-state name at emit time: `done` unless an outcome/verb already uses
+    it, else `finished` (pure helper `_doneStateName(model)`, exported for
+    `node --test`); the lifecycle mode's fixed verb set can never collide.
   - **Emitted-verb closure.** The set of emitted verb states is the
     transitive closure of: verbs targeted by a rule, the fallback verb, and
     any verb named as the `goto` target of an already-emitted verb. Without
@@ -412,11 +461,18 @@ check for typo'd dimension names.
   String-value validation and § Custom key names).
 - Outcome fieldset in this mode shows the five verbs with their default
   skills pre-selected in the existing skill-catalog dropdown (bare `/ll:<name>`
-  bodies, see Verb Table § Body vs. emitted action). `#add-outcome` is hidden
-  and each verb's `✕ outcome` button is disabled. `renderMessages`'s
-  "has no rule and isn't the fallback" warning (`.tmpl:581-587`) is
-  **suppressed** in this mode — unused verbs are expected, not a mistake,
-  and are simply not emitted.
+  bodies, see Verb Table § Body vs. emitted action), a free-text **args**
+  input beside the dropdown seeded with `--auto`, and `implement` shown as
+  its shell default (`ll-auto --only`) with the dropdown offering catalog
+  skills as an override. `#add-outcome` is hidden and each verb's `✕ outcome`
+  button is disabled. `renderMessages`'s "has no rule and isn't the fallback"
+  warning (`.tmpl:581-587`) is **suppressed** in this mode — unused verbs are
+  expected, not a mistake, and are simply not emitted. The unknown-skill
+  check skips `shell` outcomes.
+- **On-screen copy constraint.** `test_no_internal_jargon_in_visible_markup`
+  denylists `predicate` and `policy_rules` (among others) in visible markup;
+  the new fieldset labels, Try-it help text, and validation messages must
+  say "condition"/"rule" instead.
 - Try-it: a `<textarea>` for pasted frontmatter; the page parses it with a
   minimal YAML-frontmatter reader (scalars with optional matching quotes,
   first-`:` split, booleans, flow/dash lists — no nested maps; `""`/`null`/`~`
@@ -539,7 +595,12 @@ _Added by `/ll:refine-issue` — 2026-09-16 — based on codebase analysis:_
   = {kind: "goto", target: "gate"}`, assert the YAML contains a `gate:` state
   and `ll-loop validate` passes; and a case asserting a `finish` verb with a
   `slash_command` emits `next: done` plus a bare `done:` terminal, never
-  `terminal: true` alongside `action:`.
+  `terminal: true` alongside `action:`; a case asserting the seeded
+  `implement` verb emits `action_type: shell` / `action: ll-auto --only
+  ${context.issue_id}` and the seeded `refine` verb emits
+  `action: /ll:refine-issue ${context.issue_id} --auto` with `next: gate`;
+  and a `_doneStateName` case for a decision-table model whose outcome is
+  named `done`.
 - `scripts/tests/fixtures/policy_builder/sample-issue-lifecycle.model.json`
   and `.yaml` — new golden fixture pair; the YAML must pass `ll-loop validate`.
 - `scripts/tests/test_policy_builder_corpus.py` /
@@ -669,11 +730,16 @@ because the emitted loop makes no sub-loop calls.
   little-loops code knowing the field — verified end to end against an issue
   file carrying a custom `severity` key.
 - [ ] Each rule's outcome is one of the five lifecycle verbs, pre-bound to the
-  Verb Table default skill and overridable from the emit-time skill catalog
-  dropdown with no "unknown skill" message for any default; verbs cannot be
-  deleted and no outcome can be added. The emitted state is a `slash_command`
-  whose **emitted `action:`** is `<skill> ${context.issue_id}`; only verbs
-  referenced by a rule or the fallback are emitted.
+  Verb Table default skill/args and overridable from the emit-time skill
+  catalog dropdown plus a free-text args input, with no "unknown skill"
+  message for any default; verbs cannot be deleted and no outcome can be
+  added. A `slash_command` verb's **emitted `action:`** is
+  `<skill> ${context.issue_id} <args>` (`--auto` by default); the
+  `implement` default is emitted as `action_type: shell` /
+  `action: ll-auto --only ${context.issue_id}`, never as
+  `/ll:manage-issue <ID>` (manage-issue requires `<type> <action>`
+  positionals first). Only verbs referenced by a rule or the fallback are
+  emitted.
 - [ ] Rules are ordered/reorderable and read as a first-match list with a
   pinned non-input "Otherwise" catch-all, per FEAT-2301/FEAT-2390's shipped
   shell conventions.
@@ -693,7 +759,15 @@ because the emitted loop makes no sub-loop calls.
 - [ ] The emitted verb set is the transitive closure over rule targets, the
   fallback, and `goto` targets of emitted verbs: a `goto` to an otherwise
   unreferenced verb emits that verb's state and validates clean.
-- [ ] Every emitted verb state carries `on_error: failed`.
+- [ ] Every emitted verb state carries `on_error: failed`, and the YAML
+  declares top-level `on_max_steps: failed`; a run whose refine/gate cycle
+  never converges ends on `failed`, not `terminated_by: max_steps`.
+- [ ] `_doneStateName` avoids the collision: a `decision_table` model with an
+  outcome named `done` (action + finish) emits `next: finished` and a bare
+  `finished:` terminal, never a self-loop or duplicate `done:` key; pinned by
+  a `node --test` case.
+- [ ] No visible markup in the new mode contains `predicate` or
+  `policy_rules` (existing jargon-denylist test passes unchanged).
 - [ ] Built-in dimensions show no delete control in `issue_lifecycle` mode;
   custom dimensions remain deletable.
 - [ ] The emitted `score` state sets `on_error: failed` and the YAML carries a
@@ -718,9 +792,11 @@ because the emitted loop makes no sub-loop calls.
   rule does **not** fire against pasted `decision_needed: true`, and a
   `node --test` case pins this against `evaluateRules` on the compiled text.
 - [ ] Each verb outcome seeds the Verb Table's default transition
-  (prepare/refine/gate → rescore, implement/verify → finish) and remains
-  editable via the existing outcome transition selector; the seeded example
-  progresses refine → gate within one run when `confidence_score` rises.
+  (prepare/gate → rescore, refine → goto gate, implement/verify → finish) and
+  remains editable via the existing outcome transition selector; in an
+  end-to-end run on an unscored issue the seeded example fires gate first,
+  then refine → gate → implement once `confidence_score` reaches 85
+  (observable in the run's events log).
 - [ ] The Try-it panel accepts a pasted frontmatter block and reports the
   firing rule, agreeing with `evaluate_rules` on every conformance-corpus case.
 - [ ] The new mode's pure-function core logic ships with `node --test`
@@ -743,10 +819,15 @@ because the emitted loop makes no sub-loop calls.
   — the existing shape with `"string"` and `"list"` added; no `kind`
   discriminator.
 - `outcome: {name: "prepare" | "refine" | "gate" | "implement" | "verify",
-  actionType: "slash_command", body: string, transition: {kind: "rescore" | "goto" | "finish", target?: string}}`
-  — existing outcome shape, seeded from the Verb Table (rescore for
-  prepare/refine/gate, finish for implement/verify). `body` is the bare
-  `/ll:<name>`; the `${context.issue_id}` argument is appended at emit time.
+  actionType: "slash_command" | "shell", body: string, args?: string, transition: {kind: "rescore" | "goto" | "finish", target?: string}}`
+  — existing outcome shape plus a new optional `args` string and a new
+  `"shell"` `actionType` value (both modes; absent `args` serializes as
+  before, so existing model fixtures are unaffected). Seeded from the Verb
+  Table (rescore for prepare/gate, goto gate for refine, finish for
+  implement/verify; `args: "--auto"` on the four slash-command verbs;
+  `implement` is `{actionType: "shell", body: "ll-auto --only"}`). `body` is
+  the bare `/ll:<name>` or shell command; ` ${context.issue_id}` and then
+  ` <args>` are appended at emit time.
 - `BUILTIN_FRONTMATTER_DIMENSIONS: ReadonlyArray<dimension>` and
   `LIFECYCLE_VERBS: ReadonlyArray<outcome>` — new exported constants in
   `policy_builder_core.mjs`.
@@ -769,12 +850,19 @@ because the emitted loop makes no sub-loop calls.
 - `_emittedVerbs(model: Model) -> string[]` — new pure helper; transitive
   closure over rule targets, `model.fallback`, and `transition.target` of
   `goto` outcomes already in the set. Exported for `node --test`.
-- `_outcomeStateLines(outcome, {doneState = "done"} = {}) -> string[]` —
+- `_outcomeStateLines(outcome, {doneState = "done", issueArg = false} = {}) -> string[]` —
   existing (`policy_builder_core.mjs:458`); changed so a `finish` transition
   on an outcome **with** an action emits `next: <doneState>` instead of
-  `terminal: true` (BUG-2813 fix, both modes). Callers must emit the bare
+  `terminal: true` (BUG-2813 fix, both modes); gains the `shell` action type
+  (`action_type: shell` / `action: <body>`) and, when `issueArg` is set,
+  appends ` ${context.issue_id}` and then ` <outcome.args>` (if non-empty)
+  to `slash_command`/`shell` bodies. Callers must emit the bare
   `<doneState>: {terminal: true}` once. `finish` with `actionType: none`
   keeps emitting `terminal: true`.
+- `_doneStateName(model) -> string` — new pure helper; returns `"done"`
+  unless an outcome, rule target, or fallback already uses that name, else
+  `"finished"`. Used by `_serializeDecisionTable` for the BUG-2813 fix;
+  exported for `node --test`.
 - `serializeFrontmatterDimensions(model: Model) -> string` — new; produces
   the `name:type|name:type` text for `context.frontmatter_dimensions`.
 - `parseFrontmatterBlock(text: string) -> Record<string, unknown>` — new pure
@@ -828,15 +916,64 @@ Seeded example rules (also the `seedExample` content):
 ```
 status:==done -> verify
 severity:==critical & review_status:==approved -> implement
-confidence_score:>=70 -> gate
-* -> refine
+confidence_score:>=85 -> implement
+confidence_score:<85 -> refine
+* -> gate
 ```
 
-With the Verb Table's default transitions, a single run on an issue at
-`confidence_score: 40` goes refine → (rescore) → gate once refine-issue lifts
-the score past 70. `implement` is a finish transition, so `status:==done ->
-verify` fires on a **subsequent** `ll-loop run` against the same issue, not
-within the run that implemented it.
+The rule order relies on the documented missing-dimension semantics: an
+issue with no `confidence_score` fails both ordered rules and falls to the
+`* -> gate` catch-all, which is the one verb that writes the score. With the
+Verb Table's default transitions a single run on an unscored issue goes
+gate (writes `confidence_score: 40`) → rescore → `<85` → refine → **goto
+gate** (rescores the issue) → rescore → `>=85` → implement → done. If refine
+never lifts the score, the refine/gate cycle ends at `max_steps` on the
+`failed` terminal via `on_max_steps`. `implement` is a finish transition, so
+`status:==done -> verify` fires on a **subsequent** `ll-loop run` against
+the same issue, not within the run that implemented it. (The earlier seed —
+`confidence_score:>=70 -> gate` / `* -> refine` with refine → rescore —
+could never reach `gate`, because refine-issue does not write the score;
+corrected in the 5th pass.)
+
+## UI Notes
+
+No separate mockup: this mode reuses the shipped FEAT-2301 shell (theme
+tokens, `#mode-switch`, fieldset layout, demoted YAML rail, pinned
+"Otherwise" footer) unchanged. Only three surfaces are new; decisions below so
+the implementer does not guess. Existing classes only (`rule-row`, `row`,
+`help`, `hint`, `secondary del`, `rule-winner`) — no new CSS beyond one
+`.locked` rule.
+
+- **Locked built-in dimension rows.** Rendered in the same `#dim-list` as
+  custom rows, built-ins first in Built-in Dimension Table order, then custom
+  rows in insertion order. A built-in row omits the `✕` button entirely (never
+  a disabled one) and shows a `<small class="help">built-in</small>` tag after
+  the `(type)` marker. `priority_rank` additionally reads
+  `(numeric, derived from priority)`. One fieldset-level help line replaces
+  the current boolean-help text in this mode: "Built-in fields come from the
+  issue's frontmatter and can't be removed. Add your own fields below."
+- **Fixed verb outcomes.** The five verbs render as rows with no `✕` button
+  (omitted, not disabled — a disabled control reads as broken) and
+  `#add-outcome` hidden. Each row is: verb name in `<strong>`, the existing
+  skill-catalog `<select>` pre-set to the default, the free-text `args`
+  input (placeholder `--auto`, blank for `implement`), and the transition
+  `<select>`. `implement`'s row shows its shell default as a read-only
+  `<code>ll-auto --only $ISSUE</code>` in place of a selected catalog entry
+  until the user picks a skill. Verbs stay in Verb Table order; no drag
+  handle. Help line:
+  "Every verb is available as a rule target; verbs no rule routes to are left
+  out of the saved loop."
+- **Frontmatter Try-it.** `#frontmatter-tryit-fieldset` holds one
+  `<textarea rows="8">` with placeholder
+  `status: open\npriority: P2\nconfidence_score: 40` and
+  `aria-label="Paste issue frontmatter"`. Winner feedback reuses
+  `rule-winner` on the matching rule card exactly as decision-table Try-it
+  does; no separate result box. A `<p class="hint">` under the textarea shows
+  either the encoded scores as `key=value` pairs (so users see
+  `priority_rank=2` and `blocked_by=0` appear) or, on a mini-parser failure,
+  the first unparseable line prefixed `Can't read line N:`; parse failure
+  clears any winner highlight. The `---` fence lines are tolerated and
+  ignored.
 
 ## Non-goals
 
@@ -907,6 +1044,8 @@ record of what was wrong and fixed, not an outstanding action item).
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-16T19:09:41 - `3a928631-1696-40e2-983a-002411339811.jsonl`
+- pre-implementation review (5th pass) - 2026-09-16 - five fixes: (1) **blocking** — seed rules and Verb Table defaults never converged: refine-issue does not write `confidence_score` (only confidence-check does via `ll-issues set-scores`), so `* -> refine` + rescore spun until `max_steps` and `gate` + rescore re-fired forever; seed reordered (`>=85 -> implement`, `<85 -> refine`, `* -> gate`), `refine` defaults to goto gate, `on_max_steps: failed` emitted; (2) **blocking** — `/ll:manage-issue ${context.issue_id}` is malformed (skill requires `<type> <action>` positionals, type unknowable at emit time); `implement` now defaults to a `shell` outcome `ll-auto --only ${context.issue_id}`, matching rn-remediate:470/autodev; (3) the four slash-command verbs need `--auto` to run unattended — new per-outcome `args` field, emitted as `<skill> ${context.issue_id} <args>`; (4) BUG-2813 fix's `done` state can collide with a user outcome named `done` — `_doneStateName` helper; (5) `on_error: failed` rationale corrected (infra-only) and jargon-denylist constraint (`predicate`, `policy_rules`) recorded for new UI copy. Confirmed fine: `:shell` modifier, `scope`/`pruning_profile_ok` keys, `ll-issues path --json` shape, run pre-flight rejects missing `issue_id`, no INFO validator severity.
 - pre-implementation review (4th pass) - 2026-09-16 - seven fixes: (1) **blocking** — `finish` verbs (`implement`/`verify` defaults) were emitted terminal-with-action and the executor never runs a terminal's action (executor.py:816); now `next: done` + bare `done:`, fixed in shared `_outcomeStateLines()` (BUG-2813) with a called-out decision-table golden regen; (2) zero-warnings AC was unreachable — live validate on the decision-table golden emits BUG-2813, missing-`scope:`, and MR-12 pruning-profile warnings; emit `scope: ["."]` + commented `pruning_profile_ok: true`, and the golden pytest asserts all severities; (3) emitted-verb set is now the `goto`-transitive closure (dangling `next:` otherwise); (4) `on_error: failed` on verb states; (5) built-in dims locked against `✕` delete; (6) `ll-issues path` prints project-root-relative — fragment uses `--json` and joins; (7) validator test file named (`test_fsm_validation_reachability.py`). Confirmed no gap: fragment deep-merge preserves caller `on_error`; `parse_frontmatter` claims reproduced live.
 - `/ll:verify-issues` - 2026-09-16T17:34:14 - `28136058-041a-417b-9160-4c1439302c2e.jsonl`
 - pre-implementation review (3rd pass) - 2026-09-16 - six fixes: (1) resolved `blocked_by` absent→0 vs numeric absent→no-file contradiction by adding a `list` type (count, always written); (2) verb bodies stored bare (`/ll:<name>`), `${context.issue_id}` appended at emit time — the argument-bearing form trips the exact-match skill `<select>` and unknown-skill check; (3) Try-it must evaluate compiled rule text — existing decision_table Try-it passes raw `==true`/`==false` ops to `evaluateRules`, which treats them as `!=` (node-verified; separate BUG); (4) only rule/fallback-referenced verbs emitted, verbs locked, unreachable-outcome message suppressed; (5) derived numeric `priority_rank` so `P0–P2` rules work; (6) mini-parser handles quoted scalars and first-`:` split. Noted `failed` ∈ `FAILURE_TERMINAL_NAMES`.
