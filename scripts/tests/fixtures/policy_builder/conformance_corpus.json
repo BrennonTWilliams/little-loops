@@ -148,6 +148,50 @@
         "score": 85
       },
       "expected_target": "notabove"
+    },
+    {
+      "name": "string type == predicate on a custom (non-built-in) dimension",
+      "rules": "severity:==critical -> escalate\n* -> hold",
+      "scores": {
+        "severity": "critical"
+      },
+      "expected_target": "escalate"
+    },
+    {
+      "name": "string type != predicate on a custom dimension (different value)",
+      "rules": "severity:!=critical -> notcritical\n* -> escalate",
+      "scores": {
+        "severity": "minor"
+      },
+      "expected_target": "notcritical"
+    },
+    {
+      "name": "missing-dimension semantics: == on an entirely absent dimension never matches",
+      "rules": "severity:==critical -> escalate\n* -> hold",
+      "scores": {},
+      "expected_target": "hold"
+    },
+    {
+      "name": "missing-dimension semantics: != on an entirely absent dimension always matches",
+      "rules": "severity:!=critical -> notcritical\n* -> hold",
+      "scores": {},
+      "expected_target": "notcritical"
+    },
+    {
+      "name": "numeric-first coercion on ==: severity:==1 matches string scores '1'",
+      "rules": "severity:==1 -> match\n* -> nomatch",
+      "scores": {
+        "severity": "1"
+      },
+      "expected_target": "match"
+    },
+    {
+      "name": "numeric-first coercion on ==: severity:==1 matches string scores '1.0'",
+      "rules": "severity:==1 -> match\n* -> nomatch",
+      "scores": {
+        "severity": "1.0"
+      },
+      "expected_target": "match"
     }
   ],
   "shadow_cases": [

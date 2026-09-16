@@ -5064,7 +5064,7 @@ Generate self-contained, human-facing artifacts from project data. `policy-build
 
 | Subcommand | Description |
 |------------|-------------|
-| `policy-builder` | Emit a visual builder for policy-router / rubric FSM loop YAML |
+| `policy-builder` | Emit a visual builder for policy-router / rubric / issue-lifecycle FSM loop YAML |
 | `design-md export` | Export a design-token profile as a single-theme DESIGN.md document |
 | `render` | Deterministic `template + data.json -> artifact` stamp for a `.llat/` artifact template |
 | `templatize` | Save a generated artifact as a reusable `.llat/` template (Phase A: deterministic, `--regions` map) |
@@ -5078,7 +5078,7 @@ Generate self-contained, human-facing artifacts from project data. `policy-build
 
 #### ll-artifact policy-builder
 
-Emit `policy-router-builder.html` — a single self-contained page for visually authoring Decision Table and Rubric loop YAML. The page inlines three project-derived blobs: design-token CSS variables (light + dark, from `load_design_tokens` / `render_as_css_vars_themed`), the canonical predicate grammar (`policy_rules.grammar_spec()`), and the skill/command catalog (from `skills/*/SKILL.md` + `commands/*.md`). Decision Table mode presents an ordered, numbered rule list with ↑/↓ reorder controls (on-screen order is precedence order), a "Try it" panel that highlights the first-matching rule for sample values, and a pinned, non-deletable "Otherwise →" fallback picker (a structured dropdown over existing outcomes, not free text). The generated YAML is demoted behind a collapsed "View generated file" `<details>` disclosure; the default view is a plain one-line summary plus Copy/Download, shadow / unreachable-outcome / unknown-action validation hints, and a light/dark theme toggle that honors the project's configured `active_theme` before falling back to OS preference.
+Emit `policy-router-builder.html` — a single self-contained page for visually authoring Decision Table, Rubric, and Issue Lifecycle loop YAML. The page inlines three project-derived blobs: design-token CSS variables (light + dark, from `load_design_tokens` / `render_as_css_vars_themed`), the canonical predicate grammar (`policy_rules.grammar_spec()`), and the skill/command catalog (from `skills/*/SKILL.md` + `commands/*.md`). Decision Table mode presents an ordered, numbered rule list with ↑/↓ reorder controls (on-screen order is precedence order), a "Try it" panel that highlights the first-matching rule for sample values, and a pinned, non-deletable "Otherwise →" fallback picker (a structured dropdown over existing outcomes, not free text). Issue Lifecycle mode (FEAT-3474) is the same decision-table shell aimed at a single Issue file's YAML frontmatter: dimensions are little-loops' own built-in frontmatter fields (locked, pre-typed) plus arbitrary user-declared custom fields, and outcomes are five fixed lifecycle verbs (prepare/refine/gate/implement/verify) that can't be added to or deleted, each pre-bound to a default skill + args and overridable from the same skill-catalog dropdown — see the [Policy Router Guide § Issue Lifecycle Mode](../guides/POLICY_ROUTER_GUIDE.md#issue-lifecycle-mode) for the full Built-in Dimension Table, Verb Table, and encoding rules. The generated YAML is demoted behind a collapsed "View generated file" `<details>` disclosure; the default view is a plain one-line summary plus Copy/Download, shadow / unreachable-outcome / unknown-action validation hints, and a light/dark theme toggle that honors the project's configured `active_theme` before falling back to OS preference.
 
 **Flags:**
 
@@ -5092,7 +5092,7 @@ ll-artifact policy-builder                   # Write policy-router-builder.html 
 ll-artifact policy-builder -o build/         # Write to a custom directory
 ```
 
-> **Note:** Generated YAML can be validated with `ll-loop validate <name>` after downloading. Decision Table output imports `lib/rubric-router.yaml` then `lib/policy-router.yaml`; Rubric output imports only `lib/rubric-router.yaml`.
+> **Note:** Generated YAML can be validated with `ll-loop validate <name>` after downloading. Decision Table output imports `lib/rubric-router.yaml` then `lib/policy-router.yaml`; Rubric output imports only `lib/rubric-router.yaml`; Issue Lifecycle output imports only `lib/policy-router.yaml` and is run per issue via `ll-loop run <name> --context issue_id=<ID>`.
 
 #### ll-artifact design-md export
 

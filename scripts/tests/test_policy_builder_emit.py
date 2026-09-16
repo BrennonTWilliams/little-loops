@@ -17,6 +17,9 @@ from little_loops.logger import Logger
 
 GOLDEN = Path(__file__).parent / "fixtures" / "policy_builder" / "sample-decision-table.yaml"
 GOLDEN_RUBRIC = Path(__file__).parent / "fixtures" / "policy_builder" / "sample-rubric.yaml"
+GOLDEN_ISSUE_LIFECYCLE = (
+    Path(__file__).parent / "fixtures" / "policy_builder" / "sample-issue-lifecycle.yaml"
+)
 
 
 def _strip_script_style_comments(html: str) -> str:
@@ -115,6 +118,23 @@ def test_golden_rubric_yaml_validates() -> None:
     fsm, _ = load_and_validate(GOLDEN_RUBRIC)
     errors = [e for e in validate_fsm(fsm) if e.severity == ValidationSeverity.ERROR]
     assert not errors, [e.message for e in errors]
+
+
+def test_golden_issue_lifecycle_yaml_validates() -> None:
+    """FEAT-3474: issue_lifecycle is the third emit mode.
+
+    Unlike ``test_golden_yaml_validates``/``test_golden_rubric_yaml_validates``
+    (which filter to ERROR only), this asserts on *every* severity —
+    ``validate_fsm(fsm) == []`` — per the issue's explicit "zero warnings of
+    any rule" AC. Filtering to ERROR only would let the three warnings the
+    issue calls out (BUG-2813 terminal-action, missing ``scope:``, MR-12
+    pruning-profile) pass silently, leaving the zero-warnings AC unenforced.
+    """
+    from little_loops.fsm.validation import load_and_validate, validate_fsm
+
+    fsm, _ = load_and_validate(GOLDEN_ISSUE_LIFECYCLE)
+    errors = validate_fsm(fsm)
+    assert errors == [], [e.message for e in errors]
 
 
 class TestFeat2301UsabilityStructural:

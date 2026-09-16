@@ -214,7 +214,7 @@ Built-in fragment libraries are in `lib/`:
 | `lib/harness.yaml` | Harness evaluation fragments (`playwright_screenshot`, `ll_rubric_score`) — Playwright screenshot capture and LLM rubric scoring; used by `oracles/generator-evaluator` |
 | `lib/composer.yaml` | Orchestration fragments for loop-composer and loop-composer-adaptive (`discover_loops`, `validate_plan`, `present_plan`, `reassess`) — shared by loop-composer (FEAT-1808) and loop-composer-adaptive (FEAT-1983) |
 | `lib/rubric-router.yaml` | Score-on-rubric → 3-tier route → repair converge-loop fragments (`rubric_score`, `rubric_parse_scores`, `rubric_route_high`, `rubric_route_medium`) — implements the quality-gate pattern: score → parse aggregate → route high/medium/low → repair → re-score until threshold met |
-| `lib/policy-router.yaml` | General multi-axis decision-table routing fragments (`policy_parse_scores`, `policy_table_dispatch`) — declarative, priority-ordered rule table maps per-dimension scores to action states via conjunctive (`&`-joined) predicates; emits winning token via `classify` evaluator + `route:` dispatch; source-agnostic (any scorer may write the per-dim score files) |
+| `lib/policy-router.yaml` | General multi-axis decision-table routing fragments (`policy_parse_scores`, `frontmatter_scores`, `policy_table_dispatch`) — declarative, priority-ordered rule table maps per-dimension scores to action states via conjunctive (`&`-joined) predicates; emits winning token via `classify` evaluator + `route:` dispatch; source-agnostic (any scorer may write the per-dim score files); `frontmatter_scores` deterministically scores an Issue file's YAML frontmatter (built-in + arbitrary custom fields) with no LLM call |
 
 Import a library in any loop:
 

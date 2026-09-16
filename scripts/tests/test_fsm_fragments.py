@@ -2410,6 +2410,58 @@ class TestPolicyRouterLib:
         action = data["fragments"]["policy_table_dispatch"]["action"]
         assert "from little_loops.fsm.policy_rules import" in action
 
+    def test_frontmatter_scores_defined(self) -> None:
+        """FEAT-3474: the deterministic frontmatter scorer fragment exists."""
+        data = self._load_yaml()
+        assert "frontmatter_scores" in data["fragments"]
+
+    def test_frontmatter_scores_has_shell_action_type(self) -> None:
+        data = self._load_yaml()
+        assert data["fragments"]["frontmatter_scores"]["action_type"] == "shell"
+
+    def test_frontmatter_scores_uses_run_dir_for_artifacts(self) -> None:
+        data = self._load_yaml()
+        action = data["fragments"]["frontmatter_scores"]["action"]
+        assert "${context.run_dir}" in action
+
+    def test_frontmatter_scores_imports_module(self) -> None:
+        """No test in the repo executes a fragment's heredoc (6th-pass findings);
+        pin that it imports the module holding the scorer body instead."""
+        data = self._load_yaml()
+        action = data["fragments"]["frontmatter_scores"]["action"]
+        assert "from little_loops.fsm.frontmatter_scores import main" in action
+
+    def test_frontmatter_scores_passes_issue_id_and_dims_via_env(self) -> None:
+        data = self._load_yaml()
+        action = data["fragments"]["frontmatter_scores"]["action"]
+        assert "${context.issue_id:shell}" in action
+        assert "${context.frontmatter_dimensions:shell}" in action
+
+    def test_frontmatter_scores_resolves_in_loop(self) -> None:
+        """Full resolve_fragments integration; caller-supplied next/on_error survive
+        the fragment deep-merge (fragment doesn't hardcode them)."""
+        loops_dir = Path(__file__).parent.parent / "little_loops" / "loops"
+        raw = {
+            "name": "test",
+            "initial": "score",
+            "import": ["lib/policy-router.yaml"],
+            "states": {
+                "score": {
+                    "fragment": "frontmatter_scores",
+                    "next": "dispatch",
+                    "on_error": "failed",
+                },
+                "dispatch": {"terminal": True},
+                "failed": {"terminal": True},
+            },
+        }
+        result = resolve_fragments(raw, loops_dir)
+        state = result["states"]["score"]
+        assert state["action_type"] == "shell"
+        assert state["next"] == "dispatch"
+        assert state["on_error"] == "failed"
+        assert "fragment" not in state
+
     def test_policy_parse_scores_resolves_in_loop(self) -> None:
         """Full resolve_fragments integration against lib/policy-router.yaml."""
         loops_dir = Path(__file__).parent.parent / "little_loops" / "loops"

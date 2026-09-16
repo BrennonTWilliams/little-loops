@@ -49,7 +49,7 @@ states:
     action: |
       SECURITY ESCALATION: artifact.md scored below the security threshold.
       Flag this artifact for human security review and halt automated refinement.
-    terminal: true
+    next: done
 
   ship:
     action_type: slash_command
@@ -62,3 +62,6 @@ states:
       Apply comprehensive repairs to artifact.md.
       Address all gaps: improve structure, fill missing content, resolve ambiguities.
     next: score
+
+  done:
+    terminal: true

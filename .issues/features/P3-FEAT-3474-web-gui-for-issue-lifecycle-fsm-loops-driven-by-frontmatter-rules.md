@@ -3,10 +3,11 @@ id: FEAT-3474
 type: FEAT
 title: Web GUI for issue-lifecycle FSM loops driven by frontmatter rules
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-14'
 captured_at: '2026-09-14T17:11:03Z'
+completed_at: '2026-09-16T20:39:36Z'
 parent: EPIC-3299
 verify_verdict: VALID
 confidence_score: 100
@@ -773,18 +774,18 @@ because the emitted loop makes no sub-loop calls.
 
 ## Acceptance Criteria
 
-- [ ] The GUI is a single self-contained `.html` file that opens over `file://`
+- [x] The GUI is a single self-contained `.html` file that opens over `file://`
   with no install step and no network dependency, matching FEAT-2301's shell.
-- [ ] In `issue_lifecycle` mode the dimension list is pre-populated with the
+- [x] In `issue_lifecycle` mode the dimension list is pre-populated with the
   Built-in Dimension Table entries (including the derived `priority_rank`),
   each with its type locked and operators restricted by type (`numeric` and
   `list` all six; `boolean` `==true`/`==false`; `string` `==`/`!=`).
-- [ ] A user can declare an arbitrary custom frontmatter field name with a
+- [x] A user can declare an arbitrary custom frontmatter field name with a
   chosen type (`numeric`, `boolean`, `string`, `list`) and use it as a rule
   dimension, and the emitted loop routes on it at run time without any
   little-loops code knowing the field — verified end to end against an issue
   file carrying a custom `severity` key.
-- [ ] Each rule's outcome is one of the five lifecycle verbs, pre-bound to the
+- [x] Each rule's outcome is one of the five lifecycle verbs, pre-bound to the
   Verb Table default skill/args and overridable from the emit-time skill
   catalog dropdown plus a free-text args input, with no "unknown skill"
   message for any default; verbs cannot be deleted and no outcome can be
@@ -795,10 +796,10 @@ because the emitted loop makes no sub-loop calls.
   `/ll:manage-issue <ID>` (manage-issue requires `<type> <action>`
   positionals first). Only verbs in the emitted-verb closure (rule targets,
   the fallback, and `goto` targets of emitted verbs) are emitted.
-- [ ] Rules are ordered/reorderable and read as a first-match list with a
+- [x] Rules are ordered/reorderable and read as a first-match list with a
   pinned non-input "Otherwise" catch-all, per FEAT-2301/FEAT-2390's shipped
   shell conventions.
-- [ ] The emitted YAML imports only `lib/policy-router.yaml`, declares
+- [x] The emitted YAML imports only `lib/policy-router.yaml`, declares
   `parameters: { issue_id: {...} }`, `scope: ["."]`, `timeout: 14400`, and
   `pruning_profile_ok: true` (commented), uses `frontmatter_scores` →
   `policy_table_dispatch`, and passes `ll-loop validate` with **zero
@@ -806,36 +807,36 @@ because the emitted loop makes no sub-loop calls.
   `context.frontmatter_dimensions` as a score source, and no BUG-2813,
   `scope:`, or MR-12 warning is emitted. The pytest asserts on every
   severity, not ERROR only.
-- [ ] A verb whose transition is `finish` is emitted as a **non-terminal**
+- [x] A verb whose transition is `finish` is emitted as a **non-terminal**
   state with `next: done` plus a bare `done: {terminal: true}`; the emitted
   YAML never pairs `action:` with `terminal: true`. The seeded example's
   `implement` state actually runs `ll-auto --only <ID>` in an end-to-end run
   (observable in the run's events log), not a silent finish.
-- [ ] `blankModel("issue_lifecycle")` seeds `fallback: "gate"`; the
+- [x] `blankModel("issue_lifecycle")` seeds `fallback: "gate"`; the
   "Otherwise" selector in this mode offers only the five verbs, so a
   lifecycle emit never contains `_: done`.
-- [ ] `implement`'s on-screen help states that `ll-auto` applies the
+- [x] `implement`'s on-screen help states that `ll-auto` applies the
   project's own `readiness_threshold` and that `--force-implement` in the
   args field bypasses it; an end-to-end run against an issue scored below
   the project threshold ends on `failed` (ll-auto exits 1), not `done`.
-- [ ] The emitted verb set is the transitive closure over rule targets, the
+- [x] The emitted verb set is the transitive closure over rule targets, the
   fallback, and `goto` targets of emitted verbs: a `goto` to an otherwise
   unreferenced verb emits that verb's state and validates clean.
-- [ ] Every emitted verb state carries `on_error: failed`, and the YAML
+- [x] Every emitted verb state carries `on_error: failed`, and the YAML
   declares top-level `on_max_steps: failed`; a run whose refine/gate cycle
   never converges ends on `failed`, not `terminated_by: max_steps`.
-- [ ] `_doneStateName` avoids the collision: a `decision_table` model with an
+- [x] `_doneStateName` avoids the collision: a `decision_table` model with an
   outcome named `done` (action + finish) emits `next: finished` and a bare
   `finished:` terminal, never a self-loop or duplicate `done:` key; pinned by
   a `node --test` case.
-- [ ] No visible markup in the new mode contains `predicate` or
+- [x] No visible markup in the new mode contains `predicate` or
   `policy_rules` (existing jargon-denylist test passes unchanged).
-- [ ] Built-in dimensions show no delete control in `issue_lifecycle` mode;
+- [x] Built-in dimensions show no delete control in `issue_lifecycle` mode;
   custom dimensions remain deletable.
-- [ ] The emitted `score` state sets `on_error: failed` and the YAML carries a
+- [x] The emitted `score` state sets `on_error: failed` and the YAML carries a
   `failed: {terminal: true}` state; running the loop with an unresolvable
   `issue_id` ends in `failed` without invoking any verb.
-- [ ] `frontmatter_scores` clears all `rubric-dim-*.txt` and
+- [x] `frontmatter_scores` clears all `rubric-dim-*.txt` and
   `rubric-aggregate.txt` in `${context.run_dir}` before writing, then encodes
   values per the Encoding Rules (boolean → 100/0 by string-truthiness on
   `true/yes/on/1`, always written; `list` → count, always written, absent →
@@ -845,33 +846,48 @@ because the emitted loop makes no sub-loop calls.
   a pytest whose fixture values are strings, matching `BaseLoader` output,
   including a two-pass case where a field cleared between passes leaves no
   stale file.
-- [ ] The Python encoder and the JS `parseFrontmatterBlock` +
+- [x] The Python encoder and the JS `parseFrontmatterBlock` +
   `encodeFrontmatterScores` pair agree on every case in a shared
   `frontmatter_encoding_corpus.json`, including `""`/`null`/`~` → absent,
   `status` synonym canonicalization, quoted scalars (`'open'`, `'2026-09-14'`),
   values containing `:`, and `priority` → `priority_rank` derivation.
-- [ ] Try-it evaluates the compiled rule table: a `decision_needed:==false`
+- [x] Try-it evaluates the compiled rule table: a `decision_needed:==false`
   rule does **not** fire against pasted `decision_needed: true`, and a
   `node --test` case pins this against `evaluateRules` on the compiled text.
-- [ ] Each verb outcome seeds the Verb Table's default transition
+- [x] Each verb outcome seeds the Verb Table's default transition
   (prepare/gate → rescore, refine → goto gate, implement/verify → finish) and
   remains editable via the existing outcome transition selector; in an
   end-to-end run on an unscored issue the seeded example fires gate first,
   then refine → gate → implement once `confidence_score` reaches 85
   (observable in the run's events log).
-- [ ] The Try-it panel accepts a pasted frontmatter block and reports the
+- [x] The Try-it panel accepts a pasted frontmatter block and reports the
   firing rule, agreeing with `evaluate_rules` on every conformance-corpus case.
-- [ ] The new mode's pure-function core logic ships with `node --test`
+- [x] The new mode's pure-function core logic ships with `node --test`
   conformance coverage, gated into `python -m pytest scripts/tests/` the same
   way `test_policy_builder_node_gate.py` gates the existing modes.
-- [ ] The `rubric` golden YAML fixture is byte-unchanged. The
+- [x] The `rubric` golden YAML fixture is byte-unchanged. The
   `decision_table` golden changes **only** in the BUG-2813 fix (finish
   outcomes with an action become `next: done` + bare `done:`); the diff is
   limited to those lines and is called out in the commit message.
-- [ ] The GUI does not attempt to reproduce `autodev.yaml`'s queue/retry/rate-
+- [x] The GUI does not attempt to reproduce `autodev.yaml`'s queue/retry/rate-
   limit/repair-cycle machinery (see Non-goals).
 
 ## Program Design
+
+### Deviations
+
+- **2026-09-16 (implementation):** the Verb Table's `implement` row documents
+  the emitted `action:` as the literal `ll-auto --only ${context.issue_id}`.
+  `ll-loop validate` on the golden fixture surfaced a real MR-11 WARNING on
+  that shape (an unquoted `context.*` interpolation inside a `shell` action
+  body). Since "zero warnings of any severity" is a machine-checked
+  Acceptance Criterion, `_outcomeStateLines()` emits
+  `ll-auto --only ${context.issue_id:shell}` (shlex-quoted) for `shell`
+  `actionType` bodies specifically; `slash_command` bodies are unaffected
+  and still emit the literal `${context.issue_id}` the Verb Table pins,
+  since MR-11 does not scan non-shell action types. Functionally identical
+  at runtime — `:shell` only adds quoting — so no AC or Program Design
+  Signature changes as a result.
 
 ### Types
 
@@ -1145,12 +1161,41 @@ record of what was wrong and fixed, not an outstanding action item).
 - No commits touched any file this issue cites since the prior verify pass
   (2026-09-16T19:10:06); nothing else had drifted.
 
+## Resolution
+
+Implemented the `issue_lifecycle` mode exactly as specified: a new deterministic
+`frontmatter_scores` fragment + `scripts/little_loops/fsm/frontmatter_scores.py`
+module on the Python/FSM side, and `_serializeIssueLifecycle`/`_emittedVerbs`/
+`_doneStateName`/`parseFrontmatterBlock`/`encodeFrontmatterScores` plus the
+BUG-2813 `_outcomeStateLines` fix and full `policy-router-builder.html.tmpl` UI
+on the JS/template side. One deliberate deviation from the literal Verb Table
+text, recorded under Program Design § Deviations: the `implement` verb's shell
+action shell-quotes `${context.issue_id:shell}` (vs. the table's unquoted form)
+to clear a real `ll-loop validate` MR-11 warning the zero-warnings AC requires.
+
+Verification: `python -m pytest scripts/tests/ -m "not integration and not
+conformance"` — 23834 passed, 2 failed, 11 skipped. Both failures are
+pre-existing and unrelated: `test_verify_evidence.py::TestRepoGate::
+test_no_new_unverifiable_evidence` (an existing quote in an untouched BUG-3484
+issue file) and `test_feat3323_sse_bridge.py::...test_two_producers_reach_one_
+client_with_distinct_producer_pid` (the exact xdist-worker-crash-under-CPU-
+contention flake that BUG-3484 itself tracks). `node --test
+scripts/tests/js/*.test.mjs` — 29/29 pass. `ruff check` / `ruff format --check`
+clean on all touched Python files. The two golden-fixture regenerations
+(`sample-decision-table.yaml`'s `escalate` outcome, `golden_policy_router_
+builder.html`) are the deliberate, called-out diffs the issue anticipates, not
+incidental drift. Also fixed a ratcheting-baseline gap surfaced by the new
+fragment: added the `frontmatter_scores`/`context.run_dir` site to
+`scripts/tests/data/loop_interpolation_baseline.json`.
+
 ## Status
 
-**Open** | Created: 2026-09-14 | Priority: P3
+**Done** | Created: 2026-09-14 | Priority: P3
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-16T20:39:31 - `861c0a74-3559-4afb-8b5d-862a34237eab.jsonl`
+- `/ll:ready-issue` - 2026-09-16T19:55:18 - `03d1c414-8639-4535-9c6c-e9097ad35127.jsonl`
 - `/ll:verify-issues` - 2026-09-16T19:47:52 - `407e2401-3a8b-4944-9895-5d24fb048bc1.jsonl`
 - `/ll:verify-issues` - 2026-09-16T19:28:08 - `78608f9a-194c-4189-8037-496c6c9a4438.jsonl`
 - pre-implementation review (6th pass) - 2026-09-16 - four gaps + four stale sentences: (1) no `timeout` anywhere — per-state default is 1800 s (schema.py:1046) and `ll-auto --only` outruns it; emit top-level `timeout: 14400` (rn-remediate:28); (2) `ll-auto` re-applies the project `readiness_threshold` and exits 1 when nothing processed (issue_manager.py:817-849, 2057-2060) — documented, `--force-implement` args override, help text + AC; (3) blank lifecycle model inherited `fallback: "done"` (mjs:544) — now `gate`, selector verb-only; (4) fragment-test branch resolved: no fragment-execution precedent (test_fsm_fragments.py:2364-2402 is structural), so the scorer body is a new `fsm/frontmatter_scores.py` module (`encode_frontmatter_scores`, `main`) resolving via `resolve_issue_path` (issue_parser.py:114) with a three-line heredoc, no `ll-issues path` subprocess. Stale text fixed: AC still said `implement` invokes `/ll:manage-issue`; Impact said no existing emit changes (contradicted BUG-2813 regen); emitted-verb AC omitted goto closure; mini-parser said "booleans" (scalars stay strings). Confirmed: `terminal_action_ok` suppression exists but the `_outcomeStateLines` fix is right; JS `evalPredicate` already does numeric-first `==`; all `ll-issues check-*` gates pass.

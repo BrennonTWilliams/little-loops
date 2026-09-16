@@ -300,6 +300,15 @@
     },
     {
       "file": "loops/lib/policy-router.yaml",
+      "state": "frontmatter_scores",
+      "var": "context.run_dir",
+      "class": "C",
+      "host_shape": "heredoc",
+      "line": 7,
+      "count": 1
+    },
+    {
+      "file": "loops/lib/policy-router.yaml",
       "state": "policy_parse_scores",
       "var": "context.run_dir",
       "class": "C",

@@ -1,0 +1,85 @@
+{
+  "mode": "issue_lifecycle",
+  "name": "sample-issue-lifecycle",
+  "description": "Sample issue_lifecycle builder output used as a golden fixture for the\nserializeLoopYaml() round-trip (FEAT-3474).",
+  "subject": "",
+  "maxSteps": 20,
+  "thresholdHigh": 85,
+  "thresholdMedium": 65,
+  "dimensions": [
+    { "name": "status", "type": "string" },
+    { "name": "priority", "type": "string" },
+    { "name": "priority_rank", "type": "numeric" },
+    { "name": "confidence_score", "type": "numeric" },
+    { "name": "outcome_confidence", "type": "numeric" },
+    { "name": "decision_needed", "type": "boolean" },
+    { "name": "spike_needed", "type": "boolean" },
+    { "name": "blocked_by", "type": "list" },
+    { "name": "deferred_reason", "type": "string" },
+    { "name": "severity", "type": "string" },
+    { "name": "review_status", "type": "string" }
+  ],
+  "rules": [
+    {
+      "predicates": [{ "dim": "status", "op": "==", "value": "done" }],
+      "target": "verify",
+      "isCatchall": false
+    },
+    {
+      "predicates": [
+        { "dim": "severity", "op": "==", "value": "critical" },
+        { "dim": "review_status", "op": "==", "value": "approved" }
+      ],
+      "target": "implement",
+      "isCatchall": false
+    },
+    {
+      "predicates": [{ "dim": "confidence_score", "op": ">=", "value": "85" }],
+      "target": "implement",
+      "isCatchall": false
+    },
+    {
+      "predicates": [{ "dim": "confidence_score", "op": "<", "value": "85" }],
+      "target": "refine",
+      "isCatchall": false
+    }
+  ],
+  "fallback": "gate",
+  "outcomes": [
+    {
+      "name": "prepare",
+      "actionType": "slash_command",
+      "body": "/ll:format-issue",
+      "args": "--auto",
+      "transition": { "kind": "rescore" }
+    },
+    {
+      "name": "refine",
+      "actionType": "slash_command",
+      "body": "/ll:refine-issue",
+      "args": "--auto",
+      "transition": { "kind": "goto", "target": "gate" }
+    },
+    {
+      "name": "gate",
+      "actionType": "slash_command",
+      "body": "/ll:confidence-check",
+      "args": "--auto",
+      "transition": { "kind": "rescore" }
+    },
+    {
+      "name": "implement",
+      "actionType": "shell",
+      "body": "ll-auto --only",
+      "args": "",
+      "transition": { "kind": "finish" }
+    },
+    {
+      "name": "verify",
+      "actionType": "slash_command",
+      "body": "/ll:verify-issues",
+      "args": "--auto",
+      "transition": { "kind": "finish" }
+    }
+  ]
+}

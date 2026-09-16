@@ -14,6 +14,7 @@
 - [The Rule Table Syntax](#the-rule-table-syntax)
 - [Wiring a Loop with `lib/policy-router.yaml`](#wiring-a-loop-with-libpolicy-routeryaml)
 - [Visual Builder (greenfield)](#visual-builder-greenfield)
+  - [Issue Lifecycle Mode](#issue-lifecycle-mode)
 - [Editing the Table with `ll-loop edit-routes`](#editing-the-table-with-ll-loop-edit-routes)
 - [Adding and Removing Rows](#adding-and-removing-rows)
 - [Warnings: Gaps, Shadows, and Catch-alls](#warnings-gaps-shadows-and-catch-alls)
@@ -205,7 +206,7 @@ ll-artifact policy-builder -o ~/tmp   # custom output directory
 ```
 
 Open the generated `policy-router-builder.html` in any browser (no install, no server — it
-works over `file://`). It presents a one-page form with two modes:
+works over `file://`). It presents a one-page form with three modes:
 
 - **Decision Table** — an ordered, numbered rule list that reads as plain-language sentences
   ("When `quality ≥ 80` → **light-repair**"). The on-screen number *is* precedence
@@ -223,6 +224,9 @@ works over `file://`). It presents a one-page form with two modes:
 - **Rubric** — one aggregate score with two threshold sliders feeding a fixed high/medium/low
   table (mirrors `lib/rubric-router.yaml`); none of the Decision Table's reorder/add-rule
   affordances are shown, since the rubric grammar has no rule ordering to express.
+- **Issue Lifecycle** — routes a single `.issues/*.md` file through prepare → refine → gate →
+  implement → verify, driven by its YAML frontmatter. See
+  [Issue Lifecycle Mode](#issue-lifecycle-mode) below.
 
 The page validates live (shadowed rules, unreachable outcomes, and unknown actions are flagged
 in plain language, referencing the visible rule numbers) and emits loop YAML behind a
@@ -236,6 +240,119 @@ regenerate the file to pick up new skills or grammar changes.
 **Builder vs. `edit-routes`:** the builder is *greenfield-only* — it composes a new loop and
 exports YAML. `ll-loop edit-routes` (below) is the round-trip editor for a loop that *already
 exists*. Use the builder to create; use `edit-routes` to revise.
+
+### Issue Lifecycle Mode
+
+`issue_lifecycle` is a third builder mode for a narrower, very common case: driving a single
+Issue file (`.issues/*.md`) through **prepare → refine → gate → implement → verify** based on
+its own YAML frontmatter, without hand-writing FSM YAML or adopting little-loops' own
+hand-tuned `autodev.yaml` (2650+ lines, not a realistic template to copy). It's the
+self-service version of `autodev.yaml`'s *shape* — route an issue through lifecycle stages
+based on frontmatter conditions — for consumers with their own issue conventions (a custom
+`severity` field, a `review_status` field, anything not part of little-loops' own schema).
+
+The emitted loop is the same thin shape `decision_table` mode emits (imports
+`lib/policy-router.yaml`, carries the rule table in `context.policy_rules`, dispatches via
+`policy_table_dispatch`), with one substitution: the LLM `rubric_score` + `policy_parse_scores`
+pair is replaced by a single deterministic **`frontmatter_scores`** fragment that reads the
+issue file's frontmatter directly (via `little_loops.frontmatter.parse_frontmatter`) and writes
+the same `rubric-dim-<name>.txt` score files `policy_table_dispatch` already consumes. One issue
+per run — no queue, retry, or rate-limit machinery; run it with:
+
+```bash
+ll-loop run <name> --context issue_id=<ID>
+```
+
+**Dimensions are frontmatter fields.** little-loops' own built-in fields are pre-typed and
+pre-populated (locked — they can't be deleted, since a rule may reference the derived
+`priority_rank`); you add your own on top by naming any frontmatter key and picking a type.
+No little-loops code needs to know your custom field ahead of time.
+
+| Frontmatter key | Type | Scorer encoding |
+|---|---|---|
+| `status` | string | verbatim; absent → no file |
+| `priority` | string | verbatim (`P0`..`P5`); absent → no file |
+| `priority_rank` | numeric | **derived** from `priority`: leading `P` stripped → `0`..`5` (so `priority_rank:<=2` works); absent or non-`P<digit>` → no file |
+| `confidence_score` | numeric | verbatim; absent → no file |
+| `outcome_confidence` | numeric | verbatim; absent → no file |
+| `decision_needed` | boolean | `100` / `0` (string-truthiness — see below); always written |
+| `spike_needed` | boolean | `100` / `0`; always written |
+| `blocked_by` | list | count; always written, `0` when absent/empty/`null` |
+| `deferred_reason` | string | verbatim; absent/`null` → no file |
+
+Custom fields pick one of four types: `numeric` and `list` offer all six operators; `boolean`
+offers `==true`/`==false`; `string` offers `==`/`!=` only (the rule-value input for a `string`
+dim rejects empty values and values containing `&` or `->`, since those characters are the rule
+grammar's own predicate/target separators). A custom field name can't contain `:` or `|` (they
+break the `name:type|name:type` encoding of `context.frontmatter_dimensions`), and can't
+normalize to an existing dimension's name (including `priority_rank`).
+
+**Actions are the five fixed lifecycle verbs.** Every rule (and the "Otherwise" fallback) routes
+to one of them; verbs can't be deleted and no new outcome can be added. Each is pre-bound to a
+default skill and args, overridable from the same skill-catalog dropdown the other two modes use,
+plus a free-text args field:
+
+| Verb | Default action | Default args | Default transition |
+|---|---|---|---|
+| prepare | `/ll:format-issue` | `--auto` | Score again |
+| refine | `/ll:refine-issue` | `--auto` | Go to → gate |
+| gate | `/ll:confidence-check` | `--auto` | Score again |
+| implement | `ll-auto --only` (shell, not `/ll:manage-issue` — it requires `<type> <action>` positionals unknowable at emit time) | *(none)* | Stop here |
+| verify | `/ll:verify-issues` | `--auto` | Stop here |
+
+`--auto` runs each skill unattended; when you override a verb with a catalog skill that doesn't
+accept `--auto`, clear the args field. `refine` defaults to **Go to → gate** rather than
+rescoring directly, because `/ll:refine-issue` doesn't write `confidence_score` (only
+`/ll:confidence-check` does) — routing through `gate` first is what lets a single run make
+progress from refine to a re-scored `confidence_score`. `implement`'s help text in the builder
+calls out that `ll-auto` re-applies your project's own `commands.confidence_gate.readiness_threshold`
+and exits non-zero (routing to `failed`) below it; add `--force-implement` to its args to bypass
+that gate. Only verbs actually reachable — targeted by a rule, the fallback, or the `goto` target
+of an already-reachable verb — are emitted into the saved YAML; the rest are simply left out.
+
+**Seeded example** (also the Use Case this mode ships with):
+
+```
+status:==done -> verify
+severity:==critical & review_status:==approved -> implement
+confidence_score:>=85 -> implement
+confidence_score:<85 -> refine
+* -> gate
+```
+
+On an unscored issue this runs gate (writes `confidence_score`) → refine → gate again → implement
+once the score clears 85, bounded by `on_max_steps: failed` if the refine/gate cycle never
+converges. `status:==done -> verify` only fires on a *later* run against the same issue, since
+`implement` stops the current run.
+
+**Try it** accepts a pasted frontmatter block (a minimal YAML-subset reader — scalars, flow/dash
+lists, no nested maps) and highlights the winning rule using the same rule-table evaluator the
+emitted loop runs, so what you see in the builder is what the loop will do. A hint line under
+the textarea shows the encoded scores as `key=value` pairs.
+
+**Encoding rules**, shared verbatim between the Python `frontmatter_scores` fragment and the
+builder's Try-it encoder:
+
+- **boolean** → `100` when the value, lowercased and stripped, is one of `true`/`yes`/`on`/`1`;
+  otherwise `0`. Always written (an absent boolean field still scores `0`).
+- **numeric** → the scalar verbatim (a non-numeric value like `confidence_score: high` is written
+  as-is; ordered operators then evaluate `False` against it); a list value scores its length.
+  Absent/`null` → no file (the router's missing-dimension semantics: `!=` matches, everything
+  else does not).
+- **list** → count semantics: a list scores its length, a non-empty scalar scores `1`,
+  absent/`null`/empty scores `0`. Always written — this is what makes `blocked_by:==0` /
+  `blocked_by:<1` match the common "not blocked" case for an issue that has no `blocked_by` key
+  at all.
+- **string** → the value, trimmed, verbatim. Absent/`null`/empty → no file.
+- Frontmatter values are always strings (`parse_frontmatter` loads with PyYAML's `BaseLoader`,
+  so `decision_needed: true` arrives as the string `"true"`, not a Python `bool`) — every rule
+  above is defined on string/list/`None` inputs.
+- `status` synonyms are canonicalized before scoring (e.g. `completed` → `done`), matching
+  `little_loops.frontmatter.STATUS_SYNONYMS`.
+- Every score pass first deletes every `rubric-dim-*.txt` / `rubric-aggregate.txt` in
+  `${context.run_dir}/` before writing — otherwise a field present on one pass and cleared on the
+  next (e.g. `deferred_reason` cleared by `/ll:refine-issue`) would keep stale missing-dimension
+  semantics from firing.
 
 ## Editing the Table with `ll-loop edit-routes`
 

@@ -121,6 +121,7 @@ small.help { display: block; opacity: 0.7; font-size: 0.75rem; }
       <select id="mode-switch" aria-label="Builder mode">
         <option value="decision_table">Decision Table</option>
         <option value="rubric">Rubric</option>
+        <option value="issue_lifecycle">Issue Lifecycle</option>
       </select>
       <button class="secondary theme-toggle" id="theme-toggle" title="Toggle theme">🌙</button>
     </div>
@@ -163,20 +164,22 @@ small.help { display: block; opacity: 0.7; font-size: 0.75rem; }
           <select id="dim-type">
             <option value="numeric">numeric</option>
             <option value="boolean">boolean</option>
+            <option value="string">string</option>
+            <option value="list">list</option>
           </select>
           <button id="add-dim" type="button">Add</button>
         </div>
-        <small class="help">Boolean dimensions are scored 100/0 and compiled to numeric conditions.</small>
+        <small class="help" id="dim-help">Boolean dimensions are scored 100/0 and compiled to numeric conditions.</small>
       </fieldset>
 
       <fieldset id="outcomes-fieldset">
         <legend>Outcomes</legend>
         <div id="outcome-list"></div>
-        <div class="row">
+        <div class="row" id="outcome-add-row">
           <input type="text" id="outcome-name" placeholder="new outcome name" />
           <button id="add-outcome" type="button">Add outcome</button>
         </div>
-        <small class="help">Name each destination once; rules below route to these outcomes by name.</small>
+        <small class="help" id="outcome-help">Name each destination once; rules below route to these outcomes by name.</small>
       </fieldset>
 
       <fieldset id="rules-fieldset">
@@ -195,6 +198,14 @@ small.help { display: block; opacity: 0.7; font-size: 0.75rem; }
         <legend>Try it</legend>
         <div id="tryit-inputs"></div>
         <small class="help">Enter sample values to see which rule wins — reordering rules above changes the winner live.</small>
+      </fieldset>
+
+      <fieldset id="frontmatter-tryit-fieldset" hidden>
+        <legend>Try it</legend>
+        <textarea id="fm-tryit-input" rows="8" aria-label="Paste issue frontmatter" placeholder="status: open
+priority: P2
+confidence_score: 40"></textarea>
+        <p class="hint" id="fm-tryit-hint"></p>
       </fieldset>
     </section>
 
@@ -250,6 +261,7 @@ function buildModel() {
       name: o.name,
       actionType: o.actionType,
       body: o.body,
+      args: o.args,
       transition: o.transition,
     })),
   };
@@ -262,6 +274,11 @@ function computeSummary(model) {
   const dims = (model.dimensions || []).length;
   const subject = model.subject || "the artifact";
   const steps = model.maxSteps != null ? model.maxSteps : 20;
+  if (model.mode === "issue_lifecycle") {
+    const verbs = _emittedVerbs(model);
+    const routed = verbs.length ? verbs.join(" → ") : "nothing yet";
+    return `Routes an issue through its frontmatter on ${dims} field${dims === 1 ? "" : "s"}, runs ≤${steps}×, reaches: ${routed}.`;
+  }
   if (model.mode === "rubric") {
     return `Scores ${subject} on ${dims} signal${dims === 1 ? "" : "s"}, runs ≤${steps}×, routes to high/medium/low tiers.`;
   }
@@ -272,28 +289,48 @@ function computeSummary(model) {
 }
 
 function opsForType(type) {
-  return type === "boolean" ? ["==true", "==false"] : GRAMMAR.all_ops;
+  if (type === "boolean") return ["==true", "==false"];
+  if (type === "string") return ["==", "!="];
+  return GRAMMAR.all_ops;
 }
 
 // ---- renderers -----------------------------------------------------------
 const $ = (id) => document.getElementById(id);
 
+// FEAT-3474: built-in issue_lifecycle dimensions render locked (no ✕) in
+// #dim-list, ahead of any custom rows. Computed once from the normalized
+// built-in name set; state.dimensions is seeded builtins-then-custom and
+// built-ins can never be deleted or reordered, so plain array order already
+// satisfies "built-ins first, then custom rows in insertion order."
+const BUILTIN_DIM_NAMES = new Set(BUILTIN_FRONTMATTER_DIMENSIONS.map((d) => normalizeDimName(d.name)));
+
 function renderDimensions() {
   const host = $("dim-list");
   host.innerHTML = "";
+  const isLifecycle = state.mode === "issue_lifecycle";
   state.dimensions.forEach((d, i) => {
     const row = document.createElement("div");
     row.className = "rule-row";
-    row.innerHTML =
-      `<strong>${normalizeDimName(d.name)}</strong> <em>(${d.type})</em>`;
-    const del = document.createElement("button");
-    del.className = "secondary del";
-    del.textContent = "✕";
-    del.onclick = () => {
-      state.dimensions.splice(i, 1);
-      renderAll();
-    };
-    row.appendChild(del);
+    const norm = normalizeDimName(d.name);
+    const isBuiltin = isLifecycle && BUILTIN_DIM_NAMES.has(norm);
+    let html = `<strong>${norm}</strong> <em>(${d.type})</em>`;
+    if (isBuiltin) {
+      html += ` <small class="help">built-in</small>`;
+      if (norm === "priority_rank") {
+        html += ` <small class="help">(numeric, derived from priority)</small>`;
+      }
+    }
+    row.innerHTML = html;
+    if (!isBuiltin) {
+      const del = document.createElement("button");
+      del.className = "secondary del";
+      del.textContent = "✕";
+      del.onclick = () => {
+        state.dimensions.splice(i, 1);
+        renderAll();
+      };
+      row.appendChild(del);
+    }
     host.appendChild(row);
   });
 }
@@ -408,6 +445,112 @@ function renderOutcomes() {
   });
 }
 
+// FEAT-3474: issue_lifecycle's outcome fieldset — five fixed verb rows (no
+// add/delete; "verbs cannot be deleted and no new outcomes can be added in
+// this mode"). Each row is: verb name, the existing skill-catalog <select>
+// (bare `/ll:<name>` values, matching the unknown-skill check), a free-text
+// args input, and the existing transition <select>. `implement`'s row shows
+// its shell default as read-only <code> until a catalog skill is picked,
+// which flips it to a slash_command outcome — matching Verb Table § "Why
+// implement is a shell action, not /ll:manage-issue".
+function renderLifecycleOutcomes() {
+  const host = $("outcome-list");
+  host.innerHTML = "";
+  state.outcomes.forEach((oc) => {
+    const grp = document.createElement("div");
+    grp.className = "outcome-group";
+
+    const title = document.createElement("div");
+    title.className = "row";
+    title.innerHTML = `<strong>${oc.name}</strong>`;
+    grp.appendChild(title);
+
+    const skillRow = document.createElement("div");
+    skillRow.innerHTML = `<label>Skill:</label>`;
+    if (oc.name === "implement" && oc.actionType === "shell") {
+      const code = document.createElement("code");
+      code.textContent = "ll-auto --only $ISSUE";
+      skillRow.appendChild(code);
+      const help = document.createElement("small");
+      help.className = "help";
+      help.textContent =
+        "ll-auto also applies your project's confidence threshold; add --force-implement here to skip it.";
+      skillRow.appendChild(help);
+    }
+    const sel = document.createElement("select");
+    sel.setAttribute("aria-label", `${oc.name} skill`);
+    if (oc.name === "implement") {
+      const blank = document.createElement("option");
+      blank.value = "";
+      blank.textContent = "— use shell default —";
+      if (oc.actionType === "shell") blank.selected = true;
+      sel.appendChild(blank);
+    }
+    CATALOG.forEach((s) => {
+      const o = document.createElement("option");
+      o.value = "/ll:" + s.name;
+      o.textContent = "/ll:" + s.name;
+      if (oc.actionType === "slash_command" && o.value === oc.body) o.selected = true;
+      sel.appendChild(o);
+    });
+    sel.onchange = () => {
+      if (sel.value) {
+        oc.actionType = "slash_command";
+        oc.body = sel.value;
+      } else if (oc.name === "implement") {
+        oc.actionType = "shell";
+        oc.body = "ll-auto --only";
+      }
+      renderAll();
+    };
+    skillRow.appendChild(sel);
+    grp.appendChild(skillRow);
+
+    const argsRow = document.createElement("div");
+    argsRow.innerHTML = `<label>Args:</label>`;
+    const argsInput = document.createElement("input");
+    argsInput.type = "text";
+    argsInput.value = oc.args || "";
+    argsInput.placeholder = "--auto";
+    argsInput.setAttribute("aria-label", `${oc.name} args`);
+    argsInput.oninput = () => { oc.args = argsInput.value; updatePreview(); };
+    argsRow.appendChild(argsInput);
+    grp.appendChild(argsRow);
+
+    const transRow = document.createElement("div");
+    transRow.innerHTML = `<label>And then:</label>`;
+    const bSel = document.createElement("select");
+    bSel.setAttribute("aria-label", `${oc.name} follow-up`);
+    [["rescore", "Score again"], ["goto", "Go to…"], ["finish", "Stop here"]].forEach(([v, t]) => {
+      const o = document.createElement("option"); o.value = v; o.textContent = t;
+      if (v === (oc.transition && oc.transition.kind)) o.selected = true;
+      bSel.appendChild(o);
+    });
+    const gotoSel = document.createElement("select");
+    gotoSel.setAttribute("aria-label", `${oc.name} go-to target`);
+    function renderGoto() {
+      gotoSel.innerHTML = "";
+      state.outcomes.forEach((o2) => {
+        const o = document.createElement("option"); o.value = o2.name; o.textContent = o2.name;
+        if (oc.transition && oc.transition.target === o2.name) o.selected = true;
+        gotoSel.appendChild(o);
+      });
+      gotoSel.style.display = (oc.transition && oc.transition.kind === "goto") ? "" : "none";
+    }
+    bSel.onchange = () => {
+      oc.transition = { kind: bSel.value, target: gotoSel.value || (state.outcomes[0] && state.outcomes[0].name) };
+      renderGoto(); updatePreview();
+    };
+    gotoSel.onchange = () => { oc.transition.target = gotoSel.value; updatePreview(); };
+    renderGoto();
+    transRow.appendChild(bSel);
+    transRow.appendChild(gotoSel);
+    grp.appendChild(transRow);
+
+    host.appendChild(grp);
+  });
+}
+
 // The ordered, numbered rule list — the primary surface (UX model §1). Each
 // row reads "N. When <conditions> → <outcome>" with ↑/↓ precedence controls.
 // On-screen order IS precedence order (first match wins), so reordering
@@ -460,7 +603,20 @@ function renderRules() {
       if (p.op === "==true" || p.op === "==false") valInput.disabled = true;
       dimSel.onchange = () => { p.dim = dimSel.value; renderAll(); };
       opSel.onchange = () => { p.op = opSel.value; renderAll(); };
-      valInput.oninput = () => { p.value = valInput.value; updatePreview(); };
+      // A "string"-typed dim's rule-value input rejects empty values and
+      // values containing "&" or "->" (they break the LHS-split / arrow-split
+      // parse_rules() grammar). Invalid input is not committed to the model.
+      valInput.oninput = () => {
+        const curType = (state.dimensions.find((d) => normalizeDimName(d.name) === p.dim) || {}).type;
+        const v = valInput.value;
+        if (curType === "string" && (v.trim() === "" || v.includes("&") || v.includes("->"))) {
+          valInput.title = 'A condition value must be non-empty and cannot contain "&" or "->".';
+          return;
+        }
+        valInput.title = "";
+        p.value = v;
+        updatePreview();
+      };
       card.append(dimSel, opSel, valInput);
       if (r.predicates.length > 1) {
         const delPred = document.createElement("button");
@@ -518,12 +674,18 @@ function renderRules() {
   });
 }
 
-// "Try it" (UX model §8, Decision Table only): one input per dimension,
+// "Try it" (UX model §8): one input per dimension for Decision Table mode,
 // highlighting the first-matching rule row live via the existing
 // evaluateRules(). Highlight-the-winner only — no state execution.
+// issue_lifecycle mode has its own frontmatter-paste Try-it panel instead
+// (renderFrontmatterTryIt/updateFrontmatterTryIt, below); rubric mode has none.
 function renderTryIt() {
   const host = $("tryit-inputs");
   host.innerHTML = "";
+  if (state.mode === "issue_lifecycle") {
+    renderFrontmatterTryIt();
+    return;
+  }
   if (state.mode !== "decision_table") return;
   state.dimensions.forEach((d) => {
     const dimKey = normalizeDimName(d.name);
@@ -554,6 +716,10 @@ function renderTryIt() {
 }
 
 function updateTryIt() {
+  if (state.mode === "issue_lifecycle") {
+    updateFrontmatterTryIt();
+    return;
+  }
   document.querySelectorAll(".rule-card").forEach((el) => el.classList.remove("rule-winner"));
   if (state.mode !== "decision_table") return;
   const scores = {};
@@ -563,6 +729,48 @@ function updateTryIt() {
   });
   const model = buildModel();
   const winnerTarget = evaluateRules(model.rules, scores);
+  if (winnerTarget == null) return;
+  const idx = model.rules.findIndex((r) => r.target === winnerTarget);
+  const row = idx >= 0 ? document.querySelector(`.rule-card[data-rule-index="${idx}"]`) : null;
+  if (row) row.classList.add("rule-winner");
+}
+
+// FEAT-3474: the issue_lifecycle Try-it panel. Parses the pasted frontmatter
+// with the pure mini-parser, encodes it with the same rules the
+// frontmatter_scores fragment uses, and evaluates the *compiled* rule table
+// (parseRuleTable(_serializeRulesText(model))) — never buildModel().rules
+// directly (see Encoding Rules § Try-it evaluates compiled rules: the
+// decision-table Try-it's raw-rules pattern is a pre-existing bug for
+// ==false predicates and must not be copied here).
+function renderFrontmatterTryIt() {
+  const input = $("fm-tryit-input");
+  if (input && !input.dataset.wired) {
+    input.oninput = updateFrontmatterTryIt;
+    input.dataset.wired = "1";
+  }
+  updateFrontmatterTryIt();
+}
+
+function updateFrontmatterTryIt() {
+  document.querySelectorAll(".rule-card").forEach((el) => el.classList.remove("rule-winner"));
+  const input = $("fm-tryit-input");
+  const hint = $("fm-tryit-hint");
+  if (!input || !hint) return;
+  const text = input.value;
+  if (!text.trim()) { hint.textContent = ""; return; }
+  let fm;
+  try {
+    fm = parseFrontmatterBlock(text);
+  } catch (err) {
+    hint.textContent = err.message;
+    return;
+  }
+  const model = buildModel();
+  const scores = encodeFrontmatterScores(fm, model.dimensions);
+  const pairs = Object.keys(scores).map((k) => `${k}=${scores[k]}`).join(", ");
+  hint.textContent = pairs || "(no scored dimensions)";
+  const compiled = parseRuleTable(_serializeRulesText(model));
+  const winnerTarget = evaluateRules(compiled, scores);
   if (winnerTarget == null) return;
   const idx = model.rules.findIndex((r) => r.target === winnerTarget);
   const row = idx >= 0 ? document.querySelector(`.rule-card[data-rule-index="${idx}"]`) : null;
@@ -579,13 +787,16 @@ function renderMessages(model) {
   const shadows = detectShadows(model.rules);
   shadows.forEach((s) => add("msg-warn", `Rule ${s.ruleNumber} (→ ${s.target}) never fires — an earlier rule already covers it.`));
   if (state.mode === "decision_table") {
-    // Outcomes unreachable by any rule and not the fallback.
+    // Outcomes unreachable by any rule and not the fallback. Suppressed in
+    // issue_lifecycle mode: unused verbs are expected (left out of the
+    // saved loop), not a mistake.
     state.outcomes.forEach((oc) => {
       const reached = model.rules.some((r) => r.target === oc.name) || model.fallback === oc.name;
       if (!reached) add("msg-warn", `Outcome "${oc.name}" has no rule and isn't the fallback — it can only be reached via "Go to".`);
     });
   }
-  // Unknown skill actions.
+  // Unknown skill actions. Skips "shell" outcomes (issue_lifecycle's
+  // implement default) — those are never checked against the skill catalog.
   const known = new Set(CATALOG.map((s) => "/ll:" + s.name));
   state.outcomes.forEach((oc) => {
     if (oc.actionType === "slash_command" && oc.body && !known.has(oc.body)) {
@@ -610,30 +821,59 @@ function renderAll() {
   if (state.mode === "decision_table") {
     renderOutcomes();
     renderRules();
-    renderTryIt();
+  } else if (state.mode === "issue_lifecycle") {
+    renderLifecycleOutcomes();
+    renderRules();
   } else {
     // Rubric mode hides these fieldsets entirely (Mode asymmetry); clear
     // stale DOM so a mode switch never leaves orphaned rows behind.
     $("outcome-list").innerHTML = "";
     $("rule-list").innerHTML = "";
-    $("tryit-inputs").innerHTML = "";
   }
+  renderTryIt();
   updatePreview();
 }
 
 function applyModeVisibility() {
+  const isLifecycle = state.mode === "issue_lifecycle";
   $("threshold-fieldset").hidden = state.mode !== "rubric";
   $("outcomes-fieldset").hidden = state.mode === "rubric";
   $("rules-fieldset").hidden = state.mode === "rubric";
   $("tryit-fieldset").hidden = state.mode !== "decision_table";
+  $("frontmatter-tryit-fieldset").hidden = !isLifecycle;
+  // #add-outcome is hidden in issue_lifecycle mode — the verb set is fixed;
+  // no outcome can be added or removed.
+  $("outcome-add-row").hidden = isLifecycle;
+  $("dim-help").textContent = isLifecycle
+    ? "Built-in fields come from the issue's frontmatter and can't be removed. Add your own fields below."
+    : "Boolean dimensions are scored 100/0 and compiled to numeric conditions.";
+  $("outcome-help").textContent = isLifecycle
+    ? "Every verb is available as a rule target; verbs no rule routes to are left out of the saved loop."
+    : "Name each destination once; rules below route to these outcomes by name.";
+}
+
+// Push the current `state`'s identity fields onto the form controls — shared
+// by the mode switch and "Start blank" handlers, both of which fully
+// replace `state`.
+function applyStateToForm() {
+  $("f-name").value = state.name;
+  $("f-subject").value = state.subject;
+  $("f-maxsteps").value = state.maxSteps;
+  $("f-desc").value = state.description;
+  $("mode-switch").value = state.mode;
 }
 
 // ---- event wiring --------------------------------------------------------
 $("mode-switch").value = state.mode;
+// FEAT-3474 mode-switch semantics: every mode change fully reseeds `state`
+// via seedExample(<new mode>) — the same data-loss contract as "Start
+// blank" — so issue_lifecycle's built-in dimensions/verbs are always
+// present when switching in, and switching to any other mode never leaves
+// stale lifecycle-only fields (args, frontmatter dims) behind.
 $("mode-switch").onchange = (e) => {
-  state.mode = e.target.value;
+  state = seedExample(e.target.value);
+  applyStateToForm();
   applyModeVisibility();
-  $("f-maxsteps").value = state.maxSteps = state.mode === "rubric" ? 10 : 20;
   renderAll();
 };
 $("f-name").oninput = (e) => { state.name = e.target.value; updatePreview(); };
@@ -646,11 +886,25 @@ $("f-tmed").oninput = (e) => { state.thresholdMedium = Number(e.target.value); $
 $("add-dim").onclick = () => {
   const name = $("dim-name").value.trim();
   if (!name) return;
+  // Custom frontmatter key names can't contain ":" or "|" (they break the
+  // name:type|name:type encoding of context.frontmatter_dimensions) and
+  // can't normalize to an existing dimension's name (including the derived
+  // "priority_rank").
+  if (name.includes(":") || name.includes("|")) {
+    alert('A field name cannot contain ":" or "|".');
+    return;
+  }
+  const norm = normalizeDimName(name);
+  if (state.dimensions.some((d) => normalizeDimName(d.name) === norm)) {
+    alert(`A field named "${norm}" already exists.`);
+    return;
+  }
   state.dimensions.push({ name, type: $("dim-type").value });
   $("dim-name").value = "";
   renderAll();
 };
 $("add-outcome").onclick = () => {
+  if (state.mode === "issue_lifecycle") return; // fixed verb set; #add-outcome is hidden too.
   const name = normalizeDimName($("outcome-name").value);
   if (!name) return;
   state.outcomes.push({ name, actionType: "prompt", body: "", transition: { kind: "rescore" } });
@@ -680,14 +934,12 @@ $("download-btn").onclick = () => {
   URL.revokeObjectURL(a.href);
 };
 // "Never a blank form" (UX model §6): the page seeds with seedExample();
-// this clears it to blankModel() on demand.
+// this clears it to blankModel(state.mode) on demand — issue_lifecycle's
+// blank model still carries the locked built-in dimensions and five verbs
+// (they are structural to the mode, not authored content).
 $("start-blank-btn").onclick = () => {
-  state = blankModel();
-  $("f-name").value = state.name;
-  $("f-subject").value = state.subject;
-  $("f-maxsteps").value = state.maxSteps;
-  $("f-desc").value = state.description;
-  $("mode-switch").value = state.mode;
+  state = blankModel(state.mode);
+  applyStateToForm();
   applyModeVisibility();
   renderAll();
 };

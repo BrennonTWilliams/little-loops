@@ -17,6 +17,14 @@ import {
   moveRule,
   seedExample,
   blankModel,
+  _serializeRulesText,
+  _emittedVerbs,
+  _doneStateName,
+  serializeFrontmatterDimensions,
+  parseFrontmatterBlock,
+  encodeFrontmatterScores,
+  BUILTIN_FRONTMATTER_DIMENSIONS,
+  LIFECYCLE_VERBS,
 } from "../../little_loops/templates/policy_builder_core.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -152,4 +160,175 @@ test("blankModel returns an empty model", () => {
   assert.equal(model.rules.length, 0);
   assert.equal(model.outcomes.length, 0);
   assert.equal(model.fallback, "");
+});
+
+// ---------------------------------------------------------------------------
+// FEAT-3474: issue_lifecycle mode
+// ---------------------------------------------------------------------------
+
+test("seedExample('issue_lifecycle') seeds the Use Case rules with a verb-only fallback", () => {
+  const model = seedExample("issue_lifecycle");
+  assert.equal(model.mode, "issue_lifecycle");
+  assert.equal(model.fallback, "gate");
+  assert.ok(BUILTIN_FRONTMATTER_DIMENSIONS.every((bd) => model.dimensions.some((d) => d.name === bd.name)));
+  assert.equal(model.outcomes.length, LIFECYCLE_VERBS.length);
+});
+
+test("blankModel('issue_lifecycle') seeds fallback: gate, never the decision-table default 'done'", () => {
+  const model = blankModel("issue_lifecycle");
+  assert.equal(model.fallback, "gate");
+  assert.deepEqual(
+    model.dimensions.map((d) => d.name),
+    BUILTIN_FRONTMATTER_DIMENSIONS.map((d) => d.name)
+  );
+  assert.equal(model.rules.length, 0);
+  assert.equal(model.outcomes.length, LIFECYCLE_VERBS.length);
+});
+
+test("blankModel()/seedExample() zero-arg calls are unaffected (decision_table default preserved)", () => {
+  assert.equal(blankModel().mode, "decision_table");
+  assert.equal(seedExample().mode, "decision_table");
+});
+
+test("serializeLoopYaml matches golden issue-lifecycle fixture", () => {
+  const model = JSON.parse(readFileSync(join(FIXT, "sample-issue-lifecycle.model.json"), "utf8"));
+  const golden = readFileSync(join(FIXT, "sample-issue-lifecycle.yaml"), "utf8");
+  assert.equal(serializeLoopYaml(model), golden);
+});
+
+test("_emittedVerbs is the transitive closure over rule targets, fallback, and goto targets", () => {
+  const model = {
+    mode: "issue_lifecycle",
+    dimensions: [{ name: "status", type: "string" }],
+    rules: [
+      { predicates: [{ dim: "status", op: "==", value: "open" }], target: "refine", isCatchall: false },
+    ],
+    fallback: "refine",
+    outcomes: LIFECYCLE_VERBS.map((v) => ({ ...v, transition: { ...v.transition } })),
+  };
+  // refine's default transition is goto -> gate; gate is not itself a rule
+  // target or the fallback, so it is only reachable through the closure.
+  const verbs = _emittedVerbs(model);
+  assert.deepEqual(verbs, ["refine", "gate"]);
+
+  const yaml = serializeLoopYaml(model);
+  assert.match(yaml, /\n {2}gate:\n/);
+  assert.doesNotMatch(yaml, /\n {2}prepare:\n/);
+  assert.doesNotMatch(yaml, /\n {2}implement:\n/);
+  assert.doesNotMatch(yaml, /\n {2}verify:\n/);
+});
+
+test("a finish verb with an action emits next: done plus a bare done: terminal, never terminal: true alongside action", () => {
+  const model = {
+    mode: "issue_lifecycle",
+    dimensions: [{ name: "status", type: "string" }],
+    rules: [
+      { predicates: [{ dim: "status", op: "==", value: "done" }], target: "verify", isCatchall: false },
+    ],
+    fallback: "verify",
+    outcomes: LIFECYCLE_VERBS.map((v) => ({ ...v, transition: { ...v.transition } })),
+  };
+  const yaml = serializeLoopYaml(model);
+  assert.match(yaml, /verify:\n {4}action_type: slash_command\n {4}action: [^\n]+\n {4}next: done\n/);
+  assert.match(yaml, /\n {2}done:\n {4}terminal: true\n/);
+  // No single state block (blank-line-separated in the serializer's output)
+  // pairs `action:` with `terminal: true`.
+  const blocks = yaml.split(/\n\n+/);
+  for (const block of blocks) {
+    if (block.includes("    action:") && block.includes("    terminal: true")) {
+      assert.fail(`state block pairs action: with terminal: true:\n${block}`);
+    }
+  }
+});
+
+test("seeded implement verb emits action_type: shell / action: ll-auto --only ${context.issue_id:shell}", () => {
+  const model = seedExample("issue_lifecycle");
+  const yaml = serializeLoopYaml(model);
+  assert.match(
+    yaml,
+    /implement:\n {4}action_type: shell\n {4}action: ll-auto --only \$\{context\.issue_id:shell\}\n {4}next: done\n/
+  );
+});
+
+test("seeded refine verb emits action: /ll:refine-issue ${context.issue_id} --auto with next: gate", () => {
+  const model = seedExample("issue_lifecycle");
+  const yaml = serializeLoopYaml(model);
+  assert.match(
+    yaml,
+    /refine:\n {4}action_type: slash_command\n {4}action: \/ll:refine-issue \$\{context\.issue_id\} --auto\n {4}next: gate\n/
+  );
+});
+
+test("_doneStateName avoids collision with a decision-table outcome literally named 'done'", () => {
+  const model = {
+    mode: "decision_table",
+    rules: [{ predicates: [], target: "done", isCatchall: true }],
+    outcomes: [{ name: "done", actionType: "prompt", body: "Ship it.", transition: { kind: "finish" } }],
+    fallback: "done",
+  };
+  assert.equal(_doneStateName(model), "finished");
+
+  const yaml = serializeLoopYaml(model);
+  assert.match(yaml, /\n {2}done:\n {4}action_type: prompt\n {4}action: \|\n {6}Ship it\.\n {4}next: finished\n/);
+  assert.match(yaml, /\n {2}finished:\n {4}terminal: true\n/);
+  // Never a self-loop, and no duplicate `done:` key.
+  assert.equal((yaml.match(/^ {2}done:$/gm) || []).length, 1);
+});
+
+test("_doneStateName returns 'done' when no outcome/rule-target/fallback uses that name", () => {
+  const model = {
+    rules: [{ predicates: [], target: "ship", isCatchall: true }],
+    outcomes: [{ name: "ship" }],
+    fallback: "ship",
+  };
+  assert.equal(_doneStateName(model), "done");
+});
+
+test("serializeFrontmatterDimensions emits raw (non-normalized) name:type pairs", () => {
+  const model = { dimensions: [{ name: "Review Status", type: "string" }, { name: "confidence_score", type: "numeric" }] };
+  assert.equal(serializeFrontmatterDimensions(model), "Review Status:string|confidence_score:numeric");
+});
+
+test("Try-it evaluates compiled rules: decision_needed:==false does not fire against pasted decision_needed: true", () => {
+  const model = {
+    mode: "issue_lifecycle",
+    dimensions: [{ name: "decision_needed", type: "boolean" }],
+    rules: [
+      { predicates: [{ dim: "decision_needed", op: "==false", value: "" }], target: "on", isCatchall: false },
+    ],
+    fallback: "off",
+  };
+  const fm = parseFrontmatterBlock("decision_needed: true");
+  const scores = encodeFrontmatterScores(fm, model.dimensions);
+  assert.deepEqual(scores, { "decision_needed": "100" });
+
+  // The pre-existing decision-table Try-it bug (evaluating raw model.rules,
+  // whose "==false" token evalPredicate treats as "!="): fires incorrectly.
+  const rawWinner = evaluateRules(model.rules, scores);
+  assert.equal(rawWinner, "on");
+
+  // The fix: evaluate the *compiled* rule text instead.
+  const compiled = parseRuleTable(_serializeRulesText(model));
+  const compiledWinner = evaluateRules(compiled, scores);
+  assert.equal(compiledWinner, "off");
+});
+
+test("parseFrontmatterBlock / encodeFrontmatterScores agree with the shared encoding corpus", () => {
+  const corpus = JSON.parse(
+    readFileSync(join(FIXT, "frontmatter_encoding_corpus.json"), "utf8")
+  );
+  for (const c of corpus.cases) {
+    const fm = parseFrontmatterBlock(c.frontmatter_text);
+    const got = encodeFrontmatterScores(fm, c.dims);
+    assert.deepEqual(got, c.expected_scores, `${c.name}: got ${JSON.stringify(got)}`);
+  }
+});
+
+test("parseFrontmatterBlock throws a 'Can't read line N' error on an unparseable line", () => {
+  assert.throws(() => parseFrontmatterBlock("status open\n"), /Can't read line 1: status open/);
+});
+
+test("parseFrontmatterBlock tolerates --- fence lines", () => {
+  const fm = parseFrontmatterBlock("---\nstatus: open\n---\n");
+  assert.equal(fm.status, "open");
 });

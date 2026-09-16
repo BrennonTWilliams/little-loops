@@ -122,7 +122,11 @@ def _serialize_with_node(node: str, model_path: Path) -> str:
 
 @pytest.mark.parametrize(
     "model_fixture",
-    ["sample-decision-table.model.json", "sample-rubric.model.json"],
+    [
+        "sample-decision-table.model.json",
+        "sample-rubric.model.json",
+        "sample-issue-lifecycle.model.json",
+    ],
 )
 def test_round_trip_yaml_validates_for_each_mode(tmp_path: Path, model_fixture: str) -> None:
     """FEAT-2301 Capability AC 2: node's ``serializeLoopYaml`` output for both

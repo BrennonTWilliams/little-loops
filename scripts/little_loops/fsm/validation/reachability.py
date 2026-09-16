@@ -154,8 +154,9 @@ def _validate_artifact_output_subloop_reachability(
 def _validate_policy_dimensions_scored(fsm: FSMLoop) -> list[ValidationError]:
     """Validate that policy_rules predicates only reference dimensions that are actually scored.
 
-    A predicate on a dimension absent from both ``context.rubric_dimensions`` and any
-    shell state's ``rubric-dim-<name>.txt`` write is silently inert at runtime —
+    A predicate on a dimension absent from ``context.rubric_dimensions``,
+    ``context.frontmatter_dimensions``, and any shell state's
+    ``rubric-dim-<name>.txt`` write is silently inert at runtime —
     ``_eval_predicate`` returns ``True`` only for ``!=`` when the dimension is missing
     from the scores dict, so every other operator falls through to the catch-all.
 
@@ -204,6 +205,21 @@ def _validate_policy_dimensions_scored(fsm: FSMLoop) -> list[ValidationError]:
     if rubric_dims_raw.strip():
         for name in rubric_dims_raw.split("|"):
             normalized = re.sub(r"\s+", "-", name.strip().lower())
+            if normalized:
+                scored.add(normalized)
+
+    # Also normalize context.frontmatter_dimensions (name:type|name:type|...,
+    # FEAT-3474's frontmatter_scores fragment) the same way — it builds its
+    # rubric-dim-<name>.txt filenames dynamically at runtime, so the literal
+    # regex scan below never sees them.
+    frontmatter_dims_raw = str(fsm.context.get("frontmatter_dimensions", ""))
+    if frontmatter_dims_raw.strip():
+        for entry in frontmatter_dims_raw.split("|"):
+            entry = entry.strip()
+            if not entry:
+                continue
+            raw_name = entry.split(":", 1)[0]
+            normalized = re.sub(r"\s+", "-", raw_name.strip().lower())
             if normalized:
                 scored.add(normalized)
 

@@ -1087,6 +1087,7 @@ class TestPolicyDimensionsScored:
         *,
         policy_rules: str = "",
         rubric_dimensions: str = "",
+        frontmatter_dimensions: str = "",
         shell_scorer_action: str = "",
         policy_dims_scored_ok: bool = False,
     ) -> FSMLoop:
@@ -1095,6 +1096,8 @@ class TestPolicyDimensionsScored:
             context["policy_rules"] = policy_rules
         if rubric_dimensions:
             context["rubric_dimensions"] = rubric_dimensions
+        if frontmatter_dimensions:
+            context["frontmatter_dimensions"] = frontmatter_dimensions
         states: dict = {
             "work": make_state(action="run.sh", on_yes="done", on_no="done"),
             "done": make_state(terminal=True),
@@ -1212,6 +1215,37 @@ class TestPolicyDimensionsScored:
         _, warnings = load_and_validate(loop_yaml)
         unknown_warnings = [w for w in warnings if "Unknown top-level" in w.message]
         assert unknown_warnings == []
+
+    def test_no_warning_when_dim_in_frontmatter_dimensions(self) -> None:
+        """FEAT-3474: no warning when the predicate dim matches a
+        context.frontmatter_dimensions entry, with no rubric_dimensions at all."""
+        fsm = self._policy_fsm(
+            policy_rules=("status:==done -> verify\nconfidence_score:>=85 -> implement\n* -> gate"),
+            frontmatter_dimensions="status:string|confidence_score:numeric|severity:string",
+        )
+        errors = _validate_policy_dimensions_scored(fsm)
+        assert errors == []
+
+    def test_warning_still_fires_for_dim_absent_from_both(self) -> None:
+        """A predicate dim absent from both rubric_dimensions and
+        frontmatter_dimensions still warns."""
+        fsm = self._policy_fsm(
+            policy_rules="unscored_field:==x -> done\n* -> work",
+            frontmatter_dimensions="status:string|confidence_score:numeric",
+        )
+        errors = _validate_policy_dimensions_scored(fsm)
+        assert len(errors) == 1
+        assert "unscored_field" in errors[0].message
+
+    def test_frontmatter_dimensions_name_normalized(self) -> None:
+        """FEAT-3474: frontmatter_dimensions names normalize the same way as
+        rubric_dimensions (lowercase + spaces->hyphens); underscores untouched."""
+        fsm = self._policy_fsm(
+            policy_rules="confidence_score:>=85 -> done\n* -> work",
+            frontmatter_dimensions="confidence_score:numeric",
+        )
+        errors = _validate_policy_dimensions_scored(fsm)
+        assert errors == []
 
     def test_canonical_policy_refine_dims_pass(self) -> None:
         """policy-refine's dimensions are all scored — no warning fires."""

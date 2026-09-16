@@ -1,0 +1,135 @@
+{
+  "_comment": "FEAT-3474 cross-language encoding contract. Pins the Encoding Rules shared verbatim by the Python `frontmatter_scores` fragment (encode_frontmatter_scores) and the JS Try-it mirror (parseFrontmatterBlock + encodeFrontmatterScores). `frontmatter_text` is parsed with each language's frontmatter reader, then encoded against `dims` ([{name,type}, ...]); `expected_scores` is the resulting normalized-name -> string map, with absent keys simply omitted (never present with a null/empty value).",
+  "cases": [
+    {
+      "name": "basic scalar fields with priority derivation",
+      "frontmatter_text": "status: open\npriority: P2\nconfidence_score: 40",
+      "dims": [
+        { "name": "status", "type": "string" },
+        { "name": "priority", "type": "string" },
+        { "name": "priority_rank", "type": "numeric" },
+        { "name": "confidence_score", "type": "numeric" }
+      ],
+      "expected_scores": { "status": "open", "priority": "P2", "priority_rank": "2", "confidence_score": "40" }
+    },
+    {
+      "name": "status synonym canonicalization (completed -> done)",
+      "frontmatter_text": "status: completed",
+      "dims": [{ "name": "status", "type": "string" }],
+      "expected_scores": { "status": "done" }
+    },
+    {
+      "name": "empty double-quoted, null literal, and tilde scalars all normalize to absent",
+      "frontmatter_text": "deferred_reason: \"\"\nspike_needed: false\noutcome_confidence: null\nblocked_by: ~",
+      "dims": [
+        { "name": "deferred_reason", "type": "string" },
+        { "name": "spike_needed", "type": "boolean" },
+        { "name": "outcome_confidence", "type": "numeric" },
+        { "name": "blocked_by", "type": "list" }
+      ],
+      "expected_scores": { "spike_needed": "0", "blocked_by": "0" }
+    },
+    {
+      "name": "quoted scalars: single-quoted status, ISO date, colon-bearing title",
+      "frontmatter_text": "status: 'open'\ndiscovered_date: '2026-09-14'\ntitle: 'a: b'",
+      "dims": [
+        { "name": "status", "type": "string" },
+        { "name": "discovered_date", "type": "string" },
+        { "name": "title", "type": "string" }
+      ],
+      "expected_scores": { "status": "open", "discovered_date": "2026-09-14", "title": "a: b" }
+    },
+    {
+      "name": "priority_rank derived from a matching P<digit> priority",
+      "frontmatter_text": "priority: P2",
+      "dims": [{ "name": "priority", "type": "string" }, { "name": "priority_rank", "type": "numeric" }],
+      "expected_scores": { "priority": "P2", "priority_rank": "2" }
+    },
+    {
+      "name": "priority_rank not derived when priority doesn't match P<digit>",
+      "frontmatter_text": "priority: high",
+      "dims": [{ "name": "priority", "type": "string" }, { "name": "priority_rank", "type": "numeric" }],
+      "expected_scores": { "priority": "high" }
+    },
+    {
+      "name": "priority_rank not derived when priority is entirely absent",
+      "frontmatter_text": "status: open",
+      "dims": [
+        { "name": "status", "type": "string" },
+        { "name": "priority", "type": "string" },
+        { "name": "priority_rank", "type": "numeric" }
+      ],
+      "expected_scores": { "status": "open" }
+    },
+    {
+      "name": "boolean truthy variants (yes/On, case-insensitive)",
+      "frontmatter_text": "decision_needed: yes\nspike_needed: On",
+      "dims": [{ "name": "decision_needed", "type": "boolean" }, { "name": "spike_needed", "type": "boolean" }],
+      "expected_scores": { "decision_needed": "100", "spike_needed": "100" }
+    },
+    {
+      "name": "boolean absent from frontmatter is still always written as 0",
+      "frontmatter_text": "status: open",
+      "dims": [{ "name": "status", "type": "string" }, { "name": "decision_needed", "type": "boolean" }],
+      "expected_scores": { "status": "open", "decision_needed": "0" }
+    },
+    {
+      "name": "list dash-sequence counts entries",
+      "frontmatter_text": "blocked_by:\n  - BUG-1\n  - BUG-2",
+      "dims": [{ "name": "blocked_by", "type": "list" }],
+      "expected_scores": { "blocked_by": "2" }
+    },
+    {
+      "name": "list non-list scalar counts as 1",
+      "frontmatter_text": "blocked_by: BUG-1",
+      "dims": [{ "name": "blocked_by", "type": "list" }],
+      "expected_scores": { "blocked_by": "1" }
+    },
+    {
+      "name": "list empty flow list counts as 0",
+      "frontmatter_text": "blocked_by: []",
+      "dims": [{ "name": "blocked_by", "type": "list" }],
+      "expected_scores": { "blocked_by": "0" }
+    },
+    {
+      "name": "list absent from frontmatter is still always written as 0",
+      "frontmatter_text": "status: open",
+      "dims": [{ "name": "status", "type": "string" }, { "name": "blocked_by", "type": "list" }],
+      "expected_scores": { "status": "open", "blocked_by": "0" }
+    },
+    {
+      "name": "non-numeric scalar under a numeric dimension is written verbatim",
+      "frontmatter_text": "confidence_score: high",
+      "dims": [{ "name": "confidence_score", "type": "numeric" }],
+      "expected_scores": { "confidence_score": "high" }
+    },
+    {
+      "name": "full built-in dimension table against empty frontmatter: only always-written types appear",
+      "frontmatter_text": "",
+      "dims": [
+        { "name": "status", "type": "string" },
+        { "name": "priority", "type": "string" },
+        { "name": "priority_rank", "type": "numeric" },
+        { "name": "confidence_score", "type": "numeric" },
+        { "name": "outcome_confidence", "type": "numeric" },
+        { "name": "decision_needed", "type": "boolean" },
+        { "name": "spike_needed", "type": "boolean" },
+        { "name": "blocked_by", "type": "list" },
+        { "name": "deferred_reason", "type": "string" }
+      ],
+      "expected_scores": { "decision_needed": "0", "spike_needed": "0", "blocked_by": "0" }
+    },
+    {
+      "name": "--- fence lines are tolerated and ignored",
+      "frontmatter_text": "---\nstatus: open\n---",
+      "dims": [{ "name": "status", "type": "string" }],
+      "expected_scores": { "status": "open" }
+    },
+    {
+      "name": "custom string dimension used for routing (severity)",
+      "frontmatter_text": "severity: critical\nreview_status: approved",
+      "dims": [{ "name": "severity", "type": "string" }, { "name": "review_status", "type": "string" }],
+      "expected_scores": { "severity": "critical", "review_status": "approved" }
+    }
+  ]
+}

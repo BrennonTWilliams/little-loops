@@ -73,6 +73,86 @@ function _predRegex(grammar) {
   return DEFAULT_PRED_RE;
 }
 
+// ===========================================================================
+// issue_lifecycle mode (FEAT-3474) — third grammar on the same builder shell.
+// ===========================================================================
+//
+// Built-in Dimension Table: little-loops' own frontmatter fields, pre-typed
+// and pre-populated whenever a builder session is in `issue_lifecycle` mode.
+// `priority_rank` is the one entry that is not a raw frontmatter key — it is
+// derived from `priority` (leading `P` stripped) by both the Python
+// `frontmatter_scores` fragment and the `encodeFrontmatterScores` mirror below.
+export const BUILTIN_FRONTMATTER_DIMENSIONS = [
+  { name: "status", type: "string" },
+  { name: "priority", type: "string" },
+  { name: "priority_rank", type: "numeric" },
+  { name: "confidence_score", type: "numeric" },
+  { name: "outcome_confidence", type: "numeric" },
+  { name: "decision_needed", type: "boolean" },
+  { name: "spike_needed", type: "boolean" },
+  { name: "blocked_by", type: "list" },
+  { name: "deferred_reason", type: "string" },
+];
+
+// Verb Table: the five fixed lifecycle outcomes. `body` is the bare skill
+// (matching the skill-catalog <select> and the unknown-skill check); the
+// issue-id argument and `args` are appended at emit time by
+// `_outcomeStateLines` when `issueArg` is set. `implement` is the one `shell`
+// verb (manage-issue requires <type> <action> positionals unknowable at emit
+// time; ll-auto --only mirrors rn-remediate/autodev's own per-issue implement
+// state).
+export const LIFECYCLE_VERBS = [
+  {
+    name: "prepare",
+    actionType: "slash_command",
+    body: "/ll:format-issue",
+    args: "--auto",
+    transition: { kind: "rescore" },
+  },
+  {
+    name: "refine",
+    actionType: "slash_command",
+    body: "/ll:refine-issue",
+    args: "--auto",
+    transition: { kind: "goto", target: "gate" },
+  },
+  {
+    name: "gate",
+    actionType: "slash_command",
+    body: "/ll:confidence-check",
+    args: "--auto",
+    transition: { kind: "rescore" },
+  },
+  {
+    name: "implement",
+    actionType: "shell",
+    body: "ll-auto --only",
+    args: "",
+    transition: { kind: "finish" },
+  },
+  {
+    name: "verify",
+    actionType: "slash_command",
+    body: "/ll:verify-issues",
+    args: "--auto",
+    transition: { kind: "finish" },
+  },
+];
+
+// Mirrors little_loops.frontmatter.STATUS_SYNONYMS exactly (Try-it must agree
+// with parse_frontmatter's canonicalization or status:==done disagrees with
+// the emitted loop for an issue whose frontmatter says `status: completed`).
+const STATUS_SYNONYMS_JS = {
+  complete: "done",
+  completed: "done",
+  finished: "done",
+  closed: "done",
+  "in-progress": "in_progress",
+  "in progress": "in_progress",
+  wip: "in_progress",
+  pending: "open",
+};
+
 /**
  * True if a rule is a catch-all (no predicates).
  * @param {{predicates: Array}} rule
@@ -238,13 +318,117 @@ export function moveRule(model, index, direction) {
   return { ...model, rules };
 }
 
+// Deep-copy helpers so seeded/blank models never share array/object
+// references with the exported constants (mutating a builder session must
+// never mutate BUILTIN_FRONTMATTER_DIMENSIONS / LIFECYCLE_VERBS).
+function _cloneDims(dims) {
+  return dims.map((d) => ({ ...d }));
+}
+function _cloneOutcomes(outcomes) {
+  return outcomes.map((o) => ({ ...o, transition: { ...o.transition } }));
+}
+
+/**
+ * A small, runnable issue_lifecycle example model — the seeded Use Case rules
+ * (FEAT-3474): route on `status`/`severity`/`review_status`/`confidence_score`
+ * through the five lifecycle verbs, falling back to `gate`.
+ * @returns {Object} a builder model (see file-header model-shape contract)
+ */
+function _seedIssueLifecycle() {
+  return {
+    mode: "issue_lifecycle",
+    name: "my-issue-lifecycle-loop",
+    description: "",
+    subject: "",
+    maxSteps: 20,
+    thresholdHigh: 85,
+    thresholdMedium: 65,
+    dimensions: [
+      ..._cloneDims(BUILTIN_FRONTMATTER_DIMENSIONS),
+      { name: "severity", type: "string" },
+      { name: "review_status", type: "string" },
+    ],
+    rules: [
+      {
+        predicates: [{ dim: "status", op: "==", value: "done" }],
+        target: "verify",
+        isCatchall: false,
+      },
+      {
+        predicates: [
+          { dim: "severity", op: "==", value: "critical" },
+          { dim: "review_status", op: "==", value: "approved" },
+        ],
+        target: "implement",
+        isCatchall: false,
+      },
+      {
+        predicates: [{ dim: "confidence_score", op: ">=", value: "85" }],
+        target: "implement",
+        isCatchall: false,
+      },
+      {
+        predicates: [{ dim: "confidence_score", op: "<", value: "85" }],
+        target: "refine",
+        isCatchall: false,
+      },
+    ],
+    fallback: "gate",
+    outcomes: _cloneOutcomes(LIFECYCLE_VERBS),
+  };
+}
+
+/**
+ * An empty issue_lifecycle model — the built-in dimensions and the five
+ * verbs are always present (they are structural to the mode), but no rules
+ * are authored. Fallback defaults to "gate" (a verb), never the
+ * decision-table default "done" (`fallbackState`, ~line 544) — "done" is the
+ * bare terminal in this mode, not a routable verb.
+ * @returns {Object} a builder model (see file-header model-shape contract)
+ */
+function _blankIssueLifecycle() {
+  return {
+    mode: "issue_lifecycle",
+    name: "my-issue-lifecycle-loop",
+    description: "",
+    subject: "",
+    maxSteps: 20,
+    thresholdHigh: 85,
+    thresholdMedium: 65,
+    dimensions: _cloneDims(BUILTIN_FRONTMATTER_DIMENSIONS),
+    rules: [],
+    fallback: "gate",
+    outcomes: _cloneOutcomes(LIFECYCLE_VERBS),
+  };
+}
+
 /**
  * A small, runnable Decision Table example model — the "never a blank form"
  * seed (UX model §6). Non-empty: two dimensions, two ordered rules
  * demonstrating precedence, three outcomes, and a fallback.
+ * @param {"decision_table"|"rubric"|"issue_lifecycle"} [mode="decision_table"]
  * @returns {Object} a builder model (see file-header model-shape contract)
  */
-export function seedExample() {
+export function seedExample(mode = "decision_table") {
+  if (mode === "issue_lifecycle") return _seedIssueLifecycle();
+  if (mode === "rubric") {
+    return {
+      mode: "rubric",
+      name: "my-rubric-loop",
+      description: "",
+      subject: "artifact.md",
+      maxSteps: 10,
+      thresholdHigh: 85,
+      thresholdMedium: 65,
+      dimensions: [
+        { name: "clarity", type: "numeric" },
+        { name: "has-examples", type: "boolean" },
+      ],
+      rules: [],
+      fallback: "",
+      outcomes: [],
+    };
+  }
   return {
     mode: "decision_table",
     name: "my-policy-loop",
@@ -295,9 +479,28 @@ export function seedExample() {
  * An empty builder model — the target of the "Start blank" control (UX
  * model §6). Every collection is empty; `serializeLoopYaml` can still accept
  * it (it degrades to a single catch-all/fallback), but it authors nothing.
+ * `issue_lifecycle` is the exception: its built-in dimensions and five verbs
+ * are structural to the mode and are never blank (see `_blankIssueLifecycle`).
+ * @param {"decision_table"|"rubric"|"issue_lifecycle"} [mode="decision_table"]
  * @returns {Object} a builder model (see file-header model-shape contract)
  */
-export function blankModel() {
+export function blankModel(mode = "decision_table") {
+  if (mode === "issue_lifecycle") return _blankIssueLifecycle();
+  if (mode === "rubric") {
+    return {
+      mode: "rubric",
+      name: "my-rubric-loop",
+      description: "",
+      subject: "",
+      maxSteps: 10,
+      thresholdHigh: 85,
+      thresholdMedium: 65,
+      dimensions: [],
+      rules: [],
+      fallback: "",
+      outcomes: [],
+    };
+  }
   return {
     mode: "decision_table",
     name: "my-policy-loop",
@@ -389,7 +592,12 @@ function _dq(value) {
 
 // Build the canonical rule-table text for context.policy_rules. Numeric dims
 // pass through; boolean predicates are compiled to numeric (>=50 / <50).
-function _serializeRulesText(model) {
+// Exported (in addition to internal use by both serializers) so the
+// template's Try-it panel and node:test can evaluate the same *compiled*
+// text the emitted YAML carries — see `evalPredicate`'s note on why raw
+// `model.rules` (`==true`/`==false` tokens) must never be fed to
+// `evaluateRules` directly.
+export function _serializeRulesText(model) {
   const boolDims = new Set(
     (model.dimensions || [])
       .filter((d) => d.type === "boolean")
@@ -455,18 +663,46 @@ function _scoreActionBody(model) {
 }
 
 // Render a per-outcome state body action. Returns lines for the state.
-function _outcomeStateLines(outcome) {
+//
+// BUG-2813 fix (shared by both modes): the executor never runs a terminal
+// state's action (it returns the instant a `terminal: true` state is
+// entered, executor.py:816), so a `finish` transition on an outcome that
+// *has* an action must not be emitted as `action: ... / terminal: true` in
+// the same state — that action is dead code. Instead it is emitted as a
+// non-terminal state with `next: <doneState>`, and the caller is
+// responsible for emitting the bare `<doneState>: {terminal: true}` state
+// once. An outcome with `actionType: "none"` and `finish` still emits a bare
+// `terminal: true` on itself (nothing would ever run there either way).
+//
+// `issueArg` (FEAT-3474): when set, appends the issue-id reference and then
+// ` <outcome.args>` (if non-empty) to slash_command/shell bodies — the
+// issue_lifecycle mode's per-verb argument-bearing emit shape. Also adds
+// support for `actionType: "shell"` (single-line `action:`, no leading
+// skill-select semantics), used by the `implement` verb's shell default.
+// `shell` bodies use the shlex-quoting `${context.issue_id:shell}` form (MR-11:
+// a bare `${context.issue_id}` in an `action_type: shell` body is user-controlled
+// interpolation in a raw bash-token position and trips the unsafe-interpolation
+// WARNING); `slash_command` bodies are not bash-executed, so they keep the bare
+// `${context.issue_id}` form the AC pins.
+function _outcomeStateLines(outcome, { doneState = "done", issueArg = false } = {}) {
   const lines = [];
   lines.push(`  ${outcome.name}:`);
   const at = outcome.actionType || "none";
-  if (at === "prompt" || at === "slash_command") {
+  const hasAction = at === "prompt" || at === "slash_command" || at === "shell";
+  if (hasAction) {
     lines.push(`    action_type: ${at}`);
-    const body = at === "slash_command" ? (outcome.body || "").trim() : outcome.body || "";
-    if (at === "slash_command") {
-      lines.push(`    action: ${body}`);
-    } else {
+    if (at === "prompt") {
       lines.push(`    action: |`);
-      lines.push(_yamlBlockScalar(body, 6));
+      lines.push(_yamlBlockScalar(outcome.body || "", 6));
+    } else {
+      let body = (outcome.body || "").trim();
+      if (issueArg) {
+        body += at === "shell" ? " ${context.issue_id:shell}" : " ${context.issue_id}";
+        if (outcome.args && String(outcome.args).trim()) {
+          body += ` ${String(outcome.args).trim()}`;
+        }
+      }
+      lines.push(`    action: ${body}`);
     }
   }
   // Axis B transition.
@@ -475,10 +711,31 @@ function _outcomeStateLines(outcome) {
     lines.push(`    next: score`);
   } else if (t.kind === "goto") {
     lines.push(`    next: ${t.target}`);
+  } else if (hasAction) {
+    lines.push(`    next: ${doneState}`);
   } else {
     lines.push(`    terminal: true`);
   }
   return lines;
+}
+
+/**
+ * The state name to use for the shared "finish with an action" done target
+ * (BUG-2813 fix). Returns "done" unless an outcome, rule target, or the
+ * fallback already uses that name (decision-table outcomes may legitimately
+ * be named anything, including "done" — `fallbackState` itself defaults to
+ * "done"), in which case "finished" is used instead so no self-loop or
+ * duplicate `done:` key is ever emitted. issue_lifecycle's fixed verb set
+ * (prepare/refine/gate/implement/verify) can never collide.
+ * @param {{rules: Array, outcomes: Array, fallback: string}} model
+ * @returns {string}
+ */
+export function _doneStateName(model) {
+  const used = new Set();
+  for (const r of model.rules || []) if (r.target) used.add(r.target);
+  for (const o of model.outcomes || []) if (o.name) used.add(o.name);
+  if (model.fallback) used.add(model.fallback);
+  return used.has("done") ? "finished" : "done";
 }
 
 function _serializeDecisionTable(model) {
@@ -550,10 +807,25 @@ function _serializeDecisionTable(model) {
   // in `outcomes` get a default terminal state so the route never dead-ends.
   const outcomeMap = new Map();
   for (const o of model.outcomes || []) outcomeMap.set(o.name, o);
+  const doneState = _doneStateName(model);
+  let usedDoneState = false;
   for (const tok of tokens) {
     const outcome =
       outcomeMap.get(tok) || { name: tok, actionType: "none", transition: { kind: "finish" } };
-    for (const line of _outcomeStateLines(outcome)) out.push(line);
+    const at = outcome.actionType || "none";
+    const isFinish = !outcome.transition || outcome.transition.kind === "finish";
+    if (isFinish && at !== "none") usedDoneState = true;
+    for (const line of _outcomeStateLines(outcome, { doneState })) out.push(line);
+    out.push("");
+  }
+  // BUG-2813 fix: only the outcomes above ever reference `doneState` (via
+  // `next: <doneState>`), so it is only emitted when at least one finish
+  // outcome actually has an action — never a dangling/unreachable extra
+  // terminal on a table where every finish outcome is `actionType: none`
+  // (those already emit their own bare `terminal: true`).
+  if (usedDoneState) {
+    out.push(`  ${doneState}:`);
+    out.push(`    terminal: true`);
     out.push("");
   }
   return out.join("\n").replace(/\n+$/, "\n");
@@ -636,6 +908,138 @@ function _serializeRubric(model) {
   return out.join("\n").replace(/\n+$/, "\n");
 }
 
+// ===========================================================================
+// issue_lifecycle serialization (FEAT-3474)
+// ===========================================================================
+
+/**
+ * `name:type|name:type` text (raw, non-normalized key names) for
+ * `context.frontmatter_dimensions` — the pipe-separated dimension
+ * declaration the `frontmatter_scores` fragment parses at run time. Unlike
+ * `_serializeDimensions` (which normalizes names for `context.rubric_dimensions`),
+ * this preserves the raw frontmatter key so the fragment can look it up
+ * case-sensitively in the parsed frontmatter dict.
+ * @param {{dimensions: Array<{name: string, type: string}>}} model
+ * @returns {string}
+ */
+export function serializeFrontmatterDimensions(model) {
+  return (model.dimensions || []).map((d) => `${d.name}:${d.type}`).join("|");
+}
+
+/**
+ * The transitive closure of emitted verb states: verbs targeted by a rule,
+ * `model.fallback`, and the `goto` target of any verb already in the set
+ * (recursively — a goto chain through several verbs is fully included).
+ * Only verbs in this closure get a state in the emitted YAML; the rest are
+ * left out entirely (fixed verb set, but not every verb is necessarily
+ * reachable in a given rule table). Returned in Verb Table / `model.outcomes`
+ * order for deterministic emission.
+ * @param {{rules: Array, outcomes: Array, fallback: string}} model
+ * @returns {string[]}
+ */
+export function _emittedVerbs(model) {
+  const outcomeMap = new Map();
+  for (const o of model.outcomes || []) outcomeMap.set(o.name, o);
+
+  const emitted = new Set();
+  for (const r of model.rules || []) {
+    if (r.target && outcomeMap.has(r.target)) emitted.add(r.target);
+  }
+  if (model.fallback && outcomeMap.has(model.fallback)) emitted.add(model.fallback);
+
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const name of Array.from(emitted)) {
+      const oc = outcomeMap.get(name);
+      const target = oc && oc.transition && oc.transition.kind === "goto" && oc.transition.target;
+      if (target && outcomeMap.has(target) && !emitted.has(target)) {
+        emitted.add(target);
+        changed = true;
+      }
+    }
+  }
+
+  return (model.outcomes || []).map((o) => o.name).filter((n) => emitted.has(n));
+}
+
+// Emits the issue_lifecycle-mode loop YAML (Proposed Solution §2): a thin
+// standalone loop that imports lib/policy-router.yaml, self-declares
+// `parameters: { issue_id: {...} }` (not `with:` — that key is caller-side
+// only, fsm/schema.py:684), and replaces the LLM rubric_score/policy_parse_scores
+// pair with the deterministic `frontmatter_scores` fragment. Every verb state
+// carries `on_error: failed`; `scope`/`pruning_profile_ok`/`on_max_steps`/
+// `timeout` are all required for the zero-warnings AC (see the issue's
+// 4th/5th-pass findings).
+function _serializeIssueLifecycle(model) {
+  const out = [];
+  const name = model.name || "issue-lifecycle-loop";
+  out.push(`name: ${name}`);
+  if (model.description) {
+    out.push(`description: |`);
+    out.push(_yamlBlockScalar(model.description, 2));
+  }
+  out.push(`max_steps: ${model.maxSteps != null ? model.maxSteps : 20}`);
+  out.push("");
+  out.push("import:");
+  out.push("  - lib/policy-router.yaml");
+  out.push("");
+  out.push("context:");
+  out.push(`  frontmatter_dimensions: ${_dq(serializeFrontmatterDimensions(model))}`);
+  out.push(`  policy_rules: |`);
+  out.push(_yamlBlockScalar(_serializeRulesText(model), 4));
+  out.push("");
+  out.push("parameters:");
+  out.push("  issue_id:");
+  out.push("    type: string");
+  out.push("    required: true");
+  out.push("");
+  out.push(`scope: ["."]`);
+  out.push("");
+  out.push("# every verb is a /ll: skill; MR-12 would otherwise warn per verb state");
+  out.push("pruning_profile_ok: true");
+  out.push("");
+  out.push("on_max_steps: failed");
+  out.push("");
+  out.push("timeout: 14400");
+  out.push("");
+  out.push("initial: score");
+  out.push("");
+  out.push("states:");
+  out.push("  score:");
+  out.push("    fragment: frontmatter_scores");
+  out.push("    next: policy_dispatch");
+  out.push("    on_error: failed");
+  out.push("");
+  out.push("  policy_dispatch:");
+  out.push("    fragment: policy_table_dispatch");
+  out.push("    route:");
+  const verbs = _emittedVerbs(model);
+  for (const v of verbs) {
+    out.push(`      ${v}: ${v}`);
+  }
+  out.push(`      _: ${model.fallback || verbs[0] || "gate"}`);
+  out.push(`      _error: failed`);
+  out.push("");
+  const outcomeMap = new Map();
+  for (const o of model.outcomes || []) outcomeMap.set(o.name, o);
+  for (const v of verbs) {
+    const outcome = outcomeMap.get(v);
+    for (const line of _outcomeStateLines(outcome, { doneState: "done", issueArg: true })) {
+      out.push(line);
+    }
+    out.push(`    on_error: failed`);
+    out.push("");
+  }
+  out.push("  done:");
+  out.push("    terminal: true");
+  out.push("");
+  out.push("  failed:");
+  out.push("    terminal: true");
+  out.push("");
+  return out.join("\n").replace(/\n+$/, "\n");
+}
+
 /**
  * Serialize a builder model to loop YAML text (deterministic). See the
  * model-shape contract in the file header.
@@ -643,10 +1047,167 @@ function _serializeRubric(model) {
  * @returns {string}
  */
 export function serializeLoopYaml(model) {
+  if (model && model.mode === "issue_lifecycle") {
+    return _serializeIssueLifecycle(model);
+  }
   if (model && model.mode === "rubric") {
     return _serializeRubric(model);
   }
   return _serializeDecisionTable(model);
+}
+
+// ===========================================================================
+// Frontmatter Try-it mini-parser + encoder (FEAT-3474)
+// ===========================================================================
+
+function _stripMatchingQuotes(value) {
+  if (value.length >= 2) {
+    const first = value[0];
+    const last = value[value.length - 1];
+    if ((first === "'" && last === "'") || (first === '"' && last === '"')) {
+      return value.slice(1, -1);
+    }
+  }
+  return value;
+}
+
+/**
+ * A minimal, pure YAML-frontmatter-subset reader for the Try-it panel.
+ * Mirrors `parse_frontmatter`'s (BaseLoader) contract closely enough that
+ * the emitted loop and Try-it never disagree on the seed rules: scalars stay
+ * strings (never JS booleans/numbers — the boolean encoding rule is
+ * string-truthiness, not a parser concern), one pair of matching quotes is
+ * stripped, splitting is on the *first* `:` only (so `title: 'a: b'` and ISO
+ * timestamps with `:` inside a quoted value work), `""`/`null`/`~` normalize
+ * to `null` (absent), `status` synonyms are canonicalized exactly like
+ * `STATUS_SYNONYMS`, and `---` fence lines are tolerated/ignored. Supports
+ * flow lists (`[a, b]`) and dash lists (`- a` / `- b`) — no nested maps
+ * (Non-goals: the runtime scorer uses the full `parse_frontmatter`, not this
+ * mini-parser).
+ *
+ * Throws `Error("Can't read line N: <text>")` on the first unparseable line
+ * (no `:` and not a recognized list-continuation), matching the UI-Notes
+ * error format the hint text surfaces verbatim.
+ * @param {string} text
+ * @returns {Record<string, string|string[]|null>}
+ */
+export function parseFrontmatterBlock(text) {
+  const result = {};
+  let currentListKey = null;
+  let currentList = null;
+  const lines = String(text).split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i];
+    const line = raw.trim();
+    if (line === "") continue;
+    if (/^-{3,}\s*$/.test(line)) continue; // --- fence, tolerated/ignored
+    if (line === "-" || line.startsWith("- ")) {
+      if (currentListKey === null) {
+        throw new Error(`Can't read line ${i + 1}: ${raw}`);
+      }
+      const item = line === "-" ? "" : _stripMatchingQuotes(line.slice(2).trim());
+      currentList.push(item);
+      result[currentListKey] = currentList;
+      continue;
+    }
+    const idx = line.indexOf(":");
+    if (idx === -1) {
+      throw new Error(`Can't read line ${i + 1}: ${raw}`);
+    }
+    const key = line.slice(0, idx).trim();
+    const value = line.slice(idx + 1).trim();
+    currentListKey = null;
+    currentList = null;
+    if (value === "") {
+      // Might be the head of a dash-list on following lines; stays absent
+      // (null) if no dash items follow before the next key.
+      currentListKey = key;
+      currentList = [];
+      result[key] = null;
+      continue;
+    }
+    if (value === "~" || /^null$/i.test(value)) {
+      result[key] = null;
+      continue;
+    }
+    if (value.startsWith("[") && value.endsWith("]")) {
+      const inner = value.slice(1, -1).trim();
+      result[key] = inner ? inner.split(",").map((s) => _stripMatchingQuotes(s.trim())) : [];
+      continue;
+    }
+    // A quoted empty scalar (`key: ""` / `key: ''`) normalizes to null too —
+    // mirrors `_normalize_loaded_mapping`'s `value.lower() in ("null", "~", "")`
+    // check, which runs *after* YAML has already resolved the quotes.
+    const scalar = _stripMatchingQuotes(value);
+    result[key] = scalar === "" ? null : scalar;
+  }
+  if (typeof result.status === "string") {
+    result.status = STATUS_SYNONYMS_JS[result.status] ?? result.status;
+  }
+  return result;
+}
+
+/**
+ * JS mirror of the Python `frontmatter_scores` fragment's
+ * `encode_frontmatter_scores` — same Encoding Rules, same cases, keyed by
+ * normalized dimension name (matching the `rubric-dim-<normalized-name>.txt`
+ * filenames `policy_table_dispatch` reads). Values are always returned as
+ * strings (the on-disk file contents are text; `policy_table_dispatch` does
+ * its own float coercion) so Try-it's evaluator sees exactly what the
+ * emitted loop's dispatch fragment would see.
+ * @param {Record<string, unknown>} fm  parsed frontmatter (string/list/null values)
+ * @param {Array<{name: string, type: string}>} dims
+ * @returns {Record<string, string>}
+ */
+export function encodeFrontmatterScores(fm, dims) {
+  const scores = {};
+  const isTruthy = (raw) => {
+    const norm = (raw == null ? "" : String(raw)).trim().toLowerCase();
+    return norm === "true" || norm === "yes" || norm === "on" || norm === "1";
+  };
+  const listCount = (raw) => {
+    if (raw == null) return 0;
+    if (Array.isArray(raw)) return raw.length;
+    return String(raw).trim() === "" ? 0 : 1;
+  };
+  for (const d of dims || []) {
+    const rawKey = d.name;
+    const normName = normalizeDimName(rawKey);
+    const has = fm != null && Object.prototype.hasOwnProperty.call(fm, rawKey);
+    const raw = has ? fm[rawKey] : undefined;
+    if (d.type === "boolean") {
+      scores[normName] = isTruthy(raw) ? "100" : "0";
+    } else if (d.type === "list") {
+      scores[normName] = String(listCount(raw));
+    } else if (d.type === "numeric") {
+      if (raw === undefined || raw === null) continue;
+      if (Array.isArray(raw)) {
+        scores[normName] = String(raw.length);
+        continue;
+      }
+      const s = String(raw).trim();
+      if (s === "") continue;
+      scores[normName] = s;
+    } else if (d.type === "string") {
+      if (raw === undefined || raw === null) continue;
+      const s = String(raw).trim();
+      if (s === "") continue;
+      scores[normName] = s;
+    }
+  }
+  // Derived priority_rank: only when `priority` is a declared dimension and
+  // its value matches ^P(\d)$ after strip. Independent of whether
+  // `priority_rank` itself is also declared (it always is, as a built-in).
+  const priorityDim = (dims || []).find((d) => normalizeDimName(d.name) === "priority");
+  if (priorityDim) {
+    const has = fm != null && Object.prototype.hasOwnProperty.call(fm, priorityDim.name);
+    const rawPriority = has ? fm[priorityDim.name] : undefined;
+    if (rawPriority !== undefined && rawPriority !== null) {
+      const m = /^P(\d)$/.exec(String(rawPriority).trim());
+      if (m) scores["priority_rank"] = m[1];
+    }
+  }
+  return scores;
 }
 
 // Browser-only global so the inlined copy can expose the API without breaking
@@ -663,5 +1224,14 @@ if (typeof window !== "undefined") {
     moveRule,
     seedExample,
     blankModel,
+    // FEAT-3474 (issue_lifecycle mode)
+    BUILTIN_FRONTMATTER_DIMENSIONS,
+    LIFECYCLE_VERBS,
+    _serializeIssueLifecycle,
+    _emittedVerbs,
+    _doneStateName,
+    serializeFrontmatterDimensions,
+    parseFrontmatterBlock,
+    encodeFrontmatterScores,
   };
 }

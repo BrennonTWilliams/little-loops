@@ -40,6 +40,8 @@
 #
 # Fragment names exported:
 #   policy_parse_scores        — parse rubric output; write aggregate + per-dim score files
+#   frontmatter_scores         — deterministic scorer; encode an issue's YAML frontmatter
+#                                 into per-dim score files (no LLM call; FEAT-3474)
 #   policy_table_dispatch      — evaluate rule table; emit winning token via classify
 #
 # Import in any loop with:
@@ -62,7 +64,9 @@
 #   policy_table_dispatch reads per-dimension files from ${context.run_dir}/ regardless
 #   of which scorer wrote them. The rubric path (policy_parse_scores over rubric_score
 #   output) is one supported source; callers may also write rubric-dim-*.txt from a
-#   deterministic shell scorer (e.g. rn-remediate's "ll-issues show --json" path).
+#   deterministic shell scorer (e.g. rn-remediate's "ll-issues show --json" path, or
+#   this file's own frontmatter_scores fragment, which encodes an issue's raw YAML
+#   frontmatter — including arbitrary custom fields — with no LLM call).
 
 fragments:
   policy_parse_scores:
@@ -109,6 +113,43 @@ fragments:
       print(f"aggregate={agg}")
       if dims_found == 0:
           sys.stderr.write("policy_parse_scores: no DIMENSION lines found in scores output\n")
+      PYEOF
+
+  frontmatter_scores:
+    description: |
+      Shell state that deterministically scores an Issue file's YAML frontmatter
+      instead of an LLM rubric — the frontmatter_scores fragment behind the
+      issue_lifecycle policy-builder mode (FEAT-3474). No LLM call.
+
+      Resolves ${context.issue_id} to a file via resolve_issue_path(), clears
+      every rubric-dim-*.txt and rubric-aggregate.txt in ${context.run_dir}
+      (clean slate — a field present on one score pass and absent on the next
+      must not leave a stale file behind), parses the file's frontmatter with
+      parse_frontmatter(coerce_types=False), and for each name:type pair in
+      ${context.frontmatter_dimensions} (pipe-separated, raw frontmatter keys,
+      e.g. "status:string|confidence_score:numeric|decision_needed:boolean|
+      blocked_by:list|severity:string") writes
+      ${context.run_dir}/rubric-dim-<normalized-name>.txt. Encoding rules
+      (boolean/numeric/list/string, plus the derived priority_rank) live in
+      little_loops.fsm.frontmatter_scores.encode_frontmatter_scores — see that
+      module's docstring for the exact contract.
+
+      Exits non-zero when ${context.issue_id} does not resolve to a file. This
+      only affects routing if the calling state sets on_error — a next-chained
+      shell state with no on_error advances to next regardless of exit code.
+
+      State must supply: next, on_error (both caller-supplied; not hardcoded
+      in this fragment so deep-merge lets the caller override).
+    action_type: shell
+    action: |
+      LL_ARG_ISSUE_ID=${context.issue_id:shell} LL_ARG_FRONTMATTER_DIMS=${context.frontmatter_dimensions:shell} $${LL_PYTHON:-python3} << 'PYEOF'
+      import os, sys
+      from little_loops.fsm.frontmatter_scores import main
+
+      issue_id = os.environ.get("LL_ARG_ISSUE_ID", "")
+      dims_text = os.environ.get("LL_ARG_FRONTMATTER_DIMS", "")
+      run_dir = "${context.run_dir}"
+      sys.exit(main(issue_id, dims_text, run_dir))
       PYEOF
 
   policy_table_dispatch:
