@@ -132,6 +132,30 @@ scorer pytest and `node --test` cases pin.
 - **Numeric-first coercion on `==`/`!=`.** The engine tries `float()` on both
   sides first, so `severity:==1` matches frontmatter `severity: "1"` and
   `severity: 1.0` alike. Pin this in the conformance corpus.
+- **Clean slate on every score pass.** `${context.run_dir}` persists for the
+  whole run and `policy_table_dispatch` reads *every* `rubric-dim-*.txt`
+  present (`lib/policy-router.yaml:157-164`). "Absent → no file" is therefore
+  only true if the scorer first **deletes all `rubric-dim-*.txt` and
+  `rubric-aggregate.txt`** in `${context.run_dir}` before writing. Without
+  this, a field present on pass 1 and cleared by pass 2 (e.g. `deferred_reason`
+  removed by refine-issue) keeps its pass-1 file and missing-dimension
+  semantics never occur after the first score. The fragment pytest pins this
+  with a two-pass case (write, clear the field, re-run, assert the file is
+  gone).
+- **Null/empty normalization and status synonyms.** `parse_frontmatter`
+  normalizes `""`, `null`, and `~` scalars to `None` (`frontmatter.py:139`)
+  and canonicalizes `status` synonyms (`completed` → `done`,
+  `frontmatter.py:246`, via `STATUS_SYNONYMS`). The Try-it mini-parser must
+  mirror both, or Try-it and the emitted loop disagree on the seed rule
+  `status:==done` for an issue whose frontmatter says `status: completed`.
+- **Coercion mode.** The scorer calls `parse_frontmatter(content,
+  coerce_types=False)`: it writes text and `policy_table_dispatch` does the
+  float coercion, so `coerce_types=True` buys nothing and loses leading zeros
+  (`"007"` → `7`). Every value is therefore `str`, `list`, or `None`.
+- **Custom key names.** The builder rejects custom frontmatter keys containing
+  `:` or `|` (they break the `name:type|name:type` encoding of
+  `context.frontmatter_dimensions`) and keys that normalize to an existing
+  dimension's name.
 
 ### Verb Table
 
@@ -177,7 +201,9 @@ Add a `frontmatter_scores` fragment alongside `policy_parse_scores`. It is a
 shell state that:
 
 - resolves `${context.issue_id}` to a path via `ll-issues path <ID>`;
-- parses the file with `parse_frontmatter(content, coerce_types=True)`;
+- **deletes every `rubric-dim-*.txt` and `rubric-aggregate.txt`** in
+  `${context.run_dir}` (see Encoding Rules § Clean slate);
+- parses the file with `parse_frontmatter(content, coerce_types=False)`;
 - for each `name:type` pair in `${context.frontmatter_dimensions}`
   (pipe-separated, raw keys, e.g. `status:string|confidence_score:numeric|decision_needed:boolean|severity:string`)
   looks up the raw key in the parsed frontmatter and writes
@@ -185,13 +211,39 @@ shell state that:
   Rules** section above (boolean → `100`/`0` by string-truthiness, always
   written; numeric → verbatim or list length, absent → no file; string →
   verbatim, absent/empty → no file).
-- exits non-zero when the issue ID does not resolve (mirrors rn-remediate's
-  BUG-2003 AC5 contract).
+- exits non-zero when the issue ID does not resolve. **This only has an
+  effect if the calling state sets `on_error`:** for a `next:`-chained shell
+  state with no `on_error`, the executor advances to `next` regardless of
+  exit code (`fsm/executor.py:2161-2179`). rn-remediate's BUG-2003 AC5
+  contract works because its `diagnose` state sets `on_error:
+  emit_implement_failed`. The emitted `score` state therefore carries
+  `on_error: failed` (see §2); without it a typo'd ID yields empty scores,
+  the catch-all fires, and `/ll:refine-issue BAD-ID` runs.
+
+**Shell-interpolation pattern.** Copy `policy_table_dispatch`
+(`lib/policy-router.yaml:140`), not rn-remediate's bash scorer: pass
+`LL_ARG_ISSUE_ID=${context.issue_id:shell}` and
+`LL_ARG_FRONTMATTER_DIMS=${context.frontmatter_dimensions:shell}` as env vars
+into a `$${LL_PYTHON:-python3} << 'PYEOF'` heredoc, and escape any literal
+bash `${...}` as `$${...}` (the FSM interpolates the whole action string
+before bash sees it).
 
 Booleans are encoded 100/0 so the existing `compileBooleanPredicate` path in
 `_serializeRulesText()` is reused unchanged (`==true` → `>=50`, `==false` →
 `<50`; an absent boolean writes `0` and therefore satisfies `==false`); no
 engine changes are needed.
+
+**Validator change (`fsm/validation/reachability.py`).**
+`_validate_policy_dimensions_scored()` (`:154-238`) builds its "scored" set
+from `context.rubric_dimensions` plus literal `rubric-dim-<name>.txt` strings
+found in shell actions (`:201-218`). The fragment builds the filename
+dynamically, so nothing matches and `ll-loop validate` emits one false
+"referenced in policy_rules but never scored … predicates are inert" WARNING
+per dimension for every `issue_lifecycle` loop. Extend the validator to also
+parse `context.frontmatter_dimensions` (`name:type|…`, names normalized the
+same way as `rubric_dimensions`). Do **not** suppress with
+`policy_dims_scored_ok: true` in the emitted YAML — that discards the real
+check for typo'd dimension names.
 
 ### 2. Core (`policy_builder_core.mjs`)
 
@@ -209,11 +261,19 @@ engine changes are needed.
     for the shape; `with:` is the caller-side key used when *invoking* a
     sub-loop/fragment, per `fsm/schema.py:684`, not a self-declaration key —
     corrected 2026-09-16, see Verification Notes);
-  - `initial: score` → `score: {fragment: frontmatter_scores, next: policy_dispatch}`
-    → `policy_dispatch` (identical route-map generation to `_serializeDecisionTable`)
-    → one outcome state per verb via the existing `_outcomeStateLines()`.
-- `_serializeRulesText()` and a new `opsForType`-equivalent in the core gain
-  a `string` type: `==`/`!=` only, value emitted verbatim (no boolean compile).
+  - `initial: score` → `score: {fragment: frontmatter_scores, next:
+    policy_dispatch, on_error: failed}` → `policy_dispatch` (identical
+    route-map generation to `_serializeDecisionTable`, except the `_error`
+    sentinel routes to `failed`) → one outcome state per verb via the existing
+    `_outcomeStateLines()` → a fixed `failed: {terminal: true}` state (the
+    unresolved-issue-ID exit; see §1).
+- `_serializeRulesText()` needs **no change** for `string`: non-boolean dims
+  already pass `==`/`!=` and their value through verbatim. The `string` type
+  is enforced only at the UI layer (`opsForType()` and value validation in the
+  template).
+- Export the new functions and constants from the `window.PolicyBuilderCore`
+  browser global (`policy_builder_core.mjs:654-666`) — the template's inline
+  script can only reach the core through that object.
 - Dimension model shape stays `{name, type}`; no `kind` discriminator — the
   model is already open. Built-in vs custom is purely a UI concern (built-ins
   are pre-populated and their type is locked).
@@ -223,15 +283,24 @@ engine changes are needed.
 - Third `<option>` on `#mode-switch`; `applyModeVisibility()` shows the
   dimensions/outcomes/rules fieldsets and a new `frontmatter-tryit-fieldset`
   for this mode, hides `threshold-fieldset`.
+- **Mode-switch semantics.** Today's `#mode-switch` handler (`.tmpl:632-638`)
+  only reassigns `state.mode` and `maxSteps`; it never reseeds collections.
+  Switching **into** `issue_lifecycle` replaces `state` with
+  `seedExample("issue_lifecycle")` (same data-loss contract as "Start blank");
+  switching **out** replaces it with `seedExample(<new mode>)`.
+  `#start-blank-btn` calls `blankModel(state.mode)` so a blank lifecycle model
+  still carries the locked built-in dimensions and the five verbs.
 - `#dim-type` gains a `string` option; `opsForType()` restricts it to `==`/`!=`;
   the rule-value input for `string` dims rejects empty values and values
-  containing `&` or `->` (see Encoding Rules § String-value validation).
+  containing `&` or `->`; the custom-dimension name input rejects `:` and `|`
+  (see Encoding Rules § String-value validation and § Custom key names).
 - Outcome fieldset in this mode shows the five verbs with their default
   slash-command bodies pre-filled and the existing skill-catalog dropdown as
   the override.
 - Try-it: a `<textarea>` for pasted frontmatter; the page parses it with a
   minimal YAML-frontmatter reader (scalars, booleans, flow/dash lists — no
-  nested maps) and runs the existing JS `evaluateRules` mirror over the
+  nested maps; `""`/`null`/`~` → absent; `status` synonyms canonicalized per
+  `STATUS_SYNONYMS`) and runs the existing JS `evaluateRules` mirror over the
   encoded scores. This is the only new JS parser; keep it pure and covered by
   `node --test`.
 
@@ -259,10 +328,15 @@ _Added by `/ll:refine-issue` — 2026-09-16 — based on codebase analysis:_
   `policy_parse_scores`; update the header comment's fragment list and the
   "Score-source agnosticism" note to cite it as the deterministic scorer.
 - `scripts/little_loops/templates/policy_builder_core.mjs` — `mode` parameter
-  on `blankModel()`/`seedExample()`; `_serializeIssueLifecycle()`; explicit
-  `issue_lifecycle` branch in `serializeLoopYaml()`; `string` type in
-  `_serializeRulesText()`; Built-in Dimension Table and Verb Table constants;
-  pure frontmatter mini-parser + encoder for Try-it.
+  on `blankModel()`/`seedExample()`; `_serializeIssueLifecycle()` (including
+  the `on_error: failed` / `failed` terminal wiring); explicit
+  `issue_lifecycle` branch in `serializeLoopYaml()`; Built-in Dimension Table
+  and Verb Table constants; pure frontmatter mini-parser + encoder for Try-it;
+  `window.PolicyBuilderCore` exports for all of the above.
+- `scripts/little_loops/fsm/validation/reachability.py` —
+  `_validate_policy_dimensions_scored()` also reads
+  `context.frontmatter_dimensions` into its scored set (Proposed Solution §1,
+  "Validator change").
 - `scripts/little_loops/templates/policy-router-builder.html.tmpl` — third
   mode option, `string` dim type, `opsForType()` branch, verb-outcome UI,
   frontmatter Try-it fieldset, and every `state.mode` dispatch site listed in
@@ -282,7 +356,11 @@ _Added by `/ll:refine-issue` — 2026-09-16 — based on codebase analysis:_
   `_validate_policy_dimensions_scored()` (line 154) calls `parse_rules()`
   (line 184) to lint FSM policy-rule text; the emitted rule text uses the same
   grammar (string `==`/`!=`, numeric ordered ops, compiled booleans) so it
-  stays compatible. Verify with `ll-loop validate` on the golden YAML.
+  parses. Its scored-dimension check does **not** see the fragment's dynamic
+  filenames, hence the change listed under Files to Modify. Verify with
+  `ll-loop validate` on the golden YAML and assert **zero warnings**, not just
+  zero errors (the existing `test_golden_yaml_validates` filters to ERROR
+  only, which would let the false "never scored" warnings through).
 - `scripts/little_loops/loops/policy-refine.yaml` — existing consumer of
   `policy_table_dispatch`; unaffected, but re-run its validate as a regression
   check after editing the shared fragment file.
@@ -309,8 +387,20 @@ _Added by `/ll:refine-issue` — 2026-09-16 — based on codebase analysis:_
   `@pytest.mark.parametrize` list.
 - `scripts/tests/js/policy_validator.test.mjs` — add
   `test("serializeLoopYaml matches golden issue-lifecycle fixture", ...)`,
-  plus tests for the frontmatter mini-parser/encoder (booleans → 100/0, list
-  → length, missing numeric → absent, missing string → empty).
+  plus tests for the frontmatter mini-parser/encoder driven by the shared
+  encoding corpus below.
+- New: `scripts/tests/fixtures/policy_builder/frontmatter_encoding_corpus.json`
+  — the cross-language encoding contract (pasted frontmatter text +
+  `name:type` dims → expected score map, including absent keys), consumed by
+  **both** `test_policy_builder_corpus.py` (against the Python encoder) and
+  `policy_validator.test.mjs` (against `parseFrontmatterBlock` +
+  `encodeFrontmatterScores`), exactly as `conformance_corpus.json` pins
+  `evaluate_rules`. Separate per-language tests would let the two encoders
+  drift.
+- `scripts/tests/test_fsm_validation*.py` (wherever
+  `_validate_policy_dimensions_scored` is covered) — a loop with
+  `context.frontmatter_dimensions` and no `rubric_dimensions` produces zero
+  "never scored" warnings; a predicate on a dim absent from both still warns.
 - `scripts/tests/fixtures/policy_builder/sample-issue-lifecycle.model.json`
   and `.yaml` — new golden fixture pair; the YAML must pass `ll-loop validate`.
 - `scripts/tests/test_policy_builder_corpus.py` /
@@ -324,7 +414,8 @@ _Added by `/ll:refine-issue` — 2026-09-16 — based on codebase analysis:_
   **strings**, since `BaseLoader` never yields `bool`), list, scalar-where-
   list-expected, non-numeric-under-numeric, `null`, and missing fields, runs
   the fragment's Python body, and asserts the exact `rubric-dim-*.txt` set
-  and contents per the Encoding Rules (follow the fragment-testing pattern used for
+  and contents per the Encoding Rules, including the two-pass clean-slate
+  case and the unresolved-ID non-zero exit (follow the fragment-testing pattern used for
   `policy_parse_scores` if one exists; otherwise extract the body to
   `little_loops.fsm.frontmatter_scores` and shell into it, matching how
   `policy_table_dispatch` imports `policy_rules`).
@@ -344,7 +435,9 @@ _Added by `/ll:refine-issue` — 2026-09-16 — based on codebase analysis:_
 
 1. Add the `frontmatter_scores` fragment to `lib/policy-router.yaml`
    (extracting its Python body to an importable module if that is how the
-   fragment test is written). Unit-test the encoding rules.
+   fragment test is written). Unit-test the encoding rules. Extend
+   `_validate_policy_dimensions_scored()` to read
+   `context.frontmatter_dimensions`.
 2. Add the `issue_lifecycle` mode to `policy_builder_core.mjs`: `mode`
    parameter on `blankModel`/`seedExample`, constants for the two tables,
    `string` type support, `_serializeIssueLifecycle`, explicit dispatch
@@ -366,7 +459,9 @@ _Added by `/ll:refine-issue` — 2026-09-16 — based on codebase analysis:_
 
 - Regenerate `scripts/tests/fixtures/policy_builder/golden_policy_router_builder.html`
   once template changes land — the byte-diff test will otherwise fail
-  unconditionally.
+  unconditionally. There is no regen script: run
+  `ll-artifact policy-builder --output <tmpdir>` and copy the emitted
+  `policy-router-builder.html` over the fixture.
 - Add `"sample-issue-lifecycle.model.json"` to the `@pytest.mark.parametrize`
   list in `scripts/tests/test_policy_builder_node_gate.py:125`.
 - Add the new mode's golden fixture pair and a matching `test(...)` block in
@@ -437,13 +532,25 @@ because the emitted loop makes no sub-loop calls.
   shell conventions.
 - [ ] The emitted YAML imports only `lib/policy-router.yaml`, declares
   `parameters: { issue_id: {...} }`, uses `frontmatter_scores` →
-  `policy_table_dispatch`, and passes `ll-loop validate`.
-- [ ] `frontmatter_scores` encodes values per the Encoding Rules (boolean →
-  100/0 by string-truthiness on `true/yes/on/1`, always written; list →
-  length; scalar-where-list → 1; non-numeric scalar under `numeric` →
-  verbatim; missing/`null` numeric or string → no file) and exits non-zero
-  on an unresolved issue ID; covered by a pytest whose fixture values are
-  strings, matching `BaseLoader` output.
+  `policy_table_dispatch`, and passes `ll-loop validate` with **zero
+  warnings** (the validator recognizes `context.frontmatter_dimensions` as a
+  score source).
+- [ ] The emitted `score` state sets `on_error: failed` and the YAML carries a
+  `failed: {terminal: true}` state; running the loop with an unresolvable
+  `issue_id` ends in `failed` without invoking any verb.
+- [ ] `frontmatter_scores` clears all `rubric-dim-*.txt` and
+  `rubric-aggregate.txt` in `${context.run_dir}` before writing, then encodes
+  values per the Encoding Rules (boolean → 100/0 by string-truthiness on
+  `true/yes/on/1`, always written; list → length; scalar-where-list → 1;
+  non-numeric scalar under `numeric` → verbatim; missing/`null` numeric or
+  string → no file) and exits non-zero on an unresolved issue ID; covered by
+  a pytest whose fixture values are strings, matching `BaseLoader` output,
+  including a two-pass case where a field cleared between passes leaves no
+  stale file.
+- [ ] The Python encoder and the JS `parseFrontmatterBlock` +
+  `encodeFrontmatterScores` pair agree on every case in a shared
+  `frontmatter_encoding_corpus.json`, including `""`/`null`/`~` → absent and
+  `status` synonym canonicalization.
 - [ ] Each verb outcome seeds the Verb Table's default transition
   (prepare/refine/gate → rescore, implement/verify → finish) and remains
   editable via the existing outcome transition selector; the seeded example
@@ -497,7 +604,13 @@ because the emitted loop makes no sub-loop calls.
   `"string"` branch returning `["==", "!="]`.
 - `frontmatter_scores` fragment (YAML, `lib/policy-router.yaml`) — shell
   state reading `${context.issue_id}`, `${context.frontmatter_dimensions}`,
-  `${context.run_dir}`; writes `rubric-dim-*.txt`; `next` supplied by caller.
+  `${context.run_dir}`; clears then writes `rubric-dim-*.txt`; `next` and
+  `on_error` supplied by caller.
+- `_validate_policy_dimensions_scored(fsm: FSMLoop) -> list[ValidationError]`
+  (`fsm/validation/reachability.py:154`) — existing; its scored-set builder
+  additionally splits `context.frontmatter_dimensions` on `|`, takes the part
+  before the first `:` of each entry, and normalizes it like
+  `rubric_dimensions`.
 
 ### Call Path
 
@@ -508,9 +621,9 @@ selects `issue_lifecycle`, authors rules -> `serializeLoopYaml` ->
 `_serializeIssueLifecycle` (emits a top-level `parameters: { issue_id:
 {...} }` self-declaration, not `with:` — corrected 2026-09-16) -> saved YAML
 run via `ll-loop run <name> --context issue_id=<ID>` -> `frontmatter_scores`
-(fragment) -> `policy_table_dispatch` (fragment; `parse_rules` /
-`evaluate_rules` in `fsm/policy_rules.py`) -> verb outcome state
-(`slash_command`).
+(fragment; non-zero exit -> `on_error` -> `failed`) -> `policy_table_dispatch`
+(fragment; `parse_rules` / `evaluate_rules` in `fsm/policy_rules.py`) -> verb
+outcome state (`slash_command`).
 
 ## Use Case
 
@@ -536,8 +649,9 @@ confidence_score:>=70 -> gate
 
 With the Verb Table's default transitions, a single run on an issue at
 `confidence_score: 40` goes refine → (rescore) → gate once refine-issue lifts
-the score past 70, and `status: done` after implement routes to verify on the
-next pass.
+the score past 70. `implement` is a finish transition, so `status:==done ->
+verify` fires on a **subsequent** `ll-loop run` against the same issue, not
+within the run that implemented it.
 
 ## Non-goals
 
@@ -608,6 +722,7 @@ record of what was wrong and fixed, not an outstanding action item).
 
 
 ## Session Log
+- pre-implementation review (2nd pass) - 2026-09-16 - three executor/validator mismatches fixed: clean-slate deletion of stale `rubric-dim-*.txt` on rescore (run_dir persists; dispatch reads every file), `on_error: failed` + `failed` terminal (next-chained shell states ignore exit code without `on_error`, executor.py:2161), validator extension for `context.frontmatter_dimensions` (reachability.py:201-218 would warn "never scored" per dim). Also: shell-interpolation pattern pinned to `policy_table_dispatch`, shared encoding corpus, mode-switch semantics, `coerce_types=False`, `:`/`|` key rejection, `_serializeRulesText` needs no string branch, `PolicyBuilderCore` exports, golden HTML regen command, Use Case "next pass" wording
 - pre-implementation review - 2026-09-16 - added Encoding Rules (BaseLoader string-truthiness for booleans, dropped unexpressable "missing string → empty" encoding, defined non-numeric/scalar-where-list cases, name-normalization and string-value validation contracts); Verb Table gains default transitions (rescore for prepare/refine/gate); corpus/test/AC bullets updated to match
 - `/ll:verify-issues` - 2026-09-16T16:43:24 - `40a29daf-d13d-4b50-8d3f-07379ec26437.jsonl`
 - review rewrite - 2026-09-16 - resolved emitted-artifact shape, added `frontmatter_scores` scorer, value-encoding rules, `string` type, verb defaults, Try-it; removed refuted directive claims
