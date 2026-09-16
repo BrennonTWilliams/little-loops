@@ -1,5 +1,7 @@
 ---
 id: ENH-3491
+parent: EPIC-3493
+epic: EPIC-3493
 type: ENH
 title: Policy builder lifecycle layout, task presets, and execution summary
 priority: P3

@@ -1,5 +1,7 @@
 ---
 id: ENH-3487
+parent: EPIC-3493
+epic: EPIC-3493
 type: ENH
 title: Policy builder persistence, undo/redo, and saved projects
 priority: P3

@@ -1,5 +1,7 @@
 ---
 id: BUG-3489
+parent: EPIC-3493
+epic: EPIC-3493
 type: BUG
 title: 'Policy-router runtime: stale LLM scores across passes and decision-table dispatch
   errors route to a success outcome'

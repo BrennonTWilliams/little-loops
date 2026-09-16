@@ -1,5 +1,7 @@
 ---
 id: ENH-3492
+parent: EPIC-3493
+epic: EPIC-3493
 type: ENH
 title: Policy builder explicit terminal destinations, scoring instructions, and gate
   stamping

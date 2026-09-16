@@ -1,5 +1,7 @@
 ---
 id: BUG-3486
+parent: EPIC-3493
+epic: EPIC-3493
 type: BUG
 title: Policy builder preview, validation, and editing correctness (browser/core)
 priority: P2

@@ -1,5 +1,7 @@
 ---
 id: BUG-3490
+parent: EPIC-3493
+epic: EPIC-3493
 type: BUG
 title: Policy builder skill catalog is empty in consumer projects (single-root plugin
   discovery)

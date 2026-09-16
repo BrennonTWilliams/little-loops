@@ -1,5 +1,7 @@
 ---
 id: FEAT-3488
+parent: EPIC-3493
+epic: EPIC-3493
 type: FEAT
 title: Policy builder richer scenarios and connected execution
 priority: P3
