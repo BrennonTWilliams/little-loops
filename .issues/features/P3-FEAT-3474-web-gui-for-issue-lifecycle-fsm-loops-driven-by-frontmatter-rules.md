@@ -9,6 +9,12 @@ discovered_date: '2026-09-14'
 captured_at: '2026-09-14T17:11:03Z'
 parent: EPIC-3299
 verify_verdict: VALID
+confidence_score: 100
+outcome_confidence: 85
+score_complexity: 10
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # FEAT-3474: Web GUI for issue-lifecycle FSM loops driven by frontmatter rules
@@ -63,18 +69,24 @@ A new `issue_lifecycle` mode on `policy-router-builder.html.tmpl` where:
   - little-loops' own built-in fields as pre-typed, pre-populated dimensions
     (see the Built-in Dimension Table below).
   - PLUS arbitrary user-declared **custom** frontmatter fields — the user names
-    the key and picks a type (`numeric`, `boolean`, `string`); little-loops
-    needs no prior knowledge of the field. This is the key differentiator from
-    a little-loops-only tool.
-  - Operators offered per type: `numeric` → all six; `boolean` → `==true` /
-    `==false`; `string` → `==` / `!=` only. (`string` is a **new** builder type;
-    the existing `opsForType()` only special-cases `boolean`.)
+    the key and picks a type (`numeric`, `boolean`, `string`, `list`);
+    little-loops needs no prior knowledge of the field. This is the key
+    differentiator from a little-loops-only tool.
+  - Operators offered per type: `numeric` and `list` → all six; `boolean` →
+    `==true` / `==false`; `string` → `==` / `!=` only. (`string` and `list`
+    are **new** builder types; the existing `opsForType()` only special-cases
+    `boolean`.)
 - **Actions** per rule/outcome are the five lifecycle verbs — prepare, refine,
   gate, implement, verify — each pre-bound to a default `/ll:*` slash command
   (see Verb Table) and overridable from the same emit-time skill catalog
-  FEAT-2301's "run a skill" dropdown already surfaces.
+  FEAT-2301's "run a skill" dropdown already surfaces. The verb set is
+  **fixed**: verbs cannot be deleted and no new outcomes can be added in this
+  mode (`#add-outcome` hidden, `✕ outcome` disabled); only the skill binding
+  and transition are editable.
 - **Try it** panel accepts a pasted frontmatter block and shows which rule
-  fires, using the same evaluator the emitted loop uses.
+  fires, using the same evaluator the emitted loop uses. It must evaluate the
+  **compiled** rule text — `evaluateRules(parseRuleTable(_serializeRulesText(model)), scores)`
+  — not `model.rules` (see Encoding Rules § Try-it evaluates compiled rules).
 - Reuses FEAT-2301/FEAT-2390's shipped patterns (self-contained `file://`
   HTML, ordered reorderable rule list, pinned "Otherwise" footer, demoted YAML,
   seeded example, theme handling, pure-function `.mjs` core + `node --test`
@@ -86,12 +98,17 @@ A new `issue_lifecycle` mode on `policy-router-builder.html.tmpl` where:
 |---|---|---|
 | `status` | string | verbatim; absent → no file |
 | `priority` | string | verbatim (`P0`..`P5`); absent → no file |
+| `priority_rank` | numeric | **derived** from `priority`: leading `P` stripped → `0`..`5`, so ordered ops work (`priority_rank:<=2`); absent or non-`P<digit>` → no file |
 | `confidence_score` | numeric | verbatim; absent → no file |
 | `outcome_confidence` | numeric | verbatim; absent → no file |
 | `decision_needed` | boolean | `100` / `0` (string-truthiness, see Encoding Rules) |
 | `spike_needed` | boolean | `100` / `0` (string-truthiness, see Encoding Rules) |
-| `blocked_by` | numeric | list length (0 when absent/empty/`null`) |
+| `blocked_by` | list | count (see Encoding Rules § list); always written, `0` when absent/empty/`null` |
 | `deferred_reason` | string | verbatim; absent/`null` → no file |
+
+`priority_rank` is the one built-in that is not a raw frontmatter key; the
+scorer synthesizes it from `priority` (the Try-it encoder mirrors this). It is
+the only derived dimension — custom fields are never transformed.
 
 ### Encoding Rules
 
@@ -110,15 +127,26 @@ scorer pytest and `node --test` cases pin.
 - **numeric** → scalar written verbatim (the dispatch fragment coerces to
   float; a non-numeric scalar such as `confidence_score: high` is written
   as-is and the engine's string fallback applies — `==`/`!=` compare as
-  strings, ordered ops evaluate False). A list value → `len(list)`. A
-  non-list scalar where a list is expected (`blocked_by: BUG-1`) → `1`.
-  Absent/`null` → **no file** (engine missing-dimension semantics: `!=`
-  matches, everything else does not).
+  strings, ordered ops evaluate False). A list value under `numeric` →
+  `len(list)`. Absent/`null` → **no file** (engine missing-dimension
+  semantics: `!=` matches, everything else does not).
+- **list** → count semantics: a list → `len(list)`; a non-empty non-list
+  scalar (`blocked_by: BUG-1`) → `1`; absent/`null`/empty list → `0`. The
+  file is **always written**, so `blocked_by:==0` / `blocked_by:<1` match an
+  issue with no `blocked_by` key — the common "not blocked" case. This type
+  exists because the scorer cannot infer "a list was expected" from a
+  `numeric` declaration: under `numeric`, `blocked_by: BUG-1` is a
+  non-numeric scalar and is written verbatim as `BUG-1`. Operators: all six.
 - **string** → `str(value).strip()` written verbatim. Absent/`null`/empty →
   **no file**. There is deliberately no "empty string" encoding: the rule
   grammar requires a non-empty predicate value (`_PRED_PATTERN`,
   `fsm/policy_rules.py:32`), so `deferred_reason:==` cannot be authored, and
   an empty file evaluates identically to a missing dimension anyway.
+- **Derived `priority_rank`.** When `priority` is present and matches
+  `^P(\d)$` (after strip), the scorer also writes
+  `rubric-dim-priority_rank.txt` containing the digit. Any other value (absent,
+  `null`, `high`) → no `priority_rank` file. This is the only synthesized
+  dimension.
 - **Name normalization.** `context.frontmatter_dimensions` carries the
   **raw** frontmatter key (case-sensitive, as the user typed it) for lookup;
   the output filename uses the normalized form (`normalizeDimName()`:
@@ -155,17 +183,45 @@ scorer pytest and `node --test` cases pin.
 - **Custom key names.** The builder rejects custom frontmatter keys containing
   `:` or `|` (they break the `name:type|name:type` encoding of
   `context.frontmatter_dimensions`) and keys that normalize to an existing
-  dimension's name.
+  dimension's name (including `priority_rank`).
+- **Try-it evaluates compiled rules.** The existing decision-table Try-it
+  (`.tmpl:556-570`) passes `buildModel().rules` — raw predicates whose `op` is
+  the UI token `==true`/`==false` — straight to `evaluateRules`.
+  `evalPredicate` (`policy_builder_core.mjs:136-150`) knows only `==`/`!=`
+  and the ordered ops, so `==false` falls into the `!=` string branch and
+  fires on `100` and `0` alike (verified with `node`: a `has-citations:==false`
+  rule wins against `{"has-citations": 100}`). The lifecycle Try-it must
+  therefore evaluate `parseRuleTable(_serializeRulesText(model))` — the same
+  compiled text the emitted YAML carries — so `decision_needed:==false`
+  behaves as the loop will. This is a pre-existing decision_table defect;
+  file it as a separate BUG and fix both sites together.
+- **Quoted scalars and colons in values (Try-it mini-parser).** Real
+  frontmatter carries `discovered_date: '2026-09-14'`,
+  `captured_at: '2026-09-14T17:11:03Z'`, and titles containing `:`.
+  `parseFrontmatterBlock` splits each line on the **first** `:` only and
+  strips one pair of matching single or double quotes from the value
+  (`'open'` → `open`). `parse_frontmatter` (BaseLoader) already does both;
+  the corpus pins them so the two encoders agree.
 
 ### Verb Table
 
-| Verb | Default slash command (body) | Default transition |
-|---|---|---|
-| prepare | `/ll:format-issue ${context.issue_id}` | rescore ("Score again") |
-| refine | `/ll:refine-issue ${context.issue_id}` | rescore ("Score again") |
-| gate | `/ll:confidence-check ${context.issue_id}` | rescore ("Score again") |
-| implement | `/ll:manage-issue ${context.issue_id}` | finish ("Stop here") |
-| verify | `/ll:verify-issues ${context.issue_id}` | finish ("Stop here") |
+| Verb | Default skill (model `body`) | Emitted `action:` | Default transition |
+|---|---|---|---|
+| prepare | `/ll:format-issue` | `/ll:format-issue ${context.issue_id}` | rescore ("Score again") |
+| refine | `/ll:refine-issue` | `/ll:refine-issue ${context.issue_id}` | rescore ("Score again") |
+| gate | `/ll:confidence-check` | `/ll:confidence-check ${context.issue_id}` | rescore ("Score again") |
+| implement | `/ll:manage-issue` | `/ll:manage-issue ${context.issue_id}` | finish ("Stop here") |
+| verify | `/ll:verify-issues` | `/ll:verify-issues ${context.issue_id}` | finish ("Stop here") |
+
+**Body vs. emitted action.** The outcome model stores the **bare** skill
+(`/ll:<name>`), exactly what the existing skill `<select>` (`.tmpl:366-372`)
+writes and what `renderMessages`'s unknown-skill check (`.tmpl:589-593`)
+compares against the catalog by exact string. `_serializeIssueLifecycle`
+appends ` ${context.issue_id}` when emitting each verb's `action:` line. If
+the model stored the argument-bearing form, every verb would render as an
+"unknown skill" error and be unselectable in the dropdown. All five defaults
+are in `_load_skill_catalog()`'s output (it globs both `skills/*/SKILL.md`
+and `commands/*.md`, `policy_builder.py:31-46`).
 
 Transitions use the shell's existing per-outcome selector (`.tmpl:383`:
 "Score again" / "Go to…" / "Stop here") and remain user-editable. `rescore`
@@ -205,12 +261,13 @@ shell state that:
   `${context.run_dir}` (see Encoding Rules § Clean slate);
 - parses the file with `parse_frontmatter(content, coerce_types=False)`;
 - for each `name:type` pair in `${context.frontmatter_dimensions}`
-  (pipe-separated, raw keys, e.g. `status:string|confidence_score:numeric|decision_needed:boolean|severity:string`)
+  (pipe-separated, raw keys, e.g. `status:string|confidence_score:numeric|decision_needed:boolean|blocked_by:list|severity:string`)
   looks up the raw key in the parsed frontmatter and writes
   `${context.run_dir}/rubric-dim-<normalized-name>.txt` per the **Encoding
   Rules** section above (boolean → `100`/`0` by string-truthiness, always
-  written; numeric → verbatim or list length, absent → no file; string →
-  verbatim, absent/empty → no file).
+  written; numeric → verbatim or list length, absent → no file; list →
+  count, always written; string → verbatim, absent/empty → no file;
+  `priority_rank:numeric` is synthesized from `priority`).
 - exits non-zero when the issue ID does not resolve. **This only has an
   effect if the calling state sets `on_error`:** for a `next:`-chained shell
   state with no `on_error`, the executor advances to `next` regardless of
@@ -262,15 +319,20 @@ check for typo'd dimension names.
     sub-loop/fragment, per `fsm/schema.py:684`, not a self-declaration key —
     corrected 2026-09-16, see Verification Notes);
   - `initial: score` → `score: {fragment: frontmatter_scores, next:
-    policy_dispatch, on_error: failed}` → `policy_dispatch` (identical
-    route-map generation to `_serializeDecisionTable`, except the `_error`
-    sentinel routes to `failed`) → one outcome state per verb via the existing
-    `_outcomeStateLines()` → a fixed `failed: {terminal: true}` state (the
-    unresolved-issue-ID exit; see §1).
-- `_serializeRulesText()` needs **no change** for `string`: non-boolean dims
-  already pass `==`/`!=` and their value through verbatim. The `string` type
-  is enforced only at the UI layer (`opsForType()` and value validation in the
-  template).
+    policy_dispatch, on_error: failed}` → `policy_dispatch` (route-map
+    generation as in `_serializeDecisionTable`, except the `_error` sentinel
+    routes to `failed`) → **one outcome state per verb that a rule or the
+    fallback references** (not one per model outcome, unlike
+    `_serializeDecisionTable`, which would emit all five verb states for a
+    three-verb loop) via the existing `_outcomeStateLines()`, with
+    ` ${context.issue_id}` appended to each `slash_command` body → a fixed
+    `failed: {terminal: true}` state (the unresolved-issue-ID exit; see §1).
+    `failed` is in `FAILURE_TERMINAL_NAMES` (`fsm/schema.py:34`), so the run
+    is reported as a failure terminal without declaring `failure: true`.
+- `_serializeRulesText()` needs **no change** for `string` or `list`:
+  non-boolean dims already pass their op and value through verbatim. Both
+  types are enforced only at the UI layer (`opsForType()` and value
+  validation in the template).
 - Export the new functions and constants from the `window.PolicyBuilderCore`
   browser global (`policy_builder_core.mjs:654-666`) — the template's inline
   script can only reach the core through that object.
@@ -290,19 +352,27 @@ check for typo'd dimension names.
   switching **out** replaces it with `seedExample(<new mode>)`.
   `#start-blank-btn` calls `blankModel(state.mode)` so a blank lifecycle model
   still carries the locked built-in dimensions and the five verbs.
-- `#dim-type` gains a `string` option; `opsForType()` restricts it to `==`/`!=`;
-  the rule-value input for `string` dims rejects empty values and values
-  containing `&` or `->`; the custom-dimension name input rejects `:` and `|`
-  (see Encoding Rules § String-value validation and § Custom key names).
+- `#dim-type` gains `string` and `list` options; `opsForType()` restricts
+  `string` to `==`/`!=` (`list` keeps all six); the rule-value input for
+  `string` dims rejects empty values and values containing `&` or `->`; the
+  custom-dimension name input rejects `:` and `|` (see Encoding Rules §
+  String-value validation and § Custom key names).
 - Outcome fieldset in this mode shows the five verbs with their default
-  slash-command bodies pre-filled and the existing skill-catalog dropdown as
-  the override.
+  skills pre-selected in the existing skill-catalog dropdown (bare `/ll:<name>`
+  bodies, see Verb Table § Body vs. emitted action). `#add-outcome` is hidden
+  and each verb's `✕ outcome` button is disabled. `renderMessages`'s
+  "has no rule and isn't the fallback" warning (`.tmpl:581-587`) is
+  **suppressed** in this mode — unused verbs are expected, not a mistake,
+  and are simply not emitted.
 - Try-it: a `<textarea>` for pasted frontmatter; the page parses it with a
-  minimal YAML-frontmatter reader (scalars, booleans, flow/dash lists — no
-  nested maps; `""`/`null`/`~` → absent; `status` synonyms canonicalized per
-  `STATUS_SYNONYMS`) and runs the existing JS `evaluateRules` mirror over the
-  encoded scores. This is the only new JS parser; keep it pure and covered by
-  `node --test`.
+  minimal YAML-frontmatter reader (scalars with optional matching quotes,
+  first-`:` split, booleans, flow/dash lists — no nested maps; `""`/`null`/`~`
+  → absent; `status` synonyms canonicalized per `STATUS_SYNONYMS`), encodes
+  the scores (including the derived `priority_rank`), and runs the JS
+  `evaluateRules` mirror over the **compiled** rule table
+  (`parseRuleTable(_serializeRulesText(model))`), not `buildModel().rules`
+  (see Encoding Rules § Try-it evaluates compiled rules). This is the only
+  new JS parser; keep it pure and covered by `node --test`.
 
 ### Codebase Research Findings
 
@@ -411,8 +481,10 @@ _Added by `/ll:refine-issue` — 2026-09-16 — based on codebase analysis:_
   the JS mirror and `evaluate_rules` agree on string handling.
 - New: a pytest for the `frontmatter_scores` fragment that builds a temp
   issue file with built-in, custom, boolean (`true`/`yes`/`false`/absent as
-  **strings**, since `BaseLoader` never yields `bool`), list, scalar-where-
-  list-expected, non-numeric-under-numeric, `null`, and missing fields, runs
+  **strings**, since `BaseLoader` never yields `bool`), `list` (list /
+  scalar / absent → count), non-numeric-under-numeric, `priority`
+  (`P2` → `priority_rank` `2`; `high` → no file), `null`, and missing
+  fields, runs
   the fragment's Python body, and asserts the exact `rubric-dim-*.txt` set
   and contents per the Encoding Rules, including the two-pass clean-slate
   case and the unresolved-ID non-zero exit (follow the fragment-testing pattern used for
@@ -440,8 +512,9 @@ _Added by `/ll:refine-issue` — 2026-09-16 — based on codebase analysis:_
    `context.frontmatter_dimensions`.
 2. Add the `issue_lifecycle` mode to `policy_builder_core.mjs`: `mode`
    parameter on `blankModel`/`seedExample`, constants for the two tables,
-   `string` type support, `_serializeIssueLifecycle`, explicit dispatch
-   branch, frontmatter mini-parser/encoder. Write the golden fixture pair and
+   `string`/`list` type support, `_serializeIssueLifecycle` (referenced
+   verbs only, `${context.issue_id}` appended), explicit dispatch branch,
+   frontmatter mini-parser/encoder. Write the golden fixture pair and
    `node --test` cases; confirm the golden YAML passes `ll-loop validate`.
 3. Add the mode's UI to `policy-router-builder.html.tmpl` (mode option,
    `string` dim type, `opsForType` branch, verb outcomes with catalog
@@ -479,8 +552,8 @@ _Added by `/ll:refine-issue` — 2026-09-16 — based on codebase analysis:_
   not blocking any in-repo workflow (little-loops itself keeps hand-tuned
   `autodev.yaml`).
 - **Effort**: Large - a new grammar/mode on an existing shell, one new
-  fragment, a `string` dimension type, a small pure JS frontmatter parser,
-  plus new `node --test` and pytest coverage.
+  fragment, `string` and `list` dimension types, a small pure JS frontmatter
+  parser, plus new `node --test` and pytest coverage.
 - **Risk**: Low - additive third mode alongside `decision_table`/`rubric`;
   the new fragment is additive to `lib/policy-router.yaml`; neither existing
   mode's emitted YAML changes (verified by the existing golden fixtures).
@@ -515,18 +588,20 @@ because the emitted loop makes no sub-loop calls.
 - [ ] The GUI is a single self-contained `.html` file that opens over `file://`
   with no install step and no network dependency, matching FEAT-2301's shell.
 - [ ] In `issue_lifecycle` mode the dimension list is pre-populated with the
-  Built-in Dimension Table entries, each with its type locked and operators
-  restricted by type (`numeric` all six; `boolean` `==true`/`==false`;
-  `string` `==`/`!=`).
+  Built-in Dimension Table entries (including the derived `priority_rank`),
+  each with its type locked and operators restricted by type (`numeric` and
+  `list` all six; `boolean` `==true`/`==false`; `string` `==`/`!=`).
 - [ ] A user can declare an arbitrary custom frontmatter field name with a
-  chosen type (`numeric`, `boolean`, `string`) and use it as a rule dimension,
-  and the emitted loop routes on it at run time without any little-loops code
-  knowing the field — verified end to end against an issue file carrying a
-  custom `severity` key.
+  chosen type (`numeric`, `boolean`, `string`, `list`) and use it as a rule
+  dimension, and the emitted loop routes on it at run time without any
+  little-loops code knowing the field — verified end to end against an issue
+  file carrying a custom `severity` key.
 - [ ] Each rule's outcome is one of the five lifecycle verbs, pre-bound to the
-  Verb Table default and overridable from the emit-time skill catalog; the
-  emitted state is a `slash_command` whose body references
-  `${context.issue_id}`.
+  Verb Table default skill and overridable from the emit-time skill catalog
+  dropdown with no "unknown skill" message for any default; verbs cannot be
+  deleted and no outcome can be added. The emitted state is a `slash_command`
+  whose **emitted `action:`** is `<skill> ${context.issue_id}`; only verbs
+  referenced by a rule or the fallback are emitted.
 - [ ] Rules are ordered/reorderable and read as a first-match list with a
   pinned non-input "Otherwise" catch-all, per FEAT-2301/FEAT-2390's shipped
   shell conventions.
@@ -541,16 +616,21 @@ because the emitted loop makes no sub-loop calls.
 - [ ] `frontmatter_scores` clears all `rubric-dim-*.txt` and
   `rubric-aggregate.txt` in `${context.run_dir}` before writing, then encodes
   values per the Encoding Rules (boolean → 100/0 by string-truthiness on
-  `true/yes/on/1`, always written; list → length; scalar-where-list → 1;
-  non-numeric scalar under `numeric` → verbatim; missing/`null` numeric or
-  string → no file) and exits non-zero on an unresolved issue ID; covered by
+  `true/yes/on/1`, always written; `list` → count, always written, absent →
+  `0`, scalar → `1`; non-numeric scalar under `numeric` → verbatim;
+  missing/`null` numeric or string → no file; `priority_rank` synthesized
+  from `P<digit>`) and exits non-zero on an unresolved issue ID; covered by
   a pytest whose fixture values are strings, matching `BaseLoader` output,
   including a two-pass case where a field cleared between passes leaves no
   stale file.
 - [ ] The Python encoder and the JS `parseFrontmatterBlock` +
   `encodeFrontmatterScores` pair agree on every case in a shared
-  `frontmatter_encoding_corpus.json`, including `""`/`null`/`~` → absent and
-  `status` synonym canonicalization.
+  `frontmatter_encoding_corpus.json`, including `""`/`null`/`~` → absent,
+  `status` synonym canonicalization, quoted scalars (`'open'`, `'2026-09-14'`),
+  values containing `:`, and `priority` → `priority_rank` derivation.
+- [ ] Try-it evaluates the compiled rule table: a `decision_needed:==false`
+  rule does **not** fire against pasted `decision_needed: true`, and a
+  `node --test` case pins this against `evaluateRules` on the compiled text.
 - [ ] Each verb outcome seeds the Verb Table's default transition
   (prepare/refine/gate → rescore, implement/verify → finish) and remains
   editable via the existing outcome transition selector; the seeded example
@@ -571,12 +651,14 @@ because the emitted loop makes no sub-loop calls.
 
 - `mode: "issue_lifecycle"` — new literal value for the existing `model.mode`
   field, alongside `"decision_table"` and `"rubric"`.
-- `dimension: {name: string, type: "numeric" | "boolean" | "string"}` — the
-  existing shape with `"string"` added; no `kind` discriminator.
+- `dimension: {name: string, type: "numeric" | "boolean" | "string" | "list"}`
+  — the existing shape with `"string"` and `"list"` added; no `kind`
+  discriminator.
 - `outcome: {name: "prepare" | "refine" | "gate" | "implement" | "verify",
   actionType: "slash_command", body: string, transition: {kind: "rescore" | "goto" | "finish", target?: string}}`
   — existing outcome shape, seeded from the Verb Table (rescore for
-  prepare/refine/gate, finish for implement/verify).
+  prepare/refine/gate, finish for implement/verify). `body` is the bare
+  `/ll:<name>`; the `${context.issue_id}` argument is appended at emit time.
 - `BUILTIN_FRONTMATTER_DIMENSIONS: ReadonlyArray<dimension>` and
   `LIFECYCLE_VERBS: ReadonlyArray<outcome>` — new exported constants in
   `policy_builder_core.mjs`.
@@ -593,15 +675,20 @@ because the emitted loop makes no sub-loop calls.
   (`policy_builder_core.mjs:645`).
 - `_serializeIssueLifecycle(model: Model) -> string` — new; emits the shape
   in Proposed Solution §2, reusing `_serializeRulesText`, the route-map
-  builder, and `_outcomeStateLines`.
+  builder, and `_outcomeStateLines`; emits only rule/fallback-referenced
+  verbs and appends ` ${context.issue_id}` to each `slash_command` body.
 - `serializeFrontmatterDimensions(model: Model) -> string` — new; produces
   the `name:type|name:type` text for `context.frontmatter_dimensions`.
 - `parseFrontmatterBlock(text: string) -> Record<string, unknown>` — new pure
-  mini-parser for Try-it (scalars, booleans, flow and dash lists).
+  mini-parser for Try-it (scalars with optional matching quotes, first-`:`
+  split, booleans, flow and dash lists).
 - `encodeFrontmatterScores(fm: Record<string, unknown>, dims: dimension[]) -> Record<string, number | string>`
-  — new pure encoder mirroring the fragment's rules; shared by Try-it.
+  — new pure encoder mirroring the fragment's rules (including `list` count
+  and the derived `priority_rank`); keys are **normalized** dim names, matching
+  the runtime `scores` dict built from filenames; shared by Try-it.
 - `opsForType(type: string) -> string[]` (template, `.tmpl:274`) — add the
-  `"string"` branch returning `["==", "!="]`.
+  `"string"` branch returning `["==", "!="]` (`"list"` falls through to
+  `GRAMMAR.all_ops`).
 - `frontmatter_scores` fragment (YAML, `lib/policy-router.yaml`) — shell
   state reading `${context.issue_id}`, `${context.frontmatter_dimensions}`,
   `${context.run_dir}`; clears then writes `rubric-dim-*.txt`; `next` and
@@ -722,6 +809,8 @@ record of what was wrong and fixed, not an outstanding action item).
 
 
 ## Session Log
+- pre-implementation review (3rd pass) - 2026-09-16 - six fixes: (1) resolved `blocked_by` absent→0 vs numeric absent→no-file contradiction by adding a `list` type (count, always written); (2) verb bodies stored bare (`/ll:<name>`), `${context.issue_id}` appended at emit time — the argument-bearing form trips the exact-match skill `<select>` and unknown-skill check; (3) Try-it must evaluate compiled rule text — existing decision_table Try-it passes raw `==true`/`==false` ops to `evaluateRules`, which treats them as `!=` (node-verified; separate BUG); (4) only rule/fallback-referenced verbs emitted, verbs locked, unreachable-outcome message suppressed; (5) derived numeric `priority_rank` so `P0–P2` rules work; (6) mini-parser handles quoted scalars and first-`:` split. Noted `failed` ∈ `FAILURE_TERMINAL_NAMES`.
+- `/ll:confidence-check` - 2026-09-16T17:18:27 - `59d9bf8a-daa3-4ac7-90d2-36e60eb01134.jsonl`
 - pre-implementation review (2nd pass) - 2026-09-16 - three executor/validator mismatches fixed: clean-slate deletion of stale `rubric-dim-*.txt` on rescore (run_dir persists; dispatch reads every file), `on_error: failed` + `failed` terminal (next-chained shell states ignore exit code without `on_error`, executor.py:2161), validator extension for `context.frontmatter_dimensions` (reachability.py:201-218 would warn "never scored" per dim). Also: shell-interpolation pattern pinned to `policy_table_dispatch`, shared encoding corpus, mode-switch semantics, `coerce_types=False`, `:`/`|` key rejection, `_serializeRulesText` needs no string branch, `PolicyBuilderCore` exports, golden HTML regen command, Use Case "next pass" wording
 - pre-implementation review - 2026-09-16 - added Encoding Rules (BaseLoader string-truthiness for booleans, dropped unexpressable "missing string → empty" encoding, defined non-numeric/scalar-where-list cases, name-normalization and string-value validation contracts); Verb Table gains default transitions (rescore for prepare/refine/gate); corpus/test/AC bullets updated to match
 - `/ll:verify-issues` - 2026-09-16T16:43:24 - `40a29daf-d13d-4b50-8d3f-07379ec26437.jsonl`

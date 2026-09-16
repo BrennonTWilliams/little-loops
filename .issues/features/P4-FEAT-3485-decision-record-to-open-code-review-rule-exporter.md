@@ -16,6 +16,7 @@ score_complexity: 18
 score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 25
+verify_verdict: VALID
 ---
 
 # FEAT-3485: Decision-record to open-code-review rule exporter
@@ -287,6 +288,7 @@ ll-issues decisions export --target ocr [--output-dir .] [--scope-glob 'scripts/
 `export --target ocr` prints the written path and the count of entries/rules on success, matching `sync`'s one-line output style.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-16T17:19:57 - `4b22c000-8276-4c99-a300-503aa8fefb58.jsonl`
 - `/ll:confidence-check` - 2026-09-16T16:40:54 - `12a2d668-0dec-4681-9a8f-10450d51152d.jsonl`
 - `/ll:confidence-check` - 2026-09-16T16:19:48 - `0451feb3-8293-4e5a-aa46-79c33e20da03.jsonl`
 - `/ll:wire-issue` - 2026-09-16T04:59:13 - `1e024021-4acc-4b11-a8a1-c8c2d8acfc34.jsonl`
