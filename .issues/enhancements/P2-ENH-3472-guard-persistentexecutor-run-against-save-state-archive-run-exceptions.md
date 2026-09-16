@@ -54,18 +54,21 @@ Use the first shape (logged, `noqa: BLE001` comment), since a silent `pass` woul
 Sketch of the guarded tail:
 
 ```python
-_vanished = result.terminated_by == "workdir_vanished"
+_vanished_note = (
+    " (working directory vanished)" if result.terminated_by == "workdir_vanished" else ""
+)
 try:
     self.persistence.save_state(final_state)
 except Exception as exc:  # noqa: BLE001 — persistence must never discard the result
-    logger.warning(f"could not save final state for '{self.fsm.name}': {exc}"
-                   + (" (working directory vanished)" if _vanished else ""))
+    logger.warning(f"could not save final state for '{self.fsm.name}': {exc}{_vanished_note}")
 try:
     self.persistence.archive_run(run_dir=Path(run_dir_str) if run_dir_str else None)
 except Exception as exc:  # noqa: BLE001 — persistence must never discard the result
-    logger.warning(...)
+    logger.warning(f"could not archive run for '{self.fsm.name}': {exc}{_vanished_note}")
 return result
 ```
+
+In the `workdir_vanished` case both calls typically fail, producing two warnings instead of today's one. That is acceptable: each names the call that failed, and the note suffix explains why.
 
 `promote_run_artifact()` (called earlier in the same method, `:1225-1240`) already guards itself internally and needs no change.
 
@@ -85,8 +88,16 @@ return result
 ### Call Path
 `PersistentExecutor.run()` → `run_foreground()` (`cli/loop/runner.py:479`) → `cmd_run()` (`cli/loop/run.py:659-673`) → `main_loop()` (`cli/loop/__init__.py:1088`) → `ll-loop` console-script boundary (`pyproject.toml:84`). After this fix the chain always receives the `ExecutionResult`.
 
-### Stale-`running` state after a failed `save_state()`
-If `save_state()` fails, `<running_dir>/<instance>.state.json` stays at `status: running`. `_reconcile_stale_running()` (`fsm/persistence.py:280-306`) flips it to `interrupted` on the next `cmd_status`/`list_running_loops` read once the PID is dead or `updated_at` is stale (BUG-3317). No new reconciliation logic is needed; the regression test should confirm this self-heal by asserting the on-disk status after a dead-PID read.
+`PersistentExecutor.resume()` (`:1286-1354`) ends with `return self.run(clear_previous=False)`, so the resume path shares the same tail and is covered by the same guard. There is no second tail to restructure.
+
+### On-disk status after a failed final `save_state()`
+The final `save_state(final_state)` is not the only write to `<running_dir>/<instance>.state.json`. `_save_state()` (`fsm/persistence.py:1130-1160`) runs on every `state_enter` event (`:1066-1067`), and `FSMExecutor.run()` emits `state_enter` (`executor.py:866`) *before* the terminal check (`:801`). `_save_state()` stamps `status="completed"` whenever the entered state is terminal (`:1132-1136`). Consequently, when the final save fails the file is left in one of two states:
+
+- **Terminal exits** (`terminated_by == "terminal"`, including `failure_terminal=True`): the file already reads `completed`. `_reconcile_stale_running()` (`:280-306`) returns early at `:295` because status is not `running`, so nothing self-heals. For a `failure_terminal=True` run this leaves disk at `completed` rather than `failed` — a pre-existing quirk of `_save_state()`, not something this guard introduces. Out of scope here (see Scope Boundaries); ENH-3473 rewrites this block and is the natural place to fix it.
+- **Non-terminal exits** (`max_iterations`, `error`, `timeout`, `workdir_vanished`, …): the file stays at `running`. `_reconcile_stale_running()` flips it to `interrupted` on the next `cmd_status`/`list_running_loops` read once the resolved PID is dead or `updated_at` is older than `STALE_RUNNING_THRESHOLD_S` (`:259`, 6h; BUG-3317). No new reconciliation logic is needed. The regression test for this case must use a non-terminal termination.
+
+### Test-injection constraint
+Because `_save_state()` calls the same `self.persistence.save_state` mid-run, a blanket `save_state = MagicMock(side_effect=RuntimeError(...))` raises on the first `state_enter` inside `FSMExecutor.run()` — which is unguarded — and `run()` never reaches the tail. The failure must be injected only for the *final* call: wrap the original method and raise when the passed `state.status != "running"` (the tail always passes a `map_final_status()` value; mid-run saves pass `running` except on terminal entry, which passes `completed` — so for terminal-exit tests raise on the second non-`running` call, or simply count calls and raise on the last one, established by a baseline run as `test_drain_inbound_spoof_does_not_trigger_persistence_side_effects` (:960-968) does). `archive_run` is only called from the tail, so a plain `MagicMock(side_effect=...)` is fine there.
 
 ## Integration Map
 
@@ -113,11 +124,12 @@ Call these out in the PR description.
 ## Implementation Steps
 
 1. Restructure the tail of `PersistentExecutor.run()` (`fsm/persistence.py:1266-1284`) per the Design sketch: one code path for both branches, `save_state()` and `archive_run()` each in their own `try`/`except Exception  # noqa: BLE001`, `logger.warning` with the `workdir_vanished` note when applicable, always `return result`.
-2. Add tests in `scripts/tests/test_fsm_persistence.py::TestPersistentExecutor` using the file's post-construction method-assign convention (`test_drain_inbound_spoof_does_not_trigger_persistence_side_effects`, :960-968):
-   - `save_state = MagicMock(side_effect=RuntimeError("disk full"))` → `run()` returns an `ExecutionResult` with `terminated_by == "terminal"`, **and** `archive_run` was still called once.
-   - `archive_run = MagicMock(side_effect=RuntimeError("disk full"))` → `run()` returns the result; `save_state` was called once.
-   - A `failure_terminal=True` loop with `save_state` failing → `result.failure_terminal is True` (pins the exit-code side effect).
-   - `save_state` failing leaves the state file at `running`; a subsequent `_reconcile_stale_running()` read with a dead PID flips it to `interrupted`.
+2. Add tests in `scripts/tests/test_fsm_persistence.py::TestPersistentExecutor` using the file's post-construction method-assign convention (`test_drain_inbound_spoof_does_not_trigger_persistence_side_effects`, :960-968). Per the **Test-injection constraint** above, `save_state` failures must be injected on the final call only (a wrapper around the real method that raises once the tail is reached), never as a blanket `MagicMock(side_effect=...)`:
+   - Final `save_state` raises `RuntimeError("disk full")` → `run()` returns an `ExecutionResult` with `terminated_by == "terminal"`, **and** `archive_run` was still called once (`archive_run = MagicMock(wraps=...)` or a spy).
+   - `archive_run = MagicMock(side_effect=RuntimeError("disk full"))` → `run()` returns the result; the final `save_state` succeeded (`load_state().status == "completed"`).
+   - A `failure_terminal=True` loop (shape: `test_final_status_failed_on_failure_terminal`, :1376-1400) with the final `save_state` failing → `result.failure_terminal is True` (pins the exit-code side effect). Assert nothing about on-disk status here; it reads `completed` from the mid-run `_save_state()` (see Program Design).
+   - A non-terminal exit (looping FSM with `max_iterations=1` or equivalent) with the final `save_state` failing → on-disk status is still `running`; then, using a **fresh** `StatePersistence` (the mocked one would raise again inside `_reconcile_stale_running()` at `:305`), a `_reconcile_stale_running()` read flips it to `interrupted`. Drive liveness via a dead PID written to `<stem>.pid` or an `updated_at` older than `STALE_RUNNING_THRESHOLD_S` — the test process's own PID is alive, so `state.pid` alone will not do.
+   - Optional: the collapsed `workdir_vanished` path logs the "(working directory vanished)" note — `TestWorkdirVanished::test_persistent_executor_cwd_deletion_reports_clean_abort` already covers survival; add a `caplog` assertion there only if cheap.
 3. Run `scripts/tests/test_cost_ceiling_enforcement.py`, `scripts/tests/test_usage_journal.py`, `scripts/tests/test_ll_loop_execution.py`, and `scripts/tests/test_fsm_executor.py::TestWorkdirVanished` to confirm no regression.
 4. `python -m pytest scripts/tests/test_fsm_persistence.py scripts/tests/test_cost_ceiling_enforcement.py scripts/tests/test_usage_journal.py scripts/tests/test_ll_loop_execution.py scripts/tests/test_fsm_executor.py -v` passes.
 
@@ -129,7 +141,7 @@ Call these out in the PR description.
 ## Scope Boundaries
 
 - **In scope**: the tail of `PersistentExecutor.run()` only, plus regression tests.
-- **Out of scope**: `terminated_by` vocabulary (ENH-3471); the checkpoint write (ENH-3473, which lands inside this guarded block after this issue); `archive_run_only()` and `_stop_instance()`'s separate call chains.
+- **Out of scope**: `terminated_by` vocabulary (ENH-3471); the checkpoint write (ENH-3473, which lands inside this guarded block after this issue); `archive_run_only()` and `_stop_instance()`'s separate call chains; the pre-existing `_save_state()` behavior that stamps `completed` on entering a `failure: true` terminal state (so a failed final save leaves disk at `completed` rather than `failed`) — surfaced by this guard, not caused by it; hand to ENH-3473 or file separately.
 
 ## Impact
 
@@ -170,6 +182,7 @@ was wrong and fixed, not an outstanding action item)
 **Open** | Created: 2026-09-13 | Priority: P2
 
 ## Session Log
+- Manual review rewrite - 2026-09-15 - corrected the stale-`running` claim (terminal exits already read `completed` via mid-run `_save_state()` on `state_enter`); added the test-injection constraint (blanket `save_state` mock crashes mid-run before the tail); rewrote Step 2 accordingly (final-call-only injection, non-terminal FSM + fresh persistence for the reconcile test); noted `resume()` shares the tail; completed the sketch's second warning; recorded the `failure_terminal`→`completed` on-disk quirk as out of scope.
 - `/ll:verify-issues` - 2026-09-16T00:48:11 - `c5682d24-7c5a-42e9-b4d1-ac64f38c4408.jsonl`
 - `/ll:confidence-check` - 2026-09-15T23:19:59 - `4aed0df2-a263-4d28-ae34-d555931852b6.jsonl`
 - `/ll:verify-issues` - 2026-09-15T23:13:30 - `0f995d07-641d-467b-93d8-b6a178acbacb.jsonl`
