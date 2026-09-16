@@ -10,7 +10,7 @@ labels: []
 parent: ENH-3468
 confidence_score: 100
 outcome_confidence: 96
-verify_verdict: NON_VALID
+verify_verdict: VALID
 score_complexity: 21
 score_test_coverage: 25
 score_ambiguity: 25
@@ -153,7 +153,18 @@ Call these out in the PR description.
 
 ## Verification Notes
 
-Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the same
+Re-verified 2026-09-15: **VALID**. All line-number citations in Summary, Current
+Behavior, Design, Program Design, Integration Map, and Tests (`fsm/persistence.py`
+`:503`, `:586`, `:905`, `:1213`, `:1266-1284`, `:1280-1282`, `280-306`, `1162-1211`;
+`worker_pool.py:111-126`; `learning_tests/gate.py:328-370` (proof-first-task fallback
+returns `"passed"` for any exit ≠ 2, confirmed at `:365-370`); `cli/queue.py:402,432`;
+all cited test defs in `test_fsm_persistence.py`, `test_fsm_executor.py`,
+`test_cli_loop_background.py`) checked against current HEAD and match exactly. Both
+`parent: ENH-3468` and the declared `ENH-3473` dependency resolve to existing files.
+Decisions log queried clean (no active required rules); `ll-verify-evidence` reports
+no unverifiable quotes. No corrections needed this pass.
+
+Verdict at time of prior check: **NEEDS_UPDATE** (corrections below applied in the same
 pass, so the issue as it now reads is up to date — this section is a record of what
 was wrong and fixed, not an outstanding action item)
 
@@ -183,6 +194,7 @@ was wrong and fixed, not an outstanding action item)
 **Open** | Created: 2026-09-13 | Priority: P2
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-16T01:04:27 - `8bc49385-1641-422a-9ea4-71f61ae80d11.jsonl`
 - Manual review rewrite - 2026-09-15 - corrected the stale-`running` claim (terminal exits already read `completed` via mid-run `_save_state()` on `state_enter`); added the test-injection constraint (blanket `save_state` mock crashes mid-run before the tail); rewrote Step 2 accordingly (final-call-only injection, non-terminal FSM + fresh persistence for the reconcile test); noted `resume()` shares the tail; completed the sketch's second warning; recorded the `failure_terminal`→`completed` on-disk quirk as out of scope.
 - `/ll:verify-issues` - 2026-09-16T00:48:11 - `c5682d24-7c5a-42e9-b4d1-ac64f38c4408.jsonl`
 - `/ll:confidence-check` - 2026-09-15T23:19:59 - `4aed0df2-a263-4d28-ae34-d555931852b6.jsonl`
