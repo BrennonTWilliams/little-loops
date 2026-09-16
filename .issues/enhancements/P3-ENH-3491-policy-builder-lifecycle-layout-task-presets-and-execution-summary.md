@@ -68,7 +68,9 @@ Lifecycle authoring is organized as Fields, Rules, Try it, Export. Action bindin
 
 ### Call Path
 
-Preset button → `applyStateToForm(preset.build())` → `applyModeVisibility` → `updatePreview` → `serializeLoopYaml` and `summarizeTransitions` (rendered next to the YAML preview).
+`applyStateToForm` -> `applyModeVisibility` -> `updatePreview` -> `serializeLoopYaml`, with `summarizeTransitions` called from `updatePreview` and rendered next to the YAML preview. Preset buttons call `applyStateToForm(preset.build())`. `cmd_policy_builder` (`scripts/little_loops/cli/artifact/policy_builder.py:56-107`) still emits the page unchanged; it only needs the golden fixture regenerated.
+
+Anchors: `applyStateToForm` (`scripts/little_loops/templates/policy-router-builder.html.tmpl:858-864`), `applyModeVisibility` (`:837-853`), `updatePreview` (`:809-816`) live in the template's inline module script; `serializeLoopYaml` (`scripts/little_loops/templates/policy_builder_core.mjs:1049`) is in the pure-JS core; `summarizeTransitions` and `taskPresets` are new exports added to core.mjs next to `seedExample` (`:412`).
 
 ## Acceptance Criteria
 

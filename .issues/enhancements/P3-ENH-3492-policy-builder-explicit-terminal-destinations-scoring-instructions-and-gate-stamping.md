@@ -71,13 +71,14 @@ Outcome `transition.kind` gains `"stop" | "skip" | "attention"` alongside existi
 
 ### Signatures
 
-- `_outcomeStateLines(model)` / `_doneStateName(model)` extended to emit `stopped`, `skipped`, `needs_attention` terminals (exact names per the decision above).
-- `serializeFrontmatterDimensions(model)` emits `instructions`/`anchors` into the grading prompt when present.
-- `cmd_policy_builder(args, logger)` reads `config.commands.confidence_gate` and stamps it.
+- `_outcomeStateLines(model) -> string[]` — extended to emit `stopped`, `skipped`, `needs_attention` terminals (exact names per the decision above)
+- `_doneStateName(model) -> string` — unchanged for `finish`; returns the new terminal for `stop`
+- `serializeFrontmatterDimensions(model) -> string` — emits `instructions`/`anchors` into the grading prompt when present
+- `cmd_policy_builder(args, logger) -> int` — reads `config.commands.confidence_gate` and stamps it
 
 ### Call Path
 
-`serializeLoopYaml` → `_serializeIssueLifecycle` → `_outcomeStateLines` → terminal-state emission. `cmd_policy_builder` → `BRConfig` → template stamping → builder displays thresholds beside rule thresholds.
+`serializeLoopYaml` -> `_serializeIssueLifecycle` -> `_outcomeStateLines` -> terminal-state emission. `cmd_policy_builder` -> `BRConfig` -> template stamping; the builder displays thresholds beside rule thresholds.
 
 ## Acceptance Criteria
 
