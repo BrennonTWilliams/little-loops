@@ -84,6 +84,9 @@ Decided by `/ll:decide-issue` on 2026-09-15.
 - `scripts/little_loops/cli/logs.py` — `_FLAG_OUTCOMES` (`:1188`, `frozenset({"error", "max-steps", "stalled", "failed"})`): add `"no_route"` to this frozenset (decided — Option A, see `### Decision Rules` below and `## Proposed Solution` → `### Decision Rationale`). This frozenset is also the flagging-failure set consumed by `is_flagged()` (`:1191-1210`) and the "Delta vs baseline" table's column set (`outcome_keys = sorted(_FLAG_OUTCOMES)`, `:2570`), so the change has effects beyond bucket labeling.
 - `docs/runbooks/FLEET_LOOP_REVIEW.md` — outcome-vocabulary block (`:93-97`, the `` converged | failed | error | max-steps | stalled | interrupted | signal `` fenced line) and the flagging-rule bullets (`:90-104`) per Expected Behavior. This is the only place in `docs/` this vocabulary is enumerated (confirmed by a repo-wide search).
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/logs.py:1112` — `_LoopRunRecord.outcome` dataclass field carries an inline comment enumerating the vocabulary verbatim (`# converged / failed / error / max-steps / stalled / interrupted / signal`); not consumed programmatically, but reads as incomplete once `no_route` is a live bucket. Add `no_route` to the comment.
+
 ### Dependent Files (Callers/Importers)
 
 - `scripts/little_loops/cli/logs.py:2188`, `:2219` — the two `_collect_loop_runs()` call sites of `_derive_loop_outcome()`; no changes needed here, they consume whatever string is returned.
@@ -104,10 +107,16 @@ Decided by `/ll:decide-issue` on 2026-09-15.
 - `scripts/tests/test_ll_logs.py`, class `TestLoopFleet` (`:5058` on) — `test_derive_outcome_*` cases at `:5136-5181` cover `_derive_loop_outcome()` directly; convention is `test_derive_outcome_<label>` naming, a one-line `"<condition> → <bucket>"` docstring, a minimal inline event dict (not the class's `_loop_complete()` builder), and a direct `assert _derive_loop_outcome(event) == "<bucket>"`. The `workdir_vanished`-with-vs-without-`error` pair (`:5175`, `:5181`) is precedent for exercising both paths to the same bucket when a new `terminated_by` value could also be caught by an earlier branch.
 - `scripts/tests/test_ll_logs.py`, class `TestIsFlaggedParity` (`:6651`) — its `top_outcome` parametrize list at `:6660` (`["converged", "failed", "error", "max-steps", "stalled", "interrupted", "signal"]`) is a second, separate hardcoded outcome-vocabulary enumeration site that does not yet include `"no_route"`. Expected Behavior's test bullet only names `test_ll_logs.py`'s `"error"` bucket assertions and a new `no_route` case for `_derive_loop_outcome()`; it does not mention this second site, whose correct membership depends on the `_FLAG_OUTCOMES` decision above.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_ll_logs.py:5927` — `test_flag_loops_each_flag_outcome_flags_via_outcome_clause`, parametrized over `sorted(_FLAG_OUTCOMES)`. This is the "self-extending parametrized test" the Decision Rationale (`## Proposed Solution` → `### Decision Rationale`) credits for Option A but does not cite by location — once `"no_route"` is added to `_FLAG_OUTCOMES`, this test automatically gains a `no_route` case with no edit required. No action needed beyond the `_FLAG_OUTCOMES` change itself; listed for verification.
+
 ### Documentation
 
 - `docs/runbooks/FLEET_LOOP_REVIEW.md:82-104` — the vocabulary section's established shape: (1) the flagging-rule bullets name the four failure outcomes inline as prose, (2) a fenced code block lists the *complete* vocabulary as one `|`-delimited line in the same left-to-right order as the branches in `_derive_loop_outcome()`, (3) a following paragraph names the excluded subset and states why. A `no_route` addition should follow this same three-part shape rather than freeform prose.
 - `docs/reference/CLI.md` — confirmed no outcome-vocabulary text present (flag/usage documentation only); no change needed there.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/API.md:5039` — the `loop-fleet` CLI reference entry states "derives outcome (`converged`/`failed`/`max-steps`/`stalled`/`interrupted`/`error`)" — a second outcome-vocabulary enumeration site (independent of `docs/runbooks/FLEET_LOOP_REVIEW.md`) tied to the same `_derive_loop_outcome()` function, missing `no_route`. Add `no_route` to this list.
 
 ### Configuration
 
@@ -150,6 +159,7 @@ Decomposed from ENH-3468. Follow-up to ENH-3471, which explicitly defers this un
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-16T01:08:26 - `0b73baa1-755e-43aa-bf89-93ccf29c9752.jsonl`
 - `/ll:decide-issue` - 2026-09-16T00:52:53 - `f3b728bf-d5f0-4c49-9606-35ed513fee07.jsonl`
 - `/ll:refine-issue` - 2026-09-15T23:47:51 - `00985229-ae90-46cd-ac9a-bd0275ccc50b.jsonl`
 - `/ll:format-issue` - 2026-09-15T23:38:43 - `40022929-8f22-431e-874e-951b8ed315e8.jsonl`
