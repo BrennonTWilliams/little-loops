@@ -10,8 +10,6 @@ discovered_date: '2026-09-16'
 captured_at: '2026-09-16T22:14:21Z'
 labels:
 - policy-builder
-blocks:
-- ENH-3487
 - BUG-3486
 relates_to:
 - BUG-3486
@@ -41,7 +39,7 @@ Fresh scoring cannot use previous-pass evidence: every `policy_parse_scores` pas
 
 ## Motivation
 
-Users cannot trust routing decisions when evidence leaks between passes or when a failure lands on a success state. These runtime fixes unblock ENH-3487 and BUG-3486's subsequent builder work. FEAT-3488 currently treats BUG-3489 as related only; this issue does not establish a direct execution-handoff dependency.
+Users cannot trust routing decisions when evidence leaks between passes or when a failure lands on a success state. These runtime fixes unblock BUG-3486's subsequent builder work; the builder persistence work (ENH-3487) does not touch the runtime and is not blocked by this issue. FEAT-3488 currently treats BUG-3489 as related only; this issue does not establish a direct execution-handoff dependency.
 
 ## Proposed Solution
 

@@ -13,9 +13,10 @@ labels:
 decision_needed: false
 depends_on:
 - BUG-3486
-- BUG-3489
 relates_to:
 - FEAT-3474
+- ENH-3491
+- ENH-3492
 ---
 
 # ENH-3487: Policy builder persistence and clearer interaction
