@@ -10,7 +10,7 @@ captured_at: '2026-09-16T04:15:42Z'
 learning_tests_required:
 - open-code-review
 decision_needed: false
-confidence_score: 100
+confidence_score: 98
 outcome_confidence: 86
 score_complexity: 18
 score_test_coverage: 25
@@ -269,6 +269,7 @@ ll-issues decisions export --target ocr [--output-dir .] [--scope 'scripts/**/*'
 `export --target ocr` prints the written path and the count of entries/rules on success, matching `sync`'s one-line output style.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-16T16:40:54 - `12a2d668-0dec-4681-9a8f-10450d51152d.jsonl`
 - `/ll:confidence-check` - 2026-09-16T16:19:48 - `0451feb3-8293-4e5a-aa46-79c33e20da03.jsonl`
 - `/ll:wire-issue` - 2026-09-16T04:59:13 - `1e024021-4acc-4b11-a8a1-c8c2d8acfc34.jsonl`
 - `/ll:decide-issue` - 2026-09-16T04:49:13 - `03cedaa9-993e-49e8-a8ba-5c2ffbf2b4a2.jsonl`

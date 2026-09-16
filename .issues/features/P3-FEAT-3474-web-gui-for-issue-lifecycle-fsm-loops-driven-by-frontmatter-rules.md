@@ -8,6 +8,7 @@ discovered_by: ll-issues-create
 discovered_date: '2026-09-14'
 captured_at: '2026-09-14T17:11:03Z'
 parent: EPIC-3299
+verify_verdict: VALID
 ---
 
 # FEAT-3474: Web GUI for issue-lifecycle FSM loops driven by frontmatter rules
@@ -50,7 +51,7 @@ _Added by review — 2026-09-16 — based on codebase analysis:_
 - The builder's dimension types are exactly `numeric` and `boolean` (`.tmpl:163-166`); there is no `string` type. `_serializeRulesText()` (`policy_builder_core.mjs:392`) compiles boolean predicates to numeric `>=50`/`<50` because the LLM rubric encodes booleans as 100/0 (`.tmpl:169` help text). The engine itself already supports string `==`/`!=` with numeric-first coercion (`fsm/policy_rules.py:188-225`), and ordered ops require numeric values at parse time.
 - `policy_table_dispatch` (`lib/policy-router.yaml:140-184`) is scorer-agnostic: it reads every `rubric-dim-<name>.txt` in `${context.run_dir}/` plus optional `rubric-aggregate.txt`, coercing each to float when possible and leaving it a string otherwise. Dimension file names are lowercased with spaces→hyphens (`normalizeDimName()`, `policy_builder_core.mjs:90`); underscores pass through unchanged, so `confidence_score` → `rubric-dim-confidence_score.txt`.
 - Emitted outcome states are produced by `_outcomeStateLines()` (`policy_builder_core.mjs:458-482`): `actionType` is one of `none | prompt | slash_command`, and `slash_command` bodies are emitted verbatim as `action: <body>`. The lifecycle verbs therefore map cleanly onto `slash_command` outcomes whose body embeds an issue-identity context variable.
-- `loops/rn-remediate.yaml:11-36` is the precedent for a per-issue loop: `issue_id` is a `with:` parameter and the loop is run as `ll-loop run rn-remediate --context issue_id=<ID>`.
+- `loops/rn-remediate.yaml:11-36` is the precedent for a per-issue loop: `issue_id` is a `parameters:` self-declaration (`rn-remediate.yaml:35`), not `with:` (`with:` is the caller-side key for sub-loop/fragment invocations, `fsm/schema.py:684`), and the loop is run as `ll-loop run rn-remediate --context issue_id=<ID>`.
 
 ## Expected Behavior
 
@@ -151,8 +152,12 @@ Booleans are encoded 100/0 so the existing `compileBooleanPredicate` path in
   **before** the decision-table fallback, calling `_serializeIssueLifecycle()`,
   which emits:
   - `import: [lib/policy-router.yaml]` (no `rubric-router`);
-  - `with: { issue_id: {required: true} }` per the rn-remediate precedent;
   - `context.frontmatter_dimensions` and `context.policy_rules`;
+  - a top-level `parameters: { issue_id: { type: string, required: true } }`
+    block (the emitted loop's own self-declaration — see rn-remediate.yaml:35
+    for the shape; `with:` is the caller-side key used when *invoking* a
+    sub-loop/fragment, per `fsm/schema.py:684`, not a self-declaration key —
+    corrected 2026-09-16, see Verification Notes);
   - `initial: score` → `score: {fragment: frontmatter_scores, next: policy_dispatch}`
     → `policy_dispatch` (identical route-map generation to `_serializeDecisionTable`)
     → one outcome state per verb via the existing `_outcomeStateLines()`.
@@ -235,8 +240,9 @@ _Added by `/ll:refine-issue` — 2026-09-16 — based on codebase analysis:_
 - `scripts/little_loops/loops/rn-remediate.yaml:351-377` — deterministic
   shell scorer + first-match routing over issue scores; the `frontmatter_scores`
   fragment generalizes this using raw frontmatter instead of `show --json`.
-- `scripts/little_loops/loops/rn-remediate.yaml:11-36` — `with: issue_id`
-  parameter contract to copy for the emitted loop.
+- `scripts/little_loops/loops/rn-remediate.yaml:35` — `parameters: { issue_id:
+  {...} }` self-declaration contract to copy for the emitted loop (not `with:`,
+  which is a caller-side sub-loop-invocation key only — corrected 2026-09-16).
 - `scripts/tests/js/policy_validator.test.mjs` — the `node --test`
   conformance pattern the new mode's core functions must follow.
 
@@ -372,8 +378,8 @@ because the emitted loop makes no sub-loop calls.
   pinned non-input "Otherwise" catch-all, per FEAT-2301/FEAT-2390's shipped
   shell conventions.
 - [ ] The emitted YAML imports only `lib/policy-router.yaml`, declares
-  `with: issue_id`, uses `frontmatter_scores` → `policy_table_dispatch`, and
-  passes `ll-loop validate`.
+  `parameters: { issue_id: {...} }`, uses `frontmatter_scores` →
+  `policy_table_dispatch`, and passes `ll-loop validate`.
 - [ ] `frontmatter_scores` encodes values per the Built-in Dimension Table
   rules (boolean → 100/0, list → length, missing numeric → no file, missing
   string → empty) and exits non-zero on an unresolved issue ID; covered by a
@@ -434,10 +440,12 @@ because the emitted loop makes no sub-loop calls.
 `scripts/little_loops/cli/artifact/policy_builder.py`) -> stamps
 `policy_builder_core.mjs` into `policy-router-builder.html.tmpl` -> user
 selects `issue_lifecycle`, authors rules -> `serializeLoopYaml` ->
-`_serializeIssueLifecycle` -> saved YAML run via `ll-loop run <name>
---context issue_id=<ID>` -> `frontmatter_scores` (fragment) ->
-`policy_table_dispatch` (fragment; `parse_rules` / `evaluate_rules` in
-`fsm/policy_rules.py`) -> verb outcome state (`slash_command`).
+`_serializeIssueLifecycle` (emits a top-level `parameters: { issue_id:
+{...} }` self-declaration, not `with:` — corrected 2026-09-16) -> saved YAML
+run via `ll-loop run <name> --context issue_id=<ID>` -> `frontmatter_scores`
+(fragment) -> `policy_table_dispatch` (fragment; `parse_rules` /
+`evaluate_rules` in `fsm/policy_rules.py`) -> verb outcome state
+(`slash_command`).
 
 ## Use Case
 
@@ -483,7 +491,45 @@ confidence_score:>=70 -> gate
 - `scripts/little_loops/loops/lib/policy-router.yaml` — the fragment file that
   gains `frontmatter_scores`.
 - `scripts/little_loops/loops/rn-remediate.yaml` — precedent for a per-issue
-  deterministic scorer loop and the `with: issue_id` contract.
+  deterministic scorer loop and the `parameters: { issue_id: {...} }` contract.
+
+## Verification Notes
+
+Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the
+same pass, so the issue as it now reads is up to date — this section is a
+record of what was wrong and fixed, not an outstanding action item).
+
+- **Schema-key error (4 occurrences, corrected):** the issue claimed the
+  emitted loop's parameter self-declaration is `with: { issue_id:
+  {required: true} }`, citing `rn-remediate.yaml:11-36` as precedent. That's
+  wrong — `rn-remediate.yaml:35` self-declares via `parameters: {...}`, and
+  `with:` is exclusively a **caller-side** key for sub-loop/fragment
+  invocations (`fsm/schema.py:684`: "Explicit parameter bindings for sub-loop
+  calls"). No loop in the codebase self-declares parameters via `with:`. As
+  originally written, following the Proposed Solution literally would emit a
+  loop YAML using a nonexistent self-declaration key, likely failing
+  `ll-loop validate` or silently not registering `--context issue_id=`.
+  Corrected in Proposed Solution §2, Similar Patterns, the AC bullet, and
+  Program Design's Call Path.
+- **Minor, not corrected — informational only:** the Integration Map's
+  "`cmd_policy_builder()` ... stamps four literal placeholders ... via
+  sequential `str.replace()` calls" is slightly imprecise: only 3 of the 4
+  (`__GRAMMAR_SPEC_JSON__`, `__SKILL_CATALOG_JSON__`, `__BUILDER_CORE_JS__`)
+  are literal `str.replace()` calls inside `cmd_policy_builder()`
+  (`policy_builder.py:92-94`); the 4th (`__THEMED_CSS_VARS__`) is stamped via
+  the shared `stamp_page_shell()` helper (`artifact_template_kit.py:70`),
+  called earlier in the same function. Doesn't change the conclusion ("no
+  code change expected... confirm only").
+- All other file:line claims across both "Codebase Research Findings"
+  sections, the Program Design section, and the Similar Patterns /
+  Dependent Files lists (~25 distinct citations) were checked against the
+  current codebase and confirmed accurate, including the `ARCHITECTURE.md:1058`
+  `_load_skills()` mis-citation the issue itself flags as needing a fix
+  elsewhere.
+- Decisions log: no active required rules — clean.
+- Evidence-quote check (`ll-verify-evidence`): clean, 0 findings.
+- Graph: provider=`codegraph` freshness=`fresh` — used for anchor
+  confirmation only, no verdict originated from it alone.
 
 ## Status
 
@@ -491,6 +537,7 @@ confidence_score:>=70 -> gate
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-16T16:43:24 - `40a29daf-d13d-4b50-8d3f-07379ec26437.jsonl`
 - review rewrite - 2026-09-16 - resolved emitted-artifact shape, added `frontmatter_scores` scorer, value-encoding rules, `string` type, verb defaults, Try-it; removed refuted directive claims
 - `/ll:refine-issue` - 2026-09-16T16:03:25 - `80866648-631d-42a2-9297-c19a0708559a.jsonl`
 - `/ll:wire-issue` - 2026-09-16T15:55:33 - `30351525-6d5f-4f17-875c-0966e887e75a.jsonl`
