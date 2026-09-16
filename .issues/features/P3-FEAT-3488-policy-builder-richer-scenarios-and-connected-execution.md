@@ -12,11 +12,11 @@ labels:
 - captured
 blocked_by:
 - BUG-3486
-- BUG-3489
-- BUG-3490
 - ENH-3487
 relates_to:
 - FEAT-3474
+- BUG-3489
+- BUG-3490
 unproven_mechanism: true
 spike_attempted: true
 spike_completed: true
@@ -29,6 +29,13 @@ spike_completed: true
 Extend policy-builder with richer scenarios and optional connected execution: named test cases with expected outcomes, explainable rule evaluation, reusable example suites, and a host-mediated path from a validated project to a run. Keep offline authoring and scenario evaluation fully functional.
 
 Captured from the 2026-09-16 review following FEAT-3474, as the third requested workstream.
+
+The work is two phases with different risk profiles, and Phase B may be extracted to its own issue at sprint time without changing Phase A:
+
+- **Phase A — offline scenario suite** (JS-only, Medium, no unproven mechanism): named scenarios, suite execution, condition explanations, rule coverage, suggested boundary cases, local issue-file import, structural flow warnings. Depends only on BUG-3486 and ENH-3487.
+- **Phase B — connected execution** (the Medium/high risk): canonical validation and a level-2 host-mediated run request backed by the existing `ll-queue` store. Additionally benefits from BUG-3490 (consumer-project discovery) but is not blocked by it.
+
+BUG-3489 (runtime stale scores / dispatch errors) is a runtime-fragment bug unrelated to the builder and is listed as `relates_to` only.
 
 ## Current Behavior
 
@@ -44,12 +51,21 @@ Single-sample inspection does not establish confidence across a policy's edge ca
 
 ## Proposed Solution
 
-- Store named scenarios with mode-specific input, expected outcome, and optional expected rule identity in the versioned builder project. Add create/duplicate/delete, Run all, pass/fail totals, condition explanations, fallback feedback, and rule coverage.
-- Suggest missing-field and numeric-boundary cases. Expected outcomes must be authored/reviewed independently; do not derive test oracles from the current policy itself.
+**Phase A — offline scenario suite**
+
+- Store named scenarios **per draft** (each ENH-3487 `BuilderProject.drafts[mode]` entry owns its own `scenarios: []`, because scenario input shape differs per mode) with mode-specific input, expected outcome, and optional expected rule identity. Add create/duplicate/delete, Run all, pass/fail/unasserted totals, condition explanations, fallback feedback, and rule coverage. Migration for projects predating this field sets `scenarios: []` on every draft.
+- Build scenario evaluation on BUG-3486's `evaluateModel(model, scores) -> MatchResult` (`ruleIndex`, `target`, `isFallback`, `conditionResults`). `ScenarioResult.conditions` **consumes `MatchResult.conditionResults`**; `evaluateRules`'s bare-string return, the conformance corpus, and the Python `evaluate_rules` contract are not changed by this issue.
+- Suggest missing-field and numeric-boundary cases. Suggested scenarios are created with `expectedTarget: null`, which means **unasserted / needs review**; Run all reports unasserted scenarios in their own count, never as pass or fail. Expected outcomes must be authored/reviewed independently; do not derive test oracles from the current policy itself.
 - Show transition graphs and structural repeated-action/cycle warnings. Distinguish deterministic routing from action effects; any mocked post-action values must be labeled and cannot be presented as predictions of an LLM call.
-- Support local issue-file import offline. Optional connected mode loads issues from the selected project and validates generated YAML through the canonical Python path before handoff.
-- Adopt the existing artifact control contract's host-mediated ask-to-run-prompt level for new-run requests. Specify the supported transport during refinement; do not turn the current read-only ll-artifact serve routes into an implicit shell API. New-run handoff is separate from level-3 interaction with an already running FSM.
-- Bind each request to the validated policy revision, project, and issue ID. Expose request acceptance, rejection, failure, and a run identifier when available; use existing host/runner/event infrastructure and prevent duplicate submissions.
+- Support local issue-file import offline via `<input type="file">` + `FileReader`, reusing `parseFrontmatterBlock`/`encodeFrontmatterScores` to turn issue frontmatter into scenario input.
+
+**Phase B — connected execution**
+
+- Optional connected mode loads issues from the selected project and validates generated YAML through the canonical Python path (`load_and_validate`, via a temp file under the run's scratch dir since it takes a `Path`) before handoff.
+- **Transport decision (resolved 2026-09-16):** the level-2 "ask-to-run-prompt" request is an **`ll-queue` entry** in `.ll/queue.db`. The builder's connected mode submits `queue_store.add_entry(ActionSpec(name=..., runner=RunnerType.LOOP, target=<loop>, args={issue_id, project_id, revision_id}), priority)` through a new `POST` route on `ll-artifact serve`. The host session **accepts** by running the entry as its own action (`ll-queue run` / `claim_entry`) and **rejects** with `ll-queue cancel` / `cancel_entry`; outcome and run identifier arrive through `update_entry_result`, observed by the page via `queue_get`/`ll-queue status` polling or the existing SSE bridge. This reuses the persistent, id-keyed, status-tracked ledger the codebase already has (the earlier research finding that none existed was incorrect) and the MCP surface (`queue_add`, `queue_get`, `queue_list`, `queue_remove`, `loop_start`).
+- **Level boundary rule:** `ll-artifact serve` MUST NOT drain the queue or spawn runs itself. Draining is a host-typed action only. If the serve process ever auto-executes pending entries the target silently becomes level 3, which `docs/reference/ARTIFACT_CONTROL_LEVELS.md` explicitly forbids for a queue-backed path. Do not turn the current read-only serve routes into an implicit shell API; new-run handoff is separate from level-3 interaction with an already running FSM.
+- **Identity and deduplication:** `revisionId` = SHA-256 of the canonical `serializeLoopYaml(model)` output (content-addressed, so stale-revision detection is re-serialize-and-compare). `requestId` = SHA-256 of `(projectId, revisionId, issueId)`, a natural key, so a repeated click, page reload, or retry maps to the same request; the serve route returns the existing entry when one with that `requestId` is already non-terminal instead of inserting a second. `requestId` is stored in the `ActionSpec.args` and indexed by the route's lookup.
+- Expose request acceptance, rejection, failure, and a run identifier when available.
 
 ### Codebase Research Findings
 
