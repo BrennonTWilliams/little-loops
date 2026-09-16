@@ -17,6 +17,7 @@ score_complexity: 14
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 18
+verify_verdict: VALID
 ---
 
 ## Summary
@@ -219,6 +220,7 @@ direct grep located every cited symbol).
 **Open** | Created: 2026-09-13 | Priority: P2
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-16T01:56:09 - `8ceae464-de93-4b46-be10-32f91e3836a6.jsonl`
 - Manual review - 2026-09-15 - folded in: post-resume stale-checkpoint cleanup (unlink on non-qualifying termination, since `cmd_resume` reuses `run_dir` and `max_steps` is resumable) + its test; `docs/reference/loops.md:122` is a blockquote that says `usage.jsonl` is *not* archived, so the new entry is a contrast; `_build_fallback()` test needs `monkeypatch.chdir`; `messages`/`captured` not truncated; ENH-3483 cross-referenced as the deferred follow-on to Decision 2.
 - `/ll:confidence-check` - 2026-09-16T01:45:36 - `0e2ad4cc-596f-4932-ac24-5ff12a55354d.jsonl`
 - Manual review - 2026-09-15 - folded in: handler-routed caps (`on_max_steps`/`on_max_iterations`) end as `terminal` and get no checkpoint (Decision 2 + docs); file-shape reconciled with `to_dict()`'s conditional keys, `error` normalized always-present, `metadata.started_at` added; `timeout` test rewritten to stub `_executor.run` instead of a wall-clock `timeout:`; handoff-fallback fix isolated into its own step/test as separable; `best_effort_present` flag added to `ll-loop audit`; stall/cycle low-value note.

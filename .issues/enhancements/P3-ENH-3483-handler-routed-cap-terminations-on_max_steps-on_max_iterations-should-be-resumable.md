@@ -143,4 +143,5 @@ Decision needed (Option A vs Option B above) before implementation. Regardless o
 
 
 ## Session Log
+- `/ll:format-issue` - 2026-09-16T01:54:03 - `40e731d3-d53c-4de7-b4f5-5d02be86a0f0.jsonl`
 - `/ll:capture-issue` - 2026-09-16T01:44:32 - `7e7f4c6d-9565-4770-b859-052872972b63.jsonl`
