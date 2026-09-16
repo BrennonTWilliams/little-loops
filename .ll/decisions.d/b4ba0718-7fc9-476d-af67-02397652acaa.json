@@ -1,0 +1,11 @@
+{
+  "id": "c6e3a3e1-c45a-423c-86dc-fe02824b5f87",
+  "type": "decision",
+  "timestamp": "2026-09-16T01:44:33Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "on_max_steps/on_max_iterations loops end as terminal and lose resumability; bare loops keep it",
+  "rule": "Captured: Handler-routed cap terminations should be resumable",
+  "scope": "issue",
+  "issue": "ENH-3483"
+}
