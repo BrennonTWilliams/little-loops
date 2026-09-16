@@ -15,6 +15,7 @@ import yaml
 
 from little_loops.fsm.executor import ActionResult, ExecutionResult, derive_run_id
 from little_loops.fsm.persistence import (
+    BEST_EFFORT_FILENAME,
     LoopState,
     PersistentExecutor,
     StatePersistence,
@@ -821,6 +822,37 @@ class TestArchiveRun:
 
         assert archive_path is not None
         assert list(archive_path.glob("probe-*.json")) == []
+
+    def test_archive_run_copies_best_effort_json_from_run_dir(
+        self, tmp_loops_dir: Path, tmp_path: Path
+    ) -> None:
+        """archive_run() copies best_effort.json from run_dir when present (ENH-3473)."""
+        persistence = StatePersistence("test-loop", tmp_loops_dir)
+        persistence.initialize()
+        persistence.save_state(self._make_state())
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        (run_dir / BEST_EFFORT_FILENAME).write_text('{"metadata": {"best_effort": true}}\n')
+
+        archive_path = persistence.archive_run(run_dir=run_dir)
+
+        assert archive_path is not None
+        assert (archive_path / BEST_EFFORT_FILENAME).exists()
+
+    def test_archive_run_omits_best_effort_json_when_absent(
+        self, tmp_loops_dir: Path, tmp_path: Path
+    ) -> None:
+        """archive_run() produces no best_effort.json when run_dir has none (ENH-3473)."""
+        persistence = StatePersistence("test-loop", tmp_loops_dir)
+        persistence.initialize()
+        persistence.save_state(self._make_state())
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+
+        archive_path = persistence.archive_run(run_dir=run_dir)
+
+        assert archive_path is not None
+        assert not (archive_path / BEST_EFFORT_FILENAME).exists()
 
 
 class MockActionRunner:
@@ -1815,6 +1847,217 @@ class TestPersistentExecutor:
         assert (archive_path / "meta-eval.jsonl").exists()
         entry = json.loads((archive_path / "meta-eval.jsonl").read_text().strip())
         assert entry["agreed"] is True
+
+    @pytest.mark.parametrize(
+        "terminated_by",
+        ["max_steps", "max_iterations_reached", "timeout", "stall_detected", "cycle_detected"],
+    )
+    def test_run_writes_best_effort_checkpoint_on_qualifying_termination(
+        self, simple_fsm: FSMLoop, tmp_loops_dir: Path, tmp_path: Path, terminated_by: str
+    ) -> None:
+        """ENH-3473: run() writes best_effort.json for each no-acceptance termination."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        simple_fsm.context["run_dir"] = str(run_dir)
+        executor = PersistentExecutor(
+            simple_fsm, loops_dir=tmp_loops_dir, action_runner=MockActionRunner()
+        )
+        stub_result = ExecutionResult(
+            final_state="fix",
+            iterations=3,
+            terminated_by=terminated_by,
+            duration_ms=999,
+            captured={"errors": {"output": "boom"}},
+        )
+        executor._executor.run = lambda: stub_result  # type: ignore[method-assign]
+
+        executor.run()
+
+        checkpoint = run_dir / BEST_EFFORT_FILENAME
+        assert checkpoint.exists()
+        data = json.loads(checkpoint.read_text())
+        assert data["metadata"]["best_effort"] is True
+        assert data["metadata"]["started_at"] == executor._executor.started_at
+        assert data["terminated_by"] == terminated_by
+        assert data["captured"] == stub_result.captured
+        assert "error" in data
+
+    @pytest.mark.parametrize(
+        "terminated_by,failure_terminal",
+        [
+            ("terminal", False),
+            ("terminal", True),
+            ("error", False),
+            ("no_route", False),
+            ("interrupted", False),
+            ("handoff", False),
+        ],
+    )
+    def test_run_omits_best_effort_checkpoint_on_excluded_termination(
+        self,
+        simple_fsm: FSMLoop,
+        tmp_loops_dir: Path,
+        tmp_path: Path,
+        terminated_by: str,
+        failure_terminal: bool,
+    ) -> None:
+        """ENH-3473: run() writes no checkpoint for terminal/error/no_route/interrupted/handoff."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        simple_fsm.context["run_dir"] = str(run_dir)
+        executor = PersistentExecutor(
+            simple_fsm, loops_dir=tmp_loops_dir, action_runner=MockActionRunner()
+        )
+        stub_result = ExecutionResult(
+            final_state="fix",
+            iterations=3,
+            terminated_by=terminated_by,
+            duration_ms=999,
+            captured={},
+            failure_terminal=failure_terminal,
+        )
+        executor._executor.run = lambda: stub_result  # type: ignore[method-assign]
+
+        executor.run()
+
+        assert not (run_dir / BEST_EFFORT_FILENAME).exists()
+
+    def test_run_writes_checkpoint_on_max_steps_without_handler(
+        self, tmp_loops_dir: Path, tmp_path: Path
+    ) -> None:
+        """ENH-3473: a real max_steps run with no on_max_steps handler gets a checkpoint."""
+        fsm = FSMLoop(
+            name="cap-loop",
+            initial="fix",
+            states={"fix": StateConfig(action="echo 'fixing'", next="fix")},
+            max_steps=2,
+        )
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        fsm.context["run_dir"] = str(run_dir)
+        executor = PersistentExecutor(
+            fsm, loops_dir=tmp_loops_dir, action_runner=MockActionRunner()
+        )
+
+        result = executor.run()
+
+        assert result.terminated_by == "max_steps"
+        assert (run_dir / BEST_EFFORT_FILENAME).exists()
+
+    def test_run_writes_checkpoint_on_max_steps_with_handler_chaining_to_terminal(
+        self, tmp_loops_dir: Path, tmp_path: Path
+    ) -> None:
+        """ENH-3473: a loop with on_max_steps routing through a handler state
+        that itself chains to a terminal "done" state (the
+        canvas-sketch-generator finalize -> finalize_done -> done shape)
+        still reports terminated_by == "max_steps", not "terminal" — BUG-158 /
+        BUG-2204 (fsm/executor.py:822-835,973-980) preserve "max_steps" once
+        a cap summary handler has executed, regardless of where it routes
+        next. A checkpoint is correctly written for this case since
+        "max_steps" stays in the qualifying set; handler-routed caps are not
+        excluded in practice today (Decision 2's "ends as terminal" premise
+        does not hold — left for ENH-3483 to reconsider)."""
+        fsm = FSMLoop(
+            name="cap-loop-handled",
+            initial="fix",
+            states={
+                "fix": StateConfig(action="echo 'fixing'", next="fix"),
+                "publish": StateConfig(action="echo 'publishing'", next="done"),
+                "done": StateConfig(terminal=True),
+            },
+            max_steps=2,
+            on_max_steps="publish",
+        )
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        fsm.context["run_dir"] = str(run_dir)
+        executor = PersistentExecutor(
+            fsm, loops_dir=tmp_loops_dir, action_runner=MockActionRunner()
+        )
+
+        result = executor.run()
+
+        assert result.terminated_by == "max_steps"
+        assert result.final_state == "done"
+        assert (run_dir / BEST_EFFORT_FILENAME).exists()
+
+    def test_run_skips_checkpoint_write_and_cleanup_when_run_dir_absent(
+        self, simple_fsm: FSMLoop, tmp_loops_dir: Path
+    ) -> None:
+        """ENH-3473: no run_dir in context → no checkpoint write, no exception."""
+        executor = PersistentExecutor(
+            simple_fsm, loops_dir=tmp_loops_dir, action_runner=MockActionRunner()
+        )
+        stub_result = ExecutionResult(
+            final_state="fix", iterations=1, terminated_by="max_steps", duration_ms=1, captured={}
+        )
+        executor._executor.run = lambda: stub_result  # type: ignore[method-assign]
+
+        # Must not raise.
+        executor.run()
+
+    def test_run_cleans_stale_checkpoint_after_resume_completes(
+        self, simple_fsm: FSMLoop, tmp_loops_dir: Path, tmp_path: Path
+    ) -> None:
+        """ENH-3473: a resumed run_dir that finishes as "terminal" removes the
+        prior segment's best_effort.json so archive_run() doesn't copy a stale
+        checkpoint alongside a completed state.json."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        simple_fsm.context["run_dir"] = str(run_dir)
+        executor = PersistentExecutor(
+            simple_fsm, loops_dir=tmp_loops_dir, action_runner=MockActionRunner()
+        )
+
+        first_result = ExecutionResult(
+            final_state="fix",
+            iterations=1,
+            terminated_by="max_steps",
+            duration_ms=1,
+            captured={},
+        )
+        executor._executor.run = lambda: first_result  # type: ignore[method-assign]
+        executor.run(clear_previous=False)
+        assert (run_dir / BEST_EFFORT_FILENAME).exists()
+
+        second_result = ExecutionResult(
+            final_state="done",
+            iterations=2,
+            terminated_by="terminal",
+            duration_ms=2,
+            captured={},
+        )
+        executor._executor.run = lambda: second_result  # type: ignore[method-assign]
+        executor.run(clear_previous=False)
+
+        assert not (run_dir / BEST_EFFORT_FILENAME).exists()
+
+    def test_run_survives_best_effort_checkpoint_write_failure(
+        self, simple_fsm: FSMLoop, tmp_loops_dir: Path, tmp_path: Path
+    ) -> None:
+        """ENH-3473: a checkpoint-write failure is logged, never fails the run."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        simple_fsm.context["run_dir"] = str(run_dir)
+        executor = PersistentExecutor(
+            simple_fsm, loops_dir=tmp_loops_dir, action_runner=MockActionRunner()
+        )
+        stub_result = ExecutionResult(
+            final_state="fix", iterations=1, terminated_by="max_steps", duration_ms=1, captured={}
+        )
+        executor._executor.run = lambda: stub_result  # type: ignore[method-assign]
+
+        with patch(
+            "little_loops.fsm.persistence.write_best_effort_checkpoint",
+            side_effect=RuntimeError("disk full"),
+        ):
+            result = executor.run()
+
+        assert result is stub_result
+        state = executor.persistence.load_state()
+        assert state is not None
+        archive_dir = list((tmp_loops_dir / ".history").iterdir())
+        assert len(archive_dir) == 1
 
 
 class _StubArtifactsConfig:

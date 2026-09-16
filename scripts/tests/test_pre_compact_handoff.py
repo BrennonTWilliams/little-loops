@@ -191,6 +191,30 @@ class TestSubprocessDegradation:
 
         assert result.exit_code in (0, 2)
 
+    def test_fallback_prefers_summary_json_over_best_effort_json(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """ENH-3473: _build_fallback()'s run-dir file pick prefers summary.json
+        over an unordered glob, so a best_effort.json checkpoint sitting
+        alongside it doesn't nondeterministically surface as "the" run state."""
+        monkeypatch.chdir(tmp_path)
+        run_dir = tmp_path / ".loops" / "runs" / "my-loop-20260101T000000"
+        run_dir.mkdir(parents=True)
+        (run_dir / "best_effort.json").write_text(
+            json.dumps({"metadata": {"best_effort": True}, "terminated_by": "max_steps"}),
+            encoding="utf-8",
+        )
+        (run_dir / "summary.json").write_text(
+            json.dumps({"outcome": "closed", "criteria": []}), encoding="utf-8"
+        )
+
+        result = pre_compact_handoff.handle(_event())
+
+        assert result.exit_code == 2
+        content = (tmp_path / ".ll" / "ll-continue-prompt.md").read_text(encoding="utf-8")
+        assert "outcome" in content
+        assert "metadata" not in content
+
     def test_session_events_present_included_in_output(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

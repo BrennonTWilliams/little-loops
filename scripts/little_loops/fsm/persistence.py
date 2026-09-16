@@ -65,6 +65,18 @@ RESUMABLE_STATUSES: frozenset[str] = frozenset(
 # state itself is parked awaiting resume, not executing.
 ACTIVE_RUN_STATUSES: frozenset[str] = frozenset({"running", "starting"})
 
+# ENH-3473: terminated_by values where the executor stopped a run that was
+# still trying (budget exhaustion), as opposed to a deliberate/external stop
+# or a crash. These qualify for a best_effort.json salvage checkpoint.
+# Handler-routed caps (on_max_steps/on_max_iterations) end as "terminal"
+# instead and are excluded by construction — see write_best_effort_checkpoint
+# callers. Widening this set is a one-constant edit.
+_NO_ACCEPTANCE_TERMINATIONS: frozenset[str] = frozenset(
+    {"max_steps", "max_iterations_reached", "timeout", "stall_detected", "cycle_detected"}
+)
+
+BEST_EFFORT_FILENAME = "best_effort.json"
+
 logger = logging.getLogger(__name__)
 
 # FEAT-2478 — cache the observability.otel_attributes.enabled toggle so the
@@ -588,8 +600,8 @@ class StatePersistence:
 
         Reads the current state to derive the run timestamp, then copies
         state.json, events.jsonl, and (when present) meta-eval.jsonl,
-        summary.json, and (FEAT-3182) any `probe-*.json` /
-        `prepatch_evidence_*.json` files into:
+        summary.json, best_effort.json (ENH-3473), and (FEAT-3182) any
+        `probe-*.json` / `prepatch_evidence_*.json` files into:
             <loops_dir>/.history/<run_id>-<loop_name>/
 
         where run_id is a compact ISO timestamp derived from started_at
@@ -597,10 +609,11 @@ class StatePersistence:
 
         Args:
             run_dir: Optional path to the loop's run directory. When provided,
-                summary.json, adversarial-mode `probe-*.json` result files, and
-                any `prepatch_evidence_*.json` files are copied from run_dir to
-                the archive directory when present (FEAT-3182: run_dir is
-                gitignored and otherwise never archived or pruned, so this is
+                summary.json, best_effort.json, adversarial-mode `probe-*.json`
+                result files, and any `prepatch_evidence_*.json` files are
+                copied from run_dir to the archive directory when present
+                (FEAT-3182: run_dir is gitignored and otherwise never archived
+                or pruned, so this is
                 the only durable copy of evidence a downstream `ll-loop
                 evidence` exporter can read). Pass None (default) when the run
                 directory is not available (e.g. stale-run cleanup paths).
@@ -634,6 +647,12 @@ class StatePersistence:
             summary_src = run_dir / "summary.json"
             if summary_src.exists():
                 shutil.copy2(summary_src, archive_dir / "summary.json")
+            # ENH-3473: best_effort.json is written directly into run_dir on
+            # no-acceptance terminations; copy it alongside summary.json so
+            # the archive is the durable copy (run_dir is gitignored/ephemeral).
+            best_effort_src = run_dir / BEST_EFFORT_FILENAME
+            if best_effort_src.exists():
+                shutil.copy2(best_effort_src, archive_dir / BEST_EFFORT_FILENAME)
             # FEAT-3182 step 3a: adversarial-mode probe results and prepatch
             # evidence files live only in run_dir (gitignored, never pruned or
             # archived otherwise) — copy them alongside state.json/events.jsonl
@@ -650,6 +669,43 @@ class StatePersistence:
         self.clear_state()
         self.clear_events()
         self.clear_meta_eval()
+
+
+def write_best_effort_checkpoint(
+    run_dir: Path, result: ExecutionResult, loop_name: str, started_at: str
+) -> Path:
+    """Write a best_effort.json salvage checkpoint into *run_dir* (ENH-3473).
+
+    Pure function — the caller decides whether ``result.terminated_by``
+    qualifies. Writes atomically (tempfile + ``os.replace``, mirroring
+    ``StatePersistence.save_state()``).
+
+    ``error`` is normalized to always-present (``None`` when absent) per the
+    key-presence contract; every other ``ExecutionResult.to_dict()`` field
+    keeps its conditional presence (e.g. ``messages`` only appears when
+    non-empty).
+    """
+    data = result.to_dict()
+    data.setdefault("error", None)
+    payload = {
+        "metadata": {
+            "best_effort": True,
+            "loop_name": loop_name,
+            "started_at": started_at,
+            "written_at": _iso_now(),
+        },
+        **data,
+    }
+    target = run_dir / BEST_EFFORT_FILENAME
+    tmp_fd, tmp_path = tempfile.mkstemp(dir=run_dir, suffix=".tmp")
+    try:
+        with os.fdopen(tmp_fd, "w") as f:
+            f.write(json.dumps(payload, indent=2))
+        os.replace(tmp_path, target)
+    except Exception:
+        os.unlink(tmp_path)
+        raise
+    return target
 
 
 def _reconcile_stale_runs(loops_dir: Path) -> int:
@@ -1271,6 +1327,24 @@ class PersistentExecutor:
         _vanished_note = (
             " (working directory vanished)" if result.terminated_by == "workdir_vanished" else ""
         )
+        if run_dir_str:
+            try:
+                run_dir_path = Path(run_dir_str)
+                if result.terminated_by in _NO_ACCEPTANCE_TERMINATIONS:
+                    write_best_effort_checkpoint(
+                        run_dir_path, result, self.fsm.name, self._executor.started_at
+                    )
+                else:
+                    # ENH-3473: cmd_resume reuses the same run_dir, and
+                    # max_steps/max_iterations_reached persist as "interrupted"
+                    # (resumable) — clear a stale checkpoint from a prior
+                    # segment so a resumed run that finishes cleanly doesn't
+                    # archive it alongside a "completed" state.json.
+                    (run_dir_path / BEST_EFFORT_FILENAME).unlink(missing_ok=True)
+            except Exception as exc:  # noqa: BLE001 — persistence must never discard the result
+                logger.warning(
+                    f"could not write/clear best-effort checkpoint for '{self.fsm.name}': {exc}"
+                )
         try:
             self.persistence.save_state(final_state)
         except Exception as exc:  # noqa: BLE001 — persistence must never discard the result

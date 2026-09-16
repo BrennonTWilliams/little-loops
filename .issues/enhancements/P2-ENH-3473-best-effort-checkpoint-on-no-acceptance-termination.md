@@ -4,8 +4,9 @@ title: Write a best_effort-tagged checkpoint when a loop ends with no acceptance
   so no outer iteration produces zero artifacts
 type: ENH
 priority: P2
-status: open
+status: done
 discovered_date: '2026-09-13'
+completed_at: '2026-09-16T02:24:04Z'
 labels: []
 parent: ENH-3468
 depends_on:
@@ -24,7 +25,7 @@ verify_verdict: VALID
 
 When a loop's budget ends with no acceptance (`max_steps`, `max_iterations_reached`, `timeout`, `stall_detected`, `cycle_detected`), nothing is written beyond the cap-hit itself — the run's final captured state is discarded even though it was already paid for. This issue makes `PersistentExecutor.run()` write one fixed-name artifact, `best_effort.json`, into `run_dir` on those terminations, tagged `metadata.best_effort: true` and holding the run's last attempt (final state, captured values, termination reason). It is an **artifact only**: no new `terminated_by` value, no new `map_final_status()` bucket, no new exit code. The run is still a `max_steps` (etc.) run; it just leaves a salvage file behind.
 
-**Depends on ENH-3472**: the write lands inside the tail of `PersistentExecutor.run()` that ENH-3472 guards, and must itself never fail the run. It does **not** depend on ENH-3471 — the qualifying values are budget-exhaustion values that already exist; an action crash (`error`) or a routing failure (`no_route`) is not a "closest attempt" and gets no checkpoint.
+**Builds on ENH-3472** (done, `949b08712`): the write lands inside the tail of `PersistentExecutor.run()` that ENH-3472's guard wraps, and must itself never fail the run. It does **not** depend on ENH-3471 — the qualifying values are budget-exhaustion values that already exist; an action crash (`error`) or a routing failure (`no_route`) is not a "closest attempt" and gets no checkpoint.
 
 ## Current Behavior
 
@@ -96,6 +97,29 @@ Context-compaction failure (`cli/compact_session.py::main_compact_session()` →
 - `cli/logs.py::_derive_loop_outcome()` (`:2058-2083`) — untouched by Decision 1; a `max_steps` run still buckets as `max-steps`.
 
 ## Program Design
+
+### Deviations
+
+- 2026-09-16 — Decision 2's "the run then ends as terminal" premise for
+  handler-routed caps (`on_max_steps`/`on_max_iterations`) does not hold
+  against current code. Empirically verified (both a bare terminal handler
+  and the canvas-sketch-generator `finalize → finalize_done → done` shape):
+  once `_summary_state_executed`/`_iteration_summary_executed` is set,
+  `fsm/executor.py:822-835` (terminal check) and `:973-980` (`next_state is
+  None`) unconditionally preserve `terminated_by="max_steps"` /
+  `"max_iterations_reached"` (BUG-158/BUG-2204), even after the handler
+  routes onward to a distinct terminal state. So handler-routed caps are
+  **not** excluded from the checkpoint in practice — `write_best_effort_checkpoint`
+  still fires for them today, since `max_steps`/`max_iterations_reached` stay
+  in `_NO_ACCEPTANCE_TERMINATIONS` regardless of whether a handler ran. This
+  is harmless (a checkpoint for a handler-routed cap is still a legitimate
+  salvage artifact) and does not change the implementation — `docs/reference/loops.md`
+  was written to describe the verified behavior instead of the original
+  premise. Left for ENH-3483 to reconsider if it introduces a new
+  `terminated_by` value for handler-routed caps. The Implementation Steps'
+  test-4 assertion ("on_max_steps pointing at a terminal state → no file,
+  `terminated_by == terminal`") was corrected to match verified behavior in
+  `test_fsm_persistence.py::TestPersistentExecutor::test_run_writes_checkpoint_on_max_steps_with_handler_chaining_to_terminal`.
 
 ### Types
 - `_NO_ACCEPTANCE_TERMINATIONS: frozenset[str]` (new, `scripts/little_loops/fsm/persistence.py`).
@@ -215,11 +239,28 @@ decomposed with ENH-3473 listed as a child) both check out — no DEP_ISSUES.
 Graph: provider=`codegraph` freshness=`fresh` (available but not needed —
 direct grep located every cited symbol).
 
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-09-16
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/fsm/persistence.py`: added `_NO_ACCEPTANCE_TERMINATIONS`, `BEST_EFFORT_FILENAME`, and `write_best_effort_checkpoint()` (atomic tempfile+`os.replace` write); wired the call into `PersistentExecutor.run()`'s ENH-3472 guarded tail — writes on qualifying terminations, `unlink(missing_ok=True)`-cleans a stale checkpoint otherwise (post-resume rule), guarded by its own `try/except`; widened `archive_run()`'s copy list and docstring to include `best_effort.json`.
+- `scripts/little_loops/cli/loop/evidence.py`: added `BEST_EFFORT_FILENAME` to both the credential-scan and sha256-hashing tuples.
+- `scripts/little_loops/cli/loop/audit.py`: added `BEST_EFFORT_FILENAME` to `_AUX_EXCLUDED_NAMES`; added `best_effort_present: bool` to `RunAuditStats`/`audit_run()`.
+- `scripts/little_loops/hooks/pre_compact_handoff.py`: `_build_fallback()`'s run-dir file pick now prefers `summary.json`, then `state.json`, over an unordered `glob("*.json")[:1]` (bundled latent-bug fix per the issue's own scope).
+- Tests: `test_fsm_persistence.py` (qualifying/excluded parametrized cases, a real `max_steps`-no-handler run, a real handler-routed-cap run, no-`run_dir` skip, post-resume cleanup, write-failure survival, `archive_run()` copy/omit), `test_cli_loop_audit.py` (aux-mutation exclusion, `best_effort_present` true/false), `test_feat3182_evidence_bundle.py` (hashing + credential scan), `test_pre_compact_handoff.py` (file-pick preference) — 18 + 5 + 1 + 1 new tests, full suite green (24550 passed).
+- Docs: `docs/reference/loops.md` (`best_effort.json` contrast alongside the existing `usage.jsonl` runner-written-files note), `docs/guides/LOOPS_GUIDE.md` Safety Limits `max_steps` row, `skills/audit-loop-run/SKILL.md` Step 6b verdict-table note.
+- Issue file: added a `### Deviations` note under `## Program Design` — Decision 2's "handler-routed caps end as terminal" premise does not hold against current executor code (BUG-158/BUG-2204 preserve `terminated_by="max_steps"` even when a cap-summary handler routes onward to a distinct terminal state); verified empirically, corrected in the docs and in the Implementation Step 4 test spec. This does not change the implementation — handler-routed caps still correctly receive a checkpoint today, since `max_steps` stays in the qualifying set regardless.
+
 ## Status
 
-**Open** | Created: 2026-09-13 | Priority: P2
+**Done** | Created: 2026-09-13 | Priority: P2
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-16T02:23:11 - `7a435e29-efad-4c49-9f3c-8d2f500cf069.jsonl`
+- `/ll:ready-issue` - 2026-09-16T02:00:19 - `08af2728-1ccc-47f4-b6ce-b975b40fc2ed.jsonl`
 - `/ll:verify-issues` - 2026-09-16T01:56:09 - `8ceae464-de93-4b46-be10-32f91e3836a6.jsonl`
 - Manual review - 2026-09-15 - folded in: post-resume stale-checkpoint cleanup (unlink on non-qualifying termination, since `cmd_resume` reuses `run_dir` and `max_steps` is resumable) + its test; `docs/reference/loops.md:122` is a blockquote that says `usage.jsonl` is *not* archived, so the new entry is a contrast; `_build_fallback()` test needs `monkeypatch.chdir`; `messages`/`captured` not truncated; ENH-3483 cross-referenced as the deferred follow-on to Decision 2.
 - `/ll:confidence-check` - 2026-09-16T01:45:36 - `0e2ad4cc-596f-4932-ac24-5ff12a55354d.jsonl`

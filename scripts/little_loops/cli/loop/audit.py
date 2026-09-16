@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from little_loops.cli.output import print_json
+from little_loops.fsm.persistence import BEST_EFFORT_FILENAME
 
 _AUX_EXCLUDED_NAMES = {
     "events.jsonl",
@@ -27,6 +28,7 @@ _AUX_EXCLUDED_NAMES = {
     "usage.jsonl",
     "messages.jsonl",
     "meta-eval.jsonl",
+    BEST_EFFORT_FILENAME,
 }
 
 
@@ -60,6 +62,7 @@ class RunAuditStats:
     terminated_by: str | None = None
     failure_terminal: bool = False
     verdict_inputs: dict[str, Any] = field(default_factory=dict)
+    best_effort_present: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -79,6 +82,7 @@ class RunAuditStats:
             "terminated_by": self.terminated_by,
             "failure_terminal": self.failure_terminal,
             "verdict_inputs": self.verdict_inputs,
+            "best_effort_present": self.best_effort_present,
         }
 
 
@@ -188,6 +192,7 @@ def audit_run(run_dir: Path, max_steps: int | None = None) -> RunAuditStats:
     events = _read_events(run_dir)
     state_data = _read_json_file(run_dir / "state.json") or {}
     summary = _read_json_file(run_dir / "summary.json")
+    best_effort_present = (run_dir / BEST_EFFORT_FILENAME).exists()
 
     loop_name = str(state_data.get("loop_name", ""))
     dir_name = run_dir.name
@@ -256,6 +261,7 @@ def audit_run(run_dir: Path, max_steps: int | None = None) -> RunAuditStats:
         terminated_by=terminated_by,
         failure_terminal=failure_terminal,
         verdict_inputs=verdict_inputs,
+        best_effort_present=best_effort_present,
     )
 
 

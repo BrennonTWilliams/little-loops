@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from little_loops.cli.loop.audit import audit_run, cmd_audit, resolve_run
+from little_loops.fsm.persistence import BEST_EFFORT_FILENAME
 
 
 def _write_run(
@@ -182,6 +183,36 @@ class TestAuditRun:
 
         assert stats.aux_mutation_count is not None
         assert stats.aux_mutation_count >= 1
+
+    def test_best_effort_json_excluded_from_aux_mutation_count(self, tmp_path: Path) -> None:
+        """ENH-3473: best_effort.json is a runner-written checkpoint, not an
+        auxiliary mutation the loop's own action made."""
+        loops_dir = tmp_path / ".loops"
+        run_dir = _write_run(loops_dir, "2026-01-01T000000", "mytest", _EVENTS)
+        (run_dir / BEST_EFFORT_FILENAME).write_text('{"metadata": {"best_effort": true}}')
+
+        stats = audit_run(run_dir)
+
+        assert stats.aux_mutation_count == 0
+
+    def test_best_effort_present_true_when_file_exists(self, tmp_path: Path) -> None:
+        loops_dir = tmp_path / ".loops"
+        run_dir = _write_run(loops_dir, "2026-01-01T000000", "mytest", _EVENTS)
+        (run_dir / BEST_EFFORT_FILENAME).write_text('{"metadata": {"best_effort": true}}')
+
+        stats = audit_run(run_dir)
+
+        assert stats.best_effort_present is True
+        assert stats.to_dict()["best_effort_present"] is True
+
+    def test_best_effort_present_false_when_file_absent(self, tmp_path: Path) -> None:
+        loops_dir = tmp_path / ".loops"
+        run_dir = _write_run(loops_dir, "2026-01-01T000000", "mytest", _EVENTS)
+
+        stats = audit_run(run_dir)
+
+        assert stats.best_effort_present is False
+        assert stats.to_dict()["best_effort_present"] is False
 
     def test_missing_events_file_returns_empty_stats(self, tmp_path: Path) -> None:
         loops_dir = tmp_path / ".loops"

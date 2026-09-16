@@ -123,8 +123,8 @@ A loop whose fix never works would run forever. Picture a two-state loop: `check
 
 | Field | Default | What it stops |
 |-------|---------|---------------|
-| `max_steps` | `50` | Runaway total work. Counts every state execution; when spent, the loop terminates with `terminated_by="max_steps"`. |
-| `on_max_steps` | unset | Silent budget exhaustion. Names a state to run exactly once when the step cap fires (e.g., publish the best result so far) before terminating. |
+| `max_steps` | `50` | Runaway total work. Counts every state execution; when spent, the loop terminates with `terminated_by="max_steps"`. No longer silent: the runner writes a `best_effort.json` checkpoint into `run_dir` holding the last attempt (ENH-3473; see [Output Artifacts](../reference/loops.md#output-artifacts)). |
+| `on_max_steps` | unset | Names a state to run exactly once when the step cap fires (e.g., publish the best result so far) before terminating. |
 | `max_iterations` | unset | Full-pass cap. Counts complete loop cycles (maintain-mode restarts); terminates with `terminated_by="max_iterations_reached"` when reached. |
 | `on_max_iterations` | unset | Names a state to run exactly once when the full-pass cap fires before terminating. |
 | `max_edge_revisits` | `100` | Tight ping-pong cycles. If any single state→state edge fires more than this, the loop terminates with `terminated_by="cycle_detected"` — long before `max_steps` would notice. Lower it (e.g., `5`) on short loops to surface regressions faster. |

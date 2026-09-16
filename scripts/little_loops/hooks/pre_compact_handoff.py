@@ -123,7 +123,21 @@ def _build_fallback() -> list[str]:
                 reverse=True,
             )
             for rd in run_dirs[:3]:
-                for jf in list(rd.glob("*.json"))[:1]:
+                # ENH-3473: prefer summary.json, then state.json, over an
+                # unordered glob pick — a stray best_effort.json (or any other
+                # runner-written file) could otherwise surface as "the" run
+                # state.
+                summary_jf = rd / "summary.json"
+                state_jf = rd / "state.json"
+                jf: Path | None
+                if summary_jf.exists():
+                    jf = summary_jf
+                elif state_jf.exists():
+                    jf = state_jf
+                else:
+                    candidates = sorted(rd.glob("*.json"))
+                    jf = candidates[0] if candidates else None
+                if jf is not None:
                     try:
                         data = json.loads(jf.read_text(encoding="utf-8"))
                         keys = list(data.keys())[:3]

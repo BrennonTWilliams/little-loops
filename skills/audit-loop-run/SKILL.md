@@ -293,6 +293,8 @@ Determine the verdict using the terminal state from `loop_complete` event (`term
 | `partial` | `terminated_by == "max_steps"` AND `max_steps_summary` event present in JSONL (summary state ran; artifact written) |
 | `degraded` | Loop completed but metric trended downward vs baseline captured in `state.json` |
 
+A `max_steps`/`max_iterations_reached`/`timeout`/`stall_detected`/`cycle_detected` run with `best_effort_present: true` in the `ll-loop audit --json` output (or a `best_effort.json` file in the archive dir, ENH-3473) should be read as a salvageable partial: the runner captured the run's last attempt even though nothing else was written. Treat it the same as a `partial` verdict rather than a total loss.
+
 Output the structured scorecard block:
 
 ```

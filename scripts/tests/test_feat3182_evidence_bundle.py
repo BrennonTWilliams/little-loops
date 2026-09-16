@@ -26,6 +26,7 @@ from little_loops.cli.loop.evidence import (
     cmd_evidence,
     compute_git_predicates,
 )
+from little_loops.fsm.persistence import BEST_EFFORT_FILENAME
 
 from .helpers import copy_git_template
 
@@ -381,6 +382,24 @@ class TestCredentialScan:
         hits = next(e for e in bundle.evidentiary if e.key == "credential_scan.hits").value
         assert len(hits) == 1
         assert not any(h["target"].startswith("context:evaluate.") for h in hits)
+
+    def test_best_effort_json_hashed_and_credential_scanned(self, tmp_path: Path) -> None:
+        """ENH-3473: best_effort.json, when present in the archive, is hashed
+        into the bundle and included in the credential-pattern scan targets."""
+        token = _fake_aws_key()
+        run_dir = build_archive_dir(tmp_path)
+        (run_dir / BEST_EFFORT_FILENAME).write_text(
+            json.dumps({"metadata": {"best_effort": True}, "captured": {"secret": token}}),
+            encoding="utf-8",
+        )
+
+        bundle = assemble_bundle(_LOOP_RUNS_ROW, run_dir, _GIT_PREDICATES)
+
+        hash_keys = {e.key for e in bundle.evidentiary if e.key.startswith("file.")}
+        assert f"file.{BEST_EFFORT_FILENAME}.sha256" in hash_keys
+
+        hits = next(e for e in bundle.evidentiary if e.key == "credential_scan.hits").value
+        assert any(h["target"] == BEST_EFFORT_FILENAME for h in hits)
 
     def test_missing_run_dir_still_emits_scan_record_and_scans_context_extra(
         self, tmp_path: Path

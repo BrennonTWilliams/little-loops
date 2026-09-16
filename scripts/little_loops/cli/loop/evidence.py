@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from little_loops.fsm.persistence import BEST_EFFORT_FILENAME
 from little_loops.pii import CREDENTIAL_SCANNER_VERSION, credential_rules_sha, scan_text
 
 _EVIDENTIARY_SOURCES = frozenset({"git_ref", "history_db_row", "run_dir_file", "scanner"})
@@ -209,7 +210,8 @@ def _scan_for_credentials(
 
     if run_dir is not None and run_dir.is_dir():
         targets = [
-            (name, run_dir / name) for name in ("state.json", "events.jsonl", "summary.json")
+            (name, run_dir / name)
+            for name in ("state.json", "events.jsonl", "summary.json", BEST_EFFORT_FILENAME)
         ]
         targets.extend((p.name, p) for p in sorted(run_dir.glob("probe-*.json")))
         for target, path in targets:
@@ -309,7 +311,7 @@ def assemble_bundle(
         _scan_for_credentials(bundle, None, context_extra)
         return bundle
 
-    for name in ("state.json", "events.jsonl", "summary.json"):
+    for name in ("state.json", "events.jsonl", "summary.json", BEST_EFFORT_FILENAME):
         p = run_dir / name
         if p.exists():
             digest = hashlib.sha256(p.read_bytes()).hexdigest()
