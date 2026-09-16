@@ -11,6 +11,27 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from little_loops.config import BRConfig
 
+# Kept as a literal (not derived from decisions_export._EXPORTERS) so parser
+# construction stays import-free; a test pins this to _EXPORTERS' keys.
+_EXPORT_TARGETS = ("ocr",)
+
+
+def _normalize_path_glob(value: str) -> tuple[str, str | None]:
+    """Normalize a ``--path`` value into a glob, plus an optional stderr warning.
+
+    A value ending in ``/`` becomes ``<dir>/**/*``. A value with no wildcard
+    character is returned as-is with a warning string (OCR matches nothing for
+    a bare directory path).
+    """
+    if value.endswith("/"):
+        return f"{value}**/*", None
+    if not any(ch in value for ch in "*?[{"):
+        return value, (
+            f"Warning: --path {value!r} has no wildcard; OCR will not match any file "
+            "under it. Use a trailing '/' or an explicit glob."
+        )
+    return value, None
+
 
 def add_decisions_parser(subs: argparse._SubParsersAction) -> argparse.ArgumentParser:
     """Register the decisions subparser with all sub-sub-commands on *subs*."""
@@ -176,6 +197,15 @@ def add_decisions_parser(subs: argparse._SubParsersAction) -> argparse.ArgumentP
         dest="archetype",
         help="Named bundle label grouping related coupling rules (e.g. add-cli-command)",
     )
+    add_p.add_argument(
+        "--path",
+        action="append",
+        dest="path",
+        metavar="GLOB",
+        help="Repeatable path scope glob for type=rule (empty = repo-wide). "
+        "A trailing '/' is normalized to '<dir>/**/*'; a value with no wildcard "
+        "is stored as-is with a stderr warning (OCR matches nothing for a bare dir)",
+    )
     add_config_arg(add_p)
 
     # -- outcome --
@@ -272,7 +302,42 @@ def add_decisions_parser(subs: argparse._SubParsersAction) -> argparse.ArgumentP
         default="required",
         help="Enforcement level for the resulting rule (default: required)",
     )
+    promote_p.add_argument(
+        "--path",
+        action="append",
+        dest="path",
+        metavar="GLOB",
+        help="Repeatable path scope glob for the resulting rule (empty = repo-wide)",
+    )
     add_config_arg(promote_p)
+
+    # -- export --
+    export_p = subsubs.add_parser(
+        "export",
+        help="Export active required rules to a review-tool-specific rule file",
+    )
+    export_p.add_argument(
+        "--target",
+        required=True,
+        choices=list(_EXPORT_TARGETS),
+        help="Export target",
+    )
+    export_p.add_argument(
+        "--output-dir",
+        default=".",
+        dest="output_dir",
+        metavar="DIR",
+        help="Directory the target's rule file is written under (default: '.')",
+    )
+    export_p.add_argument(
+        "--scope-glob",
+        action="append",
+        dest="scope_glob",
+        metavar="GLOB",
+        help="Repeatable glob(s) that repo-wide rules are scoped to "
+        "(default: decisions.export.scope_globs config, then project.src_dir, then '**/*')",
+    )
+    add_config_arg(export_p)
 
     return p
 
@@ -330,6 +395,9 @@ def cmd_decisions(config: BRConfig, args: argparse.Namespace) -> int:
 
     if sub == "sync":
         return _cmd_sync(path)
+
+    if sub == "export":
+        return _cmd_export(config, args, path)
 
     if sub == "suggest-rules":
         return _cmd_suggest_rules(path)
@@ -458,6 +526,13 @@ def _cmd_add(
     labels = [lbl.strip() for lbl in args.label.split(",")] if getattr(args, "label", None) else []
 
     if entry_type == "rule":
+        raw_paths = getattr(args, "path", None) or []
+        paths = []
+        for raw in raw_paths:
+            glob, warning = _normalize_path_glob(raw)
+            if warning:
+                print(warning, file=sys.stderr)
+            paths.append(glob)
         entry = RuleEntry(
             id=entry_id,
             timestamp=timestamp,
@@ -470,6 +545,7 @@ def _cmd_add(
             issue=getattr(args, "issue", None),
             source_session_id=getattr(args, "source_session_id", None),
             source_issue_id=getattr(args, "source_issue_id", None),
+            paths=paths,
         )
     elif entry_type == "decision":
         entry = DecisionEntry(
@@ -555,6 +631,43 @@ def _cmd_sync(path) -> int:
     except ImportError:
         print("sync not yet available (requires FEAT-1895)", file=sys.stderr)
         return 1
+    return 0
+
+
+def _cmd_export(config, args, path) -> int:
+    """Export active required rules to a review-tool-specific rule file."""
+    from pathlib import Path
+
+    from little_loops.decisions import active_required_rules
+    from little_loops.decisions_export import export_rules
+
+    scope_globs = getattr(args, "scope_glob", None)
+    if not scope_globs:
+        configured = list(config.decisions.export.scope_globs)
+        if configured:
+            scope_globs = configured
+        else:
+            src_dir = getattr(config.project, "src_dir", None)
+            if src_dir:
+                scope_globs = [f"{src_dir.rstrip('/')}/**/*"]
+            else:
+                print(
+                    "Warning: no project.src_dir or decisions.export.scope_globs configured; "
+                    "falling back to '**/*' (replaces OCR's system rules for every file)",
+                    file=sys.stderr,
+                )
+                scope_globs = ["**/*"]
+
+    rules = active_required_rules(path)
+    output_dir = Path(args.output_dir)
+
+    try:
+        written = export_rules(rules, args.target, output_dir, scope_globs=scope_globs)
+    except (ValueError, OSError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+
+    print(f"Wrote {written} ({len(rules)} rule(s))")
     return 0
 
 
@@ -933,6 +1046,14 @@ def _cmd_promote(args, path, load_decisions, update_entry, RuleEntry, DecisionEn
         )
         return 1
 
+    raw_paths = getattr(args, "path", None) or []
+    paths = []
+    for raw in raw_paths:
+        glob, warning = _normalize_path_glob(raw)
+        if warning:
+            print(warning, file=sys.stderr)
+        paths.append(glob)
+
     rule = RuleEntry(
         id=target.id,
         timestamp=target.timestamp,
@@ -943,6 +1064,7 @@ def _cmd_promote(args, path, load_decisions, update_entry, RuleEntry, DecisionEn
         enforcement=enforcement,
         supersedes=None,
         issue=target.issue,
+        paths=paths,
     )
 
     # Persist via the fragment-update primitive so only the one file backing the

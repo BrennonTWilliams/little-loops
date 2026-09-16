@@ -15,6 +15,7 @@ Record implementation choices, enforce team rules, and prevent automation from p
 - [Using /ll:decide-issue Manually](#using-lldecide-issue-manually)
 - [Creating Entries via CLI](#creating-entries-via-cli)
 - [Rules & Active Rules Sync](#rules--active-rules-sync)
+- [Exporting to OCR](#exporting-to-ocr)
 - [Auto-generating from History](#auto-generating-from-history)
 - [Promoting Decisions to Rules](#promoting-decisions-to-rules)
 - [Recording Outcomes](#recording-outcomes)
@@ -375,6 +376,64 @@ Sync runs automatically after `ll-issues decisions promote --enforcement require
 
 ---
 
+## Exporting to OCR
+
+Active required rules can also be exported to
+[open-code-review](https://github.com/alibaba/open-code-review) (OCR)'s
+`.opencodereview/rule.json`, so OCR's shipped review plugins enforce them
+mechanically at review time instead of relying on agent recall of
+`.ll/ll.local.md` prose (FEAT-3485):
+
+```bash
+ll-issues decisions export --target ocr
+```
+
+Writes `.opencodereview/rule.json`, which is a **committed** artifact (like
+the `ll-adapt` host mirrors), not gitignored. Re-running over an unchanged
+decision set is a no-op on file content.
+
+**Scoping rules to files.** Add a path glob to a rule so it applies only under
+matching files, instead of repo-wide:
+
+```bash
+ll-issues decisions add --type rule --enforcement required \
+  --path 'scripts/little_loops/fsm/**/*.py' \
+  --category architecture --rule "..." --rationale "..."
+```
+
+A value ending in `/` (e.g. `--path scripts/`) is normalized to `scripts/**/*`;
+a value with no wildcard is stored as-is with a stderr warning, because OCR
+matches nothing for a bare directory path. `--path` is repeatable. `decisions
+list` does not render `paths` — inspect the fragment/YAML or the exported
+`rule.json` directly. Rules extracted via `extract-from-completed` always
+start repo-wide (`paths=[]`); scope them afterward by editing the fragment.
+
+**Repo-wide scope.** Rules with no `paths` are scoped to `project.src_dir` by
+default (not `**/*`), overridable via `--scope-glob` (repeatable) or the
+`decisions.export.scope_globs` config key:
+
+```bash
+ll-issues decisions export --target ocr --scope-glob 'scripts/**/*'
+```
+
+**OCR resolves exactly one rule entry per file, first-match-wins by
+declaration order** — this drives the exporter's grouping:
+
+- A catch-all entry **replaces** OCR's built-in language rules (e.g.
+  `python.md`) for every file it matches, not merely hides them. Every emitted
+  body is prefixed with a note that the file's language conventions still
+  apply.
+- Directory globs (`<prefix>/**/*`, including bare `**/*` for repo-wide rules)
+  fold into every more specific scoped entry whose prefix they cover, so
+  nesting a scoped rule under a repo-wide or directory rule never shadows it.
+- **Known limitation:** two globs that overlap *without* one being a directory
+  glob covering the other (e.g. `**/*.py` vs. `scripts/fsm/**/*`) still shadow
+  each other under first-match-wins — only the higher-sorted entry's rules
+  apply to a file matching both. No general glob-intersection folding is
+  attempted.
+
+---
+
 ## Auto-generating from History
 
 If you've been running issues through little-loops for a while without the decisions log, bootstrap it from completed issues:
@@ -531,6 +590,7 @@ The decisions feature has a small config namespace in `.ll/ll-config.json`. Defa
 | `decisions.enabled` | `false` | Feature gate for the decisions log and its CLI surface. It does **not** gate the automation pause: neither `ll-auto` nor `ll-parallel` reads this key, and an issue with `decision_needed: true` in its frontmatter pauses automation whether or not this is set |
 | `decisions.log_path` | `".ll/decisions.yaml"` | Path to the legacy flat file. The per-entry fragment directory is **derived** from this — always `log_path`'s sibling with a `.d` suffix (`.ll/decisions.d/`) — and is not independently configurable (BUG-2647, Option A) |
 | `decisions.auto_generate` | `[]` | Issue type prefixes to auto-generate entries from when `ll-issues decisions generate` runs (e.g., `["FEAT", "ENH"]` skips BUG entries) |
+| `decisions.export.scope_globs` | `[]` | Target-agnostic glob(s) that repo-wide required rules are scoped to on `ll-issues decisions export` (FEAT-3485). Empty falls through to `project.src_dir`, then `**/*`. Overridable per-invocation with `--scope-glob` |
 
 ---
 

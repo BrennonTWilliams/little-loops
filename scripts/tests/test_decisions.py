@@ -72,6 +72,35 @@ def sample_exception() -> ExceptionEntry:
     )
 
 
+class TestRuleEntryPaths:
+    """Tests for RuleEntry.paths (FEAT-3485)."""
+
+    def test_defaults_to_empty_list(self) -> None:
+        entry = RuleEntry(id="R-001", rule="Some rule")
+        assert entry.paths == []
+
+    def test_round_trips_present_paths(self) -> None:
+        entry = RuleEntry(id="R-001", rule="Some rule", paths=["scripts/**/*.py"])
+        d = entry.to_dict()
+        assert d["paths"] == ["scripts/**/*.py"]
+        loaded = RuleEntry.from_dict(d)
+        assert loaded.paths == ["scripts/**/*.py"]
+
+    def test_to_dict_omits_empty_paths(self) -> None:
+        entry = RuleEntry(id="R-001", rule="Some rule")
+        assert "paths" not in entry.to_dict()
+
+    def test_legacy_dict_without_paths_key_loads_empty(self) -> None:
+        loaded = RuleEntry.from_dict({"id": "R-001", "rule": "Legacy rule"})
+        assert loaded.paths == []
+        assert "paths" not in loaded.extra
+
+    def test_stray_paths_key_lands_on_field_not_extra(self) -> None:
+        loaded = RuleEntry.from_dict({"id": "R-001", "rule": "x", "paths": ["a/**/*"]})
+        assert loaded.paths == ["a/**/*"]
+        assert "paths" not in loaded.extra
+
+
 class TestResolvePath:
     """decisions.py's own `_resolve_path` (ENH-2927; distinct from decisions_sync's sibling)."""
 
@@ -417,6 +446,52 @@ class TestResolveActive:
 
     def test_empty_list(self) -> None:
         assert resolve_active([]) == []
+
+
+class TestActiveRequiredRules:
+    """Tests for active_required_rules() (FEAT-3485)."""
+
+    def test_excludes_advisory_rules(self, decisions_path: Path) -> None:
+        from little_loops.decisions import active_required_rules, save_decisions
+
+        required = RuleEntry(id="R-001", rule="Required", enforcement="required")
+        advisory = RuleEntry(id="R-002", rule="Advisory", enforcement="advisory")
+        save_decisions([required, advisory], decisions_path)
+
+        result = active_required_rules(decisions_path)
+        assert [r.id for r in result] == ["R-001"]
+
+    def test_excludes_superseded_rules(self, decisions_path: Path) -> None:
+        from little_loops.decisions import active_required_rules, save_decisions
+
+        old = RuleEntry(id="R-001", rule="Old", enforcement="required")
+        new = RuleEntry(id="R-002", rule="New", enforcement="required", supersedes="R-001")
+        save_decisions([old, new], decisions_path)
+
+        result = active_required_rules(decisions_path)
+        assert [r.id for r in result] == ["R-002"]
+
+    def test_deterministic_load_order_no_sort(self, decisions_path: Path) -> None:
+        from little_loops.decisions import active_required_rules, save_decisions
+
+        rules = [
+            RuleEntry(id=f"R-{i:03d}", rule=f"Rule {i}", enforcement="required") for i in (3, 1, 2)
+        ]
+        save_decisions(rules, decisions_path)
+
+        result = active_required_rules(decisions_path)
+        assert [r.id for r in result] == ["R-003", "R-001", "R-002"]
+
+    def test_only_rule_entries_returned(self, decisions_path: Path) -> None:
+        from little_loops.decisions import active_required_rules, save_decisions
+
+        rule = RuleEntry(id="R-001", rule="Required", enforcement="required")
+        decision = DecisionEntry(id="D-001", rule="A decision", scope="project")
+        save_decisions([rule, decision], decisions_path)
+
+        result = active_required_rules(decisions_path)
+        assert all(isinstance(r, RuleEntry) for r in result)
+        assert [r.id for r in result] == ["R-001"]
 
 
 class TestSetOutcome:

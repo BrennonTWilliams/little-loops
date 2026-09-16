@@ -12794,6 +12794,7 @@ class RuleEntry:
     issue: str | None = None
     source_session_id: str | None = None
     source_issue_id: str | None = None
+    paths: list[str] = field(default_factory=list)
     extra: dict[str, Any] = field(default_factory=dict)
 ```
 
@@ -12804,6 +12805,7 @@ An enforced rule in the decisions log.
 - `type` — Always `"rule"` for this dataclass.
 - `enforcement` — Enforcement level (e.g. `"advisory"`).
 - `supersedes` — ID of an earlier entry this one replaces, if any; consumed by `resolve_active()`.
+- `paths` — Path scope glob(s) this rule applies to (FEAT-3485). Empty (default) = repo-wide. Omitted from `to_dict()` output when empty, so legacy entries round-trip byte-identically. Consumed by rule exporters (`decisions_export.export_rules`); not rendered by `decisions list` or `sync_to_local_md`.
 - `extra` — Any unrecognized keys from the source dict, round-tripped through `to_dict()`.
 
 Also defines `from_dict(data: dict[str, Any]) -> RuleEntry` and `to_dict(self) -> dict[str, Any]`.
@@ -12993,6 +12995,24 @@ Returns entries excluding those superseded by a newer entry. An entry is inactiv
 
 **Returns:** Entries whose `id` is not referenced by any other entry's `supersedes` field.
 
+### active_required_rules
+
+```python
+def active_required_rules(path: Path | None = None) -> list[RuleEntry]
+```
+
+Active (non-superseded) required rules, in load order. Shared selection step
+behind every rule exporter (`sync_to_local_md`,
+`decisions_export.export_rules`): `type="rule"` → `enforcement == "required"` →
+`resolve_active()`. Preserves `list_entries()`'s load order (flat entries, then
+timestamp-sorted fragments) with **no** added sort — that order is what makes
+every exporter idempotent (FEAT-3485).
+
+**Parameters:**
+- `path` — Decisions log path; resolved the same way as `load_decisions()` when `None`.
+
+**Returns:** Active required `RuleEntry` records, in load order.
+
 ### set_outcome
 
 ```python
@@ -13051,6 +13071,98 @@ Generates `DecisionEntry` records from completed issues and persists them to the
 - `config` — `BRConfig` instance; uses `config.project_root`, `config.decisions.log_path`, `config.decisions.auto_generate`, and `config.issues.base_dir`.
 
 **Returns:** Number of `DecisionEntry` records added. Reads completed issues from `<project_root>/.ll/history.db` (via `scan_completed_issues_from_db()`) when present, otherwise scans the issues directory (via `scan_completed_issues()`). Each generated entry has `id` set to `f"DEC-{issue.issue_id}"`, `category` set to the lowercased issue type, and `labels` set to `[priority, issue_type.lower()]`; new entries are persisted via `add_entry()` (fragment-append, not a flat-file rewrite).
+
+---
+
+## little_loops.decisions_export
+
+Target-keyed exporter seam for rendering active required rules to review-tool-specific
+rule files (FEAT-3485). Imports only `little_loops.decisions` and
+`little_loops.file_utils` — never `little_loops.config`; scope resolution is a CLI
+concern. The only target today is `"ocr"` (open-code-review).
+
+### export_rules
+
+```python
+def export_rules(
+    rules: list[RuleEntry],
+    target: str,
+    output_dir: Path,
+    *,
+    scope_globs: list[str] | None = None,
+) -> Path
+```
+
+Public entry point. Dispatches to the exporter registered in `_EXPORTERS` for
+*target*. `_EXPORTERS` is a plain eager `dict[str, Callable]` — the extension
+point for a future target is one private `_export_<target>` function plus one
+dict entry, no `Protocol` or lazy import.
+
+**Parameters:**
+- `rules` — Pre-filtered active required rules (typically `active_required_rules()`'s output).
+- `target` — Export target key; unknown values raise `ValueError` naming `sorted(_EXPORTERS)`.
+- `output_dir` — Directory the target's rule file is written under.
+- `scope_globs` — Glob(s) repo-wide rules are scoped to; `None` defers to the target's own default.
+
+**Returns:** Path to the written rule file.
+
+### _export_ocr
+
+```python
+def _export_ocr(
+    rules: list[RuleEntry],
+    output_dir: Path,
+    *,
+    scope_globs: list[str] | None = None,
+) -> Path
+```
+
+The only OCR-specific function; writes `output_dir / ".opencodereview" / "rule.json"`
+via `atomic_write_json()`. Pure — never reads config, cwd, or stderr.
+`scope_globs=None` means `["**/*"]`.
+
+Groups rules by path glob (one `rules[]` entry per distinct glob, since OCR
+resolves exactly one entry per file, first-match-wins by declaration order).
+Every scoped entry's rule body folds in the rules of every directory glob
+(`<prefix>/**/*`, including bare `**/*` for repo-wide rules) that covers its
+literal prefix, so nesting never shadows. Scoped entries are sorted by
+`_glob_sort_key` (most specific first) and always precede catch-all entries
+(one per `scope_globs` value), which are appended last and hold the repo-wide
+set alone. A scoped glob string-equal to a `scope_globs` value merges into that
+catch-all rather than producing a duplicate `path`. Two globs that overlap
+without one being a directory glob covering the other (e.g. `**/*.py` vs.
+`scripts/fsm/**/*`) still shadow each other under OCR's first-match-wins
+resolution — a known, documented limitation; no general glob-intersection
+folding is attempted.
+
+Each bullet is rendered `- <rule text> (decision <id>)` for traceability.
+`exclude` is never emitted (it only gates `ocr review --preview` file
+selection, a project-level choice, not a decision).
+
+### _glob_sort_key
+
+```python
+def _glob_sort_key(glob: str) -> tuple[int, int, str]
+```
+
+Specificity sort key applied to scoped globs only: `(-len(literal prefix),
+wildcard_segments, glob)`. The literal prefix is everything before the first
+wildcard character (`*`, `?`, `[`, `{`); `wildcard_segments` counts `/`-separated
+segments that are *exactly* `*` or `**` (not any segment containing a
+wildcard) — this is what makes `scripts/**/*.py` (one such segment) sort
+before `scripts/**/*` (two). Longest literal prefix wins first, fewer
+bare-wildcard segments breaks ties, lexical order makes it total.
+
+### _dir_prefix
+
+```python
+def _dir_prefix(glob: str) -> str | None
+```
+
+Returns the covered directory prefix for a directory glob shaped
+`<prefix>/**/*` (as `<prefix>/`), `""` for the bare `**/*` case, or `None` for
+any other glob shape (e.g. `scripts/**/*.py`, which does not fold into
+anything).
 
 ---
 

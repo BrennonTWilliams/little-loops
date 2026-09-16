@@ -552,6 +552,121 @@ class TestDecisionsCLIAdd:
 
         assert result == 1
 
+    def test_add_rule_with_path_trailing_slash_normalized(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        decisions_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """FEAT-3485: --path 'scripts/' normalizes to 'scripts/**/*'."""
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "decisions",
+                "add",
+                "--type",
+                "rule",
+                "--category",
+                "naming",
+                "--rule",
+                "test rule text",
+                "--rationale",
+                "test rationale",
+                "--path",
+                "scripts/",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        entry = load_decisions(decisions_path)[0]
+        assert entry.paths == ["scripts/**/*"]
+
+    def test_add_rule_with_path_no_wildcard_warns(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        decisions_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """FEAT-3485: --path 'scripts' (no wildcard) is stored verbatim with a stderr warning."""
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "decisions",
+                "add",
+                "--type",
+                "rule",
+                "--category",
+                "naming",
+                "--rule",
+                "test rule text",
+                "--rationale",
+                "test rationale",
+                "--path",
+                "scripts",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        entry = load_decisions(decisions_path)[0]
+        assert entry.paths == ["scripts"]
+        captured = capsys.readouterr()
+        assert captured.err != ""
+
+    def test_add_rule_with_repeatable_path(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        decisions_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """FEAT-3485: --path is repeatable."""
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "decisions",
+                "add",
+                "--type",
+                "rule",
+                "--category",
+                "naming",
+                "--rule",
+                "test rule text",
+                "--rationale",
+                "test rationale",
+                "--path",
+                "a/**/*",
+                "--path",
+                "b/**/*",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        entry = load_decisions(decisions_path)[0]
+        assert entry.paths == ["a/**/*", "b/**/*"]
+
 
 # =============================================================================
 # TestDecisionsCLIOutcome
@@ -705,6 +820,207 @@ class TestDecisionsCLISync:
         content = ll_local.read_text(encoding="utf-8")
         assert "## Active Rules" in content
         assert sample_rule.rule in content
+
+
+# =============================================================================
+# TestDecisionsCLIExport (FEAT-3485)
+# =============================================================================
+
+
+class TestDecisionsCLIExport:
+    """Tests for ll-issues decisions export sub-sub-command."""
+
+    def test_export_targets_pinned_to_exporters(self) -> None:
+        from little_loops.cli.issues.decisions import _EXPORT_TARGETS
+        from little_loops.decisions_export import _EXPORTERS
+
+        assert set(_EXPORT_TARGETS) == set(_EXPORTERS)
+
+    def test_export_target_ocr_writes_file(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        decisions_path: Path,
+        sample_rule: RuleEntry,
+    ) -> None:
+        save_decisions([sample_rule], decisions_path)
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "decisions",
+                "export",
+                "--target",
+                "ocr",
+                "--output-dir",
+                str(temp_project_dir),
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        out_path = temp_project_dir / ".opencodereview" / "rule.json"
+        assert out_path.exists()
+
+    def test_scope_glob_flag_overrides_config(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        decisions_path: Path,
+        sample_rule: RuleEntry,
+    ) -> None:
+        save_decisions([sample_rule], decisions_path)
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "decisions",
+                "export",
+                "--target",
+                "ocr",
+                "--output-dir",
+                str(temp_project_dir),
+                "--scope-glob",
+                "custom/**/*",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        data = json.loads(
+            (temp_project_dir / ".opencodereview" / "rule.json").read_text(encoding="utf-8")
+        )
+        assert any(e["path"] == "custom/**/*" for e in data["rules"])
+
+    def test_config_scope_globs_overrides_src_dir(
+        self,
+        temp_project_dir: Path,
+        decisions_path: Path,
+        sample_rule: RuleEntry,
+    ) -> None:
+        config: dict[str, Any] = {
+            "project": {"src_dir": "src/"},
+            "decisions": {
+                "enabled": True,
+                "log_path": ".ll/decisions.yaml",
+                "export": {"scope_globs": ["configured/**/*"]},
+            },
+        }
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(config))
+        save_decisions([sample_rule], decisions_path)
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "decisions",
+                "export",
+                "--target",
+                "ocr",
+                "--output-dir",
+                str(temp_project_dir),
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        data = json.loads(
+            (temp_project_dir / ".opencodereview" / "rule.json").read_text(encoding="utf-8")
+        )
+        assert any(e["path"] == "configured/**/*" for e in data["rules"])
+
+    def test_bad_output_path_returns_1(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        decisions_path: Path,
+        sample_rule: RuleEntry,
+    ) -> None:
+        save_decisions([sample_rule], decisions_path)
+        # A file where a directory needs to be created makes the write fail.
+        blocker = temp_project_dir / "blocked"
+        blocker.write_text("not a dir", encoding="utf-8")
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "decisions",
+                "export",
+                "--target",
+                "ocr",
+                "--output-dir",
+                str(blocker / "nested"),
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 1
+
+    def test_unknown_target_exits_2(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        decisions_path: Path,
+    ) -> None:
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "decisions",
+                "export",
+                "--target",
+                "nope",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            with pytest.raises(SystemExit) as exc_info:
+                main_issues()
+            assert exc_info.value.code == 2
+
+    def test_missing_target_exits_2(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        decisions_path: Path,
+    ) -> None:
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "decisions", "export", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            with pytest.raises(SystemExit) as exc_info:
+                main_issues()
+            assert exc_info.value.code == 2
 
 
 # =============================================================================

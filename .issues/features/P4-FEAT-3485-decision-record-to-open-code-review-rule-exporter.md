@@ -3,10 +3,11 @@ id: FEAT-3485
 type: FEAT
 title: Decision-record to open-code-review rule exporter
 priority: P4
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-16'
 captured_at: '2026-09-16T04:15:42Z'
+completed_at: '2026-09-16T18:06:06Z'
 learning_tests_required:
 - open-code-review
 decision_needed: false
@@ -287,7 +288,36 @@ ll-issues decisions export --target ocr [--output-dir .] [--scope-glob 'scripts/
 
 `export --target ocr` prints the written path and the count of entries/rules on success, matching `sync`'s one-line output style.
 
+## Resolution
+
+**Status**: Completed
+**Completed**: 2026-09-16
+
+### Changes Made
+
+- `scripts/little_loops/decisions.py` — added `paths: list[str]` to `RuleEntry` (explicit `pop` in `from_dict`, emit-when-non-empty in `to_dict`); added `active_required_rules()` next to `resolve_active()`
+- `scripts/little_loops/decisions_sync.py` — refactored `sync_to_local_md()` onto `active_required_rules()`
+- `scripts/little_loops/decisions_export.py` (new) — `export_rules()`, `_EXPORTERS`, `_export_ocr()`, `_glob_sort_key()`, `_dir_prefix()`, `_render_body()`
+- `scripts/little_loops/cli/issues/decisions.py` — `--path` on `add`/`promote`, `_normalize_path_glob()`, new `export` subparser (`--target`, `--output-dir`, `--scope-glob`), `_cmd_export()`, `_EXPORT_TARGETS` literal
+- `scripts/little_loops/config/features.py` — new `DecisionsExportConfig`, `DecisionsConfig.export` field
+- `scripts/little_loops/config/core.py` — `to_dict()` emits `decisions.export.scope_globs`
+- `scripts/little_loops/config/__init__.py` — re-exports `DecisionsExportConfig`
+- `scripts/little_loops/config-schema.json` — `decisions.export.scope_globs` + reserved `decisions.export.ocr`
+- `.ll/learning-tests/open-code-review.md` — recorded the 4 OCR glob-dialect assertions from Verify First, plus the commit-vs-gitignore decision note
+- Tests: `TestRuleEntryPaths`, `TestActiveRequiredRules` in `test_decisions.py`; new `test_decisions_export.py` (20 tests); `TestDecisionsCLIExport` + 3 new `TestDecisionsCLIAdd` cases in `test_cli_decisions.py`; `TestDecisionsExportConfig` + export round-trip in `test_config.py`; schema assertions in `test_config_schema.py` (including `_DATACLASS_SECTION_MAP` completeness entry)
+- Docs: `docs/reference/CLI.md`, `docs/reference/API.md`, `docs/guides/DECISIONS_LOG_GUIDE.md` ("Exporting to OCR" section), `docs/ARCHITECTURE.md`
+
+No deviations from the issue's Program Design — all signatures, types, and the call path were implemented as specified. One implementation nuance not spelled out in Program Design's Signatures (but consistent with the Edge Cases section): a catch-all entry whose accumulated rule body would be empty is omitted entirely rather than emitted with just the system-rules note, so `scope_globs` values that collect no rules don't add noise to `rule.json`.
+
+### Verification
+
+- `python -m pytest scripts/tests/` — 23775 passed, 12 skipped; 1 pre-existing failure (`test_verify_evidence.py::TestRepoGate::test_no_new_unverifiable_evidence`, confirmed via `git stash` to fail identically with none of this issue's changes applied — unrelated stale evidence in BUG-3484, out of scope)
+- `ruff check scripts/` — all checks passed
+- `python -m mypy` on all changed source files — no issues found
+- `ruff format --diff` on all changed files, applied (cosmetic only)
+
 ## Session Log
+- `/ll:manage-issue` - 2026-09-16T18:05:42 - `dcc22661-435f-42cd-8eeb-506ee376792f.jsonl`
 - `/ll:verify-issues` - 2026-09-16T17:19:57 - `4b22c000-8276-4c99-a300-503aa8fefb58.jsonl`
 - `/ll:confidence-check` - 2026-09-16T16:40:54 - `12a2d668-0dec-4681-9a8f-10450d51152d.jsonl`
 - `/ll:confidence-check` - 2026-09-16T16:19:48 - `0451feb3-8293-4e5a-aa46-79c33e20da03.jsonl`

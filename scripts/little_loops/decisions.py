@@ -116,6 +116,7 @@ class RuleEntry:
     issue: str | None = None
     source_session_id: str | None = None
     source_issue_id: str | None = None
+    paths: list[str] = field(default_factory=list)
     extra: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
@@ -134,6 +135,7 @@ class RuleEntry:
             issue=copy.pop("issue", None),
             source_session_id=copy.pop("source_session_id", None),
             source_issue_id=copy.pop("source_issue_id", None),
+            paths=copy.pop("paths", []),
             extra=copy,
         )
 
@@ -156,6 +158,8 @@ class RuleEntry:
             d["source_session_id"] = self.source_session_id
         if self.source_issue_id is not None:
             d["source_issue_id"] = self.source_issue_id
+        if self.paths:
+            d["paths"] = self.paths
         return {**d, **self.extra}
 
 
@@ -501,6 +505,22 @@ def resolve_active(entries: list[AnyEntry]) -> list[AnyEntry]:
         getattr(e, "supersedes", None) for e in entries if getattr(e, "supersedes", None)
     }
     return [e for e in entries if e.id not in superseded_ids]
+
+
+def active_required_rules(path: Path | None = None) -> list[RuleEntry]:
+    """Active (non-superseded) required rules, in load order.
+
+    Shared selection step behind every rule exporter (``sync_to_local_md``,
+    ``decisions_export.export_rules``): ``type="rule"`` → ``enforcement ==
+    "required"`` → :func:`resolve_active`. Preserves ``list_entries``' load
+    order (flat entries, then timestamp-sorted fragments) with **no** added
+    sort, since that order is what makes every exporter idempotent.
+    """
+    rules = [
+        e for e in list_entries(path, type="rule") if getattr(e, "enforcement", None) == "required"
+    ]
+    active = resolve_active(rules)
+    return [e for e in active if isinstance(e, RuleEntry)]
 
 
 def set_outcome(

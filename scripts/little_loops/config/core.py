@@ -871,6 +871,7 @@ class BRConfig:
                 "enabled": self._decisions.enabled,
                 "log_path": self._decisions.log_path,
                 "auto_generate": list(self._decisions.auto_generate),
+                "export": {"scope_globs": list(self._decisions.export.scope_globs)},
             },
             "compression": {
                 "heuristic_underperforms": self._compression.heuristic_underperforms,

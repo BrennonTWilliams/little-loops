@@ -2995,6 +2995,7 @@ Manage rules, decisions, and exceptions log.
 | `suggest-rules` | Analyze decision entries and surface candidates ready for promotion to rules |
 | `promote <ID>` | Convert a `decision` entry into an enforced `rule` (rewrites entry in-place; auto-syncs when `--enforcement required`) |
 | `extract-from-completed` | Extract rules from completed issues via LLM; appends `RuleEntry` records to the decisions log as `.ll/decisions.d/*.json` fragments with deduplication |
+| `export` | Export active required rules to a review-tool-specific rule file (FEAT-3485) |
 
 **`list` flags:**
 
@@ -3028,6 +3029,7 @@ Manage rules, decisions, and exceptions log.
 | `--supersedes` | rule | ID of the rule this supersedes |
 | `--scope` | decision | `issue` (default) or `project` |
 | `--id` | all | Explicit entry ID (auto-generated if omitted) |
+| `--path <GLOB>` | rule | Repeatable path scope glob (FEAT-3485). Empty = repo-wide. A trailing `/` normalizes to `<dir>/**/*`; a value with no wildcard is stored as-is with a stderr warning (OCR matches nothing for a bare directory) |
 
 **`outcome` flags:**
 
@@ -3059,6 +3061,7 @@ No additional flags. Analyzes `decision` entries and clusters them by category a
 |------|-------------|
 | `<ID>` | ID of the `decision` entry to promote (positional, required) |
 | `--enforcement` | Enforcement level for the new rule: `required` (default) or `advisory`. When `required`, auto-runs `sync` to push the rule into `.ll/ll.local.md` immediately. |
+| `--path <GLOB>` | Repeatable path scope glob for the resulting rule (FEAT-3485); empty = repo-wide |
 
 **`extract-from-completed` flags:**
 
@@ -3068,6 +3071,19 @@ No additional flags. Analyzes `decision` entries and clusters them by category a
 | `--issue ID` | Only extract from this specific issue (e.g. `ENH-2151`) |
 | `--dry-run` | Print candidates without writing to `decisions.yaml` |
 | `--min-confidence FLOAT` | Minimum LLM confidence to accept a candidate (default: `0.7`) |
+
+**`export` flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--target {ocr}` | Export target (required) |
+| `--output-dir DIR` | Directory the target's rule file is written under (default: `.`) |
+| `--scope-glob GLOB` | Repeatable glob(s) that repo-wide required rules are scoped to. Precedence: `--scope-glob` → `decisions.export.scope_globs` config → `project.src_dir` (trailing slash stripped) → `**/*` (warns on stderr; a bare `**/*` catch-all replaces OCR's built-in language rules for every matched file) |
+
+Writes `.opencodereview/rule.json` (OCR's project-layer rule file) from all active
+(non-superseded) required rules. Re-running over an unchanged decision set is a
+no-op on file content. See [DECISIONS_LOG_GUIDE.md](../guides/DECISIONS_LOG_GUIDE.md#exporting-to-ocr)
+for the first-match-wins grouping/folding rules and known limitations.
 
 ```bash
 ll-issues decisions list
@@ -3086,6 +3102,9 @@ ll-issues decisions extract-from-completed       # Extract rules from all comple
 ll-issues decisions extract-from-completed --since 2026-01-01  # Only issues completed since date
 ll-issues decisions extract-from-completed --issue ENH-2151    # Only one issue
 ll-issues decisions extract-from-completed --dry-run           # Preview candidates without writing
+ll-issues decisions add --type rule --enforcement required --path 'scripts/fsm/**/*.py' --category architecture --rule "..." --rationale "..."
+ll-issues decisions export --target ocr                        # Writes .opencodereview/rule.json
+ll-issues decisions export --target ocr --scope-glob 'scripts/**/*'  # Override repo-wide scope
 ```
 
 ---

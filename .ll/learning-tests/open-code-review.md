@@ -25,5 +25,23 @@ assertions:
 - claim: the same "exclude" glob IS enforced by `ocr review --preview`'s file-selection
     gate, where the excluded file is labeled user_exclude under "Excluded from review"
   result: pass
+- claim: 'FEAT-3485 (2026-09-16): `**` matches zero segments in a project rule glob
+    -- `scripts/**/*.py` matched `scripts/top.py`'
+  result: pass
+- claim: 'FEAT-3485 (2026-09-16): brace sets work in project rule globs -- `scripts/**/*.{py,pyi}`
+    matched `scripts/top.py`'
+  result: pass
+- claim: 'FEAT-3485 (2026-09-16): a bare directory value (e.g. `scripts/`, no wildcard)
+    matches nothing and falls through to the system default for every file under it'
+  result: pass
+- claim: 'FEAT-3485 (2026-09-16): `ocr rules check` refuses to run outside a git repository'
+  result: pass
 raw_output_path: .ll/learning-tests/raw/open-code-review.txt
 ---
+
+## FEAT-3485: `.opencodereview/rule.json` commit-vs-gitignore decision
+
+Decision: **committed**, like the `ll-adapt` host mirrors. `.opencodereview/` does
+not exist yet and is not gitignored today. No staleness gate is added in this
+issue; a mirror-style staleness gate (comparing `rule.json` against the current
+decisions log) is deferred to piece 2 (the delegate-mode review loop) if needed.

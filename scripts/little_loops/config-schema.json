@@ -722,6 +722,27 @@
             "type": "string"
           },
           "default": []
+        },
+        "export": {
+          "type": "object",
+          "description": "Target-agnostic rule-export scoping (FEAT-3485)",
+          "properties": {
+            "scope_globs": {
+              "type": "array",
+              "description": "Glob(s) that repo-wide required rules are scoped to on export. Empty (default) falls through to project.src_dir, then '**/*'.",
+              "items": {
+                "type": "string"
+              },
+              "default": []
+            },
+            "ocr": {
+              "type": "object",
+              "description": "Reserved for open-code-review-only export knobs",
+              "properties": {},
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false

@@ -789,6 +789,23 @@ class McpConfig:
 
 
 @dataclass
+class DecisionsExportConfig:
+    """Rule-export scoping configuration, target-agnostic (FEAT-3485).
+
+    Nested as ``DecisionsConfig.export``. Empty ``scope_globs`` means "not
+    configured" — the CLI falls through to ``project.src_dir`` and then
+    ``**/*``.
+    """
+
+    scope_globs: list[str] = field(default_factory=list)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> DecisionsExportConfig:
+        """Create DecisionsExportConfig from dictionary."""
+        return cls(scope_globs=data.get("scope_globs", []))
+
+
+@dataclass
 class DecisionsConfig:
     """Decisions and rules log configuration."""
 
@@ -801,6 +818,7 @@ class DecisionsConfig:
     Non-empty list restricts to the listed prefixes (e.g. ``["FEAT", "ENH"]``
     skips BUG entries).
     """
+    export: DecisionsExportConfig = field(default_factory=DecisionsExportConfig)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> DecisionsConfig:
@@ -809,6 +827,7 @@ class DecisionsConfig:
             enabled=data.get("enabled", False),
             log_path=data.get("log_path", ".ll/decisions.yaml"),
             auto_generate=data.get("auto_generate", []),
+            export=DecisionsExportConfig.from_dict(data.get("export", {})),
         )
 
 

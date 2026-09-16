@@ -804,7 +804,7 @@ and `.ll/decisions.d/*.json` fragments) are gated by `ll-verify-decisions`
    — wide-net belt covering `git commit --no-verify` and non-hook edit
    paths; runs as part of `python -m pytest scripts/tests/`.
 
-**Key consumers**: `/ll:ready-issue` (Decisions Gate), `/ll:verify-issues` (rule violation detection), `/ll:format-issue` (quality analysis), `decisions_sync.py` (active rules → `.ll/ll.local.md` sync), `/ll:wire-issue` Phase 3.5 (coupling entries → `MUST_AUDIT` injection into agent prompts).
+**Key consumers**: `/ll:ready-issue` (Decisions Gate), `/ll:verify-issues` (rule violation detection), `/ll:format-issue` (quality analysis), `decisions_sync.py` (active rules → `.ll/ll.local.md` sync), `/ll:wire-issue` Phase 3.5 (coupling entries → `MUST_AUDIT` injection into agent prompts), `decisions_export.py` (active required rules → `.opencodereview/rule.json` for OCR code review, FEAT-3485).
 
 ### Correction Detection Heuristic
 

@@ -33,6 +33,7 @@ from little_loops.config import (
     CompressionConfig,
     ConfidenceGateConfig,
     DecisionsConfig,
+    DecisionsExportConfig,
     DeferredToolsConfig,
     DependencyMappingConfig,
     DesignTokensConfig,
@@ -3447,6 +3448,26 @@ class TestDecisionsConfig:
         assert config.enabled is True
         assert config.log_path == ".ll/decisions.yaml"
 
+    def test_export_absent_yields_empty_scope_globs(self) -> None:
+        config = DecisionsConfig.from_dict({})
+        assert config.export.scope_globs == []
+
+    def test_export_scope_globs_round_trips(self) -> None:
+        config = DecisionsConfig.from_dict({"export": {"scope_globs": ["x/**/*"]}})
+        assert config.export.scope_globs == ["x/**/*"]
+
+
+class TestDecisionsExportConfig:
+    """Tests for DecisionsExportConfig dataclass (FEAT-3485)."""
+
+    def test_defaults(self) -> None:
+        config = DecisionsExportConfig()
+        assert config.scope_globs == []
+
+    def test_from_dict(self) -> None:
+        config = DecisionsExportConfig.from_dict({"scope_globs": ["scripts/**/*"]})
+        assert config.scope_globs == ["scripts/**/*"]
+
 
 class TestBRConfigDecisionsIntegration:
     """Tests for BRConfig.decisions integration."""
@@ -3476,6 +3497,16 @@ class TestBRConfigDecisionsIntegration:
         assert dec["enabled"] is False
         assert dec["log_path"] == ".ll/decisions.yaml"
         assert dec["auto_generate"] == []
+        assert dec["export"]["scope_globs"] == []
+
+    def test_decisions_export_scope_globs_round_trip_to_dict(self, temp_project_dir: Path) -> None:
+        sample_config = {"decisions": {"export": {"scope_globs": ["x/**/*"]}}}
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        config = BRConfig(temp_project_dir)
+        assert config.decisions.export.scope_globs == ["x/**/*"]
+        assert config.to_dict()["decisions"]["export"]["scope_globs"] == ["x/**/*"]
 
 
 class TestCompressionConfig:

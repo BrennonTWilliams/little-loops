@@ -341,6 +341,14 @@ class TestConfigSchema:
 
         assert data["properties"]["decisions"].get("additionalProperties") is False
 
+        # FEAT-3485: export.scope_globs (target-agnostic rule-export scoping)
+        assert "export" in dec_props
+        export_props = dec_props["export"]["properties"]
+        assert "scope_globs" in export_props
+        assert export_props["scope_globs"]["type"] == "array"
+        assert export_props["scope_globs"]["items"]["type"] == "string"
+        assert "ocr" in export_props
+
     def test_compression_in_schema(self) -> None:
         """FEAT-2675: compression must be declared in config-schema.json.
 
@@ -1400,6 +1408,7 @@ _DATACLASS_SECTION_MAP: dict[str, str | None] = {
     "McpResourcesConfig": "mcp",
     "McpConfig": "mcp",
     "DecisionsConfig": "decisions",
+    "DecisionsExportConfig": "decisions",
     "CompressionConfig": "compression",
     "CacheConfig": "cache",
     "DeferredToolsConfig": "deferred_tools",
