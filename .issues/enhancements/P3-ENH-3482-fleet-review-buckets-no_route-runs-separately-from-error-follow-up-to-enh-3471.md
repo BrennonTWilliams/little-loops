@@ -10,7 +10,7 @@ captured_at: '2026-09-15T23:36:00Z'
 parent: ENH-3468
 blocked_by:
 - ENH-3471
-decision_needed: true
+decision_needed: false
 ---
 
 # ENH-3482: fleet-review buckets no_route runs separately from error (follow-up to ENH-3471)
@@ -51,16 +51,37 @@ _Added by `/ll:refine-issue` — 2026-09-15 — based on codebase analysis:_
 
 **Option A**: Add `"no_route"` to `_FLAG_OUTCOMES` (`scripts/little_loops/cli/logs.py:1188`), alongside `error`/`max-steps`/`stalled`/`failed`. A loop whose `top_outcome` is `no_route` is then treated as unhealthy by `is_flagged()` (`:1191-1210`), the same as any other loop-logic failure bucket, and the "Delta vs baseline" table gains its own `Δno_route` column (`outcome_keys = sorted(_FLAG_OUTCOMES)`, `:2570`).
 
+> **Selected:** Option A — matches the codebase's own loop-logic-vs-operator/infra taxonomy (FEAT-2379, `is_flagged()`'s docstring, and `EXIT_CODES` in `runner.py` all place `no_route` on the loop-logic side), fans out to every consumer with zero further code changes, and avoids reproducing the exact visibility gap this issue exists to close.
+
 **Option B**: Leave `no_route` out of `_FLAG_OUTCOMES`, following the precedent already set for `interrupted`/`signal` (`:1197-1200`, "operator/infra exits... not loop-logic failures... deliberately excluded"). `no_route` still appears automatically in the per-loop "Outcomes" cell (`:2534`) and the JSON sidecar (`_build_fleet_sidecar()`, `:2356-2394`) with zero further code changes, and still lowers `success_pct`, but does not by itself trigger flagging and gets no dedicated `Δ` column.
 
 **Recommended**: Option A — `no_route` is explicitly a loop-authoring bug (missing route declaration), which this issue's own Motivation groups with "loop-logic failures" (the same category as `failed`/`error`/`stalled`), not with the "operator/infra exits" (`interrupted`/`signal`) that `is_flagged()`'s docstring names as the reason for exclusion. Excluding `no_route` from `_FLAG_OUTCOMES` would mean a fleet of loops silently failing on missing routes never gets automatically flagged as unhealthy — the exact visibility gap this issue exists to close.
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-09-15.
+
+**Selected**: Option A — add `"no_route"` to `_FLAG_OUTCOMES`
+
+**Reasoning**: Both codebase-pattern-finder agents converged on the same read: the `interrupted`/`signal` exclusion precedent Option B invokes was designed for operator/infra exits, not loop-authoring bugs, and `no_route`'s own definition (`fsm/types.py:40-42`) plus the independent `EXIT_CODES` taxonomy in `cli/loop/runner.py:55-57` both place it on the loop-logic-failure side that `_FLAG_OUTCOMES` already covers. Option A also fans out to every consumer (`is_flagged()`, `_flag_loops()`, `fleet_improve.py::flagged_loops()`, the Delta-table's `outcome_keys`) with zero further code changes and a self-extending parametrized test, while Option B would leave loops whose `no_route` share never dominates `top_outcome` silently unflagged — reproducing the exact visibility gap this issue exists to close.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| Option A | 3/3 | 3/3 | 3/3 | 3/3 | 12/12 |
+| Option B | 1/3 | 3/3 | 1/3 | 1/3 | 6/12 |
+
+**Key evidence**:
+- For Option A, FEAT-2379's original taxonomy and `is_flagged()`'s docstring both draw the `_FLAG_OUTCOMES` line at "loop-logic failure" vs. "operator/infra exit"; `no_route` (`fsm/types.py:40-42`) and `EXIT_CODES` (`runner.py:55-57`) both place it on the loop-logic side; membership fans out to every consumer for free.
+- For Option B, it reuses the `interrupted`/`signal` exclusion mechanically, but that precedent's stated rationale doesn't transfer to `no_route` per ENH-3471's own Motivation text, and `workdir_vanished` (an infra-loss case still bucketed as flagging `"error"`) undercuts the "infra-like therefore excluded" analogy it relies on.
 
 ## Integration Map
 
 ### Files to Modify
 
 - `scripts/little_loops/cli/logs.py` — `_derive_loop_outcome()` (`:2058-2083`): reorder the `terminated_by` check ahead of the `"error" in event` fallback for the `no_route` case only, per Expected Behavior.
-- `scripts/little_loops/cli/logs.py` — `_FLAG_OUTCOMES` (`:1188`, `frozenset({"error", "max-steps", "stalled", "failed"})`): whether `no_route` is added here is an open decision — see `### Decision Rules` below and the option block under `## Proposed Solution`. This frozenset is also the flagging-failure set consumed by `is_flagged()` (`:1191-1210`) and the "Delta vs baseline" table's column set (`outcome_keys = sorted(_FLAG_OUTCOMES)`, `:2570`), so the decision has effects beyond bucket labeling.
+- `scripts/little_loops/cli/logs.py` — `_FLAG_OUTCOMES` (`:1188`, `frozenset({"error", "max-steps", "stalled", "failed"})`): add `"no_route"` to this frozenset (decided — Option A, see `### Decision Rules` below and `## Proposed Solution` → `### Decision Rationale`). This frozenset is also the flagging-failure set consumed by `is_flagged()` (`:1191-1210`) and the "Delta vs baseline" table's column set (`outcome_keys = sorted(_FLAG_OUTCOMES)`, `:2570`), so the change has effects beyond bucket labeling.
 - `docs/runbooks/FLEET_LOOP_REVIEW.md` — outcome-vocabulary block (`:93-97`, the `` converged | failed | error | max-steps | stalled | interrupted | signal `` fenced line) and the flagging-rule bullets (`:90-104`) per Expected Behavior. This is the only place in `docs/` this vocabulary is enumerated (confirmed by a repo-wide search).
 
 ### Dependent Files (Callers/Importers)
@@ -110,11 +131,9 @@ If `no_route` is added to `_FLAG_OUTCOMES` (see Decision Rules below), the bucke
 
 ### Decision Rules
 
-- **Gap**: whether `terminated_by="no_route"` counts as a fleet-review *flagging* failure (membership in `_FLAG_OUTCOMES`, `logs.py:1188`), or is reported but excluded from flagging (like `interrupted`/`signal`, per `is_flagged()`'s documented rationale at `:1197-1200`).
+- **Decided** (`/ll:decide-issue`, 2026-09-15): `terminated_by="no_route"` counts as a fleet-review *flagging* failure — `"no_route"` is added to `_FLAG_OUTCOMES` (`logs.py:1188`), Option A. See `## Proposed Solution` → `### Decision Rationale` for scoring and evidence.
 - **Inputs**: the `_FLAG_OUTCOMES` frozenset (`logs.py:1188`); membership is binary (add `"no_route"` or don't).
-- **Effect if added**: `is_flagged()` treats a loop whose `top_outcome` is `no_route` as unhealthy, and the "Delta vs baseline" table gains a dedicated `Δno_route` column.
-- **Effect if omitted**: `no_route` still surfaces automatically in the per-loop "Outcomes" cell (`outcomes_str`, `:2534`) and the JSON sidecar (`_build_fleet_sidecar()`, `:2356-2394`) with zero further code changes, and still lowers `success_pct` — but never triggers `is_flagged()` and gets no dedicated `Δ` column.
-- **No escape hatch needed**: this is a genuine binary decision, not a threshold/keyword list to pin down. See the option block under `## Proposed Solution` for the two named alternatives and a recommendation.
+- **Effect**: `is_flagged()` treats a loop whose `top_outcome` is `no_route` as unhealthy, and the "Delta vs baseline" table gains a dedicated `Δno_route` column.
 
 ## Scope Boundaries
 
@@ -131,5 +150,6 @@ Decomposed from ENH-3468. Follow-up to ENH-3471, which explicitly defers this un
 
 
 ## Session Log
+- `/ll:decide-issue` - 2026-09-16T00:52:53 - `f3b728bf-d5f0-4c49-9606-35ed513fee07.jsonl`
 - `/ll:refine-issue` - 2026-09-15T23:47:51 - `00985229-ae90-46cd-ac9a-bd0275ccc50b.jsonl`
 - `/ll:format-issue` - 2026-09-15T23:38:43 - `40022929-8f22-431e-874e-951b8ed315e8.jsonl`

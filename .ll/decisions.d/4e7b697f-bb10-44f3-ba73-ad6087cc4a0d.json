@@ -1,0 +1,12 @@
+{
+  "id": "4d54edf7-5091-4ca0-8dec-cd37e1de1403",
+  "type": "decision",
+  "timestamp": "2026-09-16T00:51:45Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "no_route is a loop-authoring bug, matching the loop-logic-failure taxonomy _FLAG_OUTCOMES already covers (FEAT-2379, is_flagged() docstring, EXIT_CODES); membership fans out to every consumer for free. Option B's interrupted/signal exclusion precedent does not transfer, and would reproduce the visibility gap ENH-3471/ENH-3482 exist to close.",
+  "rule": "Add no_route to _FLAG_OUTCOMES (Option A)",
+  "scope": "issue",
+  "alternatives_rejected": "Option B: leave no_route out of _FLAG_OUTCOMES (still appears in per-loop Outcomes cell and JSON sidecar, but never triggers flagging)",
+  "issue": "ENH-3482"
+}
