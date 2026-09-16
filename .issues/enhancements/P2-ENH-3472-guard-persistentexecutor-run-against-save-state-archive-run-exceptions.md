@@ -10,6 +10,7 @@ labels: []
 parent: ENH-3468
 confidence_score: 100
 outcome_confidence: 96
+verify_verdict: NON_VALID
 score_complexity: 21
 score_test_coverage: 25
 score_ambiguity: 25
@@ -47,7 +48,7 @@ This child covers **Implementation Step 2** in full, including its dedicated wir
 Two coexisting conventions in this codebase express "a sink failure must never fail the run":
 
 - `except Exception as exc:  # noqa: BLE001 — <rule>` with a `logger.warning`/`logger.error` — `fsm/persistence.py:905` (`promote_run_artifact()`, "promotion must never fail the run"), `fsm/persistence.py:85`, `worktree_utils.py:847`, `learning_tests/gate.py:79`, `skill_expander.py:163`, `parallel/worker_pool.py:1945,1970`, `cli/sprint/run.py:303`, `cli/harness.py:88,113,142,148,1190,1828`.
-- Bare `except Exception: pass` with a `# Non-fatal (ENH-NNNN)` prose comment and no `noqa` — `fsm/executor.py:2565-2584` (ENH-3204), `:4288-4309` (ENH-2463, `record_loop_run_summary`), `:4311-4314` (ENH-2724, `record_usage_event`), `runner_spec.py:318-333`. These are the guards `_finish()` already uses so an analytics-sink failure can't discard the run — the same shape as this issue's target, one layer down.
+- Bare `except Exception: pass` with a `# Non-fatal (ENH-NNNN)` prose comment and no `noqa` — `fsm/executor.py:2609-2628` (ENH-3204), `:4332-4353` (ENH-2463, `record_loop_run_summary`), `:4355-4380` (ENH-2724, `record_usage_event`), `runner_spec.py:318-333`. These are the guards `_finish()` already uses so an analytics-sink failure can't discard the run — the same shape as this issue's target, one layer down.
 
 Use the first shape (logged, `noqa: BLE001` comment), since a silent `pass` would hide a disk-full condition the operator needs to see. `BLE` is not in the repo's enabled ruff rule set (`scripts/pyproject.toml` `select = ["E","F","W","I","UP","B","C4"]`), so the comment is documentation of intent, not lint-enforced.
 
