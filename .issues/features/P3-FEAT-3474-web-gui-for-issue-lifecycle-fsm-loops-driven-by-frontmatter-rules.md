@@ -59,6 +59,16 @@ _Added by review — 2026-09-16 — based on codebase analysis:_
 - Emitted outcome states are produced by `_outcomeStateLines()` (`policy_builder_core.mjs:458-482`): `actionType` is one of `none | prompt | slash_command`, and `slash_command` bodies are emitted verbatim as `action: <body>`. The lifecycle verbs therefore map cleanly onto `slash_command` outcomes whose body embeds an issue-identity context variable.
 - `loops/rn-remediate.yaml:11-36` is the precedent for a per-issue loop: `issue_id` is a `parameters:` self-declaration (`rn-remediate.yaml:35`), not `with:` (`with:` is the caller-side key for sub-loop/fragment invocations, `fsm/schema.py:684`), and the loop is run as `ll-loop run rn-remediate --context issue_id=<ID>`.
 
+_Added by pre-implementation review (4th pass) — 2026-09-16 — based on codebase analysis:_
+
+- **Terminal states never run their action.** `FSMExecutor` returns the instant it enters a `terminal: true` state (`fsm/executor.py:816`, "Check terminal" precedes action execution). `_outcomeStateLines()` (`policy_builder_core.mjs:458-482`) emits a `finish` outcome that has an action as `action: …` + `terminal: true` in a **single** state, so that action is dead code. `ll-loop validate` already flags this on the shipped decision-table golden (`sample-decision-table.yaml`'s `escalate` state, BUG-2813 WARNING via `_validate_terminal_action_ok`, `fsm/validation/evaluator_rules.py:32`). Because the Verb Table defaults `implement` and `verify` to `finish`, a naive reuse of `_outcomeStateLines()` would emit an `implement` state whose `/ll:manage-issue` never executes.
+- **`ll-loop validate` on the existing decision-table golden emits three WARNINGs today**, all of which the lifecycle emit would inherit: (1) BUG-2813 terminal-action (above); (2) `scope:` undeclared ("falls back to a repo-root lock that false-conflicts with every other concurrently running loop"); (3) MR-12 `_validate_pruning_profile` check 3 (`evaluator_rules.py:251-360`) — fires for **every** state whose `action` starts with `/` and matches `_SKILL_INVOKE_RE` (`/ll:([a-zA-Z0-9_-]+)`, `_base.py:192`) when neither the state nor the loop declares `pruning_profile:`; suppressed only by loop-level `pruning_profile_ok: true`. Every verb state is a `/ll:` slash command, so this fires once per emitted verb. rn-remediate carries the same MR-12 warning on its `re_assess` state.
+- `ll-issues path <ID>` (`cli/issues/path_cmd.py`) exists, exits 1 when the ID does not resolve, and prints the path **relative to `config.project_root`** (or `{"path": …}` with `--json`), not relative to the shell cwd.
+- `renderDimensions()` (`.tmpl:281-299`) attaches a `✕` delete button to every dimension row unconditionally; there is no per-row lock today.
+- `_validate_policy_dimensions_scored` is covered in `scripts/tests/test_fsm_validation_reachability.py` (the only test file that references it).
+- Fragment deep-merge (`fsm/fragments.py:66-150`) is "fragment is the base, state fields override", so caller-supplied `next:`/`on_error:` on a `fragment: frontmatter_scores` state survive — confirmed, no gap.
+- `parse_frontmatter` behaviour reproduced live: `decision_needed: true` → `'true'`; `blocked_by: []` → `[]`; `blocked_by: BUG-1` → `'BUG-1'`; `deferred_reason:` → `None`; `confidence_score: 007` → `'007'` (`coerce_types=False`) / `7` (`True`); `status: completed` → `'done'`; `title: 'a: b'` → `'a: b'`. Matches the Encoding Rules.
+
 ## Expected Behavior
 
 A new `issue_lifecycle` mode on `policy-router-builder.html.tmpl` where:
@@ -232,6 +242,11 @@ template's existing outcome default (`.tmpl:656` seeds `rescore`) rather than
 forcing finish-only. `max_steps` bounds a non-converging refine cycle, exactly
 as it bounds `deep_repair → score` in `decision_table` mode.
 
+**`finish` is emitted as `next: done`, not `terminal: true`.** A terminal
+state's action never executes (`executor.py:816`), so `implement`/`verify`
+would be no-ops if emitted as terminal-with-action. See Proposed Solution §2
+"Finish transitions must not be emitted as terminal-with-action".
+
 ## Motivation
 
 `autodev.yaml` (2652 lines) is little-loops' own hand-tuned production loop for
@@ -256,7 +271,9 @@ and the template's inline script. Three pieces of work:
 Add a `frontmatter_scores` fragment alongside `policy_parse_scores`. It is a
 shell state that:
 
-- resolves `${context.issue_id}` to a path via `ll-issues path <ID>`;
+- resolves `${context.issue_id}` to a path via `ll-issues path <ID> --json`
+  and joins the returned `path` onto the project root (the command prints a
+  path relative to `config.project_root`, not the shell cwd — `path_cmd.py`);
 - **deletes every `rubric-dim-*.txt` and `rubric-aggregate.txt`** in
   `${context.run_dir}` (see Encoding Rules § Clean slate);
 - parses the file with `parse_frontmatter(content, coerce_types=False)`;
@@ -318,17 +335,45 @@ check for typo'd dimension names.
     for the shape; `with:` is the caller-side key used when *invoking* a
     sub-loop/fragment, per `fsm/schema.py:684`, not a self-declaration key —
     corrected 2026-09-16, see Verification Notes);
+  - top-level `scope: ["."]` (the loop edits an issue file and whatever the
+    verb skills touch; without `scope:` validate WARNs about the repo-root
+    lock fallback) and `pruning_profile_ok: true` with a preceding YAML
+    comment (`# every verb is a /ll: skill; MR-12 would otherwise warn per
+    verb state`). Both are required for the zero-warnings AC — see the 4th-pass
+    findings.
   - `initial: score` → `score: {fragment: frontmatter_scores, next:
     policy_dispatch, on_error: failed}` → `policy_dispatch` (route-map
     generation as in `_serializeDecisionTable`, except the `_error` sentinel
-    routes to `failed`) → **one outcome state per verb that a rule or the
-    fallback references** (not one per model outcome, unlike
+    routes to `failed`) → **one outcome state per emitted verb** (see
+    "Emitted-verb closure" below; not one per model outcome, unlike
     `_serializeDecisionTable`, which would emit all five verb states for a
-    three-verb loop) via the existing `_outcomeStateLines()`, with
-    ` ${context.issue_id}` appended to each `slash_command` body → a fixed
-    `failed: {terminal: true}` state (the unresolved-issue-ID exit; see §1).
-    `failed` is in `FAILURE_TERMINAL_NAMES` (`fsm/schema.py:34`), so the run
-    is reported as a failure terminal without declaring `failure: true`.
+    three-verb loop), with ` ${context.issue_id}` appended to each
+    `slash_command` body and `on_error: failed` on every verb state (a
+    failing verb otherwise advances to `score`, rescoring routes back to the
+    same verb, and the loop spins until `max_steps`) → a bare
+    `done: {terminal: true}` state → a fixed `failed: {terminal: true}` state
+    (the unresolved-issue-ID exit; see §1). `failed` is in
+    `FAILURE_TERMINAL_NAMES` (`fsm/schema.py:34`), so the run is reported as a
+    failure terminal without declaring `failure: true`.
+  - **Finish transitions must not be emitted as terminal-with-action.** The
+    executor never runs a terminal state's action (`executor.py:816`), so a
+    verb with `transition.kind === "finish"` is emitted as a **non-terminal**
+    state with `next: done`, and `done: {terminal: true}` is emitted bare.
+    This is why `implement`/`verify` (Verb Table defaults `finish`) actually
+    run. `_outcomeStateLines()` produces the broken shape today for any
+    finish outcome that has an action (the decision-table golden's `escalate`
+    state trips BUG-2813); fix it **in `_outcomeStateLines()` itself** so
+    both modes benefit, regenerate `sample-decision-table.yaml` +
+    `sample-decision-table.model.json`'s golden output accordingly, and note
+    the golden change in the commit. (This relaxes the "existing goldens
+    byte-unchanged" AC to: unchanged **except** for the BUG-2813 fix, which
+    is a deliberate, called-out regeneration.) An outcome with
+    `actionType: none` and `finish` may still be emitted as a bare terminal.
+  - **Emitted-verb closure.** The set of emitted verb states is the
+    transitive closure of: verbs targeted by a rule, the fallback verb, and
+    any verb named as the `goto` target of an already-emitted verb. Without
+    the `goto` step, "refine → Go to gate" with no rule targeting `gate`
+    emits `next: gate` to a nonexistent state (a validate ERROR).
 - `_serializeRulesText()` needs **no change** for `string` or `list`:
   non-boolean dims already pass their op and value through verbatim. Both
   types are enforced only at the UI layer (`opsForType()` and value
@@ -352,6 +397,14 @@ check for typo'd dimension names.
   switching **out** replaces it with `seedExample(<new mode>)`.
   `#start-blank-btn` calls `blankModel(state.mode)` so a blank lifecycle model
   still carries the locked built-in dimensions and the five verbs.
+- **Built-in dimensions are locked, not deletable.** `renderDimensions()`
+  (`.tmpl:281-299`) puts a `✕` on every row; in this mode the button is
+  omitted for rows whose normalized name is in
+  `BUILTIN_FRONTMATTER_DIMENSIONS` (custom rows keep it). Rationale: deleting
+  `priority` while a rule uses `priority_rank` would still score at runtime
+  (the scorer keys off the `priority_rank:numeric` entry) but would drop the
+  entry from the rule editor's dimension dropdown, leaving an orphaned
+  predicate the UI can no longer edit.
 - `#dim-type` gains `string` and `list` options; `opsForType()` restricts
   `string` to `==`/`!=` (`list` keeps all six); the rule-value input for
   `string` dims rejects empty values and values containing `&` or `->`; the
@@ -411,6 +464,10 @@ _Added by `/ll:refine-issue` — 2026-09-16 — based on codebase analysis:_
   mode option, `string` dim type, `opsForType()` branch, verb-outcome UI,
   frontmatter Try-it fieldset, and every `state.mode` dispatch site listed in
   the findings inventory.
+- `scripts/tests/fixtures/policy_builder/sample-decision-table.yaml` (and the
+  JS golden text in `policy_validator.test.mjs` if it inlines it) — regenerate
+  for the BUG-2813 `_outcomeStateLines()` fix (the `escalate` finish outcome
+  becomes `next: done` + bare `done:`). Diff must be limited to those lines.
 - `scripts/tests/fixtures/policy_builder/golden_policy_router_builder.html` —
   byte-mirrored golden fixture of the full stamped template;
   `test_enh3035_artifact_template_kit.py::test_policy_builder_renders_byte_identically_to_golden_fixture`
@@ -467,10 +524,22 @@ _Added by `/ll:refine-issue` — 2026-09-16 — based on codebase analysis:_
   `encodeFrontmatterScores`), exactly as `conformance_corpus.json` pins
   `evaluate_rules`. Separate per-language tests would let the two encoders
   drift.
-- `scripts/tests/test_fsm_validation*.py` (wherever
-  `_validate_policy_dimensions_scored` is covered) — a loop with
+- `scripts/tests/test_fsm_validation_reachability.py` (the file that covers
+  `_validate_policy_dimensions_scored`) — a loop with
   `context.frontmatter_dimensions` and no `rubric_dimensions` produces zero
   "never scored" warnings; a predicate on a dim absent from both still warns.
+- `test_golden_issue_lifecycle_yaml_validates` must assert on **all**
+  severities (`validate_fsm(fsm) == []`), not filter to ERROR as
+  `test_golden_yaml_validates` does (`test_policy_builder_emit.py:101`) —
+  otherwise the three inherited warnings (BUG-2813 terminal-action, missing
+  `scope:`, MR-12 pruning-profile) pass silently and the zero-warnings AC is
+  unenforced.
+- `scripts/tests/js/policy_validator.test.mjs` — a case pinning the
+  emitted-verb closure: model with rules → `refine` only, `refine.transition
+  = {kind: "goto", target: "gate"}`, assert the YAML contains a `gate:` state
+  and `ll-loop validate` passes; and a case asserting a `finish` verb with a
+  `slash_command` emits `next: done` plus a bare `done:` terminal, never
+  `terminal: true` alongside `action:`.
 - `scripts/tests/fixtures/policy_builder/sample-issue-lifecycle.model.json`
   and `.yaml` — new golden fixture pair; the YAML must pass `ll-loop validate`.
 - `scripts/tests/test_policy_builder_corpus.py` /
@@ -557,7 +626,10 @@ _Added by `/ll:refine-issue` — 2026-09-16 — based on codebase analysis:_
 - **Risk**: Low - additive third mode alongside `decision_table`/`rubric`;
   the new fragment is additive to `lib/policy-router.yaml`; neither existing
   mode's emitted YAML changes (verified by the existing golden fixtures).
-- **Breaking Change**: No
+- **Breaking Change**: No — the one shared-code change (`_outcomeStateLines`
+  BUG-2813 fix) alters `decision_table` emitted YAML for finish-with-action
+  outcomes, but only from a shape whose action never ran to one where it
+  does; no consumer could have depended on the dead action.
 
 ## Design Decision: emitted-artifact shape (resolved)
 
@@ -606,10 +678,24 @@ because the emitted loop makes no sub-loop calls.
   pinned non-input "Otherwise" catch-all, per FEAT-2301/FEAT-2390's shipped
   shell conventions.
 - [ ] The emitted YAML imports only `lib/policy-router.yaml`, declares
-  `parameters: { issue_id: {...} }`, uses `frontmatter_scores` →
+  `parameters: { issue_id: {...} }`, `scope: ["."]`, and
+  `pruning_profile_ok: true` (commented), uses `frontmatter_scores` →
   `policy_table_dispatch`, and passes `ll-loop validate` with **zero
-  warnings** (the validator recognizes `context.frontmatter_dimensions` as a
-  score source).
+  warnings of any rule** — the validator recognizes
+  `context.frontmatter_dimensions` as a score source, and no BUG-2813,
+  `scope:`, or MR-12 warning is emitted. The pytest asserts on every
+  severity, not ERROR only.
+- [ ] A verb whose transition is `finish` is emitted as a **non-terminal**
+  state with `next: done` plus a bare `done: {terminal: true}`; the emitted
+  YAML never pairs `action:` with `terminal: true`. The seeded example's
+  `implement` state actually invokes `/ll:manage-issue` in an end-to-end run
+  (observable in the run's events log), not a silent finish.
+- [ ] The emitted verb set is the transitive closure over rule targets, the
+  fallback, and `goto` targets of emitted verbs: a `goto` to an otherwise
+  unreferenced verb emits that verb's state and validates clean.
+- [ ] Every emitted verb state carries `on_error: failed`.
+- [ ] Built-in dimensions show no delete control in `issue_lifecycle` mode;
+  custom dimensions remain deletable.
 - [ ] The emitted `score` state sets `on_error: failed` and the YAML carries a
   `failed: {terminal: true}` state; running the loop with an unresolvable
   `issue_id` ends in `failed` without invoking any verb.
@@ -640,8 +726,10 @@ because the emitted loop makes no sub-loop calls.
 - [ ] The new mode's pure-function core logic ships with `node --test`
   conformance coverage, gated into `python -m pytest scripts/tests/` the same
   way `test_policy_builder_node_gate.py` gates the existing modes.
-- [ ] Existing `decision_table` and `rubric` golden YAML fixtures are
-  byte-unchanged.
+- [ ] The `rubric` golden YAML fixture is byte-unchanged. The
+  `decision_table` golden changes **only** in the BUG-2813 fix (finish
+  outcomes with an action become `next: done` + bare `done:`); the diff is
+  limited to those lines and is called out in the commit message.
 - [ ] The GUI does not attempt to reproduce `autodev.yaml`'s queue/retry/rate-
   limit/repair-cycle machinery (see Non-goals).
 
@@ -674,9 +762,19 @@ because the emitted loop makes no sub-loop calls.
   `mode === "issue_lifecycle"` branch ahead of the decision-table fallback
   (`policy_builder_core.mjs:645`).
 - `_serializeIssueLifecycle(model: Model) -> string` — new; emits the shape
-  in Proposed Solution §2, reusing `_serializeRulesText`, the route-map
-  builder, and `_outcomeStateLines`; emits only rule/fallback-referenced
-  verbs and appends ` ${context.issue_id}` to each `slash_command` body.
+  in Proposed Solution §2 (including `scope`, `pruning_profile_ok`, `done`,
+  `failed`), reusing `_serializeRulesText`, the route-map builder, and
+  `_outcomeStateLines`; emits the goto-closed verb set and appends
+  ` ${context.issue_id}` to each `slash_command` body.
+- `_emittedVerbs(model: Model) -> string[]` — new pure helper; transitive
+  closure over rule targets, `model.fallback`, and `transition.target` of
+  `goto` outcomes already in the set. Exported for `node --test`.
+- `_outcomeStateLines(outcome, {doneState = "done"} = {}) -> string[]` —
+  existing (`policy_builder_core.mjs:458`); changed so a `finish` transition
+  on an outcome **with** an action emits `next: <doneState>` instead of
+  `terminal: true` (BUG-2813 fix, both modes). Callers must emit the bare
+  `<doneState>: {terminal: true}` once. `finish` with `actionType: none`
+  keeps emitting `terminal: true`.
 - `serializeFrontmatterDimensions(model: Model) -> string` — new; produces
   the `name:type|name:type` text for `context.frontmatter_dimensions`.
 - `parseFrontmatterBlock(text: string) -> Record<string, unknown>` — new pure
@@ -809,6 +907,7 @@ record of what was wrong and fixed, not an outstanding action item).
 
 
 ## Session Log
+- pre-implementation review (4th pass) - 2026-09-16 - seven fixes: (1) **blocking** — `finish` verbs (`implement`/`verify` defaults) were emitted terminal-with-action and the executor never runs a terminal's action (executor.py:816); now `next: done` + bare `done:`, fixed in shared `_outcomeStateLines()` (BUG-2813) with a called-out decision-table golden regen; (2) zero-warnings AC was unreachable — live validate on the decision-table golden emits BUG-2813, missing-`scope:`, and MR-12 pruning-profile warnings; emit `scope: ["."]` + commented `pruning_profile_ok: true`, and the golden pytest asserts all severities; (3) emitted-verb set is now the `goto`-transitive closure (dangling `next:` otherwise); (4) `on_error: failed` on verb states; (5) built-in dims locked against `✕` delete; (6) `ll-issues path` prints project-root-relative — fragment uses `--json` and joins; (7) validator test file named (`test_fsm_validation_reachability.py`). Confirmed no gap: fragment deep-merge preserves caller `on_error`; `parse_frontmatter` claims reproduced live.
 - `/ll:verify-issues` - 2026-09-16T17:34:14 - `28136058-041a-417b-9160-4c1439302c2e.jsonl`
 - pre-implementation review (3rd pass) - 2026-09-16 - six fixes: (1) resolved `blocked_by` absent→0 vs numeric absent→no-file contradiction by adding a `list` type (count, always written); (2) verb bodies stored bare (`/ll:<name>`), `${context.issue_id}` appended at emit time — the argument-bearing form trips the exact-match skill `<select>` and unknown-skill check; (3) Try-it must evaluate compiled rule text — existing decision_table Try-it passes raw `==true`/`==false` ops to `evaluateRules`, which treats them as `!=` (node-verified; separate BUG); (4) only rule/fallback-referenced verbs emitted, verbs locked, unreachable-outcome message suppressed; (5) derived numeric `priority_rank` so `P0–P2` rules work; (6) mini-parser handles quoted scalars and first-`:` split. Noted `failed` ∈ `FAILURE_TERMINAL_NAMES`.
 - `/ll:confidence-check` - 2026-09-16T17:18:27 - `59d9bf8a-daa3-4ac7-90d2-36e60eb01134.jsonl`
