@@ -1,0 +1,11 @@
+{
+  "id": "802378f9-8f0f-42ff-a81e-0a5f595cf672",
+  "type": "decision",
+  "timestamp": "2026-09-16T04:15:50Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Export active decisions into OCR rule format so review plugins enforce them mechanically; piece 1 of two-piece OCR integration.",
+  "rule": "Captured: Decision-record to open-code-review rule exporter",
+  "scope": "issue",
+  "issue": "FEAT-3485"
+}
