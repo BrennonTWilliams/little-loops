@@ -11,6 +11,13 @@ parent: ENH-3468
 blocked_by:
 - ENH-3471
 decision_needed: false
+verify_verdict: VALID
+confidence_score: 98
+outcome_confidence: 92
+score_complexity: 22
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 20
 ---
 
 # ENH-3482: fleet-review buckets no_route runs separately from error (follow-up to ENH-3471)
@@ -26,15 +33,18 @@ ENH-3471 introduces `terminated_by="no_route"` for decision-step failures (no va
 ## Expected Behavior
 
 - `_derive_loop_outcome()` reads `terminated_by` before the `error`-key fallback, and returns `"no_route"` for that value.
+- The bucket label is the underscore form `"no_route"`, **not** `"no-route"`. Labels are allowed to diverge from wire tokens (`max_steps` → `max-steps`), but here the label deliberately matches `terminated_by`, `EXIT_CODES` (`cli/loop/runner.py:57`), and `fsm/types.py:40` so a single grep finds every site.
 - `ll-logs fleet-review` output gains a `no_route` bucket; the `"error"` bucket's meaning ("the action crashed or an infra/host signal aborted the run") is unchanged for every other run.
-- `docs/runbooks/FLEET_LOOP_REVIEW.md` documents the new bucket and what it implies (missing route declaration — a loop-authoring fix, not an environment fix).
-- `scripts/tests/test_ll_logs.py` assertions on the `"error"` bucket still pass; a new case covers a `loop_complete` event with `terminated_by="no_route"` and an `error` key.
+- `"no_route"` is added to `_FLAG_OUTCOMES`, so `is_flagged()` treats it as a flagging failure and the "Delta vs baseline" table gains a `Δno_route` column (decided — see `## Proposed Solution` → `### Decision Rationale`).
+- `docs/runbooks/FLEET_LOOP_REVIEW.md` documents the new bucket and what it implies (missing route declaration — a loop-authoring fix, not an environment fix). The prose count "one of the four failure outcomes" (`:90`) becomes five.
+- `scripts/tests/test_ll_logs.py` assertions on the `"error"` bucket still pass; two new cases cover a `loop_complete` event with `terminated_by="no_route"` — one with an `error` key (the normal case, `_finish()` always passes `error=`) and one without (belt-and-suspenders, mirroring the `workdir_vanished` pair).
+- `"no_route"` is added to the `TestIsFlaggedParity` `top_outcome` parametrize list (`test_ll_logs.py:6660`).
 
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-09-15 — based on codebase analysis:_
 
-- The test bullet above covers `_derive_loop_outcome()`'s own `test_derive_outcome_*` cases in `test_ll_logs.py` (`TestLoopFleet`, `:5136-5181`), but there is a second, separate hardcoded outcome-vocabulary enumeration site: `TestIsFlaggedParity`'s `top_outcome` parametrize list (`test_ll_logs.py:6660`), which does not yet include `"no_route"`. Whether it should is downstream of the `_FLAG_OUTCOMES` decision — see `## Proposed Solution` and `## Program Design` → Decision Rules.
+- The `_derive_loop_outcome()` test bullets above map to `test_derive_outcome_*` cases in `test_ll_logs.py` (`TestLoopFleet`, `:5136-5181`). There is a second, separate hardcoded outcome-vocabulary enumeration site: `TestIsFlaggedParity`'s `top_outcome` parametrize list (`test_ll_logs.py:6660`), which does not yet include `"no_route"`. With Option A decided, `"no_route"` **must** be added to that list so parity between `is_flagged()` and `_flag_loops()` is exercised for the new flagging outcome.
 
 ## Impact
 
@@ -82,10 +92,13 @@ Decided by `/ll:decide-issue` on 2026-09-15.
 
 - `scripts/little_loops/cli/logs.py` — `_derive_loop_outcome()` (`:2058-2083`): reorder the `terminated_by` check ahead of the `"error" in event` fallback for the `no_route` case only, per Expected Behavior.
 - `scripts/little_loops/cli/logs.py` — `_FLAG_OUTCOMES` (`:1188`, `frozenset({"error", "max-steps", "stalled", "failed"})`): add `"no_route"` to this frozenset (decided — Option A, see `### Decision Rules` below and `## Proposed Solution` → `### Decision Rationale`). This frozenset is also the flagging-failure set consumed by `is_flagged()` (`:1191-1210`) and the "Delta vs baseline" table's column set (`outcome_keys = sorted(_FLAG_OUTCOMES)`, `:2570`), so the change has effects beyond bucket labeling.
-- `docs/runbooks/FLEET_LOOP_REVIEW.md` — outcome-vocabulary block (`:93-97`, the `` converged | failed | error | max-steps | stalled | interrupted | signal `` fenced line) and the flagging-rule bullets (`:90-104`) per Expected Behavior. This is the only place in `docs/` this vocabulary is enumerated (confirmed by a repo-wide search).
+- `docs/runbooks/FLEET_LOOP_REVIEW.md` — outcome-vocabulary block (`:93-97`, the `` converged | failed | error | max-steps | stalled | interrupted | signal `` fenced line) and the flagging-rule bullets (`:90-104`) per Expected Behavior. The prose at `:90-91` ("one of the four failure outcomes: `error`, `max-steps`, `stalled`, `failed`") and `:99` ("Only `error`, `max-steps`, `stalled`, and `failed` count as flagging failures") both need `no_route` added and the count word updated to five. This is the only place in `docs/` this vocabulary is enumerated (confirmed by a repo-wide search).
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/cli/logs.py:1112` — `_LoopRunRecord.outcome` dataclass field carries an inline comment enumerating the vocabulary verbatim (`# converged / failed / error / max-steps / stalled / interrupted / signal`); not consumed programmatically, but reads as incomplete once `no_route` is a live bucket. Add `no_route` to the comment.
+
+_Review pass — 2026-09-15:_
+- `scripts/little_loops/cli/logs.py:1191-1210` — `is_flagged()` docstring explains the `_FLAG_OUTCOMES` boundary (which buckets are operator/infra exits and therefore excluded). Once `no_route` joins the frozenset, add one sentence stating that `no_route` is *included* as a loop-authoring failure (ENH-3471/ENH-3482), so the docstring and the runbook's `:99-104` paragraph tell the same story. This is a public function consumed by `fleet_improve.py`, so its docstring is the canonical rule text.
 
 ### Dependent Files (Callers/Importers)
 
@@ -105,7 +118,9 @@ _Wiring pass added by `/ll:wire-issue`:_
 ### Tests
 
 - `scripts/tests/test_ll_logs.py`, class `TestLoopFleet` (`:5058` on) — `test_derive_outcome_*` cases at `:5136-5181` cover `_derive_loop_outcome()` directly; convention is `test_derive_outcome_<label>` naming, a one-line `"<condition> → <bucket>"` docstring, a minimal inline event dict (not the class's `_loop_complete()` builder), and a direct `assert _derive_loop_outcome(event) == "<bucket>"`. The `workdir_vanished`-with-vs-without-`error` pair (`:5175`, `:5181`) is precedent for exercising both paths to the same bucket when a new `terminated_by` value could also be caught by an earlier branch.
-- `scripts/tests/test_ll_logs.py`, class `TestIsFlaggedParity` (`:6651`) — its `top_outcome` parametrize list at `:6660` (`["converged", "failed", "error", "max-steps", "stalled", "interrupted", "signal"]`) is a second, separate hardcoded outcome-vocabulary enumeration site that does not yet include `"no_route"`. Expected Behavior's test bullet only names `test_ll_logs.py`'s `"error"` bucket assertions and a new `no_route` case for `_derive_loop_outcome()`; it does not mention this second site, whose correct membership depends on the `_FLAG_OUTCOMES` decision above.
+- `scripts/tests/test_ll_logs.py`, class `TestLoopFleet` — add `test_derive_outcome_no_route_with_error` (event carries `terminated_by="no_route"` plus an `error` key; asserts `"no_route"`, proving the new branch wins over the `"error" in event` fallback) and `test_derive_outcome_no_route_without_error` (same `terminated_by`, no `error` key; asserts `"no_route"`). Mirrors the `workdir_vanished` pair at `:5175`/`:5181`.
+- `scripts/tests/test_ll_logs.py`, class `TestIsFlaggedParity` (`:6651`) — its `top_outcome` parametrize list at `:6660` (`["converged", "failed", "error", "max-steps", "stalled", "interrupted", "signal"]`) is a second, separate hardcoded outcome-vocabulary enumeration site. Add `"no_route"` to it (decided — Option A).
+- Delta-table safety: no existing test asserts on the "Delta vs baseline" header row (repo-wide search for `Δ`/`Delta vs baseline` in `test_ll_logs.py` finds nothing), so the new `Δno_route` column cannot break a snapshot assertion.
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_ll_logs.py:5927` — `test_flag_loops_each_flag_outcome_flags_via_outcome_clause`, parametrized over `sorted(_FLAG_OUTCOMES)`. This is the "self-extending parametrized test" the Decision Rationale (`## Proposed Solution` → `### Decision Rationale`) credits for Option A but does not cite by location — once `"no_route"` is added to `_FLAG_OUTCOMES`, this test automatically gains a `no_route` case with no edit required. No action needed beyond the `_FLAG_OUTCOMES` change itself; listed for verification.
@@ -143,11 +158,13 @@ If `no_route` is added to `_FLAG_OUTCOMES` (see Decision Rules below), the bucke
 - **Decided** (`/ll:decide-issue`, 2026-09-15): `terminated_by="no_route"` counts as a fleet-review *flagging* failure — `"no_route"` is added to `_FLAG_OUTCOMES` (`logs.py:1188`), Option A. See `## Proposed Solution` → `### Decision Rationale` for scoring and evidence.
 - **Inputs**: the `_FLAG_OUTCOMES` frozenset (`logs.py:1188`); membership is binary (add `"no_route"` or don't).
 - **Effect**: `is_flagged()` treats a loop whose `top_outcome` is `no_route` as unhealthy, and the "Delta vs baseline" table gains a dedicated `Δno_route` column.
+- **Decided** (review pass, 2026-09-15): bucket label is `"no_route"` (underscore), not `"no-route"`. The `max_steps` → `max-steps` divergence is permitted, not required; matching the wire token here keeps `terminated_by`, `EXIT_CODES`, `fsm/types.py`, the runbook, and the Δ column greppable by one string. Do not normalize to the hyphen form during implementation.
 
 ## Scope Boundaries
 
 - **In scope**: `_derive_loop_outcome()`, its tests, the fleet-review runbook, and any fleet-review summary table that enumerates outcome buckets.
-- **Out of scope**: the executor, `ExecutionResult`, and every consumer ENH-3471 already widens. Do not start until ENH-3471 has landed — the value does not exist before then.
+- **Out of scope**: the executor, `ExecutionResult`, and every consumer ENH-3471 already widens. Do not start until ENH-3471 has landed — the value does not exist before then. (Review pass 2026-09-15: ENH-3471 is `done`; this gate is satisfied.)
+- **Out of scope**: other `terminated_by` values that `_derive_loop_outcome()` still folds into `converged`/`failed` by `final_state` heuristics (`stall_detected`, `host_pressure_abort`, `host_budget_exceeded`, `cost_ceiling_exceeded`). Noted for a possible follow-up; not part of this change.
 
 ## Parent Issue
 
@@ -159,6 +176,8 @@ Decomposed from ENH-3468. Follow-up to ENH-3471, which explicitly defers this un
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-16T01:18:33 - `2f2bf031-3f5c-40d9-b9d6-836752f92654.jsonl`
+- `/ll:verify-issues` - 2026-09-16T01:15:24 - `48e5fa4b-67af-4adc-99aa-ea7f31e90c78.jsonl`
 - `/ll:wire-issue` - 2026-09-16T01:08:26 - `0b73baa1-755e-43aa-bf89-93ccf29c9752.jsonl`
 - `/ll:decide-issue` - 2026-09-16T00:52:53 - `f3b728bf-d5f0-4c49-9606-35ed513fee07.jsonl`
 - `/ll:refine-issue` - 2026-09-15T23:47:51 - `00985229-ae90-46cd-ac9a-bd0275ccc50b.jsonl`
