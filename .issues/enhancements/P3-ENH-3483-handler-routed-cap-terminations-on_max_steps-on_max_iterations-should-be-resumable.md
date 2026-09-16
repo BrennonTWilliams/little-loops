@@ -10,6 +10,12 @@ discovered_date: '2026-09-16'
 captured_at: '2026-09-16T01:44:24Z'
 reconcile_attempted: true
 verify_verdict: VALID
+confidence_score: 100
+outcome_confidence: 86
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 # ENH-3483: Handler-routed cap terminations (on_max_steps / on_max_iterations) should be resumable
@@ -253,6 +259,7 @@ what was wrong and fixed, not an outstanding action item).
   skipped. Not a match to any completed issue — regression detection skipped.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-16T02:55:51 - `cb56b179-a2ac-49b2-9026-bccc5ed37609.jsonl`
 - `/ll:verify-issues` - 2026-09-16T02:49:53 - `9f9fa6f8-45a5-41d0-954a-49cd44bc619d.jsonl`
 - `/ll:wire-issue` - 2026-09-16T02:36:16 - `6b434db3-d48c-4bb4-adf2-19646e1e0d80.jsonl`
 - `/ll:reconcile-issue` - 2026-09-16T02:12:37 - `7a435e29-efad-4c49-9f3c-8d2f500cf069.jsonl`
