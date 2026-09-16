@@ -55,14 +55,16 @@ Decisions are recorded via `ll-issues decisions` (`.ll/decisions.yaml` / `.ll/de
 
 Three layers, sized to the problem:
 
-1. **Shared selector (target-agnostic, refactor of existing code).** Add `active_required_rules(path: Path | None = None) -> list[RuleEntry]` to `scripts/little_loops/decisions.py`, lifting the three-step filter out of `sync_to_local_md()` (`decisions_sync.py:40-45`) and making `sync_to_local_md` call it. Output order must be deterministic (stable on `timestamp`, then `id`) so every exporter is idempotent for free.
+1. **Shared selector (target-agnostic, refactor of existing code).** Add `active_required_rules(path: Path | None = None) -> list[RuleEntry]` to `scripts/little_loops/decisions.py`, lifting the three-step filter out of `sync_to_local_md()` (`decisions_sync.py:40-45`) and making `sync_to_local_md` call it. **Do not add a sort.** `load_decisions()` (`decisions.py:385`) returns flat-file entries first, then fragments sorted by `(timestamp, filename)`; that union is already deterministic but is *not* globally timestamp-ordered, so a `(timestamp, id)` sort would reorder `ll.local.md` bullets for any log where flat and fragment entries interleave in time and break AC #6. Load order is what every exporter needs for idempotency, and preserving it is what makes the `sync_to_local_md` refactor a true no-op.
 
-2. **Path scope on the rule itself (target-agnostic, small schema addition).** Add `paths: list[str] = field(default_factory=list)` to `RuleEntry` (`decisions.py:106`), round-tripped in `from_dict`/`to_dict`; empty means repo-wide. Expose it on `ll-issues decisions add --type rule` and `promote` as a repeatable `--path <glob>` flag. This is the only field the current model lacks that *every* plausible rule-engine target needs (OCR `path`, Cursor `.mdc` `globs:`, Copilot `applyTo:`). Do **not** add `severity`: OCR has no severity field, `enforcement` already gates inclusion, and no target consumes a graded value.
+2. **Path scope on the rule itself (target-agnostic, small schema addition).** Add `paths: list[str] = field(default_factory=list)` to `RuleEntry` (`decisions.py:106`); empty means repo-wide. `from_dict` must `copy.pop("paths", [])` explicitly — today unknown keys fall into `extra` (`decisions.py:137`), so without the pop a legacy `paths` key would land in both places. `to_dict` emits `paths` **only when non-empty**: `to_dict()` feeds `update_entry`, `save_decisions`, and `add_entry`, and an unconditional `paths: []` would rewrite every existing fragment/compacted YAML and trip existing `to_dict` equality tests. Expose it on `ll-issues decisions add --type rule` and `promote` as a repeatable `--path <glob>` flag; `_cmd_promote` builds the `RuleEntry` field-by-field (`cli/issues/decisions.py:938`), so that constructor call gains `paths=`. This is the only field the current model lacks that *every* plausible rule-engine target needs (OCR `path`, Cursor `.mdc` `globs:`, Copilot `applyTo:`). Do **not** add `severity`: OCR has no severity field, `enforcement` already gates inclusion, and no target consumes a graded value.
 
 3. **Target-keyed exporter seam + OCR exporter.** New module `scripts/little_loops/decisions_export.py` holding:
    - `export_rules(rules: list[RuleEntry], target: str, output_dir: Path, *, scope_globs: list[str] | None = None) -> Path` — public entry point; looks up `target` in `_EXPORTERS: dict[str, Callable[..., Path]]` and raises `ValueError` listing `sorted(_EXPORTERS)` on an unknown target.
-   - `_export_ocr(rules, output_dir, *, scope_globs) -> Path` — the only OCR-specific code; written via `atomic_write_json()`.
+   - `_export_ocr(rules, output_dir, *, scope_globs) -> Path` — the only OCR-specific code; written via `atomic_write_json()`. **Pure**: it never reads config, cwd, or stderr. `scope_globs=None` means `["**/*"]`, nothing more.
    - `_EXPORTERS = {"ocr": _export_ocr}` — plain eager dict. A future Cursor/Copilot exporter is one private function plus one dict entry. No `Protocol`, no `importlib`; the `adapters/core.py` lazy-map pattern is reserved for a third target *and* an actual import cycle.
+
+4. **Scope resolution lives in the CLI, not the library.** `_cmd_export` resolves `scope_globs` with this precedence and passes an explicit list: `--scope` (repeatable) → `decisions.export.scope_globs` from config → `[f"{config.project.src_dir.rstrip('/')}/**/*"]` → `["**/*"]` with a stderr warning about system-rule replacement. The `rstrip("/")` matters: this repo's `src_dir` is `scripts/`, and the naive f-string yields `scripts//**/*`. Keeping config out of `decisions_export.py` keeps the module testable with no project root.
 
 ### OCR emission rules (correctness, not cosmetics)
 
@@ -70,8 +72,10 @@ Proven in `.ll/learning-tests/open-code-review.md` (`status: proven`): `rule.jso
 
 Consequences the adapter must implement:
 
-- **N repo-wide rules cannot be N entries.** Only the first `**/*` entry would ever fire. Group rules by path glob; emit one `rules[]` entry per distinct glob, most specific first (fewest wildcards / longest literal prefix, then lexical for determinism); each scoped entry's `rule` body = that glob's rules **plus all repo-wide rules**, since first-match shadows anything later; the final catch-all entry holds the repo-wide set alone.
-- **A catch-all entry disables OCR's built-in language rules.** Default `scope_globs` to the project's `src_dir` from `.ll/ll-config.json` (e.g. `scripts/**/*`) rather than `**/*`, and prepend a fixed line to every emitted body reminding the reviewer that OCR's system rules for the file's language still apply. Piece 2 can override `scope_globs` if it wants true repo-wide coverage.
+- **N repo-wide rules cannot be N entries.** Only the first `**/*` entry would ever fire. Group rules by path glob; emit one `rules[]` entry per distinct glob, most specific first; each scoped entry's `rule` body = that glob's rules **plus all repo-wide rules**, since first-match shadows anything later; the final catch-all entries (one per `scope_globs` value) hold the repo-wide set alone.
+- **Specificity sort key is exactly** `_glob_sort_key(g) = (-len(literal prefix before the first wildcard char), count of "*" and "**" segments, g)`. Longest literal prefix is primary, fewer wildcards breaks ties, lexical makes it total. Examples: `scripts/fsm/**/*` < `scripts/**/*.py` < `scripts/**/*` < `**/*.py`.
+- **Scoped-vs-scoped overlap is a known limitation.** Folding handles repo-wide rules only. Two scoped globs that overlap without nesting (e.g. `**/*.py` and `scripts/fsm/**/*`) still shadow each other under first-match-wins: a file under `scripts/fsm/` gets only the `scripts/fsm/**/*` entry. Document this in the guide; optionally warn on stderr when one glob's literal prefix is a prefix of another's and their suffixes differ. Do not attempt general glob-intersection folding.
+- **A catch-all entry replaces OCR's built-in language rules for every matched file.** It does not merely hide them; OCR resolves exactly one entry per file and the project layer outranks the embedded `python.md`. Default `scope_globs` to the project's `src_dir` (e.g. `scripts/**/*`, which in this repo also covers `scripts/tests/`) rather than `**/*`, and prepend a fixed line to every emitted body stating that the file's language conventions (OCR's system rules) still apply and are not restated here. The docs must say "replaces", not "reminds". Piece 2 can override `scope_globs` if it wants true repo-wide coverage.
 - **Rule body format** per entry: one bullet per rule, `- <rule text> (decision <id>)`, so review output is traceable back to the record. `rationale` is omitted (keeps bodies short; the id is the pointer).
 - **Don't emit `exclude`.** It only gates `ocr review --preview` file selection and is a project-level choice, not a decision.
 
@@ -93,16 +97,17 @@ _Added by `/ll:refine-issue` — 2026-09-16 — based on codebase analysis (reta
 ## Verify First
 
 - ~~OCR's actual rule/config format.~~ **Resolved** — proven in `.ll/learning-tests/open-code-review.md` (raw output `.ll/learning-tests/raw/open-code-review.txt`); see "OCR emission rules" above.
-- Confirm OCR's glob dialect for `path` (does `scripts/**/*.py` match files directly under `scripts/`? brace sets like `**/*.{py,pyi}` are used by system rules, so they are supported). Extend the learning test with one assertion if the dialect matters for the specificity ordering.
+- **Still open, resolve before step 3:** confirm OCR's glob dialect for `path` — does `scripts/**/*.py` match a file directly under `scripts/` (i.e. does `**` match zero segments)? Brace sets like `**/*.{py,pyi}` are used by system rules, so they are supported. The specificity ordering assumes zero-segment `**`; add exactly one assertion to `.ll/learning-tests/open-code-review.md` via `/ll:explore-api` and adjust `_glob_sort_key` if it fails.
+- **Decision to record:** is `.opencodereview/rule.json` a committed generated artifact (like the `ll-adapt` host mirrors) or local-only? It is not gitignored today. Default: **committed**, no staleness gate in this issue; piece 2 may add a mirror-style gate. Record the answer in the guide section.
 
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/decisions.py` — add `paths: list[str]` to `RuleEntry` (`:106`, `from_dict` `:125`, `to_dict` `:145`); add `active_required_rules()` next to `resolve_active()` (`:495`)
+- `scripts/little_loops/decisions.py` — add `paths: list[str]` to `RuleEntry` (`:106`; explicit `pop("paths", [])` in `from_dict` `:125` before the `extra=copy` catch-all; emit in `to_dict` `:145` only when non-empty); add `active_required_rules()` next to `resolve_active()` (`:495`), no sort
 - `scripts/little_loops/decisions_sync.py` — replace the inline filter at `:40-45` with `active_required_rules(decisions_path)`; behaviour unchanged
-- New `scripts/little_loops/decisions_export.py` — `export_rules()`, `_EXPORTERS`, `_export_ocr()` plus private helpers `_group_by_glob()`, `_glob_sort_key()`, `_render_body()`
-- `scripts/little_loops/cli/issues/decisions.py` — `--path` (repeatable, `action="append"`) on `add` (`:116` region) and `promote` (`:270` region); new `export` subparser in `add_decisions_parser()` (`:15`) with required `--target` (`choices` sourced from `decisions_export._EXPORTERS` keys, or a matching literal tuple guarded by a test), `--output-dir`, `--scope`; dispatch branch in `cmd_decisions()` (`:280`), `_cmd_export(path, target, output_dir, scope) -> int` following `_cmd_sync` (`:550`): lazy import in body, stderr + non-zero on failure
-- `scripts/little_loops/config-schema.json` — optional `decisions.export.scope_globs: string[]` (defaults to `[<project.src_dir>/**/*]` when absent); reserve `decisions.export.ocr` as an object for future OCR-only knobs but do not add any now; soft — CLI `--scope` flag suffices for AC
+- New `scripts/little_loops/decisions_export.py` — `export_rules()`, `_EXPORTERS`, `_export_ocr()` plus private helpers `_group_by_glob()`, `_glob_sort_key()`, `_render_body()`; imports only `decisions` and `file_utils`, never `config`
+- `scripts/little_loops/cli/issues/decisions.py` — `--path` (repeatable, `action="append"`) on `add` (`:116` region) and `promote` (`:270` region); `_cmd_promote`'s `RuleEntry(...)` constructor (`:938`) gains `paths=list(args.path or [])`; new `export` subparser in `add_decisions_parser()` (`:15`) with required `--target` whose `choices` is a module-level literal `_EXPORT_TARGETS = ("ocr",)` (keeps parser build import-free, matching the file's lazy-import convention) pinned to `_EXPORTERS` keys by a test, `--output-dir`, `--scope` (repeatable); dispatch branch in `cmd_decisions()` (`:280`); `_cmd_export(config, args, path) -> int` following `_cmd_sync` (`:550`): lazy import in body, resolves `scope_globs` per Proposed Solution §4 using `config.project.src_dir` (`config/core.py:215`), stderr + non-zero on failure
+- `scripts/little_loops/config-schema.json` — **required, not soft**: the `decisions` object is `additionalProperties: false` (`:704`), so `decisions.export.scope_globs: string[]` must be declared once the CLI reads it. Reserve `decisions.export.ocr` as an empty object for future OCR-only knobs. Schema is not enforced at config-load time, so this is a consistency fix, not a runtime gate.
 
 ### Dependent Files (Callers/Importers)
 - `sync_to_local_md()` — the only existing consumer of the selection logic; becomes the first caller of `active_required_rules()`
@@ -132,7 +137,7 @@ _Added by `/ll:refine-issue` — 2026-09-16 — based on codebase analysis (reta
 
 The only existing behaviour touched is `sync_to_local_md()` (`scripts/little_loops/decisions_sync.py:31`). After the refactor it must:
 
-- Select exactly the same entries: `type="rule"`, `enforcement == "required"`, not superseded via `resolve_active()`. `active_required_rules()` adds a stable sort; the current implementation preserves `list_entries` order, which is already timestamp order, so rendered bullet order is unchanged for existing logs.
+- Select exactly the same entries in exactly the same order: `type="rule"`, `enforcement == "required"`, not superseded via `resolve_active()`. `active_required_rules()` preserves `list_entries` order (flat entries, then timestamp-sorted fragments) and adds **no** sort; see Proposed Solution §1 for why a sort would break this.
 - Render bullets as `- {r.rule}` only — no decision id, no `paths`, no rationale. OCR-style traceability suffixes are OCR-adapter concerns and must not leak into `ll.local.md`.
 - Keep the `## Active Rules` replace-or-append logic and `atomic_write` call untouched.
 - Guard: `TestSyncToLocalMd` (`scripts/tests/test_decisions.py:491`) passes without modification.
@@ -147,9 +152,11 @@ The only existing behaviour touched is `sync_to_local_md()` (`scripts/little_loo
 
 ### Signatures
 
-- `active_required_rules(path: Path | None = None) -> list[RuleEntry]` — `list_entries(path, type="rule")` → keep `enforcement == "required"` → `resolve_active()` → stable sort `(timestamp, id)`. Target-agnostic; shared by `sync_to_local_md` and `export_rules`.
+- `active_required_rules(path: Path | None = None) -> list[RuleEntry]` — `list_entries(path, type="rule")` → keep `enforcement == "required"` → `resolve_active()`. Load order preserved, no sort. Target-agnostic; shared by `sync_to_local_md` and `export_rules`.
 - `export_rules(rules: list[RuleEntry], target: str, output_dir: Path, *, scope_globs: list[str] | None = None) -> Path` — public entry point; `_EXPORTERS[target](rules, output_dir, scope_globs=scope_globs)`, `ValueError` on unknown target.
-- `_export_ocr(rules: list[RuleEntry], output_dir: Path, *, scope_globs: list[str] | None = None) -> Path` — groups by glob, orders specific-first, folds repo-wide rules into every scoped body, writes `output_dir / ".opencodereview" / "rule.json"` via `atomic_write_json`, returns the path. `scope_globs` replaces the catch-all `**/*` for repo-wide rules; `None` → `[f"{src_dir}/**/*"]` from config, falling back to `["**/*"]` when no config resolves.
+- `_export_ocr(rules: list[RuleEntry], output_dir: Path, *, scope_globs: list[str] | None = None) -> Path` — groups by glob, orders by `_glob_sort_key`, folds repo-wide rules into every scoped body, writes `output_dir / ".opencodereview" / "rule.json"` via `atomic_write_json`, returns the path. `scope_globs` replaces the catch-all `**/*` for repo-wide rules; `None` → `["**/*"]`. Pure: no config, cwd, or stderr access.
+- `_glob_sort_key(glob: str) -> tuple[int, int, str]` — `(-len(literal prefix), wildcard segment count, glob)`; see OCR emission rules.
+- `_cmd_export(config: BRConfig, args, path) -> int` (CLI) — resolves `scope_globs` (`--scope` → `decisions.export.scope_globs` → `src_dir.rstrip("/") + "/**/*"` → `["**/*"]` + warning), calls `active_required_rules(path)` then `export_rules(...)`, prints path and counts.
 
 ### Call Path
 
@@ -158,10 +165,11 @@ The only existing behaviour touched is `sync_to_local_md()` (`scripts/little_loo
 
 ## Implementation Steps
 
-1. Add `paths` to `RuleEntry` with round-trip tests; add `--path` to `add`/`promote`.
-2. Add `active_required_rules()`; refactor `sync_to_local_md()` onto it; confirm `TestSyncToLocalMd` stays green.
-3. Implement `decisions_export.py`: `_export_ocr()` with the grouping/ordering/folding logic and `src_dir` default scope, `_EXPORTERS = {"ocr": _export_ocr}`, and `export_rules()` dispatch.
-4. Wire `export --target ocr` into `ll-issues decisions` (`choices` from `_EXPORTERS`); optionally call it from `_cmd_promote` when `.opencodereview/` exists.
+0. Close the open Verify First item (zero-segment `**` in OCR's glob dialect) with one learning-test assertion; record the commit-vs-gitignore decision for `.opencodereview/rule.json`.
+1. Add `paths` to `RuleEntry` (explicit pop in `from_dict`, emit-when-non-empty in `to_dict`) with round-trip tests; add `--path` to `add`/`promote` including `_cmd_promote`'s constructor.
+2. Add `active_required_rules()` without a sort; refactor `sync_to_local_md()` onto it; confirm `TestSyncToLocalMd` stays green.
+3. Implement `decisions_export.py`: `_export_ocr()` with `_glob_sort_key`, grouping and folding, `None` scope → `["**/*"]`; `_EXPORTERS = {"ocr": _export_ocr}`; `export_rules()` dispatch. No config import.
+4. Wire `export --target ocr` into `ll-issues decisions` (`choices` from the `_EXPORT_TARGETS` literal, pinned to `_EXPORTERS` by a test); scope precedence resolved in `_cmd_export`; add `decisions.export.scope_globs` to the config schema; optionally call export from `_cmd_promote` when `.opencodereview/` exists.
 5. Tests per Integration Map; idempotency check by double-run comparison.
 6. Docs per Integration Map; run `ll-adapt --host <gemini|kimi-code|qwen> --apply` if any mirrored surface changed.
 
@@ -171,8 +179,9 @@ The only existing behaviour touched is `sync_to_local_md()` (`scripts/little_loo
 2. Idempotent: re-running over an unchanged decision set produces a byte-identical file.
 3. Exactly one `rules[]` entry per distinct path glob; more-specific globs precede the catch-all; every scoped entry's body also contains all repo-wide rules; each bullet carries its decision id.
 4. Repo-wide rules are scoped to `src_dir` by default, not `**/*`, and the scope is overridable.
-5. `RuleEntry.paths` round-trips through YAML/JSON and legacy entries without the key still load.
-6. `sync_to_local_md()` output is unchanged after the refactor onto `active_required_rules()`.
+5. `RuleEntry.paths` round-trips through YAML/JSON; legacy entries without the key load with `paths == []` and nothing in `extra`; `to_dict()` of an entry with empty `paths` is byte-identical to today's output.
+6. `sync_to_local_md()` output is unchanged after the refactor onto `active_required_rules()`, including bullet order for a log that mixes flat-file and fragment entries.
+7. `decisions_export.py` does not import `little_loops.config`; `_export_ocr(..., scope_globs=None)` emits a `**/*` catch-all. The CLI resolves `--scope` → `decisions.export.scope_globs` → `src_dir` (trailing slash stripped) → `**/*` with a stderr warning.
 
 ## Priority Rationale
 
@@ -214,16 +223,19 @@ class RuleEntry:
     paths: list[str] = field(default_factory=list)  # empty = repo-wide
 
 def active_required_rules(path: Path | None = None) -> list[RuleEntry]:
-    """Active (non-superseded) required rules in deterministic order. Shared by all exporters."""
+    """Active (non-superseded) required rules in load order (no sort). Shared by all exporters."""
 
-# decisions_export.py
+# decisions_export.py  (imports: decisions, file_utils only — never config)
+def _glob_sort_key(glob: str) -> tuple[int, int, str]:
+    """(-len(literal prefix), wildcard segment count, glob): most specific first."""
+
 def _export_ocr(
     rules: list[RuleEntry],
     output_dir: Path,
     *,
-    scope_globs: list[str] | None = None,
+    scope_globs: list[str] | None = None,  # None -> ["**/*"]; caller resolves config
 ) -> Path:
-    """Write .opencodereview/rule.json. The only OCR-specific function."""
+    """Write .opencodereview/rule.json. The only OCR-specific function. Pure."""
 
 _EXPORTERS: dict[str, Callable[..., Path]] = {"ocr": _export_ocr}
 
@@ -247,7 +259,10 @@ ll-issues decisions export --target ocr [--output-dir .] [--scope 'scripts/**/*'
 - No active required rules → write `{"rules": []}` (valid, idempotent) rather than deleting the file.
 - Same glob on several rules → one entry, bullets in selector order.
 - A rule with multiple `paths` → its text appears in each glob's entry.
-- `src_dir` missing from config and no `--scope` → fall back to `**/*` with a stderr warning about system-rule replacement.
+- `src_dir` missing from config and no `--scope` → CLI falls back to `**/*` with a stderr warning about system-rule replacement.
+- Two scoped globs overlap without nesting (`**/*.py` vs `scripts/fsm/**/*`) → both entries are emitted in sort-key order; files matching both get only the first. Documented limitation, optional stderr warning, no folding.
+- `src_dir` has a trailing slash (`scripts/`) → stripped before building the default scope glob.
+- Legacy fragment carrying a stray `paths` key → lands on `RuleEntry.paths`, not `extra`.
 
 ## UI/UX Details
 
