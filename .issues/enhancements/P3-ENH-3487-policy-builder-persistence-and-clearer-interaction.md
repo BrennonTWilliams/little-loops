@@ -10,6 +10,7 @@ captured_at: '2026-09-16T20:54:20Z'
 labels:
 - policy-builder
 - captured
+decision_needed: true
 depends_on:
 - BUG-3486
 - BUG-3489
@@ -47,6 +48,32 @@ Prevent accidental loss of authoring work and make the builder useful for ongoin
 - Add explicit stop-success, skip, and needs-attention destinations for lifecycle policies. Preserve existing five-verb projects when reopening; new presets must distinguish issue validation from acceptance verification and declare the latter's configured command/result contract.
 - Show skill descriptions/argument hints, add optional dimension scoring instructions and score anchors, and expose the stamped project confidence gate alongside rule thresholds. Explain state-step budgets and default transitions.
 - Provide responsive layout, associated labels, keyboard-operable controls, live feedback, copy success/failure feedback, and exact save/validate/run instructions with required parameters.
+
+### Option A: Adopt a browser/DOM interaction test harness
+
+Add a `node:test`-driven jsdom (or Playwright) harness under `scripts/tests/js/` to
+automate the reload-persistence, undo/redo, and keyboard-operability Acceptance
+Criteria against the emitted `policy-router-builder.html`. Extends the existing
+`node:test` convention (`scripts/tests/js/policy_validator.test.mjs`) rather than
+introducing a new test runner.
+- **Tradeoff**: Gives the ACs real automated coverage and a reusable harness for
+  future artifact-template interaction tests. Adds a new third-party dependency
+  (jsdom or Playwright) to `scripts/pyproject.toml`/Node tooling, which the
+  project's "minimize third-party dependencies" policy requires justifying; a
+  browser-driving harness (Playwright) is heavier to install and run in CI/local
+  test loops than jsdom's DOM-only emulation.
+
+### Option B: Scope automated interaction testing out; verify manually
+
+Amend `## Scope Boundaries` to explicitly exclude automated interaction-test
+coverage for undo/redo, reload-persistence, and keyboard operability from this
+issue's Acceptance Criteria; reword those ACs to describe the required behavior
+without mandating "automated interaction tests," and rely on manual
+browser verification (documented steps) before closing the issue.
+- **Tradeoff**: No new dependency, no new test infrastructure to build and
+  maintain; ships faster. Leaves these behaviors without regression protection —
+  a future template/core.mjs change could silently break undo/redo or keyboard
+  access with no test to catch it.
 
 ## Integration Map
 
@@ -208,12 +235,55 @@ Includes persistent authoring, terminology/layout, action and scoring explanatio
 | Reference | docs/reference/CLI.md | Saved artifact generation and usage |
 | Guide | docs/guides/POLICY_ROUTER_GUIDE.md | Authoring flow and lifecycle semantics |
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` — 2026-09-16:_
+
+Verdict at time of check: **PROPOSAL_UNSOUND** (dependency backlinks below were corrected
+in the same pass; the proposal gap is not — it needs an author decision, not a mechanical
+fix, so it remains an outstanding action item).
+
+- Graph: provider=`codegraph` freshness=`fresh` (not needed — no anchor relocation or
+  negative claim arose; all citations resolved by direct read).
+- All ~50 `path:line` citations in this issue (template/core.mjs event handlers, serialize
+  functions, terminal-state emission, `cmd_policy_builder`, `ConfidenceGateConfig`,
+  `context_seed.py:68`, docs sections, test names) were checked directly against the current
+  working tree and are accurate — no drift.
+- `ll-verify-evidence --json`: `"ok": true`, 0 findings — no fabricated evidence spans.
+- Decisions log: `ll-issues decisions list --type rule --enforcement required --active-only`
+  returned no entries — no `DECISIONS_VIOLATION`.
+- **PROPOSAL_UNSOUND finding**: the Wiring Phase (added by `/ll:wire-issue`) already flags
+  "Establish (or explicitly scope out in Scope Boundaries) an automated browser/DOM
+  interaction test harness for the reload-persistence, undo/redo, and keyboard-operability
+  Acceptance Criteria — none exists in this codebase today." Neither the Proposed Solution
+  nor `## Scope Boundaries` resolves this: Scope Boundaries lists inclusions/exclusions but
+  never mentions a test harness, and Implementation Step 5 ("Exercise offline persistence,
+  round trips, and browser workflows") does not name a tool or approach. As written, three
+  Acceptance Criteria items depend on automated interaction tests with no precedent in this
+  repo (confirmed repo-wide: no Playwright/Selenium/jsdom harness exists) and no chosen
+  path to build one:
+  - "undo/redo restores rules, fields, actions, and transitions in **automated interaction
+    tests**"
+  - "**keyboard-accessible controls**" (implies automated a11y/interaction testing)
+  - "375px and desktop **viewport tests** show no page-level horizontal overflow"
+
+  **Remaining (reformatted as a decision):** `decision_needed: true` set in frontmatter;
+  `### Option A` (adopt a browser/DOM test harness) and `### Option B` (scope automated
+  interaction testing out, verify manually) added under `## Proposed Solution`. Run
+  `/ll:decide-issue ENH-3487` to resolve before this is implementation-ready.
+
+- **Dependency backlinks (fixed in this pass)**: `BUG-3486` and `BUG-3489` are named in this
+  issue's `depends_on:`, but neither had this issue in a `blocks:` frontmatter list (the
+  convention used elsewhere in `.issues/`, e.g. `FEAT-2846`). Added
+  `blocks: [ENH-3487]` to both `BUG-3486` and `BUG-3489`.
+
 ## Status
 
 **Open** | Created: 2026-09-16 | Priority: P3
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-16T22:36:05 - `df96ce10-e8c8-4600-a0c4-0eee757af56b.jsonl`
 - `/ll:wire-issue` - 2026-09-16T21:29:53 - `0e35d235-ff66-480a-930e-d4d9ddd5eeb9.jsonl`
 - `/ll:refine-issue` - 2026-09-16T21:07:15 - `7e302668-e6b7-4dea-830f-330bbfd02fc0.jsonl`
 - `/ll:capture-issue` - 2026-09-16T20:55:13 - `64af6deb-56e5-4bde-9534-85751c1782ca.jsonl`

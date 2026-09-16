@@ -16,6 +16,8 @@ relates_to:
 - BUG-3490
 blocked_by:
 - BUG-3489
+blocks:
+- ENH-3487
 ---
 
 # BUG-3486: Policy builder preview, validation, and editing correctness (browser/core)

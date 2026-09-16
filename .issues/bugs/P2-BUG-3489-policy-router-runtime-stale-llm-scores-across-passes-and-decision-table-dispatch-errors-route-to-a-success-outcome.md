@@ -10,6 +10,8 @@ discovered_date: '2026-09-16'
 captured_at: '2026-09-16T22:14:21Z'
 labels:
 - policy-builder
+blocks:
+- ENH-3487
 relates_to:
 - BUG-3486
 - BUG-3490
