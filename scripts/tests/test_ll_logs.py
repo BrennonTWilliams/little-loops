@@ -5180,6 +5180,23 @@ class TestLoopFleet:
         event = {"event": "loop_complete", "terminated_by": "workdir_vanished"}
         assert _derive_loop_outcome(event) == "error"
 
+    def test_derive_outcome_no_route_with_error(self) -> None:
+        """ENH-3482: terminated_by=no_route with an error key present (the
+        normal case — _finish always passes error= for this abort) still
+        returns "no_route", winning over the `"error" in event` fallback."""
+        event = {
+            "event": "loop_complete",
+            "terminated_by": "no_route",
+            "error": "no valid transition from state 'review'",
+        }
+        assert _derive_loop_outcome(event) == "no_route"
+
+    def test_derive_outcome_no_route_without_error(self) -> None:
+        """ENH-3482: belt-and-suspenders — still "no_route" even if an
+        `error` key were somehow absent."""
+        event = {"event": "loop_complete", "terminated_by": "no_route"}
+        assert _derive_loop_outcome(event) == "no_route"
+
     def test_parse_terminal_event_finds_loop_complete(self, tmp_path) -> None:
         """_parse_terminal_event returns the loop_complete record."""
         events_file = tmp_path / "events.jsonl"
@@ -6657,7 +6674,16 @@ class TestIsFlaggedParity:
     @pytest.mark.parametrize("success_pct", [0, 49, 50, 100])
     @pytest.mark.parametrize(
         "top_outcome",
-        ["converged", "failed", "error", "max-steps", "stalled", "interrupted", "signal"],
+        [
+            "converged",
+            "failed",
+            "error",
+            "max-steps",
+            "stalled",
+            "interrupted",
+            "signal",
+            "no_route",
+        ],
     )
     def test_parity_with_flag_loops(self, runs: int, success_pct: int, top_outcome: str) -> None:
         agg = _LoopFleetAggregate(

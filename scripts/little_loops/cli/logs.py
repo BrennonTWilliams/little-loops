@@ -1109,7 +1109,7 @@ class _LoopRunRecord:
     run_folder: str
     final_state: str
     iterations: int
-    outcome: str  # converged / failed / error / max-steps / stalled / interrupted / signal
+    outcome: str  # converged / failed / error / max-steps / stalled / interrupted / signal / no_route
     ts: str
     attribution: str  # builtin / custom / shadowed (Decisions #10)
 
@@ -1185,7 +1185,9 @@ def _aggregate_fleet_runs(runs: list[_LoopRunRecord]) -> list[_LoopFleetAggregat
     return aggregates
 
 
-_FLAG_OUTCOMES: frozenset[str] = frozenset({"error", "max-steps", "stalled", "failed"})
+_FLAG_OUTCOMES: frozenset[str] = frozenset(
+    {"error", "max-steps", "stalled", "failed", "no_route"}
+)
 
 
 def is_flagged(
@@ -1197,7 +1199,9 @@ def is_flagged(
     ``top_outcome in _FLAG_OUTCOMES``). ``interrupted``/``signal`` are
     deliberately excluded from ``_FLAG_OUTCOMES`` (operator/infra exits, not
     loop-logic failures) but still count against ``success_pct`` since that
-    is simply ``converged / runs`` (Decisions #2).
+    is simply ``converged / runs`` (Decisions #2). ``no_route`` is included
+    (ENH-3471/ENH-3482): a missing route declaration is a loop-authoring
+    failure, not an operator/infra exit.
 
     Attribution is NOT checked here: callers that hold in-memory aggregates
     (``_flag_loops``) filter to ``builtin`` themselves, and the JSON sidecar's
@@ -2057,6 +2061,12 @@ def _get_builtin_loop_names() -> frozenset[str]:
 
 def _derive_loop_outcome(event: dict) -> str:
     """Derive an outcome category from a loop_complete event dict."""
+    if event.get("terminated_by") == "no_route":
+        # ENH-3482: decision-step failure (no valid transition, before_route
+        # veto, evaluator/route raise) is a loop-authoring bug, not a runtime
+        # crash. Must be checked before the `"error" in event` fallback below
+        # since _finish() always passes error= for this abort too.
+        return "no_route"
     if "error" in event:
         return "error"
     terminated_by = event.get("terminated_by", "")

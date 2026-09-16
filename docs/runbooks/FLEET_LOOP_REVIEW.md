@@ -87,21 +87,24 @@ loop-name key). A loop is flagged when **all** of the following hold:
 
 - `attribution == "builtin"` (never `custom` or `shadowed` — see the In-scope rule below), and
 - `runs >= --min-runs` (default `3`), and
-- `success_pct < --threshold` (default `50`) **or** `top_outcome` is one of the four failure
-  outcomes: `error`, `max-steps`, `stalled`, `failed`.
+- `success_pct < --threshold` (default `50`) **or** `top_outcome` is one of the five failure
+  outcomes: `error`, `max-steps`, `stalled`, `failed`, `no_route`.
 
 The full outcome vocabulary emitted by `_derive_loop_outcome()` is:
 
 ```
-converged | failed | error | max-steps | stalled | interrupted | signal
+converged | failed | error | max-steps | stalled | interrupted | signal | no_route
 ```
 
-Only `error`, `max-steps`, `stalled`, and `failed` count as flagging failures. `interrupted`
-and `signal` are operator/infra exits (user stop, kernel signal), not loop-logic failures, so
-they are deliberately excluded from the outcome clause — but they still count against
-`success_pct` (which is `converged / runs`), so a loop dominated by `interrupted` runs can still
-surface via the threshold clause. There is no dismissal list: a false positive is handled by
-skipping it in DIAGNOSE and noting why under the report's "Reviewed, not fixed" section.
+Only `error`, `max-steps`, `stalled`, `failed`, and `no_route` count as flagging failures.
+`no_route` (ENH-3471) means the run died on a decision-step failure — no valid transition, a
+`before_route` veto, or an evaluator/route raise — which is a missing route declaration (a
+loop-authoring bug), not an environment fix. `interrupted` and `signal` are operator/infra exits
+(user stop, kernel signal), not loop-logic failures, so they are deliberately excluded from the
+outcome clause — but they still count against `success_pct` (which is `converged / runs`), so a
+loop dominated by `interrupted` runs can still surface via the threshold clause. There is no
+dismissal list: a false positive is handled by skipping it in DIAGNOSE and noting why under the
+report's "Reviewed, not fixed" section.
 
 The report also lists two non-flagged categories for context:
 

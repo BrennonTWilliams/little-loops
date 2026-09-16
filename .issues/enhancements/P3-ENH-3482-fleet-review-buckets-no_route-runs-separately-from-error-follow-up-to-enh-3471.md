@@ -3,10 +3,11 @@ id: ENH-3482
 type: ENH
 title: fleet-review buckets no_route runs separately from error (follow-up to ENH-3471)
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-15'
 captured_at: '2026-09-15T23:36:00Z'
+completed_at: '2026-09-16T01:37:14Z'
 parent: ENH-3468
 blocked_by:
 - ENH-3471
@@ -170,12 +171,28 @@ If `no_route` is added to `_FLAG_OUTCOMES` (see Decision Rules below), the bucke
 
 Decomposed from ENH-3468. Follow-up to ENH-3471, which explicitly defers this under its Scope Boundaries ("Deliberately deferred — fleet-review outcome bucketing").
 
+## Resolution
+
+Implemented Option A exactly as decided:
+
+- `_derive_loop_outcome()` (`scripts/little_loops/cli/logs.py`) now checks `terminated_by == "no_route"` before the `"error" in event` fallback and returns `"no_route"`.
+- `"no_route"` added to `_FLAG_OUTCOMES`, so `is_flagged()` and the Delta-vs-baseline table's `outcome_keys` pick it up automatically; `is_flagged()`'s docstring updated to state `no_route` is included as a loop-authoring failure.
+- `_LoopRunRecord.outcome`'s inline vocabulary comment updated to include `no_route`.
+- `docs/runbooks/FLEET_LOOP_REVIEW.md` updated: "four failure outcomes" → "five", the fenced vocabulary line, and a new paragraph explaining `no_route`.
+- `docs/reference/API.md`'s `loop-fleet` outcome-vocabulary enumeration updated to include `no_route`.
+- Added `test_derive_outcome_no_route_with_error` / `test_derive_outcome_no_route_without_error` to `TestLoopFleet`, mirroring the `workdir_vanished` pair. Added `"no_route"` to `TestIsFlaggedParity`'s `top_outcome` parametrize list.
+
+Verification: `python -m pytest scripts/tests/test_ll_logs.py` (447 passed), `ruff check` and `mypy` clean on changed files, full suite `python -m pytest scripts/tests/` (24526 passed, 51 skipped, 1 pre-existing unrelated failure — `test_prose_dep_sweep_gate.py::test_no_prose_dependency_drift_in_repo`, confirmed failing on main before this change via `git stash`).
+
+No `## Program Design` deviations — implementation matches the documented Types/Signatures/Call Path exactly.
+
 ## Status
 
 **Open** | Created: 2026-09-15 | Priority: P3
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-16T01:37:06 - `5a0f58ef-de60-48a1-82e6-e3b78dff2c6b.jsonl`
 - `/ll:confidence-check` - 2026-09-16T01:18:33 - `2f2bf031-3f5c-40d9-b9d6-836752f92654.jsonl`
 - `/ll:verify-issues` - 2026-09-16T01:15:24 - `48e5fa4b-67af-4adc-99aa-ea7f31e90c78.jsonl`
 - `/ll:wire-issue` - 2026-09-16T01:08:26 - `0b73baa1-755e-43aa-bf89-93ccf29c9752.jsonl`
