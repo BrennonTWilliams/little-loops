@@ -116,7 +116,29 @@ _Added by `/ll:refine-issue` — 2026-09-17 — based on codebase analysis:_
 
 **Option B**: Leave `next-id` unlocked and explicitly document it as a read-only hint (the wording this issue's own Expected Behavior already allows), and instead close the collision window by migrating every automated allocator currently doing "next-id read + hand-written file" (the manual/hook path this issue's Current Behavior describes) onto the already-atomic `create_issue()` (`little_loops/cli/issues/create.py`). This requires identifying and migrating those callers rather than changing `next_id.py`/`issue_parser.py` at all.
 
+> **Selected:** Option B — reuses `create_issue()`'s already-proven lock design; Option A cannot actually close the race it targets. See Decision Rationale below.
+
 **Recommended**: Option B — it reuses `create_issue`'s already-proven lock design (matches Impact → Risk: Low) without reopening BUG-1364's rejected reservation semantics, and satisfies the Expected Behavior bullet that already accepts "next-id ... clearly documented as a read-only hint" as a valid resolution. Option A is viable but is not the "direct fix" the current Impact → Effort estimate assumes — it requires re-litigating BUG-1364's objections, not just copying `create_issue`'s lock pattern.
+
+### Decision Rationale
+
+**Selected:** Option B — leave `next-id` unlocked and documented as a read-only hint; migrate automated allocators onto `create_issue()`.
+
+**Reasoning:** Option A's lock can only span `cmd_next_id`'s own process lifetime — it prints and exits before the caller's separate file write happens, so it cannot close the actual "next-id read + hand-written file" race this issue describes, and it reopens BUG-1364's rejected reservation semantics while leaving the still-unremediated batch-increment instruction in `commands/scan-codebase.md` untouched. Option B reuses `create_issue()`'s already-proven `.id-alloc.lock` pattern (lock-then-allocate-then-exclusive-write) without touching the shared, hot-path `get_next_issue_number`/`_generate_id_from_filename` read path. It is not fully complete — `little_loops/cli/issues/normalize.py`'s `_alloc()` helper reassigns IDs on existing files via an unlocked `get_next_issue_number()` call and is structurally incompatible with `create_issue()`'s from-a-spec creation shape — but that residual gap is bounded and known, versus Option A's structural non-fix of the primary collision window.
+
+**Scoring:**
+
+| Dimension | Option A | Option B |
+|---|---|---|
+| Consistency | 1 | 3 |
+| Simplicity | 2 | 1 |
+| Testability | 1 | 2 |
+| Risk | 1 | 1 |
+| **Total** | **5/12** | **7/12** |
+
+**Key evidence:**
+- Option A: `cmd_next_id` (`little_loops/cli/issues/next_id.py:23-38`) is a separate CLI invocation that prints and exits — a lock held for its duration cannot span into a later, separate file write, so it doesn't close the race it targets. The hand-increment batch instruction BUG-1364 flagged for removal is still present verbatim in `commands/scan-codebase.md:230` (and mirrored in `.gemini/`, `.kimi-code/`, `.qwen/` copies).
+- Option B: `create_issue()` (`little_loops/cli/issues/create.py:406-499`) is the only clean drop-in migration target found — `scripts/little_loops/sync.py:_create_local_issue()` (line 660/681/753) is a genuine unlocked "read-then-hand-write" caller with a `BRConfig` already in scope. `little_loops/cli/issues/normalize.py`'s `_alloc()` (lines 302-309, 461) is a second unlocked caller but reassigns IDs on existing files rather than creating from a spec, so it is out of scope for a `create_issue()`-shaped migration and remains a residual gap to track separately.
 
 ## Integration Map
 
