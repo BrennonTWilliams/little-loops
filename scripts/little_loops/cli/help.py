@@ -271,21 +271,30 @@ def main_help(argv: list[str] | None = None) -> int:
 
         if args.directory is not None:
             plugin_root = args.directory
+            commands_dir = plugin_root / "commands"
+            skills_dir = plugin_root / "skills"
+            if not commands_dir.is_dir() and not skills_dir.is_dir():
+                print(
+                    f"ll-help: no plugin catalog found at {plugin_root} "
+                    "(pip-only install has no commands/skills directory; "
+                    "the catalog is only available in a Claude Code plugin checkout "
+                    "or a packaged installed-content root).",
+                    file=sys.stderr,
+                )
+                return 1
         else:
-            from little_loops.skill_expander import _find_plugin_root
+            from little_loops.skill_expander import resolve_plugin_content_root
 
-            plugin_root = _find_plugin_root()
-
-        commands_dir = plugin_root / "commands"
-        skills_dir = plugin_root / "skills"
-        if not commands_dir.is_dir() and not skills_dir.is_dir():
-            print(
-                f"ll-help: no plugin catalog found at {plugin_root} "
-                "(pip-only install has no commands/skills directory; "
-                "the catalog is only available in a Claude Code plugin checkout).",
-                file=sys.stderr,
-            )
-            return 1
+            resolved_root = resolve_plugin_content_root()
+            if resolved_root is None:
+                print(
+                    "ll-help: no installed little-loops content found "
+                    "(no CLAUDE_PLUGIN_ROOT, checkout, or packaged skills/commands "
+                    "directory resolved).",
+                    file=sys.stderr,
+                )
+                return 1
+            plugin_root = resolved_root
 
         fmt = args.format or ("json" if args.json else "md")
         entries = collect_entries(plugin_root)

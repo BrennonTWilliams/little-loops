@@ -91,15 +91,17 @@ PACKAGE_DATA_ASSETS: Final[tuple[tuple[str, ...], ...]] = (
     ("templates", "dashboard.llat", "partials.html.j2"),
 )
 
-# BUG-3177: skills/ is force-included into the wheel by hatch_build.py rather than
-# physically relocated under little_loops/ (Option A′ — skills/ stays host-plugin
-# glue at the repo root, per FEAT-2274/BUG-938). It is therefore NOT accessible via
-# importlib.resources in an editable/dev install (this manifest's assumption for
-# every PACKAGE_DATA_ASSETS entry above) and must not be added there — doing so
-# breaks list_missing_assets() in every dev checkout. Coverage for "did the wheel
-# actually ship skills/" lives in the wheel-smoke integration test instead
-# (test_wheel_smoke.py::TestWheelSmoke::test_skills_force_include_accessible),
-# which builds a real wheel rather than asserting against the editable source tree.
+# BUG-3177/BUG-3490: skills/ and commands/ are force-included into the wheel by
+# hatch_build.py rather than physically relocated under little_loops/ (Option A′ —
+# they stay host-plugin glue at the repo root, per FEAT-2274/BUG-938). They are
+# therefore NOT accessible via importlib.resources in an editable/dev install (this
+# manifest's assumption for every PACKAGE_DATA_ASSETS entry above) and must not be
+# added there — doing so breaks list_missing_assets() in every dev checkout.
+# Coverage for "did the wheel actually ship skills/ and commands/" lives in the
+# wheel-smoke integration test instead
+# (test_wheel_smoke.py::TestWheelSmoke::test_skills_force_include_accessible and its
+# commands/ twin), which builds a real wheel rather than asserting against the
+# editable source tree.
 
 
 def check_asset_accessible(parts: tuple[str, ...]) -> bool:

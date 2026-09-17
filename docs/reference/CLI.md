@@ -3757,7 +3757,7 @@ Generate the `/ll:*` command and skill catalog directly from `commands/*.md` and
 
 | Flag | Description |
 |------|-------------|
-| `-C, --directory PATH` | Plugin root override (default: resolved via `CLAUDE_PLUGIN_ROOT` or repo root) |
+| `-C, --directory PATH` | Plugin root override (default: resolved via `CLAUDE_PLUGIN_ROOT`, a checkout root, or the installed package's packaged content) |
 | `--json` | Emit JSON |
 | `--format {md,json}` | Output format (overrides `--json` when given) |
 | `--area NAME` | Filter to a single area (e.g. `"Issue Refinement"`) |

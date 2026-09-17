@@ -11912,6 +11912,16 @@ assert len(bus.delivered_events) == 3  # only issue.* events delivered
 
 Pre-expands skill and command Markdown files into self-contained prompt strings for subprocess invocation. Used by `ll-auto` to eliminate the `ToolSearch → Skill` deferred-tool round-trip when spawning Claude subprocesses.
 
+### resolve_plugin_content_root
+
+```python
+def resolve_plugin_content_root() -> Path | None
+```
+
+Selects one read-only content root for discovering *installed* little-loops skills/commands (BUG-3490) — the fix for consumer installs where root-level `skills/`/`commands/` directories don't exist. Candidates, in order: `CLAUDE_PLUGIN_ROOT` env var, the checkout root derived from this module's location, the installed package directory (`importlib.resources.files("little_loops")`). Returns the first candidate containing a `skills/` or `commands/` directory, or `None` if none qualify. Filesystem-only: no subprocess calls, caching, or writes.
+
+Used by the policy-builder catalog, `ll-help`'s default (non-`-C`) lookup, `ll-action list`, `ll-queue`'s skill classification, the MCP `skills_list` tool, and `cli/harness.py`'s skill cell-key resolution — these all agree on the same installation. Mutation/development commands (`ll-adapt`, skill-description generation, host-map/CLI-allowlist verification) intentionally keep using the legacy `_find_plugin_root()` instead, which is unvalidated and always resolves to *something* (never `None`) since it's used for editing targets, not discovery.
+
 ### expand_skill
 
 ```python
@@ -11932,7 +11942,7 @@ Reads the Markdown source for *name*, strips frontmatter, substitutes `{{config.
 
 **Resolution order**: `skills/{name}/SKILL.md` → `commands/{name}.md`
 
-**Plugin root**: Reads `CLAUDE_PLUGIN_ROOT` env var first; falls back to the directory three levels above `skill_expander.py`.
+**Plugin root**: Resolved via `resolve_plugin_content_root()` (BUG-3490) — `CLAUDE_PLUGIN_ROOT` env var (if set) → the checkout directory derived from `skill_expander.py`'s own location → the installed package directory via `importlib.resources`. The first candidate containing a `skills/` or `commands/` directory wins; returns `None` (and `expand_skill` returns `None`) when no candidate qualifies. Read-only and uncached — no writes, subprocess calls, or persisted state. Distinct from the legacy `_find_plugin_root()`, which mutation/development commands (`ll-adapt`, `ll-verify-host-map`, `ll-verify-cli-allowlist`, skill-description generation) still use unchanged.
 
 **Example**
 

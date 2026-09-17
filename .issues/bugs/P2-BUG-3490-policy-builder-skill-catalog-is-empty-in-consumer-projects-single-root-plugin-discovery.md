@@ -6,10 +6,11 @@ type: BUG
 title: Policy builder skill catalog is empty in consumer projects (single-root plugin
   discovery)
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-16'
 captured_at: '2026-09-16T22:14:21Z'
+completed_at: '2026-09-17T05:11:46Z'
 labels:
 - policy-builder
 reconcile_attempted: true
@@ -249,11 +250,64 @@ finding).
   `_resolve_skill_target_path` to resolve the same root as queue
   classification/MCP skills listing.
 
+## Resolution
+
+_Resolved 2026-09-17 via `/ll:manage-issue` (TDD mode)._
+
+Added `resolve_plugin_content_root() -> Path | None` and its
+`_content_root_candidates() -> list[Path]` seam to `skill_expander.py`, exactly
+per the Program Design: env `CLAUDE_PLUGIN_ROOT` → derived checkout → packaged
+`importlib.resources.files("little_loops")`, first candidate with a `skills/`
+or `commands/` directory wins, `None` when none qualify. `_find_plugin_root()`
+and `_resolve_content_path()` are untouched.
+
+Migrated all seven listed read consumers to the new resolver, each handling
+`None` per its existing empty/None/fallback contract:
+`cli/artifact/policy_builder.py::_load_skill_catalog` (now a projection over
+`collect_entries()` with skill-preferred dedup by `/ll:<name>` identity,
+sorted by name — this legitimately changed the emitted catalog since the old
+code scanned `Path.cwd()`, not the plugin root, so the builder's golden HTML
+fixture was regenerated), `cli/help.py::main_help` (default branch; explicit
+`-C` unchanged), `cli/action.py::_load_skills` (via its patchable
+`_find_plugin_root` wrapper, now delegating to the resolver),
+`cli/queue.py::_classify_action`, `mcp_server/tools.py::_tool_skills_list`,
+`cli/harness.py::_resolve_skill_target_path`, and `skill_expander.py::expand_skill`
+itself.
+
+Packaged `commands/` alongside `skills/` in `hatch_build.py`'s
+`SkillsForceIncludeHook` (wheel + sdist), and updated the `package_data.py`
+BUG-3177 comment to describe both directories.
+
+**Tests**: added `TestContentRootCandidates` / `TestResolvePluginContentRoot`
+in `test_skill_expander.py` (env precedence, commands-only root, unsupported
+resource representation, invalid-candidate fallthrough); updated
+`TestExpandSkill` to patch the resolver; added a commands-only assertion to
+`test_wheel_smoke.py` (`test_commands_force_include_accessible`, extended
+sdist twin) plus `test_resolver_and_read_consumers_work_without_plugin_root`,
+which runs from an unrelated temp cwd with `CLAUDE_PLUGIN_ROOT` and
+`PYTHONPATH` stripped and asserts the resolved root is the installed package
+directory, not the checkout; updated `test_enh_3444_mcp_skills_list.py`'s
+unresolvable-root test (an invalid env var now legitimately falls through to
+checkout content instead of resolving to nothing — added
+`test_skills_list_invalid_env_root_falls_through_to_checkout` to cover the new
+behavior explicitly, and made the original test force every candidate invalid
+to keep testing the genuine "nothing resolves" path). Followed TDD: resolver
+tests written and run against the pre-implementation code first (failed with
+`ImportError`/`AttributeError` as expected), then the resolver was added and
+consumers migrated until green.
+
+Full local suite: 24913 passed, 1 pre-existing unrelated failure
+(`test_verify_evidence.py::TestRepoGate::test_no_new_unverifiable_evidence`,
+confirmed present on `main` before this change via `git stash`), 53 skipped.
+`PYTEST_INTEGRATION=1 python -m pytest scripts/tests/test_wheel_smoke.py`: 12
+passed, including both new BUG-3490 tests and the extended sdist test.
+
 ## Status
 
-**Open** | Created: 2026-09-16 | Priority: P2
+**Done** | Created: 2026-09-16 | Priority: P2
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-17T05:10:32 - `5a87eb1b-88ca-48fc-b1e3-ffcde2d2b952.jsonl`
 - `/ll:confidence-check` - 2026-09-17T04:31:32 - `1c7e1952-6f1b-429e-af4d-c5a7864db3c5.jsonl`
 - `/ll:ready-issue` - 2026-09-17T04:18:59 - `e8577901-f5fd-435d-a8d3-7899337fe38e.jsonl`
 - `/ll:reconcile-issue` - 2026-09-17T04:02:23 - `7449e8a1-db4e-4752-8942-1052ea200f2a.jsonl`

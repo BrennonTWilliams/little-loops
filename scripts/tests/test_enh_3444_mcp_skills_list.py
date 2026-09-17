@@ -186,6 +186,28 @@ def test_skills_list_dedupes_name_collision_skill_wins(tmp_path, monkeypatch) ->
 
 
 def test_skills_list_returns_empty_on_unresolvable_plugin_root(tmp_path, monkeypatch) -> None:
+    # BUG-3490: resolve_plugin_content_root() validates each candidate and
+    # falls through invalid ones (unlike the legacy `_find_plugin_root()`,
+    # which trusted a bad `CLAUDE_PLUGIN_ROOT` unconditionally). Force every
+    # candidate to be invalid to exercise the genuine "nothing resolves" path.
+    _make_project(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        "little_loops.skill_expander._content_root_candidates",
+        lambda: [tmp_path / "does-not-exist"],
+    )
+
+    async def run() -> None:
+        server = build_server(transport="stdio")
+        async with Client(server) as client:
+            rows = _payload(await client.call_tool("skills_list", {}))
+            assert rows == []
+
+    anyio.run(run)
+
+
+def test_skills_list_invalid_env_root_falls_through_to_checkout(tmp_path, monkeypatch) -> None:
+    # A bad CLAUDE_PLUGIN_ROOT no longer produces an empty catalog on its own —
+    # the resolver falls through to the next valid candidate.
     _make_project(tmp_path, monkeypatch)
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(tmp_path / "does-not-exist"))
 
@@ -193,7 +215,8 @@ def test_skills_list_returns_empty_on_unresolvable_plugin_root(tmp_path, monkeyp
         server = build_server(transport="stdio")
         async with Client(server) as client:
             rows = _payload(await client.call_tool("skills_list", {}))
-            assert rows == []
+            assert isinstance(rows, list)
+            assert len(rows) > 0
 
     anyio.run(run)
 

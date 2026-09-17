@@ -1,10 +1,12 @@
-"""Custom hatchling build hook (BUG-3177): conditionally force-include skills/.
+"""Custom hatchling build hook (BUG-3177, BUG-3490): conditionally force-include
+skills/ and commands/.
 
-`force-include` is otherwise the right tool for shipping `skills/` (host-plugin
-glue kept physically at the repo root, FEAT-2274/BUG-938) into the wheel without
-relocating it — but a static `[tool.hatch.build.targets.wheel.force-include]`
-mapping is unconditional, and hatchling treats a missing source as a hard build
-error (``FileNotFoundError: Forced include not found: ...``), not a silent skip.
+`force-include` is otherwise the right tool for shipping `skills/` and `commands/`
+(host-plugin glue kept physically at the repo root, FEAT-2274/BUG-938) into the
+wheel without relocating them — but a static
+`[tool.hatch.build.targets.wheel.force-include]` mapping is unconditional, and
+hatchling treats a missing source as a hard build error
+(``FileNotFoundError: Forced include not found: ...``), not a silent skip.
 
 That matters because this project builds in two different working directories:
 
@@ -38,3 +40,7 @@ class SkillsForceIncludeHook(BuildHookInterface):  # type: ignore[type-arg]
         skills_src = Path(self.root) / ".." / "skills"
         if skills_src.is_dir():
             build_data.setdefault("force_include", {})[str(skills_src)] = "little_loops/skills"
+
+        commands_src = Path(self.root) / ".." / "commands"
+        if commands_src.is_dir():
+            build_data.setdefault("force_include", {})[str(commands_src)] = "little_loops/commands"

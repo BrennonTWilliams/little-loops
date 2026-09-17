@@ -562,12 +562,12 @@ def _tool_loop_list(arguments: dict[str, Any], *, project_root: Path) -> Any:
 def _tool_skills_list(_arguments: dict[str, Any], *, project_root: Path) -> Any:
     """Enumerate the install's skills and commands (ENH-3444).
 
-    Anchored at `skill_expander._find_plugin_root()` — deliberately NOT `project_root`,
-    unlike every other tier-1 tool — because `_classify_action` (queue.py) resolves skill
-    names through that same plugin-root call, never through `project_root`. Anchoring here
-    at `project_root` would list names that classify differently than `queue_add` sees them,
-    reintroducing the divergence this tool exists to kill. One install answers identically
-    for any `--project-root`.
+    Anchored at `skill_expander.resolve_plugin_content_root()` (BUG-3490) — deliberately
+    NOT `project_root`, unlike every other tier-1 tool — because `_classify_action`
+    (queue.py) resolves skill names through that same resolver, never through
+    `project_root`. Anchoring here at `project_root` would list names that classify
+    differently than `queue_add` sees them, reintroducing the divergence this tool
+    exists to kill. One install answers identically for any `--project-root`.
 
     Wraps `tool_catalog.assemble_tool_catalog` (the single enumeration FEAT-2672/2673 also
     consume) rather than re-walking `skills/`/`commands/` by hand. Agents are excluded:
@@ -577,13 +577,15 @@ def _tool_skills_list(_arguments: dict[str, Any], *, project_root: Path) -> Any:
     already emits skills before commands, so first-seen-wins achieves this without an
     explicit kind check.
     """
-    from little_loops.skill_expander import _find_plugin_root
+    from little_loops.skill_expander import resolve_plugin_content_root
     from little_loops.tool_catalog import assemble_tool_catalog
 
-    plugin_root = _find_plugin_root()
+    plugin_root = resolve_plugin_content_root()
     _log.debug("skills_list resolved plugin root: %s", plugin_root)
 
     rows: dict[str, dict[str, Any]] = {}
+    if plugin_root is None:
+        return []
     for entry in assemble_tool_catalog(plugin_root):
         if entry.kind not in ("skill", "command"):
             continue

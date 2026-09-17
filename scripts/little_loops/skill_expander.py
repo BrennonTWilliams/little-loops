@@ -11,6 +11,7 @@ command.
 
 from __future__ import annotations
 
+import importlib.resources
 import logging
 import os
 import re
@@ -20,6 +21,50 @@ from little_loops.config import BRConfig
 from little_loops.frontmatter import strip_frontmatter
 
 _log = logging.getLogger(__name__)
+
+
+def _content_root_candidates() -> list[Path]:
+    """Return unvalidated plugin-content-root candidates, env first.
+
+    Order: ``CLAUDE_PLUGIN_ROOT`` (if set), the checkout root derived from
+    this module's location, then the installed package directory. Callers
+    validate each candidate (BUG-3490); this seam only builds the list so
+    packaged-layout tests can replace it wholesale.
+    """
+    candidates: list[Path] = []
+
+    env_root = os.environ.get("CLAUDE_PLUGIN_ROOT")
+    if env_root:
+        candidates.append(Path(env_root))
+
+    candidates.append(Path(__file__).resolve().parent.parent.parent)
+
+    try:
+        packaged = importlib.resources.files("little_loops")
+    except (ModuleNotFoundError, TypeError):
+        packaged = None
+    if packaged is not None:
+        try:
+            candidates.append(Path(str(packaged)))
+        except TypeError:
+            pass
+
+    return candidates
+
+
+def resolve_plugin_content_root() -> Path | None:
+    """Select one read-only content root for installed-content discovery.
+
+    Filesystem-only: the first candidate from :func:`_content_root_candidates`
+    that contains a ``skills/`` or ``commands/`` directory. Returns ``None``
+    when no candidate qualifies. Performs no per-name fallback, caching, or
+    subprocess calls (BUG-3490). Distinct from :func:`_find_plugin_root`,
+    which mutation/development commands keep using unchanged.
+    """
+    for candidate in _content_root_candidates():
+        if (candidate / "skills").is_dir() or (candidate / "commands").is_dir():
+            return candidate
+    return None
 
 
 def _find_plugin_root() -> Path:
@@ -142,12 +187,12 @@ def expand_skill(name: str, args: list[str], config: BRConfig) -> str | None:
         original slash command when ``None`` is returned.
     """
     try:
-        plugin_root = _find_plugin_root()
-        content_path = _resolve_content_path(plugin_root, name)
+        plugin_root = resolve_plugin_content_root()
+        content_path = None if plugin_root is None else _resolve_content_path(plugin_root, name)
         if content_path is None:
             _log.debug(
                 "skill_expander: pre-expansion unavailable for %r — "
-                "CLAUDE_PLUGIN_ROOT not set or skills/commands not found under %s",
+                "no installed content root resolved (checked %s)",
                 name,
                 plugin_root,
             )

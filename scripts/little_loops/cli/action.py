@@ -176,10 +176,10 @@ def _emit(event: dict) -> None:
     print(json.dumps(event), flush=True)
 
 
-def _find_plugin_root() -> Path:
-    from little_loops.skill_expander import _find_plugin_root as _fpr
+def _find_plugin_root() -> Path | None:
+    from little_loops.skill_expander import resolve_plugin_content_root
 
-    return _fpr()
+    return resolve_plugin_content_root()
 
 
 def _read_skill_description(skill_md: Path) -> str:
@@ -206,6 +206,8 @@ def _load_skills() -> list[dict[str, str | None]]:
     from little_loops.cli.help import collect_entries
 
     plugin_root = _find_plugin_root()
+    if plugin_root is None:
+        return []
     entries = collect_entries(plugin_root)
     return [
         {"name": e.name, "description": e.description, "args": e.argument_hint}

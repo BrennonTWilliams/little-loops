@@ -11,12 +11,14 @@ import pytest
 from little_loops.skill_expander import (
     IMPERATIVE_TAIL,
     _append_execution_directive,
+    _content_root_candidates,
     _find_plugin_root,
     _resolve_content_path,
     _substitute_arguments,
     _substitute_config,
     _substitute_relative_refs,
     expand_skill,
+    resolve_plugin_content_root,
 )
 
 # ---------------------------------------------------------------------------
@@ -51,6 +53,109 @@ class TestFindPluginRoot:
 
         expected = Path(mod.__file__).resolve().parent.parent.parent
         assert root == expected
+
+
+# ---------------------------------------------------------------------------
+# _content_root_candidates / resolve_plugin_content_root (BUG-3490)
+# ---------------------------------------------------------------------------
+
+
+class TestContentRootCandidates:
+    def test_env_first_when_set(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(tmp_path))
+        candidates = _content_root_candidates()
+        assert candidates[0] == tmp_path
+
+    def test_no_env_starts_with_checkout_root(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)
+        import little_loops.skill_expander as mod
+
+        expected_checkout = Path(mod.__file__).resolve().parent.parent.parent
+        candidates = _content_root_candidates()
+        assert candidates[0] == expected_checkout
+
+    def test_includes_packaged_candidate(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)
+        candidates = _content_root_candidates()
+        import importlib.resources
+
+        expected_packaged = Path(str(importlib.resources.files("little_loops")))
+        assert expected_packaged in candidates
+
+    def test_skips_unsupported_resource_representation(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)
+
+        class _Unrepresentable:
+            def __str__(self) -> str:  # pragma: no cover - trigger path
+                raise TypeError("no filesystem path")
+
+        monkeypatch.setattr(
+            "little_loops.skill_expander.importlib.resources.files",
+            lambda _name: _Unrepresentable(),
+        )
+        # Must not raise, and must not include a phantom candidate.
+        candidates = _content_root_candidates()
+        assert all(isinstance(c, Path) for c in candidates)
+
+    def test_missing_package_resources_skipped(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)
+
+        def _raise(_name: str) -> None:
+            raise ModuleNotFoundError
+
+        monkeypatch.setattr("little_loops.skill_expander.importlib.resources.files", _raise)
+        candidates = _content_root_candidates()
+        # Only the checkout-derived candidate remains.
+        assert len(candidates) == 1
+
+
+class TestResolvePluginContentRoot:
+    def test_selects_first_candidate_with_skills_dir(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        first = tmp_path / "first"
+        first.mkdir()
+        second = tmp_path / "second"
+        (second / "skills").mkdir(parents=True)
+        monkeypatch.setattr(
+            "little_loops.skill_expander._content_root_candidates",
+            lambda: [first, second],
+        )
+        assert resolve_plugin_content_root() == second
+
+    def test_commands_only_root_is_valid(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        root = tmp_path / "commands-only"
+        (root / "commands").mkdir(parents=True)
+        monkeypatch.setattr("little_loops.skill_expander._content_root_candidates", lambda: [root])
+        assert resolve_plugin_content_root() == root
+
+    def test_no_valid_candidate_returns_none(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        empty = tmp_path / "empty"
+        empty.mkdir()
+        monkeypatch.setattr("little_loops.skill_expander._content_root_candidates", lambda: [empty])
+        assert resolve_plugin_content_root() is None
+
+    def test_empty_candidate_list_returns_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr("little_loops.skill_expander._content_root_candidates", lambda: [])
+        assert resolve_plugin_content_root() is None
+
+    def test_invalid_env_candidate_falls_through(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        bad_env = tmp_path / "nonexistent-env-root"
+        good_checkout = tmp_path / "checkout"
+        (good_checkout / "skills").mkdir(parents=True)
+        monkeypatch.setattr(
+            "little_loops.skill_expander._content_root_candidates",
+            lambda: [bad_env, good_checkout],
+        )
+        assert resolve_plugin_content_root() == good_checkout
 
 
 # ---------------------------------------------------------------------------
@@ -223,7 +328,9 @@ class TestExpandSkill:
         plugin_root = self._make_plugin_root(tmp_path, content)
         config = _make_config({"issues.base_dir": ".issues"})
 
-        with patch("little_loops.skill_expander._find_plugin_root", return_value=plugin_root):
+        with patch(
+            "little_loops.skill_expander.resolve_plugin_content_root", return_value=plugin_root
+        ):
             result = expand_skill("test-skill", ["bug", "fix"], config)
 
         assert result is not None
@@ -237,7 +344,9 @@ class TestExpandSkill:
         plugin_root = self._make_plugin_root(tmp_path, content)
         config = _make_config()
 
-        with patch("little_loops.skill_expander._find_plugin_root", return_value=plugin_root):
+        with patch(
+            "little_loops.skill_expander.resolve_plugin_content_root", return_value=plugin_root
+        ):
             result = expand_skill("test-skill", ["arg"], config)
 
         assert result is not None
@@ -246,7 +355,9 @@ class TestExpandSkill:
 
     def test_returns_none_when_skill_not_found(self, tmp_path: Path) -> None:
         config = _make_config()
-        with patch("little_loops.skill_expander._find_plugin_root", return_value=tmp_path):
+        with patch(
+            "little_loops.skill_expander.resolve_plugin_content_root", return_value=tmp_path
+        ):
             result = expand_skill("nonexistent", [], config)
         assert result is None
 
@@ -266,7 +377,7 @@ class TestExpandSkill:
 
         config = _make_config()
         with (
-            patch("little_loops.skill_expander._find_plugin_root", return_value=tmp_path),
+            patch("little_loops.skill_expander.resolve_plugin_content_root", return_value=tmp_path),
             caplog.at_level(logging.DEBUG, logger="little_loops.skill_expander"),
         ):
             result = expand_skill("nonexistent-skill", [], config)
@@ -281,7 +392,9 @@ class TestExpandSkill:
         (skill_dir / "SKILL.md").write_text("See [tmpl](templates.md)\n$ARGUMENTS\n")
         config = _make_config()
 
-        with patch("little_loops.skill_expander._find_plugin_root", return_value=tmp_path):
+        with patch(
+            "little_loops.skill_expander.resolve_plugin_content_root", return_value=tmp_path
+        ):
             result = expand_skill("test-skill", [], config)
 
         assert result is not None

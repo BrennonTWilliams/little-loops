@@ -52,7 +52,7 @@ from little_loops.session_store import (
     record_attempt,
     record_harness_event,
 )
-from little_loops.skill_expander import _find_plugin_root, _resolve_content_path
+from little_loops.skill_expander import _resolve_content_path, resolve_plugin_content_root
 from little_loops.stats import proportion_diff_ci, wilson_ci
 
 __all__ = [
@@ -171,10 +171,15 @@ def _resolve_skill_target_path(name: str) -> Path | None:
     """Return the resolved path of skill *name*, or None if unresolvable.
 
     ENH-141: thin wrapper over :func:`_resolve_content_path` so the harness
-    call sites don't need to know about the plugin-root convention.
+    call sites don't need to know about the plugin-root convention. Uses
+    :func:`resolve_plugin_content_root` (BUG-3490) so cell-key hashing agrees
+    with queue classification and MCP skills listing on a packaged install.
     """
     try:
-        return _resolve_content_path(_find_plugin_root(), name)
+        plugin_root = resolve_plugin_content_root()
+        if plugin_root is None:
+            return None
+        return _resolve_content_path(plugin_root, name)
     except OSError:
         return None
 

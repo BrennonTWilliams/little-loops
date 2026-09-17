@@ -205,6 +205,75 @@ class TestWheelSmoke:
         )
         assert result.returncode == 0, result.stderr
 
+    def test_commands_force_include_accessible(self, installed_venv: Path) -> None:
+        """BUG-3490: commands/ (force-include'd into little_loops/commands/) must ship
+        in the wheel — the commands/ twin of test_skills_force_include_accessible."""
+        result = self._run(
+            installed_venv,
+            """\
+            import importlib.resources
+            t = importlib.resources.files("little_loops")
+            t = t.joinpath("commands").joinpath("check-code.md")
+            assert t.is_file(), "commands/check-code.md not accessible via importlib.resources"
+            print("OK")
+            """,
+        )
+        assert result.returncode == 0, result.stderr
+
+    def test_resolver_and_read_consumers_work_without_plugin_root(
+        self, installed_venv: Path, tmp_path: Path
+    ) -> None:
+        """BUG-3490: resolve_plugin_content_root(), the policy-builder catalog,
+        ll-help/ll-action, and command-only skill expansion must all resolve to the
+        installed package content from an unrelated cwd with no CLAUDE_PLUGIN_ROOT
+        and no PYTHONPATH pointing at the checkout."""
+        consumer_dir = tmp_path / "consumer"
+        consumer_dir.mkdir()
+        env = {k: v for k, v in os.environ.items() if k not in ("CLAUDE_PLUGIN_ROOT", "PYTHONPATH")}
+        result = subprocess.run(
+            [
+                str(installed_venv),
+                "-c",
+                textwrap.dedent(
+                    """\
+                    import importlib.resources
+                    from little_loops.skill_expander import resolve_plugin_content_root
+                    from little_loops.cli.artifact.policy_builder import _load_skill_catalog
+                    from little_loops.cli.action import _load_skills
+                    from little_loops.skill_expander import _resolve_content_path
+
+                    root = resolve_plugin_content_root()
+                    assert root is not None, "resolver found no installed content"
+                    packaged = importlib.resources.files("little_loops")
+                    assert str(root) == str(packaged), (
+                        f"resolver selected {root}, expected packaged root {packaged} "
+                        "(checkout content leaking into a wheel install)"
+                    )
+
+                    catalog = _load_skill_catalog(root)
+                    names = {row["name"] for row in catalog}
+                    assert "check-code" in names, "command-only entry missing from builder catalog"
+
+                    skills = _load_skills()
+                    assert skills, "ll-action skill list is empty in installed wheel"
+
+                    content_path = _resolve_content_path(root, "check-code")
+                    assert content_path is not None, "check-code did not resolve via installed root"
+                    assert str(content_path).startswith(str(packaged)), (
+                        "resolved command path is not under the installed package"
+                    )
+                    print("OK")
+                    """
+                ),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            cwd=str(consumer_dir),
+            env=env,
+        )
+        assert result.returncode == 0, result.stderr
+
     def test_mcp_prompts_list_returns_full_catalog_without_plugin_root(
         self, installed_venv: Path, tmp_path: Path
     ) -> None:
@@ -281,4 +350,8 @@ class TestWheelSmoke:
         assert any(n.endswith("little_loops/skills/manage-issue/SKILL.md") for n in names), (
             "skills/ missing from a wheel built from the sdist — the sdist force-include "
             "mapping is missing or broken"
+        )
+        assert any(n.endswith("little_loops/commands/check-code.md") for n in names), (
+            "commands/ missing from a wheel built from the sdist (BUG-3490) — the sdist "
+            "force-include mapping is missing or broken"
         )

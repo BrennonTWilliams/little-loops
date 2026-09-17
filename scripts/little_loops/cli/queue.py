@@ -162,7 +162,7 @@ def _classify_action(
     from little_loops.config.core import BRConfig
     from little_loops.fsm.loop_paths import resolve_loop_path
     from little_loops.runner_spec import ActionSpec, RunnerType
-    from little_loops.skill_expander import _find_plugin_root, _resolve_content_path
+    from little_loops.skill_expander import _resolve_content_path, resolve_plugin_content_root
 
     args_dict: dict[str, str] = {}
     for pair in arg_pairs or []:
@@ -194,8 +194,8 @@ def _classify_action(
     except FileNotFoundError:
         pass
 
-    plugin_root = _find_plugin_root()
-    if _resolve_content_path(plugin_root, target) is not None:
+    plugin_root = resolve_plugin_content_root()
+    if plugin_root is not None and _resolve_content_path(plugin_root, target) is not None:
         resolved_timeout = (
             timeout if timeout is not None else _default_timeout_for(RunnerType.SKILL)
         )

@@ -19,38 +19,43 @@ _TEMPLATES_DIR = Path(__file__).resolve().parent.parent.parent / "templates"
 
 
 def _load_skill_catalog(project_root: Path) -> list[dict[str, str]]:
-    """Enumerate skills + commands as ``{name, description}`` dicts.
+    """Enumerate installed skills + commands as ``{name, description}`` dicts.
 
-    Mirrors ``cli/action.py:_load_skills`` globbing precedent. Missing
-    directories yield an empty contribution (never raises).
+    BUG-3490: *project_root* is retained for caller compatibility but no
+    longer selects plugin content — the catalog root is resolved via
+    :func:`little_loops.skill_expander.resolve_plugin_content_root`
+    (env `CLAUDE_PLUGIN_ROOT` > checkout > packaged content), so a normal
+    pip-installed consumer sees the little-loops catalog rather than an
+    empty scan of its own project root. A resolver returning ``None`` (no
+    installed content found anywhere) yields an empty catalog.
+
+    Projects over ``cli/help.py::collect_entries``, deduplicated by callable
+    identity (``/ll:<name>``, skill-preferred on collision — matching
+    ``_resolve_content_path()``'s skill-first lookup) and sorted by name.
     """
-    from little_loops.frontmatter import parse_skill_frontmatter
+    from little_loops.cli.help import collect_entries
+    from little_loops.skill_expander import resolve_plugin_content_root
 
-    catalog: list[dict[str, str]] = []
+    plugin_root = resolve_plugin_content_root()
+    if plugin_root is None:
+        return []
 
-    skills_dir = project_root / "skills"
-    for skill_md in sorted(skills_dir.glob("*/SKILL.md")):
-        name = skill_md.parent.name
-        try:
-            content = skill_md.read_text()
-        except OSError:
-            content = ""
-        fm = parse_skill_frontmatter(content) if content else {}
-        description = str(fm.get("description", "") or "").strip().strip('"').strip("'")
-        catalog.append({"name": name, "description": description})
+    entries = collect_entries(plugin_root)
+    by_name: dict[str, dict[str, str]] = {}
+    for entry in entries:
+        existing = by_name.get(entry.name)
+        if existing is not None and existing["kind"] == "skill":
+            continue
+        by_name[entry.name] = {
+            "name": entry.name,
+            "description": entry.description,
+            "kind": entry.kind,
+        }
 
-    commands_dir = project_root / "commands"
-    for cmd_md in sorted(commands_dir.glob("*.md")):
-        name = cmd_md.stem
-        try:
-            content = cmd_md.read_text()
-        except OSError:
-            content = ""
-        fm = parse_skill_frontmatter(content) if content else {}
-        description = str(fm.get("description", "") or "").strip().strip('"').strip("'")
-        catalog.append({"name": name, "description": description})
-
-    return catalog
+    return [
+        {"name": row["name"], "description": row["description"]}
+        for row in sorted(by_name.values(), key=lambda row: row["name"])
+    ]
 
 
 def cmd_policy_builder(args: argparse.Namespace, logger: Logger) -> int:
