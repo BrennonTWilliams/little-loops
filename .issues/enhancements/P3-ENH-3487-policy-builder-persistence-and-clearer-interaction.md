@@ -50,7 +50,7 @@ Prevent accidental loss of authoring work and make the builder useful for ongoin
 - **Draft envelope (review 2026-09-17)**: `drafts[mode]` is a wrapper `{model}` — not the bare model — so FEAT-3488 can add sibling keys (`scenarios: []`) without polluting the object `validateBuilderModel` checks or forcing a `schemaVersion` bump. `parseBuilderProject` structurally validates `drafts[mode].model`; localStorage stores the same wrapper. Require supported mode keys, matching `model.mode`, object/array field shapes, and a draft for `activeMode`. Do not mistake the semantic diagnostics from `validateBuilderModel` for structural validation. Preserve unknown JSON-compatible draft metadata on save/open and history snapshots so later scenario fields are not silently dropped.
 - Undo/redo as a pure history stack in `policy_builder_core.mjs`: `applyDraftEdit(history, edit) -> DraftHistory` with `{past, present, future}`. **History scope is the whole project**: `present` is `{activeMode, drafts}`, not a single draft, because mode switch is itself a history entry — undo across a mode switch restores the previous `activeMode` and re-renders that draft. Granularity: one history entry per committed field change (`change` event, rule add/move/delete, mode switch, start-blank, and any preset applied by ENH-3491), never per keystroke. Cap `past` at 100 entries. Snapshots are deep copies (same discipline as `_cloneDims`/`_cloneOutcomes`, `:694-699`).
 - **Keyboard shortcuts**: the document-level Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z handler ignores events whose target is an `input`, `textarea`, `select`, or contenteditable element, so native per-keystroke undo inside a field is untouched; the Undo/Redo buttons always act on the project history.
-- Save project / Open project as a versioned JSON envelope `BuilderProject {schemaVersion, generatorVersion, projectId, activeMode, drafts}` via pure `serializeBuilderProject(project) -> string` and `parseBuilderProject(text) -> BuilderProject` in core.mjs. **`generatorVersion` source (review 2026-09-17)**: nothing stamps a version into the page today (`cmd_policy_builder` stamps only theme, CSS vars, grammar, catalog, core JS — `scripts/little_loops/cli/artifact/policy_builder.py:91-99`). Add a `window.__GENERATOR_VERSION__` stamp from `little_loops.__version__` in `cmd_policy_builder` (one `html.replace` next to the existing ones); this is the one `policy_builder.py` change in this issue. Version policy: `schemaVersion` starts at 1; reject a newer `schemaVersion` with a matchable error without touching the current draft; older versions are migrated in `parseBuilderProject` (no migrations exist at v1, but the hook is the place they go). Missing or non-object `drafts`, unknown `activeMode`, missing/invalid `projectId`, a draft without a `model` key, mismatched draft-key/model modes, or structurally malformed models are import errors. Semantic errors remain visible and block YAML Copy/Download, but never project Save/Open or draft persistence. `generatorVersion` is informational only (never gates import).
+- Save project / Open project as a versioned JSON envelope `BuilderProject {schemaVersion, generatorVersion, projectId, activeMode, drafts}` via pure `serializeBuilderProject(project) -> string` and `parseBuilderProject(text) -> BuilderProject` in core.mjs. **`generatorVersion` source (review 2026-09-17)**: nothing stamps a version into the page today (`cmd_policy_builder` stamps only theme, CSS vars, grammar, catalog, core JS — `scripts/little_loops/cli/artifact/policy_builder.py:92-95`). Add a `window.__GENERATOR_VERSION__` stamp from `little_loops.__version__` in `cmd_policy_builder` (one `html.replace` next to the existing ones); this is the one `policy_builder.py` change in this issue. Version policy: `schemaVersion` starts at 1; reject a newer `schemaVersion` with a matchable error without touching the current draft; older versions are migrated in `parseBuilderProject` (no migrations exist at v1, but the hook is the place they go). Missing or non-object `drafts`, unknown `activeMode`, missing/invalid `projectId`, a draft without a `model` key, mismatched draft-key/model modes, or structurally malformed models are import errors. Semantic errors remain visible and block YAML Copy/Download, but never project Save/Open or draft persistence. `generatorVersion` is informational only (never gates import).
 - **Project identity**: create an opaque UUID `projectId` once for a new project; inject ID generation at the UI boundary so core serialization stays pure. Save/Open, reload, preset changes, and undo/redo preserve it. It identifies the builder document, not a filesystem project root. Persist project metadata (`projectId`, `activeMode`, schema/generator versions) alongside the per-mode wrappers; a fresh project gets a new ID. FEAT-3498 binds this document to the server-selected repository separately. Tests cover stable IDs across all these operations.
 - Save uses the existing `<a download>` Blob path; Open uses `<input type=file>` + `FileReader`. No File System Access API, no server.
 - Copy reports success/failure by attaching `.then/.catch` to `navigator.clipboard.writeText` and surfacing it in a live region; the same live region shows draft-saved / storage-unavailable state.
@@ -183,7 +183,7 @@ Proposed new pure JS contracts:
 
 The template restores the active draft (after `initTheme()`) before rendering the form, checking its structural shape and preserving semantic errors for `validateBuilderModel` to display (only corrupt structures fall back to the seed); every committed edit goes through `applyDraftEdit` and then persists the draft. `cmd_policy_builder` gains only the `__GENERATOR_VERSION__` stamp.
 
-Confirmed anchors (codebase-analyzer, 2026-09-16; re-verified `/ll:verify-issues` 2026-09-16 against BUG-3489/BUG-3486 working-tree edits): `applyStateToForm` (`scripts/little_loops/templates/policy-router-builder.html.tmpl:868-875`), `applyModeVisibility` (`:847-862`), `updatePreview` (`:808-824`, now wraps `serializeLoopYaml` in try/catch per the in-progress BUG-3489 fix) all live in the generated-HTML template's inline module script, not in `policy_builder_core.mjs` — only `serializeLoopYaml` (`scripts/little_loops/templates/policy_builder_core.mjs:1130`) is in the pure-JS core. Today this chain has no persistence step: `applyStateToForm` is called only from the mode-switch (`:878-887`) and "Start blank" (`:945-953`) handlers, each of which fully reassigns `state = seedExample(...)`/`blankModel(...)` first — there is no draft-restore call anywhere in the current chain, and `cmd_policy_builder` (`scripts/little_loops/cli/artifact/policy_builder.py:56-107`) stamps only theme, CSS vars, grammar spec, and skill catalog — no project metadata or confidence-gate settings are read or stamped today (`ConfidenceGateConfig` exists at `scripts/little_loops/config/automation.py:155-170` but is unread by this command).
+Confirmed anchors (codebase-analyzer, 2026-09-16; re-verified `/ll:verify-issues` 2026-09-16 against BUG-3489/BUG-3486 working-tree edits): `applyStateToForm` (`scripts/little_loops/templates/policy-router-builder.html.tmpl:868-875`), `applyModeVisibility` (`:847-862`), `updatePreview` (`:808-824`, now wraps `serializeLoopYaml` in try/catch per the in-progress BUG-3489 fix) all live in the generated-HTML template's inline module script, not in `policy_builder_core.mjs` — only `serializeLoopYaml` (`scripts/little_loops/templates/policy_builder_core.mjs:1130`) is in the pure-JS core. Today this chain has no persistence step: `applyStateToForm` is called only from the mode-switch (`:878-887`) and "Start blank" (`:945-953`) handlers, each of which fully reassigns `state = seedExample(...)`/`blankModel(...)` first — there is no draft-restore call anywhere in the current chain, and `cmd_policy_builder` (`scripts/little_loops/cli/artifact/policy_builder.py:61-112`) stamps only theme, CSS vars, grammar spec, and skill catalog — no project metadata or confidence-gate settings are read or stamped today (`ConfidenceGateConfig` exists at `scripts/little_loops/config/automation.py:155-170` but is unread by this command).
 
 ### Codebase Research Findings
 
@@ -334,12 +334,43 @@ fixed, not an outstanding action item).
 - Proposal-vs-code consequence check (B6): no new issue found — the persistence/undo/save-open
   design does not touch the BUG-3489 reserved-token guard or any other code path that changed.
 
+_Third `/ll:verify-issues` pass — 2026-09-17 (batch run with ENH-3491/ENH-3492/FEAT-3488):_
+
+Verdict at time of check: **OUTDATED** (corrections below applied in the same pass, so
+the issue as it now reads is up to date — this section is a record of what was wrong and
+fixed, not an outstanding action item).
+
+- Commit `25e39fb1d` (BUG-3490, "resolve installed plugin content root for skill/command
+  discovery", 2026-09-17T00:12:13) rewrote `policy_builder.py` between the prior verify
+  pass and this one, shifting the two `cmd_policy_builder`/stamping citations this issue's
+  Proposed Solution and Program Design cite. Corrected: the "stamps only theme, CSS vars,
+  grammar, catalog, core JS" citation (`91-99`→`92-95`) and the `cmd_policy_builder`
+  function-range citation (`56-107`→`61-112`). Substance unchanged: `cmd_policy_builder`
+  still stamps exactly those five things and nothing else — the `__GENERATOR_VERSION__`
+  plan (one `html.replace` next to the existing stamps) remains sound at the corrected
+  lines.
+- `policy_builder_core.mjs`/`policy-router-builder.html.tmpl` anchors are unaffected —
+  `25e39fb1d` did not touch either file (confirmed via `git show --stat`); no commit has
+  landed against them since the prior pass's post-`8faffee5a` correction.
+- Dependency graph checked directly (BUG-3486 `blocks: [ENH-3487, ENH-3491, ENH-3492,
+  FEAT-3488]` confirmed done; `blocks:`/`blocked_by:` backlinks across
+  ENH-3487→ENH-3491→ENH-3492→FEAT-3488→FEAT-3498 all match in both directions): no
+  DEP_ISSUES findings.
+- `ll-verify-evidence --json`: `"ok": true`, 0 findings.
+- Decisions log query (`ll-issues decisions list --type rule --enforcement required
+  --active-only`) returned no entries.
+- Graph: provider=`codegraph` freshness=`stale` (dirty working tree) — not relied on; all
+  citations above were confirmed by direct read instead.
+- Proposal-vs-code consequence check (B6): no new issue found — the `__GENERATOR_VERSION__`
+  stamping plan is unaffected by BUG-3490's catalog-dedup rewrite.
+
 ## Status
 
 **Open** | Created: 2026-09-16 | Priority: P3
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-17T06:27:20 - `9b9f3eca-ed5d-4fd7-a99d-217cb278def3.jsonl`
 - manual review - 2026-09-17 - stale anchors corrected (guide `:300`/`:305`, `moveRule` `678-689`); code claims re-verified (issue-id-then-args ordering, `__version__` source, `evaluateModel` shape)
 - manual review - 2026-09-17 - preserve unfinished drafts via structural validation; stable builder projectId and metadata persistence; preserve extension fields; corrected rubric input guidance; added regression criteria
 - manual review - 2026-09-17 - `{model}` draft wrapper for FEAT-3488; whole-project history scope; shortcut/native-undo rule; `__GENERATOR_VERSION__` stamp (policy_builder.py now touched); corrupt-draft fallback; concrete `ll-loop run` input syntax; BUG-3486 dependency confirmed done

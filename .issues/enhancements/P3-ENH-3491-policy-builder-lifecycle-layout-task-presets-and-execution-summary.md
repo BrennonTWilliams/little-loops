@@ -53,7 +53,7 @@ Lifecycle authoring is organized as Fields, Rules, Try it, Export. Action bindin
 
 - Add `@media (max-width: 600px)` collapsing the grid to one column.
 
-- Show `catalog` skill descriptions and argument hints in the action editor. **Argument hints are not in the stamped catalog today** (review 2026-09-17): `_load_skill_catalog` (`scripts/little_loops/cli/artifact/policy_builder.py:22-56`) projects only `{name, description}` out of the `HelpEntry` rows it already gets from `cli/help.py::collect_entries` — and `HelpEntry` already carries `argument_hint: str | None` (`cli/help.py:124`), parsed from `args`/`argument-hint` frontmatter. So no new parser is needed: carry `entry.argument_hint` through as a nullable `args_hint` key on each stamped row. This is the one `policy_builder.py` change in this issue; `test_policy_builder_emit.py` asserts every stamped row has the `args_hint` key and that a skill with a known hint stamps it verbatim. (`little_loops.tool_catalog` parses the same field independently for the MCP tool list; do not add a second catalog source.)
+- Show `catalog` skill descriptions and argument hints in the action editor. **Argument hints are not in the stamped catalog today** (review 2026-09-17): `_load_skill_catalog` (`scripts/little_loops/cli/artifact/policy_builder.py:21-58`) projects only `{name, description}` out of the `HelpEntry` rows it already gets from `cli/help.py::collect_entries` — and `HelpEntry` already carries `argument_hint: str | None` (`cli/help.py:124`), parsed from `args`/`argument-hint` frontmatter. So no new parser is needed: carry `entry.argument_hint` through as a nullable `args_hint` key on each stamped row. This is the one `policy_builder.py` change in this issue; `test_policy_builder_emit.py` asserts every stamped row has the `args_hint` key and that a skill with a known hint stamps it verbatim. (`little_loops.tool_catalog` parses the same field independently for the MCP tool list; do not add a second catalog source.)
 
 - Preset buttons go through ENH-3487's committed-edit path (push a history entry, persist the draft), exactly like "Start blank" — never a bare `applyStateToForm` that bypasses undo/persistence. Preset/start-blank replacement clears scenarios only in the replaced draft (if present); the UI states that effect and one undo restores the prior model and scenarios together. Other drafts and project identity are preserved. No scenario UI is added here; FEAT-3488 wires its controls to this contract.
 
@@ -93,7 +93,7 @@ Lifecycle authoring is organized as Fields, Rules, Try it, Export. Action bindin
 
 ### Call Path
 
-`applyStateToForm` -> `applyModeVisibility` -> `updatePreview` -> `serializeLoopYaml`, with `summarizeTransitions` called from `updatePreview` and rendered next to the YAML preview. Preset buttons apply `preset.build()` through ENH-3487's committed-edit path (`applyDraftEdit` + persist), then `applyStateToForm`. `cmd_policy_builder` (`scripts/little_loops/cli/artifact/policy_builder.py:61-107`) changes only in `_load_skill_catalog` (`args_hint`); the golden fixture is regenerated.
+`applyStateToForm` -> `applyModeVisibility` -> `updatePreview` -> `serializeLoopYaml`, with `summarizeTransitions` called from `updatePreview` and rendered next to the YAML preview. Preset buttons apply `preset.build()` through ENH-3487's committed-edit path (`applyDraftEdit` + persist), then `applyStateToForm`. `cmd_policy_builder` (`scripts/little_loops/cli/artifact/policy_builder.py:61-112`) changes only in `_load_skill_catalog` (`args_hint`); the golden fixture is regenerated.
 
 Anchors (re-verified in review 2026-09-17 after commit `8faffee5a`, which shifted every core.mjs/template anchor): `applyStateToForm` (`scripts/little_loops/templates/policy-router-builder.html.tmpl:906-912`), `applyModeVisibility` (`:885-901`), `updatePreview` (`:840-864`), `renderAll` (`:866-883`), `renderLifecycleOutcomes()` (`:453`), `renderRules()` (`:556`), `#f-subject` (`:144`), YAML `<details>` (`:222`), grid (`:32`) live in the template; `serializeLoopYaml` (`scripts/little_loops/templates/policy_builder_core.mjs:1448`), `seedExample` (`:782`), `blankModel` (`:857`), `LIFECYCLE_VERBS` (`:108-144`), `BUILTIN_FRONTMATTER_DIMENSIONS` (`:89`), `_emittedVerbs` (`:1336`) are in the pure-JS core; `summarizeTransitions` and `taskPresets` are new exports added next to `seedExample`. The transition is expressible with `implement.transition = {kind: "goto", target: "verify"}` (`_emittedVerbs` follows goto chains), but the default verify action must be replaced with the explicit acceptance-check contract above.
 
@@ -156,11 +156,42 @@ not an outstanding action item).
   reorders existing rendering and adds pure functions; it does not touch the BUG-3489
   reserved-token guard or any other changed code path.
 
+_Third `/ll:verify-issues` pass — 2026-09-17 (batch run with ENH-3487/ENH-3492/FEAT-3488):_
+
+Verdict at time of check: **OUTDATED** (corrections below applied in the same pass, so
+the issue as it now reads is up to date — this section is a record of what was wrong and
+fixed, not an outstanding action item).
+
+- Commit `25e39fb1d` (BUG-3490, "resolve installed plugin content root for skill/command
+  discovery", 2026-09-17T00:12:13) rewrote `_load_skill_catalog` and shifted
+  `cmd_policy_builder` in `policy_builder.py` between the prior verify pass and this one.
+  Corrected: `_load_skill_catalog` (`22-56`→`21-58`), `cmd_policy_builder` in the Call Path
+  (`61-107`→`61-112`). `HelpEntry.argument_hint` (`cli/help.py:124`) still exists and the
+  function still returns only `{name, description}` from the stamped rows — the `args_hint`
+  addition plan is unaffected in substance. (BUG-3490 also added a skill-preferred dedup
+  step inside `_load_skill_catalog`, keyed on `entry.name`; this issue's plan reads
+  `entry.argument_hint` off the same already-deduped `entry` the loop iterates, so the
+  dedup change requires no adjustment to the proposal.)
+- `policy_builder_core.mjs`/`policy-router-builder.html.tmpl` anchors unaffected — `25e39fb1d`
+  did not touch either file; `_checkIncompleteActions` (the empty-body diagnostic this issue
+  extends to `shell`) confirmed at `policy_builder_core.mjs:550-564`, condition on `at ===
+  "prompt" || at === "slash_command"` only, matching the cited `555-563` range.
+- `docs/guides/POLICY_ROUTER_GUIDE.md` "Visual Builder" passage citations (`:305` greenfield
+  framing) re-confirmed exact; unaffected by the `25e39fb1d` doc edits (which only touched
+  `docs/reference/CLI.md:3757` and `docs/reference/API.md:11912`, both well before this
+  issue's cited ranges, with no net line-count change to CLI.md before line 5079).
+- Dependency backlinks checked directly: consistent in both directions across
+  ENH-3487→ENH-3491→ENH-3492→FEAT-3488; no DEP_ISSUES findings.
+- `ll-verify-evidence --json`: `"ok": true`, 0 findings.
+- Decisions log query returned no entries.
+- Proposal-vs-code consequence check (B6): no new issue found.
+
 ## Status
 
 **Open** | Created: 2026-09-16 | Priority: P3
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-17T06:27:55 - `9b9f3eca-ed5d-4fd7-a99d-217cb278def3.jsonl`
 - manual review - 2026-09-17 - empty-body diagnostic must be extended to `shell` (was assumed to exist); `verificationContract` must be projected by `buildModel()`; `args_hint` comes from `HelpEntry.argument_hint`, not `tool_catalog`; Current Behavior anchors corrected
 - manual review - 2026-09-17 - defined acceptance-check command/input/exit-code contract, unfinished-preset behavior, action-aware summaries, and atomic model/scenario replacement undo
 - manual review - 2026-09-17 - `args_hint` missing from stamped catalog (policy_builder.py now touched); presets route through ENH-3487's edit path (ENH-3487 promoted to depends_on); anchors corrected post-8faffee5a

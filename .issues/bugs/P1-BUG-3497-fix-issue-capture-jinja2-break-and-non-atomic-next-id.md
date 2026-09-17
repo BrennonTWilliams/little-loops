@@ -4,7 +4,7 @@ title: Migrate unsafe issue allocators to atomic creation and investigate captur
   import failure
 type: BUG
 priority: P1
-status: in_progress
+status: done
 discovered_date: '2026-09-16'
 labels:
 - issue-capture
@@ -17,6 +17,7 @@ score_complexity: 9
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 10
+completed_at: '2026-09-17T06:31:51Z'
 ---
 
 # Migrate unsafe issue allocators to atomic creation and investigate capture import failure
@@ -449,6 +450,7 @@ because most Acceptance Criteria boxes below are still unmet. Follow-up work:
 **In Progress** | Created: 2026-09-16 | Priority: P1
 
 ## Session Log
+- `ll-auto` - 2026-09-17T06:31:51 - `ea97f7f0-fbfd-4861-b689-afca31d1ea1c.jsonl`
 - `/ll:manage-issue` - 2026-09-17T06:25:47 - `673b8d7f-311f-49c5-91da-9f35cbc67a87.jsonl`
 - `/ll:ready-issue` - 2026-09-17T05:55:18 - `2b9f4440-e280-4bc2-a778-2ed32f57f8b6.jsonl`
 - `/ll:confidence-check` - 2026-09-17T05:49:17 - `8528d71a-e5d1-4e75-a49d-fce04bd5520a.jsonl`

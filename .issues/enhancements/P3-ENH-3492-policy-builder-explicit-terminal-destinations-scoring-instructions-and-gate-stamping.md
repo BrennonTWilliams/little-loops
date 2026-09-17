@@ -42,7 +42,7 @@ The builder emits a binary terminal model, differing by mode:
 - `decision_table` (`_serializeDecisionTable`, `:807-910`) now unconditionally emits `on_max_steps: failed` (added by the BUG-3489 fix, committed `22f4ff6ed`; see `scripts/tests/fixtures/policy_builder/sample-decision-table.yaml:7`) — no model flag, and existing golden fixtures were regenerated (not kept byte-equal) as part of that change.
 
 - `rubric` (`_serializeRubric`, `:912-987`) has a single `done` terminal and no `on_max_steps`.
-No `stop-success`, `skip`, or `needs-attention` concept exists anywhere in the builder. Rubric dimensions have no score definitions. `cmd_policy_builder` (`scripts/little_loops/cli/artifact/policy_builder.py:56-107`) stamps only theme, CSS vars, grammar spec, and catalog; lifecycle defaults hardcode a confidence threshold. `ConfidenceGateConfig` (`scripts/little_loops/config/automation.py:155-170`) is unread by this command.
+No `stop-success`, `skip`, or `needs-attention` concept exists anywhere in the builder. Rubric dimensions have no score definitions. `cmd_policy_builder` (`scripts/little_loops/cli/artifact/policy_builder.py:61-112`) stamps only theme, CSS vars, grammar spec, and catalog; lifecycle defaults hardcode a confidence threshold. `ConfidenceGateConfig` (`scripts/little_loops/config/automation.py:155-170`) is unread by this command.
 
 ## Expected Behavior
 
@@ -74,7 +74,7 @@ The prior terminal decision is retained with explicit reference-vs-definition va
 
 - Tests: new `.model.json`/`.yaml` fixture pairs under `scripts/tests/fixtures/policy_builder/` for each new destination plus parametrize entries in `test_policy_builder_node_gate.py::test_round_trip_yaml_validates_for_each_mode` (arbitrary terminal names are schema-legal per `fsm/validation/structural_rules.py:1160-1168`); `scripts/tests/js/policy_validator.test.mjs`; `test_policy_builder_corpus.py`; regenerate the golden HTML fixture.
 
-- Docs: `docs/reference/CLI.md:5079-5095` prose at `:5081` (five fixed verbs); `docs/guides/POLICY_ROUTER_GUIDE.md:287-289,350-351` ("can't be deleted and no new outcome can be added") and `:355-361` (Verb Table needs a destination column). (Line numbers re-verified `/ll:verify-issues` 2026-09-16: a new "Failure Routing and Clean-Slate Scoring" subsection inserted earlier in the doc shifted this section by +60 lines from its originally-cited location.)
+- Docs: `docs/reference/CLI.md:5079-5095` prose at `:5081` (five fixed verbs); `docs/guides/POLICY_ROUTER_GUIDE.md:287-289,355-356` ("can't be deleted and no new outcome can be added") and `:355-361` (Verb Table needs a destination column). (Line numbers re-verified `/ll:verify-issues` 2026-09-16: a new "Failure Routing and Clean-Slate Scoring" subsection inserted earlier in the doc shifted this section by +60 lines from its originally-cited location.)
 
 ### Dependent Files (Callers/Importers)
 _Wiring pass added by `/ll:wire-issue`:_
@@ -261,11 +261,47 @@ _Manual review — 2026-09-17:_
 - Resolved three gaps: (1) Expected Behavior/AC contradicted decisions 2-3 on byte-identical fixtures; (2) the failure flag on new terminals was undefined; (3) "rule routes to destination" vs "`transition.kind`" were two different mechanisms — both are now in scope with one shared terminal set.
 - `_outcomeStateLines` signature corrected (takes an outcome, not the model).
 
+_Third `/ll:verify-issues` pass — 2026-09-17 (batch run with ENH-3487/ENH-3491/FEAT-3488):_
+
+Verdict at time of check: **OUTDATED** (corrections below applied in the same pass, so
+the issue as it now reads is up to date — this section is a record of what was wrong and
+fixed, not an outstanding action item).
+
+- Commit `25e39fb1d` (BUG-3490, "resolve installed plugin content root for skill/command
+  discovery", 2026-09-17T00:12:13) rewrote `policy_builder.py` between the prior verify
+  pass and this one, shifting the `cmd_policy_builder` citation in Current Behavior
+  (`56-107`→`61-112`). No substance change: it still stamps only theme/CSS/grammar/catalog,
+  still doesn't read `config.commands.confidence_gate` — the proposed gate-stamping addition
+  is unaffected.
+- `FSMExecutor._finish` line `4337` (the `failure_terminal` gate this issue's §2 runtime
+  prerequisite depends on) re-confirmed by direct read — `terminated_by == "terminal"`
+  precondition is exactly as cited; BUG-3499 remains open (untracked, not yet committed),
+  so `depends_on: BUG-3499` is still accurate and unresolved.
+- Doc citation correction (unrelated to the `25e39fb1d` commit, which touched
+  `docs/reference/CLI.md:3757`/`docs/reference/API.md:11912` only — both above this issue's
+  cited ranges with no net line-count change before line 5079): the Integration Map's second
+  citation for "can't be deleted and no new outcome can be added" (`350-351`) pointed at
+  unrelated custom-field-type prose; the phrase is actually at `docs/guides/
+  POLICY_ROUTER_GUIDE.md:355-356`. Corrected in place; the companion `:355-361` citation
+  (Verb Table) was already accurate.
+- `policy_builder_core.mjs`/`policy-router-builder.html.tmpl` anchors (all cited in Program
+  Design) unaffected by `25e39fb1d`; re-confirmed unchanged since the prior pass's
+  post-`8faffee5a` correction.
+- Dependency backlinks checked directly: `blocked_by: [ENH-3491]` / `ENH-3491.blocks:
+  [ENH-3492]` match; `depends_on: [BUG-3486, BUG-3499]` — BUG-3486 done with a matching
+  `blocks:` backlink, BUG-3499 open (no backlink needed pending completion); `blocks:
+  [FEAT-3488]` / `FEAT-3488.blocked_by` includes `ENH-3492` — consistent. No DEP_ISSUES
+  findings.
+- `ll-verify-evidence --json`: `"ok": true`, 0 findings.
+- Decisions log query returned no entries.
+- Proposal-vs-code consequence check (B6): no new issue found.
+
 ## Status
 
 **Open** | Created: 2026-09-16 | Priority: P3
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-17T06:28:31 - `9b9f3eca-ed5d-4fd7-a99d-217cb278def3.jsonl`
 - manual review - 2026-09-17 - executor probe showed cap-routed `failure_terminal` is False; filed BUG-3499 and added to `depends_on`; max-steps AC asserts `terminated_by` now, `failure_terminal` after BUG-3499; rubric `on_max_steps` is an added line in the diff-shape AC
 - manual review - 2026-09-17 - resolved terminal-reference reservation contradiction; moved scoring metadata to grading prompts; fixed project-round-trip criteria; preserved wire protocols; clarified gate display and terminal summaries
 - manual review - 2026-09-17 - resolved byte-identical contradiction, defined failure flags and rule-target vs transition mechanisms, corrected anchors post-8faffee5a
