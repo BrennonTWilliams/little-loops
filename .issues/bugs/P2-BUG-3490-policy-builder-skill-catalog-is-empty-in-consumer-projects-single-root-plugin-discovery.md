@@ -29,7 +29,7 @@ Fix this with a filesystem-only, read-only resolver that selects one authoritati
 
 Split from BUG-3486 (whole-builder review, defect h). The design below incorporates the pre-implementation reasoning review and replaces the earlier multi-root/project-shadowing and persisted marketplace-path proposal.
 
-## Current Behavior and Root Cause
+## Current Behavior
 
 - `cli/artifact/policy_builder.py::_load_skill_catalog(project_root)` directly scans `project_root/skills` and `project_root/commands`. It does not resolve installed content.
 - `skill_expander.py::_find_plugin_root()` returns `CLAUDE_PLUGIN_ROOT` when set, otherwise three parents above its own file. The latter is the repository root in an editable checkout but is not a plugin content root in a wheel installation.
@@ -54,7 +54,7 @@ Add `resolve_plugin_content_root() -> Path | None` in `skill_expander.py`, separ
 2. The source checkout root derived from this module, when it contains either directory.
 3. The installed package directory obtained through `importlib.resources.files("little_loops")`, when it contains either directory.
 
-Return the first valid root, or `None` when none exists. Invalid or unavailable candidates contribute nothing. Note that `mcp_server/server.py::_resolve_skills_root` orders packaged before checkout; the two orders are equivalent in practice because, under one interpreter, only one of those candidates ever has a `skills/` directory (editable: the package dir has none; wheel: the derived checkout root is a site-packages parent). Document that equivalence next to the resolver so the codebase does not carry two apparent contracts.
+Return the first valid root, or `None` when none exists. Invalid or unavailable candidates contribute nothing. Note that `mcp_server/server.py::_resolve_skills_root` orders packaged before checkout; the two orders are equivalent in practice because, under one interpreter, only one of those candidates ever has a `skills/` directory (editable: the package dir has none; wheel: the derived checkout root is a site-packages parent). Document this as the expected layout of ordinary editable and wheel installations, not a universal equivalence: if both candidates contain content, the new resolver deliberately prefers checkout. MCP prompt-index behavior remains outside this issue.
 
 Expose the candidate walk as a module-level `_content_root_candidates() -> list[Path]` (env, checkout, packaged, in that order, unvalidated) that tests monkeypatch. This is the isolation seam Implementation Step 1 relies on: packaged-layout fixtures replace the list rather than relying on path tricks to hide the real checkout. A commands-only root is valid. Selection is by directory availability, not by whether a particular requested name exists: never fall through to another installation for a missing skill or command. An empty but valid selected catalog stays empty rather than borrowing another version's content.
 
@@ -74,7 +74,7 @@ Keep `_find_plugin_root()` unchanged for mutation/development commands. Explicit
 - `mcp_server/tools.py::_tool_skills_list`, preserving its agreement with queue classification;
 - `cli/harness.py::_resolve_skill_target_path`, which hashes skill content for cell keys through `_find_plugin_root()` + `_resolve_content_path` and is read-only; on a wheel it currently resolves nothing and must agree with the root queue classification uses.
 
-Missing content produces an empty catalog, `None` from expansion, or the existing queue classification fallback, as appropriate. Do not pass `None` into existing path-based collectors.
+Missing content produces an empty catalog, `None` from expansion, or the existing queue classification fallback, as appropriate. Do not pass `None` into existing path-based collectors. For `ll-help`, preserve exit 1 with a stderr diagnostic when no root resolves or an explicit `-C` lacks both directories; preserve exit 0 for an existing but empty catalog directory. Update its option help and diagnostic to acknowledge packaged content (remove the obsolete claim that pip installs cannot have a catalog).
 
 Keep `assemble_tool_catalog(root)` an explicit-root scanner; its callers do not inherit a resolver change automatically. This issue changes the MCP skills-list caller, not all tool catalogs or doctor behavior. The MCP prompt index's dedicated `LL_MCP_SKILLS_ROOT` override and existing lookup policy remain outside this change; do not silently remove that override.
 
@@ -96,14 +96,32 @@ Extend the existing conditional build hook to include `commands/` as `little_loo
 
 Once the resolver exists, `mcp_server/server.py::_resolve_skills_root` duplicates its candidate walk (plus the `LL_MCP_SKILLS_ROOT` override and stderr warning). Fold it onto the shared resolver in a separate issue; this issue leaves it untouched.
 
+## Program Design
+
+```python
+def _content_root_candidates() -> list[Path]: ...
+def resolve_plugin_content_root() -> Path | None: ...
+def _load_skill_catalog(project_root: Path) -> list[dict[str, str]]: ...
+```
+
+- `_content_root_candidates() -> list[Path]` constructs environment, derived checkout, and filesystem-backed package candidates in order. Skip unsupported resource representations and unavailable candidates without hiding an otherwise valid earlier candidate.
+- `resolve_plugin_content_root() -> Path | None` selects the first candidate with a `skills/` or `commands/` directory. It performs no per-name fallback, writes, caching, or subprocess calls.
+- Retain `_load_skill_catalog(project_root: Path) -> list[dict[str, str]]` for caller compatibility; document that `project_root` does not select plugin content. Its flow is resolver → `collect_entries(root)` → skill-preferred deduplication by name → name-sorted `{name, description}` rows. No root returns `[]`.
+- The other listed read consumers use the same resolver and handle `None` before calling path-based helpers. `ll-action` continues to expose only the skill projection; a commands-only root therefore legitimately gives it an empty skill list. Queue tests must avoid same-named loops, since existing loop-before-skill classification remains unchanged.
+- `_find_plugin_root()` and the explicitly excluded consumers retain their existing behavior.
+
+### Call Path
+
+`cmd_policy_builder` → `_load_skill_catalog` → `resolve_plugin_content_root` → `_content_root_candidates`; selected root → `collect_entries` → deduplicated builder rows. `expand_skill`, `_classify_action`, and `_resolve_skill_target_path` resolve the same root before `_resolve_content_path`. `main_help`, `_load_skills`, and `_tool_skills_list` resolve it before their existing collectors.
+
 ## Implementation Steps
 
-1. Add isolated resolver fixtures for environment, editable, packaged, commands-only, invalid, and absent roots. Monkeypatch `_content_root_candidates()` so packaged tests cannot pass accidentally against repository content.
+1. Add isolated resolver fixtures for environment, editable, packaged, commands-only, invalid, and absent roots. Monkeypatch `_content_root_candidates()` so packaged selection tests cannot pass accidentally against repository content. Separately test candidate construction without replacing that helper, including environment order, filesystem resource conversion, unavailable resources, and unsupported archive-backed resources; selection tests alone cannot detect a broken candidate builder.
 2. Implement the read-only single-root resolver while retaining `_find_plugin_root()` behavior for editing/development consumers.
 3. Migrate the listed read consumers together. Add parity tests for catalog entries, content expansion, MCP skills listing, and queue skill classification, including coexistence of different installation versions.
 4. Replace the builder's direct project scan with the collector projection and explicit invocation deduplication. Verify the generated HTML catalog and `/ll:` selections.
 5. Extend packaging for commands and validate both direct wheel and sdist-to-wheel artifacts.
-6. Update relevant API/CLI and package-data documentation to distinguish installed content discovery from editing-root lookup. Run the full local test suite.
+6. Update relevant API/CLI and package-data documentation to distinguish installed content discovery from editing-root lookup. Run the full local test suite and explicitly run `PYTEST_INTEGRATION=1 python -m pytest scripts/tests/test_wheel_smoke.py`; the default suite skips these packaging checks.
 
 ## Integration Map
 
@@ -133,7 +151,7 @@ Once the resolver exists, `mcp_server/server.py::_resolve_skills_root` duplicate
 - Existing help and action contracts in `scripts/tests/test_help.py` and `scripts/tests/test_action.py`.
 - Builder generation coverage in `scripts/tests/test_policy_builder_emit.py` and `scripts/tests/test_enh3035_artifact_template_kit.py`.
 - MCP and queue parity coverage, including `scripts/tests/test_enh_3444_mcp_skills_list.py` and the existing queue classification tests.
-- Packaging: `scripts/tests/test_wheel_smoke.py::TestWheelSmoke::test_skills_force_include_accessible` (integration-marked, local-only) gains a commands twin, covering direct wheel and unpacked-sdist wheel contents.
+- Packaging: `scripts/tests/test_wheel_smoke.py::TestWheelSmoke::test_skills_force_include_accessible` (integration-marked, local-only) gains a commands twin; extend `TestWheelSmoke::test_sdist_force_include_ships_skills` to assert commands in the unpacked-sdist wheel too. Add installed-venv runtime assertions for the resolver, builder catalog, `ll-help`, `ll-action`, and expansion of a command-only entry, from an unrelated temporary consumer cwd with `CLAUDE_PLUGIN_ROOT` and `PYTHONPATH` removed. Assert imported code and selected content live in the installed package so checkout content cannot mask failure.
 - Harness: `_resolve_skill_target_path` resolves the same path as queue classification for a packaged-only root and returns `None` when no root resolves.
 - Regression coverage proving editing commands still use the legacy root lookup.
 
@@ -142,7 +160,7 @@ Once the resolver exists, `mcp_server/server.py::_resolve_skills_root` duplicate
 - [ ] A consumer without root `skills/` or `commands/` gets known lifecycle catalog entries from valid environment, editable, and packaged content roots.
 - [ ] Environment > checkout > packaged precedence is deterministic. With different names/content in coexisting installations, only the selected root contributes entries; expansion does not fall through for a missing name.
 - [ ] Commands-only roots work; invalid/missing candidates do not raise; an empty selected root does not cause version mixing.
-- [ ] On a packaged layout, `ll-help` and `ll-action list` are non-empty, while explicit `ll-help -C` retains its existing semantics.
+- [ ] On the normal packaged layout, `ll-help` and `ll-action list` are non-empty, while explicit `ll-help -C` retains its existing semantics. No-root help exits 1 with an accurate diagnostic; a valid empty root exits 0. Commands-only roots do not change the skill-only action listing contract.
 - [ ] Every advertised builder invocation resolves to content in the selected installation. Queue classification, MCP skills listing, and `cli/harness.py::_resolve_skill_target_path` all resolve the same root and preserve their existing parity contract (per Verification Notes: closes the AC coverage gap for the harness cell-key path).
 - [ ] The generated builder catalog is deterministic and contains one entry per `/ll:<name>`, including cross-kind collisions and bridge-stub pairs. Project `.claude/skills` and `.claude/commands` are excluded.
 - [ ] Existing source-checkout help/action output contracts remain unchanged. Mutation/development commands retain their legacy root-selection behavior rather than being redirected to site-packages.
@@ -168,6 +186,12 @@ Marketplace discovery was removed from this implementation because `detect_insta
 Call `_load_skill_catalog` with a temporary consumer root lacking root-level `skills/` and `commands/`; observe an empty catalog despite installed little-loops content. In a wheel installation without `CLAUDE_PLUGIN_ROOT`, run `ll-help` and observe that its legacy fallback does not locate the packaged skills.
 
 ## Verification Notes
+
+### Current pre-implementation review (2026-09-16)
+
+Reviewed against `main`. The historical harness AC finding below is **resolved** by the current cross-consumer parity criterion; it is not an outstanding blocker. Clarified help exit/diagnostic behavior, candidate-construction coverage, commands-only action behavior, installed-wheel runtime validation, and the explicit integration-test invocation. Added Program Design and normalized Current Behavior heading. No active dependency drift or required decision rules were reported. Proceed with implementation; implementation tests have not yet been run.
+
+### Historical verification (retained for provenance)
 
 Verdict at time of check: **PROPOSAL_UNSOUND** (check B6 — proposal-vs-code
 consequence check; all current-state claims below hold, so this is the sole
@@ -224,6 +248,7 @@ finding).
 **Open** | Created: 2026-09-16 | Priority: P2
 
 ## Session Log
+- `/ll:ready-issue` - 2026-09-17T04:18:59 - `e8577901-f5fd-435d-a8d3-7899337fe38e.jsonl`
 - `/ll:reconcile-issue` - 2026-09-17T04:02:23 - `7449e8a1-db4e-4752-8942-1052ea200f2a.jsonl`
 - `/ll:verify-issues` - 2026-09-17T04:00:15 - `b5a5ae18-560d-4cc6-8aa5-4bcda8471436.jsonl`
 - `/ll:refine-issue` - 2026-09-17T03:10:39 - `62feba6c-702f-4140-917b-5a2b05ea6c40.jsonl`
