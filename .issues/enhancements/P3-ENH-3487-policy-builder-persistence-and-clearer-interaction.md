@@ -21,6 +21,7 @@ relates_to:
 - ENH-3492
 blocks:
 - FEAT-3488
+- ENH-3491
 ---
 
 # ENH-3487: Policy builder persistence, undo/redo, and saved projects
@@ -45,12 +46,14 @@ Prevent accidental loss of authoring work and make the builder useful for ongoin
 
 ## Proposed Solution
 
-- Persist independent per-mode drafts in localStorage under the existing `ll-policy-builder-` key prefix (one key per mode), each get/set wrapped in its own try/catch with silent-degrade semantics, matching the theme-key precedent. Mode switch restores that mode's draft instead of reseeding; "Start blank" still reseeds but pushes a history entry first. Update the in-code comment at the mode-switch handler (tmpl `:878-882`) that documents reseeding as an intentional data-loss contract.
-- Undo/redo as a pure history stack in `policy_builder_core.mjs`: `applyDraftEdit(history, edit) -> DraftHistory` with `{past, present, future}`. Granularity: one history entry per committed field change (`change` event, rule add/move/delete, mode switch, start-blank), never per keystroke. Cap `past` at 100 entries.
-- Save project / Open project as a versioned JSON envelope `BuilderProject {schemaVersion, generatorVersion, activeMode, drafts}` via pure `serializeBuilderProject(project) -> string` and `parseBuilderProject(text) -> BuilderProject` in core.mjs. Version policy: `schemaVersion` starts at 1; reject a newer `schemaVersion` with a matchable error without touching the current draft; older versions are migrated in `parseBuilderProject` (no migrations exist at v1, but the hook is the place they go). Missing or non-object `drafts`, unknown `activeMode`, or a draft that fails the existing model validation is an import error.
+- Persist independent per-mode drafts in localStorage under the existing `ll-policy-builder-` key prefix (one key per mode), each get/set wrapped in its own try/catch with silent-degrade semantics, matching the theme-key precedent. Mode switch restores that mode's draft instead of reseeding; "Start blank" still reseeds but pushes a history entry first. Update the in-code comment at the mode-switch handler (tmpl `:916-920`) that documents reseeding as an intentional data-loss contract. On load, a restored draft is run through `validateBuilderModel` (`policy_builder_core.mjs:640`); a corrupt or invalid stored draft falls back to `seedExample(mode)` and reports "stored draft discarded" in the live region, the same failure path as a bad project import.
+- **Draft envelope (review 2026-09-17)**: `drafts[mode]` is a wrapper `{model}` — not the bare model — so FEAT-3488 can add sibling keys (`scenarios: []`) without polluting the object `validateBuilderModel` checks or forcing a `schemaVersion` bump. `parseBuilderProject` validates `drafts[mode].model`; localStorage stores the same wrapper.
+- Undo/redo as a pure history stack in `policy_builder_core.mjs`: `applyDraftEdit(history, edit) -> DraftHistory` with `{past, present, future}`. **History scope is the whole project**: `present` is `{activeMode, drafts}`, not a single draft, because mode switch is itself a history entry — undo across a mode switch restores the previous `activeMode` and re-renders that draft. Granularity: one history entry per committed field change (`change` event, rule add/move/delete, mode switch, start-blank, and any preset applied by ENH-3491), never per keystroke. Cap `past` at 100 entries. Snapshots are deep copies (same discipline as `_cloneDims`/`_cloneOutcomes`, `:694-699`).
+- **Keyboard shortcuts**: the document-level Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z handler ignores events whose target is an `input`, `textarea`, `select`, or contenteditable element, so native per-keystroke undo inside a field is untouched; the Undo/Redo buttons always act on the project history.
+- Save project / Open project as a versioned JSON envelope `BuilderProject {schemaVersion, generatorVersion, activeMode, drafts}` via pure `serializeBuilderProject(project) -> string` and `parseBuilderProject(text) -> BuilderProject` in core.mjs. **`generatorVersion` source (review 2026-09-17)**: nothing stamps a version into the page today (`cmd_policy_builder` stamps only theme, CSS vars, grammar, catalog, core JS — `scripts/little_loops/cli/artifact/policy_builder.py:91-99`). Add a `window.__GENERATOR_VERSION__` stamp from `little_loops.__version__` in `cmd_policy_builder` (one `html.replace` next to the existing ones); this is the one `policy_builder.py` change in this issue. Version policy: `schemaVersion` starts at 1; reject a newer `schemaVersion` with a matchable error without touching the current draft; older versions are migrated in `parseBuilderProject` (no migrations exist at v1, but the hook is the place they go). Missing or non-object `drafts`, unknown `activeMode`, a draft without a `model` key, or a `model` that fails `validateBuilderModel` is an import error. `generatorVersion` is informational only (never gates import).
 - Save uses the existing `<a download>` Blob path; Open uses `<input type=file>` + `FileReader`. No File System Access API, no server.
 - Copy reports success/failure by attaching `.then/.catch` to `navigator.clipboard.writeText` and surfacing it in a live region; the same live region shows draft-saved / storage-unavailable state.
-- Export guidance under the YAML preview gives a concrete destination path, the `ll-loop validate` command, and the `ll-loop run` command with the required issue input.
+- Export guidance under the YAML preview gives a concrete destination path (`loops/<name>.yaml`), the `ll-loop validate loops/<name>.yaml` command, and the run command. For `issue_lifecycle` the loop self-declares `parameters.issue_id` (required); `ll-loop run` binds a positional input to `fsm.input_key` or, when the input is a JSON object, to matching context keys (`scripts/little_loops/cli/loop/run.py:172-185`), so the guidance shows `ll-loop run loops/<name>.yaml '{"issue_id": "BUG-123"}'`. The other two modes take no required input.
 
 Regression coverage without a DOM harness (mitigates the Option B cost below): every new contract above lives in `policy_builder_core.mjs`, not the template, and gets `node:test` cases in `scripts/tests/js/policy_validator.test.mjs` plus a golden `.project.json` fixture under `scripts/tests/fixtures/policy_builder/` asserted to round-trip byte-equal. Only the DOM wiring (event handlers, localStorage, file input) stays manually verified.
 
@@ -103,7 +106,7 @@ browser verification (documented steps) before closing the issue.
 
 ## Integration Map
 
-- Files to modify: scripts/little_loops/templates/policy_builder_core.mjs; scripts/little_loops/templates/policy-router-builder.html.tmpl. (`cli/artifact/policy_builder.py` is unchanged; gate stamping moved to ENH-3492.)
+- Files to modify: scripts/little_loops/templates/policy_builder_core.mjs; scripts/little_loops/templates/policy-router-builder.html.tmpl; scripts/little_loops/cli/artifact/policy_builder.py (one added `__GENERATOR_VERSION__` stamp only; gate stamping stays in ENH-3492).
 - Dependent files: scripts/little_loops/artifact_template_kit.py for shared shell conventions; scripts/tests/fixtures/policy_builder/ for generated fixtures.
 - Similar patterns: existing theme storage fallback, flat JSON-friendly builder model, project-derived stamping.
 - Tests: scripts/tests/js/policy_validator.test.mjs, scripts/tests/test_policy_builder_emit.py, scripts/tests/test_policy_builder_node_gate.py; manual browser workflows for reload, switching, import, undo.
@@ -163,7 +166,7 @@ _Added by `/ll:refine-issue` — 2026-09-16 — based on codebase analysis:_
 
 ### Types
 
-Proposed BuilderProject carries schemaVersion, generatorVersion, activeMode, and drafts. DraftHistory carries past, present, and future snapshots.
+`BuilderProject {schemaVersion: 1, generatorVersion: string, activeMode: Mode, drafts: {[mode]: Draft}}`; `Draft {model: Model}` (wrapper, so later issues add sibling keys such as FEAT-3488's `scenarios`). `DraftHistory {past: ProjectSnapshot[], present: ProjectSnapshot, future: ProjectSnapshot[]}` where `ProjectSnapshot = {activeMode, drafts}` (whole-project scope).
 
 ### Signatures
 
@@ -176,7 +179,7 @@ Proposed new pure JS contracts:
 
 `applyStateToForm` -> `applyModeVisibility` -> `updatePreview` -> `serializeLoopYaml`.
 
-The template restores the active draft (after `initTheme()`) before rendering the form; every committed edit goes through `applyDraftEdit` and then persists the draft. `cmd_policy_builder` is unchanged.
+The template restores the active draft (after `initTheme()`) before rendering the form, validating it with `validateBuilderModel` and falling back to the seed on failure; every committed edit goes through `applyDraftEdit` and then persists the draft. `cmd_policy_builder` gains only the `__GENERATOR_VERSION__` stamp.
 
 Confirmed anchors (codebase-analyzer, 2026-09-16; re-verified `/ll:verify-issues` 2026-09-16 against BUG-3489/BUG-3486 working-tree edits): `applyStateToForm` (`scripts/little_loops/templates/policy-router-builder.html.tmpl:868-875`), `applyModeVisibility` (`:847-862`), `updatePreview` (`:808-824`, now wraps `serializeLoopYaml` in try/catch per the in-progress BUG-3489 fix) all live in the generated-HTML template's inline module script, not in `policy_builder_core.mjs` — only `serializeLoopYaml` (`scripts/little_loops/templates/policy_builder_core.mjs:1130`) is in the pure-JS core. Today this chain has no persistence step: `applyStateToForm` is called only from the mode-switch (`:878-887`) and "Start blank" (`:945-953`) handlers, each of which fully reassigns `state = seedExample(...)`/`blankModel(...)` first — there is no draft-restore call anywhere in the current chain, and `cmd_policy_builder` (`scripts/little_loops/cli/artifact/policy_builder.py:56-107`) stamps only theme, CSS vars, grammar spec, and skill catalog — no project metadata or confidence-gate settings are read or stamped today (`ConfidenceGateConfig` exists at `scripts/little_loops/config/automation.py:155-170` but is unread by this command).
 
@@ -194,9 +197,9 @@ _Added by `/ll:refine-issue` — 2026-09-17 — based on codebase analysis:_
 
 ## Implementation Steps
 
-1. Add `applyDraftEdit`, `serializeBuilderProject`, `parseBuilderProject` to core.mjs with `node:test` cases and a golden `.project.json` fixture.
-2. Wire per-mode localStorage drafts, draft restore on load (after `initTheme()`, preserving the stored → stamped → OS theme order), and history push on committed edits in the template.
-3. Add Save/Open project controls, undo/redo buttons and keyboard shortcuts, the live-region feedback, and copy success/failure handling.
+1. Add `applyDraftEdit`, `serializeBuilderProject`, `parseBuilderProject` to core.mjs (with the `{model}` draft wrapper and whole-project history scope) plus `node:test` cases and a golden `.project.json` fixture; add the `__GENERATOR_VERSION__` stamp to `cmd_policy_builder`.
+2. Wire per-mode localStorage drafts, draft restore on load (after `initTheme()`, preserving the stored → stamped → OS theme order; `validateBuilderModel` fallback to seed), and history push on committed edits in the template.
+3. Add Save/Open project controls, undo/redo buttons and keyboard shortcuts (ignored when focus is in an editable element), the live-region feedback, and copy success/failure handling.
 4. Add export/run guidance text.
 5. Regenerate the golden HTML fixture; update CLI.md and POLICY_ROUTER_GUIDE.md passages listed in Documentation; run the documented manual browser checklist and record results in the Resolution.
 
@@ -232,11 +235,11 @@ Add Save project / Open project with a versioned JSON envelope (`schemaVersion: 
 
 ## Acceptance Criteria
 
-- [ ] `applyDraftEdit`, `serializeBuilderProject`, `parseBuilderProject` are exported from `policy_builder_core.mjs` and covered by `node:test` cases (undo/redo restores rules, fields, actions, and transitions; a golden `.project.json` fixture round-trips byte-equal).
-- [ ] Edits survive reload and round-trip mode switching in the browser; undo/redo works via buttons and Ctrl/Cmd+Z / Shift+Z — verified by documented manual browser testing (Scope Boundaries: DOM interaction tests are out of scope).
-- [ ] Save/Open project round-trips all authoring settings and generates equivalent YAML; corrupt, non-object, or newer-`schemaVersion` imports preserve the existing draft and show a matchable error.
+- [ ] `applyDraftEdit`, `serializeBuilderProject`, `parseBuilderProject` are exported from `policy_builder_core.mjs` and covered by `node:test` cases (undo/redo restores rules, fields, actions, transitions, and `activeMode` across a mode switch; a golden `.project.json` fixture with `drafts[mode] = {model}` round-trips byte-equal).
+- [ ] Edits survive reload and round-trip mode switching in the browser; undo/redo works via buttons and Ctrl/Cmd+Z / Shift+Z, and the shortcuts do not intercept native undo while focus is in a text field — verified by documented manual browser testing (Scope Boundaries: DOM interaction tests are out of scope).
+- [ ] Save/Open project round-trips all authoring settings and generates equivalent YAML; corrupt, non-object, missing-`model`, or newer-`schemaVersion` imports preserve the existing draft and show a matchable error; a corrupt localStorage draft falls back to the seed with a live-region message. `generatorVersion` is populated from the stamped `__GENERATOR_VERSION__` (asserted in `test_policy_builder_emit.py`).
 - [ ] Disabled/unavailable browser storage leaves authoring and explicit project-file saving functional, with visible save-state feedback in a live region.
-- [ ] Copy success/failure is visible, and export guidance includes a concrete destination, validation command, and run command with required issue input.
+- [ ] Copy success/failure is visible, and export guidance includes a concrete destination, validation command, and run command (for `issue_lifecycle`, the JSON-object positional input binding `issue_id`).
 - [ ] Emitted YAML for every existing `.model.json` fixture is byte-identical; golden HTML fixture regenerated; `TestFeat2301UsabilityStructural` and theme-order test pass unchanged.
 - [ ] Manual browser checklist (reload, mode switch, undo/redo, open corrupt file, storage disabled via private window) recorded in the Resolution.
 
@@ -333,6 +336,7 @@ fixed, not an outstanding action item).
 
 
 ## Session Log
+- manual review - 2026-09-17 - `{model}` draft wrapper for FEAT-3488; whole-project history scope; shortcut/native-undo rule; `__GENERATOR_VERSION__` stamp (policy_builder.py now touched); corrupt-draft fallback; concrete `ll-loop run` input syntax; BUG-3486 dependency confirmed done
 - `/ll:refine-issue` - 2026-09-17T04:04:46 - `b5a5ae18-560d-4cc6-8aa5-4bcda8471436.jsonl`
 - `/ll:verify-issues` - 2026-09-17T02:36:58 - `ed6d999b-26a2-4d77-bbbf-604f7482188a.jsonl`
 - `/ll:verify-issues` - 2026-09-17T01:18:50 - `716b78b0-d53f-401a-997f-791cc3ac58be.jsonl`

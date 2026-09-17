@@ -366,6 +366,7 @@ not silently change to the normal creator's defaults or body-merge behavior.
 **Open** | Created: 2026-09-16 | Priority: P1
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-17T05:35:18 - `23994eb4-1b9e-4c0b-b12e-4d6b8a1de974.jsonl`
 - `/ll:wire-issue` - 2026-09-17T04:46:35 - `46075459-e145-4488-ad3c-9337c7cc659b.jsonl`
 - `/ll:decide-issue` - 2026-09-17T04:28:33 - `2181bc0b-0c40-4859-b8bc-a71f05757ba2.jsonl`
 - `/ll:refine-issue` - 2026-09-17T04:20:13 - `e8577901-f5fd-435d-a8d3-7899337fe38e.jsonl`

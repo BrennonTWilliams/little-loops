@@ -138,9 +138,10 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Acceptance Criteria
 
-- [ ] Decision questions 1-3 resolved and recorded in this issue before implementation.
-- [ ] Stop-success, skip, and needs-attention destinations each emit YAML that passes `ll-loop validate`, covered by fixture pairs in the Node gate.
-- [ ] Existing `.model.json` fixtures serialize byte-identically (no behavior change for five-verb models).
+- [x] Decision questions 1-3 resolved and recorded in this issue before implementation (`/ll:decide-issue` 2026-09-16; questions 4-5 added and resolved in review 2026-09-17).
+- [ ] `stopped`, `skipped`, and `needs_attention` each emit YAML that passes `ll-loop validate`, reachable both as a rule target/fallback and as a verb `transition.kind`, covered by fixture pairs in the Node gate.
+- [ ] `needs_attention` emits `failure: true`; `stopped`/`skipped` do not. `TestGeneratedPolicyRouterFailureRouting` gains a max-steps case asserting `final_state == "needs_attention"` and `failure_terminal is True`.
+- [ ] For every existing `.model.json` fixture, the regenerated `.yaml` differs from the pre-change golden only by the `on_max_steps` line and the added terminal blocks (asserted by a diff-shape test, not byte equality).
 - [ ] Every new generated terminal name (`stopped`/`skipped`/`needs_attention`) is added to `RESERVED_STATE_NAMES` so an authored outcome, rule target, or fallback colliding with it is rejected before emission, exactly like the existing `done`/`failed`/`error` protections (BUG-3489).
 - [ ] Optional scoring instructions and anchors appear in emitted prompts and survive `serializeLoopYaml` round trips; unit-tested in `node:test`.
 - [ ] Builder displays stamped readiness/outcome thresholds; `test_policy_builder_emit.py` asserts they are read from `BRConfig`.
@@ -213,12 +214,20 @@ mechanical fix, so it remains an outstanding action item).
   findings above (it gains a fourth de-facto sub-question: reserved-name registration for
   whatever terminal names the decision settles on).
 
+_Manual review — 2026-09-17:_
+
+- `depends_on: BUG-3486` is satisfied (status `done`); BUG-3489 is also `done`.
+- Anchor drift from commit `8faffee5a` (post-dates the last verify pass) corrected in place: `_serializeIssueLifecycle` `1052-1122`→`1370-1440`, its `on_max_steps` literal `1081`→`1399`, `done`/`failed` terminals `1114-1120`→`1432-1437`, `_outcomeStateLines`/`_doneStateName` `753-805`→`1071-1123`, `serializeFrontmatterDimensions` `1003`→`1321`, `RESERVED_STATE_NAMES`/`isReservedOutcomeToken` `152-172`→`157-186`, `serializeLoopYaml`→`1448`. `_serializeDecisionTable` is now `1125` and `_serializeRubric` `1230`. `policy_validator.test.mjs` anchors: `RESERVED_STATE_NAMES` assertions `231-243`, `on_max_steps: failed` match `282`.
+- Resolved three gaps: (1) Expected Behavior/AC contradicted decisions 2-3 on byte-identical fixtures; (2) the failure flag on new terminals was undefined; (3) "rule routes to destination" vs "`transition.kind`" were two different mechanisms — both are now in scope with one shared terminal set.
+- `_outcomeStateLines` signature corrected (takes an outcome, not the model).
+
 ## Status
 
 **Open** | Created: 2026-09-16 | Priority: P3
 
 
 ## Session Log
+- manual review - 2026-09-17 - resolved byte-identical contradiction, defined failure flags and rule-target vs transition mechanisms, corrected anchors post-8faffee5a
 - `/ll:verify-issues` - 2026-09-17T02:36:59 - `ed6d999b-26a2-4d77-bbbf-604f7482188a.jsonl`
 - `/ll:wire-issue` - 2026-09-17T02:03:58 - `5caaeb95-8e3b-4dc5-9258-679a7e06d4cd.jsonl`
 - `/ll:decide-issue` - 2026-09-17T01:33:55 - `be9c9d04-b7b3-40fa-a6b2-8aa383887a4c.jsonl`

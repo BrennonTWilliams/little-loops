@@ -55,7 +55,7 @@ Single-sample inspection does not establish confidence across a policy's edge ca
 
 **Phase A — offline scenario suite**
 
-- Store named scenarios **per draft** (each ENH-3487 `BuilderProject.drafts[mode]` entry owns its own `scenarios: []`, because scenario input shape differs per mode) with mode-specific input, expected outcome, and an expected rule identity that may be omitted. Add create/duplicate/delete, Run all, pass/fail/unasserted totals, condition explanations, fallback feedback, and rule coverage. Migration for projects predating this field sets `scenarios: []` on every draft.
+- Store named scenarios **per draft** (each ENH-3487 `BuilderProject.drafts[mode]` entry is a `{model}` wrapper per the 2026-09-17 review; this issue adds the sibling key `scenarios: []` next to `model`, because scenario input shape differs per mode) with mode-specific input, expected outcome, and an expected rule identity that may be omitted. Add create/duplicate/delete, Run all, pass/fail/unasserted totals, condition explanations, fallback feedback, and rule coverage. Migration for projects predating this field sets `scenarios: []` on every draft.
 - Build scenario evaluation on BUG-3486's `evaluateModel(model, scores) -> MatchResult` (`ruleIndex`, `target`, `isFallback`, `conditionResults`). `ScenarioResult.conditions` **consumes `MatchResult.conditionResults`**; `evaluateRules`'s bare-string return, the conformance corpus, and the Python `evaluate_rules` contract are not changed by this issue.
 - Suggest missing-field and numeric-boundary cases. Suggested scenarios are created with `expectedTarget: null`, which means **unasserted / needs review**; Run all reports unasserted scenarios in their own count, never as pass or fail. Expected outcomes must be authored/reviewed independently; do not derive test oracles from the current policy itself.
 - Show transition graphs and structural repeated-action/cycle warnings. Distinguish deterministic routing from action effects; any mocked post-action values must be labeled and cannot be presented as predictions of an LLM call.
@@ -68,6 +68,12 @@ Single-sample inspection does not establish confidence across a policy's edge ca
 - **Level boundary rule:** `ll-artifact serve` MUST NOT drain the queue or spawn runs itself. Draining is a host-typed action only. If the serve process ever auto-executes pending entries the target silently becomes level 3, which `docs/reference/ARTIFACT_CONTROL_LEVELS.md` explicitly forbids for a queue-backed path. Do not turn the current read-only serve routes into an implicit shell API; new-run handoff is separate from level-3 interaction with an already running FSM.
 - **Identity and deduplication:** `revisionId` = SHA-256 of the canonical `serializeLoopYaml(model)` output (content-addressed, so stale-revision detection is re-serialize-and-compare). `requestId` = SHA-256 of `(projectId, revisionId, issueId)`, a natural key, so a repeated click, page reload, or retry maps to the same request; the serve route returns the existing entry when one with that `requestId` is already non-terminal instead of inserting a second. `requestId` is stored in the `ActionSpec.args` and indexed by the route's lookup.
 - Expose request acceptance, rejection, failure, and a run identifier when available.
+- **Corrections from the 2026-09-17 review (each was a gap in the transport design above):**
+  - **The bridge has no POST dispatch.** `SseBridge`'s handler (`scripts/little_loops/transport.py:1209-1239`) defines only `do_GET`, and `_routes` is consulted only from it; `serve.py`'s `routes={"history": ...}` is GET-only. The run-request route needs a `do_POST` in that handler that dispatches through `_routes` by method (or a parallel `_post_routes` map). `transport.py` is therefore a file to modify. `LocalBridgeTransport`'s `do_POST` (`:663`) is a different handler class and must not be reused (it is the level-3 interaction path).
+  - **Page origin.** The builder is a static HTML file opened from `file://` (origin `null`); a `fetch` to `http://127.0.0.1:<port>` from it is cross-origin and the bridge sets no `Access-Control-*` headers (repo-wide search: none). Decision: **serve the builder page from `ll-artifact serve`** at a new `GET /{token}/policy-builder` route (rendered through the same `cmd_policy_builder` template path, with the run-request URL stamped in), so connected mode is same-origin. No CORS headers are added; the `file://` copy stays offline-only and shows connected controls as unavailable.
+  - **Accept path.** `run_action` explicitly refuses `RunnerType.LOOP` (`scripts/little_loops/runner_spec.py:12-16,506`); `ll-queue run` dispatches LOOP entries by shelling out `ll-loop run <target> [loop_input]` (`scripts/little_loops/cli/queue.py:383-411`). Consequences: (a) `ActionSpec.target` must be a loop that exists on disk, so the route **persists the validated YAML** to `.loops/policy-builder/<revisionId>.yaml` (immutable, content-addressed; never overwrites a user's `loops/` file) and sets `target` to that path; (b) the issue id is passed as `args["loop_input"] = '{"issue_id": "<id>"}'`, the JSON-object form `ll-loop run` binds to context keys (`scripts/little_loops/cli/loop/run.py:172-185`), not as a separate `issue_id` arg; `projectId`/`revisionId`/`requestId` stay as additional `args` keys for dedup and readback.
+  - **`computeRevisionId` cannot be synchronous with WebCrypto.** `crypto.subtle.digest` is Promise-based. Ship a small pure-JS SHA-256 in `policy_builder_core.mjs` (also gives `node:test` parity with Python `hashlib.sha256` on the server side) so `computeRevisionId(yaml) -> string` stays sync and pure; the server recomputes the hash over the received YAML bytes and rejects a mismatch as `stale revision`.
+  - **`load_and_validate` must be called with `raise_on_error=False`** (default raises `ValueError` on ERROR severity) so validation failure is a clean rejection, not a route crash — the form used at `scripts/little_loops/fsm/executor.py:297`.
 
 ### Codebase Research Findings
 
@@ -84,7 +90,7 @@ _Added by `/ll:refine-issue` — 2026-09-16 — based on codebase analysis:_
 
 ## Integration Map
 
-- Files to modify: scripts/little_loops/templates/policy_builder_core.mjs; scripts/little_loops/templates/policy-router-builder.html.tmpl; scripts/little_loops/cli/artifact/policy_builder.py; scripts/little_loops/cli/artifact/serve.py (Phase B route); scripts/little_loops/queue_store.py (requestId lookup).
+- Files to modify: scripts/little_loops/templates/policy_builder_core.mjs; scripts/little_loops/templates/policy-router-builder.html.tmpl; scripts/little_loops/cli/artifact/policy_builder.py; scripts/little_loops/cli/artifact/serve.py (Phase B routes: `POST /{token}/run-request`, `GET /{token}/run-request/{id}`, `GET /{token}/policy-builder`); scripts/little_loops/transport.py (`SseBridge` handler gains `do_POST` dispatch through `_routes`); scripts/little_loops/queue_store.py (requestId lookup).
 - Integration points: scripts/little_loops/fsm/validation/ (`load_and_validate`), scripts/little_loops/cli/queue.py and scripts/little_loops/mcp_server/tools.py (host accept/reject surface, docs only). `scripts/little_loops/mcp_server/resources.py`'s `ArtifactControlLevel` forward slot stays unbuilt; declare the level in prose per the doc's "Binding now" rule.
 - Similar patterns: shared compiled evaluator and saved-project model from the preceding workstreams; artifact control levels; project-enriched snapshots.
 - Tests: scripts/tests/js/policy_validator.test.mjs and policy-builder Python gates; add scenario/serialization tests and mocked connected-handoff integration tests under local pytest.
@@ -170,18 +176,19 @@ Proposed new JS contracts (`policy_builder_core.mjs`, also exported on `window.P
 - `evaluateScenario(model, scenario) -> ScenarioResult`
 - `runScenarioSuite(model, scenarios) -> { results: ScenarioResult[], summary: SuiteSummary }`
 - `suggestScenarios(model) -> Scenario[]` (all with `expectedTarget: null`)
-- `computeRevisionId(yaml) -> string`
+- `computeRevisionId(yaml) -> string` (sync; pure-JS SHA-256 in core.mjs, hex-encoded, byte-equal to Python `hashlib.sha256(yaml.encode()).hexdigest()`)
 - `buildRunRequest(project, issueId) -> RunRequest`
 
 Proposed Python contracts:
 - `queue_store.find_entry_by_request_id(request_id, *, root) -> QueueEntry | None`
-- `cli/artifact/serve.py`: `make_run_request_route(config) -> handler` (`POST /{token}/run-request`: validate YAML via `load_and_validate` on a temp file, dedup via `find_entry_by_request_id`, else `add_entry`; `GET /{token}/run-request/{request_id}`: status/run-id readback via `get_entry`)
+- `cli/artifact/serve.py`: `make_run_request_route(config) -> handler` (`POST /{token}/run-request`: `load_and_validate(tmp, raise_on_error=False)`, recompute `revisionId` and reject mismatch, dedup via `find_entry_by_request_id`, else persist YAML to `.loops/policy-builder/<revisionId>.yaml` and `add_entry(ActionSpec(runner=RunnerType.LOOP, target=<that path>, args={"loop_input": '{"issue_id": ...}', "requestId", "projectId", "revisionId", "issueId"}))`; `GET /{token}/run-request/{request_id}`: status/run-id readback via `get_entry`); `make_policy_builder_page_route(config)` (`GET /{token}/policy-builder`: same-origin builder page with the run-request URL stamped)
+- `transport.py`: `SseBridge` handler `do_POST` dispatching through `_routes` by `(method, route)`
 
 ### Call Path
 
 Phase A: `updatePreview` -> `buildModel` -> `runScenarioSuite` -> `evaluateScenario` -> `evaluateModel` (BUG-3486).
 
-Phase B: `buildRunRequest` -> `serializeLoopYaml` + `computeRevisionId` -> `POST /run-request` -> `load_and_validate` -> `find_entry_by_request_id` / `add_entry`. Host session: `ll-queue run` (`cmd_run` -> `claim_entry` -> `run_action` -> `update_entry_result`) or `ll-queue cancel` (`cmd_cancel` -> `cancel_entry`). Page: `GET /run-request/{id}` -> `get_entry`.
+Phase B: `buildRunRequest` -> `serializeLoopYaml` + `computeRevisionId` -> `POST /run-request` (same-origin page served by `ll-artifact serve`) -> `load_and_validate(raise_on_error=False)` -> `find_entry_by_request_id` / persist YAML + `add_entry`. Host session: `ll-queue run` (`cmd_run` -> `claim_entry` -> LOOP subprocess `ll-loop run <target> <loop_input>` (`cli/queue.py:383-411`, **not** `run_action`, which refuses `RunnerType.LOOP`) -> `update_entry_result`) or `ll-queue cancel` (`cmd_cancel` -> `cancel_entry`). Page: `GET /run-request/{id}` -> `get_entry`.
 
 Current implemented call path (today, before this issue): `updatePreview` -> `buildModel` -> `serializeLoopYaml` (fills the YAML preview) and, at its tail, `updateTryIt()` -> `evaluateRules(rules, scores)` (`scripts/little_loops/templates/policy_builder_core.mjs:239`), which returns only a winning `target` string or `null` — no per-condition trace. `buildModel`/`updatePreview` exist today in `scripts/little_loops/templates/policy-router-builder.html.tmpl`'s inline `<script type="module">` block, not in `policy_builder_core.mjs`. `runScenarioSuite`, `evaluateScenario`, and `buildRunRequest` do not exist anywhere in the codebase — they are net new.
 
@@ -203,8 +210,8 @@ Phase A (offline):
 4. Test Phase A in `policy_validator.test.mjs` (node:test) and the emit/golden suites; regenerate the golden fixture.
 
 Phase B (connected, extractable to its own issue):
-5. Add `computeRevisionId`/`buildRunRequest`; add `queue_store.find_entry_by_request_id`.
-6. Add the `ll-artifact serve` run-request route (validate → dedup → `add_entry`; status readback) with the "never drains, never imports `run_background`/`LocalBridgeTransport`" guard test.
+5. Add `computeRevisionId` (pure-JS SHA-256)/`buildRunRequest`; add `queue_store.find_entry_by_request_id`; add `do_POST` dispatch to `SseBridge`'s handler in `transport.py`.
+6. Add the `ll-artifact serve` routes: `GET /policy-builder` (same-origin page) and the run-request route (validate with `raise_on_error=False` → revision check → dedup → persist YAML under `.loops/policy-builder/` → `add_entry` with `loop_input`; status readback) with the "never drains, never imports `run_background`/`LocalBridgeTransport`" guard test.
 7. Update `ARTIFACT_CONTROL_LEVELS.md` "Declared levels by render target", CLI.md (`ll-artifact serve`, `ll-queue`), and `POLICY_ROUTER_GUIDE.md`.
 8. Test rejection (`ll-queue cancel`), validation failure, missing issue, stale revision, duplicate submission, and accept → run-id readback with a stubbed `run_action`; no real LLM or implementation runs.
 
@@ -247,9 +254,10 @@ Phase A:
 - [ ] Offline local issue import and suite evaluation work without a server; unsupported input has explicit diagnostics.
 
 Phase B:
-- [ ] Connected requests are validated by `load_and_validate` and bound to `projectId`/`revisionId`/`issueId`; rejection (`ll-queue cancel`), validation failure, missing issue, stale revision (re-serialized YAML hash differs), and duplicate submission (same `requestId` twice yields one queue row) are tested.
+- [ ] Connected requests are validated by `load_and_validate(raise_on_error=False)`, persisted as an immutable `.loops/policy-builder/<revisionId>.yaml`, and bound to `projectId`/`revisionId`/`issueId`; the queue entry's `args.loop_input` carries `{"issue_id": ...}` so `ll-queue run`'s `ll-loop run` shell-out binds the lifecycle loop's required parameter; rejection (`ll-queue cancel`), validation failure, missing issue, stale revision (re-serialized YAML hash differs), and duplicate submission (same `requestId` twice yields one queue row) are tested.
 - [ ] The request is an `ll-queue` entry and the host session owns the run decision; `ll-artifact serve` never drains the queue, and a test asserts its route module imports neither `run_background` nor `LocalBridgeTransport`. No transport executes arbitrary submitted shell commands or intercepts level-3 FSM transitions.
 - [ ] Accepted requests expose status and a run identifier read back from the queue entry; connection failure leaves the project/scenarios intact and offline export available.
+- [ ] Connected mode works only from the page served at `GET /{token}/policy-builder` (same origin); the `file://` copy shows connected controls as unavailable, and no `Access-Control-*` header is added to the bridge. `computeRevisionId` output matches `hashlib.sha256` in a cross-language test.
 - [ ] `docs/reference/ARTIFACT_CONTROL_LEVELS.md`'s "Declared levels by render target" table lists `ll-artifact serve` at levels 1 and 2 and `test_wiring_reference_docs.py` still passes.
 
 ## Scope Boundaries
@@ -316,6 +324,7 @@ decision rules apply; `ll-verify-evidence` reported no unverifiable quotes.
 
 
 ## Session Log
+- manual review - 2026-09-17 - transport gaps closed: SseBridge needs do_POST; page served same-origin (no CORS); LOOP entries run via `ll-loop run` shell-out with `loop_input`, YAML persisted content-addressed; sync pure-JS SHA-256; `raise_on_error=False` pinned; drafts are `{model}` wrappers per ENH-3487. BUG-3486 dependency done.
 - `/ll:verify-issues` - 2026-09-16T22:52:47 - `56d2686a-f690-474a-8849-1b96c2edbd15.jsonl`
 - manual review - 2026-09-16 - narrowed `blocked_by` to BUG-3486/ENH-3487; resolved transport to `ll-queue`; defined `requestId`/`revisionId`; built scenarios on `evaluateModel`; per-draft scenarios; unasserted state; split into Phase A/B; spike not promoted
 - `/ll:wire-issue` - 2026-09-16T22:32:07 - `c1fe383a-93c2-4cce-a8fa-6eeed2e54d04.jsonl`
