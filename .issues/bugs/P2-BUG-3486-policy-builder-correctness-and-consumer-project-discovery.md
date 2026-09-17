@@ -5,6 +5,7 @@ epic: EPIC-3493
 type: BUG
 title: Policy builder preview, validation, and editing correctness (browser/core)
 priority: P2
+verify_verdict: VALID
 status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-09-16'
@@ -116,7 +117,7 @@ Fixture/corpus files backing the differential Python/JS parity convention alread
 Conventions in force (codebase-pattern-finder, evidence cited per rule):
 - **Differential parity, not shared validation**: this codebase's established pattern for keeping Python and JS in sync is corpus-pinned parity tests (above), not a single shared validator called from both a preview and an export path — no example of the latter shape exists anywhere in the repo (searched `^def validate` plus every `validate_fsm`/`_detect_shadows`/`renderMessages` call site, no path filter). `frontmatter_scores.py:10-14` and `policy_builder_core.mjs:1-7` both carry explicit "mirrors" docstrings stating the two implementations are pinned against the same conformance corpus so they can't silently drift — the proposed `validateBuilderModel` would be new in kind, not an extension of an existing shared-validator shape.
 - **FSM failure routing**: the established convention across ~80 loop YAML files (e.g. `general-task.yaml:1326-1328`, `rn-build.yaml:1394-1403`) is a dedicated failure terminal (typically named `failed`), driven by `on_error:`/`on_max_steps:` and marked via `schema.py`'s `FAILURE_TERMINAL_NAMES` frozenset (implicit `failure: true` for legacy names `failed`/`error`/`aborted`/`finalize_aborted`) or an explicit `failure: true` field for other names. `_serializeIssueLifecycle()` (mjs 1052-1120) already follows this convention (explicit `failed:` terminal, `on_error: failed`); `_serializeDecisionTable()` (mjs 807-910) now does too, since BUG-3489 (`45ec5e223`).
-- **Reserved/generated-name collision avoidance**: the only *dynamic* used-name-set-and-fallback example in the codebase is `_doneStateName()` itself (mjs 799-805) — the file this issue already touches; it stays dynamic (see Decisions). Elsewhere the codebase uses *fixed* reserved tokens instead (`_RESERVED = {"aggregate"}` in `fsm/validation/reachability.py:170`; `FAILURE_TERMINAL_NAMES` in `schema.py:26-35`), a different shape (static exemption vs. dynamic collision detection) — no second dynamic-collision example exists to generalize from.
+- **Reserved/generated-name collision avoidance**: the only *dynamic* used-name-set-and-fallback example in the codebase is `_doneStateName()` itself (mjs 799-805) — the file this issue already touches; it stays dynamic (see Decisions). Elsewhere the codebase uses *fixed* reserved tokens instead (`_RESERVED = {"aggregate"}` in `fsm/validation/reachability.py:190`; `FAILURE_TERMINAL_NAMES` in `schema.py:26-35`), a different shape (static exemption vs. dynamic collision detection) — no second dynamic-collision example exists to generalize from.
 - **JS test harness**: `scripts/tests/js/policy_validator.test.mjs` is the only `.test.mjs` file in the repo; it uses Node's built-in `node:test` + `node:assert/strict` with zero npm dependencies, gated into the local suite via `scripts/tests/test_policy_builder_node_gate.py` (skips gracefully below Node 22 or when absent).
 
 _Added by `/ll:refine-issue` — 2026-09-17 — based on codebase analysis:_
@@ -239,12 +240,20 @@ Includes browser/core correctness and validation feedback. Excludes runtime frag
 | Reference | docs/reference/CLI.md | Policy-builder generation and validation contract |
 | Guide | docs/guides/POLICY_ROUTER_GUIDE.md | Rule grammar, preview semantics, and lifecycle mode |
 
+## Verification Notes
+
+Verdict at time of check: **NEEDS_UPDATE** (correction below applied in the same pass, so the issue as it now reads is up to date — this section is a record of what was wrong and fixed, not an outstanding action item)
+
+- All in-scope defects (a)-(e), the Decisions-bullet current-state premises, the Integration Map/wiring/test citations, and the Program Design "current (pre-fix)" signatures were re-verified against HEAD (2026-09-17) and confirmed still accurate — none have been fixed by same-day commits.
+- One stale duplicate citation found and corrected: the "Conventions in force" paragraph under Root Cause > Codebase Research Findings cited `fsm/validation/reachability.py:170` for `_RESERVED = {"aggregate"}`; the correct line is `:190` (already cited correctly elsewhere in the Decisions section). Fixed in place.
+
 ## Status
 
 **Open** | Created: 2026-09-16 | Priority: P2
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-17T02:10:33 - `ac62d1f7-8315-4880-bb66-ce4cff7b7fe9.jsonl`
 - review - 2026-09-16 - post-BUG-3489 reconciliation: reserved-name work re-scoped to *extending* the existing `RESERVED_STATE_NAMES`/`isReservedOutcomeToken`/`_assertNoReservedTokens` (`45ec5e223`); `aggregate` moved from state-name to dimension-name reservation; withdrew the constant-`finished` decision (false fixture premise) — `_doneStateName()` stays dynamic, `finished` reserved, `sample-*.yaml` expected byte-identical; specified `parse_error_cases`/`js_reject_cases` corpus keys; `opsForType` moves to core; rubric unknown-outcome warning; `draft` optional/ignored by serializers; re-anchored all mjs/tmpl line cites; marked BUG-3489 coordination items satisfied
 - `/ll:refine-issue` - 2026-09-17T00:49:34 - `36d7531c-a8b7-4c13-b076-371cadf28ae5.jsonl`
 - `/ll:verify-issues` - 2026-09-16T22:52:47 - `56d2686a-f690-474a-8849-1b96c2edbd15.jsonl`
