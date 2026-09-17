@@ -14,7 +14,7 @@ relates_to: []
 
 ## Summary
 
-Group of 7 related issues: Policy builder preview, validation, and editing correctness (browser/core), Policy-router runtime: stale LLM scores across passes and decision-table dispatch errors route to a success outcome, Policy builder skill catalog is empty in consumer projects (single-root plugin discovery), Policy builder persistence, undo/redo, and saved projects, Policy builder lifecycle layout, task presets, and execution summary, Policy builder explicit terminal destinations, scoring instructions, and gate stamping, Policy builder richer scenarios and connected execution.
+Group of 8 related issues: Policy builder preview, validation, and editing correctness (browser/core), Policy-router runtime: stale LLM scores across passes and decision-table dispatch errors route to a success outcome, Policy builder skill catalog is empty in consumer projects (single-root plugin discovery), Policy builder persistence, undo/redo, and saved projects, Policy builder lifecycle layout, task presets, and execution summary, Policy builder explicit terminal destinations, scoring instructions, and gate stamping, Policy builder offline scenario suites and explanations, and Policy builder host-approved connected execution.
 
 ## Children
 
@@ -24,4 +24,9 @@ Group of 7 related issues: Policy builder preview, validation, and editing corre
 - **ENH-3487** — Policy builder persistence, undo/redo, and saved projects (open)
 - **ENH-3491** — Policy builder lifecycle layout, task presets, and execution summary (open)
 - **ENH-3492** — Policy builder explicit terminal destinations, scoring instructions, and gate stamping (open)
-- **FEAT-3488** — Policy builder richer scenarios and connected execution (open)
+- **FEAT-3488** — Policy builder offline scenario suites and explanations (open)
+- **FEAT-3498** — Policy builder host-approved connected execution (open)
+
+## Implementation Order
+
+ENH-3487 → ENH-3491 → ENH-3492 → FEAT-3488 → FEAT-3498. The connected-execution split lets offline authoring and scenario suites ship without waiting for queue approval/result integration.

@@ -38,18 +38,20 @@ Lifecycle authoring is organized as Fields, Rules, Try it, Export. Action bindin
 
 ## Proposed Solution
 
-- Reorder fieldsets in the template and wrap action editors and budget inputs in a `<details>` advanced section; keep the existing `renderLifecycleOutcomes()` loop and `renderRules()` unchanged.
-- Add task presets as new `seedExample`-style constructors in `policy_builder_core.mjs` (pure, unit-tested with `node:test`); presets must distinguish issue validation (verify-issues) from acceptance verification and declare the latter's command/result contract.
+- Reorder fieldsets in the template and wrap action editors and budget inputs in a `<details>` advanced section; retain the existing `renderLifecycleOutcomes()` loop and `renderRules()` structure; extend the action editor only for the acceptance-verification contract below.
+- Add task presets as pure, unit-tested constructors. The implementation-with-verification preset routes `implement` to `verify`, but replaces the default `/ll:verify-issues` action: that skill validates issue files, not implemented acceptance criteria. The preset uses a user-supplied shell acceptance-check command (a project wrapper/executable accepting the issue ID as its first appended argument, followed by configured args). Exit 0 means acceptance checks passed; nonzero/error routes to `failed` with `failure: true`; success finishes at `done`. Do not treat command dispatch alone as a pass.
+- Initially leave that command empty and clearly label the preset as requiring configuration; the existing incomplete-action diagnostic blocks YAML export until it is supplied. Save/Open of this unfinished preset must work via ENH-3487. Store optional authoring metadata `verificationContract: "acceptance_exit_code"` on the configured shell outcome; clear it when action type/body/args change unless the user explicitly reaffirms the contract. It is not a claim that arbitrary shell code has been inspected for correctness and does not change YAML for existing models.
 - Hide `#f-subject` in lifecycle mode via `applyModeVisibility`.
-- Render a transition summary from the model (pure function in core.mjs, unit-tested) next to the YAML preview.
+- Render a transition summary from reachable emitted transitions, not outcome names or list order. Distinguish issue-file validation, configured acceptance checks, unconfigured checks, and custom/unknown actions; a state named `verify` is insufficient evidence of acceptance verification. Cover branches, cycles, unreachable verify states, and changed action bindings. ENH-3492 extends this summary with its terminal destinations.
 - Add `@media (max-width: 600px)` collapsing the grid to one column.
 - Show `catalog` skill descriptions and argument hints in the action editor. **Argument hints are not in the stamped catalog today** (review 2026-09-17): `_load_skill_catalog` (`scripts/little_loops/cli/artifact/policy_builder.py:22-56`) emits only `{name, description}`, dropping the `args_hint` that `little_loops.tool_catalog` already parses from `args`/`argument-hint` frontmatter (`tool_catalog.py:60,103,122`). Extend `_load_skill_catalog` to include `args_hint` (nullable) — this is the one `policy_builder.py` change in this issue; `test_policy_builder_emit.py` asserts the stamped catalog carries the key.
-- Preset buttons go through ENH-3487's committed-edit path (push a history entry, persist the draft), exactly like "Start blank" — never a bare `applyStateToForm` that bypasses undo/persistence.
+- Preset buttons go through ENH-3487's committed-edit path (push a history entry, persist the draft), exactly like "Start blank" — never a bare `applyStateToForm` that bypasses undo/persistence. Preset/start-blank replacement clears scenarios only in the replaced draft (if present); the UI states that effect and one undo restores the prior model and scenarios together. Other drafts and project identity are preserved. No scenario UI is added here; FEAT-3488 wires its controls to this contract.
 
 ## Integration Map
 
 - Files to modify: `scripts/little_loops/templates/policy-router-builder.html.tmpl`; `scripts/little_loops/templates/policy_builder_core.mjs`; `scripts/little_loops/cli/artifact/policy_builder.py` (`_load_skill_catalog` gains `args_hint` only).
 - Tests at risk: `scripts/tests/test_policy_builder_emit.py::TestFeat2301UsabilityStructural` (`test_seed_and_blank_wiring_present`, `test_rubric_mode_has_no_dt_only_affordances`, `test_yaml_is_collapsed_behind_details`) depend on the `start-blank-btn`, `rules-fieldset`/`outcomes-fieldset`/`tryit-fieldset`, `yaml-details`/`yaml-preview`/`yaml-summary` ids; keep the ids or update the tests. `test_theme_resolution_order_is_stored_stamped_os_light` must keep passing.
+- Add configured verification fixtures to `test_policy_builder_node_gate.py` and stub-command execution cases to `test_fsm_executor.py`; preserve all existing-model YAML goldens.
 - Regenerate `scripts/tests/fixtures/policy_builder/golden_policy_router_builder.html` (byte-identical golden test in `test_enh3035_artifact_template_kit.py`).
 - Docs: `docs/guides/POLICY_ROUTER_GUIDE.md:258-303` ("Visual Builder") `:292-294` YAML-behind-details framing goes stale with a dedicated Export section. (Re-verified `/ll:verify-issues` 2026-09-16: a new "Failure Routing and Clean-Slate Scoring" subsection inserted earlier in the doc shifted this section by +60 lines from its originally-cited location.)
 
@@ -64,7 +66,7 @@ Lifecycle authoring is organized as Fields, Rules, Try it, Export. Action bindin
 
 ### Types
 
-`TaskPreset {id, label, description, mode, build: () -> Model}` in `policy_builder_core.mjs`. `TransitionSummary {steps: string[], stopsAfterImplement: boolean, verifiesAfterImplement: boolean, maxStepsNote: string}`.
+`TaskPreset {id, label, description, mode, build: () -> Model}` in `policy_builder_core.mjs`. `TransitionSummary {steps: string[], stopsAfterImplement: boolean, verification: "acceptance" | "issue_validation" | "unconfigured" | "custom" | "none", maxStepsNote: string}`. Outcome authoring metadata may include `verificationContract: "acceptance_exit_code"`; summaries classify the current reachable action and contract, not merely its name.
 
 ### Signatures
 
@@ -75,15 +77,16 @@ Lifecycle authoring is organized as Fields, Rules, Try it, Export. Action bindin
 
 `applyStateToForm` -> `applyModeVisibility` -> `updatePreview` -> `serializeLoopYaml`, with `summarizeTransitions` called from `updatePreview` and rendered next to the YAML preview. Preset buttons apply `preset.build()` through ENH-3487's committed-edit path (`applyDraftEdit` + persist), then `applyStateToForm`. `cmd_policy_builder` (`scripts/little_loops/cli/artifact/policy_builder.py:61-107`) changes only in `_load_skill_catalog` (`args_hint`); the golden fixture is regenerated.
 
-Anchors (re-verified in review 2026-09-17 after commit `8faffee5a`, which shifted every core.mjs/template anchor): `applyStateToForm` (`scripts/little_loops/templates/policy-router-builder.html.tmpl:906-912`), `applyModeVisibility` (`:885-901`), `updatePreview` (`:840-864`), `renderAll` (`:866-883`), `renderLifecycleOutcomes()` (`:453`), `renderRules()` (`:556`), `#f-subject` (`:144`), YAML `<details>` (`:222`), grid (`:32`) live in the template; `serializeLoopYaml` (`scripts/little_loops/templates/policy_builder_core.mjs:1448`), `seedExample` (`:782`), `blankModel` (`:857`), `LIFECYCLE_VERBS` (`:108-144`), `BUILTIN_FRONTMATTER_DIMENSIONS` (`:89`), `_emittedVerbs` (`:1336`) are in the pure-JS core; `summarizeTransitions` and `taskPresets` are new exports added next to `seedExample`. The "implementation with verification" preset is expressible today: set `implement.transition = {kind: "goto", target: "verify"}` (`_emittedVerbs` follows `goto` chains, so `verify` is emitted).
+Anchors (re-verified in review 2026-09-17 after commit `8faffee5a`, which shifted every core.mjs/template anchor): `applyStateToForm` (`scripts/little_loops/templates/policy-router-builder.html.tmpl:906-912`), `applyModeVisibility` (`:885-901`), `updatePreview` (`:840-864`), `renderAll` (`:866-883`), `renderLifecycleOutcomes()` (`:453`), `renderRules()` (`:556`), `#f-subject` (`:144`), YAML `<details>` (`:222`), grid (`:32`) live in the template; `serializeLoopYaml` (`scripts/little_loops/templates/policy_builder_core.mjs:1448`), `seedExample` (`:782`), `blankModel` (`:857`), `LIFECYCLE_VERBS` (`:108-144`), `BUILTIN_FRONTMATTER_DIMENSIONS` (`:89`), `_emittedVerbs` (`:1336`) are in the pure-JS core; `summarizeTransitions` and `taskPresets` are new exports added next to `seedExample`. The transition is expressible with `implement.transition = {kind: "goto", target: "verify"}` (`_emittedVerbs` follows goto chains), but the default verify action must be replaced with the explicit acceptance-check contract above.
 
 ## Acceptance Criteria
 
 - [ ] Lifecycle hides grading-only inputs; rules precede advanced action editors, which are collapsed by default.
-- [ ] Each task preset seeds a model whose `serializeLoopYaml` output validates via `ll-loop validate` (fixture pair + parametrize entry in `test_policy_builder_node_gate.py`).
-- [ ] Summary reflects actual transitions of the current model, distinguishes state steps from attempts, and states whether verification follows implementation; summary function is unit-tested in `scripts/tests/js/`.
+- [ ] Each configured task preset emits YAML passing `ll-loop validate` (fixture pairs and Node gate). Implementation-with-verification initially requires its command; that unfinished draft saves/opens correctly and blocks YAML export. A configured fixture uses a harmless test command accepting an issue ID.
+- [ ] Summary reflects reachable transitions and the current verification contract, distinguishes state steps from attempts, and never labels `/ll:verify-issues` or an arbitrary state named `verify` as acceptance verification. Tests cover custom bindings, unreachable checks, branching/cycles, and invalidated contract metadata.
+- [ ] Generated implementation-with-verification loops run through the real executor with harmless stub commands: verify exit 0 reaches `done`; nonzero reaches `failed` with `failure_terminal == true`; implementation failure never runs verification. No real implementation or LLM runs occur.
 - [ ] Skill descriptions and argument hints are displayed; `_load_skill_catalog` stamps `args_hint` and `test_policy_builder_emit.py` asserts its presence in `__SKILL_CATALOG_JSON__`.
-- [ ] Applying a preset creates one undo entry and persists the draft (ENH-3487 path); undo after a preset restores the prior model.
+- [ ] Applying a preset creates one undo entry and persists the draft (ENH-3487 path); undo after a preset restores the prior model and any scenarios; other drafts and project identity are unchanged.
 - [ ] No page-level horizontal overflow at 375px and desktop widths; controls are keyboard-operable with associated labels. Verified by documented manual browser testing (no DOM test harness in this repo; see ENH-3487 decision).
 - [ ] Golden fixture regenerated; existing structural tests pass or are updated with the id renames noted.
 
@@ -132,6 +135,7 @@ not an outstanding action item).
 
 
 ## Session Log
+- manual review - 2026-09-17 - defined acceptance-check command/input/exit-code contract, unfinished-preset behavior, action-aware summaries, and atomic model/scenario replacement undo
 - manual review - 2026-09-17 - `args_hint` missing from stamped catalog (policy_builder.py now touched); presets route through ENH-3487's edit path (ENH-3487 promoted to depends_on); anchors corrected post-8faffee5a
 - `/ll:verify-issues` - 2026-09-17T02:36:59 - `ed6d999b-26a2-4d77-bbbf-604f7482188a.jsonl`
 - `/ll:verify-issues` - 2026-09-17T01:18:50 - `716b78b0-d53f-401a-997f-791cc3ac58be.jsonl`

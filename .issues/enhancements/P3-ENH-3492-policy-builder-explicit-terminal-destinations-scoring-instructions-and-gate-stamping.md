@@ -20,6 +20,8 @@ relates_to:
 - ENH-3491
 - BUG-3489
 - FEAT-3474
+blocks:
+- FEAT-3488
 blocked_by:
 - ENH-3491
 ---
@@ -28,7 +30,7 @@ blocked_by:
 
 ## Summary
 
-Add explicit stop-success, skip, and needs-attention terminal destinations to lifecycle policies, optional per-dimension scoring instructions and score anchors, and stamp the project's confidence-gate thresholds into the builder. Split out of ENH-3487 (workstream c: emitted-YAML semantics). Needs a design decision before implementation.
+Add explicit stop-success, skip, and needs-attention terminal destinations to lifecycle policies, optional per-dimension scoring instructions and score anchors, and stamp the project's confidence-gate thresholds into the builder. Split out of ENH-3487 (workstream c: emitted-YAML semantics). Design decisions are resolved below, including the 2026-09-17 review corrections.
 
 ## Current Behavior
 
@@ -44,50 +46,34 @@ Lifecycle rules can route to `stopped`, `skipped`, and `needs_attention` destina
 
 ## Proposed Solution
 
-Decided (per `/ll:decide-issue ENH-3492`; see `### Decision Rationale` below). Emitted YAML state names are the underscore forms `stopped`, `skipped`, `needs_attention` everywhere (hyphenated spellings in earlier drafts were prose only; hyphens are not used in generated state keys):
-1. **Decided**: stop-success is a distinct terminal state `stopped` (with `terminal: true`), not an alias for `done` — so postmortems can tell "finished the pipeline" from "rule said stop here".
-2. **Decided**: `skipped` and `needs_attention` are rule-selectable destinations only (never automatic); `on_error` stays `failed`; `on_max_steps` becomes `needs_attention` for lifecycle.
-3. **Decided**: both `decision_table` and `rubric` gain a `needs_attention` `on_max_steps` terminal (matching lifecycle's treatment), unchanged otherwise. **Partly overtaken by BUG-3489** (committed `22f4ff6ed`, found by `/ll:verify-issues` 2026-09-16): `decision_table` now unconditionally emits `on_max_steps: failed` (no model flag, golden fixtures already regenerated) — the byte-equal-preservation premise no longer holds for `decision_table`, only for `rubric`'s new addition (see Decision Rationale). Consequence (review 2026-09-17): existing `.model.json` fixtures are **not** byte-preserved by this issue; every mode's golden `.yaml` is regenerated, and the acceptance bar is "differs only by the `on_max_steps` line and the new terminal blocks".
-4. **Decided (review 2026-09-17) — failure flag per terminal**: `failed` emits `failure: true`, which is what sets `failure_terminal` on the executor result (`scripts/little_loops/fsm/executor.py:4337-4344`) and therefore what ll-auto/ll-sprint/postmortems treat as a failed run. The new terminals emit: `needs_attention` → `failure: true` (an unresolved run must not report success, including the `on_max_steps` path); `stopped` → no `failure` key (success); `skipped` → no `failure` key (success). `scripts/tests/test_fsm_executor.py::TestGeneratedPolicyRouterFailureRouting` gains a max-steps case asserting `final_state == "needs_attention"` and `failure_terminal is True`.
-5. **Decided (review 2026-09-17) — destinations are both rule targets and verb transitions, sharing one terminal set.** The Summary ("rules can route to …") and the Program Design (`transition.kind` gains new kinds) describe two different mechanisms; both are in scope:
-   - **Rule target / fallback**: a lifecycle rule or the fallback may name `stopped`, `skipped`, or `needs_attention` directly (the primary use case: `status:==done -> skipped`). These are built-in action-less destinations, not `LIFECYCLE_VERBS` entries: `_emittedVerbs` (`policy_builder_core.mjs:1336`) must treat them as emittable names, `_serializeIssueLifecycle` emits a `policy_dispatch.route` entry for each one referenced, and the rule-target `<select>`/validation must offer and accept them.
-   - **Verb transition**: `transition.kind` gains `"stop" | "skip" | "attention"`; `_outcomeStateLines` emits `next: stopped` / `next: skipped` / `next: needs_attention` respectively (same shape as `finish` → `next: <doneState>`).
-   - A terminal block is emitted once if it is referenced by either mechanism or by `on_max_steps`; `needs_attention` is therefore always emitted for lifecycle.
-
-Then:
-- Extend `LIFECYCLE_VERBS`/outcome transition kinds in core.mjs with the new destinations; `_outcomeStateLines(outcome, {doneState, issueArg})` (`policy_builder_core.mjs:1071`) and `_doneStateName` (`:1117`) route to them. Backward-compatible defaults for models lacking the new fields. **Also add each new generated terminal name (`stopped`/`skipped`/`needs_attention`) to `RESERVED_STATE_NAMES`/`isReservedOutcomeToken` (`policy_builder_core.mjs:157-186`)** — BUG-3489 (committed `22f4ff6ed`) established this guard specifically so a user-authored outcome name, rule target, or fallback can never collide with a generated state key, and its own issue text says BUG-3486 (and, by the same logic, this issue) must extend the shared map rather than leave new generated terminals unregistered; skipping this reintroduces the exact silent-collision bug class BUG-3489 just fixed, for the three terminal names this issue adds.
-- Add optional `instructions`/`anchors` to dimension entries; `serializeFrontmatterDimensions` (`:1321`) emits them into prompts. Touch `scripts/little_loops/fsm/frontmatter_scores.py` (`encode_frontmatter_scores` mirrors `normalizeDimName` rules) only if `BUILTIN_FRONTMATTER_DIMENSIONS` shape changes, and extend `conformance_corpus.json` accordingly.
-- In `cmd_policy_builder` read `config.commands.confidence_gate` off the already-built `BRConfig` (mirror `scripts/little_loops/fsm/context_seed.py:68`; do not copy `cli/issues/check_readiness.py:78-115`'s raw-JSON bypass) and stamp `readiness_threshold`/`outcome_threshold`. No `config-schema.json` change needed (`confidence_gate` defined at `:509`).
+1. Add lifecycle-only built-in destinations `stopped`, `skipped`, and `needs_attention` in `LIFECYCLE_DESTINATIONS`, separate from the five `LIFECYCLE_VERBS`. Rules and fallback may reference these terminals directly; verb transitions gain `stop`, `skip`, and `attention`. Keep `_emittedVerbs` restricted to verb states and use `_emittedDestinations` for terminal references. The serializer emits dispatch routes for referenced destinations and each terminal block once.
+2. `stopped` and `skipped` are successful terminals (no `failure` key). `needs_attention` and existing `failed` emit `failure: true`. `on_error` stays `failed`; `on_max_steps` becomes `needs_attention` in all three modes. This budget route is the explicit automatic exception; stop/skip remain author-selected. Preserve existing model fixtures; regenerate their YAML with changes limited to the budget route and added terminal blocks. No preservation flag is introduced.
+3. Register generated names in the shared per-mode reserved-name map: all three in lifecycle, `needs_attention` in rubric/decision-table. Reservation forbids an authored outcome from shadowing a generated state; it does **not** forbid an allowed lifecycle reference to that built-in destination. Update `_checkReservedTokens`, `_checkMissingReferences`, and the serializer's `_assertNoReservedTokens` defense together. Lifecycle target/fallback selectors offer verbs plus destinations; other modes keep their existing target rules and collision guards. Unknown names remain errors.
+4. Optional dimension `instructions` and `anchors` affect LLM grading in rubric/decision-table modes via `_scoreActionBody`. Keep `_serializeDimensions` and `serializeFrontmatterDimensions` wire formats unchanged: the latter is `name:type|...` for deterministic frontmatter extraction, not a prompt. Lifecycle hides these editing controls and does not use their contents at runtime; imported metadata is retained on Save/Open. Validate anchors as unique finite numeric scores in [0,100] with nonempty meanings; boolean dimensions accept only 0/100 anchors. Emit multiline instructions safely through the existing YAML block-scalar helper and test delimiters/quotes/newlines. Absent metadata preserves existing prompts byte-for-byte.
+5. Read `config.commands.confidence_gate` from the existing `BRConfig`; stamp enabled/readiness/outcome values and display them as project configuration alongside authored rule thresholds. Display disabled gates explicitly. Stamping is informational: never silently rewrite saved rule predicates or treat it as runtime enforcement. No config-schema change is required.
+6. Extend ENH-3491's transition summary for the destinations (including unresolved budget exhaustion); no summary may classify `needs_attention` as a successful finish.
 
 ### Decision Rationale
 
-Decided by `/ll:decide-issue` on 2026-09-16.
-
-**Selected**: distinct `stopped` terminal; rule-selectable `skip`/`needs-attention`; `needs-attention` `on_max_steps` for both `decision_table` and `rubric`.
-
-**Reasoning**: Each of the three questions already carried the issue author's own stated recommendation with no competing alternative under active consideration, so no codebase-evidence scoring pass was needed — `/ll:decide-issue` converted the provisional "Recommendation:" wrappers into decided, declarative statements (Phase 3b Pattern D lock-in). A distinct `stopped` terminal keeps postmortems able to distinguish "pipeline finished" from "rule said stop"; making `skip`/`needs-attention` rule-selectable-only (never automatic) keeps `on_error`/`on_max_steps` semantics unambiguous; and routing both `decision_table` and `rubric` `on_max_steps` to `needs-attention` keeps all three serialization modes consistent now that BUG-3489 already moved `decision_table` off byte-equal preservation.
-
-**Key evidence**:
-- Terminal naming: BUG-3489 (`22f4ff6ed`) already added `RESERVED_STATE_NAMES`/`isReservedOutcomeToken` (`policy_builder_core.mjs:152-172`) as the collision guard this issue's new terminals must extend — no alternative naming scheme was proposed.
-- Byte-equal scope: `decision_table`'s golden fixtures were already regenerated by BUG-3489 (`scripts/tests/fixtures/policy_builder/sample-decision-table.yaml:7`), so only `rubric`'s new `on_max_steps` addition still needs the preservation flag; this was the issue's own verification-pass finding, not a competing option.
+The prior terminal decision is retained with explicit reference-vs-definition validation. Separate destinations prevent action editors from acquiring fake verbs. A failed budget terminal prevents unresolved loops reporting success. Scoring descriptions belong in LLM prompts, while lifecycle scoring remains deterministic frontmatter extraction. Saved-project round trips, not nonexistent YAML import, preserve the authoring metadata.
 
 ## Integration Map
 
-- Files: `policy_builder_core.mjs`, `policy-router-builder.html.tmpl`, `cli/artifact/policy_builder.py`, possibly `fsm/frontmatter_scores.py`.
+- Files: `policy_builder_core.mjs`, `policy-router-builder.html.tmpl`, `cli/artifact/policy_builder.py`, `fsm/frontmatter_scores.py` is a compatibility surface only and remains unchanged.
 - Tests: new `.model.json`/`.yaml` fixture pairs under `scripts/tests/fixtures/policy_builder/` for each new destination plus parametrize entries in `test_policy_builder_node_gate.py::test_round_trip_yaml_validates_for_each_mode` (arbitrary terminal names are schema-legal per `fsm/validation/structural_rules.py:1160-1168`); `scripts/tests/js/policy_validator.test.mjs`; `test_policy_builder_corpus.py`; regenerate the golden HTML fixture.
 - Docs: `docs/reference/CLI.md:5079-5095` prose at `:5081` (five fixed verbs); `docs/guides/POLICY_ROUTER_GUIDE.md:287-289,350-351` ("can't be deleted and no new outcome can be added") and `:355-361` (Verb Table needs a destination column). (Line numbers re-verified `/ll:verify-issues` 2026-09-16: a new "Failure Routing and Clean-Slate Scoring" subsection inserted earlier in the doc shifted this section by +60 lines from its originally-cited location.)
 
 ### Dependent Files (Callers/Importers)
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/little_loops/loops/lib/policy-router.yaml:154` — the `frontmatter_scores` fragment's action body invokes `from little_loops.fsm.frontmatter_scores import main`; a live runtime caller (via a heredoc-invoked subprocess at loop execution time), distinct from `test_frontmatter_scores.py`'s unit-test import. Check its `context.frontmatter_dimensions` env-passing contract if `instructions`/`anchors` change the emitted dimension string shape.
+- `scripts/little_loops/loops/lib/policy-router.yaml:154` — the `frontmatter_scores` fragment's action body invokes `from little_loops.fsm.frontmatter_scores import main`; a live runtime caller (via a heredoc-invoked subprocess at loop execution time), distinct from `test_frontmatter_scores.py`'s unit-test import. Assert its `context.frontmatter_dimensions` env-passing contract stays unchanged when metadata is present.
 
 ### Tests
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_fsm_executor.py::TestGeneratedPolicyRouterFailureRouting` (~2810-2917) — loads the real `sample-decision-table.yaml`/`sample-issue-lifecycle.yaml` golden fixtures via `resolve_fragments` and runs them through a live `FSMExecutor`, asserting hardcoded terminal literals (`final_state == "failed"`/`"done"`, `failure_terminal`); must be updated in lockstep with any change to `on_max_steps` routing or terminal names.
-- `scripts/tests/test_fsm_fragments.py` (~2408-2454) — pins the `frontmatter_scores` fragment's shell-env contract (`context.frontmatter_dimensions`) in `loops/lib/policy-router.yaml`; verify if `instructions`/`anchors` alter the emitted dimension string format.
+- `scripts/tests/test_fsm_fragments.py` (~2408-2454) — pins the `frontmatter_scores` fragment's shell-env contract (`context.frontmatter_dimensions`) in `loops/lib/policy-router.yaml`; assert metadata does not alter the emitted dimension string format.
 - `scripts/tests/js/policy_validator.test.mjs:227-236` — `RESERVED_STATE_NAMES` exact sorted-array `deepEqual` assertions will fail as soon as `stopped`/`skipped`/`needs_attention` are added to either mode's set; update the literal arrays.
 - `scripts/tests/js/policy_validator.test.mjs:274` — literal `assert.match(yaml, /on_max_steps: failed/)`; update if `on_max_steps` routes to `needs_attention` instead.
-- `scripts/tests/js/policy_validator.test.mjs:375-378` — exact-string assertion on `serializeFrontmatterDimensions` output (`"Review Status:string|confidence_score:numeric"`); add a companion case if `instructions`/`anchors` fold into the same joined string.
+- `scripts/tests/js/policy_validator.test.mjs:375-378` — exact-string assertion on `serializeFrontmatterDimensions` output (`"Review Status:string|confidence_score:numeric"`); add a companion case asserting metadata leaves that string unchanged; separately assert generated grading prompts contain the metadata.
 - `scripts/tests/fixtures/policy_builder/sample-decision-table.yaml:7` and `sample-issue-lifecycle.yaml:29` — literal `on_max_steps: failed` lines; update alongside the routing change and regenerate.
 - No existing test covers the transition-kind `<select>` options list in `policy-router-builder.html.tmpl:420,524` (currently only `rescore`/`goto`/`finish`); add coverage in `test_policy_builder_emit.py` for the new destination entries.
 - No existing test covers confidence-gate stamping in `cmd_policy_builder`; add `test_emitted_confidence_gate_matches_config` to `test_policy_builder_emit.py` following the `test_emitted_grammar_matches_canonical` regex-extract-and-compare pattern (`test_policy_builder_emit.py:68-71`), asserting against `BRConfig(Path.cwd()).commands.confidence_gate`.
@@ -107,14 +93,16 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ### Types
 
-Outcome `transition.kind` gains `"stop" | "skip" | "attention"` alongside existing `"finish"`/`"rescore"`/`"goto"`. Lifecycle rule `target` and `fallback` additionally accept the built-in destination names `stopped` | `skipped` | `needs_attention` (a `LIFECYCLE_DESTINATIONS` constant in core.mjs, distinct from `LIFECYCLE_VERBS`; each is `{name, failure: boolean}`). Dimension entries gain optional `instructions: string` and `anchors: {score: number, meaning: string}[]`. Stamped `__CONFIDENCE_GATE__ {readiness_threshold, outcome_threshold}` in the template.
+Outcome `transition.kind` gains `"stop" | "skip" | "attention"` alongside existing `"finish"`/`"rescore"`/`"goto"`. Lifecycle rule `target` and `fallback` additionally accept the built-in destination names `stopped` | `skipped` | `needs_attention` (a `LIFECYCLE_DESTINATIONS` constant in core.mjs, distinct from `LIFECYCLE_VERBS`; each is `{name, failure: boolean}`). Dimension entries gain optional `instructions: string` and `anchors: {score: number, meaning: string}[]`. Stamped `__CONFIDENCE_GATE__ {enabled, readiness_threshold, outcome_threshold}` in the template.
 
 ### Signatures
 
 - `_outcomeStateLines(outcome, {doneState, issueArg}) -> string[]` (`policy_builder_core.mjs:1071`) — extended so `transition.kind` `stop`/`skip`/`attention` emit `next: stopped`/`next: skipped`/`next: needs_attention`; the terminal blocks themselves are emitted by `_serializeIssueLifecycle` (`:1370`), not here
 - `_emittedVerbs(model) -> string[]` (`:1336`) — a companion `_emittedDestinations(model)` returns which of the three built-in destinations are referenced (rule target, fallback, verb transition, `on_max_steps`) so `_serializeIssueLifecycle` can emit route entries and terminal blocks only for those
 - `_doneStateName(model) -> string` (`:1117`) — unchanged
-- `serializeFrontmatterDimensions(model) -> string` — emits `instructions`/`anchors` into the grading prompt when present
+- `_scoreActionBody(model) -> string` — emits optional instructions/anchors in rubric and decision-table grading prompts
+- `serializeFrontmatterDimensions(model) -> string` and `_serializeDimensions(model) -> string` — unchanged wire formats
+- `_checkReservedTokens` / `_checkMissingReferences` / `_assertNoReservedTokens` — accept built-in lifecycle references but reject definitions that shadow generated states
 - `cmd_policy_builder(args, logger) -> int` — reads `config.commands.confidence_gate` and stamps it
 
 ### Call Path
@@ -128,13 +116,13 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Update `policy-router-builder.html.tmpl:420,524` — add entries for the new terminal destinations to the transition-kind `<select>` options list (currently only `rescore`/`goto`/`finish`)
 - Update `scripts/tests/js/policy_validator.test.mjs:227-236` — extend the `RESERVED_STATE_NAMES` sorted-array assertions with `stopped`/`skipped`/`needs_attention`, per mode
 - Update `scripts/tests/js/policy_validator.test.mjs:274` — adjust the `on_max_steps: failed` literal match if routing changes to `needs_attention`
-- Update `scripts/tests/js/policy_validator.test.mjs:375-378` — add a companion case if `instructions`/`anchors` fold into `serializeFrontmatterDimensions`'s joined string
+- Update `scripts/tests/js/policy_validator.test.mjs:375-378` — assert metadata leaves the joined string unchanged and appears only in grading prompts
 - Update `scripts/tests/test_fsm_executor.py::TestGeneratedPolicyRouterFailureRouting` — adjust hardcoded terminal-literal assertions (`final_state`, `failure_terminal`) to match the new fixture shape
 - Update `scripts/tests/fixtures/policy_builder/sample-decision-table.yaml` and `sample-issue-lifecycle.yaml` — update the `on_max_steps` line and regenerate
 - Add `test_emitted_confidence_gate_matches_config` to `scripts/tests/test_policy_builder_emit.py` — verify the stamped `confidence_gate` JSON matches `BRConfig(Path.cwd()).commands.confidence_gate`
 - Add coverage for the new transition-kind destinations in `scripts/tests/test_policy_builder_emit.py` (no existing test asserts on the `rescore`/`goto`/`finish` `<select>` list)
 - Update `docs/guides/POLICY_ROUTER_GUIDE.md:249-256` ("Reserved names" section) — reflect the three new reserved tokens
-- Verify `scripts/tests/test_fsm_fragments.py`'s `frontmatter_scores` fragment env-contract assertions if `instructions`/`anchors` change the emitted dimension string format
+- Verify `scripts/tests/test_fsm_fragments.py`'s `frontmatter_scores` fragment env-contract assertions to prove `instructions`/`anchors` leave the emitted dimension string format unchanged
 
 ## Acceptance Criteria
 
@@ -142,9 +130,10 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - [ ] `stopped`, `skipped`, and `needs_attention` each emit YAML that passes `ll-loop validate`, reachable both as a rule target/fallback and as a verb `transition.kind`, covered by fixture pairs in the Node gate.
 - [ ] `needs_attention` emits `failure: true`; `stopped`/`skipped` do not. `TestGeneratedPolicyRouterFailureRouting` gains a max-steps case asserting `final_state == "needs_attention"` and `failure_terminal is True`.
 - [ ] For every existing `.model.json` fixture, the regenerated `.yaml` differs from the pre-change golden only by the `on_max_steps` line and the added terminal blocks (asserted by a diff-shape test, not byte equality).
-- [ ] Every new generated terminal name (`stopped`/`skipped`/`needs_attention`) is added to `RESERVED_STATE_NAMES` so an authored outcome, rule target, or fallback colliding with it is rejected before emission, exactly like the existing `done`/`failed`/`error` protections (BUG-3489).
-- [ ] Optional scoring instructions and anchors appear in emitted prompts and survive `serializeLoopYaml` round trips; unit-tested in `node:test`.
-- [ ] Builder displays stamped readiness/outcome thresholds; `test_policy_builder_emit.py` asserts they are read from `BRConfig`.
+- [ ] Generated names are reserved per mode. Authored outcomes shadowing them fail both UI validation and serializer guards; valid lifecycle rule/fallback references succeed, unknown references fail, and each referenced terminal is emitted once. Tests cover all three reference mechanisms and every mode.
+- [ ] Optional scoring instructions/anchors survive project Save/Open and appear in rubric/decision-table grading prompts. Tests cover invalid/duplicate/out-of-range anchors, boolean anchors, multiline escaping, and absent-metadata prompt compatibility. Lifecycle hides these controls and preserves imported metadata without changing frontmatter extraction or its wire format.
+- [ ] Builder displays stamped enabled/readiness/outcome values from `BRConfig`; tests cover disabled gates and confirm saved predicates are not overwritten by stamped thresholds.
+- [ ] Transition summaries distinguish successful stop/skip from failed `needs_attention`, including the automatic max-steps route.
 - [ ] CLI.md and POLICY_ROUTER_GUIDE.md passages listed above are updated.
 
 ## Scope Boundaries
@@ -152,6 +141,8 @@ _These touchpoints were identified by wiring analysis and must be included in th
 Includes destination semantics, scoring metadata, gate stamping, and their docs. Excludes persistence (ENH-3487), layout/presets (ENH-3491), runtime policy-router fixes (see the related runtime issue in frontmatter). If the chosen semantics change how the runtime treats terminal outcomes, promote that related issue to `depends_on`.
 
 ## Verification Notes
+
+Historical observations below describe earlier drafts; the current Proposed Solution and Acceptance Criteria supersede their open-question and preservation-flag language.
 
 _Added by `/ll:verify-issues` — 2026-09-16 (batch run with ENH-3487/ENH-3491):_
 
@@ -227,6 +218,7 @@ _Manual review — 2026-09-17:_
 
 
 ## Session Log
+- manual review - 2026-09-17 - resolved terminal-reference reservation contradiction; moved scoring metadata to grading prompts; fixed project-round-trip criteria; preserved wire protocols; clarified gate display and terminal summaries
 - manual review - 2026-09-17 - resolved byte-identical contradiction, defined failure flags and rule-target vs transition mechanisms, corrected anchors post-8faffee5a
 - `/ll:verify-issues` - 2026-09-17T02:36:59 - `ed6d999b-26a2-4d77-bbbf-604f7482188a.jsonl`
 - `/ll:wire-issue` - 2026-09-17T02:03:58 - `5caaeb95-8e3b-4dc5-9258-679a7e06d4cd.jsonl`
