@@ -2741,6 +2741,71 @@ class TestUncertainSuffixRouteFallback:
         state = StateConfig(action="noop", on_no="fix")
         assert self._executor()._route(state, "yes_uncertain", self._ctx()) is None
 
+    def test_error_verdict_resolves_route_error_before_default(self) -> None:
+        """BUG-3489: `_error` must catch the `error` verdict even when `_` is
+        also declared — the defect made `_error` dead by construction."""
+        state = StateConfig(
+            action="noop",
+            route=RouteConfig(routes={"_": "accept"}, default="accept", error="failed"),
+        )
+        assert self._executor()._route(state, "error", self._ctx()) == "failed"
+
+    def test_unknown_verdict_still_falls_back_to_default(self) -> None:
+        state = StateConfig(
+            action="noop",
+            route=RouteConfig(routes={"_": "accept"}, default="accept", error="failed"),
+        )
+        assert self._executor()._route(state, "unknown", self._ctx()) == "accept"
+
+    def test_explicit_error_route_wins_over_route_error(self) -> None:
+        state = StateConfig(
+            action="noop",
+            route=RouteConfig(
+                routes={"_": "accept", "error": "retry"}, default="accept", error="failed"
+            ),
+        )
+        assert self._executor()._route(state, "error", self._ctx()) == "retry"
+
+    def test_error_uncertain_with_no_explicit_route_resolves_via_error_base(self) -> None:
+        state = StateConfig(
+            action="noop",
+            route=RouteConfig(routes={"_": "accept"}, default="accept", error="failed"),
+        )
+        assert self._executor()._route(state, "error_uncertain", self._ctx()) == "failed"
+
+    def test_route_table_with_default_and_no_route_error_still_sends_error_to_default(
+        self,
+    ) -> None:
+        state = StateConfig(
+            action="noop",
+            route=RouteConfig(routes={"_": "accept"}, default="accept"),
+        )
+        assert self._executor()._route(state, "error", self._ctx()) == "accept"
+
+    def test_rn_remediate_check_convergence_error_verdict_fails_open_to_gate_implement(
+        self,
+    ) -> None:
+        """BUG-3489: rn-remediate.yaml's check_convergence declares `_:
+        check_remediation_budget` and `_error: gate_implement` with a comment
+        saying a nonzero exit should fail open to gate_implement — a live
+        misroute under the old precedence, corrected by the fix without any
+        YAML change to this loop."""
+        loop, errors = load_and_validate(
+            Path("scripts/little_loops/loops/rn-remediate.yaml"), raise_on_error=False
+        )
+        state = loop.states["check_convergence"]
+        assert self._executor()._route(state, "error", self._ctx()) == "gate_implement"
+
+    def test_no_verdict_still_resolves_default_before_route_error(self) -> None:
+        """The `no` -> route.error shorthand is intentionally asymmetric with
+        `error`: it still resolves after `_`, since `no` is an ordinary verdict
+        whose ordinary fallback is `_`."""
+        state = StateConfig(
+            action="noop",
+            route=RouteConfig(routes={"_": "retry"}, default="retry", error="failed"),
+        )
+        assert self._executor()._route(state, "no", self._ctx()) == "retry"
+
 
 class TestEvents:
     """Tests for event emission."""

@@ -665,10 +665,18 @@ def _validate_state_routing(state_name: str, state: StateConfig) -> list[Validat
     errors: list[ValidationError] = []
     path = f"states.{state_name}"
 
+    # BUG-3489: on_error is deliberately excluded from this check. Unlike
+    # on_yes/on_no/on_partial/on_blocked/extra_routes — which really are
+    # dead once `_route()` takes its `if state.route:` branch — on_error is
+    # independently consulted by the action-runner-exception path
+    # (`_run_action_or_route`) regardless of whether a route table is also
+    # present, so combining `route:` with `on_error:` is a legitimate,
+    # non-redundant pattern (e.g. every generated policy_dispatch state:
+    # `route.error` catches the evaluator `error` verdict, `on_error`
+    # separately catches a routable action-runner exception).
     has_shorthand = (
         state.on_yes is not None
         or state.on_no is not None
-        or state.on_error is not None
         or state.on_partial is not None
         or state.on_blocked is not None
         or bool(state.extra_routes)
@@ -679,7 +687,7 @@ def _validate_state_routing(state_name: str, state: StateConfig) -> list[Validat
     if has_shorthand and has_route:
         errors.append(
             ValidationError(
-                message="Both shorthand routing (on_yes/on_no/on_error) "
+                message="Both shorthand routing (on_yes/on_no/on_partial/on_blocked) "
                 "and full route table defined. Route table will take precedence.",
                 path=path,
                 severity=ValidationSeverity.WARNING,

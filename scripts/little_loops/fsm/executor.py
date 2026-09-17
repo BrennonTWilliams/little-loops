@@ -3312,6 +3312,16 @@ class FSMExecutor:
         guards against recursing more than one level (a pathological
         ``yes_uncertain_uncertain`` resolves at most once).
 
+        BUG-3489: when a route table is present, the ``error`` verdict
+        resolves against ``route.error`` (``_error``) *before*
+        ``route.default`` (``_``), so ``_error`` catches the ``error``
+        verdict regardless of whether ``_`` is also declared. This matches
+        ``RouteConfig``'s documented meaning of ``error`` as the dedicated
+        evaluation/execution-error fallback. The ``no`` verdict's shorthand
+        fallback to ``route.error`` is unchanged and still resolves *after*
+        ``route.default`` — ``no`` is an ordinary verdict whose ordinary
+        fallback is ``_``; this asymmetry with ``error`` is intentional.
+
         Args:
             state: State configuration
             verdict: Verdict string from evaluation
@@ -3330,10 +3340,10 @@ class FSMExecutor:
                     fallback = self._route(state, base, ctx, _stripped=True)
                     if fallback is not None:
                         return fallback
-            if state.route.default:
-                return self._resolve_route(state.route.default, ctx)
             if verdict == "error" and state.route.error:
                 return self._resolve_route(state.route.error, ctx)
+            if state.route.default:
+                return self._resolve_route(state.route.default, ctx)
             if verdict == "no" and state.route.error:
                 return self._resolve_route(state.route.error, ctx)
             return None
