@@ -63,17 +63,48 @@ Lifecycle authoring is organized as Fields, Rules, Try it, Export. Action bindin
 
 - Preset buttons go through ENH-3487's committed-edit path (push a history entry, persist the draft), exactly like "Start blank" — never a bare `applyStateToForm` that bypasses undo/persistence. Preset/start-blank replacement clears scenarios only in the replaced draft (if present); the UI states that effect and one undo restores the prior model and scenarios together. Other drafts and project identity are preserved. No scenario UI is added here; FEAT-3488 wires its controls to this contract.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `docs/reference/CLI.md:5081-5096` (`#### ll-artifact policy-builder`) — reflect task presets, the collapsed advanced-action `<details>`, and skill argument-hint display alongside the existing `docs/guides/POLICY_ROUTER_GUIDE.md` update.
+- Add `taskPresets`/`summarizeTransitions` to the named-export import list in `scripts/tests/js/policy_validator.test.mjs:9-39`.
+- Add a `test_persistence_and_history_affordances_present` regression check to the fieldset-reorder test pass, or confirm it still passes unmodified.
+- The `args_hint`/`__SKILL_CATALOG_JSON__` extraction test must regex `window\.__SKILL_CATALOG__\s*=\s*(\[.*?\]);` out of the rendered HTML (an array), not the source-only `/*__SKILL_CATALOG_JSON__*/` placeholder token (`policy_builder.py:99`, replaced away at generation time) or `_extract_grammar`'s object-shaped `\{.*?\}` pattern — see Acceptance Criteria correction below.
+
 ## Integration Map
 
 - Files to modify: `scripts/little_loops/templates/policy-router-builder.html.tmpl`; `scripts/little_loops/templates/policy_builder_core.mjs`; `scripts/little_loops/cli/artifact/policy_builder.py` (`_load_skill_catalog` gains `args_hint` only).
 
 - Tests at risk: `scripts/tests/test_policy_builder_emit.py::TestFeat2301UsabilityStructural` (`test_seed_and_blank_wiring_present`, `test_rubric_mode_has_no_dt_only_affordances`, `test_yaml_is_collapsed_behind_details`) depend on the `start-blank-btn`, `rules-fieldset`/`outcomes-fieldset`/`tryit-fieldset`, `yaml-details`/`yaml-preview`/`yaml-summary` ids; keep the ids or update the tests. `test_theme_resolution_order_is_stored_stamped_os_light` must keep passing.
 
-- Add configured verification fixtures to `test_policy_builder_node_gate.py` and stub-command execution cases to `test_fsm_executor.py`; preserve all existing-model YAML goldens.
+- Add configured verification fixtures to `test_policy_builder_node_gate.py` and stub-command execution cases to `test_fsm_executor.py` (existing precedent: `TestGeneratedPolicyRouterFailureRouting`, `scripts/tests/test_fsm_executor.py:2810-2917` — loads a real generated fixture via `resolve_fragments`, runs `FSMExecutor`, stubs commands with `MockActionRunner.set_result(pattern, exit_code=...)`); preserve all existing-model YAML goldens.
+
+### Tests (additional intra-file sites)
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/js/policy_validator.test.mjs:9-39` — the exhaustive named-export import list from `policy_builder_core.mjs`; add `taskPresets` and `summarizeTransitions` here once exported, alongside `seedExample`/`blankModel`/`validateBuilderModel`/`applyDraftEdit`.
+- `scripts/tests/js/policy_validator.test.mjs:779-864` (ENH-3487 section) — pattern to follow for "preset applies through the committed-edit path, one undo restores prior state": build `history` via sequential `applyDraftEdit(history, {type: "commit", activeMode, drafts})` calls, assert `history.past.length` increments by one per commit, then `applyDraftEdit(history, {type: "undo"})` and assert the restored draft matches the pre-commit snapshot.
+- `scripts/tests/test_policy_builder_emit.py::TestFeat2301UsabilityStructural::test_persistence_and_history_affordances_present` (`:233-242`) — asserts `undo-btn`, `redo-btn`, `save-project-btn`, `open-project-btn`, `open-project-input`, `live-status`/`aria-live="polite"` are present; at risk if the fieldset reorder relocates or removes any of these controls (not previously cited alongside the other three `TestFeat2301UsabilityStructural` tests already named above).
+- FYI: `scripts/little_loops/worktree_utils.py:687-713` copies `.ll/design-tokens` into epic-verify worktrees specifically so `test_policy_builder_renders_byte_identically_to_golden_fixture` doesn't false-fail on degraded design tokens — since this issue forces a golden-fixture regeneration, any epic-branch verify run for this work depends on that stopgap remaining intact. No file change required here.
 
 - Regenerate `scripts/tests/fixtures/policy_builder/golden_policy_router_builder.html` (byte-identical golden test in `test_enh3035_artifact_template_kit.py`).
 
 - Docs: `docs/guides/POLICY_ROUTER_GUIDE.md:258-303` ("Visual Builder") `:292-294` YAML-behind-details framing goes stale with a dedicated Export section. (Re-verified `/ll:verify-issues` 2026-09-16: a new "Failure Routing and Clean-Slate Scoring" subsection inserted earlier in the doc shifted this section by +60 lines from its originally-cited location.)
+
+### Dependent Files (Callers/Importers)
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_wheel_smoke.py:241,253` — imports `_load_skill_catalog` directly against an installed wheel and asserts `"check-code" in {row["name"] for row in catalog}` by `name` only; the only call site of the function's return shape outside `cmd_policy_builder`. Safe against the new `args_hint` key (name-only assertion), no change required, but flag as existing coverage.
+
+### Documentation (additional)
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/CLI.md:5081-5096` (`#### ll-artifact policy-builder`) — narrates the current UI in enough detail (fieldset order, skill-catalog dropdown, collapsed YAML `<details>`) to go stale once task presets, the collapsed advanced-action `<details>`, and skill argument-hint display land; none of these are mentioned today.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-17 — based on codebase analysis:_
+
+- `scripts/tests/js/policy_validator.test.mjs` is the existing `node:test` suite for `validateBuilderModel`'s checkers, including the current `prompt`/`slash_command` case of `_checkIncompleteActions` (test at line 626). Every test in this file follows the same shape: build a model via `seedExample(mode)`, mutate the one field the check targets, run `validateBuilderModel(model)`, filter to `severity === "error"`, and regex-assert on `.message`. The private `_check*` functions are never imported directly — only `validateBuilderModel` is exported and exercised. The new `shell`-body test case belongs in this file, following that same convention.
+- No existing test in `scripts/tests/test_policy_builder_emit.py` extracts or asserts on `__SKILL_CATALOG_JSON__` content — `_load_skill_catalog` has no direct unit test anywhere in `scripts/tests/` today (only referenced via the golden-fixture byte-comparison and a wheel-smoke-test string mention). The file's established convention for asserting on a different stamped JSON global (`__GRAMMAR_SPEC__`) is `_extract_grammar()` (line 78): regex out the `window.__X__ = (...);` assignment with `re.DOTALL`, `json.loads` the captured group, then assert on individual keys. The new `args_hint` assertion this issue's Acceptance Criteria requires will be a new test, not a modification of an existing one.
 
 ## Impact
 
@@ -103,6 +134,24 @@ Lifecycle authoring is organized as Fields, Rules, Try it, Export. Action bindin
 
 Anchors (re-verified in review 2026-09-17 after commit `8faffee5a`, which shifted every core.mjs/template anchor): `applyStateToForm` (`scripts/little_loops/templates/policy-router-builder.html.tmpl:906-912`), `applyModeVisibility` (`:885-901`), `updatePreview` (`:840-864`), `renderAll` (`:866-883`), `renderLifecycleOutcomes()` (`:453`), `renderRules()` (`:556`), `#f-subject` (`:144`), YAML `<details>` (`:222`), grid (`:32`) live in the template; `serializeLoopYaml` (`scripts/little_loops/templates/policy_builder_core.mjs:1448`), `seedExample` (`:782`), `blankModel` (`:857`), `LIFECYCLE_VERBS` (`:108-144`), `BUILTIN_FRONTMATTER_DIMENSIONS` (`:89`), `_emittedVerbs` (`:1336`) are in the pure-JS core; `summarizeTransitions` and `taskPresets` are new exports added next to `seedExample`. The transition is expressible with `implement.transition = {kind: "goto", target: "verify"}` (`_emittedVerbs` follows goto chains), but the default verify action must be replaced with the explicit acceptance-check contract above.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-17 — based on codebase analysis:_
+
+- Anchors re-verified 2026-09-17 (post-commit `50b3d37a5`, "add draft persistence, undo/redo, and saved projects" — this is ENH-3487, which has now landed on `main`; see Scope Boundaries finding below). Every function anchor in this section's own "Anchors" paragraph and "Call Path" above predates that commit and has shifted again:
+  - `buildModel()` — `policy-router-builder.html.tmpl:405-425` (was `:248-268`)
+  - `updatePreview()` — `:1020-1044` (was `:840-864`)
+  - `renderAll()` — `:1046-1063` (was `:866-883`)
+  - `applyModeVisibility()` — `:1065-1081` (was `:885-901`)
+  - `applyStateToForm()` — `:1086-1092` (was `:906-912`)
+  - `validateBuilderModel()` — `policy_builder_core.mjs:640-655`
+  - `_checkIncompleteActions()` — `:551-566`; its only caller is `validateBuilderModel` (`:648`), its only callee is `_diag()` (`:447-449`, `_diag(severity, field, message)` — a plain `{severity, field, message}` object literal)
+- Call-chain correction: `applyStateToForm`, `applyModeVisibility`, and `renderAll` do not call each other by name — every call site (bootstrap, mode-switch handler, file-open handler, `#start-blank-btn` handler, `restoreFromSnapshot`) invokes them as separate sequential statements. `renderAll()` calls the mode-specific sub-renderers and, as its last statement, calls `updatePreview()`, which then calls `buildModel()` → `serializeLoopYaml(model)` and `validateBuilderModel(model)`. So the effective order is `applyStateToForm(); applyModeVisibility(); renderAll() → […] → updatePreview() → serializeLoopYaml()/validateBuilderModel()` — a sequence of sibling calls at each call site, not a function-invokes-function chain.
+- Confirms the "emitted YAML unchanged" claim doubly: `buildModel()`'s outcome projection is a fixed 5-key literal (`name, actionType, body, args, transition`, tmpl `:417-423`) that already drops any other key — a `verificationContract` key would never reach `model.outcomes[i]`. And even if it did, `_serializeIssueLifecycle` (`policy_builder_core.mjs:1538-1608`) and `_outcomeStateLines` (`:1239-1272`) read only those same five keys — never `verificationContract`.
+- `LIFECYCLE_VERBS` (`policy_builder_core.mjs:108-144`): the `implement` verb is `{name: "implement", actionType: "shell", ...}`; the file's own comment at `:105-107` calls it out as "the one `shell` verb" — direct textual confirmation that `_checkIncompleteActions` not covering `at === "shell"` leaves exactly this verb's empty-body case unchecked today.
+- Precedent for "field present on the model, excluded from serialization" (supports the `verificationContract` design): `FSMConfig.imports` (`scripts/little_loops/fsm/schema.py`) is populated by `from_dict()` but simply never referenced by `to_dict()`'s hand-built result dict — no explicit strip step, just omission. `policy_builder_core.mjs`'s serializers (`_serializeIssueLifecycle`/`_serializeDecisionTable`/etc.) are built the same way, as an ordered list of `out.push(...)` lines reading specific fields — a field no `out.push` line reads is already the established shape for "authoring-only metadata."
+- The `TaskPreset {id, label, description, mode, build}` shape this section proposes does not match either existing "preset" convention in the codebase: `seedExample()`/`blankModel()` (`policy_builder_core.mjs`) are bare constructor functions with no wrapping metadata, and `PRESET_EXPANSIONS` (`scripts/little_loops/cli/loop/diagram_modes.py:58`) is a static `dict[name] -> pre-built object`, not a function. Neither is a precedent conflict to resolve — noting it so the implementer knows `TaskPreset` is establishing a new shape, not following one.
+
 ## Acceptance Criteria
 
 - [ ] Lifecycle hides grading-only inputs; rules precede advanced action editors, which are collapsed by default.
@@ -116,6 +165,7 @@ Anchors (re-verified in review 2026-09-17 after commit `8faffee5a`, which shifte
 - [ ] Generated implementation-with-verification loops run through the real executor with harmless stub commands: verify exit 0 reaches `done`; nonzero reaches `failed` with `failure_terminal == true`; implementation failure never runs verification. No real implementation or LLM runs occur.
 
 - [ ] Skill descriptions and argument hints are displayed; `_load_skill_catalog` stamps `args_hint` from `HelpEntry.argument_hint` and `test_policy_builder_emit.py` asserts its presence in `__SKILL_CATALOG_JSON__`.
+  > ⚠ Superseded — `__SKILL_CATALOG_JSON__` is the source-only placeholder (`policy_builder.py:99`); the rendered global is `window.__SKILL_CATALOG__` (an array, tmpl:135/245) — extract that, not the placeholder token.
 
 - [ ] Applying a preset creates one undo entry and persists the draft (ENH-3487 path); undo after a preset restores the prior model and any scenarios; other drafts and project identity are unchanged.
 
@@ -126,6 +176,12 @@ Anchors (re-verified in review 2026-09-17 after commit `8faffee5a`, which shifte
 ## Scope Boundaries
 
 Includes layout, presets, summary, responsive CSS, skill metadata display. Excludes persistence/undo/save-open (ENH-3487, which must land first so presets can use its committed-edit path), new terminal destinations and scoring instructions (ENH-3492), and any change to emitted YAML for existing models. BUG-3486 (`depends_on`) is done.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-17 — based on codebase analysis:_
+
+- ENH-3487 (`depends_on`) has landed: commit `50b3d37a5` ("feat(policy-builder): add draft persistence, undo/redo, and saved projects", 2026-09-17) is on `main`, and `ll-issues show ENH-3487` reports status `Completed` (= `done`). This resolves the unresolved-prerequisite concern recorded in this issue's Confidence Check Notes (Criterion 5 scored 0/20 because `depends_on: [ENH-3487]` was still `open` at that check) — the committed-edit path this issue's presets and undo/persistence integration depend on now exists on `main`.
 
 ## Verification Notes
 
@@ -207,6 +263,8 @@ _Added by `/ll:confidence-check` on 2026-09-17_
 - `depends_on: [ENH-3487]` is still `status: open`; this issue's own Scope Boundaries say ENH-3487 "must land first so presets can use its committed-edit path." The automated Dependencies Hard Override only inspects `blocked_by`, not `depends_on`, so it did not fire — Criterion 5 (Dependencies Satisfied) is scored 0/20 to reflect the real unresolved prerequisite even though no STOP was forced.
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-17T14:52:55 - `d32b8878-c913-4d69-aa9c-3c71bc1fa530.jsonl`
+- `/ll:refine-issue` - 2026-09-17T14:34:09 - `9d2644bd-122c-4727-b4a0-65456e38a722.jsonl`
 - `/ll:confidence-check` - 2026-09-17T06:35:15 - `27f66a27-b6ed-470d-a90f-1d2b427f8b5c.jsonl`
 - `/ll:verify-issues` - 2026-09-17T06:27:55 - `9b9f3eca-ed5d-4fd7-a99d-217cb278def3.jsonl`
 - manual review - 2026-09-17 - empty-body diagnostic must be extended to `shell` (was assumed to exist); `verificationContract` must be projected by `buildModel()`; `args_hint` comes from `HelpEntry.argument_hint`, not `tool_catalog`; Current Behavior anchors corrected
