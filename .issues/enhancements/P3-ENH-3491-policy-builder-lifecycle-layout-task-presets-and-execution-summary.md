@@ -20,7 +20,6 @@ relates_to:
 - ENH-3492
 - FEAT-3474
 blocks:
-- ENH-3492
 - FEAT-3488
 confidence_score: 100
 outcome_confidence: 82

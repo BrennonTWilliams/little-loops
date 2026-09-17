@@ -42,12 +42,12 @@ Add explicit stop-success, skip, and needs-attention terminal destinations to li
 
 The builder emits a binary terminal model, differing by mode:
 
-- `issue_lifecycle` (`_serializeIssueLifecycle`, `scripts/little_loops/templates/policy_builder_core.mjs:1052-1122`) hardcodes `on_max_steps: failed` (`:1081`), every verb state carries `on_error: failed` (`:1111`), and only `done`/`failed` terminals are emitted (`:1114-1120`).
+- `issue_lifecycle` (`_serializeIssueLifecycle`, `scripts/little_loops/templates/policy_builder_core.mjs:1698-1768`) hardcodes `on_max_steps: failed` (`:1727`), every verb state carries `on_error: failed` (`:1757`), and only `done`/`failed` terminals are emitted (`:1760-1766`).
 
-- `decision_table` (`_serializeDecisionTable`, `:807-910`) now unconditionally emits `on_max_steps: failed` (added by the BUG-3489 fix, committed `22f4ff6ed`; see `scripts/tests/fixtures/policy_builder/sample-decision-table.yaml:7`) — no model flag, and existing golden fixtures were regenerated (not kept byte-equal) as part of that change.
+- `decision_table` (`_serializeDecisionTable`, `:1453-1555`) now unconditionally emits `on_max_steps: failed` (added by the BUG-3489 fix, committed `22f4ff6ed`; see `scripts/tests/fixtures/policy_builder/sample-decision-table.yaml:7`) — no model flag, and existing golden fixtures were regenerated (not kept byte-equal) as part of that change.
 
-- `rubric` (`_serializeRubric`, `:912-987`) has a single `done` terminal and no `on_max_steps`.
-No `stop-success`, `skip`, or `needs-attention` concept exists anywhere in the builder. Rubric dimensions have no score definitions. `cmd_policy_builder` (`scripts/little_loops/cli/artifact/policy_builder.py:61-112`) stamps only theme, CSS vars, grammar spec, and catalog; lifecycle defaults hardcode a confidence threshold. `ConfidenceGateConfig` (`scripts/little_loops/config/automation.py:155-170`) is unread by this command.
+- `rubric` (`_serializeRubric`, `:1558-1633`) has a single `done` terminal and no `on_max_steps`.
+No `stop-success`, `skip`, or `needs-attention` concept exists anywhere in the builder. Rubric dimensions have no score definitions. `cmd_policy_builder` (`scripts/little_loops/cli/artifact/policy_builder.py:62-114`) stamps only theme, CSS vars, grammar spec, and catalog; lifecycle defaults hardcode a confidence threshold. `ConfidenceGateConfig` (`scripts/little_loops/config/automation.py:155-170`) is unread by this command.
 
 ## Expected Behavior
 
@@ -59,7 +59,7 @@ Lifecycle rules can route to `stopped`, `skipped`, and `needs_attention` destina
 
 2. `stopped` and `skipped` are successful terminals (no `failure` key). `needs_attention` and existing `failed` emit `failure: true`. `on_error` stays `failed`; `on_max_steps` becomes `needs_attention` in all three modes (rubric emits no `on_max_steps` today, so there it is an added line rather than a changed one). This budget route is the explicit automatic exception; stop/skip remain author-selected. Preserve existing model fixtures; regenerate their YAML with changes limited to the budget route and added terminal blocks. No preservation flag is introduced.
 
-   **Runtime prerequisite (review 2026-09-17)**: `FSMExecutor._finish` (`scripts/little_loops/fsm/executor.py:4337`) sets `failure_terminal` only when `terminated_by == "terminal"`. A cap-routed handler finishes with `terminated_by == "max_steps"`, so today `needs_attention` reached via `on_max_steps` reports `failure_terminal == False` even with `failure: true` (probe confirmed: `final_state needs_attention / terminated_by max_steps / failure_terminal False`). BUG-3499 fixes that in the executor and is in `depends_on`. Until it lands, the max-steps executor test below asserts `terminated_by == "max_steps"` and `final_state == "needs_attention"`; the `failure_terminal is True` assertion is added when BUG-3499 is done.
+   **Runtime prerequisite — resolved**: `FSMExecutor._finish` (`scripts/little_loops/fsm/executor.py:4333-4345`) previously set `failure_terminal` only when `terminated_by == "terminal"`, so a cap-routed handler finishing with `terminated_by == "max_steps"` reported `failure_terminal == False` even with `failure: true` (probe confirmed: `final_state needs_attention / terminated_by max_steps / failure_terminal False`). BUG-3499 (`depends_on`) is now `status: done`, fixed by commit `9e3454cc5`: the guard widened to `terminated_by in ("terminal", "max_steps", "max_iterations_reached")`. The prerequisite has landed, so the max-steps executor test below can assert `failure_terminal is True` directly, with no deferred second assertion.
 
 3. Register generated names in the shared per-mode reserved-name map: all three in lifecycle, `needs_attention` in rubric/decision-table. Reservation forbids an authored outcome from shadowing a generated state; it does **not** forbid an allowed lifecycle reference to that built-in destination. Update `_checkReservedTokens`, `_checkMissingReferences`, and the serializer's `_assertNoReservedTokens` defense together. Lifecycle target/fallback selectors offer verbs plus destinations; other modes keep their existing target rules and collision guards. Unknown names remain errors.
 
@@ -79,7 +79,7 @@ The prior terminal decision is retained with explicit reference-vs-definition va
 
 - Tests: new `.model.json`/`.yaml` fixture pairs under `scripts/tests/fixtures/policy_builder/` for each new destination plus parametrize entries in `test_policy_builder_node_gate.py::test_round_trip_yaml_validates_for_each_mode` (arbitrary terminal names are schema-legal per `fsm/validation/structural_rules.py:1160-1168`); `scripts/tests/js/policy_validator.test.mjs`; `test_policy_builder_corpus.py`; regenerate the golden HTML fixture.
 
-- Docs: `docs/reference/CLI.md:5079-5095` prose at `:5081` (five fixed verbs); `docs/guides/POLICY_ROUTER_GUIDE.md:287-289,355-356` ("can't be deleted and no new outcome can be added") and `:355-361` (Verb Table needs a destination column). (Line numbers re-verified `/ll:verify-issues` 2026-09-16: a new "Failure Routing and Clean-Slate Scoring" subsection inserted earlier in the doc shifted this section by +60 lines from its originally-cited location.)
+- Docs: `docs/reference/CLI.md:5083` prose (five fixed verbs); `docs/guides/POLICY_ROUTER_GUIDE.md:378-379` ("can't be deleted and no new outcome can be added") and `:383-389` (Verb Table needs a destination column). (Line numbers re-verified `/ll:verify-issues` 2026-09-17: commit `f0fa5c404` inserted a new task-presets paragraph and Verb/Dimension tables earlier in the "Issue Lifecycle Mode" section, shifting this passage by roughly +25 lines from its previously-cited location; CLI.md's builder paragraph is one un-wrapped line, so a single line number now suffices.)
 
 ### Dependent Files (Callers/Importers)
 _Wiring pass added by `/ll:wire-issue`:_
@@ -110,7 +110,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 ### Documentation
 _Wiring pass added by `/ll:wire-issue`:_
 
-- `docs/guides/POLICY_ROUTER_GUIDE.md:249-256` ("Reserved names" section) — literally enumerates the current `RESERVED_STATE_NAMES` token sets per mode (e.g. "the generated decision-table pipeline uses `score`, `parse_scores`, `policy_dispatch`, and `failed`..."); must be updated alongside the already-listed `:287-289`/`:350-351`/`:355-361` passages.
+- `docs/guides/POLICY_ROUTER_GUIDE.md:249-256` ("Reserved names" section) — literally enumerates the current `RESERVED_STATE_NAMES` token sets per mode (e.g. "the generated decision-table pipeline uses `score`, `parse_scores`, `policy_dispatch`, and `failed`..."); must be updated alongside the already-listed `:378-379`/`:383-389` passages.
 
 - `docs/guides/POLICY_ROUTER_GUIDE.md:412` (Issue Lifecycle "Seeded example" prose) — states the literal value this issue replaces: "once the score clears 85, bounded by `on_max_steps: failed` if the refine/gate cycle never converges"; update to `needs_attention` [wiring pass finding].
 
@@ -143,11 +143,11 @@ Outcome `transition.kind` gains `"stop" | "skip" | "attention"` alongside existi
 
 ### Signatures
 
-- `_outcomeStateLines(outcome, {doneState, issueArg}) -> string[]` (`policy_builder_core.mjs:1071`) — extended so `transition.kind` `stop`/`skip`/`attention` emit `next: stopped`/`next: skipped`/`next: needs_attention`; the terminal blocks themselves are emitted by `_serializeIssueLifecycle` (`:1370`), not here
+- `_outcomeStateLines(outcome, {doneState, issueArg}) -> string[]` (`policy_builder_core.mjs:1399`) — extended so `transition.kind` `stop`/`skip`/`attention` emit `next: stopped`/`next: skipped`/`next: needs_attention`; the terminal blocks themselves are emitted by `_serializeIssueLifecycle` (`:1698`), not here
 
-- `_emittedVerbs(model) -> string[]` (`:1336`) — a companion `_emittedDestinations(model)` returns which of the three built-in destinations are referenced (rule target, fallback, verb transition, `on_max_steps`) so `_serializeIssueLifecycle` can emit route entries and terminal blocks only for those
+- `_emittedVerbs(model) -> string[]` (`:1664`) — a companion `_emittedDestinations(model)` returns which of the three built-in destinations are referenced (rule target, fallback, verb transition, `on_max_steps`) so `_serializeIssueLifecycle` can emit route entries and terminal blocks only for those
 
-- `_doneStateName(model) -> string` (`:1117`) — unchanged
+- `_doneStateName(model) -> string` (`:1445`) — unchanged
 
 - `_scoreActionBody(model) -> string` — emits optional instructions/anchors in rubric and decision-table grading prompts
 
@@ -159,7 +159,7 @@ Outcome `transition.kind` gains `"stop" | "skip" | "attention"` alongside existi
 
 ### Call Path
 
-`serializeLoopYaml` (`policy_builder_core.mjs:1448`) -> `_serializeIssueLifecycle` (`:1370`) -> `_emittedVerbs`/`_emittedDestinations` -> `_outcomeStateLines` (`:1071`) -> terminal-state emission (currently the fixed `done`/`failed` blocks at `:1432-1437`; `on_max_steps: failed` literal at `:1399`). `cmd_policy_builder` -> `BRConfig` -> template stamping; the builder displays thresholds beside rule thresholds.
+`serializeLoopYaml` (`policy_builder_core.mjs:1776`) -> `_serializeIssueLifecycle` (`:1698`) -> `_emittedVerbs`/`_emittedDestinations` -> `_outcomeStateLines` (`:1399`) -> terminal-state emission (currently the fixed `done`/`failed` blocks at `:1760-1766`; `on_max_steps: failed` literal at `:1727`). `cmd_policy_builder` -> `BRConfig` -> template stamping; the builder displays thresholds beside rule thresholds.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -204,7 +204,7 @@ _Added by `/ll:refine-issue` — 2026-09-17 — based on codebase analysis:_
 
 - [ ] `stopped`, `skipped`, and `needs_attention` each emit YAML that passes `ll-loop validate`, reachable both as a rule target/fallback and as a verb `transition.kind`, covered by fixture pairs in the Node gate.
 
-- [ ] `needs_attention` emits `failure: true`; `stopped`/`skipped` do not. `TestGeneratedPolicyRouterFailureRouting` gains a max-steps case asserting `final_state == "needs_attention"` and `terminated_by == "max_steps"`; it additionally asserts `failure_terminal is True` once BUG-3499 (`depends_on`) has landed (see Proposed Solution §2).
+- [ ] `needs_attention` emits `failure: true`; `stopped`/`skipped` do not. `TestGeneratedPolicyRouterFailureRouting` gains a max-steps case asserting `final_state == "needs_attention"`, `terminated_by == "max_steps"`, and `failure_terminal is True` (BUG-3499, `depends_on`, is done — see Proposed Solution §2).
 
 - [ ] For every existing `.model.json` fixture, the regenerated `.yaml` differs from the pre-change golden only by the added or changed `on_max_steps` line and the added terminal blocks (asserted by a diff-shape test, not byte equality).
 
@@ -329,6 +329,61 @@ fixed, not an outstanding action item).
 - Decisions log query returned no entries.
 - Proposal-vs-code consequence check (B6): no new issue found.
 
+_Fourth `/ll:verify-issues` pass — 2026-09-17:_
+
+Verdict at time of check: **OUTDATED** (corrections below applied in the same pass, so
+the issue as it now reads is up to date — this section is a record of what was wrong and
+fixed, not an outstanding action item).
+
+- **BUG-3499 has landed** (commit `9e3454cc5`, "honor failure terminals reached via
+  step/iteration caps") between the prior pass and this one — `depends_on: BUG-3499` is
+  now satisfied. `FSMExecutor._finish`'s guard (`executor.py:4333-4345`, the `4337`
+  citation shifted slightly within the same comment block) now reads `terminated_by in
+  ("terminal", "max_steps", "max_iterations_reached")`, confirmed by direct read. Proposed
+  Solution §2's "Runtime prerequisite" paragraph and the matching Acceptance Criterion
+  described this as a still-open contingency ("until it lands" / "once ... has landed");
+  corrected in place to state it as resolved, and the deferred second assertion on
+  `failure_terminal is True` is now a direct one.
+- **Anchor drift from commit `f0fa5c404`** ("add task presets, verification contract, and
+  execution summary", landed after the prior pass, before the wire-issue pass at
+  `2888d3052`): shifted every `policy_builder_core.mjs` function this issue's Current
+  Behavior and Program Design sections cite by +646 lines. The wire-issue pass's own new
+  citations (Codebase Research Findings' `_serializeRubric:1558-1633`,
+  `summarizeTransitions:1161-1215`, `_checkMissingReferences:507`,
+  `_yamlBlockScalar:1293-1298`) were already written against the post-shift file and are
+  unaffected — only the older Current Behavior / Program Design Signatures / Call Path
+  citations (last corrected in the manual review predating `f0fa5c404`) had drifted.
+  Corrected in place: `_serializeIssueLifecycle` `1052-1122`→`1698-1768` (on_max_steps
+  `1081`→`1727`, per-verb `on_error` `1111`→`1757`, `done`/`failed` terminals
+  `1114-1120`→`1760-1766`); `_serializeDecisionTable` `807-910`→`1453-1555`;
+  `_serializeRubric` `912-987`→`1558-1633`; `_outcomeStateLines` `1071`→`1399`;
+  `_emittedVerbs` `1336`→`1664`; `_doneStateName` `1117`→`1445`; `serializeLoopYaml`
+  `1448`→`1776`. `cmd_policy_builder` shifted by 1-2 lines (`61-112`→`62-114`) from an
+  earlier, unrelated commit; no substance change — still stamps only theme/CSS/grammar/
+  catalog, still doesn't read `config.commands.confidence_gate`.
+- **Doc citation drift**, same `f0fa5c404` commit (it also inserted a task-presets
+  paragraph plus new Dimension/Verb tables into `POLICY_ROUTER_GUIDE.md`'s "Issue
+  Lifecycle Mode" section): the "can't be deleted and no new outcome can be added" phrase
+  moved `355-356`→`378-379`; the Verb Table moved `355-361`→`383-389`. The Wiring Phase
+  Documentation bullet's back-reference to these citations (`:287-289`/`:350-351`/
+  `:355-361`) was already stale before this pass — corrected to the new locations.
+  `docs/reference/CLI.md`'s "five fixed lifecycle verbs" sentence is a single un-wrapped
+  paragraph line that moved `5081`→`5083`; the range citation collapsed to the one line.
+  `POLICY_ROUTER_GUIDE.md:249-256` (Reserved names) and `:412` (Seeded example) are
+  unaffected — re-confirmed unchanged.
+- Confidence Check Notes' sole gap (`blocked_by: ENH-3491` unresolved) is now stale:
+  ENH-3491 is `status: done`, and this issue's own `blocked_by` frontmatter is already
+  empty (cleared in an earlier pass) — the dependency the gap named is satisfied. Left the
+  Confidence Check Notes section itself untouched (owned by `/ll:confidence-check`); a
+  re-run would likely clear the STOP verdict.
+- Dependency backlinks re-checked: `depends_on: [BUG-3486, BUG-3499]` both `done`, both
+  satisfied (informational); `blocked_by: []`; `blocks: [FEAT-3488]` / `FEAT-3488.blocked_by`
+  includes `ENH-3492` — consistent. No DEP_ISSUES findings.
+- `ll-verify-evidence --json`: `"ok": true`, 0 findings.
+- Decisions log query returned no entries.
+- Proposal-vs-code consequence check (B6): no new issue found — the mechanism the
+  Proposed Solution describes is unaffected by the anchor drift or BUG-3499 landing.
+
 ## Confidence Check Notes
 
 _Added by `/ll:confidence-check` on 2026-09-17_
@@ -344,6 +399,7 @@ _Added by `/ll:confidence-check` on 2026-09-17_
 **Open** | Created: 2026-09-16 | Priority: P3
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-17T18:57:38 - `64b082f5-b4f8-409b-a5d1-79e44b8a0152.jsonl`
 - `/ll:wire-issue` - 2026-09-17T18:46:50 - `291797e2-08f6-425b-9547-d7555f015908.jsonl`
 - `/ll:refine-issue` - 2026-09-17T18:30:29 - `46c00341-49d5-41d7-9341-4caa93d77adc.jsonl`
 - `/ll:confidence-check` - 2026-09-17T06:34:34 - `848ad701-11e3-43ba-8e5b-b86aa9978421.jsonl`
