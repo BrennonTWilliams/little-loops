@@ -17,6 +17,12 @@ blocks:
 - FEAT-3488
 learning_tests_required:
 - playwright
+confidence_score: 100
+outcome_confidence: 90
+score_complexity: 22
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 # BUG-3502: Policy builder first Undo after load/restore is a no-op because history.present aliases live state
@@ -166,6 +172,7 @@ Reviewed on `main` (2026-09-17). Prior refine/wire/verify research was reconcile
 **Open** | Created: 2026-09-17 | Priority: P2
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-17T23:44:43 - `cfa0f140-36c4-4f19-b133-f16b1dc8088a.jsonl`
 - `/ll:ready-issue` - 2026-09-17T23:22:47 - `fa3645f9-529c-40a6-8608-e4471d559111.jsonl`
 - `/ll:verify-issues` - 2026-09-17T23:13:15 - `fa3645f9-529c-40a6-8608-e4471d559111.jsonl`
 - `/ll:wire-issue` - 2026-09-17T23:03:05 - `419c6f2e-929d-4a69-8456-7e423aa988c1.jsonl`
