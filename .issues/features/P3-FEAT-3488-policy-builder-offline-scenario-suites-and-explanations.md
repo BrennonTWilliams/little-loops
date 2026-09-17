@@ -28,6 +28,7 @@ unproven_mechanism: false
 blocks:
 - FEAT-3498
 confidence_score: 80
+verify_verdict: VALID
 outcome_confidence: 64
 score_complexity: 10
 score_test_coverage: 18
@@ -175,6 +176,8 @@ Proposed new contracts in core.mjs:
 
 - [ ] A complete issue Markdown file imports successfully without parsing its body; BOM/CRLF are handled. Missing/unclosed fences, unsupported frontmatter, and read failures produce diagnostics without altering the suite. Successful import adds one unasserted case and is undoable.
 
+- [ ] `docs/guides/POLICY_ROUTER_GUIDE.md` and the policy-builder section of `docs/reference/CLI.md` document the scenario-suite feature: authoring/running scenarios, expectation types (target-only, rule-index with fingerprint, `expectedFallback`), verdicts, coverage semantics, boundary suggestions, and local issue-file import.
+
 ## Use Case
 
 A maintainer saves ready, blocked, and unscored issue examples, changes the readiness threshold, and runs the suite to see which independently authored expectations changed and which earlier rule conditions failed.
@@ -223,8 +226,22 @@ _Historical assessment from `/ll:confidence-check` on 2026-09-17; superseded dep
 - Moderate per-site complexity: the shared compiled trace path (`traceModel`) must preserve `evaluateModel`'s existing MatchResult shape plus legacy `evaluateRules`/Python/corpus contracts while adding new tracing — a cross-module change with shared state, not a mechanical edit.
 - Browser persistence currently reconstructs model-only wrappers. This issue now explicitly owns full-wrapper preservation with `drafts[mode]` as the single scenario owner; verification must exercise these integration paths alongside the pure helpers.
 
+## Verification Notes
+
+Verdict at time of check: **PROPOSAL_UNSOUND** (correction below applied in the same pass, so the issue as it now reads is up to date — this section is a record of what was wrong and fixed, not an outstanding action item)
+
+- All current-state claims checked out against source: `evaluateModel` (`policy_builder_core.mjs:452`) returns exactly `{ruleIndex, target, isFallback, conditionResults}` with only the winning rule's condition results, matching Current Behavior; `updateTryIt` (`policy-router-builder.html.tmpl:1064`) short-circuits for rubric mode (`state.mode !== "decision_table"`), confirming rubric is skipped; no `runScenarioSuite`/`evaluateScenario`/`suggestScenarios`/`rulesFingerprint`/`traceModel`/`normalizeScenarioInput`/`extractIssueFrontmatter` exist yet, confirming "no suite store or reusable boundary generator."
+- All cited line numbers verified against current source: `commit()` at html.tmpl:364 (cited ~368), mode-switch handler at html.tmpl:1296-1305 (cited ~1298-1301), `applyPreset` at html.tmpl:1313 (cited ~1317-1319), `_persistDraft`/`_persistAllDrafts` at html.tmpl:306-317 (exact), Open/hydration at html.tmpl:412 and :1469 (exact). All three commit/switch/preset sites reconstruct `{model}`-only wrappers and `_persistDraft` persists only `.model`, exactly as claimed.
+- `rubric-router.yaml` citations verified exact: line 93's tier expression and lines 103-104/121-122's gate descriptions match the quoted text and the inclusive-at-threshold (`>=`) semantics described.
+- `_serializeRulesText` (core.mjs:1506) appends `model.fallback` (a field separate from `model.rules`) only when no authored catch-all exists — confirms fingerprinting `model.rules` alone naturally excludes the derived fallback, as the fingerprint contract requires.
+- Dependencies BUG-3486, ENH-3487, ENH-3491, ENH-3492 all confirmed `done`. `blocks`/`relates_to` references all resolve and backlink correctly (FEAT-3498's `blocked_by` includes FEAT-3488; FEAT-3474/BUG-3489/BUG-3490/FEAT-3501 all exist) — no DEP_ISSUES.
+- Decisions log checked (`.ll/decisions.yaml` + `.ll/decisions.d/`): no active required rules — no DECISIONS_VIOLATION.
+- `ll-verify-evidence --json`: 0 findings — no EVIDENCE_UNVERIFIED.
+- **Proposal-vs-code consequence check (B6) finding**: the Integration Map named a Documentation integration point (`docs/guides/POLICY_ROUTER_GUIDE.md` and the policy-builder section of `docs/reference/CLI.md`), and Implementation Step 5 said to "update docs," but no Acceptance Criterion verified the docs were actually updated — every listed AC covered code/schema/UI/test behavior, none named the docs. That was a real AC-coverage gap, not a claim-accuracy defect. **Fixed**: added an AC requiring `POLICY_ROUTER_GUIDE.md` and the CLI.md policy-builder section to document scenario authoring/running, expectation types, verdicts, coverage semantics, suggestions, and import.
+
 ## Session Log
 
+- `/ll:verify-issues` - 2026-09-17T21:35:36 - `ba3eff4d-1d07-4139-8410-b5c4e703860f.jsonl`
 - manual review - 2026-09-17 - split structural transition analysis + graph UI into FEAT-3501; pinned template state ownership (`state` model-only, `drafts[mode]` owns scenarios), schema version stays 1, authored-rules-only fingerprint, `expectedFallback` assertion, fence-optional paste vs fenced import, corrected rubric-router citation to line 93; marked effort Large and `score_complexity` stale
 
 - manual review - 2026-09-17 - applied pre-implementation review: full-wrapper browser persistence, atomic fenced-frontmatter import, winning-route versus evaluated-rule coverage, typed input/provenance contracts, shared transition analysis, verdict precedence and explicit reconfirmation; corrected stale dependency assessment without inventing new confidence scores.
