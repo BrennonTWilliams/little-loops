@@ -27,6 +27,7 @@ score_complexity: 14
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 18
+verify_verdict: VALID
 ---
 
 # ENH-3491: Policy builder lifecycle layout, task presets, and execution summary
@@ -271,7 +272,16 @@ _Added by `/ll:confidence-check` on 2026-09-17_
 ### Concerns
 - ~~`depends_on: [ENH-3487]` is still `status: open`; Criterion 5 (Dependencies Satisfied) scored 0/20.~~ **Resolved 2026-09-17 (manual review):** ENH-3487 landed as `50b3d37a5` and `ll-issues show` reports both `depends_on` entries (BUG-3486, ENH-3487) as done. The 0/20 dependency score is stale; the aggregate is not re-scored here — rerun `/ll:confidence-check` if a fresh number is wanted.
 
+## Verification (Recheck)
+
+_Added by `/ll:verify-issues` — 2026-09-17 (second pass)_
+
+Verdict: **VALID** (recheck confirms previous corrections remain current; no new changes).
+
+All Program Design anchors verified accurate (buildModel line 405, updatePreview 1020, renderAll 1046, applyModeVisibility 1065, applyStateToForm 1086, validateBuilderModel 640, _checkIncompleteActions 551). Dependencies satisfied: BUG-3486 done with correct blocks entry, ENH-3487 done, ENH-3492 has correct blocked_by entry. No code changes to policy-builder files since last verify pass (2026-09-17T14:52:55). Evidence verification clean (0 findings). Decision rules query returned no conflicts. Proposal soundness check passed.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-09-17T15:08:39 - `defa41b0-42f9-4a0d-aaa2-260632de068b.jsonl`
 - manual review - 2026-09-17 - fixed contract-invalidation rule (body edits no longer clear `verificationContract`; checkbox UI defined); added cross-mode preset contract; replaced scenario-clearing clause with the draft-wrapper replacement rule; documented the `on_error: failed` + executor nonzero-exit mechanism and stub pitfalls; specified `maxStepsNote` arithmetic and advanced-`<details>` auto-open; rewrote superseded AC; marked confidence-check dependency concern resolved
 - `/ll:wire-issue` - 2026-09-17T14:52:55 - `d32b8878-c913-4d69-aa9c-3c71bc1fa530.jsonl`
 - `/ll:refine-issue` - 2026-09-17T14:34:09 - `9d2644bd-122c-4727-b4a0-65456e38a722.jsonl`
