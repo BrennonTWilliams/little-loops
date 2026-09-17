@@ -301,6 +301,7 @@ class WizardAnswers:
 
     name: str
     src_dir: str
+    test_dir: str
     test_cmd: str
     lint_cmd: str
     type_cmd: str
@@ -360,6 +361,7 @@ def _answers_from_proposal(
     return WizardAnswers(
         name=_seed("project_name", project_root.name),
         src_dir=_seed("src_dir", project_data.get("src_dir", "src/")),
+        test_dir=_seed("test_dir", project_data.get("test_dir", "tests")),
         test_cmd=_seed("test_cmd"),
         lint_cmd=_seed("lint_cmd"),
         type_cmd=_seed("type_cmd"),
