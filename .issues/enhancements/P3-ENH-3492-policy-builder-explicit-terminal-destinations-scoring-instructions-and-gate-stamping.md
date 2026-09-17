@@ -25,6 +25,12 @@ blocks:
 - FEAT-3488
 blocked_by:
 - ENH-3491
+confidence_score: 80
+outcome_confidence: 75
+score_complexity: 10
+score_test_coverage: 25
+score_ambiguity: 22
+score_change_surface: 18
 ---
 
 # ENH-3492: Policy builder explicit terminal destinations, scoring instructions, and gate stamping
@@ -295,6 +301,16 @@ fixed, not an outstanding action item).
 - `ll-verify-evidence --json`: `"ok": true`, 0 findings.
 - Decisions log query returned no entries.
 - Proposal-vs-code consequence check (B6): no new issue found.
+
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-17_
+
+**Readiness Score**: 80/100 → STOP — ADDRESS GAPS (dependencies hard override)
+**Outcome Confidence**: 75/100 → MODERATE
+
+### Gaps to Address
+- `blocked_by: ENH-3491` is unresolved (status `Open`, not `done`/`cancelled`) — the BUG-3051 Dependencies Hard Override forces this verdict regardless of the otherwise-80/100 aggregate. Wait for ENH-3491 to land, or drop it from `blocked_by` if the layout/preset work it depends on is no longer a prerequisite.
 
 ## Status
 

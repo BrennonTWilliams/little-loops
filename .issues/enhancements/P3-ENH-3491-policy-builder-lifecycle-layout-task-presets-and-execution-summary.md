@@ -21,6 +21,12 @@ relates_to:
 blocks:
 - ENH-3492
 - FEAT-3488
+confidence_score: 80
+outcome_confidence: 82
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 # ENH-3491: Policy builder lifecycle layout, task presets, and execution summary
@@ -190,7 +196,18 @@ fixed, not an outstanding action item).
 
 **Open** | Created: 2026-09-16 | Priority: P3
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-17_
+
+**Readiness Score**: 80/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 82/100 → HIGH CONFIDENCE
+
+### Concerns
+- `depends_on: [ENH-3487]` is still `status: open`; this issue's own Scope Boundaries say ENH-3487 "must land first so presets can use its committed-edit path." The automated Dependencies Hard Override only inspects `blocked_by`, not `depends_on`, so it did not fire — Criterion 5 (Dependencies Satisfied) is scored 0/20 to reflect the real unresolved prerequisite even though no STOP was forced.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-09-17T06:35:15 - `27f66a27-b6ed-470d-a90f-1d2b427f8b5c.jsonl`
 - `/ll:verify-issues` - 2026-09-17T06:27:55 - `9b9f3eca-ed5d-4fd7-a99d-217cb278def3.jsonl`
 - manual review - 2026-09-17 - empty-body diagnostic must be extended to `shell` (was assumed to exist); `verificationContract` must be projected by `buildModel()`; `args_hint` comes from `HelpEntry.argument_hint`, not `tool_catalog`; Current Behavior anchors corrected
 - manual review - 2026-09-17 - defined acceptance-check command/input/exit-code contract, unfinished-preset behavior, action-aware summaries, and atomic model/scenario replacement undo

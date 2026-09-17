@@ -22,6 +22,12 @@ relates_to:
 blocks:
 - FEAT-3488
 - ENH-3491
+confidence_score: 100
+outcome_confidence: 75
+score_complexity: 14
+score_test_coverage: 18
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 # ENH-3487: Policy builder persistence, undo/redo, and saved projects
@@ -370,6 +376,7 @@ fixed, not an outstanding action item).
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-17T06:33:45 - `848ad701-11e3-43ba-8e5b-b86aa9978421.jsonl`
 - `/ll:verify-issues` - 2026-09-17T06:27:20 - `9b9f3eca-ed5d-4fd7-a99d-217cb278def3.jsonl`
 - manual review - 2026-09-17 - stale anchors corrected (guide `:300`/`:305`, `moveRule` `678-689`); code claims re-verified (issue-id-then-args ordering, `__version__` source, `evaluateModel` shape)
 - manual review - 2026-09-17 - preserve unfinished drafts via structural validation; stable builder projectId and metadata persistence; preserve extension fields; corrected rubric input guidance; added regression criteria

@@ -10,34 +10,28 @@ discovered_by: ll-issues-create
 discovered_date: '2026-09-16'
 captured_at: '2026-09-16T20:54:21Z'
 labels:
-
 - policy-builder
-
 - captured
 blocked_by:
-
 - BUG-3486
-
 - ENH-3487
-
 - ENH-3491
-
 - ENH-3492
 relates_to:
-
 - FEAT-3474
-
 - BUG-3489
-
 - BUG-3490
-
 - ENH-3491
-
 - FEAT-3498
 unproven_mechanism: false
 blocks:
-
 - FEAT-3498
+confidence_score: 80
+outcome_confidence: 64
+score_complexity: 10
+score_test_coverage: 18
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 # FEAT-3488: Policy builder offline scenario suites and explanations
@@ -173,8 +167,23 @@ The earlier refinement/wiring passes mixed offline suites with connected transpo
 
 **Open** | Created: 2026-09-16 | Priority: P3
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-17_
+
+**Readiness Score**: 80/100 → STOP — ADDRESS GAPS (Dependencies Hard Override)
+**Outcome Confidence**: 64/100 → LOW
+
+### Gaps to Address
+- `blocked_by` lists ENH-3487, ENH-3491, and ENH-3492, all still `open` — the Dependencies Hard Override forces STOP regardless of the 80/100 aggregate. This issue's own Proposed Solution explicitly builds on ENH-3487's draft wrapper, ENH-3491's presets/transition summary, and ENH-3492's terminal semantics; none of those contracts exist yet to implement against.
+
+### Outcome Risk Factors
+- Moderate per-site complexity: the shared compiled trace path (`traceModel`) must preserve `evaluateModel`'s existing MatchResult shape plus legacy `evaluateRules`/Python/corpus contracts while adding new tracing — a cross-module change with shared state, not a mechanical edit.
+- Ambiguity residual: several proposed-solution details (transition summary reuse, terminal destination exercising) depend on ENH-3491/ENH-3492 designs that may still shift before those issues land.
+
 ## Session Log
 
+- `/ll:confidence-check` - 2026-09-17T06:34:31 - `0ef705a3-d006-496e-b37a-476f2afd18d1.jsonl`
 - `/ll:verify-issues` - 2026-09-17T06:28:40 - `9b9f3eca-ed5d-4fd7-a99d-217cb278def3.jsonl`
 - manual review - 2026-09-17 - added ENH-3491 to `blocked_by` (summary data and preset-clears-scenarios contract were only transitively covered); pinned rubric tier comparisons to `lib/rubric-router.yaml` (`>=` inclusive at both thresholds)
 
