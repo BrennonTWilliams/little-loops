@@ -9,6 +9,12 @@ discovered_by: ll-issues-create
 discovered_date: '2026-09-17'
 captured_at: '2026-09-17T00:15:03Z'
 decision_needed: false
+confidence_score: 90
+outcome_confidence: 74
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 10
+score_change_surface: 25
 ---
 
 # ENH-3495: spike skill hardcodes little-loops source-repo layout (scripts/tests/spike) instead of project config
@@ -243,6 +249,7 @@ _Added 2026-09-17 by pre-implementation review; each claim verified against the 
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-17T01:41:57 - `43a75e43-d004-403c-835f-a3d1eaae553d.jsonl`
 - `/ll:wire-issue` - 2026-09-17T01:12:06 - `86a9c74b-9864-4b0f-956c-f789b6eb77ab.jsonl`
 - `/ll:decide-issue` - 2026-09-17T00:55:55 - `8e7ed6a7-45f1-4830-9b8d-ec6405748b84.jsonl`
 - `/ll:refine-issue` - 2026-09-17T00:46:42 - `a247e656-a04b-48d2-b369-8647c50460db.jsonl`
