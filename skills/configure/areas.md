@@ -103,7 +103,7 @@ questions:
         description: "Keep current setting"
       - label: "npm run build"
         description: "Node.js npm build"
-      - label: "pip install -e ."
+      - label: "pip install -e ."  # ll-audience-ok: generic Python build option for the user's project
         description: "Python editable install"
       - label: "none"
         description: "No build command"
@@ -850,7 +850,7 @@ questions:
       - label: "settings.local.json (Recommended)"
         description: "Gitignored by default — keeps ll- permissions out of version control"
       - label: "settings.json"
-        description: "Tracked in version control — shared with all project contributors"
+        description: "Tracked in version control — shared with everyone on the project"
       - label: "Skip / Remove entries"
         description: "Remove all ll- entries from both files (or skip if none exist)"
     multiSelect: false
@@ -917,7 +917,7 @@ Current Hook Configuration
 Note: the table above shows Claude Code's `hooks/hooks.json` wiring. Codex
 CLI users wire their hooks through the user-project's `.codex/hooks.json`
 (written by `ll-init --hosts codex`), which points at the bash adapter scripts
-under `scripts/little_loops/hooks/adapters/codex/`. The display layer of `/ll:configure hooks
+shipped inside the installed `little_loops` package (`little_loops/hooks/adapters/codex/`). The display layer of `/ll:configure hooks
 show` does not currently introspect `.codex/hooks.json` — verify Codex
 hooks via `cat .codex/hooks.json` or by checking the Codex startup
 hook-trust dialog.
@@ -1278,7 +1278,9 @@ After writing the config values, apply materialization logic:
 
   BUILTIN = ["default", "editorial-mono", "warm-paper"]
   PROFILE_DIR = <config.design_tokens.path>/<profiles_dir or "profiles">/<new_active>
-  TEMPLATE_DIR = scripts/little_loops/templates/design-tokens/profiles/<new_active>
+  TEMPLATE_ROOT = <installed little_loops package dir>/templates/design-tokens/profiles
+                 (locate with: python3 -c "import little_loops, pathlib; print(pathlib.Path(little_loops.__file__).parent / 'templates/design-tokens/profiles')")
+  TEMPLATE_DIR = <TEMPLATE_ROOT>/<new_active>
 
   If PROFILE_DIR does not exist:
     If new_active is in BUILTIN AND TEMPLATE_DIR exists:
@@ -1299,7 +1301,7 @@ After writing the config values, apply materialization logic:
 
   PROFILES_ROOT = <config.design_tokens.path>/<profiles_dir or "profiles">
   If PROFILES_ROOT does not exist:
-    Bash(python3:*): python3 -c "import shutil; shutil.copytree('scripts/little_loops/templates/design-tokens/profiles', '<PROFILES_ROOT>', dirs_exist_ok=False)"
+    Bash(python3:*): python3 -c "import shutil, pathlib, little_loops; shutil.copytree(pathlib.Path(little_loops.__file__).parent / 'templates/design-tokens/profiles', '<PROFILES_ROOT>', dirs_exist_ok=False)"
     Report: ✓ Installed all 3 built-in profiles → <PROFILES_ROOT>/
 
 ### Round 2 (3 questions — advanced)

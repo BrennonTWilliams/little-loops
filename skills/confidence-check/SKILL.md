@@ -462,7 +462,7 @@ If `ll-issues` is not available, fall back to manually appending with **exactly*
 
 **Skip this phase if**: `CHECK_MODE` is true (no writes in check mode).
 
-Phase 4.5 already wrote Outcome Risk Factors findings to the issue's `## Confidence Check Notes` section (or determined there were none to write). Delegate turning those findings into `decision_needed` / `missing_artifacts` / `implementation_order_risk` / `spike_needed` frontmatter flags to the CLI — the phrase-list + numeric-gate rules (`FLAG_RULES`, `scripts/little_loops/cli/issues/set_flags.py`) are the single source of truth, not this skill (ENH-2946):
+Phase 4.5 already wrote Outcome Risk Factors findings to the issue's `## Confidence Check Notes` section (or determined there were none to write). Delegate turning those findings into `decision_needed` / `missing_artifacts` / `implementation_order_risk` / `spike_needed` frontmatter flags to the CLI — the phrase-list + numeric-gate rules (`FLAG_RULES` in `little_loops.cli.issues.set_flags`) are the single source of truth, not this skill (ENH-2946):
 
 ```bash
 ll-issues set-flags [ISSUE-ID]

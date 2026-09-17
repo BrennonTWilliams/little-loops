@@ -3494,7 +3494,7 @@ member's `loops_run`/`loops_completed`/`issues_completed`/`issues_deferred` coun
 workspace-wide totals, instead of shelling out per project.
 
 ```bash
-ll-history activity                        # This repo's counts, text report
+ll-history activity                        # The current project's counts, text report
 ll-history activity --format json          # JSON output (the machine contract)
 ll-history activity --since 2026-08-10T14:00:00Z --until 2026-08-17T14:00:00Z
 ll-history activity --workspace            # Aggregate every member of ll-workspace.yaml
@@ -3503,7 +3503,7 @@ ll-history activity --workspace --since 2026-08-10T14:00:00Z --format json
 
 | Flag | Description |
 |------|-------------|
-| `--workspace[=PATH]` | Scope flag (same convention as `ll-history quality`'s, FEAT-3410): bare flag discovers `ll-workspace.yaml` outward; `PATH` names an explicit manifest; absent = this repo alone. Zero discovered members falls back to a single-repo result. Changes *what* is collected, never which formatters run. A declared-but-missing manifest exits 1 with the path on stderr. |
+| `--workspace[=PATH]` | Scope flag (same convention as `ll-history quality`'s, FEAT-3410): bare flag discovers `ll-workspace.yaml` outward; `PATH` names an explicit manifest; absent = the current project alone. Zero discovered members falls back to a single-repo result. Changes *what* is collected, never which formatters run. A declared-but-missing manifest exits 1 with the path on stderr. |
 | `--since TIMESTAMP` | Inclusive lower bound — full ISO-8601 date or datetime (e.g. `2026-08-10T14:00:00Z`); naive timestamps are treated as UTC. Unlike `summary`'s date-only `--since`, datetime granularity is supported. |
 | `--until TIMESTAMP` | Inclusive upper bound, same format as `--since`. |
 | `-f, --format` | `text` (default), `json`, `markdown`, `yaml`. |
@@ -4384,7 +4384,7 @@ Without `--watch`, this behavior is unchanged: drain what's eligible, then exit.
 **Examples:**
 ```bash
 ll-queue add audit-docs                                  # Enqueue a skill (classified automatically)
-ll-queue add "pytest scripts/tests/" --runner cmd --priority P1
+ll-queue add "pytest tests/" --runner cmd --priority P1
 ll-queue add rn-refine --input '{"issue_id": "FEAT-2900"}' --priority P1
 ll-queue list --json
 ll-queue list --wide                                      # Untruncated args/timeout summary
@@ -4822,7 +4822,7 @@ ll-verify-evidence --all --update-baseline    # Re-record the grandfathered corp
 ll-verify-evidence --all --json               # Machine-readable output
 ```
 
-**Gates:** pre-commit (`.pre-commit-config.yaml`, warn-only on first release), pytest CI (`scripts/tests/test_verify_evidence.py::TestRepoGate`), and the `/ll:verify-issues` skill invocation — the same three-layer model as `ll-verify-private-refs`.
+**Gates:** pre-commit (`.pre-commit-config.yaml`, warn-only on first release), little-loops' own test suite (which pins the repo gate), and the `/ll:verify-issues` skill invocation — the same three-layer model as `ll-verify-private-refs`.
 
 ---
 
@@ -4867,7 +4867,7 @@ ll-verify-private-refs --all --update-baseline # Re-record the grandfathered cor
 ll-verify-private-refs --all --json            # Machine-readable output
 ```
 
-**Gates:** pre-commit (`.pre-commit-config.yaml`), pytest CI (`scripts/tests/test_verify_private_refs.py::TestRepoGate`), and Claude Code PreToolUse (`hooks/scripts/check-private-refs.sh`) — the same three-layer model as `ll-verify-decisions`.
+**Gates:** pre-commit (`.pre-commit-config.yaml`), little-loops' own test suite (which pins the repo gate), and Claude Code PreToolUse (`hooks/scripts/check-private-refs.sh`) — the same three-layer model as `ll-verify-decisions`.
 
 ---
 
@@ -4897,7 +4897,7 @@ ll-verify-des-audit -C /path/to/root         # Discover under a specific project
 
 ### ll-verify-cli-allowlist
 
-Assert that `skills/configure/areas.md` and `writers._LL_PERMISSIONS` cover every `ll-` console entry point declared in `pyproject.toml` (BUG-2764). A new CLI added without a matching allowlist preset entry means consuming projects hit a permission prompt for a tool little-loops itself installs; this gate catches that drift at commit time.
+Assert that `skills/configure/areas.md` and `writers._LL_PERMISSIONS` cover every `ll-` console entry point declared in `pyproject.toml` (BUG-2764). A new CLI added without a matching allowlist preset entry means consuming projects hit a permission prompt for a tool that little-loops installs; this gate catches that drift at commit time.
 
 **Flags:** none (beyond `-h`/`--help`).
 
@@ -5048,7 +5048,7 @@ ll-create-extension my-dashboard-ext --dry-run    # Preview without writing file
 After scaffolding:
 ```bash
 cd my-dashboard-ext
-pip install -e .          # Install with entry point registration
+pip install -e .          # Install with entry point registration  # ll-audience-ok: user's own generated package
 python -m pytest tests/   # Run starter tests
 ```
 
@@ -5283,7 +5283,7 @@ Verification is three-stage under `--lift-tokens`: (1) the byte-exact round trip
 
 **Two accepted limitations, stated rather than left implicit:** (1) *render-time token availability* — the declarations come from `themed_css_vars(config)` evaluated in whatever project later re-renders the `.llat` (`render`, `extract`, `fsm/persistence.py::promote_run_artifact`); a lifted template re-rendered in a project with no design tokens configured emits empty `:root {}`/`[data-theme=dark] {}` blocks and renders **colorless**, with no error. The lift-time precondition above only guards that the *authoring* project's tokens cover every emitted name — it cannot guard a different rendering project. (2) *presentation-attribute under-lift* — the CSS-value-position guard's scope test admits only `<style>` elements and `style="..."` attributes, so color-valued presentation attributes (inline SVG `fill`/`stroke`/`stop-color`, `bgcolor`, `<meta name="theme-color">`) are reported in `unlifted` but never rewritten. Both are deliberate v1 scope decisions, not bugs.
 
-**Fan-out verification.** The template kit's payoff is reuse: a template produced from one artifact is expected to render correctly against a *different* source document of the same kind by supplying a new `data.json` to `render --data`, not by re-running `templatize`. `scripts/tests/test_artifact_templatize.py::TestCmdTemplatizeFanOut` exercises exactly this — templatizing one document, then rendering the produced template against a second, structurally-divergent document's hand-authored data — as the project's regression coverage for that contract.
+**Fan-out verification.** The template kit's payoff is reuse: a template produced from one artifact is expected to render correctly against a *different* source document of the same kind by supplying a new `data.json` to `render --data`, not by re-running `templatize`. little-loops' own test suite pins exactly this contract — templatizing one document, then rendering the produced template against a second, structurally-divergent document's hand-authored data.
 
 **Flags:**
 

@@ -41,7 +41,7 @@ You are tasked with performing a comprehensive audit of CLAUDE.md files and Clau
 - **Agents**: `agents/*.md` - Sub-agent definitions
 - **Skills**: `skills/*.md` - Skill definitions
 - **Commands**: `commands/*.md` - Slash command definitions
-- **Hooks**: `hooks/hooks.json` + `hooks/prompts/*.md` + `scripts/little_loops/hooks/` + `hooks/adapters/` - Lifecycle hooks (Python handlers in `scripts/little_loops/hooks/`, host adapters in `hooks/adapters/<host>/`, intent handlers contributed via `LLHookIntentExtension`)
+- **Hooks**: `hooks/hooks.json` + `hooks/prompts/*.md` + the installed `little_loops.hooks` package + `hooks/adapters/` - Lifecycle hooks (Python handlers in `little_loops.hooks`, host adapters in `hooks/adapters/<host>/`, intent handlers contributed via `LLHookIntentExtension`)
 
 ### Settings Files (Hierarchy Order - highest precedence first)
 1. **Managed settings**: `/Library/Application Support/ClaudeCode/managed-settings.json` (macOS) or `/etc/claude-code/managed-settings.json` (Linux)
@@ -135,7 +135,7 @@ See [wave1-prompts.md](wave1-prompts.md#task-1-claudemd-auditor) for the full ve
 
 `subagent_type="plugin-config-auditor"` — audits agents (`agents/*.md`), skills
 (`skills/*.md`), commands (`commands/*.md`), and hooks (`hooks/hooks.json` +
-`hooks/prompts/*.md` + `scripts/little_loops/hooks/prompts/*.md`). Checks description quality, frontmatter completeness,
+`hooks/prompts/*.md` + the installed `little_loops.hooks.prompts` package data). Checks description quality, frontmatter completeness,
 tool appropriateness, JSON validity, recognized event/handler types, and timeout
 defaults. Returns a per-component summary table, severity-tagged issues, quality
 scores, and reference lists (subagent_type values, prompt file paths, /ll:X

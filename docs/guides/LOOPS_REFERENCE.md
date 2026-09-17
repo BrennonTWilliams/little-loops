@@ -793,7 +793,7 @@ ll-loop run rn-build \
     --context spec=specs/sample.md \
     --context max_eval_retries=0
 
-# Automated integration test (requires PYTEST_INTEGRATION=1)
+# ll-audience-ok: integration test (PYTEST_INTEGRATION=1) that only exists in little-loops' own checkout
 PYTEST_INTEGRATION=1 python -m pytest scripts/tests/test_rn_build.py::TestE2E -v -s
 ```
 
@@ -1512,7 +1512,7 @@ run_eval → score_results → analyze_failures
 | `rlhf-svg-generate` | Sub-loop: handles the `plan_animation → render_animation → verify_render` generation pipeline for `rlhf-animated-svg`; accepts `input`, `run_dir`, `global_iteration`, `design_tokens_context`, `quality_target`, `explore_cutoff`, and `exploit_cutoff` context parameters; produces `output.html` in `run_dir` on success or terminates at `plan_failed` on retry exhaustion (ENH-2051) |
 | `loop-specialist-eval` | Behavioral eval harness for the `loop-specialist` agent — drives the agent against a seeded `broken-verify-loop.yaml` fixture (ambiguous-output failure mode) and verifies that the diagnosis artifact is written and the failure mode is correctly classified |
 | `cua-agent-desktop` | Computer-Use Agent harness for macOS desktop automation — observe → plan → act → verify cycles via the `agent-desktop` CLI; uses macOS Accessibility API for element-level interaction (click, type, scroll, keyboard shortcuts, window management) with structured error recovery for `STALE_REF`, `ELEMENT_NOT_FOUND`, `PERM_DENIED`, `TIMEOUT`, and `ACTION_FAILED`; produces a `summary.md` artifact with the full action evidence chain in the run directory |
-| `adversarial-redesign` | Generator-vs-critic figure refinement demo using AutoFigure — a generator produces an SVG from a text concept, a critic returns structured complaints, the loop regenerates addressing each complaint and exits on score-improvement stall or SVG-diff convergence. Every round is persisted for demo playback. **Requires**: `pip install -e ./AutoFigure && playwright install chromium` + `OPENROUTER_API_KEY`. Example: `ll-loop run adversarial-redesign --context concept="how a transformer attends"` |
+| `adversarial-redesign` | Generator-vs-critic figure refinement demo using AutoFigure — a generator produces an SVG from a text concept, a critic returns structured complaints, the loop regenerates addressing each complaint and exits on score-improvement stall or SVG-diff convergence. Every round is persisted for demo playback. **Requires**: `pip install -e ./AutoFigure && playwright install chromium` + `OPENROUTER_API_KEY`. Example: `ll-loop run adversarial-redesign --context concept="how a transformer attends"` | <!-- ll-audience-ok: pip install -e targets the AutoFigure demo dependency, not little-loops -->
 | `workflow-generator` | Meta-loop that lowers a prose brief into a reusable, validated FSM-loop YAML artifact via sequential compiler-lowering passes (intent capture → state-graph sketch → evaluator attachment → routing-table resolution → artifact emission → optional adversarial minimum-coupling shrink); every LLM pass is paired with a non-LLM `exit_code` gate (MR-1); HITL-gated promotion copies the validated artifact to the project loops dir |
 
 For background on the GAN-style generator-evaluator architecture used by `html-website-generator`, `svg-image-generator`, `svg-textgrad`, `p5js-sketch-generator`, `pixi-data-viz`, `pixi-generative-art`, `vega-viz`, `canvas-sketch-generator`, `rlhf-animated-svg`, `openscad-model-generator`, and `interactive-component-generator`, see the [Harness Design for Long-Running Apps](../claude-code/harness-design-long-running-apps.md) reference.
@@ -2700,7 +2700,7 @@ scope:
 
 If a conflicting loop is already running, `ll-loop run` errors. Use `--queue` to wait instead — the maximum wait is `loops.queue_wait_timeout_seconds` in `.ll/ll-config.json` (default 24h), overridable per-run with `--queue-timeout SECONDS`, and queued loops acquire the lock in arrival order.
 
-An empty `scope` (or omitting the field entirely) falls back to `["."]` — the whole project — which conflicts with every other running loop, scoped or not. `ll-loop validate` emits a WARNING when a loop declares no `scope:`, since this repo-root fallback is a frequent source of false conflicts between otherwise-unrelated loops (BUG-3106/BUG-3107). Always declare `scope:` naming the paths a loop actually writes to, or use `scope: ["."]` as an explicit repo-wide opt-in.
+An empty `scope` (or omitting the field entirely) falls back to `["."]` — the whole project — which conflicts with every other running loop, scoped or not. `ll-loop validate` emits a WARNING when a loop declares no `scope:`, since this project-root fallback is a frequent source of false conflicts between otherwise-unrelated loops (BUG-3106/BUG-3107). Always declare `scope:` naming the paths a loop actually writes to, or use `scope: ["."]` as an explicit repo-wide opt-in.
 
 Loops with non-overlapping, explicitly-declared scopes run concurrently; overlapping scopes conflict (add `--queue` to wait). `ll-loop show <name>` displays the resolved effective scope, marking a fallback with `(default)` so it's clear the loop never declared one explicitly (BUG-3109). See the [Loops Guide's Scope-Based Concurrency section](LOOPS_GUIDE.md#scope-based-concurrency) for the full walkthrough and the [Troubleshooting guide](../development/TROUBLESHOOTING.md) for diagnosing repo-root lock conflicts.
 
@@ -3422,6 +3422,7 @@ See [harness-optimize reference](../reference/loops.md#harness-optimize) for the
 
 Automates [`docs/runbooks/FLEET_LOOP_REVIEW.md`](../runbooks/FLEET_LOOP_REVIEW.md) as a
 `harvest → measure-externally → select → diagnose → propose → apply → gate → commit` meta-loop.
+<!-- ll-audience-ok: fleet-loop-improve is inherently source-checkout-only; preflight enforces it -->
 Run it **from the little-loops source checkout only** (the editable install every fleet project
 resolves built-ins from; `preflight` refuses anywhere else):
 
@@ -3436,7 +3437,8 @@ converged counts minus each fix's recorded baseline, once `min_new_runs` new run
 `improved` / `regressed` / `unchanged`), then performs one new cycle and records it as
 `pending` in `.loops/diagnostics/fleet-loop-improve-ledger.jsonl` for the next run to judge.
 Regressions are recorded and printed, never auto-reverted. Because every project on the
-machine is `local-editable` against this checkout, a committed fix is live fleet-wide at once.
+machine resolves built-ins from that same editable checkout, a committed fix is live
+fleet-wide at once.
 
 **States.** `preflight` (editable-install guard; refusal reasons on stdout) → `harvest` (`ll-logs fleet-review
 --all --existing-only --exclude-project .`, flags pinned so sidecars stay comparable) →

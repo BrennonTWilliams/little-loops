@@ -10,11 +10,7 @@ This document provides the public API for the little-loops Python package.
 ## Installation
 
 ```bash
-# End users
 pip install little-loops
-
-# Contributors (editable install with test dependencies)
-pip install -e "./scripts[dev]"
 ```
 
 ## Module Overview
@@ -75,7 +71,7 @@ pip install -e "./scripts[dev]"
 | `little_loops.ab_writer` | A/B baseline results aggregation and `ab.json` writer (FEAT-1790). Provides `ABResults` dataclass + summary calculation + JSON schema generation. |
 | `little_loops.cache_marking_oracle` | Cache-marking cost oracle (FEAT-2673, EPIC-2456 F1) — decides whether a stable prompt block is safe to mark `cache_control: ephemeral` via a per-model token-floor gate plus a `FragmentStore` reuse-repeat gate. |
 | `little_loops.analytics` | Analytics subpackage — association-rule mining (lift/PMI) and per-evaluator Bernoulli variance for loop diagnostics. |
-| `little_loops.design_tokens` | Multi-layer token loader (primitives → semantic → typography → spacing → theme) with profile-aware resolution (ENH-1768). Renders `{token.reference}` aliases for prompts and CSS. Also reads a root `DESIGN.md` as an alternate import source (`design_tokens.source: auto\|profile\|design_md`, ENH-3264); see [CONFIGURATION.md → DESIGN.md import source](CONFIGURATION.md#designmd-import-source-enh-3264). When neither a materialized project profile mirror nor (on the `auto` path) a root `DESIGN.md` exists, `load_design_tokens` falls back to the packaged built-in profile matching `active` instead of returning `None` (ENH-3441), so clean checkouts — CI, a fresh `ll-init`, a new contributor — render token-aware without a setup step; the fallback logs a once-per-`(root, active)` notice. `render_as_design_md(tokens: DesignTokens) -> str` (ENH-3268) is the write side — a lossy, single-theme DESIGN.md export via `ll-artifact design-md export`. Primitives are excluded structurally; semantic colors export under classifier-recognized names (`color.<role>.<leaf>` → a name `_classify_design_md_color_role` re-derives back into `<role>`, so re-import recovers the role though not the original leaf key); typography is synthesized into the spec's role-organized shape from a pinned axis→role table. Dropped groups (`shadow.*`, `border.width.*`, unused typography axes, `components:` on a DESIGN.md → DESIGN.md round trip) are computed by `_design_md_dropped_groups(tokens)`, which the CLI layer writes to stderr — the renderer itself does no I/O, matching `render_as_css_vars`'s shape. |
+| `little_loops.design_tokens` | Multi-layer token loader (primitives → semantic → typography → spacing → theme) with profile-aware resolution (ENH-1768). Renders `{token.reference}` aliases for prompts and CSS. Also reads a root `DESIGN.md` as an alternate import source (`design_tokens.source: auto\|profile\|design_md`, ENH-3264); see [CONFIGURATION.md → DESIGN.md import source](CONFIGURATION.md#designmd-import-source-enh-3264). When neither a materialized project profile mirror nor (on the `auto` path) a root `DESIGN.md` exists, `load_design_tokens` falls back to the packaged built-in profile matching `active` instead of returning `None` (ENH-3441), so clean checkouts — CI, a fresh `ll-init`, a fresh clone — render token-aware without a setup step; the fallback logs a once-per-`(root, active)` notice. `render_as_design_md(tokens: DesignTokens) -> str` (ENH-3268) is the write side — a lossy, single-theme DESIGN.md export via `ll-artifact design-md export`. Primitives are excluded structurally; semantic colors export under classifier-recognized names (`color.<role>.<leaf>` → a name `_classify_design_md_color_role` re-derives back into `<role>`, so re-import recovers the role though not the original leaf key); typography is synthesized into the spec's role-organized shape from a pinned axis→role table. Dropped groups (`shadow.*`, `border.width.*`, unused typography axes, `components:` on a DESIGN.md → DESIGN.md round trip) are computed by `_design_md_dropped_groups(tokens)`, which the CLI layer writes to stderr — the renderer itself does no I/O, matching `render_as_css_vars`'s shape. |
 | `little_loops.extensions` | Reference extension implementations — `ReferenceInterceptorExtension` copy-paste starting point for custom interceptors / event handlers. |
 | `little_loops.env_file` | `.env` fallback loader — `parse_env_file(path)` and `load_env_fallback(project_root)` read `<root>/.env` as a fallback source; already-set process environment variables always win. |
 | `little_loops.generate_schemas` | Draft-07 JSON Schema generation for every event type — `SCHEMA_DEFINITIONS` table, `generate_schemas(output_dir)`, and `event_type_to_filename()` (dots become underscores). Backs `ll-generate-schemas` and the committed files under `docs/reference/schemas/`. |
@@ -1015,7 +1011,7 @@ BUG-3293) — 2+ bold-numbered items (`N. **label**`) under `## Program Design �
 Decision Rules` specifically, not the whole-document fallback's unscoped `_OPTION_PATTERNS`
 tiers, because a naive corpus-wide widening of the `numbered` tier's bold alternative was
 measured to false-positive on 77% of the files it newly matched (ordinary bold-led step
-lists are this repo's dominant list convention); scoping to just this one subsection and
+lists are the dominant list convention in issue files); scoping to just this one subsection and
 requiring 2+ matches shrinks that to 2 false positives out of 3 gains corpus-wide — accepted
 deliberately, since this probe is a cheap pre-check whose false positives cost one harmless
 `/ll:refine-issue` detour, not a wrong final decision; then, as a final fallback tier when
@@ -4090,8 +4086,7 @@ that are non-deterministic under the gate's non-standard invocation (injected
 `PYTHONPATH` + parallel-xdist worktree) detect it via
 `os.environ.get("LL_VERIFY_GATE") == "1"` and quarantine themselves
 (`pytest.mark.skipif`) rather than false-negative a genuinely mergeable branch —
-the assertions still run under the standard `python -m pytest scripts/tests/`
-invocation off the gate. A second consumer of this idiom is
+the assertions still run under a standard `pytest` invocation off the gate. A second consumer of this idiom is
 `test_tsc_noemit_passes` in `test_opencode_adapter.py`/`test_omp_adapter.py`
 (BUG-3368): the gate's ephemeral `git worktree add` checkout only materializes
 git-tracked content, so the gitignored `node_modules/@types/bun` devDependency
@@ -4450,8 +4445,7 @@ registers POSIX signal handlers for `SIGINT` (Ctrl-C) and `SIGTERM`
 | `SIGINT` (2nd) | Force-exit: the signal handler calls `archive_run_only(terminated_by="interrupted_force")` *before* `sys.exit(1)` (ENH-2516, `scripts/little_loops/cli/loop/signals.py`). The `.history/<run_id>-<loop_name>/` archive still lands. Exit code: `1`. |
 | `SIGKILL` (`kill -9`) | **Cannot be trapped.** Data already written via `_append_jsonl` (ENH-2515, `scripts/little_loops/fsm/persistence.py:129-145`) is durable, but the `.history/<run_id>-<loop_name>/` archive and the final `state.json` snapshot may not land. To prevent silent data loss, run `ll-loop run` under a supervisor (`systemd`, `supervisord`), a terminal multiplexer (`tmux`, `screen`), or `nohup` so the loop receives `SIGTERM` (which is trap-able) on shutdown rather than `SIGKILL`. |
 
-The end-to-end SIGINT contract is locked by
-`scripts/tests/test_fsm_signal_integration.py`.
+The end-to-end SIGINT contract is pinned by little-loops' own test suite.
 
 ### little_loops.cli.loop.scaffold_eval / scaffold_verify
 
@@ -6618,12 +6612,11 @@ files are covered), skips non-shell (`action_type: prompt`, etc.) and
 slash-command actions, and returns all classified sites sorted
 deterministically by `(file, state, var, cls)`.
 
-`scripts/tests/test_builtin_loops.py`'s `TestInterpSweepBaseline` asserts
-`scan_corpus(BUILTIN_LOOPS_DIR)`'s result equals the checked-in
-`scripts/tests/data/loop_interpolation_baseline.json` — a ratchet that fails
-in both directions (new unbaselined site, or a stale entry that no longer
-scans), forcing each conversion commit (BUG-3339/3340/3341) to update the
-baseline in step with the corpus.
+little-loops' own test suite asserts that `scan_corpus(BUILTIN_LOOPS_DIR)`'s
+result equals a checked-in baseline — a ratchet that fails in both directions
+(new unbaselined site, or a stale entry that no longer scans), so each
+conversion commit (BUG-3339/3340/3341) updates the baseline in step with the
+corpus.
 
 ---
 
@@ -7990,7 +7983,7 @@ def build_ref_index(
 ) -> RefIndex
 ```
 
-Index tracked files by basename via a single `git ls-files -z` call. Fails open (empty index, never raises) when git is unavailable or exits non-zero, matching the convention of the other `git ls-files` call sites in this codebase (`cli/verify_private_refs.py`, `codequery/fallback.py`).
+Index tracked files by basename via a single `git ls-files -z` call. Fails open (empty index, never raises) when git is unavailable or exits non-zero, matching the convention of the other `git ls-files` call sites in little-loops (`cli/verify_private_refs.py`, `codequery/fallback.py`).
 
 **Parameters:**
 - `root` - Repository root to run `git ls-files` from.
@@ -10235,7 +10228,7 @@ UPSERT one `orchestration_runs` row per `(run_id, issue_id)` and replace its mat
 
 `base_sha`/`base_dirty` are the dequeue-time base-state stamp (ENH-2866): the commit SHA the work item started from, and whether the tree had *tracked* modifications (`git status --porcelain --untracked-files=no`) at that moment. Orchestrators call this function **twice** per issue — once at dequeue with `status="running"` plus the stamp, so the base state is readable while the issue is still in flight, and once at end-of-issue with the outcome. Three columns are therefore write-once rather than last-write-wins: `base_sha`, `base_dirty`, and `started_at` are `COALESCE`d in the `DO UPDATE` clause, so a terminal upsert that passes none of them cannot null the dequeue-time values. An in-flight row leaves `ended_at` NULL (the `_now()` default applies only to a terminal status), so an abandoned run does not read as `ended_at == started_at`. A falsy `base_sha` is normalized to NULL — NULL means unstamped, never `""`.
 
-`ll_version` (FEAT-3404) defaults to the installed `little_loops.__version__` when the caller passes none, so no call site has to thread it through. It is write-once like `base_sha`/`base_dirty` — `COALESCE(ll_version, excluded.ll_version)` keeps the value recorded at dequeue rather than letting a terminal upsert (issued after a mid-run `pip install -e` upgrade) overwrite it with a newer version.
+`ll_version` (FEAT-3404) defaults to the installed `little_loops.__version__` when the caller passes none, so no call site has to thread it through. It is write-once like `base_sha`/`base_dirty` — `COALESCE(ll_version, excluded.ll_version)` keeps the value recorded at dequeue rather than letting a terminal upsert (issued after a mid-run little-loops upgrade) overwrite it with a newer version.
 
 Consequence: a crashed or interrupted run now leaves a permanent `status='running'` row where previously no row existed, which slightly lowers `aggregate_orchestration_runs`' reported success rate. This is intentional — a crashed run *is* a non-completion.
 
@@ -10611,7 +10604,7 @@ class HostRunner(Protocol):
 | `OpenCodeRunner` | `opencode` CLI | stub | Registered so `LL_HOST_CLI=opencode` resolves to a useful error rather than the generic "unknown host". All `build_*` methods raise `HostNotConfigured`. See FEAT-1472. |
 | `PiRunner` | `pi` CLI | frozen stub | Present in `_PROBE_ORDER`, so hosts with `pi` on PATH resolve to this stub. All `build_*` methods raise `HostNotConfigured`. Vanilla Pi support is cancelled (ARCHITECTURE-050); superseded by `OmpRunner` (EPIC-2258). |
 | `FakeHostRunner` | `ll-fake-host` (test fixture) | test-only | Registered under `TEST_ONLY_HOSTS`, absent from `_PROBE_ORDER`. Every `build_*` returns a real `HostInvocation` for the `ll-fake-host` console script (`little_loops.fake_host`), which parses a directives script embedded in the prompt and emits scripted stream-JSON — see `## little_loops.fake_host` below. Capabilities are constructor-supplied (`streaming=True` default), not sourced from `RUNTIME_HOST_CAPABILITIES`. FEAT-3454. |
-| `FakeMinimalHostRunner` | `ll-fake-host` (test fixture, shared binary) | test-only | Registered under `TEST_ONLY_HOSTS`, absent from `_PROBE_ORDER`. Deliberately divergent from `FakeHostRunner`: subcommand-style `["run", prompt]` argv (not bare `[prompt]`), always-empty `env`, and an all-six-flags-`False` default `HostCapabilities` (`FakeHostRunner`'s default is `streaming=True`). `scripts/tests/conformance/test_host_composition.py` drives both fakes through the unpatched production executor and asserts identical observations. ENH-3459. |
+| `FakeMinimalHostRunner` | `ll-fake-host` (test fixture, shared binary) | test-only | Registered under `TEST_ONLY_HOSTS`, absent from `_PROBE_ORDER`. Deliberately divergent from `FakeHostRunner`: subcommand-style `["run", prompt]` argv (not bare `[prompt]`), always-empty `env`, and an all-six-flags-`False` default `HostCapabilities` (`FakeHostRunner`'s default is `streaming=True`). little-loops' own conformance suite drives both fakes through the unpatched production executor and asserts identical observations. ENH-3459. |
 
 ### CapabilityEntry
 
@@ -12026,7 +12019,7 @@ Detects the active little-loops installation. Checks pip metadata first; falls b
 
 | `install_source` value | Meaning |
 |------------------------|---------|
-| `"local-editable"` | Installed via `pip install -e` (dev / contributor path) |
+| `"local-editable"` | Installed via `pip install -e` (editable install of a local checkout) | <!-- ll-audience-ok: observable install_source value -->
 | `"pypi"` | Installed via `pip install little-loops` (end-user path) |
 | `"global-claude-code"` | Installed as a user-scoped Claude Code plugin (`scope: "user"`) |
 | `"project-claude-code"` | Installed as a project-scoped Claude Code plugin (`scope: "project"`) |
@@ -13198,7 +13191,7 @@ class TokenUsage:
 
 ### ToolCall
 
-A single ordered tool-call captured live from a stream-json run. Mirrors `scripts/tests/spike/eval_trace_capture/trace_capture.py`'s `ToolCall` shape, proven in the FEAT-2878 spike.
+A single ordered tool-call captured live from a stream-json run. Mirrors the `ToolCall` shape proven in the FEAT-2878 spike.
 
 ```python
 @dataclass(frozen=True)

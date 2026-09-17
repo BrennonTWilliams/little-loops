@@ -156,7 +156,7 @@ After applying the algorithm, output a diff summary showing every change:
 - "Max line length 88" (enforced by ruff)
 
 ### Deleted (code snippets replaced with references — Step 8)
-- 15-line dataclass example → "See scripts/little_loops/models.py"
+- 15-line dataclass example → "See src/models.py"
 
 ### Deleted (vague instructions — Step 9)
 - "Write clean, readable code"

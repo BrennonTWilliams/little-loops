@@ -77,7 +77,7 @@ else
 fi
 ```
 
-Group changed files by module/component (e.g., `scripts/little_loops/cli/`, `scripts/little_loops/issue_history/`).
+Group changed files by module/component (e.g., `src/cli/`, `src/models/`).
 
 ### 3. Collect Completed Issues
 
@@ -173,6 +173,9 @@ Group gaps by source:
 For each gap, offer one of the following actions using the format in [templates.md](templates.md) (see "Action Prompt Format" section):
 
 **If `--fix` flag is set**: Skip prompts. For each gap, draft a stub documentation section inline using the stub template from [templates.md](templates.md) and insert it into the most appropriate doc file.
+
+<!-- ll-audience-ok: quotes the banned strings -->
+**Audience rule for any stub written into `docs/guides/`, `docs/reference/`, or `README.md`**: write for the little-loops end user — a developer whose *own* project consumes little-loops (`pip install little-loops` + `ll-init`). Their project is not little-loops: use `pytest` / `tests/` / `src/` in examples (never `scripts/tests/` or `ruff check scripts/`), never say "this repo" or "your little-loops project", and keep regression-gate test paths out. `scripts/tests/test_docs_audience_gate.py` fails the suite otherwise (see CONTRIBUTING.md § Documentation Audience).
 
 **Otherwise**: Present the full gap report and ask for each gap:
 

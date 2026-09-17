@@ -34,8 +34,7 @@ docs links here rather than restating one of them (BUG-3186).
 
 
 What each column is derived from — these are the sources of truth, and
-`scripts/tests/test_wiring_guides_and_meta.py` fails the suite if this table
-drifts from any of them:
+little-loops' own test suite fails if this table drifts from any of them:
 
 | Column | Source of truth |
 |---|---|
@@ -488,8 +487,8 @@ are never enumerated in this matrix.
 | FSM evaluators / handoff      | ✓           | stub[^orch]   | ✓            | ✓            | ✓            | ✓            | ✓ — inline `--json-schema` path (`structured_output=True`)[^qwen] |
 | Conformance harness[^conf]    | ✓           | stub[^orch]   | ✓            | ✓            | ✓            | ✓            | ✓ — 4/4 golden paths pass on qwen 0.21.6 |
 
-[^conf]: Generic host-parametrized conformance harness (FEAT-2259). Run with
-    `pytest -m conformance scripts/tests/` or per-host with
+[^conf]: Generic host-parametrized conformance harness (FEAT-2259). Run from a
+    checkout of little-loops with `pytest -m conformance` or per-host with
     `--conformance-host <host>`. PASS/SKIP maps to ✓/stub in this table.
     See `docs/development/CONFORMANCE.md`.
 

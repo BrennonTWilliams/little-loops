@@ -78,7 +78,8 @@ Update the little-loops Claude Code plugin and pip package to the latest version
 **Trigger keywords:** "update little-loops", "update plugin", "update package", "ll update"
 
 ### `/ll:publish` *(maintainers only — project-local, not shipped in plugin)*
-Bump version in all source files (`plugin.json`, `marketplace.json`, `pyproject.toml`, `__init__.py`) and commit. Available only in the little-loops source repo via `.claude/commands/publish.md` — not distributed to consumer projects.
+<!-- ll-audience-ok: source-repo-only command, stated as such -->
+Bump version in all source files (`plugin.json`, `marketplace.json`, `pyproject.toml`, `__init__.py`) and commit. Available only in the little-loops source repository via `.claude/commands/publish.md` — not distributed to consumer projects.
 
 **Arguments:**
 - `version` — New version string (e.g., `1.139.0`) or bump level (`patch`, `minor`, `major`)
@@ -374,6 +375,7 @@ Retire concentrated technical risk on an issue by planning, implementing, and ve
 
 **When to use**: after `/ll:confidence-check` sets `spike_needed: true` (its Phase 4.10 failure mode) because a mechanism has **zero precedent** in the codebase and no test exercises the risky core. Not for unproven *external* API assumptions (use `/ll:explore-api` + the Learning Test Registry), unresolved Option A/B ambiguity (`/ll:decide-issue`), absent files or unwired integration (`/ll:wire-issue`), or an over-large issue (`/ll:issue-size-review`). If the extracted risk factor names a third-party package or external API surface, the skill refuses and redirects to `/ll:explore-api`.
 
+<!-- ll-audience-ok: the spike skill hardcodes scripts/tests/spike/ as its sandbox path -->
 **Flow**: locate issue (`ll-issues path`) → extract risks from `## Confidence Check Notes` → `### Outcome Risk Factors` → write a plan doc to `${context.run_dir}` (inside an FSM loop) or `.ll/spikes/` (interactive) in the shape of `skills/spike/plan-template.md` → implement under `scripts/tests/spike/<slug>/` → verify with the plan's `pytest` commands → write back → recommend the next step. Spike code lives **only** under `scripts/tests/spike/`; production files under `scripts/little_loops/` are read-only in this skill (enforced by `allowed-tools`).
 
 **Budget discipline**: one spike per issue. If the frontmatter already carries `spike_attempted: true`, the skill refuses and exits 0 unless `--force` is passed.

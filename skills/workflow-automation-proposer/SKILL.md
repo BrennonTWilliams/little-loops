@@ -122,7 +122,7 @@ For each proposal, include actionable steps:
 ```
 1. Implement a hook intent handler via the LLHookIntentExtension Protocol
    (provided_hook_intents() returns name → Callable[[LLHookEvent], LLHookResult]).
-   Handlers live in host-agnostic core code under scripts/little_loops/hooks/ (or in a plugin's
+   Handlers live in host-agnostic core code (the little_loops.hooks package, or a plugin's
    extension package) and are wired into _HOOK_INTENT_REGISTRY by wire_extensions().
 2. Use the appropriate host adapter under hooks/adapters/<host>/ (e.g.
    claude-code/, opencode/, codex/) to translate the host's lifecycle event into a
@@ -135,7 +135,7 @@ For each proposal, include actionable steps:
 
 **For scripts:**
 ```
-1. Create script file in scripts/little_loops/
+1. Create script file under the project's source dir (`project.src_dir` in `.ll/ll-config.json`)
 2. Define CLI interface with argparse
 3. Add entry point to pyproject.toml
 4. Include usage examples
@@ -151,7 +151,7 @@ initial: run_tests
 max_steps: 10
 states:
   run_tests:
-    action: "python -m pytest scripts/tests/ -v"
+    action: "pytest tests/ -v"
     on_yes: check_lint
     on_no: fix_errors
     on_error: fix_errors
@@ -160,12 +160,12 @@ states:
     action_type: prompt
     next: run_tests
   check_lint:
-    action: "ruff check scripts/"
+    action: "ruff check src/"
     on_yes: done
     on_no: fix_lint
     on_error: fix_lint
   fix_lint:
-    action: "ruff check --fix scripts/"
+    action: "ruff check --fix src/"
     next: check_lint
   done:
     terminal: true

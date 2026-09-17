@@ -116,7 +116,7 @@ An enforced team invariant. Rules marked `enforcement: required` are propagated 
   category: testing
   labels: [mandatory, test-coverage]
   rationale: Prevents shipping CLI commands without regression coverage.
-  rule: All new CLI commands must have corresponding tests in scripts/tests/.
+  rule: All new CLI commands must have corresponding tests in tests/.
   enforcement: required     # required | advisory
 ```
 
@@ -149,9 +149,9 @@ Declares a file-change → audit-target contract. When `wire-issue` sees that a 
   category: architecture
   labels: [add-cli-command]
   rationale: New CLI commands always need test coverage and reference docs.
-  if_changed: 'scripts/little_loops/cli/**/*.py'
+  if_changed: 'src/myapp/cli/**/*.py'
   then_check:
-    - scripts/tests/test_*_cli.py
+    - tests/test_*_cli.py
     - docs/reference/CLI.md
   tier: soft                  # hard | soft | fyi
   archetype: add-cli-command
@@ -287,15 +287,15 @@ ll-issues decisions add \
 ll-issues decisions add \
   --type rule \
   --category testing \
-  --rule "All new CLI commands must have corresponding tests in scripts/tests/" \
+  --rule "All new CLI commands must have corresponding tests in tests/" \
   --enforcement required
 
 # Create a coupling contract
 ll-issues decisions add \
   --type coupling \
   --category architecture \
-  --if-changed "scripts/little_loops/cli/**/*.py" \
-  --then-check "scripts/tests/test_*_cli.py,docs/reference/CLI.md" \
+  --if-changed "src/myapp/cli/**/*.py" \
+  --then-check "tests/test_*_cli.py,docs/reference/CLI.md" \
   --tier soft \
   --archetype add-cli-command \
   --rationale "New CLI commands need test coverage and reference docs"
@@ -366,7 +366,7 @@ Personal development preferences.
 
 ## Active Rules
 
-- All new CLI commands must have corresponding tests in scripts/tests/
+- All new CLI commands must have corresponding tests in tests/
 - Config changes must be backward-compatible for at least two releases
 ```
 
@@ -610,7 +610,7 @@ gate:
    missing required field, or unknown entry-type discriminator. Active after
    `pre-commit install`.
 2. **Pytest CI belt** (ENH-2591) — wraps the same validator as a
-   subprocess-asserting gate in `python -m pytest scripts/tests/`, so
+   subprocess-asserting gate in little-loops' own test suite, so
    `git commit --no-verify` and non-hook edit paths still cannot land a
    corruption on `main`.
 3. **Claude Code `PreToolUse` hook** (ENH-2592,
@@ -626,8 +626,8 @@ gate:
    as host-level exit 2 with the validator's single-line `ERROR:` on
    stderr; clean candidates exit 0 and let Claude write through. Skips
    gracefully when `python3` or `ll-verify-decisions` is missing — the
-   pre-commit and pytest belts remain authoritative. Gated by
-   [`scripts/tests/test_check_decisions_yaml_hook.py`](../../scripts/tests/test_check_decisions_yaml_hook.py).
+   pre-commit and pytest belts remain authoritative. little-loops' own test suite
+   pins this hook's behavior.
 
 All three layers share the validator's exit-code contract: `0` on a clean
 file, `1` with a single-line `ERROR:` message on stderr pointing at the
@@ -637,12 +637,6 @@ against an arbitrary config root with:
 ```bash
 ll-verify-decisions --config-root /path/to/repo
 ```
-
-See [`scripts/tests/test_decisions_yaml_pre_commit_gate.py`](../../scripts/tests/test_decisions_yaml_pre_commit_gate.py)
-for the end-to-end pre-commit fixture pattern and
-[`scripts/tests/test_decisions_yaml_gate.py`](../../scripts/tests/test_decisions_yaml_gate.py)
-for the pytest CI belt (positive live-file case + negative OTHE-203
-fixture case against `ll-verify-decisions`).
 
 ## See Also
 

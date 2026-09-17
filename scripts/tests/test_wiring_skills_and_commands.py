@@ -154,7 +154,7 @@ DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     ("skills/workflow-automation-proposer/SKILL.md", "hooks/adapters/", "FEAT-1457"),
     # REMOVED (stale/false-positive): ("skills/workflow-automation-proposer/SKILL.md", "adapters/claude-code/precompact.sh", "FEAT-1457"),
     ("skills/audit-claude-config/SKILL.md", "hooks/adapters/", "FEAT-1457"),
-    ("skills/audit-claude-config/SKILL.md", "scripts/little_loops/hooks/", "FEAT-1457"),
+    ("skills/audit-claude-config/SKILL.md", "little_loops.hooks", "FEAT-1457"),
     # REMOVED (stale/false-positive): ("skills/audit-claude-config/SKILL.md", "hooks/adapters/claude-code/", "FEAT-1457"),
     ("docs/claude-code/write-a-hook.md", "LLHookEvent", "FEAT-1457"),
     ("docs/claude-code/write-a-hook.md", "LLHookResult", "FEAT-1457"),

@@ -152,6 +152,26 @@ it **inside this suite**, not with a workflow file:
   (`node --test scripts/tests/js/*.test.mjs`, Node ≥ 22) is enforced via
   `scripts/tests/test_policy_builder_node_gate.py` (FEAT-2390).
 
+## Documentation Audience
+
+`docs/guides/` and `docs/reference/` (and `README.md`) are written for the
+**little-loops end user**: a developer who installed little-loops (`pip install
+little-loops` + `ll-init`) into **their own project** and uses it through their
+harness (`/ll:*`) and the `ll-*` CLIs. Their project is not little-loops and
+they are not contributors. Never write "your little-loops project", "this
+repo", or cite `scripts/tests/…` / `python -m pytest scripts/tests/` in those
+files — use the reader's shapes (`pytest`, `tests/`, `src/`) and say "the
+little-loops source repository" when the source genuinely is the subject.
+The same holds for `skills/` and `commands/`: they execute **inside the
+consuming project**, so no `scripts/tests/` or `scripts/little_loops/` paths
+(cite `little_loops.<module>` instead) and test/lint commands come from
+`project.test_cmd` / `project.lint_cmd`. Contributor content goes in
+`CONTRIBUTING.md`, `docs/ARCHITECTURE.md`, `docs/development/`, or this file
+(which `ll-init` never copies; its CLAUDE.md block is rendered from
+`init/writers.py`). Gate: `scripts/tests/test_docs_audience_gate.py`
+(suppress with `ll-audience-ok:`).
+Full rules: [CONTRIBUTING.md § Documentation Audience](../CONTRIBUTING.md#documentation-audience).
+
 ## Code Style
 
 - Python 3.11+, type hints required

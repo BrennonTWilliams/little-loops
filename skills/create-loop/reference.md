@@ -504,7 +504,7 @@ check_human:
 
 **Transport:** rendered via the adapter selected by `hitl.channel` in `.ll/ll-config.json` (`terminal` by default; `eventbus` for out-of-band relay via `ll-loop run --serve`).
 
-**Ready-to-run example:** [`scripts/little_loops/loops/human-approval-example.yaml`](../../scripts/little_loops/loops/human-approval-example.yaml).
+**Ready-to-run example:** the built-in `human-approval-example` loop (`ll-loop show human-approval-example`).
 
 #### agent (Optional)
 
@@ -613,7 +613,7 @@ The `scope` field declares which files or directories a loop operates on. It is 
 **How it works:**
 - When `ll-loop run` starts a loop, it acquires a lock for the declared scope paths
 - If another loop's scope overlaps, the second loop waits until the first releases its lock
-- An empty `scope` (or omitting it) falls back to `["."]` — the whole project — which conflicts with any other running loop, scoped or not. `ll-loop validate` emits a WARNING when a loop declares no `scope:`, since this repo-root fallback causes false conflicts; always declare `scope:` explicitly, using `scope: ["."]` only when a loop genuinely needs repo-wide access.
+- An empty `scope` (or omitting it) falls back to `["."]` — the whole project — which conflicts with any other running loop, scoped or not. `ll-loop validate` emits a WARNING when a loop declares no `scope:`, since this project-root fallback causes false conflicts; always declare `scope:` explicitly, using `scope: ["."]` only when a loop genuinely needs repo-wide access.
 - Paths are compared by prefix overlap, so `scope: ["src/"]` conflicts with `scope: ["src/utils/"]`
 - Scope paths support `${context.<var>}` template variables that are resolved at runtime against the loop's context. This enables file-level locking: two instances of the same loop with different context values (e.g., different `plan_file` paths) produce disjoint scopes and can run concurrently.
 
@@ -700,7 +700,7 @@ states:
     terminal: true
 ```
 
-Import paths are resolved relative to the importing loop file's directory. For built-in loops in `scripts/little_loops/loops/`, `lib/common.yaml` resolves to `scripts/little_loops/loops/lib/common.yaml`.
+Import paths are resolved relative to the importing loop file's directory. For a loop in your project's `.loops/` directory, `lib/common.yaml` resolves to `.loops/lib/common.yaml`; if that file does not exist, the loader falls back to the built-in fragment library shipped with little-loops.
 
 #### fragments (Optional)
 

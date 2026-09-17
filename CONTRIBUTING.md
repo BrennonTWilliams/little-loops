@@ -736,6 +736,26 @@ To load extensions not published as packages, list them in `ll-config.json`:
 
 See [Configuration Reference → Extensions](docs/reference/CONFIGURATION.md#extensions) for full wiring details.
 
+## Documentation Audience
+
+There are two documentation audiences, and they must never be mixed in one file:
+
+| Audience | Where | Reader |
+|----------|-------|--------|
+| **End user** | `docs/guides/`, `docs/reference/`, `README.md` | A developer who ran `pip install little-loops` + `ll-init` in **their own project** and drives little-loops through their harness (`/ll:*` commands, skills, hooks) and the `ll-*` CLIs — human-facing and FSM/agent-facing — to automate development in that project. |
+| **Consuming project (model-facing)** | `skills/**/*.md`, `commands/*.md`, `hooks/prompts/` | The model executing a `/ll:*` skill or command **inside the consuming project**. `scripts/tests/` and `scripts/little_loops/` do not exist there; test/lint commands come from `project.test_cmd` / `project.lint_cmd`; pointers into little-loops internals use the installed dotted module (`little_loops.fsm.executor`). |
+| **Contributor** | `CONTRIBUTING.md`, `.claude/CLAUDE.md`, `docs/ARCHITECTURE.md`, `docs/development/`, `postmortems/`, `thoughts/` | Someone developing little-loops itself from this source checkout. |
+
+Rules for end-user docs:
+
+- **The reader's project is not little-loops.** "Your project" means the project little-loops is installed in. Never write "your little-loops project", "this repo", "in this codebase", or "our test suite" when the sentence is about little-loops' own source.
+- **Examples use the reader's shapes, not ours.** `test_cmd: "pytest"` / `python -m pytest tests/` / `ruff check src/` — never `python -m pytest scripts/tests/` or `ruff check scripts/`, which only exist in this checkout.
+- **Our regression gates are not user content.** "Enforced by `scripts/tests/test_x.py`" belongs in the issue, the test docstring, or a contributor doc. If a user needs to know a behavior is pinned, say "little-loops' own test suite pins this" without the path.
+- **Source citations are fine as pointers.** `scripts/little_loops/<module>.py` may be cited so a reader can look something up; the surrounding prose must not assume they edit it.
+- **When the little-loops source genuinely is the subject** (e.g. a loop that only runs from the source checkout, the `local-editable` install source), name it explicitly as "the little-loops source repository" and suppress the gate on that line.
+
+Enforcement: `scripts/tests/test_docs_audience_gate.py` scans `docs/guides/`, `docs/reference/`, `README.md` (user scope) and `skills/`, `commands/` (harness scope, which additionally bans `scripts/little_loops/` paths) for a curated set of source-repo framings and fails the suite on any unsuppressed hit. Suppress a deliberate hit with `ll-audience-ok: <reason>` on the same line or the immediately preceding line (`<!-- ll-audience-ok: ... -->` in prose, `# ll-audience-ok: ...` inside a code block). Rewriting is preferred over suppression.
+
 ## Code Style
 
 - Use type hints for all public functions and methods

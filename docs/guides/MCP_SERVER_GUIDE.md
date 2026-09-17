@@ -302,7 +302,7 @@ mcp-call ll-mcp/capabilities '{}'
 }
 ```
 
-This reports the host **little-loops itself would drive** for automation (per
+This reports the host **little-loops would drive** for automation (per
 `LL_HOST_CLI` / `orchestration.host_cli`), not the MCP client you are calling from.
 
 ```bash
@@ -417,8 +417,8 @@ Two caveats follow from *how* that check works:
 Two more practical notes:
 
 - **The resource list is bounded and paginated (ENH-3174).** On a mature project it is
-  still one entry per issue plus one per file under `docs/` — this repository enumerates
-  over 3,000 — but `resources/list` now caps each response at
+  still one entry per issue plus one per file under `docs/` — a large project can easily
+  enumerate several thousand — but `resources/list` now caps each response at
   `mcp.resources.page_size` entries (default 500) and returns `nextCursor` when more
   remain; pass that value back as `cursor` on the next call to page through the rest.
   This is unconditional — it applies whether or not the config below is set. An operator
@@ -489,7 +489,7 @@ prints its result) corrupts the protocol. The client-visible symptom is a JSON p
 that points nowhere near the offending tool, so this is the single most likely defect when
 adding a tool.
 
-Two mitigations cover every case in this codebase today:
+Two mitigations cover every case in the little-loops MCP server today:
 
 1. **Prefer extracting a non-printing library function.** `_tool_issue_set_status` and
    `_tool_issue_link` (`mcp_server/tools.py:317-420`) never call `cmd_set_status`/`cmd_link`

@@ -31,8 +31,8 @@ class TestReviewEpicSkillExists:
 
     def test_parity_comment_references_issue_progress(self) -> None:
         content = SKILL_FILE.read_text()
-        assert "issue_progress.py" in content, (
-            "Child resolution block must cite issue_progress.py as the reference implementation"
+        assert "little_loops.issue_progress" in content, (
+            "Child resolution block must cite little_loops.issue_progress as the reference implementation"
         )
 
     def test_related_not_children_section_exists(self) -> None:

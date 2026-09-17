@@ -694,7 +694,7 @@ states:
     action_type: prompt
     next: verify              # no tamper_guard here — a TDD implement phase legitimately writes tests
   verify:
-    action: python -m pytest scripts/tests/
+    action: python -m pytest tests/
     tamper_guard: revert    # state-level override — this state's own policy wins
     on_yes: done
     on_no: implement
@@ -731,7 +731,7 @@ name: verify-then-ship
 prepatch_check: fail       # loop-level default for all states
 states:
   verify:
-    action: python -m pytest scripts/tests/
+    action: python -m pytest tests/
     on_yes: done
     on_no: implement
   done:
@@ -843,7 +843,7 @@ scope:
 
 If a conflicting loop is already running, `ll-loop run` errors. Use `--queue` to wait instead — the maximum wait is `loops.queue_wait_timeout_seconds` in `.ll/ll-config.json` (default 24 h), overridable per-run with `--queue-timeout SECONDS`, and queued loops acquire the lock in arrival order.
 
-An empty `scope` (or omitting the field) falls back to `["."]` — the whole project — which conflicts with every other running loop, scoped or not. `ll-loop validate` emits a WARNING when a loop declares no `scope:`, since this repo-root fallback is a frequent source of false conflicts between otherwise-unrelated loops. Always declare `scope:` naming the paths a loop actually writes to, or use `scope: ["."]` as an explicit repo-wide opt-in.
+An empty `scope` (or omitting the field) falls back to `["."]` — the whole project — which conflicts with every other running loop, scoped or not. `ll-loop validate` emits a WARNING when a loop declares no `scope:`, since this project-root fallback is a frequent source of false conflicts between otherwise-unrelated loops. Always declare `scope:` naming the paths a loop actually writes to, or use `scope: ["."]` as an explicit repo-wide opt-in.
 
 ### Singleton (one-instance-per-name)
 
@@ -1315,10 +1315,10 @@ flow:
 
 state_defs:
   run_lint:
-    action: "ruff check scripts/"
+    action: "ruff check src/"
     fragment: shell_exit
   run_tests:
-    action: "python -m pytest scripts/tests/"
+    action: "python -m pytest tests/"
     fragment: shell_exit
 ```
 

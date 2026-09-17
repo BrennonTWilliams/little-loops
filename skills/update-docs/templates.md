@@ -35,7 +35,7 @@ These shipped features/changes have no documentation coverage:
 ### ENH-740: Add --elide flag to ll-loop show
 
 - **Completed**: 2026-03-10
-- **Changed files**: `scripts/little_loops/cli/loop.py`
+- **Changed files**: `src/cli/report.py`
 - **Search result**: No matches for "elide" or "--elide" in doc files
 - **Suggested doc location**: `docs/reference/API.md` or `README.md` CLI section
 - **Stub preview**: See stub template below
@@ -48,10 +48,10 @@ These source files changed but no corresponding doc update was found:
 
 | Priority | Module | Changed File | Last Change | Suspected Doc Gap |
 |----------|--------|-------------|-------------|-------------------|
-| Medium | ll-loop CLI | `scripts/little_loops/cli/loop.py` | 2026-03-10 | New flags not in README |
-| Low | issue_history | `scripts/little_loops/issue_history/parsing.py` | 2026-03-08 | API docs may be stale |
+| Medium | report CLI | `src/cli/report.py` | 2026-03-10 | New flags not in README |
+| Low | parsing | `src/parsing.py` | 2026-03-08 | API docs may be stale |
 
-### scripts/little_loops/cli/loop.py
+### src/cli/report.py
 
 - **Commits since ref**: `feat: add --elide flag`, `fix: handle empty state`
 - **Affected doc files**: None updated since these commits
@@ -140,7 +140,7 @@ Documentation gap identified by `/ll:update-docs`. The [feature/component] intro
 - **Type**: Completed issue | Git change
 - **Issue/Commit**: [ENH-740 | abc1234]
 - **Completed/Changed**: [date]
-- **Changed files**: `scripts/little_loops/cli/loop.py`
+- **Changed files**: `src/cli/report.py`
 
 ## Gap Description
 

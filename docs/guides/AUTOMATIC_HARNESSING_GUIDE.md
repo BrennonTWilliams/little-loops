@@ -716,7 +716,7 @@ states:
     next: check_concrete
 
   check_concrete:            # present if tool-based gates selected
-    action: python -m pytest scripts/tests/ -q --tb=no
+    action: python -m pytest tests/ -q --tb=no
     action_type: shell
     evaluate:
       type: exit_code
@@ -781,7 +781,7 @@ states:
     next: check_concrete
 
   check_concrete:
-    action: python -m pytest scripts/tests/ -q --tb=no
+    action: python -m pytest tests/ -q --tb=no
     action_type: shell
     evaluate:
       type: exit_code
@@ -952,7 +952,7 @@ states:
     next: check_concrete
 
   check_concrete:                 # run tests to confirm no regressions
-    action: python -m pytest scripts/tests/ -q --tb=no
+    action: python -m pytest tests/ -q --tb=no
     action_type: shell
     evaluate:
       type: exit_code
@@ -1203,9 +1203,7 @@ handler takes a force-exit branch (ENH-2516, in the
 `scripts/little_loops/cli/loop/signals.py` module) that calls
 `PersistentExecutor.archive_run_only(terminated_by="interrupted_force")`
 *before* `sys.exit(1)`. The `.history/<run_id>-<loop_name>/` archive
-still lands. Exit code: `1`. This is the user-visible contract that
-`scripts/tests/test_fsm_signal_integration.py::test_second_signal_force_exit_archives`
-locks in CI.
+still lands. Exit code: `1`. This is the user-visible contract that little-loops' own test suite pins.
 
 ### `SIGKILL` (`kill -9`) — cannot be trapped
 
@@ -1227,8 +1225,8 @@ on shutdown rather than `SIGKILL`:
 | Detached session | `nohup ll-loop run … &` — survives shell exit; the parent shell's exit sends `SIGHUP` which `nohup` ignores, then the loop continues until the next signal |
 | Long-running service | `systemd` unit with `KillSignal=SIGTERM` (the default), `TimeoutStopSec=30` |
 
-The end-to-end SIGINT contract is verified by
-`scripts/tests/test_fsm_signal_integration.py`. When in doubt, prefer
+The end-to-end SIGINT contract is verified by little-loops' own test suite. When in
+doubt, prefer
 to inspect the audit trail — but note `events.jsonl` (the live, fsync'd
 run file) and the `.history/...` archive (a copy written by
 `archive_run()`) are not guaranteed to be co-located after a hard kill:

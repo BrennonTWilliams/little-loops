@@ -56,9 +56,16 @@ loop to simplify.
 Locate the source file in this priority order (same as `rename-loop` Step 2):
 
 1. **Project**: `.loops/<name>.yaml` → `scope = project`
-2. **Built-in**: `scripts/little_loops/loops/<name>.yaml` (a `name` like
-   `oracles/foo` resolves to `scripts/little_loops/loops/oracles/foo.yaml`) →
-   `scope = builtin`
+2. **Built-in**: `<builtin-dir>/<name>.yaml` (a `name` like `oracles/foo`
+   resolves to `<builtin-dir>/oracles/foo.yaml`) → `scope = builtin`, where
+   `<builtin-dir>` is the loops directory shipped inside the installed
+   `little_loops` package:
+   `$(python -c "import little_loops.loops as m, pathlib; print(pathlib.Path(m.__file__).parent)")`
+
+Built-in loops are read-only package data, not part of your project's source
+tree. For `scope = builtin`, copy the loop to `.loops/<name>.yaml` first (the
+project copy shadows the packaged one by name) and continue as `scope = project`
+against that copy — never rewrite files inside the installed package.
 
 Record `SOURCE` (the resolved path) and the loops dir it resolved from. If
 neither exists, abort:
@@ -66,7 +73,7 @@ neither exists, abort:
 ```
 Error: Loop '<name>' not found.
   Checked: .loops/<name>.yaml
-           scripts/little_loops/loops/<name>.yaml
+           <builtin-dir>/<name>.yaml
 ```
 
 Guard — refuse to rewrite a running loop:
@@ -137,7 +144,8 @@ supplies becomes a child `parameter:` and a parent `with:` binding (always carry
 `on_success` and `on_failure` for the new `loop:` state must differ (mirrors
 `audit-loop-run` Step 8).
 
-Before minting a new child, scan `scripts/little_loops/loops/oracles/*.yaml`: if
+Before minting a new child, scan `.loops/oracles/*.yaml` and the packaged
+`<builtin-dir>/oracles/*.yaml`: if
 a region matches an existing oracle's shape and interface, propose calling that
 oracle via `loop:` instead of creating a duplicate file.
 
@@ -248,13 +256,11 @@ reference.md §"Behavior-preservation checklist":
 2. Run `ll-loop simulate <name>` and confirm no **new** stall / premature-exit /
    overrun signals versus a baseline simulate (run one before rewriting if you
    want a strict diff).
-3. If `scope = builtin`, run the golden test:
-   ```bash
-   python -m pytest scripts/tests/test_builtin_loops.py -q
-   ```
-   If a test asserts on specific state names that extraction moved into a child,
-   **report it** — do not silently edit the test. Surface the failing assertion
-   and recommend the user update or confirm it.
+3. If the project has tests that assert on this loop's state names (grep
+   `project.test_dir` from `.ll/ll-config.json` for `<name>`), run them with
+   `project.test_cmd`. If a test asserts on specific state names that extraction
+   moved into a child, **report it** — do not silently edit the test. Surface
+   the failing assertion and recommend the user update or confirm it.
 
 If any equivalence check fails and a backup still exists, restore it.
 
@@ -262,15 +268,15 @@ If any equivalence check fails and a backup still exists, restore it.
 
 ## Step 6: Stage, Report, Persist Artifact
 
-Stage every changed/created file **explicitly** (never a directory sweep):
+If the project tracks its loop files in git, stage every changed/created file
+**explicitly** (never a directory sweep):
 
 ```bash
 git add <SOURCE>
 git add <each-new-child-path>
 ```
 
-(Project-scope `.loops/` files are git-ignored — skip `git add` for those and
-say so.)
+(`.loops/` is git-ignored by default — skip `git add` in that case and say so.)
 
 Print a summary:
 
@@ -279,7 +285,7 @@ Simplified: <name>  [scope: builtin|project]
   States: <N> → <N'>  (<delta> fewer in parent)
   Flows collapsed: <K> chain(s)
   Sub-loops extracted: <list of child names + paths>
-  Equivalence: resolved-graph ✓  simulate ✓  builtin-tests <✓|n/a|⚠>
+  Equivalence: resolved-graph ✓  simulate ✓  project-tests <✓|n/a|⚠>
 ```
 
 Persist a report to `.loops/simplifications/<name>-<YYYYMMDD-HHMMSS>.md` using

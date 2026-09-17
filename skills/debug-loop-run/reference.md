@@ -90,7 +90,7 @@ or `evaluate` for runs archived before that field was added, and always for
 
   `APPLY_STATE_PREFIXES = ("apply_", "refine_", "update_", "write_", "commit_")`
 
-  (Documented in prose form parallel to the existing `DECISION_PREFIXES` and `GATE_STATE_PREFIXES` tuples in `scripts/tests/test_debug_loop_run_synthesis.py` and `scripts/tests/test_review_loop.py`. Matching is performed by the LLM in-context against `state_enter.state` names; no Python code is added.)
+  (Documented in prose form, parallel to the `DECISION_PREFIXES` and `GATE_STATE_PREFIXES` tuples. Matching is performed by the LLM in-context against `state_enter.state` names; no Python code is involved.)
 
   Track an `apply_state_visit` flag while iterating `state_enter` events: set it true if any visited state name starts with one of the `APPLY_STATE_PREFIXES`. After the walk, evaluate the trigger.
 - **Priority**: P3

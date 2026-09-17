@@ -173,7 +173,7 @@ and the Verify pass/fail per command (or `SKIP` if unconfigured).
 
 ## Related
 
-- `scripts/little_loops/init/cli.py`'s `_run_plan` / `_run_apply` functions —
+- `little_loops.init.cli`'s `_run_plan` / `_run_apply` functions —
   the CLI seam this skill wraps; not modified by this skill.
 - `skills/manage-issue/SKILL.md` Phase 4 — the Verify/smoke-check pattern this
   skill's step 6 mirrors.

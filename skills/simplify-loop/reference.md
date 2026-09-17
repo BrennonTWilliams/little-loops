@@ -6,10 +6,10 @@ scope-resolution table, and the artifact schema for `/ll:simplify-loop`.
 The two transforms map onto engine features that already exist:
 
 - **`flow:`** — Linear Flow Shorthand expanded by
-  `resolve_flow()` (`scripts/little_loops/fsm/fragments.py`). See
+  `resolve_flow()` (`little_loops.fsm.fragments`). See
   `docs/guides/LOOPS_GUIDE.md` §"Linear Flow Shorthand via `flow:`".
 - **Sub-loops** — `loop:` states executed by `_execute_sub_loop()`
-  (`scripts/little_loops/fsm/executor.py`). See `loops/oracles/*.yaml` for
+  (`little_loops.fsm.executor`). See the packaged `oracles/*.yaml` loops for
   callee shape and `rn-plan.yaml` / `deep-research.yaml` for caller shape.
 
 You never reimplement expansion or execution — you only emit YAML that the
@@ -62,12 +62,12 @@ name: lint-and-test
 initial: run_lint
 states:
   run_lint:
-    action: "ruff check scripts/"
+    action: "ruff check src/"
     action_type: shell
     evaluate: { type: exit_code }
     next: run_tests
   run_tests:
-    action: "python -m pytest scripts/tests/"
+    action: "pytest tests/"
     action_type: shell
     evaluate: { type: exit_code }
     terminal: true
@@ -84,11 +84,11 @@ flow:
 
 state_defs:
   run_lint:
-    action: "ruff check scripts/"
+    action: "ruff check src/"
     action_type: shell
     evaluate: { type: exit_code }
   run_tests:
-    action: "python -m pytest scripts/tests/"
+    action: "pytest tests/"
     action_type: shell
     evaluate: { type: exit_code }
 ```
@@ -158,7 +158,7 @@ because it means the child's done/failed distinction is intentionally discarded
 
 **Oracle reuse.** Before minting a child, compare `R`'s shape (entry action
 kind, number of states, parameter set) against
-`scripts/little_loops/loops/oracles/*.yaml`. If one matches, propose a `loop:`
+`.loops/oracles/*.yaml` and the packaged `<builtin-dir>/oracles/*.yaml`. If one matches, propose a `loop:`
 call to the existing oracle instead of a new file — fewer files is simpler.
 
 ### Child loop skeleton
@@ -220,8 +220,8 @@ Run every item before declaring success. Any failure ⇒ restore the backup.
       no extraction occurred.)
 - [ ] `ll-loop validate <name>` passes for parent and every child.
 - [ ] `ll-loop simulate <name>` shows no new stall/premature/overrun signal.
-- [ ] (builtin) `pytest scripts/tests/test_builtin_loops.py` passes, or failures
-      are surfaced (not silently patched).
+- [ ] Any project tests that assert on this loop's state names (`project.test_cmd`)
+      pass, or failures are surfaced (not silently patched).
 
 ---
 
@@ -230,10 +230,10 @@ Run every item before declaring success. Any failure ⇒ restore the backup.
 | Parent scope | Parent source | Extracted child target | Git |
 |--------------|---------------|------------------------|-----|
 | `project` | `.loops/<name>.yaml` | `.loops/<child>.yaml` | git-ignored (no `git add`) |
-| `builtin` | `scripts/little_loops/loops/<name>.yaml` | `<loops-dir>/oracles/<child>.yaml` | git-tracked (`git add` each) |
+| `builtin` | `<builtin-dir>/<name>.yaml` (read-only package data) | copy parent to `.loops/<name>.yaml`, then `.loops/oracles/<child>.yaml` | git-ignored (no `git add`) |
 
-`<loops-dir>` is the directory the parent resolved from (the built-in package
-loops dir). A parent already under `oracles/` keeps its children as siblings in
+`<builtin-dir>` is the loops directory inside the installed `little_loops`
+package. A parent already under `oracles/` keeps its children as siblings in
 `oracles/`.
 
 ---
@@ -269,7 +269,7 @@ subloops_extracted: <C>
 ## Equivalence checks
 - resolved-graph: <equivalent | byte-equivalent>
 - simulate: <no new signals | ...>
-- builtin tests: <pass | n/a | failing assertions: ...>
+- project tests: <pass | n/a | failing assertions: ...>
 ```
 
 ---
@@ -281,7 +281,7 @@ subloops_extracted: <C>
 - **Extracting a region with leaky inbound edges** (an outside state jumps into
   the region's middle) — the child would be entered at the wrong state.
 - **Letting `on_success == on_failure`** silently — flag it as verdict laundering.
-- **Editing tests to make them pass** after a builtin rewrite — surface the
+- **Editing tests to make them pass** after a rewrite — surface the
   failure; the user decides.
 - **Partial application on validation failure** — restore the backup; never
   leave the parent in a broken intermediate state.

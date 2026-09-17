@@ -1,6 +1,6 @@
 # History & Session Guide
 
-Long-term observability for your little-loops project: what ran, what changed, what was corrected, and why.
+Long-term observability for the project little-loops is installed in: what ran, what changed, what was corrected, and why.
 
 ## Table of Contents
 

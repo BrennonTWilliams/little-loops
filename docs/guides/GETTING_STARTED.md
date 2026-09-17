@@ -142,9 +142,9 @@ The three fields most relevant to beginners:
 
 | Field | Purpose | Example |
 |-------|---------|---------|
-| `project.test_cmd` | Command to run tests | `pytest scripts/tests/` |
-| `project.lint_cmd` | Command to run lint/format | `ruff check scripts/` |
-| `project.src_dir` | Primary source directory | `scripts/` |
+| `project.test_cmd` | Command to run tests | `pytest tests/` |
+| `project.lint_cmd` | Command to run lint/format | `ruff check src/` |
+| `project.src_dir` | Primary source directory | `src/` |
 
 Start with the auto-detected defaults.
 
@@ -156,7 +156,7 @@ Start with the auto-detected defaults.
 |----------------|-------------------|
 | Not installed (no pip package, no global plugin) | Pip package: prints a notice; **warns only** by default — pass `--upgrade` to install automatically. Claude Code plugin: if `claude-code` is a selected/detected host, `ll-init` installs `ll@little-loops` from the marketplace automatically (no `--upgrade` needed) — this fires regardless of pip-package state, since pip and plugin presence are independent |
 | Global plugin (`ll@little-loops` via `claude plugin list --json`) | Reads the plugin version; checks marketplace for drift |
-| Local dev install (editable `pip install -e`) | Reads the installed version; checks PyPI for drift |
+| Local dev install (editable `pip install -e`) | Reads the installed version; checks PyPI for drift | <!-- ll-audience-ok: real install_source state ll-init reports -->
 | PyPI consumer install (`pip install little-loops`) | Reads the installed version; checks PyPI for drift |
 | Version mismatch (installed ≠ PyPI latest) | Prints a notice with the upgrade command; **warns only** by default — pass `--upgrade` to upgrade automatically |
 | Stale adapter (generated gen-version ≠ installed package version) | Prints a hint for the affected host (e.g. codex); **warns only** by default — pass `--upgrade` to force-regenerate the adapter |
@@ -384,4 +384,5 @@ For deeper diagnostics, see [Troubleshooting](../development/TROUBLESHOOTING.md)
 
 ---
 
+<!-- ll-audience-ok: pointer to contributor docs -->
 Contributing to little-loops? Use the editable dev install instead of the PyPI package: `pip install -e "./scripts[dev]"`. See [CONTRIBUTING.md](../../CONTRIBUTING.md) for development setup and guidelines.

@@ -132,7 +132,7 @@ The behaviors that **write data or change your repo** are **off until you opt in
 
 The behaviors that are **on by default** are non-destructive: they load config, estimate context, inject advisory reminders, protect issue-ID uniqueness, and clean up *this session's* temp files on exit. None of them modify your source code.
 
-> **Note on defaults vs. this repo.** Defaults below are the **fresh-install schema defaults**. A given project's `.ll/ll-config.json` may tune them — for example, the little-loops repo itself enables `analytics.enabled` and lowers `context_monitor.auto_handoff_threshold` to 50.
+> **Note on defaults vs. your project.** Defaults below are the **fresh-install schema defaults**. Your project's `.ll/ll-config.json` may tune them — for example, a project might enable `analytics.enabled` or lower `context_monitor.auto_handoff_threshold` to 50.
 
 ---
 

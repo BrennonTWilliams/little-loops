@@ -356,7 +356,7 @@ states:
     next: baseline
 
   baseline:                          # measure BEFORE the edit so the gate has a reference
-    action: "pytest scripts/tests/test_capture_issue_skill.py -q --tb=no; echo $(pytest --co -q | wc -l)"
+    action: "pytest tests/test_capture_issue_skill.py -q --tb=no; echo $(pytest --co -q | wc -l)"
     action_type: shell
     capture: baseline
     next: propose
@@ -372,7 +372,7 @@ states:
     next: score
 
   score:                             # measure AFTER the edit
-    action: "pytest scripts/tests/test_capture_issue_skill.py -q --tb=no; echo $(pytest --co -q | wc -l)"
+    action: "pytest tests/test_capture_issue_skill.py -q --tb=no; echo $(pytest --co -q | wc -l)"
     action_type: shell
     capture: benchmark_score
     next: gate
@@ -420,7 +420,7 @@ Run `/ll:create-loop` and choose **"Optimize a harness (meta-loop)"**. The wizar
 - **Targets** — space-separated artifact paths to optimize (e.g. `skills/foo/SKILL.md`,
   `.loops/docs-sync.yaml`).
 - **Scorer** — a shell command that exits 0 and prints a numeric score
-  (e.g. `pytest scripts/tests/test_docs_sync.py -q --tb=no`).
+  (e.g. `pytest tests/test_docs_sync.py -q --tb=no`).
 - **Tasks directory** — the benchmark/task set the scorer runs against.
 - **Diagnose action** — shell or prompt that surfaces what is currently wrong (this seeds
   the priority-identification step).
@@ -687,9 +687,7 @@ to the absent-default.
 `ProjectConfig`, so for those two keys `ll-config get` collapses absent ≡ null — there is no
 "not configured yet" guess to fall back on.
 
-A static mirror-drift gate
-([`scripts/tests/test_bug3269_test_cmd_resolution_gate.py`](../../scripts/tests/test_bug3269_test_cmd_resolution_gate.py))
-asserts no loop YAML reads a project command key via an inline raw-JSON access pattern, and
+A static mirror-drift gate in little-loops' own test suite asserts no loop YAML reads a project command key via an inline raw-JSON access pattern, and
 that every `${context.test_cmd}`/`${context.lint_cmd}` reference resolves against its loop's
 declared `context:`/`parameters:` block. `oracles/code-run-gate.yaml` is a permanent
 exemption — it implements a different, deliberately non-guessing resolution convention
@@ -700,28 +698,28 @@ would start running `pytest`/`ruff check .` in unconfigured projects instead of 
 three permanent exemptions keep their inline parse and their `.ll/ll.local.md` bypass
 indefinitely.
 
-A second, sibling static gate
-([`scripts/tests/test_builtin_loop_hardcode_gate.py`](../../scripts/tests/test_builtin_loop_hardcode_gate.py),
-ENH-3281) enforces the "never hardcode a project command literal" rule below directly:
-it's parametrized over every built-in loop file and asserts no `states[*].action` body
-or top-level `context:` value contains a this-repo path (`scripts/tests`,
-`scripts/little_loops`, `ruff check scripts`, `mypy scripts`). Two files are exempted —
-`cli-anything-bootstrap.yaml` (a package-internal task-template path, not a
-consuming-project layout guess) and `loop-specialist-eval.yaml` (a genuine this-repo
-eval fixture path). `scope:` list entries, `description:` fields, and comments are
+A second, sibling static gate in little-loops' own test suite (ENH-3281) enforces the
+"never hardcode a project command literal" rule below directly: it's parametrized over
+every built-in loop file and asserts no `states[*].action` body or top-level `context:`
+value contains a little-loops-source path
+<!-- ll-audience-ok: literal banned-string list of the hardcode gate -->
+(`scripts/tests`, `scripts/little_loops`, `ruff check scripts`, `mypy scripts`). Two files
+are exempted — `cli-anything-bootstrap.yaml` (a package-internal task-template path, not a
+consuming-project layout guess) and `loop-specialist-eval.yaml` (a genuine
+little-loops-source eval fixture path). `scope:` list entries, `description:` fields, and comments are
 deliberately out of this gate's scope — not exec-time content in the same sense.
 
 **Never hardcode a project command literal in a loop action or context default.** A literal
-like `test_cmd: "python -m pytest scripts/tests/"` is this repository's own test path, not a
-general default — every loop shipped as a built-in runs unmodified against arbitrary
-consuming projects (`.claude/CLAUDE.md` § Distribution), and a hardcoded literal that happens
-to be correct here is silently wrong everywhere else. Worse, if the state gates a destructive
+like `test_cmd: "pytest tests/"` is one particular project's test path, not a general
+default — every loop shipped as a built-in runs unmodified against arbitrary projects, and a
+hardcoded literal that happens to be correct in little-loops' own repository is silently
+wrong everywhere else. Worse, if the state gates a destructive
 edge (`on_no`/`on_error` routing to a revert, cleanup, or file-deletion action), the command
 failing in a consuming project doesn't just no-op — it fires the destructive edge on every
 lap. This was BUG-3276: `incremental-refactor.yaml` hardcoded `test_cmd` bare (no
 `.ll/ll-config.json` read at all, not even a divergent one), so `verify_tests` failed
-deterministically outside this repo and `on_no: revert` discarded uncommitted work every
-time. Resolve every project command through the context-first + `ll-config get` shapes above,
+deterministically outside little-loops' own repository and `on_no: revert` discarded
+uncommitted work every time. Resolve every project command through the context-first + `ll-config get` shapes above,
 with an empty context default (`test_cmd: ""`) as the override slot — never a bare literal.
 
 **A resolution check is not a runnability check.** Resolving a command only proves a
@@ -780,8 +778,8 @@ The core is byte-identical everywhere; the role clause and marker noun are per-s
 `brainstorm` brief is not a `loop-router` goal, and asserting "a future loop should
 automate this" is false at 12 of the 13 sites. `FENCE_ROLES` in `fence.py` holds the
 13-entry `(loop_file, state) -> (noun, role, verbs, var)` table;
-`scripts/tests/test_builtin_loops.py::TestBriefFencing` pins the rendered form at every
-entry so the copies cannot drift silently.
+little-loops' own test suite pins the rendered form at every entry so the copies cannot
+drift silently.
 
 **Four site classes — classes 1 and 4 are fencing targets:**
 

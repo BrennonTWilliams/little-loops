@@ -650,8 +650,8 @@ if failed_ids:
 - _Pattern: Sequential processing of issues appears in multiple commands_
 
 ### Tests
-- `scripts/tests/test_sprint.py` - Add test for retry behavior after failures
-- `scripts/tests/integration/test_sprint_reliability.py` - Integration test (NEW)
+- `tests/test_sprint.py` - Add test for retry behavior after failures
+- `tests/integration/test_sprint_reliability.py` - Integration test (NEW)
 
 ### Documentation
 - `docs/reference/CLI.md` - Update ll-sprint capabilities

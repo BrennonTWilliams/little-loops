@@ -212,7 +212,7 @@ Analyze:
 3. CLI and command coupling — if any CLI flags or commands change, what references them in help text, docs, or other commands?
 4. Error message / log coupling — if error messages or log labels change, are there tests that assert on those strings?
 5. Schema / config coupling — if config keys or schema change, what reads or validates those keys?
-6. Gate consumers (ENH-3050): if the change adds/alters a field in a CLI's `--format json` output or an exit-code condition, grep the CLI invocation string (not the Python symbol) across `scripts/little_loops/loops/`, `hooks/`, `skills/`, `commands/`, `docs/`.
+6. Gate consumers (ENH-3050): if the change adds/alters a field in a CLI's `--format json` output or an exit-code condition, grep the CLI invocation string (not the Python symbol) across the project's loop YAMLs (`.loops/`), hooks, skills, commands, and docs.
 
 Return analysis with specific anchor-based references (function/class names) for each coupling found.
 Exclude only `path:symbol` sites already in `known_sites` (Phase 3). Report

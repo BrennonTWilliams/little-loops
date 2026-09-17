@@ -136,8 +136,6 @@ For each match, emit a Signal 3 entry into `static_issues`:
 
 **Note**: this static pass complements (does not replace) the existing config-based `BUG — Sub-loop verdict discarded` rule in Step 3. That rule remains where it is (history-driven `### Signal Rules` bucket) for backward compatibility; only the new Signal 3 results go into `static_issues`. Both static and history-driven effectiveness signals are merged in Step 5 under the `Effectiveness Signals` heading.
 
-(Reference: the closest existing precedent for regex over `state.action` bodies is `_collect_action_text()` + `re.search()` in `scripts/tests/test_builtin_loops.py` — same shape: iterate the state map, read `action`, regex-match.)
-
 **Parse the events** into a structured list for classification. Each event has
 `"event"` (the type) and `"ts"` (timestamp) plus type-specific fields — e.g.
 `state_enter` carries `state`/`iteration`, `action_complete` carries

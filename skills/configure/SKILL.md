@@ -71,7 +71,7 @@ Check whether the installed `little-loops` pip package is aligned with this plug
    - If the command fails (package not installed):
      ```
      Warning: 'little-loops' pip package not installed — ll-* CLI tools unavailable
-     Install: pip install -e "./scripts"
+     Install: pip install little-loops
      ```
      Always proceed.
    - If installed and versions match → no output (silent success).
@@ -81,7 +81,7 @@ Check whether the installed `little-loops` pip package is aligned with this plug
        EDITABLE_INSTALL=$(pip show little-loops 2>/dev/null | grep -E "^Editable project location:")
        if [ -n "$EDITABLE_INSTALL" ]; then
            EDITABLE_PATH=$(echo "$EDITABLE_INSTALL" | sed 's/^Editable project location: //')
-           INSTALL_CMD="pip install -e '$EDITABLE_PATH'"
+           INSTALL_CMD="pip install -e '$EDITABLE_PATH'"  # ll-audience-ok: editable path detected at runtime
        else
            INSTALL_CMD="pip install --upgrade little-loops"
        fi

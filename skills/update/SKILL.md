@@ -125,7 +125,7 @@ Detect install command based on whether little-loops is installed in editable mo
 EDITABLE_INSTALL=$(pip show little-loops 2>/dev/null | grep -E "^Editable project location:")
 if [ -n "$EDITABLE_INSTALL" ]; then
     EDITABLE_PATH=$(echo "$EDITABLE_INSTALL" | sed 's/^Editable project location: //')
-    INSTALL_CMD="pip install -e '$EDITABLE_PATH'"
+    INSTALL_CMD="pip install -e '$EDITABLE_PATH'"  # ll-audience-ok: reinstalls an existing editable install in place
 else
     INSTALL_CMD="pip install --upgrade little-loops"
 fi

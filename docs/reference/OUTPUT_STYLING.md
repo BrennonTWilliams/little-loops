@@ -416,7 +416,7 @@ The active state highlight color is configurable via `cli.colors.fsm_active_stat
   State          Type    Action Preview                   Transitions
   ─────────────  ──────  ───────────────────────────────  ──────────────────
   → run          prompt  Analyze the current issue and…   success──→ verify
-    verify       shell   python -m pytest scripts/...     success/fail──→ ...
+    verify       shell   python -m pytest tests/...       success/fail──→ ...
 ```
 
 Column widths adapt to terminal width. Long values are truncated with `…` (U+2026).

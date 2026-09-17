@@ -157,6 +157,13 @@ Give each subagent this verbatim assignment (substitute `<FILE>`):
 >   images accessible.
 > - **Currency**: no deprecated info, reflects latest features, version
 >   requirements accurate.
+> - **Audience** (files under `docs/guides/`, `docs/reference/`, and
+>   `README.md` only): the reader is a little-loops *end user* whose own
+>   project consumes little-loops via `pip install little-loops` + `ll-init`;
+>   their project is not little-loops. Flag any sentence that assumes the
+>   reader edits the little-loops source, or that cites little-loops' own
+>   test paths or lint/test commands as examples (see CONTRIBUTING.md
+>   § Documentation Audience for the banned phrasings).
 
 Where a subagent reports a runnable code block worth executing, it should test
 it in its own context (`python -c "..."`, `bash -n`) rather than returning the

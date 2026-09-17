@@ -276,7 +276,7 @@ A string recorded by `ll-init` that identifies how little-loops was installed. T
 
 | Value | Meaning |
 |-------|---------|
-| `"local-editable"` | Installed via `pip install -e` (development / editable install) |
+| `"local-editable"` | Installed via `pip install -e` (editable install of a local checkout) | <!-- ll-audience-ok: observable install_source value -->
 | `"pypi"` | Installed from PyPI via `pip install little-loops` |
 | `"global-claude-code"` | Installed as a global Claude Code plugin |
 | `"project-claude-code"` | Installed as a project-level Claude Code plugin |
@@ -341,7 +341,7 @@ Issue management settings:
 | `next_issue.sort_keys` | `null` | Optional list of `{key, direction}` entries that overrides `strategy` with a custom sort order. |
 | `auto_commit` | `false` | When `true`, the `issue-auto-commit.sh` PostToolUse hook automatically commits issue file changes (Write/Edit) with no other staged files present. |
 | `auto_commit_prefix` | `"chore(issues)"` | Commit message prefix used by the auto-commit hook. Final message format is `<prefix>: <verb> <ISSUE_ID> <slug>` where `verb` is `capture` (Write) or `update` (Edit/Update) and `<ISSUE_ID>` + `<slug>` are parsed from the issue filename (`P[0-5]-TYPE-NNN-slug.md`). |
-| `untracked_by_design` | See `config-schema.json` | Path prefixes classified `untracked_by_design` instead of `stale` when a file reference in issue prose cannot resolve against the tracked-file index (ENH-3000) — e.g. `"thoughts/"`, `"postmortems/"`, `".loops/runs/"`, `".ll/ll.local.md"`. Directory entries end in `/`; file entries are exact repo-relative paths matched by prefix. Ships a non-empty default covering this repo's own gitignored-by-design directories and every `.ll/` path `ll-init` writes into a consumer's `.gitignore`; overriding replaces the whole array (no merge). |
+| `untracked_by_design` | See `config-schema.json` | Path prefixes classified `untracked_by_design` instead of `stale` when a file reference in issue prose cannot resolve against the tracked-file index (ENH-3000) — e.g. `"thoughts/"`, `"postmortems/"`, `".loops/runs/"`, `".ll/ll.local.md"`. Directory entries end in `/`; file entries are exact repo-relative paths matched by prefix. Ships a non-empty default covering little-loops' standard gitignored-by-design directories and every `.ll/` path `ll-init` writes into a consumer's `.gitignore`; overriding replaces the whole array (no merge). |
 
 **Custom Categories**: The four core categories (bugs, features, enhancements, epics) are always included automatically. You can add custom categories and they will be merged with the required ones:
 
@@ -996,14 +996,12 @@ Decisions and rules log configuration (FEAT-1891). When enabled, architectural d
 | `log_path` | `str` | `".ll/decisions.yaml"` | Path to the legacy flat file; the derived fragment directory is its `.d`-suffixed sibling (`.ll/decisions.d/`). |
 | `auto_generate` | `list[str]` | `[]` | Issue type prefixes that filter which issue types are processed when running `ll-issues decisions generate`. Empty list processes all types. Example: `["FEAT", "ENH"]` skips BUG entries. |
 
-**Integrity gate (ENH-2591).** The local test suite
-(`python -m pytest scripts/tests/`) is this project's CI per `.claude/CLAUDE.md`.
-A pytest belt at [`scripts/tests/test_decisions_yaml_gate.py`](../../scripts/tests/test_decisions_yaml_gate.py)
-shells out to `ll-verify-decisions` against the live decisions log — both the
+**Integrity gate (ENH-2591).** little-loops' own test suite carries a pytest
+belt that shells out to `ll-verify-decisions` against the live decisions log — both the
 flat `.ll/decisions.yaml` and the `.ll/decisions.d/*.json` fragments, which the
 validator re-globs in a strict second pass (positive case) and an OTHE-203 corrupted `tmp_path` fixture (negative
 case), so any YAML parse error, missing required field, or unknown
-entry-type discriminator fails the local suite — closing the
+entry-type discriminator fails that suite — closing the
 `git commit --no-verify` and non-hook edit paths that the pre-commit
 hook (ENH-2590) alone cannot cover. The gate skips gracefully when
 `ll-verify-decisions` is absent from `PATH`.

@@ -91,7 +91,7 @@ ll-issues size --sprint <name> --write --json  # scoped to a sprint definition
 - Omit `--write` for `CHECK_MODE` (scoring only, no frontmatter mutation).
 - `--json` output is a list of `{id, score, label, signals}` objects. `label` is one of
   `Small` (0-2) / `Medium` (3-4) / `Large` (5-7) / `Very Large` (8+), derived from the same
-  `SIZE_SIGNAL_WEIGHTS` table the CLI documents in `scripts/little_loops/cli/issues/size.py`
+  `SIZE_SIGNAL_WEIGHTS` table the CLI documents in `little_loops.cli.issues.size`
   (file count, section complexity, multiple concerns, dependency mentions, word count; max 11).
 - `--write` stages the mutated `size:` frontmatter field on disk (no separate `git add` step
   needed here — commit staging happens later, in Phase 6).

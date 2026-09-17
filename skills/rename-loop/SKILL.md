@@ -52,13 +52,21 @@ Extract `old_name`, `new_name`, and flags from the arguments:
 Check for the loop file in this priority order:
 
 1. **Project-level**: `.loops/<old_name>.yaml` → scope = `project`
-2. **Built-in**: `scripts/little_loops/loops/<old_name>.yaml` → scope = `builtin`
+2. **Built-in**: `<builtin-dir>/<old_name>.yaml` → scope = `builtin`, where
+   `<builtin-dir>` is the loops directory shipped inside the installed
+   `little_loops` package:
+   `$(python -c "import little_loops.loops as m, pathlib; print(pathlib.Path(m.__file__).parent)")`
+
+Built-in loops are read-only package data — they are not part of your project's
+source tree. A `builtin` rename therefore *copies* the loop into `.loops/` under
+the new name (the project copy shadows the built-in by name); the packaged
+original is left untouched.
 
 If neither file exists, abort:
 ```
 Error: Loop '<old_name>' not found.
   Checked: .loops/<old_name>.yaml
-           scripts/little_loops/loops/<old_name>.yaml
+           <builtin-dir>/<old_name>.yaml
 ```
 
 ---
@@ -100,9 +108,9 @@ list.
   ```
   mv .loops/<old_name>.yaml .loops/<new_name>.yaml
   ```
-- **Scope `builtin`**: `git mv` (file is git-tracked)
+- **Scope `builtin`**: copy into project scope (the packaged file is read-only)
   ```
-  git mv scripts/little_loops/loops/<old_name>.yaml scripts/little_loops/loops/<new_name>.yaml
+  mkdir -p .loops && cp <builtin-dir>/<old_name>.yaml .loops/<new_name>.yaml
   ```
 
 ### 5b. `name:` field inside the renamed YAML
@@ -118,35 +126,27 @@ Record an Edit to replace the old name value with `new_name`.
 
 ### 5c. Sub-loop `loop:` references
 
-Search for `loop: <old_name>` (exact bare name, no extension) across all loop YAML files:
+Search for `loop: <old_name>` (exact bare name, no extension) across the project's
+loop YAML files:
 
-- `scripts/little_loops/loops/**/*.yaml` (includes `oracles/`)
-- `.loops/*.yaml`
+- `.loops/**/*.yaml` (includes `.loops/oracles/`)
 
 Use Grep with pattern `loop:\s+<old_name>` across those paths. For each match, record an
-Edit to replace `loop: <old_name>` with `loop: <new_name>`.
+Edit to replace `loop: <old_name>` with `loop: <new_name>`. Packaged built-in loops that
+reference `<old_name>` are read-only and keep resolving to the packaged original — do
+not try to edit them.
 
-### 5d. Tests (built-in scope only)
+### 5d. Project references (docs, scripts, configs)
 
-Search `scripts/tests/` for all occurrences of the old name:
-
-```
-Grep pattern: "<old_name>" across scripts/tests/**/*.py
-```
-
-For each match, record an Edit to replace every string occurrence of `"<old_name>"` with
-`"<new_name>"` and `"<old_name>.yaml"` with `"<new_name>.yaml"`.
-
-### 5e. Documentation (built-in scope only)
-
-Search for all occurrences of the old name in non-historical docs:
+Search the project's own tracked files for the bare loop name — sprint YAMLs, docs, shell
+aliases, `.ll/ll-config.json`:
 
 ```
-Grep pattern: <old_name> across docs/**/*.md, scripts/little_loops/loops/README.md
+Grep pattern: <old_name> across the project (exclude .loops/tmp/, .loops/runs/, .git/)
 ```
 
-Record an Edit for each file that contains the old name, replacing all occurrences with
-`new_name`.
+Record an Edit for each project file that contains the old name, replacing occurrences
+with `<new_name>`.
 
 ---
 
@@ -167,11 +167,7 @@ LOOP REFERENCES (<N> found):
   <file>:<line> — loop: <old_name> → loop: <new_name>
   ...
 
-TESTS (<N> occurrences):   [builtin only]
-  <file>:<line> — "<old_name>" → "<new_name>"
-  ...
-
-DOCS (<N> occurrences):    [builtin only]
+PROJECT REFERENCES (<N> occurrences):
   <file>:<line> — ...<old_name>... → ...<new_name>...
   ...
 
@@ -207,11 +203,10 @@ If the user selects "No, cancel": report "Cancelled. No changes made." and stop.
 
 Apply each change collected in Step 5 in this order:
 
-1. **Rename the file** (Bash: `git mv` or `mv`)
+1. **Rename the file** (Bash: `mv`, or `cp` for builtin scope)
 2. **Edit `name:` field** in the renamed YAML (Edit tool)
 3. **Edit each sub-loop reference** (Edit tool, one file at a time)
-4. **Edit test files** (Edit tool, builtin only)
-5. **Edit doc files** (Edit tool, builtin only)
+4. **Edit project reference files** (Edit tool)
 
 For each Edit, use `replace_all: true` when replacing the old name string to catch all
 occurrences in that file in a single call.
@@ -229,8 +224,7 @@ Changes applied:
   RENAMED   <source> → <dest>
   EDITED    <yaml-file>  (name: field)
   EDITED    <file> — <N> loop reference(s) updated
-  EDITED    <test-file> — <N> occurrence(s)   [builtin only]
-  EDITED    <doc-file> — <N> occurrence(s)    [builtin only]
+  EDITED    <project-file> — <N> occurrence(s)
 
 Total: <N> files modified.
 ```
