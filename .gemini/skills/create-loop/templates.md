@@ -454,8 +454,8 @@ questions:
     options:
       - label: "./scripts/score.sh"
         description: "Custom scoring script"
-      - label: "pytest scripts/tests/ -q --tb=no"
-        description: "Test suite as scorer"
+      - label: "pytest tests/ -q --tb=no"
+        description: "Test suite as scorer (or the project's `project.test_cmd`)"
       - label: "Custom command"
         description: "Specify your own scorer command"
 
@@ -474,7 +474,7 @@ questions:
     header: "Tasks dir"
     multiSelect: false
     options:
-      - label: "scripts/tests/"
+      - label: "tests/"
         description: "Project test suite"
       - label: ".loops/tasks/"
         description: "Loop-specific task directory"

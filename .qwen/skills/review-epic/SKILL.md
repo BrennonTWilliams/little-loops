@@ -76,7 +76,7 @@ Parse the JSON list as `all_issues`.
 ### 2c. Resolve children
 
 Use `parent:` backrefs only — mirrors `compute_epic_progress()` in
-`scripts/little_loops/issue_progress.py:120`:
+`little_loops.issue_progress`):
 
 ```
 relates_to_ids       = set of IDs from the EPIC's `relates_to` list (recorded in Step 2a)
@@ -136,7 +136,7 @@ For each child with status `open`, `in_progress`, or `blocked`:
 
 1. Read the child issue file content.
 2. Extract the last-activity date using the session-log pattern (same logic as
-   `_parse_updated_date()` in `scripts/little_loops/cli/issues/search.py`):
+   `_parse_updated_date()` in `little_loops.cli.issues.search`):
    - Scan the `## Session Log` section for the most recent timestamp line matching
      `` - `/ll:cmd` - YYYY-MM-DDTHH:MM:SS - `path` ``
    - Parse the date portion `YYYY-MM-DD` as the last-activity date.

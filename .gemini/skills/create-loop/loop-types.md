@@ -1116,7 +1116,7 @@ states:
     capture: execute_result
     next: check_concrete
   check_concrete:
-    action: python -m pytest scripts/tests/ -q --tb=no
+    action: pytest tests/ -q --tb=no   # or the project's `project.test_cmd`
     action_type: shell
     evaluate:
       type: exit_code
@@ -1331,7 +1331,7 @@ states:
 
   # OPTIONAL: review_plan (HITL gate -- requires FEAT-1794 action_type: human_approval)
   # Uncomment once FEAT-1794 lands. Without it, use a prompt-gate workaround:
-  #   see scripts/little_loops/loops/loop-router.yaml for the output_contains pattern.
+  #   see the built-in `loop-router` loop (`ll-loop show loop-router`) for the output_contains pattern.
   #
   # review_plan:
   #   action_type: human_approval
@@ -1710,7 +1710,7 @@ questions:
     multiSelect: true
     options:
       - label: "Loop YAML(s)"
-        description: "Files under .loops/ or scripts/little_loops/loops/"
+        description: "Files under .loops/"
       - label: "Skill"
         description: "A skills/<name>/SKILL.md file"
       - label: "Agent"
@@ -1737,7 +1737,7 @@ questions:
     options:
       - label: "./scripts/score.sh"
         description: "Custom scoring script"
-      - label: "pytest scripts/tests/test_meta.py -q --tb=no"
+      - label: "pytest tests/test_meta.py -q --tb=no"
         description: "Test suite as scorer (exit code + pass count)"
       - label: "python -m little_loops.bench.score"
         description: "Python bench entry point"
@@ -1783,7 +1783,7 @@ questions:
     header: "Tasks dir"
     multiSelect: false
     options:
-      - label: "scripts/tests/"
+      - label: "tests/"
         description: "Project test suite as benchmark"
       - label: ".loops/tasks/"
         description: "Loop-specific task directory"
@@ -1931,14 +1931,14 @@ Notable properties:
 
 User answers:
 - Targets: `.loops/docs-sync.yaml`
-- Scorer: `pytest scripts/tests/test_docs_sync.py -q --tb=no`
+- Scorer: `pytest tests/test_docs_sync.py -q --tb=no`
 - Target score: `1.0`
-- Tasks dir: `scripts/tests/`
+- Tasks dir: `tests/`
 - Diagnose action (shell): `cat $(ls -t .loops/runs/docs-sync/*/run.log 2>/dev/null | head -3) 2>/dev/null || echo "No prior runs found."`
 
 Generated loop name suggestion: `optimize-docs-sync`
 
-The generated YAML passes `ll-loop validate` without `meta_self_eval_ok: true` because the `gate` state uses `type: convergence` which is in `NON_LLM_EVALUATOR_TYPES` (`scripts/little_loops/fsm/validation/_base.py`).
+The generated YAML passes `ll-loop validate` without `meta_self_eval_ok: true` because the `gate` state uses `type: convergence` which is in `NON_LLM_EVALUATOR_TYPES` (`little_loops.fsm.validation._base`).
 
 ---
 

@@ -297,7 +297,7 @@ When `--from-sequences` is present in `$ARGUMENTS`, perform n-gram analysis on `
 - Log a notice: "⚠ No sequences data found. Falling back to message-history analysis."
 - Continue with the standard message-history flow (Step 1 above) instead of stopping.
 
-**Parsed schema** per entry (matches `ChainResult.to_dict()` in `scripts/little_loops/cli/logs.py`):
+**Parsed schema** per entry (matches `ChainResult.to_dict()` in `little_loops.cli.logs`):
 ```json
 {"chain": ["ll-scan-codebase", "ll-manage-issue"], "count": 5, "edges": [{"from": "ll-scan-codebase", "to": "ll-manage-issue", "freq": 0.8, "pmi": 1.23, "lift": 3.4}], "pmi": 1.23, "lift": 3.4}
 ```

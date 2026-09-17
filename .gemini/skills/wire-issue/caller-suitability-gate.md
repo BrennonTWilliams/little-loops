@@ -53,6 +53,7 @@ here" rather than "do something different here."
 
 Issue: thread a config-sourced `exclude_patterns` list into `get_untracked_files()`.
 
+<!-- ll-audience-ok: worked example pinned to real little-loops source; test_caller_suitability_gate.py drift-guards the cited seam -->
 `ll-code` returns one production caller, `scripts/little_loops/git_operations.py:413`:
 
 ```python
@@ -68,6 +69,7 @@ def suggest_gitignore_patterns(
 
 Both conditions fire. Correct output:
 
+<!-- ll-audience-ok: worked example pinned to real little-loops source; test_caller_suitability_gate.py drift-guards the cited seam -->
 ```markdown
 ### Dependent Files (Callers/Importers)
 
@@ -84,6 +86,7 @@ Both conditions fire. Correct output:
   callers
 ```
 
+<!-- ll-audience-ok: worked example pinned to real little-loops source; test_caller_suitability_gate.py drift-guards the cited seam -->
 The failure this prevents: `- Update scripts/little_loops/git_operations.py:413 — adjust call to
 get_untracked_files()`, an edit to a line that should not change.
 

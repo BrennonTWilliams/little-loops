@@ -226,7 +226,7 @@ Record the provider and freshness that served the seeds (`ll-code --json status`
 reader cannot otherwise tell an index-accelerated refine from a grep-fallback one,
 and the two are not equally trustworthy. Do **not** put this in the Step 6.5 Session
 Log: that line's format is parsed by `issue_design_timestamp()`
-(`scripts/little_loops/issues/program_design.py:406-427`) and extra text breaks the
+(`little_loops.issues.program_design:issue_design_timestamp`) and extra text breaks the
 Program Design gate's arming.
 
 #### Agent 1: codebase-locator
@@ -470,7 +470,7 @@ produce a design (a one-line config change, a docs fix), do not pad the section
 with prose that will fail the specificity check — instead, in Step 8's output
 report, recommend `program_design_not_applicable: true` as a note for the
 operator. **Never set this frontmatter field directly** — it is a human decision
-(`program_design_gate_active`, `scripts/little_loops/issues/program_design.py:415`),
+(`little_loops.issues.program_design:program_design_gate_active`),
 and a command that can opt itself out of a gate destroys the gate's value.
 
 **Decision Rules** (ENH-3050): emit `### Decision Rules` only when the issue's
@@ -612,7 +612,7 @@ names what must become true and how that is checked, not the edit to make (see
    through `parser.py:parse_args()`; that function owns every other flag today"]
 2. [Coverage constraint — e.g., "Flag parsing is covered by a test alongside
    `test_parser.py:TestFlagParsing`, which holds the existing contract"]
-3. [Verification — e.g., "`python -m pytest scripts/tests/test_parser.py -v` passes"]
+3. [Verification — e.g., "`pytest tests/test_parser.py -v` passes"]
 ```
 
 Use imperative sequencing only where the order is genuinely forced (a migration
@@ -865,7 +865,7 @@ Extract all H2 sections from the issue file and catalog their content:
 - Sections with meaningful content (>2 lines, not placeholder text like "TBD" or "N/A")
 - Sections that are empty or contain only boilerplate
 
-Use the H2 extraction pattern from `scripts/little_loops/issue_history/doc_synthesis.py:_extract_section()`:
+Use the H2 extraction pattern from `little_loops.issue_history.doc_synthesis:_extract_section()`:
 ```python
 # re.search(r"^##\s+heading", content, re.MULTILINE) then slice to next ##
 ```
@@ -876,7 +876,7 @@ For each section type, verify against current codebase state:
 
 **Integration Map checks:**
 - Referenced files: do they exist on disk? Missing = high-priority gap.
-- Stale anchor references: a `file:N`-style anchor resolves when `scripts/little_loops/issues/anchors.py:resolve_anchor()` returns non-`None` **and** `N` is within the file's line count — `resolve_anchor()` clamps out-of-range line numbers to EOF, so a number past the end still returns an anchor. (`anchor_sweep.py:_sweep_file()` applies this same rule in bulk, but its `skipped_refs` is an aggregate counter with no per-reference detail — use `resolve_anchor()` when you need to know *which* reference went stale.)
+- Stale anchor references: a `file:N`-style anchor resolves when `little_loops.issues.anchors:resolve_anchor()` returns non-`None` **and** `N` is within the file's line count — `resolve_anchor()` clamps out-of-range line numbers to EOF, so a number past the end still returns an anchor. (`anchor_sweep.py:_sweep_file()` applies this same rule in bulk, but its `skipped_refs` is an aggregate counter with no per-reference detail — use `resolve_anchor()` when you need to know *which* reference went stale.)
 - Missing callers: are there known callers of modified code not listed?
 
 **Proposed Solution / Implementation Steps:**
@@ -888,7 +888,7 @@ For each section type, verify against current codebase state:
 
 #### 3. Score Gaps by Impact
 
-Adopt the `"critical"/"high"/"medium"/"low"` priority model from `scripts/little_loops/issue_history/models.py:Gap`:
+Adopt the `"critical"/"high"/"medium"/"low"` priority model from `little_loops.issue_history.models:Gap`:
 
 | Gap Type | Priority |
 |----------|----------|
@@ -931,7 +931,7 @@ For each approved gap, use the Edit tool with append-only changes:
 3. **Do NOT** replace any existing text block with more than 2 meaningful lines
 4. **Do NOT** remove any existing content under any circumstance
 
-**Gap-analysis and max_refine_count**: Gap-analysis runs (`--gap-analysis`) do NOT count against `max_refine_count` — they are additive-only, non-destructive, and designed for repeated iterative use. Only full-rewrite passes (`--full-rewrite` or the default non-flag mode) consume the refinement budget. This exemption is implemented via a discriminated Session Log command string, `GAP_REFINE_COMMAND` (`/ll:refine-issue:gap-analysis`, defined in `scripts/little_loops/session_log.py`) — see Step 6.5.
+**Gap-analysis and max_refine_count**: Gap-analysis runs (`--gap-analysis`) do NOT count against `max_refine_count` — they are additive-only, non-destructive, and designed for repeated iterative use. Only full-rewrite passes (`--full-rewrite` or the default non-flag mode) consume the refinement budget. This exemption is implemented via a discriminated Session Log command string, `GAP_REFINE_COMMAND` (`/ll:refine-issue:gap-analysis`, defined in `little_loops.session_log`) — see Step 6.5.
 
 #### 6. Gap-Analysis Output
 
@@ -975,9 +975,9 @@ Run /ll:ready-issue [ISSUE-ID] to validate.
 
 After updating the issue, use the Bash tool to append a session log entry —
 **before** the Prose/Program Design Gate below, since
-`program_design_gate_active()` (`scripts/little_loops/issues/program_design.py:415`)
+`program_design_gate_active()` (`little_loops.issues.program_design`)
 derives arming from the most recent `/ll:refine-issue` Session Log entry
-(`issue_design_timestamp()`, `:391-406`). Checking the gate before this append
+(`issue_design_timestamp()`, same module). Checking the gate before this append
 would read a grandfathered issue as still grandfathered and declare success
 without ever having written a design — the exact bug this ordering exists to
 prevent. Do not move this append back below the gate check.

@@ -34,7 +34,7 @@ ll-learning-tests check --stale-aware "<target>"
 - Exit 0 → proven and fresh (count toward M proven)
 - Exit 1 → missing, stale, or refuted (count toward K unproven)
 
-This uses the stale-aware gate from `scripts/little_loops/learning_tests/gate.py` (ENH-2208) — do **not** use `ll-learning-tests check` without `--stale-aware`, which would bypass the staleness threshold.
+This uses the stale-aware gate from `little_loops.learning_tests.gate` (ENH-2208) — do **not** use `ll-learning-tests check` without `--stale-aware`, which would bypass the staleness threshold.
 
 ### 3. Write Frontmatter with Union-Merge
 
@@ -59,6 +59,6 @@ Output one of these summary lines before the Phase 10 report:
 ## Implementation Note
 
 The extraction logic is also available as a callable Python module at
-`scripts/little_loops/learning_tests/extractor.py` (`extract_learning_targets(issue_text)`),
+`little_loops.learning_tests.extractor` (`extract_learning_targets(issue_text)`),
 which ENH-2210 imports directly for sprint pre-flight. Within this skill, Claude
 performs the equivalent analysis inline from the issue text already in context.

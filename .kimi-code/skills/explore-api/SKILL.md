@@ -38,7 +38,7 @@ Run when you need to understand how an external API, SDK, or library actually be
 - Confirming the precise return type of a stdlib function
 - Building a shared knowledge base so future agents can skip re-discovery (via `ll-learning-tests check "<target>"`)
 
-Do **not** use this skill for testing your own project code — that is what `scripts/tests/` is for. This skill is for external-system exploration only.
+Do **not** use this skill for testing your own project code — that is what your project's own test suite is for. This skill is for external-system exploration only.
 
 ## Arguments
 
@@ -85,7 +85,7 @@ Repeatable-flag convention: each `--assume "<claim>"` token-pair contributes one
 if [[ "$ARGUMENTS" == *"--dangerously-skip-permissions"* ]] || [[ -n "${LL_NON_INTERACTIVE:-}" ]] || [[ -n "${DANGEROUSLY_SKIP_PERMISSIONS:-}" ]]; then AUTO_MODE=true; fi
 ```
 
-`LL_NON_INTERACTIVE` is set unconditionally by every host runner's `build_streaming` for slash-command invocations (`scripts/little_loops/host_runner.py`), so every FSM/loop/`ll-action invoke`-driven call to this skill is `AUTO_MODE=true` without any caller change.
+`LL_NON_INTERACTIVE` is set unconditionally by every host runner's `build_streaming` for slash-command invocations (`little_loops.host_runner`), so every FSM/loop/`ll-action invoke`-driven call to this skill is `AUTO_MODE=true` without any caller change.
 
 ## Compute Slug
 

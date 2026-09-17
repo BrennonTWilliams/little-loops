@@ -122,7 +122,7 @@ Record the provider and freshness that served each graph-assisted check (`ll-cod
 reader cannot otherwise tell an index-accelerated verification from a grep-fallback
 one, and the two are not equally trustworthy. Do **not** put this in the Session Log
 entry (Section 4.5): that line's format is parsed by `issue_design_timestamp()`
-(`scripts/little_loops/issues/program_design.py:406-427`) and extra text breaks the
+(`little_loops.issues.program_design:issue_design_timestamp`) and extra text breaks the
 Program Design gate's arming.
 
 #### B. Verify Against Codebase
