@@ -18,6 +18,12 @@ blocks:
 relates_to:
 - ENH-2814
 - EPIC-3493
+confidence_score: 100
+outcome_confidence: 68
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 0
 ---
 
 # BUG-3499: FSM executor: failure_terminal is False when a cap handler routes to a failure terminal
@@ -155,6 +161,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-17T14:22:29 - `ad0165e0-dbbf-4a81-aec6-2d4b13f95bb6.jsonl`
 - `/ll:wire-issue` - 2026-09-17T06:43:41 - `848ad701-11e3-43ba-8e5b-b86aa9978421.jsonl`
 - `/ll:refine-issue` - 2026-09-17T06:25:28 - `6e94b71a-0dcd-458c-b8a3-312ff9bed181.jsonl`
 - `/ll:format-issue` - 2026-09-17T06:10:54 - `bdd11f79-301a-46b5-9233-83f283efd28d.jsonl`
