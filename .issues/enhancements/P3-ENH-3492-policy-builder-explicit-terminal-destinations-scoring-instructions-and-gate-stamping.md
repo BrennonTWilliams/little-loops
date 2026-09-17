@@ -23,8 +23,7 @@ relates_to:
 - FEAT-3474
 blocks:
 - FEAT-3488
-blocked_by:
-- ENH-3491
+blocked_by: []
 confidence_score: 80
 outcome_confidence: 75
 score_complexity: 10
@@ -106,10 +105,25 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 - No existing test covers confidence-gate stamping in `cmd_policy_builder`; add `test_emitted_confidence_gate_matches_config` to `test_policy_builder_emit.py` following the `test_emitted_grammar_matches_canonical` regex-extract-and-compare pattern (`test_policy_builder_emit.py:68-71`), asserting against `BRConfig(Path.cwd()).commands.confidence_gate`.
 
+- `scripts/tests/test_policy_builder_emit.py:65` (`test_emit_writes_html`) — pre-existing generic leftover-placeholder gate, `assert "/*__" not in html`; any new `/*__CONFIDENCE_GATE_JSON__*/`-style template token must be fully substituted by `cmd_policy_builder` or this test fails independently of the new `test_emitted_confidence_gate_matches_config` [wiring pass finding].
+
 ### Documentation
 _Wiring pass added by `/ll:wire-issue`:_
 
 - `docs/guides/POLICY_ROUTER_GUIDE.md:249-256` ("Reserved names" section) — literally enumerates the current `RESERVED_STATE_NAMES` token sets per mode (e.g. "the generated decision-table pipeline uses `score`, `parse_scores`, `policy_dispatch`, and `failed`..."); must be updated alongside the already-listed `:287-289`/`:350-351`/`:355-361` passages.
+
+- `docs/guides/POLICY_ROUTER_GUIDE.md:412` (Issue Lifecycle "Seeded example" prose) — states the literal value this issue replaces: "once the score clears 85, bounded by `on_max_steps: failed` if the refine/gate cycle never converges"; update to `needs_attention` [wiring pass finding].
+
+- `docs/generalized-fsm-loop.md:1779` — the BUG-2813 rule that a terminal doubling as the loop's `on_max_steps` handler is exempt from the non-terminal-`action` warning; governs whether a builder-emitted `needs_attention` terminal complies with `ll-loop validate`, directly bearing on Acceptance Criterion 2 [wiring pass finding — reference only, verify compliance rather than edit unless the rule's wording needs updating for the new terminal name].
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-17 — based on codebase analysis:_
+
+- Golden fixture pairs under `scripts/tests/fixtures/policy_builder/` are wired independently into three gates (`policy_validator.test.mjs` byte-equality tests, `test_policy_builder_node_gate.py`'s round-trip-validates parametrize list, and `policy_validator.test.mjs`'s `validateBuilderModel` zero-error-diagnostics list) — a new fixture pair need not appear in all three. Precedent: `sample-issue-lifecycle-verification.model.json/.yaml` is wired into the round-trip gate only.
+- `cmd_policy_builder`'s config-to-template stamping uses two coexisting granularities: shared cross-template values go through `artifact_template_kit.py`'s `stamp_page_shell()` (theme/CSS vars); artifact-local values (grammar spec, skill catalog, generator version, inlined core JS) are stamped via direct `str.replace("/*__X_JSON__*/", ...)` calls inside `cmd_policy_builder` itself (`policy_builder.py:99-102`). No existing rule settles which granularity a new `__CONFIDENCE_GATE__` stamp belongs to.
+- The cited test pattern `test_emitted_grammar_matches_canonical` (`test_policy_builder_emit.py:78-116`) extracts the stamped `window.__GRAMMAR_SPEC__` value from rendered HTML via a `window\.__X__\s*=\s*(...)` regex, then asserts field-by-field equality against the canonical Python value computed by the same source function the CLI calls — not byte-equality on the whole placeholder. `test_emitted_confidence_gate_matches_config` should follow the same extract-and-compare shape for a `window.__CONFIDENCE_GATE__` assignment.
+- `RESERVED_STATE_NAMES`'s doc comment (`policy_builder_core.mjs:146-156`) is maintained as a running changelog narrating which serializer emits each added name; prior additions (BUG-3489/BUG-3486) updated it in place rather than replacing it — the new terminal names should extend it the same way.
 
 ## Impact
 
@@ -170,6 +184,19 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Update `docs/guides/POLICY_ROUTER_GUIDE.md:249-256` ("Reserved names" section) — reflect the three new reserved tokens
 
 - Verify `scripts/tests/test_fsm_fragments.py`'s `frontmatter_scores` fragment env-contract assertions to prove `instructions`/`anchors` leave the emitted dimension string format unchanged
+
+- Update `docs/guides/POLICY_ROUTER_GUIDE.md:412` — the Seeded example's `on_max_steps: failed` prose to `needs_attention`
+
+- Verify the new stamped `/*__CONFIDENCE_GATE_JSON__*/`-style placeholder is fully substituted, so `test_policy_builder_emit.py::test_emit_writes_html`'s `assert "/*__" not in html` keeps passing
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-17 — based on codebase analysis:_
+
+- `summarizeTransitions` (`policy_builder_core.mjs:1161-1215`) is a caller of `_emittedVerbs` not previously named in this issue's Call Path; it derives `implementOutcome`, a `verification` classification, and `stepsPerAttempt`/`maxStepsNote` consumed only by the UI's `#transition-summary` display (`policy-router-builder.html.tmpl:1120-1135`, `issue_lifecycle` mode only). Proposed Solution §6 ("Extend ENH-3491's transition summary for the destinations") targets this function; it sits outside `serializeLoopYaml`'s emission path.
+- `_serializeRubric` (`policy_builder_core.mjs:1558-1633`) does not call `_assertNoReservedTokens` today, unlike `_serializeDecisionTable`/`_serializeIssueLifecycle`. Adding `needs_attention` to `RESERVED_STATE_NAMES.rubric` registers it for the non-throwing `_checkReservedTokens`/`validateBuilderModel` UI path only; the throwing defense-in-depth check will not fire for rubric unless `_serializeRubric` also gains its own `_assertNoReservedTokens("rubric", model)` call.
+- `_checkMissingReferences` (`policy_builder_core.mjs:507`) currently requires every rule target/fallback/`goto` target to resolve to a defined `model.outcomes` entry — it has no existing concept of a reference that is legal without being a definition. Proposed Solution §3's reference-vs-definition distinction for the new built-in destinations is new logic for this function, not an extension of an existing branch.
+- The existing convention for a multiline field that may be absent (`_yamlBlockScalar`, `policy_builder_core.mjs:1293-1298`, used at the `model.description` call site) guards emission with `if (model.<field>) { push "<key>: |"; push _yamlBlockScalar(value, indent) }`, omitting the key/body pair entirely when the field is unset rather than emitting an empty block scalar. Proposed Solution §4's `instructions` field should match this shape.
 
 ## Acceptance Criteria
 
@@ -317,6 +344,8 @@ _Added by `/ll:confidence-check` on 2026-09-17_
 **Open** | Created: 2026-09-16 | Priority: P3
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-17T18:46:50 - `291797e2-08f6-425b-9547-d7555f015908.jsonl`
+- `/ll:refine-issue` - 2026-09-17T18:30:29 - `46c00341-49d5-41d7-9341-4caa93d77adc.jsonl`
 - `/ll:confidence-check` - 2026-09-17T06:34:34 - `848ad701-11e3-43ba-8e5b-b86aa9978421.jsonl`
 - `/ll:verify-issues` - 2026-09-17T06:28:31 - `9b9f3eca-ed5d-4fd7-a99d-217cb278def3.jsonl`
 - manual review - 2026-09-17 - executor probe showed cap-routed `failure_terminal` is False; filed BUG-3499 and added to `depends_on`; max-steps AC asserts `terminated_by` now, `failure_terminal` after BUG-3499; rubric `on_max_steps` is an added line in the diff-shape AC
