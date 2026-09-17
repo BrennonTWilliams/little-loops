@@ -30,6 +30,7 @@ score_complexity: 10
 score_test_coverage: 25
 score_ambiguity: 22
 score_change_surface: 18
+verify_verdict: VALID
 ---
 
 # ENH-3492: Policy builder explicit terminal destinations, scoring instructions, and gate stamping
@@ -437,6 +438,24 @@ reaches the failure terminal; action errors still route to `failed`) in Proposed
 retired the stale STOP confidence-check verdict below — both dependencies it named (ENH-3491,
 BUG-3499) are now `done`.
 
+_Seventh `/ll:verify-issues` pass — 2026-09-17:_
+
+Verdict: **VALID**. No commits touched any cited file (`policy_builder_core.mjs`,
+`policy-router-builder.html.tmpl`, `cli/artifact/policy_builder.py`, `fsm/executor.py`,
+`docs/reference/CLI.md`, `docs/guides/POLICY_ROUTER_GUIDE.md`) between the prior pass
+(`aa2ef1015`/`ee8978dc2`) and this one. Re-confirmed by direct read, all citations exact:
+`_serializeIssueLifecycle` (`:1698`), `on_max_steps: failed` (`:1727`), `done`/`failed`
+terminals (`:1760-1766`), `_outcomeStateLines` (`:1399`), `_doneStateName` (`:1445`),
+`_serializeDecisionTable` (`:1453`), `_serializeRubric` (`:1558`, still lacking
+`_assertNoReservedTokens` per §3's proposed change), `_emittedVerbs` (`:1664`),
+transition-kind `<select>` literals (`:604,747`), `FSMExecutor._finish`'s widened
+`terminated_by in ("terminal", "max_steps", "max_iterations_reached")` guard, CLI.md:5083,
+POLICY_ROUTER_GUIDE.md:378-379/383-389/412. Dependency backlinks consistent:
+`depends_on: [BUG-3486, BUG-3499]` both done with matching `blocks:` entries;
+`blocked_by: []`; `blocks: [FEAT-3488]`/`FEAT-3488.blocked_by` includes `ENH-3492`. No
+DEP_ISSUES. `ll-verify-evidence --json`: `ok: true`, 0 findings. Decisions log: no active
+required rules. Proposal-vs-code consequence check (B6): no new issue.
+
 _Sixth review pass (manual, pre-implementation) — 2026-09-17:_
 
 Verdict: ready after the corrections applied in this pass. Verified against the working tree:
@@ -481,6 +500,7 @@ _Added by `/ll:confidence-check` on 2026-09-17; STOP verdict below is stale as o
 **Open** | Created: 2026-09-16 | Priority: P3
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-17T19:20:20 - `db7e2ee5-b919-46a0-b998-938b24125dfa.jsonl`
 - manual review - 2026-09-17 - pre-implementation pass: fixed `_emittedDestinations` (nonexistent) and template `<select>` (`:604,747`) citations; specified action-less outcomes with new kinds; required rubric `_assertNoReservedTokens`; made §6 summary changes concrete; `$${` round-trip test; `final_state`-only distinction; excluded seed-from-stamp.
 - manual review - 2026-09-17 - resolved four review gaps: restricted new transition kinds/destinations to lifecycle mode (reject in rubric/decision_table); split dispatch-destination emission from required-terminal-block emission so `on_max_steps` alone adds no dispatch route; specified literal-text runtime escaping for scoring instructions/anchors with an `InterpolationError` regression test; added `renderFallback()` select/rerender/reopen coverage. Pinned action-before-terminal behavior; retired stale STOP confidence verdict (ENH-3491/BUG-3499 both done).
 - `/ll:verify-issues` - 2026-09-17T18:57:38 - `64b082f5-b4f8-409b-a5d1-79e44b8a0152.jsonl`
