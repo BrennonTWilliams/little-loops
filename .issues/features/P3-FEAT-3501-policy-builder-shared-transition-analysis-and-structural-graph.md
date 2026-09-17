@@ -65,6 +65,17 @@ Lifecycle policies can author goto chains and rescore feedback that the prose su
 
 `cmd_policy_builder` generates the self-contained page with the embedded core and template. In that page: lifecycle summary render site -> `summarizeTransitions(model)` -> `analyzeTransitions(model)` -> `_emittedVerbs(model)` / `_dispatchedDestinations(model)` / `_requiredTerminalBlocks(model)` / `_KIND_TO_DESTINATION`
 
+- Concrete anchors: `updatePreview()` (`policy-router-builder.html.tmpl:1178-1233`) calls `summarizeTransitions(model)` at `:1211` inside the `mode === "issue_lifecycle"` branch (`:1210-1232`); `summarizeTransitions` (`policy_builder_core.mjs:1334-1409`) calls `_emittedVerbs(model)` at `:1337` and reads `_KIND_TO_DESTINATION[implementKind]` at `:1348`/`:1350`.
+- `summarizeTransitions` has exactly one caller in this codebase — the template call site above. Confirmed via `ll-code callers-of` (no hits) plus a repo-wide grep; `scripts/tests/js/policy_validator.test.mjs` calls it directly as the unit under test, not as an integration caller.
+- `_emittedVerbs` (`:1923-1947`) and `_dispatchedDestinations` (`:1961-1973`, itself reading `_KIND_TO_DESTINATION` at `:1969`) are the only helpers that currently touch `goto`/terminal transitions. **No existing code traverses `rescore` transitions**: `_emittedVerbs`'s fixed-point loop only follows edges where `transition.kind === "goto"` (`:1938`), so a `rescore` edge is never followed by any function in the file today — `analyzeTransitions`'s rescore-edge handling is new logic, not an extraction of an existing walk.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-17 — based on codebase analysis:_
+
+- `PolicyModel` fields `analyzeTransitions` must walk to build nodes/edges: `rules[].target` and `model.fallback` (dispatch edges — seeded today in `_emittedVerbs`, `policy_builder_core.mjs:1928-1931`), `outcomes[].transition.kind === "goto"` chains (walked today in `_emittedVerbs`'s fixed-point loop, `:1933-1944`, and `summarizeTransitions`'s `chainLenFrom`, `:1371-1380`), and `outcomes[].transition.kind` mapped through `_KIND_TO_DESTINATION` for terminal edges (walked today in `_dispatchedDestinations`, `:1964-1971`). `outcomes[].transition.kind === "rescore"` (feedback edges back to scoring/dispatch) is checked only by `_emittedVerbs`'s inner `goto` test, which `rescore` fails — no existing code follows a `rescore` edge anywhere in the file.
+- `summarizeTransitions`'s private cycle guard is a `Set`-based visited-node guard local to `chainLenFrom` (`policy_builder_core.mjs:1371-1380`, the `seen` parameter), reset to a fresh `Set` per top-level dispatch target (`:1388`) — it bounds recursion within one chain-length computation only, not across targets, and affects no returned field besides `stepsPerAttempt`/`attempts`/`maxStepsNote`.
+
 ## Proposed Solution
 
 - Add `analyzeTransitions(model) -> {nodes, edges, reachableNodeIds, cycles, diagnostics}`. Nodes have stable IDs and kinds (scoring/dispatch/outcome/terminal); edges have source, target, and kind (dispatch/goto/rescore/terminal). Rescore edges return to scoring/dispatch and denote possible subsequent routing, not a predicted next winner. Cycle records contain node IDs and a kind (`goto` vs `rescore_feedback`).
@@ -79,6 +90,20 @@ Lifecycle policies can author goto chains and rescore feedback that the prose su
 - Modify `scripts/little_loops/templates/policy-router-builder.html.tmpl`: graph/cycle presentation in the lifecycle summary area.
 - Tests: `scripts/tests/js/policy_validator.test.mjs` (node:test), `scripts/tests/test_policy_builder_node_gate.py`, `scripts/tests/test_policy_builder_emit.py` golden regeneration.
 - Docs: `docs/guides/POLICY_ROUTER_GUIDE.md` structural-analysis limits.
+
+### Dependent Files (Callers/Importers)
+
+- `scripts/little_loops/templates/policy-router-builder.html.tmpl:1211` — the only caller of `summarizeTransitions(model)` in the codebase (confirmed via `ll-code callers-of`, no hits, plus a repo-wide grep); this is also the insertion point for a new `analyzeTransitions(model)` call feeding the graph panel.
+- `scripts/little_loops/cli/artifact/policy_builder.py` `cmd_policy_builder()` (`:62`, reads/inlines both files at `:101-115`) — no code change needed here, but any new `.mjs` export must remain valid when spliced verbatim into the template's `<script type="module">` block.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-17 — based on codebase analysis:_
+
+- Established convention: this codebase's shape for "shared analysis feeding multiple consumers" is each consumer calling the shared helper directly and independently, never one consumer wrapping another's output — evidence: `summarizeTransitions` (`policy_builder_core.mjs:1337`), `_serializeIssueLifecycle` (`policy_builder_core.mjs:2047`), and the template's own `computeSummary` (`policy-router-builder.html.tmpl:458-459`) each call `_emittedVerbs`/`_dispatchedDestinations` directly rather than through one another.
+- Established convention: `window.PolicyBuilderCore` bridge additions are grouped under a `// <ISSUE-ID> (<short description>)` comment naming every new export added, in chronological order — evidence: `policy_builder_core.mjs:2334-2375` (`// FEAT-3474`, `// ENH-3492`, `// BUG-3489`, `// ENH-3491` groupings).
+- No existing JS code in this codebase defines a typed node/edge graph structure — searched repo-wide across `*.js`/`*.mjs`; the only hit was vendored `htmx.js` DOM-node references, not a data graph. Nearest structural precedent is Python: `dependency_graph.py`'s `DependencyGraph` dataclass (parallel adjacency dicts `blocked_by`/`blocks`/`depends_on_edges`) and its `detect_cycles()` (three-color DFS unioning two edge-set kinds to distinguish cycle kinds — `dependency_graph.py:380-432`), and `fsm/validation/reachability.py`'s BFS-with-visited-set (`_dominated_by_any`, `:303-350`) which computes neighbors on the fly rather than via a precomputed adjacency map. Cross-language shape references only, nothing directly importable.
+- Existing `summarizeTransitions` tests assert individual return fields (`.verification`, `.stopsAfterImplement`, `.stepsPerAttempt`) rather than a full-object deep-equal snapshot — evidence: `scripts/tests/js/policy_validator.test.mjs:1039-1050` (goto-cycle test), `:1005` (unreachable-verify test). This codebase's only full-object snapshot convention is a golden-file fixture compare, used for `serializeLoopYaml` output (`policy_validator.test.mjs:94-98`), not for `summarizeTransitions`.
 
 ## Implementation Steps
 
@@ -153,5 +178,6 @@ contract's limits, closing the Integration Map's unenforced Docs point.
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-17T21:38:23 - `c96a075b-f0e6-4219-b95e-97d676bc5f62.jsonl`
 - `/ll:verify-issues` - 2026-09-17T21:31:46 - `270c2766-2f75-4410-a3ba-53dfe4b6f1e8.jsonl`
 - `/ll:format-issue` - 2026-09-17T21:24:30 - `fabca22b-468e-4dd5-8426-9cc105e3ce12.jsonl`
