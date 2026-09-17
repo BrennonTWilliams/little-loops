@@ -51,15 +51,15 @@ Expected Behavior leaves the `allowed-tools` static-glob resolution as an open d
 
 > **Selected:** Option A — scores 10/12 vs. Option B's 4/12; satisfies AC3 out-of-the-box for any consuming-project layout with no new mechanism, and the `**/x/**` glob token is already idiomatic in this codebase (scan/exclude patterns) even though this is its first use in an `allowed-tools` grant.
 
-**Option B**: Keep a project-specific static glob and document that consuming projects whose resolved `project.test_dir` differs from what ships by default must override the grant themselves via a project-local Claude Code settings override (not currently a checked-in file in this repo), since Claude Code's `allowed-tools` frontmatter cannot itself be dynamically parameterized by a config value resolved at skill-run time.
-
 **Recommended**: Option A — it satisfies Acceptance Criterion 3 ("`allowed-tools` still restricts writes to the spike directory in a `src/` + `tests/` project") for any consuming-project layout without requiring the user to configure anything first, whereas Option B pushes a manual setup burden onto every consuming project and has no existing mechanism in this repo to model it on.
+
+**Option B**: Keep a project-specific static glob and document that consuming projects whose resolved `project.test_dir` differs from what ships by default must override the grant themselves via a project-local Claude Code settings override (not currently a checked-in file in this repo), since Claude Code's `allowed-tools` frontmatter cannot itself be dynamically parameterized by a config value resolved at skill-run time.
 
 ### Decision Rationale
 
 **Selected:** Option A — widen `allowed-tools` to `Write(**/spike/**)` / `Edit(**/spike/**)`.
 
-**Reasoning:** Option A satisfies AC3 for any consuming-project layout with zero per-project setup, reusing a glob token (`**/x/**`) already idiomatic in this codebase's scan/exclude configs even though this is its first appearance in a permission grant. Option B does not actually resolve the issue's core defect — it keeps a hardcoded, project-specific literal and requires every consuming project with a non-default `test_dir` to manually edit an uncommitted `.claude/settings.json` before the skill works, which contradicts this codebase's documented zero-config design goal (`terminal_adapter.py`, ENH-2317, FEAT-1931) and has no existing precedent to model — no skill or command doc in this repo instructs users to hand-edit permissions for a skill to function.
+**Reasoning:** Option A satisfies AC3 for any consuming-project layout with zero per-project setup, reusing a glob token (`**/x/**`) already idiomatic in this codebase's scan/exclude configs even though this is its first appearance in a permission grant. Option B does not actually resolve the issue's core defect — it keeps a hardcoded, project-specific literal and requires every consuming project with a non-default `test_dir` to manually edit an uncommitted `.claude/settings*.json` before the skill works, which contradicts this codebase's documented zero-config design goal (`terminal_adapter.py`, ENH-2317, FEAT-1931) and has no existing precedent to model — no skill or command doc in this repo instructs users to hand-edit permissions for a skill to function.
 
 | Dimension | Option A | Option B |
 |---|---|---|
@@ -72,7 +72,7 @@ Expected Behavior leaves the `allowed-tools` static-glob resolution as an open d
 **Key evidence:**
 - No skill or command in this repo uses a prefix-free `Write(**/foo/**)`/`Edit(**/foo/**)` grant today, but the `**/x/**` shape itself is an established convention for scan/exclude patterns (`scripts/little_loops/config/features.py:346`, `config-schema.json:69,826`, every `templates/*.json` project type, `.ll/ll-config.json:20-24`) and is documented in-repo as matching any depth including the root (`docs/claude-code/memory.md:201-206`).
 - The collision risk noted for Option A — `**/spike/**` could in principle match an unrelated top-level `spike/` directory a consuming-project user creates, or a `node_modules/spike/**` path — is real but narrow (bounded to directories literally named `spike`) and has no existing precedent either confirming or ruling it out, since no prior `allowed-tools` grant has used this shape. Because `allowed-tools` only pre-approves (it never blocks; see Expected Behavior), the over-grant is low-stakes: it saves a prompt on a path the model should not be writing to anyway, and the regression-guard test remains the real isolation check.
-- No committed `.claude/settings.json`/`settings.local.json` exists anywhere in this repo (`.gitignore:59` keeps it out of version control), and the only "hand-edit settings.json" precedent in little-loops' own docs (`README.md:90`) is a narrowly-scoped plugin-install fallback, not a skill-functionality permission-scoping mechanism — undermining Option B's premise that consuming projects have an established, documented path to do this.
+- No committed `.claude/settings*.json` file exists anywhere in this repo (`.gitignore:59` keeps it out of version control), and the only "hand-edit settings.json" precedent in little-loops' own docs (`README.md:90`) is a narrowly-scoped plugin-install fallback, not a skill-functionality permission-scoping mechanism — undermining Option B's premise that consuming projects have an established, documented path to do this.
 - Every other instance of permission entries entering `.claude/settings*.json` in this codebase is automation-written by `ll-init`/`ll-adapt` (`docs/guides/GETTING_STARTED.md:84,103`, `docs/reference/CLI.md:52`, FEAT-749, ENH-1846, BUG-2042), never doc-instructed manual user action — Option B would be the first case of the latter.
 
 ## Integration Map
@@ -259,6 +259,7 @@ _Added 2026-09-17 by pre-implementation review; each claim verified against the 
 
 
 ## Session Log
+- `/ll:format-issue` - 2026-09-17T02:07:43 - `48770689-552c-4834-aa6a-4bcbb2a0f9c6.jsonl`
 - `/ll:confidence-check` - 2026-09-17T01:41:57 - `43a75e43-d004-403c-835f-a3d1eaae553d.jsonl`
 - `/ll:wire-issue` - 2026-09-17T01:12:06 - `86a9c74b-9864-4b0f-956c-f789b6eb77ab.jsonl`
 - `/ll:decide-issue` - 2026-09-17T00:55:55 - `8e7ed6a7-45f1-4830-9b8d-ec6405748b84.jsonl`
