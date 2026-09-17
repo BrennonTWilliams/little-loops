@@ -2522,7 +2522,9 @@ class TestPolicyRouterRealExecution:
     """BUG-3489: execute the actual policy-router fragment actions (real
     interpolation + real subprocess), not just assert on their YAML shape."""
 
-    LIB_PATH = Path(__file__).parent.parent / "little_loops" / "loops" / "lib" / "policy-router.yaml"
+    LIB_PATH = (
+        Path(__file__).parent.parent / "little_loops" / "loops" / "lib" / "policy-router.yaml"
+    )
 
     @staticmethod
     def _fragments() -> dict:

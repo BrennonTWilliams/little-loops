@@ -2816,7 +2816,7 @@ class TestGeneratedPolicyRouterFailureRouting:
     outcome action — not just that the YAML shape looks right."""
 
     @staticmethod
-    def _load(fixture_name: str) -> FSMLoop:
+    def _load(fixture_name: str, run_dir: Path) -> FSMLoop:
         import yaml
 
         from little_loops.fsm.fragments import resolve_fragments
@@ -2825,14 +2825,22 @@ class TestGeneratedPolicyRouterFailureRouting:
         loops_dir = Path(__file__).parent.parent / "little_loops" / "loops"
         data = yaml.safe_load((fixtures_dir / fixture_name).read_text())
         resolved = resolve_fragments(data, loops_dir)
-        return FSMLoop.from_dict(resolved)
+        loop = FSMLoop.from_dict(resolved)
+        # policy_table_dispatch/policy_parse_scores interpolate ${context.run_dir}
+        # before the (mocked) action runner ever sees the action string.
+        loop.context["run_dir"] = str(run_dir)
+        return loop
 
-    def test_decision_table_dispatch_nonzero_exit_reaches_failed_no_outcome_runs(self) -> None:
-        loop = self._load("sample-decision-table.yaml")
+    def test_decision_table_dispatch_nonzero_exit_reaches_failed_no_outcome_runs(
+        self, tmp_path: Path
+    ) -> None:
+        loop = self._load("sample-decision-table.yaml", tmp_path)
         runner = MockActionRunner()
         runner.set_result("Evaluate artifact.md", exit_code=0, output="scored")
         runner.set_result("policy_parse_scores", exit_code=0)
-        runner.set_result("policy_table_dispatch", exit_code=1, output="", stderr="broken")
+        runner.set_result(
+            "from little_loops.fsm.policy_rules import", exit_code=1, output="", stderr="broken"
+        )
 
         executor = FSMExecutor(loop, action_runner=runner)
         result = executor.run()
@@ -2844,12 +2852,14 @@ class TestGeneratedPolicyRouterFailureRouting:
         assert not any("/ll:commit" in call for call in runner.calls)
         assert not any("comprehensive repairs" in call for call in runner.calls)
 
-    def test_decision_table_dispatch_action_exception_reaches_failed_via_on_error(self) -> None:
-        loop = self._load("sample-decision-table.yaml")
+    def test_decision_table_dispatch_action_exception_reaches_failed_via_on_error(
+        self, tmp_path: Path
+    ) -> None:
+        loop = self._load("sample-decision-table.yaml", tmp_path)
 
         class _RaisingRunner(MockActionRunner):
             def run(self, action: str, *args: Any, **kwargs: Any) -> ActionResult:
-                if "policy_table_dispatch" in action:
+                if "from little_loops.fsm.policy_rules import" in action:
                     raise RuntimeError("simulated action-runner exception")
                 return super().run(action, *args, **kwargs)
 
@@ -2864,14 +2874,18 @@ class TestGeneratedPolicyRouterFailureRouting:
         assert result.final_state == "failed"
         assert result.failure_terminal is True
 
-    def test_decision_table_success_path_still_reaches_ordinary_outcome(self) -> None:
+    def test_decision_table_success_path_still_reaches_ordinary_outcome(
+        self, tmp_path: Path
+    ) -> None:
         """Ordinary success and unmatched-token fallback still work after the
         failure-routing additions."""
-        loop = self._load("sample-decision-table.yaml")
+        loop = self._load("sample-decision-table.yaml", tmp_path)
         runner = MockActionRunner()
         runner.set_result("Evaluate artifact.md", exit_code=0)
         runner.set_result("policy_parse_scores", exit_code=0)
-        runner.set_result("policy_table_dispatch", exit_code=0, output="escalate")
+        runner.set_result(
+            "from little_loops.fsm.policy_rules import", exit_code=0, output="escalate"
+        )
 
         executor = FSMExecutor(loop, action_runner=runner)
         result = executor.run()
@@ -2881,11 +2895,15 @@ class TestGeneratedPolicyRouterFailureRouting:
         assert result.failure_terminal is False
         assert any("SECURITY ESCALATION" in call for call in runner.calls)
 
-    def test_issue_lifecycle_dispatch_nonzero_exit_reaches_failed_no_verb_runs(self) -> None:
-        loop = self._load("sample-issue-lifecycle.yaml")
+    def test_issue_lifecycle_dispatch_nonzero_exit_reaches_failed_no_verb_runs(
+        self, tmp_path: Path
+    ) -> None:
+        loop = self._load("sample-issue-lifecycle.yaml", tmp_path)
         runner = MockActionRunner()
         runner.set_result("frontmatter_scores", exit_code=0)
-        runner.set_result("policy_table_dispatch", exit_code=1, output="", stderr="broken")
+        runner.set_result(
+            "from little_loops.fsm.policy_rules import", exit_code=1, output="", stderr="broken"
+        )
 
         executor = FSMExecutor(loop, action_runner=runner, working_dir=Path.cwd())
         result = executor.run()

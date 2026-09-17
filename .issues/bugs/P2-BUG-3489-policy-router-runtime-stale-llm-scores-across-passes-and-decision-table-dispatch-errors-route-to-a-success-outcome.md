@@ -6,10 +6,11 @@ type: BUG
 title: 'Policy-router runtime: stale LLM scores across passes and decision-table dispatch
   errors route to a success outcome'
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-16'
 captured_at: '2026-09-16T22:14:21Z'
+completed_at: '2026-09-17T01:22:39Z'
 labels:
 - policy-builder
 - BUG-3486
@@ -149,6 +150,23 @@ _Added by `/ll:refine-issue` — 2026-09-16 — based on codebase analysis:_
 
 ## Program Design
 
+### Deviations
+
+- 2026-09-17: Adding `on_error: failed` to `policy_dispatch` (both generated modes
+  and `policy-refine.yaml`) alongside its `route:` table tripped an existing
+  structural-validation warning (`_validate_state_routing`: "Both shorthand
+  routing ... and full route table defined") that the design didn't anticipate.
+  The warning's premise — that a route table makes shorthand routing entirely
+  dead — is true for `on_yes`/`on_no`/`on_partial`/`on_blocked`/`extra_routes`,
+  but not for `on_error`: `_run_action_or_route()` consults `on_error`
+  independently of `route:` for action-runner exceptions, so the two are
+  legitimately non-redundant on a dispatch state. Narrowed
+  `_validate_state_routing` (`scripts/little_loops/fsm/validation/structural_rules.py`)
+  to exclude `on_error` from the shorthand-vs-route conflict check, updated its
+  message text accordingly, and adjusted the golden-fixture `on_error`/`route:`
+  combination that depends on this — required for the issue's own "zero
+  warnings on the golden issue-lifecycle fixture" AC to keep passing.
+
 ### Types
 
 No new data types or general scoring framework. Dispatch propagates artifact I/O failures before rule evaluation/publication. The parser gains a pure parsing function and small file-writing entry point; the serializer gains a reserved-namespace check, failure routes, and an explicitly marked failure terminal; the executor's route resolution order changes for one verdict.
@@ -256,6 +274,7 @@ what was wrong and fixed, not an outstanding action item)
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-17T01:21:49 - `716b78b0-d53f-401a-997f-791cc3ac58be.jsonl`
 - `/ll:verify-issues` - 2026-09-17T00:40:00 - `26c67c99-6487-4ec8-97c6-91721df4bcf5.jsonl`
 - `/ll:confidence-check` - 2026-09-16T23:42:38 - `c2d33705-5252-4e88-a51b-055eef4c4dc3.jsonl`
 - `/ll:confidence-check` - 2026-09-16T23:29:28 - `993432ad-a051-4f1f-967b-f26e1cd3e891.jsonl`

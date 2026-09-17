@@ -53,12 +53,19 @@
 #
 #   policy_dispatch:
 #     fragment: policy_table_dispatch
+#     on_error: failed           # catches a routable action-runner exception
 #     route:
 #       implement: implement      # token emitted when rule matches -> implement
 #       repair:    repair
 #       done:      done
 #       _: repair                 # required: catch-all for unrecognized tokens
-#       _error: done              # optional: error fallback
+#       _error: failed            # catches the evaluator `error` verdict (nonzero
+#                                 # exit / timeout) *ahead of* `_` — point it at a
+#                                 # dedicated failure terminal, not a user outcome
+#
+#   failed:
+#     terminal: true
+#     failure: true
 #
 # Score-source agnosticism:
 #   policy_table_dispatch reads per-dimension files from ${context.run_dir}/ regardless
@@ -67,6 +74,12 @@
 #   deterministic shell scorer (e.g. rn-remediate's "ll-issues show --json" path, or
 #   this file's own frontmatter_scores fragment, which encodes an issue's raw YAML
 #   frontmatter — including arbitrary custom fields — with no LLM call).
+#
+#   Scorer exclusivity: exactly one clean-slate scorer (policy_parse_scores or
+#   frontmatter_scores) owns rubric-dim-*.txt / rubric-aggregate.txt per pass. Both
+#   fragments delete every prior rubric-dim-*.txt / rubric-aggregate.txt before writing
+#   new ones, so a caller that mixes a deterministic shell scorer with either fragment
+#   in the same pass loses whichever wrote first.
 
 fragments:
   policy_parse_scores:

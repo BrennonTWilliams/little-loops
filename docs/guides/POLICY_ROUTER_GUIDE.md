@@ -13,6 +13,7 @@
 - [What Is the Policy Router?](#what-is-the-policy-router)
 - [The Rule Table Syntax](#the-rule-table-syntax)
 - [Wiring a Loop with `lib/policy-router.yaml`](#wiring-a-loop-with-libpolicy-routeryaml)
+  - [Failure Routing and Clean-Slate Scoring](#failure-routing-and-clean-slate-scoring)
 - [Visual Builder (greenfield)](#visual-builder-greenfield)
   - [Issue Lifecycle Mode](#issue-lifecycle-mode)
 - [Editing the Table with `ll-loop edit-routes`](#editing-the-table-with-ll-loop-edit-routes)
@@ -156,13 +157,16 @@ states:
     fragment: rubric_score          # LLM scores the subject on each dimension
     capture: scores
     next: parse_scores
+    on_error: failed                # nonzero exit / prompt failure never falls through to parsing
 
   parse_scores:
     fragment: policy_parse_scores   # writes rubric-dim-*.txt to ${context.run_dir}/
     next: policy_dispatch
+    on_error: failed                # unparseable scoring output exits nonzero (see below)
 
   policy_dispatch:
     fragment: policy_table_dispatch # evaluates the table, emits a token
+    on_error: failed                # a routable action-runner exception (not an exit code)
     route:
       escalate: escalate
       deep_repair: deep_repair
@@ -170,13 +174,22 @@ states:
       rethink: rethink
       done: done
       _: deep_repair                # required: catch-all for unmatched / unrecognized tokens
-      _error: done                  # optional: error fallback
+      _error: failed                # the evaluator `error` verdict (nonzero exit / timeout)
+
+  failed:
+    terminal: true
+    failure: true
 ```
 
 Two routing safety nets live on the dispatch state's `route:` map: `_:` catches an empty token
 (no rule matched and no `* ->` catch-all) or any token not listed as a key, and `_error:`
-catches an evaluator failure. Always provide `_:` — without it, a non-matching score set
-dead-ends.
+catches the evaluator's `error` verdict (dispatch exited nonzero or timed out). Always provide
+`_:` — without it, a non-matching score set dead-ends. `_error` is consulted **ahead of** `_`
+for the `error` verdict, so route it to a dedicated failure terminal (`failed` above) rather than
+a user outcome — a nonzero exit means dispatch never evaluated the rule table, so any outcome it
+"selected" is baseless. `on_error` is a separate, non-redundant safety net: it catches an
+exception raised by the action runner itself (not an exit code), and fires whether or not a
+`route:` table is also present. Provide both on every scoring/parsing/dispatch state, as above.
 
 **Tracing a match.** Suppose `score` produces `clarity=92, completeness=78, feasibility=85,
 security=88, aggregate=86`. The dispatcher walks the table:
@@ -194,6 +207,53 @@ fires for a given score set. `ll-loop simulate policy-refine` can trace FSM stat
 connectivity without running real LLM calls, but it cannot evaluate policy rules (shell
 actions are not executed in simulation) — to confirm a match for real, run the loop with
 a real or mocked artifact.
+
+### Failure Routing and Clean-Slate Scoring
+
+- **Clean-slate scoring.** `policy_parse_scores` clears `rubric-dim-*.txt` and
+  `rubric-aggregate.txt` in `${context.run_dir}/` at the start of every invocation, before
+  parsing the new LLM output. A loop that loops back through `score` (e.g. `light_repair`/
+  `deep_repair` routing to `next: score`) reuses the same run directory across passes; without
+  clearing first, a dimension the LLM emitted on pass one but omitted on pass two would leave
+  the stale pass-one score in play. Other run artifacts (e.g. `policy-action.txt`) are
+  untouched. `frontmatter_scores` (Issue Lifecycle Mode) already behaves this way.
+- **Exactly one clean-slate scorer per pass.** `policy_parse_scores` and `frontmatter_scores`
+  both own `rubric-dim-*.txt` / `rubric-aggregate.txt`. If you mix a deterministic shell scorer
+  writing those files directly with either fragment in the same pass, whichever writes last
+  wins — don't combine them.
+- **Partial scoring is valid; wholly unparseable output is not.** An omitted `DIMENSION:` line
+  or an omitted `AGGREGATE:` line simply writes no file for that key — the missing-dimension
+  `!=` semantics apply, exactly as if a shell scorer never wrote that dimension. But output with
+  **neither** a recognized `AGGREGATE:` nor any recognized `DIMENSION:` line is a hard failure:
+  `policy_parse_scores` exits nonzero rather than fabricating `AGGREGATE: 0` (a fabricated `0`
+  would let an `aggregate:<N` rule fire on evidence the scorer never produced). Route this
+  through `on_error` to a failure terminal, as shown above — a single LLM formatting slip then
+  ends the run instead of silently limping on into a repair/re-score loop with no real evidence
+  behind it. If you want automated tolerance for an occasional bad response, opt in explicitly
+  with the executor's per-state `max_retries` / `on_retry_exhausted` on `score` (or
+  `parse_scores`) — that bounds the retry visibly instead of hiding it behind fabricated
+  evidence.
+- **Dispatch aborts on an artifact read failure, not just a missing one.** An entry absent from
+  `${context.run_dir}/`'s directory listing (an omitted dimension) is valid missing evidence.
+  A file that's *discovered* by the listing but can't be read (permissions error, dangling
+  symlink, or the run directory itself vanishing) is an I/O failure — `policy_table_dispatch`
+  aborts with a nonzero exit before evaluating any rule or publishing a new `policy-action.txt`,
+  rather than matching a catch-all rule against an incomplete score map.
+- **`_error` resolves ahead of `_` for the `error` verdict.** `FSMExecutor._route()` checks
+  `route.error` (your `_error:` key) before `route.default` (`_:`) whenever the evaluator
+  returns `error` — which is what a nonzero dispatch exit or timeout becomes. This means
+  `_error:` is genuinely reachable even when `_:` is also declared; point it at a dedicated
+  failure terminal, not a user outcome. The one deliberate asymmetry: the `no` verdict's
+  shorthand fallback to `route.error` still resolves *after* `route.default` — `no` is an
+  ordinary verdict whose ordinary fallback is `_`, unlike the dedicated error path.
+- **Reserved names.** The generated decision-table pipeline uses `score`, `parse_scores`,
+  `policy_dispatch`, and `failed` as its own state names (issue-lifecycle mode uses `score`,
+  `policy_dispatch`, `done`, and `failed`); `error` is reserved in both. Every underscore-prefixed
+  token (`_`, `_error`, or any custom `_foo`) is also rejected — `RouteConfig.from_dict()` strips
+  underscore-prefixed keys from explicit verdict routes at runtime, so an authored outcome or
+  rule target starting with `_` would silently vanish rather than route. The Visual Builder
+  rejects these before emission with a diagnostic naming the offending token; hand-written loops
+  should avoid them for the same reason.
 
 ## Visual Builder (greenfield)
 

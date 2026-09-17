@@ -513,6 +513,23 @@ Use `$current` as a target to retry the current state. Define `on_blocked` on an
 
 > **`on_no` → `on_error` fallthrough**: When a `no` verdict arrives and the state defines `on_error` but not `on_no`, the executor routes to `on_error`. Use this to share one recovery branch for both evaluator failures and hard-`no` verdicts.
 
+**Route table resolution order** (`FSMExecutor._route()`, when a `route:` block is present):
+
+1. An explicit `routes[verdict]` entry (including a `_uncertain`-suffixed verdict's own explicit route).
+2. The `_uncertain` base-verdict fallback (BUG-3228): a verdict ending in `_uncertain` with no route of its own falls back to its base verdict's route, resolved via this same order.
+3. `route.error` (`_error:`) — **only** for the `error` verdict itself.
+4. `route.default` (`_:`).
+5. `route.error` again, as a shorthand — **only** for the `no` verdict, and only reached here (after `_:`) because `no` is an ordinary verdict whose ordinary fallback is `_`, unlike `error`.
+
+The practical consequence: `_error:` is reachable for the `error` verdict even when `_:` is also
+declared — point it at a dedicated failure state, not a user outcome, since a route table with
+both keys will send `error` to `_error` and everything else (including an unrecognized token) to
+`_`. This is the opposite of what the ordering looked like before BUG-3489 fixed it; a table
+authored to rely on `_` silently swallowing an `error` verdict now routes that verdict to
+`_error` instead. `on_error:` (shorthand) is a distinct, non-redundant safety net from
+`route.error` — it catches an exception raised by the action runner itself (not an exit code),
+and is consulted regardless of whether a `route:` table is present on the same state.
+
 ### Action Types
 
 | Type | Syntax hint | Default evaluator | Behavior |
