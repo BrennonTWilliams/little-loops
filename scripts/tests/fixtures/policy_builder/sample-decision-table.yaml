@@ -4,7 +4,7 @@ description: |
   serializeLoopYaml() round-trip (FEAT-2301).
 max_steps: 20
 
-on_max_steps: failed
+on_max_steps: needs_attention
 
 import:
   - lib/rubric-router.yaml
@@ -72,5 +72,9 @@ states:
     terminal: true
 
   failed:
+    terminal: true
+    failure: true
+
+  needs_attention:
     terminal: true
     failure: true

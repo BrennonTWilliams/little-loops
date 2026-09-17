@@ -86,6 +86,18 @@ def cmd_policy_builder(args: argparse.Namespace, logger: Logger) -> int:
         catalog = _load_skill_catalog(config.project_root)
         catalog_json = json.dumps(catalog)
 
+        # ENH-3492: stamp the project's confidence-gate thresholds so the
+        # builder can display them alongside authored rule thresholds —
+        # informational only, never used to rewrite saved predicates.
+        gate = config.commands.confidence_gate
+        confidence_gate_json = json.dumps(
+            {
+                "enabled": gate.enabled,
+                "readiness_threshold": gate.readiness_threshold,
+                "outcome_threshold": gate.outcome_threshold,
+            }
+        )
+
         template = (_TEMPLATES_DIR / "policy-router-builder.html.tmpl").read_text()
         core_js = (_TEMPLATES_DIR / "policy_builder_core.mjs").read_text()
 
@@ -99,6 +111,7 @@ def cmd_policy_builder(args: argparse.Namespace, logger: Logger) -> int:
         html = html.replace("/*__GRAMMAR_SPEC_JSON__*/", grammar_json)
         html = html.replace("/*__SKILL_CATALOG_JSON__*/", catalog_json)
         html = html.replace("/*__GENERATOR_VERSION_JSON__*/", json.dumps(__version__))
+        html = html.replace("/*__CONFIDENCE_GATE_JSON__*/", confidence_gate_json)
         html = html.replace("/*__BUILDER_CORE_JS__*/", core_js)
 
         output_dir = Path(args.output) if args.output else Path(config.artifacts.default_output_dir)

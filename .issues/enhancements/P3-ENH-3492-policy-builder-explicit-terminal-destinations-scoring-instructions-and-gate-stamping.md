@@ -6,10 +6,11 @@ type: ENH
 title: Policy builder explicit terminal destinations, scoring instructions, and gate
   stamping
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-16'
 captured_at: '2026-09-16T22:49:50Z'
+completed_at: '2026-09-17T20:22:02Z'
 labels:
 - policy-builder
 decision_needed: false
@@ -149,6 +150,36 @@ _Added by `/ll:refine-issue` — 2026-09-17 — based on codebase analysis:_
 - **Breaking Change**: No
 
 ## Program Design
+
+### Deviations
+
+_Added during implementation — 2026-09-17:_
+
+- **A third validator rule needed the same `on_max_steps`/`on_max_iterations` exemption the
+  sixth review pass verified for two others.** That pass confirmed `needs_attention` trips
+  neither the unreachable-state check (`fsm/validation/_base.py:234`) nor the BUG-2813
+  terminal-action check (`fsm/validation/evaluator_rules.py:42-52`, both already exempt
+  `on_max_steps`/`on_max_iterations`-named terminals). Running `ll-loop validate` against the
+  regenerated golden fixtures surfaced a third rule not covered by that check:
+  `_validate_failure_terminal_action` (`fsm/validation/structural_rules.py`) warns "Failure
+  terminal state has no predecessor state with a diagnostic action" for any failure terminal
+  no state's `next`/`on_error`/route ever names — which every fixture's `needs_attention` now
+  is, since it's referenced only by the loop-level `on_max_steps` field, not a per-state route.
+  This would have broken `test_golden_issue_lifecycle_yaml_validates`'s zero-warnings AC on
+  every model that doesn't also author-reference `needs_attention`. Fixed by adding the same
+  `on_max_steps`/`on_max_iterations` exemption to `_validate_failure_terminal_action`
+  (mirroring `_validate_terminal_action_ok`'s existing one) — the budget exhaustion itself is
+  the diagnostic, so no dedicated predecessor state is required. Covered by three new tests in
+  `test_fsm_validation_structural.py::TestFailureTerminalActionFlagDriven`.
+- **A "goto" transition may not target a built-in destination.** The Program Design's
+  reference-vs-definition distinction (§3) is explicit for rule targets and the fallback;
+  it doesn't address whether a `goto` target (an outcome-to-outcome jump used to continue the
+  verb chain) may point at a destination instead. Implemented as a hard no: `_checkMissingReferences`
+  accepts `LIFECYCLE_DESTINATIONS` names for rule-target/fallback references only, not for `goto`
+  — a destination is never an actionable state to "go to", and allowing it would produce a
+  `next: <destination>` reference with no matching terminal block unless the destination happened
+  to be independently dispatched elsewhere (`_dispatchedDestinations` only tracks rule target,
+  fallback, and a verb's own `transition.kind`, not `goto` targets). Covered by a new test.
 
 ### Types
 
@@ -495,11 +526,88 @@ _Added by `/ll:confidence-check` on 2026-09-17; STOP verdict below is stale as o
 ### Gaps to Address (resolved)
 - ~~`blocked_by: ENH-3491` is unresolved (status `Open`, not `done`/`cancelled`) — the BUG-3051 Dependencies Hard Override forces this verdict regardless of the otherwise-80/100 aggregate. Wait for ENH-3491 to land, or drop it from `blocked_by` if the layout/preset work it depends on is no longer a prerequisite.~~ Resolved: ENH-3491 is `status: done` and BUG-3499 is `status: done`.
 
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-09-17
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/templates/policy_builder_core.mjs`: `LIFECYCLE_DESTINATIONS`
+  (`stopped`/`skipped`/`needs_attention`); `RESERVED_STATE_NAMES` extended (all three in
+  `issue_lifecycle`, `needs_attention` alone in `rubric`/`decision_table`), with a
+  reference-vs-definition exemption in `_assertNoReservedTokens`/`_checkReservedTokens` so a
+  rule target/fallback may reference a destination without redefining it; new
+  `_dispatchedDestinations`/`_requiredTerminalBlocks` helpers; `_outcomeStateLines` gains a
+  `mode` option so `stop`/`skip`/`attention` transition kinds emit `next: <destination>`
+  (even action-less) in `issue_lifecycle` only; `_assertLifecycleOnlyTransitionsAllowed` plus
+  `_checkLifecycleOnlyTransitions`/`_checkActionlessNewTransitionKinds` reject the new kinds
+  outside lifecycle mode and reject an action-less outcome combining one with `actionType: none`;
+  `_serializeIssueLifecycle`/`_serializeDecisionTable`/`_serializeRubric` all route
+  `on_max_steps` to `needs_attention` and emit its terminal block (rubric/decision_table
+  unconditionally — the name is reserved there, reachable only via the budget route);
+  `_serializeRubric` gains its own `_assertNoReservedTokens` guard (§3); optional per-dimension
+  `instructions`/`anchors` feed `_scoreActionBody` (validated by `_checkDimensionMetadata`) with
+  `${...}` escaped via `_escapeInterpolation` before emission; `summarizeTransitions` treats
+  `stop`/`skip`/`attention` on `implement` as stopping (new `stopDestination` field) and its
+  `maxStepsNote` never classifies the budget route as success.
+- `scripts/little_loops/templates/policy-router-builder.html.tmpl`: stamped
+  `window.__CONFIDENCE_GATE__` read into a `renderConfidenceGateInfo()` display; rule-target and
+  fallback `<select>`s offer `LIFECYCLE_DESTINATIONS` in lifecycle mode;
+  `renderLifecycleOutcomes()`'s follow-up `<select>` gains stop/skip/attention options
+  (decision_table/rubric's `renderOutcomes()` selector is untouched — lifecycle-only per AC);
+  `computeSummary`/the transition-summary text include dispatched destinations and the
+  stop/skip/needs_attention distinction; per-dimension scoring-instructions/anchor text inputs
+  added to `renderDimensions()`, hidden in lifecycle mode.
+- `scripts/little_loops/cli/artifact/policy_builder.py`: reads
+  `config.commands.confidence_gate` and stamps `/*__CONFIDENCE_GATE_JSON__*/`.
+- `scripts/little_loops/fsm/validation/structural_rules.py`: `_validate_failure_terminal_action`
+  gains an `on_max_steps`/`on_max_iterations` exemption (see Program Design § Deviations) —
+  a gap surfaced by actually running `ll-loop validate` against the regenerated fixtures, not
+  anticipated by the issue's prior review passes.
+- Regenerated golden fixtures (`sample-decision-table.yaml`, `sample-rubric.yaml`,
+  `sample-issue-lifecycle.yaml`, `sample-issue-lifecycle-verification.yaml`,
+  `golden_policy_router_builder.html`) — diffs limited to the `on_max_steps` line and added
+  terminal blocks, per AC. New fixture pair
+  `sample-issue-lifecycle-destinations.model.json`/`.yaml` exercises a rule targeting a
+  destination directly and a verb's `attention` transition, wired into the Node round-trip gate.
+- Tests: `scripts/tests/js/policy_validator.test.mjs` (+19 new cases: destinations, dispatch/
+  terminal-block split, lifecycle-only rejection, actionless-combo rejection, rubric reserved-
+  token guard, dimension-anchor validation, `${...}` escaping, `summarizeTransitions` additions,
+  goto-to-destination rejection); `test_fsm_executor.py` (max-steps →
+  `needs_attention`/`failure_terminal` case); `test_fsm_validation_structural.py` (3 cases for
+  the new exemption); `test_policy_builder_emit.py` (confidence-gate stamping);
+  `test_policy_builder_node_gate.py` (new fixture in the round-trip parametrize list).
+- Docs: `docs/reference/CLI.md`, `docs/guides/POLICY_ROUTER_GUIDE.md` (Reserved names, Verb
+  Table/destinations, seeded-example `on_max_steps` prose).
+
+### Verification Results
+- Tests: PASS (`scripts/tests/js/*.test.mjs`: 108/108; targeted Python suite — policy_builder/
+  fsm_validation/fsm_executor/fsm_fragments/docs_audience/enh3035 — 1110/1110; full
+  `python -m pytest scripts/tests/ -m "not integration and not conformance"`: 24098 passed, 2
+  pre-existing unrelated failures — `test_verify_evidence.py::test_no_new_unverifiable_evidence`
+  and `test_feat3323_sse_bridge.py` xdist worker crash, both tied to unrelated BUG-3484 and
+  reproducible on a clean checkout of this branch's parent, not caused by this change)
+- Lint: PASS (`ruff check` / `ruff format --check` on every changed Python file)
+- Types: PASS (`mypy` on both changed Python modules)
+- Run: PASS (`ll-loop validate` on every regenerated/new fixture: 0 errors, 0 warnings for the
+  three `.yaml` golden fixtures per the zero-warnings AC; `ll-artifact policy-builder` emits
+  byte-identical to the regenerated golden HTML)
+- Integration: PASS
+
+### Not Fully Covered
+- The Acceptance Criterion covering `renderFallback()` select/rerender/reopen coverage for a
+  saved destination fallback (structural regression only, not exercised end-to-end — no DOM/
+  jsdom harness exists in this codebase for the template's inline UI script, matching the
+  existing `TestFeat2301UsabilityStructural` precedent of regex/string assertions over rendered
+  markup rather than executing it).
+
 ## Status
 
 **Open** | Created: 2026-09-16 | Priority: P3
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-17T20:21:27 - `661efed9-f2d1-44cc-aba2-5fe939c77557.jsonl`
 - `/ll:ready-issue` - 2026-09-17T19:49:11 - `01a17b62-165c-479c-9ac6-5d8e309809e1.jsonl`
 - `/ll:confidence-check` - 2026-09-17T19:29:37 - `067aee00-97de-4da1-af70-f2f7a36f18d0.jsonl`
 - `/ll:verify-issues` - 2026-09-17T19:20:20 - `db7e2ee5-b919-46a0-b998-938b24125dfa.jsonl`

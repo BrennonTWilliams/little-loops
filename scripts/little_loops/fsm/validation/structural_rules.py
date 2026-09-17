@@ -1067,12 +1067,25 @@ def _validate_failure_terminal_action(fsm: FSMLoop) -> list[ValidationError]:
     Severity is WARNING (not ERROR) so that existing loops with bare
     failure terminals continue to load, and test_terminal_only_state_valid
     (which filters by ERROR) passes without modification.
+
+    Exemption (ENH-3492): a terminal named as the loop's ``on_max_steps`` or
+    ``on_max_iterations`` handler is reached via that top-level budget-
+    exhaustion signal, not a per-state ``next``/``on_error`` route — the
+    exhaustion itself is the diagnostic, so no dedicated predecessor state is
+    required. Mirrors the analogous ``on_max_steps``/``on_max_iterations``
+    exemption in ``_validate_terminal_action_ok`` (BUG-2813).
     """
     errors: list[ValidationError] = []
+
+    exempt_terminal_names: set[str] = {
+        name for name in (fsm.on_max_steps, fsm.on_max_iterations) if name is not None
+    }
 
     failure_terminals = fsm.get_failure_states() & fsm.get_terminal_states()
 
     for ft_name in sorted(failure_terminals):
+        if ft_name in exempt_terminal_names:
+            continue
         has_diagnostic_predecessor = False
         for state_name, state in fsm.states.items():
             if state_name == ft_name:

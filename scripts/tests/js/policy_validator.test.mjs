@@ -38,6 +38,9 @@ import {
   applyDraftEdit,
   taskPresets,
   summarizeTransitions,
+  LIFECYCLE_DESTINATIONS,
+  _dispatchedDestinations,
+  _requiredTerminalBlocks,
 } from "../../little_loops/templates/policy_builder_core.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -209,6 +212,14 @@ test("serializeLoopYaml matches golden issue-lifecycle fixture", () => {
   assert.equal(serializeLoopYaml(model), golden);
 });
 
+test("serializeLoopYaml matches golden issue-lifecycle-destinations fixture (ENH-3492)", () => {
+  const model = JSON.parse(
+    readFileSync(join(FIXT, "sample-issue-lifecycle-destinations.model.json"), "utf8")
+  );
+  const golden = readFileSync(join(FIXT, "sample-issue-lifecycle-destinations.yaml"), "utf8");
+  assert.equal(serializeLoopYaml(model), golden);
+});
+
 // BUG-3489: reserved-name guard.
 test("isReservedOutcomeToken rejects the decision_table runtime set", () => {
   for (const tok of ["score", "parse_scores", "policy_dispatch", "failed", "error"]) {
@@ -235,18 +246,28 @@ test("isReservedOutcomeToken accepts an ordinary authored token", () => {
   assert.equal(isReservedOutcomeToken("decision_table", "escalate"), false);
 });
 
-test("RESERVED_STATE_NAMES exposes the runtime sets documented by BUG-3489/BUG-3486", () => {
+test("RESERVED_STATE_NAMES exposes the runtime sets documented by BUG-3489/BUG-3486/ENH-3492", () => {
   assert.deepEqual(
     [...RESERVED_STATE_NAMES.decision_table].sort(),
-    ["error", "failed", "finished", "parse_scores", "policy_dispatch", "score"]
+    ["error", "failed", "finished", "needs_attention", "parse_scores", "policy_dispatch", "score"]
   );
   assert.deepEqual(
     [...RESERVED_STATE_NAMES.issue_lifecycle].sort(),
-    ["done", "error", "failed", "issue_id", "policy_dispatch", "score"]
+    [
+      "done",
+      "error",
+      "failed",
+      "issue_id",
+      "needs_attention",
+      "policy_dispatch",
+      "score",
+      "skipped",
+      "stopped",
+    ]
   );
   assert.deepEqual(
     [...RESERVED_STATE_NAMES.rubric].sort(),
-    ["done", "parse_scores", "route_high", "route_medium", "score"]
+    ["done", "needs_attention", "parse_scores", "route_high", "route_medium", "score"]
   );
 });
 
@@ -286,7 +307,7 @@ test("serializeLoopYaml(decision_table) emits a dedicated failed terminal and _e
   const yaml = serializeLoopYaml(model);
   assert.match(yaml, /\n {2}failed:\n {4}terminal: true\n {4}failure: true/);
   assert.match(yaml, /_error: failed/);
-  assert.match(yaml, /on_max_steps: failed/);
+  assert.match(yaml, /on_max_steps: needs_attention/);
   assert.match(yaml, /\n {2}score:\n[\s\S]*?on_error: failed/);
   assert.match(yaml, /\n {2}parse_scores:\n[\s\S]*?on_error: failed/);
   assert.match(yaml, /\n {2}policy_dispatch:\n[\s\S]*?on_error: failed/);
@@ -1036,4 +1057,199 @@ test("summarizeTransitions reflects only the branch reachable from rules/fallbac
   assert.ok(!summary.steps.includes("prepare"));
   assert.ok(summary.steps.includes("verify"));
   assert.ok(summary.steps.includes("implement"));
+});
+
+// ===========================================================================
+// ENH-3492: explicit terminal destinations, scoring instructions/anchors,
+// gate stamping (transition summary + serializer/validator pieces).
+// ===========================================================================
+
+function _lifecycleModel({ rules, fallback, outcomeOverrides = {} } = {}) {
+  const model = blankModel("issue_lifecycle");
+  model.rules = rules || [{ predicates: [], target: "prepare", isCatchall: true }];
+  model.fallback = fallback || "prepare";
+  for (const [name, patch] of Object.entries(outcomeOverrides)) {
+    const oc = model.outcomes.find((o) => o.name === name);
+    Object.assign(oc, patch);
+  }
+  return model;
+}
+
+test("LIFECYCLE_DESTINATIONS declares stopped/skipped as non-failure and needs_attention as failure", () => {
+  const byName = Object.fromEntries(LIFECYCLE_DESTINATIONS.map((d) => [d.name, d]));
+  assert.equal(byName.stopped.failure, false);
+  assert.equal(byName.skipped.failure, false);
+  assert.equal(byName.needs_attention.failure, true);
+});
+
+test("a rule may target a destination directly: dispatch route + terminal block emitted, failure flag correct", () => {
+  const model = _lifecycleModel({
+    rules: [{ predicates: [], target: "skipped", isCatchall: true }],
+    fallback: "skipped",
+  });
+  assert.deepEqual(_dispatchedDestinations(model), ["skipped"]);
+  const yaml = serializeLoopYaml(model);
+  assert.match(yaml, /\n {6}skipped: skipped\n/);
+  assert.match(yaml, /\n {2}skipped:\n {4}terminal: true\n\n/);
+  assert.doesNotMatch(yaml, /\n {2}skipped:\n {4}terminal: true\n {4}failure: true/);
+});
+
+test("a verb's transition.kind may route straight to stopped/skipped/needs_attention", () => {
+  const model = _lifecycleModel({
+    outcomeOverrides: { prepare: { transition: { kind: "stop" } } },
+  });
+  const yaml = serializeLoopYaml(model);
+  assert.match(yaml, /prepare:\n {4}action_type: slash_command\n {4}action: [^\n]+\n {4}next: stopped\n/);
+  assert.match(yaml, /\n {2}stopped:\n {4}terminal: true\n\n/);
+});
+
+test("on_max_steps alone never adds a needs_attention dispatch route (AC 2)", () => {
+  const model = seedExample("issue_lifecycle");
+  // No authored reference to needs_attention anywhere in the seeded model.
+  assert.deepEqual(_dispatchedDestinations(model), []);
+  assert.deepEqual(_requiredTerminalBlocks(model), ["needs_attention"]);
+  const yaml = serializeLoopYaml(model);
+  assert.doesNotMatch(yaml, /\n {6}needs_attention: needs_attention\n/);
+  assert.match(yaml, /\n {2}needs_attention:\n {4}terminal: true\n {4}failure: true\n\n/);
+  assert.match(yaml, /on_max_steps: needs_attention/);
+});
+
+test("rubric and decision_table reject stop/skip/attention transition kinds, both diagnostically and at emission", () => {
+  for (const mode of ["rubric", "decision_table"]) {
+    const model = seedExample(mode);
+    if (mode === "rubric") {
+      model.outcomes.push({
+        name: "light_repair",
+        actionType: "prompt",
+        body: "x",
+        transition: { kind: "stop" },
+      });
+    } else {
+      model.outcomes[0].transition = { kind: "stop" };
+    }
+    const errors = validateBuilderModel(model).filter((d) => d.severity === "error");
+    assert.ok(
+      errors.some((d) => /only available in issue_lifecycle mode/.test(d.message)),
+      `${mode}: ${JSON.stringify(errors)}`
+    );
+    assert.throws(() => serializeLoopYaml(model), /reserved for issue_lifecycle mode/);
+  }
+});
+
+test("an actionless lifecycle outcome combined with stop/skip/attention is rejected by validateBuilderModel", () => {
+  const model = _lifecycleModel({
+    outcomeOverrides: { prepare: { actionType: "none", body: "", transition: { kind: "skip" } } },
+  });
+  const errors = validateBuilderModel(model).filter((d) => d.severity === "error");
+  assert.ok(errors.some((d) => /combines no action with "skip"/.test(d.message)));
+});
+
+test("the serializer still emits next: <destination> (never bare terminal: true) for an actionless stop/skip/attention outcome", () => {
+  const model = _lifecycleModel({
+    outcomeOverrides: { prepare: { actionType: "none", body: "", transition: { kind: "skip" } } },
+  });
+  const yaml = serializeLoopYaml(model);
+  assert.match(yaml, /prepare:\n {4}next: skipped\n/);
+  assert.doesNotMatch(yaml, /prepare:\n {4}terminal: true\n/);
+});
+
+test("_serializeRubric now guards reserved outcome names (parity with the other two serializers)", () => {
+  const model = seedExample("rubric");
+  model.outcomes = [{ name: "score", actionType: "prompt", body: "x", transition: { kind: "rescore" } }];
+  assert.throws(() => serializeLoopYaml(model), /score/);
+});
+
+test("validateBuilderModel flags dimension anchors: out-of-range score, duplicate score, empty meaning, non-0/100 boolean anchor", () => {
+  const model = seedExample("rubric");
+  model.dimensions[0].anchors = [
+    { score: 150, meaning: "too high" },
+    { score: 10, meaning: "" },
+    { score: 10, meaning: "duplicate" },
+  ];
+  model.dimensions[1].type = "boolean";
+  model.dimensions[1].anchors = [{ score: 50, meaning: "not 0 or 100" }];
+  const errors = validateBuilderModel(model).filter((d) => d.severity === "error");
+  assert.ok(errors.some((d) => /outside 0-100/.test(d.message)));
+  assert.ok(errors.some((d) => /no meaning/.test(d.message)));
+  assert.ok(errors.some((d) => /duplicate anchor score/.test(d.message)));
+  assert.ok(errors.some((d) => /boolean; anchors must be 0 or 100/.test(d.message)));
+});
+
+test("valid anchors and instructions pass validateBuilderModel cleanly", () => {
+  const model = seedExample("rubric");
+  model.dimensions[0].instructions = "Weigh recency heavily.";
+  model.dimensions[0].anchors = [
+    { score: 0, meaning: "absent" },
+    { score: 100, meaning: "exemplary" },
+  ];
+  const errors = validateBuilderModel(model).filter((d) => d.severity === "error");
+  assert.deepEqual(errors, []);
+});
+
+test("absent dimension metadata leaves the scoring prompt byte-for-byte unchanged", () => {
+  const before = serializeLoopYaml(seedExample("rubric"));
+  const model = seedExample("rubric");
+  // Explicitly absent (undefined) instructions/anchors on every dimension.
+  const after = serializeLoopYaml(model);
+  assert.equal(after, before);
+});
+
+test("dimension instructions and anchor meanings are emitted as literal text in the grading prompt", () => {
+  const model = seedExample("rubric");
+  model.dimensions[0].instructions = "Focus on structure over prose style.";
+  model.dimensions[0].anchors = [
+    { score: 0, meaning: "no structure" },
+    { score: 100, meaning: "excellent structure" },
+  ];
+  const yaml = serializeLoopYaml(model);
+  assert.match(yaml, /Focus on structure over prose style\./);
+  assert.match(yaml, /0=no structure, 100=excellent structure/);
+});
+
+test("a literal ${...} in scoring instructions/anchor meanings is escaped to $${...} so FSM interpolation never sees it", () => {
+  const model = seedExample("rubric");
+  model.dimensions[0].instructions = "Reward mentions of ${customer.name} verbatim.";
+  model.dimensions[0].anchors = [{ score: 100, meaning: "cites ${customer.name}" }];
+  const yaml = serializeLoopYaml(model);
+  assert.match(yaml, /Reward mentions of \$\$\{customer\.name\} verbatim\./);
+  assert.match(yaml, /100=cites \$\$\{customer\.name\}/);
+  assert.doesNotMatch(yaml, /[^$]\$\{customer\.name\}/);
+});
+
+test("an already-escaped $${...} in instructions doubles to $$${...} (composes correctly)", () => {
+  const model = seedExample("rubric");
+  model.dimensions[0].instructions = "Literal token: $${x}.";
+  const yaml = serializeLoopYaml(model);
+  assert.match(yaml, /Literal token: \$\$\$\{x\}\./);
+});
+
+test("summarizeTransitions.stopDestination reports the terminal reached when implement stops/skips/flags", () => {
+  const base = () => {
+    const model = seedExample("issue_lifecycle");
+    return model;
+  };
+  const finishModel = base();
+  assert.equal(summarizeTransitions(finishModel).stopDestination, "done");
+
+  const stopModel = base();
+  stopModel.outcomes.find((o) => o.name === "implement").transition = { kind: "stop" };
+  assert.equal(summarizeTransitions(stopModel).stopsAfterImplement, true);
+  assert.equal(summarizeTransitions(stopModel).stopDestination, "stopped");
+
+  const attentionModel = base();
+  attentionModel.outcomes.find((o) => o.name === "implement").transition = { kind: "attention" };
+  assert.equal(summarizeTransitions(attentionModel).stopDestination, "needs_attention");
+});
+
+test("summarizeTransitions.maxStepsNote never classifies the budget route as success", () => {
+  const model = seedExample("issue_lifecycle");
+  assert.match(summarizeTransitions(model).maxStepsNote, /needs_attention \(failure\)/);
+});
+
+test("a 'goto' transition may not target a destination — destinations are never actionable verb states", () => {
+  const model = _lifecycleModel({
+    outcomeOverrides: { prepare: { transition: { kind: "goto", target: "skipped" } } },
+  });
+  const errors = validateBuilderModel(model).filter((d) => d.severity === "error");
+  assert.ok(errors.some((d) => /"Go to" target "skipped" is not a defined outcome/.test(d.message)));
 });

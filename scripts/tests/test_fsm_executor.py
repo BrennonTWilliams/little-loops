@@ -2938,6 +2938,25 @@ class TestGeneratedPolicyRouterFailureRouting:
         assert result.failure_terminal is False
         assert any("check-acceptance.sh" in call for call in runner.calls)
 
+    def test_issue_lifecycle_max_steps_exhaustion_reaches_needs_attention_failure(
+        self, tmp_path: Path
+    ) -> None:
+        """ENH-3492: budget exhaustion lands on the explicit needs_attention
+        failure terminal, not the generic `failed` terminal — and, per
+        BUG-3499, `failure_terminal` honors it directly (no deferred second
+        assertion needed)."""
+        loop = self._load("sample-issue-lifecycle.yaml", tmp_path)
+        loop.max_steps = 1
+        runner = MockActionRunner()
+        runner.always_return(exit_code=0)
+
+        executor = FSMExecutor(loop, action_runner=runner, working_dir=Path.cwd())
+        result = executor.run()
+
+        assert result.terminated_by == "max_steps"
+        assert result.final_state == "needs_attention"
+        assert result.failure_terminal is True
+
     def test_implementation_with_verification_nonzero_exit_reaches_failed(
         self, tmp_path: Path
     ) -> None:

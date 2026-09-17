@@ -6,6 +6,9 @@ input_key: subject
 required_inputs: ["subject"]
 initial: score
 max_steps: 10
+
+on_max_steps: needs_attention
+
 import:
   - lib/rubric-router.yaml
 
@@ -56,3 +59,7 @@ states:
 
   done:
     terminal: true
+
+  needs_attention:
+    terminal: true
+    failure: true

@@ -116,6 +116,27 @@ def test_emitted_grammar_matches_canonical(tmp_path: Path) -> None:
     assert stamped["pred_pattern"] == _py_pattern_to_js(_PRED_PATTERN.pattern)
 
 
+def _extract_confidence_gate(html: str) -> dict:
+    """ENH-3492: extract the stamped `window.__CONFIDENCE_GATE__` object."""
+    m = re.search(r"window\.__CONFIDENCE_GATE__\s*=\s*(\{.*?\});", html, re.DOTALL)
+    assert m, "confidence gate assignment not found in HTML"
+    return json.loads(m.group(1))
+
+
+def test_emitted_confidence_gate_matches_config(tmp_path: Path) -> None:
+    """ENH-3492: stamped confidence-gate JSON matches BRConfig, following the
+    `test_emitted_grammar_matches_canonical` extract-and-compare pattern."""
+    from little_loops.config.core import BRConfig
+
+    html = _emit_html(tmp_path)
+    stamped = _extract_confidence_gate(html)
+    canonical = BRConfig(Path.cwd()).commands.confidence_gate
+
+    assert stamped["enabled"] == canonical.enabled
+    assert stamped["readiness_threshold"] == canonical.readiness_threshold
+    assert stamped["outcome_threshold"] == canonical.outcome_threshold
+
+
 def test_skill_catalog_stamps_args_hint(tmp_path: Path) -> None:
     """ENH-3491: `_load_skill_catalog` carries `HelpEntry.argument_hint` through
     as a nullable `args_hint` key on every stamped row, and a skill with a

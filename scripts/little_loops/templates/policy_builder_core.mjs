@@ -144,6 +144,24 @@ export const LIFECYCLE_VERBS = [
 ];
 
 /**
+ * Lifecycle-only built-in terminal destinations (ENH-3492): explicit
+ * stop-success (`stopped`), skip-success (`skipped`), and needs-attention
+ * (`needs_attention`, a failure terminal) routes. Distinct from
+ * `LIFECYCLE_VERBS` — these are never actionable states, only terminals a
+ * rule/fallback/verb `transition.kind` may reference. `failure: true` marks
+ * which ones emit the YAML `failure:` key; `stopped`/`skipped` do not.
+ */
+export const LIFECYCLE_DESTINATIONS = [
+  { name: "stopped", failure: false },
+  { name: "skipped", failure: false },
+  { name: "needs_attention", failure: true },
+];
+
+// Outcome transition.kind -> LIFECYCLE_DESTINATIONS name, issue_lifecycle only.
+const _KIND_TO_DESTINATION = { stop: "stopped", skip: "skipped", attention: "needs_attention" };
+const _LIFECYCLE_ONLY_KINDS = new Set(Object.keys(_KIND_TO_DESTINATION));
+
+/**
  * Runtime-reserved per-mode state names (BUG-3489): tokens the generated
  * pipeline itself uses as state names. An authored outcome name, rule
  * target, or fallback matching one of these collides with a generated
@@ -151,7 +169,11 @@ export const LIFECYCLE_VERBS = [
  * `isReservedOutcomeToken`. BUG-3486 extends this map in place: `finished`
  * (the only other name `_doneStateName()` can emit) joins decision_table;
  * `issue_id` (emitted by `_serializeIssueLifecycle()`) joins issue_lifecycle;
- * a new `rubric` key covers `_serializeRubric()`'s own state names. The
+ * a new `rubric` key covers `_serializeRubric()`'s own state names. ENH-3492
+ * adds the three new terminal destination names: all three in
+ * `issue_lifecycle` (where they are directly referenceable), and
+ * `needs_attention` alone in `rubric`/`decision_table` (reachable there only
+ * via the automatic `on_max_steps` route, never an authored reference). The
  * `error`/underscore-prefix protections are unchanged.
  */
 export const RESERVED_STATE_NAMES = {
@@ -162,9 +184,27 @@ export const RESERVED_STATE_NAMES = {
     "failed",
     "error",
     "finished",
+    "needs_attention",
   ]),
-  issue_lifecycle: new Set(["score", "policy_dispatch", "done", "failed", "error", "issue_id"]),
-  rubric: new Set(["score", "parse_scores", "route_high", "route_medium", "done"]),
+  issue_lifecycle: new Set([
+    "score",
+    "policy_dispatch",
+    "done",
+    "failed",
+    "error",
+    "issue_id",
+    "stopped",
+    "skipped",
+    "needs_attention",
+  ]),
+  rubric: new Set([
+    "score",
+    "parse_scores",
+    "route_high",
+    "route_medium",
+    "done",
+    "needs_attention",
+  ]),
 };
 
 /**
@@ -195,9 +235,14 @@ export function isReservedOutcomeToken(mode, token) {
  * @param {{rules: Array, outcomes: Array, fallback: string}} model
  */
 function _assertNoReservedTokens(mode, model) {
+  // ENH-3492: a rule target/fallback naming a built-in lifecycle destination
+  // is an allowed *reference*, not a shadowing *definition* — only outcome
+  // names (which define a state) are checked against that exemption.
+  const allowedDestinationRefs =
+    mode === "issue_lifecycle" ? new Set(LIFECYCLE_DESTINATIONS.map((d) => d.name)) : new Set();
   const offenders = [];
   for (const r of model.rules || []) {
-    if (r.target && isReservedOutcomeToken(mode, r.target)) {
+    if (r.target && !allowedDestinationRefs.has(r.target) && isReservedOutcomeToken(mode, r.target)) {
       offenders.push(`rule target "${r.target}"`);
     }
   }
@@ -206,7 +251,11 @@ function _assertNoReservedTokens(mode, model) {
       offenders.push(`outcome "${o.name}"`);
     }
   }
-  if (model.fallback && isReservedOutcomeToken(mode, model.fallback)) {
+  if (
+    model.fallback &&
+    !allowedDestinationRefs.has(model.fallback) &&
+    isReservedOutcomeToken(mode, model.fallback)
+  ) {
     offenders.push(`fallback "${model.fallback}"`);
   }
   if (offenders.length > 0) {
@@ -214,6 +263,28 @@ function _assertNoReservedTokens(mode, model) {
       `Reserved outcome name(s): ${offenders.join(", ")}. These names — and any ` +
         `underscore-prefixed token — are reserved for the generated loop's own states ` +
         `and routing sentinels. Rename the outcome, rule target, or fallback and its references.`
+    );
+  }
+}
+
+/**
+ * Reject any outcome whose `transition.kind` is `stop`/`skip`/`attention`
+ * (the ENH-3492 lifecycle-only kinds) in a `mode` other than
+ * `issue_lifecycle` — including a model reconstructed from an imported
+ * project. Throws a defense-in-depth `Error`; `_checkLifecycleOnlyTransitions`
+ * is the paired non-throwing UI diagnostic.
+ * @param {string} mode
+ * @param {{outcomes: Array}} model
+ */
+function _assertLifecycleOnlyTransitionsAllowed(mode, model) {
+  if (mode === "issue_lifecycle") return;
+  const offenders = (model.outcomes || []).filter(
+    (o) => o.transition && _LIFECYCLE_ONLY_KINDS.has(o.transition.kind)
+  );
+  if (offenders.length > 0) {
+    throw new Error(
+      `Transition kind(s) reserved for issue_lifecycle mode: ` +
+        `${offenders.map((o) => `"${o.name}" (${o.transition.kind})`).join(", ")}.`
     );
   }
 }
@@ -449,9 +520,12 @@ function _diag(severity, field, message) {
 }
 
 function _checkReservedTokens(mode, model) {
+  // ENH-3492: same reference-vs-definition exemption as _assertNoReservedTokens.
+  const allowedDestinationRefs =
+    mode === "issue_lifecycle" ? new Set(LIFECYCLE_DESTINATIONS.map((d) => d.name)) : new Set();
   const out = [];
   for (const r of model.rules || []) {
-    if (r.target && isReservedOutcomeToken(mode, r.target)) {
+    if (r.target && !allowedDestinationRefs.has(r.target) && isReservedOutcomeToken(mode, r.target)) {
       out.push(
         _diag("error", "rules", `Rule target "${r.target}" is reserved for the generated loop's own states.`)
       );
@@ -464,10 +538,95 @@ function _checkReservedTokens(mode, model) {
       );
     }
   }
-  if (model.fallback && isReservedOutcomeToken(mode, model.fallback)) {
+  if (
+    model.fallback &&
+    !allowedDestinationRefs.has(model.fallback) &&
+    isReservedOutcomeToken(mode, model.fallback)
+  ) {
     out.push(
       _diag("error", "fallback", `Fallback "${model.fallback}" is reserved for the generated loop's own states.`)
     );
+  }
+  return out;
+}
+
+// ENH-3492: `stop`/`skip`/`attention` transition kinds are lifecycle-only.
+function _checkLifecycleOnlyTransitions(model) {
+  if (model.mode === "issue_lifecycle") return [];
+  const out = [];
+  for (const o of model.outcomes || []) {
+    const kind = o.transition && o.transition.kind;
+    if (_LIFECYCLE_ONLY_KINDS.has(kind)) {
+      out.push(
+        _diag(
+          "error",
+          "outcomes",
+          `Outcome "${o.name}"'s transition "${kind}" is only available in issue_lifecycle mode.`
+        )
+      );
+    }
+  }
+  return out;
+}
+
+// ENH-3492: a lifecycle outcome with no action that routes straight to a
+// terminal (stop/skip/attention) is never what an author means — the verb
+// would do nothing and then stop/skip/flag.
+function _checkActionlessNewTransitionKinds(model) {
+  if (model.mode !== "issue_lifecycle") return [];
+  const out = [];
+  for (const o of model.outcomes || []) {
+    const kind = o.transition && o.transition.kind;
+    const at = o.actionType || "none";
+    if (_LIFECYCLE_ONLY_KINDS.has(kind) && at === "none") {
+      out.push(
+        _diag(
+          "error",
+          "outcomes",
+          `Outcome "${o.name}" combines no action with "${kind}" — add an action, or use ` +
+            `"Score again"/"Go to…"/"Stop here" instead.`
+        )
+      );
+    }
+  }
+  return out;
+}
+
+// ENH-3492: optional per-dimension scoring instructions/anchors. Anchors
+// must be unique finite numeric scores in [0,100] with a nonempty meaning;
+// boolean dimensions accept only 0/100 anchors.
+function _checkDimensionMetadata(model) {
+  const out = [];
+  for (const d of model.dimensions || []) {
+    if (d.anchors == null) continue;
+    if (!Array.isArray(d.anchors)) {
+      out.push(_diag("error", "dimensions", `Field "${d.name}" anchors must be a list.`));
+      continue;
+    }
+    const seen = new Set();
+    for (const a of d.anchors) {
+      const score = Number(a && a.score);
+      if (!Number.isFinite(score) || score < 0 || score > 100) {
+        out.push(
+          _diag("error", "dimensions", `Field "${d.name}" has an anchor score outside 0-100.`)
+        );
+        continue;
+      }
+      if (d.type === "boolean" && score !== 0 && score !== 100) {
+        out.push(
+          _diag("error", "dimensions", `Field "${d.name}" is boolean; anchors must be 0 or 100.`)
+        );
+      }
+      if (seen.has(score)) {
+        out.push(
+          _diag("error", "dimensions", `Field "${d.name}" has a duplicate anchor score ${score}.`)
+        );
+      }
+      seen.add(score);
+      if (!a || !String(a.meaning || "").trim()) {
+        out.push(_diag("error", "dimensions", `Field "${d.name}" has an anchor with no meaning.`));
+      }
+    }
   }
   return out;
 }
@@ -506,7 +665,18 @@ function _checkDuplicateOutcomes(model) {
 
 function _checkMissingReferences(model) {
   const out = [];
-  const names = new Set((model.outcomes || []).map((o) => o.name));
+  const outcomeNames = new Set((model.outcomes || []).map((o) => o.name));
+  // ENH-3492: a rule/fallback reference to a built-in lifecycle destination
+  // is legal without a matching `outcomes` definition — it's the reference-
+  // vs-definition distinction: LIFECYCLE_DESTINATIONS entries are never
+  // authored outcomes, only referenceable terminals. `names` (rule/fallback)
+  // is deliberately a superset of `outcomeNames` ("Go to" target, below) —
+  // "goto" jumps between actionable verb states, which a destination never
+  // is, so it stays restricted to real outcomes.
+  const names = new Set(outcomeNames);
+  if (model.mode === "issue_lifecycle") {
+    for (const d of LIFECYCLE_DESTINATIONS) names.add(d.name);
+  }
   (model.rules || []).forEach((r, i) => {
     if (r.target && !names.has(r.target)) {
       out.push(
@@ -519,7 +689,7 @@ function _checkMissingReferences(model) {
   }
   for (const o of model.outcomes || []) {
     const t = o.transition;
-    if (t && t.kind === "goto" && t.target && !names.has(t.target)) {
+    if (t && t.kind === "goto" && t.target && !outcomeNames.has(t.target)) {
       out.push(
         _diag("error", "outcomes", `Outcome "${o.name}"'s "Go to" target "${t.target}" is not a defined outcome.`)
       );
@@ -646,6 +816,9 @@ export function validateBuilderModel(model) {
     ..._checkDrafts(model),
     ..._checkRubricUnknownOutcomes(model),
     ..._checkShadows(model),
+    ..._checkLifecycleOnlyTransitions(model),
+    ..._checkActionlessNewTransitionKinds(model),
+    ..._checkDimensionMetadata(model),
   ];
 }
 
@@ -1165,7 +1338,17 @@ export function summarizeTransitions(model) {
 
   const implementOutcome = verbs.includes("implement") ? outcomeMap.get("implement") : null;
   const implementTransition = implementOutcome && implementOutcome.transition;
-  const stopsAfterImplement = !!implementOutcome && (!implementTransition || implementTransition.kind === "finish");
+  // ENH-3492: stop/skip/attention on `implement` also stop the run — not
+  // just `finish`. `stopDestination` names which terminal is actually
+  // reached, so a caller can distinguish a successful stop/skip from the
+  // needs_attention failure terminal.
+  const implementKind = implementTransition ? implementTransition.kind : "finish";
+  const stopsAfterImplement =
+    !!implementOutcome &&
+    (!implementTransition || implementKind === "finish" || !!_KIND_TO_DESTINATION[implementKind]);
+  const stopDestination = stopsAfterImplement
+    ? _KIND_TO_DESTINATION[implementKind] || "done"
+    : null;
 
   let verification = "none";
   if (verbs.includes("verify")) {
@@ -1207,11 +1390,22 @@ export function summarizeTransitions(model) {
   const stepsPerAttempt = 2 + chainLength;
   const maxSteps = Number.isInteger(model.maxSteps) && model.maxSteps >= 1 ? model.maxSteps : 20;
   const attempts = Math.floor(maxSteps / stepsPerAttempt);
+  // ENH-3492: the budget route is now the explicit needs_attention failure
+  // terminal, not a bare "failed" — no summary may classify it as success.
   const maxStepsNote =
     `max steps ${maxSteps} ≈ ${attempts} attempt${attempts === 1 ? "" : "s"} of ` +
-    `${stepsPerAttempt} state${stepsPerAttempt === 1 ? "" : "s"} each`;
+    `${stepsPerAttempt} state${stepsPerAttempt === 1 ? "" : "s"} each; exceeding the budget ` +
+    `lands on needs_attention (failure)`;
 
-  return { steps: verbs, stopsAfterImplement, verification, stepsPerAttempt, attempts, maxStepsNote };
+  return {
+    steps: verbs,
+    stopsAfterImplement,
+    stopDestination,
+    verification,
+    stepsPerAttempt,
+    attempts,
+    maxStepsNote,
+  };
 }
 
 /**
@@ -1356,6 +1550,19 @@ function _hasBoolean(model) {
   return (model.dimensions || []).some((d) => d.type === "boolean");
 }
 
+// ENH-3492: `instructions`/anchor `meaning` text is opaque literal text
+// passed through to the LLM grading prompt — never an FSM interpolation
+// template. A YAML block scalar (`_yamlBlockScalar`) protects YAML structure
+// but not the FSM's own `${...}` interpolation once the emitted prompt
+// reaches FSMExecutor, so any literal `${` must be escaped to `$${` (the
+// FSM's existing escape convention, `fsm/interpolation.py` ESCAPED_PATTERN)
+// before emission. Doubling composes: authored `$${x}` already contains one
+// `${` occurrence and is escaped to `$$${x}`, which unescapes back to the
+// authored `$${x}` at runtime — a single, uniform rule.
+function _escapeInterpolation(text) {
+  return String(text).replace(/\$\{/g, (m) => "$" + m);
+}
+
 function _scoreActionBody(model) {
   const dims = _serializeDimensions(model);
   let body =
@@ -1369,6 +1576,23 @@ function _scoreActionBody(model) {
     body +=
       `For boolean dimensions (${boolNames}): score 100 if the condition holds, ` +
       `0 if it does not.\n`;
+  }
+  // ENH-3492: optional per-dimension scoring instructions/anchors. Absent on
+  // every dimension, this loop appends nothing — existing prompts stay
+  // byte-for-byte unchanged.
+  for (const d of model.dimensions || []) {
+    if (d.instructions && String(d.instructions).trim()) {
+      body += `For ${normalizeDimName(d.name)}: ${_escapeInterpolation(
+        String(d.instructions).trim()
+      )}\n`;
+    }
+    if (Array.isArray(d.anchors) && d.anchors.length) {
+      const parts = d.anchors
+        .slice()
+        .sort((a, b) => Number(a.score) - Number(b.score))
+        .map((a) => `${a.score}=${_escapeInterpolation(String(a.meaning || ""))}`);
+      body += `Score anchors for ${normalizeDimName(d.name)}: ${parts.join(", ")}\n`;
+    }
   }
   body += `Final line: AGGREGATE: <int 0-100>`;
   return body;
@@ -1396,7 +1620,7 @@ function _scoreActionBody(model) {
 // interpolation in a raw bash-token position and trips the unsafe-interpolation
 // WARNING); `slash_command` bodies are not bash-executed, so they keep the bare
 // `${context.issue_id}` form the AC pins.
-function _outcomeStateLines(outcome, { doneState = "done", issueArg = false } = {}) {
+function _outcomeStateLines(outcome, { doneState = "done", issueArg = false, mode } = {}) {
   const lines = [];
   lines.push(`  ${outcome.name}:`);
   const at = outcome.actionType || "none";
@@ -1419,10 +1643,19 @@ function _outcomeStateLines(outcome, { doneState = "done", issueArg = false } = 
   }
   // Axis B transition.
   const t = outcome.transition || { kind: "finish" };
+  // ENH-3492: stop/skip/attention route straight to a LIFECYCLE_DESTINATIONS
+  // terminal — lifecycle mode only (rubric/decision_table never reach this
+  // branch; validation/the serializer's throwing guard reject the kind
+  // before emission). Emitted even when the outcome has no action: a
+  // destination reference always replaces the verb's `next` target, never
+  // its (possibly absent) action.
+  const destination = mode === "issue_lifecycle" ? _KIND_TO_DESTINATION[t.kind] : undefined;
   if (t.kind === "rescore") {
     lines.push(`    next: score`);
   } else if (t.kind === "goto") {
     lines.push(`    next: ${t.target}`);
+  } else if (destination) {
+    lines.push(`    next: ${destination}`);
   } else if (hasAction) {
     lines.push(`    next: ${doneState}`);
   } else {
@@ -1452,6 +1685,7 @@ export function _doneStateName(model) {
 
 function _serializeDecisionTable(model) {
   _assertNoReservedTokens("decision_table", model);
+  _assertLifecycleOnlyTransitionsAllowed("decision_table", model);
   const out = [];
   const name = model.name || "policy-builder";
   out.push(`name: ${name}`);
@@ -1461,7 +1695,11 @@ function _serializeDecisionTable(model) {
   }
   out.push(`max_steps: ${model.maxSteps != null ? model.maxSteps : 20}`);
   out.push("");
-  out.push("on_max_steps: failed");
+  // ENH-3492: a step-budget exhaustion is now the explicit needs_attention
+  // failure terminal, not the generic `failed` terminal — `needs_attention`
+  // is reserved for decision_table (RESERVED_STATE_NAMES) so it is only ever
+  // reachable via this automatic route, never an authored rule/outcome.
+  out.push("on_max_steps: needs_attention");
   out.push("");
   out.push("import:");
   out.push("  - lib/rubric-router.yaml");
@@ -1552,10 +1790,19 @@ function _serializeDecisionTable(model) {
   out.push(`    terminal: true`);
   out.push(`    failure: true`);
   out.push("");
+  // ENH-3492: unconditional — needs_attention is reserved for decision_table,
+  // so it is only ever reached via the on_max_steps route above, never an
+  // authored reference.
+  out.push(`  needs_attention:`);
+  out.push(`    terminal: true`);
+  out.push(`    failure: true`);
+  out.push("");
   return out.join("\n").replace(/\n+$/, "\n");
 }
 
 function _serializeRubric(model) {
+  _assertNoReservedTokens("rubric", model);
+  _assertLifecycleOnlyTransitionsAllowed("rubric", model);
   const out = [];
   const name = model.name || "rubric-builder";
   out.push(`name: ${name}`);
@@ -1568,6 +1815,12 @@ function _serializeRubric(model) {
   out.push(`required_inputs: ["subject"]`);
   out.push(`initial: score`);
   out.push(`max_steps: ${model.maxSteps != null ? model.maxSteps : 10}`);
+  out.push("");
+  // ENH-3492: rubric previously emitted no on_max_steps line at all; this is
+  // an added line, not a changed one. needs_attention is reserved for
+  // rubric, so — same as decision_table — only ever reached via this route.
+  out.push("on_max_steps: needs_attention");
+  out.push("");
   out.push("import:");
   out.push("  - lib/rubric-router.yaml");
   out.push("");
@@ -1629,6 +1882,12 @@ function _serializeRubric(model) {
   }
   out.push("  done:");
   out.push("    terminal: true");
+  out.push("");
+  // ENH-3492: unconditional, same reasoning as decision_table's — reserved,
+  // only reached via on_max_steps.
+  out.push("  needs_attention:");
+  out.push("    terminal: true");
+  out.push("    failure: true");
   return out.join("\n").replace(/\n+$/, "\n");
 }
 
@@ -1687,6 +1946,49 @@ export function _emittedVerbs(model) {
   return (model.outcomes || []).map((o) => o.name).filter((n) => emitted.has(n));
 }
 
+/**
+ * The LIFECYCLE_DESTINATIONS names an author has actually selected — as a
+ * rule target, the fallback, or a verb's `transition.kind` — as opposed to
+ * `needs_attention`'s automatic `on_max_steps` route, which references a
+ * destination without any dispatch mechanism reaching it (ENH-3492). Drives
+ * which `policy_dispatch.route` entries `_serializeIssueLifecycle` emits
+ * beyond the verb entries, and (via `computeSummary`) which destinations a
+ * transition summary reports alongside verbs. Returned in
+ * `LIFECYCLE_DESTINATIONS` order for deterministic emission.
+ * @param {{rules: Array, outcomes: Array, fallback: string}} model
+ * @returns {string[]}
+ */
+export function _dispatchedDestinations(model) {
+  const destNames = new Set(LIFECYCLE_DESTINATIONS.map((d) => d.name));
+  const found = new Set();
+  for (const r of model.rules || []) {
+    if (r.target && destNames.has(r.target)) found.add(r.target);
+  }
+  if (model.fallback && destNames.has(model.fallback)) found.add(model.fallback);
+  for (const o of model.outcomes || []) {
+    const dest = o.transition && _KIND_TO_DESTINATION[o.transition.kind];
+    if (dest) found.add(dest);
+  }
+  return LIFECYCLE_DESTINATIONS.map((d) => d.name).filter((n) => found.has(n));
+}
+
+/**
+ * The LIFECYCLE_DESTINATIONS names that need a terminal YAML block emitted:
+ * `_dispatchedDestinations(model)` plus `needs_attention` unconditionally
+ * (the automatic `on_max_steps` route always targets it, in every model,
+ * whether or not anything else references it) — so the terminal exists for
+ * the executor to land on even when nothing dispatches to it (ENH-3492).
+ * Strictly a superset of `_dispatchedDestinations`; the two sets differ
+ * exactly when `on_max_steps` is the only reference to `needs_attention`.
+ * @param {{rules: Array, outcomes: Array, fallback: string}} model
+ * @returns {string[]}
+ */
+export function _requiredTerminalBlocks(model) {
+  const required = new Set(_dispatchedDestinations(model));
+  required.add("needs_attention");
+  return LIFECYCLE_DESTINATIONS.map((d) => d.name).filter((n) => required.has(n));
+}
+
 // Emits the issue_lifecycle-mode loop YAML (Proposed Solution §2): a thin
 // standalone loop that imports lib/policy-router.yaml, self-declares
 // `parameters: { issue_id: {...} }` (not `with:` — that key is caller-side
@@ -1724,7 +2026,9 @@ function _serializeIssueLifecycle(model) {
   out.push("# every verb is a /ll: skill; MR-12 would otherwise warn per verb state");
   out.push("pruning_profile_ok: true");
   out.push("");
-  out.push("on_max_steps: failed");
+  // ENH-3492: budget exhaustion now lands on the explicit needs_attention
+  // failure terminal instead of the generic `failed` terminal.
+  out.push("on_max_steps: needs_attention");
   out.push("");
   out.push("timeout: 14400");
   out.push("");
@@ -1744,6 +2048,13 @@ function _serializeIssueLifecycle(model) {
   for (const v of verbs) {
     out.push(`      ${v}: ${v}`);
   }
+  // ENH-3492: dispatch route entries for author-selected destination
+  // references only (rule target, fallback, or a verb's transition.kind) —
+  // never solely because on_max_steps targets needs_attention.
+  const dispatchedDestinations = _dispatchedDestinations(model);
+  for (const d of dispatchedDestinations) {
+    out.push(`      ${d}: ${d}`);
+  }
   out.push(`      _: ${model.fallback || verbs[0] || "gate"}`);
   out.push(`      _error: failed`);
   out.push("");
@@ -1751,7 +2062,11 @@ function _serializeIssueLifecycle(model) {
   for (const o of model.outcomes || []) outcomeMap.set(o.name, o);
   for (const v of verbs) {
     const outcome = outcomeMap.get(v);
-    for (const line of _outcomeStateLines(outcome, { doneState: "done", issueArg: true })) {
+    for (const line of _outcomeStateLines(outcome, {
+      doneState: "done",
+      issueArg: true,
+      mode: "issue_lifecycle",
+    })) {
       out.push(line);
     }
     out.push(`    on_error: failed`);
@@ -1760,6 +2075,15 @@ function _serializeIssueLifecycle(model) {
   out.push("  done:");
   out.push("    terminal: true");
   out.push("");
+  // ENH-3492: terminal blocks for dispatched destinations plus (always)
+  // needs_attention — see _requiredTerminalBlocks's doc comment.
+  const destMeta = new Map(LIFECYCLE_DESTINATIONS.map((d) => [d.name, d]));
+  for (const name of _requiredTerminalBlocks(model)) {
+    out.push(`  ${name}:`);
+    out.push(`    terminal: true`);
+    if (destMeta.get(name).failure) out.push(`    failure: true`);
+    out.push("");
+  }
   out.push("  failed:");
   out.push("    terminal: true");
   out.push("    failure: true");
@@ -2024,6 +2348,10 @@ if (typeof window !== "undefined") {
     _serializeIssueLifecycle,
     _emittedVerbs,
     _doneStateName,
+    // ENH-3492 (terminal destinations, dispatch/terminal-block split)
+    LIFECYCLE_DESTINATIONS,
+    _dispatchedDestinations,
+    _requiredTerminalBlocks,
     serializeFrontmatterDimensions,
     parseFrontmatterBlock,
     encodeFrontmatterScores,

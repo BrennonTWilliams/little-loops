@@ -247,9 +247,14 @@ a real or mocked artifact.
   shorthand fallback to `route.error` still resolves *after* `route.default` — `no` is an
   ordinary verdict whose ordinary fallback is `_`, unlike the dedicated error path.
 - **Reserved names.** The generated decision-table pipeline uses `score`, `parse_scores`,
-  `policy_dispatch`, `failed`, and `finished` as its own state names (issue-lifecycle mode uses
-  `score`, `policy_dispatch`, `done`, `failed`, and `issue_id`; rubric mode uses `score`,
-  `parse_scores`, `route_high`, `route_medium`, and `done`); `error` is reserved in all three.
+  `policy_dispatch`, `failed`, `finished`, and `needs_attention` as its own state names
+  (issue-lifecycle mode uses `score`, `policy_dispatch`, `done`, `failed`, `issue_id`, `stopped`,
+  `skipped`, and `needs_attention`; rubric mode uses `score`, `parse_scores`, `route_high`,
+  `route_medium`, `done`, and `needs_attention`); `error` is reserved in all three. `needs_attention`
+  is the step-budget-exhaustion terminal in every mode (ENH-3492); in issue-lifecycle mode, `stopped`/
+  `skipped`/`needs_attention` are also directly *referenceable* — as a rule target, the fallback, or a
+  verb's follow-up — without being redefined as an outcome (a reference-vs-definition distinction:
+  reserving the name blocks an authored outcome from shadowing it, not a legal lifecycle reference).
   Every underscore-prefixed token (`_`, `_error`, or any custom `_foo`) is also rejected —
   `RouteConfig.from_dict()` strips underscore-prefixed keys from explicit verdict routes at
   runtime, so an authored outcome or rule target starting with `_` would silently vanish rather
@@ -392,7 +397,15 @@ plus a free-text args field:
 accept `--auto`, clear the args field. `refine` defaults to **Go to → gate** rather than
 rescoring directly, because `/ll:refine-issue` doesn't write `confidence_score` (only
 `/ll:confidence-check` does) — routing through `gate` first is what lets a single run make
-progress from refine to a re-scored `confidence_score`. `implement`'s help text in the builder
+progress from refine to a re-scored `confidence_score`.
+
+**Terminal destinations (ENH-3492).** A rule, the fallback, or a verb's follow-up may also route
+straight to one of three built-in destinations instead of a verb: `stopped` and `skipped` are
+success terminals (no `failure:` key); `needs_attention` is a failure terminal (`failure: true`).
+Unlike verbs, destinations are never actionable and can't carry a skill/action — reaching one via
+a verb's follow-up still runs that verb's own action first, then routes to the destination instead
+of continuing the verb chain. Hitting the step budget (`on_max_steps`) always lands on
+`needs_attention`, whether or not anything else in the loop references it. `implement`'s help text in the builder
 calls out that `ll-auto` re-applies your project's own `commands.confidence_gate.readiness_threshold`
 and exits non-zero (routing to `failed`) below it; add `--force-implement` to its args to bypass
 that gate. Only verbs actually reachable — targeted by a rule, the fallback, or the `goto` target
@@ -409,9 +422,9 @@ confidence_score:<85 -> refine
 ```
 
 On an unscored issue this runs gate (writes `confidence_score`) → refine → gate again → implement
-once the score clears 85, bounded by `on_max_steps: failed` if the refine/gate cycle never
-converges. `status:==done -> verify` only fires on a *later* run against the same issue, since
-`implement` stops the current run.
+once the score clears 85, bounded by `on_max_steps: needs_attention` if the refine/gate cycle
+never converges. `status:==done -> verify` only fires on a *later* run against the same issue,
+since `implement` stops the current run.
 
 **Try it** accepts a pasted frontmatter block (a minimal YAML-subset reader — scalars, flow/dash
 lists, no nested maps) and highlights the winning rule using the same rule-table evaluator the

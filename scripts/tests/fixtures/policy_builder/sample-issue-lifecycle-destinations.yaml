@@ -1,6 +1,8 @@
-name: sample-issue-lifecycle-verification
+name: sample-issue-lifecycle-destinations
 description: |
-  Sample implementation-with-verification builder output used as an FSMExecutor fixture (ENH-3491).
+  Sample issue_lifecycle builder output exercising the ENH-3492 explicit
+  terminal destinations — a rule targeting a destination directly and a
+  verb transition.kind routing to one.
 max_steps: 20
 
 import:
@@ -9,6 +11,8 @@ import:
 context:
   frontmatter_dimensions: "status:string|priority:string|priority_rank:numeric|confidence_score:numeric|outcome_confidence:numeric|decision_needed:boolean|spike_needed:boolean|blocked_by:list|deferred_reason:string"
   policy_rules: |
+    status:==cancelled -> skipped
+    confidence_score:>=85 -> implement
     * -> prepare
 
 parameters:
@@ -38,44 +42,39 @@ states:
     on_error: failed
     route:
       prepare: prepare
-      refine: refine
       gate: gate
       implement: implement
-      verify: verify
+      stopped: stopped
+      skipped: skipped
+      needs_attention: needs_attention
       _: prepare
       _error: failed
 
   prepare:
     action_type: slash_command
     action: /ll:format-issue ${context.issue_id} --auto
-    next: refine
-    on_error: failed
-
-  refine:
-    action_type: slash_command
-    action: /ll:refine-issue ${context.issue_id} --auto
     next: gate
     on_error: failed
 
   gate:
     action_type: slash_command
     action: /ll:confidence-check ${context.issue_id} --auto
-    next: implement
+    next: stopped
     on_error: failed
 
   implement:
     action_type: shell
     action: ll-auto --only ${context.issue_id:shell}
-    next: verify
-    on_error: failed
-
-  verify:
-    action_type: shell
-    action: scripts/ci/check-acceptance.sh ${context.issue_id:shell} --strict
-    next: done
+    next: needs_attention
     on_error: failed
 
   done:
+    terminal: true
+
+  stopped:
+    terminal: true
+
+  skipped:
     terminal: true
 
   needs_attention:

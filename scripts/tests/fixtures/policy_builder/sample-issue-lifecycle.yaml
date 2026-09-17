@@ -26,7 +26,7 @@ scope: ["."]
 # every verb is a /ll: skill; MR-12 would otherwise warn per verb state
 pruning_profile_ok: true
 
-on_max_steps: failed
+on_max_steps: needs_attention
 
 timeout: 14400
 
@@ -75,6 +75,10 @@ states:
 
   done:
     terminal: true
+
+  needs_attention:
+    terminal: true
+    failure: true
 
   failed:
     terminal: true

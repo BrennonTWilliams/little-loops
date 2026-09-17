@@ -127,6 +127,7 @@ def _serialize_with_node(node: str, model_path: Path) -> str:
         "sample-rubric.model.json",
         "sample-issue-lifecycle.model.json",
         "sample-issue-lifecycle-verification.model.json",
+        "sample-issue-lifecycle-destinations.model.json",
     ],
 )
 def test_round_trip_yaml_validates_for_each_mode(tmp_path: Path, model_fixture: str) -> None:

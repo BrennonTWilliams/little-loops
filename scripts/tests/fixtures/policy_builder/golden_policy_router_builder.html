@@ -310,6 +310,7 @@ small.help { display: block; opacity: 0.7; font-size: 0.75rem; }
     window.__GRAMMAR_SPEC__ = {"ordered_ops": ["<", "<=", ">", ">="], "all_ops": ["!=", "<", "<=", "==", ">", ">="], "pred_pattern": "^(?<dim>[\\w][\\w\\s\\-]*?)\\s*:\\s*(?<op>>=|<=|==|!=|<|>)\\s*(?<value>\\S.*?)$"};
     window.__SKILL_CATALOG__ = [{"name": "advise", "description": "Use when asked for a second opinion from a different, stronger model on a specific decision, question, or stalled judgment call.", "args_hint": "--signal SIGNAL --question QUESTION [--context-file PATH] [--host HOST] [--model MODEL]"}, {"name": "align-issues", "description": "Validate active issues against key documents for relevance and alignment", "args_hint": "[category] [--issues ID,...]"}, {"name": "analyze-history", "description": "Use when asked about project health, velocity, bug trends, or whether we're making progress.", "args_hint": null}, {"name": "analyze-workflows", "description": "Analyze user message history to identify patterns, workflows, and automation opportunities", "args_hint": "[messages.jsonl]"}, {"name": "audit-architecture", "description": "Analyze codebase architecture for patterns, organization, and improvements", "args_hint": "[focus-area] [flags]"}, {"name": "audit-claude-config", "description": "Use when asked to audit Claude Code config, validate plugin settings, or diagnose plugin issues.", "args_hint": "[scope]"}, {"name": "audit-docs", "description": "Use when asked to audit documentation accuracy, coverage, or find documentation gaps.", "args_hint": "[scope]"}, {"name": "audit-issue-conflicts", "description": "Use when asked to detect conflicting requirements or incompatible decisions across open issues.", "args_hint": "[EPIC-NNNN | ID,ID,ID,...] [--auto] [--dry-run] [--cross-theme]"}, {"name": "audit-loop-run", "description": "Use when asked to assess loop effectiveness, audit goal achievement, or detect phantom success.", "args_hint": "[loop-name] [--tail N] [--no-rubric-audit] [--skip-issue-creation] [--auto]"}, {"name": "capture-issue", "description": "Use when asked to capture or create an issue from conversation or natural language.", "args_hint": "[description] [--quick] [--parent EPIC-NNN]"}, {"name": "check-code", "description": "Run code quality checks (lint, format, types, build)", "args_hint": "[mode]"}, {"name": "cleanup-loops", "description": "Use when asked to clean up stuck loops, kill dead loop processes, or troubleshoot loop state.", "args_hint": "[--dry-run] [--threshold N] [--interrupted-age H]"}, {"name": "cleanup-worktrees", "description": "Clean orphaned git worktrees from interrupted ll-parallel/ll-loop runs", "args_hint": "[mode]"}, {"name": "commit", "description": "Create git commits with user approval and no assistant attribution", "args_hint": null}, {"name": "compact-session", "description": "Use when asked to manually compact a session's memory, trigger session summarization, or reduce a long session's context footprint.", "args_hint": null}, {"name": "confidence-check", "description": "Use when asked for a pre-implementation confidence check or whether an issue is ready to implement.", "args_hint": "ISSUE_ID"}, {"name": "configure", "description": "Use when asked to configure little-loops, change settings, or update ll-config.json.", "args_hint": "[area]"}, {"name": "create-eval-from-issues", "description": "Use when asked to generate an FSM eval harness YAML from one or more issue IDs, or DSL eval tasks from a loop/issue file with --dsl.", "args_hint": "<issue-id> [issue-id...] | --dsl <loop-yaml-or-issue-file>"}, {"name": "create-loop", "description": "Use when asked to create an automation loop or automate a recurring task with an FSM.", "args_hint": null}, {"name": "create-sprint", "description": "Create a sprint definition with a curated list of issues", "args_hint": "[sprint-name]"}, {"name": "debug-loop-run", "description": "Use when asked to analyze loop execution history, investigate loop failures, or find loop issues.", "args_hint": "[loop-name] [--tail N] [--skip-issue-creation] [--auto]"}, {"name": "decide-issue", "description": "Use when asked to select the winning implementation option for an issue with decision_needed.", "args_hint": null}, {"name": "describe-pr", "description": "Generate comprehensive PR descriptions following repository templates", "args_hint": "[base-branch]"}, {"name": "distill-traces", "description": "Use when asked to extract reusable loop patterns or YAML fragments from successful execution history.", "args_hint": "<loop-name> [--min-success N]"}, {"name": "explore-api", "description": "Use when exploring an external API/library and recording proof to the Learning Test Registry.", "args_hint": "<target> [--assume <claim>]..."}, {"name": "find-dead-code", "description": "Analyze codebase for deprecated, unused, or dead code that can be safely removed", "args_hint": null}, {"name": "format-issue", "description": "Use when asked to format an issue or fix its template structure.", "args_hint": "ISSUE_ID [--auto] [--all] [--dry-run]"}, {"name": "go-no-go", "description": "Use when asked for an adversarial go/no-go review or whether an issue is worth implementing.", "args_hint": null}, {"name": "handoff", "description": "Generate continuation prompt for session handoff", "args_hint": "[context]"}, {"name": "help", "description": "List all available little-loops commands with descriptions", "args_hint": null}, {"name": "improve-claude-md", "description": "Use when asked to improve or rewrite CLAUDE.md or increase LLM instruction adherence.", "args_hint": "[--dry-run] [--file path] [--consume-triggers]"}, {"name": "init", "description": "Use when asked to initialize little-loops, set up ll for a project, or bootstrap config.", "args_hint": "[flags]"}, {"name": "issue-size-review", "description": "Use when asked to evaluate issue size, decompose large issues, or audit backlog complexity.", "args_hint": null}, {"name": "issue-workflow", "description": "Use when asked about the issue lifecycle, command order for issues, or how to manage issues.", "args_hint": null}, {"name": "iterate-plan", "description": "Iterate on existing implementation plans with thorough research and updates", "args_hint": "[plan-path]"}, {"name": "link-epics", "description": "Assign orphaned issues to existing EPICs, or cluster them into new-EPIC proposals, via `ll-issues link-epics`.", "args_hint": "[--mode assign|synthesize] [--threshold <score>] [--auto] [--deep]"}, {"name": "ll-align-issues", "description": "Validate active issues against key documents for relevance and alignment", "args_hint": "[category] [--issues ID,...]"}, {"name": "ll-analyze-workflows", "description": "Analyze user message history to identify patterns, workflows, and automation opportunities", "args_hint": "[messages.jsonl]"}, {"name": "ll-audit-architecture", "description": "Analyze codebase architecture for patterns, organization, and improvements", "args_hint": "[focus-area] [flags]"}, {"name": "ll-capture-issue", "description": "Use when asked to capture or create an issue from conversation or natural language.", "args_hint": "[description] [--quick] [--parent EPIC-NNN]"}, {"name": "ll-check-code", "description": "Run code quality checks (lint, format, types, build)", "args_hint": "[mode]"}, {"name": "ll-cleanup-worktrees", "description": "Clean orphaned git worktrees from interrupted ll-parallel/ll-loop runs", "args_hint": "[mode]"}, {"name": "ll-commit", "description": "Create git commits with user approval and no assistant attribution", "args_hint": null}, {"name": "ll-compact-session", "description": "Use when asked to manually compact a session's memory, trigger session summarization, or reduce a long session's context footprint.", "args_hint": "SESSION_ID [--db PATH] [--json]"}, {"name": "ll-create-sprint", "description": "Create a sprint definition with a curated list of issues", "args_hint": "[sprint-name]"}, {"name": "ll-describe-pr", "description": "Generate comprehensive PR descriptions following repository templates", "args_hint": "[base-branch]"}, {"name": "ll-find-dead-code", "description": "Analyze codebase for deprecated, unused, or dead code that can be safely removed", "args_hint": null}, {"name": "ll-go-no-go", "description": "Use when asked for an adversarial go/no-go review or whether an issue is worth implementing.", "args_hint": "[issue-id[,issue-id...] | sprint-name] [--check] [--auto]"}, {"name": "ll-handoff", "description": "Generate continuation prompt for session handoff", "args_hint": "[context]"}, {"name": "ll-help", "description": "List all available little-loops commands with descriptions", "args_hint": null}, {"name": "ll-iterate-plan", "description": "Iterate on existing implementation plans with thorough research and updates", "args_hint": "[plan-path]"}, {"name": "ll-loop-suggester", "description": "Analyze user message history to suggest FSM loop configurations automatically. Uses ll-messages output to identify repeated workflows and generate ready-to-use loop YAML. Also supports --from-commands mode to suggest loops from the available command/skill catalog without requiring message history, and --from-sequences mode to suggest loops from ll-logs sequences n-gram output.\n\nTrigger keywords: \"suggest loops\", \"loop from history\", \"automate workflow\", \"create loop from messages\", \"analyze messages for loops\", \"ll-messages loop\", \"suggest automation\", \"detect patterns for loops\", \"suggest loops from commands\", \"loop from catalog\", \"from-commands\", \"suggest loops from sequences\", \"from-sequences\", \"loop from ll-logs", "args_hint": "[messages.jsonl|--from-commands|--from-sequences]"}, {"name": "ll-manage-release", "description": "Manage releases - create git tags, generate changelogs, and manage GitHub releases.\nIntegrates with Issue Management to include completed issues in release notes.\n\nTrigger keywords: \"manage release\", \"create release\", \"new release\", \"tag release\", \"publish release\", \"make release\", \"bump version", "args_hint": "[action] [version]"}, {"name": "ll-normalize-issues", "description": "Find and fix issue filenames with missing or duplicate IDs across types (e.g., BUG-007 and FEAT-007)", "args_hint": null}, {"name": "ll-open-pr", "description": "Open a pull request for the current branch.\n\nTrigger keywords: \"open pr\", \"create pull request\", \"submit pr\", \"create pr\", \"open pull request\", \"submit for review\", \"make a pr", "args_hint": "[target-branch]"}, {"name": "ll-prioritize-issues", "description": "Analyze issues and prepend priority levels (P0-P5) to filenames", "args_hint": null}, {"name": "ll-ready-issue", "description": "Analyze and validate an issue file for accuracy, utility, and completeness, then auto-correct to make implementation-ready or close if invalid", "args_hint": "ISSUE_ID"}, {"name": "ll-reconcile-issue", "description": "Rewrite an issue's Implementation Steps, Acceptance Criteria, and Integration Map (Files to Modify, Dependent Files, Similar Patterns, Tests, Documentation) in place from its own accumulated research findings \u2014 plus, conditionally, a Scope Boundaries claim contradicted by those findings \u2014 without appending or bulldozing human prose", "args_hint": "ISSUE_ID"}, {"name": "ll-refine-issue", "description": "Refine issue files with codebase-driven research to fill knowledge gaps needed for implementation", "args_hint": "ISSUE_ID [--auto] [--dry-run] [--gap-analysis] [--full-rewrite]"}, {"name": "ll-resume", "description": "Resume from a previous session's continuation prompt", "args_hint": "[prompt-file]"}, {"name": "ll-review-sprint", "description": "AI-guided sprint health check that analyzes a sprint's current state and suggests improvements - removing stale issues, adding related backlog issues, and identifying dependency or contention problems. Pairs with `ll-sprint edit` (mechanics) the way `/ll:create-sprint` pairs with `ll-sprint create` (intelligence).\n\nTrigger keywords: \"review sprint\", \"sprint health\", \"sprint review\", \"check sprint\", \"sprint suggestions\", \"optimize sprint\", \"sprint health check\", \"is my sprint still good", "args_hint": "[sprint-name]"}, {"name": "ll-run-tests", "description": "Run test suites with common patterns", "args_hint": "[scope]"}, {"name": "ll-scan-codebase", "description": "Scan codebase to identify bugs, enhancements, and features, then create issue files", "args_hint": "[flags]"}, {"name": "ll-scan-product", "description": "Scan codebase for product-focused issues based on goals document", "args_hint": null}, {"name": "ll-sync-issues", "description": "Sync local issues with GitHub Issues (push/pull/status).\n\nTrigger keywords: \"sync issues\", \"push to github\", \"pull from github\", \"github sync\", \"sync with github\", \"export issues\", \"import issues from github", "args_hint": "[action] [issue-id]"}, {"name": "ll-toggle-autoprompt", "description": "Toggle automatic prompt optimization settings", "args_hint": "[setting]"}, {"name": "ll-tradeoff-review-issues", "description": "Evaluate active issues for utility vs complexity trade-offs and recommend which to implement, update, or close. Use this skill to sense-check your backlog before implementation, prune low-value issues, or during sprint planning to focus on high-value work.\n\nTrigger keywords: \"tradeoff review\", \"review issues\", \"utility review\", \"prune backlog\", \"issue tradeoff\", \"sense check issues\", \"evaluate issues\", \"backlog review\", \"worth implementing\", \"low value issues", "args_hint": "[issue-ids]"}, {"name": "ll-verify-issues", "description": "Verify issue files for accuracy, relevance, and completeness by testing claims against actual code", "args_hint": "[issue-id]"}, {"name": "loop-suggester", "description": "Analyze user message history to suggest FSM loop configurations automatically. Uses ll-messages output to identify repeated workflows and generate ready-to-use loop YAML. Also supports --from-commands mode to suggest loops from the available command/skill catalog without requiring message history, and --from-sequences mode to suggest loops from ll-logs sequences n-gram output.\n\nTrigger keywords: \"suggest loops\", \"loop from history\", \"automate workflow\", \"create loop from messages\", \"analyze messages for loops\", \"ll-messages loop\", \"suggest automation\", \"detect patterns for loops\", \"suggest loops from commands\", \"loop from catalog\", \"from-commands\", \"suggest loops from sequences\", \"from-sequences\", \"loop from ll-logs", "args_hint": "[messages.jsonl|--from-commands|--from-sequences]"}, {"name": "manage-issue", "description": "Use when asked to implement an issue end-to-end or start implementing FEAT-NNN.", "args_hint": "[type] [action] [issue-id]"}, {"name": "manage-release", "description": "Manage releases - create git tags, generate changelogs, and manage GitHub releases.\nIntegrates with Issue Management to include completed issues in release notes.\n\nTrigger keywords: \"manage release\", \"create release\", \"new release\", \"tag release\", \"publish release\", \"make release\", \"bump version", "args_hint": "[action] [version]"}, {"name": "map-dependencies", "description": "Use when asked to find dependencies between issues or prepare a dependency-aware sprint plan.", "args_hint": null}, {"name": "normalize-issues", "description": "Find and fix issue filenames with missing or duplicate IDs across types (e.g., BUG-007 and FEAT-007)", "args_hint": "[issue_id] [flags]"}, {"name": "open-pr", "description": "Open a pull request for the current branch.\n\nTrigger keywords: \"open pr\", \"create pull request\", \"submit pr\", \"create pr\", \"open pull request\", \"submit for review\", \"make a pr", "args_hint": "[target-branch]"}, {"name": "prioritize-issues", "description": "Analyze issues and prepend priority levels (P0-P5) to filenames", "args_hint": "[flags]"}, {"name": "product-analyzer", "description": "Use when asked to analyze product goals, check feature gaps, or evaluate business value. Returns raw YAML findings. For full scan with issue file creation, use `/ll:scan-product`.", "args_hint": "[focus-area]"}, {"name": "ready-issue", "description": "Analyze and validate an issue file for accuracy, utility, and completeness, then auto-correct to make implementation-ready or close if invalid", "args_hint": "ISSUE_ID"}, {"name": "reconcile-issue", "description": "Rewrite an issue's Implementation Steps, Acceptance Criteria, and Integration Map (Files to Modify, Dependent Files, Similar Patterns, Tests, Documentation) in place from its own accumulated research findings \u2014 plus, conditionally, a Scope Boundaries claim contradicted by those findings \u2014 without appending or bulldozing human prose", "args_hint": "ISSUE_ID"}, {"name": "refine-issue", "description": "Refine issue files with codebase-driven research to fill knowledge gaps needed for implementation", "args_hint": "ISSUE_ID [--auto] [--dry-run] [--gap-analysis] [--full-rewrite]"}, {"name": "rename-loop", "description": "Rename a loop and update all references in YAMLs, tests, and docs.", "args_hint": "<old-name> <new-name> [--dry-run] [--yes]"}, {"name": "resume", "description": "Resume from a previous session's continuation prompt", "args_hint": "[prompt-file]"}, {"name": "review-epic", "description": "Use when asked to review epic health, audit stalled children, check scope drift, find missing coverage, or assess closure readiness. Produces a structured health report and actionable recommendations. Read-only.", "args_hint": "<EPIC-ID> [--skip-drift]"}, {"name": "review-loop", "description": "Use when asked to review loop config quality, validate loop YAML, or audit a loop definition.", "args_hint": null}, {"name": "review-sprint", "description": "AI-guided sprint health check that analyzes a sprint's current state and suggests improvements - removing stale issues, adding related backlog issues, and identifying dependency or contention problems. Pairs with `ll-sprint edit` (mechanics) the way `/ll:create-sprint` pairs with `ll-sprint create` (intelligence).\n\nTrigger keywords: \"review sprint\", \"sprint health\", \"sprint review\", \"check sprint\", \"sprint suggestions\", \"optimize sprint\", \"sprint health check\", \"is my sprint still good", "args_hint": "[sprint-name]"}, {"name": "run-tests", "description": "Run test suites with common patterns", "args_hint": "[scope]"}, {"name": "scan-codebase", "description": "Scan codebase to identify bugs, enhancements, and features, then create issue files", "args_hint": "[flags]"}, {"name": "scan-product", "description": "Scan codebase for product-focused issues based on goals document", "args_hint": null}, {"name": "scope-epic", "description": "Use when asked to decompose a theme or goal into an EPIC with 3\u20138 child issues. Creates the EPIC file, pre-wired child stubs, and stages everything for git.", "args_hint": "<theme> [--from-doc <path>] [--priority P2] [--auto]"}, {"name": "simplify-loop", "description": "Use when asked to simplify a loop, decompose a loop into sub-loops, collapse state chains into flows, or refactor an FSM loop.", "args_hint": "[name] [--dry-run] [--auto] [--flows-only] [--subloops-only] [--yes]"}, {"name": "spike", "description": "Use when asked to prove an unproven internal mechanism with an isolated code spike before implementing.", "args_hint": "ISSUE_ID [--auto | --check | --plan-only | --plan <file> | --force]"}, {"name": "sync-issues", "description": "Sync local issues with GitHub Issues (push/pull/status).\n\nTrigger keywords: \"sync issues\", \"push to github\", \"pull from github\", \"github sync\", \"sync with github\", \"export issues\", \"import issues from github", "args_hint": "[action] [issue-id]"}, {"name": "toggle-autoprompt", "description": "Toggle automatic prompt optimization settings", "args_hint": "[setting]"}, {"name": "tradeoff-review-issues", "description": "Evaluate active issues for utility vs complexity trade-offs and recommend which to implement, update, or close. Use this skill to sense-check your backlog before implementation, prune low-value issues, or during sprint planning to focus on high-value work.\n\nTrigger keywords: \"tradeoff review\", \"review issues\", \"utility review\", \"prune backlog\", \"issue tradeoff\", \"sense check issues\", \"evaluate issues\", \"backlog review\", \"worth implementing\", \"low value issues", "args_hint": "[issue-ids]"}, {"name": "update", "description": "Use when asked to update little-loops, the plugin, or the pip package.", "args_hint": "[flags]"}, {"name": "update-docs", "description": "Use when asked to update docs, find stale documentation, or check doc coverage after a sprint.", "args_hint": "[--since <date|git-ref>] [--fix]"}, {"name": "verify-issue-loop", "description": "Use when asked to generate an FSM verification loop YAML from a single issue's acceptance criteria, or an adversarial variant that tries to break the feature via boundary/malformed/failure-mode probes.", "args_hint": "<issue-id> [--mode criteria|adversarial]"}, {"name": "verify-issues", "description": "Verify issue files for accuracy, relevance, and completeness by testing claims against actual code", "args_hint": "[issue-id]"}, {"name": "wire-issue", "description": "Use when a refined issue is missing integration points or wiring in the implementation plan.", "args_hint": null}, {"name": "workflow-automation-proposer", "description": "Use when asked to propose automations or suggest automation opportunities from workflow patterns.", "args_hint": null}];
     window.__GENERATOR_VERSION__ = "1.164.0";
+    window.__CONFIDENCE_GATE__ = {"enabled": true, "readiness_threshold": 85, "outcome_threshold": 65};
     window.__ACTIVE_THEME__ = document.documentElement.getAttribute("data-theme") || "light";
   </script>
 
@@ -388,6 +389,7 @@ confidence_score: 40"></textarea>
           <legend>Budget</legend>
           <label for="f-maxsteps">Max steps</label>
           <input type="number" id="f-maxsteps" value="20" min="1" />
+          <p class="hint" id="confidence-gate-info"></p>
         </fieldset>
 
         <fieldset id="outcomes-fieldset">
@@ -570,6 +572,24 @@ export const LIFECYCLE_VERBS = [
 ];
 
 /**
+ * Lifecycle-only built-in terminal destinations (ENH-3492): explicit
+ * stop-success (`stopped`), skip-success (`skipped`), and needs-attention
+ * (`needs_attention`, a failure terminal) routes. Distinct from
+ * `LIFECYCLE_VERBS` — these are never actionable states, only terminals a
+ * rule/fallback/verb `transition.kind` may reference. `failure: true` marks
+ * which ones emit the YAML `failure:` key; `stopped`/`skipped` do not.
+ */
+export const LIFECYCLE_DESTINATIONS = [
+  { name: "stopped", failure: false },
+  { name: "skipped", failure: false },
+  { name: "needs_attention", failure: true },
+];
+
+// Outcome transition.kind -> LIFECYCLE_DESTINATIONS name, issue_lifecycle only.
+const _KIND_TO_DESTINATION = { stop: "stopped", skip: "skipped", attention: "needs_attention" };
+const _LIFECYCLE_ONLY_KINDS = new Set(Object.keys(_KIND_TO_DESTINATION));
+
+/**
  * Runtime-reserved per-mode state names (BUG-3489): tokens the generated
  * pipeline itself uses as state names. An authored outcome name, rule
  * target, or fallback matching one of these collides with a generated
@@ -577,7 +597,11 @@ export const LIFECYCLE_VERBS = [
  * `isReservedOutcomeToken`. BUG-3486 extends this map in place: `finished`
  * (the only other name `_doneStateName()` can emit) joins decision_table;
  * `issue_id` (emitted by `_serializeIssueLifecycle()`) joins issue_lifecycle;
- * a new `rubric` key covers `_serializeRubric()`'s own state names. The
+ * a new `rubric` key covers `_serializeRubric()`'s own state names. ENH-3492
+ * adds the three new terminal destination names: all three in
+ * `issue_lifecycle` (where they are directly referenceable), and
+ * `needs_attention` alone in `rubric`/`decision_table` (reachable there only
+ * via the automatic `on_max_steps` route, never an authored reference). The
  * `error`/underscore-prefix protections are unchanged.
  */
 export const RESERVED_STATE_NAMES = {
@@ -588,9 +612,27 @@ export const RESERVED_STATE_NAMES = {
     "failed",
     "error",
     "finished",
+    "needs_attention",
   ]),
-  issue_lifecycle: new Set(["score", "policy_dispatch", "done", "failed", "error", "issue_id"]),
-  rubric: new Set(["score", "parse_scores", "route_high", "route_medium", "done"]),
+  issue_lifecycle: new Set([
+    "score",
+    "policy_dispatch",
+    "done",
+    "failed",
+    "error",
+    "issue_id",
+    "stopped",
+    "skipped",
+    "needs_attention",
+  ]),
+  rubric: new Set([
+    "score",
+    "parse_scores",
+    "route_high",
+    "route_medium",
+    "done",
+    "needs_attention",
+  ]),
 };
 
 /**
@@ -621,9 +663,14 @@ export function isReservedOutcomeToken(mode, token) {
  * @param {{rules: Array, outcomes: Array, fallback: string}} model
  */
 function _assertNoReservedTokens(mode, model) {
+  // ENH-3492: a rule target/fallback naming a built-in lifecycle destination
+  // is an allowed *reference*, not a shadowing *definition* — only outcome
+  // names (which define a state) are checked against that exemption.
+  const allowedDestinationRefs =
+    mode === "issue_lifecycle" ? new Set(LIFECYCLE_DESTINATIONS.map((d) => d.name)) : new Set();
   const offenders = [];
   for (const r of model.rules || []) {
-    if (r.target && isReservedOutcomeToken(mode, r.target)) {
+    if (r.target && !allowedDestinationRefs.has(r.target) && isReservedOutcomeToken(mode, r.target)) {
       offenders.push(`rule target "${r.target}"`);
     }
   }
@@ -632,7 +679,11 @@ function _assertNoReservedTokens(mode, model) {
       offenders.push(`outcome "${o.name}"`);
     }
   }
-  if (model.fallback && isReservedOutcomeToken(mode, model.fallback)) {
+  if (
+    model.fallback &&
+    !allowedDestinationRefs.has(model.fallback) &&
+    isReservedOutcomeToken(mode, model.fallback)
+  ) {
     offenders.push(`fallback "${model.fallback}"`);
   }
   if (offenders.length > 0) {
@@ -640,6 +691,28 @@ function _assertNoReservedTokens(mode, model) {
       `Reserved outcome name(s): ${offenders.join(", ")}. These names — and any ` +
         `underscore-prefixed token — are reserved for the generated loop's own states ` +
         `and routing sentinels. Rename the outcome, rule target, or fallback and its references.`
+    );
+  }
+}
+
+/**
+ * Reject any outcome whose `transition.kind` is `stop`/`skip`/`attention`
+ * (the ENH-3492 lifecycle-only kinds) in a `mode` other than
+ * `issue_lifecycle` — including a model reconstructed from an imported
+ * project. Throws a defense-in-depth `Error`; `_checkLifecycleOnlyTransitions`
+ * is the paired non-throwing UI diagnostic.
+ * @param {string} mode
+ * @param {{outcomes: Array}} model
+ */
+function _assertLifecycleOnlyTransitionsAllowed(mode, model) {
+  if (mode === "issue_lifecycle") return;
+  const offenders = (model.outcomes || []).filter(
+    (o) => o.transition && _LIFECYCLE_ONLY_KINDS.has(o.transition.kind)
+  );
+  if (offenders.length > 0) {
+    throw new Error(
+      `Transition kind(s) reserved for issue_lifecycle mode: ` +
+        `${offenders.map((o) => `"${o.name}" (${o.transition.kind})`).join(", ")}.`
     );
   }
 }
@@ -875,9 +948,12 @@ function _diag(severity, field, message) {
 }
 
 function _checkReservedTokens(mode, model) {
+  // ENH-3492: same reference-vs-definition exemption as _assertNoReservedTokens.
+  const allowedDestinationRefs =
+    mode === "issue_lifecycle" ? new Set(LIFECYCLE_DESTINATIONS.map((d) => d.name)) : new Set();
   const out = [];
   for (const r of model.rules || []) {
-    if (r.target && isReservedOutcomeToken(mode, r.target)) {
+    if (r.target && !allowedDestinationRefs.has(r.target) && isReservedOutcomeToken(mode, r.target)) {
       out.push(
         _diag("error", "rules", `Rule target "${r.target}" is reserved for the generated loop's own states.`)
       );
@@ -890,10 +966,95 @@ function _checkReservedTokens(mode, model) {
       );
     }
   }
-  if (model.fallback && isReservedOutcomeToken(mode, model.fallback)) {
+  if (
+    model.fallback &&
+    !allowedDestinationRefs.has(model.fallback) &&
+    isReservedOutcomeToken(mode, model.fallback)
+  ) {
     out.push(
       _diag("error", "fallback", `Fallback "${model.fallback}" is reserved for the generated loop's own states.`)
     );
+  }
+  return out;
+}
+
+// ENH-3492: `stop`/`skip`/`attention` transition kinds are lifecycle-only.
+function _checkLifecycleOnlyTransitions(model) {
+  if (model.mode === "issue_lifecycle") return [];
+  const out = [];
+  for (const o of model.outcomes || []) {
+    const kind = o.transition && o.transition.kind;
+    if (_LIFECYCLE_ONLY_KINDS.has(kind)) {
+      out.push(
+        _diag(
+          "error",
+          "outcomes",
+          `Outcome "${o.name}"'s transition "${kind}" is only available in issue_lifecycle mode.`
+        )
+      );
+    }
+  }
+  return out;
+}
+
+// ENH-3492: a lifecycle outcome with no action that routes straight to a
+// terminal (stop/skip/attention) is never what an author means — the verb
+// would do nothing and then stop/skip/flag.
+function _checkActionlessNewTransitionKinds(model) {
+  if (model.mode !== "issue_lifecycle") return [];
+  const out = [];
+  for (const o of model.outcomes || []) {
+    const kind = o.transition && o.transition.kind;
+    const at = o.actionType || "none";
+    if (_LIFECYCLE_ONLY_KINDS.has(kind) && at === "none") {
+      out.push(
+        _diag(
+          "error",
+          "outcomes",
+          `Outcome "${o.name}" combines no action with "${kind}" — add an action, or use ` +
+            `"Score again"/"Go to…"/"Stop here" instead.`
+        )
+      );
+    }
+  }
+  return out;
+}
+
+// ENH-3492: optional per-dimension scoring instructions/anchors. Anchors
+// must be unique finite numeric scores in [0,100] with a nonempty meaning;
+// boolean dimensions accept only 0/100 anchors.
+function _checkDimensionMetadata(model) {
+  const out = [];
+  for (const d of model.dimensions || []) {
+    if (d.anchors == null) continue;
+    if (!Array.isArray(d.anchors)) {
+      out.push(_diag("error", "dimensions", `Field "${d.name}" anchors must be a list.`));
+      continue;
+    }
+    const seen = new Set();
+    for (const a of d.anchors) {
+      const score = Number(a && a.score);
+      if (!Number.isFinite(score) || score < 0 || score > 100) {
+        out.push(
+          _diag("error", "dimensions", `Field "${d.name}" has an anchor score outside 0-100.`)
+        );
+        continue;
+      }
+      if (d.type === "boolean" && score !== 0 && score !== 100) {
+        out.push(
+          _diag("error", "dimensions", `Field "${d.name}" is boolean; anchors must be 0 or 100.`)
+        );
+      }
+      if (seen.has(score)) {
+        out.push(
+          _diag("error", "dimensions", `Field "${d.name}" has a duplicate anchor score ${score}.`)
+        );
+      }
+      seen.add(score);
+      if (!a || !String(a.meaning || "").trim()) {
+        out.push(_diag("error", "dimensions", `Field "${d.name}" has an anchor with no meaning.`));
+      }
+    }
   }
   return out;
 }
@@ -932,7 +1093,18 @@ function _checkDuplicateOutcomes(model) {
 
 function _checkMissingReferences(model) {
   const out = [];
-  const names = new Set((model.outcomes || []).map((o) => o.name));
+  const outcomeNames = new Set((model.outcomes || []).map((o) => o.name));
+  // ENH-3492: a rule/fallback reference to a built-in lifecycle destination
+  // is legal without a matching `outcomes` definition — it's the reference-
+  // vs-definition distinction: LIFECYCLE_DESTINATIONS entries are never
+  // authored outcomes, only referenceable terminals. `names` (rule/fallback)
+  // is deliberately a superset of `outcomeNames` ("Go to" target, below) —
+  // "goto" jumps between actionable verb states, which a destination never
+  // is, so it stays restricted to real outcomes.
+  const names = new Set(outcomeNames);
+  if (model.mode === "issue_lifecycle") {
+    for (const d of LIFECYCLE_DESTINATIONS) names.add(d.name);
+  }
   (model.rules || []).forEach((r, i) => {
     if (r.target && !names.has(r.target)) {
       out.push(
@@ -945,7 +1117,7 @@ function _checkMissingReferences(model) {
   }
   for (const o of model.outcomes || []) {
     const t = o.transition;
-    if (t && t.kind === "goto" && t.target && !names.has(t.target)) {
+    if (t && t.kind === "goto" && t.target && !outcomeNames.has(t.target)) {
       out.push(
         _diag("error", "outcomes", `Outcome "${o.name}"'s "Go to" target "${t.target}" is not a defined outcome.`)
       );
@@ -1072,6 +1244,9 @@ export function validateBuilderModel(model) {
     ..._checkDrafts(model),
     ..._checkRubricUnknownOutcomes(model),
     ..._checkShadows(model),
+    ..._checkLifecycleOnlyTransitions(model),
+    ..._checkActionlessNewTransitionKinds(model),
+    ..._checkDimensionMetadata(model),
   ];
 }
 
@@ -1591,7 +1766,17 @@ export function summarizeTransitions(model) {
 
   const implementOutcome = verbs.includes("implement") ? outcomeMap.get("implement") : null;
   const implementTransition = implementOutcome && implementOutcome.transition;
-  const stopsAfterImplement = !!implementOutcome && (!implementTransition || implementTransition.kind === "finish");
+  // ENH-3492: stop/skip/attention on `implement` also stop the run — not
+  // just `finish`. `stopDestination` names which terminal is actually
+  // reached, so a caller can distinguish a successful stop/skip from the
+  // needs_attention failure terminal.
+  const implementKind = implementTransition ? implementTransition.kind : "finish";
+  const stopsAfterImplement =
+    !!implementOutcome &&
+    (!implementTransition || implementKind === "finish" || !!_KIND_TO_DESTINATION[implementKind]);
+  const stopDestination = stopsAfterImplement
+    ? _KIND_TO_DESTINATION[implementKind] || "done"
+    : null;
 
   let verification = "none";
   if (verbs.includes("verify")) {
@@ -1633,11 +1818,22 @@ export function summarizeTransitions(model) {
   const stepsPerAttempt = 2 + chainLength;
   const maxSteps = Number.isInteger(model.maxSteps) && model.maxSteps >= 1 ? model.maxSteps : 20;
   const attempts = Math.floor(maxSteps / stepsPerAttempt);
+  // ENH-3492: the budget route is now the explicit needs_attention failure
+  // terminal, not a bare "failed" — no summary may classify it as success.
   const maxStepsNote =
     `max steps ${maxSteps} ≈ ${attempts} attempt${attempts === 1 ? "" : "s"} of ` +
-    `${stepsPerAttempt} state${stepsPerAttempt === 1 ? "" : "s"} each`;
+    `${stepsPerAttempt} state${stepsPerAttempt === 1 ? "" : "s"} each; exceeding the budget ` +
+    `lands on needs_attention (failure)`;
 
-  return { steps: verbs, stopsAfterImplement, verification, stepsPerAttempt, attempts, maxStepsNote };
+  return {
+    steps: verbs,
+    stopsAfterImplement,
+    stopDestination,
+    verification,
+    stepsPerAttempt,
+    attempts,
+    maxStepsNote,
+  };
 }
 
 /**
@@ -1782,6 +1978,19 @@ function _hasBoolean(model) {
   return (model.dimensions || []).some((d) => d.type === "boolean");
 }
 
+// ENH-3492: `instructions`/anchor `meaning` text is opaque literal text
+// passed through to the LLM grading prompt — never an FSM interpolation
+// template. A YAML block scalar (`_yamlBlockScalar`) protects YAML structure
+// but not the FSM's own `${...}` interpolation once the emitted prompt
+// reaches FSMExecutor, so any literal `${` must be escaped to `$${` (the
+// FSM's existing escape convention, `fsm/interpolation.py` ESCAPED_PATTERN)
+// before emission. Doubling composes: authored `$${x}` already contains one
+// `${` occurrence and is escaped to `$$${x}`, which unescapes back to the
+// authored `$${x}` at runtime — a single, uniform rule.
+function _escapeInterpolation(text) {
+  return String(text).replace(/\$\{/g, (m) => "$" + m);
+}
+
 function _scoreActionBody(model) {
   const dims = _serializeDimensions(model);
   let body =
@@ -1795,6 +2004,23 @@ function _scoreActionBody(model) {
     body +=
       `For boolean dimensions (${boolNames}): score 100 if the condition holds, ` +
       `0 if it does not.\n`;
+  }
+  // ENH-3492: optional per-dimension scoring instructions/anchors. Absent on
+  // every dimension, this loop appends nothing — existing prompts stay
+  // byte-for-byte unchanged.
+  for (const d of model.dimensions || []) {
+    if (d.instructions && String(d.instructions).trim()) {
+      body += `For ${normalizeDimName(d.name)}: ${_escapeInterpolation(
+        String(d.instructions).trim()
+      )}\n`;
+    }
+    if (Array.isArray(d.anchors) && d.anchors.length) {
+      const parts = d.anchors
+        .slice()
+        .sort((a, b) => Number(a.score) - Number(b.score))
+        .map((a) => `${a.score}=${_escapeInterpolation(String(a.meaning || ""))}`);
+      body += `Score anchors for ${normalizeDimName(d.name)}: ${parts.join(", ")}\n`;
+    }
   }
   body += `Final line: AGGREGATE: <int 0-100>`;
   return body;
@@ -1822,7 +2048,7 @@ function _scoreActionBody(model) {
 // interpolation in a raw bash-token position and trips the unsafe-interpolation
 // WARNING); `slash_command` bodies are not bash-executed, so they keep the bare
 // `${context.issue_id}` form the AC pins.
-function _outcomeStateLines(outcome, { doneState = "done", issueArg = false } = {}) {
+function _outcomeStateLines(outcome, { doneState = "done", issueArg = false, mode } = {}) {
   const lines = [];
   lines.push(`  ${outcome.name}:`);
   const at = outcome.actionType || "none";
@@ -1845,10 +2071,19 @@ function _outcomeStateLines(outcome, { doneState = "done", issueArg = false } = 
   }
   // Axis B transition.
   const t = outcome.transition || { kind: "finish" };
+  // ENH-3492: stop/skip/attention route straight to a LIFECYCLE_DESTINATIONS
+  // terminal — lifecycle mode only (rubric/decision_table never reach this
+  // branch; validation/the serializer's throwing guard reject the kind
+  // before emission). Emitted even when the outcome has no action: a
+  // destination reference always replaces the verb's `next` target, never
+  // its (possibly absent) action.
+  const destination = mode === "issue_lifecycle" ? _KIND_TO_DESTINATION[t.kind] : undefined;
   if (t.kind === "rescore") {
     lines.push(`    next: score`);
   } else if (t.kind === "goto") {
     lines.push(`    next: ${t.target}`);
+  } else if (destination) {
+    lines.push(`    next: ${destination}`);
   } else if (hasAction) {
     lines.push(`    next: ${doneState}`);
   } else {
@@ -1878,6 +2113,7 @@ export function _doneStateName(model) {
 
 function _serializeDecisionTable(model) {
   _assertNoReservedTokens("decision_table", model);
+  _assertLifecycleOnlyTransitionsAllowed("decision_table", model);
   const out = [];
   const name = model.name || "policy-builder";
   out.push(`name: ${name}`);
@@ -1887,7 +2123,11 @@ function _serializeDecisionTable(model) {
   }
   out.push(`max_steps: ${model.maxSteps != null ? model.maxSteps : 20}`);
   out.push("");
-  out.push("on_max_steps: failed");
+  // ENH-3492: a step-budget exhaustion is now the explicit needs_attention
+  // failure terminal, not the generic `failed` terminal — `needs_attention`
+  // is reserved for decision_table (RESERVED_STATE_NAMES) so it is only ever
+  // reachable via this automatic route, never an authored rule/outcome.
+  out.push("on_max_steps: needs_attention");
   out.push("");
   out.push("import:");
   out.push("  - lib/rubric-router.yaml");
@@ -1978,10 +2218,19 @@ function _serializeDecisionTable(model) {
   out.push(`    terminal: true`);
   out.push(`    failure: true`);
   out.push("");
+  // ENH-3492: unconditional — needs_attention is reserved for decision_table,
+  // so it is only ever reached via the on_max_steps route above, never an
+  // authored reference.
+  out.push(`  needs_attention:`);
+  out.push(`    terminal: true`);
+  out.push(`    failure: true`);
+  out.push("");
   return out.join("\n").replace(/\n+$/, "\n");
 }
 
 function _serializeRubric(model) {
+  _assertNoReservedTokens("rubric", model);
+  _assertLifecycleOnlyTransitionsAllowed("rubric", model);
   const out = [];
   const name = model.name || "rubric-builder";
   out.push(`name: ${name}`);
@@ -1994,6 +2243,12 @@ function _serializeRubric(model) {
   out.push(`required_inputs: ["subject"]`);
   out.push(`initial: score`);
   out.push(`max_steps: ${model.maxSteps != null ? model.maxSteps : 10}`);
+  out.push("");
+  // ENH-3492: rubric previously emitted no on_max_steps line at all; this is
+  // an added line, not a changed one. needs_attention is reserved for
+  // rubric, so — same as decision_table — only ever reached via this route.
+  out.push("on_max_steps: needs_attention");
+  out.push("");
   out.push("import:");
   out.push("  - lib/rubric-router.yaml");
   out.push("");
@@ -2055,6 +2310,12 @@ function _serializeRubric(model) {
   }
   out.push("  done:");
   out.push("    terminal: true");
+  out.push("");
+  // ENH-3492: unconditional, same reasoning as decision_table's — reserved,
+  // only reached via on_max_steps.
+  out.push("  needs_attention:");
+  out.push("    terminal: true");
+  out.push("    failure: true");
   return out.join("\n").replace(/\n+$/, "\n");
 }
 
@@ -2113,6 +2374,49 @@ export function _emittedVerbs(model) {
   return (model.outcomes || []).map((o) => o.name).filter((n) => emitted.has(n));
 }
 
+/**
+ * The LIFECYCLE_DESTINATIONS names an author has actually selected — as a
+ * rule target, the fallback, or a verb's `transition.kind` — as opposed to
+ * `needs_attention`'s automatic `on_max_steps` route, which references a
+ * destination without any dispatch mechanism reaching it (ENH-3492). Drives
+ * which `policy_dispatch.route` entries `_serializeIssueLifecycle` emits
+ * beyond the verb entries, and (via `computeSummary`) which destinations a
+ * transition summary reports alongside verbs. Returned in
+ * `LIFECYCLE_DESTINATIONS` order for deterministic emission.
+ * @param {{rules: Array, outcomes: Array, fallback: string}} model
+ * @returns {string[]}
+ */
+export function _dispatchedDestinations(model) {
+  const destNames = new Set(LIFECYCLE_DESTINATIONS.map((d) => d.name));
+  const found = new Set();
+  for (const r of model.rules || []) {
+    if (r.target && destNames.has(r.target)) found.add(r.target);
+  }
+  if (model.fallback && destNames.has(model.fallback)) found.add(model.fallback);
+  for (const o of model.outcomes || []) {
+    const dest = o.transition && _KIND_TO_DESTINATION[o.transition.kind];
+    if (dest) found.add(dest);
+  }
+  return LIFECYCLE_DESTINATIONS.map((d) => d.name).filter((n) => found.has(n));
+}
+
+/**
+ * The LIFECYCLE_DESTINATIONS names that need a terminal YAML block emitted:
+ * `_dispatchedDestinations(model)` plus `needs_attention` unconditionally
+ * (the automatic `on_max_steps` route always targets it, in every model,
+ * whether or not anything else references it) — so the terminal exists for
+ * the executor to land on even when nothing dispatches to it (ENH-3492).
+ * Strictly a superset of `_dispatchedDestinations`; the two sets differ
+ * exactly when `on_max_steps` is the only reference to `needs_attention`.
+ * @param {{rules: Array, outcomes: Array, fallback: string}} model
+ * @returns {string[]}
+ */
+export function _requiredTerminalBlocks(model) {
+  const required = new Set(_dispatchedDestinations(model));
+  required.add("needs_attention");
+  return LIFECYCLE_DESTINATIONS.map((d) => d.name).filter((n) => required.has(n));
+}
+
 // Emits the issue_lifecycle-mode loop YAML (Proposed Solution §2): a thin
 // standalone loop that imports lib/policy-router.yaml, self-declares
 // `parameters: { issue_id: {...} }` (not `with:` — that key is caller-side
@@ -2150,7 +2454,9 @@ function _serializeIssueLifecycle(model) {
   out.push("# every verb is a /ll: skill; MR-12 would otherwise warn per verb state");
   out.push("pruning_profile_ok: true");
   out.push("");
-  out.push("on_max_steps: failed");
+  // ENH-3492: budget exhaustion now lands on the explicit needs_attention
+  // failure terminal instead of the generic `failed` terminal.
+  out.push("on_max_steps: needs_attention");
   out.push("");
   out.push("timeout: 14400");
   out.push("");
@@ -2170,6 +2476,13 @@ function _serializeIssueLifecycle(model) {
   for (const v of verbs) {
     out.push(`      ${v}: ${v}`);
   }
+  // ENH-3492: dispatch route entries for author-selected destination
+  // references only (rule target, fallback, or a verb's transition.kind) —
+  // never solely because on_max_steps targets needs_attention.
+  const dispatchedDestinations = _dispatchedDestinations(model);
+  for (const d of dispatchedDestinations) {
+    out.push(`      ${d}: ${d}`);
+  }
   out.push(`      _: ${model.fallback || verbs[0] || "gate"}`);
   out.push(`      _error: failed`);
   out.push("");
@@ -2177,7 +2490,11 @@ function _serializeIssueLifecycle(model) {
   for (const o of model.outcomes || []) outcomeMap.set(o.name, o);
   for (const v of verbs) {
     const outcome = outcomeMap.get(v);
-    for (const line of _outcomeStateLines(outcome, { doneState: "done", issueArg: true })) {
+    for (const line of _outcomeStateLines(outcome, {
+      doneState: "done",
+      issueArg: true,
+      mode: "issue_lifecycle",
+    })) {
       out.push(line);
     }
     out.push(`    on_error: failed`);
@@ -2186,6 +2503,15 @@ function _serializeIssueLifecycle(model) {
   out.push("  done:");
   out.push("    terminal: true");
   out.push("");
+  // ENH-3492: terminal blocks for dispatched destinations plus (always)
+  // needs_attention — see _requiredTerminalBlocks's doc comment.
+  const destMeta = new Map(LIFECYCLE_DESTINATIONS.map((d) => [d.name, d]));
+  for (const name of _requiredTerminalBlocks(model)) {
+    out.push(`  ${name}:`);
+    out.push(`    terminal: true`);
+    if (destMeta.get(name).failure) out.push(`    failure: true`);
+    out.push("");
+  }
   out.push("  failed:");
   out.push("    terminal: true");
   out.push("    failure: true");
@@ -2450,6 +2776,10 @@ if (typeof window !== "undefined") {
     _serializeIssueLifecycle,
     _emittedVerbs,
     _doneStateName,
+    // ENH-3492 (terminal destinations, dispatch/terminal-block split)
+    LIFECYCLE_DESTINATIONS,
+    _dispatchedDestinations,
+    _requiredTerminalBlocks,
     serializeFrontmatterDimensions,
     parseFrontmatterBlock,
     encodeFrontmatterScores,
@@ -2481,6 +2811,9 @@ if (typeof window !== "undefined") {
 // ===========================================================================
 const GRAMMAR = window.__GRAMMAR_SPEC__ || { all_ops: ["==", "!=", ">=", "<=", "<", ">"], ordered_ops: [">=", "<=", "<", ">"] };
 const CATALOG = window.__SKILL_CATALOG__ || [];
+// ENH-3492: the project's confidence-gate config, stamped at generation time.
+// Display-only — never used to rewrite an authored rule threshold.
+const CONFIDENCE_GATE = window.__CONFIDENCE_GATE__ || { enabled: false, readiness_threshold: 85, outcome_threshold: 65 };
 
 // `state` is the template's own authoring model — same flat shape as the
 // serializer's model contract (see policy_builder_core.mjs header), so
@@ -2668,9 +3001,14 @@ function computeSummary(model) {
   const subject = model.subject || "the artifact";
   const steps = model.maxSteps != null ? model.maxSteps : 20;
   if (model.mode === "issue_lifecycle") {
+    // ENH-3492: "reaches:" includes author-selected destinations (rule
+    // target/fallback/verb transition.kind), not just verbs — otherwise a
+    // rule routing straight to e.g. "skipped" would render "reaches: nothing yet".
     const verbs = _emittedVerbs(model);
-    const routed = verbs.length ? verbs.join(" → ") : "nothing yet";
-    return `Routes an issue through its frontmatter on ${dims} field${dims === 1 ? "" : "s"}, runs ≤${steps}×, reaches: ${routed}.`;
+    const destinations = _dispatchedDestinations(model);
+    const routed = [...verbs, ...destinations];
+    const routedText = routed.length ? routed.join(" → ") : "nothing yet";
+    return `Routes an issue through its frontmatter on ${dims} field${dims === 1 ? "" : "s"}, runs ≤${steps}×, reaches: ${routedText}.`;
   }
   if (model.mode === "rubric") {
     return `Scores ${subject} on ${dims} signal${dims === 1 ? "" : "s"}, runs ≤${steps}×, routes to high/medium/low tiers.`;
@@ -2703,6 +3041,27 @@ function _skillHintFor(body) {
 // satisfies "built-ins first, then custom rows in insertion order."
 const BUILTIN_DIM_NAMES = new Set(BUILTIN_FRONTMATTER_DIMENSIONS.map((d) => normalizeDimName(d.name)));
 
+// ENH-3492: serialize a dimension's anchors array to/from the compact
+// "score:meaning, score:meaning" text the single-line editor below reads.
+function _anchorsToText(anchors) {
+  return (anchors || []).map((a) => `${a.score}:${a.meaning}`).join(", ");
+}
+function _anchorsFromText(text) {
+  const parts = String(text)
+    .split(",")
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0);
+  const anchors = [];
+  for (const part of parts) {
+    const idx = part.indexOf(":");
+    if (idx === -1) continue;
+    const score = Number(part.slice(0, idx).trim());
+    const meaning = part.slice(idx + 1).trim();
+    if (Number.isFinite(score)) anchors.push({ score, meaning });
+  }
+  return anchors;
+}
+
 function renderDimensions() {
   const host = $("dim-list");
   host.innerHTML = "";
@@ -2732,6 +3091,32 @@ function renderDimensions() {
       row.appendChild(del);
     }
     host.appendChild(row);
+
+    // ENH-3492: optional per-dimension scoring instructions/anchors — hidden
+    // in issue_lifecycle mode (frontmatter dimensions are deterministic
+    // extraction, never LLM-graded).
+    if (!isLifecycle) {
+      const metaRow = document.createElement("div");
+      metaRow.className = "row";
+      metaRow.style.marginBottom = "0.5rem";
+      const instrInput = document.createElement("input");
+      instrInput.type = "text";
+      instrInput.value = d.instructions || "";
+      instrInput.placeholder = `Scoring instructions for ${norm} (optional)`;
+      instrInput.setAttribute("aria-label", `${norm} scoring instructions`);
+      instrInput.oninput = () => { d.instructions = instrInput.value; updatePreview(); };
+      const anchorsInput = document.createElement("input");
+      anchorsInput.type = "text";
+      anchorsInput.value = _anchorsToText(d.anchors);
+      anchorsInput.placeholder = "score:meaning, score:meaning (optional)";
+      anchorsInput.setAttribute("aria-label", `${norm} score anchors`);
+      anchorsInput.oninput = () => {
+        d.anchors = _anchorsFromText(anchorsInput.value);
+        updatePreview();
+      };
+      metaRow.append(instrInput, anchorsInput);
+      host.appendChild(metaRow);
+    }
   });
 }
 
@@ -2748,7 +3133,20 @@ function renderFallback() {
     if (oc.name === prev) o.selected = true;
     sel.appendChild(o);
   });
-  if (!state.outcomes.some((oc) => oc.name === prev)) {
+  // ENH-3492: issue_lifecycle's fallback may also target a built-in
+  // terminal destination directly (not just a verb).
+  const isLifecycle = state.mode === "issue_lifecycle";
+  if (isLifecycle) {
+    LIFECYCLE_DESTINATIONS.forEach((d) => {
+      const o = document.createElement("option");
+      o.value = d.name; o.textContent = d.name;
+      if (d.name === prev) o.selected = true;
+      sel.appendChild(o);
+    });
+  }
+  const validNames = new Set(state.outcomes.map((oc) => oc.name));
+  if (isLifecycle) LIFECYCLE_DESTINATIONS.forEach((d) => validNames.add(d.name));
+  if (!validNames.has(prev)) {
     state.fallback = state.outcomes.length ? state.outcomes[0].name : "";
   }
   sel.value = state.fallback;
@@ -2965,7 +3363,18 @@ function renderLifecycleOutcomes() {
     transRow.innerHTML = `<label>And then:</label>`;
     const bSel = document.createElement("select");
     bSel.setAttribute("aria-label", `${oc.name} follow-up`);
-    [["rescore", "Score again"], ["goto", "Go to…"], ["finish", "Stop here"]].forEach(([v, t]) => {
+    // ENH-3492: stop/skip/attention are issue_lifecycle-only terminal
+    // destinations, offered here alongside the shared rescore/goto/finish
+    // kinds (renderOutcomes()'s decision_table/rubric follow-up select does
+    // not offer them).
+    [
+      ["rescore", "Score again"],
+      ["goto", "Go to…"],
+      ["finish", "Stop here (done)"],
+      ["stop", "Stop here (success)"],
+      ["skip", "Skip (success)"],
+      ["attention", "Flag for attention (failure)"],
+    ].forEach(([v, t]) => {
       const o = document.createElement("option"); o.value = v; o.textContent = t;
       if (v === (oc.transition && oc.transition.kind)) o.selected = true;
       bSel.appendChild(o);
@@ -3110,6 +3519,15 @@ function renderRules() {
       if (oc.name === r.target) o.selected = true;
       targetSel.appendChild(o);
     });
+    // ENH-3492: a rule may target a built-in terminal destination directly,
+    // issue_lifecycle mode only.
+    if (state.mode === "issue_lifecycle") {
+      LIFECYCLE_DESTINATIONS.forEach((d) => {
+        const o = document.createElement("option"); o.value = d.name; o.textContent = d.name;
+        if (d.name === r.target) o.selected = true;
+        targetSel.appendChild(o);
+      });
+    }
     targetSel.onchange = () => { r.target = targetSel.value; updatePreview(); };
     card.appendChild(targetSel);
 
@@ -3347,9 +3765,16 @@ function updatePreview() {
       custom: "a custom action, not a recognized verification step",
       none: "no verification",
     }[ts.verification];
+    // ENH-3492: `steps` reports verbs only; append author-selected
+    // destinations (rule target/fallback/verb transition.kind) so a rule
+    // routing straight to e.g. "skipped" isn't reported as reaching nothing.
+    const reached = [...ts.steps, ..._dispatchedDestinations(model)];
+    const stopText = ts.stopsAfterImplement
+      ? ` Stops after implement at "${ts.stopDestination}"${ts.stopDestination === "needs_attention" ? " (failure)" : ""}.`
+      : "";
     $("transition-summary").textContent =
-      `Reaches: ${ts.steps.length ? ts.steps.join(" → ") : "nothing yet"}. ` +
-      `Verification: ${verificationText}. ${ts.maxStepsNote}.`;
+      `Reaches: ${reached.length ? reached.join(" → ") : "nothing yet"}. ` +
+      `Verification: ${verificationText}.${stopText} ${ts.maxStepsNote}.`;
     $("transition-summary").hidden = false;
   } else {
     $("transition-summary").hidden = true;
@@ -3459,6 +3884,18 @@ function renderPresetButtons() {
     btn.onclick = () => applyPreset(preset);
     host.appendChild(btn);
   });
+}
+
+// ENH-3492: display the project's stamped confidence-gate configuration
+// alongside authored rule thresholds. Static (independent of `state`) —
+// never reads from or writes to the model, so it cannot overwrite a saved
+// predicate.
+function renderConfidenceGateInfo() {
+  const el = $("confidence-gate-info");
+  if (!el) return;
+  el.textContent = CONFIDENCE_GATE.enabled
+    ? `Project confidence gate: enabled — readiness ≥${CONFIDENCE_GATE.readiness_threshold}, outcome ≥${CONFIDENCE_GATE.outcome_threshold}.`
+    : `Project confidence gate: disabled.`;
 }
 
 $("f-name").oninput = (e) => { state.name = e.target.value; updatePreview(); };
@@ -3659,6 +4096,7 @@ $("theme-toggle").onclick = () => {
 // ---- bootstrap -----------------------------------------------------------
 initTheme();
 renderPresetButtons();
+renderConfidenceGateInfo();
 hydrateFromStorage();
 applyModeVisibility();
 renderAll();

@@ -137,6 +137,7 @@ small.help { display: block; opacity: 0.7; font-size: 0.75rem; }
     window.__GRAMMAR_SPEC__ = /*__GRAMMAR_SPEC_JSON__*/;
     window.__SKILL_CATALOG__ = /*__SKILL_CATALOG_JSON__*/;
     window.__GENERATOR_VERSION__ = /*__GENERATOR_VERSION_JSON__*/;
+    window.__CONFIDENCE_GATE__ = /*__CONFIDENCE_GATE_JSON__*/;
     window.__ACTIVE_THEME__ = document.documentElement.getAttribute("data-theme") || "light";
   </script>
 
@@ -215,6 +216,7 @@ confidence_score: 40"></textarea>
           <legend>Budget</legend>
           <label for="f-maxsteps">Max steps</label>
           <input type="number" id="f-maxsteps" value="20" min="1" />
+          <p class="hint" id="confidence-gate-info"></p>
         </fieldset>
 
         <fieldset id="outcomes-fieldset">
@@ -260,6 +262,9 @@ confidence_score: 40"></textarea>
 // ===========================================================================
 const GRAMMAR = window.__GRAMMAR_SPEC__ || { all_ops: ["==", "!=", ">=", "<=", "<", ">"], ordered_ops: [">=", "<=", "<", ">"] };
 const CATALOG = window.__SKILL_CATALOG__ || [];
+// ENH-3492: the project's confidence-gate config, stamped at generation time.
+// Display-only — never used to rewrite an authored rule threshold.
+const CONFIDENCE_GATE = window.__CONFIDENCE_GATE__ || { enabled: false, readiness_threshold: 85, outcome_threshold: 65 };
 
 // `state` is the template's own authoring model — same flat shape as the
 // serializer's model contract (see policy_builder_core.mjs header), so
@@ -447,9 +452,14 @@ function computeSummary(model) {
   const subject = model.subject || "the artifact";
   const steps = model.maxSteps != null ? model.maxSteps : 20;
   if (model.mode === "issue_lifecycle") {
+    // ENH-3492: "reaches:" includes author-selected destinations (rule
+    // target/fallback/verb transition.kind), not just verbs — otherwise a
+    // rule routing straight to e.g. "skipped" would render "reaches: nothing yet".
     const verbs = _emittedVerbs(model);
-    const routed = verbs.length ? verbs.join(" → ") : "nothing yet";
-    return `Routes an issue through its frontmatter on ${dims} field${dims === 1 ? "" : "s"}, runs ≤${steps}×, reaches: ${routed}.`;
+    const destinations = _dispatchedDestinations(model);
+    const routed = [...verbs, ...destinations];
+    const routedText = routed.length ? routed.join(" → ") : "nothing yet";
+    return `Routes an issue through its frontmatter on ${dims} field${dims === 1 ? "" : "s"}, runs ≤${steps}×, reaches: ${routedText}.`;
   }
   if (model.mode === "rubric") {
     return `Scores ${subject} on ${dims} signal${dims === 1 ? "" : "s"}, runs ≤${steps}×, routes to high/medium/low tiers.`;
@@ -482,6 +492,27 @@ function _skillHintFor(body) {
 // satisfies "built-ins first, then custom rows in insertion order."
 const BUILTIN_DIM_NAMES = new Set(BUILTIN_FRONTMATTER_DIMENSIONS.map((d) => normalizeDimName(d.name)));
 
+// ENH-3492: serialize a dimension's anchors array to/from the compact
+// "score:meaning, score:meaning" text the single-line editor below reads.
+function _anchorsToText(anchors) {
+  return (anchors || []).map((a) => `${a.score}:${a.meaning}`).join(", ");
+}
+function _anchorsFromText(text) {
+  const parts = String(text)
+    .split(",")
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0);
+  const anchors = [];
+  for (const part of parts) {
+    const idx = part.indexOf(":");
+    if (idx === -1) continue;
+    const score = Number(part.slice(0, idx).trim());
+    const meaning = part.slice(idx + 1).trim();
+    if (Number.isFinite(score)) anchors.push({ score, meaning });
+  }
+  return anchors;
+}
+
 function renderDimensions() {
   const host = $("dim-list");
   host.innerHTML = "";
@@ -511,6 +542,32 @@ function renderDimensions() {
       row.appendChild(del);
     }
     host.appendChild(row);
+
+    // ENH-3492: optional per-dimension scoring instructions/anchors — hidden
+    // in issue_lifecycle mode (frontmatter dimensions are deterministic
+    // extraction, never LLM-graded).
+    if (!isLifecycle) {
+      const metaRow = document.createElement("div");
+      metaRow.className = "row";
+      metaRow.style.marginBottom = "0.5rem";
+      const instrInput = document.createElement("input");
+      instrInput.type = "text";
+      instrInput.value = d.instructions || "";
+      instrInput.placeholder = `Scoring instructions for ${norm} (optional)`;
+      instrInput.setAttribute("aria-label", `${norm} scoring instructions`);
+      instrInput.oninput = () => { d.instructions = instrInput.value; updatePreview(); };
+      const anchorsInput = document.createElement("input");
+      anchorsInput.type = "text";
+      anchorsInput.value = _anchorsToText(d.anchors);
+      anchorsInput.placeholder = "score:meaning, score:meaning (optional)";
+      anchorsInput.setAttribute("aria-label", `${norm} score anchors`);
+      anchorsInput.oninput = () => {
+        d.anchors = _anchorsFromText(anchorsInput.value);
+        updatePreview();
+      };
+      metaRow.append(instrInput, anchorsInput);
+      host.appendChild(metaRow);
+    }
   });
 }
 
@@ -527,7 +584,20 @@ function renderFallback() {
     if (oc.name === prev) o.selected = true;
     sel.appendChild(o);
   });
-  if (!state.outcomes.some((oc) => oc.name === prev)) {
+  // ENH-3492: issue_lifecycle's fallback may also target a built-in
+  // terminal destination directly (not just a verb).
+  const isLifecycle = state.mode === "issue_lifecycle";
+  if (isLifecycle) {
+    LIFECYCLE_DESTINATIONS.forEach((d) => {
+      const o = document.createElement("option");
+      o.value = d.name; o.textContent = d.name;
+      if (d.name === prev) o.selected = true;
+      sel.appendChild(o);
+    });
+  }
+  const validNames = new Set(state.outcomes.map((oc) => oc.name));
+  if (isLifecycle) LIFECYCLE_DESTINATIONS.forEach((d) => validNames.add(d.name));
+  if (!validNames.has(prev)) {
     state.fallback = state.outcomes.length ? state.outcomes[0].name : "";
   }
   sel.value = state.fallback;
@@ -744,7 +814,18 @@ function renderLifecycleOutcomes() {
     transRow.innerHTML = `<label>And then:</label>`;
     const bSel = document.createElement("select");
     bSel.setAttribute("aria-label", `${oc.name} follow-up`);
-    [["rescore", "Score again"], ["goto", "Go to…"], ["finish", "Stop here"]].forEach(([v, t]) => {
+    // ENH-3492: stop/skip/attention are issue_lifecycle-only terminal
+    // destinations, offered here alongside the shared rescore/goto/finish
+    // kinds (renderOutcomes()'s decision_table/rubric follow-up select does
+    // not offer them).
+    [
+      ["rescore", "Score again"],
+      ["goto", "Go to…"],
+      ["finish", "Stop here (done)"],
+      ["stop", "Stop here (success)"],
+      ["skip", "Skip (success)"],
+      ["attention", "Flag for attention (failure)"],
+    ].forEach(([v, t]) => {
       const o = document.createElement("option"); o.value = v; o.textContent = t;
       if (v === (oc.transition && oc.transition.kind)) o.selected = true;
       bSel.appendChild(o);
@@ -889,6 +970,15 @@ function renderRules() {
       if (oc.name === r.target) o.selected = true;
       targetSel.appendChild(o);
     });
+    // ENH-3492: a rule may target a built-in terminal destination directly,
+    // issue_lifecycle mode only.
+    if (state.mode === "issue_lifecycle") {
+      LIFECYCLE_DESTINATIONS.forEach((d) => {
+        const o = document.createElement("option"); o.value = d.name; o.textContent = d.name;
+        if (d.name === r.target) o.selected = true;
+        targetSel.appendChild(o);
+      });
+    }
     targetSel.onchange = () => { r.target = targetSel.value; updatePreview(); };
     card.appendChild(targetSel);
 
@@ -1126,9 +1216,16 @@ function updatePreview() {
       custom: "a custom action, not a recognized verification step",
       none: "no verification",
     }[ts.verification];
+    // ENH-3492: `steps` reports verbs only; append author-selected
+    // destinations (rule target/fallback/verb transition.kind) so a rule
+    // routing straight to e.g. "skipped" isn't reported as reaching nothing.
+    const reached = [...ts.steps, ..._dispatchedDestinations(model)];
+    const stopText = ts.stopsAfterImplement
+      ? ` Stops after implement at "${ts.stopDestination}"${ts.stopDestination === "needs_attention" ? " (failure)" : ""}.`
+      : "";
     $("transition-summary").textContent =
-      `Reaches: ${ts.steps.length ? ts.steps.join(" → ") : "nothing yet"}. ` +
-      `Verification: ${verificationText}. ${ts.maxStepsNote}.`;
+      `Reaches: ${reached.length ? reached.join(" → ") : "nothing yet"}. ` +
+      `Verification: ${verificationText}.${stopText} ${ts.maxStepsNote}.`;
     $("transition-summary").hidden = false;
   } else {
     $("transition-summary").hidden = true;
@@ -1238,6 +1335,18 @@ function renderPresetButtons() {
     btn.onclick = () => applyPreset(preset);
     host.appendChild(btn);
   });
+}
+
+// ENH-3492: display the project's stamped confidence-gate configuration
+// alongside authored rule thresholds. Static (independent of `state`) —
+// never reads from or writes to the model, so it cannot overwrite a saved
+// predicate.
+function renderConfidenceGateInfo() {
+  const el = $("confidence-gate-info");
+  if (!el) return;
+  el.textContent = CONFIDENCE_GATE.enabled
+    ? `Project confidence gate: enabled — readiness ≥${CONFIDENCE_GATE.readiness_threshold}, outcome ≥${CONFIDENCE_GATE.outcome_threshold}.`
+    : `Project confidence gate: disabled.`;
 }
 
 $("f-name").oninput = (e) => { state.name = e.target.value; updatePreview(); };
@@ -1438,6 +1547,7 @@ $("theme-toggle").onclick = () => {
 // ---- bootstrap -----------------------------------------------------------
 initTheme();
 renderPresetButtons();
+renderConfidenceGateInfo();
 hydrateFromStorage();
 applyModeVisibility();
 renderAll();

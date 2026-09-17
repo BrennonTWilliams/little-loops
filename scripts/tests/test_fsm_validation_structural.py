@@ -1999,6 +1999,54 @@ class TestFailureTerminalActionFlagDriven:
         )
         assert [e.path for e in _validate_failure_terminal_action(fsm)] == ["states.failed"]
 
+    def test_on_max_steps_terminal_is_exempt_with_no_diagnostic_predecessor(self) -> None:
+        """ENH-3492: a failure terminal reached only via `on_max_steps` (no
+        state's `next`/`on_error`/route ever names it) needs no dedicated
+        diagnostic predecessor — the budget exhaustion itself is the
+        diagnostic. Mirrors `_validate_terminal_action_ok`'s BUG-2813
+        exemption for the same two loop-level fields.
+        """
+        fsm = FSMLoop(
+            name="t",
+            initial="check",
+            on_max_steps="needs_attention",
+            states={
+                "check": StateConfig(action="echo hi", next="check"),
+                "needs_attention": StateConfig(terminal=True, failure=True),
+            },
+        )
+        assert _validate_failure_terminal_action(fsm) == []
+
+    def test_on_max_iterations_terminal_is_also_exempt(self) -> None:
+        fsm = FSMLoop(
+            name="t",
+            initial="check",
+            on_max_iterations="capped",
+            states={
+                "check": StateConfig(action="echo hi", next="check"),
+                "capped": StateConfig(terminal=True, failure=True),
+            },
+        )
+        assert _validate_failure_terminal_action(fsm) == []
+
+    def test_failure_terminal_named_by_on_max_steps_but_also_dispatched_still_needs_no_predecessor(
+        self,
+    ) -> None:
+        """The exemption applies regardless of whether the terminal is *also*
+        reachable via a state route — on_max_steps membership alone exempts it."""
+        fsm = FSMLoop(
+            name="t",
+            initial="check",
+            on_max_steps="needs_attention",
+            states={
+                # No action on `check` — would otherwise fail the diagnostic-
+                # predecessor check even with a direct route.
+                "check": StateConfig(next="needs_attention"),
+                "needs_attention": StateConfig(terminal=True, failure=True),
+            },
+        )
+        assert _validate_failure_terminal_action(fsm) == []
+
 
 # ---------------------------------------------------------------------------
 # MR-13 (ENH-2860) — abandonment must reach summary.json and downgrade verdict
