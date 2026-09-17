@@ -1,0 +1,11 @@
+{
+  "id": "c696a082-5076-4acf-a0bd-bacae32b4503",
+  "type": "decision",
+  "timestamp": "2026-09-17T06:01:57Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "User approved review fixes: current pending queue jobs are watcher-eligible, so production approval, atomic deduplication, and structured LOOP identity need an independently verifiable implementation.",
+  "rule": "Separate connected policy-builder execution from offline scenarios; require explicit per-request host approval before queue eligibility.",
+  "scope": "issue",
+  "issue": "FEAT-3498"
+}
