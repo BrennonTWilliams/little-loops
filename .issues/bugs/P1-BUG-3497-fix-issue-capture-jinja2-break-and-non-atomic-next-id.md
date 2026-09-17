@@ -140,6 +140,19 @@ _Added by `/ll:refine-issue` — 2026-09-17 — based on codebase analysis:_
 - Against Option A: `cmd_next_id` (`little_loops/cli/issues/next_id.py:23-38`) is a separate CLI invocation that prints and exits — a lock held for its duration cannot span into a later, separate file write, so it doesn't close the race it targets. The hand-increment batch instruction BUG-1364 flagged for removal is still present verbatim in `commands/scan-codebase.md:230` (and mirrored in `.gemini/`, `.kimi-code/`, `.qwen/` copies).
 - For Option B: `create_issue()` (`little_loops/cli/issues/create.py:406-499`) is the only clean drop-in migration target found — `scripts/little_loops/sync.py:_create_local_issue()` (line 660/681/753) is a genuine unlocked "read-then-hand-write" caller with a `BRConfig` already in scope. `little_loops/cli/issues/normalize.py`'s `_alloc()` (lines 302-309, 461) is a second unlocked caller but reassigns IDs on existing files rather than creating from a spec, so it is out of scope for a `create_issue()`-shaped migration and remains a residual gap to track separately.
 
+## Implementation Steps
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `little_loops/sync.py` — migrate `_create_local_issue()` off unlocked `get_next_issue_number()` onto `create_issue()` (or equivalent lock); requires extending `IssueSpec` (or a post-write patch) to carry `github_issue`/`github_url`/`last_synced`/`discovered_by`; re-validate the 6 `TestCreateLocalIssue*` tests in `scripts/tests/test_sync.py`.
+- Update `little_loops/cli/issues/normalize.py` — decide explicitly whether `_alloc()` is migrated in this bug's scope (it reassigns IDs on existing files, structurally incompatible with `create_issue()`'s create-from-spec shape) or left as the documented residual gap; either way, state the decision rather than leaving it silently unlocked.
+- Update `commands/scan-codebase.md`, `commands/scan-product.md`, `commands/find-dead-code.md`, `skills/issue-size-review/SKILL.md`, `skills/debug-loop-run/SKILL.md`, `skills/audit-loop-run/SKILL.md`, `skills/link-epics/SKILL.md` — migrate off the `next-id` + hand-write pattern onto `ll-issues create`/`create_issue()`, following `skills/capture-issue/SKILL.md`'s already-migrated shape as the template.
+- Run `ll-adapt --host <gemini|kimi-code|qwen> --apply` after editing `commands/scan-codebase.md`, `commands/scan-product.md`, or `commands/find-dead-code.md` — each has `.gemini/`/`.kimi-code/`/`.qwen/` mirrors carrying the identical anti-pattern text.
+- Add a jinja2-absence regression test covering the issue-capture import path.
+- Add concurrency tests (`threading.Barrier`, modeled on `test_ll_issues_create.py::TestConcurrentCreate.test_two_threads_never_collide`) for whichever of `_create_local_issue()`/`_alloc()` are migrated in this bug's scope.
+
 ## Integration Map
 
 ### Codebase Research Findings
@@ -152,11 +165,26 @@ _Added by `/ll:refine-issue` — 2026-09-17 — based on codebase analysis:_
 - `little_loops/cli/issues/__init__.py` — imports `cmd_next_id` (line 83) and dispatches `ll-issues next-id` to it (line 1011); the CLI help/docstring here is where a "read-only hint" warning would land under Option B.
 - `little_loops/cli/issues/create.py` — `create_issue()` (lines 406-499) is the existing atomic path; unmodified under Option B except as the target callers migrate onto.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `little_loops/cli/issues/create.py` — `IssueSpec` (fields: `type, title, priority, body, parent, labels, stage, variant`) has no extension point for caller-supplied custom frontmatter keys; `sync.py:_create_local_issue()` needs `github_issue`/`github_url`/`last_synced`/`discovered_by`, and `commands/scan-product.md`'s batch-write flow needs `discovered_commit`/`discovered_branch`/`goal_alignment`/`persona_impact`/`business_value`. Any migration of those callers onto `create_issue()` needs this extension point added first (or a documented post-write patch step).
+- `commands/scan-codebase.md:227-230`, `.qwen/commands/ll/scan-codebase.md:218-221`, `.gemini/commands/scan-codebase.toml:217-220`, `.kimi-code/skills/ll-scan-codebase/SKILL.md:228-231` — instruct batch-incrementing `next-id` output (`+1, +2, +3`) and hand-writing files; the exact anti-pattern this bug's own Decision Rationale names (only the first of these four was previously cited). Mirror set — editing the source requires `ll-adapt --host <gemini|kimi-code|qwen> --apply`.
+- `commands/scan-product.md:220-223` — same batch-increment pattern; also writes custom frontmatter not representable by `IssueSpec` (see above).
+- `commands/find-dead-code.md:250-254` — same next-id + hand-write pattern (single-issue, not batched).
+- `skills/issue-size-review/SKILL.md:203-207` — batch-increments `next-id` for multiple split children.
+- `skills/debug-loop-run/SKILL.md:350-358`, `skills/audit-loop-run/SKILL.md:401-404` — call `next-id` once per issue (not batched) with an explicit "don't batch-allocate" warning, but still unlocked; also write custom frontmatter (`discovered_by`, `source_loop`, `source_state`).
+- `skills/link-epics/SKILL.md:183-189` — same per-issue `next-id` pattern; its collision-recovery path explicitly depends on `hooks/scripts/check-duplicate-issue-id-post.sh` retrying `next-id` on failure — the one caller in this set with a documented, working (if reactive) mitigation already in place.
+- Contrast: `skills/capture-issue/SKILL.md` (and its `.gemini/`/`.kimi-code/`/`.qwen/` mirrors) already migrated off this pattern onto `ll-issues create` — usable as the template for migrating the above.
+
 **Dependent Files (Callers/Importers)**
 - `scripts/tests/test_ll_issues_create.py:17` — imports and exercises `create_issue` directly.
 - `little_loops/cli/issues/scaffold_epic.py:19,84-88` — a second, independent caller of `.id-alloc.lock` for epic scaffolding, outside `create_issue`.
 - `little_loops/issue_lifecycle.py:826-831` — acquires the same cross-tree `.id-alloc.lock` as `create_issue()` for a different mutation path.
 - `little_loops/mcp_server/tools.py:258-268,811` — `_tool_issue_capture` calls `create_issue`/`render_issue_preview`; this is the atomic path the bug report says currently fails with the jinja2 import error.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `little_loops/sync.py:_create_local_issue()` (line 681, called from line 618) — calls `get_next_issue_number()` **unlocked**; already named in Decision Rationale as a migration target but was missing from this list. Sets custom frontmatter (`github_issue`, `github_url`, `last_synced`, `discovered_by="github_sync"`) that `IssueSpec` has no field for today — migration is not a drop-in call-site swap; requires extending `IssueSpec` or a post-write patch. 6 tests in `scripts/tests/test_sync.py` (`TestCreateLocalIssue*`, e.g. `test_create_local_issue_avoids_completed_collision`) call this method directly and will need re-validation.
+- `little_loops/cli/issues/normalize.py:_alloc()` (lines 302-309, invoked at 316 and 345, also 461) — calls `get_next_issue_number()` **unlocked**; already named in Decision Rationale as a residual gap but was missing from this list. Reassigns IDs on *existing* files (rename, not create-from-spec) — confirmed structurally incompatible with `create_issue()`'s shape. No test exercises its allocation behavior at all (`scripts/tests/test_ll_issues_normalize.py` has zero hits for `_alloc`/`get_next_issue_number`).
+- `hooks/scripts/check-duplicate-issue-id-post.sh` (registered `hooks/hooks.json:155-163`) and `hooks/scripts/check-duplicate-issue-id.sh` (registered `hooks/hooks.json:65-73`) — reactive/preventive backstops for this exact race, unrelated to and unaffected by the fix; both remain valid regardless of which option is chosen, but both print "call ll-issues next-id again" in their error text (documented verbatim in `docs/guides/BUILTIN_HOOKS_GUIDE.md:332-343`), which will read oddly once `next-id` is redocumented as a read-only hint. No code change required — informational only.
 
 **Conventions in Force**
 - ID allocation in this codebase follows a lock-then-allocate-then-exclusive-write shape: hold `.id-alloc.lock` (`file_utils.py:acquire_lock`) around both the highwater read and an exclusive-create write (`open(path, "x")`), retrying on `FileExistsError` — evidence: `create_issue` (`little_loops/cli/issues/create.py:406-499`).
@@ -174,10 +202,20 @@ _Added by `/ll:refine-issue` — 2026-09-17 — based on codebase analysis:_
 - `scripts/tests/test_mcp_server.py`, `scripts/tests/test_feat_3149_mcp_mutation_tools.py` — reference `issue_capture` tool registration/behavior.
 - No subprocess-level integration test exists for the `ll-issues next-id` CLI binary — flagged as a gap by BUG-1364's own wiring pass and never closed since.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- New: a concurrency test for `sync.py::_create_local_issue()` in `scripts/tests/test_sync.py`, modeled on `test_ll_issues_create.py::TestConcurrentCreate.test_two_threads_never_collide` (2-thread `threading.Barrier`, assert `len(set(results)) == len(results)`) — no such test exists today.
+- New: a concurrency test for `normalize.py::_alloc()` in `scripts/tests/test_ll_issues_normalize.py` — zero coverage of its allocation behavior exists today, concurrent or otherwise; required if `_alloc()` is migrated in this bug's scope, otherwise track as the same residual gap the Decision Rationale already flags.
+- New: a regression test asserting the issue-capture import path (`little_loops.cli.issues.create`, `little_loops.issue_parser`, `little_loops.mcp_server.tools`) never imports `jinja2`, to prevent recurrence of the Steps to Reproduce #1 failure mode.
+- No existing test asserts on `cmd_next_id`'s docstring/help-text wording (`test_issues_cli.py::TestIssuesCLINextId` asserts only stdout numeric output/exit codes) — a read-only-hint redocumentation breaks nothing.
+
 **Documentation**
 - `docs/guides/MCP_SERVER_GUIDE.md` — documents `issue_capture` as a write tool (dry-run behavior, no-predicted-ID note).
 - `docs/reference/CLI.md` — documents `ll-issues next-id`/`ni` and `issue_capture` tool parameters; the section to update if `next-id` is documented as read-only under Option B.
 - `docs/reference/API.md` — documents `get_next_issue_number` and `acquire_lock`.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `CHANGELOG.md:2330` — released entry for ENH-2268 states `ll-issues next-id --count N` "eliminat[es] race conditions when scripts need multiple IDs," which directly contradicts the "read-only hint, does not reserve" framing this bug selects. Per project convention CHANGELOG entries aren't edited retroactively — flagged for awareness, not as a file to modify.
+- `docs/guides/BUILTIN_HOOKS_GUIDE.md:332-343` — documents the duplicate-ID hook pair's "call ll-issues next-id again" recovery message (see Dependent Files); worth a one-line note that this is a reactive backstop, not a guarantee, once `next-id` is redocumented as read-only.
 
 ## Program Design
 
@@ -232,6 +270,7 @@ Steps to Reproduce verification note above.
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-17T04:46:35 - `46075459-e145-4488-ad3c-9337c7cc659b.jsonl`
 - `/ll:decide-issue` - 2026-09-17T04:28:33 - `2181bc0b-0c40-4859-b8bc-a71f05757ba2.jsonl`
 - `/ll:refine-issue` - 2026-09-17T04:20:13 - `e8577901-f5fd-435d-a8d3-7899337fe38e.jsonl`
 - `/ll:format-issue` - 2026-09-17T04:09:09 - `2a99ae96-959a-42e3-af68-3fbdce04f9f0.jsonl`
