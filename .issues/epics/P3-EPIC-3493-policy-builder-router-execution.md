@@ -27,6 +27,8 @@ Group of 8 related issues: Policy builder preview, validation, and editing corre
 - **ENH-3492** — Policy builder explicit terminal destinations, scoring instructions, and gate stamping (open)
 - **FEAT-3488** — Policy builder offline scenario suites and explanations (open)
 - **FEAT-3498** — Policy builder host-approved connected execution (open)
+- **FEAT-3501** — Policy builder shared transition analysis and structural graph (open)
+
 
 ## Implementation Order
 

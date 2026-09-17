@@ -23,6 +23,7 @@ relates_to:
 - BUG-3490
 - ENH-3491
 - FEAT-3498
+- FEAT-3501
 unproven_mechanism: false
 blocks:
 - FEAT-3498
@@ -38,7 +39,7 @@ score_change_surface: 18
 
 ## Summary
 
-Add named per-mode scenario suites, independently authored expected outcomes, condition explanations, coverage, boundary suggestions, local issue-file import, and structural flow analysis. Offline authoring remains self-contained. Connected execution was extracted into FEAT-3498 after the 2026-09-17 review; it is not part of this issue's completion criteria.
+Add named per-mode scenario suites, independently authored expected outcomes, condition explanations, coverage, boundary suggestions, and local issue-file import. Offline authoring remains self-contained. Connected execution was extracted into FEAT-3498 and structural transition analysis (`analyzeTransitions` + graph UI) into FEAT-3501 after the 2026-09-17 reviews; neither is part of this issue's completion criteria.
 
 ## Current Behavior
 
@@ -46,7 +47,7 @@ Decision-table and lifecycle Try-it evaluate one transient sample through `evalu
 
 ## Expected Behavior
 
-Users save examples with each mode's draft, run all cases without executing actions, inspect why earlier rules failed and the winner matched, and distinguish failed assertions, unasserted cases, and invalid inputs. Rubric cases test supplied aggregate scores rather than simulating LLM scoring. Structural flow warnings describe possible transitions, never predicted action effects.
+Users save examples with each mode's draft, run all cases without executing actions, inspect why earlier rules failed and the winner matched, and distinguish failed assertions, unasserted cases, and invalid inputs. Rubric cases test supplied aggregate scores rather than simulating LLM scoring.
 
 ## Proposed Solution
 
@@ -55,13 +56,21 @@ Users save examples with each mode's draft, run all cases without executing acti
 
   Preserve the full wrapper (including unknown JSON-compatible sibling metadata) in `_persistDraft`, `_persistAllDrafts`, `currentProject`, `commit`, hydration/history initialization, mode switching, Open, and snapshot restoration. These paths currently reconstruct `{model}` or persist only `.model`; updating the core serializer alone is insufficient. Preset/start-blank intentionally clears the destination suite only; preserve other drafts and their metadata.
 
+  Template state ownership: `state` stays model-only. `drafts[mode]` is the sole owner of `scenarios` and any sibling metadata; suite edits mutate `drafts[state.mode].scenarios` and go through `commit()`. `commit()`, mode switch, and `applyPreset` write `.model` into the existing wrapper (`{...drafts[mode], model}`) rather than rebuilding `{ model }`, except that preset/start-blank replaces the destination wrapper with `{model, scenarios: []}` by design. Never hang scenarios off `state`; that reintroduces the drop-on-switch defect.
+
+  Schema version: keep `BUILDER_PROJECT_SCHEMA_VERSION` at 1. `parseBuilderProject` rejects any newer version, so a bump would make new saves unopenable in previously generated pages. `scenarios` is an optional additive field: `validateProjectStructure` validates its shape (array of structurally valid scenarios) only when present and tolerates absence; migration fills `[]` after parse.
+
 - A scenario has a stable ID/name, mode-specific input, `expectedTarget: string | null`, and optional `expectedRuleIndex`. `null` is unasserted: suggestions never manufacture their own test oracle. Pin rule-index expectations to a fingerprint of the ordered authored rules; if order/content changes, mark that expectation as needing review (unasserted), retaining the prior expectation for inspection. Target-only assertions remain valid. Do not silently rebind an index to a different rule after reorder; undo restores the fingerprint and expectation.
 
-  Provide an explicit Reconfirm expectation action: the user reviews/selects the target and optional authored rule index before committing a fresh fingerprint. Never copy the observed winner into an expectation automatically. Rule indexes are zero-based authored indexes; omit the index for derived fallback and rubric cases. A null target with an index is invalid, rather than an implicit index-only assertion.
+  Provide an explicit Reconfirm expectation action: the user reviews/selects the target and optional authored rule index before committing a fresh fingerprint. Never copy the observed winner into an expectation automatically. Rule indexes are zero-based authored indexes; omit the index for rubric cases. A null target with an index is invalid, rather than an implicit index-only assertion.
+
+  Derived-fallback assertions: an optional `expectedFallback: true` asserts that the derived fallback (not an authored catch-all sharing the same target) won. It is mutually exclusive with `expectedRuleIndex`, requires a non-null `expectedTarget`, and is not fingerprint-pinned (the fallback identity does not depend on rule order). Without it, a target-only expectation passes whether an authored rule or the fallback produced the target.
+
+  Fingerprint contract: fingerprint the authored rules only, as canonical JSON of `model.rules` (each rule's ordered predicates `{dim, op, value}` and `target`, in authored order). Do not use `_serializeRulesText`, which appends the derived fallback; fingerprinting that text would stale every index expectation whenever only the fallback target changes.
 
 - Add a shared compiled tracing path used by `evaluateModel` and `evaluateScenario`. Preserve `evaluateModel`'s existing MatchResult shape and legacy `evaluateRules`/Python/corpus contracts. Trace every rule evaluated through the winner, with rule index, compiled predicate, actual value or explicit missing flag, expected operand, and boolean result. Later rules are `not_evaluated`; fallback and authored catch-all identities remain distinct. Evaluate all predicates within each visited rule for explanations without changing first-match routing.
 
-- Decision-table inputs are explicit dimension values; lifecycle inputs are frontmatter parsed by `parseFrontmatterBlock` then encoded by `encodeFrontmatterScores`. Rubric input is a user-supplied finite aggregate in [0,100], routed using the same high/medium comparisons and destinations as the generated rubric loop. Those comparisons are pinned by the runtime fragments (`scripts/little_loops/loops/lib/rubric-router.yaml:103-104,121-122`): `high` is `aggregate >= threshold_high`, `medium` is `aggregate >= threshold_medium && aggregate < threshold_high`, `low` is everything else — both tiers are inclusive at their threshold, so an "at threshold" boundary suggestion lands in the upper tier. The JS branch evaluator and `suggestScenarios` must use exactly these operators, and a node:test asserts the at-threshold case for both tiers. Label this as testing routing for an assumed aggregate, not predicting LLM scores. Rubric coverage uses its high/medium/low branches, not authored rule indexes.
+- Decision-table inputs are explicit dimension values; lifecycle inputs are frontmatter parsed by `parseFrontmatterBlock` then encoded by `encodeFrontmatterScores`. Rubric input is a user-supplied finite aggregate in [0,100], routed using the same high/medium comparisons and destinations as the generated rubric loop. Those comparisons are pinned by the runtime fragment the emitted rubric loop includes (`scripts/little_loops/loops/lib/rubric-router.yaml:93`, the `tier = "high" if agg >= thresh_high else ("medium" if agg >= thresh_med else "low")` expression in `rubric_parse_scores`; the gate descriptions at lines 103-104 and 121-122 restate it): `high` is `aggregate >= threshold_high`, `medium` is `aggregate >= threshold_medium && aggregate < threshold_high`, `low` is everything else — both tiers are inclusive at their threshold, so an "at threshold" boundary suggestion lands in the upper tier. The JS branch evaluator and `suggestScenarios` must use exactly these operators, and a node:test asserts the at-threshold case for both tiers. Label this as testing routing for an assumed aggregate, not predicting LLM scores. Rubric coverage uses its high/medium/low branches, not authored rule indexes.
 
 - Return verdict `error` for invalid model/scenario input before routing; never silently turn compile failure into no-match, pass, or unasserted. Results include diagnostics and the supplied input. Expected target absent from the current policy is an actionable error; a stale index fingerprint is unasserted/needs review.
 
@@ -73,14 +82,16 @@ Users save examples with each mode's draft, run all cases without executing acti
 
 - Local lifecycle issue import uses file input/FileReader, extracts only the opening `---`-delimited frontmatter block, then passes its contents to the existing parser. Ignore the Markdown body entirely; diagnose missing opening fences, unclosed fences, and unsupported frontmatter. Accept CRLF and an optional leading UTF-8 BOM. Complete extraction, parsing, and input validation before adding a scenario in one committed edit; any read/validation failure leaves the existing suite unchanged. Imported cases start unasserted.
 
-- Extract a shared `analyzeTransitions(model)` structural helper for lifecycle policies and consume it from both `summarizeTransitions` and the graph UI. The current summary returns prose/step fields, not graph edges or cycle diagnostics. Represent dispatch, emitted outcomes, and terminals, with typed dispatch/goto/rescore/terminal edges; rescore returns to scoring/dispatch and denotes possible subsequent routing, not a predicted next winner. Report reachable nodes and cycle node groups, distinguishing goto cycles from rescore feedback; do not claim that a structural cycle must execute or never terminate. Preserve the existing summary API and derive edges from the same emitted-outcome/destination semantics as YAML generation. No skill, shell, LLM, or issue mutation executes from scenarios.
+  The existing lifecycle Try-it paste path and the `{frontmatterText}` scenario input keep their fence-optional behavior: `parseFrontmatterBlock` already tolerates bare `---` lines, so pasted frontmatter with or without fences remains valid. Only file import requires a complete opening fenced block, because a file carries a Markdown body that must be excluded. Do not make paste stricter to match import.
+
+- No skill, shell, LLM, or issue mutation executes from scenarios. Structural transition analysis and the graph UI are FEAT-3501; nothing here depends on it.
 
 ## Integration Map
 
 
-- Modify `scripts/little_loops/templates/policy_builder_core.mjs`: draft migration/serialization, input normalization with provenance, frontmatter extraction, shared compiled trace, scenario suite and suggestion functions, rubric branch evaluation, and shared transition analysis consumed by `summarizeTransitions`.
+- Modify `scripts/little_loops/templates/policy_builder_core.mjs`: draft migration/serialization, input normalization with provenance, frontmatter extraction, shared compiled trace, scenario suite and suggestion functions, and rubric branch evaluation. Extend `validateProjectStructure` for optional `scenarios`; leave `BUILDER_PROJECT_SCHEMA_VERSION` at 1.
 
-- Modify `scripts/little_loops/templates/policy-router-builder.html.tmpl`: suite editing/results, local file input, committed-edit wiring, structural graph presentation.
+- Modify `scripts/little_loops/templates/policy-router-builder.html.tmpl`: suite editing/results, local file input, committed-edit wiring; rewrite `commit()` (line ~368), the mode-switch handler (~1298-1301), `applyPreset` (~1317-1319), `_persistDraft`/`_persistAllDrafts` (~306-317), and Open/hydration (~412, ~1469) to carry full wrappers.
 
 - Preserve the browser-global export bridge when adding public helpers; regenerate the golden HTML through the existing generator, not by hand-editing its embedded JS.
 
@@ -94,7 +105,7 @@ Users save examples with each mode's draft, run all cases without executing acti
 
 ### Types
 
-`Scenario {id, name, input, expectedTarget, expectedRuleIndex?, expectedRulesFingerprint?}`; `ScenarioResult {scenarioId, actualTarget, ruleIndex?, rubricBranch?, trace, verdict, diagnostics}`. Verdicts are pass/fail/unasserted/error.
+`Scenario {id, name, input, expectedTarget, expectedRuleIndex?, expectedFallback?, expectedRulesFingerprint?}`; `ScenarioResult {scenarioId, actualTarget, ruleIndex?, rubricBranch?, trace, verdict, diagnostics}`. Verdicts are pass/fail/unasserted/error.
 
 `ScenarioInput` is selected by the containing draft's mode:
 - decision table: `{values: Record<string, number | boolean>}` keyed by normalized dimension name; finite numeric scores in [0,100], actual booleans encoded to 100/0. Omitted keys mean missing; null, numeric strings, wrong types, unknown keys, and nonfinite/out-of-range values are errors.
@@ -119,9 +130,7 @@ Proposed new contracts in core.mjs:
 
 - `suggestScenarios(model) -> Scenario[]` with null expectations.
 
-- `analyzeTransitions(model) -> {nodes, edges, reachableNodeIds, cycles, diagnostics}`. Nodes have stable IDs and kinds (scoring/dispatch/outcome/terminal); edges have source, target, and kind (dispatch/goto/rescore/terminal); cycle records contain node IDs and distinguish goto cycles from rescore feedback. Both summary and graph use this shared analysis.
-
-- Scenario index expectations additionally store an ordered-rule fingerprint (a canonical rules serialization is sufficient; cryptographic hashing is unnecessary offline).
+- `rulesFingerprint(model) -> string`: canonical JSON of the authored `model.rules` only (see the fingerprint contract above); cryptographic hashing is unnecessary offline.
 
 ### Call Path
 
@@ -129,16 +138,18 @@ Proposed new contracts in core.mjs:
 
 ## Implementation Steps
 
-1. Extend draft parsing and every enumerated browser persistence/history path with scenario migration, full-wrapper preservation, structural checks, and expectation fingerprints.
+1. Extend draft parsing and every enumerated browser persistence/history path with scenario migration, full-wrapper preservation, structural checks, and expectation fingerprints (schema version stays 1).
 2. Add mode-specific input normalization/provenance, shared compiled trace, and explicit rubric aggregate evaluation; retain existing evaluator/conformance behavior.
 3. Implement scenario editing and explicit expectation reconfirmation, verdict precedence, Run all, totals, separate winning/evaluated coverage, and stale-result feedback.
-4. Add boundary suggestions and atomic local issue import with frontmatter extraction. Extract shared transition analysis, migrate the summary consumer, and render structural graph/cycle warnings from it.
-5. Test all modes, each browser persistence transition, import failure atomicity, verdict combinations, raw/encoded missing values, coverage identities, and terminal/cycle semantics; regenerate golden HTML and update docs. Record manual browser save/reload/import/preset/undo checks using ENH-3487's existing manual-testing decision.
+4. Add boundary suggestions and atomic local issue import with frontmatter extraction.
+5. Test all modes, each browser persistence transition, import failure atomicity, verdict combinations, raw/encoded missing values, and coverage identities; regenerate golden HTML and update docs. Record manual browser save/reload/import/preset/undo checks using ENH-3487's existing manual-testing decision.
 
 ## Acceptance Criteria
 
 
-- [ ] Old projects acquire `scenarios: []` per draft; named cases, inputs, expectations, and fingerprints survive Save/Open/reload/undo. Applying a preset clears only that draft's suite and one undo restores it.
+- [ ] Old projects acquire `scenarios: []` per draft; named cases, inputs, expectations, and fingerprints survive Save/Open/reload/undo. Applying a preset clears only that draft's suite and one undo restores it. `BUILDER_PROJECT_SCHEMA_VERSION` remains 1 and a project saved with scenarios opens in a page generated before this change.
+
+- [ ] Fingerprints derive from authored `model.rules` only: changing just the fallback target leaves index expectations current; reordering or editing any authored rule stales them. `expectedFallback: true` passes only when the derived fallback won, fails when an authored catch-all with the same target won, and is rejected alongside `expectedRuleIndex`.
 
 - [ ] Traces explain failed earlier rules and the winning rule with compiled predicates and actual/missing values; later rules are not evaluated. Repeated-target, authored catch-all, and derived-fallback identities are correct. Existing `evaluateModel`, `evaluateRules`, Python evaluator, and conformance corpus behavior remain compatible.
 
@@ -150,7 +161,7 @@ Proposed new contracts in core.mjs:
 
 - [ ] Coverage includes valid unasserted inputs but is labeled routing coverage; ENH-3492 terminal targets/fallbacks are exercised.
 
-- [ ] Local issue import works offline with explicit parser diagnostics. Scenarios and structural graphs execute no actions and make no predictions about LLM/action effects.
+- [ ] Local issue import works offline with explicit parser diagnostics. Scenarios execute no actions and make no predictions about LLM/action effects. The lifecycle paste path still accepts fence-less frontmatter.
 
 - [ ] Editing a policy invalidates displayed results; preset/clear/undo and all suite controls pass the documented manual browser workflow. Golden HTML and applicable Node/Python gates pass.
 
@@ -164,8 +175,6 @@ Proposed new contracts in core.mjs:
 
 - [ ] A complete issue Markdown file imports successfully without parsing its body; BOM/CRLF are handled. Missing/unclosed fences, unsupported frontmatter, and read failures produce diagnostics without altering the suite. Successful import adds one unasserted case and is undoable.
 
-- [ ] Summary and graph consume one transition analysis contract; tests cover goto chains/cycles, rescore feedback, unreachable outcomes, and explicit success/skip/needs-attention terminals. Existing summary behavior remains compatible and structural warnings make no claims about actual action outcomes or inevitable nontermination.
-
 ## Use Case
 
 A maintainer saves ready, blocked, and unscored issue examples, changes the readiness threshold, and runs the suite to see which independently authored expectations changed and which earlier rule conditions failed.
@@ -175,7 +184,7 @@ A maintainer saves ready, blocked, and unscored issue examples, changes the read
 
 - Priority: P3 — improves confidence in policy edits.
 
-- Effort: Medium/large — suite UI plus trace and rubric contracts.
+- Effort: Large — suite persistence across every browser draft path, shared trace, rubric contract, suggestions, and import; the prior `score_complexity: 10` predates the 2026-09-17 rewrite and is stale. If still too large after the FEAT-3501 split, suggestions plus import are the next natural extraction.
 
 - Risk: Medium — shared evaluation must preserve existing semantics.
 
@@ -183,7 +192,7 @@ A maintainer saves ready, blocked, and unscored issue examples, changes the read
 
 ## Scope Boundaries
 
-Includes offline scenario suites and structural analysis. Excludes connected issue discovery, run submission/approval, hashing, queue changes, and arbitrary YAML import. FEAT-3498 owns all former Phase B work and the level-2 spike follow-up. ENH-3487 owns document identity/persistence; ENH-3491 owns presets; ENH-3492 owns destinations and scoring metadata.
+Includes offline scenario suites only. Excludes structural transition analysis and the graph UI (FEAT-3501), connected issue discovery, run submission/approval, hashing, queue changes, and arbitrary YAML import. FEAT-3498 owns all former Phase B work and the level-2 spike follow-up. ENH-3487 owns document identity/persistence; ENH-3491 owns presets; ENH-3492 owns destinations and scoring metadata.
 
 ## Related Key Documentation
 
@@ -212,9 +221,11 @@ _Historical assessment from `/ll:confidence-check` on 2026-09-17; superseded dep
 
 ### Outcome Risk Factors
 - Moderate per-site complexity: the shared compiled trace path (`traceModel`) must preserve `evaluateModel`'s existing MatchResult shape plus legacy `evaluateRules`/Python/corpus contracts while adding new tracing — a cross-module change with shared state, not a mechanical edit.
-- Browser persistence currently reconstructs model-only wrappers, and transition summaries do not yet expose graph data. This issue now explicitly owns full-wrapper preservation and shared structural analysis; verification must exercise these integration paths alongside the pure helpers.
+- Browser persistence currently reconstructs model-only wrappers. This issue now explicitly owns full-wrapper preservation with `drafts[mode]` as the single scenario owner; verification must exercise these integration paths alongside the pure helpers.
 
 ## Session Log
+
+- manual review - 2026-09-17 - split structural transition analysis + graph UI into FEAT-3501; pinned template state ownership (`state` model-only, `drafts[mode]` owns scenarios), schema version stays 1, authored-rules-only fingerprint, `expectedFallback` assertion, fence-optional paste vs fenced import, corrected rubric-router citation to line 93; marked effort Large and `score_complexity` stale
 
 - manual review - 2026-09-17 - applied pre-implementation review: full-wrapper browser persistence, atomic fenced-frontmatter import, winning-route versus evaluated-rule coverage, typed input/provenance contracts, shared transition analysis, verdict precedence and explicit reconfirmation; corrected stale dependency assessment without inventing new confidence scores.
 
