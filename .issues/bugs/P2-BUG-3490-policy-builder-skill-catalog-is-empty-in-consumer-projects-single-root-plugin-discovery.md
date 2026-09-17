@@ -166,11 +166,64 @@ Marketplace discovery was removed from this implementation because `detect_insta
 
 Call `_load_skill_catalog` with a temporary consumer root lacking root-level `skills/` and `commands/`; observe an empty catalog despite installed little-loops content. In a wheel installation without `CLAUDE_PLUGIN_ROOT`, run `ll-help` and observe that its legacy fallback does not locate the packaged skills.
 
+## Verification Notes
+
+Verdict at time of check: **PROPOSAL_UNSOUND** (check B6 — proposal-vs-code
+consequence check; all current-state claims below hold, so this is the sole
+finding).
+
+- **All current-state claims verified accurate** (graph: provider=`codegraph`
+  freshness=`fresh`): `_load_skill_catalog(project_root)`
+  (`cli/artifact/policy_builder.py:21`) scans `project_root/skills` +
+  `project_root/commands` directly; `_find_plugin_root()`
+  (`skill_expander.py:25-35`) falls back to three parents above its own file
+  when `CLAUDE_PLUGIN_ROOT` is unset; `hatch_build.py`'s
+  `SkillsForceIncludeHook` force-includes only `skills/`, not `commands/`;
+  `mcp_server/server.py::_resolve_skills_root` (line 40) already orders an
+  explicit override, then `CLAUDE_PLUGIN_ROOT`, then the packaged
+  `importlib.resources.files("little_loops")` copy, then the editable-checkout
+  fallback — packaged before checkout, as claimed. All seven listed read
+  consumers (`cli/help.py::main_help`, `cli/action.py::_load_skills`,
+  `skill_expander.py::expand_skill`, `cli/queue.py::_classify_action`,
+  `mcp_server/tools.py::_tool_skills_list`,
+  `cli/harness.py::_resolve_skill_target_path`) and all four boundary-preserve
+  consumers (`cli/adapt.py`, `cli/generate_skill_descriptions.py`,
+  `cli/adapt_agents_for_codex.py`, `cli/adapt_skills_for_codex.py`) confirmed
+  to call `_find_plugin_root()` today, exactly as described.
+  `tool_catalog.py::assemble_tool_catalog` confirmed to take an explicit
+  `project_root` param (line 152); `ll-code callers-of` corroborates its only
+  caller relevant to this issue is `mcp_server/tools.py::_tool_skills_list`
+  (line 587), matching the claim that this issue changes the MCP skills-list
+  caller and not tool-catalog callers generally. The `package_data.py:94-98`
+  BUG-3177 comment matches verbatim. All named test files exist, including
+  the exact `test_wheel_smoke.py::TestWheelSmoke::test_skills_force_include_accessible`
+  anchor. No decisions-log required rules are active; `ll-verify-evidence`
+  reports zero unverifiable spans.
+- **PROPOSAL_UNSOUND finding — AC coverage gap for `cli/harness.py`
+  (check B6, sub-check "AC coverage of identified integration points")**:
+  `cli/harness.py::_resolve_skill_target_path` is listed as an integration
+  point in both the Integration Map's "Files to Modify" and the Proposed
+  Solution's read-consumer migration list, and has its own dedicated `Tests`
+  bullet ("Harness: `_resolve_skill_target_path` resolves the same path as
+  queue classification for a packaged-only root and returns `None` when no
+  root resolves"). No Acceptance Criterion references it: the AC bullet that
+  covers cross-consumer parity names only "Queue classification and MCP
+  skills listing," not the harness cell-key path. As written, an
+  implementation could migrate every other consumer and leave
+  `_resolve_skill_target_path` on the legacy `_find_plugin_root()` fallback
+  (silently resolving nothing on a wheel, per its own Current
+  Behavior/Root Cause section) without failing any Acceptance Criterion.
+  **Remaining**: add an Acceptance Criterion (or fold into the existing
+  cross-consumer parity bullet) explicitly requiring
+  `_resolve_skill_target_path` to resolve the same root as queue
+  classification/MCP skills listing.
+
 ## Status
 
 **Open** | Created: 2026-09-16 | Priority: P2
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-17T04:00:15 - `b5a5ae18-560d-4cc6-8aa5-4bcda8471436.jsonl`
 - `/ll:refine-issue` - 2026-09-17T03:10:39 - `62feba6c-702f-4140-917b-5a2b05ea6c40.jsonl`
 - `/ll:wire-issue` - 2026-09-17T01:06:16 - `9edbdbb5-9660-42b5-a715-69e61709aaa6.jsonl`
 - `/ll:refine-issue` - 2026-09-16T22:24:05 - `c7278f1b-df03-4464-a3c5-e94aa066b201.jsonl`
