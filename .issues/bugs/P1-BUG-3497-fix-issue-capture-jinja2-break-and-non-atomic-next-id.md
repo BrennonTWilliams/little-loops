@@ -69,6 +69,15 @@ Verified on branch `main` during the 2026-09-17 review:
   bypass it remain outside the guarantee. Exclusive creation protects a full
   filename, not a numeric ID reused with a different slug, priority, or type.
 - Do not introduce reservation semantics or mutation into read-only parsing.
+  Failed creation after allocation may leave a numeric gap; contiguous numbering
+  is not a guarantee.
+- Parent read/modify/write updates and git staging remain outside the allocation
+  transaction. Concurrent parent updates can lose child-list entries; before
+  closure, link/capture a separate follow-up for that race. This issue preserves
+  existing relationship/staging behavior, not transactional parent wiring.
+- Handled issue-write and highwater-write failures in the extracted helper are
+  in scope. Process termination, power-loss durability, and transactional
+  rollback of parent edits/staging are outside this issue's guarantee.
 - Normalization's `_alloc` in `scripts/little_loops/cli/issues/normalize.py`
   renumbers existing files and is explicitly out of implementation scope.
   Before closing this issue, link an existing follow-up or capture one for
@@ -128,14 +137,16 @@ Do not write an incomplete issue and patch required metadata afterward.
    fix or block the independently verified allocator migration on speculation.
 2. Extract the shared allocation transaction from `create_issue`, retaining
    main-worktree lock resolution, highwater persistence, exclusive creation,
-   timeout/error behavior, and collision retries. Keep parent updates/staging
+   lock timeout behavior and collision retries. Define and implement the handled
+   write-failure contract below rather than copying the existing unsafe
+   issue-write-before-highwater failure path. Keep parent updates/staging
    in the existing creation wrapper.
 3. Add validated metadata support to `IssueSpec` and the creation CLI as described
    below. Render all metadata before the exclusive write. Preserve defaults for
    existing callers and apply the same rendering rules to previews.
 4. Migrate `_create_local_issue` to the shared transaction while retaining its
    current renderer, configured pull template, label filtering, body treatment,
-   GitHub linkage, timestamps, and result/log behavior.
+   GitHub linkage, timestamps, unpadded ID spelling, and result/log behavior.
 5. Migrate all seven command/skill sources in the Integration Map. Prepare body
    and metadata inputs, invoke atomic creation for each issue, and consume its
    returned ID/path. Remove batch arithmetic and per-issue `next-id` retries.
@@ -146,7 +157,8 @@ Do not write an incomplete issue and patch required metadata afterward.
 7. Update CLI/API guidance and duplicate-ID recovery guidance consistently.
    Preserve historical changelog entries; any new release note should clarify
    that `--count` never reserved IDs.
-8. Link/capture the normalization follow-up, run targeted coverage and required
+8. Link/capture the normalization and concurrent-parent-update follow-ups,
+   run targeted coverage and required
    code checks, then run the authoritative `python -m pytest scripts/tests/` gate.
 
 ## Program Design
@@ -156,16 +168,41 @@ Do not write an incomplete issue and patch required metadata afterward.
 Proposed internal helper in `scripts/little_loops/cli/issues/create.py`:
 
 ```python
-def allocate_and_write_issue(config: BRConfig, *, issue_type: str, priority: str, slug: str, render: Callable[[str], str]) -> CreatedIssue:
+def allocate_and_write_issue(config: BRConfig, *, issue_type: str, priority: str, slug: str, render: Callable[[str], str], id_width: int = 3) -> CreatedIssue:
     ...
 ```
 
 The helper owns the existing shared lock/highwater transaction. It supplies the
-allocated ID to a side-effect-free renderer under the lock, writes the completed
-content exclusively, persists the highwater number, and returns the ID/path.
+allocated ID to a side-effect-free renderer under the lock, coordinates
+exclusive creation with highwater persistence under the failure contract below,
+and returns the ID/path only after both succeed.
 Render callbacks must tolerate collision retries. Reuse existing category and
 worktree resolution instead of introducing a second allocator. Preserve sync's
 existing slug convention through its caller-supplied slug.
+
+### Compatibility and Failure Contract
+
+- Preserve ID spelling: normal creation keeps minimum width 3 (`BUG-001`);
+  sync passes `id_width=0` and keeps `BUG-1`. The same formatted ID must appear
+  in the filename, rendered content, returned result, and success log. Numeric
+  uniqueness is independent of padding; cover numbers 1, 99, and 100.
+- Validate metadata before allocation and render before committing allocation
+  state. Validation/rendering failures create no issue and do not advance
+  highwater.
+- A handled issue-write or highwater-write failure must propagate as failure;
+  sync must not append to `result.created` or emit a success log. Never leave a
+  retained issue in a sibling worktree with an allocation number that another
+  cooperating caller can reuse. Persisting highwater before issue publication
+  is permitted; a failed creation may consume an ID. Preserve the prior
+  highwater on a failed update rather than truncating/resetting it. If needed,
+  harden the shared highwater writer using existing atomic-write utilities.
+- Remove partial issue files owned by the failing operation on handled write
+  errors; never remove a pre-existing collision target. Add fault-injection
+  tests for both write boundaries and assert a subsequent sibling-worktree
+  allocation remains safe. Do not describe exclusive creation as atomic
+  visibility to unlocked readers or as crash-safe multi-file commit.
+- Parent updates and staging run afterward and retain their existing behavior;
+  a failure there does not imply that issue allocation was rolled back.
 
 ### Call Path
 
@@ -183,7 +220,16 @@ allocator (`id`, `type`, `title`, `priority`, `status`, `parent`, `labels`), rat
 than silently overriding them. Allow discovery/provenance metadata such as
 `discovered_by`, `discovered_commit`, `discovered_branch`, `source_loop`,
 `source_state`, `goal_alignment`, `persona_impact`, and `business_value`;
-preserve supported nested JSON values through frontmatter serialization.
+accept arbitrary nonreserved string keys (the examples are not an allowlist).
+Metadata overrides generated provenance defaults, including `discovered_by`,
+`discovered_date`, and `captured_at`, when explicitly supplied; omitted keys
+retain their defaults. Explicit JSON null is preserved, not treated as omission.
+Require JSON-compatible values for both CLI and direct Python callers:
+strings, booleans, integers, finite floats, null, lists, and recursively
+string-keyed objects. Reject non-object top-level input, non-string keys,
+nonfinite numbers, cycles, and unsupported Python objects. Preserve nested
+values through YAML serialization without Python-specific tags. Apply one
+shared validator to creation and previews before any allocation mutation.
 Existing explicit flags retain their current meaning. Metadata must be present
 in the initial rendered document, including preview output when supplied.
 No new MCP metadata parameter is required for this migration.
@@ -225,7 +271,8 @@ not silently change to the normal creator's defaults or body-merge behavior.
   `scripts/little_loops/issue_lifecycle.py` — existing allocation-lock users;
   retain interoperability with the same cross-worktree protocol.
 - `scripts/little_loops/issue_parser.py` and `scripts/little_loops/file_utils.py`
-  — reuse highwater, locking, and read-only scanning conventions. Do not make
+  — reuse highwater, locking, and read-only scanning conventions; harden the
+  highwater writer if required by the handled-failure contract. Do not make
   normal issue parsing reserve IDs.
 - `scripts/little_loops/cli/issues/normalize.py` — known residual allocator,
   explicitly tracked separately under Scope Boundaries.
@@ -233,12 +280,19 @@ not silently change to the normal creator's defaults or body-merge behavior.
 ### Tests
 
 - `scripts/tests/test_ll_issues_create.py` — creator behavior, metadata validation,
-  nested metadata round-trip, renderer failures, and concurrent distinct IDs.
+  nested metadata round-trip, arbitrary-key acceptance, provenance override/null
+  behavior, invalid direct-Python values, renderer failures, and concurrent
+  distinct IDs. Exercise validation parity through CLI, direct creation, and
+  previews; assert rejected input leaves issue files/highwater unchanged.
 - `scripts/tests/test_sync.py` — existing `TestCreateLocalIssue*` coverage;
   concurrent import-versus-capture, metadata/label/template/body parity, and
-  unchanged sync result/log semantics.
+  unchanged sync result/log semantics and unpadded IDs at 1, 99, and 100;
+  failures must not report creation success.
 - `scripts/tests/test_bug3303_worktree_id_alloc.py` — cross-worktree creator/sync
-  interoperability and shared highwater behavior.
+  interoperability and shared highwater behavior. Add mixed allocation coverage
+  with `scaffold_epic` and lifecycle-created bugs. Inject issue-write and
+  highwater-write failures, including preservation of an existing highwater,
+  then allocate from a sibling worktree and check no retained ID is reused.
 - `scripts/tests/test_issues_cli.py` — unchanged numeric stdout, aliases,
   `--count`, exit codes; help describes non-reservation and the safe alternative.
 - `scripts/tests/test_mcp_server.py` and
@@ -266,15 +320,22 @@ not silently change to the normal creator's defaults or body-merge behavior.
 ## Acceptance Criteria
 
 - [ ] Concurrent cooperating captures and GitHub imports produce unique numeric
-  IDs and complete files across different slugs/types and linked worktrees.
+  IDs and complete files across different slugs/types and linked worktrees;
+  mixed runs with `scaffold_epic` and lifecycle-created bugs remain interoperable.
+- [ ] Fault-injected issue/highwater write failures report failure, preserve prior
+  highwater safely, clean up owned partial issue files, and cannot cause reuse
+  of a retained sibling-worktree issue's number. Allocation gaps are allowed.
 - [ ] Sync retains GitHub linkage, timestamps, discovery fields, filtered labels,
-  configured templates/custom sections, body handling, and result/log behavior.
+  configured templates/custom sections, body handling, unpadded IDs (including
+  1 and 99), and result/log behavior; normal creation retains padded IDs.
 - [ ] All seven identified command/skill sources and their affected generated
   mirrors use atomic creation, consume returned IDs/paths, and preserve their
   metadata and relationship/staging behavior without post-write metadata patches.
 - [ ] Metadata is validated before allocation; reserved-key overrides and invalid
   JSON fail without creating an issue or consuming an ID. Existing calls retain
-  defaults; supported nested metadata survives serialization.
+  defaults; arbitrary nonreserved keys and nested JSON-compatible metadata
+  survive serialization. Provenance overrides and explicit null follow the
+  documented contract, with identical validation for CLI/Python/preview callers.
 - [ ] `next-id` help/docs explicitly say it does not reserve IDs, including
   `--count`; existing stdout/aliases/count validation/exit codes are unchanged.
 - [ ] MCP apply returns the actual created ID; dry-run returns no allocated or
@@ -283,7 +344,9 @@ not silently change to the normal creator's defaults or body-merge behavior.
   reproduced cause/fix and end-to-end verification, or an explicit unreproduced
   environment limitation with remaining diagnosis tracked separately.
 - [ ] Normalization's unresolved allocation/rename race has a linked follow-up;
-  arbitrary non-cooperating writes remain explicitly outside the guarantee.
+  the concurrent-parent-update race also has a linked follow-up. Parent wiring,
+  staging, crashes/power loss, and arbitrary non-cooperating writes remain
+  explicitly outside the allocation transaction's guarantee.
 - [ ] Targeted regression coverage and the authoritative local test suite pass.
 
 ## Impact
