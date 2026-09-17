@@ -500,6 +500,7 @@ _Added by `/ll:confidence-check` on 2026-09-17; STOP verdict below is stale as o
 **Open** | Created: 2026-09-16 | Priority: P3
 
 ## Session Log
+- `/ll:ready-issue` - 2026-09-17T19:49:11 - `01a17b62-165c-479c-9ac6-5d8e309809e1.jsonl`
 - `/ll:confidence-check` - 2026-09-17T19:29:37 - `067aee00-97de-4da1-af70-f2f7a36f18d0.jsonl`
 - `/ll:verify-issues` - 2026-09-17T19:20:20 - `db7e2ee5-b919-46a0-b998-938b24125dfa.jsonl`
 - manual review - 2026-09-17 - pre-implementation pass: fixed `_emittedDestinations` (nonexistent) and template `<select>` (`:604,747`) citations; specified action-less outcomes with new kinds; required rubric `_assertNoReservedTokens`; made §6 summary changes concrete; `$${` round-trip test; `final_state`-only distinction; excluded seed-from-stamp.

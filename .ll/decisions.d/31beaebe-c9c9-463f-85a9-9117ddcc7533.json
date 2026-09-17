@@ -1,0 +1,11 @@
+{
+  "id": "1faaea6d-495e-41a9-8a70-03f738cbaf1f",
+  "type": "decision",
+  "timestamp": "2026-09-17T19:57:56Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Holistic visual/UX audit deliberately kept out of EPIC-3493's child set; blocked on FEAT-3498/FEAT-3488 for the holistic half, with a token/theme parity sub-item that can start now.",
+  "rule": "Captured: Policy builder cross-mode design and UX audit",
+  "scope": "issue",
+  "issue": "ENH-3500"
+}
