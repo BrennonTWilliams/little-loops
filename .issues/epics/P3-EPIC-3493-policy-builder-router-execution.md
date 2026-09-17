@@ -28,6 +28,8 @@ Group of 8 related issues: Policy builder preview, validation, and editing corre
 - **FEAT-3488** — Policy builder offline scenario suites and explanations (open)
 - **FEAT-3498** — Policy builder host-approved connected execution (open)
 - **FEAT-3501** — Policy builder shared transition analysis and structural graph (open)
+- **FEAT-3503** — Policy builder scenario boundary suggestions and local issue-file import (open)
+
 
 
 ## Implementation Order

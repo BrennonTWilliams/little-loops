@@ -17,6 +17,7 @@ blocked_by:
 - ENH-3487
 - ENH-3491
 - ENH-3492
+- BUG-3502
 relates_to:
 - FEAT-3474
 - BUG-3489
@@ -27,6 +28,7 @@ relates_to:
 unproven_mechanism: false
 blocks:
 - FEAT-3498
+- FEAT-3503
 confidence_score: 100
 verify_verdict: VALID
 outcome_confidence: 58
@@ -40,7 +42,7 @@ score_change_surface: 10
 
 ## Summary
 
-Add named per-mode scenario suites, independently authored expected outcomes, condition explanations, coverage, boundary suggestions, and local issue-file import. Offline authoring remains self-contained. Connected execution was extracted into FEAT-3498 and structural transition analysis (`analyzeTransitions` + graph UI) into FEAT-3501 after the 2026-09-17 reviews; neither is part of this issue's completion criteria.
+Add named per-mode scenario suites, independently authored expected outcomes, condition explanations, verdicts, Run all, and routing coverage. Offline authoring remains self-contained. Connected execution was extracted into FEAT-3498, structural transition analysis (`analyzeTransitions` + graph UI) into FEAT-3501, and boundary suggestions plus local issue-file import into FEAT-3503 after the 2026-09-17 reviews; none is part of this issue's completion criteria. BUG-3502 (history aliasing) lands first so the history-isolation criteria here are regression checks, not new work.
 
 ## Current Behavior
 
@@ -65,21 +67,27 @@ Users save examples with each mode's draft, run all cases without executing acti
 
   Schema version: keep `BUILDER_PROJECT_SCHEMA_VERSION` at 1. `parseBuilderProject` rejects any newer version, so a bump would make new saves unopenable in previously generated pages. `scenarios` is an optional additive field: `validateProjectStructure` validates its shape (array of structurally valid scenarios) only when present and tolerates absence; migration fills `[]` after parse.
 
-  Storage validation is separate from execution validation. Structural checks require scenario objects with non-empty unique IDs within the draft, string names (which may be unfinished/empty), and an input object; known expectation fields, when present, have their declared primitive types. Missing input members or expectations, wrong mode-specific input values, unsupported frontmatter text, out-of-range scores, removed targets, conflicting expectation combinations, and stale/out-of-range indexes remain editable JSON data and survive Save/Open/reload unchanged. Run reports per-case errors or needs-review verdicts using the execution contracts below; these semantic defects must not reject the entire saved project. No storage migration silently repairs an authored expectation. Non-JSON values are outside the persisted-data contract.
+  Storage validation is separate from execution validation. Structural checks require scenario objects with a non-empty string `id`, string names (which may be unfinished/empty), and an input object; known expectation fields, when present, have their declared primitive types. Missing input members or expectations, wrong mode-specific input values, unsupported frontmatter text, out-of-range scores, removed targets, conflicting expectation combinations, and stale/out-of-range indexes remain editable JSON data and survive Save/Open/reload unchanged. Run reports per-case errors or needs-review verdicts using the execution contracts below; these semantic defects must not reject the entire saved project. No storage migration silently repairs an authored expectation. Non-JSON values are outside the persisted-data contract.
 
-- A scenario has a stable ID/name, mode-specific input, `expectedTarget: string | null`, and optional `expectedRuleIndex`. `null` is unasserted: suggestions never manufacture their own test oracle. Pin rule-index expectations to a fingerprint of the ordered authored rules; if order/content changes, mark that expectation as needing review (unasserted), retaining the prior expectation for inspection. Target-only assertions remain valid. Do not silently rebind an index to a different rule after reorder; undo restores the fingerprint and expectation.
+  Scenario IDs: the core stays pure (no ID generation or clock reads, matching `serializeBuilderProject`). The template assigns every new case's `id` at insertion through one helper (`crypto.randomUUID()` with the same fallback shape as `_newProjectId`), which guarantees uniqueness within a draft for cases the page creates. Duplicate IDs are therefore possible only in hand-edited project files; they are *not* a structural rejection (that would make a saved project unopenable for a per-case defect). Run reports verdict `error` for every case sharing a duplicated ID, results are keyed by position in the suite as well as `scenarioId`, and the UI offers no silent renumbering. FEAT-3503's suggestions carry a content `key`, never an `id`, and receive their IDs through this same insertion helper.
+
+- A scenario has a stable ID/name, mode-specific input, `expectedTarget: string | null`, and optional `expectedRuleIndex`. `null` is unasserted: nothing (including FEAT-3503's suggestions) may manufacture its own test oracle. Pin rule-index expectations to a fingerprint of the ordered authored rules; if order/content changes, mark that expectation as needing review (unasserted), retaining the prior expectation for inspection. Target-only assertions remain valid. Do not silently rebind an index to a different rule after reorder; undo restores the fingerprint and expectation.
 
   Provide an explicit Reconfirm expectation action: the user reviews/selects the target and optional authored rule index before committing a fresh fingerprint. Never copy the observed winner into an expectation automatically. Rule indexes are zero-based authored indexes; omit the index for rubric cases. A null target with an index is invalid, rather than an implicit index-only assertion.
 
   Derived-fallback assertions: an optional `expectedFallback: true` asserts that the derived fallback (not an authored catch-all sharing the same target) won. It is mutually exclusive with `expectedRuleIndex`, requires a non-null `expectedTarget`, and is not fingerprint-pinned (the fallback identity does not depend on rule order). Without it, a target-only expectation passes whether an authored rule or the fallback produced the target.
 
+  Identity discriminator: the derived fallback is `ruleIndex === -1`, never `isFallback`. `evaluateModel` (`policy_builder_core.mjs:464-465`) returns `isFallback: true` for an *authored* catch-all as well (with its authored `ruleIndex >= 0`), because `_serializeRulesText` emits both as `* -> target`. That MatchResult field means "a catch-all rule won" and is preserved unchanged for `_highlightWinner`; `expectedFallback`, the `fallback` coverage identity, and the trace's fallback marker must all key on `ruleIndex === -1`.
+
   Fingerprint contract: fingerprint the authored rules only, as canonical JSON of `model.rules` (each rule's ordered predicates `{dim, op, value}` and `target`, in authored order). Do not use `_serializeRulesText`, which appends the derived fallback; fingerprinting that text would stale every index expectation whenever only the fallback target changes.
 
 - Add a shared compiled tracing path used by `evaluateModel` and `evaluateScenario`. Preserve `evaluateModel`'s existing MatchResult shape and legacy `evaluateRules`/Python/corpus contracts. Trace every rule evaluated through the winner, with rule index, compiled predicate, actual value or explicit missing flag, expected operand, and boolean result. Later rules are `not_evaluated`; fallback and authored catch-all identities remain distinct. Evaluate all predicates within each visited rule for explanations without changing first-match routing.
 
-- Decision-table inputs are explicit dimension values; lifecycle inputs are frontmatter parsed by `parseFrontmatterBlock` then encoded by `encodeFrontmatterScores`. Rubric input is a user-supplied finite aggregate in [0,100], routed using the same high/medium comparisons and destinations as the generated rubric loop. Those comparisons are pinned by the runtime fragment the emitted rubric loop includes (`scripts/little_loops/loops/lib/rubric-router.yaml:93`, the `tier = "high" if agg >= thresh_high else ("medium" if agg >= thresh_med else "low")` expression in `rubric_parse_scores`; the gate descriptions at lines 103-104 and 121-122 restate it): `high` is `aggregate >= threshold_high`, `medium` is `aggregate >= threshold_medium && aggregate < threshold_high`, `low` is everything else — both tiers are inclusive at their threshold, so an "at threshold" boundary suggestion lands in the upper tier. The JS branch evaluator and `suggestScenarios` must use exactly these operators, and a node:test asserts the at-threshold case for both tiers. Label this as testing routing for an assumed aggregate, not predicting LLM scores. Rubric coverage uses its high/medium/low branches, not authored rule indexes.
+- Decision-table inputs are explicit dimension values; lifecycle inputs are frontmatter parsed by `parseFrontmatterBlock` then encoded by `encodeFrontmatterScores`. Rubric input is a user-supplied **integer** aggregate in [0,100], routed using the same high/medium comparisons and destinations as the generated rubric loop. The integer domain is the runtime's: `rubric_parse_scores` extracts `AGGREGATE:\s*(\d+)` and applies `int()` to the aggregate and both thresholds (`scripts/little_loops/loops/lib/rubric-router.yaml:78,90-92`), and the builder's threshold inputs are integer range sliders; a fractional aggregate such as 84.5 can never occur at runtime, so `normalizeScenarioInput` rejects non-integers as errors rather than rounding. Those comparisons are pinned by the runtime fragment the emitted rubric loop includes (`rubric-router.yaml:93`, the `tier = "high" if agg >= thresh_high else ("medium" if agg >= thresh_med else "low")` expression; the gate descriptions at lines 103-104 and 121-122 restate it): `high` is `aggregate >= threshold_high`, `medium` is `aggregate >= threshold_medium && aggregate < threshold_high`, `low` is everything else — both tiers are inclusive at their threshold, so an at-threshold case lands in the upper tier. The JS branch evaluator (and FEAT-3503's suggestions, which use `t-1`/`t`/`t+1`) must use exactly these operators, and a node:test asserts the at-threshold case for both tiers. Label this as testing routing for an assumed aggregate, not predicting LLM scores. Rubric coverage uses its high/medium/low branches, not authored rule indexes.
 
 - Return verdict `error` for invalid model/scenario input before routing; never silently turn compile failure into no-match, pass, or unasserted. Results include diagnostics and the supplied input. Expected target absent from the current policy is an actionable error; a stale index fingerprint is unasserted/needs review.
+
+  "Invalid model" is routing-relevant invalidity only, **not** "`validateBuilderModel` returned any error". Most of that validator's error-severity diagnostics are export-readiness (empty action bodies, `_checkMissingReferences` on outcome actions, `_checkStepBudget`, dimension anchors, reserved tokens, lifecycle transition kinds); a draft in that state is exactly when routing tests are most useful and must still run. `traceModel` declares the model invalid when, and only when: the rule table fails to compile (`parseRuleTable(_serializeRulesText(model))` throws — the `_checkDrafts` unfinished-predicate case); a predicate references a dimension name absent from `model.dimensions` after normalization, or two dimensions normalize to the same name; or, in rubric mode, either threshold is non-finite or `thresholdHigh <= thresholdMedium` (`_checkRubricThresholds`). The Run all panel still surfaces the full `validateBuilderModel` list as informational context, but only the routing-relevant subset turns every scenario into `error`.
 
   Rubric target validity is mode-specific: high → `done`, medium → `light_repair`, low → `deep_repair`, matching `_serializeRubric` even when `model.outcomes` is empty and repair outcomes are synthesized. These three destinations form the rubric assertion target set; do not derive it solely from authored outcomes. Rubric scenarios reject `expectedRuleIndex` and `expectedFallback`, since rubric branches are neither authored rules nor derived fallbacks.
 
@@ -87,36 +95,32 @@ Users save examples with each mode's draft, run all cases without executing acti
 
 - Suite totals distinguish passed/failed/unasserted/errors. Routing coverage counts winning authored rule indexes, the derived fallback as a separate identity, and winning rubric branches, including valid unasserted scenarios. Separately report evaluated rule indexes; visiting a rule whose conditions fail never covers that route. Authored catch-all coverage belongs to its authored index, not the derived fallback. Report uncovered routes separately from shadow warnings; routing coverage does not imply assertion coverage. Invalid model/input cases contribute no coverage; expectation-only errors may retain coverage from a successful routing evaluation.
 
-- Suggest missing-field cases and just-below/at/above numeric thresholds using deterministic finite values; deduplicate suggestions and keep rubric suggestions in [0,100]. All suggestions have `expectedTarget: null`. Cover repeated targets, explicit lifecycle terminals from ENH-3492, fallback, absent values, and threshold equality.
+- Boundary suggestions (`suggestScenarios`) and local issue-file import (`extractIssueFrontmatter`, file input, `FileReader` invalidation) are FEAT-3503, blocked by this issue. The contracts they rely on — `normalizeScenarioInput`, the integer rubric domain, the ID insertion helper, and the supported-subset validation below — are delivered here.
 
-  Every suggestion for a valid model must pass `normalizeScenarioInput`. Decision-table numeric suggestions also stay in [0,100]. Lifecycle suggestions use source fields accepted by the encoder: generate `priority: Pn` for `priority_rank`, not a literal `priority_rank` field, and real lists for list-length predicates. Priority ranks and list lengths have discrete representable domains; choose representable neighbors on the intended side of a threshold and skip impossible equality/neighbor cases rather than emit invalid inputs. Tests verify that generated lifecycle source values encode to the intended boundary and that omitted-field suggestions retain the existing missing-value semantics.
+- The lifecycle Try-it paste path and the `{frontmatterText}` scenario input keep their fence-optional behavior: `parseFrontmatterBlock` already tolerates bare `---` lines, so pasted frontmatter with or without fences remains valid. Do not make paste stricter; only FEAT-3503's file import requires a complete opening fenced block (a file carries a Markdown body that must be excluded).
 
-- Local lifecycle issue import uses file input/FileReader, extracts only the opening `---`-delimited frontmatter block, then passes its contents to the existing parser. Ignore the Markdown body entirely; diagnose missing opening fences, unclosed fences, and unsupported frontmatter. Accept CRLF and an optional leading UTF-8 BOM. Complete extraction, parsing, and input validation before adding a scenario in one committed edit; any read/validation failure leaves the existing suite unchanged. Imported cases start unasserted.
-
-  The existing lifecycle Try-it paste path and the `{frontmatterText}` scenario input keep their fence-optional behavior: `parseFrontmatterBlock` already tolerates bare `---` lines, so pasted frontmatter with or without fences remains valid. Only file import requires a complete opening fenced block, because a file carries a Markdown body that must be excluded. Do not make paste stricter to match import.
-
-  Unsupported syntax needs explicit validation; the existing parser alone is insufficient. The supported subset is flat scalar/null fields and flat scalar lists in flow or dash-list form, with the existing comment, quoting, status-normalization, and fence-optional paste behavior. Reject nested mappings/collections, block scalars, YAML tags, anchors/aliases, and malformed flow lists with diagnostics before scenario routing or file-import mutation. Regression fixtures include `x: {a: b}`, `x: |`, `x: [a`, and `x: !!str 5`, which the current parser silently treats as strings. Quoted literal text containing those characters remains valid; supported existing paste/encoder cases must retain their behavior. This is subset validation, not general YAML import.
-
-  FileReader completion is bound to the project, destination lifecycle draft, and edit revision captured when import begins. Discard the completion with a diagnostic if that context changed before the read finishes, including mode switching, Open, preset/start-blank, undo/redo, or another committed edit. Use a monotonic session revision or equivalent invalidation token so changing away and back does not revive a pending read. A discarded completion makes no suite or history change; a successful current completion adds exactly one case in one committed edit.
+  Supported-subset validation lives **inside `parseFrontmatterBlock`**, not in a separate validator applied only to scenarios: the parser already owns the BUG-3486 "reject rather than guess" contract (it throws on nested mappings, anchors/aliases, and block-scalar continuations — `policy_validator.test.mjs:495-504`), and a separate validator would let the same pasted text route in Try-it yet `error` in a scenario. The supported subset is flat scalar/null fields and flat scalar lists in flow or dash-list form, with the existing comment, quoting, status-normalization, and fence-tolerant behavior. Close the remaining gaps in the parser: reject an unquoted value that starts with `{`, `!`, or `&`/`*`, a bare block-scalar indicator (`|`, `>`, with or without a chomping/indent suffix), and a value that starts with `[` without a matching closing `]`, each with the existing `Can't read line N: <text>` diagnostic. Regression fixtures `x: {a: b}`, `x: |`, `x: [a`, and `x: !!str 5` — which the current parser silently treats as strings — go into the `js_reject_cases` list of `scripts/tests/fixtures/policy_builder/frontmatter_encoding_corpus.json` (the existing cross-language reject pin; none of its 20 accept cases use these characters unquoted). Quoted literal text containing those characters remains valid; supported existing paste/encoder cases must retain their behavior. This is subset validation, not general YAML import.
 
 - No skill, shell, LLM, or issue mutation executes from scenarios. Structural transition analysis and the graph UI are FEAT-3501; nothing here depends on it.
 
 ## Integration Map
 
 
-- Modify `scripts/little_loops/templates/policy_builder_core.mjs`: draft migration/serialization, input normalization with provenance, frontmatter extraction and supported-subset validation, shared compiled trace, mode-valid scenario suggestions, and rubric branch/target evaluation. Extend `validateProjectStructure` for optional `scenarios` without conflating storage shape with execution validity; leave `BUILDER_PROJECT_SCHEMA_VERSION` at 1.
+- Modify `scripts/little_loops/templates/policy_builder_core.mjs`: draft migration/serialization, input normalization with provenance, supported-subset validation inside `parseFrontmatterBlock`, shared compiled trace, and rubric branch/target evaluation. Extend `validateProjectStructure` for optional `scenarios` without conflating storage shape with execution validity; leave `BUILDER_PROJECT_SCHEMA_VERSION` at 1.
 
-- Modify `scripts/little_loops/templates/policy-router-builder.html.tmpl`: suite editing/results, local file input, committed-edit wiring; rewrite `commit()` (line ~368), the mode-switch handler (~1298-1301), `applyPreset` (~1317-1319), `_persistDraft`/`_persistAllDrafts` (~306-317), and Open/hydration (~412, ~1469) to carry full wrappers.
+- Modify `scripts/little_loops/templates/policy-router-builder.html.tmpl`: suite editing/results, the scenario ID insertion helper, committed-edit wiring; rewrite `commit()` (line 364), the mode-switch handler (1296-1306), `applyPreset` (1313-1325), `_persistDraft`/`_persistAllDrafts` (306-318), and Open/hydration (397-425, 1453-1481) to carry full wrappers.
 
-  Browser integration also owns all-mode hydration, replacement/scoping of obsolete storage keys on Open, isolation between live drafts and history at initialization/restoration boundaries, and pending-import invalidation across project/draft/revision changes.
+  Browser integration also owns all-mode hydration, replacement/scoping of obsolete storage keys on Open, and isolation between live drafts and history at initialization/restoration boundaries (BUG-3502 fixes the aliasing at `hydrateFromStorage`/`restoreFromSnapshot` first; this issue keeps that invariant across the new wrapper shape).
 
-- Preserve the browser-global export bridge when adding public helpers; regenerate the golden HTML through the existing generator, not by hand-editing its embedded JS.
+- Preserve the browser-global export bridge when adding public helpers; regenerate the golden HTML (`scripts/tests/fixtures/policy_builder/golden_policy_router_builder.html`) through the existing generator, not by hand-editing its embedded JS.
 
-- Tests: `scripts/tests/js/policy_validator.test.mjs`, `scripts/tests/test_policy_builder_node_gate.py`, `scripts/tests/test_policy_builder_emit.py`, project fixtures and existing conformance corpus gates.
+- Tests: new `scripts/tests/js/policy_scenarios.test.mjs` for scenario/trace/verdict/coverage cases (the node gate globs `scripts/tests/js/*.test.mjs`, so it is picked up; `policy_validator.test.mjs` is already 1255 lines), parser reject fixtures in `frontmatter_encoding_corpus.json` `js_reject_cases`, `scripts/tests/test_policy_builder_node_gate.py`, `scripts/tests/test_policy_builder_emit.py`, project fixtures and existing conformance corpus gates.
+
+- Browser probes: `.loops/probes/feat-3488-browser-probes.mjs` and `.loops/verify-feat-3488-browser-persistence.yaml` (now git-tracked; previously ignored by `.gitignore` `.loops/probes/` / `.loops/verify-*.yaml`). Fill `SCENARIO_SELECTORS` during implementation.
 
 - Documentation: `docs/guides/POLICY_ROUTER_GUIDE.md` and the policy-builder section of `docs/reference/CLI.md`.
 
-- No server, transport, queue, MCP, or config changes. BUG-3486 is done; ENH-3487 provides saved drafts; ENH-3492 provides terminal semantics and follows ENH-3491's presets/summary.
+- No server, transport, queue, MCP, or config changes. BUG-3486 is done; ENH-3487 provides saved drafts; ENH-3492 provides terminal semantics and follows ENH-3491's presets/summary; BUG-3502 must land first.
 
 ## Program Design
 
@@ -126,10 +130,10 @@ Users save examples with each mode's draft, run all cases without executing acti
 
 `ScenarioInput` is selected by the containing draft's mode:
 - decision table: `{values: Record<string, number | boolean>}` keyed by normalized dimension name; finite numeric scores in [0,100], actual booleans encoded to 100/0. Omitted keys mean missing; null, numeric strings, wrong types, unknown keys, and nonfinite/out-of-range values are errors.
-- lifecycle: `{frontmatterText: string}` containing the extracted/pasted frontmatter, processed by `parseFrontmatterBlock` and `encodeFrontmatterScores`. Preserve the encoder's runtime-compatible coercions and missing/null behavior; do not apply decision-table score bounds to lifecycle numeric fields. Unsupported parser syntax or a non-string text field is an error; unrelated frontmatter keys are allowed.
-- rubric: `{aggregate: number}` with a finite value in [0,100]. Strings/null/nonfinite/out-of-range values are errors.
+- lifecycle: `{frontmatterText: string}` containing the pasted (or, in FEAT-3503, extracted) frontmatter, processed by `parseFrontmatterBlock` and `encodeFrontmatterScores`. Preserve the encoder's runtime-compatible coercions and missing/null behavior; do not apply decision-table score bounds to lifecycle numeric fields. Unsupported parser syntax or a non-string text field is an error; unrelated frontmatter keys are allowed.
+- rubric: `{aggregate: number}` with an integer value in [0,100]. Strings/null/nonfinite/non-integer/out-of-range values are errors.
 
-Trace condition records include `{sourceKey, rawPresent, rawValue, encodedPresent, encodedValue, predicate, result}`. For lifecycle derived dimensions retain the actual source key (e.g. `priority` for `priority_rank`); absent boolean/list source fields remain visibly absent even though their encoded value is `"0"`. Distinguish an absent field from a present null value. Include the supplied input and `needsReview` in `ScenarioResult`.
+Trace condition records include `{sourceKey, rawPresent, rawValue, encodedPresent, encodedValue, predicate, result}`. For lifecycle derived dimensions retain the actual source key (e.g. `priority` for `priority_rank`); absent boolean/list source fields remain visibly absent even though their encoded value is `"0"`. Distinguish an absent field from a present null value. Include the supplied input and `needsReview` in `ScenarioResult`. `ScenarioResult.ruleIndex === -1` (with a non-null `actualTarget`) is the derived fallback; `isFallback` on the inner MatchResult is not the discriminator.
 
 ### Signatures
 
@@ -137,15 +141,11 @@ Proposed new contracts in core.mjs:
 
 - `normalizeScenarioInput(model, input) -> {scores, provenance, aggregate?, diagnostics}` implements the mode-specific contract above.
 
-- `extractIssueFrontmatter(text) -> string` extracts a complete opening frontmatter block or throws a diagnostic before any suite mutation.
-
-- `traceModel(model, input) -> {match, rules, rubricBranch?, diagnostics}` normalizes scenario input and retains raw/encoded provenance. `match` retains the current MatchResult shape; `rules` carries evaluated/not-evaluated status and per-condition values. Share lower-level compilation/predicate evaluation with `evaluateModel` instead of duplicating semantics; the legacy evaluator still accepts encoded scores and preserves its compile-failure/no-match behavior.
+- `traceModel(model, input) -> {match, rules, rubricBranch?, diagnostics}` normalizes scenario input and retains raw/encoded provenance. `match` retains the current MatchResult shape; `rules` carries evaluated/not-evaluated status and per-condition values. Share lower-level compilation/predicate evaluation with `evaluateModel` instead of duplicating semantics; the legacy evaluator still accepts encoded scores and preserves its compile-failure/no-match behavior. `diagnostics` carries the routing-relevant invalid-model reasons defined above (compile failure, unknown/duplicate normalized dimension, non-finite or inverted rubric thresholds) and nothing from the export-readiness checks.
 
 - `evaluateScenario(model, scenario) -> ScenarioResult`.
 
 - `runScenarioSuite(model, scenarios) -> {results, summary: {passed, failed, unasserted, errors}, coverage: {winningRuleIndexes, evaluatedRuleIndexes, uncoveredRuleIndexes, fallback: {applicable, covered}, winningRubricBranches, uncoveredRubricBranches}}`. Non-applicable mode collections are empty; fallback applicability refers only to an emitted derived fallback.
-
-- `suggestScenarios(model) -> Scenario[]` with null expectations.
 
 - `rulesFingerprint(model) -> string`: canonical JSON of the authored `model.rules` only (see the fingerprint contract above); cryptographic hashing is unnecessary offline.
 
@@ -156,29 +156,28 @@ Proposed new contracts in core.mjs:
 ## Implementation Steps
 
 1. Draft parsing and every enumerated browser persistence/history path preserve full wrappers, all saved modes, detached history snapshots, semantically unfinished cases, and expectation fingerprints; project replacement cannot revive obsolete drafts (schema version stays 1).
-2. Mode-specific input normalization/provenance, supported-frontmatter validation, shared compiled trace, and explicit rubric aggregate/target evaluation satisfy the execution contracts while retaining supported evaluator/conformance behavior.
-3. Implement scenario editing and explicit expectation reconfirmation, verdict precedence, Run all, totals, separate winning/evaluated coverage, and stale-result feedback.
-4. Boundary suggestions normalize successfully and use representable source values; local issue import extracts supported frontmatter atomically and discards stale asynchronous completions.
-5. Test all modes, each browser persistence transition, import failure/stale-read atomicity, verdict combinations, raw/encoded missing values, and coverage identities; regenerate golden HTML and update docs. Record manual browser save/reload/import/preset/undo checks, including the new multi-mode, history-isolation, and delayed-read cases, using ENH-3487's existing manual-testing decision.
+2. Mode-specific input normalization/provenance (integer rubric domain), supported-subset validation inside `parseFrontmatterBlock` with the four new `js_reject_cases` fixtures, shared compiled trace with the routing-relevant invalid-model definition, and explicit rubric aggregate/target evaluation satisfy the execution contracts while retaining supported evaluator/conformance behavior.
+3. Implement scenario editing (ID insertion helper, duplicate-ID per-case errors) and explicit expectation reconfirmation, verdict precedence, Run all, totals, separate winning/evaluated coverage, and stale-result feedback.
+4. Test all modes, each browser persistence transition, verdict combinations, raw/encoded missing values, and coverage identities in `policy_scenarios.test.mjs`; regenerate golden HTML and update docs. Fill `SCENARIO_SELECTORS` in the probe script and run `ll-loop run .loops/verify-feat-3488-browser-persistence.yaml` for the multi-mode, history-isolation, and suite-persistence cases (the import probe stays BLOCKED until FEAT-3503).
 
 ## Acceptance Criteria
 
 
 - [ ] Old projects acquire `scenarios: []` per draft; named cases, inputs, expectations, and fingerprints survive Save/Open/reload/undo. Applying a preset clears only that draft's suite and one undo restores it. `BUILDER_PROJECT_SCHEMA_VERSION` remains 1 and a project saved with scenarios opens in a page generated before this change.
 
-- [ ] Fingerprints derive from authored `model.rules` only: changing just the fallback target leaves index expectations current; reordering or editing any authored rule stales them. `expectedFallback: true` passes only when the derived fallback won, fails when an authored catch-all with the same target won, and is rejected alongside `expectedRuleIndex`.
+- [ ] Fingerprints derive from authored `model.rules` only: changing just the fallback target leaves index expectations current; reordering or editing any authored rule stales them. `expectedFallback: true` passes only when the derived fallback won (`ruleIndex === -1`), fails when an authored catch-all with the same target won (which `evaluateModel` also reports with `isFallback: true`), and is rejected alongside `expectedRuleIndex`.
 
 - [ ] Traces explain failed earlier rules and the winning rule with compiled predicates and actual/missing values; later rules are not evaluated. Repeated-target, authored catch-all, and derived-fallback identities are correct. Existing `evaluateModel`, `evaluateRules`, Python evaluator, and conformance corpus behavior remain compatible.
 
-- [ ] Rubric aggregate cases below/at/above both thresholds agree with generated rubric routing. The UI labels supplied aggregates as assumptions and reports rubric branch coverage separately.
+- [ ] Rubric aggregate cases below/at/above both thresholds agree with generated rubric routing; the aggregate is an integer in [0,100] and a fractional or out-of-range aggregate is an `error`, never rounded. The UI labels supplied aggregates as assumptions and reports rubric branch coverage separately.
 
-- [ ] Totals distinguish pass/fail/unasserted/error. Invalid models/inputs cannot report pass or normal no-match; stale rule-index expectations need review after reorder/edit and recover on undo. Target-only expectations are unaffected by index changes.
+- [ ] Totals distinguish pass/fail/unasserted/error. Invalid models/inputs cannot report pass or normal no-match; stale rule-index expectations need review after reorder/edit and recover on undo. Target-only expectations are unaffected by index changes. "Invalid model" is the routing-relevant definition: a model whose only `validateBuilderModel` errors are export-readiness (empty action body, missing outcome reference, step budget, anchors) still runs every scenario normally, while a non-compiling rule table, an unknown/duplicate normalized dimension, or inverted/non-finite rubric thresholds turn every scenario into `error` with the reason in diagnostics.
 
-- [ ] Suggestions are deterministic, deduplicated, unasserted, and include absent fields and numeric boundaries without nonfinite/out-of-range rubric inputs.
+- [ ] Coverage includes valid unasserted inputs but is labeled routing coverage; ENH-3492 terminal targets and the derived fallback are exercised by hand-authored cases in the tests (suggestion-driven coverage is FEAT-3503).
 
-- [ ] Coverage includes valid unasserted inputs but is labeled routing coverage; ENH-3492 terminal targets/fallbacks are exercised.
+- [ ] Scenarios execute no actions and make no predictions about LLM/action effects. The lifecycle paste path still accepts fence-less frontmatter.
 
-- [ ] Local issue import works offline with explicit parser diagnostics. Scenarios execute no actions and make no predictions about LLM/action effects. The lifecycle paste path still accepts fence-less frontmatter.
+- [ ] Cases created by the page receive unique IDs from one insertion helper; a hand-edited project with duplicate scenario IDs still opens, and Run reports `error` for every case sharing the ID without renumbering.
 
 - [ ] Editing a policy invalidates displayed results; preset/clear/undo and all suite controls pass the documented manual browser workflow. Golden HTML and applicable Node/Python gates pass.
 
@@ -198,15 +197,9 @@ Proposed new contracts in core.mjs:
 
 - [ ] A visited-but-failing rule appears only in evaluated coverage and remains uncovered as a winning route. Tests distinguish repeated-target authored rules, authored catch-all, derived fallback, rubric branches, valid unasserted/failed assertions, and invalid model/input cases.
 
-- [ ] A complete issue Markdown file imports successfully without parsing its body; BOM/CRLF are handled. Missing/unclosed fences, unsupported frontmatter, and read failures produce diagnostics without altering the suite. Successful import adds one unasserted case and is undoable.
+- [ ] `parseFrontmatterBlock` rejects unquoted mappings, block scalars, tags, anchors/aliases, nested collections, and malformed flow lists, including `x: {a: b}`, `x: |`, `x: [a`, and `x: !!str 5`, which are added to `frontmatter_encoding_corpus.json` `js_reject_cases`. Quoted literal counterparts and the existing 20 accept cases still pass; valid paste remains fence-optional; Try-it paste and a `{frontmatterText}` scenario agree on the same text. Unsupported scenario text returns `error`.
 
-- [ ] Supported-subset tests reject unquoted mappings, block scalars, tags, anchors/aliases, nested collections, and malformed flow lists, including `x: {a: b}`, `x: |`, `x: [a`, and `x: !!str 5`. Quoted literal counterparts and existing supported scalar/list/null/comment cases still work; valid paste remains fence-optional. Unsupported scenario text returns `error`; unsupported file import leaves the suite unchanged.
-
-- [ ] Every generated suggestion for valid models passes input normalization. Decision-table and rubric bounds are respected; lifecycle priority/list suggestions encode to their intended representable boundaries, and impossible neighbors/equalities are omitted. Suggestions remain deterministic, deduplicated, and unasserted.
-
-- [ ] Delayed-read browser checks start import, then switch modes, Open, apply a preset/start-blank, undo/redo, or commit another edit before completion. Stale completions add no case or history entry, even after switching away and back; a current successful completion adds exactly one undoable case to the captured lifecycle draft.
-
-- [ ] `docs/guides/POLICY_ROUTER_GUIDE.md` and the policy-builder section of `docs/reference/CLI.md` document the scenario-suite feature: authoring/running scenarios, expectation types (target-only, rule-index with fingerprint, `expectedFallback`), verdicts, coverage semantics, boundary suggestions, and local issue-file import.
+- [ ] `docs/guides/POLICY_ROUTER_GUIDE.md` and the policy-builder section of `docs/reference/CLI.md` document the scenario-suite feature: authoring/running scenarios, expectation types (target-only, rule-index with fingerprint, `expectedFallback`), verdicts, invalid-model semantics, and coverage semantics (suggestions and import docs are FEAT-3503's).
 
 ## Use Case
 
@@ -217,7 +210,7 @@ A maintainer saves ready, blocked, and unscored issue examples, changes the read
 
 - Priority: P3 — improves confidence in policy edits.
 
-- Effort: Large — suite persistence across every browser draft path, shared trace, rubric contract, suggestions, and import; the prior `score_complexity: 10` predates the 2026-09-17 rewrite and is stale. If still too large after the FEAT-3501 split, suggestions plus import are the next natural extraction.
+- Effort: Large — suite persistence across every browser draft path, shared trace, rubric contract, verdicts, and coverage. Suggestions plus import were extracted to FEAT-3503 on 2026-09-17 (the second split after FEAT-3501); BUG-3502 lands first. Frontmatter scores predate both changes and should be recomputed by `/ll:confidence-check` before implementation.
 
 - Risk: Medium — shared evaluation must preserve existing semantics.
 
@@ -225,7 +218,7 @@ A maintainer saves ready, blocked, and unscored issue examples, changes the read
 
 ## Scope Boundaries
 
-Includes offline scenario suites only. Excludes structural transition analysis and the graph UI (FEAT-3501), connected issue discovery, run submission/approval, hashing, queue changes, and arbitrary YAML import. FEAT-3498 owns all former Phase B work and the level-2 spike follow-up. ENH-3487 owns document identity/persistence; ENH-3491 owns presets; ENH-3492 owns destinations and scoring metadata.
+Includes offline scenario suites only. Excludes structural transition analysis and the graph UI (FEAT-3501), boundary suggestions and local issue-file import including `FileReader` invalidation (FEAT-3503), connected issue discovery, run submission/approval, hashing, queue changes, and arbitrary YAML import. FEAT-3498 owns all former Phase B work and the level-2 spike follow-up. ENH-3487 owns document identity/persistence; BUG-3502 owns the pre-existing history aliasing fix; ENH-3491 owns presets; ENH-3492 owns destinations and scoring metadata.
 
 ## Related Key Documentation
 
@@ -273,11 +266,12 @@ Verdict at time of check: **PROPOSAL_UNSOUND** (correction below applied in the 
 
 _Added 2026-09-17 — closes the manual-browser-checklist gap flagged by `/ll:confidence-check` (outcome risk: browser/UI persistence paths manually verified only)._
 
-The browser-facing ACs (1, 8, 9, 10, 14) are exercised by an on-demand Playwright loop, not a test-suite gate:
+The browser-facing ACs (suite persistence, preset/undo, edit invalidation, full-wrapper persistence, multi-mode reload, history isolation) are exercised by an on-demand Playwright loop, not a test-suite gate:
 
 - Loop: `.loops/verify-feat-3488-browser-persistence.yaml` — generates `policy-router-builder.html` with `ll-artifact policy-builder`, runs the probes, then an LLM judge maps the report to the ACs (it can only downgrade a green run).
-- Probes: `.loops/probes/feat-3488-browser-probes.mjs` — 14 scenarios tagged `needs: ENH-3487|FEAT-3488`. The FEAT-3488 ones (`scenario-suite-survives-save-open-reload-undo`, `preset-clears-only-destination-suite`, `run-all-totals-and-edit-invalidation`, `local-issue-import-offline`) report BLOCKED until the `SCENARIO_SELECTORS` block at the top of the script is filled in with the implemented element ids — **do this as part of implementation**, then run `ll-loop run .loops/verify-feat-3488-browser-persistence.yaml` before closing.
-- Baseline today (pre-implementation): 8 pass, 4 blocked, 2 fail — `undo-redo-buttons-and-keys` (BUG-3502, the history-aliasing defect this issue's "History isolation" paragraph already specifies) and `open-project-with-unknown-sibling-metadata` (AC-10 full-wrapper persistence, expected to fail until implemented).
+- Probes: `.loops/probes/feat-3488-browser-probes.mjs` — 14 scenarios tagged `needs: ENH-3487|FEAT-3488|FEAT-3503`. The FEAT-3488 ones (`scenario-suite-survives-save-open-reload-undo`, `preset-clears-only-destination-suite`, `run-all-totals-and-edit-invalidation`) report BLOCKED until the `SCENARIO_SELECTORS` block at the top of the script is filled in with the implemented element ids — **do this as part of implementation**, then run `ll-loop run .loops/verify-feat-3488-browser-persistence.yaml` before closing. `local-issue-import-offline` is tagged FEAT-3503 and stays BLOCKED until that issue.
+- Both files were gitignored (`.gitignore` `.loops/probes/`, `.loops/verify-*.yaml`) when written; the ignore rules were removed on 2026-09-17 so the assets are reviewable and available in worktrees. The `open-project-with-unknown-sibling-metadata` fixture was corrected the same day to a structurally valid scenario (`{id, name, input, expectedTarget}`) so it fails only on wrapper persistence, not on the suite shape.
+- Baseline today (pre-implementation): 8 pass, 4 blocked, 2 fail — `undo-redo-buttons-and-keys` (BUG-3502, which now blocks this issue) and `open-project-with-unknown-sibling-metadata` (full-wrapper persistence, expected to fail until implemented).
 - Playwright is resolved from the invoking machine only (`LL_PLAYWRIGHT_ROOT` / `NODE_PATH` / `npm root -g`); the loop ends in `skipped-no-playwright` (a failure, never a pass) when absent. Nothing is added to `scripts/tests/` or `pyproject.toml`.
 
 ## Confidence Check Notes
@@ -295,6 +289,7 @@ _Added by `/ll:confidence-check` on 2026-09-17_
 
 ## Session Log
 
+- manual review - 2026-09-17 - pre-implementation review applied: extracted suggestions + local issue import to FEAT-3503; added BUG-3502 to `blocked_by`; pinned routing-relevant "invalid model" definition, `ruleIndex === -1` as the derived-fallback discriminator (`isFallback` also true for authored catch-alls), integer rubric aggregate domain, template-owned scenario ID insertion with per-case duplicate-ID errors instead of structural rejection, subset validation inside `parseFrontmatterBlock` with fixtures in `js_reject_cases`, new `policy_scenarios.test.mjs`; probe assets un-ignored and the sibling-metadata fixture corrected. Frontmatter scores not recomputed.
 - `/ll:verify-issues` - 2026-09-17T22:18:30 - `d2636fcf-cc12-43a6-bcc7-a9b3292ab5bf.jsonl`
 - manual review - 2026-09-17 - applied seven pre-implementation findings: detached history snapshots, all-mode reload and project storage replacement, rubric assertion destinations, explicit frontmatter subset validation, storage-versus-execution validation, representable mode-specific suggestions, and stale asynchronous import cancellation; added corresponding browser and core acceptance checks. Existing confidence scores were not recomputed by this specification edit.
 
