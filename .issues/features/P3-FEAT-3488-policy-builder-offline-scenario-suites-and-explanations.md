@@ -53,7 +53,11 @@ Users save examples with each mode's draft, run all cases without executing acti
 
 - Extend ENH-3487's draft wrapper to `{model, scenarios: []}`. Missing scenarios migrate to an empty list. Save/Open, reload, and whole-project history preserve scenarios; edits use the committed-edit path. Preset/start-blank replaces that draft's model and clears its scenarios atomically per ENH-3491; undo restores both.
 
+  Preserve the full wrapper (including unknown JSON-compatible sibling metadata) in `_persistDraft`, `_persistAllDrafts`, `currentProject`, `commit`, hydration/history initialization, mode switching, Open, and snapshot restoration. These paths currently reconstruct `{model}` or persist only `.model`; updating the core serializer alone is insufficient. Preset/start-blank intentionally clears the destination suite only; preserve other drafts and their metadata.
+
 - A scenario has a stable ID/name, mode-specific input, `expectedTarget: string | null`, and optional `expectedRuleIndex`. `null` is unasserted: suggestions never manufacture their own test oracle. Pin rule-index expectations to a fingerprint of the ordered authored rules; if order/content changes, mark that expectation as needing review (unasserted), retaining the prior expectation for inspection. Target-only assertions remain valid. Do not silently rebind an index to a different rule after reorder; undo restores the fingerprint and expectation.
+
+  Provide an explicit Reconfirm expectation action: the user reviews/selects the target and optional authored rule index before committing a fresh fingerprint. Never copy the observed winner into an expectation automatically. Rule indexes are zero-based authored indexes; omit the index for derived fallback and rubric cases. A null target with an index is invalid, rather than an implicit index-only assertion.
 
 - Add a shared compiled tracing path used by `evaluateModel` and `evaluateScenario`. Preserve `evaluateModel`'s existing MatchResult shape and legacy `evaluateRules`/Python/corpus contracts. Trace every rule evaluated through the winner, with rule index, compiled predicate, actual value or explicit missing flag, expected operand, and boolean result. Later rules are `not_evaluated`; fallback and authored catch-all identities remain distinct. Evaluate all predicates within each visited rule for explanations without changing first-match routing.
 
@@ -61,16 +65,20 @@ Users save examples with each mode's draft, run all cases without executing acti
 
 - Return verdict `error` for invalid model/scenario input before routing; never silently turn compile failure into no-match, pass, or unasserted. Results include diagnostics and the supplied input. Expected target absent from the current policy is an actionable error; a stale index fingerprint is unasserted/needs review.
 
-- Suite totals distinguish passed/failed/unasserted/errors. Coverage records which rules or rubric branches were reached by valid scenarios, even unasserted ones; it does not imply assertion coverage. Report uncovered rules/branches separately from shadow warnings.
+  Verdict precedence is explicit: invalid model/input/expectation structure or missing expected target → `error`; otherwise an index expectation with a stale fingerprint → `unasserted` with `needsReview: true`; otherwise null expectation → `unasserted`; otherwise compare target and, when supplied, the current index (both must match to pass). Preserve stale index values for review even if now out of range; reject an out-of-range index claiming a current fingerprint. A missing fingerprint on an index expectation needs review. Failed assertions and stale expectations still contribute routing coverage when the model and input routed successfully.
+
+- Suite totals distinguish passed/failed/unasserted/errors. Routing coverage counts winning authored rule indexes, the derived fallback as a separate identity, and winning rubric branches, including valid unasserted scenarios. Separately report evaluated rule indexes; visiting a rule whose conditions fail never covers that route. Authored catch-all coverage belongs to its authored index, not the derived fallback. Report uncovered routes separately from shadow warnings; routing coverage does not imply assertion coverage. Invalid model/input cases contribute no coverage; expectation-only errors may retain coverage from a successful routing evaluation.
 
 - Suggest missing-field cases and just-below/at/above numeric thresholds using deterministic finite values; deduplicate suggestions and keep rubric suggestions in [0,100]. All suggestions have `expectedTarget: null`. Cover repeated targets, explicit lifecycle terminals from ENH-3492, fallback, absent values, and threshold equality.
 
-- Local lifecycle issue import uses file input/FileReader and the existing frontmatter parser, with diagnostics for unsupported content. Reuse ENH-3491's transition summary data for graph/cycle warnings rather than introducing a competing transition interpretation. No skill, shell, LLM, or issue mutation executes from scenarios.
+- Local lifecycle issue import uses file input/FileReader, extracts only the opening `---`-delimited frontmatter block, then passes its contents to the existing parser. Ignore the Markdown body entirely; diagnose missing opening fences, unclosed fences, and unsupported frontmatter. Accept CRLF and an optional leading UTF-8 BOM. Complete extraction, parsing, and input validation before adding a scenario in one committed edit; any read/validation failure leaves the existing suite unchanged. Imported cases start unasserted.
+
+- Extract a shared `analyzeTransitions(model)` structural helper for lifecycle policies and consume it from both `summarizeTransitions` and the graph UI. The current summary returns prose/step fields, not graph edges or cycle diagnostics. Represent dispatch, emitted outcomes, and terminals, with typed dispatch/goto/rescore/terminal edges; rescore returns to scoring/dispatch and denotes possible subsequent routing, not a predicted next winner. Report reachable nodes and cycle node groups, distinguishing goto cycles from rescore feedback; do not claim that a structural cycle must execute or never terminate. Preserve the existing summary API and derive edges from the same emitted-outcome/destination semantics as YAML generation. No skill, shell, LLM, or issue mutation executes from scenarios.
 
 ## Integration Map
 
 
-- Modify `scripts/little_loops/templates/policy_builder_core.mjs`: draft migration/serialization, shared compiled trace, scenario suite and suggestion functions, rubric branch evaluation.
+- Modify `scripts/little_loops/templates/policy_builder_core.mjs`: draft migration/serialization, input normalization with provenance, frontmatter extraction, shared compiled trace, scenario suite and suggestion functions, rubric branch evaluation, and shared transition analysis consumed by `summarizeTransitions`.
 
 - Modify `scripts/little_loops/templates/policy-router-builder.html.tmpl`: suite editing/results, local file input, committed-edit wiring, structural graph presentation.
 
@@ -88,17 +96,30 @@ Users save examples with each mode's draft, run all cases without executing acti
 
 `Scenario {id, name, input, expectedTarget, expectedRuleIndex?, expectedRulesFingerprint?}`; `ScenarioResult {scenarioId, actualTarget, ruleIndex?, rubricBranch?, trace, verdict, diagnostics}`. Verdicts are pass/fail/unasserted/error.
 
+`ScenarioInput` is selected by the containing draft's mode:
+- decision table: `{values: Record<string, number | boolean>}` keyed by normalized dimension name; finite numeric scores in [0,100], actual booleans encoded to 100/0. Omitted keys mean missing; null, numeric strings, wrong types, unknown keys, and nonfinite/out-of-range values are errors.
+- lifecycle: `{frontmatterText: string}` containing the extracted/pasted frontmatter, processed by `parseFrontmatterBlock` and `encodeFrontmatterScores`. Preserve the encoder's runtime-compatible coercions and missing/null behavior; do not apply decision-table score bounds to lifecycle numeric fields. Unsupported parser syntax or a non-string text field is an error; unrelated frontmatter keys are allowed.
+- rubric: `{aggregate: number}` with a finite value in [0,100]. Strings/null/nonfinite/out-of-range values are errors.
+
+Trace condition records include `{sourceKey, rawPresent, rawValue, encodedPresent, encodedValue, predicate, result}`. For lifecycle derived dimensions retain the actual source key (e.g. `priority` for `priority_rank`); absent boolean/list source fields remain visibly absent even though their encoded value is `"0"`. Distinguish an absent field from a present null value. Include the supplied input and `needsReview` in `ScenarioResult`.
+
 ### Signatures
 
 Proposed new contracts in core.mjs:
 
-- `traceModel(model, input) -> {match, rules, rubricBranch?, diagnostics}`. `match` retains the current MatchResult shape; `rules` carries evaluated/not-evaluated status and per-condition values. Share compilation/predicate evaluation with `evaluateModel` instead of duplicating semantics.
+- `normalizeScenarioInput(model, input) -> {scores, provenance, aggregate?, diagnostics}` implements the mode-specific contract above.
+
+- `extractIssueFrontmatter(text) -> string` extracts a complete opening frontmatter block or throws a diagnostic before any suite mutation.
+
+- `traceModel(model, input) -> {match, rules, rubricBranch?, diagnostics}` normalizes scenario input and retains raw/encoded provenance. `match` retains the current MatchResult shape; `rules` carries evaluated/not-evaluated status and per-condition values. Share lower-level compilation/predicate evaluation with `evaluateModel` instead of duplicating semantics; the legacy evaluator still accepts encoded scores and preserves its compile-failure/no-match behavior.
 
 - `evaluateScenario(model, scenario) -> ScenarioResult`.
 
-- `runScenarioSuite(model, scenarios) -> {results, summary: {passed, failed, unasserted, errors, uncoveredRuleIndexes, uncoveredRubricBranches}}`.
+- `runScenarioSuite(model, scenarios) -> {results, summary: {passed, failed, unasserted, errors}, coverage: {winningRuleIndexes, evaluatedRuleIndexes, uncoveredRuleIndexes, fallback: {applicable, covered}, winningRubricBranches, uncoveredRubricBranches}}`. Non-applicable mode collections are empty; fallback applicability refers only to an emitted derived fallback.
 
 - `suggestScenarios(model) -> Scenario[]` with null expectations.
+
+- `analyzeTransitions(model) -> {nodes, edges, reachableNodeIds, cycles, diagnostics}`. Nodes have stable IDs and kinds (scoring/dispatch/outcome/terminal); edges have source, target, and kind (dispatch/goto/rescore/terminal); cycle records contain node IDs and distinguish goto cycles from rescore feedback. Both summary and graph use this shared analysis.
 
 - Scenario index expectations additionally store an ordered-rule fingerprint (a canonical rules serialization is sufficient; cryptographic hashing is unnecessary offline).
 
@@ -108,11 +129,11 @@ Proposed new contracts in core.mjs:
 
 ## Implementation Steps
 
-1. Extend draft parsing and history with scenario migration, structural checks, and expectation fingerprints.
-2. Add shared compiled trace and explicit rubric aggregate evaluation; retain existing evaluator/conformance behavior.
-3. Implement scenario editing, Run all, totals, traces, coverage, and stale-result feedback.
-4. Add boundary suggestions, local lifecycle issue import, and structural graph warnings using shared transition data.
-5. Test all modes, project round trips and terminal destinations; regenerate golden HTML and update docs. Record manual browser save/reload/import/preset/undo checks using ENH-3487's existing manual-testing decision.
+1. Extend draft parsing and every enumerated browser persistence/history path with scenario migration, full-wrapper preservation, structural checks, and expectation fingerprints.
+2. Add mode-specific input normalization/provenance, shared compiled trace, and explicit rubric aggregate evaluation; retain existing evaluator/conformance behavior.
+3. Implement scenario editing and explicit expectation reconfirmation, verdict precedence, Run all, totals, separate winning/evaluated coverage, and stale-result feedback.
+4. Add boundary suggestions and atomic local issue import with frontmatter extraction. Extract shared transition analysis, migrate the summary consumer, and render structural graph/cycle warnings from it.
+5. Test all modes, each browser persistence transition, import failure atomicity, verdict combinations, raw/encoded missing values, coverage identities, and terminal/cycle semantics; regenerate golden HTML and update docs. Record manual browser save/reload/import/preset/undo checks using ENH-3487's existing manual-testing decision.
 
 ## Acceptance Criteria
 
@@ -132,6 +153,18 @@ Proposed new contracts in core.mjs:
 - [ ] Local issue import works offline with explicit parser diagnostics. Scenarios and structural graphs execute no actions and make no predictions about LLM/action effects.
 
 - [ ] Editing a policy invalidates displayed results; preset/clear/undo and all suite controls pass the documented manual browser workflow. Golden HTML and applicable Node/Python gates pass.
+
+- [ ] Full draft wrappers survive ordinary committed edits, active/inactive mode switches, Save/Open, storage reload, and undo/redo, including unknown sibling metadata. Preset/start-blank clears only the selected destination suite atomically; undo restores it. Verification exercises browser paths, not only core JSON round trips.
+
+- [ ] Mode-specific input contracts reject malformed values without treating valid absence as an error. Tests cover decision-table true/false encoding, missing lifecycle boolean/list fields showing raw absence alongside encoded zero, present null versus absence, and derived `priority_rank` source provenance.
+
+- [ ] Verdict tests cover invalid input combined with stale fingerprints (error wins), a removed expected target (error), stale index plus target mismatch (needs review), current index plus target match/mismatch, missing fingerprints, and explicit reconfirmation followed by undo. No reconfirmation silently adopts the observed result.
+
+- [ ] A visited-but-failing rule appears only in evaluated coverage and remains uncovered as a winning route. Tests distinguish repeated-target authored rules, authored catch-all, derived fallback, rubric branches, valid unasserted/failed assertions, and invalid model/input cases.
+
+- [ ] A complete issue Markdown file imports successfully without parsing its body; BOM/CRLF are handled. Missing/unclosed fences, unsupported frontmatter, and read failures produce diagnostics without altering the suite. Successful import adds one unasserted case and is undoable.
+
+- [ ] Summary and graph consume one transition analysis contract; tests cover goto chains/cycles, rescore feedback, unreachable outcomes, and explicit success/skip/needs-attention terminals. Existing summary behavior remains compatible and structural warnings make no claims about actual action outcomes or inevitable nontermination.
 
 ## Use Case
 
@@ -169,19 +202,21 @@ The earlier refinement/wiring passes mixed offline suites with connected transpo
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-09-17_
+_Historical assessment from `/ll:confidence-check` on 2026-09-17; superseded dependency finding corrected by manual review later that day._
 
-**Readiness Score**: 80/100 → STOP — ADDRESS GAPS (Dependencies Hard Override)
-**Outcome Confidence**: 64/100 → LOW
+**Prior Readiness Score**: 80/100; the prior dependency-based STOP no longer applies.
+**Prior Outcome Confidence**: 64/100. Frontmatter scores are historical and have not been recomputed by this specification edit; rerun confidence-check before implementation.
 
 ### Gaps to Address
-- `blocked_by` lists ENH-3487, ENH-3491, and ENH-3492, all still `open` — the Dependencies Hard Override forces STOP regardless of the 80/100 aggregate. This issue's own Proposed Solution explicitly builds on ENH-3487's draft wrapper, ENH-3491's presets/transition summary, and ENH-3492's terminal semantics; none of those contracts exist yet to implement against.
+- All listed dependencies (BUG-3486, ENH-3487, ENH-3491, ENH-3492) are now done. Retain their dependency links as implementation provenance; they no longer block this issue. The manual-review gaps are incorporated into the directive sections and acceptance criteria above.
 
 ### Outcome Risk Factors
 - Moderate per-site complexity: the shared compiled trace path (`traceModel`) must preserve `evaluateModel`'s existing MatchResult shape plus legacy `evaluateRules`/Python/corpus contracts while adding new tracing — a cross-module change with shared state, not a mechanical edit.
-- Ambiguity residual: several proposed-solution details (transition summary reuse, terminal destination exercising) depend on ENH-3491/ENH-3492 designs that may still shift before those issues land.
+- Browser persistence currently reconstructs model-only wrappers, and transition summaries do not yet expose graph data. This issue now explicitly owns full-wrapper preservation and shared structural analysis; verification must exercise these integration paths alongside the pure helpers.
 
 ## Session Log
+
+- manual review - 2026-09-17 - applied pre-implementation review: full-wrapper browser persistence, atomic fenced-frontmatter import, winning-route versus evaluated-rule coverage, typed input/provenance contracts, shared transition analysis, verdict precedence and explicit reconfirmation; corrected stale dependency assessment without inventing new confidence scores.
 
 - `/ll:confidence-check` - 2026-09-17T06:34:31 - `0ef705a3-d006-496e-b37a-476f2afd18d1.jsonl`
 - `/ll:verify-issues` - 2026-09-17T06:28:40 - `9b9f3eca-ed5d-4fd7-a99d-217cb278def3.jsonl`
