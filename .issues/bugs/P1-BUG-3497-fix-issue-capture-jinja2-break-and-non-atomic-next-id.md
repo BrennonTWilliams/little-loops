@@ -9,6 +9,9 @@ labels:
 - issue-capture
 - concurrency
 - hub
+decision_needed: true
+learning_tests_required:
+- jinja2
 ---
 
 # Fix issue capture: issue_capture jinja2 break and non-atomic next-id
@@ -87,12 +90,72 @@ renumbering.
   write. Fix: reserve-then-write under a lock, or an ID-reservation table, so
   two concurrent allocators can never hand out the same ID.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-17 — based on codebase analysis:_
+
+- Confirmed via repo-wide search: zero hits for `No module named 'jinja2'` or `ModuleNotFoundError.*jinja2` anywhere in the source tree (the only matches are unrelated lines inside a recorded test fixture transcript, `scripts/tests/fixtures/codex/rollout-interactive.jsonl`).
+- Confirmed: `jinja2` is imported only in `little_loops/artifact_templates.py:22-23` and `little_loops/cli/artifact/dashboard.py:368` (both back `ll-artifact render`); `create_issue`, `_render_issue_content` (`little_loops/cli/issues/create.py`), and `_tool_issue_capture` (`little_loops/mcp_server/tools.py:258-268`) import neither `jinja2` nor those two modules.
+- Confirmed: no `except ImportError`/`except ModuleNotFoundError` guard exists anywhere for `jinja2` — it is declared unconditionally in `[project].dependencies` (`scripts/pyproject.toml`), not gated as an optional extra. Compare `mcp`/`otel`, which ARE gated as extras with a lazy import plus an actionable error message (`little_loops/mcp_server/__init__.py`; `little_loops/transport.py:1627-1644`) — the codebase does have a convention for optional-dependency gating, and jinja2 does not use it.
+- Together these corroborate rather than resolve the "Open question" already recorded under Program Design → Call Path: nothing in the current call path can raise `No module named 'jinja2'` for `issue_capture`. Reproduce Steps to Reproduce #1 fresh before implementing — if it no longer reproduces, this half of the bug is likely already resolved by FEAT-3036's `pyproject.toml` change (2026-09-15) and the stated fix ("add jinja2 to pyproject.toml") should be dropped rather than re-applied.
+
 ## Acceptance
 
 - `issue_capture` files an issue with a fresh, unique ID end-to-end.
 - Two concurrent captures (or a capture racing a manual write) can never produce
   the same ID.
 - `next-id` is either atomic or clearly documented as a read-only hint.
+
+## Proposed Solution
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-17 — based on codebase analysis:_
+
+**Option A**: Make `get_next_issue_number`/`cmd_next_id` (`little_loops/issue_parser.py`, `little_loops/cli/issues/next_id.py`) acquire `.id-alloc.lock` before reading, mirroring `create_issue`'s existing lock-then-allocate-then-exclusive-write pattern (`little_loops/cli/issues/create.py:406-499`, `acquire_lock` in `little_loops/file_utils.py:87`). This directly revisits an approach `.issues/bugs/P2-BUG-1364-duplicate-issue-id-hook-toctou-race-condition.md` (done) evaluated as its "Option C" and rejected, for two stated reasons: `IssueParser._generate_id_from_filename()`'s read-only fallback calls `get_next_issue_number()` during ordinary parsing (e.g. every `ll-issues list`), which would spuriously create reservations under a naive lock-and-reserve scheme; and a "batch-increment pattern documented across five commands" was said to defeat atomicity regardless. Neither objection has been re-evaluated against `create_issue`'s lock design, which already resolves the first concern (its lock is held only around the allocate-and-write, not around read-only parsing) — but the second (batch-increment callers) has not been checked against this issue's scope.
+
+**Option B**: Leave `next-id` unlocked and explicitly document it as a read-only hint (the wording this issue's own Expected Behavior already allows), and instead close the collision window by migrating every automated allocator currently doing "next-id read + hand-written file" (the manual/hook path this issue's Current Behavior describes) onto the already-atomic `create_issue()` (`little_loops/cli/issues/create.py`). This requires identifying and migrating those callers rather than changing `next_id.py`/`issue_parser.py` at all.
+
+**Recommended**: Option B — it reuses `create_issue`'s already-proven lock design (matches Impact → Risk: Low) without reopening BUG-1364's rejected reservation semantics, and satisfies the Expected Behavior bullet that already accepts "next-id ... clearly documented as a read-only hint" as a valid resolution. Option A is viable but is not the "direct fix" the current Impact → Effort estimate assumes — it requires re-litigating BUG-1364's objections, not just copying `create_issue`'s lock pattern.
+
+## Integration Map
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-17 — based on codebase analysis:_
+
+**Files to Modify**
+- `little_loops/cli/issues/next_id.py` — `cmd_next_id()` (line 23) calls `get_next_issue_number` outside any lock; candidate target for Option A (add locking) or for a doc-only change under Option B.
+- `little_loops/issue_parser.py` — `get_next_issue_number()` is the shared read-only highwater scan called by both the locked (`create_issue`) and unlocked (`cmd_next_id`) paths; also called by `IssueParser._generate_id_from_filename()`'s fallback during ordinary read-only parsing (e.g. every `ll-issues list`) — this is the call site BUG-1364 flagged as the reason a naive reserve-on-read scheme over-reserves.
+- `little_loops/cli/issues/__init__.py` — imports `cmd_next_id` (line 83) and dispatches `ll-issues next-id` to it (line 1011); the CLI help/docstring here is where a "read-only hint" warning would land under Option B.
+- `little_loops/cli/issues/create.py` — `create_issue()` (lines 406-499) is the existing atomic path; unmodified under Option B except as the target callers migrate onto.
+
+**Dependent Files (Callers/Importers)**
+- `scripts/tests/test_ll_issues_create.py:17` — imports and exercises `create_issue` directly.
+- `little_loops/cli/issues/scaffold_epic.py:19,84-88` — a second, independent caller of `.id-alloc.lock` for epic scaffolding, outside `create_issue`.
+- `little_loops/issue_lifecycle.py:826-831` — acquires the same cross-tree `.id-alloc.lock` as `create_issue()` for a different mutation path.
+- `little_loops/mcp_server/tools.py:258-268,811` — `_tool_issue_capture` calls `create_issue`/`render_issue_preview`; this is the atomic path the bug report says currently fails with the jinja2 import error.
+
+**Conventions in Force**
+- ID allocation in this codebase follows a lock-then-allocate-then-exclusive-write shape: hold `.id-alloc.lock` (`file_utils.py:acquire_lock`) around both the highwater read and an exclusive-create write (`open(path, "x")`), retrying on `FileExistsError` — evidence: `create_issue` (`little_loops/cli/issues/create.py:406-499`).
+- Issue-tree mutation locking is deliberately kept on a lock file distinct from ID allocation — evidence: `issue_lock_path()`'s docstring (`little_loops/file_utils.py:60-84`) states it is "deliberately distinct from `.id-alloc.lock`"; used by `set_status.py:123,134` and `link.py:160,178`, paired with `atomic_write` rather than `Path.write_text`.
+- Optional third-party dependencies are gated as `pyproject.toml` extras with a lazy import and an actionable error message, not left as unconditional base dependencies — evidence: `mcp` extra (`little_loops/mcp_server/__init__.py`), `otel` extra (`little_loops/transport.py:1627-1644`). `jinja2` does not follow this convention (unconditional base dependency); contested only in the sense that it's a base dep only because FEAT-3036 chose to make it one, not because the convention was violated.
+- In-process concurrency tests in this codebase use `threading.Thread`/`threading.Barrier`/`ThreadPoolExecutor` against `acquire_lock`, not `multiprocessing` — evidence: `test_file_utils.py::TestAcquireLock`, `test_bug3150_issue_mutator_atomicity.py::TestConcurrency` (rationale stated at lines 264-268: flock contends within a process the same way it does across processes).
+- Disagreement to flag: BUG-1364 (done) evaluated and rejected locking `get_next_issue_number`/`cmd_next_id` directly ("Option C") before `create_issue`'s lock design existed; FEAT-2947 then implemented that same lock shape but scoped only to `create_issue()`, leaving `cmd_next_id` unlocked. BUG-1364's rejection reasoning has not been re-evaluated against FEAT-2947's design — see Proposed Solution → Option A.
+
+**Tests**
+- `scripts/tests/test_issues_cli.py` — `TestNextId`-style coverage: `test_next_id_empty_project`, `test_next_id_with_existing_issues`, `test_next_id_count_batch`, `test_next_id_count_one_matches_default`, `test_next_id_count_zero_exits_2`, `test_next_id_count_negative_exits_2` (lines 16-136) — all single-process, no concurrent variant.
+- `scripts/tests/test_ll_issues_create.py` — exercises `create_issue` directly.
+- `scripts/tests/test_bug3303_worktree_id_alloc.py` — `create_issue` and cross-tree `.id-alloc.lock` behavior.
+- `scripts/tests/test_bug3150_issue_mutator_atomicity.py` — concurrency-test pattern to model a `next-id` race test after (`threading.Barrier`, asserts no lost/corrupted writes).
+- `scripts/tests/test_issue_parser.py::TestGetNextIssueNumber` — no concurrent variant exists, despite BUG-1364's wiring pass explicitly calling for one.
+- `scripts/tests/test_mcp_server.py`, `scripts/tests/test_feat_3149_mcp_mutation_tools.py` — reference `issue_capture` tool registration/behavior.
+- No subprocess-level integration test exists for the `ll-issues next-id` CLI binary — flagged as a gap by BUG-1364's own wiring pass and never closed since.
+
+**Documentation**
+- `docs/guides/MCP_SERVER_GUIDE.md` — documents `issue_capture` as a write tool (dry-run behavior, no-predicted-ID note).
+- `docs/reference/CLI.md` — documents `ll-issues next-id`/`ni` and `issue_capture` tool parameters; the section to update if `next-id` is documented as read-only under Option B.
+- `docs/reference/API.md` — documents `get_next_issue_number` and `acquire_lock`.
 
 ## Program Design
 
@@ -147,4 +210,5 @@ Steps to Reproduce verification note above.
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-17T04:20:13 - `e8577901-f5fd-435d-a8d3-7899337fe38e.jsonl`
 - `/ll:format-issue` - 2026-09-17T04:09:09 - `2a99ae96-959a-42e3-af68-3fbdce04f9f0.jsonl`
