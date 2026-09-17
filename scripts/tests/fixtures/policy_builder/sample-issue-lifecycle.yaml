@@ -40,6 +40,7 @@ states:
 
   policy_dispatch:
     fragment: policy_table_dispatch
+    on_error: failed
     route:
       refine: refine
       gate: gate
@@ -77,3 +78,4 @@ states:
 
   failed:
     terminal: true
+    failure: true

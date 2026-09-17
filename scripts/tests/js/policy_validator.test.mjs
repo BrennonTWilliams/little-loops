@@ -25,6 +25,8 @@ import {
   encodeFrontmatterScores,
   BUILTIN_FRONTMATTER_DIMENSIONS,
   LIFECYCLE_VERBS,
+  RESERVED_STATE_NAMES,
+  isReservedOutcomeToken,
 } from "../../little_loops/templates/policy_builder_core.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -194,6 +196,92 @@ test("serializeLoopYaml matches golden issue-lifecycle fixture", () => {
   const model = JSON.parse(readFileSync(join(FIXT, "sample-issue-lifecycle.model.json"), "utf8"));
   const golden = readFileSync(join(FIXT, "sample-issue-lifecycle.yaml"), "utf8");
   assert.equal(serializeLoopYaml(model), golden);
+});
+
+// BUG-3489: reserved-name guard.
+test("isReservedOutcomeToken rejects the decision_table runtime set", () => {
+  for (const tok of ["score", "parse_scores", "policy_dispatch", "failed", "error"]) {
+    assert.equal(isReservedOutcomeToken("decision_table", tok), true, tok);
+  }
+  assert.equal(isReservedOutcomeToken("decision_table", "done"), false);
+});
+
+test("isReservedOutcomeToken rejects the issue_lifecycle runtime set", () => {
+  for (const tok of ["score", "policy_dispatch", "done", "failed", "error"]) {
+    assert.equal(isReservedOutcomeToken("issue_lifecycle", tok), true, tok);
+  }
+});
+
+test("isReservedOutcomeToken rejects every underscore-prefixed token in both modes", () => {
+  for (const mode of ["decision_table", "issue_lifecycle"]) {
+    assert.equal(isReservedOutcomeToken(mode, "_"), true);
+    assert.equal(isReservedOutcomeToken(mode, "_error"), true);
+    assert.equal(isReservedOutcomeToken(mode, "_custom"), true);
+  }
+});
+
+test("isReservedOutcomeToken accepts an ordinary authored token", () => {
+  assert.equal(isReservedOutcomeToken("decision_table", "escalate"), false);
+});
+
+test("RESERVED_STATE_NAMES exposes the runtime sets documented by BUG-3489", () => {
+  assert.deepEqual(
+    [...RESERVED_STATE_NAMES.decision_table].sort(),
+    ["error", "failed", "parse_scores", "policy_dispatch", "score"]
+  );
+  assert.deepEqual(
+    [...RESERVED_STATE_NAMES.issue_lifecycle].sort(),
+    ["done", "error", "failed", "policy_dispatch", "score"]
+  );
+});
+
+test("serializeLoopYaml(decision_table) throws naming a reserved outcome name", () => {
+  const model = seedExample("decision_table");
+  model.outcomes[0].name = "score";
+  model.rules[0].target = "score";
+  assert.throws(() => serializeLoopYaml(model), /score/);
+});
+
+test("serializeLoopYaml(decision_table) throws naming a reserved rule target", () => {
+  const model = seedExample("decision_table");
+  model.rules[0].target = "policy_dispatch";
+  assert.throws(() => serializeLoopYaml(model), /policy_dispatch/);
+});
+
+test("serializeLoopYaml(decision_table) throws naming an underscore-prefixed fallback", () => {
+  const model = seedExample("decision_table");
+  model.fallback = "_custom";
+  assert.throws(() => serializeLoopYaml(model), /_custom/);
+});
+
+test("serializeLoopYaml(decision_table) does not throw on ordinary authored tokens", () => {
+  const model = seedExample("decision_table");
+  assert.doesNotThrow(() => serializeLoopYaml(model));
+});
+
+test("serializeLoopYaml(issue_lifecycle) throws naming a reserved fallback", () => {
+  const model = JSON.parse(readFileSync(join(FIXT, "sample-issue-lifecycle.model.json"), "utf8"));
+  model.fallback = "done";
+  assert.throws(() => serializeLoopYaml(model), /done/);
+});
+
+// BUG-3489: generated failure routing shape.
+test("serializeLoopYaml(decision_table) emits a dedicated failed terminal and _error: failed", () => {
+  const model = seedExample("decision_table");
+  const yaml = serializeLoopYaml(model);
+  assert.match(yaml, /\n {2}failed:\n {4}terminal: true\n {4}failure: true/);
+  assert.match(yaml, /_error: failed/);
+  assert.match(yaml, /on_max_steps: failed/);
+  assert.match(yaml, /\n {2}score:\n[\s\S]*?on_error: failed/);
+  assert.match(yaml, /\n {2}parse_scores:\n[\s\S]*?on_error: failed/);
+  assert.match(yaml, /\n {2}policy_dispatch:\n[\s\S]*?on_error: failed/);
+});
+
+test("serializeLoopYaml(issue_lifecycle) emits dispatch on_error: failed and failure: true", () => {
+  const model = JSON.parse(readFileSync(join(FIXT, "sample-issue-lifecycle.model.json"), "utf8"));
+  const yaml = serializeLoopYaml(model);
+  assert.match(yaml, /\n {2}policy_dispatch:\n[\s\S]*?on_error: failed/);
+  assert.match(yaml, /\n {2}failed:\n {4}terminal: true\n {4}failure: true/);
 });
 
 test("_emittedVerbs is the transitive closure over rule targets, fallback, and goto targets", () => {

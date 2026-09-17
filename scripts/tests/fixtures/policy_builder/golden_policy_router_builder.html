@@ -541,6 +541,72 @@ export const LIFECYCLE_VERBS = [
   },
 ];
 
+/**
+ * Runtime-reserved per-mode state names (BUG-3489): tokens the generated
+ * pipeline itself uses as state names. An authored outcome name, rule
+ * target, or fallback matching one of these collides with a generated
+ * state key at emission; both serializers reject it before emission via
+ * `isReservedOutcomeToken`. BUG-3486 extends this map for broader
+ * browser/model validation and additional modes — it must not introduce a
+ * parallel reserved-name definition or lose the `error`/underscore-prefix
+ * protections below.
+ */
+export const RESERVED_STATE_NAMES = {
+  decision_table: new Set(["score", "parse_scores", "policy_dispatch", "failed", "error"]),
+  issue_lifecycle: new Set(["score", "policy_dispatch", "done", "failed", "error"]),
+};
+
+/**
+ * True if `token` is reserved for `mode` — either in that mode's runtime
+ * set above, or underscore-prefixed. Every underscore-prefixed route key
+ * (including `_` and `_error`) is stripped from explicit verdict routes by
+ * `RouteConfig.from_dict()` at runtime, so an authored outcome/rule-target
+ * token starting with `_` would silently vanish rather than route — a
+ * finite reserved set alone cannot express this rule.
+ * @param {string} mode
+ * @param {string} token
+ * @returns {boolean}
+ */
+export function isReservedOutcomeToken(mode, token) {
+  if (typeof token !== "string" || token === "") return false;
+  if (token.startsWith("_")) return true;
+  const reserved = RESERVED_STATE_NAMES[mode] || RESERVED_STATE_NAMES.decision_table;
+  return reserved.has(token);
+}
+
+/**
+ * Reject any authored rule target, outcome name, or fallback in `model`
+ * that collides with a reserved token for `mode` (BUG-3489). Throws an
+ * `Error` naming every offending token and its source so the author can
+ * rename it and its references; called by both serializers before any
+ * YAML is emitted.
+ * @param {string} mode
+ * @param {{rules: Array, outcomes: Array, fallback: string}} model
+ */
+function _assertNoReservedTokens(mode, model) {
+  const offenders = [];
+  for (const r of model.rules || []) {
+    if (r.target && isReservedOutcomeToken(mode, r.target)) {
+      offenders.push(`rule target "${r.target}"`);
+    }
+  }
+  for (const o of model.outcomes || []) {
+    if (o.name && isReservedOutcomeToken(mode, o.name)) {
+      offenders.push(`outcome "${o.name}"`);
+    }
+  }
+  if (model.fallback && isReservedOutcomeToken(mode, model.fallback)) {
+    offenders.push(`fallback "${model.fallback}"`);
+  }
+  if (offenders.length > 0) {
+    throw new Error(
+      `Reserved outcome name(s): ${offenders.join(", ")}. These names — and any ` +
+        `underscore-prefixed token — are reserved for the generated loop's own states ` +
+        `and routing sentinels. Rename the outcome, rule target, or fallback and its references.`
+    );
+  }
+}
+
 // Mirrors little_loops.frontmatter.STATUS_SYNONYMS exactly (Try-it must agree
 // with parse_frontmatter's canonicalization or status:==done disagrees with
 // the emitted loop for an issue whose frontmatter says `status: completed`).
@@ -1141,6 +1207,7 @@ export function _doneStateName(model) {
 }
 
 function _serializeDecisionTable(model) {
+  _assertNoReservedTokens("decision_table", model);
   const out = [];
   const name = model.name || "policy-builder";
   out.push(`name: ${name}`);
@@ -1149,6 +1216,8 @@ function _serializeDecisionTable(model) {
     out.push(_yamlBlockScalar(model.description, 2));
   }
   out.push(`max_steps: ${model.maxSteps != null ? model.maxSteps : 20}`);
+  out.push("");
+  out.push("on_max_steps: failed");
   out.push("");
   out.push("import:");
   out.push("  - lib/rubric-router.yaml");
@@ -1174,15 +1243,18 @@ function _serializeDecisionTable(model) {
   out.push(_yamlBlockScalar(_scoreActionBody(model), 6));
   out.push("    capture: scores");
   out.push("    next: parse_scores");
+  out.push("    on_error: failed");
   out.push("");
   // parse_scores
   out.push("  parse_scores:");
   out.push("    fragment: policy_parse_scores");
   out.push("    next: policy_dispatch");
+  out.push("    on_error: failed");
   out.push("");
   // policy_dispatch with route map covering every outcome + _/_error
   out.push("  policy_dispatch:");
   out.push("    fragment: policy_table_dispatch");
+  out.push("    on_error: failed");
   out.push("    route:");
   // Collect every outcome token from rules + outcomes + fallback (dedup, ordered).
   const tokens = [];
@@ -1199,11 +1271,13 @@ function _serializeDecisionTable(model) {
   for (const tok of tokens) {
     out.push(`      ${tok}: ${tok}`);
   }
-  // Sentinels: default -> fallback (or first outcome), error -> first outcome.
+  // Sentinels: default -> fallback (or first outcome); error (BUG-3489) ->
+  // the dedicated `failed` terminal, never a user outcome — `_error` now
+  // resolves ahead of `_` in `FSMExecutor._route()`, so it must not reuse
+  // the first rule's target the way `_` does.
   const fallbackState = model.fallback || tokens[0] || "done";
-  const errorState = tokens[0] || fallbackState;
   out.push(`      _: ${fallbackState}`);
-  out.push(`      _error: ${errorState}`);
+  out.push(`      _error: failed`);
   out.push("");
   // One state per outcome. Build outcome map for authoring; tokens not listed
   // in `outcomes` get a default terminal state so the route never dead-ends.
@@ -1230,6 +1304,10 @@ function _serializeDecisionTable(model) {
     out.push(`    terminal: true`);
     out.push("");
   }
+  out.push(`  failed:`);
+  out.push(`    terminal: true`);
+  out.push(`    failure: true`);
+  out.push("");
   return out.join("\n").replace(/\n+$/, "\n");
 }
 
@@ -1374,6 +1452,7 @@ export function _emittedVerbs(model) {
 // `timeout` are all required for the zero-warnings AC (see the issue's
 // 4th/5th-pass findings).
 function _serializeIssueLifecycle(model) {
+  _assertNoReservedTokens("issue_lifecycle", model);
   const out = [];
   const name = model.name || "issue-lifecycle-loop";
   out.push(`name: ${name}`);
@@ -1415,6 +1494,7 @@ function _serializeIssueLifecycle(model) {
   out.push("");
   out.push("  policy_dispatch:");
   out.push("    fragment: policy_table_dispatch");
+  out.push("    on_error: failed");
   out.push("    route:");
   const verbs = _emittedVerbs(model);
   for (const v of verbs) {
@@ -1438,6 +1518,7 @@ function _serializeIssueLifecycle(model) {
   out.push("");
   out.push("  failed:");
   out.push("    terminal: true");
+  out.push("    failure: true");
   out.push("");
   return out.join("\n").replace(/\n+$/, "\n");
 }
@@ -1635,6 +1716,9 @@ if (typeof window !== "undefined") {
     serializeFrontmatterDimensions,
     parseFrontmatterBlock,
     encodeFrontmatterScores,
+    // BUG-3489 (reserved-name guard)
+    RESERVED_STATE_NAMES,
+    isReservedOutcomeToken,
   };
 }
 
@@ -2218,9 +2302,19 @@ function renderMessages(model) {
 
 function updatePreview() {
   const model = buildModel();
-  $("yaml-preview").textContent = serializeLoopYaml(model);
+  // BUG-3489: serializeLoopYaml throws when the model uses a reserved
+  // outcome/rule-target/fallback token. A guard error must not stop the
+  // rest of the panel from updating on the very keystroke that introduced
+  // the bad token — catch it, show the diagnostic in the preview pane, and
+  // keep rendering summary/messages/try-it so the page stays responsive.
+  try {
+    $("yaml-preview").textContent = serializeLoopYaml(model);
+    $("validate-hint").textContent = `Validate with:  ll-loop validate ${state.name}`;
+  } catch (err) {
+    $("yaml-preview").textContent = `# Cannot generate YAML:\n# ${err.message}`;
+    $("validate-hint").textContent = "";
+  }
   $("yaml-summary").textContent = computeSummary(model);
-  $("validate-hint").textContent = `Validate with:  ll-loop validate ${state.name}`;
   renderMessages(model);
   updateTryIt();
 }

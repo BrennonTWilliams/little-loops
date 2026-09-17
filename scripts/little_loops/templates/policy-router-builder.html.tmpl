@@ -808,9 +808,19 @@ function renderMessages(model) {
 
 function updatePreview() {
   const model = buildModel();
-  $("yaml-preview").textContent = serializeLoopYaml(model);
+  // BUG-3489: serializeLoopYaml throws when the model uses a reserved
+  // outcome/rule-target/fallback token. A guard error must not stop the
+  // rest of the panel from updating on the very keystroke that introduced
+  // the bad token — catch it, show the diagnostic in the preview pane, and
+  // keep rendering summary/messages/try-it so the page stays responsive.
+  try {
+    $("yaml-preview").textContent = serializeLoopYaml(model);
+    $("validate-hint").textContent = `Validate with:  ll-loop validate ${state.name}`;
+  } catch (err) {
+    $("yaml-preview").textContent = `# Cannot generate YAML:\n# ${err.message}`;
+    $("validate-hint").textContent = "";
+  }
   $("yaml-summary").textContent = computeSummary(model);
-  $("validate-hint").textContent = `Validate with:  ll-loop validate ${state.name}`;
   renderMessages(model);
   updateTryIt();
 }
