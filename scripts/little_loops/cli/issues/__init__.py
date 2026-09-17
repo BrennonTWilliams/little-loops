@@ -118,7 +118,9 @@ def main_issues() -> int:
             formatter_class=argparse.RawDescriptionHelpFormatter,
             epilog="""
 Sub-commands:
-  next-id        Print next globally unique issue number
+  next-id        Print next globally unique issue number (non-reserving hint; does not
+                 allocate — a concurrent caller can see and consume the same number
+                 before you write; use 'create' for a safe atomic write)
   create         Atomically allocate an ID and write a new issue file
   scaffold-epic  Create an EPIC and pre-wired child stubs atomically
   list           List active issues with optional filters
@@ -223,7 +225,9 @@ Examples:
         subs = parser.add_subparsers(dest="command", help="Available commands")
 
         nid = subs.add_parser(
-            "next-id", aliases=["ni"], help="Print next globally unique issue number"
+            "next-id",
+            aliases=["ni"],
+            help="Print next globally unique issue number (non-reserving hint; use 'create' to allocate)",
         )
         nid.set_defaults(command="next-id")
         add_config_arg(nid)
@@ -235,7 +239,11 @@ Examples:
             type=positive_int,
             default=1,
             metavar="N",
-            help="Number of consecutive IDs to allocate (default: 1)",
+            help=(
+                "Number of consecutive numbers to print (default: 1). Non-reserving, "
+                "same as with no --count: a concurrent caller can print/consume the "
+                "same numbers before you write. Use 'll-issues create' for a safe write"
+            ),
         )
 
         ls = subs.add_parser("list", aliases=["l"], help="List active issues")

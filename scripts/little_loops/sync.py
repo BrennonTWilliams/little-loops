@@ -17,7 +17,6 @@ from typing import TYPE_CHECKING, Any
 import yaml
 
 from little_loops.frontmatter import parse_frontmatter, strip_frontmatter, update_frontmatter
-from little_loops.issue_parser import get_next_issue_number
 from little_loops.issue_template import assemble_issue_markdown, load_issue_sections
 
 if TYPE_CHECKING:
@@ -664,6 +663,8 @@ class GitHubSyncManager:
         result: SyncResult,
     ) -> None:
         """Create a local issue file from GitHub issue."""
+        from little_loops.cli.issues.create import allocate_and_write_issue
+
         gh_number = gh_issue["number"]
         gh_title = gh_issue.get("title", f"Issue #{gh_number}")
         gh_body = gh_issue.get("body", "") or ""
@@ -677,22 +678,8 @@ class GitHubSyncManager:
                 priority = label.upper()
                 break
 
-        # Generate next issue number (uses global numbering across all dirs)
-        next_num = get_next_issue_number(self.config)
-
         # Generate slug from title
         slug = re.sub(r"[^a-z0-9]+", "-", gh_title.lower())[:40].strip("-")
-
-        issue_id = f"{issue_type}-{next_num}"
-        filename = f"{priority}-{issue_id}-{slug}.md"
-
-        # Determine category directory
-        cat = self.config.issues.get_category_by_prefix(issue_type)
-        category = cat.dir if cat else "features"
-        category_dir = self.config.get_issue_dir(category)
-        category_dir.mkdir(parents=True, exist_ok=True)
-
-        issue_path = category_dir / filename
 
         # Build content using per-type sections template
         now = datetime.now(UTC).isoformat(timespec="seconds")
@@ -741,18 +728,36 @@ class GitHubSyncManager:
         section_content["Status"] = f"**Open** | Created: {today} | Priority: {priority}"
 
         variant = self.sync_config.github.pull_template
-        content = assemble_issue_markdown(
-            sections_data=self._sections_data[issue_type],
+
+        def render(issue_id: str) -> str:
+            return assemble_issue_markdown(
+                sections_data=self._sections_data[issue_type],
+                issue_type=issue_type,
+                variant=variant,
+                issue_id=issue_id,
+                title=gh_title,
+                frontmatter=frontmatter,
+                content=section_content,
+            )
+
+        # BUG-3497: allocate the number and write the file under the shared
+        # id-alloc lock/highwater transaction instead of reading a number here
+        # and writing later outside the lock — that window let a concurrent
+        # atomic `create` (or another sync run) collide on the same ID.
+        # id_width=0 preserves sync's historical unpadded spelling (BUG-1, not
+        # BUG-001). A failure here propagates to the caller's `except Exception`
+        # in `pull_issues`, which routes it to `result.failed` rather than
+        # `result.created` — no partial/duplicate success is reported.
+        created = allocate_and_write_issue(
+            self.config,
             issue_type=issue_type,
-            variant=variant,
-            issue_id=issue_id,
-            title=gh_title,
-            frontmatter=frontmatter,
-            content=section_content,
+            priority=priority,
+            slug=slug,
+            render=render,
+            id_width=0,
         )
-        issue_path.write_text(content, encoding="utf-8")
-        result.created.append(f"#{gh_number} → {issue_id}")
-        self.logger.success(f"Created {filename} from GitHub #{gh_number}")
+        result.created.append(f"#{gh_number} → {created.id}")
+        self.logger.success(f"Created {created.path.name} from GitHub #{gh_number}")
 
     def get_status(self) -> SyncStatus:
         """Get sync status overview.

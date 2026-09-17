@@ -892,6 +892,104 @@ This is the body.
         fm = parse_frontmatter(created[0].read_text())
         assert fm.get("priority") == "P1"
 
+    def test_create_local_issue_uses_unpadded_id(
+        self, mock_config: BRConfig, mock_logger: MagicMock, tmp_path: Path
+    ) -> None:
+        """Migrating to the shared allocator (BUG-3497) must not start padding
+        sync's historically unpadded IDs (BUG-1, not BUG-001)."""
+        manager = GitHubSyncManager(mock_config, mock_logger)
+        result = SyncResult(action="pull", success=True)
+        gh_issue = {
+            "number": 20,
+            "title": "Unpadded id check",
+            "body": "Body.",
+            "url": "https://github.com/test/repo/issues/20",
+            "labels": [{"name": "bug"}],
+        }
+
+        manager._create_local_issue(gh_issue, "BUG", result)
+
+        created = list((tmp_path / ".issues" / "bugs").glob("*.md"))
+        assert len(created) == 1
+        assert created[0].name.startswith("P3-BUG-1-")
+        assert result.created == ["#20 → BUG-1"]
+
+    def test_create_local_issue_write_failure_does_not_report_success(
+        self, mock_config: BRConfig, mock_logger: MagicMock, tmp_path: Path
+    ) -> None:
+        """A handled write failure (BUG-3497) must propagate, not silently
+        report a created issue — the caller (`pull_issues`) routes a
+        propagated exception to `result.failed`, never `result.created`."""
+        manager = GitHubSyncManager(mock_config, mock_logger)
+        result = SyncResult(action="pull", success=True)
+        gh_issue = {
+            "number": 21,
+            "title": "Write failure",
+            "body": "Body.",
+            "url": "https://github.com/test/repo/issues/21",
+            "labels": [{"name": "bug"}],
+        }
+
+        with patch(
+            "little_loops.cli.issues.create.allocate_and_write_issue",
+            side_effect=OSError("simulated failure"),
+        ):
+            with pytest.raises(OSError, match="simulated failure"):
+                manager._create_local_issue(gh_issue, "BUG", result)
+
+        assert result.created == []
+        assert not list((tmp_path / ".issues" / "bugs").glob("*.md"))
+
+    def test_create_local_issue_and_atomic_create_never_collide(
+        self, mock_config: BRConfig, mock_logger: MagicMock, tmp_path: Path
+    ) -> None:
+        """Sync's migrated path and `ll-issues create` share the lock, so a
+        concurrent sync pull and atomic create must not allocate the same
+        numeric ID (the original BUG-3497 collision report)."""
+        import threading
+
+        from little_loops.cli.issues.create import IssueSpec, create_issue
+
+        manager = GitHubSyncManager(mock_config, mock_logger)
+        result = SyncResult(action="pull", success=True)
+        gh_issue = {
+            "number": 30,
+            "title": "Concurrent racer",
+            "body": "Body.",
+            "url": "https://github.com/test/repo/issues/30",
+            "labels": [{"name": "bug"}],
+        }
+
+        ids: list[str] = []
+        errors: list[BaseException] = []
+        barrier = threading.Barrier(2)
+
+        def sync_worker() -> None:
+            try:
+                barrier.wait(timeout=5)
+                manager._create_local_issue(gh_issue, "BUG", result)
+                ids.append(result.created[0].split(" → ")[1])
+            except BaseException as exc:  # noqa: BLE001
+                errors.append(exc)
+
+        def create_worker() -> None:
+            try:
+                barrier.wait(timeout=5)
+                created = create_issue(mock_config, IssueSpec(type="BUG", title="Atomic racer"))
+                ids.append(created.id)
+            except BaseException as exc:  # noqa: BLE001
+                errors.append(exc)
+
+        threads = [threading.Thread(target=sync_worker), threading.Thread(target=create_worker)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=10)
+
+        assert not errors
+        assert len(ids) == 2
+        assert len(set(ids)) == 2
+
     def test_push_single_issue_adds_duplicate_of_comment(
         self, mock_config: BRConfig, mock_logger: MagicMock, tmp_path: Path
     ) -> None:

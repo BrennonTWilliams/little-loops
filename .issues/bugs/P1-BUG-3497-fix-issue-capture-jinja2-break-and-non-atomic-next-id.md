@@ -4,7 +4,7 @@ title: Migrate unsafe issue allocators to atomic creation and investigate captur
   import failure
 type: BUG
 priority: P1
-status: open
+status: in_progress
 discovered_date: '2026-09-16'
 labels:
 - issue-capture
@@ -368,11 +368,88 @@ not silently change to the normal creator's defaults or body-merge behavior.
 - **Breaking Change**: None intended. Preserve existing creation defaults and
   hint output; metadata input is additive. No reservation semantics are introduced.
 
+## Resolution
+
+- **Action**: fix (partial — see Remaining Scope)
+- **Completed**: 2026-09-17 (Implementation Steps 2-4 only)
+- **Status**: Partial
+
+### Changes Made
+
+- `scripts/little_loops/cli/issues/create.py`: extracted the shared
+  `allocate_and_write_issue` lock/allocate/write/highwater transaction out of
+  `create_issue` (matches the Program Design signature); added
+  `validate_metadata`/`_RESERVED_METADATA_KEYS` and `IssueSpec.metadata`
+  support (CLI `--metadata-file`, provenance override/null semantics,
+  reserved-key rejection); hardened the handled write-failure and
+  highwater-write-failure contract (owned partial file removed, prior
+  highwater preserved).
+- `scripts/little_loops/sync.py`: migrated `_create_local_issue` to
+  `allocate_and_write_issue` (`id_width=0`, unpadded IDs preserved) instead of
+  reading a number and writing outside the lock — this closes the actual
+  GitHub-sync-vs-create collision window the two reported production
+  incidents trace to.
+- `scripts/little_loops/issue_parser.py`: `write_id_alloc_highwater` now uses
+  `file_utils.atomic_write` instead of a plain truncating write.
+- `scripts/little_loops/cli/issues/{__init__.py,next_id.py}`: `next-id`
+  help/docstring now states explicitly that it is a non-reserving hint and
+  points to `ll-issues create`.
+- Tests: `scripts/tests/test_ll_issues_create.py` (metadata validation/CLI,
+  fault-injected issue-write and highwater-write failure contracts, id_width
+  parity) and `scripts/tests/test_sync.py` (unpadded ID, write-failure
+  propagation to `result.failed` not `result.created`, cross-caller
+  create-vs-sync concurrent-uniqueness). Also fixed a line-number-keyed
+  allowlist drift in `scripts/tests/test_issue_parser.py`
+  (`TestPriorityRegexCompletenessAllowlist`) caused by this diff's line shifts.
+
+### Root Cause Step 1 (Jinja2) Disposition
+
+Unreproduced. `scripts/pyproject.toml` declares `jinja2>=3.1`; the only
+importers in the tree are `artifact_templates.py` and
+`cli/artifact/dashboard.py` — neither is on the `issue_capture` code path
+(`mcp_server/tools.py:_tool_issue_capture` → `IssueSpec`/`create_issue` /
+`render_issue_preview`, no Jinja2 import). No reproduction environment was
+available in this session. Per the issue's own accepted fallback, this is
+recorded as an unreproduced environment-specific report rather than a fix;
+remaining diagnosis needs the reporter's traceback/interpreter/install state
+per the Steps to Reproduce §3.
+
+### Remaining Scope (not done in this pass)
+
+This issue's full scope (7 command/skill migrations + generated-mirror
+regeneration + CLI/API/MCP/hooks docs + CHANGELOG entry + the two linked
+follow-ups for normalization's allocator and concurrent-parent-update races)
+is substantially larger than Steps 2-4 above and was not attempted here — it
+touches ~15 additional files with no code-correctness stakes as high as the
+allocator/sync fix itself. Left `status: in_progress` rather than `done`
+because most Acceptance Criteria boxes below are still unmet. Follow-up work:
+
+- Migrate the seven command/skill sources in the Integration Map (Step 5).
+- Regenerate Gemini/Kimi Code/Qwen mirrors (Step 6).
+- Update `docs/reference/CLI.md`, `docs/reference/API.md`,
+  `docs/guides/MCP_SERVER_GUIDE.md`, `docs/guides/BUILTIN_HOOKS_GUIDE.md`, and
+  add a `CHANGELOG.md` entry (Step 7).
+- Capture/link the normalization-allocator and concurrent-parent-update
+  follow-up issues (Step 8) — not yet created.
+- `scaffold_epic.py`/`issue_lifecycle.py` (Dependent Files) were not migrated
+  or re-verified against the new helper beyond the existing interoperability
+  the shared lock/highwater already provided.
+
+### Verification Results
+
+- Tests: PASS (`python -m pytest scripts/tests/` — 24945 passed, 53 skipped;
+  one unrelated pre-existing failure, `test_verify_evidence.py::TestRepoGate::
+  test_no_new_unverifiable_evidence`, reproduces identically on a clean stash
+  of this diff — a stale quote in BUG-3484 unrelated to this change)
+- Lint: PASS (`ruff check` on all changed files)
+- Types: PASS (`mypy` on all changed source files)
+
 ## Status
 
-**Open** | Created: 2026-09-16 | Priority: P1
+**In Progress** | Created: 2026-09-16 | Priority: P1
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-17T06:25:47 - `673b8d7f-311f-49c5-91da-9f35cbc67a87.jsonl`
 - `/ll:ready-issue` - 2026-09-17T05:55:18 - `2b9f4440-e280-4bc2-a778-2ed32f57f8b6.jsonl`
 - `/ll:confidence-check` - 2026-09-17T05:49:17 - `8528d71a-e5d1-4e75-a49d-fce04bd5520a.jsonl`
 - `/ll:verify-issues` - 2026-09-17T05:35:18 - `23994eb4-1b9e-4c0b-b12e-4d6b8a1de974.jsonl`

@@ -11,9 +11,12 @@ restated. See ``.issues/features/P2-FEAT-2947-*.md`` for design rationale
 from __future__ import annotations
 
 import argparse
+import json
+import math
 import re
 import subprocess
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -25,6 +28,63 @@ if TYPE_CHECKING:
     from little_loops.config import BRConfig
 
 _VALID_TYPES = ("BUG", "FEAT", "ENH", "EPIC")
+
+#: Frontmatter keys owned by explicit creation fields/the allocator; ``metadata``
+#: may not override these (BUG-3497) — silent override would let a caller shadow
+#: e.g. ``status`` or ``id`` through a side channel.
+_RESERVED_METADATA_KEYS = frozenset(
+    {"id", "type", "title", "priority", "status", "parent", "labels"}
+)
+
+
+def validate_metadata(metadata: dict[str, object]) -> None:
+    """Validate *metadata* is JSON-compatible and touches no reserved key (BUG-3497).
+
+    Applied to creation, direct-Python callers, and previews alike, before any
+    allocation mutation. Accepts strings, bools, ints, finite floats, ``None``,
+    lists, and recursively string-keyed dicts.
+
+    Raises:
+        ValueError: on a non-dict top level, a non-string key, a reserved key,
+            a non-finite number, a reference cycle, or an unsupported value type.
+    """
+    if not isinstance(metadata, dict):
+        raise ValueError(f"metadata must be a JSON object, got {type(metadata).__name__}")
+
+    def _check(value: object, path: str, seen: frozenset[int]) -> None:
+        if value is None or isinstance(value, (str, bool, int)):
+            return
+        if isinstance(value, float):
+            if not math.isfinite(value):
+                raise ValueError(f"metadata{path}: non-finite float not allowed")
+            return
+        if isinstance(value, list):
+            if id(value) in seen:
+                raise ValueError(f"metadata{path}: circular reference not allowed")
+            nested = seen | {id(value)}
+            for i, item in enumerate(value):
+                _check(item, f"{path}[{i}]", nested)
+            return
+        if isinstance(value, dict):
+            if id(value) in seen:
+                raise ValueError(f"metadata{path}: circular reference not allowed")
+            nested = seen | {id(value)}
+            for k, v in value.items():
+                if not isinstance(k, str):
+                    raise ValueError(f"metadata{path}: non-string key {k!r} not allowed")
+                _check(v, f"{path}.{k}", nested)
+            return
+        raise ValueError(f"metadata{path}: unsupported value of type {type(value).__name__}")
+
+    for key, value in metadata.items():
+        if not isinstance(key, str):
+            raise ValueError(f"metadata key {key!r} must be a string")
+        if key in _RESERVED_METADATA_KEYS:
+            raise ValueError(
+                f"metadata key {key!r} is reserved (owned by an explicit creation field "
+                "or the allocator); use the dedicated argument instead"
+            )
+        _check(value, f".{key}", frozenset())
 
 # Matches the "## Children" heading in an EPIC's body (Program Design).
 _CHILDREN_HEADING = "## Children"
@@ -58,6 +118,7 @@ class IssueSpec:
     labels: list[str] = field(default_factory=list)
     stage: bool = False
     variant: str = "minimal"
+    metadata: dict[str, object] = field(default_factory=dict)
 
 
 @dataclass
@@ -318,6 +379,11 @@ def _render_issue_content(
         frontmatter["parent"] = spec.parent
     if spec.labels:
         frontmatter["labels"] = list(spec.labels)
+    if spec.metadata:
+        validate_metadata(spec.metadata)
+        # Explicit metadata overrides generated provenance defaults (including
+        # an explicit JSON null); omitted keys keep the defaults above (BUG-3497).
+        frontmatter.update(spec.metadata)
 
     sections_data = load_issue_sections(spec.type)
 
@@ -403,14 +469,118 @@ def render_issue_preview(
     }
 
 
+def allocate_and_write_issue(
+    config: BRConfig,
+    *,
+    issue_type: str,
+    priority: str,
+    slug: str,
+    render: Callable[[str], str],
+    id_width: int = 3,
+) -> CreatedIssue:
+    """Allocate a globally unique issue number and write its file, under one lock hold.
+
+    Shared transaction extracted from :func:`create_issue` (BUG-3497) so GitHub
+    sync's local-issue creation can use the same lock/allocate/write protocol
+    instead of reading a number and writing outside the lock. Under a single
+    ``acquire_lock`` hold: allocates the next globally unique issue number
+    (retrying on a filesystem collision), then writes the rendered content via
+    exclusive-create (``open(path, "x")``) so a racer that bypasses the lock
+    still fails loudly rather than clobbering (D3), then persists the
+    high-water mark.
+
+    ``render`` is called with each candidate ``issue_id`` and must be
+    side-effect-free and safe to call again on a collision retry (its result is
+    discarded if that ``issue_id`` turns out to be taken).
+
+    Args:
+        config: Project configuration.
+        issue_type: Issue type prefix (``BUG``, ``FEAT``, ``ENH``, ``EPIC``).
+        priority: Priority prefix used in the filename (e.g. ``"P2"``).
+        slug: Filename slug (caller-supplied, so callers may keep their own
+            slugging convention).
+        render: ``issue_id -> file content`` callback.
+        id_width: Minimum zero-padded digit width for the numeric ID
+            (``3`` for normal creation → ``BUG-001``; ``0`` for GitHub sync's
+            unpadded ``BUG-1`` convention).
+
+    Returns:
+        The created issue's id and path.
+
+    Raises:
+        ValueError: if ``issue_type`` has no configured category.
+        FileExistsError: if 5 collision retries are exhausted.
+        OSError: on a handled issue-write or highwater-write failure. Any
+            issue file this call wrote is removed first, and the highwater
+            file is left at its prior value, so a failure here never reserves
+            a number a cooperating caller can no longer safely reuse.
+    """
+    from little_loops.file_utils import acquire_lock, atomic_write
+    from little_loops.issue_parser import get_next_issue_number, id_alloc_highwater_path
+    from little_loops.paths import resolve_main_worktree_root
+
+    category_key = _category_key_for_type(config, issue_type)
+    type_dir = config.get_issue_dir(category_key)
+    type_dir.mkdir(parents=True, exist_ok=True)
+
+    # BUG-3303: the id-alloc lock lives in the *main* checkout's .issues/ when
+    # running inside a linked worktree, so allocation is serialized across
+    # trees rather than only within the worktree's own isolated copy.
+    main_root = resolve_main_worktree_root(config.project_root)
+    lock_base = main_root if main_root is not None else config.project_root
+    lock_path = lock_base / config.issues.base_dir / ".id-alloc.lock"
+    highwater_path = id_alloc_highwater_path(config)
+
+    path: Path | None = None
+    issue_id = ""
+    num = 0
+    last_error: FileExistsError | None = None
+    with acquire_lock(lock_path, timeout=10.0):
+        for _ in range(5):
+            num = get_next_issue_number(config)
+            numstr = str(num) if id_width == 0 else f"{num:0{id_width}d}"
+            issue_id = f"{issue_type}-{numstr}"
+            filename = f"{priority}-{issue_type}-{numstr}-{slug}.md"
+            candidate = type_dir / filename
+            content = render(issue_id)
+            try:
+                with open(candidate, "x", encoding="utf-8") as f:
+                    f.write(content)
+                path = candidate
+                break
+            except FileExistsError as exc:
+                last_error = exc
+                continue
+            except OSError:
+                # Handled issue-write failure: remove anything we own before
+                # propagating; never touch the highwater (BUG-3497).
+                candidate.unlink(missing_ok=True)
+                raise
+
+        if path is None:
+            assert last_error is not None
+            raise last_error
+
+        try:
+            atomic_write(highwater_path, str(num))
+        except OSError:
+            # Handled highwater-write failure: the file we just wrote is
+            # invisible to sibling worktrees without the highwater bump, so
+            # remove it rather than leave an unreserved number a cooperating
+            # caller could reuse. atomic_write never touched the prior
+            # highwater content on failure.
+            path.unlink(missing_ok=True)
+            raise
+
+    return CreatedIssue(id=issue_id, path=path)
+
+
 def create_issue(config: BRConfig, spec: IssueSpec, now: datetime | None = None) -> CreatedIssue:
     """Atomically allocate an ID and write a new issue file.
 
-    Under a single ``acquire_lock`` hold: allocates the next globally unique
-    issue number (retrying on a filesystem collision), slugs the title,
-    selects the type directory, and writes frontmatter + template body via
-    exclusive-create (``open(path, "x")``) so a racer that bypasses the lock
-    still fails loudly rather than clobbering (D3).
+    Delegates the lock/allocate/write/highwater transaction to
+    :func:`allocate_and_write_issue`; this wrapper resolves the slug and
+    rendered content, then handles parent wiring and staging.
 
     If ``spec.parent`` is set, writes `parent:` in the child's frontmatter
     (always) and appends a bullet to the parent's ``## Children`` section if
@@ -427,60 +597,32 @@ def create_issue(config: BRConfig, spec: IssueSpec, now: datetime | None = None)
         The created issue's id and path.
 
     Raises:
-        ValueError: if ``spec.type`` has no configured category.
+        ValueError: if ``spec.type`` has no configured category, or
+            ``spec.metadata`` fails validation.
         FileExistsError: if 5 collision retries are exhausted.
     """
-    from little_loops.file_utils import acquire_lock
-    from little_loops.issue_parser import (
-        get_next_issue_number,
-        id_alloc_highwater_path,
-        slugify,
-        write_id_alloc_highwater,
-    )
-    from little_loops.paths import resolve_main_worktree_root
+    from little_loops.issue_parser import slugify
 
     if spec.type not in _VALID_TYPES:
         raise ValueError(f"Unknown issue type: {spec.type!r}")
+    if spec.metadata:
+        validate_metadata(spec.metadata)
 
     now = now or datetime.now(UTC)
-    category_key = _category_key_for_type(config, spec.type)
-    type_dir = config.get_issue_dir(category_key)
-    type_dir.mkdir(parents=True, exist_ok=True)
     slug = slugify(spec.title)
 
-    # BUG-3303: the id-alloc lock lives in the *main* checkout's .issues/ when
-    # running inside a linked worktree, so allocation is serialized across
-    # trees rather than only within the worktree's own isolated copy.
-    main_root = resolve_main_worktree_root(config.project_root)
-    lock_base = main_root if main_root is not None else config.project_root
-    lock_path = lock_base / config.issues.base_dir / ".id-alloc.lock"
-    highwater_path = id_alloc_highwater_path(config)
-    path: Path | None = None
-    issue_id = ""
-    num = 0
-    last_error: FileExistsError | None = None
-    with acquire_lock(lock_path, timeout=10.0):
-        for _ in range(5):
-            num = get_next_issue_number(config)
-            issue_id = f"{spec.type}-{num:03d}"
-            filename = f"{spec.priority}-{spec.type}-{num:03d}-{slug}.md"
-            candidate = type_dir / filename
-            content = _render_issue_content(config, spec, issue_id, now)
-            try:
-                with open(candidate, "x", encoding="utf-8") as f:
-                    f.write(content)
-                path = candidate
-                break
-            except FileExistsError as exc:
-                last_error = exc
-                continue
-        if path is None:
-            assert last_error is not None
-            raise last_error
-        write_id_alloc_highwater(highwater_path, num)
+    def render(issue_id: str) -> str:
+        return _render_issue_content(config, spec, issue_id, now)
 
-    created = CreatedIssue(id=issue_id, path=path)
-    staged_paths = [str(path)]
+    created = allocate_and_write_issue(
+        config,
+        issue_type=spec.type,
+        priority=spec.priority,
+        slug=slug,
+        render=render,
+    )
+
+    staged_paths = [str(created.path)]
 
     if spec.parent:
         from little_loops.cli.issues.show import _resolve_issue_id
@@ -488,7 +630,7 @@ def create_issue(config: BRConfig, spec: IssueSpec, now: datetime | None = None)
         parent_path = _resolve_issue_id(config, spec.parent)
         if parent_path is not None:
             parent_content = parent_path.read_text(encoding="utf-8")
-            updated = _append_child_to_epic_children(parent_content, issue_id, spec.title)
+            updated = _append_child_to_epic_children(parent_content, created.id, spec.title)
             if updated is not None:
                 parent_path.write_text(updated, encoding="utf-8")
                 staged_paths.append(str(parent_path))
@@ -546,6 +688,17 @@ def add_create_parser(subs: argparse._SubParsersAction) -> None:
         default=False,
         help="git add the created (and any rewired parent) file(s)",
     )
+    cr.add_argument(
+        "--metadata-file",
+        metavar="PATH",
+        default=None,
+        dest="metadata_file",
+        help=(
+            "Path to a file containing a JSON object of additional frontmatter "
+            "metadata, or '-' for stdin. Reserved keys (id, type, title, priority, "
+            "status, parent, labels) are rejected — use the dedicated flag instead"
+        ),
+    )
     cr.add_argument("--json", "-j", action="store_true", default=False, dest="json_output")
     add_config_arg(cr)
 
@@ -556,7 +709,7 @@ def cmd_create(config: BRConfig, args: argparse.Namespace) -> int:
     Args:
         config: Project configuration.
         args: Parsed arguments (.type, .title, .priority, .body_file, .parent,
-            .labels, .variant, .stage, .json_output).
+            .labels, .variant, .stage, .metadata_file, .json_output).
 
     Returns:
         Exit code (0 = success, 1 = error).
@@ -576,6 +729,22 @@ def cmd_create(config: BRConfig, args: argparse.Namespace) -> int:
         [label.strip() for label in args.labels.split(",") if label.strip()] if args.labels else []
     )
 
+    metadata: dict[str, object] = {}
+    if args.metadata_file:
+        if args.metadata_file == "-":
+            raw_metadata = sys.stdin.read()
+        else:
+            metadata_path = Path(args.metadata_file)
+            if not metadata_path.exists():
+                print(f"Error: --metadata-file not found: {args.metadata_file}", file=sys.stderr)
+                return 1
+            raw_metadata = metadata_path.read_text(encoding="utf-8")
+        try:
+            metadata = json.loads(raw_metadata)
+        except json.JSONDecodeError as exc:
+            print(f"Error: --metadata-file is not valid JSON: {exc}", file=sys.stderr)
+            return 1
+
     spec = IssueSpec(
         type=args.type,
         title=args.title,
@@ -585,6 +754,7 @@ def cmd_create(config: BRConfig, args: argparse.Namespace) -> int:
         labels=labels,
         stage=args.stage,
         variant=args.variant,
+        metadata=metadata,
     )
     try:
         created = create_issue(config, spec)

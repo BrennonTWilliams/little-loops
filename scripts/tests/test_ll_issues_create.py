@@ -14,9 +14,16 @@ from unittest.mock import patch
 
 import pytest
 
-from little_loops.cli.issues.create import IssueSpec, create_issue, render_issue_preview
+from little_loops.cli.issues.create import (
+    IssueSpec,
+    allocate_and_write_issue,
+    create_issue,
+    render_issue_preview,
+    validate_metadata,
+)
 from little_loops.config import BRConfig
 from little_loops.frontmatter import parse_frontmatter
+from little_loops.issue_parser import id_alloc_highwater_path, read_id_alloc_highwater
 
 _CONFIG: dict[str, Any] = {
     "project": {"name": "test-project"},
@@ -394,3 +401,291 @@ class TestCreateCli:
         assert exit_code == 0
         path = Path(json.loads(out)["path"])
         assert "Piped summary body." in path.read_text(encoding="utf-8")
+
+
+class TestValidateMetadata:
+    """Shared JSON-compatibility/reserved-key validator (BUG-3497)."""
+
+    @pytest.mark.parametrize(
+        "metadata",
+        [
+            {"discovered_by": "loop-runner", "source_loop": "scan-codebase"},
+            {"nested": {"a": [1, 2, {"b": None}], "c": True, "d": 1.5}},
+            {"empty_list": [], "empty_dict": {}},
+        ],
+    )
+    def test_accepts_json_compatible_values(self, metadata: dict[str, Any]) -> None:
+        validate_metadata(metadata)  # must not raise
+
+    def test_rejects_non_dict_top_level(self) -> None:
+        with pytest.raises(ValueError, match="JSON object"):
+            validate_metadata(["not", "a", "dict"])  # type: ignore[arg-type]
+
+    @pytest.mark.parametrize(
+        "key", ["id", "type", "title", "priority", "status", "parent", "labels"]
+    )
+    def test_rejects_reserved_keys(self, key: str) -> None:
+        with pytest.raises(ValueError, match="reserved"):
+            validate_metadata({key: "override-attempt"})
+
+    def test_rejects_non_string_key(self) -> None:
+        with pytest.raises(ValueError, match="string"):
+            validate_metadata({1: "x"})  # type: ignore[dict-item]
+
+    def test_rejects_non_finite_float(self) -> None:
+        with pytest.raises(ValueError, match="non-finite"):
+            validate_metadata({"score": float("nan")})
+
+    def test_rejects_unsupported_type(self) -> None:
+        with pytest.raises(ValueError, match="unsupported"):
+            validate_metadata({"bad": {1, 2, 3}})
+
+    def test_rejects_cycle(self) -> None:
+        cyclic: dict[str, Any] = {}
+        cyclic["self"] = cyclic
+        with pytest.raises(ValueError, match="circular"):
+            validate_metadata({"top": cyclic})
+
+
+class TestCreateMetadata:
+    """Metadata support in ``IssueSpec``/``create_issue`` (BUG-3497)."""
+
+    def test_arbitrary_metadata_round_trips_into_frontmatter(self, project: Path) -> None:
+        config = _config(project)
+        spec = IssueSpec(
+            type="BUG",
+            title="Metadata round trip",
+            metadata={"source_loop": "scan-codebase", "goal_alignment": "G1"},
+        )
+        created = create_issue(config, spec)
+        fm = parse_frontmatter(created.path.read_text(encoding="utf-8"))
+        assert fm["source_loop"] == "scan-codebase"
+        assert fm["goal_alignment"] == "G1"
+
+    def test_nested_metadata_round_trips(self, project: Path) -> None:
+        # Standard YAML (yaml.safe_load), not this repo's intentionally
+        # string-lossy parse_frontmatter (BaseLoader), is the fidelity bar
+        # here: no Python-specific tags, nested types preserved (BUG-3497).
+        import yaml
+
+        config = _config(project)
+        nested = {"a": [1, 2, {"b": None}], "c": True}
+        spec = IssueSpec(type="BUG", title="Nested metadata", metadata={"extra": nested})
+        created = create_issue(config, spec)
+        content = created.path.read_text(encoding="utf-8")
+        fm_text = content.split("---", 2)[1]
+        assert "!!python" not in fm_text
+        fm = yaml.safe_load(fm_text)
+        assert fm["extra"] == nested
+
+    def test_metadata_overrides_provenance_defaults(self, project: Path) -> None:
+        config = _config(project)
+        spec = IssueSpec(
+            type="BUG",
+            title="Provenance override",
+            metadata={"discovered_by": "scan-codebase", "discovered_date": "2020-01-01"},
+        )
+        created = create_issue(config, spec)
+        fm = parse_frontmatter(created.path.read_text(encoding="utf-8"))
+        assert fm["discovered_by"] == "scan-codebase"
+        assert fm["discovered_date"] == "2020-01-01"
+
+    def test_metadata_explicit_null_is_preserved(self, project: Path) -> None:
+        config = _config(project)
+        spec = IssueSpec(type="BUG", title="Explicit null", metadata={"business_value": None})
+        created = create_issue(config, spec)
+        fm = parse_frontmatter(created.path.read_text(encoding="utf-8"))
+        assert "business_value" in fm
+        assert fm["business_value"] is None
+
+    def test_omitted_metadata_keys_keep_defaults(self, project: Path) -> None:
+        config = _config(project)
+        created = create_issue(config, IssueSpec(type="BUG", title="No metadata"))
+        fm = parse_frontmatter(created.path.read_text(encoding="utf-8"))
+        assert fm["discovered_by"] == "ll-issues-create"
+
+    def test_reserved_metadata_key_raises_and_creates_nothing(self, project: Path) -> None:
+        config = _config(project)
+        spec = IssueSpec(type="BUG", title="Reserved key", metadata={"status": "done"})
+        with pytest.raises(ValueError, match="reserved"):
+            create_issue(config, spec)
+        assert not list((project / ".issues" / "bugs").glob("*.md"))
+
+    def test_preview_validates_and_includes_metadata(self, project: Path) -> None:
+        config = _config(project)
+        spec = IssueSpec(type="BUG", title="Preview metadata", metadata={"source_loop": "x"})
+        preview = render_issue_preview(config, spec)
+        assert "source_loop: x" in preview["rendered_body"]
+
+        bad_spec = IssueSpec(type="BUG", title="Bad preview", metadata={"id": "BUG-999"})
+        with pytest.raises(ValueError, match="reserved"):
+            render_issue_preview(config, bad_spec)
+
+
+class TestCreateMetadataCli:
+    def test_metadata_file_json(self, project: Path, tmp_path: Path) -> None:
+        metadata_path = tmp_path / "metadata.json"
+        metadata_path.write_text(json.dumps({"source_loop": "cli-test"}), encoding="utf-8")
+        exit_code, out = _invoke(
+            [
+                "ll-issues",
+                "create",
+                "--type",
+                "ENH",
+                "--title",
+                "CLI metadata enhancement",
+                "--metadata-file",
+                str(metadata_path),
+                "--json",
+                "--config",
+                str(project),
+            ]
+        )
+        assert exit_code == 0
+        path = Path(json.loads(out)["path"])
+        fm = parse_frontmatter(path.read_text(encoding="utf-8"))
+        assert fm["source_loop"] == "cli-test"
+
+    def test_metadata_file_invalid_json_fails_cleanly(self, project: Path, tmp_path: Path) -> None:
+        metadata_path = tmp_path / "bad.json"
+        metadata_path.write_text("{not json", encoding="utf-8")
+        exit_code, _ = _invoke(
+            [
+                "ll-issues",
+                "create",
+                "--type",
+                "ENH",
+                "--title",
+                "Invalid metadata",
+                "--metadata-file",
+                str(metadata_path),
+                "--config",
+                str(project),
+            ]
+        )
+        assert exit_code == 1
+        assert not list((project / ".issues" / "enhancements").glob("*.md"))
+
+    def test_metadata_file_reserved_key_fails_cleanly(self, project: Path, tmp_path: Path) -> None:
+        metadata_path = tmp_path / "reserved.json"
+        metadata_path.write_text(json.dumps({"parent": "EPIC-001"}), encoding="utf-8")
+        exit_code, _ = _invoke(
+            [
+                "ll-issues",
+                "create",
+                "--type",
+                "ENH",
+                "--title",
+                "Reserved metadata key",
+                "--metadata-file",
+                str(metadata_path),
+                "--config",
+                str(project),
+            ]
+        )
+        assert exit_code == 1
+        assert not list((project / ".issues" / "enhancements").glob("*.md"))
+
+
+class TestAllocateAndWriteIssueFailureContract:
+    """Handled write-failure contract for the shared transaction (BUG-3497)."""
+
+    def test_issue_write_failure_leaves_no_partial_file_and_preserves_highwater(
+        self, project: Path
+    ) -> None:
+        config = _config(project)
+        highwater_path = id_alloc_highwater_path(config)
+        prior = read_id_alloc_highwater(highwater_path)
+
+        real_open = open
+
+        def failing_open(path: Any, mode: str = "r", *args: Any, **kwargs: Any) -> Any:
+            if mode == "x":
+                raise OSError("simulated disk failure")
+            return real_open(path, mode, *args, **kwargs)
+
+        with patch("builtins.open", side_effect=failing_open):
+            with pytest.raises(OSError, match="simulated disk failure"):
+                allocate_and_write_issue(
+                    config,
+                    issue_type="BUG",
+                    priority="P2",
+                    slug="write-failure",
+                    render=lambda issue_id: f"content for {issue_id}",
+                )
+
+        assert not list((project / ".issues" / "bugs").glob("*write-failure*"))
+        assert read_id_alloc_highwater(highwater_path) == prior
+
+        # A subsequent attempt (write succeeding now) must still get a valid,
+        # complete file — the failed attempt left no reserved/consumed number.
+        created = allocate_and_write_issue(
+            config,
+            issue_type="BUG",
+            priority="P2",
+            slug="retry-after-failure",
+            render=lambda issue_id: f"content for {issue_id}",
+        )
+        assert created.path.exists()
+        assert created.path.read_text(encoding="utf-8") == f"content for {created.id}"
+
+    def test_highwater_write_failure_removes_owned_issue_file_and_preserves_highwater(
+        self, project: Path
+    ) -> None:
+        config = _config(project)
+        highwater_path = id_alloc_highwater_path(config)
+        prior = read_id_alloc_highwater(highwater_path)
+
+        with patch(
+            "little_loops.file_utils.atomic_write",
+            side_effect=OSError("simulated highwater failure"),
+        ):
+            with pytest.raises(OSError, match="simulated highwater failure"):
+                allocate_and_write_issue(
+                    config,
+                    issue_type="BUG",
+                    priority="P2",
+                    slug="highwater-failure",
+                    render=lambda issue_id: f"content for {issue_id}",
+                )
+
+        assert not list((project / ".issues" / "bugs").glob("*highwater-failure*"))
+        assert read_id_alloc_highwater(highwater_path) == prior
+
+        # A cooperating caller allocating next must not collide with the
+        # rolled-back attempt's number.
+        created = allocate_and_write_issue(
+            config,
+            issue_type="BUG",
+            priority="P2",
+            slug="after-highwater-failure",
+            render=lambda issue_id: f"content for {issue_id}",
+        )
+        assert created.path.exists()
+
+
+class TestSharedAllocatorIdWidth:
+    def test_id_width_zero_produces_unpadded_id(self, project: Path) -> None:
+        config = _config(project)
+        created = allocate_and_write_issue(
+            config,
+            issue_type="BUG",
+            priority="P3",
+            slug="unpadded",
+            render=lambda issue_id: f"content for {issue_id}",
+            id_width=0,
+        )
+        assert created.id == "BUG-1"
+        assert "P3-BUG-1-unpadded.md" == created.path.name
+
+    def test_id_width_default_produces_padded_id(self, project: Path) -> None:
+        config = _config(project)
+        created = allocate_and_write_issue(
+            config,
+            issue_type="BUG",
+            priority="P3",
+            slug="padded",
+            render=lambda issue_id: f"content for {issue_id}",
+        )
+        assert created.id == "BUG-001"
+        assert "P3-BUG-001-padded.md" == created.path.name

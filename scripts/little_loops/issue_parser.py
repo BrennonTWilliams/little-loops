@@ -3577,9 +3577,17 @@ def read_id_alloc_highwater(path: Path) -> int:
 
 
 def write_id_alloc_highwater(path: Path, value: int) -> None:
-    """Write the high-water-mark file. Caller must hold the id-alloc lock."""
+    """Write the high-water-mark file. Caller must hold the id-alloc lock.
+
+    Uses :func:`little_loops.file_utils.atomic_write` (BUG-3497) so a write
+    failure (e.g. disk full mid-write) never truncates/corrupts the existing
+    value — the caller's failure contract for a handled write error depends on
+    the prior highwater surviving intact.
+    """
+    from little_loops.file_utils import atomic_write
+
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(str(value), encoding="utf-8")
+    atomic_write(path, str(value))
 
 
 def get_next_issue_number(config: BRConfig, category: str | None = None) -> int:

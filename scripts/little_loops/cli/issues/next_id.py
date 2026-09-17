@@ -23,9 +23,14 @@ def positive_int(value: str) -> int:
 def cmd_next_id(config: BRConfig, count: int = 1) -> int:
     """Print the next globally unique issue number(s).
 
+    Non-reserving (BUG-3497): this is a read-only hint, not an allocation.
+    Nothing is locked or reserved by calling it, including with ``count > 1`` —
+    a concurrent caller can read and act on the same number(s) before this
+    caller writes. Use ``ll-issues create`` for a safe, atomic allocate-and-write.
+
     Args:
         config: Project configuration
-        count: Number of consecutive IDs to emit (default 1)
+        count: Number of consecutive numbers to print (default 1)
 
     Returns:
         Exit code (0 = success)
