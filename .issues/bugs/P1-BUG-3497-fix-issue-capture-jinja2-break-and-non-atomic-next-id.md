@@ -1,6 +1,7 @@
 ---
 id: BUG-3497
-title: 'Migrate unsafe issue allocators to atomic creation and investigate capture import failure'
+title: Migrate unsafe issue allocators to atomic creation and investigate capture
+  import failure
 type: BUG
 priority: P1
 status: open
@@ -10,6 +11,12 @@ labels:
 - concurrency
 - hub
 decision_needed: false
+confidence_score: 100
+outcome_confidence: 69
+score_complexity: 9
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 10
 ---
 
 # Migrate unsafe issue allocators to atomic creation and investigate capture import failure
@@ -366,6 +373,7 @@ not silently change to the normal creator's defaults or body-merge behavior.
 **Open** | Created: 2026-09-16 | Priority: P1
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-17T05:49:17 - `8528d71a-e5d1-4e75-a49d-fce04bd5520a.jsonl`
 - `/ll:verify-issues` - 2026-09-17T05:35:18 - `23994eb4-1b9e-4c0b-b12e-4d6b8a1de974.jsonl`
 - `/ll:wire-issue` - 2026-09-17T04:46:35 - `46075459-e145-4488-ad3c-9337c7cc659b.jsonl`
 - `/ll:decide-issue` - 2026-09-17T04:28:33 - `2181bc0b-0c40-4859-b8bc-a71f05757ba2.jsonl`
