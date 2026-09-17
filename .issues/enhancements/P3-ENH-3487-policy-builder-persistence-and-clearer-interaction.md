@@ -327,6 +327,7 @@ fixed, not an outstanding action item).
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-17T02:36:58 - `ed6d999b-26a2-4d77-bbbf-604f7482188a.jsonl`
 - `/ll:verify-issues` - 2026-09-17T01:18:50 - `716b78b0-d53f-401a-997f-791cc3ac58be.jsonl`
 - manual review - 2026-09-16 - split into ENH-3491 (layout) and ENH-3492 (destinations); dropped BUG-3489 dependency; added node:test coverage requirement and project-envelope version policy
 - `/ll:verify-issues` - 2026-09-16T22:52:47 - `56d2686a-f690-474a-8849-1b96c2edbd15.jsonl`
