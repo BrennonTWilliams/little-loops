@@ -55,23 +55,31 @@ Lifecycle rules can route to `stopped`, `skipped`, and `needs_attention` destina
 
 ## Proposed Solution
 
-1. Add lifecycle-only built-in destinations `stopped`, `skipped`, and `needs_attention` in `LIFECYCLE_DESTINATIONS`, separate from the five `LIFECYCLE_VERBS`. Rules and fallback may reference these terminals directly in `issue_lifecycle` mode only; verb transitions gain `stop`, `skip`, and `attention` **restricted to `issue_lifecycle` mode**. `_outcomeStateLines` is shared across all three modes, so the new `transition.kind` values must be gated inside it (or by its caller) on `model.mode === "issue_lifecycle"`; `rubric` and `decision_table` reject an outcome whose `transition.kind` is `stop`/`skip`/`attention` at validation time (`_checkReservedTokens`/model-load), and the `policy-router-builder.html.tmpl` transition-kind `<select>` only offers the three new options when the builder is in lifecycle mode — they must not appear, or be importable, in rubric/decision-table models. Keep `_emittedVerbs` restricted to verb states and use `_emittedDestinations` for terminal references. **Dispatch destinations and emitted terminal blocks are two separate sets, computed separately**: dispatch routes are emitted only for destinations actually referenced by a rule target, fallback, or verb `transition.kind` (i.e. author-selected references) — the automatic `on_max_steps → needs_attention` budget route does **not** by itself add a `needs_attention` dispatch route, since no dispatch mechanism reaches it. The set of required terminal *blocks* is broader: it includes every dispatch-referenced destination plus `needs_attention` whenever `on_max_steps` targets it, so the terminal exists for the executor to land on even when nothing dispatches to it. Concretely: an existing five-verb model with no authored reference to `needs_attention` gains the `needs_attention` terminal block and the changed `on_max_steps` line, but gains **no** new dispatch route — satisfying the Expected Behavior/AC constraint that reopening such a model changes only the budget line and terminal blocks, not routing.
+1. Add lifecycle-only built-in destinations `stopped`, `skipped`, and `needs_attention` in `LIFECYCLE_DESTINATIONS`, separate from the five `LIFECYCLE_VERBS`. Rules and fallback may reference these terminals directly in `issue_lifecycle` mode only; verb transitions gain `stop`, `skip`, and `attention` **restricted to `issue_lifecycle` mode**. `_outcomeStateLines` is shared across all three modes, so the new `transition.kind` values must be gated inside it (or by its caller) on `model.mode === "issue_lifecycle"`; `rubric` and `decision_table` reject an outcome whose `transition.kind` is `stop`/`skip`/`attention` at validation time (`_checkReservedTokens`/model-load), and the `policy-router-builder.html.tmpl` transition-kind `<select>` only offers the three new options when the builder is in lifecycle mode — they must not appear, or be importable, in rubric/decision-table models. Keep `_emittedVerbs` restricted to verb states; terminal references are computed by two **new** helpers, `_dispatchedDestinations` and `_requiredTerminalBlocks` (no `_emittedDestinations` helper exists today — nothing is being replaced). **Dispatch destinations and emitted terminal blocks are two separate sets, computed separately**: dispatch routes are emitted only for destinations actually referenced by a rule target, fallback, or verb `transition.kind` (i.e. author-selected references) — the automatic `on_max_steps → needs_attention` budget route does **not** by itself add a `needs_attention` dispatch route, since no dispatch mechanism reaches it. The set of required terminal *blocks* is broader: it includes every dispatch-referenced destination plus `needs_attention` whenever `on_max_steps` targets it, so the terminal exists for the executor to land on even when nothing dispatches to it. Concretely: an existing five-verb model with no authored reference to `needs_attention` gains the `needs_attention` terminal block and the changed `on_max_steps` line, but gains **no** new dispatch route — satisfying the Expected Behavior/AC constraint that reopening such a model changes only the budget line and terminal blocks, not routing.
 
 2. `stopped` and `skipped` are successful terminals (no `failure` key). `needs_attention` and existing `failed` emit `failure: true`. `on_error` stays `failed`; `on_max_steps` becomes `needs_attention` in all three modes (rubric emits no `on_max_steps` today, so there it is an added line rather than a changed one). This budget route is the explicit automatic exception; stop/skip remain author-selected. Preserve existing model fixtures; regenerate their YAML with changes limited to the budget route and added terminal blocks. No preservation flag is introduced.
 
    **Action-before-terminal**: a verb whose `transition.kind` is `attention` (or `stop`/`skip`) still runs that verb's own action exactly once before the transition takes effect — the destination replaces only the verb's `next` target, not its action. If the action itself errors, `on_error: failed` still applies and the run lands on `failed`, not on the verb's declared destination; the destination is reached only on the verb's normal (non-erroring) completion.
 
+   **Action-less outcomes with the new kinds (2026-09-17 review)**: `_outcomeStateLines` emits a bare `terminal: true` whenever the outcome has no action (`hasAction` false), regardless of `transition.kind`. Left as-is, a `stop`/`skip`/`attention` outcome with `actionType: none` would silently become a success terminal named after the verb. Rule: `_outcomeStateLines` emits `next: <destination>` for the three new kinds even when there is no action, and `validateBuilderModel` additionally rejects (error diagnostic) a lifecycle outcome that combines `actionType: none` with `stop`/`skip`/`attention`, since a verb that does nothing and then routes to a terminal is never what an author means. Test both the serializer branch and the diagnostic.
+
+   **Consumers distinguish the terminals by `final_state` only**: nothing else at runtime separates `stopped`/`skipped` from `done` — all three are non-failure terminals with no `failure` key, and `FSMExecutor` exposes only `final_state`, `terminated_by`, and `failure_terminal`. The distinction is informational to any caller (ll-auto, FEAT-3488's router execution, a parent loop) that reads `final_state`; this issue does not add any runtime behavior keyed on the names. FEAT-3488 does not currently reference the new names — if it is meant to act on them, it must say so in its own spec.
+
    **Runtime prerequisite — resolved**: `FSMExecutor._finish` (`scripts/little_loops/fsm/executor.py:4333-4345`) previously set `failure_terminal` only when `terminated_by == "terminal"`, so a cap-routed handler finishing with `terminated_by == "max_steps"` reported `failure_terminal == False` even with `failure: true` (probe confirmed: `final_state needs_attention / terminated_by max_steps / failure_terminal False`). BUG-3499 (`depends_on`) is now `status: done`, fixed by commit `9e3454cc5`: the guard widened to `terminated_by in ("terminal", "max_steps", "max_iterations_reached")`. The prerequisite has landed, so the max-steps executor test below can assert `failure_terminal is True` directly, with no deferred second assertion.
 
 3. Register generated names in the shared per-mode reserved-name map: all three in lifecycle, `needs_attention` in rubric/decision-table. Reservation forbids an authored outcome from shadowing a generated state; it does **not** forbid an allowed lifecycle reference to that built-in destination. Update `_checkReservedTokens`, `_checkMissingReferences`, and the serializer's `_assertNoReservedTokens` defense together. Lifecycle target/fallback selectors offer verbs plus destinations; other modes keep their existing target rules and collision guards. Unknown names remain errors.
 
+   **Rubric gains the serializer guard (2026-09-17 review)**: `_serializeRubric` (`policy_builder_core.mjs:1558`) does not call `_assertNoReservedTokens` today, unlike the other two serializers. Add `_assertNoReservedTokens("rubric", model)` at its top so the "fails serializer guards in every mode" acceptance criterion is actually true for rubric. Note the behavior change this introduces: rubric emission only honors outcomes literally named `light_repair`/`deep_repair`, so a rubric outcome named `needs_attention` (or `score`, `done`, …) is silently ignored today; after this change it is a hard error at emission, matching the non-throwing UI diagnostic. That is intended — a silently dropped outcome is the same bug class BUG-3489 fixed.
+
 4. Optional dimension `instructions` and `anchors` affect LLM grading in rubric/decision-table modes via `_scoreActionBody`. Keep `_serializeDimensions` and `serializeFrontmatterDimensions` wire formats unchanged: the latter is `name:type|...` for deterministic frontmatter extraction, not a prompt. Lifecycle hides these editing controls and does not use their contents at runtime; imported metadata is retained on Save/Open. Validate anchors as unique finite numeric scores in [0,100] with nonempty meanings; boolean dimensions accept only 0/100 anchors. Emit multiline instructions safely through the existing YAML block-scalar helper and test delimiters/quotes/newlines. Absent metadata preserves existing prompts byte-for-byte.
 
-   **Runtime escaping — literal text, not runtime-interpolated**: `instructions` text and anchor `meaning` strings are opaque literal text passed through to the LLM grading prompt; they are never treated as FSM interpolation templates. A YAML block scalar protects YAML structure but does not stop the FSM's own `${...}` interpolation once the emitted prompt reaches `FSMExecutor` — confirmed by probe: an instruction containing `${customer.name}` raises `InterpolationError` at execution time rather than being emitted verbatim. The serializer must therefore escape any literal `${` sequence in `instructions`/anchor `meaning` text (e.g. doubling to `$${` per the FSM's existing escape convention, or an equivalent that survives round-trip) before emission, so authored text containing `${...}` is never misread as a variable reference. Add a runtime regression test that builds a model with `${...}` in an instruction, serializes it, and runs the resulting fragment through `FSMExecutor` (or the same probe technique used to confirm the failure) asserting no `InterpolationError` and that the literal text reaches the grading prompt unchanged.
+   **Runtime escaping — literal text, not runtime-interpolated**: `instructions` text and anchor `meaning` strings are opaque literal text passed through to the LLM grading prompt; they are never treated as FSM interpolation templates. A YAML block scalar protects YAML structure but does not stop the FSM's own `${...}` interpolation once the emitted prompt reaches `FSMExecutor` — confirmed by probe: an instruction containing `${customer.name}` raises `InterpolationError` at execution time rather than being emitted verbatim. The serializer must therefore escape any literal `${` sequence in `instructions`/anchor `meaning` text (e.g. doubling to `$${` per the FSM's existing escape convention, or an equivalent that survives round-trip) before emission, so authored text containing `${...}` is never misread as a variable reference. Add a runtime regression test that builds a model with `${...}` in an instruction, serializes it, and runs the resulting fragment through `FSMExecutor` (or the same probe technique used to confirm the failure) asserting no `InterpolationError` and that the literal text reaches the grading prompt unchanged. The escape is `ESCAPED_PATTERN = re.compile(r"\$\$\{")` (`fsm/interpolation.py:30`, applied in `interpolate()` `:348`): each `$${` becomes a literal `${`. Doubling composes correctly for text that already contains the escape — authored `$${x}` is emitted as `$$${x}` and unescapes back to `$${x}` — so the regression test must also cover an authored `$${...}` instruction and assert it reaches the prompt as `$${...}`.
 
 5. Read `config.commands.confidence_gate` from the existing `BRConfig`; stamp enabled/readiness/outcome values and display them as project configuration alongside authored rule thresholds. Display disabled gates explicitly. Stamping is informational: never silently rewrite saved rule predicates or treat it as runtime enforcement. No config-schema change is required.
 
-6. Extend ENH-3491's transition summary for the destinations (including unresolved budget exhaustion); no summary may classify `needs_attention` as a successful finish.
+   **Seeded models keep their hardcoded thresholds (2026-09-17 review)**: `seedExample("issue_lifecycle")` and `_blankIssueLifecycle` (`policy_builder_core.mjs` ~`:895-940`) hardcode `85` in the seeded `confidence_score` rules and `thresholdHigh: 85`/`thresholdMedium: 65`. Seeding fresh models from the stamped `readiness_threshold` is **out of scope** here: `seedExample` is a pure core.mjs function exercised directly by the Node golden fixtures, and coupling it to a `window.__CONFIDENCE_GATE__` global would destabilize those fixtures. The stamped values are displayed next to the authored thresholds only. If seed-from-config is wanted, capture it as a follow-up.
+
+6. Extend ENH-3491's transition summary for the destinations (including unresolved budget exhaustion); no summary may classify `needs_attention` as a successful finish. Concretely (2026-09-17 review): in `summarizeTransitions` (`policy_builder_core.mjs:1161`), `stopsAfterImplement` currently recognizes only `finish` (`:1168`) — `stop`/`skip`/`attention` on `implement` must also count as stopping after implement, with the summary naming which terminal (`stopped`/`skipped` as success, `needs_attention` as failure); `maxStepsNote` must say the budget lands on `needs_attention` (failure). In the template's `computeSummary` (`policy-router-builder.html.tmpl:445-461`), the lifecycle branch lists only `_emittedVerbs`, so a rule routing straight to `skipped` renders "reaches: nothing yet" — include `_dispatchedDestinations` in the "reaches:" list.
 
 ### Decision Rationale
 
@@ -105,7 +113,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 - `scripts/tests/fixtures/policy_builder/sample-decision-table.yaml:7` and `sample-issue-lifecycle.yaml:29` — literal `on_max_steps: failed` lines; update alongside the routing change and regenerate.
 
-- No existing test covers the transition-kind `<select>` options list in `policy-router-builder.html.tmpl:420,524` (currently only `rescore`/`goto`/`finish`); add coverage in `test_policy_builder_emit.py` for the new destination entries.
+- No existing test covers the transition-kind `<select>` options list in `policy-router-builder.html.tmpl:604,747` (the two `[["rescore", "Score again"], ["goto", "Go to…"], ["finish", "Stop here"]]` literals; earlier citations of `:420,524` were wrong — those lines are the end of draft restore and the inside of `renderFallback()`); add coverage in `test_policy_builder_emit.py` for the new destination entries.
 
 - No existing test covers confidence-gate stamping in `cmd_policy_builder`; add `test_emitted_confidence_gate_matches_config` to `test_policy_builder_emit.py` following the `test_emitted_grammar_matches_canonical` regex-extract-and-compare pattern (`test_policy_builder_emit.py:68-71`), asserting against `BRConfig(Path.cwd()).commands.confidence_gate`.
 
@@ -147,9 +155,9 @@ Outcome `transition.kind` gains `"stop" | "skip" | "attention"` alongside existi
 
 ### Signatures
 
-- `_outcomeStateLines(outcome, {doneState, issueArg}) -> string[]` (`policy_builder_core.mjs:1399`) — extended so `transition.kind` `stop`/`skip`/`attention` emit `next: stopped`/`next: skipped`/`next: needs_attention`, **gated on `issue_lifecycle` mode only** (this function is shared by all three modes); the terminal blocks themselves are emitted by `_serializeIssueLifecycle` (`:1698`), not here. Model load/validation rejects a `stop`/`skip`/`attention` `transition.kind` on a `rubric`/`decision_table` outcome (including an imported one) before it reaches this function.
+- `_outcomeStateLines(outcome, {doneState, issueArg, mode}) -> string[]` (`policy_builder_core.mjs:1399`) — gains a `mode` option (the function has no mode awareness today) so `transition.kind` `stop`/`skip`/`attention` emit `next: stopped`/`next: skipped`/`next: needs_attention` **only when `mode === "issue_lifecycle"`** (this function is shared by all three modes), and emit that `next:` line even when the outcome has no action (see §2 "Action-less outcomes"); the terminal blocks themselves are emitted by `_serializeIssueLifecycle` (`:1698`), not here. Model load/validation rejects a `stop`/`skip`/`attention` `transition.kind` on a `rubric`/`decision_table` outcome (including an imported one) before it reaches this function.
 
-- `_emittedVerbs(model) -> string[]` (`:1664`) — two companions replace the single `_emittedDestinations`: `_dispatchedDestinations(model)` returns which built-in destinations have an author-selected reference (rule target, fallback, or verb `transition.kind` — **excluding** the automatic `on_max_steps` route) and drives which dispatch route entries `_serializeIssueLifecycle` emits; `_requiredTerminalBlocks(model)` returns `_dispatchedDestinations(model)` plus `needs_attention` whenever `on_max_steps` targets it, and drives which terminal blocks are emitted. The two sets differ exactly when `on_max_steps` is the only reference to a destination.
+- `_emittedVerbs(model) -> string[]` (`:1664`) — unchanged; two **new** companions are added (no destination helper exists today): `_dispatchedDestinations(model)` returns which built-in destinations have an author-selected reference (rule target, fallback, or verb `transition.kind` — **excluding** the automatic `on_max_steps` route) and drives which dispatch route entries `_serializeIssueLifecycle` emits; `_requiredTerminalBlocks(model)` returns `_dispatchedDestinations(model)` plus `needs_attention` whenever `on_max_steps` targets it, and drives which terminal blocks are emitted. The two sets differ exactly when `on_max_steps` is the only reference to a destination.
 
 - `_doneStateName(model) -> string` (`:1445`) — unchanged
 
@@ -157,7 +165,9 @@ Outcome `transition.kind` gains `"stop" | "skip" | "attention"` alongside existi
 
 - `serializeFrontmatterDimensions(model) -> string` and `_serializeDimensions(model) -> string` — unchanged wire formats
 
-- `_checkReservedTokens` / `_checkMissingReferences` / `_assertNoReservedTokens` — accept built-in lifecycle references but reject definitions that shadow generated states
+- `_checkReservedTokens` / `_checkMissingReferences` / `_assertNoReservedTokens` — accept built-in lifecycle references but reject definitions that shadow generated states; `_serializeRubric` (`:1558`) gains its own `_assertNoReservedTokens("rubric", model)` call (§3)
+
+- `summarizeTransitions(model)` (`:1161`) and the template's `computeSummary(model)` (`policy-router-builder.html.tmpl:445`) — extended per §6 to report destinations
 
 - `cmd_policy_builder(args, logger) -> int` — reads `config.commands.confidence_gate` and stamps it
 
@@ -169,7 +179,7 @@ Outcome `transition.kind` gains `"stop" | "skip" | "attention"` alongside existi
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-- Update `policy-router-builder.html.tmpl:420,524` — add entries for the new terminal destinations to the transition-kind `<select>` options list (currently only `rescore`/`goto`/`finish`)
+- Update `policy-router-builder.html.tmpl:604,747` — add entries for the new terminal destinations to the transition-kind `<select>` options list (currently only `rescore`/`goto`/`finish`), offered only when `state.mode === "issue_lifecycle"`
 
 - Update `scripts/tests/js/policy_validator.test.mjs:227-236` — extend the `RESERVED_STATE_NAMES` sorted-array assertions with `stopped`/`skipped`/`needs_attention`, per mode
 
@@ -214,21 +224,23 @@ _Added by `/ll:refine-issue` — 2026-09-17 — based on codebase analysis:_
 
 - [ ] For every existing `.model.json` fixture, the regenerated `.yaml` differs from the pre-change golden only by the added or changed `on_max_steps` line and the added terminal blocks (asserted by a diff-shape test, not byte equality).
 
-- [ ] Generated names are reserved per mode. Authored outcomes shadowing them fail both UI validation and serializer guards; valid lifecycle rule/fallback references succeed, unknown references fail, and each referenced terminal is emitted once. Tests cover all three reference mechanisms and every mode.
+- [ ] Generated names are reserved per mode. Authored outcomes shadowing them fail both UI validation and serializer guards (including `_serializeRubric`, which gains the `_assertNoReservedTokens` call); valid lifecycle rule/fallback references succeed, unknown references fail, and each referenced terminal is emitted once. Tests cover all three reference mechanisms and every mode.
 
-- [ ] Optional scoring instructions/anchors survive project Save/Open and appear in rubric/decision-table grading prompts. Tests cover invalid/duplicate/out-of-range anchors, boolean anchors, multiline escaping, and absent-metadata prompt compatibility. Lifecycle hides these controls and preserves imported metadata without changing frontmatter extraction or its wire format. Instructions and anchor meanings are literal text, never runtime-interpolated: a regression test asserts that an instruction containing `${...}` neither raises `InterpolationError` nor is substituted at execution time, and that the literal text reaches the grading prompt unchanged.
+- [ ] A lifecycle outcome combining `actionType: none` with `stop`/`skip`/`attention` is rejected by `validateBuilderModel`; the serializer still emits `next: <destination>` (never a bare `terminal: true`) for those kinds when no action is present. Both branches are tested.
+
+- [ ] Optional scoring instructions/anchors survive project Save/Open and appear in rubric/decision-table grading prompts. Tests cover invalid/duplicate/out-of-range anchors, boolean anchors, multiline escaping, and absent-metadata prompt compatibility. Lifecycle hides these controls and preserves imported metadata without changing frontmatter extraction or its wire format. Instructions and anchor meanings are literal text, never runtime-interpolated: a regression test asserts that an instruction containing `${...}` neither raises `InterpolationError` nor is substituted at execution time, and that the literal text reaches the grading prompt unchanged; the same test covers an authored `$${...}` instruction reaching the prompt as `$${...}`.
 
 - [ ] Adding the new destination options to the transition-kind UI does not regress `renderFallback()`: with coverage that actually exercises selecting a `skipped` (or `stopped`/`needs_attention`) fallback, rerendering the form, and reopening the saved project — not just asserting the option labels are present — confirming a saved fallback absent from `state.outcomes` is never silently replaced by the first outcome.
 
 - [ ] Builder displays stamped enabled/readiness/outcome values from `BRConfig`; tests cover disabled gates and confirm saved predicates are not overwritten by stamped thresholds.
 
-- [ ] Transition summaries distinguish successful stop/skip from failed `needs_attention`, including the automatic max-steps route.
+- [ ] Transition summaries distinguish successful stop/skip from failed `needs_attention`, including the automatic max-steps route: `summarizeTransitions` treats `stop`/`skip`/`attention` on `implement` as stopping after implement, and the template's `computeSummary` lists dispatched destinations alongside verbs.
 
 - [ ] CLI.md and POLICY_ROUTER_GUIDE.md passages listed above are updated.
 
 ## Scope Boundaries
 
-Includes destination semantics, scoring metadata, gate stamping, and their docs. Excludes persistence (ENH-3487), layout/presets (ENH-3491), and runtime policy-router fixes. The one runtime change the chosen semantics require — `failure_terminal` honoring the `failure:` flag for cap-routed finishes — is BUG-3499, now in `depends_on`; this issue does not modify `fsm/executor.py`.
+Includes destination semantics, scoring metadata, gate stamping, and their docs. Excludes persistence (ENH-3487), layout/presets (ENH-3491), and runtime policy-router fixes. The one runtime change the chosen semantics require — `failure_terminal` honoring the `failure:` flag for cap-routed finishes — is BUG-3499, now in `depends_on`; this issue does not modify `fsm/executor.py`. Also excluded: seeding fresh models' thresholds from the stamped confidence gate (Proposed Solution §5), and any runtime behavior keyed on the `stopped`/`skipped` names beyond `final_state` (§2).
 
 ## Verification Notes
 
@@ -425,6 +437,35 @@ reaches the failure terminal; action errors still route to `failed`) in Proposed
 retired the stale STOP confidence-check verdict below — both dependencies it named (ENH-3491,
 BUG-3499) are now `done`.
 
+_Sixth review pass (manual, pre-implementation) — 2026-09-17:_
+
+Verdict: ready after the corrections applied in this pass. Verified against the working tree:
+`$${` escaping (`fsm/interpolation.py:30,348`), `_TARGET_PATTERN` accepting
+`needs_attention` (`fsm/policy_rules.py:37`), `on_max_steps` targets counted as reachable
+(`fsm/validation/_base.py:234`), and the on_max_steps terminal exemption
+(`fsm/validation/evaluator_rules.py:42-52`) — so a `needs_attention` block referenced only by
+the budget line trips neither an unreachable-state nor a terminal-action warning.
+
+- `_emittedDestinations` was cited as an existing helper to keep/replace; it does not exist.
+  Reworded §1 and the Program Design signature: both destination helpers are new.
+- Transition-kind `<select>` citation `policy-router-builder.html.tmpl:420,524` was wrong
+  (`:420` is the end of draft restore, `:524` is inside `renderFallback()`); the option-list
+  literals are at `:604,747`. Corrected in three places.
+- Specified action-less outcomes with the new kinds (`_outcomeStateLines` emits `terminal: true`
+  when `hasAction` is false): emit `next: <dest>` and reject the combination in
+  `validateBuilderModel`; new AC.
+- Promoted the rubric `_assertNoReservedTokens` gap from research notes to a required §3 change,
+  noting the silently-ignored → hard-error behavior change.
+- Made §6 concrete: `summarizeTransitions.stopsAfterImplement` (`:1168`, finish-only today) and
+  the template's `computeSummary` lifecycle branch (verbs only).
+- Escaping test must also cover authored `$${...}` (doubling composes: `$$${` → `$${`).
+- Stated that `stopped`/`skipped` are distinguishable from `done` only via `final_state`; FEAT-3488
+  does not reference the names.
+- Seed-from-stamp for fresh models excluded explicitly (Scope Boundaries) to keep `seedExample`
+  pure and the Node golden fixtures stable.
+- Confidence Check Notes below still carry the stale STOP; re-run `/ll:confidence-check` before
+  `/ll:manage-issue`.
+
 ## Confidence Check Notes
 
 _Added by `/ll:confidence-check` on 2026-09-17; STOP verdict below is stale as of the 2026-09-17 review — both dependencies it named are now satisfied (ENH-3491 `status: done`; BUG-3499 `status: done`, `depends_on` frontmatter already reflects this) and `blocked_by` is empty. A re-run of `/ll:confidence-check` would be expected to clear the STOP verdict; this section is left as a historical record pending that re-run._
@@ -440,6 +481,7 @@ _Added by `/ll:confidence-check` on 2026-09-17; STOP verdict below is stale as o
 **Open** | Created: 2026-09-16 | Priority: P3
 
 ## Session Log
+- manual review - 2026-09-17 - pre-implementation pass: fixed `_emittedDestinations` (nonexistent) and template `<select>` (`:604,747`) citations; specified action-less outcomes with new kinds; required rubric `_assertNoReservedTokens`; made §6 summary changes concrete; `$${` round-trip test; `final_state`-only distinction; excluded seed-from-stamp.
 - manual review - 2026-09-17 - resolved four review gaps: restricted new transition kinds/destinations to lifecycle mode (reject in rubric/decision_table); split dispatch-destination emission from required-terminal-block emission so `on_max_steps` alone adds no dispatch route; specified literal-text runtime escaping for scoring instructions/anchors with an `InterpolationError` regression test; added `renderFallback()` select/rerender/reopen coverage. Pinned action-before-terminal behavior; retired stale STOP confidence verdict (ENH-3491/BUG-3499 both done).
 - `/ll:verify-issues` - 2026-09-17T18:57:38 - `64b082f5-b4f8-409b-a5d1-79e44b8a0152.jsonl`
 - `/ll:wire-issue` - 2026-09-17T18:46:50 - `291797e2-08f6-425b-9547-d7555f015908.jsonl`
