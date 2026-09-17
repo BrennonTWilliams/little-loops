@@ -22,6 +22,7 @@ unproven_mechanism: true
 spike_attempted: true
 spike_completed: false
 decision_needed: false
+reconcile_attempted: true
 ---
 
 # FEAT-3498: Policy builder host-approved connected execution
@@ -85,6 +86,16 @@ From a same-origin connected page, a user selects an issue in the server's proje
 - Tests: queue store/CLI tests, transport/SSE bridge tests, policy-builder emit/golden tests, connected route integration tests under `scripts/tests/`, and `test_wiring_reference_docs.py`.
 - Docs: `docs/reference/CLI.md`, `docs/guides/POLICY_ROUTER_GUIDE.md`, `docs/reference/ARTIFACT_CONTROL_LEVELS.md` (declare the connected builder render target at level 2; existing event page stays level 1).
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-17 — based on codebase analysis:_
+
+- `transport.py`'s `SseBridge` route table (`_routes: dict[str, Callable[[handler], None]]`, built in `__init__` at `transport.py:1259`) is consulted only from `do_GET` (`_make_sse_bridge_handler`, `transport.py:1200-1246`) via an exact-string match on the post-token path remainder (`bridge._routes.get(route)`); there is no `do_POST` anywhere on this handler today, and no segment/parameter matching primitive to extend. The Host-header check and prefix-strip sequence that a new `do_POST` would need to replicate is inline inside `do_GET`, not factored into a shared helper (`_expected_hosts()` at `transport.py:476` is the only piece already factored out).
+- `LocalBridgeTransport`'s `_make_local_bridge_handler` (`transport.py:624`) is a structurally separate, hand-hardcoded `do_GET`/`do_POST` implementation (its own `/interaction` route via if/elif) that does not share `SseBridge`'s `_routes` dict — it is not itself reusable as a parameterized-dispatch template.
+- `cmd_policy_builder` (`cli/artifact/policy_builder.py:61`) has a clean split point: everything from `BRConfig` construction through the three `html.replace(...)` injection calls (lines 71-99) is pure computation producing an in-memory `html` string with no dependency on `args` beyond `active_theme`/config; only the final block — resolving `output_dir` from `args.output` and the `write_text`/`logger.success` calls (lines 101-108) — is CLI-file-output-specific.
+- An existing renderer/CLI-wrapper split precedent already exists in this codebase: `cmd_serve`'s `_make_page_html_factory` (`cli/artifact/serve.py:138`) builds HTML from config and hands back a string, later consumed by `bridge.set_page_html(...)` rather than written to a file — the same shape `cmd_policy_builder` would need for a serve route.
+- Confirmed absent: no approval/eligibility concept exists in `queue_store.py` or `cli/queue.py` today (direct search for `approv` in both files, zero hits). The only existing "eligibility" concept is `_drain_once`'s `next_attempt_at`-based retry-backoff filter (`cli/queue.py:574`) and `claim_entry`'s matching `WHERE` clause (`queue_store.py:707-708`) — unrelated to human/host approval.
+
 ## API/Interface
 
 Proposed operations (names finalized during implementation): `create_or_get_run_request`, `approve_and_claim_entry`, `record_loop_started`, request lookup mapping, `ll-queue run --id ID --approve`, same-origin issue and run-request endpoints. All approval/claim/dedup invariants live in store transactions. The route's opt-in flag does not approve any request.
@@ -105,6 +116,16 @@ Proposed `RunRequest {requestId, projectId, workspaceId, revisionId, yaml, issue
 ### Call Path
 
 Page review → immutable snapshot → POST run-request → validation/persistence → `create_or_get_run_request` → awaiting approval. Host `cmd_run` with explicit ID/approval → `approve_and_claim_entry` → `_run_loop_entry` → child loop `cmd_run`/`PersistentExecutor` initialization → structured metadata → `record_loop_started` → existing result update. Page GET → `get_run_request` → mapped `get_entry`. Generic `claim_entry` never claims awaiting requests.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-17 — based on codebase analysis:_
+
+- `claim_entry` (`queue_store.py:669`) is currently the only queue-transition function using explicit `BEGIN IMMEDIATE`/`COMMIT`/`ROLLBACK` transactional isolation (`isolation_level=None`, guarded `UPDATE ... WHERE status='pending'`, lines 702-716); every other terminal transition (`update_entry_result`, `schedule_retry`, `dead_letter_entry`, `cancel_entry`) uses a plain guarded `UPDATE` without explicit `BEGIN IMMEDIATE`. `create_or_get_run_request`/`approve_and_claim_entry` should mirror `claim_entry`'s pattern specifically, not the other transition functions'.
+- The insertion point for a new `awaiting_approval` status value is `QUEUE_STATUSES = frozenset({"pending", "running", "done", "failed", "dead_letter", "cancelled"})` and `QUEUE_TERMINAL_STATUSES` (`queue_store.py:155-156`) — the module docstring states every other status enumeration site derives from or is locked against these two frozensets. Any new eligibility predicate in `claim_entry` must compose with, not replace, the existing `next_attempt_at` backoff gate already in its guarded `WHERE` clause (lines 704-709).
+- `_run_loop_entry` (`cli/queue.py:382`) dispatches LOOP actions via `subprocess.Popen(["ll-loop", "run", action.target, ...], start_new_session=True)` (lines 411-417) — a fresh out-of-process child, not an in-process call. A start-metadata channel must therefore cross a real subprocess boundary (a file, as the issue already proposes), not a shared Python object.
+- `cli/loop/run.py`'s hidden `--instance-id` flag already exists at `cli/loop/__init__.py:231` (and again for `resume` at line 501, `argparse.SUPPRESS`). Normal foreground `cmd_run` resolves its own instance id via `_make_instance_id(loop_name)` (`cli/loop/runner.py:136`) at `cli/loop/run.py:199-203` when `args.foreground_internal` is unset — confirming the issue's own claim that the existing hidden flag is a background-relaunch mechanism, not a general solution, since a normal foreground run never receives an externally supplied id.
+- `load_and_validate(..., raise_on_error=False)` (`fsm/validation/structural_rules.py:1860`) still raises unconditionally on `FileNotFoundError`, YAML parse errors, non-mapping YAML, and missing required top-level fields (all before line 1964) — only post-parse structural/reachability validator output (`validate_fsm` and three more passes, lines 1951-1957) is converted to a returned `(fsm, errors)` tuple instead of raising. The one existing `raise_on_error=False` caller, `FSMExecutor._execute_sub_loop` (`executor.py:1116`), currently discards the returned error list entirely (`child_fsm, _ = load_and_validate(...)`) — there is no existing precedent in this codebase for consuming that returned list, so the new validation-response conversion has no established call-site pattern to follow.
 
 ## Program Design
 
@@ -173,6 +194,8 @@ Extracted from FEAT-3488: `scripts/tests/spike/level2_run_handoff/` and `.ll/spi
 **Open** | Created: 2026-09-17 | Priority: P3
 
 ## Session Log
+- `/ll:reconcile-issue` - 2026-09-17T06:16:53 - `eb34f2f3-799f-4ff3-94f5-01cb135bc89a.jsonl`
+- `/ll:refine-issue` - 2026-09-17T06:14:10 - `bdd11f79-301a-46b5-9233-83f283efd28d.jsonl`
 - `/ll:format-issue` - 2026-09-17T06:04:13 - `673b8d7f-311f-49c5-91da-9f35cbc67a87.jsonl`
 - `/ll:capture-issue` - 2026-09-17T06:00:15 - `673b8d7f-311f-49c5-91da-9f35cbc67a87.jsonl`
 - manual review - 2026-09-17 - extracted FEAT-3488 Phase B with explicit queue approval, atomic request mapping, real LOOP identity, validation failures, project binding, and production-path verification
