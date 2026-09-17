@@ -2807,6 +2807,98 @@ class TestUncertainSuffixRouteFallback:
         assert self._executor()._route(state, "no", self._ctx()) == "retry"
 
 
+class TestGeneratedPolicyRouterFailureRouting:
+    """BUG-3489: end-to-end FSMExecutor runs over the generated decision-table
+    and issue-lifecycle golden fixtures (real output of `_serializeDecisionTable`
+    / `_serializeIssueLifecycle`, fragments resolved for real), proving the
+    executor precedence fix plus the generated failure routes actually reach
+    a `failed` terminal with `failure_terminal == True` and run no user
+    outcome action — not just that the YAML shape looks right."""
+
+    @staticmethod
+    def _load(fixture_name: str) -> FSMLoop:
+        import yaml
+
+        from little_loops.fsm.fragments import resolve_fragments
+
+        fixtures_dir = Path(__file__).parent / "fixtures" / "policy_builder"
+        loops_dir = Path(__file__).parent.parent / "little_loops" / "loops"
+        data = yaml.safe_load((fixtures_dir / fixture_name).read_text())
+        resolved = resolve_fragments(data, loops_dir)
+        return FSMLoop.from_dict(resolved)
+
+    def test_decision_table_dispatch_nonzero_exit_reaches_failed_no_outcome_runs(self) -> None:
+        loop = self._load("sample-decision-table.yaml")
+        runner = MockActionRunner()
+        runner.set_result("Evaluate artifact.md", exit_code=0, output="scored")
+        runner.set_result("policy_parse_scores", exit_code=0)
+        runner.set_result("policy_table_dispatch", exit_code=1, output="", stderr="broken")
+
+        executor = FSMExecutor(loop, action_runner=runner)
+        result = executor.run()
+
+        assert result.terminated_by == "terminal"
+        assert result.final_state == "failed"
+        assert result.failure_terminal is True
+        assert not any("SECURITY ESCALATION" in call for call in runner.calls)
+        assert not any("/ll:commit" in call for call in runner.calls)
+        assert not any("comprehensive repairs" in call for call in runner.calls)
+
+    def test_decision_table_dispatch_action_exception_reaches_failed_via_on_error(self) -> None:
+        loop = self._load("sample-decision-table.yaml")
+
+        class _RaisingRunner(MockActionRunner):
+            def run(self, action: str, *args: Any, **kwargs: Any) -> ActionResult:
+                if "policy_table_dispatch" in action:
+                    raise RuntimeError("simulated action-runner exception")
+                return super().run(action, *args, **kwargs)
+
+        runner = _RaisingRunner()
+        runner.set_result("Evaluate artifact.md", exit_code=0)
+        runner.set_result("policy_parse_scores", exit_code=0)
+
+        executor = FSMExecutor(loop, action_runner=runner)
+        result = executor.run()
+
+        assert result.terminated_by == "terminal"
+        assert result.final_state == "failed"
+        assert result.failure_terminal is True
+
+    def test_decision_table_success_path_still_reaches_ordinary_outcome(self) -> None:
+        """Ordinary success and unmatched-token fallback still work after the
+        failure-routing additions."""
+        loop = self._load("sample-decision-table.yaml")
+        runner = MockActionRunner()
+        runner.set_result("Evaluate artifact.md", exit_code=0)
+        runner.set_result("policy_parse_scores", exit_code=0)
+        runner.set_result("policy_table_dispatch", exit_code=0, output="escalate")
+
+        executor = FSMExecutor(loop, action_runner=runner)
+        result = executor.run()
+
+        assert result.terminated_by == "terminal"
+        assert result.final_state == "done"
+        assert result.failure_terminal is False
+        assert any("SECURITY ESCALATION" in call for call in runner.calls)
+
+    def test_issue_lifecycle_dispatch_nonzero_exit_reaches_failed_no_verb_runs(self) -> None:
+        loop = self._load("sample-issue-lifecycle.yaml")
+        runner = MockActionRunner()
+        runner.set_result("frontmatter_scores", exit_code=0)
+        runner.set_result("policy_table_dispatch", exit_code=1, output="", stderr="broken")
+
+        executor = FSMExecutor(loop, action_runner=runner, working_dir=Path.cwd())
+        result = executor.run()
+
+        assert result.terminated_by == "terminal"
+        assert result.final_state == "failed"
+        assert result.failure_terminal is True
+        assert not any("refine-issue" in call for call in runner.calls)
+        assert not any("confidence-check" in call for call in runner.calls)
+        assert not any("ll-auto" in call for call in runner.calls)
+        assert not any("verify-issues" in call for call in runner.calls)
+
+
 class TestEvents:
     """Tests for event emission."""
 
