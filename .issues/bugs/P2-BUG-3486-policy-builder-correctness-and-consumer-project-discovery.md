@@ -22,6 +22,12 @@ blocks:
 - ENH-3491
 - ENH-3492
 - FEAT-3488
+confidence_score: 100
+outcome_confidence: 78
+score_complexity: 10
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 # BUG-3486: Policy builder preview, validation, and editing correctness (browser/core)
@@ -253,6 +259,7 @@ Verdict at time of check: **NEEDS_UPDATE** (correction below applied in the same
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-17T02:22:44 - `b1dd9661-22d0-4185-a08c-e4daf35a732a.jsonl`
 - `/ll:verify-issues` - 2026-09-17T02:10:33 - `ac62d1f7-8315-4880-bb66-ce4cff7b7fe9.jsonl`
 - review - 2026-09-16 - post-BUG-3489 reconciliation: reserved-name work re-scoped to *extending* the existing `RESERVED_STATE_NAMES`/`isReservedOutcomeToken`/`_assertNoReservedTokens` (`45ec5e223`); `aggregate` moved from state-name to dimension-name reservation; withdrew the constant-`finished` decision (false fixture premise) — `_doneStateName()` stays dynamic, `finished` reserved, `sample-*.yaml` expected byte-identical; specified `parse_error_cases`/`js_reject_cases` corpus keys; `opsForType` moves to core; rubric unknown-outcome warning; `draft` optional/ignored by serializers; re-anchored all mjs/tmpl line cites; marked BUG-3489 coordination items satisfied
 - `/ll:refine-issue` - 2026-09-17T00:49:34 - `36d7531c-a8b7-4c13-b076-371cadf28ae5.jsonl`
