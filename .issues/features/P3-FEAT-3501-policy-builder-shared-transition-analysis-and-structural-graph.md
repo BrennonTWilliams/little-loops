@@ -16,6 +16,7 @@ relates_to:
 - FEAT-3488
 - FEAT-3474
 unproven_mechanism: false
+verify_verdict: VALID
 ---
 
 # FEAT-3501: Policy builder shared transition analysis and structural graph
@@ -99,6 +100,7 @@ Lifecycle policies can author goto chains and rescore feedback that the prose su
 - [ ] Tests cover goto chains, goto cycles, rescore feedback, unreachable outcomes, and explicit success/skip/needs-attention terminals from ENH-3492.
 - [ ] Structural warnings make no claims about actual action outcomes or inevitable nontermination.
 - [ ] Golden HTML and Node/Python gates pass; the browser bridge exports the new helper.
+- [ ] `docs/guides/POLICY_ROUTER_GUIDE.md` documents the structural-analysis contract's limits (no execution-outcome or nontermination claims).
 
 ## Scope Boundaries
 
@@ -110,10 +112,46 @@ Excludes scenario suites, traces, expectations, and coverage (FEAT-3488) and con
 |---|---|---|
 | Guide | docs/guides/POLICY_ROUTER_GUIDE.md | Lifecycle semantics, structural-analysis limits |
 
+## Verification Notes
+
+Verdict at time of check: **PROPOSAL_UNSOUND** (corrections below applied in the
+same pass, so the issue as it now reads is up to date — this section is a record
+of what was wrong and fixed, not an outstanding action item). Every claim about
+current state (check 1-4) held; the defect was in the Proposed Solution's
+consequences (check B6).
+
+- **Current Behavior claims** — confirmed accurate. `summarizeTransitions`
+  (`scripts/little_loops/templates/policy_builder_core.mjs:1334-1409`) returns
+  exactly `{steps, stopsAfterImplement, stopDestination, verification,
+  stepsPerAttempt, attempts, maxStepsNote}`, walks goto chains via a private
+  `chainLenFrom` cycle guard used only for `stepsPerAttempt`, and exposes no
+  edges/reachability/cycle diagnostics. The template's summary render site
+  (`scripts/little_loops/templates/policy-router-builder.html.tmpl:1211,1226-1231`)
+  writes `summarizeTransitions(model)` output as plain text into `#transition-summary`
+  — no graph view. `analyzeTransitions` does not yet exist in `policy_builder_core.mjs`
+  (confirmed absent). Call Path's `cmd_policy_builder` entry point confirmed at
+  `scripts/little_loops/cli/artifact/policy_builder.py:62`.
+- **Blocked By**: `ENH-3492` is `done` — satisfied. `MISSING_BACKLINK`: `ENH-3492`
+  has no `## Blocks` section referencing `FEAT-3501` (it predates this issue's split
+  from FEAT-3488, so this is expected, not an error requiring action).
+- **Evidence quotes** (`ll-verify-evidence --json`): clean, 0 findings.
+- **Decisions log**: no active required rules to check against.
+- **PROPOSAL_UNSOUND finding (check B6, AC coverage of Integration Map points)**:
+  the Integration Map names a Docs integration point
+  (`docs/guides/POLICY_ROUTER_GUIDE.md` — "structural-analysis limits"), and
+  Implementation Step 3 says to "update the guide," but no Acceptance Criterion
+  requires the doc update. As written, all four ACs can be satisfied while the
+  guide update is silently dropped.
+
+Fixed in the same pass: added an Acceptance Criterion requiring
+`docs/guides/POLICY_ROUTER_GUIDE.md` to document the structural-analysis
+contract's limits, closing the Integration Map's unenforced Docs point.
+
 ## Status
 
 **Open** | Created: 2026-09-17 | Priority: P3
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-17T21:31:46 - `270c2766-2f75-4410-a3ba-53dfe4b6f1e8.jsonl`
 - `/ll:format-issue` - 2026-09-17T21:24:30 - `fabca22b-468e-4dd5-8426-9cc105e3ce12.jsonl`
