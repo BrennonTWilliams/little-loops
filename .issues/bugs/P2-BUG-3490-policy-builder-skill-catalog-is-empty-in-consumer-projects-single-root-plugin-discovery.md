@@ -12,6 +12,7 @@ discovered_date: '2026-09-16'
 captured_at: '2026-09-16T22:14:21Z'
 labels:
 - policy-builder
+reconcile_attempted: true
 relates_to:
 - BUG-3486
 - BUG-3489
@@ -142,7 +143,7 @@ Once the resolver exists, `mcp_server/server.py::_resolve_skills_root` duplicate
 - [ ] Environment > checkout > packaged precedence is deterministic. With different names/content in coexisting installations, only the selected root contributes entries; expansion does not fall through for a missing name.
 - [ ] Commands-only roots work; invalid/missing candidates do not raise; an empty selected root does not cause version mixing.
 - [ ] On a packaged layout, `ll-help` and `ll-action list` are non-empty, while explicit `ll-help -C` retains its existing semantics.
-- [ ] Every advertised builder invocation resolves to content in the selected installation. Queue classification and MCP skills listing use the same root and preserve their existing parity contract.
+- [ ] Every advertised builder invocation resolves to content in the selected installation. Queue classification, MCP skills listing, and `cli/harness.py::_resolve_skill_target_path` all resolve the same root and preserve their existing parity contract (per Verification Notes: closes the AC coverage gap for the harness cell-key path).
 - [ ] The generated builder catalog is deterministic and contains one entry per `/ll:<name>`, including cross-kind collisions and bridge-stub pairs. Project `.claude/skills` and `.claude/commands` are excluded.
 - [ ] Existing source-checkout help/action output contracts remain unchanged. Mutation/development commands retain their legacy root-selection behavior rather than being redirected to site-packages.
 - [ ] Resolver calls spawn no subprocess, even with no valid content roots, and require no new configuration fields or cache state.
@@ -223,6 +224,7 @@ finding).
 **Open** | Created: 2026-09-16 | Priority: P2
 
 ## Session Log
+- `/ll:reconcile-issue` - 2026-09-17T04:02:23 - `7449e8a1-db4e-4752-8942-1052ea200f2a.jsonl`
 - `/ll:verify-issues` - 2026-09-17T04:00:15 - `b5a5ae18-560d-4cc6-8aa5-4bcda8471436.jsonl`
 - `/ll:refine-issue` - 2026-09-17T03:10:39 - `62feba6c-702f-4140-917b-5a2b05ea6c40.jsonl`
 - `/ll:wire-issue` - 2026-09-17T01:06:16 - `9edbdbb5-9660-42b5-a715-69e61709aaa6.jsonl`
