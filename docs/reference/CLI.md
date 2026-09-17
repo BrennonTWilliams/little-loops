@@ -902,14 +902,15 @@ Run a loop.
 | Code | Meaning |
 |---|---|
 | `0` | The loop reached a terminal state that is **not** marked `failure: true` (a success, including `interrupted` and `handoff`). |
-| `1` | The loop never reached a terminal state: `max_steps`, `max_iterations_reached`, `timeout`, `cycle_detected`, `stall_detected`, `user_stopped`, `system_signal`, or an unrecognised termination reason. |
-| `2` | The loop ran to completion and reported failure — it reached a terminal state declared `failure: true` (see [Failure Terminals](../generalized-fsm-loop.md#failure-terminals-must-include-a-diagnostic-action)). |
+| `1` | The loop never reached a terminal state (and did not land on a `failure: true` terminal via a cap handler either): `timeout`, `cycle_detected`, `stall_detected`, `user_stopped`, `system_signal`, or an unrecognised termination reason. |
+| `2` | The loop reached a terminal state declared `failure: true` — either directly (`terminated_by == "terminal"`) or via a step/iteration cap handler (`on_max_steps`/`on_max_iterations` routing to a `failure: true` terminal, `terminated_by == "max_steps"`/`"max_iterations_reached"`; BUG-3499) (see [Failure Terminals](../generalized-fsm-loop.md#failure-terminals-must-include-a-diagnostic-action)). |
 
 Codes `1` and `2` are deliberately distinct: `1` means the run was cut short by
-an infra/limit condition, `2` means the loop itself decided it failed. Before
-ENH-2814, *any* terminal state exited `0`, so a loop landing on `failed` was
-indistinguishable from success to shell scripts, cron wrappers, and
-`ll-queue run`.
+an infra/limit condition with no failure-flagged terminal reached, `2` means
+the loop reached a state that declared itself a failure — whether directly or
+via a cap handler. Before ENH-2814, *any* terminal state exited `0`, so a loop
+landing on `failed` was indistinguishable from success to shell scripts, cron
+wrappers, and `ll-queue run`.
 
 **Behaviour change:** scripts that treated every `ll-loop run` exit as success
 will now see `2` on failure runs. A terminal's `failure` flag defaults to true

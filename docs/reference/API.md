@@ -6381,9 +6381,13 @@ class ExecutionResult:
 ```
 
 `terminated_by == "terminal"` does **not** imply success — read
-`failure_terminal` for that. It drives `ll-loop run`'s exit code (`2`), the
-persisted `final_status` (`"failed"` rather than `"completed"`), and sub-loop
-`on_no` routing.
+`failure_terminal` for that. `failure_terminal` is also `true` when a
+step/iteration cap handler (`on_max_steps`/`on_max_iterations`) routes to a
+`failure: true` terminal — `terminated_by` stays `"max_steps"` or
+`"max_iterations_reached"` in that case, but the terminal's own flag still
+decides `failure_terminal` (BUG-3499). It drives `ll-loop run`'s exit code
+(`2`), the persisted `final_status` (`"failed"` rather than `"completed"`),
+and sub-loop `on_no` routing.
 
 #### ActionResult
 

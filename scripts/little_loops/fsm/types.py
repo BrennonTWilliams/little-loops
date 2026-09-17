@@ -49,9 +49,14 @@ class ExecutionResult:
         failure_terminal: True when execution stopped on a terminal state whose
             ``StateConfig.failure`` flag is set (ENH-2814). This is the single
             signal consumers use to tell a failed run from a successful one —
-            ``terminated_by == "terminal"`` alone does NOT imply success. Drives
-            the nonzero ``ll-loop run`` exit code, the persisted
-            ``final_status="failed"``, and sub-loop ``on_no`` routing.
+            ``terminated_by == "terminal"`` alone does NOT imply success. Also
+            True when a step/iteration cap handler (``on_max_steps``/
+            ``on_max_iterations``) routes to a ``failure: true`` terminal —
+            ``terminated_by`` stays ``"max_steps"``/``"max_iterations_reached"``
+            in that case, but the terminal's own flag still decides
+            ``failure_terminal`` (BUG-3499). Drives the nonzero ``ll-loop run``
+            exit code, the persisted ``final_status="failed"``, and sub-loop
+            ``on_no`` routing.
         error: Error message if terminated_by is "error" or "no_route"
         handoff: True if execution stopped due to handoff signal
         continuation_prompt: Continuation context from handoff signal

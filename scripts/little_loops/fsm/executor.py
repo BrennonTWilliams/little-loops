@@ -4333,10 +4333,16 @@ class FSMExecutor:
     def _finish(self, terminated_by: str, error: str | None = None) -> ExecutionResult:
         """Finalize execution and return result."""
         # ENH-2814: single source of truth for "did this run fail?" — the
-        # terminal state's own `failure:` flag, not its name.
-        failure_terminal = terminated_by == "terminal" and self.current_state in (
-            self.fsm.get_failure_states()
-        )
+        # terminal state's own `failure:` flag, not its name. BUG-3499:
+        # widened to also cover cap-routed terminations (`on_max_steps`/
+        # `on_max_iterations` routing to a `failure: true` terminal), since
+        # reaching a failure terminal via the step/iteration cap is still
+        # reaching a failure terminal.
+        failure_terminal = terminated_by in (
+            "terminal",
+            "max_steps",
+            "max_iterations_reached",
+        ) and self.current_state in (self.fsm.get_failure_states())
         payload: dict[str, Any] = {
             "final_state": self.current_state,
             "iterations": self.iteration,

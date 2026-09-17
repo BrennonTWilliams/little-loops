@@ -284,13 +284,15 @@ Determine the verdict using the terminal state from `loop_complete` event (`term
 
 "Terminal reached" below means `terminated_by == "terminal"`. Note that this alone does **not** mean the run succeeded: the same `loop_complete` event carries `failure_terminal` (ENH-2814), which is `true` when the loop stopped on a state declared `failure: true`. Read that flag — do not infer failure from the terminal state's name. A run with `failure_terminal: true` is an `honest-failure` when its artifact/claim evidence agrees, and a `phantom` when the loop nonetheless claimed success. The process exit code carries the same signal (`2` = failure terminal).
 
+**BUG-3499:** `failure_terminal` also holds for a cap-routed run — `terminated_by == "max_steps"` or `"max_iterations_reached"` with the cap handler landing on a `failure: true` terminal. Check `failure_terminal` on a `max_steps`/`max_iterations_reached` run *before* falling through to the `partial` row below: `failure_terminal: true` there is an `honest-failure`/`phantom` call (same rule as the `terminal` case), not automatically a `partial`.
+
 | Verdict | Condition |
 |---|---|
 | `met` | Terminal reached AND all threshold contracts verified AND all expected artifact mutations occurred |
 | `phantom` | Terminal reached AND claimed success > 0 (or `summary.json` absent — loop provides no failure evidence) AND (artifacts unchanged OR threshold unverified — only model self-reported via `llm_structured` evaluator) |
 | `honest-failure` | Terminal reached AND `summary.json` present AND claimed success == 0 (`implemented: 0, failed: N`) AND no artifact mutation observed. The loop told the truth about its failure; the root cause is upstream (e.g. environment error, auth failure, misconfiguration). |
 | `partial` | Terminal reached AND some but not all contracts satisfied |
-| `partial` | `terminated_by == "max_steps"` AND `max_steps_summary` event present in JSONL (summary state ran; artifact written) |
+| `partial` | `terminated_by == "max_steps"` AND `max_steps_summary` event present in JSONL (summary state ran; artifact written) AND `failure_terminal` is not `true` |
 | `degraded` | Loop completed but metric trended downward vs baseline captured in `state.json` |
 
 A `max_steps`/`max_iterations_reached`/`timeout`/`stall_detected`/`cycle_detected` run with `best_effort_present: true` in the `ll-loop audit --json` output (or a `best_effort.json` file in the archive dir, ENH-3473) should be read as a salvageable partial: the runner captured the run's last attempt even though nothing else was written. Treat it the same as a `partial` verdict rather than a total loss.

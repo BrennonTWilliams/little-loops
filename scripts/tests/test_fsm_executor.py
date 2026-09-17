@@ -9923,6 +9923,16 @@ class TestSubLoopTimeoutRouting:
             "  done:\n    terminal: true\n"
         )
 
+    def _write_cap_failure_child(self, loops_dir: Path, name: str = "cap_failure_child") -> None:
+        # BUG-3499: on_max_steps routes directly to a `failure: true` terminal,
+        # so the child's terminated_by is "max_steps" but failure_terminal is True.
+        (loops_dir / f"{name}.yaml").write_text(
+            f"name: {name}\ninitial: work\nmax_steps: 1\non_max_steps: needs_attention\n"
+            "states:\n  work:\n    action: 'false'\n    on_yes: done\n    on_no: work\n"
+            "  done:\n    terminal: true\n"
+            "  needs_attention:\n    terminal: true\n    failure: true\n"
+        )
+
     def test_on_timeout_route_fires_on_max_steps(self, tmp_path: Path) -> None:
         """extra_routes["timeout"] fires when the child terminates via max_steps."""
         loops_dir = tmp_path / ".loops"
@@ -9966,6 +9976,33 @@ class TestSubLoopTimeoutRouting:
         executor = FSMExecutor(parent_fsm, loops_dir=loops_dir)
         result = executor.run()
         assert result.final_state == "fallback"
+
+    def test_cap_routed_child_failure_terminal_propagates(self, tmp_path: Path) -> None:
+        """BUG-3499: a cap-routed child (on_max_steps -> failure: true terminal)
+        propagates failure_terminal=True into the parent's captured namespace,
+        even though the child's terminated_by is "max_steps", not "terminal"."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        self._write_cap_failure_child(loops_dir)
+        parent_fsm = FSMLoop(
+            name="parent",
+            initial="run_child",
+            timeout=3600,
+            states={
+                "run_child": StateConfig(
+                    loop="cap_failure_child",
+                    on_yes="success",
+                    on_no="fallback",
+                ),
+                "success": StateConfig(terminal=True),
+                "fallback": StateConfig(terminal=True),
+            },
+        )
+        executor = FSMExecutor(parent_fsm, loops_dir=loops_dir)
+        result = executor.run()
+        assert result.final_state == "fallback"
+        assert executor.captured["run_child"]["terminated_by"] == "max_steps"
+        assert executor.captured["run_child"]["failure_terminal"] is True
 
     def test_interrupted_still_routes_on_no_not_on_timeout(self, tmp_path: Path) -> None:
         """terminated_by='interrupted' is out of scope for on_timeout; keeps hitting on_no."""
@@ -11441,6 +11478,51 @@ class TestMaxStepsSummaryHook:
         assert summary_events == []
 
 
+class TestBug3499CapRoutedFailureTerminal:
+    """BUG-3499: failure_terminal must reflect the reached terminal's own
+    `failure:` flag even when it's reached via a cap handler, not just via
+    terminated_by == "terminal"."""
+
+    def _make_fsm(self, *, handler_failure: bool) -> FSMLoop:
+        return FSMLoop(
+            name="bug-3499-max-steps",
+            initial="loop",
+            max_steps=2,
+            on_max_steps="needs_attention",
+            states={
+                "loop": StateConfig(action="work.sh", on_yes="done", on_no="loop"),
+                "needs_attention": StateConfig(terminal=True, failure=handler_failure),
+                "done": StateConfig(terminal=True),
+            },
+        )
+
+    def test_failure_terminal_true_on_max_steps_to_failure_terminal(self) -> None:
+        """A cap handler routing to a `failure: true` terminal reports
+        failure_terminal is True, with terminated_by preserved as max_steps."""
+        fsm = self._make_fsm(handler_failure=True)
+        runner = MockActionRunner()
+        runner.always_return(exit_code=1)  # loop never succeeds -> hits cap
+
+        result = FSMExecutor(fsm, action_runner=runner).run()
+
+        assert result.final_state == "needs_attention"
+        assert result.terminated_by == "max_steps"
+        assert result.failure_terminal is True
+
+    def test_failure_terminal_false_on_max_steps_to_plain_terminal(self) -> None:
+        """A cap handler routing to a plain terminal (no failure: true)
+        still reports failure_terminal is False."""
+        fsm = self._make_fsm(handler_failure=False)
+        runner = MockActionRunner()
+        runner.always_return(exit_code=1)  # loop never succeeds -> hits cap
+
+        result = FSMExecutor(fsm, action_runner=runner).run()
+
+        assert result.final_state == "needs_attention"
+        assert result.terminated_by == "max_steps"
+        assert result.failure_terminal is False
+
+
 class TestFragmentParamBinding:
     """Tests for fragment with: bindings populating the param namespace at runtime."""
 
@@ -11762,6 +11844,55 @@ class TestMaxIterationFullPassCap:
         assert result.terminated_by == "max_iterations_reached"
         assert result.final_state == "done"
         assert result.pre_cap_state == "work"
+
+
+class TestBug3499CapRoutedFailureTerminalMaxIterations:
+    """BUG-3499: same failure_terminal fix, for the max_iterations cap
+    (on_max_iterations routing directly to a failure terminal)."""
+
+    def _make_maintain_fsm(self, *, handler_failure: bool) -> FSMLoop:
+        # The on_max_iterations handler ("iter_summary") must be a non-terminal
+        # action state that routes (via `next`) to the failure terminal, not a
+        # terminal state itself: in maintain mode, `_finish` for the reached
+        # terminal fires from the top-of-loop cap recheck (using the handler's
+        # routed-to current_state), before the terminal-state block's unconditional
+        # maintain-restart branch would otherwise re-loop a directly-terminal handler.
+        return FSMLoop(
+            name="bug-3499-max-iterations",
+            initial="work",
+            maintain=True,
+            max_steps=200,
+            max_iterations=1,
+            on_max_iterations="iter_summary",
+            states={
+                "work": StateConfig(action="work.sh", next="done"),
+                "done": StateConfig(terminal=True),
+                "iter_summary": StateConfig(action="isum.sh", next="needs_attention"),
+                "needs_attention": StateConfig(terminal=True, failure=handler_failure),
+            },
+        )
+
+    def test_failure_terminal_true_on_max_iterations_to_failure_terminal(self) -> None:
+        fsm = self._make_maintain_fsm(handler_failure=True)
+        runner = MockActionRunner()
+        runner.always_return(exit_code=0)
+
+        result = FSMExecutor(fsm, action_runner=runner).run()
+
+        assert result.final_state == "needs_attention"
+        assert result.terminated_by == "max_iterations_reached"
+        assert result.failure_terminal is True
+
+    def test_failure_terminal_false_on_max_iterations_to_plain_terminal(self) -> None:
+        fsm = self._make_maintain_fsm(handler_failure=False)
+        runner = MockActionRunner()
+        runner.always_return(exit_code=0)
+
+        result = FSMExecutor(fsm, action_runner=runner).run()
+
+        assert result.final_state == "needs_attention"
+        assert result.terminated_by == "max_iterations_reached"
+        assert result.failure_terminal is False
 
 
 class TestEvaluateLLMDisabled:

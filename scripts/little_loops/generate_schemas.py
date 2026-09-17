@@ -625,11 +625,13 @@ SCHEMA_DEFINITIONS: dict[str, dict[str, Any]] = {
                 "'host_budget_exceeded' (ENH-2453)."
             ),
             "failure_terminal": _bool(
-                "True when terminated_by='terminal' and the reached terminal state is "
-                "marked failure: true — the single source of truth for 'did this run "
-                "fail?', keyed on the flag rather than the state's name (ENH-2814). "
-                "Emitted unconditionally on every loop_complete; absent only in run "
-                "archives predating ENH-2814."
+                "True when the reached terminal state is marked failure: true — the "
+                "single source of truth for 'did this run fail?', keyed on the flag "
+                "rather than the state's name (ENH-2814). Holds regardless of whether "
+                "terminated_by is 'terminal', 'max_steps', or 'max_iterations_reached' "
+                "(BUG-3499: a step/iteration cap handler routing to a failure: true "
+                "terminal still reports true). Emitted unconditionally on every "
+                "loop_complete; absent only in run archives predating ENH-2814."
             ),
             "error": _str(
                 "Error message explaining why the loop crashed. "

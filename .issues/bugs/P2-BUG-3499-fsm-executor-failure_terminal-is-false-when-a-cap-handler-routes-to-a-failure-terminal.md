@@ -4,12 +4,13 @@ type: BUG
 title: 'FSM executor: failure_terminal is False when a cap handler routes to a failure
   terminal'
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 parent: EPIC-3493
 epic: EPIC-3493
 discovered_date: '2026-09-17'
 captured_at: '2026-09-17T06:08:37Z'
+completed_at: '2026-09-17T14:45:08Z'
 labels:
 - fsm
 - policy-builder
@@ -58,7 +59,7 @@ ENH-2814 made the terminal state's own `failure:` flag the single source of trut
 
 - **File**: `scripts/little_loops/fsm/executor.py`
 - **Anchor**: `FSMExecutor._finish` (line 4337)
-- **Cause**: `failure_terminal = terminated_by == "terminal" and self.current_state in (self.fsm.get_failure_states())` short-circuits to `False` whenever `terminated_by` is `"max_steps"` or `"max_iterations_reached"`, regardless of whether `self.current_state` is actually a failure terminal per `fsm.get_failure_states()`.
+- **Cause**: `failure_terminal = terminated_by == "terminal" and self.current_state in (self.fsm.get_failure_states())` short-circuits to `False` whenever `terminated_by` is `"max_steps"` or `"max_iterations_reached"`, regardless of whether `self.current_state` is actually a failure terminal per `fsm.get_failure_states()`. <!-- ll-evidence-ok: historical quote of the pre-fix line, fixed by this issue -->
 
 ## Proposed Solution
 
@@ -149,18 +150,40 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Acceptance Criteria
 
-- [ ] A loop whose `on_max_steps` handler is a `failure: true` terminal finishes with `final_state == <handler>`, `terminated_by == "max_steps"`, and `failure_terminal is True`.
-- [ ] The same holds for `on_max_iterations` with `terminated_by == "max_iterations_reached"`.
-- [ ] A cap handler without `failure: true` still reports `failure_terminal is False`.
-- [ ] Existing `TestGeneratedPolicyRouterFailureRouting` cases and the sub-loop `failure_terminal` propagation tests pass unchanged.
-- [ ] `docs/reference/API.md` (`ExecutionResult.failure_terminal`) states the cap-handler behavior.
+- [x] A loop whose `on_max_steps` handler is a `failure: true` terminal finishes with `final_state == <handler>`, `terminated_by == "max_steps"`, and `failure_terminal is True`.
+- [x] The same holds for `on_max_iterations` with `terminated_by == "max_iterations_reached"`.
+- [x] A cap handler without `failure: true` still reports `failure_terminal is False`.
+- [x] Existing `TestGeneratedPolicyRouterFailureRouting` cases and the sub-loop `failure_terminal` propagation tests pass unchanged.
+- [x] `docs/reference/API.md` (`ExecutionResult.failure_terminal`) states the cap-handler behavior.
+
+## Resolution
+
+Widened `FSMExecutor._finish`'s `failure_terminal` guard (`executor.py:4337`) to
+also cover `terminated_by in ("max_steps", "max_iterations_reached")`, so
+`failure_terminal` is derived from `self.current_state in
+fsm.get_failure_states()` for all three cap-eligible `terminated_by` values
+instead of only `"terminal"`. Added regression tests: `on_max_steps`/
+`on_max_iterations` routing to a `failure: true` terminal (`failure_terminal
+is True`) and to a plain terminal (`failure_terminal is False`), plus a
+sub-loop propagation test extending `TestSubLoopTimeoutRouting` confirming
+`child_result.failure_terminal` now propagates correctly into
+`captured.<state>.failure_terminal` for a cap-routed child. Updated the
+`ExecutionResult.failure_terminal` docstring, `docs/reference/API.md`,
+`docs/reference/EVENT-SCHEMA.md`, the `loop_complete` schema generator
+(regenerated `docs/reference/schemas/loop_complete.json`), `docs/reference/CLI.md`'s
+Exit Codes section, and `skills/audit-loop-run/SKILL.md`'s Step 6b verdict
+table to describe the widened contract. Existing `TestGeneratedPolicyRouterFailureRouting`
+and `test_enh2814_failure_terminal_e2e.py` cases pass unchanged, confirming
+the `terminated_by == "terminal"` branch's outcome is untouched.
 
 ## Status
 
-**Open** | Created: 2026-09-17 | Priority: P2
+**Done** | Created: 2026-09-17 | Priority: P2
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-17T14:44:44 - `831ff874-9606-413f-88b4-6fbb3d711210.jsonl`
+- `/ll:ready-issue` - 2026-09-17T14:25:41 - `b7634d2f-fb5f-45d7-8cb6-256da2b5e3e6.jsonl`
 - `/ll:confidence-check` - 2026-09-17T14:22:29 - `ad0165e0-dbbf-4a81-aec6-2d4b13f95bb6.jsonl`
 - `/ll:wire-issue` - 2026-09-17T06:43:41 - `848ad701-11e3-43ba-8e5b-b86aa9978421.jsonl`
 - `/ll:refine-issue` - 2026-09-17T06:25:28 - `6e94b71a-0dcd-458c-b8a3-312ff9bed181.jsonl`
