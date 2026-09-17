@@ -1,0 +1,172 @@
+name: verify-feat-3488-browser-persistence
+category: verification
+description: |
+  Browser-persistence verification for FEAT-3488 (policy builder offline
+  scenario suites) and its ENH-3487 baseline. Closes the gap ENH-3487's
+  "Option B" left to a manual browser checklist: generates the real
+  policy-router-builder.html, drives it headlessly with Playwright
+  (.loops/probes/feat-3488-browser-probes.mjs), and judges the deterministic
+  probe report against FEAT-3488's browser-facing acceptance criteria (suite
+  persistence, preset/undo, edit invalidation, full-wrapper persistence,
+  multi-mode reload, history isolation). The local-issue-import probe belongs
+  to FEAT-3503 and reports BLOCKED until that issue lands.
+
+  Dev-only, on-demand (run once at issue closure). Zero footprint in
+  scripts/tests/ or pyproject.toml: Playwright is resolved from the invoking
+  machine (LL_PLAYWRIGHT_ROOT / NODE_PATH / `npm root -g`) and the loop ends
+  in `skipped-no-playwright` — never a pass — when none is available. Probes
+  for FEAT-3488's own DOM report BLOCKED (not FAIL) until the selector block
+  at the top of the probe script is filled in after implementation.
+
+  Verdict is owned by the non-LLM probe run (exit code + marker line); the
+  `judge` state can only downgrade a passing run, never upgrade a failing one.
+scope:
+  - ".loops/runs/"
+context:
+  issue_id: FEAT-3488
+  probe_script: .loops/probes/feat-3488-browser-probes.mjs
+initial: preflight
+states:
+  preflight:
+    action_type: shell
+    # Everything is written under the per-run directory (MR-3).
+    action: |
+      mkdir -p "${context.run_dir}"
+      if ! command -v node >/dev/null 2>&1; then
+        echo "PLAYWRIGHT_MISSING: node not on PATH"
+        exit 0
+      fi
+      node ${context.probe_script:shell} --check > "${context.run_dir}/preflight.log" 2>&1
+      cat "${context.run_dir}/preflight.log"
+      exit 0
+    timeout: 120
+    evaluate:
+      type: output_contains
+      pattern: PLAYWRIGHT_OK
+    on_yes: generate
+    on_no: skipped-no-playwright
+    on_error: skipped-no-playwright
+
+  generate:
+    action_type: shell
+    # Real generator, real output — the same HTML an end user gets.
+    action: |
+      ll-artifact policy-builder -o "${context.run_dir}/html" > "${context.run_dir}/generate.log" 2>&1
+      if [ -s "${context.run_dir}/html/policy-router-builder.html" ]; then
+        echo "GENERATED ${context.run_dir}/html/policy-router-builder.html"
+      else
+        echo "GENERATE_FAILED"; cat "${context.run_dir}/generate.log"
+      fi
+      exit 0
+    timeout: 120
+    evaluate:
+      type: output_contains
+      pattern: GENERATED
+    on_yes: probe
+    on_no: failed
+    on_error: failed
+
+  probe:
+    action_type: shell
+    # Exit codes: 0 pass, 2 blocked-only, 1 fail, 3 infra. Recorded as a
+    # marker file so `classify` can branch without interpolating captured
+    # output into a shell body (MR-11). No pipe: exit code must be node's.
+    action: |
+      rm -f "${context.run_dir}/probes.blocked" "${context.run_dir}/probes.failed"
+      node ${context.probe_script:shell} \
+        "${context.run_dir}/html/policy-router-builder.html" \
+        "${context.run_dir}/probe-report.json" > "${context.run_dir}/probes.log" 2>&1
+      rc=$?
+      cat "${context.run_dir}/probes.log"
+      case "$rc" in
+        0) ;;
+        2) touch "${context.run_dir}/probes.blocked" ;;
+        *) touch "${context.run_dir}/probes.failed" ;;
+      esac
+      exit 0
+    timeout: 600
+    evaluate:
+      type: output_contains
+      pattern: BROWSER_PROBES_PASSED
+    on_yes: judge
+    on_no: classify
+    on_error: classify
+
+  classify:
+    action_type: shell
+    action: |
+      if [ -f "${context.run_dir}/probes.blocked" ] && [ ! -f "${context.run_dir}/probes.failed" ]; then
+        echo "BLOCKED_ONLY"
+      else
+        echo "HAS_FAILURES"
+        grep -E '^PROBE .* FAIL' "${context.run_dir}/probes.log" || true
+      fi
+    evaluate:
+      type: output_contains
+      pattern: BLOCKED_ONLY
+    on_yes: blocked-surface-missing
+    on_no: failed
+    on_error: failed
+
+  judge:
+    action_type: prompt
+    # Every probe passed. Ask the model to map the report back to the issue's
+    # acceptance criteria and catch any AC the probe set does not actually
+    # cover — this state can only downgrade a green run.
+    action: |
+      Read ${context.run_dir}/probe-report.json (the Playwright probe report for
+      the generated policy-router-builder.html) and the issue file for
+      ${context.issue_id} (`ll-issues show ${context.issue_id}`).
+
+      For each of FEAT-3488's browser-facing acceptance criteria — (a) scenarios
+      survive Save/Open/reload/undo, preset clears only that draft's suite and
+      one undo restores it, schemaVersion stays 1; (b) editing invalidates
+      results and preset/clear/undo plus suite controls pass the browser
+      workflow; (c) full draft wrappers survive edits, mode switches, Save/Open,
+      reload, undo/redo, and unknown sibling metadata, and preset/start-blank
+      clears only the destination suite atomically; (d) suites populated in two
+      modes survive reload and switching, and opening a project without a
+      stored mode never resurrects the old draft; (e) live drafts and history
+      share no mutable objects (Open → edit → undo restores pre-edit content) —
+      list which probe ids in the report evidence it, and name any criterion
+      clause that no probe exercised. Ignore the local-issue-import probe: it is
+      FEAT-3503's and may legitimately be absent or BLOCKED.
+      Do not run the probes again; report from the file.
+    timeout: 300
+    evaluate:
+      type: llm_structured
+      prompt: |-
+        Every browser probe in the report passed. Does the probe set, as reported,
+        give concrete evidence for each of FEAT-3488's browser-facing acceptance
+        criteria (a)–(e) listed in the prompt (the import probe is excluded)?
+
+        Answer YES only if every criterion is evidenced by at least one passing probe.
+        Answer NO if a probe failed, was blocked, or a criterion clause is clearly uncovered.
+        Answer CANNOT JUDGE if the report is missing or ambiguous — do not guess.
+        Provide a one-sentence reason naming the uncovered clause or probe if any.
+    on_yes: done
+    on_no: failed
+    on_partial: failed
+    on_blocked: failed
+    on_error: failed
+
+  done:
+    terminal: true
+  blocked-surface-missing:
+    # No probe failed, but FEAT-3488's DOM selectors are still unset in the
+    # probe script (feature not implemented yet, or selectors not filled in).
+    terminal: true
+    failure: true
+  skipped-no-playwright:
+    # A skipped verification is not a pass: Playwright/Chromium was not found
+    # on this machine. Install it (npx playwright install chromium) or point
+    # LL_PLAYWRIGHT_ROOT at a directory containing `playwright`.
+    terminal: true
+    failure: true
+  failed:
+    terminal: true
+    failure: true
+
+max_steps: 12
+max_iterations: 1
+timeout: 1500
