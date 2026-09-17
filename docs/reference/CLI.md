@@ -2468,9 +2468,10 @@ elided with `…` beyond that, e.g.
 `agents/openai.yaml (66: skills/align-issues/agents/openai.yaml, …)`.
 
 Also reports `missing_behavior_parity` (ENH-3045): a file ref in `## Summary`,
-`## Proposed Solution`, or `### Files to Modify` resolves and shares a line
+`## Proposed Solution`, or `### Files to Modify` resolves and shares a clause
 with a replacement keyword (`delete`, `remove`, `replace`, `rewrite`,
-`supersede`, `delegate`, and their inflections — same line only), while no
+`supersede`, `delegate`, and their inflections — same clause as the ref,
+split on `.`/`;` + whitespace-or-EOL or a spaced em dash), while no
 `### Behavior Parity` subsection exists under `## Integration Map`. Suppressed
 by `behavior_parity_not_applicable: true` in frontmatter (a human decision,
 never set by `/ll:refine-issue` or `/ll:wire-issue` themselves).

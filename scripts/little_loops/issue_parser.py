@@ -766,10 +766,12 @@ def check_format_gaps(
         missing_behavior_parity: a file ref in ``## Summary``,
             ``## Proposed Solution``, or ``### Files to Modify`` (ENH-3045)
             resolves (:func:`little_loops.text_utils.classify_file_ref`) and
-            shares a line with a replacement keyword (``delete``, ``remove``,
-            ``replace``, ``rewrite``, ``supersede``, ``delegate``, and their
-            inflections — same line only, no multi-line proximity window),
-            while no ``### Behavior Parity`` section exists
+            shares a clause with a replacement keyword (``delete``,
+            ``remove``, ``replace``, ``rewrite``, ``supersede``,
+            ``delegate``, and their inflections — same clause as the ref,
+            split on ``.``/``;`` + whitespace-or-EOL or a spaced em dash,
+            BUG-3494; no multi-line proximity window), while no
+            ``### Behavior Parity`` section exists
             (:func:`_heading_bodies`). Suppressed unconditionally by
             ``behavior_parity_not_applicable: true`` in frontmatter, a human
             decision mirroring ``program_design_not_applicable`` — refine and
@@ -1136,7 +1138,11 @@ def check_format_gaps(
                     (
                         ln
                         for ln in scope_lines
-                        if ref in ln and _BEHAVIOR_PARITY_KEYWORD_RE.search(ln)
+                        if ref in ln
+                        and any(
+                            _BEHAVIOR_PARITY_KEYWORD_RE.search(clause)
+                            for clause in _behavior_parity_ref_clauses(ref, ln)
+                        )
                     ),
                     None,
                 )
@@ -1985,8 +1991,9 @@ def _paragraph_spans(text: str) -> list[tuple[int, int]]:
 
 
 # ENH-3045: closed replacement-keyword list for the missing_behavior_parity
-# gap class — matched as whole words, same line as the ref only (Program
-# Design § Decision Rules condition 3; no multi-line proximity window in v1).
+# gap class — matched as whole words, same clause as the ref only (BUG-3494;
+# Program Design § Decision Rules condition 3; no multi-line proximity window,
+# no cross-clause window within the same line).
 _BEHAVIOR_PARITY_KEYWORD_RE = re.compile(
     r"\b("
     r"delete|deletes|deleted|"
@@ -1998,11 +2005,29 @@ _BEHAVIOR_PARITY_KEYWORD_RE = re.compile(
     r")\b",
     re.IGNORECASE,
 )
+# BUG-3494: clause boundary for scoping the keyword match to the ref's own
+# clause. A `.` or `;` followed by whitespace/end-of-line, or a spaced em
+# dash. Never a bare `.`: every file ref contains a dot (e.g. `foo.py`), so
+# splitting on a bare `.` would drop the ref from every fragment, hit the
+# fallback (whole line) for every ref, and silently revert to whole-line
+# matching.
+_BEHAVIOR_PARITY_CLAUSE_SPLIT_RE = re.compile(r"[.;](?=\s|$)| — ")
 # Scope condition (§ Decision Rules condition 1): only these sections name a
 # replacement target; ### Similar Patterns/Documentation/Tests and Current
 # Behavior/Session Log cite files as evidence or precedent, not as targets.
 _BEHAVIOR_PARITY_SCOPE_H2_SECTIONS = ("Summary", "Proposed Solution")
 _BEHAVIOR_PARITY_SCOPE_HEADINGS = ("Files to Modify",)
+
+
+def _behavior_parity_ref_clauses(ref: str, line: str) -> list[str]:
+    """Return every clause of *line* that contains *ref* (BUG-3494).
+
+    Splits on sentence/clause boundaries (``.``/``;`` + whitespace-or-EOL, or
+    a spaced em dash); falls back to ``[line]`` if no boundary isolates a
+    clause containing *ref*.
+    """
+    clauses = [c for c in _BEHAVIOR_PARITY_CLAUSE_SPLIT_RE.split(line) if ref in c]
+    return clauses if clauses else [line]
 
 
 def _behavior_parity_scope_text(content: str) -> str:

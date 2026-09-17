@@ -4,10 +4,11 @@ type: BUG
 title: format-check missing_behavior_parity false-positives on same-line unrelated
   keyword
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-16'
 captured_at: '2026-09-16T23:50:57Z'
+completed_at: '2026-09-17T03:22:27Z'
 confidence_score: 100
 outcome_confidence: 93
 score_complexity: 18
@@ -167,12 +168,30 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
+## Resolution
+
+**Fixed** in `scripts/little_loops/issue_parser.py`:
+
+- Added `_BEHAVIOR_PARITY_CLAUSE_SPLIT_RE` (module-level, alongside `_BEHAVIOR_PARITY_KEYWORD_RE`): splits on `.`/`;` followed by whitespace-or-EOL, or a spaced em dash — never a bare `.`, since every file ref contains a dot.
+- Added `_behavior_parity_ref_clauses(ref, line) -> list[str]`: returns every clause of `line` containing `ref`, falling back to `[line]` if no boundary isolates one.
+- Rewired the `missing_behavior_parity` loop (`check_format_gaps`) to require `any(_BEHAVIOR_PARITY_KEYWORD_RE.search(clause) for clause in _behavior_parity_ref_clauses(ref, ln))` instead of a whole-line search. The full line is still passed to `classify_file_ref` so the `(new)` planned-file marker detection is unaffected.
+- Updated the `_BEHAVIOR_PARITY_KEYWORD_RE` comment and the `check_format_gaps` docstring from "same line only" to the clause-scoped rule; updated `docs/reference/CLI.md` and `docs/reference/API.md` in lockstep.
+- No preservation-phrase suppression regex added, per Decision Rules — clause scoping alone resolves the motivating case.
+
+**Tests**:
+- `scripts/tests/test_issue_parser.py::TestBehaviorParityRefClauses` — direct unit coverage of `_behavior_parity_ref_clauses` (dotted-ref exclusion, whole-line fallback, multi-occurrence, em-dash split).
+- `scripts/tests/test_ll_issues_format_check.py::TestMissingBehaviorParity` — added `test_no_gap_when_keyword_and_ref_in_different_clauses_same_line` (the exact BUG-3489 line shape), `test_fires_when_dotted_ref_and_keyword_share_clause` (bare-`.` split regression guard), `test_fires_when_ref_appears_twice_and_one_clause_has_keyword`, and `test_no_gap_when_new_marker_outside_ref_clause`.
+
+Full suite: `python -m pytest scripts/tests/` — 24885 passed, 51 skipped, 1 pre-existing unrelated failure (`test_verify_evidence.py::TestRepoGate::test_no_new_unverifiable_evidence`, an evidence-gate hit on BUG-3484's issue file, confirmed present before this change). `ruff check` clean on all modified files.
+
 ## Status
 
 **Open** | Created: 2026-09-16 | Priority: P3
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-17T03:22:11 - `e90acf79-3292-400e-b4dc-0ab9e3ab080d.jsonl`
+- `/ll:ready-issue` - 2026-09-17T03:05:17 - `a0b2278c-4125-4fa2-b108-01dd2c46f2fa.jsonl`
 - `/ll:confidence-check` - 2026-09-17T01:08:56 - `ae99228e-3471-4fad-8866-312d4f078228.jsonl`
 - `/ll:wire-issue` - 2026-09-17T00:46:52 - `be8b47b1-6882-43b4-b784-fa09f67d3d72.jsonl`
 - `/ll:refine-issue` - 2026-09-17T00:38:51 - `8d361261-7d23-4528-9cc0-b68e6d88c4d7.jsonl`

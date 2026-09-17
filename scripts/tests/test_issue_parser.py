@@ -4871,14 +4871,14 @@ class TestPriorityRegexCompletenessAllowlist:
             177: "resolve_issue_path's P-TYPE-NNN user-input parsing; priority captured from "
             "input, not resolved planning priority",
             351: "docstring for is_normalized",
-            1043: "BUG-3286 step 6: priority_drift gap detection compares filename vs. "
+            1045: "BUG-3286 step 6: priority_drift gap detection compares filename vs. "
             "frontmatter directly by design — drift IS the comparison, not a resolution",
-            1956: "_DEP_ID_RE (BUG-3059): dependency-ID shape validation; optional prefix "
+            1962: "_DEP_ID_RE (BUG-3059): dependency-ID shape validation; optional prefix "
             "group discarded",
-            4100: "comment describing the P[0-5]-NNN- filename shape",
-            4104: "_parse_type_and_id's directory-fallback number extraction; priority digit "
+            4125: "comment describing the P[0-5]-NNN- filename shape",
+            4129: "_parse_type_and_id's directory-fallback number extraction; priority digit "
             "skipped over, not read as a value",
-            4125: "_generate_id_from_filename strips a leading priority token before "
+            4150: "_generate_id_from_filename strips a leading priority token before "
             "digit-scanning for ID generation",
         },
         "issues/prose_deps.py": {
@@ -6748,6 +6748,46 @@ class TestBehaviorParityHeadingDetection:
             "### Behavior Parity — skills/link-epics/SKILL.md\n\n| a | b | c | d |\n"
         )
         assert _heading_bodies(content, "Behavior Parity") == []
+
+
+class TestBehaviorParityRefClauses:
+    """`_behavior_parity_ref_clauses()` clause-scoping helper (BUG-3494).
+
+    Guards specifically against a bare-`.` split: every file ref contains a
+    dot, so splitting on a bare `.` would drop the ref from every fragment
+    and silently fall back to whole-line matching (a no-op fix).
+    """
+
+    def test_dotted_ref_clause_excludes_other_sentence(self) -> None:
+        from little_loops.issue_parser import _behavior_parity_ref_clauses
+
+        clauses = _behavior_parity_ref_clauses(
+            "a/b.py", "Replace `a/b.py` now. Other text."
+        )
+        assert any("a/b.py" in c for c in clauses)
+        assert not any("Other text" in c for c in clauses)
+
+    def test_falls_back_to_whole_line_when_no_boundary_isolates_ref(self) -> None:
+        from little_loops.issue_parser import _behavior_parity_ref_clauses
+
+        line = "no boundary here mentions a/b.py directly"
+        assert _behavior_parity_ref_clauses("a/b.py", line) == [line]
+
+    def test_returns_every_clause_containing_a_repeated_ref(self) -> None:
+        from little_loops.issue_parser import _behavior_parity_ref_clauses
+
+        clauses = _behavior_parity_ref_clauses(
+            "a/b.py", "Replace `a/b.py`; the tests for `a/b.py` are untouched."
+        )
+        assert len(clauses) == 2
+
+    def test_splits_on_spaced_em_dash(self) -> None:
+        from little_loops.issue_parser import _behavior_parity_ref_clauses
+
+        clauses = _behavior_parity_ref_clauses(
+            "a/b.py", "This removes the old default — `a/b.py` is untouched."
+        )
+        assert not any("removes" in c for c in clauses if "a/b.py" in c)
 
 
 class TestParseIssueFilename:

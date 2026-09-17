@@ -1199,6 +1199,99 @@ class TestMissingBehaviorParity:
         assert result == 1
         assert payload["missing_behavior_parity"] == ["scripts/little_loops/session_store.py"]
 
+    def test_no_gap_when_keyword_and_ref_in_different_clauses_same_line(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """BUG-3494: keyword describing something else must not fire on an
+        unrelated ref that is explicitly untouched in its own clause."""
+        self._write_bug_with_summary(
+            format_check_dir,
+            "BUG-9707",
+            "This fabricates evidence of the same class this issue removes. "
+            "`scripts/little_loops/session_store.py`'s separate aggregate-only "
+            "parser is untouched.",
+        )
+
+        with patch("little_loops.text_utils.subprocess.run", return_value=_RESOLVED_GIT_LS_FILES):
+            result = _invoke(
+                ["ll-issues", "format-check", "BUG-9707", "--config", str(temp_project_dir)]
+            )
+        out, _ = capsys.readouterr()
+
+        assert result == 0
+        assert "missing_behavior_parity" not in out
+
+    def test_fires_when_dotted_ref_and_keyword_share_clause(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Guards against a bare-`.` split reverting to whole-line matching."""
+        self._write_bug_with_summary(
+            format_check_dir,
+            "BUG-9708",
+            "Replace `scripts/little_loops/session_store.py` with a thin shim.",
+        )
+
+        with patch("little_loops.text_utils.subprocess.run", return_value=_RESOLVED_GIT_LS_FILES):
+            result = _invoke(
+                ["ll-issues", "format-check", "BUG-9708", "--config", str(temp_project_dir)]
+            )
+        out, _ = capsys.readouterr()
+
+        assert result == 1
+        assert "missing_behavior_parity: scripts/little_loops/session_store.py" in out
+
+    def test_fires_when_ref_appears_twice_and_one_clause_has_keyword(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        self._write_bug_with_summary(
+            format_check_dir,
+            "BUG-9709",
+            "Replace `scripts/little_loops/session_store.py`; the tests for "
+            "`scripts/little_loops/session_store.py` are untouched.",
+        )
+
+        with patch("little_loops.text_utils.subprocess.run", return_value=_RESOLVED_GIT_LS_FILES):
+            result = _invoke(
+                ["ll-issues", "format-check", "BUG-9709", "--config", str(temp_project_dir)]
+            )
+        out, _ = capsys.readouterr()
+
+        assert result == 1
+        assert "missing_behavior_parity: scripts/little_loops/session_store.py" in out
+
+    def test_no_gap_when_new_marker_outside_ref_clause(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """The full line (not the clause) still drives classify_file_ref's
+        `(new)` marker detection, so a planned-new ref never fires."""
+        self._write_bug_with_summary(
+            format_check_dir,
+            "BUG-9710",
+            "This deletes the old helper. `scripts/little_loops/session_store.py` "
+            "(new) replaces it.",
+        )
+
+        with patch("little_loops.text_utils.subprocess.run", return_value=_RESOLVED_GIT_LS_FILES):
+            result = _invoke(
+                ["ll-issues", "format-check", "BUG-9710", "--config", str(temp_project_dir)]
+            )
+        out, _ = capsys.readouterr()
+
+        assert result == 0
+        assert "missing_behavior_parity" not in out
+
 
 # ---------------------------------------------------------------------------
 # TestSoftDepHardEdge (ENH-3046)
