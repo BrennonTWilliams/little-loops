@@ -1061,6 +1061,7 @@ def _build_final_config(
         {
             "project_name": name,
             "src_dir": src_dir,
+            "test_dir": test_dir,
             "product_enabled": "product" in selected_set,
             "analytics_enabled": "analytics" in selected_set,
             "context_monitor_enabled": "context_monitor" in selected_set,
