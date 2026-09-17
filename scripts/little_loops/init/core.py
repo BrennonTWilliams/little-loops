@@ -325,6 +325,8 @@ def build_config(
         project["name"] = choices["project_name"]
     if choices.get("src_dir"):
         project["src_dir"] = choices["src_dir"]
+    if choices.get("test_dir"):
+        project["test_dir"] = choices["test_dir"]
     if choices.get("test_cmd"):
         project["test_cmd"] = choices["test_cmd"]
     if choices.get("lint_cmd"):

@@ -29,9 +29,17 @@ from little_loops.init.validate import DepWarning
 Provenance = Literal["declared", "inferred", "default", "existing", "flag", "recommended"]
 
 # Flat build_config choice keys for the project.* command fields, in display order.
-_PROJECT_FIELDS: tuple[str, ...] = ("src_dir", "test_cmd", "lint_cmd", "type_cmd", "format_cmd")
+_PROJECT_FIELDS: tuple[str, ...] = (
+    "src_dir",
+    "test_dir",
+    "test_cmd",
+    "lint_cmd",
+    "type_cmd",
+    "format_cmd",
+)
 _PROJECT_FIELD_LABELS: dict[str, str] = {
     "src_dir": "Source dir",
+    "test_dir": "Test dir",
     "test_cmd": "Test",
     "lint_cmd": "Lint",
     "type_cmd": "Type-check",
@@ -284,7 +292,15 @@ def build_proposal(
             fields["project.name"] = ProposedField(
                 "project.name", ex_proj["name"], "existing", evidence
             )
-        for name in ("src_dir", "test_cmd", "lint_cmd", "format_cmd", "type_cmd", "build_cmd"):
+        for name in (
+            "src_dir",
+            "test_dir",
+            "test_cmd",
+            "lint_cmd",
+            "format_cmd",
+            "type_cmd",
+            "build_cmd",
+        ):
             if ex_proj.get(name):
                 choices[name] = ex_proj[name]
                 fields[f"project.{name}"] = ProposedField(
