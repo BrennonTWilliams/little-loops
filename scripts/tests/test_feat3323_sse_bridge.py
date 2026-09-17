@@ -200,10 +200,18 @@ class TestSseBridgeFanIn:
     # BUG-3484: this test's own legitimate worst-case wall-clock budget (two
     # producers + a full SseBridge, 5 real thread hops, generous per-step
     # timeouts already widened twice for CPU-contention flakiness) sums to
-    # ~100-105s -- too close to the suite's global --timeout=120. When it
-    # tips over, pytest-timeout's thread-method watchdog can't interrupt a
-    # blocked recv()/thread-join and hard-kills the whole xdist worker
-    # instead of just failing this test. 180s gives real headroom.
+    # ~100-105s. Under full-suite xdist CPU contention that legitimately
+    # exceeded the suite's global --timeout=120 (and even
+    # @pytest.mark.timeout(180) under extreme contention), pytest-timeout's
+    # thread-method watchdog can't interrupt a blocked C-level recv()/
+    # thread-join and hard-kills the whole xdist worker (os._exit) instead
+    # of failing just this test.
+    #
+    # Structural fix (BUG-2523): skip on xdist workers via the
+    # no_parallel marker. The test only runs on the controller (or in a
+    # serial `-n 0` invocation), where CPU contention is absent and the
+    # legitimate 100-105s wall-clock budget is safe.
+    @pytest.mark.no_parallel
     @pytest.mark.timeout(180)
     def test_two_producers_reach_one_client_with_distinct_producer_pid(
         self, short_tmp_path: Path, tmp_path: Path
