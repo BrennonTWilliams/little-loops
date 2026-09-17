@@ -106,6 +106,9 @@ _Added by `/ll:refine-issue` — 2026-09-17 — based on codebase analysis:_
 - `scripts/tests/test_enh3035_artifact_template_kit.py:22,62-68` — byte-compares `cmd_policy_builder()`'s output against `scripts/tests/fixtures/policy_builder/golden_policy_router_builder.html`; does not execute the generated JS (no jsdom/Playwright), so `hydrateFromStorage`/`restoreFromSnapshot`/the Open handler are not exercised by this test.
 - `.loops/probes/feat-3488-browser-probes.mjs:147-157` (`undo-redo-buttons-and-keys`, `needs: "ENH-3487"`) — the only test that actually drives `#undo-btn`/`#redo-btn`/`#add-rule` in a real browser.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/artifact/__init__.py:48,197` — imports `cmd_policy_builder` (`:48`) and dispatches to it from `main_artifact()` (`:197`); the only in-repo registration point for the command, not previously listed alongside `policy_builder.py:102,115`.
+
 ### Conventions in Force
 - Helpers used by both the `.tmpl` glue (bare-name access via text-splicing) and `policy_validator.test.mjs` (real ES import) are exported so one declaration covers both call sites — evidence: `_emittedVerbs`/`_dispatchedDestinations` (`policy_builder_core.mjs:1923`, `:1961`), called bare in the template at `:458-459`/`:1222`. `export` has no effect on `.tmpl` access itself (single spliced script scope) — it only matters for the test's `import`.
 - New node:test cases for `policy_builder_core.mjs` append as flat `test("<behavior description>", ...)` blocks to the single file `scripts/tests/js/policy_validator.test.mjs`, grouped under a `// === <Feature> (ENH-nnnn/BUG-nnnn) ===` banner comment — no per-bug test file.
@@ -116,6 +119,10 @@ _Added by `/ll:refine-issue` — 2026-09-17 — based on codebase analysis:_
 - `scripts/tests/js/policy_validator.test.mjs:811-935` — existing `applyDraftEdit`/history coverage (`commit` push/clear-future, undo/redo across mode switch, 100-entry cap, and a deep-clone-of-caller's-object regression test at `:917`) — the `:917` test exercises `applyDraftEdit`'s own clone-on-push behavior for values passed via `edit.drafts`, but never constructs `history.present` by direct aliasing the way `hydrateFromStorage`/`restoreFromSnapshot`/Open do, so it does not cover this bug's aliasing scenario.
 - The bug's actual fix functions (`hydrateFromStorage`, `restoreFromSnapshot`, the Open handler) live only in the `.tmpl`, which is not a real ES module and is not importable into `node:test` — a node:test case per this issue's AC can only mirror the template's aliasing pattern using `applyDraftEdit` plus an inline clone (as the existing `:917` test already does), not call the `.tmpl` functions directly.
 - `.loops/probes/feat-3488-browser-probes.mjs` (`undo-redo-buttons-and-keys`, run via `.loops/verify-feat-3488-browser-persistence.yaml`) is the only test that exercises the real DOM/browser path end-to-end.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_policy_builder_emit.py:282-286` (`test_persistence_and_history_affordances_present`) — asserts `id="undo-btn"`/`id="redo-btn"` render; a static-HTML presence check unaffected by the aliasing fix (it doesn't drive the buttons) but not previously listed among this issue's test coverage — must keep passing.
+- `scripts/tests/test_policy_builder_node_gate.py` — subprocess-wraps `node --test scripts/tests/js/*.test.mjs` inside `python -m pytest`; this is the gate that will actually run the new aliasing-regression `node:test` case added to `policy_validator.test.mjs`.
 
 ## Program Design
 
@@ -167,5 +174,6 @@ _Added by `/ll:refine-issue` — 2026-09-17 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-17T23:03:05 - `419c6f2e-929d-4a69-8456-7e423aa988c1.jsonl`
 - `/ll:refine-issue` - 2026-09-17T22:37:43 - `1c385136-348a-4fc1-bc68-f7a10cf49f81.jsonl`
 - `/ll:format-issue` - 2026-09-17T22:29:59 - `34e9f824-2bf0-4bba-a2de-33614e4f363c.jsonl`
