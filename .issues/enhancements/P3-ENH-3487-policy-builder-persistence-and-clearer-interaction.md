@@ -186,6 +186,12 @@ _Added by `/ll:refine-issue` — 2026-09-16 — based on codebase analysis:_
 
 Terminal-destination analysis (binary `done`/`failed` model, per-mode `on_max_steps`/`on_error` divergence) moved to ENH-3492 with the open decision questions.
 
+_Added by `/ll:refine-issue` — 2026-09-17 — based on codebase analysis:_
+
+- Anchor re-verification (codebase-analyzer, 2026-09-17): commit `8faffee5a` ("fix(policy-builder): unify model validation, compiled Try-it evaluation, and parser parity", 2026-09-16 22:03:30-05:00) landed after the prior `/ll:verify-issues` pass (2026-09-17T02:36:58) and shifted every anchor this issue's Program Design/Root Cause sections cite. `policy-router-builder.html.tmpl` grew from 979 to 1037 lines; `policy_builder_core.mjs` grew from 1237 to 1711 lines. Corrected anchors (all confirmed by direct read): `updatePreview` `840-864`, `renderAll` `866-883`, `applyModeVisibility` `885-901`, `applyStateToForm` `906-912`, mode-switch `onchange` handler `921-926` (reseed comment `916-920`), clipboard copy `981-984`, download-blob handler `985-993`, "Start blank" handler `998-1003` (comment `994-997`), theme localStorage read `1007` inside `initTheme()` `1006-1022`, theme localStorage write `1028` inside the theme-toggle handler `1023-1029`; in `policy_builder_core.mjs`: `validateBuilderModel` `640-655`, `moveRule` `678-689` (was cited at `374-384`), `seedExample` `782-846`, `blankModel` `857-887`, `serializeLoopYaml` `1448-1456` (was cited at `1130`), the `window.PolicyBuilderCore` export bridge `1679-1711`.
+- New anchors not previously cited, relevant to the proposed `applyDraftEdit`/`serializeBuilderProject`/`parseBuilderProject` additions: `buildModel()` (`policy-router-builder.html.tmpl:248-268`) is the template's sole translation point from the live `state` object into the flat model shape `serializeLoopYaml`/`validateBuilderModel` expect — described in-code as "close to identity" (`:240-245`). `_cloneDims`/`_cloneOutcomes` (`policy_builder_core.mjs:694-699`) deep-copy `BUILTIN_FRONTMATTER_DIMENSIONS`/`LIFECYCLE_VERBS` before every reseed so no session mutates the shared constants — the same deep-copy discipline a `DraftHistory` snapshot would need for its `past`/`future` entries.
+- Repo-wide search confirms none of `applyDraftEdit`, `serializeBuilderProject`, `parseBuilderProject`, `DraftHistory`, `BuilderProject` exist in code today (hits only in this issue's and FEAT-3488's `.issues/` prose) — the proposed exports are net-new, not renames of existing symbols.
+
 ## Implementation Steps
 
 1. Add `applyDraftEdit`, `serializeBuilderProject`, `parseBuilderProject` to core.mjs with `node:test` cases and a golden `.project.json` fixture.
@@ -327,6 +333,7 @@ fixed, not an outstanding action item).
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-17T04:04:46 - `b5a5ae18-560d-4cc6-8aa5-4bcda8471436.jsonl`
 - `/ll:verify-issues` - 2026-09-17T02:36:58 - `ed6d999b-26a2-4d77-bbbf-604f7482188a.jsonl`
 - `/ll:verify-issues` - 2026-09-17T01:18:50 - `716b78b0-d53f-401a-997f-791cc3ac58be.jsonl`
 - manual review - 2026-09-16 - split into ENH-3491 (layout) and ENH-3492 (destinations); dropped BUG-3489 dependency; added node:test coverage requirement and project-envelope version policy
