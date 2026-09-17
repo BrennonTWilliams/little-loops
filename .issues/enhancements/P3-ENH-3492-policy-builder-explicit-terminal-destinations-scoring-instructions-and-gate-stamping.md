@@ -317,6 +317,7 @@ _Added by `/ll:confidence-check` on 2026-09-17_
 **Open** | Created: 2026-09-16 | Priority: P3
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-17T06:34:34 - `848ad701-11e3-43ba-8e5b-b86aa9978421.jsonl`
 - `/ll:verify-issues` - 2026-09-17T06:28:31 - `9b9f3eca-ed5d-4fd7-a99d-217cb278def3.jsonl`
 - manual review - 2026-09-17 - executor probe showed cap-routed `failure_terminal` is False; filed BUG-3499 and added to `depends_on`; max-steps AC asserts `terminated_by` now, `failure_terminal` after BUG-3499; rubric `on_max_steps` is an added line in the diff-shape AC
 - manual review - 2026-09-17 - resolved terminal-reference reservation contradiction; moved scoring metadata to grading prompts; fixed project-round-trip criteria; preserved wire protocols; clarified gate display and terminal summaries
