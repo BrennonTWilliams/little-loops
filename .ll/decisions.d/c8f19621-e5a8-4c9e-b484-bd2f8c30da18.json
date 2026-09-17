@@ -1,0 +1,12 @@
+{
+  "id": "4faf1432-81e1-4352-805b-104970d3386d",
+  "type": "decision",
+  "timestamp": "2026-09-17T04:27:57Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Option A's lock only spans cmd_next_id's own process lifetime and cannot close the read+write race; Option B reuses create_issue()'s proven .id-alloc.lock pattern without reopening BUG-1364's rejected reservation semantics.",
+  "rule": "Option B: leave next-id unlocked/documented as read-only; migrate automated allocators onto create_issue()",
+  "scope": "issue",
+  "alternatives_rejected": "Option A: lock get_next_issue_number/cmd_next_id directly",
+  "issue": "BUG-3497"
+}

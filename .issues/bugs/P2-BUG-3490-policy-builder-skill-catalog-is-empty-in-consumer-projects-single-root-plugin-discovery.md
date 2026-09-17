@@ -17,6 +17,12 @@ relates_to:
 - BUG-3486
 - BUG-3489
 - FEAT-3474
+confidence_score: 100
+outcome_confidence: 74
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 10
 ---
 
 # BUG-3490: Policy builder skill catalog is empty in consumer projects (single-root plugin discovery)
@@ -248,6 +254,7 @@ finding).
 **Open** | Created: 2026-09-16 | Priority: P2
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-17T04:31:32 - `1c7e1952-6f1b-429e-af4d-c5a7864db3c5.jsonl`
 - `/ll:ready-issue` - 2026-09-17T04:18:59 - `e8577901-f5fd-435d-a8d3-7899337fe38e.jsonl`
 - `/ll:reconcile-issue` - 2026-09-17T04:02:23 - `7449e8a1-db4e-4752-8942-1052ea200f2a.jsonl`
 - `/ll:verify-issues` - 2026-09-17T04:00:15 - `b5a5ae18-560d-4cc6-8aa5-4bcda8471436.jsonl`

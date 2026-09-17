@@ -9,7 +9,7 @@ labels:
 - issue-capture
 - concurrency
 - hub
-decision_needed: true
+decision_needed: false
 learning_tests_required:
 - jinja2
 ---
@@ -137,8 +137,8 @@ _Added by `/ll:refine-issue` — 2026-09-17 — based on codebase analysis:_
 | **Total** | **5/12** | **7/12** |
 
 **Key evidence:**
-- Option A: `cmd_next_id` (`little_loops/cli/issues/next_id.py:23-38`) is a separate CLI invocation that prints and exits — a lock held for its duration cannot span into a later, separate file write, so it doesn't close the race it targets. The hand-increment batch instruction BUG-1364 flagged for removal is still present verbatim in `commands/scan-codebase.md:230` (and mirrored in `.gemini/`, `.kimi-code/`, `.qwen/` copies).
-- Option B: `create_issue()` (`little_loops/cli/issues/create.py:406-499`) is the only clean drop-in migration target found — `scripts/little_loops/sync.py:_create_local_issue()` (line 660/681/753) is a genuine unlocked "read-then-hand-write" caller with a `BRConfig` already in scope. `little_loops/cli/issues/normalize.py`'s `_alloc()` (lines 302-309, 461) is a second unlocked caller but reassigns IDs on existing files rather than creating from a spec, so it is out of scope for a `create_issue()`-shaped migration and remains a residual gap to track separately.
+- Against Option A: `cmd_next_id` (`little_loops/cli/issues/next_id.py:23-38`) is a separate CLI invocation that prints and exits — a lock held for its duration cannot span into a later, separate file write, so it doesn't close the race it targets. The hand-increment batch instruction BUG-1364 flagged for removal is still present verbatim in `commands/scan-codebase.md:230` (and mirrored in `.gemini/`, `.kimi-code/`, `.qwen/` copies).
+- For Option B: `create_issue()` (`little_loops/cli/issues/create.py:406-499`) is the only clean drop-in migration target found — `scripts/little_loops/sync.py:_create_local_issue()` (line 660/681/753) is a genuine unlocked "read-then-hand-write" caller with a `BRConfig` already in scope. `little_loops/cli/issues/normalize.py`'s `_alloc()` (lines 302-309, 461) is a second unlocked caller but reassigns IDs on existing files rather than creating from a spec, so it is out of scope for a `create_issue()`-shaped migration and remains a residual gap to track separately.
 
 ## Integration Map
 
@@ -232,5 +232,6 @@ Steps to Reproduce verification note above.
 
 
 ## Session Log
+- `/ll:decide-issue` - 2026-09-17T04:28:33 - `2181bc0b-0c40-4859-b8bc-a71f05757ba2.jsonl`
 - `/ll:refine-issue` - 2026-09-17T04:20:13 - `e8577901-f5fd-435d-a8d3-7899337fe38e.jsonl`
 - `/ll:format-issue` - 2026-09-17T04:09:09 - `2a99ae96-959a-42e3-af68-3fbdce04f9f0.jsonl`
