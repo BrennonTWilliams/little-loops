@@ -552,14 +552,9 @@ function _checkIncompleteActions(model) {
   const out = [];
   for (const o of model.outcomes || []) {
     const at = o.actionType || "none";
-    if ((at === "prompt" || at === "slash_command") && !(o.body && String(o.body).trim())) {
-      out.push(
-        _diag(
-          "error",
-          "outcomes",
-          `Outcome "${o.name}" has no ${at === "prompt" ? "prompt text" : "skill selected"}.`
-        )
-      );
+    if ((at === "prompt" || at === "slash_command" || at === "shell") && !(o.body && String(o.body).trim())) {
+      const missing = at === "prompt" ? "prompt text" : at === "shell" ? "command" : "skill selected";
+      out.push(_diag("error", "outcomes", `Outcome "${o.name}" has no ${missing}.`));
     }
   }
   return out;
@@ -1052,6 +1047,171 @@ export function blankModel(mode = "decision_table") {
     fallback: "",
     outcomes: [],
   };
+}
+
+// ===========================================================================
+// Task presets (ENH-3491)
+// ===========================================================================
+//
+// TaskPreset {id, label, description, mode, build: () -> Model}. `mode` is
+// authoritative for the mode switch the template performs on apply (see the
+// Preset ↔ mode contract). Every `build()` returns a model shaped like
+// `seedExample`/`blankModel` output — never a shared reference to any module
+// constant (those already deep-clone dimensions/outcomes internally).
+function _presetLifecycleBase(name) {
+  const model = blankModel("issue_lifecycle");
+  model.name = name;
+  model.rules = [{ predicates: [], target: "prepare", isCatchall: true }];
+  model.fallback = "prepare";
+  return model;
+}
+
+function _outcomeByName(model, name) {
+  return model.outcomes.find((o) => o.name === name);
+}
+
+const _TASK_PRESETS = [
+  {
+    id: "document-improvement",
+    label: "Document improvement",
+    description: "Score a document against quality dimensions and repair the lowest scorers.",
+    mode: "rubric",
+    build: () => seedExample("rubric"),
+  },
+  {
+    id: "condition-based-routing",
+    label: "Condition-based routing",
+    description: "Route to named outcomes based on a table of conditions, in precedence order.",
+    mode: "decision_table",
+    build: () => seedExample("decision_table"),
+  },
+  {
+    id: "preparation",
+    label: "Preparation",
+    description: "Format and refine an issue up to a confidence gate; stops before implementation.",
+    mode: "issue_lifecycle",
+    build: () => {
+      const model = _presetLifecycleBase("prepare-issue-loop");
+      _outcomeByName(model, "prepare").transition = { kind: "goto", target: "refine" };
+      _outcomeByName(model, "refine").transition = { kind: "goto", target: "gate" };
+      _outcomeByName(model, "gate").transition = { kind: "finish" };
+      return model;
+    },
+  },
+  {
+    id: "implementation",
+    label: "Implementation",
+    description: "Prepare, then implement — no acceptance verification.",
+    mode: "issue_lifecycle",
+    build: () => {
+      const model = _presetLifecycleBase("implement-issue-loop");
+      _outcomeByName(model, "prepare").transition = { kind: "goto", target: "refine" };
+      _outcomeByName(model, "refine").transition = { kind: "goto", target: "gate" };
+      _outcomeByName(model, "gate").transition = { kind: "goto", target: "implement" };
+      _outcomeByName(model, "implement").transition = { kind: "finish" };
+      return model;
+    },
+  },
+  {
+    id: "implementation-with-verification",
+    label: "Implementation with verification",
+    description:
+      "Prepare, implement, then run a configurable acceptance-check command before finishing. " +
+      "Requires a command to be configured before it will export.",
+    mode: "issue_lifecycle",
+    build: () => {
+      const model = _presetLifecycleBase("implement-verify-issue-loop");
+      _outcomeByName(model, "prepare").transition = { kind: "goto", target: "refine" };
+      _outcomeByName(model, "refine").transition = { kind: "goto", target: "gate" };
+      _outcomeByName(model, "gate").transition = { kind: "goto", target: "implement" };
+      _outcomeByName(model, "implement").transition = { kind: "goto", target: "verify" };
+      const verify = _outcomeByName(model, "verify");
+      verify.actionType = "shell";
+      verify.body = "";
+      verify.args = "";
+      verify.transition = { kind: "finish" };
+      verify.verificationContract = "acceptance_exit_code";
+      return model;
+    },
+  },
+];
+
+/**
+ * The available task presets (ENH-3491). Returns fresh shallow copies of the
+ * preset descriptors (never the shared module array) — `build()` itself
+ * already returns a fresh model on every call.
+ * @returns {Array<{id: string, label: string, description: string, mode: string, build: () => Object}>}
+ */
+export function taskPresets() {
+  return _TASK_PRESETS.map((p) => ({ ...p }));
+}
+
+/**
+ * Summarize an issue_lifecycle model's reachable transitions, verification
+ * status, and step budget in plain language (ENH-3491). Pure — derived from
+ * `_emittedVerbs()`/outcome data, the same inputs `serializeLoopYaml`
+ * consumes, never from template `state` directly, so an outcome whose
+ * `actionType` changed away from `shell` is never reported as carrying an
+ * acceptance contract. A state merely *named* "verify" that isn't reachable
+ * (no rule/fallback/goto-chain reaches it) is not evidence of verification —
+ * `verification` stays "none" in that case.
+ * @param {Object} model  a builder model (see file-header model-shape contract)
+ * @returns {{steps: string[], stopsAfterImplement: boolean, verification: "acceptance"|"issue_validation"|"unconfigured"|"custom"|"none", stepsPerAttempt: number, attempts: number, maxStepsNote: string}}
+ */
+export function summarizeTransitions(model) {
+  const outcomeMap = new Map();
+  for (const o of model.outcomes || []) outcomeMap.set(o.name, o);
+  const verbs = _emittedVerbs(model);
+
+  const implementOutcome = verbs.includes("implement") ? outcomeMap.get("implement") : null;
+  const implementTransition = implementOutcome && implementOutcome.transition;
+  const stopsAfterImplement = !!implementOutcome && (!implementTransition || implementTransition.kind === "finish");
+
+  let verification = "none";
+  if (verbs.includes("verify")) {
+    const v = outcomeMap.get("verify");
+    const at = v ? v.actionType || "none" : "none";
+    if (at === "shell") {
+      const hasBody = v.body && String(v.body).trim();
+      verification = hasBody && v.verificationContract === "acceptance_exit_code" ? "acceptance" : "unconfigured";
+    } else if (at === "slash_command" && v.body === "/ll:verify-issues") {
+      verification = "issue_validation";
+    } else {
+      verification = "custom";
+    }
+  }
+
+  // stepsPerAttempt = score + policy_dispatch (2 fixed states) + the longest
+  // reachable verb chain from any dispatch target — a `goto` continues the
+  // chain, anything else (`rescore`/`finish`) ends it. A cycle guard prevents
+  // an infinite loop on an authored goto cycle (summary purposes only).
+  const chainLenFrom = (name, seen) => {
+    if (seen.has(name)) return 0;
+    seen.add(name);
+    const oc = outcomeMap.get(name);
+    const t = oc && oc.transition;
+    if (t && t.kind === "goto" && t.target && outcomeMap.has(t.target)) {
+      return 1 + chainLenFrom(t.target, seen);
+    }
+    return 1;
+  };
+  const dispatchTargets = new Set();
+  for (const r of model.rules || []) {
+    if (r.target && outcomeMap.has(r.target)) dispatchTargets.add(r.target);
+  }
+  if (model.fallback && outcomeMap.has(model.fallback)) dispatchTargets.add(model.fallback);
+  let chainLength = 0;
+  for (const target of dispatchTargets) {
+    chainLength = Math.max(chainLength, chainLenFrom(target, new Set()));
+  }
+  const stepsPerAttempt = 2 + chainLength;
+  const maxSteps = Number.isInteger(model.maxSteps) && model.maxSteps >= 1 ? model.maxSteps : 20;
+  const attempts = Math.floor(maxSteps / stepsPerAttempt);
+  const maxStepsNote =
+    `max steps ${maxSteps} ≈ ${attempts} attempt${attempts === 1 ? "" : "s"} of ` +
+    `${stepsPerAttempt} state${stepsPerAttempt === 1 ? "" : "s"} each`;
+
+  return { steps: verbs, stopsAfterImplement, verification, stepsPerAttempt, attempts, maxStepsNote };
 }
 
 /**
@@ -1881,5 +2041,8 @@ if (typeof window !== "undefined") {
     serializeBuilderProject,
     parseBuilderProject,
     applyDraftEdit,
+    // ENH-3491 (task presets, transition summary)
+    taskPresets,
+    summarizeTransitions,
   };
 }

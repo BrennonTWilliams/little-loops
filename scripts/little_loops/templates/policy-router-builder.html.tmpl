@@ -33,6 +33,9 @@ main {
   gap: 1.5rem;
   padding: 1.5rem;
 }
+@media (max-width: 600px) {
+  main { grid-template-columns: 1fr; }
+}
 .panel {
   border: 1px solid var(--color-border-default, #d0d0d0);
   border-radius: 8px;
@@ -139,14 +142,19 @@ small.help { display: block; opacity: 0.7; font-size: 0.75rem; }
 
   <main>
     <section class="panel" id="form-panel">
+      <div class="row" id="preset-row" style="margin-bottom:0.75rem;">
+        <span>Start from:</span>
+        <button id="start-blank-btn" type="button" class="secondary">Start blank</button>
+      </div>
+
       <fieldset>
         <legend>Identity</legend>
         <label for="f-name">Loop name</label>
         <input type="text" id="f-name" value="my-policy-loop" />
-        <label for="f-subject">What are you grading?</label>
-        <input type="text" id="f-subject" value="artifact.md" placeholder="e.g. artifact.md" />
-        <label for="f-maxsteps">Max steps</label>
-        <input type="number" id="f-maxsteps" value="20" min="1" />
+        <div id="subject-row">
+          <label for="f-subject">What are you grading?</label>
+          <input type="text" id="f-subject" value="artifact.md" placeholder="e.g. artifact.md" />
+        </div>
         <label for="f-desc">Description (optional)</label>
         <textarea id="f-desc"></textarea>
       </fieldset>
@@ -175,16 +183,6 @@ small.help { display: block; opacity: 0.7; font-size: 0.75rem; }
         <small class="help" id="dim-help">Boolean dimensions are scored 100/0 and compiled to numeric conditions.</small>
       </fieldset>
 
-      <fieldset id="outcomes-fieldset">
-        <legend>Outcomes</legend>
-        <div id="outcome-list"></div>
-        <div class="row" id="outcome-add-row">
-          <input type="text" id="outcome-name" placeholder="new outcome name" />
-          <button id="add-outcome" type="button">Add outcome</button>
-        </div>
-        <small class="help" id="outcome-help">Name each destination once; rules below route to these outcomes by name.</small>
-      </fieldset>
-
       <fieldset id="rules-fieldset">
         <legend>Rules (Decision Table)</legend>
         <div id="rule-list"></div>
@@ -210,11 +208,31 @@ priority: P2
 confidence_score: 40"></textarea>
         <p class="hint" id="fm-tryit-hint"></p>
       </fieldset>
+
+      <details id="advanced-details">
+        <summary>Advanced: action bindings and budget</summary>
+        <fieldset>
+          <legend>Budget</legend>
+          <label for="f-maxsteps">Max steps</label>
+          <input type="number" id="f-maxsteps" value="20" min="1" />
+        </fieldset>
+
+        <fieldset id="outcomes-fieldset">
+          <legend>Outcomes</legend>
+          <div id="outcome-list"></div>
+          <div class="row" id="outcome-add-row">
+            <input type="text" id="outcome-name" placeholder="new outcome name" />
+            <button id="add-outcome" type="button">Add outcome</button>
+          </div>
+          <small class="help" id="outcome-help">Name each destination once; rules below route to these outcomes by name.</small>
+        </fieldset>
+      </details>
     </section>
 
     <section class="panel">
       <h2 style="margin-top:0;font-size:1rem;">Result</h2>
       <p id="yaml-summary"></p>
+      <p class="hint" id="transition-summary" hidden></p>
       <ul class="messages" id="messages"></ul>
       <div class="row" style="margin-bottom:0.5rem;">
         <button id="copy-btn" type="button">Copy</button>
@@ -222,7 +240,6 @@ confidence_score: 40"></textarea>
         <button id="save-project-btn" type="button" class="secondary">Save project</button>
         <button id="open-project-btn" type="button" class="secondary">Open project</button>
         <input type="file" id="open-project-input" accept="application/json" hidden />
-        <button id="start-blank-btn" type="button" class="secondary">Start blank</button>
       </div>
       <p class="hint" id="live-status" role="status" aria-live="polite"></p>
       <p class="hint" id="validate-hint"></p>
@@ -414,13 +431,11 @@ function buildModel() {
     dimensions: state.dimensions,
     rules: state.rules.map((r) => ({ predicates: r.predicates, target: r.target, isCatchall: false })),
     fallback: state.fallback,
-    outcomes: state.outcomes.map((o) => ({
-      name: o.name,
-      actionType: o.actionType,
-      body: o.body,
-      args: o.args,
-      transition: o.transition,
-    })),
+    outcomes: state.outcomes.map((o) => {
+      const projected = { name: o.name, actionType: o.actionType, body: o.body, args: o.args, transition: o.transition };
+      if (o.verificationContract) projected.verificationContract = o.verificationContract;
+      return projected;
+    }),
   };
 }
 
@@ -450,6 +465,15 @@ function computeSummary(model) {
 
 // ---- renderers -----------------------------------------------------------
 const $ = (id) => document.getElementById(id);
+
+// ENH-3491: plain-language description + argument hint for a `/ll:<name>`
+// skill body, shown next to the skill <select> in both outcome editors.
+function _skillHintFor(body) {
+  const name = String(body || "").replace(/^\/ll:/, "");
+  const entry = CATALOG.find((s) => s.name === name);
+  if (!entry) return "";
+  return entry.args_hint ? `${entry.description || ""} — ${entry.args_hint}` : entry.description || "";
+}
 
 // FEAT-3474: built-in issue_lifecycle dimensions render locked (no ✕) in
 // #dim-list, ahead of any custom rows. Computed once from the normalized
@@ -556,13 +580,18 @@ function renderOutcomes() {
         const sel = document.createElement("select");
         sel.setAttribute("aria-label", "Skill");
         const blank = document.createElement("option"); blank.value = ""; blank.textContent = "— choose skill —"; sel.appendChild(blank);
+        const hint = document.createElement("small");
+        hint.className = "help";
         CATALOG.forEach((s) => {
           const o = document.createElement("option");
           o.value = "/ll:" + s.name; o.textContent = "/ll:" + s.name;
+          o.title = s.args_hint ? `${s.description || ""} ${s.args_hint}` : (s.description || "");
           if (o.value === oc.body) o.selected = true; sel.appendChild(o);
         });
-        sel.onchange = () => { oc.body = sel.value; updatePreview(); };
+        sel.onchange = () => { oc.body = sel.value; hint.textContent = _skillHintFor(oc.body); updatePreview(); };
+        hint.textContent = _skillHintFor(oc.body);
         bodyHost.appendChild(sel);
+        bodyHost.appendChild(hint);
       }
     }
     aSel.onchange = () => { oc.actionType = aSel.value; renderBody(); updatePreview(); };
@@ -611,7 +640,7 @@ function renderOutcomes() {
 function renderLifecycleOutcomes() {
   const host = $("outcome-list");
   host.innerHTML = "";
-  state.outcomes.forEach((oc) => {
+  state.outcomes.forEach((oc, oi) => {
     const grp = document.createElement("div");
     grp.className = "outcome-group";
 
@@ -631,6 +660,19 @@ function renderLifecycleOutcomes() {
       help.textContent =
         "ll-auto also applies your project's confidence threshold; add --force-implement here to skip it.";
       skillRow.appendChild(help);
+    } else if (oc.actionType === "shell") {
+      const cmdInput = document.createElement("input");
+      cmdInput.type = "text";
+      cmdInput.value = oc.body || "";
+      cmdInput.placeholder = "path/to/acceptance-check.sh";
+      cmdInput.setAttribute("aria-label", `${oc.name} command`);
+      cmdInput.oninput = () => { oc.body = cmdInput.value; updatePreview(); };
+      skillRow.appendChild(cmdInput);
+      const help = document.createElement("small");
+      help.className = "help";
+      help.textContent =
+        "Receives the issue ID as its first argument, then any Args below. Exit 0 means the check passed.";
+      skillRow.appendChild(help);
     }
     const sel = document.createElement("select");
     sel.setAttribute("aria-label", `${oc.name} skill`);
@@ -641,17 +683,22 @@ function renderLifecycleOutcomes() {
       if (oc.actionType === "shell") blank.selected = true;
       sel.appendChild(blank);
     }
+    const skillHint = document.createElement("small");
+    skillHint.className = "help";
     CATALOG.forEach((s) => {
       const o = document.createElement("option");
       o.value = "/ll:" + s.name;
       o.textContent = "/ll:" + s.name;
+      o.title = s.args_hint ? `${s.description || ""} ${s.args_hint}` : (s.description || "");
       if (oc.actionType === "slash_command" && o.value === oc.body) o.selected = true;
       sel.appendChild(o);
     });
+    skillHint.textContent = _skillHintFor(oc.body);
     sel.onchange = () => {
       if (sel.value) {
         oc.actionType = "slash_command";
         oc.body = sel.value;
+        delete oc.verificationContract;
       } else if (oc.name === "implement") {
         oc.actionType = "shell";
         oc.body = "ll-auto --only";
@@ -659,7 +706,28 @@ function renderLifecycleOutcomes() {
       renderAll();
     };
     skillRow.appendChild(sel);
+    skillRow.appendChild(skillHint);
     grp.appendChild(skillRow);
+
+    if (oc.actionType === "shell") {
+      const contractRow = document.createElement("div");
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.id = `oc-contract-${oi}`;
+      cb.checked = oc.verificationContract === "acceptance_exit_code";
+      cb.onchange = () => {
+        if (cb.checked) oc.verificationContract = "acceptance_exit_code";
+        else delete oc.verificationContract;
+        updatePreview();
+      };
+      const lbl = document.createElement("label");
+      lbl.setAttribute("for", `oc-contract-${oi}`);
+      lbl.style.display = "inline";
+      lbl.style.margin = "0 0 0 0.35rem";
+      lbl.textContent = "Exit code 0 means acceptance checks passed";
+      contractRow.append(cb, lbl);
+      grp.appendChild(contractRow);
+    }
 
     const argsRow = document.createElement("div");
     argsRow.innerHTML = `<label>Args:</label>`;
@@ -1041,6 +1109,30 @@ function updatePreview() {
   $("yaml-summary").textContent = computeSummary(model);
   renderMessages(model, diagnostics);
   updateTryIt();
+
+  // ENH-3491: a collapsed advanced-details hides the field a diagnostic
+  // points at — force it open whenever an outcomes/maxSteps error exists.
+  // Never auto-closed (the user may be mid-edit elsewhere).
+  if (diagnostics.some((d) => d.severity === "error" && (d.field === "outcomes" || d.field === "maxSteps"))) {
+    $("advanced-details").open = true;
+  }
+
+  if (model.mode === "issue_lifecycle") {
+    const ts = summarizeTransitions(model);
+    const verificationText = {
+      acceptance: "a configured acceptance check (exit code)",
+      issue_validation: "issue-file validation (/ll:verify-issues), not acceptance verification",
+      unconfigured: "an unconfigured acceptance check — export is blocked until it has a command",
+      custom: "a custom action, not a recognized verification step",
+      none: "no verification",
+    }[ts.verification];
+    $("transition-summary").textContent =
+      `Reaches: ${ts.steps.length ? ts.steps.join(" → ") : "nothing yet"}. ` +
+      `Verification: ${verificationText}. ${ts.maxStepsNote}.`;
+    $("transition-summary").hidden = false;
+  } else {
+    $("transition-summary").hidden = true;
+  }
 }
 
 function renderAll() {
@@ -1064,6 +1156,7 @@ function renderAll() {
 
 function applyModeVisibility() {
   const isLifecycle = state.mode === "issue_lifecycle";
+  $("subject-row").hidden = isLifecycle;
   $("threshold-fieldset").hidden = state.mode !== "rubric";
   $("outcomes-fieldset").hidden = state.mode === "rubric";
   $("rules-fieldset").hidden = state.mode === "rubric";
@@ -1114,6 +1207,39 @@ $("mode-switch").onchange = (e) => {
   renderAll();
   commit();
 };
+// ENH-3491: apply a task preset. Cross-mode presets (Preset ↔ mode contract)
+// save the outgoing draft, switch the mode select, and replace only the
+// target mode's draft wrapper — same-mode presets take the same path minus
+// the select update. Exactly one commit() call, so exactly one history
+// entry either way (one undo restores both activeMode and that mode's
+// prior draft when the mode changed).
+function applyPreset(preset) {
+  drafts = { ...drafts, [state.mode]: { model: state } };
+  if (preset.mode !== state.mode) {
+    $("mode-switch").value = preset.mode;
+  }
+  const model = preset.build();
+  drafts = { ...drafts, [preset.mode]: { model } };
+  state = model;
+  applyStateToForm();
+  applyModeVisibility();
+  renderAll();
+  commit();
+}
+
+function renderPresetButtons() {
+  const host = $("preset-row");
+  taskPresets().forEach((preset) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "secondary";
+    btn.textContent = preset.label;
+    btn.title = preset.description;
+    btn.onclick = () => applyPreset(preset);
+    host.appendChild(btn);
+  });
+}
+
 $("f-name").oninput = (e) => { state.name = e.target.value; updatePreview(); };
 $("f-subject").oninput = (e) => { state.subject = e.target.value; updatePreview(); };
 $("f-maxsteps").oninput = (e) => { state.maxSteps = Number(e.target.value) || 1; updatePreview(); };
@@ -1311,6 +1437,7 @@ $("theme-toggle").onclick = () => {
 
 // ---- bootstrap -----------------------------------------------------------
 initTheme();
+renderPresetButtons();
 hydrateFromStorage();
 applyModeVisibility();
 renderAll();

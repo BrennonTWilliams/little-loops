@@ -5,10 +5,11 @@ epic: EPIC-3493
 type: ENH
 title: Policy builder lifecycle layout, task presets, and execution summary
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-16'
 captured_at: '2026-09-16T22:49:50Z'
+completed_at: '2026-09-17T18:20:27Z'
 labels:
 - policy-builder
 decision_needed: false
@@ -258,6 +259,76 @@ fixed, not an outstanding action item).
 - Decisions log query returned no entries.
 - Proposal-vs-code consequence check (B6): no new issue found.
 
+## Resolution
+
+Implemented per the Proposed Solution and Program Design (no deviations):
+
+- **core.mjs (`policy_builder_core.mjs`)**: extended `_checkIncompleteActions` to flag
+  an empty `shell` body as an error (alongside the existing `prompt`/`slash_command`
+  cases). Added `taskPresets()` (the five documented presets, each `build()` returning
+  a fresh model — three lifecycle presets share a `_presetLifecycleBase()` helper) and
+  `summarizeTransitions(model)` (reachable-verb `steps`, `stopsAfterImplement`,
+  `verification` classification, `stepsPerAttempt`/`attempts` from the longest
+  reachable goto chain off any dispatch target, `maxStepsNote`). Both exported as
+  named exports and via `window.PolicyBuilderCore`.
+- **Template**: reordered lifecycle fieldsets to Fields → Rules → Try it → Export,
+  moving `#outcomes-fieldset` and the max-steps input into a new collapsed
+  `<details id="advanced-details">` that `updatePreview()` force-opens (never
+  auto-closes) whenever an `outcomes`/`maxSteps` error diagnostic exists. Wrapped
+  `#f-subject` in `#subject-row`, hidden in lifecycle mode via `applyModeVisibility`.
+  Added a `#preset-row` ("Start from:" + the five preset buttons + "Start blank")
+  and `applyPreset()`, which saves the outgoing draft, switches `#mode-switch` when
+  the preset's mode differs, replaces only the target mode's draft wrapper, and
+  calls `commit()` once (one history entry either way, per the Preset ↔ mode
+  contract). `buildModel()` now projects an outcome's `verificationContract` when
+  present. `renderLifecycleOutcomes()` gained: an editable command `<input>` for
+  non-`implement` `shell` outcomes, a `verificationContract` checkbox
+  (`id="oc-contract-<i>"`) shown only while `actionType === "shell"` and cleared
+  whenever the skill `<select>` picks a slash-command skill, and a skill
+  description/argument-hint `<small>` (also added to `renderOutcomes()`'s
+  slash_command branch and both `<option title>` attributes) via a shared
+  `_skillHintFor(body)` helper. Added `@media (max-width: 600px)` collapsing the
+  two-column grid to one column. `updatePreview()` renders a
+  `#transition-summary` line in lifecycle mode from `summarizeTransitions()`.
+- **`policy_builder.py`**: `_load_skill_catalog` now stamps `args_hint` from
+  `HelpEntry.argument_hint` on every catalog row (nullable).
+- **Fixtures/tests**: 12 new `node:test` cases in `policy_validator.test.mjs`
+  covering the shell empty-body diagnostic, preset shape/freshness/validation,
+  the unconfigured→configured verification-contract transition, the emitted
+  `verify` state's `on_error: failed`, contract clearing on `actionType` change,
+  unreachable-verify non-classification, chain-length arithmetic, a goto-cycle
+  guard, and branch-reachability. Added `test_skill_catalog_stamps_args_hint`,
+  `test_advanced_action_details_collapsed_by_default`, and
+  `test_task_preset_buttons_present_grouped_with_start_blank` to
+  `test_policy_builder_emit.py`. Added a new configured fixture pair
+  (`sample-issue-lifecycle-verification.{model.json,yaml}`, validating cleanly
+  with zero `validate_fsm` findings) wired into
+  `test_policy_builder_node_gate.py`'s `ll-loop validate` parametrize list, plus
+  three `FSMExecutor` end-to-end tests in `TestGeneratedPolicyRouterFailureRouting`
+  (acceptance-check success reaches `done`, nonzero exit reaches `failed` via
+  `on_error` without misclassifying as `INFRA_RETRY`, and an `implement` failure
+  never runs `verify`). Regenerated `golden_policy_router_builder.html`. Updated
+  `docs/reference/CLI.md` and `docs/guides/POLICY_ROUTER_GUIDE.md`.
+
+**Manual browser verification (AC "no page-level horizontal overflow... keyboard-operable"):**
+this session ran headlessly with no interactive browser available. The concrete,
+verifiable proxy landed instead: the `@media (max-width: 600px)` single-column
+rule, no new fixed-pixel widths introduced, and every new/changed control
+(command input, checkbox, preset buttons) uses the same labeled-input patterns
+already covered by `test_persistence_and_history_affordances_present`-style
+structural checks. **This is not a substitute for an actual 375px-viewport
+manual check** — that still needs a human with a browser before this AC is
+considered fully verified; flagging explicitly rather than claiming it was done.
+
+**Pre-existing, unrelated test failures observed in the full suite** (present
+before this session's changes; not touched by this issue):
+`test_verify_evidence.py::TestRepoGate::test_no_new_unverifiable_evidence` (flags
+a span in `P2-BUG-3484-sse-bridge-two-producers-test-crashes-xdist-worker-under-full-suite-cpu-contention.md`,
+untouched by this session) and a `pytest-xdist` worker crash on
+`test_feat3323_sse_bridge.py::TestSseBridgeFanIn::test_two_producers_reach_one_client_with_distinct_producer_pid`
+(passes in isolation with `-n0`; matches that same BUG-3484's documented
+worker-crash-under-contention class).
+
 ## Status
 
 **Open** | Created: 2026-09-16 | Priority: P3
@@ -281,6 +352,8 @@ Verdict: **VALID** (recheck confirms previous corrections remain current; no new
 All Program Design anchors verified accurate (buildModel line 405, updatePreview 1020, renderAll 1046, applyModeVisibility 1065, applyStateToForm 1086, validateBuilderModel 640, _checkIncompleteActions 551). Dependencies satisfied: BUG-3486 done with correct blocks entry, ENH-3487 done, ENH-3492 has correct blocked_by entry. No code changes to policy-builder files since last verify pass (2026-09-17T14:52:55). Evidence verification clean (0 findings). Decision rules query returned no conflicts. Proposal soundness check passed.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-17T18:19:39 - `ee3ca2cb-58cc-40fc-839a-9295dd1b7ed5.jsonl`
+- `/ll:ready-issue` - 2026-09-17T17:49:55 - `61a65e26-3231-44fc-82ed-feccd03666e2.jsonl`
 - `/ll:confidence-check` - 2026-09-17T15:23:30 - `edd8d3ee-219a-4f19-b572-8600a38aa1cc.jsonl`
 - `/ll:verify-issues` - 2026-09-17T15:08:39 - `defa41b0-42f9-4a0d-aaa2-260632de068b.jsonl`
 - manual review - 2026-09-17 - fixed contract-invalidation rule (body edits no longer clear `verificationContract`; checkbox UI defined); added cross-mode preset contract; replaced scenario-clearing clause with the draft-wrapper replacement rule; documented the `on_error: failed` + executor nonzero-exit mechanism and stub pitfalls; specified `maxStepsNote` arithmetic and advanced-`<details>` auto-open; rewrote superseded AC; marked confidence-check dependency concern resolved

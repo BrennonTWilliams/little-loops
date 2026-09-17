@@ -1,0 +1,83 @@
+name: sample-issue-lifecycle-verification
+description: |
+  Sample implementation-with-verification builder output used as an FSMExecutor fixture (ENH-3491).
+max_steps: 20
+
+import:
+  - lib/policy-router.yaml
+
+context:
+  frontmatter_dimensions: "status:string|priority:string|priority_rank:numeric|confidence_score:numeric|outcome_confidence:numeric|decision_needed:boolean|spike_needed:boolean|blocked_by:list|deferred_reason:string"
+  policy_rules: |
+    * -> prepare
+
+parameters:
+  issue_id:
+    type: string
+    required: true
+
+scope: ["."]
+
+# every verb is a /ll: skill; MR-12 would otherwise warn per verb state
+pruning_profile_ok: true
+
+on_max_steps: failed
+
+timeout: 14400
+
+initial: score
+
+states:
+  score:
+    fragment: frontmatter_scores
+    next: policy_dispatch
+    on_error: failed
+
+  policy_dispatch:
+    fragment: policy_table_dispatch
+    on_error: failed
+    route:
+      prepare: prepare
+      refine: refine
+      gate: gate
+      implement: implement
+      verify: verify
+      _: prepare
+      _error: failed
+
+  prepare:
+    action_type: slash_command
+    action: /ll:format-issue ${context.issue_id} --auto
+    next: refine
+    on_error: failed
+
+  refine:
+    action_type: slash_command
+    action: /ll:refine-issue ${context.issue_id} --auto
+    next: gate
+    on_error: failed
+
+  gate:
+    action_type: slash_command
+    action: /ll:confidence-check ${context.issue_id} --auto
+    next: implement
+    on_error: failed
+
+  implement:
+    action_type: shell
+    action: ll-auto --only ${context.issue_id:shell}
+    next: verify
+    on_error: failed
+
+  verify:
+    action_type: shell
+    action: scripts/ci/check-acceptance.sh ${context.issue_id:shell} --strict
+    next: done
+    on_error: failed
+
+  done:
+    terminal: true
+
+  failed:
+    terminal: true
+    failure: true

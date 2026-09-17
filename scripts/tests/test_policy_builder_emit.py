@@ -81,6 +81,19 @@ def _extract_grammar(html: str) -> dict:
     return json.loads(m.group(1))
 
 
+def _extract_skill_catalog(html: str) -> list[dict]:
+    """ENH-3491: extract the stamped skill catalog array.
+
+    Regexes the ``window.__SKILL_CATALOG__ = [...]`` assignment (an array,
+    unlike ``_extract_grammar``'s object-shaped pattern) out of the rendered
+    HTML — the ``/*__SKILL_CATALOG_JSON__*/`` source-only placeholder token is
+    replaced away at generation time and is never present to match.
+    """
+    m = re.search(r"window\.__SKILL_CATALOG__\s*=\s*(\[.*?\]);", html, re.DOTALL)
+    assert m, "skill catalog assignment not found in HTML"
+    return json.loads(m.group(1))
+
+
 def test_emitted_grammar_matches_canonical(tmp_path: Path) -> None:
     from little_loops.fsm.policy_rules import (
         _PRED_PATTERN,
@@ -101,6 +114,21 @@ def test_emitted_grammar_matches_canonical(tmp_path: Path) -> None:
     assert stamped["all_ops"] == canonical["all_ops"]
     # The stamped predicate regex is the JS-translated form of the canonical.
     assert stamped["pred_pattern"] == _py_pattern_to_js(_PRED_PATTERN.pattern)
+
+
+def test_skill_catalog_stamps_args_hint(tmp_path: Path) -> None:
+    """ENH-3491: `_load_skill_catalog` carries `HelpEntry.argument_hint` through
+    as a nullable `args_hint` key on every stamped row, and a skill with a
+    known hint stamps it verbatim.
+    """
+    html = _emit_html(tmp_path)
+    catalog = _extract_skill_catalog(html)
+    assert catalog, "expected a non-empty skill catalog"
+    for row in catalog:
+        assert "args_hint" in row
+    known = next((row for row in catalog if row["name"] == "manage-issue"), None)
+    assert known is not None, "expected 'manage-issue' in the stamped catalog"
+    assert known["args_hint"] == "[type] [action] [issue-id]"
 
 
 def test_golden_yaml_validates() -> None:
@@ -240,6 +268,34 @@ class TestFeat2301UsabilityStructural:
         assert 'id="open-project-input"' in html
         assert 'id="live-status"' in html
         assert 'aria-live="polite"' in html
+
+    def test_advanced_action_details_collapsed_by_default(self, tmp_path: Path) -> None:
+        """ENH-3491: action editors and the max-steps budget are collapsed by
+        default behind an advanced `<details>`, and rules/try-it precede it in
+        the markup (Fields, Rules, Try it, Export ordering)."""
+        html = _emit_html(tmp_path)
+        m = re.search(r'<details[^>]*id="advanced-details"[^>]*>', html)
+        assert m, 'expected a <details id="advanced-details"> wrapper'
+        assert "open" not in m.group(0), "advanced <details> must be collapsed by default"
+        details_block = re.search(
+            r'<details[^>]*id="advanced-details"[^>]*>.*?</details>', html, re.DOTALL
+        )
+        assert details_block is not None
+        assert 'id="outcomes-fieldset"' in details_block.group(0)
+        assert 'id="f-maxsteps"' in details_block.group(0)
+        assert html.index('id="rules-fieldset"') < html.index('id="advanced-details"')
+        assert html.index('id="tryit-fieldset"') < html.index('id="advanced-details"')
+
+    def test_task_preset_buttons_present_grouped_with_start_blank(self, tmp_path: Path) -> None:
+        """ENH-3491: preset buttons render (via taskPresets()) grouped with
+        Start blank, in every mode (not gated behind a mode check in markup)."""
+        html = _emit_html(tmp_path)
+        assert 'id="preset-row"' in html
+        preset_row = re.search(r'<div class="row" id="preset-row"[^>]*>.*?</div>', html, re.DOTALL)
+        assert preset_row is not None
+        assert 'id="start-blank-btn"' in preset_row.group(0)
+        assert "renderPresetButtons()" in html
+        assert "taskPresets()" in html
 
 
 class TestArtifactCLIDispatch:

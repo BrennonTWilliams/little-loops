@@ -2916,6 +2916,80 @@ class TestGeneratedPolicyRouterFailureRouting:
         assert not any("ll-auto" in call for call in runner.calls)
         assert not any("verify-issues" in call for call in runner.calls)
 
+    def test_implementation_with_verification_success_reaches_done(self, tmp_path: Path) -> None:
+        """ENH-3491: a configured acceptance-check `verify` exiting 0 reaches
+        `done` — the preset's exit-code contract, not merely dispatching the
+        command, means a pass."""
+        loop = self._load("sample-issue-lifecycle-verification.yaml", tmp_path)
+        loop.context["issue_id"] = "BUG-1"
+        runner = MockActionRunner()
+        runner.set_result("frontmatter_scores", exit_code=0)
+        runner.set_result("format-issue", exit_code=0)
+        runner.set_result("refine-issue", exit_code=0)
+        runner.set_result("confidence-check", exit_code=0)
+        runner.set_result("ll-auto --only", exit_code=0)
+        runner.set_result("scripts/ci/check-acceptance.sh", exit_code=0, output="acceptance ok")
+
+        executor = FSMExecutor(loop, action_runner=runner, working_dir=Path.cwd())
+        result = executor.run()
+
+        assert result.terminated_by == "terminal"
+        assert result.final_state == "done"
+        assert result.failure_terminal is False
+        assert any("check-acceptance.sh" in call for call in runner.calls)
+
+    def test_implementation_with_verification_nonzero_exit_reaches_failed(
+        self, tmp_path: Path
+    ) -> None:
+        """A nonzero acceptance-check exit routes to `failed` via `on_error`
+        (BUG-3489 mechanism) — not a silent pass. `stderr` is plain text, not
+        infra-looking (rate-limit/timeout phrasing), so the executor classifies
+        it as an ordinary failure rather than retrying (INFRA_RETRY)."""
+        loop = self._load("sample-issue-lifecycle-verification.yaml", tmp_path)
+        loop.context["issue_id"] = "BUG-1"
+        runner = MockActionRunner()
+        runner.set_result("frontmatter_scores", exit_code=0)
+        runner.set_result("format-issue", exit_code=0)
+        runner.set_result("refine-issue", exit_code=0)
+        runner.set_result("confidence-check", exit_code=0)
+        runner.set_result("ll-auto --only", exit_code=0)
+        runner.set_result(
+            "scripts/ci/check-acceptance.sh",
+            exit_code=1,
+            output="",
+            stderr="acceptance checks failed: 2 criteria unmet",
+        )
+
+        executor = FSMExecutor(loop, action_runner=runner, working_dir=Path.cwd())
+        result = executor.run()
+
+        assert result.terminated_by == "terminal"
+        assert result.final_state == "failed"
+        assert result.failure_terminal is True
+
+    def test_implementation_with_verification_implement_failure_never_runs_verify(
+        self, tmp_path: Path
+    ) -> None:
+        """A nonzero `implement` exit routes straight to `failed` — the
+        `verify` acceptance check never runs on a failed implementation."""
+        loop = self._load("sample-issue-lifecycle-verification.yaml", tmp_path)
+        loop.context["issue_id"] = "BUG-1"
+        runner = MockActionRunner()
+        runner.set_result("frontmatter_scores", exit_code=0)
+        runner.set_result("format-issue", exit_code=0)
+        runner.set_result("refine-issue", exit_code=0)
+        runner.set_result("confidence-check", exit_code=0)
+        runner.set_result("ll-auto --only", exit_code=1, output="", stderr="implementation failed")
+        runner.set_result("scripts/ci/check-acceptance.sh", exit_code=0)
+
+        executor = FSMExecutor(loop, action_runner=runner, working_dir=Path.cwd())
+        result = executor.run()
+
+        assert result.terminated_by == "terminal"
+        assert result.final_state == "failed"
+        assert result.failure_terminal is True
+        assert not any("check-acceptance.sh" in call for call in runner.calls)
+
 
 class TestEvents:
     """Tests for event emission."""

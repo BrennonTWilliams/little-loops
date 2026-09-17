@@ -36,6 +36,8 @@ import {
   serializeBuilderProject,
   parseBuilderProject,
   applyDraftEdit,
+  taskPresets,
+  summarizeTransitions,
 } from "../../little_loops/templates/policy_builder_core.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -630,6 +632,15 @@ test("validateBuilderModel flags an incomplete prompt/slash_command action", () 
   assert.ok(errors.some((d) => /has no prompt text/.test(d.message)));
 });
 
+test("validateBuilderModel flags an incomplete shell action (ENH-3491)", () => {
+  const model = seedExample("issue_lifecycle");
+  const verify = model.outcomes.find((o) => o.name === "verify");
+  verify.actionType = "shell";
+  verify.body = "";
+  const errors = validateBuilderModel(model).filter((d) => d.severity === "error");
+  assert.ok(errors.some((d) => /"verify" has no command/.test(d.message)));
+});
+
 test("validateBuilderModel flags a non-positive or non-integer step budget", () => {
   const model = seedExample("decision_table");
   for (const bad of [0, -5, 1.5, NaN]) {
@@ -900,4 +911,129 @@ test("applyDraftEdit deep-copies snapshots so later mutation of the caller's liv
   // Mutate the object that was pushed into `past` via the live reference.
   model.name = "mutated-after-the-fact";
   assert.equal(history.past[0].drafts.decision_table.model.name, originalName);
+});
+
+// ===========================================================================
+// Task presets + transition summary (ENH-3491)
+// ===========================================================================
+
+test("taskPresets returns the five documented presets with correct modes", () => {
+  const presets = taskPresets();
+  const byId = Object.fromEntries(presets.map((p) => [p.id, p]));
+  assert.equal(byId["document-improvement"].mode, "rubric");
+  assert.equal(byId["condition-based-routing"].mode, "decision_table");
+  assert.equal(byId["preparation"].mode, "issue_lifecycle");
+  assert.equal(byId["implementation"].mode, "issue_lifecycle");
+  assert.equal(byId["implementation-with-verification"].mode, "issue_lifecycle");
+  assert.equal(presets.length, 5);
+});
+
+test("taskPresets().build() returns a fresh model every call (no shared references)", () => {
+  const preset = taskPresets().find((p) => p.id === "preparation");
+  const a = preset.build();
+  const b = preset.build();
+  a.outcomes[0].body = "mutated";
+  assert.notEqual(b.outcomes[0].body, "mutated");
+});
+
+test("every preset except unconfigured implementation-with-verification validates cleanly", () => {
+  for (const preset of taskPresets()) {
+    if (preset.id === "implementation-with-verification") continue;
+    const model = preset.build();
+    const errors = validateBuilderModel(model).filter((d) => d.severity === "error");
+    assert.deepEqual(errors, [], `preset ${preset.id} should have no error diagnostics`);
+    assert.doesNotThrow(() => serializeLoopYaml(model), `preset ${preset.id} should serialize`);
+  }
+});
+
+test("implementation-with-verification preset is unconfigured until a command is set", () => {
+  const preset = taskPresets().find((p) => p.id === "implementation-with-verification");
+  const model = preset.build();
+  const errors = validateBuilderModel(model).filter((d) => d.severity === "error");
+  assert.ok(errors.some((d) => /"verify" has no command/.test(d.message)));
+  assert.equal(summarizeTransitions(model).verification, "unconfigured");
+
+  model.outcomes.find((o) => o.name === "verify").body = "scripts/check-acceptance.sh";
+  assert.deepEqual(validateBuilderModel(model).filter((d) => d.severity === "error"), []);
+  assert.equal(summarizeTransitions(model).verification, "acceptance");
+});
+
+test("implementation-with-verification preset's emitted verify state carries on_error: failed", () => {
+  const preset = taskPresets().find((p) => p.id === "implementation-with-verification");
+  const model = preset.build();
+  model.outcomes.find((o) => o.name === "verify").body = "scripts/check-acceptance.sh";
+  const yaml = serializeLoopYaml(model);
+  const verifyBlock = yaml.slice(yaml.indexOf("\n  verify:"));
+  assert.match(verifyBlock.split(/\n\n/)[0], /on_error: failed/);
+});
+
+test("summarizeTransitions: editing body/args preserves the contract; changing actionType off shell clears it", () => {
+  const preset = taskPresets().find((p) => p.id === "implementation-with-verification");
+  const model = preset.build();
+  const verify = model.outcomes.find((o) => o.name === "verify");
+  verify.body = "scripts/check-acceptance.sh";
+  verify.args = "--strict";
+  assert.equal(summarizeTransitions(model).verification, "acceptance");
+
+  verify.actionType = "slash_command";
+  verify.body = "/ll:verify-issues";
+  delete verify.verificationContract;
+  assert.equal(summarizeTransitions(model).verification, "issue_validation");
+});
+
+test("summarizeTransitions never reports acceptance verification for an unreachable verify state", () => {
+  const model = taskPresets()
+    .find((p) => p.id === "implementation")
+    .build();
+  // "implementation" preset never routes to verify — even if verify itself
+  // were configured as a shell acceptance check, it is unreachable.
+  const verify = model.outcomes.find((o) => o.name === "verify");
+  verify.actionType = "shell";
+  verify.body = "scripts/check-acceptance.sh";
+  verify.verificationContract = "acceptance_exit_code";
+  assert.equal(summarizeTransitions(model).verification, "none");
+  assert.ok(!summarizeTransitions(model).steps.includes("verify"));
+});
+
+test("summarizeTransitions computes stepsPerAttempt/attempts from the reachable goto chain", () => {
+  const model = taskPresets()
+    .find((p) => p.id === "implementation-with-verification")
+    .build();
+  model.outcomes.find((o) => o.name === "verify").body = "scripts/check-acceptance.sh";
+  model.maxSteps = 20;
+  // fallback "prepare" -> refine -> gate -> implement -> verify: chain of 5 verbs.
+  const summary = summarizeTransitions(model);
+  assert.equal(summary.stepsPerAttempt, 7);
+  assert.equal(summary.attempts, Math.floor(20 / 7));
+  assert.match(summary.maxStepsNote, /max steps 20/);
+});
+
+test("summarizeTransitions marks implement as stopping when its transition is finish", () => {
+  const model = taskPresets()
+    .find((p) => p.id === "implementation")
+    .build();
+  assert.equal(summarizeTransitions(model).stopsAfterImplement, true);
+});
+
+test("summarizeTransitions handles a goto cycle without infinite recursion", () => {
+  const model = blankModel("issue_lifecycle");
+  model.rules = [{ predicates: [], target: "refine", isCatchall: true }];
+  model.fallback = "refine";
+  const refine = model.outcomes.find((o) => o.name === "refine");
+  const gate = model.outcomes.find((o) => o.name === "gate");
+  refine.transition = { kind: "goto", target: "gate" };
+  gate.transition = { kind: "goto", target: "refine" }; // cycle
+  assert.doesNotThrow(() => summarizeTransitions(model));
+  const summary = summarizeTransitions(model);
+  assert.ok(summary.stepsPerAttempt > 0);
+});
+
+test("summarizeTransitions reflects only the branch reachable from rules/fallback", () => {
+  const model = seedExample("issue_lifecycle");
+  // Seeded rules route to verify/implement/refine with fallback "gate" — "prepare"
+  // is not targeted by any rule or the fallback, so it is not reachable.
+  const summary = summarizeTransitions(model);
+  assert.ok(!summary.steps.includes("prepare"));
+  assert.ok(summary.steps.includes("verify"));
+  assert.ok(summary.steps.includes("implement"));
 });

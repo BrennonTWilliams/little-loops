@@ -18,8 +18,8 @@ from little_loops.logger import Logger
 _TEMPLATES_DIR = Path(__file__).resolve().parent.parent.parent / "templates"
 
 
-def _load_skill_catalog(project_root: Path) -> list[dict[str, str]]:
-    """Enumerate installed skills + commands as ``{name, description}`` dicts.
+def _load_skill_catalog(project_root: Path) -> list[dict[str, str | None]]:
+    """Enumerate installed skills + commands as ``{name, description, args_hint}`` dicts.
 
     BUG-3490: *project_root* is retained for caller compatibility but no
     longer selects plugin content — the catalog root is resolved via
@@ -41,7 +41,7 @@ def _load_skill_catalog(project_root: Path) -> list[dict[str, str]]:
         return []
 
     entries = collect_entries(plugin_root)
-    by_name: dict[str, dict[str, str]] = {}
+    by_name: dict[str, dict[str, str | None]] = {}
     for entry in entries:
         existing = by_name.get(entry.name)
         if existing is not None and existing["kind"] == "skill":
@@ -50,11 +50,12 @@ def _load_skill_catalog(project_root: Path) -> list[dict[str, str]]:
             "name": entry.name,
             "description": entry.description,
             "kind": entry.kind,
+            "args_hint": entry.argument_hint,
         }
 
     return [
-        {"name": row["name"], "description": row["description"]}
-        for row in sorted(by_name.values(), key=lambda row: row["name"])
+        {"name": row["name"], "description": row["description"], "args_hint": row["args_hint"]}
+        for row in sorted(by_name.values(), key=lambda row: row["name"] or "")
     ]
 
 

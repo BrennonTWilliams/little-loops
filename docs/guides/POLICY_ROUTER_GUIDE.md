@@ -293,13 +293,29 @@ works over `file://`). It presents a one-page form with three modes:
   implement → verify, driven by its YAML frontmatter. See
   [Issue Lifecycle Mode](#issue-lifecycle-mode) below.
 
+Rules and "Try it" come before action bindings and the step budget, which are collapsed by
+default behind an "Advanced" disclosure — it opens itself the moment a diagnostic points at
+an outcome or the step budget, and is never auto-closed once you've opened it. A row of task
+presets ("Start from:", alongside "Start blank") seeds the whole form for a common shape —
+document improvement, condition-based routing, preparation, implementation, or implementation
+with verification — switching mode first if the preset needs one; applying a preset is one
+undoable edit, the same as any other change. The implementation-with-verification preset routes
+`implement` to a `verify` step that runs a shell command you configure (it receives the issue
+ID as its first argument, then any args you add) and treats a zero exit as "acceptance checks
+passed" — not the same claim as `/ll:verify-issues`'s issue-file validation, which the summary
+below is careful to distinguish. Each skill picker (Decision Table's "Run a skill" and Issue
+Lifecycle's per-verb skill dropdown) shows that skill's description and argument hint from the
+stamped catalog, so you don't have to leave the page to check what a skill expects.
+
 The page validates live (shadowed rules, unreachable outcomes, and unknown actions are flagged
 in plain language, referencing the visible rule numbers) and emits loop YAML behind a
-collapsed "View generated file" disclosure — the default view is a one-line plain summary plus
-Copy/Download, a Save project / Open project pair, and a printed destination path plus
-`ll-loop validate`/`ll-loop run` hint. The page seeds with a small runnable example on load;
-edits then persist automatically per mode (reload and mode switching restore your draft — a
-mode switch never discards work), with Undo/Redo (buttons or Ctrl/Cmd+Z / Ctrl/Cmd+Shift+Z)
+collapsed "View generated file" disclosure — the default view is a one-line plain summary
+(in Issue Lifecycle mode, also a transition summary: which verbs are reachable, whether
+verification is configured, and step budget expressed as attempts rather than a raw step
+count) plus Copy/Download, a Save project / Open project pair, and a printed destination path
+plus `ll-loop validate`/`ll-loop run` hint. The page seeds with a small runnable example on
+load; edits then persist automatically per mode (reload and mode switching restore your draft —
+a mode switch never discards work), with Undo/Redo (buttons or Ctrl/Cmd+Z / Ctrl/Cmd+Shift+Z)
 walking back through the whole session's edits. "Start blank" is the only control that
 discards a mode's draft, and even it pushes an Undo entry first. Its grammar, design-token
 theme, and skill catalog are **stamped from this project at generation time** (including the

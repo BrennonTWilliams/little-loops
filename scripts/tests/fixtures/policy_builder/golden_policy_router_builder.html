@@ -206,6 +206,9 @@ main {
   gap: 1.5rem;
   padding: 1.5rem;
 }
+@media (max-width: 600px) {
+  main { grid-template-columns: 1fr; }
+}
 .panel {
   border: 1px solid var(--color-border-default, #d0d0d0);
   border-radius: 8px;
@@ -305,21 +308,26 @@ small.help { display: block; opacity: 0.7; font-size: 0.75rem; }
   <!-- Stamped project-derived JSON globals (plain script, before the module). -->
   <script>
     window.__GRAMMAR_SPEC__ = {"ordered_ops": ["<", "<=", ">", ">="], "all_ops": ["!=", "<", "<=", "==", ">", ">="], "pred_pattern": "^(?<dim>[\\w][\\w\\s\\-]*?)\\s*:\\s*(?<op>>=|<=|==|!=|<|>)\\s*(?<value>\\S.*?)$"};
-    window.__SKILL_CATALOG__ = [{"name": "advise", "description": "Use when asked for a second opinion from a different, stronger model on a specific decision, question, or stalled judgment call."}, {"name": "align-issues", "description": "Validate active issues against key documents for relevance and alignment"}, {"name": "analyze-history", "description": "Use when asked about project health, velocity, bug trends, or whether we're making progress."}, {"name": "analyze-workflows", "description": "Analyze user message history to identify patterns, workflows, and automation opportunities"}, {"name": "audit-architecture", "description": "Analyze codebase architecture for patterns, organization, and improvements"}, {"name": "audit-claude-config", "description": "Use when asked to audit Claude Code config, validate plugin settings, or diagnose plugin issues."}, {"name": "audit-docs", "description": "Use when asked to audit documentation accuracy, coverage, or find documentation gaps."}, {"name": "audit-issue-conflicts", "description": "Use when asked to detect conflicting requirements or incompatible decisions across open issues."}, {"name": "audit-loop-run", "description": "Use when asked to assess loop effectiveness, audit goal achievement, or detect phantom success."}, {"name": "capture-issue", "description": "Use when asked to capture or create an issue from conversation or natural language."}, {"name": "check-code", "description": "Run code quality checks (lint, format, types, build)"}, {"name": "cleanup-loops", "description": "Use when asked to clean up stuck loops, kill dead loop processes, or troubleshoot loop state."}, {"name": "cleanup-worktrees", "description": "Clean orphaned git worktrees from interrupted ll-parallel/ll-loop runs"}, {"name": "commit", "description": "Create git commits with user approval and no assistant attribution"}, {"name": "compact-session", "description": "Use when asked to manually compact a session's memory, trigger session summarization, or reduce a long session's context footprint."}, {"name": "confidence-check", "description": "Use when asked for a pre-implementation confidence check or whether an issue is ready to implement."}, {"name": "configure", "description": "Use when asked to configure little-loops, change settings, or update ll-config.json."}, {"name": "create-eval-from-issues", "description": "Use when asked to generate an FSM eval harness YAML from one or more issue IDs, or DSL eval tasks from a loop/issue file with --dsl."}, {"name": "create-loop", "description": "Use when asked to create an automation loop or automate a recurring task with an FSM."}, {"name": "create-sprint", "description": "Create a sprint definition with a curated list of issues"}, {"name": "debug-loop-run", "description": "Use when asked to analyze loop execution history, investigate loop failures, or find loop issues."}, {"name": "decide-issue", "description": "Use when asked to select the winning implementation option for an issue with decision_needed."}, {"name": "describe-pr", "description": "Generate comprehensive PR descriptions following repository templates"}, {"name": "distill-traces", "description": "Use when asked to extract reusable loop patterns or YAML fragments from successful execution history."}, {"name": "explore-api", "description": "Use when exploring an external API/library and recording proof to the Learning Test Registry."}, {"name": "find-dead-code", "description": "Analyze codebase for deprecated, unused, or dead code that can be safely removed"}, {"name": "format-issue", "description": "Use when asked to format an issue or fix its template structure."}, {"name": "go-no-go", "description": "Use when asked for an adversarial go/no-go review or whether an issue is worth implementing."}, {"name": "handoff", "description": "Generate continuation prompt for session handoff"}, {"name": "help", "description": "List all available little-loops commands with descriptions"}, {"name": "improve-claude-md", "description": "Use when asked to improve or rewrite CLAUDE.md or increase LLM instruction adherence."}, {"name": "init", "description": "Use when asked to initialize little-loops, set up ll for a project, or bootstrap config."}, {"name": "issue-size-review", "description": "Use when asked to evaluate issue size, decompose large issues, or audit backlog complexity."}, {"name": "issue-workflow", "description": "Use when asked about the issue lifecycle, command order for issues, or how to manage issues."}, {"name": "iterate-plan", "description": "Iterate on existing implementation plans with thorough research and updates"}, {"name": "link-epics", "description": "Assign orphaned issues to existing EPICs, or cluster them into new-EPIC proposals, via `ll-issues link-epics`."}, {"name": "ll-align-issues", "description": "Validate active issues against key documents for relevance and alignment"}, {"name": "ll-analyze-workflows", "description": "Analyze user message history to identify patterns, workflows, and automation opportunities"}, {"name": "ll-audit-architecture", "description": "Analyze codebase architecture for patterns, organization, and improvements"}, {"name": "ll-capture-issue", "description": "Use when asked to capture or create an issue from conversation or natural language."}, {"name": "ll-check-code", "description": "Run code quality checks (lint, format, types, build)"}, {"name": "ll-cleanup-worktrees", "description": "Clean orphaned git worktrees from interrupted ll-parallel/ll-loop runs"}, {"name": "ll-commit", "description": "Create git commits with user approval and no assistant attribution"}, {"name": "ll-compact-session", "description": "Use when asked to manually compact a session's memory, trigger session summarization, or reduce a long session's context footprint."}, {"name": "ll-create-sprint", "description": "Create a sprint definition with a curated list of issues"}, {"name": "ll-describe-pr", "description": "Generate comprehensive PR descriptions following repository templates"}, {"name": "ll-find-dead-code", "description": "Analyze codebase for deprecated, unused, or dead code that can be safely removed"}, {"name": "ll-go-no-go", "description": "Use when asked for an adversarial go/no-go review or whether an issue is worth implementing."}, {"name": "ll-handoff", "description": "Generate continuation prompt for session handoff"}, {"name": "ll-help", "description": "List all available little-loops commands with descriptions"}, {"name": "ll-iterate-plan", "description": "Iterate on existing implementation plans with thorough research and updates"}, {"name": "ll-loop-suggester", "description": "Analyze user message history to suggest FSM loop configurations automatically. Uses ll-messages output to identify repeated workflows and generate ready-to-use loop YAML. Also supports --from-commands mode to suggest loops from the available command/skill catalog without requiring message history, and --from-sequences mode to suggest loops from ll-logs sequences n-gram output.\n\nTrigger keywords: \"suggest loops\", \"loop from history\", \"automate workflow\", \"create loop from messages\", \"analyze messages for loops\", \"ll-messages loop\", \"suggest automation\", \"detect patterns for loops\", \"suggest loops from commands\", \"loop from catalog\", \"from-commands\", \"suggest loops from sequences\", \"from-sequences\", \"loop from ll-logs"}, {"name": "ll-manage-release", "description": "Manage releases - create git tags, generate changelogs, and manage GitHub releases.\nIntegrates with Issue Management to include completed issues in release notes.\n\nTrigger keywords: \"manage release\", \"create release\", \"new release\", \"tag release\", \"publish release\", \"make release\", \"bump version"}, {"name": "ll-normalize-issues", "description": "Find and fix issue filenames with missing or duplicate IDs across types (e.g., BUG-007 and FEAT-007)"}, {"name": "ll-open-pr", "description": "Open a pull request for the current branch.\n\nTrigger keywords: \"open pr\", \"create pull request\", \"submit pr\", \"create pr\", \"open pull request\", \"submit for review\", \"make a pr"}, {"name": "ll-prioritize-issues", "description": "Analyze issues and prepend priority levels (P0-P5) to filenames"}, {"name": "ll-ready-issue", "description": "Analyze and validate an issue file for accuracy, utility, and completeness, then auto-correct to make implementation-ready or close if invalid"}, {"name": "ll-reconcile-issue", "description": "Rewrite an issue's Implementation Steps, Acceptance Criteria, and Integration Map (Files to Modify, Dependent Files, Similar Patterns, Tests, Documentation) in place from its own accumulated research findings \u2014 plus, conditionally, a Scope Boundaries claim contradicted by those findings \u2014 without appending or bulldozing human prose"}, {"name": "ll-refine-issue", "description": "Refine issue files with codebase-driven research to fill knowledge gaps needed for implementation"}, {"name": "ll-resume", "description": "Resume from a previous session's continuation prompt"}, {"name": "ll-review-sprint", "description": "AI-guided sprint health check that analyzes a sprint's current state and suggests improvements - removing stale issues, adding related backlog issues, and identifying dependency or contention problems. Pairs with `ll-sprint edit` (mechanics) the way `/ll:create-sprint` pairs with `ll-sprint create` (intelligence).\n\nTrigger keywords: \"review sprint\", \"sprint health\", \"sprint review\", \"check sprint\", \"sprint suggestions\", \"optimize sprint\", \"sprint health check\", \"is my sprint still good"}, {"name": "ll-run-tests", "description": "Run test suites with common patterns"}, {"name": "ll-scan-codebase", "description": "Scan codebase to identify bugs, enhancements, and features, then create issue files"}, {"name": "ll-scan-product", "description": "Scan codebase for product-focused issues based on goals document"}, {"name": "ll-sync-issues", "description": "Sync local issues with GitHub Issues (push/pull/status).\n\nTrigger keywords: \"sync issues\", \"push to github\", \"pull from github\", \"github sync\", \"sync with github\", \"export issues\", \"import issues from github"}, {"name": "ll-toggle-autoprompt", "description": "Toggle automatic prompt optimization settings"}, {"name": "ll-tradeoff-review-issues", "description": "Evaluate active issues for utility vs complexity trade-offs and recommend which to implement, update, or close. Use this skill to sense-check your backlog before implementation, prune low-value issues, or during sprint planning to focus on high-value work.\n\nTrigger keywords: \"tradeoff review\", \"review issues\", \"utility review\", \"prune backlog\", \"issue tradeoff\", \"sense check issues\", \"evaluate issues\", \"backlog review\", \"worth implementing\", \"low value issues"}, {"name": "ll-verify-issues", "description": "Verify issue files for accuracy, relevance, and completeness by testing claims against actual code"}, {"name": "loop-suggester", "description": "Analyze user message history to suggest FSM loop configurations automatically. Uses ll-messages output to identify repeated workflows and generate ready-to-use loop YAML. Also supports --from-commands mode to suggest loops from the available command/skill catalog without requiring message history, and --from-sequences mode to suggest loops from ll-logs sequences n-gram output.\n\nTrigger keywords: \"suggest loops\", \"loop from history\", \"automate workflow\", \"create loop from messages\", \"analyze messages for loops\", \"ll-messages loop\", \"suggest automation\", \"detect patterns for loops\", \"suggest loops from commands\", \"loop from catalog\", \"from-commands\", \"suggest loops from sequences\", \"from-sequences\", \"loop from ll-logs"}, {"name": "manage-issue", "description": "Use when asked to implement an issue end-to-end or start implementing FEAT-NNN."}, {"name": "manage-release", "description": "Manage releases - create git tags, generate changelogs, and manage GitHub releases.\nIntegrates with Issue Management to include completed issues in release notes.\n\nTrigger keywords: \"manage release\", \"create release\", \"new release\", \"tag release\", \"publish release\", \"make release\", \"bump version"}, {"name": "map-dependencies", "description": "Use when asked to find dependencies between issues or prepare a dependency-aware sprint plan."}, {"name": "normalize-issues", "description": "Find and fix issue filenames with missing or duplicate IDs across types (e.g., BUG-007 and FEAT-007)"}, {"name": "open-pr", "description": "Open a pull request for the current branch.\n\nTrigger keywords: \"open pr\", \"create pull request\", \"submit pr\", \"create pr\", \"open pull request\", \"submit for review\", \"make a pr"}, {"name": "prioritize-issues", "description": "Analyze issues and prepend priority levels (P0-P5) to filenames"}, {"name": "product-analyzer", "description": "Use when asked to analyze product goals, check feature gaps, or evaluate business value. Returns raw YAML findings. For full scan with issue file creation, use `/ll:scan-product`."}, {"name": "ready-issue", "description": "Analyze and validate an issue file for accuracy, utility, and completeness, then auto-correct to make implementation-ready or close if invalid"}, {"name": "reconcile-issue", "description": "Rewrite an issue's Implementation Steps, Acceptance Criteria, and Integration Map (Files to Modify, Dependent Files, Similar Patterns, Tests, Documentation) in place from its own accumulated research findings \u2014 plus, conditionally, a Scope Boundaries claim contradicted by those findings \u2014 without appending or bulldozing human prose"}, {"name": "refine-issue", "description": "Refine issue files with codebase-driven research to fill knowledge gaps needed for implementation"}, {"name": "rename-loop", "description": "Rename a loop and update all references in YAMLs, tests, and docs."}, {"name": "resume", "description": "Resume from a previous session's continuation prompt"}, {"name": "review-epic", "description": "Use when asked to review epic health, audit stalled children, check scope drift, find missing coverage, or assess closure readiness. Produces a structured health report and actionable recommendations. Read-only."}, {"name": "review-loop", "description": "Use when asked to review loop config quality, validate loop YAML, or audit a loop definition."}, {"name": "review-sprint", "description": "AI-guided sprint health check that analyzes a sprint's current state and suggests improvements - removing stale issues, adding related backlog issues, and identifying dependency or contention problems. Pairs with `ll-sprint edit` (mechanics) the way `/ll:create-sprint` pairs with `ll-sprint create` (intelligence).\n\nTrigger keywords: \"review sprint\", \"sprint health\", \"sprint review\", \"check sprint\", \"sprint suggestions\", \"optimize sprint\", \"sprint health check\", \"is my sprint still good"}, {"name": "run-tests", "description": "Run test suites with common patterns"}, {"name": "scan-codebase", "description": "Scan codebase to identify bugs, enhancements, and features, then create issue files"}, {"name": "scan-product", "description": "Scan codebase for product-focused issues based on goals document"}, {"name": "scope-epic", "description": "Use when asked to decompose a theme or goal into an EPIC with 3\u20138 child issues. Creates the EPIC file, pre-wired child stubs, and stages everything for git."}, {"name": "simplify-loop", "description": "Use when asked to simplify a loop, decompose a loop into sub-loops, collapse state chains into flows, or refactor an FSM loop."}, {"name": "spike", "description": "Use when asked to prove an unproven internal mechanism with an isolated code spike before implementing."}, {"name": "sync-issues", "description": "Sync local issues with GitHub Issues (push/pull/status).\n\nTrigger keywords: \"sync issues\", \"push to github\", \"pull from github\", \"github sync\", \"sync with github\", \"export issues\", \"import issues from github"}, {"name": "toggle-autoprompt", "description": "Toggle automatic prompt optimization settings"}, {"name": "tradeoff-review-issues", "description": "Evaluate active issues for utility vs complexity trade-offs and recommend which to implement, update, or close. Use this skill to sense-check your backlog before implementation, prune low-value issues, or during sprint planning to focus on high-value work.\n\nTrigger keywords: \"tradeoff review\", \"review issues\", \"utility review\", \"prune backlog\", \"issue tradeoff\", \"sense check issues\", \"evaluate issues\", \"backlog review\", \"worth implementing\", \"low value issues"}, {"name": "update", "description": "Use when asked to update little-loops, the plugin, or the pip package."}, {"name": "update-docs", "description": "Use when asked to update docs, find stale documentation, or check doc coverage after a sprint."}, {"name": "verify-issue-loop", "description": "Use when asked to generate an FSM verification loop YAML from a single issue's acceptance criteria, or an adversarial variant that tries to break the feature via boundary/malformed/failure-mode probes."}, {"name": "verify-issues", "description": "Verify issue files for accuracy, relevance, and completeness by testing claims against actual code"}, {"name": "wire-issue", "description": "Use when a refined issue is missing integration points or wiring in the implementation plan."}, {"name": "workflow-automation-proposer", "description": "Use when asked to propose automations or suggest automation opportunities from workflow patterns."}];
+    window.__SKILL_CATALOG__ = [{"name": "advise", "description": "Use when asked for a second opinion from a different, stronger model on a specific decision, question, or stalled judgment call.", "args_hint": "--signal SIGNAL --question QUESTION [--context-file PATH] [--host HOST] [--model MODEL]"}, {"name": "align-issues", "description": "Validate active issues against key documents for relevance and alignment", "args_hint": "[category] [--issues ID,...]"}, {"name": "analyze-history", "description": "Use when asked about project health, velocity, bug trends, or whether we're making progress.", "args_hint": null}, {"name": "analyze-workflows", "description": "Analyze user message history to identify patterns, workflows, and automation opportunities", "args_hint": "[messages.jsonl]"}, {"name": "audit-architecture", "description": "Analyze codebase architecture for patterns, organization, and improvements", "args_hint": "[focus-area] [flags]"}, {"name": "audit-claude-config", "description": "Use when asked to audit Claude Code config, validate plugin settings, or diagnose plugin issues.", "args_hint": "[scope]"}, {"name": "audit-docs", "description": "Use when asked to audit documentation accuracy, coverage, or find documentation gaps.", "args_hint": "[scope]"}, {"name": "audit-issue-conflicts", "description": "Use when asked to detect conflicting requirements or incompatible decisions across open issues.", "args_hint": "[EPIC-NNNN | ID,ID,ID,...] [--auto] [--dry-run] [--cross-theme]"}, {"name": "audit-loop-run", "description": "Use when asked to assess loop effectiveness, audit goal achievement, or detect phantom success.", "args_hint": "[loop-name] [--tail N] [--no-rubric-audit] [--skip-issue-creation] [--auto]"}, {"name": "capture-issue", "description": "Use when asked to capture or create an issue from conversation or natural language.", "args_hint": "[description] [--quick] [--parent EPIC-NNN]"}, {"name": "check-code", "description": "Run code quality checks (lint, format, types, build)", "args_hint": "[mode]"}, {"name": "cleanup-loops", "description": "Use when asked to clean up stuck loops, kill dead loop processes, or troubleshoot loop state.", "args_hint": "[--dry-run] [--threshold N] [--interrupted-age H]"}, {"name": "cleanup-worktrees", "description": "Clean orphaned git worktrees from interrupted ll-parallel/ll-loop runs", "args_hint": "[mode]"}, {"name": "commit", "description": "Create git commits with user approval and no assistant attribution", "args_hint": null}, {"name": "compact-session", "description": "Use when asked to manually compact a session's memory, trigger session summarization, or reduce a long session's context footprint.", "args_hint": null}, {"name": "confidence-check", "description": "Use when asked for a pre-implementation confidence check or whether an issue is ready to implement.", "args_hint": "ISSUE_ID"}, {"name": "configure", "description": "Use when asked to configure little-loops, change settings, or update ll-config.json.", "args_hint": "[area]"}, {"name": "create-eval-from-issues", "description": "Use when asked to generate an FSM eval harness YAML from one or more issue IDs, or DSL eval tasks from a loop/issue file with --dsl.", "args_hint": "<issue-id> [issue-id...] | --dsl <loop-yaml-or-issue-file>"}, {"name": "create-loop", "description": "Use when asked to create an automation loop or automate a recurring task with an FSM.", "args_hint": null}, {"name": "create-sprint", "description": "Create a sprint definition with a curated list of issues", "args_hint": "[sprint-name]"}, {"name": "debug-loop-run", "description": "Use when asked to analyze loop execution history, investigate loop failures, or find loop issues.", "args_hint": "[loop-name] [--tail N] [--skip-issue-creation] [--auto]"}, {"name": "decide-issue", "description": "Use when asked to select the winning implementation option for an issue with decision_needed.", "args_hint": null}, {"name": "describe-pr", "description": "Generate comprehensive PR descriptions following repository templates", "args_hint": "[base-branch]"}, {"name": "distill-traces", "description": "Use when asked to extract reusable loop patterns or YAML fragments from successful execution history.", "args_hint": "<loop-name> [--min-success N]"}, {"name": "explore-api", "description": "Use when exploring an external API/library and recording proof to the Learning Test Registry.", "args_hint": "<target> [--assume <claim>]..."}, {"name": "find-dead-code", "description": "Analyze codebase for deprecated, unused, or dead code that can be safely removed", "args_hint": null}, {"name": "format-issue", "description": "Use when asked to format an issue or fix its template structure.", "args_hint": "ISSUE_ID [--auto] [--all] [--dry-run]"}, {"name": "go-no-go", "description": "Use when asked for an adversarial go/no-go review or whether an issue is worth implementing.", "args_hint": null}, {"name": "handoff", "description": "Generate continuation prompt for session handoff", "args_hint": "[context]"}, {"name": "help", "description": "List all available little-loops commands with descriptions", "args_hint": null}, {"name": "improve-claude-md", "description": "Use when asked to improve or rewrite CLAUDE.md or increase LLM instruction adherence.", "args_hint": "[--dry-run] [--file path] [--consume-triggers]"}, {"name": "init", "description": "Use when asked to initialize little-loops, set up ll for a project, or bootstrap config.", "args_hint": "[flags]"}, {"name": "issue-size-review", "description": "Use when asked to evaluate issue size, decompose large issues, or audit backlog complexity.", "args_hint": null}, {"name": "issue-workflow", "description": "Use when asked about the issue lifecycle, command order for issues, or how to manage issues.", "args_hint": null}, {"name": "iterate-plan", "description": "Iterate on existing implementation plans with thorough research and updates", "args_hint": "[plan-path]"}, {"name": "link-epics", "description": "Assign orphaned issues to existing EPICs, or cluster them into new-EPIC proposals, via `ll-issues link-epics`.", "args_hint": "[--mode assign|synthesize] [--threshold <score>] [--auto] [--deep]"}, {"name": "ll-align-issues", "description": "Validate active issues against key documents for relevance and alignment", "args_hint": "[category] [--issues ID,...]"}, {"name": "ll-analyze-workflows", "description": "Analyze user message history to identify patterns, workflows, and automation opportunities", "args_hint": "[messages.jsonl]"}, {"name": "ll-audit-architecture", "description": "Analyze codebase architecture for patterns, organization, and improvements", "args_hint": "[focus-area] [flags]"}, {"name": "ll-capture-issue", "description": "Use when asked to capture or create an issue from conversation or natural language.", "args_hint": "[description] [--quick] [--parent EPIC-NNN]"}, {"name": "ll-check-code", "description": "Run code quality checks (lint, format, types, build)", "args_hint": "[mode]"}, {"name": "ll-cleanup-worktrees", "description": "Clean orphaned git worktrees from interrupted ll-parallel/ll-loop runs", "args_hint": "[mode]"}, {"name": "ll-commit", "description": "Create git commits with user approval and no assistant attribution", "args_hint": null}, {"name": "ll-compact-session", "description": "Use when asked to manually compact a session's memory, trigger session summarization, or reduce a long session's context footprint.", "args_hint": "SESSION_ID [--db PATH] [--json]"}, {"name": "ll-create-sprint", "description": "Create a sprint definition with a curated list of issues", "args_hint": "[sprint-name]"}, {"name": "ll-describe-pr", "description": "Generate comprehensive PR descriptions following repository templates", "args_hint": "[base-branch]"}, {"name": "ll-find-dead-code", "description": "Analyze codebase for deprecated, unused, or dead code that can be safely removed", "args_hint": null}, {"name": "ll-go-no-go", "description": "Use when asked for an adversarial go/no-go review or whether an issue is worth implementing.", "args_hint": "[issue-id[,issue-id...] | sprint-name] [--check] [--auto]"}, {"name": "ll-handoff", "description": "Generate continuation prompt for session handoff", "args_hint": "[context]"}, {"name": "ll-help", "description": "List all available little-loops commands with descriptions", "args_hint": null}, {"name": "ll-iterate-plan", "description": "Iterate on existing implementation plans with thorough research and updates", "args_hint": "[plan-path]"}, {"name": "ll-loop-suggester", "description": "Analyze user message history to suggest FSM loop configurations automatically. Uses ll-messages output to identify repeated workflows and generate ready-to-use loop YAML. Also supports --from-commands mode to suggest loops from the available command/skill catalog without requiring message history, and --from-sequences mode to suggest loops from ll-logs sequences n-gram output.\n\nTrigger keywords: \"suggest loops\", \"loop from history\", \"automate workflow\", \"create loop from messages\", \"analyze messages for loops\", \"ll-messages loop\", \"suggest automation\", \"detect patterns for loops\", \"suggest loops from commands\", \"loop from catalog\", \"from-commands\", \"suggest loops from sequences\", \"from-sequences\", \"loop from ll-logs", "args_hint": "[messages.jsonl|--from-commands|--from-sequences]"}, {"name": "ll-manage-release", "description": "Manage releases - create git tags, generate changelogs, and manage GitHub releases.\nIntegrates with Issue Management to include completed issues in release notes.\n\nTrigger keywords: \"manage release\", \"create release\", \"new release\", \"tag release\", \"publish release\", \"make release\", \"bump version", "args_hint": "[action] [version]"}, {"name": "ll-normalize-issues", "description": "Find and fix issue filenames with missing or duplicate IDs across types (e.g., BUG-007 and FEAT-007)", "args_hint": null}, {"name": "ll-open-pr", "description": "Open a pull request for the current branch.\n\nTrigger keywords: \"open pr\", \"create pull request\", \"submit pr\", \"create pr\", \"open pull request\", \"submit for review\", \"make a pr", "args_hint": "[target-branch]"}, {"name": "ll-prioritize-issues", "description": "Analyze issues and prepend priority levels (P0-P5) to filenames", "args_hint": null}, {"name": "ll-ready-issue", "description": "Analyze and validate an issue file for accuracy, utility, and completeness, then auto-correct to make implementation-ready or close if invalid", "args_hint": "ISSUE_ID"}, {"name": "ll-reconcile-issue", "description": "Rewrite an issue's Implementation Steps, Acceptance Criteria, and Integration Map (Files to Modify, Dependent Files, Similar Patterns, Tests, Documentation) in place from its own accumulated research findings \u2014 plus, conditionally, a Scope Boundaries claim contradicted by those findings \u2014 without appending or bulldozing human prose", "args_hint": "ISSUE_ID"}, {"name": "ll-refine-issue", "description": "Refine issue files with codebase-driven research to fill knowledge gaps needed for implementation", "args_hint": "ISSUE_ID [--auto] [--dry-run] [--gap-analysis] [--full-rewrite]"}, {"name": "ll-resume", "description": "Resume from a previous session's continuation prompt", "args_hint": "[prompt-file]"}, {"name": "ll-review-sprint", "description": "AI-guided sprint health check that analyzes a sprint's current state and suggests improvements - removing stale issues, adding related backlog issues, and identifying dependency or contention problems. Pairs with `ll-sprint edit` (mechanics) the way `/ll:create-sprint` pairs with `ll-sprint create` (intelligence).\n\nTrigger keywords: \"review sprint\", \"sprint health\", \"sprint review\", \"check sprint\", \"sprint suggestions\", \"optimize sprint\", \"sprint health check\", \"is my sprint still good", "args_hint": "[sprint-name]"}, {"name": "ll-run-tests", "description": "Run test suites with common patterns", "args_hint": "[scope]"}, {"name": "ll-scan-codebase", "description": "Scan codebase to identify bugs, enhancements, and features, then create issue files", "args_hint": "[flags]"}, {"name": "ll-scan-product", "description": "Scan codebase for product-focused issues based on goals document", "args_hint": null}, {"name": "ll-sync-issues", "description": "Sync local issues with GitHub Issues (push/pull/status).\n\nTrigger keywords: \"sync issues\", \"push to github\", \"pull from github\", \"github sync\", \"sync with github\", \"export issues\", \"import issues from github", "args_hint": "[action] [issue-id]"}, {"name": "ll-toggle-autoprompt", "description": "Toggle automatic prompt optimization settings", "args_hint": "[setting]"}, {"name": "ll-tradeoff-review-issues", "description": "Evaluate active issues for utility vs complexity trade-offs and recommend which to implement, update, or close. Use this skill to sense-check your backlog before implementation, prune low-value issues, or during sprint planning to focus on high-value work.\n\nTrigger keywords: \"tradeoff review\", \"review issues\", \"utility review\", \"prune backlog\", \"issue tradeoff\", \"sense check issues\", \"evaluate issues\", \"backlog review\", \"worth implementing\", \"low value issues", "args_hint": "[issue-ids]"}, {"name": "ll-verify-issues", "description": "Verify issue files for accuracy, relevance, and completeness by testing claims against actual code", "args_hint": "[issue-id]"}, {"name": "loop-suggester", "description": "Analyze user message history to suggest FSM loop configurations automatically. Uses ll-messages output to identify repeated workflows and generate ready-to-use loop YAML. Also supports --from-commands mode to suggest loops from the available command/skill catalog without requiring message history, and --from-sequences mode to suggest loops from ll-logs sequences n-gram output.\n\nTrigger keywords: \"suggest loops\", \"loop from history\", \"automate workflow\", \"create loop from messages\", \"analyze messages for loops\", \"ll-messages loop\", \"suggest automation\", \"detect patterns for loops\", \"suggest loops from commands\", \"loop from catalog\", \"from-commands\", \"suggest loops from sequences\", \"from-sequences\", \"loop from ll-logs", "args_hint": "[messages.jsonl|--from-commands|--from-sequences]"}, {"name": "manage-issue", "description": "Use when asked to implement an issue end-to-end or start implementing FEAT-NNN.", "args_hint": "[type] [action] [issue-id]"}, {"name": "manage-release", "description": "Manage releases - create git tags, generate changelogs, and manage GitHub releases.\nIntegrates with Issue Management to include completed issues in release notes.\n\nTrigger keywords: \"manage release\", \"create release\", \"new release\", \"tag release\", \"publish release\", \"make release\", \"bump version", "args_hint": "[action] [version]"}, {"name": "map-dependencies", "description": "Use when asked to find dependencies between issues or prepare a dependency-aware sprint plan.", "args_hint": null}, {"name": "normalize-issues", "description": "Find and fix issue filenames with missing or duplicate IDs across types (e.g., BUG-007 and FEAT-007)", "args_hint": "[issue_id] [flags]"}, {"name": "open-pr", "description": "Open a pull request for the current branch.\n\nTrigger keywords: \"open pr\", \"create pull request\", \"submit pr\", \"create pr\", \"open pull request\", \"submit for review\", \"make a pr", "args_hint": "[target-branch]"}, {"name": "prioritize-issues", "description": "Analyze issues and prepend priority levels (P0-P5) to filenames", "args_hint": "[flags]"}, {"name": "product-analyzer", "description": "Use when asked to analyze product goals, check feature gaps, or evaluate business value. Returns raw YAML findings. For full scan with issue file creation, use `/ll:scan-product`.", "args_hint": "[focus-area]"}, {"name": "ready-issue", "description": "Analyze and validate an issue file for accuracy, utility, and completeness, then auto-correct to make implementation-ready or close if invalid", "args_hint": "ISSUE_ID"}, {"name": "reconcile-issue", "description": "Rewrite an issue's Implementation Steps, Acceptance Criteria, and Integration Map (Files to Modify, Dependent Files, Similar Patterns, Tests, Documentation) in place from its own accumulated research findings \u2014 plus, conditionally, a Scope Boundaries claim contradicted by those findings \u2014 without appending or bulldozing human prose", "args_hint": "ISSUE_ID"}, {"name": "refine-issue", "description": "Refine issue files with codebase-driven research to fill knowledge gaps needed for implementation", "args_hint": "ISSUE_ID [--auto] [--dry-run] [--gap-analysis] [--full-rewrite]"}, {"name": "rename-loop", "description": "Rename a loop and update all references in YAMLs, tests, and docs.", "args_hint": "<old-name> <new-name> [--dry-run] [--yes]"}, {"name": "resume", "description": "Resume from a previous session's continuation prompt", "args_hint": "[prompt-file]"}, {"name": "review-epic", "description": "Use when asked to review epic health, audit stalled children, check scope drift, find missing coverage, or assess closure readiness. Produces a structured health report and actionable recommendations. Read-only.", "args_hint": "<EPIC-ID> [--skip-drift]"}, {"name": "review-loop", "description": "Use when asked to review loop config quality, validate loop YAML, or audit a loop definition.", "args_hint": null}, {"name": "review-sprint", "description": "AI-guided sprint health check that analyzes a sprint's current state and suggests improvements - removing stale issues, adding related backlog issues, and identifying dependency or contention problems. Pairs with `ll-sprint edit` (mechanics) the way `/ll:create-sprint` pairs with `ll-sprint create` (intelligence).\n\nTrigger keywords: \"review sprint\", \"sprint health\", \"sprint review\", \"check sprint\", \"sprint suggestions\", \"optimize sprint\", \"sprint health check\", \"is my sprint still good", "args_hint": "[sprint-name]"}, {"name": "run-tests", "description": "Run test suites with common patterns", "args_hint": "[scope]"}, {"name": "scan-codebase", "description": "Scan codebase to identify bugs, enhancements, and features, then create issue files", "args_hint": "[flags]"}, {"name": "scan-product", "description": "Scan codebase for product-focused issues based on goals document", "args_hint": null}, {"name": "scope-epic", "description": "Use when asked to decompose a theme or goal into an EPIC with 3\u20138 child issues. Creates the EPIC file, pre-wired child stubs, and stages everything for git.", "args_hint": "<theme> [--from-doc <path>] [--priority P2] [--auto]"}, {"name": "simplify-loop", "description": "Use when asked to simplify a loop, decompose a loop into sub-loops, collapse state chains into flows, or refactor an FSM loop.", "args_hint": "[name] [--dry-run] [--auto] [--flows-only] [--subloops-only] [--yes]"}, {"name": "spike", "description": "Use when asked to prove an unproven internal mechanism with an isolated code spike before implementing.", "args_hint": "ISSUE_ID [--auto | --check | --plan-only | --plan <file> | --force]"}, {"name": "sync-issues", "description": "Sync local issues with GitHub Issues (push/pull/status).\n\nTrigger keywords: \"sync issues\", \"push to github\", \"pull from github\", \"github sync\", \"sync with github\", \"export issues\", \"import issues from github", "args_hint": "[action] [issue-id]"}, {"name": "toggle-autoprompt", "description": "Toggle automatic prompt optimization settings", "args_hint": "[setting]"}, {"name": "tradeoff-review-issues", "description": "Evaluate active issues for utility vs complexity trade-offs and recommend which to implement, update, or close. Use this skill to sense-check your backlog before implementation, prune low-value issues, or during sprint planning to focus on high-value work.\n\nTrigger keywords: \"tradeoff review\", \"review issues\", \"utility review\", \"prune backlog\", \"issue tradeoff\", \"sense check issues\", \"evaluate issues\", \"backlog review\", \"worth implementing\", \"low value issues", "args_hint": "[issue-ids]"}, {"name": "update", "description": "Use when asked to update little-loops, the plugin, or the pip package.", "args_hint": "[flags]"}, {"name": "update-docs", "description": "Use when asked to update docs, find stale documentation, or check doc coverage after a sprint.", "args_hint": "[--since <date|git-ref>] [--fix]"}, {"name": "verify-issue-loop", "description": "Use when asked to generate an FSM verification loop YAML from a single issue's acceptance criteria, or an adversarial variant that tries to break the feature via boundary/malformed/failure-mode probes.", "args_hint": "<issue-id> [--mode criteria|adversarial]"}, {"name": "verify-issues", "description": "Verify issue files for accuracy, relevance, and completeness by testing claims against actual code", "args_hint": "[issue-id]"}, {"name": "wire-issue", "description": "Use when a refined issue is missing integration points or wiring in the implementation plan.", "args_hint": null}, {"name": "workflow-automation-proposer", "description": "Use when asked to propose automations or suggest automation opportunities from workflow patterns.", "args_hint": null}];
     window.__GENERATOR_VERSION__ = "1.164.0";
     window.__ACTIVE_THEME__ = document.documentElement.getAttribute("data-theme") || "light";
   </script>
 
   <main>
     <section class="panel" id="form-panel">
+      <div class="row" id="preset-row" style="margin-bottom:0.75rem;">
+        <span>Start from:</span>
+        <button id="start-blank-btn" type="button" class="secondary">Start blank</button>
+      </div>
+
       <fieldset>
         <legend>Identity</legend>
         <label for="f-name">Loop name</label>
         <input type="text" id="f-name" value="my-policy-loop" />
-        <label for="f-subject">What are you grading?</label>
-        <input type="text" id="f-subject" value="artifact.md" placeholder="e.g. artifact.md" />
-        <label for="f-maxsteps">Max steps</label>
-        <input type="number" id="f-maxsteps" value="20" min="1" />
+        <div id="subject-row">
+          <label for="f-subject">What are you grading?</label>
+          <input type="text" id="f-subject" value="artifact.md" placeholder="e.g. artifact.md" />
+        </div>
         <label for="f-desc">Description (optional)</label>
         <textarea id="f-desc"></textarea>
       </fieldset>
@@ -348,16 +356,6 @@ small.help { display: block; opacity: 0.7; font-size: 0.75rem; }
         <small class="help" id="dim-help">Boolean dimensions are scored 100/0 and compiled to numeric conditions.</small>
       </fieldset>
 
-      <fieldset id="outcomes-fieldset">
-        <legend>Outcomes</legend>
-        <div id="outcome-list"></div>
-        <div class="row" id="outcome-add-row">
-          <input type="text" id="outcome-name" placeholder="new outcome name" />
-          <button id="add-outcome" type="button">Add outcome</button>
-        </div>
-        <small class="help" id="outcome-help">Name each destination once; rules below route to these outcomes by name.</small>
-      </fieldset>
-
       <fieldset id="rules-fieldset">
         <legend>Rules (Decision Table)</legend>
         <div id="rule-list"></div>
@@ -383,11 +381,31 @@ priority: P2
 confidence_score: 40"></textarea>
         <p class="hint" id="fm-tryit-hint"></p>
       </fieldset>
+
+      <details id="advanced-details">
+        <summary>Advanced: action bindings and budget</summary>
+        <fieldset>
+          <legend>Budget</legend>
+          <label for="f-maxsteps">Max steps</label>
+          <input type="number" id="f-maxsteps" value="20" min="1" />
+        </fieldset>
+
+        <fieldset id="outcomes-fieldset">
+          <legend>Outcomes</legend>
+          <div id="outcome-list"></div>
+          <div class="row" id="outcome-add-row">
+            <input type="text" id="outcome-name" placeholder="new outcome name" />
+            <button id="add-outcome" type="button">Add outcome</button>
+          </div>
+          <small class="help" id="outcome-help">Name each destination once; rules below route to these outcomes by name.</small>
+        </fieldset>
+      </details>
     </section>
 
     <section class="panel">
       <h2 style="margin-top:0;font-size:1rem;">Result</h2>
       <p id="yaml-summary"></p>
+      <p class="hint" id="transition-summary" hidden></p>
       <ul class="messages" id="messages"></ul>
       <div class="row" style="margin-bottom:0.5rem;">
         <button id="copy-btn" type="button">Copy</button>
@@ -395,7 +413,6 @@ confidence_score: 40"></textarea>
         <button id="save-project-btn" type="button" class="secondary">Save project</button>
         <button id="open-project-btn" type="button" class="secondary">Open project</button>
         <input type="file" id="open-project-input" accept="application/json" hidden />
-        <button id="start-blank-btn" type="button" class="secondary">Start blank</button>
       </div>
       <p class="hint" id="live-status" role="status" aria-live="polite"></p>
       <p class="hint" id="validate-hint"></p>
@@ -961,14 +978,9 @@ function _checkIncompleteActions(model) {
   const out = [];
   for (const o of model.outcomes || []) {
     const at = o.actionType || "none";
-    if ((at === "prompt" || at === "slash_command") && !(o.body && String(o.body).trim())) {
-      out.push(
-        _diag(
-          "error",
-          "outcomes",
-          `Outcome "${o.name}" has no ${at === "prompt" ? "prompt text" : "skill selected"}.`
-        )
-      );
+    if ((at === "prompt" || at === "slash_command" || at === "shell") && !(o.body && String(o.body).trim())) {
+      const missing = at === "prompt" ? "prompt text" : at === "shell" ? "command" : "skill selected";
+      out.push(_diag("error", "outcomes", `Outcome "${o.name}" has no ${missing}.`));
     }
   }
   return out;
@@ -1461,6 +1473,171 @@ export function blankModel(mode = "decision_table") {
     fallback: "",
     outcomes: [],
   };
+}
+
+// ===========================================================================
+// Task presets (ENH-3491)
+// ===========================================================================
+//
+// TaskPreset {id, label, description, mode, build: () -> Model}. `mode` is
+// authoritative for the mode switch the template performs on apply (see the
+// Preset ↔ mode contract). Every `build()` returns a model shaped like
+// `seedExample`/`blankModel` output — never a shared reference to any module
+// constant (those already deep-clone dimensions/outcomes internally).
+function _presetLifecycleBase(name) {
+  const model = blankModel("issue_lifecycle");
+  model.name = name;
+  model.rules = [{ predicates: [], target: "prepare", isCatchall: true }];
+  model.fallback = "prepare";
+  return model;
+}
+
+function _outcomeByName(model, name) {
+  return model.outcomes.find((o) => o.name === name);
+}
+
+const _TASK_PRESETS = [
+  {
+    id: "document-improvement",
+    label: "Document improvement",
+    description: "Score a document against quality dimensions and repair the lowest scorers.",
+    mode: "rubric",
+    build: () => seedExample("rubric"),
+  },
+  {
+    id: "condition-based-routing",
+    label: "Condition-based routing",
+    description: "Route to named outcomes based on a table of conditions, in precedence order.",
+    mode: "decision_table",
+    build: () => seedExample("decision_table"),
+  },
+  {
+    id: "preparation",
+    label: "Preparation",
+    description: "Format and refine an issue up to a confidence gate; stops before implementation.",
+    mode: "issue_lifecycle",
+    build: () => {
+      const model = _presetLifecycleBase("prepare-issue-loop");
+      _outcomeByName(model, "prepare").transition = { kind: "goto", target: "refine" };
+      _outcomeByName(model, "refine").transition = { kind: "goto", target: "gate" };
+      _outcomeByName(model, "gate").transition = { kind: "finish" };
+      return model;
+    },
+  },
+  {
+    id: "implementation",
+    label: "Implementation",
+    description: "Prepare, then implement — no acceptance verification.",
+    mode: "issue_lifecycle",
+    build: () => {
+      const model = _presetLifecycleBase("implement-issue-loop");
+      _outcomeByName(model, "prepare").transition = { kind: "goto", target: "refine" };
+      _outcomeByName(model, "refine").transition = { kind: "goto", target: "gate" };
+      _outcomeByName(model, "gate").transition = { kind: "goto", target: "implement" };
+      _outcomeByName(model, "implement").transition = { kind: "finish" };
+      return model;
+    },
+  },
+  {
+    id: "implementation-with-verification",
+    label: "Implementation with verification",
+    description:
+      "Prepare, implement, then run a configurable acceptance-check command before finishing. " +
+      "Requires a command to be configured before it will export.",
+    mode: "issue_lifecycle",
+    build: () => {
+      const model = _presetLifecycleBase("implement-verify-issue-loop");
+      _outcomeByName(model, "prepare").transition = { kind: "goto", target: "refine" };
+      _outcomeByName(model, "refine").transition = { kind: "goto", target: "gate" };
+      _outcomeByName(model, "gate").transition = { kind: "goto", target: "implement" };
+      _outcomeByName(model, "implement").transition = { kind: "goto", target: "verify" };
+      const verify = _outcomeByName(model, "verify");
+      verify.actionType = "shell";
+      verify.body = "";
+      verify.args = "";
+      verify.transition = { kind: "finish" };
+      verify.verificationContract = "acceptance_exit_code";
+      return model;
+    },
+  },
+];
+
+/**
+ * The available task presets (ENH-3491). Returns fresh shallow copies of the
+ * preset descriptors (never the shared module array) — `build()` itself
+ * already returns a fresh model on every call.
+ * @returns {Array<{id: string, label: string, description: string, mode: string, build: () => Object}>}
+ */
+export function taskPresets() {
+  return _TASK_PRESETS.map((p) => ({ ...p }));
+}
+
+/**
+ * Summarize an issue_lifecycle model's reachable transitions, verification
+ * status, and step budget in plain language (ENH-3491). Pure — derived from
+ * `_emittedVerbs()`/outcome data, the same inputs `serializeLoopYaml`
+ * consumes, never from template `state` directly, so an outcome whose
+ * `actionType` changed away from `shell` is never reported as carrying an
+ * acceptance contract. A state merely *named* "verify" that isn't reachable
+ * (no rule/fallback/goto-chain reaches it) is not evidence of verification —
+ * `verification` stays "none" in that case.
+ * @param {Object} model  a builder model (see file-header model-shape contract)
+ * @returns {{steps: string[], stopsAfterImplement: boolean, verification: "acceptance"|"issue_validation"|"unconfigured"|"custom"|"none", stepsPerAttempt: number, attempts: number, maxStepsNote: string}}
+ */
+export function summarizeTransitions(model) {
+  const outcomeMap = new Map();
+  for (const o of model.outcomes || []) outcomeMap.set(o.name, o);
+  const verbs = _emittedVerbs(model);
+
+  const implementOutcome = verbs.includes("implement") ? outcomeMap.get("implement") : null;
+  const implementTransition = implementOutcome && implementOutcome.transition;
+  const stopsAfterImplement = !!implementOutcome && (!implementTransition || implementTransition.kind === "finish");
+
+  let verification = "none";
+  if (verbs.includes("verify")) {
+    const v = outcomeMap.get("verify");
+    const at = v ? v.actionType || "none" : "none";
+    if (at === "shell") {
+      const hasBody = v.body && String(v.body).trim();
+      verification = hasBody && v.verificationContract === "acceptance_exit_code" ? "acceptance" : "unconfigured";
+    } else if (at === "slash_command" && v.body === "/ll:verify-issues") {
+      verification = "issue_validation";
+    } else {
+      verification = "custom";
+    }
+  }
+
+  // stepsPerAttempt = score + policy_dispatch (2 fixed states) + the longest
+  // reachable verb chain from any dispatch target — a `goto` continues the
+  // chain, anything else (`rescore`/`finish`) ends it. A cycle guard prevents
+  // an infinite loop on an authored goto cycle (summary purposes only).
+  const chainLenFrom = (name, seen) => {
+    if (seen.has(name)) return 0;
+    seen.add(name);
+    const oc = outcomeMap.get(name);
+    const t = oc && oc.transition;
+    if (t && t.kind === "goto" && t.target && outcomeMap.has(t.target)) {
+      return 1 + chainLenFrom(t.target, seen);
+    }
+    return 1;
+  };
+  const dispatchTargets = new Set();
+  for (const r of model.rules || []) {
+    if (r.target && outcomeMap.has(r.target)) dispatchTargets.add(r.target);
+  }
+  if (model.fallback && outcomeMap.has(model.fallback)) dispatchTargets.add(model.fallback);
+  let chainLength = 0;
+  for (const target of dispatchTargets) {
+    chainLength = Math.max(chainLength, chainLenFrom(target, new Set()));
+  }
+  const stepsPerAttempt = 2 + chainLength;
+  const maxSteps = Number.isInteger(model.maxSteps) && model.maxSteps >= 1 ? model.maxSteps : 20;
+  const attempts = Math.floor(maxSteps / stepsPerAttempt);
+  const maxStepsNote =
+    `max steps ${maxSteps} ≈ ${attempts} attempt${attempts === 1 ? "" : "s"} of ` +
+    `${stepsPerAttempt} state${stepsPerAttempt === 1 ? "" : "s"} each`;
+
+  return { steps: verbs, stopsAfterImplement, verification, stepsPerAttempt, attempts, maxStepsNote };
 }
 
 /**
@@ -2290,6 +2467,9 @@ if (typeof window !== "undefined") {
     serializeBuilderProject,
     parseBuilderProject,
     applyDraftEdit,
+    // ENH-3491 (task presets, transition summary)
+    taskPresets,
+    summarizeTransitions,
   };
 }
 
@@ -2472,13 +2652,11 @@ function buildModel() {
     dimensions: state.dimensions,
     rules: state.rules.map((r) => ({ predicates: r.predicates, target: r.target, isCatchall: false })),
     fallback: state.fallback,
-    outcomes: state.outcomes.map((o) => ({
-      name: o.name,
-      actionType: o.actionType,
-      body: o.body,
-      args: o.args,
-      transition: o.transition,
-    })),
+    outcomes: state.outcomes.map((o) => {
+      const projected = { name: o.name, actionType: o.actionType, body: o.body, args: o.args, transition: o.transition };
+      if (o.verificationContract) projected.verificationContract = o.verificationContract;
+      return projected;
+    }),
   };
 }
 
@@ -2508,6 +2686,15 @@ function computeSummary(model) {
 
 // ---- renderers -----------------------------------------------------------
 const $ = (id) => document.getElementById(id);
+
+// ENH-3491: plain-language description + argument hint for a `/ll:<name>`
+// skill body, shown next to the skill <select> in both outcome editors.
+function _skillHintFor(body) {
+  const name = String(body || "").replace(/^\/ll:/, "");
+  const entry = CATALOG.find((s) => s.name === name);
+  if (!entry) return "";
+  return entry.args_hint ? `${entry.description || ""} — ${entry.args_hint}` : entry.description || "";
+}
 
 // FEAT-3474: built-in issue_lifecycle dimensions render locked (no ✕) in
 // #dim-list, ahead of any custom rows. Computed once from the normalized
@@ -2614,13 +2801,18 @@ function renderOutcomes() {
         const sel = document.createElement("select");
         sel.setAttribute("aria-label", "Skill");
         const blank = document.createElement("option"); blank.value = ""; blank.textContent = "— choose skill —"; sel.appendChild(blank);
+        const hint = document.createElement("small");
+        hint.className = "help";
         CATALOG.forEach((s) => {
           const o = document.createElement("option");
           o.value = "/ll:" + s.name; o.textContent = "/ll:" + s.name;
+          o.title = s.args_hint ? `${s.description || ""} ${s.args_hint}` : (s.description || "");
           if (o.value === oc.body) o.selected = true; sel.appendChild(o);
         });
-        sel.onchange = () => { oc.body = sel.value; updatePreview(); };
+        sel.onchange = () => { oc.body = sel.value; hint.textContent = _skillHintFor(oc.body); updatePreview(); };
+        hint.textContent = _skillHintFor(oc.body);
         bodyHost.appendChild(sel);
+        bodyHost.appendChild(hint);
       }
     }
     aSel.onchange = () => { oc.actionType = aSel.value; renderBody(); updatePreview(); };
@@ -2669,7 +2861,7 @@ function renderOutcomes() {
 function renderLifecycleOutcomes() {
   const host = $("outcome-list");
   host.innerHTML = "";
-  state.outcomes.forEach((oc) => {
+  state.outcomes.forEach((oc, oi) => {
     const grp = document.createElement("div");
     grp.className = "outcome-group";
 
@@ -2689,6 +2881,19 @@ function renderLifecycleOutcomes() {
       help.textContent =
         "ll-auto also applies your project's confidence threshold; add --force-implement here to skip it.";
       skillRow.appendChild(help);
+    } else if (oc.actionType === "shell") {
+      const cmdInput = document.createElement("input");
+      cmdInput.type = "text";
+      cmdInput.value = oc.body || "";
+      cmdInput.placeholder = "path/to/acceptance-check.sh";
+      cmdInput.setAttribute("aria-label", `${oc.name} command`);
+      cmdInput.oninput = () => { oc.body = cmdInput.value; updatePreview(); };
+      skillRow.appendChild(cmdInput);
+      const help = document.createElement("small");
+      help.className = "help";
+      help.textContent =
+        "Receives the issue ID as its first argument, then any Args below. Exit 0 means the check passed.";
+      skillRow.appendChild(help);
     }
     const sel = document.createElement("select");
     sel.setAttribute("aria-label", `${oc.name} skill`);
@@ -2699,17 +2904,22 @@ function renderLifecycleOutcomes() {
       if (oc.actionType === "shell") blank.selected = true;
       sel.appendChild(blank);
     }
+    const skillHint = document.createElement("small");
+    skillHint.className = "help";
     CATALOG.forEach((s) => {
       const o = document.createElement("option");
       o.value = "/ll:" + s.name;
       o.textContent = "/ll:" + s.name;
+      o.title = s.args_hint ? `${s.description || ""} ${s.args_hint}` : (s.description || "");
       if (oc.actionType === "slash_command" && o.value === oc.body) o.selected = true;
       sel.appendChild(o);
     });
+    skillHint.textContent = _skillHintFor(oc.body);
     sel.onchange = () => {
       if (sel.value) {
         oc.actionType = "slash_command";
         oc.body = sel.value;
+        delete oc.verificationContract;
       } else if (oc.name === "implement") {
         oc.actionType = "shell";
         oc.body = "ll-auto --only";
@@ -2717,7 +2927,28 @@ function renderLifecycleOutcomes() {
       renderAll();
     };
     skillRow.appendChild(sel);
+    skillRow.appendChild(skillHint);
     grp.appendChild(skillRow);
+
+    if (oc.actionType === "shell") {
+      const contractRow = document.createElement("div");
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.id = `oc-contract-${oi}`;
+      cb.checked = oc.verificationContract === "acceptance_exit_code";
+      cb.onchange = () => {
+        if (cb.checked) oc.verificationContract = "acceptance_exit_code";
+        else delete oc.verificationContract;
+        updatePreview();
+      };
+      const lbl = document.createElement("label");
+      lbl.setAttribute("for", `oc-contract-${oi}`);
+      lbl.style.display = "inline";
+      lbl.style.margin = "0 0 0 0.35rem";
+      lbl.textContent = "Exit code 0 means acceptance checks passed";
+      contractRow.append(cb, lbl);
+      grp.appendChild(contractRow);
+    }
 
     const argsRow = document.createElement("div");
     argsRow.innerHTML = `<label>Args:</label>`;
@@ -3099,6 +3330,30 @@ function updatePreview() {
   $("yaml-summary").textContent = computeSummary(model);
   renderMessages(model, diagnostics);
   updateTryIt();
+
+  // ENH-3491: a collapsed advanced-details hides the field a diagnostic
+  // points at — force it open whenever an outcomes/maxSteps error exists.
+  // Never auto-closed (the user may be mid-edit elsewhere).
+  if (diagnostics.some((d) => d.severity === "error" && (d.field === "outcomes" || d.field === "maxSteps"))) {
+    $("advanced-details").open = true;
+  }
+
+  if (model.mode === "issue_lifecycle") {
+    const ts = summarizeTransitions(model);
+    const verificationText = {
+      acceptance: "a configured acceptance check (exit code)",
+      issue_validation: "issue-file validation (/ll:verify-issues), not acceptance verification",
+      unconfigured: "an unconfigured acceptance check — export is blocked until it has a command",
+      custom: "a custom action, not a recognized verification step",
+      none: "no verification",
+    }[ts.verification];
+    $("transition-summary").textContent =
+      `Reaches: ${ts.steps.length ? ts.steps.join(" → ") : "nothing yet"}. ` +
+      `Verification: ${verificationText}. ${ts.maxStepsNote}.`;
+    $("transition-summary").hidden = false;
+  } else {
+    $("transition-summary").hidden = true;
+  }
 }
 
 function renderAll() {
@@ -3122,6 +3377,7 @@ function renderAll() {
 
 function applyModeVisibility() {
   const isLifecycle = state.mode === "issue_lifecycle";
+  $("subject-row").hidden = isLifecycle;
   $("threshold-fieldset").hidden = state.mode !== "rubric";
   $("outcomes-fieldset").hidden = state.mode === "rubric";
   $("rules-fieldset").hidden = state.mode === "rubric";
@@ -3172,6 +3428,39 @@ $("mode-switch").onchange = (e) => {
   renderAll();
   commit();
 };
+// ENH-3491: apply a task preset. Cross-mode presets (Preset ↔ mode contract)
+// save the outgoing draft, switch the mode select, and replace only the
+// target mode's draft wrapper — same-mode presets take the same path minus
+// the select update. Exactly one commit() call, so exactly one history
+// entry either way (one undo restores both activeMode and that mode's
+// prior draft when the mode changed).
+function applyPreset(preset) {
+  drafts = { ...drafts, [state.mode]: { model: state } };
+  if (preset.mode !== state.mode) {
+    $("mode-switch").value = preset.mode;
+  }
+  const model = preset.build();
+  drafts = { ...drafts, [preset.mode]: { model } };
+  state = model;
+  applyStateToForm();
+  applyModeVisibility();
+  renderAll();
+  commit();
+}
+
+function renderPresetButtons() {
+  const host = $("preset-row");
+  taskPresets().forEach((preset) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "secondary";
+    btn.textContent = preset.label;
+    btn.title = preset.description;
+    btn.onclick = () => applyPreset(preset);
+    host.appendChild(btn);
+  });
+}
+
 $("f-name").oninput = (e) => { state.name = e.target.value; updatePreview(); };
 $("f-subject").oninput = (e) => { state.subject = e.target.value; updatePreview(); };
 $("f-maxsteps").oninput = (e) => { state.maxSteps = Number(e.target.value) || 1; updatePreview(); };
@@ -3369,6 +3658,7 @@ $("theme-toggle").onclick = () => {
 
 // ---- bootstrap -----------------------------------------------------------
 initTheme();
+renderPresetButtons();
 hydrateFromStorage();
 applyModeVisibility();
 renderAll();
