@@ -9,7 +9,7 @@ discovered_by: ll-issues-create
 discovered_date: '2026-09-17'
 captured_at: '2026-09-17T00:15:03Z'
 decision_needed: false
-confidence_score: 90
+confidence_score: 100
 outcome_confidence: 74
 score_complexity: 14
 score_test_coverage: 25
@@ -121,6 +121,16 @@ _Wiring pass added by `/ll:wire-issue`:_
 - The `{{config.project.src_dir}}`/`{{config.project.test_dir}}` template-token syntax used elsewhere in `commands/*.md` and some `skills/*/SKILL.md` prose is not usable here: it only expands under `ll-auto`'s `skill_expander.py` pre-expansion pass (frontmatter is stripped before expansion runs, and interactive/slash-command invocation never triggers it at all) — `scripts/little_loops/skill_expander.py:126-165`, `docs/reference/CLI.md:598`, `docs/reference/API.md:5170`.
 - No skill or command in this codebase uses a widened, config-independent `allowed-tools` glob shape (e.g. `Write(**/spike/**)`) — confirmed absent by a repo-wide search. `skills/spike/SKILL.md` is the only skill whose `allowed-tools` targets a `scripts/tests/...`-shaped subpath at all; there is no existing precedent for either resolution named in Expected Behavior.
 - No hardcode-detection gate covers `skills/` or `commands/` for `scripts/tests`/`scripts/little_loops` literals — `test_builtin_loop_hardcode_gate.py` is scoped only to `scripts/little_loops/loops/**/*.yaml` (its `BUILTIN_LOOPS_DIR` constant). A regression here would not be caught by any existing automated check.
+
+### Behavior Parity
+
+| Artifact | Behavior | Disposition | Notes |
+|---|---|---|---|
+| `skills/spike/SKILL.md` | Hardcoded `scripts/tests/spike/<slug>/` and `scripts/little_loops/spike/<slug>/` literals for spike location and promotion target | CHANGED | Replaced by `<test_dir>/spike/<slug>/` resolved via `ll-config get project.test_dir`; the promotion-directory literal is dropped entirely (see Review Findings #2), not replaced 1:1. |
+| `docs/reference/COMMANDS.md` | `ll-audience-ok` suppression comment on the `/ll:spike` entry (line 378) plus its "Flow" prose naming the literal `scripts/tests/spike/`/`scripts/little_loops/` paths (line 379) | DROPPED | The suppression is removed once the underlying literals it exempts are gone; the Flow prose is rewritten to describe config-derived resolution rather than deleted outright. |
+| `scripts/little_loops/cli/loop/run.py` | Cited by its filesystem path in `SKILL.md`'s Call Path prose (lines 137-138) | CHANGED | Rewritten to dotted-module form `little_loops.cli.loop.run`, since the filesystem-path literal trips the audience gate's `source-tree-module-path` marker once the `skills/spike/` exemption is removed. |
+| `scripts/little_loops/fsm/executor.py` | Cited by its filesystem path in `SKILL.md`'s Call Path prose (lines 137-138) | CHANGED | Rewritten to dotted-module form `little_loops.fsm.executor`, same rationale as `cli/loop/run.py` above. |
+| `scripts/tests/test_docs_audience_gate.py` | `HARNESS_EXEMPT` entry excluding `skills/spike/` from the audience scan (line 38), and the `test_exempt_prefix_excluded` assertion that depends on it (lines 189-192) | DROPPED | Exemption entry removed and the dependent assertion inverted, now that `skills/spike/` must pass the same audience scan as every other skill. |
 
 ## Program Design
 
