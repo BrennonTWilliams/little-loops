@@ -18,15 +18,16 @@ Group of 8 related issues: Policy builder preview, validation, and editing corre
 
 ## Children
 
-- **BUG-3486** — Policy builder preview, validation, and editing correctness (browser/core) (open)
-- **BUG-3489** — Policy-router runtime: stale LLM scores across passes and decision-table dispatch errors route to a success outcome (open)
-- **BUG-3490** — Policy builder skill catalog is empty in consumer projects (single-root plugin discovery) (open)
+- **BUG-3486** — Policy builder preview, validation, and editing correctness (browser/core) (done)
+- **BUG-3489** — Policy-router runtime: stale LLM scores across passes and decision-table dispatch errors route to a success outcome (done)
+- **BUG-3490** — Policy builder skill catalog is empty in consumer projects (single-root plugin discovery) (done)
 - **ENH-3487** — Policy builder persistence, undo/redo, and saved projects (open)
 - **ENH-3491** — Policy builder lifecycle layout, task presets, and execution summary (open)
+- **BUG-3499** — FSM executor: failure_terminal is False when a cap handler routes to a failure terminal (open; runtime prerequisite for ENH-3492)
 - **ENH-3492** — Policy builder explicit terminal destinations, scoring instructions, and gate stamping (open)
 - **FEAT-3488** — Policy builder offline scenario suites and explanations (open)
 - **FEAT-3498** — Policy builder host-approved connected execution (open)
 
 ## Implementation Order
 
-ENH-3487 → ENH-3491 → ENH-3492 → FEAT-3488 → FEAT-3498. The connected-execution split lets offline authoring and scenario suites ship without waiting for queue approval/result integration.
+ENH-3487 → ENH-3491 → ENH-3492 → FEAT-3488 → FEAT-3498. BUG-3499 (executor `failure_terminal` for cap-routed finishes) is independent of the builder chain and must land before ENH-3492. The connected-execution split lets offline authoring and scenario suites ship without waiting for queue approval/result integration.

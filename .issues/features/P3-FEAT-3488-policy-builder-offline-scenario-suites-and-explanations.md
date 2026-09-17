@@ -10,20 +10,33 @@ discovered_by: ll-issues-create
 discovered_date: '2026-09-16'
 captured_at: '2026-09-16T20:54:21Z'
 labels:
+
 - policy-builder
+
 - captured
 blocked_by:
+
 - BUG-3486
+
 - ENH-3487
+
+- ENH-3491
+
 - ENH-3492
 relates_to:
+
 - FEAT-3474
+
 - BUG-3489
+
 - BUG-3490
+
 - ENH-3491
+
 - FEAT-3498
 unproven_mechanism: false
 blocks:
+
 - FEAT-3498
 ---
 
@@ -43,34 +56,61 @@ Users save examples with each mode's draft, run all cases without executing acti
 
 ## Proposed Solution
 
+
 - Extend ENH-3487's draft wrapper to `{model, scenarios: []}`. Missing scenarios migrate to an empty list. Save/Open, reload, and whole-project history preserve scenarios; edits use the committed-edit path. Preset/start-blank replaces that draft's model and clears its scenarios atomically per ENH-3491; undo restores both.
+
 - A scenario has a stable ID/name, mode-specific input, `expectedTarget: string | null`, and optional `expectedRuleIndex`. `null` is unasserted: suggestions never manufacture their own test oracle. Pin rule-index expectations to a fingerprint of the ordered authored rules; if order/content changes, mark that expectation as needing review (unasserted), retaining the prior expectation for inspection. Target-only assertions remain valid. Do not silently rebind an index to a different rule after reorder; undo restores the fingerprint and expectation.
+
 - Add a shared compiled tracing path used by `evaluateModel` and `evaluateScenario`. Preserve `evaluateModel`'s existing MatchResult shape and legacy `evaluateRules`/Python/corpus contracts. Trace every rule evaluated through the winner, with rule index, compiled predicate, actual value or explicit missing flag, expected operand, and boolean result. Later rules are `not_evaluated`; fallback and authored catch-all identities remain distinct. Evaluate all predicates within each visited rule for explanations without changing first-match routing.
-- Decision-table inputs are explicit dimension values; lifecycle inputs are frontmatter parsed by `parseFrontmatterBlock` then encoded by `encodeFrontmatterScores`. Rubric input is a user-supplied finite aggregate in [0,100], routed using the same high/medium comparisons and destinations as the generated rubric loop. Label this as testing routing for an assumed aggregate, not predicting LLM scores. Rubric coverage uses its high/medium/low branches, not authored rule indexes.
+
+- Decision-table inputs are explicit dimension values; lifecycle inputs are frontmatter parsed by `parseFrontmatterBlock` then encoded by `encodeFrontmatterScores`. Rubric input is a user-supplied finite aggregate in [0,100], routed using the same high/medium comparisons and destinations as the generated rubric loop. Those comparisons are pinned by the runtime fragments (`scripts/little_loops/loops/lib/rubric-router.yaml:103-104,121-122`): `high` is `aggregate >= threshold_high`, `medium` is `aggregate >= threshold_medium && aggregate < threshold_high`, `low` is everything else — both tiers are inclusive at their threshold, so an "at threshold" boundary suggestion lands in the upper tier. The JS branch evaluator and `suggestScenarios` must use exactly these operators, and a node:test asserts the at-threshold case for both tiers. Label this as testing routing for an assumed aggregate, not predicting LLM scores. Rubric coverage uses its high/medium/low branches, not authored rule indexes.
+
 - Return verdict `error` for invalid model/scenario input before routing; never silently turn compile failure into no-match, pass, or unasserted. Results include diagnostics and the supplied input. Expected target absent from the current policy is an actionable error; a stale index fingerprint is unasserted/needs review.
+
 - Suite totals distinguish passed/failed/unasserted/errors. Coverage records which rules or rubric branches were reached by valid scenarios, even unasserted ones; it does not imply assertion coverage. Report uncovered rules/branches separately from shadow warnings.
+
 - Suggest missing-field cases and just-below/at/above numeric thresholds using deterministic finite values; deduplicate suggestions and keep rubric suggestions in [0,100]. All suggestions have `expectedTarget: null`. Cover repeated targets, explicit lifecycle terminals from ENH-3492, fallback, absent values, and threshold equality.
+
 - Local lifecycle issue import uses file input/FileReader and the existing frontmatter parser, with diagnostics for unsupported content. Reuse ENH-3491's transition summary data for graph/cycle warnings rather than introducing a competing transition interpretation. No skill, shell, LLM, or issue mutation executes from scenarios.
 
 ## Integration Map
 
+
 - Modify `scripts/little_loops/templates/policy_builder_core.mjs`: draft migration/serialization, shared compiled trace, scenario suite and suggestion functions, rubric branch evaluation.
+
 - Modify `scripts/little_loops/templates/policy-router-builder.html.tmpl`: suite editing/results, local file input, committed-edit wiring, structural graph presentation.
+
 - Preserve the browser-global export bridge when adding public helpers; regenerate the golden HTML through the existing generator, not by hand-editing its embedded JS.
+
 - Tests: `scripts/tests/js/policy_validator.test.mjs`, `scripts/tests/test_policy_builder_node_gate.py`, `scripts/tests/test_policy_builder_emit.py`, project fixtures and existing conformance corpus gates.
+
 - Documentation: `docs/guides/POLICY_ROUTER_GUIDE.md` and the policy-builder section of `docs/reference/CLI.md`.
+
 - No server, transport, queue, MCP, or config changes. BUG-3486 is done; ENH-3487 provides saved drafts; ENH-3492 provides terminal semantics and follows ENH-3491's presets/summary.
 
 ## Program Design
 
+### Types
+
+`Scenario {id, name, input, expectedTarget, expectedRuleIndex?, expectedRulesFingerprint?}`; `ScenarioResult {scenarioId, actualTarget, ruleIndex?, rubricBranch?, trace, verdict, diagnostics}`. Verdicts are pass/fail/unasserted/error.
+
+### Signatures
+
 Proposed new contracts in core.mjs:
+
 - `traceModel(model, input) -> {match, rules, rubricBranch?, diagnostics}`. `match` retains the current MatchResult shape; `rules` carries evaluated/not-evaluated status and per-condition values. Share compilation/predicate evaluation with `evaluateModel` instead of duplicating semantics.
-- `evaluateScenario(model, scenario) -> {scenarioId, actualTarget, ruleIndex?, rubricBranch?, trace, verdict, diagnostics}`.
+
+- `evaluateScenario(model, scenario) -> ScenarioResult`.
+
 - `runScenarioSuite(model, scenarios) -> {results, summary: {passed, failed, unasserted, errors, uncoveredRuleIndexes, uncoveredRubricBranches}}`.
+
 - `suggestScenarios(model) -> Scenario[]` with null expectations.
+
 - Scenario index expectations additionally store an ordered-rule fingerprint (a canonical rules serialization is sufficient; cryptographic hashing is unnecessary offline).
 
-Call path: `updatePreview` builds and validates the model; explicit Run all evaluates cases through the shared trace/evaluator and renders results. On an edit, clear or mark displayed results stale until rerun; results are derived data and are not saved as authoritative assertions.
+### Call Path
+
+`cmd_policy_builder` generates the self-contained page with the embedded core and template handlers. In that page: `updatePreview` → `buildModel` → `validateBuilderModel`; Run all → `runScenarioSuite` → `evaluateScenario` → `traceModel`. `updatePreview` builds and validates the model; explicit Run all evaluates cases through the shared trace/evaluator and renders results. On an edit, clear or mark displayed results stale until rerun; results are derived data and are not saved as authoritative assertions.
 
 ## Implementation Steps
 
@@ -82,20 +122,36 @@ Call path: `updatePreview` builds and validates the model; explicit Run all eval
 
 ## Acceptance Criteria
 
+
 - [ ] Old projects acquire `scenarios: []` per draft; named cases, inputs, expectations, and fingerprints survive Save/Open/reload/undo. Applying a preset clears only that draft's suite and one undo restores it.
+
 - [ ] Traces explain failed earlier rules and the winning rule with compiled predicates and actual/missing values; later rules are not evaluated. Repeated-target, authored catch-all, and derived-fallback identities are correct. Existing `evaluateModel`, `evaluateRules`, Python evaluator, and conformance corpus behavior remain compatible.
+
 - [ ] Rubric aggregate cases below/at/above both thresholds agree with generated rubric routing. The UI labels supplied aggregates as assumptions and reports rubric branch coverage separately.
+
 - [ ] Totals distinguish pass/fail/unasserted/error. Invalid models/inputs cannot report pass or normal no-match; stale rule-index expectations need review after reorder/edit and recover on undo. Target-only expectations are unaffected by index changes.
+
 - [ ] Suggestions are deterministic, deduplicated, unasserted, and include absent fields and numeric boundaries without nonfinite/out-of-range rubric inputs.
+
 - [ ] Coverage includes valid unasserted inputs but is labeled routing coverage; ENH-3492 terminal targets/fallbacks are exercised.
+
 - [ ] Local issue import works offline with explicit parser diagnostics. Scenarios and structural graphs execute no actions and make no predictions about LLM/action effects.
+
 - [ ] Editing a policy invalidates displayed results; preset/clear/undo and all suite controls pass the documented manual browser workflow. Golden HTML and applicable Node/Python gates pass.
+
+## Use Case
+
+A maintainer saves ready, blocked, and unscored issue examples, changes the readiness threshold, and runs the suite to see which independently authored expectations changed and which earlier rule conditions failed.
 
 ## Impact
 
+
 - Priority: P3 — improves confidence in policy edits.
+
 - Effort: Medium/large — suite UI plus trace and rubric contracts.
+
 - Risk: Medium — shared evaluation must preserve existing semantics.
+
 - Breaking change: No; project schema additions are backward-readable and existing YAML emission is unchanged.
 
 ## Scope Boundaries
@@ -118,11 +174,21 @@ The earlier refinement/wiring passes mixed offline suites with connected transpo
 **Open** | Created: 2026-09-16 | Priority: P3
 
 ## Session Log
+
+- manual review - 2026-09-17 - added ENH-3491 to `blocked_by` (summary data and preset-clears-scenarios contract were only transitively covered); pinned rubric tier comparisons to `lib/rubric-router.yaml` (`>=` inclusive at both thresholds)
+
 - manual review - 2026-09-17 - split connected execution into FEAT-3498; specified full traces, rubric aggregate scenarios, error verdicts, index-fingerprint invalidation, preset semantics, coverage, and ENH-3492 dependency
+
 - manual review - 2026-09-17 - transport gaps closed: SseBridge needs do_POST; page served same-origin (no CORS); LOOP entries run via `ll-loop run` shell-out with `loop_input`, YAML persisted content-addressed; sync pure-JS SHA-256; `raise_on_error=False` pinned; drafts are `{model}` wrappers per ENH-3487. BUG-3486 dependency done.
+
 - `/ll:verify-issues` - 2026-09-16T22:52:47 - `56d2686a-f690-474a-8849-1b96c2edbd15.jsonl`
+
 - manual review - 2026-09-16 - narrowed `blocked_by` to BUG-3486/ENH-3487; resolved transport to `ll-queue`; defined `requestId`/`revisionId`; built scenarios on `evaluateModel`; per-draft scenarios; unasserted state; split into Phase A/B; spike not promoted
+
 - `/ll:wire-issue` - 2026-09-16T22:32:07 - `c1fe383a-93c2-4cce-a8fa-6eeed2e54d04.jsonl`
+
 - `/ll:spike` - 2026-09-16T21:26:31 - `60e2c60c-390c-4854-b7a8-e5d6ce9f3356.jsonl`
+
 - `/ll:refine-issue` - 2026-09-16T21:07:55 - `7017ba73-36ea-43e3-b3d4-064b9a419b43.jsonl`
+
 - `/ll:capture-issue` - 2026-09-16T20:55:14 - `64af6deb-56e5-4bde-9534-85751c1782ca.jsonl`

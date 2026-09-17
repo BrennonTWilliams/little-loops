@@ -89,6 +89,38 @@ From a same-origin connected page, a user selects an issue in the server's proje
 
 Proposed operations (names finalized during implementation): `create_or_get_run_request`, `approve_and_claim_entry`, `record_loop_started`, request lookup mapping, `ll-queue run --id ID --approve`, same-origin issue and run-request endpoints. All approval/claim/dedup invariants live in store transactions. The route's opt-in flag does not approve any request.
 
+## Program Design
+
+### Types
+
+Proposed `RunRequest {requestId, projectId, workspaceId, revisionId, yaml, issueId}`; `RunRequestStatus {requestId, queueId, status, bindings, loopInstanceId, runDir, result}`; `LoopStartedMetadata {queueId, instanceId, runDir}`. Extend queue status vocabulary with `awaiting_approval` and persist approval metadata separately from execution results.
+
+### Signatures
+
+- `create_or_get_run_request(request, *, root) -> QueueEntry` — transactional insertion/lookup with unique request key and binding conflict checks.
+- `approve_and_claim_entry(entry_id, *, root) -> QueueEntry | None` — approval and claim of one awaiting request in the same transaction, after binding validation.
+- `record_loop_started(entry_id, metadata, *, root) -> bool` — preserve actual initialized child identity while the entry is running.
+- `get_run_request(request_id, *, root) -> RunRequestStatus | None` — resolve request-to-queue mapping before reading queue state.
+
+### Call Path
+
+Page review → immutable snapshot → POST run-request → validation/persistence → `create_or_get_run_request` → awaiting approval. Host `cmd_run` with explicit ID/approval → `approve_and_claim_entry` → `_run_loop_entry` → child loop `cmd_run`/`PersistentExecutor` initialization → structured metadata → `record_loop_started` → existing result update. Page GET → `get_run_request` → mapped `get_entry`. Generic `claim_entry` never claims awaiting requests.
+
+## Program Design
+
+### Types
+- `status: Literal["pending", "running", "done", "failed", "awaiting_approval"]` — new value added to `QueueEntry.status` (`scripts/little_loops/queue_store.py`); generic `claim_entry`/`--watch` must treat it as unclaimable.
+- `loop_instance_id: str | None` / `run_dir: str | None` — new `QueueEntry` fields, populated only by the structured start-metadata channel, never parsed from stdout.
+- `request_id: str` — client-generated UUID, distinct from the store's `entry_id` (queue UUID); the unique mapping between the two is the create-or-get key.
+
+### Signatures
+- `create_or_get_run_request(request_id: str, project_id: str, workspace_id: str, revision_id: str, issue_id: str, db_path: Path) -> tuple[QueueEntry, bool]` — transactional analog of `add_entry` (`queue_store.py:390`) keyed on `request_id` instead of always minting a new row; the `bool` reports whether the row was created or fetched, and a fetched row with differing bindings is a conflict.
+- `approve_and_claim_entry(entry_id: str, *, expected_revision_id: str, expected_issue_id: str, db_path: Path) -> bool` — single-entry counterpart to `claim_entry` (`queue_store.py:669`); rechecks bindings inside the same `BEGIN IMMEDIATE` transaction before flipping `awaiting_approval` -> `pending`/claimed.
+- `record_loop_started(entry_id: str, instance_id: str, run_dir: str, db_path: Path) -> None` — persists the metadata-file readback next to `get_entry` (`queue_store.py:444`); called by `_run_loop_entry` (`cli/queue.py:382`) once the child publishes its start-metadata file.
+
+### Call Path
+`ll-artifact serve` route handler -> `cmd_policy_builder` (`cli/artifact/policy_builder.py:61`) renderer, reused for the same-origin page -> `SseBridge` (`transport.py:1248`) method-aware dispatch adds the POST submit/GET run-request routes alongside existing GET/SSE routes -> submit calls `create_or_get_run_request`, which wraps `add_entry` (`queue_store.py:390`) in one transaction (mirroring the `BEGIN IMMEDIATE` pattern already used by `claim_entry`) -> validation before persistence goes through `load_and_validate` (`fsm/validation/structural_rules.py:1860`) with `raise_on_error=False` -> `ll-queue run --id ID --approve` calls `approve_and_claim_entry` before falling through to the existing `claim_entry` -> `_run_loop_entry` (`cli/queue.py:382`) dispatch -> `_run_loop_entry` launches the child with `args.loop_input`, and once the child's metadata file appears, `record_loop_started` persists it so a poll of `GET /{token}/run-request/{requestId}` can read it back via `get_entry` (`queue_store.py:444`).
+
 ## Implementation Steps
 
 1. Implement/store-test approval eligibility and atomic request-key mapping; update queue status consumers and explicit per-entry host acceptance.
@@ -141,5 +173,6 @@ Extracted from FEAT-3488: `scripts/tests/spike/level2_run_handoff/` and `.ll/spi
 **Open** | Created: 2026-09-17 | Priority: P3
 
 ## Session Log
+- `/ll:format-issue` - 2026-09-17T06:04:13 - `673b8d7f-311f-49c5-91da-9f35cbc67a87.jsonl`
 - `/ll:capture-issue` - 2026-09-17T06:00:15 - `673b8d7f-311f-49c5-91da-9f35cbc67a87.jsonl`
 - manual review - 2026-09-17 - extracted FEAT-3488 Phase B with explicit queue approval, atomic request mapping, real LOOP identity, validation failures, project binding, and production-path verification
