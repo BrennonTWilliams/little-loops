@@ -1,0 +1,12 @@
+{
+  "id": "db38d1aa-7e83-40cd-860b-dff301730f1c",
+  "type": "decision",
+  "timestamp": "2026-09-17T01:33:37Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Author's own stated recommendations for each of the 3 decision points had no competing alternative under active consideration; locked in via /ll:decide-issue Phase 3b Pattern D without a scoring pass",
+  "rule": "Distinct stop-success terminal 'stopped' (terminal: true), not a done alias; skip/needs-attention are rule-selectable only (never automatic), on_error stays failed, on_max_steps becomes needs-attention for lifecycle; decision_table and rubric both gain a needs-attention on_max_steps terminal",
+  "scope": "issue",
+  "alternatives_rejected": "stop-success as an alias for done; skip/needs-attention as automatic routes; leaving decision_table/rubric on_max_steps as failed",
+  "issue": "ENH-3492"
+}

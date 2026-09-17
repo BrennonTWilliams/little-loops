@@ -15,7 +15,7 @@ decision_needed: false
 
 ## Summary
 
-`/ll:spike` hardcodes the little-loops source-repo layout. Its `allowed-tools` frontmatter grants `Write(scripts/tests/spike/**)` / `Edit(scripts/tests/spike/**)`, its plan template and SKILL.md body place every spike package under `scripts/tests/spike/<slug>/`, and the promotion step targets `scripts/little_loops/spike/<slug>/`. Neither path exists in a consuming project, so in any project other than little-loops itself the skill either writes into a directory the user never asked for or is blocked by its own permission glob.
+`/ll:spike` hardcodes the little-loops source-repo layout. Its `allowed-tools` frontmatter grants `Write(scripts/tests/spike/**)` / `Edit(scripts/tests/spike/**)`, its plan template and SKILL.md body place every spike package under `scripts/tests/spike/<slug>/`, and the promotion step targets `scripts/little_loops/spike/<slug>/`. Neither path exists in a consuming project, so in any project other than little-loops itself the skill writes into a directory the user never asked for, and its `allowed-tools` pre-approval never matches (interactive runs prompt on every spike write; automation runs under `--dangerously-skip-permissions` are unaffected).
 
 ## Context
 
@@ -29,7 +29,9 @@ Found 2026-09-16 during the docs-audience sweep (CONTRIBUTING.md § Documentatio
 
 ## Expected Behavior
 
-Spike location derives from the consuming project's config: `project.test_dir` (or `tests/` when unset) joined with `spike/<slug>/`, and the promotion target derives from `project.src_dir`. `allowed-tools` must still fence writes to the spike directory only; since the frontmatter glob is static, either widen it to a config-independent shape (e.g. `Write(**/spike/**)`) or document that consuming projects override it via `.claude/settings` — decide during refinement. The skill must run unchanged in a project whose layout is `src/` + `tests/`.
+Spike location derives from the consuming project's config: `project.test_dir` (or `tests/` when unset) joined with `spike/<slug>/`. Promotion is described as folding the proven code into its real home (the production module under `project.src_dir` and its test under `project.test_dir`) in a separate PR — there is no canonical promotion directory (see Review Findings). `allowed-tools` must still pre-approve writes only under the spike directory; since the frontmatter glob is static, either widen it to a config-independent shape (e.g. `Write(**/spike/**)`) or document that consuming projects override it via `.claude/settings` — decided below (Option A). The skill must run unchanged in a project whose layout is `src/` + `tests/`.
+
+**Permission semantics (corrected 2026-09-17):** Claude Code's skill `allowed-tools` is a *pre-approval* list, not a fence. A write outside the granted globs prompts the user in interactive mode and is simply allowed under `--dangerously-skip-permissions` / `ll-auto`. Spike isolation is therefore enforced by convention plus the plan's mandatory regression-guard test, and the skill's prose must say so rather than claiming `allowed-tools` makes production files read-only.
 
 ## Proposed Solution
 
@@ -63,7 +65,7 @@ Expected Behavior leaves the `allowed-tools` static-glob resolution as an open d
 
 **Key evidence:**
 - No skill or command in this repo uses a prefix-free `Write(**/foo/**)`/`Edit(**/foo/**)` grant today, but the `**/x/**` shape itself is an established convention for scan/exclude patterns (`scripts/little_loops/config/features.py:346`, `config-schema.json:69,826`, every `templates/*.json` project type, `.ll/ll-config.json:20-24`) and is documented in-repo as matching any depth including the root (`docs/claude-code/memory.md:201-206`).
-- The collision risk noted for Option A — `**/spike/**` could in principle match an unrelated top-level `spike/` directory a consuming-project user creates, or a `node_modules/spike/**` path — is real but narrow (bounded to directories literally named `spike`) and has no existing precedent either confirming or ruling it out, since no prior `allowed-tools` grant has used this shape.
+- The collision risk noted for Option A — `**/spike/**` could in principle match an unrelated top-level `spike/` directory a consuming-project user creates, or a `node_modules/spike/**` path — is real but narrow (bounded to directories literally named `spike`) and has no existing precedent either confirming or ruling it out, since no prior `allowed-tools` grant has used this shape. Because `allowed-tools` only pre-approves (it never blocks; see Expected Behavior), the over-grant is low-stakes: it saves a prompt on a path the model should not be writing to anyway, and the regression-guard test remains the real isolation check.
 - No committed `.claude/settings.json`/`settings.local.json` exists anywhere in this repo (`.gitignore:59` keeps it out of version control), and the only "hand-edit settings.json" precedent in little-loops' own docs (`README.md:90`) is a narrowly-scoped plugin-install fallback, not a skill-functionality permission-scoping mechanism — undermining Option B's premise that consuming projects have an established, documented path to do this.
 - Every other instance of permission entries entering `.claude/settings*.json` in this codebase is automation-written by `ll-init`/`ll-adapt` (`docs/guides/GETTING_STARTED.md:84,103`, `docs/reference/CLI.md:52`, FEAT-749, ENH-1846, BUG-2042), never doc-instructed manual user action — Option B would be the first case of the latter.
 
@@ -76,8 +78,13 @@ _Added by `/ll:refine-issue` — 2026-09-17 — based on codebase analysis:_
 Confirmed literal-path and convention findings from `codebase-locator`, `codebase-analyzer`, and `codebase-pattern-finder`, grouped below.
 
 ### Files to Modify
-- `skills/spike/SKILL.md` — `allowed-tools` `Write(scripts/tests/spike/**)`/`Edit(scripts/tests/spike/**)` (lines 10, 12) plus 12 body references to `scripts/tests/spike/`/`scripts/little_loops/spike/` (lines 141, 146, 149, 156, 161, 172, 174, 185, 213, 215, 253, 254) need to resolve from `project.test_dir`/`project.src_dir`.
-- `skills/spike/plan-template.md` — 5 references to the same literals (lines 44, 46, 49, 76, 89).
+- `skills/spike/SKILL.md` — `allowed-tools` `Write(scripts/tests/spike/**)`/`Edit(scripts/tests/spike/**)` (lines 10, 12) plus the body references to `scripts/tests/spike/`/`scripts/little_loops/spike/` need to resolve from `project.test_dir`. **Do not trust the line-number inventory** — the authoritative list is the audience gate's own scan, which reports 17 hits in `SKILL.md` (lines 10, 12, 137, 138, 156, 161, 172, 174, 175, 185×2, 186×2, 213, 215, 253, 254×2 — note lines 141/146/149 cited earlier are `.ll/spikes/` references, not literals) and 10 in `plan-template.md` (lines 39, 44, 46, 49, 76×2, 77×2, 89×2). The `source-tree-tool-cmd` marker (`pytest scripts…`) fires on 185/186/254 in addition to `source-tree-test-path`; the same `"$SPIKE_DIR"` substitution clears both. Iterate until the scan returns empty:
+  ```python
+  from test_docs_audience_gate import scan_audience, HARNESS_MARKERS
+  scan_audience(Path("skills/spike/SKILL.md").read_text(), HARNESS_MARKERS)  # must be []
+  ```
+- `skills/spike/plan-template.md` — 10 marker hits (see above).
+- `skills/spike/SKILL.md` `allowed-tools` — add `Bash(ll-config:*)` (the new `ll-config get` calls are otherwise ungranted and every interactive run prompts at the first path-resolution step; no skill grants it today, including `go-no-go`, which has the same latent gap) and `Bash(mkdir:*)` (the existing Phase 3 `mkdir -p .ll/spikes/` is ungranted today — pre-existing gap, close it in the same edit).
 - `scripts/tests/test_docs_audience_gate.py` — remove the `HARNESS_EXEMPT` entry at line 38 and update `test_exempt_prefix_excluded` (lines 189-192), which currently hard-asserts `skills/spike/` files are excluded from the audience scan; that assertion inverts once the exemption is removed.
 - `docs/reference/COMMANDS.md` — remove the `ll-audience-ok` suppression comment at line 378.
 
@@ -99,7 +106,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ### Tests
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/tests/test_spike_skill.py::test_promotion_path_documented` (lines 83-85) — asserts `"scripts/little_loops/spike/" in _plan_text()`; a second test pinning the exact literal this issue removes, alongside `test_spike_code_confined_to_tests_dir` above.
+- `scripts/tests/test_spike_skill.py::test_promotion_path_documented` (lines 83-85) — asserts `"scripts/little_loops/spike/" in _plan_text()`; a second test pinning the exact literal this issue removes, alongside `test_spike_code_confined_to_tests_dir` above. Rewrite it to assert the new Promotion wording (fold into the production module + its test, separate PR) rather than any path, since there is no promotion directory (see Review Findings).
 - `scripts/tests/test_spike_skill.py` — new test needed asserting the widened `Write(**/spike/**)`/`Edit(**/spike/**)` grants are present in `SKILL_FILE`, mirroring the existing `test_allowed_tools_grants_ll_spikes_write` pattern (`skills/spike/SKILL.md` line ~130 equivalent).
 - `scripts/tests/test_docs_audience_gate.py` — new regression-guard test recommended, mirroring `test_general_task_and_rl_coding_agent_are_not_exempt` in `test_bug3269_test_cmd_resolution_gate.py`: assert `"skills/spike" not in HARNESS_EXEMPT` so the exemption cannot silently reappear once this issue closes.
 
@@ -114,7 +121,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 ### Types
 
 - `SPIKE_DIR: str` (bash var, `<test_dir>/spike/<slug>`)
-- `PROMOTE_DIR: str` (bash var, `<src_dir>/spike/<slug>`)
+- ~~`PROMOTE_DIR: str` (bash var, `<src_dir>/spike/<slug>`)~~ — **dropped** (see Review Findings: no promotion directory exists or has ever existed; promotion prose names `project.src_dir`/`project.test_dir` descriptively, no variable needed)
 
 ### Signatures
 
@@ -130,11 +137,13 @@ _Wiring pass added by `/ll:wire-issue`:_
 `skills/spike/SKILL.md` Phase 3 (Plan) / Phase 4 (Implement) -> `ll-config get
 project.test_dir` -> `BRConfig.resolve_variable("project.test_dir")` ->
 `SPIKE_DIR="${TEST_DIR%/}/spike/<slug>"` (replaces the literal
-`scripts/tests/spike/<slug>/`); Phase 6 (Promotion) -> `ll-config get
-project.src_dir` -> `BRConfig.get_src_path` -> `PROMOTE_DIR="${SRC_DIR%/}/spike/<slug>"`
-(replaces the literal `scripts/little_loops/spike/<slug>/`).
+`scripts/tests/spike/<slug>/`). Phase 6 (Promotion) becomes prose only:
+"promote the proven code into its production module under `project.src_dir`
+and its test under `project.test_dir`, in a separate PR" — no `ll-config get
+project.src_dir` call and no `PROMOTE_DIR` (superseded; see Review Findings).
 `skills/spike/plan-template.md` follows the same substitution for its
-`Critical files`, `Implementation`, and `Promotion` sections. Note: this
+`Critical files` and `Implementation` sections and the same prose rewrite for
+`Promotion`. Note: this
 repo's own `.ll/ll-config.json` does not set `project.test_dir`, so it
 currently resolves to the schema default `"tests"`, not the actual
 `scripts/tests/` root — implementation should confirm whether that also
@@ -158,22 +167,43 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Add `"test_dir": "scripts/tests/"` to `.ll/ll-config.json`'s `project` block.
 - Rewrite `skills/spike/SKILL.md:137-138` to cite `little_loops.cli.loop.run` / `little_loops.fsm.executor` (dotted-module form) instead of `scripts/little_loops/...` paths.
 - Resolve `skills/spike/SKILL.md:186` and `plan-template.md:77`'s regression-suite command through the same `${TEST_DIR%/}` substitution as `SPIKE_DIR`.
-- Guard the `TEST_DIR`/`SRC_DIR` bash captures against an empty value (`ll-config get` prints nothing, exit 0, on a `BRConfig` construction failure) before building `SPIKE_DIR`/`PROMOTE_DIR`.
+- Guard the `TEST_DIR` bash capture against an empty value (`ll-config get` prints nothing, exit 0, on a `BRConfig` construction failure): `: "${TEST_DIR:=tests}"` before building `SPIKE_DIR`.
 - Rewrite `docs/reference/COMMANDS.md:379`'s "Flow" prose to describe config-derived resolution, not just delete the line-378 suppression comment.
-- Update `scripts/tests/test_spike_skill.py::test_promotion_path_documented` alongside `test_spike_code_confined_to_tests_dir`.
-- Add a new `test_spike_skill.py` case asserting the widened `Write(**/spike/**)`/`Edit(**/spike/**)` grants.
+- Update `scripts/tests/test_spike_skill.py::test_promotion_path_documented` alongside `test_spike_code_confined_to_tests_dir` (assert wording, not a path).
+- Add a new `test_spike_skill.py` case asserting the widened `Write(**/spike/**)`/`Edit(**/spike/**)` grants and the new `Bash(ll-config:*)` grant.
 - Add a new `test_docs_audience_gate.py` case asserting `"skills/spike" not in HARNESS_EXEMPT` (non-regression guard).
 - Re-point the `SKILL.md:190,199` / `SKILL.md:221-234` line-number citations in `scripts/little_loops/loops/spike-gate.yaml:51,63` after `SKILL.md`'s body shifts.
 
+_Added by review — 2026-09-17:_
+- Add `Bash(ll-config:*)` and `Bash(mkdir:*)` to `skills/spike/SKILL.md` `allowed-tools` (see Files to Modify).
+- Rewrite the "enforced by `allowed-tools`" / "production files are read-only" prose at `SKILL.md:174-175`, `plan-template.md:46`, and `docs/reference/COMMANDS.md:379` to: `allowed-tools` pre-approves writes only under `<test_dir>/spike/`; isolation is enforced by the plan's mandatory regression-guard test.
+- Drop the promotion directory entirely: rewrite `SKILL.md:161,215` and `plan-template.md:86-91` (`## Promotion`) to "promote into the production module under `project.src_dir` and its test under `project.test_dir`, separate PR".
+- `scripts/little_loops/init/introspect.py:729-733` — extend the existing `tests/`/`test/` probe to also set `project.test_dir` in the generated config (today it only feeds `focus_dirs`). Without this, a consuming project laid out as `test/` resolves the schema default `tests` and spikes land in a directory that does not exist. Add a unit test for the detection in the init test module.
+- Re-sync the host mirrors after editing `skills/spike/`: `ll-adapt --host gemini --apply`, `ll-adapt --host kimi-code --apply`, `ll-adapt --host qwen --apply`. The mirror gates fail otherwise.
+- Run the audience-gate scan (snippet under Files to Modify) on both skill files until it returns `[]` before removing the `HARNESS_EXEMPT` entry.
+
+## Review Findings
+
+_Added 2026-09-17 by pre-implementation review; each claim verified against the working tree._
+
+1. **`allowed-tools` never blocks.** The Summary's original "blocked by its own permission glob" was wrong: skill `allowed-tools` pre-approves; an unmatched write prompts in interactive mode and is allowed outright in automation. This lowers the stakes of Option A's `**/spike/**` over-grant (it also matches `<src_dir>/spike/**`) to "one skipped prompt", and it means the "read-only, enforced by `allowed-tools`" prose in the skill, template, and `COMMANDS.md` was always overstated. Rewrite it; keep Option A.
+2. **The promotion directory is a fiction.** `scripts/little_loops/spike/` has never existed in this repo's git history (`git log --all -- scripts/little_loops/spike` is empty). Every real promotion folded the spike's assertions into the actual module and test file — see the module docstrings of `scripts/tests/test_terminal_adapter.py`, `test_program_design_gate.py`, and `test_session_discovery.py`. The proposed `<src_dir>/spike/<slug>/` substitution would also resolve to `scripts/spike/` here, since `project.src_dir` is `scripts/`, not the package root. Hence `PROMOTE_DIR` is dropped and Promotion becomes prose.
+3. **`Bash(ll-config:*)` is ungranted.** The plan's new `ll-config get` call has no pre-approval in the skill's `allowed-tools`; no skill grants it today. Added to Wiring.
+4. **`ll-init` never sets `project.test_dir`.** `init/introspect.py:729-733` probes `tests/`/`test/` only for `focus_dirs`; `.ll/ll-config.json` in a consuming project therefore never carries `test_dir`, and the schema default `tests` is silently wrong for `test/` layouts. Small in-scope fix added to Wiring (the probe already exists).
+5. **Line-number inventory was partly wrong.** Lines 141/146/149 of `SKILL.md` are `.ll/spikes/` references, not source-repo literals; the gate scan is authoritative (17 + 10 hits). Recorded under Files to Modify.
+6. **Confirmed as stated:** `ll-config get` exits 0 and prints nothing on a `BRConfig` failure (`cli/config.py:66-69`), so the `${TEST_DIR:=tests}` guard is required; adding `test_dir: "scripts/tests/"` to this repo's config is safe — the only Python consumer is the leak-detection prefix list in `parallel/worker_pool.py:1505`, where it is benign; `**/` gitignore-style globs are valid in Claude Code permission rules.
+
 ## Scope Boundaries
 
-- **In scope**: deriving the spike directory and promotion target from
-  `project.test_dir`/`project.src_dir` in `skills/spike/SKILL.md` and
-  `skills/spike/plan-template.md`; resolving the `allowed-tools` static-glob
-  tension (widen to a config-independent shape or document a settings
-  override); removing the `skills/spike/` exemption in
+- **In scope**: deriving the spike directory from `project.test_dir` in
+  `skills/spike/SKILL.md` and `skills/spike/plan-template.md`, and rewriting
+  Promotion as prose that names `project.src_dir`/`project.test_dir`; widening
+  the `allowed-tools` glob (Option A) and adding the `Bash(ll-config:*)` /
+  `Bash(mkdir:*)` grants; correcting the "read-only, enforced by
+  `allowed-tools`" prose; teaching `ll-init` introspection to set
+  `project.test_dir`; removing the `skills/spike/` exemption in
   `test_docs_audience_gate.py` and the `ll-audience-ok` suppression in
-  `docs/reference/COMMANDS.md`.
+  `docs/reference/COMMANDS.md`; re-syncing the gemini/kimi-code/qwen mirrors.
 - **Out of scope**: changing the spike plan's required section shape
   (`plan-template.md`'s Context/Approach/Acceptance Criteria structure);
   changes to `/ll:explore-api` (the external-API analogue); migrating any
@@ -185,12 +215,11 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - **Priority**: P2 - functional-correctness/portability bug (not a crash):
   `/ll:spike` is unusable as shipped in any consuming project whose layout
   isn't `scripts/`, so it blocks a whole skill outside the source repo.
-- **Effort**: Small - text/template substitution in two files
-  (`SKILL.md`, `plan-template.md`) plus removing two doc-audience
-  exemptions; reuses the existing `ll-config get project.src_dir` /
-  `project.test_dir` CLI pattern already used elsewhere in the codebase
-  (`scripts/little_loops/cli/issues/decisions.py:650`), no new mechanism
-  needed.
+- **Effort**: Small-to-Medium - text/template substitution in two files
+  (`SKILL.md`, `plan-template.md`), removing two doc-audience exemptions,
+  a small `test_dir` detection in `init/introspect.py` with a unit test,
+  and a mirror re-sync; reuses the existing `ll-config get` CLI pattern
+  (`skills/go-no-go/SKILL.md:154`), no new mechanism needed.
 - **Risk**: Low - the spike directory stays isolated under
   `<test_dir>/spike/<slug>/` either way; the only behavior change is which
   literal path is written to, verified by re-running the skill in both the
@@ -201,10 +230,12 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Acceptance Criteria
 
-- [ ] `skills/spike/SKILL.md` and `plan-template.md` contain no `scripts/tests` or `scripts/little_loops` literals.
-- [ ] Spike dir and promotion target resolve from `project.test_dir` / `project.src_dir` with sensible defaults.
-- [ ] `allowed-tools` still restricts writes to the spike directory in a `src/` + `tests/` project.
-- [ ] The `skills/spike/` exemption in `test_docs_audience_gate.py` and the `ll-audience-ok` line in `docs/reference/COMMANDS.md` are removed.
+- [ ] `skills/spike/SKILL.md` and `plan-template.md` contain no `scripts/tests` or `scripts/little_loops` literals (the `HARNESS_MARKERS` scan returns `[]` for both files).
+- [ ] Spike dir resolves from `project.test_dir` (guarded default `tests`) as `<test_dir>/spike/<slug>/`; Promotion prose names `project.src_dir`/`project.test_dir` and no promotion directory.
+- [ ] `allowed-tools` pre-approves writes only under the spike directory in a `src/` + `tests/` project, and grants `Bash(ll-config:*)` and `Bash(mkdir:*)`; the skill, template, and `COMMANDS.md` no longer claim `allowed-tools` makes production files read-only.
+- [ ] `ll-init` introspection sets `project.test_dir` from a detected `tests/` or `test/` directory, with a unit test.
+- [ ] The `skills/spike/` exemption in `test_docs_audience_gate.py` and the `ll-audience-ok` line in `docs/reference/COMMANDS.md` are removed, with a non-regression guard on `HARNESS_EXEMPT`.
+- [ ] `.gemini/`, `.kimi-code/`, and `.qwen/` spike mirrors are re-synced and the mirror gates pass.
 
 ## Status
 

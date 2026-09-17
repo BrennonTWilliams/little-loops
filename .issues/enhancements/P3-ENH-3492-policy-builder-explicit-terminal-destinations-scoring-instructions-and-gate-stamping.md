@@ -12,7 +12,7 @@ discovered_date: '2026-09-16'
 captured_at: '2026-09-16T22:49:50Z'
 labels:
 - policy-builder
-decision_needed: true
+decision_needed: false
 depends_on:
 - BUG-3486
 relates_to:
@@ -44,15 +44,27 @@ Lifecycle rules can route to stop-success, skip, and needs-attention destination
 
 ## Proposed Solution
 
-Decision required first (`decision_needed: true`; run `/ll:decide-issue ENH-3492`):
-1. Is `stop-success` an alias for the existing `done` terminal, or a distinct terminal state with its own name? Recommendation: distinct terminal `stopped` with `terminal: true`, so postmortems can tell "finished the pipeline" from "rule said stop here".
-2. Which routes to `skip` vs `needs-attention` vs `failed`: recommendation — `skip` and `needs-attention` are rule-selectable destinations only (never automatic); `on_error` stays `failed`; `on_max_steps` becomes `needs-attention` for lifecycle.
-3. Should `decision_table` and `rubric` gain `on_max_steps`/`on_error`? **Partly overtaken by BUG-3489** (committed `22f4ff6ed`, found by `/ll:verify-issues` 2026-09-16): `decision_table` now unconditionally emits `on_max_steps: failed` (no model flag, golden fixtures already regenerated) — the byte-equal-preservation premise below no longer holds for `decision_table`. Remaining question: should that terminal become `needs-attention` instead of `failed` (matching lifecycle's proposed treatment), and should `rubric` (still emits no `on_max_steps`) gain one too? Recommendation: yes for both → `needs-attention`, unchanged otherwise; only `rubric`'s addition still needs the byte-equal-preservation flag discussed below.
+Decided (per `/ll:decide-issue ENH-3492`; see `### Decision Rationale` below):
+1. **Decided**: `stop-success` is a distinct terminal state `stopped` (with `terminal: true`), not an alias for `done` — so postmortems can tell "finished the pipeline" from "rule said stop here".
+2. **Decided**: `skip` and `needs-attention` are rule-selectable destinations only (never automatic); `on_error` stays `failed`; `on_max_steps` becomes `needs-attention` for lifecycle.
+3. **Decided**: both `decision_table` and `rubric` gain a `needs-attention` `on_max_steps` terminal (matching lifecycle's treatment), unchanged otherwise. **Partly overtaken by BUG-3489** (committed `22f4ff6ed`, found by `/ll:verify-issues` 2026-09-16): `decision_table` now unconditionally emits `on_max_steps: failed` (no model flag, golden fixtures already regenerated) — the byte-equal-preservation premise no longer holds for `decision_table`, only for `rubric`'s new addition (see Decision Rationale).
 
 Then:
 - Extend `LIFECYCLE_VERBS`/outcome transition kinds in core.mjs with the new destinations; `_outcomeStateLines`/`_doneStateName` (`:753-805`) route to them. Backward-compatible defaults for models lacking the new fields. **Also add each new generated terminal name (`stopped`/`skipped`/`needs_attention`, exact names per the decision above) to `RESERVED_STATE_NAMES`/`isReservedOutcomeToken` (`policy_builder_core.mjs:152-172`)** — BUG-3489 (committed `22f4ff6ed`) established this guard specifically so a user-authored outcome name, rule target, or fallback can never collide with a generated state key, and its own issue text says BUG-3486 (and, by the same logic, this issue) must extend the shared map rather than leave new generated terminals unregistered; skipping this reintroduces the exact silent-collision bug class BUG-3489 just fixed, for the three terminal names this issue adds.
 - Add optional `instructions`/`anchors` to dimension entries; `serializeFrontmatterDimensions` (`:1003`) emits them into prompts. Touch `scripts/little_loops/fsm/frontmatter_scores.py` (`encode_frontmatter_scores` mirrors `normalizeDimName` rules) only if `BUILTIN_FRONTMATTER_DIMENSIONS` shape changes, and extend `conformance_corpus.json` accordingly.
 - In `cmd_policy_builder` read `config.commands.confidence_gate` off the already-built `BRConfig` (mirror `scripts/little_loops/fsm/context_seed.py:68`; do not copy `cli/issues/check_readiness.py:78-115`'s raw-JSON bypass) and stamp `readiness_threshold`/`outcome_threshold`. No `config-schema.json` change needed (`confidence_gate` defined at `:509`).
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-09-16.
+
+**Selected**: distinct `stopped` terminal; rule-selectable `skip`/`needs-attention`; `needs-attention` `on_max_steps` for both `decision_table` and `rubric`.
+
+**Reasoning**: Each of the three questions already carried the issue author's own stated recommendation with no competing alternative under active consideration, so no codebase-evidence scoring pass was needed — `/ll:decide-issue` converted the provisional "Recommendation:" wrappers into decided, declarative statements (Phase 3b Pattern D lock-in). A distinct `stopped` terminal keeps postmortems able to distinguish "pipeline finished" from "rule said stop"; making `skip`/`needs-attention` rule-selectable-only (never automatic) keeps `on_error`/`on_max_steps` semantics unambiguous; and routing both `decision_table` and `rubric` `on_max_steps` to `needs-attention` keeps all three serialization modes consistent now that BUG-3489 already moved `decision_table` off byte-equal preservation.
+
+**Key evidence**:
+- Terminal naming: BUG-3489 (`22f4ff6ed`) already added `RESERVED_STATE_NAMES`/`isReservedOutcomeToken` (`policy_builder_core.mjs:152-172`) as the collision guard this issue's new terminals must extend — no alternative naming scheme was proposed.
+- Byte-equal scope: `decision_table`'s golden fixtures were already regenerated by BUG-3489 (`scripts/tests/fixtures/policy_builder/sample-decision-table.yaml:7`), so only `rubric`'s new `on_max_steps` addition still needs the preservation flag; this was the issue's own verification-pass finding, not a competing option.
 
 ## Integration Map
 
@@ -167,5 +179,6 @@ mechanical fix, so it remains an outstanding action item).
 
 
 ## Session Log
+- `/ll:decide-issue` - 2026-09-17T01:33:55 - `be9c9d04-b7b3-40fa-a6b2-8aa383887a4c.jsonl`
 - `/ll:verify-issues` - 2026-09-17T01:18:51 - `716b78b0-d53f-401a-997f-791cc3ac58be.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-09-16T23:13:05 - `e4d4d311-3a45-427a-958f-7960765e8da2.jsonl`
