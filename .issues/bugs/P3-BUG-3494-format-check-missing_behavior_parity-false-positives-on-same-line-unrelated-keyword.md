@@ -55,11 +55,16 @@ This gate feeds a hard scoring cap in `/ll:confidence-check` (Criterion 4) that 
 
 ## Proposed Solution
 
-Narrow `missing_behavior_parity`'s keyword match in `issue_parser.py` from whole-line to same-clause:
+Narrow `missing_behavior_parity`'s keyword match in `issue_parser.py` from whole-line to same-clause. Clause scoping alone resolves the BUG-3489 case; no secondary preservation-phrase guard ships in this fix (see Decision Rules below).
 
-1. Add `_behavior_parity_ref_clause(ref: str, line: str) -> str`, splitting `line` on `.`/`;`/em-dash (`—`) and returning the clause that contains `ref` (falling back to the full line if no boundary isolates one).
-2. In the `missing_behavior_parity` loop (`check_format_gaps`, `issue_parser.py:1135-1142`), replace `_BEHAVIOR_PARITY_KEYWORD_RE.search(ln)` with `_BEHAVIOR_PARITY_KEYWORD_RE.search(_behavior_parity_ref_clause(ref, ln))` so the keyword must share the ref's own clause, not merely the ref's line.
-3. Add `_BEHAVIOR_PARITY_PRESERVATION_RE` (whole-word: `untouched|unchanged|kept|stays|remains|outside this change`) as a secondary guard: if it matches the same clause a keyword hit was found in, suppress the flag — covers phrasing where a clause boundary doesn't fully isolate the keyword from a preservation phrase.
+1. Add `_behavior_parity_ref_clauses(ref: str, line: str) -> list[str]`, splitting `line` on **sentence/clause boundaries** and returning every clause that contains `ref` (falling back to `[line]` if no boundary isolates one). A boundary is a `.` or `;` followed by whitespace or end-of-line, or a spaced em-dash (` — `). **Never split on a bare `.`**: every file ref contains a dot (`rubric-router.yaml`, `session_store.py`), so a bare-dot split would yield fragments that never contain `ref`, hit the fallback for every ref, and silently restore whole-line behavior — the fix would be a no-op.
+2. In the `missing_behavior_parity` loop (`check_format_gaps`, `issue_parser.py:1135-1142`), replace `_BEHAVIOR_PARITY_KEYWORD_RE.search(ln)` with `any(_BEHAVIOR_PARITY_KEYWORD_RE.search(c) for c in _behavior_parity_ref_clauses(ref, ln))` so the keyword must share one of the ref's own clauses, not merely the ref's line. The return type is a list because the same ref can appear twice on one line ("replace `x.py`; the tests for `x.py` are untouched") and the flag must fire if *any* clause containing the ref carries a keyword.
+3. Keep passing the **full line** (not the clause) as `line=` to `classify_file_ref`: that argument drives the `(new)` planned-file marker, which may sit outside the ref's clause. Clause scoping applies to the keyword match only, not to ref classification.
+
+### Decision Rules
+
+- **No preservation-phrase suppression regex in this fix.** An earlier draft proposed `_BEHAVIOR_PARITY_PRESERVATION_RE` (`untouched|unchanged|kept|stays|remains|outside this change`) to suppress a keyword hit sharing the ref's clause. Rejected: the motivating case is fully handled by clause scoping, and the guard introduces genuine false negatives — "`foo.py` is replaced and the old module kept as a shim for one release" puts keyword and preservation word in one clause and would suppress a real replacement; `kept`/`stays`/`remains` are especially loose ("remains to be deleted"). If a real case surfaces that clause scoping does not cover, revisit as a follow-up with a narrow list (`untouched|unchanged|not modified|out of scope`) and a requirement that the ref precede the phrase in the clause.
+- **Accepted false negative: verb in a different sentence from the ref.** "Remove these two files. `a.py` and `b.py` go away." escapes detection after this change because the keyword sits in a separate sentence. This is the same limitation v1 already has for intro-line-plus-bullet-list phrasing (keyword on the intro line, refs on following lines) and is consistent with the "no proximity window" design; it is not a regression to reopen.
 
 ## Program Design
 
@@ -69,30 +74,48 @@ Narrow `missing_behavior_parity`'s keyword match in `issue_parser.py` from whole
 
 ### Signatures
 
-- `_behavior_parity_ref_clause(ref: str, line: str) -> str` (new, `issue_parser.py`) — returns the clause of `line` containing `ref`, split on `.`/`;`/`—`.
-- `_BEHAVIOR_PARITY_PRESERVATION_RE: re.Pattern[str]` (new, `issue_parser.py`, module-level, alongside `_BEHAVIOR_PARITY_KEYWORD_RE` at `issue_parser.py:1990`).
+- `_behavior_parity_ref_clauses(ref: str, line: str) -> list[str]` (new, `issue_parser.py`) — returns every clause of `line` containing `ref`, split on `[.;]` followed by whitespace/end-of-line or on ` — `; `[line]` if no boundary isolates one.
+- `_BEHAVIOR_PARITY_CLAUSE_SPLIT_RE: re.Pattern[str]` (new, `issue_parser.py`, module-level, alongside `_BEHAVIOR_PARITY_KEYWORD_RE` at `issue_parser.py:1990`) — the boundary pattern above; comment must state why a bare `.` is not a boundary.
 
 ### Call Path
 
-`check_format_gaps` (`issue_parser.py:1119`, `missing_behavior_parity` loop at `issue_parser.py:1135-1146`) -> `_behavior_parity_ref_clause` -> `_BEHAVIOR_PARITY_KEYWORD_RE.search` / `_BEHAVIOR_PARITY_PRESERVATION_RE.search` -> `classify_file_ref` (`text_utils.py:354`)
+`check_format_gaps` (`issue_parser.py:1119`, `missing_behavior_parity` loop at `issue_parser.py:1135-1146`) -> `_behavior_parity_ref_clauses` -> `_BEHAVIOR_PARITY_KEYWORD_RE.search` (per clause) -> `classify_file_ref` (`text_utils.py:354`, still receives the full line)
 
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/issue_parser.py` — add `_behavior_parity_ref_clause`, `_BEHAVIOR_PARITY_PRESERVATION_RE`, and rewire the `missing_behavior_parity` loop (lines ~1135-1146, 1990-2000)
+- `scripts/little_loops/issue_parser.py` — add `_behavior_parity_ref_clauses`, `_BEHAVIOR_PARITY_CLAUSE_SPLIT_RE`, and rewire the `missing_behavior_parity` loop (lines ~1135-1146, 1990-2000)
 
 ### Dependent Files (Callers/Importers)
 - None outside `issue_parser.py` — `_BEHAVIOR_PARITY_KEYWORD_RE` and the loop it lives in are private module internals of `check_format_gaps`; no other module imports them (confirmed via `grep -rn _BEHAVIOR_PARITY_KEYWORD_RE scripts/`)
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `skills/confidence-check/SKILL.md:194` — Phase 1.8 extracts `missing_behavior_parity` from `$FC_JSON` into shell variable `PARITY_GAP`. Informational only, no code change needed: the JSON key and contract are unchanged, this consumer simply sees fewer entries post-fix. [Agent 1 finding]
+- `skills/confidence-check/rubric.md:247,251-254` — Criterion 4 "Parity/Claim/Structure Cap": any non-empty `PARITY_GAP` caps the score at 10 regardless of the row that would otherwise apply. This is the consumer whose distorted signal motivates this bug (see Motivation) — cases that previously tripped the cap on this false positive will stop doing so once the fix lands. No code/prose change required here. [Agent 1 finding]
+
 ### Similar Patterns
 - No existing clause-splitting helper elsewhere in `issue_parser.py` to model after; this is the first clause-scoped (vs. line-scoped) keyword match in the module
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_ll_issues_format_check.py:1287` (`TestSoftDepHardEdge.test_no_gap_when_soft_language_in_different_paragraph`) — closest existing precedent for a narrowed-scope negative test: docstring names the exact scope boundary, fixture body intentionally places the phrase outside the scoped unit, asserts the gap does not fire. Model the new same-clause regression test's shape after this one (scope unit differs: paragraph via `_paragraph_spans()` there, vs. clause via `.`/`;`/em-dash split here). [Agent 3 finding]
 
 ### Tests
 - `scripts/tests/test_issue_parser.py` — existing `missing_behavior_parity` coverage; add the same-line-different-clause regression fixture from Steps to Reproduce
 - `scripts/tests/test_ll_issues_format_check.py` — existing `format-check` CLI-level behavior-parity coverage
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_ll_issues_format_check.py` — add `test_no_gap_when_keyword_and_ref_in_different_clauses_same_line` to `TestMissingBehaviorParity` (after line 1200), using the `_write_bug_with_summary` helper with body `"This fabricates evidence of the same class this issue removes. \`scripts/little_loops/session_store.py\`'s separate aggregate-only parser is untouched."` (use `session_store.py`, not `lib/rubric-router.yaml`, so the ref classifies as `resolved` via the existing `_RESOLVED_GIT_LS_FILES` fixture at line 1030); assert `result == 0` and `"missing_behavior_parity" not in out`. Confirmed no existing test in this class breaks under the narrowing (both "fires" tests keep keyword+ref in one clause; all "no gap" tests short-circuit before the keyword loop). [Agent 3 finding]
+- `scripts/tests/test_ll_issues_format_check.py` — also add to `TestMissingBehaviorParity`:
+  - `test_fires_when_dotted_ref_and_keyword_share_clause` — body like `"Replace \`scripts/little_loops/session_store.py\` with a thin shim."`; asserts the gap **fires**. Guards against the bare-`.` split bug: a wrong split would drop the ref from every clause, fall back to the whole line, and this test would still pass — so pair it with a direct unit test of `_behavior_parity_ref_clauses("a/b.py", "Replace \`a/b.py\` now. Other text.")` asserting the returned clause contains the dotted ref and not `"Other text"`.
+  - `test_fires_when_ref_appears_twice_and_one_clause_has_keyword` — body `"Replace \`scripts/little_loops/session_store.py\`; the tests for \`scripts/little_loops/session_store.py\` are untouched."`; asserts the gap fires (multi-occurrence cardinality).
+  - `test_no_gap_when_new_marker_outside_ref_clause` — a `(new)` marker elsewhere on the line must still classify the ref as `planned_new` (full line passed to `classify_file_ref`), so no gap.
+
 ### Documentation
 - N/A — internal gap-detection heuristic, not part of a documented public contract
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/CLI.md:2470-2473` — `ll-issues format-check` reference prose states the keyword match is "same line only" — must update in lockstep with the clause-scoping code change or this doc goes stale. [Agent 2 finding]
+- `docs/reference/API.md:910` — `check_format_gaps()` reference entry states "same line only, no multi-line proximity window" — same staleness risk as CLI.md above. [Agent 2 finding]
 
 ### Configuration
 - N/A
@@ -110,15 +133,24 @@ _Added by `/ll:refine-issue` — 2026-09-17 — based on codebase analysis:_
 ## Implementation Steps
 
 1. Add a regression fixture reproducing the exact BUG-3489 line shape (keyword and ref in the same line but different clauses, ref's own clause saying "untouched"/"unchanged").
-2. Narrow the same-line match to a same-clause or bounded-window match around the ref in `issue_parser.py`'s behavior-parity detection.
-3. Add a negative-signal check: if the ref's own clause contains a preservation phrase ("untouched", "unchanged", "kept", "stays", "remains", "outside this change") ahead of/near the keyword's clause, do not flag it — or rely solely on the narrowed proximity fix if that alone resolves the case.
-4. Re-run `scripts/tests/test_issue_parser*.py` and any `format_check` fixtures covering `missing_behavior_parity`.
+2. Add `_BEHAVIOR_PARITY_CLAUSE_SPLIT_RE` and `_behavior_parity_ref_clauses` in `issue_parser.py` (boundary = `[.;]` + whitespace/EOL, or ` — `; never a bare `.`), returning all clauses containing the ref.
+3. Rewire the `missing_behavior_parity` loop to `any(keyword in clause for clause in ref_clauses)`; keep passing the full line to `classify_file_ref`.
+4. Update the `_BEHAVIOR_PARITY_KEYWORD_RE` comment, the `check_format_gaps` docstring, `docs/reference/CLI.md`, and `docs/reference/API.md` from "same line only" to the clause-scoped rule (see Wiring Phase).
+5. Add the positive dotted-ref, multi-occurrence, and `(new)`-marker tests listed under Tests, then re-run `scripts/tests/test_ll_issues_format_check.py` and `scripts/tests/test_issue_parser.py`.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `docs/reference/CLI.md:2470-2473` — replace "same line only" with the new clause-scoped rule (mirror whatever phrasing the code comment settles on)
+- Update `docs/reference/API.md:910` — replace "same line only, no multi-line proximity window" with the new clause-scoped rule
+- Add `test_no_gap_when_keyword_and_ref_in_different_clauses_same_line` to `TestMissingBehaviorParity` in `scripts/tests/test_ll_issues_format_check.py`, modeled on `TestSoftDepHardEdge.test_no_gap_when_soft_language_in_different_paragraph` (line 1287) — see Tests subsection for the exact fixture body and assertion
 
 ## Impact
 
 - **Priority**: P3 - advisory-only false positive (distorts a confidence-score cap but doesn't block anything outright)
 - **Effort**: Small - one new helper function, one new regex, and a one-line change to the existing loop in a single file
-- **Risk**: Low - narrows an existing gap class; worst case is a rare genuine replacement going undetected if it shares a line but not a clause with its ref
+- **Risk**: Low - narrows an existing gap class; the accepted false negative is a genuine replacement whose verb sits in a different sentence from its ref on the same line (see Decision Rules), which mirrors v1's existing intro-line-plus-bullet-list blind spot. The dotted-ref positive test guards the one implementation hazard (bare-`.` split silently reverting to whole-line matching)
 - **Breaking Change**: No
 
 ## Root Cause
@@ -135,6 +167,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-17T00:46:52 - `be8b47b1-6882-43b4-b784-fa09f67d3d72.jsonl`
 - `/ll:refine-issue` - 2026-09-17T00:38:51 - `8d361261-7d23-4528-9cc0-b68e6d88c4d7.jsonl`
 - `/ll:format-issue` - 2026-09-17T00:08:07 - `0106b7a1-30c9-493e-b7a3-8ae734b157ea.jsonl`
 - `/ll:capture-issue` - 2026-09-16T23:51:04 - `c2d33705-5252-4e88-a51b-055eef4c4dc3.jsonl`
