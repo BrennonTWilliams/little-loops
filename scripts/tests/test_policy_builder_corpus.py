@@ -11,6 +11,8 @@ import json
 import re
 from pathlib import Path
 
+import pytest
+
 CORPUS = Path(__file__).parent / "fixtures" / "policy_builder" / "conformance_corpus.json"
 
 
@@ -41,6 +43,19 @@ def test_shadow_cases_match_canonical() -> None:
         assert got_numbers == sorted(case["expected_shadowed_rule_numbers"]), (
             f"{case['name']}: got {got_numbers}, warnings={warnings}"
         )
+
+
+def test_parse_error_cases_raise() -> None:
+    """BUG-3486: parse_error_cases pins parse_rules' error-raising behavior
+    (nonnumeric ordered comparisons, malformed targets) that the JS
+    `parseRuleTable`/`parsePredicate` mirror must match.
+    """
+    from little_loops.fsm.policy_rules import parse_rules
+
+    data = _load()
+    for case in data["parse_error_cases"]:
+        with pytest.raises(ValueError, match=re.escape(case["expected_error_substring"])):
+            parse_rules(case["rules"])
 
 
 def test_corpus_is_non_trivial() -> None:

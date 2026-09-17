@@ -6,10 +6,11 @@ type: BUG
 title: Policy builder preview, validation, and editing correctness (browser/core)
 priority: P2
 verify_verdict: VALID
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-16'
 captured_at: '2026-09-16T20:54:20Z'
+completed_at: '2026-09-17T03:02:37Z'
 labels:
 - policy-builder
 - captured
@@ -224,15 +225,15 @@ Per-defect file:line anchors, confirmed by direct code reading (re-anchored 2026
 
 ## Acceptance Criteria
 
-- [ ] Python/JS differential cases agree for boolean rules, missing fields, supported frontmatter comments/lists/quoting, derived priority, malformed targets, and nonnumeric ordered comparisons.
-- [ ] Regression tests assert actual winning row identity for repeated targets and explicit fallback matches.
-- [ ] Invalid/incomplete models show diagnostics and disable export; field changes, field removal, and rejected draft edits cannot silently export previous or incompatible values.
-- [ ] Duplicate/reserved outcome names are rejected by `validateBuilderModel` using the existing `isReservedOutcomeToken` against `RESERVED_STATE_NAMES` extended in place (decision_table gains `finished`, issue_lifecycle gains `issue_id`, a `rubric` key is added; BUG-3489's `error` entries and underscore-prefix rule are unchanged); an authored dimension normalizing to `aggregate` is an error diagnostic; `done` remains a valid decision-table outcome and the seed example loads with zero error diagnostics; no model can produce duplicate YAML keys or broken transitions; valid models in all three modes pass runtime validation.
-- [ ] `_doneStateName()` stays dynamic and the three `sample-*.yaml` fixtures are byte-identical before and after this change; only `golden_policy_router_builder.html` is regenerated.
-- [ ] Invalid/incomplete models disable both `#copy-btn` and `#download-btn`; a predicate with a non-null `draft` is an error diagnostic; a rubric-mode outcome other than `light_repair`/`deep_repair` is a warning diagnostic.
-- [ ] `conformance_corpus.json` gains `parse_error_cases` (asserted in both Python and Node) and `frontmatter_encoding_corpus.json` gains `js_reject_cases` (Node only); existing cases are unmodified.
-- [ ] Editing/reconciliation logic (including `opsForType`) lives in `policy_builder_core.mjs` as pure functions covered by `scripts/tests/js/policy_validator.test.mjs`; the template contains only DOM wiring; `_assertNoReservedTokens()` and its BUG-3489 throw tests are retained.
-- [ ] Existing offline generation, theme behavior, and valid model semantics remain covered by the local Python/Node suite.
+- [x] Python/JS differential cases agree for boolean rules, missing fields, supported frontmatter comments/lists/quoting, derived priority, malformed targets, and nonnumeric ordered comparisons.
+- [x] Regression tests assert actual winning row identity for repeated targets and explicit fallback matches.
+- [x] Invalid/incomplete models show diagnostics and disable export; field changes, field removal, and rejected draft edits cannot silently export previous or incompatible values.
+- [x] Duplicate/reserved outcome names are rejected by `validateBuilderModel` using the existing `isReservedOutcomeToken` against `RESERVED_STATE_NAMES` extended in place (decision_table gains `finished`, issue_lifecycle gains `issue_id`, a `rubric` key is added; BUG-3489's `error` entries and underscore-prefix rule are unchanged); an authored dimension normalizing to `aggregate` is an error diagnostic; `done` remains a valid decision-table outcome and the seed example loads with zero error diagnostics; no model can produce duplicate YAML keys or broken transitions; valid models in all three modes pass runtime validation.
+- [x] `_doneStateName()` stays dynamic and the three `sample-*.yaml` fixtures are byte-identical before and after this change; only `golden_policy_router_builder.html` is regenerated.
+- [x] Invalid/incomplete models disable both `#copy-btn` and `#download-btn`; a predicate with a non-null `draft` is an error diagnostic; a rubric-mode outcome other than `light_repair`/`deep_repair` is a warning diagnostic.
+- [x] `conformance_corpus.json` gains `parse_error_cases` (asserted in both Python and Node) and `frontmatter_encoding_corpus.json` gains `js_reject_cases` (Node only); existing cases are unmodified.
+- [x] Editing/reconciliation logic (including `opsForType`) lives in `policy_builder_core.mjs` as pure functions covered by `scripts/tests/js/policy_validator.test.mjs`; the template contains only DOM wiring; `_assertNoReservedTokens()` and its BUG-3489 throw tests are retained.
+- [x] Existing offline generation, theme behavior, and valid model semantics remain covered by the local Python/Node suite.
 
 ## Scope Boundaries
 
@@ -253,12 +254,70 @@ Verdict at time of check: **NEEDS_UPDATE** (correction below applied in the same
 - All in-scope defects (a)-(e), the Decisions-bullet current-state premises, the Integration Map/wiring/test citations, and the Program Design "current (pre-fix)" signatures were re-verified against HEAD (2026-09-17) and confirmed still accurate — none have been fixed by same-day commits.
 - One stale duplicate citation found and corrected: the "Conventions in force" paragraph under Root Cause > Codebase Research Findings cited `fsm/validation/reachability.py:170` for `_RESERVED = {"aggregate"}`; the correct line is `:190` (already cited correctly elsewhere in the Decisions section). Fixed in place.
 
+## Resolution
+
+Implemented in `scripts/little_loops/templates/policy_builder_core.mjs` and
+`scripts/little_loops/templates/policy-router-builder.html.tmpl`, per the issue's own
+Program Design (no deviations):
+
+- **Defect (a)/(b)** — added `evaluateModel(model, scores) -> MatchResult` (`ruleIndex`,
+  `target`, `isFallback`, `conditionResults`), which compiles via
+  `parseRuleTable(_serializeRulesText(model))` internally so both Try-it panels (decision-table
+  and issue_lifecycle) share one path and never evaluate raw `==true`/`==false` tokens. Winner
+  identity is now the compiled rule's index, not a `findIndex` by target name — repeated targets
+  and derived-fallback matches (`isFallback: true`, `ruleIndex: -1`) are both reported correctly.
+  The template highlights the winning rule card or the pinned fallback footer accordingly.
+- **Defect (c)** — `parsePredicate`/`parseRuleTable` now reject a non-numeric value on an
+  ordered operator and a malformed target name, mirroring `policy_rules.py`'s
+  `_parse_predicate`/`_TARGET_PATTERN` exactly. Added `validateBuilderModel(model) ->
+  Diagnostic[]`: non-throwing checks for reserved outcome/rule-target/fallback tokens, the
+  reserved `aggregate` dimension name, duplicate outcome names, missing rule/fallback/goto
+  references, unsupported mode/type combinations, incomplete prompt/slash_command actions,
+  invalid step budgets, inverted rubric thresholds, a non-null predicate draft, and a rubric
+  outcome other than `light_repair`/`deep_repair` (warning) — absorbing `detectShadows` as
+  warnings too. `RESERVED_STATE_NAMES` extended in place (`finished` for decision_table,
+  `issue_id` for issue_lifecycle, new `rubric` key) without touching BUG-3489's `error`/
+  underscore-prefix protections. `#copy-btn`/`#download-btn` are disabled while any
+  error-severity diagnostic exists; the YAML preview still renders regardless. `#add-outcome`
+  gained the same reserved/duplicate guard `#add-dim` already had.
+- **Defect (d)** — `reconcilePredicateForDim(pred, newDimType)` and `opsForType(type)` (moved
+  from the template) now live in the core as pure functions; `dimSel.onchange` calls the
+  reconciler so a predicate's `op`/`value` never survives a dimension-type change illegally.
+  Predicates gained an optional `draft: {text, error} | null`; a rejected string-value edit stays
+  visible via `draft.text` instead of silently diverging from the model, and
+  `validateBuilderModel` blocks export while any draft is non-null.
+- **Defect (e)** — `parseFrontmatterBlock` now strips `#` comments (line-start or
+  whitespace-preceded, outside quotes), splits flow lists on commas outside quotes (a quoted
+  comma stays inside its element), and explicitly rejects nested mappings, multi-line
+  block-scalar continuations, and YAML anchors/aliases rather than guessing. `priority_rank`
+  derivation in `encodeFrontmatterScores` now triggers on `raw_key === "priority_rank"`
+  (parity with `frontmatter_scores.py`), not on a dimension literally named `"priority"`.
+
+Corpus additions: `parse_error_cases` in `conformance_corpus.json` (asserted in both Python
+`test_policy_builder_corpus.py` and Node `policy_validator.test.mjs`); `js_reject_cases` plus
+three new bilateral `cases` (comment-stripping, quoted-comma, decoupled priority/priority_rank)
+in `frontmatter_encoding_corpus.json` (Node-only, per the issue's Decisions). `golden_policy_router_builder.html`
+regenerated; all three `sample-*.yaml`/`.model.json` fixtures are byte-identical (confirmed via
+`git status` — untouched), satisfying the "`_doneStateName()` stays dynamic, no fixture churn
+for valid models" AC. Docs updated: `POLICY_ROUTER_GUIDE.md`'s Reserved names paragraph and
+`CLI.md`'s policy-builder description.
+
+Verification: full local suite `python -m pytest scripts/tests/` — 24877 passed, 51 skipped, 1
+failed. The one failure (`test_verify_evidence.py::TestRepoGate::test_no_new_unverifiable_evidence`)
+is a pre-existing, unrelated evidence-citation gate flagging a stale quote in
+`.issues/bugs/P2-BUG-3484-...md` (a different bug's Root Cause section citing
+`scripts/pyproject.toml`'s two separate `--timeout=120`/`--timeout-method=thread` array entries
+as one contiguous quoted string) — neither that issue file nor `pyproject.toml` were touched by
+this change; the failure reproduces identically outside this issue's diff and is out of scope
+for BUG-3486.
+
 ## Status
 
-**Open** | Created: 2026-09-16 | Priority: P2
+**Done** | Created: 2026-09-16 | Priority: P2
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-17T03:01:20 - `668dd799-01ff-4254-b7b2-e3d25aba72af.jsonl`
 - `/ll:confidence-check` - 2026-09-17T02:22:44 - `b1dd9661-22d0-4185-a08c-e4daf35a732a.jsonl`
 - `/ll:verify-issues` - 2026-09-17T02:10:33 - `ac62d1f7-8315-4880-bb66-ce4cff7b7fe9.jsonl`
 - review - 2026-09-16 - post-BUG-3489 reconciliation: reserved-name work re-scoped to *extending* the existing `RESERVED_STATE_NAMES`/`isReservedOutcomeToken`/`_assertNoReservedTokens` (`45ec5e223`); `aggregate` moved from state-name to dimension-name reservation; withdrew the constant-`finished` decision (false fixture premise) — `_doneStateName()` stays dynamic, `finished` reserved, `sample-*.yaml` expected byte-identical; specified `parse_error_cases`/`js_reject_cases` corpus keys; `opsForType` moves to core; rubric unknown-outcome warning; `draft` optional/ignored by serializers; re-anchored all mjs/tmpl line cites; marked BUG-3489 coordination items satisfied

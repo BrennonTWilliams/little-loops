@@ -247,13 +247,18 @@ a real or mocked artifact.
   shorthand fallback to `route.error` still resolves *after* `route.default` — `no` is an
   ordinary verdict whose ordinary fallback is `_`, unlike the dedicated error path.
 - **Reserved names.** The generated decision-table pipeline uses `score`, `parse_scores`,
-  `policy_dispatch`, and `failed` as its own state names (issue-lifecycle mode uses `score`,
-  `policy_dispatch`, `done`, and `failed`); `error` is reserved in both. Every underscore-prefixed
-  token (`_`, `_error`, or any custom `_foo`) is also rejected — `RouteConfig.from_dict()` strips
-  underscore-prefixed keys from explicit verdict routes at runtime, so an authored outcome or
-  rule target starting with `_` would silently vanish rather than route. The Visual Builder
-  rejects these before emission with a diagnostic naming the offending token; hand-written loops
-  should avoid them for the same reason.
+  `policy_dispatch`, `failed`, and `finished` as its own state names (issue-lifecycle mode uses
+  `score`, `policy_dispatch`, `done`, `failed`, and `issue_id`; rubric mode uses `score`,
+  `parse_scores`, `route_high`, `route_medium`, and `done`); `error` is reserved in all three.
+  Every underscore-prefixed token (`_`, `_error`, or any custom `_foo`) is also rejected —
+  `RouteConfig.from_dict()` strips underscore-prefixed keys from explicit verdict routes at
+  runtime, so an authored outcome or rule target starting with `_` would silently vanish rather
+  than route. Separately, `aggregate` is reserved as a **dimension** name (it is the overall
+  rubric score `fsm/validation/reachability.py` skips as a predicate LHS) — a custom field that
+  normalizes to `aggregate` is rejected the same way. The Visual Builder's `validateBuilderModel`
+  rejects all of these before emission with a diagnostic naming the offending token (and disables
+  Copy/Download while any error-severity diagnostic exists); hand-written loops should avoid them
+  for the same reason.
 
 ## Visual Builder (greenfield)
 

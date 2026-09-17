@@ -84,7 +84,7 @@ button.secondary {
   margin-bottom: 0.4rem;
   background: var(--color-surface-base, #fff);
 }
-.rule-card.rule-winner {
+.rule-winner {
   outline: 2px solid var(--color-action-primary, #2563eb);
   background: var(--color-status-success-bg, #d4edda);
 }
@@ -288,11 +288,8 @@ function computeSummary(model) {
   return `Scores ${subject} on ${dims} signal${dims === 1 ? "" : "s"}, runs ≤${steps}×, stops at ${stopsAt}.`;
 }
 
-function opsForType(type) {
-  if (type === "boolean") return ["==true", "==false"];
-  if (type === "string") return ["==", "!="];
-  return GRAMMAR.all_ops;
-}
+// opsForType(type) now lives in policy_builder_core.mjs (BUG-3486) — shared
+// by the rule editor here and reconcilePredicateForDim.
 
 // ---- renderers -----------------------------------------------------------
 const $ = (id) => document.getElementById(id);
@@ -598,21 +595,36 @@ function renderRules() {
         opSel.appendChild(o);
       });
       const valInput = document.createElement("input");
-      valInput.type = "text"; valInput.value = p.value; valInput.placeholder = "value";
+      valInput.type = "text";
+      // BUG-3486 defect d: a rejected edit stays visible via p.draft.text
+      // instead of the DOM and model silently disagreeing.
+      valInput.value = p.draft ? p.draft.text : p.value;
+      valInput.placeholder = "value";
       valInput.setAttribute("aria-label", "Value");
       if (p.op === "==true" || p.op === "==false") valInput.disabled = true;
-      dimSel.onchange = () => { p.dim = dimSel.value; renderAll(); };
+      if (p.draft) valInput.title = p.draft.error || "";
+      dimSel.onchange = () => {
+        const newType = (state.dimensions.find((d) => normalizeDimName(d.name) === dimSel.value) || {}).type || "numeric";
+        Object.assign(p, reconcilePredicateForDim({ ...p, dim: dimSel.value }, newType));
+        renderAll();
+      };
       opSel.onchange = () => { p.op = opSel.value; renderAll(); };
       // A "string"-typed dim's rule-value input rejects empty values and
       // values containing "&" or "->" (they break the LHS-split / arrow-split
-      // parse_rules() grammar). Invalid input is not committed to the model.
+      // parse_rules() grammar). Invalid input is kept visible as a draft
+      // (BUG-3486) rather than silently discarded — validateBuilderModel
+      // blocks export while any predicate carries a non-null draft.
       valInput.oninput = () => {
         const curType = (state.dimensions.find((d) => normalizeDimName(d.name) === p.dim) || {}).type;
         const v = valInput.value;
         if (curType === "string" && (v.trim() === "" || v.includes("&") || v.includes("->"))) {
-          valInput.title = 'A condition value must be non-empty and cannot contain "&" or "->".';
+          const error = 'A condition value must be non-empty and cannot contain "&" or "->".';
+          p.draft = { text: v, error };
+          valInput.title = error;
+          updatePreview();
           return;
         }
+        p.draft = null;
         valInput.title = "";
         p.value = v;
         updatePreview();
@@ -675,8 +687,8 @@ function renderRules() {
 }
 
 // "Try it" (UX model §8): one input per dimension for Decision Table mode,
-// highlighting the first-matching rule row live via the existing
-// evaluateRules(). Highlight-the-winner only — no state execution.
+// highlighting the first-matching rule row live via evaluateModel().
+// Highlight-the-winner only — no state execution.
 // issue_lifecycle mode has its own frontmatter-paste Try-it panel instead
 // (renderFrontmatterTryIt/updateFrontmatterTryIt, below); rubric mode has none.
 function renderTryIt() {
@@ -715,33 +727,48 @@ function renderTryIt() {
   updateTryIt();
 }
 
+// Highlight the row identified by an evaluateModel() MatchResult: the
+// authored rule card when ruleIndex points at one, otherwise the pinned
+// fallback footer when the derived catch-all fallback matched (BUG-3486
+// defect b: winner identity, not a target-name lookup that can pick the
+// wrong row for a repeated target or silently no-op on a fallback match).
+function _highlightWinner(result) {
+  document.querySelectorAll(".rule-card").forEach((el) => el.classList.remove("rule-winner"));
+  $("fallback-row").classList.remove("rule-winner");
+  if (result.target == null) return;
+  if (result.ruleIndex >= 0) {
+    const row = document.querySelector(`.rule-card[data-rule-index="${result.ruleIndex}"]`);
+    if (row) row.classList.add("rule-winner");
+  } else if (result.isFallback) {
+    $("fallback-row").classList.add("rule-winner");
+  }
+}
+
 function updateTryIt() {
   if (state.mode === "issue_lifecycle") {
     updateFrontmatterTryIt();
     return;
   }
-  document.querySelectorAll(".rule-card").forEach((el) => el.classList.remove("rule-winner"));
-  if (state.mode !== "decision_table") return;
+  if (state.mode !== "decision_table") {
+    _highlightWinner({ ruleIndex: -1, target: null, isFallback: false });
+    return;
+  }
   const scores = {};
   document.querySelectorAll("#tryit-inputs [data-dim]").forEach((el) => {
     if (el.value === "") return;
     scores[el.dataset.dim] = el.tagName === "SELECT" ? (el.value === "true" ? 100 : 0) : Number(el.value);
   });
   const model = buildModel();
-  const winnerTarget = evaluateRules(model.rules, scores);
-  if (winnerTarget == null) return;
-  const idx = model.rules.findIndex((r) => r.target === winnerTarget);
-  const row = idx >= 0 ? document.querySelector(`.rule-card[data-rule-index="${idx}"]`) : null;
-  if (row) row.classList.add("rule-winner");
+  _highlightWinner(evaluateModel(model, scores));
 }
 
 // FEAT-3474: the issue_lifecycle Try-it panel. Parses the pasted frontmatter
 // with the pure mini-parser, encodes it with the same rules the
-// frontmatter_scores fragment uses, and evaluates the *compiled* rule table
-// (parseRuleTable(_serializeRulesText(model))) — never buildModel().rules
-// directly (see Encoding Rules § Try-it evaluates compiled rules: the
-// decision-table Try-it's raw-rules pattern is a pre-existing bug for
-// ==false predicates and must not be copied here).
+// frontmatter_scores fragment uses, and evaluates via evaluateModel (which
+// compiles through _serializeRulesText/parseRuleTable internally) — never
+// buildModel().rules directly (see Encoding Rules § Try-it evaluates
+// compiled rules: the decision-table Try-it's raw-rules pattern was a
+// pre-existing bug for ==false predicates and must not be copied here).
 function renderFrontmatterTryIt() {
   const input = $("fm-tryit-input");
   if (input && !input.dataset.wired) {
@@ -752,40 +779,44 @@ function renderFrontmatterTryIt() {
 }
 
 function updateFrontmatterTryIt() {
-  document.querySelectorAll(".rule-card").forEach((el) => el.classList.remove("rule-winner"));
   const input = $("fm-tryit-input");
   const hint = $("fm-tryit-hint");
   if (!input || !hint) return;
   const text = input.value;
-  if (!text.trim()) { hint.textContent = ""; return; }
+  if (!text.trim()) {
+    hint.textContent = "";
+    _highlightWinner({ ruleIndex: -1, target: null, isFallback: false });
+    return;
+  }
   let fm;
   try {
     fm = parseFrontmatterBlock(text);
   } catch (err) {
     hint.textContent = err.message;
+    _highlightWinner({ ruleIndex: -1, target: null, isFallback: false });
     return;
   }
   const model = buildModel();
   const scores = encodeFrontmatterScores(fm, model.dimensions);
   const pairs = Object.keys(scores).map((k) => `${k}=${scores[k]}`).join(", ");
   hint.textContent = pairs || "(no scored dimensions)";
-  const compiled = parseRuleTable(_serializeRulesText(model));
-  const winnerTarget = evaluateRules(compiled, scores);
-  if (winnerTarget == null) return;
-  const idx = model.rules.findIndex((r) => r.target === winnerTarget);
-  const row = idx >= 0 ? document.querySelector(`.rule-card[data-rule-index="${idx}"]`) : null;
-  if (row) row.classList.add("rule-winner");
+  _highlightWinner(evaluateModel(model, scores));
 }
 
-function renderMessages(model) {
+// BUG-3486: `diagnostics` is validateBuilderModel(model)'s output, computed
+// once by updatePreview() and passed in — renderMessages() no longer runs
+// its own detectShadows() pass (validateBuilderModel absorbs it). The two
+// checks left inline here (unreachable outcomes, unknown skill actions)
+// depend on data validateBuilderModel doesn't have access to (respectively
+// `state.mode`'s suppression rule and the project's skill CATALOG), so they
+// stay template-side.
+function renderMessages(model, diagnostics) {
   const host = $("messages");
   host.innerHTML = "";
   const add = (cls, text) => {
     const li = document.createElement("li"); li.className = cls; li.textContent = text; host.appendChild(li);
   };
-  // Shadow detection (plain-language, tied to the visible rule numbers).
-  const shadows = detectShadows(model.rules);
-  shadows.forEach((s) => add("msg-warn", `Rule ${s.ruleNumber} (→ ${s.target}) never fires — an earlier rule already covers it.`));
+  diagnostics.forEach((d) => add(d.severity === "error" ? "msg-error" : "msg-warn", d.message));
   if (state.mode === "decision_table") {
     // Outcomes unreachable by any rule and not the fallback. Suppressed in
     // issue_lifecycle mode: unused verbs are expected (left out of the
@@ -820,8 +851,15 @@ function updatePreview() {
     $("yaml-preview").textContent = `# Cannot generate YAML:\n# ${err.message}`;
     $("validate-hint").textContent = "";
   }
+  // BUG-3486: export is blocked on error-severity diagnostics, but the
+  // preview above still rendered (or showed its own throw) regardless —
+  // the user can always see what would be emitted.
+  const diagnostics = validateBuilderModel(model);
+  const hasError = diagnostics.some((d) => d.severity === "error");
+  $("copy-btn").disabled = hasError;
+  $("download-btn").disabled = hasError;
   $("yaml-summary").textContent = computeSummary(model);
-  renderMessages(model);
+  renderMessages(model, diagnostics);
   updateTryIt();
 }
 
@@ -917,6 +955,16 @@ $("add-outcome").onclick = () => {
   if (state.mode === "issue_lifecycle") return; // fixed verb set; #add-outcome is hidden too.
   const name = normalizeDimName($("outcome-name").value);
   if (!name) return;
+  // BUG-3486: mirrors #add-dim's existing reserved/duplicate guard — catch
+  // it here too, not just via validateBuilderModel after the fact.
+  if (isReservedOutcomeToken(state.mode, name)) {
+    alert(`"${name}" is reserved for the generated loop's own states.`);
+    return;
+  }
+  if (state.outcomes.some((oc) => oc.name === name)) {
+    alert(`An outcome named "${name}" already exists.`);
+    return;
+  }
   state.outcomes.push({ name, actionType: "prompt", body: "", transition: { kind: "rescore" } });
   $("outcome-name").value = "";
   renderAll();

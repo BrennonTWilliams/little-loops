@@ -27,6 +27,10 @@ import {
   LIFECYCLE_VERBS,
   RESERVED_STATE_NAMES,
   isReservedOutcomeToken,
+  validateBuilderModel,
+  evaluateModel,
+  reconcilePredicateForDim,
+  opsForType,
 } from "../../little_loops/templates/policy_builder_core.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -224,14 +228,18 @@ test("isReservedOutcomeToken accepts an ordinary authored token", () => {
   assert.equal(isReservedOutcomeToken("decision_table", "escalate"), false);
 });
 
-test("RESERVED_STATE_NAMES exposes the runtime sets documented by BUG-3489", () => {
+test("RESERVED_STATE_NAMES exposes the runtime sets documented by BUG-3489/BUG-3486", () => {
   assert.deepEqual(
     [...RESERVED_STATE_NAMES.decision_table].sort(),
-    ["error", "failed", "parse_scores", "policy_dispatch", "score"]
+    ["error", "failed", "finished", "parse_scores", "policy_dispatch", "score"]
   );
   assert.deepEqual(
     [...RESERVED_STATE_NAMES.issue_lifecycle].sort(),
-    ["done", "error", "failed", "policy_dispatch", "score"]
+    ["done", "error", "failed", "issue_id", "policy_dispatch", "score"]
+  );
+  assert.deepEqual(
+    [...RESERVED_STATE_NAMES.rubric].sort(),
+    ["done", "parse_scores", "route_high", "route_medium", "score"]
   );
 });
 
@@ -419,4 +427,242 @@ test("parseFrontmatterBlock throws a 'Can't read line N' error on an unparseable
 test("parseFrontmatterBlock tolerates --- fence lines", () => {
   const fm = parseFrontmatterBlock("---\nstatus: open\n---\n");
   assert.equal(fm.status, "open");
+});
+
+// ---------------------------------------------------------------------------
+// BUG-3486: parseRuleTable/parsePredicate parity, parseFrontmatterBlock's
+// comment/quoted-comma/reject-unsupported handling, validateBuilderModel,
+// evaluateModel, reconcilePredicateForDim, opsForType.
+// ---------------------------------------------------------------------------
+
+test("parseRuleTable rejects a non-numeric value on an ordered operator (parity with policy_rules.py)", () => {
+  assert.throws(() => parseRuleTable("confidence_score:>=high -> implement"), /numeric/);
+});
+
+test("parseRuleTable rejects a malformed target name (parity with policy_rules.py)", () => {
+  assert.throws(() => parseRuleTable("quality:>=90 -> bad/target"), /invalid target/);
+});
+
+test("conformance_corpus parse_error_cases raise the documented substring", () => {
+  for (const c of corpus.parse_error_cases) {
+    assert.throws(
+      () => parseRuleTable(c.rules),
+      (err) => err.message.includes(c.expected_error_substring),
+      c.name
+    );
+  }
+});
+
+test("parseFrontmatterBlock strips a # comment at line-start or after whitespace, outside quotes", () => {
+  const fm = parseFrontmatterBlock("confidence_score: 40 # not yet verified\ntitle: 'uses a # inside quotes'");
+  assert.equal(fm.confidence_score, "40");
+  assert.equal(fm.title, "uses a # inside quotes");
+});
+
+test("parseFrontmatterBlock keeps a quoted comma inside one flow-list element", () => {
+  const fm = parseFrontmatterBlock('blocked_by: [BUG-1, "BUG-2, see note"]');
+  assert.deepEqual(fm.blocked_by, ["BUG-1", "BUG-2, see note"]);
+});
+
+test("parseFrontmatterBlock rejects a nested mapping", () => {
+  assert.throws(() => parseFrontmatterBlock("meta:\n  nested: value"), /Can't read line 2/);
+});
+
+test("parseFrontmatterBlock rejects a YAML anchor", () => {
+  assert.throws(() => parseFrontmatterBlock("status: &anchor open"), /Can't read line 1/);
+});
+
+test("parseFrontmatterBlock rejects a multi-line block-scalar continuation", () => {
+  assert.throws(() => parseFrontmatterBlock("description: |\n  line one\n  line two"), /Can't read line 2/);
+});
+
+test("frontmatter_encoding_corpus js_reject_cases raise the documented substring", () => {
+  const fmCorpus = JSON.parse(readFileSync(join(FIXT, "frontmatter_encoding_corpus.json"), "utf8"));
+  for (const c of fmCorpus.js_reject_cases) {
+    assert.throws(
+      () => parseFrontmatterBlock(c.frontmatter_text),
+      (err) => err.message.includes(c.expected_error_substring),
+      c.name
+    );
+  }
+});
+
+test("encodeFrontmatterScores derives priority_rank from raw_key === 'priority_rank', not a dim named 'priority'", () => {
+  // No "priority" dimension declared at all — priority_rank still derives
+  // from the literal frontmatter "priority" key (parity with
+  // frontmatter_scores.py's encode_frontmatter_scores).
+  const fm = parseFrontmatterBlock("priority: P3");
+  const scores = encodeFrontmatterScores(fm, [{ name: "priority_rank", type: "numeric" }]);
+  assert.deepEqual(scores, { priority_rank: "3" });
+});
+
+test("opsForType returns the legal operator set per dimension type, default first", () => {
+  assert.deepEqual(opsForType("boolean"), ["==true", "==false"]);
+  assert.deepEqual(opsForType("string"), ["==", "!="]);
+  assert.deepEqual(opsForType("numeric"), ["==", "!=", ">=", "<=", "<", ">"]);
+  assert.deepEqual(opsForType("list"), ["==", "!=", ">=", "<=", "<", ">"]);
+});
+
+test("reconcilePredicateForDim preserves a still-legal op/value unchanged", () => {
+  const pred = { dim: "quality", op: ">=", value: "50" };
+  assert.deepEqual(reconcilePredicateForDim(pred, "numeric"), pred);
+});
+
+test("reconcilePredicateForDim resets op/value/draft when the op is illegal for the new type", () => {
+  const pred = { dim: "quality", op: ">=", value: "50", draft: { text: "5", error: "" } };
+  const reconciled = reconcilePredicateForDim(pred, "boolean");
+  assert.equal(reconciled.op, "==true");
+  assert.equal(reconciled.value, "");
+  assert.equal(reconciled.draft, null);
+});
+
+test("evaluateModel returns the winning rule's index for a repeated target (identity, not name lookup)", () => {
+  const model = seedExample("decision_table");
+  model.rules.push({
+    predicates: [{ dim: "quality", op: "<", value: "50" }],
+    target: "done",
+    isCatchall: false,
+  });
+  const result = evaluateModel(model, { quality: 10, "has-citations": 0 });
+  assert.equal(result.ruleIndex, 2);
+  assert.equal(result.target, "done");
+  assert.equal(result.isFallback, false);
+});
+
+test("evaluateModel marks a derived-fallback match with isFallback and no authored ruleIndex", () => {
+  const model = seedExample("decision_table");
+  const result = evaluateModel(model, { quality: 0, "has-citations": 0 });
+  assert.equal(result.target, "deep-repair");
+  assert.equal(result.isFallback, true);
+  assert.equal(result.ruleIndex, -1);
+});
+
+test("evaluateModel evaluates compiled boolean predicates, not raw ==true/==false tokens", () => {
+  const model = {
+    mode: "decision_table",
+    dimensions: [{ name: "flag", type: "boolean" }],
+    rules: [{ predicates: [{ dim: "flag", op: "==false", value: "" }], target: "on", isCatchall: false }],
+    fallback: "off",
+    outcomes: [{ name: "on" }, { name: "off" }],
+  };
+  // flag scored 100 (true) must NOT match ==false once compiled.
+  const result = evaluateModel(model, { flag: 100 });
+  assert.equal(result.target, "off");
+  assert.equal(result.isFallback, true);
+});
+
+test("evaluateModel returns a no-winner result (not a throw) for an incomplete/malformed rule table", () => {
+  const model = {
+    mode: "decision_table",
+    dimensions: [{ name: "quality", type: "numeric" }],
+    rules: [{ predicates: [{ dim: "quality", op: ">=", value: "" }], target: "x", isCatchall: false }],
+    fallback: "y",
+    outcomes: [{ name: "x" }, { name: "y" }],
+  };
+  assert.doesNotThrow(() => evaluateModel(model, { quality: 10 }));
+  const result = evaluateModel(model, { quality: 10 });
+  assert.equal(result.target, null);
+});
+
+test("validateBuilderModel reports zero error diagnostics for every seeded and blank model", () => {
+  for (const mode of ["decision_table", "rubric", "issue_lifecycle"]) {
+    for (const model of [seedExample(mode), blankModel(mode)]) {
+      const errors = validateBuilderModel(model).filter((d) => d.severity === "error");
+      assert.deepEqual(errors, [], `${mode}: ${JSON.stringify(errors)}`);
+    }
+  }
+});
+
+test("validateBuilderModel reports zero error diagnostics for the three golden fixtures", () => {
+  for (const fixture of [
+    "sample-decision-table.model.json",
+    "sample-rubric.model.json",
+    "sample-issue-lifecycle.model.json",
+  ]) {
+    const model = JSON.parse(readFileSync(join(FIXT, fixture), "utf8"));
+    const errors = validateBuilderModel(model).filter((d) => d.severity === "error");
+    assert.deepEqual(errors, [], `${fixture}: ${JSON.stringify(errors)}`);
+  }
+});
+
+test("validateBuilderModel flags a reserved outcome/rule-target/fallback as an error (non-throwing)", () => {
+  const model = seedExample("decision_table");
+  model.outcomes[0].name = "score";
+  model.rules[0].target = "score";
+  const errors = validateBuilderModel(model).filter((d) => d.severity === "error");
+  assert.ok(errors.some((d) => /reserved/.test(d.message) && /score/.test(d.message)));
+});
+
+test("validateBuilderModel flags a dimension normalizing to the reserved 'aggregate' name", () => {
+  const model = seedExample("rubric");
+  model.dimensions.push({ name: "Aggregate", type: "numeric" });
+  const errors = validateBuilderModel(model).filter((d) => d.severity === "error");
+  assert.ok(errors.some((d) => /aggregate/.test(d.message)));
+});
+
+test("validateBuilderModel flags a duplicate outcome name", () => {
+  const model = seedExample("decision_table");
+  model.outcomes.push({ ...model.outcomes[0] });
+  const errors = validateBuilderModel(model).filter((d) => d.severity === "error");
+  assert.ok(errors.some((d) => /defined more than once/.test(d.message)));
+});
+
+test("validateBuilderModel flags a rule target, fallback, and goto target that reference an undefined outcome", () => {
+  const model = seedExample("decision_table");
+  model.rules[0].target = "nope";
+  model.fallback = "also-nope";
+  model.outcomes[1].transition = { kind: "goto", target: "still-nope" };
+  const errors = validateBuilderModel(model).filter((d) => d.severity === "error");
+  assert.ok(errors.some((d) => d.message.includes('"nope"')));
+  assert.ok(errors.some((d) => d.message.includes('"also-nope"')));
+  assert.ok(errors.some((d) => d.message.includes('"still-nope"')));
+});
+
+test("validateBuilderModel flags an incomplete prompt/slash_command action", () => {
+  const model = seedExample("decision_table");
+  model.outcomes[1].body = "";
+  const errors = validateBuilderModel(model).filter((d) => d.severity === "error");
+  assert.ok(errors.some((d) => /has no prompt text/.test(d.message)));
+});
+
+test("validateBuilderModel flags a non-positive or non-integer step budget", () => {
+  const model = seedExample("decision_table");
+  for (const bad of [0, -5, 1.5, NaN]) {
+    model.maxSteps = bad;
+    const errors = validateBuilderModel(model).filter((d) => d.severity === "error");
+    assert.ok(
+      errors.some((d) => d.field === "maxSteps"),
+      `expected a maxSteps error for ${bad}`
+    );
+  }
+});
+
+test("validateBuilderModel flags inverted rubric thresholds", () => {
+  const model = seedExample("rubric");
+  model.thresholdHigh = 50;
+  model.thresholdMedium = 65;
+  const errors = validateBuilderModel(model).filter((d) => d.severity === "error");
+  assert.ok(errors.some((d) => /threshold/.test(d.message)));
+});
+
+test("validateBuilderModel flags a predicate with a non-null draft", () => {
+  const model = seedExample("decision_table");
+  model.rules[0].predicates[0].draft = { text: "9", error: "bad" };
+  const errors = validateBuilderModel(model).filter((d) => d.severity === "error");
+  assert.ok(errors.some((d) => /unsaved edit/.test(d.message)));
+});
+
+test("validateBuilderModel warns (not errors) on a rubric outcome other than light_repair/deep_repair", () => {
+  const model = seedExample("rubric");
+  model.outcomes.push({ name: "unexpected", actionType: "none", transition: { kind: "finish" } });
+  const diagnostics = validateBuilderModel(model);
+  assert.ok(diagnostics.some((d) => d.severity === "warning" && /rubric mode ignores it/.test(d.message)));
+  assert.ok(!diagnostics.some((d) => d.severity === "error"));
+});
+
+test("validateBuilderModel absorbs detectShadows as warning diagnostics", () => {
+  const model = seedExample("decision_table");
+  model.rules.unshift({ predicates: [], target: model.rules[0].target, isCatchall: true });
+  const diagnostics = validateBuilderModel(model);
+  assert.ok(diagnostics.some((d) => d.severity === "warning" && /never fires/.test(d.message)));
 });

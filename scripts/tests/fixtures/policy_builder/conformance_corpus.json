@@ -246,5 +246,17 @@
         3
       ]
     }
+  ],
+  "parse_error_cases": [
+    {
+      "name": "ordered op with non-numeric value",
+      "rules": "confidence_score:>=high -> implement",
+      "expected_error_substring": "numeric"
+    },
+    {
+      "name": "malformed target with a slash",
+      "rules": "quality:>=90 -> bad/target",
+      "expected_error_substring": "invalid target"
+    }
   ]
 }

@@ -58,6 +58,10 @@
 // Canonical operator sets (kept in sync with policy_rules.grammar_spec()).
 const ORDERED_OPS = [">=", "<=", "<", ">"];
 
+// Valid state-name characters for a rule target — mirrors Python's
+// _TARGET_PATTERN (policy_rules.py:37) exactly (BUG-3486 defect c).
+const _TARGET_RE = /^[\w][\w-]*$/;
+
 // Default JS predicate regex literal mirroring _PRED_PATTERN after
 // _py_pattern_to_js translation: (?P<name>...) -> (?<name>...). Used when no
 // `grammar` arg is supplied (e.g. node tests that don't shell out to Python).
@@ -144,14 +148,23 @@ export const LIFECYCLE_VERBS = [
  * pipeline itself uses as state names. An authored outcome name, rule
  * target, or fallback matching one of these collides with a generated
  * state key at emission; both serializers reject it before emission via
- * `isReservedOutcomeToken`. BUG-3486 extends this map for broader
- * browser/model validation and additional modes — it must not introduce a
- * parallel reserved-name definition or lose the `error`/underscore-prefix
- * protections below.
+ * `isReservedOutcomeToken`. BUG-3486 extends this map in place: `finished`
+ * (the only other name `_doneStateName()` can emit) joins decision_table;
+ * `issue_id` (emitted by `_serializeIssueLifecycle()`) joins issue_lifecycle;
+ * a new `rubric` key covers `_serializeRubric()`'s own state names. The
+ * `error`/underscore-prefix protections are unchanged.
  */
 export const RESERVED_STATE_NAMES = {
-  decision_table: new Set(["score", "parse_scores", "policy_dispatch", "failed", "error"]),
-  issue_lifecycle: new Set(["score", "policy_dispatch", "done", "failed", "error"]),
+  decision_table: new Set([
+    "score",
+    "parse_scores",
+    "policy_dispatch",
+    "failed",
+    "error",
+    "finished",
+  ]),
+  issue_lifecycle: new Set(["score", "policy_dispatch", "done", "failed", "error", "issue_id"]),
+  rubric: new Set(["score", "parse_scores", "route_high", "route_medium", "done"]),
 };
 
 /**
@@ -238,6 +251,40 @@ export function normalizeDimName(name) {
 }
 
 /**
+ * Legal comparison operators for a dimension type (BUG-3486: moved from the
+ * template's inline `opsForType()` so it can back both the rule editor and
+ * `reconcilePredicateForDim`). The first entry in the returned array is that
+ * type's default operator.
+ * @param {string} type  one of "boolean" | "string" | "numeric" | "list"
+ * @returns {string[]}
+ */
+export function opsForType(type) {
+  if (type === "boolean") return ["==true", "==false"];
+  if (type === "string") return ["==", "!="];
+  return ["==", "!=", ">=", "<=", "<", ">"];
+}
+
+/**
+ * Reconcile a predicate's `op`/`value` against a (possibly new) dimension
+ * type — e.g. after the user retargets a rule condition's `dim` to a
+ * dimension of a different type (BUG-3486 defect d). If the predicate's
+ * current `op` is still legal for `newDimType`, returns a shallow copy
+ * unchanged; otherwise resets `op` to that type's default and clears
+ * `value`/`draft` so no stale, now-illegal value lingers in the model.
+ * Pure: never mutates `pred`.
+ * @param {{dim: string, op: string, value: string, draft?: {text: string, error: string}|null}} pred
+ * @param {string} newDimType
+ * @returns {{dim: string, op: string, value: string, draft: null}}
+ */
+export function reconcilePredicateForDim(pred, newDimType) {
+  const legal = opsForType(newDimType);
+  if (legal.includes(pred.op)) {
+    return { ...pred };
+  }
+  return { ...pred, op: legal[0], value: "", draft: null };
+}
+
+/**
  * Compile a boolean predicate operator into a numeric {op, value} pair.
  * ==true -> >=50 ; ==false -> <50  (mirrors the 100/0 boolean encoding).
  * @param {string} op  one of "==true", "==false"
@@ -311,6 +358,50 @@ export function evaluateRules(rules, scores) {
 }
 
 /**
+ * Evaluate a builder `model` against `scores`, preserving the identity of
+ * the winning rule (BUG-3486 defects a/b). Unlike `evaluateRules` (which
+ * takes an already-parsed rule array and returns only a target string),
+ * this compiles the model's *authored* rules the same way the emitted YAML
+ * does — via `parseRuleTable(_serializeRulesText(model))` — so boolean
+ * predicates (`==true`/`==false`) are evaluated as their compiled numeric
+ * form, never raw. Both Try-it panels share this one path.
+ *
+ * `ruleIndex` refers to `model.rules` (0-based): it is the index of the
+ * matched rule when the match came from an authored row, or `-1` when the
+ * winner is the derived fallback catch-all that `_serializeRulesText`
+ * appends (no authored row to highlight). A malformed/incomplete rule
+ * table (e.g. a freshly-added predicate with an empty value) fails to
+ * compile; rather than throwing, this returns the same "no winner" shape
+ * as a genuine no-match — `validateBuilderModel` is the surface that
+ * reports the underlying defect.
+ * @param {Object} model  a builder model (see file-header model-shape contract)
+ * @param {Object} scores
+ * @returns {{ruleIndex: number, target: string|null, isFallback: boolean, conditionResults: boolean[]}}
+ */
+export function evaluateModel(model, scores) {
+  const noMatch = { ruleIndex: -1, target: null, isFallback: false, conditionResults: [] };
+  let compiled;
+  try {
+    compiled = parseRuleTable(_serializeRulesText(model));
+  } catch (err) {
+    return noMatch;
+  }
+  const authoredCount = (model.rules || []).length;
+  for (let i = 0; i < compiled.length; i++) {
+    const rule = compiled[i];
+    const ruleIndex = i < authoredCount ? i : -1;
+    if (isCatchall(rule)) {
+      return { ruleIndex, target: rule.target, isFallback: true, conditionResults: [] };
+    }
+    const conditionResults = rule.predicates.map((p) => evalPredicate(p, scores));
+    if (conditionResults.every(Boolean)) {
+      return { ruleIndex, target: rule.target, isFallback: false, conditionResults };
+    }
+  }
+  return noMatch;
+}
+
+/**
  * Detect shadowed rules. Mirrors route_table._detect_shadows but returns
  * structured objects (1-based ruleNumber).
  * @param {Array} rules
@@ -348,6 +439,219 @@ export function detectShadows(rules) {
     }
   }
   return out;
+}
+
+const _VALID_ACTION_TYPES = new Set(["prompt", "slash_command", "shell", "none"]);
+const _VALID_DIM_TYPES = new Set(["numeric", "boolean", "string", "list"]);
+
+function _diag(severity, field, message) {
+  return { severity, field, message };
+}
+
+function _checkReservedTokens(mode, model) {
+  const out = [];
+  for (const r of model.rules || []) {
+    if (r.target && isReservedOutcomeToken(mode, r.target)) {
+      out.push(
+        _diag("error", "rules", `Rule target "${r.target}" is reserved for the generated loop's own states.`)
+      );
+    }
+  }
+  for (const o of model.outcomes || []) {
+    if (o.name && isReservedOutcomeToken(mode, o.name)) {
+      out.push(
+        _diag("error", "outcomes", `Outcome "${o.name}" is reserved for the generated loop's own states.`)
+      );
+    }
+  }
+  if (model.fallback && isReservedOutcomeToken(mode, model.fallback)) {
+    out.push(
+      _diag("error", "fallback", `Fallback "${model.fallback}" is reserved for the generated loop's own states.`)
+    );
+  }
+  return out;
+}
+
+// `aggregate` is a reserved *dimension* name (fsm/validation/reachability.py's
+// `_RESERVED = {"aggregate"}`) — it is the overall rubric score, not a state
+// name, so it does not belong in RESERVED_STATE_NAMES (see Decisions).
+function _checkReservedDimensions(model) {
+  const out = [];
+  for (const d of model.dimensions || []) {
+    if (normalizeDimName(d.name) === "aggregate") {
+      out.push(
+        _diag(
+          "error",
+          "dimensions",
+          `Field "${d.name}" normalizes to "aggregate", which is reserved for the overall rubric score.`
+        )
+      );
+    }
+  }
+  return out;
+}
+
+function _checkDuplicateOutcomes(model) {
+  const out = [];
+  const seen = new Set();
+  for (const o of model.outcomes || []) {
+    if (!o.name) continue;
+    if (seen.has(o.name)) {
+      out.push(_diag("error", "outcomes", `Outcome "${o.name}" is defined more than once.`));
+    }
+    seen.add(o.name);
+  }
+  return out;
+}
+
+function _checkMissingReferences(model) {
+  const out = [];
+  const names = new Set((model.outcomes || []).map((o) => o.name));
+  (model.rules || []).forEach((r, i) => {
+    if (r.target && !names.has(r.target)) {
+      out.push(
+        _diag("error", `rules[${i}]`, `Rule ${i + 1} routes to "${r.target}", which is not a defined outcome.`)
+      );
+    }
+  });
+  if (model.fallback && !names.has(model.fallback)) {
+    out.push(_diag("error", "fallback", `Fallback "${model.fallback}" is not a defined outcome.`));
+  }
+  for (const o of model.outcomes || []) {
+    const t = o.transition;
+    if (t && t.kind === "goto" && t.target && !names.has(t.target)) {
+      out.push(
+        _diag("error", "outcomes", `Outcome "${o.name}"'s "Go to" target "${t.target}" is not a defined outcome.`)
+      );
+    }
+  }
+  return out;
+}
+
+function _checkModeTypeCombinations(model) {
+  const out = [];
+  for (const d of model.dimensions || []) {
+    if (!_VALID_DIM_TYPES.has(d.type)) {
+      out.push(_diag("error", "dimensions", `Field "${d.name}" has an unsupported type "${d.type}".`));
+    } else if (model.mode === "rubric" && (d.type === "string" || d.type === "list")) {
+      out.push(
+        _diag("warning", "dimensions", `Field "${d.name}" is type "${d.type}", which rubric scoring does not use.`)
+      );
+    }
+  }
+  for (const o of model.outcomes || []) {
+    const at = o.actionType || "none";
+    if (!_VALID_ACTION_TYPES.has(at)) {
+      out.push(_diag("error", "outcomes", `Outcome "${o.name}" has an unsupported action type "${at}".`));
+    }
+  }
+  return out;
+}
+
+function _checkIncompleteActions(model) {
+  const out = [];
+  for (const o of model.outcomes || []) {
+    const at = o.actionType || "none";
+    if ((at === "prompt" || at === "slash_command") && !(o.body && String(o.body).trim())) {
+      out.push(
+        _diag(
+          "error",
+          "outcomes",
+          `Outcome "${o.name}" has no ${at === "prompt" ? "prompt text" : "skill selected"}.`
+        )
+      );
+    }
+  }
+  return out;
+}
+
+function _checkStepBudget(model) {
+  const steps = model.maxSteps;
+  if (!(Number.isInteger(steps) && steps >= 1)) {
+    return [_diag("error", "maxSteps", `Max steps must be a positive whole number (got ${JSON.stringify(steps)}).`)];
+  }
+  return [];
+}
+
+function _checkRubricThresholds(model) {
+  if (model.mode !== "rubric") return [];
+  const high = Number(model.thresholdHigh);
+  const medium = Number(model.thresholdMedium);
+  if (!(high > medium)) {
+    return [
+      _diag(
+        "error",
+        "thresholdHigh",
+        `High threshold (${model.thresholdHigh}) must be greater than medium threshold (${model.thresholdMedium}).`
+      ),
+    ];
+  }
+  return [];
+}
+
+function _checkDrafts(model) {
+  const out = [];
+  for (const r of model.rules || []) {
+    for (const p of r.predicates || []) {
+      if (p.draft) {
+        out.push(
+          _diag("error", "rules", `A condition has an unsaved edit${p.draft.error ? `: ${p.draft.error}` : ""}.`)
+        );
+      }
+    }
+  }
+  return out;
+}
+
+// _serializeRubric() only honors outcomes literally named light_repair/deep_repair;
+// any other authored outcome is silently dropped at emission (BUG-3486 decision).
+function _checkRubricUnknownOutcomes(model) {
+  if (model.mode !== "rubric") return [];
+  const out = [];
+  for (const o of model.outcomes || []) {
+    if (o.name !== "light_repair" && o.name !== "deep_repair") {
+      out.push(
+        _diag("warning", "outcomes", `Outcome "${o.name}" is not "light_repair" or "deep_repair"; rubric mode ignores it.`)
+      );
+    }
+  }
+  return out;
+}
+
+function _checkShadows(model) {
+  return detectShadows(model.rules || []).map((s) =>
+    _diag("warning", "rules", `Rule ${s.ruleNumber} (→ ${s.target}) never fires — an earlier rule already covers it.`)
+  );
+}
+
+/**
+ * Validate a builder `model`, returning every diagnostic found (BUG-3486).
+ * Pure, non-throwing — the primary surface for reserved-name/duplicate/
+ * missing-reference/incomplete-action/step-budget/threshold/draft/rubric
+ * diagnostics; absorbs `detectShadows` as warnings. `severity: "error"`
+ * diagnostics must block export (Copy/Download); `"warning"` diagnostics
+ * are informational only. `_assertNoReservedTokens()` inside the
+ * serializers stays as a throwing defense-in-depth check — this function
+ * is what lets the UI show the same problem *before* the user tries to
+ * export.
+ * @param {Object} model  a builder model (see file-header model-shape contract)
+ * @returns {Array<{severity: "error"|"warning", field: string, message: string}>}
+ */
+export function validateBuilderModel(model) {
+  const mode = model.mode || "decision_table";
+  return [
+    ..._checkReservedTokens(mode, model),
+    ..._checkReservedDimensions(model),
+    ..._checkDuplicateOutcomes(model),
+    ..._checkMissingReferences(model),
+    ..._checkModeTypeCombinations(model),
+    ..._checkIncompleteActions(model),
+    ..._checkStepBudget(model),
+    ..._checkRubricThresholds(model),
+    ..._checkDrafts(model),
+    ..._checkRubricUnknownOutcomes(model),
+    ..._checkShadows(model),
+  ];
 }
 
 /**
@@ -593,11 +897,18 @@ function parsePredicate(text, re) {
   if (!m || !m.groups) {
     throw new Error(`Invalid predicate ${JSON.stringify(text)}`);
   }
-  return {
-    dim: m.groups.dim.trim(),
-    op: m.groups.op,
-    value: m.groups.value.trim(),
-  };
+  const dim = m.groups.dim.trim();
+  const op = m.groups.op;
+  const value = m.groups.value.trim();
+  // Parity with Python's _parse_predicate (policy_rules.py:87-94): an
+  // ordered operator requires a numeric value at parse time.
+  if (ORDERED_OPS.includes(op) && Number.isNaN(Number(value))) {
+    throw new Error(
+      `Ordered operator ${JSON.stringify(op)} requires a numeric value; ` +
+        `got ${JSON.stringify(value)} in predicate ${JSON.stringify(text)}`
+    );
+  }
+  return { dim, op, value };
 }
 
 /**
@@ -622,6 +933,13 @@ export function parseRuleTable(text, grammar) {
     const target = line.slice(arrow + 2).trim();
     if (!target) {
       throw new Error(`Empty target state in: ${JSON.stringify(line)}`);
+    }
+    // Parity with Python's _TARGET_PATTERN check (policy_rules.py:140-144).
+    if (!_TARGET_RE.test(target)) {
+      throw new Error(
+        `Line has invalid target state name ${JSON.stringify(target)} ` +
+          `(only word chars and hyphens allowed)`
+      );
     }
     if (lhs === "*") {
       rules.push({ predicates: [], target, isCatchall: true });
@@ -1152,6 +1470,53 @@ function _stripMatchingQuotes(value) {
   return value;
 }
 
+// Strip a `#` comment from a raw (untrimmed) line — only when the `#` sits at
+// line start or is preceded by whitespace, and only outside single/double
+// quotes (BUG-3486 defect e). A quoted `#` is literal and left alone.
+function _stripComment(raw) {
+  let inSingle = false;
+  let inDouble = false;
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    if (ch === "'" && !inDouble) {
+      inSingle = !inSingle;
+    } else if (ch === '"' && !inSingle) {
+      inDouble = !inDouble;
+    } else if (ch === "#" && !inSingle && !inDouble && (i === 0 || /\s/.test(raw[i - 1]))) {
+      return raw.slice(0, i);
+    }
+  }
+  return raw;
+}
+
+// Split a flow-list's inner text on commas that are outside single/double
+// quotes, then unquote each element (BUG-3486 defect e: a quoted comma like
+// `[a, "b, c"]` must stay inside its element, not split it).
+function _parseFlowList(inner) {
+  if (inner.trim() === "") return [];
+  const items = [];
+  let cur = "";
+  let inSingle = false;
+  let inDouble = false;
+  for (let i = 0; i < inner.length; i++) {
+    const ch = inner[i];
+    if (ch === "'" && !inDouble) {
+      inSingle = !inSingle;
+      cur += ch;
+    } else if (ch === '"' && !inSingle) {
+      inDouble = !inDouble;
+      cur += ch;
+    } else if (ch === "," && !inSingle && !inDouble) {
+      items.push(_stripMatchingQuotes(cur.trim()));
+      cur = "";
+    } else {
+      cur += ch;
+    }
+  }
+  items.push(_stripMatchingQuotes(cur.trim()));
+  return items;
+}
+
 /**
  * A minimal, pure YAML-frontmatter-subset reader for the Try-it panel.
  * Mirrors `parse_frontmatter`'s (BaseLoader) contract closely enough that
@@ -1162,13 +1527,19 @@ function _stripMatchingQuotes(value) {
  * timestamps with `:` inside a quoted value work), `""`/`null`/`~` normalize
  * to `null` (absent), `status` synonyms are canonicalized exactly like
  * `STATUS_SYNONYMS`, and `---` fence lines are tolerated/ignored. Supports
- * flow lists (`[a, b]`) and dash lists (`- a` / `- b`) — no nested maps
- * (Non-goals: the runtime scorer uses the full `parse_frontmatter`, not this
- * mini-parser).
+ * `#` end-of-line comments (stripped when at line-start or preceded by
+ * whitespace, outside quotes) and flow lists (`[a, "b, c"]`, quoted commas
+ * kept literal) and dash lists (`- a` / `- b`).
  *
- * Throws `Error("Can't read line N: <text>")` on the first unparseable line
- * (no `:` and not a recognized list-continuation), matching the UI-Notes
- * error format the hint text surfaces verbatim.
+ * Anything the mini-parser cannot represent — a nested mapping, a
+ * multi-line block scalar (`|`/`>`) continuation, or a YAML anchor/alias
+ * (`&name` / `*name`) — raises rather than guessing (BUG-3486 defect e:
+ * "reject rather than guess" for the unsupported subset). Non-goal: the
+ * runtime scorer uses the full `parse_frontmatter`, not this mini-parser.
+ *
+ * Throws `Error("Can't read line N: <text>")` on the first unparseable or
+ * unsupported line, matching the UI-Notes error format the hint text
+ * surfaces verbatim.
  * @param {string} text
  * @returns {Record<string, string|string[]|null>}
  */
@@ -1179,17 +1550,26 @@ export function parseFrontmatterBlock(text) {
   const lines = String(text).split("\n");
   for (let i = 0; i < lines.length; i++) {
     const raw = lines[i];
-    const line = raw.trim();
+    const line = _stripComment(raw).trim();
     if (line === "") continue;
     if (/^-{3,}\s*$/.test(line)) continue; // --- fence, tolerated/ignored
-    if (line === "-" || line.startsWith("- ")) {
-      if (currentListKey === null) {
-        throw new Error(`Can't read line ${i + 1}: ${raw}`);
-      }
+    const isDashItem = line === "-" || line.startsWith("- ");
+    if (isDashItem && currentListKey !== null) {
       const item = line === "-" ? "" : _stripMatchingQuotes(line.slice(2).trim());
       currentList.push(item);
       result[currentListKey] = currentList;
       continue;
+    }
+    const indent = raw.length - raw.replace(/^[ \t]+/, "").length;
+    if (indent > 0) {
+      // An indented line that isn't a recognized dash-list continuation:
+      // a nested mapping, a block-scalar continuation, or similar — not a
+      // representable construct.
+      throw new Error(`Can't read line ${i + 1}: ${raw}`);
+    }
+    if (isDashItem) {
+      // Orphan dash item — no preceding `key:` opened a list.
+      throw new Error(`Can't read line ${i + 1}: ${raw}`);
     }
     const idx = line.indexOf(":");
     if (idx === -1) {
@@ -1211,9 +1591,12 @@ export function parseFrontmatterBlock(text) {
       result[key] = null;
       continue;
     }
+    if (value[0] === "&" || value[0] === "*") {
+      // YAML anchor/alias — not representable by this mini-parser.
+      throw new Error(`Can't read line ${i + 1}: ${raw}`);
+    }
     if (value.startsWith("[") && value.endsWith("]")) {
-      const inner = value.slice(1, -1).trim();
-      result[key] = inner ? inner.split(",").map((s) => _stripMatchingQuotes(s.trim())) : [];
+      result[key] = _parseFlowList(value.slice(1, -1));
       continue;
     }
     // A quoted empty scalar (`key: ""` / `key: ''`) normalizes to null too —
@@ -1254,6 +1637,20 @@ export function encodeFrontmatterScores(fm, dims) {
   for (const d of dims || []) {
     const rawKey = d.name;
     const normName = normalizeDimName(rawKey);
+    // Derived dimension (BUG-3486: parity with Python's encode_frontmatter_scores,
+    // frontmatter_scores.py:106-115) — triggered by raw_key === "priority_rank",
+    // not by a dimension literally named "priority". Always reads the literal
+    // "priority" frontmatter key, independent of whether a "priority" dimension
+    // is also declared. Skips the generic type-switch below entirely.
+    if (rawKey === "priority_rank") {
+      const hasPriority = fm != null && Object.prototype.hasOwnProperty.call(fm, "priority");
+      const rawPriority = hasPriority ? fm["priority"] : undefined;
+      if (rawPriority !== undefined && rawPriority !== null) {
+        const m = /^P(\d)$/.exec(String(rawPriority).trim());
+        if (m) scores[normName] = m[1];
+      }
+      continue;
+    }
     const has = fm != null && Object.prototype.hasOwnProperty.call(fm, rawKey);
     const raw = has ? fm[rawKey] : undefined;
     if (d.type === "boolean") {
@@ -1274,18 +1671,6 @@ export function encodeFrontmatterScores(fm, dims) {
       const s = String(raw).trim();
       if (s === "") continue;
       scores[normName] = s;
-    }
-  }
-  // Derived priority_rank: only when `priority` is a declared dimension and
-  // its value matches ^P(\d)$ after strip. Independent of whether
-  // `priority_rank` itself is also declared (it always is, as a built-in).
-  const priorityDim = (dims || []).find((d) => normalizeDimName(d.name) === "priority");
-  if (priorityDim) {
-    const has = fm != null && Object.prototype.hasOwnProperty.call(fm, priorityDim.name);
-    const rawPriority = has ? fm[priorityDim.name] : undefined;
-    if (rawPriority !== undefined && rawPriority !== null) {
-      const m = /^P(\d)$/.exec(String(rawPriority).trim());
-      if (m) scores["priority_rank"] = m[1];
     }
   }
   return scores;
@@ -1317,5 +1702,10 @@ if (typeof window !== "undefined") {
     // BUG-3489 (reserved-name guard)
     RESERVED_STATE_NAMES,
     isReservedOutcomeToken,
+    // BUG-3486 (model validation, compiled Try-it evaluation, editing reconciliation)
+    validateBuilderModel,
+    evaluateModel,
+    reconcilePredicateForDim,
+    opsForType,
   };
 }

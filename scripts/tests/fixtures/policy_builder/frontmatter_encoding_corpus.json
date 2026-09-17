@@ -130,6 +130,41 @@
       "frontmatter_text": "severity: critical\nreview_status: approved",
       "dims": [{ "name": "severity", "type": "string" }, { "name": "review_status", "type": "string" }],
       "expected_scores": { "severity": "critical", "review_status": "approved" }
+    },
+    {
+      "name": "inline # comment is stripped outside quotes",
+      "frontmatter_text": "confidence_score: 40 # not yet verified\ntitle: 'uses a # inside quotes'",
+      "dims": [{ "name": "confidence_score", "type": "numeric" }, { "name": "title", "type": "string" }],
+      "expected_scores": { "confidence_score": "40", "title": "uses a # inside quotes" }
+    },
+    {
+      "name": "flow list with a quoted comma stays one element",
+      "frontmatter_text": "blocked_by: [BUG-1, \"BUG-2, see note\"]",
+      "dims": [{ "name": "blocked_by", "type": "list" }],
+      "expected_scores": { "blocked_by": "2" }
+    },
+    {
+      "name": "priority_rank derives from a decoupled priority field not itself declared as a dimension",
+      "frontmatter_text": "priority: P3",
+      "dims": [{ "name": "priority_rank", "type": "numeric" }],
+      "expected_scores": { "priority_rank": "3" }
+    }
+  ],
+  "js_reject_cases": [
+    {
+      "name": "nested mapping is unsupported",
+      "frontmatter_text": "meta:\n  nested: value",
+      "expected_error_substring": "Can't read line"
+    },
+    {
+      "name": "YAML anchor is unsupported",
+      "frontmatter_text": "status: &anchor open",
+      "expected_error_substring": "Can't read line"
+    },
+    {
+      "name": "multi-line block scalar continuation is unsupported",
+      "frontmatter_text": "description: |\n  line one\n  line two",
+      "expected_error_substring": "Can't read line"
     }
   ]
 }
