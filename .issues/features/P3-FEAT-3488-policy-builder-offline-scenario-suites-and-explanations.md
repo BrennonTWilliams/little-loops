@@ -27,13 +27,13 @@ relates_to:
 unproven_mechanism: false
 blocks:
 - FEAT-3498
-confidence_score: 80
+confidence_score: 100
 verify_verdict: VALID
-outcome_confidence: 64
-score_complexity: 10
+outcome_confidence: 58
+score_complexity: 5
 score_test_coverage: 18
-score_ambiguity: 18
-score_change_surface: 18
+score_ambiguity: 25
+score_change_surface: 10
 ---
 
 # FEAT-3488: Policy builder offline scenario suites and explanations
@@ -239,8 +239,22 @@ Verdict at time of check: **PROPOSAL_UNSOUND** (correction below applied in the 
 - `ll-verify-evidence --json`: 0 findings — no EVIDENCE_UNVERIFIED.
 - **Proposal-vs-code consequence check (B6) finding**: the Integration Map named a Documentation integration point (`docs/guides/POLICY_ROUTER_GUIDE.md` and the policy-builder section of `docs/reference/CLI.md`), and Implementation Step 5 said to "update docs," but no Acceptance Criterion verified the docs were actually updated — every listed AC covered code/schema/UI/test behavior, none named the docs. That was a real AC-coverage gap, not a claim-accuracy defect. **Fixed**: added an AC requiring `POLICY_ROUTER_GUIDE.md` and the CLI.md policy-builder section to document scenario authoring/running, expectation types, verdicts, coverage semantics, suggestions, and import.
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-17_
+
+**Readiness Score**: 100/100 → PROCEED
+**Outcome Confidence**: 58/100 → LOW
+
+### Outcome Risk Factors
+- Wide breadth: the change spans ~15-20 distinct sites (7+ new core.mjs signatures, 6+ rewired html.tmpl wiring points, 4 test files, 2 doc files) — scored 0/12 on Breadth.
+- Moderate-to-deep per-site work: the shared compiled trace path (`traceModel`) must preserve `evaluateModel`'s existing MatchResult shape plus legacy `evaluateRules`/Python/corpus contracts while adding tracing, and full-wrapper preservation touches shared state across `commit`, mode-switch, `applyPreset`, `_persistDraft`/`_persistAllDrafts`, and Open/hydration — cross-module logic with shared state, not mechanical edits.
+- Change surface: 6-10 distinct wiring sites in `policy-router-builder.html.tmpl` each require site-specific handling (not a uniform substitution) — scored 10/25 on Pattern A blast radius.
+- Test coverage gap: browser/UI persistence paths (Save/Open/reload/preset/undo) rely on ENH-3487's existing manual-testing decision rather than automated coverage, per Implementation Step 5 and the acceptance criteria's "documented manual browser workflow" language.
+
 ## Session Log
 
+- `/ll:confidence-check` - 2026-09-17T21:41:52 - `8ed2d1e5-4f7c-4c51-b0fb-dddbf5b66162.jsonl`
 - `/ll:verify-issues` - 2026-09-17T21:35:36 - `ba3eff4d-1d07-4139-8410-b5c4e703860f.jsonl`
 - manual review - 2026-09-17 - split structural transition analysis + graph UI into FEAT-3501; pinned template state ownership (`state` model-only, `drafts[mode]` owns scenarios), schema version stays 1, authored-rules-only fingerprint, `expectedFallback` assertion, fence-optional paste vs fenced import, corrected rubric-router citation to line 93; marked effort Large and `score_complexity` stale
 
