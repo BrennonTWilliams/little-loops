@@ -78,7 +78,7 @@ _Added by `/ll:refine-issue` — 2026-09-17 — based on codebase analysis:_
 ## Root Cause
 
 - **File**: `scripts/little_loops/templates/policy-router-builder.html.tmpl`
-- **Anchor**: in functions `hydrateFromStorage()` (builds `history.present` directly from the live `state` object it just assigned) and `restoreFromSnapshot(snapshot)` (assigns `state = drafts[mode].model`, re-aliasing `state` to `history.present`)
+- **Anchor**: in functions `hydrateFromStorage()` (builds `history.present` directly from the live `state` object it just assigned) and `restoreFromSnapshot(snapshot)` (assigns `state = (drafts[mode] && drafts[mode].model) || seedExample(mode)`, re-aliasing `state` to `history.present` on the non-fallback path)
 - **Cause**: Both functions derive `history.present` by reference instead of by value. Mutating handlers (`#add-rule`, the delegated `change` listener) then edit `state` in place before `commit()` runs, so `applyDraftEdit`'s `_deepClone(present)` (`scripts/little_loops/templates/policy_builder_core.mjs:1018`) clones a `present` that already reflects the post-mutation state, making the pushed "past" baseline identical to the new value.
 
 ### Codebase Research Findings
@@ -168,12 +168,56 @@ _Added by `/ll:refine-issue` — 2026-09-17 — based on codebase analysis:_
 - [ ] A `node:test` case in `scripts/tests/js/policy_validator.test.mjs` reproduces the aliasing path and passes.
 - [ ] Golden HTML fixture regenerated; existing gates pass.
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` — 2026-09-17:_
+
+Verdict at time of check: **EVIDENCE_UNVERIFIED** (correction below applied in the same
+pass, so the issue as it now reads is up to date — this section is a record of what was
+wrong and fixed, not an outstanding action item)
+
+- `ll-verify-evidence` flagged the Root Cause quote `state = drafts[mode].model`
+  (attributed to `restoreFromSnapshot`) as not appearing verbatim in
+  `policy-router-builder.html.tmpl`. Direct read of the file (line 381) shows the real
+  statement is `state = (drafts[mode] && drafts[mode].model) || seedExample(mode);` — a
+  guarded fallback expression, not the bare assignment quoted. The underlying claim (the
+  non-fallback path re-aliases `state` to `history.present`) is correct; only the literal
+  snippet was inexact (a paraphrase, not a fabrication). Corrected in place above.
+- All other file/line citations were spot-checked against current code and confirmed
+  accurate: `hydrateFromStorage()` (:397-425), `restoreFromSnapshot()` (:378-388),
+  `open-project-input.onchange` (:1453-1481, including the exact `state =
+  drafts[project.activeMode].model;` quote at :1469), `_deepClone` (`policy_builder_core.mjs:878-880`),
+  `applyDraftEdit` (`:1003`), the mutating-handler list (`add-rule.onclick` :1412,
+  `add-dim.onclick` :1372, delegated `change` listener :1367, outcome delete :627, rule
+  delete :999 — all exact; dimension-delete :534 and rule-move :994 land within 2-5 lines
+  of the actual handler body, close enough to locate), and the test/dependent-file
+  citations (`policy_validator.test.mjs:811-935` incl. the `:917` aliasing-regression
+  test, `test_enh3035_artifact_template_kit.py`, `test_policy_builder_emit.py:282-286`,
+  `test_policy_builder_node_gate.py`, `feat-3488-browser-probes.mjs:147-157`
+  `undo-redo-buttons-and-keys`, `policy_builder.py:102,115`, `artifact/__init__.py:48,197`).
+- Root-cause mechanism independently reproduced by reading the code path: `commit()`
+  (`:364-371`) pushes a deep clone of the *current* `present` into `past` before
+  replacing `present` with a fresh clone of the new snapshot — but if `present` still
+  aliases the live `state` object (set by `hydrateFromStorage`/`restoreFromSnapshot`/the
+  Open handler), an in-place mutation before `commit()` runs corrupts that pushed
+  baseline. Confirms the issue's stated defect.
+- Dependency references: `blocks: [FEAT-3488]` backlinks correctly (FEAT-3488's
+  `blocked_by` includes BUG-3502). No DEP_ISSUES.
+- Decisions log: no active required rules — clean skip, no DECISIONS_VIOLATION.
+- Proposal-vs-code consequence check: no exception-handler, test-fixture, or AC-coverage
+  gaps found: the Proposed Solution's own "Codebase Research Findings" subsection already
+  corrects the original "two places" framing to the confirmed three derivation sites, and
+  the Files to Modify / Acceptance Criteria sections cover all three.
+- Graph: provider=`codegraph` freshness=`fresh` (not used for this issue — no negative
+  "never called"/dead-code claims to corroborate).
+
 ## Status
 
 **Open** | Created: 2026-09-17 | Priority: P2
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-17T23:13:15 - `fa3645f9-529c-40a6-8608-e4471d559111.jsonl`
 - `/ll:wire-issue` - 2026-09-17T23:03:05 - `419c6f2e-929d-4a69-8456-7e423aa988c1.jsonl`
 - `/ll:refine-issue` - 2026-09-17T22:37:43 - `1c385136-348a-4fc1-bc68-f7a10cf49f81.jsonl`
 - `/ll:format-issue` - 2026-09-17T22:29:59 - `34e9f824-2bf0-4bba-a2de-33614e4f363c.jsonl`
