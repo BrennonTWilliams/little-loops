@@ -29,13 +29,13 @@ Split from BUG-3486 (2026-09-16 whole-builder review, defect h).
 ## Current Behavior
 
 - `_load_skill_catalog(project_root)` (`policy_builder.py:21-53`) reads `project_root/"skills"` and `project_root/"commands"` only and never consults the installed plugin. Its only caller is `cmd_policy_builder()`.
-- `_find_plugin_root()` (`scripts/little_loops/skill_expander.py:25-35`, wrapped by `cli/action.py:179-182`) checks `CLAUDE_PLUGIN_ROOT`, else returns three parents up from `skill_expander.py`. `CLAUDE_PLUGIN_ROOT` is set only inside a Claude Code session, not when a user runs `ll-artifact policy-builder` from a shell. For a `pypi` install the fallback resolves to `lib/python3.x/`, which has no skills. The wheel does ship skills at `little_loops/skills/` (`scripts/hatch_build.py`, BUG-3177), but no Python collector reads that packaged copy.
-- Consumer projects keep project-local overrides under `.claude/skills/` and `.claude/commands/`, which no collector reads.
+- `_find_plugin_root()` (`scripts/little_loops/skill_expander.py:25-35`, wrapped by `cli/action.py:179-182`) checks `CLAUDE_PLUGIN_ROOT`, else returns three parents up from `skill_expander.py`. `CLAUDE_PLUGIN_ROOT` is set only inside a Claude Code session, not when a user runs `ll-artifact policy-builder` from a shell. For a `pypi` install the fallback resolves to `lib/python3.x/`, which has no skills. The wheel does ship skills at `little_loops/skills/` (`scripts/hatch_build.py`, BUG-3177). Exactly one collector reads that packaged copy: `mcp_server/server.py:60-77` builds a candidate list (`LL_SKILLS_DIR` override, `CLAUDE_PLUGIN_ROOT/skills`, `importlib.resources.files("little_loops")/"skills"`, `_find_plugin_root()/skills`) and takes the first that exists. That is the precedent to generalize; BUG-3177 fixed only this MCP call site and left `_find_plugin_root()` itself unchanged.
+- Consumer projects keep their own skills under `.claude/skills/` and `.claude/commands/`. No ll collector reads them, and they are the user's skills, not ll overrides (this checkout has `.claude/skills/{excalidraw-diagram,scrape-docs}` and `.claude/commands/{analyze_log,publish}.md`).
 - Every existing collector (`cli/help.py::collect_entries`, `cli/action.py::_load_skills`, `tool_catalog.py::assemble_tool_catalog`, `_load_skill_catalog`) resolves exactly one root; none merges roots, applies precedence, or deduplicates by name.
 
 ## Expected Behavior
 
-Consumer projects resolve the installed plugin catalog plus project-local overrides regardless of `install_source`, with deterministic deduplication and project-override precedence. The fix lives in the shared resolver so `ll-help` and `ll-action list` benefit too.
+Consumer projects resolve the installed plugin catalog regardless of `install_source`, with deterministic deduplication and precedence. The fix lives in the shared resolver so `ll-help` and `ll-action list` benefit too. The policy builder additionally lists the project's own `.claude/skills` and `.claude/commands` entries (explicit opt-in), with project entries winning on name collision.
 
 ## Motivation
 
@@ -43,22 +43,25 @@ A builder whose skill menu is empty for every consumer project is unusable outsi
 
 ## Proposed Solution
 
-Extend the shared plugin-root resolution to an ordered list of catalog roots, resolved by `install_source` (`.ll/ll-config.json`) and environment:
+Extend the shared plugin-root resolution to an ordered candidate list, generalizing the `mcp_server/server.py:60-77` pattern. **Do not branch on `install_source`**: existence checks already discriminate every layout, `_find_plugin_root()` takes no project argument and is called from contexts with no project (`ll-mcp`, `harness.py`), and config branching adds a stale-config failure mode (config says `pypi` after the user switched to editable). Candidates, highest precedence first; the first that contains `skills/` is the plugin root:
 
 1. `CLAUDE_PLUGIN_ROOT` when set (inside a Claude Code session).
-2. `local-editable`: the checkout root (current three-parents-up fallback, valid only when `<root>/skills` exists).
-3. `pypi`: the packaged `little_loops/skills` and `little_loops/commands` copies inside the installed package (new step; verify `commands/` is also packaged, add it to `hatch_build.py` if not).
-4. `global-claude-code` / `project-claude-code`: the marketplace plugin cache under `~/.claude/plugins/` (confirm the exact path used by `init/install_check.py`).
-5. Project overrides: `<project_root>/.claude/skills/*/SKILL.md` and `<project_root>/.claude/commands/*.md`, highest precedence.
+2. The checkout root (current three-parents-up path) when `<root>/skills` exists. This keeps the source checkout single-root and byte-identical.
+3. The packaged copy: `importlib.resources.files("little_loops")` (which contains `skills/` and, after this fix, `commands/`).
+4. The marketplace plugin path, read from `install_path` persisted in `.ll/ll-config.json` (new field, written by `ll-init` from `detect_installation()`, which already returns it but discards it today). Fall back to `install_check._probe_plugin()` only when the field is absent; **never spawn that subprocess on every call** (10s timeout, 13 `_find_plugin_root` callers). Memoize the resolved list with `functools.lru_cache`.
 
-`collect_entries` gains a multi-root form that merges by entry name with later roots (project overrides) winning; `_load_skill_catalog` becomes a thin projection over it, matching how `_load_skills` already projects `collect_entries`. Keep the never-raises contract: a missing root contributes nothing.
+Project-local skills (`<project_root>/.claude/skills/*/SKILL.md`, `.claude/commands/*.md`) are **not** part of the shared resolver. They are the user's own skills, and merging them would change `ll-help` (which prefixes `/ll:`), `ll-action list`, and `TestCatalogDriftGate` output on this checkout. They are included only by the policy builder, via an explicit `include_project_skills=True` argument on the multi-root collector, because routing prompts to user skills is legitimately useful there. Project entries win on name collision.
+
+`collect_entries` gains a multi-root form that merges by `(kind, name)` with higher-precedence roots winning; `_load_skill_catalog` becomes a thin projection over it, matching how `_load_skills` already projects `collect_entries`. Keep the never-raises contract: a missing root contributes nothing.
 
 ## Implementation Steps
 
-1. Add consumer-root fixtures: a temp project with no root `skills/` and (a) `CLAUDE_PLUGIN_ROOT` pointing at a plugin tree, (b) a packaged-layout tree, (c) a `.claude/skills` override that shadows a plugin skill by name. Assert known lifecycle skills appear, overrides win, and no duplicate names.
-2. Implement multi-root resolution and merge in the shared resolver/collector.
-3. Repoint `_load_skill_catalog` (and confirm `_load_skills` / `assemble_tool_catalog` inherit the fix or document why not).
-4. Update `docs/reference/CONFIGURATION.md` § `artifacts` and `docs/reference/API.md` § `assemble_tool_catalog` (the "single-root, never-raises" citation for `_load_skill_catalog` becomes stale).
+1. Add consumer-root fixtures: a temp project with no root `skills/` and (a) `CLAUDE_PLUGIN_ROOT` pointing at a plugin tree, (b) a packaged-layout tree (monkeypatch `importlib.resources.files`), (c) a config-cached `install_path` marketplace tree, (d) a `.claude/skills` entry that shadows a plugin skill by name. Assert known lifecycle skills appear, the shadow wins only when `include_project_skills=True`, no duplicate names, and no subprocess is spawned when `install_path` is cached (patch `_probe_plugin` to fail the test if called).
+2. Persist `install_path` in `.ll/ll-config.json` from `ll-init` (schema + `init/core.py` writer), for `global-claude-code` / `project-claude-code` installs.
+3. Implement `resolve_catalog_roots()` and `collect_entries_multi()`; repoint `_find_plugin_root()`'s no-env fallback at the first resolved plugin root.
+4. Add `commands/` to the wheel via the existing `SkillsForceIncludeHook` (registered for both wheel and sdist targets, `pyproject.toml:218,220`); update the `package_data.py:94-102` comment.
+5. Repoint `_load_skill_catalog` (with `include_project_skills=True`); confirm `_load_skills` / `main_help` / `assemble_tool_catalog` inherit the fix through `_find_plugin_root`.
+6. Update `docs/reference/CONFIGURATION.md` § `artifacts` (plus the new `install_path` field) and `docs/reference/API.md` § `assemble_tool_catalog` (the "single-root, never-raises" citation for `_load_skill_catalog` becomes stale).
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -106,7 +109,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `_load_skills` already exists as a projection over `collect_entries` (`cli/action.py:197`) — the same shape this issue proposes for `_load_skill_catalog` over `collect_entries_multi`
 
 **Tests**
-- `scripts/tests/test_skill_expander.py` — `TestFindPluginRoot` (`test_uses_env_var_when_set` line 43, `test_falls_back_to_package_parent` line 47) is the existing single-root contract that must keep passing alongside any new multi-root behavior
+- `scripts/tests/test_skill_expander.py` — `TestFindPluginRoot` (`test_uses_env_var_when_set` line 43, `test_falls_back_to_package_parent` line 47) asserts the exact three-parents-up path; it stays true unchanged because the checkout root is candidate 2 and always has `skills/` on this repo
 - `scripts/tests/test_action.py::TestLoadSkills` — this issue's Acceptance Criteria names this suite's byte-for-byte contract as one that must be preserved
 - `scripts/tests/test_help.py` — `TestCollectEntries` (several cases) and `TestCatalogDriftGate::test_collect_entries_covers_real_plugin_root`
 - `scripts/tests/test_tool_catalog.py` — exercises `assemble_tool_catalog` end-to-end (lines 67-176)
@@ -126,21 +129,21 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 **Configuration**
 - `.ll/ll-config.json` / `scripts/little_loops/config-schema.json` — where `install_source` is recorded and schema-validated per project
-- `scripts/hatch_build.py` (`SkillsForceIncludeHook`) — force-includes `skills/` into the wheel as `little_loops/skills`; this is the packaged-layout root this issue's Proposed Solution step 3 targets, and the resolved precedent from the related, already-completed BUG-3177 (`_find_plugin_root` site-packages fallback)
+- `scripts/hatch_build.py` (`SkillsForceIncludeHook`) — force-includes `skills/` into the wheel as `little_loops/skills`; this is the packaged-layout root this issue's Proposed Solution step 3 targets, and the precedent from the already-completed BUG-3177 (which packaged `skills/` and fixed only `mcp_server/server.py`'s candidate list; `_find_plugin_root` itself was left unchanged)
 - `scripts/little_loops/package_data.py` (lines 94-102) — comment documents that `skills/` is force-included rather than a `PACKAGE_DATA_ASSETS` entry; this issue's Proposed Solution step 3 also asks whether `commands/` is packaged the same way, which this file does not currently document
 
 ## Program Design
 
 ### Types
 
-`CatalogRoot` (dataclass): `path: Path`, `source: str` (`env`, `checkout`, `packaged`, `marketplace`, `project`), `precedence: int`. Later/higher precedence wins on name collision.
+`CatalogRoot` (dataclass): `path: Path`, `source: str` (`env`, `checkout`, `packaged`, `marketplace`, `project`), `precedence: int`. Higher precedence wins on name collision. `project` roots are produced only when `include_project_skills=True`.
 
 ### Signatures
 
-- `resolve_catalog_roots(project_root: Path | None = None) -> list[CatalogRoot]` in `scripts/little_loops/skill_expander.py` — ordered roots per `install_source` and environment; missing roots omitted, never raises.
+- `resolve_catalog_roots(project_root: Path | None = None, *, include_project_skills: bool = False) -> list[CatalogRoot]` in `scripts/little_loops/skill_expander.py` — ordered by existence-checked candidates (env, checkout, packaged, cached marketplace path), plus the project `.claude/` root only when opted in; missing roots omitted, never raises, memoized, no subprocess when `install_path` is cached.
 - `collect_entries(plugin_root: Path) -> list[HelpEntry]` in `scripts/little_loops/cli/help.py` — kept; add `collect_entries_multi(roots: list[CatalogRoot]) -> list[HelpEntry]` that merges by `(kind, name)` with highest precedence winning, sorted deterministically.
-- `_load_skill_catalog(project_root: Path) -> list[dict[str, str]]` in `scripts/little_loops/cli/artifact/policy_builder.py` — same signature and shape; becomes a projection over `collect_entries_multi(resolve_catalog_roots(project_root))`.
-- `_find_plugin_root() -> Path` — retained for single-root callers; its no-env fallback should return the first resolved root rather than the raw three-parents-up path.
+- `_load_skill_catalog(project_root: Path) -> list[dict[str, str]]` in `scripts/little_loops/cli/artifact/policy_builder.py` — same signature and shape; becomes a projection over `collect_entries_multi(resolve_catalog_roots(project_root, include_project_skills=True))`.
+- `_find_plugin_root() -> Path` — retained for single-root callers; its no-env fallback returns the highest-precedence resolved *plugin* root (never a `project` root, since `cli/adapt.py`, `generate_skill_descriptions.py`, and the `adapt_*_for_codex` CLIs write into it) rather than the raw three-parents-up path; when nothing resolves, keep returning three-parents-up so behavior is unchanged.
 
 ### Call Path
 
@@ -151,13 +154,16 @@ _Wiring pass added by `/ll:wire-issue`:_
 ## Acceptance Criteria
 
 - [ ] Consumer-root fixtures with installed plugin content produce known lifecycle skills without root `skills/` or `commands/` directories, for `CLAUDE_PLUGIN_ROOT`, packaged, and marketplace layouts.
-- [ ] `.claude/skills` / `.claude/commands` overrides take precedence over plugin entries of the same name; results are deduplicated and deterministically ordered.
-- [ ] Missing roots never raise; existing `test_action.py::TestLoadSkills` byte-for-byte contract is preserved.
+- [ ] On a packaged layout with no `CLAUDE_PLUGIN_ROOT`, `ll-help` and `ll-action list` are non-empty; `ll-help -C` still overrides.
+- [ ] With `include_project_skills=True`, `.claude/skills` / `.claude/commands` entries take precedence over plugin entries of the same name; results are deduplicated and deterministically ordered. Without it, project entries are absent, so `ll-help` / `ll-action list` / `TestCatalogDriftGate` output on the source checkout is byte-identical.
+- [ ] Resolution spawns no subprocess when `install_path` is present in config; `ll-init` writes `install_path` for marketplace installs.
+- [ ] `commands/` ships in the wheel (`little_loops/commands`), from both full-checkout and unpacked-sdist builds.
+- [ ] Missing roots never raise; existing `test_action.py::TestLoadSkills` byte-for-byte contract and `test_skill_expander.py::TestFindPluginRoot` are preserved.
 - [ ] Docs updated; full local suite passes.
 
 ## Scope Boundaries
 
-Includes catalog root resolution, merge, precedence, and dedup. Excludes browser/core builder defects (BUG-3486) and runtime fragment defects (BUG-3489).
+Includes catalog root resolution, merge, precedence, and dedup, plus packaging `commands/`. Excludes browser/core builder defects (BUG-3486), runtime fragment defects (BUG-3489), and packaging `agents/` (also unpackaged; `assemble_tool_catalog` and therefore `ll-doctor` / `ll-mcp` will still miss agents on pypi installs, which is not a regression of this fix).
 
 ## Steps to Reproduce
 
