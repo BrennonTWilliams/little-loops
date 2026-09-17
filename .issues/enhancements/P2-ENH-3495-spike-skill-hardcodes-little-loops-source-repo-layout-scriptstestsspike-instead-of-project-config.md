@@ -81,9 +81,27 @@ Confirmed literal-path and convention findings from `codebase-locator`, `codebas
 - `scripts/tests/test_docs_audience_gate.py` — remove the `HARNESS_EXEMPT` entry at line 38 and update `test_exempt_prefix_excluded` (lines 189-192), which currently hard-asserts `skills/spike/` files are excluded from the audience scan; that assertion inverts once the exemption is removed.
 - `docs/reference/COMMANDS.md` — remove the `ll-audience-ok` suppression comment at line 378.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `.ll/ll-config.json` — add `"test_dir": "scripts/tests/"` alongside the existing `"src_dir": "scripts/"` entry. Without this, `ll-config get project.test_dir` in this repo resolves to the schema default `"tests"` (not `scripts/tests/`, where spikes actually live and where `project.test_cmd` already points), silently relocating this repo's own future spikes the moment the dynamic resolution lands.
+- `skills/spike/SKILL.md` — two literal sites outside the original 12-line inventory, both untouched by the `SPIKE_DIR`/`PROMOTE_DIR` substitution in Program Design: (1) lines 137-138 cite `scripts/little_loops/cli/loop/run.py` and `scripts/little_loops/fsm/executor.py` in Call Path prose — once the `skills/spike` audience-gate exemption below is removed, these trip the `source-tree-module-path` HARNESS_MARKER and must become dotted-module form (`little_loops.cli.loop.run`, `little_loops.fsm.executor`), the gate's own stated convention; (2) line 186's regression-suite command (`python -m pytest scripts/tests/<named-regression-suite>.py -v`) is the literal the issue's own Current Behavior section calls out but the Program Design Call Path never assigns a resolution to — it needs the same `${TEST_DIR%/}`-based substitution as `SPIKE_DIR`, not a `SRC_DIR`-based one.
+- `skills/spike/plan-template.md` — line 77 carries the identical uncovered regression-suite literal as `SKILL.md:186`.
+
 ### Dependent Files (Callers/Importers)
 - `.gemini/skills/spike/SKILL.md`, `.gemini/skills/spike/plan-template.md`, `.kimi-code/skills/spike/SKILL.md`, `.kimi-code/skills/spike/plan-template.md`, `.qwen/skills/spike/SKILL.md`, `.qwen/skills/spike/plan-template.md` — host-adapter mirrors of `skills/spike/`, synced via `ll-adapt --host <name> --apply`; carry the identical hardcoded literals today and will drift out of sync with the fixed source unless re-synced after this lands.
 - `scripts/tests/test_spike_skill.py::test_spike_code_confined_to_tests_dir` — asserts `"scripts/tests/spike/" in _plan_text()` via raw substring match; this is the test currently pinning the hardcoded literal this issue changes and needs updating alongside the fix.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/loops/spike-gate.yaml:51,63` — comments cite exact `SKILL.md:190,199` / `SKILL.md:221-234` line numbers for the write-back phase; these will drift once `SKILL.md`'s body is edited and should be re-pointed after this issue lands.
+
+### Documentation
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/COMMANDS.md:379` — the `/ll:spike` entry's "Flow" prose sentence itself (not just the `ll-audience-ok` suppression comment on line 378) states the literal `scripts/tests/spike/`/`scripts/little_loops/` paths three times. Deleting only the line-378 comment without rewriting line 379 to describe the config-derived resolution will make `test_user_docs_are_end_user_facing` fail on this line the moment the suppression is gone.
+
+### Tests
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_spike_skill.py::test_promotion_path_documented` (lines 83-85) — asserts `"scripts/little_loops/spike/" in _plan_text()`; a second test pinning the exact literal this issue removes, alongside `test_spike_code_confined_to_tests_dir` above.
+- `scripts/tests/test_spike_skill.py` — new test needed asserting the widened `Write(**/spike/**)`/`Edit(**/spike/**)` grants are present in `SKILL_FILE`, mirroring the existing `test_allowed_tools_grants_ll_spikes_write` pattern (`skills/spike/SKILL.md` line ~130 equivalent).
+- `scripts/tests/test_docs_audience_gate.py` — new regression-guard test recommended, mirroring `test_general_task_and_rl_coding_agent_are_not_exempt` in `test_bug3269_test_cmd_resolution_gate.py`: assert `"skills/spike" not in HARNESS_EXEMPT` so the exemption cannot silently reappear once this issue closes.
 
 ### Conventions in Force
 - This codebase resolves config values inside a markdown skill's bash body via the `ll-config get <key>` CLI (wrapping `BRConfig.resolve_variable()`), not by hand-parsing `.ll/ll-config.json` — established by ENH-2678, whose stated rationale is "config is read only in Python, never in markdown skills." The only existing call site is `skills/go-no-go/SKILL.md:154` (`PENALTY=$(ll-config get history.go_no_go.correction_penalty)`).
@@ -129,7 +147,23 @@ _Added by `/ll:refine-issue` — 2026-09-17 — based on codebase analysis:_
 
 `BRConfig.resolve_variable("project.test_dir")` never returns `None` for this key: `ProjectConfig.from_dict()` (`scripts/little_loops/config/core.py:239-240`) defaults `test_dir` to `"tests"` and `src_dir` to `"src/"` when absent from `.ll/ll-config.json`, and `to_dict()` (`core.py:763-766`) always materializes both keys before `resolve_variable`'s dict-walk runs. This resolves the open question in the Call Path note above: no `pytest.ini`/`pyproject.toml` probe fallback is needed — the method's contract guarantees a non-empty string.
 
+> ⚠ Superseded — one gap remains: `ll-config get` (`main_config()`, `scripts/little_loops/cli/config.py:54-87`) never raises and exits 0 even when `BRConfig(Path.cwd())` construction itself fails — that path prints nothing on stdout *or* stderr. A naive `TEST_DIR=$(ll-config get project.test_dir); SPIKE_DIR="${TEST_DIR%/}/spike/<slug>"` would then silently resolve to `/spike/<slug>` (filesystem-root-anchored) rather than erroring. Implementation must guard the capture — e.g. `: "${TEST_DIR:=tests}"` — before building `SPIKE_DIR`/`PROMOTE_DIR`. _(Added by `/ll:wire-issue`.)_
+
 This repo's own `.ll/ll-config.json` sets `project.src_dir: "scripts/"` but does not set `project.test_dir`, so `ll-config get project.test_dir` resolves to the schema default `"tests"` here today — not `scripts/tests/`, where spike packages actually live and where this repo's own `project.test_cmd` (`python -m pytest scripts/tests/`) points. Implementing the fix as a literal `project.test_dir` + `spike/<slug>` join, without also adding `"test_dir": "scripts/tests/"` to this repo's own `.ll/ll-config.json` (mirroring the existing explicit `src_dir` entry), would silently relocate this repo's own future spikes to `tests/spike/<slug>/`, diverging from every prior spike under `scripts/tests/spike/` and from `test_spike_code_confined_to_tests_dir`'s current assumption.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Add `"test_dir": "scripts/tests/"` to `.ll/ll-config.json`'s `project` block.
+- Rewrite `skills/spike/SKILL.md:137-138` to cite `little_loops.cli.loop.run` / `little_loops.fsm.executor` (dotted-module form) instead of `scripts/little_loops/...` paths.
+- Resolve `skills/spike/SKILL.md:186` and `plan-template.md:77`'s regression-suite command through the same `${TEST_DIR%/}` substitution as `SPIKE_DIR`.
+- Guard the `TEST_DIR`/`SRC_DIR` bash captures against an empty value (`ll-config get` prints nothing, exit 0, on a `BRConfig` construction failure) before building `SPIKE_DIR`/`PROMOTE_DIR`.
+- Rewrite `docs/reference/COMMANDS.md:379`'s "Flow" prose to describe config-derived resolution, not just delete the line-378 suppression comment.
+- Update `scripts/tests/test_spike_skill.py::test_promotion_path_documented` alongside `test_spike_code_confined_to_tests_dir`.
+- Add a new `test_spike_skill.py` case asserting the widened `Write(**/spike/**)`/`Edit(**/spike/**)` grants.
+- Add a new `test_docs_audience_gate.py` case asserting `"skills/spike" not in HARNESS_EXEMPT` (non-regression guard).
+- Re-point the `SKILL.md:190,199` / `SKILL.md:221-234` line-number citations in `scripts/little_loops/loops/spike-gate.yaml:51,63` after `SKILL.md`'s body shifts.
 
 ## Scope Boundaries
 
@@ -178,6 +212,7 @@ This repo's own `.ll/ll-config.json` sets `project.src_dir: "scripts/"` but does
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-17T01:12:06 - `86a9c74b-9864-4b0f-956c-f789b6eb77ab.jsonl`
 - `/ll:decide-issue` - 2026-09-17T00:55:55 - `8e7ed6a7-45f1-4830-9b8d-ec6405748b84.jsonl`
 - `/ll:refine-issue` - 2026-09-17T00:46:42 - `a247e656-a04b-48d2-b369-8647c50460db.jsonl`
 - `/ll:format-issue` - 2026-09-17T00:37:18 - `2b860fe0-3e33-4473-a957-2f06e4ff45f0.jsonl`
