@@ -1,0 +1,12 @@
+{
+  "id": "a3e1d9ea-ec97-4047-9f02-754c4283a995",
+  "type": "decision",
+  "timestamp": "2026-09-17T00:55:30Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Satisfies AC3 for any consuming-project layout with zero per-project setup, reusing an already-idiomatic **/x/** glob token; Option B keeps a hardcoded literal and requires manual settings.json edits per project, contradicting this codebase's zero-config design goal with no existing precedent.",
+  "rule": "Option A \u2014 widen allowed-tools to Write(**/spike/**) / Edit(**/spike/**)",
+  "scope": "issue",
+  "alternatives_rejected": "Option B: keep project-specific static glob, document a .claude/settings.json override for consuming projects",
+  "issue": "ENH-3495"
+}
