@@ -179,6 +179,9 @@ def introspect(root: Path, template: TemplateMatch) -> IntrospectResult:
         root, src_dir_iv, scan.get("focus_dirs") or []
     )
 
+    default_test_dir = project.get("test_dir") or "tests"
+    values["project.test_dir"] = _introspect_test_dir(root, default_test_dir)
+
     return IntrospectResult(values=values, ambiguities=ambiguities)
 
 
@@ -736,3 +739,17 @@ def _introspect_focus_dirs(
         return IntrospectedValue(list(default_focus_dirs), "default", "template default")
 
     return IntrospectedValue(focus_dirs, "inferred", " + ".join(evidence_parts))
+
+
+# ---------------------------------------------------------------------------
+# project.test_dir
+# ---------------------------------------------------------------------------
+
+
+def _introspect_test_dir(root: Path, default_value: str) -> IntrospectedValue:
+    for test_dir_name in ("tests/", "test/"):
+        if (root / test_dir_name).is_dir():
+            return IntrospectedValue(
+                test_dir_name, "inferred", f"detected {test_dir_name} directory"
+            )
+    return IntrospectedValue(default_value, "default", "template default")

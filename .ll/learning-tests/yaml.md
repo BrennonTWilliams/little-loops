@@ -1,22 +1,20 @@
 ---
 target: yaml
-date: '2026-08-16'
+date: '2026-09-16'
 status: proven
 assertions:
-- claim: yaml.safe_dump with sort_keys=False preserves dict insertion order in output
+- claim: yaml.safe_load on malformed YAML raises a yaml.YAMLError subclass exposing
+    a .problem_mark with .line/.column
   result: pass
-- claim: yaml.safe_dump renders None as the literal null
+- claim: yaml.safe_dump(..., default_flow_style=False) renders nested dicts in block
+    style, not '{...}' flow style
   result: pass
-- claim: yaml.safe_load parses ~ as Python None
+- claim: yaml.safe_load on a mapping with duplicate keys does not raise, it silently
+    keeps the last value
   result: pass
-- claim: yaml.safe_dump raises yaml.representer.RepresenterError for an arbitrary
-    custom class instance
+- claim: yaml.safe_dump can serialize a datetime.date object without a custom representer
   result: pass
-- claim: yaml.safe_load_all correctly parses multiple ---separated documents into
-    a generator yielding one dict per document
-  result: pass
-- claim: 'a string value containing '': '' (colon-space) is auto-quoted by safe_dump
-    so it round-trips correctly through safe_load'
-  result: pass
+- claim: A block scalar (|) round-trips embedded newlines exactly through safe_load
+  result: fail
 raw_output_path: .ll/learning-tests/raw/yaml.txt
 ---
