@@ -63,6 +63,7 @@ def cmd_policy_builder(args: argparse.Namespace, logger: Logger) -> int:
 
     Returns 0 on success, 1 on error.
     """
+    from little_loops import __version__
     from little_loops.artifact_template_kit import stamp_page_shell, themed_css_vars
     from little_loops.config.core import BRConfig
     from little_loops.fsm.policy_rules import _py_pattern_to_js, grammar_spec
@@ -96,6 +97,7 @@ def cmd_policy_builder(args: argparse.Namespace, logger: Logger) -> int:
         html = stamp_page_shell(template, active_theme=active_theme, css_vars=css_vars)
         html = html.replace("/*__GRAMMAR_SPEC_JSON__*/", grammar_json)
         html = html.replace("/*__SKILL_CATALOG_JSON__*/", catalog_json)
+        html = html.replace("/*__GENERATOR_VERSION_JSON__*/", json.dumps(__version__))
         html = html.replace("/*__BUILDER_CORE_JS__*/", core_js)
 
         output_dir = Path(args.output) if args.output else Path(config.artifacts.default_output_dir)

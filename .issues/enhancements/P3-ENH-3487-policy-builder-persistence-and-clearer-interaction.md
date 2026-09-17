@@ -5,10 +5,11 @@ epic: EPIC-3493
 type: ENH
 title: Policy builder persistence, undo/redo, and saved projects
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-16'
 captured_at: '2026-09-16T20:54:20Z'
+completed_at: '2026-09-17T07:20:24Z'
 labels:
 - policy-builder
 - captured
@@ -370,12 +371,78 @@ fixed, not an outstanding action item).
 - Proposal-vs-code consequence check (B6): no new issue found — the `__GENERATOR_VERSION__`
   stamping plan is unaffected by BUG-3490's catalog-dedup rewrite.
 
+## Resolution
+
+Implemented per the Proposed Solution and Program Design (no deviations):
+
+- **core.mjs (`policy_builder_core.mjs`)**: added `BUILDER_PROJECT_SCHEMA_VERSION`,
+  `validateProjectStructure(project)`, `serializeBuilderProject(project)`,
+  `parseBuilderProject(text)`, and `applyDraftEdit(history, edit)` with the exact
+  `Draft {model}` wrapper / whole-project `DraftHistory` shapes specified, all
+  exported both as named exports and via `window.PolicyBuilderCore`.
+- **`policy_builder.py`**: added the one planned `__GENERATOR_VERSION__` stamp
+  from `little_loops.__version__`, wired through
+  `window.__GENERATOR_VERSION__` in the template's stamped-globals block.
+- **Template wiring**: per-mode localStorage drafts (`ll-policy-builder-draft-<mode>`)
+  restored on load after `initTheme()` (structural validation only, via
+  `validateProjectStructure` — a structurally valid draft restores even with
+  export-readiness diagnostics; a corrupt draft falls back to the seed with a
+  live-region message and leaves the rejected payload in storage untouched).
+  Mode switch now saves the outgoing draft and restores/seeds the incoming one
+  instead of reseeding destructively; "Start blank" still reseeds but pushes a
+  history entry first. A single delegated `change` listener on `#form-panel`
+  drives one history commit per settled field edit (native `change` fires on
+  blur/selection, not per keystroke); structural button-driven mutations
+  (add/delete/move dimension/outcome/rule, mode switch, Start blank) call
+  `commit()` explicitly. Undo/Redo buttons plus Ctrl/Cmd+Z / Ctrl/Cmd+Shift+Z
+  (ignored while focus is in an editable control) walk the history. Save
+  project / Open project round-trip the full `BuilderProject` envelope via
+  `<a download>` / `<input type=file>` + `FileReader`; a failed import (bad
+  JSON, wrong shape, newer `schemaVersion`) leaves the current project
+  untouched and reports a matchable error in the live region. Copy now
+  reports success/failure via `.then/.catch`; the same `#live-status`
+  `aria-live="polite"` region also carries storage-unavailable and
+  draft-saved feedback. Export guidance under the YAML preview now shows a
+  concrete `loops/<name>.yaml` destination, the `ll-loop validate` command,
+  and a mode-appropriate `ll-loop run` invocation.
+- **Fixtures/tests**: golden `sample-{decision-table,rubric,issue-lifecycle}.project.json`
+  fixtures (one per mode) plus `node:test` coverage in `policy_validator.test.mjs`
+  for structural-validation rejections, semantically-incomplete-but-structurally-valid
+  acceptance, unknown-metadata preservation, commit/undo/redo (including across a
+  mode switch), the 100-entry history cap, and deep-copy isolation. Regenerated
+  `golden_policy_router_builder.html`; added a `__GENERATOR_VERSION__` assertion
+  and a persistence/history-affordances structural test to
+  `test_policy_builder_emit.py`. Updated `docs/reference/CLI.md` and
+  `docs/guides/POLICY_ROUTER_GUIDE.md` (Wiring Phase's flagged passages).
+
+**Manual browser verification (Scope Boundaries: Option B):** this session ran
+headlessly with no interactive browser available, so the checklist below was
+substituted with the closest verifiable equivalent — a Node harness that ports
+the template's exact persistence/undo glue (bootstrap hydration, mode-switch
+draft save/restore, corrupt-draft fallback with payload preservation,
+Save/Open round-trip, `schemaVersion` rejection) against the real, unmodified
+`policy_builder_core.mjs`, plus the existing static-markup structural tests
+(`TestFeat2301UsabilityStructural`) extended with the new element IDs. All
+scenarios passed. **This is not a substitute for the manual browser checklist
+the issue calls for** (reload in an actual tab, real undo/redo button clicks,
+real file picker Open, a private/incognito window with storage disabled) —
+that still needs a human with a browser before this is considered fully
+verified end-to-end; flagging explicitly rather than claiming it was done.
+
+**Pre-existing, unrelated test failures observed in the full suite** (present
+before this session's changes; not touched by this issue): `test_verify_evidence.py::TestRepoGate::test_no_new_unverifiable_evidence`
+(flags spans in `P2-BUG-3499...md` and another bug file already modified before
+this session started) and a `pytest-xdist` worker crash on
+`test_feat3323_sse_bridge.py::TestSseBridgeFanIn::test_two_producers_reach_one_client_with_distinct_producer_pid`
+(passes in isolation with `-n0`; matches BUG-3484's documented worker-crash-under-contention class).
+
 ## Status
 
 **Open** | Created: 2026-09-16 | Priority: P3
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-17T07:20:23 - `e8dc2a0f-4cee-4654-bc66-a8afc13e6ce5.jsonl`
 - `/ll:confidence-check` - 2026-09-17T06:33:45 - `848ad701-11e3-43ba-8e5b-b86aa9978421.jsonl`
 - `/ll:verify-issues` - 2026-09-17T06:27:20 - `9b9f3eca-ed5d-4fd7-a99d-217cb278def3.jsonl`
 - manual review - 2026-09-17 - stale anchors corrected (guide `:300`/`:305`, `moveRule` `678-689`); code claims re-verified (issue-id-then-args ordering, `__version__` source, `evaluateModel` shape)

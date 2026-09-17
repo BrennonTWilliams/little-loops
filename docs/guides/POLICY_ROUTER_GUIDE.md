@@ -296,15 +296,22 @@ works over `file://`). It presents a one-page form with three modes:
 The page validates live (shadowed rules, unreachable outcomes, and unknown actions are flagged
 in plain language, referencing the visible rule numbers) and emits loop YAML behind a
 collapsed "View generated file" disclosure — the default view is a one-line plain summary plus
-Copy/Download and a printed `ll-loop validate <name>` hint. The page seeds with a small
-runnable example on load; "Start blank" clears it. Its grammar, design-token theme, and skill
-catalog are **stamped from this project at generation time** (including the project's
-configured `active_theme`, which the page honors ahead of OS light/dark preference), so
-regenerate the file to pick up new skills or grammar changes.
+Copy/Download, a Save project / Open project pair, and a printed destination path plus
+`ll-loop validate`/`ll-loop run` hint. The page seeds with a small runnable example on load;
+edits then persist automatically per mode (reload and mode switching restore your draft — a
+mode switch never discards work), with Undo/Redo (buttons or Ctrl/Cmd+Z / Ctrl/Cmd+Shift+Z)
+walking back through the whole session's edits. "Start blank" is the only control that
+discards a mode's draft, and even it pushes an Undo entry first. Its grammar, design-token
+theme, and skill catalog are **stamped from this project at generation time** (including the
+project's configured `active_theme`, which the page honors ahead of OS light/dark preference),
+so regenerate the file to pick up new skills or grammar changes.
 
-**Builder vs. `edit-routes`:** the builder is *greenfield-only* — it composes a new loop and
-exports YAML. `ll-loop edit-routes` (below) is the round-trip editor for a loop that *already
-exists*. Use the builder to create; use `edit-routes` to revise.
+**Builder vs. `edit-routes`:** the builder composes a new loop and exports YAML; "Save project"
+/ "Open project" round-trip its own authoring state (all three modes' drafts, in a versioned
+JSON envelope) so you can pause and resume a builder session, but that project file is not a
+loop YAML and the builder does not read an *existing* loop YAML back in. `ll-loop edit-routes`
+(below) is the round-trip editor for a loop that already exists. Use the builder to create
+(pausing/resuming with Save/Open project as needed); use `edit-routes` to revise.
 
 ### Issue Lifecycle Mode
 

@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "generatorVersion": "0.0.0-fixture",
+  "projectId": "22222222-2222-4222-8222-222222222222",
+  "activeMode": "rubric",
+  "drafts": {
+    "rubric": {
+      "model": {
+        "mode": "rubric",
+        "name": "my-rubric-loop",
+        "description": "",
+        "subject": "artifact.md",
+        "maxSteps": 10,
+        "thresholdHigh": 85,
+        "thresholdMedium": 65,
+        "dimensions": [
+          {
+            "name": "clarity",
+            "type": "numeric"
+          },
+          {
+            "name": "has-examples",
+            "type": "boolean"
+          }
+        ],
+        "rules": [],
+        "fallback": "",
+        "outcomes": []
+      }
+    }
+  }
+}

@@ -108,7 +108,7 @@ pre {
 .msg-warn { background: var(--color-status-warning-bg, #fff3cd); color: var(--color-status-warning-text, #856404); }
 .msg-error { background: var(--color-status-error-bg, #f8d7da); color: var(--color-status-error-text, #721c24); }
 .msg-ok { background: var(--color-status-success-bg, #d4edda); color: var(--color-status-success-text, #155724); }
-.hint { font-family: var(--typography-font-family-mono, monospace); font-size: 0.8rem; opacity: 0.8; }
+.hint { font-family: var(--typography-font-family-mono, monospace); font-size: 0.8rem; opacity: 0.8; white-space: pre-line; }
 .theme-toggle { font-size: 1.1rem; padding: 0.3rem 0.6rem; }
 .del { flex: 0 0 auto; padding: 0.2rem 0.5rem; }
 small.help { display: block; opacity: 0.7; font-size: 0.75rem; }
@@ -123,6 +123,8 @@ small.help { display: block; opacity: 0.7; font-size: 0.75rem; }
         <option value="rubric">Rubric</option>
         <option value="issue_lifecycle">Issue Lifecycle</option>
       </select>
+      <button class="secondary" id="undo-btn" type="button" title="Undo (Ctrl/Cmd+Z)">↶ Undo</button>
+      <button class="secondary" id="redo-btn" type="button" title="Redo (Ctrl/Cmd+Shift+Z)">↷ Redo</button>
       <button class="secondary theme-toggle" id="theme-toggle" title="Toggle theme">🌙</button>
     </div>
   </header>
@@ -131,6 +133,7 @@ small.help { display: block; opacity: 0.7; font-size: 0.75rem; }
   <script>
     window.__GRAMMAR_SPEC__ = /*__GRAMMAR_SPEC_JSON__*/;
     window.__SKILL_CATALOG__ = /*__SKILL_CATALOG_JSON__*/;
+    window.__GENERATOR_VERSION__ = /*__GENERATOR_VERSION_JSON__*/;
     window.__ACTIVE_THEME__ = document.documentElement.getAttribute("data-theme") || "light";
   </script>
 
@@ -216,8 +219,12 @@ confidence_score: 40"></textarea>
       <div class="row" style="margin-bottom:0.5rem;">
         <button id="copy-btn" type="button">Copy</button>
         <button id="download-btn" type="button">Download &lt;name&gt;.yaml</button>
+        <button id="save-project-btn" type="button" class="secondary">Save project</button>
+        <button id="open-project-btn" type="button" class="secondary">Open project</button>
+        <input type="file" id="open-project-input" accept="application/json" hidden />
         <button id="start-blank-btn" type="button" class="secondary">Start blank</button>
       </div>
+      <p class="hint" id="live-status" role="status" aria-live="polite"></p>
       <p class="hint" id="validate-hint"></p>
       <details id="yaml-details">
         <summary>View generated file</summary>
@@ -244,6 +251,156 @@ const CATALOG = window.__SKILL_CATALOG__ || [];
 // nested per-outcome) so on-screen order *is* precedence order and moveRule()
 // can reorder it directly.
 let state = seedExample();
+
+// ===========================================================================
+// Draft / project persistence and undo/redo (ENH-3487)
+// ===========================================================================
+// `drafts` mirrors BuilderProject.drafts: {[mode]: {model}} for every mode
+// visited this session. `history` is a whole-project DraftHistory (see
+// applyDraftEdit's doc comment in policy_builder_core.mjs) — null until
+// hydrateFromStorage() seeds it, so calls to commit() before bootstrap
+// finishes (there are none) are a safe no-op.
+let drafts = {};
+let projectId = _newProjectId();
+let history = null;
+
+const _DRAFT_KEY_PREFIX = "ll-policy-builder-draft-";
+const _META_KEY = "ll-policy-builder-meta";
+
+function _newProjectId() {
+  if (window.crypto && typeof window.crypto.randomUUID === "function") return window.crypto.randomUUID();
+  return "proj-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10);
+}
+
+function showLiveStatus(text) {
+  const el = document.getElementById("live-status");
+  if (el) el.textContent = text;
+}
+
+// Tracks whether a storage write has already failed this session so the
+// live region warns once (not on every keystroke-commit) — authoring and
+// explicit Save-project stay fully functional either way.
+let _storageWarned = false;
+function _persistDraft(mode, model) {
+  try {
+    localStorage.setItem(_DRAFT_KEY_PREFIX + mode, JSON.stringify({ model }));
+  } catch (e) {
+    if (!_storageWarned) {
+      _storageWarned = true;
+      showLiveStatus("Browser storage is unavailable — drafts won't survive reload this session; use Save project instead.");
+    }
+  }
+}
+function _persistAllDrafts(draftsObj) {
+  Object.keys(draftsObj).forEach((mode) => _persistDraft(mode, draftsObj[mode].model));
+}
+function _persistMeta() {
+  try {
+    localStorage.setItem(
+      _META_KEY,
+      JSON.stringify({
+        projectId,
+        activeMode: state.mode,
+        schemaVersion: BUILDER_PROJECT_SCHEMA_VERSION,
+        generatorVersion: window.__GENERATOR_VERSION__ || "",
+      })
+    );
+  } catch (e) { /* ignore */ }
+}
+function _readDraft(mode) {
+  try {
+    const raw = localStorage.getItem(_DRAFT_KEY_PREFIX + mode);
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) {
+    return null;
+  }
+}
+function _readMeta() {
+  try {
+    const raw = localStorage.getItem(_META_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function currentProject() {
+  return {
+    schemaVersion: BUILDER_PROJECT_SCHEMA_VERSION,
+    generatorVersion: window.__GENERATOR_VERSION__ || "",
+    projectId,
+    activeMode: state.mode,
+    drafts: { ...drafts, [state.mode]: { model: state } },
+  };
+}
+
+// Push one committed edit onto the undo/redo stack and persist it. Called
+// after every structural button-driven mutation (add/delete/move a
+// dimension/outcome/rule, mode switch, Start blank) and, via the delegated
+// `change` listener below, after every settled (non-keystroke) field edit.
+// A no-op before hydrateFromStorage() has run (history is still null).
+function commit() {
+  if (!history) return;
+  drafts = { ...drafts, [state.mode]: { model: state } };
+  history = applyDraftEdit(history, { type: "commit", activeMode: state.mode, drafts });
+  _persistDraft(state.mode, state);
+  _persistMeta();
+  updateUndoRedoButtons();
+}
+
+function updateUndoRedoButtons() {
+  $("undo-btn").disabled = !history || !history.past.length;
+  $("redo-btn").disabled = !history || !history.future.length;
+}
+
+function restoreFromSnapshot(snapshot) {
+  drafts = snapshot.drafts;
+  const mode = snapshot.activeMode;
+  state = (drafts[mode] && drafts[mode].model) || seedExample(mode);
+  applyStateToForm();
+  applyModeVisibility();
+  renderAll();
+  _persistAllDrafts(drafts);
+  _persistMeta();
+  updateUndoRedoButtons();
+}
+
+// Restore the active mode's draft from localStorage, validating structure
+// only (never export-readiness — an unfinished predicate, empty action
+// body, missing reference, or invalid budget is editable work, not
+// corruption, and must still restore). A structurally invalid stored draft
+// falls back to the seed with a live-region diagnostic; the rejected
+// payload is left in storage untouched until the next explicit commit()
+// overwrites it, so it stays available for manual recovery.
+function hydrateFromStorage() {
+  const meta = _readMeta();
+  const activeMode = (meta && meta.activeMode) || state.mode;
+  const draft = _readDraft(activeMode);
+  if (draft) {
+    const candidate = {
+      schemaVersion: BUILDER_PROJECT_SCHEMA_VERSION,
+      generatorVersion: (meta && meta.generatorVersion) || "",
+      projectId: (meta && meta.projectId) || projectId,
+      activeMode,
+      drafts: { [activeMode]: draft },
+    };
+    const errors = validateProjectStructure(candidate);
+    if (!errors.length) {
+      projectId = candidate.projectId;
+      state = draft.model;
+      drafts = { [activeMode]: draft };
+      applyStateToForm();
+    } else {
+      showLiveStatus("Saved draft could not be restored (corrupted); starting from the example instead.");
+    }
+  }
+  history = {
+    past: [],
+    present: { activeMode: state.mode, drafts: { ...drafts, [state.mode]: { model: state } } },
+    future: [],
+  };
+  updateUndoRedoButtons();
+}
 
 function buildModel() {
   return {
@@ -325,6 +482,7 @@ function renderDimensions() {
       del.onclick = () => {
         state.dimensions.splice(i, 1);
         renderAll();
+        commit();
       };
       row.appendChild(del);
     }
@@ -372,7 +530,7 @@ function renderOutcomes() {
     delOc.title = inUse
       ? "Can't remove: still used by a rule or the fallback"
       : "Remove this outcome";
-    delOc.onclick = () => { state.outcomes.splice(oi, 1); renderAll(); };
+    delOc.onclick = () => { state.outcomes.splice(oi, 1); renderAll(); commit(); };
     title.appendChild(delOc);
     grp.appendChild(title);
 
@@ -634,7 +792,7 @@ function renderRules() {
         const delPred = document.createElement("button");
         delPred.className = "secondary del"; delPred.textContent = "✕";
         delPred.title = "Remove this condition";
-        delPred.onclick = () => { r.predicates.splice(pi, 1); renderAll(); };
+        delPred.onclick = () => { r.predicates.splice(pi, 1); renderAll(); commit(); };
         card.appendChild(delPred);
       }
     });
@@ -648,6 +806,7 @@ function renderRules() {
       const op = firstDim && firstDim.type === "boolean" ? "==true" : (GRAMMAR.all_ops[0] || "==");
       r.predicates.push({ dim, op, value: "" });
       renderAll();
+      commit();
     };
     card.appendChild(addPred);
 
@@ -669,17 +828,17 @@ function renderRules() {
     upBtn.className = "secondary rule-move"; upBtn.textContent = "↑";
     upBtn.title = "Move rule up (higher precedence)";
     upBtn.disabled = i === 0;
-    upBtn.onclick = () => { state.rules = moveRule({ rules: state.rules }, i, "up").rules; renderAll(); };
+    upBtn.onclick = () => { state.rules = moveRule({ rules: state.rules }, i, "up").rules; renderAll(); commit(); };
     const downBtn = document.createElement("button");
     downBtn.className = "secondary rule-move"; downBtn.textContent = "↓";
     downBtn.title = "Move rule down (lower precedence)";
     downBtn.disabled = i === state.rules.length - 1;
-    downBtn.onclick = () => { state.rules = moveRule({ rules: state.rules }, i, "down").rules; renderAll(); };
+    downBtn.onclick = () => { state.rules = moveRule({ rules: state.rules }, i, "down").rules; renderAll(); commit(); };
     card.append(upBtn, downBtn);
 
     const del = document.createElement("button");
     del.className = "secondary del"; del.textContent = "✕"; del.title = "Delete this rule";
-    del.onclick = () => { state.rules.splice(i, 1); renderAll(); };
+    del.onclick = () => { state.rules.splice(i, 1); renderAll(); commit(); };
     card.appendChild(del);
 
     host.appendChild(card);
@@ -837,6 +996,27 @@ function renderMessages(model, diagnostics) {
   if (!host.children.length) add("msg-ok", "No issues detected.");
 }
 
+// Export guidance (ENH-3487): a concrete destination path, the validate
+// command, and a runnable `ll-loop run` invocation. issue_lifecycle declares
+// a required `parameters.issue_id` bound by a JSON-object positional input
+// (ll-loop run.py's context-key matching); rubric declares `input_key:
+// subject` / `required_inputs: ["subject"]` bound by a bare positional
+// string. decision_table takes no positional input (subject is a fixed
+// context default), so it needs neither.
+function _runCommandFor(model, destPath) {
+  if (model.mode === "issue_lifecycle") return `ll-loop run ${destPath} '{"issue_id": "BUG-123"}'`;
+  if (model.mode === "rubric") return `ll-loop run ${destPath} "Subject to evaluate"`;
+  return `ll-loop run ${destPath}`;
+}
+function _exportGuidance(model) {
+  const destPath = `loops/${model.name || "my-policy-loop"}.yaml`;
+  return [
+    `Save to: ${destPath}`,
+    `Validate: ll-loop validate ${destPath}`,
+    `Run: ${_runCommandFor(model, destPath)}`,
+  ].join("\n");
+}
+
 function updatePreview() {
   const model = buildModel();
   // BUG-3489: serializeLoopYaml throws when the model uses a reserved
@@ -846,7 +1026,7 @@ function updatePreview() {
   // keep rendering summary/messages/try-it so the page stays responsive.
   try {
     $("yaml-preview").textContent = serializeLoopYaml(model);
-    $("validate-hint").textContent = `Validate with:  ll-loop validate ${state.name}`;
+    $("validate-hint").textContent = _exportGuidance(model);
   } catch (err) {
     $("yaml-preview").textContent = `# Cannot generate YAML:\n# ${err.message}`;
     $("validate-hint").textContent = "";
@@ -918,11 +1098,21 @@ $("mode-switch").value = state.mode;
 // blank" — so issue_lifecycle's built-in dimensions/verbs are always
 // present when switching in, and switching to any other mode never leaves
 // stale lifecycle-only fields (args, frontmatter dims) behind.
+// ENH-3487: mode switch no longer discards in-progress edits — it saves the
+// outgoing mode's draft and restores the incoming mode's saved draft (or
+// seeds it, the first time a mode is visited). "Start blank" is still the
+// only way to discard a mode's work, and it now pushes a history entry
+// first so that reseed is itself undoable.
 $("mode-switch").onchange = (e) => {
-  state = seedExample(e.target.value);
+  const newMode = e.target.value;
+  drafts = { ...drafts, [state.mode]: { model: state } };
+  const existing = drafts[newMode];
+  state = existing ? existing.model : seedExample(newMode);
+  drafts = { ...drafts, [newMode]: { model: state } };
   applyStateToForm();
   applyModeVisibility();
   renderAll();
+  commit();
 };
 $("f-name").oninput = (e) => { state.name = e.target.value; updatePreview(); };
 $("f-subject").oninput = (e) => { state.subject = e.target.value; updatePreview(); };
@@ -930,6 +1120,19 @@ $("f-maxsteps").oninput = (e) => { state.maxSteps = Number(e.target.value) || 1;
 $("f-desc").oninput = (e) => { state.description = e.target.value; updatePreview(); };
 $("f-thigh").oninput = (e) => { state.thresholdHigh = Number(e.target.value); $("thigh-val").textContent = e.target.value; updatePreview(); };
 $("f-tmed").oninput = (e) => { state.thresholdMedium = Number(e.target.value); $("tmed-val").textContent = e.target.value; updatePreview(); };
+
+// ENH-3487 history granularity: one entry per *committed* field change, not
+// per keystroke. A native "change" event (fires on blur for text/textarea/
+// number, on release for range, and on selection for select) bubbles here
+// from every authoring control above and from the dynamically-rendered
+// dimension/outcome/rule editors — so this single delegated listener covers
+// all of them without threading commit() through every renderer. #tryit-
+// fieldset / #frontmatter-tryit-fieldset hold ephemeral sample values (not
+// part of the authored model) and are excluded.
+$("form-panel").addEventListener("change", (e) => {
+  if (e.target.closest("#tryit-fieldset, #frontmatter-tryit-fieldset")) return;
+  commit();
+});
 
 $("add-dim").onclick = () => {
   const name = $("dim-name").value.trim();
@@ -950,6 +1153,7 @@ $("add-dim").onclick = () => {
   state.dimensions.push({ name, type: $("dim-type").value });
   $("dim-name").value = "";
   renderAll();
+  commit();
 };
 $("add-outcome").onclick = () => {
   if (state.mode === "issue_lifecycle") return; // fixed verb set; #add-outcome is hidden too.
@@ -968,6 +1172,7 @@ $("add-outcome").onclick = () => {
   state.outcomes.push({ name, actionType: "prompt", body: "", transition: { kind: "rescore" } });
   $("outcome-name").value = "";
   renderAll();
+  commit();
 };
 $("add-rule").onclick = () => {
   if (!state.outcomes.length) return;
@@ -976,11 +1181,19 @@ $("add-rule").onclick = () => {
   const op = firstDim && firstDim.type === "boolean" ? "==true" : (GRAMMAR.all_ops[0] || "==");
   state.rules.push({ predicates: [{ dim, op, value: "" }], target: state.outcomes[0].name });
   renderAll();
+  commit();
 };
 
 $("copy-btn").onclick = () => {
   const text = $("yaml-preview").textContent;
-  if (navigator.clipboard) navigator.clipboard.writeText(text);
+  if (!navigator.clipboard) {
+    showLiveStatus("Clipboard is unavailable in this browser.");
+    return;
+  }
+  navigator.clipboard.writeText(text).then(
+    () => showLiveStatus("Copied to clipboard."),
+    (err) => showLiveStatus(`Copy failed: ${err && err.message ? err.message : err}`)
+  );
 };
 $("download-btn").onclick = () => {
   const text = $("yaml-preview").textContent;
@@ -991,15 +1204,83 @@ $("download-btn").onclick = () => {
   a.click();
   URL.revokeObjectURL(a.href);
 };
+$("save-project-btn").onclick = () => {
+  const text = serializeBuilderProject(currentProject());
+  const blob = new Blob([text], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = (state.name || "policy-builder-project") + ".project.json";
+  a.click();
+  URL.revokeObjectURL(a.href);
+  showLiveStatus("Project saved.");
+};
+$("open-project-btn").onclick = () => { $("open-project-input").click(); };
+$("open-project-input").onchange = (e) => {
+  const file = e.target.files && e.target.files[0];
+  e.target.value = ""; // allow re-selecting the same file next time
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    let project;
+    try {
+      project = parseBuilderProject(String(reader.result));
+    } catch (err) {
+      // A failed import preserves the current project untouched.
+      showLiveStatus(`Could not open project: ${err.message}`);
+      return;
+    }
+    projectId = project.projectId;
+    drafts = project.drafts;
+    state = drafts[project.activeMode].model;
+    applyStateToForm();
+    applyModeVisibility();
+    renderAll();
+    history = { past: [], present: { activeMode: project.activeMode, drafts }, future: [] };
+    _persistAllDrafts(drafts);
+    _persistMeta();
+    updateUndoRedoButtons();
+    showLiveStatus("Project opened.");
+  };
+  reader.onerror = () => showLiveStatus("Could not read the selected file.");
+  reader.readAsText(file);
+};
+
+$("undo-btn").onclick = () => {
+  if (!history || !history.past.length) return;
+  history = applyDraftEdit(history, { type: "undo" });
+  restoreFromSnapshot(history.present);
+};
+$("redo-btn").onclick = () => {
+  if (!history || !history.future.length) return;
+  history = applyDraftEdit(history, { type: "redo" });
+  restoreFromSnapshot(history.present);
+};
+// Document-level Ctrl/Cmd+Z / Ctrl/Cmd+Shift+Z. Ignored whenever focus is in
+// an input/textarea/select/contenteditable so native per-keystroke undo
+// inside a field is untouched — the Undo/Redo buttons (and this shortcut
+// everywhere else) always act on the project history instead.
+document.addEventListener("keydown", (e) => {
+  const tag = (e.target && e.target.tagName || "").toLowerCase();
+  const isEditable = tag === "input" || tag === "textarea" || tag === "select" || (e.target && e.target.isContentEditable);
+  if (isEditable) return;
+  const mod = e.ctrlKey || e.metaKey;
+  if (!mod || e.key.toLowerCase() !== "z") return;
+  e.preventDefault();
+  if (e.shiftKey) { $("redo-btn").click(); } else { $("undo-btn").click(); }
+});
+
 // "Never a blank form" (UX model §6): the page seeds with seedExample();
 // this clears it to blankModel(state.mode) on demand — issue_lifecycle's
 // blank model still carries the locked built-in dimensions and five verbs
-// (they are structural to the mode, not authored content).
+// (they are structural to the mode, not authored content). ENH-3487: this
+// reseed now pushes a history entry, so it is itself undoable.
 $("start-blank-btn").onclick = () => {
   state = blankModel(state.mode);
+  drafts = { ...drafts, [state.mode]: { model: state } };
   applyStateToForm();
   applyModeVisibility();
   renderAll();
+  commit();
 };
 
 // ---- theme resolution: stored toggle -> stamped active_theme -> OS preference -> light
@@ -1030,6 +1311,7 @@ $("theme-toggle").onclick = () => {
 
 // ---- bootstrap -----------------------------------------------------------
 initTheme();
+hydrateFromStorage();
 applyModeVisibility();
 renderAll();
   </script>

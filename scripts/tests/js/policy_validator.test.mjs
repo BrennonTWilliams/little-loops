@@ -31,6 +31,11 @@ import {
   evaluateModel,
   reconcilePredicateForDim,
   opsForType,
+  BUILDER_PROJECT_SCHEMA_VERSION,
+  validateProjectStructure,
+  serializeBuilderProject,
+  parseBuilderProject,
+  applyDraftEdit,
 } from "../../little_loops/templates/policy_builder_core.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -665,4 +670,234 @@ test("validateBuilderModel absorbs detectShadows as warning diagnostics", () => 
   model.rules.unshift({ predicates: [], target: model.rules[0].target, isCatchall: true });
   const diagnostics = validateBuilderModel(model);
   assert.ok(diagnostics.some((d) => d.severity === "warning" && /never fires/.test(d.message)));
+});
+
+// ===========================================================================
+// ENH-3487: draft/project persistence and undo/redo
+// ===========================================================================
+
+function _projectFor(model) {
+  return {
+    schemaVersion: BUILDER_PROJECT_SCHEMA_VERSION,
+    generatorVersion: "0.0.0-test",
+    projectId: "test-project-id",
+    activeMode: model.mode,
+    drafts: { [model.mode]: { model } },
+  };
+}
+
+test("serializeBuilderProject/parseBuilderProject round-trip a golden .project.json fixture byte-equal, for every supported mode", () => {
+  for (const fixture of [
+    "sample-decision-table.project.json",
+    "sample-rubric.project.json",
+    "sample-issue-lifecycle.project.json",
+  ]) {
+    const text = readFileSync(join(FIXT, fixture), "utf8");
+    const project = parseBuilderProject(text);
+    assert.equal(serializeBuilderProject(project), text, fixture);
+  }
+});
+
+test("parseBuilderProject accepts a structurally valid draft with unfinished predicates, empty action bodies, missing references, and an invalid step budget", () => {
+  const model = seedExample("decision_table");
+  model.rules[0].predicates[0].draft = { text: "9", error: "bad" };
+  model.outcomes[0].body = "";
+  model.rules[0].target = "does-not-exist";
+  model.maxSteps = -5;
+  // Sanity: this really is semantically broken (validateBuilderModel's job).
+  assert.ok(validateBuilderModel(model).some((d) => d.severity === "error"));
+  const project = _projectFor(model);
+  const text = serializeBuilderProject(project);
+  const parsed = parseBuilderProject(text);
+  assert.deepEqual(parsed, project);
+});
+
+test("validateProjectStructure and parseBuilderProject reject malformed project shapes", () => {
+  const good = _projectFor(seedExample("decision_table"));
+  const cases = [
+    ["not JSON", "{not valid json", /parse/],
+    ["JSON array, not an object", "[]", /object/],
+    ["missing schemaVersion", JSON.stringify({ ...good, schemaVersion: undefined }), /schemaVersion/],
+    [
+      "newer schemaVersion",
+      JSON.stringify({ ...good, schemaVersion: BUILDER_PROJECT_SCHEMA_VERSION + 1 }),
+      /newer/,
+    ],
+    ["drafts not an object", JSON.stringify({ ...good, drafts: "nope" }), /drafts/],
+    ["unknown activeMode", JSON.stringify({ ...good, activeMode: "bogus_mode" }), /activeMode/],
+    [
+      "draft missing model key",
+      JSON.stringify({ ...good, drafts: { decision_table: {} } }),
+      /model/,
+    ],
+    [
+      "mismatched draft-key/model.mode",
+      JSON.stringify({
+        ...good,
+        drafts: { decision_table: { model: { ...seedExample("decision_table"), mode: "rubric" } } },
+      }),
+      /does not match/,
+    ],
+    [
+      "non-array dimensions/rules/outcomes",
+      JSON.stringify({
+        ...good,
+        drafts: { decision_table: { model: { ...seedExample("decision_table"), rules: "nope" } } },
+      }),
+      /arrays/,
+    ],
+    [
+      "missing projectId",
+      JSON.stringify({ ...good, projectId: "" }),
+      /projectId/,
+    ],
+    [
+      "no draft for activeMode",
+      JSON.stringify({ ...good, activeMode: "rubric" }),
+      /no draft exists/,
+    ],
+  ];
+  for (const [label, text, pattern] of cases) {
+    assert.throws(() => parseBuilderProject(text), pattern, `parseBuilderProject: ${label}`);
+  }
+  // validateProjectStructure mirrors the same rejections without throwing.
+  assert.deepEqual(validateProjectStructure(good), []);
+  assert.ok(validateProjectStructure({ ...good, activeMode: "bogus_mode" }).length > 0);
+  assert.ok(validateProjectStructure(null).length > 0);
+  assert.ok(validateProjectStructure([]).length > 0);
+});
+
+test("parseBuilderProject preserves unknown JSON-compatible draft metadata (forward compatibility)", () => {
+  const model = seedExample("rubric");
+  const project = _projectFor(model);
+  project.drafts.rubric.scenarios = [{ name: "case-1" }]; // FEAT-3488-shaped sibling key
+  const text = serializeBuilderProject(project);
+  const parsed = parseBuilderProject(text);
+  assert.deepEqual(parsed.drafts.rubric.scenarios, [{ name: "case-1" }]);
+});
+
+test("applyDraftEdit commit pushes the current present onto past and clears future", () => {
+  const snapA = { activeMode: "decision_table", drafts: { decision_table: { model: seedExample("decision_table") } } };
+  const history0 = { past: [], present: snapA, future: [{ activeMode: "rubric", drafts: {} }] };
+  const modelB = seedExample("decision_table");
+  modelB.name = "renamed-loop";
+  const history1 = applyDraftEdit(history0, {
+    type: "commit",
+    activeMode: "decision_table",
+    drafts: { decision_table: { model: modelB } },
+  });
+  assert.equal(history1.past.length, 1);
+  assert.deepEqual(history1.past[0], snapA);
+  assert.equal(history1.present.drafts.decision_table.model.name, "renamed-loop");
+  assert.deepEqual(history1.future, []);
+});
+
+test("applyDraftEdit undo/redo restores rules, fields, actions, transitions, and activeMode across a mode switch", () => {
+  let history = null;
+  const push = (activeMode, drafts) => {
+    history = applyDraftEdit(history, { type: "commit", activeMode, drafts });
+  };
+
+  // 1. Seed decision_table.
+  const m1 = seedExample("decision_table");
+  push("decision_table", { decision_table: { model: m1 } });
+
+  // 2. Field edit.
+  const m2 = JSON.parse(JSON.stringify(m1));
+  m2.name = "edited-name";
+  push("decision_table", { decision_table: { model: m2 } });
+
+  // 3. Rule-target edit (routing) + action edit (outcome body).
+  const m3 = JSON.parse(JSON.stringify(m2));
+  m3.rules[0].target = m3.outcomes[1].name;
+  m3.outcomes[1].body = "a different action body";
+  push("decision_table", { decision_table: { model: m3 } });
+
+  // 4. Transition edit.
+  const m4 = JSON.parse(JSON.stringify(m3));
+  m4.outcomes[1].transition = { kind: "finish" };
+  push("decision_table", { decision_table: { model: m4 } });
+
+  // 5. Mode switch to rubric — a history entry in its own right.
+  const rubricModel = seedExample("rubric");
+  push("rubric", { decision_table: { model: m4 }, rubric: { model: rubricModel } });
+
+  assert.equal(history.present.activeMode, "rubric");
+  assert.equal(history.past.length, 4);
+
+  // Undo the mode switch: back to decision_table with m4's transition edit.
+  history = applyDraftEdit(history, { type: "undo" });
+  assert.equal(history.present.activeMode, "decision_table");
+  assert.deepEqual(history.present.drafts.decision_table.model.outcomes[1].transition, { kind: "finish" });
+
+  // Undo the transition edit: m3's action/rule-target edit.
+  history = applyDraftEdit(history, { type: "undo" });
+  assert.equal(history.present.drafts.decision_table.model.outcomes[1].body, "a different action body");
+  assert.equal(history.present.drafts.decision_table.model.rules[0].target, m3.outcomes[1].name);
+
+  // Undo the action/rule-target edit: m2's field edit.
+  history = applyDraftEdit(history, { type: "undo" });
+  assert.equal(history.present.drafts.decision_table.model.name, "edited-name");
+  assert.equal(history.present.drafts.decision_table.model.outcomes[1].body, m1.outcomes[1].body);
+
+  // Undo the field edit: back to the initial seed.
+  history = applyDraftEdit(history, { type: "undo" });
+  assert.equal(history.present.drafts.decision_table.model.name, m1.name);
+  assert.equal(history.past.length, 0);
+
+  // Undo at the boundary is a no-op.
+  const atStart = applyDraftEdit(history, { type: "undo" });
+  assert.deepEqual(atStart, history);
+
+  // Redo all the way back to the mode switch.
+  history = applyDraftEdit(history, { type: "redo" });
+  history = applyDraftEdit(history, { type: "redo" });
+  history = applyDraftEdit(history, { type: "redo" });
+  history = applyDraftEdit(history, { type: "redo" });
+  assert.equal(history.present.activeMode, "rubric");
+  assert.deepEqual(history.present.drafts.rubric.model, rubricModel);
+  assert.equal(history.future.length, 0);
+
+  // Redo at the boundary is a no-op.
+  const atEnd = applyDraftEdit(history, { type: "redo" });
+  assert.deepEqual(atEnd, history);
+});
+
+test("applyDraftEdit caps past at 100 entries, dropping the oldest first", () => {
+  let history = applyDraftEdit(null, {
+    type: "commit",
+    activeMode: "decision_table",
+    drafts: { decision_table: { model: { ...seedExample("decision_table"), name: "seed" } } },
+  });
+  for (let i = 0; i < 150; i++) {
+    history = applyDraftEdit(history, {
+      type: "commit",
+      activeMode: "decision_table",
+      drafts: { decision_table: { model: { ...seedExample("decision_table"), name: `edit-${i}` } } },
+    });
+  }
+  assert.equal(history.past.length, 100);
+  // The oldest surviving entry is edit-49 (seed + edit-0..48 = 50 entries dropped).
+  assert.equal(history.past[0].drafts.decision_table.model.name, "edit-49");
+  assert.equal(history.present.drafts.decision_table.model.name, "edit-149");
+});
+
+test("applyDraftEdit deep-copies snapshots so later mutation of the caller's live object cannot alter history", () => {
+  const originalName = seedExample("decision_table").name;
+  const model = seedExample("decision_table");
+  let history = applyDraftEdit(null, {
+    type: "commit",
+    activeMode: "decision_table",
+    drafts: { decision_table: { model } },
+  });
+  const editedModel = JSON.parse(JSON.stringify(model));
+  editedModel.name = "second";
+  history = applyDraftEdit(history, {
+    type: "commit",
+    activeMode: "decision_table",
+    drafts: { decision_table: { model: editedModel } },
+  });
+  // Mutate the object that was pushed into `past` via the live reference.
+  model.name = "mutated-after-the-fact";
+  assert.equal(history.past[0].drafts.decision_table.model.name, originalName);
 });

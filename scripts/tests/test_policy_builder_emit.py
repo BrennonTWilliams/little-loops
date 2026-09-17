@@ -65,6 +65,16 @@ def test_emit_writes_html(tmp_path: Path) -> None:
     assert "/*__" not in html
 
 
+def test_generator_version_is_stamped_from_package_version(tmp_path: Path) -> None:
+    """ENH-3487: `window.__GENERATOR_VERSION__` seeds `BuilderProject.generatorVersion`."""
+    from little_loops import __version__
+
+    html = _emit_html(tmp_path)
+    m = re.search(r'window\.__GENERATOR_VERSION__\s*=\s*"([^"]*)"', html)
+    assert m, "window.__GENERATOR_VERSION__ assignment not found in emitted HTML"
+    assert m.group(1) == __version__
+
+
 def _extract_grammar(html: str) -> dict:
     m = re.search(r"window\.__GRAMMAR_SPEC__\s*=\s*(\{.*?\});", html, re.DOTALL)
     assert m, "grammar spec assignment not found in HTML"
@@ -219,6 +229,17 @@ class TestFeat2301UsabilityStructural:
         assert 'id="outcomes-fieldset"' in html
         assert 'id="tryit-fieldset"' in html
         assert 'state.mode === "rubric"' in html
+
+    def test_persistence_and_history_affordances_present(self, tmp_path: Path) -> None:
+        """ENH-3487: undo/redo, Save/Open project, and live-region feedback."""
+        html = _emit_html(tmp_path)
+        assert 'id="undo-btn"' in html
+        assert 'id="redo-btn"' in html
+        assert 'id="save-project-btn"' in html
+        assert 'id="open-project-btn"' in html
+        assert 'id="open-project-input"' in html
+        assert 'id="live-status"' in html
+        assert 'aria-live="polite"' in html
 
 
 class TestArtifactCLIDispatch:

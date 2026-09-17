@@ -70,6 +70,14 @@ In `_finish`, derive `failure_terminal` as `self.current_state in self.fsm.get_f
 - `scripts/little_loops/history_reader/models.py:187`, `usage.py:313-314`, `runs.py:332` — history reader queries
 - `scripts/little_loops/session_store/writers.py:1849-2936`, `queries.py:159`, `schema.py:934-1145` — persisted `loop_runs.failure_terminal` column
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/fsm/persistence.py:811,837` — `promote_run_artifact()` guards `if spec is None or result.failure_terminal: return None`; its own docstring already documents the intent ("no-op when the terminal is a failure terminal"), so once this fix ships, cap-routed runs reaching a `failure: true` terminal correctly stop being artifact-promoted (they currently wrongly are, per `test_ll_loop_scaffold_verify.py::test_no_op_when_on_empty_promotes_any_non_failure_terminal`) — behavior-change consumer, no code change needed here
+- `scripts/little_loops/fsm/persistence.py:1256` — `archive_run_only()` independently recomputes `failure_terminal=(terminated_by == "terminal" and self._executor.current_state in self.fsm.get_failure_states())` rather than reading a `_finish()` result; this duplicate narrow formula stays unwidened by this fix (it's normally invoked with `terminated_by="interrupted_force"` from `_loop_signal_handler`, not a cap reason) — same treatment as the already-noted `map_final_status` out-of-scope site
+- `scripts/little_loops/transport.py` (`OTelTransport._handle_loop_complete`, ~1738-1762) — sets span `StatusCode.ERROR` only via `map_final_status()`'s `"failed"`/`"timed_out"` buckets, not `failure_terminal` directly; since `map_final_status` keeps bucketing cap reasons as `"interrupted"` (out of scope per this issue), OTel span status stays `UNSET` for cap-routed failures even after this fix
+- `scripts/little_loops/session_store/writers.py` (`send()`, ~2919-2937) — persisted `loop_events.state` derives from the same stale `map_final_status()` bucket, while the sibling `loop_runs.failure_terminal` column (written directly, not via `map_final_status`) will report correctly post-fix — a new cross-column inconsistency this fix introduces
+- `scripts/little_loops/mcp_server/tasks.py:148,173` — `make_tasks_get_handler` constructs `ExecutionResult(terminated_by=run_status, ...)` from on-disk `state.json`; verify whether `failure_terminal` is reconstructed here too or left at its dataclass default
+- `scripts/little_loops/cli/logs.py:2062-2096` — `_derive_loop_outcome()` branches on `terminated_by in ("max_steps", "max_iterations_reached")` without consulting `failure_terminal`; audit whether outcome derivation for cap-routed runs should defer to the corrected flag
+
 ### Codebase Research Findings
 
 ### Files to Modify
@@ -87,12 +95,34 @@ In `_finish`, derive `failure_terminal` as `self.current_state in self.fsm.get_f
 - Nearest cap-routing test fixtures to extend: `TestSummaryHookOnMaxSteps._make_fsm()` (`test_fsm_executor.py:11203-11229`, `on_max_steps`) and `TestMaxIterationFullPassCap._make_maintain_fsm()` (`test_fsm_executor.py:11665-11737`, `on_max_iterations`) — both use a private `_make_*_fsm()` helper parameterized on the handler name plus a `MockActionRunner` driven to the cap; neither currently sets `failure=True` on the handler's terminal state
 - AC #4's "existing `TestGeneratedPolicyRouterFailureRouting` cases" are the plain-terminal (`terminated_by == "terminal"`) counterpart at `test_fsm_executor.py:2810` and the dedicated `test_enh2814_failure_terminal_e2e.py` suite — these must keep passing unchanged since this fix does not alter the `terminated_by == "terminal"` branch's outcome
 
+_Wiring pass added by `/ll:wire-issue`:_
+- Correction: the nearest `on_max_steps` fixture class is `TestMaxStepsSummaryHook._make_fsm()` (`test_fsm_executor.py:11206-11217`) — this issue's Codebase Research Findings names it `TestSummaryHookOnMaxSteps`, which does not match the actual class name; verify against the file before extending it
+- `TestSubLoopTimeoutRouting` (`test_fsm_executor.py:~9909-10034`) is the only sub-loop cap-routing test class; its `slow_child` fixture routes to a plain terminal, so `child_result.failure_terminal` propagation (`executor.py:1326-1349`) has no test for a cap-routed child landing on a `failure: true` terminal — a gap not covered by the ACs as written
+- No existing test computes a real `_finish()` result for a cap-routed run on a `failure: true` terminal and asserts `failure_terminal` anywhere in the suite (confirmed by repo-wide search across all 20 `failure_terminal`-hit files) — confirms nothing currently pins the buggy `False` value, so no test breaks from this fix
+
 ### Documentation
 - `docs/reference/API.md:6376-6386` documents `ExecutionResult.failure_terminal` and, immediately below the field block, states "`terminated_by == \"terminal\"` does **not** imply success — read `failure_terminal` for that" without mentioning the cap-handler case — this is the prose AC #5 asks to update
 - `docs/reference/EVENT-SCHEMA.md:1061` independently documents the same stale contract ("`true` only when `terminated_by=\"terminal\"` **and** the reached terminal state declares `failure: true`") — not named in AC #5 but states the identical incorrect contract and would drift from API.md if only API.md is updated
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/schemas/loop_complete.json:50` (generated) and its generator source `scripts/little_loops/generate_schemas.py:628` — carry the identical stale `terminated_by='terminal'`-only description text; update the generator string and regenerate the schema
+- `docs/reference/CLI.md` § "Exit Codes (ENH-2814)" — states exit code `1` covers `max_steps`/`max_iterations_reached` and code `2` is reserved for `terminated_by == "terminal"` reaching a failure terminal; after this fix a cap-routed run can also exit `2`, so this wording needs updating
+- `docs/reference/CLI.md:1373` — `ll-loop audit --json` field list names `failure_terminal` as an output key with no cap-routing caveat
+- `scripts/little_loops/fsm/types.py` — `ExecutionResult.failure_terminal` field docstring restates the same incomplete contract as `docs/reference/API.md` (code-adjacent documentation, not under `docs/`)
+- `skills/audit-loop-run/SKILL.md` § "Step 6b: Verdict Table" — the `terminated_by == "max_steps"` verdict row classifies as `partial` without consulting `failure_terminal`; after this fix a cap-routed run can carry `failure_terminal: true` and should defer to that flag first, matching how the `terminated_by == "terminal"` rows already work
+
 ### Configuration
 - `scripts/little_loops/templates/policy_builder_core.mjs:1136,1223,1399,1435` — the ENH-3492/policy-builder generator that emits `on_max_steps: failed` with `failed: {terminal: true, failure: true}` in all three builder modes; this is the concrete generator referenced by the issue's Summary ("every generated policy-builder loop") and the production path that will observe this fix
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `scripts/little_loops/fsm/types.py` — `ExecutionResult.failure_terminal` field docstring to describe the cap-handler behavior
+- Update `docs/reference/CLI.md` § "Exit Codes (ENH-2814)" — reword so exit code `2` is described as reachable from any `terminated_by` value whose final state is a failure terminal, not just `"terminal"`
+- Update `scripts/little_loops/generate_schemas.py:628` and regenerate `docs/reference/schemas/loop_complete.json`
+- Update `skills/audit-loop-run/SKILL.md` § "Step 6b: Verdict Table" — the `terminated_by == "max_steps"` row should check `failure_terminal` before falling back to `partial`
+- Add a sub-loop propagation test extending `TestSubLoopTimeoutRouting` (`test_fsm_executor.py`) covering a cap-routed child landing on a `failure: true` terminal, asserting the propagated `failure_terminal`
 
 ## Program Design
 
@@ -125,5 +155,6 @@ In `_finish`, derive `failure_terminal` as `self.current_state in self.fsm.get_f
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-17T06:43:41 - `848ad701-11e3-43ba-8e5b-b86aa9978421.jsonl`
 - `/ll:refine-issue` - 2026-09-17T06:25:28 - `6e94b71a-0dcd-458c-b8a3-312ff9bed181.jsonl`
 - `/ll:format-issue` - 2026-09-17T06:10:54 - `bdd11f79-301a-46b5-9233-83f283efd28d.jsonl`

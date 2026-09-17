@@ -688,6 +688,174 @@ export function moveRule(model, index, direction) {
   return { ...model, rules };
 }
 
+// ===========================================================================
+// Draft / project persistence (ENH-3487)
+// ===========================================================================
+//
+// BuilderProject {schemaVersion, generatorVersion, projectId, activeMode, drafts}
+// Draft {model: Model} — a wrapper (not the bare model) so a later issue
+// (FEAT-3488) can add sibling keys such as `scenarios` without changing the
+// object validateBuilderModel checks or forcing a schemaVersion bump.
+// DraftHistory {past, present, future} — whole-project scope: `present` is a
+// ProjectSnapshot {activeMode, drafts}, not a single draft, because a mode
+// switch is itself a history entry — undo across it restores both the
+// previous activeMode and that mode's draft. Project/draft ID generation
+// happens at the UI boundary (the template), never here, so this module
+// stays pure and deterministic.
+
+export const BUILDER_PROJECT_SCHEMA_VERSION = 1;
+const _HISTORY_LIMIT = 100;
+const _SUPPORTED_MODES = ["decision_table", "rubric", "issue_lifecycle"];
+
+function _deepClone(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+/**
+ * Structural (not semantic) validation of a BuilderProject-shaped object:
+ * envelope fields, draft shapes, and draft-key/model.mode agreement. Never
+ * judges export-readiness (that stays validateBuilderModel's job) — a draft
+ * with an unfinished predicate, empty action body, missing reference, or
+ * invalid step budget is structurally valid and passes here. Unknown
+ * JSON-compatible fields on `project` or a draft are left untouched (not an
+ * error), so later scenario metadata round-trips without being stripped.
+ * @param {*} project
+ * @returns {string[]} diagnostics; empty when structurally valid
+ */
+export function validateProjectStructure(project) {
+  if (!project || typeof project !== "object" || Array.isArray(project)) {
+    return ["project must be a JSON object"];
+  }
+  const errors = [];
+  if (typeof project.projectId !== "string" || !project.projectId) {
+    errors.push("projectId must be a non-empty string");
+  }
+  if (!_SUPPORTED_MODES.includes(project.activeMode)) {
+    errors.push(
+      `activeMode must be one of ${_SUPPORTED_MODES.join(", ")}, got ${JSON.stringify(project.activeMode)}`
+    );
+  }
+  if (!project.drafts || typeof project.drafts !== "object" || Array.isArray(project.drafts)) {
+    errors.push("drafts must be a JSON object");
+    return errors;
+  }
+  for (const [mode, draft] of Object.entries(project.drafts)) {
+    if (!_SUPPORTED_MODES.includes(mode)) {
+      errors.push(`unknown draft mode ${JSON.stringify(mode)}`);
+      continue;
+    }
+    if (!draft || typeof draft !== "object" || Array.isArray(draft)) {
+      errors.push(`drafts[${mode}] must be a JSON object`);
+      continue;
+    }
+    const model = draft.model;
+    if (!model || typeof model !== "object" || Array.isArray(model)) {
+      errors.push(`drafts[${mode}].model must be a JSON object`);
+      continue;
+    }
+    if (model.mode !== mode) {
+      errors.push(
+        `drafts[${mode}].model.mode (${JSON.stringify(model.mode)}) does not match its draft key`
+      );
+    }
+    if (!Array.isArray(model.dimensions) || !Array.isArray(model.rules) || !Array.isArray(model.outcomes)) {
+      errors.push(`drafts[${mode}].model.dimensions/rules/outcomes must be arrays`);
+    }
+  }
+  if (!errors.length && !project.drafts[project.activeMode]) {
+    errors.push(`no draft exists for activeMode ${JSON.stringify(project.activeMode)}`);
+  }
+  return errors;
+}
+
+/**
+ * Serialize a BuilderProject to indented, deterministic JSON text (Save
+ * project / localStorage). Pure — no ID generation or clock reads.
+ * @param {Object} project
+ * @returns {string}
+ */
+export function serializeBuilderProject(project) {
+  return JSON.stringify(project, null, 2);
+}
+
+/**
+ * Parse and structurally validate project JSON text (Open project /
+ * localStorage restore). Throws a matchable `Error` — never returns a
+ * partial result — on malformed JSON or an invalid envelope/draft shape;
+ * semantic export-readiness diagnostics (see validateBuilderModel) are never
+ * checked here and never block a parse. A `schemaVersion` newer than
+ * BUILDER_PROJECT_SCHEMA_VERSION is rejected without touching the caller's
+ * current draft (the caller must catch and no-op on throw). No migrations
+ * exist yet at v1 — this is the hook where a future older-schemaVersion
+ * migration would run, ahead of structural validation.
+ * @param {string} text
+ * @returns {Object} a structurally valid BuilderProject
+ */
+export function parseBuilderProject(text) {
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch (err) {
+    throw new Error(`Can't parse project: ${err.message}`);
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("Can't read project: expected a JSON object");
+  }
+  if (typeof parsed.schemaVersion !== "number") {
+    throw new Error("Can't read project: missing schemaVersion");
+  }
+  if (parsed.schemaVersion > BUILDER_PROJECT_SCHEMA_VERSION) {
+    throw new Error(
+      `Can't read project: schemaVersion ${parsed.schemaVersion} is newer than supported (${BUILDER_PROJECT_SCHEMA_VERSION})`
+    );
+  }
+  const errors = validateProjectStructure(parsed);
+  if (errors.length) {
+    throw new Error(`Can't read project: ${errors.join("; ")}`);
+  }
+  return parsed;
+}
+
+/**
+ * Apply one edit to a whole-project DraftHistory. Pure: every stored
+ * snapshot is a deep copy, so later mutation of the caller's live state can
+ * never retroactively change a history entry.
+ *
+ * `edit` shapes:
+ *   {type: "commit", activeMode, drafts} — any committed field/rule/outcome
+ *     change, mode switch, "Start blank", or preset apply (ENH-3491); pushes
+ *     the current `present` onto `past` (capped at 100 — oldest dropped
+ *     first) and clears `future`
+ *   {type: "undo"} / {type: "redo"} — no-op at either end of the stack
+ *
+ * @param {{past: Object[], present: Object|null, future: Object[]}} history
+ * @param {{type: string, activeMode?: string, drafts?: Object}} edit
+ * @returns {{past: Object[], present: Object, future: Object[]}}
+ */
+export function applyDraftEdit(history, edit) {
+  const past = (history && history.past) || [];
+  const present = (history && history.present) || null;
+  const future = (history && history.future) || [];
+
+  if (edit && edit.type === "undo") {
+    if (!past.length) return { past, present, future };
+    const restored = past[past.length - 1];
+    const newPast = past.slice(0, -1);
+    const newFuture = present ? [_deepClone(present), ...future] : future;
+    return { past: newPast, present: restored, future: newFuture };
+  }
+  if (edit && edit.type === "redo") {
+    if (!future.length) return { past, present, future };
+    const [restored, ...rest] = future;
+    const newPast = present ? [...past, _deepClone(present)] : past;
+    return { past: newPast, present: restored, future: rest };
+  }
+
+  const snapshot = { activeMode: edit.activeMode, drafts: edit.drafts };
+  const newPast = present ? [...past, _deepClone(present)].slice(-_HISTORY_LIMIT) : past;
+  return { past: newPast, present: _deepClone(snapshot), future: [] };
+}
+
 // Deep-copy helpers so seeded/blank models never share array/object
 // references with the exported constants (mutating a builder session must
 // never mutate BUILTIN_FRONTMATTER_DIMENSIONS / LIFECYCLE_VERBS).
@@ -1707,5 +1875,11 @@ if (typeof window !== "undefined") {
     evaluateModel,
     reconcilePredicateForDim,
     opsForType,
+    // ENH-3487 (draft/project persistence, undo/redo)
+    BUILDER_PROJECT_SCHEMA_VERSION,
+    validateProjectStructure,
+    serializeBuilderProject,
+    parseBuilderProject,
+    applyDraftEdit,
   };
 }

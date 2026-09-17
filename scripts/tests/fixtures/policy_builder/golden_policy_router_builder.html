@@ -281,7 +281,7 @@ pre {
 .msg-warn { background: var(--color-status-warning-bg, #fff3cd); color: var(--color-status-warning-text, #856404); }
 .msg-error { background: var(--color-status-error-bg, #f8d7da); color: var(--color-status-error-text, #721c24); }
 .msg-ok { background: var(--color-status-success-bg, #d4edda); color: var(--color-status-success-text, #155724); }
-.hint { font-family: var(--typography-font-family-mono, monospace); font-size: 0.8rem; opacity: 0.8; }
+.hint { font-family: var(--typography-font-family-mono, monospace); font-size: 0.8rem; opacity: 0.8; white-space: pre-line; }
 .theme-toggle { font-size: 1.1rem; padding: 0.3rem 0.6rem; }
 .del { flex: 0 0 auto; padding: 0.2rem 0.5rem; }
 small.help { display: block; opacity: 0.7; font-size: 0.75rem; }
@@ -296,6 +296,8 @@ small.help { display: block; opacity: 0.7; font-size: 0.75rem; }
         <option value="rubric">Rubric</option>
         <option value="issue_lifecycle">Issue Lifecycle</option>
       </select>
+      <button class="secondary" id="undo-btn" type="button" title="Undo (Ctrl/Cmd+Z)">↶ Undo</button>
+      <button class="secondary" id="redo-btn" type="button" title="Redo (Ctrl/Cmd+Shift+Z)">↷ Redo</button>
       <button class="secondary theme-toggle" id="theme-toggle" title="Toggle theme">🌙</button>
     </div>
   </header>
@@ -304,6 +306,7 @@ small.help { display: block; opacity: 0.7; font-size: 0.75rem; }
   <script>
     window.__GRAMMAR_SPEC__ = {"ordered_ops": ["<", "<=", ">", ">="], "all_ops": ["!=", "<", "<=", "==", ">", ">="], "pred_pattern": "^(?<dim>[\\w][\\w\\s\\-]*?)\\s*:\\s*(?<op>>=|<=|==|!=|<|>)\\s*(?<value>\\S.*?)$"};
     window.__SKILL_CATALOG__ = [{"name": "advise", "description": "Use when asked for a second opinion from a different, stronger model on a specific decision, question, or stalled judgment call."}, {"name": "align-issues", "description": "Validate active issues against key documents for relevance and alignment"}, {"name": "analyze-history", "description": "Use when asked about project health, velocity, bug trends, or whether we're making progress."}, {"name": "analyze-workflows", "description": "Analyze user message history to identify patterns, workflows, and automation opportunities"}, {"name": "audit-architecture", "description": "Analyze codebase architecture for patterns, organization, and improvements"}, {"name": "audit-claude-config", "description": "Use when asked to audit Claude Code config, validate plugin settings, or diagnose plugin issues."}, {"name": "audit-docs", "description": "Use when asked to audit documentation accuracy, coverage, or find documentation gaps."}, {"name": "audit-issue-conflicts", "description": "Use when asked to detect conflicting requirements or incompatible decisions across open issues."}, {"name": "audit-loop-run", "description": "Use when asked to assess loop effectiveness, audit goal achievement, or detect phantom success."}, {"name": "capture-issue", "description": "Use when asked to capture or create an issue from conversation or natural language."}, {"name": "check-code", "description": "Run code quality checks (lint, format, types, build)"}, {"name": "cleanup-loops", "description": "Use when asked to clean up stuck loops, kill dead loop processes, or troubleshoot loop state."}, {"name": "cleanup-worktrees", "description": "Clean orphaned git worktrees from interrupted ll-parallel/ll-loop runs"}, {"name": "commit", "description": "Create git commits with user approval and no assistant attribution"}, {"name": "compact-session", "description": "Use when asked to manually compact a session's memory, trigger session summarization, or reduce a long session's context footprint."}, {"name": "confidence-check", "description": "Use when asked for a pre-implementation confidence check or whether an issue is ready to implement."}, {"name": "configure", "description": "Use when asked to configure little-loops, change settings, or update ll-config.json."}, {"name": "create-eval-from-issues", "description": "Use when asked to generate an FSM eval harness YAML from one or more issue IDs, or DSL eval tasks from a loop/issue file with --dsl."}, {"name": "create-loop", "description": "Use when asked to create an automation loop or automate a recurring task with an FSM."}, {"name": "create-sprint", "description": "Create a sprint definition with a curated list of issues"}, {"name": "debug-loop-run", "description": "Use when asked to analyze loop execution history, investigate loop failures, or find loop issues."}, {"name": "decide-issue", "description": "Use when asked to select the winning implementation option for an issue with decision_needed."}, {"name": "describe-pr", "description": "Generate comprehensive PR descriptions following repository templates"}, {"name": "distill-traces", "description": "Use when asked to extract reusable loop patterns or YAML fragments from successful execution history."}, {"name": "explore-api", "description": "Use when exploring an external API/library and recording proof to the Learning Test Registry."}, {"name": "find-dead-code", "description": "Analyze codebase for deprecated, unused, or dead code that can be safely removed"}, {"name": "format-issue", "description": "Use when asked to format an issue or fix its template structure."}, {"name": "go-no-go", "description": "Use when asked for an adversarial go/no-go review or whether an issue is worth implementing."}, {"name": "handoff", "description": "Generate continuation prompt for session handoff"}, {"name": "help", "description": "List all available little-loops commands with descriptions"}, {"name": "improve-claude-md", "description": "Use when asked to improve or rewrite CLAUDE.md or increase LLM instruction adherence."}, {"name": "init", "description": "Use when asked to initialize little-loops, set up ll for a project, or bootstrap config."}, {"name": "issue-size-review", "description": "Use when asked to evaluate issue size, decompose large issues, or audit backlog complexity."}, {"name": "issue-workflow", "description": "Use when asked about the issue lifecycle, command order for issues, or how to manage issues."}, {"name": "iterate-plan", "description": "Iterate on existing implementation plans with thorough research and updates"}, {"name": "link-epics", "description": "Assign orphaned issues to existing EPICs, or cluster them into new-EPIC proposals, via `ll-issues link-epics`."}, {"name": "ll-align-issues", "description": "Validate active issues against key documents for relevance and alignment"}, {"name": "ll-analyze-workflows", "description": "Analyze user message history to identify patterns, workflows, and automation opportunities"}, {"name": "ll-audit-architecture", "description": "Analyze codebase architecture for patterns, organization, and improvements"}, {"name": "ll-capture-issue", "description": "Use when asked to capture or create an issue from conversation or natural language."}, {"name": "ll-check-code", "description": "Run code quality checks (lint, format, types, build)"}, {"name": "ll-cleanup-worktrees", "description": "Clean orphaned git worktrees from interrupted ll-parallel/ll-loop runs"}, {"name": "ll-commit", "description": "Create git commits with user approval and no assistant attribution"}, {"name": "ll-compact-session", "description": "Use when asked to manually compact a session's memory, trigger session summarization, or reduce a long session's context footprint."}, {"name": "ll-create-sprint", "description": "Create a sprint definition with a curated list of issues"}, {"name": "ll-describe-pr", "description": "Generate comprehensive PR descriptions following repository templates"}, {"name": "ll-find-dead-code", "description": "Analyze codebase for deprecated, unused, or dead code that can be safely removed"}, {"name": "ll-go-no-go", "description": "Use when asked for an adversarial go/no-go review or whether an issue is worth implementing."}, {"name": "ll-handoff", "description": "Generate continuation prompt for session handoff"}, {"name": "ll-help", "description": "List all available little-loops commands with descriptions"}, {"name": "ll-iterate-plan", "description": "Iterate on existing implementation plans with thorough research and updates"}, {"name": "ll-loop-suggester", "description": "Analyze user message history to suggest FSM loop configurations automatically. Uses ll-messages output to identify repeated workflows and generate ready-to-use loop YAML. Also supports --from-commands mode to suggest loops from the available command/skill catalog without requiring message history, and --from-sequences mode to suggest loops from ll-logs sequences n-gram output.\n\nTrigger keywords: \"suggest loops\", \"loop from history\", \"automate workflow\", \"create loop from messages\", \"analyze messages for loops\", \"ll-messages loop\", \"suggest automation\", \"detect patterns for loops\", \"suggest loops from commands\", \"loop from catalog\", \"from-commands\", \"suggest loops from sequences\", \"from-sequences\", \"loop from ll-logs"}, {"name": "ll-manage-release", "description": "Manage releases - create git tags, generate changelogs, and manage GitHub releases.\nIntegrates with Issue Management to include completed issues in release notes.\n\nTrigger keywords: \"manage release\", \"create release\", \"new release\", \"tag release\", \"publish release\", \"make release\", \"bump version"}, {"name": "ll-normalize-issues", "description": "Find and fix issue filenames with missing or duplicate IDs across types (e.g., BUG-007 and FEAT-007)"}, {"name": "ll-open-pr", "description": "Open a pull request for the current branch.\n\nTrigger keywords: \"open pr\", \"create pull request\", \"submit pr\", \"create pr\", \"open pull request\", \"submit for review\", \"make a pr"}, {"name": "ll-prioritize-issues", "description": "Analyze issues and prepend priority levels (P0-P5) to filenames"}, {"name": "ll-ready-issue", "description": "Analyze and validate an issue file for accuracy, utility, and completeness, then auto-correct to make implementation-ready or close if invalid"}, {"name": "ll-reconcile-issue", "description": "Rewrite an issue's Implementation Steps, Acceptance Criteria, and Integration Map (Files to Modify, Dependent Files, Similar Patterns, Tests, Documentation) in place from its own accumulated research findings \u2014 plus, conditionally, a Scope Boundaries claim contradicted by those findings \u2014 without appending or bulldozing human prose"}, {"name": "ll-refine-issue", "description": "Refine issue files with codebase-driven research to fill knowledge gaps needed for implementation"}, {"name": "ll-resume", "description": "Resume from a previous session's continuation prompt"}, {"name": "ll-review-sprint", "description": "AI-guided sprint health check that analyzes a sprint's current state and suggests improvements - removing stale issues, adding related backlog issues, and identifying dependency or contention problems. Pairs with `ll-sprint edit` (mechanics) the way `/ll:create-sprint` pairs with `ll-sprint create` (intelligence).\n\nTrigger keywords: \"review sprint\", \"sprint health\", \"sprint review\", \"check sprint\", \"sprint suggestions\", \"optimize sprint\", \"sprint health check\", \"is my sprint still good"}, {"name": "ll-run-tests", "description": "Run test suites with common patterns"}, {"name": "ll-scan-codebase", "description": "Scan codebase to identify bugs, enhancements, and features, then create issue files"}, {"name": "ll-scan-product", "description": "Scan codebase for product-focused issues based on goals document"}, {"name": "ll-sync-issues", "description": "Sync local issues with GitHub Issues (push/pull/status).\n\nTrigger keywords: \"sync issues\", \"push to github\", \"pull from github\", \"github sync\", \"sync with github\", \"export issues\", \"import issues from github"}, {"name": "ll-toggle-autoprompt", "description": "Toggle automatic prompt optimization settings"}, {"name": "ll-tradeoff-review-issues", "description": "Evaluate active issues for utility vs complexity trade-offs and recommend which to implement, update, or close. Use this skill to sense-check your backlog before implementation, prune low-value issues, or during sprint planning to focus on high-value work.\n\nTrigger keywords: \"tradeoff review\", \"review issues\", \"utility review\", \"prune backlog\", \"issue tradeoff\", \"sense check issues\", \"evaluate issues\", \"backlog review\", \"worth implementing\", \"low value issues"}, {"name": "ll-verify-issues", "description": "Verify issue files for accuracy, relevance, and completeness by testing claims against actual code"}, {"name": "loop-suggester", "description": "Analyze user message history to suggest FSM loop configurations automatically. Uses ll-messages output to identify repeated workflows and generate ready-to-use loop YAML. Also supports --from-commands mode to suggest loops from the available command/skill catalog without requiring message history, and --from-sequences mode to suggest loops from ll-logs sequences n-gram output.\n\nTrigger keywords: \"suggest loops\", \"loop from history\", \"automate workflow\", \"create loop from messages\", \"analyze messages for loops\", \"ll-messages loop\", \"suggest automation\", \"detect patterns for loops\", \"suggest loops from commands\", \"loop from catalog\", \"from-commands\", \"suggest loops from sequences\", \"from-sequences\", \"loop from ll-logs"}, {"name": "manage-issue", "description": "Use when asked to implement an issue end-to-end or start implementing FEAT-NNN."}, {"name": "manage-release", "description": "Manage releases - create git tags, generate changelogs, and manage GitHub releases.\nIntegrates with Issue Management to include completed issues in release notes.\n\nTrigger keywords: \"manage release\", \"create release\", \"new release\", \"tag release\", \"publish release\", \"make release\", \"bump version"}, {"name": "map-dependencies", "description": "Use when asked to find dependencies between issues or prepare a dependency-aware sprint plan."}, {"name": "normalize-issues", "description": "Find and fix issue filenames with missing or duplicate IDs across types (e.g., BUG-007 and FEAT-007)"}, {"name": "open-pr", "description": "Open a pull request for the current branch.\n\nTrigger keywords: \"open pr\", \"create pull request\", \"submit pr\", \"create pr\", \"open pull request\", \"submit for review\", \"make a pr"}, {"name": "prioritize-issues", "description": "Analyze issues and prepend priority levels (P0-P5) to filenames"}, {"name": "product-analyzer", "description": "Use when asked to analyze product goals, check feature gaps, or evaluate business value. Returns raw YAML findings. For full scan with issue file creation, use `/ll:scan-product`."}, {"name": "ready-issue", "description": "Analyze and validate an issue file for accuracy, utility, and completeness, then auto-correct to make implementation-ready or close if invalid"}, {"name": "reconcile-issue", "description": "Rewrite an issue's Implementation Steps, Acceptance Criteria, and Integration Map (Files to Modify, Dependent Files, Similar Patterns, Tests, Documentation) in place from its own accumulated research findings \u2014 plus, conditionally, a Scope Boundaries claim contradicted by those findings \u2014 without appending or bulldozing human prose"}, {"name": "refine-issue", "description": "Refine issue files with codebase-driven research to fill knowledge gaps needed for implementation"}, {"name": "rename-loop", "description": "Rename a loop and update all references in YAMLs, tests, and docs."}, {"name": "resume", "description": "Resume from a previous session's continuation prompt"}, {"name": "review-epic", "description": "Use when asked to review epic health, audit stalled children, check scope drift, find missing coverage, or assess closure readiness. Produces a structured health report and actionable recommendations. Read-only."}, {"name": "review-loop", "description": "Use when asked to review loop config quality, validate loop YAML, or audit a loop definition."}, {"name": "review-sprint", "description": "AI-guided sprint health check that analyzes a sprint's current state and suggests improvements - removing stale issues, adding related backlog issues, and identifying dependency or contention problems. Pairs with `ll-sprint edit` (mechanics) the way `/ll:create-sprint` pairs with `ll-sprint create` (intelligence).\n\nTrigger keywords: \"review sprint\", \"sprint health\", \"sprint review\", \"check sprint\", \"sprint suggestions\", \"optimize sprint\", \"sprint health check\", \"is my sprint still good"}, {"name": "run-tests", "description": "Run test suites with common patterns"}, {"name": "scan-codebase", "description": "Scan codebase to identify bugs, enhancements, and features, then create issue files"}, {"name": "scan-product", "description": "Scan codebase for product-focused issues based on goals document"}, {"name": "scope-epic", "description": "Use when asked to decompose a theme or goal into an EPIC with 3\u20138 child issues. Creates the EPIC file, pre-wired child stubs, and stages everything for git."}, {"name": "simplify-loop", "description": "Use when asked to simplify a loop, decompose a loop into sub-loops, collapse state chains into flows, or refactor an FSM loop."}, {"name": "spike", "description": "Use when asked to prove an unproven internal mechanism with an isolated code spike before implementing."}, {"name": "sync-issues", "description": "Sync local issues with GitHub Issues (push/pull/status).\n\nTrigger keywords: \"sync issues\", \"push to github\", \"pull from github\", \"github sync\", \"sync with github\", \"export issues\", \"import issues from github"}, {"name": "toggle-autoprompt", "description": "Toggle automatic prompt optimization settings"}, {"name": "tradeoff-review-issues", "description": "Evaluate active issues for utility vs complexity trade-offs and recommend which to implement, update, or close. Use this skill to sense-check your backlog before implementation, prune low-value issues, or during sprint planning to focus on high-value work.\n\nTrigger keywords: \"tradeoff review\", \"review issues\", \"utility review\", \"prune backlog\", \"issue tradeoff\", \"sense check issues\", \"evaluate issues\", \"backlog review\", \"worth implementing\", \"low value issues"}, {"name": "update", "description": "Use when asked to update little-loops, the plugin, or the pip package."}, {"name": "update-docs", "description": "Use when asked to update docs, find stale documentation, or check doc coverage after a sprint."}, {"name": "verify-issue-loop", "description": "Use when asked to generate an FSM verification loop YAML from a single issue's acceptance criteria, or an adversarial variant that tries to break the feature via boundary/malformed/failure-mode probes."}, {"name": "verify-issues", "description": "Verify issue files for accuracy, relevance, and completeness by testing claims against actual code"}, {"name": "wire-issue", "description": "Use when a refined issue is missing integration points or wiring in the implementation plan."}, {"name": "workflow-automation-proposer", "description": "Use when asked to propose automations or suggest automation opportunities from workflow patterns."}];
+    window.__GENERATOR_VERSION__ = "1.164.0";
     window.__ACTIVE_THEME__ = document.documentElement.getAttribute("data-theme") || "light";
   </script>
 
@@ -389,8 +392,12 @@ confidence_score: 40"></textarea>
       <div class="row" style="margin-bottom:0.5rem;">
         <button id="copy-btn" type="button">Copy</button>
         <button id="download-btn" type="button">Download &lt;name&gt;.yaml</button>
+        <button id="save-project-btn" type="button" class="secondary">Save project</button>
+        <button id="open-project-btn" type="button" class="secondary">Open project</button>
+        <input type="file" id="open-project-input" accept="application/json" hidden />
         <button id="start-blank-btn" type="button" class="secondary">Start blank</button>
       </div>
+      <p class="hint" id="live-status" role="status" aria-live="polite"></p>
       <p class="hint" id="validate-hint"></p>
       <details id="yaml-details">
         <summary>View generated file</summary>
@@ -1088,6 +1095,174 @@ export function moveRule(model, index, direction) {
   rules[index] = rules[target];
   rules[target] = tmp;
   return { ...model, rules };
+}
+
+// ===========================================================================
+// Draft / project persistence (ENH-3487)
+// ===========================================================================
+//
+// BuilderProject {schemaVersion, generatorVersion, projectId, activeMode, drafts}
+// Draft {model: Model} — a wrapper (not the bare model) so a later issue
+// (FEAT-3488) can add sibling keys such as `scenarios` without changing the
+// object validateBuilderModel checks or forcing a schemaVersion bump.
+// DraftHistory {past, present, future} — whole-project scope: `present` is a
+// ProjectSnapshot {activeMode, drafts}, not a single draft, because a mode
+// switch is itself a history entry — undo across it restores both the
+// previous activeMode and that mode's draft. Project/draft ID generation
+// happens at the UI boundary (the template), never here, so this module
+// stays pure and deterministic.
+
+export const BUILDER_PROJECT_SCHEMA_VERSION = 1;
+const _HISTORY_LIMIT = 100;
+const _SUPPORTED_MODES = ["decision_table", "rubric", "issue_lifecycle"];
+
+function _deepClone(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+/**
+ * Structural (not semantic) validation of a BuilderProject-shaped object:
+ * envelope fields, draft shapes, and draft-key/model.mode agreement. Never
+ * judges export-readiness (that stays validateBuilderModel's job) — a draft
+ * with an unfinished predicate, empty action body, missing reference, or
+ * invalid step budget is structurally valid and passes here. Unknown
+ * JSON-compatible fields on `project` or a draft are left untouched (not an
+ * error), so later scenario metadata round-trips without being stripped.
+ * @param {*} project
+ * @returns {string[]} diagnostics; empty when structurally valid
+ */
+export function validateProjectStructure(project) {
+  if (!project || typeof project !== "object" || Array.isArray(project)) {
+    return ["project must be a JSON object"];
+  }
+  const errors = [];
+  if (typeof project.projectId !== "string" || !project.projectId) {
+    errors.push("projectId must be a non-empty string");
+  }
+  if (!_SUPPORTED_MODES.includes(project.activeMode)) {
+    errors.push(
+      `activeMode must be one of ${_SUPPORTED_MODES.join(", ")}, got ${JSON.stringify(project.activeMode)}`
+    );
+  }
+  if (!project.drafts || typeof project.drafts !== "object" || Array.isArray(project.drafts)) {
+    errors.push("drafts must be a JSON object");
+    return errors;
+  }
+  for (const [mode, draft] of Object.entries(project.drafts)) {
+    if (!_SUPPORTED_MODES.includes(mode)) {
+      errors.push(`unknown draft mode ${JSON.stringify(mode)}`);
+      continue;
+    }
+    if (!draft || typeof draft !== "object" || Array.isArray(draft)) {
+      errors.push(`drafts[${mode}] must be a JSON object`);
+      continue;
+    }
+    const model = draft.model;
+    if (!model || typeof model !== "object" || Array.isArray(model)) {
+      errors.push(`drafts[${mode}].model must be a JSON object`);
+      continue;
+    }
+    if (model.mode !== mode) {
+      errors.push(
+        `drafts[${mode}].model.mode (${JSON.stringify(model.mode)}) does not match its draft key`
+      );
+    }
+    if (!Array.isArray(model.dimensions) || !Array.isArray(model.rules) || !Array.isArray(model.outcomes)) {
+      errors.push(`drafts[${mode}].model.dimensions/rules/outcomes must be arrays`);
+    }
+  }
+  if (!errors.length && !project.drafts[project.activeMode]) {
+    errors.push(`no draft exists for activeMode ${JSON.stringify(project.activeMode)}`);
+  }
+  return errors;
+}
+
+/**
+ * Serialize a BuilderProject to indented, deterministic JSON text (Save
+ * project / localStorage). Pure — no ID generation or clock reads.
+ * @param {Object} project
+ * @returns {string}
+ */
+export function serializeBuilderProject(project) {
+  return JSON.stringify(project, null, 2);
+}
+
+/**
+ * Parse and structurally validate project JSON text (Open project /
+ * localStorage restore). Throws a matchable `Error` — never returns a
+ * partial result — on malformed JSON or an invalid envelope/draft shape;
+ * semantic export-readiness diagnostics (see validateBuilderModel) are never
+ * checked here and never block a parse. A `schemaVersion` newer than
+ * BUILDER_PROJECT_SCHEMA_VERSION is rejected without touching the caller's
+ * current draft (the caller must catch and no-op on throw). No migrations
+ * exist yet at v1 — this is the hook where a future older-schemaVersion
+ * migration would run, ahead of structural validation.
+ * @param {string} text
+ * @returns {Object} a structurally valid BuilderProject
+ */
+export function parseBuilderProject(text) {
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch (err) {
+    throw new Error(`Can't parse project: ${err.message}`);
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("Can't read project: expected a JSON object");
+  }
+  if (typeof parsed.schemaVersion !== "number") {
+    throw new Error("Can't read project: missing schemaVersion");
+  }
+  if (parsed.schemaVersion > BUILDER_PROJECT_SCHEMA_VERSION) {
+    throw new Error(
+      `Can't read project: schemaVersion ${parsed.schemaVersion} is newer than supported (${BUILDER_PROJECT_SCHEMA_VERSION})`
+    );
+  }
+  const errors = validateProjectStructure(parsed);
+  if (errors.length) {
+    throw new Error(`Can't read project: ${errors.join("; ")}`);
+  }
+  return parsed;
+}
+
+/**
+ * Apply one edit to a whole-project DraftHistory. Pure: every stored
+ * snapshot is a deep copy, so later mutation of the caller's live state can
+ * never retroactively change a history entry.
+ *
+ * `edit` shapes:
+ *   {type: "commit", activeMode, drafts} — any committed field/rule/outcome
+ *     change, mode switch, "Start blank", or preset apply (ENH-3491); pushes
+ *     the current `present` onto `past` (capped at 100 — oldest dropped
+ *     first) and clears `future`
+ *   {type: "undo"} / {type: "redo"} — no-op at either end of the stack
+ *
+ * @param {{past: Object[], present: Object|null, future: Object[]}} history
+ * @param {{type: string, activeMode?: string, drafts?: Object}} edit
+ * @returns {{past: Object[], present: Object, future: Object[]}}
+ */
+export function applyDraftEdit(history, edit) {
+  const past = (history && history.past) || [];
+  const present = (history && history.present) || null;
+  const future = (history && history.future) || [];
+
+  if (edit && edit.type === "undo") {
+    if (!past.length) return { past, present, future };
+    const restored = past[past.length - 1];
+    const newPast = past.slice(0, -1);
+    const newFuture = present ? [_deepClone(present), ...future] : future;
+    return { past: newPast, present: restored, future: newFuture };
+  }
+  if (edit && edit.type === "redo") {
+    if (!future.length) return { past, present, future };
+    const [restored, ...rest] = future;
+    const newPast = present ? [...past, _deepClone(present)] : past;
+    return { past: newPast, present: restored, future: rest };
+  }
+
+  const snapshot = { activeMode: edit.activeMode, drafts: edit.drafts };
+  const newPast = present ? [...past, _deepClone(present)].slice(-_HISTORY_LIMIT) : past;
+  return { past: newPast, present: _deepClone(snapshot), future: [] };
 }
 
 // Deep-copy helpers so seeded/blank models never share array/object
@@ -2109,6 +2284,12 @@ if (typeof window !== "undefined") {
     evaluateModel,
     reconcilePredicateForDim,
     opsForType,
+    // ENH-3487 (draft/project persistence, undo/redo)
+    BUILDER_PROJECT_SCHEMA_VERSION,
+    validateProjectStructure,
+    serializeBuilderProject,
+    parseBuilderProject,
+    applyDraftEdit,
   };
 }
 
@@ -2128,6 +2309,156 @@ const CATALOG = window.__SKILL_CATALOG__ || [];
 // nested per-outcome) so on-screen order *is* precedence order and moveRule()
 // can reorder it directly.
 let state = seedExample();
+
+// ===========================================================================
+// Draft / project persistence and undo/redo (ENH-3487)
+// ===========================================================================
+// `drafts` mirrors BuilderProject.drafts: {[mode]: {model}} for every mode
+// visited this session. `history` is a whole-project DraftHistory (see
+// applyDraftEdit's doc comment in policy_builder_core.mjs) — null until
+// hydrateFromStorage() seeds it, so calls to commit() before bootstrap
+// finishes (there are none) are a safe no-op.
+let drafts = {};
+let projectId = _newProjectId();
+let history = null;
+
+const _DRAFT_KEY_PREFIX = "ll-policy-builder-draft-";
+const _META_KEY = "ll-policy-builder-meta";
+
+function _newProjectId() {
+  if (window.crypto && typeof window.crypto.randomUUID === "function") return window.crypto.randomUUID();
+  return "proj-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10);
+}
+
+function showLiveStatus(text) {
+  const el = document.getElementById("live-status");
+  if (el) el.textContent = text;
+}
+
+// Tracks whether a storage write has already failed this session so the
+// live region warns once (not on every keystroke-commit) — authoring and
+// explicit Save-project stay fully functional either way.
+let _storageWarned = false;
+function _persistDraft(mode, model) {
+  try {
+    localStorage.setItem(_DRAFT_KEY_PREFIX + mode, JSON.stringify({ model }));
+  } catch (e) {
+    if (!_storageWarned) {
+      _storageWarned = true;
+      showLiveStatus("Browser storage is unavailable — drafts won't survive reload this session; use Save project instead.");
+    }
+  }
+}
+function _persistAllDrafts(draftsObj) {
+  Object.keys(draftsObj).forEach((mode) => _persistDraft(mode, draftsObj[mode].model));
+}
+function _persistMeta() {
+  try {
+    localStorage.setItem(
+      _META_KEY,
+      JSON.stringify({
+        projectId,
+        activeMode: state.mode,
+        schemaVersion: BUILDER_PROJECT_SCHEMA_VERSION,
+        generatorVersion: window.__GENERATOR_VERSION__ || "",
+      })
+    );
+  } catch (e) { /* ignore */ }
+}
+function _readDraft(mode) {
+  try {
+    const raw = localStorage.getItem(_DRAFT_KEY_PREFIX + mode);
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) {
+    return null;
+  }
+}
+function _readMeta() {
+  try {
+    const raw = localStorage.getItem(_META_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function currentProject() {
+  return {
+    schemaVersion: BUILDER_PROJECT_SCHEMA_VERSION,
+    generatorVersion: window.__GENERATOR_VERSION__ || "",
+    projectId,
+    activeMode: state.mode,
+    drafts: { ...drafts, [state.mode]: { model: state } },
+  };
+}
+
+// Push one committed edit onto the undo/redo stack and persist it. Called
+// after every structural button-driven mutation (add/delete/move a
+// dimension/outcome/rule, mode switch, Start blank) and, via the delegated
+// `change` listener below, after every settled (non-keystroke) field edit.
+// A no-op before hydrateFromStorage() has run (history is still null).
+function commit() {
+  if (!history) return;
+  drafts = { ...drafts, [state.mode]: { model: state } };
+  history = applyDraftEdit(history, { type: "commit", activeMode: state.mode, drafts });
+  _persistDraft(state.mode, state);
+  _persistMeta();
+  updateUndoRedoButtons();
+}
+
+function updateUndoRedoButtons() {
+  $("undo-btn").disabled = !history || !history.past.length;
+  $("redo-btn").disabled = !history || !history.future.length;
+}
+
+function restoreFromSnapshot(snapshot) {
+  drafts = snapshot.drafts;
+  const mode = snapshot.activeMode;
+  state = (drafts[mode] && drafts[mode].model) || seedExample(mode);
+  applyStateToForm();
+  applyModeVisibility();
+  renderAll();
+  _persistAllDrafts(drafts);
+  _persistMeta();
+  updateUndoRedoButtons();
+}
+
+// Restore the active mode's draft from localStorage, validating structure
+// only (never export-readiness — an unfinished predicate, empty action
+// body, missing reference, or invalid budget is editable work, not
+// corruption, and must still restore). A structurally invalid stored draft
+// falls back to the seed with a live-region diagnostic; the rejected
+// payload is left in storage untouched until the next explicit commit()
+// overwrites it, so it stays available for manual recovery.
+function hydrateFromStorage() {
+  const meta = _readMeta();
+  const activeMode = (meta && meta.activeMode) || state.mode;
+  const draft = _readDraft(activeMode);
+  if (draft) {
+    const candidate = {
+      schemaVersion: BUILDER_PROJECT_SCHEMA_VERSION,
+      generatorVersion: (meta && meta.generatorVersion) || "",
+      projectId: (meta && meta.projectId) || projectId,
+      activeMode,
+      drafts: { [activeMode]: draft },
+    };
+    const errors = validateProjectStructure(candidate);
+    if (!errors.length) {
+      projectId = candidate.projectId;
+      state = draft.model;
+      drafts = { [activeMode]: draft };
+      applyStateToForm();
+    } else {
+      showLiveStatus("Saved draft could not be restored (corrupted); starting from the example instead.");
+    }
+  }
+  history = {
+    past: [],
+    present: { activeMode: state.mode, drafts: { ...drafts, [state.mode]: { model: state } } },
+    future: [],
+  };
+  updateUndoRedoButtons();
+}
 
 function buildModel() {
   return {
@@ -2209,6 +2540,7 @@ function renderDimensions() {
       del.onclick = () => {
         state.dimensions.splice(i, 1);
         renderAll();
+        commit();
       };
       row.appendChild(del);
     }
@@ -2256,7 +2588,7 @@ function renderOutcomes() {
     delOc.title = inUse
       ? "Can't remove: still used by a rule or the fallback"
       : "Remove this outcome";
-    delOc.onclick = () => { state.outcomes.splice(oi, 1); renderAll(); };
+    delOc.onclick = () => { state.outcomes.splice(oi, 1); renderAll(); commit(); };
     title.appendChild(delOc);
     grp.appendChild(title);
 
@@ -2518,7 +2850,7 @@ function renderRules() {
         const delPred = document.createElement("button");
         delPred.className = "secondary del"; delPred.textContent = "✕";
         delPred.title = "Remove this condition";
-        delPred.onclick = () => { r.predicates.splice(pi, 1); renderAll(); };
+        delPred.onclick = () => { r.predicates.splice(pi, 1); renderAll(); commit(); };
         card.appendChild(delPred);
       }
     });
@@ -2532,6 +2864,7 @@ function renderRules() {
       const op = firstDim && firstDim.type === "boolean" ? "==true" : (GRAMMAR.all_ops[0] || "==");
       r.predicates.push({ dim, op, value: "" });
       renderAll();
+      commit();
     };
     card.appendChild(addPred);
 
@@ -2553,17 +2886,17 @@ function renderRules() {
     upBtn.className = "secondary rule-move"; upBtn.textContent = "↑";
     upBtn.title = "Move rule up (higher precedence)";
     upBtn.disabled = i === 0;
-    upBtn.onclick = () => { state.rules = moveRule({ rules: state.rules }, i, "up").rules; renderAll(); };
+    upBtn.onclick = () => { state.rules = moveRule({ rules: state.rules }, i, "up").rules; renderAll(); commit(); };
     const downBtn = document.createElement("button");
     downBtn.className = "secondary rule-move"; downBtn.textContent = "↓";
     downBtn.title = "Move rule down (lower precedence)";
     downBtn.disabled = i === state.rules.length - 1;
-    downBtn.onclick = () => { state.rules = moveRule({ rules: state.rules }, i, "down").rules; renderAll(); };
+    downBtn.onclick = () => { state.rules = moveRule({ rules: state.rules }, i, "down").rules; renderAll(); commit(); };
     card.append(upBtn, downBtn);
 
     const del = document.createElement("button");
     del.className = "secondary del"; del.textContent = "✕"; del.title = "Delete this rule";
-    del.onclick = () => { state.rules.splice(i, 1); renderAll(); };
+    del.onclick = () => { state.rules.splice(i, 1); renderAll(); commit(); };
     card.appendChild(del);
 
     host.appendChild(card);
@@ -2721,6 +3054,27 @@ function renderMessages(model, diagnostics) {
   if (!host.children.length) add("msg-ok", "No issues detected.");
 }
 
+// Export guidance (ENH-3487): a concrete destination path, the validate
+// command, and a runnable `ll-loop run` invocation. issue_lifecycle declares
+// a required `parameters.issue_id` bound by a JSON-object positional input
+// (ll-loop run.py's context-key matching); rubric declares `input_key:
+// subject` / `required_inputs: ["subject"]` bound by a bare positional
+// string. decision_table takes no positional input (subject is a fixed
+// context default), so it needs neither.
+function _runCommandFor(model, destPath) {
+  if (model.mode === "issue_lifecycle") return `ll-loop run ${destPath} '{"issue_id": "BUG-123"}'`;
+  if (model.mode === "rubric") return `ll-loop run ${destPath} "Subject to evaluate"`;
+  return `ll-loop run ${destPath}`;
+}
+function _exportGuidance(model) {
+  const destPath = `loops/${model.name || "my-policy-loop"}.yaml`;
+  return [
+    `Save to: ${destPath}`,
+    `Validate: ll-loop validate ${destPath}`,
+    `Run: ${_runCommandFor(model, destPath)}`,
+  ].join("\n");
+}
+
 function updatePreview() {
   const model = buildModel();
   // BUG-3489: serializeLoopYaml throws when the model uses a reserved
@@ -2730,7 +3084,7 @@ function updatePreview() {
   // keep rendering summary/messages/try-it so the page stays responsive.
   try {
     $("yaml-preview").textContent = serializeLoopYaml(model);
-    $("validate-hint").textContent = `Validate with:  ll-loop validate ${state.name}`;
+    $("validate-hint").textContent = _exportGuidance(model);
   } catch (err) {
     $("yaml-preview").textContent = `# Cannot generate YAML:\n# ${err.message}`;
     $("validate-hint").textContent = "";
@@ -2802,11 +3156,21 @@ $("mode-switch").value = state.mode;
 // blank" — so issue_lifecycle's built-in dimensions/verbs are always
 // present when switching in, and switching to any other mode never leaves
 // stale lifecycle-only fields (args, frontmatter dims) behind.
+// ENH-3487: mode switch no longer discards in-progress edits — it saves the
+// outgoing mode's draft and restores the incoming mode's saved draft (or
+// seeds it, the first time a mode is visited). "Start blank" is still the
+// only way to discard a mode's work, and it now pushes a history entry
+// first so that reseed is itself undoable.
 $("mode-switch").onchange = (e) => {
-  state = seedExample(e.target.value);
+  const newMode = e.target.value;
+  drafts = { ...drafts, [state.mode]: { model: state } };
+  const existing = drafts[newMode];
+  state = existing ? existing.model : seedExample(newMode);
+  drafts = { ...drafts, [newMode]: { model: state } };
   applyStateToForm();
   applyModeVisibility();
   renderAll();
+  commit();
 };
 $("f-name").oninput = (e) => { state.name = e.target.value; updatePreview(); };
 $("f-subject").oninput = (e) => { state.subject = e.target.value; updatePreview(); };
@@ -2814,6 +3178,19 @@ $("f-maxsteps").oninput = (e) => { state.maxSteps = Number(e.target.value) || 1;
 $("f-desc").oninput = (e) => { state.description = e.target.value; updatePreview(); };
 $("f-thigh").oninput = (e) => { state.thresholdHigh = Number(e.target.value); $("thigh-val").textContent = e.target.value; updatePreview(); };
 $("f-tmed").oninput = (e) => { state.thresholdMedium = Number(e.target.value); $("tmed-val").textContent = e.target.value; updatePreview(); };
+
+// ENH-3487 history granularity: one entry per *committed* field change, not
+// per keystroke. A native "change" event (fires on blur for text/textarea/
+// number, on release for range, and on selection for select) bubbles here
+// from every authoring control above and from the dynamically-rendered
+// dimension/outcome/rule editors — so this single delegated listener covers
+// all of them without threading commit() through every renderer. #tryit-
+// fieldset / #frontmatter-tryit-fieldset hold ephemeral sample values (not
+// part of the authored model) and are excluded.
+$("form-panel").addEventListener("change", (e) => {
+  if (e.target.closest("#tryit-fieldset, #frontmatter-tryit-fieldset")) return;
+  commit();
+});
 
 $("add-dim").onclick = () => {
   const name = $("dim-name").value.trim();
@@ -2834,6 +3211,7 @@ $("add-dim").onclick = () => {
   state.dimensions.push({ name, type: $("dim-type").value });
   $("dim-name").value = "";
   renderAll();
+  commit();
 };
 $("add-outcome").onclick = () => {
   if (state.mode === "issue_lifecycle") return; // fixed verb set; #add-outcome is hidden too.
@@ -2852,6 +3230,7 @@ $("add-outcome").onclick = () => {
   state.outcomes.push({ name, actionType: "prompt", body: "", transition: { kind: "rescore" } });
   $("outcome-name").value = "";
   renderAll();
+  commit();
 };
 $("add-rule").onclick = () => {
   if (!state.outcomes.length) return;
@@ -2860,11 +3239,19 @@ $("add-rule").onclick = () => {
   const op = firstDim && firstDim.type === "boolean" ? "==true" : (GRAMMAR.all_ops[0] || "==");
   state.rules.push({ predicates: [{ dim, op, value: "" }], target: state.outcomes[0].name });
   renderAll();
+  commit();
 };
 
 $("copy-btn").onclick = () => {
   const text = $("yaml-preview").textContent;
-  if (navigator.clipboard) navigator.clipboard.writeText(text);
+  if (!navigator.clipboard) {
+    showLiveStatus("Clipboard is unavailable in this browser.");
+    return;
+  }
+  navigator.clipboard.writeText(text).then(
+    () => showLiveStatus("Copied to clipboard."),
+    (err) => showLiveStatus(`Copy failed: ${err && err.message ? err.message : err}`)
+  );
 };
 $("download-btn").onclick = () => {
   const text = $("yaml-preview").textContent;
@@ -2875,15 +3262,83 @@ $("download-btn").onclick = () => {
   a.click();
   URL.revokeObjectURL(a.href);
 };
+$("save-project-btn").onclick = () => {
+  const text = serializeBuilderProject(currentProject());
+  const blob = new Blob([text], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = (state.name || "policy-builder-project") + ".project.json";
+  a.click();
+  URL.revokeObjectURL(a.href);
+  showLiveStatus("Project saved.");
+};
+$("open-project-btn").onclick = () => { $("open-project-input").click(); };
+$("open-project-input").onchange = (e) => {
+  const file = e.target.files && e.target.files[0];
+  e.target.value = ""; // allow re-selecting the same file next time
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    let project;
+    try {
+      project = parseBuilderProject(String(reader.result));
+    } catch (err) {
+      // A failed import preserves the current project untouched.
+      showLiveStatus(`Could not open project: ${err.message}`);
+      return;
+    }
+    projectId = project.projectId;
+    drafts = project.drafts;
+    state = drafts[project.activeMode].model;
+    applyStateToForm();
+    applyModeVisibility();
+    renderAll();
+    history = { past: [], present: { activeMode: project.activeMode, drafts }, future: [] };
+    _persistAllDrafts(drafts);
+    _persistMeta();
+    updateUndoRedoButtons();
+    showLiveStatus("Project opened.");
+  };
+  reader.onerror = () => showLiveStatus("Could not read the selected file.");
+  reader.readAsText(file);
+};
+
+$("undo-btn").onclick = () => {
+  if (!history || !history.past.length) return;
+  history = applyDraftEdit(history, { type: "undo" });
+  restoreFromSnapshot(history.present);
+};
+$("redo-btn").onclick = () => {
+  if (!history || !history.future.length) return;
+  history = applyDraftEdit(history, { type: "redo" });
+  restoreFromSnapshot(history.present);
+};
+// Document-level Ctrl/Cmd+Z / Ctrl/Cmd+Shift+Z. Ignored whenever focus is in
+// an input/textarea/select/contenteditable so native per-keystroke undo
+// inside a field is untouched — the Undo/Redo buttons (and this shortcut
+// everywhere else) always act on the project history instead.
+document.addEventListener("keydown", (e) => {
+  const tag = (e.target && e.target.tagName || "").toLowerCase();
+  const isEditable = tag === "input" || tag === "textarea" || tag === "select" || (e.target && e.target.isContentEditable);
+  if (isEditable) return;
+  const mod = e.ctrlKey || e.metaKey;
+  if (!mod || e.key.toLowerCase() !== "z") return;
+  e.preventDefault();
+  if (e.shiftKey) { $("redo-btn").click(); } else { $("undo-btn").click(); }
+});
+
 // "Never a blank form" (UX model §6): the page seeds with seedExample();
 // this clears it to blankModel(state.mode) on demand — issue_lifecycle's
 // blank model still carries the locked built-in dimensions and five verbs
-// (they are structural to the mode, not authored content).
+// (they are structural to the mode, not authored content). ENH-3487: this
+// reseed now pushes a history entry, so it is itself undoable.
 $("start-blank-btn").onclick = () => {
   state = blankModel(state.mode);
+  drafts = { ...drafts, [state.mode]: { model: state } };
   applyStateToForm();
   applyModeVisibility();
   renderAll();
+  commit();
 };
 
 // ---- theme resolution: stored toggle -> stamped active_theme -> OS preference -> light
@@ -2914,6 +3369,7 @@ $("theme-toggle").onclick = () => {
 
 // ---- bootstrap -----------------------------------------------------------
 initTheme();
+hydrateFromStorage();
 applyModeVisibility();
 renderAll();
   </script>
