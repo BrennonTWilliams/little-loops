@@ -112,22 +112,66 @@ states:
       # still git-mv there. Snapshot the live done-set too so finalize can
       # union both closure paths instead of only counting decomposition moves.
       python3 << 'PYEOF' > "$RUN_DIR/auto-refine-and-implement-done-baseline.txt"
-      import json
-      import subprocess
+      import re
+      import sys
+      from pathlib import Path
 
-      done_ids = set()
-      try:
-          r = subprocess.run(
-              ["ll-issues", "list", "--json", "--status", "done"],
-              capture_output=True, text=True, timeout=30,
-          )
-          if r.returncode == 0:
-              done_ids = {i["id"] for i in json.loads(r.stdout) if "id" in i}
-      except Exception:
-          pass
+      # BUG-3449: walk .issues/**/*.md directly instead of shelling out to
+      # `ll-issues list --status done`. The previous subprocess call silently
+      # returned an empty stdout when `ll-issues` was missing from PATH — the
+      # surrounding `try/except Exception: pass` then swallowed the
+      # FileNotFoundError, leaving this snapshot empty and the run's
+      # done-baseline ground truth silently wrong.
+      #
+      # Walking the working tree directly removes the binary-on-PATH
+      # dependency and matches the dependency-free approach the epic-branch
+      # path uses (which is also done-only via `git grep -lE "^status: *done"`).
+      # Both snapshot arms must agree on done-only to avoid arm-divergence —
+      # a cancelled issue is a deliberate non-closure and must NOT inflate the
+      # closure count.
+      #
+      # Empty-result tolerance: a missing .issues/ at init is the normal
+      # fresh-repo state (the original silent code produced an empty baseline
+      # there too), so we just produce an empty snapshot. Loud-failure is
+      # reserved for walk *exceptions* (read errors), and routed to on_error
+      # via the bash PY_RC guard below.
+      done_ids: set[str] = set()
+      issues_root = Path(".issues")
+      if issues_root.is_dir():
+          for md in sorted(issues_root.rglob("*.md")):
+              try:
+                  text = md.read_text()
+              except OSError as exc:
+                  sys.stderr.write(f"BUG-3449: cannot read {md}: {exc}\n")
+                  sys.exit(2)
+              # Anchor the match to the YAML frontmatter block so body /
+              # code-fence `status:` lines don't false-match. The split
+              # caps at 2 so we get at most three pieces: prefix, frontmatter,
+              # body; we match against [1] (the frontmatter slice).
+              parts = text.split("---", 2)
+              if len(parts) < 3:
+                  continue
+              m_status = re.search(r"^status:\s*(\S+)\s*$", parts[1], re.MULTILINE)
+              if not m_status or m_status.group(1) != "done":
+                  continue
+              # ID from frontmatter `id:` first, filename fallback.
+              m_id = re.search(r"^id:\s*((?:BUG|FEAT|ENH|EPIC)-\d+)", parts[1], re.MULTILINE)
+              if not m_id:
+                  m_id = re.search(r"((?:BUG|FEAT|ENH|EPIC)-\d+)", md.name)
+              if m_id:
+                  done_ids.add(m_id.group(1))
       for issue_id in sorted(done_ids):
           print(issue_id)
       PYEOF
+      # BUG-3449: the walk above exits non-zero only on a read error (OSError).
+      # A missing .issues/ at init is intentionally tolerated as the fresh-repo
+      # state — empty baseline, no error. The PY_RC guard still routes real
+      # walk exceptions to on_error so they don't silently corrupt the baseline.
+      PY_RC=$?
+      if [ "$PY_RC" -ne 0 ]; then
+        echo "BUG-3449: done-baseline walk raised (exit=$PY_RC)" >&2
+        exit "$PY_RC"
+      fi
     action_type: shell
     next: resolve_set
 
@@ -882,36 +926,98 @@ states:
       # run the snapshot comes from the branch (git grep on frontmatter);
       # otherwise from the working tree via ll-issues (ENH-2609).
       python3 << 'PYEOF' > "$RUN_DIR/$P-done-now.txt"
-      import json
       import os
       import re
       import subprocess
+      import sys
+      from pathlib import Path
 
-      done_ids = set()
+      done_ids: set[str] = set()
       branch = os.environ.get("LL_EPIC_BRANCH", "").strip()
-      try:
-          if branch:
-              r = subprocess.run(
-                  ["git", "grep", "-lE", r"^status: *done", branch, "--", ".issues"],
-                  capture_output=True, text=True, timeout=30,
+      if branch:
+          # On an epic run, delegate committed inside a worktree, so the
+          # main tree's .issues never changed. Snapshot closures from the
+          # branch via git instead of the working tree. Same dependency-free
+          # approach this loop has used since ENH-2609.
+          r = subprocess.run(
+              ["git", "grep", "-lE", r"^status: *done", branch, "--", ".issues"],
+              capture_output=True, text=True, timeout=30,
+          )
+          if r.returncode in (0, 1):
+              for line in r.stdout.splitlines():
+                  m = re.search(r"(BUG|FEAT|ENH|EPIC)-[0-9]+", line)
+                  if m:
+                      done_ids.add(m.group(0))
+      else:
+          # BUG-3449: walk .issues/**/*.md directly instead of shelling out
+          # to `ll-issues list --status done`. The previous subprocess call
+          # silently returned empty when `ll-issues` was missing from PATH
+          # — the surrounding `try/except Exception: pass` then swallowed
+          # the FileNotFoundError, leaving this snapshot empty and a clean
+          # in-place leaf closure reporting verdict: phantom.
+          #
+          # Walking the working tree directly removes the binary-on-PATH
+          # dependency, catches configured category dirs plus the legacy
+          # completed/ and deferred/ dirs (BUG-2733) that `ll-issues list`
+          # surfaces via legacy_issue_dirs(), and matches the epic-branch
+          # arm's `git grep -lE "^status: *done"` filter exactly — both
+          # snapshot arms must agree on done-only to avoid arm-divergence.
+          # A cancelled issue is a deliberate non-closure and must NOT
+          # inflate the closure count.
+          #
+          # Empty-result tolerance: zero `status: done` matches is a
+          # legitimate outcome — the run's done-now is empty because no
+          # leaves closed. The verdict machinery (`closed=0` → `no-op`
+          # if nothing attempted, `phantom` if work was attempted) handles
+          # this correctly. Only walk *exceptions* are loud-failed.
+          issues_root = Path(".issues")
+          if not issues_root.is_dir():
+              sys.stderr.write(
+                  "BUG-3449: .issues directory not found at finalize time; "
+                  "cannot snapshot done-now\n"
               )
-              if r.returncode in (0, 1):
-                  for line in r.stdout.splitlines():
-                      m = re.search(r"(BUG|FEAT|ENH|EPIC)-[0-9]+", line)
-                      if m:
-                          done_ids.add(m.group(0))
-          else:
-              r = subprocess.run(
-                  ["ll-issues", "list", "--json", "--status", "done"],
-                  capture_output=True, text=True, timeout=30,
+              sys.exit(2)
+          for md in sorted(issues_root.rglob("*.md")):
+              try:
+                  text = md.read_text()
+              except OSError as exc:
+                  sys.stderr.write(f"BUG-3449: cannot read {md}: {exc}\n")
+                  sys.exit(2)
+              # Anchor the match to the YAML frontmatter block so body /
+              # code-fence `status:` lines don't false-match. The split
+              # caps at 2 so we get at most three pieces: prefix,
+              # frontmatter, body; we match against [1] (the frontmatter
+              # slice). Files without a closing `---` are skipped — the
+              # epic-branch `git grep -lE "^status: *done"` requires
+              # frontmatter too, so this is arm-parity.
+              parts = text.split("---", 2)
+              if len(parts) < 3:
+                  continue
+              m_status = re.search(r"^status:\s*(\S+)\s*$", parts[1], re.MULTILINE)
+              if not m_status or m_status.group(1) != "done":
+                  continue
+              # ID from frontmatter `id:` first, filename fallback.
+              m_id = re.search(
+                  r"^id:\s*((?:BUG|FEAT|ENH|EPIC)-\d+)", parts[1], re.MULTILINE
               )
-              if r.returncode == 0:
-                  done_ids = {i["id"] for i in json.loads(r.stdout) if "id" in i}
-      except Exception:
-          pass
+              if not m_id:
+                  m_id = re.search(r"((?:BUG|FEAT|ENH|EPIC)-\d+)", md.name)
+              if m_id:
+                  done_ids.add(m_id.group(1))
       for issue_id in sorted(done_ids):
           print(issue_id)
       PYEOF
+      # BUG-3449: the in-process walk above exits non-zero on a missing or
+      # unreadable .issues. Surface that as a finalize-time failure rather
+      # than silently producing an empty done-now set — without this guard a
+      # missing .issues used to render verdict=phantom with closed=0 and no
+      # diagnostic, masking the root cause. The FSM's on_error routes the
+      # run to finalize_incomplete.
+      PY_RC=$?
+      if [ "$PY_RC" -ne 0 ]; then
+        echo "BUG-3449: done-now snapshot failed (exit=$PY_RC)" >&2
+        exit "$PY_RC"
+      fi
       comm -13 "$RUN_DIR/$P-done-baseline.txt" "$RUN_DIR/$P-done-now.txt" \
         2>/dev/null > "$RUN_DIR/$P-done-new.txt"
 
