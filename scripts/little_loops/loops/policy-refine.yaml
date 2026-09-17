@@ -42,13 +42,16 @@ states:
       Final line: AGGREGATE: <int 0-100>
     capture: scores
     next: parse_scores
+    on_error: failed
 
   parse_scores:
     fragment: policy_parse_scores
     next: policy_dispatch
+    on_error: failed
 
   policy_dispatch:
     fragment: policy_table_dispatch
+    on_error: failed
     route:
       escalate: escalate
       deep_repair: deep_repair
@@ -56,7 +59,7 @@ states:
       rethink: rethink
       done: done
       _: deep_repair
-      _error: done
+      _error: failed
 
   escalate:
     action_type: prompt
@@ -92,3 +95,7 @@ states:
 
   done:
     terminal: true
+
+  failed:
+    terminal: true
+    failure: true
