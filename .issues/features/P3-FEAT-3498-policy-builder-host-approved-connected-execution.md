@@ -31,6 +31,8 @@ reconcile_attempted: true
 
 Extract former Phase B of FEAT-3488 into a separate connected-execution feature. Serve the policy builder locally, validate and persist an exact lifecycle policy revision, and submit a durable request that cannot run until the host explicitly accepts that request. Reuse the queue store with explicit approval eligibility, atomic request deduplication, and structured loop identity/result readback. Offline authoring and FEAT-3488 suites ship independently.
 
+**Dependency note:** `blocked_by: FEAT-3488` is a merge-ordering block only — both issues edit `policy_builder_core.mjs` and `policy-router-builder.html.tmpl`, and this issue consumes ENH-3487's `projectId`. Implementation Steps 1–3 (queue approval/dedup, LOOP cwd/timeout/metadata channel, revision persistence) have no functional dependency on FEAT-3488 and may start before it lands; only Steps 4–5 (page/route wiring) must follow it.
+
 ## Current Behavior
 
 `ll-artifact serve` uses `SseBridge` with token/Host-checked GET routes only. `queue_store.add_entry` creates immediately runnable pending rows; `ll-queue run` drains eligible entries and `--watch` consumes newly added work without per-entry approval. LOOP entries use `_run_loop_entry`, not `run_action`, and persist exit code/error/stdout/stderr rather than a structured loop instance ID. Queue rows have UUID identities with no request-key uniqueness.
@@ -228,6 +230,8 @@ _These touchpoints were identified by wiring analysis and must be included in th
 ## Acceptance Criteria
 
 - [ ] Submitting while a watcher runs produces `awaiting_approval` and zero subprocess dispatches. Generic drain, direct generic claim, requeue/revive, and restart cannot bypass approval. Existing ordinary pending jobs still execute.
+- [ ] Reviving or requeueing a rejected/unapproved builder request (via CLI or MCP `queue_requeue`) returns it to `awaiting_approval`, not `pending`. An approved entry that hits a retryable failure or owner death returns to `pending` and is retried by a generic drainer without re-approval.
+- [ ] Builder-origin LOOP dispatch runs with `cwd` equal to the persisted project root and no 120 s default timeout; ordinary LOOP entries keep today's exact argv and cwd behavior.
 - [ ] Explicit host acceptance claims only the selected request exactly once; cancellation before acceptance produces no run. Bindings and issue existence are rechecked; unrelated queue entries are untouched by the single-entry command.
 - [ ] Concurrent duplicate submits, reload/retry, and retries after terminal completion map to one queue UUID; conflicting payloads under one request ID fail. Explicit Run again creates a fresh awaiting request.
 - [ ] Invalid YAML syntax/shape, ERROR diagnostics, missing issue, wrong workspace, unsupported mode, revision mismatch, and changed on-disk artifact are rejected with structured diagnostics and no runnable entry.
@@ -269,6 +273,7 @@ Extracted from FEAT-3488: `scripts/tests/spike/level2_run_handoff/` and `.ll/spi
 **Open** | Created: 2026-09-17 | Priority: P3
 
 ## Session Log
+- manual review - 2026-09-17 - merged duplicate Program Design sections; pinned approval-durability/retry rules, v4 schema + partial unique index, `--id`/`--approve` semantics, LOOP cwd/timeout, metadata-channel thread/flag design, `write_bytes` persistence; clarified FEAT-3488 block as merge-ordering only
 - `/ll:wire-issue` - 2026-09-17T06:29:23 - `cfe75f8a-6f82-4bce-bf08-9275049cd46d.jsonl`
 - `/ll:reconcile-issue` - 2026-09-17T06:16:53 - `eb34f2f3-799f-4ff3-94f5-01cb135bc89a.jsonl`
 - `/ll:refine-issue` - 2026-09-17T06:14:10 - `bdd11f79-301a-46b5-9233-83f283efd28d.jsonl`
