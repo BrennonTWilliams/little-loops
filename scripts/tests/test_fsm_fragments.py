@@ -2518,6 +2518,120 @@ class TestPolicyRouterLib:
         )
 
 
+class TestPolicyRouterRealExecution:
+    """BUG-3489: execute the actual policy-router fragment actions (real
+    interpolation + real subprocess), not just assert on their YAML shape."""
+
+    LIB_PATH = Path(__file__).parent.parent / "little_loops" / "loops" / "lib" / "policy-router.yaml"
+
+    @staticmethod
+    def _fragments() -> dict:
+        import yaml
+
+        data = yaml.safe_load(TestPolicyRouterRealExecution.LIB_PATH.read_text())
+        return data["fragments"]
+
+    @staticmethod
+    def _run(action_template: str, ctx, run_dir: Path):
+        import os
+        import subprocess
+        import sys
+
+        from little_loops.fsm.interpolation import interpolate
+
+        script = interpolate(action_template, ctx)
+        env = dict(os.environ)
+        env["LL_PYTHON"] = sys.executable
+        env.setdefault("PYTHONPATH", "")
+        return subprocess.run(
+            ["bash", "-c", script], cwd=run_dir, capture_output=True, text=True, env=env
+        )
+
+    def _ctx(self, run_dir: Path, **context_overrides):
+        from little_loops.fsm.interpolation import InterpolationContext
+
+        context = {"run_dir": str(run_dir), **context_overrides}
+        return InterpolationContext(context=context)
+
+    def test_policy_parse_scores_two_pass_clean_slate_real_fragment(self, tmp_path: Path) -> None:
+        """The exact BUG-3489 reproduction, run as the real interpolated fragment."""
+        fragments = self._fragments()
+        action = fragments["policy_parse_scores"]["action"]
+
+        pass_one_ctx = self._ctx(tmp_path)
+        pass_one_ctx.captured = {
+            "scores": {"output": "DIMENSION: citations: 100 — ok\nAGGREGATE: 90\n"}
+        }
+        result_one = self._run(action, pass_one_ctx, tmp_path)
+        assert result_one.returncode == 0, result_one.stderr
+        assert (tmp_path / "rubric-dim-citations.txt").read_text() == "100"
+
+        pass_two_ctx = self._ctx(tmp_path)
+        pass_two_ctx.captured = {"scores": {"output": "DIMENSION: security: 40 — ok\n"}}
+        result_two = self._run(action, pass_two_ctx, tmp_path)
+        assert result_two.returncode == 0, result_two.stderr
+
+        assert not (tmp_path / "rubric-dim-citations.txt").exists()
+        assert not (tmp_path / "rubric-aggregate.txt").exists()
+        assert (tmp_path / "rubric-dim-security.txt").read_text() == "40"
+
+    def test_policy_parse_scores_unparseable_output_exits_nonzero_real_fragment(
+        self, tmp_path: Path
+    ) -> None:
+        fragments = self._fragments()
+        action = fragments["policy_parse_scores"]["action"]
+        ctx = self._ctx(tmp_path)
+        ctx.captured = {"scores": {"output": "nothing recognized here\n"}}
+
+        result = self._run(action, ctx, tmp_path)
+
+        assert result.returncode != 0
+        assert list(tmp_path.glob("rubric-*.txt")) == []
+
+    def test_policy_table_dispatch_dangling_symlink_aborts_before_publication(
+        self, tmp_path: Path
+    ) -> None:
+        """A discovered-but-unreadable dimension artifact (dangling symlink)
+        must abort dispatch: nonzero exit, no winning stdout token, no new
+        policy-action.txt — not evaluate rules against incomplete evidence."""
+        fragments = self._fragments()
+        action = fragments["policy_table_dispatch"]["action"]
+
+        (tmp_path / "rubric-dim-security.txt").symlink_to(tmp_path / "does-not-exist.txt")
+
+        ctx = self._ctx(tmp_path, policy_rules="security:<65 -> repair\n* -> accept")
+        result = self._run(action, ctx, tmp_path)
+
+        assert result.returncode != 0
+        assert "accept" not in result.stdout.split()
+        assert not (tmp_path / "policy-action.txt").exists()
+
+    def test_policy_table_dispatch_omitted_dimension_is_valid_evidence_real_fragment(
+        self, tmp_path: Path
+    ) -> None:
+        """An ordinary omitted dimension (no file at all) is valid missing
+        evidence, not a failure — the catch-all still matches."""
+        fragments = self._fragments()
+        action = fragments["policy_table_dispatch"]["action"]
+
+        ctx = self._ctx(tmp_path, policy_rules="security:<65 -> repair\n* -> accept")
+        result = self._run(action, ctx, tmp_path)
+
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.strip().splitlines()[-1] == "accept"
+        assert (tmp_path / "policy-action.txt").read_text() == "accept"
+
+    def test_policy_table_dispatch_missing_run_dir_aborts(self, tmp_path: Path) -> None:
+        missing = tmp_path / "does-not-exist"
+        fragments = self._fragments()
+        action = fragments["policy_table_dispatch"]["action"]
+
+        ctx = self._ctx(missing, policy_rules="* -> accept")
+        result = self._run(action, ctx, tmp_path)
+
+        assert result.returncode != 0
+
+
 class TestLlAutoAuthCheckFragment:
     """Structural assertions for the ll_auto_auth_check fragment (ENH-2353)."""
 
