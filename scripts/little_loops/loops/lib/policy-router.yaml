@@ -73,12 +73,22 @@ fragments:
     description: |
       Shell state that re-parses LLM rubric output (${captured.scores.output}) to
       extract per-dimension scores and write individual score files to ${context.run_dir}/.
+      Every invocation first clears ${context.run_dir}/rubric-dim-*.txt and
+      rubric-aggregate.txt (clean slate — BUG-3489) before reading/parsing this
+      pass's input, so a dimension or aggregate omitted this pass cannot be
+      satisfied by a stale file from a prior pass in the same run directory.
       Files written:
-        rubric-aggregate.txt        — aggregate integer score
+        rubric-aggregate.txt        — aggregate integer score (omitted if not emitted)
         rubric-dim-<dim-name>.txt   — per-dimension integer (lowercased, spaces→hyphens)
-      These files are consumed by policy_table_dispatch.
-      Prints: aggregate=<N> and dim=<name> score=<S> for each dimension found.
-      State must supply: next (unconditional forward after parsing).
+      These files are consumed by policy_table_dispatch. An omitted dimension or
+      aggregate is valid partial evidence; wholly unparseable output (neither a
+      recognized AGGREGATE nor DIMENSION line) exits non-zero instead of
+      fabricating an aggregate of 0 — the calling state must set on_error to
+      route the failure to a terminal rather than falling through.
+      Prints: aggregate=<N> and dim=<name> score=<S> for each recognized value.
+      State must supply: next (unconditional forward after parsing), on_error
+      (route unparseable/IO failures to a failure terminal instead of falling
+      through to dispatch on no evidence).
       Dependency: ${captured.scores.output} must be set by a prior rubric_score state.
     action_type: shell
     action: |
@@ -86,33 +96,17 @@ fragments:
       cat > "${context.run_dir}/policy_parse_scores-scores.txt" << 'LL_RAW_9F3C1A7E_EOF'
       ${captured.scores.output}
       LL_RAW_9F3C1A7E_EOF
-      python3 << 'PYEOF'
-      import re, os, sys
-      run_dir = "${context.run_dir}"
-      os.makedirs(run_dir, exist_ok=True)
-      with open(os.path.join(run_dir, "policy_parse_scores-scores.txt")) as _f:
-          output = _f.read()
+      RAW_WRITE_STATUS=$?
+      if [ "$RAW_WRITE_STATUS" -ne 0 ]; then
+        echo "policy_parse_scores: failed to write raw scoring output (exit $RAW_WRITE_STATUS)" >&2
+        exit "$RAW_WRITE_STATUS"
+      fi
+      LL_ARG_RUN_DIR=${context.run_dir:shell} $${LL_PYTHON:-python3} << 'PYEOF'
+      import os, sys
+      from little_loops.fsm.policy_parse_scores import main
 
-      # Extract aggregate score
-      agg_m = re.search(r'AGGREGATE:\s*(\d+)', output, re.IGNORECASE)
-      agg = int(agg_m.group(1)) if agg_m else 0
-      with open(os.path.join(run_dir, "rubric-aggregate.txt"), "w") as f:
-          f.write(str(agg))
-
-      # Extract per-dimension scores.
-      # Rubric output format: "DIMENSION: <name>: <score 0-100> — rationale"
-      dims_found = 0
-      for m in re.finditer(r'DIMENSION:\s*([\w][\w\s\-]+?):\s*(\d+)', output, re.IGNORECASE):
-          dim_name = re.sub(r'\s+', '-', m.group(1).strip().lower())
-          score = m.group(2).strip()
-          with open(os.path.join(run_dir, f"rubric-dim-{dim_name}.txt"), "w") as f:
-              f.write(score)
-          print(f"dim={dim_name} score={score}")
-          dims_found += 1
-
-      print(f"aggregate={agg}")
-      if dims_found == 0:
-          sys.stderr.write("policy_parse_scores: no DIMENSION lines found in scores output\n")
+      run_dir = os.environ.get("LL_ARG_RUN_DIR", "")
+      sys.exit(main([run_dir]))
       PYEOF
 
   frontmatter_scores:
@@ -185,26 +179,28 @@ fragments:
       run_dir = "${context.run_dir}"
       policy_rules_text = os.environ.get("LL_ARG_POLICY_RULES", "")
 
-      # Load scores from run_dir artifact files (source-agnostic: any scorer may write them)
+      # Load scores from run_dir artifact files (source-agnostic: any scorer may write them).
+      # An entry absent from the directory listing is valid missing evidence; a
+      # discovered file that cannot be read (including directory-enumeration
+      # failure) is an I/O failure and must abort dispatch before any rule
+      # evaluation or publication, not evaluate against an incomplete score map.
       scores = {}
       agg_path = os.path.join(run_dir, "rubric-aggregate.txt")
       if os.path.exists(agg_path):
+          raw = open(agg_path).read().strip()
           try:
-              scores["aggregate"] = float(open(agg_path).read().strip())
+              scores["aggregate"] = float(raw)
           except ValueError:
-              scores["aggregate"] = open(agg_path).read().strip()
+              scores["aggregate"] = raw
 
-      try:
-          for fname in sorted(os.listdir(run_dir)):
-              if fname.startswith("rubric-dim-") and fname.endswith(".txt"):
-                  dim = fname[len("rubric-dim-"):-len(".txt")]
-                  raw = open(os.path.join(run_dir, fname)).read().strip()
-                  try:
-                      scores[dim] = float(raw)
-                  except ValueError:
-                      scores[dim] = raw
-      except FileNotFoundError:
-          sys.stderr.write(f"policy_table_dispatch: run_dir not found: {run_dir}\n")
+      for fname in sorted(os.listdir(run_dir)):
+          if fname.startswith("rubric-dim-") and fname.endswith(".txt"):
+              dim = fname[len("rubric-dim-"):-len(".txt")]
+              raw = open(os.path.join(run_dir, fname)).read().strip()
+              try:
+                  scores[dim] = float(raw)
+              except ValueError:
+                  scores[dim] = raw
 
       rules = parse_rules(policy_rules_text)
       result = evaluate_rules(rules, scores)
