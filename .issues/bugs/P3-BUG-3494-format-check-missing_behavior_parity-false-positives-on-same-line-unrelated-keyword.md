@@ -97,6 +97,16 @@ Narrow `missing_behavior_parity`'s keyword match in `issue_parser.py` from whole
 ### Configuration
 - N/A
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-17 — based on codebase analysis:_
+
+- **Convention for scope-decision comments**: existing gap-class regex constants pair with a comment stating the exact proximity rule chosen (and what was rejected), citing the deciding doc section — e.g. `_BEHAVIOR_PARITY_KEYWORD_RE`'s comment currently reads "matched as whole words, same line as the ref only (Program Design § Decision Rules condition 3; no multi-line proximity window in v1)" (`scripts/little_loops/issue_parser.py:1988-1989`). Narrowing the match to clause-scope must update this comment to state the new scope — leaving it describing whole-line scope after the code changes would contradict the code (compare `_SOFT_DEP_PHRASE_RE`'s comment at `issue_parser.py:1958-1960`, which states its own paragraph-scope rule the same way).
+- **Docstring must stay in sync with the gap rule**: `check_format_gaps`'s docstring documents each gap class's exact detection rule in prose; its `missing_behavior_parity` entry states the ref "shares a line with a replacement keyword ... same line only, no multi-line proximity window" (`scripts/little_loops/issue_parser.py:766-777`). This prose must be updated alongside the code change or the docstring will describe stale (whole-line) behavior.
+- **Test coverage correction**: the actual `missing_behavior_parity` gap-firing tests live in `scripts/tests/test_ll_issues_format_check.py`'s `TestMissingBehaviorParity` class (`test_ll_issues_format_check.py:1038-1200`), asserted at the CLI level (`ll-issues format-check`), one test method per scenario (e.g. `test_fires_on_resolved_ref_with_replacement_keyword_same_line`, `test_no_gap_without_replacement_keyword`). `scripts/tests/test_issue_parser.py`'s only behavior-parity coverage is `TestBehaviorParityHeadingDetection` (`test_issue_parser.py:6715`), which tests `_heading_bodies()` directly and does not exercise the `missing_behavior_parity` gap-firing path at all — the Tests subsection above overstates test_issue_parser.py's coverage of this gap class.
+- **No existing clause/sentence-splitting utility**: a repo-wide search of `scripts/little_loops/` for splitting logic found none — `_behavior_parity_scope_text`, `_paragraph_spans`, and `_symbol_claim_scope_text` all operate on sections/paragraphs, not clauses. A new clause-splitting helper would be the first of its kind in this module.
+- **No existing precedent for a two-regex keyword+suppression combo**: searched `issue_parser.py` for an existing "primary keyword regex, secondary negation regex used as a suppression guard" shape — none found. Existing suppression mechanisms in this file are frontmatter escape hatches (`behavior_parity_not_applicable`, `program_design_not_applicable`) or absence-of-heading checks (`_heading_bodies`), not a second regex.
+
 ## Implementation Steps
 
 1. Add a regression fixture reproducing the exact BUG-3489 line shape (keyword and ref in the same line but different clauses, ref's own clause saying "untouched"/"unchanged").
@@ -125,5 +135,6 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-17T00:38:51 - `8d361261-7d23-4528-9cc0-b68e6d88c4d7.jsonl`
 - `/ll:format-issue` - 2026-09-17T00:08:07 - `0106b7a1-30c9-493e-b7a3-8ae734b157ea.jsonl`
 - `/ll:capture-issue` - 2026-09-16T23:51:04 - `c2d33705-5252-4e88-a51b-055eef4c4dc3.jsonl`
