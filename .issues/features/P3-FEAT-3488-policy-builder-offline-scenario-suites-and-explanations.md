@@ -269,6 +269,17 @@ Verdict at time of check: **PROPOSAL_UNSOUND** (correction below applied in the 
 - `ll-verify-evidence --json`: 0 findings — no EVIDENCE_UNVERIFIED.
 - **Proposal-vs-code consequence check (B6) finding**: the Integration Map named a Documentation integration point (`docs/guides/POLICY_ROUTER_GUIDE.md` and the policy-builder section of `docs/reference/CLI.md`), and Implementation Step 5 said to "update docs," but no Acceptance Criterion verified the docs were actually updated — every listed AC covered code/schema/UI/test behavior, none named the docs. That was a real AC-coverage gap, not a claim-accuracy defect. **Fixed**: added an AC requiring `POLICY_ROUTER_GUIDE.md` and the CLI.md policy-builder section to document scenario authoring/running, expectation types, verdicts, coverage semantics, suggestions, and import.
 
+## Browser Verification Loop
+
+_Added 2026-09-17 — closes the manual-browser-checklist gap flagged by `/ll:confidence-check` (outcome risk: browser/UI persistence paths manually verified only)._
+
+The browser-facing ACs (1, 8, 9, 10, 14) are exercised by an on-demand Playwright loop, not a test-suite gate:
+
+- Loop: `.loops/verify-feat-3488-browser-persistence.yaml` — generates `policy-router-builder.html` with `ll-artifact policy-builder`, runs the probes, then an LLM judge maps the report to the ACs (it can only downgrade a green run).
+- Probes: `.loops/probes/feat-3488-browser-probes.mjs` — 14 scenarios tagged `needs: ENH-3487|FEAT-3488`. The FEAT-3488 ones (`scenario-suite-survives-save-open-reload-undo`, `preset-clears-only-destination-suite`, `run-all-totals-and-edit-invalidation`, `local-issue-import-offline`) report BLOCKED until the `SCENARIO_SELECTORS` block at the top of the script is filled in with the implemented element ids — **do this as part of implementation**, then run `ll-loop run .loops/verify-feat-3488-browser-persistence.yaml` before closing.
+- Baseline today (pre-implementation): 8 pass, 4 blocked, 2 fail — `undo-redo-buttons-and-keys` (BUG-3502, the history-aliasing defect this issue's "History isolation" paragraph already specifies) and `open-project-with-unknown-sibling-metadata` (AC-10 full-wrapper persistence, expected to fail until implemented).
+- Playwright is resolved from the invoking machine only (`LL_PLAYWRIGHT_ROOT` / `NODE_PATH` / `npm root -g`); the loop ends in `skipped-no-playwright` (a failure, never a pass) when absent. Nothing is added to `scripts/tests/` or `pyproject.toml`.
+
 ## Confidence Check Notes
 
 _Added by `/ll:confidence-check` on 2026-09-17_
@@ -284,6 +295,7 @@ _Added by `/ll:confidence-check` on 2026-09-17_
 
 ## Session Log
 
+- `/ll:verify-issues` - 2026-09-17T22:18:30 - `d2636fcf-cc12-43a6-bcc7-a9b3292ab5bf.jsonl`
 - manual review - 2026-09-17 - applied seven pre-implementation findings: detached history snapshots, all-mode reload and project storage replacement, rubric assertion destinations, explicit frontmatter subset validation, storage-versus-execution validation, representable mode-specific suggestions, and stale asynchronous import cancellation; added corresponding browser and core acceptance checks. Existing confidence scores were not recomputed by this specification edit.
 
 - `/ll:confidence-check` - 2026-09-17T21:41:52 - `8ed2d1e5-4f7c-4c51-b0fb-dddbf5b66162.jsonl`
