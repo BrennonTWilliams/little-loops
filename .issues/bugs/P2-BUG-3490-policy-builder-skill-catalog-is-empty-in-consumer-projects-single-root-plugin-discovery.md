@@ -53,7 +53,9 @@ Add `resolve_plugin_content_root() -> Path | None` in `skill_expander.py`, separ
 2. The source checkout root derived from this module, when it contains either directory.
 3. The installed package directory obtained through `importlib.resources.files("little_loops")`, when it contains either directory.
 
-Return the first valid root, or `None` when none exists. Invalid or unavailable candidates contribute nothing. A commands-only root is valid. Selection is by directory availability, not by whether a particular requested name exists: never fall through to another installation for a missing skill or command. An empty but valid selected catalog stays empty rather than borrowing another version's content.
+Return the first valid root, or `None` when none exists. Invalid or unavailable candidates contribute nothing. Note that `mcp_server/server.py::_resolve_skills_root` orders packaged before checkout; the two orders are equivalent in practice because, under one interpreter, only one of those candidates ever has a `skills/` directory (editable: the package dir has none; wheel: the derived checkout root is a site-packages parent). Document that equivalence next to the resolver so the codebase does not carry two apparent contracts.
+
+Expose the candidate walk as a module-level `_content_root_candidates() -> list[Path]` (env, checkout, packaged, in that order, unvalidated) that tests monkeypatch. This is the isolation seam Implementation Step 1 relies on: packaged-layout fixtures replace the list rather than relying on path tricks to hide the real checkout. A commands-only root is valid. Selection is by directory availability, not by whether a particular requested name exists: never fall through to another installation for a missing skill or command. An empty but valid selected catalog stays empty rather than borrowing another version's content.
 
 Use filesystem paths for normal unpacked wheel/editable installations. Do not claim support for non-filesystem resource loaders through `Path(str(traversable))`; unsupported resource representations should be skipped without fabricating a path. Archive-backed resource support is outside this fix.
 
@@ -68,7 +70,8 @@ Keep `_find_plugin_root()` unchanged for mutation/development commands. Explicit
 - `cli/action.py::_load_skills`;
 - `skill_expander.py::expand_skill`;
 - `cli/queue.py::_classify_action` skill lookup;
-- `mcp_server/tools.py::_tool_skills_list`, preserving its agreement with queue classification.
+- `mcp_server/tools.py::_tool_skills_list`, preserving its agreement with queue classification;
+- `cli/harness.py::_resolve_skill_target_path`, which hashes skill content for cell keys through `_find_plugin_root()` + `_resolve_content_path` and is read-only; on a wheel it currently resolves nothing and must agree with the root queue classification uses.
 
 Missing content produces an empty catalog, `None` from expansion, or the existing queue classification fallback, as appropriate. Do not pass `None` into existing path-based collectors.
 
@@ -86,11 +89,15 @@ Project-local invocation namespaces require a separate design: explicit invocati
 
 ### Package commands
 
-Extend the existing conditional build hook to include `commands/` as `little_loops/commands` for checkout wheel and sdist builds. Preserve the unpacked-sdist path, where content is already under `little_loops/` and is covered by `little_loops/**`. Do not add redundant package include entries solely because commands are a new directory; change `pyproject.toml` only if build validation demonstrates a need. Update the package-data comments to describe both content directories.
+Extend the existing conditional build hook to include `commands/` as `little_loops/commands` for checkout wheel and sdist builds. Preserve the unpacked-sdist path, where content is already under `little_loops/` and is covered by `little_loops/**`. Do not add redundant package include entries solely because commands are a new directory; change `pyproject.toml` only if build validation demonstrates a need. Update the package-data comments to describe both content directories. `commands/` stays out of `PACKAGE_DATA_ASSETS`, for the same reason `skills/` is excluded (`package_data.py` BUG-3177 note): force-included content is proven by the wheel-smoke integration test, not the importlib manifest.
+
+### Follow-up (out of scope)
+
+Once the resolver exists, `mcp_server/server.py::_resolve_skills_root` duplicates its candidate walk (plus the `LL_MCP_SKILLS_ROOT` override and stderr warning). Fold it onto the shared resolver in a separate issue; this issue leaves it untouched.
 
 ## Implementation Steps
 
-1. Add isolated resolver fixtures for environment, editable, packaged, commands-only, invalid, and absent roots. Ensure tests can disable the real checkout candidate so packaged tests cannot pass accidentally against repository content.
+1. Add isolated resolver fixtures for environment, editable, packaged, commands-only, invalid, and absent roots. Monkeypatch `_content_root_candidates()` so packaged tests cannot pass accidentally against repository content.
 2. Implement the read-only single-root resolver while retaining `_find_plugin_root()` behavior for editing/development consumers.
 3. Migrate the listed read consumers together. Add parity tests for catalog entries, content expansion, MCP skills listing, and queue skill classification, including coexistence of different installation versions.
 4. Replace the builder's direct project scan with the collector projection and explicit invocation deduplication. Verify the generated HTML catalog and `/ll:` selections.
@@ -107,12 +114,14 @@ Extend the existing conditional build hook to include `commands/` as `little_loo
 - `scripts/little_loops/cli/action.py`: read-only root selection for skill listing.
 - `scripts/little_loops/cli/queue.py`: matching read-only root selection for skill classification.
 - `scripts/little_loops/mcp_server/tools.py`: skills-list root selection and explanatory parity documentation.
+- `scripts/little_loops/cli/harness.py`: `_resolve_skill_target_path` switches to the read-only resolver (returns `None` when no root resolves).
 - `scripts/hatch_build.py`, `scripts/little_loops/package_data.py`: command packaging and documentation.
 - `docs/reference/API.md`, `docs/reference/CLI.md`: resolver contract, consumers, and supported discovery layouts.
 
 ### Boundaries to Preserve
 
 - `cli/adapt.py`, `cli/generate_skill_descriptions.py`, `cli/adapt_agents_for_codex.py`, and `cli/adapt_skills_for_codex.py`: no implicit redirection to packaged content through the new resolver.
+- `cli/verify_host_map.py` and `cli/verify_cli_allowlist.py`: source-repo verification CLIs that read checkout docs (`HOST_COMPATIBILITY.md`, `skills/configure/areas.md`) via `_find_plugin_root()`; keep the legacy root.
 - `tool_catalog.py::assemble_tool_catalog`: explicit-root API stays intact; `cli/doctor.py` is not implicitly fixed by this work.
 - `mcp_server/server.py::_resolve_skills_root`: preserve the existing dedicated MCP override and behavior.
 - `init/install_check.py`, init configuration writers, and `config-schema.json`: no persisted `install_path` or install-source branching in this issue.
@@ -123,7 +132,8 @@ Extend the existing conditional build hook to include `commands/` as `little_loo
 - Existing help and action contracts in `scripts/tests/test_help.py` and `scripts/tests/test_action.py`.
 - Builder generation coverage in `scripts/tests/test_policy_builder_emit.py` and `scripts/tests/test_enh3035_artifact_template_kit.py`.
 - MCP and queue parity coverage, including `scripts/tests/test_enh_3444_mcp_skills_list.py` and the existing queue classification tests.
-- Existing packaging tests extended for direct wheel and unpacked-sdist wheel contents.
+- Packaging: `scripts/tests/test_wheel_smoke.py::TestWheelSmoke::test_skills_force_include_accessible` (integration-marked, local-only) gains a commands twin, covering direct wheel and unpacked-sdist wheel contents.
+- Harness: `_resolve_skill_target_path` resolves the same path as queue classification for a packaged-only root and returns `None` when no root resolves.
 - Regression coverage proving editing commands still use the legacy root lookup.
 
 ## Acceptance Criteria
@@ -165,4 +175,5 @@ Call `_load_skill_catalog` with a temporary consumer root lacking root-level `sk
 - `/ll:wire-issue` - 2026-09-17T01:06:16 - `9edbdbb5-9660-42b5-a715-69e61709aaa6.jsonl`
 - `/ll:refine-issue` - 2026-09-16T22:24:05 - `c7278f1b-df03-4464-a3c5-e94aa066b201.jsonl`
 
+- 2026-09-16 pre-implementation review: added `cli/harness.py::_resolve_skill_target_path` as a read consumer, listed verify CLIs as boundaries, named the `_content_root_candidates()` test seam, noted precedence equivalence with `server.py`, cited the wheel-smoke test, and recorded the server.py follow-up.
 - Design review incorporated: select one read-only installation, preserve mutation roots, define invocation deduplication and parity tests, defer project-skill merging and persisted marketplace discovery.
