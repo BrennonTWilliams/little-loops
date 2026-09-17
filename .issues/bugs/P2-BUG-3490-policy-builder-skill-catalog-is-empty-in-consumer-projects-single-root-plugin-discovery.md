@@ -60,6 +60,15 @@ Extend the shared plugin-root resolution to an ordered list of catalog roots, re
 3. Repoint `_load_skill_catalog` (and confirm `_load_skills` / `assemble_tool_catalog` inherit the fix or document why not).
 4. Update `docs/reference/CONFIGURATION.md` § `artifacts` and `docs/reference/API.md` § `assemble_tool_catalog` (the "single-root, never-raises" citation for `_load_skill_catalog` becomes stale).
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `scripts/hatch_build.py` — add a force-include hook (or extend `SkillsForceIncludeHook`) for `commands/` → `little_loops/commands`; confirmed absent from the wheel today, not merely unverified
+- Update `scripts/pyproject.toml` (packages/include config, lines 202-203) — add the packaged `commands/` path alongside `skills/`
+- Update `scripts/tests/test_policy_builder_emit.py` and `scripts/tests/test_enh3035_artifact_template_kit.py` — extend or confirm coverage for multi-root catalog resolution
+- Point `resolve_catalog_roots()`'s marketplace-root step at `init/install_check.py:_probe_plugin()`'s `installPath` (host-supplied via `<binary> plugin list --json`), not a hardcoded `~/.claude/plugins/...` literal
+
 ## Impact
 
 - **Priority**: P2 - the builder's skill menu is empty for every non-checkout consumer; same root cause affects `ll-help`/`ll-action list` on pypi installs
@@ -75,6 +84,9 @@ Extend the shared plugin-root resolution to an ordered list of catalog roots, re
 - `scripts/little_loops/tool_catalog.py:assemble_tool_catalog` (line 152) — its docstring (line 156) explicitly cites the `_load_skills()`/`_load_skill_catalog()` "never raises" precedent this issue says is going stale; called from `cli/doctor.py:260-264` and `mcp_server/tools.py:581,587`
 - `scripts/little_loops/init/install_check.py:detect_installation()` (lines 60-96) is the sole producer of the `install_source` values (`local-editable`, `pypi`, `global-claude-code`, `project-claude-code`) that `resolve_catalog_roots()` is proposed to branch on
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/init/install_check.py:_probe_plugin()` (lines 97-132) — reads `installPath` from `<binary> plugin list --json` output (line 125); confirms the marketplace/plugin root is host-supplied at runtime, not a hardcoded path under `~/.claude/plugins/`. `resolve_catalog_roots()`'s marketplace step should call into this rather than constructing a literal path — the Proposed Solution's "confirm the exact path" ask resolves to "there is no fixed path; it comes from the host CLI"
+
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-09-16 — based on codebase analysis:_
@@ -84,6 +96,10 @@ _Added by `/ll:refine-issue` — 2026-09-16 — based on codebase analysis:_
 - `scripts/little_loops/cli/help.py` — `collect_entries()` (line 212, single-root) is where `collect_entries_multi()` is proposed to be added
 - `scripts/little_loops/cli/artifact/policy_builder.py` — `_load_skill_catalog()` (line 21) globs `project_root/"skills"` and `project_root/"commands"` only, with no call into `skill_expander` at all today
 - `scripts/little_loops/cli/action.py` — `_load_skills()` (line 197) and its own `_find_plugin_root` wrapper (lines 179-182) already project `collect_entries`, the shape `_load_skill_catalog` is proposed to match
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/hatch_build.py` — confirmed gap: `SkillsForceIncludeHook` (lines 31-36) force-includes only `skills/` into the wheel as `little_loops/skills`; `commands/` is not packaged for pip installs today and must be added, not merely "verified" [Agent 1 finding]
+- `scripts/pyproject.toml` (lines 202-203) — `packages = ["little_loops"]` / `include = ["little_loops/**", ...]` has no `commands/` entry; needs updating alongside `hatch_build.py` [Agent 1 finding]
 
 **Conventions in Force**
 - Every existing collector this issue lists follows a "resolve exactly one root, never raise on a missing one" contract (stated explicitly in `tool_catalog.py:156`); `resolve_catalog_roots`/`collect_entries_multi` are proposed to preserve the never-raises half while dropping the single-root half
@@ -97,6 +113,10 @@ _Added by `/ll:refine-issue` — 2026-09-16 — based on codebase analysis:_
 - `scripts/tests/test_enh_3444_mcp_skills_list.py` — exercises both `tool_catalog.assemble_tool_catalog` and `skill_expander._find_plugin_root()` together
 - `scripts/tests/test_cli_doctor_install_checks.py` — patches `assemble_tool_catalog` at its `cli/doctor.py` call site
 - `scripts/tests/test_init_core.py` — covers `install_source` values including the `project-claude-code` / `.claude/plugins/ll` path this issue's Proposed Solution names as needing confirmation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_policy_builder_emit.py:43,50,83,231-235` — calls `cmd_policy_builder` / `main_artifact` CLI dispatch directly, exercising `_load_skill_catalog`; must keep passing under multi-root resolution [Agent 3 finding]
+- `scripts/tests/test_enh3035_artifact_template_kit.py:62-65` — calls `cmd_policy_builder` against the golden template-kit fixture; existing coverage to preserve [Agent 3 finding]
 
 **Documentation**
 - `docs/reference/API.md` (line 11078) — the `assemble_tool_catalog` section explicitly cites `_load_skills()`/`_load_skill_catalog()` as the "single-root, never-raises" precedent; this is the citation this issue's Implementation Steps says becomes stale
