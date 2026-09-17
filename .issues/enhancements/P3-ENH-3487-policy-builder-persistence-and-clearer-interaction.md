@@ -45,7 +45,7 @@ Prevent accidental loss of authoring work and make the builder useful for ongoin
 
 ## Proposed Solution
 
-- Persist independent per-mode drafts in localStorage under the existing `ll-policy-builder-` key prefix (one key per mode), each get/set wrapped in its own try/catch with silent-degrade semantics, matching the theme-key precedent. Mode switch restores that mode's draft instead of reseeding; "Start blank" still reseeds but pushes a history entry first. Update the in-code comment at the mode-switch handler (tmpl `:868-872`) that documents reseeding as an intentional data-loss contract.
+- Persist independent per-mode drafts in localStorage under the existing `ll-policy-builder-` key prefix (one key per mode), each get/set wrapped in its own try/catch with silent-degrade semantics, matching the theme-key precedent. Mode switch restores that mode's draft instead of reseeding; "Start blank" still reseeds but pushes a history entry first. Update the in-code comment at the mode-switch handler (tmpl `:878-882`) that documents reseeding as an intentional data-loss contract.
 - Undo/redo as a pure history stack in `policy_builder_core.mjs`: `applyDraftEdit(history, edit) -> DraftHistory` with `{past, present, future}`. Granularity: one history entry per committed field change (`change` event, rule add/move/delete, mode switch, start-blank), never per keystroke. Cap `past` at 100 entries.
 - Save project / Open project as a versioned JSON envelope `BuilderProject {schemaVersion, generatorVersion, activeMode, drafts}` via pure `serializeBuilderProject(project) -> string` and `parseBuilderProject(text) -> BuilderProject` in core.mjs. Version policy: `schemaVersion` starts at 1; reject a newer `schemaVersion` with a matchable error without touching the current draft; older versions are migrated in `parseBuilderProject` (no migrations exist at v1, but the hook is the place they go). Missing or non-object `drafts`, unknown `activeMode`, or a draft that fails the existing model validation is an import error.
 - Save uses the existing `<a download>` Blob path; Open uses `<input type=file>` + `FileReader`. No File System Access API, no server.
@@ -133,7 +133,7 @@ No configuration changes. Confidence-gate stamping moved to ENH-3492.
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `docs/reference/CLI.md:5079-5095` (`#ll-artifact-policy-builder`) — the Flags table (`:5085-5087`) has only `--output`/`-o`, no Save/Open-project or import flag to document yet; prose at `:5081` describing the five lifecycle verbs as fixed/uneditable goes stale once destinations are extensible [Agent 2 finding]
-- `docs/guides/POLICY_ROUTER_GUIDE.md:198-242` ("Visual Builder (greenfield)") and `:244-356` ("Issue Lifecycle Mode") — specific passages that go stale: `:234-235` ("Start blank" data-loss framing this issue's persistence work replaces), `:240-242` ("builder is *greenfield-only*" framing needs a Save/Open-project caveat). Verb-table and YAML-disclosure passages (`:227-234,290-301`) move to ENH-3491/ENH-3492 [Agent 2 finding]
+- `docs/guides/POLICY_ROUTER_GUIDE.md:258-303` ("Visual Builder (greenfield)") and `:304-416` ("Issue Lifecycle Mode") — specific passages that go stale: `:294-295` ("Start blank" data-loss framing this issue's persistence work replaces), `:300-302` ("builder is *greenfield-only*" framing needs a Save/Open-project caveat). Verb-table and YAML-disclosure passages (`:287-294,350-361`) move to ENH-3491/ENH-3492 [Agent 2 finding] (line numbers re-verified `/ll:verify-issues` 2026-09-16: a new "Failure Routing and Clean-Slate Scoring" subsection was inserted earlier in the doc, shifting everything from "Visual Builder" onward by +60 lines)
 
 ### Tests
 
@@ -148,13 +148,13 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _Added by `/ll:refine-issue` — 2026-09-16 — based on codebase analysis:_
 
-- No persistence exists today beyond the theme key: `localStorage` is used exactly once in the builder (`scripts/little_loops/templates/policy-router-builder.html.tmpl:949` read, `:965-970` write), both wrapped in `try/catch` that silently no-ops on failure — the only browser-storage pattern in this artifact-template family to extend for drafts/undo state.
-- Mode switch (`policy-router-builder.html.tmpl:868-878`) and "Start blank" (`:940-945`) both fully reassign `state = seedExample(...)`/`blankModel(...)`, discarding in-progress edits with no snapshot — documented in-code as an intentional FEAT-3474 data-loss contract (comment at `:868-872`).
-- No project (builder-state) save/open mechanism exists: no JSON export of `state`, no file importer, no File System Access API usage, no YAML→`state` parser for round-tripping. Only the final YAML text can leave the page, via clipboard copy (`:923-926`, no success/failure feedback — `navigator.clipboard.writeText` has no `.then()`/`.catch()`) or a one-shot `<a download>` Blob (`:927-935`).
+- No persistence exists today beyond the theme key: `localStorage` is used exactly once in the builder (`scripts/little_loops/templates/policy-router-builder.html.tmpl:959` read, `:980` write), both wrapped in `try/catch` that silently no-ops on failure — the only browser-storage pattern in this artifact-template family to extend for drafts/undo state.
+- Mode switch (`policy-router-builder.html.tmpl:878-887`) and "Start blank" (`:945-953`) both fully reassign `state = seedExample(...)`/`blankModel(...)`, discarding in-progress edits with no snapshot — documented in-code as an intentional FEAT-3474 data-loss contract (comment at `:878-882`).
+- No project (builder-state) save/open mechanism exists: no JSON export of `state`, no file importer, no File System Access API usage, no YAML→`state` parser for round-tripping. Only the final YAML text can leave the page, via clipboard copy (`:933-936`, no success/failure feedback — `navigator.clipboard.writeText` has no `.then()`/`.catch()`) or a one-shot `<a download>` Blob (`:937-944`).
 - Conventions in Force (codebase-pattern-finder, 2026-09-16):
   - Every `localStorage` access in this codebase wraps get/set in its own try/catch with silent-degrade semantics and a single fixed, project-prefixed key — evidence: `policy-router-builder.html.tmpl:949,965-970` (`"ll-policy-builder-theme"`). This is the only localStorage use anywhere in `scripts/little_loops/templates/`; no other artifact template (including `dashboard.llat`) uses browser storage.
   - The one existing collapsible-section precedent in this template is a native `<details>`/`<summary>` (`policy-router-builder.html.tmpl:222-225`), used to demote raw YAML behind a plain-language summary — not to hide form inputs. No existing "advanced settings" tier over fieldsets exists; every fieldset is always-rendered and toggled only per-mode via `hidden` (`applyModeVisibility`, `:837-853`).
-  - The closest existing "take current collection + an edit, return a new collection" pure-function precedent is `moveRule(model, index, direction)` (`policy_builder_core.mjs:308-319`, documented pure/non-mutating at `:287-307`) — the codebase's established shape for that kind of transform, though it is a single-array reorder, not a history/undo stack (no undo/redo or draft-history mechanism exists anywhere in this codebase, confirmed by repo-wide search).
+  - The closest existing "take current collection + an edit, return a new collection" pure-function precedent is `moveRule(model, index, direction)` (`policy_builder_core.mjs:374-384`, documented pure/non-mutating at `:353-373`) — the codebase's established shape for that kind of transform, though it is a single-array reorder, not a history/undo stack (no undo/redo or draft-history mechanism exists anywhere in this codebase, confirmed by repo-wide search).
   - No JSON schema-version+migration pattern exists in JS anywhere in this codebase; the only version+migration precedent is SQL (`scripts/little_loops/session_store/schema.py:25,126,1492`, `SCHEMA_VERSION` + `_apply_migrations()`), not directly transferable to a JSON document model.
   - No `@media` responsive breakpoint exists in any authored template in `scripts/little_loops/templates/`; the builder's two-column layout is a fixed CSS grid (`policy-router-builder.html.tmpl:32`, `grid-template-columns: 1fr 1fr;`) with no media query.
   - Test conventions for this artifact: `node:test` unit tests import the shipped `policy_builder_core.mjs` directly (`scripts/tests/js/policy_validator.test.mjs`), a cross-language conformance corpus (`scripts/tests/fixtures/policy_builder/conformance_corpus.json`) pins JS-vs-Python parity, and golden `.model.json`/`.yaml` fixture pairs are asserted byte-equal to `serializeLoopYaml(model)` output both in Node and via a Python subprocess gate (`scripts/tests/test_policy_builder_node_gate.py`) that additionally round-trips generated YAML through `ll-loop validate`.
@@ -178,7 +178,7 @@ Proposed new pure JS contracts:
 
 The template restores the active draft (after `initTheme()`) before rendering the form; every committed edit goes through `applyDraftEdit` and then persists the draft. `cmd_policy_builder` is unchanged.
 
-Confirmed anchors (codebase-analyzer, 2026-09-16): `applyStateToForm` (`scripts/little_loops/templates/policy-router-builder.html.tmpl:858-864`), `applyModeVisibility` (`:837-853`), `updatePreview` (`:809-816`) all live in the generated-HTML template's inline module script, not in `policy_builder_core.mjs` — only `serializeLoopYaml` (`scripts/little_loops/templates/policy_builder_core.mjs:1049`) is in the pure-JS core. Today this chain has no persistence step: `applyStateToForm` is called only from the mode-switch (`:868-878`) and "Start blank" (`:940-945`) handlers, each of which fully reassigns `state = seedExample(...)`/`blankModel(...)` first — there is no draft-restore call anywhere in the current chain, and `cmd_policy_builder` (`scripts/little_loops/cli/artifact/policy_builder.py:56-107`) stamps only theme, CSS vars, grammar spec, and skill catalog — no project metadata or confidence-gate settings are read or stamped today (`ConfidenceGateConfig` exists at `scripts/little_loops/config/automation.py:155-170` but is unread by this command).
+Confirmed anchors (codebase-analyzer, 2026-09-16; re-verified `/ll:verify-issues` 2026-09-16 against BUG-3489/BUG-3486 working-tree edits): `applyStateToForm` (`scripts/little_loops/templates/policy-router-builder.html.tmpl:868-875`), `applyModeVisibility` (`:847-862`), `updatePreview` (`:808-824`, now wraps `serializeLoopYaml` in try/catch per the in-progress BUG-3489 fix) all live in the generated-HTML template's inline module script, not in `policy_builder_core.mjs` — only `serializeLoopYaml` (`scripts/little_loops/templates/policy_builder_core.mjs:1130`) is in the pure-JS core. Today this chain has no persistence step: `applyStateToForm` is called only from the mode-switch (`:878-887`) and "Start blank" (`:945-953`) handlers, each of which fully reassigns `state = seedExample(...)`/`blankModel(...)` first — there is no draft-restore call anywhere in the current chain, and `cmd_policy_builder` (`scripts/little_loops/cli/artifact/policy_builder.py:56-107`) stamps only theme, CSS vars, grammar spec, and skill catalog — no project metadata or confidence-gate settings are read or stamped today (`ConfidenceGateConfig` exists at `scripts/little_loops/config/automation.py:155-170` but is unread by this command).
 
 ### Codebase Research Findings
 
@@ -210,7 +210,7 @@ _Added by `/ll:refine-issue` — 2026-09-16 — based on codebase analysis:_
 
 - `issue_lifecycle` mode's built-in field list is `BUILTIN_FRONTMATTER_DIMENSIONS` (`scripts/little_loops/templates/policy_builder_core.mjs:85-95`, 9 fixed dims); the five action editors are a single generic `renderLifecycleOutcomes()` loop (`scripts/little_loops/templates/policy-router-builder.html.tmpl:456-552`) over the fixed `LIFECYCLE_VERBS` list (`policy_builder_core.mjs:104-140`) — not five separately-coded editors, so "collapse under advanced settings" is a layout/visibility change over this existing loop, not a rewrite of it. `renderRules()` (`policy-router-builder.html.tmpl:559-675`) is already shared unchanged across `decision_table` and `issue_lifecycle`.
 - The grading-subject field (`#f-subject`, `policy-router-builder.html.tmpl:143-144`) is shown (not hidden by `applyModeVisibility`) but never read by `_serializeIssueLifecycle()` — confirmed inert for this mode, matching the issue's Current Behavior claim.
-- `moveRule(model, index, direction)` (`policy_builder_core.mjs:308-319`, pure/non-mutating per its docstring at :287-307) is this codebase's only existing "collection + edit descriptor -> new collection" precedent and the closest analog to the proposed `applyDraftEdit(history, edit) -> DraftHistory`; no undo/redo or history-stack implementation exists anywhere else to model against (repo-wide search, no hits).
+- `moveRule(model, index, direction)` (`policy_builder_core.mjs:374-384`, pure/non-mutating per its docstring at :353-373) is this codebase's only existing "collection + edit descriptor -> new collection" precedent and the closest analog to the proposed `applyDraftEdit(history, edit) -> DraftHistory`; no undo/redo or history-stack implementation exists anywhere else to model against (repo-wide search, no hits).
 - Existing test surfaces to extend rather than duplicate: `scripts/tests/js/policy_validator.test.mjs` (node:test, imports `policy_builder_core.mjs` exports directly, one `test()` per exported function), `scripts/tests/fixtures/policy_builder/conformance_corpus.json` (cross-language JS/Python parity corpus) and golden `.model.json`/`.yaml` fixture pairs asserted byte-equal in both `policy_validator.test.mjs` and `scripts/tests/test_policy_builder_node_gate.py` (which also round-trips generated YAML through `ll-loop validate`). `scripts/tests/test_policy_builder_emit.py` calls `cmd_policy_builder(args, logger)` directly, never the console script.
 
 ## Impact
@@ -292,12 +292,42 @@ fix, so it remains an outstanding action item).
   dependency was dropped again — that bug is runtime policy-router behavior and nothing in
   this issue touches the runtime; backlink removed from BUG-3489.)
 
+_Second `/ll:verify-issues` pass — 2026-09-16 (batch run with ENH-3491/ENH-3492):_
+
+Verdict at time of check: **OUTDATED** (all corrections below applied in the same pass, so
+the issue as it now reads is up to date — this section is a record of what was wrong and
+fixed, not an outstanding action item).
+
+- BUG-3486 (this issue's `depends_on`) landed real commits between the prior verification
+  pass and this one — `22f4ff6ed`, `9f71f86f6` (BUG-3489, a coordinated same-code-area
+  dependency of BUG-3486) — which inserted ~66-70 new lines into
+  `policy_builder_core.mjs` and ~15 into `policy-router-builder.html.tmpl` ahead of every
+  anchor this issue cites in those two files. All citations were re-verified against the
+  current (now committed) code and corrected in place: `moveRule` (`308-319`→`374-384`,
+  docstring `287-307`→`353-373`), `serializeLoopYaml` (`1049`→`1130`), `applyStateToForm`
+  (`858-864`→`868-875`), `applyModeVisibility` (`837-853`→`847-862`), `updatePreview`
+  (`809-816`→`808-824`, now wraps `serializeLoopYaml` in try/catch per the BUG-3489 fix),
+  the mode-switch reseed comment (`868-872`/`868-878`→`878-882`/`878-887`), "Start blank"
+  (`940-945`→`945-953`), localStorage read/write (`949`/`965-970`→`959`/`980`), clipboard
+  copy (`923-926`→`933-936`), and the download-blob handler (`927-935`→`937-944`).
+  No claim's *substance* changed — only line numbers.
+- `docs/guides/POLICY_ROUTER_GUIDE.md` also shifted: a new "Failure Routing and Clean-Slate
+  Scoring" subsection was inserted ahead of "Visual Builder (greenfield)", pushing every
+  cited passage down by +60 lines (`198-242`→`258-303`, `244-356`→`304-416`,
+  `234-235`→`294-295`, `240-242`→`300-302`); corrected in place.
+- `ll-verify-evidence --json` on this issue: `"ok": true`, 0 findings.
+- Decisions log query (`ll-issues decisions list --type rule --enforcement required
+  --active-only`) returned no entries.
+- Proposal-vs-code consequence check (B6): no new issue found — the persistence/undo/save-open
+  design does not touch the BUG-3489 reserved-token guard or any other code path that changed.
+
 ## Status
 
 **Open** | Created: 2026-09-16 | Priority: P3
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-17T01:18:50 - `716b78b0-d53f-401a-997f-791cc3ac58be.jsonl`
 - manual review - 2026-09-16 - split into ENH-3491 (layout) and ENH-3492 (destinations); dropped BUG-3489 dependency; added node:test coverage requirement and project-envelope version policy
 - `/ll:verify-issues` - 2026-09-16T22:52:47 - `56d2686a-f690-474a-8849-1b96c2edbd15.jsonl`
 - `/ll:decide-issue` - 2026-09-16T22:44:17 - `764882af-9e40-4a2b-aaa1-9d51e82a0376.jsonl`

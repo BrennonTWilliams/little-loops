@@ -8,6 +8,12 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-09-16'
 captured_at: '2026-09-16T23:50:57Z'
+confidence_score: 100
+outcome_confidence: 93
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # BUG-3494: format-check missing_behavior_parity false-positives on same-line unrelated keyword
@@ -167,6 +173,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-17T01:08:56 - `ae99228e-3471-4fad-8866-312d4f078228.jsonl`
 - `/ll:wire-issue` - 2026-09-17T00:46:52 - `be8b47b1-6882-43b4-b784-fa09f67d3d72.jsonl`
 - `/ll:refine-issue` - 2026-09-17T00:38:51 - `8d361261-7d23-4528-9cc0-b68e6d88c4d7.jsonl`
 - `/ll:format-issue` - 2026-09-17T00:08:07 - `0106b7a1-30c9-493e-b7a3-8ae734b157ea.jsonl`

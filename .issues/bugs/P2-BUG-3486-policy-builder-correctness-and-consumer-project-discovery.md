@@ -20,6 +20,8 @@ blocked_by:
 - BUG-3489
 blocks:
 - ENH-3487
+- ENH-3491
+- ENH-3492
 - FEAT-3488
 ---
 
