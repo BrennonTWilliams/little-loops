@@ -7,12 +7,14 @@ allowed-tools:
   - Read
   - Glob
   - Grep
-  - Write(scripts/tests/spike/**)
+  - Write(**/spike/**)
   - Write(.ll/spikes/**)
-  - Edit(scripts/tests/spike/**)
+  - Edit(**/spike/**)
   - Edit(.issues/**)
   - Bash(ll-issues:*)
+  - Bash(ll-config:*)
   - Bash(python -m pytest:*)
+  - Bash(mkdir:*)
   - Bash(git:*)
   - Bash(find:*)
 metadata:
@@ -34,6 +36,11 @@ verifying a **code spike** — a standalone library + test class that proves a n
 On success the skill appends `## Spike Results` to the issue and sets
 `spike_completed: true`, so re-running `/ll:confidence-check` recovers the
 outcome-confidence points the unproven mechanism cost.
+
+**Scope**: Python/pytest projects only. Spike packages are pytest test modules
+and Verification always shells out to `pytest` directly against the spike
+directory (never `project.test_cmd`, which usually already embeds its own
+path).
 
 The golden deliverable shape is the ENH-2565 spike (readiness-gated pop +
 concurrency core for `rn-refine` `synth_pop`). The plan shape lives in
@@ -128,14 +135,34 @@ or external API surface, do **not** spike — emit:
 and `exit 0`. (Same exclusion heuristic as confidence-check Phase 4.10 /
 `refine-issue` Step 7.5.)
 
+The `<slug>` is a kebab/snake identifier derived from the issue and mechanism
+(e.g. `rn_refine_synth_pop`) — fix it now; Phase 0 and everything after
+reference it.
+
+## Phase 0: Resolve Layout
+
+Resolve the spike directory once, before writing the plan. Every later phase
+(Plan, Implement, Verify, Check Mode) references `$SPIKE_DIR`/`$TEST_DIR`
+below rather than re-resolving:
+
+```bash
+TEST_DIR=$(ll-config get project.test_dir); : "${TEST_DIR:=tests}"
+SPIKE_DIR="${TEST_DIR%/}/spike/<slug>"
+```
+
+`ll-config get` prints nothing and exits 0 even when `BRConfig` construction
+itself fails — the `${TEST_DIR:=tests}` guard is required, otherwise
+`SPIKE_DIR` would silently resolve to a filesystem-root-anchored
+`/spike/<slug>`.
+
 ## Phase 3: Plan
 
 Resolve the plan-doc artifact directory, then write
 `<artifacts-dir>/spike-<ISSUE-ID>.md` there:
 
 - **Inside an FSM loop**, the loop-run startup injects `${context.run_dir}`
-  (`scripts/little_loops/cli/loop/run.py`), propagated to nested slash-command
-  child contexts (`scripts/little_loops/fsm/executor.py`). Use it verbatim:
+  (`little_loops.cli.loop.run`), propagated to nested slash-command
+  child contexts (`little_loops.fsm.executor`). Use it verbatim:
   `<artifacts-dir>` = `${context.run_dir}`.
 - **Interactively** (a bare `/ll:spike <ISSUE-ID>` — no `fsm.context`, so no
   `run_dir`), fall back to the standardized, git-tracked `.ll/spikes/` directory.
@@ -153,15 +180,14 @@ Resolve the plan-doc artifact directory, then write
 Write the plan in the shape defined by
 [plan-template.md](plan-template.md). Every mandatory section is required:
 **Context** (why confidence was low), **Approach**, **Critical files**,
-**Implementation** (package layout under `scripts/tests/spike/<slug>/` + API
-sketch), **Acceptance Criteria → Test Table** (each test → the AC/risk it retires,
+**Implementation** (package layout under `$SPIKE_DIR/` + API sketch),
+**Acceptance Criteria → Test Table** (each test → the AC/risk it retires,
 including **at least one regression-guard test**, e.g. an AST sniff preventing a
 forbidden import), **Verification** (exact `pytest` commands incl. the named
-existing regression suites), **Out of Scope**, **Promotion** (post-spike move to
-`scripts/little_loops/spike/<slug>/`, separate PR).
-
-The `<slug>` is a kebab/snake identifier derived from the issue and mechanism
-(e.g. `rn_refine_synth_pop`).
+existing regression suites), **Out of Scope**, **Promotion** (prose only: fold
+the proven code into its production module under `project.src_dir` and its
+test under `project.test_dir`, in a separate PR — there is no promotion
+directory).
 
 **If `--plan-only`**: stop here. The plan file is the deliverable; do not implement.
 
@@ -169,11 +195,14 @@ The `<slug>` is a kebab/snake identifier derived from the issue and mechanism
 
 Build the spike package + test class exactly as planned:
 
-- Create `scripts/tests/spike/<slug>/__init__.py`, the library module(s), an
-  optional driver, and the AC test module.
-- Spike code lives **only** under `scripts/tests/spike/`. Production files under
-  `scripts/little_loops/` are **read-only** in this skill (enforced by
-  `allowed-tools`).
+- Create `$SPIKE_DIR/__init__.py`, the library module(s), an optional driver,
+  and the AC test module.
+- Spike code lives **only** under `$SPIKE_DIR/`. `allowed-tools` pre-approves
+  writes only under `**/spike/**` (plus `.ll/spikes/**` for the plan doc and
+  `.issues/**` for write-back) — this is a pre-approval, not a fence: an
+  unmatched write prompts in interactive mode and is allowed outright in
+  automation. Isolation is enforced by convention plus the plan's mandatory
+  regression-guard test, not by `allowed-tools`.
 - Include the regression-guard test from the plan (isolation guard).
 
 ## Phase 5: Verify
@@ -182,8 +211,8 @@ Run the plan's Verification commands **foreground-blocking** (never background t
 result-blocking suite). All must exit 0:
 
 ```bash
-python -m pytest scripts/tests/spike/<slug>/ -v
-python -m pytest scripts/tests/<named-regression-suite>.py -v
+python -m pytest "$SPIKE_DIR/" -v
+python -m pytest "${TEST_DIR%/}/<named-regression-suite>.py" -v
 ```
 
 If any command exits non-zero, the spike **failed** — proceed to Phase 6 (failure
@@ -210,9 +239,10 @@ branch).
    |----------------------------------|-----------|--------|
    | [risk a] | `TestX::test_...` | ✓ pass |
 
-   **Spike location**: `scripts/tests/spike/<slug>/`
+   **Spike location**: `$SPIKE_DIR/`
    **Verification**: [N] tests pass across [command count] commands.
-   **Promotion**: move to `scripts/little_loops/spike/<slug>/` in a separate PR.
+   **Promotion**: fold into its production module under `project.src_dir` and
+   its test under `project.test_dir`, in a separate PR.
    ```
 
 2. Set `spike_completed: true` and `spike_attempted: true` in the frontmatter
@@ -250,8 +280,8 @@ Print the next action:
 
 When `CHECK_MODE` is true, run as an FSM loop evaluator with **no writes**:
 
-1. Resolve the issue and its spike package (`scripts/tests/spike/<slug>/`).
-2. Run the spike's AC suite: `python -m pytest scripts/tests/spike/<slug>/ -q`.
+1. Resolve the issue and its spike package (Phase 0's `$SPIKE_DIR`).
+2. Run the spike's AC suite: `python -m pytest "$SPIKE_DIR/" -q`.
 3. If the suite passes: skip (passes gate). If it fails (or no spike package
    exists): print `[ID] spike: ACs fail` .
 4. After evaluation: if failed, print `Spike ACs not passing`, then `exit 1`; if

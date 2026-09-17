@@ -4,10 +4,11 @@ type: ENH
 title: spike skill hardcodes little-loops source-repo layout (scripts/tests/spike)
   instead of project config
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-17'
 captured_at: '2026-09-17T00:15:03Z'
+completed_at: '2026-09-17T03:47:59Z'
 decision_needed: false
 confidence_score: 100
 outcome_confidence: 74
@@ -289,12 +290,41 @@ _Second pass — 2026-09-16, verified against HEAD 805014f2a:_
 - [ ] The `skills/spike/` exemption in `test_docs_audience_gate.py` and the `ll-audience-ok` line in `docs/reference/COMMANDS.md` are removed, with a non-regression guard on `HARNESS_EXEMPT`.
 - [ ] `.gemini/`, `.kimi-code/`, and `.qwen/` spike mirrors are re-synced and the mirror gates pass.
 
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-09-17
+- **Status**: Completed
+
+### Changes Made
+- `skills/spike/SKILL.md`: added `Bash(ll-config:*)`/`Bash(mkdir:*)` grants, widened `Write`/`Edit` to `**/spike/**`, added a "Phase 0: Resolve Layout" block deriving `$SPIKE_DIR` from `project.test_dir` (guarded to `tests`), rewrote Phase 3/4/5/6/Check Mode to reference `$SPIKE_DIR`/`$TEST_DIR` instead of the literal `scripts/tests/spike/`, dropped the promotion-directory literal in favor of prose naming `project.src_dir`/`project.test_dir`, corrected the "read-only, enforced by `allowed-tools`" overclaim, converted the Call Path file citations to dotted-module form, and declared the skill Python/pytest-only.
+- `skills/spike/plan-template.md`: mirrored the same `<test_dir>/spike/<slug>/` substitution and Promotion-as-prose rewrite.
+- `docs/reference/COMMANDS.md`: removed the `ll-audience-ok` suppression and rewrote the `/ll:spike` Flow prose to describe config-derived resolution.
+- `scripts/tests/test_docs_audience_gate.py`: cleared `HARNESS_EXEMPT`, replaced the exemption assertion with a non-regression guard (`test_spike_skill_is_not_exempt`) plus `test_no_exemptions_registered`.
+- `scripts/little_loops/init/introspect.py`: added `_introspect_test_dir()`, wired into `introspect()` as `values["project.test_dir"]`.
+- `scripts/little_loops/init/core.py`: `build_config` now emits `project.test_dir` when present in choices.
+- `scripts/little_loops/init/proposal.py`: added `test_dir` to `_PROJECT_FIELDS`, `_PROJECT_FIELD_LABELS`, and the existing-config preservation loop.
+- `scripts/little_loops/init/tui.py`: added `test_dir` to `WizardAnswers`, seeded it in `_answers_from_proposal`, and threaded it through `_build_final_config` into `build_config`'s choices dict.
+- `.ll/ll-config.json`: added `"test_dir": "scripts/tests/"` alongside the existing `src_dir` entry, matching this repo's actual spike location.
+- `scripts/little_loops/loops/spike-gate.yaml`: re-pointed the `SKILL.md` line-number citations after the body shifted.
+- `scripts/tests/test_spike_skill.py`: updated the two tests pinning the old hardcoded literals; added `TestSpikeSkillLayoutPortability` covering the widened grants, the new `Bash` grants, the absence of any `scripts/tests`/`scripts/little_loops` literal, and the Python/pytest-only declaration.
+- `scripts/tests/test_init_introspect.py`, `test_init_core.py`, `test_init_proposal.py`, `test_init_tui.py`: added unit tests for test_dir detection, `build_config` emission, existing-config survival across re-init, and TUI threading.
+- `.gemini/`, `.kimi-code/`, `.qwen/` spike mirrors: re-synced via `ll-adapt --host <name> --apply`.
+
+### Verification Results
+- Tests: PASS (full suite: 24900 passed, 51 skipped, 1 pre-existing unrelated failure — `test_verify_evidence.py::TestRepoGate::test_no_new_unverifiable_evidence` flags an evidence citation in `P2-BUG-3484-*.md`, a file untouched by this issue)
+- Lint: PASS
+- Types: PASS
+- Run: N/A (skill/config change, no server process)
+- Integration: PASS (audience-gate scan returns `[]` for both `SKILL.md` and `plan-template.md`; mirrors re-synced; `ll-config get project.test_dir` resolves `scripts/tests/` in this repo)
+
 ## Status
 
 **Open** | Created: 2026-09-17 | Priority: P2
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-17T03:47:59 - `6b6d66b2-acbe-43ad-9d98-9a834b171aa5.jsonl`
 - `/ll:format-issue` - 2026-09-17T02:07:43 - `48770689-552c-4834-aa6a-4bcbb2a0f9c6.jsonl`
 - `/ll:confidence-check` - 2026-09-17T01:41:57 - `43a75e43-d004-403c-835f-a3d1eaae553d.jsonl`
 - `/ll:wire-issue` - 2026-09-17T01:12:06 - `86a9c74b-9864-4b0f-956c-f789b6eb77ab.jsonl`

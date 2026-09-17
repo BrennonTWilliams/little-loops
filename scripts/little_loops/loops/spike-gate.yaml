@@ -49,7 +49,7 @@ states:
 
   # /ll:spike --check runs the spike's AC suite read-only: exit 0 = ACs pass (gate
   # passes → impl), exit 1 = ACs fail or no spike package (attempt to prove it),
-  # 2+ = error (skills/spike/SKILL.md:221-234).
+  # 2+ = error (skills/spike/SKILL.md:279-291, "Check Mode Behavior").
   gate:
     action: "/ll:spike ${context.issue_id} --check"
     action_type: slash_command
@@ -60,7 +60,7 @@ states:
     on_error: blocked
 
   # One remediation attempt: /ll:spike --auto proves the mechanism autonomously and
-  # writes spike_attempted/spike_completed (SKILL.md:190,199), then re-check.
+  # writes spike_attempted/spike_completed (SKILL.md:248,257), then re-check.
   run_spike_auto:
     action: "/ll:spike ${context.issue_id} --auto"
     action_type: slash_command

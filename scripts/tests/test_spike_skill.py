@@ -77,12 +77,15 @@ class TestSpikePlanTemplate:
         )
 
     def test_spike_code_confined_to_tests_dir(self) -> None:
-        """The spike package layout must live under scripts/tests/spike/."""
-        assert "scripts/tests/spike/" in _plan_text()
+        """The spike package layout must live under <test_dir>/spike/, resolved from config."""
+        assert "<test_dir>/spike/" in _plan_text()
 
     def test_promotion_path_documented(self) -> None:
-        """Promotion moves accepted spike code into the production spike dir."""
-        assert "scripts/little_loops/spike/" in _plan_text()
+        """Promotion folds accepted spike code into its production module, no promotion dir."""
+        text = " ".join(_plan_text().split())
+        assert "project.src_dir" in text
+        assert "project.test_dir" in text
+        assert "no promotion directory" in text
 
 
 class TestSpikeSkillContract:
@@ -132,3 +135,34 @@ class TestSpikePlanDocLocation:
         assert "Write(.ll/spikes/**)" in SKILL_FILE.read_text(), (
             "allowed-tools must grant Write(.ll/spikes/**) for the interactive write"
         )
+
+
+class TestSpikeSkillLayoutPortability:
+    """allowed-tools and config resolution must not hardcode the source-repo layout (ENH-3495)."""
+
+    def test_allowed_tools_grants_config_independent_spike_glob(self) -> None:
+        text = SKILL_FILE.read_text()
+        assert "Write(**/spike/**)" in text, (
+            "allowed-tools must grant Write(**/spike/**) so any project layout matches"
+        )
+        assert "Edit(**/spike/**)" in text, (
+            "allowed-tools must grant Edit(**/spike/**) so any project layout matches"
+        )
+
+    def test_allowed_tools_grants_ll_config_and_mkdir(self) -> None:
+        text = SKILL_FILE.read_text()
+        assert "Bash(ll-config:*)" in text, (
+            "allowed-tools must grant Bash(ll-config:*) for the project.test_dir resolution"
+        )
+        assert "Bash(mkdir:*)" in text, (
+            "allowed-tools must grant Bash(mkdir:*) for the .ll/spikes/ directory creation"
+        )
+
+    def test_no_hardcoded_source_repo_literals(self) -> None:
+        for path in (SKILL_FILE, PLAN_TEMPLATE):
+            text = path.read_text()
+            assert "scripts/tests" not in text, f"{path} still hardcodes scripts/tests"
+            assert "scripts/little_loops" not in text, f"{path} still hardcodes scripts/little_loops"
+
+    def test_declares_python_pytest_only_scope(self) -> None:
+        assert "Python/pytest" in SKILL_FILE.read_text()

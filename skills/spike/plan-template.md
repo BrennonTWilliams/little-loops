@@ -34,19 +34,22 @@ risky core. One paragraph — resist scope creep.
 
 ## Critical files
 
-_Read-only references that inform the spike, and the exact spike paths to create._
-List the production files whose contract the spike must honor (read-only in this
-skill) and the new spike package paths under `scripts/tests/spike/<slug>/`.
+_Reference files that inform the spike, and the exact spike paths to create._
+List the production files whose contract the spike must honor (not modified by
+this skill) and the new spike package paths under `<test_dir>/spike/<slug>/`.
 
 ## Implementation
 
 _Package layout + API sketch._ Show the file tree under
-`scripts/tests/spike/<slug>/` (library module, optional driver, test module) and
+`<test_dir>/spike/<slug>/` (library module, optional driver, test module) and
 sketch the public API (function/class signatures) the spike exercises. Spike code
-lives **only** under `scripts/tests/spike/`; production files are read-only.
+lives **only** under `<test_dir>/spike/`; production files are not modified by
+this skill — isolation is enforced by convention and the regression-guard test
+below, not by `allowed-tools` (which only pre-approves writes, it does not
+block them).
 
 ```
-scripts/tests/spike/<slug>/
+<test_dir>/spike/<slug>/
 ├── __init__.py
 ├── <mechanism>.py          # the isolated library proving the core
 ├── driver.py               # optional: exercises the library end-to-end
@@ -73,8 +76,8 @@ spike's own AC suite **plus** the named existing regression suites the mechanism
 must not break.
 
 ```bash
-python -m pytest scripts/tests/spike/<slug>/ -v
-python -m pytest scripts/tests/<named-regression-suite>.py -v
+python -m pytest <test_dir>/spike/<slug>/ -v
+python -m pytest <test_dir>/<named-regression-suite>.py -v
 ```
 
 ## Out of Scope
@@ -85,7 +88,8 @@ External-API proving stays `/ll:explore-api` territory.
 
 ## Promotion
 
-_Post-spike move, separate PR._ On acceptance, promote the proven code from
-`scripts/tests/spike/<slug>/` to `scripts/little_loops/spike/<slug>/` in a
-**separate PR**. This is a manual step documented here, not performed by
+_Post-spike fold, separate PR._ On acceptance, fold the proven code from
+`<test_dir>/spike/<slug>/` into its production module under `project.src_dir`
+and its test under `project.test_dir`, in a **separate PR**. There is no
+promotion directory — this is a manual step documented here, not performed by
 `/ll:spike`.

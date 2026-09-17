@@ -1033,7 +1033,6 @@ def _build_final_config(
     template: Any,
     name: str,
     src_dir: str,
-    test_dir: str,
     test_cmd: str,
     lint_cmd: str,
     type_cmd: str,
@@ -1052,6 +1051,7 @@ def _build_final_config(
     loop_clear_default: bool = True,
     loop_show_diagrams_default: str | None = "clean",
     build_cmd: str = "",
+    test_dir: str = "",
 ) -> dict[str, Any]:
     """Build the ll-config.json dict from TUI answers."""
     from little_loops.init.core import build_config

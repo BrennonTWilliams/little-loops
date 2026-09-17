@@ -4,6 +4,7 @@
   "project": {
     "name": "little-loops",
     "src_dir": "scripts/",
+    "test_dir": "scripts/tests/",
     "test_cmd": "python -m pytest scripts/tests/",
     "lint_cmd": "ruff check scripts/",
     "format_cmd": "ruff format scripts/",

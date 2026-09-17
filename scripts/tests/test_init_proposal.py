@@ -96,6 +96,18 @@ class TestBuildProposal:
         # untouched fields still come from introspection
         assert proposal.config["project"]["lint_cmd"] == "ruff check ."
 
+    def test_existing_test_dir_survives_reinit(self, python_project: Path) -> None:
+        """ENH-3495: a hand-set project.test_dir must survive an ll-init re-run."""
+        (python_project / ".ll").mkdir()
+        (python_project / ".ll" / "ll-config.json").write_text(
+            json.dumps({"project": {"test_dir": "test/"}})
+        )
+        proposal = build_proposal(python_project, _TEMPLATES_DIR)
+        assert proposal.choices["test_dir"] == "test/"
+        pf = proposal.field_for("project.test_dir")
+        assert pf is not None and pf.provenance == "existing"
+        assert proposal.config["project"]["test_dir"] == "test/"
+
     def test_flags_win_over_existing(self, python_project: Path) -> None:
         (python_project / ".ll").mkdir()
         (python_project / ".ll" / "ll-config.json").write_text(

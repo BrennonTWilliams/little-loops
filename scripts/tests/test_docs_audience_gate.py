@@ -35,7 +35,7 @@ DOC_DIRS = ("docs/guides", "docs/reference")
 DOC_FILES = ("README.md",)
 HARNESS_DIRS = ("skills", "commands")
 # Harness paths exempt until the named issue lands (whole skill is source-repo shaped).
-HARNESS_EXEMPT: dict[str, str] = {"skills/spike": "ENH-3495"}
+HARNESS_EXEMPT: dict[str, str] = {}
 SUPPRESS_TOKEN = "ll-audience-ok:"
 
 
@@ -187,9 +187,14 @@ class TestScanAudience:
     def test_dotted_module_pointer_passes_harness_scope(self) -> None:
         assert scan_audience("See `little_loops.fsm.executor`.\n", HARNESS_MARKERS) == []
 
-    def test_exempt_prefix_excluded(self) -> None:
+    def test_no_exemptions_registered(self) -> None:
+        """HARNESS_EXEMPT must stay empty — no skill is exempt from the audience scan."""
+        assert HARNESS_EXEMPT == {}
+
+    def test_spike_skill_is_not_exempt(self) -> None:
+        """Non-regression guard: skills/spike must not silently regain an exemption."""
         rels = {p.relative_to(REPO_ROOT).as_posix() for p in _harness_files()}
-        assert not any(r.startswith("skills/spike/") for r in rels)
+        assert "skills/spike/SKILL.md" in rels
         assert "skills/create-loop/SKILL.md" in rels
 
 

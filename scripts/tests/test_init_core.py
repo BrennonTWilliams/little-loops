@@ -576,6 +576,21 @@ class TestBuildConfig:
         config = build_config(match, {"project_name": "my-app"})
         assert config["project"]["name"] == "my-app"
 
+    def test_test_dir_injected_via_choice(self, fake_templates: Path, tmp_project: Path) -> None:
+        """ENH-3495: build_config must emit project.test_dir when supplied in choices."""
+        (tmp_project / "pyproject.toml").touch()
+        match = detect_project_type(tmp_project, fake_templates)
+        config = build_config(match, {"test_dir": "test/"})
+        assert config["project"]["test_dir"] == "test/"
+
+    def test_test_dir_omitted_when_not_supplied(
+        self, fake_templates: Path, tmp_project: Path
+    ) -> None:
+        (tmp_project / "pyproject.toml").touch()
+        match = detect_project_type(tmp_project, fake_templates)
+        config = build_config(match)
+        assert "test_dir" not in config["project"]
+
     def test_learning_tests_disabled_by_default(
         self, fake_templates: Path, tmp_project: Path
     ) -> None:

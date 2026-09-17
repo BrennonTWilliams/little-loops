@@ -233,6 +233,39 @@ class TestSrcDirDetection:
         assert iv.value == python_template.data["project"]["src_dir"]
 
 
+class TestTestDirDetection:
+    """ENH-3495: project.test_dir must be introspected next to src_dir."""
+
+    def test_detects_tests_dir(self, tmp_path: Path, python_template: object) -> None:
+        (tmp_path / "tests").mkdir()
+        result = introspect(tmp_path, python_template)
+        iv = result.values["project.test_dir"]
+        assert iv.provenance == "inferred"
+        assert iv.value == "tests/"
+
+    def test_detects_test_dir_singular(self, tmp_path: Path, python_template: object) -> None:
+        (tmp_path / "test").mkdir()
+        result = introspect(tmp_path, python_template)
+        iv = result.values["project.test_dir"]
+        assert iv.provenance == "inferred"
+        assert iv.value == "test/"
+
+    def test_prefers_tests_over_test_when_both_present(
+        self, tmp_path: Path, python_template: object
+    ) -> None:
+        (tmp_path / "tests").mkdir()
+        (tmp_path / "test").mkdir()
+        result = introspect(tmp_path, python_template)
+        iv = result.values["project.test_dir"]
+        assert iv.value == "tests/"
+
+    def test_no_test_dir_keeps_default(self, tmp_path: Path, python_template: object) -> None:
+        result = introspect(tmp_path, python_template)
+        iv = result.values["project.test_dir"]
+        assert iv.provenance == "default"
+        assert iv.value == "tests"
+
+
 class TestFocusDirsDetection:
     def test_includes_adopted_src_dir_and_tests_dir(
         self, tmp_path: Path, python_template: object

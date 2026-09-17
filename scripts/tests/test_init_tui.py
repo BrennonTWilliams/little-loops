@@ -1261,6 +1261,15 @@ class TestBuildFinalConfigParity:
             "parallel_workers": 4,
         }
 
+    def test_test_dir_threaded_through(self, generic_template: object) -> None:
+        """ENH-3495: the TUI's test_dir answer must reach the built config."""
+        config = _build_final_config(
+            **self._base_kwargs(generic_template),
+            selected_set=set(),
+            test_dir="test/",
+        )
+        assert config["project"]["test_dir"] == "test/"
+
     def test_github_sync_key(self, generic_template: object) -> None:
         config = _build_final_config(
             **self._base_kwargs(generic_template),
