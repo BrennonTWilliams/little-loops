@@ -10,9 +10,8 @@ captured_at: '2026-09-18T02:19:33Z'
 parent: EPIC-3493
 labels:
 - policy-builder
-blocked_by:
-- FEAT-3498
 relates_to:
+- FEAT-3498
 - FEAT-3503
 - ENH-3487
 - ENH-3491
@@ -137,7 +136,7 @@ _Added by `/ll:refine-issue` — 2026-09-18 — based on codebase analysis:_
 
 _Added by `/ll:refine-issue` — 2026-09-18 — based on codebase analysis:_
 
-- _(Superseded 2026-09-18 by the post-FEAT-3498 review below: FEAT-3498 is done and all of its symbols now resolve; the `blocked_by` edge is kept for symmetry with FEAT-3498's `blocks:` and is resolved.)_
+- _(Superseded 2026-09-18 by the post-FEAT-3498 review below: FEAT-3498 is done and all of its symbols now resolve; the resolved `blocked_by: FEAT-3498` edge was removed.)_
 - `SseBridge`'s handler (`_make_sse_bridge_handler`, `transport.py:1200`) defines only `do_GET` (`transport.py:1209-1245`); no `do_POST` method exists on this class today.
 
 ## Implementation Steps
@@ -218,6 +217,6 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
-- manual review vs. landed FEAT-3498 contracts - 2026-09-18 - added `category:` emit blocker, corrected store/validator signatures, defined workspace id, error-body/status table, submit ordering, body cap, origin-scoped storage, FEAT-3503 overlap; `blocked_by: FEAT-3498` kept (resolved, mirrors its `blocks:`)
+- manual review vs. landed FEAT-3498 contracts - 2026-09-18 - added `category:` emit blocker, corrected store/validator signatures, defined workspace id, error-body/status table, submit ordering, body cap, origin-scoped storage, FEAT-3503 overlap; removed resolved `blocked_by: FEAT-3498`
 - `/ll:refine-issue` - 2026-09-18T02:34:20 - `e526fcc4-a04f-4fa1-9b46-7e10044a1c18.jsonl`
 - `/ll:format-issue` - 2026-09-18T02:26:59 - `17fa148c-98f6-4a6e-975e-5e4a6f742eec.jsonl`
