@@ -1,7 +1,7 @@
 ---
 id: BUG-3453
 type: BUG
-title: "learning-tests version staleness: test_age_stale_names_the_age + test_age_stale_still_names_days flip to '46 days old' when pytest execution spans UTC midnight"
+title: "learning-tests version staleness: test_age_stale_names_the_age + test_age_stale_still_names_days flip to <!-- ll-evidence-ok: runtime symptom of the midnight flip, not a source-code quote --> '46 days old' when pytest execution spans UTC midnight"
 priority: P3
 status: open
 discovered_by: ll-issues-create
@@ -20,7 +20,7 @@ labels:
 
 `scripts/tests/test_learning_tests_version_staleness.py` hard-codes `"45 days old"` assertions at lines `:210` and `:422`. The test's `_record(age_days=45)` stamps each record's `date` field from a module-level `TODAY = datetime.date.today()` (`:26`, applied `:40`), but `scripts/little_loops/learning_tests/gate.py:164` and `:202` compute the record's age against the **live** `datetime.date.today()` at assertion time.
 
-When a single pytest execution spans UTC midnight, the live `today()` advances one day past the frozen module-level `TODAY`. The record's computed age flips from `45` to `46`, and the hard-coded assertion `assert describe_staleness(_record(age_days=45), 30) == "stale: 45 days old"` fails with `stale: 46 days old == stale: 45 days old`.
+When a single pytest execution spans UTC midnight, the live `today()` advances one day past the frozen module-level `TODAY`. The record's computed age flips from `45` to `46`, and the hard-coded assertion `assert describe_staleness(_record(age_days=45), 30) == "stale: 45 days old"` fails <!-- ll-evidence-ok: "46 days old" is a runtime symptom of the midnight flip, not a source-code quote; the test asserts "45 days old" --> with `stale: 46 days old == stale: 45 days old`.
 
 Pre-existing on `main` since the test file was added (commit `0a4a4030`, 2026-08-09). Not previously observed because most CI runs do not span midnight UTC.
 
@@ -30,15 +30,15 @@ Reproduced empirically on CI dispatch `34660035171` (head `9aa93ce74`, started `
 
 ```
 FAILED scripts/tests/test_learning_tests_version_staleness.py::TestDescribeStaleness::test_age_stale_names_the_age
-  AssertionError: assert 'stale: 46 days old' == 'stale: 45 days old'
+  AssertionError: assert <!-- ll-evidence-ok: runtime symptom, not source quote --> 'stale: 46 days old' == 'stale: 45 days old'
     - stale: 45 days old
     ?         ^
-    + stale: 46 days old
+    + stale: <!-- ll-evidence-ok: runtime symptom --> 46 days old
     ?         ^
 
 FAILED scripts/tests/test_learning_tests_version_staleness.py::TestHookStaleMessage::test_age_stale_still_names_days
   assert '45 days old' in '[ll: proof-first hint] No learning-test record found
-    for "requests" (stale: 46 days old). ...'
+    for "requests" (stale: <!-- ll-evidence-ok: runtime symptom --> 46 days old). ...''
 ```
 
 Verified line citations:
@@ -65,7 +65,7 @@ Verified line citations:
 
 1. Stage an environment that runs pytest across UTC midnight (any runner scheduled near `00:00Z`).
 2. `python -m pytest scripts/tests/test_learning_tests_version_staleness.py -v`
-3. Observe `test_age_stale_names_the_age` and `test_age_stale_still_names_days` fail with `stale: 46 days old` / `46 days old in feedback`.
+3. Observe `test_age_stale_names_the_age` and `test_age_stale_still_names_days` fail with `stale: 46 days old` / `<!-- ll-evidence-ok: runtime symptom --> 46 days old in feedback`.
 
 ## Likely Root Cause
 
