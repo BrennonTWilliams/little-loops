@@ -60,6 +60,36 @@ Hand-authored suites miss exactly the cases that matter: the value one below a t
 - Documentation: `docs/guides/POLICY_ROUTER_GUIDE.md` and the policy-builder section of `docs/reference/CLI.md` gain the suggestions and import subsections.
 - No server, transport, queue, MCP, or config changes.
 
+### Dependent Files (Callers/Importers)
+
+- `policy-router-builder.html.tmpl:1110` — `updateFrontmatterTryIt()` calls `parseFrontmatterBlock(text)` directly on a pasted frontmatter block (read-only Try-it evaluation; never calls `commit()`).
+- `policy_builder_core.mjs:2356` — `parseFrontmatterBlock` is exported through the browser-global bridge (`window.PolicyBuilderCore = {...}`); a new `suggestScenarios`/`extractIssueFrontmatter` export follows the same bridge convention.
+- `scripts/tests/js/policy_validator.test.mjs` — the sole existing test coverage of `parseFrontmatterBlock` (fence tolerance, comment/quote stripping, nested-mapping/anchor/block-scalar rejection); no BOM/CRLF cases exist there because none of `parseFrontmatterBlock`'s current callers feed it a full file.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/artifact/policy_builder.py:101-115` — `cmd_policy_builder` reads both `policy_builder_core.mjs` and `policy-router-builder.html.tmpl` as raw text and embeds them verbatim (`html.replace("/*__BUILDER_CORE_JS__*/", core_js)`); no code change needed, new exports/markup are picked up automatically. [Agent 1 finding]
+- `scripts/little_loops/cli/artifact/__init__.py:48,197` — registers and dispatches `cmd_policy_builder` for the `ll-artifact policy-builder` subcommand; no change needed, listed for completeness of the assembly path. [Agent 1 finding]
+
+### Tests
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_enh3035_artifact_template_kit.py` — `test_policy_builder_renders_byte_identically_to_golden_fixture()` (line 62-68) is the actual byte-for-byte comparison against `golden_policy_router_builder.html`, distinct from `test_policy_builder_emit.py` (which only asserts structural element ids); it will fail until the golden fixture is regenerated as part of this issue's implementation. [Agent 2 + Agent 3 finding]
+- `scripts/tests/fixtures/policy_builder/frontmatter_encoding_corpus.json` — closest existing corpus shape (`cases`/`js_reject_cases` arrays consumed by `policy_validator.test.mjs`) to extend with the BOM/CRLF/fence fixtures Implementation Step 2 calls for; no BOM/CRLF cases exist anywhere in the repo today. [Agent 2 + Agent 3 finding]
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-18 — based on codebase analysis:_
+
+- Neither `Scenario`/`ScenarioInput` types, `normalizeScenarioInput`, `suggestScenarios`, nor `extractIssueFrontmatter` exist anywhere in `policy_builder_core.mjs` or `policy-router-builder.html.tmpl` today (repo-wide search, zero hits outside the two issue markdown files) — confirms FEAT-3488 has not yet landed and this issue's `blocked_by` dependency is live, not stale.
+- `parseFrontmatterBlock`'s only production caller today is `policy-router-builder.html.tmpl:1110`, inside `updateFrontmatterTryIt()` — a read-only "Try it" flow that never calls `commit()`. Its existing test coverage lives in `scripts/tests/js/policy_validator.test.mjs` (`scripts/tests/js/policy_scenarios.test.mjs` has not been created yet, consistent with FEAT-3488 not having landed).
+- Convention (generator shape): the closest existing precedent for a `fn(collection) -> Array<{...identity fields, reason: string}>` generator is `detectShadows(rules)` (`policy_builder_core.mjs:481-513`) — pure, exported, unit-tested against a JSON conformance corpus. `taskPresets()` (`policy_builder_core.mjs:1246-1320`) is a second generator-shaped export but takes no model argument and labels items `label`/`description`, not `reason` — the two disagree on field naming; `detectShadows`'s `reason` convention matches `SuggestedScenario.reason` exactly.
+- Convention (dedup): every existing uniqueness/dedup check in `policy_builder_core.mjs` (`detectShadows`'s predicate-tuple `Set`, `_doneStateName`, `_checkDuplicateOutcomes`) builds its `Set` key from a small number of scalar fields joined by a delimiter (a NUL-joined tuple, or a bare name string) — never by serializing an object to JSON. `JSON.stringify` appears 14 times in the file but always for error-message interpolation or whole-object cloning (`_deepClone`, `serializeBuilderProject`), never key-sorted, never used as a dedup key. No existing "canonical JSON" (key-sorted) helper exists to reuse for the proposed `key: canonical JSON of {mode, input}`.
+- Convention (ID generation): `_newProjectId()` (`policy-router-builder.html.tmpl:292-295`, `crypto.randomUUID()` with a `Date.now().toString(36) + Math.random()...` fallback) is the only ID-generation utility in either file, and lives template-side by design — `policy_builder_core.mjs`'s own doc comment (lines 869-873) states project/draft ID generation happens at the UI boundary "so this module stays pure and deterministic." It generates one `projectId`, not per-item IDs; FEAT-3488's own issue text names `_newProjectId`'s fallback shape as the template for the scenario-ID generator it is expected to add.
+- Convention (file import + async completion): the only existing file-input + `FileReader` wiring in either file is "Open project" (`policy-router-builder.html.tmpl:244` markup, `:1452-1481` handler) — hidden `<input type="file">` clicked via a visible button, `e.target.value = ""` reset immediately after pick, `reader.readAsText`, parse/validate inside `onload` wrapped in try/catch with an early return on failure that leaves state untouched, and a separate `onerror` handler. It unconditionally reassigns state on load and never checks whether anything changed between pick and completion — no staleness/revision guard of any kind to reuse. A repo-wide search for `AbortController`/`revision`/`currentRequestId`-style guards across `scripts/little_loops/templates/` and `scripts/little_loops/assets/` found zero authored hits (the only `AbortController` occurrence is in the vendored third-party `assets/vendor/htmx/htmax.js`) — the proposed monotonic session-revision counter is new state with no existing pattern to model beyond this one FileReader instance's try/catch/early-return shape.
+- Convention (commit batching): every structural mutation handler in the template (`add-rule`, `applyPreset`, mode switch, undo/redo) mutates `state`/`drafts` synchronously, re-renders, then calls `commit()` exactly once in the same event-handler tick — this is the precedent for "one committed edit" but it is a synchronous-batching convention, not an async-completion guard; the revision-check step for the async `FileReader` completion has no analog among these callers.
+- Convention (tests): FEAT-3488's own Integration Map already commits to a new sibling file, `scripts/tests/js/policy_scenarios.test.mjs`, rather than extending `policy_validator.test.mjs` (currently 1447 lines) — the codebase's own stated reason is file-size management, and the Node conformance gate (`scripts/tests/test_policy_builder_node_gate.py`) globs `scripts/tests/js/*.test.mjs`, so a new file is picked up automatically. Existing tests use `node:test`/`assert/strict`, named-import every export by name, use flat descriptive `test("...")` names organized by `// ISSUE-ID: ...` banner comments, and mix hand-written inline-model tests with JSON-corpus-driven loops (`scripts/tests/fixtures/policy_builder/*.json`).
+- The `Draft {model: Model}` wrapper comment (`policy_builder_core.mjs:863-866`) already earmarks room for FEAT-3488 to add a `scenarios` sibling key without a schema-version bump — confirming the scenario-suite/suggestions dependency chain is a deliberate, pre-planned seam.
+
 ## Program Design
 
 ### Types
@@ -76,12 +106,35 @@ Hand-authored suites miss exactly the cases that matter: the value one below a t
 Suggest: click → `suggestScenarios(buildModel())` → filter against existing inputs → assign ids → one suite edit → `commit()`.
 Import: file change → capture `{projectId, mode, revision}` → `FileReader.readAsText` → on load: revision check → `extractIssueFrontmatter` → `parseFrontmatterBlock` → `normalizeScenarioInput` → one suite edit → `commit()`; any throw before the edit reports and returns.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-18 — based on codebase analysis:_
+
+- `model.mode` is one of `"decision_table" | "rubric" | "issue_lifecycle"` (`_SUPPORTED_MODES`, `policy_builder_core.mjs` module scope) — the enum `suggestScenarios(model)` must switch on.
+- `opsForType(type)` (`policy_builder_core.mjs`) returns the legal comparator set per dimension type: `boolean` -> `["==true","==false"]`; `string` -> `["==","!="]`; `numeric`/`list` -> `["==","!=",">=","<=","<",">"]` — the boundary-relevant operator set per dimension type a threshold-neighbour suggestion must respect.
+- `evalPredicate()` (unexported, called by `evaluateRules`/`evaluateModel`) treats a missing dimension (`raw === undefined || raw === null`) specially: only the `!=` operator matches. A missing-field suggestion must omit the dimension key entirely (not set it to `null`/`""`) to exercise this exact branch.
+- Rubric mode's only threshold fields are `model.thresholdHigh`/`model.thresholdMedium`, enforced by `_checkRubricThresholds(model)` to satisfy `thresholdHigh > thresholdMedium` — there is no other numeric-threshold source in the model for rubric mode.
+- The runtime aggregate these thresholds gate against is parsed Python-side by `_AGGREGATE_RE = re.compile(r"AGGREGATE:\s*(\d+)", re.IGNORECASE)` and `aggregate = int(agg_match.group(1))` (`scripts/little_loops/fsm/policy_parse_scores.py:29,48`) — a non-negative digit sequence only, so no fractional aggregate is ever produced. There is no JS-side mirror of this regex in `policy_builder_core.mjs`; the JS side only emits the `AGGREGATE:` instruction text (`_scoreActionBody()`, line 1597) and validates `thresholdHigh`/`thresholdMedium` ordering — it never re-parses an `AGGREGATE:` line itself.
+- `parseFrontmatterBlock` (`policy_builder_core.mjs:2198-2264`) returns `Record<string, string|string[]|null>` — scalars stay strings (never coerced to number/boolean), `""`/`null`/`~` normalize to `null`, flow-lists and dash-lists both normalize to `string[]`, and `status` is canonicalized through `STATUS_SYNONYMS_JS` before returning. It already tolerates `---` fence lines, strips `#` end-of-line comments outside quotes, and keeps quoted commas inside a flow-list element (`scripts/tests/js/policy_validator.test.mjs:456,485,491`); it rejects (throws `"Can't read line N: ..."`) a nested mapping, a YAML anchor/alias, and a multi-line block-scalar continuation. It has no BOM or CRLF handling anywhere — confirmed by an unfiltered repo grep for a leading BOM character and CRLF sequences across `scripts/little_loops/templates/` (zero hits in authored code) — `extractIssueFrontmatter`'s BOM-strip/CRLF-normalize step is genuinely new logic with no existing precedent to reuse or duplicate.
+
+**Decision Rules**
+- Rubric threshold-neighbour suggestions are anchored to `model.thresholdHigh`/`model.thresholdMedium` (the only two threshold fields that exist); because the runtime aggregate is `int()`-parsed from `AGGREGATE:\s*(\d+)` with no fractional representation, `t-1`/`t`/`t+1` integer neighbours (clamped to [0,100]) are the complete representable domain — there is no smaller-than-integer boundary to generate.
+- Missing-field suggestions must omit the key (not null/empty-string it) to land in `evalPredicate()`'s missing-value branch, which matches only `!=`; a dimension with no rule using `!=` against it produces no missing-field suggestion (nothing to boundary-test) — this is the escape hatch for that suggestion kind.
+- `extractIssueFrontmatter`'s fence/BOM/CRLF handling must stay outside `parseFrontmatterBlock` — that function's existing fence-tolerant, comment-stripping, and rejection behavior (nested mapping/anchor/block-scalar) is already tested and must not change; BOM-strip and CRLF-normalize happen before the text reaches `parseFrontmatterBlock`.
+
 ## Implementation Steps
 
 1. Implement `suggestScenarios` with per-mode representable-domain rules and node tests proving every suggestion normalizes and encodes to its intended boundary.
 2. Implement `extractIssueFrontmatter` with BOM/CRLF/fence fixtures.
 3. Wire suggest and import into the template with the session revision token; regenerate golden HTML.
 4. Add the delayed-read and suggest-cases probes, fill `SCENARIO_SELECTORS`, run the browser loop; update docs.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `scripts/tests/test_enh3035_artifact_template_kit.py` — regenerate the golden HTML fixture it compares byte-for-byte so `test_policy_builder_renders_byte_identically_to_golden_fixture()` passes after `policy_builder_core.mjs`/`policy-router-builder.html.tmpl` change.
+- Extend `scripts/tests/fixtures/policy_builder/frontmatter_encoding_corpus.json` with BOM/CRLF/fence cases for `extractIssueFrontmatter`.
 
 ## Impact
 
@@ -122,4 +175,6 @@ Includes boundary suggestions and local file import only. Excludes connected iss
 
 ## Session Log
 
+- `/ll:wire-issue` - 2026-09-18T00:45:12 - `21c0e3c4-8c4c-4bed-a96b-f58ee9e4dbd4.jsonl`
+- `/ll:refine-issue` - 2026-09-18T00:29:03 - `5ba6e946-9d5c-4e37-bd48-7b8a54faec76.jsonl`
 - manual review - 2026-09-17 - extracted from FEAT-3488 (boundary suggestions, local issue-file import, `FileReader` invalidation, delayed-read probes); pinned integer rubric neighbours, suggestion `key` vs template-assigned `id`, idempotent "Add suggestions"
