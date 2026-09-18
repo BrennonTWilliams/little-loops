@@ -278,6 +278,7 @@ contract's limits, closing the Integration Map's unenforced Docs point.
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-18T03:34:39 - `3cbf9e05-8884-443a-be0b-4fb3a3466d9a.jsonl`
 - manual review - 2026-09-17 - pinned Contract Semantics (finish/done edges, implicit routes omitted, reachability, cycle records, no diagnostics field, non-lifecycle return, ordering), text/list rendering, expanded snapshot set and ACs, folded stale wiring anchors
 - `/ll:confidence-check` - 2026-09-18T03:05:11 - `51bcd34b-4f80-4b37-8ce2-712eaadce80b.jsonl`
 - `/ll:reconcile-issue` - 2026-09-18T02:59:34 - `875cb38b-51ff-4136-a01d-589b447fa745.jsonl`
