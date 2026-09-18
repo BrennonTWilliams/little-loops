@@ -10,9 +10,9 @@ captured_at: '2026-09-18T02:19:33Z'
 parent: EPIC-3493
 labels:
 - policy-builder
-blocked_by:
-- FEAT-3498
 relates_to:
+- FEAT-3498
+- FEAT-3503
 - ENH-3487
 - ENH-3491
 - ENH-3492
@@ -23,11 +23,13 @@ relates_to:
 
 ## Summary
 
-Second half of the connected-execution split from FEAT-3498. FEAT-3498 (Part A) delivers the host-side contracts: the `awaiting_approval` queue status, `create_or_get_run_request`/`approve_and_claim_entry`/`record_loop_started`/`get_run_request`, `ll-queue run --id ID --approve`, builder-origin LOOP dispatch (cwd, no timeout, `--context issue_id=`), the structured start-metadata channel, and `persist_policy_revision`/`validate_policy_revision` as plain Python functions. This issue (Part B) exposes those contracts to the browser: serve the policy builder at a same-origin route, add project-scoped issue-list and request submit/readback endpoints on `SseBridge`, and wire the page's review/submission/status UI. No queue, loop, or approval semantics change here.
+Second half of the connected-execution split from FEAT-3498. FEAT-3498 (Part A, **done** — all contracts below are landed and importable) delivers the host-side contracts: the `awaiting_approval` queue status, `create_or_get_run_request`/`approve_and_claim_entry`/`record_loop_started`/`get_run_request`, `ll-queue run --id ID --approve`, builder-origin LOOP dispatch (cwd, no timeout, `--context issue_id=`), the structured start-metadata channel, and `persist_policy_revision`/`validate_policy_revision` as plain Python functions. This issue (Part B) exposes those contracts to the browser: serve the policy builder at a same-origin route, add project-scoped issue-list and request submit/readback endpoints on `SseBridge`, and wire the page's review/submission/status UI. No queue, loop, or approval semantics change here.
 
 ## Current Behavior
 
-`ll-artifact serve` uses `SseBridge` with token/Host-checked GET routes only (`transport.py:1200-1246`, exact-string match on `_routes`; no `do_POST`, no parameterized path matching). `cmd_policy_builder` (`cli/artifact/policy_builder.py:62`) renders to a file only; the `file://` builder has no connected controls. After FEAT-3498 lands, a builder-origin request can be created and approved from Python/CLI, but nothing in the browser can submit one or observe it.
+`ll-artifact serve` uses `SseBridge` with token/Host-checked GET routes only (`transport.py:1200-1246`, exact-string match on `_routes`; no `do_POST`, no parameterized path matching). `cmd_policy_builder` (`cli/artifact/policy_builder.py:62`) renders to a file only; the `file://` builder has no connected controls. With FEAT-3498 landed, a builder-origin request can be created and approved from Python/CLI, but nothing in the browser can submit one or observe it.
+
+**The builder's own lifecycle output does not pass the landed validator.** `validate_policy_revision` (`cli/artifact/policy_revision.py:69`) reads the policy mode from the loop's `category:` field and accepts only `issue_lifecycle` (`_SUPPORTED_MODES`, `policy_revision.py:35`). `_serializeIssueLifecycle` (`policy_builder_core.mjs:2736`) emits no `category:` line, so all three `scripts/tests/fixtures/policy_builder/sample-issue-lifecycle*.yaml` fixtures return `ok=False, mode=None, errors=["Unsupported policy mode None; ..."]`. Until the serializer emits `category: issue_lifecycle`, every browser submission would be rejected.
 
 ## Expected Behavior
 
@@ -44,6 +46,8 @@ Without this half, FEAT-3498's approval contracts are reachable only from Python
 - Add an opt-in flag on `ll-artifact serve` (registered in `add_serve_parser()`, `cli/artifact/serve.py:37`); no config flag is needed. Serve the builder at `GET /{token}/policy-builder` using a renderer factored from `cmd_policy_builder`, with the endpoint URL and server-derived workspace identifier stamped in. The `file://` copy stays offline-only. Preserve Host/token checks for every method and route; no CORS headers.
 - First connected release accepts `issue_lifecycle` policies only. Rubric requires a subject and other modes need different binding contracts; keep their offline exports available and explain why connected Run is unavailable.
 - Bind repository identity and filesystem access to `BRConfig.project_root`, never a browser-supplied path. Add a project-scoped issue-list/read endpoint using existing issue discovery. `projectId` from ENH-3487 identifies the builder document, not the repository. Reject cross-workspace requests. The serve process anchors the queue db at `BRConfig.project_root` via the `db_path`/`root` parameters FEAT-3498 adds.
+- **Workspace identifier**: no derivation helper exists today. Define `workspace_id` as a deterministic function of the resolved project root — `hashlib.sha256(str(config.project_root.resolve()).encode()).hexdigest()[:16]` — so it is stable across serve restarts. It must **not** be derived from the per-process serve token: request dedup and readback both key on `(workspace_id, request_id)`, so a per-process value would break the reload/retry acceptance criterion. The server stamps it into the page and rejects any submit/readback whose `workspaceId` differs.
+- **Builder emit fix (prerequisite)**: `_serializeIssueLifecycle` emits `category: issue_lifecycle` so its output passes `validate_policy_revision`. Regenerate the `sample-issue-lifecycle*.yaml` golden fixtures. This is the first time builder-emitted YAML meets the validator; FEAT-3498's tests used hand-built YAML.
 
 ### Renderer split
 
@@ -52,10 +56,30 @@ Without this half, FEAT-3498's approval contracts are reachable only from Python
 ### Routes and POST handling
 
 - Add method-aware dispatch plus bounded parameterized path matching in `SseBridge`: `POST /{token}/run-request`, `GET /{token}/run-request/{requestId}`, `GET /{token}/issues`, `GET /{token}/policy-builder`. Existing exact GET/history/SSE routes keep working. Factor the Host-header check and token prefix-strip out of `do_GET` into a shared helper so `do_POST` does not duplicate it.
-- POST hygiene: cap the request body (`Content-Length` above a fixed limit, e.g. `artifacts.export.max_artifact_bytes`, returns `413`); missing/invalid `Content-Length`, non-`application/json` Content-Type, or a JSON parse failure returns `400` with a structured error body. Do not copy `LocalBridgeTransport`'s `do_POST` (`transport.py:693-698`), which reads `Content-Length` uncapped.
+- POST hygiene: cap the request body at a fixed module constant, `_MAX_RUN_REQUEST_BYTES = 1 << 20` (1 MiB); `Content-Length` above it returns `413`. Do **not** reuse `artifacts.export.max_artifact_bytes` — that key governs outbound history-snapshot exports, which is the wrong meaning and far too large a bound for a policy YAML. Missing/invalid `Content-Length`, non-`application/json` Content-Type, or a JSON parse failure returns `400`. Do not copy `LocalBridgeTransport`'s `do_POST` (`transport.py:693-698`), which reads `Content-Length` uncapped.
+- **Error body and status codes** (no JSON error convention exists in `transport.py`/`serve.py` yet; this issue establishes it). Every non-2xx response from the new routes is `application/json` with the shape `{"error": {"code": "<slug>", "message": "<text>", "errors": [...], "warnings": [...]}}` (`errors`/`warnings` present only for validation failures):
+
+  | Status | `code` | When |
+  |---|---|---|
+  | `400` | `bad_request` | missing/invalid `Content-Length`, wrong Content-Type, JSON parse failure, missing/mistyped payload field |
+  | `413` | `body_too_large` | `Content-Length` > `_MAX_RUN_REQUEST_BYTES` |
+  | `422` | `revision_mismatch` | recomputed SHA-256 ≠ `revisionId` |
+  | `403` | `wrong_workspace` | `workspaceId` ≠ the server's |
+  | `404` | `issue_not_found` / `request_not_found` | issue absent from the project; `get_run_request` returned `None` |
+  | `422` | `validation_failed` | `ValidationOutcome.ok` is False (includes unsupported mode); carries `errors` and `warnings` |
+  | `409` | `request_conflict` | `create_or_get_run_request` raised `ValueError` (same request UUID, different revision/issue/project) or `persist_policy_revision` raised `PolicyRevisionConflictError` |
 - Serve routes only submit/read requests. They never approve, drain, launch a process, or use `LocalBridgeTransport`/level-3 interactions. An AST import guard is supplementary; the authoritative test submits through the route while a real queue watcher is active and asserts zero dispatches before explicit approval.
-- Submit path: parse `RunRequest`, recompute `revisionId` from the exact UTF-8 bytes and reject mismatches, verify the issue exists in the project, call FEAT-3498's `validate_policy_revision` then `persist_policy_revision` then `create_or_get_run_request`, and return `{requestId, queueId, created}`. Validation failures return structured diagnostics (errors and warnings distinguishable) and enqueue nothing.
-- Readback: `GET /{token}/run-request/{requestId}` → `get_run_request(request_id, workspace_id)` → `{requestId, queueId, status, bindings, loopInstanceId, runDir, result}`. Never pass a request UUID to `get_entry`.
+- Submit path, cheapest checks first so junk POSTs never reach the filesystem (`validate_policy_revision` writes a temp file under `.loops/policy-builder/`):
+  1. Body guards (size, Content-Type, JSON parse, field presence/types) → build `RunRequest` with `yaml` encoded to UTF-8 bytes.
+  2. Recompute `hashlib.sha256(yaml_bytes).hexdigest()` and reject a mismatch with `revisionId`. **This check lives only in the route**: `persist_policy_revision` does *not* recompute the hash (it uses `revision_id[:12]` as the filename and compares bytes only when that file already exists), despite what the `RunRequest` docstring implies. Correct that docstring as part of this issue.
+  3. `workspaceId` equals the server's.
+  4. The issue exists in the project (existing issue discovery under `BRConfig.project_root`).
+  5. `validate_policy_revision(yaml_bytes, project_root=config.project_root)`; `ok=False` returns `422` with `errors` and `warnings` and enqueues nothing.
+  6. `dest = persist_policy_revision(yaml_bytes, revision_id, project_root=config.project_root)`.
+  7. Build the action the store requires — `ActionSpec(name=f"policy-builder:{issue_id}", runner=RunnerType.LOOP, target=str(dest), timeout=None)` (`timeout=None` is mandatory: the `ActionSpec` default of 120 s would kill a real lifecycle run) — then `entry, created = create_or_get_run_request(request, action=action, project_root=config.project_root, root=config.project_root)`.
+  8. Return `200 {requestId, queueId: entry.id, created}`.
+- Readback: `GET /{token}/run-request/{requestId}?workspaceId=...` → `get_run_request(request_id, workspace_id, root=config.project_root)`, which returns `QueueEntry | None` (there is no `RunRequestStatus` type; the route builds the wire dict). `None` → `404 request_not_found`. Otherwise `{requestId: entry.request_id, queueId: entry.id, status: entry.status, bindings: {issueId: entry.issue_id, revisionId: entry.revision_id}, loopInstanceId: entry.loop_instance_id, runDir: entry.run_dir, result: entry.result}`. Never pass a request UUID to `get_entry`.
+- Host rejection is `ll-queue cancel`, which surfaces as `status: "cancelled"`. There is no distinct "rejected" status; the page labels `cancelled` on a never-approved request as "Rejected by host".
 
 ### Page behavior
 
