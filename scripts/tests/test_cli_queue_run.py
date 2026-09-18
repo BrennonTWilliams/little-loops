@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import signal
 import threading
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -19,11 +20,12 @@ from little_loops.cli.queue import main_queue
 from little_loops.queue_store import (
     DEFAULT_DB_PATH,
     claim_entry,
+    create_or_get_run_request,
     get_entry,
     list_entries,
     update_entry_result,
 )
-from little_loops.runner_spec import RunnerResult
+from little_loops.runner_spec import ActionSpec, RunnerResult, RunnerType
 
 
 @pytest.fixture(autouse=True)
@@ -1161,3 +1163,240 @@ class TestWatchNdjsonFlush:
         assert record["id"] == entry_id
         assert record["status"] == "done"
         assert mock_stdout.flush.called
+
+
+@dataclass
+class _FakeRunRequest:
+    """Stand-in for `cli.artifact.policy_revision.RunRequest` (duck-typed)."""
+
+    request_id: str
+    workspace_id: str
+    revision_id: str
+    issue_id: str
+
+
+class TestBuilderOriginApprovalWorkflow:
+    """FEAT-3498: awaiting_approval requests are invisible to drains until
+    explicit `ll-queue run --id --approve`."""
+
+    def _submit(self, *, project_root: Path) -> str:
+        action = ActionSpec(
+            name="lifecycle", runner=RunnerType.LOOP, target="/abs/lifecycle.yaml", timeout=None
+        )
+        entry, _ = create_or_get_run_request(
+            _FakeRunRequest("req-1", "ws-1", "rev-1", "FEAT-1"),
+            action=action,
+            project_root=project_root,
+        )
+        return entry.id
+
+    def test_generic_one_shot_drain_does_not_dispatch_awaiting_entry(self, tmp_path: Path) -> None:
+        entry_id = self._submit(project_root=tmp_path)
+
+        with patch("little_loops.cli.queue.subprocess.Popen") as mock_popen:
+            with patch("sys.argv", ["ll-queue", "run", "--json"]):
+                result = main_queue()
+
+        assert result == 0
+        assert not mock_popen.called
+        assert get_entry(entry_id).status == "awaiting_approval"
+
+    def test_ordinary_pending_entry_still_dispatches_alongside_awaiting_one(
+        self, capsys: pytest.CaptureFixture[str], tmp_path: Path
+    ) -> None:
+        self._submit(project_root=tmp_path)
+        ordinary_id = _add_and_get_id(capsys, "audit-docs")
+
+        with patch(
+            "little_loops.runner_spec.run_action",
+            return_value=RunnerResult(stdout="ok", stderr="", exit_code=0),
+        ):
+            with patch("little_loops.cli.queue.subprocess.Popen") as mock_popen:
+                with patch("sys.argv", ["ll-queue", "run", "--json"]):
+                    main_queue()
+
+        assert not mock_popen.called  # the LOOP entry is the awaiting one, untouched
+        assert get_entry(ordinary_id).status == "done"
+
+    def test_explicit_approve_dispatches_only_that_entry_with_builder_argv(
+        self, capsys: pytest.CaptureFixture[str], tmp_path: Path
+    ) -> None:
+        entry_id = self._submit(project_root=tmp_path)
+        other_id = _add_and_get_id(capsys, "audit-docs")
+
+        with patch(
+            "little_loops.runner_spec.run_action",
+        ) as mock_run_action:
+            with patch("little_loops.cli.queue.subprocess.Popen") as mock_popen:
+                proc = mock_popen.return_value
+                proc.communicate.return_value = ("ok", "")
+                proc.returncode = 0
+                proc.poll.return_value = 0
+                proc.pid = 111
+                with patch(
+                    "sys.argv", ["ll-queue", "run", "--id", entry_id, "--approve", "--json"]
+                ):
+                    result = main_queue()
+
+        assert result == 0
+        mock_run_action.assert_not_called()
+        record = json.loads(capsys.readouterr().out)
+        assert record["id"] == entry_id
+        assert record["status"] == "done"
+        assert get_entry(entry_id).status == "done"
+        # The unrelated ordinary entry is untouched by the single-entry command.
+        assert get_entry(other_id).status == "pending"
+
+        cmd = mock_popen.call_args[0][0]
+        assert cmd[:3] == ["ll-loop", "run", "/abs/lifecycle.yaml"]
+        assert cmd[cmd.index("--context") + 1] == "issue_id=FEAT-1"
+        assert cmd[cmd.index("--queue-entry-id") + 1] == entry_id
+        assert "--queue-metadata-out" in cmd
+        assert mock_popen.call_args.kwargs["cwd"] == str(tmp_path)
+        assert proc.communicate.call_args.kwargs["timeout"] is None
+
+    def test_id_without_approve_is_usage_error(self, tmp_path: Path) -> None:
+        entry_id = self._submit(project_root=tmp_path)
+        with patch("sys.argv", ["ll-queue", "run", "--id", entry_id]):
+            result = main_queue()
+        assert result == 2
+        assert get_entry(entry_id).status == "awaiting_approval"
+
+    def test_id_with_watch_is_usage_error(self, tmp_path: Path) -> None:
+        entry_id = self._submit(project_root=tmp_path)
+        with patch("sys.argv", ["ll-queue", "run", "--id", entry_id, "--approve", "--watch"]):
+            result = main_queue()
+        assert result == 2
+
+    def test_approve_rejects_a_non_awaiting_entry(self, capsys: pytest.CaptureFixture[str]) -> None:
+        entry_id = _add_and_get_id(capsys, "audit-docs")  # ordinary pending entry
+        with patch("sys.argv", ["ll-queue", "run", "--id", entry_id, "--approve"]):
+            result = main_queue()
+        assert result == 1
+        assert get_entry(entry_id).status == "pending"
+
+    def test_approve_unknown_id_is_not_found(self) -> None:
+        with patch("sys.argv", ["ll-queue", "run", "--id", "does-not-exist-12345", "--approve"]):
+            result = main_queue()
+        assert result == 1
+
+    def test_cancel_rejects_awaiting_entry_before_acceptance(self, tmp_path: Path) -> None:
+        entry_id = self._submit(project_root=tmp_path)
+        with patch("sys.argv", ["ll-queue", "cancel", entry_id]):
+            result = main_queue()
+        assert result == 0
+        after = get_entry(entry_id)
+        assert after.status == "cancelled"
+        assert after.loop_instance_id is None
+
+
+class TestBuilderOriginDisplay:
+    """FEAT-3498: `ll-queue status`/`list` surface request/issue/revision ids
+    for builder-origin rows in human (non-JSON) output."""
+
+    def _submit(self, *, project_root: Path) -> str:
+        action = ActionSpec(
+            name="lifecycle", runner=RunnerType.LOOP, target="/abs/lifecycle.yaml", timeout=None
+        )
+        entry, _ = create_or_get_run_request(
+            _FakeRunRequest("req-1", "ws-1", "rev-1", "FEAT-1"),
+            action=action,
+            project_root=project_root,
+        )
+        return entry.id
+
+    def test_status_text_shows_builder_fields(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        entry_id = self._submit(project_root=tmp_path)
+        with patch("sys.argv", ["ll-queue", "status", entry_id]):
+            result = main_queue()
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "req-1" in out
+        assert "FEAT-1" in out
+
+    def test_list_row_shows_issue_and_request(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        self._submit(project_root=tmp_path)
+        with patch("sys.argv", ["ll-queue", "list", "--wide"]):
+            result = main_queue()
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "issue=FEAT-1" in out
+        assert "req=req-1" in out
+
+
+class TestStartMetadataChannelObserved:
+    """FEAT-3498 AC8: a stub child startup publishes a real-format instance
+    identity + absolute run dir via the structured channel; the parent's
+    observer thread picks it up while the (mocked) child is "running", and a
+    final re-read after `communicate()` covers the case it's written late."""
+
+    def _submit(self, *, project_root: Path) -> str:
+        action = ActionSpec(
+            name="lifecycle", runner=RunnerType.LOOP, target="/abs/lifecycle.yaml", timeout=None
+        )
+        entry, _ = create_or_get_run_request(
+            _FakeRunRequest("req-1", "ws-1", "rev-1", "FEAT-1"),
+            action=action,
+            project_root=project_root,
+        )
+        return entry.id
+
+    def test_observer_records_instance_id_and_run_dir_from_stub_child(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        entry_id = self._submit(project_root=tmp_path)
+        run_dir = str(tmp_path / ".loops" / "runs" / "inst-stub-123")
+
+        def _stub_popen(cmd: list[str], **kwargs: Any) -> MagicMock:
+            metadata_path = Path(cmd[cmd.index("--queue-metadata-out") + 1])
+            queue_id = cmd[cmd.index("--queue-entry-id") + 1]
+            # Simulate the real child's atomic write (cli/loop/run.py) before
+            # the parent's `communicate()` call below returns.
+            metadata_path.parent.mkdir(parents=True, exist_ok=True)
+            metadata_path.write_text(
+                json.dumps({"queueId": queue_id, "instanceId": "inst-stub-123", "runDir": run_dir})
+            )
+            proc = MagicMock()
+            proc.communicate.return_value = ("ok", "")
+            proc.returncode = 0
+            proc.poll.return_value = 0
+            proc.pid = 999
+            return proc
+
+        with patch("little_loops.cli.queue.subprocess.Popen", side_effect=_stub_popen):
+            with patch("sys.argv", ["ll-queue", "run", "--id", entry_id, "--approve", "--json"]):
+                result = main_queue()
+
+        assert result == 0
+        record = json.loads(capsys.readouterr().out)
+        assert record["status"] == "done"
+
+        entry = get_entry(entry_id)
+        assert entry.loop_instance_id == "inst-stub-123"
+        assert entry.run_dir == run_dir
+        # Distinct from the request/queue identifiers.
+        assert entry.loop_instance_id != entry.request_id
+        assert entry.loop_instance_id != entry.id
+
+        # The metadata file is cleaned up after the final read.
+        metadata_dir = tmp_path / ".loops" / ".queue-metadata"
+        assert list(metadata_dir.glob("*")) == []
+
+    def test_pre_launch_failure_leaves_loop_identity_null(self, tmp_path: Path) -> None:
+        entry_id = self._submit(project_root=tmp_path)
+
+        with patch(
+            "little_loops.cli.queue.subprocess.Popen", side_effect=FileNotFoundError("no ll-loop")
+        ):
+            with patch("sys.argv", ["ll-queue", "run", "--id", entry_id, "--approve", "--json"]):
+                result = main_queue()
+
+        assert result == 0  # the command itself completed; the entry recorded a failure
+        entry = get_entry(entry_id)
+        assert entry.status == "failed"
+        assert entry.loop_instance_id is None
+        assert entry.run_dir is None

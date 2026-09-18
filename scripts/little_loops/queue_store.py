@@ -31,9 +31,12 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from little_loops.runner_spec import ActionSpec, RunnerType, scope_runner_error
+
+if TYPE_CHECKING:
+    from little_loops.cli.artifact.policy_revision import RunRequest
 
 __all__ = [
     "DEFAULT_DB_PATH",
@@ -61,6 +64,10 @@ __all__ = [
     "dead_letter_entry",
     "cancel_entry",
     "revive_entry",
+    "create_or_get_run_request",
+    "approve_and_claim_entry",
+    "record_loop_started",
+    "get_run_request",
 ]
 
 logger = logging.getLogger(__name__)
@@ -113,7 +120,7 @@ PRIORITY_TIERS: tuple[str, ...] = ("P0", "P1", "P2", "P3", "P4", "P5")
 
 _BUSY_TIMEOUT_MS = 5000
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 _MIGRATIONS: list[str] = [
     """
@@ -147,12 +154,36 @@ _MIGRATIONS: list[str] = [
     ALTER TABLE queue_entries ADD COLUMN attempt INTEGER NOT NULL DEFAULT 0;
     ALTER TABLE queue_entries ADD COLUMN next_attempt_at TEXT;
     """,
+    # FEAT-3498: builder-origin run-request columns, all nullable so existing
+    # (non-builder) rows are unaffected. `request_id`/`workspace_id` are the
+    # client-generated request key; the partial unique index enforces
+    # exactly-once mapping to a queue row without a lookup-then-insert race.
+    # `approved_at`/`approval_snapshot` record explicit host acceptance;
+    # `loop_instance_id`/`run_dir` are populated only from the structured
+    # start-metadata channel, never parsed from stdout.
+    """
+    ALTER TABLE queue_entries ADD COLUMN request_id TEXT;
+    ALTER TABLE queue_entries ADD COLUMN workspace_id TEXT;
+    ALTER TABLE queue_entries ADD COLUMN project_root TEXT;
+    ALTER TABLE queue_entries ADD COLUMN revision_id TEXT;
+    ALTER TABLE queue_entries ADD COLUMN issue_id TEXT;
+    ALTER TABLE queue_entries ADD COLUMN approved_at TEXT;
+    ALTER TABLE queue_entries ADD COLUMN approval_snapshot TEXT;
+    ALTER TABLE queue_entries ADD COLUMN loop_instance_id TEXT;
+    ALTER TABLE queue_entries ADD COLUMN run_dir TEXT;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_queue_entries_request_key
+        ON queue_entries(workspace_id, request_id) WHERE request_id IS NOT NULL;
+    """,
 ]
 
 # Status vocabulary (ENH-3416): declared once, every enumeration elsewhere
 # (`_STATUS_COLOR`, the `queue_list` MCP description, docs) derives from or is
-# locked against these.
-QUEUE_STATUSES = frozenset({"pending", "running", "done", "failed", "dead_letter", "cancelled"})
+# locked against these. `awaiting_approval` (FEAT-3498) is non-terminal: a
+# builder-origin request no watcher or generic drain may claim until the host
+# explicitly accepts it via `approve_and_claim_entry`.
+QUEUE_STATUSES = frozenset(
+    {"pending", "running", "done", "failed", "dead_letter", "cancelled", "awaiting_approval"}
+)
 QUEUE_TERMINAL_STATUSES = frozenset({"done", "failed", "dead_letter", "cancelled"})
 
 # Reasons from issue_lifecycle.classify_failure() that make a queue dispatch
@@ -345,6 +376,17 @@ class QueueEntry:
     owner_pid: int | None = None
     attempt: int = 0
     next_attempt_at: str | None = None
+    # FEAT-3498: builder-origin run-request fields. All None for an ordinary
+    # (non-builder) entry.
+    request_id: str | None = None
+    workspace_id: str | None = None
+    project_root: str | None = None
+    revision_id: str | None = None
+    issue_id: str | None = None
+    approved_at: str | None = None
+    approval_snapshot: dict[str, Any] | None = None
+    loop_instance_id: str | None = None
+    run_dir: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -365,6 +407,15 @@ class QueueEntry:
             "ownerPid": self.owner_pid,
             "attempt": self.attempt,
             "nextAttemptAt": self.next_attempt_at,
+            "requestId": self.request_id,
+            "workspaceId": self.workspace_id,
+            "projectRoot": self.project_root,
+            "revisionId": self.revision_id,
+            "issueId": self.issue_id,
+            "approvedAt": self.approved_at,
+            "approvalSnapshot": self.approval_snapshot,
+            "loopInstanceId": self.loop_instance_id,
+            "runDir": self.run_dir,
         }
 
     @classmethod
@@ -380,6 +431,17 @@ class QueueEntry:
             owner_pid=row["owner_pid"],
             attempt=row["attempt"],
             next_attempt_at=row["next_attempt_at"],
+            request_id=row["request_id"],
+            workspace_id=row["workspace_id"],
+            project_root=row["project_root"],
+            revision_id=row["revision_id"],
+            issue_id=row["issue_id"],
+            approved_at=row["approved_at"],
+            approval_snapshot=json.loads(row["approval_snapshot"])
+            if row["approval_snapshot"]
+            else None,
+            loop_instance_id=row["loop_instance_id"],
+            run_dir=row["run_dir"],
         )
 
 
@@ -614,15 +676,17 @@ def cancel_entry(
     the cancel-vs-dispatch rationale. *extra* (the dispatch's
     ``exit_code``/``stdout``/``stderr`` when cancelling mid-dispatch via the
     ``force_stop`` path) is merged under ``reason`` so partial output is not
-    lost. Guarded with ``AND status IN ('pending', 'running')``; returns False
-    if the entry already reached a terminal status.
+    lost. Guarded with ``AND status IN ('pending', 'running', 'awaiting_approval')``
+    (FEAT-3498: rejecting an awaiting builder request before acceptance is a
+    cancel, distinct from cancelling an active run); returns False if the
+    entry already reached a terminal status.
     """
     conn = connect(db_path)
     try:
         cur = conn.execute(
             "UPDATE queue_entries SET status = 'cancelled', result = ?, "
             "claimed_at = NULL, owner_pid = NULL "
-            "WHERE id = ? AND status IN ('pending', 'running')",
+            "WHERE id = ? AND status IN ('pending', 'running', 'awaiting_approval')",
             (json.dumps({**(extra or {}), "reason": reason}), entry_id),
         )
         conn.commit()
@@ -647,6 +711,12 @@ def revive_entry(
     *root* (mirrors :func:`reset_to_pending`) anchors the default db path at
     a known project root instead of the process cwd — needed by the MCP
     server's ``queue_requeue`` tool.
+
+    FEAT-3498 approval durability: a builder-origin row (``request_id`` set)
+    with ``approved_at`` still NULL returns to ``awaiting_approval``, not
+    ``pending`` — an unapproved request always re-awaits host acceptance,
+    never runs via a generic drainer. An already-approved row (``approved_at``
+    set) returns to plain ``pending`` as before.
     """
     conn = connect(db_path, root=root)
     try:
@@ -656,7 +726,9 @@ def revive_entry(
         prior = json.loads(row["result"]) if row["result"] else None
         new_result = {"previous": prior} if prior is not None else None
         cur = conn.execute(
-            "UPDATE queue_entries SET status = 'pending', attempt = 0, next_attempt_at = NULL, "
+            "UPDATE queue_entries SET status = CASE WHEN request_id IS NOT NULL "
+            "AND approved_at IS NULL THEN 'awaiting_approval' ELSE 'pending' END, "
+            "attempt = 0, next_attempt_at = NULL, "
             "result = ?, claimed_at = NULL, owner_pid = NULL WHERE id = ?",
             (json.dumps(new_result) if new_result is not None else None, entry_id),
         )
@@ -716,3 +788,216 @@ def claim_entry(
         conn.isolation_level = prior_isolation
         conn.close()
     return cur.rowcount > 0
+
+
+def create_or_get_run_request(
+    request: RunRequest,
+    *,
+    action: ActionSpec,
+    project_root: Path,
+    db_path: Path | str = DEFAULT_DB_PATH,
+    root: Path | None = None,
+) -> tuple[QueueEntry, bool]:
+    """Transactional create-or-get for a builder-origin run request (FEAT-3498).
+
+    Analog of :func:`add_entry` keyed on ``(workspace_id, request_id)`` instead
+    of a fresh uuid every call: inserts a new ``awaiting_approval`` row, or
+    returns the existing one for a retried/duplicate submission. The ``bool``
+    reports created (True) vs fetched (False).
+
+    Uses ``BEGIN IMMEDIATE`` (mirroring :func:`claim_entry`) so the
+    lookup-or-insert is one atomic transaction — concurrent submissions of the
+    same request key produce exactly one row, relying on the partial unique
+    index on ``(workspace_id, request_id)`` as the durable constraint, not
+    just this function's own locking.
+
+    Raises :class:`ValueError` if an existing row for this request key has a
+    different ``revision_id``/``issue_id``/``project_root`` — a conflicting
+    payload reusing the same client-generated request id.
+    """
+    scope_error = scope_runner_error(action)
+    if scope_error is not None:
+        raise ValueError(scope_error)
+
+    conn = connect(db_path, root=root)
+    prior_isolation = conn.isolation_level
+    conn.isolation_level = None
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            row = conn.execute(
+                "SELECT * FROM queue_entries WHERE workspace_id = ? AND request_id = ?",
+                (request.workspace_id, request.request_id),
+            ).fetchone()
+            if row is not None:
+                existing = QueueEntry._from_row(row)
+                if (
+                    existing.revision_id != request.revision_id
+                    or existing.issue_id != request.issue_id
+                    or existing.project_root != str(project_root)
+                ):
+                    raise ValueError(
+                        f"request_id {request.request_id!r} is already bound to a "
+                        "different revision/issue/project"
+                    )
+                conn.execute("COMMIT")
+                return existing, False
+
+            entry_id = str(uuid.uuid4())
+            enqueued_at = _utcnow()
+            rank = _priority_rank("P3")
+            conn.execute(
+                "INSERT INTO queue_entries("
+                "id, action, enqueued_at, priority, status, result, "
+                "request_id, workspace_id, project_root, revision_id, issue_id"
+                ") VALUES (?, ?, ?, ?, 'awaiting_approval', NULL, ?, ?, ?, ?, ?)",
+                (
+                    entry_id,
+                    _serialize_action(action),
+                    enqueued_at,
+                    rank,
+                    request.request_id,
+                    request.workspace_id,
+                    str(project_root),
+                    request.revision_id,
+                    request.issue_id,
+                ),
+            )
+            conn.execute("COMMIT")
+        except BaseException:
+            conn.execute("ROLLBACK")
+            raise
+    finally:
+        conn.isolation_level = prior_isolation
+        conn.close()
+
+    return (
+        QueueEntry(
+            id=entry_id,
+            action=action,
+            enqueued_at=enqueued_at,
+            priority=PRIORITY_TIERS[rank],
+            status="awaiting_approval",
+            result=None,
+            request_id=request.request_id,
+            workspace_id=request.workspace_id,
+            project_root=str(project_root),
+            revision_id=request.revision_id,
+            issue_id=request.issue_id,
+        ),
+        True,
+    )
+
+
+def approve_and_claim_entry(
+    entry_id: str,
+    *,
+    expected_revision_id: str,
+    expected_issue_id: str,
+    owner_pid: int | None = None,
+    db_path: Path | str = DEFAULT_DB_PATH,
+    root: Path | None = None,
+) -> bool:
+    """Single-entry counterpart to :func:`claim_entry` for approval (FEAT-3498).
+
+    Inside one ``BEGIN IMMEDIATE`` transaction: rechecks that *entry_id* is
+    still ``awaiting_approval`` and that its stored ``revision_id``/``issue_id``
+    still match the caller's expectations, stamps ``approved_at`` and an
+    ``approval_snapshot``, and flips the row straight to ``running`` with the
+    same ``claimed_at``/``owner_pid``/``attempt`` bookkeeping as
+    :func:`claim_entry`. Returns True iff this caller won the approval+claim;
+    a stale/mismatched/already-claimed entry returns False without writing.
+    """
+    pid = owner_pid if owner_pid is not None else os.getpid()
+    approved_at = _utcnow()
+    conn = connect(db_path, root=root)
+    prior_isolation = conn.isolation_level
+    conn.isolation_level = None
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            row = conn.execute(
+                "SELECT * FROM queue_entries WHERE id = ? AND status = 'awaiting_approval'",
+                (entry_id,),
+            ).fetchone()
+            if row is None:
+                conn.execute("COMMIT")
+                return False
+            entry = QueueEntry._from_row(row)
+            if entry.revision_id != expected_revision_id or entry.issue_id != expected_issue_id:
+                conn.execute("COMMIT")
+                return False
+            snapshot = json.dumps(
+                {
+                    "projectRoot": entry.project_root,
+                    "workspaceId": entry.workspace_id,
+                    "revisionId": entry.revision_id,
+                    "issueId": entry.issue_id,
+                }
+            )
+            cur = conn.execute(
+                "UPDATE queue_entries SET status = 'running', claimed_at = ?, owner_pid = ?, "
+                "attempt = attempt + 1, approved_at = ?, approval_snapshot = ? "
+                "WHERE id = ? AND status = 'awaiting_approval'",
+                (approved_at, pid, approved_at, snapshot, entry_id),
+            )
+            conn.execute("COMMIT")
+        except BaseException:
+            conn.execute("ROLLBACK")
+            raise
+    finally:
+        conn.isolation_level = prior_isolation
+        conn.close()
+    return cur.rowcount > 0
+
+
+def record_loop_started(
+    entry_id: str,
+    instance_id: str,
+    run_dir: str,
+    *,
+    db_path: Path | str = DEFAULT_DB_PATH,
+    root: Path | None = None,
+) -> bool:
+    """Persist the structured start-metadata readback (FEAT-3498).
+
+    Guarded ``AND status = 'running'`` like every other in-flight write in
+    this module: only a row still owned by the caller's dispatch is a valid
+    target. Safe to call more than once (e.g. a live poll plus a final
+    completion-time re-read) — a later call simply overwrites with the same
+    values.
+    """
+    conn = connect(db_path, root=root)
+    try:
+        cur = conn.execute(
+            "UPDATE queue_entries SET loop_instance_id = ?, run_dir = ? "
+            "WHERE id = ? AND status = 'running'",
+            (instance_id, run_dir, entry_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return cur.rowcount > 0
+
+
+def get_run_request(
+    request_id: str,
+    workspace_id: str,
+    *,
+    db_path: Path | str = DEFAULT_DB_PATH,
+    root: Path | None = None,
+) -> QueueEntry | None:
+    """Resolve a builder-origin request key to its queue row (FEAT-3498).
+
+    Never pass a request UUID straight to :func:`get_entry` — the request id
+    and the store's own queue id are distinct identifiers.
+    """
+    conn = connect(db_path, root=root)
+    try:
+        row = conn.execute(
+            "SELECT * FROM queue_entries WHERE workspace_id = ? AND request_id = ?",
+            (workspace_id, request_id),
+        ).fetchone()
+    finally:
+        conn.close()
+    return QueueEntry._from_row(row) if row else None

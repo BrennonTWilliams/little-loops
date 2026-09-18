@@ -55,7 +55,12 @@ _STATUS_COLOR: dict[str, str] = {
     "failed": "38;5;208",
     "dead_letter": "31",
     "cancelled": "2",
+    "awaiting_approval": "35",
 }
+
+# Poll cadence for observing a builder-origin child's start-metadata file
+# while `_run_loop_entry` blocks in `communicate()` (FEAT-3498).
+_METADATA_POLL_INTERVAL_S = 0.5
 
 # Truncation budget for the args/timeout summary suffix (ENH-2931).
 # Deliberately a constant, not shutil.get_terminal_size() — terminal
@@ -80,6 +85,14 @@ def _format_action_summary(entry: Any, *, wide: bool = False) -> str:
     base = f"{action.runner.value}:{action.target}"
 
     suffix_parts: list[str] = []
+    if entry.request_id is not None:
+        # FEAT-3498: surface builder-origin identity (request/issue/revision)
+        # in the list row so an operator can tell an awaiting request apart
+        # from another before running `ll-queue status`.
+        suffix_parts.append(f"issue={entry.issue_id}")
+        suffix_parts.append(f"req={entry.request_id[:8]}")
+        if entry.revision_id:
+            suffix_parts.append(f"rev={entry.revision_id[:8]}")
     loop_input = action.args.get("loop_input")
     if loop_input is not None:
         suffix_parts.append(f"input={loop_input}")
@@ -334,22 +347,28 @@ def cmd_status(args: argparse.Namespace) -> int:
         print_json(entry.to_dict())
         return 0
 
-    print(
-        status_block(
-            {
-                "id": entry.id,
-                "action": f"{entry.action.runner.value}:{entry.action.target}",
-                "priority": entry.priority,
-                "status": entry.status,
-                "enqueuedAt": entry.enqueued_at,
-                "attempt": entry.attempt,
-                "nextAttemptAt": entry.next_attempt_at or "-",
-                "reason": (entry.result or {}).get("reason") or "-",
-                "error": (entry.result or {}).get("error") or "-",
-                "result": _json.dumps(entry.result) if entry.result else "-",
-            }
-        )
-    )
+    fields = {
+        "id": entry.id,
+        "action": f"{entry.action.runner.value}:{entry.action.target}",
+        "priority": entry.priority,
+        "status": entry.status,
+        "enqueuedAt": entry.enqueued_at,
+        "attempt": entry.attempt,
+        "nextAttemptAt": entry.next_attempt_at or "-",
+        "reason": (entry.result or {}).get("reason") or "-",
+        "error": (entry.result or {}).get("error") or "-",
+        "result": _json.dumps(entry.result) if entry.result else "-",
+    }
+    if entry.request_id is not None:
+        # FEAT-3498: surface the builder-origin identity for a request-bound entry.
+        fields["requestId"] = entry.request_id
+        fields["issueId"] = entry.issue_id or "-"
+        fields["revisionId"] = entry.revision_id or "-"
+        fields["approvedAt"] = entry.approved_at or "-"
+        fields["loopInstanceId"] = entry.loop_instance_id or "-"
+        fields["runDir"] = entry.run_dir or "-"
+
+    print(status_block(fields))
     return 0
 
 
@@ -379,7 +398,48 @@ def cmd_remove(args: argparse.Namespace) -> int:
     return 0
 
 
-def _run_loop_entry(action: Any) -> Any:
+def _record_metadata_if_matching(entry_id: str, metadata_path: Path) -> bool:
+    """Read *metadata_path* and, if it names *entry_id*, persist it (FEAT-3498).
+
+    Returns True once a matching, complete payload has been recorded — the
+    caller (a polling observer, or the final post-``communicate()`` read)
+    stops polling on True. A missing file, unparseable JSON, a payload naming
+    a different queue id (stale file from a reused path), or a payload
+    missing ``instanceId``/``runDir`` (the child hasn't finished its atomic
+    write yet) all return False so the caller keeps waiting.
+    """
+    from little_loops.queue_store import record_loop_started
+
+    if not metadata_path.exists():
+        return False
+    try:
+        data = json.loads(metadata_path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return False
+    if data.get("queueId") != entry_id:
+        return False
+    instance_id = data.get("instanceId")
+    run_dir = data.get("runDir")
+    if not instance_id or not run_dir:
+        return False
+    record_loop_started(entry_id, instance_id, run_dir, db_path=QUEUE_DB_PATH)
+    return True
+
+
+def _observe_start_metadata(entry_id: str, metadata_path: Path, stop: threading.Event) -> None:
+    """Poll *metadata_path* until it appears or *stop* is set (FEAT-3498).
+
+    Runs on a helper thread because ``_run_loop_entry`` blocks in
+    ``communicate()`` for the child's whole lifetime — nothing else can
+    observe the file mid-run.
+    """
+    while not stop.is_set():
+        if _record_metadata_if_matching(entry_id, metadata_path):
+            return
+        stop.wait(_METADATA_POLL_INTERVAL_S)
+
+
+def _run_loop_entry(entry: QueueEntry) -> Any:
     """Dispatch a ``RunnerType.LOOP`` entry via a subprocess ``ll-loop run`` shell-out.
 
     Mirrors the working precedent in ``worker_pool.py``/``cli/sprint/run.py``:
@@ -396,16 +456,39 @@ def _run_loop_entry(action: Any) -> Any:
     ``os.killpg`` on a second shutdown signal, and tracked in the module-level
     ``_current_loop_proc`` for the duration of the call so that handler can
     find it.
+
+    Takes the full :class:`~little_loops.queue_store.QueueEntry` (FEAT-3498),
+    not just its ``ActionSpec``, so builder-origin dispatch (``request_id``
+    set) can add ``cwd=entry.project_root``, ``--context issue_id=<ID>``, and
+    a hidden start-metadata-output flag observed via a helper thread — an
+    ordinary entry's argv/cwd is unchanged. Because an approved builder entry
+    retries through the generic drainer, this branch lives here (the one
+    dispatch path both `_drain_once` and `--id --approve` share via
+    :func:`_dispatch_claimed`), not only under the approval command.
     """
     global _current_loop_proc
 
     from little_loops.fsm.types import FAILURE_TERMINAL_EXIT_CODE
     from little_loops.runner_spec import RunnerResult
 
+    action = entry.action
     cmd = ["ll-loop", "run", action.target]
     loop_input = action.args.get("loop_input")
     if loop_input is not None:
         cmd.append(loop_input)
+
+    builder_origin = entry.request_id is not None
+    metadata_path: Path | None = None
+    popen_kwargs: dict[str, Any] = {}
+    if builder_origin:
+        cmd += ["--context", f"issue_id={entry.issue_id}"]
+        metadata_dir = Path(entry.project_root or ".") / ".loops" / ".queue-metadata"
+        metadata_dir.mkdir(parents=True, exist_ok=True)
+        metadata_path = metadata_dir / f"{entry.id}.json"
+        metadata_path.unlink(missing_ok=True)
+        cmd += ["--queue-entry-id", entry.id, "--queue-metadata-out", str(metadata_path)]
+        if entry.project_root:
+            popen_kwargs["cwd"] = entry.project_root
 
     try:
         proc = subprocess.Popen(
@@ -414,11 +497,21 @@ def _run_loop_entry(action: Any) -> Any:
             stderr=subprocess.PIPE,
             text=True,
             start_new_session=True,
+            **popen_kwargs,
         )
     except FileNotFoundError as exc:
         return RunnerResult(stdout="", stderr="", exit_code=-1, error=str(exc))
 
     _current_loop_proc = proc
+    observer_stop = threading.Event()
+    observer: threading.Thread | None = None
+    if builder_origin and metadata_path is not None:
+        observer = threading.Thread(
+            target=_observe_start_metadata,
+            args=(entry.id, metadata_path, observer_stop),
+            daemon=True,
+        )
+        observer.start()
     try:
         stdout, stderr = proc.communicate(timeout=action.timeout)
         returncode = proc.returncode
@@ -428,6 +521,15 @@ def _run_loop_entry(action: Any) -> Any:
         return RunnerResult(stdout=stdout or "", stderr=stderr or "", exit_code=-1, timed_out=True)
     finally:
         _current_loop_proc = None
+        observer_stop.set()
+        if observer is not None:
+            observer.join(timeout=_METADATA_POLL_INTERVAL_S * 2)
+
+    if builder_origin and metadata_path is not None:
+        # Re-read once more before the caller's completion write so a race
+        # between the observer's last poll and process exit cannot lose it.
+        _record_metadata_if_matching(entry.id, metadata_path)
+        metadata_path.unlink(missing_ok=True)
 
     error = "terminal failure" if returncode == FAILURE_TERMINAL_EXIT_CODE else None
     return RunnerResult(stdout=stdout, stderr=stderr, exit_code=returncode, error=error)
@@ -502,6 +604,104 @@ def _classify_dispatch(
     return reason in QUEUE_RETRYABLE_REASONS, reason
 
 
+def _dispatch_claimed(
+    entry: QueueEntry,
+    *,
+    force_stop: threading.Event,
+    db_path: Path | str = QUEUE_DB_PATH,
+) -> dict[str, Any]:
+    """Dispatch an already-``running`` (claimed) entry and persist its result.
+
+    Factored out of ``_drain_once``'s loop body (FEAT-3498) so both the
+    generic drain loop and the explicit ``ll-queue run --id --approve``
+    single-entry command share one dispatch/classify/result-write path —
+    approved builder entries retry through the generic drainer, so this
+    logic cannot live only under the approval command.
+
+    ``RunnerType.LOOP`` entries are intercepted before ``run_action()`` (which
+    deliberately never dispatches them, see ``runner_spec.py``) and driven
+    via a subprocess ``ll-loop run`` shell-out instead (FEAT-2906). All other
+    runner kinds continue through ``run_action()`` unchanged.
+
+    A failed dispatch is classified via :func:`_classify_dispatch`
+    (ENH-3416): non-retryable lands on ``failed`` (unchanged from
+    pre-ENH-3416 behavior); retryable with budget remaining is returned to
+    ``pending`` with a backoff ``next_attempt_at``; retryable with the budget
+    exhausted lands on terminal ``dead_letter``.
+
+    *force_stop*, when already set by a second shutdown signal, marks the
+    entry ``cancelled`` with ``reason: "interrupted by operator"`` regardless
+    of its actual result. Every post-dispatch write is guarded (only a row
+    this caller still owns as ``running`` is a valid target) — on a guard
+    miss (the entry was cancelled or reclaimed out from under the caller),
+    this function re-reads the row and reports its actual status.
+    """
+    from little_loops import queue_store
+    from little_loops.queue_store import (
+        QUEUE_MAX_ATTEMPTS,
+        cancel_entry,
+        compute_backoff_s,
+        dead_letter_entry,
+        get_entry,
+        schedule_retry,
+        update_entry_result,
+    )
+    from little_loops.runner_spec import RunnerType, run_action
+
+    def _reread_status(entry_id: str) -> str:
+        fetched = get_entry(entry_id, db_path=db_path)
+        return fetched.status if fetched is not None else "unknown"
+
+    def _add_seconds(timestamp: str, seconds: int) -> str:
+        dt = datetime.strptime(timestamp, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
+        return (dt + timedelta(seconds=seconds)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    try:
+        if entry.action.runner is RunnerType.LOOP:
+            result = _run_loop_entry(entry)
+        else:
+            result = run_action(entry.action, run_id=entry.id)
+    except Exception as exc:
+        result_dict: dict[str, Any] = {"exit_code": None, "timed_out": False, "error": str(exc)}
+    else:
+        result_dict = {
+            "exit_code": result.exit_code,
+            "timed_out": result.timed_out,
+            "error": result.error,
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+        }
+
+    timed_out = bool(result_dict.get("timed_out"))
+    succeeded = (
+        not timed_out and result_dict.get("error") is None and result_dict.get("exit_code") == 0
+    )
+
+    if force_stop.is_set():
+        wrote = cancel_entry(
+            entry.id, "interrupted by operator", db_path=db_path, extra=result_dict
+        )
+        status = "cancelled" if wrote else _reread_status(entry.id)
+    elif succeeded:
+        wrote = update_entry_result(entry.id, "done", result_dict, db_path=db_path)
+        status = "done" if wrote else _reread_status(entry.id)
+    else:
+        retryable, reason = _classify_dispatch(entry.action.runner, result_dict, timed_out)
+        error_text = result_dict.get("error") or result_dict.get("stderr") or reason
+        if not retryable:
+            wrote = update_entry_result(entry.id, "failed", result_dict, db_path=db_path)
+            status = "failed" if wrote else _reread_status(entry.id)
+        elif entry.attempt < QUEUE_MAX_ATTEMPTS:
+            next_attempt_at = _add_seconds(queue_store._utcnow(), compute_backoff_s(entry.attempt))
+            wrote = schedule_retry(entry.id, error_text, next_attempt_at, db_path=db_path)
+            status = "pending" if wrote else _reread_status(entry.id)
+        else:
+            wrote = dead_letter_entry(entry.id, error_text, db_path=db_path)
+            status = "dead_letter" if wrote else _reread_status(entry.id)
+
+    return {"id": entry.id, "status": status, "result": result_dict}
+
+
 def _drain_once(
     stop: threading.Event,
     force_stop: threading.Event,
@@ -515,11 +715,6 @@ def _drain_once(
     count of pending entries left behind whose ``next_attempt_at`` is still
     in the future (ENH-3416).
 
-    ``RunnerType.LOOP`` entries are intercepted before ``run_action()`` (which
-    deliberately never dispatches them, see ``runner_spec.py``) and driven
-    via a subprocess ``ll-loop run`` shell-out instead (FEAT-2906). All other
-    runner kinds continue through ``run_action()`` unchanged.
-
     *stop* is checked before each claim, so a graceful shutdown (first
     signal) stops claiming new work without interrupting an entry already in
     flight. The lost-claim path (every currently-eligible entry claimed by
@@ -527,41 +722,15 @@ def _drain_once(
     before retrying instead of busy-spinning — a rare race for the one-shot
     drainer, routine once ``--watch`` makes concurrent drainers normal.
 
-    A failed dispatch is classified via :func:`_classify_dispatch`
-    (ENH-3416): non-retryable lands on ``failed`` (unchanged from
-    pre-ENH-3416 behavior); retryable with budget remaining is returned to
-    ``pending`` with a backoff ``next_attempt_at``; retryable with the budget
-    exhausted lands on terminal ``dead_letter``.
+    Only ``pending`` entries are ever claimed here — an ``awaiting_approval``
+    builder-origin entry (FEAT-3498) is invisible to this loop; only explicit
+    ``ll-queue run --id --approve`` can accept one.
 
-    *force_stop*, when set by a second shutdown signal mid-entry, marks that
-    entry ``cancelled`` with ``reason: "interrupted by operator"`` regardless
-    of its actual result, then stops draining further entries even if more
-    are pending. Every post-dispatch write is guarded (only a row this
-    drainer still owns as ``running`` is a valid target) — on a guard miss
-    (the entry was cancelled or reclaimed out from under the drainer),
-    ``_drain_once`` re-reads the row and reports its actual status.
+    Dispatch and result persistence are shared with the single-entry approval
+    command via :func:`_dispatch_claimed`.
     """
     from little_loops import queue_store
-    from little_loops.queue_store import (
-        QUEUE_MAX_ATTEMPTS,
-        cancel_entry,
-        claim_entry,
-        compute_backoff_s,
-        dead_letter_entry,
-        get_entry,
-        list_entries,
-        schedule_retry,
-        update_entry_result,
-    )
-    from little_loops.runner_spec import RunnerType, run_action
-
-    def _reread_status(entry_id: str) -> str:
-        fetched = get_entry(entry_id, db_path=QUEUE_DB_PATH)
-        return fetched.status if fetched is not None else "unknown"
-
-    def _add_seconds(timestamp: str, seconds: int) -> str:
-        dt = datetime.strptime(timestamp, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
-        return (dt + timedelta(seconds=seconds)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    from little_loops.queue_store import claim_entry, get_entry, list_entries
 
     processed: list[dict[str, Any]] = []
     backing_off = 0
@@ -586,52 +755,7 @@ def _drain_once(
             continue
         entry = get_entry(claimed.id, db_path=QUEUE_DB_PATH) or claimed
 
-        try:
-            if entry.action.runner is RunnerType.LOOP:
-                result = _run_loop_entry(entry.action)
-            else:
-                result = run_action(entry.action, run_id=entry.id)
-        except Exception as exc:
-            result_dict: dict[str, Any] = {"exit_code": None, "timed_out": False, "error": str(exc)}
-        else:
-            result_dict = {
-                "exit_code": result.exit_code,
-                "timed_out": result.timed_out,
-                "error": result.error,
-                "stdout": result.stdout,
-                "stderr": result.stderr,
-            }
-
-        timed_out = bool(result_dict.get("timed_out"))
-        succeeded = (
-            not timed_out and result_dict.get("error") is None and result_dict.get("exit_code") == 0
-        )
-
-        if force_stop.is_set():
-            wrote = cancel_entry(
-                entry.id, "interrupted by operator", db_path=QUEUE_DB_PATH, extra=result_dict
-            )
-            status = "cancelled" if wrote else _reread_status(entry.id)
-        elif succeeded:
-            wrote = update_entry_result(entry.id, "done", result_dict, db_path=QUEUE_DB_PATH)
-            status = "done" if wrote else _reread_status(entry.id)
-        else:
-            retryable, reason = _classify_dispatch(entry.action.runner, result_dict, timed_out)
-            error_text = result_dict.get("error") or result_dict.get("stderr") or reason
-            if not retryable:
-                wrote = update_entry_result(entry.id, "failed", result_dict, db_path=QUEUE_DB_PATH)
-                status = "failed" if wrote else _reread_status(entry.id)
-            elif entry.attempt < QUEUE_MAX_ATTEMPTS:
-                next_attempt_at = _add_seconds(
-                    queue_store._utcnow(), compute_backoff_s(entry.attempt)
-                )
-                wrote = schedule_retry(entry.id, error_text, next_attempt_at, db_path=QUEUE_DB_PATH)
-                status = "pending" if wrote else _reread_status(entry.id)
-            else:
-                wrote = dead_letter_entry(entry.id, error_text, db_path=QUEUE_DB_PATH)
-                status = "dead_letter" if wrote else _reread_status(entry.id)
-
-        record = {"id": entry.id, "status": status, "result": result_dict}
+        record = _dispatch_claimed(entry, force_stop=force_stop, db_path=QUEUE_DB_PATH)
         processed.append(record)
         if on_entry is not None:
             on_entry(entry, record)
@@ -709,20 +833,117 @@ def _reclaim_stale(db_path: Path | str) -> tuple[int, int]:
     return reclaimed, dead_lettered
 
 
+def _cmd_run_approve(target_id: str, json_mode: bool) -> int:
+    """``ll-queue run --id ID --approve``: accept exactly one awaiting request (FEAT-3498).
+
+    Resolves *target_id* via :func:`~little_loops.queue_store.resolve_entry`
+    (prefix support like every other subcommand), calls
+    :func:`~little_loops.queue_store.approve_and_claim_entry`, and dispatches
+    that one entry through :func:`_dispatch_claimed` — unrelated queue
+    entries are untouched.
+    """
+    from little_loops.cli.output import colorize, print_json
+    from little_loops.queue_store import (
+        AmbiguousEntryIdError,
+        approve_and_claim_entry,
+        get_entry,
+        resolve_entry,
+    )
+
+    try:
+        entry = resolve_entry(target_id, QUEUE_DB_PATH)
+    except AmbiguousEntryIdError as exc:
+        msg = str(exc)
+        if json_mode:
+            print_json({"error": msg, "id": target_id})
+        else:
+            print(msg, file=sys.stderr)
+        return 1
+
+    if entry is None:
+        msg = f"No queued entry with id '{target_id}'"
+        if json_mode:
+            print_json({"error": msg, "id": target_id})
+        else:
+            print(msg, file=sys.stderr)
+        return 1
+
+    if entry.status != "awaiting_approval":
+        msg = f"Entry '{entry.id[:8]}' is {entry.status}, not awaiting_approval; nothing to approve"
+        if json_mode:
+            print_json({"error": msg, "id": entry.id})
+        else:
+            print(msg, file=sys.stderr)
+        return 1
+
+    won = approve_and_claim_entry(
+        entry.id,
+        expected_revision_id=entry.revision_id or "",
+        expected_issue_id=entry.issue_id or "",
+        db_path=QUEUE_DB_PATH,
+    )
+    if not won:
+        msg = f"Could not approve entry '{entry.id[:8]}': bindings changed or already claimed"
+        if json_mode:
+            print_json({"error": msg, "id": entry.id})
+        else:
+            print(msg, file=sys.stderr)
+        return 1
+
+    claimed = get_entry(entry.id, QUEUE_DB_PATH) or entry
+    record = _dispatch_claimed(claimed, force_stop=threading.Event(), db_path=QUEUE_DB_PATH)
+
+    if json_mode:
+        print_json(record)
+        return 0
+
+    status_color = _STATUS_COLOR.get(record["status"], "0")
+    print(
+        f"  {colorize(claimed.id[:8], '34')}  {colorize(record['status'], status_color)}  "
+        f"{claimed.action.runner.value}:{claimed.action.target}"
+    )
+    return 0
+
+
 def cmd_run(args: argparse.Namespace) -> int:
     """Dequeue pending entries in priority/FIFO order and dispatch each entry.
 
     Without ``--watch``: drain what's pending, then exit (unchanged one-shot
     behavior). With ``--watch``: drain, then sleep-poll for new work
     indefinitely (FEAT-2930) — see ``_run_watch``.
+
+    ``--id ID --approve`` (FEAT-3498) is a distinct mode: accept exactly one
+    ``awaiting_approval`` builder-origin entry and dispatch only it — see
+    :func:`_cmd_run_approve`. ``--id`` without ``--approve``, or combined with
+    ``--watch``, is a usage error in this release.
     """
-    from little_loops.cli.output import colorize, print_json
+    from little_loops.cli.output import print_json
 
     json_mode = getattr(args, "json", False)
     poll_interval = getattr(args, "poll_interval", _DEFAULT_POLL_INTERVAL)
+    entry_id_arg = getattr(args, "id", None)
+
+    if entry_id_arg is not None:
+        if getattr(args, "watch", False):
+            msg = "--id cannot be combined with --watch"
+            if json_mode:
+                print_json({"error": msg})
+            else:
+                print(msg, file=sys.stderr)
+            return 2
+        if not getattr(args, "approve", False):
+            msg = "--id requires --approve in this release"
+            if json_mode:
+                print_json({"error": msg})
+            else:
+                print(msg, file=sys.stderr)
+            return 2
+        return _cmd_run_approve(entry_id_arg, json_mode)
 
     if getattr(args, "watch", False):
         return _run_watch(json_mode, poll_interval)
+
+    from little_loops.cli.output import colorize
 
     stop = threading.Event()
     force_stop = threading.Event()
@@ -919,8 +1140,11 @@ def cmd_cancel(args: argparse.Namespace) -> int:
     json_mode = getattr(args, "json", False)
     reason = getattr(args, "reason", None) or "cancelled by operator"
 
-    if entry.status not in ("pending", "running"):
-        msg = f"Entry '{entry.id[:8]}' is {entry.status}, not pending/running; nothing to cancel"
+    if entry.status not in ("pending", "running", "awaiting_approval"):
+        msg = (
+            f"Entry '{entry.id[:8]}' is {entry.status}, not pending/running/awaiting_approval; "
+            "nothing to cancel"
+        )
         if json_mode:
             print_json({"error": msg, "id": entry.id})
         else:
@@ -1059,6 +1283,18 @@ Examples:
             type=float,
             default=_DEFAULT_POLL_INTERVAL,
             help=f"Seconds between polls under --watch (default: {_DEFAULT_POLL_INTERVAL})",
+        )
+        run_parser.add_argument(
+            "--id",
+            default=None,
+            help="Accept exactly one `awaiting_approval` entry (full id or 8+-char "
+            "prefix); requires --approve, mutually exclusive with --watch",
+        )
+        run_parser.add_argument(
+            "--approve",
+            action="store_true",
+            default=False,
+            help="Approve and run the single entry named by --id",
         )
 
         requeue_parser = subparsers.add_parser(

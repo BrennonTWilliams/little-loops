@@ -8,6 +8,7 @@ import json
 import os
 import re
 import subprocess
+import tempfile
 import time
 import uuid
 from contextlib import suppress
@@ -92,6 +93,30 @@ def _parse_program_md(path: Path) -> dict[str, str]:
         result["constraints"] = constraints
 
     return result
+
+
+def _write_queue_start_metadata(
+    dest: Path, *, queue_id: str | None, instance_id: str, run_dir: str
+) -> None:
+    """Atomically publish this run's identity for ``ll-queue``'s builder-origin dispatch (FEAT-3498).
+
+    Written temp-file-plus-rename (like every other atomic artifact write in
+    this codebase) so a concurrently polling reader never observes a
+    partially written file. *run_dir* must already be absolute — see the call
+    site's comment on why resolution has to happen here, after any worktree
+    ``os.chdir``.
+    """
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    payload = {"queueId": queue_id, "instanceId": instance_id, "runDir": run_dir}
+    fd, tmp_name = tempfile.mkstemp(dir=dest.parent, prefix=".queue-metadata-", suffix=".tmp")
+    tmp_path = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "w") as f:
+            json.dump(payload, f)
+        os.replace(tmp_path, dest)
+    except BaseException:
+        tmp_path.unlink(missing_ok=True)
+        raise
 
 
 def cmd_run(
@@ -584,6 +609,19 @@ def cmd_run(
             else None
         )
         Path(fsm.context["run_dir"]).mkdir(parents=True, exist_ok=True)
+
+        # FEAT-3498: publish this run's real identity for a builder-origin
+        # `ll-queue` dispatch to observe. instance_id/run_dir are both fixed
+        # by this point; run_dir must be resolved here (not earlier) since
+        # the worktree os.chdir above, when taken, happens before this line.
+        _queue_metadata_out = getattr(args, "queue_metadata_out", None)
+        if _queue_metadata_out is not None:
+            _write_queue_start_metadata(
+                Path(_queue_metadata_out),
+                queue_id=getattr(args, "queue_entry_id", None),
+                instance_id=instance_id or loop_name,
+                run_dir=str(Path(fsm.context["run_dir"]).resolve()),
+            )
 
         # ENH-3351: --serve binds a loopback-only SSE bridge before the executor
         # exists, so its per-run token/port (bridge.url) are known in time to

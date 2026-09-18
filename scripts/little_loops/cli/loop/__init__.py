@@ -229,6 +229,14 @@ Examples:
             help=argparse.SUPPRESS,
         )
         run_parser.add_argument("--instance-id", type=str, default=None, help=argparse.SUPPRESS)
+        # FEAT-3498: private start-metadata channel for `ll-queue`'s
+        # builder-origin LOOP dispatch. Appended only to that entry's argv
+        # (never a normal foreground/background run), so this is
+        # deliberately hidden rather than a documented flag.
+        run_parser.add_argument("--queue-entry-id", type=str, default=None, help=argparse.SUPPRESS)
+        run_parser.add_argument(
+            "--queue-metadata-out", type=str, default=None, help=argparse.SUPPRESS
+        )
         run_parser.add_argument(
             "--quiet", "--qt", action="store_true", help="Suppress progress output"
         )

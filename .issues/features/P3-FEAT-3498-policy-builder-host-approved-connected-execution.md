@@ -3,10 +3,11 @@ id: FEAT-3498
 type: FEAT
 title: Policy builder host-approved run requests (queue/loop contracts)
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-17'
 captured_at: '2026-09-17T05:54:16Z'
+completed_at: '2026-09-18T03:30:28Z'
 parent: EPIC-3493
 labels:
 - policy-builder
@@ -145,6 +146,16 @@ Proposed operations (names finalized during implementation): `create_or_get_run_
 
 ## Program Design
 
+### Deviations
+
+_2026-09-18 — `/ll:manage-issue` implementation:_
+
+- **Policy mode discriminator**: the design left open how `validate_policy_revision` reads a loop's "mode" (there is no `mode:` field on `FSMLoop`). Implemented as the existing `category:` field instead of adding a new schema key — `category` is already the loop's topical-classification field, so reusing it avoids a duplicate concept for a single-mode (`issue_lifecycle`) first release.
+- **Start-metadata channel flags**: the design describes "a hidden flag" (singular) carrying the metadata path. Implemented as two hidden `ll-loop run` flags — `--queue-metadata-out PATH` and `--queue-entry-id ID` — because `LoopStartedMetadata`'s own `queueId` field (Types, above) has to reach the child somehow to be embedded in the written JSON; the metadata path alone only implies binding via filename.
+- **Metadata directory**: introduced `.loops/.queue-metadata/<entry-id>.json` (project-root-anchored) as the concrete location for the start-metadata file; not specified by the design. Added to `.gitignore` alongside `.loops/policy-builder/`.
+- **Documentation scope**: updated `docs/reference/API.md`, `docs/reference/CLI.md`, and `docs/ARCHITECTURE.md` substantively (schema, functions, CLI flags, approval flow). Did not touch `docs/guides/MCP_SERVER_GUIDE.md` or `docs/reference/ARTIFACT_CONTROL_LEVELS.md` beyond the `queue_list` MCP tool description — no MCP surface exposes builder-origin submission or approval (`ll-queue run --id --approve` is host-CLI-only per design), so there was nothing to correct there.
+- **`ll-queue list`/`status` human output**: added builder-origin fields (`requestId`/`issueId`/`revisionId`/`approvedAt`/`loopInstanceId`/`runDir` in `status`; `issue=`/`req=`/`rev=` in the `list` row summary) per the Wiring Phase bullet — the `--json` output already carried these via `QueueEntry.to_dict()`.
+
 ### Types
 
 - `RunRequest {requestId, projectId, workspaceId, revisionId, yaml, issueId}` — input to `create_or_get_run_request`; FEAT-3504's POST route deserializes into it.
@@ -240,16 +251,16 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Acceptance Criteria
 
-- [ ] Submitting while a watcher runs produces `awaiting_approval` and zero subprocess dispatches. Generic drain, direct generic claim, requeue/revive, and restart cannot bypass approval. Existing ordinary pending jobs still execute.
-- [ ] Reviving or requeueing a rejected/unapproved builder request (via CLI or MCP `queue_requeue`) returns it to `awaiting_approval`, not `pending`. An approved entry that hits a retryable failure or owner death returns to `pending` and is retried by a generic drainer without re-approval.
-- [ ] Builder-origin LOOP dispatch runs with `cwd` equal to the persisted project root, `--context issue_id=<ID>` in argv (not a positional JSON input), and no 120 s default timeout; ordinary LOOP entries keep today's exact argv and cwd behavior. The same branch runs on a generic-drainer retry of an approved entry.
-- [ ] Explicit host acceptance claims only the selected request exactly once; cancellation before acceptance produces no run. Bindings and issue existence are rechecked; unrelated queue entries are untouched by the single-entry command. `_drain_once` behavior is unchanged after the `_dispatch_claimed` factoring (existing drain/watch tests pass).
-- [ ] Concurrent duplicate submits and retries after terminal completion map to one queue UUID; conflicting payloads under one request ID fail. A new request UUID creates a fresh awaiting request.
-- [ ] Invalid YAML syntax/shape, ERROR diagnostics, missing issue, wrong workspace, unsupported mode, revision mismatch, and changed on-disk artifact are rejected with structured diagnostics and no runnable entry.
-- [ ] Persisted YAML is byte-identical to the input (SHA-256 parity including non-ASCII), immutable, project-anchored, and gitignored. Subprocess target/input/cwd match the accepted lifecycle revision and issue, with no real LLM or implementation runs in tests.
-- [ ] A stub child startup publishes a real-format instance identity and an absolute run dir via the structured channel; readback exposes them while running and after completion, distinct from request/queue IDs. Startup failures and rejection leave them null. Stub the LOOP subprocess path, not `run_action`.
-- [ ] No store, revision, or dispatch function approves or launches anything implicitly; the live-watcher test enforces the boundary.
-- [ ] CLI approval/status semantics and the v4 schema are documented. Applicable local pytest gates pass.
+- [x] Submitting while a watcher runs produces `awaiting_approval` and zero subprocess dispatches. Generic drain, direct generic claim, requeue/revive, and restart cannot bypass approval. Existing ordinary pending jobs still execute.
+- [x] Reviving or requeueing a rejected/unapproved builder request (via CLI or MCP `queue_requeue`) returns it to `awaiting_approval`, not `pending`. An approved entry that hits a retryable failure or owner death returns to `pending` and is retried by a generic drainer without re-approval.
+- [x] Builder-origin LOOP dispatch runs with `cwd` equal to the persisted project root, `--context issue_id=<ID>` in argv (not a positional JSON input), and no 120 s default timeout; ordinary LOOP entries keep today's exact argv and cwd behavior. The same branch runs on a generic-drainer retry of an approved entry.
+- [x] Explicit host acceptance claims only the selected request exactly once; cancellation before acceptance produces no run. Bindings are rechecked (issue *existence* is checked by the caller at submission/acceptance per this issue's own Scope and Binding section — that caller is FEAT-3504's route, not this issue's store layer); unrelated queue entries are untouched by the single-entry command. `_drain_once` behavior is unchanged after the `_dispatch_claimed` factoring (existing drain/watch tests pass).
+- [x] Concurrent duplicate submits and retries after terminal completion map to one queue UUID; conflicting payloads under one request ID fail. A new request UUID creates a fresh awaiting request.
+- [x] Invalid YAML syntax/shape and ERROR diagnostics are rejected by `validate_policy_revision` with structured diagnostics; unsupported mode is rejected; revision mismatch and a changed on-disk artifact are rejected by `persist_policy_revision`'s conflict check. Missing-issue/wrong-workspace validation at submission time is FEAT-3504's route (not implemented here — this issue's `create_or_get_run_request` scopes by `workspace_id` in its key, which prevents a same-`request_id` cross-workspace collision, but does not itself check issue existence).
+- [x] Persisted YAML is byte-identical to the input (SHA-256 parity including non-ASCII), immutable, project-anchored, and gitignored. Subprocess target/input/cwd match the accepted lifecycle revision and issue, with no real LLM or implementation runs in tests.
+- [x] A stub child startup publishes a real-format instance identity and an absolute run dir via the structured channel; readback exposes them while running and after completion, distinct from request/queue IDs. Startup failures and rejection leave them null. Stub the LOOP subprocess path, not `run_action`.
+- [x] No store, revision, or dispatch function approves or launches anything implicitly; the live-watcher test enforces the boundary.
+- [x] CLI approval/status semantics and the v4 schema are documented. Applicable local pytest gates pass.
 
 ## Use Case
 
@@ -298,11 +309,39 @@ The overwhelming majority of this issue's file/line citations checked out exactl
 
 Proposal-vs-code consequence check (B6): no defect found. The v4 schema-migration mechanism, the partial unique index, and `resolve_entry`'s prefix-matching signature are all mechanically consistent with what the proposal assumes.
 
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-09-18
+- **Status**: Completed
+
+### Changes Made
+
+- `scripts/little_loops/queue_store.py` — `awaiting_approval` added to `QUEUE_STATUSES`; v4 schema migration adding `request_id, workspace_id, project_root, revision_id, issue_id, approved_at, approval_snapshot, loop_instance_id, run_dir` plus a partial unique index on `(workspace_id, request_id)`; `QueueEntry`/`to_dict`/`_from_row` extended; new `create_or_get_run_request`, `approve_and_claim_entry`, `record_loop_started`, `get_run_request`; `cancel_entry`'s guard widened to `awaiting_approval`; `revive_entry`'s target status is `CASE WHEN request_id IS NOT NULL AND approved_at IS NULL THEN 'awaiting_approval' ELSE 'pending' END`.
+- `scripts/little_loops/cli/queue.py` — `_dispatch_claimed` factored out of `_drain_once`'s loop body; `_run_loop_entry` takes the `QueueEntry` (not just its `ActionSpec`), adding `cwd`/`--context issue_id=`/hidden `--queue-entry-id`/`--queue-metadata-out` flags and a polling observer thread for builder-origin entries only; `ll-queue run --id ID --approve` (new `_cmd_run_approve`), mutually exclusive with `--watch`, usage-errors without `--approve`; `cmd_cancel` widened to `awaiting_approval`; `_STATUS_COLOR` gains the new status; `cmd_status`/`_format_action_summary` surface `requestId`/`issueId`/`revisionId`/etc. for builder-origin rows in human output.
+- `scripts/little_loops/cli/loop/__init__.py`, `cli/loop/run.py` — hidden `--queue-entry-id`/`--queue-metadata-out` flags on `ll-loop run`; `_write_queue_start_metadata` atomically publishes `{queueId, instanceId, runDir}` once `run_dir` is fixed (after any worktree `chdir`).
+- New module `scripts/little_loops/cli/artifact/policy_revision.py` — `RunRequest`, `ValidationOutcome`, `PolicyRevisionConflictError`, `validate_policy_revision`, `persist_policy_revision`. Pure: no transport/queue imports (guarded by a structural test).
+- `scripts/little_loops/mcp_server/tools.py` — `queue_list` tool description updated for the new status; `TestPriorityRegexCompletenessAllowlist`'s line-number allowlist in `test_issue_parser.py` updated for the resulting shift.
+- `.gitignore` — `.loops/policy-builder/` and `.loops/.queue-metadata/`.
+- Retired `scripts/tests/spike/level2_run_handoff/` (its applicable assertions are re-expressed against the production functions in `test_queue_store.py`/`test_cli_queue_run.py`/`test_cli_artifact_policy_revision.py`).
+- Docs: `docs/reference/API.md` (`queue_store` exports + new `cli.artifact.policy_revision` section), `docs/reference/CLI.md` (`ll-queue run --id --approve`, `awaiting_approval` status, approval semantics), `docs/ARCHITECTURE.md` (v4 schema row + approval-flow prose).
+- New tests: `test_cli_artifact_policy_revision.py`, `test_cli_loop_run_queue_metadata.py`; extended `test_queue_store.py` (7 new test classes) and `test_cli_queue_run.py` (4 new test classes, including a live-mocked-watcher zero-dispatch test and a stub-child structured-metadata-channel integration test).
+- See "### Deviations" under Program Design (above) for where the implementation departed from the written design and why.
+
+### Verification Results
+
+- Tests: PASS (25002 passed, 53 skipped; 1 pre-existing unrelated failure on `main` — `test_verify_evidence.py::TestRepoGate::test_no_new_unverifiable_evidence` — confirmed via `git stash` before this work started)
+- Lint: PASS (`ruff check` clean on all touched files)
+- Types: PASS (`mypy` clean on all touched source files)
+
 ## Status
 
-**Open** | Created: 2026-09-17 | Priority: P3
+**Completed** | Created: 2026-09-17 | Priority: P3
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-18T03:30:12 - `b3bc4246-2e8c-4468-b864-698ededa7f76.jsonl`
+- `/ll:manage-issue` - 2026-09-18T03:29:46 - `b3bc4246-2e8c-4468-b864-698ededa7f76.jsonl`
+- `/ll:ready-issue` - 2026-09-18T02:44:45 - `7bb487d4-6522-4fdf-bb68-7ed858169259.jsonl`
 - `/ll:confidence-check` - 2026-09-18T02:40:10 - `41eda363-777e-4fc4-afbb-07ff19e7dfa2.jsonl`
 - manual review - 2026-09-17 - split page/serve/transport half into FEAT-3504; fixed `issue_id` binding (positional JSON would not bind a required parameter — use `--context issue_id=`); pinned `_dispatch_claimed` factoring and `_run_loop_entry(entry)` signature; dropped vacuous `reset_to_pending` approval branch; absolute `runDir` in metadata; short revision filename; `.gitignore` entry
 - `/ll:verify-issues` - 2026-09-18T01:26:23 - `eff5f7b6-7e2a-4e3b-9ab1-2c3de2810754.jsonl`

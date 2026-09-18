@@ -4297,7 +4297,7 @@ ll-compact-session abc123-session-id --json    # Machine-readable result
 
 ### ll-queue
 
-Persisted work-item queue, backed by a dedicated `.ll/queue.db` (FEAT-2682) — distinct from [`ll-loop queue`](#queue-entries-loopsqueue)'s PID-liveness marker mechanism, which FEAT-2684 preserves unchanged as a compat shim rather than migrating. Schema: `{id, action, enqueuedAt, priority, status, result, claimedAt, ownerPid, attempt, nextAttemptAt}`, ordered by priority tier then FIFO within tier. Status is one of `pending`, `running`, `done`, `failed`, `dead_letter`, `cancelled` (ENH-3416) — the first two are non-terminal, the rest are all `requeue`-able.
+Persisted work-item queue, backed by a dedicated `.ll/queue.db` (FEAT-2682) — distinct from [`ll-loop queue`](#queue-entries-loopsqueue)'s PID-liveness marker mechanism, which FEAT-2684 preserves unchanged as a compat shim rather than migrating. Schema: `{id, action, enqueuedAt, priority, status, result, claimedAt, ownerPid, attempt, nextAttemptAt}`, ordered by priority tier then FIFO within tier. Status is one of `pending`, `running`, `done`, `failed`, `dead_letter`, `cancelled` (ENH-3416), `awaiting_approval` (FEAT-3498) — the first two, plus `awaiting_approval`, are non-terminal; the rest are all `requeue`-able. An `awaiting_approval` entry is a request submitted by a policy-builder-origin caller bound to a specific project, issue, and immutable YAML revision; no `--watch` drainer or one-shot `run` ever claims it — only `ll-queue run --id ID --approve` can accept it.
 
 **Subcommands:**
 
@@ -4307,7 +4307,7 @@ Persisted work-item queue, backed by a dedicated `.ll/queue.db` (FEAT-2682) — 
 | `list` | List all entries, ordered by priority then FIFO |
 | `status ID` | Show one entry's state and result by full id or 8+-char prefix |
 | `remove ID` | Delete a `pending` entry by full id or 8+-char prefix |
-| `run` | Serially dequeue and dispatch all eligible `pending` entries in priority/FIFO order; `--watch` (FEAT-2930) keeps it running |
+| `run` | Serially dequeue and dispatch all eligible `pending` entries in priority/FIFO order; `--watch` (FEAT-2930) keeps it running; `--id ID --approve` (FEAT-3498) accepts and runs exactly one `awaiting_approval` entry instead |
 | `requeue ID [--force]` | (FEAT-2930) Return a stranded `running` entry to `pending`; (ENH-3416) also revives a terminal `dead_letter`/`failed`/`cancelled` entry with a fresh attempt budget |
 | `cancel ID [--reason TEXT]` | (ENH-3416) Move a `pending`/`running` entry to terminal `cancelled`; does not signal an in-flight process |
 
@@ -4360,8 +4360,13 @@ Without `--watch`, this behavior is unchanged: drain what's eligible, then exit.
 | Flag | Description |
 |------|-------------|
 | `--json` | Output processed entries as JSON — a single array without `--watch`, NDJSON (one object per line) with it |
-| `--watch` | (FEAT-2930) Long-lived drainer: sleep-poll for new work instead of exiting after draining |
+| `--watch` | (FEAT-2930) Long-lived drainer: sleep-poll for new work instead of exiting after draining. Mutually exclusive with `--id` |
 | `--poll-interval SECONDS` | (FEAT-2930) Seconds between polls under `--watch` (default: `3`) |
+| `--id ID` | (FEAT-3498) Accept exactly one `awaiting_approval` entry (full id or 8+-char prefix) instead of draining; requires `--approve` |
+| `--approve` | (FEAT-3498) Confirms `--id`'s host-acceptance intent; `--id` without it is a usage error |
+
+**Host approval (FEAT-3498):** a builder-origin request lands `awaiting_approval`, bound to a project root, issue id, and the SHA-256 of an immutable YAML revision. `ll-queue run --id ID --approve` rechecks those bindings inside one transaction, then dispatches only that entry — unrelated entries, and any concurrently running `--watch` drainer, are untouched. Rejecting an awaiting request (before it ever runs) is a normal `ll-queue cancel ID`. Requeuing a rejected or still-unapproved request returns it to `awaiting_approval`, not `pending` — approval must always come from an explicit `--id --approve`, never a generic drain; once approved, a later retryable failure returns the entry to plain `pending` and any drainer may retry it without asking again. A `LOOP`-runner entry accepted this way runs with its `cwd` set to the request's project root, `--context issue_id=<ID>` in its argv, and no default timeout.
+`ll-queue status ID --json` on an accepted entry exposes `loopInstanceId`/`runDir` once the run has actually started (populated from the child's own reported identity, not guessed from the queue id), alongside the usual `requestId`/`workspaceId`/`revisionId`/`issueId`/`approvedAt` fields.
 
 **`requeue` flags:**
 
@@ -4381,7 +4386,7 @@ Without `--watch`, this behavior is unchanged: drain what's eligible, then exit.
 | `--reason TEXT` | Reason recorded on the entry (default: `"cancelled by operator"`) |
 | `--json` | Output as JSON |
 
-`cancel` (ENH-3416) moves a `pending` or `running` entry straight to terminal `cancelled`, recording `--reason` in `result.reason`. It does **not** signal an in-flight process — killing arbitrary runner subprocesses from a second CLI process is out of scope (only the drainer holds the subprocess handle). Cancelling a `running` entry is a status-only mark: the drainer's own status-guarded completion write then no-ops against the already-`cancelled` row, and the entry stays `cancelled` regardless of how the in-flight dispatch finishes. Errors if the entry is already terminal.
+`cancel` (ENH-3416) moves a `pending`, `running`, or `awaiting_approval` (FEAT-3498) entry straight to terminal `cancelled`, recording `--reason` in `result.reason`. It does **not** signal an in-flight process — killing arbitrary runner subprocesses from a second CLI process is out of scope (only the drainer holds the subprocess handle). Cancelling a `running` entry is a status-only mark: the drainer's own status-guarded completion write then no-ops against the already-`cancelled` row, and the entry stays `cancelled` regardless of how the in-flight dispatch finishes. Cancelling an `awaiting_approval` entry is the normal way to reject a request before it ever runs — it never produces a run. Errors if the entry is already terminal.
 
 **Examples:**
 ```bash
@@ -4397,6 +4402,8 @@ ll-queue run --watch --poll-interval 5                    # Long-lived drainer, 
 ll-queue requeue abcd1234                                 # Return a stranded running entry to pending
 ll-queue requeue abcd1234                                 # Or revive a dead_letter/failed/cancelled entry
 ll-queue cancel abcd1234 --reason "no longer needed"      # Cancel a pending or running entry
+ll-queue run --id abcd1234 --approve                      # Accept and run one awaiting_approval request
+ll-queue cancel abcd1234 --reason "not approved"          # Reject an awaiting_approval request before it runs
 ```
 
 ---

@@ -6,6 +6,7 @@ import itertools
 import re
 import sqlite3
 import threading
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
@@ -21,14 +22,18 @@ from little_loops.queue_store import (
     SCHEMA_VERSION,
     AmbiguousEntryIdError,
     add_entry,
+    approve_and_claim_entry,
     cancel_entry,
     claim_entry,
     compute_backoff_s,
     connect,
+    create_or_get_run_request,
     dead_letter_entry,
     ensure_db,
     get_entry,
+    get_run_request,
     list_entries,
+    record_loop_started,
     remove_entry,
     reset_to_pending,
     resolve_entry,
@@ -39,6 +44,35 @@ from little_loops.queue_store import (
 from little_loops.runner_spec import ActionSpec, RunnerType
 
 _TMP_COUNTER = itertools.count()
+
+
+@dataclass
+class _FakeRunRequest:
+    """Stand-in for `cli.artifact.policy_revision.RunRequest` (duck-typed)."""
+
+    request_id: str
+    workspace_id: str
+    revision_id: str
+    issue_id: str
+
+
+def _run_request(
+    request_id: str = "req-1",
+    *,
+    workspace_id: str = "ws-1",
+    revision_id: str = "rev-1",
+    issue_id: str = "FEAT-1",
+) -> _FakeRunRequest:
+    return _FakeRunRequest(
+        request_id=request_id,
+        workspace_id=workspace_id,
+        revision_id=revision_id,
+        issue_id=issue_id,
+    )
+
+
+def _loop_spec(target: str = "/abs/lifecycle.yaml") -> ActionSpec:
+    return ActionSpec(name=target, runner=RunnerType.LOOP, target=target, timeout=None)
 
 
 @pytest.fixture(scope="module")
@@ -450,6 +484,7 @@ class TestStatusVocabulary:
             "failed",
             "dead_letter",
             "cancelled",
+            "awaiting_approval",
         }
         assert QUEUE_TERMINAL_STATUSES == {"done", "failed", "dead_letter", "cancelled"}
         assert QUEUE_TERMINAL_STATUSES.issubset(QUEUE_STATUSES)
@@ -770,3 +805,268 @@ class TestResetToPending:
         db = tmp_path / "queue.db"
         ensure_db(db)
         assert reset_to_pending("does-not-exist", db_path=db) is False
+
+
+class TestCreateOrGetRunRequest:
+    """FEAT-3498: transactional create-or-get for builder-origin run requests."""
+
+    def test_creates_awaiting_approval_row_with_bindings(self, tmp_path: Path) -> None:
+        db = tmp_path / "queue.db"
+        entry, created = create_or_get_run_request(
+            _run_request(), action=_loop_spec(), project_root=Path("/proj"), db_path=db
+        )
+        assert created is True
+        assert entry.status == "awaiting_approval"
+        assert entry.request_id == "req-1"
+        assert entry.workspace_id == "ws-1"
+        assert entry.revision_id == "rev-1"
+        assert entry.issue_id == "FEAT-1"
+        assert entry.project_root == str(Path("/proj"))
+
+    def test_duplicate_submission_returns_existing_row(self, tmp_path: Path) -> None:
+        db = tmp_path / "queue.db"
+        first, created1 = create_or_get_run_request(
+            _run_request(), action=_loop_spec(), project_root=Path("/proj"), db_path=db
+        )
+        second, created2 = create_or_get_run_request(
+            _run_request(), action=_loop_spec(), project_root=Path("/proj"), db_path=db
+        )
+        assert created1 is True
+        assert created2 is False
+        assert second.id == first.id
+        assert len(list_entries(db)) == 1
+
+    def test_new_request_id_creates_a_second_awaiting_entry(self, tmp_path: Path) -> None:
+        db = tmp_path / "queue.db"
+        first, _ = create_or_get_run_request(
+            _run_request("req-1"), action=_loop_spec(), project_root=Path("/proj"), db_path=db
+        )
+        second, created = create_or_get_run_request(
+            _run_request("req-2"), action=_loop_spec(), project_root=Path("/proj"), db_path=db
+        )
+        assert created is True
+        assert second.id != first.id
+        assert len(list_entries(db)) == 2
+
+    def test_conflicting_binding_under_same_request_id_raises(self, tmp_path: Path) -> None:
+        db = tmp_path / "queue.db"
+        create_or_get_run_request(
+            _run_request(), action=_loop_spec(), project_root=Path("/proj"), db_path=db
+        )
+        with pytest.raises(ValueError, match="already bound"):
+            create_or_get_run_request(
+                _run_request(revision_id="rev-DIFFERENT"),
+                action=_loop_spec(),
+                project_root=Path("/proj"),
+                db_path=db,
+            )
+
+    def test_concurrent_duplicate_submits_produce_exactly_one_row(self, tmp_path: Path) -> None:
+        db = tmp_path / "queue.db"
+        results: list[str] = []
+        results_lock = threading.Lock()
+        barrier = threading.Barrier(2)
+
+        def submit() -> None:
+            barrier.wait()
+            entry, _ = create_or_get_run_request(
+                _run_request(), action=_loop_spec(), project_root=Path("/proj"), db_path=db
+            )
+            with results_lock:
+                results.append(entry.id)
+
+        t1 = threading.Thread(target=submit)
+        t2 = threading.Thread(target=submit)
+        t1.start()
+        t2.start()
+        t1.join()
+        t2.join()
+
+        assert len(set(results)) == 1
+        assert len(list_entries(db)) == 1
+
+    def test_awaiting_entry_invisible_to_generic_claim(self, tmp_path: Path) -> None:
+        """Zero-dispatch guarantee: `claim_entry`'s `status = 'pending'` guard
+        already excludes `awaiting_approval` rows outright."""
+        db = tmp_path / "queue.db"
+        entry, _ = create_or_get_run_request(
+            _run_request(), action=_loop_spec(), project_root=Path("/proj"), db_path=db
+        )
+        assert claim_entry(entry.id, db_path=db) is False
+        assert get_entry(entry.id, db).status == "awaiting_approval"
+
+
+class TestApproveAndClaimEntry:
+    """FEAT-3498: single-entry accept, rechecking bindings inside one transaction."""
+
+    def test_approves_and_claims_matching_entry(self, tmp_path: Path) -> None:
+        db = tmp_path / "queue.db"
+        entry, _ = create_or_get_run_request(
+            _run_request(), action=_loop_spec(), project_root=Path("/proj"), db_path=db
+        )
+        won = approve_and_claim_entry(
+            entry.id, expected_revision_id="rev-1", expected_issue_id="FEAT-1", db_path=db
+        )
+        assert won is True
+        after = get_entry(entry.id, db)
+        assert after.status == "running"
+        assert after.approved_at is not None
+        assert after.approval_snapshot is not None
+
+    def test_rejects_on_binding_mismatch_without_writing(self, tmp_path: Path) -> None:
+        db = tmp_path / "queue.db"
+        entry, _ = create_or_get_run_request(
+            _run_request(), action=_loop_spec(), project_root=Path("/proj"), db_path=db
+        )
+        won = approve_and_claim_entry(
+            entry.id, expected_revision_id="rev-STALE", expected_issue_id="FEAT-1", db_path=db
+        )
+        assert won is False
+        assert get_entry(entry.id, db).status == "awaiting_approval"
+
+    def test_returns_false_for_non_awaiting_entry(self, tmp_path: Path) -> None:
+        db = tmp_path / "queue.db"
+        entry = add_entry(_spec(), db_path=db)  # ordinary pending entry
+        assert (
+            approve_and_claim_entry(
+                entry.id, expected_revision_id="x", expected_issue_id="y", db_path=db
+            )
+            is False
+        )
+
+    def test_second_approval_attempt_loses(self, tmp_path: Path) -> None:
+        db = tmp_path / "queue.db"
+        entry, _ = create_or_get_run_request(
+            _run_request(), action=_loop_spec(), project_root=Path("/proj"), db_path=db
+        )
+        first = approve_and_claim_entry(
+            entry.id, expected_revision_id="rev-1", expected_issue_id="FEAT-1", db_path=db
+        )
+        second = approve_and_claim_entry(
+            entry.id, expected_revision_id="rev-1", expected_issue_id="FEAT-1", db_path=db
+        )
+        assert first is True
+        assert second is False
+
+
+class TestRecordLoopStarted:
+    def test_records_instance_id_and_run_dir_while_running(self, tmp_path: Path) -> None:
+        db = tmp_path / "queue.db"
+        entry, _ = create_or_get_run_request(
+            _run_request(), action=_loop_spec(), project_root=Path("/proj"), db_path=db
+        )
+        approve_and_claim_entry(
+            entry.id, expected_revision_id="rev-1", expected_issue_id="FEAT-1", db_path=db
+        )
+        assert record_loop_started(entry.id, "inst-abc", "/proj/.loops/runs/inst-abc", db_path=db)
+        after = get_entry(entry.id, db)
+        assert after.loop_instance_id == "inst-abc"
+        assert after.run_dir == "/proj/.loops/runs/inst-abc"
+
+    def test_guarded_against_non_running_entry(self, tmp_path: Path) -> None:
+        db = tmp_path / "queue.db"
+        entry, _ = create_or_get_run_request(
+            _run_request(), action=_loop_spec(), project_root=Path("/proj"), db_path=db
+        )
+        # Still awaiting_approval, not running -- guard must reject the write.
+        assert record_loop_started(entry.id, "inst-abc", "/proj/runs/x", db_path=db) is False
+
+
+class TestGetRunRequest:
+    def test_resolves_request_key_to_queue_row(self, tmp_path: Path) -> None:
+        db = tmp_path / "queue.db"
+        entry, _ = create_or_get_run_request(
+            _run_request(), action=_loop_spec(), project_root=Path("/proj"), db_path=db
+        )
+        fetched = get_run_request("req-1", "ws-1", db_path=db)
+        assert fetched is not None
+        assert fetched.id == entry.id
+
+    def test_returns_none_for_unknown_key(self, tmp_path: Path) -> None:
+        db = tmp_path / "queue.db"
+        ensure_db(db)
+        assert get_run_request("nope", "ws-1", db_path=db) is None
+
+
+class TestApprovalDurabilityRetryRules:
+    """FEAT-3498: approval is durable per request, not per attempt."""
+
+    def test_reviving_rejected_unapproved_request_returns_to_awaiting_approval(
+        self, tmp_path: Path
+    ) -> None:
+        db = tmp_path / "queue.db"
+        entry, _ = create_or_get_run_request(
+            _run_request(), action=_loop_spec(), project_root=Path("/proj"), db_path=db
+        )
+        cancel_entry(entry.id, "rejected by operator", db_path=db)
+        assert get_entry(entry.id, db).status == "cancelled"
+
+        revived = revive_entry(entry.id, db_path=db)
+        assert revived is True
+        after = get_entry(entry.id, db)
+        assert after.status == "awaiting_approval"
+        assert after.approved_at is None
+
+    def test_reviving_approved_entry_that_later_terminated_returns_to_plain_pending(
+        self, tmp_path: Path
+    ) -> None:
+        db = tmp_path / "queue.db"
+        entry, _ = create_or_get_run_request(
+            _run_request(), action=_loop_spec(), project_root=Path("/proj"), db_path=db
+        )
+        approve_and_claim_entry(
+            entry.id, expected_revision_id="rev-1", expected_issue_id="FEAT-1", db_path=db
+        )
+        dead_letter_entry(entry.id, "boom", db_path=db)
+        assert get_entry(entry.id, db).status == "dead_letter"
+
+        revived = revive_entry(entry.id, db_path=db)
+        assert revived is True
+        after = get_entry(entry.id, db)
+        assert after.status == "pending"  # approved_at survives -> plain pending, no re-approval
+
+    def test_schedule_retry_on_approved_entry_returns_to_plain_pending(
+        self, tmp_path: Path
+    ) -> None:
+        db = tmp_path / "queue.db"
+        entry, _ = create_or_get_run_request(
+            _run_request(), action=_loop_spec(), project_root=Path("/proj"), db_path=db
+        )
+        approve_and_claim_entry(
+            entry.id, expected_revision_id="rev-1", expected_issue_id="FEAT-1", db_path=db
+        )
+        schedule_retry(entry.id, "transient", "2099-01-01T00:00:00Z", db_path=db)
+        after = get_entry(entry.id, db)
+        assert after.status == "pending"
+        # A generic drainer may retry it without re-approval -- claim_entry
+        # sees a plain `pending` row like any other.
+        assert claim_entry(entry.id, db_path=db, now="2099-06-01T00:00:00Z") is True
+
+    def test_cancel_before_acceptance_leaves_loop_identity_null(self, tmp_path: Path) -> None:
+        db = tmp_path / "queue.db"
+        entry, _ = create_or_get_run_request(
+            _run_request(), action=_loop_spec(), project_root=Path("/proj"), db_path=db
+        )
+        cancel_entry(entry.id, "rejected", db_path=db)
+        after = get_entry(entry.id, db)
+        assert after.loop_instance_id is None
+        assert after.run_dir is None
+
+    def test_reset_to_pending_cannot_observe_an_unapproved_running_row(
+        self, tmp_path: Path
+    ) -> None:
+        """Invariant: a builder row only reaches `running` via
+        `approve_and_claim_entry`, which stamps `approved_at` in the same
+        transaction -- so an unapproved `running` row cannot exist for
+        `reset_to_pending` to special-case (see queue_store.revive_entry's
+        docstring / this issue's Program Design)."""
+        db = tmp_path / "queue.db"
+        entry, _ = create_or_get_run_request(
+            _run_request(), action=_loop_spec(), project_root=Path("/proj"), db_path=db
+        )
+        approve_and_claim_entry(
+            entry.id, expected_revision_id="rev-1", expected_issue_id="FEAT-1", db_path=db
+        )
+        running = get_entry(entry.id, db)
+        assert running.status == "running"
+        assert running.approved_at is not None  # never null while running

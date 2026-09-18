@@ -11002,13 +11002,13 @@ Persisted queue-entry store for `ll-queue` (FEAT-2682), backing a dedicated `.ll
 from little_loops.queue_store import (
     DEFAULT_DB_PATH,     # Path(".ll/queue.db")
     PRIORITY_TIERS,      # ("P0", "P1", "P2", "P3", "P4", "P5")
-    QUEUE_STATUSES,       # frozenset: pending, running, done, failed, dead_letter, cancelled (ENH-3416)
+    QUEUE_STATUSES,       # frozenset: pending, running, done, failed, dead_letter, cancelled, awaiting_approval (ENH-3416, FEAT-3498)
     QUEUE_TERMINAL_STATUSES,  # frozenset: done, failed, dead_letter, cancelled
     QUEUE_RETRYABLE_REASONS,  # frozenset of classify_failure() reason strings that consume attempt budget
     QUEUE_MAX_ATTEMPTS,   # 5 -- bounds a poison entry to 5 dispatches / 4 reclaims
     QUEUE_BACKOFF_BASE_S,  # 5 -- 5, 10, 20, 40s between attempts 1..4
     QUEUE_BACKOFF_CEILING_S,  # 300 -- worst-case wait bounded at 5 min
-    QueueEntry,           # id, action: ActionSpec, enqueued_at, priority, status, result, claimed_at, owner_pid, attempt, next_attempt_at
+    QueueEntry,           # id, action: ActionSpec, enqueued_at, priority, status, result, claimed_at, owner_pid, attempt, next_attempt_at, request_id, workspace_id, project_root, revision_id, issue_id, approved_at, approval_snapshot, loop_instance_id, run_dir
     AmbiguousEntryIdError,
     ensure_db,
     connect,
@@ -11023,12 +11023,36 @@ from little_loops.queue_store import (
     compute_backoff_s,     # (attempt: int) -> int; non-jittered doubling capped at QUEUE_BACKOFF_CEILING_S (ENH-3416)
     schedule_retry,        # running->pending with a backoff next_attempt_at, guarded (ENH-3416)
     dead_letter_entry,     # running->dead_letter (terminal), guarded (ENH-3416)
-    cancel_entry,          # pending|running->cancelled (terminal), guarded, optional extra dict merged under reason (ENH-3416)
-    revive_entry,          # terminal->pending with a fresh attempt budget, preserving prior result under result.previous (ENH-3416)
+    cancel_entry,          # pending|running|awaiting_approval->cancelled (terminal), guarded, optional extra dict merged under reason (ENH-3416, FEAT-3498)
+    revive_entry,          # terminal->pending (or ->awaiting_approval if unapproved, FEAT-3498) with a fresh attempt budget, preserving prior result under result.previous (ENH-3416)
+    create_or_get_run_request,  # (request: RunRequest, *, action: ActionSpec, project_root: Path, ...) -> tuple[QueueEntry, bool]; transactional create-or-get keyed on (workspace_id, request_id) (FEAT-3498)
+    approve_and_claim_entry,    # (entry_id, *, expected_revision_id, expected_issue_id, ...) -> bool; single-entry awaiting_approval->running accept, rechecking bindings (FEAT-3498)
+    record_loop_started,        # (entry_id, instance_id, run_dir, ...) -> bool; persists the structured start-metadata readback, guarded WHERE status='running' (FEAT-3498)
+    get_run_request,            # (request_id, workspace_id, ...) -> QueueEntry | None; resolves a request key to its queue row (FEAT-3498)
 )
 ```
 
-Schema: `queue_entries(id, action, enqueued_at, priority, status, result, claimed_at, owner_pid, attempt, next_attempt_at)`. `action` is a JSON-serialized `ActionSpec` (`little_loops.runner_spec`); `priority` is stored as the 0(P0)-5(P5) numeric rank so `ORDER BY priority ASC, enqueued_at ASC` reproduces `QueuedIssue.__lt__`'s tiered-then-FIFO ordering without importing that class (it's typed concretely against `IssueInfo`). Acquisition and completion are distinct writes: `claim_entry()` performs the `pending` -> `running` transition inside a `BEGIN IMMEDIATE` transaction so concurrent drainers cannot both win the same entry, stamping `claimed_at`/`owner_pid` (default `os.getpid()`) and incrementing `attempt` in the same transaction (FEAT-2930, ENH-3416) — the WHERE clause also requires `next_attempt_at` to be unset or elapsed. `update_entry_result()` performs the completion write once the caller already owns the entry (`result` is `NULL` until then), guarded with `AND status = 'running'` (ENH-3416; a `False` return means the entry was cancelled/reclaimed mid-dispatch), and nulls both ownership columns. `reset_to_pending()` (FEAT-2930) is the inverse — `running` -> `pending`, clearing ownership, but deliberately never touching `attempt`/`next_attempt_at` (ENH-3416: an owner death is a slot to refill, not a backoff-eligible failure) — shared by `cli/queue.py`'s `_reclaim_stale` sweep (a `--watch` drainer's dead-owner cleanup) and the `ll-queue requeue` manual escape hatch. `schedule_retry()`/`dead_letter_entry()`/`cancel_entry()` (ENH-3416) are the three other guarded `running`-owning writes `_drain_once` chooses between after classifying a dispatch failure; `revive_entry()` is `ll-queue requeue`'s terminal-entry path, resetting the attempt budget and preserving the prior `result` under `result.previous`.
+Schema: `queue_entries(id, action, enqueued_at, priority, status, result, claimed_at, owner_pid, attempt, next_attempt_at, request_id, workspace_id, project_root, revision_id, issue_id, approved_at, approval_snapshot, loop_instance_id, run_dir)` (v4, FEAT-3498). `action` is a JSON-serialized `ActionSpec` (`little_loops.runner_spec`); `priority` is stored as the 0(P0)-5(P5) numeric rank so `ORDER BY priority ASC, enqueued_at ASC` reproduces `QueuedIssue.__lt__`'s tiered-then-FIFO ordering without importing that class (it's typed concretely against `IssueInfo`). Acquisition and completion are distinct writes: `claim_entry()` performs the `pending` -> `running` transition inside a `BEGIN IMMEDIATE` transaction so concurrent drainers cannot both win the same entry, stamping `claimed_at`/`owner_pid` (default `os.getpid()`) and incrementing `attempt` in the same transaction (FEAT-2930, ENH-3416) — the WHERE clause also requires `next_attempt_at` to be unset or elapsed; its `status = 'pending'` guard already excludes `awaiting_approval` rows outright. `update_entry_result()` performs the completion write once the caller already owns the entry (`result` is `NULL` until then), guarded with `AND status = 'running'` (ENH-3416; a `False` return means the entry was cancelled/reclaimed mid-dispatch), and nulls both ownership columns. `reset_to_pending()` (FEAT-2930) is the inverse — `running` -> `pending`, clearing ownership, but deliberately never touching `attempt`/`next_attempt_at` (ENH-3416: an owner death is a slot to refill, not a backoff-eligible failure) — shared by `cli/queue.py`'s `_reclaim_stale` sweep (a `--watch` drainer's dead-owner cleanup) and the `ll-queue requeue` manual escape hatch. `schedule_retry()`/`dead_letter_entry()`/`cancel_entry()` (ENH-3416) are the three other guarded `running`-owning writes `_dispatch_claimed` chooses between after classifying a dispatch failure; `revive_entry()` is `ll-queue requeue`'s terminal-entry path, resetting the attempt budget and preserving the prior `result` under `result.previous`.
+
+**Builder-origin run requests (FEAT-3498):** a request submitted via `create_or_get_run_request()` lands as `awaiting_approval` — a status `claim_entry()`'s `pending`-only guard and every drain/watch loop already exclude, so no watcher or generic drain can run it. The host accepts exactly that request with `approve_and_claim_entry()` (single-entry `awaiting_approval` -> `running`, rechecking `revision_id`/`issue_id` bindings inside one transaction and stamping `approved_at`/`approval_snapshot`), or rejects it with `cancel_entry()`. Approval is durable per *request*, not per *attempt*: `revive_entry()` returns an unapproved (`approved_at IS NULL`) row to `awaiting_approval`, but an already-approved row that later fails returns to plain `pending` and may be retried by any generic drainer with no re-approval. `record_loop_started()` persists the child's real loop-instance identity once the structured start-metadata channel (a hidden `ll-loop run --queue-metadata-out` flag, observed via a polling thread in `cli/queue.py`'s `_run_loop_entry`) reports it; `get_run_request()` is the readback primitive. See `little_loops.cli.artifact.policy_revision` for the paired `RunRequest`/validation/persistence functions.
+
+---
+
+## little_loops.cli.artifact.policy_revision
+
+Policy-revision validation and persistence for builder-origin run requests (FEAT-3498). Pure functions — no transport or queue imports — shared by the queue-store's `create_or_get_run_request()` and by a same-origin serve route's POST handler; directly exercisable from tests with no browser.
+
+```python
+from little_loops.cli.artifact.policy_revision import (
+    RunRequest,          # {request_id, project_id, workspace_id, revision_id, yaml: bytes, issue_id} -- input to create_or_get_run_request
+    ValidationOutcome,    # {ok: bool, errors: list[str], warnings: list[str], mode: str | None}
+    PolicyRevisionConflictError,  # raised by persist_policy_revision on a same-filename/different-bytes collision
+    validate_policy_revision,     # (yaml_bytes: bytes, *, project_root: Path) -> ValidationOutcome
+    persist_policy_revision,      # (yaml_bytes: bytes, revision_id: str, *, project_root: Path) -> Path
+)
+```
+
+`validate_policy_revision()` wraps `fsm.validation.structural_rules.load_and_validate(..., raise_on_error=False)`, writing the submitted bytes to a temp file under the project's `.loops/policy-builder/` artifact directory (there is no run directory yet at submission time) and cleaning it up unconditionally. First release accepts `issue_lifecycle` policies only: the mode is read from the loop's existing `category:` field (reused rather than adding a new schema key), and a policy in that mode must declare a required `issue_id` parameter with no default. `persist_policy_revision()` writes the exact bytes (`write_bytes`-equivalent temp-file-plus-`os.replace`, never `write_text`, so no newline/encoding normalization can change the on-disk SHA-256) to `.loops/policy-builder/lifecycle-<revisionId[:12]>.yaml`; a pre-existing file at that path is left untouched if byte-identical, or raises `PolicyRevisionConflictError` on a genuine collision.
 
 ---
 

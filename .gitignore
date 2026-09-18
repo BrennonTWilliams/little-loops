@@ -89,12 +89,14 @@ docs/demo
 .loops/.running/
 .loops/.history/
 .loops/.queue/
+.loops/.queue-metadata/
 .loops/tmp/
 .loops/runs/
 .loops/diagnostics/
 .loops/reviews/
 .loops/generated/
 .loops/cli-anything/
+.loops/policy-builder/
 *.Cast
 
 # Loop runtime state (inside scripts/little_loops/loops/)

@@ -920,7 +920,10 @@ _TOOLS: list[types.Tool] = [
         name="queue_list",
         description=(
             "List all persisted `ll-queue` entries "
-            "(pending/running/done/failed/dead_letter/cancelled)."
+            "(pending/running/done/failed/dead_letter/cancelled/awaiting_approval). "
+            "An `awaiting_approval` builder-origin entry requires explicit host "
+            "acceptance via `ll-queue run --id ID --approve` (not available over MCP) "
+            "before it can run."
         ),
         input_schema={"type": "object", "properties": {}, "additionalProperties": False},
     ),
