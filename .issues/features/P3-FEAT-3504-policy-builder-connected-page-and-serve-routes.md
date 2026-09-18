@@ -19,6 +19,12 @@ relates_to:
 - BUG-3490
 blocks:
 - FEAT-3505
+confidence_score: 85
+outcome_confidence: 64
+score_complexity: 10
+score_test_coverage: 18
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 # FEAT-3504: Policy builder connected page and serve routes
@@ -242,22 +248,21 @@ Re-verified 2026-09-18 (`/ll:verify-issues --auto`, after the manual architectur
 
 ## Confidence Check Notes
 
-_Stale: scored before the 2026-09-18 split to FEAT-3505; scores removed from frontmatter — re-run `/ll:confidence-check`._
-
-_Added by `/ll:confidence-check` on 2026-09-18_
+_Added by `/ll:confidence-check` on 2026-09-18 (re-scored after the FEAT-3505 split)_
 
 **Readiness Score**: 85/100 → PROCEED WITH CAUTION
 **Outcome Confidence**: 64/100 → MODERATE
 
 ### Concerns
 - Criterion 4 capped at 10: `format-check` flags `ll-artifact serve --policy-builder` as `stale_cli_flag`. Advisory only — the flag is introduced by this issue, so it cannot resolve yet.
-- Four conventions have no in-repo precedent (JSON error body, `{name}` path-param matcher, disabled-with-reason controls, JS/Python SHA-256 parity); the bare-token redirect vs. `LocalBridgeTransport` prefix handling is still un-unified.
+- Two conventions have no in-repo precedent (JSON error body, `{name}` path-param matcher); the bare-token redirect vs. `LocalBridgeTransport` prefix handling is still un-unified.
 
 ### Outcome Risk Factors
-- Deep per-site complexity: `SseBridge` method-aware dispatch and a stateful page (freeze/persist/guard/poll/token-rotation) touch shared state across several functions.
-- Broad enumeration across ~7 code files plus 5 doc files; the stateful `.tmpl` page wiring has the thinnest automated coverage (Node gate covers `.mjs` only).
+- Deep per-site complexity: `SseBridge` method-aware dispatch (shared Host/token helper, `method_routes` plumbing) and the nine-step ordered submit path touch shared state across several functions.
+- Broad enumeration across ~8 code files plus 5 doc files; the new `policy_builder_routes.py` module and `do_POST` have no existing tests to extend, only the `_lb_http_request` precedent to model.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-18T23:27:27 - `e70d94f5-5aea-4ae6-9697-95afacc0672e.jsonl`
 - manual split - 2026-09-18 - moved page half (submission controller, JS hashing, workspace-scoped storage extraction, `.tmpl` binding, Playwright probe, guide walkthrough) to FEAT-3505 (blocked by this issue); kept serializer fix, renderer split, placeholder, transport, routes, reference docs; submit `200` now returns validator `warnings`; spike confirmed all three lifecycle fixtures validate `ok=True` once `category: issue_lifecycle` is prepended
 - `/ll:confidence-check` - 2026-09-18T23:14:19 - `908a096d-31f0-483d-82a9-dedb13645d5f.jsonl`
 - `/ll:verify-issues` - 2026-09-18T22:52:14 - `607ba042-d4a1-4223-a499-836731f9fcfa.jsonl`
