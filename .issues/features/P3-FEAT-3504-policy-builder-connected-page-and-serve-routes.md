@@ -254,6 +254,8 @@ Verdict at time of check: **VALID** (2026-09-18 `/ll:verify-issues --auto`; no c
 
 Re-verified 2026-09-18 (`/ll:verify-issues --auto`, after the manual-review rewrite): verdict at time of check **VALID**, no corrections needed. `_serializeIssueLifecycle` still at `policy_builder_core.mjs:2736` with no `category:` emit; `SseBridge` `do_GET` at `transport.py:1221` with exact-key `_routes` lookup at `:1239` (the `do_POST` at `:663` belongs to `LocalBridgeTransport`); `cmd_policy_builder` `:62`, `add_serve_parser` `:37`, `_make_page_html_factory` `:138`; `policy_revision.py` `_SUPPORTED_MODES` `:35`, `validate_policy_revision` `:69`, `persist_policy_revision` `:120`; `create_or_get_run_request`/`get_run_request` accept `db_path`/`root`; `find_issues` exists in `issue_parser`. `ll-verify-evidence` clean; no required decision rules; proposal-vs-code check found no contradiction.
 
+Re-verified 2026-09-18 (`/ll:verify-issues --auto`, after the manual architecture review): verdict at time of check **VALID**, no corrections needed. Anchors hold: `_serializeIssueLifecycle` `policy_builder_core.mjs:2736` (no `category: issue_lifecycle` emit; none of the three lifecycle fixtures contains `category`); `SseBridge` `do_GET` `transport.py:1221`, exact-key `_routes.get` `:1239`, `serve_sse_bridge` `:1463`, no `method_routes` yet (`do_POST` `:663` is `LocalBridgeTransport`'s); `cmd_policy_builder` `:62`, `add_serve_parser` `:37`, `_make_page_html_factory` `:138`; `_SUPPORTED_MODES` `:35`, `validate_policy_revision` `:69`, `persist_policy_revision` `:120`; `create_or_get_run_request` `queue_store.py:793`, `get_run_request` `:983`; `find_issues` in `issue_parser`; `policy_builder_routes.py` correctly absent (new). `ll-verify-evidence` clean; no required decision rules; proposal-vs-code check found no contradiction. Graph: provider=`codegraph` freshness=`fresh` (not needed for any verdict).
+
 ## Status
 
 **Open** | Created: 2026-09-18 | Priority: P3
@@ -275,6 +277,7 @@ _Added by `/ll:confidence-check` on 2026-09-18_
 - Broad enumeration across ~7 code files plus 5 doc files; the stateful `.tmpl` page wiring has the thinnest automated coverage (Node gate covers `.mjs` only).
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-18T22:52:14 - `607ba042-d4a1-4223-a499-836731f9fcfa.jsonl`
 - manual architecture review applied - 2026-09-18 - froze snapshots at Review; defined delivery-state recovery and ambiguous-submit guards; bounded immutability to submitted YAML/current dependencies; moved policy handlers/body guards into a dedicated module with JSON server errors; required a served-page browser probe; added no-store readback and non-overlapping disposable polling. Earlier verification/confidence notes predate this revision.
 - `/ll:verify-issues` - 2026-09-18T22:28:52 - `7291996a-6593-4943-af6c-c0b3e4920407.jsonl`
 - manual review applied - 2026-09-18 - moved submission state machine into a dependency-injected `.mjs` controller (Node-testable); replaced stamped endpoint URL with relative URLs + connected-context placeholder; specified `method_routes`/`extra_url_suffixes` plumbing, once-resolved project root, field shapes, polling cadence, `find_issues` active-only scope, golden-regeneration timing; dropped redundant `active_theme` param
