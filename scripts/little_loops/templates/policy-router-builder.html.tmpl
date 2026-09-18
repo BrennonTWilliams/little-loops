@@ -93,6 +93,15 @@ button.secondary {
 }
 .rule-ord { font-weight: 700; min-width: 1.5rem; }
 .rule-move { flex: 0 0 auto; padding: 0.2rem 0.5rem; }
+.scenario-card {
+  border: 1px solid var(--color-border-default, #ccc);
+  border-radius: 6px;
+  padding: 0.5rem;
+  margin-bottom: 0.5rem;
+  background: var(--color-surface-base, #fff);
+}
+.scenario-card .row { margin-bottom: 0.35rem; }
+.scenario-verdict { margin: 0.25rem 0 0; padding: 0.2rem 0.4rem; border-radius: 4px; }
 .fallback-row { font-style: italic; opacity: 0.85; }
 .fallback-row select { max-width: 16rem; }
 pre {
@@ -210,6 +219,18 @@ confidence_score: 40"></textarea>
         <p class="hint" id="fm-tryit-hint"></p>
       </fieldset>
 
+      <fieldset id="scenarios-fieldset">
+        <legend>Scenarios</legend>
+        <div id="scenario-list"></div>
+        <div class="row">
+          <button id="add-scenario-btn" type="button" class="secondary">+ Scenario</button>
+          <button id="run-all-btn" type="button">Run all</button>
+        </div>
+        <p class="hint" id="scenario-summary">No scenarios yet.</p>
+        <p class="hint" id="scenario-coverage"></p>
+        <small class="help">Named cases you save and re-run offline — no skill, shell, or action ever executes.</small>
+      </fieldset>
+
       <details id="advanced-details">
         <summary>Advanced: action bindings and budget</summary>
         <fieldset>
@@ -286,12 +307,27 @@ let drafts = {};
 let projectId = _newProjectId();
 let history = null;
 
+// FEAT-3488: `drafts[mode]` is the sole owner of `scenarios` — `state` stays
+// model-only. `scenarios` mirrors the *active* mode's saved suite; every
+// place that rebuilds `drafts[mode] = {model: state}` must also carry it.
+let scenarios = [];
+// Last runScenarioSuite() result, or null when stale (any committed edit
+// invalidates it — see commit()). Never persisted: derived data, not an
+// authored assertion.
+let lastSuiteRun = null;
+
 const _DRAFT_KEY_PREFIX = "ll-policy-builder-draft-";
 const _META_KEY = "ll-policy-builder-meta";
+const ALL_MODES = ["decision_table", "rubric", "issue_lifecycle"];
 
 function _newProjectId() {
   if (window.crypto && typeof window.crypto.randomUUID === "function") return window.crypto.randomUUID();
   return "proj-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10);
+}
+
+function _newScenarioId() {
+  if (window.crypto && typeof window.crypto.randomUUID === "function") return window.crypto.randomUUID();
+  return "scn-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10);
 }
 
 function showLiveStatus(text) {
@@ -303,9 +339,9 @@ function showLiveStatus(text) {
 // live region warns once (not on every keystroke-commit) — authoring and
 // explicit Save-project stay fully functional either way.
 let _storageWarned = false;
-function _persistDraft(mode, model) {
+function _persistDraft(mode, model, scenariosArg) {
   try {
-    localStorage.setItem(_DRAFT_KEY_PREFIX + mode, JSON.stringify({ model }));
+    localStorage.setItem(_DRAFT_KEY_PREFIX + mode, JSON.stringify({ model, scenarios: scenariosArg || [] }));
   } catch (e) {
     if (!_storageWarned) {
       _storageWarned = true;
@@ -314,7 +350,22 @@ function _persistDraft(mode, model) {
   }
 }
 function _persistAllDrafts(draftsObj) {
-  Object.keys(draftsObj).forEach((mode) => _persistDraft(mode, draftsObj[mode].model));
+  Object.keys(draftsObj).forEach((mode) =>
+    _persistDraft(mode, draftsObj[mode].model, draftsObj[mode].scenarios || [])
+  );
+}
+// FEAT-3488: remove stored draft keys for every mode NOT in `keepModes` —
+// called only when Opening a different project, so a mode absent from the
+// opened project can never resurrect a previous project's draft/suite on a
+// later reload or mode switch.
+function _clearDraftKeysExcept(keepModes) {
+  for (const mode of ALL_MODES) {
+    if (!keepModes.has(mode)) {
+      try {
+        localStorage.removeItem(_DRAFT_KEY_PREFIX + mode);
+      } catch (e) { /* ignore */ }
+    }
+  }
 }
 function _persistMeta() {
   try {
@@ -352,22 +403,30 @@ function currentProject() {
     generatorVersion: window.__GENERATOR_VERSION__ || "",
     projectId,
     activeMode: state.mode,
-    drafts: { ...drafts, [state.mode]: { model: state } },
+    // Merge into the existing wrapper (never rebuild {model, scenarios} from
+    // scratch) so unknown JSON-compatible sibling metadata on this mode's
+    // draft — e.g. from an opened forward-compatible project — round-trips.
+    drafts: { ...drafts, [state.mode]: { ...drafts[state.mode], model: state, scenarios } },
   };
 }
 
 // Push one committed edit onto the undo/redo stack and persist it. Called
 // after every structural button-driven mutation (add/delete/move a
-// dimension/outcome/rule, mode switch, Start blank) and, via the delegated
-// `change` listener below, after every settled (non-keystroke) field edit.
-// A no-op before hydrateFromStorage() has run (history is still null).
+// dimension/outcome/rule/scenario, mode switch, Start blank, preset) and,
+// via the delegated `change` listener below, after every settled
+// (non-keystroke) field edit — including scenario editors, since
+// #scenarios-fieldset is inside #form-panel and not excluded there.
 function commit() {
   if (!history) return;
-  drafts = { ...drafts, [state.mode]: { model: state } };
+  drafts = { ...drafts, [state.mode]: { ...drafts[state.mode], model: state, scenarios } };
   history = applyDraftEdit(history, { type: "commit", activeMode: state.mode, drafts });
-  _persistDraft(state.mode, state);
+  _persistDraft(state.mode, state, scenarios);
   _persistMeta();
   updateUndoRedoButtons();
+  // FEAT-3488: results are derived data, never authoritative — any
+  // committed edit (policy or scenario) invalidates the last Run all.
+  lastSuiteRun = null;
+  _renderSuiteRunResults();
 }
 
 function updateUndoRedoButtons() {
@@ -378,7 +437,9 @@ function updateUndoRedoButtons() {
 function restoreFromSnapshot(snapshot) {
   drafts = _deepClone(snapshot.drafts);
   const mode = snapshot.activeMode;
-  state = (drafts[mode] && drafts[mode].model) || seedExample(mode);
+  const entry = drafts[mode];
+  state = (entry && entry.model) || seedExample(mode);
+  scenarios = (entry && entry.scenarios) || [];
   applyStateToForm();
   applyModeVisibility();
   renderAll();
@@ -387,38 +448,54 @@ function restoreFromSnapshot(snapshot) {
   updateUndoRedoButtons();
 }
 
-// Restore the active mode's draft from localStorage, validating structure
-// only (never export-readiness — an unfinished predicate, empty action
-// body, missing reference, or invalid budget is editable work, not
-// corruption, and must still restore). A structurally invalid stored draft
-// falls back to the seed with a live-region diagnostic; the rejected
-// payload is left in storage untouched until the next explicit commit()
-// overwrites it, so it stays available for manual recovery.
+// Restore every saved mode's draft from localStorage (not just the active
+// one — a mode switch after reload must see a previously saved suite, not
+// silently reseed), validating structure only (never export-readiness — an
+// unfinished predicate, empty action body, missing reference, or invalid
+// budget is editable work, not corruption, and must still restore). A
+// structurally invalid stored draft is skipped with a live-region
+// diagnostic when it's the active mode; the rejected payload is left in
+// storage untouched until the next explicit commit() overwrites it, so it
+// stays available for manual recovery.
 function hydrateFromStorage() {
   const meta = _readMeta();
   const activeMode = (meta && meta.activeMode) || state.mode;
-  const draft = _readDraft(activeMode);
-  if (draft) {
+  const loaded = {};
+  let activeModeCorrupted = false;
+  for (const mode of ALL_MODES) {
+    const draft = _readDraft(mode);
+    if (!draft) continue;
     const candidate = {
       schemaVersion: BUILDER_PROJECT_SCHEMA_VERSION,
       generatorVersion: (meta && meta.generatorVersion) || "",
       projectId: (meta && meta.projectId) || projectId,
-      activeMode,
-      drafts: { [activeMode]: draft },
+      activeMode: mode,
+      drafts: { [mode]: draft },
     };
     const errors = validateProjectStructure(candidate);
     if (!errors.length) {
-      projectId = candidate.projectId;
-      state = draft.model;
-      drafts = { [activeMode]: draft };
-      applyStateToForm();
-    } else {
-      showLiveStatus("Saved draft could not be restored (corrupted); starting from the example instead.");
+      loaded[mode] = draft.scenarios === undefined ? { ...draft, scenarios: [] } : draft;
+    } else if (mode === activeMode) {
+      activeModeCorrupted = true;
     }
+  }
+  if (Object.keys(loaded).length) {
+    projectId = (meta && meta.projectId) || projectId;
+    drafts = loaded;
+  }
+  if (drafts[activeMode]) {
+    state = drafts[activeMode].model;
+    scenarios = drafts[activeMode].scenarios || [];
+    applyStateToForm();
+  } else if (activeModeCorrupted) {
+    showLiveStatus("Saved draft could not be restored (corrupted); starting from the example instead.");
   }
   history = {
     past: [],
-    present: _deepClone({ activeMode: state.mode, drafts: { ...drafts, [state.mode]: { model: state } } }),
+    present: _deepClone({
+      activeMode: state.mode,
+      drafts: { ...drafts, [state.mode]: { model: state, scenarios } },
+    }),
     future: [],
   };
   updateUndoRedoButtons();
@@ -1154,6 +1231,310 @@ function renderMessages(model, diagnostics) {
   if (!host.children.length) add("msg-ok", "No issues detected.");
 }
 
+// ===========================================================================
+// Offline scenario suites (FEAT-3488)
+// ===========================================================================
+// Named, independently authored per-mode test cases (drafts[mode].scenarios,
+// the `scenarios` live variable above). Run all evaluates every case through
+// runScenarioSuite/evaluateScenario/traceModel — the same shared trace path
+// evaluateModel/Try-it use — and never executes an outcome's action.
+
+function _blankScenarioInput(mode) {
+  if (mode === "issue_lifecycle") return { frontmatterText: "" };
+  if (mode === "rubric") return { aggregate: 0 };
+  return { values: {} };
+}
+
+// The valid assertion-target token set for the *current* policy (mirrors
+// core's own _validTargetTokens so the <select> options agree with what
+// evaluateScenario will accept).
+function _scenarioTargetOptions() {
+  if (state.mode === "rubric") return ["done", "light_repair", "deep_repair"];
+  const tokens = [];
+  const seen = new Set();
+  const add = (t) => { if (t && !seen.has(t)) { seen.add(t); tokens.push(t); } };
+  state.rules.forEach((r) => add(r.target));
+  add(state.fallback);
+  state.outcomes.forEach((o) => add(o.name));
+  if (state.mode === "issue_lifecycle") LIFECYCLE_DESTINATIONS.forEach((d) => add(d.name));
+  return tokens;
+}
+
+// One case's mode-specific input editor — decision-table gets one field per
+// current dimension (mirroring Try-it), lifecycle a frontmatter textarea,
+// rubric an integer aggregate. A stale key for a since-removed dimension is
+// left untouched in `sc.input.values` (not surfaced here, not repaired) —
+// Run reports it, per the storage-vs-execution-validity split.
+function _renderScenarioInputEditor(host, mode, sc) {
+  host.innerHTML = "";
+  if (mode === "rubric") {
+    if (!sc.input || typeof sc.input.aggregate !== "number") {
+      sc.input = { aggregate: sc.input && typeof sc.input.aggregate === "number" ? sc.input.aggregate : 0 };
+    }
+    const inp = document.createElement("input");
+    inp.type = "number";
+    inp.min = "0"; inp.max = "100";
+    inp.value = sc.input.aggregate;
+    inp.setAttribute("aria-label", "Scenario aggregate score");
+    inp.oninput = () => { sc.input.aggregate = Number(inp.value); _invalidateSuiteRun(); };
+    host.appendChild(inp);
+    const hint = document.createElement("small");
+    hint.className = "help";
+    hint.textContent = "An assumed aggregate score — this tests routing, not a predicted LLM score.";
+    host.appendChild(hint);
+    return;
+  }
+  if (mode === "issue_lifecycle") {
+    if (!sc.input || typeof sc.input.frontmatterText !== "string") sc.input = { frontmatterText: "" };
+    const ta = document.createElement("textarea");
+    ta.rows = 4;
+    ta.value = sc.input.frontmatterText;
+    ta.setAttribute("aria-label", "Scenario frontmatter text");
+    ta.oninput = () => { sc.input.frontmatterText = ta.value; _invalidateSuiteRun(); };
+    host.appendChild(ta);
+    return;
+  }
+  if (!sc.input || typeof sc.input.values !== "object" || Array.isArray(sc.input.values)) {
+    sc.input = { values: {} };
+  }
+  state.dimensions.forEach((d) => {
+    const key = normalizeDimName(d.name);
+    const wrap = document.createElement("div");
+    const label = document.createElement("label");
+    label.textContent = key;
+    label.style.margin = "0";
+    wrap.appendChild(label);
+    let input;
+    if (d.type === "boolean") {
+      input = document.createElement("select");
+      [["", "—"], ["true", "true"], ["false", "false"]].forEach(([v, t]) => {
+        const o = document.createElement("option"); o.value = v; o.textContent = t; input.appendChild(o);
+      });
+      const cur = sc.input.values[key];
+      input.value = cur === true ? "true" : cur === false ? "false" : "";
+      input.oninput = () => {
+        const v = input.value;
+        if (v === "") delete sc.input.values[key];
+        else sc.input.values[key] = v === "true";
+        _invalidateSuiteRun();
+      };
+    } else {
+      input = document.createElement("input");
+      input.type = "number";
+      input.value = Object.prototype.hasOwnProperty.call(sc.input.values, key) ? sc.input.values[key] : "";
+      input.oninput = () => {
+        if (input.value === "") delete sc.input.values[key];
+        else sc.input.values[key] = Number(input.value);
+        _invalidateSuiteRun();
+      };
+    }
+    input.setAttribute("aria-label", `${key} scenario value`);
+    wrap.appendChild(input);
+    host.appendChild(wrap);
+  });
+}
+
+function renderScenarios() {
+  lastSuiteRun = null;
+  const host = $("scenario-list");
+  host.innerHTML = "";
+  const mode = state.mode;
+  const targetOptions = _scenarioTargetOptions();
+  scenarios.forEach((sc, si) => {
+    const card = document.createElement("div");
+    card.className = "scenario-card";
+    card.dataset.scenarioIndex = String(si);
+
+    const nameInput = document.createElement("input");
+    nameInput.type = "text";
+    nameInput.className = "scenario-name-input";
+    nameInput.value = sc.name || "";
+    nameInput.placeholder = "case name";
+    nameInput.setAttribute("aria-label", "Scenario name");
+    nameInput.oninput = () => { sc.name = nameInput.value; };
+    card.appendChild(nameInput);
+
+    const inputRow = document.createElement("div");
+    inputRow.className = "scenario-input-row row";
+    _renderScenarioInputEditor(inputRow, mode, sc);
+    card.appendChild(inputRow);
+
+    const expectRow = document.createElement("div");
+    expectRow.className = "row";
+
+    const targetSel = document.createElement("select");
+    targetSel.className = "scenario-expected-target-select";
+    targetSel.setAttribute("aria-label", "Expected target");
+    const blankOpt = document.createElement("option");
+    blankOpt.value = "";
+    blankOpt.textContent = "— unasserted —";
+    if (sc.expectedTarget == null) blankOpt.selected = true;
+    targetSel.appendChild(blankOpt);
+    targetOptions.forEach((t) => {
+      const o = document.createElement("option");
+      o.value = t; o.textContent = t;
+      if (sc.expectedTarget === t) o.selected = true;
+      targetSel.appendChild(o);
+    });
+    targetSel.onchange = () => {
+      sc.expectedTarget = targetSel.value || null;
+      if (!sc.expectedTarget) {
+        sc.expectedRuleIndex = null;
+        sc.expectedFallback = false;
+        sc.expectedRulesFingerprint = null;
+      }
+      _invalidateSuiteRun();
+    };
+    expectRow.appendChild(targetSel);
+
+    if (mode !== "rubric") {
+      const idxInput = document.createElement("input");
+      idxInput.type = "number";
+      idxInput.min = "0";
+      idxInput.className = "scenario-expected-index-input";
+      idxInput.setAttribute("aria-label", "Expected rule index");
+      idxInput.placeholder = "rule #";
+      idxInput.value = sc.expectedRuleIndex != null ? sc.expectedRuleIndex : "";
+      idxInput.disabled = !!sc.expectedFallback;
+      idxInput.oninput = () => {
+        sc.expectedRuleIndex = idxInput.value === "" ? null : Number(idxInput.value);
+        _invalidateSuiteRun();
+      };
+      expectRow.appendChild(idxInput);
+
+      const fbLabel = document.createElement("label");
+      fbLabel.style.display = "inline-flex";
+      fbLabel.style.alignItems = "center";
+      fbLabel.style.gap = "0.25rem";
+      fbLabel.style.margin = "0";
+      const fbCb = document.createElement("input");
+      fbCb.type = "checkbox";
+      fbCb.className = "scenario-expected-fallback-checkbox";
+      fbCb.setAttribute("aria-label", "Expect derived fallback");
+      fbCb.checked = !!sc.expectedFallback;
+      fbCb.onchange = () => {
+        sc.expectedFallback = fbCb.checked;
+        if (fbCb.checked) sc.expectedRuleIndex = null;
+        renderScenarios();
+        commit();
+      };
+      fbLabel.append(fbCb, document.createTextNode(" derived fallback"));
+      expectRow.appendChild(fbLabel);
+    }
+
+    const reconfirmBtn = document.createElement("button");
+    reconfirmBtn.type = "button";
+    reconfirmBtn.className = "secondary scenario-reconfirm-btn";
+    reconfirmBtn.textContent = "Reconfirm expectation";
+    reconfirmBtn.title = "Adopt the current trace's winner as this case's expectation";
+    reconfirmBtn.onclick = () => {
+      const model = buildModel();
+      const trace = traceModel(model, sc.input);
+      if (model.mode === "rubric") {
+        const b = trace.rubricBranch;
+        sc.expectedTarget = b === "high" ? "done" : b === "medium" ? "light_repair" : b === "low" ? "deep_repair" : null;
+        sc.expectedRuleIndex = null;
+        sc.expectedFallback = false;
+        sc.expectedRulesFingerprint = null;
+      } else if (trace.match) {
+        sc.expectedTarget = trace.match.target;
+        if (trace.match.ruleIndex === -1) {
+          sc.expectedFallback = true;
+          sc.expectedRuleIndex = null;
+        } else {
+          sc.expectedFallback = false;
+          sc.expectedRuleIndex = trace.match.ruleIndex;
+        }
+        sc.expectedRulesFingerprint = rulesFingerprint(model);
+      }
+      renderScenarios();
+      commit();
+    };
+    expectRow.appendChild(reconfirmBtn);
+    card.appendChild(expectRow);
+
+    const verdictEl = document.createElement("div");
+    verdictEl.className = "scenario-verdict hint";
+    card.appendChild(verdictEl);
+
+    const delBtn = document.createElement("button");
+    delBtn.type = "button";
+    delBtn.className = "secondary del scenario-delete-btn";
+    delBtn.textContent = "✕ case";
+    delBtn.onclick = () => { scenarios.splice(si, 1); renderScenarios(); commit(); };
+    card.appendChild(delBtn);
+
+    host.appendChild(card);
+  });
+  _renderSuiteRunResults();
+}
+
+function _invalidateSuiteRun() {
+  lastSuiteRun = null;
+  _renderSuiteRunResults();
+}
+
+function _renderSuiteRunResults() {
+  const summaryEl = $("scenario-summary");
+  const coverageEl = $("scenario-coverage");
+  if (!summaryEl || !coverageEl) return;
+  document.querySelectorAll(".scenario-verdict").forEach((el) => {
+    el.textContent = "";
+    el.className = "scenario-verdict hint";
+  });
+  if (!lastSuiteRun) {
+    summaryEl.textContent = scenarios.length ? "Not yet run — click Run all." : "No scenarios yet.";
+    coverageEl.textContent = "";
+    return;
+  }
+  const s = lastSuiteRun.summary;
+  summaryEl.textContent = `${s.passed} passed, ${s.failed} failed, ${s.unasserted} unasserted, ${s.errors} error${s.errors === 1 ? "" : "s"}.`;
+  const cov = lastSuiteRun.coverage;
+  if (state.mode === "rubric") {
+    coverageEl.textContent =
+      `Rubric branches covered: ${cov.winningRubricBranches.join(", ") || "none"}; ` +
+      `uncovered: ${cov.uncoveredRubricBranches.join(", ") || "none"}.`;
+  } else {
+    coverageEl.textContent =
+      `Winning rule indexes: ${cov.winningRuleIndexes.join(", ") || "none"}; ` +
+      `evaluated: ${cov.evaluatedRuleIndexes.join(", ") || "none"}; ` +
+      `uncovered: ${cov.uncoveredRuleIndexes.join(", ") || "none"}; ` +
+      `fallback: ${cov.fallback.applicable ? (cov.fallback.covered ? "covered" : "uncovered") : "n/a"}.`;
+  }
+  lastSuiteRun.results.forEach((r) => {
+    const card = document.querySelector(`.scenario-card[data-scenario-index="${r.position}"]`);
+    const verdictEl = card && card.querySelector(".scenario-verdict");
+    if (!verdictEl) return;
+    const label = r.needsReview ? `${r.verdict} (needs review)` : r.verdict;
+    const actual = r.actualTarget == null ? "(none)" : r.actualTarget;
+    const diagText = r.diagnostics.length ? "; " + r.diagnostics.map((d) => d.message).join(" ") : "";
+    verdictEl.textContent = `${label} — actual: ${actual}${diagText}`;
+    verdictEl.classList.add(
+      r.verdict === "pass" ? "msg-ok" : r.verdict === "fail" || r.verdict === "error" ? "msg-error" : "msg-warn"
+    );
+  });
+}
+
+$("add-scenario-btn").onclick = () => {
+  scenarios.push({
+    id: _newScenarioId(),
+    name: "",
+    input: _blankScenarioInput(state.mode),
+    expectedTarget: null,
+    expectedRuleIndex: null,
+    expectedFallback: false,
+    expectedRulesFingerprint: null,
+  });
+  renderScenarios();
+  commit();
+};
+
+$("run-all-btn").onclick = () => {
+  const model = buildModel();
+  lastSuiteRun = runScenarioSuite(model, scenarios);
+  _renderSuiteRunResults();
+};
+
 // Export guidance (ENH-3487): a concrete destination path, the validate
 // command, and a runnable `ll-loop run` invocation. issue_lifecycle declares
 // a required `parameters.issue_id` bound by a JSON-object positional input
@@ -1230,6 +1611,11 @@ function updatePreview() {
   } else {
     $("transition-summary").hidden = true;
   }
+
+  // FEAT-3488: a policy edit invalidates any displayed Run all results —
+  // they are derived data, never an authoritative record of the last edit.
+  lastSuiteRun = null;
+  _renderSuiteRunResults();
 }
 
 function renderAll() {
@@ -1248,6 +1634,7 @@ function renderAll() {
     $("rule-list").innerHTML = "";
   }
   renderTryIt();
+  renderScenarios();
   updatePreview();
 }
 
@@ -1295,10 +1682,11 @@ $("mode-switch").value = state.mode;
 // first so that reseed is itself undoable.
 $("mode-switch").onchange = (e) => {
   const newMode = e.target.value;
-  drafts = { ...drafts, [state.mode]: { model: state } };
+  drafts = { ...drafts, [state.mode]: { ...drafts[state.mode], model: state, scenarios } };
   const existing = drafts[newMode];
   state = existing ? existing.model : seedExample(newMode);
-  drafts = { ...drafts, [newMode]: { model: state } };
+  scenarios = existing ? existing.scenarios || [] : [];
+  drafts = { ...drafts, [newMode]: { ...existing, model: state, scenarios } };
   applyStateToForm();
   applyModeVisibility();
   renderAll();
@@ -1311,12 +1699,15 @@ $("mode-switch").onchange = (e) => {
 // entry either way (one undo restores both activeMode and that mode's
 // prior draft when the mode changed).
 function applyPreset(preset) {
-  drafts = { ...drafts, [state.mode]: { model: state } };
+  drafts = { ...drafts, [state.mode]: { ...drafts[state.mode], model: state, scenarios } };
   if (preset.mode !== state.mode) {
     $("mode-switch").value = preset.mode;
   }
   const model = preset.build();
-  drafts = { ...drafts, [preset.mode]: { model } };
+  // FEAT-3488: preset apply clears only the destination suite atomically
+  // with its model swap (one commit() => one undo restores both).
+  scenarios = [];
+  drafts = { ...drafts, [preset.mode]: { model, scenarios } };
   state = model;
   applyStateToForm();
   applyModeVisibility();
@@ -1464,13 +1855,19 @@ $("open-project-input").onchange = (e) => {
       showLiveStatus(`Could not open project: ${err.message}`);
       return;
     }
+    project = withScenariosDefaulted(project);
     projectId = project.projectId;
     drafts = project.drafts;
     state = drafts[project.activeMode].model;
+    scenarios = drafts[project.activeMode].scenarios || [];
     applyStateToForm();
     applyModeVisibility();
     renderAll();
     history = { past: [], present: _deepClone({ activeMode: project.activeMode, drafts }), future: [] };
+    // FEAT-3488: replace/scope the stored draft set to this project's modes
+    // only — a mode absent here must never resurrect a previous project's
+    // draft/suite on a later reload or mode switch.
+    _clearDraftKeysExcept(new Set(Object.keys(project.drafts)));
     _persistAllDrafts(drafts);
     _persistMeta();
     updateUndoRedoButtons();
@@ -1511,7 +1908,10 @@ document.addEventListener("keydown", (e) => {
 // reseed now pushes a history entry, so it is itself undoable.
 $("start-blank-btn").onclick = () => {
   state = blankModel(state.mode);
-  drafts = { ...drafts, [state.mode]: { model: state } };
+  // FEAT-3488: Start blank clears this mode's suite too (same atomic-clear
+  // contract as applyPreset — one commit(), one undo restores both).
+  scenarios = [];
+  drafts = { ...drafts, [state.mode]: { model: state, scenarios } };
   applyStateToForm();
   applyModeVisibility();
   renderAll();

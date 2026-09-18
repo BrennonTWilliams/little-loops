@@ -165,6 +165,26 @@
       "name": "multi-line block scalar continuation is unsupported",
       "frontmatter_text": "description: |\n  line one\n  line two",
       "expected_error_substring": "Can't read line"
+    },
+    {
+      "name": "FEAT-3488: unquoted nested flow mapping is unsupported",
+      "frontmatter_text": "x: {a: b}",
+      "expected_error_substring": "Can't read line"
+    },
+    {
+      "name": "FEAT-3488: bare block-scalar indicator with no continuation is unsupported",
+      "frontmatter_text": "x: |",
+      "expected_error_substring": "Can't read line"
+    },
+    {
+      "name": "FEAT-3488: unclosed flow list is unsupported",
+      "frontmatter_text": "x: [a",
+      "expected_error_substring": "Can't read line"
+    },
+    {
+      "name": "FEAT-3488: explicit YAML tag is unsupported",
+      "frontmatter_text": "x: !!str 5",
+      "expected_error_substring": "Can't read line"
     }
   ]
 }

@@ -42,6 +42,12 @@ import {
   LIFECYCLE_DESTINATIONS,
   _dispatchedDestinations,
   _requiredTerminalBlocks,
+  rulesFingerprint,
+  normalizeScenarioInput,
+  traceModel,
+  evaluateScenario,
+  runScenarioSuite,
+  withScenariosDefaulted,
 } from "../../little_loops/templates/policy_builder_core.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -502,7 +508,10 @@ test("parseFrontmatterBlock rejects a YAML anchor", () => {
 });
 
 test("parseFrontmatterBlock rejects a multi-line block-scalar continuation", () => {
-  assert.throws(() => parseFrontmatterBlock("description: |\n  line one\n  line two"), /Can't read line 2/);
+  // FEAT-3488: the bare `|` indicator is now rejected at its own line (1),
+  // ahead of the indented-continuation check that used to be the first
+  // thing to notice this construct at line 2.
+  assert.throws(() => parseFrontmatterBlock("description: |\n  line one\n  line two"), /Can't read line 1/);
 });
 
 test("frontmatter_encoding_corpus js_reject_cases raise the documented substring", () => {
@@ -803,10 +812,13 @@ test("validateProjectStructure and parseBuilderProject reject malformed project 
 test("parseBuilderProject preserves unknown JSON-compatible draft metadata (forward compatibility)", () => {
   const model = seedExample("rubric");
   const project = _projectFor(model);
-  project.drafts.rubric.scenarios = [{ name: "case-1" }]; // FEAT-3488-shaped sibling key
+  // `scenarios` is now a validated FEAT-3488 field (see the dedicated
+  // structural-validation tests below); this test instead illustrates the
+  // general principle with a still-genuinely-unknown sibling key.
+  project.drafts.rubric.futureMetadata = { note: "case-1" };
   const text = serializeBuilderProject(project);
   const parsed = parseBuilderProject(text);
-  assert.deepEqual(parsed.drafts.rubric.scenarios, [{ name: "case-1" }]);
+  assert.deepEqual(parsed.drafts.rubric.futureMetadata, { note: "case-1" });
 });
 
 test("applyDraftEdit commit pushes the current present onto past and clears future", () => {
@@ -1325,6 +1337,7 @@ function _newBug3502Sandbox() {
     validateProjectStructure,
     applyDraftEdit,
     parseBuilderProject,
+    withScenariosDefaulted,
     BUILDER_PROJECT_SCHEMA_VERSION,
     window: {},
     document: { getElementById: () => null },
@@ -1340,6 +1353,10 @@ function _newBug3502Sandbox() {
     applyStateToForm: () => {},
     applyModeVisibility: () => {},
     renderAll: () => {},
+    // FEAT-3488: this suite's Run-all display is outside the spliced
+    // bootstrap/Open-handler regions (defined further down the template) —
+    // stub it like the other render hooks above.
+    _renderSuiteRunResults: () => {},
     FileReader: class {
       readAsText(file) {
         this.result = file.text;

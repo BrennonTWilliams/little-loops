@@ -458,18 +458,70 @@ export function evaluateModel(model, scores) {
     return noMatch;
   }
   const authoredCount = (model.rules || []).length;
+  const { winner } = _traceCompiledRules(compiled, scores, authoredCount);
+  if (!winner) return noMatch;
+  return {
+    ruleIndex: winner.ruleIndex,
+    target: winner.target,
+    isFallback: winner.isFallback,
+    conditionResults: winner.conditions.map((c) => c.result),
+  };
+}
+
+// ===========================================================================
+// Shared compiled-rule trace walk (FEAT-3488)
+// ===========================================================================
+// One evaluation walk shared by evaluateModel (legacy MatchResult — winner's
+// condition booleans only) and traceModel (full per-rule trace for scenario
+// explanations). First-match routing is unchanged: only rules up to and
+// including the winner are visited; every predicate *within* a visited rule
+// is evaluated (not just until the first false) so a failed rule's later
+// conditions still explain why it lost. Rules after the winner are
+// "not_evaluated" and carry no conditions.
+
+// One trace condition record: `provenance` (keyed by predicate dim) supplies
+// the raw/encoded story from normalizeScenarioInput; evaluateModel calls
+// this with no provenance, so raw fields stay absent and encoded fields fall
+// back to the bare `scores` lookup — its MatchResult shape never surfaced
+// provenance and must not start requiring it.
+function _conditionRecord(p, scores, provenance) {
+  const prov = (provenance && provenance[p.dim]) || {};
+  const hasEncoded =
+    prov.encodedPresent !== undefined
+      ? prov.encodedPresent
+      : scores != null && Object.prototype.hasOwnProperty.call(scores, p.dim);
+  return {
+    sourceKey: prov.sourceKey != null ? prov.sourceKey : p.dim,
+    rawPresent: !!prov.rawPresent,
+    rawValue: prov.rawValue,
+    encodedPresent: hasEncoded,
+    encodedValue: prov.encodedValue !== undefined ? prov.encodedValue : scores && scores[p.dim],
+    predicate: { dim: p.dim, op: p.op, value: p.value },
+    result: evalPredicate(p, scores),
+  };
+}
+
+function _traceCompiledRules(compiled, scores, authoredCount, provenance) {
+  const rules = [];
+  let winner = null;
   for (let i = 0; i < compiled.length; i++) {
     const rule = compiled[i];
     const ruleIndex = i < authoredCount ? i : -1;
+    if (winner) {
+      rules.push({ ruleIndex, status: "not_evaluated", conditions: [] });
+      continue;
+    }
     if (isCatchall(rule)) {
-      return { ruleIndex, target: rule.target, isFallback: true, conditionResults: [] };
+      rules.push({ ruleIndex, status: "matched", conditions: [] });
+      winner = { ruleIndex, target: rule.target, isFallback: true, conditions: [] };
+      continue;
     }
-    const conditionResults = rule.predicates.map((p) => evalPredicate(p, scores));
-    if (conditionResults.every(Boolean)) {
-      return { ruleIndex, target: rule.target, isFallback: false, conditionResults };
-    }
+    const conditions = rule.predicates.map((p) => _conditionRecord(p, scores, provenance));
+    const allPass = conditions.every((c) => c.result);
+    rules.push({ ruleIndex, status: allPass ? "matched" : "failed", conditions });
+    if (allPass) winner = { ruleIndex, target: rule.target, isFallback: false, conditions };
   }
-  return noMatch;
+  return { rules, winner };
 }
 
 /**
@@ -879,6 +931,54 @@ function _deepClone(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+// FEAT-3488: structural (not semantic) shape check for one stored scenario.
+// Mirrors validateProjectStructure's own storage-vs-execution split: a
+// missing input member, out-of-range score, unsupported frontmatter text, or
+// stale index is editable JSON data that must survive Save/Open/reload
+// unchanged — Run (runScenarioSuite/evaluateScenario) is what diagnoses those
+// semantic defects, never this function.
+function _validateScenarioShape(scenario, mode, idx) {
+  const prefix = `drafts[${mode}].scenarios[${idx}]`;
+  if (!scenario || typeof scenario !== "object" || Array.isArray(scenario)) {
+    return [`${prefix} must be a JSON object`];
+  }
+  const errors = [];
+  if (typeof scenario.id !== "string" || !scenario.id) {
+    errors.push(`${prefix}.id must be a non-empty string`);
+  }
+  if (scenario.name !== undefined && typeof scenario.name !== "string") {
+    errors.push(`${prefix}.name must be a string`);
+  }
+  if (!scenario.input || typeof scenario.input !== "object" || Array.isArray(scenario.input)) {
+    errors.push(`${prefix}.input must be a JSON object`);
+  }
+  if (
+    scenario.expectedTarget !== undefined &&
+    scenario.expectedTarget !== null &&
+    typeof scenario.expectedTarget !== "string"
+  ) {
+    errors.push(`${prefix}.expectedTarget must be a string or null`);
+  }
+  if (
+    scenario.expectedRuleIndex !== undefined &&
+    scenario.expectedRuleIndex !== null &&
+    typeof scenario.expectedRuleIndex !== "number"
+  ) {
+    errors.push(`${prefix}.expectedRuleIndex must be a number or null`);
+  }
+  if (scenario.expectedFallback !== undefined && typeof scenario.expectedFallback !== "boolean") {
+    errors.push(`${prefix}.expectedFallback must be a boolean`);
+  }
+  if (
+    scenario.expectedRulesFingerprint !== undefined &&
+    scenario.expectedRulesFingerprint !== null &&
+    typeof scenario.expectedRulesFingerprint !== "string"
+  ) {
+    errors.push(`${prefix}.expectedRulesFingerprint must be a string or null`);
+  }
+  return errors;
+}
+
 /**
  * Structural (not semantic) validation of a BuilderProject-shaped object:
  * envelope fields, draft shapes, and draft-key/model.mode agreement. Never
@@ -928,6 +1028,19 @@ export function validateProjectStructure(project) {
     }
     if (!Array.isArray(model.dimensions) || !Array.isArray(model.rules) || !Array.isArray(model.outcomes)) {
       errors.push(`drafts[${mode}].model.dimensions/rules/outcomes must be arrays`);
+    }
+    // FEAT-3488: `scenarios` is an optional additive sibling of `model` on the
+    // draft wrapper. Structural shape only (id/name/input/expectation field
+    // types) — never export-readiness or execution validity, and absence is
+    // not an error (older projects predate the field).
+    if (draft.scenarios !== undefined) {
+      if (!Array.isArray(draft.scenarios)) {
+        errors.push(`drafts[${mode}].scenarios must be an array`);
+      } else {
+        draft.scenarios.forEach((s, idx) => {
+          errors.push(..._validateScenarioShape(s, mode, idx));
+        });
+      }
     }
   }
   if (!errors.length && !project.drafts[project.activeMode]) {
@@ -985,6 +1098,25 @@ export function parseBuilderProject(text) {
 }
 
 /**
+ * Default every draft's `scenarios` to `[]` where absent (FEAT-3488: old
+ * projects predate the field). A separate, explicit post-parse step — never
+ * inside `parseBuilderProject` itself, which stays a faithful structural
+ * parse (its golden-fixture round-trip must reproduce the source bytes
+ * exactly). Pure: returns a new project object; a draft that already carries
+ * `scenarios` (including hand-authored forward-compatible shapes structural
+ * validation already accepted) is returned unchanged.
+ * @param {Object} project  a structurally valid BuilderProject (e.g. from parseBuilderProject)
+ * @returns {Object}
+ */
+export function withScenariosDefaulted(project) {
+  const drafts = {};
+  for (const [mode, draft] of Object.entries(project.drafts)) {
+    drafts[mode] = draft.scenarios === undefined ? { ...draft, scenarios: [] } : draft;
+  }
+  return { ...project, drafts };
+}
+
+/**
  * Apply one edit to a whole-project DraftHistory. Pure: every stored
  * snapshot is a deep copy, so later mutation of the caller's live state can
  * never retroactively change a history entry.
@@ -1022,6 +1154,472 @@ export function applyDraftEdit(history, edit) {
   const snapshot = { activeMode: edit.activeMode, drafts: edit.drafts };
   const newPast = present ? [...past, _deepClone(present)].slice(-_HISTORY_LIMIT) : past;
   return { past: newPast, present: _deepClone(snapshot), future: [] };
+}
+
+// ===========================================================================
+// Offline scenario suites (FEAT-3488)
+// ===========================================================================
+//
+// Scenario {id, name, input, expectedTarget, expectedRuleIndex?, expectedFallback?,
+//   expectedRulesFingerprint?} — a named, independently authored test case
+// attached to one mode's draft (drafts[mode].scenarios). `input` is mode-
+// specific (see normalizeScenarioInput). `expectedTarget: null` is
+// unasserted; nothing manufactures its own oracle from the observed winner.
+//
+// ScenarioResult {scenarioId, actualTarget, ruleIndex?, rubricBranch?, trace,
+//   verdict, diagnostics, input, needsReview} — verdict is one of
+//   pass/fail/unasserted/error (see evaluateScenario's precedence).
+//
+// This module stays pure and DOM-free: no ID generation, no clock reads, no
+// execution of scenario actions — the template owns ID assignment
+// (crypto.randomUUID(), mirroring _newProjectId) and Run-all UI wiring.
+
+/**
+ * Canonical JSON fingerprint of a model's *authored* rules only — ordered
+ * predicates `{dim, op, value}` plus `target`, in authored order. Never the
+ * derived fallback (`_serializeRulesText` only appends it when no authored
+ * catch-all exists), so changing solely the fallback target leaves every
+ * index expectation's fingerprint current. Cryptographic hashing is
+ * unnecessary offline; plain JSON text is the fingerprint.
+ * @param {{rules: Array}} model
+ * @returns {string}
+ */
+export function rulesFingerprint(model) {
+  const canon = (model.rules || []).map((r) => ({
+    predicates: (r.predicates || []).map((p) => ({ dim: p.dim, op: p.op, value: p.value })),
+    target: r.target,
+  }));
+  return JSON.stringify(canon);
+}
+
+function _normalizeDecisionTableInput(model, input) {
+  const diagnostics = [];
+  const scores = {};
+  const provenance = {};
+  const dims = model.dimensions || [];
+  const dimByNorm = new Map(dims.map((d) => [normalizeDimName(d.name), d]));
+  const values = input && typeof input === "object" ? input.values : undefined;
+  if (!values || typeof values !== "object" || Array.isArray(values)) {
+    diagnostics.push(_diag("error", "input", "Decision-table scenario input must be {values: {...}}."));
+    return { scores, provenance, diagnostics };
+  }
+  for (const [key, dim] of dimByNorm) {
+    const has = Object.prototype.hasOwnProperty.call(values, key);
+    const raw = has ? values[key] : undefined;
+    provenance[key] = {
+      sourceKey: key,
+      rawPresent: has,
+      rawValue: raw,
+      encodedPresent: false,
+      encodedValue: undefined,
+    };
+    if (!has) continue;
+    if (raw === null) {
+      diagnostics.push(_diag("error", "input", `Field "${key}" is null; omit the key to mean missing.`));
+      continue;
+    }
+    if (dim.type === "boolean") {
+      if (typeof raw !== "boolean") {
+        diagnostics.push(_diag("error", "input", `Field "${key}" must be a boolean.`));
+        continue;
+      }
+      const encoded = raw ? 100 : 0;
+      scores[key] = encoded;
+      provenance[key].encodedPresent = true;
+      provenance[key].encodedValue = encoded;
+    } else {
+      if (typeof raw !== "number" || !Number.isFinite(raw) || raw < 0 || raw > 100) {
+        diagnostics.push(_diag("error", "input", `Field "${key}" must be a finite number in [0,100].`));
+        continue;
+      }
+      scores[key] = raw;
+      provenance[key].encodedPresent = true;
+      provenance[key].encodedValue = raw;
+    }
+  }
+  for (const key of Object.keys(values)) {
+    if (!dimByNorm.has(key)) {
+      diagnostics.push(_diag("error", "input", `Field "${key}" is not a declared dimension.`));
+    }
+  }
+  return { scores, provenance, diagnostics };
+}
+
+function _normalizeLifecycleInput(model, input) {
+  const diagnostics = [];
+  const provenance = {};
+  const text = input && typeof input === "object" ? input.frontmatterText : undefined;
+  if (typeof text !== "string") {
+    diagnostics.push(_diag("error", "input", "Lifecycle scenario input must be {frontmatterText: string}."));
+    return { scores: {}, provenance, diagnostics };
+  }
+  let fm;
+  try {
+    fm = parseFrontmatterBlock(text);
+  } catch (err) {
+    diagnostics.push(_diag("error", "input", err.message));
+    return { scores: {}, provenance, diagnostics };
+  }
+  const scores = encodeFrontmatterScores(fm, model.dimensions || []);
+  for (const d of model.dimensions || []) {
+    const normName = normalizeDimName(d.name);
+    // Derived dimension: retain the actual frontmatter source key ("priority"
+    // for "priority_rank"), matching encodeFrontmatterScores' own lookup.
+    const sourceKey = d.name === "priority_rank" ? "priority" : d.name;
+    const rawPresent = fm != null && Object.prototype.hasOwnProperty.call(fm, sourceKey);
+    const rawValue = rawPresent ? fm[sourceKey] : undefined;
+    const encodedPresent = Object.prototype.hasOwnProperty.call(scores, normName);
+    provenance[normName] = {
+      sourceKey,
+      rawPresent,
+      rawValue,
+      encodedPresent,
+      encodedValue: encodedPresent ? scores[normName] : undefined,
+    };
+  }
+  return { scores, provenance, diagnostics };
+}
+
+function _normalizeRubricInput(input) {
+  const diagnostics = [];
+  const raw = input && typeof input === "object" ? input.aggregate : undefined;
+  if (typeof raw !== "number" || !Number.isFinite(raw) || !Number.isInteger(raw) || raw < 0 || raw > 100) {
+    diagnostics.push(
+      _diag("error", "input", "Rubric scenario input must be {aggregate: integer in [0,100]}.")
+    );
+    return { scores: {}, provenance: {}, diagnostics };
+  }
+  return { scores: {}, provenance: {}, aggregate: raw, diagnostics };
+}
+
+/**
+ * Normalize one scenario's mode-specific `input` into the encoded `scores`
+ * object `evalPredicate`/`evaluateModel` consume, plus raw/encoded
+ * provenance for trace explanations. Pure; never throws — unsupported or
+ * malformed input is reported via `diagnostics`, never guessed at.
+ * @param {Object} model  a builder model
+ * @param {Object} input  mode-specific scenario input (see file-header contract)
+ * @returns {{scores: Object, provenance: Object, aggregate?: number, diagnostics: Array}}
+ */
+export function normalizeScenarioInput(model, input) {
+  const mode = model.mode || "decision_table";
+  if (mode === "rubric") return _normalizeRubricInput(input);
+  if (mode === "issue_lifecycle") return _normalizeLifecycleInput(model, input);
+  return _normalizeDecisionTableInput(model, input);
+}
+
+// The routing-relevant "invalid model" definition (see the issue's Proposed
+// Solution): a model whose only validateBuilderModel errors are export-
+// readiness ones (empty action bodies, missing outcome references, step
+// budget, dimension anchors) still routes every scenario normally. Only
+// these three reasons turn every scenario in the suite into `error`.
+function _modelRoutingDiagnostics(model) {
+  const mode = model.mode || "decision_table";
+  const diagnostics = [];
+  let compiled = null;
+  try {
+    compiled = parseRuleTable(_serializeRulesText(model));
+  } catch (err) {
+    diagnostics.push(_diag("error", "rules", `Rule table does not compile: ${err.message}`));
+  }
+  const dims = model.dimensions || [];
+  const normCounts = new Map();
+  for (const d of dims) {
+    const n = normalizeDimName(d.name);
+    normCounts.set(n, (normCounts.get(n) || 0) + 1);
+  }
+  const dupNames = [...normCounts.entries()].filter(([, c]) => c > 1).map(([n]) => n);
+  if (dupNames.length) {
+    diagnostics.push(
+      _diag("error", "dimensions", `Duplicate normalized dimension name(s): ${dupNames.join(", ")}.`)
+    );
+  }
+  if (compiled) {
+    const known = new Set(dims.map((d) => normalizeDimName(d.name)));
+    const unknown = new Set();
+    for (const rule of compiled) {
+      for (const p of rule.predicates || []) {
+        if (!known.has(p.dim)) unknown.add(p.dim);
+      }
+    }
+    if (unknown.size) {
+      diagnostics.push(
+        _diag("error", "rules", `Predicate references unknown dimension(s): ${[...unknown].join(", ")}.`)
+      );
+    }
+  }
+  if (mode === "rubric") {
+    const high = Number(model.thresholdHigh);
+    const medium = Number(model.thresholdMedium);
+    if (!Number.isFinite(high) || !Number.isFinite(medium) || !(high > medium)) {
+      diagnostics.push(
+        _diag("error", "thresholdHigh", "Rubric thresholds are non-finite or not high > medium.")
+      );
+    }
+  }
+  return { diagnostics, compiled };
+}
+
+function _rubricBranch(model, aggregate) {
+  const high = Number(model.thresholdHigh);
+  const medium = Number(model.thresholdMedium);
+  if (aggregate >= high) return "high";
+  if (aggregate >= medium) return "medium";
+  return "low";
+}
+
+const _RUBRIC_TARGETS = new Set(["done", "light_repair", "deep_repair"]);
+
+// The valid assertion-target token set for the current policy (BUG-3486-
+// adjacent to _checkMissingReferences' `names` set, reused here so
+// "Expected target absent from the current policy" agrees with the
+// reference-validity the rest of the builder already enforces).
+function _validTargetTokens(model) {
+  if (model.mode === "rubric") return _RUBRIC_TARGETS;
+  const tokens = new Set();
+  for (const r of model.rules || []) if (r.target) tokens.add(r.target);
+  if (model.fallback) tokens.add(model.fallback);
+  for (const o of model.outcomes || []) if (o.name) tokens.add(o.name);
+  if (model.mode === "issue_lifecycle") {
+    for (const d of LIFECYCLE_DESTINATIONS) tokens.add(d.name);
+  }
+  return tokens;
+}
+
+function _expectationDiagnostics(model, scenario) {
+  const out = [];
+  const mode = model.mode || "decision_table";
+  const hasIndex = scenario.expectedRuleIndex != null;
+  const hasFallback = scenario.expectedFallback === true;
+  if (mode === "rubric") {
+    if (hasIndex) out.push(_diag("error", "expectedRuleIndex", "Rubric scenarios reject expectedRuleIndex."));
+    if (hasFallback) out.push(_diag("error", "expectedFallback", "Rubric scenarios reject expectedFallback."));
+  }
+  if (hasIndex && hasFallback) {
+    out.push(_diag("error", "expectedFallback", "expectedFallback is mutually exclusive with expectedRuleIndex."));
+  }
+  if (hasFallback && scenario.expectedTarget == null) {
+    out.push(_diag("error", "expectedFallback", "expectedFallback requires a non-null expectedTarget."));
+  }
+  if (scenario.expectedTarget == null && hasIndex) {
+    out.push(_diag("error", "expectedRuleIndex", "A null expectedTarget with expectedRuleIndex is invalid."));
+  }
+  if (scenario.expectedTarget != null && !_validTargetTokens(model).has(scenario.expectedTarget)) {
+    out.push(
+      _diag(
+        "error",
+        "expectedTarget",
+        `Expected target "${scenario.expectedTarget}" is not a defined destination in the current policy.`
+      )
+    );
+  }
+  return out;
+}
+
+// "current" (fingerprint matches rulesFingerprint(model)), "stale" (mismatch),
+// or "needs_review" (missing fingerprint) — only meaningful when the
+// scenario carries an expectedRuleIndex.
+function _indexExpectationStatus(model, scenario) {
+  if (!scenario.expectedRulesFingerprint) return "needs_review";
+  return scenario.expectedRulesFingerprint === rulesFingerprint(model) ? "current" : "stale";
+}
+
+/**
+ * Trace a scenario `input` against `model`: normalizes input, walks the
+ * shared compiled-rule path (`_traceCompiledRules`) retaining full raw/
+ * encoded provenance, and reports the routing-relevant invalid-model
+ * diagnostics (nothing from export-readiness checks). Shares lower-level
+ * compilation/predicate evaluation with `evaluateModel`; never duplicates
+ * its semantics.
+ * @param {Object} model  a builder model
+ * @param {Object} input  mode-specific scenario input
+ * @returns {{match: {ruleIndex: number, target: string|null, isFallback: boolean}|null, rules: Array, rubricBranch?: string|null, diagnostics: Array}}
+ */
+export function traceModel(model, input) {
+  const { diagnostics, compiled } = _modelRoutingDiagnostics(model);
+  if (diagnostics.length || !compiled) {
+    return { match: null, rules: [], diagnostics };
+  }
+  if (model.mode === "rubric") {
+    const { aggregate } = normalizeScenarioInput(model, input);
+    const rubricBranch = aggregate == null ? null : _rubricBranch(model, aggregate);
+    return { match: null, rules: [], rubricBranch, diagnostics };
+  }
+  const { scores, provenance } = normalizeScenarioInput(model, input);
+  const authoredCount = (model.rules || []).length;
+  const { rules, winner } = _traceCompiledRules(compiled, scores, authoredCount, provenance);
+  const match = winner
+    ? { ruleIndex: winner.ruleIndex, target: winner.target, isFallback: winner.isFallback }
+    : { ruleIndex: -1, target: null, isFallback: false };
+  return { match, rules, diagnostics };
+}
+
+/**
+ * Evaluate one scenario against `model`, applying the explicit verdict
+ * precedence: invalid model/input/expectation structure (or an expected
+ * target absent from the current policy, or an out-of-range index claiming a
+ * current fingerprint) → error; a stale/missing-fingerprint index expectation
+ * → unasserted+needsReview; a null expectedTarget → unasserted; otherwise
+ * compare target (and index/fallback identity when supplied) → pass/fail.
+ * @param {Object} model  a builder model
+ * @param {{id: string, name?: string, input: Object, expectedTarget: string|null, expectedRuleIndex?: number, expectedFallback?: boolean, expectedRulesFingerprint?: string}} scenario
+ * @returns {{scenarioId: string, actualTarget: string|null, ruleIndex?: number, rubricBranch?: string, trace: Object, verdict: "pass"|"fail"|"unasserted"|"error", diagnostics: Array, input: Object, needsReview: boolean}}
+ */
+export function evaluateScenario(model, scenario) {
+  const inputResult = normalizeScenarioInput(model, scenario.input);
+  const trace = traceModel(model, scenario.input);
+  const expectationDiags = _expectationDiagnostics(model, scenario);
+  const diagnostics = [...trace.diagnostics, ...inputResult.diagnostics, ...expectationDiags];
+
+  const hasIndex = scenario.expectedRuleIndex != null;
+  const hasFallback = scenario.expectedFallback === true;
+
+  let outOfRangeError = false;
+  if (
+    diagnostics.length === 0 &&
+    hasIndex &&
+    model.mode !== "rubric" &&
+    _indexExpectationStatus(model, scenario) === "current"
+  ) {
+    const idx = scenario.expectedRuleIndex;
+    if (!(Number.isInteger(idx) && idx >= 0 && idx < (model.rules || []).length)) {
+      outOfRangeError = true;
+    }
+  }
+
+  const base = { scenarioId: scenario.id, input: scenario.input, trace, diagnostics };
+
+  if (diagnostics.length > 0 || outOfRangeError) {
+    return { ...base, actualTarget: null, verdict: "error", needsReview: false };
+  }
+
+  let actualTarget = null;
+  let ruleIndex;
+  let rubricBranch;
+  if (model.mode === "rubric") {
+    rubricBranch = trace.rubricBranch;
+    actualTarget = rubricBranch === "high" ? "done" : rubricBranch === "medium" ? "light_repair" : rubricBranch === "low" ? "deep_repair" : null;
+  } else if (trace.match) {
+    actualTarget = trace.match.target;
+    ruleIndex = trace.match.ruleIndex;
+  }
+
+  if (hasIndex && _indexExpectationStatus(model, scenario) !== "current") {
+    return { ...base, actualTarget, ruleIndex, rubricBranch, verdict: "unasserted", needsReview: true };
+  }
+
+  if (scenario.expectedTarget == null) {
+    return { ...base, actualTarget, ruleIndex, rubricBranch, verdict: "unasserted", needsReview: false };
+  }
+
+  let pass = actualTarget === scenario.expectedTarget;
+  if (pass && hasIndex) pass = ruleIndex === scenario.expectedRuleIndex;
+  if (pass && hasFallback) pass = ruleIndex === -1;
+
+  return { ...base, actualTarget, ruleIndex, rubricBranch, verdict: pass ? "pass" : "fail", needsReview: false };
+}
+
+// Does the model actually emit a derived fallback (a catch-all
+// `_serializeRulesText` appends because no authored rule already supplies
+// one)? Mirrors that function's own condition directly rather than
+// re-parsing — fallback applicability is about what would be *emitted*, not
+// about any one scenario's routing outcome.
+function _hasDerivedFallback(model) {
+  const hasAuthoredCatchall = (model.rules || []).some((r) => isCatchall(r));
+  return !hasAuthoredCatchall && !!model.fallback;
+}
+
+/**
+ * Run every scenario in `scenarios` against `model` and summarize totals and
+ * routing coverage. Non-applicable mode collections are empty (rubric
+ * branches for decision_table/issue_lifecycle; rule coverage for rubric).
+ * Coverage counts only scenarios that routed successfully (verdict !==
+ * "error") — invalid model/input cases (including duplicate scenario IDs)
+ * contribute none.
+ * @param {Object} model  a builder model
+ * @param {Array} scenarios
+ * @returns {{results: Array, summary: {passed: number, failed: number, unasserted: number, errors: number}, coverage: {winningRuleIndexes: number[], evaluatedRuleIndexes: number[], uncoveredRuleIndexes: number[], fallback: {applicable: boolean, covered: boolean}, winningRubricBranches: string[], uncoveredRubricBranches: string[]}}}
+ */
+export function runScenarioSuite(model, scenarios) {
+  const results = [];
+  const summary = { passed: 0, failed: 0, unasserted: 0, errors: 0 };
+  const winningRuleIndexes = new Set();
+  const evaluatedRuleIndexes = new Set();
+  const winningRubricBranches = new Set();
+  let fallbackCovered = false;
+
+  const idCounts = new Map();
+  for (const s of scenarios || []) {
+    if (s && s.id) idCounts.set(s.id, (idCounts.get(s.id) || 0) + 1);
+  }
+
+  (scenarios || []).forEach((scenario, position) => {
+    let result;
+    if (scenario && scenario.id && idCounts.get(scenario.id) > 1) {
+      result = {
+        scenarioId: scenario.id,
+        position,
+        input: scenario.input,
+        trace: null,
+        actualTarget: null,
+        verdict: "error",
+        needsReview: false,
+        diagnostics: [_diag("error", "id", `Duplicate scenario id "${scenario.id}".`)],
+      };
+    } else {
+      result = { ...evaluateScenario(model, scenario), position };
+    }
+    results.push(result);
+    const bucket =
+      result.verdict === "pass"
+        ? "passed"
+        : result.verdict === "fail"
+        ? "failed"
+        : result.verdict === "unasserted"
+        ? "unasserted"
+        : "errors";
+    summary[bucket]++;
+
+    if (result.verdict === "error") return;
+    if (model.mode === "rubric") {
+      if (result.rubricBranch) winningRubricBranches.add(result.rubricBranch);
+      return;
+    }
+    if (result.trace && result.trace.rules) {
+      for (const r of result.trace.rules) {
+        if ((r.status === "matched" || r.status === "failed") && r.ruleIndex >= 0) {
+          evaluatedRuleIndexes.add(r.ruleIndex);
+        }
+      }
+    }
+    if (result.ruleIndex != null && result.ruleIndex >= 0) {
+      winningRuleIndexes.add(result.ruleIndex);
+    } else if (result.ruleIndex === -1) {
+      fallbackCovered = true;
+    }
+  });
+
+  const totalRules = (model.rules || []).length;
+  const uncoveredRuleIndexes = [];
+  for (let i = 0; i < totalRules; i++) {
+    if (!winningRuleIndexes.has(i)) uncoveredRuleIndexes.push(i);
+  }
+  const allBranches = ["high", "medium", "low"];
+  const uncoveredRubricBranches =
+    model.mode === "rubric" ? allBranches.filter((b) => !winningRubricBranches.has(b)) : [];
+
+  return {
+    results,
+    summary,
+    coverage: {
+      winningRuleIndexes: [...winningRuleIndexes].sort((a, b) => a - b),
+      evaluatedRuleIndexes: [...evaluatedRuleIndexes].sort((a, b) => a - b),
+      uncoveredRuleIndexes,
+      fallback: { applicable: model.mode !== "rubric" && _hasDerivedFallback(model), covered: fallbackCovered },
+      winningRubricBranches: model.mode === "rubric" ? [...winningRubricBranches] : [],
+      uncoveredRubricBranches,
+    },
+  };
 }
 
 // Deep-copy helpers so seeded/blank models never share array/object
@@ -2111,6 +2709,16 @@ export function serializeLoopYaml(model) {
 // Frontmatter Try-it mini-parser + encoder (FEAT-3474)
 // ===========================================================================
 
+// FEAT-3488: true when `value` is wrapped in one matching pair of quotes —
+// gates the unsupported-subset rejects below so quoted literal text (e.g.
+// `x: "{a: b}"`) stays ordinary string content, never a rejected construct.
+function _isQuotedScalar(value) {
+  if (value.length < 2) return false;
+  const first = value[0];
+  const last = value[value.length - 1];
+  return (first === "'" && last === "'") || (first === '"' && last === '"');
+}
+
 function _stripMatchingQuotes(value) {
   if (value.length >= 2) {
     const first = value[0];
@@ -2247,6 +2855,22 @@ export function parseFrontmatterBlock(text) {
       // YAML anchor/alias — not representable by this mini-parser.
       throw new Error(`Can't read line ${i + 1}: ${raw}`);
     }
+    // FEAT-3488: close the remaining unsupported-subset gaps — a nested flow
+    // mapping (`{...}`), an explicit YAML tag (`!`/`!!str`), a bare block-
+    // scalar indicator (`|`/`>`, with or without a chomping/indent suffix),
+    // or a flow list missing its closing `]`. Only when unquoted — a quoted
+    // literal containing these characters is ordinary text and stays valid.
+    if (!_isQuotedScalar(value)) {
+      if (value[0] === "{" || value[0] === "!") {
+        throw new Error(`Can't read line ${i + 1}: ${raw}`);
+      }
+      if (/^[|>][+-]?\d*\s*$/.test(value)) {
+        throw new Error(`Can't read line ${i + 1}: ${raw}`);
+      }
+      if (value[0] === "[" && !value.endsWith("]")) {
+        throw new Error(`Can't read line ${i + 1}: ${raw}`);
+      }
+    }
     if (value.startsWith("[") && value.endsWith("]")) {
       result[key] = _parseFlowList(value.slice(1, -1));
       continue;
@@ -2372,5 +2996,12 @@ if (typeof window !== "undefined") {
     // ENH-3491 (task presets, transition summary)
     taskPresets,
     summarizeTransitions,
+    // FEAT-3488 (offline scenario suites)
+    rulesFingerprint,
+    normalizeScenarioInput,
+    traceModel,
+    evaluateScenario,
+    runScenarioSuite,
+    withScenariosDefaulted,
   };
 }

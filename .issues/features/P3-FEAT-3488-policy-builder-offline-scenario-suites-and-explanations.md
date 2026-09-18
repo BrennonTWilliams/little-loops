@@ -5,10 +5,11 @@ epic: EPIC-3493
 type: FEAT
 title: Policy builder offline scenario suites and explanations
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-16'
 captured_at: '2026-09-16T20:54:21Z'
+completed_at: '2026-09-18T01:06:31Z'
 labels:
 - policy-builder
 - captured
@@ -124,6 +125,11 @@ Users save examples with each mode's draft, run all cases without executing acti
 
 ## Program Design
 
+### Deviations
+
+- 2026-09-18 — Added `withScenariosDefaulted(project) -> Object` (core.mjs, exported on `window.PolicyBuilderCore`), not named in the Proposed Solution's "migration fills `[]` after parse" line. `parseBuilderProject` stays a byte-faithful structural parse only (its golden `.project.json` round-trip fixtures must reproduce the source bytes exactly — confirmed by the existing round-trip test); the `scenarios: []` default for old projects is applied by the template as an explicit post-parse step (Open handler) and, separately inline, by `hydrateFromStorage()` for the localStorage-restore path. Same net behavior the AC requires ("old projects acquire `scenarios: []` per draft"), just not folded into `parseBuilderProject` itself.
+- 2026-09-18 — `currentProject()`/`commit()`/the mode-switch handler/`applyPreset`'s outgoing-mode save now merge into the existing draft wrapper (`{...drafts[mode], model, scenarios}`) rather than rebuilding `{model, scenarios}`, so unknown JSON-compatible sibling metadata on the *active* mode's draft survives a subsequent Save — the Integration Map's "carry full wrappers" directive named `commit()`'s three specific rewrite sites but not this general reconstruction pattern explicitly; applying it uniformly was necessary for the `open-project-with-unknown-sibling-metadata` browser probe to pass. `applyPreset`'s *destination*-wrapper replacement and Start blank's replacement stay wholesale by design (per the AC: preset/start-blank replaces the destination wrapper).
+
 ### Types
 
 `Scenario {id, name, input, expectedTarget, expectedRuleIndex?, expectedFallback?, expectedRulesFingerprint?}`; `ScenarioResult {scenarioId, actualTarget, ruleIndex?, rubricBranch?, trace, verdict, diagnostics}`. Verdicts are pass/fail/unasserted/error.
@@ -231,9 +237,88 @@ Includes offline scenario suites only. Excludes structural transition analysis a
 
 The earlier refinement/wiring passes mixed offline suites with connected transport and described the pre-BUG-3486 evaluator. Their active directives were reconciled on 2026-09-17. Connected design, unresolved queue risks, and `scripts/tests/spike/level2_run_handoff/` follow-up now belong to FEAT-3498; the spike does not prove the production queue approval path.
 
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-09-18
+- **Status**: Completed
+
+### Changes
+
+1. **`scripts/little_loops/templates/policy_builder_core.mjs`** — new offline
+   scenario-suite contracts: `rulesFingerprint`, `normalizeScenarioInput`
+   (per-mode input contracts with raw/encoded provenance),
+   `traceModel`/`evaluateScenario`/`runScenarioSuite` (verdict precedence,
+   routing coverage), and `withScenariosDefaulted`. `evaluateModel` was
+   refactored onto a new shared `_traceCompiledRules`/`_conditionRecord` walk
+   so it and `traceModel` compile/evaluate rules identically — its legacy
+   MatchResult shape and existing behavior are unchanged (verified by the
+   full existing suite plus a dedicated regression test).
+   `validateProjectStructure`/`parseBuilderProject` gained structural
+   (storage-only) validation of an optional `drafts[mode].scenarios` array.
+   `parseFrontmatterBlock` now rejects four more unsupported unquoted
+   constructs (`{...}`, `!tag`, bare `|`/`>` block-scalar indicators, an
+   unclosed `[`), each pinned by a new `frontmatter_encoding_corpus.json`
+   `js_reject_cases` fixture; quoted literal text containing those characters
+   remains valid.
+
+2. **`scripts/little_loops/templates/policy-router-builder.html.tmpl`** — a
+   new Scenarios panel (add/name/edit cases, per-mode input editor, expected-
+   target/rule-index/derived-fallback controls, Reconfirm expectation, Run
+   all, suite totals + coverage). `drafts[mode]` is now the sole owner of a
+   parallel `scenarios` array; every persistence/history site
+   (`_persistDraft`/`_persistAllDrafts`, `currentProject`, `commit`, mode
+   switch, `applyPreset`, Start blank, Open, `hydrateFromStorage`,
+   `restoreFromSnapshot`) carries it through, and `hydrateFromStorage` now
+   restores *every* saved mode (not just the active one) so a post-reload
+   mode switch sees a previously saved suite instead of reseeding. Open now
+   clears stored draft keys for modes absent from the opened project
+   (`_clearDraftKeysExcept`) so a prior project's draft can't resurface.
+
+3. **Tests** — new `scripts/tests/js/policy_scenarios.test.mjs` (38 cases:
+   input normalization per mode, full trace explanations, the routing-
+   relevant invalid-model definition, rulesFingerprint stability, the full
+   verdict-precedence matrix, coverage identities, quoted-literal reject
+   counterparts, scenario structural-validation rejection). Two pre-existing
+   `policy_validator.test.mjs` tests were updated to reflect the new,
+   intentional behavior (a block-scalar reject now fires one line earlier;
+   `scenarios` is no longer an arbitrary unknown-metadata example since it is
+   now a validated field). Golden HTML regenerated through
+   `ll-artifact policy-builder` (byte-identity test passes, not hand-edited).
+
+4. **Browser verification** — `.loops/probes/feat-3488-browser-probes.mjs`'s
+   `SCENARIO_SELECTORS` filled in; `ll-loop run
+   .loops/verify-feat-3488-browser-persistence.yaml` run against a freshly
+   generated page: 16/16 in-scope probes pass (terminal state
+   `blocked-surface-missing`, the expected outcome — the one remaining
+   blocked probe, `local-issue-import-offline`, is explicitly gated on
+   FEAT-3503). Fixed one real bug this surfaced along the way: `commit()`/
+   `currentProject()`/mode-switch were rebuilding a mode's draft wrapper as
+   `{model, scenarios}` instead of merging into the existing wrapper,
+   silently dropping unknown sibling metadata on the *active* draft on Save
+   (see Program Design § Deviations).
+
+5. **Docs** — added "Scenario Suites (offline)" to
+   `docs/guides/POLICY_ROUTER_GUIDE.md` and a corresponding paragraph to the
+   `ll-artifact policy-builder` section of `docs/reference/CLI.md`.
+
+### Verification Results
+
+- `python -m pytest scripts/tests/` (unit suite): 24099-24136 passed
+  (count varies slightly with xdist worker distribution), 2 pre-existing
+  failures confirmed unrelated to this change (verified via `git stash` and
+  serial rerun): `test_verify_evidence.py::test_no_new_unverifiable_evidence`
+  (a BUG-3484 issue-file finding, pre-dates this branch) and
+  `test_feat3323_sse_bridge.py` (a transient xdist worker crash on an
+  unrelated SSE-fan-in test; passes cleanly under `-n 0`).
+- `node --test scripts/tests/js/*.test.mjs`: 149 passed, 0 failed.
+- `ruff check scripts/`: unchanged pre-existing findings in an untouched
+  spike test file only; no new findings from this change.
+- Browser probes: 16 pass / 0 fail / 1 correctly-blocked (FEAT-3503).
+
 ## Status
 
-**Open** | Created: 2026-09-16 | Priority: P3
+**Done** | Created: 2026-09-16 | Priority: P3 | Completed: 2026-09-18
 
 ## Confidence Check Notes
 
@@ -291,6 +376,7 @@ _Added by `/ll:confidence-check` on 2026-09-17_
 
 ## Session Log
 
+- `/ll:manage-issue` - 2026-09-18T01:06:07 - `7da57693-0c13-427c-bc37-9f39217b53a5.jsonl`
 - `/ll:confidence-check` - 2026-09-18T00:23:18 - `5ba6e946-9d5c-4e37-bd48-7b8a54faec76.jsonl`
 - `/ll:verify-issues` - 2026-09-18T00:15:59 - `c3724569-9c0c-4b11-b776-659fcd33037c.jsonl`
 - manual review - 2026-09-17 - pre-implementation review applied: extracted suggestions + local issue import to FEAT-3503; added BUG-3502 to `blocked_by`; pinned routing-relevant "invalid model" definition, `ruleIndex === -1` as the derived-fallback discriminator (`isFallback` also true for authored catch-alls), integer rubric aggregate domain, template-owned scenario ID insertion with per-case duplicate-ID errors instead of structural rejection, subset validation inside `parseFrontmatterBlock` with fixtures in `js_reject_cases`, new `policy_scenarios.test.mjs`; probe assets un-ignored and the sibling-metadata fixture corrected. Frontmatter scores not recomputed.

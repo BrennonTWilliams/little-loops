@@ -30,13 +30,13 @@ import { pathToFileURL } from "node:url";
 // selector a probe needs is null, that probe reports BLOCKED (not FAIL) so the
 // loop can distinguish "feature not implemented yet" from "feature broken".
 const SCENARIO_SELECTORS = {
-  addCaseBtn: null,        // e.g. "#scenario-add-case"
-  caseNameInput: null,     // e.g. "#scenario-case-name"
-  caseList: null,          // e.g. "#scenario-case-list" (children = cases)
-  runAllBtn: null,         // e.g. "#scenario-run-all"
-  totals: null,            // e.g. "#scenario-totals" (text with pass/fail/unasserted/error)
-  importIssueInput: null,  // e.g. "#scenario-import-issue-input" (input[type=file])
-  importDiagnostics: null, // e.g. "#scenario-import-diagnostics"
+  addCaseBtn: "#add-scenario-btn",
+  caseNameInput: ".scenario-name-input",
+  caseList: "#scenario-list",
+  runAllBtn: "#run-all-btn",
+  totals: "#scenario-summary",
+  importIssueInput: null,  // FEAT-3503 — local issue-file import, not part of this issue
+  importDiagnostics: null, // FEAT-3503
 };
 
 // ---- locate Playwright without a repo dependency ---------------------------
@@ -394,10 +394,16 @@ const PROBES = [
       await page.selectOption("#mode-switch", other);
       assert((await cases()) === 1, `preset cleared the non-destination (${other}) suite`);
       await page.selectOption("#mode-switch", m);
-      await undo(page);
-      await undo(page); // second undo reverts our own mode switches; assert on the suite, not the count
-      const restored = await page.evaluate(() => JSON.parse(localStorage.getItem("ll-policy-builder-draft-" + document.getElementById("mode-switch").value) || "{}"));
-      assert(Array.isArray(restored.scenarios) && restored.scenarios.length === 1, "undo did not restore the cleared suite");
+      // Mode switch and preset-apply are each their own commit (one history
+      // entry per structural mutation — see commit()'s doc comment), so
+      // fully reverting to before the preset takes three undos: the switch
+      // back to `m`, the switch to `other`, then the preset commit itself.
+      await undo(page); // reverts the switch back to m
+      await undo(page); // reverts the switch to other
+      await undo(page); // reverts the preset itself
+      assert((await mode(page)) === "decision_table", "three undos did not land back at the pre-preset mode");
+      const restored = await page.evaluate(() => JSON.parse(localStorage.getItem("ll-policy-builder-draft-rubric") || "{}"));
+      assert(Array.isArray(restored.scenarios) && restored.scenarios.length === 1, "undo did not restore the preset-cleared suite");
     },
   },
   {

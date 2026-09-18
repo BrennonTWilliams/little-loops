@@ -455,6 +455,55 @@ builder's Try-it encoder:
   next (e.g. `deferred_reason` cleared by `/ll:refine-issue`) would keep stale missing-dimension
   semantics from firing.
 
+### Scenario Suites (offline)
+
+Every builder mode has a **Scenarios** panel below Try it: named, saved test cases you build up
+while authoring, then re-run as a batch — offline, with **no skill, shell, LLM, or issue mutation
+ever executed**. This is separate from Try it (which shows the live winner for one sample as you
+type); a scenario is a persisted, independently authored case with its own expected outcome, so
+"did I just break this" survives past the current editing session.
+
+**Authoring a case.** Click **+ Scenario** to add one, name it, and fill in its input — one field
+per current dimension in Decision Table mode, a pasted frontmatter block in Issue Lifecycle mode
+(the same fence-optional text Try it accepts), or a single integer aggregate score in Rubric mode.
+Set an **expected target** from the dropdown (the destinations your current policy can actually
+reach); leaving it at "— unasserted —" means the case runs and reports its actual result without
+being judged pass/fail. Decision Table and Issue Lifecycle cases can additionally pin an
+**expected rule index** (which authored rule, by position, should win) or check **derived
+fallback** (asserts the winner is the catch-all your policy falls back to when no rule matches,
+not an authored rule) — the two are mutually exclusive. **Reconfirm expectation** adopts whatever
+the case currently evaluates to as its new expected result; nothing adopts that automatically, so
+an expectation only ever changes when you explicitly ask it to.
+
+**Run all** evaluates every case through the same rule-compiler and evaluator the page's Try it
+panel and the emitted loop's dispatch logic share, and reports, per case:
+
+- **pass** / **fail** — the actual result matched (or didn't) the expectation you set.
+- **unasserted** — no expected target set; the actual result is shown for inspection only.
+- **unasserted (needs review)** — the case pins a rule index, but the rule table has changed
+  (reordered or edited) since you last reconfirmed it. The prior expectation is kept, visibly
+  marked stale, rather than silently re-pointed at whatever rule now sits at that position.
+- **error** — the case's input doesn't match its mode's shape (e.g. a non-numeric decision-table
+  value, unsupported frontmatter syntax, a non-integer rubric aggregate), or its expected target
+  no longer names a destination your current policy can reach. Errors are never silently treated
+  as a pass, a fail, or "no match."
+
+A suite total (passed/failed/unasserted/errors) and a routing-coverage summary appear once you
+run: which rule indexes actually won at least one case, which were merely evaluated (visited but
+lost — a rule two cases both fail past is "evaluated," never "covered"), which authored rules no
+case has ever won, and whether the derived fallback was exercised. Rubric mode reports high/medium/
+low branch coverage instead. Coverage counts only cases that routed successfully — an error case
+contributes nothing.
+
+**Editing invalidates.** Changing anything about the policy (a rule, a dimension, an outcome) —
+or a case's own input or expectation — clears the displayed results back to "not yet run"; a
+result is derived from the policy and input at the moment you ran it, never a saved verdict about
+the case itself. Re-run after any edit to see current status.
+
+**Persistence** follows the same per-mode draft/undo model as the rest of the page: a suite is
+part of its mode's draft, survives Save/Open/reload/mode-switch, and "Start blank" / applying a
+preset clears only that mode's suite (one Undo restores it, along with the model it replaced).
+
 ## Editing the Table with `ll-loop edit-routes`
 
 `ll-loop edit-routes` renders a loop's routing as a table, opens it in `$EDITOR`, and writes
