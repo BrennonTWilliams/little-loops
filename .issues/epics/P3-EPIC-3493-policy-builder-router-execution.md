@@ -26,9 +26,11 @@ Group of 8 related issues: Policy builder preview, validation, and editing corre
 - **BUG-3499** — FSM executor: failure_terminal is False when a cap handler routes to a failure terminal (open; runtime prerequisite for ENH-3492)
 - **ENH-3492** — Policy builder explicit terminal destinations, scoring instructions, and gate stamping (open)
 - **FEAT-3488** — Policy builder offline scenario suites and explanations (open)
-- **FEAT-3498** — Policy builder host-approved connected execution (open)
+- **FEAT-3498** — Policy builder host-approved run requests (queue/loop contracts) (open)
 - **FEAT-3501** — Policy builder shared transition analysis and structural graph (open)
 - **FEAT-3503** — Policy builder scenario boundary suggestions and local issue-file import (open)
+- **FEAT-3504** — Policy builder connected page and serve routes (open)
+
 
 
 

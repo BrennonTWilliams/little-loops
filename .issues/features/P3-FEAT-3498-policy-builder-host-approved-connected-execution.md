@@ -1,7 +1,7 @@
 ---
 id: FEAT-3498
 type: FEAT
-title: Policy builder host-approved connected execution
+title: Policy builder host-approved run requests (queue/loop contracts)
 priority: P3
 status: open
 discovered_by: ll-issues-create
@@ -13,7 +13,10 @@ labels:
 epic: EPIC-3493
 blocked_by:
 - FEAT-3488
+blocks:
+- FEAT-3504
 relates_to:
+- FEAT-3504
 - ENH-3487
 - ENH-3491
 - ENH-3492
@@ -25,71 +28,70 @@ decision_needed: false
 reconcile_attempted: true
 ---
 
-# FEAT-3498: Policy builder host-approved connected execution
+# FEAT-3498: Policy builder host-approved run requests (queue/loop contracts)
 
 ## Summary
 
-Extract former Phase B of FEAT-3488 into a separate connected-execution feature. Serve the policy builder locally, validate and persist an exact lifecycle policy revision, and submit a durable request that cannot run until the host explicitly accepts that request. Reuse the queue store with explicit approval eligibility, atomic request deduplication, and structured loop identity/result readback. Offline authoring and FEAT-3488 suites ship independently.
+Part A of the connected-execution feature extracted from FEAT-3488 (Part B, the same-origin page and serve routes, is FEAT-3504 and is blocked by this issue). Add host-side contracts to the queue and loop CLIs: a durable `awaiting_approval` request that no watcher or generic drain can run until the host explicitly accepts that one request; transactional request-key deduplication; builder-origin LOOP dispatch with the right cwd, no default timeout, and `--context issue_id=` binding; a structured start-metadata channel that returns the real loop instance identity; and plain Python functions that validate and persist an immutable lifecycle policy revision. Everything here is exercisable from Python and `ll-queue` with no browser and no `SseBridge` changes.
 
-**Dependency note:** `blocked_by: FEAT-3488` is a merge-ordering block only — both issues edit `policy_builder_core.mjs` and `policy-router-builder.html.tmpl`, and this issue consumes ENH-3487's `projectId`. Implementation Steps 1–3 (queue approval/dedup, LOOP cwd/timeout/metadata channel, revision persistence) have no functional dependency on FEAT-3488 and may start before it lands; only Steps 4–5 (page/route wiring) must follow it.
+**Split rationale (2026-09-17):** the original five-step issue spanned nine source files, six docs, and eight test files; the queue/loop half carries all the concurrency risk and is independently testable, so it ships first as this issue. FEAT-3488 has landed (verified `d6785ffea`), so the former merge-ordering block is satisfied.
 
 ## Current Behavior
 
-`ll-artifact serve` uses `SseBridge` with token/Host-checked GET routes only. `queue_store.add_entry` creates immediately runnable pending rows; `ll-queue run` drains eligible entries and `--watch` consumes newly added work without per-entry approval. LOOP entries use `_run_loop_entry`, not `run_action`, and persist exit code/error/stdout/stderr rather than a structured loop instance ID. Queue rows have UUID identities with no request-key uniqueness.
+`queue_store.add_entry` creates immediately runnable pending rows; `ll-queue run` drains eligible entries and `--watch` consumes newly added work without per-entry approval. LOOP entries use `_run_loop_entry`, not `run_action`, and persist exit code/error/stdout/stderr rather than a structured loop instance ID. Queue rows have UUID identities with no request-key uniqueness. `_run_loop_entry` inherits the drainer's cwd and passes only the bare positional input; `_drain_once` claims, dispatches, and handles results inline in one loop body.
 
 The prior isolated spike under `scripts/tests/spike/level2_run_handoff/` proved a prototype ledger, not these production queue contracts. In particular, forbidding the serve module from importing a runner does not prevent an already-running watcher from executing an inserted pending row.
 
 ## Expected Behavior
 
-From a same-origin connected page, a user selects an issue in the server's project, reviews an immutable policy snapshot, and submits a request. The host sees the exact project/issue/revision and explicitly runs or rejects that one request. Watchers never consume unapproved requests. The browser observes approval, running/completion/failure/rejection and a real loop instance identifier when execution starts. Network failures preserve the draft and suite.
+A caller (FEAT-3504's serve route, or a test) creates a run request bound to a project root, issue ID, and immutable revision hash; it lands as `awaiting_approval`. Watchers and generic drains never consume it. The host runs `ll-queue run --id <id> --approve` to accept exactly that request, or `ll-queue cancel` to reject it. When the loop starts, its real instance ID and run directory are recorded on the row and readable via `get_run_request` while running and after completion.
 
 ## Proposed Solution
 
-### Scope and origin
+### Scope and binding
 
-- Add an opt-in flag on `ll-artifact serve`; no config flag is needed. Serve the builder at `GET /{token}/policy-builder` using a shared renderer factored from `cmd_policy_builder`, with the endpoint URL stamped in. The `file://` copy stays offline-only. Preserve Host/token checks for every method and route; no CORS headers.
-- First connected release accepts `issue_lifecycle` policies only. Rubric requires a subject and other modes need different binding contracts; keep their offline exports available and explain why connected Run is unavailable.
-- Bind repository identity and filesystem access to `BRConfig.project_root`, never a browser-supplied path. Add a project-scoped issue-list/read endpoint using existing issue discovery; validate an issue ID exists in that project again at submission and acceptance. `projectId` from ENH-3487 identifies the builder document, not the repository. Return a server-derived workspace identifier in the page/bootstrap and reject cross-workspace requests. Queue and subprocess cwd must use the same server project root.
+- Every builder-origin request binds to a server-supplied `project_root`, never a caller-supplied browser path. Validate that the issue ID exists in that project at submission (`create_or_get_run_request`'s caller) and again at acceptance (`approve_and_claim_entry`). A server-derived `workspace_id` scopes the request key. Queue db anchoring and subprocess cwd must both use the same project root.
+- First release accepts `issue_lifecycle` policies only; `validate_policy_revision` rejects other modes with a structured reason.
+- No `SseBridge`, page, or renderer changes in this issue (FEAT-3504).
 
 ### Durable approval and execution
 
 - Extend queue status with `awaiting_approval` for builder-origin requests. Generic `claim_entry`, one-shot drains, and `--watch` must never claim this status. Enforce it in the store transaction, not just UI filtering. Include migration/serialization/status-enumeration tests and preserve existing pending-entry behavior.
 - Add an explicit per-entry host command `ll-queue run --id <queue UUID or 8+-char prefix> --approve`. It atomically accepts/claims only the selected awaiting request after rechecking bindings, issue existence, and persisted YAML hash; it does not drain unrelated entries and cannot combine with `--watch`. `--id` without `--approve` is a usage error in this release. Approval is recorded with `approved_at` and a binding snapshot as columns, not only inside result JSON. Normal queue execution remains compatible.
 - `ll-queue cancel <id>` rejects awaiting requests without a run ID. Requeue/revive/retry paths must not bypass approval: an unapproved request (`approved_at` NULL) always returns to awaiting approval; an approved attempt (`approved_at` set) reuses existing retry/reclaim rules and returns to plain `pending`, where any generic drainer may retry it — approval is durable per request, not per attempt (see Program Design § Approval durability). Cancelling an active run is distinct from rejecting an awaiting request; do not promise that ordinary row cancellation kills a process.
-- Serve routes only submit/read requests. They never approve, drain, launch a process, or use `LocalBridgeTransport`/level-3 interactions. An AST import guard is supplementary; the authoritative test submits while a real queue watcher/drain loop is active and asserts zero dispatches before explicit approval.
+- Nothing in the store or the submit helpers approves, drains, or launches a process. The authoritative test creates a request while a real queue watcher/drain loop is active and asserts zero dispatches before explicit approval.
 
 ### Request and revision identity
 
-- Request payload: `{requestId, projectId, workspaceId, revisionId, yaml, issueId}`. Freeze the YAML snapshot at submission; `revisionId` is SHA-256 of its exact UTF-8 bytes. Server recomputes it and rejects mismatches. This is integrity binding, not detection of edits elsewhere; later draft edits leave the queued revision unchanged and mark the UI as showing an older submitted snapshot. Disable submitting a changed preview until its snapshot is rebuilt.
-- Generate a request UUID once per explicit submission and persist it with client submission state outside undoable authoring history. Retries, reconnects, and reloads reuse it. A deliberate Run again gets a new UUID after an explicit user action, even for identical project/revision/issue. Terminal requests still deduplicate on the original UUID. A server unique key scoped to its workspace maps request UUID to queue UUID; never pass request UUID straight to `get_entry`.
-- Provide a transactional create-or-get operation, with a unique constraint, rather than a lookup followed by `add_entry`. An existing key with differing bindings is a conflict. Concurrent submissions and retries after completion create exactly one row; explicit Run again creates another awaiting request. Return both request and queue IDs.
-- Persist validated YAML atomically to `.loops/policy-builder/<revisionId>.yaml`, anchored to the project, using `write_bytes` on a temp file plus `os.replace` (not `write_text`, so no newline/encoding normalization can change the hash). Never overwrite an existing different payload; verify an existing file's hash. At acceptance recheck immutable bytes/bindings before launch. Use a temp validation file in that project artifact directory (there is no run directory before acceptance), preserving relative resolution behavior.
-- `load_and_validate(..., raise_on_error=False)` requires inspection of returned ERROR diagnostics, and can still raise YAML/shape/missing-field/file errors. Convert these expected failures to structured validation responses; clean temporary files; do not enqueue invalid YAML. Warnings remain distinguishable. Validate lifecycle mode/required issue binding as well as generic FSM structure.
+- Request payload (`RunRequest`): `{requestId, projectId, workspaceId, revisionId, yaml, issueId}`. `revisionId` is SHA-256 of the YAML's exact UTF-8 bytes; the server recomputes it and rejects mismatches. This is integrity binding, not detection of edits elsewhere. (The page-side snapshot/UUID lifecycle is FEAT-3504.)
+- The request UUID is client-generated once per explicit submission; retries reuse it, Run again generates a new one. Terminal requests still deduplicate on the original UUID. A server unique key scoped to `workspace_id` maps request UUID to queue UUID; never pass a request UUID straight to `get_entry`.
+- Provide a transactional create-or-get operation, with a unique constraint, rather than a lookup followed by `add_entry`. An existing key with differing bindings is a conflict. Concurrent submissions and retries after completion create exactly one row; a new request UUID creates another awaiting request. Return both request and queue IDs.
+- `persist_policy_revision(yaml_bytes, revision_id, project_root) -> Path` writes the validated YAML atomically to `.loops/policy-builder/lifecycle-<revisionId[:12]>.yaml`, anchored to the project, using `write_bytes` on a temp file plus `os.replace` (not `write_text`, so no newline/encoding normalization can change the hash). The full hash lives on the queue row; the short filename keeps `_make_instance_id(loop_name)` (which uses the YAML stem) and run-dir names readable instead of 64-hex prefixed. Never overwrite an existing different payload; verify an existing file's full hash and raise a conflict on mismatch. At acceptance recheck immutable bytes/bindings before launch. Add `.loops/policy-builder/` to `.gitignore` alongside `.loops/.queue/` (revision artifacts are run inputs, not source).
+- `validate_policy_revision(yaml_bytes, project_root) -> ValidationOutcome`: `load_and_validate(..., raise_on_error=False)` requires inspection of returned ERROR diagnostics, and can still raise YAML/shape/missing-field/file errors. Convert these expected failures to a structured outcome (errors and warnings distinguishable); use a temp validation file in the project artifact directory (there is no run directory before acceptance), preserving relative resolution behavior; clean temporary files; callers must not enqueue on errors. Validate lifecycle mode/required issue binding as well as generic FSM structure. Precedent for consuming the returned violations list: `cli/doctor.py:679`, `cli/logs.py:2349`.
 
 ### Run identity and observation
 
-- Keep LOOP dispatch on `_run_loop_entry` and pass JSON `args.loop_input = {"issue_id": ...}` serialized as the positional input. Persist the content-addressed loop's absolute path as the action target. Run in the selected project cwd: `_run_loop_entry`'s `Popen` has no `cwd=` today, so pass `cwd=entry.project_root` (persisted at submission) for builder-origin entries. Enqueue with `ActionSpec.timeout=None`; the 120 s default would kill a real lifecycle run.
+- Keep LOOP dispatch on `_run_loop_entry`. **Bind `issue_id` with `--context issue_id=<ID>`, not the positional input.** `cli/loop/run.py:176-186` only merges positional JSON keys that already exist in `fsm.context`; the generated lifecycle YAML declares `issue_id` as a `required: true` parameter with no default, which `seed_parameter_defaults` skips, so `{"issue_id": ...}` would land in `context.input` as a raw string and pre-run validation would fail with "Missing required context variable: 'issue_id'". `ll-loop run <name> --context issue_id=<ID>` is the documented lifecycle invocation (POLICY_ROUTER_GUIDE.md:356). Persist the revision file's absolute path as the action target and `issue_id` on the row; builder-origin dispatch appends `--context issue_id=<entry.issue_id>`.
+- Run in the selected project cwd: `_run_loop_entry`'s `Popen` has no `cwd=` today, so pass `cwd=entry.project_root` (persisted at submission) for builder-origin entries. Enqueue with `ActionSpec.timeout=None`; the 120 s default would kill a real lifecycle run.
+- `_run_loop_entry` currently receives only the `ActionSpec` (`_drain_once`, `cli/queue.py:591`). It must take the `QueueEntry` (for `id`, `project_root`, `issue_id`, and builder-origin detection via `request_id`), because approved entries retry through the generic drainer, so cwd/flag/metadata handling must live in the shared dispatch path, not only under `--id --approve`. Update its single call site.
 - Add a machine-readable start-metadata channel from `cli/loop/run.py` to the queue LOOP runner, carrying the actual `instance_id` and run directory once initialization succeeds. A private metadata-output file passed to the child via a hidden flag (appended only for builder-origin entries) is sufficient; atomically publish it and validate its binding to the claimed entry. Because `_run_loop_entry` blocks in `communicate()`, the drainer needs a helper thread/poll to observe the file while the child runs (see Program Design § Start-metadata channel). Do not parse human stdout or invent a run ID from a queue UUID. The existing hidden `--instance-id` is not a general solution: normal foreground runs generate their own identity.
 - Store and expose `loopInstanceId`/`runDir` when received, including while running; preserve them alongside exit/error/output fields at completion. Pre-launch failure/rejection leaves these null. Queue UUID, request UUID, and loop instance identity remain separate fields. Extend `cli/queue.py`, loop CLI argument registration/run initialization, and result persistence as required; these are code changes, not documentation-only touchpoints.
-- Poll `GET /{token}/run-request/{requestId}` for `{requestId, queueId, status, bindings, loopInstanceId, runDir, result}` via the explicit mapping. Use method-aware dispatch plus bounded parameterized path matching in `SseBridge`; existing exact GET/history/SSE routes keep working.
-- Browser hashing may be asynchronous with platform SHA-256; no sync-only API requirement or bespoke SHA-256 implementation is needed. Test UTF-8/hash parity with Python, including non-ASCII YAML. Keep authoring usable while hashing/request I/O is in flight.
+- `get_run_request(request_id, workspace_id)` is the readback primitive FEAT-3504's route will call; its return carries everything the wire `RunRequestStatus` needs.
 
 ## Integration Map
 
 ### Files to Modify
 
-- `scripts/little_loops/templates/policy_builder_core.mjs`: build immutable lifecycle submission snapshots; do not run actions from scenario evaluation.
-- `scripts/little_loops/templates/policy-router-builder.html.tmpl`: same-origin availability, issue selection, review/submission/status UI, durable request retry metadata outside undo history.
-- `scripts/little_loops/cli/artifact/policy_builder.py`: reusable renderer for CLI file output and serve route.
-- `scripts/little_loops/cli/artifact/serve.py`, `cli/artifact/__init__.py`: opt-in flag and project/issue/page/request routes.
-- `scripts/little_loops/transport.py`: method-aware POST dispatch and parameterized request readback with existing Host/token protections.
-- `scripts/little_loops/queue_store.py`: approval status/transition, unique request mapping, transactional create-or-get, approval metadata, loop identity storage.
-- `scripts/little_loops/cli/queue.py`: explicit single-entry accept/run, approval-safe cancellation/requeue/retry, LOOP cwd and metadata observation/result persistence.
+- `scripts/little_loops/queue_store.py`: approval status/transition, unique request mapping, transactional create-or-get, approval metadata, loop identity storage, `get_run_request`.
+- `scripts/little_loops/cli/queue.py`: `_dispatch_claimed(entry)` factored from `_drain_once`; explicit single-entry accept/run; approval-safe cancellation/requeue/retry; `_run_loop_entry(entry)` with cwd, `--context issue_id=`, metadata flag, and metadata observation/result persistence.
 - `scripts/little_loops/cli/loop/__init__.py`, `cli/loop/run.py`: private start-metadata output contract using actual initialized instance identity.
+- New module `little_loops.cli.artifact.policy_revision` (does not exist yet): `validate_policy_revision`, `persist_policy_revision`, `RunRequest` dataclass — importable by FEAT-3504's serve route with no transport dependency.
+- `.gitignore`: `.loops/policy-builder/`.
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/cli/queue.py` — argparse registration site for `ll-queue run` flags at `main_queue()` lines 938,1042-1057; new `--id`/`--approve` flag wired here
-- `scripts/little_loops/cli/artifact/serve.py` — opt-in flag registration at `add_serve_parser()` line 37
+
+_Moved to FEAT-3504:_ `policy_builder_core.mjs`, `policy-router-builder.html.tmpl`, `cli/artifact/policy_builder.py` renderer split, `cli/artifact/serve.py` flag and routes, `transport.py` POST dispatch.
 
 ### Dependent Files (Callers/Importers)
 
@@ -108,43 +110,41 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_feat_queue_mcp_tools.py` — covers MCP `queue_add`/`queue_list`/`queue_requeue` tools; new test for `awaiting_approval` guard in requeue predicate (mirroring the queue CLI tests)
 - `scripts/tests/test_feat_3151_mcp_start_path.py` — exercises `loop_start` MCP tool; may need updates for new structured loop instance metadata contract
 - `scripts/tests/test_cli_loop_background.py::TestMakeInstanceId` (line 1380-1427, drifted from a stale 1381-1425 citation) — tests `_make_instance_id()`, relevant to the new start-metadata channel contract
-- `scripts/tests/test_transport.py::TestLocalBridgeTransport` (line 1052-1295) — POST dispatch precedent using `_lb_http_request` helper, model for new `SseBridge.do_POST` tests
-- `scripts/tests/test_enh3035_artifact_template_kit.py` (line 19,65) — calls `cmd_policy_builder` directly; will need updates once renderer is factored into reusable + CLI-wrapper split
-- `scripts/tests/test_policy_builder_emit.py` — calls `cmd_policy_builder` directly. **Correction:** its "golden" tests (`test_golden_yaml_validates`, etc.) validate golden *YAML* fixtures, not HTML byte-identity. The byte-identical golden-HTML assertion (`test_policy_builder_renders_byte_identically_to_golden_fixture`) actually lives in `test_enh3035_artifact_template_kit.py` (already cited separately below at lines 19,65) — that is the file that must preserve renderer-split identity or fail. Tests likely to break: any in `test_enh3035_artifact_template_kit.py` that assert literal output HTML structure if the split changes internal rendering.
-- `scripts/tests/test_wiring_reference_docs.py` — parametrized `DOC_STRINGS_PRESENT` table (line 215-224); new row needed once level-2 render target is declared in `ARTIFACT_CONTROL_LEVELS.md`
+- New tests for `validate_policy_revision`/`persist_policy_revision`: `FileNotFoundError`/non-mapping/missing-field conversion, ERROR vs WARNING outcomes, unsupported mode, byte-exact persistence and hash parity with non-ASCII YAML, existing-file hash conflict, temp-file cleanup.
+- A test that dispatches a builder-origin LOOP entry through a stubbed `ll-loop` child and asserts the argv contains `--context issue_id=<ID>` and the hidden metadata flag, `cwd` equals the persisted project root, and `timeout` is `None`; a sibling asserts an ordinary LOOP entry's argv and cwd are unchanged.
+
+_Moved to FEAT-3504:_ `test_transport.py::TestLocalBridgeTransport` POST precedent, `test_enh3035_artifact_template_kit.py` / `test_policy_builder_emit.py` renderer-split coverage, `test_wiring_reference_docs.py` level-2 row.
 
 ### Documentation
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `docs/reference/API.md` — `## little_loops.queue_store` code block (line 10997-11020) lists exported symbols; add new functions `create_or_get_run_request`, `approve_and_claim_entry`, `record_loop_started`, `get_run_request` with `(FEAT-3498)` citations. Inline comments for `QUEUE_STATUSES` and `QUEUE_TERMINAL_STATUSES` are actually at lines 11005-11006 (drifted from a stale 11001-11002 citation) and must reflect new `awaiting_approval` status. `### SseBridge` section (heading at line 11448, drifted from a stale ~11444 citation) documents the route set; **correction:** no literal "GET-only" phrase exists at lines 11478/11489 (11478 is the `config` parameter description, 11489 is a table separator) — the relevant existing text is around line 11482 ("Extra `GET` routes..."). Update that prose for method-aware POST dispatch and parameterized path matching while preserving the Host/token security contract.
-- `docs/reference/CLI.md` — `ll-artifact policy-builder` reference subsection (actually lines 5081-5102, not the full 5062-5257 range cited, which spans the whole `### ll-artifact` command family including design-md export, render, dashboard); `ll-artifact serve` reference subsection (lines 5192-5257); `ll-queue run` reference section (line 912,4394-4395); add `--id` and `--approve` flag documentation.
-- **Correction:** the "**Binding now:**" cross-link requirement at lines 61-63 lives in `docs/reference/ARTIFACT_CONTROL_LEVELS.md`, not `docs/guides/POLICY_ROUTER_GUIDE.md` (that phrase does not appear anywhere in POLICY_ROUTER_GUIDE.md). Cross-link connected-builder's level-2 declaration from `ARTIFACT_CONTROL_LEVELS.md:61-63` into `docs/guides/POLICY_ROUTER_GUIDE.md` per that requirement.
+- `docs/reference/API.md` — `## little_loops.queue_store` code block (line 10997-11020) lists exported symbols; add new functions `create_or_get_run_request`, `approve_and_claim_entry`, `record_loop_started`, `get_run_request` with `(FEAT-3498)` citations. Inline comments for `QUEUE_STATUSES` and `QUEUE_TERMINAL_STATUSES` are at lines 11005-11006 (drifted from a stale 11001-11002 citation) and must reflect the new `awaiting_approval` status. Add a section for the new policy-revision module.
+- `docs/reference/CLI.md` — `ll-queue run` reference section (line 912,4394-4395); add `--id` and `--approve` flag documentation and the approval/status semantics.
 - `docs/guides/MCP_SERVER_GUIDE.md` (line 34,309,380,384,615) — reinforces "ll-queue out of scope for MCP" and documents `queue_add`/`loop_start` tool semantics; ensure new approval status doesn't risk re-advertising these as approved-request equivalents.
-- `docs/ARCHITECTURE.md` — `## Queue DB (ll-queue)` section (line 834-844): add v4 schema-migration row (following the v3 ENH-3416 precedent, line 834-838) documenting new `loop_instance_id`, `run_dir` columns and request-id-to-queue-id mapping. Prose paragraphs (line 840-844) narrate existing transitions; expand for `awaiting_approval` → `pending` (approve step) and corresponding claim/cancellation behavior. `## Artifact Control Layer` section (line 920-936) references `LocalBridgeTransport`; may need expansion if the new serve routes warrant mentioning alongside `_drain_inbound()`.
-- `docs/reference/ARTIFACT_CONTROL_LEVELS.md` — add level-2 row to the `## Declared levels by render target` table (line 49-59) for connected policy-builder: `| \`ll-artifact serve\`'s policy-builder route (FEAT-3498; connected same-origin authoring + submission with host approval, project-scoped issue binding, immutable revision persistence) | 2 (project-local) |`. Ensure this row matches the existing two-column table style with parenthetical FEAT-id + mechanism clause.
+- `docs/ARCHITECTURE.md` — `## Queue DB (ll-queue)` section (line 834-844): add v4 schema-migration row (following the v3 ENH-3416 precedent, line 834-838) documenting new `loop_instance_id`, `run_dir` columns and request-id-to-queue-id mapping. Prose paragraphs (line 840-844) narrate existing transitions; expand for `awaiting_approval` → `running` (approve step) and corresponding claim/cancellation behavior.
 - `docs/development/TESTING.md` — `FileNotFoundError` message example (line 295-298,333-336) for `load_and_validate` is pinned by existing test; the new policy-revision validation caller must catch and convert this exact exception type without changing its message.
+
+_Moved to FEAT-3504:_ `API.md` `### SseBridge` prose, `CLI.md` `ll-artifact` subsections, `ARTIFACT_CONTROL_LEVELS.md` level-2 row and the POLICY_ROUTER_GUIDE.md cross-link, `ARCHITECTURE.md` `## Artifact Control Layer`.
 
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-09-17 — based on codebase analysis:_
 
-- `transport.py`'s `SseBridge` route table (`_routes: dict[str, Callable[[handler], None]]`, built in `__init__` at `transport.py:1259`) is consulted only from `do_GET` (`_make_sse_bridge_handler`, `transport.py:1200-1246`) via an exact-string match on the post-token path remainder (`bridge._routes.get(route)`); there is no `do_POST` anywhere on this handler today, and no segment/parameter matching primitive to extend. The Host-header check and prefix-strip sequence that a new `do_POST` would need to replicate is inline inside `do_GET`, not factored into a shared helper (`_expected_hosts()` at `transport.py:476` is the only piece already factored out).
-- `LocalBridgeTransport`'s `_make_local_bridge_handler` (`transport.py:624`) is a structurally separate, hand-hardcoded `do_GET`/`do_POST` implementation (its own `/interaction` route via if/elif) that does not share `SseBridge`'s `_routes` dict — it is not itself reusable as a parameterized-dispatch template.
-- `cmd_policy_builder` (`cli/artifact/policy_builder.py:62`, drifted from a stale `:61` citation) has a clean split point: everything from `BRConfig` construction through the `html.replace(...)` injection calls — now five, not three (grammar, skill catalog, generator version, confidence gate, builder core JS; lines 73-115) — is pure computation producing an in-memory `html` string with no dependency on `args` beyond `active_theme`/config; only the final block — resolving `output_dir` from `args.output` and the `write_text`/`logger.success` calls (lines 117-125) — is CLI-file-output-specific. The split point itself still holds; only the line ranges and replace-call count had drifted (verified 2026-09-17).
-- An existing renderer/CLI-wrapper split precedent already exists in this codebase: `cmd_serve`'s `_make_page_html_factory` (`cli/artifact/serve.py:138`) builds HTML from config and hands back a string, later consumed by `bridge.set_page_html(...)` rather than written to a file — the same shape `cmd_policy_builder` would need for a serve route.
+- (Transport/renderer findings moved to FEAT-3504.)
 - Confirmed absent: no approval/eligibility concept exists in `queue_store.py` or `cli/queue.py` today (direct search for `approv` in both files, zero hits). The only existing "eligibility" concept is `_drain_once`'s `next_attempt_at`-based retry-backoff filter (`cli/queue.py:574`) and `claim_entry`'s matching `WHERE` clause (`queue_store.py:707-708`) — unrelated to human/host approval.
 
 ## API/Interface
 
-Proposed operations (names finalized during implementation): `create_or_get_run_request`, `approve_and_claim_entry`, `record_loop_started`, request lookup mapping, `ll-queue run --id ID --approve`, same-origin issue and run-request endpoints. All approval/claim/dedup invariants live in store transactions. The route's opt-in flag does not approve any request.
+Proposed operations (names finalized during implementation): `create_or_get_run_request`, `approve_and_claim_entry`, `record_loop_started`, `get_run_request`, `validate_policy_revision`, `persist_policy_revision`, `ll-queue run --id ID --approve`. All approval/claim/dedup invariants live in store transactions. Same-origin endpoints are FEAT-3504.
 
 ## Program Design
 
 ### Types
 
-- `RunRequest {requestId, projectId, workspaceId, revisionId, yaml, issueId}` — wire payload of the POST submit route.
-- `RunRequestStatus {requestId, queueId, status, bindings, loopInstanceId, runDir, result}` — wire payload of the GET readback route.
-- `LoopStartedMetadata {queueId, instanceId, runDir}` — contents of the child's private start-metadata file.
+- `RunRequest {requestId, projectId, workspaceId, revisionId, yaml, issueId}` — input to `create_or_get_run_request`; FEAT-3504's POST route deserializes into it.
+- `RunRequestStatus {requestId, queueId, status, bindings, loopInstanceId, runDir, result}` — shape `get_run_request`'s row maps to; FEAT-3504's GET route serializes it.
+- `ValidationOutcome {ok: bool, errors: list[str], warnings: list[str], mode: str | None}` — return of `validate_policy_revision`.
+- `LoopStartedMetadata {queueId, instanceId, runDir}` — contents of the child's private start-metadata file. `runDir` is absolute: `run_dir` derives from `loops_dir` relative to cwd, and `cmd_run` may `os.chdir` into a worktree (`cli/loop/run.py:~580`) before creating it, so resolve before writing.
 - `status: Literal["awaiting_approval", "pending", "running", "done", "failed", "dead_letter", "cancelled"]` — `awaiting_approval` added to `QUEUE_STATUSES` (`scripts/little_loops/queue_store.py`); it is non-terminal and generic `claim_entry`/`--watch` never claim it.
 - New nullable `QueueEntry` columns/fields (schema v4, plain `ALTER TABLE ADD COLUMN` like v2/v3): `request_id`, `workspace_id`, `project_root`, `revision_id`, `issue_id`, `approved_at`, `approval_snapshot` (JSON), `loop_instance_id`, `run_dir`. All null for ordinary entries. `to_dict`/`_from_row` gain matching camelCase keys. `loop_instance_id`/`run_dir` are populated only from the structured start-metadata channel, never parsed from stdout.
 - Unique request key: v4 migration adds a partial unique index `ON queue_entries(workspace_id, request_id) WHERE request_id IS NOT NULL`. `request_id` is the client-generated UUID and is distinct from the store's `id` (queue UUID).
@@ -156,20 +156,24 @@ Proposed operations (names finalized during implementation): `create_or_get_run_
 - `record_loop_started(entry_id: str, instance_id: str, run_dir: str, *, db_path=DEFAULT_DB_PATH, root: Path | None = None) -> bool` — persists the metadata-file readback; guarded `AND status = 'running'`.
 - `get_run_request(request_id: str, workspace_id: str, *, db_path=DEFAULT_DB_PATH, root: Path | None = None) -> QueueEntry | None` — resolves the request key to the queue row; never pass a request UUID to `get_entry`.
 
-All four take `db_path`/`root` like `add_entry`/`revive_entry`, because the serve process must anchor the db at `BRConfig.project_root` while `cli/queue.py` uses its module-level `QUEUE_DB_PATH` default. Builder-origin entries are enqueued at priority P3 with `ActionSpec.timeout=None` (the default of 120 s would kill any real lifecycle run).
+- `validate_policy_revision(yaml_bytes: bytes, *, project_root: Path) -> ValidationOutcome` and `persist_policy_revision(yaml_bytes: bytes, revision_id: str, *, project_root: Path) -> Path` — pure functions in the new policy-revision module; no transport or queue imports.
+
+All four store functions take `db_path`/`root` like `add_entry`/`revive_entry`, because a serve process (FEAT-3504) must anchor the db at `BRConfig.project_root` while `cli/queue.py` uses its module-level `QUEUE_DB_PATH` default. Builder-origin entries are enqueued at priority P3 with `ActionSpec.timeout=None` (the default of 120 s would kill any real lifecycle run).
 
 ### Approval durability and retry rules
 
 Approval is durable per request, not per attempt:
 
-- A row with `request_id` set and `approved_at` NULL is unapproved. `revive_entry` (which today has no status guard, `queue_store.py:634`) and `reset_to_pending` must return such a row to `awaiting_approval`, never `pending`. `ll-queue requeue` on a rejected (cancelled) builder request therefore re-awaits approval; the MCP `queue_requeue` tool shares `revive_entry`, so the rule covers it automatically.
+- A row with `request_id` set and `approved_at` NULL is unapproved. `revive_entry` (which today has no status guard, `queue_store.py:634`) must return such a row to `awaiting_approval`, never `pending` (SQL `CASE WHEN request_id IS NOT NULL AND approved_at IS NULL THEN 'awaiting_approval' ELSE 'pending' END`). `ll-queue requeue` on a rejected (cancelled) builder request therefore re-awaits approval; the MCP `queue_requeue` tool shares `revive_entry`, so the rule covers it automatically. `reset_to_pending` needs no approval branch: it only transitions `running` rows, and a builder row can only reach `running` through `approve_and_claim_entry`, which stamps `approved_at` in the same transaction, so an unapproved `running` row cannot exist. Assert that invariant in a test rather than adding an untestable branch.
 - A row with `approved_at` set is approved for its immutable bindings. After `--id --approve` runs it, a transient failure via `schedule_retry` and an owner death via `_reclaim_stale`/`reset_to_pending` both return it to plain `pending`, where any generic drainer (including a running `--watch`) may retry it without re-approval. This is intended and must be tested as such.
 - `cancel_entry`'s SQL guard (`IN ('pending','running')`, `queue_store.py:625`) and `cmd_cancel`'s Python status list (`cli/queue.py:922`) both gain `awaiting_approval`. Rejection before acceptance leaves `loop_instance_id`/`run_dir` null.
 
 ### Host command and cwd
 
-- `ll-queue run --id <uuid-or-8+-char-prefix> --approve` resolves the id via `resolve_entry` (prefix support like every other subcommand), calls `approve_and_claim_entry`, dispatches that one entry through the existing `_drain_once` result-handling path, and exits. `--id` without `--approve` is rejected with a usage error in this release (single-entry execution of ordinary pending rows is out of scope). `--id` and `--watch` are mutually exclusive.
-- `_run_loop_entry` (`cli/queue.py:382`) currently has no `cwd=` on its `Popen`; the child inherits the drainer's cwd and `ll-loop run` derives `loops_dir` from config relative to it. Builder-origin entries pass `cwd=entry.project_root` (persisted at submission) so dispatch does not depend on where the drainer was started. `resolve_loop_path` (`fsm/loop_paths.py:40`) already accepts an absolute path, so the content-addressed target works unchanged.
+- `_drain_once` (`cli/queue.py:574-640`) claims, dispatches, and handles results inline in one loop body; there is no reusable per-entry function today. First factor the body after the claim into `_dispatch_claimed(entry, *, force_stop, db_path) -> dict` (dispatch, classify, `update_entry_result`/`schedule_retry`/`dead_letter_entry`/`cancel_entry`, and the processed record). `_drain_once` calls it; the new command calls it too.
+- `ll-queue run --id <uuid-or-8+-char-prefix> --approve` resolves the id via `resolve_entry` (prefix support like every other subcommand), calls `approve_and_claim_entry`, dispatches that one entry through `_dispatch_claimed`, and exits. `--id` without `--approve` is rejected with a usage error in this release (single-entry execution of ordinary pending rows is out of scope). `--id` and `--watch` are mutually exclusive.
+- `_run_loop_entry` (`cli/queue.py:382`) takes only the `ActionSpec`; change it to `_run_loop_entry(entry: QueueEntry)` (single call site, `cli/queue.py:591`) so it can read `id`, `project_root`, `issue_id`, and `request_id`. Builder-origin (`request_id` set) argv: `["ll-loop", "run", <abs revision path>, "--context", f"issue_id={entry.issue_id}", <hidden metadata flag>, <metadata path>]` with `cwd=entry.project_root`. Ordinary entries keep today's exact argv, no `cwd`. Because approved builder entries retry through the generic drainer, this branch lives here, not in the `--id --approve` command.
+- `_run_loop_entry`'s `Popen` currently has no `cwd=`; the child inherits the drainer's cwd and `ll-loop run` derives `loops_dir` from config relative to it. `resolve_loop_path` (`fsm/loop_paths.py:40`) already accepts an absolute path, so the revision target works unchanged.
 
 ### Start-metadata channel
 
@@ -179,11 +183,11 @@ Approval is durable per request, not per attempt:
 
 ### Immutable revision bytes
 
-`cmd_policy_builder` writes with `write_text`; the revision file must be written with `write_bytes` (temp file + `os.replace`) so the on-disk SHA-256 equals the submitted hash byte-for-byte, with no newline or encoding normalization.
+`cmd_policy_builder` writes with `write_text`; the revision file must be written with `write_bytes` (temp file + `os.replace`) so the on-disk SHA-256 equals the submitted hash byte-for-byte, with no newline or encoding normalization. Filename is `lifecycle-<revisionId[:12]>.yaml`; on collision with an existing file whose full-content hash differs, raise a conflict rather than overwrite.
 
 ### Call Path
 
-`ll-artifact serve` route handler → `cmd_policy_builder` (`cli/artifact/policy_builder.py:62`) renderer, reused for the same-origin page → `SseBridge` (`transport.py:1248`) method-aware dispatch adds the POST submit/GET run-request routes alongside existing GET/SSE routes → submit validates through `load_and_validate` (`fsm/validation/structural_rules.py:1873`) with `raise_on_error=False` on a temp file, persists the revision, then calls `create_or_get_run_request` → row is `awaiting_approval`. Host `ll-queue run --id ID --approve` → `approve_and_claim_entry` → `_run_loop_entry` (`cli/queue.py:382`) with `cwd=project_root` and the hidden metadata flag → child `cmd_run`/`PersistentExecutor` initialization writes the metadata file → drainer poll → `record_loop_started` → existing result update. Page GET → `get_run_request` → mapped row. Generic `claim_entry` never claims awaiting requests (its `status = 'pending'` guard already excludes them; the test still must prove it against a live watcher).
+Caller (test, or FEAT-3504's route) → `validate_policy_revision` wraps `load_and_validate` (`fsm/validation/structural_rules.py:1873`) with `raise_on_error=False` on a temp file → `persist_policy_revision` → `create_or_get_run_request` → row is `awaiting_approval`. Host `ll-queue run --id ID --approve` → `approve_and_claim_entry` → `_dispatch_claimed` → `_run_loop_entry(entry)` (`cli/queue.py:382`) with `cwd=project_root`, `--context issue_id=`, and the hidden metadata flag → child `cmd_run` initialization writes the metadata file → drainer poll → `record_loop_started` → existing result update. `get_run_request` → mapped row. Generic `claim_entry` never claims awaiting requests (its `status = 'pending'` guard already excludes them; the test still must prove it against a live watcher).
 
 ### Codebase Research Findings
 
@@ -193,15 +197,17 @@ _Added by `/ll:refine-issue` — 2026-09-17 — based on codebase analysis:_
 - The insertion point for a new `awaiting_approval` status value is `QUEUE_STATUSES = frozenset({"pending", "running", "done", "failed", "dead_letter", "cancelled"})` and `QUEUE_TERMINAL_STATUSES` (`queue_store.py:155-156`) — the module docstring states every other status enumeration site derives from or is locked against these two frozensets. Any new eligibility predicate in `claim_entry` must compose with, not replace, the existing `next_attempt_at` backoff gate already in its guarded `WHERE` clause (lines 704-709).
 - `_run_loop_entry` (`cli/queue.py:382`) dispatches LOOP actions via `subprocess.Popen(["ll-loop", "run", action.target, ...], start_new_session=True)` (lines 411-417) — a fresh out-of-process child, not an in-process call. A start-metadata channel must therefore cross a real subprocess boundary (a file, as the issue already proposes), not a shared Python object.
 - `cli/loop/run.py`'s hidden `--instance-id` flag exists at `cli/loop/__init__.py:231` (`argparse.SUPPRESS`) for the `run` subcommand. The `resume` subcommand also defines an `--instance-id` at line 501, but that one is **not** hidden — it carries a real user-facing `help=` string; the `argparse.SUPPRESS` at line 498 there belongs to a different flag (`--foreground-internal`), not to `resume`'s `--instance-id`. This doesn't change the issue's conclusion (the `run`-subcommand hidden flag is still a background-relaunch mechanism, not a general solution), but the "and again for `resume`" parenthetical overstated which flag is hidden. Normal foreground `cmd_run` resolves its own instance id via `_make_instance_id(loop_name)` (`cli/loop/runner.py:136`) at `cli/loop/run.py:199-203` when `args.foreground_internal` is unset — confirming a normal foreground run never receives an externally supplied id.
-- `load_and_validate(..., raise_on_error=False)` (`fsm/validation/structural_rules.py:1873`, drifted from a stale `:1860` citation) still raises unconditionally on `FileNotFoundError` (line 1898), non-mapping YAML (line 1904), and missing required top-level fields (line 1924) — only post-parse structural/reachability validator output (`validate_fsm` plus four more passes — `_validate_with_bindings`, `_validate_loop_references`, `_validate_fragment_bindings`, `_validate_artifact_output_subloop_reachability` — lines 1964-1977, not "three more passes" at 1951-1957) is converted to a returned `(fsm, errors)` tuple instead of raising. **Correction:** the claim that "there is no existing precedent... for consuming that returned list" is wrong. `FSMExecutor._execute_sub_loop` (`executor.py:1116`) and `_validate_with_bindings` itself (`structural_rules.py:297`) do discard it (`child_fsm, _ = load_and_validate(...)`), but two call sites cited elsewhere in this same issue's own Integration Map — `cli/doctor.py:679` and `cli/logs.py:2349` — **do** consume the returned violations list (checking `any(v.severity == ERROR for v in violations)`). The new validation-response conversion has an established call-site pattern to follow after all.
+- `load_and_validate(..., raise_on_error=False)` (`fsm/validation/structural_rules.py:1873`, drifted from a stale `:1860` citation) still raises unconditionally on `FileNotFoundError` (line 1898), non-mapping YAML (line 1904), and missing required top-level fields (line 1924) — only post-parse structural/reachability validator output (`validate_fsm` plus four more passes — `_validate_with_bindings`, `_validate_loop_references`, `_validate_fragment_bindings`, `_validate_artifact_output_subloop_reachability` — lines 1964-1977, not "three more passes" at 1951-1957) is converted to a returned `(fsm, errors)` tuple instead of raising. **Correction:** the claim that "there is no existing precedent... for consuming that returned list" was inaccurate. `FSMExecutor._execute_sub_loop` (`executor.py:1116`) and `_validate_with_bindings` itself (`structural_rules.py:297`) do discard it (`child_fsm, _ = load_and_validate(...)`), but two call sites cited elsewhere in this same issue's own Integration Map — `cli/doctor.py:679` and `cli/logs.py:2349` — **do** consume the returned violations list (checking `any(v.severity == ERROR for v in violations)`). The new validation-response conversion has an established call-site pattern to follow after all.
 
 ## Implementation Steps
 
-1. Implement/store-test approval eligibility and atomic request-key mapping; update queue status consumers and explicit per-entry host acceptance.
-2. Prove the production queue path with watcher-running, concurrent-submit, cancellation, retry/revive, and per-entry acceptance tests before connecting the page.
-3. Add lifecycle validation, immutable artifact persistence, workspace/issue binding, and structured child start metadata; test LOOP subprocess behavior with stubs.
-4. Factor the builder renderer; add same-origin page/issue/request routes and method dispatch without changing existing GET/SSE behavior.
-5. Wire review/submission/retry/readback UI and update docs/golden output. Port useful spike assertions to these production paths, then delete the old spike directory.
+1. Implement/store-test approval eligibility, atomic request-key mapping, and `get_run_request`; update queue status consumers.
+2. Factor `_dispatch_claimed` from `_drain_once`; add `ll-queue run --id ID --approve`; prove the production queue path with watcher-running, concurrent-submit, cancellation, retry/revive, and per-entry acceptance tests.
+3. Change `_run_loop_entry` to take the entry; add cwd, `--context issue_id=`, `timeout=None`, the hidden metadata flag, and the metadata observation thread; add the child-side metadata write in `cli/loop/run.py`; test with a stubbed `ll-loop` child.
+4. Add the policy-revision module (`validate_policy_revision`, `persist_policy_revision`, `RunRequest`) with byte-exact and non-ASCII hash tests; add `.loops/policy-builder/` to `.gitignore`.
+5. Update docs. Port useful spike assertions to these production paths, then delete the old spike directory.
+
+(Former steps 4–5, renderer split / serve routes / page UI, are FEAT-3504.)
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -211,50 +217,48 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Add `awaiting_approval` color entry to `_STATUS_COLOR` dict in `cli/queue.py:51`
 - Bump `SCHEMA_VERSION` to 4 and append the v4 migration (new nullable columns + partial unique index on `(workspace_id, request_id)`) to `_MIGRATIONS` in `queue_store.py:116-150`; extend `QueueEntry` dataclass, `to_dict`, `_from_row` (`queue_store.py:334-383`)
 - Add `awaiting_approval` to `cancel_entry`'s SQL guard (`queue_store.py:625`) and `cmd_cancel`'s status list (`cli/queue.py:922`); add the approval-aware target status to `revive_entry` (`queue_store.py:634`, currently unguarded) and `reset_to_pending` (`queue_store.py:491`)
-- Add `cwd=` to `_run_loop_entry`'s `Popen` (`cli/queue.py:411`) and the helper-thread/poll structure around `communicate()` for metadata observation
+- Factor `_dispatch_claimed(entry, ...)` out of `_drain_once`'s loop body (`cli/queue.py:574-640`) so `--id --approve` and the drain loop share one dispatch/result path
+- Change `_run_loop_entry(action)` to `_run_loop_entry(entry)` and update its single call site (`cli/queue.py:591`); add `cwd=` to its `Popen` (`cli/queue.py:411`), the `--context issue_id=` argument, and the helper-thread/poll structure around `communicate()` for metadata observation
+- Add `.loops/policy-builder/` to `.gitignore` (the `.loops/` block, lines 89-97)
 - `ll-queue list`/`status` output shows request id, issue id, and revision id for builder-origin rows
 - Update hardcoded status vocabulary in `_tool_queue_list` MCP tool description (`mcp_server/tools.py:920-925`) and test assertion in `test_queue_store.py:446,454-455` (TestStatusVocabulary)
 - Update `test_status_color_keys_match_queue_statuses` locked test in `test_cli_queue_run.py:1126-1132` once `_STATUS_COLOR` entry is added
 - Wire `--id` and `--approve` flags into argparse at `cli/queue.py:main_queue()` lines 938,1042-1057
-- Wire opt-in serve flag into argparse at `cli/artifact/serve.py:add_serve_parser()` line 37
 - Add `_make_instance_id` reference in `mcp_server/tasks.py` if start-metadata contract changes (line 104,107)
 - `test_loop_entry_input_passed_as_positional` and `test_loop_entry_intercepted_before_run_action` in `test_cli_queue_run.py` lines 384-395,340-357 exercise ordinary (non-builder-origin) entries and per Program Design § Start-metadata channel should NOT need updating once the LOOP subprocess metadata-file flag is added (see Tests section correction above) — verify this holds at implementation time rather than assuming breakage
 - Port reusable assertions from `scripts/tests/spike/level2_run_handoff/test_level2_run_handoff.py`: `test_submit_creates_pending_record_not_auto_decided`, `test_duplicate_submit_returns_existing_record_without_retriggering`, `test_complete_rejects_binding_mismatch`, `test_submit_rejects_missing_binding_fields`, `test_ledger_persists_across_process_restart`, `test_observe_reflects_transitions_without_synchronous_decision_in_submit` into production test files (`test_queue_store.py`, `test_cli_queue_run.py`), then delete the spike directory
-- Update `docs/reference/API.md` line 10997-11020 to add new function exports, line 11001-11002 inline comments for status changes, line 11444-11493 for SseBridge method-aware dispatch and security contract
-- Update `docs/reference/CLI.md` lines 5062-5257, 912, 4394-4395 with `ll-queue run --id --approve` and new `ll-artifact serve` opt-in flag documentation
+- Update `docs/reference/API.md` line 10997-11020 to add new function exports and line 11005-11006 inline comments for status changes
+- Update `docs/reference/CLI.md` lines 912, 4394-4395 with `ll-queue run --id ID --approve`
 - Update `docs/ARCHITECTURE.md` lines 834-844 to add v4 schema-migration row (following ENH-3416 v3 precedent) and expand prose for `awaiting_approval` transitions
-- Add level-2 render target row to `docs/reference/ARTIFACT_CONTROL_LEVELS.md` table (line 49-59) with policy-builder connected-builder declaration
-- Update `docs/guides/POLICY_ROUTER_GUIDE.md` with cross-link to ARTIFACT_CONTROL_LEVELS.md per the **Binding now:** requirement (which lives in `ARTIFACT_CONTROL_LEVELS.md:61-63` itself, not in POLICY_ROUTER_GUIDE.md — see Documentation section correction above)
 - Ensure new policy-revision validation caller catches pre-parse exceptions from `load_and_validate` without changing message format (pinned by existing docs/development/TESTING.md example line 295-298)
 
 ## Acceptance Criteria
 
 - [ ] Submitting while a watcher runs produces `awaiting_approval` and zero subprocess dispatches. Generic drain, direct generic claim, requeue/revive, and restart cannot bypass approval. Existing ordinary pending jobs still execute.
 - [ ] Reviving or requeueing a rejected/unapproved builder request (via CLI or MCP `queue_requeue`) returns it to `awaiting_approval`, not `pending`. An approved entry that hits a retryable failure or owner death returns to `pending` and is retried by a generic drainer without re-approval.
-- [ ] Builder-origin LOOP dispatch runs with `cwd` equal to the persisted project root and no 120 s default timeout; ordinary LOOP entries keep today's exact argv and cwd behavior.
-- [ ] Explicit host acceptance claims only the selected request exactly once; cancellation before acceptance produces no run. Bindings and issue existence are rechecked; unrelated queue entries are untouched by the single-entry command.
-- [ ] Concurrent duplicate submits, reload/retry, and retries after terminal completion map to one queue UUID; conflicting payloads under one request ID fail. Explicit Run again creates a fresh awaiting request.
+- [ ] Builder-origin LOOP dispatch runs with `cwd` equal to the persisted project root, `--context issue_id=<ID>` in argv (not a positional JSON input), and no 120 s default timeout; ordinary LOOP entries keep today's exact argv and cwd behavior. The same branch runs on a generic-drainer retry of an approved entry.
+- [ ] Explicit host acceptance claims only the selected request exactly once; cancellation before acceptance produces no run. Bindings and issue existence are rechecked; unrelated queue entries are untouched by the single-entry command. `_drain_once` behavior is unchanged after the `_dispatch_claimed` factoring (existing drain/watch tests pass).
+- [ ] Concurrent duplicate submits and retries after terminal completion map to one queue UUID; conflicting payloads under one request ID fail. A new request UUID creates a fresh awaiting request.
 - [ ] Invalid YAML syntax/shape, ERROR diagnostics, missing issue, wrong workspace, unsupported mode, revision mismatch, and changed on-disk artifact are rejected with structured diagnostics and no runnable entry.
-- [ ] UTF-8 hashes match Python; persisted YAML is immutable and project-anchored. Subprocess target/input/cwd match the accepted lifecycle revision and issue, with no real LLM or implementation runs in tests.
-- [ ] A stub child startup publishes a real-format instance identity via the structured channel; readback exposes it while running and after completion, distinct from request/queue IDs. Startup failures and rejection leave it null. Stub the LOOP subprocess path, not `run_action`.
-- [ ] Serve cannot approve/run; production behavioral tests enforce the level boundary. Existing Host/token checks cover new routes, existing GET/history/SSE tests pass, and no CORS headers are added.
-- [ ] Offline/non-lifecycle pages show connected controls unavailable with a reason. Connection failure/reload retains authoring/scenarios and submission identity; edited drafts clearly distinguish current and submitted revisions.
-- [ ] Connected builder is documented at level 2; CLI approval/status semantics and local-only verification instructions are documented. Golden and applicable local pytest/Node gates pass.
+- [ ] Persisted YAML is byte-identical to the input (SHA-256 parity including non-ASCII), immutable, project-anchored, and gitignored. Subprocess target/input/cwd match the accepted lifecycle revision and issue, with no real LLM or implementation runs in tests.
+- [ ] A stub child startup publishes a real-format instance identity and an absolute run dir via the structured channel; readback exposes them while running and after completion, distinct from request/queue IDs. Startup failures and rejection leave them null. Stub the LOOP subprocess path, not `run_action`.
+- [ ] No store, revision, or dispatch function approves or launches anything implicitly; the live-watcher test enforces the boundary.
+- [ ] CLI approval/status semantics and the v4 schema are documented. Applicable local pytest gates pass.
 
 ## Use Case
 
-A maintainer runs offline scenarios, submits the reviewed lifecycle policy for BUG-123, then accepts that exact request from the host session. Another queue watcher may already be running but cannot start the request first. The browser displays the actual loop instance and result without losing the author's current draft.
+A reviewed lifecycle policy for BUG-123 is submitted as a run request (by FEAT-3504's page, or by a test). Another queue watcher may already be running but cannot start it. The maintainer accepts that exact request with `ll-queue run --id <id> --approve` from the host session; the row records the real loop instance ID and run dir while it runs and the result on completion.
 
 ## Impact
 
-- Priority: P3 — closes the authoring-to-execution gap after offline foundations.
-- Effort: Large — approval, queue concurrency, transport, and child metadata integration.
+- Priority: P3 — the host-side half of the authoring-to-execution gap; FEAT-3504 depends on it.
+- Effort: Large — approval, queue concurrency, and child metadata integration.
 - Risk: High until the production approval/watcher tests pass.
-- Breaking change: Existing queue jobs and offline generation remain compatible; queue schema/status consumers require migration coverage.
+- Breaking change: Existing queue jobs remain compatible; queue schema/status consumers require migration coverage. `_run_loop_entry`'s signature changes (single internal call site).
 
 ## Scope Boundaries
 
-Includes opt-in lifecycle run requests, project-local issue selection, explicit host approval, immutable revision binding, dedup, and status/instance readback. Excludes autonomous page/serve execution, remote shell APIs, level-3 event interception, all-mode connected inputs, new retry/backoff policy, arbitrary YAML import, and the `_ResourceEntry` control-level forward slot. Offline suites belong to FEAT-3488.
+Includes the `awaiting_approval` status, request-key dedup, explicit host approval, builder-origin LOOP dispatch (cwd, `--context issue_id=`, no timeout, metadata channel), immutable revision validation/persistence, and `get_run_request` readback. Excludes the same-origin page, serve routes, and `SseBridge` POST dispatch (FEAT-3504); autonomous page/serve execution; remote shell APIs; level-3 event interception; all-mode connected inputs; new retry/backoff policy; arbitrary YAML import; and the `_ResourceEntry` control-level forward slot. Offline suites belong to FEAT-3488.
 
 ## Spike History
 
@@ -293,6 +297,7 @@ Proposal-vs-code consequence check (B6): no defect found. The v4 schema-migratio
 **Open** | Created: 2026-09-17 | Priority: P3
 
 ## Session Log
+- manual review - 2026-09-17 - split page/serve/transport half into FEAT-3504; fixed `issue_id` binding (positional JSON would not bind a required parameter — use `--context issue_id=`); pinned `_dispatch_claimed` factoring and `_run_loop_entry(entry)` signature; dropped vacuous `reset_to_pending` approval branch; absolute `runDir` in metadata; short revision filename; `.gitignore` entry
 - `/ll:verify-issues` - 2026-09-18T01:26:23 - `eff5f7b6-7e2a-4e3b-9ab1-2c3de2810754.jsonl`
 - manual review - 2026-09-17 - merged duplicate Program Design sections; pinned approval-durability/retry rules, v4 schema + partial unique index, `--id`/`--approve` semantics, LOOP cwd/timeout, metadata-channel thread/flag design, `write_bytes` persistence; clarified FEAT-3488 block as merge-ordering only
 - `/ll:wire-issue` - 2026-09-17T06:29:23 - `cfe75f8a-6f82-4bce-bf08-9275049cd46d.jsonl`
