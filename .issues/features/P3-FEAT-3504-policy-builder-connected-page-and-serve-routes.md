@@ -92,7 +92,7 @@ Without this half, FEAT-3498's approval contracts are reachable only from Python
 - **Storage and token rotation:** browser storage is origin-scoped, but its connected authoring and submission keys must also include the server-derived `workspaceId`; submission records additionally include `projectId` and `requestId`. Two repositories served at the same origin must not restore each other's drafts, issue selection, or pending submissions. Keep the offline storage path compatible; do not migrate unscoped data into a workspace automatically. Persist request data, not a tokenized endpoint as authority.
 - **Restart recovery requires the new URL.** `SseBridge` generates a fresh token on each construction. Pinning `--port` preserves the storage origin but does not keep the old URL working. After restart, the user opens the newly printed tokenized builder URL; that page restores its matching workspace/document state and uses its newly stamped endpoint for readback/retry. The old page reports disconnection/authorization failure and preserves state; it cannot discover the new token automatically. Document the same-origin limitation, stable hostname/port, new-URL step, and workspace isolation.
 - Hashing lives in `policy_builder_core.mjs` as an exported async function over `globalThis.crypto.subtle` (available in Node ≥ 22 as well as the browser), so UTF-8/hash parity with Python — including non-ASCII YAML — is tested under the existing pytest-wrapped Node gate (`scripts/tests/test_policy_builder_node_gate.py`) with no browser.
-- **FEAT-3503 overlap**: FEAT-3503 (scenario boundary suggestions + local issue-file import) edits the same `.mjs`/`.tmpl` files. Its local file import is an offline, scenario-authoring input; this issue's issue list is the connected, server-scoped run binding. They do not share state. Land whichever is second on top of the first rather than in parallel.
+- **FEAT-3503 overlap**: FEAT-3503 (scenario boundary suggestions + local issue-file import) edits the same `.mjs`/`.tmpl` files. Its local file import is an offline, scenario-authoring input; this issue's issue list is the connected, server-scoped run binding. They do not share state. FEAT-3503 is now **done**, so build this on top of its landed `.mjs`/`.tmpl` changes.
 
 ### Codebase Research Findings
 
@@ -234,6 +234,7 @@ Verdict at time of check: **VALID** (2026-09-18 `/ll:verify-issues --auto`; no c
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-09-18T21:05:48 - `07c743d4-fb4d-457c-985e-2bfb140d83ca.jsonl`
 - `/ll:verify-issues` - 2026-09-18T16:33:37 - `8bffa950-7522-4c88-bac6-c0f5c79c2f1a.jsonl`
 - manual review applied - 2026-09-18 - moved existing-request recovery ahead of mutable creation checks; specified full-envelope freezing/persistence and async guards, token-rotation/new-URL recovery, workspace storage isolation, --policy-builder flag, and transport/application error boundary; updated tests, design, steps, and acceptance criteria together
 - manual review vs. landed FEAT-3498 contracts - 2026-09-18 - added `category:` emit blocker, corrected store/validator signatures, defined workspace id, error-body/status table, submit ordering, body cap, origin-scoped storage, FEAT-3503 overlap; removed resolved `blocked_by: FEAT-3498`
