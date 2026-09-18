@@ -120,6 +120,7 @@ pre {
 .msg-warn { background: var(--color-status-warning-bg, #fff3cd); color: var(--color-status-warning-text, #856404); }
 .msg-error { background: var(--color-status-error-bg, #f8d7da); color: var(--color-status-error-text, #721c24); }
 .msg-ok { background: var(--color-status-success-bg, #d4edda); color: var(--color-status-success-text, #155724); }
+.msg-info { background: var(--color-status-info-bg, #d1ecf1); color: var(--color-status-info-text, #0c5460); }
 .hint { font-family: var(--typography-font-family-mono, monospace); font-size: 0.8rem; opacity: 0.8; white-space: pre-line; }
 .theme-toggle { font-size: 1.1rem; padding: 0.3rem 0.6rem; }
 .del { flex: 0 0 auto; padding: 0.2rem 0.5rem; }
@@ -256,6 +257,7 @@ confidence_score: 40"></textarea>
       <h2 style="margin-top:0;font-size:1rem;">Result</h2>
       <p id="yaml-summary"></p>
       <p class="hint" id="transition-summary" hidden></p>
+      <ul class="messages" id="transition-graph" hidden></ul>
       <ul class="messages" id="messages"></ul>
       <div class="row" style="margin-bottom:0.5rem;">
         <button id="copy-btn" type="button">Copy</button>
@@ -1231,6 +1233,61 @@ function renderMessages(model, diagnostics) {
   if (!host.children.length) add("msg-ok", "No issues detected.");
 }
 
+// FEAT-3501: text/list adjacency rendering of the shared analyzeTransitions
+// structural analysis — one line per node with outgoing edges (nodes with
+// none, i.e. sinks, are omitted — there is nothing to adjacency-list), then
+// one line per goto cycle (warning) and rescore_feedback cycle (info), then
+// one line per unreachable outcome node. A node absent from
+// reachableNodeIds but also never the target of any edge is simply an
+// unused verb (normal — presets intentionally leave verbs unreferenced) and
+// is not warned; only a node that IS referenced (has an inbound edge, which
+// given dispatch targets are always reachable can only be a `goto` edge from
+// an unreachable source) yet still unreachable is flagged. Never an SVG/
+// canvas diagram — hand-rolled layout is out of scope for this issue.
+function renderTransitionGraph(model, analysis) {
+  const host = $("transition-graph");
+  host.innerHTML = "";
+  if (!analysis.nodes.length) {
+    host.hidden = true;
+    return;
+  }
+  const add = (cls, text) => {
+    const li = document.createElement("li");
+    if (cls) li.className = cls;
+    li.textContent = text;
+    host.appendChild(li);
+  };
+
+  const outgoingBySource = new Map();
+  for (const e of analysis.edges) {
+    if (!outgoingBySource.has(e.source)) outgoingBySource.set(e.source, []);
+    outgoingBySource.get(e.source).push(e);
+  }
+  for (const node of analysis.nodes) {
+    const outgoing = outgoingBySource.get(node.id);
+    if (!outgoing || !outgoing.length) continue;
+    const desc = outgoing.map((e) => `${e.target} (${e.kind})`).join(", ");
+    add("", `${node.id} [${node.kind}] → ${desc}`);
+  }
+
+  for (const cycle of analysis.cycles) {
+    if (cycle.kind === "goto") {
+      add("msg-warn", `Goto cycle: ${cycle.nodeIds.join(" → ")} → ${cycle.nodeIds[0]}`);
+    } else {
+      add("msg-info", `Rescore feedback: ${cycle.nodeIds.join(" → ")}`);
+    }
+  }
+
+  const reachable = new Set(analysis.reachableNodeIds);
+  const hasInboundEdge = new Set(analysis.edges.map((e) => e.target));
+  for (const node of analysis.nodes) {
+    if (node.kind !== "outcome" || reachable.has(node.id) || !hasInboundEdge.has(node.id)) continue;
+    add("msg-warn", `Outcome "${node.id}" is referenced but not reachable from score.`);
+  }
+
+  host.hidden = host.children.length === 0;
+}
+
 // ===========================================================================
 // Offline scenario suites (FEAT-3488)
 // ===========================================================================
@@ -1579,6 +1636,7 @@ function updatePreview() {
   $("download-btn").disabled = hasError;
   $("yaml-summary").textContent = computeSummary(model);
   renderMessages(model, diagnostics);
+  renderTransitionGraph(model, analyzeTransitions(model));
   updateTryIt();
 
   // ENH-3491: a collapsed advanced-details hides the field a diagnostic

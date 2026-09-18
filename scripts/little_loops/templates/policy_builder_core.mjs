@@ -1927,7 +1927,7 @@ export function taskPresets() {
  * (no rule/fallback/goto-chain reaches it) is not evidence of verification —
  * `verification` stays "none" in that case.
  * @param {Object} model  a builder model (see file-header model-shape contract)
- * @returns {{steps: string[], stopsAfterImplement: boolean, verification: "acceptance"|"issue_validation"|"unconfigured"|"custom"|"none", stepsPerAttempt: number, attempts: number, maxStepsNote: string}}
+ * @returns {{steps: string[], stopsAfterImplement: boolean, stopDestination: string|null, verification: "acceptance"|"issue_validation"|"unconfigured"|"custom"|"none", stepsPerAttempt: number, attempts: number, maxStepsNote: string}}
  */
 export function summarizeTransitions(model) {
   const outcomeMap = new Map();
@@ -1964,23 +1964,27 @@ export function summarizeTransitions(model) {
 
   // stepsPerAttempt = score + policy_dispatch (2 fixed states) + the longest
   // reachable verb chain from any dispatch target — a `goto` continues the
-  // chain, anything else (`rescore`/`finish`) ends it. A cycle guard prevents
-  // an infinite loop on an authored goto cycle (summary purposes only).
+  // chain, anything else (`rescore`/`finish`) ends it. FEAT-3501: chain
+  // length is now derived from `analyzeTransitions`'s shared `goto` edges
+  // (exactly the old per-outcome goto guard's targets) so the summary and
+  // the graph can never disagree about reachable chains. A cycle guard
+  // prevents an infinite loop on an authored goto cycle (summary purposes
+  // only).
+  const analysis = analyzeTransitions(model);
+  const gotoNext = new Map();
+  for (const e of analysis.edges) if (e.kind === "goto") gotoNext.set(e.source, e.target);
   const chainLenFrom = (name, seen) => {
     if (seen.has(name)) return 0;
     seen.add(name);
-    const oc = outcomeMap.get(name);
-    const t = oc && oc.transition;
-    if (t && t.kind === "goto" && t.target && outcomeMap.has(t.target)) {
-      return 1 + chainLenFrom(t.target, seen);
-    }
+    if (gotoNext.has(name)) return 1 + chainLenFrom(gotoNext.get(name), seen);
     return 1;
   };
   const dispatchTargets = new Set();
-  for (const r of model.rules || []) {
-    if (r.target && outcomeMap.has(r.target)) dispatchTargets.add(r.target);
+  for (const e of analysis.edges) {
+    if (e.source === "policy_dispatch" && e.kind === "dispatch" && outcomeMap.has(e.target)) {
+      dispatchTargets.add(e.target);
+    }
   }
-  if (model.fallback && outcomeMap.has(model.fallback)) dispatchTargets.add(model.fallback);
   let chainLength = 0;
   for (const target of dispatchTargets) {
     chainLength = Math.max(chainLength, chainLenFrom(target, new Set()));
@@ -2587,6 +2591,140 @@ export function _requiredTerminalBlocks(model) {
   return LIFECYCLE_DESTINATIONS.map((d) => d.name).filter((n) => required.has(n));
 }
 
+/**
+ * Structural transition analysis for an issue_lifecycle model (FEAT-3501):
+ * one shared `{nodes, edges, reachableNodeIds, cycles}` contract that both
+ * `summarizeTransitions` and the builder's graph panel consume, so the prose
+ * summary and the graph can never disagree. Pure — derived from
+ * `model.rules`/`model.outcomes`/`model.fallback` only, the same emitted-
+ * outcome/destination semantics `_emittedVerbs`/`_dispatchedDestinations`/
+ * `_requiredTerminalBlocks`/`_outcomeStateLines` use for YAML generation.
+ * Edges cover *authored* transitions only — the implicit `on_max_steps` ->
+ * needs_attention route and every state's `on_error: failed` route are never
+ * represented, so a structural warning never claims an action outcome or
+ * guarantees nontermination. Non-lifecycle models (`rubric`/`decision_table`)
+ * return the empty analysis; the graph panel itself is lifecycle-only.
+ * @param {Object} model  a builder model (see file-header model-shape contract)
+ * @returns {{nodes: Array<{id: string, kind: "scoring"|"dispatch"|"outcome"|"terminal"}>, edges: Array<{source: string, target: string, kind: "dispatch"|"goto"|"rescore"|"terminal"}>, reachableNodeIds: string[], cycles: Array<{nodeIds: string[], kind: "goto"|"rescore_feedback"}>}}
+ */
+export function analyzeTransitions(model) {
+  if (!model || model.mode !== "issue_lifecycle") {
+    return { nodes: [], edges: [], reachableNodeIds: [], cycles: [] };
+  }
+
+  const outcomes = model.outcomes || [];
+  const outcomeMap = new Map();
+  for (const o of outcomes) outcomeMap.set(o.name, o);
+
+  const nodes = [
+    { id: "score", kind: "scoring" },
+    { id: "policy_dispatch", kind: "dispatch" },
+    ...outcomes.map((o) => ({ id: o.name, kind: "outcome" })),
+    { id: "done", kind: "terminal" },
+    ...LIFECYCLE_DESTINATIONS.map((d) => ({ id: d.name, kind: "terminal" })),
+  ];
+
+  const edges = [{ source: "score", target: "policy_dispatch", kind: "dispatch" }];
+
+  // policy_dispatch -> every distinct rule target / the fallback, in
+  // authoring order; a target may be a verb or a destination.
+  const dispatchTargets = [];
+  const seenDispatchTargets = new Set();
+  for (const r of model.rules || []) {
+    if (r.target && !seenDispatchTargets.has(r.target)) {
+      seenDispatchTargets.add(r.target);
+      dispatchTargets.push(r.target);
+    }
+  }
+  if (model.fallback && !seenDispatchTargets.has(model.fallback)) {
+    seenDispatchTargets.add(model.fallback);
+    dispatchTargets.push(model.fallback);
+  }
+  for (const target of dispatchTargets) {
+    edges.push({ source: "policy_dispatch", target, kind: "dispatch" });
+  }
+
+  // Per-outcome edges, mirroring `_outcomeStateLines`'s transition branch
+  // exactly (policy_builder_core.mjs's YAML `next:`/`terminal:` emission).
+  for (const o of outcomes) {
+    const t = o.transition || { kind: "finish" };
+    if (t.kind === "goto") {
+      if (t.target && outcomeMap.has(t.target)) {
+        edges.push({ source: o.name, target: t.target, kind: "goto" });
+      }
+    } else if (t.kind === "rescore") {
+      edges.push({ source: o.name, target: "score", kind: "rescore" });
+    } else if (_KIND_TO_DESTINATION[t.kind]) {
+      edges.push({ source: o.name, target: _KIND_TO_DESTINATION[t.kind], kind: "terminal" });
+    } else {
+      // `finish` (or no transition): an action yields an edge to `done`; no
+      // action makes the outcome itself a sink (`terminal: true` in the
+      // emitted YAML) — no edge.
+      const at = o.actionType || "none";
+      const hasAction = at === "prompt" || at === "slash_command" || at === "shell";
+      if (hasAction) edges.push({ source: o.name, target: "done", kind: "terminal" });
+    }
+  }
+
+  const adjacency = new Map();
+  for (const e of edges) {
+    if (!adjacency.has(e.source)) adjacency.set(e.source, []);
+    adjacency.get(e.source).push(e.target);
+  }
+  const reached = new Set();
+  const toVisit = ["score"];
+  while (toVisit.length) {
+    const cur = toVisit.pop();
+    if (reached.has(cur)) continue;
+    reached.add(cur);
+    for (const next of adjacency.get(cur) || []) {
+      if (!reached.has(next)) toVisit.push(next);
+    }
+  }
+  const reachableNodeIds = nodes.map((n) => n.id).filter((id) => reached.has(id));
+  const reachedOutcomeIds = new Set(outcomes.map((o) => o.name).filter((n) => reached.has(n)));
+
+  // Goto cycles: each outcome has at most one outgoing `goto` edge, so the
+  // `goto` subgraph has out-degree <= 1 per node — a simple chain-walk with
+  // a per-start visited set finds every simple cycle (self-loops included)
+  // without needing full Tarjan SCC. `cycleNodeIds` dedupes cycles reached
+  // by more than one tail so each cycle is recorded exactly once.
+  const gotoNext = new Map();
+  for (const e of edges) if (e.kind === "goto") gotoNext.set(e.source, e.target);
+
+  const cycles = [];
+  const cycleNodeIds = new Set();
+  for (const o of outcomes) {
+    const start = o.name;
+    if (!reachedOutcomeIds.has(start) || cycleNodeIds.has(start)) continue;
+    const path = [];
+    const indexInPath = new Map();
+    let cur = start;
+    while (!indexInPath.has(cur) && !cycleNodeIds.has(cur) && gotoNext.has(cur)) {
+      indexInPath.set(cur, path.length);
+      path.push(cur);
+      cur = gotoNext.get(cur);
+    }
+    if (indexInPath.has(cur)) {
+      const members = new Set(path.slice(indexInPath.get(cur)));
+      const nodeIds = outcomes.map((oc) => oc.name).filter((n) => members.has(n));
+      cycles.push({ nodeIds, kind: "goto" });
+      for (const n of members) cycleNodeIds.add(n);
+    }
+  }
+
+  // Rescore feedback: informational, one record per reachable outcome whose
+  // transition is `rescore` — every preset and the seed use `rescore`, so
+  // this is the normal shape of a lifecycle policy, not a warning.
+  for (const o of outcomes) {
+    if (reachedOutcomeIds.has(o.name) && o.transition && o.transition.kind === "rescore") {
+      cycles.push({ nodeIds: ["score", "policy_dispatch", o.name], kind: "rescore_feedback" });
+    }
+  }
+
+  return { nodes, edges, reachableNodeIds, cycles };
+}
+
 // Emits the issue_lifecycle-mode loop YAML (Proposed Solution §2): a thin
 // standalone loop that imports lib/policy-router.yaml, self-declares
 // `parameters: { issue_id: {...} }` (not `with:` — that key is caller-side
@@ -3003,5 +3141,7 @@ if (typeof window !== "undefined") {
     evaluateScenario,
     runScenarioSuite,
     withScenariosDefaulted,
+    // FEAT-3501 (shared structural transition analysis)
+    analyzeTransitions,
   };
 }

@@ -411,6 +411,22 @@ and exits non-zero (routing to `failed`) below it; add `--force-implement` to it
 that gate. Only verbs actually reachable — targeted by a rule, the fallback, or the `goto` target
 of an already-reachable verb — are emitted into the saved YAML; the rest are simply left out.
 
+**Structural transition graph (FEAT-3501).** Below the transition summary, a graph panel lists
+every dispatch/goto/rescore/terminal edge, one line per node with outgoing edges, driven by the
+same `analyzeTransitions(model)` analysis the summary itself is built from — so the two can never
+disagree. A `goto` chain that cycles back on itself is flagged as a warning (self-loops included);
+a `rescore` route back to scoring is shown as informational, not a warning, since every preset and
+the seeded example route this way normally. An outcome verb that's referenced by a `goto` from
+elsewhere in the model but still unreachable is flagged as a warning; a verb the model simply never
+references at all is not — that's the normal shape of a preset that intentionally leaves verbs
+unused (e.g. "Preparation" never reaches `implement`/`verify`). The graph makes **no claim about
+what actually happens when the loop runs** — it shows which routes are *authored*, not which ones
+execute or terminate, and it deliberately omits the two *implicit* routes every state carries:
+`on_max_steps` → `needs_attention` and each state's own `on_error: failed`. A structural cycle is
+therefore never evidence that a run will loop forever, and an unreachable outcome is never evidence
+of a bug — both are prompts to double-check intent before exporting, nothing stronger. The graph is
+a plain text/list rendering, not an SVG/canvas diagram.
+
 **Seeded example** (also the Use Case this mode ships with):
 
 ```

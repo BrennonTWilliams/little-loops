@@ -39,6 +39,7 @@ import {
   applyDraftEdit,
   taskPresets,
   summarizeTransitions,
+  analyzeTransitions,
   LIFECYCLE_DESTINATIONS,
   _dispatchedDestinations,
   _requiredTerminalBlocks,
@@ -1257,6 +1258,245 @@ test("summarizeTransitions.stopDestination reports the terminal reached when imp
 test("summarizeTransitions.maxStepsNote never classifies the budget route as success", () => {
   const model = seedExample("issue_lifecycle");
   assert.match(summarizeTransitions(model).maxStepsNote, /needs_attention \(failure\)/);
+});
+
+// ---------------------------------------------------------------------------
+// FEAT-3501 — shared analyzeTransitions structural analysis.
+//
+// Pre-migration snapshot (ENH-3035 discipline): the exact summarizeTransitions
+// outputs for the seed, every issue_lifecycle preset, the blank model, a
+// goto-cycle model, and an unreachable-verify model, captured from the
+// pre-migration source (`git show HEAD` at the start of this change) via a
+// throwaway script and confirmed byte-identical to the migrated code's
+// output before this test was written. Any future edit to summarizeTransitions
+// or analyzeTransitions that changes these values is a behavior change, not a
+// refactor, and must be deliberate.
+// ---------------------------------------------------------------------------
+
+test("summarizeTransitions is unchanged by the analyzeTransitions migration (seed, presets, blank, goto-cycle, unreachable-verify)", () => {
+  const gotoCycleModel = blankModel("issue_lifecycle");
+  gotoCycleModel.rules = [{ predicates: [], target: "refine", isCatchall: true }];
+  gotoCycleModel.fallback = "refine";
+  gotoCycleModel.outcomes.find((o) => o.name === "refine").transition = { kind: "goto", target: "gate" };
+  gotoCycleModel.outcomes.find((o) => o.name === "gate").transition = { kind: "goto", target: "refine" };
+
+  const unreachableVerifyModel = taskPresets().find((p) => p.id === "implementation").build();
+  const uvVerify = unreachableVerifyModel.outcomes.find((o) => o.name === "verify");
+  uvVerify.actionType = "shell";
+  uvVerify.body = "scripts/check-acceptance.sh";
+  uvVerify.verificationContract = "acceptance_exit_code";
+
+  const cases = {
+    seed: seedExample("issue_lifecycle"),
+    "preset:preparation": taskPresets().find((p) => p.id === "preparation").build(),
+    "preset:implementation": taskPresets().find((p) => p.id === "implementation").build(),
+    "preset:implementation-with-verification": taskPresets()
+      .find((p) => p.id === "implementation-with-verification")
+      .build(),
+    blank: blankModel("issue_lifecycle"),
+    gotoCycle: gotoCycleModel,
+    unreachableVerify: unreachableVerifyModel,
+  };
+
+  const expected = {
+    seed: {
+      steps: ["refine", "gate", "implement", "verify"],
+      stopsAfterImplement: true,
+      stopDestination: "done",
+      verification: "issue_validation",
+      stepsPerAttempt: 4,
+      attempts: 5,
+      maxStepsNote:
+        "max steps 20 ≈ 5 attempts of 4 states each; exceeding the budget lands on needs_attention (failure)",
+    },
+    "preset:preparation": {
+      steps: ["prepare", "refine", "gate"],
+      stopsAfterImplement: false,
+      stopDestination: null,
+      verification: "none",
+      stepsPerAttempt: 5,
+      attempts: 4,
+      maxStepsNote:
+        "max steps 20 ≈ 4 attempts of 5 states each; exceeding the budget lands on needs_attention (failure)",
+    },
+    "preset:implementation": {
+      steps: ["prepare", "refine", "gate", "implement"],
+      stopsAfterImplement: true,
+      stopDestination: "done",
+      verification: "none",
+      stepsPerAttempt: 6,
+      attempts: 3,
+      maxStepsNote:
+        "max steps 20 ≈ 3 attempts of 6 states each; exceeding the budget lands on needs_attention (failure)",
+    },
+    "preset:implementation-with-verification": {
+      steps: ["prepare", "refine", "gate", "implement", "verify"],
+      stopsAfterImplement: false,
+      stopDestination: null,
+      verification: "unconfigured",
+      stepsPerAttempt: 7,
+      attempts: 2,
+      maxStepsNote:
+        "max steps 20 ≈ 2 attempts of 7 states each; exceeding the budget lands on needs_attention (failure)",
+    },
+    blank: {
+      steps: ["gate"],
+      stopsAfterImplement: false,
+      stopDestination: null,
+      verification: "none",
+      stepsPerAttempt: 3,
+      attempts: 6,
+      maxStepsNote:
+        "max steps 20 ≈ 6 attempts of 3 states each; exceeding the budget lands on needs_attention (failure)",
+    },
+    gotoCycle: {
+      steps: ["refine", "gate"],
+      stopsAfterImplement: false,
+      stopDestination: null,
+      verification: "none",
+      stepsPerAttempt: 4,
+      attempts: 5,
+      maxStepsNote:
+        "max steps 20 ≈ 5 attempts of 4 states each; exceeding the budget lands on needs_attention (failure)",
+    },
+    unreachableVerify: {
+      steps: ["prepare", "refine", "gate", "implement"],
+      stopsAfterImplement: true,
+      stopDestination: "done",
+      verification: "none",
+      stepsPerAttempt: 6,
+      attempts: 3,
+      maxStepsNote:
+        "max steps 20 ≈ 3 attempts of 6 states each; exceeding the budget lands on needs_attention (failure)",
+    },
+  };
+
+  for (const [name, model] of Object.entries(cases)) {
+    assert.deepEqual(summarizeTransitions(model), expected[name], `case ${name}`);
+  }
+});
+
+test("analyzeTransitions returns the empty analysis for non-lifecycle models (and a nullish model)", () => {
+  const empty = { nodes: [], edges: [], reachableNodeIds: [], cycles: [] };
+  assert.deepEqual(analyzeTransitions(seedExample("rubric")), empty);
+  assert.deepEqual(analyzeTransitions(seedExample("decision_table")), empty);
+  assert.deepEqual(analyzeTransitions(null), empty);
+});
+
+test("analyzeTransitions nodes are ordered scoring, dispatch, outcomes (model order), done, then LIFECYCLE_DESTINATIONS order", () => {
+  const analysis = analyzeTransitions(seedExample("issue_lifecycle"));
+  assert.deepEqual(
+    analysis.nodes.map((n) => n.id),
+    ["score", "policy_dispatch", "prepare", "refine", "gate", "implement", "verify", "done", "stopped", "skipped", "needs_attention"]
+  );
+  assert.deepEqual(
+    analysis.nodes.map((n) => n.kind),
+    ["scoring", "dispatch", "outcome", "outcome", "outcome", "outcome", "outcome", "terminal", "terminal", "terminal", "terminal"]
+  );
+});
+
+test("analyzeTransitions is deterministic across repeated calls on an equivalent model", () => {
+  assert.deepEqual(analyzeTransitions(seedExample("issue_lifecycle")), analyzeTransitions(seedExample("issue_lifecycle")));
+});
+
+test("analyzeTransitions emits a policy_dispatch edge for every distinct rule target and the fallback, verb or destination", () => {
+  const model = blankModel("issue_lifecycle");
+  model.rules = [
+    { predicates: [], target: "implement", isCatchall: false },
+    { predicates: [], target: "stopped", isCatchall: false },
+  ];
+  model.fallback = "gate";
+  const analysis = analyzeTransitions(model);
+  const dispatchTargets = analysis.edges
+    .filter((e) => e.source === "policy_dispatch")
+    .map((e) => e.target);
+  assert.deepEqual(dispatchTargets, ["implement", "stopped", "gate"]);
+  assert.ok(analysis.reachableNodeIds.includes("stopped"));
+});
+
+test("analyzeTransitions: goto chains produce goto edges only when the target is a defined outcome", () => {
+  const model = taskPresets().find((p) => p.id === "implementation-with-verification").build();
+  const analysis = analyzeTransitions(model);
+  assert.deepEqual(
+    analysis.edges.filter((e) => e.kind === "goto"),
+    [
+      { source: "prepare", target: "refine", kind: "goto" },
+      { source: "refine", target: "gate", kind: "goto" },
+      { source: "gate", target: "implement", kind: "goto" },
+      { source: "implement", target: "verify", kind: "goto" },
+    ]
+  );
+});
+
+test("analyzeTransitions.reachableNodeIds excludes an outcome verb the model's rules/fallback/goto chain never references", () => {
+  const model = taskPresets().find((p) => p.id === "implementation").build();
+  const analysis = analyzeTransitions(model);
+  assert.ok(!analysis.reachableNodeIds.includes("verify"));
+  assert.ok(analysis.reachableNodeIds.includes("implement"));
+});
+
+test("analyzeTransitions detects a goto cycle (including a self-loop), one CycleRecord per cycle", () => {
+  const model = blankModel("issue_lifecycle");
+  model.rules = [{ predicates: [], target: "refine", isCatchall: true }];
+  model.fallback = "refine";
+  model.outcomes.find((o) => o.name === "refine").transition = { kind: "goto", target: "gate" };
+  model.outcomes.find((o) => o.name === "gate").transition = { kind: "goto", target: "refine" };
+  const analysis = analyzeTransitions(model);
+  assert.deepEqual(analysis.cycles, [{ nodeIds: ["refine", "gate"], kind: "goto" }]);
+
+  const selfLoop = blankModel("issue_lifecycle");
+  selfLoop.rules = [{ predicates: [], target: "refine", isCatchall: true }];
+  selfLoop.fallback = "refine";
+  selfLoop.outcomes.find((o) => o.name === "refine").transition = { kind: "goto", target: "refine" };
+  assert.deepEqual(analyzeTransitions(selfLoop).cycles, [{ nodeIds: ["refine"], kind: "goto" }]);
+});
+
+test("analyzeTransitions reports rescore feedback as nodeIds [score, policy_dispatch, <outcome>] for every reachable rescore outcome, and omits unreachable ones", () => {
+  const analysis = analyzeTransitions(seedExample("issue_lifecycle"));
+  assert.deepEqual(
+    analysis.cycles.filter((c) => c.kind === "rescore_feedback"),
+    [{ nodeIds: ["score", "policy_dispatch", "gate"], kind: "rescore_feedback" }]
+  );
+  // "prepare" also defaults to `rescore` but is unreachable in the seed (no
+  // rule/fallback/goto references it) — it must not appear here.
+  assert.ok(
+    !analysis.cycles.some((c) => c.kind === "rescore_feedback" && c.nodeIds.includes("prepare"))
+  );
+});
+
+test("analyzeTransitions: finish with an action yields a terminal edge to done; finish without an action yields no edge (the outcome is its own sink)", () => {
+  const model = blankModel("issue_lifecycle");
+  const implement = model.outcomes.find((o) => o.name === "implement");
+  implement.transition = { kind: "finish" };
+  const withAction = analyzeTransitions(model);
+  assert.deepEqual(
+    withAction.edges.find((e) => e.source === "implement"),
+    { source: "implement", target: "done", kind: "terminal" }
+  );
+
+  implement.actionType = "none";
+  const withoutAction = analyzeTransitions(model);
+  assert.ok(!withoutAction.edges.some((e) => e.source === "implement"));
+});
+
+test("analyzeTransitions: stop/skip/attention transitions (ENH-3492) yield terminal edges to the matching LIFECYCLE_DESTINATIONS node", () => {
+  const model = blankModel("issue_lifecycle");
+  model.outcomes.find((o) => o.name === "implement").transition = { kind: "stop" };
+  model.outcomes.find((o) => o.name === "verify").transition = { kind: "skip" };
+  model.outcomes.find((o) => o.name === "gate").transition = { kind: "attention" };
+  const analysis = analyzeTransitions(model);
+  assert.deepEqual(
+    analysis.edges.find((e) => e.source === "implement"),
+    { source: "implement", target: "stopped", kind: "terminal" }
+  );
+  assert.deepEqual(
+    analysis.edges.find((e) => e.source === "verify"),
+    { source: "verify", target: "skipped", kind: "terminal" }
+  );
+  assert.deepEqual(
+    analysis.edges.find((e) => e.source === "gate"),
+    { source: "gate", target: "needs_attention", kind: "terminal" }
+  );
 });
 
 // ---------------------------------------------------------------------------

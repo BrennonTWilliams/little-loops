@@ -3,10 +3,11 @@ id: FEAT-3501
 type: FEAT
 title: Policy builder shared transition analysis and structural graph
 priority: P3
-status: open
+status: done
 discovered_by: manual-review-split
 discovered_date: '2026-09-17'
 captured_at: '2026-09-17T21:17:47Z'
+completed_at: '2026-09-18T04:05:08Z'
 parent: EPIC-3493
 labels:
 - policy-builder
@@ -276,8 +277,30 @@ contract's limits, closing the Integration Map's unenforced Docs point.
 
 **Open** | Created: 2026-09-17 | Priority: P3
 
+---
+
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-09-17
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/templates/policy_builder_core.mjs`: added `analyzeTransitions(model)` per the Contract Semantics (nodes/edges/reachableNodeIds/cycles), migrated `summarizeTransitions`'s chain-length computation onto its `goto` edges (behavior-preserving — verified byte-identical to the pre-migration output for the seed, every lifecycle preset, the blank model, a goto-cycle model, and an unreachable-verify model), fixed the `@returns` JSDoc to include `stopDestination`, and exported `analyzeTransitions` through the `window.PolicyBuilderCore` bridge under a new `// FEAT-3501` group.
+- `scripts/little_loops/templates/policy-router-builder.html.tmpl`: added a `#transition-graph` panel and `renderTransitionGraph(model, analysis)` (text/list adjacency rendering — one line per node with outgoing edges, then `goto`-cycle warnings, `rescore_feedback` info lines, and unreachable-but-referenced-outcome warnings), wired into `updatePreview()`; added a `.msg-info` style to match the existing `.msg-warn`/`.msg-error`/`.msg-ok` convention.
+- `scripts/tests/js/policy_validator.test.mjs`: added the pre/post-migration `summarizeTransitions` snapshot-regression test plus 12 `analyzeTransitions` tests covering every Contract Semantics bullet and Acceptance Criterion.
+- `scripts/tests/fixtures/policy_builder/golden_policy_router_builder.html`: regenerated (byte-identical to `cmd_policy_builder()`'s fresh output).
+- `docs/guides/POLICY_ROUTER_GUIDE.md`, `docs/reference/CLI.md`: documented the structural transition graph and its limits (authored transitions only; no execution-outcome or nontermination claims; omits the implicit `on_max_steps`/`on_error` routes).
+
+### Verification Results
+- Tests: PASS (`node --test scripts/tests/js/*.test.mjs` — 160/160; `python -m pytest scripts/tests/test_enh3035_artifact_template_kit.py scripts/tests/test_policy_builder_node_gate.py scripts/tests/test_policy_builder_emit.py` — 32/32; full `python -m pytest scripts/tests/` — 25004 passed, 1 pre-existing unrelated failure confirmed by stash-comparison to predate this change (`test_verify_evidence.py::TestRepoGate::test_no_new_unverifiable_evidence`, an evidence-attribution gap in `.issues/bugs/P2-BUG-3484-...md`, untouched by this issue))
+- Lint: PASS
+- Manual/browser check: PASS — a headless Playwright pass against the regenerated golden HTML confirmed zero panel warnings for the seed and all three lifecycle presets (plus the seed's expected `rescore_feedback` info line), and confirmed both a `goto` self-loop cycle and a referenced-but-unreachable outcome correctly render as warnings when authored through the real outcome-editor controls.
+- Integration: PASS — the other four independent consumers of `_emittedVerbs`/`_dispatchedDestinations`/`_requiredTerminalBlocks` (`_serializeIssueLifecycle`, the template's `computeSummary`, and `updatePreview`'s second `_dispatchedDestinations` call) are untouched and still pass.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-18T04:04:55 - `f3775268-9a3b-468a-b65f-f5ac1f70ac79.jsonl`
+- `/ll:ready-issue` - 2026-09-18T03:42:26 - `454698f8-151c-4ef8-a1c2-09a5e4ab1697.jsonl`
 - `/ll:confidence-check` - 2026-09-18T03:36:59 - `d695727c-523e-4f8f-9435-490cc16d6455.jsonl`
 - `/ll:verify-issues` - 2026-09-18T03:34:39 - `3cbf9e05-8884-443a-be0b-4fb3a3466d9a.jsonl`
 - manual review - 2026-09-17 - pinned Contract Semantics (finish/done edges, implicit routes omitted, reachability, cycle records, no diagnostics field, non-lifecycle return, ordering), text/list rendering, expanded snapshot set and ACs, folded stale wiring anchors
