@@ -4,10 +4,11 @@ type: BUG
 title: Policy builder first Undo after load/restore is a no-op because history.present
   aliases live state
 priority: P2
-status: open
+status: done
 discovered_by: verify-feat-3488-browser-persistence loop
 discovered_date: '2026-09-17'
 captured_at: '2026-09-17T22:19:13Z'
+completed_at: '2026-09-18T00:12:14Z'
 labels:
 - policy-builder
 relates_to:
@@ -151,13 +152,13 @@ The clone primitive remains the existing JSON deep clone; snapshot data already 
 
 ## Acceptance Criteria
 
-- [ ] From both a fresh seed and a valid stored draft, one in-place edit followed by one Undo restores the exact baseline. Two rule additions followed by two Undos restore the seed; repeat with two settled name edits.
-- [ ] After Undo and after Redo, a new in-place edit is undoable with one Undo. Committing after Undo clears the old redo branch; Redo after undoing the new edit reapplies that new edit.
-- [ ] Open resets past/future; its first in-place edit is undoable with one Undo. Failed Open preserves the current project/history.
-- [ ] Nested rule/predicate and outcome/transition mutations leave captured history values unchanged; cloning preserves inactive mode drafts as well as the active model. Live `state` still references the active live draft model after restore.
-- [ ] Node regression cases execute production template glue for hydrate, restore, and Open, fail before the fix, and detect independent removal of each clone boundary.
-- [ ] Generated-page browser cases explicitly pass for fresh/stored load, settled fields, edit-after-Undo/Redo, and Open. Existing `undo-redo-buttons-and-keys` passes. Evaluate targeted report rows independently of unrelated FEAT-3488/FEAT-3503 results.
-- [ ] Golden HTML regenerated from the generator; existing Node/emission/golden checks and `python -m pytest scripts/tests/` pass.
+- [x] From both a fresh seed and a valid stored draft, one in-place edit followed by one Undo restores the exact baseline. Two rule additions followed by two Undos restore the seed; repeat with two settled name edits.
+- [x] After Undo and after Redo, a new in-place edit is undoable with one Undo. Committing after Undo clears the old redo branch; Redo after undoing the new edit reapplies that new edit.
+- [x] Open resets past/future; its first in-place edit is undoable with one Undo. Failed Open preserves the current project/history.
+- [x] Nested rule/predicate and outcome/transition mutations leave captured history values unchanged; cloning preserves inactive mode drafts as well as the active model. Live `state` still references the active live draft model after restore.
+- [x] Node regression cases execute production template glue for hydrate, restore, and Open, fail before the fix, and detect independent removal of each clone boundary.
+- [x] Generated-page browser cases explicitly pass for fresh/stored load, settled fields, edit-after-Undo/Redo, and Open. Existing `undo-redo-buttons-and-keys` passes. Evaluate targeted report rows independently of unrelated FEAT-3488/FEAT-3503 results.
+- [x] Golden HTML regenerated from the generator; existing Node/emission/golden checks and `python -m pytest scripts/tests/` pass.
 
 ## Verification Notes
 
@@ -167,11 +168,56 @@ Reviewed on `main` (2026-09-17). Prior refine/wire/verify research was reconcile
 - Applying the two relevant boundary clones **only in the in-memory review harness** restored the original count of 2 and the original name. No production implementation was changed during review. Open's independent aliasing path was confirmed by source inspection; browser execution remains implementation validation work.
 - The format/dependency check and program-design check passed before reconciliation; Playwright learning evidence is marked proven. There are no active required decision rules and no declared prerequisites on BUG-3502. FEAT-3488 explicitly depends on this fix.
 
+## Resolution
+
+Cloned `history.present` at all three boundaries in
+`scripts/little_loops/templates/policy-router-builder.html.tmpl` per the
+Proposed Solution, using the existing (previously unexported-but-spliced)
+`_deepClone` helper from `policy_builder_core.mjs`:
+
+1. `hydrateFromStorage()` — `history.present` is now `_deepClone({activeMode, drafts: {...}})`.
+2. `restoreFromSnapshot(snapshot)` — `drafts = _deepClone(snapshot.drafts)`.
+3. Open's success handler — `history.present` is now `_deepClone({activeMode: project.activeMode, drafts})`.
+
+Added three Node regression tests to `scripts/tests/js/policy_validator.test.mjs`
+that extract and execute the actual `hydrateFromStorage`/`restoreFromSnapshot`/
+`commit()` glue and the Open-handler source via `node:vm` (stubbing only
+DOM/storage/FileReader), reusing the real imported `applyDraftEdit`/
+`seedExample`/`parseBuilderProject`. Verified each test fails when its
+corresponding boundary alone is reverted (manually toggled each of the three
+clones independently and re-ran the suite) and all three pass on the fixed
+source.
+
+Extended `.loops/probes/feat-3488-browser-probes.mjs` with three new
+Playwright probes (`edit-after-load-two-adds-two-undos-restore-seed`,
+`edit-after-undo-and-after-redo-is-undoable`, `open-then-edit-is-undoable`)
+covering AC-1..AC-3 against the real generated page. All three PASS; the
+pre-existing `open-project-with-unknown-sibling-metadata` FAIL and the
+FEAT-3488-scenario-suite `BLOCKED` probes are unimplemented FEAT-3488/3503
+surface, unrelated to this fix (reproduced identically against the
+pre-fix template).
+
+Regenerated `scripts/tests/fixtures/policy_builder/golden_policy_router_builder.html`
+from `cmd_policy_builder()`.
+
+Verification: `node --test scripts/tests/js/*.test.mjs` (111/111 pass),
+scoped `python -m pytest scripts/tests/ -k "policy_builder or policy_router
+or enh3035"` (38/38 pass, including the byte-identical golden check), and the
+full `python -m pytest scripts/tests/` (24928 passed / 2 failed / 52 skipped).
+The 2 failures are pre-existing and unrelated: `TestRepoGate::
+test_no_new_unverifiable_evidence` flags an evidence-quote attribution issue
+in the untouched `BUG-3484` issue file, and
+`test_two_producers_reach_one_client_with_distinct_producer_pid` is the known
+xdist-worker-crash-under-CPU-contention flake that BUG-3484 itself documents.
+Neither test nor file was touched by this change.
+
 ## Status
 
-**Open** | Created: 2026-09-17 | Priority: P2
+**Done** | Created: 2026-09-17 | Priority: P2
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-18T00:11:51 - `27af6eb3-160e-4044-86ef-5fb4db796fb8.jsonl`
+- `/ll:ready-issue` - 2026-09-17T23:51:22 - `01fa8d4c-946e-4880-945c-e1d4d5a891d5.jsonl`
 - `/ll:confidence-check` - 2026-09-17T23:44:43 - `cfa0f140-36c4-4f19-b133-f16b1dc8088a.jsonl`
 - `/ll:ready-issue` - 2026-09-17T23:22:47 - `fa3645f9-529c-40a6-8608-e4471d559111.jsonl`
 - `/ll:verify-issues` - 2026-09-17T23:13:15 - `fa3645f9-529c-40a6-8608-e4471d559111.jsonl`

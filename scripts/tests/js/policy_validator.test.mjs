@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import vm from "node:vm";
 
 import {
   parseRuleTable,
@@ -1244,6 +1245,196 @@ test("summarizeTransitions.stopDestination reports the terminal reached when imp
 test("summarizeTransitions.maxStepsNote never classifies the budget route as success", () => {
   const model = seedExample("issue_lifecycle");
   assert.match(summarizeTransitions(model).maxStepsNote, /needs_attention \(failure\)/);
+});
+
+// ---------------------------------------------------------------------------
+// BUG-3502 — history.present must never alias live state/drafts.
+//
+// hydrateFromStorage/restoreFromSnapshot/the Open handler are template UI
+// glue, not exported core functions, so these tests extract and execute the
+// actual production source via node:vm (stubbing only DOM/storage/FileReader
+// effects) rather than re-implementing the fix in test code. Reverting any
+// one of the three clone boundaries must fail its corresponding test below.
+// ---------------------------------------------------------------------------
+
+const TEMPLATE_PATH = join(__dirname, "..", "..", "little_loops", "templates", "policy-router-builder.html.tmpl");
+const _templateSrc = readFileSync(TEMPLATE_PATH, "utf8");
+const CORE_PATH = join(__dirname, "..", "..", "little_loops", "templates", "policy_builder_core.mjs");
+const _coreSrc = readFileSync(CORE_PATH, "utf8");
+
+function _extractBetween(src, startMarker, endMarker, label) {
+  const start = src.indexOf(startMarker);
+  if (start === -1) {
+    throw new Error(`BUG-3502 test harness: could not locate start marker for ${label} — template source moved`);
+  }
+  const end = src.indexOf(endMarker, start + startMarker.length);
+  if (end === -1) {
+    throw new Error(`BUG-3502 test harness: could not locate end marker for ${label} — template source moved`);
+  }
+  return src.slice(start, end);
+}
+
+function _extractFunctionSource(src, signature, label) {
+  const start = src.indexOf(signature);
+  if (start === -1) {
+    throw new Error(`BUG-3502 test harness: could not locate "${signature}" (${label}) — source moved`);
+  }
+  let depth = 0;
+  let i = src.indexOf("{", start);
+  for (; i < src.length; i++) {
+    if (src[i] === "{") depth++;
+    else if (src[i] === "}") {
+      depth--;
+      if (depth === 0) {
+        i++;
+        break;
+      }
+    }
+  }
+  return src.slice(start, i);
+}
+
+// `_deepClone` is deliberately unexported (see policy_builder_core.mjs); the
+// generator text-splices this file's raw source into the template's module
+// script, so the template calls it directly. Mirror that splice here.
+const _DEEP_CLONE_SRC = _extractFunctionSource(_coreSrc, "function _deepClone(value) {", "core _deepClone helper");
+
+// state/drafts/history/projectId declarations plus hydrateFromStorage(),
+// restoreFromSnapshot(), and commit() — the three clone boundaries live in
+// this contiguous block, except Open's (extracted separately below).
+const _BOOTSTRAP_SRC = _extractBetween(
+  _templateSrc,
+  "let state = seedExample();",
+  "function buildModel() {",
+  "state/drafts/history bootstrap block"
+);
+
+// The Open-project file handler — its own independent history reset.
+const _OPEN_HANDLER_SRC = _extractBetween(
+  _templateSrc,
+  '$("open-project-input").onchange = (e) => {',
+  '$("undo-btn").onclick = () => {',
+  "open-project-input onchange handler"
+);
+
+function _newBug3502Sandbox() {
+  const elements = {};
+  const storageMap = new Map();
+  const sandbox = {
+    seedExample,
+    validateProjectStructure,
+    applyDraftEdit,
+    parseBuilderProject,
+    BUILDER_PROJECT_SCHEMA_VERSION,
+    window: {},
+    document: { getElementById: () => null },
+    localStorage: {
+      getItem: (k) => (storageMap.has(k) ? storageMap.get(k) : null),
+      setItem: (k, v) => storageMap.set(k, String(v)),
+      removeItem: (k) => storageMap.delete(k),
+    },
+    $: (id) => {
+      if (!elements[id]) elements[id] = {};
+      return elements[id];
+    },
+    applyStateToForm: () => {},
+    applyModeVisibility: () => {},
+    renderAll: () => {},
+    FileReader: class {
+      readAsText(file) {
+        this.result = file.text;
+        if (this.onload) this.onload();
+      }
+    },
+  };
+  const context = vm.createContext(sandbox);
+  vm.runInContext(_DEEP_CLONE_SRC + "\n" + _BOOTSTRAP_SRC, context, { filename: "bug-3502-bootstrap.mjs" });
+  return { context, elements };
+}
+
+function _bug3502Run(context, code) {
+  return vm.runInContext(code, context, { filename: "bug-3502-driver.mjs" });
+}
+
+test("BUG-3502: hydrateFromStorage() isolates history.present from live state (first edit is undoable)", () => {
+  const { context } = _newBug3502Sandbox();
+  _bug3502Run(context, "hydrateFromStorage();");
+  const seedName = _bug3502Run(context, "state.name;");
+  const seedRuleCount = _bug3502Run(context, "state.rules.length;");
+
+  // Mutate the live model in place before commit(), mirroring add-rule's
+  // real button handler, then commit and undo once.
+  _bug3502Run(context, "state.rules = [...state.rules, { ...state.rules[0] }]; commit();");
+  _bug3502Run(
+    context,
+    'history = applyDraftEdit(history, { type: "undo" }); restoreFromSnapshot(history.present);'
+  );
+
+  assert.equal(_bug3502Run(context, "state.rules.length;"), seedRuleCount, "one Undo did not restore the seed rule count");
+  assert.equal(_bug3502Run(context, "state.name;"), seedName, "one Undo did not restore the seed name");
+});
+
+test("BUG-3502: restoreFromSnapshot() clones the restored draft so a post-Undo edit cannot corrupt the recovered baseline", () => {
+  const { context } = _newBug3502Sandbox();
+  _bug3502Run(context, "hydrateFromStorage();");
+  const seedName = _bug3502Run(context, "state.name;");
+
+  // First edit + commit, then Undo back to the seed baseline.
+  _bug3502Run(context, 'state.name = "edit-1"; commit();');
+  _bug3502Run(
+    context,
+    'history = applyDraftEdit(history, { type: "undo" }); restoreFromSnapshot(history.present);'
+  );
+  assert.equal(_bug3502Run(context, "state.name;"), seedName, "first Undo did not restore the seed name");
+
+  // A second, unrelated edit right after the restore must not corrupt the
+  // baseline restoreFromSnapshot just handed back.
+  _bug3502Run(context, 'state.name = "edit-after-undo"; commit();');
+  _bug3502Run(
+    context,
+    'history = applyDraftEdit(history, { type: "undo" }); restoreFromSnapshot(history.present);'
+  );
+  assert.equal(
+    _bug3502Run(context, "state.name;"),
+    seedName,
+    "editing right after an Undo corrupted the restored baseline (history.present aliased live state)"
+  );
+});
+
+test("BUG-3502: Open resets history and clones its snapshot so the first post-Open edit is undoable", () => {
+  const { context, elements } = _newBug3502Sandbox();
+  _bug3502Run(context, "hydrateFromStorage();");
+
+  const openedModel = seedExample("decision_table");
+  openedModel.name = "opened-project";
+  const openedRuleCount = openedModel.rules.length;
+  const projectJson = JSON.stringify({
+    schemaVersion: BUILDER_PROJECT_SCHEMA_VERSION,
+    generatorVersion: "",
+    projectId: "proj-bug-3502-test",
+    activeMode: "decision_table",
+    drafts: { decision_table: { model: openedModel } },
+  });
+
+  _bug3502Run(context, _OPEN_HANDLER_SRC);
+  const onchange = elements["open-project-input"].onchange;
+  assert.equal(typeof onchange, "function", "open-project-input.onchange was not wired");
+  onchange({ target: { files: [{ text: projectJson }], value: "" } });
+
+  assert.equal(_bug3502Run(context, "state.name;"), "opened-project", "Open did not load the opened project");
+
+  // The first in-place edit after Open must be undoable back to what Open loaded.
+  _bug3502Run(context, "state.rules = [...state.rules, { ...state.rules[0] }]; commit();");
+  _bug3502Run(
+    context,
+    'history = applyDraftEdit(history, { type: "undo" }); restoreFromSnapshot(history.present);'
+  );
+  assert.equal(_bug3502Run(context, "state.name;"), "opened-project", "one Undo after Open+edit lost the opened name");
+  assert.equal(
+    _bug3502Run(context, "state.rules.length;"),
+    openedRuleCount,
+    "one Undo after Open+edit did not restore the opened rule count"
+  );
 });
 
 test("a 'goto' transition may not target a destination — destinations are never actionable verb states", () => {

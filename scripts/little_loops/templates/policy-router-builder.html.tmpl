@@ -376,7 +376,7 @@ function updateUndoRedoButtons() {
 }
 
 function restoreFromSnapshot(snapshot) {
-  drafts = snapshot.drafts;
+  drafts = _deepClone(snapshot.drafts);
   const mode = snapshot.activeMode;
   state = (drafts[mode] && drafts[mode].model) || seedExample(mode);
   applyStateToForm();
@@ -418,7 +418,7 @@ function hydrateFromStorage() {
   }
   history = {
     past: [],
-    present: { activeMode: state.mode, drafts: { ...drafts, [state.mode]: { model: state } } },
+    present: _deepClone({ activeMode: state.mode, drafts: { ...drafts, [state.mode]: { model: state } } }),
     future: [],
   };
   updateUndoRedoButtons();
@@ -1470,7 +1470,7 @@ $("open-project-input").onchange = (e) => {
     applyStateToForm();
     applyModeVisibility();
     renderAll();
-    history = { past: [], present: { activeMode: project.activeMode, drafts }, future: [] };
+    history = { past: [], present: _deepClone({ activeMode: project.activeMode, drafts }), future: [] };
     _persistAllDrafts(drafts);
     _persistMeta();
     updateUndoRedoButtons();

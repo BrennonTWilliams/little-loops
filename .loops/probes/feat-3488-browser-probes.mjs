@@ -167,6 +167,73 @@ const PROBES = [
     },
   },
   {
+    id: "edit-after-load-two-adds-two-undos-restore-seed", needs: "ENH-3487", acs: ["BUG-3502 AC-1 first edit after load is undoable"],
+    async run(browser) {
+      const { page } = await newPage(browser);
+      const seedRules = await ruleCount(page);
+      const seedName = await name(page);
+      await page.click("#add-rule");
+      await page.click("#add-rule");
+      assert((await ruleCount(page)) === seedRules + 2, "two add-rule clicks did not add two rules");
+      await undo(page);
+      await undo(page);
+      assert((await ruleCount(page)) === seedRules, "two Undos did not restore the seed rule count (BUG-3502 hydrateFromStorage clone boundary)");
+      await commitName(page, "probe-name-1");
+      await commitName(page, "probe-name-2");
+      await undo(page);
+      await undo(page);
+      assert((await name(page)) === seedName, "two settled name edits + two Undos did not restore the seed name (BUG-3502)");
+    },
+  },
+  {
+    id: "edit-after-undo-and-after-redo-is-undoable", needs: "ENH-3487", acs: ["BUG-3502 AC-2 new edit after Undo/Redo is undoable"],
+    async run(browser) {
+      const { page } = await newPage(browser);
+      const seedRules = await ruleCount(page);
+      await page.click("#add-rule");
+      await undo(page);
+      assert((await ruleCount(page)) === seedRules, "Undo did not restore the seed before the second edit");
+      await page.click("#add-rule");
+      assert((await ruleCount(page)) === seedRules + 1, "edit right after Undo did not apply");
+      await undo(page);
+      assert(
+        (await ruleCount(page)) === seedRules,
+        "Undo of the edit-after-Undo did not restore the seed (BUG-3502 restoreFromSnapshot clone boundary)"
+      );
+      await redo(page);
+      assert((await ruleCount(page)) === seedRules + 1, "Redo after the edit-after-Undo did not reapply that edit");
+      await undo(page);
+      await redo(page);
+      await page.click("#add-rule");
+      assert((await ruleCount(page)) === seedRules + 2, "edit right after Redo did not apply");
+      await undo(page);
+      assert(
+        (await ruleCount(page)) === seedRules + 1,
+        "Undo of the edit-after-Redo did not restore the pre-edit baseline (BUG-3502)"
+      );
+    },
+  },
+  {
+    id: "open-then-edit-is-undoable", needs: "ENH-3487", acs: ["BUG-3502 AC-3 first edit after Open is undoable"],
+    async run(browser) {
+      const { page } = await newPage(browser);
+      await commitName(page, "probe-open-baseline");
+      const rules = await ruleCount(page);
+      const text = await saveProject(page);
+      await page.click("#start-blank-btn");
+      await openProject(page, text);
+      assert((await name(page)) === "probe-open-baseline", "Open did not restore the saved name");
+      await page.click("#add-rule");
+      assert((await ruleCount(page)) === rules + 1, "add-rule after Open did not apply");
+      await undo(page);
+      assert(
+        (await ruleCount(page)) === rules,
+        "one Undo after Open+edit did not restore the opened rule count (BUG-3502 Open clone boundary)"
+      );
+      assert((await name(page)) === "probe-open-baseline", "one Undo after Open+edit lost the opened name (BUG-3502)");
+    },
+  },
+  {
     id: "start-blank-then-undo", needs: "ENH-3487", acs: ["FEAT-3488 AC-1 preset/clear + one undo", "AC-10 start-blank atomic + undo"],
     async run(browser) {
       const { page } = await newPage(browser);
