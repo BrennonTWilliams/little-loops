@@ -14,6 +14,12 @@ blocked_by:
 - FEAT-3488
 relates_to:
 - FEAT-3498
+confidence_score: 98
+outcome_confidence: 81
+score_complexity: 15
+score_test_coverage: 22
+score_ambiguity: 23
+score_change_surface: 21
 ---
 
 # FEAT-3503: Policy builder scenario boundary suggestions and local issue-file import
@@ -208,6 +214,7 @@ what was wrong and fixed, not an outstanding action item)
 
 ## Session Log
 
+- `/ll:confidence-check` - 2026-09-18T02:32:48 - `e584dde7-f5fe-4489-bdc6-695a16a084be.jsonl`
 - manual pre-implementation review - 2026-09-18 - switched suggestion generation from per-dimension to per-rule (coverage AC was unreachable for string-equality/compound rules); pinned lifecycle frontmatter serialization; unified `key`/dedup on `scenarioSemanticKey`; named the decision-table string-dimension skip; made import lifecycle-only and flagged the probe's missing mode switch; required the full `Scenario` shape on inserted cases; pinned `frontmatter|fence` diagnostic wording
 
 - `/ll:verify-issues` - 2026-09-18T01:28:10 - `fde0dad3-9a6e-441c-b000-482ef8deced9.jsonl`

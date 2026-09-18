@@ -64,6 +64,13 @@ Without this half, FEAT-3498's approval contracts are reachable only from Python
 - Poll the readback route; keep authoring usable while hashing/request I/O is in flight. Offline (`file://`) and non-lifecycle pages show connected controls unavailable with a reason.
 - Test UTF-8/hash parity with Python, including non-ASCII YAML.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-18 — based on codebase analysis:_
+
+- The only existing "connected controls" gating in a browser template is whole-block presence/absence via template conditionals (`dashboard.llat/template.html.j2:356-380`'s `[[% if serve_enabled %]]`), driven by an always-present boolean computed from `serve_context is not None` (`cli/artifact/dashboard.py:322`). No existing template shows a control in a visibly-disabled state annotated with an unavailability-reason string — the "connected controls unavailable with a reason" UI this issue proposes for offline/non-lifecycle pages has no in-repo convention to follow.
+- No `crypto.subtle` usage and no existing JS-side/Python-side SHA-256 parity test exists anywhere in this codebase (repo-wide search, zero hits) — the browser/Python hash-parity requirement is new surface with no established pattern to reuse.
+
 ## Integration Map
 
 ### Files to Modify
@@ -96,6 +103,13 @@ Without this half, FEAT-3498's approval contracts are reachable only from Python
 - `docs/guides/POLICY_ROUTER_GUIDE.md` — cross-link the level-2 declaration per the "**Binding now:**" requirement in `ARTIFACT_CONTROL_LEVELS.md:61-63`; document the connected flow and local-only verification instructions.
 - `docs/ARCHITECTURE.md` `## Artifact Control Layer` (line 920-936) — mention the serve submit/readback routes alongside `_drain_inbound()` if warranted.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-18 — based on codebase analysis:_
+
+- `little_loops.queue_store` currently defines `QUEUE_STATUSES = frozenset({"pending","running","done","failed","dead_letter","cancelled"})` (`queue_store.py:155`, re-exported `:43`) with no `awaiting_approval` value; `little_loops.cli.artifact.policy_revision` is absent from the source tree. None of FEAT-3498's `RunRequest`, `validate_policy_revision`, `persist_policy_revision`, `create_or_get_run_request`, `approve_and_claim_entry`, `record_loop_started`, `get_run_request` resolve anywhere in `.py` source (repo-wide search, zero hits outside `.issues/features/*.md`) — confirms `blocked_by: FEAT-3498` is load-bearing and current, not stale.
+- `SseBridge`'s handler (`_make_sse_bridge_handler`, `transport.py:1200`) defines only `do_GET` (`transport.py:1209-1245`); no `do_POST` method exists on this class today.
+
 ## Implementation Steps
 
 1. Factor `render_policy_builder_html` from `cmd_policy_builder`; golden byte-identity test still passes.
@@ -120,6 +134,17 @@ Without this half, FEAT-3498's approval contracts are reachable only from Python
 ### Call Path
 
 `ll-artifact serve --<opt-in flag>` → `cmd_serve` builds `render_policy_builder_html(...)` once and registers the page, issues, submit, and readback routes on `SseBridge` → browser `POST /{token}/run-request` → body guards → `RunRequest` → `validate_policy_revision` → `persist_policy_revision` → `create_or_get_run_request` (row `awaiting_approval`) → `{requestId, queueId, created}`. Browser polls `GET /{token}/run-request/{requestId}` → `get_run_request` → `RunRequestStatus`. Host approval and execution are FEAT-3498's `ll-queue run --id ID --approve`.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-18 — based on codebase analysis:_
+
+- `SseBridge._routes: dict[str, Callable[[http.server.BaseHTTPRequestHandler], None]]` is built in `__init__` (`transport.py:1285-1290`): seeded with `{"": self._serve_page, "events": self._serve_events}`, then `.update(routes)` for caller-supplied extras (e.g. `cli/artifact/serve.py:189`'s `"history"` route). `do_GET` (`transport.py:1221-1245`) strips the `/{token}` prefix, looks up the remaining suffix as an exact dict key via `bridge._routes.get(route)`, and 404s on a miss — no `{name}`-segment or regex matching exists anywhere in this dict-based dispatch.
+- A bare `/{token}` path (no trailing slash) issues a `301` redirect to `/{token}/` (`transport.py:1228-1234`) before route lookup; `LocalBridgeTransport`'s separate `_route()` (`transport.py:638-646`) instead accepts both forms as route `""` with no redirect. The new parameterized matcher inherits one of these two prefix-handling behaviors — they are not currently unified.
+- `LocalBridgeTransport._handle_interaction` (`transport.py:692-716`) is the uncapped precedent the issue warns against: it parses `Content-Length` with a bare `try/except ValueError: length = 0` (no upper-bound check, `transport.py:693-696`), always responds `204` before parsing the body (`transport.py:699-702`), and on a JSON-parse or type failure only calls `_record_inbound_drop(...)` — it never returns a 400/413 status. Every existing error response in `transport.py`/`cli/artifact/serve.py` uses stdlib `send_error()`'s text/html body or a hand-built `text/plain` body (the one existing size-driven `413`, `cli/artifact/serve.py:102-109`, guards an *outbound* export against `artifacts.export.max_artifact_bytes`, not an inbound POST); no JSON-structured error-body convention exists yet in this code to reuse.
+- No `{name}`-segment path-param matcher (regex or otherwise) exists anywhere in `scripts/little_loops/**/*.py` today (repo-wide search, no hits) — `SseBridge.add_route`'s bounded single-segment matching has no in-repo precedent to model; it is new surface, not an extension of an existing pattern.
+- The renderer-factoring precedent is `build_dashboard_html` (`cli/artifact/dashboard.py:257`, a keyword-only function returning a `RenderedDashboard`) plus its CLI wrapper `cmd_dashboard` (`dashboard.py:398`, which does `write_text`/`logger.success`/`logger.error`) — `_make_page_html_factory` (`serve.py:138`) is a second *consumer* of that same renderer, not itself the factoring precedent. `cmd_policy_builder` is today the only other HTML-emitting `cli/artifact/*.py` command with no such split (`policy_builder.py:62-128`, inline `try`/`write_text` in one function) — this issue's renderer split is the first of its kind for this file, following an established sibling pattern rather than inventing one.
+- `_lb_http_request` (`test_transport.py:963-989`) — not the `TestLocalBridgeTransport` class body generally — is the exact helper that drives real HTTP GET/POST requests over a loopback `http.client.HTTPConnection` with explicit `Host`-header control; existing POST call sites (`test_transport.py:1192`, `:1223-1225`) are the direct model for new `SseBridge.do_POST` tests.
 
 ## Use Case
 
@@ -157,4 +182,5 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-18T02:34:20 - `e526fcc4-a04f-4fa1-9b46-7e10044a1c18.jsonl`
 - `/ll:format-issue` - 2026-09-18T02:26:59 - `17fa148c-98f6-4a6e-975e-5e4a6f742eec.jsonl`
