@@ -10,8 +10,9 @@ captured_at: '2026-09-18T02:19:33Z'
 parent: EPIC-3493
 labels:
 - policy-builder
-relates_to:
+blocked_by:
 - FEAT-3498
+relates_to:
 - FEAT-3503
 - ENH-3487
 - ENH-3491
@@ -79,14 +80,16 @@ Without this half, FEAT-3498's approval contracts are reachable only from Python
   7. Build the action the store requires — `ActionSpec(name=f"policy-builder:{issue_id}", runner=RunnerType.LOOP, target=str(dest), timeout=None)` (`timeout=None` is mandatory: the `ActionSpec` default of 120 s would kill a real lifecycle run) — then `entry, created = create_or_get_run_request(request, action=action, project_root=config.project_root, root=config.project_root)`.
   8. Return `200 {requestId, queueId: entry.id, created}`.
 - Readback: `GET /{token}/run-request/{requestId}?workspaceId=...` → `get_run_request(request_id, workspace_id, root=config.project_root)`, which returns `QueueEntry | None` (there is no `RunRequestStatus` type; the route builds the wire dict). `None` → `404 request_not_found`. Otherwise `{requestId: entry.request_id, queueId: entry.id, status: entry.status, bindings: {issueId: entry.issue_id, revisionId: entry.revision_id}, loopInstanceId: entry.loop_instance_id, runDir: entry.run_dir, result: entry.result}`. Never pass a request UUID to `get_entry`.
-- Host rejection is `ll-queue cancel`, which surfaces as `status: "cancelled"`. There is no distinct "rejected" status; the page labels `cancelled` on a never-approved request as "Rejected by host".
+- Host rejection is `ll-queue cancel`, which surfaces as `status: "cancelled"`. There is no distinct "rejected" status; the page labels `cancelled` as "Rejected / cancelled by host".
 
 ### Page behavior
 
 - Request payload: `{requestId, projectId, workspaceId, revisionId, yaml, issueId}`. Freeze the YAML snapshot at submission; `revisionId` is SHA-256 of its exact UTF-8 bytes via `crypto.subtle` (serve binds loopback only, so the page is a secure context). Later draft edits leave the queued revision unchanged and mark the UI as showing an older submitted snapshot; disable submitting a changed preview until its snapshot is rebuilt.
 - Generate the request UUID once per explicit submission and persist it with client submission state outside undoable authoring history. Retries, reconnects, and reloads reuse it; a deliberate Run again gets a new UUID after an explicit user action.
 - Poll the readback route; keep authoring usable while hashing/request I/O is in flight. Offline (`file://`) and non-lifecycle pages show connected controls unavailable with a reason.
-- Test UTF-8/hash parity with Python, including non-ASCII YAML.
+- **Storage is origin-scoped.** Browser storage is keyed on `host:port`, so persisted submission identity survives a reload or a serve restart only when the port is unchanged. Document "pin `--port` to keep submission state across restarts" in the guide; the reload/retry guarantee is scoped to the same origin.
+- Hashing lives in `policy_builder_core.mjs` as an exported async function over `globalThis.crypto.subtle` (available in Node ≥ 22 as well as the browser), so UTF-8/hash parity with Python — including non-ASCII YAML — is tested under the existing pytest-wrapped Node gate (`scripts/tests/test_policy_builder_node_gate.py`) with no browser.
+- **FEAT-3503 overlap**: FEAT-3503 (scenario boundary suggestions + local issue-file import) edits the same `.mjs`/`.tmpl` files. Its local file import is an offline, scenario-authoring input; this issue's issue list is the connected, server-scoped run binding. They do not share state. Land whichever is second on top of the first rather than in parallel.
 
 ### Codebase Research Findings
 
@@ -99,7 +102,9 @@ _Added by `/ll:refine-issue` — 2026-09-18 — based on codebase analysis:_
 
 ### Files to Modify
 
-- `scripts/little_loops/templates/policy_builder_core.mjs`: build immutable lifecycle submission snapshots; do not run actions from scenario evaluation.
+- `scripts/little_loops/templates/policy_builder_core.mjs`: emit `category: issue_lifecycle` from `_serializeIssueLifecycle`; exported SHA-256 helper; build immutable lifecycle submission snapshots; do not run actions from scenario evaluation.
+- `scripts/tests/fixtures/policy_builder/sample-issue-lifecycle*.yaml`: regenerate goldens for the added `category:` line.
+- `scripts/little_loops/cli/artifact/policy_revision.py`: correct the `RunRequest` docstring (the route, not `persist_policy_revision`, recomputes the hash).
 - `scripts/little_loops/templates/policy-router-builder.html.tmpl`: same-origin availability, issue selection, review/submission/status UI, durable request retry metadata outside undo history.
 - `scripts/little_loops/cli/artifact/policy_builder.py`: `render_policy_builder_html` renderer; `cmd_policy_builder` becomes the CLI wrapper.
 - `scripts/little_loops/cli/artifact/serve.py`, `cli/artifact/__init__.py`: opt-in flag and project/issue/page/request routes.
@@ -114,6 +119,7 @@ _Added by `/ll:refine-issue` — 2026-09-18 — based on codebase analysis:_
 
 ### Tests
 
+- Builder-output validity: each regenerated `sample-issue-lifecycle*.yaml` fixture passes `validate_policy_revision` with `ok=True, mode="issue_lifecycle"` (today all three fail with `mode=None`).
 - New `SseBridge` tests: method-aware dispatch, parameterized path bounds, 400/413 body guards, Host/token rejection on every new route, no CORS headers, existing GET/history/SSE tests unchanged.
 - Route-level submit tests against a real queue watcher: zero dispatches before approval; concurrent duplicate submits map to one queue UUID; conflicting payload under one request UUID fails; revision-hash mismatch, missing issue, wrong workspace, unsupported mode, and ERROR diagnostics are rejected with structured bodies and no row.
 - Node/browser-side tests for snapshot freezing, request-UUID persistence outside undo history, and SHA-256 parity with Python (non-ASCII YAML).
@@ -131,14 +137,15 @@ _Added by `/ll:refine-issue` — 2026-09-18 — based on codebase analysis:_
 
 _Added by `/ll:refine-issue` — 2026-09-18 — based on codebase analysis:_
 
-- `little_loops.queue_store` currently defines `QUEUE_STATUSES = frozenset({"pending","running","done","failed","dead_letter","cancelled"})` (`queue_store.py:155`, re-exported `:43`) with no `awaiting_approval` value; `little_loops.cli.artifact.policy_revision` is absent from the source tree. None of FEAT-3498's `RunRequest`, `validate_policy_revision`, `persist_policy_revision`, `create_or_get_run_request`, `approve_and_claim_entry`, `record_loop_started`, `get_run_request` resolve anywhere in `.py` source (repo-wide search, zero hits outside `.issues/features/*.md`) — confirms `blocked_by: FEAT-3498` is load-bearing and current, not stale.
+- _(Superseded 2026-09-18 by the post-FEAT-3498 review below: FEAT-3498 is done and all of its symbols now resolve; the `blocked_by` edge is kept for symmetry with FEAT-3498's `blocks:` and is resolved.)_
 - `SseBridge`'s handler (`_make_sse_bridge_handler`, `transport.py:1200`) defines only `do_GET` (`transport.py:1209-1245`); no `do_POST` method exists on this class today.
 
 ## Implementation Steps
 
+0. Emit `category: issue_lifecycle` from `_serializeIssueLifecycle`, regenerate the lifecycle YAML goldens, and add the test that each passes `validate_policy_revision`. Do this first: nothing downstream can be exercised end-to-end until it holds.
 1. Factor `render_policy_builder_html` from `cmd_policy_builder`; golden byte-identity test still passes.
 2. Add the shared Host/token helper, `do_POST`, parameterized matching, and body guards to `SseBridge` with transport tests; existing GET/SSE tests unchanged.
-3. Add the opt-in serve flag, page route, issue-list route, submit route (calling FEAT-3498's validate/persist/create-or-get), and readback route; route-level tests against a live watcher.
+3. Add the opt-in serve flag, `workspace_id` derivation, page route, issue-list route, submit route (the eight ordered checks above, building the `ActionSpec` with `timeout=None`), and readback route (mapping `QueueEntry` to the wire dict), with the JSON error shape and status table; route-level tests against a live watcher. Steps 0–3 are fully testable over HTTP with no page work.
 4. Wire the page: snapshot freezing, hashing, request-UUID persistence, submit/poll/status UI, offline and non-lifecycle unavailability messaging.
 5. Update docs, golden output, and the `ARTIFACT_CONTROL_LEVELS.md` level-2 declaration.
 
@@ -146,18 +153,20 @@ _Added by `/ll:refine-issue` — 2026-09-18 — based on codebase analysis:_
 
 ### Types
 
-- `RunRequest`, `RunRequestStatus`, `ValidationOutcome` — imported from FEAT-3498's `little_loops.cli.artifact.policy_revision` and `little_loops.queue_store`; this issue serializes them, it does not redefine them.
+- `RunRequest`, `ValidationOutcome`, `PolicyRevisionConflictError` — imported from `little_loops.cli.artifact.policy_revision`; `QueueEntry` from `little_loops.queue_store`; `ActionSpec`, `RunnerType` from `little_loops.runner_spec`. This issue serializes them, it does not redefine them. There is no `RunRequestStatus` type — FEAT-3498 landed `get_run_request -> QueueEntry | None`; the readback wire dict `{requestId, queueId, status, bindings: {issueId, revisionId}, loopInstanceId, runDir, result}` is built in the route.
+- `ErrorBody {error: {code, message, errors?, warnings?}}` — the JSON error shape for every non-2xx response on the new routes.
 - `IssueSummary {id, title, priority, status, path}` — wire shape of `GET /{token}/issues`, built from existing issue discovery under `BRConfig.project_root`.
 
 ### Signatures
 
 - `render_policy_builder_html(config: BRConfig, *, active_theme: str, endpoint_url: str | None = None, workspace_id: str | None = None) -> str` — factored from `cmd_policy_builder` (`cli/artifact/policy_builder.py:62`); with both keyword args `None` the output is byte-identical to today's CLI file.
 - `SseBridge.add_route(method: str, pattern: str, handler)` — pattern is a literal path with at most one `{name}` segment; matching is anchored, single-segment, and bounded (no regex from user input). `do_POST` reuses a `_check_host_and_strip_token(handler) -> str | None` helper factored out of `do_GET` (`transport.py:1200-1246`).
-- `make_run_request_routes(config: BRConfig, *, workspace_id: str) -> list[tuple[str, str, handler]]` in `cli/artifact/serve.py` — submit, readback, and issue-list handlers; each calls FEAT-3498 functions with `root=config.project_root`.
+- `make_run_request_routes(config: BRConfig, *, workspace_id: str) -> list[tuple[str, str, handler]]` in `cli/artifact/serve.py` — submit, readback, and issue-list handlers. Landed FEAT-3498 keyword names differ by function: `validate_policy_revision(yaml_bytes, *, project_root)`, `persist_policy_revision(yaml_bytes, revision_id, *, project_root) -> Path`, `create_or_get_run_request(request, *, action, project_root, db_path, root) -> tuple[QueueEntry, bool]`, `get_run_request(request_id, workspace_id, *, db_path, root) -> QueueEntry | None`.
+- `derive_workspace_id(project_root: Path) -> str` in `cli/artifact/serve.py` — first 16 hex chars of SHA-256 over the resolved project root; stable across serve restarts.
 
 ### Call Path
 
-`ll-artifact serve --<opt-in flag>` → `cmd_serve` builds `render_policy_builder_html(...)` once and registers the page, issues, submit, and readback routes on `SseBridge` → browser `POST /{token}/run-request` → body guards → `RunRequest` → `validate_policy_revision` → `persist_policy_revision` → `create_or_get_run_request` (row `awaiting_approval`) → `{requestId, queueId, created}`. Browser polls `GET /{token}/run-request/{requestId}` → `get_run_request` → `RunRequestStatus`. Host approval and execution are FEAT-3498's `ll-queue run --id ID --approve`.
+`ll-artifact serve --<opt-in flag>` → `cmd_serve` builds `render_policy_builder_html(...)` once and registers the page, issues, submit, and readback routes on `SseBridge` → browser `POST /{token}/run-request` → body guards → `RunRequest` → hash recompute → workspace check → issue-exists check → `validate_policy_revision` → `persist_policy_revision` → build `ActionSpec(runner=LOOP, target=<persisted path>, timeout=None)` → `create_or_get_run_request` (row `awaiting_approval`) → `{requestId, queueId, created}`. Browser polls `GET /{token}/run-request/{requestId}` → `get_run_request` → `QueueEntry` → wire dict. Host approval is FEAT-3498's `ll-queue run --id ID --approve`; host rejection is `ll-queue cancel`.
 
 ### Codebase Research Findings
 
@@ -177,15 +186,18 @@ A maintainer opens the served builder, picks BUG-123 from the project's issue li
 ## Impact
 
 - Priority: P3 — closes the browser-to-host gap once FEAT-3498's contracts exist.
-- Effort: Medium — transport, renderer split, page wiring, docs.
+- Effort: Medium-Large — serializer fix + golden regeneration, transport, renderer split, four routes, stateful page wiring, docs; establishes four conventions with no in-repo precedent (JSON error body, path-param matcher, disabled-with-reason controls, JS/Python hash parity). If it needs splitting, the seam is steps 0–3 (server side, fully testable over HTTP) vs. step 4 (page wiring).
 - Risk: Medium — transport surface hardening; the concurrency risk lives in FEAT-3498.
 
 ## Acceptance Criteria
 
+- [ ] The builder's own `issue_lifecycle` output (regenerated golden fixtures) passes `validate_policy_revision` with `mode="issue_lifecycle"`.
 - [ ] Submitting through the route while a watcher runs produces `awaiting_approval` and zero subprocess dispatches; serve cannot approve/run; production behavioral tests enforce the level boundary.
 - [ ] Existing Host/token checks cover every new route and method; existing GET/history/SSE tests pass; no CORS headers; oversized, non-JSON, or malformed bodies return 413/400 with no side effects.
-- [ ] Concurrent duplicate submits, reload/retry, and retries after terminal completion map to one queue UUID; conflicting payloads under one request UUID fail; explicit Run again creates a fresh awaiting request.
-- [ ] Invalid YAML, ERROR diagnostics, missing issue, wrong workspace, unsupported mode, and revision-hash mismatch are rejected with structured diagnostics and no runnable entry.
+- [ ] Concurrent duplicate submits, same-origin reload/retry, retries after terminal completion, and a retry after a serve restart on the same port map to one queue UUID (`workspace_id` is stable across restarts); conflicting payloads under one request UUID return `409`; explicit Run again creates a fresh awaiting request.
+- [ ] Invalid YAML, ERROR diagnostics, missing issue, wrong workspace, unsupported mode, and revision-hash mismatch are rejected with the documented status code and JSON `ErrorBody` and leave no runnable entry; hash/workspace/issue failures write nothing under `.loops/policy-builder/`.
+- [ ] The enqueued `ActionSpec` has `runner=LOOP`, `timeout=None`, and `target` equal to the path `persist_policy_revision` returned.
+- [ ] Readback of an unknown request returns `404`; a host `ll-queue cancel` surfaces as `cancelled` and the page shows it as rejected.
 - [ ] Browser SHA-256 of the UTF-8 YAML bytes matches Python, including non-ASCII content.
 - [ ] Readback exposes status, bindings, `loopInstanceId`, and `runDir` while running and after completion, distinct from request/queue IDs.
 - [ ] Offline/non-lifecycle pages show connected controls unavailable with a reason; connection failure/reload retains authoring/scenarios and submission identity; edited drafts distinguish current and submitted revisions.
@@ -206,5 +218,6 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- manual review vs. landed FEAT-3498 contracts - 2026-09-18 - added `category:` emit blocker, corrected store/validator signatures, defined workspace id, error-body/status table, submit ordering, body cap, origin-scoped storage, FEAT-3503 overlap; `blocked_by: FEAT-3498` kept (resolved, mirrors its `blocks:`)
 - `/ll:refine-issue` - 2026-09-18T02:34:20 - `e526fcc4-a04f-4fa1-9b46-7e10044a1c18.jsonl`
 - `/ll:format-issue` - 2026-09-18T02:26:59 - `17fa148c-98f6-4a6e-975e-5e4a6f742eec.jsonl`
