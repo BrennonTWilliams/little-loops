@@ -237,6 +237,8 @@ Verdict at time of check: **VALID** (2026-09-18 `/ll:verify-issues --auto`; no c
 - Confirmed: FEAT-3498 contracts exist with the cited signatures (`create_or_get_run_request`, `get_run_request` in `queue_store.py`; `validate_policy_revision`/`persist_policy_revision`/`RunRequest`/`PolicyRevisionConflictError` in `policy_revision.py`); `SseBridge` handler has `do_GET` only (`transport.py:1221`) with exact-key `_routes`; `cmd_policy_builder`/`add_serve_parser`/`_make_page_html_factory` anchors hold. All referenced issues (FEAT-3498, ENH-3487/3491/3492, BUG-3490) are done. `ll-verify-evidence`: clean. Proposal-vs-code check found no contradiction.
 - Graph: provider=`codegraph` freshness=`fresh` (not needed for any verdict).
 
+Re-verified 2026-09-18 (`/ll:verify-issues --auto`, after the manual-review rewrite): verdict at time of check **VALID**, no corrections needed. `_serializeIssueLifecycle` still at `policy_builder_core.mjs:2736` with no `category:` emit; `SseBridge` `do_GET` at `transport.py:1221` with exact-key `_routes` lookup at `:1239` (the `do_POST` at `:663` belongs to `LocalBridgeTransport`); `cmd_policy_builder` `:62`, `add_serve_parser` `:37`, `_make_page_html_factory` `:138`; `policy_revision.py` `_SUPPORTED_MODES` `:35`, `validate_policy_revision` `:69`, `persist_policy_revision` `:120`; `create_or_get_run_request`/`get_run_request` accept `db_path`/`root`; `find_issues` exists in `issue_parser`. `ll-verify-evidence` clean; no required decision rules; proposal-vs-code check found no contradiction.
+
 ## Status
 
 **Open** | Created: 2026-09-18 | Priority: P3
@@ -258,6 +260,7 @@ _Added by `/ll:confidence-check` on 2026-09-18_
 - Broad enumeration across ~7 code files plus 5 doc files; the stateful `.tmpl` page wiring has the thinnest automated coverage (Node gate covers `.mjs` only).
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-18T22:28:52 - `7291996a-6593-4943-af6c-c0b3e4920407.jsonl`
 - manual review applied - 2026-09-18 - moved submission state machine into a dependency-injected `.mjs` controller (Node-testable); replaced stamped endpoint URL with relative URLs + connected-context placeholder; specified `method_routes`/`extra_url_suffixes` plumbing, once-resolved project root, field shapes, polling cadence, `find_issues` active-only scope, golden-regeneration timing; dropped redundant `active_theme` param
 - `/ll:confidence-check` - 2026-09-18T22:07:29 - `89462603-1252-4507-b232-c85a163bfde9.jsonl`
 - `/ll:verify-issues` - 2026-09-18T21:59:57 - `bc5bab11-9b54-483b-9d88-6c04ae5945bc.jsonl`
