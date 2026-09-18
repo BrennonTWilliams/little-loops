@@ -520,6 +520,44 @@ the case itself. Re-run after any edit to see current status.
 part of its mode's draft, survives Save/Open/reload/mode-switch, and "Start blank" / applying a
 preset clears only that mode's suite (one Undo restores it, along with the model it replaced).
 
+#### Suggest cases
+
+**Suggest cases** adds deterministic boundary cases for the active draft in one step — no expected
+outcome is invented, so every added case stays *unasserted*. Decision Table and Issue Lifecycle
+modes generate, per authored rule (in rule order): one *satisfying* case, one-unit boundary probes
+(`t-1`, `t`, `t+1`) for each numeric predicate, and a *missing-field* case per predicate that
+omits its field; a trailing *fallback* case is added only when no earlier case already reaches
+the derived fallback. Rubric mode adds the integer neighbours of both thresholds. Each case's
+name records why it exists and which rule it actually wins — an earlier rule can capture a later
+rule's case, and the label says so.
+
+Some rules cannot be solved and are skipped rather than approximated: contradictory or
+impossible constraints (`score > 50 AND score < 50`), non-finite numeric literals, and Decision
+Table rules on `string` dimensions (scenario input accepts only booleans and numbers there).
+Lifecycle boolean and list fields get no missing-field case, because an absent boolean or list
+already encodes as `false` / an empty list.
+
+The action is idempotent: cases whose encoded scores already exist in the suite (including empty
+inputs) are not added again, formatting differences are ignored, and numeric spellings such as
+`85`, `85.0`, and `8.5e1` deliberately count as different cases. Adding cases is one Undo; if
+nothing new would be added, no history entry is made.
+
+#### Import an issue file
+
+In Issue Lifecycle mode, **Import issue file** reads a local issue `.md` file and adds it as one
+unasserted case. Only the opening `---` frontmatter block is read (a leading BOM and CRLF line
+endings are fine); the Markdown body is never inspected. Multi-line values under fields that do
+not affect routing — a wrapped `title:` or a `cancelled_reason: |` block — are ignored, but a
+multi-line value under a field your policy routes on is rejected with a message naming that field.
+A missing or unclosed `---` fence, unsupported frontmatter, or a read failure reports a
+diagnostic and leaves the suite unchanged. The case is named from the file's `id`, else its
+filename, and the import is one Undo.
+
+An import is bound to the project state when you choose the file: if you edit, undo/redo, switch
+modes, apply a preset, or open another project before the read finishes, the result is discarded
+with a message. Choosing a second file before the first finishes imports only the second. **Open
+project** has the same guard.
+
 ## Editing the Table with `ll-loop edit-routes`
 
 `ll-loop edit-routes` renders a loop's routing as a table, opens it in `$EDITOR`, and writes

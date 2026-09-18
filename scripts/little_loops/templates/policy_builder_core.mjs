@@ -3090,6 +3090,493 @@ export function encodeFrontmatterScores(fm, dims) {
   return scores;
 }
 
+// ===========================================================================
+// FEAT-3503: boundary suggestions and local issue-file import
+// ===========================================================================
+
+function _canonicalJson(value) {
+  if (Array.isArray(value)) return "[" + value.map(_canonicalJson).join(",") + "]";
+  if (value && typeof value === "object") {
+    return (
+      "{" +
+      Object.keys(value)
+        .sort()
+        .map((k) => JSON.stringify(k) + ":" + _canonicalJson(value[k]))
+        .join(",") +
+      "}"
+    );
+  }
+  return JSON.stringify(value);
+}
+
+/**
+ * Semantic identity of a scenario input: canonical (key-sorted) JSON of
+ * `{mode, scores}` (rubric: `{mode, aggregate}`) taken from
+ * `normalizeScenarioInput`. Raw key presence and text formatting are not part
+ * of it — routing sees only the encoded scores — but numeric spelling is
+ * (`"85"`, `"85.0"`, `"8.5e1"` stay distinct). Returns `null` when the input
+ * does not normalize cleanly (invalid cases never participate in dedup).
+ * @param {Object} model
+ * @param {Object} input
+ * @returns {string|null}
+ */
+export function scenarioSemanticKey(model, input) {
+  const mode = model.mode || "decision_table";
+  const n = normalizeScenarioInput(model, input);
+  if (n.diagnostics.length) return null;
+  if (mode === "rubric") return _canonicalJson({ mode, aggregate: n.aggregate });
+  return _canonicalJson({ mode, scores: n.scores });
+}
+
+// Adjacent IEEE-754 doubles. May return +/-Infinity at the finite extrema;
+// callers discard nonfinite results.
+function _nextUp(x) {
+  if (Number.isNaN(x) || x === Infinity) return x;
+  if (x === 0) return Number.MIN_VALUE;
+  const dv = new DataView(new ArrayBuffer(8));
+  dv.setFloat64(0, x);
+  dv.setBigInt64(0, dv.getBigInt64(0) + (x > 0 ? 1n : -1n));
+  return dv.getFloat64(0);
+}
+function _nextDown(x) {
+  return -_nextUp(-x);
+}
+export { _nextUp, _nextDown };
+
+const _SUGGEST_LIST_CAP = 1000;
+const _SKIP_DT_STRING = "unsupported-decision-table-string-dimension";
+const _SKIP_NONFINITE = "nonfinite-literal";
+const _SKIP_NO_WITNESS = "no-satisfying-witness";
+const _SKIP_ROUNDTRIP = "serialization-round-trip-failed";
+
+function _lifecycleSourceKey(dim) {
+  return dim.name === "priority_rank" ? "priority" : dim.name;
+}
+
+/**
+ * The frontmatter source keys the lifecycle model's dimensions read
+ * (`priority_rank` reads `priority`).
+ * @param {Object} model
+ * @returns {string[]}
+ */
+export function lifecycleDimensionSourceKeys(model) {
+  const keys = [];
+  for (const d of model.dimensions || []) {
+    const k = _lifecycleSourceKey(d);
+    if (!keys.includes(k)) keys.push(k);
+  }
+  return keys;
+}
+
+// Quote a string scalar when the frontmatter mini-parser would otherwise
+// mangle it (comments, splitting, null markers, unsupported leading chars).
+function _fmScalar(value) {
+  const s = String(value);
+  if (/[\n\r]/.test(s)) throw new Error("multi-line scalar");
+  const needsQuote =
+    /[#:,"']/.test(s) ||
+    /^[\[\-\s{!&*|>]/.test(s) ||
+    /\s$/.test(s) ||
+    s === "" ||
+    /^(null|~)$/i.test(s);
+  return needsQuote ? `"${s}"` : s;
+}
+
+function _serializeLifecycleFrontmatter(fields, order) {
+  const lines = [];
+  for (const key of order) {
+    if (!Object.prototype.hasOwnProperty.call(fields, key)) continue;
+    const v = fields[key];
+    let text;
+    if (Array.isArray(v)) text = "[" + v.map(_fmScalar).join(", ") + "]";
+    else if (typeof v === "boolean") text = v ? "true" : "false";
+    else if (typeof v === "number") text = String(v);
+    else text = _fmScalar(v);
+    lines.push(`${key}: ${text}`);
+  }
+  return lines.join("\n");
+}
+export { _serializeLifecycleFrontmatter };
+
+function _suggestCore(model) {
+  const mode = model.mode || "decision_table";
+  const skips = [];
+  const out = [];
+  const { diagnostics, compiled } = _modelRoutingDiagnostics(model);
+  if (diagnostics.length || !compiled) return { suggestions: [], skips };
+
+  if (mode === "rubric") {
+    const seen = new Set();
+    const push = (aggregate, label) => {
+      if (aggregate < 0 || aggregate > 100 || !Number.isInteger(aggregate)) return;
+      const input = { aggregate };
+      const key = scenarioSemanticKey(model, input);
+      if (key == null || seen.has(key)) return;
+      seen.add(key);
+      const branch = traceModel(model, input).rubricBranch;
+      out.push({
+        key,
+        name: `Rubric: aggregate ${aggregate}`,
+        input,
+        expectedTarget: null,
+        reason: `${label}: aggregate ${aggregate} → ${branch} branch`,
+      });
+    };
+    for (const [field, t] of [
+      ["thresholdHigh", Number(model.thresholdHigh)],
+      ["thresholdMedium", Number(model.thresholdMedium)],
+    ]) {
+      push(Math.ceil(t) - 1, `${field} ${t} just below`);
+      if (Number.isInteger(t)) push(t, `${field} ${t} at`);
+      push(Math.floor(t) + 1, `${field} ${t} just above`);
+    }
+    return { suggestions: out, skips };
+  }
+
+  const isLifecycle = mode === "issue_lifecycle";
+  const dims = model.dimensions || [];
+  const dimByNorm = new Map(dims.map((d) => [normalizeDimName(d.name), d]));
+  const sourceKeyOf = (d) => (isLifecycle ? _lifecycleSourceKey(d) : normalizeDimName(d.name));
+  const order = [];
+  for (const d of dims) {
+    const k = sourceKeyOf(d);
+    if (!order.includes(k)) order.push(k);
+  }
+  const buildInput = (fields) => {
+    if (!isLifecycle) return { values: { ...fields } };
+    return { frontmatterText: _serializeLifecycleFrontmatter(fields, order) };
+  };
+  const scoresOf = (fields) => {
+    let input;
+    try {
+      input = buildInput(fields);
+    } catch (err) {
+      return null;
+    }
+    const n = normalizeScenarioInput(model, input);
+    return n.diagnostics.length ? null : n.scores;
+  };
+  const satisfies = (fields, preds) => {
+    const scores = scoresOf(fields);
+    return scores != null && preds.every((p) => evalPredicate(p, scores));
+  };
+  const domainOf = (groupDims) => {
+    if (isLifecycle && groupDims.some((d) => d.name === "priority_rank")) return "priority";
+    return groupDims[0].type;
+  };
+  const discrete = (domain) => domain === "priority" || domain === "list";
+
+  const seen = new Set();
+  const authoredCount = (model.rules || []).length;
+  const ruleName = (i) => `Rule ${i + 1}`;
+  const candidates = []; // {input, key, name, label, ruleIndex}
+  const addCandidate = (fields, name, label, ruleIndex) => {
+    let input;
+    try {
+      input = buildInput(fields);
+    } catch (err) {
+      return;
+    }
+    const key = scenarioSemanticKey(model, input);
+    if (key == null || seen.has(key)) return;
+    seen.add(key);
+    candidates.push({ input, key, name, label, ruleIndex });
+  };
+
+  for (let ri = 0; ri < authoredCount; ri++) {
+    const rule = compiled[ri];
+    if (!rule || isCatchall(rule)) continue;
+    const skip = (reason) => skips.push({ ruleIndex: ri, reason });
+    // Group predicates by source field.
+    const groups = new Map();
+    for (const p of rule.predicates) {
+      const d = dimByNorm.get(p.dim);
+      const key = sourceKeyOf(d);
+      if (!groups.has(key)) groups.set(key, { key, dims: [], preds: [] });
+      const g = groups.get(key);
+      if (!g.dims.includes(d)) g.dims.push(d);
+      g.preds.push(p);
+    }
+    const fields = {};
+    let skipReason = null;
+    for (const g of groups.values()) {
+      const domain = domainOf(g.dims);
+      if (!isLifecycle && domain === "string") {
+        skipReason = _SKIP_DT_STRING;
+        break;
+      }
+      const numericLike = domain === "numeric" || domain === "list" || domain === "priority";
+      const numericPreds = domain === "priority" ? g.preds.filter((p) => p.dim === "priority_rank") : g.preds;
+      if (numericLike && numericPreds.some((p) => !Number.isFinite(Number(p.value)))) {
+        skipReason = _SKIP_NONFINITE;
+        break;
+      }
+      let cands = [];
+      const lits = g.preds.map((p) => p.value);
+      const finiteLits = numericLike ? numericPreds.map((p) => Number(p.value)) : [];
+      if (domain === "boolean") {
+        cands = [false, true];
+      } else if (domain === "numeric") {
+        const set = new Set([0]);
+        if (!isLifecycle) {
+          set.add(0);
+          set.add(100);
+        }
+        for (const t of finiteLits) {
+          set.add(t);
+          for (const n of [_nextUp(t), _nextDown(t)]) if (Number.isFinite(n)) set.add(n);
+        }
+        cands = [...set]
+          .filter((v) => isLifecycle || (v >= 0 && v <= 100))
+          .sort((a, b) => Math.abs(a) - Math.abs(b) || a - b);
+      } else if (domain === "list") {
+        const set = new Set([0]);
+        for (const t of finiteLits) {
+          for (const n of [Math.floor(t), Math.ceil(t)]) {
+            set.add(n - 1);
+            set.add(n);
+            set.add(n + 1);
+          }
+        }
+        cands = [...set]
+          .filter((n) => Number.isSafeInteger(n) && n >= 0 && n <= _SUGGEST_LIST_CAP)
+          .sort((a, b) => a - b)
+          .map((n) => Array.from({ length: n }, (_, i) => `item-${i + 1}`));
+      } else if (domain === "priority") {
+        cands = Array.from({ length: 10 }, (_, i) => `P${i}`);
+      } else {
+        const eq = g.preds.filter((p) => p.op === "==").map((p) => p.value);
+        const excluded = new Set(lits);
+        const notted = lits.map((l) => {
+          let c = `not-${l}`;
+          while (excluded.has(c)) c = `not-${c}`;
+          return c;
+        });
+        cands = [...new Set([...eq, ...notted])];
+      }
+      const hit = cands.find((c) => satisfies({ [g.key]: c }, g.preds));
+      if (hit === undefined) {
+        skipReason = _SKIP_NO_WITNESS;
+        break;
+      }
+      fields[g.key] = hit;
+    }
+    if (skipReason == null && !satisfies(fields, rule.predicates)) skipReason = _SKIP_ROUNDTRIP;
+    if (skipReason != null) {
+      skip(skipReason);
+      continue;
+    }
+    addCandidate(fields, `${ruleName(ri)}: satisfying case`, `satisfies rule ${ri + 1}`, ri);
+
+    // Boundary variants: one-unit probes of the witness per numeric predicate.
+    for (const p of rule.predicates) {
+      const d = dimByNorm.get(p.dim);
+      const g = groups.get(sourceKeyOf(d));
+      const domain = domainOf(g.dims);
+      const isRankPred = domain === "priority" ? d.name === "priority_rank" : true;
+      if (!(domain === "numeric" || domain === "list" || (domain === "priority" && isRankPred))) {
+        continue;
+      }
+      const t = Number(p.value);
+      const vals = discrete(domain)
+        ? [Math.ceil(t) - 1, Number.isInteger(t) ? t : null, Math.floor(t) + 1]
+        : [t - 1, t, t + 1];
+      const words = ["just below", "at", "just above"];
+      vals.forEach((v, vi) => {
+        if (v == null || !Number.isFinite(v)) return;
+        let raw;
+        if (domain === "priority") {
+          if (v < 0 || v > 9) return;
+          raw = `P${v}`;
+        } else if (domain === "list") {
+          if (v < 0 || v > _SUGGEST_LIST_CAP) return;
+          raw = Array.from({ length: v }, (_, i) => `item-${i + 1}`);
+        } else {
+          if (!isLifecycle && (v < 0 || v > 100)) return;
+          raw = v;
+        }
+        addCandidate(
+          { ...fields, [g.key]: raw },
+          `${ruleName(ri)}: ${d.name} ${v}`,
+          `rule ${ri + 1} boundary: ${d.name} ${words[vi]} ${t}`,
+          ri
+        );
+      });
+    }
+
+    // Missing-field variants: omit the source key (never for lifecycle
+    // boolean/list — the encoder always emits a score for those).
+    const omitted = new Set();
+    for (const p of rule.predicates) {
+      if (p.op === "!=") continue;
+      const d = dimByNorm.get(p.dim);
+      if (isLifecycle && (d.type === "boolean" || d.type === "list")) continue;
+      const key = sourceKeyOf(d);
+      if (omitted.has(key)) continue;
+      omitted.add(key);
+      const rest = { ...fields };
+      delete rest[key];
+      addCandidate(rest, `${ruleName(ri)}: ${d.name} absent`, `rule ${ri + 1}: ${d.name} absent`, ri);
+    }
+  }
+
+  // Trace-driven fallback: only when no candidate already reaches the derived
+  // fallback, and only if the all-omitted input itself does.
+  const isDerived = (input) => {
+    const m = traceModel(model, input).match;
+    return !!m && m.isFallback && m.ruleIndex === -1;
+  };
+  if (_hasDerivedFallback(model) && !candidates.some((c) => isDerived(c.input))) {
+    const input = buildInput({});
+    const key = scenarioSemanticKey(model, input);
+    if (key != null && !seen.has(key) && isDerived(input)) {
+      seen.add(key);
+      candidates.push({
+        input,
+        key,
+        name: "Fallback: all fields absent",
+        label: "all fields absent (fallback)",
+        ruleIndex: -1,
+      });
+    }
+  }
+
+  for (const c of candidates) {
+    const m = traceModel(model, c.input).match;
+    let reason;
+    if (!m || m.target == null) {
+      reason = `${c.label} → no match`;
+    } else {
+      reason = `${c.label} → ${m.target}`;
+      if (c.ruleIndex >= 0 && m.ruleIndex !== c.ruleIndex) {
+        reason += m.ruleIndex === -1 ? " (won by fallback)" : ` (won by rule ${m.ruleIndex + 1})`;
+      }
+    }
+    out.push({ key: c.key, name: c.name, input: c.input, expectedTarget: null, reason });
+  }
+  return { suggestions: out, skips };
+}
+
+/**
+ * Deterministic, deduplicated, unasserted boundary-case suggestions for the
+ * model's authored rules (per rule: a satisfying witness, one-unit boundary
+ * probes per numeric predicate, and missing-field variants) plus a
+ * trace-driven fallback case; rubric mode yields integer neighbours of both
+ * thresholds. Every suggestion normalizes cleanly and carries
+ * `expectedTarget: null`. Empty for a routing-invalid model.
+ * @param {Object} model
+ * @returns {Array<{key: string, name: string, input: Object, expectedTarget: null, reason: string}>}
+ */
+export function suggestScenarios(model) {
+  return _suggestCore(model).suggestions;
+}
+
+/**
+ * Rules `suggestScenarios` skipped, each with a named reason
+ * (`unsupported-decision-table-string-dimension`, `nonfinite-literal`,
+ * `no-satisfying-witness`, `serialization-round-trip-failed`).
+ * @param {Object} model
+ * @returns {Array<{ruleIndex: number, reason: string}>}
+ */
+export function _suggestionSkips(model) {
+  return _suggestCore(model).skips;
+}
+
+/**
+ * Return the contents of the leading `---`-delimited frontmatter block of a
+ * full issue Markdown file (BOM and CRLF tolerated); the body is never
+ * inspected. Throws a diagnostic naming the defect otherwise.
+ * @param {string} text
+ * @returns {string}
+ */
+export function extractIssueFrontmatter(text) {
+  let s = String(text);
+  if (s.charCodeAt(0) === 0xfeff) s = s.slice(1);
+  const lines = s.replace(/\r\n?/g, "\n").split("\n");
+  if (!/^---\s*$/.test(lines[0])) {
+    throw new Error("Missing opening frontmatter fence: the file must start with a `---` line.");
+  }
+  for (let i = 1; i < lines.length; i++) {
+    if (/^---\s*$/.test(lines[i])) return lines.slice(1, i).join("\n");
+  }
+  throw new Error("Unclosed frontmatter fence: no closing `---` line found.");
+}
+
+const _TOP_KEY_RE = /^[^\s#\-][^:]*:/;
+
+/**
+ * Drop multi-line continuation lines (indented lines and block-scalar bodies)
+ * under top-level keys that are NOT routing-dimension source keys, so
+ * `parseFrontmatterBlock` never sees them. A bare `|`/`>` indicator on such a
+ * key is dropped too (the key normalizes to null). Lines under dimension keys
+ * pass through untouched. Pure; never throws.
+ * @param {string} text
+ * @param {Iterable<string>} dimensionSourceKeys
+ * @returns {string}
+ */
+export function dropNonDimensionContinuations(text, dimensionSourceKeys) {
+  const keys = new Set(dimensionSourceKeys);
+  const out = [];
+  let dropping = false;
+  for (const line of String(text).split("\n")) {
+    if (_TOP_KEY_RE.test(line)) {
+      const idx = line.indexOf(":");
+      const key = line.slice(0, idx).trim();
+      const value = line.slice(idx + 1).trim();
+      dropping = !keys.has(key);
+      if (dropping && /^[|>][+-]?\d*$/.test(value)) {
+        out.push(`${line.slice(0, idx)}:`);
+      } else {
+        out.push(line);
+      }
+      continue;
+    }
+    if (dropping && /^\s+\S/.test(line)) continue;
+    out.push(line);
+  }
+  return out.join("\n");
+}
+
+/**
+ * Turn a full local issue file into an unasserted lifecycle scenario:
+ * `extractIssueFrontmatter` → `dropNonDimensionContinuations` →
+ * `parseFrontmatterBlock` → `normalizeScenarioInput`. Throws an Error whose
+ * message contains `frontmatter`/`fence`; nothing is mutated.
+ * @param {Object} model  the lifecycle model
+ * @param {string} fileText
+ * @param {string} fileName
+ * @returns {{name: string, input: {frontmatterText: string}}}
+ */
+export function buildImportedScenario(model, fileText, fileName) {
+  const block = extractIssueFrontmatter(fileText);
+  const frontmatterText = dropNonDimensionContinuations(block, lifecycleDimensionSourceKeys(model));
+  let fm;
+  try {
+    fm = parseFrontmatterBlock(frontmatterText);
+  } catch (err) {
+    const m = /^Can't read line (\d+):/.exec(err.message);
+    if (m) {
+      const lines = frontmatterText.split("\n");
+      for (let i = Number(m[1]) - 1; i >= 0; i--) {
+        if (_TOP_KEY_RE.test(lines[i])) {
+          const key = lines[i].slice(0, lines[i].indexOf(":")).trim();
+          throw new Error(
+            `Frontmatter: multi-line value under routing field \`${key}\` is not supported — ${err.message}`
+          );
+        }
+      }
+    }
+    throw new Error(`Frontmatter: ${err.message}`);
+  }
+  const input = { frontmatterText };
+  const n = normalizeScenarioInput(model, input);
+  if (n.diagnostics.length) {
+    throw new Error(`Frontmatter: ${n.diagnostics.map((d) => d.message).join(" ")}`);
+  }
+  const id = typeof fm.id === "string" && fm.id.trim() ? fm.id.trim() : null;
+  return { name: id || fileName, input };
+}
+
 // Browser-only global so the inlined copy can expose the API without breaking
 // node import.
 if (typeof window !== "undefined") {
@@ -3143,5 +3630,12 @@ if (typeof window !== "undefined") {
     withScenariosDefaulted,
     // FEAT-3501 (shared structural transition analysis)
     analyzeTransitions,
+    // FEAT-3503 (boundary suggestions, local issue-file import)
+    suggestScenarios,
+    scenarioSemanticKey,
+    extractIssueFrontmatter,
+    dropNonDimensionContinuations,
+    lifecycleDimensionSourceKeys,
+    buildImportedScenario,
   };
 }

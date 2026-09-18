@@ -35,8 +35,9 @@ const SCENARIO_SELECTORS = {
   caseList: "#scenario-list",
   runAllBtn: "#run-all-btn",
   totals: "#scenario-summary",
-  importIssueInput: null,  // FEAT-3503 — local issue-file import, not part of this issue
-  importDiagnostics: null, // FEAT-3503
+  importIssueInput: "#import-issue-input",   // FEAT-3503 — lifecycle-only local issue-file import
+  importDiagnostics: "#import-diagnostics",  // FEAT-3503
+  suggestBtn: "#suggest-scenarios-btn",      // FEAT-3503
 };
 
 // ---- locate Playwright without a repo dependency ---------------------------
@@ -110,6 +111,15 @@ async function openProject(page, text, fname = "probe.project.json") {
   await page.setInputFiles("#open-project-input", { name: fname, mimeType: "application/json", buffer: Buffer.from(text) });
   await page.waitForTimeout(100); // FileReader is async
 }
+
+// FEAT-3503: defer FileReader.readAsText until window.__flushReads() so a probe
+// can change the project between "file chosen" and "read completes".
+const DEFER_READS = `(() => {
+  const orig = FileReader.prototype.readAsText;
+  window.__pendingReads = [];
+  FileReader.prototype.readAsText = function (f) { window.__pendingReads.push(() => orig.call(this, f)); };
+  window.__flushReads = () => { window.__pendingReads.splice(0).forEach((fn) => fn()); };
+})();`;
 
 // ---- probes ----------------------------------------------------------------
 const PROBES = [
@@ -422,22 +432,133 @@ const PROBES = [
     },
   },
   {
-    id: "local-issue-import-offline", needs: "FEAT-3503", acs: ["FEAT-3503 issue-file import: BOM/CRLF, body ignored, fence diagnostics, atomic, undoable"],
+    id: "local-issue-import-offline", needs: "FEAT-3503", acs: ["FEAT-3503 issue-file import: lifecycle-only, BOM/CRLF, body ignored, fence diagnostics, atomic, undoable, no history on select"],
     async run(browser) {
       needSelectors("importIssueInput", "importDiagnostics", "caseList");
       const S = SCENARIO_SELECTORS;
       const { page } = await newPage(browser);
       const cases = () => page.locator(`${S.caseList} > *`).count();
-      const good = "﻿---\r\nid: BUG-1\r\ntype: BUG\r\npriority: P2\r\nstatus: open\r\n---\r\n# BUG-1\r\n\r\nbody { not: parsed }\r\n";
+      assert(!(await page.locator("#import-controls").isVisible()), "import controls visible outside issue_lifecycle mode");
+      await page.selectOption("#mode-switch", "issue_lifecycle");
+      assert(await page.locator("#import-controls").isVisible(), "import controls hidden in issue_lifecycle mode");
+      const before = await cases();
+      const good = "\uFEFF---\r\nid: BUG-1\r\ntype: BUG\r\npriority: P2\r\nstatus: open\r\n---\r\n# BUG-1\r\n\r\nbody { not: parsed }\r\n";
       await page.setInputFiles(S.importIssueInput, { name: "P2-BUG-1-x.md", mimeType: "text/markdown", buffer: Buffer.from(good) });
-      await page.waitForTimeout(100);
-      assert((await cases()) === 1, "BOM/CRLF issue file did not import one case");
+      await page.waitForTimeout(150);
+      assert((await cases()) === before + 1, "BOM/CRLF issue file did not import one case");
       await page.setInputFiles(S.importIssueInput, { name: "bad.md", mimeType: "text/markdown", buffer: Buffer.from("---\nid: BUG-2\nno closing fence\n") });
-      await page.waitForTimeout(100);
+      await page.waitForTimeout(150);
       assert(/fence|frontmatter/i.test(await page.locator(S.importDiagnostics).textContent()), "unclosed fence gave no diagnostic");
-      assert((await cases()) === 1, "failed import altered the suite");
+      assert((await cases()) === before + 1, "failed import altered the suite");
+      await page.setInputFiles(S.importIssueInput, { name: "wrapped.md", mimeType: "text/markdown", buffer: Buffer.from("---\nid: BUG-3\ntitle: wrapped title\n  continues here\nstatus: open\n---\n") });
+      await page.waitForTimeout(150);
+      assert((await cases()) === before + 2, "wrapped-title issue file was not imported");
+      await page.setInputFiles(S.importIssueInput, { name: "routing.md", mimeType: "text/markdown", buffer: Buffer.from("---\nstatus: open\ndeferred_reason: waiting\n  on vendor\n---\n") });
+      await page.waitForTimeout(150);
+      assert(/deferred_reason/.test(await page.locator(S.importDiagnostics).textContent()), "wrapped routing field diagnostic did not name the key");
+      assert((await cases()) === before + 2, "rejected routing-field import altered the suite");
       await undo(page);
-      assert((await cases()) === 0, "successful import was not undoable");
+      await undo(page);
+      assert((await cases()) === before, "successful imports were not each one undo");
+    },
+  },
+  {
+    id: "issue-import-delayed-read-and-selection", needs: "FEAT-3503", acs: ["FEAT-3503 stale import completions add nothing; select pushes no history; last selection wins"],
+    async run(browser) {
+      needSelectors("importIssueInput", "importDiagnostics", "caseList");
+      const S = SCENARIO_SELECTORS;
+      const { page } = await newPage(browser, { initScript: DEFER_READS });
+      const cases = () => page.locator(`${S.caseList} > *`).count();
+      const flush = async () => { await page.evaluate(() => window.__flushReads()); await page.waitForTimeout(150); };
+      const file = (n, id) => ({ name: n, mimeType: "text/markdown", buffer: Buffer.from(`---\nid: ${id}\nstatus: open\n---\n`) });
+      await page.selectOption("#mode-switch", "issue_lifecycle");
+      await page.reload(); await page.waitForSelector("#rule-list", { state: "attached" });
+      const base = await cases();
+      const undoDisabled = () => page.locator("#undo-btn").isDisabled();
+      // (1) a current read adds exactly one undoable case; selecting pushed no history.
+      await page.click("#undo-btn").catch(() => {});
+      const undoBeforeSelect = await undoDisabled();
+      await page.setInputFiles(S.importIssueInput, file("a.md", "BUG-10"));
+      assert((await undoDisabled()) === undoBeforeSelect, "selecting a file pushed a history entry");
+      await flush();
+      assert((await cases()) === base + 1, "current read did not add exactly one case");
+      await undo(page);
+      assert((await cases()) === base, "one undo did not remove exactly the imported case");
+      // (2) mode switch away and back before completion → discarded.
+      await page.setInputFiles(S.importIssueInput, file("b.md", "BUG-11"));
+      await page.selectOption("#mode-switch", "rubric");
+      await page.selectOption("#mode-switch", "issue_lifecycle");
+      await flush();
+      assert((await cases()) === base, "stale read (mode switch away and back) added a case");
+      assert(/discarded/i.test(await page.locator(S.importDiagnostics).textContent()), "stale read gave no diagnostic");
+      // (3) another committed edit before completion → discarded.
+      await page.setInputFiles(S.importIssueInput, file("c.md", "BUG-12"));
+      await page.click(S.addCaseBtn);
+      const afterEdit = await cases();
+      await flush();
+      assert((await cases()) === afterEdit, "stale read (intervening edit) added a case");
+      // (4) undo before completion → discarded.
+      await page.setInputFiles(S.importIssueInput, file("d.md", "BUG-13"));
+      await undo(page);
+      const afterUndo = await cases();
+      await flush();
+      assert((await cases()) === afterUndo, "stale read (undo) added a case");
+      // (5) second selection before the first completes: only the second imports.
+      const beforeTwo = await cases();
+      await page.setInputFiles(S.importIssueInput, file("e.md", "BUG-14"));
+      await page.setInputFiles(S.importIssueInput, file("f.md", "BUG-15"));
+      await flush();
+      assert((await cases()) === beforeTwo + 1, "two quick selections did not import exactly one case");
+      const names = await page.locator(`${S.caseList} ${S.caseNameInput}`).evaluateAll((els) => els.map((e) => e.value));
+      assert(names.includes("BUG-15") && !names.includes("BUG-14"), "last selection did not win");
+    },
+  },
+  {
+    id: "open-project-delayed-read-discarded", needs: "FEAT-3503", acs: ["FEAT-3503 stale Open completion leaves project, mode, and undo stack untouched"],
+    async run(browser) {
+      const { page } = await newPage(browser, { initScript: DEFER_READS });
+      const flush = async () => { await page.evaluate(() => window.__flushReads()); await page.waitForTimeout(150); };
+      await commitName(page, "saved-name");
+      const text = await saveProject(page);
+      await commitName(page, "edited-name");
+      await page.setInputFiles("#open-project-input", { name: "p.project.json", mimeType: "application/json", buffer: Buffer.from(text) });
+      await commitName(page, "edited-again"); // edit before the deferred load
+      const m = await mode(page);
+      await flush();
+      assert((await name(page)) === "edited-again", "stale Open replaced the project");
+      assert((await mode(page)) === m, "stale Open changed the mode");
+      assert(/discarded/i.test(await liveStatus(page)), "stale Open gave no diagnostic");
+      assert(!(await page.locator("#undo-btn").isDisabled()), "stale Open reset the undo history");
+      // A current Open still works.
+      await page.setInputFiles("#open-project-input", { name: "p.project.json", mimeType: "application/json", buffer: Buffer.from(text) });
+      await flush();
+      assert((await name(page)) === "saved-name", "current Open did not apply");
+    },
+  },
+  {
+    id: "suggest-cases-idempotent-and-undoable", needs: "FEAT-3503", acs: ["FEAT-3503 Suggest cases: deterministic, idempotent second click, one undo removes all, no history on zero adds"],
+    async run(browser) {
+      needSelectors("suggestBtn", "caseList");
+      const S = SCENARIO_SELECTORS;
+      for (const m of ["decision_table", "issue_lifecycle", "rubric"]) {
+        const { page } = await newPage(browser);
+        if (m !== "decision_table") await page.selectOption("#mode-switch", m);
+        const cases = () => page.locator(`${S.caseList} > *`).count();
+        await page.click(S.suggestBtn);
+        const n = await cases();
+        assert(n > 0, `${m}: Suggest cases added nothing`);
+        await page.click(S.suggestBtn);
+        assert((await cases()) === n, `${m}: second click was not idempotent`);
+        await undo(page);
+        assert((await cases()) === 0, `${m}: one undo did not remove all suggestions`);
+        await redo(page);
+        assert((await cases()) === n, `${m}: redo did not restore suggestions`);
+        await page.reload(); await page.waitForSelector("#rule-list", { state: "attached" });
+        await page.click(S.suggestBtn);
+        assert((await cases()) === n, `${m}: click after reload duplicated cases`);
+        // Zero-addition click makes no history entry (fresh history after reload).
+        assert(await page.locator("#undo-btn").isDisabled(), `${m}: zero-addition click pushed a history entry`);
+      }
     },
   },
 ];

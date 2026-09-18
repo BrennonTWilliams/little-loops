@@ -3,10 +3,11 @@ id: FEAT-3503
 type: FEAT
 title: Policy builder scenario boundary suggestions and local issue-file import
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-17'
 captured_at: '2026-09-17T22:31:55Z'
+completed_at: '2026-09-18T17:22:32Z'
 parent: EPIC-3493
 labels:
 - policy-builder
@@ -181,15 +182,15 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Acceptance Criteria
 
-- [ ] Suggestions follow the deterministic source-field candidate algorithm, are unasserted and deduplicated, and all normalize successfully. Witnesses satisfy every originating predicate after serialization/encoding; earlier-rule capture is allowed and reported truthfully by `traceModel`. Test `> 50 AND < 50.5`, an interval with no representable float, finite extrema/zero, boolean 0/100 domains, compatible and incompatible `priority`/`priority_rank` constraints, contradictory equalities, and nonfinite/unsupported literals. No invalid scores or duplicate source keys are emitted.
-- [ ] Boundary variants are distinct from witness selection: numeric one-unit probes, representable discrete neighbours, and rubric integer neighbours follow their specified domain rules. Decision-table out-of-range variants are skipped. Lifecycle boolean/list missing-field variants and decision-table string rules are skipped by named tests. Every `!=` witness is present and encodes unequal; fallback/reason selection follows the actual trace. Lifecycle quoted `"null"`/`"~"` and supported punctuation round-trip; unrepresentable literals are skipped.
-- [ ] Coverage after adding suggestions exercises ENH-3492 terminal targets and the derived fallback for the seeded lifecycle and decision-table examples (routing coverage, not assertion coverage) — for the seeded lifecycle example this means the `status == done` rule, the compound `severity`/`review_status` rule, both `confidence_score` rules, and the `gate` fallback each win at least one case.
-- [ ] Repeated "Add suggestions" clicks produce no duplicate cases/IDs, including empty decision-table/lifecycle inputs and rubric aggregate zero, after reload and undo/redo. All valid existing cases participate; invalid inputs do not prevent adding valid suggestions. Same encoded scores deduplicate despite formatting differences or absent versus explicit lifecycle false/empty-list values; numeric strings `"85"`, `"85.0"`, and `"8.5e1"` deliberately remain distinct. New cases carry the full Scenario shape; one undo removes all additions, and a zero-addition click creates no history entry.
-- [ ] Import controls are visible only in `issue_lifecycle` mode. A complete issue Markdown file imports successfully without parsing its body; BOM/CRLF are handled. A real repo issue file with a wrapped multi-line `title:` or a `cancelled_reason: |` block imports successfully (routing fields intact), while a multi-line value under a routing dimension is still rejected with a diagnostic naming that key. Selecting a file pushes no history entry on its own (the import input is excluded from the delegated `#form-panel` commit listener), so an immediate import is not discarded as stale and one undo removes exactly the imported case. Missing/unclosed fences, unsupported frontmatter, and read failures produce diagnostics containing `frontmatter` or `fence` without altering the suite. Successful import adds one unasserted case with the full `Scenario` shape and is undoable. The lifecycle paste path still accepts fence-less frontmatter. The `local-issue-import-offline` probe switches to lifecycle mode before importing.
-- [ ] Delayed-read browser checks start an import, then switch modes, Open, apply a preset/start-blank, undo/redo, or commit another edit before completion. Stale completions add no case or history entry, even after switching away and back; a current successful completion adds exactly one undoable case to the captured lifecycle draft. Selecting a second file before the first read completes imports only the second (the first is dropped silently). The same guard covers "Open project": a stale Open completion leaves the project, active mode, and undo stack untouched and reports a diagnostic.
-- [ ] Scenarios, suggestions, and imports execute no actions and make no predictions about LLM/action effects.
-- [ ] Golden HTML regenerated; Node and Python gates pass; `ll-loop run .loops/verify-feat-3488-browser-persistence.yaml` passes with the import, delayed-read, and suggest-cases probes green.
-- [ ] `docs/guides/POLICY_ROUTER_GUIDE.md` and the policy-builder section of `docs/reference/CLI.md` document boundary suggestions and local issue-file import.
+- [x] Suggestions follow the deterministic source-field candidate algorithm, are unasserted and deduplicated, and all normalize successfully. Witnesses satisfy every originating predicate after serialization/encoding; earlier-rule capture is allowed and reported truthfully by `traceModel`. Test `> 50 AND < 50.5`, an interval with no representable float, finite extrema/zero, boolean 0/100 domains, compatible and incompatible `priority`/`priority_rank` constraints, contradictory equalities, and nonfinite/unsupported literals. No invalid scores or duplicate source keys are emitted.
+- [x] Boundary variants are distinct from witness selection: numeric one-unit probes, representable discrete neighbours, and rubric integer neighbours follow their specified domain rules. Decision-table out-of-range variants are skipped. Lifecycle boolean/list missing-field variants and decision-table string rules are skipped by named tests. Every `!=` witness is present and encodes unequal; fallback/reason selection follows the actual trace. Lifecycle quoted `"null"`/`"~"` and supported punctuation round-trip; unrepresentable literals are skipped.
+- [x] Coverage after adding suggestions exercises ENH-3492 terminal targets and the derived fallback for the seeded lifecycle and decision-table examples (routing coverage, not assertion coverage) — for the seeded lifecycle example this means the `status == done` rule, the compound `severity`/`review_status` rule, both `confidence_score` rules, and the `gate` fallback each win at least one case.
+- [x] Repeated "Add suggestions" clicks produce no duplicate cases/IDs, including empty decision-table/lifecycle inputs and rubric aggregate zero, after reload and undo/redo. All valid existing cases participate; invalid inputs do not prevent adding valid suggestions. Same encoded scores deduplicate despite formatting differences or absent versus explicit lifecycle false/empty-list values; numeric strings `"85"`, `"85.0"`, and `"8.5e1"` deliberately remain distinct. New cases carry the full Scenario shape; one undo removes all additions, and a zero-addition click creates no history entry.
+- [x] Import controls are visible only in `issue_lifecycle` mode. A complete issue Markdown file imports successfully without parsing its body; BOM/CRLF are handled. A real repo issue file with a wrapped multi-line `title:` or a `cancelled_reason: |` block imports successfully (routing fields intact), while a multi-line value under a routing dimension is still rejected with a diagnostic naming that key. Selecting a file pushes no history entry on its own (the import input is excluded from the delegated `#form-panel` commit listener), so an immediate import is not discarded as stale and one undo removes exactly the imported case. Missing/unclosed fences, unsupported frontmatter, and read failures produce diagnostics containing `frontmatter` or `fence` without altering the suite. Successful import adds one unasserted case with the full `Scenario` shape and is undoable. The lifecycle paste path still accepts fence-less frontmatter. The `local-issue-import-offline` probe switches to lifecycle mode before importing.
+- [x] Delayed-read browser checks start an import, then switch modes, Open, apply a preset/start-blank, undo/redo, or commit another edit before completion. Stale completions add no case or history entry, even after switching away and back; a current successful completion adds exactly one undoable case to the captured lifecycle draft. Selecting a second file before the first read completes imports only the second (the first is dropped silently). The same guard covers "Open project": a stale Open completion leaves the project, active mode, and undo stack untouched and reports a diagnostic.
+- [x] Scenarios, suggestions, and imports execute no actions and make no predictions about LLM/action effects.
+- [x] Golden HTML regenerated; Node and Python gates pass; `ll-loop run .loops/verify-feat-3488-browser-persistence.yaml` passes with the import, delayed-read, and suggest-cases probes green.
+- [x] `docs/guides/POLICY_ROUTER_GUIDE.md` and the policy-builder section of `docs/reference/CLI.md` document boundary suggestions and local issue-file import.
 
 ## Use Case
 
@@ -218,12 +219,24 @@ Current review (2026-09-18): FEAT-3488 is resolved and the suggestion/import imp
 
 Prior import prototype evidence: filtering non-dimension continuations reduced parser rejections from 490 of 3408 issue files to one wrapped routing field (`deferred_reason` in ENH-2738), which must remain rejected. Preserve the wrapped-title/block-scalar fixtures and routing-field rejection test.
 
+## Resolution
+
+**Completed** | 2026-09-18
+
+- `policy_builder_core.mjs`: `suggestScenarios`, `scenarioSemanticKey`, `extractIssueFrontmatter`, `dropNonDimensionContinuations`, `buildImportedScenario` (orchestration for import), `lifecycleDimensionSourceKeys`, `_nextUp`/`_nextDown`, `_serializeLifecycleFrontmatter`, `_suggestionSkips` (named skip reasons); bridge group `// FEAT-3503`.
+- `policy-router-builder.html.tmpl`: Suggest cases, lifecycle-only import controls + diagnostics, session-revision guard (`commit()`, snapshot restore, Open, read start) on both import and Open `FileReader`s, import input excluded from the delegated `change` listener.
+- Tests: `scripts/tests/js/policy_suggestions.test.mjs` (26 tests, incl. real-repo ENH-2738/BUG-1760 fixtures); golden HTML regenerated; browser probes extended (import fixed to switch mode, delayed-read import/Open, suggest idempotence) — 20/20 pass.
+- Docs: POLICY_ROUTER_GUIDE and CLI reference.
+- Not run: `ll-loop run .loops/verify-feat-3488-browser-persistence.yaml` end-to-end (LLM judge state); its probe script passes directly. `test_verify_evidence.py::test_no_new_unverifiable_evidence` fails on main independent of this change.
+
 ## Status
 
-**Open** | Created: 2026-09-17 | Priority: P3
+**Completed** | Created: 2026-09-17 | Priority: P3
 
 ## Session Log
 
+- `/ll:manage-issue` - 2026-09-18T17:22:32 - `b3d67e80-b716-4788-8cfa-960150f68449.jsonl`
+- `/ll:ready-issue` - 2026-09-18T17:02:00 - `9a7de89a-c3be-49f2-b361-e7e7af9fd3e1.jsonl`
 - `/ll:confidence-check` - 2026-09-18T16:55:48 - `1dd00bcd-82df-4b59-9698-5d10270eb77e.jsonl`
 - `/ll:verify-issues` - 2026-09-18T16:32:56 - `8bffa950-7522-4c88-bac6-c0f5c79c2f1a.jsonl`
 - manual review applied - 2026-09-18 - resolved blank-input dedup, separated fractional/discrete witness selection from boundary probes, coupled shared source fields, corrected quoted-null and numeric-key contracts, and consolidated superseded research; implementation and acceptance sections updated together

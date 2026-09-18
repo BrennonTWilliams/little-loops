@@ -226,7 +226,13 @@ confidence_score: 40"></textarea>
         <div class="row">
           <button id="add-scenario-btn" type="button" class="secondary">+ Scenario</button>
           <button id="run-all-btn" type="button">Run all</button>
+          <button id="suggest-scenarios-btn" type="button" class="secondary">Suggest cases</button>
+          <span id="import-controls">
+            <button id="import-issue-btn" type="button" class="secondary">Import issue file</button>
+            <input type="file" id="import-issue-input" accept=".md,text/markdown,text/plain" hidden />
+          </span>
         </div>
+        <p class="hint" id="import-diagnostics" role="status" aria-live="polite"></p>
         <p class="hint" id="scenario-summary">No scenarios yet.</p>
         <p class="hint" id="scenario-coverage"></p>
         <small class="help">Named cases you save and re-run offline — no skill, shell, or action ever executes.</small>
@@ -308,6 +314,25 @@ let state = seedExample();
 let drafts = {};
 let projectId = _newProjectId();
 let history = null;
+
+// FEAT-3503: monotonic session revision — incremented by commit(), snapshot
+// restoration, Open, and the start of every import/Open read. An asynchronous
+// FileReader completion is bound to the revision captured when it began and
+// is discarded if the revision has moved. `_latestReadToken` marks the most
+// recently started read so a superseded one is dropped silently (last
+// selection wins) while a read invalidated by an edit reports a diagnostic.
+let sessionRevision = 0;
+let _latestReadToken = 0;
+function _beginRead() {
+  sessionRevision += 1;
+  _latestReadToken = sessionRevision;
+  return sessionRevision;
+}
+// "current" | "superseded" | "stale"
+function _readStatus(token) {
+  if (token < _latestReadToken) return "superseded";
+  return token === sessionRevision ? "current" : "stale";
+}
 
 // FEAT-3488: `drafts[mode]` is the sole owner of `scenarios` — `state` stays
 // model-only. `scenarios` mirrors the *active* mode's saved suite; every
@@ -419,6 +444,7 @@ function currentProject() {
 // (non-keystroke) field edit — including scenario editors, since
 // #scenarios-fieldset is inside #form-panel and not excluded there.
 function commit() {
+  sessionRevision += 1;
   if (!history) return;
   drafts = { ...drafts, [state.mode]: { ...drafts[state.mode], model: state, scenarios } };
   history = applyDraftEdit(history, { type: "commit", activeMode: state.mode, drafts });
@@ -437,6 +463,7 @@ function updateUndoRedoButtons() {
 }
 
 function restoreFromSnapshot(snapshot) {
+  sessionRevision += 1;
   drafts = _deepClone(snapshot.drafts);
   const mode = snapshot.activeMode;
   const entry = drafts[mode];
@@ -1586,6 +1613,81 @@ $("add-scenario-btn").onclick = () => {
   commit();
 };
 
+// FEAT-3503: add every deterministic boundary suggestion not already present
+// (semantic-key dedup against all valid existing cases) as one committed edit.
+$("suggest-scenarios-btn").onclick = () => {
+  const model = buildModel();
+  const existing = new Set(
+    scenarios.map((sc) => scenarioSemanticKey(model, sc.input)).filter((k) => k != null)
+  );
+  const fresh = suggestScenarios(model).filter((sg) => !existing.has(sg.key));
+  if (!fresh.length) {
+    showLiveStatus("No new suggested cases to add.");
+    return;
+  }
+  for (const sg of fresh) {
+    scenarios.push({
+      id: _newScenarioId(),
+      name: `${sg.name} — ${sg.reason}`,
+      input: sg.input,
+      expectedTarget: null,
+      expectedRuleIndex: null,
+      expectedFallback: false,
+      expectedRulesFingerprint: null,
+    });
+  }
+  renderScenarios();
+  commit();
+  showLiveStatus(`Added ${fresh.length} suggested case${fresh.length === 1 ? "" : "s"}.`);
+};
+
+// FEAT-3503: import one local issue .md file as an unasserted lifecycle case.
+// The read is bound to the project, mode, and session revision captured here.
+$("import-issue-btn").onclick = () => { $("import-issue-input").click(); };
+$("import-issue-input").onchange = (e) => {
+  const file = e.target.files && e.target.files[0];
+  e.target.value = "";
+  if (!file || state.mode !== "issue_lifecycle") return;
+  const diag = $("import-diagnostics");
+  diag.textContent = "";
+  const token = _beginRead();
+  const boundMode = state.mode;
+  const boundProject = projectId;
+  const reader = new FileReader();
+  reader.onload = () => {
+    const status = _readStatus(token);
+    if (status === "superseded") return;
+    if (status === "stale" || state.mode !== boundMode || projectId !== boundProject) {
+      diag.textContent = "Import discarded: the project changed while the file was being read.";
+      return;
+    }
+    let imported;
+    try {
+      imported = buildImportedScenario(buildModel(), String(reader.result), file.name);
+    } catch (err) {
+      diag.textContent = err.message;
+      return;
+    }
+    scenarios.push({
+      id: _newScenarioId(),
+      name: imported.name,
+      input: imported.input,
+      expectedTarget: null,
+      expectedRuleIndex: null,
+      expectedFallback: false,
+      expectedRulesFingerprint: null,
+    });
+    renderScenarios();
+    commit();
+    diag.textContent = `Imported ${imported.name}.`;
+  };
+  reader.onerror = () => {
+    if (_readStatus(token) === "superseded") return;
+    diag.textContent = "Frontmatter: could not read the selected file.";
+  };
+  reader.readAsText(file);
+};
+
 $("run-all-btn").onclick = () => {
   const model = buildModel();
   lastSuiteRun = runScenarioSuite(model, scenarios);
@@ -1704,6 +1806,9 @@ function applyModeVisibility() {
   $("rules-fieldset").hidden = state.mode === "rubric";
   $("tryit-fieldset").hidden = state.mode !== "decision_table";
   $("frontmatter-tryit-fieldset").hidden = !isLifecycle;
+  // FEAT-3503: an issue file only means something as lifecycle input.
+  $("import-controls").hidden = !isLifecycle;
+  $("import-diagnostics").hidden = !isLifecycle;
   // #add-outcome is hidden in issue_lifecycle mode — the verb set is fixed;
   // no outcome can be added or removed.
   $("outcome-add-row").hidden = isLifecycle;
@@ -1814,7 +1919,10 @@ $("f-tmed").oninput = (e) => { state.thresholdMedium = Number(e.target.value); $
 // fieldset / #frontmatter-tryit-fieldset hold ephemeral sample values (not
 // part of the authored model) and are excluded.
 $("form-panel").addEventListener("change", (e) => {
-  if (e.target.closest("#tryit-fieldset, #frontmatter-tryit-fieldset")) return;
+  // FEAT-3503: the import file input is excluded too — selecting a file must
+  // push no history entry (a bubbled commit() would bump the revision and
+  // discard the import as stale).
+  if (e.target.closest("#tryit-fieldset, #frontmatter-tryit-fieldset, #import-issue-input")) return;
   commit();
 });
 
@@ -1903,8 +2011,17 @@ $("open-project-input").onchange = (e) => {
   const file = e.target.files && e.target.files[0];
   e.target.value = ""; // allow re-selecting the same file next time
   if (!file) return;
+  const token = _beginRead();
   const reader = new FileReader();
   reader.onload = () => {
+    // FEAT-3503: same revision guard as issue import — an edit, undo/redo,
+    // mode switch, preset, or a newer read since this one began discards it.
+    const status = _readStatus(token);
+    if (status === "superseded") return;
+    if (status === "stale") {
+      showLiveStatus("Open discarded: the project changed while the file was being read.");
+      return;
+    }
     let project;
     try {
       project = parseBuilderProject(String(reader.result));
@@ -1914,6 +2031,7 @@ $("open-project-input").onchange = (e) => {
       return;
     }
     project = withScenariosDefaulted(project);
+    sessionRevision += 1;
     projectId = project.projectId;
     drafts = project.drafts;
     state = drafts[project.activeMode].model;
