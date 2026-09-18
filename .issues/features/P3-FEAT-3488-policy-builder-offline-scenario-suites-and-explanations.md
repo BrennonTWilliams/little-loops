@@ -291,6 +291,7 @@ _Added by `/ll:confidence-check` on 2026-09-17_
 
 ## Session Log
 
+- `/ll:confidence-check` - 2026-09-18T00:23:18 - `5ba6e946-9d5c-4e37-bd48-7b8a54faec76.jsonl`
 - `/ll:verify-issues` - 2026-09-18T00:15:59 - `c3724569-9c0c-4b11-b776-659fcd33037c.jsonl`
 - manual review - 2026-09-17 - pre-implementation review applied: extracted suggestions + local issue import to FEAT-3503; added BUG-3502 to `blocked_by`; pinned routing-relevant "invalid model" definition, `ruleIndex === -1` as the derived-fallback discriminator (`isFallback` also true for authored catch-alls), integer rubric aggregate domain, template-owned scenario ID insertion with per-case duplicate-ID errors instead of structural rejection, subset validation inside `parseFrontmatterBlock` with fixtures in `js_reject_cases`, new `policy_scenarios.test.mjs`; probe assets un-ignored and the sibling-metadata fixture corrected. Frontmatter scores not recomputed.
 - `/ll:verify-issues` - 2026-09-17T22:18:30 - `d2636fcf-cc12-43a6-bcc7-a9b3292ab5bf.jsonl`
