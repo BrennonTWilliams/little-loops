@@ -26,6 +26,12 @@ spike_attempted: true
 spike_completed: false
 decision_needed: false
 reconcile_attempted: true
+confidence_score: 100
+outcome_confidence: 73
+score_complexity: 16
+score_test_coverage: 22
+score_ambiguity: 20
+score_change_surface: 15
 ---
 
 # FEAT-3498: Policy builder host-approved run requests (queue/loop contracts)
@@ -297,6 +303,7 @@ Proposal-vs-code consequence check (B6): no defect found. The v4 schema-migratio
 **Open** | Created: 2026-09-17 | Priority: P3
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-18T02:40:10 - `41eda363-777e-4fc4-afbb-07ff19e7dfa2.jsonl`
 - manual review - 2026-09-17 - split page/serve/transport half into FEAT-3504; fixed `issue_id` binding (positional JSON would not bind a required parameter — use `--context issue_id=`); pinned `_dispatch_claimed` factoring and `_run_loop_entry(entry)` signature; dropped vacuous `reset_to_pending` approval branch; absolute `runDir` in metadata; short revision filename; `.gitignore` entry
 - `/ll:verify-issues` - 2026-09-18T01:26:23 - `eff5f7b6-7e2a-4e3b-9ab1-2c3de2810754.jsonl`
 - manual review - 2026-09-17 - merged duplicate Program Design sections; pinned approval-durability/retry rules, v4 schema + partial unique index, `--id`/`--approve` semantics, LOOP cwd/timeout, metadata-channel thread/flag design, `write_bytes` persistence; clarified FEAT-3488 block as merge-ordering only
