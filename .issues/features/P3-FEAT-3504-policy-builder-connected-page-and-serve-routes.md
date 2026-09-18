@@ -17,6 +17,12 @@ relates_to:
 - ENH-3491
 - ENH-3492
 - BUG-3490
+confidence_score: 85
+outcome_confidence: 64
+score_complexity: 10
+score_test_coverage: 18
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 # FEAT-3504: Policy builder connected page and serve routes
@@ -233,7 +239,24 @@ Verdict at time of check: **VALID** (2026-09-18 `/ll:verify-issues --auto`; no c
 **Open** | Created: 2026-09-18 | Priority: P3
 
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-18_
+
+**Readiness Score**: 85/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 64/100 → MODERATE
+
+### Concerns
+- Criterion 4 capped at 10: `format-check` flags `ll-artifact serve --policy-builder` as `stale_cli_flag`. Advisory only — the flag is introduced by this issue, so it cannot resolve yet.
+- Four conventions have no in-repo precedent (JSON error body, `{name}` path-param matcher, disabled-with-reason controls, JS/Python SHA-256 parity); the bare-token redirect vs. `LocalBridgeTransport` prefix handling is still un-unified.
+
+### Outcome Risk Factors
+- Deep per-site complexity: `SseBridge` method-aware dispatch and a stateful page (freeze/persist/guard/poll/token-rotation) touch shared state across several functions.
+- Broad enumeration across ~7 code files plus 5 doc files; the stateful `.tmpl` page wiring has the thinnest automated coverage (Node gate covers `.mjs` only).
+
 ## Session Log
+- `/ll:confidence-check` - 2026-09-18T22:07:29 - `89462603-1252-4507-b232-c85a163bfde9.jsonl`
+- `/ll:verify-issues` - 2026-09-18T21:59:57 - `bc5bab11-9b54-483b-9d88-6c04ae5945bc.jsonl`
 - `/ll:ready-issue` - 2026-09-18T21:05:48 - `07c743d4-fb4d-457c-985e-2bfb140d83ca.jsonl`
 - `/ll:verify-issues` - 2026-09-18T16:33:37 - `8bffa950-7522-4c88-bac6-c0f5c79c2f1a.jsonl`
 - manual review applied - 2026-09-18 - moved existing-request recovery ahead of mutable creation checks; specified full-envelope freezing/persistence and async guards, token-rotation/new-URL recovery, workspace storage isolation, --policy-builder flag, and transport/application error boundary; updated tests, design, steps, and acceptance criteria together
