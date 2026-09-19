@@ -34,10 +34,10 @@ Two secondary gaps compound it: it stores only `(loop_name, current_state, ts)` 
 
 ## Impact
 
-- **Priority**: [P0-P5] - [Justification]
-- **Effort**: [Small/Medium/Large] - [Justification]
-- **Risk**: [Low/Medium/High] - [Justification]
-- **Breaking Change**: [Yes/No]
+- **Priority**: P2 - Silent data loss: ~92% of loop history never reaches `loop_events`, skewing any loop analytics built on it
+- **Effort**: Small - One function (`_backfill_loops`) plus a dedup index/check
+- **Risk**: Low - Backfill-only path; `INSERT OR IGNORE` keeps re-runs idempotent
+- **Breaking Change**: No
 
 ## Steps to Reproduce
 
@@ -49,13 +49,33 @@ Two secondary gaps compound it: it stores only `(loop_name, current_state, ts)` 
 
 `directory.glob("*.json")` is non-recursive, but completed runs live one directory deeper under `.loops/.history/<run>/state.json`.
 
-## Proposed Fix
+## Proposed Solution
 
 1. Replace the flat `glob("*.json")` with a recursive walk — e.g. `loops_dir.rglob("state.json")`, or iterate `.history/*/state.json` explicitly alongside `.running/*.state.json`.
 2. Extract the full state: `current_state`, the `captured` dict, and `iteration`.
 3. Dedupe on `(loop_name, ts)` (or the state-file path) — e.g. a UNIQUE index + `INSERT OR IGNORE`, or a pre-existence check.
 4. Re-run `ll-session backfill` to ingest the completed runs.
 
+## Program Design
+
+### Types
+
+- `state_file: Path` — a `.running/*.state.json` or `.history/<run>/state.json` file
+- `data["captured"]: dict[str, dict]` — per-state `output`/`exit_code`/`duration_ms`
+
+### Signatures
+
+- `_backfill_loops(conn: sqlite3.Connection, loops_dir: Path) -> int` — walks both dirs, `INSERT OR IGNORE`, returns rows inserted
+- `_iter_loop_state_files(loops_dir: Path) -> Iterator[Path]` — yields `.running/*.state.json` then `.history/*/state.json`
+
+### Call Path
+
+`backfill` (session_store/lifecycle.py) -> `_backfill_loops` -> `_iter_loop_state_files` -> `_index`
+
 ## Status
 
 **Open** | Created: 2026-09-19 | Priority: P2
+
+
+## Session Log
+- `/ll:format-issue` - 2026-09-19T23:02:59 - `f7716757-cc12-4f9f-9358-3ee432f01464.jsonl`
