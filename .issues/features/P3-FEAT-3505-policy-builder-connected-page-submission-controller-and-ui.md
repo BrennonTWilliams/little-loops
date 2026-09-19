@@ -19,11 +19,11 @@ relates_to:
 - FEAT-3498
 - FEAT-3503
 - ENH-3487
-confidence_score: 95
-outcome_confidence: 64
+confidence_score: 90
+outcome_confidence: 66
 score_complexity: 10
 score_test_coverage: 18
-score_ambiguity: 18
+score_ambiguity: 20
 score_change_surface: 18
 missing_artifacts: true
 ---
@@ -240,10 +240,13 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-09-18_
+_Updated by `/ll:confidence-check` on 2026-09-18 (re-run)_
 
-**Readiness Score**: 95/100 → PROCEED
-**Outcome Confidence**: 64/100 → MODERATE
+**Readiness Score**: 90/100 → STOP — ADDRESS GAPS (Dependencies Hard Override)
+**Outcome Confidence**: 66/100 → MODERATE (clears 65 gate)
+
+### Gaps to Address
+- Unresolved `blocked_by`: `ENH-3506 (open)` — design-token/theme parity work that this issue's new CSS and its parity pytest depend on (FEAT-3504 is completed). Land ENH-3506 first, or drop it from `blocked_by` if the token dependency no longer applies.
 
 ### Concerns
 - ~~Terminal queue status set not verified~~ — **resolved 2026-09-19**: equals `QUEUE_TERMINAL_STATUSES = {done, failed, dead_letter, cancelled}` (`queue_store.py:187`); `QUEUE_STATUSES` adds `pending`, `running`, `awaiting_approval`.
@@ -257,6 +260,7 @@ _Added by `/ll:confidence-check` on 2026-09-18_
 - Test infrastructure for fake `fetch`/timers/`AbortController`/`crypto.subtle` does not exist yet and must be built alongside the controller.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-19T01:19:27 - `cf4adcf7-d6e9-48b2-bbbd-604a08a5e678.jsonl`
 - `/ll:confidence-check` - 2026-09-19T00:55:57 - `5ee7867c-50c0-4d83-996d-3e02625b05e3.jsonl`
 - `/ll:wire-issue` - 2026-09-19T00:54:02 - `11fbe36a-230e-4c61-845b-8c1fb6ba2d32.jsonl`
 - `/ll:refine-issue` - 2026-09-19T00:47:56 - `2114fa22-5111-44f1-a4b4-c86114783c2c.jsonl`
