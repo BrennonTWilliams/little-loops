@@ -52,7 +52,7 @@ Add an **accessibility** row for the connected controls, which no issue owns (EN
 
 Record every finding in `## Audit Findings`, including severity, user impact, and evidence. Search existing issues before filing follow-ups. Reuse an issue that already owns the root cause; otherwise use `ll-issues create`, then `ll-issues link <ID> --relates-to ENH-3500`. File **one issue per root cause**, grouping observations that share a fix (e.g. one empty-state pattern missing in all three modes is one issue), not one per table row. Each follow-up must include reproduction steps, expected presentation, and a link to the relevant audit evidence.
 
-FEAT-3505 introduced new design-token references and possibly hardcoded colors; check them here using ENH-3506's method (diff the rendered `:root`/`[data-theme=dark]` blocks against the active profile), since ENH-3506 covers only the pre-FEAT-3505 template. ENH-3506's template-ref parity pytest should already keep new refs resolving; this pass checks the visual result. **Scope bound**: the template carries ~66 hex/`rgba()` literals, most of them pre-FEAT-3505 and already ENH-3506's territory — check only literals on lines FEAT-3505 added (`git diff 1d899c076^ 1d899c076 -- scripts/little_loops/templates/policy-router-builder.html.tmpl`), not the whole file.
+FEAT-3505 introduced new design-token references and possibly hardcoded colors; check them here using ENH-3506's method (diff the rendered `:root`/`[data-theme=dark]` blocks against the active profile), since ENH-3506 covers only the pre-FEAT-3505 template. ENH-3506's template-ref parity pytest should already keep new refs resolving; this pass checks the visual result. **Scope bound**: the template carries roughly 70 hex/`rgba()` literals (a loose grep counts 74), most of them pre-FEAT-3505 and already ENH-3506's territory — check only literals on lines FEAT-3505 added (`git diff 1d899c076^ 1d899c076 -- scripts/little_loops/templates/policy-router-builder.html.tmpl`), not the whole file.
 
 No emitted-YAML or runtime-behavior change is in scope for this issue (see Out of Scope) — only presentation.
 
@@ -98,9 +98,9 @@ The response contracts above are grounded in `classifyPost` and the submission v
 Observed in the template on 2026-09-19; the audit confirms or refutes each as an inconsistency:
 
 - **Empty states**: only scenarios have one ("No scenarios yet.", `#scenario-summary`); rules, dimensions, and outcomes lists render nothing when empty.
-- **Disabled controls**: ~10 bare `.disabled = …` sites (undo/redo, delete-outcome when in use, rule up/down, value input for boolean ops, copy/download on error, expected-rule-index, connected Review/Submit/Refresh) and **zero** `aria-disabled`/`aria-describedby`. Only the connected surface shows a reason (`#conn-unavailable`); e.g. delete-outcome disabled-when-in-use shows none.
+- **Disabled controls**: ~13 bare `.disabled = …` sites (undo/redo, delete-outcome when in use, rule up/down, value input for boolean ops, copy/download on error, expected-rule-index, connected Review/Submit/Refresh) and **zero** `aria-disabled`/`aria-describedby`. Only the connected surface shows a reason (`#conn-unavailable`); e.g. delete-outcome disabled-when-in-use shows none.
 - **Hierarchy**: one `h1`, fieldset `<legend>`s for the left column, and two `h2`s ("Result", "Submit to host") with inline `font-size:1rem` styles. "Try it" is used as the legend of two different fieldsets (lines 258, 264).
-- **Status/error presentation**: `is-error`/`is-warning`/`is-success` classes (connected status, lines 171-173, 2275) coexist with a separate bare `"error"` class used at ~6 sites (1302, 1657, 1796, 1807, 2211, 2244).
+- **Status/error presentation**: two class vocabularies coexist — `is-error`/`is-warning`/`is-success` (connected status only, CSS lines 171-173, applied at 2275) and `msg-error`/`msg-warn`/`msg-ok` (Result diagnostics and scenario results, CSS lines 161-163, applied at e.g. 1302, 1309, 1317, 1320, 1657). No bare `"error"` class exists; lines 1796/1807/2211/2244 only test `severity === "error"`/`status === "error"` and emit no class. Audit whether the split is a real inconsistency.
 - **Live regions**: two — `#import-diagnostics` and `#live-status` (both `role="status"`, `aria-live="polite"`); check which messages go to which and whether errors should be assertive.
 
 ### Codebase Research Findings
@@ -206,12 +206,22 @@ Verdict at time of check: **NEEDS_UPDATE** (the stale `blocked_by` and prose wer
 
 Remaining: none from this pass — `blocked_by` cleared and stale prose refreshed on 2026-09-19. Run `/ll:confidence-check` before implementation.
 
+_Re-verified 2026-09-19 (`/ll:verify-issues --auto`, after the audit-methodology expansion)_
+
+Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the same pass, so the issue as it now reads is up to date — this section is a record of what was wrong and fixed, not an outstanding action item)
+
+- **Baseline Conventions, status/error classes — inaccurate, fixed**: the "bare `"error"` class at ~6 sites (1302, 1657, 1796, 1807, 2211, 2244)" claim was false. Those sites use `msg-error`/`msg-warn`/`msg-ok` (1302, 1657) or only test severity/status strings (1796, 1807, 2211, 2244). The real inconsistency is two vocabularies (`is-*` vs `msg-*`); rewritten accordingly.
+- **Counts refreshed**: `.disabled =` sites are 13 (was "~10"); `aria-disabled`/`aria-describedby` remain 0 (accurate). Hex/`rgba()` literals ~70 (was "~66"; grep is loose).
+- **Confirmed accurate**: probe files `enh-3506-theme-probes.mjs`, `enh-3507-served-page-probes.mjs`, `feat-3488-browser-probes.mjs` and their `verify-*.yaml` loops exist; `enh-3500-*` artifacts are correctly not yet created; commit `1d899c076` exists and touches the template; "Try it" legends at 258/264; h1 179, h2 at 311/332 with inline `font-size:1rem`; live regions at 283/323; `#mode-switch` 181, `#conn-unavailable` 333, `#conn-again-btn` 345, `#connected-panel` 331; `classifyPost` and `warningsUnavailable` in `policy_builder_core.mjs`; `stubReadback`/`rbBody` in the 3507 probe; only "No scenarios yet." empty state.
+- Checks run: evidence quotes (`ll-verify-evidence`: clean), decisions rules (none active/required), proposal-vs-code (audit-only, no conflict). Graph: provider=`codegraph` freshness=`fresh` (not needed for any verdict).
+
 ## Status
 
 **Open** | Created: 2026-09-17 | Priority: P3
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-19T19:03:47 - `2f3560fe-f5c4-46f3-b647-99fef1b0cd77.jsonl`
 - `/ll:confidence-check` - 2026-09-19T18:45:23 - `3835f63e-f729-4db6-8d3d-bc4b71a041a3.jsonl`
 - `/ll:verify-issues` - 2026-09-19T15:15:38 - `7ee9c824-60e2-4758-b5c9-b9c5467b1552.jsonl`
 - `/ll:wire-issue` - 2026-09-17T20:36:27 - `09ec3a0b-aab2-4bb6-8cae-e9097652c9fa.jsonl`
