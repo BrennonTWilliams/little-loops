@@ -45,6 +45,18 @@ _Added by `/ll:refine-issue` — 2026-09-19 — based on codebase analysis:_
 4. If Option A is chosen: migration dedups before creating the index, `SCHEMA_VERSION`, `schema_manifest.json` and literal-version test assertions move together.
 5. Gates: `python -m pytest scripts/tests/test_session_store_lifecycle.py scripts/tests/test_session_store_schema.py scripts/tests/test_session_store_writers.py -v`, `ruff check scripts/`, `python -m mypy scripts/little_loops/`.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Derive `loop_name` in `_backfill_loops` (`writers.py:3371`) from the state file's `loop_name` field, falling back to the run-folder name via `persistence._parse_run_folder` — the current `state_file.stem` fallback yields `"state"` for `.history/*/state.json` and `"<loop>.state"` for `.running/*.state.json`
+- Keep `.running` matching `*.json` (not `*.state.json`) so the existing `test_backfill_loops` fixture (`docs-sync.json`) still passes
+- Gate the `_index` call (`writers.py:3379`) on the pre-existence check so re-runs add no `search_index` rows
+- Update `tests/test_session_store_lifecycle.py` — extend `TestBackfill.test_backfill_loops`; add `TestBackfillLoopsLayouts` (three layouts, double-run idempotency, live-row non-collision, malformed file)
+- Update `cli/session.py:main_session` only if `counts["loops"]` semantics change and the headline total wording needs adjusting
+- Update `docs/reference/EVENT-SCHEMA.md`, `docs/reference/CLI.md` (`ll-session backfill` loop-history wording) and fix the stale `_backfill_loop_events` docstring in `observability/schema.py:755`
+- Add CHANGELOG entry in a concrete version section during release prep
+
 ## Impact
 
 - **Priority**: P2 - Silent data loss: ~92% of loop history never reaches `loop_events`, skewing any loop analytics built on it
@@ -121,6 +133,31 @@ _Added by `/ll:refine-issue` — 2026-09-19 — based on codebase analysis:_
 - Constraint: `(loop_name, ts)` alone is not a safe unique key — live `loop_events` rows for one loop can share a `ts` across different `transition`/`state` values, and `ts` may be `""` when a state file lacks `updated_at`/`started_at`. State files carry `status` (`running`/`interrupted`/completed…), so a `.running` file and its later `.history` archive describe the same run at different times and produce different `ts`.
 - Documentation: `docs/reference/CLI.md` (`ll-session backfill`, lines ~4077, 4149-4163, 4241-4244), `docs/guides/HISTORY_SESSION_GUIDE.md`, `docs/ARCHITECTURE.md` mention `loop_events`.
 
+### Dependent Files (Callers/Importers)
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/session_store/lifecycle.py` — line 44 imports `_backfill_loops`; only call is `backfill()` (line 1102). `session_store/__init__.py` does not re-export it, and no test imports it by name (reached only via `backfill()`) [Agent 1]
+- `scripts/little_loops/cli/session.py:main_session` — `total = sum(counts.values())` (~791) feeds the headline "Backfilled {total} rows"; changing `counts["loops"]` from files-processed to rows-inserted (or ingesting ~1294 more files) changes that total. Keep `_backfill_loops -> int` [Agent 2]
+- `scripts/little_loops/session_store/writers.py:_record_event` (~2940-2955) — live writer into the same `loop_events`/`search_index` kind `loop`; source of the live rows the scoped `transition='backfill'` check must not collide with [Agent 1, 2]
+- `scripts/little_loops/session_store/queries.py` (`recent`, ~76-80; `_EXPORT_TABLE_MAP["loop_event"]`, ~94) — reads `loop_events` with no `transition` filter and orders `recent` by `id`, so backfilled historical rows interleave by insertion order and `ll-session recent --kind loop` / export volume grows; no code change needed [Agent 2]
+- `scripts/little_loops/fsm/persistence.py:_parse_run_folder` (line 131) / `_RUN_FOLDER` and `list_run_history` (line 1571) — reuse for the `<run_id>-<loop_name>` folder split rather than a third regex (the duplicate `_HISTORY_RUN_RE` in `cli/logs.py:53` exists already); `cli/loop/next_loop.py:50` also imports `_parse_run_folder` [Agent 1]
+- No `.loops/` YAML, hook, skill or command consumes `ll-session backfill` output or `counts["loops"]` (grep of the CLI string found only prose and run-log artifacts) [Agent 2]
+
+### Tests
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_session_store_lifecycle.py::TestBackfill.test_backfill_loops` (line 73) — fixture writes `.running/docs-sync.json` (NOT `*.state.json`); the fix must keep matching `*.json` under `.running` or this test's `counts["loops"] == 1` (line 81) drops to 0 [Agent 3]
+- `scripts/tests/test_session_store_lifecycle.py` — add `TestBackfillLoopsLayouts` beside `TestBackfillDedup`: running layout, flat `.history/<run_id>-<loop>/state.json`, legacy `.history/<loop>/<run_id>/state.json`, double `backfill()` → single `loop_events` row and single `search_index` row (`search(..., kind="loop")` twice), pre-seeded live `SQLiteTransport` row with the same `(loop_name, ts)` but `transition != 'backfill'` is not suppressed, malformed/empty `state.json` skipped, `_iter_loop_state_files` unit tests. Idempotency pattern to copy: `TestBackfillDedup.test_double_backfill_produces_single_row`, `TestBackfillMessages.test_backfill_corrections_idempotent` (line 422) [Agent 3]
+- Fixture builders to reuse: real `StatePersistence("test-loop", tmp_loops_dir)` with `initialize()` / `save_state()` / `archive_run()` (`scripts/tests/test_fsm_persistence.py:532`, `_make_state()`) for the flat layout; legacy layout is hand-built in `scripts/tests/test_ll_logs.py::test_collect_loop_runs_legacy_nested_layout` (line 5582) but writes `events.jsonl`, so add a `state.json` [Agent 3]
+- `scripts/tests/test_session_store_lifecycle.py::TestBackfillUsageEvents` (`test_run_id_backfilled_from_unambiguous_loop_run_window`, `..._stays_null_*`, `test_run_id_backfill_idempotent_on_rerun`) and `TestRebuild.test_rebuild_does_not_touch_out_of_scope_tables` (~line 1713) — touch `loop_events`; re-run to confirm the added `transition='backfill'` rows don't perturb them [Agent 3]
+- `scripts/tests/test_ll_session.py` (lines 318, 336, 364, 742, 766, 820, 1157) — mock `backfill()` and hard-code `"loops": 0`; insulated unless `cli/session.py` output format changes. Optional: one unmocked CLI test against a tmp `.loops` tree (none exists today) [Agent 3]
+- Under Option B no `SCHEMA_VERSION` / `test_session_store_schema.py` literal-version edits are needed [Agent 2]
+
+### Documentation
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/EVENT-SCHEMA.md:~2069` — states `loop_events.state` uses the `map_final_status()` bucket (BUG-3066); reconcile if backfill now records terminal/`status`-derived state [Agent 2]
+- `docs/reference/API.md` (~lines 9043, 10179) — long lines mentioning `loop_events`/backfill; verify by hand [Agent 2]
+- `scripts/little_loops/observability/schema.py:755` — docstring cites nonexistent `_backfill_loop_events`; update to `_backfill_loops` [Agent 2]
+- `CHANGELOG.md` — new entry goes in a concrete `## [X.Y.Z]` section, not `[Unreleased]` [Agent 2]
+
 ## Program Design
 
 ### Types
@@ -143,6 +180,7 @@ _Added by `/ll:refine-issue` — 2026-09-19 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-19T23:27:50 - `4f20c1d3-a8db-42b4-9c73-8f8aaa3aa2fe.jsonl`
 - `/ll:decide-issue` - 2026-09-19T23:22:42 - `d4660828-e0d9-40c0-89b8-9bbf5b5e050f.jsonl`
 - `/ll:refine-issue` - 2026-09-19T23:17:05 - `4f31a004-1b37-455a-97b4-0a7a1b1424a6.jsonl`
 - `/ll:format-issue` - 2026-09-19T23:02:59 - `f7716757-cc12-4f9f-9358-3ee432f01464.jsonl`
