@@ -1,12 +1,14 @@
 ---
 id: ENH-3506
 type: ENH
-title: Policy builder design-token and theme parity audit
+title: Policy builder design-token and theme parity audit and fix
 priority: P3
 status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-09-18'
 captured_at: '2026-09-18T23:50:20Z'
+blocks:
+- FEAT-3505
 relates_to:
 - ENH-3500
 - ENH-3491
@@ -20,11 +22,11 @@ score_ambiguity: 18
 score_change_surface: 25
 ---
 
-# ENH-3506: Policy builder design-token and theme parity audit
+# ENH-3506: Policy builder design-token and theme parity audit and fix
 
 ## Summary
 
-Verify that the policy-router builder's shipped authoring modes consume design tokens correctly under both `light` and `dark` themes, by diffing the rendered CSS custom-property blocks against the active token profile and flagging hardcoded values that bypass a token. Split from ENH-3500 (Scope §1) on 2026-09-18 so it can run now: ENH-3500's remaining holistic UX audit is blocked on FEAT-3505, and nothing here depends on it. Deliverable is audit findings filed as follow-up issues, not fixes.
+Verify that the policy-router builder's shipped authoring modes consume design tokens correctly under both `light` and `dark` themes, by diffing the rendered CSS custom-property blocks against the active token profile and flagging hardcoded values that bypass a token. Split from ENH-3500 (Scope §1) on 2026-09-18 so it can run now: ENH-3500's remaining holistic UX audit is blocked on FEAT-3505, and nothing here depends on it. Rescoped 2026-09-19 from audit-only to audit **and fix**: the refine pre-check below already completed the audit (15 of the template's 18 `var(--…)` names never resolve, re-verified 2026-09-19), so filing up to 15 follow-ups would cost more than fixing. Deliverable is the corrected template, a permanent regression test, and the two verdicts (worktree stopgap, `ll-doctor` companion). Sequenced **before FEAT-3505** so its new connected UI is built on resolving token names and the golden fixture is regenerated serially, not concurrently.
 
 ## Current Behavior
 
@@ -32,7 +34,7 @@ Design-token and dark/light usage in the builder is unverified against real rend
 
 ## Expected Behavior
 
-Design-token and dark/light theme usage in the shipped builder template is confirmed correct (not just passing the golden-fixture byte-match), with each confirmed drift filed as a follow-up ENH carrying the file/selector and expected vs. actual value. The findings also state whether the `worktree_utils.py` stopgap is still needed and whether `ll-doctor`'s design-token check needs a template-aware companion.
+Design-token and dark/light theme usage in the shipped builder template is correct (not just passing the golden-fixture byte-match): every `var(--name, …)` the template references is declared in the rendered `:root` and `[data-theme=dark]` blocks, so dark theme renders dark values instead of light-valued fallbacks, and a pytest keeps it that way. The findings also state whether the `worktree_utils.py` stopgap is still needed and whether `ll-doctor`'s design-token check needs a template-aware companion.
 
 ## Motivation
 
@@ -40,7 +42,17 @@ There is a concrete signal that token usage is fragile: ENH-3491's notes flagged
 
 ## Proposed Solution
 
-Audit, not a code change in itself. Render once with `ll-artifact policy-builder` (mode switching is client-side, and one render embeds both themes' CSS blocks), parse the `:root{...}` (light) and `[data-theme=dark]{...}` (dark) blocks, and diff each against `.ll/design-tokens/profiles/<active-profile>/` resolved values. Flag any hardcoded color/spacing value in the template's inline `<style>` that bypasses a token, and any `var(--token, <fallback>)` whose token never resolves (silently relying on the fallback). File one follow-up ENH per confirmed drift, tagged `relates_to: [ENH-3506, ENH-3500]`.
+### Fix (rescoped 2026-09-19)
+
+1. **Rename template refs to tokens that exist** (CSS name = `--` + dotted key with `.`→`-`): `--color-surface-base` → `--color-surface-primary`; `--color-surface-sunken` → `--color-surface-secondary`; `--color-text-on-sunken` → `--color-text-secondary`; `--color-border-default` → `--color-border-subtle` (use `--color-border-strong` where the current fallback is the darker literal); `--color-action-primary-text` → `--color-text-inverse`; `--typography-font-family-base` → `--font-family-body`; `--typography-font-family-mono` → `--font-family-mono`. Confirm each mapping visually in both themes; normalize the inconsistent fallback literals (`#ffffff` vs `#fff`, `#d0d0d0` vs `#ccc`) to one value per token while there.
+2. **Status colors — decision: add a semantic `color.status.{success,warning,error,info}.{bg,text}` group** to `semantic.json` plus `themes/{light,dark}.json` overrides in every packaged profile (`default`, `editorial-mono`, `warm-paper`) and this checkout's `.ll/design-tokens/` mirror. Rationale: no status group exists, and primitives are profile-specific (`danger-*`/`warning-*`/`success-*` plus `paper-*`/`terracotta-*` in `warm-paper`), so the template cannot reference primitives portably; the template keeps its `--color-status-*` names. `test_ambient_mirror_matches_packaged_profiles` and `lint_profile()` theme completeness must stay green.
+3. **Permanent regression test**: extract every `var(--x` ref from `policy-router-builder.html.tmpl` and assert each is declared in both blocks of `render_policy_builder_html(config)` output, parameterized over all packaged profiles, config-isolated (`monkeypatch.chdir(tmp_path)` + `_make_config`). Skip the dark-block assertion's value-difference check when `design_tokens.source == "design_md"`.
+4. Regenerate the golden fixture once (verify before overwriting, BUG-2303 advisory); correct any "honors `active_theme`" doc claims the fix changes.
+5. Spacing/radius literals (radii, borders, rem paddings) are **out of scope** — no token refs exist for them today; note as a possible follow-up only.
+
+### Audit method (completed by the pre-check; retained for the verdicts)
+
+Render once with `ll-artifact policy-builder` (mode switching is client-side, and one render embeds both themes' CSS blocks), parse the `:root{...}` (light) and `[data-theme=dark]{...}` (dark) blocks, and diff each against `.ll/design-tokens/profiles/<active-profile>/` resolved values. Flag any hardcoded color/spacing value in the template's inline `<style>` that bypasses a token, and any `var(--token, <fallback>)` whose token never resolves (silently relying on the fallback). Drift is fixed in this issue (see Fix above); file a follow-up only for something out of scope (e.g. spacing/radius tokens), tagged `relates_to: [ENH-3506, ENH-3500]`.
 
 No emitted-YAML or runtime-behavior change is in scope — only presentation.
 
@@ -62,14 +74,16 @@ _Added by `/ll:refine-issue` — 2026-09-19 — based on codebase analysis:_
 ### Files to Modify
 - `scripts/little_loops/templates/policy-router-builder.html.tmpl` — the single shared HTML template whose inline `<style>` block consumes design tokens via `var(--token-name, <fallback>)` (lines 18-27, 65, 111-113); primary target for token/theme audit
 - `scripts/little_loops/templates/policy_builder_core.mjs` — the single shared, DOM-free JS module implementing all three authoring modes (`decision_table`, `rubric`, `issue_lifecycle`) via client-side `<select id="mode-switch">`; has zero token/CSS-variable references and only toggles the `data-theme` attribute, so it is out of scope for the token audit itself (FEAT-3488's additions extended, and FEAT-3505's are expected to extend, these same two shared files rather than adding per-mode fragments)
-- No source files are expected to change for the audit itself; any drift found is filed as a follow-up ENH rather than fixed inline here
+- `scripts/little_loops/templates/design-tokens/profiles/{default,editorial-mono,warm-paper}/{semantic.json,themes/light.json,themes/dark.json}` (+ the gitignored `.ll/design-tokens/` mirror) — add the `color.status.*` group
+- `scripts/tests/fixtures/policy_builder/golden_policy_router_builder.html` — regenerate once
+- New pytest (template-ref-vs-declared parity), alongside `test_enh3035_artifact_template_kit.py`
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/worktree_utils.py:687-713` — copies `.ll/design-tokens` into epic-verify worktrees as a stopgap for the golden-fixture test's token dependency; this issue determines whether that stopgap is still needed once token usage is verified correct
 - `.ll/design-tokens/profiles/<active-profile>/{primitives.json, semantic.json, typography.json, spacing.json, themes/{light,dark}.json}` — the token source of truth the audit diffs rendered output against (theme-independent `semantic`/`typography`/`spacing` layers merged with the theme-specific `themes/<theme>.json` override, resolved against `primitives.json`)
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/little_loops/artifact_templates.py:315-317` — `build_ll_namespace()` calls `themed_css_vars()` when a template manifest declares `theme: design-tokens`; generic artifact-templating path (not policy-builder-specific — policy-builder calls `themed_css_vars` directly via `policy_builder.py:68`), but a future fix to `themed_css_vars()` itself would ripple here too [Agent 1 finding]
+- `scripts/little_loops/artifact_templates.py:315-317` — `build_ll_namespace()` calls `themed_css_vars()` when a template manifest declares `theme: design-tokens`; generic artifact-templating path (not policy-builder-specific — policy-builder calls `themed_css_vars` directly via `policy_builder.py:79`), but a future fix to `themed_css_vars()` itself would ripple here too [Agent 1 finding]
 - `scripts/little_loops/cli/artifact/templatize.py:945-949` — `_themed_css_vars()`, a "thin patchable wrapper" over `themed_css_vars()` used by `ll-artifact templatize`'s lift tooling; same generic-consumer caveat as above [Agent 1 finding]
 - `scripts/little_loops/cli/doctor.py:1095-1105` — `_full_design_tokens_check()` (`@register_full_check`) is a live `ll-doctor` gate calling `lint_profiles_dir()` (built on `lint_profile()`, the same theme-JSON-completeness checker that never reads `.html.tmpl`/`.mjs`); it surfaces "half-flipped themes" as an error-severity check, separate from the epic-verify golden-fixture gate already listed above — audit findings should note whether this doctor check also needs a template-aware companion [Agent 1 + Agent 2 finding]
 
@@ -114,7 +128,6 @@ _Second wiring pass added by `/ll:wire-issue`:_
 - `docs/ARCHITECTURE.md:1066,1070` and `docs/reference/CLI.md:493,5327` — long lines matching the theming symbols; likely further "honors active_theme" claims, read directly before filing doc-correction follow-ups [Agent 1 + Agent 2 finding]
 
 ### Configuration
-- N/A or list config files
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/config-schema.json:1974-1983` — `design_tokens.active` (profile selector, default `"default"`) is the key the audit must diff against (`.ll/design-tokens/profiles/<active>/`), distinct from `design_tokens.active_theme` (default `"dark"`), which only sets the initial `data-theme` attribute and does not gate which theme's values get rendered — both light and dark CSS blocks are always rendered from the one active profile [Agent 2 finding]
@@ -147,8 +160,9 @@ _Added by `/ll:refine-issue` — 2026-09-19 — based on codebase analysis:_
 
 1. Enumerate the design tokens `policy-router-builder.html.tmpl`'s inline `<style>` block references via `var(--token-name, <fallback>)`; confirm each resolves through `.ll/design-tokens/profiles/<active-profile>/` (merged `semantic.json`/`typography.json`/`spacing.json` + `themes/<theme>.json`, resolved against `primitives.json`) rather than relying on the hardcoded fallback.
 2. Run a single `ll-artifact policy-builder` render (mode switching is client-side, so one render covers all three authoring modes); parse the output's two embedded CSS blocks (`:root{...}` for light, `[data-theme=dark]{...}` for dark, stamped in by `stamp_page_shell()`) and diff each block's resolved values against the corresponding theme's expected token values.
-3. File one follow-up ENH per confirmed token/theme drift, with the specific file/selector and expected vs. actual value.
-4. State in the findings whether the `worktree_utils.py:687-713` stopgap is still needed and whether `_full_design_tokens_check()` needs a template-aware companion; close this issue once findings are filed.
+3. Apply the Fix (Proposed Solution §Fix 1–2) test-first: write the parity pytest (red), rename the refs, add `color.status.*` to all packaged profiles and the mirror (green).
+4. Regenerate the golden fixture after verifying the render in both themes; update doc claims if needed.
+5. State in the findings whether the `worktree_utils.py:687-713` stopgap is still needed and whether `_full_design_tokens_check()` needs a template-aware companion; record both verdicts in a `## Findings` section of this issue, then close.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -157,7 +171,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Diff against `.ll/design-tokens/profiles/<config.design_tokens.active>/` — the `active` profile key, not `active_theme` (which only sets the default `data-theme` attribute, not which values render)
 - Special-case `design_tokens.source == "design_md"` in the diff logic — `themed_css_vars()` short-circuits so the dark block equals the light block by design in that mode; do not flag it as drift
 - Note `scripts/little_loops/cli/doctor.py::_full_design_tokens_check()` as a related-but-insufficient gate (theme-JSON completeness only, same as `lint_profile()`) — audit findings should state whether it needs a template-aware companion alongside the golden-fixture gate
-- If drift is confirmed, also flag `docs/reference/CLI.md` `#### ll-artifact policy-builder` and `docs/guides/POLICY_ROUTER_GUIDE.md` for correction in the filed follow-up issue — both currently assert the theming behavior works correctly
+- If drift is confirmed, also flag `docs/reference/CLI.md` `#### ll-artifact policy-builder` and `docs/guides/POLICY_ROUTER_GUIDE.md` for correction in this issue's fix (rescoped 2026-09-19) — both currently assert the theming behavior works correctly
 
 - Render via `render_policy_builder_html(config)` (returns the string, no file) rather than shelling to the CLI; it is the same path `serve.py:226` uses, so the audit covers the served page too
 - Isolate config (`monkeypatch.chdir(tmp_path)` + `_make_config`, per `test_enh3441_packaged_profile_fallback.py`) if any of the audit is scripted as a test, and account for the ENH-3441 packaged-profile fallback: a missing `.ll/design-tokens/` mirror renders silently from packaged profiles, so the stopgap-still-needed verdict must test both mirror-present and mirror-absent renders
@@ -166,14 +180,14 @@ _These touchpoints were identified by wiring analysis and must be included in th
 ## Impact
 
 - **Priority**: P3 - polish/consistency work; the token-drift stopgap in `worktree_utils.py` already masks the symptom this audit targets
-- **Effort**: Small-Medium - one render, two CSS blocks, one template's `<style>` block; fully boundable now
-- **Risk**: Low - audit-only, no source changes in this issue itself
+- **Effort**: Small-Medium - ~15 ref renames, one new semantic token group across three profiles, one pytest, one golden regeneration
+- **Risk**: Low-Medium - presentation-only, but visibly changes dark-theme rendering and touches every packaged profile; guarded by the new parity test and existing mirror/lint tests
 - **Breaking Change**: No
 
 ## Scope Boundaries
 
-- **In scope**: token/theme parity audit of the shipped builder template under `light` and `dark`; filing follow-ups for drift
-- **Out of scope**: information hierarchy, empty/error states, and cross-mode consistency (ENH-3500); FEAT-3505's connected-page surface (audited under ENH-3500 once it lands — if it introduces new token references, ENH-3500's pass covers them); fixing any drift found; any change to emitted YAML or runtime behavior
+- **In scope**: token/theme parity audit of the shipped builder template under `light` and `dark`; fixing the unresolved `var()` refs; adding `color.status.*`; the parity regression test
+- **Out of scope**: information hierarchy, empty/error states, and cross-mode consistency (ENH-3500); FEAT-3505's connected-page surface (audited under ENH-3500 once it lands — if it introduces new token references, ENH-3500's pass covers them); spacing/radius tokenization; any change to emitted YAML or runtime behavior
 
 ## Related Key Documentation
 
