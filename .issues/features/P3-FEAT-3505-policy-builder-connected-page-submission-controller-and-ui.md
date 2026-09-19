@@ -12,6 +12,8 @@ labels:
 - policy-builder
 blocked_by:
 - FEAT-3504
+blocks:
+- ENH-3500
 relates_to:
 - FEAT-3498
 - FEAT-3503
