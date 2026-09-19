@@ -196,6 +196,7 @@ Verdict at time of check: **VALID** (no corrections were needed, so nothing was 
 - Graph: provider=`codegraph` freshness=`fresh` (not needed for any verdict).
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-19T21:50:23 - `c6818602-1d0f-4408-8666-b6e00482f2de.jsonl`
 - `/ll:verify-issues` - 2026-09-19T21:47:29 - `ec33e794-bba7-4e0f-b871-a6a89de1c001.jsonl`
 - `/ll:confidence-check` - 2026-09-19T21:39:27 - `a64c7633-3845-4240-ac13-8b9cec728136.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-09-19T21:30:35 - `6b9c88d3-074c-4681-b7c9-240fc332f147.jsonl`
