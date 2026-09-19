@@ -3,10 +3,11 @@ id: BUG-3509
 type: BUG
 title: Policy builder run-request returns 500 for YAML containing a lone surrogate
 priority: P4
-status: open
+status: done
 discovered_by: manual-review
 discovered_date: '2026-09-19'
 captured_at: '2026-09-19T00:00:00Z'
+completed_at: '2026-09-19T05:51:21Z'
 parent: EPIC-3493
 labels:
 - policy-builder
@@ -143,10 +144,10 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Acceptance Criteria
 
-- [ ] A run-request whose `yaml` contains a lone surrogate returns `400 bad_request` with a JSON `ErrorBody`; nothing is persisted or enqueued.
+- [x] A run-request whose `yaml` contains a lone surrogate returns `400 bad_request` with a JSON `ErrorBody`; nothing is persisted or enqueued.
 - [x] Lone surrogates in `projectId`/`issueId` are shown not to fail (resolved by research — see Integration Map; no code change).
-- [ ] Regression test in `scripts/tests/test_feat3504_policy_builder_serve.py` that fails with `500` before the fix and asserts the `yaml`-specific message, so it cannot pass on an earlier field guard.
-- [ ] `docs/reference/API.md` step-1 body-guard text updated for `yaml`.
+- [x] Regression test in `scripts/tests/test_feat3504_policy_builder_serve.py` that fails with `500` before the fix and asserts the `yaml`-specific message, so it cannot pass on an earlier field guard.
+- [x] `docs/reference/API.md` step-1 body-guard text updated for `yaml`.
 
 ## Impact
 
@@ -173,9 +174,15 @@ Verdict at time of check: **NEEDS_UPDATE** (correction below applied in the same
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-19T05:51:21 - `054f6d91-7b84-45da-8acd-d7953f4a112d.jsonl`
+- `/ll:ready-issue` - 2026-09-19T05:49:39 - `e4501b2a-614d-4493-bb84-2057c5fe0887.jsonl`
 - `/ll:confidence-check` - 2026-09-19T05:13:46 - `8e369b1d-0785-44bc-8321-5ccb6081d5a9.jsonl`
 - `/ll:verify-issues` - 2026-09-19T05:11:03 - `808f8d72-c012-4c7c-aaf9-492b7a2a29e0.jsonl`
 - `/ll:verify-issues` - 2026-09-19T05:03:56 - `aa2a75e7-1776-48b9-b2b9-b1a0d3366543.jsonl`
 - `/ll:wire-issue` - 2026-09-19T05:02:18 - `9675dd68-c6a3-46ca-a4f4-9deec88ce9a0.jsonl`
 - `/ll:refine-issue` - 2026-09-19T05:00:47 - `a66fb80c-9d10-4fe7-8d3d-b0bd004691a0.jsonl`
 - `/ll:format-issue` - 2026-09-19T04:57:19 - `69495f4f-08a7-41bc-a23e-7129d0989d49.jsonl`
+
+## Resolution
+
+Fixed: `_parse_run_request` now translates `UnicodeEncodeError` from the `yaml` encode into `400 bad_request` (`missing or malformed field: yaml`). Added `test_lone_surrogate_yaml_returns_400` (red: 500 before fix) and updated the API.md body-guard text.

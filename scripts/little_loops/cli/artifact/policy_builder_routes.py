@@ -178,13 +178,17 @@ def _parse_run_request(payload_bytes: bytes) -> tuple[RunRequest, dict[str, Any]
     yaml_text = payload.get("yaml")
     if not isinstance(yaml_text, str) or not yaml_text:
         raise _RouteError(400, "bad_request", "missing or malformed field: yaml")
+    try:
+        yaml_bytes = yaml_text.encode("utf-8")
+    except UnicodeEncodeError:
+        raise _RouteError(400, "bad_request", "missing or malformed field: yaml") from None
 
     request = RunRequest(
         request_id=request_id,
         project_id=project_id,
         workspace_id=workspace_id,
         revision_id=revision_id,
-        yaml=yaml_text.encode("utf-8"),
+        yaml=yaml_bytes,
         issue_id=issue_id,
     )
     return request, payload

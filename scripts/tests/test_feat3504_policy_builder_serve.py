@@ -328,6 +328,25 @@ class TestSubmitRoute:
         finally:
             bridge.close()
 
+    def test_lone_surrogate_yaml_returns_400(self, project: Path, short_tmp_path: Path) -> None:
+        config = _make_config(project)
+        workspace_id = derive_workspace_id(project.resolve())
+        bridge = _bridge_for(config, workspace_id, base=short_tmp_path, loops_dir=project / "loops")
+        try:
+            payload = json.loads(_submit_payload(workspace_id=workspace_id))
+            payload["yaml"] = "a\ud800"
+            body = json.dumps(payload).encode("utf-8")
+            status, resp = _lb_http_request(
+                _port(bridge), "POST", f"/{bridge._token}/run-request", body=body
+            )
+            assert status == 400
+            error = json.loads(resp)["error"]
+            assert error["code"] == "bad_request"
+            assert error["message"] == "missing or malformed field: yaml"
+            assert list_entries(DEFAULT_DB_PATH, root=project) == []
+        finally:
+            bridge.close()
+
     def test_non_json_content_type_returns_400(self, project: Path, short_tmp_path: Path) -> None:
         config = _make_config(project)
         workspace_id = derive_workspace_id(project.resolve())
