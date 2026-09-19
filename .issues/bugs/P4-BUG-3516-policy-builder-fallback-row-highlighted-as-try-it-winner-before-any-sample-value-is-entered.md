@@ -96,3 +96,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ## Status
 
 **Open** | Created: 2026-09-19 | Priority: P4
+
+
+## Session Log
+- `/ll:format-issue` - 2026-09-19T21:20:52 - `92521728-42bd-4ef9-abf0-e0733de02c8f.jsonl`
