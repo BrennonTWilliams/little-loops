@@ -10,6 +10,9 @@ discovered_date: '2026-09-19'
 captured_at: '2026-09-19T20:00:57Z'
 relates_to:
 - ENH-3500
+- BUG-3516
+blocked_by:
+- ENH-3510
 ---
 
 # ENH-3514: Policy builder: unify status/message class vocabularies and heading/legend conventions
@@ -24,7 +27,7 @@ Two status class vocabularies coexist: `is-error`/`is-warning`/`is-success` (con
 
 ## Expected Behavior
 
-One status class vocabulary is used throughout, headings/legends follow one convention, and the fallback row matches other rows in both themes.
+One status class vocabulary (`msg-*`) is used throughout and the two right-column `h2`s are styled by a CSS rule instead of inline styles. The dark-theme fallback-row finding is split out to BUG-3516.
 
 ## Motivation
 
@@ -35,8 +38,11 @@ This enhancement would:
 
 ## Scope Boundaries
 
-- **In scope**: choosing one class vocabulary and migrating both sets; one heading/legend convention; dark-theme fallback-row styling.
+- **In scope**: migrating `is-*` onto `msg-*` (decided — see Design Decisions); replacing the two inline `h2` styles with one CSS rule.
 - **Out of scope**: design-token changes (ENH-3506); new status states; message text changes.
+- **Split out → BUG-3516**: the "saturated green fallback row". Checked against `auth-populated-decision_table-dark-w1280-offline.png`: it is the `.rule-winner` Try-it highlight landing on `#fallback-row` because all Try-it inputs are blank (`evaluateModel(model, {})` → fallback), painted only behind the label since the `<select>` has its own background. That is a behavior defect in `updateTryIt`, not a vocabulary/heading matter.
+- **Dropped**: the duplicate 'Try it' legend. The two fieldsets are mutually exclusive via `applyModeVisibility` (:1867-1868), so the text is never visible twice — not a defect.
+- **Dropped**: converting `h2`s to legends (or vice versa). The right column is `section`/`h2` content, the left is form `fieldset`/`legend`; both are semantically correct. Only the inline styling is inconsistent.
 
 ## Integration Map
 
@@ -86,33 +92,45 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ### Signatures
 
-- `renderMessages(model, diagnostics) -> void`
 - `renderConnected(st) -> void`
-- `renderFallback() -> void`
 
 ### Call Path
 
-`cmd_policy_builder` -> `render_policy_builder_html` (stamps the template) -> in-page `renderMessages` / `renderConnected` / `renderFallback` -> unified class vocabulary
+`cmd_policy_builder` -> `render_policy_builder_html` (stamps the template) -> in-page `renderConnected` -> `msg-*` class on `#conn-status`
+
+## Design Decisions
+
+- **Canonical vocabulary: `msg-*`** (`msg-error` / `msg-warn` / `msg-ok` / `msg-info`). It has ~8 JS sites plus the ENH-3506 theme probe (`li.className = "msg-" + k`); `is-*` has exactly one JS site (:2275) and three CSS rules (:171-173). Mapping: `is-error`→`msg-error`, `is-warning`→`msg-warn`, `is-success`→`msg-ok`. The `.msg-*` color rules (:161-164) are unscoped, so `conn-status msg-ok` picks up colors directly; delete the three `.conn-status.is-*` rules. `.conn-status` base keeps its info colors. ENH-3510/3511/3513 land first and already use `msg-*` for anything new.
+- **Headings**: add `.panel h2` (or the nearest existing right-column scope) `{ margin-top: 0; font-size: 1rem; }` and remove the inline `style` from :311 and :332. No new CSS variables, so `test_enh3506_policy_builder_theme_parity.py` is unaffected.
+
+## Acceptance Criteria
+
+- [ ] Rendered HTML matches none of `is-error|is-warning|is-success` (pytest regex in `test_policy_builder_emit.py`).
+- [ ] No `<h2` in the rendered HTML carries a `style=` attribute; an `h2` CSS rule exists (pytest).
+- [ ] Connected accepted / accepted-with-warnings / rejected states render with the same computed colors as before (probe: `conn-accepted-warnings-*`; `.loops/verify-enh-3506-theme.yaml` stays green).
+- [ ] `.loops/probes/enh-3500-audit-probes.mjs` class census (:88) updated to expect no `is-*`.
+- [ ] Theme-parity test passes; golden regenerated after reviewing the diff; `python -m pytest scripts/tests/` exits 0.
 
 ## Implementation Steps
 
-1. Pick the canonical vocabulary (`msg-*` or `is-*`) and map the other onto it.
-2. Migrate CSS rules and JS class assignments; unify headings/legends.
-3. Fix the dark-theme fallback row; add a template test that only one vocabulary remains.
+1. Replace the class expression at :2275 with the `msg-*` mapping; delete `.conn-status.is-*` CSS.
+2. Add the `h2` rule; remove the two inline styles.
+3. Add the two pytest checks; update the ENH-3500 probe census; rerun the theme probe.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-- Settle whether the fallback-row defect is the `.rule-winner` highlight or its dark-mode saturation against `auth-populated-decision_table-dark-w1280-offline.png` before touching CSS
-- Update both probe files' class references and rerun `.loops/verify-enh-3506-theme.yaml` plus ENH-3500 cases `auth-populated-decision_table-dark-*`, `conn-accepted-warnings-*`
+- Fallback-row defect is **settled and split out** to BUG-3516 (winner highlight on blank Try-it inputs)
+- Sequenced via `blocked_by`: BUG-3512 → ENH-3513 → ENH-3511 → ENH-3510 → **ENH-3514** → BUG-3516 (shared template + byte-compared golden — never run in parallel)
+- Update the ENH-3500 probe's class census (the ENH-3506 theme probe already uses `msg-*` and needs no change) and rerun `.loops/verify-enh-3506-theme.yaml` plus ENH-3500 cases `auth-populated-decision_table-dark-*`, `conn-accepted-warnings-*`
 - Regenerate the golden after reviewing the diff
 
 ## Impact
 
 - **Priority**: P4 - cosmetic consistency
-- **Effort**: Small-Medium - CSS and class-name migration
-- **Risk**: Low-Medium - tests may assert existing class names
+- **Effort**: Small - one JS site, three CSS rules, one `h2` rule
+- **Risk**: Low - no pytest asserts class names; only the ENH-3500 probe census changes
 - **Breaking Change**: No
 
 ## Status

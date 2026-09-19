@@ -11,6 +11,8 @@ captured_at: '2026-09-19T20:00:57Z'
 relates_to:
 - ENH-3500
 - BUG-3512
+blocked_by:
+- BUG-3512
 ---
 
 # ENH-3513: Policy builder: validation diagnostics are not announced and reserved-name errors use alert()
@@ -25,7 +27,7 @@ Found by ENH-3500 audit. #messages (Result diagnostics) is not a live region; af
 
 ## Expected Behavior
 
-Validation errors are announced (assertive or status role, chosen by severity) and shown inline. Reserved/duplicate-name errors appear as inline messages instead of `alert()`.
+Validation errors are announced through the existing polite `role="status"` region and shown inline. Reserved/duplicate-name errors appear as inline, announced messages instead of `alert()`. No assertive region is introduced: `role="status"` satisfies WCAG 4.1.3, and none of these errors is time-critical.
 
 ## Motivation
 
@@ -36,7 +38,8 @@ This enhancement would:
 
 ## Scope Boundaries
 
-- **In scope**: live-region semantics for `#messages` and `#import-diagnostics`; replacing `alert()` in the `add-dim`/`add-outcome` handlers with inline messages.
+- **In scope**: announcing `#messages` error-count changes via `showLiveStatus`; replacing `alert()` in the `add-dim`/`add-outcome` handlers with inline messages.
+- **Decided out**: making `#messages` itself a live region (it is rebuilt on every `updatePreview()`, so it would re-announce the whole list per edit); severity-aware `#import-diagnostics` (toggling `role`/`aria-live` on an existing region at runtime is unreliably honored by screen readers — it stays `role="status" aria-live="polite"`, unchanged).
 - **Out of scope**: rewording diagnostic text; explaining disabled controls (ENH-3511); unifying message class names (ENH-3514).
 
 ## Integration Map
@@ -82,7 +85,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ### Types
 
-- `StatusClass: str` — CSS class name strings only; no new persisted shapes.
+- None — DOM/markup only; no new persisted shapes.
 
 ### Signatures
 
@@ -93,24 +96,42 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 `cmd_policy_builder` -> `render_policy_builder_html` (stamps the template) -> in-page `renderMessages`; `add-dim`/`add-outcome` click handlers -> inline message replacing `alert()`
 
+## Design Decisions
+
+- **Diagnostics announcement**: `updatePreview` tracks the previous error count (module-level `let lastErrorCount = 0`). When the count of `msg-error` items rendered by `renderMessages` (validator errors **plus** the template-side unknown-skill errors) changes, it calls `showLiveStatus`: `"N error(s) — Copy and Download are disabled."` when validator errors exist, `"N error(s)."` when only non-gating unknown-skill errors exist, `"No errors."` when it returns to 0 from non-zero. No announcement when the count is unchanged — this is what prevents per-keystroke chatter.
+- **Composition with existing `#live-status` writers**: `showLiveStatus` is a plain `textContent` overwrite and the Open/Save handlers call it *after* `renderAll()`, which would clobber the error announcement ("Project opened." wins). Those callers must compose instead: when `lastErrorCount > 0` after their render, announce e.g. `"Project opened. 2 errors — Copy and Download are disabled."` in a single `showLiveStatus` call. Implement as an optional suffix helper rather than a queue.
+- **Inline add errors**: two static elements, `<small class="help msg-error" id="dim-add-error" hidden>` after the `#add-dim` row and `<small … id="outcome-add-error" hidden>` after `#outcome-add-row`. Each of the four `alert(` sites sets `textContent`, unhides, sets `aria-invalid="true"` + `aria-describedby` on the input, and calls `showLiveStatus(sameText)` (the announcement channel — the inline elements themselves are **not** live, so ENH-3511's describedby-target rule holds). Cleared (hidden, attributes removed) on the input's next `input` event and on a successful add. `#outcome-add-error` sits inside/adjacent to `#outcome-add-row` so it is hidden with it in `issue_lifecycle`.
+- `storage-disabled-degrades` (`feat-3488-browser-probes.mjs`) expects exactly one live-region warning: the error-count announcement must not fire on a clean initial load (count 0 → 0).
+
+## Acceptance Criteria
+
+- [ ] `"alert(" not in html` for the rendered template (pytest: `test_policy_builder_emit.py`).
+- [ ] Rendered HTML contains exactly one each of `id="dim-add-error"` / `id="outcome-add-error"`, both `hidden`, neither with `role=`/`aria-live`; `#messages` has no `aria-live`; `#import-diagnostics` markup unchanged; existing `:317-318` asserts pass (pytest).
+- [ ] Adding outcome `done` in `decision_table`, a duplicate outcome, a dim name containing `:`/`|`, and a duplicate dim each show the inline message, set `aria-invalid` on the input, write the same text to `#live-status`, raise no dialog, and clear on the next input event (probe — new cases).
+- [ ] Opening a project with a bogus dimension type announces one `#live-status` text containing both "Project opened." and the error count (probe: `auth-invalid-model-*`, `live-import-error-offline`).
+- [ ] Editing a field while the error count is unchanged produces no new `#live-status` mutation; fixing the last error announces "No errors." (probe MutationObserver).
+- [ ] `.loops/verify-feat-3488-browser-persistence.yaml` `storage-disabled-degrades` stays green; `_newBug3502Sandbox` stubs cover new DOM calls in the sliced Open handler / `commit()` regions.
+- [ ] Golden regenerated; `python -m pytest scripts/tests/` exits 0.
+
 ## Implementation Steps
 
-1. Give `#messages` an appropriate live-region role and make `#import-diagnostics` severity-aware.
-2. Replace the `alert()` calls in `add-dim`/`add-outcome` with an inline message element.
-3. Add template tests for role/aria-live attributes and absence of `alert(` in those handlers.
+1. Add `lastErrorCount` tracking + announcement to `updatePreview`/`renderMessages`; add the suffix-composition path for the Open/Save `showLiveStatus` callers.
+2. Add the two inline error elements; replace the four `alert(` sites; wire clear-on-input and clear-on-success.
+3. Static asserts in `test_policy_builder_emit.py`; sandbox stubs in `policy_validator.test.mjs`; new probe cases.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-- Restrict `#messages` announcements to changes (e.g. error set becoming non-empty) since `renderMessages` rebuilds the list on every `updatePreview()`
+- Announcement mechanism is **decided** — see Design Decisions (`#messages` stays non-live; count-change announcements via `showLiveStatus`)
+- Sequenced via `blocked_by`: BUG-3512 → **ENH-3513** → ENH-3511 → ENH-3510 → ENH-3514 → BUG-3516 (shared template + byte-compared golden — never run in parallel)
 - Re-run `.loops/verify-feat-3488-browser-persistence.yaml` (`storage-disabled-degrades`) and the ENH-3500 cases `auth-invalid-model-*`, `live-import-error-offline`
 - Regenerate the golden after reviewing the diff
 
 ## Impact
 
 - **Priority**: P3 - accessibility and UX consistency
-- **Effort**: Small - two live-region changes and four `alert()` sites
+- **Effort**: Small-Medium - count-change announcement with Open/Save composition, plus four `alert()` sites
 - **Risk**: Low - watch for double announcement with `#live-status`
 - **Breaking Change**: No
 

@@ -10,6 +10,8 @@ discovered_date: '2026-09-19'
 captured_at: '2026-09-19T20:00:56Z'
 relates_to:
 - ENH-3500
+blocked_by:
+- ENH-3511
 ---
 
 # ENH-3510: Policy builder: add empty-state text to dimension, rule, outcome lists and issue selector
@@ -24,7 +26,7 @@ The dimensions, rules and outcomes lists render nothing when empty (0 children, 
 
 ## Expected Behavior
 
-Each of the dimensions, rules and outcomes lists, and the connected issue selector, shows a consistent empty-state hint (in the style of 'No scenarios yet.') when it has no entries. Whether a zero-dimension model should read 'No issues detected.' is decided in the implementation and recorded in the tests.
+Each of the dimensions, rules and outcomes lists, and the connected issue selector, shows a consistent empty-state hint (in the style of 'No scenarios yet.') when it has no entries. A zero-dimension model no longer reads 'No issues detected.': `renderMessages` adds a template-side `msg-warn` ("No dimensions yet — add one to score."), the same way it already adds the unreachable-outcome warning. It is a warning, not an error, so export gating (`validateBuilderModel`) is unchanged.
 
 ## Motivation
 
@@ -35,7 +37,8 @@ This enhancement would:
 ## Scope Boundaries
 
 - **In scope**: empty-state text for `renderDimensions`, `renderRules`, `renderOutcomes`/`renderLifecycleOutcomes`, and the `#conn-issue-note` empty-issues case.
-- **Out of scope**: redesigning the scenarios empty-state; changing validation rules (e.g. requiring at least one dimension); styling beyond reusing the existing `.hint` treatment.
+- **In scope (decided)**: a template-side zero-dimension `msg-warn` in `renderMessages` (all modes) so 'No issues detected.' is not shown for a model with no dimensions.
+- **Out of scope**: redesigning the scenarios empty-state; changing `validateBuilderModel` rules or export gating (e.g. requiring at least one dimension); styling beyond reusing the existing `.hint` treatment.
 
 ## Integration Map
 
@@ -83,7 +86,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ### Types
 
-- `StatusClass: str` — CSS class name strings only; no new persisted shapes.
+- None — DOM/markup only; no new persisted shapes.
 
 ### Signatures
 
@@ -92,23 +95,42 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `renderOutcomes() -> void`
 - `renderLifecycleOutcomes() -> void`
 - `renderConnected(st) -> void`
+- `renderMessages(model, diagnostics) -> void`
 
 ### Call Path
 
 `cmd_policy_builder` -> `render_policy_builder_html` (stamps the template) -> in-page `renderAll` -> `renderDimensions` / `renderRules` / `renderOutcomes` -> new empty-state branch
 
+## Design Decisions
+
+- **Placement**: each hint is a static, always-present sibling `<p class="hint" hidden>` placed directly after its list container — `#dim-empty` after `#dim-list`, `#rule-empty` after `#rule-list`, `#outcome-empty` after `#outcome-list` — toggled (`hidden` + `textContent`) by the renderer. This mirrors the `#scenario-summary` convention (static element, swapped text), keeps the list containers' child counts untouched (`feat-3488-browser-probes.mjs` `ruleCount`), and cannot leak in rubric mode because `#rules-fieldset`/`#outcomes-fieldset` are hidden there. `renderAll`'s rubric branch must still set `#rule-empty`/`#outcome-empty` `hidden = true` alongside its `innerHTML = ""` clears.
+- **`#dim-list` is visible in every mode**, so `#dim-empty` shows in rubric mode too (intended). In `issue_lifecycle` the built-in dimensions make an empty list unreachable; `renderLifecycleOutcomes` likewise always renders the fixed verb set, so `#outcome-empty` only ever shows in `decision_table`.
+- **Text**: "No dimensions yet.", "No rules yet — everything goes to the fallback.", "No outcomes yet.", and `#conn-issue-note` = "No issues found." when `st.issues.status === "ready"` and `st.issues.list` is empty (and no stale selection note applies).
+- **Zero-dimension message**: template-side `msg-warn` in `renderMessages` (see Expected Behavior); `validateBuilderModel` untouched.
+
+## Acceptance Criteria
+
+- [ ] Rendered HTML contains exactly one each of `id="dim-empty"`, `id="rule-empty"`, `id="outcome-empty"`, each a `<p class="hint"` with `hidden` (pytest: `test_policy_builder_emit.py`, `html.count(...) == 1`).
+- [ ] `decision_table` with `dimensions=[]` / `rules=[]` / `outcomes=[]`: the matching hint is visible with the text above; with ≥1 entry it is hidden (probe: `auth-empty-dimensions-*`, `auth-empty-rules-*`, `auth-empty-outcomes-*`).
+- [ ] Rubric mode: `#rule-empty`/`#outcome-empty` are never visible; `#dim-empty` is visible when there are no dimensions (probe).
+- [ ] Served page with `./issues` → `{issues:[]}`: `#conn-issue-note` reads "No issues found."; loading/error/no-longer-listed texts unchanged (probe: `conn-issues-empty-*`).
+- [ ] A zero-dimension model shows the `msg-warn` and not "No issues detected."; Copy/Download enablement is unchanged (probe).
+- [ ] `#rule-list .rule-card` count unchanged for non-empty lists (`.loops/verify-feat-3488-browser-persistence.yaml` stays green).
+- [ ] Golden regenerated after reviewing the diff; `python -m pytest scripts/tests/` exits 0.
+
 ## Implementation Steps
 
-1. Define one empty-state helper/class shared with the scenarios 'No scenarios yet.' treatment.
-2. Add an empty branch to each render function and the `#conn-issue-note` empty-issues case.
-3. Add template tests for each empty state; re-run the ENH-3500 audit probe fixtures.
+1. Add the three static `<p class="hint" hidden>` siblings to the markup.
+2. Toggle each in `renderDimensions` / `renderRules` / `renderOutcomes` (and hide `#rule-empty`/`#outcome-empty` in `renderAll`'s rubric branch); add the empty-issues case to the `#conn-issue-note` chain in `renderConnected`.
+3. Add the zero-dimension `msg-warn` to `renderMessages`, before the `msg-ok` fallthrough.
+4. Add static-markup asserts to `test_policy_builder_emit.py`; add rendered-DOM assertions to the ENH-3500 probe and rerun the named cases.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
 - Update `.loops/probes/enh-3500-audit-probes.mjs` — assert empty-state text for the four cases and rerun via `CASE_ONLY='auth-empty-.*|conn-issues-empty'`
-- Coordinate with ENH-3511 — both edit `renderOutcomes`/`renderRules`; land one first or expect merge conflicts in the same functions
+- Sequenced via `blocked_by`: BUG-3512 → ENH-3513 → ENH-3511 → **ENH-3510** → ENH-3514 → BUG-3516 (all edit this template and regenerate the same byte-compared golden — never run in parallel)
 - Regenerate `golden_policy_router_builder.html` after reviewing the diff
 
 ## Impact

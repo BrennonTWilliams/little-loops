@@ -9,6 +9,8 @@ discovered_date: '2026-09-19'
 captured_at: '2026-09-19T20:00:57Z'
 relates_to:
 - ENH-3500
+blocked_by:
+- ENH-3513
 ---
 
 # ENH-3511: Policy builder: explain disabled controls (aria-describedby / visible reason)
@@ -23,7 +25,7 @@ About 13 sites set `.disabled` with no `aria-disabled`/`aria-describedby` anywhe
 
 ## Expected Behavior
 
-Each disabled control has a visible or programmatically associated reason (`aria-describedby` pointing at a hint element). Native `disabled` semantics may stay.
+Each in-scope disabled control has a **visible** reason next to it, also associated via `aria-describedby`. Native `disabled` semantics stay. Because natively disabled buttons are not focusable, `aria-describedby` on them is only reached through a screen reader's browse/virtual cursor — the visible text is the deliverable; the attribute is supplementary and is not sufficient on its own.
 
 ## Motivation
 
@@ -33,8 +35,8 @@ This enhancement would:
 
 ## Scope Boundaries
 
-- **In scope**: reason text/association for Copy/Download (invalid model), connected Submit (before review), delete-outcome-in-use, and rule up/down at list ends.
-- **Out of scope**: replacing native `disabled` with `aria-disabled`; undo/redo buttons; announcing validation diagnostics (ENH-3513).
+- **In scope**: visible reason + `aria-describedby` for Copy/Download (invalid model), connected Submit **and Review** (shared reason element), and `#conn-issue` (`aria-describedby="conn-unavailable"` only — the visible reason already exists); delete-outcome-in-use (keeps its dynamic `title`, gains a per-row visible reason); rule up/down at list ends get a **dynamic `title` only** ("Already first" / "Already last") — no per-row hint elements, which would need unique IDs and add clutter for a self-evident state.
+- **Out of scope**: replacing native `disabled` with `aria-disabled`; undo/redo (:517-518); rule `valInput` for `==true`/`==false` (:1077) and scenario `idxInput` when `expectedFallback` (:1542) — self-evident from the adjacent control; `#conn-refresh-btn` while busy (:2256) — transient; announcing validation diagnostics (ENH-3513).
 
 ## Integration Map
 
@@ -79,7 +81,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ### Types
 
-- `StatusClass: str` — CSS class name strings only; no new persisted shapes.
+- None — DOM/markup only; no new persisted shapes.
 
 ### Signatures
 
@@ -92,18 +94,35 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 `cmd_policy_builder` -> `render_policy_builder_html` (stamps the template) -> in-page `updatePreview` / `renderConnected` -> new `aria-describedby` reason element
 
+## Design Decisions
+
+- **Copy/Download** reuse `#validate-hint` (:324) as the reason element. Today it shows the Save to / Validate / Run guidance whenever `serializeLoopYaml` succeeds — including when export is disabled by validation errors — and is blanked only on a serializer throw (:1790). New behavior in `updatePreview`: when `hasError`, `#validate-hint` reads "Copy and Download are disabled until the errors above are fixed." (replacing the guidance, which is misleading while export is off) and both buttons get `aria-describedby="validate-hint"`; when `!hasError` the guidance returns and the attribute is removed. The `hasError` computation (:1795-1796) must move above the `#validate-hint` assignment.
+- **Submit/Review** share one new static `<p class="hint" id="conn-action-reason" hidden>` after the button row. Its text is derived from the first true clause, in order: `!av.ok` → hidden (already explained by `#conn-unavailable`; point `aria-describedby` there instead); `st.busy` → "Working…"; `outcome_unknown` → "The last submission's outcome is unknown — use Run again or Retry."; `rv.status !== "ready"` → "Review the snapshot before submitting." Hidden and `aria-describedby` removed when Submit is enabled.
+- **Reason elements are never live regions** (no `role=status`/`aria-live`) — BUG-3512 and ENH-3513 own announcements; a describedby target that is also live double-announces.
+- **Delete-outcome-in-use**: per-row `<small class="help">` with an ID derived from the outcome index (`oc-del-reason-${oi}`), rendered only while `inUse`.
+
+## Acceptance Criteria
+
+- [ ] Rendered HTML contains exactly one `id="conn-action-reason"` (a `<p class="hint"` with `hidden`) and no `role=`/`aria-live` on it or on `#validate-hint` (pytest: `test_policy_builder_emit.py`).
+- [ ] Invalid model: `#validate-hint` shows the disabled reason and Copy/Download carry `aria-describedby="validate-hint"`; valid model: guidance text is back and the attribute is absent (probe: `auth-invalid-model-*`).
+- [ ] Connected, issue selected, not yet reviewed: `#conn-action-reason` visible with the review-first text and Submit is described by it; after a successful review it is hidden and the attribute is absent (probe: `conn-issue-selected-*`, `conn-review-none-*`).
+- [ ] Connected but unavailable: `#conn-issue`, Review and Submit are described by `#conn-unavailable`; `#conn-action-reason` stays hidden (probe).
+- [ ] An in-use outcome shows its visible reason; rule ↑ on the first rule and ↓ on the last have the "Already first/last" `title` (probe).
+- [ ] `_newBug3502Sandbox` stubs cover any new DOM call inside the sliced regions; golden regenerated; `python -m pytest scripts/tests/` exits 0.
+
 ## Implementation Steps
 
-1. Enumerate the bare `.disabled` sites and the reason each should give.
-2. Add hint elements and wire `aria-describedby`, cleared when the control is enabled.
-3. Add template tests asserting the reason is present while disabled and absent when enabled.
+1. Add `#conn-action-reason` markup; move the `hasError` computation above the `#validate-hint` write in `updatePreview` and wire text + `aria-describedby` there.
+2. Derive the Submit/Review reason in `renderConnected` per the clause order above; wire `#conn-issue`/Review/Submit to `#conn-unavailable` when `!av.ok`.
+3. Add the per-row delete-outcome reason in `renderOutcomes` and dynamic titles in `renderRules`.
+4. Static asserts in `test_policy_builder_emit.py`; present-while-disabled / absent-when-enabled assertions in the ENH-3500 probe.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-- Decide in/out for the unlisted `.disabled` sites (`valInput` :1077, `idxInput` :1542, `#conn-issue` :2241, review :2250, refresh :2256) and record the decision in the issue
-- Derive the connected Submit reason from whichever clause of the `!av.ok || rv.status !== "ready" || st.busy || outcome_unknown` disjunction holds; clear it when enabled
+- In/out for the unlisted `.disabled` sites is **decided** — see Scope Boundaries; Submit reason derivation is specified in Design Decisions
+- Sequenced via `blocked_by`: BUG-3512 → ENH-3513 → **ENH-3511** → ENH-3510 → ENH-3514 → BUG-3516 (shared template + byte-compared golden — never run in parallel)
 - Update `.loops/probes/enh-3500-audit-probes.mjs` and rerun the three named cases via `CASE_ONLY`; regenerate the golden
 
 ## Impact
