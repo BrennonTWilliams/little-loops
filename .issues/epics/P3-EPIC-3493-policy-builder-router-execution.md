@@ -30,6 +30,7 @@ Group of 8 related issues: Policy builder preview, validation, and editing corre
 - **FEAT-3501** — Policy builder shared transition analysis and structural graph (open)
 - **FEAT-3503** — Policy builder scenario boundary suggestions and local issue-file import (open)
 - **FEAT-3504** — Policy builder connected page and serve routes (open)
+- **ENH-3507** — Policy builder storage extraction and served-page probe skeleton (open; prerequisite for FEAT-3505)
 - **FEAT-3505** — Policy builder connected page submission controller and UI (open)
 
 
