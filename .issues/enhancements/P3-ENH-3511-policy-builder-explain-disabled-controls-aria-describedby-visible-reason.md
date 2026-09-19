@@ -60,7 +60,7 @@ _Added by `/ll:refine-issue` — 2026-09-19 — based on codebase analysis:_
 
 ### Conventions in Force
 - Hint elements are `<p class="hint">`/`small.help` filled through `.textContent` (:165, :168); JS assigns classes via `el.className = …`.
-- Interaction with ENH-3513 / BUG-3512: an `aria-describedby` target that is also a live region would double-announce; ENH-3513 explicitly owns diagnostics announcements and BUG-3512 (open, P2) owns `#conn-status`/`#conn-notices`/`#conn-review-info` live regions, both editing `renderConnected`.
+- Interaction with ENH-3513 / BUG-3512: an `aria-describedby` target that is also a live region would double-announce; ENH-3513 explicitly owns diagnostics announcements and BUG-3512 (done) owns `#conn-status`/`#conn-notices`/`#conn-review-info` live regions, both editing `renderConnected`.
 - Golden byte-comparison (`test_enh3035_artifact_template_kit.py:93-103`) and `test_policy_builder_emit.py` string-greps constrain how tests are written; there is no rendered-DOM pytest harness — assertions about "present while disabled, absent when enabled" are only checkable via the on-demand ENH-3500 probe (`.loops/probes/enh-3500-audit-probes.mjs`, which already records `aria-describedby`/`aria-disabled` per element at :75-77) or a vm-sandbox test in the style of `policy_validator.test.mjs:1574` (`_newBug3502Sandbox`).
 
 **Tests (research)**
@@ -68,7 +68,7 @@ _Added by `/ll:refine-issue` — 2026-09-19 — based on codebase analysis:_
 
 ### Dependent Files (Callers/Importers)
 _Wiring pass added by `/ll:wire-issue`:_
-- BUG-3512 (open, P2) and ENH-3513 both edit `renderConnected`/live regions — a reason element used as an `aria-describedby` target must not itself be `role=status`/`aria-live` (double announce) [Agent 2 finding]
+- BUG-3512 (done) and ENH-3513 both edit `renderConnected`/live regions — a reason element used as an `aria-describedby` target must not itself be `role=status`/`aria-live` (double announce) [Agent 2 finding]
 - ENH-3510 also edits `renderOutcomes`/`renderRules` (delete-outcome, rule up/down sites) — sequence to avoid conflicts [Agent 2 finding]
 - `.loops/probes/enh-3500-audit-probes.mjs` — already records `aria-describedby`/`aria-disabled` per element (:75-77); add present-while-disabled / absent-when-enabled assertions for `auth-invalid-model-*`, `conn-issue-selected-*`, `conn-review-none-*` [Agent 3 finding]
 
@@ -97,8 +97,10 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Design Decisions
 
-- **Copy/Download** reuse `#validate-hint` (:324) as the reason element. Today it shows the Save to / Validate / Run guidance whenever `serializeLoopYaml` succeeds — including when export is disabled by validation errors — and is blanked only on a serializer throw (:1790). New behavior in `updatePreview`: when `hasError`, `#validate-hint` reads "Copy and Download are disabled until the errors above are fixed." (replacing the guidance, which is misleading while export is off) and both buttons get `aria-describedby="validate-hint"`; when `!hasError` the guidance returns and the attribute is removed. The `hasError` computation (:1795-1796) must move above the `#validate-hint` assignment.
-- **Submit/Review** share one new static `<p class="hint" id="conn-action-reason" hidden>` after the button row. Its text is derived from the first true clause, in order: `!av.ok` → hidden (already explained by `#conn-unavailable`; point `aria-describedby` there instead); `st.busy` → "Working…"; `outcome_unknown` → "The last submission's outcome is unknown — use Run again or Retry."; `rv.status !== "ready"` → "Review the snapshot before submitting." Hidden and `aria-describedby` removed when Submit is enabled.
+> **Context refresh (2026-09-19)**: BUG-3512 is **done** (2f5bdb89a). `:NNNN` line references in this issue predate it — roughly +4 up to `updatePreview` (now :1782) and +75 in the connected code (`renderConnected` now :2292). Function-name anchors remain correct; resolve by name, not line.
+
+- **Copy/Download** reuse `#validate-hint` (:324) as the reason element. Today it shows the Save to / Validate / Run guidance whenever `serializeLoopYaml` succeeds — including when export is disabled by validation errors — and is blanked only on a serializer throw (:1790). New behavior in `updatePreview`: when `hasError`, `#validate-hint` reads `EXPORT_DISABLED_REASON` — the constant ENH-3513 defines ("Copy and Download are disabled until the errors above are fixed."); do not re-declare the literal — (replacing the guidance, which is misleading while export is off) and both buttons get `aria-describedby="validate-hint"`; when `!hasError` the guidance returns and the attribute is removed. The `hasError` computation (:1795-1796) must move above the `#validate-hint` assignment.
+- **Submit/Review** share one new static `<p class="hint" id="conn-action-reason" hidden>` after the button row. Its text is derived from the first true clause, in order: `!av.ok` → hidden (already explained by `#conn-unavailable`; point `aria-describedby` there instead); `st.busy` → "Working…" (Review is `aria-disabled`, not `disabled`, in this state since BUG-3512 — it stays focusable, so this is the one case where `aria-describedby` is reached by focus; wire it on Review as well as Submit); `outcome_unknown` → "The last submission's outcome is unknown — use Run again or Retry."; `rv.status !== "ready"` → "Review the snapshot before submitting." Hidden and `aria-describedby` removed when Submit is enabled.
 - **Reason elements are never live regions** (no `role=status`/`aria-live`) — BUG-3512 and ENH-3513 own announcements; a describedby target that is also live double-announces.
 - **Delete-outcome-in-use**: per-row `<small class="help">` with an ID derived from the outcome index (`oc-del-reason-${oi}`), rendered only while `inUse`.
 
@@ -107,6 +109,8 @@ _Wiring pass added by `/ll:wire-issue`:_
 - [ ] Rendered HTML contains exactly one `id="conn-action-reason"` (a `<p class="hint"` with `hidden`) and no `role=`/`aria-live` on it or on `#validate-hint` (pytest: `test_policy_builder_emit.py`).
 - [ ] Invalid model: `#validate-hint` shows the disabled reason and Copy/Download carry `aria-describedby="validate-hint"`; valid model: guidance text is back and the attribute is absent (probe: `auth-invalid-model-*`).
 - [ ] Connected, issue selected, not yet reviewed: `#conn-action-reason` visible with the review-first text and Submit is described by it; after a successful review it is hidden and the attribute is absent (probe: `conn-issue-selected-*`, `conn-review-none-*`).
+- [ ] While busy, Review carries `aria-disabled="true"` **and** `aria-describedby="conn-action-reason"` with the "Working…" text; both are removed when idle (probe).
+- [ ] `#validate-hint`'s disabled text comes from `EXPORT_DISABLED_REASON` — the literal appears once in the rendered HTML (pytest).
 - [ ] Connected but unavailable: `#conn-issue`, Review and Submit are described by `#conn-unavailable`; `#conn-action-reason` stays hidden (probe).
 - [ ] An in-use outcome shows its visible reason; rule ↑ on the first rule and ↓ on the last have the "Already first/last" `title` (probe).
 - [ ] `_newBug3502Sandbox` stubs cover any new DOM call inside the sliced regions; golden regenerated; `python -m pytest scripts/tests/` exits 0.
@@ -148,4 +152,4 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Scope Boundary
 
-**Note** (added by `/ll:audit-issue-conflicts`): Transient-busy Review/Refresh buttons use `aria-disabled="true"` per BUG-3512 (which owns `#conn-*` announcers and that change); every other disabled condition stays native `disabled`. `#conn-action-reason` and its `aria-describedby` wiring must apply to both forms. Reuse the connected-state summary BUG-3512 introduces rather than re-deriving busy/outcome_unknown/rv.status clauses. The Copy/Download disabled reason wording in `#validate-hint` must match ENH-3513's `#live-status` announcement (share one string/helper); `#validate-hint` is a non-live describedby target.
+**Note** (added by `/ll:audit-issue-conflicts`): Transient-busy Review/Refresh buttons use `aria-disabled="true"` per BUG-3512 (which owns `#conn-*` announcers and that change); every other disabled condition stays native `disabled`. `#conn-action-reason` and its `aria-describedby` wiring must apply to both forms. ~~Reuse the connected-state summary BUG-3512 introduces~~ — **withdrawn after BUG-3512 landed**: `_connSummary(st)` describes submission *delivery* state only (`{text, alert, key}`, `null` without a submission) and exposes no `busy` / `rv.status` clauses, so the clause-order derivation in Design Decisions stands. The Copy/Download disabled reason in `#validate-hint` uses ENH-3513's `EXPORT_DISABLED_REASON` constant; `#validate-hint` is a non-live describedby target.

@@ -94,12 +94,16 @@ _Wiring pass added by `/ll:wire-issue`:_
 ### Signatures
 
 - `renderConnected(st) -> void`
+- `_renderConnectedStatus(st, box) -> void`
 
 ### Call Path
 
-`cmd_policy_builder` -> `render_policy_builder_html` (stamps the template) -> in-page `renderConnected` -> `msg-*` class on `#conn-status`
+`cmd_policy_builder` -> `render_policy_builder_html` (stamps the template) -> in-page `renderConnected` -> `_renderConnectedStatus` -> `msg-*` class on the `.conn-status` child of `#conn-status`
 
 ## Design Decisions
+
+> **Context refresh (2026-09-19)**: BUG-3512 is **done** (2f5bdb89a). `:NNNN` line references in this issue predate it — roughly +4 up to `updatePreview` (now :1782) and +75 in the connected code (`renderConnected` now :2292). Function-name anchors remain correct; resolve by name, not line.
+- Post-BUG-3512 the single `is-*` JS site lives in `_renderConnectedStatus(st, box)` (:2360, called from `renderConnected`), and the `.conn-status.is-*` CSS is at :173-175. Verified: `.msg-*` colour rules (:161-164) are unscoped; the only two `<h2>`s are in the right-column `.panel` sections (:313, :334), so `.panel h2` is safe.
 
 - **Canonical vocabulary: `msg-*`** (`msg-error` / `msg-warn` / `msg-ok` / `msg-info`). It has ~8 JS sites plus the ENH-3506 theme probe (`li.className = "msg-" + k`); `is-*` has exactly one JS site (:2275) and three CSS rules (:171-173). Mapping: `is-error`→`msg-error`, `is-warning`→`msg-warn`, `is-success`→`msg-ok`. The `.msg-*` color rules (:161-164) are unscoped, so `conn-status msg-ok` picks up colors directly; delete the three `.conn-status.is-*` rules. `.conn-status` base keeps its info colors. ENH-3510/3511/3513 land first and already use `msg-*` for anything new.
 - **Headings**: add `.panel h2` (or the nearest existing right-column scope) `{ margin-top: 0; font-size: 1rem; }` and remove the inline `style` from :311 and :332. No new CSS variables, so `test_enh3506_policy_builder_theme_parity.py` is unaffected.
@@ -114,7 +118,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Implementation Steps
 
-1. Replace the class expression at :2275 with the `msg-*` mapping; delete `.conn-status.is-*` CSS.
+1. Replace the class expression in `_renderConnectedStatus` (:2360) with the `msg-*` mapping; delete `.conn-status.is-*` CSS.
 2. Add the `h2` rule; remove the two inline styles.
 3. Add the two pytest checks; update the ENH-3500 probe census; rerun the theme probe.
 
@@ -149,4 +153,4 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Scope Boundary
 
-**Note** (added by `/ll:audit-issue-conflicts`): BUG-3512 also edits the `.conn-status` block in `renderConnected` (live-region/alert semantics, state class stays on the inner child). Re-check that line after BUG-3512 lands before migrating `is-*` onto `msg-*`. BUG-3516 owns the saturated-green fallback row; regenerate the golden fixture in coordination.
+**Note** (added by `/ll:audit-issue-conflicts`): BUG-3512 also edits the `.conn-status` block in `renderConnected` (live-region/alert semantics, state class stays on the inner child). **Re-checked (BUG-3512 landed)**: the state class is on the inner `.conn-status` child built in `_renderConnectedStatus`; the outer `#conn-status` is a `role="group"` focus target and carries no state class — migrate the inner child only. BUG-3516 owns the saturated-green fallback row; regenerate the golden fixture in coordination.

@@ -4,10 +4,11 @@ type: ENH
 title: Shift-left evidence verification to refine-time and make the pre-commit hook
   visible
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-19'
 captured_at: '2026-09-19T20:57:20Z'
+completed_at: '2026-09-19T23:24:31Z'
 ---
 
 # ENH-3515: Shift-left evidence verification to refine-time and make the pre-commit hook visible
@@ -150,3 +151,13 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ## Session Log
 - `/ll:format-issue` - 2026-09-19T21:04:51 - `e76a6089-0241-4098-9983-3c93e7b1386d.jsonl`
 - `/ll:capture-issue` - 2026-09-19T20:57:27 - `7ba3809c-e334-468e-81b6-cf0bbfd0f90c.jsonl`
+
+---
+
+## Resolution
+
+- **Status**: Decomposed
+- **Closed**: 2026-09-19
+- **Decomposed into**: ENH-3518, ENH-3519, ENH-3520
+
+Work for ENH-3515 is now carried by its child issues; this parent was closed by rn-decompose.

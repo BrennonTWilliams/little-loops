@@ -27,7 +27,7 @@ The dimensions, rules and outcomes lists render nothing when empty (0 children, 
 
 ## Expected Behavior
 
-Each of the dimensions, rules and outcomes lists, and the connected issue selector, shows a consistent empty-state hint (in the style of 'No scenarios yet.') when it has no entries. A zero-dimension model no longer reads 'No issues detected.': `renderMessages` adds a template-side `msg-warn` ("No dimensions yet — add one to score."), the same way it already adds the unreachable-outcome warning. It is a warning, not an error, so export gating (`validateBuilderModel`) is unchanged.
+Each of the dimensions, rules and outcomes lists, and the connected issue selector, shows a consistent empty-state hint (in the style of 'No scenarios yet.') when it has no entries. A zero-dimension model no longer reads 'No issues detected.': `renderMessages` adds a template-side `msg-warn` ("No dimensions yet — add at least one."; mode-neutral, since `decision_table` dimensions are rule fields, not scored), the same way it already adds the unreachable-outcome warning. It is a warning, not an error, so export gating (`validateBuilderModel`) is unchanged.
 
 ## Motivation
 
@@ -104,15 +104,18 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Design Decisions
 
+> **Context refresh (2026-09-19)**: BUG-3512 is **done** (2f5bdb89a). `:NNNN` line references in this issue predate it — roughly +4 up to `updatePreview` (now :1782) and +75 in the connected code (`renderConnected` now :2292). Function-name anchors remain correct; resolve by name, not line.
+
 - **Placement**: each hint is a static, always-present sibling `<p class="hint" hidden>` placed directly after its list container — `#dim-empty` after `#dim-list`, `#rule-empty` after `#rule-list`, `#outcome-empty` after `#outcome-list` — toggled (`hidden` + `textContent`) by the renderer. This mirrors the `#scenario-summary` convention (static element, swapped text), keeps the list containers' child counts untouched (`feat-3488-browser-probes.mjs` `ruleCount`), and cannot leak in rubric mode because `#rules-fieldset`/`#outcomes-fieldset` are hidden there. `renderAll`'s rubric branch must still set `#rule-empty`/`#outcome-empty` `hidden = true` alongside its `innerHTML = ""` clears.
 - **`#dim-list` is visible in every mode**, so `#dim-empty` shows in rubric mode too (intended). In `issue_lifecycle` the built-in dimensions make an empty list unreachable; `renderLifecycleOutcomes` likewise always renders the fixed verb set, so `#outcome-empty` only ever shows in `decision_table`.
-- **Text**: "No dimensions yet.", "No rules yet — everything goes to the fallback.", "No outcomes yet.", and `#conn-issue-note` = "No issues found." when `st.issues.status === "ready"` and `st.issues.list` is empty (and no stale selection note applies).
+- **Text**: "No dimensions yet.", "No rules yet — everything goes to the fallback." (plain "No rules yet." when `state.fallback` is `""`, i.e. outcomes are also empty — there is no fallback to go to), "No outcomes yet.", and `#conn-issue-note` = "No issues found." when `st.issues.status === "ready"` and `st.issues.list` is empty (and no stale selection note applies).
 - **Zero-dimension message**: template-side `msg-warn` in `renderMessages` (see Expected Behavior); `validateBuilderModel` untouched.
 
 ## Acceptance Criteria
 
 - [ ] Rendered HTML contains exactly one each of `id="dim-empty"`, `id="rule-empty"`, `id="outcome-empty"`, each a `<p class="hint"` with `hidden` (pytest: `test_policy_builder_emit.py`, `html.count(...) == 1`).
 - [ ] `decision_table` with `dimensions=[]` / `rules=[]` / `outcomes=[]`: the matching hint is visible with the text above; with ≥1 entry it is hidden (probe: `auth-empty-dimensions-*`, `auth-empty-rules-*`, `auth-empty-outcomes-*`).
+- [ ] `rules=[]` **and** `outcomes=[]`: `#rule-empty` reads "No rules yet." without the fallback clause (probe).
 - [ ] Rubric mode: `#rule-empty`/`#outcome-empty` are never visible; `#dim-empty` is visible when there are no dimensions (probe).
 - [ ] Served page with `./issues` → `{issues:[]}`: `#conn-issue-note` reads "No issues found."; loading/error/no-longer-listed texts unchanged (probe: `conn-issues-empty-*`).
 - [ ] A zero-dimension model shows the `msg-warn` and not "No issues detected."; Copy/Download enablement is unchanged (probe).
@@ -156,4 +159,4 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Scope Boundary
 
-**Note** (added by `/ll:audit-issue-conflicts`): Related issue ENH-3511 adds per-row `oc-del-reason-${oi}` elements in `renderOutcomes` and `aria-describedby="conn-unavailable"` on `#conn-issue`. Keep `#outcome-empty` outside `#outcome-list` and keep `#conn-issue-note` (status text) separate from the `#conn-unavailable` describedby target. BUG-3512 owns announcer semantics for `#conn-*`; confirm `#conn-issue-note` is deliberately excluded from its announcer.
+**Note** (added by `/ll:audit-issue-conflicts`): Related issue ENH-3511 adds per-row `oc-del-reason-${oi}` elements in `renderOutcomes` and `aria-describedby="conn-unavailable"` on `#conn-issue`. Keep `#outcome-empty` outside `#outcome-list` and keep `#conn-issue-note` (status text) separate from the `#conn-unavailable` describedby target. BUG-3512 owns announcer semantics for `#conn-*`. **Settled (BUG-3512 landed)**: `#conn-issue-note` has no `role`/`aria-live` and `_announceConnected` never writes it, so "No issues found." is silent like its sibling loading/error texts — intended; do not make it live here.
