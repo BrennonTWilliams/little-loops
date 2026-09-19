@@ -34,6 +34,7 @@ class TestModelRanks:
             "claude-sonnet-5",
             "claude-opus-5",
             "claude-fable-5",
+            "claude-fable-5-1",
         }
 
     def test_claude_code_haiku_ranks_below_opus(self):
@@ -722,3 +723,82 @@ class TestConsultExclusivity:
                 f"{relpath}: found {found} call(s) to consult(), expected {expected} "
                 "(AC #5: only consult_for_trigger may call consult())"
             )
+
+
+def _claude_envelope(**fields: object) -> str:
+    import json
+
+    return json.dumps({"type": "result", "subtype": "success", "is_error": False, **fields})
+
+
+class TestConsultSchemaEnforcement:
+    """The verdict schema must reach hosts whose builders drop it (claude-code, qwen)."""
+
+    _VERDICT = {"recommendation": "do X", "risks": [], "confidence": 0.9, "dissent": ""}
+
+    def _run(self, host: str, stdout: str):
+        config = _FakeConfig(AdvisorConfig(host=host, model="opus"))
+        proc = subprocess.CompletedProcess(args=[], returncode=0, stdout=stdout, stderr="")
+        with patch("little_loops.host_runner.subprocess.run", return_value=proc) as mock_run:
+            verdict = consult(
+                question="q",
+                signal="user_requested",
+                config=config,
+                main_host=host,
+                main_model="opus",
+            )
+        return verdict, mock_run.call_args.args[0]
+
+    def test_claude_code_argv_carries_json_schema(self):
+        verdict, argv = self._run("claude-code", _claude_envelope(structured_output=self._VERDICT))
+        assert "--json-schema" in argv
+        assert verdict.recommendation == "do X"
+
+    def test_codex_argv_has_no_inline_json_schema(self):
+        _, argv = self._run("codex", _claude_envelope(structured_output=self._VERDICT))
+        assert "--json-schema" not in argv
+        assert "--output-schema" in argv
+
+    def test_prose_result_error_includes_model_text(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        monkeypatch.chdir(tmp_path)
+        config = _FakeConfig(AdvisorConfig(enabled=True, host="claude-code", model="opus"))
+        prose = "I recommend going ahead, but consider the migration cost."
+        proc = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout=_claude_envelope(result=prose), stderr=""
+        )
+        with patch("little_loops.host_runner.subprocess.run", return_value=proc):
+            outcome = consult_for_trigger(
+                "user_requested",
+                question="q",
+                config=config,
+                main_host="claude-code",
+                main_model="opus",
+                manual=True,
+            )
+        assert outcome.skipped_reason == "failed"
+        assert outcome.error is not None
+        assert "Failed to parse LLM response" in outcome.error
+        assert "I recommend going ahead" in outcome.error
+
+
+class TestAdviseCliHostValidation:
+    def test_binary_name_host_rejected_before_any_consult(self, capsys: pytest.CaptureFixture):
+        import contextlib
+
+        from little_loops.cli.advise import main_advise
+
+        with (
+            patch(
+                "little_loops.cli.advise.cli_event_context",
+                lambda *a, **k: contextlib.nullcontext(),
+            ),
+            patch("little_loops.cli.advise.consult_for_trigger") as mock_consult,
+            pytest.raises(SystemExit) as exc_info,
+        ):
+            main_advise(["--signal", "user_requested", "--question", "q", "--host", "claude"])
+        assert exc_info.value.code == 2
+        mock_consult.assert_not_called()
+        err = capsys.readouterr().err
+        assert "claude-code" in err
