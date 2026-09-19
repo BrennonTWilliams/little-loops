@@ -16,6 +16,12 @@ relates_to:
 - FEAT-3504
 - ENH-3487
 - FEAT-3488
+confidence_score: 100
+outcome_confidence: 78
+score_complexity: 10
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 # ENH-3507: Policy builder storage extraction and served-page probe skeleton
@@ -133,5 +139,6 @@ Includes the storage helper, `.tmpl` rebind, harness fix, golden, storage Node t
 ---
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-19T03:14:29 - `83bed03f-c4e2-4c5c-81ea-69c28840da72.jsonl`
 - `/ll:verify-issues` - 2026-09-19T02:35:35 - `c21faf03-4a0d-488c-8584-9577fe7b87f5.jsonl`
 - manual split from FEAT-3505 - 2026-09-19
