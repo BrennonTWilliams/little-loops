@@ -181,6 +181,7 @@ Applied the reviewed scope and consistency corrections on 2026-09-19. Retained O
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-19T23:58:33 - `dfdc64ea-f3c8-41c0-9f24-89d5c090ffb6.jsonl`
 - `/ll:wire-issue` - 2026-09-19T23:27:50 - `4f20c1d3-a8db-42b4-9c73-8f8aaa3aa2fe.jsonl`
 - `/ll:decide-issue` - 2026-09-19T23:22:42 - `d4660828-e0d9-40c0-89b8-9bbf5b5e050f.jsonl`
 - `/ll:refine-issue` - 2026-09-19T23:17:05 - `4f31a004-1b37-455a-97b4-0a7a1b1424a6.jsonl`
