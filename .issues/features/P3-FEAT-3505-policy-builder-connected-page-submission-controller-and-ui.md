@@ -18,6 +18,13 @@ relates_to:
 - FEAT-3498
 - FEAT-3503
 - ENH-3487
+confidence_score: 95
+outcome_confidence: 64
+score_complexity: 10
+score_test_coverage: 18
+score_ambiguity: 18
+score_change_surface: 18
+missing_artifacts: true
 ---
 
 # FEAT-3505: Policy builder connected page submission controller and UI
@@ -219,7 +226,24 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 **Open** | Created: 2026-09-18 | Priority: P3
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-18_
+
+**Readiness Score**: 95/100 → PROCEED
+**Outcome Confidence**: 64/100 → MODERATE
+
+### Concerns
+- Terminal queue status set (`done|failed|dead_letter|cancelled`) is not verified against `queue_store`; confirm before hard-coding the poll-stop condition.
+- Visibility of `const CONNECTED_CONTEXT` (classic script) from the later `<script type="module">` is unverified; verify in the probe skeleton (step 1) before building on it.
+- `createXxx(deps)` DI factories are a deliberate departure from the core's pure-function convention (no precedent) — acceptable, but the injected-globals boundary is a new convention.
+
+### Outcome Risk Factors
+- Deep per-site complexity: one stateful controller (freeze/persist/guard/poll/reconcile) with shared state across delivery states, generations, and workspace-scoped storage.
+- Broad enumeration across ~8+ sites (core, `.tmpl`, new Node tests, golden, probe, guide, plus existing `policy_validator.test.mjs` BUG-3502 vm harness that will break on storage extraction).
+- Test infrastructure for fake `fetch`/timers/`AbortController`/`crypto.subtle` does not exist yet and must be built alongside the controller.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-19T00:55:57 - `5ee7867c-50c0-4d83-996d-3e02625b05e3.jsonl`
 - `/ll:wire-issue` - 2026-09-19T00:54:02 - `11fbe36a-230e-4c61-845b-8c1fb6ba2d32.jsonl`
 - `/ll:refine-issue` - 2026-09-19T00:47:56 - `2114fa22-5111-44f1-a4b4-c86114783c2c.jsonl`
