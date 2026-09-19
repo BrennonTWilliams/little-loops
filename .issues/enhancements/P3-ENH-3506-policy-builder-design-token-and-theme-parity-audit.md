@@ -15,8 +15,8 @@ relates_to:
 - EPIC-3493
 program_design_not_applicable: true
 confidence_score: 95
-outcome_confidence: 82
-score_complexity: 21
+outcome_confidence: 75
+score_complexity: 14
 score_test_coverage: 18
 score_ambiguity: 18
 score_change_surface: 25
@@ -214,6 +214,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-19T01:29:27 - `95a86361-ae5f-4af5-841b-d063cb74486b.jsonl`
+- `/ll:confidence-check` - 2026-09-19T01:27:25 - `7a2a69d3-d8fa-43ea-8e40-15186213e21f.jsonl`
 - `/ll:confidence-check` - 2026-09-19T00:55:44 - `089757cd-fbfa-425b-82b6-90c870def4c8.jsonl`
 - `/ll:wire-issue` - 2026-09-19T00:54:28 - `e2df2c7e-086d-407f-878d-d3c3d7221a4c.jsonl`
 - `/ll:refine-issue` - 2026-09-19T00:47:41 - `304eba96-751f-4059-9328-1fc1b29cacd2.jsonl`
