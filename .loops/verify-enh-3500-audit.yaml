@@ -1,0 +1,64 @@
+name: verify-enh-3500-audit
+category: verification
+description: |
+  Evidence collection for the ENH-3500 policy-builder cross-mode design/UX audit.
+  Renders the builder offline and served (`ll-artifact serve --policy-builder`),
+  drives .loops/probes/enh-3500-audit-probes.mjs through the case manifest
+  (fixture x mode x theme x width, 601px comparisons, connected states,
+  keyboard/live-region traces) and writes screenshots + JSON under the run dir.
+
+  Dev-only, on-demand; never a pytest gate. Ends in `skipped-no-playwright` when
+  Playwright is unavailable. AUDIT_EVIDENCE_COLLECTED means evidence collection
+  finished, NOT that the UX passed review — dispositions live in the issue's
+  Audit Coverage ledger.
+scope:
+  - ".loops/runs/"
+context:
+  probe_script: .loops/probes/enh-3500-audit-probes.mjs
+initial: preflight
+states:
+  preflight:
+    action_type: shell
+    action: |
+      mkdir -p "${context.run_dir}"
+      if ! command -v node >/dev/null 2>&1; then
+        echo "PLAYWRIGHT_MISSING: node not on PATH"
+        exit 0
+      fi
+      node ${context.probe_script:shell} --check > "${context.run_dir}/preflight.log" 2>&1
+      cat "${context.run_dir}/preflight.log"
+      exit 0
+    timeout: 120
+    evaluate:
+      type: output_contains
+      pattern: PLAYWRIGHT_OK
+    on_yes: probe
+    on_no: skipped-no-playwright
+    on_error: skipped-no-playwright
+
+  probe:
+    action_type: shell
+    action: |
+      node ${context.probe_script:shell} "${context.run_dir}" > "${context.run_dir}/probes.log" 2>&1
+      tail -5 "${context.run_dir}/probes.log"
+      exit 0
+    timeout: 1500
+    evaluate:
+      type: output_contains
+      pattern: AUDIT_EVIDENCE_COLLECTED
+    on_yes: done
+    on_no: failed
+    on_error: failed
+
+  done:
+    terminal: true
+  skipped-no-playwright:
+    terminal: true
+    failure: true
+  failed:
+    terminal: true
+    failure: true
+
+max_steps: 8
+max_iterations: 1
+timeout: 1800

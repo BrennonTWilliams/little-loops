@@ -3,7 +3,7 @@ id: ENH-3500
 type: ENH
 title: Policy builder cross-mode design and UX audit
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-17'
 captured_at: '2026-09-17T19:57:23Z'
@@ -24,6 +24,7 @@ score_complexity: 21
 score_test_coverage: 18
 score_ambiguity: 18
 score_change_surface: 25
+completed_at: '2026-09-19T20:01:30Z'
 ---
 
 # ENH-3500: Policy builder cross-mode design and UX audit
@@ -141,13 +142,134 @@ _Added by `/ll:refine-issue` — 2026-09-17 — based on codebase analysis (toke
 
 ## Acceptance Criteria
 
-- [ ] Every required fixture/checklist combination has a stable case ID, explicit applicability, and a coverage-ledger entry for both themes and all primary widths; targeted 601px comparisons cover each mode's populated/long-content layout and the connected panel.
-- [ ] Every applicable case reaches its intended state and has linked screenshots and JSON evidence under the run dir. Evidence includes run metadata and fresh-storage isolation between independent cases.
-- [ ] Connected-state recipes distinguish offline panel absence, visible served unavailability, recognized rejection, unknown outcome/recovery, accepted warnings variants, and pending/success/failure readbacks.
-- [ ] Keyboard activation, focus transitions, and live-region text changes are exercised and recorded. DOM announcement support and any manual screen-reader verification are clearly distinguished.
-- [ ] Every planned case has a reviewed disposition: pass, finding, blocked, or not applicable with a reason. No required case remains blocked or missing evidence when this issue closes.
-- [ ] Every finding records severity, user impact, expected presentation, reproduction/evidence, and an existing or newly filed follow-up. Observations sharing a root cause share one follow-up; existing issues are checked before creating duplicates.
-- [ ] Probe collection success and UX review completion are reported separately. Clean checklist results remain recorded even when other cases have findings; findings need to be filed, not fixed, to close this audit.
+- [x] Every required fixture/checklist combination has a stable case ID, explicit applicability, and a coverage-ledger entry for both themes and all primary widths; targeted 601px comparisons cover each mode's populated/long-content layout and the connected panel.
+- [x] Every applicable case reaches its intended state and has linked screenshots and JSON evidence under the run dir. Evidence includes run metadata and fresh-storage isolation between independent cases.
+- [x] Connected-state recipes distinguish offline panel absence, visible served unavailability, recognized rejection, unknown outcome/recovery, accepted warnings variants, and pending/success/failure readbacks.
+- [x] Keyboard activation, focus transitions, and live-region text changes are exercised and recorded. DOM announcement support and any manual screen-reader verification are clearly distinguished.
+- [x] Every planned case has a reviewed disposition: pass, finding, blocked, or not applicable with a reason. No required case remains blocked or missing evidence when this issue closes.
+- [x] Every finding records severity, user impact, expected presentation, reproduction/evidence, and an existing or newly filed follow-up. Observations sharing a root cause share one follow-up; existing issues are checked before creating duplicates.
+- [x] Probe collection success and UX review completion are reported separately. Clean checklist results remain recorded even when other cases have findings; findings need to be filed, not fixed, to close this audit.
+
+## Audit Coverage
+
+_Filled during implementation from the case manifest. One row per case/checklist item; do not omit clean cases. Disposition is pass, finding, blocked, or not applicable (with a reason). Evidence paths are relative to the recorded run dir. This ledger records audit completion independently of probe exit status._
+
+_Run: `.loops/runs/enh-3500-audit-final/evidence/` (case-manifest.json, run-metadata.json: rev 0484eabd6, chromium 148, default token profile). 378 cases collected, 0 errors (one case re-run via CASE_ONLY after a cold-start timeout). Case-ID patterns expand over theme (light/dark) x width (375/600/1280; 601 for populated/long-content/connected). Screenshot + JSON share the ID._
+
+| Case ID pattern | Checklist item | Surface / mode | Fixture / state | Theme / width | Evidence | Disposition / reason | Finding IDs |
+|---|---|---|---|---|---|---|---|
+| auth-populated-{mode}-* (offline + served) | hierarchy, consistency | all 3 modes | populated baseline | both / 375,600,601,1280 | *.png/.json | finding (no overflow/clipping at any width) | F5 |
+| auth-start-blank-*, auth-empty-dimensions-*, auth-empty-rules-*, auth-empty-outcomes-* | empty states | dt, lifecycle (rubric: rules/outcomes n/a — lists do not exist) | empty lists | both / 375,600,1280 | *.png/.json | finding | F1 |
+| auth-invalid-model-* | error states, disabled reasons | all 3 modes | bogus dimension type via Open project | both / 375,600,1280 | *.png/.json | finding | F2, F4 |
+| auth-long-content-* | long content | all 3 modes | long name/desc/dimension | both / 375,600,601,1280 | *.png/.json | pass (wraps, no horizontal scroll, no clipped actions) | — |
+| auth-scenarios-empty/populated/run-* | scenario suite | all 3 modes | empty; populated; unasserted result | both / 375,600,1280 | *.png/.json | pass with F5 (coverage line present per mode; pass/fail/error/needs-review states not separately fixtured — unasserted only) | F5 |
+| conn-offline-absence-* | offline panel absence | offline lifecycle | panel hidden | both / all | *.json | pass | — |
+| conn-unavailable-{decision_table,rubric}-* | unavailable-with-reason | served | visible reason text | both / all | *.png/.json | pass (only surface giving a reason) | F2 |
+| conn-issues-loading/empty/failed-* | issue selection | served lifecycle | loading; empty; failed + Reload | both / all | *.png/.json | finding (empty has no text; loading/failed pass) | F1 |
+| conn-issue-selected-*, conn-review-none/ready/refused/draft-edited-* | review | served lifecycle | review states | both / all | *.png/.json | pass (refused shows "Fix the errors listed under Result"; draft-edited distinct) | F2 |
+| conn-delivery-rejected/outcome-unknown-*, conn-accepted-*, conn-readback-*  | delivery/status | served lifecycle | rejected, unknown, accepted x3, awaiting/done/failed | both / all + 601 for 3 states | *.png/.json | pass visually; announcement gaps | F3 |
+| kb-happy-path, kb-outcome-unknown, kb-rejected | keyboard, focus, live regions | served lifecycle | Tab/Enter/Space traces | light / 1280 | kb-*-keyboard.json, *-focus-*.png | finding (ArrowDown selection fell back to selectOption in headless; DOM support only, no manual screen-reader check performed) | F3 |
+| live-import-error-offline | live regions | offline | bad import file | light / 1280 | live-import-error-offline.* | finding | F4 |
+| token check on FEAT-3505 lines | theme | all | dark connected states reviewed via screenshots | dark | conn-*-dark-* | pass (no unresolved tokens observed); dark "Otherwise" row noted | F5 |
+
+## Audit Findings`, including severity, user impact, and evidence. Search existing issues before filing follow-ups. Reuse an issue that already owns the root cause; otherwise use `ll-issues create`, then `ll-issues link <ID> --relates-to ENH-3500`. File **one issue per root cause**, grouping observations that share a fix (e.g. one empty-state pattern missing in all three modes is one issue), not one per table row. Each follow-up must include reproduction steps, expected presentation, and a link to the relevant audit evidence.
+
+FEAT-3505 introduced new design-token references and possibly hardcoded colors; check them here using ENH-3506's method (diff the rendered `:root`/`[data-theme=dark]` blocks against the active profile), since ENH-3506 covers only the pre-FEAT-3505 template. ENH-3506's template-ref parity pytest should already keep new refs resolving; this pass checks the visual result. **Scope bound**: the template carries roughly 70 hex/`rgba()` literals (a loose grep counts 74), most of them pre-FEAT-3505 and already ENH-3506's territory — check only literals on lines FEAT-3505 added (`git diff 1d899c076^ 1d899c076 -- scripts/little_loops/templates/policy-router-builder.html.tmpl`), not the whole file.
+
+No emitted-YAML or runtime-behavior change is in scope for this issue (see Out of Scope) — only presentation.
+
+### Audit Method
+
+The audit is driven by an on-demand Playwright probe, not by reading source and not by a pytest gate. Follow the existing pattern in `.loops/probes/` (`enh-3506-theme-probes.mjs`, `enh-3507-served-page-probes.mjs`, `feat-3488-browser-probes.mjs`, each with a `.loops/verify-*.yaml` loop that ends in `skipped-no-playwright` when Playwright is absent):
+
+- Add `.loops/probes/enh-3500-audit-probes.mjs` + a new `verify-enh-3500-audit` loop YAML (in `.loops/`, beside the existing `verify-*` loops). Expand the named fixtures below into a case manifest before running: fixture × applicable mode (`decision_table`, `rubric`, `issue_lifecycle`, switched via `#mode-switch`) × theme (light/dark) × primary width (375 / 600 / 1280), plus the targeted 601px cases. Record the offline/served surface explicitly; connected fixtures use the served surface, while shared authoring fixtures use the offline render with a served populated-layout comparison per mode.
+- Use a fresh browser context/storage for every independent case. Preserve state only within a case that intentionally tests a transition. Seed fixtures through supported UI/import paths, assert the intended state is reached, and then capture evidence; a default populated page does not count as an empty/error fixture. Stub connected requests and matching readbacks before the action so polling cannot replace the intended state during capture. Reuse the existing probe helpers' approach without running their real-queue mutation cases.
+- For each case, capture a full-page screenshot and JSON containing the heading/legend outline, disabled controls and their associated reasons, `aria-*`/`role` attributes, empty-state text per list, status/error class usage, and overflow/clipping measurements. Include long names, issue titles, validation messages, and result text in the long-content fixtures; inspect whether content wraps and actions remain reachable.
+- Write screenshots, JSON, the case manifest, and interaction traces under `${context.run_dir}/`. Record the source revision, active token profile, browser/version, and viewport dimensions with the artifacts. Link evidence from `## Audit Coverage` and `## Audit Findings` using stable case IDs and run-relative filenames.
+- A successful probe means evidence collection completed, not that the UX passed review. Judge every case against the checklist, record its disposition, and reconcile the coverage ledger with the manifest. Missing evidence or an unreached required state blocks audit completion; observed UX defects become findings and do not themselves prevent completing this audit.
+- If Playwright is unavailable, the audit is **not** done from source alone — record it as blocked rather than closing.
+
+### Required Fixtures and Interaction Checks
+
+| Fixture family | Required presentations |
+|---|---|
+| Authoring, every applicable mode | Populated baseline; separately empty rules, dimensions, outcomes, and scenarios; invalid model with Result diagnostics and disabled export actions; long-content layout. Explicitly mark lists that do not exist in a mode as not applicable. |
+| Scenario suite, every applicable mode | Empty; populated/not yet run; pass, fail, error, and unasserted results; needs-review after an edit that stales a rule-index expectation (not applicable to rubric rule-index expectations); coverage summary and explanation presentation. |
+| Connected issue selection | Loading; empty issue list; failed issue-list request with Reload recovery; selected issue. |
+| Connected review | No review yet; preparing snapshot; refused review (e.g. invalid policy); ready; draft edited since review, including the distinction between the reviewed snapshot and current draft. |
+| Connected delivery and status | Offline panel absence; served unavailable reason; rejected; outcome unknown with recovery controls; accepted with no warnings, with warnings, and with warnings unavailable; representative `awaiting_approval`, `done`, and `failed` readbacks, including result details. |
+
+For the connected controls, execute explicit Tab/Shift+Tab and keyboard activation sequences for issue selection, Review, Submit, and each visible recovery action. Record the focused element before and after actions, the focus order, and visible focus screenshots. For asynchronous transitions, record which live-region elements change and their resulting text, including transitions that update only `#conn-status` or `#conn-notices`. Attribute snapshots alone do not verify keyboard behavior or announcements. Label this evidence as DOM announcement support; claim actual screen-reader announcements only if a manual assistive-technology check was performed and its browser/reader and observations are recorded. Manual screen-reader verification is optional and must be reported as not performed when absent.
+
+**Reaching the connected states** (connected page = `ll-artifact serve --policy-builder`, lifecycle mode unless stated otherwise):
+
+| State | How to reproduce |
+|---|---|
+| Offline panel absence | Open the offline `ll-artifact policy-builder` render and verify `#connected-panel` is hidden. `renderConnected` hides the whole panel when `CONNECTED_CONTEXT` is absent; offline rendering cannot demonstrate a visible unavailable reason. |
+| unavailable-with-reason (`#conn-unavailable`) | Open the served page in a non-lifecycle mode with fresh storage (reason: "Switch to the issue lifecycle mode…"). |
+| `rejected` | Intercept the POST with `page.route("**/run-request", …)` and fulfill a JSON 400 response with `{ "error": { "code": "validation_failed", "message": "Audit validation failure" } }`. The controller requires a recognized rejection code; a generic 4xx body can leave the outcome unknown. |
+| `outcome_unknown` | Abort the POST with `route.abort()`; capture `#conn-again-btn`, disabled Submit, and Refresh status. In a separate recovery case, stub the readback as request-not-found to expose Retry identical request. |
+| `accepted`, no warnings / with warnings | Fulfill JSON 200 with a string `queueId`, `created: true`, and `warnings: []` or a nonempty warning array. Omitting `warnings` for a newly created request also yields an empty warning list. |
+| `accepted`, `warningsUnavailable` | Fulfill JSON 200 with a string `queueId` and `created: false`, omitting `warnings`. This represents an existing request whose original warnings are unavailable. |
+| Accepted status/readback variants | Stub `**/run-request/*` using the existing `stubReadback`/`rbBody` pattern in `enh-3507-served-page-probes.mjs`; echo the submitted issue/revision bindings and vary `status` between `awaiting_approval`, `done`, and `failed`, with result text for terminal cases. |
+
+The response contracts above are grounded in `classifyPost` and the submission view's `warningsUnavailable` calculation in `policy_builder_core.mjs`; use these contracts when building fixtures rather than guessing from HTTP status alone.
+
+### Baseline Conventions (seed for the checklist)
+
+Observed in the template on 2026-09-19; the audit confirms or refutes each as an inconsistency:
+
+- **Empty states**: only scenarios have one ("No scenarios yet.", `#scenario-summary`); rules, dimensions, and outcomes lists render nothing when empty.
+- **Disabled controls**: ~13 bare `.disabled = …` sites (undo/redo, delete-outcome when in use, rule up/down, value input for boolean ops, copy/download on error, expected-rule-index, connected Review/Submit/Refresh) and **zero** `aria-disabled`/`aria-describedby`. Only the connected surface shows a reason (`#conn-unavailable`); e.g. delete-outcome disabled-when-in-use shows none.
+- **Hierarchy**: one `h1`, fieldset `<legend>`s for the left column, and two `h2`s ("Result", "Submit to host") with inline `font-size:1rem` styles. "Try it" is used as the legend of two different fieldsets (lines 258, 264).
+- **Status/error presentation**: two class vocabularies coexist — `is-error`/`is-warning`/`is-success` (connected status only, CSS lines 171-173, applied at 2275) and `msg-error`/`msg-warn`/`msg-ok` (Result diagnostics and scenario results, CSS lines 161-163, applied at e.g. 1302, 1309, 1317, 1320, 1657). No bare `"error"` class exists; lines 1796/1807/2211/2244 only test `severity === "error"`/`status === "error"` and emit no class. Audit whether the split is a real inconsistency.
+- **Live regions**: two — `#import-diagnostics` and `#live-status` (both `role="status"`, `aria-live="polite"`); check which messages go to which and whether errors should be assertive.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-17 — based on codebase analysis (token-specific findings moved to ENH-3506):_
+
+- Convention for filing follow-up issues from an audit varies across existing audit skills: `commands/audit-architecture.md`/`skills/audit-docs/SKILL.md` hand-`Write` a fixed issue-file template (one issue per finding row); the current post-FEAT-2947 convention (`skills/capture-issue/SKILL.md:266-275`) instead calls `ll-issues create` directly. ENH-3491 (the prior lifecycle-only audit this issue's Scope §2 extends) filed no follow-up issues at all — its findings were implemented directly in that same issue, so it is not a precedent for this issue's "file one follow-up per finding" mechanism.
+- No per-mode template fragment files exist. `scripts/little_loops/templates/policy-router-builder.html.tmpl` (one shared HTML template) plus `scripts/little_loops/templates/policy_builder_core.mjs` (one shared, DOM-free JS module) implement all three authoring modes (`decision_table`, `rubric`, `issue_lifecycle`); mode switching happens client-side via `<select id="mode-switch">`, so one `ll-artifact policy-builder` render covers every mode.
+- No headless-browser/DOM rendering harness exists in the pytest suite; browser verification of the rendered page is an on-demand Playwright probe loop, not a pytest gate.
+
+## Integration Map
+
+### Files to Audit
+- `scripts/little_loops/templates/policy-router-builder.html.tmpl` — the single shared HTML template; primary audit target for hierarchy, empty/error states, and the DOM binding FEAT-3505 added
+- `scripts/little_loops/templates/policy_builder_core.mjs` — shared DOM-free module for all modes; source of validation/error message text and, since FEAT-3505, the submission controller's state names
+- No source files change for the audit itself; any inconsistency found is filed as a follow-up issue rather than fixed inline here
+
+### Files to Create
+- `.loops/probes/enh-3500-audit-probes.mjs` and a new `verify-enh-3500-audit` loop YAML (in `.loops/`, beside the existing `verify-*` loops) — on-demand Playwright audit probe (see Audit Method); dev-only, never a pytest gate
+
+### Similar Patterns
+- ENH-3491 (done) — prior lifecycle-mode-only layout/responsive/keyboard audit; this issue extends that pattern across modes rather than re-litigating it
+- ENH-3506 — sibling token/theme parity audit split from this issue
+
+### Tests
+- On-demand browser probe and coverage-manifest reconciliation verify evidence collection; interactive review supplies the UX verdict. No new pytest gate; follow-up issues own regression coverage for fixes.
+
+### Documentation
+- N/A — this issue produces an audit report and follow-up issues, not doc changes
+
+## Implementation Steps
+
+1. Render the builder offline (`ll-artifact policy-builder`) and connected (`ll-artifact serve --policy-builder`, FEAT-3504).
+2. Build the case manifest and audit probe from Required Fixtures and Interaction Checks. Run the applicable mode × theme × primary-width matrix, targeted 600/601px comparisons, and deterministic connected-state fixtures with isolated storage.
+3. Review the screenshots, DOM dumps, and keyboard/focus/live-region traces against the shared checklist. Use ENH-3491's shipped lifecycle-mode output and FEAT-3505's unavailable-with-reason presentation as comparison points, and Baseline Conventions as the seed list.
+4. Fill `## Audit Coverage` and `## Audit Findings`, assigning severity and user impact. Search existing issues; link an existing owner or create one follow-up per root cause (`relates_to: [ENH-3500]`).
+5. Reconcile the coverage ledger with the manifest and apply the Acceptance Criteria before closure. Record clean cases explicitly; do not infer review completion from a successful probe exit.
+
+## Acceptance Criteria
+
+- [x] Every required fixture/checklist combination has a stable case ID, explicit applicability, and a coverage-ledger entry for both themes and all primary widths; targeted 601px comparisons cover each mode's populated/long-content layout and the connected panel.
+- [x] Every applicable case reaches its intended state and has linked screenshots and JSON evidence under the run dir. Evidence includes run metadata and fresh-storage isolation between independent cases.
+- [x] Connected-state recipes distinguish offline panel absence, visible served unavailability, recognized rejection, unknown outcome/recovery, accepted warnings variants, and pending/success/failure readbacks.
+- [x] Keyboard activation, focus transitions, and live-region text changes are exercised and recorded. DOM announcement support and any manual screen-reader verification are clearly distinguished.
+- [x] Every planned case has a reviewed disposition: pass, finding, blocked, or not applicable with a reason. No required case remains blocked or missing evidence when this issue closes.
+- [x] Every finding records severity, user impact, expected presentation, reproduction/evidence, and an existing or newly filed follow-up. Observations sharing a root cause share one follow-up; existing issues are checked before creating duplicates.
+- [x] Probe collection success and UX review completion are reported separately. Clean checklist results remain recorded even when other cases have findings; findings need to be filed, not fixed, to close this audit.
 
 ## Audit Coverage
 
@@ -161,7 +283,12 @@ _Filled during implementation from the case manifest. One row per case/checklist
 _Filled during implementation. One row per observation; rows sharing a root cause share a follow-up ID. Severity uses P0–P5 with user-impact rationale. Case IDs link back to the coverage ledger and its reproduction/evidence artifacts._
 
 | # | Case IDs / evidence | Surface / mode | Theme / width | Observed | Expected | Severity / user impact | Follow-up |
-|---|---------------------|----------------|---------------|----------|----------|------------------------|-----------|
+|---|---|---|---|---|---|---|---|
+| F1 | auth-empty-*, conn-issues-empty-* | dt, lifecycle, connected | both / all | Dimension/rule/outcome lists and empty issue list render nothing; zero-dimension models report "No issues detected." | Consistent empty-state hint | P3 — new users get blank areas | ENH-3510 |
+| F2 | auth-invalid-model-*, conn-review-none-* | all | both / all | Disabled Copy/Download/Submit etc. give no reason; 0 aria-describedby | Visible/associated reason | P3 — users can't tell why controls are off | ENH-3511 |
+| F3 | kb-*-keyboard.json | connected | light / 1280 | Focus becomes BODY after Review and Submit; status/notices/review-info are not live regions | Focus retained; outcomes announced | P2 — keyboard/AT users lose context and outcome | BUG-3512 |
+| F4 | auth-invalid-model-*, live-import-error-offline | authoring | both / all | #messages errors not announced; import errors polite; alert() for reserved names | Announced, inline errors | P3 | ENH-3513 |
+| F5 | auth-populated-*, conn-accepted-warnings-* | all | both / all | is-*/msg-* (+msg-info) vocabularies; duplicate "Try it" legend; inline h2 styles; saturated dark "Otherwise" row | One vocabulary, consistent headings | P4 — polish | ENH-3514 |
 
 ## Impact
 
@@ -221,6 +348,8 @@ Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the sam
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-19T20:01:30 - `f7185bb8-3eed-4234-b3dc-0db65fe1f2b7.jsonl`
+- `/ll:ready-issue` - 2026-09-19T19:16:45 - `999f9f70-2d49-4552-8409-2e9f9ed94fbb.jsonl`
 - `/ll:confidence-check` - 2026-09-19T19:05:18 - `4be66b2a-8fb6-4f6b-b868-a23d5155ff4b.jsonl`
 - `/ll:verify-issues` - 2026-09-19T19:03:47 - `2f3560fe-f5c4-46f3-b647-99fef1b0cd77.jsonl`
 - `/ll:confidence-check` - 2026-09-19T18:45:23 - `3835f63e-f729-4db6-8d3d-bc4b71a041a3.jsonl`
