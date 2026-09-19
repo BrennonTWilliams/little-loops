@@ -3,10 +3,11 @@ id: FEAT-3505
 type: FEAT
 title: Policy builder connected page submission controller and UI
 priority: P3
-status: open
+status: done
 discovered_by: manual-split
 discovered_date: '2026-09-18'
 captured_at: '2026-09-18T23:20:16Z'
+completed_at: '2026-09-19T06:19:41Z'
 parent: EPIC-3493
 labels:
 - policy-builder
@@ -300,6 +301,8 @@ Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the sam
 - Verified: `_MAX_RUN_REQUEST_BYTES = 1 << 20`, `QUEUE_TERMINAL_STATUSES` (`queue_store.py:187`), `test_wiring_reference_docs.py:254` needle, guide block `:365`. `ll-verify-evidence` clean; no active required decision rules. Graph: provider=codegraph freshness=fresh (not needed for verdicts).
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-19T06:19:41 - `53c6eb9c-2d55-4043-b2b1-4fbe192366ee.jsonl`
+- `/ll:ready-issue` - 2026-09-19T05:52:19 - `8706f94f-1dc3-443c-9709-afb43e52ee22.jsonl`
 - `/ll:confidence-check` - 2026-09-19T05:14:14 - `a3e78fe1-ec55-446c-a6b7-dc94de92fcf6.jsonl`
 - `/ll:verify-issues` - 2026-09-19T05:10:50 - `e7de9cba-8e70-4050-9521-857ebe6dd580.jsonl`
 - `/ll:confidence-check` - 2026-09-19T05:09:45 - `91719ec4-796b-4780-b299-fac123b07a84.jsonl`
@@ -316,3 +319,14 @@ Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the sam
 - `/ll:confidence-check` - 2026-09-19T00:55:57 - `5ee7867c-50c0-4d83-996d-3e02625b05e3.jsonl`
 - `/ll:wire-issue` - 2026-09-19T00:54:02 - `11fbe36a-230e-4c61-845b-8c1fb6ba2d32.jsonl`
 - `/ll:refine-issue` - 2026-09-19T00:47:56 - `2114fa22-5111-44f1-a4b4-c86114783c2c.jsonl`
+
+## Resolution
+
+**Implemented** — 2026-09-19.
+
+- `policy_builder_core.mjs`: `sha256Hex`, `isWellFormedUtf16`, `codePointLength`, `queueStatusLabel`, `createSubmissionController` (review freezing, persist-before-POST record→index→`outcome_unknown`, delivery states, compaction, orphan/prepared recovery, displacement/retention, storage budget, deadline-bound fetch, non-overlapping polling), and `createBuilderStorage.persistMeta` now returns success.
+- `policy-router-builder.html.tmpl`: "Submit to host" panel and DOM binding only; identity hydration is independent of draft validity; same-ID Open, undo/redo and mode changes route to the controller.
+- Tests: `scripts/tests/js/policy_submission.test.mjs` (27 tests); BUG-3502 vm sandbox injects the controller; golden regenerated (diff = additions plus the intended `persistMeta`/hydration edits); guide section + `test_wiring_reference_docs.py` needle.
+- Probe: `.loops/probes/enh-3507-served-page-probes.mjs` extended — 8/8 pass (real server: issues, review→edit→submit, reload, cancel→requeue, two workspaces at one origin; stubbed: all status labels, run identity after requeue, untrusted result, warnings).
+
+**Deviations**: steps 1a/1b shipped as one commit rather than two. Full-suite run (unit): 24192 passed; 2 unrelated failures — `test_verify_evidence::test_no_new_unverifiable_evidence` (BUG-3484 issue-file quote) and the known xdist-flaky `test_feat3323_sse_bridge` fan-in test (passes in isolation).

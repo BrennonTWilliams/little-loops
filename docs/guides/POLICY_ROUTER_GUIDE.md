@@ -373,7 +373,45 @@ the page can enqueue a request but never run or drain one itself. It guarantees 
 against the project's **current** dependencies when the host approves it — not reproducible
 execution, and not approval-time byte re-verification of the persisted file. See
 [CLI.md § ll-artifact serve](../reference/CLI.md#ll-artifact-serve) for the full connected-route
-contract; the served page's own review/submit/status UI is out of this guide's scope.
+contract.
+
+**Using the connected page (FEAT-3505).** The **Submit to host** panel appears only on the served
+page and only while the `issue_lifecycle` mode is active; elsewhere it says why it is unavailable.
+Open the URL that `ll-artifact serve --policy-builder` prints (the second line), then:
+
+1. **Pick an issue** from the list of active issues. The selection is remembered per repository;
+   if the issue later leaves the list it stays selected, marked *no longer listed*, and the host
+   confirms on submit.
+2. **Review.** Review freezes the generated file and shows its short revision ID. Review is refused,
+   with a reason, for an empty or over-128-character project ID, a policy with errors, text that
+   cannot be encoded as UTF-8, or a request larger than 1 MiB. You can keep editing after
+   reviewing: the page shows *Draft edited since review*, and **Submit** still sends exactly the
+   reviewed snapshot. Changing the issue, the mode, or opening a project discards an unsent review.
+3. **Submit.** The request is saved in the browser *before* it is sent. If saving fails, nothing is
+   sent and authoring keeps working. The page then shows the host status — *Awaiting approval*,
+   *Approved — waiting to run*, *Running*, *Done*, *Failed*, *Failed — moved to dead letter*, or
+   *Rejected / cancelled by host* — with the loop instance ID and run directory once a run exists.
+   Validation warnings on an accepted request are shown as non-blocking and kept across reloads;
+   if acceptance is recovered later, the page says warnings are unavailable. After `ll-queue
+   requeue`, a run shown while the request is waiting again is labelled *Previous run*.
+
+**Reloads, timeouts, and restarts.** Requests are stored per repository and project, and each keeps
+its request ID. If the connection drops or a call times out (30 seconds), the outcome is *not
+confirmed*: use **Refresh status**; if the host has no such request you can **Retry identical
+request**, and the same bytes are resent under the same ID. A rejected request stays rejected —
+correct the policy, review again, and submit as a new run. After a server restart the old URL stops
+working (each server run has a new token); open the newly printed URL, and the page restores your
+draft and finds the original queue entry. Polling checks every 10 seconds while awaiting approval
+and every 2 seconds otherwise, and stops at a finished status; a requeued request resumes after
+**Refresh status** or a reload.
+
+**Limits.** One browser tab per project is the supported shape. Saved requests share a 3 MiB
+budget: when a new request would not fit, it is refused and nothing is sent, and earlier requests
+that may still exist on the host are never deleted to make room. This budget reduces storage
+pressure but cannot guarantee that drafts persist, because the browser's own quota is shared with
+everything else on the origin. To verify locally, run `ll-artifact serve --policy-builder`, submit,
+and approve or cancel with `ll-queue`; nothing here promises reproducible execution or a hash check
+at approval time.
 
 **Dimensions are frontmatter fields.** little-loops' own built-in fields are pre-typed and
 pre-populated (locked — they can't be deleted, since a rule may reference the derived

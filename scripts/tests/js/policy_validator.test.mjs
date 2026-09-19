@@ -10,6 +10,7 @@ import vm from "node:vm";
 import {
   parseRuleTable,
   createBuilderStorage,
+  createSubmissionController,
   evaluateRules,
   detectShadows,
   serializeLoopYaml,
@@ -1581,6 +1582,8 @@ function _newBug3502Sandbox() {
     withScenariosDefaulted,
     BUILDER_PROJECT_SCHEMA_VERSION,
     createBuilderStorage,
+    // FEAT-3505: the bootstrap region constructs the (offline, inert) controller.
+    createSubmissionController,
     CONNECTED_CONTEXT: null,
     window: {},
     document: { getElementById: () => null },

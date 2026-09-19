@@ -359,6 +359,12 @@ pre {
 .theme-toggle { font-size: 1.1rem; padding: 0.3rem 0.6rem; }
 .del { flex: 0 0 auto; padding: 0.2rem 0.5rem; }
 small.help { display: block; opacity: 0.7; font-size: 0.75rem; }
+.conn-block { margin: 0.5rem 0; }
+.conn-status { padding: 0.4rem 0.6rem; border-radius: 4px; font-size: 0.85rem; margin: 0.35rem 0; background: var(--color-status-info-bg, #d1ecf1); color: var(--color-status-info-text, #0c5460); }
+.conn-status.is-success { background: var(--color-status-success-bg, #d4edda); color: var(--color-status-success-text, #155724); }
+.conn-status.is-warning { background: var(--color-status-warning-bg, #fff3cd); color: var(--color-status-warning-text, #664d03); }
+.conn-status.is-error { background: var(--color-status-error-bg, #f8d7da); color: var(--color-status-error-text, #721c24); }
+.conn-status pre { white-space: pre-wrap; margin: 0.25rem 0 0; max-height: 14rem; overflow: auto; }
   </style>
 </head>
 <body>
@@ -513,6 +519,30 @@ confidence_score: 40"></textarea>
         <summary>View generated file</summary>
         <pre id="yaml-preview"></pre>
       </details>
+    </section>
+
+    <section class="panel" id="connected-panel">
+      <h2 style="margin-top:0;font-size:1rem;">Submit to host</h2>
+      <p class="hint" id="conn-unavailable" hidden></p>
+      <div id="conn-body" hidden>
+        <div class="row">
+          <label>Issue
+            <select id="conn-issue" aria-label="Issue to run this policy on"></select>
+          </label>
+          <button id="conn-issues-reload" type="button" class="secondary">Reload issues</button>
+        </div>
+        <p class="hint" id="conn-issue-note"></p>
+        <div class="row" style="margin-bottom:0.5rem;">
+          <button id="conn-review-btn" type="button">Review</button>
+          <button id="conn-submit-btn" type="button" disabled>Submit</button>
+          <button id="conn-again-btn" type="button" class="secondary" hidden>Run again</button>
+          <button id="conn-retry-btn" type="button" class="secondary" hidden>Retry identical request</button>
+          <button id="conn-refresh-btn" type="button" class="secondary" hidden>Refresh status</button>
+        </div>
+        <p class="hint" id="conn-review-info"></p>
+        <ul class="messages" id="conn-notices"></ul>
+        <div id="conn-status" class="conn-block"></div>
+      </div>
     </section>
   </main>
 
@@ -4163,7 +4193,10 @@ export function createBuilderStorage(deps) {
     persistMeta(meta) {
       try {
         storage.setItem(metaKey, JSON.stringify(meta));
-      } catch (e) { /* ignore */ }
+        return true;
+      } catch (e) {
+        return false;
+      }
     },
     readDraft(mode) {
       return readJson(draftKey(mode));
@@ -4181,6 +4214,877 @@ export function createBuilderStorage(deps) {
         else storage.setItem(issueKey, JSON.stringify({ issueId }));
       } catch (e) { /* ignore */ }
     },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// FEAT-3505: submission controller (hash helper, storage-backed request records,
+// delivery states, polling). Every environment dependency is injected; the
+// template only binds DOM events/rendering to it.
+// ---------------------------------------------------------------------------
+
+/** Queue status → display label (all seven `QUEUE_STATUSES`). */
+export const QUEUE_STATUS_LABELS = {
+  awaiting_approval: "Awaiting approval",
+  pending: "Approved — waiting to run",
+  running: "Running",
+  done: "Done",
+  failed: "Failed",
+  dead_letter: "Failed — moved to dead letter",
+  cancelled: "Rejected / cancelled by host",
+};
+/** Mirrors `little_loops.queue_store.QUEUE_TERMINAL_STATUSES`. */
+export const QUEUE_TERMINAL_STATUSES = ["done", "failed", "dead_letter", "cancelled"];
+const _RUN_REQUEST_MAX_BYTES = 1048576;
+const _PROJECT_ID_MAX_CODE_POINTS = 128;
+const _PLACEHOLDER_REQUEST_ID = "00000000-0000-4000-8000-000000000000";
+const _REJECTION_CODES = new Set([
+  "bad_request", "body_too_large", "revision_mismatch", "wrong_workspace",
+  "request_conflict", "issue_not_found", "validation_failed",
+]);
+const _RESOLVED_HISTORY_LIMIT = 5;
+const _INACTIVE_PROJECT_LIMIT = 3;
+
+/** Human label for a queue status; an unrecognized status is shown verbatim. */
+export function queueStatusLabel(status) {
+  return Object.prototype.hasOwnProperty.call(QUEUE_STATUS_LABELS, status)
+    ? QUEUE_STATUS_LABELS[status]
+    : String(status);
+}
+
+/**
+ * Lowercase-hex SHA-256 of the UTF-8 encoding of `text` (matches Python
+ * `hashlib.sha256(text.encode("utf-8"))`).
+ * @param {string} text
+ * @param {?{digest: function}} subtle Injected; defaults to `globalThis.crypto.subtle`.
+ * @returns {Promise<string>}
+ */
+export async function sha256Hex(text, subtle) {
+  const s = subtle || (globalThis.crypto && globalThis.crypto.subtle);
+  if (!s) throw new Error("crypto.subtle is unavailable");
+  const digest = await s.digest("SHA-256", new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/** Number of Unicode code points (Python `len`), not UTF-16 code units. */
+export function codePointLength(text) {
+  return [...text].length;
+}
+
+/**
+ * True when `text` is well-formed UTF-16. `useNative` selects
+ * `String.prototype.isWellFormed` when available; otherwise (or when false) a
+ * code-unit scan runs — never a silent bypass.
+ */
+export function isWellFormedUtf16(text, useNative = true) {
+  if (useNative && typeof text.isWellFormed === "function") return text.isWellFormed();
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charCodeAt(i);
+    if (c >= 0xd800 && c <= 0xdbff) {
+      const n = text.charCodeAt(i + 1);
+      if (!(n >= 0xdc00 && n <= 0xdfff)) return false;
+      i++;
+    } else if (c >= 0xdc00 && c <= 0xdfff) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function _utf8Length(text) {
+  return new TextEncoder().encode(text).length;
+}
+
+/**
+ * Submission state machine for the connected policy builder.
+ * @param {Object} deps {fetch, storage, subtle, setTimeout, clearTimeout, randomUUID,
+ *   makeAbortController, connectedContext, ensureDocumentIdentity, requestTimeoutMs,
+ *   submissionBudgetBytes, now}
+ * @returns {Object}
+ */
+export function createSubmissionController(deps) {
+  const d = deps || {};
+  const ws = d.connectedContext && d.connectedContext.workspaceId ? d.connectedContext.workspaceId : null;
+  const storage = d.storage || null;
+  const setT = d.setTimeout || ((fn, ms) => globalThis.setTimeout(fn, ms));
+  const clearT = d.clearTimeout || ((h) => globalThis.clearTimeout(h));
+  const timeoutMs = d.requestTimeoutMs == null ? 30000 : d.requestTimeoutMs;
+  const budgetBytes = d.submissionBudgetBytes == null ? 3 * 1024 * 1024 : d.submissionBudgetBytes;
+  const now = d.now || (() => new Date().toISOString());
+  const recPrefix = `ll-policy-builder-submission-${ws}-`;
+  const idxPrefix = `ll-policy-builder-submissions-${ws}-`;
+  const recKey = (projectId, requestId) => `${recPrefix}${projectId}-${requestId}`;
+  const idxKey = (projectId) => `${idxPrefix}${projectId}`;
+
+  let ctx = { projectId: null, issueId: null, mode: null };
+  let reviewGen = 0;
+  let docGen = 0;
+  let opSeq = 0;
+  let review = { status: "none" };
+  let draftEdited = false;
+  let issues = { status: "idle", list: [], error: null };
+  let sub = null; // {record, queueStatus, readback, notFound, missing, conflict, poll, pollNote}
+  let history = [];
+  let notices = [];
+  let submitting = false;
+  let pollTimer = null;
+  let readHandle = null;
+  let issuesHandle = null;
+  let postHandle = null;
+  let disposed = false;
+  const listeners = new Set();
+
+  // ---- state exposure -----------------------------------------------------
+  function availability() {
+    if (!ws) {
+      return { ok: false, reason: "Connected submission is available only on the page served by ll-artifact serve --policy-builder." };
+    }
+    if (!storage || typeof storage.getItem !== "function") {
+      return { ok: false, reason: "Browser storage is unavailable, so a request cannot be saved before it is sent." };
+    }
+    if (!d.subtle || typeof d.fetch !== "function" || typeof d.randomUUID !== "function") {
+      return { ok: false, reason: "This page lacks the secure-context features needed to submit (open it from the served URL)." };
+    }
+    if (ctx.mode !== "issue_lifecycle") {
+      return { ok: false, reason: "Switch to the issue lifecycle mode to submit a policy." };
+    }
+    return { ok: true, reason: null };
+  }
+
+  function identityOf(record) {
+    return record.kind === "full"
+      ? {
+          requestId: record.envelope.requestId, projectId: record.envelope.projectId,
+          workspaceId: record.envelope.workspaceId, issueId: record.envelope.issueId,
+          revisionId: record.envelope.revisionId, yamlByteLength: record.yamlByteLength,
+        }
+      : record.identity;
+  }
+
+  function viewOf(s) {
+    if (!s) return null;
+    const id = identityOf(s.record);
+    const st = s.queueStatus;
+    const runCurrent = st === "running" || QUEUE_TERMINAL_STATUSES.includes(st);
+    const rb = s.readback || {};
+    const result = rb.result === undefined ? null : rb.result;
+    const prevResult = result && typeof result === "object" && Object.prototype.hasOwnProperty.call(result, "previous");
+    return {
+      requestId: id.requestId, projectId: id.projectId, issueId: id.issueId, revisionId: id.revisionId,
+      revisionShort: id.revisionId.slice(0, 12), yamlByteLength: id.yamlByteLength,
+      delivery: s.record.delivery,
+      warnings: s.record.delivery.warnings === undefined ? null : s.record.delivery.warnings,
+      warningsUnavailable: s.record.delivery.state === "accepted" && s.record.delivery.warnings === undefined,
+      queueId: s.record.delivery.queueId || null,
+      queueStatus: st || null,
+      statusLabel: st ? queueStatusLabel(st) : null,
+      terminal: QUEUE_TERMINAL_STATUSES.includes(st),
+      bindings: rb.bindings || null,
+      loopInstanceId: rb.loopInstanceId || null,
+      runDir: rb.runDir || null,
+      runIsCurrent: runCurrent,
+      result: prevResult ? null : result,
+      previousResult: prevResult ? result.previous : null,
+      notFound: !!s.notFound, missing: !!s.missing, conflict: s.conflict || null,
+      poll: s.poll, pollNote: s.pollNote || null,
+      canRetry: s.record.delivery.state === "outcome_unknown" && !!s.notFound && s.record.kind === "full",
+    };
+  }
+
+  function getState() {
+    const snap = review.snapshot || null;
+    return {
+      availability: availability(),
+      context: { ...ctx },
+      issues: { ...issues, list: issues.list.slice() },
+      review: {
+        status: review.status, reason: review.reason || null,
+        snapshot: snap, revisionShort: snap && snap.revisionId ? snap.revisionId.slice(0, 12) : null,
+      },
+      draftEdited,
+      submission: viewOf(sub),
+      history: history.slice(),
+      notices: notices.slice(),
+      busy: submitting || review.status === "hashing",
+    };
+  }
+
+  function emit() {
+    if (disposed) return;
+    for (const cb of Array.from(listeners)) {
+      try { cb(getState()); } catch (e) { /* listener errors never break the controller */ }
+    }
+  }
+
+  function notify(text) {
+    if (!notices.includes(text)) notices.push(text);
+  }
+
+  // ---- storage ------------------------------------------------------------
+  function encode(value) {
+    return JSON.stringify(value);
+  }
+
+  function writeRecord(record) {
+    const id = identityOf(record);
+    try {
+      storage.setItem(recKey(id.projectId, id.requestId), encode(record));
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function removeKey(key) {
+    try {
+      storage.removeItem(key);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function writeIndex(idx) {
+    try {
+      storage.setItem(idxKey(idx.projectId), encode(idx));
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function readIndex(projectId) {
+    try {
+      const raw = storage.getItem(idxKey(projectId));
+      if (raw == null) return { ok: true, idx: null };
+      const idx = JSON.parse(raw);
+      return _validIndex(idx, ws, projectId) ? { ok: true, idx } : { ok: false };
+    } catch (e) {
+      return { ok: false };
+    }
+  }
+
+  function _validIdentityFields(id) {
+    return id && typeof id === "object" &&
+      ["requestId", "projectId", "workspaceId", "issueId", "revisionId"].every((k) => typeof id[k] === "string" && id[k]);
+  }
+
+  function _validRecord(rec) {
+    if (!rec || rec.v !== 1 || !rec.delivery || typeof rec.delivery.state !== "string") return null;
+    if (rec.kind === "full") {
+      if (!["prepared", "outcome_unknown"].includes(rec.delivery.state)) return null;
+      if (!_validIdentityFields(rec.envelope) || typeof rec.envelope.yaml !== "string") return null;
+      if (rec.envelope.workspaceId !== ws) return null;
+      return identityOf(rec);
+    }
+    if (rec.kind === "compact") {
+      if (!["accepted", "rejected"].includes(rec.delivery.state)) return null;
+      if (!_validIdentityFields(rec.identity) || rec.identity.workspaceId !== ws) return null;
+      return rec.identity;
+    }
+    return null;
+  }
+
+  function _validIndex(idx, wsId, projectId) {
+    return !!idx && typeof idx === "object" && idx.workspaceId === wsId &&
+      typeof idx.projectId === "string" && idx.projectId && (projectId == null || idx.projectId === projectId) &&
+      (idx.activeRequestId === null || typeof idx.activeRequestId === "string") &&
+      Array.isArray(idx.recent) && idx.recent.every((r) => typeof r === "string");
+  }
+
+  /** Snapshot this workspace's submission keys; any malformed/unreadable entry fails the scan. */
+  function enumerate() {
+    const records = [];
+    const indexes = [];
+    let total = 0;
+    try {
+      const keys = [];
+      const n = storage.length;
+      for (let i = 0; i < n; i++) {
+        const k = storage.key(i);
+        if (typeof k === "string" && (k.startsWith(recPrefix) || k.startsWith(idxPrefix))) keys.push(k);
+      }
+      for (const key of keys) {
+        const raw = storage.getItem(key);
+        if (raw == null) continue;
+        let val;
+        try { val = JSON.parse(raw); } catch (e) { return { ok: false, error: `Submission storage entry ${key} is malformed.` }; }
+        const size = 2 * (key.length + raw.length);
+        if (key.startsWith(recPrefix)) {
+          const id = _validRecord(val);
+          if (!id || recKey(id.projectId, id.requestId) !== key) {
+            return { ok: false, error: `Submission storage entry ${key} does not match its contents.` };
+          }
+          records.push({ key, rec: val, id, size });
+        } else {
+          if (!_validIndex(val, ws, null) || idxKey(val.projectId) !== key) {
+            return { ok: false, error: `Submission index ${key} does not match its contents.` };
+          }
+          indexes.push({ key, idx: val, size });
+        }
+        total += size;
+      }
+    } catch (e) {
+      return { ok: false, error: `Submission storage could not be read: ${e && e.message ? e.message : e}` };
+    }
+    return { ok: true, records, indexes, total };
+  }
+
+  const _isResolved = (rec) => rec.kind === "compact";
+
+  /** Remove a never-attempted `prepared` record: index references first, then the record. */
+  function discardPrepared(projectId, requestId) {
+    const r = readIndex(projectId);
+    if (!r.ok) {
+      notify("Submission storage index could not be read; cleanup stopped.");
+      return false;
+    }
+    if (r.idx) {
+      const idx = { ...r.idx, recent: r.idx.recent.filter((x) => x !== requestId) };
+      let changed = idx.recent.length !== r.idx.recent.length;
+      if (idx.activeRequestId === requestId) {
+        idx.activeRequestId = idx.recent.length ? idx.recent.shift() : null;
+        changed = true;
+      }
+      if (changed) {
+        idx.updatedAt = now();
+        if (!writeIndex(idx)) {
+          notify("Submission storage index could not be updated; cleanup stopped.");
+          return false;
+        }
+      }
+    }
+    if (!removeKey(recKey(projectId, requestId))) {
+      notify("A discarded request could not be removed from browser storage; it will be retried.");
+      return false;
+    }
+    return true;
+  }
+
+  /** Boot/Open cleanup: discard prepared, adopt orphans, drop dangling refs. */
+  function recoverStorage() {
+    const en = enumerate();
+    if (!en.ok) {
+      notify(en.error);
+      return false;
+    }
+    const projects = new Set([...en.records.map((r) => r.id.projectId), ...en.indexes.map((i) => i.idx.projectId)]);
+    for (const pid of projects) {
+      const recs = en.records.filter((r) => r.id.projectId === pid);
+      const existing = en.indexes.find((i) => i.idx.projectId === pid);
+      const idx = existing ? { ...existing.idx, recent: existing.idx.recent.slice() } : null;
+      const byId = new Map(recs.map((r) => [r.id.requestId, r]));
+      const prepared = recs.filter((r) => r.rec.delivery.state === "prepared");
+      for (const p of prepared) {
+        if (!discardPrepared(pid, p.id.requestId)) return false;
+        byId.delete(p.id.requestId);
+        notify("A request that was prepared but never sent was discarded — review the policy again before submitting.");
+      }
+      const fresh = readIndex(pid);
+      if (!fresh.ok) {
+        notify("Submission storage index could not be read; cleanup stopped.");
+        return false;
+      }
+      let cur = fresh.idx ? { ...fresh.idx, recent: fresh.idx.recent.slice() } : null;
+      let changed = false;
+      if (cur) {
+        const before = [cur.activeRequestId, ...cur.recent].filter(Boolean).length;
+        cur.recent = cur.recent.filter((x) => byId.has(x));
+        if (cur.activeRequestId && !byId.has(cur.activeRequestId)) {
+          cur.activeRequestId = cur.recent.length ? cur.recent.shift() : null;
+        }
+        if ([cur.activeRequestId, ...cur.recent].filter(Boolean).length !== before) changed = true;
+      }
+      const referenced = new Set(cur ? [cur.activeRequestId, ...cur.recent].filter(Boolean) : []);
+      for (const [rid] of byId) {
+        if (referenced.has(rid)) continue;
+        if (!cur) cur = { workspaceId: ws, projectId: pid, activeRequestId: null, recent: [], updatedAt: now() };
+        if (cur.activeRequestId == null) cur.activeRequestId = rid;
+        else cur.recent.push(rid);
+        referenced.add(rid);
+        changed = true;
+        notify("Recovered a saved request whose index entry was missing; its status will be checked.");
+      }
+      if (cur && changed) {
+        cur.updatedAt = now();
+        if (!writeIndex(cur)) {
+          notify("Submission storage index could not be updated; cleanup stopped.");
+          return false;
+        }
+      }
+      if (cur && cur.activeRequestId == null && !cur.recent.length && !byId.size) removeKey(idxKey(pid));
+    }
+    return pruneResolved();
+  }
+
+  /** Prune resolved history only (never the active or an unresolved record). */
+  function pruneResolved() {
+    const en = enumerate();
+    if (!en.ok) {
+      notify(en.error);
+      return false;
+    }
+    const recById = (pid) => new Map(en.records.filter((r) => r.id.projectId === pid).map((r) => [r.id.requestId, r]));
+    const inactive = [];
+    for (const { idx } of en.indexes) {
+      const recs = recById(idx.projectId);
+      const resolvedRecent = idx.recent.filter((rid) => recs.get(rid) && _isResolved(recs.get(rid).rec));
+      if (resolvedRecent.length > _RESOLVED_HISTORY_LIMIT) {
+        const drop = new Set(resolvedRecent.slice(_RESOLVED_HISTORY_LIMIT));
+        const next = { ...idx, recent: idx.recent.filter((x) => !drop.has(x)), updatedAt: idx.updatedAt };
+        if (!writeIndex(next)) {
+          notify("Submission storage index could not be updated; cleanup stopped.");
+          return false;
+        }
+        for (const rid of drop) removeKey(recKey(idx.projectId, rid));
+      }
+      if (idx.projectId !== ctx.projectId) {
+        const all = [idx.activeRequestId, ...idx.recent].filter(Boolean);
+        if (all.length && all.every((rid) => recs.get(rid) && _isResolved(recs.get(rid).rec))) inactive.push(idx);
+      }
+    }
+    inactive.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0));
+    for (const idx of inactive.slice(_INACTIVE_PROJECT_LIMIT)) {
+      const all = [idx.activeRequestId, ...idx.recent].filter(Boolean);
+      if (!removeKey(idxKey(idx.projectId))) {
+        notify("Submission storage index could not be updated; cleanup stopped.");
+        return false;
+      }
+      for (const rid of all) removeKey(recKey(idx.projectId, rid));
+    }
+    return true;
+  }
+
+  // ---- network ------------------------------------------------------------
+  /** One deadline-bound request; settles even if fetch/body ignore abort. */
+  function request(url, init) {
+    let settle = () => {};
+    let ac = null;
+    const abort = () => {
+      try { if (ac) ac.abort(); } catch (e) { /* best effort */ }
+    };
+    const promise = new Promise((resolve) => {
+      let done = false;
+      let timer = null;
+      settle = (v) => {
+        if (done) return;
+        done = true;
+        if (timer != null) clearT(timer);
+        resolve(v);
+      };
+      try { ac = d.makeAbortController ? d.makeAbortController() : null; } catch (e) { ac = null; }
+      timer = setT(() => { settle({ kind: "timeout" }); abort(); }, timeoutMs);
+      (async () => {
+        try {
+          const resp = await d.fetch(url, { ...init, signal: ac ? ac.signal : undefined });
+          const ct = (resp.headers && typeof resp.headers.get === "function" && resp.headers.get("content-type")) || "";
+          const text = await resp.text();
+          if (!/json/i.test(ct)) return settle({ kind: "transport", status: resp.status, error: "The server returned a non-JSON response." });
+          let body;
+          try { body = JSON.parse(text); } catch (e) { return settle({ kind: "transport", status: resp.status, error: "The response could not be decoded." }); }
+          settle({ kind: "json", status: resp.status, body });
+        } catch (e) {
+          settle({ kind: "transport", error: e && e.message ? e.message : String(e) });
+        }
+      })();
+    });
+    return { promise, cancel() { settle({ kind: "aborted" }); abort(); } };
+  }
+
+  // ---- issues -------------------------------------------------------------
+  async function loadIssues() {
+    if (disposed) return;
+    if (issuesHandle) issuesHandle.cancel();
+    const h = request("./issues", { method: "GET", cache: "no-store" });
+    issuesHandle = h;
+    issues = { ...issues, status: "loading", error: null };
+    emit();
+    const res = await h.promise;
+    if (issuesHandle !== h || disposed) return;
+    issuesHandle = null;
+    if (res.kind === "json" && res.status === 200 && res.body && Array.isArray(res.body.issues)) {
+      issues = {
+        status: "ready", error: null,
+        list: res.body.issues.map((i) => ({ id: i.id, title: i.title, priority: i.priority, status: i.status })),
+      };
+    } else {
+      const msg = res.kind === "timeout"
+        ? "Loading issues timed out."
+        : res.kind === "json" && res.body && res.body.error ? res.body.error.message : "Could not reach the server to load issues.";
+      issues = { ...issues, status: "error", error: msg };
+    }
+    emit();
+  }
+
+  // ---- delivery transitions -------------------------------------------------
+  function compact(record, delivery) {
+    return { v: 1, kind: "compact", identity: identityOf(record), delivery };
+  }
+
+  /** Apply a delivery transition; compaction failure keeps the prior full record in storage. */
+  function applyDelivery(record, delivery) {
+    const next = record.kind === "full" && ["accepted", "rejected"].includes(delivery.state)
+      ? compact(record, delivery)
+      : { ...record, delivery };
+    const persisted = writeRecord(next);
+    if (!persisted) notify("The response could not be saved; it will be re-checked after reload.");
+    if (sub && identityOf(sub.record).requestId === identityOf(record).requestId) {
+      sub.record = next;
+    }
+    return next;
+  }
+
+  function classifyPost(res, record) {
+    if (res.kind === "json") {
+      const b = res.body || {};
+      if (res.status >= 200 && res.status < 300 && typeof b.queueId === "string") {
+        const delivery = { state: "accepted", queueId: b.queueId };
+        if (b.created !== false && Array.isArray(b.warnings)) delivery.warnings = b.warnings;
+        else if (b.created !== false) delivery.warnings = [];
+        return applyDelivery(record, delivery);
+      }
+      if (res.status >= 400 && res.status < 500 && b.error && _REJECTION_CODES.has(b.error.code)) {
+        const e = b.error;
+        const error = { code: e.code, message: e.message || "" };
+        if (e.errors) error.errors = e.errors;
+        if (e.warnings) error.warnings = e.warnings;
+        return applyDelivery(record, { state: "rejected", error });
+      }
+    }
+    return record; // network loss / non-JSON / 5xx / timeout: outcome stays unknown
+  }
+
+  async function sendPost(record) {
+    const env = record.envelope;
+    const gen = docGen;
+    const h = request("./run-request", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      cache: "no-store",
+      body: JSON.stringify({
+        requestId: env.requestId, projectId: env.projectId, workspaceId: env.workspaceId,
+        revisionId: env.revisionId, yaml: env.yaml, issueId: env.issueId,
+      }),
+    });
+    postHandle = h;
+    submitting = true;
+    emit();
+    const res = await h.promise;
+    if (postHandle === h) postHandle = null;
+    submitting = false;
+    if (disposed) return;
+    const next = classifyPost(res, record);
+    if (res.kind === "timeout") notify("The request timed out; check its status before sending again.");
+    else if (res.kind === "transport") notify("Could not confirm the request was received; check its status before sending again.");
+    if (sub && identityOf(sub.record).requestId === env.requestId) {
+      if (next.delivery.state === "accepted" && gen === docGen) {
+        sub.poll = "active";
+        schedulePoll(2000);
+      } else if (next.delivery.state === "outcome_unknown") {
+        sub.poll = "stopped";
+      }
+    }
+    emit();
+  }
+
+  // ---- readback / polling -----------------------------------------------------
+  function clearPoll() {
+    if (pollTimer != null) { clearT(pollTimer); pollTimer = null; }
+  }
+
+  function schedulePoll(ms) {
+    clearPoll();
+    if (disposed || !sub) return;
+    const gen = docGen;
+    const s = sub;
+    pollTimer = setT(() => {
+      pollTimer = null;
+      if (gen !== docGen || sub !== s) return;
+      readback(s, false);
+    }, ms);
+  }
+
+  async function readback(s, manual) {
+    if (disposed || !s || readHandle) return;
+    const id = identityOf(s.record);
+    if (s.record.delivery.state === "rejected") return;
+    const gen = docGen;
+    const h = request(`./run-request/${encodeURIComponent(id.requestId)}?workspaceId=${encodeURIComponent(ws)}`, {
+      method: "GET", cache: "no-store",
+    });
+    readHandle = h;
+    if (manual) { s.poll = "active"; s.pollNote = null; emit(); }
+    const res = await h.promise;
+    if (readHandle === h) readHandle = null;
+    if (gen !== docGen || sub !== s || disposed) return;
+    applyReadback(s, res);
+    emit();
+  }
+
+  function applyReadback(s, res) {
+    const id = identityOf(s.record);
+    if (res.kind === "json" && res.status === 200 && res.body && res.body.bindings) {
+      const b = res.body;
+      if (b.bindings.issueId !== id.issueId || b.bindings.revisionId !== id.revisionId) {
+        s.conflict = "The host has a request with this ID bound to a different issue or revision.";
+        if (s.record.delivery.state === "outcome_unknown") {
+          applyDelivery(s.record, { state: "rejected", error: { code: "request_conflict", message: s.conflict } });
+        }
+        s.poll = "stopped";
+        return;
+      }
+      s.conflict = null;
+      s.notFound = false;
+      s.missing = false;
+      if (s.record.delivery.state === "outcome_unknown") {
+        applyDelivery(s.record, { state: "accepted", queueId: b.queueId });
+      }
+      s.queueStatus = b.status;
+      s.readback = { bindings: b.bindings, loopInstanceId: b.loopInstanceId, runDir: b.runDir, result: b.result };
+      s.pollNote = null;
+      if (QUEUE_TERMINAL_STATUSES.includes(b.status)) {
+        s.poll = "stopped";
+        clearPoll();
+      } else {
+        s.poll = "active";
+        schedulePoll(b.status === "awaiting_approval" ? 10000 : 2000);
+      }
+      return;
+    }
+    if (res.kind === "json" && res.status === 404 && res.body && res.body.error && res.body.error.code === "request_not_found") {
+      if (s.record.delivery.state === "accepted") s.missing = true;
+      else s.notFound = true;
+      s.poll = "stopped";
+      clearPoll();
+      return;
+    }
+    s.poll = "paused";
+    s.pollNote = res.kind === "timeout"
+      ? "Status check timed out."
+      : res.kind === "json" ? "The server could not report status." : "Could not reach the server.";
+  }
+
+  // ---- session (boot / Open) -----------------------------------------------
+  function stopActivity() {
+    clearPoll();
+    if (readHandle) { readHandle.cancel(); readHandle = null; }
+  }
+
+  function loadSession() {
+    sub = null;
+    history = [];
+    if (!ws || !storage || !ctx.projectId) return;
+    if (!recoverStorage()) { emit(); return; }
+    const r = readIndex(ctx.projectId);
+    if (!r.ok) { notify("Submission storage index could not be read."); return; }
+    if (!r.idx) return;
+    const en = enumerate();
+    if (!en.ok) { notify(en.error); return; }
+    const byId = new Map(en.records.filter((x) => x.id.projectId === ctx.projectId).map((x) => [x.id.requestId, x.rec]));
+    const active = r.idx.activeRequestId ? byId.get(r.idx.activeRequestId) : null;
+    if (active) {
+      sub = { record: active, queueStatus: null, readback: null, notFound: false, missing: false, conflict: null, poll: "stopped", pollNote: null };
+    }
+    history = r.idx.recent.map((rid) => byId.get(rid)).filter(Boolean).map((rec) => ({
+      requestId: identityOf(rec).requestId, issueId: identityOf(rec).issueId,
+      revisionShort: identityOf(rec).revisionId.slice(0, 12), state: rec.delivery.state,
+    }));
+    const gen = docGen;
+    const s = sub;
+    (async () => {
+      if (s && s.record.delivery.state !== "rejected") await readback(s, false);
+      if (gen !== docGen || disposed) return;
+      for (const rid of r.idx.recent) {
+        const rec = byId.get(rid);
+        if (!rec || rec.kind !== "full" || rec.delivery.state !== "outcome_unknown") continue;
+        const tmp = { record: rec, queueStatus: null, readback: null, notFound: false, missing: false, conflict: null, poll: "stopped" };
+        const h = request(`./run-request/${encodeURIComponent(rid)}?workspaceId=${encodeURIComponent(ws)}`, { method: "GET", cache: "no-store" });
+        const res = await h.promise;
+        if (gen !== docGen || disposed) return;
+        if (res.kind === "json" && res.status === 200 && res.body && res.body.bindings &&
+            res.body.bindings.issueId === identityOf(rec).issueId && res.body.bindings.revisionId === identityOf(rec).revisionId) {
+          applyDelivery(tmp.record, { state: "accepted", queueId: res.body.queueId });
+          history = history.map((x) => (x.requestId === rid ? { ...x, state: "accepted" } : x));
+          emit();
+        }
+      }
+    })();
+  }
+
+  // ---- public API -------------------------------------------------------------
+  function documentOpened(next) {
+    if (disposed) return;
+    docGen += 1;
+    reviewGen += 1;
+    stopActivity();
+    ctx = { projectId: next.projectId || null, issueId: next.issueId || null, mode: next.mode || null };
+    review = { status: "none" };
+    draftEdited = false;
+    notices = [];
+    loadSession();
+    emit();
+  }
+
+  function contextChanged(next) {
+    if (disposed) return;
+    const n = { projectId: next.projectId || null, issueId: next.issueId || null, mode: next.mode || null };
+    const changed = n.projectId !== ctx.projectId || n.issueId !== ctx.issueId || n.mode !== ctx.mode;
+    ctx = n;
+    if (changed) {
+      reviewGen += 1;
+      if (review.status !== "none") review = { status: "none" };
+    }
+    emit();
+  }
+
+  function draftChanged() {
+    if (disposed) return;
+    draftEdited = true;
+    emit();
+  }
+
+  function refuse(reason) {
+    review = { status: "refused", reason };
+    emit();
+  }
+
+  function startReview(input) {
+    if (disposed || review.status === "hashing") return;
+    const av = availability();
+    if (!av.ok) return refuse(av.reason);
+    const yaml = input ? input.yaml : null;
+    if (input && input.blockedReason) return refuse(input.blockedReason);
+    const { projectId, issueId } = ctx;
+    if (!projectId) return refuse("This document has no project ID yet.");
+    if (codePointLength(projectId) > _PROJECT_ID_MAX_CODE_POINTS) {
+      return refuse(`The project ID is longer than ${_PROJECT_ID_MAX_CODE_POINTS} characters.`);
+    }
+    if (!issueId) return refuse("Select an issue before reviewing.");
+    if (codePointLength(issueId) > _PROJECT_ID_MAX_CODE_POINTS) return refuse("The issue ID is too long.");
+    if (typeof yaml !== "string" || !yaml) return refuse("There is no generated policy file to review.");
+    if (!isWellFormedUtf16(yaml)) return refuse("The policy contains text that cannot be encoded as UTF-8 (an unpaired surrogate).");
+    const probe = JSON.stringify({
+      requestId: _PLACEHOLDER_REQUEST_ID, projectId, workspaceId: ws, revisionId: "0".repeat(64), yaml, issueId,
+    });
+    const bytes = _utf8Length(probe);
+    if (bytes > _RUN_REQUEST_MAX_BYTES) {
+      return refuse(`The request would be ${bytes} bytes, over the ${_RUN_REQUEST_MAX_BYTES}-byte limit.`);
+    }
+    const gen = reviewGen;
+    const op = ++opSeq;
+    const snapshot = Object.freeze({ projectId, workspaceId: ws, issueId, yaml });
+    review = { status: "hashing", snapshot, op };
+    draftEdited = false;
+    emit();
+    sha256Hex(yaml, d.subtle).then(
+      (hex) => {
+        if (disposed || gen !== reviewGen || review.op !== op) return;
+        review = { status: "ready", snapshot: Object.freeze({ ...snapshot, revisionId: hex }), op };
+        emit();
+      },
+      () => {
+        if (disposed || gen !== reviewGen || review.op !== op) return;
+        refuse("The policy could not be hashed.");
+      }
+    );
+  }
+
+  function submit(opts) {
+    if (disposed || submitting) return false;
+    const newRun = !!(opts && opts.newRun);
+    if (review.status !== "ready") { notify("Review the policy before submitting."); emit(); return false; }
+    if (!availability().ok) { notify(availability().reason); emit(); return false; }
+    if (sub && sub.record.delivery.state === "outcome_unknown" && !newRun) {
+      notify("An earlier request may still exist on the host. Check its status, or choose Run again to send a new one.");
+      emit();
+      return false;
+    }
+    const snap = review.snapshot;
+    const gen = reviewGen;
+    const requestId = d.randomUUID();
+    const envelope = Object.freeze({
+      requestId, projectId: snap.projectId, workspaceId: snap.workspaceId,
+      revisionId: snap.revisionId, yaml: snap.yaml, issueId: snap.issueId,
+    });
+    const yamlByteLength = _utf8Length(envelope.yaml);
+    const fail = (msg) => { notify(msg); emit(); return false; };
+
+    // -- synchronous persist-before-POST sequence: no await below this line --
+    if (!pruneResolved()) return fail("Cleaning up saved requests failed; nothing was sent.");
+    let identityOk = false;
+    try { identityOk = !!d.ensureDocumentIdentity(envelope.projectId); } catch (e) { identityOk = false; }
+    if (!identityOk) return fail("This document's identity could not be saved to browser storage; nothing was sent.");
+    const prepared = { v: 1, kind: "full", envelope, yamlByteLength, delivery: { state: "prepared" } };
+    const unknown = { ...prepared, delivery: { state: "outcome_unknown" } };
+    const cur = readIndex(envelope.projectId);
+    if (!cur.ok) return fail("Saved request index could not be read; nothing was sent.");
+    const prevIdx = cur.idx;
+    const recent = prevIdx
+      ? [prevIdx.activeRequestId, ...prevIdx.recent].filter((x) => x && x !== requestId)
+      : [];
+    const nextIdx = { workspaceId: ws, projectId: envelope.projectId, activeRequestId: requestId, recent, updatedAt: now() };
+    const en = enumerate();
+    if (!en.ok) return fail(`${en.error} Nothing was sent.`);
+    const kRec = recKey(envelope.projectId, requestId);
+    const recSize = 2 * (kRec.length + Math.max(encode(prepared).length, encode(unknown).length));
+    const oldIdx = en.indexes.find((i) => i.idx.projectId === envelope.projectId);
+    const idxSize = 2 * (idxKey(envelope.projectId).length + encode(nextIdx).length);
+    const peak = en.total + recSize + Math.max(0, idxSize - (oldIdx ? oldIdx.size : 0));
+    if (peak > budgetBytes) {
+      return fail("There is not enough room in browser storage to save this request; nothing was sent. Existing requests were kept.");
+    }
+    if (!writeRecord(prepared)) {
+      removeKey(kRec);
+      return fail("The request could not be saved to browser storage; nothing was sent.");
+    }
+    if (!writeIndex(nextIdx)) {
+      if (!removeKey(kRec)) notify("A partly saved request could not be removed; it will be cleaned up on reload.");
+      return fail("The request index could not be saved; nothing was sent.");
+    }
+    if (!writeRecord(unknown)) {
+      discardPrepared(envelope.projectId, requestId);
+      review = { status: "none" };
+      return fail("The request could not be marked as sent; nothing was sent. Review the policy again.");
+    }
+    if (gen !== reviewGen) return fail("The document changed before sending; review it again.");
+    // -- POST barrier passed --
+    stopActivity();
+    sub = { record: unknown, queueStatus: null, readback: null, notFound: false, missing: false, conflict: null, poll: "stopped", pollNote: null };
+    notices = [];
+    review = { status: "none" };
+    sendPost(unknown);
+    return true;
+  }
+
+  function retry() {
+    if (disposed || submitting || !sub || !sub.notFound || sub.record.kind !== "full" ||
+        sub.record.delivery.state !== "outcome_unknown") return false;
+    sub.notFound = false;
+    notices = [];
+    sendPost(sub.record);
+    return true;
+  }
+
+  function refreshStatus() {
+    if (disposed || !sub) return;
+    readback(sub, true);
+  }
+
+  function dispose() {
+    disposed = true;
+    docGen += 1;
+    reviewGen += 1;
+    stopActivity();
+    if (issuesHandle) issuesHandle.cancel();
+    if (postHandle) postHandle.cancel();
+    listeners.clear();
+  }
+
+  return {
+    getState,
+    onChange(cb) { listeners.add(cb); return () => listeners.delete(cb); },
+    documentOpened, contextChanged, draftChanged,
+    loadIssues, review: startReview, submit, retry, refreshStatus, dispose,
   };
 }
 
@@ -4221,6 +5125,11 @@ if (typeof window !== "undefined") {
     opsForType,
     // ENH-3507 (injected-storage factory)
     createBuilderStorage,
+    // FEAT-3505 (submission controller)
+    sha256Hex,
+    createSubmissionController,
+    queueStatusLabel,
+    QUEUE_TERMINAL_STATUSES,
     // ENH-3487 (draft/project persistence, undo/redo)
     BUILDER_PROJECT_SCHEMA_VERSION,
     validateProjectStructure,
@@ -4340,12 +5249,37 @@ const builderStorage = createBuilderStorage({
     showLiveStatus("Browser storage is unavailable — drafts won't survive reload this session; use Save project instead."),
 });
 function _persistMeta() {
-  builderStorage.persistMeta({
+  return builderStorage.persistMeta({
     projectId,
     activeMode: state.mode,
     schemaVersion: BUILDER_PROJECT_SCHEMA_VERSION,
     generatorVersion: window.__GENERATOR_VERSION__ || "",
   });
+}
+
+// FEAT-3505: connected submission. The state machine lives in the core; this
+// block only injects browser globals and the document-identity callback.
+let selectedIssueId = (builderStorage.readIssueSelection() || {}).issueId || null;
+function _ensureDocumentIdentity(id) {
+  if (!id || id !== projectId) return false;
+  if (!_persistMeta()) return false;
+  const meta = builderStorage.readMeta();
+  return !!meta && meta.projectId === id;
+}
+const submissionController = createSubmissionController({
+  fetch: (...a) => window.fetch(...a),
+  storage: _ls,
+  subtle: window.crypto && window.crypto.subtle,
+  setTimeout: (fn, ms) => window.setTimeout(fn, ms),
+  clearTimeout: (h) => window.clearTimeout(h),
+  randomUUID: window.crypto && typeof window.crypto.randomUUID === "function" ? () => window.crypto.randomUUID() : undefined,
+  makeAbortController: () => new AbortController(),
+  connectedContext: CONNECTED_CONTEXT,
+  ensureDocumentIdentity: _ensureDocumentIdentity,
+  now: () => new Date().toISOString(),
+});
+function _connectedContext() {
+  return { projectId, issueId: selectedIssueId, mode: state.mode };
 }
 
 function currentProject() {
@@ -4369,6 +5303,7 @@ function currentProject() {
 // #scenarios-fieldset is inside #form-panel and not excluded there.
 function commit() {
   sessionRevision += 1;
+  if (submissionController) { submissionController.contextChanged(_connectedContext()); submissionController.draftChanged(); }
   if (!history) return;
   drafts = { ...drafts, [state.mode]: { ...drafts[state.mode], model: state, scenarios } };
   history = applyDraftEdit(history, { type: "commit", activeMode: state.mode, drafts });
@@ -4393,6 +5328,8 @@ function restoreFromSnapshot(snapshot) {
   const entry = drafts[mode];
   state = (entry && entry.model) || seedExample(mode);
   scenarios = (entry && entry.scenarios) || [];
+  submissionController.contextChanged(_connectedContext());
+  submissionController.draftChanged();
   applyStateToForm();
   applyModeVisibility();
   renderAll();
@@ -4432,8 +5369,10 @@ function hydrateFromStorage() {
       activeModeCorrupted = true;
     }
   }
+  // FEAT-3505: the document identity (which owns submission records) is
+  // restored from saved meta even when no draft loads.
+  if (meta && typeof meta.projectId === "string" && meta.projectId) projectId = meta.projectId;
   if (Object.keys(loaded).length) {
-    projectId = (meta && meta.projectId) || projectId;
     drafts = loaded;
   }
   if (drafts[activeMode]) {
@@ -5971,6 +6910,9 @@ $("open-project-input").onchange = (e) => {
     builderStorage.persistAllDrafts(drafts);
     _persistMeta();
     updateUndoRedoButtons();
+    // FEAT-3505: every successful Open (even a same-ID Open) replaces the
+    // document session; the persisted issue selection is deliberately kept.
+    submissionController.documentOpened(_connectedContext());
     showLiveStatus("Project opened.");
   };
   reader.onerror = () => showLiveStatus("Could not read the selected file.");
@@ -6048,9 +6990,150 @@ $("theme-toggle").onclick = () => {
 initTheme();
 renderPresetButtons();
 renderConfidenceGateInfo();
+
+// ---- connected submission UI (FEAT-3505) ---------------------------------
+function _el(tag, text, cls) {
+  const e = document.createElement(tag);
+  if (text != null) e.textContent = text;
+  if (cls) e.className = cls;
+  return e;
+}
+function _tailLines(text, n) {
+  const lines = String(text == null ? "" : text).split("\n");
+  return lines.length > n ? "…\n" + lines.slice(-n).join("\n") : lines.join("\n");
+}
+function _reviewInput() {
+  const model = buildModel();
+  let yaml = null;
+  let blockedReason = null;
+  try {
+    yaml = serializeLoopYaml(model);
+  } catch (err) {
+    blockedReason = `The policy cannot be generated yet: ${err.message}`;
+  }
+  if (!blockedReason && validateBuilderModel(model).some((d) => d.severity === "error")) {
+    blockedReason = "Fix the errors listed under Result before reviewing.";
+  }
+  return { yaml, blockedReason };
+}
+
+function renderConnected(st) {
+  const panel = $("connected-panel");
+  const av = st.availability;
+  $("conn-unavailable").hidden = av.ok;
+  $("conn-unavailable").textContent = av.ok ? "" : av.reason;
+  // Offline pages have nothing connected to show; a sent request stays visible
+  // regardless of the active mode.
+  panel.hidden = !CONNECTED_CONTEXT;
+  $("conn-body").hidden = !CONNECTED_CONTEXT || (!av.ok && !st.submission);
+  if (!CONNECTED_CONTEXT) return;
+
+  // Issue selector: keep the selection visible even when it is no longer listed.
+  const sel = $("conn-issue");
+  sel.innerHTML = "";
+  sel.appendChild(new Option("Select an issue…", ""));
+  let listed = false;
+  st.issues.list.forEach((i) => {
+    if (i.id === selectedIssueId) listed = true;
+    sel.appendChild(new Option(`${i.id} — ${i.title}`, i.id));
+  });
+  if (selectedIssueId && !listed) {
+    sel.appendChild(new Option(`${selectedIssueId} (no longer listed)`, selectedIssueId));
+  }
+  sel.value = selectedIssueId || "";
+  sel.disabled = !av.ok;
+  $("conn-issue-note").textContent =
+    st.issues.status === "loading" ? "Loading issues…"
+    : st.issues.status === "error" ? `${st.issues.error} Use Reload issues to try again.`
+    : selectedIssueId && !listed && st.issues.status === "ready" ? "The selected issue is no longer listed; the host will confirm on submit."
+    : "";
+
+  const rv = st.review;
+  const sub = st.submission;
+  $("conn-review-btn").disabled = !av.ok || st.busy;
+  $("conn-submit-btn").disabled = !av.ok || rv.status !== "ready" || st.busy || !!(sub && sub.delivery.state === "outcome_unknown");
+  $("conn-submit-btn").textContent = sub ? "Submit as new run" : "Submit";
+  $("conn-again-btn").hidden = !(av.ok && rv.status === "ready" && sub && sub.delivery.state === "outcome_unknown");
+  $("conn-retry-btn").hidden = !(sub && sub.canRetry);
+  $("conn-refresh-btn").hidden = !(sub && sub.delivery.state !== "rejected");
+  $("conn-refresh-btn").disabled = st.busy;
+
+  let info = "";
+  if (rv.status === "hashing") info = "Preparing a snapshot to review…";
+  else if (rv.status === "refused") info = rv.reason;
+  else if (rv.status === "ready") {
+    info = `Reviewed snapshot ${rv.revisionShort} for ${rv.snapshot.issueId} — this exact submitted YAML snapshot will run with the project's current dependencies.` +
+      (st.draftEdited ? "\nDraft edited since review — submit sends the reviewed snapshot, not the current draft." : "");
+  }
+  $("conn-review-info").textContent = info;
+
+  const notes = $("conn-notices");
+  notes.innerHTML = "";
+  st.notices.forEach((n) => notes.appendChild(_el("li", n)));
+
+  const box = $("conn-status");
+  box.innerHTML = "";
+  if (!sub) return;
+  const d = sub.delivery;
+  const top = _el("div", null, "conn-status " + (d.state === "rejected" ? "is-error" : d.state === "accepted" ? "is-success" : "is-warning"));
+  top.appendChild(_el("div", `Revision ${sub.revisionShort} — issue ${sub.issueId}`));
+  top.appendChild(_el("div", `Request ${sub.requestId}` + (sub.queueId ? ` · queue ${sub.queueId}` : "")));
+  if (d.state === "outcome_unknown") {
+    top.appendChild(_el("div", sub.notFound
+      ? "The host has no record of this request. You can retry the identical request."
+      : "Not confirmed — an earlier attempt may have reached the host. Refresh status before sending again."));
+  } else if (d.state === "rejected") {
+    const e = d.error || {};
+    top.appendChild(_el("div", e.code === "request_conflict"
+      ? `This request conflicts with an existing one on the host: ${e.message}`
+      : `Rejected (${e.code}): ${e.message}`));
+    (e.errors || []).forEach((x) => top.appendChild(_el("div", `• ${x.message || JSON.stringify(x)}`)));
+    top.appendChild(_el("div", "Correct the policy and review again to send a new request."));
+  } else if (d.state === "accepted") {
+    top.appendChild(_el("div", sub.statusLabel ? `Status: ${sub.statusLabel}` : "Status: checking…"));
+    if (sub.missing) top.appendChild(_el("div", "The host no longer has this request."));
+    if (sub.conflict) top.appendChild(_el("div", sub.conflict));
+    if (sub.loopInstanceId || sub.runDir) {
+      const label = sub.runIsCurrent ? "Run" : "Previous run";
+      top.appendChild(_el("div", `${label}: ${sub.loopInstanceId || "—"} · ${sub.runDir || "—"}`));
+    }
+    if (sub.poll === "paused") top.appendChild(_el("div", `${sub.pollNote} Use Refresh status to resume.`));
+    if (sub.terminal) top.appendChild(_el("div", "Finished. Use Refresh status to check again."));
+    if (sub.warningsUnavailable) top.appendChild(_el("div", "Validation warnings unavailable for this request."));
+    (sub.warnings || []).forEach((w) => top.appendChild(_el("div", `Warning (non-blocking): ${w.message || JSON.stringify(w)}`, "hint")));
+    const showResult = (label, r) => {
+      if (!r || typeof r !== "object") return;
+      const det = _el("details");
+      det.appendChild(_el("summary", label));
+      det.appendChild(_el("div", `exit code: ${r.exit_code}${r.timed_out ? " (timed out)" : ""}${r.error ? ` · error: ${r.error}` : ""}`));
+      ["stderr", "stdout"].forEach((k) => { if (r[k]) det.appendChild(_el("pre", _tailLines(r[k], 40))); });
+      top.appendChild(det);
+    };
+    showResult("Result", sub.result);
+    showResult("Result of the previous attempt", sub.previousResult);
+  }
+  if (st.draftEdited) top.appendChild(_el("div", "Draft edited since review.", "hint"));
+  box.appendChild(top);
+}
+
+$("conn-issue").onchange = (e) => {
+  selectedIssueId = e.target.value || null;
+  builderStorage.writeIssueSelection(selectedIssueId);
+  submissionController.contextChanged(_connectedContext());
+};
+$("conn-issues-reload").onclick = () => { submissionController.loadIssues(); };
+$("conn-review-btn").onclick = () => { submissionController.review(_reviewInput()); };
+$("conn-submit-btn").onclick = () => { submissionController.submit(); };
+$("conn-again-btn").onclick = () => { submissionController.submit({ newRun: true }); };
+$("conn-retry-btn").onclick = () => { submissionController.retry(); };
+$("conn-refresh-btn").onclick = () => { submissionController.refreshStatus(); };
+submissionController.onChange(renderConnected);
 hydrateFromStorage();
 applyModeVisibility();
 renderAll();
+submissionController.documentOpened(_connectedContext());
+if (CONNECTED_CONTEXT) submissionController.loadIssues();
+renderConnected(submissionController.getState());
   </script>
 </body>
 </html>

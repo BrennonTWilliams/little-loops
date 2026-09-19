@@ -166,6 +166,12 @@ pre {
 .theme-toggle { font-size: 1.1rem; padding: 0.3rem 0.6rem; }
 .del { flex: 0 0 auto; padding: 0.2rem 0.5rem; }
 small.help { display: block; opacity: 0.7; font-size: 0.75rem; }
+.conn-block { margin: 0.5rem 0; }
+.conn-status { padding: 0.4rem 0.6rem; border-radius: 4px; font-size: 0.85rem; margin: 0.35rem 0; background: var(--color-status-info-bg, #d1ecf1); color: var(--color-status-info-text, #0c5460); }
+.conn-status.is-success { background: var(--color-status-success-bg, #d4edda); color: var(--color-status-success-text, #155724); }
+.conn-status.is-warning { background: var(--color-status-warning-bg, #fff3cd); color: var(--color-status-warning-text, #664d03); }
+.conn-status.is-error { background: var(--color-status-error-bg, #f8d7da); color: var(--color-status-error-text, #721c24); }
+.conn-status pre { white-space: pre-wrap; margin: 0.25rem 0 0; max-height: 14rem; overflow: auto; }
   </style>
 </head>
 <body>
@@ -321,6 +327,30 @@ confidence_score: 40"></textarea>
         <pre id="yaml-preview"></pre>
       </details>
     </section>
+
+    <section class="panel" id="connected-panel">
+      <h2 style="margin-top:0;font-size:1rem;">Submit to host</h2>
+      <p class="hint" id="conn-unavailable" hidden></p>
+      <div id="conn-body" hidden>
+        <div class="row">
+          <label>Issue
+            <select id="conn-issue" aria-label="Issue to run this policy on"></select>
+          </label>
+          <button id="conn-issues-reload" type="button" class="secondary">Reload issues</button>
+        </div>
+        <p class="hint" id="conn-issue-note"></p>
+        <div class="row" style="margin-bottom:0.5rem;">
+          <button id="conn-review-btn" type="button">Review</button>
+          <button id="conn-submit-btn" type="button" disabled>Submit</button>
+          <button id="conn-again-btn" type="button" class="secondary" hidden>Run again</button>
+          <button id="conn-retry-btn" type="button" class="secondary" hidden>Retry identical request</button>
+          <button id="conn-refresh-btn" type="button" class="secondary" hidden>Refresh status</button>
+        </div>
+        <p class="hint" id="conn-review-info"></p>
+        <ul class="messages" id="conn-notices"></ul>
+        <div id="conn-status" class="conn-block"></div>
+      </div>
+    </section>
   </main>
 
   <script type="module">
@@ -416,12 +446,37 @@ const builderStorage = createBuilderStorage({
     showLiveStatus("Browser storage is unavailable — drafts won't survive reload this session; use Save project instead."),
 });
 function _persistMeta() {
-  builderStorage.persistMeta({
+  return builderStorage.persistMeta({
     projectId,
     activeMode: state.mode,
     schemaVersion: BUILDER_PROJECT_SCHEMA_VERSION,
     generatorVersion: window.__GENERATOR_VERSION__ || "",
   });
+}
+
+// FEAT-3505: connected submission. The state machine lives in the core; this
+// block only injects browser globals and the document-identity callback.
+let selectedIssueId = (builderStorage.readIssueSelection() || {}).issueId || null;
+function _ensureDocumentIdentity(id) {
+  if (!id || id !== projectId) return false;
+  if (!_persistMeta()) return false;
+  const meta = builderStorage.readMeta();
+  return !!meta && meta.projectId === id;
+}
+const submissionController = createSubmissionController({
+  fetch: (...a) => window.fetch(...a),
+  storage: _ls,
+  subtle: window.crypto && window.crypto.subtle,
+  setTimeout: (fn, ms) => window.setTimeout(fn, ms),
+  clearTimeout: (h) => window.clearTimeout(h),
+  randomUUID: window.crypto && typeof window.crypto.randomUUID === "function" ? () => window.crypto.randomUUID() : undefined,
+  makeAbortController: () => new AbortController(),
+  connectedContext: CONNECTED_CONTEXT,
+  ensureDocumentIdentity: _ensureDocumentIdentity,
+  now: () => new Date().toISOString(),
+});
+function _connectedContext() {
+  return { projectId, issueId: selectedIssueId, mode: state.mode };
 }
 
 function currentProject() {
@@ -445,6 +500,7 @@ function currentProject() {
 // #scenarios-fieldset is inside #form-panel and not excluded there.
 function commit() {
   sessionRevision += 1;
+  if (submissionController) { submissionController.contextChanged(_connectedContext()); submissionController.draftChanged(); }
   if (!history) return;
   drafts = { ...drafts, [state.mode]: { ...drafts[state.mode], model: state, scenarios } };
   history = applyDraftEdit(history, { type: "commit", activeMode: state.mode, drafts });
@@ -469,6 +525,8 @@ function restoreFromSnapshot(snapshot) {
   const entry = drafts[mode];
   state = (entry && entry.model) || seedExample(mode);
   scenarios = (entry && entry.scenarios) || [];
+  submissionController.contextChanged(_connectedContext());
+  submissionController.draftChanged();
   applyStateToForm();
   applyModeVisibility();
   renderAll();
@@ -508,8 +566,10 @@ function hydrateFromStorage() {
       activeModeCorrupted = true;
     }
   }
+  // FEAT-3505: the document identity (which owns submission records) is
+  // restored from saved meta even when no draft loads.
+  if (meta && typeof meta.projectId === "string" && meta.projectId) projectId = meta.projectId;
   if (Object.keys(loaded).length) {
-    projectId = (meta && meta.projectId) || projectId;
     drafts = loaded;
   }
   if (drafts[activeMode]) {
@@ -2047,6 +2107,9 @@ $("open-project-input").onchange = (e) => {
     builderStorage.persistAllDrafts(drafts);
     _persistMeta();
     updateUndoRedoButtons();
+    // FEAT-3505: every successful Open (even a same-ID Open) replaces the
+    // document session; the persisted issue selection is deliberately kept.
+    submissionController.documentOpened(_connectedContext());
     showLiveStatus("Project opened.");
   };
   reader.onerror = () => showLiveStatus("Could not read the selected file.");
@@ -2124,9 +2187,150 @@ $("theme-toggle").onclick = () => {
 initTheme();
 renderPresetButtons();
 renderConfidenceGateInfo();
+
+// ---- connected submission UI (FEAT-3505) ---------------------------------
+function _el(tag, text, cls) {
+  const e = document.createElement(tag);
+  if (text != null) e.textContent = text;
+  if (cls) e.className = cls;
+  return e;
+}
+function _tailLines(text, n) {
+  const lines = String(text == null ? "" : text).split("\n");
+  return lines.length > n ? "…\n" + lines.slice(-n).join("\n") : lines.join("\n");
+}
+function _reviewInput() {
+  const model = buildModel();
+  let yaml = null;
+  let blockedReason = null;
+  try {
+    yaml = serializeLoopYaml(model);
+  } catch (err) {
+    blockedReason = `The policy cannot be generated yet: ${err.message}`;
+  }
+  if (!blockedReason && validateBuilderModel(model).some((d) => d.severity === "error")) {
+    blockedReason = "Fix the errors listed under Result before reviewing.";
+  }
+  return { yaml, blockedReason };
+}
+
+function renderConnected(st) {
+  const panel = $("connected-panel");
+  const av = st.availability;
+  $("conn-unavailable").hidden = av.ok;
+  $("conn-unavailable").textContent = av.ok ? "" : av.reason;
+  // Offline pages have nothing connected to show; a sent request stays visible
+  // regardless of the active mode.
+  panel.hidden = !CONNECTED_CONTEXT;
+  $("conn-body").hidden = !CONNECTED_CONTEXT || (!av.ok && !st.submission);
+  if (!CONNECTED_CONTEXT) return;
+
+  // Issue selector: keep the selection visible even when it is no longer listed.
+  const sel = $("conn-issue");
+  sel.innerHTML = "";
+  sel.appendChild(new Option("Select an issue…", ""));
+  let listed = false;
+  st.issues.list.forEach((i) => {
+    if (i.id === selectedIssueId) listed = true;
+    sel.appendChild(new Option(`${i.id} — ${i.title}`, i.id));
+  });
+  if (selectedIssueId && !listed) {
+    sel.appendChild(new Option(`${selectedIssueId} (no longer listed)`, selectedIssueId));
+  }
+  sel.value = selectedIssueId || "";
+  sel.disabled = !av.ok;
+  $("conn-issue-note").textContent =
+    st.issues.status === "loading" ? "Loading issues…"
+    : st.issues.status === "error" ? `${st.issues.error} Use Reload issues to try again.`
+    : selectedIssueId && !listed && st.issues.status === "ready" ? "The selected issue is no longer listed; the host will confirm on submit."
+    : "";
+
+  const rv = st.review;
+  const sub = st.submission;
+  $("conn-review-btn").disabled = !av.ok || st.busy;
+  $("conn-submit-btn").disabled = !av.ok || rv.status !== "ready" || st.busy || !!(sub && sub.delivery.state === "outcome_unknown");
+  $("conn-submit-btn").textContent = sub ? "Submit as new run" : "Submit";
+  $("conn-again-btn").hidden = !(av.ok && rv.status === "ready" && sub && sub.delivery.state === "outcome_unknown");
+  $("conn-retry-btn").hidden = !(sub && sub.canRetry);
+  $("conn-refresh-btn").hidden = !(sub && sub.delivery.state !== "rejected");
+  $("conn-refresh-btn").disabled = st.busy;
+
+  let info = "";
+  if (rv.status === "hashing") info = "Preparing a snapshot to review…";
+  else if (rv.status === "refused") info = rv.reason;
+  else if (rv.status === "ready") {
+    info = `Reviewed snapshot ${rv.revisionShort} for ${rv.snapshot.issueId} — this exact submitted YAML snapshot will run with the project's current dependencies.` +
+      (st.draftEdited ? "\nDraft edited since review — submit sends the reviewed snapshot, not the current draft." : "");
+  }
+  $("conn-review-info").textContent = info;
+
+  const notes = $("conn-notices");
+  notes.innerHTML = "";
+  st.notices.forEach((n) => notes.appendChild(_el("li", n)));
+
+  const box = $("conn-status");
+  box.innerHTML = "";
+  if (!sub) return;
+  const d = sub.delivery;
+  const top = _el("div", null, "conn-status " + (d.state === "rejected" ? "is-error" : d.state === "accepted" ? "is-success" : "is-warning"));
+  top.appendChild(_el("div", `Revision ${sub.revisionShort} — issue ${sub.issueId}`));
+  top.appendChild(_el("div", `Request ${sub.requestId}` + (sub.queueId ? ` · queue ${sub.queueId}` : "")));
+  if (d.state === "outcome_unknown") {
+    top.appendChild(_el("div", sub.notFound
+      ? "The host has no record of this request. You can retry the identical request."
+      : "Not confirmed — an earlier attempt may have reached the host. Refresh status before sending again."));
+  } else if (d.state === "rejected") {
+    const e = d.error || {};
+    top.appendChild(_el("div", e.code === "request_conflict"
+      ? `This request conflicts with an existing one on the host: ${e.message}`
+      : `Rejected (${e.code}): ${e.message}`));
+    (e.errors || []).forEach((x) => top.appendChild(_el("div", `• ${x.message || JSON.stringify(x)}`)));
+    top.appendChild(_el("div", "Correct the policy and review again to send a new request."));
+  } else if (d.state === "accepted") {
+    top.appendChild(_el("div", sub.statusLabel ? `Status: ${sub.statusLabel}` : "Status: checking…"));
+    if (sub.missing) top.appendChild(_el("div", "The host no longer has this request."));
+    if (sub.conflict) top.appendChild(_el("div", sub.conflict));
+    if (sub.loopInstanceId || sub.runDir) {
+      const label = sub.runIsCurrent ? "Run" : "Previous run";
+      top.appendChild(_el("div", `${label}: ${sub.loopInstanceId || "—"} · ${sub.runDir || "—"}`));
+    }
+    if (sub.poll === "paused") top.appendChild(_el("div", `${sub.pollNote} Use Refresh status to resume.`));
+    if (sub.terminal) top.appendChild(_el("div", "Finished. Use Refresh status to check again."));
+    if (sub.warningsUnavailable) top.appendChild(_el("div", "Validation warnings unavailable for this request."));
+    (sub.warnings || []).forEach((w) => top.appendChild(_el("div", `Warning (non-blocking): ${w.message || JSON.stringify(w)}`, "hint")));
+    const showResult = (label, r) => {
+      if (!r || typeof r !== "object") return;
+      const det = _el("details");
+      det.appendChild(_el("summary", label));
+      det.appendChild(_el("div", `exit code: ${r.exit_code}${r.timed_out ? " (timed out)" : ""}${r.error ? ` · error: ${r.error}` : ""}`));
+      ["stderr", "stdout"].forEach((k) => { if (r[k]) det.appendChild(_el("pre", _tailLines(r[k], 40))); });
+      top.appendChild(det);
+    };
+    showResult("Result", sub.result);
+    showResult("Result of the previous attempt", sub.previousResult);
+  }
+  if (st.draftEdited) top.appendChild(_el("div", "Draft edited since review.", "hint"));
+  box.appendChild(top);
+}
+
+$("conn-issue").onchange = (e) => {
+  selectedIssueId = e.target.value || null;
+  builderStorage.writeIssueSelection(selectedIssueId);
+  submissionController.contextChanged(_connectedContext());
+};
+$("conn-issues-reload").onclick = () => { submissionController.loadIssues(); };
+$("conn-review-btn").onclick = () => { submissionController.review(_reviewInput()); };
+$("conn-submit-btn").onclick = () => { submissionController.submit(); };
+$("conn-again-btn").onclick = () => { submissionController.submit({ newRun: true }); };
+$("conn-retry-btn").onclick = () => { submissionController.retry(); };
+$("conn-refresh-btn").onclick = () => { submissionController.refreshStatus(); };
+submissionController.onChange(renderConnected);
 hydrateFromStorage();
 applyModeVisibility();
 renderAll();
+submissionController.documentOpened(_connectedContext());
+if (CONNECTED_CONTEXT) submissionController.loadIssues();
+renderConnected(submissionController.getState());
   </script>
 </body>
 </html>

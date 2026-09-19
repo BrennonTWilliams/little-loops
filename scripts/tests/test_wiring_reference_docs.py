@@ -252,6 +252,7 @@ DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     ),
     ("docs/ARCHITECTURE.md", "are the level-2\ninbound path", "FEAT-3504"),
     ("docs/guides/POLICY_ROUTER_GUIDE.md", "Connected authoring & submission", "FEAT-3504"),
+    ("docs/guides/POLICY_ROUTER_GUIDE.md", "Using the connected page", "FEAT-3505"),
 ]
 
 
