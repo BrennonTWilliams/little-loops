@@ -104,6 +104,7 @@ Examples:
   %(prog)s dashboard --local --since 2026-08-01   # unredacted, personal use — stamped "local"
   %(prog)s serve                                  # live SSE bridge on events.bridge.port (8766)
   %(prog)s serve --port 9000                      # override the bound port
+  %(prog)s serve --policy-builder                 # also serve the connected policy builder
 
 Exit codes:
   0 - Artifact generated successfully

@@ -12,8 +12,12 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from little_loops.logger import Logger
+
+if TYPE_CHECKING:
+    from little_loops.config.core import BRConfig
 
 _TEMPLATES_DIR = Path(__file__).resolve().parent.parent.parent / "templates"
 
@@ -59,60 +63,77 @@ def _load_skill_catalog(project_root: Path) -> list[dict[str, str | None]]:
     ]
 
 
+def render_policy_builder_html(config: BRConfig, *, workspace_id: str | None = None) -> str:
+    """Render the self-contained policy-router builder HTML page.
+
+    Factored from ``cmd_policy_builder`` (FEAT-3504) so the same rendering
+    logic backs both the offline `ll-artifact policy-builder` CLI output and
+    `ll-artifact serve --policy-builder`'s served page. With
+    ``workspace_id=None`` (the CLI's offline case) the connected-context
+    placeholder renders ``null``, matching pre-FEAT-3504 CLI output exactly.
+    """
+    from little_loops import __version__
+    from little_loops.artifact_template_kit import stamp_page_shell, themed_css_vars
+    from little_loops.fsm.policy_rules import _py_pattern_to_js, grammar_spec
+
+    css_vars = themed_css_vars(config)
+
+    spec = grammar_spec()
+    # Stamp a JS-translated predicate regex source alongside the spec so the
+    # browser builds the same RegExp the canonical Python grammar defines.
+    pred_pattern = spec["pred_pattern"]
+    spec_for_js = dict(spec)
+    if isinstance(pred_pattern, str):
+        spec_for_js["pred_pattern"] = _py_pattern_to_js(pred_pattern)
+    grammar_json = json.dumps(spec_for_js)
+
+    catalog = _load_skill_catalog(config.project_root)
+    catalog_json = json.dumps(catalog)
+
+    # ENH-3492: stamp the project's confidence-gate thresholds so the
+    # builder can display them alongside authored rule thresholds —
+    # informational only, never used to rewrite saved predicates.
+    gate = config.commands.confidence_gate
+    confidence_gate_json = json.dumps(
+        {
+            "enabled": gate.enabled,
+            "readiness_threshold": gate.readiness_threshold,
+            "outcome_threshold": gate.outcome_threshold,
+        }
+    )
+
+    template = (_TEMPLATES_DIR / "policy-router-builder.html.tmpl").read_text()
+    core_js = (_TEMPLATES_DIR / "policy_builder_core.mjs").read_text()
+
+    # Stamp the configured default theme onto the root <html> element so the
+    # page opens in the project's active theme (read into window.__ACTIVE_THEME__
+    # by the inline bootstrap, used as the fallback when the OS expresses no
+    # prefers-color-scheme). Omitting this was the FEAT-2301 worktree theme bug.
+    active_theme = config.design_tokens.active_theme or "light"
+
+    html = stamp_page_shell(template, active_theme=active_theme, css_vars=css_vars)
+    html = html.replace("/*__GRAMMAR_SPEC_JSON__*/", grammar_json)
+    html = html.replace("/*__SKILL_CATALOG_JSON__*/", catalog_json)
+    html = html.replace("/*__GENERATOR_VERSION_JSON__*/", json.dumps(__version__))
+    html = html.replace("/*__CONFIDENCE_GATE_JSON__*/", confidence_gate_json)
+    html = html.replace("/*__BUILDER_CORE_JS__*/", core_js)
+    connected_context_json = json.dumps(
+        {"workspaceId": workspace_id} if workspace_id is not None else None
+    )
+    html = html.replace("/*__CONNECTED_CONTEXT_JSON__*/", connected_context_json)
+    return html
+
+
 def cmd_policy_builder(args: argparse.Namespace, logger: Logger) -> int:
     """Emit the self-contained policy-router builder HTML page.
 
     Returns 0 on success, 1 on error.
     """
-    from little_loops import __version__
-    from little_loops.artifact_template_kit import stamp_page_shell, themed_css_vars
     from little_loops.config.core import BRConfig
-    from little_loops.fsm.policy_rules import _py_pattern_to_js, grammar_spec
 
     try:
         config = BRConfig(Path.cwd())
-
-        css_vars = themed_css_vars(config)
-
-        spec = grammar_spec()
-        # Stamp a JS-translated predicate regex source alongside the spec so the
-        # browser builds the same RegExp the canonical Python grammar defines.
-        pred_pattern = spec["pred_pattern"]
-        spec_for_js = dict(spec)
-        if isinstance(pred_pattern, str):
-            spec_for_js["pred_pattern"] = _py_pattern_to_js(pred_pattern)
-        grammar_json = json.dumps(spec_for_js)
-
-        catalog = _load_skill_catalog(config.project_root)
-        catalog_json = json.dumps(catalog)
-
-        # ENH-3492: stamp the project's confidence-gate thresholds so the
-        # builder can display them alongside authored rule thresholds —
-        # informational only, never used to rewrite saved predicates.
-        gate = config.commands.confidence_gate
-        confidence_gate_json = json.dumps(
-            {
-                "enabled": gate.enabled,
-                "readiness_threshold": gate.readiness_threshold,
-                "outcome_threshold": gate.outcome_threshold,
-            }
-        )
-
-        template = (_TEMPLATES_DIR / "policy-router-builder.html.tmpl").read_text()
-        core_js = (_TEMPLATES_DIR / "policy_builder_core.mjs").read_text()
-
-        # Stamp the configured default theme onto the root <html> element so the
-        # page opens in the project's active theme (read into window.__ACTIVE_THEME__
-        # by the inline bootstrap, used as the fallback when the OS expresses no
-        # prefers-color-scheme). Omitting this was the FEAT-2301 worktree theme bug.
-        active_theme = config.design_tokens.active_theme or "light"
-
-        html = stamp_page_shell(template, active_theme=active_theme, css_vars=css_vars)
-        html = html.replace("/*__GRAMMAR_SPEC_JSON__*/", grammar_json)
-        html = html.replace("/*__SKILL_CATALOG_JSON__*/", catalog_json)
-        html = html.replace("/*__GENERATOR_VERSION_JSON__*/", json.dumps(__version__))
-        html = html.replace("/*__CONFIDENCE_GATE_JSON__*/", confidence_gate_json)
-        html = html.replace("/*__BUILDER_CORE_JS__*/", core_js)
+        html = render_policy_builder_html(config)
 
         output_dir = Path(args.output) if args.output else Path(config.artifacts.default_output_dir)
         if not output_dir.is_absolute():

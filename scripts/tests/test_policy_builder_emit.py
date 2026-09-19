@@ -12,6 +12,8 @@ import re
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from little_loops.cli.artifact import cmd_policy_builder, main_artifact
 from little_loops.logger import Logger
 
@@ -194,6 +196,31 @@ def test_golden_issue_lifecycle_yaml_validates() -> None:
     fsm, _ = load_and_validate(GOLDEN_ISSUE_LIFECYCLE)
     errors = validate_fsm(fsm)
     assert errors == [], [e.message for e in errors]
+
+
+class TestFeat3504BuilderEmitsSupportedMode:
+    """FEAT-3504 Step 0: builder-emitted issue_lifecycle YAML must pass
+    ``validate_policy_revision`` (mode acceptance), not just the pre-existing
+    structural ``validate_fsm`` golden checks above.
+    """
+
+    @pytest.mark.parametrize(
+        "fixture_name",
+        [
+            "sample-issue-lifecycle.yaml",
+            "sample-issue-lifecycle-verification.yaml",
+            "sample-issue-lifecycle-destinations.yaml",
+        ],
+    )
+    def test_golden_lifecycle_yaml_passes_validate_policy_revision(
+        self, tmp_path: Path, fixture_name: str
+    ) -> None:
+        from little_loops.cli.artifact.policy_revision import validate_policy_revision
+
+        fixture_path = Path(__file__).parent / "fixtures" / "policy_builder" / fixture_name
+        outcome = validate_policy_revision(fixture_path.read_bytes(), project_root=tmp_path)
+        assert outcome.ok is True, outcome.errors
+        assert outcome.mode == "issue_lifecycle"
 
 
 class TestFeat2301UsabilityStructural:

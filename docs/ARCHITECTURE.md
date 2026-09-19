@@ -932,7 +932,12 @@ executor is the sole routing authority (`FSMExecutor.run()`,
 `scripts/little_loops/fsm/executor.py`); `ll-loop run --serve`'s
 `LocalBridgeTransport` (ENH-3351) is the first render target that routes an
 interaction back into it, via `FSMExecutor._drain_inbound()` — record-and-emit
-only, with no FSM guard/transition semantics yet. The contract names three levels — notify,
+only, with no FSM guard/transition semantics yet. `ll-artifact serve
+--policy-builder`'s submit/readback routes (FEAT-3504) are the level-2
+inbound path: a submission enqueues an `awaiting_approval` queue row rather
+than routing through `FSMExecutor` at all — the host session, not the
+executor, decides whether to run it (`ll-queue run --id ID --approve`). The
+contract names three levels — notify,
 ask-to-run-prompt, host-owned — so that future render targets converge on one
 re-entry vocabulary instead of each defining it implicitly. See
 [ARTIFACT_CONTROL_LEVELS.md](reference/ARTIFACT_CONTROL_LEVELS.md) for the full

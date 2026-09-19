@@ -25,6 +25,7 @@ completely real `UnixSocketTransport` instances bound in the same directory
 from __future__ import annotations
 
 import argparse
+import http.client
 import json
 import logging
 import math
@@ -1330,3 +1331,183 @@ class TestCmdServeHistoryGate:
         assert spy.call_args.kwargs["routes"] is not None
         assert "history" in spy.call_args.kwargs["routes"]
         assert spy.call_args.kwargs["page_html_factory"] is not None
+
+
+@pytest.mark.skipif(
+    not _HAS_SSE_BRIDGE,
+    reason="FEAT-3323: SseBridge/serve_sse_bridge/BridgeEventsConfig not implemented yet",
+)
+class TestMethodRoutes:
+    """FEAT-3504: `do_POST` + bounded `{name}`-segment matching on `method_routes`.
+
+    Models `TestLocalBridgeTransport`'s POST dispatch tests
+    (`test_interaction_post_lands_on_inbound_queue_unchanged`,
+    `_lb_http_request`) since that is the direct in-repo precedent for POST
+    over this handler shape.
+    """
+
+    def _bridge(self, short_tmp_path: Path, tmp_path: Path, **method_route_handlers):
+        def _echo(handler, captured=None):
+            handler.send_response(200)
+            handler.send_header("Content-Type", "text/plain")
+            handler.end_headers()
+            handler.wfile.write((captured or "").encode("utf-8"))
+
+        def _post_echo(handler):
+            length = int(handler.headers.get("Content-Length", "0"))
+            body = handler.rfile.read(length) if length else b""
+            handler.send_response(200)
+            handler.send_header("Content-Type", "application/octet-stream")
+            handler.end_headers()
+            handler.wfile.write(body)
+
+        method_routes = [
+            ("GET", "widgets/{id}", _echo),
+            ("GET", "widgets", lambda h: _echo(h, "list")),
+            ("POST", "widgets", _post_echo),
+        ]
+        return SseBridge(
+            _make_config(),
+            port=0,
+            base=short_tmp_path,
+            loops_dir=tmp_path / "loops",
+            method_routes=method_routes,
+        )
+
+    def test_get_matches_parameterized_segment_and_captures_it(
+        self, short_tmp_path: Path, tmp_path: Path
+    ) -> None:
+        bridge = self._bridge(short_tmp_path, tmp_path)
+        try:
+            token = _bridge_token(bridge)
+            status, body = _lb_http_request(_bridge_port(bridge), "GET", f"/{token}/widgets/abc123")
+            assert status == 200
+            assert body == b"abc123"
+        finally:
+            bridge.close()
+
+    def test_get_matches_param_less_pattern(self, short_tmp_path: Path, tmp_path: Path) -> None:
+        bridge = self._bridge(short_tmp_path, tmp_path)
+        try:
+            token = _bridge_token(bridge)
+            status, body = _lb_http_request(_bridge_port(bridge), "GET", f"/{token}/widgets")
+            assert status == 200
+            assert body == b"list"
+        finally:
+            bridge.close()
+
+    def test_post_dispatches_to_matching_method_route(
+        self, short_tmp_path: Path, tmp_path: Path
+    ) -> None:
+        bridge = self._bridge(short_tmp_path, tmp_path)
+        try:
+            token = _bridge_token(bridge)
+            status, body = _lb_http_request(
+                _bridge_port(bridge), "POST", f"/{token}/widgets", body=b"hello"
+            )
+            assert status == 200
+            assert body == b"hello"
+        finally:
+            bridge.close()
+
+    def test_wrong_method_for_a_registered_pattern_is_404(
+        self, short_tmp_path: Path, tmp_path: Path
+    ) -> None:
+        """`widgets/{id}` is GET-only; POSTing it must not fall through to it."""
+        bridge = self._bridge(short_tmp_path, tmp_path)
+        try:
+            token = _bridge_token(bridge)
+            status, _ = _lb_http_request(
+                _bridge_port(bridge), "POST", f"/{token}/widgets/abc123", body=b"x"
+            )
+            assert status == 404
+        finally:
+            bridge.close()
+
+    def test_post_bad_host_header_returns_403(self, short_tmp_path: Path, tmp_path: Path) -> None:
+        bridge = self._bridge(short_tmp_path, tmp_path)
+        try:
+            token = _bridge_token(bridge)
+            status, _ = _lb_http_request(
+                _bridge_port(bridge), "POST", f"/{token}/widgets", host="evil.com", body=b"x"
+            )
+            assert status == 403
+        finally:
+            bridge.close()
+
+    def test_post_wrong_token_returns_404(self, short_tmp_path: Path, tmp_path: Path) -> None:
+        bridge = self._bridge(short_tmp_path, tmp_path)
+        try:
+            status, _ = _lb_http_request(
+                _bridge_port(bridge), "POST", "/not-the-real-token/widgets", body=b"x"
+            )
+            assert status == 404
+        finally:
+            bridge.close()
+
+    def test_post_bare_token_no_trailing_slash_returns_404_not_redirect(
+        self, short_tmp_path: Path, tmp_path: Path
+    ) -> None:
+        """Bare `/{token}` 301-redirects for GET but 404s for POST (no unified
+        `LocalBridgeTransport._route()`-style both-forms acceptance for POST)."""
+        bridge = self._bridge(short_tmp_path, tmp_path)
+        try:
+            token = _bridge_token(bridge)
+            status, _ = _lb_http_request(_bridge_port(bridge), "POST", f"/{token}", body=b"x")
+            assert status == 404
+        finally:
+            bridge.close()
+
+    def test_get_bare_token_still_redirects(self, short_tmp_path: Path, tmp_path: Path) -> None:
+        bridge = self._bridge(short_tmp_path, tmp_path)
+        try:
+            token = _bridge_token(bridge)
+            conn = http.client.HTTPConnection("127.0.0.1", _bridge_port(bridge), timeout=5.0)
+            try:
+                conn.putrequest("GET", f"/{token}", skip_host=True)
+                conn.putheader("Host", f"127.0.0.1:{_bridge_port(bridge)}")
+                conn.endheaders()
+                resp = conn.getresponse()
+                resp.read()
+                assert resp.status == 301
+                assert resp.getheader("Location") == f"/{token}/"
+            finally:
+                conn.close()
+        finally:
+            bridge.close()
+
+    def test_existing_get_history_route_and_events_unaffected(
+        self, short_tmp_path: Path, tmp_path: Path
+    ) -> None:
+        """Existing exact-key `_routes` GET dispatch still wins over method_routes,
+        and the SSE `events` route is untouched by the new matcher."""
+        bridge = self._bridge(short_tmp_path, tmp_path)
+        try:
+            token = _bridge_token(bridge)
+            sock = _sse_connect(_bridge_port(bridge), token)
+            try:
+                _read_sse_headers(sock)
+            finally:
+                sock.close()
+        finally:
+            bridge.close()
+
+    def test_no_cors_headers_on_method_route_response(
+        self, short_tmp_path: Path, tmp_path: Path
+    ) -> None:
+        bridge = self._bridge(short_tmp_path, tmp_path)
+        try:
+            token = _bridge_token(bridge)
+            conn = http.client.HTTPConnection("127.0.0.1", _bridge_port(bridge), timeout=5.0)
+            try:
+                conn.putrequest("GET", f"/{token}/widgets", skip_host=True)
+                conn.putheader("Host", f"127.0.0.1:{_bridge_port(bridge)}")
+                conn.endheaders()
+                resp = conn.getresponse()
+                resp.read()
+                headers = dict(resp.getheaders())
+                assert not any(k.lower().startswith("access-control-") for k in headers)
+            finally:
+                conn.close()
+        finally:
+            bridge.close()

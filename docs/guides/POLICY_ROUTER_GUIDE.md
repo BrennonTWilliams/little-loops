@@ -356,6 +356,19 @@ per run — no queue, retry, or rate-limit machinery; run it with:
 ll-loop run <name> --context issue_id=<ID>
 ```
 
+**Connected authoring & submission (`ll-artifact serve --policy-builder`, FEAT-3504).**
+The visual builder can also be served at a same-origin route instead of exported to a file:
+a maintainer picks a project issue, reviews the frozen `issue_lifecycle` policy, and submits
+it for host approval (`ll-queue run --id ID --approve` runs it, `ll-queue cancel` rejects it)
+without leaving the browser. This is a **Level 2 (project-local)** render target per
+[ARTIFACT_CONTROL_LEVELS.md](../reference/ARTIFACT_CONTROL_LEVELS.md#declared-levels-by-render-target) —
+the page can enqueue a request but never run or drain one itself. It guarantees an immutable
+**submitted YAML snapshot** (verified by exact-byte SHA-256 at submission time) executed
+against the project's **current** dependencies when the host approves it — not reproducible
+execution, and not approval-time byte re-verification of the persisted file. See
+[CLI.md § ll-artifact serve](../reference/CLI.md#ll-artifact-serve) for the full connected-route
+contract; the served page's own review/submit/status UI is out of this guide's scope.
+
 **Dimensions are frontmatter fields.** little-loops' own built-in fields are pre-typed and
 pre-populated (locked — they can't be deleted, since a rule may reference the derived
 `priority_rank`); you add your own on top by naming any frontmatter key and picking a type.

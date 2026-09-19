@@ -240,6 +240,18 @@ DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     ("docs/guides/HARNESS_OPTIMIZATION_GUIDE.md", "ENH-3465", "ENH-3465"),
     ("docs/reference/API.md", "### BaselinePin / read_pin / write_pin", "ENH-3465"),
     ("docs/reference/API.md", "def proportion_diff_ci", "ENH-3465"),
+    ("docs/reference/API.md", "## little_loops.cli.artifact.policy_builder_routes", "FEAT-3504"),
+    ("docs/reference/API.md", "make_run_request_routes", "FEAT-3504"),
+    ("docs/reference/API.md", "method_routes", "FEAT-3504"),
+    ("docs/reference/CLI.md", "--policy-builder", "FEAT-3504"),
+    ("docs/reference/CLI.md", "Connected policy builder", "FEAT-3504"),
+    (
+        "docs/reference/ARTIFACT_CONTROL_LEVELS.md",
+        "ll-artifact serve`'s policy-builder route",
+        "FEAT-3504",
+    ),
+    ("docs/ARCHITECTURE.md", "are the level-2\ninbound path", "FEAT-3504"),
+    ("docs/guides/POLICY_ROUTER_GUIDE.md", "Connected authoring & submission", "FEAT-3504"),
 ]
 
 

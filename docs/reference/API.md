@@ -11056,6 +11056,38 @@ from little_loops.cli.artifact.policy_revision import (
 
 ---
 
+## little_loops.cli.artifact.policy_builder_routes
+
+Connected policy-builder HTTP routes for `ll-artifact serve --policy-builder` (FEAT-3504), exposing FEAT-3498's host-side run-request contracts over HTTP. This module owns policy-payload knowledge — body guards, the JSON `ErrorBody` shape, and the nine-step submit ordering; `SseBridge` (`little_loops.transport`) owns only generic method/path dispatch and the shared Host/token checks and knows nothing about policy payloads. These routes only submit/read requests — they never approve, drain, launch a process, or import `LocalBridgeTransport`. Host approval is FEAT-3498's `ll-queue run --id ID --approve`; host rejection is `ll-queue cancel`.
+
+```python
+from little_loops.cli.artifact.policy_builder_routes import make_run_request_routes
+
+routes = make_run_request_routes(config, workspace_id=workspace_id)
+# -> [("POST", "run-request", ...), ("GET", "run-request/{requestId}", ...), ("GET", "issues", ...)]
+```
+
+`make_run_request_routes(config: BRConfig, *, workspace_id: str) -> list[tuple[str, str, handler]]` builds the `method_routes` entries `cli/artifact/serve.py`'s `cmd_serve` passes to `serve_sse_bridge` alongside its own `GET policy-builder` page-serving entry.
+
+**Submit (`POST run-request`)**, in order — the first mismatch short-circuits with the documented status/code and persists nothing:
+1. Body guards: `Content-Length` presence/bound (`_MAX_RUN_REQUEST_BYTES = 1 << 20`, independent of `artifacts.export.max_artifact_bytes`), `Content-Type: application/json`, JSON parse, then field presence/type/shape (`requestId` a lowercase UUID, `revisionId` 64 lowercase hex, `workspaceId` 16 lowercase hex, `projectId`/`issueId` non-empty ≤128 chars, `yaml` a non-empty string) — any failure is `400 bad_request`; oversized `Content-Length` is `413 body_too_large`.
+2. Recompute `hashlib.sha256(yaml_bytes).hexdigest()`; a mismatch against `revisionId` is `422 revision_mismatch` (this route is the only place that checks it — `persist_policy_revision` compares bytes only when a same-name file already exists).
+3. `workspaceId` must equal the server's; otherwise `403 wrong_workspace`.
+4. `get_run_request()` early-return: an existing row for `(workspaceId, requestId)` with matching `revision_id`/`issue_id`/`project_root` returns `200 {requestId, queueId, created: false}` immediately (bypassing steps 5-8); a binding mismatch is `409 request_conflict`.
+5. New-request only: the issue must exist in the project (`find_issues(config)`, active-only) — otherwise `404 issue_not_found`.
+6. New-request only: `validate_policy_revision()`; `ok=False` is `422 validation_failed` with `errors`/`warnings`.
+7. `persist_policy_revision()`; a same-name/different-bytes collision is `409 request_conflict` (`PolicyRevisionConflictError`).
+8. `create_or_get_run_request()` with `ActionSpec(runner=RunnerType.LOOP, target=<persisted path>, timeout=None)` — `timeout=None` is mandatory; the default `120` would kill a real lifecycle run.
+9. `200 {requestId, queueId, created, warnings}` (`warnings` from step 6; `[]` on the existing-request path).
+
+**Readback (`GET run-request/{requestId}?workspaceId=...`)**: `requestId` must be a lowercase UUID (else `400`); `workspaceId` must match the server's (else `403 wrong_workspace`); `get_run_request()` returning `None` is `404 request_not_found`. Otherwise `200 {requestId, queueId, status, bindings: {issueId, revisionId}, loopInstanceId, runDir, result}`, always with `Cache-Control: no-store` (including on every error response) so polling and reload reconciliation never see a cached status or cached absence.
+
+**Issues (`GET issues`)**: `200 {issues: [{id, title, priority, status, path}, ...]}` from `find_issues(config)` (active issues only — done/cancelled/deferred excluded).
+
+**Error boundary**: every handler is wrapped so a raised `_RouteError` becomes its documented `{"error": {"code", "message", "errors"?, "warnings"?}}` body, and any other exception is logged server-side (never a traceback in the response) and returned as `500 internal_error` — this never rolls back a write that may have already committed, since the queue transaction may have succeeded before the failure surfaced.
+
+---
+
 ## little_loops.tool_catalog
 
 Catalog-assembly for little-loops' own Anthropic Messages API tool set (FEAT-2680). Walks `skills/*/SKILL.md`, `commands/*.md`, and `agents/*.md` frontmatter and produces a full `tools` array — the single, stable data source FEAT-2672 (deferred tool loading) and FEAT-2673 (`build_anthropic_request()`) consume instead of each reimplementing frontmatter enumeration.
@@ -11495,6 +11527,7 @@ SseBridge(
     base: Path | None = None,
     loops_dir: Path | None = None,
     routes: dict[str, Callable[[http.server.BaseHTTPRequestHandler], None]] | None = None,
+    method_routes: list[tuple[str, str, Callable[..., None]]] | None = None,
 )
 ```
 
@@ -11504,6 +11537,7 @@ SseBridge(
 - `base` - Socket-directory root passed to `_resolve_socket_path`, mirroring `wire_transports(log_dir=...)`. `None` (default) resolves against `Path(".ll")`, the real project socket directory; tests pass a `short_tmp_path` fixture so producer-socket-directory assertions never touch repo state.
 - `loops_dir` - Seed source passed to `list_running_loops`. `None` (default) resolves against `Path(".loops")`; tests pass a `tmp_path` fixture so seed and `.loops/.running/`-untouched assertions never touch repo state.
 - `routes` - Extra `GET` routes under `/{token}/`, keyed by path suffix, dispatched by the shared handler after the Host and token checks — the FEAT-3321 mount point. This bridge always registers `""` (the Level 1 page) and `"events"` (the SSE stream); caller-supplied routes are merged in alongside them.
+- `method_routes` (FEAT-3504) - `(method, pattern, handler)` tuples consulted by `do_GET` (after the exact-key `routes` dict misses) and by the new `do_POST`. `pattern` is a literal `/`-delimited path with at most one `{name}` segment — matching is anchored on segment count (bounded, no regex over user input); the matched `{name}` segment's value is passed as the handler's second positional argument (omitted for a param-less pattern). `ll-artifact serve --policy-builder` is the first caller (`make_run_request_routes` in `cli/artifact/policy_builder_routes.py`).
 
 Binds loopback (`127.0.0.1`) unconditionally — there is no host-override parameter. Binding happens synchronously in `__init__` (before the fan-in/relay/serve threads start), so a bind failure (`OSError`, e.g. `EADDRINUSE`) leaves nothing to clean up.
 
@@ -11514,7 +11548,9 @@ Binds loopback (`127.0.0.1`) unconditionally — there is no host-override param
 | `url` (property) | `http://127.0.0.1:<bound-port>/<token>/` — the page URL. The SSE endpoint is `url + "events"`. |
 | `close() -> None` | Sets a shared stop `Event` (fan-in loop and reader threads exit on their next `recv`/rescan timeout), closes every connected producer client socket (each producer's `_client_loop` then retires the slot via `_peer_closed`), pushes the `_SHUTDOWN` sentinel to every SSE client queue, shuts the HTTP server down, and joins every thread within a bounded budget. Touches nothing in the producer socket directory or `.loops/.running/`. |
 
-**Security:** every request is checked against a per-start token (`secrets.token_urlsafe(16)`) and the `Host` header (`403` unless exactly `127.0.0.1:<port>` or `localhost:<port>`); a missing/wrong token is `404`. No `Access-Control-Allow-Origin` header is ever sent (`EventSource` respects CORS, so cross-origin reads are blocked by omission). `GET /{token}` (no trailing slash) redirects `301` to `/{token}/`.
+**Security:** every request is checked against a per-start token (`secrets.token_urlsafe(16)`) and the `Host` header (`403` unless exactly `127.0.0.1:<port>` or `localhost:<port>`); a missing/wrong token is `404`. No `Access-Control-Allow-Origin` header is ever sent (`EventSource` respects CORS, so cross-origin reads are blocked by omission). `GET /{token}` (no trailing slash) redirects `301` to `/{token}/`; `POST /{token}` (FEAT-3504) is `404` — `do_POST` shares the Host check and `/{token}/`-prefix strip with `do_GET` via the `_check_host_and_strip_token` helper, but not `do_GET`'s bare-prefix redirect, so a POST to the bare token never gets the GET-only 301.
+
+**Method-aware dispatch (FEAT-3504):** `do_POST` exists alongside `do_GET`; both share `_check_host_and_strip_token(handler) -> str | None` (factored out of the pre-FEAT-3504 `do_GET` body) for the Host check and `/{token}/`-prefix strip. `do_GET` still checks the exact-key `routes` dict first (unchanged FEAT-3321 behavior), then falls back to `method_routes` matching on `GET`; `do_POST` only ever consults `method_routes`, matching on `POST`. Neither dispatch path adds `Access-Control-Allow-Origin` headers.
 
 **Fan-in:** `_fan_in_producer_sockets(socket_path, out, stop, rescan_s=2.0)` runs the directory-rescan loop in its own thread, owning one `_ProducerReader` (one `_read_producer_socket` thread each) per connected producer. Connect is the probe — a path already connected is never re-probed, and a stale socket file is skipped and never unlinked (reclaiming a dead socket is the producer's job). A reader whose lifetime (real connect time to real thread-exit time) is under a small, loop-independent `_FANIN_IMMEDIATE_EOF_S` threshold without forwarding a single line (a producer at `max_clients` accepting-then-closing) marks its path "flapping": the retry interval doubles per consecutive flap (capped at 60s) and resets on the first forwarded line, so a producer sitting at capacity doesn't get re-probed — and its rejection count re-logged — every `rescan_s`. Socket-side `state_change` lines are filtered (see below); everything else is forwarded unchanged into a shared bounded queue that a relay thread SSE-encodes and fans out to every connected SSE client's own bounded queue.
 
@@ -11525,8 +11561,18 @@ Binds loopback (`127.0.0.1`) unconditionally — there is no host-override param
 The blocking CLI wrapper behind `ll-artifact serve`: constructs `SseBridge`, prints its `.url`, and blocks until `KeyboardInterrupt`.
 
 ```python
-def serve_sse_bridge(config: EventsConfig, port: int | None = None) -> int
+def serve_sse_bridge(
+    config: EventsConfig,
+    port: int | None = None,
+    *,
+    routes: dict[str, Callable[[http.server.BaseHTTPRequestHandler], None]] | None = None,
+    method_routes: list[tuple[str, str, Callable[..., None]]] | None = None,
+    page_html_factory: Callable[[SseBridge], str] | None = None,
+    extra_url_suffixes: list[str] | None = None,
+) -> int
 ```
+
+`routes`/`method_routes` are passed straight through to `SseBridge(...)`. `page_html_factory(bridge)`, once the bridge is bound (so it can embed `bridge.url`'s token), installs its returned HTML via `bridge.set_page_html`; any exception it raises is caught and logged, leaving the placeholder page serving rather than aborting startup. `extra_url_suffixes` (FEAT-3504) prints `bridge.url + suffix` once per entry, right after the main URL — `ll-artifact serve --policy-builder` passes `["policy-builder"]` so the connected builder's tokenized URL is visible alongside the SSE bridge URL.
 
 Prints a one-line stderr notice — but keeps serving, since a producer may start later — when `"socket"` is absent from `config.transports` or no producer socket is present yet. On `KeyboardInterrupt`, calls `SseBridge.close()` and returns `0`. A bind failure (`OSError`, e.g. `EADDRINUSE`) propagates to the caller (`cmd_serve` in `cli/artifact/serve.py`), which prints the one-line port-in-use message and exits `1`.
 

@@ -57,6 +57,7 @@ contract violation reviewers can point at.
 | ENH-3306's `ui://` resources | 1 (notify) |
 | `ll-loop run --serve`'s dashboard page (ENH-3351) | 3 (host-owned) |
 | `ll-artifact serve`'s live event stream page (FEAT-3323; served dashboard page with `events.bridge.history: true`, FEAT-3321) | 1 (notify) |
+| `ll-artifact serve`'s policy-builder route (FEAT-3504; connected same-origin authoring + submission with host approval via FEAT-3498, project-scoped issue binding, immutable revision persistence) | 2 (project-local) |
 
 **Binding now:** every render target MUST declare its supported level(s) in
 prose, in its own canonical doc, and MUST link back to this document for the

@@ -3,10 +3,11 @@ id: FEAT-3504
 type: FEAT
 title: Policy builder connected page and serve routes
 priority: P3
-status: open
+status: done
 discovered_by: manual-split
 discovered_date: '2026-09-18'
 captured_at: '2026-09-18T02:19:33Z'
+completed_at: '2026-09-19T00:17:43Z'
 parent: EPIC-3493
 labels:
 - policy-builder
@@ -207,19 +208,19 @@ A maintainer opens the served builder, picks BUG-123 from the project's issue li
 
 ## Acceptance Criteria
 
-- [ ] The builder's own `issue_lifecycle` output (regenerated golden fixtures) passes `validate_policy_revision` with `mode="issue_lifecycle"`.
-- [ ] Submitting through the route while a watcher runs produces `awaiting_approval` and zero subprocess dispatches; serve cannot approve/run; production behavioral tests enforce the level boundary.
-- [ ] All four connected routes are absent unless `--policy-builder` is passed; when enabled, serve prints the tokenized builder URL. Existing Host/token checks cover every route/method and retain HTML transport errors; dispatched application errors use JSON ErrorBody. The client handles either format. Existing GET/history/SSE tests pass; no CORS headers; oversized, non-JSON, or malformed bodies return 413/400 with no side effects.
-- [ ] Concurrent duplicate first submissions and exact retries after terminal completion, issue removal, or validator changes map to one queue UUID. Existing matching requests bypass mutable issue/validation/persistence checks; hash/workspace checks remain mandatory and differing stored bindings return `409`. New requests still require all creation checks; explicit Run again creates a fresh awaiting request.
-- [ ] Restart over the same project rotates the token but keeps `workspace_id`: readback under the new token returns the original queue row; the old token path returns the HTML transport error. A submit/readback carrying another workspace's `workspaceId` returns `403 wrong_workspace`.
-- [ ] For new requests, invalid YAML, ERROR diagnostics, missing issue, wrong workspace, unsupported mode, and revision-hash mismatch are rejected with the documented status code and JSON `ErrorBody` and leave no runnable entry; hash/workspace/issue failures write nothing under `.loops/policy-builder/`.
-- [ ] The enqueued `ActionSpec` has `runner=LOOP`, `timeout=None`, and `target` equal to the path `persist_policy_revision` returned.
-- [ ] Readback of an unknown request returns `404`; a host `ll-queue cancel` surfaces as `cancelled`.
-- [ ] The served page carries the stamped `{workspaceId}` context and no stamped endpoint or token; the offline CLI render stamps `null`. Readback responses use `Cache-Control: no-store`. An accepted submit returns validator `warnings` in its `200` body.
-- [ ] Unexpected application failures return JSON `500 internal_error` without a traceback and never roll back a possibly committed request.
-- [ ] Readback exposes status, bindings, `loopInstanceId`, and `runDir` while running and after completion, distinct from request/queue IDs.
-- [ ] `cmd_policy_builder`'s CLI output is byte-identical to the existing golden after the renderer split (step 1), and to the once-regenerated golden after the placeholder lands (step 3).
-- [ ] Connected builder routes are documented at level 2 (`API.md`, `CLI.md`, `ARTIFACT_CONTROL_LEVELS.md`, guide cross-link) with an explicit submitted-YAML/current-dependency guarantee, without claims of reproducible execution or approval-time hash verification; golden and applicable local pytest/Node gates pass.
+- [x] The builder's own `issue_lifecycle` output (regenerated golden fixtures) passes `validate_policy_revision` with `mode="issue_lifecycle"`.
+- [x] Submitting through the route while a watcher runs produces `awaiting_approval` and zero subprocess dispatches; serve cannot approve/run; production behavioral tests enforce the level boundary.
+- [x] All four connected routes are absent unless `--policy-builder` is passed; when enabled, serve prints the tokenized builder URL. Existing Host/token checks cover every route/method and retain HTML transport errors; dispatched application errors use JSON ErrorBody. The client handles either format. Existing GET/history/SSE tests pass; no CORS headers; oversized, non-JSON, or malformed bodies return 413/400 with no side effects.
+- [x] Concurrent duplicate first submissions and exact retries after terminal completion, issue removal, or validator changes map to one queue UUID. Existing matching requests bypass mutable issue/validation/persistence checks; hash/workspace checks remain mandatory and differing stored bindings return `409`. New requests still require all creation checks; explicit Run again creates a fresh awaiting request.
+- [x] Restart over the same project rotates the token but keeps `workspace_id`: readback under the new token returns the original queue row; the old token path returns the HTML transport error. A submit/readback carrying another workspace's `workspaceId` returns `403 wrong_workspace`.
+- [x] For new requests, invalid YAML, ERROR diagnostics, missing issue, wrong workspace, unsupported mode, and revision-hash mismatch are rejected with the documented status code and JSON `ErrorBody` and leave no runnable entry; hash/workspace/issue failures write nothing under `.loops/policy-builder/`.
+- [x] The enqueued `ActionSpec` has `runner=LOOP`, `timeout=None`, and `target` equal to the path `persist_policy_revision` returned.
+- [x] Readback of an unknown request returns `404`; a host `ll-queue cancel` surfaces as `cancelled`.
+- [x] The served page carries the stamped `{workspaceId}` context and no stamped endpoint or token; the offline CLI render stamps `null`. Readback responses use `Cache-Control: no-store`. An accepted submit returns validator `warnings` in its `200` body.
+- [x] Unexpected application failures return JSON `500 internal_error` without a traceback and never roll back a possibly committed request.
+- [x] Readback exposes status, bindings, `loopInstanceId`, and `runDir` while running and after completion, distinct from request/queue IDs.
+- [x] `cmd_policy_builder`'s CLI output is byte-identical to the existing golden after the renderer split (step 1), and to the once-regenerated golden after the placeholder lands (step 3).
+- [x] Connected builder routes are documented at level 2 (`API.md`, `CLI.md`, `ARTIFACT_CONTROL_LEVELS.md`, guide cross-link) with an explicit submitted-YAML/current-dependency guarantee, without claims of reproducible execution or approval-time hash verification; golden and applicable local pytest/Node gates pass.
 
 ## Scope Boundaries
 
@@ -228,6 +229,35 @@ Includes the same-origin page route with stamped context, issue-list/submit/read
 ## Related Key Documentation
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
+
+---
+
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-09-18
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/templates/policy_builder_core.mjs`: `_serializeIssueLifecycle` now emits `category: issue_lifecycle`.
+- `scripts/tests/fixtures/policy_builder/sample-issue-lifecycle*.yaml`: regenerated (added `category:` line + the connected-context placeholder's downstream golden HTML).
+- `scripts/little_loops/cli/artifact/policy_revision.py`: corrected the `RunRequest` docstring (the route, not `persist_policy_revision`, recomputes the hash).
+- `scripts/little_loops/cli/artifact/policy_builder.py`: factored `render_policy_builder_html(config, *, workspace_id=None)`; `cmd_policy_builder` is now a thin wrapper.
+- `scripts/little_loops/templates/policy-router-builder.html.tmpl`: added the `/*__CONNECTED_CONTEXT_JSON__*/` placeholder (`const CONNECTED_CONTEXT = ...;`).
+- `scripts/tests/fixtures/policy_builder/golden_policy_router_builder.html`: regenerated once (covers both the `.mjs` fix and the new placeholder).
+- `scripts/little_loops/transport.py`: added `_check_host_and_strip_token`/`_match_method_route` helpers, `SseBridge.do_POST`, and `method_routes`/`extra_url_suffixes` plumbing on `SseBridge`/`serve_sse_bridge`.
+- `scripts/little_loops/cli/artifact/policy_builder_routes.py` (new): `make_run_request_routes` — submit/readback/issue-list handlers, body guards, JSON `ErrorBody` boundary.
+- `scripts/little_loops/cli/artifact/serve.py`: `--policy-builder` flag, `derive_workspace_id`, and `cmd_serve` composition of the page route + connected routes + `extra_url_suffixes`.
+- `scripts/little_loops/cli/artifact/__init__.py`: usage-line example for `--policy-builder`.
+- `docs/reference/API.md`, `docs/reference/CLI.md`, `docs/reference/ARTIFACT_CONTROL_LEVELS.md`, `docs/ARCHITECTURE.md`, `docs/guides/POLICY_ROUTER_GUIDE.md`: level-2 declaration and full connected-route contract.
+- Tests: `scripts/tests/test_policy_builder_emit.py` (mode-acceptance parametrized test), `scripts/tests/test_feat3323_sse_bridge.py` (`TestMethodRoutes`), `scripts/tests/test_feat3504_policy_builder_serve.py` (new — route-level HTTP tests against a real `SseBridge`), `scripts/tests/test_wiring_reference_docs.py` (doc-presence gate rows).
+
+### Verification Results
+- Tests: PASS (`python -m pytest scripts/tests/` — 25044 passed, 53 skipped; 1 unrelated pre-existing failure in `test_verify_evidence.py::TestRepoGate::test_no_new_unverifiable_evidence`, an evidence-quote drift in `.issues/bugs/P2-BUG-3484-...md` last touched 2026-09-15, before and independent of this branch)
+- Lint: PASS (`ruff check scripts/`)
+- Types: PASS (`python -m mypy scripts/little_loops/`)
+- Node conformance gate: PASS (`test_policy_builder_node_gate.py`)
+- Doc-wiring gate: PASS (`test_wiring_reference_docs.py`)
 
 ## Verification Notes
 
@@ -262,6 +292,7 @@ _Added by `/ll:confidence-check` on 2026-09-18 (re-scored after the FEAT-3505 sp
 - Broad enumeration across ~8 code files plus 5 doc files; the new `policy_builder_routes.py` module and `do_POST` have no existing tests to extend, only the `_lb_http_request` precedent to model.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-19T00:17:26 - `727d50a4-3d11-4caa-b521-922a434d70d0.jsonl`
 - `/ll:confidence-check` - 2026-09-18T23:35:38 - `0901fc8f-58be-4fe7-9498-cdadbbef0a77.jsonl`
 - `/ll:confidence-check` - 2026-09-18T23:27:27 - `e70d94f5-5aea-4ae6-9697-95afacc0672e.jsonl`
 - manual split - 2026-09-18 - moved page half (submission controller, JS hashing, workspace-scoped storage extraction, `.tmpl` binding, Playwright probe, guide walkthrough) to FEAT-3505 (blocked by this issue); kept serializer fix, renderer split, placeholder, transport, routes, reference docs; submit `200` now returns validator `warnings`; spike confirmed all three lifecycle fixtures validate `ok=True` once `category: issue_lifecycle` is prepended

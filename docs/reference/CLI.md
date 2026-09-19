@@ -5225,11 +5225,13 @@ contract.
 | Flag | Description |
 |------|-------------|
 | `--port <N>` | TCP port to bind (default: `events.bridge.port`, `8766`) |
+| `--policy-builder` | Also serve the connected policy builder at `GET /{token}/policy-builder` (FEAT-3504; see below) |
 
 **Examples:**
 ```bash
-ll-artifact serve                # live SSE bridge on events.bridge.port (8766)
-ll-artifact serve --port 9000    # override the bound port
+ll-artifact serve                    # live SSE bridge on events.bridge.port (8766)
+ll-artifact serve --port 9000        # override the bound port
+ll-artifact serve --policy-builder   # also serve the connected policy builder
 ```
 
 **Producer attribution:** every relayed live event carries `producer_pid`
@@ -5273,6 +5275,34 @@ warning and falls back to the placeholder page. See
 [ARTIFACT_CONTROL_LEVELS.md](ARTIFACT_CONTROL_LEVELS.md) — the served
 dashboard page declares **Level 1 (notify)** here too (no `interaction_url`,
 so the Level 3 host-owned form is omitted from the page entirely).
+
+**Connected policy builder (`--policy-builder`, FEAT-3504).** With the flag
+passed, `ll-artifact serve` also serves the policy builder (the same page
+`ll-artifact policy-builder` writes to a file) at a same-origin route, plus
+three JSON application routes bound to the project the server was started
+in — `GET /{token}/policy-builder`, `POST /{token}/run-request`,
+`GET /{token}/run-request/{requestId}`, and `GET /{token}/issues`. Without
+the flag none of these four routes is registered (`404`); with it, serve
+also prints the tokenized builder URL under the main SSE bridge URL. The
+page carries a stamped `{workspaceId}` connected context — a value derived
+deterministically from the resolved project root
+(`hashlib.sha256(str(project_root)).hexdigest()[:16]`), so it stays stable
+across a restart even though the per-start token rotates — and calls its
+routes with relative URLs (no endpoint is stamped). This is a **Level 2
+(project-local)** render target per
+[ARTIFACT_CONTROL_LEVELS.md](ARTIFACT_CONTROL_LEVELS.md): submitting a
+policy through the page enqueues an `awaiting_approval` queue row (FEAT-3498)
+that the host must explicitly accept with `ll-queue run --id ID --approve`
+or reject with `ll-queue cancel` — the served page can never run or drain a
+request itself. First release accepts `issue_lifecycle` policies only; the
+project's issue list is read from `find_issues()` (active issues only —
+done/cancelled/deferred excluded), never a browser-supplied path. See
+[little_loops.cli.artifact.policy_builder_routes](API.md#little_loopscliartifactpolicy_builder_routes)
+for the full submit/readback/error-body contract and
+[POLICY_ROUTER_GUIDE.md](../guides/POLICY_ROUTER_GUIDE.md) for the
+submitted-YAML/current-dependency guarantee this connected flow provides
+(an immutable submitted snapshot, not reproducible execution or
+approval-time byte verification).
 
 #### ll-artifact templatize
 

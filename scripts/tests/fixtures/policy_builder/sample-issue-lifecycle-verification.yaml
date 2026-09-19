@@ -1,6 +1,7 @@
 name: sample-issue-lifecycle-verification
 description: |
   Sample implementation-with-verification builder output used as an FSMExecutor fixture (ENH-3491).
+category: issue_lifecycle
 max_steps: 20
 
 import:

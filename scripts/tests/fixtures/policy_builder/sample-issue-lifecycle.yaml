@@ -2,6 +2,7 @@ name: sample-issue-lifecycle
 description: |
   Sample issue_lifecycle builder output used as a golden fixture for the
   serializeLoopYaml() round-trip (FEAT-3474).
+category: issue_lifecycle
 max_steps: 20
 
 import:

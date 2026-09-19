@@ -3,6 +3,7 @@ description: |
   Sample issue_lifecycle builder output exercising the ENH-3492 explicit
   terminal destinations — a rule targeting a destination directly and a
   verb transition.kind routing to one.
+category: issue_lifecycle
 max_steps: 20
 
 import:

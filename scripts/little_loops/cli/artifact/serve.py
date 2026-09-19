@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import errno
+import hashlib
 import http.server
 import json
 import socket
@@ -46,6 +47,28 @@ def add_serve_parser(subparsers: argparse._SubParsersAction) -> None:
         default=None,
         help="TCP port to bind (default: events.bridge.port, 8766)",
     )
+    serve.add_argument(
+        "--policy-builder",
+        action="store_true",
+        default=False,
+        help="Also serve the connected policy builder at GET /{token}/policy-builder (FEAT-3504)",
+    )
+
+
+def derive_workspace_id(project_root: Path) -> str:
+    """Deterministic 16-hex-char workspace id for *project_root* (FEAT-3504).
+
+    First 16 hex chars of the SHA-256 of the resolved project root path, so
+    it stays stable across serve restarts (a fresh per-process token cannot
+    be used here — request dedup and readback both key on
+    ``(workspace_id, request_id)``, so a per-process value would break the
+    reload/retry acceptance criterion). Callers must resolve *project_root*
+    once and reuse that single value everywhere workspace identity matters
+    (this function, the request-binding comparison, and the queue-store
+    calls) — a symlinked cwd re-resolving differently across calls would
+    otherwise keep the same workspace id but change the bound path string.
+    """
+    return hashlib.sha256(str(project_root).encode("utf-8")).hexdigest()[:16]
 
 
 def make_history_route(
@@ -189,9 +212,41 @@ def cmd_serve(args: argparse.Namespace, logger: Logger) -> int:
         routes = {"history": make_history_route(config)}
         page_html_factory = _make_page_html_factory(config)
 
+    method_routes = None
+    extra_url_suffixes = None
+    if getattr(args, "policy_builder", False):
+        from little_loops.cli.artifact.policy_builder import render_policy_builder_html
+        from little_loops.cli.artifact.policy_builder_routes import make_run_request_routes
+
+        # § Scope and origin: resolved once and reused everywhere workspace
+        # identity matters (derive_workspace_id, the route module's binding
+        # comparisons, and the queue-store calls it makes).
+        root = config.project_root.resolve()
+        workspace_id = derive_workspace_id(root)
+        policy_builder_html = render_policy_builder_html(config, workspace_id=workspace_id)
+
+        def _serve_policy_builder_page(handler: http.server.BaseHTTPRequestHandler) -> None:
+            body = policy_builder_html.encode("utf-8")
+            handler.send_response(200)
+            handler.send_header("Content-Type", "text/html; charset=utf-8")
+            handler.send_header("Content-Length", str(len(body)))
+            handler.end_headers()
+            handler.wfile.write(body)
+
+        method_routes = [
+            ("GET", "policy-builder", _serve_policy_builder_page),
+            *make_run_request_routes(config, workspace_id=workspace_id),
+        ]
+        extra_url_suffixes = ["policy-builder"]
+
     try:
         return serve_sse_bridge(
-            config.events, port=port, routes=routes, page_html_factory=page_html_factory
+            config.events,
+            port=port,
+            routes=routes,
+            method_routes=method_routes,
+            page_html_factory=page_html_factory,
+            extra_url_suffixes=extra_url_suffixes,
         )
     except OSError as exc:
         if exc.errno == errno.EADDRINUSE:

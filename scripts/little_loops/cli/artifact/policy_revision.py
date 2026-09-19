@@ -40,8 +40,9 @@ class RunRequest:
     """Wire-shape input to :func:`little_loops.queue_store.create_or_get_run_request`.
 
     FEAT-3504's POST route deserializes into this; ``revision_id`` is the
-    caller-computed SHA-256 of ``yaml``'s exact UTF-8 bytes (the server
-    recomputes and rejects mismatches — see :func:`persist_policy_revision`).
+    caller-computed SHA-256 of ``yaml``'s exact UTF-8 bytes. The route (not
+    :func:`persist_policy_revision`, which only compares bytes when a
+    same-name file already exists) recomputes the hash and rejects mismatches.
     """
 
     request_id: str

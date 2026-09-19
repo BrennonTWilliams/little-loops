@@ -1197,14 +1197,72 @@ def _sse_bridge_seed_frames(loops_dir: Path) -> list[bytes]:
     return frames
 
 
+def _match_method_route(
+    method_routes: list[tuple[str, str, Callable[..., None]]],
+    method: str,
+    route: str,
+) -> tuple[Callable[..., None], str | None] | None:
+    """Match `route` (the path suffix after `/{token}/`) against `method_routes`.
+
+    Each pattern is a literal `/`-delimited path with at most one `{name}`
+    segment (FEAT-3504): segment counts must match exactly (bounded, no
+    wildcard/regex over user input — only the captured segment's *value*
+    comes from the request). Returns `(handler, captured)`, where `captured`
+    is the matched `{name}` segment's value or `None` for a param-less
+    pattern, or `None` if nothing matches.
+    """
+    route_parts = route.split("/")
+    for candidate_method, pattern, handler_fn in method_routes:
+        if candidate_method != method:
+            continue
+        pattern_parts = pattern.split("/")
+        if len(pattern_parts) != len(route_parts):
+            continue
+        captured: str | None = None
+        matched = True
+        for pattern_part, route_part in zip(pattern_parts, route_parts, strict=True):
+            if pattern_part.startswith("{") and pattern_part.endswith("}"):
+                captured = route_part
+            elif pattern_part != route_part:
+                matched = False
+                break
+        if matched:
+            return handler_fn, captured
+    return None
+
+
 def _make_sse_bridge_handler(bridge: SseBridge) -> type[http.server.BaseHTTPRequestHandler]:
     """Build a `BaseHTTPRequestHandler` subclass bound to `bridge` via closure.
 
-    Dispatches through `bridge._routes` (page `""`, SSE `"events"`, plus any
-    caller-supplied routes — the FEAT-3321 mount point) after the Host and
-    token checks, rather than hardcoding the two routes the way
-    `_make_local_bridge_handler` does.
+    Dispatches GET through `bridge._routes` (page `""`, SSE `"events"`, plus
+    any caller-supplied routes — the FEAT-3321 mount point) after the Host
+    and token checks, rather than hardcoding the two routes the way
+    `_make_local_bridge_handler` does. `do_POST` (FEAT-3504) and unmatched GET
+    suffixes additionally consult `bridge._method_routes`, the bounded
+    `(method, pattern, handler)` matcher added for connected policy-builder
+    routes.
     """
+
+    def _check_host_and_strip_token(handler: http.server.BaseHTTPRequestHandler) -> str | None:
+        """Host check + `/{token}/` prefix strip, shared by `do_GET`/`do_POST`.
+
+        Returns the path suffix after `/{token}/` on success. On failure,
+        sends the error response itself and returns `None`. Does **not**
+        special-case a bare `/{token}` (no trailing slash) — that 404s here
+        (`path` doesn't start with `prefix + "/"`); `do_GET` intercepts that
+        case itself first with its 301 redirect, so callers of this helper
+        for POST correctly get 404 rather than a GET-only redirect.
+        """
+        port = bridge._server.server_address[1]
+        if handler.headers.get("Host") not in _expected_hosts(port):
+            handler.send_error(403, "Forbidden host")
+            return None
+        path = handler.path.split("?", 1)[0]
+        prefix = f"/{bridge._token}"
+        if not path.startswith(prefix + "/"):
+            handler.send_error(404, "Not found")
+            return None
+        return path[len(prefix) + 1 :]
 
     class _Handler(http.server.BaseHTTPRequestHandler):
         server_version = "ll-sse-bridge/1.0"
@@ -1232,15 +1290,30 @@ def _make_sse_bridge_handler(bridge: SseBridge) -> type[http.server.BaseHTTPRequ
                 self.send_header("Location", prefix + "/")
                 self.end_headers()
                 return
-            if not path.startswith(prefix + "/"):
-                self.send_error(404, "Not found")
+            route = _check_host_and_strip_token(self)
+            if route is None:
                 return
-            route = path[len(prefix) + 1 :]
             handler_fn = bridge._routes.get(route)
-            if handler_fn is None:
+            if handler_fn is not None:
+                handler_fn(self)
+                return
+            matched = _match_method_route(bridge._method_routes, "GET", route)
+            if matched is None:
                 self.send_error(404, "Not found")
                 return
-            handler_fn(self)
+            fn, captured = matched
+            fn(self) if captured is None else fn(self, captured)
+
+        def do_POST(self) -> None:  # noqa: N802
+            route = _check_host_and_strip_token(self)
+            if route is None:
+                return
+            matched = _match_method_route(bridge._method_routes, "POST", route)
+            if matched is None:
+                self.send_error(404, "Not found")
+                return
+            fn, captured = matched
+            fn(self) if captured is None else fn(self, captured)
 
     return _Handler
 
@@ -1264,6 +1337,7 @@ class SseBridge:
         base: Path | None = None,
         loops_dir: Path | None = None,
         routes: dict[str, Callable[[http.server.BaseHTTPRequestHandler], None]] | None = None,
+        method_routes: list[tuple[str, str, Callable[..., None]]] | None = None,
     ) -> None:
         self._config = config.bridge
         self._loops_dir = loops_dir if loops_dir is not None else Path(".loops")
@@ -1288,6 +1362,9 @@ class SseBridge:
         }
         if routes:
             self._routes.update(routes)
+        self._method_routes: list[tuple[str, str, Callable[..., None]]] = (
+            list(method_routes) if method_routes else []
+        )
 
         bind_port = port if port is not None else self._config.port
 
@@ -1465,7 +1542,9 @@ def serve_sse_bridge(
     port: int | None = None,
     *,
     routes: dict[str, Callable[[http.server.BaseHTTPRequestHandler], None]] | None = None,
+    method_routes: list[tuple[str, str, Callable[..., None]]] | None = None,
     page_html_factory: Callable[[SseBridge], str] | None = None,
+    extra_url_suffixes: list[str] | None = None,
 ) -> int:
     """Blocking CLI wrapper: construct `SseBridge`, print its URL, block until Ctrl-C.
 
@@ -1489,8 +1568,13 @@ def serve_sse_bridge(
     `page_html_factory` raises is caught, logged as a warning, and swallowed —
     the placeholder page stays and the bridge keeps serving; a page-render
     failure must never prevent the bridge from starting.
+
+    `method_routes` (FEAT-3504) is passed through to `SseBridge(...)` for
+    POST/parameterized-path routes. `extra_url_suffixes` prints
+    `bridge.url + suffix` once per entry, after the main URL — the connected
+    policy-builder page mount point (`["policy-builder"]`).
     """
-    bridge = SseBridge(config, port=port, routes=routes)
+    bridge = SseBridge(config, port=port, routes=routes, method_routes=method_routes)
     if page_html_factory is not None:
         try:
             bridge.set_page_html(page_html_factory(bridge))
@@ -1500,6 +1584,8 @@ def serve_sse_bridge(
                 exc_info=True,
             )
     print(bridge.url)
+    for suffix in extra_url_suffixes or []:
+        print(bridge.url + suffix)
     if "socket" not in config.transports:
         print(
             '"socket" is not in events.transports; no producer is reachable until a '

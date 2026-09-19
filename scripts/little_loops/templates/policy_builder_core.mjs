@@ -2742,6 +2742,10 @@ function _serializeIssueLifecycle(model) {
     out.push(`description: |`);
     out.push(_yamlBlockScalar(model.description, 2));
   }
+  // FEAT-3504: declares the policy mode via the loop's existing `category`
+  // field so `validate_policy_revision` (policy_revision.py) can accept
+  // builder-emitted issue_lifecycle YAML — see `_SUPPORTED_MODES` there.
+  out.push(`category: issue_lifecycle`);
   out.push(`max_steps: ${model.maxSteps != null ? model.maxSteps : 20}`);
   out.push("");
   out.push("import:");
