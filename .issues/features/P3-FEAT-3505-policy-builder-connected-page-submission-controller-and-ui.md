@@ -79,6 +79,30 @@ Workspace-scoping the draft/scenario/meta/selection keys means rewriting the inl
 
 - `little_loops.cli.artifact.policy_builder_routes` (new module created by FEAT-3504) — the wire contract this page consumes; not modified here.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-19 — based on codebase analysis:_
+
+**Landed wire contract (`policy_builder_routes.py`, FEAT-3504) — ground truth the controller must match:**
+- Routes under `/{token}/`: `GET policy-builder`, `POST run-request`, `GET run-request/{requestId}?workspaceId=…`, `GET issues`. Pre-dispatch failures (`transport.py` `_make_sse_bridge_handler` / `_check_host_and_strip_token`) are stdlib HTML `403`/`404` (bare `/{token}` GET gets a 301 to `/{token}/`), so the client must check Content-Type before decoding JSON.
+- Submit body (`_parse_run_request`): `requestId` lowercase-hex UUID, `revisionId` 64 lowercase hex, `workspaceId` 16 lowercase hex, `projectId`/`issueId` non-empty ≤128 chars, `yaml` non-empty; request must be `Content-Type: application/json` and ≤ 1 MiB (`_MAX_RUN_REQUEST_BYTES`, else `413 body_too_large`); missing/invalid `Content-Length` → `400 bad_request`.
+- Server recomputes `sha256(utf8(yaml))`; mismatch with `revisionId` → `422 revision_mismatch`. The client hash must therefore be byte-exact, lowercase hex.
+- Application error codes (`ErrorBody = {"error": {code, message, errors?, warnings?}}`, `errors`/`warnings` only on `validation_failed`): `400 bad_request`, `413 body_too_large`, `422 revision_mismatch`, `403 wrong_workspace`, `409 request_conflict`, `404 issue_not_found`, `422 validation_failed`, `500 internal_error`; readback adds `404 request_not_found` and `400 bad_request` (non-UUID id).
+- Existing-request early return in `_submit` (`get_run_request` at `policy_builder_routes.py:210`) answers `200 {requestId, queueId, created:false}` **without a `warnings` key** and skips issue/validation/persist steps; only a newly created request returns `warnings`. Readback (`_readback`, `:288`) also carries no warnings. Consequence: validation warnings survive only if the client persists them from the first accepted response — a lost-response recovery cannot re-obtain them.
+- Readback body: `{requestId, queueId, status, bindings: {issueId, revisionId}, loopInstanceId, runDir, result}` — `issueId`/`revisionId` are nested under `bindings`, not top-level; sent with `Cache-Control: no-store`. This module does not enumerate queue statuses; the terminal set `done|failed|dead_letter|cancelled` in this issue is not verified against `queue_store`.
+- `GET issues` → `{"issues": [{id, title, priority, status, path}]}`; `path` is an absolute filesystem path (do not persist or display it as identity — `id` is the key). No query handling.
+
+**Connected context and page seams (`policy-router-builder.html.tmpl`):**
+- Stamped context is exactly `{"workspaceId": "<16-hex>"}` (`render_policy_builder_html`, `policy_builder.py:66`; `derive_workspace_id` in `serve.py`) or `null` offline. It carries **no `projectId`**; the page's `projectId` is the template-owned value in `_META_KEY` (`_newProjectId`). It is declared `const CONNECTED_CONTEXT = /*__CONNECTED_CONTEXT_JSON__*/;` in a classic `<script>` at `.tmpl:146-152` and is not read anywhere else yet; visibility from the later module script is unverified.
+- Existing storage surface to be extracted: `_DRAFT_KEY_PREFIX + mode`, `_META_KEY` (`{projectId, activeMode, schemaVersion, generatorVersion}`), `_persistDraft`/`_persistAllDrafts`/`_clearDraftKeysExcept`/`_persistMeta`/`_readDraft`/`_readMeta`/`hydrateFromStorage`, called from `commit()`, `restoreFromSnapshot()` and the Open-project path. No scenario-specific, issue-selection, or submission key exists today (scenarios ride inside the draft record `{model, scenarios}`), so "scenario" and "issue-selection" namespacing is new surface. Theme key `ll-policy-builder-theme` has its own inline try/catch.
+- Stale-guard precedent: `sessionRevision` (bumped in `commit`/`restoreFromSnapshot`), `_latestReadToken`, `_beginRead()`, `_readStatus(token)` → current/superseded/stale; the import handler binds `boundMode`/`boundProject` and reports "Import discarded…" to `#import-diagnostics`.
+- UI attach points: export button row (`#copy-btn`, `#download-btn`, `#save-project-btn`, `#open-project-btn`), `#live-status` (`role="status"`), `#yaml-preview`/`#yaml-details`; `updatePreview()` is the only place YAML is produced (`serializeLoopYaml(buildModel())`, try/catch, disables copy/download on error-severity validation).
+
+**Tests and gates:**
+- `scripts/tests/test_policy_builder_node_gate.py::test_node_conformance_suite_passes` globs `scripts/tests/js/*.test.mjs` (180 s timeout, skips when Node < 22), so new `.test.mjs` files are picked up automatically; subdirectory tests (e.g. `js/feat3304/`) are not.
+- Golden: `test_enh3035_artifact_template_kit.py::test_policy_builder_renders_byte_identically_to_golden_fixture` compares offline `cmd_policy_builder` output (connected context `null`) with `scripts/tests/fixtures/policy_builder/golden_policy_router_builder.html`. No regeneration script or flag exists; `.ll/decisions.yaml` (BUG-2303, advisory) requires verifying the captured output before overwriting a golden. Stamped-variant coverage lives in `test_feat3504_policy_builder_serve.py`.
+- The existing probe `.loops/probes/feat-3488-browser-probes.mjs` (+ `.loops/verify-feat-3488-browser-persistence.yaml`) loads a `file://` page and does not start a server; no probe spawns `ll-artifact serve` or parses its printed URL. `SseBridge` prints `bridge.url` then `bridge.url + suffix` per `extra_url_suffixes` (`["policy-builder"]` under `--policy-builder`, `serve.py:240`), so the builder URL is the second printed line.
+
 ## Program Design
 
 ### Types
@@ -97,6 +121,16 @@ Workspace-scoping the draft/scenario/meta/selection keys means rewriting the inl
 ### Call Path
 
 Served page boot → `createBuilderStorage` restores the workspace-scoped draft → `createSubmissionController` reconciles any persisted submission via `GET ./run-request/{requestId}?workspaceId=...` → user selects an issue from `GET ./issues` → Review freezes the YAML from the existing `serializeLoopYaml(model)` (`policy_builder_core.mjs`) into the snapshot and computes `sha256Hex` → Submit persists the envelope and `outcome_unknown`, then `POST ./run-request` → `accepted` with queue ID → poll readback every 2 s after settle until terminal status. Server side, the page is rendered by `cmd_policy_builder`'s factored renderer and readback is answered by `get_run_request` (`little_loops.queue_store`).
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-19 — based on codebase analysis:_
+
+- Environment-access convention: `policy_builder_core.mjs` exports are pure functions of their arguments (comments at `rulesFingerprint` and `validateProjectStructure`: no ID generation, clock reads, storage, hashing or `fetch`); the template owns `localStorage`, `crypto.randomUUID` (with a `Date.now()`/`Math.random()` fallback in `_newProjectId`/`_newScenarioId`) and each storage call is try/catch with a once-per-session `showLiveStatus` warning (`_storageWarned`). The DI factories this issue adds (`createBuilderStorage`, `createSubmissionController`) are a deliberate departure — no `createXxx(deps)` precedent exists in the core — so the injected-globals boundary is a new convention to establish, not one to copy.
+- The core is spliced verbatim into the template's `<script type="module">` at `/*__BUILDER_CORE_JS__*/` and re-exposed to template glue through the tail `window.PolicyBuilderCore = {…}` bridge (guarded by `typeof window !== "undefined"`); new exports meant for the template must be added to that bridge as well as exported for Node.
+- Node test convention: `import { test } from "node:test"`, `assert from "node:assert/strict"`, relative import of the core, issue-ID header comment and issue-ID-prefixed test names (`policy_scenarios.test.mjs`, `policy_validator.test.mjs`). Template glue is tested by slicing source text and running it in a `node:vm` sandbox with faked `localStorage`/`FileReader` (`policy_validator.test.mjs` BUG-3502 section); no fake `fetch`, timers, or `crypto.subtle` helper exists yet — injected fakes for those are new.
+- Probe convention (`.loops/probes/feat-3488-browser-probes.mjs`): `PROBES = [{id, needs, acs, run(browser)}]`, `loadPlaywright()` resolution order, `--check` preflight, fresh context per probe, fault injection via `addInitScript`, exit codes 0/2 blocked/1 fail/3 infra with a final `BROWSER_PROBES_*` marker and a JSON report under `${context.run_dir}/`.
+- Guide convention (`docs/guides/POLICY_ROUTER_GUIDE.md`): new headings need a `## Contents` entry (line ~10); existing Visual Builder subsections are second-person, bold lead-in labels, no code paths from `scripts/`; the docs-audience gate (`test_docs_audience_gate.py`) applies.
 
 ## Implementation Steps
 
@@ -140,3 +174,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ## Status
 
 **Open** | Created: 2026-09-18 | Priority: P3
+
+
+## Session Log
+- `/ll:refine-issue` - 2026-09-19T00:47:56 - `2114fa22-5111-44f1-a4b4-c86114783c2c.jsonl`
