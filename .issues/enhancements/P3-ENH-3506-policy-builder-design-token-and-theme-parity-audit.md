@@ -12,6 +12,12 @@ relates_to:
 - ENH-3491
 - EPIC-3493
 program_design_not_applicable: true
+confidence_score: 95
+outcome_confidence: 82
+score_complexity: 21
+score_test_coverage: 18
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # ENH-3506: Policy builder design-token and theme parity audit
@@ -67,6 +73,12 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/cli/artifact/templatize.py:945-949` — `_themed_css_vars()`, a "thin patchable wrapper" over `themed_css_vars()` used by `ll-artifact templatize`'s lift tooling; same generic-consumer caveat as above [Agent 1 finding]
 - `scripts/little_loops/cli/doctor.py:1095-1105` — `_full_design_tokens_check()` (`@register_full_check`) is a live `ll-doctor` gate calling `lint_profiles_dir()` (built on `lint_profile()`, the same theme-JSON-completeness checker that never reads `.html.tmpl`/`.mjs`); it surfaces "half-flipped themes" as an error-severity check, separate from the epic-verify golden-fixture gate already listed above — audit findings should note whether this doctor check also needs a template-aware companion [Agent 1 + Agent 2 finding]
 
+_Second wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/artifact/serve.py:218,226` — `render_policy_builder_html(config, workspace_id=...)` is a second consumer of the rendered page (FEAT-3504 connected/served path); the audit's render should go through `render_policy_builder_html` so the served page and `ll-artifact policy-builder` output are the same token surface [Agent 1 finding]
+- `scripts/little_loops/cli/artifact/templatize.py:987-994` — `_lift_precondition 5` calls `_themed_css_vars(config)` and fails the lift if required declarations are missing; a fix to `themed_css_vars()` output ripples into `ll-artifact templatize` [Agent 1 + Agent 2 finding]
+- `.loops/verify-feat-3488-browser-persistence.yaml:54` — shell state runs `ll-artifact policy-builder -o "${context.run_dir}/html"` and feeds `.loops/probes/feat-3488-browser-probes.mjs`; the only loop rendering the builder, probes localStorage keys only (no token/theme check). Precedent (per `reference_playwright_browser_probe_loop`) if runtime computed-style verification is wanted later [Agent 2 finding]
+- `scripts/little_loops/design_tokens.py:418-430,448,584,632` — ENH-3441 packaged-profile fallback: with no `.ll/design-tokens/` mirror the render silently uses the packaged profile, so a missing mirror is invisible in rendered output; likewise `_find_profiles_dir` (used by `verify_design_tokens.py` and `doctor.py:1095`) reports "not found" (exit 1) although artifacts still render [Agent 2 finding]
+- `scripts/tests/fixtures/policy_builder/golden_policy_router_builder.html` — the golden fixture itself; any template fix from a follow-up requires regenerating it [Agent 3 finding]
 
 ### Similar Patterns
 - ENH-3491 (done) — prior lifecycle-mode-only layout/responsive/keyboard audit; it fixed findings inline rather than filing follow-ups, so it is a scope baseline, not a filing precedent
@@ -81,12 +93,25 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_enh3035_artifact_template_kit.py::test_themed_css_vars_is_separately_callable` (lines 31-40) — the one existing test that calls the themed-CSS path against this repo's real active profile (`warm-paper` + `dark`), but asserts only block presence, not value-level parity with source JSON — closest existing precedent to extend if Phase 1 becomes permanent regression coverage [Agent 3 finding]
 - `scripts/tests/test_verify_design_tokens.py::TestLintProfile` (lines 80-133) — confirms `lint_profile()` checks theme-JSON-to-theme-JSON completeness only and never reads `.html.tmpl`/`.mjs`, substantiating the issue's own gap claim [Agent 3 finding]
 
+_Second wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_enh3441_packaged_profile_fallback.py::test_ambient_mirror_matches_packaged_profiles` (and `_make_config`/`_write_mirror_profile` helpers) — existing packaged-vs-mirror parity check; closest precedent for a permanent parity test and the config-isolation helper to reuse [Agent 3 finding]
+- `scripts/tests/test_worktree_utils.py::test_gitignored_design_tokens_dir_materialized_in_worktree` — docstring calls the copy a stopgap and names the durable fix as pinning the golden test to a checked-in fixture; will need removal/update if the audit concludes the stopgap is redundant [Agent 3 finding]
+- `scripts/tests/test_artifact_templatize.py::TestVerifyLiftRenders` (lines 1618-1650), `::TestLiftTokenLiterals::test_var_name_matches_render_as_css_vars_themed_mangling` — existing declared-vs-referenced var-set checks and name-mangling precedent for a template-ref-vs-declared test [Agent 3 finding]
+- `scripts/tests/test_feat3504_policy_builder_serve.py::_make_config` / `_bridge_for` — only test calling `render_policy_builder_html`; `_make_config` is the model for an isolated new test [Agent 3 finding]
+- `scripts/tests/test_cli_doctor_full.py::test_design_tokens_reports_informational_when_missing` — covers `_full_design_tokens_data()`; update only if a template-aware doctor companion is added [Agent 3 finding]
+- **Gap (new test, only if follow-up wants permanent coverage):** none extracts template `var(--x)` refs and checks them against rendered `:root`/`[data-theme=dark]` declarations, and none unit-tests `render_policy_builder_html` theme blocks [Agent 3 finding]
+
 ### Documentation
 - N/A — this issue produces an audit report and follow-up issues, not doc changes
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `docs/reference/CLI.md` `#### ll-artifact policy-builder` — prose claims the page "honors the project's configured `active_theme`" via `load_design_tokens`/`render_as_css_vars_themed`; if the audit confirms token/theme drift, this section's claim needs checking and correcting as part of the filed follow-up issue, not this one [Agent 2 finding]
 - `docs/guides/POLICY_ROUTER_GUIDE.md` (section preceding "### Issue Lifecycle Mode") — same "stamped from this project... honors active_theme" claim; same follow-up-issue caveat [Agent 2 finding]
+
+_Second wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/CLI.md` `### ll-verify-design-tokens` (lines 4724-4746) — documents a structural lint only, no rendered-artifact parity; relevant to the "template-aware companion" finding [Agent 2 finding]
+- `docs/reference/CONFIGURATION.md:874` — states an explicit `theme=` is passed only by `artifact_template_kit.themed_css_vars`; closest parity-adjacent claim, verify against audit results [Agent 1 + Agent 2 finding]
+- `docs/ARCHITECTURE.md:1066,1070` and `docs/reference/CLI.md:493,5327` — long lines matching the theming symbols; likely further "honors active_theme" claims, read directly before filing doc-correction follow-ups [Agent 1 + Agent 2 finding]
 
 ### Configuration
 - N/A or list config files
@@ -134,6 +159,10 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Note `scripts/little_loops/cli/doctor.py::_full_design_tokens_check()` as a related-but-insufficient gate (theme-JSON completeness only, same as `lint_profile()`) — audit findings should state whether it needs a template-aware companion alongside the golden-fixture gate
 - If drift is confirmed, also flag `docs/reference/CLI.md` `#### ll-artifact policy-builder` and `docs/guides/POLICY_ROUTER_GUIDE.md` for correction in the filed follow-up issue — both currently assert the theming behavior works correctly
 
+- Render via `render_policy_builder_html(config)` (returns the string, no file) rather than shelling to the CLI; it is the same path `serve.py:226` uses, so the audit covers the served page too
+- Isolate config (`monkeypatch.chdir(tmp_path)` + `_make_config`, per `test_enh3441_packaged_profile_fallback.py`) if any of the audit is scripted as a test, and account for the ENH-3441 packaged-profile fallback: a missing `.ll/design-tokens/` mirror renders silently from packaged profiles, so the stopgap-still-needed verdict must test both mirror-present and mirror-absent renders
+- When judging `_full_design_tokens_check()` / `ll-verify-design-tokens`, note both go through `_find_profiles_dir` and report "not found" (exit 1) for a no-mirror project that still renders fine — a second reason they are not a rendered-output gate
+
 ## Impact
 
 - **Priority**: P3 - polish/consistency work; the token-drift stopgap in `worktree_utils.py` already masks the symptom this audit targets
@@ -156,4 +185,6 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-19T00:55:44 - `089757cd-fbfa-425b-82b6-90c870def4c8.jsonl`
+- `/ll:wire-issue` - 2026-09-19T00:54:28 - `e2df2c7e-086d-407f-878d-d3c3d7221a4c.jsonl`
 - `/ll:refine-issue` - 2026-09-19T00:47:41 - `304eba96-751f-4059-9328-1fc1b29cacd2.jsonl`

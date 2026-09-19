@@ -79,6 +79,36 @@ Workspace-scoping the draft/scenario/meta/selection keys means rewriting the inl
 
 - `little_loops.cli.artifact.policy_builder_routes` (new module created by FEAT-3504) — the wire contract this page consumes; not modified here.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/artifact/policy_builder.py` — `render_policy_builder_html()` splices the core verbatim at `/*__BUILDER_CORE_JS__*/` and stamps `/*__CONNECTED_CONTEXT_JSON__*/`; no change needed, but the core must contain no leftover `/*__` text and must not reference `CONNECTED_CONTEXT` by bare name (Node import would throw `ReferenceError`) — take it as a `createBuilderStorage`/controller parameter [Agent 1/2 finding]
+- `scripts/little_loops/cli/artifact/serve.py` — `--policy-builder` branch renders once with `workspace_id` and serves `_serve_policy_builder_page`; consumer of the page, unchanged [Agent 1 finding]
+- `scripts/tests/js/policy_scenarios.test.mjs`, `scripts/tests/js/policy_suggestions.test.mjs` — ES-import named exports from the core; new exports are additive, do not rename/remove existing ones [Agent 1/3 finding]
+- `scripts/little_loops/templates/policy_builder_core.mjs` tail `window.PolicyBuilderCore = {…}` bridge (`:3587`) — new template-facing exports must be added here; the core shares one module scope with ~2000 lines of template glue, so new top-level names (`createBuilderStorage`, `sha256Hex`, `createSubmissionController`) must not collide with `.tmpl` declarations [Agent 2 finding]
+- `scripts/little_loops/fsm/frontmatter_scores.py` — mirrors `encodeFrontmatterScores`/`normalizeDimName()` in the core; unaffected unless those are touched [Agent 1 finding]
+
+### Tests
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/js/policy_validator.test.mjs` (BUG-3502 harness, `_BOOTSTRAP_SRC`/`_OPEN_HANDLER_SRC`/`_newBug3502Sandbox()`) — **will break**: `_extractBetween(_templateSrc, "let state = seedExample();", "function buildModel() {")` slices the region holding `_persistDraft`/`_readMeta`/`hydrateFromStorage`/`commit`. Once storage moves into `createBuilderStorage`, the vm sandbox lacks it (`ReferenceError`), and bare `CONNECTED_CONTEXT`/`createBuilderStorage`/`PolicyBuilderCore` are undefined there. Inject `createBuilderStorage` (bound to the sandbox `localStorage` stub) and `CONNECTED_CONTEXT` into the sandbox, and keep the four marker strings (`let state = seedExample();`, `function buildModel() {`, `$("open-project-input").onchange = (e) => {`, `$("undo-btn").onclick = () => {`) in the `.tmpl` or update them [Agent 2/3 finding]
+- `scripts/tests/test_policy_builder_emit.py` — `test_emit_writes_html` asserts `"/*__" not in html` and `serializeLoopYaml`/`seedExample()`/`blankModel()` present; `test_no_internal_jargon_in_visible_markup` denylist (`Axis A`, `Axis B`, `context.subject`, `policy_rules`, `predicate`, `weight`) applies to new submission UI copy; `id="yaml-details"` must stay non-`open` with `#yaml-preview` nested [Agent 2/3 finding]
+- `scripts/tests/test_feat3504_policy_builder_serve.py` — `TestPageRoute.test_serves_html_with_stamped_workspace_context` regex-matches `const CONNECTED_CONTEXT = (\{.*?\});`; keep the classic-script declaration in that exact form (it is a global lexical `const`, not `window.CONNECTED_CONTEXT`) [Agent 2 finding]
+- `scripts/tests/test_wiring_reference_docs.py` (`DOC_STRINGS_PRESENT`, line ~254) — pins heading text `Connected authoring & submission` in `POLICY_ROUTER_GUIDE.md`; do not rename that heading; add a FEAT-3505 needle row for the new guide content [Agent 3 finding]
+- `scripts/tests/test_docs_audience_gate.py` — applies to `docs/guides/POLICY_ROUTER_GUIDE.md`; the guide must not cite `policy_submission.test.mjs`, `.loops/` probe paths, or `scripts/tests/…` [Agent 3 finding]
+- `scripts/tests/test_policy_builder_node_gate.py` — `_serialize_with_node`/`test_round_trip_yaml_validates_for_each_mode` import the real `serializeLoopYaml`; new files under `scripts/tests/js/*.test.mjs` are auto-globbed (no registration) [Agent 3 finding]
+- `.loops/probes/feat-3488-browser-probes.mjs` (`:338-343`, `:415`) and `.loops/verify-feat-3488-browser-persistence.yaml` — hardcode `ll-policy-builder-draft-<mode>` and `ll-policy-builder-meta` and the value shapes (`{model, scenarios}`; meta `{projectId, activeMode, schemaVersion, generatorVersion}`); the offline (`connectedContext == null`) byte-identical-keys criterion keeps these passing — re-run after the `.tmpl` rebind [Agent 2 finding]
+- New test to write: Node-side non-ASCII `sha256Hex` parity vs Python `hashlib.sha256` (server hashes bytes at `policy_builder_routes.py:200`); no existing JS hash test or fake fetch/timer/`AbortController`/`crypto.subtle` helper exists — `policy_submission.test.mjs` establishes them [Agent 3 finding]
+
+### Documentation
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/POLICY_ROUTER_GUIDE.md` — extend the existing `Connected authoring & submission (FEAT-3504)` block (`:359`) rather than adding a parallel section; persistence prose at `:318-335` and scenario-suite persistence at `:532-538` describe drafts (no key names) and should mention workspace scoping; new headings need a `## Contents` entry (`:10-23`) [Agent 2/3 finding]
+- `docs/reference/CLI.md` — `Connected policy builder` section (`:5279-5300`) and `--policy-builder` flag rows (`:5228`, `:5234`); pinned by `test_wiring_reference_docs.py`; update only if the page-facing description there changes [Agent 2 finding]
+- `docs/ARCHITECTURE.md:936` — FEAT-3504 note on submit/readback routes; add the page-side controller/storage split if it describes the flow [Agent 2 finding]
+- `docs/reference/API.md` — `little_loops.cli.artifact.policy_builder_routes` section (pinned heading); no signature change here, so no edit expected [Agent 2 finding]
+
+### Configuration
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/pyproject.toml` (`include = ["little_loops/**", …]`) — package-data glob already covers `templates/*.mjs`/`.tmpl`; no registration needed unless a new template file is introduced [Agent 1 finding]
+- `.gitignore:99` (`.loops/policy-builder/`) — probe run output location; confirm the probe's report dir is covered [Agent 1 finding]
+
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-09-19 — based on codebase analysis:_
@@ -140,6 +170,20 @@ _Added by `/ll:refine-issue` — 2026-09-19 — based on codebase analysis:_
 4. Bind the controller in the `.tmpl` (issue selection, review/submit/status, warnings, unavailable-with-reason); regenerate the HTML golden.
 5. Complete and run the probe; record the result in verification notes; write the guide section.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `scripts/tests/js/policy_validator.test.mjs` BUG-3502 harness (`_newBug3502Sandbox()`, `_BOOTSTRAP_SRC`) in the same step as the storage extraction (step 2) — inject `createBuilderStorage` and `CONNECTED_CONTEXT` into the vm sandbox and keep/adjust the `_extractBetween` marker strings
+- Add `createBuilderStorage`, `sha256Hex`, `createSubmissionController` to the `window.PolicyBuilderCore` bridge in `policy_builder_core.mjs`; verify no top-level name collides with `.tmpl` glue; keep the core free of bare `CONNECTED_CONTEXT`/`window`/`crypto` references at module top level (Node dual loading)
+- Keep `const CONNECTED_CONTEXT = /*__CONNECTED_CONTEXT_JSON__*/;` in the classic script in its current form (asserted by `test_feat3504_policy_builder_serve.py`); read it as a bare identifier from the module script and pass it into the factories
+- Route the once-per-session storage warning (`.tmpl:376`, `showLiveStatus`/`_storageWarned`) through an injected warn callback on `createBuilderStorage`
+- Keep new submission UI copy clear of the `test_policy_builder_emit.py` jargon denylist and keep `"/*__" not in html`
+- Regenerate `golden_policy_router_builder.html` from `cmd_policy_builder()` output after verifying it (BUG-2303 advisory); no regeneration script exists
+- Add a FEAT-3505 needle to `test_wiring_reference_docs.py::DOC_STRINGS_PRESENT`; keep the `Connected authoring & submission` heading text; add `## Contents` entries for any new guide headings; avoid `scripts/tests/` and `.loops/` paths in the guide (audience gate)
+- Re-run `.loops/probes/feat-3488-browser-probes.mjs` after the `.tmpl` rebind to confirm offline storage keys are unchanged
+- Probe must load the page over `http://127.0.0.1`/`localhost` (secure context) so `crypto.subtle`/`randomUUID` exist; the offline `file://` page has no `crypto.subtle`, so the controller must report connected controls unavailable rather than throw
+
 ## Impact
 
 - Priority: P3 — completes the browser-to-host path in EPIC-3493.
@@ -177,4 +221,5 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-19T00:54:02 - `11fbe36a-230e-4c61-845b-8c1fb6ba2d32.jsonl`
 - `/ll:refine-issue` - 2026-09-19T00:47:56 - `2114fa22-5111-44f1-a4b4-c86114783c2c.jsonl`
