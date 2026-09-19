@@ -11,6 +11,7 @@ relates_to:
 - ENH-3500
 blocked_by:
 - ENH-3513
+- BUG-3512
 ---
 
 # ENH-3511: Policy builder: explain disabled controls (aria-describedby / visible reason)
@@ -138,6 +139,13 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-09-19T21:30:33 - `6b9c88d3-074c-4681-b7c9-240fc332f147.jsonl`
 - `/ll:wire-issue` - 2026-09-19T21:05:52 - `39128071-49a7-41ee-a288-c86d0c6aa6ea.jsonl`
 - `/ll:refine-issue` - 2026-09-19T20:57:40 - `7ba3809c-e334-468e-81b6-cf0bbfd0f90c.jsonl`
 - `/ll:format-issue` - 2026-09-19T20:40:32 - `62ea2c42-153a-4077-bc55-dc91a943784a.jsonl`
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): Transient-busy Review/Refresh buttons use `aria-disabled="true"` per BUG-3512 (which owns `#conn-*` announcers and that change); every other disabled condition stays native `disabled`. `#conn-action-reason` and its `aria-describedby` wiring must apply to both forms. Reuse the connected-state summary BUG-3512 introduces rather than re-deriving busy/outcome_unknown/rv.status clauses. The Copy/Download disabled reason wording in `#validate-hint` must match ENH-3513's `#live-status` announcement (share one string/helper); `#validate-hint` is a non-live describedby target.

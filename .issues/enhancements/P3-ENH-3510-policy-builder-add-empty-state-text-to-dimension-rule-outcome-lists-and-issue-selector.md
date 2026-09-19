@@ -12,6 +12,7 @@ relates_to:
 - ENH-3500
 blocked_by:
 - ENH-3511
+- BUG-3512
 ---
 
 # ENH-3510: Policy builder: add empty-state text to dimension, rule, outcome lists and issue selector
@@ -146,6 +147,13 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-09-19T21:30:34 - `6b9c88d3-074c-4681-b7c9-240fc332f147.jsonl`
 - `/ll:wire-issue` - 2026-09-19T21:05:52 - `39128071-49a7-41ee-a288-c86d0c6aa6ea.jsonl`
 - `/ll:refine-issue` - 2026-09-19T20:57:35 - `dff55670-569e-48fc-a235-30c0ce66babb.jsonl`
 - `/ll:format-issue` - 2026-09-19T20:40:26 - `62ea2c42-153a-4077-bc55-dc91a943784a.jsonl`
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): Related issue ENH-3511 adds per-row `oc-del-reason-${oi}` elements in `renderOutcomes` and `aria-describedby="conn-unavailable"` on `#conn-issue`. Keep `#outcome-empty` outside `#outcome-list` and keep `#conn-issue-note` (status text) separate from the `#conn-unavailable` describedby target. BUG-3512 owns announcer semantics for `#conn-*`; confirm `#conn-issue-note` is deliberately excluded from its announcer.

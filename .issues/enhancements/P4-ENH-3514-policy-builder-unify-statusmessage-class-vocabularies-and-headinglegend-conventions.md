@@ -13,6 +13,7 @@ relates_to:
 - BUG-3516
 blocked_by:
 - ENH-3510
+- BUG-3512
 ---
 
 # ENH-3514: Policy builder: unify status/message class vocabularies and heading/legend conventions
@@ -139,6 +140,13 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-09-19T21:30:34 - `6b9c88d3-074c-4681-b7c9-240fc332f147.jsonl`
 - `/ll:wire-issue` - 2026-09-19T21:05:53 - `39128071-49a7-41ee-a288-c86d0c6aa6ea.jsonl`
 - `/ll:refine-issue` - 2026-09-19T20:57:52 - `7ba3809c-e334-468e-81b6-cf0bbfd0f90c.jsonl`
 - `/ll:format-issue` - 2026-09-19T20:40:43 - `62ea2c42-153a-4077-bc55-dc91a943784a.jsonl`
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): BUG-3512 also edits the `.conn-status` block in `renderConnected` (live-region/alert semantics, state class stays on the inner child). Re-check that line after BUG-3512 lands before migrating `is-*` onto `msg-*`. BUG-3516 owns the saturated-green fallback row; regenerate the golden fixture in coordination.

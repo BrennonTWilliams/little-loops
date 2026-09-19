@@ -163,5 +163,12 @@ _Added by `/ll:refine-issue` — 2026-09-19 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-09-19T21:30:35 - `6b9c88d3-074c-4681-b7c9-240fc332f147.jsonl`
 - `/ll:refine-issue` - 2026-09-19T20:55:40 - `274231e5-4fb2-4b8c-8eff-785a5007e300.jsonl`
 - `/ll:format-issue` - 2026-09-19T20:39:00 - `62ea2c42-153a-4077-bc55-dc91a943784a.jsonl`
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): Downstream issues ENH-3510, ENH-3511, ENH-3513, ENH-3514 edit the same `renderConnected` block and golden fixture; they are now `blocked_by` this issue. This issue owns `#conn-live`/`#conn-alert` and busy `aria-disabled`; ENH-3513 owns `#live-status`.

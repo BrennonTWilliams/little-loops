@@ -141,6 +141,13 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-09-19T21:30:33 - `6b9c88d3-074c-4681-b7c9-240fc332f147.jsonl`
 - `/ll:wire-issue` - 2026-09-19T21:05:53 - `39128071-49a7-41ee-a288-c86d0c6aa6ea.jsonl`
 - `/ll:refine-issue` - 2026-09-19T20:57:46 - `7ba3809c-e334-468e-81b6-cf0bbfd0f90c.jsonl`
 - `/ll:format-issue` - 2026-09-19T20:40:37 - `62ea2c42-153a-4077-bc55-dc91a943784a.jsonl`
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): The "no assertive region" statement applies only to `#messages` and `#import-diagnostics` diagnostics. BUG-3512 legitimately adds a static `role="alert"` (`#conn-alert`) in the connected panel; channels are disjoint — BUG-3512 owns `#conn-*`, this issue owns `#live-status`. Announcement wording for Copy/Download disabled must match ENH-3511's `#validate-hint` text (share one string/helper).
