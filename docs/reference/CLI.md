@@ -194,7 +194,7 @@ One-shot, signal-cited second-model consult (FEAT-3120). Resolves the configured
 | `--context-file` | Path to a caller-authored context file appended to the prompt. Never an auto-slurp of the working tree. |
 | `--main-host` | Host running the primary session, for the capability floor check. Default: the ambient resolved host. |
 | `--main-model` | Model running the primary session, for the capability floor check. Default: `fsm.schema.DEFAULT_LLM_MODEL` (`"sonnet"`). |
-| `--host` | Advisor host, overriding `advisor.host` in `.ll/ll-config.json`. |
+| `--host` | Advisor host, overriding `advisor.host` in `.ll/ll-config.json`. One of `claude-code`, `codex`, `gemini`, `kimi-code`, `omp`, `opencode`, `pi`, `qwen` (the registered host name — `claude-code`, not `claude`). |
 | `--model` | Advisor model, overriding `advisor.model` in `.ll/ll-config.json`. |
 | `--json` / `-j` | Print the verdict as JSON. |
 

@@ -95,3 +95,5 @@ ll-advise --signal user_requested --question "Is this design sound?" --json
 ll-advise --signal score_stall --question "..." --context-file notes.md --json
 ll-advise --signal user_requested --question "..." --host codex --model gpt-5.1 --json
 ```
+
+`--host` takes a registered host name, not a binary name: `claude-code` (not `claude`), `codex`, `gemini`, `kimi-code`, `omp`, `opencode`, `pi`, `qwen`. Anything else is rejected before a consult is spent.
