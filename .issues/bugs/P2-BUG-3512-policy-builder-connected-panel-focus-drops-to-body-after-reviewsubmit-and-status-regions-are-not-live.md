@@ -14,6 +14,12 @@ relates_to:
 - ENH-3514
 - ENH-3513
 - ENH-3510
+confidence_score: 100
+outcome_confidence: 67
+score_complexity: 14
+score_test_coverage: 10
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 # BUG-3512: Policy builder connected panel: focus drops to BODY after Review/Submit and status regions are not live
@@ -39,8 +45,8 @@ Evidence: `kb-happy-path`, `kb-outcome-unknown`, `kb-rejected` keyboard traces (
 
 ## Expected Behavior
 
-- Focus stays on the activated control where the control is only transiently busy (Review while hashing, Refresh during a poll); otherwise it moves to `#conn-status`. It is never `BODY`.
-- Review results, notices, and delivery-state transitions (accepted, rejected, outcome-unknown) are announced once per change through static live regions — polite for review/accepted/outcome-unknown, `role="alert"` for rejected. Poll re-renders with unchanged content announce nothing.
+- Focus stays on the activated control where the control is only transiently busy (Review while hashing); otherwise it moves to `#conn-status`. It is never `BODY`. (A poll is not a busy state: `busy` is `submitting || review.status === "hashing"` and `readback` never sets it, so Refresh is never disabled while it holds focus.)
+- Review results, notices, and delivery-state transitions (accepted, rejected, outcome-unknown) are announced once per change through static live regions — polite for review/accepted/outcome-unknown, `role="alert"` for rejected. Poll re-renders with unchanged content announce nothing, the initial render of a restored session announces nothing, and a repeat of the same outcome for a *new* request is announced again.
 
 ## Root Cause
 
@@ -72,14 +78,18 @@ This section is the single source of truth; it supersedes the capture-time sketc
    - `#conn-live` — `role="status" aria-live="polite"`
    - `#conn-alert` — `role="alert"`
    A visually-hidden utility class is added if the template has none.
-2. Add static `role="status" aria-live="polite"` to `#conn-review-info` (permanent element, already updated by `textContent`). `#conn-notices` and `#conn-status` get no live attributes.
+2. Add static `role="status" aria-live="polite"` to `#conn-review-info` (permanent element, already updated by `textContent`). `#conn-notices` and `#conn-status` get no live attributes. Because `renderConnected` runs on every poll emit and writing identical `textContent` still replaces the text node (some screen readers re-announce it, and the probe's MutationObserver logs it), guard the write: `if (el.textContent !== info) el.textContent = info;`.
 3. In `renderConnected`, derive a one-line summary from state — delivery state + `sub.statusLabel` + terminal/paused flags, plus newly added `st.notices` — and write it to the announcer **only when it differs from the last announced string** (module-level `_lastConnAnnounce`). `rejected` summaries go to `#conn-alert`; everything else to `#conn-live`. This defines "a change worth announcing" and makes poll re-renders silent. No `role` is ever changed at runtime.
+   - **Wording — reuse the visible lines, do not invent text.** `accepted`: the `Status: …` line (plus the missing / conflict / paused `pollNote` / "Finished." lines when present). `rejected`: the `Rejected (code): message` or request-conflict line — the error message must be included. `outcome_unknown`: the matching outcome-unknown sentence. While `submitting`: a short "Submitting…" line. Newly added notices are appended.
+   - **Comparison key includes the request.** `_lastConnAnnounce` compares `sub.requestId + "\n" + summary`, not the summary alone, so an identical rejection of a *second* request is announced again. (Equivalently: reset `_lastConnAnnounce` when `submitting` starts.)
+   - **Clear the other announcer when switching.** Writing to `#conn-live` sets `#conn-alert` to `""` and vice versa, so a stale rejection does not linger in a hidden region after a later acceptance.
+   - **First render is silent.** `loadSession` can restore a saved submission, so the bootstrap `renderConnected` call seeds `_lastConnAnnounce` (module-level `_connAnnounceSeeded` flag) without writing to either announcer — no spurious alert for a restored rejection, and no load-time `liveRegionChanges` entry.
 
 ### Focus: avoid the drop first, restore only where unavoidable
 
-4. **Transient busy → `aria-disabled`, not `disabled`.** For `#conn-review-btn` and `#conn-refresh-btn`, the `st.busy` component is expressed as `aria-disabled="true"` (plus disabled styling) so the focused button keeps focus through hashing / polling. Genuine unavailability stays on real `disabled`: `!av.ok` for Review, and all of `#conn-submit-btn`'s conditions (`rv.status !== "ready"`, `outcome_unknown`, `!av.ok`, `busy`). This preserves the `enh-3507-served-page-probes.mjs` contract (`!#conn-submit-btn.disabled` after review).
-5. **Click guards for `aria-disabled` buttons.** `startReview` returns early only on `review.status === "hashing"` (not while `submitting`), and `refreshStatus` has no busy guard at all, so the template's `.onclick` handlers for Review and Refresh must return early when `submissionController.getState().busy`. (`submit()`/`retry()` already guard on `submitting`.)
-6. **Restore after the fact is impossible — capture first.** At the top of `renderConnected`, capture `const prev = document.activeElement` *before* the `disabled`/`hidden` assignments. After them, call `_restoreConnectedFocus(prev)`: if `prev` is one of the `conn-*` buttons and is now `disabled` or `hidden`, move focus to `#conn-status` (given static `tabindex="-1"`); otherwise do nothing. This covers Submit (which stays disabled after a POST because `submit()` resets `review`) and hidden `#conn-again-btn`/`#conn-retry-btn`, and never steals focus on poll-driven renders because it fires only when the previously focused control itself became unavailable.
+4. **Transient busy → `aria-disabled`, not `disabled`.** For `#conn-review-btn` only, the `st.busy` component is expressed as `aria-disabled="true"` so the focused button keeps focus through hashing. The template has no `:disabled` / `[aria-disabled]` CSS today (buttons use browser defaults), so add a `button[aria-disabled="true"]` rule matching the default disabled look — there is nothing to reuse. `#conn-refresh-btn` keeps real `disabled = st.busy`: `busy` never coincides with Refresh holding focus (it requires activating Review/Submit), so converting it would be dead code; its hidden case (readback conflict → `rejected`) is covered by step 6. Genuine unavailability stays on real `disabled`: `!av.ok` for Review, and all of `#conn-submit-btn`'s conditions (`rv.status !== "ready"`, `outcome_unknown`, `!av.ok`, `busy`). This preserves the `enh-3507-served-page-probes.mjs` contract (`!#conn-submit-btn.disabled` after review).
+5. **Click guard for the `aria-disabled` button.** `startReview` returns early only on `review.status === "hashing"` (not while `submitting`), so the template's `.onclick` handler for Review must return early when `submissionController.getState().busy`. (`submit()`/`retry()` already guard on `submitting`; Refresh stays really `disabled`.)
+6. **Restore after the fact is impossible — capture first.** At the top of `renderConnected`, capture `const prev = document.activeElement` *before* the `disabled`/`hidden` assignments. After them, call `_restoreConnectedFocus(prev)`: if `prev` is one of the `conn-*` buttons and is now `disabled` or `hidden`, move focus to `#conn-status`; otherwise do nothing. `#conn-status` gets static `tabindex="-1" role="group" aria-label="Submission status"` — a bare focused `div` is announced inconsistently, and this is the focus convention ENH-3511/ENH-3513 inherit. **Fallback**: if `av.ok` flipped and `#conn-body` is hidden, `#conn-status` cannot take focus; focus `#conn-unavailable` (static `tabindex="-1"`) instead. This covers Submit (which stays disabled after a POST because `submit()` resets `review`) and hidden `#conn-again-btn`/`#conn-retry-btn`, and never steals focus on poll-driven renders because it fires only when the previously focused control itself became unavailable.
 
 ### Coordination
 
@@ -89,11 +99,11 @@ This section is the single source of truth; it supersedes the capture-time sketc
 
 `commands.tdd_mode` is on — red first.
 
-1. **Red (pytest)**: in `scripts/tests/test_policy_builder_emit.py`, add a test asserting the emitted HTML contains `id="conn-live"` with `role="status"` + `aria-live="polite"`, `id="conn-alert"` with `role="alert"`, `role="status"` on `#conn-review-info`, `tabindex="-1"` on `#conn-status`, and **no** `aria-live`/`role` on `#conn-status` or `#conn-notices`. Confirm it fails.
+1. **Red (pytest)**: in `scripts/tests/test_policy_builder_emit.py`, add a test asserting the emitted HTML contains `id="conn-live"` with `role="status"` + `aria-live="polite"`, `id="conn-alert"` with `role="alert"`, `role="status"` on `#conn-review-info`, `tabindex="-1"` + `role="group"` + `aria-label` on `#conn-status`, `tabindex="-1"` on `#conn-unavailable`, a `button[aria-disabled="true"]` CSS rule, **no** `aria-live` on `#conn-status` or `#conn-notices`, and no `role="status"`/`role="alert"` on either. Confirm it fails.
 2. **Template markup**: add the announcers, attributes and visually-hidden class in `policy-router-builder.html.tmpl`.
-3. **Template script**: announcer diffing, `aria-disabled` for transient busy, click guards, `prev` capture + `_restoreConnectedFocus` in `renderConnected`.
+3. **Template script**: announcer diffing (request-keyed, first render seeded, opposite announcer cleared), guarded `#conn-review-info` write, `aria-disabled` for Review's transient busy, Review click guard, `prev` capture + `_restoreConnectedFocus` (with `#conn-unavailable` fallback) in `renderConnected`.
 4. **Golden**: regenerate `scripts/tests/fixtures/policy_builder/golden_policy_router_builder.html`. No regeneration helper exists; render under the same pinned inputs as `_pin_golden_render_inputs` in `test_enh3035_artifact_template_kit.py` and write the bytes to `GOLDEN`.
-5. **Probe**: add `conn-live` and `conn-alert` to the MutationObserver id list in `.loops/probes/enh-3500-audit-probes.mjs` (`keyboardTrace()`), otherwise the trace keeps reporting `live: null` for `#conn-status` and misses the real announcements.
+5. **Probe**: add `conn-live` and `conn-alert` to the MutationObserver id list in `.loops/probes/enh-3500-audit-probes.mjs` (`keyboardTrace()`), otherwise the trace keeps reporting `live: null` for `#conn-status` and misses the real announcements. Also add `ariaDisabled: e.getAttribute("aria-disabled")` to the per-button `COLLECT` output, since Review now reads `disabled: false` while hashing.
 6. **Verify**: run `python -m pytest scripts/tests/` and re-run `.loops/verify-enh-3500-audit.yaml`.
 
 ## Acceptance Criteria
@@ -101,6 +111,8 @@ This section is the single source of truth; it supersedes the capture-time sketc
 - Pytest (step 1) passes; `test_persistence_and_history_affordances_present`, the golden byte-identity test, and the mirror/audience gates pass.
 - **Probe-verified, not pytest**: in `kb-happy-path`, `kb-outcome-unknown` and `kb-rejected`, `after` is never `BODY` for "Enter on Review" (stays `conn-review-btn`) or "Enter on Submit" (`conn-status`), including after async re-enable and poll re-renders.
 - `liveRegionChanges` shows one `conn-live`/`conn-alert` entry per state transition (rejected → `conn-alert`) and none for poll responses with unchanged state.
+- `liveRegionChanges` has no `conn-review-info` entries for poll responses (guarded write), and no `conn-live`/`conn-alert` entry from the initial render of a restored session.
+- Two consecutive rejections with an identical message (distinct `requestId`s) each produce a `conn-alert` entry; `#conn-alert` is empty after a later acceptance.
 - Focus is not moved when the user is focused outside the `conn-*` buttons during a poll render.
 - `enh-3507-served-page-probes.mjs` text/enabled contracts still hold.
 - Still DOM-level evidence only; no manual screen-reader check is claimed.
@@ -151,7 +163,7 @@ _Added by `/ll:refine-issue` — 2026-09-19 — based on codebase analysis:_
 
 - `renderConnected(st: object) -> None` — existing in `policy-router-builder.html.tmpl`; captures `document.activeElement` before the `disabled`/`hidden` assignments, restores focus after them, and updates the announcers on change
 - `_restoreConnectedFocus(prev: Element) -> None` — new private helper (`_` prefix per template convention); focuses `#conn-status` when `prev` is a `conn-*` button that became disabled/hidden
-- `_announceConnected(st: object) -> None` — new private helper; writes the derived summary to `#conn-live` / `#conn-alert` only when it differs from `_lastConnAnnounce`
+- `_announceConnected(st: object) -> None` — new private helper; writes the derived summary to `#conn-live` / `#conn-alert` only when the `requestId`-keyed summary differs from `_lastConnAnnounce`; first call seeds without writing; clears the opposite announcer
 
 ### Call Path
 
@@ -163,6 +175,7 @@ _Added by `/ll:refine-issue` — 2026-09-19 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-19T21:39:27 - `a64c7633-3845-4240-ac13-8b9cec728136.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-09-19T21:30:35 - `6b9c88d3-074c-4681-b7c9-240fc332f147.jsonl`
 - `/ll:refine-issue` - 2026-09-19T20:55:40 - `274231e5-4fb2-4b8c-8eff-785a5007e300.jsonl`
 - `/ll:format-issue` - 2026-09-19T20:39:00 - `62ea2c42-153a-4077-bc55-dc91a943784a.jsonl`
@@ -172,3 +185,5 @@ _Added by `/ll:refine-issue` — 2026-09-19 — based on codebase analysis:_
 ## Scope Boundary
 
 **Note** (added by `/ll:audit-issue-conflicts`): Downstream issues ENH-3510, ENH-3511, ENH-3513, ENH-3514 edit the same `renderConnected` block and golden fixture; they are now `blocked_by` this issue. This issue owns `#conn-live`/`#conn-alert` and busy `aria-disabled`; ENH-3513 owns `#live-status`.
+
+**Out of scope** (capture separately): `renderConnected` rebuilds the `#conn-issue` options (`sel.innerHTML = ""`) on every poll emit, which can disrupt an open dropdown during keyboard navigation.
