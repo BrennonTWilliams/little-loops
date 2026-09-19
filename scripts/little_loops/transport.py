@@ -1583,9 +1583,9 @@ def serve_sse_bridge(
                 "SseBridge: page_html_factory failed; serving the placeholder page instead",
                 exc_info=True,
             )
-    print(bridge.url)
+    print(bridge.url, flush=True)
     for suffix in extra_url_suffixes or []:
-        print(bridge.url + suffix)
+        print(bridge.url + suffix, flush=True)
     if "socket" not in config.transports:
         print(
             '"socket" is not in events.transports; no producer is reachable until a '

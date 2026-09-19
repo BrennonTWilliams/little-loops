@@ -3,10 +3,11 @@ id: ENH-3507
 type: ENH
 title: Policy builder storage extraction and served-page probe skeleton
 priority: P3
-status: open
+status: done
 discovered_by: manual-split
 discovered_date: '2026-09-19'
 captured_at: '2026-09-19T03:00:00Z'
+completed_at: '2026-09-19T04:14:47Z'
 parent: EPIC-3493
 labels:
 - policy-builder
@@ -138,6 +139,10 @@ Includes the storage helper, `.tmpl` rebind, harness fix, golden, storage Node t
 - Effort: Small–Medium — one helper, one template rebind, one harness fix, one probe file.
 - Risk: Low–Medium — behavior-neutral, but touches the persistence path every builder session uses; mitigated by byte-identical offline keys and the existing offline probe.
 
+## Resolution
+
+**Completed** 2026-09-18. `createBuilderStorage` added to `policy_builder_core.mjs` (bridge-exported); template rebound with guarded `localStorage` acquisition; `flush=True` on `serve_sse_bridge` URL prints; BUG-3502 harness updated; golden regenerated; `policy_storage.test.mjs` (8 tests) added; served-page probe + `verify-enh-3507-served-page` loop added (both probes pass; `context` and `connected-storage`). FEAT-3488 offline probe 20/20 pass; Node gate 194/194. Full pytest: only failure is pre-existing `test_verify_evidence::test_no_new_unverifiable_evidence` (BUG-3484 issue file span, unrelated).
+
 ## Status
 
 **Open** | Created: 2026-09-19 | Priority: P3
@@ -164,6 +169,8 @@ Pre-implementation review added: the piped-stdout flush fix (reproduced: 0 bytes
 ---
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-19T04:14:47 - `461c9ca9-f0fd-4b35-9f7d-706cd6ce0bcd.jsonl`
+- `/ll:ready-issue` - 2026-09-19T04:01:22 - `7e1385fd-b723-4024-9361-79dd02488f00.jsonl`
 - `/ll:confidence-check` - 2026-09-19T03:58:37 - `b9ead17c-f2ec-4fb1-95f7-273953b3a566.jsonl`
 - `/ll:verify-issues` - 2026-09-19T03:54:21 - `5b384fe7-b058-43d2-b91f-71136e38e4c1.jsonl`
 - manual pre-implementation review - 2026-09-18

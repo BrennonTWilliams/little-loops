@@ -9,6 +9,7 @@ import vm from "node:vm";
 
 import {
   parseRuleTable,
+  createBuilderStorage,
   evaluateRules,
   detectShadows,
   serializeLoopYaml,
@@ -1579,6 +1580,8 @@ function _newBug3502Sandbox() {
     parseBuilderProject,
     withScenariosDefaulted,
     BUILDER_PROJECT_SCHEMA_VERSION,
+    createBuilderStorage,
+    CONNECTED_CONTEXT: null,
     window: {},
     document: { getElementById: () => null },
     localStorage: {
@@ -1604,6 +1607,7 @@ function _newBug3502Sandbox() {
       }
     },
   };
+  sandbox.window.localStorage = sandbox.localStorage;
   const context = vm.createContext(sandbox);
   vm.runInContext(_DEEP_CLONE_SRC + "\n" + _BOOTSTRAP_SRC, context, { filename: "bug-3502-bootstrap.mjs" });
   return { context, elements };

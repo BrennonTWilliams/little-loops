@@ -1570,7 +1570,8 @@ export function validateProjectStructure(project) {
 
 /**
  * Serialize a BuilderProject to indented, deterministic JSON text (Save
- * project / localStorage). Pure — no ID generation or clock reads.
+ * project / localStorage). Pure — no ID generation or clock reads; touches no
+ * ambient globals (DI factories receive them injected).
  * @param {Object} project
  * @returns {string}
  */
@@ -1689,7 +1690,8 @@ export function applyDraftEdit(history, edit) {
 //   verdict, diagnostics, input, needsReview} — verdict is one of
 //   pass/fail/unasserted/error (see evaluateScenario's precedence).
 //
-// This module stays pure and DOM-free: no ID generation, no clock reads, no
+// This module stays pure and DOM-free (DI factories such as
+// createBuilderStorage receive ambient globals injected): no ID generation, no clock reads, no
 // execution of scenario actions — the template owns ID assignment
 // (crypto.randomUUID(), mirroring _newProjectId) and Run-all UI wiring.
 
@@ -4100,6 +4102,88 @@ export function buildImportedScenario(model, fileText, fileName) {
   return { name: id || fileName, input };
 }
 
+/**
+ * ENH-3507: draft/meta/issue-selection storage with injected dependencies.
+ * Offline (`connectedContext == null`) keys are `ll-policy-builder-draft-<mode>`
+ * and `ll-policy-builder-meta`; connected keys are namespaced by
+ * `connectedContext.workspaceId`. Unscoped data is never migrated. Every storage
+ * call is guarded: only a `persistDraft` failure calls `warn` (once per
+ * instance); everything else fails silently. `storage == null` (blocked) reads
+ * as empty and fails writes.
+ * @param {{storage: ?Object, connectedContext: ?{workspaceId: string}, warn: function(): void}} deps
+ * @returns {Object}
+ */
+export function createBuilderStorage(deps) {
+  const { storage, connectedContext, warn } = deps || {};
+  const wsId = connectedContext && connectedContext.workspaceId ? connectedContext.workspaceId : null;
+  const draftKey = (mode) =>
+    wsId ? `ll-policy-builder-draft-${wsId}-${mode}` : `ll-policy-builder-draft-${mode}`;
+  const metaKey = wsId ? `ll-policy-builder-meta-${wsId}` : "ll-policy-builder-meta";
+  const issueKey = wsId ? `ll-policy-builder-issue-${wsId}` : null;
+  let warned = false;
+
+  function readJson(key) {
+    try {
+      const raw = storage.getItem(key);
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function persistDraft(mode, model, scenarios) {
+    try {
+      storage.setItem(draftKey(mode), JSON.stringify({ model, scenarios: scenarios || [] }));
+    } catch (e) {
+      if (!warned) {
+        warned = true;
+        try {
+          if (typeof warn === "function") warn();
+        } catch (e2) { /* ignore */ }
+      }
+    }
+  }
+
+  return {
+    persistDraft,
+    persistAllDrafts(drafts) {
+      Object.keys(drafts).forEach((mode) =>
+        persistDraft(mode, drafts[mode].model, drafts[mode].scenarios || [])
+      );
+    },
+    clearDraftsExcept(keepModes, allModes) {
+      for (const mode of allModes) {
+        if (!keepModes.has(mode)) {
+          try {
+            storage.removeItem(draftKey(mode));
+          } catch (e) { /* ignore */ }
+        }
+      }
+    },
+    persistMeta(meta) {
+      try {
+        storage.setItem(metaKey, JSON.stringify(meta));
+      } catch (e) { /* ignore */ }
+    },
+    readDraft(mode) {
+      return readJson(draftKey(mode));
+    },
+    readMeta() {
+      return readJson(metaKey);
+    },
+    readIssueSelection() {
+      return issueKey ? readJson(issueKey) : null;
+    },
+    writeIssueSelection(issueId) {
+      if (!issueKey) return;
+      try {
+        if (issueId == null) storage.removeItem(issueKey);
+        else storage.setItem(issueKey, JSON.stringify({ issueId }));
+      } catch (e) { /* ignore */ }
+    },
+  };
+}
+
 // Browser-only global so the inlined copy can expose the API without breaking
 // node import.
 if (typeof window !== "undefined") {
@@ -4135,6 +4219,8 @@ if (typeof window !== "undefined") {
     evaluateModel,
     reconcilePredicateForDim,
     opsForType,
+    // ENH-3507 (injected-storage factory)
+    createBuilderStorage,
     // ENH-3487 (draft/project persistence, undo/redo)
     BUILDER_PROJECT_SCHEMA_VERSION,
     validateProjectStructure,
@@ -4223,8 +4309,6 @@ let scenarios = [];
 // authored assertion.
 let lastSuiteRun = null;
 
-const _DRAFT_KEY_PREFIX = "ll-policy-builder-draft-";
-const _META_KEY = "ll-policy-builder-meta";
 const ALL_MODES = ["decision_table", "rubric", "issue_lifecycle"];
 
 function _newProjectId() {
@@ -4242,66 +4326,26 @@ function showLiveStatus(text) {
   if (el) el.textContent = text;
 }
 
-// Tracks whether a storage write has already failed this session so the
-// live region warns once (not on every keystroke-commit) — authoring and
-// explicit Save-project stay fully functional either way.
-let _storageWarned = false;
-function _persistDraft(mode, model, scenariosArg) {
-  try {
-    localStorage.setItem(_DRAFT_KEY_PREFIX + mode, JSON.stringify({ model, scenarios: scenariosArg || [] }));
-  } catch (e) {
-    if (!_storageWarned) {
-      _storageWarned = true;
-      showLiveStatus("Browser storage is unavailable — drafts won't survive reload this session; use Save project instead.");
-    }
-  }
-}
-function _persistAllDrafts(draftsObj) {
-  Object.keys(draftsObj).forEach((mode) =>
-    _persistDraft(mode, draftsObj[mode].model, draftsObj[mode].scenarios || [])
-  );
-}
-// FEAT-3488: remove stored draft keys for every mode NOT in `keepModes` —
-// called only when Opening a different project, so a mode absent from the
-// opened project can never resurrect a previous project's draft/suite on a
-// later reload or mode switch.
-function _clearDraftKeysExcept(keepModes) {
-  for (const mode of ALL_MODES) {
-    if (!keepModes.has(mode)) {
-      try {
-        localStorage.removeItem(_DRAFT_KEY_PREFIX + mode);
-      } catch (e) { /* ignore */ }
-    }
-  }
-}
+// ENH-3507: all draft/meta/issue-selection storage goes through the core's
+// injected-storage helper (workspace-namespaced when served connected). The
+// once-per-session warning latch lives inside the helper; authoring and
+// explicit Save-project stay fully functional either way. localStorage is
+// acquired guarded — a bare reference throws SecurityError when blocked.
+let _ls = null;
+try { _ls = window.localStorage; } catch (e) { /* blocked */ }
+const builderStorage = createBuilderStorage({
+  storage: _ls,
+  connectedContext: CONNECTED_CONTEXT,
+  warn: () =>
+    showLiveStatus("Browser storage is unavailable — drafts won't survive reload this session; use Save project instead."),
+});
 function _persistMeta() {
-  try {
-    localStorage.setItem(
-      _META_KEY,
-      JSON.stringify({
-        projectId,
-        activeMode: state.mode,
-        schemaVersion: BUILDER_PROJECT_SCHEMA_VERSION,
-        generatorVersion: window.__GENERATOR_VERSION__ || "",
-      })
-    );
-  } catch (e) { /* ignore */ }
-}
-function _readDraft(mode) {
-  try {
-    const raw = localStorage.getItem(_DRAFT_KEY_PREFIX + mode);
-    return raw ? JSON.parse(raw) : null;
-  } catch (e) {
-    return null;
-  }
-}
-function _readMeta() {
-  try {
-    const raw = localStorage.getItem(_META_KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch (e) {
-    return null;
-  }
+  builderStorage.persistMeta({
+    projectId,
+    activeMode: state.mode,
+    schemaVersion: BUILDER_PROJECT_SCHEMA_VERSION,
+    generatorVersion: window.__GENERATOR_VERSION__ || "",
+  });
 }
 
 function currentProject() {
@@ -4328,7 +4372,7 @@ function commit() {
   if (!history) return;
   drafts = { ...drafts, [state.mode]: { ...drafts[state.mode], model: state, scenarios } };
   history = applyDraftEdit(history, { type: "commit", activeMode: state.mode, drafts });
-  _persistDraft(state.mode, state, scenarios);
+  builderStorage.persistDraft(state.mode, state, scenarios);
   _persistMeta();
   updateUndoRedoButtons();
   // FEAT-3488: results are derived data, never authoritative — any
@@ -4352,7 +4396,7 @@ function restoreFromSnapshot(snapshot) {
   applyStateToForm();
   applyModeVisibility();
   renderAll();
-  _persistAllDrafts(drafts);
+  builderStorage.persistAllDrafts(drafts);
   _persistMeta();
   updateUndoRedoButtons();
 }
@@ -4367,12 +4411,12 @@ function restoreFromSnapshot(snapshot) {
 // storage untouched until the next explicit commit() overwrites it, so it
 // stays available for manual recovery.
 function hydrateFromStorage() {
-  const meta = _readMeta();
+  const meta = builderStorage.readMeta();
   const activeMode = (meta && meta.activeMode) || state.mode;
   const loaded = {};
   let activeModeCorrupted = false;
   for (const mode of ALL_MODES) {
-    const draft = _readDraft(mode);
+    const draft = builderStorage.readDraft(mode);
     if (!draft) continue;
     const candidate = {
       schemaVersion: BUILDER_PROJECT_SCHEMA_VERSION,
@@ -5923,8 +5967,8 @@ $("open-project-input").onchange = (e) => {
     // FEAT-3488: replace/scope the stored draft set to this project's modes
     // only — a mode absent here must never resurrect a previous project's
     // draft/suite on a later reload or mode switch.
-    _clearDraftKeysExcept(new Set(Object.keys(project.drafts)));
-    _persistAllDrafts(drafts);
+    builderStorage.clearDraftsExcept(new Set(Object.keys(project.drafts)), ALL_MODES);
+    builderStorage.persistAllDrafts(drafts);
     _persistMeta();
     updateUndoRedoButtons();
     showLiveStatus("Project opened.");

@@ -1051,7 +1051,8 @@ export function validateProjectStructure(project) {
 
 /**
  * Serialize a BuilderProject to indented, deterministic JSON text (Save
- * project / localStorage). Pure — no ID generation or clock reads.
+ * project / localStorage). Pure — no ID generation or clock reads; touches no
+ * ambient globals (DI factories receive them injected).
  * @param {Object} project
  * @returns {string}
  */
@@ -1170,7 +1171,8 @@ export function applyDraftEdit(history, edit) {
 //   verdict, diagnostics, input, needsReview} — verdict is one of
 //   pass/fail/unasserted/error (see evaluateScenario's precedence).
 //
-// This module stays pure and DOM-free: no ID generation, no clock reads, no
+// This module stays pure and DOM-free (DI factories such as
+// createBuilderStorage receive ambient globals injected): no ID generation, no clock reads, no
 // execution of scenario actions — the template owns ID assignment
 // (crypto.randomUUID(), mirroring _newProjectId) and Run-all UI wiring.
 
@@ -3581,6 +3583,88 @@ export function buildImportedScenario(model, fileText, fileName) {
   return { name: id || fileName, input };
 }
 
+/**
+ * ENH-3507: draft/meta/issue-selection storage with injected dependencies.
+ * Offline (`connectedContext == null`) keys are `ll-policy-builder-draft-<mode>`
+ * and `ll-policy-builder-meta`; connected keys are namespaced by
+ * `connectedContext.workspaceId`. Unscoped data is never migrated. Every storage
+ * call is guarded: only a `persistDraft` failure calls `warn` (once per
+ * instance); everything else fails silently. `storage == null` (blocked) reads
+ * as empty and fails writes.
+ * @param {{storage: ?Object, connectedContext: ?{workspaceId: string}, warn: function(): void}} deps
+ * @returns {Object}
+ */
+export function createBuilderStorage(deps) {
+  const { storage, connectedContext, warn } = deps || {};
+  const wsId = connectedContext && connectedContext.workspaceId ? connectedContext.workspaceId : null;
+  const draftKey = (mode) =>
+    wsId ? `ll-policy-builder-draft-${wsId}-${mode}` : `ll-policy-builder-draft-${mode}`;
+  const metaKey = wsId ? `ll-policy-builder-meta-${wsId}` : "ll-policy-builder-meta";
+  const issueKey = wsId ? `ll-policy-builder-issue-${wsId}` : null;
+  let warned = false;
+
+  function readJson(key) {
+    try {
+      const raw = storage.getItem(key);
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function persistDraft(mode, model, scenarios) {
+    try {
+      storage.setItem(draftKey(mode), JSON.stringify({ model, scenarios: scenarios || [] }));
+    } catch (e) {
+      if (!warned) {
+        warned = true;
+        try {
+          if (typeof warn === "function") warn();
+        } catch (e2) { /* ignore */ }
+      }
+    }
+  }
+
+  return {
+    persistDraft,
+    persistAllDrafts(drafts) {
+      Object.keys(drafts).forEach((mode) =>
+        persistDraft(mode, drafts[mode].model, drafts[mode].scenarios || [])
+      );
+    },
+    clearDraftsExcept(keepModes, allModes) {
+      for (const mode of allModes) {
+        if (!keepModes.has(mode)) {
+          try {
+            storage.removeItem(draftKey(mode));
+          } catch (e) { /* ignore */ }
+        }
+      }
+    },
+    persistMeta(meta) {
+      try {
+        storage.setItem(metaKey, JSON.stringify(meta));
+      } catch (e) { /* ignore */ }
+    },
+    readDraft(mode) {
+      return readJson(draftKey(mode));
+    },
+    readMeta() {
+      return readJson(metaKey);
+    },
+    readIssueSelection() {
+      return issueKey ? readJson(issueKey) : null;
+    },
+    writeIssueSelection(issueId) {
+      if (!issueKey) return;
+      try {
+        if (issueId == null) storage.removeItem(issueKey);
+        else storage.setItem(issueKey, JSON.stringify({ issueId }));
+      } catch (e) { /* ignore */ }
+    },
+  };
+}
+
 // Browser-only global so the inlined copy can expose the API without breaking
 // node import.
 if (typeof window !== "undefined") {
@@ -3616,6 +3700,8 @@ if (typeof window !== "undefined") {
     evaluateModel,
     reconcilePredicateForDim,
     opsForType,
+    // ENH-3507 (injected-storage factory)
+    createBuilderStorage,
     // ENH-3487 (draft/project persistence, undo/redo)
     BUILDER_PROJECT_SCHEMA_VERSION,
     validateProjectStructure,
