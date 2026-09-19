@@ -283,6 +283,7 @@ Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the sam
 - Verified: `_MAX_RUN_REQUEST_BYTES = 1 << 20`, `QUEUE_TERMINAL_STATUSES` (`queue_store.py:187`), `test_wiring_reference_docs.py:254` needle, guide block `:365`. `ll-verify-evidence` clean; no active required decision rules. Graph: provider=codegraph freshness=fresh (not needed for verdicts).
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-19T04:59:56 - `1ad0fce5-6757-489d-9563-76e9d610a5fa.jsonl`
 - `/ll:verify-issues` - 2026-09-19T04:56:30 - `5dbc8838-d673-40f7-8b2c-1e9fdc4d439c.jsonl`
 - manual review applied — durable document identity, full/compact records, unresolved retention and storage budget, orphan recovery, separate review/polling generations, same-ID Open, and network deadlines — 2026-09-19
 - `/ll:confidence-check` - 2026-09-19T04:50:45 - `1377016f-3494-4e09-a9f7-53fdc870f46e.jsonl`
