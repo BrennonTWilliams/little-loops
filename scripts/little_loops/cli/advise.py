@@ -10,6 +10,7 @@ from little_loops.advisor import consult_for_trigger
 from little_loops.cli.output import configure_output, print_json, use_color_enabled
 from little_loops.cli_args import add_json_arg
 from little_loops.config import BRConfig
+from little_loops.host_runner import registered_host_names
 from little_loops.logger import Logger
 from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context
 
@@ -132,6 +133,7 @@ Examples:
         parser.add_argument(
             "--host",
             default=None,
+            choices=registered_host_names(),
             help="Advisor host, overriding advisor.host in .ll/ll-config.json",
         )
         parser.add_argument(

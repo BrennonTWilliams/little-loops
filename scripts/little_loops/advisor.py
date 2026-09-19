@@ -55,6 +55,7 @@ MODEL_RANKS: dict[str, dict[str, int]] = {
         "claude-sonnet-5": 2,
         "claude-opus-5": 3,
         "claude-fable-5": 4,
+        "claude-fable-5-1": 4,
     },
     "codex": {},
     "opencode": {},
@@ -141,11 +142,11 @@ def check_floor(
     )
 
 
-# Sent to the host at build time (`build_blocking_json(json_schema=...)`), not
-# via `run_blocking_json(schema=...)` — the latter only handles the inline
-# `--json-schema` case, while codex needs the schema materialized into a
-# temp file at build time. `signal`/`host`/`model` are stamped locally by
-# `consult()`, not requested from the model.
+# Sent both at build time (`build_blocking_json(json_schema=...)`, which codex
+# needs materialized into a temp file) and at run time
+# (`run_blocking_json(schema=...)`, which appends the inline `--json-schema`
+# flag that claude-code/qwen builders drop). `signal`/`host`/`model` are
+# stamped locally by `consult()`, not requested from the model.
 _VERDICT_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
@@ -269,7 +270,9 @@ def consult(
     invocation = runner.build_blocking_json(
         prompt=prompt, model=advisor_model, json_schema=_VERDICT_SCHEMA
     )
-    result = run_blocking_json(invocation, timeout=config.advisor.timeout_seconds)
+    result = run_blocking_json(
+        invocation, timeout=config.advisor.timeout_seconds, schema=_VERDICT_SCHEMA
+    )
 
     if result is None or not _VERDICT_KEYS.issubset(result.keys()):
         got_keys = sorted((result or {}).keys())
@@ -585,7 +588,11 @@ def consult_for_trigger(
         _write_consult_telemetry(
             task_key=task_key, signal=trigger, config=config, outcome=skipped_reason
         )
-        return ConsultOutcome(task_key=task_key, skipped_reason=skipped_reason, error=str(exc))
+        error = str(exc)
+        preview = exc.details.get("raw_preview")
+        if preview:
+            error = f"{error} (response began: {str(preview)[:200]!r})"
+        return ConsultOutcome(task_key=task_key, skipped_reason=skipped_reason, error=error)
 
     latency_ms = int((time.monotonic() - start) * 1000)
     _write_consult_telemetry(

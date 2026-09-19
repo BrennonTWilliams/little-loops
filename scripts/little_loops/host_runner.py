@@ -75,6 +75,7 @@ __all__ = [
     "dispatch_batch_request",
     "poll_batch_result",
     "project_child_env",
+    "registered_host_names",
     "resolve_host",
     "resolve_host_named",
     "resolve_model_alias",
@@ -2578,6 +2579,11 @@ def resolve_host(env: dict[str, str] | None = None) -> HostRunner:
     raise HostNotConfigured(f"No host CLI detected on PATH. {_remediation_hint()}")
 
 
+def registered_host_names() -> list[str]:
+    """Sorted names of user-selectable registered hosts (test-only fakes excluded)."""
+    return sorted(name for name in _HOST_RUNNER_REGISTRY if name not in TEST_ONLY_HOSTS)
+
+
 def resolve_host_named(name: str) -> HostRunner:
     """Resolve a specific registered host, ignoring ambient LL_HOST_CLI.
 
@@ -2759,6 +2765,7 @@ def run_blocking_json(
     #   success: {"type":"result","subtype":"success","structured_output":{...},...}
     #   failure: {"type":"result","subtype":"error_max_structured_output_retries",...}
     # If stdout is JSONL (multiple JSON objects), use the last non-empty line.
+    model_text: str | None = None
     try:
         stdout = proc.stdout.strip()
         try:
@@ -2789,6 +2796,7 @@ def run_blocking_json(
             if isinstance(raw_result, dict):
                 llm_result = raw_result
             elif raw_result:
+                model_text = str(raw_result)
                 try:
                     llm_result = json.loads(raw_result)
                 except json.JSONDecodeError:
@@ -2807,7 +2815,11 @@ def run_blocking_json(
                 error_msg = "Empty result field in Claude CLI response"
                 raise BlockingJsonError(error_msg, {"error": error_msg, "raw_preview": raw_preview})
     except (json.JSONDecodeError, TypeError, ValueError) as e:
-        raw_preview = proc.stdout[:300] if proc.stdout else "(empty)"
+        # Prefer the model's own text over the envelope head: for claude the
+        # first 300 chars of stdout are metadata, which hides a prose answer.
+        raw_preview = (
+            model_text[:300] if model_text else (proc.stdout[:300] if proc.stdout else "(empty)")
+        )
         error_msg = f"Failed to parse LLM response: {e}"
         raise BlockingJsonError(error_msg, {"error": error_msg, "raw_preview": raw_preview}) from e
 
