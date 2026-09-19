@@ -65,7 +65,7 @@ except UnicodeEncodeError:
     raise _RouteError(400, "bad_request", "missing or malformed field: yaml") from None
 ```
 
-`projectId`/`issueId` are never encoded by the route, but check whether a surrogate in them reaches SQLite (`create_or_get_run_request`) and fails the same way; if so, reject them in `_require_simple_str_field`.
+`projectId`/`issueId` need no change: research (Integration Map) showed neither can reach a SQLite bind with a surrogate — `projectId` is stored on `RunRequest.project_id` and never read; a surrogate `issueId` stops at `404 issue_not_found` (issue IDs are `TYPE-NNN`, so no real ID can match). Do not touch `_require_simple_str_field`.
 
 ### Codebase Research Findings
 
@@ -73,7 +73,8 @@ _Added by `/ll:refine-issue` — 2026-09-19 — based on codebase analysis:_
 
 - **Conventions in force**: input failures are raised as `_RouteError(400, "bad_request", "missing or malformed field: <name>")`, never handled inline; the `_require_*_field` validators and the inline `yaml` check share that message shape and never echo the value (evidence: `_parse_run_request`, `_require_str_field`, `_require_simple_str_field`). Two translation idioms exist and differ only in chaining: `from None` (JSON/Content-Length parse errors) vs `from exc` (`PolicyRevisionConflictError` → 409). No `UnicodeEncodeError`/lone-surrogate handling exists anywhere in the codebase to reuse.
 - **Scope**: the `projectId`/`issueId` half of the fix is not needed — neither can reach a SQLite bind with a surrogate (see Integration Map). Only the `yaml` encode needs translation.
-- **Test constraint**: `_submit_payload` decodes `yaml_bytes` as UTF-8 and cannot carry a lone surrogate; the regression test needs a hand-built body (as `test_malformed_json_returns_400` does with raw bytes) containing the JSON escape `\ud800`. Assert `status == 400`, `error.code == "bad_request"`, and `list_entries(DEFAULT_DB_PATH, root=project) == []` (as the 404/422 tests do); no existing test asserts that no revision snapshot was persisted.
+- **Test constraint**: `_submit_payload` decodes `yaml_bytes` as UTF-8 and cannot carry a lone surrogate. Build the body by round-tripping the helper: `payload = json.loads(_submit_payload(workspace_id=workspace_id)); payload["yaml"] = "a\ud800"; body = json.dumps(payload).encode("utf-8")` — `json.dumps` (default `ensure_ascii`) emits the `\ud800` escape as ASCII (verified by execution), and every other field stays guard-valid so the request actually reaches the encode.
+- **Non-vacuity**: `400 bad_request` is also what every earlier field guard returns, so status + code alone would pass against a body that never reaches the encode. The test MUST also assert `error.message == "missing or malformed field: yaml"`, and the TDD red run must show `500 internal_error` before the fix. Also assert `list_entries(DEFAULT_DB_PATH, root=project) == []` (as the 404/422 tests do).
 
 ## Integration Map
 
@@ -100,7 +101,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 ### Tests
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/tests/test_feat3504_policy_builder_serve.py` — add `test_lone_surrogate_yaml_returns_400` in `TestSubmitRoute`, modeled on `test_malformed_json_returns_400` (line 318): build the raw body by hand (the `_submit_payload` helper, line 81, UTF-8-decodes `yaml_bytes` and cannot carry `\ud800`), POST via `_lb_http_request(_port(bridge), "POST", f"/{bridge._token}/run-request", body=...)`, assert `status == 400` and `error.code == "bad_request"`, then assert `list_entries(DEFAULT_DB_PATH, root=project) == []` as the 404/422 tests do [Agent 3 finding]
+- `scripts/tests/test_feat3504_policy_builder_serve.py` — add `test_lone_surrogate_yaml_returns_400` in `TestSubmitRoute`, modeled on `test_malformed_json_returns_400` (line 318): build the body per "Test constraint" above (round-trip `_submit_payload`, line 81, and overwrite `yaml`), POST via `_lb_http_request(_port(bridge), "POST", f"/{bridge._token}/run-request", body=...)`, assert `status == 400`, `error.code == "bad_request"`, **and `error.message == "missing or malformed field: yaml"`** (see "Non-vacuity"), then assert `list_entries(DEFAULT_DB_PATH, root=project) == []` as the 404/422 tests do [Agent 3 finding]
 - No existing test asserts a 500 for this input, so none will break [Agent 3 finding]
 
 ### Documentation
@@ -108,7 +109,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 _Wiring pass added by `/ll:wire-issue`:_
 - `docs/reference/API.md` — `## little_loops.cli.artifact.policy_builder_routes`, "Submit (`POST run-request`)" step 1 (line ~11073): the body-guard list says "`yaml` a non-empty string"; extend to "a non-empty string encodable as UTF-8 (a lone surrogate is `400`)" [Agent 2 finding]
 - `scripts/tests/test_wiring_reference_docs.py` — asserts the `policy_builder_routes` section of `docs/reference/API.md` exists (line 243); a wording edit inside the section will not trip it [Agent 2 finding]
-- `docs/ARCHITECTURE.md` — grep for `policy_builder_routes`/`run-request` returned no hits, so the "~line 845" note in the map above is unverified; no change needed [Agent 2 finding]
+- `docs/ARCHITECTURE.md` — grep for `policy_builder_routes`/`run-request` returned no hits; no change needed [Agent 2 finding]
 
 ## Implementation Steps
 
@@ -129,7 +130,6 @@ _These touchpoints were identified by wiring analysis and must be included in th
 ### Signatures
 
 - `_parse_run_request(payload_bytes: bytes) -> tuple[RunRequest, dict[str, Any]]` — existing; wrap the `yaml_text.encode("utf-8")` call
-- `_require_simple_str_field(payload: dict[str, Any], name: str) -> str` — existing; extend only if a surrogate in `projectId`/`issueId` is shown to fail in SQLite
 
 ### Call Path
 
@@ -138,8 +138,9 @@ _These touchpoints were identified by wiring analysis and must be included in th
 ## Acceptance Criteria
 
 - [ ] A run-request whose `yaml` contains a lone surrogate returns `400 bad_request` with a JSON `ErrorBody`; nothing is persisted or enqueued.
-- [ ] Lone surrogates in `projectId`/`issueId` return `400`, not `500` (or are shown not to fail).
-- [ ] Regression test in `scripts/tests/test_feat3504_policy_builder_serve.py`.
+- [x] Lone surrogates in `projectId`/`issueId` are shown not to fail (resolved by research — see Integration Map; no code change).
+- [ ] Regression test in `scripts/tests/test_feat3504_policy_builder_serve.py` that fails with `500` before the fix and asserts the `yaml`-specific message, so it cannot pass on an earlier field guard.
+- [ ] `docs/reference/API.md` step-1 body-guard text updated for `yaml`.
 
 ## Impact
 
