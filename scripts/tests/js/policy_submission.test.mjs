@@ -396,6 +396,22 @@ test("FEAT-3505 result is never persisted", async () => {
   assert.ok(![...env.storage.m.values()].some((v) => v.includes("SECRETOUT")));
 });
 
+test("BUG-3512 getState exposes submitting separately from busy (hashing is not a POST)", async () => {
+  const env = setup();
+  assert.equal(env.ctl.getState().submitting, false);
+  await reviewed(env);
+  assert.equal(env.ctl.getState().submitting, false);
+  let release;
+  env.responses.push(() => new Promise((r) => { release = r; }));
+  env.ctl.submit();
+  await flush();
+  assert.equal(env.ctl.getState().submitting, true);
+  assert.equal(env.ctl.getState().busy, true);
+  release(ok());
+  await flush();
+  assert.equal(env.ctl.getState().submitting, false);
+});
+
 test("FEAT-3505 POST timeout stays unknown, late success is fenced; readback timeout pauses", async () => {
   const env = setup({ requestTimeoutMs: 1000 });
   await reviewed(env);

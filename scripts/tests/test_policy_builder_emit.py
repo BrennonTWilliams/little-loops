@@ -317,6 +317,30 @@ class TestFeat2301UsabilityStructural:
         assert 'id="live-status"' in html
         assert 'aria-live="polite"' in html
 
+    def test_connected_panel_announcers_and_focus_targets(self, tmp_path: Path) -> None:
+        """BUG-3512: static announcers + focus targets; no live semantics on rebuilt logs."""
+        html = _emit_html(tmp_path)
+
+        def tag(el_id: str) -> str:
+            m = re.search(rf'<[a-z]+\b[^>]*\bid="{el_id}"[^>]*>', html)
+            assert m, f"missing #{el_id}"
+            return m.group(0)
+
+        live = tag("conn-live")
+        assert 'role="status"' in live and 'aria-live="polite"' in live
+        assert 'role="alert"' in tag("conn-alert")
+        assert 'role="status"' in tag("conn-review-info")
+        status = tag("conn-status")
+        assert 'tabindex="-1"' in status and 'role="group"' in status
+        assert "aria-label=" in status
+        assert 'tabindex="-1"' in tag("conn-unavailable")
+        assert 'button[aria-disabled="true"]' in html
+        for rebuilt in ("conn-status", "conn-notices"):
+            assert "aria-live" not in tag(rebuilt)
+            assert 'role="alert"' not in tag(rebuilt)
+        assert 'role="status"' not in tag("conn-notices")
+        assert 'role="status"' not in status
+
     def test_advanced_action_details_collapsed_by_default(self, tmp_path: Path) -> None:
         """ENH-3491: action editors and the max-steps budget are collapsed by
         default behind an advanced `<details>`, and rules/try-it precede it in

@@ -4,10 +4,11 @@ type: BUG
 title: 'Policy builder connected panel: focus drops to BODY after Review/Submit and
   status regions are not live'
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-19'
 captured_at: '2026-09-19T20:00:57Z'
+completed_at: '2026-09-19T22:14:07Z'
 relates_to:
 - ENH-3500
 - ENH-3511
@@ -181,6 +182,10 @@ _Added by `/ll:refine-issue` — 2026-09-19 — based on codebase analysis:_
 
 `cmd_policy_builder` -> `render_policy_builder_html` (inlines `policy-router-builder.html.tmpl`) -> browser-side `renderConnected` -> `_restoreConnectedFocus`, `_announceConnected`
 
+## Resolution
+
+Implemented per the Proposed Solution: static `#conn-live`/`#conn-alert` announcers, request-keyed status/notice diffing (silent first render), guarded `#conn-review-info` write, Review busy via `aria-disabled` plus click guard, and `_restoreConnectedFocus` to `#conn-status`/`#conn-unavailable`. Controller `getState()` now exposes `submitting`. Golden regenerated. Verified by pytest (25070 passed), node tests (222 pass), and a new real-browser probe `bug-3512-focus-and-announcements` in `enh-3507-served-page-probes.mjs`. Not covered by browser probe: restored-session silence, identical-rejection repeat, pre-POST storage-failure and `#conn-body` hidden-ancestor focus cases. No manual screen-reader check.
+
 ## Status
 
 **Open** | Created: 2026-09-19 | Priority: P2
@@ -196,6 +201,8 @@ Verdict at time of check: **VALID** (no corrections were needed, so nothing was 
 - Graph: provider=`codegraph` freshness=`fresh` (not needed for any verdict).
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-19T22:14:07 - `b20d3c14-2c47-4ffe-9ba5-c8f43d738689.jsonl`
+- `/ll:ready-issue` - 2026-09-19T21:58:27 - `7662b325-31bf-4c48-877c-b25245d2898f.jsonl`
 - `/ll:confidence-check` - 2026-09-19T21:50:23 - `c6818602-1d0f-4408-8666-b6e00482f2de.jsonl`
 - `/ll:verify-issues` - 2026-09-19T21:47:29 - `ec33e794-bba7-4e0f-b871-a6a89de1c001.jsonl`
 - `/ll:confidence-check` - 2026-09-19T21:39:27 - `a64c7633-3845-4240-ac13-8b9cec728136.jsonl`

@@ -216,6 +216,42 @@ const FEAT_3505_PROBES = [
     },
   },
   {
+    id: "bug-3512-focus-and-announcements",
+    needs: [],
+    acs: ["Review keeps focus while hashing; Submit moves focus to #conn-status (never BODY); outcome announced once in #conn-live; unchanged polls announce nothing"],
+    async run({ page, url }) {
+      await page.goto(url);
+      await toLifecycle(page);
+      await pickFirstIssue(page);
+      await page.focus("#conn-review-btn");
+      await page.keyboard.press("Enter");
+      let active = await page.evaluate("document.activeElement && document.activeElement.id");
+      if (active !== "conn-review-btn") return { status: "fail", reason: `after Review Enter focus is ${active}` };
+      await page.waitForFunction(() => !document.querySelector("#conn-submit-btn").disabled);
+      active = await page.evaluate("document.activeElement && document.activeElement.id");
+      if (active !== "conn-review-btn") return { status: "fail", reason: `after review settled focus is ${active}` };
+      await page.evaluate(() => {
+        window.__ann = [];
+        for (const id of ["conn-live", "conn-alert", "conn-review-info"]) {
+          new MutationObserver(() => window.__ann.push([id, document.getElementById(id).textContent]))
+            .observe(document.getElementById(id), { childList: true, characterData: true, subtree: true });
+        }
+      });
+      await page.focus("#conn-submit-btn");
+      await page.keyboard.press("Enter");
+      await page.waitForFunction(() => /Awaiting approval/.test(document.querySelector("#conn-status").textContent), null, { timeout: 15000 });
+      active = await page.evaluate("document.activeElement && document.activeElement.id");
+      if (active !== "conn-status") return { status: "fail", reason: `after Submit Enter focus is ${active}` };
+      const live = await page.$eval("#conn-live", (e) => e.textContent);
+      if (!/Awaiting approval/.test(live)) return { status: "fail", reason: `conn-live not announced: ${JSON.stringify(live)}` };
+      const settled = await page.evaluate("window.__ann.length");
+      await page.waitForTimeout(5000); // >= 2 poll cycles at 2 s
+      const after = await page.evaluate("window.__ann.filter((a) => a[1]).slice(" + settled + ")");
+      if (after.length) return { status: "fail", reason: `unchanged polls announced: ${JSON.stringify(after)}` };
+      return { status: "pass" };
+    },
+  },
+  {
     id: "cancel-requeue-real",
     needs: [],
     acs: ["ll-queue cancel -> page shows cancelled and stops polling; requeue + Refresh status resumes; reload re-reads terminal rows"],

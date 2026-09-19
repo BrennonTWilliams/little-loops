@@ -360,6 +360,8 @@ pre {
 .del { flex: 0 0 auto; padding: 0.2rem 0.5rem; }
 small.help { display: block; opacity: 0.7; font-size: 0.75rem; }
 .conn-block { margin: 0.5rem 0; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+button[aria-disabled="true"] { opacity: 0.5; cursor: default; }
 .conn-status { padding: 0.4rem 0.6rem; border-radius: 4px; font-size: 0.85rem; margin: 0.35rem 0; background: var(--color-status-info-bg, #d1ecf1); color: var(--color-status-info-text, #0c5460); }
 .conn-status.is-success { background: var(--color-status-success-bg, #d4edda); color: var(--color-status-success-text, #155724); }
 .conn-status.is-warning { background: var(--color-status-warning-bg, #fff3cd); color: var(--color-status-warning-text, #664d03); }
@@ -523,7 +525,7 @@ confidence_score: 40"></textarea>
 
     <section class="panel" id="connected-panel">
       <h2 style="margin-top:0;font-size:1rem;">Submit to host</h2>
-      <p class="hint" id="conn-unavailable" hidden></p>
+      <p class="hint" id="conn-unavailable" tabindex="-1" hidden></p>
       <div id="conn-body" hidden>
         <div class="row">
           <label>Issue
@@ -539,9 +541,11 @@ confidence_score: 40"></textarea>
           <button id="conn-retry-btn" type="button" class="secondary" hidden>Retry identical request</button>
           <button id="conn-refresh-btn" type="button" class="secondary" hidden>Refresh status</button>
         </div>
-        <p class="hint" id="conn-review-info"></p>
+        <p class="hint" id="conn-review-info" role="status" aria-live="polite"></p>
         <ul class="messages" id="conn-notices"></ul>
-        <div id="conn-status" class="conn-block"></div>
+        <div id="conn-status" class="conn-block" tabindex="-1" role="group" aria-label="Submission status"></div>
+        <p class="visually-hidden" id="conn-live" role="status" aria-live="polite"></p>
+        <p class="visually-hidden" id="conn-alert" role="alert"></p>
       </div>
     </section>
   </main>
@@ -4406,6 +4410,7 @@ export function createSubmissionController(deps) {
       history: history.slice(),
       notices: notices.slice(),
       busy: submitting || review.status === "hashing",
+      submitting,
     };
   }
 
@@ -7017,7 +7022,79 @@ function _reviewInput() {
   return { yaml, blockedReason };
 }
 
+let _lastConnStatusKey = null;
+let _lastConnNotices = new Set();
+let _connAnnounceSeeded = false;
+
+// The one-line-per-fact summary of the current delivery state, reusing the
+// visible status wording; null while nothing has been submitted.
+function _connSummary(st) {
+  const sub = st.submission;
+  if (st.submitting) return { text: "Submitting…", alert: false, key: (sub ? sub.requestId : "") + "|submitting" };
+  if (!sub) return null;
+  const d = sub.delivery;
+  const lines = [];
+  let alert = false;
+  if (d.state === "outcome_unknown") {
+    lines.push(sub.notFound
+      ? "The host has no record of this request. You can retry the identical request."
+      : "Not confirmed — an earlier attempt may have reached the host. Refresh status before sending again.");
+  } else if (d.state === "rejected") {
+    const e = d.error || {};
+    alert = true;
+    lines.push(e.code === "request_conflict"
+      ? `This request conflicts with an existing one on the host: ${e.message}`
+      : `Rejected (${e.code}): ${e.message}`);
+  } else if (d.state === "accepted") {
+    lines.push(sub.statusLabel ? `Status: ${sub.statusLabel}` : "Status: checking…");
+    if (sub.missing) lines.push("The host no longer has this request.");
+    if (sub.conflict) lines.push(sub.conflict);
+    if (sub.poll === "paused") lines.push(`${sub.pollNote} Use Refresh status to resume.`);
+    if (sub.terminal) lines.push("Finished. Use Refresh status to check again.");
+  }
+  const text = lines.join(" ");
+  return { text, alert, key: sub.requestId + "|" + d.state + "|" + text };
+}
+
+// Announce a changed delivery state and/or newly added notices through the
+// static announcers. The first call only seeds the baselines (restored sessions
+// stay silent); unchanged renders (poll responses) write nothing.
+function _announceConnected(st) {
+  const summary = _connSummary(st);
+  const key = summary ? summary.key : null;
+  const notices = new Set(st.notices);
+  const added = st.notices.filter((n) => !_lastConnNotices.has(n));
+  const statusChanged = key !== _lastConnStatusKey;
+  const seeded = _connAnnounceSeeded;
+  _lastConnStatusKey = key;
+  _lastConnNotices = notices;
+  _connAnnounceSeeded = true;
+  if (!seeded) return;
+  const parts = [];
+  if (statusChanged && summary) parts.push(summary.text);
+  added.forEach((n) => parts.push(n));
+  if (!parts.length) return;
+  const useAlert = statusChanged && !!summary && summary.alert;
+  const target = $(useAlert ? "conn-alert" : "conn-live");
+  const other = $(useAlert ? "conn-live" : "conn-alert");
+  if (other.textContent) other.textContent = "";
+  target.textContent = parts.join(" ");
+}
+
+// A control that was focused before this render but is now disabled or hidden
+// (focus would drop to BODY) hands focus to the rendered status region, or to
+// the unavailable note when the whole body is hidden. Focus elsewhere stays put.
+function _restoreConnectedFocus(prev) {
+  if (!prev || prev === document.body || !$("connected-panel").contains(prev)) return;
+  if (!(prev.disabled || prev.closest("[hidden]"))) return;
+  const status = $("conn-status");
+  const dest = !status.closest("[hidden]") ? status
+    : !$("conn-unavailable").hidden ? $("conn-unavailable") : null;
+  if (dest) dest.focus();
+}
+
 function renderConnected(st) {
+  const prev = document.activeElement;
   const panel = $("connected-panel");
   const av = st.availability;
   $("conn-unavailable").hidden = av.ok;
@@ -7050,7 +7127,10 @@ function renderConnected(st) {
 
   const rv = st.review;
   const sub = st.submission;
-  $("conn-review-btn").disabled = !av.ok || st.busy;
+  // A transiently busy Review stays focusable (aria-disabled); the click handler ignores it.
+  $("conn-review-btn").disabled = !av.ok;
+  if (av.ok && st.busy) $("conn-review-btn").setAttribute("aria-disabled", "true");
+  else $("conn-review-btn").removeAttribute("aria-disabled");
   $("conn-submit-btn").disabled = !av.ok || rv.status !== "ready" || st.busy || !!(sub && sub.delivery.state === "outcome_unknown");
   $("conn-submit-btn").textContent = sub ? "Submit as new run" : "Submit";
   $("conn-again-btn").hidden = !(av.ok && rv.status === "ready" && sub && sub.delivery.state === "outcome_unknown");
@@ -7065,7 +7145,7 @@ function renderConnected(st) {
     info = `Reviewed snapshot ${rv.revisionShort} for ${rv.snapshot.issueId} — this exact submitted YAML snapshot will run with the project's current dependencies.` +
       (st.draftEdited ? "\nDraft edited since review — submit sends the reviewed snapshot, not the current draft." : "");
   }
-  $("conn-review-info").textContent = info;
+  if ($("conn-review-info").textContent !== info) $("conn-review-info").textContent = info;
 
   const notes = $("conn-notices");
   notes.innerHTML = "";
@@ -7073,7 +7153,13 @@ function renderConnected(st) {
 
   const box = $("conn-status");
   box.innerHTML = "";
-  if (!sub) return;
+  if (sub) _renderConnectedStatus(st, box);
+  _announceConnected(st);
+  _restoreConnectedFocus(prev);
+}
+
+function _renderConnectedStatus(st, box) {
+  const sub = st.submission;
   const d = sub.delivery;
   const top = _el("div", null, "conn-status " + (d.state === "rejected" ? "is-error" : d.state === "accepted" ? "is-success" : "is-warning"));
   top.appendChild(_el("div", `Revision ${sub.revisionShort} — issue ${sub.issueId}`));
@@ -7122,7 +7208,10 @@ $("conn-issue").onchange = (e) => {
   submissionController.contextChanged(_connectedContext());
 };
 $("conn-issues-reload").onclick = () => { submissionController.loadIssues(); };
-$("conn-review-btn").onclick = () => { submissionController.review(_reviewInput()); };
+$("conn-review-btn").onclick = () => {
+  if (submissionController.getState().busy) return;
+  submissionController.review(_reviewInput());
+};
 $("conn-submit-btn").onclick = () => { submissionController.submit(); };
 $("conn-again-btn").onclick = () => { submissionController.submit({ newRun: true }); };
 $("conn-retry-btn").onclick = () => { submissionController.retry(); };

@@ -3857,6 +3857,7 @@ export function createSubmissionController(deps) {
       history: history.slice(),
       notices: notices.slice(),
       busy: submitting || review.status === "hashing",
+      submitting,
     };
   }
 
