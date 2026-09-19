@@ -45,6 +45,29 @@ This enhancement would:
 ### Tests
 - Template/probe tests for the policy builder (locate via `grep -rl policy-router-builder scripts/tests/`)
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-19 — based on codebase analysis:_
+
+- All render functions named in this issue exist in `policy-router-builder.html.tmpl` (none in `policy_builder_core.mjs`, which is DOM-free): `renderDimensions` (:682), `renderOutcomes` (:776), `renderLifecycleOutcomes` (:876), `renderRules` (:1029), `renderConnected` (:2217), `renderFallback` (:743). `renderAll` (:1841) also blanks `#outcome-list`/`#rule-list` directly in rubric mode (fieldsets hidden there), so an empty-state must not leak into hidden fieldsets.
+- Current empty behavior: each renderer does `host.innerHTML = ""` then `forEach`; containers are `#dim-list` (:231), `#rule-list` (:247), `#outcome-list` (:300). No empty branch anywhere.
+- Convention held for empty states: `#scenario-summary` is a single always-present `<p class="hint">` (:284) whose `textContent` is swapped between "No scenarios yet." / "Not yet run — click Run all." (:1630) — not a created-on-empty element. `.hint` (:165) is monospace 0.8rem opacity 0.8; `small.help` (:168) is the other helper-text class. Both coexist.
+- `#conn-issue-note` (:341) is set only in `renderConnected` (:2242-2246): "Loading issues…" / error text / "selected issue no longer listed…" / `""`. The empty-list-with-status-`ready` case falls to `""` — that is the gap. The `<select id="conn-issue">` always has a leading "Select an issue…" option (:2229-2240). `renderConnected` returns early when `CONNECTED_CONTEXT` is null (:2226), so offline builds never reach it.
+- "No issues detected." is produced only at :1320 in `renderMessages` (`if (!host.children.length) add("msg-ok", …)`). Export gating is independent: `updatePreview` (:1778) sets `#copy-btn`/`#download-btn` `.disabled = hasError` from `validateBuilderModel` (:1795-1798). Deciding what a zero-dimension model reads is an implementation call the issue defers to tests.
+- Fallback select: with zero outcomes `renderFallback` leaves `state.fallback = ""` (:767) — an empty-outcomes hint interacts with the fallback row.
+
+### Conventions in Force
+- Golden byte-comparison: `scripts/tests/test_enh3035_artifact_template_kit.py:93-103` renders the template with pinned inputs against `scripts/tests/fixtures/policy_builder/golden_policy_router_builder.html`; any template edit changes it and the golden must be regenerated once after reviewing the diff (no regeneration script exists; sibling ENH-3506/3507 did this by hand).
+- `scripts/tests/test_policy_builder_emit.py` string-greps the rendered HTML (`in html`, `html.count('id=…') == 1`); `"/*__" not in html` must keep holding. Node core tests (`scripts/tests/js/*.test.mjs`, run via `test_policy_builder_node_gate.py`) do not assert rendered DOM. `policy_validator.test.mjs:1514-1572` slices the `.tmpl` between literal markers (`let state = seedExample();` … `function buildModel() {`) and throws "template source moved" if they shift.
+- No existing pytest/Node test asserts `No scenarios yet` or any `.hint` empty-state; the ENH-3500 Playwright probe (`.loops/probes/enh-3500-audit-probes.mjs`, driver `.loops/verify-enh-3500-audit.yaml`, `CASE_ONLY=<regex>` reruns a subset, e.g. `auth-empty-.*|conn-issues-empty`) is the only DOM-level check and is on-demand, never a pytest gate.
+
+**Tests (research)**
+- Template-level tests belong in `scripts/tests/test_policy_builder_emit.py` (string/structure asserts on rendered HTML). Rendered-DOM empty states can only be verified via the on-demand probe; the issue's "template tests for each empty state" is limited to static markup unless a probe case is added.
+- Golden fixture must be regenerated: `scripts/tests/fixtures/policy_builder/golden_policy_router_builder.html`.
+
+### Documentation
+- None of `docs/guides/POLICY_ROUTER_GUIDE.md` / `docs/reference/CLI.md` describe empty states; no doc change needed. (Audience gate `test_docs_audience_gate.py` scans only `*.md`, not the template.)
+
 ## Program Design
 
 ### Types
@@ -82,4 +105,5 @@ This enhancement would:
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-19T20:57:35 - `dff55670-569e-48fc-a235-30c0ce66babb.jsonl`
 - `/ll:format-issue` - 2026-09-19T20:40:26 - `62ea2c42-153a-4077-bc55-dc91a943784a.jsonl`
