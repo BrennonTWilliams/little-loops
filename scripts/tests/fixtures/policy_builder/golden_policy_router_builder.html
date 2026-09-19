@@ -5,191 +5,252 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Policy Router Builder</title>
   <style>
+/* Template-local defaults (ENH-3506): stamped blocks above/below override these at
+   equal specificity, so old mirrors, partial DESIGN.md and disabled tokens stay readable. */
+:root {
+  color-scheme: light;
+  --color-surface-primary: #ffffff;
+  --color-surface-secondary: #f8f9fa;
+  --color-surface-raised: #f1f3f5;
+  --color-text-primary: #212529;
+  --color-text-secondary: #495057;
+  --color-border-subtle: #dee2e6;
+  --color-border-strong: #868e96;
+  --color-action-primary: #1d4ed8;
+  --color-action-primary-text: #ffffff;
+  --color-status-success-bg: #d4edda;
+  --color-status-success-text: #155724;
+  --color-status-warning-bg: #fff3cd;
+  --color-status-warning-text: #664d03;
+  --color-status-error-bg: #f8d7da;
+  --color-status-error-text: #721c24;
+  --color-status-info-bg: #d1ecf1;
+  --color-status-info-text: #0c5460;
+  --font-family-body: system-ui, sans-serif;
+  --font-family-mono: ui-monospace, monospace;
+}
+[data-theme=dark] {
+  color-scheme: dark;
+  --color-surface-primary: #101214;
+  --color-surface-secondary: #212529;
+  --color-surface-raised: #343a40;
+  --color-text-primary: #ffffff;
+  --color-text-secondary: #dee2e6;
+  --color-border-subtle: #343a40;
+  --color-border-strong: #868e96;
+  --color-action-primary: #3b82f6;
+  --color-action-primary-text: #0b0d0f;
+  --color-status-success-bg: #14532d;
+  --color-status-success-text: #bbf7d0;
+  --color-status-warning-bg: #713f12;
+  --color-status-warning-text: #fef08a;
+  --color-status-error-bg: #7f1d1d;
+  --color-status-error-text: #fecaca;
+  --color-status-info-bg: #164e63;
+  --color-status-info-text: #a5f3fc;
+}
 /* Stamped design-token CSS custom properties (light :root + [data-theme=dark]). */
 :root {
   --border-width-medium: 2px;
-  --border-width-thick: 3px;
+  --border-width-thick: 4px;
   --border-width-thin: 1px;
-  --color-action-destructive: #9a3812;
-  --color-action-primary: #9a3812;
-  --color-action-primary-hover: #5c2208;
-  --color-border-strong: #b8a482;
-  --color-border-subtle: #e8dcc4;
-  --color-danger-300: #e06b3d;
-  --color-danger-500: #9a3812;
-  --color-moss-500: #5e7140;
-  --color-paper-0: #fdfbf6;
-  --color-paper-100: #f3eada;
-  --color-paper-200: #e8dcc4;
-  --color-paper-300: #d4c5a7;
-  --color-paper-400: #b8a482;
-  --color-paper-50: #f9f4ea;
-  --color-paper-500: #8c7a5e;
-  --color-paper-600: #6b5d47;
-  --color-paper-700: #4a4031;
-  --color-paper-800: #2e2820;
-  --color-paper-900: #1a1612;
-  --color-paper-950: #0d0b08;
-  --color-success-300: #8fae66;
-  --color-success-500: #5e7140;
-  --color-surface-primary: #fdfbf6;
-  --color-surface-raised: #f3eada;
-  --color-surface-secondary: #f9f4ea;
-  --color-terracotta-100: #fde6d5;
-  --color-terracotta-300: #f7b886;
-  --color-terracotta-500: #c84a1c;
-  --color-terracotta-700: #9a3812;
-  --color-terracotta-900: #5c2208;
-  --color-text-inverse: #fdfbf6;
-  --color-text-muted: #8c7a5e;
-  --color-text-primary: #1a1612;
-  --color-text-secondary: #4a4031;
-  --color-warning-300: #d9a44a;
-  --color-warning-500: #9a6b12;
-  --font-family-body: 'Lora', 'Charter', 'Iowan Old Style', Georgia, serif;
-  --font-family-code: 'iA Writer Mono', 'Courier Prime', monospace;
-  --font-family-display: 'Fraunces', 'Lora', Georgia, serif;
-  --font-family-heading: 'Fraunces', 'Lora', Georgia, serif;
-  --font-family-mono: 'iA Writer Mono', 'Courier Prime', monospace;
-  --font-family-sans: 'Work Sans', -apple-system, BlinkMacSystemFont, sans-serif;
-  --font-family-serif: 'Lora', 'Charter', 'Iowan Old Style', Georgia, serif;
+  --color-accent-300: #fed7aa;
+  --color-accent-500: #f97316;
+  --color-accent-700: #c2410c;
+  --color-action-destructive: #dc2626;
+  --color-action-primary: #1d4ed8;
+  --color-action-primary-hover: #1e3a5f;
+  --color-action-primary-text: #ffffff;
+  --color-border-strong: #ced4da;
+  --color-border-subtle: #e9ecef;
+  --color-brand-100: #dbeafe;
+  --color-brand-300: #93c5fd;
+  --color-brand-500: #3b82f6;
+  --color-brand-700: #1d4ed8;
+  --color-brand-900: #1e3a5f;
+  --color-danger-300: #f87171;
+  --color-danger-500: #dc2626;
+  --color-neutral-0: #ffffff;
+  --color-neutral-100: #f1f3f5;
+  --color-neutral-200: #e9ecef;
+  --color-neutral-300: #dee2e6;
+  --color-neutral-400: #ced4da;
+  --color-neutral-50: #f8f9fa;
+  --color-neutral-500: #adb5bd;
+  --color-neutral-600: #868e96;
+  --color-neutral-700: #495057;
+  --color-neutral-800: #343a40;
+  --color-neutral-900: #212529;
+  --color-neutral-950: #101214;
+  --color-status-error-bg: #f8d7da;
+  --color-status-error-text: #721c24;
+  --color-status-info-bg: #d1ecf1;
+  --color-status-info-text: #0c5460;
+  --color-status-success-bg: #d4edda;
+  --color-status-success-text: #155724;
+  --color-status-warning-bg: #fff3cd;
+  --color-status-warning-text: #664d03;
+  --color-success-300: #4ade80;
+  --color-success-500: #16a34a;
+  --color-surface-primary: #ffffff;
+  --color-surface-raised: #f1f3f5;
+  --color-surface-secondary: #f8f9fa;
+  --color-text-inverse: #ffffff;
+  --color-text-muted: #adb5bd;
+  --color-text-primary: #212529;
+  --color-text-secondary: #495057;
+  --color-warning-300: #fbbf24;
+  --color-warning-500: #ca8a04;
+  --font-family-body: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-family-code: 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+  --font-family-heading: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-family-mono: 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+  --font-family-sans: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-family-serif: Georgia, 'Times New Roman', serif;
   --font-letter-spacing-normal: 0;
-  --font-letter-spacing-tight: -0.015em;
-  --font-letter-spacing-wide: 0.03em;
-  --font-line-height-normal: 1.65;
-  --font-line-height-relaxed: 1.85;
-  --font-line-height-tight: 1.2;
-  --font-size-2xl: 1.6875rem;
-  --font-size-3xl: 2.125rem;
-  --font-size-4xl: 2.75rem;
-  --font-size-base: 1.0625rem;
-  --font-size-lg: 1.1875rem;
-  --font-size-sm: 0.9375rem;
-  --font-size-xl: 1.375rem;
-  --font-size-xs: 0.8125rem;
+  --font-letter-spacing-tight: -0.01em;
+  --font-letter-spacing-wide: 0.025em;
+  --font-line-height-normal: 1.5;
+  --font-line-height-relaxed: 1.625;
+  --font-line-height-tight: 1.25;
+  --font-size-2xl: 1.5rem;
+  --font-size-3xl: 1.875rem;
+  --font-size-4xl: 2.25rem;
+  --font-size-base: 1rem;
+  --font-size-lg: 1.125rem;
+  --font-size-sm: 0.875rem;
+  --font-size-xl: 1.25rem;
+  --font-size-xs: 0.75rem;
   --font-weight-bold: 700;
   --font-weight-medium: 500;
   --font-weight-normal: 400;
   --font-weight-semibold: 600;
   --radius-full: 9999px;
-  --radius-lg: 1rem;
-  --radius-md: 0.625rem;
+  --radius-lg: 0.75rem;
+  --radius-md: 0.5rem;
   --radius-none: 0;
-  --radius-sm: 0.375rem;
-  --radius-xl: 1.5rem;
-  --shadow-lg: 0 8px 20px rgba(74, 64, 49, 0.12);
-  --shadow-md: 0 3px 8px rgba(74, 64, 49, 0.10);
-  --shadow-sm: 0 1px 2px rgba(74, 64, 49, 0.06);
+  --radius-sm: 0.25rem;
+  --radius-xl: 1rem;
+  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
   --space-0: 0;
-  --space-1: 0.375rem;
-  --space-10: 3.75rem;
-  --space-12: 4.5rem;
-  --space-16: 6rem;
-  --space-2: 0.75rem;
-  --space-24: 9rem;
-  --space-3: 1.125rem;
-  --space-4: 1.5rem;
-  --space-5: 1.875rem;
-  --space-6: 2.25rem;
-  --space-8: 3rem;
+  --space-1: 0.25rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+  --space-2: 0.5rem;
+  --space-24: 6rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
 }
 [data-theme=dark] {
   --border-width-medium: 2px;
-  --border-width-thick: 3px;
+  --border-width-thick: 4px;
   --border-width-thin: 1px;
-  --color-action-destructive: #e06b3d;
-  --color-action-primary: #c84a1c;
-  --color-action-primary-hover: #f7b886;
-  --color-border-strong: #6b5d47;
-  --color-border-subtle: #2e2820;
-  --color-danger-300: #e06b3d;
-  --color-danger-500: #9a3812;
-  --color-moss-500: #5e7140;
-  --color-paper-0: #fdfbf6;
-  --color-paper-100: #f3eada;
-  --color-paper-200: #e8dcc4;
-  --color-paper-300: #d4c5a7;
-  --color-paper-400: #b8a482;
-  --color-paper-50: #f9f4ea;
-  --color-paper-500: #8c7a5e;
-  --color-paper-600: #6b5d47;
-  --color-paper-700: #4a4031;
-  --color-paper-800: #2e2820;
-  --color-paper-900: #1a1612;
-  --color-paper-950: #0d0b08;
-  --color-success-300: #8fae66;
-  --color-success-500: #5e7140;
-  --color-surface-primary: #0d0b08;
-  --color-surface-raised: #2e2820;
-  --color-surface-secondary: #1a1612;
-  --color-terracotta-100: #fde6d5;
-  --color-terracotta-300: #f7b886;
-  --color-terracotta-500: #c84a1c;
-  --color-terracotta-700: #9a3812;
-  --color-terracotta-900: #5c2208;
-  --color-text-inverse: #0d0b08;
-  --color-text-muted: #b8a482;
-  --color-text-primary: #fdfbf6;
-  --color-text-secondary: #d4c5a7;
-  --color-warning-300: #d9a44a;
-  --color-warning-500: #9a6b12;
-  --font-family-body: 'Lora', 'Charter', 'Iowan Old Style', Georgia, serif;
-  --font-family-code: 'iA Writer Mono', 'Courier Prime', monospace;
-  --font-family-display: 'Fraunces', 'Lora', Georgia, serif;
-  --font-family-heading: 'Fraunces', 'Lora', Georgia, serif;
-  --font-family-mono: 'iA Writer Mono', 'Courier Prime', monospace;
-  --font-family-sans: 'Work Sans', -apple-system, BlinkMacSystemFont, sans-serif;
-  --font-family-serif: 'Lora', 'Charter', 'Iowan Old Style', Georgia, serif;
+  --color-accent-300: #fed7aa;
+  --color-accent-500: #f97316;
+  --color-accent-700: #c2410c;
+  --color-action-destructive: #f87171;
+  --color-action-primary: #3b82f6;
+  --color-action-primary-hover: #93c5fd;
+  --color-action-primary-text: #0b0d0f;
+  --color-border-strong: #868e96;
+  --color-border-subtle: #343a40;
+  --color-brand-100: #dbeafe;
+  --color-brand-300: #93c5fd;
+  --color-brand-500: #3b82f6;
+  --color-brand-700: #1d4ed8;
+  --color-brand-900: #1e3a5f;
+  --color-danger-300: #f87171;
+  --color-danger-500: #dc2626;
+  --color-neutral-0: #ffffff;
+  --color-neutral-100: #f1f3f5;
+  --color-neutral-200: #e9ecef;
+  --color-neutral-300: #dee2e6;
+  --color-neutral-400: #ced4da;
+  --color-neutral-50: #f8f9fa;
+  --color-neutral-500: #adb5bd;
+  --color-neutral-600: #868e96;
+  --color-neutral-700: #495057;
+  --color-neutral-800: #343a40;
+  --color-neutral-900: #212529;
+  --color-neutral-950: #101214;
+  --color-status-error-bg: #7f1d1d;
+  --color-status-error-text: #fecaca;
+  --color-status-info-bg: #164e63;
+  --color-status-info-text: #a5f3fc;
+  --color-status-success-bg: #14532d;
+  --color-status-success-text: #bbf7d0;
+  --color-status-warning-bg: #713f12;
+  --color-status-warning-text: #fef08a;
+  --color-success-300: #4ade80;
+  --color-success-500: #16a34a;
+  --color-surface-primary: #101214;
+  --color-surface-raised: #343a40;
+  --color-surface-secondary: #212529;
+  --color-text-inverse: #101214;
+  --color-text-muted: #adb5bd;
+  --color-text-primary: #ffffff;
+  --color-text-secondary: #dee2e6;
+  --color-warning-300: #fbbf24;
+  --color-warning-500: #ca8a04;
+  --font-family-body: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-family-code: 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+  --font-family-heading: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-family-mono: 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+  --font-family-sans: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-family-serif: Georgia, 'Times New Roman', serif;
   --font-letter-spacing-normal: 0;
-  --font-letter-spacing-tight: -0.015em;
-  --font-letter-spacing-wide: 0.03em;
-  --font-line-height-normal: 1.65;
-  --font-line-height-relaxed: 1.85;
-  --font-line-height-tight: 1.2;
-  --font-size-2xl: 1.6875rem;
-  --font-size-3xl: 2.125rem;
-  --font-size-4xl: 2.75rem;
-  --font-size-base: 1.0625rem;
-  --font-size-lg: 1.1875rem;
-  --font-size-sm: 0.9375rem;
-  --font-size-xl: 1.375rem;
-  --font-size-xs: 0.8125rem;
+  --font-letter-spacing-tight: -0.01em;
+  --font-letter-spacing-wide: 0.025em;
+  --font-line-height-normal: 1.5;
+  --font-line-height-relaxed: 1.625;
+  --font-line-height-tight: 1.25;
+  --font-size-2xl: 1.5rem;
+  --font-size-3xl: 1.875rem;
+  --font-size-4xl: 2.25rem;
+  --font-size-base: 1rem;
+  --font-size-lg: 1.125rem;
+  --font-size-sm: 0.875rem;
+  --font-size-xl: 1.25rem;
+  --font-size-xs: 0.75rem;
   --font-weight-bold: 700;
   --font-weight-medium: 500;
   --font-weight-normal: 400;
   --font-weight-semibold: 600;
   --radius-full: 9999px;
-  --radius-lg: 1rem;
-  --radius-md: 0.625rem;
+  --radius-lg: 0.75rem;
+  --radius-md: 0.5rem;
   --radius-none: 0;
-  --radius-sm: 0.375rem;
-  --radius-xl: 1.5rem;
-  --shadow-lg: 0 8px 20px rgba(0, 0, 0, 0.6);
-  --shadow-md: 0 3px 8px rgba(0, 0, 0, 0.55);
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --radius-sm: 0.25rem;
+  --radius-xl: 1rem;
+  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.6);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.5);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
   --space-0: 0;
-  --space-1: 0.375rem;
-  --space-10: 3.75rem;
-  --space-12: 4.5rem;
-  --space-16: 6rem;
-  --space-2: 0.75rem;
-  --space-24: 9rem;
-  --space-3: 1.125rem;
-  --space-4: 1.5rem;
-  --space-5: 1.875rem;
-  --space-6: 2.25rem;
-  --space-8: 3rem;
+  --space-1: 0.25rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+  --space-2: 0.5rem;
+  --space-24: 6rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
 }
 
-:root {
-  color-scheme: light dark;
-}
 * { box-sizing: border-box; }
 body {
   margin: 0;
-  font-family: var(--typography-font-family-base, system-ui, sans-serif);
-  background: var(--color-surface-base, #ffffff);
-  color: var(--color-text-primary, #1a1a1a);
+  font-family: var(--font-family-body, system-ui, sans-serif);
+  background: var(--color-surface-primary, #ffffff);
+  color: var(--color-text-primary, #212529);
   line-height: 1.5;
 }
 header {
@@ -197,7 +258,7 @@ header {
   align-items: center;
   justify-content: space-between;
   padding: 1rem 1.5rem;
-  border-bottom: 1px solid var(--color-border-default, #d0d0d0);
+  border-bottom: 1px solid var(--color-border-subtle, #dee2e6);
 }
 h1 { font-size: 1.25rem; margin: 0; }
 main {
@@ -210,13 +271,13 @@ main {
   main { grid-template-columns: 1fr; }
 }
 .panel {
-  border: 1px solid var(--color-border-default, #d0d0d0);
+  border: 1px solid var(--color-border-subtle, #dee2e6);
   border-radius: 8px;
   padding: 1rem;
-  background: var(--color-surface-raised, #fafafa);
+  background: var(--color-surface-raised, #f1f3f5);
 }
 fieldset {
-  border: 1px solid var(--color-border-default, #d0d0d0);
+  border: 1px solid var(--color-border-subtle, #dee2e6);
   border-radius: 6px;
   margin: 0 0 1rem;
   padding: 0.75rem;
@@ -226,8 +287,8 @@ label { display: block; font-size: 0.85rem; margin: 0.4rem 0 0.15rem; }
 input, select, textarea, button {
   font: inherit;
   color: inherit;
-  background: var(--color-surface-base, #fff);
-  border: 1px solid var(--color-border-default, #ccc);
+  background: var(--color-surface-primary, #ffffff);
+  border: 1px solid var(--color-border-strong, #868e96);
   border-radius: 4px;
   padding: 0.35rem 0.5rem;
 }
@@ -235,66 +296,66 @@ input[type="text"], input[type="number"], textarea, select { width: 100%; }
 textarea { min-height: 4rem; resize: vertical; }
 button {
   cursor: pointer;
-  background: var(--color-action-primary, #2563eb);
+  background: var(--color-action-primary, #1d4ed8);
   color: var(--color-action-primary-text, #ffffff);
   border: none;
 }
 button.secondary {
   background: transparent;
-  color: var(--color-text-primary, #1a1a1a);
-  border: 1px solid var(--color-border-default, #ccc);
+  color: var(--color-text-primary, #212529);
+  border: 1px solid var(--color-border-strong, #868e96);
 }
 .row { display: flex; gap: 0.5rem; align-items: flex-end; flex-wrap: wrap; }
 .row > * { flex: 1; }
 .row > button { flex: 0 0 auto; }
-.outcome-group { border: 1px dashed var(--color-border-default, #ccc); border-radius: 6px; padding: 0.6rem; margin-bottom: 0.75rem; }
+.outcome-group { border: 1px dashed var(--color-border-subtle, #dee2e6); border-radius: 6px; padding: 0.6rem; margin-bottom: 0.75rem; }
 .rule-row { display: flex; gap: 0.4rem; align-items: center; margin-bottom: 0.35rem; flex-wrap: wrap; }
 .rule-card {
   display: flex;
   gap: 0.4rem;
   align-items: center;
   flex-wrap: wrap;
-  border: 1px solid var(--color-border-default, #ccc);
+  border: 1px solid var(--color-border-subtle, #dee2e6);
   border-radius: 6px;
   padding: 0.5rem;
   margin-bottom: 0.4rem;
-  background: var(--color-surface-base, #fff);
+  background: var(--color-surface-primary, #ffffff);
 }
 .rule-winner {
-  outline: 2px solid var(--color-action-primary, #2563eb);
+  outline: 2px solid var(--color-action-primary, #1d4ed8);
   background: var(--color-status-success-bg, #d4edda);
 }
 .rule-ord { font-weight: 700; min-width: 1.5rem; }
 .rule-move { flex: 0 0 auto; padding: 0.2rem 0.5rem; }
 .scenario-card {
-  border: 1px solid var(--color-border-default, #ccc);
+  border: 1px solid var(--color-border-subtle, #dee2e6);
   border-radius: 6px;
   padding: 0.5rem;
   margin-bottom: 0.5rem;
-  background: var(--color-surface-base, #fff);
+  background: var(--color-surface-primary, #ffffff);
 }
 .scenario-card .row { margin-bottom: 0.35rem; }
 .scenario-verdict { margin: 0.25rem 0 0; padding: 0.2rem 0.4rem; border-radius: 4px; }
 .fallback-row { font-style: italic; opacity: 0.85; }
 .fallback-row select { max-width: 16rem; }
 pre {
-  background: var(--color-surface-sunken, #1e1e1e);
-  color: var(--color-text-on-sunken, #e0e0e0);
+  background: var(--color-surface-secondary, #f8f9fa);
+  color: var(--color-text-secondary, #495057);
   padding: 1rem;
   border-radius: 6px;
   overflow: auto;
   max-height: 60vh;
   white-space: pre;
-  font-family: var(--typography-font-family-mono, ui-monospace, monospace);
+  font-family: var(--font-family-mono, ui-monospace, monospace);
   font-size: 0.8rem;
 }
 .messages { margin: 0.5rem 0; padding: 0; list-style: none; }
 .messages li { padding: 0.3rem 0.5rem; border-radius: 4px; margin-bottom: 0.25rem; font-size: 0.85rem; }
-.msg-warn { background: var(--color-status-warning-bg, #fff3cd); color: var(--color-status-warning-text, #856404); }
+.msg-warn { background: var(--color-status-warning-bg, #fff3cd); color: var(--color-status-warning-text, #664d03); }
 .msg-error { background: var(--color-status-error-bg, #f8d7da); color: var(--color-status-error-text, #721c24); }
 .msg-ok { background: var(--color-status-success-bg, #d4edda); color: var(--color-status-success-text, #155724); }
 .msg-info { background: var(--color-status-info-bg, #d1ecf1); color: var(--color-status-info-text, #0c5460); }
-.hint { font-family: var(--typography-font-family-mono, monospace); font-size: 0.8rem; opacity: 0.8; white-space: pre-line; }
+.hint { font-family: var(--font-family-mono, monospace); font-size: 0.8rem; opacity: 0.8; white-space: pre-line; }
 .theme-toggle { font-size: 1.1rem; padding: 0.3rem 0.6rem; }
 .del { flex: 0 0 auto; padding: 0.2rem 0.5rem; }
 small.help { display: block; opacity: 0.7; font-size: 0.75rem; }
@@ -318,9 +379,9 @@ small.help { display: block; opacity: 0.7; font-size: 0.75rem; }
   <!-- Stamped project-derived JSON globals (plain script, before the module). -->
   <script>
     window.__GRAMMAR_SPEC__ = {"ordered_ops": ["<", "<=", ">", ">="], "all_ops": ["!=", "<", "<=", "==", ">", ">="], "pred_pattern": "^(?<dim>[\\w][\\w\\s\\-]*?)\\s*:\\s*(?<op>>=|<=|==|!=|<|>)\\s*(?<value>\\S.*?)$"};
-    window.__SKILL_CATALOG__ = [{"name": "advise", "description": "Use when asked for a second opinion from a different, stronger model on a specific decision, question, or stalled judgment call.", "args_hint": "--signal SIGNAL --question QUESTION [--context-file PATH] [--host HOST] [--model MODEL]"}, {"name": "align-issues", "description": "Validate active issues against key documents for relevance and alignment", "args_hint": "[category] [--issues ID,...]"}, {"name": "analyze-history", "description": "Use when asked about project health, velocity, bug trends, or whether we're making progress.", "args_hint": null}, {"name": "analyze-workflows", "description": "Analyze user message history to identify patterns, workflows, and automation opportunities", "args_hint": "[messages.jsonl]"}, {"name": "audit-architecture", "description": "Analyze codebase architecture for patterns, organization, and improvements", "args_hint": "[focus-area] [flags]"}, {"name": "audit-claude-config", "description": "Use when asked to audit Claude Code config, validate plugin settings, or diagnose plugin issues.", "args_hint": "[scope]"}, {"name": "audit-docs", "description": "Use when asked to audit documentation accuracy, coverage, or find documentation gaps.", "args_hint": "[scope]"}, {"name": "audit-issue-conflicts", "description": "Use when asked to detect conflicting requirements or incompatible decisions across open issues.", "args_hint": "[EPIC-NNNN | ID,ID,ID,...] [--auto] [--dry-run] [--cross-theme]"}, {"name": "audit-loop-run", "description": "Use when asked to assess loop effectiveness, audit goal achievement, or detect phantom success.", "args_hint": "[loop-name] [--tail N] [--no-rubric-audit] [--skip-issue-creation] [--auto]"}, {"name": "capture-issue", "description": "Use when asked to capture or create an issue from conversation or natural language.", "args_hint": "[description] [--quick] [--parent EPIC-NNN]"}, {"name": "check-code", "description": "Run code quality checks (lint, format, types, build)", "args_hint": "[mode]"}, {"name": "cleanup-loops", "description": "Use when asked to clean up stuck loops, kill dead loop processes, or troubleshoot loop state.", "args_hint": "[--dry-run] [--threshold N] [--interrupted-age H]"}, {"name": "cleanup-worktrees", "description": "Clean orphaned git worktrees from interrupted ll-parallel/ll-loop runs", "args_hint": "[mode]"}, {"name": "commit", "description": "Create git commits with user approval and no assistant attribution", "args_hint": null}, {"name": "compact-session", "description": "Use when asked to manually compact a session's memory, trigger session summarization, or reduce a long session's context footprint.", "args_hint": null}, {"name": "confidence-check", "description": "Use when asked for a pre-implementation confidence check or whether an issue is ready to implement.", "args_hint": "ISSUE_ID"}, {"name": "configure", "description": "Use when asked to configure little-loops, change settings, or update ll-config.json.", "args_hint": "[area]"}, {"name": "create-eval-from-issues", "description": "Use when asked to generate an FSM eval harness YAML from one or more issue IDs, or DSL eval tasks from a loop/issue file with --dsl.", "args_hint": "<issue-id> [issue-id...] | --dsl <loop-yaml-or-issue-file>"}, {"name": "create-loop", "description": "Use when asked to create an automation loop or automate a recurring task with an FSM.", "args_hint": null}, {"name": "create-sprint", "description": "Create a sprint definition with a curated list of issues", "args_hint": "[sprint-name]"}, {"name": "debug-loop-run", "description": "Use when asked to analyze loop execution history, investigate loop failures, or find loop issues.", "args_hint": "[loop-name] [--tail N] [--skip-issue-creation] [--auto]"}, {"name": "decide-issue", "description": "Use when asked to select the winning implementation option for an issue with decision_needed.", "args_hint": null}, {"name": "describe-pr", "description": "Generate comprehensive PR descriptions following repository templates", "args_hint": "[base-branch]"}, {"name": "distill-traces", "description": "Use when asked to extract reusable loop patterns or YAML fragments from successful execution history.", "args_hint": "<loop-name> [--min-success N]"}, {"name": "explore-api", "description": "Use when exploring an external API/library and recording proof to the Learning Test Registry.", "args_hint": "<target> [--assume <claim>]..."}, {"name": "find-dead-code", "description": "Analyze codebase for deprecated, unused, or dead code that can be safely removed", "args_hint": null}, {"name": "format-issue", "description": "Use when asked to format an issue or fix its template structure.", "args_hint": "ISSUE_ID [--auto] [--all] [--dry-run]"}, {"name": "go-no-go", "description": "Use when asked for an adversarial go/no-go review or whether an issue is worth implementing.", "args_hint": null}, {"name": "handoff", "description": "Generate continuation prompt for session handoff", "args_hint": "[context]"}, {"name": "help", "description": "List all available little-loops commands with descriptions", "args_hint": null}, {"name": "improve-claude-md", "description": "Use when asked to improve or rewrite CLAUDE.md or increase LLM instruction adherence.", "args_hint": "[--dry-run] [--file path] [--consume-triggers]"}, {"name": "init", "description": "Use when asked to initialize little-loops, set up ll for a project, or bootstrap config.", "args_hint": "[flags]"}, {"name": "issue-size-review", "description": "Use when asked to evaluate issue size, decompose large issues, or audit backlog complexity.", "args_hint": null}, {"name": "issue-workflow", "description": "Use when asked about the issue lifecycle, command order for issues, or how to manage issues.", "args_hint": null}, {"name": "iterate-plan", "description": "Iterate on existing implementation plans with thorough research and updates", "args_hint": "[plan-path]"}, {"name": "link-epics", "description": "Assign orphaned issues to existing EPICs, or cluster them into new-EPIC proposals, via `ll-issues link-epics`.", "args_hint": "[--mode assign|synthesize] [--threshold <score>] [--auto] [--deep]"}, {"name": "ll-align-issues", "description": "Validate active issues against key documents for relevance and alignment", "args_hint": "[category] [--issues ID,...]"}, {"name": "ll-analyze-workflows", "description": "Analyze user message history to identify patterns, workflows, and automation opportunities", "args_hint": "[messages.jsonl]"}, {"name": "ll-audit-architecture", "description": "Analyze codebase architecture for patterns, organization, and improvements", "args_hint": "[focus-area] [flags]"}, {"name": "ll-capture-issue", "description": "Use when asked to capture or create an issue from conversation or natural language.", "args_hint": "[description] [--quick] [--parent EPIC-NNN]"}, {"name": "ll-check-code", "description": "Run code quality checks (lint, format, types, build)", "args_hint": "[mode]"}, {"name": "ll-cleanup-worktrees", "description": "Clean orphaned git worktrees from interrupted ll-parallel/ll-loop runs", "args_hint": "[mode]"}, {"name": "ll-commit", "description": "Create git commits with user approval and no assistant attribution", "args_hint": null}, {"name": "ll-compact-session", "description": "Use when asked to manually compact a session's memory, trigger session summarization, or reduce a long session's context footprint.", "args_hint": "SESSION_ID [--db PATH] [--json]"}, {"name": "ll-create-sprint", "description": "Create a sprint definition with a curated list of issues", "args_hint": "[sprint-name]"}, {"name": "ll-describe-pr", "description": "Generate comprehensive PR descriptions following repository templates", "args_hint": "[base-branch]"}, {"name": "ll-find-dead-code", "description": "Analyze codebase for deprecated, unused, or dead code that can be safely removed", "args_hint": null}, {"name": "ll-go-no-go", "description": "Use when asked for an adversarial go/no-go review or whether an issue is worth implementing.", "args_hint": "[issue-id[,issue-id...] | sprint-name] [--check] [--auto]"}, {"name": "ll-handoff", "description": "Generate continuation prompt for session handoff", "args_hint": "[context]"}, {"name": "ll-help", "description": "List all available little-loops commands with descriptions", "args_hint": null}, {"name": "ll-iterate-plan", "description": "Iterate on existing implementation plans with thorough research and updates", "args_hint": "[plan-path]"}, {"name": "ll-loop-suggester", "description": "Analyze user message history to suggest FSM loop configurations automatically. Uses ll-messages output to identify repeated workflows and generate ready-to-use loop YAML. Also supports --from-commands mode to suggest loops from the available command/skill catalog without requiring message history, and --from-sequences mode to suggest loops from ll-logs sequences n-gram output.\n\nTrigger keywords: \"suggest loops\", \"loop from history\", \"automate workflow\", \"create loop from messages\", \"analyze messages for loops\", \"ll-messages loop\", \"suggest automation\", \"detect patterns for loops\", \"suggest loops from commands\", \"loop from catalog\", \"from-commands\", \"suggest loops from sequences\", \"from-sequences\", \"loop from ll-logs", "args_hint": "[messages.jsonl|--from-commands|--from-sequences]"}, {"name": "ll-manage-release", "description": "Manage releases - create git tags, generate changelogs, and manage GitHub releases.\nIntegrates with Issue Management to include completed issues in release notes.\n\nTrigger keywords: \"manage release\", \"create release\", \"new release\", \"tag release\", \"publish release\", \"make release\", \"bump version", "args_hint": "[action] [version]"}, {"name": "ll-normalize-issues", "description": "Find and fix issue filenames with missing or duplicate IDs across types (e.g., BUG-007 and FEAT-007)", "args_hint": null}, {"name": "ll-open-pr", "description": "Open a pull request for the current branch.\n\nTrigger keywords: \"open pr\", \"create pull request\", \"submit pr\", \"create pr\", \"open pull request\", \"submit for review\", \"make a pr", "args_hint": "[target-branch]"}, {"name": "ll-prioritize-issues", "description": "Analyze issues and prepend priority levels (P0-P5) to filenames", "args_hint": null}, {"name": "ll-ready-issue", "description": "Analyze and validate an issue file for accuracy, utility, and completeness, then auto-correct to make implementation-ready or close if invalid", "args_hint": "ISSUE_ID"}, {"name": "ll-reconcile-issue", "description": "Rewrite an issue's Implementation Steps, Acceptance Criteria, and Integration Map (Files to Modify, Dependent Files, Similar Patterns, Tests, Documentation) in place from its own accumulated research findings \u2014 plus, conditionally, a Scope Boundaries claim contradicted by those findings \u2014 without appending or bulldozing human prose", "args_hint": "ISSUE_ID"}, {"name": "ll-refine-issue", "description": "Refine issue files with codebase-driven research to fill knowledge gaps needed for implementation", "args_hint": "ISSUE_ID [--auto] [--dry-run] [--gap-analysis] [--full-rewrite]"}, {"name": "ll-resume", "description": "Resume from a previous session's continuation prompt", "args_hint": "[prompt-file]"}, {"name": "ll-review-sprint", "description": "AI-guided sprint health check that analyzes a sprint's current state and suggests improvements - removing stale issues, adding related backlog issues, and identifying dependency or contention problems. Pairs with `ll-sprint edit` (mechanics) the way `/ll:create-sprint` pairs with `ll-sprint create` (intelligence).\n\nTrigger keywords: \"review sprint\", \"sprint health\", \"sprint review\", \"check sprint\", \"sprint suggestions\", \"optimize sprint\", \"sprint health check\", \"is my sprint still good", "args_hint": "[sprint-name]"}, {"name": "ll-run-tests", "description": "Run test suites with common patterns", "args_hint": "[scope]"}, {"name": "ll-scan-codebase", "description": "Scan codebase to identify bugs, enhancements, and features, then create issue files", "args_hint": "[flags]"}, {"name": "ll-scan-product", "description": "Scan codebase for product-focused issues based on goals document", "args_hint": null}, {"name": "ll-sync-issues", "description": "Sync local issues with GitHub Issues (push/pull/status).\n\nTrigger keywords: \"sync issues\", \"push to github\", \"pull from github\", \"github sync\", \"sync with github\", \"export issues\", \"import issues from github", "args_hint": "[action] [issue-id]"}, {"name": "ll-toggle-autoprompt", "description": "Toggle automatic prompt optimization settings", "args_hint": "[setting]"}, {"name": "ll-tradeoff-review-issues", "description": "Evaluate active issues for utility vs complexity trade-offs and recommend which to implement, update, or close. Use this skill to sense-check your backlog before implementation, prune low-value issues, or during sprint planning to focus on high-value work.\n\nTrigger keywords: \"tradeoff review\", \"review issues\", \"utility review\", \"prune backlog\", \"issue tradeoff\", \"sense check issues\", \"evaluate issues\", \"backlog review\", \"worth implementing\", \"low value issues", "args_hint": "[issue-ids]"}, {"name": "ll-verify-issues", "description": "Verify issue files for accuracy, relevance, and completeness by testing claims against actual code", "args_hint": "[issue-id]"}, {"name": "loop-suggester", "description": "Analyze user message history to suggest FSM loop configurations automatically. Uses ll-messages output to identify repeated workflows and generate ready-to-use loop YAML. Also supports --from-commands mode to suggest loops from the available command/skill catalog without requiring message history, and --from-sequences mode to suggest loops from ll-logs sequences n-gram output.\n\nTrigger keywords: \"suggest loops\", \"loop from history\", \"automate workflow\", \"create loop from messages\", \"analyze messages for loops\", \"ll-messages loop\", \"suggest automation\", \"detect patterns for loops\", \"suggest loops from commands\", \"loop from catalog\", \"from-commands\", \"suggest loops from sequences\", \"from-sequences\", \"loop from ll-logs", "args_hint": "[messages.jsonl|--from-commands|--from-sequences]"}, {"name": "manage-issue", "description": "Use when asked to implement an issue end-to-end or start implementing FEAT-NNN.", "args_hint": "[type] [action] [issue-id]"}, {"name": "manage-release", "description": "Manage releases - create git tags, generate changelogs, and manage GitHub releases.\nIntegrates with Issue Management to include completed issues in release notes.\n\nTrigger keywords: \"manage release\", \"create release\", \"new release\", \"tag release\", \"publish release\", \"make release\", \"bump version", "args_hint": "[action] [version]"}, {"name": "map-dependencies", "description": "Use when asked to find dependencies between issues or prepare a dependency-aware sprint plan.", "args_hint": null}, {"name": "normalize-issues", "description": "Find and fix issue filenames with missing or duplicate IDs across types (e.g., BUG-007 and FEAT-007)", "args_hint": "[issue_id] [flags]"}, {"name": "open-pr", "description": "Open a pull request for the current branch.\n\nTrigger keywords: \"open pr\", \"create pull request\", \"submit pr\", \"create pr\", \"open pull request\", \"submit for review\", \"make a pr", "args_hint": "[target-branch]"}, {"name": "prioritize-issues", "description": "Analyze issues and prepend priority levels (P0-P5) to filenames", "args_hint": "[flags]"}, {"name": "product-analyzer", "description": "Use when asked to analyze product goals, check feature gaps, or evaluate business value. Returns raw YAML findings. For full scan with issue file creation, use `/ll:scan-product`.", "args_hint": "[focus-area]"}, {"name": "ready-issue", "description": "Analyze and validate an issue file for accuracy, utility, and completeness, then auto-correct to make implementation-ready or close if invalid", "args_hint": "ISSUE_ID"}, {"name": "reconcile-issue", "description": "Rewrite an issue's Implementation Steps, Acceptance Criteria, and Integration Map (Files to Modify, Dependent Files, Similar Patterns, Tests, Documentation) in place from its own accumulated research findings \u2014 plus, conditionally, a Scope Boundaries claim contradicted by those findings \u2014 without appending or bulldozing human prose", "args_hint": "ISSUE_ID"}, {"name": "refine-issue", "description": "Refine issue files with codebase-driven research to fill knowledge gaps needed for implementation", "args_hint": "ISSUE_ID [--auto] [--dry-run] [--gap-analysis] [--full-rewrite]"}, {"name": "rename-loop", "description": "Rename a loop and update all references in YAMLs, tests, and docs.", "args_hint": "<old-name> <new-name> [--dry-run] [--yes]"}, {"name": "resume", "description": "Resume from a previous session's continuation prompt", "args_hint": "[prompt-file]"}, {"name": "review-epic", "description": "Use when asked to review epic health, audit stalled children, check scope drift, find missing coverage, or assess closure readiness. Produces a structured health report and actionable recommendations. Read-only.", "args_hint": "<EPIC-ID> [--skip-drift]"}, {"name": "review-loop", "description": "Use when asked to review loop config quality, validate loop YAML, or audit a loop definition.", "args_hint": null}, {"name": "review-sprint", "description": "AI-guided sprint health check that analyzes a sprint's current state and suggests improvements - removing stale issues, adding related backlog issues, and identifying dependency or contention problems. Pairs with `ll-sprint edit` (mechanics) the way `/ll:create-sprint` pairs with `ll-sprint create` (intelligence).\n\nTrigger keywords: \"review sprint\", \"sprint health\", \"sprint review\", \"check sprint\", \"sprint suggestions\", \"optimize sprint\", \"sprint health check\", \"is my sprint still good", "args_hint": "[sprint-name]"}, {"name": "run-tests", "description": "Run test suites with common patterns", "args_hint": "[scope]"}, {"name": "scan-codebase", "description": "Scan codebase to identify bugs, enhancements, and features, then create issue files", "args_hint": "[flags]"}, {"name": "scan-product", "description": "Scan codebase for product-focused issues based on goals document", "args_hint": null}, {"name": "scope-epic", "description": "Use when asked to decompose a theme or goal into an EPIC with 3\u20138 child issues. Creates the EPIC file, pre-wired child stubs, and stages everything for git.", "args_hint": "<theme> [--from-doc <path>] [--priority P2] [--auto]"}, {"name": "simplify-loop", "description": "Use when asked to simplify a loop, decompose a loop into sub-loops, collapse state chains into flows, or refactor an FSM loop.", "args_hint": "[name] [--dry-run] [--auto] [--flows-only] [--subloops-only] [--yes]"}, {"name": "spike", "description": "Use when asked to prove an unproven internal mechanism with an isolated code spike before implementing.", "args_hint": "ISSUE_ID [--auto | --check | --plan-only | --plan <file> | --force]"}, {"name": "sync-issues", "description": "Sync local issues with GitHub Issues (push/pull/status).\n\nTrigger keywords: \"sync issues\", \"push to github\", \"pull from github\", \"github sync\", \"sync with github\", \"export issues\", \"import issues from github", "args_hint": "[action] [issue-id]"}, {"name": "toggle-autoprompt", "description": "Toggle automatic prompt optimization settings", "args_hint": "[setting]"}, {"name": "tradeoff-review-issues", "description": "Evaluate active issues for utility vs complexity trade-offs and recommend which to implement, update, or close. Use this skill to sense-check your backlog before implementation, prune low-value issues, or during sprint planning to focus on high-value work.\n\nTrigger keywords: \"tradeoff review\", \"review issues\", \"utility review\", \"prune backlog\", \"issue tradeoff\", \"sense check issues\", \"evaluate issues\", \"backlog review\", \"worth implementing\", \"low value issues", "args_hint": "[issue-ids]"}, {"name": "update", "description": "Use when asked to update little-loops, the plugin, or the pip package.", "args_hint": "[flags]"}, {"name": "update-docs", "description": "Use when asked to update docs, find stale documentation, or check doc coverage after a sprint.", "args_hint": "[--since <date|git-ref>] [--fix]"}, {"name": "verify-issue-loop", "description": "Use when asked to generate an FSM verification loop YAML from a single issue's acceptance criteria, or an adversarial variant that tries to break the feature via boundary/malformed/failure-mode probes.", "args_hint": "<issue-id> [--mode criteria|adversarial]"}, {"name": "verify-issues", "description": "Verify issue files for accuracy, relevance, and completeness by testing claims against actual code", "args_hint": "[issue-id]"}, {"name": "wire-issue", "description": "Use when a refined issue is missing integration points or wiring in the implementation plan.", "args_hint": null}, {"name": "workflow-automation-proposer", "description": "Use when asked to propose automations or suggest automation opportunities from workflow patterns.", "args_hint": null}];
-    window.__GENERATOR_VERSION__ = "1.164.0";
-    window.__CONFIDENCE_GATE__ = {"enabled": true, "readiness_threshold": 85, "outcome_threshold": 65};
+    window.__SKILL_CATALOG__ = [];
+    window.__GENERATOR_VERSION__ = "0.0.0-golden";
+    window.__CONFIDENCE_GATE__ = {"enabled": false, "readiness_threshold": 85, "outcome_threshold": 65};
     const CONNECTED_CONTEXT = null;
     window.__ACTIVE_THEME__ = document.documentElement.getAttribute("data-theme") || "light";
   </script>

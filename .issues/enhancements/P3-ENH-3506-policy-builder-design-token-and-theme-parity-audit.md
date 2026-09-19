@@ -3,10 +3,11 @@ id: ENH-3506
 type: ENH
 title: Policy builder design-token and theme parity audit and fix
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-18'
 captured_at: '2026-09-18T23:50:20Z'
+completed_at: '2026-09-19T02:14:18Z'
 blocks:
 - FEAT-3505
 relates_to:
@@ -209,12 +210,28 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
+## Findings
+
+- **Drift fixed**: 15 unresolved template `var()` names renamed to existing semantic tokens (`--color-surface-{primary,secondary}`, `--color-text-secondary`, `--color-border-{subtle,strong}` by role, `--font-family-{body,mono}`); new `color.action.primary-text` and `color.status.{success,warning,error,info}.{bg,text}` added to `semantic.json` + `themes/dark.json` for all three packaged profiles and this checkout's mirror. All six profile/theme combinations measure >= 4.5:1 on every paired surface (enforced by `test_enh3506_policy_builder_theme_parity.py`).
+- **Compatibility**: template-local `:root`/`[data-theme=dark]` defaults (incl. `color-scheme: light|dark`) precede the stamp point; old mirrors, partial `DESIGN.md` (explicit + `auto`) and disabled tokens stay readable, custom values untouched. No migration tool.
+- **Native controls** follow `data-theme` (explicit `color-scheme`), verified by `.loops/verify-enh-3506-theme.yaml` (12/12 probes, opposing OS scheme, all three modes).
+- **Golden isolated**: pinned to packaged `default` profile, no mirror, `active_theme: dark`, empty skill catalog, fixed generator version; regenerated once after reviewing the diff.
+- **Verdict — worktree stopgap** (`worktree_utils.py` `copy_files=[".ll/design-tokens"]`): redundant for the golden test (passes mirror-less in an isolated tmp project). Not removed: other ambient-mirror consumers were not audited here; removal (and its `test_worktree_utils` test) is a separate follow-up.
+- **Verdict — `ll-doctor` companion**: yes, a template-aware companion would be worthwhile (`lint_profile()`/`_full_design_tokens_check()` never read the template and report "not found" for mirror-less projects); the new pytest parity test covers the gap meanwhile. Implementation deferred to separate work.
+- Full-suite note: `test_verify_evidence.py::TestRepoGate::test_no_new_unverifiable_evidence` fails on an unrelated span in BUG-3484 (pre-existing).
+
+## Resolution
+
+**Completed** — 2026-09-19. Action: improve.
+
 ## Status
 
 **Open** | Created: 2026-09-18 | Priority: P3
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-19T02:14:18 - `0ae426e0-c925-49e4-9884-0834c644d739.jsonl`
+- `/ll:ready-issue` - 2026-09-19T01:57:56 - `974d7f60-a97e-48c8-b99a-9c4a372cb12a.jsonl`
 - `/ll:confidence-check` - 2026-09-19T01:55:38 - `c0bfcfe8-b2d9-4697-ba5d-df1672fcbcb4.jsonl`
 - `/ll:confidence-check` - 2026-09-19T01:36:47 - `953ae6f1-8990-4402-a96c-e167c77869ae.jsonl`
 - `/ll:verify-issues` - 2026-09-19T01:29:27 - `95a86361-ae5f-4af5-841b-d063cb74486b.jsonl`

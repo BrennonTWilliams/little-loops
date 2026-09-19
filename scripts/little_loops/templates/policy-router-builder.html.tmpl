@@ -5,18 +5,59 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Policy Router Builder</title>
   <style>
+/* Template-local defaults (ENH-3506): stamped blocks above/below override these at
+   equal specificity, so old mirrors, partial DESIGN.md and disabled tokens stay readable. */
+:root {
+  color-scheme: light;
+  --color-surface-primary: #ffffff;
+  --color-surface-secondary: #f8f9fa;
+  --color-surface-raised: #f1f3f5;
+  --color-text-primary: #212529;
+  --color-text-secondary: #495057;
+  --color-border-subtle: #dee2e6;
+  --color-border-strong: #868e96;
+  --color-action-primary: #1d4ed8;
+  --color-action-primary-text: #ffffff;
+  --color-status-success-bg: #d4edda;
+  --color-status-success-text: #155724;
+  --color-status-warning-bg: #fff3cd;
+  --color-status-warning-text: #664d03;
+  --color-status-error-bg: #f8d7da;
+  --color-status-error-text: #721c24;
+  --color-status-info-bg: #d1ecf1;
+  --color-status-info-text: #0c5460;
+  --font-family-body: system-ui, sans-serif;
+  --font-family-mono: ui-monospace, monospace;
+}
+[data-theme=dark] {
+  color-scheme: dark;
+  --color-surface-primary: #101214;
+  --color-surface-secondary: #212529;
+  --color-surface-raised: #343a40;
+  --color-text-primary: #ffffff;
+  --color-text-secondary: #dee2e6;
+  --color-border-subtle: #343a40;
+  --color-border-strong: #868e96;
+  --color-action-primary: #3b82f6;
+  --color-action-primary-text: #0b0d0f;
+  --color-status-success-bg: #14532d;
+  --color-status-success-text: #bbf7d0;
+  --color-status-warning-bg: #713f12;
+  --color-status-warning-text: #fef08a;
+  --color-status-error-bg: #7f1d1d;
+  --color-status-error-text: #fecaca;
+  --color-status-info-bg: #164e63;
+  --color-status-info-text: #a5f3fc;
+}
 /* Stamped design-token CSS custom properties (light :root + [data-theme=dark]). */
 /*__THEMED_CSS_VARS__*/
 
-:root {
-  color-scheme: light dark;
-}
 * { box-sizing: border-box; }
 body {
   margin: 0;
-  font-family: var(--typography-font-family-base, system-ui, sans-serif);
-  background: var(--color-surface-base, #ffffff);
-  color: var(--color-text-primary, #1a1a1a);
+  font-family: var(--font-family-body, system-ui, sans-serif);
+  background: var(--color-surface-primary, #ffffff);
+  color: var(--color-text-primary, #212529);
   line-height: 1.5;
 }
 header {
@@ -24,7 +65,7 @@ header {
   align-items: center;
   justify-content: space-between;
   padding: 1rem 1.5rem;
-  border-bottom: 1px solid var(--color-border-default, #d0d0d0);
+  border-bottom: 1px solid var(--color-border-subtle, #dee2e6);
 }
 h1 { font-size: 1.25rem; margin: 0; }
 main {
@@ -37,13 +78,13 @@ main {
   main { grid-template-columns: 1fr; }
 }
 .panel {
-  border: 1px solid var(--color-border-default, #d0d0d0);
+  border: 1px solid var(--color-border-subtle, #dee2e6);
   border-radius: 8px;
   padding: 1rem;
-  background: var(--color-surface-raised, #fafafa);
+  background: var(--color-surface-raised, #f1f3f5);
 }
 fieldset {
-  border: 1px solid var(--color-border-default, #d0d0d0);
+  border: 1px solid var(--color-border-subtle, #dee2e6);
   border-radius: 6px;
   margin: 0 0 1rem;
   padding: 0.75rem;
@@ -53,8 +94,8 @@ label { display: block; font-size: 0.85rem; margin: 0.4rem 0 0.15rem; }
 input, select, textarea, button {
   font: inherit;
   color: inherit;
-  background: var(--color-surface-base, #fff);
-  border: 1px solid var(--color-border-default, #ccc);
+  background: var(--color-surface-primary, #ffffff);
+  border: 1px solid var(--color-border-strong, #868e96);
   border-radius: 4px;
   padding: 0.35rem 0.5rem;
 }
@@ -62,66 +103,66 @@ input[type="text"], input[type="number"], textarea, select { width: 100%; }
 textarea { min-height: 4rem; resize: vertical; }
 button {
   cursor: pointer;
-  background: var(--color-action-primary, #2563eb);
+  background: var(--color-action-primary, #1d4ed8);
   color: var(--color-action-primary-text, #ffffff);
   border: none;
 }
 button.secondary {
   background: transparent;
-  color: var(--color-text-primary, #1a1a1a);
-  border: 1px solid var(--color-border-default, #ccc);
+  color: var(--color-text-primary, #212529);
+  border: 1px solid var(--color-border-strong, #868e96);
 }
 .row { display: flex; gap: 0.5rem; align-items: flex-end; flex-wrap: wrap; }
 .row > * { flex: 1; }
 .row > button { flex: 0 0 auto; }
-.outcome-group { border: 1px dashed var(--color-border-default, #ccc); border-radius: 6px; padding: 0.6rem; margin-bottom: 0.75rem; }
+.outcome-group { border: 1px dashed var(--color-border-subtle, #dee2e6); border-radius: 6px; padding: 0.6rem; margin-bottom: 0.75rem; }
 .rule-row { display: flex; gap: 0.4rem; align-items: center; margin-bottom: 0.35rem; flex-wrap: wrap; }
 .rule-card {
   display: flex;
   gap: 0.4rem;
   align-items: center;
   flex-wrap: wrap;
-  border: 1px solid var(--color-border-default, #ccc);
+  border: 1px solid var(--color-border-subtle, #dee2e6);
   border-radius: 6px;
   padding: 0.5rem;
   margin-bottom: 0.4rem;
-  background: var(--color-surface-base, #fff);
+  background: var(--color-surface-primary, #ffffff);
 }
 .rule-winner {
-  outline: 2px solid var(--color-action-primary, #2563eb);
+  outline: 2px solid var(--color-action-primary, #1d4ed8);
   background: var(--color-status-success-bg, #d4edda);
 }
 .rule-ord { font-weight: 700; min-width: 1.5rem; }
 .rule-move { flex: 0 0 auto; padding: 0.2rem 0.5rem; }
 .scenario-card {
-  border: 1px solid var(--color-border-default, #ccc);
+  border: 1px solid var(--color-border-subtle, #dee2e6);
   border-radius: 6px;
   padding: 0.5rem;
   margin-bottom: 0.5rem;
-  background: var(--color-surface-base, #fff);
+  background: var(--color-surface-primary, #ffffff);
 }
 .scenario-card .row { margin-bottom: 0.35rem; }
 .scenario-verdict { margin: 0.25rem 0 0; padding: 0.2rem 0.4rem; border-radius: 4px; }
 .fallback-row { font-style: italic; opacity: 0.85; }
 .fallback-row select { max-width: 16rem; }
 pre {
-  background: var(--color-surface-sunken, #1e1e1e);
-  color: var(--color-text-on-sunken, #e0e0e0);
+  background: var(--color-surface-secondary, #f8f9fa);
+  color: var(--color-text-secondary, #495057);
   padding: 1rem;
   border-radius: 6px;
   overflow: auto;
   max-height: 60vh;
   white-space: pre;
-  font-family: var(--typography-font-family-mono, ui-monospace, monospace);
+  font-family: var(--font-family-mono, ui-monospace, monospace);
   font-size: 0.8rem;
 }
 .messages { margin: 0.5rem 0; padding: 0; list-style: none; }
 .messages li { padding: 0.3rem 0.5rem; border-radius: 4px; margin-bottom: 0.25rem; font-size: 0.85rem; }
-.msg-warn { background: var(--color-status-warning-bg, #fff3cd); color: var(--color-status-warning-text, #856404); }
+.msg-warn { background: var(--color-status-warning-bg, #fff3cd); color: var(--color-status-warning-text, #664d03); }
 .msg-error { background: var(--color-status-error-bg, #f8d7da); color: var(--color-status-error-text, #721c24); }
 .msg-ok { background: var(--color-status-success-bg, #d4edda); color: var(--color-status-success-text, #155724); }
 .msg-info { background: var(--color-status-info-bg, #d1ecf1); color: var(--color-status-info-text, #0c5460); }
-.hint { font-family: var(--typography-font-family-mono, monospace); font-size: 0.8rem; opacity: 0.8; white-space: pre-line; }
+.hint { font-family: var(--font-family-mono, monospace); font-size: 0.8rem; opacity: 0.8; white-space: pre-line; }
 .theme-toggle { font-size: 1.1rem; padding: 0.3rem 0.6rem; }
 .del { flex: 0 0 auto; padding: 0.2rem 0.5rem; }
 small.help { display: block; opacity: 0.7; font-size: 0.75rem; }

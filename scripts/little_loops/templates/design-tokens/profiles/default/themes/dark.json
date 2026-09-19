@@ -18,7 +18,14 @@
     "action": {
       "primary":       "{color.brand.500}",
       "primary-hover": "{color.brand.300}",
-      "destructive":   "{color.danger.300}"
+      "destructive":   "{color.danger.300}",
+      "primary-text": "#0b0d0f"
+    },
+    "status": {
+      "success": { "bg": "#14532d", "text": "#bbf7d0" },
+      "warning": { "bg": "#713f12", "text": "#fef08a" },
+      "error": { "bg": "#7f1d1d", "text": "#fecaca" },
+      "info": { "bg": "#164e63", "text": "#a5f3fc" }
     }
   },
   "shadow": {

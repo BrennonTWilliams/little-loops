@@ -327,6 +327,12 @@ theme, and skill catalog are **stamped from this project at generation time** (i
 project's configured `active_theme`, which the page honors ahead of OS light/dark preference),
 so regenerate the file to pick up new skills or grammar changes.
 
+Both light and dark palettes are embedded, and native controls (selects, inputs) follow the
+page's selected theme rather than the OS preference. Status and primary-button colors come from
+`color.status.*` and `color.action.primary-text` in your token profile; a token profile that
+predates these keys (or a partial `DESIGN.md`, or disabled tokens) still renders readable
+built-in defaults, and your own custom token values are never overwritten.
+
 **Builder vs. `edit-routes`:** the builder composes a new loop and exports YAML; "Save project"
 / "Open project" round-trip its own authoring state (all three modes' drafts, in a versioned
 JSON envelope) so you can pause and resume a builder session, but that project file is not a

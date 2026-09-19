@@ -1,0 +1,85 @@
+name: verify-enh-3506-theme
+category: verification
+description: |
+  Browser theme verification for ENH-3506 (policy builder design tokens).
+  Generates the real policy-router-builder.html and drives it headlessly with
+  Playwright (.loops/probes/enh-3506-theme-probes.mjs) in both data-theme
+  states under an opposing OS colorScheme, across all three authoring modes:
+  native controls follow data-theme; primary buttons, status messages,
+  winning-rule highlight and YAML output keep >= 4.5:1 contrast.
+
+  Dev-only, on-demand (run once at issue closure); never a pytest gate.
+  Playwright is resolved from the invoking machine (LL_PLAYWRIGHT_ROOT /
+  NODE_PATH / `npm root -g`); the loop ends in `skipped-no-playwright` — never
+  a pass — when none is available. Verdict is owned by the probe exit marker.
+scope:
+  - ".loops/runs/"
+context:
+  probe_script: .loops/probes/enh-3506-theme-probes.mjs
+initial: preflight
+states:
+  preflight:
+    action_type: shell
+    action: |
+      mkdir -p "${context.run_dir}"
+      if ! command -v node >/dev/null 2>&1; then
+        echo "PLAYWRIGHT_MISSING: node not on PATH"
+        exit 0
+      fi
+      node ${context.probe_script:shell} --check > "${context.run_dir}/preflight.log" 2>&1
+      cat "${context.run_dir}/preflight.log"
+      exit 0
+    timeout: 120
+    evaluate:
+      type: output_contains
+      pattern: PLAYWRIGHT_OK
+    on_yes: generate
+    on_no: skipped-no-playwright
+    on_error: skipped-no-playwright
+
+  generate:
+    action_type: shell
+    action: |
+      ll-artifact policy-builder -o "${context.run_dir}/html" > "${context.run_dir}/generate.log" 2>&1
+      if [ -s "${context.run_dir}/html/policy-router-builder.html" ]; then
+        echo "GENERATED ${context.run_dir}/html/policy-router-builder.html"
+      else
+        echo "GENERATE_FAILED"; cat "${context.run_dir}/generate.log"
+      fi
+      exit 0
+    timeout: 120
+    evaluate:
+      type: output_contains
+      pattern: GENERATED
+    on_yes: probe
+    on_no: failed
+    on_error: failed
+
+  probe:
+    action_type: shell
+    action: |
+      node ${context.probe_script:shell} \
+        "${context.run_dir}/html/policy-router-builder.html" \
+        "${context.run_dir}/probe-report.json" > "${context.run_dir}/probes.log" 2>&1
+      cat "${context.run_dir}/probes.log"
+      exit 0
+    timeout: 600
+    evaluate:
+      type: output_contains
+      pattern: THEME_PROBES_PASSED
+    on_yes: done
+    on_no: failed
+    on_error: failed
+
+  done:
+    terminal: true
+  skipped-no-playwright:
+    terminal: true
+    failure: true
+  failed:
+    terminal: true
+    failure: true
+
+max_steps: 8
+max_iterations: 1
+timeout: 900

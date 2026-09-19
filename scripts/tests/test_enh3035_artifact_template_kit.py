@@ -11,6 +11,7 @@ reading of the templatize-reachability AC — see the issue's Decisions).
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -59,11 +60,45 @@ def test_stamp_page_shell_accepts_body_without_placeholders() -> None:
     assert html == body
 
 
-def test_policy_builder_renders_byte_identically_to_golden_fixture(tmp_path: Path) -> None:
+def _pin_golden_render_inputs(tmp_path: Path, monkeypatch) -> None:
+    """Pin every ambient input of the builder render (ENH-3506).
+
+    No `.ll/design-tokens/` mirror (packaged `default` profile via
+    `source: profile`), explicit `active_theme`, an empty skill catalog, and a
+    fixed generator version, so the golden is independent of the checkout's
+    config, mirror, installed skills and release version.
+    """
+    import little_loops
+    import little_loops.skill_expander as skill_expander
+
+    project = tmp_path / "project"
+    (project / ".ll").mkdir(parents=True)
+    (project / ".ll" / "ll-config.json").write_text(
+        json.dumps(
+            {
+                "design_tokens": {
+                    "enabled": True,
+                    "source": "profile",
+                    "active": "default",
+                    "active_theme": "dark",
+                }
+            }
+        )
+    )
+    monkeypatch.chdir(project)
+    monkeypatch.setattr(skill_expander, "resolve_plugin_content_root", lambda: None)
+    monkeypatch.setattr(little_loops, "__version__", "0.0.0-golden")
+
+
+def test_policy_builder_renders_byte_identically_to_golden_fixture(
+    tmp_path: Path, monkeypatch
+) -> None:
+    _pin_golden_render_inputs(tmp_path, monkeypatch)
+    out = tmp_path / "out"
     logger = Logger(use_color=False)
-    args = argparse.Namespace(output=str(tmp_path))
+    args = argparse.Namespace(output=str(out))
     assert cmd_policy_builder(args, logger) == 0
-    actual = (tmp_path / "policy-router-builder.html").read_bytes()
+    actual = (out / "policy-router-builder.html").read_bytes()
     expected = GOLDEN.read_bytes()
     assert actual == expected
 
