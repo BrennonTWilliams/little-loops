@@ -8,9 +8,22 @@ discovered_by: ll-issues-create
 discovered_date: '2026-09-17'
 captured_at: '2026-09-17T19:57:23Z'
 blocked_by: []
-relates_to: [EPIC-3493, ENH-3491, ENH-3506, FEAT-3488, FEAT-3498, FEAT-3504, FEAT-3505]
+relates_to:
+- EPIC-3493
+- ENH-3491
+- ENH-3506
+- FEAT-3488
+- FEAT-3498
+- FEAT-3504
+- FEAT-3505
 program_design_not_applicable: true
 reconcile_attempted: true
+confidence_score: 100
+outcome_confidence: 82
+score_complexity: 21
+score_test_coverage: 18
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # ENH-3500: Policy builder cross-mode design and UX audit
@@ -157,6 +170,7 @@ Remaining: none from this pass — `blocked_by` cleared and stale prose refreshe
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-19T18:45:23 - `3835f63e-f729-4db6-8d3d-bc4b71a041a3.jsonl`
 - `/ll:verify-issues` - 2026-09-19T15:15:38 - `7ee9c824-60e2-4758-b5c9-b9c5467b1552.jsonl`
 - `/ll:wire-issue` - 2026-09-17T20:36:27 - `09ec3a0b-aab2-4bb6-8cae-e9097652c9fa.jsonl`
 - `/ll:reconcile-issue` - 2026-09-17T20:19:51 - `6b0d1a07-f3de-4f1f-94c3-b6d1cbb4cbbf.jsonl`
