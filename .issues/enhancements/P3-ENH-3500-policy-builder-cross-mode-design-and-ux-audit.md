@@ -17,11 +17,11 @@ reconcile_attempted: true
 
 ## Summary
 
-Holistic visual/UX audit of the policy-router builder across all authoring modes (lifecycle, decision-table, the scenario-suite surface FEAT-3488 shipped, and the connected-page surface FEAT-3505 adds): information hierarchy, empty/error states, and cross-mode consistency. None of EPIC-3493's children own this — ENH-3491 (done) covered lifecycle-mode layout, responsive CSS, and keyboard/label basics only, scoped to that one mode. The design-token/theme parity half of the original scope was split into ENH-3506 on 2026-09-18 so it can run without waiting on FEAT-3505.
+Holistic visual/UX audit of the policy-router builder across all three authoring modes (`decision_table`, `rubric`, `issue_lifecycle`), plus the scenario-suite surface FEAT-3488 shipped and the connected-page surface FEAT-3505 adds: information hierarchy, empty/error states, and cross-mode consistency. None of EPIC-3493's children own this — ENH-3491 (done) covered lifecycle-mode layout, responsive CSS, and keyboard/label basics only, scoped to that one mode. The design-token/theme parity half of the original scope was split into ENH-3506 on 2026-09-18 so it can run without waiting on FEAT-3505.
 
 ## Current Behavior
 
-Each policy-builder authoring mode (lifecycle, decision-table) was designed, reviewed, and shipped independently, and no issue has ever checked them against each other. ENH-3491 audited lifecycle-mode layout, responsive CSS, and keyboard/label basics in isolation. There is no audit covering information hierarchy, empty/error states, or visual consistency across modes. (Design-token/theme correctness is tracked separately in ENH-3506.)
+Each policy-builder authoring mode (decision-table, rubric, lifecycle) was designed, reviewed, and shipped independently, and no issue has ever checked them against each other. ENH-3491 audited lifecycle-mode layout, responsive CSS, and keyboard/label basics in isolation. There is no audit covering information hierarchy, empty/error states, or visual consistency across modes. (Design-token/theme correctness is tracked separately in ENH-3506.)
 
 ## Expected Behavior
 
@@ -29,13 +29,13 @@ Once FEAT-3505 lands (FEAT-3488's scenario-suite surface has already shipped), a
 
 ## Motivation
 
-The builder now spans multiple modes shipped independently (lifecycle, decision-table, the scenario-suite surface shipped by FEAT-3488, plus the connected-page surface still landing via FEAT-3505 — FEAT-3498 (done) was narrowed to the queue/loop run-request contracts, and its connected UI was split into FEAT-3504 (server routes) and FEAT-3505 (page controller and UI)). Each mode was designed and reviewed in isolation; nothing has checked them together for a consistent look, consistent empty/error handling, or correct dark/light design-token usage.
+The builder now spans three modes shipped independently (decision-table, rubric, lifecycle), the scenario-suite surface shipped by FEAT-3488, plus the connected-page surface still landing via FEAT-3505 — FEAT-3498 (done) was narrowed to the queue/loop run-request contracts, and its connected UI was split into FEAT-3504 (server routes) and FEAT-3505 (page controller and UI)). Each mode was designed and reviewed in isolation; nothing has checked them together for a consistent look, or consistent empty/error handling. (Dark/light design-token correctness moved to ENH-3506, which now fixes the drift it found; this audit runs after it so dark theme is judged on real token values, not light-valued fallbacks.)
 
 ## Proposed Solution
 
-Audit, not a code change in itself. After FEAT-3505 lands, walk every authoring mode side by side against a shared checklist — information hierarchy (heading levels, primary/secondary action placement), empty states (no rules/no decisions yet), error states (validation failure presentation), and terminology/iconography consistency. The checklist must cover FEAT-3505's connected controls (issue selection, review, submit, status) and its new states (unavailable-with-reason, rejected, outcome-unknown); FEAT-3505 establishes the "connected controls unavailable with a reason" convention, which has no prior in-repo precedent, so audit the other modes' disabled/unavailable states against it. File one follow-up issue per inconsistency found, tagged `relates_to: [ENH-3500]`.
+Audit, not a code change in itself. After FEAT-3505 lands, walk every authoring mode side by side against a shared checklist — information hierarchy (heading levels, primary/secondary action placement), empty states (no rules/no decisions yet), error states (validation failure presentation), and terminology/iconography consistency. Run every checklist row in **both themes** and at **narrow width** (ENH-3491's responsive breakpoints). Add an **accessibility** row for the connected controls, which no issue owns (ENH-3491 covered keyboard/label basics for lifecycle mode only): live-region announcement of status transitions (`#live-status`, `role="status"`), focus placement after Review and Submit, keyboard reachability of issue selection, and how disabled-with-reason is exposed (`aria-disabled` + visible/`aria-describedby` reason vs. bare `disabled`). The checklist must cover FEAT-3505's connected controls (issue selection, review, submit, status) and its new states (unavailable-with-reason, rejected, outcome-unknown); FEAT-3505 establishes the "connected controls unavailable with a reason" convention, which has no prior in-repo precedent, so audit the other modes' disabled/unavailable states against it. Record every finding in a `## Audit Findings` table in this issue (surface, mode, theme/width, observed, expected, follow-up ID). File follow-ups via `ll-issues create` then `ll-issues link <ID> --relates-to ENH-3500`: **one issue per root cause**, grouping findings that share a fix (e.g. one empty-state pattern missing in all three modes is one issue), not one per table row.
 
-If FEAT-3505 introduces new design-token references or hardcoded colors, check them here using ENH-3506's method (diff the rendered `:root`/`[data-theme=dark]` blocks against the active profile), since ENH-3506 audits only the pre-FEAT-3505 template.
+If FEAT-3505 introduces new design-token references or hardcoded colors, check them here using ENH-3506's method (diff the rendered `:root`/`[data-theme=dark]` blocks against the active profile), since ENH-3506 covers only the pre-FEAT-3505 template. ENH-3506's template-ref parity pytest should already keep new refs resolving; this pass checks the visual result.
 
 No emitted-YAML or runtime-behavior change is in scope for this issue (see Out of Scope) — only presentation.
 
@@ -68,7 +68,8 @@ _Added by `/ll:refine-issue` — 2026-09-17 — based on codebase analysis (toke
 
 1. Wait for FEAT-3505 to land; render the builder offline (`ll-artifact policy-builder`) and connected (via the `ll-artifact serve` policy-builder flag FEAT-3504 adds).
 2. Walk every authoring mode and the connected controls against the shared checklist (information hierarchy, empty states, error states, terminology/iconography), using ENH-3491's shipped lifecycle-mode output as the baseline and FEAT-3505's unavailable-with-reason convention as the reference for disabled states.
-3. File one follow-up issue per inconsistency found (`relates_to: [ENH-3500]`); close this issue once findings are filed.
+3. Fill the `## Audit Findings` table; file one follow-up per root cause (`relates_to: [ENH-3500]`); close this issue once findings are filed.
+4. Run `/ll:confidence-check` once FEAT-3505 lands and the surface set is fixed (unscored while blocked).
 
 ## Impact
 
@@ -91,7 +92,7 @@ _Added by `/ll:refine-issue` — 2026-09-17 — based on codebase analysis (toke
 
 ## Dependencies
 
-`blocked_by: [FEAT-3505]` — the whole issue now waits on it; the half that could run early was split into ENH-3506.
+`blocked_by: [FEAT-3505]` — the whole issue now waits on it; the half that could run early was split into ENH-3506. ENH-3506 is covered transitively (it blocks FEAT-3505 as of 2026-09-19), so the dark-theme walk sees corrected tokens.
 
 Updated 2026-09-18: the original blockers FEAT-3498 and FEAT-3488 are both done, but FEAT-3498 was narrowed to the queue/loop run-request contracts and its connected UI was split into FEAT-3504 (server routes, no UI) and FEAT-3505 (page controller and UI). FEAT-3505 is the surface Scope §2 needs to see; FEAT-3504 is covered transitively (it blocks FEAT-3505).
 
