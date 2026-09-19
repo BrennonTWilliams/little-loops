@@ -5,7 +5,7 @@ title: 'll-session backfill under-captures loop history: non-recursive glob miss
   .history state files'
 priority: P2
 status: open
-decision_needed: true
+decision_needed: false
 discovered_by: ll-issues-create
 discovered_date: '2026-09-19'
 captured_at: '2026-09-19T22:27:37Z'
@@ -85,7 +85,22 @@ _Added by `/ll:refine-issue` — 2026-09-19 — based on codebase analysis:_
 
 **Option B**: Keep the schema unchanged; do a pre-existence check in `_backfill_loops` (e.g. `SELECT 1 FROM loop_events WHERE loop_name=? AND ts=? AND transition='backfill'`) before insert, skipping `_index` when a row exists — no migration, `SCHEMA_VERSION` and manifest untouched.
 
+> **Selected:** Option B — scoped pre-existence check; no v53 migration, and no unique key that could collide with live `loop_events` rows.
+
 **Recommended**: Option B — the only rows needing dedup are `transition="backfill"` rows, which the live writer never produces; a scoped check avoids a v53 migration, ~25 literal-version test edits, and a unique key that could collide with live rows sharing `(loop_name, ts)`. Choose A only if a stable per-run key is added to `loop_events`.
+
+### Decision Rationale
+
+**Selected**: Option B — scoped pre-existence check in `_backfill_loops`.
+
+**Reasoning**: Option A has strong precedent (v43 dedup-before-index, `INSERT OR IGNORE` + rowcount gating in sibling backfills), but no safe unique key exists over `loop_events`: live rows share `(loop_name, ts)` across transitions, `retries`/`state` are nullable (NULLs are distinct in a UNIQUE index), and backfill `ts` is a mutable `updated_at`. A would add a v53 migration plus ~25 literal-version test edits for a backfill-only path. B is contained to one function and needs no schema change.
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| A — DB-level UNIQUE + INSERT OR IGNORE | 2 | 1 | 2 | 1 | 6/12 |
+| B — pre-existence check | 1 | 3 | 3 | 2 | 9/12 |
+
+**Key evidence**: B departs from the sibling-backfill convention (reuse 1/3 vs 2/3) and, as an unindexed SELECT, is O(n) per file. Implementation must key the check on `transition='backfill'` and treat empty `ts` and `.running` files with advancing `updated_at` as known limits (candidate follow-up: key on run id/state-file path).
 
 ## Integration Map
 
@@ -128,5 +143,6 @@ _Added by `/ll:refine-issue` — 2026-09-19 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:decide-issue` - 2026-09-19T23:22:42 - `d4660828-e0d9-40c0-89b8-9bbf5b5e050f.jsonl`
 - `/ll:refine-issue` - 2026-09-19T23:17:05 - `4f31a004-1b37-455a-97b4-0a7a1b1424a6.jsonl`
 - `/ll:format-issue` - 2026-09-19T23:02:59 - `f7716757-cc12-4f9f-9358-3ee432f01464.jsonl`
