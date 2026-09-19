@@ -10,8 +10,6 @@ captured_at: '2026-09-18T23:20:16Z'
 parent: EPIC-3493
 labels:
 - policy-builder
-blocked_by:
-- ENH-3507
 blocks:
 - ENH-3500
 relates_to:
@@ -20,24 +18,25 @@ relates_to:
 - FEAT-3498
 - FEAT-3503
 - ENH-3487
+- ENH-3507
+- BUG-3509
 confidence_score: 90
 outcome_confidence: 66
 score_complexity: 10
 score_test_coverage: 18
 score_ambiguity: 20
 score_change_surface: 18
-missing_artifacts: true
 ---
 
 # FEAT-3505: Policy builder connected page submission controller and UI
 
 ## Summary
 
-Page half of the connected policy builder, split from FEAT-3504 on 2026-09-18 at the seam that issue named (server steps 0–3 vs. page step 4). FEAT-3504 delivers the serializer fix, `render_policy_builder_html`, `SseBridge` method/parameterized dispatch, the `--policy-builder` flag, the stamped `/*__CONNECTED_CONTEXT_JSON__*/` context, and the issues/submit/readback routes with their JSON `ErrorBody` contract — all testable over HTTP. This issue builds the browser side against that landed contract: a dependency-injected submission controller and workspace-scoped submission storage in `policy_builder_core.mjs`, DOM binding in the `.tmpl`, the completed served-page browser probe, and the user guide. The behavior-neutral prerequisites — `createBuilderStorage` (draft/meta/issue-selection extraction) and the probe skeleton — were split into ENH-3507 on 2026-09-19 and land first. No route, queue, loop, or approval semantics change here.
+Page half of the connected policy builder, split from FEAT-3504 on 2026-09-18 at the seam that issue named (server steps 0–3 vs. page step 4). FEAT-3504 delivers the serializer fix, `render_policy_builder_html`, `SseBridge` method/parameterized dispatch, the `--policy-builder` flag, the stamped `/*__CONNECTED_CONTEXT_JSON__*/` context, and the issues/submit/readback routes with their JSON `ErrorBody` contract — all testable over HTTP. This issue builds the browser side against that landed contract: a dependency-injected submission controller and workspace-scoped submission storage in `policy_builder_core.mjs`, DOM binding in the `.tmpl`, the completed served-page browser probe, and the user guide. The behavior-neutral prerequisites — `createBuilderStorage` (draft/meta/issue-selection extraction) and the probe skeleton — were split into ENH-3507 on 2026-09-19 and have landed. No route, queue, loop, or approval semantics change here.
 
 ## Current Behavior
 
-After FEAT-3504, `ll-artifact serve --policy-builder` serves the builder at `GET /{token}/policy-builder` with `{workspaceId}` stamped in, and the submit/readback/issues routes work over HTTP, but the page has no connected controls: nothing selects an issue, reviews a snapshot, submits, or polls. After ENH-3507, draft/meta/issue-selection storage goes through `createBuilderStorage` (workspace-namespaced when connected) and a probe skeleton asserts the stamped context, but no submission record, controller, or connected UI exists.
+After FEAT-3504, `ll-artifact serve --policy-builder` serves the builder at `GET /{token}/policy-builder` with `{workspaceId}` stamped in, and the submit/readback/issues routes work over HTTP, but the page has no connected controls: nothing selects an issue, reviews a snapshot, submits, or polls. Since ENH-3507 (done), draft/meta/issue-selection storage goes through `createBuilderStorage` (workspace-namespaced when connected) and a probe skeleton asserts the stamped context, but no submission record, controller, or connected UI exists.
 
 ## Expected Behavior
 
@@ -49,9 +48,9 @@ The page state machine (freeze/persist/guard/poll/token rotation) is where FEAT-
 
 ## Proposed Solution
 
-### Prerequisite (ENH-3507)
+### Prerequisite (ENH-3507 — done)
 
-`createBuilderStorage({storage, connectedContext, warn})` and the served-page probe skeleton land in ENH-3507. This issue consumes them: the controller reads/writes issue selection through that helper, uses the same injected `storage`, and extends the probe file as each page behavior lands so wiring breaks surface during the `.tmpl` work instead of at the end. Exact connected key formats for draft/meta/issue-selection are pinned there (`ll-policy-builder-draft-<workspaceId>-<mode>`, `ll-policy-builder-meta-<workspaceId>`, `ll-policy-builder-issue-<workspaceId>`); the probe and Node tests here assert those same strings.
+`createBuilderStorage({storage, connectedContext, warn})` and the served-page probe skeleton landed in ENH-3507. This issue consumes them: the controller reads/writes issue selection through that helper, uses the same injected `storage`, and extends the probe file as each page behavior lands so wiring breaks surface during the `.tmpl` work instead of at the end. `readIssueSelection`/`writeIssueSelection` exist but have **no caller in the `.tmpl` yet** — step 2 here is their first caller. The selection key is workspace-scoped, not project-scoped: issues belong to the repository, not the builder document, so Open-project **keeps** the persisted selection (it still bumps the context generation because `projectId` changed). Exact connected key formats for draft/meta/issue-selection are pinned there (`ll-policy-builder-draft-<workspaceId>-<mode>`, `ll-policy-builder-meta-<workspaceId>`, `ll-policy-builder-issue-<workspaceId>`); the probe and Node tests here assert those same strings.
 
 ### Page behavior
 
@@ -65,11 +64,11 @@ The page state machine (freeze/persist/guard/poll/token rotation) is where FEAT-
 - **Status labels cover all seven `QUEUE_STATUSES`**: `awaiting_approval` → "Awaiting approval", `pending` → "Approved — waiting to run", `running`, `done`, `failed`, `dead_letter` → "Failed — moved to dead letter", `cancelled` → "Rejected / cancelled by host". An unrecognized status is shown verbatim and treated as non-terminal.
 - **"Matching row" is defined by bindings.** A readback reconciles a record only when `bindings.issueId` and `bindings.revisionId` equal the envelope's; a mismatch is reported as a conflict and never recorded as `accepted`. Readback carries no `projectId` (the server never stores the page's `projectId`), so that binding is client-only — it scopes storage, not server identity.
 - **Warnings are persisted with the accepted record.** Only the first `created:true` response carries `warnings`; the `created:false` early return and readback do not. Store them in `SubmissionDelivery` on acceptance; when acceptance is recovered via readback or a `created:false` retry, show "validation warnings unavailable for this request" rather than implying there were none.
-- **Storage layout and retention.** Submission keys: `ll-policy-builder-submission-<workspaceId>-<projectId>-<requestId>` (envelope + delivery), plus one index key `ll-policy-builder-submissions-<workspaceId>-<projectId>` holding `{activeRequestId, recent: [requestId…]}` so reload finds the active record without scanning. **Write order before POST**: record key first, then the index key, and POST only after both writes succeed (a record without an index entry is an orphan reload cannot find; treat either failure as the durable-storage failure case and send nothing). Retain the active record plus the 5 most recent terminal/rejected records per `{workspaceId, projectId}`; prune older ones only after the new index write succeeds. **Strip `yaml` from resolved records** (terminal-`accepted` or `rejected`), keeping `revisionId` and byte length: only `prepared`/`outcome_unknown` records ever resend bytes, and six retained 1 MiB envelopes would otherwise exhaust the ~5 MB origin quota and break draft persistence. A requeued (revived) stripped record still polls normally — it never needs to resend. Never prune or strip an unresolved (`prepared`/`outcome_unknown`/non-terminal `accepted`) record.
+- **Storage layout and retention.** Submission keys: `ll-policy-builder-submission-<workspaceId>-<projectId>-<requestId>` (envelope + delivery), plus one index key `ll-policy-builder-submissions-<workspaceId>-<projectId>` holding `{activeRequestId, recent: [requestId…]}` so reload finds the active record without scanning. **Write order before POST**: record key first, then the index key, and POST only after both writes succeed (a record without an index entry is an orphan reload cannot find; treat either failure as the durable-storage failure case and send nothing). **Strip `yaml` as soon as a record is `accepted` or `rejected`** (any queue status), keeping `revisionId` and byte length: only `prepared`/`outcome_unknown` records ever resend bytes, and a request can sit in `awaiting_approval` for days. Retained 1 MiB envelopes would otherwise exhaust the ~5 MB origin quota and break draft persistence. **Displacement**: the explicit new-run choice replaces `activeRequestId` while the earlier request may be unresolved; the displaced record moves to the front of `recent`, keeps its delivery state (and its `yaml` only while `prepared`/`outcome_unknown`), and is still reconciled through readback on reload — a readback match strips it, a `404 request_not_found` marks it `rejected` with a client-side `abandoned` reason (it is never auto-resent). **Retention**: keep the active record plus the 5 most recent others per `{workspaceId, projectId}`; prune older ones only after the new index write succeeds. Never prune the active record; a displaced record is prunable once it is `accepted`, `rejected`, or has fallen out of the 5-entry window. **Workspace cap**: records under a `projectId` the user left via Open-project are not reachable from the current index, so on boot the controller enumerates `ll-policy-builder-submissions-<workspaceId>-*` index keys and, for projects other than the current one, strips `yaml` from every record and keeps at most the 3 most recently written project indexes (deleting the rest with their records). Returning to such a project still shows accepted records' status; an unsent `prepared` record there is lost, which the guide states.
 - **Multi-tab is out of scope.** The in-flight/generation guards are in-memory per page; two tabs on the same workspace may each mint a UUID. No `storage`-event coordination here — the guide states that one tab per project is the supported shape.
-- **Review preconditions.** Review is unavailable (with a reason) when `updatePreview()`'s existing gate fails — `serializeLoopYaml` throws or validation has an error-severity finding — mirroring how copy/download are disabled. Before presenting the snapshot, measure the UTF-8 byte length of the JSON request body that would be sent; if it exceeds the server's 1 MiB cap (`_MAX_RUN_REQUEST_BYTES`), refuse review with a size diagnostic so no UUID is spent on a guaranteed `413 body_too_large`.
+- **Review preconditions.** Review is unavailable (with a reason) when `updatePreview()`'s existing gate fails — `serializeLoopYaml` throws or validation has an error-severity finding — mirroring how copy/download are disabled. Before presenting the snapshot, measure the UTF-8 byte length of the JSON request body that would be sent; if it exceeds the server's 1 MiB cap (`_MAX_RUN_REQUEST_BYTES`), refuse review with a size diagnostic so no UUID is spent on a guaranteed `413 body_too_large`. The `requestId` is not allocated until Submit, so measure with a fixed-length placeholder UUID (`00000000-0000-4000-8000-000000000000`); the count is exact because `JSON.stringify` leaves non-ASCII unescaped, so body bytes = `TextEncoder` length of the string. Also refuse review when the YAML is not well-formed UTF-16 (`!yaml.isWellFormed()`, Node ≥ 20 / current browsers): `TextEncoder` hashes a lone surrogate as U+FFFD while `JSON.stringify` sends it as `\udXXX`, and the server's `yaml_text.encode("utf-8")` raises → `500 internal_error` → `outcome_unknown` → readback `404` → the identical retry is offered forever. The server-side `400` fix is BUG-3509; this client guard does not depend on it.
 - **Mode is page state, not page identity.** Mode is a dropdown on one page (`#mode-switch`, `.tmpl:175`), so "non-lifecycle" means the *active mode*. Outside `issue_lifecycle`, connected controls are disabled with a reason and an unsent review is invalidated; an already-sent record is unaffected — its status stays visible and polling continues, since the request exists on the server regardless of what is being authored.
-- **Requeue leaves stale run identity.** `requeue_entry` resets `status`/`result` but does not clear `loop_instance_id`/`run_dir` (`queue_store.py`), and rewrites `result` to `{previous: <prior result>}`. Show `loopInstanceId`/`runDir` as the current run only for `running` and terminal statuses; for `awaiting_approval`/`pending` with those fields set, label them "previous run". Render `result.previous` as the prior attempt's outcome, not as the current result.
+- **Requeue leaves stale run identity.** `revive_entry` (`little_loops.queue_store`; the `running` case uses `reset_to_pending`) resets `status`/`result` but does not clear `loop_instance_id`/`run_dir`, and rewrites `result` to `{previous: <prior result>}` only when a prior result existed (otherwise `null`). Show `loopInstanceId`/`runDir` as the current run only for `running` and terminal statuses; for `awaiting_approval`/`pending` with those fields set, label them "previous run". Render `result.previous` as the prior attempt's outcome, not as the current result.
 - **`result` rendering.** The wire `result` is `{exit_code, timed_out, error, stdout, stderr}` (written by the queue worker, `cli/queue.py`) or `{previous: …}` after requeue, or `null`. It is unbounded and re-fetched on every poll. Show `exit_code`, `timed_out`, `error`, and a truncated tail of `stderr`/`stdout` (last ~40 lines, in a collapsed details element). Loop output is untrusted text: render via `textContent` only, never `innerHTML`. Never persist `result` to storage — it is held in memory and re-read on reload.
 - **Issue list.** `GET ./issues` sends no `Cache-Control` (unlike readback) and no server change is in scope, so fetch it with `cache: "no-store"`. The server lists active issues only (`find_issues` default hides `done`/`cancelled`/`deferred`), so a persisted selection can vanish from the list: keep showing the selected ID marked "no longer listed" rather than silently clearing it; submit still gets the authoritative `404 issue_not_found`. Never persist or display the absolute `path` field.
 - **Conflict copy.** `409 request_conflict` has two server causes — a `requestId` already bound to a different revision/issue, and `PolicyRevisionConflictError` (same revision name, different stored bytes). Both record `rejected`; UI copy says the request conflicts with an existing one on the host and shows the server `message`, without asserting which cause.
@@ -141,7 +140,7 @@ _Added by `/ll:refine-issue` — 2026-09-19 — based on codebase analysis:_
 - `GET issues` → `{"issues": [{id, title, priority, status, path}]}`; `path` is an absolute filesystem path (do not persist or display it as identity — `id` is the key). No query handling.
 
 **Connected context and page seams (`policy-router-builder.html.tmpl`):**
-- Stamped context is exactly `{"workspaceId": "<16-hex>"}` (`render_policy_builder_html`, `policy_builder.py:66`; `derive_workspace_id` in `serve.py`) or `null` offline. It carries **no `projectId`**; the page's `projectId` is the template-owned value in `_META_KEY` (`_newProjectId`). It is declared `const CONNECTED_CONTEXT = /*__CONNECTED_CONTEXT_JSON__*/;` in a classic `<script>` at `.tmpl:192` and is not read anywhere else yet; visibility from the later module script is unverified.
+- Stamped context is exactly `{"workspaceId": "<16-hex>"}` (`render_policy_builder_html`, `policy_builder.py:66`; `derive_workspace_id` in `serve.py`) or `null` offline. It carries **no `projectId`**; the page's `projectId` is the template-owned value in `_META_KEY` (`_newProjectId`). It is declared `const CONNECTED_CONTEXT = /*__CONNECTED_CONTEXT_JSON__*/;` in a classic `<script>` at `.tmpl:192`; ENH-3507's module script reads it as a bare identifier (`.tmpl:414`) — a classic-script top-level `const` is in the global lexical environment, visible to module scripts.
 - Storage surface (extracted into `createBuilderStorage` by ENH-3507): `_DRAFT_KEY_PREFIX + mode`, `_META_KEY` (`{projectId, activeMode, schemaVersion, generatorVersion}`), `_persistDraft`/`_persistAllDrafts`/`_clearDraftKeysExcept`/`_persistMeta`/`_readDraft`/`_readMeta`/`hydrateFromStorage`, called from `commit()`, `restoreFromSnapshot()` and the Open-project path. No scenario-specific, issue-selection, or submission key exists today (scenarios ride inside the draft record `{model, scenarios}`), so "scenario" and "issue-selection" namespacing is new surface. Theme key `ll-policy-builder-theme` has its own inline try/catch.
 - Stale-guard precedent: `sessionRevision` (bumped in `commit`/`restoreFromSnapshot`), `_latestReadToken`, `_beginRead()`, `_readStatus(token)` → current/superseded/stale; the import handler binds `boundMode`/`boundProject` and reports "Import discarded…" to `#import-diagnostics`.
 - UI attach points: export button row (`#copy-btn`, `#download-btn`, `#save-project-btn`, `#open-project-btn`), `#live-status` (`role="status"`), `#yaml-preview`/`#yaml-details`; `updatePreview()` is the only place YAML is produced (`serializeLoopYaml(buildModel())`, try/catch, disables copy/download on error-severity validation).
@@ -182,8 +181,8 @@ _Added by `/ll:refine-issue` — 2026-09-19 — based on codebase analysis:_
 
 ## Implementation Steps
 
-0. Prerequisite: ENH-3507 (storage extraction + probe skeleton) is done, with the offline FEAT-3488 probe re-run and the suite green.
-1. Build the SHA-256 helper and `createSubmissionController` test-first with fakes: review preconditions and freezing, context generation (draft edits do not bump it; Open/selection/mode do), persist-before-POST with record→index write order, delivery states, guards, request-scoped responses, non-overlapping disposable polling, reload/restart reconciliation, requeue/`result.previous` handling, retention with YAML stripping.
+0. Prerequisite (satisfied): ENH-3507 (storage extraction + probe skeleton) is done.
+1. Build the SHA-256 helper and `createSubmissionController` test-first with fakes: review preconditions and freezing, context generation (draft edits do not bump it; Open/selection/mode do), persist-before-POST with record→index write order, delivery states, guards, request-scoped responses, non-overlapping disposable polling, reload/restart reconciliation, requeue/`result.previous` handling, retention with YAML stripping, displacement, and the workspace cap. **Commit boundary**: step 1 lands as its own commit (controller + `policy_submission.test.mjs`, full suite green) before any `.tmpl` change.
 2. Bind the controller in the `.tmpl` (issue selection, review/submit/status, warnings, result rendering via `textContent`, unavailable-with-reason incl. non-lifecycle mode); regenerate the HTML golden.
 3. Complete and run the probe; record the result in verification notes; write the guide section.
 
@@ -211,7 +210,7 @@ A maintainer opens the served builder, picks BUG-123 from the project's issue li
 ## Acceptance Criteria
 
 - [ ] A controller with a different `workspaceId` sees none of another workspace's submissions (draft/meta/selection isolation is ENH-3507's criterion and is re-verified end-to-end by the probe).
-- [ ] Review is unavailable with a reason when serialization throws, validation has an error-severity finding, or the request body would exceed 1 MiB; no UUID is allocated in those cases.
+- [ ] Review is unavailable with a reason when serialization throws, validation has an error-severity finding, the YAML contains a lone surrogate (`!isWellFormed()`), or the request body (measured with a placeholder UUID) would exceed 1 MiB; no UUID is allocated in those cases.
 - [ ] Browser SHA-256 of the review-frozen UTF-8 YAML bytes matches Python, including non-ASCII content. Submit consumes only the completed reviewed snapshot; review A → edit B → submit sends visibly identified A. Delayed-hash tests prove all review bindings are captured before the first await; Open/selection/mode changes bump the controller's context generation and invalidate unsent operations, while draft edits (which bump the template's `sessionRevision`) neither invalidate the review nor alter a frozen request. Double clicks create one UUID; stale responses/polls update only their originating submission.
 - [ ] The submission state machine is an exported, dependency-injected controller in `policy_builder_core.mjs` covered by the Node gate; the `.tmpl` holds DOM binding only. The served page uses token-relative URLs; polling is non-overlapping, runs at the documented cadence, stops on terminal status, and clears/aborts on disposal or document change without losing request identity.
 - [ ] Complete envelopes are persisted before POST outside undo history. Reload/retry resends the exact envelope; a lost response after server acceptance recovers the original queue row. Persistence failure sends no request and shows a diagnostic while leaving authoring usable.
@@ -220,7 +219,7 @@ A maintainer opens the served builder, picks BUG-123 from the project's issue li
 - [ ] The page shows status, bindings, `loopInstanceId`, and `runDir` while running and after completion; all seven queue statuses have a label (`cancelled` is "Rejected / cancelled by host"); validation warnings on an accepted request are persisted with the record, shown as non-blocking, and survive reload; a recovered acceptance says warnings are unavailable.
 - [ ] After a terminal status, Refresh status and reload both re-read the row; a requeued request (`cancelled` → `awaiting_approval`) resumes polling. Readback with non-matching `bindings` is reported as a conflict, not accepted. After requeue, a non-running row's `loopInstanceId`/`runDir` are labelled as the previous run and `result.previous` is shown as the prior attempt.
 - [ ] `result` is rendered through `textContent` only (a Node/probe test feeds `<img onerror>`-style stdout and asserts no element is created), shown truncated, and never written to storage.
-- [ ] Submission storage uses the documented key scheme with a per-`{workspaceId, projectId}` index; the record is written before the index and POST happens only after both succeed; pruning keeps the active record plus 5 recent resolved ones, resolved records have `yaml` stripped, and an unresolved record is never pruned or stripped.
+- [ ] Submission storage uses the documented key scheme with a per-`{workspaceId, projectId}` index; the record is written before the index and POST happens only after both succeed; `yaml` is stripped as soon as a record is `accepted` or `rejected`; pruning keeps the active record plus the 5 most recent others; a record displaced by an explicit new run is still reconciled on reload and never auto-resent; on boot, other projects' records in the same workspace are stripped and capped at 3 project indexes, so storage stays bounded.
 - [ ] Every `var(--…)` name the new UI CSS references is declared in the rendered `:root` block (ENH-3506 parity test green).
 - [ ] Offline pages and non-`issue_lifecycle` active modes show connected controls unavailable with a reason, while an already-sent record keeps its status visible and keeps polling across a mode switch; the issue list is fetched with `cache: "no-store"` and a selected issue missing from the list is shown as no longer listed rather than cleared; connection failure/reload retains authoring/scenarios and submission identity; edited drafts distinguish current and submitted revisions.
 - [ ] The on-demand served-page Playwright probe (skeleton from ENH-3507) verifies real DOM/controller wiring, review/edit/submit behavior, reload recovery, and actual workspace-scoped draft/scenario/meta/selection/submission storage across two workspaces served sequentially at the same origin; results are recorded. It is not a pytest gate.
@@ -240,26 +239,9 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Confidence Check Notes
 
-_Updated by `/ll:confidence-check` on 2026-09-18 (re-run)_
+_Cleared 2026-09-19: the previous notes predated the ENH-3507 split and the review additions and were self-contradictory (66 vs. 64; ENH-3506 listed as open). All blockers (FEAT-3504, ENH-3506, ENH-3507) are done. Frontmatter scores are stale — re-run `/ll:confidence-check`._
 
-> **Stale as of 2026-09-19** — predates the ENH-3507 split and the review additions (context generation, mode switch, review preconditions, requeue identity, `result` rendering, YAML stripping). FEAT-3504 and ENH-3506 are done; the only open blocker is ENH-3507. Re-run `/ll:confidence-check`.
-
-**Readiness Score**: 90/100 → STOP — ADDRESS GAPS (Dependencies Hard Override)
-**Outcome Confidence**: 66/100 → MODERATE (clears 65 gate)
-
-### Gaps to Address
-- Unresolved `blocked_by`: `ENH-3506 (open)` — design-token/theme parity work that this issue's new CSS and its parity pytest depend on (FEAT-3504 is completed). Land ENH-3506 first, or drop it from `blocked_by` if the token dependency no longer applies.
-
-### Concerns
-- ~~Terminal queue status set not verified~~ — **resolved 2026-09-19**: equals `QUEUE_TERMINAL_STATUSES = {done, failed, dead_letter, cancelled}` (`queue_store.py:187`); `QUEUE_STATUSES` adds `pending`, `running`, `awaiting_approval`.
-- ~~`const CONNECTED_CONTEXT` visibility from the module script unverified~~ — **resolved 2026-09-19**: a top-level `const` in a classic script lives in the global lexical environment, which module scripts resolve bare identifiers against (it is not a `window` property). The probe skeleton still asserts it end-to-end.
-- Re-run `/ll:confidence-check` after these edits: `outcome_confidence` 64 is below the 65 gate and predates the resolved concerns, the storage-layout/retention spec, and the steps 1–2 commit boundary.
-- `createXxx(deps)` DI factories are a deliberate departure from the core's pure-function convention (no precedent) — acceptable, but the injected-globals boundary is a new convention.
-
-### Outcome Risk Factors
-- Deep per-site complexity: one stateful controller (freeze/persist/guard/poll/reconcile) with shared state across delivery states, generations, and workspace-scoped storage.
-- Broad enumeration across ~8+ sites (core, `.tmpl`, new Node tests, golden, probe, guide, plus existing `policy_validator.test.mjs` BUG-3502 vm harness that will break on storage extraction).
-- Test infrastructure for fake `fetch`/timers/`AbortController`/`crypto.subtle` does not exist yet and must be built alongside the controller.
+Carried-forward risk factors: one stateful controller with shared state across delivery states, generations, and storage; fake `fetch`/timers/`AbortController`/`crypto.subtle` test helpers do not exist yet; `createXxx(deps)` DI is a new convention in the core (precedent: `createBuilderStorage`).
 
 ## Verification Notes
 
@@ -287,6 +269,7 @@ Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the sam
 - Verified: `_MAX_RUN_REQUEST_BYTES = 1 << 20`, `QUEUE_TERMINAL_STATUSES` (`queue_store.py:187`), `test_wiring_reference_docs.py:254` needle, guide block `:365`. `ll-verify-evidence` clean; no active required decision rules. Graph: provider=codegraph freshness=fresh (not needed for verdicts).
 
 ## Session Log
+- manual review (displacement/retention, accept-time strip, size-check placeholder, lone-surrogate guard, `revive_entry` rename; BUG-3509 captured) - 2026-09-19
 - `/ll:verify-issues` - 2026-09-19T04:16:29 - `3d7a92b4-7861-4b9c-8726-6a9684278ee3.jsonl`
 - manual review + split (ENH-3507) - 2026-09-19
 - `/ll:verify-issues` - 2026-09-19T02:19:41 - `c52721e6-1af8-440e-9e0d-6edc23637c58.jsonl`
