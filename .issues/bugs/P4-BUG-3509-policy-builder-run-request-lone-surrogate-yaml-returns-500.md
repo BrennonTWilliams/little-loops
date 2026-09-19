@@ -56,6 +56,21 @@ except UnicodeEncodeError:
 
 `projectId`/`issueId` are never encoded by the route, but check whether a surrogate in them reaches SQLite (`create_or_get_run_request`) and fails the same way; if so, reject them in `_require_simple_str_field`.
 
+## Program Design
+
+### Types
+
+- `_RouteError`: existing exception carrying `(status, code, message)`; caught by `_json_error_boundary`
+
+### Signatures
+
+- `_parse_run_request(payload_bytes: bytes) -> tuple[RunRequest, dict[str, Any]]` — existing; wrap the `yaml_text.encode("utf-8")` call
+- `_require_simple_str_field(payload: dict[str, Any], name: str) -> str` — existing; extend only if a surrogate in `projectId`/`issueId` is shown to fail in SQLite
+
+### Call Path
+
+`_json_error_boundary` -> `_make_submit_handler` (`_submit`) -> `_parse_run_request` -> `_RouteError(400, "bad_request", ...)`
+
 ## Acceptance Criteria
 
 - [ ] A run-request whose `yaml` contains a lone surrogate returns `400 bad_request` with a JSON `ErrorBody`; nothing is persisted or enqueued.
@@ -71,3 +86,7 @@ except UnicodeEncodeError:
 ## Status
 
 **Open** | Created: 2026-09-19 | Priority: P4
+
+
+## Session Log
+- `/ll:format-issue` - 2026-09-19T04:57:19 - `69495f4f-08a7-41bc-a23e-7129d0989d49.jsonl`
