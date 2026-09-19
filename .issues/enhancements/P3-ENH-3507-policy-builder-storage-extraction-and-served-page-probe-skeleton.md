@@ -119,5 +119,19 @@ Includes the storage helper, `.tmpl` rebind, harness fix, golden, storage Node t
 
 **Open** | Created: 2026-09-19 | Priority: P3
 
+## Verification Notes
+
+**Verdict: VALID** (verified 2026-09-18; no corrections needed)
+
+- Template anchors hold: storage functions at `.tmpl:388-470`, `CONNECTED_CONTEXT` stamped at `:192` and read nowhere else, `hydrateFromStorage()` at `:531`/`:2169`, Open-project path at `:2088-2090`.
+- Core anchors hold: bridge at `policy_builder_core.mjs:3587`, purity comments at `:1054` and `:1173`; no `createBuilderStorage` or `sha256Hex` exists yet (consistent with scope split).
+- BUG-3502 harness markers all present (`policy_validator.test.mjs:1559-1568`, `_newBug3502Sandbox` at `:1572`).
+- Probe convention confirmed in `feat-3488-browser-probes.mjs` (`PROBES`, `loadPlaywright`, `--check`, `BROWSER_PROBES_*` markers). "Second printed line" holds: `transport.py:1586-1588` prints `bridge.url` then `bridge.url + suffix`; `serve.py:240` sets suffix `policy-builder`.
+- `.gitignore:99` covers `.loops/policy-builder/`; golden fixture and `test_feat3504` regex on `const CONNECTED_CONTEXT = ` exist. Decisions check ran, and `ll-verify-evidence` reported 0 findings. Proposal-vs-code check found no unsound consequences.
+- Graph: provider=codegraph, freshness=fresh (used only for `defines` corroboration).
+
+---
+
 ## Session Log
+- `/ll:verify-issues` - 2026-09-19T02:35:35 - `c21faf03-4a0d-488c-8584-9577fe7b87f5.jsonl`
 - manual split from FEAT-3505 - 2026-09-19
