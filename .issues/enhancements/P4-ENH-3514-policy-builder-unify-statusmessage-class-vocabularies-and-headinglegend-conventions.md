@@ -64,6 +64,20 @@ _Added by `/ll:refine-issue` — 2026-09-19 — based on codebase analysis:_
 **Tests (research)**
 - `scripts/tests/test_policy_builder_emit.py` for static structure (a "only one vocabulary remains" check is a string/regex test over the rendered HTML — the golden fixture currently has 20 lines matching `msg-|is-error|is-success|is-warning|No scenarios yet|aria-live`); golden `scripts/tests/fixtures/policy_builder/golden_policy_router_builder.html` regeneration; probe updates above; ENH-3500 cases `auth-populated-decision_table-dark-*`, `conn-accepted-warnings-*`.
 
+### Dependent Files (Callers/Importers)
+_Wiring pass added by `/ll:wire-issue`:_
+- `.loops/probes/enh-3500-audit-probes.mjs` (:88, class census `^(msg-|is-)`) and `.loops/probes/enh-3506-theme-probes.mjs` (:71, `li.className = "msg-" + k`) — update both if class names change; `.loops/verify-enh-3506-theme.yaml` drives the latter [Agent 1 finding]
+- `scripts/tests/test_enh3506_policy_builder_theme_parity.py` — reusing existing `--color-status-*` tokens keeps it green; any new CSS variable must be declared in both stamped theme blocks [Agent 3 finding]
+
+### Wiring: Tests
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/fixtures/policy_builder/golden_policy_router_builder.html` — regenerate by hand after reviewing the diff (byte-compared in `test_enh3035_artifact_template_kit.py`) [Agent 3 finding] (golden is pinned to the dark theme, so the fallback-row change shows there)
+- `scripts/tests/test_policy_builder_emit.py` — add a regex test that only one status vocabulary remains in the rendered HTML [Agent 3 finding]
+
+### Documentation
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/POLICY_ROUTER_GUIDE.md` and `docs/reference/CLI.md` reference the template but no status class names — no doc change needed [Agent 2 finding]
+
 ## Program Design
 
 ### Types
@@ -86,6 +100,14 @@ _Added by `/ll:refine-issue` — 2026-09-19 — based on codebase analysis:_
 2. Migrate CSS rules and JS class assignments; unify headings/legends.
 3. Fix the dark-theme fallback row; add a template test that only one vocabulary remains.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Settle whether the fallback-row defect is the `.rule-winner` highlight or its dark-mode saturation against `auth-populated-decision_table-dark-w1280-offline.png` before touching CSS
+- Update both probe files' class references and rerun `.loops/verify-enh-3506-theme.yaml` plus ENH-3500 cases `auth-populated-decision_table-dark-*`, `conn-accepted-warnings-*`
+- Regenerate the golden after reviewing the diff
+
 ## Impact
 
 - **Priority**: P4 - cosmetic consistency
@@ -99,5 +121,6 @@ _Added by `/ll:refine-issue` — 2026-09-19 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-19T21:05:53 - `39128071-49a7-41ee-a288-c86d0c6aa6ea.jsonl`
 - `/ll:refine-issue` - 2026-09-19T20:57:52 - `7ba3809c-e334-468e-81b6-cf0bbfd0f90c.jsonl`
 - `/ll:format-issue` - 2026-09-19T20:40:43 - `62ea2c42-153a-4077-bc55-dc91a943784a.jsonl`

@@ -45,22 +45,39 @@ Late feedback is the real defect: the error is made at write time and paid for i
 ## Integration Map
 
 ### Files to Modify
-- TBD - requires codebase analysis
+- `commands/refine-issue.md` — add post-write `ll-verify-evidence` step
+- `commands/reconcile-issue.md` — add post-write `ll-verify-evidence` step
+- `.pre-commit-config.yaml` — `ll-verify-evidence` hook entry (`entry: bash -c 'll-verify-evidence --added-only "$@" || true' --`) and its BUG-3282 comment
+- `scripts/tests/test_verify_evidence.py` — `TestRepoGate.test_no_new_unverifiable_evidence` `pytest.fail` message
 
 ### Dependent Files (Callers/Importers)
-- TBD - use grep to find references
+- `scripts/little_loops/cli/verify_evidence.py` — the CLI these steps invoke (no change expected)
+- `scripts/little_loops/cli/loop/evidence.py` — related evidence plumbing
 
 ### Similar Patterns
-- TBD - search for consistency
+- `skills/capture-issue/SKILL.md` — "Verify quoted evidence against the cited artifact" (ENH-3283), the step to port
+- `commands/verify-issues.md` — invokes `ll-verify-evidence "$ISSUE_FILE" --json` and degrades gracefully when unavailable
+- `scripts/tests/test_decisions_yaml_pre_commit_gate.py` — plumbing-test pattern for the hook entry
 
 ### Tests
-- TBD - identify test files to update
+- `scripts/tests/test_verify_evidence.py` — update `TestRepoGate` message; assert labeling text
+- New pre-commit plumbing test modeled on `scripts/tests/test_decisions_yaml_pre_commit_gate.py` (skip when `pre-commit` absent)
 
 ### Documentation
-- TBD - docs that need updates
+- `docs/reference/CLI.md` — `ll-verify-evidence` entry, if hook behavior changes
 
 ### Configuration
-- N/A or list config files
+- `.pre-commit-config.yaml` (see Files to Modify); host mirrors re-synced via `ll-adapt --host <host> --apply`
+
+## Program Design
+
+### Signatures
+
+- `TestRepoGate.test_no_new_unverifiable_evidence(self, gate_cli: str) -> None` — `pytest.fail` message prefixed as an issue-corpus evidence failure
+
+### Call Path
+
+`refine-issue` command -> `ll-verify-evidence <issue-file> --json` -> `extract_candidate_spans`; `pre-commit` -> `ll-verify-evidence --added-only` -> `in_scope_sections`
 
 ## Implementation Steps
 
@@ -103,4 +120,5 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:format-issue` - 2026-09-19T21:04:51 - `e76a6089-0241-4098-9983-3c93e7b1386d.jsonl`
 - `/ll:capture-issue` - 2026-09-19T20:57:27 - `7ba3809c-e334-468e-81b6-cf0bbfd0f90c.jsonl`

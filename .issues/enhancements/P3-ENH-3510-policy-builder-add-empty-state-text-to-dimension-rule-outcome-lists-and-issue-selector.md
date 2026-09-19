@@ -68,6 +68,17 @@ _Added by `/ll:refine-issue` — 2026-09-19 — based on codebase analysis:_
 ### Documentation
 - None of `docs/guides/POLICY_ROUTER_GUIDE.md` / `docs/reference/CLI.md` describe empty states; no doc change needed. (Audience gate `test_docs_audience_gate.py` scans only `*.md`, not the template.)
 
+### Dependent Files (Callers/Importers)
+_Wiring pass added by `/ll:wire-issue`:_
+- `.loops/probes/feat-3488-browser-probes.mjs` — `ruleCount` counts `#rule-list .rule-card` and waits on `#rule-list`; the empty-state hint must not use the `.rule-card` class or be a `#rule-list` child that changes that count [Agent 1 finding]
+- `.loops/probes/enh-3500-audit-probes.mjs` — cases `auth-empty-dimensions-*`, `auth-empty-rules-*`, `auth-empty-outcomes-*`, `conn-issues-empty-*` are the verification path; add assertions there for the new hints [Agent 3 finding]
+
+### Wiring: Tests
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/fixtures/policy_builder/golden_policy_router_builder.html` — regenerate by hand after reviewing the diff (byte-compared in `test_enh3035_artifact_template_kit.py`) [Agent 3 finding]
+- `scripts/tests/js/policy_validator.test.mjs` — `_newBug3502Sandbox` executes the template slices `let state = seedExample();`…`function buildModel() {` (incl. `commit()`) and the Open handler `$("open-project-input").onchange`…`$("undo-btn").onclick`; any new DOM call added inside those slices needs a stub in the sandbox's `elements`/`$` [Agent 3 finding]
+- `scripts/tests/test_policy_builder_emit.py` — add static-markup asserts for the hint element/text; existing `live-status`/`aria-live` asserts (:317-318) unaffected [Agent 3 finding]
+
 ## Program Design
 
 ### Types
@@ -92,6 +103,14 @@ _Added by `/ll:refine-issue` — 2026-09-19 — based on codebase analysis:_
 2. Add an empty branch to each render function and the `#conn-issue-note` empty-issues case.
 3. Add template tests for each empty state; re-run the ENH-3500 audit probe fixtures.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `.loops/probes/enh-3500-audit-probes.mjs` — assert empty-state text for the four cases and rerun via `CASE_ONLY='auth-empty-.*|conn-issues-empty'`
+- Coordinate with ENH-3511 — both edit `renderOutcomes`/`renderRules`; land one first or expect merge conflicts in the same functions
+- Regenerate `golden_policy_router_builder.html` after reviewing the diff
+
 ## Impact
 
 - **Priority**: P3 - polish; no data or correctness impact
@@ -105,5 +124,6 @@ _Added by `/ll:refine-issue` — 2026-09-19 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-19T21:05:52 - `39128071-49a7-41ee-a288-c86d0c6aa6ea.jsonl`
 - `/ll:refine-issue` - 2026-09-19T20:57:35 - `dff55670-569e-48fc-a235-30c0ce66babb.jsonl`
 - `/ll:format-issue` - 2026-09-19T20:40:26 - `62ea2c42-153a-4077-bc55-dc91a943784a.jsonl`

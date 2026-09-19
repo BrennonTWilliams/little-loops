@@ -63,6 +63,18 @@ _Added by `/ll:refine-issue` — 2026-09-19 — based on codebase analysis:_
 **Tests (research)**
 - `scripts/tests/test_policy_builder_emit.py` (static markup only); golden `scripts/tests/fixtures/policy_builder/golden_policy_router_builder.html` must be regenerated; probe cases `auth-invalid-model-*`, `conn-issue-selected-*`, `conn-review-none-*` to rerun via `CASE_ONLY`.
 
+### Dependent Files (Callers/Importers)
+_Wiring pass added by `/ll:wire-issue`:_
+- BUG-3512 (open, P2) and ENH-3513 both edit `renderConnected`/live regions — a reason element used as an `aria-describedby` target must not itself be `role=status`/`aria-live` (double announce) [Agent 2 finding]
+- ENH-3510 also edits `renderOutcomes`/`renderRules` (delete-outcome, rule up/down sites) — sequence to avoid conflicts [Agent 2 finding]
+- `.loops/probes/enh-3500-audit-probes.mjs` — already records `aria-describedby`/`aria-disabled` per element (:75-77); add present-while-disabled / absent-when-enabled assertions for `auth-invalid-model-*`, `conn-issue-selected-*`, `conn-review-none-*` [Agent 3 finding]
+
+### Wiring: Tests
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/fixtures/policy_builder/golden_policy_router_builder.html` — regenerate by hand after reviewing the diff (byte-compared in `test_enh3035_artifact_template_kit.py`) [Agent 3 finding]
+- `scripts/tests/js/policy_validator.test.mjs` — `_newBug3502Sandbox` executes the template slices `let state = seedExample();`…`function buildModel() {` (incl. `commit()`) and the Open handler `$("open-project-input").onchange`…`$("undo-btn").onclick`; any new DOM call added inside those slices needs a stub in the sandbox's `elements`/`$` [Agent 3 finding]
+- `scripts/tests/test_policy_builder_emit.py` — static asserts that reason elements and `aria-describedby` wiring exist in the markup [Agent 3 finding]
+
 ## Program Design
 
 ### Types
@@ -86,6 +98,14 @@ _Added by `/ll:refine-issue` — 2026-09-19 — based on codebase analysis:_
 2. Add hint elements and wire `aria-describedby`, cleared when the control is enabled.
 3. Add template tests asserting the reason is present while disabled and absent when enabled.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Decide in/out for the unlisted `.disabled` sites (`valInput` :1077, `idxInput` :1542, `#conn-issue` :2241, review :2250, refresh :2256) and record the decision in the issue
+- Derive the connected Submit reason from whichever clause of the `!av.ok || rv.status !== "ready" || st.busy || outcome_unknown` disjunction holds; clear it when enabled
+- Update `.loops/probes/enh-3500-audit-probes.mjs` and rerun the three named cases via `CASE_ONLY`; regenerate the golden
+
 ## Impact
 
 - **Priority**: P3 - accessibility polish
@@ -99,5 +119,6 @@ _Added by `/ll:refine-issue` — 2026-09-19 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-19T21:05:52 - `39128071-49a7-41ee-a288-c86d0c6aa6ea.jsonl`
 - `/ll:refine-issue` - 2026-09-19T20:57:40 - `7ba3809c-e334-468e-81b6-cf0bbfd0f90c.jsonl`
 - `/ll:format-issue` - 2026-09-19T20:40:32 - `62ea2c42-153a-4077-bc55-dc91a943784a.jsonl`

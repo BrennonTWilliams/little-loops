@@ -66,6 +66,18 @@ _Added by `/ll:refine-issue` — 2026-09-19 — based on codebase analysis:_
 **Tests (research)**
 - `scripts/tests/test_policy_builder_emit.py`; golden `scripts/tests/fixtures/policy_builder/golden_policy_router_builder.html` must be regenerated; probe cases above.
 
+### Dependent Files (Callers/Importers)
+_Wiring pass added by `/ll:wire-issue`:_
+- `.loops/probes/feat-3488-browser-probes.mjs` — `liveStatus` reads `#live-status` and case `storage-disabled-degrades` expects exactly one live-region warning; making `#messages` live or changing `showLiveStatus` must keep that case green [Agent 1 finding]
+- BUG-3512 owns `#conn-status`/`#conn-notices`/`#conn-review-info` — keep `renderConnected` out of this change [Agent 2 finding]
+- `.loops/probes/enh-3500-audit-probes.mjs` (:235-237 MutationObservers on `live-status`/`import-diagnostics`) — cases `auth-invalid-model-*`, `live-import-error-offline` verify announcements [Agent 3 finding]
+
+### Wiring: Tests
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/fixtures/policy_builder/golden_policy_router_builder.html` — regenerate by hand after reviewing the diff (byte-compared in `test_enh3035_artifact_template_kit.py`) [Agent 3 finding]
+- `scripts/tests/js/policy_validator.test.mjs` — `_newBug3502Sandbox` executes the template slices `let state = seedExample();`…`function buildModel() {` (incl. `commit()`) and the Open handler `$("open-project-input").onchange`…`$("undo-btn").onclick`; any new DOM call added inside those slices needs a stub in the sandbox's `elements`/`$` [Agent 3 finding]; the Open handler slice writes `#import-diagnostics`, so severity-aware role changes there run in the sandbox
+- `scripts/tests/test_policy_builder_emit.py:317-318` — `'id="live-status"'`/`'aria-live="polite"'` asserts must keep passing; add role/`aria-live` asserts for `#messages`/`#import-diagnostics` and a check that the four `alert(` sites are gone [Agent 3 finding]
+
 ## Program Design
 
 ### Types
@@ -87,6 +99,14 @@ _Added by `/ll:refine-issue` — 2026-09-19 — based on codebase analysis:_
 2. Replace the `alert()` calls in `add-dim`/`add-outcome` with an inline message element.
 3. Add template tests for role/aria-live attributes and absence of `alert(` in those handlers.
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Restrict `#messages` announcements to changes (e.g. error set becoming non-empty) since `renderMessages` rebuilds the list on every `updatePreview()`
+- Re-run `.loops/verify-feat-3488-browser-persistence.yaml` (`storage-disabled-degrades`) and the ENH-3500 cases `auth-invalid-model-*`, `live-import-error-offline`
+- Regenerate the golden after reviewing the diff
+
 ## Impact
 
 - **Priority**: P3 - accessibility and UX consistency
@@ -100,5 +120,6 @@ _Added by `/ll:refine-issue` — 2026-09-19 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-19T21:05:53 - `39128071-49a7-41ee-a288-c86d0c6aa6ea.jsonl`
 - `/ll:refine-issue` - 2026-09-19T20:57:46 - `7ba3809c-e334-468e-81b6-cf0bbfd0f90c.jsonl`
 - `/ll:format-issue` - 2026-09-19T20:40:37 - `62ea2c42-153a-4077-bc55-dc91a943784a.jsonl`
