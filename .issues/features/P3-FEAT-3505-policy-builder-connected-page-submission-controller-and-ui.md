@@ -300,6 +300,7 @@ Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the sam
 - Verified: `_MAX_RUN_REQUEST_BYTES = 1 << 20`, `QUEUE_TERMINAL_STATUSES` (`queue_store.py:187`), `test_wiring_reference_docs.py:254` needle, guide block `:365`. `ll-verify-evidence` clean; no active required decision rules. Graph: provider=codegraph freshness=fresh (not needed for verdicts).
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-19T05:14:14 - `a3e78fe1-ec55-446c-a6b7-dc94de92fcf6.jsonl`
 - `/ll:verify-issues` - 2026-09-19T05:10:50 - `e7de9cba-8e70-4050-9521-857ebe6dd580.jsonl`
 - `/ll:confidence-check` - 2026-09-19T05:09:45 - `91719ec4-796b-4780-b299-fac123b07a84.jsonl`
 - Assessed Fable review applied — deterministic probe coverage, synchronous storage/index identity, project-ID guard, prepared cleanup, session-local draft copy, polling/header/surrogate checks, conflict correction, and required controller commit boundaries — 2026-09-19
