@@ -84,6 +84,23 @@ Concretely, two implementation shapes both work and don't touch `gate.py`:
 
 Either shape is <30 lines. Both keep `gate.py` semantically identical for production use (the optional `today` parameter is a backward-compatible no-op when omitted).
 
+## Program Design
+
+### Types
+
+- `TODAY: datetime.date` — module-level pin in `test_learning_tests_version_staleness.py` (to be replaced by a per-test frozen value)
+
+### Signatures
+
+- `_freeze_today(monkeypatch: pytest.MonkeyPatch) -> datetime.date` — autouse fixture body that patches `little_loops.learning_tests.gate.datetime.date` so `today()` returns the same value `_record` uses
+- `_record(*, target: str = "requests", date: str | None = None, status: str = "proven", proven_package: str | None = None, proven_version: str | None = None, age_days: int | None = None) -> LearnTestRecord` — unchanged signature; derives `date` from the frozen value
+
+### Call Path
+
+`TestDescribeStaleness.test_age_stale_names_the_age` -> `_record` -> `describe_staleness` -> `datetime.date.today`
+
+`TestHookStaleMessage.test_age_stale_still_names_days` -> `_record` -> `is_record_stale` -> `datetime.date.today`
+
 ## Acceptance Criteria
 
 - `test_age_stale_names_the_age` passes regardless of pytest session start time.
@@ -91,6 +108,13 @@ Either shape is <30 lines. Both keep `gate.py` semantically identical for produc
 - `gate.py` continues to use live `datetime.date.today()` in production paths (no behavioral change for non-test callers).
 - CI dispatch crossing UTC midnight no longer surfaces BUG-3453.
 - No new test flake introduced for the non-staleness tests in this file (the 40 other tests must remain green).
+
+## Impact
+
+- **Priority**: P3 - Test-only flake; fires only when a pytest run spans UTC midnight, no production behavior affected
+- **Effort**: Small - One fixture (<30 lines) in a single test file; `gate.py` untouched
+- **Risk**: Low - Test-only change, the other 40 tests in the file guard against regressions
+- **Breaking Change**: No
 
 ## Workarounds
 
@@ -101,3 +125,12 @@ Until the fix lands, CI dispatch can avoid the race by not crossing `00:00:00Z`.
 BUG-3453 is unrelated to PR #24 (CI-red + BUG-3439) and PR #26 (BUG-3449 finalize done-in-place). It is also unrelated to BUG-3450 (PATH-scrubbed `ll-issues` shellout — same root defect as BUG-3449, collapsed). Filing as a separate card so the fix has its own workstream and review trail.
 
 Discovery: CI dispatch `34660035171` failed at `2026-09-12T00:00:08Z` (one minute after UTC midnight), which is the empirical confirmation that the race is real and timing-bound.
+
+## Session Log
+- `/ll:format-issue` - 2026-09-20T18:00:05 - `a1ec764a-736a-4d93-b965-dad72f2fef4e.jsonl`
+
+---
+
+## Status
+
+**Open** | Created: 2026-09-12 | Priority: P3
