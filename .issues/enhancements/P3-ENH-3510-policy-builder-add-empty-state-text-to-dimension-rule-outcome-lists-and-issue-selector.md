@@ -180,6 +180,7 @@ Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the sam
 - Graph: no symbol-level graph queries needed (all anchors are template functions); provider=`codegraph` freshness=`fresh`.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-20T02:47:42 - `0a9c36fc-1195-4407-8eff-db9eb4eda7ae.jsonl`
 - `/ll:confidence-check` - 2026-09-20T02:19:50 - `8b4e929a-d1ff-4e9f-b093-d9fa63b3455c.jsonl`
 - `/ll:verify-issues` - 2026-09-20T02:17:42 - `5d9fb9e0-baee-4b6d-a097-abd02d1677a2.jsonl`
 - `/ll:confidence-check` - 2026-09-20T01:41:08 - `40942ed6-583a-4279-8e7c-095ae6dab7e5.jsonl`
