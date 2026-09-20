@@ -13,11 +13,11 @@ relates_to:
 - ENH-3514
 parent: EPIC-3493
 epic: EPIC-3493
-confidence_score: 80
-outcome_confidence: 86
+confidence_score: 100
+outcome_confidence: 93
 score_complexity: 18
 score_test_coverage: 25
-score_ambiguity: 18
+score_ambiguity: 25
 score_change_surface: 25
 ---
 
@@ -163,20 +163,6 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 **Open** | Created: 2026-09-19 | Priority: P4
 
 
-## Confidence Check Notes
-
-_Added by `/ll:confidence-check` on 2026-09-19_
-
-**Readiness Score**: 80/100 → STOP — ADDRESS GAPS (Dependencies Hard Override)
-**Outcome Confidence**: 86/100 → HIGH CONFIDENCE
-
-### Concerns
-- Golden regeneration method is undocumented (issue says "treat as rendering via `cmd_policy_builder` under pinned inputs"); review diff carefully.
-- `.fallback-row.rule-winner` CSS is only sketched ("e.g. padding + transparent select background"); a new text/background pairing may need a `PAIRS` entry.
-
-### Gaps to Address
-- Unresolved `blocked_by`: ENH-3514 (open) — resolve/complete it, or drop the dependency from `blocked_by` if it no longer applies (the issue is a split-out of ENH-3514's audit finding and touches a different code path).
-
 ## Verification Notes
 
 Verdict at time of check: **NEEDS_UPDATE** (line-number drift corrected in the same pass, so the issue as it now reads is up to date — this section is a record of what was wrong and fixed, not an outstanding action item)
@@ -188,6 +174,7 @@ Verdict at time of check: **NEEDS_UPDATE** (line-number drift corrected in the s
 - Graph: provider=`codegraph` freshness=`stale`; used only as a lead, anchors confirmed by direct reads.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-20T03:38:32 - `1fb0a05c-b6e2-4738-9a19-fe759b33af09.jsonl`
 - `/ll:verify-issues` - 2026-09-20T03:27:54 - `60d8cbff-e55d-413c-8fb6-99a0fd5959d4.jsonl`
 - `/ll:verify-issues` - 2026-09-20T03:27:31 - `60d8cbff-e55d-413c-8fb6-99a0fd5959d4.jsonl`
 - `/ll:confidence-check` - 2026-09-20T00:50:23 - `b1e66617-7ca3-4c73-8eef-611558ec10fe.jsonl`
