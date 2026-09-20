@@ -17,6 +17,12 @@ relates_to:
 - BUG-3484
 - ENH-3518
 parent: ENH-3515
+confidence_score: 95
+outcome_confidence: 71
+score_complexity: 10
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 # ENH-3519: Refine-time delta-scoped evidence verification in /ll:refine-issue
@@ -191,6 +197,7 @@ All referenced files, line numbers and code claims verified against the current 
 - Confirmed: `scan_file` `resolved_ref[resolved] = artifact` keeps only the last spelling per resolved path (per-occurrence attribution defect is real); `refine-issue.md` lacks `Bash(ll-verify-evidence:*)`; no snapshot/delta code exists.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-20T02:58:11 - `4ac1f770-fd60-4b79-879d-3dc59e1d8d4b.jsonl`
 - `/ll:verify-issues` - 2026-09-20T01:36:18 - `58521fbd-d3a2-45c1-879f-6abf803572a3.jsonl`
 - `/ll:wire-issue` - 2026-09-20T00:32:31 - `1b17328e-89d8-45f8-a318-abba67ffafef.jsonl`
 - `/ll:refine-issue` - 2026-09-20T00:19:02 - `09e2af9d-eb90-432a-a570-962fb9c5f142.jsonl`

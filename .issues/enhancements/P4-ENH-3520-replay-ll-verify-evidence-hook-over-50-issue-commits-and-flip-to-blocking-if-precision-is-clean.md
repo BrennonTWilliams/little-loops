@@ -179,6 +179,7 @@ _Added by `/ll:confidence-check` on 2026-09-19_
 - Conditional outcome: several branches (maintenance-op policy, staged-scan failure policy) may resolve to "stay warn-only" or require a verifier follow-up.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-20T02:58:31 - `977f15ce-7c46-446a-8bf0-6c67847cf478.jsonl`
 - `/ll:verify-issues` - 2026-09-20T01:36:18 - `58521fbd-d3a2-45c1-879f-6abf803572a3.jsonl`
 - `/ll:wire-issue` - 2026-09-20T00:32:34 - `1b17328e-89d8-45f8-a318-abba67ffafef.jsonl`
 - `/ll:refine-issue` - 2026-09-20T00:19:02 - `09e2af9d-eb90-432a-a570-962fb9c5f142.jsonl`
