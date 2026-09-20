@@ -55,9 +55,18 @@ A warn-only hook whose warnings are hidden enforces nothing, and a gate failure 
 - `scripts/tests/test_decisions_yaml_pre_commit_gate.py` — plumbing-test pattern for a hook entry
 
 ### Tests
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_verify_evidence.py` — `TestRepoGate.test_no_new_unverifiable_evidence` (both `pytest.fail` sites; shares `GATE_CLI`, `GATE_TIMEOUT`, `_fail_if_shallow_checkout`); no existing test asserts on the old message text, so relabeling breaks nothing. To exercise both branches, monkeypatch `subprocess.run` (raise `TimeoutExpired` / return a findings payload) and use `pytest.raises(pytest.fail.Exception)` as in the precondition test near `test_..._must_fail_not_skip` (~line 1008) [Agent 3 finding]
+- `scripts/tests/test_decisions_yaml_pre_commit_gate.py` — asserts on `.pre-commit-config.yaml` as literal text (no YAML parse); new gate module should match, but read the real config rather than a copied one [Agent 3 finding]
+
 - Exercise both `TestRepoGate.test_no_new_unverifiable_evidence` failure branches with controlled subprocess results: assert the neutral prefix on the actual raised messages and distinct findings/timeout diagnoses, rather than merely checking that the constant exists.
 - Unconditional hook configuration checks: entry exists, `verbose: true`, and entry / display name / comment agree on blocking behavior (derive the expected policy from whether the entry contains `|| true`, so the sibling replay issue can flip it without rewriting these tests). No `pre-commit` install required.
 - Temporary-repository subprocess tests using the actual hook entry: stage an invalid quote and assert the finding appears in captured output and the exit status matches the configured policy; stage a valid quote as a clean control. Skip only the subprocess tests when `pre-commit` or the verifier is absent. Stage files explicitly because the hook uses `--added-only`.
+
+### Documentation
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/CLI.md` — `### ll-verify-evidence` **Gates:** line ("pre-commit ... warn-only on first release") describes the hook; add that findings are now printed (`verbose: true`) [Agent 2 finding]
+- `CONTRIBUTING.md` — has "Decisions YAML Validation (ll-verify-decisions)" hook section but none for `ll-verify-evidence`; optional short section (activation via `pre-commit install`, `--no-verify` bypass covered by the suite gate) [Agent 2 finding]
 
 ## Program Design
 
@@ -75,6 +84,13 @@ A warn-only hook whose warnings are hidden enforces nothing, and a gate failure 
 2. Add `GATE_FAILURE_LABEL`, distinguish the findings and timeout messages, and exercise both failure branches in tests.
 3. Add `test_verify_evidence_pre_commit_gate.py`: policy-derived configuration checks plus actual-hook subprocess tests (invalid quote visible, clean control).
 4. Run `python -m pytest scripts/tests/`.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `docs/reference/CLI.md` `### ll-verify-evidence` Gates line — note the hook now prints findings
+- Update `scripts/tests/test_verify_evidence.py` — relabel both `pytest.fail` sites; add branch tests via patched `subprocess.run`
 
 ## Impact
 
@@ -110,5 +126,6 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-20T00:32:14 - `1b17328e-89d8-45f8-a318-abba67ffafef.jsonl`
 - `/ll:refine-issue` - 2026-09-20T00:19:01 - `09e2af9d-eb90-432a-a570-962fb9c5f142.jsonl`
 - `/ll:format-issue` - 2026-09-20T00:10:57 - `d0eb6446-04cf-4c6e-ada1-f1ab3056d581.jsonl`

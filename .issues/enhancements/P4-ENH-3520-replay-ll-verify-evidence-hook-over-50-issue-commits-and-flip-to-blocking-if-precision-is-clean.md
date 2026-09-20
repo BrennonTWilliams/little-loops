@@ -52,8 +52,17 @@ The BUG-3282 comment defers blocking to a precision signal that does not exist, 
 - `postmortems/` — the replay report (gitignored, source-repo-only)
 - `docs/reference/CLI.md` — `ll-verify-evidence` entry, only if the hook flips to blocking
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/CLI.md` — on a flip, the `**--added-only FILE...**` mode bullet ("The pre-commit hook.") and the `**Exit codes:**` line under `### ll-verify-evidence` are the only hook-behavior prose; neither currently says warn-only, so add blocking-behavior wording there rather than hunting for a "warn-only" string [Agent 2 finding]
+- `.pre-commit-config.yaml` — the `ll-verify-private-refs` sibling entry (`exclude: ^(postmortems/|...)`) shows the exclusion convention; the `ll-verify-evidence` entry's `files: ^\.issues/.*\.md$` already excludes `postmortems/`, so the report path needs no hook change [Agent 1 finding]
+
 ### Tests
 - ENH-3518's new pre-commit gate test module (`test_verify_evidence_pre_commit_gate`, created by that issue) derives the expected exit status from the configured policy; after a flip it must assert a non-zero exit for the invalid staged quote with no test rewrite beyond that.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_wiring_cli_registry.py` — `DOC_STRINGS_PRESENT` pins `("docs/reference/CLI.md", "ll-verify-evidence", "BUG-3282")`; a CLI.md edit on flip must keep that string present (no change needed, regression guard) [Agent 3 finding]
+- `scripts/tests/test_ci_checkout_policy.py` — `test_unit_tests_checkout_fetches_full_history` pins `fetch-depth: 0` for the suite gate; unaffected by the flip, but confirms the suite gate stays the backstop [Agent 3 finding]
+- No existing test asserts the hook's `|| true` / "(warn-only)" text today (only ENH-3518's new module will); the flip is otherwise untested until that module exists [Agent 3 finding]
 
 ### Codebase Research Findings
 
@@ -77,6 +86,13 @@ _Added by `/ll:refine-issue` — 2026-09-20 — based on codebase analysis:_
 2. Run the 50-commit replay; classify every finding; write the report under `postmortems/`.
 3. Flip to blocking only if all conditions pass; otherwise keep warn-only. Update comment and display name consistently; update `docs/reference/CLI.md` only on a flip.
 4. Run the hook gate tests and the full suite.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- On a flip, update `docs/reference/CLI.md` `### ll-verify-evidence` — the `--added-only` mode bullet and `**Exit codes:**` line; keep the literal `ll-verify-evidence` string (pinned by `test_wiring_cli_registry.py` `DOC_STRINGS_PRESENT`)
+- Run `scripts/tests/test_wiring_cli_registry.py` and `scripts/tests/test_docs_audience_gate.py` after any CLI.md edit
 
 ## Impact
 
@@ -125,5 +141,6 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-20T00:32:34 - `1b17328e-89d8-45f8-a318-abba67ffafef.jsonl`
 - `/ll:refine-issue` - 2026-09-20T00:19:02 - `09e2af9d-eb90-432a-a570-962fb9c5f142.jsonl`
 - `/ll:format-issue` - 2026-09-20T00:10:58 - `d0eb6446-04cf-4c6e-ada1-f1ab3056d581.jsonl`

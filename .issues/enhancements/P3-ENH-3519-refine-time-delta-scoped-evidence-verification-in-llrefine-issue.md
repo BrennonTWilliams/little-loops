@@ -91,6 +91,22 @@ _Added by `/ll:refine-issue` — 2026-09-20 — based on codebase analysis:_
 - **Test-surface facts.** `scripts/tests/test_verify_evidence.py`: `TestCli` calls `main_verify_evidence([...])` in-process with `-C repo` and uses `pytest.raises(SystemExit)` for parser errors; fixtures `repo`, `config`, `pinned_repo`, helpers `_write`, `_commit_all`; `TestRepoGate` is the only subprocess (`gate_cli`) user. `scripts/tests/test_refine_issue_command.py` is a structural test (ENH-1237) that slices the command text between step headings (e.g. from `### 5a. Fill Gaps…` to `### 5b. Interactive Refinement`) and has no `allowed-tools` assertions — ordering claims ("snapshot before `fold-findings`") must be expressed as text-position checks against the command body.
 - **Conventions in force (evidence):** JSON-emitting CLIs take `--json` via `add_json_arg` (`little_loops.cli_args`) and print via `print_json`; versioned on-disk envelopes carry an integer version field and consumers reject or ignore mismatches (`_CACHE_VERSION` in `verify_evidence.py` — silently empties; `EvidenceBundle.schema_version` in `cli/loop/evidence.py`; `BUILDER_PROJECT_SCHEMA_VERSION` in `policy_builder_core.mjs` — rejects). The two disagree on mismatch handling (silent-reset vs reject); this issue's contract (exit 2 on unsupported version) follows the reject shape.
 
+### Dependent Files (Callers/Importers)
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/__init__.py` — imports/re-exports `main_verify_evidence`; the entry point is registered at `scripts/pyproject.toml` (`ll-verify-evidence`). No change needed for new flags.
+- `scripts/little_loops/init/writers.py` — permission allowlist already contains `Bash(ll-verify-evidence:*)`; no change needed.
+- `.kimi-code/skills/ll-refine-issue/SKILL.md` — additional host mirror carrying the `allowed-tools` block (alongside `skills/ll-refine-issue/`, `.qwen/commands/ll/refine-issue.md`, `.gemini/commands/refine-issue.toml`); re-sync via `ll-adapt`.
+
+### Tests
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_issue_parser.py` — line-anchored allowlist entry `"cli/verify_evidence.py": {108: "_ISSUE_ID_RE ..."}`; any code added above `_ISSUE_ID_RE` (new imports/constants for the snapshot envelope) shifts it and breaks the duplicate-priority-resolver gate. Update the line number or add new code below line 108.
+- `scripts/tests/test_wiring_skills_and_commands.py` — `SPAWN_SITE_INVENTORY` pins `("commands/refine-issue.md", 186)`; adding an `allowed-tools` line or any lines above 186 shifts it. Update the pinned line.
+- `scripts/tests/test_wiring_cli_registry.py` — pins `("docs/reference/CLI.md", "ll-verify-evidence", "BUG-3282")`; keep the new flag docs under the existing `### ll-verify-evidence` section (CLI.md ~L4791, exit-code text ~L4807).
+
+### Documentation
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/CLI.md` `### ll-verify-evidence` — beyond the flags, the exit-code contract (currently 0/1) must gain exit 2 for the new flags, and the mode list (`changed-files`, `--all`) needs the snapshot/delta usage examples.
+
 ## Program Design
 
 ### Signatures
@@ -107,6 +123,15 @@ _Added by `/ll:refine-issue` — 2026-09-20 — based on codebase analysis:_
 2. Update `commands/refine-issue.md`: tool permission, unique per-invocation snapshot path and original-snapshot retention, early snapshot, final delta ordering, bounded repairs, preservation/mode rules, incomplete-verification reporting.
 3. Extend `test_refine_issue_command.py` contract checks; document the flags in `docs/reference/CLI.md`.
 4. Re-sync host mirrors (`ll-adapt --host <host> --apply`); run the mirror gates and the full suite.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `scripts/tests/test_issue_parser.py` — re-pin the `cli/verify_evidence.py` line-108 allowlist entry if the CLI edit shifts `_ISSUE_ID_RE`
+- Update `scripts/tests/test_wiring_skills_and_commands.py` — re-pin `SPAWN_SITE_INVENTORY` `("commands/refine-issue.md", 186)` after the command edit
+- Re-sync `.kimi-code/skills/ll-refine-issue/SKILL.md` with the other mirrors via `ll-adapt --host <host> --apply`
+- Update `docs/reference/CLI.md` `### ll-verify-evidence` — exit-code table (add exit 2) as well as the flags
 
 ## Impact
 
@@ -147,5 +172,6 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-20T00:32:31 - `1b17328e-89d8-45f8-a318-abba67ffafef.jsonl`
 - `/ll:refine-issue` - 2026-09-20T00:19:02 - `09e2af9d-eb90-432a-a570-962fb9c5f142.jsonl`
 - `/ll:format-issue` - 2026-09-20T00:10:57 - `d0eb6446-04cf-4c6e-ada1-f1ab3056d581.jsonl`
