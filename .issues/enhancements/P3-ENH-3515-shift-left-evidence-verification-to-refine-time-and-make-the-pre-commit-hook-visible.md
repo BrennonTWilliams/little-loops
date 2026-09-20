@@ -15,6 +15,8 @@ completed_at: '2026-09-19T23:24:31Z'
 
 ## Summary
 
+**Implementation handoff:** this parent is done through decomposition, not through implementation. Work is owned by ENH-3518 (hook visibility and gate wording), ENH-3519 (refine-time verification), and ENH-3520 (conditional blocking after replay). Their requirements are authoritative; the proposal below is historical. In particular, ENH-3519 replaces the parent's prose-only delta comparison with CLI snapshot/delta flags. Implement the children, not this parent.
+
 An unverifiable evidence quote written while refining an issue is only reported by the repo-wide pytest gate, minutes later, inside an unrelated full-suite run. Close the write-time and commit-time gaps so the suite gate becomes a rarely-firing backstop. Keep the suite gate where it is.
 
 ## Current Behavior
@@ -145,7 +147,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Status
 
-**Open** | Created: 2026-09-19 | Priority: P3
+**Done** (decomposed into ENH-3518, ENH-3519, ENH-3520; child implementation remains open) | Created: 2026-09-19 | Priority: P3
 
 
 ## Session Log
@@ -156,7 +158,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Resolution
 
-- **Status**: Decomposed
+- **Status**: done (decomposed)
 - **Closed**: 2026-09-19
 - **Decomposed into**: ENH-3518, ENH-3519, ENH-3520
 

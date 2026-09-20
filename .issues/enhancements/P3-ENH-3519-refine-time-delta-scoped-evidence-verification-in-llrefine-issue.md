@@ -43,8 +43,12 @@ File mode (`ll-verify-evidence FILE`) is a whole-file scan with **no baseline**,
 
 **Delta lives in code, not in command prose (decided — reverses ENH-3515's "comparison belongs to the command").** `commands/refine-issue.md` allows only `Read`, `Glob`, `Edit(.issues/**)`, `Task`, and `Bash(git:*, ll-issues:*, ll-history-context:*, ll-code:*)` — no `Write`, no python/jq, so the command can neither persist a snapshot nor compute an occurrence-count diff deterministically, and a prose-described comparison cannot be validated with representative payloads. Add two flags to `ll-verify-evidence` file mode:
 
-- `--save-snapshot PATH` — write the findings JSON to `PATH` (the CLI does the write; no extra tool permission).
-- `--delta-from PATH` — scan, then compare occurrence counts keyed by `(span, artifact)`, excluding line numbers, against the snapshot; report only positive count differences as `new_findings` (with current line numbers for locating them), plus `preexisting_count`. This tolerates shifted lines while detecting a newly added duplicate of an existing bad quote and a change of attribution. Exit 0 = no new findings, 1 = new findings, a distinct other code = snapshot missing/malformed (**verification incomplete**, never clean).
+- `--save-snapshot PATH` — atomically write a versioned snapshot envelope containing findings and scan identity to `PATH` (the CLI does the write; no extra tool permission). Publish a snapshot only after a successful scan, including exit 1 with valid findings; never publish an empty-success snapshot on an execution failure.
+- `--delta-from PATH` — scan, then compare occurrence counts keyed by `(span, artifact)`, excluding line numbers, against the snapshot; report only positive count differences as `new_findings` (with current line numbers for locating them), plus `preexisting_count`. This tolerates shifted lines while detecting a newly added duplicate of an existing bad quote and a change of attribution. Exit 0 = no new findings, 1 = new findings, exit 2 = snapshot/input/compatibility failure (**verification incomplete**, never clean).
+
+**Snapshot contract:** both flags require exactly one existing, readable issue file. They are mutually exclusive and incompatible with `--all`, `--update-baseline`, and `--added-only`. Reject missing/unreadable inputs rather than letting a skipped scan count as clean. The snapshot envelope records a schema version, canonical project root and issue path, verifier compatibility version, and effective scan options (including `max_revisions`). Validate the envelope and finding field types before comparison; reject unsupported versions, wrong project/file identity, and incompatible options with exit 2. Issue-body edits between scans are expected and must not invalidate identity. Reject a snapshot destination that aliases the issue file; write failures must be explicit and leave no partial snapshot usable as a baseline.
+
+**Invocation isolation:** the refinement command supplies a fresh UUID-based snapshot path under its run/scratch directory for each invocation, including concurrent passes on the same issue. Never reuse a fixed issue-ID-only path or fall back to a snapshot from an earlier run. Retain that invocation's original snapshot across all repair checks; do not overwrite it with a post-edit scan. A failed creation marks verification incomplete even if another snapshot file exists.
 
 This is a diff between two scans of one file, not a corpus baseline: `--all`/baseline behavior is untouched.
 
@@ -85,8 +89,8 @@ Command changes (`commands/refine-issue.md`):
 
 ## Implementation Steps
 
-1. Add `--save-snapshot` / `--delta-from` and `compute_findings_delta` to `little_loops.cli.verify_evidence`; unit-test the representative payloads and the incomplete exit code (tests first — `tdd_mode`).
-2. Update `commands/refine-issue.md`: tool permission, early snapshot, final delta ordering, bounded repairs, preservation/mode rules, incomplete-verification reporting.
+1. Add `--save-snapshot` / `--delta-from`, the validated snapshot envelope, atomic writes, and `compute_findings_delta` to `little_loops.cli.verify_evidence`; test payloads, identity/option checks, flag exclusions, input/write failures, and exit 2 (tests first — `tdd_mode`).
+2. Update `commands/refine-issue.md`: tool permission, unique per-invocation snapshot path and original-snapshot retention, early snapshot, final delta ordering, bounded repairs, preservation/mode rules, incomplete-verification reporting.
 3. Extend `test_refine_issue_command.py` contract checks; document the flags in `docs/reference/CLI.md`.
 4. Re-sync host mirrors (`ll-adapt --host <host> --apply`); run the mirror gates and the full suite.
 
@@ -103,7 +107,9 @@ Decomposed from ENH-3515: Shift-left evidence verification to refine-time and ma
 ## Acceptance Criteria
 
 - [ ] `--delta-from` reports only positive `(span, artifact)` count differences; line shifts are ignored; new duplicates and changed attributions are detected (unit tests with the payload set above).
-- [ ] Missing or malformed snapshot yields the incomplete exit code, never exit 0.
+- [ ] Missing/malformed snapshots, unsupported schema or invalid finding types, wrong project/file identity, incompatible scan options, missing/unreadable issue files, incompatible flags, and multiple input files yield exit 2, never clean success (CLI tests).
+- [ ] Snapshot writes are atomic; failed scans/writes leave no usable partial snapshot, and the issue file cannot be used as the snapshot destination. Exit 1 with valid findings still produces a valid snapshot (tests).
+- [ ] Independent invocations use distinct snapshot paths, including for the same issue; failed creation never reuses an old snapshot. All repair checks retain the original snapshot. Tests cover invocation isolation and command path construction.
 - [ ] `commands/refine-issue.md` allows `Bash(ll-verify-evidence:*)`, snapshots before Step 5 / `fold-findings`, and runs the delta after every body-changing gate across default, auto, gap-analysis, and full-rewrite paths (contract test).
 - [ ] The command text bounds repairs (one correction pass, then remove/convert, then one final check) and forbids reporting success with unresolved findings; suppression is only for reviewed counter-examples.
 - [ ] Additive-only mode permits repairing this pass's additions while preserving earlier content. Dry-run makes no issue edits and does not claim verification.
