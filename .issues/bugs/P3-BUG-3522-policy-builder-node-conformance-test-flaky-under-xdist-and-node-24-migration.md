@@ -56,6 +56,13 @@ The structural fix is `BUG-2523`'s established pattern: `@pytest.mark.no_paralle
 
 Add `@pytest.mark.no_parallel` to `test_node_conformance_suite_passes` — same pattern PR #30 used for `test_two_producers_reach_one_client_with_distinct_producer_pid`. Run on the controller or in serial `-n 0` where CPU contention is absent and the 180s budget is safe.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-20 — based on codebase analysis:_
+
+- **Conventions in force**: a timing-sensitive or long-subprocess test is marked `no_parallel` (runs only under serial `-n 0`); tests needing more than the 120s default set `@pytest.mark.timeout(N)` strictly above any inner subprocess timeout (`test_verify_evidence.py`). The codebase disagrees on dormancy: `test_worktree_utils.py` (BUG-2650) explicitly rejects `no_parallel` because it is dormant under the default CI command, and instead runs a nested `-n 0` pytest. Which trade-off applies here — accept a dormant gate, add a serial CI invocation, or drop `no_parallel` in favor of a `timeout` marker above 180 — is an implementation decision.
+- Any resolution must keep the gate exercised somewhere (CLAUDE.md § Testing & CI Policy requires other-toolchain gates to run under the pytest suite), and must keep `test_conftest_cap.py::TestNoParallelMarkerRouting` passing.
+
 ## Acceptance Criteria
 
 - `test_node_conformance_suite_passes` passes reliably across 5+ consecutive CI runs on `main`
@@ -63,11 +70,29 @@ Add `@pytest.mark.no_parallel` to `test_node_conformance_suite_passes` — same 
 - No regression in other JS conformance tests (`test_node_22plus_runs_ok`, `test_node_test_runner_emits_tap_v13`, etc.) — these presumably don't have the contention issue
 - If a Node-version pin is also needed, add `actions/setup-node@v4` with `node-version: '22.x.y'` to the CI workflow — cheapest first probe before bisecting
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-20 — based on codebase analysis:_
+
+- The Program Design note that "runs on the controller" means "runs only in serial `-n 0`" makes AC 1 (5+ consecutive CI runs pass) trivially satisfiable by dormancy; a real criterion needs the gate to execute in at least one CI or documented serial invocation.
+
 ## Notes
 
 The Node 20 to 24 runner migration is documented as "Node.js 20 deprecated... forced onto Node.js 24" by the GitHub Actions runner announcement. Pinning to a specific Node 24.x.y version in `ci.yml` is a cheaper first probe than bisecting; if pinning fixes it, the issue reduces to "CI drift"; if not, the flake is contention-driven and `no_parallel` is the right fix.
 
 If both pinning and `no_parallel` are needed, do both — pinning reduces CI maintenance burden (Node version control), `no_parallel` eliminates xdist contention.
+
+## Integration Map
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-20 — based on codebase analysis:_
+
+- **Marker already landed**: `@pytest.mark.no_parallel` was added by `60358e836` (2026-09-20, `fix(tests): mark node conformance test no_parallel (BUG-3521) (#33)`), after the cited runs on `main @ fdf6773d2` (2026-09-19). The Proposed Solution's marker step is therefore complete; remaining work is the verification/coverage question below.
+- **Consequence of the marker**: `scripts/tests/conftest.py:pytest_collection_modifyitems` skips `no_parallel` items on xdist workers; the controller never runs tests under `-n N`. With `pytest.ini`/`scripts/pyproject.toml` addopts `-n logical`, the gate never executes in either `.github/workflows/ci.yml` job (`unit-tests` on `ubuntu-latest`, `conformance` on self-hosted with `-m conformance`; the test has no `conformance` marker). No workflow step runs `-n 0`, so the FEAT-2390 policy-builder JS gate is currently dormant in CI.
+- **Dependent/precedent files**: `scripts/tests/test_fsm_signal_integration.py` (module-level `pytestmark`, BUG-2523), `scripts/tests/test_feat3323_sse_bridge.py` (BUG-3484, stacked with `@pytest.mark.timeout(180)`), `scripts/tests/test_conftest_cap.py:TestNoParallelMarkerRouting` (hook contract), `docs/development/TESTING.md` (marker table ~L1050), `docs/development/TROUBLESHOOTING.md` (BUG-2523 section ~L825).
+- **CI Node**: `.github/workflows/ci.yml` has no `actions/setup-node` and no `node-version`; Node comes from the runner image. The Node-pin acceptance criterion would be the first Node pin in the repo.
+- **AC references that do not resolve**: `test_node_22plus_runs_ok` and `test_node_test_runner_emits_tap_v13` do not exist anywhere; the sibling test in the file is `test_round_trip_yaml_validates_for_each_mode` (no `no_parallel`, inner `timeout=30`).
 
 ## Program Design
 
@@ -101,4 +126,14 @@ If both pinning and `no_parallel` are needed, do both — pinning reduces CI mai
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-20T21:21:36 - `09272224-9351-4571-a369-7e216b7645b5.jsonl`
 - `/ll:format-issue` - 2026-09-20T21:17:56 - `4117c50f-02ee-4b8b-8840-0c4b382de04b.jsonl`
+
+## Root Cause
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-20 — based on codebase analysis:_
+
+- **File**: `scripts/tests/test_policy_builder_node_gate.py`, `test_node_conformance_suite_passes` — the inner `subprocess.run(..., timeout=180)` carries no `@pytest.mark.timeout`, so the suite-wide 120s thread-method pytest-timeout budget (`scripts/pyproject.toml` addopts) applies. Because the watchdog budget (120s) is below the inner budget (180s), a slow `node --test` under contention is killed by the thread watchdog, which hard-kills the xdist worker (`os._exit`) before `TimeoutExpired` can fire. This matches the worker-crash signature rather than an assertion flake. Convention violated: `test_verify_evidence.py` keeps the per-test cap strictly above the inner subprocess timeout (`GATE_TIMEOUT + 30`). This is a hypothesis from static reading; no failing CI log was inspected.
+- The JS files in `scripts/tests/js/*.test.mjs` (5 files) use injected fake clocks (`policy_submission.test.mjs`, `policy_validator.test.mjs`), not wall-clock waits — the only real-time limit is the Python-side timeout, which supports the timeout-budget reading over a Node-24 behavioral break.
