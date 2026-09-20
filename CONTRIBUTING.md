@@ -155,6 +155,24 @@ pre-commit run ll-verify-decisions --files .ll/decisions.yaml .ll/decisions.d/*.
 > gate. Those are covered by the pytest CI belt [ENH-2591] and the Claude
 > Code `PreToolUse` hook [ENH-2592].
 
+### Evidence Quote Verification (ll-verify-evidence)
+
+The `ll-verify-evidence` repo-local hook runs `--added-only` against staged
+`.issues/*.md` changes and checks that quoted evidence exists in the artifact
+it cites (BUG-3282). Activation is the same `pre-commit install` step above.
+The hook is **warn-only** (`|| true`) but `verbose: true`, so pre-commit prints
+its findings — and any verifier crash traceback — even though the commit
+proceeds. Every issue-file commit also prints a one-line PASS report; that
+noise is intentional (ENH-3518). To smoke-test it manually:
+
+```bash
+pre-commit run ll-verify-evidence --files .issues/bugs/<file>.md
+```
+
+> **Note**: `git commit --no-verify` bypasses the hook. The repo-wide
+> `TestRepoGate` suite gate (`ISSUE-CORPUS EVIDENCE GATE` in its failure
+> output) is the always-on enforcement.
+
 ## Project Structure
 
 ```

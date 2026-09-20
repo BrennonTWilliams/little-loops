@@ -4831,7 +4831,7 @@ ll-verify-evidence --all --update-baseline    # Re-record the grandfathered corp
 ll-verify-evidence --all --json               # Machine-readable output
 ```
 
-**Gates:** pre-commit (`.pre-commit-config.yaml`, warn-only on first release), little-loops' own test suite (which pins the repo gate), and the `/ll:verify-issues` skill invocation — the same three-layer model as `ll-verify-private-refs`.
+**Gates:** pre-commit (`.pre-commit-config.yaml`, warn-only on first release; the hook is `verbose: true`, so findings are printed even though the commit is not blocked), little-loops' own test suite (which pins the repo gate), and the `/ll:verify-issues` skill invocation — the same three-layer model as `ll-verify-private-refs`.
 
 ---
 

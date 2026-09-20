@@ -68,7 +68,14 @@ GATE_CLI = "ll-verify-evidence"
 # respawned and re-ran the test, and the cycle leaked one orphaned scan every
 # ~124s until the run was killed by hand. Mirrors the sibling validator gate at
 # `test_decisions_yaml_gate.py:80`.
+#
+# The gate test carries `@pytest.mark.timeout(GATE_TIMEOUT + 30)`: the suite-wide
+# `--timeout=120` (thread method) starts before the subprocess does, so an equal
+# cap would kill the xdist worker first and the labelled `TimeoutExpired`
+# message would never appear. The per-test cap must stay strictly greater.
 GATE_TIMEOUT = 120
+GATE_FAILURE_LABEL = "ISSUE-CORPUS EVIDENCE GATE"
+GATE_MAX_FINDINGS_SHOWN = 20
 
 
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess:
@@ -120,6 +127,62 @@ def _fail_if_shallow_checkout(repo_root: Path) -> None:
             "(CI: actions/checkout needs `fetch-depth: 0` — BUG-3442; local: "
             "`git fetch --unshallow`)"
         )
+
+
+def _classify_gate_result(returncode: int, stdout: str, stderr: str) -> tuple[str, str]:
+    """Classify a ``ll-verify-evidence --all --json`` run (ENH-3518).
+
+    Returns ``("clean" | "findings" | "execution_failure", labelled message)``.
+    Exit 1 is ambiguous (an uncaught CLI exception also exits 1), so status is
+    only trusted once stdout parses as a payload consistent with the exit code.
+    """
+
+    def failure(reason: str) -> tuple[str, str]:
+        tail = stderr.strip()[-2000:]
+        return (
+            "execution_failure",
+            f"{GATE_FAILURE_LABEL}: {GATE_CLI} did not produce a usable result "
+            f"({reason}; exit {returncode}). This is a verifier execution failure, "
+            f"not a corpus finding.\nstderr: {tail or '<empty>'}",
+        )
+
+    try:
+        payload = json.loads(stdout)
+    except ValueError:
+        return failure("stdout is not valid JSON")
+    if not isinstance(payload, dict):
+        return failure("payload is not a JSON object")
+
+    ok, count, findings = payload.get("ok"), payload.get("count"), payload.get("findings")
+    if not isinstance(ok, bool) or not isinstance(payload.get("mode"), str):
+        return failure("invalid 'ok'/'mode' field types")
+    if not isinstance(count, int) or isinstance(count, bool) or not isinstance(findings, list):
+        return failure("invalid 'count'/'findings' field types")
+    fields = {"file": str, "line": int, "section": str, "span": str, "artifact": str}
+    for f in findings:
+        if not isinstance(f, dict) or not all(
+            isinstance(f.get(k), t) and not isinstance(f.get(k), bool) for k, t in fields.items()
+        ):
+            return failure("invalid finding entry")
+
+    if returncode == 0 and ok and count == 0 and findings == []:
+        return "clean", ""
+    if returncode == 1 and not ok and count == len(findings) > 0:
+        shown = findings[:GATE_MAX_FINDINGS_SHOWN]
+        detail = "\n".join(
+            f"  {f['file']}:{f['line']} [{f['section']}] attributed to {f['artifact']}: "
+            f"{f['span']!r}"
+            for f in shown
+        )
+        truncated = f" (showing {GATE_MAX_FINDINGS_SHOWN} of {count})" if count > len(shown) else ""
+        return (
+            "findings",
+            f"{GATE_FAILURE_LABEL}: {count} evidence-unverifiable span(s) in the issue "
+            f"corpus beyond baseline{truncated}.\n{detail}\n\n"
+            "Fix the quote, correct the attribution, or suppress a reviewed "
+            "counter-example with '<!-- ll-evidence-ok: reason -->'.",
+        )
+    return failure("exit status inconsistent with payload")
 
 
 def _mkissues(root: Path) -> None:
@@ -1044,6 +1107,7 @@ class TestRepoGate:
             pytest.skip(f"{GATE_CLI} not installed; install via `pip install -e ./scripts[dev]`")
         return path
 
+    @pytest.mark.timeout(GATE_TIMEOUT + 30)
     def test_no_new_unverifiable_evidence(self, gate_cli: str) -> None:
         if not (REPO_ROOT / ".git").exists():
             pytest.skip("not a git checkout; nothing to enumerate")
@@ -1059,25 +1123,19 @@ class TestRepoGate:
             )
         except subprocess.TimeoutExpired:
             pytest.fail(
-                f"{GATE_CLI} --all exceeded {GATE_TIMEOUT}s. A full corpus scan runs in "
-                "well under that; a timeout here means a performance regression, not a "
-                "slow machine."
+                f"{GATE_FAILURE_LABEL}: {GATE_CLI} --all exceeded {GATE_TIMEOUT}s. A full "
+                "corpus scan runs in well under that; a timeout here may indicate a "
+                "verifier performance regression."
+            )
+        except OSError as exc:
+            pytest.fail(
+                f"{GATE_FAILURE_LABEL}: could not launch {GATE_CLI} ({exc}). "
+                "This is a verifier execution failure, not a corpus finding."
             )
 
-        payload = json.loads(result.stdout)
-        if payload["ok"]:
-            return
-
-        detail = "\n".join(
-            f"  {f['file']}:{f['line']} [{f['section']}] attributed to {f['artifact']}: {f['span']!r}"
-            for f in payload["findings"][:20]
-        )
-        pytest.fail(
-            f"{payload['count']} evidence-unverifiable span(s) beyond baseline.\n"
-            f"{detail}\n\n"
-            "Fix the quote, correct the attribution, or suppress a reviewed "
-            "counter-example with '<!-- ll-evidence-ok: reason -->'."
-        )
+        verdict, message = _classify_gate_result(result.returncode, result.stdout, result.stderr)
+        if verdict != "clean":
+            pytest.fail(message)
 
     def test_baseline_is_tracked_and_parseable(self) -> None:
         baseline = REPO_ROOT / BASELINE_PATH
@@ -1099,6 +1157,112 @@ class TestRepoGate:
             f"{total} baselined spans — a re-seed absorbed a precision regression. "
             "Fix the checker before re-running --update-baseline."
         )
+
+
+def _gate_payload(ok: bool, findings: list, count: int | None = None) -> str:
+    return json.dumps(
+        {
+            "ok": ok,
+            "mode": "all",
+            "count": len(findings) if count is None else count,
+            "findings": findings,
+        }
+    )
+
+
+class TestGateClassification:
+    """Branches of the ENH-3518 gate classifier, without patching subprocess."""
+
+    @staticmethod
+    def _finding(n: int = 0) -> dict:
+        return {"file": f"f{n}.md", "line": 1, "section": "S", "span": "x", "artifact": "a.md"}
+
+    def test_clean(self) -> None:
+        assert _classify_gate_result(0, _gate_payload(True, []), "") == ("clean", "")
+
+    def test_findings_labelled_with_remedies(self) -> None:
+        verdict, msg = _classify_gate_result(1, _gate_payload(False, [self._finding()]), "")
+        assert verdict == "findings"
+        assert msg.startswith(GATE_FAILURE_LABEL)
+        assert "ll-evidence-ok" in msg and "correct the attribution" in msg
+
+    def test_truncation_is_reported(self) -> None:
+        many = [self._finding(i) for i in range(25)]
+        _, msg = _classify_gate_result(1, _gate_payload(False, many), "")
+        assert "showing 20 of 25" in msg
+        assert "f19.md" in msg and "f20.md" not in msg
+
+    def test_uncaught_exception_exit_1_is_execution_failure_not_findings(self) -> None:
+        verdict, msg = _classify_gate_result(1, "", "Traceback (most recent call last):\nboom")
+        assert verdict == "execution_failure"
+        assert msg.startswith(GATE_FAILURE_LABEL)
+        assert "boom" in msg
+
+    @pytest.mark.parametrize(
+        ("rc", "stdout"),
+        [
+            (2, _gate_payload(True, [])),
+            (0, "not json"),
+            (0, "[]"),
+            (0, json.dumps({"ok": "yes", "mode": "all", "count": 0, "findings": []})),
+            (0, json.dumps({"ok": True, "mode": "all", "count": "0", "findings": []})),
+            (0, json.dumps({"ok": True, "mode": "all", "count": 1, "findings": []})),
+            (1, _gate_payload(True, [])),
+            (1, _gate_payload(False, [])),
+            (0, _gate_payload(False, [{"file": "f.md"}])),
+            (1, _gate_payload(False, [{"file": "f.md"}])),
+            (
+                1,
+                _gate_payload(
+                    False,
+                    [{"file": "f.md", "line": "1", "section": "S", "span": "x", "artifact": "a"}],
+                ),
+            ),  # noqa: E501
+            (
+                1,
+                _gate_payload(
+                    False,
+                    [{"file": "f.md", "line": 1, "section": "S", "span": "x", "artifact": "a"}],
+                    count=3,
+                ),
+            ),  # noqa: E501
+        ],
+    )
+    def test_malformed_or_inconsistent_is_execution_failure(self, rc: int, stdout: str) -> None:
+        verdict, msg = _classify_gate_result(rc, stdout, "err text")
+        assert verdict == "execution_failure"
+        assert msg.startswith(GATE_FAILURE_LABEL)
+        assert "err text" in msg
+
+    def test_timeout_and_launch_failure_are_labelled(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        real_run = subprocess.run
+
+        def make(exc: Exception):  # type: ignore[no-untyped-def]
+            def fake(cmd, *args, **kwargs):  # type: ignore[no-untyped-def]
+                if cmd and cmd[0] == "gate-cli-stub":
+                    raise exc
+                return real_run(cmd, *args, **kwargs)
+
+            return fake
+
+        gate_test = TestRepoGate().test_no_new_unverifiable_evidence
+        for exc, needle in (
+            (subprocess.TimeoutExpired("gate-cli-stub", GATE_TIMEOUT), "exceeded"),
+            (OSError("no exec"), "could not launch"),
+        ):
+            monkeypatch.setattr(subprocess, "run", make(exc))
+            with pytest.raises(pytest.fail.Exception) as excinfo:
+                gate_test("gate-cli-stub")
+            assert str(excinfo.value).startswith(GATE_FAILURE_LABEL)
+            assert needle in str(excinfo.value)
+
+    def test_gate_test_timeout_exceeds_gate_timeout(self) -> None:
+        marks = [
+            m
+            for m in getattr(TestRepoGate.test_no_new_unverifiable_evidence, "pytestmark")
+            if m.name == "timeout"
+        ]
+        assert marks and marks[0].args[0] > GATE_TIMEOUT
 
 
 class TestBaselineKeying:
