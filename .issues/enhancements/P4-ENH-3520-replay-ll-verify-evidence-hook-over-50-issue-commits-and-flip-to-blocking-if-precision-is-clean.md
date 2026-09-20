@@ -15,8 +15,7 @@ labels:
 relates_to:
 - BUG-3282
 - ENH-3518
-blocked_by:
-- ENH-3518
+blocked_by: []
 parent: ENH-3515
 confidence_score: 70
 outcome_confidence: 67
@@ -66,7 +65,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ### Tests
 - Rename/move and substantial-rewrite fixtures distinguish newly authored findings from pre-existing evidence; inject a staged-line Git failure and assert the documented output/exit policy. Scrub inherited Git repository/index environment overrides in isolated test and replay subprocesses.
-- ENH-3518's new pre-commit gate test module (`test_verify_evidence_pre_commit_gate`, created by that issue) derives the expected exit status from the configured policy; after a flip it must assert a non-zero exit for the invalid staged quote with no test rewrite beyond that.
+- `scripts/tests/test_verify_evidence_pre_commit_gate.py` (landed via ENH-3518) derives the expected exit status from the configured policy; after a flip it must assert a non-zero exit for the invalid staged quote with no test rewrite beyond that.
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_wiring_cli_registry.py` — `DOC_STRINGS_PRESENT` pins `("docs/reference/CLI.md", "ll-verify-evidence", "BUG-3282")`; a CLI.md edit on flip must keep that string present (no change needed, regression guard) [Agent 3 finding]
@@ -83,7 +82,7 @@ _Added by `/ll:refine-issue` — 2026-09-20 — based on codebase analysis:_
 - **History matching is scoped by `git log --all`.** `HistoryIndex._run_full` / `ensure_paths` run `git log --all --raw` in `base_dir`, capped by `max_revisions` (default `DEFAULT_MAX_REVISIONS = 80`), and tiers are working tree → history blobs. Constraint: an isolated repo containing only the parent's history is what makes "no later revisions" true; the verifier's `--max-revisions` value belongs in the recorded verifier identity.
 - **The `|| true` wrapper hides the verdict.** `.pre-commit-config.yaml` entry is `bash -c 'll-verify-evidence --added-only "$@" || true' --` (`pass_filenames: true`, `files: ^\.issues/.*\.md$`), so a replay through pre-commit cannot observe exit status; findings are only visible via output. Constraint: replay measurement needs the CLI's own exit code / `--json` findings (`_findings_to_json`), and must also reproduce the hook's `files` filter so the same file set is eligible.
 - **`TestWholeCorpusPrecision` is extraction-only.** Its sole test (`test_candidate_extraction_precision_ceiling` in `scripts/tests/test_verify_evidence.py`) never calls `resolve_artifact`, `ArtifactMatcher`, `staged_added_lines` or the CLI, and omits the `section` argument `scan_file` passes — confirming the issue's premise that no hook-precision measurement exists.
-- **ENH-3518's gate module is not yet present (created by that issue).** `scripts/tests/test_verify_evidence_pre_commit_gate.py` is absent (only `test_decisions_yaml_pre_commit_gate.py` exists). That sibling hardcodes `!= 0` / `== 0` and writes a *copied* minimal config into `tmp_path` rather than reading the real one, so "derive expected status from the configured policy" is a new requirement ENH-3518 must introduce — this issue depends on it (`blocked_by: ENH-3518`).
+- **ENH-3518's gate module has landed.** `scripts/tests/test_verify_evidence_pre_commit_gate.py` exists and derives the policy from the real config (`_is_warn_only` reads the `entry:` line for `|| true`; asserts name "warn-only" text agrees with it). The hook also carries `verbose: true`. `blocked_by: ENH-3518` is resolved.
 - **Conventions in force (evidence, not templates):**
   - Pre-commit gate tests assert structure by reading `.pre-commit-config.yaml` as text (substring checks), never via YAML parsing (`test_decisions_yaml_pre_commit_gate.py`), so a flip must keep `entry:` and the `name:` "(warn-only)" text mutually consistent as literal strings.
   - Throwaway repos are `tmp_path` + `git init` + repo-local identity, with explicit subprocess timeouts (60s/120s) because an untimed subprocess once wedged an xdist run (`test_verify_evidence.py` `GATE_TIMEOUT`); identity values and initial branch vary between files. No existing test scrubs inherited `GIT_DIR`/`GIT_INDEX_FILE` — contested/absent, so a replay running under pre-commit or ll-auto should decide this knowingly.
@@ -160,6 +159,8 @@ All referenced files, line numbers and code claims verified against the current 
 - AC coverage: the conditional `docs/reference/CLI.md` update on a flip had no acceptance criterion — added.
 - Confirmed: `staged_added_lines` fails open (`None` → whole-file scan); `scan_paths` never attaches a verdict cache; hook entry still `|| true`.
 
+_Corrections in the `/ll:verify-issues` 2026-09-20 pass:_ `blocked_by: ENH-3518` cleared (ENH-3518 is done); the "gate module absent" claim was outdated — the module exists and is policy-derived; `scan_paths` now also takes a `strict` flag (`ScanExecutionError` on infra failure), but `--added-only` still calls `staged_added_lines` unguarded, so the fail-open-to-whole-file behavior claim still needs a direct check during the staged-scan-failure step.
+
 ## Confidence Check Notes
 
 _Added by `/ll:confidence-check` on 2026-09-19_
@@ -175,10 +176,10 @@ _Added by `/ll:confidence-check` on 2026-09-19_
 
 ### Outcome Risk Factors
 - Moderate per-site complexity: the isolated historical replay harness (parent-as-HEAD, staged tree, restricted refs, env scrubbing) is throwaway but non-trivial and untested itself.
-- Test coverage of the flip depends on a module (ENH-3518) that does not exist yet.
 - Conditional outcome: several branches (maintenance-op policy, staged-scan failure policy) may resolve to "stay warn-only" or require a verifier follow-up.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-20T04:26:17 - `870e2333-9233-4bbd-8a9b-511ffb8b0392.jsonl`
 - `/ll:confidence-check` - 2026-09-20T02:58:31 - `977f15ce-7c46-446a-8bf0-6c67847cf478.jsonl`
 - `/ll:verify-issues` - 2026-09-20T01:36:18 - `58521fbd-d3a2-45c1-879f-6abf803572a3.jsonl`
 - `/ll:wire-issue` - 2026-09-20T00:32:34 - `1b17328e-89d8-45f8-a318-abba67ffafef.jsonl`
