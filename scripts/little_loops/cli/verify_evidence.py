@@ -63,13 +63,15 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import subprocess
 import sys
+import uuid
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NoReturn
 
 from little_loops.cli.output import configure_output, print_json, use_color_enabled
 from little_loops.cli_args import add_json_arg
@@ -167,6 +169,11 @@ class EvidenceFinding:
     line: int
     span: str
     artifact: str
+    resolved_artifact: str = ""
+
+
+class ScanExecutionError(Exception):
+    """A strict-mode scan hit an infrastructure failure (not a legitimate absence)."""
 
 
 # ---------------------------------------------------------------------------
@@ -682,8 +689,9 @@ class HistoryIndex:
     of zero on this corpus.
     """
 
-    def __init__(self, base_dir: Path) -> None:
+    def __init__(self, base_dir: Path, *, strict: bool = False) -> None:
         self.base_dir = base_dir
+        self.strict = strict
         self._blobs: dict[str, list[str]] = {}
         self._seen: dict[str, set[str]] = {}
         self._full = False
@@ -747,10 +755,14 @@ class HistoryIndex:
                 capture_output=True,
                 check=False,
             )
-        except (OSError, subprocess.SubprocessError):
+        except (OSError, subprocess.SubprocessError) as exc:
+            if self.strict:
+                raise ScanExecutionError(f"git log failed: {exc}") from exc
             return
         if result.returncode == 0:
             self._parse(result.stdout.decode("utf-8", errors="replace"))
+        elif self.strict:
+            raise ScanExecutionError(f"git log exited {result.returncode}")
 
     def ensure_paths(self, rel_paths: Iterable[str]) -> None:
         """Index just *rel_paths*, promoting to a full pass once it stops paying."""
@@ -781,10 +793,14 @@ class HistoryIndex:
                 capture_output=True,
                 check=False,
             )
-        except (OSError, subprocess.SubprocessError):
+        except (OSError, subprocess.SubprocessError) as exc:
+            if self.strict:
+                raise ScanExecutionError(f"git log failed: {exc}") from exc
             return
         if result.returncode == 0:
             self._parse(result.stdout.decode("utf-8", errors="replace"))
+        elif self.strict:
+            raise ScanExecutionError(f"git log exited {result.returncode}")
 
     def blobs_for(self, rel_path: str) -> tuple[str, ...]:
         """Blob OIDs for *rel_path*, newest revision first.
@@ -808,8 +824,9 @@ class BlobReader:
     their own in the initializer.
     """
 
-    def __init__(self, base_dir: Path) -> None:
+    def __init__(self, base_dir: Path, *, strict: bool = False) -> None:
         self.base_dir = base_dir
+        self.strict = strict
         self._proc: subprocess.Popen[bytes] | None = None
 
     def _ensure(self) -> subprocess.Popen[bytes] | None:
@@ -823,26 +840,46 @@ class BlobReader:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL,
             )
-        except (OSError, subprocess.SubprocessError):
+        except (OSError, subprocess.SubprocessError) as exc:
             self._proc = None
+            if self.strict:
+                raise ScanExecutionError(f"git cat-file failed to start: {exc}") from exc
         return self._proc
 
+    def _fail(self, reason: str) -> NoReturn:
+        """Strict mode: drop the (possibly desynced) process and raise."""
+        self.close()
+        raise ScanExecutionError(f"git cat-file: {reason}")
+
     def read(self, oid: str) -> bytes | None:
-        """Return the blob's bytes, or ``None`` when git cannot supply it."""
+        """Return the blob's bytes, or ``None`` when git cannot supply it.
+
+        In strict mode only a well-formed ``<oid> missing`` response is absence
+        (``None``); every malformed or truncated response raises
+        :class:`ScanExecutionError` before any bytes are returned.
+        """
         proc = self._ensure()
         if proc is None or proc.stdin is None or proc.stdout is None:
+            if self.strict:
+                self._fail("no process")
             return None
         try:
             proc.stdin.write(f"{oid}\n".encode())
             proc.stdin.flush()
             header = proc.stdout.readline()
         except (OSError, ValueError):
+            if self.strict:
+                self._fail("broken pipe")
             self.close()
             return None
         if not header:
+            if self.strict:
+                self._fail("empty header")
             self.close()
             return None
         fields = header.decode("utf-8", errors="replace").split()
+        if self.strict:
+            return self._read_strict(proc, oid, fields)
         if len(fields) < 3:
             return None
         try:
@@ -855,6 +892,28 @@ class BlobReader:
         except (OSError, ValueError):
             self.close()
             return None
+        return payload
+
+    def _read_strict(
+        self, proc: subprocess.Popen[bytes], oid: str, fields: list[str]
+    ) -> bytes | None:
+        assert proc.stdout is not None
+        if fields == [oid, "missing"]:
+            return None
+        if len(fields) != 3 or fields[0] != oid or fields[1] != "blob":
+            self._fail(f"malformed header {' '.join(fields)!r}")
+        if not fields[2].isdigit():
+            self._fail(f"invalid size {fields[2]!r}")
+        size = int(fields[2])
+        try:
+            payload = proc.stdout.read(size)
+            terminator = proc.stdout.read(1)
+        except (OSError, ValueError):
+            self._fail("read failed")
+        if len(payload) != size:
+            self._fail("truncated payload")
+        if terminator != b"\n":
+            self._fail("missing terminator")
         return payload
 
     def close(self) -> None:
@@ -880,7 +939,7 @@ class BlobReader:
 # ---------------------------------------------------------------------------
 
 
-def build_tracked_index(base_dir: Path) -> frozenset[str]:
+def build_tracked_index(base_dir: Path, *, strict: bool = False) -> frozenset[str]:
     """Single ``git ls-files -z`` call, reused across every span's resolution.
 
     Resolution is per-candidate-span, and a corpus-wide scan can carry
@@ -896,9 +955,13 @@ def build_tracked_index(base_dir: Path) -> frozenset[str]:
             capture_output=True,
             check=False,
         )
-    except (OSError, subprocess.SubprocessError):
+    except (OSError, subprocess.SubprocessError) as exc:
+        if strict:
+            raise ScanExecutionError(f"git ls-files failed: {exc}") from exc
         return frozenset()
     if result.returncode != 0:
+        if strict:
+            raise ScanExecutionError(f"git ls-files exited {result.returncode}")
         return frozenset()
     names = result.stdout.decode("utf-8", errors="replace").split("\0")
     return frozenset(n for n in names if n)
@@ -966,10 +1029,14 @@ def resolve_artifact(
 # ---------------------------------------------------------------------------
 
 
-def _read_working_tree(base_dir: Path, rel_path: str) -> str | None:
+def _read_working_tree(base_dir: Path, rel_path: str, *, strict: bool = False) -> str | None:
     try:
         return (base_dir / rel_path).read_text(encoding="utf-8", errors="replace")
-    except OSError:
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        if strict:
+            raise ScanExecutionError(f"cannot read {rel_path}: {exc}") from exc
         return None
 
 
@@ -1002,10 +1069,12 @@ class ArtifactMatcher:
         *,
         max_revisions: int = DEFAULT_MAX_REVISIONS,
         verdict_cache: VerdictCache | None = None,
+        strict: bool = False,
     ) -> None:
         self.base_dir = base_dir
-        self.index = index if index is not None else HistoryIndex(base_dir)
-        self.reader = reader if reader is not None else BlobReader(base_dir)
+        self.strict = strict
+        self.index = index if index is not None else HistoryIndex(base_dir, strict=strict)
+        self.reader = reader if reader is not None else BlobReader(base_dir, strict=strict)
         self.max_revisions = max_revisions
         self.verdict_cache = verdict_cache
         self._worktree_cache: dict[str, str | None] = {}
@@ -1015,7 +1084,7 @@ class ArtifactMatcher:
 
     def _worktree_text(self, rel_path: str) -> str | None:
         if rel_path not in self._worktree_cache:
-            raw = _read_working_tree(self.base_dir, rel_path)
+            raw = _read_working_tree(self.base_dir, rel_path, strict=self.strict)
             self._worktree_cache[rel_path] = normalize(raw) if raw is not None else None
         return self._worktree_cache[rel_path]
 
@@ -1414,8 +1483,12 @@ def scan_file(
     matcher: ArtifactMatcher | None = None,
     tracked: frozenset[str] | None = None,
     resolution_cache: dict[str, str | None] | None = None,
+    strict: bool = False,
 ) -> tuple[list[EvidenceFinding], dict[str, set[str]]]:
     """Scan one issue file for unverifiable evidence spans.
+
+    With ``strict=True`` an unreadable issue file raises
+    :class:`ScanExecutionError` instead of reading as a clean scan.
 
     Returns ``(findings, {artifact_ref: {normalized_span, ...}})`` — the
     second element groups this file's candidate spans by resolved artifact so
@@ -1423,7 +1496,9 @@ def scan_file(
     """
     try:
         content = path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
+    except OSError as exc:
+        if strict:
+            raise ScanExecutionError(f"cannot read {path}: {exc}") from exc
         return [], {}
 
     display_path = rel_path or path
@@ -1460,29 +1535,29 @@ def scan_file(
         return [], {}
 
     if matcher is None:
-        matcher = ArtifactMatcher(base_dir)
+        matcher = ArtifactMatcher(base_dir, strict=strict)
 
-    by_artifact: dict[str, list[CandidateSpan]] = {}
-    resolved_ref: dict[str, str] = {}
+    # Each occurrence keeps its own attribution spelling: two references that
+    # resolve to one file must not relabel each other's findings.
+    by_artifact: dict[str, list[tuple[CandidateSpan, str]]] = {}
     for span, artifact in candidates:
         resolved = resolve_artifact(base_dir, artifact, config, tracked, resolution_cache)
         if resolved is None:
             continue
-        by_artifact.setdefault(resolved, []).append(span)
-        resolved_ref[resolved] = artifact
+        by_artifact.setdefault(resolved, []).append((span, artifact))
 
     findings: list[EvidenceFinding] = []
     keyed_hashes: dict[str, set[str]] = {}
     for resolved_path, spans in by_artifact.items():
-        to_check: dict[str, list[CandidateSpan]] = {}
-        for span in spans:
+        to_check: dict[str, list[tuple[CandidateSpan, str]]] = {}
+        for span, artifact in spans:
             normalized = normalize_query(span.text)
             if not normalized:
                 continue
             span_hash = _span_hash(normalized)
             if span_hash in baselined:
                 continue
-            to_check.setdefault(normalized, []).append(span)
+            to_check.setdefault(normalized, []).append((span, artifact))
         if not to_check:
             continue
         results = matcher.matches(resolved_path, list(to_check.keys()))
@@ -1491,14 +1566,15 @@ def scan_file(
                 continue
             if issue_id:
                 keyed_hashes.setdefault(issue_id, set()).add(_span_hash(normalized))
-            for span in spans_for_norm:
+            for span, artifact in spans_for_norm:
                 findings.append(
                     EvidenceFinding(
                         issue_path=display_path,
                         section=span.section,
                         line=span.line,
                         span=span.text,
-                        artifact=resolved_ref[resolved_path],
+                        artifact=artifact,
+                        resolved_artifact=resolved_path,
                     )
                 )
 
@@ -1513,16 +1589,29 @@ def scan_paths(
     *,
     added_only: bool = False,
     max_revisions: int = DEFAULT_MAX_REVISIONS,
+    strict: bool = False,
 ) -> list[EvidenceFinding]:
-    """Scan an explicit file list (skill / host-hook / pre-commit mode)."""
+    """Scan an explicit file list (skill / host-hook / pre-commit mode).
+
+    ``strict=True`` (snapshot/delta modes) raises :class:`ScanExecutionError`
+    on infrastructure failures instead of degrading to empty results.
+    """
     added = staged_added_lines(base_dir, paths) if added_only else None
-    matcher = ArtifactMatcher(base_dir, max_revisions=max_revisions)
-    tracked = build_tracked_index(base_dir)
-    resolution_cache: dict[str, str | None] = {}
+    matcher = ArtifactMatcher(base_dir, max_revisions=max_revisions, strict=strict)
     findings: list[EvidenceFinding] = []
     try:
+        tracked = build_tracked_index(base_dir, strict=strict)
+        resolution_cache: dict[str, str | None] = {}
         findings = _scan_path_list(
-            base_dir, paths, config, matcher, tracked, resolution_cache, added, added_only
+            base_dir,
+            paths,
+            config,
+            matcher,
+            tracked,
+            resolution_cache,
+            added,
+            added_only,
+            strict=strict,
         )
     finally:
         matcher.close()
@@ -1538,6 +1627,8 @@ def _scan_path_list(
     resolution_cache: dict[str, str | None],
     added: dict[str, set[int]] | None,
     added_only: bool,
+    *,
+    strict: bool = False,
 ) -> list[EvidenceFinding]:
     findings: list[EvidenceFinding] = []
     for path in paths:
@@ -1563,6 +1654,7 @@ def _scan_path_list(
             matcher=matcher,
             tracked=tracked,
             resolution_cache=resolution_cache,
+            strict=strict,
         )
         findings.extend(file_findings)
     return findings
@@ -1828,10 +1920,302 @@ def _findings_to_json(findings: list[EvidenceFinding], mode: str) -> dict:
                 "section": f.section,
                 "span": f.span,
                 "artifact": f.artifact,
+                "resolved_artifact": f.resolved_artifact,
             }
             for f in findings
         ],
     }
+
+
+# ---------------------------------------------------------------------------
+# Snapshot / delta (refine-time verification, ENH-3519)
+# ---------------------------------------------------------------------------
+
+SNAPSHOT_SCHEMA_VERSION = 1
+# Bump when the scanner's finding identity changes (normalize_query, attribution,
+# resolution): an old snapshot then compares apples to oranges and is rejected.
+VERIFIER_COMPAT_VERSION = 1
+SNAPSHOT_DIR = Path(".loops") / "tmp" / "scratch"
+
+_FINDING_STR_FIELDS = ("file", "section", "span", "artifact", "resolved_artifact")
+
+
+class SnapshotError(Exception):
+    """A snapshot could not be written, read, or trusted as a baseline."""
+
+
+@dataclass
+class EvidenceSnapshot:
+    """Before-scan envelope compared against by ``--delta-from``."""
+
+    schema_version: int
+    verifier_compat: int
+    project_root: str
+    issue_path: str
+    max_revisions: int
+    findings: list[dict]
+
+
+def _finding_key(finding: dict) -> tuple[str, str]:
+    return normalize_query(finding["span"]), finding["resolved_artifact"]
+
+
+def compute_findings_delta(before: list[dict], after: list[dict]) -> list[dict]:
+    """Groups of positive net-count differences between two scans of one file.
+
+    Keyed by ``(normalize_query(span), resolved_artifact)`` — never by line
+    number or citation spelling. This is a net-count delta, not edit
+    provenance: an equal-count removal/reinsertion of identical evidence
+    cancels.
+    """
+    before_counts: dict[tuple[str, str], int] = {}
+    for finding in before:
+        key = _finding_key(finding)
+        before_counts[key] = before_counts.get(key, 0) + 1
+    grouped: dict[tuple[str, str], list[dict]] = {}
+    for finding in after:
+        grouped.setdefault(_finding_key(finding), []).append(finding)
+    groups: list[dict] = []
+    for key, occurrences in grouped.items():
+        prior = before_counts.get(key, 0)
+        added = len(occurrences) - prior
+        if added <= 0:
+            continue
+        groups.append(
+            {
+                "span": occurrences[0]["span"],
+                "resolved_artifact": key[1],
+                "added_count": added,
+                "preexisting_count": min(prior, len(occurrences)),
+                "candidates": [
+                    {
+                        "line": o["line"],
+                        "section": o["section"],
+                        "span": o["span"],
+                        "artifact": o["artifact"],
+                    }
+                    for o in occurrences
+                ],
+            }
+        )
+    groups.sort(key=lambda g: g["candidates"][0]["line"])
+    return groups
+
+
+def _issue_identity(base_dir: Path, issue: Path) -> str:
+    abs_issue = (issue if issue.is_absolute() else base_dir / issue).resolve()
+    try:
+        return str(abs_issue.relative_to(base_dir.resolve())).replace("\\", "/")
+    except ValueError:
+        return str(abs_issue)
+
+
+def write_snapshot(base_dir: Path, snapshot: EvidenceSnapshot, dest: Path | None) -> Path:
+    """Atomically publish *snapshot*; ``dest=None`` allocates a unique scratch path.
+
+    The ``-<pid>`` suffix makes an allocated file eligible for the
+    ``SessionStart`` scratch-cleanup prune. Raises :class:`SnapshotError` on an
+    aliased destination or any write failure; no partial file is left behind.
+    """
+    from little_loops.file_utils import atomic_write_json
+
+    root = base_dir.resolve()
+    if dest is None:
+        dest = root / SNAPSHOT_DIR / f"evidence-snapshot-{uuid.uuid4()}-{os.getpid()}.json"
+    elif not dest.is_absolute():
+        dest = Path.cwd() / dest
+    if dest.resolve() == (root / snapshot.issue_path).resolve():
+        raise SnapshotError("snapshot destination aliases the issue file")
+    try:
+        atomic_write_json(dest, snapshot.__dict__)
+    except (OSError, ValueError) as exc:
+        raise SnapshotError(f"cannot write snapshot {dest}: {exc}") from exc
+    return dest
+
+
+def load_snapshot(
+    path: Path, *, base_dir: Path, issue_path: Path, max_revisions: int
+) -> EvidenceSnapshot:
+    """Read and validate a snapshot; raise :class:`SnapshotError` on any mismatch."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise SnapshotError(f"cannot read snapshot {path}: {exc}") from exc
+    if not isinstance(data, dict):
+        raise SnapshotError("snapshot is not a JSON object")
+    if data.get("schema_version") != SNAPSHOT_SCHEMA_VERSION:
+        raise SnapshotError(f"unsupported snapshot schema_version {data.get('schema_version')!r}")
+    if data.get("verifier_compat") != VERIFIER_COMPAT_VERSION:
+        raise SnapshotError(f"incompatible verifier_compat {data.get('verifier_compat')!r}")
+    if data.get("project_root") != str(base_dir.resolve()):
+        raise SnapshotError("snapshot belongs to a different project root")
+    if data.get("issue_path") != _issue_identity(base_dir, issue_path):
+        raise SnapshotError("snapshot belongs to a different issue file")
+    if data.get("max_revisions") != max_revisions:
+        raise SnapshotError("snapshot was taken with a different --max-revisions")
+    findings = data.get("findings")
+    if not isinstance(findings, list):
+        raise SnapshotError("snapshot findings must be a list")
+    for finding in findings:
+        if (
+            not isinstance(finding, dict)
+            or not all(isinstance(finding.get(k), str) for k in _FINDING_STR_FIELDS)
+            or isinstance(finding.get("line"), bool)
+            or not isinstance(finding.get("line"), int)
+        ):
+            raise SnapshotError("snapshot finding has missing or mistyped fields")
+    return EvidenceSnapshot(
+        schema_version=data["schema_version"],
+        verifier_compat=data["verifier_compat"],
+        project_root=data["project_root"],
+        issue_path=data["issue_path"],
+        max_revisions=data["max_revisions"],
+        findings=findings,
+    )
+
+
+def _delta_to_json(new_findings: list[dict], findings: list[EvidenceFinding]) -> dict:
+    payload = _findings_to_json(findings, "delta")
+    new_count = sum(g["added_count"] for g in new_findings)
+    payload.update(
+        {
+            "ok": new_count == 0,
+            "status": "clean" if new_count == 0 else "new_findings",
+            "new_findings": new_findings,
+            "new_count": new_count,
+        }
+    )
+    return payload
+
+
+def _format_delta_report(new_findings: list[dict], total: int) -> str:
+    new_count = sum(g["added_count"] for g in new_findings)
+    if not new_findings:
+        return (
+            f"ll-verify-evidence: delta CLEAN — no new unverifiable spans "
+            f"({total} pre-existing finding(s) unchanged)"
+        )
+    lines = [
+        f"ll-verify-evidence: delta NEW FINDINGS — {new_count} added "
+        f"({total - new_count} pre-existing)",
+        "",
+    ]
+    for group in new_findings:
+        lines.append(
+            f"  +{group['added_count']} (pre-existing {group['preexisting_count']}) "
+            f"attributed to {group['resolved_artifact']}"
+        )
+        lines.append(f"      “{group['span'].strip()}”")
+        for cand in group["candidates"]:
+            lines.append(f"      candidate: line {cand['line']} [{cand['section']}]")
+    return "\n".join(lines)
+
+
+def _incomplete(mode: str, error: str, findings: list[dict], as_json: bool) -> int:
+    """Verification incomplete (exit 2) — never reported as clean."""
+    if as_json:
+        print_json(
+            {
+                "ok": False,
+                "mode": mode,
+                "status": "incomplete",
+                "error": error,
+                "findings": findings,
+            }
+        )
+    else:
+        print(f"ll-verify-evidence: {mode} INCOMPLETE — {error}")
+        for f in findings:
+            print(f"  known (from snapshot) {f['file']}:{f['line']}: “{f['span'].strip()}”")
+    return 2
+
+
+def _run_snapshot_mode(args: argparse.Namespace, logger: Logger) -> int:
+    """``--save-snapshot`` / ``--delta-from``: strict single-file scan (exit 0/1/2)."""
+    mode = "snapshot" if args.save_snapshot is not None else "delta"
+    as_json = args.json
+    base_dir = args.directory or Path.cwd()
+
+    def bad(reason: str) -> int:
+        return _incomplete(mode, reason, [], as_json)
+
+    if args.save_snapshot is not None and args.delta_from is not None:
+        return bad("--save-snapshot and --delta-from are mutually exclusive")
+    for flag, on in (
+        ("--all", args.all),
+        ("--update-baseline", args.update_baseline),
+        ("--added-only", args.added_only),
+    ):
+        if on:
+            return bad(f"--save-snapshot/--delta-from are incompatible with {flag}")
+    if len(args.paths) != 1:
+        return bad("snapshot/delta modes require exactly one issue file")
+    issue = args.paths[0]
+    abs_issue = issue if issue.is_absolute() else base_dir / issue
+    if not abs_issue.is_file():
+        return bad(f"issue file not found: {issue}")
+    try:
+        abs_issue.read_bytes()
+    except OSError as exc:
+        return bad(f"issue file unreadable: {exc}")
+
+    configure_output()
+    from little_loops.config import BRConfig
+
+    config = BRConfig(base_dir)
+    known: list[dict] = []
+    snapshot: EvidenceSnapshot | None = None
+    if mode == "delta":
+        try:
+            snapshot = load_snapshot(
+                args.delta_from,
+                base_dir=base_dir,
+                issue_path=issue,
+                max_revisions=args.max_revisions,
+            )
+        except SnapshotError as exc:
+            return bad(str(exc))
+        known = snapshot.findings
+
+    try:
+        reported = scan_paths(
+            base_dir, [issue], config, max_revisions=args.max_revisions, strict=True
+        )
+    except ScanExecutionError as exc:
+        return _incomplete(mode, str(exc), known, as_json)
+
+    if snapshot is not None:
+        new_findings = compute_findings_delta(
+            snapshot.findings, _findings_to_json(reported, "paths")["findings"]
+        )
+        payload = _delta_to_json(new_findings, reported)
+        if as_json:
+            print_json(payload)
+        else:
+            print(_format_delta_report(new_findings, len(reported)))
+        return 0 if payload["ok"] else 1
+
+    new_snapshot = EvidenceSnapshot(
+        schema_version=SNAPSHOT_SCHEMA_VERSION,
+        verifier_compat=VERIFIER_COMPAT_VERSION,
+        project_root=str(base_dir.resolve()),
+        issue_path=_issue_identity(base_dir, issue),
+        max_revisions=args.max_revisions,
+        findings=_findings_to_json(reported, "paths")["findings"],
+    )
+    dest = None if args.save_snapshot in ("", "auto") else Path(args.save_snapshot)
+    try:
+        saved = write_snapshot(base_dir, new_snapshot, dest)
+    except SnapshotError as exc:
+        return bad(str(exc))
+    if as_json:
+        payload = _findings_to_json(reported, "paths")
+        payload["snapshot_path"] = str(saved)
+        print_json(payload)
+    else:
+        print(_format_text_report(reported))
+        print(f"Snapshot saved: {saved}")
+    return 1 if reported else 0
 
 
 # ---------------------------------------------------------------------------
@@ -1861,6 +2245,8 @@ Examples:
   %(prog)s --all                       # Full scan of issues.base_dir vs. baseline
   %(prog)s --all --update-baseline     # Re-record the grandfathered corpus
   %(prog)s --all --json                # Machine-readable output
+  %(prog)s FILE --save-snapshot        # Save a before-scan (path printed / snapshot_path)
+  %(prog)s FILE --delta-from SNAPSHOT  # Report only findings added since the snapshot
 
 Suppress a reviewed counter-example (a quote reported *because* it is
 fabricated) on the matching line or the one above:
@@ -1868,7 +2254,8 @@ fabricated) on the matching line or the one above:
 
 Exit codes:
   0 - Clean (or no findings beyond baseline under --all)
-  1 - One or more unsuppressed findings
+  1 - One or more unsuppressed findings (under --delta-from: new findings)
+  2 - Snapshot/delta verification incomplete (bad input, snapshot, or scan failure)
 """,
         )
         parser.add_argument(
@@ -1912,9 +2299,31 @@ Exit codes:
             default=None,
             help="Project root to scan (default: cwd)",
         )
+        parser.add_argument(
+            "--save-snapshot",
+            nargs="?",
+            const="auto",
+            default=None,
+            metavar="PATH",
+            help=(
+                "Scan one issue file and save a delta baseline. With no PATH the CLI "
+                "allocates .loops/tmp/scratch/evidence-snapshot-<uuid4>-<pid>.json and "
+                "reports it (snapshot_path under --json). Put the FILE before this flag."
+            ),
+        )
+        parser.add_argument(
+            "--delta-from",
+            type=Path,
+            default=None,
+            metavar="PATH",
+            help="Scan one issue file and report only findings added since the snapshot.",
+        )
         add_json_arg(parser)
 
         args = parser.parse_args(argv)
+
+        if args.save_snapshot is not None or args.delta_from is not None:
+            return _run_snapshot_mode(args, Logger(use_color=use_color_enabled()))
 
         if args.update_baseline and not args.all:
             parser.error("--update-baseline requires --all")

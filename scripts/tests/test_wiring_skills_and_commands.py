@@ -749,7 +749,7 @@ SPAWN_SITE_INVENTORY: frozenset[tuple[str, int]] = frozenset(
         ("skills/manage-issue/SKILL.md", 110),
         ("skills/go-no-go/SKILL.md", 176),
         ("skills/go-no-go/SKILL.md", 276),
-        ("commands/refine-issue.md", 186),
+        ("commands/refine-issue.md", 187),
         ("commands/tradeoff-review-issues.md", 79),
         ("commands/manage-release.md", 134),
         # scan-codebase.md:95 ("Spawn a single combined agent that scans...") carries

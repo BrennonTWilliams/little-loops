@@ -9,6 +9,7 @@ allowed-tools:
   - Bash(git:*, ll-issues:*)
   - Bash(ll-history-context:*)
   - Bash(ll-code:*)
+  - Bash(ll-verify-evidence:*)
 arguments:
   - name: issue_id
     description: Issue ID to refine (e.g., BUG-071, FEAT-225, ENH-042)
@@ -195,7 +196,7 @@ If **every** axis is `covered`, spawn nothing and **skip Steps 4, 5a, and 5b ent
 
 On a project where the Program Design gate is active, this branch cannot be reached while the section is missing or non-specific — Step 3.0's override forces `analyzer` unmet. The no-op path stays entirely normal on unstamped and grandfathered projects, where the gate is inactive and the override never fires.
 
-Proceed directly to Step 5c (if `--gap-analysis`), then Steps 6, 6.5, and 6.7. Still append the Session Log entry (Step 6.5), and report the no-op explicitly, naming what satisfied each axis:
+Proceed directly to Step 5c (if `--gap-analysis`), then Steps 6, 6.5, and 6.7 — taking the Step 3.9 evidence snapshot first if any of those will edit the body. Covered triage establishes only that research is unnecessary, never that no edits occur. Still append the Session Log entry (Step 6.5), and report the no-op explicitly, naming what satisfied each axis:
 
 ```
 No research needed — all three axes already covered:
@@ -336,6 +337,22 @@ codebase; the route is the implementer's call.
 ```
 
 #### Every spawned agent uses `run_in_background: false`. Wait for ALL spawned agents' results synchronously in this same turn before proceeding.
+
+### 3.9. Evidence Snapshot (ENH-3519)
+
+Quoted evidence this pass authors must be verified against the artifact it is attributed to, at write time. `ll-verify-evidence` file mode is a whole-file scan with no baseline and old issues carry grandfathered findings, so verification is a **before/after delta** computed by the CLI — never by hand.
+
+**Skip if**: `DRY_RUN` is true (nothing is written, so verification is *not run* — say so in the report), or no relevant body edit will occur on this path. Report verification as *not applicable* only when no in-scope content was changed; never infer that from triage coverage alone. If an initially edit-free path later needs a body edit (Step 5c additions, Step 6.7 prose or Program Design repairs), take the snapshot **before that edit**.
+
+Take the snapshot **before the first possible body mutation** — before Step 5a's `ll-issues fold-findings` writes, not merely before Step 6's "Update Issue File":
+
+```bash
+ll-verify-evidence "$ISSUE_FILE" --json --save-snapshot
+```
+
+Do not build a path: the CLI allocates a fresh unique file and returns it as `snapshot_path` in the JSON payload. Exit 1 with valid JSON is normal scan data (pre-existing findings), not a failure. **Retain that original `snapshot_path` for the entire pass** — never overwrite it with a post-edit scan and never reuse a snapshot from an earlier run. If the CLI is missing, exits 2, times out, or returns malformed JSON, verification is **incomplete** (note the reason, continue gracefully as `/ll:verify-issues` check B7 does); without a valid snapshot do not treat later findings as new.
+
+**Authored-quote list.** As the pass writes, record every quote it authors — each `fold-findings` payload and each section fill — with its span text, artifact attribution, and insertion context (section and surrounding inserted text). Repair ownership (Step 6.8) is decided from this list.
 
 ### 4. Identify Knowledge Gaps
 
@@ -1099,6 +1116,24 @@ keys:
   under the gate report; do not edit the issue file to resolve them.
 - Skip this gate if `DRY_RUN` is true.
 
+### 6.8. Evidence Delta Check (ENH-3519)
+
+Runs **after the last body-changing gate** (Step 6.7) on the default, `--auto`, `--gap-analysis`, and `--full-rewrite` paths. Skip when Step 3.9 was skipped; under `--dry-run` report verification as *not run for the preview* — never claim verification of unapplied additions.
+
+```bash
+ll-verify-evidence "$ISSUE_FILE" --json --delta-from "$SNAPSHOT_PATH"
+```
+
+Exit 0 = clean delta (pre-existing findings in `findings` are grandfathered — do not report or touch them). Exit 1 = `new_findings` groups, each with `added_count` and all current `candidates` (line, section, span, artifact). Exit 2 or malformed JSON = **verification incomplete**, never clean. Keep the **last successful delta report** separately from the immutable original snapshot.
+
+**Repair ownership (single rule).** Counts establish detection, not ownership. Repair a finding only when its span is a quote **this pass authored** and a current candidate maps to a recorded insertion by span, resolved attribution, and insertion context; a text-only match is insufficient. A span not in the authored-quote list, an `added_count` that cannot be mapped to this pass's insertions (ambiguous duplicates), or uncertain ownership after intervening edits is reported **unresolved and left untouched**. This is a conservative policy, not a concurrency guarantee.
+
+**On an owned new finding**, reuse `/ll:capture-issue`'s on-miss contract: re-read the artifact and correct the quote, or describe the evidence in prose. A reviewed genuine counter-example may carry `<!-- ll-evidence-ok: reason -->`; never suppress merely to clear the check. Allow **one correction pass** and re-run the delta. If findings remain and ownership is established, remove the newly introduced quote or convert it to accurate prose, then run **one final check**. Do not retry indefinitely and never declare success with unresolved findings. Removing or correcting *this pass's own* additions is permitted in additive-only / `--gap-analysis` mode; pre-existing content and findings stay preserved.
+
+**Failed recheck.** If a repair recheck returns exit 2 or malformed JSON, keep the last successful delta report's findings visible and label their current status **unconfirmed** — do not replace them with the error body's older snapshot findings and do not claim they cleared. If no delta ever succeeded, use the snapshot findings the CLI supplied.
+
+Record one status for Step 8: `clean delta`, `repaired delta`, `unresolved findings`, `incomplete verification`, `not applicable`, or `dry-run (not run)`.
+
 ### 7.5. Extract Learning Targets (ENH-2209)
 
 After appending the session log, extract external API dependencies from the issue text and auto-populate `learning_tests_required` in frontmatter.
@@ -1185,6 +1220,10 @@ ISSUE REFINED: [ISSUE-ID]
 - program_design_nonspecific: [clear | revised once, now clear | STILL FAILING after one revision — operator action needed | not applicable (unarmed/grandfathered)]
 - soft_dep_hard_edge: [clear | fixed (moved [ID] to relates_to) | — ]
 - AC-vs-Program-Design contradictions: [none found | N found — see findings below]
+
+## EVIDENCE VERIFICATION [Step 6.8]
+- Status: [clean delta | repaired delta | unresolved findings | incomplete verification (reason) | not applicable | dry-run (not run)]
+- Unresolved/unconfirmed: [list of spans with line, or none]
 
 ## FILE STATUS
 - [Modified | Not modified (--dry-run)]

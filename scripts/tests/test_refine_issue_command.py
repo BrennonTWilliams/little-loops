@@ -671,3 +671,85 @@ class TestDependencyClassificationInStep5a:
             "Step 5b must reference the Dependency Classification rule so it is "
             "reachable from interactive mode too, not only Auto Mode's Step 5a"
         )
+
+
+class TestEvidenceVerificationContract:
+    """Text-contract checks for refine-time delta evidence verification (ENH-3519)."""
+
+    @staticmethod
+    def _text() -> str:
+        return COMMAND_FILE.read_text()
+
+    @classmethod
+    def _gate(cls) -> str:
+        text = cls._text()
+        return text[text.index("### 6.8. Evidence Delta Check") : text.index("### 7.5.")]
+
+    def test_allowed_tool(self) -> None:
+        frontmatter = self._text().split("---", 2)[1]
+        assert "Bash(ll-verify-evidence:*)" in frontmatter
+
+    def test_snapshot_precedes_fold_findings_with_cli_path(self) -> None:
+        text = self._text()
+        snap = text.index("### 3.9. Evidence Snapshot")
+        assert snap < text.index("### 5a. Fill Gaps with Research Findings")
+        assert snap < text.index("ll-issues fold-findings")
+        section = text[snap : text.index("### 4. Identify Knowledge Gaps")]
+        assert "--json --save-snapshot" in section
+        assert "snapshot_path" in section
+        assert "Do not build a path" in section
+        assert "uuidgen" not in section and "mktemp" not in section
+        assert "Retain that original" in section
+
+    def test_snapshot_not_skipped_by_covered_triage(self) -> None:
+        text = self._text()
+        triage = text[text.index("#### 3.1 Zero unmet axes") : text.index("#### 3.05")]
+        assert "Step 3.9" in triage
+        assert "never that no edits occur" in triage
+        snap = text[text.index("### 3.9.") : text.index("### 4. Identify")]
+        assert "Step 5c" in snap and "Step 6.7" in snap
+        assert "never infer that from triage coverage alone" in snap
+
+    def test_delta_after_last_body_changing_gate(self) -> None:
+        text = self._text()
+        gate = text.index("### 6.8. Evidence Delta Check")
+        assert text.index("### 6.7.") < gate < text.index("### 7.5.")
+        body = self._gate()
+        for mode in ("--auto", "--gap-analysis", "--full-rewrite"):
+            assert mode in body
+        assert "--delta-from" in body
+
+    def test_ownership_rule_and_bounded_repair(self) -> None:
+        body = self._gate()
+        assert "Repair ownership (single rule)" in body
+        assert "authored" in body and "insertion context" in body
+        assert "a text-only match is insufficient" in body
+        assert "unresolved and left untouched" in body
+        assert "one correction pass" in body and "one final check" in body
+        assert "never declare success with unresolved findings" in body
+        assert "ll-evidence-ok" in body and "never suppress merely to clear" in body
+
+    def test_additive_mode_and_dry_run(self) -> None:
+        body = self._gate()
+        assert "additive-only" in body
+        assert "pre-existing content and findings stay preserved" in body
+        assert "dry-run" in body.lower() and "not run" in body
+
+    def test_incomplete_and_last_successful_delta_retained(self) -> None:
+        body = self._gate()
+        assert "verification incomplete" in body
+        assert "last successful delta report" in body
+        assert "unconfirmed" in body
+        assert "do not replace them with the error body" in body
+
+    def test_report_distinguishes_statuses(self) -> None:
+        report = self._text()
+        report = report[report.index("## EVIDENCE VERIFICATION") :]
+        for status in (
+            "clean delta",
+            "repaired delta",
+            "unresolved findings",
+            "incomplete verification",
+            "dry-run",
+        ):
+            assert status in report

@@ -10,6 +10,7 @@ allowed-tools:
   - Bash(git:*, ll-issues:*)
   - Bash(ll-history-context:*)
   - Bash(ll-code:*)
+  - Bash(ll-verify-evidence:*)
 disable-model-invocation: true
 metadata:
   short-description: Refine issue files with codebase-driven research to fill knowledge gaps...

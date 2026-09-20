@@ -3,10 +3,11 @@ id: ENH-3519
 type: ENH
 title: Refine-time delta-scoped evidence verification in /ll:refine-issue
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-19'
 captured_at: '2026-09-19T23:24:10Z'
+completed_at: '2026-09-20T04:21:57Z'
 labels:
 - enhancement
 - verify-evidence
@@ -207,7 +208,13 @@ All referenced files, line numbers and code claims verified against the current 
 
 Verdict at time of check: **VALID** (no corrections needed). Re-checked against the current tree: `_ISSUE_ID_RE` still at `verify_evidence.py:108` (matches the `test_issue_parser.py` pin); `resolved_ref[resolved] = artifact` at line 1472 and its use at line 1501 (attribution defect real); `build_tracked_index`, `HistoryIndex._run_full`/`ensure_paths`, `BlobReader`, `normalize_query`, `EvidenceFinding` all present with no `strict`/snapshot/delta code; `file_utils.atomic_write`/`atomic_write_json` exist; `SPAWN_SITE_INVENTORY` still pins `("commands/refine-issue.md", 186)`; `refine-issue.md` still lacks `ll-verify-evidence`; all four host mirrors and `docs/reference/CLI.md` `### ll-verify-evidence` exist. `ll-verify-evidence` reports no unverifiable quotes. Proposal consequence check (B6): no new exception-handler, fixture, or AC-coverage gaps. Graph: provider=codegraph freshness=fresh (not needed for verdict).
 
+## Resolution
+
+Implemented 2026-09-20: `ll-verify-evidence` gained `--save-snapshot [PATH]` / `--delta-from PATH` (strict scans, `ScanExecutionError`, versioned snapshot envelope, `compute_findings_delta`, `resolved_artifact` on findings, per-occurrence attribution fix); `commands/refine-issue.md` gained Step 3.9 (snapshot) and Step 6.8 (delta check with ownership-bounded repair) plus the `Bash(ll-verify-evidence:*)` permission; host mirrors re-synced; `docs/reference/CLI.md` documents the flags and exit 2; line pins re-set. Full suite green (25164 passed).
+
 ## Session Log
+- `/ll:manage-issue` - 2026-09-20T04:21:57 - `2f13a8ba-36bd-4a02-87cc-c90af206a9ab.jsonl`
+- `/ll:ready-issue` - 2026-09-20T04:09:45 - `28a01507-e9c8-41b8-81aa-d0489768ab2b.jsonl`
 - `/ll:confidence-check` - 2026-09-20T03:58:47 - `85b20279-96d0-4b4d-a210-49fd46d89eea.jsonl`
 - `/ll:verify-issues` - 2026-09-20T03:56:10 - `21db537a-a4a5-4aeb-96ea-183b65d27383.jsonl`
 - `/ll:confidence-check` - 2026-09-20T02:58:11 - `4ac1f770-fd60-4b79-879d-3dc59e1d8d4b.jsonl`

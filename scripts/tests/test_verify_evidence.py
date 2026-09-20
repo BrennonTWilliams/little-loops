@@ -13,6 +13,7 @@ Integration Map -> Tests).
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -25,7 +26,11 @@ from little_loops.cli.verify_evidence import (
     ArtifactMatcher,
     BlobReader,
     HistoryIndex,
+    ScanExecutionError,
+    _read_working_tree,
     attribute_span,
+    build_tracked_index,
+    compute_findings_delta,
     extract_candidate_spans,
     in_scope_sections,
     is_command_output,
@@ -1025,6 +1030,426 @@ class TestCli:
         _commit_all(repo)
         rc = main_verify_evidence(["-C", str(repo), ".issues/bugs/issue.md"])
         assert rc == 1
+
+
+# ---------------------------------------------------------------------------
+# Snapshot / delta (ENH-3519)
+# ---------------------------------------------------------------------------
+
+_TARGET = ".issues/enhancements/target.md"
+_ISSUE = ".issues/bugs/issue.md"
+_BAD1 = "this first quote is entirely absent from the target"
+_BAD2 = "this second quote is also entirely absent from it"
+
+
+def _issue_body(*spans: str, alias: str = _TARGET) -> str:
+    quotes = "\n".join(f"See `{sp}` (`{alias}`)." for sp in spans)
+    return f"## Current Behavior\n\n{quotes}\n"
+
+
+@pytest.fixture
+def delta_repo(repo: Path) -> Path:
+    _write(repo, _TARGET, "nothing relevant here\n")
+    _write(repo, _ISSUE, _issue_body(_BAD1))
+    _commit_all(repo)
+    return repo
+
+
+def _run(repo: Path, *args: str, capsys: pytest.CaptureFixture[str]) -> tuple[int, dict]:
+    rc = main_verify_evidence(["-C", str(repo), *args, "--json"])
+    return rc, json.loads(capsys.readouterr().out)
+
+
+def _snapshot(repo: Path, capsys: pytest.CaptureFixture[str]) -> str:
+    rc, payload = _run(repo, _ISSUE, "--save-snapshot", capsys=capsys)
+    assert rc == 1
+    return payload["snapshot_path"]
+
+
+class TestComputeFindingsDelta:
+    @staticmethod
+    def _f(span: str, line: int = 3, artifact: str = "A", resolved: str = "a.md") -> dict:
+        return {
+            "file": "i.md",
+            "line": line,
+            "section": "Current Behavior",
+            "span": span,
+            "artifact": artifact,
+            "resolved_artifact": resolved,
+        }
+
+    def test_unchanged_and_line_shift_not_new(self) -> None:
+        before = [self._f(_BAD1, 3)]
+        assert compute_findings_delta(before, [self._f(_BAD1, 9)]) == []
+
+    def test_new_quote_reported_with_candidates(self) -> None:
+        groups = compute_findings_delta([self._f(_BAD1)], [self._f(_BAD1), self._f(_BAD2, 5)])
+        assert len(groups) == 1
+        assert groups[0]["added_count"] == 1
+        assert groups[0]["preexisting_count"] == 0
+        assert groups[0]["candidates"][0]["line"] == 5
+
+    def test_duplicate_of_old_bad_quote_is_new(self) -> None:
+        groups = compute_findings_delta(
+            [self._f(_BAD1, 3)], [self._f(_BAD1, 3), self._f(_BAD1, 3), self._f(_BAD1, 9)]
+        )
+        assert groups[0]["added_count"] == 2
+        assert groups[0]["preexisting_count"] == 1
+        assert len(groups[0]["candidates"]) == 3
+
+    def test_duplicate_inserted_before_existing(self) -> None:
+        groups = compute_findings_delta([self._f(_BAD1, 5)], [self._f(_BAD1, 3), self._f(_BAD1, 6)])
+        assert groups[0]["added_count"] == 1
+
+    def test_whitespace_emphasis_punctuation_rewrite_not_new(self) -> None:
+        before = [self._f("the  quoted   text is long enough")]
+        after = [self._f("the *quoted* text is long enough.")]
+        assert compute_findings_delta(before, after) == []
+
+    def test_respelling_same_artifact_not_new_but_reattribution_is(self) -> None:
+        before = [self._f(_BAD1, artifact="ENH-1", resolved="a.md")]
+        assert compute_findings_delta(before, [self._f(_BAD1, artifact="a.md")]) == []
+        moved = [self._f(_BAD1, artifact="b.md", resolved="b.md")]
+        assert compute_findings_delta(before, moved)[0]["resolved_artifact"] == "b.md"
+
+    def test_repaired_finding_not_new(self) -> None:
+        assert compute_findings_delta([self._f(_BAD1)], []) == []
+
+    def test_equal_count_replacement_cancels(self) -> None:
+        # Documented net-count semantics: remove one identical span, add another.
+        assert compute_findings_delta([self._f(_BAD1, 3)], [self._f(_BAD1, 8)]) == []
+
+
+class TestAttributionPerOccurrence:
+    def test_alias_does_not_relabel_earlier_finding(self, delta_repo: Path) -> None:
+        # Two spellings (issue ID and path) resolving to one file.
+        _write(delta_repo, ".issues/enhancements/P3-ENH-9-target.md", "unrelated\n")
+        body = (
+            "## Current Behavior\n\n"
+            f"See `{_BAD1}` (`ENH-9`).\n\n"
+            f"See `{_BAD2}` (`P3-ENH-9`).\n"
+        )
+        _write(delta_repo, _ISSUE, body)
+        _commit_all(delta_repo)
+        config = BRConfig(delta_repo)
+        findings = scan_paths(delta_repo, [Path(_ISSUE)], config)
+        by_span = {f.span: f for f in findings}
+        assert by_span[_BAD1].artifact == "ENH-9"
+        assert by_span[_BAD2].artifact == "P3-ENH-9"
+        assert by_span[_BAD1].resolved_artifact == by_span[_BAD2].resolved_artifact
+
+
+class TestSnapshotCli:
+    def test_allocates_unique_path(
+        self, delta_repo: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        p1 = Path(_snapshot(delta_repo, capsys))
+        p2 = Path(_snapshot(delta_repo, capsys))
+        assert p1 != p2
+        for p in (p1, p2):
+            assert p.is_file()
+            assert p.parent == (delta_repo / ".loops" / "tmp" / "scratch").resolve()
+            assert p.name.startswith("evidence-snapshot-")
+            assert p.name.endswith(f"-{os.getpid()}.json")
+
+    def test_payload_has_resolved_artifact(
+        self, delta_repo: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        rc, payload = _run(delta_repo, _ISSUE, "--save-snapshot", capsys=capsys)
+        assert rc == 1
+        assert payload["findings"][0]["resolved_artifact"] == _TARGET
+        assert Path(payload["snapshot_path"]).is_absolute()
+
+    def test_text_output_prints_saved_path(
+        self, delta_repo: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        rc = main_verify_evidence(["-C", str(delta_repo), _ISSUE, "--save-snapshot"])
+        assert rc == 1
+        assert "Snapshot saved: " in capsys.readouterr().out
+
+    def test_explicit_path_and_alias_rejected(
+        self, delta_repo: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        dest = tmp_path / "snap.json"
+        rc, _ = _run(delta_repo, _ISSUE, "--save-snapshot", str(dest), capsys=capsys)
+        assert rc == 1 and dest.is_file()
+        rc, body = _run(
+            delta_repo, _ISSUE, "--save-snapshot", str(delta_repo / _ISSUE), capsys=capsys
+        )
+        assert rc == 2 and body["status"] == "incomplete"
+        assert "aliases" in body["error"]
+
+    def test_write_failure_is_incomplete(
+        self, delta_repo: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        blocker = tmp_path / "file"
+        blocker.write_text("x")
+        rc, body = _run(
+            delta_repo, _ISSUE, "--save-snapshot", str(blocker / "s.json"), capsys=capsys
+        )
+        assert rc == 2 and body["status"] == "incomplete"
+
+
+class TestDeltaCli:
+    def test_clean_delta_with_preexisting_findings(
+        self, delta_repo: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        snap = _snapshot(delta_repo, capsys)
+        rc, body = _run(delta_repo, _ISSUE, "--delta-from", snap, capsys=capsys)
+        assert rc == 0
+        assert body["mode"] == "delta" and body["status"] == "clean" and body["ok"] is True
+        assert body["new_count"] == 0 and body["count"] == len(body["findings"]) == 1
+
+    def test_new_quote_detected(self, delta_repo: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        snap = _snapshot(delta_repo, capsys)
+        _write(delta_repo, _ISSUE, _issue_body(_BAD1, _BAD2))
+        rc, body = _run(delta_repo, _ISSUE, "--delta-from", snap, capsys=capsys)
+        assert rc == 1 and body["ok"] is False and body["status"] == "new_findings"
+        assert body["new_count"] == sum(g["added_count"] for g in body["new_findings"]) == 1
+        assert body["count"] == len(body["findings"]) == 2
+        assert body["new_findings"][0]["span"] == _BAD2
+
+    def test_text_output_distinguishes_new(
+        self, delta_repo: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        snap = _snapshot(delta_repo, capsys)
+        _write(delta_repo, _ISSUE, _issue_body(_BAD1, _BAD2))
+        rc = main_verify_evidence(["-C", str(delta_repo), _ISSUE, "--delta-from", snap])
+        out = capsys.readouterr().out
+        assert rc == 1 and "NEW FINDINGS" in out and "1 pre-existing" in out
+
+    def test_repair_returns_clean(
+        self, delta_repo: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        snap = _snapshot(delta_repo, capsys)
+        _write(delta_repo, _ISSUE, _issue_body(_BAD1, "nothing relevant here"))
+        rc, body = _run(delta_repo, _ISSUE, "--delta-from", snap, capsys=capsys)
+        assert rc == 0 and body["status"] == "clean"
+
+    def test_missing_snapshot_incomplete(
+        self, delta_repo: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        rc, body = _run(
+            delta_repo, _ISSUE, "--delta-from", str(tmp_path / "nope.json"), capsys=capsys
+        )
+        assert rc == 2
+        assert body["status"] == "incomplete" and body["findings"] == []
+
+    @pytest.mark.parametrize(
+        "mutate",
+        [
+            lambda d: d.update(schema_version=99),
+            lambda d: d.update(verifier_compat=99),
+            lambda d: d.update(project_root="/elsewhere"),
+            lambda d: d.update(issue_path="other.md"),
+            lambda d: d.update(max_revisions=1),
+            lambda d: d.update(findings="nope"),
+            lambda d: d["findings"][0].update(line="3"),
+            lambda d: d["findings"][0].pop("resolved_artifact"),
+        ],
+    )
+    def test_invalid_snapshot_incomplete(
+        self, delta_repo: Path, capsys: pytest.CaptureFixture[str], mutate
+    ) -> None:
+        snap = Path(_snapshot(delta_repo, capsys))
+        data = json.loads(snap.read_text())
+        mutate(data)
+        snap.write_text(json.dumps(data))
+        rc, body = _run(delta_repo, _ISSUE, "--delta-from", str(snap), capsys=capsys)
+        assert rc == 2 and body["status"] == "incomplete"
+
+    def test_malformed_json_snapshot(
+        self, delta_repo: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        bad = tmp_path / "bad.json"
+        bad.write_text("{not json")
+        rc, body = _run(delta_repo, _ISSUE, "--delta-from", str(bad), capsys=capsys)
+        assert rc == 2 and body["status"] == "incomplete"
+
+    def test_after_scan_failure_carries_snapshot_findings(
+        self,
+        delta_repo: Path,
+        capsys: pytest.CaptureFixture[str],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        snap = _snapshot(delta_repo, capsys)
+
+        def boom(*a: object, **k: object) -> None:
+            raise ScanExecutionError("git ls-files exited 128")
+
+        monkeypatch.setattr("little_loops.cli.verify_evidence.build_tracked_index", boom)
+        rc, body = _run(delta_repo, _ISSUE, "--delta-from", snap, capsys=capsys)
+        assert rc == 2 and body["status"] == "incomplete"
+        assert body["ok"] is False and len(body["findings"]) == 1
+
+    def test_before_scan_failure_publishes_no_snapshot(
+        self, delta_repo: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def boom(*a: object, **k: object) -> None:
+            raise ScanExecutionError("history failed")
+
+        monkeypatch.setattr("little_loops.cli.verify_evidence.HistoryIndex._run_full", boom)
+        monkeypatch.setattr("little_loops.cli.verify_evidence.HistoryIndex.ensure_paths", boom)
+        rc, body = _run(delta_repo, _ISSUE, "--save-snapshot", capsys=capsys)
+        assert rc == 2 and body["status"] == "incomplete"
+        assert not (delta_repo / ".loops" / "tmp" / "scratch").exists()
+
+
+class TestSnapshotFlagValidation:
+    @pytest.mark.parametrize(
+        "extra",
+        [
+            ["--all"],
+            ["--update-baseline"],
+            ["--added-only"],
+        ],
+    )
+    def test_incompatible_flags_json(
+        self, delta_repo: Path, capsys: pytest.CaptureFixture[str], extra: list[str]
+    ) -> None:
+        rc, body = _run(delta_repo, _ISSUE, "--save-snapshot", *extra, capsys=capsys)
+        assert rc == 2 and body["status"] == "incomplete"
+
+    def test_mutually_exclusive(self, delta_repo: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        rc, body = _run(
+            delta_repo, _ISSUE, "--save-snapshot", "auto", "--delta-from", "x", capsys=capsys
+        )
+        assert rc == 2 and body["status"] == "incomplete"
+
+    def test_cardinality(self, delta_repo: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        rc, body = _run(delta_repo, _ISSUE, _TARGET, "--save-snapshot", capsys=capsys)
+        assert rc == 2 and body["status"] == "incomplete"
+        rc, body = _run(delta_repo, "--save-snapshot", capsys=capsys)
+        assert rc == 2 and body["status"] == "incomplete"
+
+    def test_missing_input_file(self, delta_repo: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        rc, body = _run(delta_repo, ".issues/bugs/none.md", "--save-snapshot", capsys=capsys)
+        assert rc == 2 and body["status"] == "incomplete"
+
+    def test_text_mode_reports_incomplete(
+        self, delta_repo: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        rc = main_verify_evidence(
+            ["-C", str(delta_repo), ".issues/bugs/none.md", "--save-snapshot"]
+        )
+        assert rc == 2 and "INCOMPLETE" in capsys.readouterr().out
+
+    def test_argparse_syntax_error_stays_stderr(self, delta_repo: Path) -> None:
+        with pytest.raises(SystemExit) as exc:
+            main_verify_evidence(["-C", str(delta_repo), _ISSUE, "--delta-from"])
+        assert exc.value.code == 2
+
+
+class _FakeProc:
+    """Minimal ``git cat-file --batch`` stand-in feeding canned bytes."""
+
+    def __init__(self, response: bytes) -> None:
+        import io
+
+        self.stdin = io.BytesIO()
+        self.stdout = io.BytesIO(response)
+
+    def poll(self) -> None:
+        return None
+
+    def wait(self, timeout: float | None = None) -> int:
+        return 0
+
+    def kill(self) -> None:
+        pass
+
+
+class TestStrictBlobReader:
+    OID = "a" * 40
+
+    def _reader(self, response: bytes, *, strict: bool) -> BlobReader:
+        reader = BlobReader(Path("."), strict=strict)
+        reader._proc = _FakeProc(response)  # type: ignore[assignment]
+        return reader
+
+    def test_well_formed(self) -> None:
+        r = self._reader(f"{self.OID} blob 5\nhello\n".encode(), strict=True)
+        assert r.read(self.OID) == b"hello"
+
+    def test_missing_is_absence(self) -> None:
+        r = self._reader(f"{self.OID} missing\n".encode(), strict=True)
+        assert r.read(self.OID) is None
+
+    @pytest.mark.parametrize(
+        "response",
+        [
+            b"",  # empty header
+            b"short\n",  # arbitrary short header
+            b"%(oid)s blob -5\nhello\n",  # negative size
+            b"%(oid)s blob abc\nhello\n",  # invalid size
+            b"%(oid)s tree 5\nhello\n",  # wrong type
+            b"%(other)s blob 5\nhello\n",  # wrong oid
+            b"%(oid)s blob 50\nhello\n",  # truncated payload containing the quote
+            b"%(oid)s blob 5\nhelloX",  # incorrect terminator
+            b"%(oid)s blob 5\nhello",  # missing terminator
+        ],
+    )
+    def test_malformed_raises(self, response: bytes) -> None:
+        raw = (
+            response % {b"oid": self.OID.encode(), b"other": b"b" * 40}
+            if b"%(" in response
+            else response
+        )
+        r = self._reader(raw, strict=True)
+        with pytest.raises(ScanExecutionError):
+            r.read(self.OID)
+
+    def test_legacy_lenient_on_malformed(self) -> None:
+        assert self._reader(b"short\n", strict=False).read(self.OID) is None
+
+
+class TestStrictFailures:
+    def test_tracked_index_failure(self, repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        def run(*a: object, **k: object) -> subprocess.CompletedProcess[bytes]:
+            return subprocess.CompletedProcess(a, 128, b"", b"")
+
+        monkeypatch.setattr(subprocess, "run", run)
+        with pytest.raises(ScanExecutionError):
+            build_tracked_index(repo, strict=True)
+        assert build_tracked_index(repo) == frozenset()
+
+    def test_history_failure(self, repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        def run(*a: object, **k: object) -> subprocess.CompletedProcess[bytes]:
+            raise OSError("no git")
+
+        monkeypatch.setattr(subprocess, "run", run)
+        with pytest.raises(ScanExecutionError):
+            HistoryIndex(repo, strict=True).ensure_full()
+        with pytest.raises(ScanExecutionError):
+            HistoryIndex(repo, strict=True).ensure_paths(["a.md"])
+        HistoryIndex(repo).ensure_full()  # legacy: swallowed
+
+    def test_zero_exit_empty_history_is_absence(self, repo: Path) -> None:
+        _write(repo, "x.md", "x\n")
+        _commit_all(repo)
+        index = HistoryIndex(repo, strict=True)
+        index.ensure_paths(["never-existed.md"])
+        assert index.blobs_for("never-existed.md") == ()
+
+    def test_issue_read_failure(self, repo: Path) -> None:
+        config = BRConfig(repo)
+        missing = repo / "gone.md"
+        with pytest.raises(ScanExecutionError):
+            scan_file(repo, missing, config, strict=True)
+        assert scan_file(repo, missing, config) == ([], {})
+
+    def test_worktree_read_error_vs_absence(
+        self, repo: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        assert _read_working_tree(repo, "absent.md", strict=True) is None
+
+        def denied(self: Path, *a: object, **k: object) -> str:
+            raise PermissionError("denied")
+
+        monkeypatch.setattr(Path, "read_text", denied)
+        with pytest.raises(ScanExecutionError):
+            _read_working_tree(repo, "x.md", strict=True)
+        assert _read_working_tree(repo, "x.md") is None
 
 
 # ---------------------------------------------------------------------------

@@ -4815,13 +4815,19 @@ Certify that an issue's quoted **evidence** — a span attributed to another art
 | `--all` | | Scan every tracked issue file against the baseline |
 | `--update-baseline` | | Rewrite the baseline from a full scan with the baseline ignored, so the re-seed is complete and idempotent (requires `--all`) |
 | `--added-only` | | Only lines added in the staged diff (pre-commit) |
+| `--save-snapshot [PATH]` | | Scan one issue file and save a delta baseline. With no `PATH` the CLI allocates `.loops/tmp/scratch/evidence-snapshot-<uuid4>-<pid>.json` and reports it (`snapshot_path` under `--json`, `Snapshot saved: <path>` otherwise). Put `FILE` before this flag |
+| `--delta-from PATH` | | Scan one issue file and report only findings added since the snapshot |
 | `--max-revisions N` | | Newest-first revisions searched per artifact (default: 80) |
 | `--directory` | `-C` | Project root to scan (default: cwd) |
 | `--json` | | Output as JSON |
 
+**Snapshot / delta mode.** A whole-file scan has no baseline, so an older issue reports quotes you did not write. `--save-snapshot` before an edit and `--delta-from` after it isolates the difference. Both flags take exactly one existing issue file, are mutually exclusive, and are incompatible with `--all`, `--update-baseline`, and `--added-only`. Findings are compared as occurrence counts keyed by `(normalized span, resolved artifact)` — line shifts, whitespace/emphasis/trailing-punctuation rewrites, and respelling a citation of the same artifact are not new; a duplicate of an existing bad quote or a re-attribution to a different artifact is. It is a net-count delta: an equal-count removal and reinsertion of identical evidence cancels. Scans are strict: a failed git operation or unreadable file is never read as "no findings".
+
+`--delta-from --json` emits `{"ok", "mode": "delta", "status": "clean"|"new_findings", "new_findings": [{"span", "resolved_artifact", "added_count", "preexisting_count", "candidates": [{"line", "section", "span", "artifact"}]}], "count", "new_count", "findings"}`; `findings` is the full current scan and every finding carries `resolved_artifact`. When verification cannot complete (bad input or flags, unusable snapshot, scan failure) the body is `{"ok": false, "mode", "status": "incomplete", "error", "findings"}` with exit 2, where `findings` holds the snapshot's known findings when the snapshot loaded.
+
 **Suppression:** `<!-- ll-evidence-ok: reason -->` on the span's own or preceding line — required for the counter-example class, where an issue reports a fabricated quote and must therefore reproduce it verbatim.
 
-**Exit codes:** `0` = clean (or nothing beyond baseline under `--all`); `1` = one or more unsuppressed findings.
+**Exit codes:** `0` = clean (or nothing beyond baseline under `--all`; no new findings under `--delta-from`); `1` = one or more unsuppressed findings (new findings under `--delta-from`); `2` = snapshot/delta verification incomplete, or a syntactic usage error — never clean.
 
 **Examples:**
 ```bash
@@ -4829,6 +4835,8 @@ ll-verify-evidence .issues/bugs/BUG-1.md      # Gate one issue file
 ll-verify-evidence --all                      # Full scan vs. baseline
 ll-verify-evidence --all --update-baseline    # Re-record the grandfathered corpus
 ll-verify-evidence --all --json               # Machine-readable output
+ll-verify-evidence .issues/bugs/BUG-1.md --json --save-snapshot        # Before editing; returns snapshot_path
+ll-verify-evidence .issues/bugs/BUG-1.md --json --delta-from SNAPSHOT  # After editing; new findings only
 ```
 
 **Gates:** pre-commit (`.pre-commit-config.yaml`, warn-only on first release; the hook is `verbose: true`, so findings are printed even though the commit is not blocked), little-loops' own test suite (which pins the repo gate), and the `/ll:verify-issues` skill invocation — the same three-layer model as `ll-verify-private-refs`.
