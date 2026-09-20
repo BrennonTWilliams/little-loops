@@ -12,6 +12,12 @@ captured_at: '2026-09-19T22:27:37Z'
 labels:
 - session-store
 - backfill
+confidence_score: 95
+outcome_confidence: 89
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # BUG-3517: ll-session backfill under-captures loop history: non-recursive glob misses .history state files
@@ -181,6 +187,7 @@ Applied the reviewed scope and consistency corrections on 2026-09-19. Retained O
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-20T00:02:59 - `be1263b0-2beb-4bf2-91f0-aafba59ad1a2.jsonl`
 - `/ll:verify-issues` - 2026-09-19T23:58:33 - `dfdc64ea-f3c8-41c0-9f24-89d5c090ffb6.jsonl`
 - `/ll:wire-issue` - 2026-09-19T23:27:50 - `4f20c1d3-a8db-42b4-9c73-8f8aaa3aa2fe.jsonl`
 - `/ll:decide-issue` - 2026-09-19T23:22:42 - `d4660828-e0d9-40c0-89b8-9bbf5b5e050f.jsonl`
