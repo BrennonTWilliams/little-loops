@@ -166,6 +166,7 @@ pre {
 .theme-toggle { font-size: 1.1rem; padding: 0.3rem 0.6rem; }
 .del { flex: 0 0 auto; padding: 0.2rem 0.5rem; }
 small.help { display: block; opacity: 0.7; font-size: 0.75rem; }
+small.help[hidden] { display: none; }
 .conn-block { margin: 0.5rem 0; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 button[aria-disabled="true"] { opacity: 0.5; cursor: default; }
@@ -241,6 +242,7 @@ button[aria-disabled="true"] { opacity: 0.5; cursor: default; }
           </select>
           <button id="add-dim" type="button">Add</button>
         </div>
+        <small class="help msg-error" id="dim-add-error" hidden></small>
         <small class="help" id="dim-help">Boolean dimensions are scored 100/0 and compiled to numeric conditions.</small>
       </fieldset>
 
@@ -304,6 +306,7 @@ confidence_score: 40"></textarea>
             <input type="text" id="outcome-name" placeholder="new outcome name" />
             <button id="add-outcome" type="button">Add outcome</button>
           </div>
+          <small class="help msg-error" id="outcome-add-error" hidden></small>
           <small class="help" id="outcome-help">Name each destination once; rules below route to these outcomes by name.</small>
         </fieldset>
       </details>
@@ -431,10 +434,125 @@ function _newScenarioId() {
   return "scn-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10);
 }
 
-function showLiveStatus(text) {
-  const el = document.getElementById("live-status");
-  if (el) el.textContent = text;
+// ENH-3513: `#live-status` (polite) announces validation summaries and inline
+// add-errors. Writes made inside a synchronous authoring operation are composed
+// into ONE announcement (completion text, then warnings, then the validation
+// summary) so a later writer never overwrites an earlier one. `#messages` stays
+// a plain list (rebuilt on every edit, so a live region would re-announce it).
+const EXPORT_DISABLED_REASON = "Copy and Download are disabled until the errors above are fixed.";
+let lastErrorKey = "0|false";   // `${errorCount}|${validatorErrorExists}`
+let _forceSummary = false;      // successful Open always announces its summary
+let _liveOp = null;             // open operation accumulator, or null
+let _liveGen = 0;               // bumped per delivery; invalidates deferred writes
+let _liveTimer = null;
+let _liveTimerOwner = null;
+
+function _liveBegin() {
+  if (_liveOp) { _liveOp.depth += 1; return; }
+  _liveOp = { depth: 1, done: [], warn: [], summary: null };
 }
+function _liveEnd() {
+  if (!_liveOp) return;
+  _liveOp.depth -= 1;
+  if (_liveOp.depth > 0) return;
+  const op = _liveOp;
+  _liveOp = null;
+  const parts = [...op.done, ...op.warn];
+  if (op.summary) parts.push(op.summary);
+  if (parts.length) _deliverLive(parts.join(" "), null);
+}
+// Run one synchronous operation; the outermost boundary flushes even on throw.
+function _liveOperation(fn) {
+  _liveBegin();
+  try { return fn(); } finally { _liveEnd(); }
+}
+
+// Identical consecutive text is not re-announced by screen readers, so a
+// repeat is delivered as clear-then-set, deferred, with a cancellable
+// generation: a newer delivery (or a cancel) drops an undelivered one.
+function _deliverLive(text, owner) {
+  _liveGen += 1;
+  const gen = _liveGen;
+  if (_liveTimer !== null) { clearTimeout(_liveTimer); _liveTimer = null; }
+  const el = document.getElementById("live-status");
+  if (!el) return;
+  if (text && el.textContent === text && typeof setTimeout === "function") {
+    el.textContent = "";
+    _liveTimerOwner = owner || null;
+    _liveTimer = setTimeout(() => {
+      _liveTimer = null;
+      if (gen === _liveGen) el.textContent = text;
+    }, 60);
+    return;
+  }
+  el.textContent = text;
+}
+function _cancelPendingLive(owner) {
+  if (_liveTimer === null || _liveTimerOwner !== owner) return;
+  clearTimeout(_liveTimer);
+  _liveTimer = null;
+  _liveGen += 1;
+}
+
+// kind: "warn" for persistence/restore warnings (ordered after completion text).
+function showLiveStatus(text, kind, owner) {
+  if (_liveOp) {
+    const list = kind === "warn" ? _liveOp.warn : _liveOp.done;
+    if (!list.includes(text)) list.push(text);
+    return;
+  }
+  _deliverLive(text, owner);
+}
+
+function _errorCountText(n) { return `${n} error${n === 1 ? "" : "s"}.`; }
+// Announce the validation summary when the key changes (or on Open). `n` counts
+// every rendered error; `gating` is true when validator errors disable export.
+function _announceValidation(n, gating) {
+  const key = `${n}|${gating}`;
+  const forced = _forceSummary;
+  if (key === lastErrorKey && !forced) { _cancelPendingLive("summary"); return; }
+  lastErrorKey = key;
+  const avail = forced ? " Copy and Download are available." : "";
+  let text;
+  if (n === 0) text = "No errors." + avail;
+  else if (gating) text = `${_errorCountText(n)} ${EXPORT_DISABLED_REASON}`;
+  else text = _errorCountText(n) + avail;
+  if (_liveOp) _liveOp.summary = text;
+  else _deliverLive(text, "summary");
+}
+
+// Inline add-outcome / add-dim errors (no blocking dialogs).
+const _ADD_ERR = {
+  dim: { err: "dim-add-error", input: "dim-name" },
+  outcome: { err: "outcome-add-error", input: "outcome-name" },
+};
+function _describedTokens(input) {
+  return (input.getAttribute("aria-describedby") || "").split(/\s+/).filter(Boolean);
+}
+function _showAddError(kind, text) {
+  const c = _ADD_ERR[kind];
+  const err = $(c.err), input = $(c.input);
+  err.textContent = text;
+  err.hidden = false;
+  input.setAttribute("aria-invalid", "true");
+  const toks = _describedTokens(input);
+  if (!toks.includes(c.err)) toks.push(c.err);
+  input.setAttribute("aria-describedby", toks.join(" "));
+  showLiveStatus(text, "done", "add-" + kind);
+}
+function _clearAddError(kind) {
+  const c = _ADD_ERR[kind];
+  const err = $(c.err), input = $(c.input);
+  if (err.hidden && !err.textContent) return;
+  err.textContent = "";
+  err.hidden = true;
+  input.removeAttribute("aria-invalid");
+  const toks = _describedTokens(input).filter((t) => t !== c.err);
+  if (toks.length) input.setAttribute("aria-describedby", toks.join(" "));
+  else input.removeAttribute("aria-describedby");
+  _cancelPendingLive("add-" + kind);
+}
+function _clearAddErrors() { _clearAddError("dim"); _clearAddError("outcome"); }
 
 // ENH-3507: all draft/meta/issue-selection storage goes through the core's
 // injected-storage helper (workspace-namespaced when served connected). The
@@ -443,11 +561,14 @@ function showLiveStatus(text) {
 // acquired guarded — a bare reference throws SecurityError when blocked.
 let _ls = null;
 try { _ls = window.localStorage; } catch (e) { /* blocked */ }
+// ENH-3513: startup is one composed operation (storage warnings + first
+// validation summary); the closing `_liveEnd()` follows the initial render.
+_liveBegin();
 const builderStorage = createBuilderStorage({
   storage: _ls,
   connectedContext: CONNECTED_CONTEXT,
   warn: () =>
-    showLiveStatus("Browser storage is unavailable — drafts won't survive reload this session; use Save project instead."),
+    showLiveStatus("Browser storage is unavailable — drafts won't survive reload this session; use Save project instead.", "warn"),
 });
 function _persistMeta() {
   return builderStorage.persistMeta({
@@ -523,6 +644,9 @@ function updateUndoRedoButtons() {
 }
 
 function restoreFromSnapshot(snapshot) {
+  _liveOperation(() => _restoreFromSnapshot(snapshot));
+}
+function _restoreFromSnapshot(snapshot) {
   sessionRevision += 1;
   drafts = _deepClone(snapshot.drafts);
   const mode = snapshot.activeMode;
@@ -581,7 +705,7 @@ function hydrateFromStorage() {
     scenarios = drafts[activeMode].scenarios || [];
     applyStateToForm();
   } else if (activeModeCorrupted) {
-    showLiveStatus("Saved draft could not be restored (corrupted); starting from the example instead.");
+    showLiveStatus("Saved draft could not be restored (corrupted); starting from the example instead.", "warn");
   }
   history = {
     past: [],
@@ -706,8 +830,7 @@ function renderDimensions() {
       del.textContent = "✕";
       del.onclick = () => {
         state.dimensions.splice(i, 1);
-        renderAll();
-        commit();
+        _liveOperation(() => { renderAll(); commit(); });
       };
       row.appendChild(del);
     }
@@ -794,7 +917,7 @@ function renderOutcomes() {
     delOc.title = inUse
       ? "Can't remove: still used by a rule or the fallback"
       : "Remove this outcome";
-    delOc.onclick = () => { state.outcomes.splice(oi, 1); renderAll(); commit(); };
+    delOc.onclick = () => { state.outcomes.splice(oi, 1); _liveOperation(() => { renderAll(); commit(); }); };
     title.appendChild(delOc);
     grp.appendChild(title);
 
@@ -1111,7 +1234,7 @@ function renderRules() {
         const delPred = document.createElement("button");
         delPred.className = "secondary del"; delPred.textContent = "✕";
         delPred.title = "Remove this condition";
-        delPred.onclick = () => { r.predicates.splice(pi, 1); renderAll(); commit(); };
+        delPred.onclick = () => { r.predicates.splice(pi, 1); _liveOperation(() => { renderAll(); commit(); }); };
         card.appendChild(delPred);
       }
     });
@@ -1124,8 +1247,7 @@ function renderRules() {
       const dim = firstDim ? normalizeDimName(firstDim.name) : "";
       const op = firstDim && firstDim.type === "boolean" ? "==true" : (GRAMMAR.all_ops[0] || "==");
       r.predicates.push({ dim, op, value: "" });
-      renderAll();
-      commit();
+      _liveOperation(() => { renderAll(); commit(); });
     };
     card.appendChild(addPred);
 
@@ -1156,17 +1278,17 @@ function renderRules() {
     upBtn.className = "secondary rule-move"; upBtn.textContent = "↑";
     upBtn.title = "Move rule up (higher precedence)";
     upBtn.disabled = i === 0;
-    upBtn.onclick = () => { state.rules = moveRule({ rules: state.rules }, i, "up").rules; renderAll(); commit(); };
+    upBtn.onclick = () => { state.rules = moveRule({ rules: state.rules }, i, "up").rules; _liveOperation(() => { renderAll(); commit(); }); };
     const downBtn = document.createElement("button");
     downBtn.className = "secondary rule-move"; downBtn.textContent = "↓";
     downBtn.title = "Move rule down (lower precedence)";
     downBtn.disabled = i === state.rules.length - 1;
-    downBtn.onclick = () => { state.rules = moveRule({ rules: state.rules }, i, "down").rules; renderAll(); commit(); };
+    downBtn.onclick = () => { state.rules = moveRule({ rules: state.rules }, i, "down").rules; _liveOperation(() => { renderAll(); commit(); }); };
     card.append(upBtn, downBtn);
 
     const del = document.createElement("button");
     del.className = "secondary del"; del.textContent = "✕"; del.title = "Delete this rule";
-    del.onclick = () => { state.rules.splice(i, 1); renderAll(); commit(); };
+    del.onclick = () => { state.rules.splice(i, 1); _liveOperation(() => { renderAll(); commit(); }); };
     card.appendChild(del);
 
     host.appendChild(card);
@@ -1300,7 +1422,9 @@ function updateFrontmatterTryIt() {
 function renderMessages(model, diagnostics) {
   const host = $("messages");
   host.innerHTML = "";
+  let errorCount = 0;
   const add = (cls, text) => {
+    if (cls === "msg-error") errorCount += 1;
     const li = document.createElement("li"); li.className = cls; li.textContent = text; host.appendChild(li);
   };
   diagnostics.forEach((d) => add(d.severity === "error" ? "msg-error" : "msg-warn", d.message));
@@ -1322,6 +1446,7 @@ function renderMessages(model, diagnostics) {
     }
   });
   if (!host.children.length) add("msg-ok", "No issues detected.");
+  return errorCount;
 }
 
 // FEAT-3501: text/list adjacency rendering of the shared analyzeTransitions
@@ -1700,9 +1825,11 @@ $("suggest-scenarios-btn").onclick = () => {
       expectedRulesFingerprint: null,
     });
   }
-  renderScenarios();
-  commit();
-  showLiveStatus(`Added ${fresh.length} suggested case${fresh.length === 1 ? "" : "s"}.`);
+  _liveOperation(() => {
+    renderScenarios();
+    commit();
+    showLiveStatus(`Added ${fresh.length} suggested case${fresh.length === 1 ? "" : "s"}.`);
+  });
 };
 
 // FEAT-3503: import one local issue .md file as an unasserted lifecycle case.
@@ -1801,7 +1928,8 @@ function updatePreview() {
   $("copy-btn").disabled = hasError;
   $("download-btn").disabled = hasError;
   $("yaml-summary").textContent = computeSummary(model);
-  renderMessages(model, diagnostics);
+  const errorCount = renderMessages(model, diagnostics);
+  _announceValidation(errorCount, hasError);
   renderTransitionGraph(model, analyzeTransitions(model));
   updateTryIt();
 
@@ -1843,6 +1971,7 @@ function updatePreview() {
 }
 
 function renderAll() {
+  _clearAddErrors();
   renderDimensions();
   renderFallback();
   if (state.mode === "decision_table") {
@@ -1876,6 +2005,7 @@ function applyModeVisibility() {
   // #add-outcome is hidden in issue_lifecycle mode — the verb set is fixed;
   // no outcome can be added or removed.
   $("outcome-add-row").hidden = isLifecycle;
+  if (isLifecycle) _clearAddError("outcome");
   $("dim-help").textContent = isLifecycle
     ? "Built-in fields come from the issue's frontmatter and can't be removed. Add your own fields below."
     : "Boolean dimensions are scored 100/0 and compiled to numeric conditions.";
@@ -1907,7 +2037,7 @@ $("mode-switch").value = state.mode;
 // seeds it, the first time a mode is visited). "Start blank" is still the
 // only way to discard a mode's work, and it now pushes a history entry
 // first so that reseed is itself undoable.
-$("mode-switch").onchange = (e) => {
+$("mode-switch").onchange = (e) => _liveOperation(() => {
   const newMode = e.target.value;
   drafts = { ...drafts, [state.mode]: { ...drafts[state.mode], model: state, scenarios } };
   const existing = drafts[newMode];
@@ -1918,7 +2048,7 @@ $("mode-switch").onchange = (e) => {
   applyModeVisibility();
   renderAll();
   commit();
-};
+});
 // ENH-3491: apply a task preset. Cross-mode presets (Preset ↔ mode contract)
 // save the outgoing draft, switch the mode select, and replace only the
 // target mode's draft wrapper — same-mode presets take the same path minus
@@ -1926,6 +2056,9 @@ $("mode-switch").onchange = (e) => {
 // entry either way (one undo restores both activeMode and that mode's
 // prior draft when the mode changed).
 function applyPreset(preset) {
+  _liveOperation(() => _applyPreset(preset));
+}
+function _applyPreset(preset) {
   drafts = { ...drafts, [state.mode]: { ...drafts[state.mode], model: state, scenarios } };
   if (preset.mode !== state.mode) {
     $("mode-switch").value = preset.mode;
@@ -1998,19 +2131,20 @@ $("add-dim").onclick = () => {
   // can't normalize to an existing dimension's name (including the derived
   // "priority_rank").
   if (name.includes(":") || name.includes("|")) {
-    alert('A field name cannot contain ":" or "|".');
+    _showAddError("dim", 'A field name cannot contain ":" or "|".');
     return;
   }
   const norm = normalizeDimName(name);
   if (state.dimensions.some((d) => normalizeDimName(d.name) === norm)) {
-    alert(`A field named "${norm}" already exists.`);
+    _showAddError("dim", `A field named "${norm}" already exists.`);
     return;
   }
   state.dimensions.push({ name, type: $("dim-type").value });
   $("dim-name").value = "";
-  renderAll();
-  commit();
+  _liveOperation(() => { renderAll(); commit(); });
 };
+$("dim-name").oninput = () => _clearAddError("dim");
+$("outcome-name").oninput = () => _clearAddError("outcome");
 $("add-outcome").onclick = () => {
   if (state.mode === "issue_lifecycle") return; // fixed verb set; #add-outcome is hidden too.
   const name = normalizeDimName($("outcome-name").value);
@@ -2018,17 +2152,16 @@ $("add-outcome").onclick = () => {
   // BUG-3486: mirrors #add-dim's existing reserved/duplicate guard — catch
   // it here too, not just via validateBuilderModel after the fact.
   if (isReservedOutcomeToken(state.mode, name)) {
-    alert(`"${name}" is reserved for the generated loop's own states.`);
+    _showAddError("outcome", `"${name}" is reserved for the generated loop's own states.`);
     return;
   }
   if (state.outcomes.some((oc) => oc.name === name)) {
-    alert(`An outcome named "${name}" already exists.`);
+    _showAddError("outcome", `An outcome named "${name}" already exists.`);
     return;
   }
   state.outcomes.push({ name, actionType: "prompt", body: "", transition: { kind: "rescore" } });
   $("outcome-name").value = "";
-  renderAll();
-  commit();
+  _liveOperation(() => { renderAll(); commit(); });
 };
 $("add-rule").onclick = () => {
   if (!state.outcomes.length) return;
@@ -2036,8 +2169,7 @@ $("add-rule").onclick = () => {
   const dim = firstDim ? normalizeDimName(firstDim.name) : "";
   const op = firstDim && firstDim.type === "boolean" ? "==true" : (GRAMMAR.all_ops[0] || "==");
   state.rules.push({ predicates: [{ dim, op, value: "" }], target: state.outcomes[0].name });
-  renderAll();
-  commit();
+  _liveOperation(() => { renderAll(); commit(); });
 };
 
 $("copy-btn").onclick = () => {
@@ -2095,6 +2227,9 @@ $("open-project-input").onchange = (e) => {
       return;
     }
     project = withScenariosDefaulted(project);
+    _forceSummary = true;
+    _liveBegin();
+    try {
     sessionRevision += 1;
     projectId = project.projectId;
     drafts = project.drafts;
@@ -2115,6 +2250,10 @@ $("open-project-input").onchange = (e) => {
     // document session; the persisted issue selection is deliberately kept.
     submissionController.documentOpened(_connectedContext());
     showLiveStatus("Project opened.");
+    } finally {
+      _forceSummary = false;
+      _liveEnd();
+    }
   };
   reader.onerror = () => showLiveStatus("Could not read the selected file.");
   reader.readAsText(file);
@@ -2149,7 +2288,7 @@ document.addEventListener("keydown", (e) => {
 // blank model still carries the locked built-in dimensions and five verbs
 // (they are structural to the mode, not authored content). ENH-3487: this
 // reseed now pushes a history entry, so it is itself undoable.
-$("start-blank-btn").onclick = () => {
+$("start-blank-btn").onclick = () => _liveOperation(() => {
   state = blankModel(state.mode);
   // FEAT-3488: Start blank clears this mode's suite too (same atomic-clear
   // contract as applyPreset — one commit(), one undo restores both).
@@ -2159,7 +2298,7 @@ $("start-blank-btn").onclick = () => {
   applyModeVisibility();
   renderAll();
   commit();
-};
+});
 
 // ---- theme resolution: stored toggle -> stamped active_theme -> OS preference -> light
 function initTheme() {
@@ -2416,6 +2555,7 @@ submissionController.onChange(renderConnected);
 hydrateFromStorage();
 applyModeVisibility();
 renderAll();
+_liveEnd();
 submissionController.documentOpened(_connectedContext());
 if (CONNECTED_CONTEXT) submissionController.loadIssues();
 renderConnected(submissionController.getState());

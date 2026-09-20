@@ -317,6 +317,21 @@ class TestFeat2301UsabilityStructural:
         assert 'id="live-status"' in html
         assert 'aria-live="polite"' in html
 
+    def test_validation_announcements_and_inline_add_errors(self, tmp_path: Path) -> None:
+        """ENH-3513: no alert() dialogs; static hidden inline add errors; #messages non-live."""
+        html = _emit_html(tmp_path)
+        assert "alert(" not in html
+        for el_id in ("dim-add-error", "outcome-add-error"):
+            assert html.count(f'id="{el_id}"') == 1
+            m = re.search(rf'<small\b[^>]*\bid="{el_id}"[^>]*>', html)
+            assert m and " hidden" in m.group(0)
+            assert "role=" not in m.group(0) and "aria-live" not in m.group(0)
+        messages = re.search(r'<ul\b[^>]*\bid="messages"[^>]*>', html)
+        assert messages and "aria-live" not in messages.group(0)
+        assert "small.help[hidden] { display: none; }" in html
+        assert html.count("const EXPORT_DISABLED_REASON") == 1
+        assert html.count("Copy and Download are disabled until the errors above are fixed.") == 1
+
     def test_connected_panel_announcers_and_focus_targets(self, tmp_path: Path) -> None:
         """BUG-3512: static announcers + focus targets; no live semantics on rebuilt logs."""
         html = _emit_html(tmp_path)

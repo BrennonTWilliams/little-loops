@@ -4,10 +4,11 @@ type: ENH
 title: 'Policy builder: validation diagnostics are not announced and reserved-name
   errors use alert()'
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-19'
 captured_at: '2026-09-19T20:00:57Z'
+completed_at: '2026-09-20T01:25:17Z'
 relates_to:
 - ENH-3500
 - BUG-3512
@@ -175,7 +176,15 @@ _These touchpoints were identified by wiring analysis and must be included in th
 **Open** | Created: 2026-09-19 | Priority: P3
 
 
+## Resolution
+
+Implemented in `policy-router-builder.html.tmpl`: operation-composed `#live-status` announcements (`_liveOperation`, key-deduplicated `_announceValidation`, forced summary on Open, composed startup), repeat-aware deferred delivery (clear-then-set after 60 ms with cancellable generation), `EXPORT_DISABLED_REASON`, and inline `#dim-add-error`/`#outcome-add-error` replacing all four dialogs. Golden regenerated; tracked node tests and emit tests added; full suite green (25073 passed).
+
+**Not done (manual/on-demand evidence)**: instrumented browser probe cases and the real screen-reader smoke test (AC: repeated identical Opens / rejected Adds each announced once) were not run; the 60 ms repeat-delivery scheduler is unverified against a screen reader.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-09-20T01:25:17 - `aa661696-809d-42cb-8e1d-09dec4e3ed93.jsonl`
+- `/ll:ready-issue` - 2026-09-20T01:11:50 - `bcdd77bf-f8df-4414-bbc3-34d7da036c1d.jsonl`
 - `/ll:confidence-check` - 2026-09-20T00:50:13 - `b1e66617-7ca3-4c73-8eef-611558ec10fe.jsonl`
 - `/ll:verify-issues` - 2026-09-20T00:42:35 - `87477791-8eac-4eaa-a6b5-62a48362f015.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-09-19T21:30:33 - `6b9c88d3-074c-4681-b7c9-240fc332f147.jsonl`

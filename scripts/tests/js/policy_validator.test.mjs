@@ -1571,8 +1571,15 @@ const _OPEN_HANDLER_SRC = _extractBetween(
   "open-project-input onchange handler"
 );
 
-function _newBug3502Sandbox() {
+function _newBug3502Sandbox({ startup = false, noStorage = false } = {}) {
   const elements = {};
+  // ENH-3513: record every individual write to #live-status.
+  const liveWrites = [];
+  const liveEl = {
+    _t: "",
+    get textContent() { return this._t; },
+    set textContent(v) { this._t = v; liveWrites.push(v); },
+  };
   const storageMap = new Map();
   const sandbox = {
     seedExample,
@@ -1586,7 +1593,7 @@ function _newBug3502Sandbox() {
     createSubmissionController,
     CONNECTED_CONTEXT: null,
     window: {},
-    document: { getElementById: () => null },
+    document: { getElementById: (id) => (id === "live-status" ? liveEl : null) },
     localStorage: {
       getItem: (k) => (storageMap.has(k) ? storageMap.get(k) : null),
       setItem: (k, v) => storageMap.set(k, String(v)),
@@ -1610,10 +1617,13 @@ function _newBug3502Sandbox() {
       }
     },
   };
-  sandbox.window.localStorage = sandbox.localStorage;
+  if (!noStorage) sandbox.window.localStorage = sandbox.localStorage;
   const context = vm.createContext(sandbox);
   vm.runInContext(_DEEP_CLONE_SRC + "\n" + _BOOTSTRAP_SRC, context, { filename: "bug-3502-bootstrap.mjs" });
-  return { context, elements };
+  // The bootstrap slice opens the startup operation; the page closes it after
+  // the first render. Tests that don't exercise startup close it here.
+  if (!startup) vm.runInContext("_liveEnd();", context);
+  return { context, elements, liveWrites };
 }
 
 function _bug3502Run(context, code) {
@@ -1707,4 +1717,129 @@ test("a 'goto' transition may not target a destination — destinations are neve
   });
   const errors = validateBuilderModel(model).filter((d) => d.severity === "error");
   assert.ok(errors.some((d) => /"Go to" target "skipped" is not a defined outcome/.test(d.message)));
+});
+
+// ---------------------------------------------------------------------------
+// ENH-3513 — validation announcements via #live-status, composed per operation.
+// ---------------------------------------------------------------------------
+
+test("ENH-3513: _announceValidation announces key changes only, with the shared export clause", () => {
+  const { context, liveWrites } = _newBug3502Sandbox();
+  const EXPORT = _bug3502Run(context, "EXPORT_DISABLED_REASON;");
+  assert.equal(EXPORT, "Copy and Download are disabled until the errors above are fixed.");
+  _bug3502Run(context, "_announceValidation(0, false);");
+  assert.deepEqual(liveWrites, [], "clean model must stay silent");
+  _bug3502Run(context, "_announceValidation(2, true);");
+  assert.deepEqual(liveWrites, [`2 errors. ${EXPORT}`]);
+  _bug3502Run(context, "_announceValidation(2, true);");
+  assert.equal(liveWrites.length, 1, "unchanged key must not re-announce");
+  // Same count, but export re-enabled (unknown-skill-only): new announcement, no export clause.
+  _bug3502Run(context, "_announceValidation(1, false);");
+  assert.equal(liveWrites.at(-1), "1 error.");
+  _bug3502Run(context, "_announceValidation(0, false);");
+  assert.equal(liveWrites.at(-1), "No errors.");
+});
+
+test("ENH-3513: forced (Open) summary states Copy/Download availability even when the key is unchanged", () => {
+  const { context, liveWrites } = _newBug3502Sandbox();
+  _bug3502Run(context, "_forceSummary = true; _announceValidation(0, false); _forceSummary = false;");
+  assert.equal(liveWrites.at(-1), "No errors. Copy and Download are available.");
+  _bug3502Run(context, "_forceSummary = true; _announceValidation(1, false); _forceSummary = false;");
+  assert.equal(liveWrites.at(-1), "1 error. Copy and Download are available.");
+});
+
+test("ENH-3513: one operation composes completion, warning, summary into a single write", () => {
+  const { context, liveWrites } = _newBug3502Sandbox();
+  _bug3502Run(
+    context,
+    `_liveOperation(() => {
+       _announceValidation(1, true);
+       showLiveStatus("storage warning", "warn");
+       showLiveStatus("Done.");
+       showLiveStatus("Done.");
+     });`
+  );
+  assert.equal(liveWrites.length, 1);
+  assert.equal(
+    liveWrites[0],
+    "Done. storage warning 1 error. Copy and Download are disabled until the errors above are fixed."
+  );
+  // A later unrelated status is not captured by the closed accumulator.
+  _bug3502Run(context, 'showLiveStatus("Later.");');
+  assert.equal(liveWrites.at(-1), "Later.");
+});
+
+test("ENH-3513: an exception inside an operation closes the accumulator without inventing text", () => {
+  const { context, liveWrites } = _newBug3502Sandbox();
+  assert.throws(() => _bug3502Run(context, '_liveOperation(() => { throw new Error("boom"); });'));
+  assert.deepEqual(liveWrites, []);
+  _bug3502Run(context, 'showLiveStatus("Next.");');
+  assert.deepEqual(liveWrites, ["Next."]);
+});
+
+test("ENH-3513: successful Open announces completion plus the error count in one write, twice in a row", () => {
+  const { context, elements, liveWrites } = _newBug3502Sandbox();
+  _bug3502Run(context, "hydrateFromStorage();");
+  const model = seedExample("decision_table");
+  const projectJson = JSON.stringify({
+    schemaVersion: BUILDER_PROJECT_SCHEMA_VERSION,
+    generatorVersion: "",
+    projectId: "proj-enh-3513",
+    activeMode: "decision_table",
+    drafts: { decision_table: { model } },
+  });
+  // renderAll is stubbed here; emulate its summary on the (stubbed) preview.
+  _bug3502Run(context, "renderAll = () => _announceValidation(1, true);");
+  _bug3502Run(context, _OPEN_HANDLER_SRC);
+  const open = () => elements["open-project-input"].onchange({ target: { files: [{ text: projectJson }], value: "" } });
+  open();
+  const expected = `Project opened. 1 error. ${_bug3502Run(context, "EXPORT_DISABLED_REASON;")}`;
+  assert.equal(liveWrites.at(-1), expected);
+  const n = liveWrites.length;
+  open();
+  assert.equal(liveWrites.length, n + 1, "second identical Open must still announce");
+  assert.equal(_bug3502Run(context, "_forceSummary;"), false);
+});
+
+test("ENH-3513: startup composes a storage warning once and stays silent when clean", () => {
+  const clean = _newBug3502Sandbox({ startup: true });
+  _bug3502Run(clean.context, "hydrateFromStorage(); _liveEnd();");
+  assert.deepEqual(clean.liveWrites, []);
+  const noStore = _newBug3502Sandbox({ startup: true, noStorage: true });
+  _bug3502Run(noStore.context, "hydrateFromStorage(); builderStorage.persistDraft(state.mode, state, scenarios); _announceValidation(1, true); _liveEnd();");
+  assert.equal(noStore.liveWrites.length, 1);
+  assert.match(noStore.liveWrites[0], /^Browser storage is unavailable.* 1 error\./);
+});
+
+test("ENH-3513: add-error tokens preserve unrelated aria-describedby and clear cleanly", () => {
+  const { context, elements } = _newBug3502Sandbox();
+  const attrs = { "aria-describedby": "other" };
+  elements["dim-name"] = {
+    getAttribute: (k) => (k in attrs ? attrs[k] : null),
+    setAttribute: (k, v) => { attrs[k] = v; },
+    removeAttribute: (k) => { delete attrs[k]; },
+  };
+  _bug3502Run(context, '_showAddError("dim", "bad"); _showAddError("dim", "bad");');
+  assert.equal(attrs["aria-describedby"], "other dim-add-error");
+  assert.equal(attrs["aria-invalid"], "true");
+  assert.equal(elements["dim-add-error"].hidden, false);
+  _bug3502Run(context, '_clearAddError("dim");');
+  assert.equal(attrs["aria-describedby"], "other");
+  assert.equal("aria-invalid" in attrs, false);
+  assert.equal(elements["dim-add-error"].hidden, true);
+  assert.equal(elements["dim-add-error"].textContent, "");
+});
+
+test("ENH-3513: a rejected add announces once; correction cancels a pending repeat delivery", () => {
+  const { context, elements, liveWrites } = _newBug3502Sandbox();
+  const timers = [];
+  context.setTimeout = (fn) => { timers.push(fn); return timers.length; };
+  context.clearTimeout = (h) => { timers[h - 1] = null; };
+  elements["outcome-name"] = { getAttribute: () => null, setAttribute() {}, removeAttribute() {} };
+  _bug3502Run(context, '_showAddError("outcome", "dup");');
+  _bug3502Run(context, '_showAddError("outcome", "dup");'); // identical repeat -> clear, defer
+  assert.equal(liveWrites.at(-1), "", "repeat is cleared before the deferred write");
+  _bug3502Run(context, '_clearAddError("outcome");');
+  timers.forEach((fn) => fn && fn());
+  assert.equal(liveWrites.at(-1), "", "cancelled repeat must not be replayed");
 });
