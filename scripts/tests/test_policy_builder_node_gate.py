@@ -50,6 +50,7 @@ def _node_major(node: str) -> int | None:
         return None
 
 
+@pytest.mark.no_parallel
 def test_node_conformance_suite_passes() -> None:
     """Run ``node --test scripts/tests/js/*.test.mjs`` and require exit 0.
 
