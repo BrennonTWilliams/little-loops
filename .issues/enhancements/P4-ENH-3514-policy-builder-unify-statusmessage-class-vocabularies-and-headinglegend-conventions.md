@@ -14,6 +14,8 @@ relates_to:
 blocked_by:
 - ENH-3510
 - BUG-3512
+parent: EPIC-3493
+epic: EPIC-3493
 ---
 
 # ENH-3514: Policy builder: unify status/message class vocabularies and heading/legend conventions
@@ -105,22 +107,22 @@ _Wiring pass added by `/ll:wire-issue`:_
 > **Context refresh (2026-09-19)**: BUG-3512 is **done** (2f5bdb89a). `:NNNN` line references in this issue predate it — roughly +4 up to `updatePreview` (now :1782) and +75 in the connected code (`renderConnected` now :2292). Function-name anchors remain correct; resolve by name, not line.
 - Post-BUG-3512 the single `is-*` JS site lives in `_renderConnectedStatus(st, box)` (:2360, called from `renderConnected`), and the `.conn-status.is-*` CSS is at :173-175. Verified: `.msg-*` colour rules (:161-164) are unscoped; the only two `<h2>`s are in the right-column `.panel` sections (:313, :334), so `.panel h2` is safe.
 
-- **Canonical vocabulary: `msg-*`** (`msg-error` / `msg-warn` / `msg-ok` / `msg-info`). It has ~8 JS sites plus the ENH-3506 theme probe (`li.className = "msg-" + k`); `is-*` has exactly one JS site (:2275) and three CSS rules (:171-173). Mapping: `is-error`→`msg-error`, `is-warning`→`msg-warn`, `is-success`→`msg-ok`. The `.msg-*` color rules (:161-164) are unscoped, so `conn-status msg-ok` picks up colors directly; delete the three `.conn-status.is-*` rules. `.conn-status` base keeps its info colors. ENH-3510/3511/3513 land first and already use `msg-*` for anything new.
+- **Canonical vocabulary: `msg-*`** (`msg-error` / `msg-warn` / `msg-ok` / `msg-info`). It has ~8 JS sites plus the ENH-3506 theme probe (`li.className = "msg-" + k`); `is-*` has exactly one JS site (:2275) and three CSS rules (:171-173). Mapping: `is-error`→`msg-error`, `is-warning`→`msg-warn`, `is-success`→`msg-ok`. Delete the three `.conn-status.is-*` rules, but move the shared `.msg-*` color rules after the `.conn-status` base rule. Both selectors have equal specificity; retaining the current order would make the later base info colors override every renamed severity class. The base keeps its info fallback colors, and the later shared severity rules override them without duplicating declarations. ENH-3510/3511/3513 land first and already use `msg-*` for anything new.
 - **Headings**: add `.panel h2` (or the nearest existing right-column scope) `{ margin-top: 0; font-size: 1rem; }` and remove the inline `style` from :311 and :332. No new CSS variables, so `test_enh3506_policy_builder_theme_parity.py` is unaffected.
 
 ## Acceptance Criteria
 
 - [ ] Rendered HTML matches none of `is-error|is-warning|is-success` (pytest regex in `test_policy_builder_emit.py`).
 - [ ] No `<h2` in the rendered HTML carries a `style=` attribute; an `h2` CSS rule exists (pytest).
-- [ ] Connected accepted / accepted-with-warnings / rejected states render with the same computed colors as before (probe: `conn-accepted-warnings-*`; `.loops/verify-enh-3506-theme.yaml` stays green).
+- [ ] Browser assertions check computed foreground and background colors for connected accepted, accepted-with-warnings, rejected, and outcome-unknown states in both light and dark themes. Accepted states retain success colors, rejected retains error colors, and outcome-unknown retains warning colors. These checks must catch base info colors overriding severity colors; token-parity checks and golden/string assertions alone do not establish this behavior.
 - [ ] `.loops/probes/enh-3500-audit-probes.mjs` class census (:88) updated to expect no `is-*`.
 - [ ] Theme-parity test passes; golden regenerated after reviewing the diff; `python -m pytest scripts/tests/` exits 0.
 
 ## Implementation Steps
 
-1. Replace the class expression in `_renderConnectedStatus` (:2360) with the `msg-*` mapping; delete `.conn-status.is-*` CSS.
+1. Replace the class expression in `_renderConnectedStatus` (:2360) with the `msg-*` mapping; delete `.conn-status.is-*` CSS and move shared severity rules after the base `.conn-status` rule.
 2. Add the `h2` rule; remove the two inline styles.
-3. Add the two pytest checks; update the ENH-3500 probe census; rerun the theme probe.
+3. Add the two pytest checks; update the ENH-3500 probe census and add the four-state, two-theme computed-color assertions; rerun the browser and theme probes.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 

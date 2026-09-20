@@ -13,6 +13,8 @@ relates_to:
 blocked_by:
 - ENH-3511
 - BUG-3512
+parent: EPIC-3493
+epic: EPIC-3493
 ---
 
 # ENH-3510: Policy builder: add empty-state text to dimension, rule, outcome lists and issue selector
@@ -108,7 +110,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 - **Placement**: each hint is a static, always-present sibling `<p class="hint" hidden>` placed directly after its list container — `#dim-empty` after `#dim-list`, `#rule-empty` after `#rule-list`, `#outcome-empty` after `#outcome-list` — toggled (`hidden` + `textContent`) by the renderer. This mirrors the `#scenario-summary` convention (static element, swapped text), keeps the list containers' child counts untouched (`feat-3488-browser-probes.mjs` `ruleCount`), and cannot leak in rubric mode because `#rules-fieldset`/`#outcomes-fieldset` are hidden there. `renderAll`'s rubric branch must still set `#rule-empty`/`#outcome-empty` `hidden = true` alongside its `innerHTML = ""` clears.
 - **`#dim-list` is visible in every mode**, so `#dim-empty` shows in rubric mode too (intended). In `issue_lifecycle` the built-in dimensions make an empty list unreachable; `renderLifecycleOutcomes` likewise always renders the fixed verb set, so `#outcome-empty` only ever shows in `decision_table`.
-- **Text**: "No dimensions yet.", "No rules yet — everything goes to the fallback." (plain "No rules yet." when `state.fallback` is `""`, i.e. outcomes are also empty — there is no fallback to go to), "No outcomes yet.", and `#conn-issue-note` = "No issues found." when `st.issues.status === "ready"` and `st.issues.list` is empty (and no stale selection note applies).
+- **Text**: "No dimensions yet.", "No rules yet — everything goes to the fallback." (plain "No rules yet." when `state.fallback` is `""`, i.e. outcomes are also empty — there is no fallback to go to), "No outcomes yet — add an outcome before adding rules.", and `#conn-issue-note` = "No issues found." when `st.issues.status === "ready"` and `st.issues.list` is empty (and no stale selection note applies).
 - **Zero-dimension message**: template-side `msg-warn` in `renderMessages` (see Expected Behavior); `validateBuilderModel` untouched.
 
 ## Acceptance Criteria
@@ -116,6 +118,8 @@ _Wiring pass added by `/ll:wire-issue`:_
 - [ ] Rendered HTML contains exactly one each of `id="dim-empty"`, `id="rule-empty"`, `id="outcome-empty"`, each a `<p class="hint"` with `hidden` (pytest: `test_policy_builder_emit.py`, `html.count(...) == 1`).
 - [ ] `decision_table` with `dimensions=[]` / `rules=[]` / `outcomes=[]`: the matching hint is visible with the text above; with ≥1 entry it is hidden (probe: `auth-empty-dimensions-*`, `auth-empty-rules-*`, `auth-empty-outcomes-*`).
 - [ ] `rules=[]` **and** `outcomes=[]`: `#rule-empty` reads "No rules yet." without the fallback clause (probe).
+- [ ] With no outcomes, `#outcome-empty` explains that an outcome must be added before adding rules; export gating and Add rule behavior are unchanged.
+- [ ] Browser checks cover empty → populated → empty transitions through supported add/delete operations, undo/redo, Open, and mode switches. Where deletion is guarded (e.g. fallback outcome), use Open/undo to reach the empty state rather than changing the guard. Assert computed visibility and current text, with no stale hints after a mode switch; static markup and goldens alone are insufficient.
 - [ ] Rubric mode: `#rule-empty`/`#outcome-empty` are never visible; `#dim-empty` is visible when there are no dimensions (probe).
 - [ ] Served page with `./issues` → `{issues:[]}`: `#conn-issue-note` reads "No issues found."; loading/error/no-longer-listed texts unchanged (probe: `conn-issues-empty-*`).
 - [ ] A zero-dimension model shows the `msg-warn` and not "No issues detected."; Copy/Download enablement is unchanged (probe).
@@ -127,7 +131,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 1. Add the three static `<p class="hint" hidden>` siblings to the markup.
 2. Toggle each in `renderDimensions` / `renderRules` / `renderOutcomes` (and hide `#rule-empty`/`#outcome-empty` in `renderAll`'s rubric branch); add the empty-issues case to the `#conn-issue-note` chain in `renderConnected`.
 3. Add the zero-dimension `msg-warn` to `renderMessages`, before the `msg-ok` fallthrough.
-4. Add static-markup asserts to `test_policy_builder_emit.py`; add rendered-DOM assertions to the ENH-3500 probe and rerun the named cases.
+4. Add static-markup asserts to `test_policy_builder_emit.py`; add rendered-DOM visibility/text assertions and transition cases to the ENH-3500 probe, including the outcome prerequisite guidance, and rerun them.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 

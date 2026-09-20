@@ -33,10 +33,15 @@ Group of 8 related issues: Policy builder preview, validation, and editing corre
 - **ENH-3507** — Policy builder storage extraction and served-page probe skeleton (open; prerequisite for FEAT-3505)
 - **FEAT-3505** — Policy builder connected page submission controller and UI (open)
 
+- **ENH-3511** — (added by link-epics --apply)
 
+- **ENH-3513** — (added by link-epics --apply)
 
+- **ENH-3514** — (added by link-epics --apply)
 
+- **ENH-3510** — (added by link-epics --apply)
 
+- **BUG-3516** — (added by link-epics --apply)
 ## Implementation Order
 
 ENH-3487 → ENH-3491 → ENH-3492 → FEAT-3488 → FEAT-3498. BUG-3499 (executor `failure_terminal` for cap-routed finishes) is independent of the builder chain and must land before ENH-3492. The connected-execution split lets offline authoring and scenario suites ship without waiting for queue approval/result integration.

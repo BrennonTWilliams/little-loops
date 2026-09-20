@@ -12,6 +12,8 @@ relates_to:
 blocked_by:
 - ENH-3513
 - BUG-3512
+parent: EPIC-3493
+epic: EPIC-3493
 ---
 
 # ENH-3511: Policy builder: explain disabled controls (aria-describedby / visible reason)
@@ -100,7 +102,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 > **Context refresh (2026-09-19)**: BUG-3512 is **done** (2f5bdb89a). `:NNNN` line references in this issue predate it — roughly +4 up to `updatePreview` (now :1782) and +75 in the connected code (`renderConnected` now :2292). Function-name anchors remain correct; resolve by name, not line.
 
 - **Copy/Download** reuse `#validate-hint` (:324) as the reason element. Today it shows the Save to / Validate / Run guidance whenever `serializeLoopYaml` succeeds — including when export is disabled by validation errors — and is blanked only on a serializer throw (:1790). New behavior in `updatePreview`: when `hasError`, `#validate-hint` reads `EXPORT_DISABLED_REASON` — the constant ENH-3513 defines ("Copy and Download are disabled until the errors above are fixed."); do not re-declare the literal — (replacing the guidance, which is misleading while export is off) and both buttons get `aria-describedby="validate-hint"`; when `!hasError` the guidance returns and the attribute is removed. The `hasError` computation (:1795-1796) must move above the `#validate-hint` assignment.
-- **Submit/Review** share one new static `<p class="hint" id="conn-action-reason" hidden>` after the button row. Its text is derived from the first true clause, in order: `!av.ok` → hidden (already explained by `#conn-unavailable`; point `aria-describedby` there instead); `st.busy` → "Working…" (Review is `aria-disabled`, not `disabled`, in this state since BUG-3512 — it stays focusable, so this is the one case where `aria-describedby` is reached by focus; wire it on Review as well as Submit); `outcome_unknown` → "The last submission's outcome is unknown — use Run again or Retry."; `rv.status !== "ready"` → "Review the snapshot before submitting." Hidden and `aria-describedby` removed when Submit is enabled.
+- **Submit/Review** share one new static `<p class="hint" id="conn-action-reason" hidden>` after the button row. Its text is derived from the first true clause, in order: `!av.ok` → hidden (already explained by `#conn-unavailable`; point `aria-describedby` there instead); `st.busy` → "Working…" (Review is `aria-disabled`, not `disabled`, in this state since BUG-3512 — it stays focusable, so this is the one case where `aria-describedby` is reached by focus; wire it on Review as well as Submit); `outcome_unknown` → explain the unknown delivery state and derive next steps from the actual available controls: Refresh status when idle, Retry only when `sub.canRetry`, and Run again only when `av.ok && rv.status === "ready"`. When review is not ready, direct the user to Review (or to correct the refusal reason and review again) before suggesting Run again. Never name a hidden or disabled action as an available next step. Otherwise, `rv.status === "refused"` → explain the review refusal using `rv.reason` and request correction/review; other non-ready review states → "Review the snapshot before submitting." Hide the shared reason when Submit is enabled. Associate it with Submit while disabled, and with Review only while Review is unavailable/busy; an enabled Review must not retain a stale disabled-reason association.
 - **Reason elements are never live regions** (no `role=status`/`aria-live`) — BUG-3512 and ENH-3513 own announcements; a describedby target that is also live double-announces.
 - **Delete-outcome-in-use**: per-row `<small class="help">` with an ID derived from the outcome index (`oc-del-reason-${oi}`), rendered only while `inUse`.
 
@@ -112,13 +114,15 @@ _Wiring pass added by `/ll:wire-issue`:_
 - [ ] While busy, Review carries `aria-disabled="true"` **and** `aria-describedby="conn-action-reason"` with the "Working…" text; both are removed when idle (probe).
 - [ ] `#validate-hint`'s disabled text comes from `EXPORT_DISABLED_REASON` — the literal appears once in the rendered HTML (pytest).
 - [ ] Connected but unavailable: `#conn-issue`, Review and Submit are described by `#conn-unavailable`; `#conn-action-reason` stays hidden (probe).
+- [ ] Outcome-unknown cases cover ready/not-ready review and `canRetry` true/false, including neither Retry nor Run again available. Guidance names only visible, enabled next steps and updates after refresh/review. Refused review includes its actionable reason (browser).
+- [ ] Busy-to-idle transitions restore the appropriate reason for the resulting state and remove stale Review associations; becoming available/enabled clears prior unavailable-state associations. Assert computed visibility and `aria-describedby` targets, not just markup (browser).
 - [ ] An in-use outcome shows its visible reason; rule ↑ on the first rule and ↓ on the last have the "Already first/last" `title` (probe).
 - [ ] `_newBug3502Sandbox` stubs cover any new DOM call inside the sliced regions; golden regenerated; `python -m pytest scripts/tests/` exits 0.
 
 ## Implementation Steps
 
 1. Add `#conn-action-reason` markup; move the `hasError` computation above the `#validate-hint` write in `updatePreview` and wire text + `aria-describedby` there.
-2. Derive the Submit/Review reason in `renderConnected` per the clause order above; wire `#conn-issue`/Review/Submit to `#conn-unavailable` when `!av.ok`.
+2. Derive the Submit/Review reason in `renderConnected` per the clause order and available-action conditions above, including refused review and busy-to-idle cleanup; wire `#conn-issue`/Review/Submit to `#conn-unavailable` when `!av.ok`.
 3. Add the per-row delete-outcome reason in `renderOutcomes` and dynamic titles in `renderRules`.
 4. Static asserts in `test_policy_builder_emit.py`; present-while-disabled / absent-when-enabled assertions in the ENH-3500 probe.
 
