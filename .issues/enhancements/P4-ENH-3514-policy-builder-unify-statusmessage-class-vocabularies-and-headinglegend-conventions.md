@@ -16,7 +16,7 @@ blocked_by:
 - BUG-3512
 parent: EPIC-3493
 epic: EPIC-3493
-confidence_score: 80
+confidence_score: 95
 outcome_confidence: 79
 score_complexity: 18
 score_test_coverage: 18
@@ -154,17 +154,18 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-09-19_
+_Added by `/ll:confidence-check` on 2026-09-20 (supersedes the 2026-09-19 pass; `blocked_by` ENH-3510 and BUG-3512 are now both Completed)_
 
-**Readiness Score**: 80/100 → STOP — ADDRESS GAPS (Dependencies Hard Override)
+**Readiness Score**: 95/100 → PROCEED
 **Outcome Confidence**: 79/100 → MODERATE
 
 ### Concerns
-- Golden fixture is byte-compared and shared with sibling issues; must regenerate after ENH-3510 lands.
+- Line anchors have drifted again after ENH-3510 (`is-*` JS site now :2572, `<h2 style>` now :319/:340, `.conn-status` CSS :173-176); resolve by function/selector name, not line.
+- Golden fixture is byte-compared and shared with sibling issues; regenerate after reviewing the diff.
 - Computed-color assertions are probe-only by design (ENH-3506 theme probe, injected nodes); no pytest harness needed.
 
-### Gaps to Address
-- `blocked_by` ENH-3510 is unresolved (status: open); wait for it (or remove the edge if no longer applicable). BUG-3512 is done.
+### Outcome Risk Factors
+- Broad enumeration across ~7 change sites (template JS/CSS/h2, golden, emit test, two `.loops/` probes) despite mechanical per-site depth.
 
 ## Verification Notes
 
@@ -179,6 +180,7 @@ Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the sam
 - Remaining: none. Note `blocked_by` ENH-3510 is still `open` (dependency, not a claim defect).
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-20T03:15:34 - `6b71991c-ae89-4ca8-a58d-46f3cd886629.jsonl`
 - `/ll:verify-issues` - 2026-09-20T02:20:58 - `c36624df-44f4-481f-afac-82822146664d.jsonl`
 - `/ll:confidence-check` - 2026-09-20T00:50:25 - `b1e66617-7ca3-4c73-8eef-611558ec10fe.jsonl`
 - `/ll:verify-issues` - 2026-09-20T00:42:36 - `87477791-8eac-4eaa-a6b5-62a48362f015.jsonl`
