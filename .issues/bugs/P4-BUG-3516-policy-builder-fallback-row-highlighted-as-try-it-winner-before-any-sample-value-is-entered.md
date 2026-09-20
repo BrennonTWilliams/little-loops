@@ -4,10 +4,11 @@ type: BUG
 title: 'Policy builder: fallback row highlighted as Try-it winner before any sample
   value is entered'
 priority: P4
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-19'
 captured_at: '2026-09-19T21:16:29Z'
+completed_at: '2026-09-20T04:08:58Z'
 relates_to:
 - ENH-3500
 - ENH-3514
@@ -173,7 +174,13 @@ Verdict at time of check: **NEEDS_UPDATE** (line-number drift corrected in the s
 - `blocked_by: ENH-3514` — ENH-3514 is now Completed, so the dependency is satisfied; the confidence-check "Dependencies Hard Override" gap no longer applies (stale `blocked_by` entry removed afterward at the user's request; re-run `/ll:confidence-check` to clear the gap).
 - Graph: provider=`codegraph` freshness=`stale`; used only as a lead, anchors confirmed by direct reads.
 
+## Resolution
+
+**Fixed** — `updateTryIt` now clears the highlight and returns when no Try-it input has a value (matching `updateFrontmatterTryIt`); added `.fallback-row.rule-winner` (`opacity: 1`, padding, radius) and `.fallback-row.rule-winner select` (transparent) rules. Added the `BUG-3516:` node `vm` test (real `evaluateModel`); regenerated the golden (diff = the 6 new lines only). Full suite: 25101 passed.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-09-20T04:08:58 - `ff80c8dc-c556-475d-b51f-bb1b8e7c5cf1.jsonl`
+- `/ll:ready-issue` - 2026-09-20T04:02:32 - `6ae652d0-92f7-4822-bb9f-9d845a718a7e.jsonl`
 - `/ll:confidence-check` - 2026-09-20T03:38:32 - `1fb0a05c-b6e2-4738-9a19-fe759b33af09.jsonl`
 - `/ll:verify-issues` - 2026-09-20T03:27:54 - `60d8cbff-e55d-413c-8fb6-99a0fd5959d4.jsonl`
 - `/ll:verify-issues` - 2026-09-20T03:27:31 - `60d8cbff-e55d-413c-8fb6-99a0fd5959d4.jsonl`

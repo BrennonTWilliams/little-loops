@@ -1843,3 +1843,74 @@ test("ENH-3513: a rejected add announces once; correction cancels a pending repe
   timers.forEach((fn) => fn && fn());
   assert.equal(liveWrites.at(-1), "", "cancelled repeat must not be replayed");
 });
+
+// ---------------------------------------------------------------------------
+// BUG-3516 — decision_table Try-it must not highlight a winner (the fallback
+// row in particular) until at least one input has a value.
+// ---------------------------------------------------------------------------
+
+const _TRYIT_SRC = _extractBetween(
+  _templateSrc,
+  "function _highlightWinner(result) {",
+  "// FEAT-3474: the issue_lifecycle Try-it panel",
+  "_highlightWinner/updateTryIt"
+);
+
+function _newBug3516Sandbox() {
+  const classSet = (set) => ({
+    add: (c) => set.add(c),
+    remove: (c) => set.delete(c),
+    contains: (c) => set.has(c),
+  });
+  const fallbackClasses = new Set();
+  const cardClasses = [new Set(), new Set()];
+  const cards = cardClasses.map((set, i) => ({ classList: classSet(set), dataset: { ruleIndex: String(i) } }));
+  const inputs = [
+    { dataset: { dim: "quality" }, tagName: "INPUT", value: "" },
+    { dataset: { dim: "has-citations" }, tagName: "SELECT", value: "" },
+  ];
+  const fallbackEl = { classList: classSet(fallbackClasses) };
+  const context = vm.createContext({
+    state: { mode: "decision_table" },
+    buildModel: () => seedExample("decision_table"),
+    updateFrontmatterTryIt() {},
+    evaluateModel,
+    Number,
+    $: (id) => (id === "fallback-row" ? fallbackEl : null),
+    document: {
+      querySelectorAll: (sel) => (sel === ".rule-card" ? cards : sel === "#tryit-inputs [data-dim]" ? inputs : []),
+      querySelector: (sel) => {
+        const m = /data-rule-index="(\d+)"/.exec(sel);
+        return m ? cards[Number(m[1])] : null;
+      },
+    },
+  });
+  vm.runInContext(_TRYIT_SRC, context);
+  const winners = () => ({
+    fallback: fallbackClasses.has("rule-winner"),
+    cards: cardClasses.map((s) => s.has("rule-winner")),
+  });
+  return { context, inputs, winners };
+}
+
+test("BUG-3516: updateTryIt with all-blank inputs clears winner; fallback wins only once a value is entered", () => {
+  const { context, inputs, winners } = _newBug3516Sandbox();
+  const run = () => vm.runInContext("updateTryIt();", context);
+
+  run();
+  assert.deepEqual(winners(), { fallback: false, cards: [false, false] }, "all blank -> no winner");
+
+  inputs[0].value = "96";
+  inputs[1].value = "true";
+  run();
+  assert.deepEqual(winners(), { fallback: false, cards: [true, false] }, "matches rule 0 only");
+
+  inputs[0].value = "10";
+  inputs[1].value = "";
+  run();
+  assert.deepEqual(winners(), { fallback: true, cards: [false, false] }, "partial fill, no match -> fallback");
+
+  inputs[0].value = "";
+  run();
+  assert.deepEqual(winners(), { fallback: false, cards: [false, false] }, "re-blank clears");
+});

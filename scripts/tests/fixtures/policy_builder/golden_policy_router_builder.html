@@ -338,6 +338,8 @@ button.secondary {
 .scenario-verdict { margin: 0.25rem 0 0; padding: 0.2rem 0.4rem; border-radius: 4px; }
 .fallback-row { font-style: italic; opacity: 0.85; }
 .fallback-row select { max-width: 16rem; }
+.fallback-row.rule-winner { opacity: 1; padding: 0.5rem; border-radius: 6px; }
+.fallback-row.rule-winner select { background: transparent; }
 pre {
   background: var(--color-surface-secondary, #f8f9fa);
   color: var(--color-text-secondary, #495057);
@@ -6200,6 +6202,10 @@ function updateTryIt() {
     if (el.value === "") return;
     scores[el.dataset.dim] = el.tagName === "SELECT" ? (el.value === "true" ? 100 : 0) : Number(el.value);
   });
+  if (Object.keys(scores).length === 0) {
+    _highlightWinner({ ruleIndex: -1, target: null, isFallback: false });
+    return;
+  }
   const model = buildModel();
   _highlightWinner(evaluateModel(model, scores));
 }
