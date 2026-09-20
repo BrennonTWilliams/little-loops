@@ -94,6 +94,25 @@ _Added by `/ll:refine-issue` — 2026-09-20 — based on codebase analysis:_
 - **CI Node**: `.github/workflows/ci.yml` has no `actions/setup-node` and no `node-version`; Node comes from the runner image. The Node-pin acceptance criterion would be the first Node pin in the repo.
 - **AC references that do not resolve**: `test_node_22plus_runs_ok` and `test_node_test_runner_emits_tap_v13` do not exist anywhere; the sibling test in the file is `test_round_trip_yaml_validates_for_each_mode` (no `no_parallel`, inner `timeout=30`).
 
+### Dependent Files (Callers/Importers)
+_Wiring pass added by `/ll:wire-issue`:_
+- `.claude/CLAUDE.md` — § Testing & CI Policy cites `test_policy_builder_node_gate.py` as the enforced example of a wrapped other-toolchain gate; a dormant gate under default `-n logical` contradicts that claim [Agent 2 finding]
+- `AGENTS.md` — mirrors the same `test_policy_builder_node_gate.py` reference; keep consistent with CLAUDE.md [Agent 2 finding]
+- `scripts/tests/test_policy_builder_node_gate.py` — module docstring (L1-17) still says "no hosted CI … single enforced location is the local suite"; stale vs. `.github/workflows/ci.yml` and the `no_parallel` skip, update alongside any resolution [Agent 1 finding]
+
+### Documentation
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/development/TESTING.md` — marker table row for `no_parallel` (~L1050) says "runs on the controller or in a serial `-n 0` invocation"; under `-n N` the controller runs no tests, so reword to "serial `-n 0` only" [Agent 2 finding]
+
+### Tests
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_conftest_cap.py` — `TestNoParallelMarkerRouting` must keep passing if the marker is changed/removed [Agent 3 finding]
+- `scripts/tests/js/feat3304/feat3304_dashboard_runtime.test.mjs` — lives in a subdir, so the gate's non-recursive `JS_TEST_DIR.glob("*.test.mjs")` never runs it; note when deciding what "the gate" covers [Agent 3 finding]
+
+### Configuration
+_Wiring pass added by `/ll:wire-issue`:_
+- `.github/workflows/ci.yml` — a serial `-n 0` step (or `-m` selection) running only this test is the wiring needed to un-dormant the gate; optional `actions/setup-node` pin goes in the same file [Agent 2 finding]
+
 ## Program Design
 
 ### Types
@@ -125,7 +144,20 @@ _Added by `/ll:refine-issue` — 2026-09-20 — based on codebase analysis:_
 **Open** | Created: 2026-09-20 | Priority: P3
 
 
+## Implementation Steps
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `.github/workflows/ci.yml` — add a serial `-n 0` invocation of `test_policy_builder_node_gate.py` (or drop `no_parallel` for `@pytest.mark.timeout(>180)`) so the gate executes in CI
+- Update `scripts/tests/test_policy_builder_node_gate.py` — raise per-test timeout above inner 180s and refresh the stale module docstring
+- Update `docs/development/TESTING.md` — fix "runs on the controller" wording in the `no_parallel` row
+- Verify `.claude/CLAUDE.md` / `AGENTS.md` gate-example wording still holds after the change
+- Re-run `scripts/tests/test_conftest_cap.py` (`TestNoParallelMarkerRouting`)
+
 ## Session Log
+- `/ll:wire-issue` - 2026-09-20T21:53:51 - `80e0a309-7358-453f-8fdc-92553921aa72.jsonl`
 - `/ll:refine-issue` - 2026-09-20T21:21:36 - `09272224-9351-4571-a369-7e216b7645b5.jsonl`
 - `/ll:format-issue` - 2026-09-20T21:17:56 - `4117c50f-02ee-4b8b-8840-0c4b382de04b.jsonl`
 
