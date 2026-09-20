@@ -42,7 +42,14 @@ No winner is highlighted until at least one Try-it input has a value (matching `
 
 ## Proposed Solution
 
-In `updateTryIt`, when `scores` is empty call `_highlightWinner({ ruleIndex: -1, target: null, isFallback: false })` and return, mirroring the blank-input branch of `updateFrontmatterTryIt`. For the genuine-fallback-win case, make the `.rule-winner` treatment on `.fallback-row` read as one row (e.g. padding + transparent select background inside `.fallback-row.rule-winner`), reusing existing `--color-status-*` tokens so `test_enh3506_policy_builder_theme_parity.py` stays green.
+In `updateTryIt`, when `scores` is empty call `_highlightWinner({ ruleIndex: -1, target: null, isFallback: false })` and return, mirroring the blank-input branch of `updateFrontmatterTryIt`. For the genuine-fallback-win case, add exactly these two rules after `.fallback-row select`:
+
+```css
+.fallback-row.rule-winner { opacity: 1; padding: 0.5rem; border-radius: 6px; }
+.fallback-row.rule-winner select { background: transparent; }
+```
+
+`opacity: 1` is required: `.fallback-row` sets `opacity: 0.85`, so today a winning fallback row renders its highlight and text at 85% — outside what the `PAIRS` contrast check (computed at full opacity) covers. With the select transparent, the only text/background pairing on the row is `--color-text-primary` on `--color-status-success-bg`, which `PAIRS` already enforces. **Decided: no new `PAIRS` entry, no new CSS variables.**
 
 ## Integration Map
 
@@ -50,12 +57,12 @@ In `updateTryIt`, when `scores` is empty call `_highlightWinner({ ruleIndex: -1,
 - `scripts/little_loops/templates/policy-router-builder.html.tmpl` — `updateTryIt`, `.rule-winner` / `.fallback-row` CSS
 
 ### Tests
-- `.loops/probes/enh-3500-audit-probes.mjs` — add the blank/matching/fallback assertions (rendered DOM; on-demand, not a pytest gate)
+- `.loops/probes/enh-3500-audit-probes.mjs` — optional visual check only (rerun `CASE_ONLY='auth-populated-decision_table-.*'` and eyeball the screenshot). It is a `COLLECT` data audit with no assertions; do not add any — the ACs are verified by the node `vm` test below
 - `scripts/tests/fixtures/policy_builder/golden_policy_router_builder.html` — regenerate (byte-compared in `test_enh3035_artifact_template_kit.py`)
 - `scripts/tests/js/policy_validator.test.mjs` — `updateTryIt` sits outside the `_newBug3502Sandbox` slices; confirm the literal slice markers do not move
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/tests/js/policy_validator.test.mjs` — **new test**, `BUG-3516: updateTryIt with all-blank inputs clears winner`, next to the `BUG-3502:` tests; reuse `_extractBetween(_templateSrc, "function _highlightWinner(result) {", "// FEAT-3474: the issue_lifecycle Try-it panel", …)` and a `_newBug3502Sandbox`-style `vm` context (stub `state`, `buildModel`, `evaluateModel`, `updateFrontmatterTryIt`, `document.querySelectorAll` for `#tryit-inputs [data-dim]` / `.rule-card`, and `$("fallback-row").classList`). Assert no `rule-winner` when all blank, added on fallback-only match, cleared again on re-blank. Runs under pytest via `test_policy_builder_node_gate.py` (skips without node), so it covers the AC without a browser probe [Agent 3 finding]
+- `scripts/tests/js/policy_validator.test.mjs` — **new test**, `BUG-3516: updateTryIt with all-blank inputs clears winner`, next to the `BUG-3502:` tests; reuse `_extractBetween(_templateSrc, "function _highlightWinner(result) {", "// FEAT-3474: the issue_lifecycle Try-it panel", …)` and a `_newBug3502Sandbox`-style `vm` context. Stub only the DOM and page state (`state`, `buildModel`, `updateFrontmatterTryIt`, `document.querySelectorAll` for `#tryit-inputs [data-dim]` / `.rule-card`, `document.querySelector` for `.rule-card[data-rule-index=…]`, and `$("fallback-row").classList`); inject the **real** `evaluateModel` imported from `policy_builder_core.mjs` — a stubbed evaluator would make the fallback assertion test the stub. Cases: all blank → no `rule-winner` anywhere; value matching rule N → only that card; value matching no rule → `#fallback-row`; **partially filled (one dim set, others blank) and no rule matches → `#fallback-row`** (pins the "at least one value" contract); re-blank → cleared. Runs under pytest via `test_policy_builder_node_gate.py` (skips without node), so it covers the AC without a browser probe [Agent 3 finding]
 - `scripts/tests/test_policy_builder_emit.py` — optional text-level assertion beside `test_fallback_footer_is_structured_not_free_text` that the stamped CSS contains a `.fallback-row.rule-winner` rule; `id="fallback-row"` markup must stay `<input`-free [Agent 3 finding]
 - `scripts/tests/test_enh3035_artifact_template_kit.py::test_policy_builder_renders_byte_identically_to_golden_fixture` — the only test that breaks (byte-compare); golden lines affected: `.rule-winner` CSS (~L324), `.fallback-row` (~L339-340), `_highlightWinner`/`updateTryIt` (~L6022-6033) [Agent 2/3 finding]
 - `.loops/verify-enh-3506-theme.yaml` + `.loops/probes/enh-3506-theme-probes.mjs` — on-demand theme/contrast check; rerun after adding the `.fallback-row.rule-winner` rule (it measures a synthetic `.rule-card.rule-winner`, not `#fallback-row`) [Agent 1/2 finding]
@@ -86,24 +93,30 @@ _Added by `/ll:refine-issue` — 2026-09-19 — based on codebase analysis:_
 
 - Theme parity (`test_enh3506_policy_builder_theme_parity.py`): every `var(--x)` in the template CSS must be declared in all stamped blocks (profiles `default`, `editorial-mono`, `warm-paper`; light and dark; packaged and mirror), or `test_refs_declared_with_resolved_values` fails (~line 149). `PAIRS` (~38-48) enforces 4.5:1 contrast for `--color-text-primary` on `--color-status-success-bg` (the `.rule-winner` inherited-text pair). Any new background/text combination on the winner row is not covered by `PAIRS` unless added.
 - `test_policy_builder_emit.py::test_fallback_footer_is_structured_not_free_text` asserts `id="fallback-row"`, `<select id="f-fallback"`, and that the `<div class="row fallback-row"…>` element contains no `<input` and no "del" — the fallback-row markup must keep that shape.
-- Golden `golden_policy_router_builder.html` is byte-compared in `test_enh3035_artifact_template_kit.py::test_policy_builder_renders_byte_identically_to_golden_fixture` (inputs pinned by `_pin_golden_render_inputs`: `default` profile, dark, empty skill catalog, version `0.0.0-golden`). Any template edit forces regeneration. No regeneration script or flag was found; other issues disagree on the method (ENH-3513: "by hand after reviewing the diff"; FEAT-3488/3503: "through the existing generator") — treat regeneration as rendering via `cmd_policy_builder` under the pinned inputs and review the diff.
+- Golden `golden_policy_router_builder.html` is byte-compared in `test_enh3035_artifact_template_kit.py::test_policy_builder_renders_byte_identically_to_golden_fixture` (inputs pinned by `_pin_golden_render_inputs`: `default` profile, dark, empty skill catalog, version `0.0.0-golden`). Any template edit forces regeneration. No regeneration script or flag was found; other issues disagree on the method (ENH-3513: "by hand after reviewing the diff"; FEAT-3488/3503: "through the existing generator") — **regeneration recipe (decided):** render via `cmd_policy_builder` under the same pins as `_pin_golden_render_inputs` and copy the output over the fixture:
+  1. temp project dir with `.ll/ll-config.json` = `{"design_tokens": {"enabled": true, "source": "profile", "active": "default", "active_theme": "dark"}}`; `chdir` into it
+  2. patch `little_loops.skill_expander.resolve_plugin_content_root` to return `None` and `little_loops.__version__` to `"0.0.0-golden"`
+  3. `cmd_policy_builder(argparse.Namespace(output=<out>), Logger(use_color=False))`, then copy `<out>/policy-router-builder.html` over `golden_policy_router_builder.html`
+  4. `git diff` the fixture — expect only the two new CSS rules and the `updateTryIt` early return; anything else means an input was not pinned.
 - `policy_validator.test.mjs` has no references to `updateTryIt`, `_highlightWinner`, `rule-winner`, `fallback-row` or `f-fallback`. Its slice markers (`let state = seedExample();` … `function buildModel() {`; `$("open-project-input").onchange = …` … `$("undo-btn").onclick = …`) bracket regions that do not contain `updateTryIt`, so the edit is safe as long as those literal markers are untouched.
 - Probe correction: `.loops/probes/enh-3500-audit-probes.mjs` is a data-collection audit (`COLLECT`, ~line 69) with no pass/fail assertions and no winner-state references; the blank/match/fallback checks are a new addition, not an extension of existing assertions. `.loops/probes/enh-3506-theme-probes.mjs` (~72, ~96) measures contrast on a synthetic `.rule-card.rule-winner` element and never drives `updateTryIt`. No existing test or probe exercises the winner class after a Try-it input event.
 
 ## Implementation Steps
 
-1. In `updateTryIt`, clear the highlight and return when no Try-it input has a value.
-2. Add a `.fallback-row.rule-winner` rule so a genuine fallback win paints the whole row, reusing existing tokens.
-3. Add the blank / rule-match / fallback-match assertions to the ENH-3500 probe, rerun `CASE_ONLY='auth-populated-decision_table-.*'`, regenerate the golden.
+1. (TDD red) Add the `BUG-3516:` node `vm` test in `scripts/tests/js/policy_validator.test.mjs` (cases under Tests above); confirm the all-blank case fails.
+2. In `updateTryIt`, clear the highlight and return when no Try-it input has a value.
+3. Add the two `.fallback-row.rule-winner` rules from Proposed Solution verbatim.
+4. Regenerate the golden via the recipe under Constraints and review the diff.
+5. Optional: rerun the ENH-3500 probe (`CASE_ONLY='auth-populated-decision_table-.*'`) and `.loops/verify-enh-3506-theme.yaml` as a visual check — not an AC verifier.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-- Add a node `vm`-sandbox regression test in `scripts/tests/js/policy_validator.test.mjs` (blank → no winner; fallback-only match → `#fallback-row`; re-blank → cleared) — this is the pytest-gated coverage; the ENH-3500 probe assertions remain on-demand
+- Add a node `vm`-sandbox regression test in `scripts/tests/js/policy_validator.test.mjs` (blank → no winner; fallback-only match → `#fallback-row`; re-blank → cleared) — this is the pytest-gated coverage and the verifier for AC 1–2; the ENH-3500 probe is an optional visual check with no assertions
 - Keep any new helper outside the `_BOOTSTRAP_SRC` / `_OPEN_HANDLER_SRC` slice markers in the template
 - Regenerate `golden_policy_router_builder.html` after the template edit and review the diff
-- Rerun `.loops/verify-enh-3506-theme.yaml` after adding the `.fallback-row.rule-winner` rule; add a `PAIRS` entry in `test_enh3506_policy_builder_theme_parity.py` only if the rule introduces a new text/background pairing
+- Optionally rerun `.loops/verify-enh-3506-theme.yaml` after adding the `.fallback-row.rule-winner` rules; no `PAIRS` entry is needed (the row's only pairing, `--color-text-primary` on `--color-status-success-bg`, is already enforced)
 
 ## Program Design
 
@@ -135,10 +148,11 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Acceptance Criteria
 
-- [ ] Decision-table page with all Try-it inputs blank: neither `#fallback-row` nor any `.rule-card` has `.rule-winner` (probe: `auth-populated-decision_table-*`).
-- [ ] Entering a value that matches no rule highlights `#fallback-row`; entering one that matches rule N highlights only that card; clearing all inputs removes the highlight (probe).
+- [ ] Decision-table page with all Try-it inputs blank: neither `#fallback-row` nor any `.rule-card` has `.rule-winner` (verified by the `BUG-3516:` test in `policy_validator.test.mjs`).
+- [ ] Entering a value that matches no rule highlights `#fallback-row`; entering one that matches rule N highlights only that card; a partially filled input set that matches no rule highlights `#fallback-row`; clearing all inputs removes the highlight (same node test, using the real `evaluateModel`).
 - [ ] `issue_lifecycle` Try-it behavior unchanged.
-- [ ] No new CSS variables; theme-parity test passes; golden `golden_policy_router_builder.html` regenerated after reviewing the diff.
+- [ ] A winning fallback row renders at `opacity: 1` with a transparent select (stamped CSS contains both `.fallback-row.rule-winner` rules).
+- [ ] No new CSS variables and no new `PAIRS` entry; theme-parity test passes; golden `golden_policy_router_builder.html` regenerated after reviewing the diff.
 
 ## Related Key Documentation
 
