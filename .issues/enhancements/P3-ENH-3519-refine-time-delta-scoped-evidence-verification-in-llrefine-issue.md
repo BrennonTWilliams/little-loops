@@ -163,6 +163,7 @@ Decomposed from ENH-3515: Shift-left evidence verification to refine-time and ma
 - [ ] Additive-only mode permits repairing this pass's additions while preserving earlier content. Dry-run makes no issue edits and does not claim verification.
 - [ ] A failed snapshot is not treated as an empty baseline; incomplete verification is reported explicitly.
 - [ ] `--all` / baseline behavior and the repo-wide suite gate are unchanged.
+- [ ] `docs/reference/CLI.md` `### ll-verify-evidence` documents `--save-snapshot` / `--delta-from` and the new exit 2; the line-pinned entries in `test_issue_parser.py` (`_ISSUE_ID_RE`, line 108) and `test_wiring_skills_and_commands.py` (`SPAWN_SITE_INVENTORY`, `refine-issue.md` 186) are re-pinned if the edits shift them.
 - [ ] Mirror gates pass after the command edit; `python -m pytest scripts/tests/` exits 0.
 
 ## Scope Boundaries
@@ -180,7 +181,17 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 **Open** | Created: 2026-09-19 | Priority: P3
 
 
+## Verification Notes
+
+Verdict at time of check: **PROPOSAL_UNSOUND** (AC-coverage gaps corrected in the same pass, so the issue as it now reads is up to date — this section is a record of what was wrong and fixed, not an outstanding action item)
+
+All referenced files, line numbers and code claims verified against the current tree; `ll-verify-evidence` reports no unverifiable quotes. Graph provider: codegraph (fresh) available; not needed.
+
+- AC coverage: `docs/reference/CLI.md` flag/exit-2 docs and the two line-pinned test re-pins (`test_issue_parser.py` line 108, `SPAWN_SITE_INVENTORY` `refine-issue.md` 186) were in the Integration Map but had no acceptance criterion — added.
+- Confirmed: `scan_file` `resolved_ref[resolved] = artifact` keeps only the last spelling per resolved path (per-occurrence attribution defect is real); `refine-issue.md` lacks `Bash(ll-verify-evidence:*)`; no snapshot/delta code exists.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-09-20T01:36:18 - `58521fbd-d3a2-45c1-879f-6abf803572a3.jsonl`
 - `/ll:wire-issue` - 2026-09-20T00:32:31 - `1b17328e-89d8-45f8-a318-abba67ffafef.jsonl`
 - `/ll:refine-issue` - 2026-09-20T00:19:02 - `09e2af9d-eb90-432a-a570-962fb9c5f142.jsonl`
 - `/ll:format-issue` - 2026-09-20T00:10:57 - `d0eb6446-04cf-4c6e-ada1-f1ab3056d581.jsonl`

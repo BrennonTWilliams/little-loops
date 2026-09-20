@@ -129,6 +129,7 @@ replay harness -> isolated repo (parent as HEAD, commit tree staged) -> `main_ve
 - [ ] Rename/move and rewrite fixtures document how grandfathered evidence behaves; staged-line failure injection verifies an explicit production diagnostic/exit policy. Unsettled behavior or a required verifier follow-up keeps the hook warn-only.
 - [ ] Blocking is enabled only if the replay is complete, has zero manually classified false positives, and the maintenance/failure policies are settled and tested; otherwise the hook stays warn-only and the reason is recorded.
 - [ ] The hook comment records the date, result, and report path; display name and entry agree with the behavior; the hook gate tests pass under the resulting policy.
+- [ ] If the hook flips to blocking, `docs/reference/CLI.md` `### ll-verify-evidence` (`--added-only` bullet and **Exit codes:** line) describes blocking behavior and keeps the pinned `ll-verify-evidence` string.
 
 ## Scope Boundaries
 
@@ -144,7 +145,17 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 **Open** | Created: 2026-09-19 | Priority: P4
 
 
+## Verification Notes
+
+Verdict at time of check: **PROPOSAL_UNSOUND** (AC-coverage gaps corrected in the same pass, so the issue as it now reads is up to date — this section is a record of what was wrong and fixed, not an outstanding action item)
+
+All referenced files, line numbers and code claims verified against the current tree; `ll-verify-evidence` reports no unverifiable quotes. Graph provider: codegraph (fresh) available; not needed.
+
+- AC coverage: the conditional `docs/reference/CLI.md` update on a flip had no acceptance criterion — added.
+- Confirmed: `staged_added_lines` fails open (`None` → whole-file scan); `scan_paths` never attaches a verdict cache; hook entry still `|| true`.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-09-20T01:36:18 - `58521fbd-d3a2-45c1-879f-6abf803572a3.jsonl`
 - `/ll:wire-issue` - 2026-09-20T00:32:34 - `1b17328e-89d8-45f8-a318-abba67ffafef.jsonl`
 - `/ll:refine-issue` - 2026-09-20T00:19:02 - `09e2af9d-eb90-432a-a570-962fb9c5f142.jsonl`
 - `/ll:format-issue` - 2026-09-20T00:10:58 - `d0eb6446-04cf-4c6e-ada1-f1ab3056d581.jsonl`

@@ -13,6 +13,8 @@ labels:
 - verify-evidence
 - pre-commit
 parent: ENH-3515
+blocks:
+- ENH-3520
 relates_to:
 - BUG-3282
 - BUG-3484
@@ -109,6 +111,7 @@ Decomposed from ENH-3515: Shift-left evidence verification to refine-time and ma
 - [ ] Hook configuration checks run without optional executables.
 - [ ] All `TestRepoGate` findings, timeout, and execution-failure messages start with `GATE_FAILURE_LABEL` and are exercised in tests. Malformed JSON, unexpected exit codes, launch failures, invalid payload shapes, and inconsistent status/payload pairs cannot pass or escape unlabelled. Diagnoses remain distinct and make no unsupported claims about other tests or exclude verifier regressions.
 - [ ] The repo-wide gate still runs under the default `python -m pytest scripts/tests/` invocation.
+- [ ] `docs/reference/CLI.md` `### ll-verify-evidence` **Gates:** line states that the hook now prints findings (`verbose: true`).
 
 ## Scope Boundaries
 
@@ -125,7 +128,17 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 **Open** | Created: 2026-09-19 | Priority: P3
 
 
+## Verification Notes
+
+Verdict at time of check: **PROPOSAL_UNSOUND** (AC-coverage gaps and missing backlink corrected in the same pass, so the issue as it now reads is up to date — this section is a record of what was wrong and fixed, not an outstanding action item)
+
+All referenced files, line numbers and code claims verified against the current tree; `ll-verify-evidence` reports no unverifiable quotes. Graph provider: codegraph (fresh) available; not needed.
+
+- Backlink: ENH-3520 is `blocked_by: ENH-3518` but ENH-3518 lacked `blocks: [ENH-3520]` (MISSING_BACKLINK) — added.
+- AC coverage: the `docs/reference/CLI.md` Gates-line update (Integration Map) had no acceptance criterion — added.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-09-20T01:36:17 - `58521fbd-d3a2-45c1-879f-6abf803572a3.jsonl`
 - `/ll:wire-issue` - 2026-09-20T00:32:14 - `1b17328e-89d8-45f8-a318-abba67ffafef.jsonl`
 - `/ll:refine-issue` - 2026-09-20T00:19:01 - `09e2af9d-eb90-432a-a570-962fb9c5f142.jsonl`
 - `/ll:format-issue` - 2026-09-20T00:10:57 - `d0eb6446-04cf-4c6e-ada1-f1ab3056d581.jsonl`
