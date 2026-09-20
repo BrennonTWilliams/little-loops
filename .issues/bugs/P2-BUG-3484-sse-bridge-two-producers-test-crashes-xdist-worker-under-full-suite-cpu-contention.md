@@ -94,7 +94,7 @@ global pytest-timeout ceiling:
   10s = 30s
 
 Worst case ≈ 100-105s, against `scripts/pyproject.toml`'s
-`"--timeout=120"` and `"--timeout-method=thread"`. Under full-suite CPU contention
+<!-- ll-evidence-ok: addopts string at scripts/pyproject.toml:267-268 (BUG-3484 capture, 2026-09-15) -->`"--timeout=120"` and `"--timeout-method=thread"`. Under full-suite CPU contention
 (`-n <cpus-2>`, `--dist loadfile`) this occasionally tips past 120s. The
 close-path timeouts are already exercised near their ceiling under ordinary
 contention alone: an isolated single-file run of this test logged
