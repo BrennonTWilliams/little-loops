@@ -3,10 +3,11 @@ id: ENH-3511
 type: ENH
 title: 'Policy builder: explain disabled controls (aria-describedby / visible reason)'
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-19'
 captured_at: '2026-09-19T20:00:57Z'
+completed_at: '2026-09-20T02:10:14Z'
 relates_to:
 - ENH-3500
 blocked_by:
@@ -184,6 +185,8 @@ Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the sam
 - `PROPOSAL_UNSOUND` check: no defect found; note the `_newBug3502Sandbox` stub requirement already in ACs.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-20T02:10:14 - `a17db522-dda1-4233-9a04-f0e96383e901.jsonl`
+- `/ll:ready-issue` - 2026-09-20T02:03:54 - `a44a1b8d-5464-490a-bf6a-d49d5e714108.jsonl`
 - `/ll:confidence-check` - 2026-09-20T01:50:50 - `ac2baf4a-172c-47a9-b6de-52a871f58f17.jsonl`
 - `/ll:verify-issues` - 2026-09-20T01:49:34 - `7073c4c9-52a5-4dc1-bc72-f507fdf9043b.jsonl`
 - `/ll:confidence-check` - 2026-09-20T00:50:23 - `b1e66617-7ca3-4c73-8eef-611558ec10fe.jsonl`
@@ -198,3 +201,7 @@ Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the sam
 ## Scope Boundary
 
 **Note** (added by `/ll:audit-issue-conflicts`): Transient-busy Review/Refresh buttons use `aria-disabled="true"` per BUG-3512 (which owns `#conn-*` announcers and that change); every other disabled condition stays native `disabled`. `#conn-action-reason` and its `aria-describedby` wiring must apply to both forms. ~~Reuse the connected-state summary BUG-3512 introduces~~ — **withdrawn after BUG-3512 landed**: `_connSummary(st)` describes submission *delivery* state only (`{text, alert, key}`, `null` without a submission) and exposes no `busy` / `rv.status` clauses, so the clause-order derivation in Design Decisions stands. The Copy/Download disabled reason in `#validate-hint` uses ENH-3513's `EXPORT_DISABLED_REASON` constant; `#validate-hint` is a non-live describedby target.
+
+## Resolution
+
+Implemented in `policy-router-builder.html.tmpl`: `#validate-hint` now shows `EXPORT_DISABLED_REASON` when export is blocked and Copy/Download describe-by it; new non-live `#conn-action-reason` (clause-ordered reason for Submit/busy Review, outcome-unknown next steps from available controls); `#conn-issue`/Review/Submit describe-by `#conn-unavailable` when unavailable; per-row delete-outcome reason; "Already first/last" rule titles. Token-list `_setDescribedBy` helper. Golden regenerated, static test added. Browser/probe ACs not run (on-demand probe). Full suite: 25074 passed.

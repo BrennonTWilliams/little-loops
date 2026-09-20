@@ -356,6 +356,24 @@ class TestFeat2301UsabilityStructural:
         assert 'role="status"' not in tag("conn-notices")
         assert 'role="status"' not in status
 
+    def test_disabled_control_reason_elements(self, tmp_path: Path) -> None:
+        """ENH-3511: a single non-live shared reason element for Submit/Review; the
+        export-disabled literal appears once; #validate-hint is never a live region."""
+        html = _emit_html(tmp_path)
+        assert html.count('id="conn-action-reason"') == 1
+        reason = re.search(r'<p\b[^>]*\bid="conn-action-reason"[^>]*>', html)
+        assert reason is not None
+        assert 'class="hint"' in reason.group(0) and "hidden" in reason.group(0)
+        assert "role=" not in reason.group(0) and "aria-live" not in reason.group(0)
+        hint = re.search(r'<p\b[^>]*\bid="validate-hint"[^>]*>', html)
+        assert hint is not None
+        assert "role=" not in hint.group(0) and "aria-live" not in hint.group(0)
+        assert html.count("Copy and Download are disabled until the errors above are fixed.") == 1
+        assert '_setDescribedBy($("copy-btn"), "validate-hint", hasError)' in html
+        assert '_setDescribedBy($("download-btn"), "validate-hint", hasError)' in html
+        assert "oc-del-reason-${oi}" in html
+        assert '"Already first"' in html and '"Already last"' in html
+
     def test_advanced_action_details_collapsed_by_default(self, tmp_path: Path) -> None:
         """ENH-3491: action editors and the max-steps budget are collapsed by
         default behind an advanced `<details>`, and rules/try-it precede it in

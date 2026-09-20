@@ -544,6 +544,7 @@ confidence_score: 40"></textarea>
           <button id="conn-retry-btn" type="button" class="secondary" hidden>Retry identical request</button>
           <button id="conn-refresh-btn" type="button" class="secondary" hidden>Refresh status</button>
         </div>
+        <p class="hint" id="conn-action-reason" hidden></p>
         <p class="hint" id="conn-review-info" role="status" aria-live="polite"></p>
         <ul class="messages" id="conn-notices"></ul>
         <div id="conn-status" class="conn-block" tabindex="-1" role="group" aria-label="Submission status"></div>
@@ -5333,6 +5334,13 @@ const _ADD_ERR = {
 function _describedTokens(input) {
   return (input.getAttribute("aria-describedby") || "").split(/\s+/).filter(Boolean);
 }
+// Add/remove one id in an element's aria-describedby token list (never overwrite).
+function _setDescribedBy(el, id, on) {
+  const toks = _describedTokens(el).filter((t) => t !== id);
+  if (on) toks.push(id);
+  if (toks.length) el.setAttribute("aria-describedby", toks.join(" "));
+  else el.removeAttribute("aria-describedby");
+}
 function _showAddError(kind, text) {
   const c = _ADD_ERR[kind];
   const err = $(c.err), input = $(c.input);
@@ -5721,6 +5729,14 @@ function renderOutcomes() {
     delOc.title = inUse
       ? "Can't remove: still used by a rule or the fallback"
       : "Remove this outcome";
+    if (inUse) {
+      const why = document.createElement("small");
+      why.className = "help";
+      why.id = `oc-del-reason-${oi}`;
+      why.textContent = "Can't remove: still used by a rule or the fallback.";
+      delOc.setAttribute("aria-describedby", why.id);
+      title.appendChild(why);
+    }
     delOc.onclick = () => { state.outcomes.splice(oi, 1); _liveOperation(() => { renderAll(); commit(); }); };
     title.appendChild(delOc);
     grp.appendChild(title);
@@ -6082,11 +6098,13 @@ function renderRules() {
     upBtn.className = "secondary rule-move"; upBtn.textContent = "↑";
     upBtn.title = "Move rule up (higher precedence)";
     upBtn.disabled = i === 0;
+    if (i === 0) upBtn.title = "Already first";
     upBtn.onclick = () => { state.rules = moveRule({ rules: state.rules }, i, "up").rules; _liveOperation(() => { renderAll(); commit(); }); };
     const downBtn = document.createElement("button");
     downBtn.className = "secondary rule-move"; downBtn.textContent = "↓";
     downBtn.title = "Move rule down (lower precedence)";
     downBtn.disabled = i === state.rules.length - 1;
+    if (i === state.rules.length - 1) downBtn.title = "Already last";
     downBtn.onclick = () => { state.rules = moveRule({ rules: state.rules }, i, "down").rules; _liveOperation(() => { renderAll(); commit(); }); };
     card.append(upBtn, downBtn);
 
@@ -6731,6 +6749,9 @@ function updatePreview() {
   const hasError = diagnostics.some((d) => d.severity === "error");
   $("copy-btn").disabled = hasError;
   $("download-btn").disabled = hasError;
+  if (hasError) $("validate-hint").textContent = EXPORT_DISABLED_REASON;
+  _setDescribedBy($("copy-btn"), "validate-hint", hasError);
+  _setDescribedBy($("download-btn"), "validate-hint", hasError);
   $("yaml-summary").textContent = computeSummary(model);
   const errorCount = renderMessages(model, diagnostics);
   _announceValidation(errorCount, hasError);
@@ -7232,6 +7253,40 @@ function _restoreConnectedFocus(prev) {
   if (dest) dest.focus();
 }
 
+// Visible reason for a disabled Submit / busy Review. Never a live region:
+// BUG-3512 / ENH-3513 own announcements.
+function _actionReason(st) {
+  const av = st.availability, rv = st.review, sub = st.submission;
+  if (!av.ok) return "";
+  if (st.busy) return "Working…";
+  if (sub && sub.delivery.state === "outcome_unknown") {
+    const steps = [];
+    steps.push("Refresh status");
+    if (sub.canRetry) steps.push("Retry identical request");
+    if (rv.status === "ready") steps.push("Run again");
+    else steps.push(rv.status === "refused" ? "correct the review problem and Review again" : "Review the snapshot");
+    return "Delivery of the last request is unknown. Next: " + steps.join(", or ") + ".";
+  }
+  if (rv.status === "refused") return `Review refused: ${rv.reason} Correct it, then Review again.`;
+  if (rv.status !== "ready") return "Review the snapshot before submitting.";
+  return "";
+}
+function _renderActionReason(st) {
+  const av = st.availability;
+  const submitDisabled = $("conn-submit-btn").disabled;
+  const reason = submitDisabled || st.busy ? _actionReason(st) : "";
+  const box = $("conn-action-reason");
+  if (box.textContent !== reason) box.textContent = reason;
+  box.hidden = !reason;
+  const un = !av.ok;
+  const review = $("conn-review-btn"), submit = $("conn-submit-btn"), issue = $("conn-issue");
+  _setDescribedBy(issue, "conn-unavailable", un);
+  _setDescribedBy(review, "conn-unavailable", un);
+  _setDescribedBy(submit, "conn-unavailable", un);
+  _setDescribedBy(review, "conn-action-reason", !!reason && st.busy);
+  _setDescribedBy(submit, "conn-action-reason", !!reason && submitDisabled);
+}
+
 function renderConnected(st) {
   const prev = document.activeElement;
   const panel = $("connected-panel");
@@ -7272,6 +7327,7 @@ function renderConnected(st) {
   else $("conn-review-btn").removeAttribute("aria-disabled");
   $("conn-submit-btn").disabled = !av.ok || rv.status !== "ready" || st.busy || !!(sub && sub.delivery.state === "outcome_unknown");
   $("conn-submit-btn").textContent = sub ? "Submit as new run" : "Submit";
+  _renderActionReason(st);
   $("conn-again-btn").hidden = !(av.ok && rv.status === "ready" && sub && sub.delivery.state === "outcome_unknown");
   $("conn-retry-btn").hidden = !(sub && sub.canRetry);
   $("conn-refresh-btn").hidden = !(sub && sub.delivery.state !== "rejected");
