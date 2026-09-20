@@ -1259,7 +1259,7 @@ class TestGateClassification:
     def test_gate_test_timeout_exceeds_gate_timeout(self) -> None:
         marks = [
             m
-            for m in getattr(TestRepoGate.test_no_new_unverifiable_evidence, "pytestmark")
+            for m in TestRepoGate.test_no_new_unverifiable_evidence.pytestmark  # type: ignore[attr-defined]
             if m.name == "timeout"
         ]
         assert marks and marks[0].args[0] > GATE_TIMEOUT
