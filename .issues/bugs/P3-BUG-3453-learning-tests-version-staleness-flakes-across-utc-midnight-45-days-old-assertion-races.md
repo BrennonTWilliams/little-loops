@@ -1,7 +1,7 @@
 ---
 id: BUG-3453
 type: BUG
-title: "learning-tests version staleness: test_age_stale_names_the_age + test_age_stale_still_names_days flip to <!-- ll-evidence-ok: runtime symptom of the midnight flip, not a source-code quote --> '46 days old' when pytest execution spans UTC midnight"
+title: "learning-tests version staleness: test_age_stale_names_the_age + test_age_stale_still_names_days flip to <!-- ll-evidence-ok: runtime symptom of the midnight flip, not a source-code quote --> '46 days old' when pytest execution spans the test process's local midnight (UTC on the CI runner)"
 priority: P3
 status: open
 discovered_by: ll-issues-create
@@ -16,15 +16,15 @@ learning_tests_required:
 - pytest
 ---
 
-# BUG-3453: learning-tests version staleness flakes across UTC midnight (45-days-old assertion races)
+# BUG-3453: learning-tests version staleness flakes across local midnight of the test process (45-days-old assertion races)
 
 ## Summary
 
 `scripts/tests/test_learning_tests_version_staleness.py` hard-codes `"45 days old"` assertions at lines `:210` and `:422`. The test's `_record(age_days=45)` stamps each record's `date` field from a module-level `TODAY = datetime.date.today()` (`:26`, applied `:40`), but `scripts/little_loops/learning_tests/gate.py:164` and `:202` compute the record's age against the **live** `datetime.date.today()` at assertion time.
 
-When a single pytest execution spans UTC midnight, the live `today()` advances one day past the frozen module-level `TODAY`. The record's computed age flips from `45` to `46`, and the hard-coded assertion `assert describe_staleness(_record(age_days=45), 30) == "stale: 45 days old"` fails <!-- ll-evidence-ok: "46 days old" is a runtime symptom of the midnight flip, not a source-code quote; the test asserts "45 days old" --> with `stale: 46 days old == stale: 45 days old`.
+`datetime.date.today()` reads the **local** date of the process, so the boundary is the runner's local midnight (the CI runner is on UTC, hence the 00:00Z failure; a CDT dev machine would race at 05:00Z). When a single pytest execution spans that midnight, the live `today()` advances one day past the frozen module-level `TODAY`. The record's computed age flips from `45` to `46`, and the hard-coded assertion `assert describe_staleness(_record(age_days=45), 30) == "stale: 45 days old"` fails <!-- ll-evidence-ok: "46 days old" is a runtime symptom of the midnight flip, not a source-code quote; the test asserts "45 days old" --> with `stale: 46 days old == stale: 45 days old`.
 
-Pre-existing on `main` since the test file was added (commit `0a4a4030`, 2026-08-09). Not previously observed because most CI runs do not span midnight UTC.
+Pre-existing on `main` since the test file was added (commit `0a4a4030`, 2026-08-09). Not previously observed because most runs do not span the runner's local midnight.
 
 ## Context
 
@@ -53,7 +53,7 @@ Verified line citations:
 
 ## Current Behavior
 
-- A pytest run that starts before UTC midnight and asserts after UTC midnight flips `age` by +1 day relative to the module-level `TODAY`.
+- A pytest run that starts before the process's local midnight and asserts after it flips `age` by +1 day relative to the module-level `TODAY`.
 - The test's hard-coded `"stale: 45 days old"` literal fails.
 - The test's hard-coded `"45 days old" in result.feedback` substring fails.
 - Both failures emit the same date-arithmetic-mismatch signature — diagnostic, not destructive.
@@ -65,7 +65,7 @@ Verified line citations:
 
 ## Steps to Reproduce
 
-1. Stage an environment that runs pytest across UTC midnight (any runner scheduled near `00:00Z`).
+1. Stage an environment that runs pytest across the process's local midnight (on the UTC CI runner: near `00:00Z`).
 2. `python -m pytest scripts/tests/test_learning_tests_version_staleness.py -v`
 3. Observe `test_age_stale_names_the_age` and `test_age_stale_still_names_days` fail with `stale: 46 days old` / `<!-- ll-evidence-ok: runtime symptom --> 46 days old in feedback`.
 
@@ -77,14 +77,33 @@ This is a test-determinism race, not a source-code bug — `gate.py`'s use of li
 
 ## Proposed Solution
 
-Freeze the clock once per test class with a `monkeypatch` fixture on `datetime.date.today()` (or a class-level autouse fixture that swaps `_record` and `gate.py`'s `date.today()` for the same value). The two staleness tests then see one consistent `today()` regardless of when pytest imported the module.
+**Chosen shape: module-scoped shim freeze, test file only.** `gate.py` is not modified.
 
-Concretely, two implementation shapes both work and don't touch `gate.py`:
+`gate.py` does `import datetime` and uses only `datetime.date.today` and `datetime.date.fromisoformat`. Replace the `datetime` name *inside `gate.py`* with a shim, so nothing process-global is mutated:
 
-1. **Fixture freeze** — add an autouse class fixture that monkeypatches `datetime.date.today` to a fixed sentinel before each test in `TestDescribeStaleness` and `TestHookStaleMessage`. The fixture's `today` is passed into `_record` so the record's `date` and the production code's runtime call share one source.
-2. **Parameterize `today`** — refactor `_record` and `gate.py`'s age computation to accept an optional `today` parameter (defaulting to `datetime.date.today()`). Tests pass an explicit fixed `today`. Source is unchanged for production callers.
+```python
+FROZEN_TODAY = datetime.date(2026, 1, 15)  # fixed past date; replaces module-level TODAY
 
-Either shape is <30 lines. Both keep `gate.py` semantically identical for production use (the optional `today` parameter is a backward-compatible no-op when omitted).
+
+class _FrozenDate(datetime.date):
+    @classmethod
+    def today(cls) -> "datetime.date":
+        return FROZEN_TODAY
+
+
+@pytest.fixture(autouse=True)
+def _freeze_today(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "little_loops.learning_tests.gate.datetime",
+        types.SimpleNamespace(date=_FrozenDate),
+    )
+```
+
+- The fixture is **module-wide autouse** (not limited to the two failing classes), so every `_record(age_days=…)` and every `gate.py` clock read (`:164`, `:202`, and the `:192` → `:164` second read, plus the hook's reads) derive from `FROZEN_TODAY`. Module-level `TODAY = datetime.date.today()` is deleted; `_record` uses `FROZEN_TODAY`.
+- `_FrozenDate` subclasses `datetime.date`, so `fromisoformat` keeps working (returns a `_FrozenDate`; subtraction with `date` yields a normal `timedelta`). `monkeypatch` restores on teardown.
+- If `gate.py` later uses another `datetime` attribute, the shim raises `AttributeError` loudly — add the attribute to the namespace.
+
+**Rejected: parameterize `today`** on `is_record_stale`/`describe_staleness`. It changes a documented public signature (`docs/reference/API.md:7456-7457`) for a test-only flake, and prior decision records (`.ll/decisions.d/16221a09-…`, `72e163e7-…`) already weigh against signature changes there. **Rejected: patching `gate.datetime.date`** — that attribute lives on the global stdlib module, so the patch is process-wide.
 
 ### Codebase Research Findings
 
@@ -149,18 +168,20 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ### Types
 
-- `TODAY: datetime.date` — module-level pin in `test_learning_tests_version_staleness.py` (to be replaced by a per-test frozen value)
+- `FROZEN_TODAY: datetime.date` — fixed constant (`2026-01-15`) in `test_learning_tests_version_staleness.py`; replaces the import-time `TODAY` pin
+- `_FrozenDate(datetime.date)` — subclass whose `today()` returns `FROZEN_TODAY`
 
 ### Signatures
 
-- `_freeze_today(monkeypatch: pytest.MonkeyPatch) -> datetime.date` — autouse fixture body that patches `little_loops.learning_tests.gate.datetime.date` so `today()` returns the same value `_record` uses
+- `_freeze_today(monkeypatch: pytest.MonkeyPatch) -> None` — module-wide autouse fixture that replaces the `datetime` name inside `little_loops.learning_tests.gate` with a shim namespace whose `date` is `_FrozenDate`
+- `_FrozenDate.today() -> datetime.date` — classmethod on a `datetime.date` subclass; returns `FROZEN_TODAY`
 - `_record(*, target: str = "requests", date: str | None = None, status: str = "proven", proven_package: str | None = None, proven_version: str | None = None, age_days: int | None = None) -> LearnTestRecord` — unchanged signature; derives `date` from the frozen value
 
 ### Call Path
 
-`TestDescribeStaleness.test_age_stale_names_the_age` -> `_record` -> `describe_staleness` -> `datetime.date.today`
+`TestDescribeStaleness.test_age_stale_names_the_age` -> `describe_staleness` -> `is_record_stale` -> `_FrozenDate.today` (then `describe_staleness` -> `_FrozenDate.today` again for the rendered age)
 
-`TestHookStaleMessage.test_age_stale_still_names_days` -> `_record` -> `is_record_stale` -> `datetime.date.today`
+`TestHookStaleMessage.test_age_stale_still_names_days` -> `gate` (`hooks/learning_tests_gate.py`) -> `is_record_stale` -> `_FrozenDate.today`; then `gate` -> `describe_staleness` -> `_FrozenDate.today`
 
 ### Codebase Research Findings
 
@@ -174,19 +195,20 @@ _Added by `/ll:refine-issue` — 2026-09-20 — based on codebase analysis:_
 - `test_age_stale_names_the_age` passes regardless of pytest session start time.
 - `test_age_stale_still_names_days` passes regardless of pytest session start time.
 - `gate.py` continues to use live `datetime.date.today()` in production paths (no behavioral change for non-test callers).
-- CI dispatch crossing UTC midnight no longer surfaces BUG-3453.
-- No new test flake introduced for the non-staleness tests in this file (the 40 other tests must remain green).
+- The expected age is independent of the wall clock: with `FROZEN_TODAY` fixed at a past date (`2026-01-15`), `_record(age_days=45)` renders exactly `"45 days old"` in both tests, and no `datetime.date.today()` call remains at module level in the test file.
+- The freeze is scoped to `gate.py`'s `datetime` name — stdlib `datetime.date` is not mutated (`datetime.date.today()` called from the test body still returns the live date).
+- No new test flake introduced for the non-staleness tests in this file (the file has 40 tests total; the 38 others must remain green under the module-wide autouse freeze).
 
 ## Impact
 
 - **Priority**: P3 - Test-only flake; fires only when a pytest run spans UTC midnight, no production behavior affected
-- **Effort**: Small - One fixture (<30 lines) in a single test file; `gate.py` untouched
-- **Risk**: Low - Test-only change, the other 40 tests in the file guard against regressions
+- **Effort**: Small - One module-wide autouse fixture + `_FrozenDate` shim (<30 lines) in a single test file; `gate.py` untouched
+- **Risk**: Low - Test-only change, the other 38 tests in the file guard against regressions
 - **Breaking Change**: No
 
 ## Workarounds
 
-Until the fix lands, CI dispatch can avoid the race by not crossing `00:00:00Z`. CI ran the affected dispatch starting `2026-09-11T23:59:00Z`; subsequent dispatches starting `2026-09-12T00:16:14Z` (post-midnight, so the race won't re-fire on the same calendar day) cleared without the flake. The flake recurs on the next UTC-midnight-spanning dispatch — this is a deferred failure, not a one-off.
+Until the fix lands, CI dispatch can avoid the race by not crossing the runner's local midnight (`00:00:00Z` on the UTC CI runner; this does not hold for a non-UTC runner). CI ran the affected dispatch starting `2026-09-11T23:59:00Z`; subsequent dispatches starting `2026-09-12T00:16:14Z` (post-midnight, so the race won't re-fire on the same calendar day) cleared without the flake. The flake recurs on the next UTC-midnight-spanning dispatch — this is a deferred failure, not a one-off.
 
 ## Notes
 
