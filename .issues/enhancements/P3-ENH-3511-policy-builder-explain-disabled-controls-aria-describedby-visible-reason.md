@@ -14,12 +14,13 @@ blocked_by:
 - BUG-3512
 parent: EPIC-3493
 epic: EPIC-3493
-confidence_score: 80
+confidence_score: 100
 outcome_confidence: 56
 score_complexity: 10
 score_test_coverage: 10
 score_ambiguity: 18
 score_change_surface: 18
+size: Large
 ---
 
 # ENH-3511: Policy builder: explain disabled controls (aria-describedby / visible reason)
@@ -154,22 +155,19 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-09-19_
+_Updated by `/ll:confidence-check` on 2026-09-19_
 
-**Readiness Score**: 80/100 → STOP — ADDRESS GAPS (Dependencies Hard Override)
+**Readiness Score**: 100/100 → PROCEED
 **Outcome Confidence**: 56/100 → LOW
 
 ### Concerns
-- Design is otherwise specific: no format-check, parity, claim, decision, or Program Design gaps.
-- ENH-3513 defines `EXPORT_DISABLED_REASON`, which this issue consumes; it is not yet in the template (0 occurrences).
-
-### Gaps to Address
-- Unresolved `blocked_by`: ENH-3513 (open). BUG-3512 is completed. Land ENH-3513 first (sequence: BUG-3512 → ENH-3513 → ENH-3511).
+- Prior Dependencies Hard Override is cleared: ENH-3513 and BUG-3512 are both completed. `EXPORT_DISABLED_REASON` now exists in the template and `_describedTokens` (:529) is available for token-list `aria-describedby` handling.
+- No format-check, parity, claim, decision, or Program Design gaps.
 
 ### Outcome Risk Factors
 - Deep per-site complexity in `renderConnected`: the Submit/Review reason is a clause-ordered derivation with busy-to-idle cleanup and outcome-unknown branching.
-- Weak automated coverage: no rendered-DOM pytest harness; the key ACs are verified only by the on-demand probe or a browser check.
-- Shared byte-compared golden template is edited by ENH-3513, ENH-3510 and ENH-3514; sequencing is required.
+- Weak automated coverage: no rendered-DOM pytest harness; the key ACs are verified only by the on-demand ENH-3500 probe or a browser check.
+- Shared byte-compared golden template is edited by ENH-3510 and ENH-3514; sequencing is required.
 
 ## Verification Notes
 
@@ -186,6 +184,7 @@ Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the sam
 - `PROPOSAL_UNSOUND` check: no defect found; note the `_newBug3502Sandbox` stub requirement already in ACs.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-20T01:50:50 - `ac2baf4a-172c-47a9-b6de-52a871f58f17.jsonl`
 - `/ll:verify-issues` - 2026-09-20T01:49:34 - `7073c4c9-52a5-4dc1-bc72-f507fdf9043b.jsonl`
 - `/ll:confidence-check` - 2026-09-20T00:50:23 - `b1e66617-7ca3-4c73-8eef-611558ec10fe.jsonl`
 - `/ll:verify-issues` - 2026-09-20T00:42:35 - `87477791-8eac-4eaa-a6b5-62a48362f015.jsonl`
