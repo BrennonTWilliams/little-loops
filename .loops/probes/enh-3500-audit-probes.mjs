@@ -95,7 +95,7 @@ const COLLECT = () => {
   const connected = conn ? {
     panelVisible: vis(conn), unavailable: document.getElementById("conn-unavailable")?.textContent.trim() || null,
     unavailableVisible: vis(document.getElementById("conn-unavailable")), bodyVisible: vis(document.getElementById("conn-body")),
-    status: document.getElementById("conn-status")?.textContent.trim().slice(0, 300), statusClass: document.getElementById("conn-status")?.className,
+    status: document.getElementById("conn-status")?.textContent.trim().slice(0, 300), statusClass: document.querySelector("#conn-status .conn-status")?.className,
     notices: q("#conn-notices li").map((e) => e.textContent.trim().slice(0, 120)), reviewInfo: document.getElementById("conn-review-info")?.textContent.trim(),
     issueNote: document.getElementById("conn-issue-note")?.textContent.trim(),
     buttons: ["conn-review-btn", "conn-submit-btn", "conn-again-btn", "conn-retry-btn", "conn-refresh-btn", "conn-issues-reload"].map((id) => { const e = document.getElementById(id); return { id, visible: vis(e), disabled: e.disabled }; }),

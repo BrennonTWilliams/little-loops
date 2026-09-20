@@ -4,10 +4,11 @@ type: ENH
 title: 'Policy builder: unify status/message class vocabularies and heading/legend
   conventions'
 priority: P4
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-19'
 captured_at: '2026-09-19T20:00:57Z'
+completed_at: '2026-09-20T03:23:56Z'
 relates_to:
 - ENH-3500
 - BUG-3516
@@ -22,6 +23,7 @@ score_complexity: 18
 score_test_coverage: 18
 score_ambiguity: 25
 score_change_surface: 18
+completed_at: '2026-09-20T03:23:47Z'
 ---
 
 # ENH-3514: Policy builder: unify status/message class vocabularies and heading/legend conventions
@@ -118,12 +120,12 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Acceptance Criteria
 
-- [ ] Rendered HTML (CSS + JS) has no match for `\bis-(error|warning|success)\b` and does not contain `.conn-status.is-` (pytest in `test_policy_builder_emit.py`).
-- [ ] The `.conn-status` base rule declares no `background` or `color` (pytest regex over the rendered CSS).
-- [ ] No `<h2` in the rendered HTML carries a `style=` attribute; an `h2` CSS rule exists (pytest).
-- [ ] `.loops/probes/enh-3506-theme-probes.mjs` (the asserting probe — exit code + `THEME_PROBES_PASSED`) injects synthetic `div.conn-status.msg-{ok,warn,error}` nodes alongside its existing `li.msg-*` nodes and asserts, in both themes, that each one's computed `color` and `backgroundColor` equal those of the matching `li.msg-*`. This is what catches base colors overriding severity; token-parity and golden/string checks do not. The four connected states (accepted, accepted-with-warnings, rejected, outcome-unknown) map to only these three classes — accepted and accepted-with-warnings both render `msg-ok` — so three injected nodes cover them without stubbing the served host.
-- [ ] `.loops/probes/enh-3500-audit-probes.mjs` is a collector with no pass/fail path, so nothing is asserted there; only fix its stale `statusClass` field (:98) to read `#conn-status .conn-status` (since BUG-3512 the outer `#conn-status` carries only `conn-block`). The class census (:88) stays as-is and should simply report no `is-*` on the next audit run.
-- [ ] Theme-parity test passes; golden regenerated after reviewing the diff; `python -m pytest scripts/tests/` exits 0.
+- [x] Rendered HTML (CSS + JS) has no match for `\bis-(error|warning|success)\b` and does not contain `.conn-status.is-` (pytest in `test_policy_builder_emit.py`).
+- [x] The `.conn-status` base rule declares no `background` or `color` (pytest regex over the rendered CSS).
+- [x] No `<h2` in the rendered HTML carries a `style=` attribute; an `h2` CSS rule exists (pytest).
+- [x] `.loops/probes/enh-3506-theme-probes.mjs` (the asserting probe — exit code + `THEME_PROBES_PASSED`) injects synthetic `div.conn-status.msg-{ok,warn,error}` nodes alongside its existing `li.msg-*` nodes and asserts, in both themes, that each one's computed `color` and `backgroundColor` equal those of the matching `li.msg-*`. This is what catches base colors overriding severity; token-parity and golden/string checks do not. The four connected states (accepted, accepted-with-warnings, rejected, outcome-unknown) map to only these three classes — accepted and accepted-with-warnings both render `msg-ok` — so three injected nodes cover them without stubbing the served host.
+- [x] `.loops/probes/enh-3500-audit-probes.mjs` is a collector with no pass/fail path, so nothing is asserted there; only fix its stale `statusClass` field (:98) to read `#conn-status .conn-status` (since BUG-3512 the outer `#conn-status` carries only `conn-block`). The class census (:88) stays as-is and should simply report no `is-*` on the next audit run.
+- [x] Theme-parity test passes; golden regenerated after reviewing the diff; `python -m pytest scripts/tests/` exits 0.
 
 ## Implementation Steps
 
@@ -180,6 +182,8 @@ Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the sam
 - Remaining: none. Note `blocked_by` ENH-3510 is still `open` (dependency, not a claim defect).
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-20T03:23:47 - `f69bc737-25d8-46aa-8fda-3d4804783499.jsonl`
+- `/ll:ready-issue` - 2026-09-20T03:17:33 - `c2fb3254-1dff-4caa-ac20-705b3c584051.jsonl`
 - `/ll:confidence-check` - 2026-09-20T03:15:34 - `6b71991c-ae89-4ca8-a58d-46f3cd886629.jsonl`
 - `/ll:verify-issues` - 2026-09-20T02:20:58 - `c36624df-44f4-481f-afac-82822146664d.jsonl`
 - `/ll:confidence-check` - 2026-09-20T00:50:25 - `b1e66617-7ca3-4c73-8eef-611558ec10fe.jsonl`
@@ -194,3 +198,7 @@ Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the sam
 ## Scope Boundary
 
 **Note** (added by `/ll:audit-issue-conflicts`): BUG-3512 also edits the `.conn-status` block in `renderConnected` (live-region/alert semantics, state class stays on the inner child). **Re-checked (BUG-3512 landed)**: the state class is on the inner `.conn-status` child built in `_renderConnectedStatus`; the outer `#conn-status` is a `role="group"` focus target and carries no state class — migrate the inner child only. BUG-3516 owns the saturated-green fallback row; regenerate the golden fixture in coordination.
+
+## Resolution
+
+Completed: `is-*` → `msg-*` in `_renderConnectedStatus` (rejected→`msg-error`, accepted→`msg-ok`, else `msg-warn`); deleted `.conn-status.is-*` rules and base colors; added `.panel h2` rule and removed both inline h2 styles; golden regenerated; `TestEnh3514StatusVocabulary` added; ENH-3506 theme probe asserts injected `.conn-status.msg-*` computed colors (12/12 pass); ENH-3500 probe `statusClass` selector fixed. Full suite: 25078 passed.

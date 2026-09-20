@@ -69,6 +69,11 @@ function measure() {
   const btn = mk("button", "", "primary"); pair("primary-button", btn);
   const ul = document.createElement("ul"); ul.className = "messages"; document.body.appendChild(ul);
   for (const k of ["warn", "error", "ok", "info"]) { const li = document.createElement("li"); li.className = `msg-${k}`; li.textContent = k; ul.appendChild(li); pair(`msg-${k}`, li); }
+  for (const k of ["ok", "warn", "error"]) {
+    const li = ul.querySelector(`.msg-${k}`), cs = mk("div", `conn-status msg-${k}`, k);
+    const a = getComputedStyle(li), b = getComputedStyle(cs);
+    out[`conn-status-msg-${k}-matches-li`] = (a.color === b.color && a.backgroundColor === b.backgroundColor) ? 21 : 0;
+  }
   const rw = mk("div", "rule-card rule-winner", "winner"); pair("rule-winner", rw);
   const pre = mk("pre", "", "yaml: 1"); pair("yaml-pre", pre);
   const sel = document.querySelector("#mode-switch");
@@ -93,7 +98,7 @@ async function run() {
         results.push({ id: `${id}/contrast`, status: bad.length ? "FAIL" : "PASS", detail: m });
         results.push({ id: `${id}/color-scheme`, status: m.selectColorScheme === theme ? "PASS" : "FAIL",
           detail: `select color-scheme=${m.selectColorScheme} expected ${theme} (OS=${opposing})` });
-        await page.evaluate(() => document.querySelectorAll("body > button, body > ul.messages, body > .rule-winner, body > pre").forEach((e) => e.remove()));
+        await page.evaluate(() => document.querySelectorAll("body > button, body > ul.messages, body > .rule-winner, body > pre, body > .conn-status").forEach((e) => e.remove()));
       }
       await ctx.close();
     }

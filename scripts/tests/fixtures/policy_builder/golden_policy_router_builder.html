@@ -363,10 +363,8 @@ small.help[hidden] { display: none; }
 .conn-block { margin: 0.5rem 0; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 button[aria-disabled="true"] { opacity: 0.5; cursor: default; }
-.conn-status { padding: 0.4rem 0.6rem; border-radius: 4px; font-size: 0.85rem; margin: 0.35rem 0; background: var(--color-status-info-bg, #d1ecf1); color: var(--color-status-info-text, #0c5460); }
-.conn-status.is-success { background: var(--color-status-success-bg, #d4edda); color: var(--color-status-success-text, #155724); }
-.conn-status.is-warning { background: var(--color-status-warning-bg, #fff3cd); color: var(--color-status-warning-text, #664d03); }
-.conn-status.is-error { background: var(--color-status-error-bg, #f8d7da); color: var(--color-status-error-text, #721c24); }
+.conn-status { padding: 0.4rem 0.6rem; border-radius: 4px; font-size: 0.85rem; margin: 0.35rem 0; }
+.panel h2 { margin-top: 0; font-size: 1rem; }
 .conn-status pre { white-space: pre-wrap; margin: 0.25rem 0 0; max-height: 14rem; overflow: auto; }
   </style>
 </head>
@@ -509,7 +507,7 @@ confidence_score: 40"></textarea>
     </section>
 
     <section class="panel">
-      <h2 style="margin-top:0;font-size:1rem;">Result</h2>
+      <h2>Result</h2>
       <p id="yaml-summary"></p>
       <p class="hint" id="transition-summary" hidden></p>
       <ul class="messages" id="transition-graph" hidden></ul>
@@ -530,7 +528,7 @@ confidence_score: 40"></textarea>
     </section>
 
     <section class="panel" id="connected-panel">
-      <h2 style="margin-top:0;font-size:1rem;">Submit to host</h2>
+      <h2>Submit to host</h2>
       <p class="hint" id="conn-unavailable" tabindex="-1" hidden></p>
       <div id="conn-body" hidden>
         <div class="row">
@@ -7373,7 +7371,7 @@ function renderConnected(st) {
 function _renderConnectedStatus(st, box) {
   const sub = st.submission;
   const d = sub.delivery;
-  const top = _el("div", null, "conn-status " + (d.state === "rejected" ? "is-error" : d.state === "accepted" ? "is-success" : "is-warning"));
+  const top = _el("div", null, "conn-status " + (d.state === "rejected" ? "msg-error" : d.state === "accepted" ? "msg-ok" : "msg-warn"));
   top.appendChild(_el("div", `Revision ${sub.revisionShort} — issue ${sub.issueId}`));
   top.appendChild(_el("div", `Request ${sub.requestId}` + (sub.queueId ? ` · queue ${sub.queueId}` : "")));
   if (d.state === "outcome_unknown") {

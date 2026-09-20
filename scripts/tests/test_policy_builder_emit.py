@@ -439,3 +439,23 @@ class TestArtifactCLIDispatch:
                 assert exc.code != 0
             else:  # pragma: no cover - defensive
                 raise AssertionError("expected SystemExit for missing subcommand")
+
+
+class TestEnh3514StatusVocabulary:
+    """ENH-3514: one status class vocabulary (msg-*) and CSS-styled right-column h2s."""
+
+    def test_no_is_status_vocabulary_remains(self, tmp_path: Path) -> None:
+        html = _emit_html(tmp_path)
+        assert not re.search(r"\bis-(error|warning|success)\b", html)
+        assert ".conn-status.is-" not in html
+
+    def test_conn_status_base_rule_declares_no_colors(self, tmp_path: Path) -> None:
+        html = _emit_html(tmp_path)
+        rule = re.search(r"^\.conn-status \{([^}]*)\}", html, re.MULTILINE)
+        assert rule is not None
+        assert not re.search(r"\b(background|color)\s*:", rule.group(1))
+
+    def test_h2_has_css_rule_and_no_inline_style(self, tmp_path: Path) -> None:
+        html = _emit_html(tmp_path)
+        assert not re.search(r"<h2\b[^>]*\bstyle=", html)
+        assert re.search(r"^\.panel h2 \{", html, re.MULTILINE)
