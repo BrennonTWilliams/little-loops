@@ -5,6 +5,75 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.165.0] - 2026-09-19
+
+### Added
+
+- **FEAT-3474**: Web GUI for issue-lifecycle FSM loops driven by frontmatter rules
+- **FEAT-3485**: Decision-record to open-code-review rule exporter
+- **FEAT-3488**: Policy builder offline scenario suites and explanations
+- **FEAT-3498**: Policy builder host-approved run requests (queue/loop contracts)
+- **FEAT-3501**: Policy builder shared transition analysis and structural graph
+- **FEAT-3503**: Policy builder scenario boundary suggestions and local issue-file import
+- **FEAT-3504**: Policy builder connected page and serve routes
+- **FEAT-3505**: Policy builder connected page submission controller and UI
+- **`ll-init`**: Introspect and configure `project.test_dir` (wizard, TUI, and final config)
+
+### Fixed
+
+- **BUG-3477**: `ll-harness` `_grade()` folds a grader-internal error verdict into a semantic fail
+- **BUG-3478**: format-check Program Design gate strips leading underscore from private Call Path anchors
+- **BUG-3481**: xdist worker crash under `--dist loadfile` deadlocks the controller
+- **BUG-3484**: SSE bridge two-producers test crashes xdist worker under full-suite CPU contention
+- **BUG-3486**: Policy builder preview, validation, and editing correctness (browser/core)
+- **BUG-3489**: Policy-router runtime: stale LLM scores across passes and decision-table dispatch errors route to a success outcome
+- **BUG-3490**: Policy builder skill catalog is empty in consumer projects (single-root plugin discovery)
+- **BUG-3494**: format-check `missing_behavior_parity` false-positives on same-line unrelated keyword
+- **BUG-3497**: Migrate unsafe issue allocators to atomic creation and investigate capture import failure
+- **BUG-3499**: FSM executor: `failure_terminal` is False when a cap handler routes to a failure terminal
+- **BUG-3502**: Policy builder first Undo after load/restore is a no-op because `history.present` aliases live state
+- **BUG-3508**: `/ll:advise` consult fails on claude-code host — verdict schema dropped and `--host` unvalidated
+- **BUG-3509**: Policy builder run-request returns 500 for YAML containing a lone surrogate
+- **BUG-3512**: Policy builder connected panel: focus drops to BODY after Review/Submit and status regions are not live
+- **BUG-3516**: Policy builder: fallback row highlighted as Try-it winner before any sample value is entered
+- **BUG-3449**: Finalize-done baseline walks `.issues` directly (done-only, frontmatter-anchored, init-tolerant)
+- **BUG-3517**: `ll-session` backfill under-captures loop history: non-recursive glob misses `.history` state files
+
+### Changed
+
+- **ENH-3462**: Widen the `ll-harness` evidence surface beyond stdout — stderr, written files, and named side effects
+- **ENH-3463**: Unit-test an eval's grading logic deterministically before it is allowed to grade a live-model run
+- **ENH-3464**: Score harness runs on a named efficiency vector, not only on a pass/fail outcome
+- **ENH-3465**: Benchmark every self-improvement candidate against a frozen external baseline, not only the incumbent
+- **ENH-3466**: Credential-scan verification primitive (FEAT-034 extension)
+- **ENH-3467**: Warn with a named cause when sessions exist but none match, instead of rendering empty
+- **ENH-3468**: Every loop iteration writes a checkpoint, never zero: salvage paid work and tag the best-effort attempt
+- **ENH-3469**: Credential-pattern deterministic scanner in `pii.py`
+- **ENH-3470**: Wire credential scan into the EvidenceBundle
+- **ENH-3471**: Named abort reason distinguishes attempt-batch vs decision-step failures instead of collapsing both to "error"
+- **ENH-3472**: Guard `PersistentExecutor.run()` so a `save_state`/`archive_run` exception cannot discard an already-computed result
+- **ENH-3473**: Write a `best_effort`-tagged checkpoint when a loop ends with no acceptance
+- **ENH-3476**: Persist `ll-harness` widened evidence (channels + side effects) to `harness_events`
+- **ENH-3480**: `wire-issue` first pass misses call sites inside already-known files
+- **ENH-3482**: fleet-review buckets `no_route` runs separately from `error`
+- **ENH-3483**: Handler-routed cap terminations (`on_max_steps` / `on_max_iterations`) are resumable
+- **ENH-3487**: Policy builder persistence, undo/redo, and saved projects
+- **ENH-3491**: Policy builder lifecycle layout, task presets, and execution summary
+- **ENH-3492**: Policy builder explicit terminal destinations, scoring instructions, and gate stamping
+- **ENH-3495**: `spike` skill resolves its directory from `project.test_dir` instead of a hardcoded source-repo layout
+- **ENH-3496**: Codify end-user audience for docs, skills, and commands with a pytest gate
+- **ENH-3500**: Policy builder cross-mode design and UX audit
+- **ENH-3506**: Policy builder design-token and theme parity audit and fix
+- **ENH-3507**: Policy builder storage extraction and served-page probe skeleton
+- **ENH-3510**: Policy builder: add empty-state text to dimension, rule, outcome lists and issue selector
+- **ENH-3511**: Policy builder: explain disabled controls (`aria-describedby` / visible reason)
+- **ENH-3513**: Policy builder: validation diagnostics are announced and reserved-name errors no longer use `alert()`
+- **ENH-3514**: Policy builder: unify status/message class vocabularies and heading/legend conventions
+- **ENH-3515**: Shift-left evidence verification to refine-time and make the pre-commit hook visible
+- **ENH-3518**: Make the `ll-verify-evidence` pre-commit hook visible and label the suite gate neutrally
+- **ENH-3519**: Refine-time delta-scoped evidence verification in `/ll:refine-issue`
+- **ENH-3520**: Replay `ll-verify-evidence` hook over 50 issue commits; kept warn-only
+
 ## [1.164.0] - 2026-09-13
 
 ### Added
@@ -46,6 +115,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - test: add host conformance test results and remove raw outputs (fca20620c)
 - test: keep oversized-action payloads under per-arg MAX_ARG_STRLEN at child exec (6dce98d0c)
 
+[1.165.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.164.0...v1.165.0
 [1.164.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.163.0...v1.164.0
 
 ## [1.163.0] - 2026-09-11
