@@ -68,3 +68,37 @@ Add `@pytest.mark.no_parallel` to `test_node_conformance_suite_passes` — same 
 The Node 20 to 24 runner migration is documented as "Node.js 20 deprecated... forced onto Node.js 24" by the GitHub Actions runner announcement. Pinning to a specific Node 24.x.y version in `ci.yml` is a cheaper first probe than bisecting; if pinning fixes it, the issue reduces to "CI drift"; if not, the flake is contention-driven and `no_parallel` is the right fix.
 
 If both pinning and `no_parallel` are needed, do both — pinning reduces CI maintenance burden (Node version control), `no_parallel` eliminates xdist contention.
+
+## Program Design
+
+### Types
+
+- No new types — test-marker change only.
+
+### Signatures
+
+- `test_node_conformance_suite_passes() -> None` — in `scripts/tests/test_policy_builder_node_gate.py`; already carries `@pytest.mark.no_parallel` at the time of formatting, so the remaining work is verification and (optionally) the Node pin
+- `pytest_collection_modifyitems(config, items) -> None` — in `scripts/tests/conftest.py`; skips `no_parallel`-marked items on xdist workers (BUG-2523)
+
+### Call Path
+
+`test_node_conformance_suite_passes` -> `_node_major` -> `subprocess.run` (`node --test scripts/tests/js/*.test.mjs`, 180s timeout)
+
+### Behavior Notes
+
+- Under xdist `-n N` the controller only orchestrates and does not run tests, so a `no_parallel` skip means the test does not execute in parallel mode at all; it runs only in serial `-n 0`. The Expected/AC wording "runs on the controller" should be read as "runs in serial `-n 0`". If CI must still exercise the gate, it needs a separate serial invocation.
+
+## Impact
+
+- **Priority**: P3 - Intermittent CI flake on a single test; no production behavior affected
+- **Effort**: Small - One marker (already present) plus an optional Node version pin in `.github/workflows/ci.yml`
+- **Risk**: Low - Test-scheduling change only; skipping under xdist reduces, not adds, coverage in parallel runs
+- **Breaking Change**: No
+
+## Status
+
+**Open** | Created: 2026-09-20 | Priority: P3
+
+
+## Session Log
+- `/ll:format-issue` - 2026-09-20T21:17:56 - `4117c50f-02ee-4b8b-8840-0c4b382de04b.jsonl`
