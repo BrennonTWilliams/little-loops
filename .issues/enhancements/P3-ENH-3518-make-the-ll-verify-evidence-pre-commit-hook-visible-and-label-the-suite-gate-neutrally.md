@@ -166,6 +166,7 @@ All referenced files, line numbers and code claims verified against the current 
 - AC coverage: the `docs/reference/CLI.md` Gates-line update (Integration Map) had no acceptance criterion — added.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-09-20T03:14:36 - `d0657031-d56d-450a-9810-7ad74b2c6ffe.jsonl`
 - `/ll:confidence-check` - 2026-09-20T02:57:59 - `977f15ce-7c46-446a-8bf0-6c67847cf478.jsonl`
 - `/ll:verify-issues` - 2026-09-20T01:36:17 - `58521fbd-d3a2-45c1-879f-6abf803572a3.jsonl`
 - `/ll:wire-issue` - 2026-09-20T00:32:14 - `1b17328e-89d8-45f8-a318-abba67ffafef.jsonl`
