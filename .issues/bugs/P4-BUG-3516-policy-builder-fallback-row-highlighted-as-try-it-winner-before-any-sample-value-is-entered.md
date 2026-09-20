@@ -11,8 +11,6 @@ captured_at: '2026-09-19T21:16:29Z'
 relates_to:
 - ENH-3500
 - ENH-3514
-blocked_by:
-- ENH-3514
 parent: EPIC-3493
 epic: EPIC-3493
 confidence_score: 80
@@ -71,18 +69,18 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/cli/artifact/policy_builder.py` — `render_policy_builder_html` stamps the template verbatim (design-token CSS + core JS) into `policy-router-builder.html`; the only producer, so no packaged/mirror copy of the template needs a parallel edit [Agent 1/2 finding]
-- `policy-router-builder.html.tmpl` `updatePreview` (~L1802) and `renderTryIt` (~L1205-1210) — both reach `updateTryIt`; `renderTryIt` rebuilds inputs blank, so the early return also fires after every render/mode switch; with zero dimensions "all blank" is vacuously true (highlight cleared, acceptable) [Agent 2 finding]
+- `policy-router-builder.html.tmpl` `updatePreview` (~L1967) and `renderTryIt` (~L1365) — both reach `updateTryIt`; `renderTryIt` rebuilds inputs blank, so the early return also fires after every render/mode switch; with zero dimensions "all blank" is vacuously true (highlight cleared, acceptable) [Agent 2 finding]
 - `#fm-tryit-hint` / `#live-status` — not written by `updateTryIt`, so the early return leaves no stale result text [Agent 2 finding]
 
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-09-19 — based on codebase analysis:_
 
-- `updateTryIt` (`policy-router-builder.html.tmpl` ~1230-1246) filters blank inputs per element (`if (el.value === "") return;`, ~1241) but has no "all blank" check, so `scores` is `{}` and `evaluateModel(model, {})` still runs. `evaluateModel` (`policy_builder_core.mjs` ~452-469) compiles the authored rules plus a derived catch-all; `_traceCompiledRules` (~504) lets that catch-all win with `ruleIndex: -1, isFallback: true`.
-- `_highlightWinner` (~1218-1228) is the only place `rule-winner` is added or removed. It always clears every `.rule-card` and `#fallback-row` first, then returns early when `result.target == null`. The existing no-winner shape `{ ruleIndex: -1, target: null, isFallback: false }` (used at ~1236, ~1271, ~1279) is therefore a complete clear.
-- Callers of `updateTryIt`: `renderTryIt` (~1177-1211, end of decision_table path, and `oninput`/`onchange` at ~1205-1206) and `updatePreview` (~1802). `renderAll` calls `renderTryIt` then `updatePreview`, so `updateTryIt` runs twice per full render — the blank-state clear must be idempotent. `policy_builder_core.mjs` has no callers of `updateTryIt`/`_highlightWinner`.
+- `updateTryIt` (`policy-router-builder.html.tmpl` ~1385-1401) filters blank inputs per element (`if (el.value === "") return;`, ~1396) but has no "all blank" check, so `scores` is `{}` and `evaluateModel(model, {})` still runs. `evaluateModel` (`policy_builder_core.mjs` ~452-469) compiles the authored rules plus a derived catch-all; `_traceCompiledRules` (~504) lets that catch-all win with `ruleIndex: -1, isFallback: true`.
+- `_highlightWinner` (~1373-1383) is the only place `rule-winner` is added or removed. It always clears every `.rule-card` and `#fallback-row` first, then returns early when `result.target == null`. The existing no-winner shape `{ ruleIndex: -1, target: null, isFallback: false }` (used at ~1391, ~1426, ~1434) is therefore a complete clear.
+- Callers of `updateTryIt`: `renderTryIt` (~1332-1365, calling `updateTryIt` at ~1365) and `updatePreview` (~1967). `renderAll` calls `renderTryIt` then `updatePreview`, so `updateTryIt` runs twice per full render — the blank-state clear must be idempotent. `policy_builder_core.mjs` has no callers of `updateTryIt`/`_highlightWinner`.
 - Related disagreement: `updateFrontmatterTryIt` clears only on blank or unparseable text; a non-blank frontmatter that encodes to zero scores still reaches `evaluateModel` and can highlight the fallback. Out of scope here, but the "no input → no winner" contract is per-path, not shared.
-- CSS: `.rule-winner` (~131-134) sets `outline` + `background: var(--color-status-success-bg, #d4edda)` and no `color`. `.fallback-row` (~146-147) sets only `font-style`/`opacity`/select `max-width`; there is no `.fallback-row.rule-winner` rule and no `#f-fallback` rule. The select's opaque `background: var(--color-surface-primary)` comes from the generic `input, select, textarea, button` rule (~94-101) — that is the "painted only behind the label" cause. Markup is `<div class="row fallback-row" id="fallback-row"><span>Otherwise →</span><select id="f-fallback">` (~251-254).
+- CSS: `.rule-winner` (~131-134) sets `outline` + `background: var(--color-status-success-bg, #d4edda)` and no `color`. `.fallback-row` (~146-147) sets only `font-style`/`opacity`/select `max-width`; there is no `.fallback-row.rule-winner` rule and no `#f-fallback` rule. The select's opaque `background: var(--color-surface-primary)` comes from the generic `input, select, textarea, button` rule (~94-101) — that is the "painted only behind the label" cause. Markup is `<div class="row fallback-row" id="fallback-row"><span>Otherwise →</span><select id="f-fallback">` (~255-258).
 
 ### Constraints
 
@@ -165,7 +163,19 @@ _Added by `/ll:confidence-check` on 2026-09-19_
 ### Gaps to Address
 - Unresolved `blocked_by`: ENH-3514 (open) — resolve/complete it, or drop the dependency from `blocked_by` if it no longer applies (the issue is a split-out of ENH-3514's audit finding and touches a different code path).
 
+## Verification Notes
+
+Verdict at time of check: **NEEDS_UPDATE** (line-number drift corrected in the same pass, so the issue as it now reads is up to date — this section is a record of what was wrong and fixed, not an outstanding action item)
+
+- Verified against `policy-router-builder.html.tmpl`: `updateTryIt` has no all-blank guard; `_highlightWinner` clears then returns on `target == null`; `updateFrontmatterTryIt` clears on blank; `.rule-winner` / `.fallback-row` CSS and `#fallback-row` markup match the description. The bug and proposed early-return fix are sound.
+- Corrected stale `~` line anchors (template grew ~150 lines): `updateTryIt` ~1385-1401, `_highlightWinner` ~1373-1383, `updatePreview` call ~1967, fallback-row markup ~255-258.
+- `ll-verify-evidence`: clean (0 findings). Decisions log: no active required rules.
+- `blocked_by: ENH-3514` — ENH-3514 is now Completed, so the dependency is satisfied; the confidence-check "Dependencies Hard Override" gap no longer applies (stale `blocked_by` entry removed afterward at the user's request; re-run `/ll:confidence-check` to clear the gap).
+- Graph: provider=`codegraph` freshness=`stale`; used only as a lead, anchors confirmed by direct reads.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-09-20T03:27:54 - `60d8cbff-e55d-413c-8fb6-99a0fd5959d4.jsonl`
+- `/ll:verify-issues` - 2026-09-20T03:27:31 - `60d8cbff-e55d-413c-8fb6-99a0fd5959d4.jsonl`
 - `/ll:confidence-check` - 2026-09-20T00:50:23 - `b1e66617-7ca3-4c73-8eef-611558ec10fe.jsonl`
 - `/ll:verify-issues` - 2026-09-20T00:42:34 - `87477791-8eac-4eaa-a6b5-62a48362f015.jsonl`
 - `/ll:wire-issue` - 2026-09-19T21:26:47 - `bdde24da-3994-4eee-b745-85fb52f99de6.jsonl`
