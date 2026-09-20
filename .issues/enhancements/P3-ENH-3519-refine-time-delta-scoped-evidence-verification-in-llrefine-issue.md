@@ -203,7 +203,12 @@ All referenced files, line numbers and code claims verified against the current 
 - AC coverage: `docs/reference/CLI.md` flag/exit-2 docs and the two line-pinned test re-pins (`test_issue_parser.py` line 108, `SPAWN_SITE_INVENTORY` `refine-issue.md` 186) were in the Integration Map but had no acceptance criterion — added.
 - Confirmed: `scan_file` `resolved_ref[resolved] = artifact` keeps only the last spelling per resolved path (per-occurrence attribution defect is real); `refine-issue.md` lacks `Bash(ll-verify-evidence:*)`; no snapshot/delta code exists.
 
+### Re-verification (2026-09-20, after ownership/strict-scan/JSON-contract revisions)
+
+Verdict at time of check: **VALID** (no corrections needed). Re-checked against the current tree: `_ISSUE_ID_RE` still at `verify_evidence.py:108` (matches the `test_issue_parser.py` pin); `resolved_ref[resolved] = artifact` at line 1472 and its use at line 1501 (attribution defect real); `build_tracked_index`, `HistoryIndex._run_full`/`ensure_paths`, `BlobReader`, `normalize_query`, `EvidenceFinding` all present with no `strict`/snapshot/delta code; `file_utils.atomic_write`/`atomic_write_json` exist; `SPAWN_SITE_INVENTORY` still pins `("commands/refine-issue.md", 186)`; `refine-issue.md` still lacks `ll-verify-evidence`; all four host mirrors and `docs/reference/CLI.md` `### ll-verify-evidence` exist. `ll-verify-evidence` reports no unverifiable quotes. Proposal consequence check (B6): no new exception-handler, fixture, or AC-coverage gaps. Graph: provider=codegraph freshness=fresh (not needed for verdict).
+
 ## Session Log
+- `/ll:verify-issues` - 2026-09-20T03:56:10 - `21db537a-a4a5-4aeb-96ea-183b65d27383.jsonl`
 - `/ll:confidence-check` - 2026-09-20T02:58:11 - `4ac1f770-fd60-4b79-879d-3dc59e1d8d4b.jsonl`
 - `/ll:verify-issues` - 2026-09-20T01:36:18 - `58521fbd-d3a2-45c1-879f-6abf803572a3.jsonl`
 - `/ll:wire-issue` - 2026-09-20T00:32:31 - `1b17328e-89d8-45f8-a318-abba67ffafef.jsonl`
