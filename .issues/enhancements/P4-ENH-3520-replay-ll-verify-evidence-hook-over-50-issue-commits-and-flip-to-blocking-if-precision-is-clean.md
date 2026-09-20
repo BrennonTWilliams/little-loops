@@ -55,6 +55,22 @@ The BUG-3282 comment defers blocking to a precision signal that does not exist, 
 ### Tests
 - ENH-3518's new pre-commit gate test module (`test_verify_evidence_pre_commit_gate`, created by that issue) derives the expected exit status from the configured policy; after a flip it must assert a non-zero exit for the invalid staged quote with no test rewrite beyond that.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-20 — based on codebase analysis:_
+
+- **Hook path never consults the verdict cache.** `scan_paths` (`scripts/little_loops/cli/verify_evidence.py`) builds `ArtifactMatcher` without `verdict_cache`; only `scan_all` (and `scan_all_parallel`'s serial fallback) attaches one. `VERDICT_CACHE_PATH` is a module constant resolved as `base_dir / ".ll/evidence-verdict-cache.json"` with no env/flag/config override. Constraint: per-replay cache isolation is satisfied by giving each replay repo its own root (`-C/--directory` or cwd); it is not a separate mechanism, and the replay report should record that `--added-only` never reads the cache.
+- **`--added-only` fails open.** `staged_added_lines(base_dir, paths)` returns `None` on any git error or non-zero exit, and `scan_paths` then scans the *whole* file (`allowed_lines=None`). Constraint: a replay commit that hits this path measures whole-file precision, not staged-addition precision, and must be recorded as an execution error rather than a clean result.
+- **Index vs working tree must agree.** `staged_added_lines` reads `git diff --cached -U0` (index), but `scan_file` reads the working-tree file and matches added line numbers against it. Constraint: the replay repo must have the commit's tree both staged against the parent HEAD and checked out, or added-line numbers will not line up.
+- **History matching is scoped by `git log --all`.** `HistoryIndex._run_full` / `ensure_paths` run `git log --all --raw` in `base_dir`, capped by `max_revisions` (default `DEFAULT_MAX_REVISIONS = 80`), and tiers are working tree → history blobs. Constraint: an isolated repo containing only the parent's history is what makes "no later revisions" true; the verifier's `--max-revisions` value belongs in the recorded verifier identity.
+- **The `|| true` wrapper hides the verdict.** `.pre-commit-config.yaml` entry is `bash -c 'll-verify-evidence --added-only "$@" || true' --` (`pass_filenames: true`, `files: ^\.issues/.*\.md$`), so a replay through pre-commit cannot observe exit status; findings are only visible via output. Constraint: replay measurement needs the CLI's own exit code / `--json` findings (`_findings_to_json`), and must also reproduce the hook's `files` filter so the same file set is eligible.
+- **`TestWholeCorpusPrecision` is extraction-only.** Its sole test (`test_candidate_extraction_precision_ceiling` in `scripts/tests/test_verify_evidence.py`) never calls `resolve_artifact`, `ArtifactMatcher`, `staged_added_lines` or the CLI, and omits the `section` argument `scan_file` passes — confirming the issue's premise that no hook-precision measurement exists.
+- **ENH-3518's gate module is not yet present (created by that issue).** `scripts/tests/test_verify_evidence_pre_commit_gate.py` is absent (only `test_decisions_yaml_pre_commit_gate.py` exists). That sibling hardcodes `!= 0` / `== 0` and writes a *copied* minimal config into `tmp_path` rather than reading the real one, so "derive expected status from the configured policy" is a new requirement ENH-3518 must introduce — this issue depends on it (`blocked_by: ENH-3518`).
+- **Conventions in force (evidence, not templates):**
+  - Pre-commit gate tests assert structure by reading `.pre-commit-config.yaml` as text (substring checks), never via YAML parsing (`test_decisions_yaml_pre_commit_gate.py`), so a flip must keep `entry:` and the `name:` "(warn-only)" text mutually consistent as literal strings.
+  - Throwaway repos are `tmp_path` + `git init` + repo-local identity, with explicit subprocess timeouts (60s/120s) because an untimed subprocess once wedged an xdist run (`test_verify_evidence.py` `GATE_TIMEOUT`); identity values and initial branch vary between files. No existing test scrubs inherited `GIT_DIR`/`GIT_INDEX_FILE` — contested/absent, so a replay running under pre-commit or ll-auto should decide this knowingly.
+  - `postmortems/` is gitignored, flat `.md` reports with a title and header-fields block; filename scheme varies (`<topic>-<date>.md`, `<date>-<topic>.md`), so no single naming rule is in force. It is also excluded from `ll-verify-private-refs`.
+
 ## Implementation Steps
 
 1. Build the isolated replay harness (parent as HEAD, commit tree staged, refs restricted to the parent's history, per-replay verdict cache); validate it with the positive control.
@@ -109,4 +125,5 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-20T00:19:02 - `09e2af9d-eb90-432a-a570-962fb9c5f142.jsonl`
 - `/ll:format-issue` - 2026-09-20T00:10:58 - `d0eb6446-04cf-4c6e-ada1-f1ab3056d581.jsonl`
