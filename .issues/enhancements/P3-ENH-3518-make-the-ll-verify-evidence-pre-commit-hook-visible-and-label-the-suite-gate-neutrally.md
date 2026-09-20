@@ -19,6 +19,12 @@ relates_to:
 - BUG-3282
 - BUG-3484
 - BUG-3442
+confidence_score: 100
+outcome_confidence: 93
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-3518: Make the ll-verify-evidence pre-commit hook visible and label the suite gate neutrally
@@ -160,6 +166,7 @@ All referenced files, line numbers and code claims verified against the current 
 - AC coverage: the `docs/reference/CLI.md` Gates-line update (Integration Map) had no acceptance criterion — added.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-20T02:57:59 - `977f15ce-7c46-446a-8bf0-6c67847cf478.jsonl`
 - `/ll:verify-issues` - 2026-09-20T01:36:17 - `58521fbd-d3a2-45c1-879f-6abf803572a3.jsonl`
 - `/ll:wire-issue` - 2026-09-20T00:32:14 - `1b17328e-89d8-45f8-a318-abba67ffafef.jsonl`
 - `/ll:refine-issue` - 2026-09-20T00:19:01 - `09e2af9d-eb90-432a-a570-962fb9c5f142.jsonl`

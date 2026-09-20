@@ -317,6 +317,15 @@ class TestFeat2301UsabilityStructural:
         assert 'id="live-status"' in html
         assert 'aria-live="polite"' in html
 
+    def test_empty_state_hints_present_and_hidden(self, tmp_path: Path) -> None:
+        """ENH-3510: one static hidden `.hint` sibling per empty list."""
+        html = _emit_html(tmp_path)
+        for el_id in ("dim-empty", "rule-empty", "outcome-empty"):
+            assert html.count(f'id="{el_id}"') == 1
+            assert f'<p class="hint" id="{el_id}" hidden></p>' in html
+        assert "No issues found." in html
+        assert "No dimensions yet — add at least one." in html
+
     def test_validation_announcements_and_inline_add_errors(self, tmp_path: Path) -> None:
         """ENH-3513: no alert() dialogs; static hidden inline add errors; #messages non-live."""
         html = _emit_html(tmp_path)

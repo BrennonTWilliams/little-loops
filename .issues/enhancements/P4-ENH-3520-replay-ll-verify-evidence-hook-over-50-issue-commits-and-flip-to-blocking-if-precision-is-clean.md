@@ -18,6 +18,12 @@ relates_to:
 blocked_by:
 - ENH-3518
 parent: ENH-3515
+confidence_score: 70
+outcome_confidence: 67
+score_complexity: 14
+score_test_coverage: 10
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # ENH-3520: Replay ll-verify-evidence hook over 50 issue commits and flip to blocking if precision is clean
@@ -153,6 +159,24 @@ All referenced files, line numbers and code claims verified against the current 
 
 - AC coverage: the conditional `docs/reference/CLI.md` update on a flip had no acceptance criterion — added.
 - Confirmed: `staged_added_lines` fails open (`None` → whole-file scan); `scan_paths` never attaches a verdict cache; hook entry still `|| true`.
+
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-19_
+
+**Readiness Score**: 70/100 → STOP — ADDRESS GAPS (Dependencies Hard Override)
+**Outcome Confidence**: 67/100 → MODERATE
+
+### Concerns
+- `stale_file_ref`: `scripts/tests/test_verify_evidence_pre_commit_gate.py` is not git-tracked — expected, since ENH-3518 creates it.
+
+### Gaps to Address
+- Unresolved dependency: `blocked_by` ENH-3518 is still `open`. Land ENH-3518 (it creates the gate test module this issue's flip relies on), or drop the edge if the replay should proceed independently (the Motivation says ENH-3519, not ENH-3518, is the non-prerequisite).
+
+### Outcome Risk Factors
+- Moderate per-site complexity: the isolated historical replay harness (parent-as-HEAD, staged tree, restricted refs, env scrubbing) is throwaway but non-trivial and untested itself.
+- Test coverage of the flip depends on a module (ENH-3518) that does not exist yet.
+- Conditional outcome: several branches (maintenance-op policy, staged-scan failure policy) may resolve to "stay warn-only" or require a verifier follow-up.
 
 ## Session Log
 - `/ll:verify-issues` - 2026-09-20T01:36:18 - `58521fbd-d3a2-45c1-879f-6abf803572a3.jsonl`

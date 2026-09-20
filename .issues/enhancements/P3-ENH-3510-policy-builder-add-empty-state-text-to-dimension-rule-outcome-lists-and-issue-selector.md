@@ -4,10 +4,11 @@ type: ENH
 title: 'Policy builder: add empty-state text to dimension, rule, outcome lists and
   issue selector'
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-19'
 captured_at: '2026-09-19T20:00:56Z'
+completed_at: '2026-09-20T03:02:57Z'
 relates_to:
 - ENH-3500
 blocked_by:
@@ -180,6 +181,8 @@ Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the sam
 - Graph: no symbol-level graph queries needed (all anchors are template functions); provider=`codegraph` freshness=`fresh`.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-20T03:02:56 - `28d67aa7-e3bc-4211-81ce-a34df7015a3c.jsonl`
+- `/ll:ready-issue` - 2026-09-20T02:56:33 - `d34bf880-97b2-42e8-b9d4-95f0227592ba.jsonl`
 - `/ll:verify-issues` - 2026-09-20T02:47:42 - `0a9c36fc-1195-4407-8eff-db9eb4eda7ae.jsonl`
 - `/ll:confidence-check` - 2026-09-20T02:19:50 - `8b4e929a-d1ff-4e9f-b093-d9fa63b3455c.jsonl`
 - `/ll:verify-issues` - 2026-09-20T02:17:42 - `5d9fb9e0-baee-4b6d-a097-abd02d1677a2.jsonl`
@@ -191,6 +194,10 @@ Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the sam
 - `/ll:wire-issue` - 2026-09-19T21:05:52 - `39128071-49a7-41ee-a288-c86d0c6aa6ea.jsonl`
 - `/ll:refine-issue` - 2026-09-19T20:57:35 - `dff55670-569e-48fc-a235-30c0ce66babb.jsonl`
 - `/ll:format-issue` - 2026-09-19T20:40:26 - `62ea2c42-153a-4077-bc55-dc91a943784a.jsonl`
+
+## Resolution
+
+Implemented: `#dim-empty`/`#rule-empty`/`#outcome-empty` hints, "No issues found." in `#conn-issue-note`, zero-dimension `msg-warn` in `renderMessages`; golden regenerated; static-markup test added. Not done: rendered-DOM transition assertions in the on-demand Playwright probe (`enh-3500-audit-probes.mjs` is a capture probe, not an assertion harness).
 
 ---
 

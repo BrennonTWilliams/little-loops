@@ -425,6 +425,7 @@ button[aria-disabled="true"] { opacity: 0.5; cursor: default; }
       <fieldset>
         <legend>Dimensions</legend>
         <div id="dim-list"></div>
+        <p class="hint" id="dim-empty" hidden></p>
         <div class="row">
           <input type="text" id="dim-name" placeholder="dimension name" />
           <select id="dim-type">
@@ -442,6 +443,7 @@ button[aria-disabled="true"] { opacity: 0.5; cursor: default; }
       <fieldset id="rules-fieldset">
         <legend>Rules (Decision Table)</legend>
         <div id="rule-list"></div>
+        <p class="hint" id="rule-empty" hidden></p>
         <div class="row">
           <button id="add-rule" type="button">+ Rule</button>
         </div>
@@ -495,6 +497,7 @@ confidence_score: 40"></textarea>
         <fieldset id="outcomes-fieldset">
           <legend>Outcomes</legend>
           <div id="outcome-list"></div>
+          <p class="hint" id="outcome-empty" hidden></p>
           <div class="row" id="outcome-add-row">
             <input type="text" id="outcome-name" placeholder="new outcome name" />
             <button id="add-outcome" type="button">Add outcome</button>
@@ -5622,6 +5625,8 @@ function _anchorsFromText(text) {
 function renderDimensions() {
   const host = $("dim-list");
   host.innerHTML = "";
+  $("dim-empty").hidden = state.dimensions.length > 0;
+  $("dim-empty").textContent = state.dimensions.length ? "" : "No dimensions yet.";
   const isLifecycle = state.mode === "issue_lifecycle";
   state.dimensions.forEach((d, i) => {
     const row = document.createElement("div");
@@ -5715,6 +5720,8 @@ function renderFallback() {
 function renderOutcomes() {
   const host = $("outcome-list");
   host.innerHTML = "";
+  $("outcome-empty").hidden = state.outcomes.length > 0;
+  $("outcome-empty").textContent = state.outcomes.length ? "" : "No outcomes yet — add an outcome before adding rules.";
   state.outcomes.forEach((oc, oi) => {
     const grp = document.createElement("div");
     grp.className = "outcome-group";
@@ -5823,6 +5830,9 @@ function renderOutcomes() {
 function renderLifecycleOutcomes() {
   const host = $("outcome-list");
   host.innerHTML = "";
+  // The fixed verb set always renders; clear any hint left by an empty decision table.
+  $("outcome-empty").hidden = true;
+  $("outcome-empty").textContent = "";
   state.outcomes.forEach((oc, oi) => {
     const grp = document.createElement("div");
     grp.className = "outcome-group";
@@ -5976,6 +5986,9 @@ function renderLifecycleOutcomes() {
 function renderRules() {
   const host = $("rule-list");
   host.innerHTML = "";
+  $("rule-empty").hidden = state.rules.length > 0;
+  $("rule-empty").textContent = state.rules.length ? ""
+    : state.fallback ? "No rules yet — everything goes to the fallback." : "No rules yet.";
   state.rules.forEach((r, i) => {
     const card = document.createElement("div");
     card.className = "rule-card";
@@ -6267,6 +6280,7 @@ function renderMessages(model, diagnostics) {
       add("msg-error", `Outcome "${oc.name}" references an unknown skill: ${oc.body}`);
     }
   });
+  if (!state.dimensions.length) add("msg-warn", "No dimensions yet — add at least one.");
   if (!host.children.length) add("msg-ok", "No issues detected.");
   return errorCount;
 }
@@ -6810,6 +6824,8 @@ function renderAll() {
     // stale DOM so a mode switch never leaves orphaned rows behind.
     $("outcome-list").innerHTML = "";
     $("rule-list").innerHTML = "";
+    $("outcome-empty").hidden = true;
+    $("rule-empty").hidden = true;
   }
   renderTryIt();
   renderScenarios();
@@ -7317,6 +7333,7 @@ function renderConnected(st) {
     st.issues.status === "loading" ? "Loading issues…"
     : st.issues.status === "error" ? `${st.issues.error} Use Reload issues to try again.`
     : selectedIssueId && !listed && st.issues.status === "ready" ? "The selected issue is no longer listed; the host will confirm on submit."
+    : st.issues.status === "ready" && !st.issues.list.length ? "No issues found."
     : "";
 
   const rv = st.review;
