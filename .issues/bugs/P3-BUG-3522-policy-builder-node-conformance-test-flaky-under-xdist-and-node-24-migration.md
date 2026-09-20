@@ -1,7 +1,7 @@
 ---
-id: BUG-3521
+id: BUG-3522
 type: BUG
-title: "policy-builder node conformance test flakes under xdist + Node 24 migration"
+title: policy-builder node conformance test flakes under xdist + Node 24 migration
 priority: P3
 status: open
 discovered_by: ll-issues-create
@@ -19,7 +19,7 @@ relates_to:
 - BUG-3502
 ---
 
-# BUG-3521: policy-builder node conformance test flakes under xdist + Node 24 migration
+# BUG-3522: policy-builder node conformance test flakes under xdist + Node 24 migration
 
 ## Summary
 
