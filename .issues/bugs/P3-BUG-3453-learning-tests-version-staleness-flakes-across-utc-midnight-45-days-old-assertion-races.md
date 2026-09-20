@@ -1,7 +1,10 @@
 ---
 id: BUG-3453
 type: BUG
-title: "learning-tests version staleness: test_age_stale_names_the_age + test_age_stale_still_names_days flip to <!-- ll-evidence-ok: runtime symptom of the midnight flip, not a source-code quote --> '46 days old' when pytest execution spans the test process's local midnight (UTC on the CI runner)"
+title: 'learning-tests version staleness: test_age_stale_names_the_age + test_age_stale_still_names_days
+  flip to <!-- ll-evidence-ok: runtime symptom of the midnight flip, not a source-code
+  quote --> ''46 days old'' when pytest execution spans the test process''s local
+  midnight (UTC on the CI runner)'
 priority: P3
 status: open
 discovered_by: ll-issues-create
@@ -14,6 +17,12 @@ labels:
 - learning-tests
 learning_tests_required:
 - pytest
+confidence_score: 100
+outcome_confidence: 96
+score_complexity: 21
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # BUG-3453: learning-tests version staleness flakes across local midnight of the test process (45-days-old assertion races)
@@ -217,6 +226,7 @@ BUG-3453 is unrelated to PR #24 (CI-red + BUG-3439) and PR #26 (BUG-3449 finaliz
 Discovery: CI dispatch `34660035171` failed at `2026-09-12T00:00:08Z` (one minute after UTC midnight), which is the empirical confirmation that the race is real and timing-bound.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-20T18:36:14 - `01d2fe2c-3f4c-482a-9865-2f06a679dcf4.jsonl`
 - `/ll:verify-issues` - 2026-09-20T18:34:00 - `fe9b177e-2890-4984-95cf-cdcee79cb742.jsonl`
 - `/ll:wire-issue` - 2026-09-20T18:06:35 - `dfde379e-92ee-423b-9352-612dbd7e60e2.jsonl`
 - `/ll:refine-issue` - 2026-09-20T18:02:59 - `99b38819-b7a8-4a2f-ab59-e626b7d9bcfa.jsonl`
