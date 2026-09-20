@@ -6761,9 +6761,7 @@ class TestBehaviorParityRefClauses:
     def test_dotted_ref_clause_excludes_other_sentence(self) -> None:
         from little_loops.issue_parser import _behavior_parity_ref_clauses
 
-        clauses = _behavior_parity_ref_clauses(
-            "a/b.py", "Replace `a/b.py` now. Other text."
-        )
+        clauses = _behavior_parity_ref_clauses("a/b.py", "Replace `a/b.py` now. Other text.")
         assert any("a/b.py" in c for c in clauses)
         assert not any("Other text" in c for c in clauses)
 

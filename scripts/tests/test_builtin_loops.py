@@ -5071,9 +5071,7 @@ class TestAutoRefineAndImplementLoop:
             f"FEAT-1 closed pre-baseline must not count as not_closed: {summary}"
         )
 
-    def test_finalize_fails_loud_when_issues_dir_missing(
-        self, data: dict, tmp_path: Path
-    ) -> None:
+    def test_finalize_fails_loud_when_issues_dir_missing(self, data: dict, tmp_path: Path) -> None:
         """BUG-3449: when .issues/ is missing at finalize time, the in-process
         done-now walk must exit non-zero with a BUG-3449 diagnostic on stderr —
         never silently produce an empty done-now set and render verdict=phantom
@@ -5112,9 +5110,7 @@ class TestAutoRefineAndImplementLoop:
             f"silent-swallow regression: {result.stderr!r}"
         )
 
-    def test_finalize_does_not_count_cancelled_as_closed(
-        self, data: dict, tmp_path: Path
-    ) -> None:
+    def test_finalize_does_not_count_cancelled_as_closed(self, data: dict, tmp_path: Path) -> None:
         """BUG-3449: a cancelled leaf must NOT count as closed. `ll-issues list
         --status done` includes cancelled in its result set (search.py:156),
         which made the previous shellout include them too — but a cancelled
@@ -5143,12 +5139,8 @@ class TestAutoRefineAndImplementLoop:
         # the test then asserts the cancelled match is filtered out.
         done_dir = run_dir / ".issues" / "features"
         done_dir.mkdir(parents=True)
-        (done_dir / "P3-FEAT-1-x.md").write_text(
-            "---\nid: FEAT-1\nstatus: done\n---\n"
-        )
-        (done_dir / "P3-FEAT-2-x.md").write_text(
-            "---\nid: FEAT-2\nstatus: cancelled\n---\n"
-        )
+        (done_dir / "P3-FEAT-1-x.md").write_text("---\nid: FEAT-1\nstatus: done\n---\n")
+        (done_dir / "P3-FEAT-2-x.md").write_text("---\nid: FEAT-2\nstatus: cancelled\n---\n")
         # Mirror the layout _run_finalize produces for the rest of the fixtures.
         p = "auto-refine-and-implement"
         (run_dir / f"{p}-completed-baseline.txt").write_text("")

@@ -135,9 +135,7 @@ class TestPackagedProfileParity:
         monkeypatch.chdir(tmp_path)
         if mirror:
             _materialize_mirror(tmp_path, profile)
-        config = _make_config(
-            tmp_path, {"enabled": True, "source": "profile", "active": profile}
-        )
+        config = _make_config(tmp_path, {"enabled": True, "source": "profile", "active": profile})
         html = render_policy_builder_html(config)
         stamped = _stamped(html)
         refs = _template_refs()
@@ -158,12 +156,12 @@ class TestPackagedProfileParity:
     @pytest.mark.parametrize("theme", THEMES)
     def test_paired_colors_readable(self, tmp_path, monkeypatch, profile, theme):
         monkeypatch.chdir(tmp_path)
-        config = _make_config(
-            tmp_path, {"enabled": True, "source": "profile", "active": profile}
-        )
+        config = _make_config(tmp_path, {"enabled": True, "source": "profile", "active": profile})
         html = render_policy_builder_html(config)
-        _assert_readable(_stamped(html)["[data-theme=dark]" if theme == "dark" else ":root"],
-                         f"{profile}/{theme}")
+        _assert_readable(
+            _stamped(html)["[data-theme=dark]" if theme == "dark" else ":root"],
+            f"{profile}/{theme}",
+        )
 
 
 class TestCompatibility:

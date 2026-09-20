@@ -86,6 +86,7 @@ def validate_metadata(metadata: dict[str, object]) -> None:
             )
         _check(value, f".{key}", frozenset())
 
+
 # Matches the "## Children" heading in an EPIC's body (Program Design).
 _CHILDREN_HEADING = "## Children"
 

@@ -1124,11 +1124,7 @@ class TestAttributionPerOccurrence:
     def test_alias_does_not_relabel_earlier_finding(self, delta_repo: Path) -> None:
         # Two spellings (issue ID and path) resolving to one file.
         _write(delta_repo, ".issues/enhancements/P3-ENH-9-target.md", "unrelated\n")
-        body = (
-            "## Current Behavior\n\n"
-            f"See `{_BAD1}` (`ENH-9`).\n\n"
-            f"See `{_BAD2}` (`P3-ENH-9`).\n"
-        )
+        body = f"## Current Behavior\n\nSee `{_BAD1}` (`ENH-9`).\n\nSee `{_BAD2}` (`P3-ENH-9`).\n"
         _write(delta_repo, _ISSUE, body)
         _commit_all(delta_repo)
         config = BRConfig(delta_repo)

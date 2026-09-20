@@ -162,7 +162,9 @@ class TestSpikeSkillLayoutPortability:
         for path in (SKILL_FILE, PLAN_TEMPLATE):
             text = path.read_text()
             assert "scripts/tests" not in text, f"{path} still hardcodes scripts/tests"
-            assert "scripts/little_loops" not in text, f"{path} still hardcodes scripts/little_loops"
+            assert "scripts/little_loops" not in text, (
+                f"{path} still hardcodes scripts/little_loops"
+            )
 
     def test_declares_python_pytest_only_scope(self) -> None:
         assert "Python/pytest" in SKILL_FILE.read_text()
