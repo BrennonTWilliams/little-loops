@@ -81,7 +81,7 @@ _Added by `/ll:refine-issue` — 2026-09-19 — based on codebase analysis:_
 
 ### Dependent Files (Callers/Importers)
 _Wiring pass added by `/ll:wire-issue`:_
-- `.loops/probes/enh-3500-audit-probes.mjs` (:88, class census `^(msg-|is-)`) and `.loops/probes/enh-3506-theme-probes.mjs` (:71, `li.className = "msg-" + k`) — update both if class names change; `.loops/verify-enh-3506-theme.yaml` drives the latter [Agent 1 finding]
+- `.loops/probes/enh-3506-theme-probes.mjs` (:71, `li.className = "msg-" + k`) — gains the injected `.conn-status.msg-*` assertions; `.loops/probes/enh-3500-audit-probes.mjs` — collector only: fix `statusClass` (:98), census (:88) unchanged; `.loops/verify-enh-3506-theme.yaml` drives the latter [Agent 1 finding]
 - `scripts/tests/test_enh3506_policy_builder_theme_parity.py` — reusing existing `--color-status-*` tokens keeps it green; any new CSS variable must be declared in both stamped theme blocks [Agent 3 finding]
 
 ### Wiring: Tests
@@ -113,22 +113,23 @@ _Wiring pass added by `/ll:wire-issue`:_
 > **Context refresh (2026-09-19)**: BUG-3512 is **done** (2f5bdb89a). `:NNNN` line references in this issue predate it — roughly +4 up to `updatePreview` (now :1782) and +75 in the connected code (`renderConnected` now :2292). Function-name anchors remain correct; resolve by name, not line.
 - Post-BUG-3512 the single `is-*` JS site lives in `_renderConnectedStatus(st, box)` (:2552, called from `renderConnected` :2486), and the `.conn-status.is-*` CSS is at :174-176. Verified: `.msg-*` colour rules (:161-164) are unscoped; the only two `<h2>`s are in the right-column `.panel` sections (:316, :337), so `.panel h2` is safe.
 
-- **Canonical vocabulary: `msg-*`** (`msg-error` / `msg-warn` / `msg-ok` / `msg-info`). It has ~8 JS sites plus the ENH-3506 theme probe (`li.className = "msg-" + k`); `is-*` has exactly one JS site (:2275) and three CSS rules (:171-173). Mapping: `is-error`→`msg-error`, `is-warning`→`msg-warn`, `is-success`→`msg-ok`. Delete the three `.conn-status.is-*` rules, but move the shared `.msg-*` color rules after the `.conn-status` base rule. Both selectors have equal specificity; retaining the current order would make the later base info colors override every renamed severity class. The base keeps its info fallback colors, and the later shared severity rules override them without duplicating declarations. ENH-3510/3511/3513 land first and already use `msg-*` for anything new.
+- **Canonical vocabulary: `msg-*`** (`msg-error` / `msg-warn` / `msg-ok` / `msg-info`). It has ~8 JS sites plus the ENH-3506 theme probe (`li.className = "msg-" + k`); `is-*` has exactly one JS site (:2275) and three CSS rules (:171-173). Mapping: `is-error`→`msg-error`, `is-warning`→`msg-warn`, `is-success`→`msg-ok`. Delete the three `.conn-status.is-*` rules **and the `background`/`color` declarations on the `.conn-status` base rule** (:173). `_renderConnectedStatus` is the only creator of a `.conn-status` element and always adds a severity class, so the base info colors are dead; with them gone there is no equal-specificity tie between `.conn-status` (:173) and the earlier unscoped `.msg-*` rules (:161-164), so no CSS moves and no ordering invariant needs protecting. (Rejected alternative: keep the base colors and move `.msg-*` after the base rule — safe today since nothing between :164 and :173 sets color/background, but it leaves a silent ordering dependency.) ENH-3510/3511/3513 land first and already use `msg-*` for anything new.
 - **Headings**: add `.panel h2` (or the nearest existing right-column scope) `{ margin-top: 0; font-size: 1rem; }` and remove the inline `style` from :316 and :337. No new CSS variables, so `test_enh3506_policy_builder_theme_parity.py` is unaffected.
 
 ## Acceptance Criteria
 
-- [ ] Rendered HTML matches none of `is-error|is-warning|is-success` (pytest regex in `test_policy_builder_emit.py`).
+- [ ] Rendered HTML (CSS + JS) has no match for `\bis-(error|warning|success)\b` and does not contain `.conn-status.is-` (pytest in `test_policy_builder_emit.py`).
+- [ ] The `.conn-status` base rule declares no `background` or `color` (pytest regex over the rendered CSS).
 - [ ] No `<h2` in the rendered HTML carries a `style=` attribute; an `h2` CSS rule exists (pytest).
-- [ ] Browser assertions check computed foreground and background colors for connected accepted, accepted-with-warnings, rejected, and outcome-unknown states in both light and dark themes. Accepted states retain success colors, rejected retains error colors, and outcome-unknown retains warning colors. These checks must catch base info colors overriding severity colors; token-parity checks and golden/string assertions alone do not establish this behavior.
-- [ ] `.loops/probes/enh-3500-audit-probes.mjs` class census (:88) updated to expect no `is-*`.
+- [ ] `.loops/probes/enh-3506-theme-probes.mjs` (the asserting probe — exit code + `THEME_PROBES_PASSED`) injects synthetic `div.conn-status.msg-{ok,warn,error}` nodes alongside its existing `li.msg-*` nodes and asserts, in both themes, that each one's computed `color` and `backgroundColor` equal those of the matching `li.msg-*`. This is what catches base colors overriding severity; token-parity and golden/string checks do not. The four connected states (accepted, accepted-with-warnings, rejected, outcome-unknown) map to only these three classes — accepted and accepted-with-warnings both render `msg-ok` — so three injected nodes cover them without stubbing the served host.
+- [ ] `.loops/probes/enh-3500-audit-probes.mjs` is a collector with no pass/fail path, so nothing is asserted there; only fix its stale `statusClass` field (:98) to read `#conn-status .conn-status` (since BUG-3512 the outer `#conn-status` carries only `conn-block`). The class census (:88) stays as-is and should simply report no `is-*` on the next audit run.
 - [ ] Theme-parity test passes; golden regenerated after reviewing the diff; `python -m pytest scripts/tests/` exits 0.
 
 ## Implementation Steps
 
-1. Replace the class expression in `_renderConnectedStatus` (:2555) with the `msg-*` mapping; delete `.conn-status.is-*` CSS and move shared severity rules after the base `.conn-status` rule.
+1. Replace the class expression in `_renderConnectedStatus` (:2555) with the `msg-*` mapping; delete the `.conn-status.is-*` CSS and the base `.conn-status` `background`/`color` declarations (no rules move).
 2. Add the `h2` rule; remove the two inline styles.
-3. Add the two pytest checks; update the ENH-3500 probe census and add the four-state, two-theme computed-color assertions; rerun the browser and theme probes.
+3. Add the pytest checks; add the injected `.conn-status.msg-*` computed-color assertions to the ENH-3506 theme probe; fix the ENH-3500 probe's `statusClass` selector; rerun `.loops/verify-enh-3506-theme.yaml`.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -136,14 +137,14 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 - Fallback-row defect is **settled and split out** to BUG-3516 (winner highlight on blank Try-it inputs)
 - Sequenced via `blocked_by`: BUG-3512 → ENH-3513 → ENH-3511 → ENH-3510 → **ENH-3514** → BUG-3516 (shared template + byte-compared golden — never run in parallel)
-- Update the ENH-3500 probe's class census (the ENH-3506 theme probe already uses `msg-*` and needs no change) and rerun `.loops/verify-enh-3506-theme.yaml` plus ENH-3500 cases `auth-populated-decision_table-dark-*`, `conn-accepted-warnings-*`
+- Extend the ENH-3506 theme probe with the injected `.conn-status.msg-*` assertions and fix the ENH-3500 probe's `statusClass` selector (:98); rerun `.loops/verify-enh-3506-theme.yaml` plus ENH-3500 cases `auth-populated-decision_table-dark-*`, `conn-accepted-warnings-*`
 - Regenerate the golden after reviewing the diff
 
 ## Impact
 
 - **Priority**: P4 - cosmetic consistency
-- **Effort**: Small - one JS site, three CSS rules, one `h2` rule
-- **Risk**: Low - no pytest asserts class names; only the ENH-3500 probe census changes
+- **Effort**: Small - one JS site, three CSS rules plus two base declarations, one `h2` rule
+- **Risk**: Low - no pytest asserts class names; probe changes are additive (ENH-3506 assertions, ENH-3500 selector fix)
 - **Breaking Change**: No
 
 ## Status
@@ -160,7 +161,7 @@ _Added by `/ll:confidence-check` on 2026-09-19_
 
 ### Concerns
 - Golden fixture is byte-compared and shared with sibling issues; must regenerate after ENH-3510 lands.
-- New four-state x two-theme computed-color browser assertions have no existing harness in pytest (probe-only).
+- Computed-color assertions are probe-only by design (ENH-3506 theme probe, injected nodes); no pytest harness needed.
 
 ### Gaps to Address
 - `blocked_by` ENH-3510 is unresolved (status: open); wait for it (or remove the edge if no longer applicable). BUG-3512 is done.
@@ -174,6 +175,7 @@ Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the sam
 - Stale line anchors corrected: `_renderConnectedStatus` :2360 → :2552 (`is-*` class expression :2555), `renderConnected` :2292 → :2486, `.conn-status.is-*` CSS :173-175 → :174-176, right-column `<h2>` inline styles :313/:334 → :316/:337. Function-name anchors were and remain correct.
 - Confirmed: `is-*` has exactly one JS site; `.msg-*` rules (:161-164) are unscoped and precede the `.conn-status` base (:173), so the move-after-base ordering in the Proposed Solution is required and sound; the enh-3500 probe census (`.loops/probes/enh-3500-audit-probes.mjs:88`) still matches `^(msg-|is-)`; no `.panel h2` rule exists yet.
 - Proposal check: no exception-handler, fixture, or AC-coverage gaps found.
+- **Superseded by review (2026-09-19)**: the move-after-base ordering confirmed above is no longer the plan — the base `.conn-status` colors are dead (every `.conn-status` gets a severity class) and are deleted instead, so no rules move. Computed-color assertions moved to the ENH-3506 theme probe; the ENH-3500 probe only gets its `statusClass` selector fixed.
 - Remaining: none. Note `blocked_by` ENH-3510 is still `open` (dependency, not a claim defect).
 
 ## Session Log
