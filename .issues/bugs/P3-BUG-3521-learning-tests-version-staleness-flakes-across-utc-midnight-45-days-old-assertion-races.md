@@ -1,5 +1,5 @@
 ---
-id: BUG-3453
+id: BUG-3521
 type: BUG
 title: 'learning-tests version staleness: test_age_stale_names_the_age + test_age_stale_still_names_days
   flip to <!-- ll-evidence-ok: runtime symptom of the midnight flip, not a source-code
@@ -25,7 +25,7 @@ score_ambiguity: 25
 score_change_surface: 25
 ---
 
-# BUG-3453: learning-tests version staleness flakes across local midnight of the test process (45-days-old assertion races)
+# BUG-3521: learning-tests version staleness flakes across local midnight of the test process (45-days-old assertion races)
 
 ## Summary
 
@@ -221,7 +221,7 @@ Until the fix lands, CI dispatch can avoid the race by not crossing the runner's
 
 ## Notes
 
-BUG-3453 is unrelated to PR #24 (CI-red + BUG-3439) and PR #26 (BUG-3449 finalize done-in-place). It is also unrelated to BUG-3450 (PATH-scrubbed `ll-issues` shellout — same root defect as BUG-3449, collapsed). Filing as a separate card so the fix has its own workstream and review trail.
+BUG-3521 is unrelated to PR #24 (CI-red + BUG-3439) and PR #26 (BUG-3449 finalize done-in-place). It is also unrelated to BUG-3450 (PATH-scrubbed `ll-issues` shellout — same root defect as BUG-3449, collapsed). Filing as a separate card so the fix has its own workstream and review trail.
 
 Discovery: CI dispatch `34660035171` failed at `2026-09-12T00:00:08Z` (one minute after UTC midnight), which is the empirical confirmation that the race is real and timing-bound.
 
