@@ -44,7 +44,13 @@ File mode (`ll-verify-evidence FILE`) is a whole-file scan with **no baseline**,
 **Delta lives in code, not in command prose (decided — reverses ENH-3515's "comparison belongs to the command").** `commands/refine-issue.md` allows only `Read`, `Glob`, `Edit(.issues/**)`, `Task`, and `Bash(git:*, ll-issues:*, ll-history-context:*, ll-code:*)` — no `Write`, no python/jq, so the command can neither persist a snapshot nor compute an occurrence-count diff deterministically, and a prose-described comparison cannot be validated with representative payloads. Add two flags to `ll-verify-evidence` file mode:
 
 - `--save-snapshot PATH` — atomically write a versioned snapshot envelope containing findings and scan identity to `PATH` (the CLI does the write; no extra tool permission). Publish a snapshot only after a successful scan, including exit 1 with valid findings; never publish an empty-success snapshot on an execution failure.
-- `--delta-from PATH` — scan, then compare occurrence counts keyed by `(span, artifact)`, excluding line numbers, against the snapshot; report only positive count differences as `new_findings` (with current line numbers for locating them), plus `preexisting_count`. This tolerates shifted lines while detecting a newly added duplicate of an existing bad quote and a change of attribution. Exit 0 = no new findings, 1 = new findings, exit 2 = snapshot/input/compatibility failure (**verification incomplete**, never clean).
+- `--delta-from PATH` — scan, then compare occurrence counts keyed by `(normalized_span, artifact)`, excluding line numbers, against the snapshot. Normalize span whitespace only (collapse runs of whitespace to one space and trim); preserve case, punctuation, and the original per-occurrence attribution spelling. Keep raw span text for display. Report positive count differences as `new_findings` groups, each with `added_count` and all current candidate occurrences (raw text, section, and line), plus `preexisting_count` for the matched occurrence counts. This is a **net-count delta**, not edit provenance: an equal-count removal/reinsertion of identical evidence cancels. A positive count does not identify which duplicate was newly authored; candidate locations are not automatic repair instructions. Exit 0 = no new findings, 1 = new findings, exit 2 = snapshot/input/compatibility or scan-execution failure (**verification incomplete**, never clean).
+
+**Per-occurrence attribution:** fix `scan_file` so each candidate retains its original artifact reference through grouping by resolved path and normalized text. The current resolved-path-to-reference map retains only the last spelling, so a later path citation can relabel an earlier issue-ID citation to the same artifact. A focused reproduction confirmed this behavior. Add a regression in which both spellings resolve to one file; adding the alias must not change untouched findings' keys. This metadata correction does not change matching rules or corpus-baseline semantics.
+
+**Repair ownership:** counts establish detection, not ownership. The refinement command must retain enough information about its own edits to identify an added occurrence before correcting/removing it. Report ambiguous duplicates as unresolved, preserving earlier content. Test insertion both before and after an existing duplicate. Separate snapshot filenames do not isolate concurrent edits to the same issue: serialize same-issue refinement or detect overlapping edits and stop automatic repair with an explicit conflict/incomplete status. Never repair another invocation's additions; test overlapping passes on the same file.
+
+**Strict scan completion:** snapshot/delta modes must propagate execution failures from issue reads, tracked-index enumeration, and required history/blob operations instead of inheriting legacy empty-result fallbacks. Input preflight alone is insufficient because a later read can fail. Distinguish legitimate absent artifacts under existing matching rules from failed infrastructure operations. A failed before-scan publishes no new valid snapshot; a failed after-scan returns exit 2, retains known findings in the report, and never claims a clean delta. Inject these failures in both phases. Keep strict failure behavior scoped to the new modes so legacy callers retain their contracts.
 
 **Snapshot contract:** both flags require exactly one existing, readable issue file. They are mutually exclusive and incompatible with `--all`, `--update-baseline`, and `--added-only`. Reject missing/unreadable inputs rather than letting a skipped scan count as clean. The snapshot envelope records a schema version, canonical project root and issue path, verifier compatibility version, and effective scan options (including `max_revisions`). Validate the envelope and finding field types before comparison; reject unsupported versions, wrong project/file identity, and incompatible options with exit 2. Issue-body edits between scans are expected and must not invalidate identity. Reject a snapshot destination that aliases the issue file; write failures must be explicit and leave no partial snapshot usable as a baseline.
 
@@ -56,7 +62,7 @@ Command changes (`commands/refine-issue.md`):
 - Add `Bash(ll-verify-evidence:*)` to `allowed-tools`.
 - **Snapshot** before the first body mutation — it must precede Step 5's `ll-issues fold-findings` writes, not merely Step 6's "Update Issue File". Retain the original snapshot throughout the pass.
 - **Final check** with `--delta-from` after the last body-changing gate (after Step 6.7).
-- **On a new finding**: reuse capture-issue's on-miss contract (ENH-3283): re-read the artifact and correct the quote, or describe the evidence in prose. A reviewed genuine counter-example may use `<!-- ll-evidence-ok: reason -->`; never suppress merely to clear the check. Allow one correction pass and recheck. If findings remain, remove the newly introduced quote or convert it to accurate prose, then perform one final check. Do not retry indefinitely or declare success with unresolved findings.
+- **On a new finding**: reuse capture-issue's on-miss contract (ENH-3283): re-read the artifact and correct the quote, or describe the evidence in prose. A reviewed genuine counter-example may use `<!-- ll-evidence-ok: reason -->`; never suppress merely to clear the check. Allow one correction pass and recheck. If findings remain and this pass's ownership of the occurrence is established, remove the newly introduced quote or convert it to accurate prose, then perform one final check. If ownership is ambiguous or conflicting edits are detected, preserve the content and report unresolved/incomplete instead of attempting a destructive repair. Do not retry indefinitely or declare success with unresolved findings.
 - **Preservation and modes**: explicitly allow correction/removal of this pass's additions in additive-only / `--gap-analysis` mode; preserve pre-existing content and findings. Cover default, `--auto`, `--gap-analysis`, and `--full-rewrite` paths. Under `--dry-run`, do not write, repair, or claim verification of unapplied additions; report verification as not run for the preview.
 - **Execution contract**: exit 1 with valid JSON is scan data, not a command failure. Missing CLI, unexpected exit status, malformed JSON, or timeout means **verification incomplete**, never clean; note the reason and continue gracefully as check B7 does. Without a valid initial snapshot, do not treat every later finding as new. If a later scan fails, retain the known findings in the report rather than claiming they cleared.
 - Final report distinguishes clean delta, repaired delta, unresolved findings, incomplete verification, and dry-run.
@@ -64,8 +70,8 @@ Command changes (`commands/refine-issue.md`):
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/cli/verify_evidence.py` — `--save-snapshot`, `--delta-from`, the `(span, artifact)` count comparison (findings JSON already carries `span` and `artifact`)
-- `commands/refine-issue.md` — tool permission; snapshot before Step 5 writes; delta after all body mutations; bounded repairs, mode/error handling, final status
+- `scripts/little_loops/cli/verify_evidence.py` — `--save-snapshot`, `--delta-from`, the whitespace-normalized count comparison and grouped candidate locations, per-occurrence attribution, strict scan-failure propagation (findings JSON already carries `span` and `artifact`)
+- `commands/refine-issue.md` — tool permission; snapshot before Step 5 writes; delta after all body mutations; bounded ownership-aware repairs, same-issue conflict handling, mode/error handling, final status
 - `skills/ll-refine-issue/SKILL.md` and the other host mirrors — re-synced via `ll-adapt --host <host> --apply` (mirror gates trip otherwise)
 - `docs/reference/CLI.md` — document the two new flags
 
@@ -74,15 +80,15 @@ Command changes (`commands/refine-issue.md`):
 - `commands/verify-issues.md` — check B7 invokes `ll-verify-evidence "$ISSUE_FILE" --json`, lists `Bash(ll-verify-evidence:*)`, degrades gracefully when unavailable
 
 ### Tests
-- `scripts/tests/test_verify_evidence.py` — unit tests for the delta with representative payloads: unchanged old findings, line shifts, a new quote, an additional duplicate of an old bad quote, changed attribution, repaired findings; missing/malformed snapshot → incomplete exit code.
-- `scripts/tests/test_refine_issue_command.py` — contract checks: allowed tools, snapshot before `fold-findings`, final check after body-changing gates, bounded repairs, explicit dry-run / incomplete states, additive-mode repair allowance.
+- `scripts/tests/test_verify_evidence.py` — unit tests for the delta with representative payloads: unchanged old findings, line shifts, a new quote, an additional duplicate of an old bad quote, changed attribution, repaired findings, whitespace-only rewrites, mixed aliases resolving to one artifact, duplicates inserted before/after an existing occurrence, and cancelling equal-count replacement; missing/malformed snapshots and injected before/after infrastructure failures → incomplete exit code.
+- `scripts/tests/test_refine_issue_command.py` — contract checks: allowed tools, snapshot before `fold-findings`, final check after body-changing gates, bounded repairs, explicit dry-run / incomplete states, additive-mode repair allowance, ownership checks, and same-issue concurrency/conflict behavior.
 
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-09-20 — based on codebase analysis:_
 
 - **No snapshot/delta code exists.** `compute_findings_delta`, `--save-snapshot`, `--delta-from` appear only in this issue file; `verify_evidence.py` has no envelope, snapshot, or compatibility-version constant for external consumers (only `_CACHE_VERSION = 2`, `_CACHE_ALGO = "blob-v1"`, `DEFAULT_MAX_REVISIONS = 80`, `MIN_SPAN_LEN = 20`). The "verifier compatibility version" the snapshot records is therefore a new identifier that must be defined.
-- **Findings JSON shape today** (`_findings_to_json` in `scripts/little_loops/cli/verify_evidence.py`): `{"ok", "mode": "paths"|"all", "count", "findings": [{"file", "line", "section", "span", "artifact"}]}`, with no version field. `span` is the raw `CandidateSpan.text` (not normalized); `artifact` is the *original reference* (issue ID or path as written), not the resolved repo path. Constraint: `(span, artifact)` keys inherit both properties, so two spans differing only in whitespace are distinct keys unless the comparison normalizes them (`normalize()` exists) — a decision the implementation must make knowingly. Occurrence counts come only from the `EvidenceFinding` list; `scan_file`'s `keyed_hashes` is a `set` and cannot supply counts.
+- **Findings JSON shape today** (`_findings_to_json` in `scripts/little_loops/cli/verify_evidence.py`): `{"ok", "mode": "paths"|"all", "count", "findings": [{"file", "line", "section", "span", "artifact"}]}`, with no version field. `span` is the raw `CandidateSpan.text` (not normalized); `artifact` is intended to be the original reference (issue ID or path as written), not the resolved repo path; however, grouping currently reuses the last reference spelling for every candidate resolving to that path. Preserve the reference per occurrence before relying on it for delta identity. The delta will normalize whitespace only as decided above, while retaining raw display text. Occurrence counts come only from the `EvidenceFinding` list; `scan_file`'s `keyed_hashes` is a `set` and cannot supply counts.
 - **Exit-code contract is currently 0/1 only.** Exit 2 arises solely from argparse `parser.error` → `SystemExit(2)` (`--update-baseline` needs `--all`; `--added-only` excludes `--all`; paths required without `--all`). Execution failures are silent: `_scan_path_list` skips non-files, `scan_file` returns `[], {}` on `OSError`, `build_tracked_index` returns an empty frozenset on git failure (→ zero findings). Constraint: for the new flags, "missing/unreadable input → exit 2, never clean" cannot be inherited from existing behavior — an unreadable issue file today reads as a clean scan. `paths` is `nargs="*"`, so "exactly one file" is a new validation. The epilog/docstring and `docs/reference/CLI.md` document only 0 and 1.
 - **Atomic-write primitive exists but is not used by this module.** `little_loops.file_utils.atomic_write` (`mkstemp` in the destination dir + `os.replace`, unlinks temp on error, no parent `mkdir`) and `atomic_write_json` (adds `mkdir(parents=True)`, `json.dumps(allow_nan=False)`, round-trip `json.loads` check). `verify_evidence.py` does not import `file_utils`; `write_baseline`/`write_verdict_cache` use plain `write_text` (the cache write swallows `OSError`). Constraint: the snapshot must be atomic, and a failed write must be a reported failure — the verdict-cache swallow-on-error behavior is the opposite contract.
 - **Effective scan options available to record:** `max_revisions` (`--max-revisions`), `base_dir` (`-C/--directory` or cwd; `BRConfig(base_dir)`), and the file-mode `paths` handling in `scan_paths` (absolute-ified against `base_dir`, then `relative_to(base_dir.resolve())`, falling back to the path as given on `ValueError`). File mode does not use the verdict cache or a baseline (only `scan_all` does), so neither participates in snapshot identity.
@@ -111,7 +117,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ### Signatures
 
-- `compute_findings_delta(before: list[dict], after: list[dict]) -> list[dict]` — positive occurrence-count differences keyed by `(span, artifact)`
+- `compute_findings_delta(before: list[dict], after: list[dict]) -> list[dict]` — groups of positive net-count differences keyed by `(normalized_span, artifact)`, with added counts and all current candidate locations
 
 ### Call Path
 
@@ -119,8 +125,8 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Implementation Steps
 
-1. Add `--save-snapshot` / `--delta-from`, the validated snapshot envelope, atomic writes, and `compute_findings_delta` to `little_loops.cli.verify_evidence`; test payloads, identity/option checks, flag exclusions, input/write failures, and exit 2 (tests first — `tdd_mode`).
-2. Update `commands/refine-issue.md`: tool permission, unique per-invocation snapshot path and original-snapshot retention, early snapshot, final delta ordering, bounded repairs, preservation/mode rules, incomplete-verification reporting.
+1. Add `--save-snapshot` / `--delta-from`, the validated snapshot envelope, atomic writes, and `compute_findings_delta` to `little_loops.cli.verify_evidence`; preserve per-occurrence attribution and propagate strict scan failures in the new modes; test normalization/grouped locations, aliases, identity/option checks, flag exclusions, input/write/infrastructure failures, and exit 2 (tests first — `tdd_mode`).
+2. Update `commands/refine-issue.md`: tool permission, unique per-invocation snapshot path and original-snapshot retention, early snapshot, final delta ordering, bounded ownership-aware repairs, same-issue serialization or conflict detection, preservation/mode rules, incomplete-verification reporting.
 3. Extend `test_refine_issue_command.py` contract checks; document the flags in `docs/reference/CLI.md`.
 4. Re-sync host mirrors (`ll-adapt --host <host> --apply`); run the mirror gates and the full suite.
 
@@ -136,8 +142,8 @@ _These touchpoints were identified by wiring analysis and must be included in th
 ## Impact
 
 - **Priority**: P3 — workflow friction; no data risk.
-- **Effort**: Moderate — small CLI addition with unit tests, plus command/mirror edits.
-- **Risk**: Low — additive flags; the command degrades to "verification incomplete" on any failure.
+- **Effort**: Moderate — snapshot/delta API, scanner metadata/error handling, ownership-safe command repairs, and mirror/test updates.
+- **Risk**: Moderate — repair ownership and swallowed scan failures can violate preservation or report false success; targeted regression tests are required.
 
 ## Parent Issue
 
@@ -145,7 +151,10 @@ Decomposed from ENH-3515: Shift-left evidence verification to refine-time and ma
 
 ## Acceptance Criteria
 
-- [ ] `--delta-from` reports only positive `(span, artifact)` count differences; line shifts are ignored; new duplicates and changed attributions are detected (unit tests with the payload set above).
+- [ ] `--delta-from` reports positive `(normalized_span, artifact)` net-count differences with added counts and all current candidate locations. Line shifts and whitespace-only rewrapping are ignored; new duplicates and changed attributions are detected. Equal-count replacement cancellation is documented and tested.
+- [ ] Mixed issue-ID/path citations resolving to one artifact retain their original per-occurrence attributions; adding an alias cannot relabel an untouched finding (scanner regression).
+- [ ] Duplicate additions before/after existing occurrences are repaired only when this pass's edit history establishes ownership; ambiguous candidates remain unresolved and unchanged. Concurrent same-issue passes are serialized or detected as conflicts before repair, even with distinct snapshots (behavioral tests).
+- [ ] Injected issue-read, tracked-index, and required history/blob failures in before/after scans yield exit 2. Failed before-scans publish no valid new snapshot; failed after-scans cannot clear known findings or report clean (scanner/CLI tests).
 - [ ] Missing/malformed snapshots, unsupported schema or invalid finding types, wrong project/file identity, incompatible scan options, missing/unreadable issue files, incompatible flags, and multiple input files yield exit 2, never clean success (CLI tests).
 - [ ] Snapshot writes are atomic; failed scans/writes leave no usable partial snapshot, and the issue file cannot be used as the snapshot destination. Exit 1 with valid findings still produces a valid snapshot (tests).
 - [ ] Independent invocations use distinct snapshot paths, including for the same issue; failed creation never reuses an old snapshot. All repair checks retain the original snapshot. Tests cover invocation isolation and command path construction.

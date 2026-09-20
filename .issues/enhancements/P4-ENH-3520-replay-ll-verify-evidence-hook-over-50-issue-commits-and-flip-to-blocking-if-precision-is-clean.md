@@ -36,14 +36,16 @@ A retained replay report either justifies blocking (hook flipped, comment and di
 
 ## Motivation
 
-The BUG-3282 comment defers blocking to a precision signal that does not exist, so the hook would otherwise stay warn-only indefinitely. A one-time, reproducible measurement turns that into a decision. Until then automation is covered at write time by the refine-time check and at suite time by the repo gate.
+The BUG-3282 comment defers blocking to a precision signal that does not exist, so the hook would otherwise stay warn-only indefinitely. A one-time, reproducible measurement turns that into a decision. The repo gate remains the backstop; refine-time coverage becomes available when ENH-3519 lands. Prefer deploying that write-time feedback before enabling blocking, without making it a prerequisite for conducting this replay.
 
 ## Proposed Solution
 
 - **Reproducible replay**: freeze and record the verifier revision and the 50 most recent commits touching `.issues/` at the measurement cutoff. For each commit, use an isolated repository with its parent as HEAD and the commit's tree staged and checked out; pass explicit changed issue filenames to `ll-verify-evidence --added-only`. Define first-parent handling for merges and deletion/rename handling. Do not mutate the developer's index or working tree. Simply checking out a commit produces no staged additions and is not a replay.
 - **Historical isolation**: the matcher uses `git log --all`. Restrict replay refs to history available at the parent, with the target commit's tree supplying the staged/working content; exclude later revisions and unrelated refs. A normal worktree sharing current refs is insufficient. Isolate verdict caches per replay repository so cached results do not leak across historical states.
 - **Evidence and coverage**: retain a replay report with cutoff, commit IDs, verifier revision, setup/reproduction instructions, changed files/added lines, eligible candidate counts, findings and their manual true/false-positive classifications, and execution errors. Confirm nonzero eligible coverage and use a deliberately invalid staged quote as a positive control. Zero findings on an empty or broken replay is not precision evidence. Store the report under `postmortems/` and cite its path, date, and summary in the hook comment.
-- **Conditional flip to blocking** (drop `|| true`): only after the complete, valid 50-commit replay has zero false positives and its coverage/control checks pass. Otherwise retain warn-only + verbose and record the false positives or why the measurement was inconclusive. If blocking is enabled, also remove "(warn-only)" from the hook's display name.
+- **Maintenance operations**: exercise rename/move and substantial rewrite fixtures containing grandfathered invalid evidence. Classify findings along two axes: quote accuracy (true/false positive), and origin (newly authored versus pre-existing evidence exposed as added lines). Record which routine maintenance operations would block. Zero quote-accuracy false positives alone does not establish safe rollout; explicitly document and justify the intended handling of pre-existing evidence before flipping. If handling remains undecided, retain warn-only. Do not change matching rules merely to make these fixtures pass.
+- **Staged-scan failure policy**: explicitly document and test production behavior when staged-line detection fails. The existing whole-file fallback can surface grandfathered findings, so it must not silently masquerade as a successful staged scan. Retaining fail-closed behavior is allowed with a visible execution/fallback diagnosis; do not silently switch to fail-open to avoid blocking. Record the resulting exit/output contract. If safe behavior requires a verifier change, capture that as a prerequisite follow-up and keep this issue warn-only until it lands. Replay failures still invalidate the measurement.
+- **Conditional flip to blocking** (drop `|| true`): only after the complete, valid 50-commit replay has zero false positives, its coverage/control checks pass, and maintenance-operation and staged-scan-failure policies are explicitly settled and tested. Report the actual eligible sample size and its limitations; nonzero coverage alone does not justify broad confidence. Otherwise retain warn-only + verbose and record the false positives or why the measurement was inconclusive. If blocking is enabled, also remove "(warn-only)" from the hook's display name.
 
 ## Integration Map
 
@@ -57,6 +59,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `.pre-commit-config.yaml` — the `ll-verify-private-refs` sibling entry (`exclude: ^(postmortems/|...)`) shows the exclusion convention; the `ll-verify-evidence` entry's `files: ^\.issues/.*\.md$` already excludes `postmortems/`, so the report path needs no hook change [Agent 1 finding]
 
 ### Tests
+- Rename/move and substantial-rewrite fixtures distinguish newly authored findings from pre-existing evidence; inject a staged-line Git failure and assert the documented output/exit policy. Scrub inherited Git repository/index environment overrides in isolated test and replay subprocesses.
 - ENH-3518's new pre-commit gate test module (`test_verify_evidence_pre_commit_gate`, created by that issue) derives the expected exit status from the configured policy; after a flip it must assert a non-zero exit for the invalid staged quote with no test rewrite beyond that.
 
 _Wiring pass added by `/ll:wire-issue`:_
@@ -82,8 +85,8 @@ _Added by `/ll:refine-issue` — 2026-09-20 — based on codebase analysis:_
 
 ## Implementation Steps
 
-1. Build the isolated replay harness (parent as HEAD, commit tree staged, refs restricted to the parent's history, per-replay verdict cache); validate it with the positive control.
-2. Run the 50-commit replay; classify every finding; write the report under `postmortems/`.
+1. Build the isolated replay harness (parent as HEAD, commit tree staged, refs restricted to the parent's history, per-replay verdict cache); validate it with the positive control, maintenance-operation fixtures, and staged-line failure injection.
+2. Run the 50-commit replay; classify every finding by both accuracy and evidence origin; record sample-size limitations and production failure/maintenance policies; write the report under `postmortems/`.
 3. Flip to blocking only if all conditions pass; otherwise keep warn-only. Update comment and display name consistently; update `docs/reference/CLI.md` only on a flip.
 4. Run the hook gate tests and the full suite.
 
@@ -121,9 +124,10 @@ replay harness -> isolated repo (parent as HEAD, commit tree staged) -> `main_ve
 
 ## Acceptance Criteria
 
-- [ ] A replay report exists under `postmortems/` with the cutoff, the 50 commit IDs, verifier revision, reproduction steps, eligible candidate counts, per-finding manual classification, and execution errors.
+- [ ] A replay report exists under `postmortems/` with the cutoff, the 50 commit IDs, verifier revision, reproduction steps, eligible candidate counts, per-finding accuracy and new/pre-existing origin classifications, sample-size limitations, and execution errors.
 - [ ] The replay used staged changes in isolated repositories with historically restricted refs and per-replay verdict caches; it shows nonzero eligible coverage and a working positive control.
-- [ ] Blocking is enabled only if the replay is complete and has zero manually classified false positives; otherwise the hook stays warn-only and the reason is recorded.
+- [ ] Rename/move and rewrite fixtures document how grandfathered evidence behaves; staged-line failure injection verifies an explicit production diagnostic/exit policy. Unsettled behavior or a required verifier follow-up keeps the hook warn-only.
+- [ ] Blocking is enabled only if the replay is complete, has zero manually classified false positives, and the maintenance/failure policies are settled and tested; otherwise the hook stays warn-only and the reason is recorded.
 - [ ] The hook comment records the date, result, and report path; display name and entry agree with the behavior; the hook gate tests pass under the resulting policy.
 
 ## Scope Boundaries
