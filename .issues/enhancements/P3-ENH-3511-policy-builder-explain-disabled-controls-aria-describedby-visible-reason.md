@@ -171,7 +171,22 @@ _Added by `/ll:confidence-check` on 2026-09-19_
 - Weak automated coverage: no rendered-DOM pytest harness; the key ACs are verified only by the on-demand probe or a browser check.
 - Shared byte-compared golden template is edited by ENH-3513, ENH-3510 and ENH-3514; sequencing is required.
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` — 2026-09-19 (`--auto`)_
+
+Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the same pass, so the issue as it now reads is up to date — this section is a record of what was wrong and fixed, not an outstanding action item)
+
+- **Stale blocker**: ENH-3513 is `done` (frontmatter `status: done`), so the `blocked_by: ENH-3513` edge is satisfied. The `## Confidence Check Notes` "Gaps to Address" line ("ENH-3513 (open)") and the concern "`EXPORT_DISABLED_REASON` … not yet in the template (0 occurrences)" are outdated: the constant now exists at `EXPORT_DISABLED_REASON` (template :442) and is used in `_errorCountText`-based summary text (:518). Re-run `/ll:confidence-check` to refresh the score. The literal still appears once, so the AC "appears once in rendered HTML" remains checkable.
+- **Line numbers shifted again** (ENH-3513 landed): `updatePreview` :1909, `renderConnected` :2431, `renderOutcomes` :903, `renderRules` :1156, `#validate-hint` markup :329, `#conn-unavailable` :338. Resolve by function name.
+- **Design Decisions still accurate**: `hasError` is computed *after* the `#validate-hint` write (:1926 vs :1918) so the "move above" step is still required; `#validate-hint` is still blanked only on a serializer throw; Review already toggles `aria-disabled` while busy (:2467).
+- **New reusable helpers from ENH-3513**: `_describedTokens(input)` (:529) plus the add/remove token pattern in `_showAddError`/`_clearAddError` (:533-553) manage `aria-describedby` as a token list. Use that pattern (do not overwrite the attribute) so ENH-3511's `aria-describedby` on `#conn-issue`/Copy/Download/Review/Submit composes with any existing tokens.
+- **Disabled-site inventory verified** (current lines): undo/redo :642-643, `delOc` :916, `valInput` :1204, up/down :1280/:1285, `idxInput` :1671, Copy/Download :1928-1929, `#conn-issue` :2456, Review :2466, Submit :2469, Refresh :2474 — matches Scope Boundaries.
+- Evidence-quote check (`ll-verify-evidence`): clean. Decisions rules: none active. Graph: provider=codegraph freshness=fresh (not needed; all anchors resolved by grep).
+- `PROPOSAL_UNSOUND` check: no defect found; note the `_newBug3502Sandbox` stub requirement already in ACs.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-09-20T01:49:34 - `7073c4c9-52a5-4dc1-bc72-f507fdf9043b.jsonl`
 - `/ll:confidence-check` - 2026-09-20T00:50:23 - `b1e66617-7ca3-4c73-8eef-611558ec10fe.jsonl`
 - `/ll:verify-issues` - 2026-09-20T00:42:35 - `87477791-8eac-4eaa-a6b5-62a48362f015.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-09-19T21:30:33 - `6b9c88d3-074c-4681-b7c9-240fc332f147.jsonl`
