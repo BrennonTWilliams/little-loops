@@ -23,7 +23,11 @@ repos:
         # issue files continuously; a precision miss here must not block a
         # commit mid-run the way the pytest gate's --all can afford to. Flip
         # to blocking (drop `|| true`) once the whole-corpus precision smoke
-        # test has a stable ceiling. ENH-3518: `verbose: true` because
+        # test has a stable ceiling. ENH-3520 replay (2026-09-19, 50 issue
+        # commits): 0 findings but 0 eligible candidates, so no precision
+        # signal; a pure rename also re-exposes grandfathered quotes. Stays
+        # warn-only. Report: postmortems/enh3520-replay-2026-09-19.md.
+        # ENH-3518: `verbose: true` because
         # pre-commit hides the output of passing hooks, so without it the
         # findings (and any verifier crash traceback) of this always-passing
         # hook were never printed.

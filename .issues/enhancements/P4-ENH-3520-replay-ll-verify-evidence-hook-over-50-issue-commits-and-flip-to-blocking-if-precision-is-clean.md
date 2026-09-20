@@ -4,10 +4,11 @@ type: ENH
 title: Replay ll-verify-evidence hook over 50 issue commits and flip to blocking if
   precision is clean
 priority: P4
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-19'
 captured_at: '2026-09-19T23:24:10Z'
+completed_at: '2026-09-20T04:42:02Z'
 labels:
 - enhancement
 - verify-evidence
@@ -145,6 +146,13 @@ replay harness -> isolated repo (parent as HEAD, commit tree staged) -> `main_ve
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
+## Resolution
+
+Replay complete; hook **kept warn-only**. Report: `postmortems/enh3520-replay-2026-09-19.md` (gitignored).
+- 50/50 commits replayed in isolated repos, 0 execution errors, positive control 50/50, 0 findings — but 0 eligible (artifact-attributed) candidates, so no precision evidence.
+- Pure rename re-exposes grandfathered quotes (diff pathspec-limited to the new path); staged-diff failure silently falls back to a whole-file scan. Both pinned in `scripts/tests/test_verify_evidence_added_only_maintenance.py`.
+- Follow-up prerequisite for blocking: verifier rename pairing + visible fallback diagnosis.
+
 ## Status
 
 **Open** | Created: 2026-09-19 | Priority: P4
@@ -179,6 +187,8 @@ _Added by `/ll:confidence-check` on 2026-09-19_
 - Conditional outcome: several branches (maintenance-op policy, staged-scan failure policy) may resolve to "stay warn-only" or require a verifier follow-up.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-20T04:42:02 - `7089c358-87a6-494e-99a1-08094d439f52.jsonl`
+- `/ll:ready-issue` - 2026-09-20T04:29:39 - `630113e6-4ede-4afe-9775-3c525ff37c36.jsonl`
 - `/ll:confidence-check` - 2026-09-20T04:27:53 - `9af02f8b-62d4-49a5-a1db-e54179e5abc0.jsonl`
 - `/ll:verify-issues` - 2026-09-20T04:26:17 - `870e2333-9233-4bbd-8a9b-511ffb8b0392.jsonl`
 - `/ll:confidence-check` - 2026-09-20T02:58:31 - `977f15ce-7c46-446a-8bf0-6c67847cf478.jsonl`
