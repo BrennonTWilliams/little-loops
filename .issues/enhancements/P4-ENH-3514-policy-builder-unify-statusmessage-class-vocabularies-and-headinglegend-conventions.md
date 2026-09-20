@@ -111,10 +111,10 @@ _Wiring pass added by `/ll:wire-issue`:_
 ## Design Decisions
 
 > **Context refresh (2026-09-19)**: BUG-3512 is **done** (2f5bdb89a). `:NNNN` line references in this issue predate it — roughly +4 up to `updatePreview` (now :1782) and +75 in the connected code (`renderConnected` now :2292). Function-name anchors remain correct; resolve by name, not line.
-- Post-BUG-3512 the single `is-*` JS site lives in `_renderConnectedStatus(st, box)` (:2360, called from `renderConnected`), and the `.conn-status.is-*` CSS is at :173-175. Verified: `.msg-*` colour rules (:161-164) are unscoped; the only two `<h2>`s are in the right-column `.panel` sections (:313, :334), so `.panel h2` is safe.
+- Post-BUG-3512 the single `is-*` JS site lives in `_renderConnectedStatus(st, box)` (:2552, called from `renderConnected` :2486), and the `.conn-status.is-*` CSS is at :174-176. Verified: `.msg-*` colour rules (:161-164) are unscoped; the only two `<h2>`s are in the right-column `.panel` sections (:316, :337), so `.panel h2` is safe.
 
 - **Canonical vocabulary: `msg-*`** (`msg-error` / `msg-warn` / `msg-ok` / `msg-info`). It has ~8 JS sites plus the ENH-3506 theme probe (`li.className = "msg-" + k`); `is-*` has exactly one JS site (:2275) and three CSS rules (:171-173). Mapping: `is-error`→`msg-error`, `is-warning`→`msg-warn`, `is-success`→`msg-ok`. Delete the three `.conn-status.is-*` rules, but move the shared `.msg-*` color rules after the `.conn-status` base rule. Both selectors have equal specificity; retaining the current order would make the later base info colors override every renamed severity class. The base keeps its info fallback colors, and the later shared severity rules override them without duplicating declarations. ENH-3510/3511/3513 land first and already use `msg-*` for anything new.
-- **Headings**: add `.panel h2` (or the nearest existing right-column scope) `{ margin-top: 0; font-size: 1rem; }` and remove the inline `style` from :311 and :332. No new CSS variables, so `test_enh3506_policy_builder_theme_parity.py` is unaffected.
+- **Headings**: add `.panel h2` (or the nearest existing right-column scope) `{ margin-top: 0; font-size: 1rem; }` and remove the inline `style` from :316 and :337. No new CSS variables, so `test_enh3506_policy_builder_theme_parity.py` is unaffected.
 
 ## Acceptance Criteria
 
@@ -126,7 +126,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Implementation Steps
 
-1. Replace the class expression in `_renderConnectedStatus` (:2360) with the `msg-*` mapping; delete `.conn-status.is-*` CSS and move shared severity rules after the base `.conn-status` rule.
+1. Replace the class expression in `_renderConnectedStatus` (:2555) with the `msg-*` mapping; delete `.conn-status.is-*` CSS and move shared severity rules after the base `.conn-status` rule.
 2. Add the `h2` rule; remove the two inline styles.
 3. Add the two pytest checks; update the ENH-3500 probe census and add the four-state, two-theme computed-color assertions; rerun the browser and theme probes.
 
@@ -165,7 +165,19 @@ _Added by `/ll:confidence-check` on 2026-09-19_
 ### Gaps to Address
 - `blocked_by` ENH-3510 is unresolved (status: open); wait for it (or remove the edge if no longer applicable). BUG-3512 is done.
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` — 2026-09-19 (graph: provider=`codegraph`, freshness=`fresh`; evidence-quote check clean; no required decision rules)_
+
+Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the same pass, so the issue as it now reads is up to date — this section is a record of what was wrong and fixed, not an outstanding action item)
+
+- Stale line anchors corrected: `_renderConnectedStatus` :2360 → :2552 (`is-*` class expression :2555), `renderConnected` :2292 → :2486, `.conn-status.is-*` CSS :173-175 → :174-176, right-column `<h2>` inline styles :313/:334 → :316/:337. Function-name anchors were and remain correct.
+- Confirmed: `is-*` has exactly one JS site; `.msg-*` rules (:161-164) are unscoped and precede the `.conn-status` base (:173), so the move-after-base ordering in the Proposed Solution is required and sound; the enh-3500 probe census (`.loops/probes/enh-3500-audit-probes.mjs:88`) still matches `^(msg-|is-)`; no `.panel h2` rule exists yet.
+- Proposal check: no exception-handler, fixture, or AC-coverage gaps found.
+- Remaining: none. Note `blocked_by` ENH-3510 is still `open` (dependency, not a claim defect).
+
 ## Session Log
+- `/ll:verify-issues` - 2026-09-20T02:20:58 - `c36624df-44f4-481f-afac-82822146664d.jsonl`
 - `/ll:confidence-check` - 2026-09-20T00:50:25 - `b1e66617-7ca3-4c73-8eef-611558ec10fe.jsonl`
 - `/ll:verify-issues` - 2026-09-20T00:42:36 - `87477791-8eac-4eaa-a6b5-62a48362f015.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-09-19T21:30:34 - `6b9c88d3-074c-4681-b7c9-240fc332f147.jsonl`
