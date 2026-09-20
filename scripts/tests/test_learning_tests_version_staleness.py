@@ -11,6 +11,7 @@ from __future__ import annotations
 import datetime
 import importlib.metadata
 import json
+import types
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -23,7 +24,22 @@ from little_loops.learning_tests.gate import (
     resolve_target_version,
 )
 
-TODAY = datetime.date.today()
+FROZEN_TODAY = datetime.date(2026, 1, 15)
+
+
+class _FrozenDate(datetime.date):
+    @classmethod
+    def today(cls) -> datetime.date:
+        return FROZEN_TODAY
+
+
+@pytest.fixture(autouse=True)
+def _freeze_today(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pin gate.py's clock so record ages cannot drift across a midnight boundary (BUG-3521)."""
+    monkeypatch.setattr(
+        "little_loops.learning_tests.gate.datetime",
+        types.SimpleNamespace(date=_FrozenDate),
+    )
 
 
 def _record(
@@ -37,7 +53,7 @@ def _record(
 ) -> LearnTestRecord:
     if date is None:
         offset = age_days if age_days is not None else 0
-        date = (TODAY - datetime.timedelta(days=offset)).isoformat()
+        date = (FROZEN_TODAY - datetime.timedelta(days=offset)).isoformat()
     return LearnTestRecord(
         target=target,
         date=date,
