@@ -4238,7 +4238,7 @@ ll-session recent --kind message --issue ENH-1710  # Messages from those session
 ll-session subagents <session_id>               # Subagent spawn tree for a session (ENH-3211)
 ll-session subagents <session_id> --budget      # Spawn count + total duration, with excluded-row count (ENH-3211)
 ll-session subagent-retries Explore             # Sessions that re-spawned Explore more than once (ENH-3211)
-ll-session backfill                             # Ingest on-disk sources (raw_events + issues/loops/commits)
+ll-session backfill                             # Ingest on-disk sources (raw_events + issues/loops/commits); loop state snapshots from .running and .history are idempotent
 ll-session backfill --rebuild                   # Ingest, then materialize cache tables in one call
 ll-session backfill --since 2026-01-01          # Incremental JSONL backfill since date
 ll-session backfill --max-sessions 50           # Compact at most 50 sessions this run

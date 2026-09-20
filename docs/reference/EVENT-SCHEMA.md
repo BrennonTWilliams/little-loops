@@ -2078,6 +2078,8 @@ When `OTelTransport` is active (`events.transports: ["otel"]`), the following ev
 | `interrupted` | `UNSET` |
 | `awaiting_continuation` | `UNSET` |
 
+**Backfilled snapshots.** `ll-session backfill` also writes `loop_events` rows with `transition="backfill"` from FSM state files (`.loops/.running/*.json` and both `.loops/.history` archive layouts). These rows store the raw `current_state` (falling back to `state`) — not a `map_final_status` bucket like live `loop_complete` events — and re-running the backfill over unchanged snapshots inserts nothing.
+
 ### Span event records
 
 These events are added as OTel span events on the innermost open span (action > state > loop):

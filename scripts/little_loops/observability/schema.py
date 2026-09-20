@@ -752,7 +752,7 @@ class CliEventVariant(DESVariant):
 
 @dataclass(frozen=True)
 class LoopEventBackfillVariant(DESVariant):
-    """``_backfill_loop_events`` writes historical ``loop_events`` rows."""
+    """``_backfill_loops`` writes historical ``loop_events`` rows."""
 
     type: Literal["loop_event_backfill"] = "loop_event_backfill"
 

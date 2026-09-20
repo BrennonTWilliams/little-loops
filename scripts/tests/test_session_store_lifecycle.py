@@ -80,6 +80,52 @@ class TestBackfill:
         counts = backfill(db, issues_dir=tmp_path / ".issues", loops_dir=tmp_path / ".loops")
         assert counts["loops"] == 1
 
+    def test_backfill_loops_all_layouts_idempotent(self, tmp_path: Path) -> None:
+        import sqlite3
+
+        loops = tmp_path / ".loops"
+        flat = loops / ".history" / "2026-01-01T000000-alpha"
+        legacy = loops / ".history" / "beta" / "20260102-000000"
+        running = loops / ".running"
+        for d in (flat, legacy, running):
+            d.mkdir(parents=True)
+        (flat / "state.json").write_text(
+            json.dumps({"current_state": "done", "updated_at": "t1"}), encoding="utf-8"
+        )
+        (legacy / "state.json").write_text(
+            json.dumps({"current_state": "fix", "updated_at": "t2"}), encoding="utf-8"
+        )
+        (running / "gamma.state.json").write_text(
+            json.dumps({"current_state": "run", "updated_at": "t3"}), encoding="utf-8"
+        )
+        (running / "bad.json").write_text("{not json", encoding="utf-8")
+        (running / "arr.json").write_text("[]", encoding="utf-8")
+        (running / "empty.json").write_text("", encoding="utf-8")
+        db = tmp_path / "session.db"
+        kw = {"issues_dir": tmp_path / ".issues", "loops_dir": loops}
+        assert backfill(db, **kw)["loops"] == 3
+        assert backfill(db, **kw)["loops"] == 0
+        conn = sqlite3.connect(db)
+        rows = conn.execute(
+            "SELECT loop_name, state FROM loop_events ORDER BY loop_name"
+        ).fetchall()
+        assert rows == [("alpha", "done"), ("beta", "fix"), ("gamma", "run")]
+        n_idx = conn.execute("SELECT count(*) FROM search_index WHERE kind='loop'").fetchone()[0]
+        assert n_idx == 3
+        conn.close()
+
+    def test_backfill_loops_changed_snapshot_adds_row(self, tmp_path: Path) -> None:
+        loops = tmp_path / ".loops"
+        running = loops / ".running"
+        running.mkdir(parents=True)
+        f = running / "x.json"
+        f.write_text(json.dumps({"loop_name": "x", "current_state": "a"}), encoding="utf-8")
+        db = tmp_path / "session.db"
+        kw = {"issues_dir": tmp_path / ".issues", "loops_dir": loops}
+        assert backfill(db, **kw)["loops"] == 1
+        f.write_text(json.dumps({"loop_name": "x", "current_state": "b"}), encoding="utf-8")
+        assert backfill(db, **kw)["loops"] == 1
+
     def test_backfill_tool_events_from_jsonl(self, tmp_path: Path) -> None:
         jsonl = tmp_path / "session.jsonl"
         jsonl.write_text(

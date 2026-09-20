@@ -3354,37 +3354,74 @@ def _backfill_issues_and_snapshots(
     return issues_count, snapshots_count
 
 
+def _iter_loop_state_files(loops_dir: Path) -> Generator[Path, None, None]:
+    """Yield FSM state files: ``.running/*.json`` plus both ``.history`` archive layouts.
+
+    Layouts: flat ``.history/<run_id>-<loop_name>/state.json`` and legacy
+    ``.history/<loop_name>/<run_id>/state.json``.
+    """
+    running = loops_dir / ".running"
+    if running.is_dir():
+        yield from sorted(running.glob("*.json"))
+    history = loops_dir / ".history"
+    if history.is_dir():
+        yield from sorted(history.glob("*/state.json"))
+        yield from sorted(history.glob("*/*/state.json"))
+
+
+def _loop_name_from_path(state_file: Path, loops_dir: Path) -> str:
+    """Best-effort loop name for a state file lacking a JSON ``loop_name``."""
+    from little_loops.fsm.persistence import _parse_run_folder
+
+    if state_file.parent.name == ".running":
+        name = state_file.name
+        return name[: -len(".state.json")] if name.endswith(".state.json") else state_file.stem
+    rel = state_file.relative_to(loops_dir / ".history")
+    if len(rel.parts) == 3:  # legacy: <loop_name>/<run_id>/state.json
+        return rel.parts[0]
+    parsed = _parse_run_folder(rel.parts[0])
+    return parsed[1] if parsed else rel.parts[0]
+
+
 def _backfill_loops(conn: sqlite3.Connection, loops_dir: Path) -> int:
-    """Seed ``loop_events`` from FSM state JSON under ``.loops/.running`` + ``.history``."""
+    """Seed ``loop_events`` from FSM state snapshots (running + both archive layouts).
+
+    Idempotent per snapshot: a row is inserted only when no ``transition='backfill'``
+    row already matches ``(loop_name, ts, state)``. Returns newly inserted event rows.
+    """
     count = 0
-    for sub in (".running", ".history"):
-        directory = loops_dir / sub
-        if not directory.is_dir():
+    for state_file in _iter_loop_state_files(loops_dir):
+        try:
+            data = json.loads(state_file.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
             continue
-        for state_file in sorted(directory.glob("*.json")):
-            try:
-                data = json.loads(state_file.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError):
-                continue
-            if not isinstance(data, dict):
-                continue
-            loop_name = str(data.get("loop_name") or state_file.stem)
-            state = data.get("current_state") or data.get("state")
-            ts = str(data.get("updated_at") or data.get("started_at") or "")
-            conn.execute(
-                "INSERT INTO loop_events(ts, loop_name, state, transition, retries) "
-                "VALUES(?, ?, ?, ?, ?)",
-                (ts, loop_name, str(state) if state else None, "backfill", None),
-            )
-            _index(
-                conn,
-                content=f"{loop_name} {state or ''}",
-                kind="loop",
-                ref=loop_name,
-                anchor=str(state_file),
-                ts=ts,
-            )
-            count += 1
+        if not isinstance(data, dict):
+            continue
+        loop_name = str(data.get("loop_name") or _loop_name_from_path(state_file, loops_dir))
+        state = data.get("current_state") or data.get("state")
+        state_val = str(state) if state else None
+        ts = str(data.get("updated_at") or data.get("started_at") or "")
+        exists = conn.execute(
+            "SELECT 1 FROM loop_events WHERE transition = 'backfill' AND retries IS NULL "
+            "AND loop_name = ? AND ts = ? AND state IS ? LIMIT 1",
+            (loop_name, ts, state_val),
+        ).fetchone()
+        if exists:
+            continue
+        conn.execute(
+            "INSERT INTO loop_events(ts, loop_name, state, transition, retries) "
+            "VALUES(?, ?, ?, ?, ?)",
+            (ts, loop_name, state_val, "backfill", None),
+        )
+        _index(
+            conn,
+            content=f"{loop_name} {state or ''}",
+            kind="loop",
+            ref=loop_name,
+            anchor=str(state_file),
+            ts=ts,
+        )
+        count += 1
     return count
 
 

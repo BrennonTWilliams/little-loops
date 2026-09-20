@@ -4,11 +4,12 @@ type: BUG
 title: 'll-session backfill under-captures loop history: non-recursive glob misses
   .history state files'
 priority: P2
-status: open
+status: done
 decision_needed: false
 discovered_by: ll-issues-create
 discovered_date: '2026-09-19'
 captured_at: '2026-09-19T22:27:37Z'
+completed_at: '2026-09-20T00:15:17Z'
 labels:
 - session-store
 - backfill
@@ -181,12 +182,18 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 Applied the reviewed scope and consistency corrections on 2026-09-19. Retained Option B with snapshot idempotency, rows-inserted counts, raw state semantics, and all three layouts. Rejected anchor-only dedup and automatic `(loop_name, ts)` historical deletion. Existing duplicates are accepted for this fix; duplicate repair, stable run identity, captured execution history, and historical `loop_runs` coverage remain separate follow-up candidates.
 
+## Resolution
+
+**Fixed** — `_backfill_loops` now walks `.running/*.json`, flat and legacy `.history` archives via `_iter_loop_state_files`, with a scoped `(loop_name, ts, state)` pre-existence check gating event + search inserts. Tests added in `test_session_store_lifecycle.py`; docs and stale docstring updated.
+
 ## Status
 
 **Open** | Created: 2026-09-19 | Priority: P2
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-20T00:15:17 - `f12de13a-18ba-4e37-a58e-f21eed3889cd.jsonl`
+- `/ll:ready-issue` - 2026-09-20T00:08:57 - `1886396e-cdcc-47ce-bf10-8a53d85acd40.jsonl`
 - `/ll:confidence-check` - 2026-09-20T00:02:59 - `be1263b0-2beb-4bf2-91f0-aafba59ad1a2.jsonl`
 - `/ll:verify-issues` - 2026-09-19T23:58:33 - `dfdc64ea-f3c8-41c0-9f24-89d5c090ffb6.jsonl`
 - `/ll:wire-issue` - 2026-09-19T23:27:50 - `4f20c1d3-a8db-42b4-9c73-8f8aaa3aa2fe.jsonl`
