@@ -14,6 +14,12 @@ blocked_by:
 - BUG-3512
 parent: EPIC-3493
 epic: EPIC-3493
+confidence_score: 80
+outcome_confidence: 56
+score_complexity: 10
+score_test_coverage: 10
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 # ENH-3511: Policy builder: explain disabled controls (aria-describedby / visible reason)
@@ -146,7 +152,27 @@ _These touchpoints were identified by wiring analysis and must be included in th
 **Open** | Created: 2026-09-19 | Priority: P3
 
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-19_
+
+**Readiness Score**: 80/100 → STOP — ADDRESS GAPS (Dependencies Hard Override)
+**Outcome Confidence**: 56/100 → LOW
+
+### Concerns
+- Design is otherwise specific: no format-check, parity, claim, decision, or Program Design gaps.
+- ENH-3513 defines `EXPORT_DISABLED_REASON`, which this issue consumes; it is not yet in the template (0 occurrences).
+
+### Gaps to Address
+- Unresolved `blocked_by`: ENH-3513 (open). BUG-3512 is completed. Land ENH-3513 first (sequence: BUG-3512 → ENH-3513 → ENH-3511).
+
+### Outcome Risk Factors
+- Deep per-site complexity in `renderConnected`: the Submit/Review reason is a clause-ordered derivation with busy-to-idle cleanup and outcome-unknown branching.
+- Weak automated coverage: no rendered-DOM pytest harness; the key ACs are verified only by the on-demand probe or a browser check.
+- Shared byte-compared golden template is edited by ENH-3513, ENH-3510 and ENH-3514; sequencing is required.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-09-20T00:50:23 - `b1e66617-7ca3-4c73-8eef-611558ec10fe.jsonl`
 - `/ll:verify-issues` - 2026-09-20T00:42:35 - `87477791-8eac-4eaa-a6b5-62a48362f015.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-09-19T21:30:33 - `6b9c88d3-074c-4681-b7c9-240fc332f147.jsonl`
 - `/ll:wire-issue` - 2026-09-19T21:05:52 - `39128071-49a7-41ee-a288-c86d0c6aa6ea.jsonl`

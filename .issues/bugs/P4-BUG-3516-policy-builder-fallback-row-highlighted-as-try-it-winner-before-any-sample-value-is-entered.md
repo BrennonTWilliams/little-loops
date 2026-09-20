@@ -15,6 +15,12 @@ blocked_by:
 - ENH-3514
 parent: EPIC-3493
 epic: EPIC-3493
+confidence_score: 80
+outcome_confidence: 86
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # BUG-3516: Policy builder: fallback row highlighted as Try-it winner before any sample value is entered
@@ -145,7 +151,22 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 **Open** | Created: 2026-09-19 | Priority: P4
 
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-19_
+
+**Readiness Score**: 80/100 → STOP — ADDRESS GAPS (Dependencies Hard Override)
+**Outcome Confidence**: 86/100 → HIGH CONFIDENCE
+
+### Concerns
+- Golden regeneration method is undocumented (issue says "treat as rendering via `cmd_policy_builder` under pinned inputs"); review diff carefully.
+- `.fallback-row.rule-winner` CSS is only sketched ("e.g. padding + transparent select background"); a new text/background pairing may need a `PAIRS` entry.
+
+### Gaps to Address
+- Unresolved `blocked_by`: ENH-3514 (open) — resolve/complete it, or drop the dependency from `blocked_by` if it no longer applies (the issue is a split-out of ENH-3514's audit finding and touches a different code path).
+
 ## Session Log
+- `/ll:confidence-check` - 2026-09-20T00:50:23 - `b1e66617-7ca3-4c73-8eef-611558ec10fe.jsonl`
 - `/ll:verify-issues` - 2026-09-20T00:42:34 - `87477791-8eac-4eaa-a6b5-62a48362f015.jsonl`
 - `/ll:wire-issue` - 2026-09-19T21:26:47 - `bdde24da-3994-4eee-b745-85fb52f99de6.jsonl`
 - `/ll:refine-issue` - 2026-09-19T21:23:37 - `4a41a017-324d-4857-a14c-acc7242546eb.jsonl`

@@ -16,6 +16,12 @@ blocked_by:
 - BUG-3512
 parent: EPIC-3493
 epic: EPIC-3493
+confidence_score: 80
+outcome_confidence: 79
+score_complexity: 18
+score_test_coverage: 18
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 # ENH-3514: Policy builder: unify status/message class vocabularies and heading/legend conventions
@@ -145,7 +151,22 @@ _These touchpoints were identified by wiring analysis and must be included in th
 **Open** | Created: 2026-09-19 | Priority: P4
 
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-19_
+
+**Readiness Score**: 80/100 → STOP — ADDRESS GAPS (Dependencies Hard Override)
+**Outcome Confidence**: 79/100 → MODERATE
+
+### Concerns
+- Golden fixture is byte-compared and shared with sibling issues; must regenerate after ENH-3510 lands.
+- New four-state x two-theme computed-color browser assertions have no existing harness in pytest (probe-only).
+
+### Gaps to Address
+- `blocked_by` ENH-3510 is unresolved (status: open); wait for it (or remove the edge if no longer applicable). BUG-3512 is done.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-09-20T00:50:25 - `b1e66617-7ca3-4c73-8eef-611558ec10fe.jsonl`
 - `/ll:verify-issues` - 2026-09-20T00:42:36 - `87477791-8eac-4eaa-a6b5-62a48362f015.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-09-19T21:30:34 - `6b9c88d3-074c-4681-b7c9-240fc332f147.jsonl`
 - `/ll:wire-issue` - 2026-09-19T21:05:53 - `39128071-49a7-41ee-a288-c86d0c6aa6ea.jsonl`
