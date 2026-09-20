@@ -155,6 +155,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-20T00:42:36 - `87477791-8eac-4eaa-a6b5-62a48362f015.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-09-19T21:30:34 - `6b9c88d3-074c-4681-b7c9-240fc332f147.jsonl`
 - `/ll:wire-issue` - 2026-09-19T21:05:52 - `39128071-49a7-41ee-a288-c86d0c6aa6ea.jsonl`
 - `/ll:refine-issue` - 2026-09-19T20:57:35 - `dff55670-569e-48fc-a235-30c0ce66babb.jsonl`
