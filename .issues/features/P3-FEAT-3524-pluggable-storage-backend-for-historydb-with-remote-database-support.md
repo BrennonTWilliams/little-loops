@@ -11,6 +11,7 @@ learning_tests_required:
   - libsql
 spike_attempted: true
 spike_completed: true
+verify_verdict: NON_VALID
 ---
 
 # FEAT-3524: Pluggable history.db backend with remote libSQL support
@@ -525,6 +526,50 @@ learning-test registry entry) as untracked `stale_file_ref` entries. These are
 planned artifacts, not missing existing dependencies; the `New:` label does not
 suppress this gate's findings. Do not create empty placeholders to silence it.
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` — 2026-09-22:_
+
+Verdict: NEEDS_UPDATE. Graph checks used `provider=codegraph`, `freshness=fresh`
+(§2B.0), so anchor/negative-claim results below are treated as confirmed, not leads.
+
+- **Spot-checked file:line citations** across Files to Modify, both wiring passes,
+  and Program Design (`schema.py:1492,1443`; `codequery/core.py:103,93-96,39-44`;
+  `host_runner.py:2535,294-318`, ~15 total) — all accurate, no drift.
+- **Spike Results table** — confirmed real:
+  `scripts/tests/spike/session_store_backend_dialect/{backend.py,dialects.py}` and
+  `.ll/spikes/spike-FEAT-3524.md` exist; all 7 named tests
+  (`TestDialectMigration::*`, `TestConcurrentMigration::*`, `TestCapabilityGate::*`,
+  `TestSpikeIsolation::*`) ran and passed, matching the claimed result.
+- **Negative/dead-code claims** (no `connect_readonly()`, no `dialect`
+  abstraction, `except Unsupported` only at `cli/code.py:146`, no
+  `postgres|libsql|psycopg|sqlalchemy` in `pyproject.toml`) — all still hold as of
+  today.
+- **Proposal-vs-code (check B6)** — no new inconsistency found; the
+  `ensure_db() -> Path` fabricated-path tension is already self-flagged under Open
+  Questions, not a silent defect.
+- **`## Blocked By`/`## Blocks`** — neither section exists; no dependency
+  references to validate.
+- **Gap found — `.ll/learning-tests/libsql.md`**: frontmatter `status: proven`
+  gates `learning_tests_required: [libsql]` mechanically, but the artifact does not
+  substantiate what the issue's own Acceptance Criteria and Implementation Steps
+  require. All 7 assertions connect via a bare local path or `:memory:`; none
+  exercise `url`/`auth_token_env`/network/timeout/remote-mode behavior (the last
+  assertion explicitly tests the *local*-only case). AC #1 requires the gate to
+  prove "the selected version **and remote mode**" — it currently proves neither.
+  Separately, one assertion ("invalid SQL and constraint violations raise
+  `libsql.Error`, not `sqlite3.Error` or a subclass of it") has `result: fail`,
+  yet the record's overall `status` is still `proven` with no note reconciling
+  the two.
+
+Remaining: this readiness blocker is not auto-correctable by this command (it
+requires a real remote endpoint to re-run the learning test) — `.ll/learning-tests/libsql.md`
+needs remote-mode assertions added and the `fail` result triaged (fixed, or
+explicitly accepted and documented as a known driver divergence) before the
+Open Questions / AC #1 readiness gate can be considered resolved. `spike_completed:
+true` and `spike_attempted: true` in frontmatter remain accurate for what they
+claim (local spike mechanics only) and are not affected.
+
 ## Related Key Documentation
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
@@ -535,6 +580,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-22T19:21:07 - `6cde693c-199f-46be-be94-59e50bb11494.jsonl`
 - `/ll:wire-issue` - 2026-09-22T16:47:36 - `48d447aa-e589-42cb-96ec-cab26ee6a78c.jsonl`
 - `/ll:refine-issue` - 2026-09-22T16:30:06 - `49a7e360-74a8-4694-abcb-c3e17b0da6de.jsonl`
 - `/ll:wire-issue` - 2026-09-22T16:11:57 - `d11b4d88-e05e-48db-9617-b48caee451f5.jsonl`
