@@ -1,24 +1,28 @@
 ---
 id: FEAT-3524
 type: FEAT
-title: Pluggable storage backend for history.db with remote database support
+title: Pluggable history.db backend with remote libSQL support
 priority: P3
 status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-09-22'
 captured_at: '2026-09-22T15:39:38Z'
 learning_tests_required:
-  - psycopg
   - libsql
 spike_attempted: true
 spike_completed: true
 ---
 
-# FEAT-3524: Pluggable storage backend for history.db with remote database support
+# FEAT-3524: Pluggable history.db backend with remote libSQL support
 
 ## Summary
 
-Allow little-loops users to point `history.db` at a remote database (e.g. Postgres, MySQL, or a networked/hosted SQLite such as Turso/libSQL) via a pluggable storage backend configured under `history.*` in `.ll/ll-config.json`, instead of only the local in-repo `.ll/history.db` file.
+Allow little-loops users to share a history store across machines running the same
+project by configuring a remote libSQL database through `history.backend` in
+`.ll/ll-config.json`. Preserve local SQLite as the unchanged default. This issue
+implements SQLite and the Python `libsql` driver's direct remote mode only;
+Postgres, MySQL, other Turso engines/drivers, and embedded-replica synchronization
+are out of scope.
 
 ## Current Behavior
 
@@ -38,15 +42,16 @@ directly, and roughly 28 other call sites across ~15 modules
 
 ## Expected Behavior
 
-A user should be able to configure `history.backend` in `.ll/ll-config.json`
-to point `history.db` at a remote database (Postgres, MySQL, or a networked
-SQLite such as Turso/libSQL) instead of the local file, with the default
-(`kind: sqlite`, unset `backend`) behaving exactly as today. All
-`session_store` read/write paths (`ll-history`, `ll-logs`, session digests,
-compaction context) should work transparently against the configured
-backend, with SQLite-only features (FTS5 search, WAL, `VACUUM`) degrading
-with a clear message rather than crashing on backends that don't support
-them.
+An unset `history.backend` or `kind: sqlite` preserves today's local behavior.
+With `kind: libsql`, `ll-history`, `ll-logs`, session digests, compaction reads and
+writes, and event sinks use the configured remote history store. Unsupported
+FTS5/maintenance/export operations report a clear capability limitation rather
+than crashing or silently using a different local store. Compatibility is proven
+for the selected remote driver and deployment, not inferred from SQLite syntax.
+
+Best-effort telemetry must not abort the operation it observes; explicit reads,
+migrations, and maintenance must expose actionable failures. `ll-doctor` provides
+an explicit, bounded, non-mutating connectivity/authentication/schema diagnostic.
 
 ## Motivation
 
@@ -54,29 +59,34 @@ Teams running little-loops across several machines or CI runners (e.g. the self-
 
 ## Proposed Solution
 
-Introduce a `history.backend` config block (`kind: sqlite|postgres|libsql` +
-`url`/`url_env`, default `sqlite` = current behavior unchanged) and a new
-backend abstraction module, `little_loops.session_store.backend`, exposing
-`connect()` / `connect_readonly()` / `ensure_schema()` plus dialect
-capability flags. Route every `sqlite3.connect(` call site in
-`session_store` and its consumers through this single chokepoint (mirrors
-the `resolve_host()` pattern in `little_loops/host_runner.py:2535` for host
-CLI abstraction), keep SQLite-only features (FTS5, WAL PRAGMAs, `VACUUM`)
-behind capability checks that degrade gracefully, and reuse
-`_apply_migrations` with per-dialect DDL where SQLite syntax diverges. See
-`## Proposed Design` below for the full phased breakdown and open questions
-(backend choice, driver dependency policy, `ll-doctor` connectivity checks).
+Introduce `history.backend` with `kind: sqlite|libsql`, endpoint settings
+`url`/`url_env`, and `auth_token_env`. Implement a lazy-loaded backend resolver
+following `codequery.core.resolve_provider`, with connection, cursor, row,
+transaction, and error contracts derived from actual history consumers. Route
+history-store connections through it while preserving deliberately local stores
+and scratch artifacts.
+
+Reuse compatible SQL and the existing migration sequence only after real-driver
+learning tests prove it. Capability handling must cover connection setup,
+read-only access, search, maintenance, and local snapshot export. A connection
+chokepoint is necessary but does not remove SQL, filesystem, transaction, or
+network-latency assumptions. See Proposed Design and the remaining readiness
+questions below.
 
 ## Integration Map
 
 ### Files to Modify
+- New: `scripts/little_loops/session_store/backend.py` — resolver and adapter contracts
+- `scripts/pyproject.toml` — justified optional `libsql` extra after driver proof
+- `little_loops/session_store/__init__.py` — preserve public connection/path contracts
+- `little_loops/issue_manager.py` and other `SQLiteTransport` constructors — target resolution and lifecycle
 - `little_loops/session_store/db.py` (`_resolve_db_path`, `resolve_history_db`)
 - `little_loops/session_store/schema.py` (`ensure_db`, `_configure_connection`, `_apply_migrations`)
 - `little_loops/session_store/{sessions,queries,lifecycle,writers}.py`
 - `little_loops/history_reader/_base.py`
 - `little_loops/issue_history/*`
 - `little_loops/cli/{history,logs,doctor,doctor_trim,ctx_stats}.py`
-- `little_loops/queue_store.py`, `little_loops/codequery/codegraph.py` (evaluate whether in scope for the first cut — see Proposed Design item 5)
+- `little_loops/queue_store.py`, `little_loops/codequery/codegraph.py` — audit only to distinguish history consumers from independent local stores; do not migrate `queue.db` or codegraph databases
 - `little_loops/config-schema.json` (`history` block, line 2138 — add `backend`)
 
 _Wiring pass added by `/ll:wire-issue`:_
@@ -87,15 +97,15 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ### Dependent Files (Callers/Importers)
 - The ~28 `sqlite3.connect(` call sites enumerated above are themselves the
-  callers that must move behind the new `session_store.backend` chokepoint;
-  no external module imports `session_store` internals directly beyond the
-  files already listed.
+  inventory to classify; only history-store callers move behind the new chokepoint;
+  also audit filesystem operations and explicit-path callers; connection counts
+  alone do not define the implementation scope.
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `little_loops/session_store/__init__.py:79-151` — re-exports `connect`, `ensure_db`, `resolve_history_db`, and other backend-relevant symbols from `db.py`/`schema.py`/`lifecycle.py`/`queries.py`/`writers.py`/`sessions.py`; this is the package's public API surface and is not itself in Files to Modify above [Agent 1 finding]
+- `little_loops/session_store/__init__.py:79-151` — re-exports `connect`, `ensure_db`, `resolve_history_db`, and other backend-relevant symbols from `db.py`/`schema.py`/`lifecycle.py`/`queries.py`/`writers.py`/`sessions.py`; this is the package's public API surface, now explicitly included in Files to Modify [Agent 1 finding]
 - `little_loops/cli/artifact/dashboard.py:35,42` — imports `session_store.queries.build_snapshot_db` and `session_store.schema.SCHEMA_VERSION` directly, bypassing the `session_store/__init__.py` re-export surface; downstream consumers `little_loops/cli/artifact/serve.py`, `little_loops/cli/artifact/__init__.py`, and `little_loops/cli/loop/run.py:634,675` (`render_live_fragment`) build on it [Agent 1 + Agent 2 finding]
 - `little_loops/user_messages.py:14,35,495,747,797,923,1191,1192` — imports `detect_sessions`, `SessionHandle`, `host_layout_for`, `iter_events`, `DEFAULT_DB_PATH`, `resolve_history_db` from `session_store` [Agent 1 finding]
-- ~19 further production modules import `little_loops.session_store`'s public re-export surface (`resolve_history_db`, `connect`, `ensure_db`, `record_*` event writers, `REGISTERED_HOSTS`, `SQLiteTransport`, etc.) and must keep working unchanged against whatever `Backend`-wrapped connection `connect()`/`ensure_db()` return: `little_loops/worktree_utils.py:334`, `little_loops/mcp_server/tools.py:158-172`, `little_loops/work_verification.py:278-280`, `little_loops/issue_manager.py:52`, `little_loops/transport.py:2024`, `little_loops/cli_args.py:352`, `little_loops/pytest_history_plugin.py:126`, `little_loops/runner_spec.py:323,326`, `little_loops/parallel/orchestrator.py:44`, `little_loops/parallel/merge_coordinator.py:28`, `little_loops/parallel/worker_pool.py:27`, `little_loops/init/cli.py:16`, `little_loops/compaction/instant.py:128`, `little_loops/compaction/result.py:43,100`, `little_loops/advisor.py:478`, `little_loops/fsm/executor.py:1946,2013,2630,4368,4393`, `little_loops/fsm/continuity.py:16`, `little_loops/hooks/{pre_compact,subagent_stop,session_start,sweep_stale_refs}.py`, `little_loops/workflow_sequence/io.py:47`, `little_loops/__init__.py:75` [Agent 1 finding]
+- ~19 further production modules import `little_loops.session_store`'s public re-export surface (`resolve_history_db`, `connect`, `ensure_db`, `record_*` event writers, `REGISTERED_HOSTS`, `SQLiteTransport`, etc.) and need a caller-contract audit: `connect()` returns a connection but `ensure_db()` currently returns a path; preserve local behavior and adapt remote callers explicitly: `little_loops/worktree_utils.py:334`, `little_loops/mcp_server/tools.py:158-172`, `little_loops/work_verification.py:278-280`, `little_loops/issue_manager.py:52`, `little_loops/transport.py:2024`, `little_loops/cli_args.py:352`, `little_loops/pytest_history_plugin.py:126`, `little_loops/runner_spec.py:323,326`, `little_loops/parallel/orchestrator.py:44`, `little_loops/parallel/merge_coordinator.py:28`, `little_loops/parallel/worker_pool.py:27`, `little_loops/init/cli.py:16`, `little_loops/compaction/instant.py:128`, `little_loops/compaction/result.py:43,100`, `little_loops/advisor.py:478`, `little_loops/fsm/executor.py:1946,2013,2630,4368,4393`, `little_loops/fsm/continuity.py:16`, `little_loops/hooks/{pre_compact,subagent_stop,session_start,sweep_stale_refs}.py`, `little_loops/workflow_sequence/io.py:47`, `little_loops/__init__.py:75` [Agent 1 finding]
 - `hooks/scripts/context-monitor.sh:56,82` — a shell hook with inline Python importing `record_session_lifecycle_event`/`record_context_pressure_event`, `resolve_history_db` from `session_store`; outside the Python package, easy to miss during the chokepoint migration [Agent 1 finding]
 
 ### Similar Patterns
@@ -105,6 +115,12 @@ _Wiring pass added by `/ll:wire-issue`:_
   should mirror for `history.backend` selection.
 
 ### Tests
+- New: `scripts/tests/test_session_store_backend.py` — adapter/config/error contracts
+- Remote integration coverage for migration atomicity/concurrency, full migration
+  chain, representative consumer reads/writes, read-only behavior, and failures;
+  skip only for absent test configuration, not configured endpoint failures
+- Extend transport, snapshot/export, doctor, and path-precedence coverage for the
+  decisions and acceptance criteria below
 - `scripts/tests/test_session_store_db.py`, `test_session_store_schema.py`,
   `test_session_store_lifecycle.py`, `test_session_store_queries.py`,
   `test_session_store_writers.py`
@@ -127,18 +143,20 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `docs/reference/CONFIGURATION.md:608-662` (`### history`, `history.db_path` row at `:616`) — needs a new `history.backend` row/subsection documenting the config shape and secret env-var pattern [Agent 1 + Agent 2 finding]
-- `docs/reference/API.md` — types session-store function signatures as `conn: sqlite3.Connection` throughout (e.g. `:9906`, `:10311`) and narrates FTS5/VACUUM behavior (`:4862-10331` range) — needs updating for a dialect-agnostic connection type [Agent 2 finding]
+- `docs/reference/API.md` — types session-store function signatures as `conn: sqlite3.Connection` throughout (e.g. `:9906`, `:10311`) and narrates FTS5/VACUUM behavior (`:4862-10331` range) — needs updating for a backend-neutral connection/cursor/row contracts [Agent 2 finding]
 - `docs/reference/CLI.md` — `ll-session search --fts` (`:4118`), `compact --and-prune` (`:4183`), `prune`/`recompress` (`:4087-4089`, `:4256-4258`), `ll-history-context` (`:4413`) FTS5 matching, `ll-queue list` (`:4342`) `sqlite3.OperationalError` — document unconditional SQLite behavior that needs a capability-gate caveat [Agent 2 finding]
 - `docs/guides/HISTORY_SESSION_GUIDE.md:634` (VACUUM prose) and `docs/guides/WORKFLOW_ANALYSIS_GUIDE.md:251` (FTS5 caveat) [Agent 2 finding]
-- `docs/ARCHITECTURE.md:89` (module-overview table: "Unified per-project SQLite + FTS5 history store"), `:636` (`SQLiteTransport` `PRAGMA user_version` migrations), `:832` (states `queue_store.py` "copies `session_store/schema.py`'s ... shape rather than sharing code, matching every other sqlite consumer in this codebase" — becomes stale once `session_store` routes through the new backend chokepoint) [Agent 2 finding]
+- `docs/ARCHITECTURE.md:89` (module-overview table: "Unified per-project SQLite + FTS5 history store"), `:636` (`SQLiteTransport` and migration prose (history uses `meta.schema_version`; correct any `PRAGMA user_version` claim)), `:832` (states `queue_store.py` "copies `session_store/schema.py`'s ... shape rather than sharing code, matching every other sqlite consumer in this codebase" — verify wording while retaining queue storage as local-only) [Agent 2 finding]
 - `skills/compact-session/SKILL.md:15,68` and `skills/improve-claude-md/SKILL.md:206,209,293,308` — reference `session_store.compact_session`/`_summarize_block`/`resolve_history_db`/`record_retirement` in prose/example code [Agent 1 finding]
 
 ### Configuration
+- `history.backend.auth_token_env` — separate authentication-token reference; no committed token
+- New: `.ll/learning-tests/libsql.md` — required real remote driver/version evidence
 - `.ll/ll-config.json` `history.backend` block; `LL_HISTORY_DB` /
   `history.db_path` remain the sqlite-only path override, unchanged
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `.ll/learning-tests/sqlite3.md` (proven, 15 assertions) is the existing Learning Test Registry precedent this issue's own `learning_tests_required: [psycopg, libsql]` frontmatter is modeled on; `little_loops/learning_tests/gate.py` enforces that frontmatter against proven `psycopg.md`/`libsql.md` entries as a gate-blocking prerequisite before implementation [Agent 2 finding]
+- `.ll/learning-tests/sqlite3.md` (proven, 15 assertions) is the existing Learning Test Registry precedent this issue's `learning_tests_required: [libsql]` frontmatter is modeled on; `little_loops/learning_tests/gate.py` enforces that frontmatter against a proven `libsql.md` entry as a gate-blocking prerequisite before implementation [Agent 2 finding]
 
 ### Codebase Research Findings
 
@@ -152,13 +170,65 @@ _Added by `/ll:refine-issue` — 2026-09-22 — based on codebase analysis:_
 - **Optional-dependency extras** (`pyproject.toml:141-199`) follow `<name> = ["pkg<constraint>"]` under `[project.optional-dependencies]`, with an inline justification comment on any version bound — the `mcp` extra (`pyproject.toml:178-191`) is the fullest example, explaining both the exact pin and why it's an extra rather than a base dependency (16 mandatory transitive deps otherwise landing on every install). A repo-wide search found no existing reference to `postgres`, `libsql`, `psycopg`, or `sqlalchemy` anywhere in `scripts/pyproject.toml` or `scripts/little_loops/`.
 - **No dialect abstraction exists anywhere in the codebase today**: a repo-wide search for `dialect` as a code identifier and for any `*Dialect` class found zero hits. `little_loops.session_store.backend` (the module this issue proposes) has no current counterpart in the tree.
 
+### Review corrections and additional findings — 2026-09-22
+
+- SQL compatibility extends beyond opens: `session_store/writers.py` uses
+  `INSERT OR IGNORE`, cursor insert IDs and affected-row counts;
+  `session_store/lifecycle.py` uses `lastrowid`; `session_store/schema.py` uses
+  SQLite DDL, explicit isolation control, and schema-inspection PRAGMAs. These
+  representative dependencies justify a compatibility audit without treating
+  unverified package-wide occurrence counts as scoped effort.
+- `_apply_migrations` in `session_store/schema.py:1492` records versions in
+  `meta.schema_version`, not `PRAGMA user_version`. Its lock/version/rollback
+  sequence must be proven remotely; the existing spike only proves local mechanics.
+- `SQLiteTransport` (`session_store/writers.py:2894`, constructed by
+  `issue_manager.py:1742`) is already a listed consumer, but needs explicit work:
+  it directly opens a connection with `check_same_thread=False`, serializes writes,
+  catches `sqlite3.Error`, and disables/logs failed sinks. Driver error/thread
+  semantics must preserve that best-effort contract.
+- `session_store/queries.py:250` builds dashboard snapshots with `ATTACH DATABASE`
+  to a local destination. `export_history` also checks `db_path.exists()`.
+  Connection replacement alone cannot make those operations remote-aware.
+- `session_store/schema.py:204` defines sessions with `session_id`, `jsonl_path`,
+  `started_at`, and `project_path`; no machine provenance is present in its session
+  migrations. Sharing must account for local paths and identity without assuming
+  that adding a hostname alone solves collisions or source access.
+- Official Python documentation distinguishes `libsql` direct remote mode from
+  `turso_serverless` and shows separate `auth_token` configuration. Target one
+  engine/driver explicitly; test capabilities rather than generalizing from the
+  Turso name: https://github.com/tursodatabase/turso-docs/blob/main/sdk/python/quickstart.mdx
+
 ## Implementation Steps
 
-1. Add `history.backend` to `config-schema.json` with `sqlite` default; confirm existing `db_path` / `LL_HISTORY_DB` regression tests still pass unchanged.
-2. Build `little_loops.session_store.backend` (`connect()` / `connect_readonly()` / `ensure_schema()` + capability flags) and route all `session_store` connection sites through it.
-3. Gate SQLite-only features (FTS5 search, WAL PRAGMAs, `VACUUM`) behind capability checks with a clear "not supported by backend" degradation path.
-4. Extend `_apply_migrations` with per-dialect DDL for the first non-SQLite backend chosen (see Open Questions).
-5. Add an integration test for the chosen remote backend (skips when unavailable) and document the new config + secret pattern in `docs/reference/`.
+1. Complete the `libsql` learning-test gate against a real remote endpoint: pin
+   the tested driver/version as a justified optional extra; prove connection,
+   cursor/row, transaction, read-only, error, authentication, and timeout behavior.
+   Resolve the readiness questions below before committing to the adapter design.
+2. Add `history.backend` config and resolver contracts. Define endpoint/env and
+   explicit-local-path precedence without changing SQLite defaults; reject
+   unsupported kinds and invalid combinations with redacted diagnostics.
+3. Implement the backend adapter and route history consumers through it. Include
+   public re-exports and `SQLiteTransport` construction, serialized cross-thread
+   writes, shutdown, and error handling; audit filesystem existence checks and
+   local-path assumptions as well as direct connection sites.
+4. Adapt connection setup and migrations using `meta.schema_version`. Verify the
+   full migration chain, concurrent initialization, atomic rollback, schema-ahead
+   behavior, and genuinely non-mutating reads against the remote driver. Do not
+   promote the SQLite-backed spike as remote compatibility evidence.
+5. Implement capability handling and the chosen snapshot/export behavior.
+   Preserve local scratch SQLite output for supported dashboard snapshots; if
+   remote export is deferred, explicitly gate it and document the limitation.
+   Preserve same-project identity and foreign-machine source-path behavior as
+   settled in the readiness decisions.
+6. Normalize backend errors. Bound network waits; keep event sinks best-effort
+   with rate-limited redacted warnings, but surface explicit read/migration/
+   maintenance failures. Specify reconnect/retry behavior without blindly
+   retrying writes whose commit outcome is unknown.
+7. Add an explicit `ll-doctor` backend diagnostic that checks connectivity,
+   authentication, and schema compatibility without migrations or writes.
+8. Add focused local regressions and remote integration coverage, then update
+   configuration/API/CLI docs. Remote tests skip only when their required test
+   configuration is absent; a configured endpoint failure fails the test.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -169,15 +239,21 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Update `little_loops/cli/history.py:793-802` — route the `root` subcommand's ad-hoc `sqlite3.connect(str(db_path))` through the new chokepoint
 - Update `little_loops/issue_history/workspace_quality.py:108-120` — fold `_open_member_readonly()` into the shared `connect_readonly()` chokepoint rather than a third independent duplicate
 - Add `scripts/tests/test_config_schema.py` assertion block for `history.backend` (pattern at `:624-633`)
-- Update `docs/reference/CONFIGURATION.md:608-662`, `docs/reference/API.md`, `docs/reference/CLI.md`, `docs/ARCHITECTURE.md:89,636,832`, `docs/guides/HISTORY_SESSION_GUIDE.md:634`, `docs/guides/WORKFLOW_ANALYSIS_GUIDE.md:251` — reflect the new backend, capability-gated FTS5/VACUUM caveats, and correct the now-stale `queue_store.py`-mirrors-`session_store` claim in `docs/ARCHITECTURE.md:832`
-- Spot-check (verification only, no code change expected) the ~20 downstream consumers of `session_store`'s public re-export surface listed under Dependent Files, to confirm they still work against the new `Backend`-wrapped connection
+- Update `docs/reference/CONFIGURATION.md:608-662`, `docs/reference/API.md`, `docs/reference/CLI.md`, `docs/ARCHITECTURE.md:89,636,832`, `docs/guides/HISTORY_SESSION_GUIDE.md:634`, `docs/guides/WORKFLOW_ANALYSIS_GUIDE.md:251` — reflect the new backend, capability-gated FTS5/VACUUM caveats, and check the `queue_store.py`-mirrors-`session_store` description against the retained local-only queue scope in `docs/ARCHITECTURE.md:832`
+- Audit and verify the ~20 downstream consumers of `session_store`'s public re-export surface listed under Dependent Files, to confirm they still work against the adapter contracts; change callers where path or connection assumptions require it
 
 ## Impact
 
-- **Priority**: P3 - Cross-machine/CI analytics sharing is valuable but no current user is blocked; local `.ll/history.db` remains fully functional.
-- **Effort**: Large - ~28 call sites across ~15 modules must move behind a new chokepoint, plus a new optional third-party driver dependency and per-dialect migration handling.
-- **Risk**: Medium - default (`sqlite`, no `backend` configured) preserves current behavior exactly, but the abstraction touches every session_store read/write path, so a regression could silently corrupt or misroute local history data.
-- **Breaking Change**: No - opt-in via `history.backend`; unset behaves identically to today.
+- **Priority**: P3 — shared same-project history is useful; local history remains functional.
+- **Effort**: Large — connection routing plus cursor/row contracts, transaction and
+  migration compatibility, error normalization, local-file operations, and remote
+  round-trip costs. Package-wide SQLite-idiom counts include excluded stores and
+  are not an effort estimate. Postgres/MySQL dialect translation is separate work.
+- **Risk**: Medium to high until real-driver proofs pass — routing mistakes,
+  partial migrations, ambiguous network write outcomes, and shared-store identity
+  can lose or misattribute history. The existing spike retires only local mechanics.
+- **Breaking Change**: No intended change for default SQLite users; remote support
+  is opt-in and any unsupported remote operations must be documented explicitly.
 
 ## Current State
 
@@ -188,75 +264,172 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Proposed Design
 
-1. Introduce a `history.backend` config block, e.g.:
+1. Configure one selected backend, for example:
    ```json
-   "history": {
-     "backend": { "kind": "sqlite" | "postgres" | "libsql", "url": "postgresql://..." , "url_env": "LL_HISTORY_URL" }
+   {
+     "history": {
+       "backend": {
+         "kind": "libsql",
+         "url_env": "LL_HISTORY_URL",
+         "auth_token_env": "LL_HISTORY_AUTH_TOKEN"
+       }
+     }
    }
    ```
-   Default `kind: sqlite` preserves current behavior (`db_path` / `LL_HISTORY_DB` unchanged). Secrets should come from an env var reference, never inline in the committed config.
-2. Add a backend abstraction (`little_loops.session_store.backend`) exposing `connect()` / `connect_readonly()` / `ensure_schema()` and a small dialect shim, and route all session_store connection sites through it (`resolve_host()`-style single chokepoint, mirroring the host CLI abstraction rule).
-3. Keep SQLite-only features (FTS5 search, WAL PRAGMAs, `VACUUM`) behind capability flags on the backend; degrade gracefully (e.g. `ll-session search --fts` reports "not supported by backend") rather than crashing.
-4. Migrations: reuse `_apply_migrations` with per-dialect DDL where SQLite syntax diverges (AUTOINCREMENT, `json_extract`, etc.).
-5. Out of scope for the first cut: `queue.db`, codegraph DB, and workspace-manifest aggregation over remote backends.
+   Support a non-secret literal `url` or `url_env`, with exactly one endpoint
+   source for libSQL. Never commit tokens; redact credentials from errors and
+   diagnostics. Unset backend / `kind: sqlite` preserves `db_path` and
+   `LL_HISTORY_DB`. Specify remote-mode interactions with explicit local paths
+   and SQLite-only overrides before implementation; never silently fall back to
+   a local history store after remote failure.
+2. Select Python `libsql` direct remote connections, not embedded replicas or
+   `turso_serverless`. Keep the driver behind a justified, version-bounded optional
+   extra with a clear missing-extra error. Prove the selected version against the
+   intended deployment before implementing production consumers. Official driver
+   distinctions and token usage: https://github.com/tursodatabase/turso-docs/blob/main/sdk/python/quickstart.mdx
+3. Resolve adapters lazily. Define connection, cursor, row, transaction, and error
+   contracts from consumer usage. Do not assume `sqlite3.Connection` inheritance,
+   `sqlite3.Row` compatibility, or identical exception classes. Update annotations
+   only for code that accepts multiple backends; retain SQLite types for truly
+   local-only operations.
+4. History migration versioning uses `meta.schema_version`, not
+   `PRAGMA user_version`. Reuse migration SQL where proven compatible; verify
+   `BEGIN IMMEDIATE`/isolation control or an equivalent atomic locking sequence,
+   rollback, version re-read under lock, full migrations, and schema-ahead checks.
+   Read-only access and diagnostics must not create or migrate the remote store.
+5. Determine capabilities from tested driver/deployment behavior. Gate WAL setup,
+   FTS5, maintenance, and snapshot export as appropriate; SQLite dialect support
+   does not prove all PRAGMAs or file operations work remotely. Audit network
+   round trips in migration/event paths rather than assuming local latency.
+6. Preserve failure policy per operation: event telemetry is best-effort with
+   bounded waits and rate-limited warnings; explicit reads/migrations/maintenance
+   report failures. Define reconnect and ambiguous-commit handling. Doctor checks
+   are explicitly invoked, bounded, non-mutating, and redact secrets.
+7. Sharing is limited to machines running the same logical project. Before
+   implementation, settle project/session/event identity and how machine-local
+   `jsonl_path`/`project_path` values are represented and consumed. Add provenance
+   only if needed for correctness; machine-filtered analytics are not required.
+8. Out of scope: Postgres/MySQL or a general SQL dialect layer; other Turso
+   engines/drivers; embedded replicas/offline synchronization; migrating
+   `queue.db` or codegraph databases; workspace-manifest aggregation over remote
+   backends; unrelated-project multitenancy and machine-filtered analytics.
 
 ## Program Design
 
 ### Types
 
-- `BackendKind: Literal["sqlite", "postgres", "libsql"]`
-- `BackendConfig: dataclass` (`kind: BackendKind`, `url: str | None`, `url_env: str | None`)
+- `BackendKind: Literal["sqlite", "libsql"]`
+- `BackendConfig: dataclass` (`kind: BackendKind`, `url: str | None`,
+  `url_env: str | None`, `auth_token_env: str | None`)
+- New: `HistoryConnection`, `HistoryCursor`, and `HistoryRow` protocols in the
+  proposed backend module. Inventory required methods/properties from consumers:
+  `execute`, `executemany`, commit/rollback/close, transaction/isolation semantics,
+  cursor fetching/iteration, `lastrowid`, `rowcount`, and indexed/named row access.
+  Adapt row-factory behavior internally; finalize exact signatures after driver
+  learning tests. A five-method connection protocol is insufficient.
+- Backend-neutral error categories distinguish unavailable/authentication,
+  integrity, unsupported operation, and other query/migration failures; adapters
+  preserve causes without leaking credentials.
 
 ### Signatures
 
-- `resolve_backend(config: dict) -> Backend` (mirrors `resolve_host()` in `host_runner.py:2535`)
-- `Backend.connect(self) -> Connection`
-- `Backend.connect_readonly(self) -> Connection`
+- `resolve_backend(config: dict) -> Backend` — lazy registry following `resolve_provider`
+- `Backend.connect(self) -> HistoryConnection`
+- `Backend.connect_readonly(self) -> HistoryConnection`
 - `Backend.ensure_schema(self) -> None`
-- `Backend.supports(self, capability: str) -> bool` (gates FTS5/WAL/`VACUUM`)
+- `Backend.supports(self, capability: str) -> bool`
 
 ### Call Path
 
-`session_store.schema.ensure_db` -> `session_store.backend.resolve_backend` -> `Backend.connect` / `Backend.ensure_schema` -> `session_store.schema._apply_migrations`
+Project configuration + explicit target policy -> `resolve_backend` -> connection
+adapter -> history consumer. Write initialization invokes `ensure_schema` and the
+proven migration sequence; read-only/doctor paths must not invoke migrations.
+Preserve public local-path APIs where needed: `ensure_db()` currently returns a
+`Path`, so a remote target must not be represented as a fabricated filesystem path.
+Finalize that integration contract before changing callers.
 
 ## Use Case
 
 **Who**: A little-loops maintainer running work across several machines and
-a self-hosted CI runner (per `.claude/CLAUDE.md`'s Thinky runner).
+a self-hosted CI runner (including the Thinky runner).
 
 **Context**: Each machine currently writes its own local `.ll/history.db`,
 so `ll-history` / `ll-logs` analytics, session digests, and compaction
 context are fragmented per machine with no way to sync without shipping
 `.db` files around.
 
-**Goal**: Point every machine's `history.backend` at one shared Postgres (or
-libSQL/Turso) instance via `.ll/ll-config.json`, so all machines write to
+**Goal**: Point machines running the same logical project at one shared remote
+libSQL database through `history.backend` via `.ll/ll-config.json`, so all machines write to
 and read from the same store.
 
 **Outcome**: `ll-history` and `ll-logs` see session/usage data from every
 machine, session digests and compaction context stay consistent regardless
-of which machine ran a session, and a hosted dashboard can read the same
-store live.
+of which machine ran a session, and database consumers can read the same store. Existing dashboard artifact
+export remains subject to the explicit snapshot capability decision below; local
+JSONL paths are not assumed accessible from other machines.
 
 ## Open Questions
 
-- Which non-SQLite backend first? Postgres (widest team use) vs. libSQL/Turso (SQLite-compatible, minimal dialect work — likely the lowest-risk first target).
-- Dependency policy: a Postgres driver (`psycopg`) would be a new third-party dependency; per CLAUDE.md it needs a justified, optional-extra pin (e.g. `pip install little-loops[postgres]`).
-- Should `ll-doctor` validate remote connectivity and schema version at startup?
+The backend choice is resolved: libSQL first; Postgres/MySQL are excluded. The
+optional-extra policy and explicit doctor diagnostic are also resolved.
+
+The following remain readiness blockers, to be answered with driver learning tests
+and caller analysis rather than hidden by closing this section:
+
+- What exact driver version, adapter contracts, and transaction/read-only mechanism
+  pass the real remote compatibility checks, including the full migration chain?
+- How do explicit local-path arguments, `LL_HISTORY_DB`, and `history.db_path`
+  interact with a configured remote backend while preserving local scratch stores
+  and the existing `ensure_db() -> Path` / `resolve_history_db() -> Path` APIs?
+- What same-project/session/event identity rules prevent collisions across machines,
+  and how should readers handle foreign-machine source paths? Is provenance needed
+  for correctness, and if so how are existing rows handled?
+- Will remote dashboard snapshots be materialized into local SQLite via bounded
+  row transfer, or explicitly unsupported in this first cut? Preserve filtering
+  and redaction if supported; do not imply remote `ATTACH` creates a local file.
 
 ## Acceptance Criteria
 
-- [ ] `history.backend` schema added to `config-schema.json` with `sqlite` default; existing `db_path` / `LL_HISTORY_DB` behavior unchanged (regression tests pass).
-- [ ] A single backend chokepoint in `session_store`; no new bare `sqlite3.connect` in session_store write/read paths.
-- [ ] At least one remote backend works end-to-end for `ll-history`, session digest, and compaction reads/writes, exercised by an integration test that skips when the backend is unavailable.
-- [ ] SQLite-only features degrade with a clear message on unsupported backends.
-- [ ] `docs/reference/` documents the new config and env-var secret pattern for end users.
+- [ ] Readiness questions above are resolved and recorded; the `libsql` learning
+  gate proves the selected version and remote mode. No Postgres/MySQL support or
+  `psycopg` dependency is included.
+- [ ] Config supports `sqlite|libsql`, endpoint env references, and a separate token
+  env reference. Invalid combinations, missing extras, and auth errors produce
+  redacted diagnostics. Default SQLite path/env precedence tests remain unchanged.
+- [ ] All in-scope history connections use the backend adapter; independent local
+  stores and scratch artifacts remain local. Explicit-path precedence and public
+  path-returning APIs have regression coverage; remote failures never silently
+  switch history to a local database.
+- [ ] Connection/cursor/row and transaction contracts are exercised for both
+  adapters, including named/indexed rows, fetching, insert IDs, affected-row counts,
+  and error mapping used by consumers.
+- [ ] Real remote tests cover the full migration chain using `meta.schema_version`,
+  repeat initialization, concurrent initialization, rollback after failure, and
+  schema compatibility. Read-only access does not create or migrate the store.
+- [ ] `ll-history`, `ll-logs`, session digests, and compaction reads/writes work
+  against the remote store. `SQLiteTransport` lifecycle and serialized cross-thread
+  writes work through the adapter and remain best-effort under remote failure.
+- [ ] Network operations have bounded waits. Event-sink failures warn without
+  aborting the observed operation; explicit reads/migrations/maintenance report
+  failure. Tests cover failure policy, redaction, and ambiguous-write retry rules.
+- [ ] Same-project sessions/events from two machines remain correctly attributed;
+  foreign-machine paths do not masquerade as local readable sources. Implement
+  and test any provenance needed by the documented identity decision.
+- [ ] Unsupported search/maintenance/export features produce clear capability
+  messages. Supported snapshot export preserves filtering/redaction and creates
+  a local SQLite artifact; otherwise its remote limitation is explicit and tested.
+- [ ] An explicit `ll-doctor` check diagnoses connectivity/authentication/schema
+  compatibility with a timeout, no migrations/writes, and redacted output.
+- [ ] Remote integration tests skip only when test configuration is absent;
+  failures with a configured endpoint fail the tests. Local regressions pass.
+- [ ] User docs cover backend selection, optional installation, secrets, precedence,
+  same-project sharing, failure behavior, diagnostics, and capability limitations.
 
 ## Spike Results
 
 _Added by `/ll:spike` on 2026-09-22_
 
-**Retired risks**
+**Locally proven mechanics (not remote compatibility)**
 
 | Risk (from standalone analysis of Proposed Solution) | Proven by | Result |
 |----------------------------------|-----------|--------|
@@ -267,8 +440,14 @@ _Added by `/ll:spike` on 2026-09-22_
 
 **Spike location**: `scripts/tests/spike/session_store_backend_dialect/`
 **Verification**: 7 tests pass across 2 commands (spike AC suite + `test_session_store_schema.py` regression, 193 tests, both untouched).
-**Excluded from scope** (per user confirmation): real Postgres/libSQL driver connectivity (`/ll:explore-api` territory, already tracked via `learning_tests_required`) and the Postgres-vs-libSQL backend choice (`/ll:decide-issue` territory, issue's own Open Questions).
-**Promotion**: fold `backend.py`'s `Backend` protocol and dialect-parameterized `apply_migrations` into `little_loops/session_store/backend.py` (new production module) and `little_loops/session_store/schema.py`, with tests promoted into `scripts/tests/test_session_store_backend.py`, in a separate PR.
+**Original spike exclusions**: real remote connectivity and backend selection were not tested. The review now selects libSQL; actual driver/deployment compatibility remains gated by `learning_tests_required`. Both spike implementations use SQLite, so passing DDL/locking tests do not establish remote behavior.
+**Promotion**: reuse only the mechanics validated by real-driver learning tests; do not promote a general dialect layer for this narrowed scope. New: `scripts/little_loops/session_store/backend.py`. New: `scripts/tests/test_session_store_backend.py`. Adapt existing `scripts/little_loops/session_store/schema.py` and promote appropriate tests in the implementation PR.
+
+**Formatting verification**: `ll-issues format-check FEAT-3524` still flags the
+three explicitly marked new files (backend module, backend tests, and libSQL
+learning-test registry entry) as untracked `stale_file_ref` entries. These are
+planned artifacts, not missing existing dependencies; the `New:` label does not
+suppress this gate's findings. Do not create empty placeholders to silence it.
 
 ## Related Key Documentation
 
