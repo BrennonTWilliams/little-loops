@@ -1,0 +1,11 @@
+{
+  "id": "d2db89aa-a11c-4e41-ad02-1483a4857375",
+  "type": "decision",
+  "timestamp": "2026-09-22T15:39:46Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Allow history.db to target a remote DB via history.backend config; sqlite remains default.",
+  "rule": "Captured: Pluggable storage backend for history.db with remote database support",
+  "scope": "issue",
+  "issue": "FEAT-3524"
+}
