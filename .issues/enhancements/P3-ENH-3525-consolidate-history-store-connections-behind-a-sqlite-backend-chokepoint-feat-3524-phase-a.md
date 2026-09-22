@@ -154,7 +154,7 @@ changes" below for what is and is not preserved.
 
 _Added by `/ll:refine-issue` — 2026-09-22 — based on codebase analysis:_
 
-- Prior precedent exists in this codebase for the "N raw call sites -> one chokepoint" strategy this issue applies to history-store connections: `host_runner.py::resolve_host()`/`project_child_env()` (line 2352) consolidated all host-CLI subprocess spawns the same way (CHANGELOG.md:3176; also a standing rule in this repo's own CLAUDE.md § "Host CLI Abstraction"). This is corroborating evidence the approach is established here, not novel to this issue.
+- Prior precedent exists in this codebase for the "N raw call sites -> one chokepoint" strategy this issue applies to history-store connections: `host_runner.py::project_child_env()` (`:2352`) / `resolve_host()` (`:2535`) consolidated all host-CLI subprocess spawns the same way (CHANGELOG.md:3176; also a standing rule in this repo's own CLAUDE.md § "Host CLI Abstraction"). This is corroborating evidence the approach is established here, not novel to this issue.
 - The lazy `(module_path, class_name)` registry pattern this issue names (`codequery.core.resolve_provider`) is not the only registry shape in this codebase: `host_runner.py::_HOST_RUNNER_REGISTRY` (line 2225) is an eager, in-module `dict[str, type[HostRunner]]` of class objects (no lazy import), because all runner classes already live in that same file with no circular-import pressure. `session_store/backend.py` does have the same "dialect modules import shared types back from the core module" circular-import pressure `codequery.core` has, so the lazy-tuple shape (already followed by the spike's `resolve_backend()`) remains the better-fitting precedent; noted here as the contested alternative, not a recommendation to switch.
 - No existing exception hierarchy in this codebase has 3+ subclasses of a shared base wrapping distinct narrow driver-level errors — an unfiltered `class \w+Error(\w*Error)` / `class \w+(Exception):` sweep of `scripts/little_loops/` found only single-subclass or no-subclass hierarchies (e.g. `fsm/interpolation.py::InterpolationError`/`HeredocCollisionError`, `codequery/core.py::CodeQueryError`/`Unsupported`). The `HistoryError` taxonomy's 4-subclass shape (`HistoryUnavailable`, `HistoryIntegrityError`, `HistoryUnsupported`, `HistoryOperationError`) is a new shape for this codebase, not a reuse of an established one — implement with that in mind rather than searching for a template to copy.
 
@@ -280,6 +280,11 @@ _Wiring pass added by `/ll:wire-issue`:_
   way the host-CLI rule is enforced.
 - Promote from `scripts/tests/spike/session_store_backend_dialect/` the locking-sequence,
   idempotent-`ensure_schema`, concurrent-migration, and capability-gate tests.
+- New: regression proving `session_store/queries.py::search()` still raises
+  `ValueError` (not a `HistoryError` subclass) on malformed FTS5 query syntax after
+  the taxonomy lands — its `except sqlite3.OperationalError` at `:56` is an
+  explicit exclusion from the Step 5 conversion (see Compatibility guarantees;
+  found by `/ll:verify-issues`, previously untested and unlisted).
 
 _Wiring pass added by `/ll:wire-issue`:_
 - Existing suites that must stay green, not previously named: `test_issue_history_agent_quality.py`
@@ -390,12 +395,18 @@ WAL / VACUUM behavior, `history_reader`'s migrate-before-read behavior and its
 `_connect_readonly()` return-`None`-on-failure contract, `HistoryDbUnavailable`'s name and
 catchability, `connect()`'s current two-connection open (deliberately out of scope),
 `SQLiteTransport`'s best-effort disable-on-failure contract,
-and the `ll-logs fleet-review` final-line-is-a-path and `ll-history summary`
-exit-0-on-degraded contracts used by loop fragments.
+the `ll-logs fleet-review` final-line-is-a-path and `ll-history summary`
+exit-0-on-degraded contracts used by loop fragments, and
+`session_store/queries.py::search()`'s `sqlite3.OperationalError` ->
+`ValueError(f"invalid FTS query {query!r}: ...")` translation (`:56`) on malformed
+FTS5 query syntax — an input-validation contract, not a history-store-failure
+signal, so it is excluded from item (1) below (found by `/ll:verify-issues`,
+2026-09-22).
 
 Intentional changes, each with a regression test: (1) history-store consumers
 raise `HistoryError` subclasses, with the original `sqlite3` exception preserved as
-`__cause__`; tests asserting on `sqlite3.OperationalError` / `sqlite3.Error` for
+`__cause__`, excluding `queries.py::search()`'s FTS-syntax `ValueError` translation
+above; tests asserting on `sqlite3.OperationalError` / `sqlite3.Error` for
 "history failed" (`test_feat3323_sse_bridge.py:1198`, `test_hook_user_prompt_submit.py:143,302,604`,
 `test_ll_issues_research_triage.py:145`, `test_set_status_cli.py:1309`,
 `test_hook_post_tool_use.py:190`, `test_feat3445_workspace_activity.py:92`) are
@@ -525,12 +536,61 @@ two-connection open, and any change to migration SQL or locking.
 - `docs/reference/API.md` (`little_loops.session_store` signatures)
 - FEAT-3524 (the remote libSQL feature this unblocks)
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` — 2026-09-22:_
+
+Verdict at time of check: **PROPOSAL_UNSOUND** (corrections below applied in the
+same pass, so the issue as it now reads is up to date — this section is a record
+of what was wrong and fixed, not an outstanding action item).
+
+- **Graph**: provider=`codegraph` freshness=`fresh`.
+- **Evidence-quote check** (`ll-verify-evidence --json`): clean, 0 findings.
+- **Decisions log**: no active required rules; no `DECISIONS_VIOLATION`.
+- **File existence**: every cited file exists except the new
+  `session_store/backend.py` (expected — it's the issue's own proposed module).
+- **Line-number spot-check** (~25 citations across `schema.py`,
+  `history_reader/_base.py`, `queries.py`, `evolution.py`, `workspace_quality.py`
+  (incl. the `:209` ATTACH), `cli/doctor.py`, `cli/doctor_trim.py`, `decisions.py`,
+  `cli/issues/decisions.py`, `transport.py`, `issue_history/parsing.py`,
+  `issue_history/collisions.py`, `codequery/core.py`, `host_runner.py`): all
+  confirmed exact except one (see below).
+- **Aggregate counts**: `grep -rn 'sqlite3\.connect('` gives exactly 27 sites
+  across 15 modules — matches exactly, not just "close". The 10-raw-mode=ro-sites
+  (7 in-scope + 3 excluded) plus 1 ATTACH breakdown also confirmed exact.
+  `resolve_history_db()` confirmed absent (0 hits) from both `decisions.py` and
+  `cli/doctor.py`.
+- **Causal/identity claims**: independently re-read both `_connect_readonly()`
+  implementations — `history_reader/_base.py:60` (calls `ensure_db()`, discards
+  its return value, opens `db_path` as given, catches `sqlite3.Error`, returns
+  `None`) vs. `session_store/queries.py:191` (no `ensure_db()` call, no
+  try/except — raises naturally). Confirms the "different contracts" claim
+  exactly. Re-ran the exception-hierarchy sweep independently: confirmed no
+  existing hierarchy in this codebase has 3+ subclasses of a shared base.
+- **Proposal-vs-code consequence check (B6)**: found one real gap, fixed in this
+  pass — `session_store/queries.py::search()` (`:56`) deliberately translates
+  `sqlite3.OperationalError` (malformed FTS5 query syntax) to `ValueError` as an
+  input-validation contract, not a history-store-failure signal. Step 5 (convert
+  consumer `except sqlite3.*` to `HistoryError` subclasses) didn't name this site
+  as an exclusion, and no test anywhere in the suite covers it — applied literally,
+  Step 5 would have silently broken `search()`'s malformed-query error message.
+  Added an explicit exclusion to Compatibility Guarantees and a new Tests bullet.
+- **Regression detection (§D)**: N/A — no completed issue already implements this
+  chokepoint; this is a fresh capture, not a regression scenario.
+- **Dependency references (§E)**: `FEAT-3524` exists and its `## Blocked By`
+  section lists `ENH-3525` back — no `BROKEN_REF`, no `MISSING_BACKLINK`.
+- **Minor correction applied**: the Proposed Solution's research note cited
+  `host_runner.py::resolve_host()`/`project_child_env()` under one "line 2352" —
+  only `project_child_env()` is at `:2352`; `resolve_host()` is at `:2535`.
+  Corrected inline.
+
 ## Status
 
 **Open** | Created: 2026-09-22 | Priority: P3
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-22T21:07:24 - `cfaf5a77-1b05-4ab4-a69c-2fd5f977d32f.jsonl`
 - `/ll:verify-issues` - 2026-09-22T20:50:47 - `d5913727-aee2-4da4-b9b6-0c7c106cc141.jsonl`
 - `/ll:wire-issue` - 2026-09-22T20:46:38 - `5e6fdfe4-a051-499c-b448-1629fbe99667.jsonl`
 - `/ll:refine-issue` - 2026-09-22T20:35:26 - `000d50cc-8e65-459d-9c90-7e440ec813a8.jsonl`
