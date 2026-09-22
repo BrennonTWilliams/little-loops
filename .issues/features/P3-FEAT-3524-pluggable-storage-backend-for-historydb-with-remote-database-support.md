@@ -95,6 +95,11 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `little_loops/cli/history.py:793-802` — a fourth ad-hoc `sqlite3.connect(str(db_path))` inside the `root` subcommand handler, separate from the module's already-known connect sites [Agent 2 finding]
 - `little_loops/issue_history/workspace_quality.py:108-120` — `_open_member_readonly()` is a third independently-duplicated read-only-open helper (raw `sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)`), beyond the two already cited in Codebase Research Findings (`issue_history/evolution.py:30`, `codequery/codegraph.py:81`) [Agent 2 finding]
 
+_Second wiring pass added by `/ll:wire-issue`:_
+- `little_loops/decisions.py:578-605` (`generate_from_completed()`) — hardcodes `project_root / ".ll" / "history.db"` and gates on `.exists()`, bypassing `resolve_history_db()`/`LL_HISTORY_DB`/`history.backend` entirely; under `kind: libsql` this path never exists, so the function silently and permanently falls back to filesystem scanning instead of ever reading the remote backend — a real behavioral gap, not a deliberately-local store [Agent 2 finding]
+- `little_loops/issue_history/parsing.py` — `scan_completed_issues_from_db()` and `HistoryDbUnavailable`, called from the `decisions.py` coupling above; previously covered only implicitly by the `issue_history/*` wildcard [Agent 1 finding]
+- `little_loops/history_reader/_base.py:60` — `_connect_readonly()` is a distinct fourth readonly-open duplicate (opens `file:{db_path}?mode=ro`); its docstring documents that it deliberately does NOT re-resolve `db_path` through `ensure_db()`'s env/config chain, to avoid silently redirecting an already-root-anchored absolute path (BUG-3181) — a contract the new `connect_readonly()` chokepoint must preserve [Agent 2 finding]
+
 ### Dependent Files (Callers/Importers)
 - The ~28 `sqlite3.connect(` call sites enumerated above are themselves the
   inventory to classify; only history-store callers move behind the new chokepoint;
@@ -107,6 +112,25 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `little_loops/user_messages.py:14,35,495,747,797,923,1191,1192` — imports `detect_sessions`, `SessionHandle`, `host_layout_for`, `iter_events`, `DEFAULT_DB_PATH`, `resolve_history_db` from `session_store` [Agent 1 finding]
 - ~19 further production modules import `little_loops.session_store`'s public re-export surface (`resolve_history_db`, `connect`, `ensure_db`, `record_*` event writers, `REGISTERED_HOSTS`, `SQLiteTransport`, etc.) and need a caller-contract audit: `connect()` returns a connection but `ensure_db()` currently returns a path; preserve local behavior and adapt remote callers explicitly: `little_loops/worktree_utils.py:334`, `little_loops/mcp_server/tools.py:158-172`, `little_loops/work_verification.py:278-280`, `little_loops/issue_manager.py:52`, `little_loops/transport.py:2024`, `little_loops/cli_args.py:352`, `little_loops/pytest_history_plugin.py:126`, `little_loops/runner_spec.py:323,326`, `little_loops/parallel/orchestrator.py:44`, `little_loops/parallel/merge_coordinator.py:28`, `little_loops/parallel/worker_pool.py:27`, `little_loops/init/cli.py:16`, `little_loops/compaction/instant.py:128`, `little_loops/compaction/result.py:43,100`, `little_loops/advisor.py:478`, `little_loops/fsm/executor.py:1946,2013,2630,4368,4393`, `little_loops/fsm/continuity.py:16`, `little_loops/hooks/{pre_compact,subagent_stop,session_start,sweep_stale_refs}.py`, `little_loops/workflow_sequence/io.py:47`, `little_loops/__init__.py:75` [Agent 1 finding]
 - `hooks/scripts/context-monitor.sh:56,82` — a shell hook with inline Python importing `record_session_lifecycle_event`/`record_context_pressure_event`, `resolve_history_db` from `session_store`; outside the Python package, easy to miss during the chokepoint migration [Agent 1 finding]
+
+_Second wiring pass added by `/ll:wire-issue`:_
+- `little_loops/cli/{adapt,adapt_agents_for_codex,adapt_skills_for_codex,advise,auto,code,config,create_extension,deps,docs,generate_skill_descriptions,gitignore,help,migrate,migrate_labels,migrate_relationships,migrate_status,queue,schemas,sync,verify_cli_allowlist,verify_decisions,verify_des_audit,verify_design_tokens,verify_evidence,verify_host_map,verify_package_data,verify_private_refs,verify_skill_prose,verify_triggers}.py`, `little_loops/cli/issues/__init__.py`, `little_loops/cli/loop/__init__.py`, `little_loops/cli/sprint/__init__.py`, `little_loops/hooks/user_prompt_submit.py` — ~35 modules with an identical module-scope `from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context` wrapping `main()` in the analytics context manager; found via codegraph `importers_of` seed, confirmed by grep, not previously enumerated [Agent 1 finding]
+- `little_loops/cli/action.py:17-23` — also imports `record_review_event`, `record_verdict_event`, `skill_event_context`
+- `little_loops/cli/compact_session.py:24` — also imports `compact_session`; `main_compact_session()` builds `args.db` from `DEFAULT_DB_PATH` as a `Path`-typed argparse default (`:44`) threaded into both `cli_event_context` and `compact_session()`
+- `little_loops/cli/harness.py:48-54` — also imports `connect`, `record_attempt`, `record_harness_event`, plus 5 lazy inline `resolve_history_db` imports (`:238,1081,1992,2024,3338`)
+- `little_loops/cli/messages.py:11,29` — module-scope pair plus lazy `detect_sessions`, `explain_no_sessions`
+- `little_loops/cli/parallel.py:34,318` — module-scope pair plus lazy `SQLiteTransport`, `resolve_history_db`
+- `little_loops/cli/sprint/run.py:25,657,796` — `record_orchestration_run`, `resolve_history_db` at module scope, plus two lazy `SQLiteTransport` imports
+- `little_loops/cli/verify_kinds.py:22-23,48,56-57` — `from little_loops import session_store` (whole-module import) walking private attrs `session_store._MIGRATIONS`, `session_store._KIND_TABLE`, `session_store._KINDLESS_TABLES` — schema-internal access beyond the connect/ensure_db chokepoint
+- `little_loops/cli/learning_tests.py:8,198` — module-scope pair plus lazy `record_learning_test_event`
+- `little_loops/cli/history_context.py:43-48` — separate `ll-history-context` entry point (distinct from `cli/history.py`), module-scope `DEFAULT_DB_PATH, cli_event_context, connect, normalize_issue_id`
+- `little_loops/cli/issues/set_status.py:151-158` — lazy import in `cmd_set_status`: `record_issue_event`, `record_issue_snapshot`, `resolve_history_db`
+- `little_loops/cli/issues/research_triage.py:104` — lazy import in `cmd_research_triage`: `resolve_history_db`, `write_research_triage`
+- `little_loops/cli/backfill_worker.py:52,70,78` — three lazy imports inside `main(argv)`: `REGISTERED_HOSTS`, `host_layout_for`, `backfill_incremental`; not previously named anywhere in the issue [Agent 1 finding]
+- `little_loops/issue_history/{_utils.py,quality_regressions.py:169,workspace_activity.py,rework.py,evolution.py}` — additional `conn: sqlite3.Connection`-typed functions beyond the already-cited `_open_member_readonly()`/`_open_db()`: `_utils.orchestrator_labels()`, `quality_regressions` conn param, `workspace_quality._attach_limit/_union_view_sql/_open_union/_open_memory`, `workspace_activity._has_any_history()` + 3 window helpers, `rework._load_issue_events()`/`_load_commits()`, `evolution._get_session_ids_for_content()` [Agent 2 finding]
+- `little_loops/history_reader/digest.py` — `_query_touched_files()`, `_query_completed_issues()`, `_query_recurring_corrections()`, all `conn: sqlite3.Connection`-typed [Agent 2 finding]
+- `little_loops/loops/lib/cli.yaml:59-68` (`ll_history_summary` fragment, exit-code gate) — used via `from:` by `little_loops/loops/evaluation-quality.yaml:46` and `little_loops/loops/backlog-flow-optimizer.yaml:35`; both redirect stderr with `|| echo "(no history available)"`, but still depend on `ll-history summary` exiting 0 on a reachable-but-degraded remote backend [Agent 2 finding]
+- `little_loops/loops/fleet-loop-improve.yaml:53,78,80` — parses `ll-logs fleet-review ... | tail -n 1` stdout as a report path; a backend-aware `ll-logs` must preserve this final-line-is-a-path contract [Agent 2 finding]
 
 ### Similar Patterns
 - `little_loops/host_runner.py` `resolve_host()` (line 2535) is the existing
@@ -137,6 +161,12 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_codequery_codegraph.py`, `scripts/tests/test_queue_store.py`, `scripts/tests/test_cli_history.py`, `scripts/tests/test_ll_logs.py`, `scripts/tests/test_cli_doctor.py`, `scripts/tests/test_cli_doctor_full.py`, `scripts/tests/test_cli_doctor_install_checks.py`, `scripts/tests/test_cli_doctor_trim.py`, `scripts/tests/test_cli_ctx_stats.py`, `scripts/tests/test_issue_history_agent_quality.py`, `scripts/tests/test_feat3410_workspace_quality.py`, `scripts/tests/test_feat3418_workspace_quality.py`, `scripts/tests/test_evolution_triggers.py`, `scripts/tests/test_session_discovery.py` — existing coverage for the issue's already-known Files to Modify call sites; each becomes a break candidate if the backend wrapper's connect signature or return type diverges from raw `sqlite3.connect` [Agent 3 finding]
 - No dedicated test file exists for `session_store/__init__.py`'s re-export surface itself — exercised only transitively through the tests above [Agent 3 finding]
 
+_Second wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/{test_compaction,test_enh_2497_agent_type,test_enh_2505_subagent_runs,test_enh_2511_mcp_telemetry,test_enh_3166_qwen_normalizer,test_enh_3393_gemini_normalizer,test_enh_omp_normalizer,test_issue_collisions,test_issue_history_rework,test_ll_session,test_pytest_history_plugin,test_sweep_stale_refs,test_transport}.py` — genuinely session_store-coupled (call `ensure_db`/`connect` or a direct `sqlite3.connect(str(db))` bypassing the store's own `connect()`); `test_ll_session.py` is the heaviest, exercising `rebuild`/`compact`/`recompress`/`backfill` end-to-end [Agent 3 finding]
+- New: dedicated test file for `little_loops/cli/compact_session.py`'s `main_compact_session()` — no existing test invokes the CLI wrapper; only the underlying `session_store.compact_session()` function is tested (`test_compaction.py`) [Agent 3 finding]
+- `test_codequery_core.py::TestResolveProvider`/`TestProtocolConformance` and `test_host_runner.py::TestResolveHost`/`TestResolveHostNamed` remain the applicable test-shape precedent for `resolve_backend()`; `test_host_runner.py::test_does_not_mutate_os_environ` (`:2394`) is the stricter of the two and should be followed if `resolve_backend()` reads env vars [Agent 3 finding]
+- `scripts/tests/test_feat3323_sse_bridge.py:1198-1201`, `test_hook_user_prompt_submit.py:143-146,302-305,604-607`, `test_ll_issues_research_triage.py:145-148`, `test_set_status_cli.py:1309-1312`, `test_hook_post_tool_use.py:190-193`, `test_feat3445_workspace_activity.py:92-98` — assert on `sqlite3.OperationalError`/`sqlite3.Error` specifically as the stand-in for "the history store failed," separate from the four catch sites already named in Program Design; each caller's best-effort/degradation contract needs re-verification against the new backend-neutral error taxonomy [Agent 2 finding]
+
 ### Documentation
 - `docs/reference/` — new `history.backend` config keys and the env-var
   secret pattern (per Acceptance Criteria)
@@ -149,6 +179,20 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `docs/ARCHITECTURE.md:89` (module-overview table: "Unified per-project SQLite + FTS5 history store"), `:636` (`SQLiteTransport` and migration prose (history uses `meta.schema_version`; correct any `PRAGMA user_version` claim)), `:832` (states `queue_store.py` "copies `session_store/schema.py`'s ... shape rather than sharing code, matching every other sqlite consumer in this codebase" — verify wording while retaining queue storage as local-only) [Agent 2 finding]
 - `skills/compact-session/SKILL.md:15,68` and `skills/improve-claude-md/SKILL.md:206,209,293,308` — reference `session_store.compact_session`/`_summarize_block`/`resolve_history_db`/`record_retirement` in prose/example code [Agent 1 finding]
 
+_Second wiring pass added by `/ll:wire-issue`:_
+- `README.md:188`, `CONTRIBUTING.md:315` — describe `.ll/history.db` as a per-project SQLite file
+- `docs/reference/HOST_COMPATIBILITY.md:93,543` — per-host compatibility table states `SQLiteTransport` writes to `.ll/history.db` "(same path)" for every host CLI
+- `docs/reference/WORKTREES.md:19` — documents `LL_HISTORY_DB` being exported into descendant `os.environ` before worktree creation so worktrees share the main repo's local DB; doesn't describe remote-backend sharing, which wouldn't need this relay
+- `docs/guides/MCP_SERVER_GUIDE.md:248,266,735` — `history_search` MCP tool documented in terms of local FTS5 over `.ll/history.db`, including a troubleshooting row keyed on the file being absent/empty
+- `docs/guides/BUILTIN_HOOKS_GUIDE.md:63,104,126,149,150,169,207,303,315,483,515,555` — hook-by-hook prose describing local `.ll/history.db` reads/writes
+- `docs/kimi/hook-events.md:44,53` — kimi-specific mirror of the same PostToolUse description
+- `hooks/adapters/codex/README.md:66` — troubleshooting tip querying `.ll/history.db` `hook_events` directly
+- `docs/observability/des-audit.md:9`, `docs/observability/otel-mapping.md:6,61,110` — document event/usage tables in `history.db` as the local OTel/DES alternative
+- `docs/guides/DECISIONS_LOG_GUIDE.md:445` — "Uses `.ll/history.db` when present for faster scanning"; user-facing doc for the `decisions.py:578` hardcoded-path gap above
+- `docs/guides/LOOPS_REFERENCE.md:77,384,430`, `docs/reference/loops.md:217` — describe the `sft-corpus` loop's `enrich` step joining `history.db` session-quality metadata
+- `scripts/little_loops/loops/README.md:159,198` — lists `.ll/history.db` as loop-interacted state; describes `fleet-loop-improve`'s `ll-logs fleet-review` usage
+- `skills/configure/areas.md:1386-1509` (`## Area: history`) — the `/ll:configure` skill's `history.*` question/answer flow (`velocity_window`, `effort_fields`, `max_age_days`, `session_digest.*`, `evolution.*`, `go_no_go.*`, `capture_issue.*`); has no `backend` question today and is mirrored into `.qwen/skills/configure/areas.md`, `.kimi-code/skills/configure/areas.md`, `.gemini/skills/configure/areas.md` per the existing mirror-gate convention — all four need a matching update [Agent 2 finding]
+
 ### Configuration
 - `history.backend.auth_token_env` — separate authentication-token reference; no committed token
 - New: `.ll/learning-tests/libsql.md` — required real remote driver/version evidence
@@ -157,6 +201,9 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `.ll/learning-tests/sqlite3.md` (proven, 15 assertions) is the existing Learning Test Registry precedent this issue's `learning_tests_required: [libsql]` frontmatter is modeled on; `little_loops/learning_tests/gate.py` enforces that frontmatter against a proven `libsql.md` entry as a gate-blocking prerequisite before implementation [Agent 2 finding]
+
+_Second wiring pass added by `/ll:wire-issue`:_
+- `little_loops/workspace.py::_config_manifest_path()` (~line 74) — reads `history.workspace_manifest_path`; its docstring explicitly contrasts its own `~`-expansion behavior against "`history.db_path`'s reader, which does not expand `~`" — an independent assumption about a sibling `history.*` key's resolver that needs re-verification if `history.db_path` resolution semantics shift [Agent 2 finding]
 
 ### Codebase Research Findings
 
@@ -250,6 +297,17 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Add `scripts/tests/test_config_schema.py` assertion block for `history.backend` (pattern at `:624-633`)
 - Update `docs/reference/CONFIGURATION.md:608-662`, `docs/reference/API.md`, `docs/reference/CLI.md`, `docs/ARCHITECTURE.md:89,636,832`, `docs/guides/HISTORY_SESSION_GUIDE.md:634`, `docs/guides/WORKFLOW_ANALYSIS_GUIDE.md:251` — reflect the new backend, capability-gated FTS5/VACUUM caveats, and check the `queue_store.py`-mirrors-`session_store` description against the retained local-only queue scope in `docs/ARCHITECTURE.md:832`
 - Audit and verify the ~20 downstream consumers of `session_store`'s public re-export surface listed under Dependent Files, to confirm they still work against the adapter contracts; change callers where path or connection assumptions require it
+
+### Wiring Phase (added by second `/ll:wire-issue` pass)
+
+_These additional touchpoints were identified by a second wiring pass and must be included in the implementation:_
+
+- Route `little_loops/decisions.py::generate_from_completed()` through `resolve_history_db()`/the backend chokepoint instead of its hardcoded `.ll/history.db` path check, so it doesn't permanently and silently fall back to filesystem scanning under `kind: libsql`
+- Fold `little_loops/history_reader/_base.py:60` (`_connect_readonly()`) into the shared `connect_readonly()` chokepoint while preserving its documented no-re-resolve contract (BUG-3181)
+- Update `little_loops/cli/backfill_worker.py:52,70,78` — route the `REGISTERED_HOSTS`/`host_layout_for`/`backfill_incremental` lazy imports through the backend-aware path
+- Audit the ~35 CLI modules that only import `DEFAULT_DB_PATH, cli_event_context` (Dependent Files) — confirm `cli_event_context`'s best-effort contract holds unchanged under the new backend; no code change expected unless `DEFAULT_DB_PATH`'s type itself changes
+- Add: dedicated test coverage for `little_loops/cli/compact_session.py`'s CLI wrapper (currently untested at that layer)
+- Update `skills/configure/areas.md` `## Area: history` (+ `.qwen/`, `.kimi-code/`, `.gemini/` mirrors) — add a `history.backend` configuration question
 
 ## Impact
 
@@ -477,6 +535,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-22T16:47:36 - `48d447aa-e589-42cb-96ec-cab26ee6a78c.jsonl`
 - `/ll:refine-issue` - 2026-09-22T16:30:06 - `49a7e360-74a8-4694-abcb-c3e17b0da6de.jsonl`
 - `/ll:wire-issue` - 2026-09-22T16:11:57 - `d11b4d88-e05e-48db-9617-b48caee451f5.jsonl`
 - `/ll:spike` - 2026-09-22T16:01:14 - `69316b42-0fe0-49ed-a8dc-481387700cff.jsonl`
