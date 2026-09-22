@@ -4,13 +4,16 @@ type: ENH
 title: Consolidate history-store connections behind a SQLite backend chokepoint (FEAT-3524
   Phase A)
 priority: P3
-status: in_progress
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-22'
 captured_at: '2026-09-22T20:16:57Z'
+completed_at: '2026-09-22T23:29:26Z'
 verify_verdict: VALID
 blocks:
 - FEAT-3524
+decomposed_into:
+- ENH-3526
 confidence_score: 100
 outcome_confidence: 55
 score_complexity: 5
@@ -505,36 +508,81 @@ two-connection open, and any change to migration SQL or locking.
 
 ## Acceptance Criteria
 
-- [ ] `session_store/backend.py` exists with `Backend`, `SqliteBackend`, `resolve_backend()`
+> **Split 2026-09-22:** the A2-scoped items below (write-consumer routing and
+> the `HistoryError` consumer conversion) are moved to
+> [[ENH-3526]] rather than attempted in this issue — see "A2 Split" below.
+> Items satisfied by A1 (landed in `bb2c9c2b3`) are checked.
+
+- [x] `session_store/backend.py` exists with `Backend`, `SqliteBackend`, `resolve_backend()`
   keyed by `provider`, and `connect`/`connect_readonly`/`ensure_schema`/`supports`.
 - [ ] All classified history-store connections (writes, the 7 in-scope read-only opens,
   and the `workspace_quality` read-only `ATTACH`) go through the chokepoint. `queue.db`,
   codegraph, Codex's `~/.codex` index, and scratch stores are audited and left local. The
   classification list, including which read-only callers are strict vs. ensure-then-read,
   is recorded in the issue.
-- [ ] Strict `connect_readonly()` has tests proving it never creates or migrates the store
+  — **Read-only opens: done in A1.** Write consumers (`writers.py`,
+  `lifecycle.py`, `cli/logs.py`, `cli/ctx_stats.py`, `cli/history.py`):
+  moved to [[ENH-3526]].
+- [x] Strict `connect_readonly()` has tests proving it never creates or migrates the store
   (byte-identical before/after) and preserves the BUG-3181 and D19 contracts.
-- [ ] Ensure-then-read has tests proving it migrates and opens the **same** resolved file,
+- [x] Ensure-then-read has tests proving it migrates and opens the **same** resolved file,
   and `history_reader`'s `_connect_readonly()` still returns `None` on failure.
-- [ ] Explicit local targets are honored verbatim; default-shaped arguments follow
+- [x] Explicit local targets are honored verbatim; default-shaped arguments follow
   `explicit > LL_HISTORY_DB > history.db_path > DEFAULT_DB_PATH`; both covered by tests.
-- [ ] `decisions.py::generate_from_completed()`, `cli/doctor.py::_schema_drift_data()`, and
+- [x] `decisions.py::generate_from_completed()`, `cli/doctor.py::_schema_drift_data()`, and
   `transport.py::wire_transports()`'s `"sqlite"` branch resolve through the chokepoint, each
   with an `LL_HISTORY_DB` regression.
-- [ ] `test_history_store_chokepoint_gate.py` fails on any raw `sqlite3.connect(` outside
-  `backend.py` and the reasoned allowlist.
+- [x] `test_history_store_chokepoint_gate.py` fails on any raw `sqlite3.connect(` outside
+  `backend.py` and the reasoned allowlist. (Allowlist still carries five provisional
+  entries by design — [[ENH-3526]] shrinks it to zero.)
 - [ ] `open_history*` set the row factory; no history consumer assigns `row_factory`.
   `ATTACH`/`VACUUM`/`create_function` use is gated by `supports()`.
-- [ ] `HistoryDbUnavailable` subclasses `HistoryUnavailable`;
+  — Read paths done in A1 (`workspace_quality.py` ATTACH gated on
+  `supports("attach")`). `lifecycle.py`'s VACUUM (`supports("vacuum")`)
+  moved to [[ENH-3526]].
+- [x] `HistoryDbUnavailable` subclasses `HistoryUnavailable`;
   `test_issue_history_parsing.py:667-679` passes unchanged.
 - [ ] `HistoryError` taxonomy is raised only by adapter wrappers around driver calls;
   `__cause__` preserves the driver exception; no consumer catches `ValueError` or a
   driver exception type for history-store failures.
+  — Moved to [[ENH-3526]], which also must resolve the sqlite3→`HistoryError`
+  write-path translation design question discovered while scoping the split
+  (`SqliteBackend.connect()` returns a raw `sqlite3.Connection`, unlike
+  `connect_readonly()`).
 - [ ] `SQLiteTransport` retains serialized cross-thread writes and best-effort
   disable-on-failure, now catching `HistoryError`.
+  — Moved to [[ENH-3526]].
 - [ ] The compatibility-guarantee list above is enforced by the named existing
   suites staying green; each intentional change has a named regression test.
-- [ ] No new dependency, no `history.backend` config key, no remote code path.
+  — A1's compatibility guarantees hold (full suite green, see "A1 Landed"
+  below). The seven intentional-change test rewrites are [[ENH-3526]] scope.
+- [x] No new dependency, no `history.backend` config key, no remote code path.
+
+### A2 Split
+
+Implementation Steps 5-6 (route remaining write consumers through the
+entry points, convert their exception types, update docs) are split into
+[[ENH-3526]], which also inherits this issue's `blocks: FEAT-3524`. Reasons,
+both already on record in this issue before this pass:
+
+1. **Sizing note** (Implementation Steps): "If `/ll:issue-size-review`
+   agrees, split A2 into its own issue that also blocks FEAT-3524."
+2. **Confidence Check Notes**: Outcome Confidence 55/100 (LOW), recommending
+   "landing/soaking A1 first and re-running `/ll:confidence-check` before
+   starting A2" — A2 "carries the behavioral risk" as a per-site behavioral
+   change, not a uniform mechanical substitution.
+
+Scoping the split surfaced a concrete, previously-undocumented design gap
+supporting that risk assessment: `SqliteBackend.connect()` (`backend.py:146`)
+returns a raw `sqlite3.Connection` with no error-translating wrapper, so
+Step 5's "convert `except sqlite3.*` to `HistoryError`" cannot be a
+mechanical catch-clause rename at the ~20 write call sites in `writers.py`/
+`lifecycle.py`/`cli/{logs,ctx_stats,history}.py` — recorded in full in
+[[ENH-3526]].
+
+This issue (A1's chokepoint, contracts, and three path-bypass fixes) is
+complete and is being closed as done; [[ENH-3526]] carries the remaining
+scope forward against `FEAT-3524`.
 
 ## Related Key Documentation
 
@@ -680,6 +728,8 @@ _Added by `/ll:confidence-check` on 2026-09-22_
 - Mitigation already built into the issue: Implementation Steps stage A1 (chokepoint + bypass fixes, no consumer error-type changes) ahead of A2 (consumer error-type conversion, "carries the behavioral risk") as independently landable commits. Recommend landing/soaking A1 first and re-running `/ll:confidence-check` before starting A2; the issue's own Sizing note already flags A2 as a candidate for `/ll:issue-size-review` split.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-22T23:29:04 - `4f3ece7f-4412-4831-a895-fcf5c78a9b60.jsonl`
+- `/ll:ready-issue` - 2026-09-22T23:12:21 - `daa84f9b-9db4-4918-b4e3-96cce34e1a59.jsonl`
 - `/ll:manage-issue` - 2026-09-22T22:09:47 - `6e23addb-913f-4751-95d4-9caf3143f43d.jsonl`
 - `/ll:confidence-check` - 2026-09-22T21:25:58 - `6e23addb-913f-4751-95d4-9caf3143f43d.jsonl`
 - `/ll:verify-issues` - 2026-09-22T21:07:24 - `cfaf5a77-1b05-4ab4-a69c-2fd5f977d32f.jsonl`
