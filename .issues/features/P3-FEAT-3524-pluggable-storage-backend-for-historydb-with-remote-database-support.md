@@ -10,6 +10,8 @@ captured_at: '2026-09-22T15:39:38Z'
 learning_tests_required:
   - psycopg
   - libsql
+spike_attempted: true
+spike_completed: true
 ---
 
 # FEAT-3524: Pluggable storage backend for history.db with remote database support
@@ -206,6 +208,24 @@ store live.
 - [ ] SQLite-only features degrade with a clear message on unsupported backends.
 - [ ] `docs/reference/` documents the new config and env-var secret pattern for end users.
 
+## Spike Results
+
+_Added by `/ll:spike` on 2026-09-22_
+
+**Retired risks**
+
+| Risk (from standalone analysis of Proposed Solution) | Proven by | Result |
+|----------------------------------|-----------|--------|
+| (a) Zero precedent: dialect abstraction driving `_apply_migrations`'s `BEGIN IMMEDIATE`/manual-isolation/split-statement locking sequence with per-dialect DDL | `TestDialectMigration::test_sqlite_backend_migrates_with_existing_locking_sequence`, `test_stub_remote_backend_uses_dialect_specific_ddl`, `test_rerunning_ensure_schema_is_idempotent` | ✓ pass |
+| (a) Concurrent migration race under a dialect-parameterized chokepoint | `TestConcurrentMigration::test_concurrent_migration_race_still_serializes` | ✓ pass |
+| (b) No existing test exercises capability-gated degradation for SQLite-only features | `TestCapabilityGate::test_capability_check_gates_unsupported_feature`, `test_capability_check_passes_for_supported_feature` | ✓ pass |
+| isolation guard | `TestSpikeIsolation::test_spike_does_not_import_production_session_store` | ✓ pass |
+
+**Spike location**: `scripts/tests/spike/session_store_backend_dialect/`
+**Verification**: 7 tests pass across 2 commands (spike AC suite + `test_session_store_schema.py` regression, 193 tests, both untouched).
+**Excluded from scope** (per user confirmation): real Postgres/libSQL driver connectivity (`/ll:explore-api` territory, already tracked via `learning_tests_required`) and the Postgres-vs-libSQL backend choice (`/ll:decide-issue` territory, issue's own Open Questions).
+**Promotion**: fold `backend.py`'s `Backend` protocol and dialect-parameterized `apply_migrations` into `little_loops/session_store/backend.py` (new production module) and `little_loops/session_store/schema.py`, with tests promoted into `scripts/tests/test_session_store_backend.py`, in a separate PR.
+
 ## Related Key Documentation
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
@@ -216,6 +236,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:spike` - 2026-09-22T16:01:14 - `69316b42-0fe0-49ed-a8dc-481387700cff.jsonl`
 - `/ll:refine-issue` - 2026-09-22T15:53:02 - `24e361bf-844f-4527-b6ee-85c86b44db2a.jsonl`
 - `/ll:format-issue` - 2026-09-22T15:43:55 - `f8344c01-034b-4d86-8218-d0d7fb43cbd5.jsonl`
 - `/ll:capture-issue` - 2026-09-22T15:39:46 - `eaf98e36-fcf5-4247-8879-8cd909331a2a.jsonl`
