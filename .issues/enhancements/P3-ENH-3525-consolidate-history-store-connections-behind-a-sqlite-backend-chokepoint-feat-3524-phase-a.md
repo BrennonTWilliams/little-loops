@@ -125,6 +125,10 @@ _Added by `/ll:refine-issue` — 2026-09-22 — based on codebase analysis:_
 - `little_loops/decisions.py:578-605`
 - `docs/reference/API.md` (session-store signatures), `docs/ARCHITECTURE.md:89,636,832`
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `little_loops/transport.py:2023-2026` — `wire_transports()`'s `elif name == "sqlite":` branch does `SQLiteTransport(base / "history.db")`, a **hardcoded literal path join that bypasses `resolve_history_db()` and `DEFAULT_DB_PATH` entirely** — a third path-resolution bypass alongside `decisions.py` and `cli/doctor.py`. [Agent 1 finding]
+- `little_loops/issue_history/collisions.py:28,109` — imports and calls `_connect_readonly` from `little_loops.history_reader` directly; not previously classified under the `issue_history/{...}` list and not among the three `issue_history` call sites enumerated in the "~70 confirmed call sites" breakdown below. [Agent 1 finding]
+
 ### Dependent Files (Callers/Importers)
 
 - `_connect_readonly()` (`history_reader/_base.py:60`) has ~70 confirmed call sites, almost
@@ -151,6 +155,51 @@ _Added by `/ll:refine-issue` — 2026-09-22 — based on codebase analysis:_
   `queries.py` are `test_feat3304_artifact_dashboard.py`, `issue_history/workspace_quality.py`,
   `cli/artifact/dashboard.py`, and `session_store/__init__.py` itself.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `hooks/scripts/context-monitor.sh:54-67,74-94` — a Claude Code hook shell script embeds inline
+  `python3 -c` snippets calling `session_store.record_session_lifecycle_event()`,
+  `resolve_history_db()` (line 56), and `record_context_pressure_event()`, `resolve_history_db()`
+  (line 82). A `.py`-only sweep (the basis for the "50 confirmed callers" count above) misses this
+  `.sh` call site; since `resolve_history_db()`'s signature stays unchanged, no code change is
+  required here, but it belongs in the caller inventory and its test coverage should stay green.
+  [Agent 1 finding]
+- `SQLiteTransport` (9 total `.py` importers; `session_store/writers.py` and `session_store/__init__.py`
+  already covered above) has 7 additional importers not yet listed: top-level
+  `little_loops/__init__.py:75-79` (re-exports `SQLiteTransport`, `record_issue_snapshot`,
+  `record_session_lifecycle_event` at the package root), `little_loops/transport.py` (constructs it —
+  see the hardcoded-path bypass under Files to Modify), `little_loops/config/features.py`,
+  `little_loops/cli/sprint/run.py:657,660,796,807` (two `SQLiteTransport(resolve_history_db())`
+  sites), `little_loops/issue_manager.py:54,1742` (`SQLiteTransport(self.db_path)`),
+  `little_loops/cli/parallel.py`, and `little_loops/cli/issues/set_status.py:163` (comment-only).
+  `SQLiteTransport`'s best-effort disable-on-failure contract is guaranteed unchanged, so these are
+  regression-coverage surface, not required code changes. [Agent 1 finding]
+- `little_loops/mcp_server/tools.py::_tool_history_search` (`:149-174`) calls `resolve_history_db()`
+  and `history_reader.search()` directly with no local `try/except`, relying entirely on
+  `search()`'s internal `except sqlite3.OperationalError`/`except sqlite3.Error` catches
+  (`history_reader/search.py:59,93,135`) to fail soft. Absent from this inventory until now.
+  [Agent 2 finding]
+- ~35 additional `cli/` files import `DEFAULT_DB_PATH` (`session_store/db.py:15`) directly rather
+  than resolving through `resolve_history_db()` — notably `cli/action.py`, `cli/queue.py`,
+  `cli/advise.py`, `cli/harness.py`, `cli/messages.py`, `cli/auto.py`, `cli/docs.py`, `cli/adapt.py`,
+  `cli/parallel.py`, `cli/sync.py`, `cli/migrate.py`, seven `cli/verify_*.py` files,
+  `cli/loop/__init__.py`, `cli/artifact/__init__.py`, `cli/issues/__init__.py`,
+  `cli/sprint/__init__.py`, plus `advisor.py`, `mcp_server/tools.py`, `user_messages.py`,
+  `init/cli.py`, `issue_manager.py`. Each direct-constant use is a candidate default-path bypass of
+  the same shape found three times already (`decisions.py`, `cli/doctor.py`, `transport.py`) —
+  Implementation Step 2's `sqlite3.connect` classification sweep should also enumerate
+  `DEFAULT_DB_PATH` direct-import sites rather than treat this list as settled. [Agent 1 finding]
+- `session_store/sessions.py:129` (`_query_threads_db`) and `:695` (`_list_codex_workspaces`),
+  already counted in the "11 raw read-only opens" above, open read-only connections against
+  `~/.codex/state_*.sqlite` — **Codex's own external session-index database, not `.ll/history.db`**.
+  They never flow through `resolve_history_db()`/`LL_HISTORY_DB`/`history.db_path` precedence today.
+  Folding them into `connect_readonly()` (whose BUG-3181/D19 contracts are specifically about the
+  `.ll/history.db` store) is a classification nuance for Implementation Step 2 to resolve explicitly,
+  not an assumption to inherit from the read-only-opens count. [Agent 2 finding]
+- `HistoryDbUnavailable` (defined `issue_history/parsing.py:411`) reconciliation surface, beyond
+  the 4 raise sites and `decisions.py`'s catch already noted: re-exported in `__all__` at
+  `issue_history/__init__.py:163,267`; caught (untested) at `cli/history.py:499,507`. [Agent 1 +
+  Agent 3 findings]
+
 ### Tests
 - New: `scripts/tests/test_session_store_backend.py` — registry (every registered
   provider resolves, unknown provider raises typed error, per
@@ -166,6 +215,29 @@ _Added by `/ll:refine-issue` — 2026-09-22 — based on codebase analysis:_
   `LL_HISTORY_DB`; doctor regression that `_schema_drift_data()` honors it.
 - Promote from `scripts/tests/spike/session_store_backend_dialect/` the locking-sequence,
   idempotent-`ensure_schema`, concurrent-migration, and capability-gate tests.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- Existing suites that must stay green, not previously named: `test_issue_history_agent_quality.py`
+  (21 test classes covering `agent_quality.py`, added to Files to Modify by the earlier
+  research pass but its dedicated test file wasn't added to this Tests section);
+  `test_mcp_server.py`, `test_feat_3149_mcp_mutation_tools.py`, `test_enh_3171_mcp_project_root.py`
+  (regression surface for `mcp_server/tools.py::_tool_history_search`). [Agent 1 + Agent 3 findings]
+- Test that may break: `test_issue_history_agent_quality.py::TestEmptyAndMissingDb::test_missing_db_returns_empty_analysis`
+  (`:173-178`) depends on `_connect_readonly()`'s current "return `None` on open failure" contract
+  (`history_reader/_base.py:60-84`), checked at `agent_quality.py:511-513`
+  (`if conn is None: return empty`). If the consolidated `connect_readonly()` raises a `HistoryError`
+  instead of returning `None`, this test's missing-db path breaks. [Agent 3 finding]
+- `HistoryDbUnavailable` reconciliation regression: `test_issue_history_parsing.py:667-679`
+  (`TestScanCompletedIssuesFromDb::test_raises_history_db_unavailable_on_open_failure`) is the only
+  test in the repo asserting on `HistoryDbUnavailable` and is not in the 7-test
+  "must be updated" list above — whatever the `HistoryError` taxonomy does to reconcile with
+  `HistoryDbUnavailable` must keep this test meaningful (update it or confirm
+  `HistoryDbUnavailable` keeps raising unchanged). [Agent 1 + Agent 3 findings]
+- Searched, no findings (confirmed, not gaps): no existing test asserts on the two-connections-per-call
+  behavior of `schema.py::connect()`/`ensure_db()` (safe to consolidate); no existing
+  `test_cli_doctor_install_checks.py::TestSchemaDrift` or `test_decisions.py::TestGenerateFromCompleted`
+  test sets `LL_HISTORY_DB`/`history.db_path` divergently from cwd, so fixing the two bypasses won't
+  break any of the 13 existing tests in those classes. [Agent 3 finding]
 
 ### Codebase Research Findings
 
@@ -190,8 +262,33 @@ _Added by `/ll:refine-issue` — 2026-09-22 — based on codebase analysis:_
    `sqlite3.OperationalError`/`sqlite3.Error` for "history failed" deliberately.
 4. Fix `decisions.py::generate_from_completed()` and `cli/doctor.py::_schema_drift_data()`
    to resolve through the chokepoint, each with a regression test.
+   > ⚠ Superseded — third bypass found: `transport.py:2023` (wire-issue)
 5. Update `docs/reference/API.md` signatures and `docs/ARCHITECTURE.md:89,636,832`;
    run the full suite and confirm every suite named under Tests stays green.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Fix `little_loops/transport.py:2023-2026`'s `wire_transports()` `"sqlite"` branch — it hardcodes
+  `base / "history.db"`, bypassing `resolve_history_db()`/`DEFAULT_DB_PATH`, the same bug shape as
+  the two bypasses already named in Expected Behavior and Acceptance Criteria.
+- Route `little_loops/issue_history/collisions.py:28,109` through the new entry points — it
+  currently calls `_connect_readonly` from `history_reader` directly, like `agent_quality.py` did
+  before being added to Files to Modify.
+- Explicitly classify `session_store/sessions.py:129,695` in Implementation Step 2's sqlite3.connect
+  sweep as opening Codex's external `~/.codex/state_*.sqlite`, not `.ll/history.db` — decide whether
+  these fold into `connect_readonly()` or stay a separate, un-migrated read-only path.
+- Decide the `HistoryDbUnavailable` (`issue_history/parsing.py:411`) reconciliation: keep it raising
+  unchanged (re-exported at `issue_history/__init__.py:163,267`, caught at `cli/history.py:499,507`,
+  asserted by `test_issue_history_parsing.py:667-679`) or fold it into the `HistoryError` taxonomy —
+  and update `agent_quality.py:511-513`'s `if conn is None: return empty` branch to match whatever
+  `connect_readonly()` does on open failure, since `TestEmptyAndMissingDb::test_missing_db_returns_empty_analysis`
+  depends on the current return-`None` contract.
+- Widen Implementation Step 2's `sqlite3.connect` classification sweep to also enumerate
+  `DEFAULT_DB_PATH` direct-import sites (~35 `cli/` files bypass `resolve_history_db()`'s precedence
+  by importing the constant directly) rather than treating the connection-site count as the full
+  inventory.
 
 ## Impact
 
@@ -223,7 +320,26 @@ raise `HistoryError` subclasses, with the original `sqlite3` exception preserved
 `test_hook_post_tool_use.py:190`, `test_feat3445_workspace_activity.py:92`) are
 updated deliberately; (2) `decisions.py::generate_from_completed()` now honors
 `LL_HISTORY_DB` / `history.db_path` instead of the hardcoded default; (3)
-`cli/doctor.py::_schema_drift_data()` now resolves via `resolve_history_db()`.
+`cli/doctor.py::_schema_drift_data()` now resolves via `resolve_history_db()`;
+(4) `little_loops/transport.py::wire_transports()`'s `"sqlite"` branch now resolves via
+`resolve_history_db()` instead of hardcoding `base / "history.db"` — a third bypass
+found by `/ll:wire-issue`, not previously named here.
+
+_Wiring pass added by `/ll:wire-issue`:_ concrete gate consumers backing the generic
+"loop fragments" reference above, none previously named individually: `ll-history summary`
+is consumed by `scripts/little_loops/loops/backlog-flow-optimizer.yaml:35` and
+`.../evaluation-quality.yaml:46` (pattern documented at `.../loops/lib/cli.yaml:64-66`);
+`ll-logs fleet-review`'s final-line-is-a-path contract is consumed by
+`.../loops/fleet-loop-improve.yaml:78,80`. Two further exit-code-degrade contracts on files
+under active modification are not yet named as guarantees: `ll-history-context`
+(backed by `cli/history_context.py`, in Files to Modify) is invoked via `2>/dev/null || true`
+by `commands/refine-issue.md:153`, `commands/ready-issue.md:136`, and
+`commands/create-sprint.md:366`; `ll-logs sequences --json` (backed by `cli/logs.py`) has an
+explicit empty-array/nonzero-exit fallback documented in `commands/loop-suggester.md:309-312`.
+Checked and cleared: `.loops/ll-logs-telemetry-digest.yaml`'s three grepped stderr strings
+("No history.db found", "No sessions found for:", "No catalog skills found") all originate
+from session-discovery/file-existence checks, not from catching a raw `sqlite3.*` exception,
+so the `HistoryError` taxonomy change does not affect them. [Agent 2 finding]
 
 ## Scope classification
 
@@ -289,6 +405,7 @@ change to migration SQL or locking.
   `explicit > LL_HISTORY_DB > history.db_path > DEFAULT_DB_PATH`; both covered by tests.
 - [ ] `decisions.py::generate_from_completed()` and `cli/doctor.py::_schema_drift_data()`
   resolve through the chokepoint, with regressions.
+  > ⚠ Superseded — third bypass found: `transport.py:2023` (wire-issue)
 - [ ] `HistoryError` taxonomy is raised only by adapter wrappers around driver calls;
   `__cause__` preserves the driver exception; no consumer catches `ValueError` or a
   driver exception type for history-store failures.
@@ -308,4 +425,5 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-22T20:46:38 - `5e6fdfe4-a051-499c-b448-1629fbe99667.jsonl`
 - `/ll:refine-issue` - 2026-09-22T20:35:26 - `000d50cc-8e65-459d-9c90-7e440ec813a8.jsonl`
