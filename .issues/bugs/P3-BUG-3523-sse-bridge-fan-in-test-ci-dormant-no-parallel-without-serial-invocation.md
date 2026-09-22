@@ -158,7 +158,7 @@ Decision landed: **option 2**. The wrapper is `test_no_parallel_serial_pass` in 
 
 ### Call Path
 
-Outer pytest schedules wrapper on an xdist worker → wrapper starts isolated nested pytest session → `-n 0` executes all marker-selected unit tests → wrapper collects result/diagnostics, cleans up failed attempts, and retries at most once → outer JUnit records the wrapper result.
+Outer pytest schedules `test_no_parallel_serial_pass` on an xdist worker (never skipped by `pytest_collection_modifyitems`, since it carries no `no_parallel` marker) → `test_no_parallel_serial_pass` starts an isolated nested `pytest` session via `subprocess.Popen` → `-n 0` executes all marker-selected unit tests, including `TestSseBridgeFanIn::test_two_producers_reach_one_client_with_distinct_producer_pid` (which `pytest_collection_modifyitems` would otherwise skip under `-n N`) → `test_no_parallel_serial_pass` collects the result/diagnostics, cleans up failed attempts via `os.killpg`, and retries at most once → outer JUnit records `test_no_parallel_serial_pass`'s result.
 
 ## Acceptance Criteria
 
@@ -366,18 +366,17 @@ _Added by `/ll:refine-issue` — 2026-09-22 — based on codebase analysis:_
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-09-22; re-checked 2026-09-22 — gap unchanged by the intervening `/ll:reconcile-issue` and two `/ll:verify-issues` passes (neither touches Program Design)_
+_Added by `/ll:confidence-check` on 2026-09-22; re-checked 2026-09-22 (three times) — Program Design gap resolved this pass by naming concrete anchors (`test_no_parallel_serial_pass`, `pytest_collection_modifyitems`) in the Call Path text; `ll-issues check-design BUG-3523` now exits 0_
 
-**Readiness Score**: 95/100 → STOP — ADDRESS GAPS (Program Design hard override)
+**Readiness Score**: 95/100 → PROCEED (Program Design hard override cleared)
 **Outcome Confidence**: 79/100 → MODERATE
-
-### Gaps to Address
-- Program Design: no call-path anchors named in Call Path — the "Call Path" section still describes the control flow in prose only (`Outer pytest schedules wrapper on an xdist worker → wrapper starts isolated nested pytest session → ...`) and names no backtick-anchored, repo-resolvable symbol (e.g. the wrapper's own `test_no_parallel_serial_pass`, which the Signatures subsection above it already names in backticks). `ll-issues check-design BUG-3523` still fails on this basis alone; the aggregate readiness score of 95 is overridden per the Program Design Hard Override (ENH-2852/ENH-2967). Remedy: name at least one concrete anchor in the Call Path prose (the wrapper function and/or `pytest_collection_modifyitems`), or run `/ll:reconcile-issue` to regenerate the section — note the prior `/ll:reconcile-issue` pass (2026-09-22T16:19:54) did not address this despite it being the prior confidence-check's sole gap.
 
 ### Outcome Risk Factors
 - Deep per-site complexity concentrated in the new `test_no_parallel_serial_gate.py` file (process-group lifecycle, bounded retry across `subprocess.TimeoutExpired` and non-zero/non-5 exits, descendant cleanup) — the surrounding 6 touch-points (`pytest.ini`, `scripts/pyproject.toml`, two stale-comment rewords, two docs rewords) are mechanical, so the aggregate Complexity score undercounts the one genuinely stateful site; validate the retry/cleanup paths with controlled subprocess fixtures per AC-W8/AC-W11 before trusting a green run.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-22T16:31:30 - `00004522-d744-453d-9393-066be704b3ae.jsonl`
+- `/ll:confidence-check` - 2026-09-22T16:29:23 - `00004522-d744-453d-9393-066be704b3ae.jsonl`
 - `/ll:reconcile-issue` - 2026-09-22T16:26:47 - `da6595a1-fc9b-4f09-92ce-9a598a4335fe.jsonl`
 - `/ll:confidence-check` - 2026-09-22T16:25:15 - `08d6ef1e-1b9c-4a4d-935a-fce06a8a019b.jsonl`
 - `/ll:verify-issues` - 2026-09-22T16:24:39 - `971b8e9e-da71-4859-ba73-1cc041bb9883.jsonl`
