@@ -46,6 +46,14 @@ support) builds on.
   already-root-anchored absolute path (BUG-3181); `queries.py::_connect_readonly()`
   deliberately bypasses `connect()` because that path migrates-on-open (D19).
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-22 — based on codebase analysis:_
+
+- `session_store/schema.py::connect()` (`:1611`) opens **two** connections per call: `ensure_db(path)` (`:1570`) internally opens-and-closes one bare `sqlite3.connect(str(db_path))` (`:1602`) to migrate, then `connect()` opens a second bare `sqlite3.connect(str(db_path))` (`:1617`) for the live connection it returns. Both call `_configure_connection()` (`:1443`, best-effort `PRAGMA busy_timeout`/`journal_mode` wrapped in `try/except sqlite3.OperationalError`).
+- Raw `sqlite3.connect(` call-site count confirmed at 27 across 15 modules (issue's "roughly 28" is a close, hedged estimate — not a correction, a confirmation within rounding).
+- An existing backend-neutral-ish exception already exists and is a partial precedent for `HistoryError`: `issue_history/parsing.py::HistoryDbUnavailable(Exception)` (`:411`), raised at 4 call sites (`:452,458,497,509`) uniformly as `raise HistoryDbUnavailable(str(exc)) from exc` — matching the `__cause__`-preservation requirement in Expected Behavior. It is a single, non-hierarchical exception (no subclasses), and its `except` clauses are broad (`except Exception as exc:`), not narrowly scoped to `sqlite3.Error`/`sqlite3.OperationalError` — this diverges from the "adapters wrap narrowly around driver calls only" requirement. `decisions.py:600` already catches `HistoryDbUnavailable` specifically (separate from the raw-`sqlite3.*` catches the issue lists), so the new `HistoryError` taxonomy will coexist with or need to reconcile this existing exception.
+
 ## Expected Behavior
 
 - One `session_store/backend.py` module: a `Backend` protocol, a `SqliteBackend`,
@@ -98,6 +106,14 @@ leave `queue.db`, codegraph, and scratch stores untouched. Fix the `decisions.py
 and `cli/doctor.py` path bypasses. See "Compatibility guarantees and intentional
 changes" below for what is and is not preserved.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-22 — based on codebase analysis:_
+
+- Prior precedent exists in this codebase for the "N raw call sites -> one chokepoint" strategy this issue applies to history-store connections: `host_runner.py::resolve_host()`/`project_child_env()` (line 2352) consolidated all host-CLI subprocess spawns the same way (CHANGELOG.md:3176; also a standing rule in this repo's own CLAUDE.md § "Host CLI Abstraction"). This is corroborating evidence the approach is established here, not novel to this issue.
+- The lazy `(module_path, class_name)` registry pattern this issue names (`codequery.core.resolve_provider`) is not the only registry shape in this codebase: `host_runner.py::_HOST_RUNNER_REGISTRY` (line 2225) is an eager, in-module `dict[str, type[HostRunner]]` of class objects (no lazy import), because all runner classes already live in that same file with no circular-import pressure. `session_store/backend.py` does have the same "dialect modules import shared types back from the core module" circular-import pressure `codequery.core` has, so the lazy-tuple shape (already followed by the spike's `resolve_backend()`) remains the better-fitting precedent; noted here as the contested alternative, not a recommendation to switch.
+- No existing exception hierarchy in this codebase has 3+ subclasses of a shared base wrapping distinct narrow driver-level errors — an unfiltered `class \w+Error(\w*Error)` / `class \w+(Exception):` sweep of `scripts/little_loops/` found only single-subclass or no-subclass hierarchies (e.g. `fsm/interpolation.py::InterpolationError`/`HeredocCollisionError`, `codequery/core.py::CodeQueryError`/`Unsupported`). The `HistoryError` taxonomy's 4-subclass shape (`HistoryUnavailable`, `HistoryIntegrityError`, `HistoryUnsupported`, `HistoryOperationError`) is a new shape for this codebase, not a reuse of an established one — implement with that in mind rather than searching for a template to copy.
+
 ## Integration Map
 
 ### Files to Modify
@@ -108,6 +124,32 @@ changes" below for what is and is not preserved.
 - `little_loops/cli/{history,logs,doctor,doctor_trim,ctx_stats,history_context,session,compact_session,backfill_worker,verify_kinds}.py`
 - `little_loops/decisions.py:578-605`
 - `docs/reference/API.md` (session-store signatures), `docs/ARCHITECTURE.md:89,636,832`
+
+### Dependent Files (Callers/Importers)
+
+- `_connect_readonly()` (`history_reader/_base.py:60`) has ~70 confirmed call sites, almost
+  entirely within `history_reader/{context,digest,events,__init__,search,harness,hooks,
+  summary_dag,sessions,formatting,usage,runs}.py` (13 modules import it directly, all via
+  `from little_loops.history_reader._base import ... _connect_readonly ...` or the
+  `history_reader/__init__.py` re-export), plus `issue_history/rework.py:297`
+  (`analyze_rework`), `issue_history/agent_quality.py:511` (`analyze_agent_quality`, imports
+  at line 43 — **not currently listed** under Files to Modify above), and
+  `session_store/queries.py:288` (`build_snapshot_db`). None of these need their own
+  behavior changed if `_connect_readonly()`'s internal implementation is folded into
+  `connect_readonly()` without a signature change; they are the regression surface the
+  `test_history_reader_*.py` glob and `issue_history` test files already listed under Tests
+  must keep covering. `issue_history/agent_quality.py` should be added to Files to Modify's
+  classification list.
+- `resolve_history_db()` has 50 confirmed callers repo-wide; `decisions.py` and
+  `cli/doctor.py` are confirmed **absent** from that caller set, consistent with the two
+  bypasses already named above.
+- `generate_from_completed()` is called from `cli/issues/decisions.py:390` (`cmd_decisions`).
+- `_schema_drift_data()` is called from `cli/doctor.py:625` (`_print_schema_drift_section`),
+  `:636` (`_schema_drift_check`), `:1340` (`_print_report`).
+- `session_store/queries.py::_connect_readonly()` (`:191-200`) is imported only via
+  `session_store/__init__.py:106`'s re-export of `queries.py` symbols; confirmed importers of
+  `queries.py` are `test_feat3304_artifact_dashboard.py`, `issue_history/workspace_quality.py`,
+  `cli/artifact/dashboard.py`, and `session_store/__init__.py` itself.
 
 ### Tests
 - New: `scripts/tests/test_session_store_backend.py` — registry (every registered
@@ -124,6 +166,15 @@ changes" below for what is and is not preserved.
   `LL_HISTORY_DB`; doctor regression that `_schema_drift_data()` honors it.
 - Promote from `scripts/tests/spike/session_store_backend_dialect/` the locking-sequence,
   idempotent-`ensure_schema`, concurrent-migration, and capability-gate tests.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-22 — based on codebase analysis:_
+
+- Test-pattern findings for the "### Tests" subsection above: the registry/protocol-conformance shape to model `test_session_store_backend.py` after (the issue's own citation of `test_codequery_core.py::TestResolveProvider` has a companion class worth reusing too): `TestResolveProvider` (known-key resolves, unknown-key raises the module's typed error, `isinstance(x, Protocol)` conformance) plus a separate `TestProtocolConformance` class parameterized off a `provider` fixture — its docstring explicitly invites a later provider to "extend this class or reuse its assertions against its own provider name" (`test_codequery_core.py`).
+- Precedent for "`connect_readonly()` never creates or migrates" tests exists in two styles, both usable: a behavioral sha256-before/after hash comparison of the DB file (`test_feat3304_artifact_dashboard.py::TestSourceDbUntouched::test_history_db_byte_identical_after_export`, lines 444-459), and a source-text substring assertion pinned between two named function anchors in the target file, asserting the migrating opener's name is absent and the read-only URI marker is present (`test_snapshot_builder_never_uses_the_migrating_open_path` in the same class).
+- Precedent for the BUG-3181 `root=` no-re-resolve contract tests: `test_session_store_db.py::test_root_anchors_default_away_from_cwd`, `::test_root_anchors_config_lookup`, `::test_env_still_outranks_root` (each asserts `resolve_history_db(None, root=project) == <expected>` under a `monkeypatch.chdir` to a *different* directory); the MCP-tool caller side of the same contract is documented at `test_enh_3171_mcp_project_root.py:182`.
+- The spike's own test file (`scripts/tests/spike/session_store_backend_dialect/test_backend.py`) already has `TestDialectMigration`, `TestCapabilityGate` (asserts `UnsupportedCapability` with a `match=` regex on both capability name and backend kind), `TestConcurrentMigration` (4-thread `threading.Barrier` race against `ensure_schema()`, asserting a single `meta` row survives), and `TestSpikeIsolation::test_spike_does_not_import_production_session_store` (`ast.parse`/`ast.walk` asserting the spike imports no `little_loops.session_store` module) — these are the four tests "Implementation Steps" item 1 says to promote; their concrete names/locations are recorded here so the promotion is a rename/move, not a rewrite.
 
 ## Implementation Steps
 
@@ -209,6 +260,13 @@ purpose. Connection counts are the inventory to classify, not the scope.
 sequence). `SQLiteTransport` -> `open_history` under its existing lock, catching
 `HistoryError`.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-22 — based on codebase analysis:_
+
+- Confirmed `codequery/core.py::resolve_provider()` signature: `resolve_provider(name: str = "auto") -> CodeQueryProvider` (`codequery/core.py:103`), backed by `_PROVIDER_MAP: dict[str, tuple[str, str]]` (`:97-100`) and `_instantiate()` (`:135-142`, plain `importlib.import_module` + `getattr` + zero-arg construction). This is the concrete shape `resolve_backend()` is meant to mirror.
+- The spike's existing `resolve_backend()` (`scripts/tests/spike/session_store_backend_dialect/backend.py:52-58`) has a different signature than this section's own `### Signatures`: `resolve_backend(kind: str, db_path: Path) -> Backend` (two positional args), not `resolve_backend(config: dict | None = None) -> Backend`. Reconciling these — whether the promoted module keeps the spike's `(kind, db_path)` shape, adopts the config-dict shape written above, or does both — is an open implementation decision, not resolved by either the spike or this section as written.
+
 ## Scope Boundaries
 
 In scope: `session_store/backend.py`, classified history consumers, the 11
@@ -247,3 +305,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ## Status
 
 **Open** | Created: 2026-09-22 | Priority: P3
+
+
+## Session Log
+- `/ll:refine-issue` - 2026-09-22T20:35:26 - `000d50cc-8e65-459d-9c90-7e440ec813a8.jsonl`
