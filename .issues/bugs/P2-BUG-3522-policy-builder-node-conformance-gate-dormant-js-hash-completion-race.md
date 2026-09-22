@@ -266,20 +266,26 @@ must still add the regression tests and run the pre-merge checks above.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
-_Revised 2026-09-20 after the evidence review; the original list assumed the timeout hypothesis._
+_Revised 2026-09-20 after the evidence review; the original list assumed the timeout hypothesis. Reorganised into phases 2026-09-22. The phases are a working order, not a required commit stack: the fails-before/passes-after evidence is recorded output pasted into the PR description, and no deliberately failing revision is committed (that would make bisecting harder, not easier)._
 
-- Fix the wait in `scripts/tests/js/policy_submission.test.mjs`: `settleHash` subscribes via `ctl.onChange`, reads `state.review.status` from the callback argument, and resolves/unsubscribes on the first non-`hashing` value (`ready`, `refused`, or `none`); it never spans `dispose()`; `setup()` gains an `over.subtle` passthrough (no wrapper)
-- Add the deterministic race regression test (deferred digest injected via `over.subtle`, released past the 50-turn budget — no wall-clock, no threadpool), and record the fails-before/passes-after demonstration in the PR description; delete the old spin helper, do not keep it in-tree
-- Remove `@pytest.mark.no_parallel` from `test_node_conformance_suite_passes`, add `@pytest.mark.timeout(240)`, and refresh the module docstring ("no hosted CI", "ships Node 22")
-- Add rejected-digest and already-refused-review tests, including subscription cleanup; keep all readiness assertions outside the `onChange` listener
-- Preserve version-probe diagnostics and reject unsuccessful probes; move `_require_node(min_major: int | None = 22)` to a shared test helper and consolidate all four Node-dependent tests (the `feat3304` dashboard gate, deleting its private `_node_major`; the `rlhf` smoke gate with `min_major=None`, deleting its private `shutil.which`/skip) with the `LL_REQUIRE_NODE=1` fail / unset skip policy. Add the mocked guard matrix (including `min_major=None`) in a separate test module; set the env var on the existing `unit-tests` job; do not add it to conftest's `_CMD_RUN_ENV_VARS`
-- Refresh the two sibling docstrings in `test_decisions_yaml_gate.py` (`validator` fixture) and `test_decisions_yaml_pre_commit_gate.py` (module docstring): replace `test_policy_builder_node_gate.py:NN-NN` line citations with a file/function reference to the shared `_require_node`, and describe the Node guard as fail-or-skip by `LL_REQUIRE_NODE`, not an unconditional skip-when-missing template
+**Phase A — establish the race deterministically.** `setup()` in `scripts/tests/js/policy_submission.test.mjs` gains an `over.subtle` passthrough (no wrapper); add the deferred-digest regression test (digest released past the 50-turn budget — no wall-clock, no threadpool). Run it against the existing spin helper and record the `'hashing' !== 'ready'` failure output for the PR description.
+
+**Phase B — replace the wait.** `settleHash` subscribes via `ctl.onChange`, reads `state.review.status` from the callback argument, and resolves/unsubscribes on the first non-`hashing` value (`ready`, `refused`, or `none`); it never spans `dispose()`. Delete the old spin helper, do not keep it in-tree. Add the rejected-digest and already-refused-review tests, including subscription cleanup; keep all readiness assertions outside the `onChange` listener. Run the JS suite and record the passing output for the PR description.
+
+**Phase C — restore the gate with timeout protection.** Remove `@pytest.mark.no_parallel` from `test_node_conformance_suite_passes`, add `@pytest.mark.timeout(240)`, and refresh the module docstring ("no hosted CI", "ships Node 22"). Add `@pytest.mark.timeout(240)` to `TestDashboardNodeRuntimeGate::test_generated_page_runtime_behaviour` as well (same inner `timeout=180`, same watchdog inversion). No timeout budget goes inside `settleHash()`.
+
+**Phase D — consolidate the Node guards.**
+- Move the guard into `scripts/tests/helpers.py` as public `require_node(min_major: int | None = 22)`; keep the version probe an internal detail unless a caller needs the major on its own. Preserve single-probe behaviour and probe diagnostics; reject unsuccessful probes. Route all four Node-dependent tests through it (the `feat3304` dashboard gate, deleting its private `_node_major`; the `rlhf` smoke gate with `min_major=None`, deleting its private `shutil.which`/skip) with the `LL_REQUIRE_NODE=1` fail / unset skip policy. Add the mocked guard matrix (including `min_major=None`) in a separate test module; set the env var on the existing `unit-tests` job; do not add it to conftest's `_CMD_RUN_ENV_VARS`
+- Retain the probed `node --version` output in an uploaded `unit-tests` artifact on passing runs (smallest reliable mechanism; see Proposed Solution 4 for the configuration constraints that rule out bare stdout and `record_property`), and verify it is actually present in the first post-merge artifact
+- Refresh the two sibling docstrings in `test_decisions_yaml_gate.py` (`validator` fixture) and `test_decisions_yaml_pre_commit_gate.py` (module docstring): replace `test_policy_builder_node_gate.py:NN-NN` line citations with a file/function reference to `require_node` in `scripts/tests/helpers.py`, and describe the Node guard as fail-or-skip by `LL_REQUIRE_NODE`, not an unconditional skip-when-missing template
 - Fallback only (runner is already confirmed >=22): if the first `LL_REQUIRE_NODE=1` run fails the guard, add `actions/setup-node` pinned to `22.x`+ to the `unit-tests` job (free action, not paid CI)
+
+**Docs, scope guards, and verification.**
 - Do **not** scope in the `test_feat3323_sse_bridge.py:215` sibling dormancy — that is BUG-3523. Keep the JS glob and the existing nested dashboard gate ownership unchanged
 - Update `docs/development/TESTING.md` (`no_parallel` row wording) and `docs/development/TROUBLESHOOTING.md` (the "tests still run" claim)
 - Verify the `.claude/CLAUDE.md` / `AGENTS.md` gate-example wording still holds once the gate executes again
 - Re-run `scripts/tests/test_conftest_cap.py` (`TestNoParallelMarkerRouting`), the new guard-policy tests, and `LL_REQUIRE_NODE=1 python -m pytest scripts/tests/test_policy_builder_node_gate.py -n 2` (6 passed, zero skipped). Run the full local suite before merge
-- After merge, cite a green `main` CI run and its JUnit artifact showing the gate passed as closure evidence
+- After merge, cite a green `main` CI run, its JUnit artifact showing the gate passed, and the retained Node version from that artifact as closure evidence
 
 ## Confidence Check Notes
 
