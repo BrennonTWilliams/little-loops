@@ -8,6 +8,7 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-09-22'
 captured_at: '2026-09-22T23:16:32Z'
+verify_verdict: NON_VALID
 blocks:
 - FEAT-3524
 relates_to:
@@ -101,14 +102,14 @@ exception. Best-effort degrade contracts (never raise, return
 
 Per ENH-3525's Compatibility Guarantees, the seven tests below are
 updated deliberately (not a regression):
-`test_feat3323_sse_bridge.py:1198`,
-`test_hook_user_prompt_submit.py:143,302,604`,
-`test_ll_issues_research_triage.py:145`, `test_set_status_cli.py:1309`,
-`test_hook_post_tool_use.py:190`,
+`test_feat3323_sse_bridge.py:1203`,
+`test_hook_user_prompt_submit.py:146,305,607`,
+`test_ll_issues_research_triage.py:148`, `test_set_status_cli.py:1312`,
+`test_hook_post_tool_use.py:193`,
 `test_feat3445_workspace_activity.py:92`.
 
 `docs/reference/API.md` (session-store signatures) and
-`docs/ARCHITECTURE.md:89,636,832` are updated to describe the finished
+`docs/ARCHITECTURE.md:636,717` are updated to describe the finished
 chokepoint.
 
 ## Motivation
@@ -149,7 +150,7 @@ tests that assert on raw `sqlite3` exceptions for "history failed", then
 - `little_loops/session_store/backend.py` — only if the design question
   resolves to option (b) (a translating wrapper); otherwise unchanged.
 - `scripts/tests/test_history_store_chokepoint_gate.py` — shrink `_ALLOWLIST`.
-- `docs/reference/API.md`, `docs/ARCHITECTURE.md:89,636,832`.
+- `docs/reference/API.md`, `docs/ARCHITECTURE.md:636,717`.
 
 ### Dependent Files (Callers/Importers)
 - `SQLiteTransport` importers per ENH-3525's wiring pass:
@@ -171,10 +172,10 @@ tests that assert on raw `sqlite3` exceptions for "history failed", then
 
 ### Tests
 - Update the seven tests ENH-3525's Compatibility Guarantees names as
-  deliberate rewrites: `test_feat3323_sse_bridge.py:1198`,
-  `test_hook_user_prompt_submit.py:143,302,604`,
-  `test_ll_issues_research_triage.py:145`, `test_set_status_cli.py:1309`,
-  `test_hook_post_tool_use.py:190`, `test_feat3445_workspace_activity.py:92`.
+  deliberate rewrites: `test_feat3323_sse_bridge.py:1203`,
+  `test_hook_user_prompt_submit.py:146,305,607`,
+  `test_ll_issues_research_triage.py:148`, `test_set_status_cli.py:1312`,
+  `test_hook_post_tool_use.py:193`, `test_feat3445_workspace_activity.py:92`.
 - `scripts/tests/test_history_store_chokepoint_gate.py` — both existing
   tests (`test_no_raw_sqlite_connect_outside_chokepoint_and_allowlist`,
   `test_allowlist_entries_still_exist_and_still_have_raw_connects`) gate
@@ -185,7 +186,7 @@ tests that assert on raw `sqlite3` exceptions for "history failed", then
 
 ### Documentation
 - `docs/reference/API.md` — `little_loops.session_store` signatures.
-- `docs/ARCHITECTURE.md:89,636,832` — session-store / history.db
+- `docs/ARCHITECTURE.md:636,717` — session-store / history.db
   architecture, updated to describe the finished (not partial) chokepoint.
 
 ### Configuration
@@ -284,10 +285,51 @@ shape, `queue.db`/codegraph/Codex-index exclusions).
 - `scripts/tests/test_history_store_chokepoint_gate.py` (the allowlist
   this issue shrinks to zero)
 
+## Verification Notes
+
+Verdict at time of check: **OUTDATED** (corrections below applied in the
+same pass, so the issue as it now reads is up to date — this section is a
+record of what was wrong and fixed, not an outstanding action item).
+
+- All five provisional-allowlist files, their `sqlite3.connect(`/`except
+  sqlite3.*` line numbers (`lifecycle.py:910,1388,1396,1447`,
+  `cli/logs.py:865,1603`, `cli/ctx_stats.py:139,245,309`,
+  `cli/history.py:795`, `writers.py`'s `SQLiteTransport` connect), the four
+  `HistoryError` subclasses, and `backend.py`'s `connect()`/
+  `connect_readonly()`/`open_history()` line numbers (146/151/228) were all
+  confirmed exact against current code. `test_history_store_chokepoint_gate.py`'s
+  `_ALLOWLIST` matches the five files and rationale described. Evidence-quote
+  check (`ll-verify-evidence`) and the decisions-log required-rule check both
+  came back clean.
+- **Fixed**: the seven named test line references had drifted 3-5 lines from
+  unrelated edits since ENH-3525 was written — corrected to
+  `test_feat3323_sse_bridge.py:1203`, `test_hook_user_prompt_submit.py:146,305,607`,
+  `test_ll_issues_research_triage.py:148`, `test_set_status_cli.py:1312`,
+  `test_hook_post_tool_use.py:193` (`test_feat3445_workspace_activity.py:92`
+  was already accurate).
+- **Fixed**: `docs/ARCHITECTURE.md:89,636,832` (inherited verbatim from
+  ENH-3525, which A1 never touched) named two lines with no relation to
+  session-store/history.db architecture — line 89 is mid-hooks-adapter
+  directory tree, and line 832 documents `.ll/queue.db`, which that same
+  paragraph explicitly calls "distinct from `.ll/history.db`". Corrected to
+  `docs/ARCHITECTURE.md:636,717` (schema-versions table and the `.ll/history.db`
+  overview paragraph), the two locations that actually describe history.db.
+- **Fixed (dependency)**: this issue's `blocks: [FEAT-3524]` had no
+  reciprocal entry in FEAT-3524's `blocked_by` (only listed ENH-3525) —
+  added `ENH-3526` to `FEAT-3524`'s `blocked_by`.
+- **Remaining**: this issue has no `## Acceptance Criteria` section at all
+  (its parent ENH-3525 has one), so check B6's AC-coverage-of-Integration-Map
+  sub-check finds a total gap — none of the five files' integration points
+  have a corresponding AC. Not corrected here (drafting ACs against the
+  unresolved Step 1 design question is substantive authoring work, not a
+  verification fix); recommend `/ll:format-issue` or `/ll:refine-issue`
+  before implementation starts.
+
 ## Status
 
 **Open** | Created: 2026-09-22 | Priority: P3
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-22T23:39:32 - `719ed6d0-2e4e-41db-ae76-8176f4dcd29a.jsonl`
 - `/ll:manage-issue` - 2026-09-22T23:29:05 - `4f3ece7f-4412-4831-a895-fcf5c78a9b60.jsonl`
