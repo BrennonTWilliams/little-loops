@@ -198,6 +198,7 @@ _Revised 2026-09-20 after the evidence review; the original list assumed the tim
 - Re-run `scripts/tests/test_conftest_cap.py` (`TestNoParallelMarkerRouting`)
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-22T15:21:53 - `83f6ed80-53e1-4d9e-8978-6a6d02a3e6c7.jsonl`
 - `/ll:wire-issue` - 2026-09-20T21:53:51 - `80e0a309-7358-453f-8fdc-92553921aa72.jsonl`
 - `/ll:refine-issue` - 2026-09-20T21:21:36 - `09272224-9351-4571-a369-7e216b7645b5.jsonl`
 - `/ll:format-issue` - 2026-09-20T21:17:56 - `4117c50f-02ee-4b8b-8840-0c4b382de04b.jsonl`
