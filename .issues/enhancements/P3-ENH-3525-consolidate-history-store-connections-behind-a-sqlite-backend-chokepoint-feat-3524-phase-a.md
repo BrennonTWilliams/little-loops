@@ -29,17 +29,37 @@ support) builds on.
 
 - `session_store.schema.ensure_db()` and `connect()` open `sqlite3.connect(str(path))`
   directly; roughly 28 `sqlite3.connect(` call sites across ~15 modules do the same.
-- Read-only opens are duplicated by mirroring, not shared: 11 raw
-  `sqlite3.connect(f"file:{path}?mode=ro", uri=True)` sites, including
-  `issue_history/evolution.py:30`, `issue_history/workspace_quality.py:108-120`,
-  `codequery/codegraph.py:81`, `cli/doctor.py:485,547`, `session_store/sessions.py:129,695`,
-  `history_reader/_base.py:60`, and the one named wrapper
-  `session_store/queries.py::_connect_readonly()` (`:191-200`).
-- Two callers bypass `resolve_history_db()` entirely: `decisions.py:578-605`
-  (`generate_from_completed()`) hardcodes `project_root / ".ll" / "history.db"` and
-  gates on `.exists()`; `cli/doctor.py:542` (`_schema_drift_data()`) resolves
-  `Path.cwd() / DEFAULT_DB_PATH`. Both silently ignore `LL_HISTORY_DB` and
-  `history.db_path`.
+- Read-only opens are duplicated by mirroring, not shared. There are 10 raw
+  `sqlite3.connect(f"file:{path}?mode=ro", uri=True)` sites plus one read-only `ATTACH`
+  (line numbers verified 2026-09-22):
+  - **History-store (in scope, 7 opens + 1 ATTACH):** `issue_history/evolution.py:41`,
+    `issue_history/workspace_quality.py:117` (+ `ATTACH … mode=ro` at `:209`),
+    `cli/doctor.py:485,547`, `cli/doctor_trim.py:278`, `history_reader/_base.py:78`
+    (inside `_connect_readonly()`, `:60`), and `session_store/queries.py::_connect_readonly()`
+    (`:191-200`).
+  - **Not history-store (audited, excluded):** `codequery/codegraph.py:86` (codegraph DB);
+    `session_store/sessions.py:129,695` (Codex's own `~/.codex/state_*.sqlite` index).
+- The two in-scope read-only openers have **different contracts**:
+  - `history_reader/_base.py::_connect_readonly()` is not actually read-only end to end:
+    it calls `ensure_db(db_path)` first (creates the file/dir and **applies migrations** over
+    a writable connection), then opens `mode=ro`. On any `sqlite3.Error` it logs and
+    **returns `None`**. Its ~70 callers therefore always read a store at the current schema.
+  - `session_store/queries.py::_connect_readonly()` is strict read-only (never creates or
+    migrates, D19) and **raises** on failure.
+  - Latent bug in `_base`: it discards `ensure_db()`'s return value and opens `db_path` as
+    given (BUG-3181), but `ensure_db()` re-resolves default-shaped paths through
+    env/config — so for a default-shaped argument it can migrate a *different* file than the
+    one it then opens.
+- Three callers bypass `resolve_history_db()` entirely, silently ignoring `LL_HISTORY_DB`
+  and `history.db_path`:
+  - `decisions.py:578-605` (`generate_from_completed()`) hardcodes
+    `project_root / ".ll" / "history.db"` and gates on `.exists()`.
+  - `cli/doctor.py:542` (`_schema_drift_data()`) resolves `Path.cwd() / DEFAULT_DB_PATH`.
+  - `transport.py:2023-2026` (`wire_transports()`'s `"sqlite"` branch) writes to
+    `(log_dir or Path(".ll")) / "history.db"`, while the adjacent fallback in
+    `cli/parallel.py:327` / `cli/sprint/run.py` uses `resolve_history_db()`. With
+    `LL_HISTORY_DB` set, event rows land in a different DB depending on whether `"sqlite"`
+    is listed in `events.transports`.
 - Every consumer catches raw `sqlite3.OperationalError` / `sqlite3.IntegrityError` /
   `sqlite3.Error` at its own call site (`schema.py:1458,1485`; `queries.py:56,212,379`;
   `lifecycle.py:1447`; `writers.py` `SQLiteTransport`); there is no shared error type.
@@ -64,9 +84,20 @@ _Added by `/ll:refine-issue` — 2026-09-22 — based on codebase analysis:_
 - New backend-aware entry points `open_history()` / `open_history_readonly()` that
   every classified history consumer uses. Legacy `resolve_history_db() -> Path`,
   `ensure_db() -> Path`, and `connect(path)` keep their SQLite behavior and signatures.
-- `connect_readonly()` never creates or migrates the store, honors the BUG-3181
-  no-re-resolve contract for absolute paths, and honors the D19 no-migrate-on-open
-  contract; a writable scratch DB may still be `ATTACH`ed by snapshot export.
+- Two named read-only contracts, each assigned explicitly per caller:
+  - **Strict** — `connect_readonly(path)`: never creates, never migrates (D19). Used by
+    `queries.py` snapshot export, `cli/doctor*.py`, and any caller that must not mutate the
+    store. A writable scratch DB may still be `ATTACH`ed by snapshot export.
+  - **Ensure-then-read** — `open_history_readonly(target, ensure=True)`: resolves the
+    target **once**, runs `ensure_schema()` on that exact path over a separate writable
+    connection, then opens the same path via `connect_readonly()`. This preserves today's
+    `history_reader` behavior (callers read a current-schema store) and fixes the latent
+    migrate-a-different-file bug.
+  - Both honor the BUG-3181 no-re-resolve contract for already-resolved absolute paths.
+- Read-only failure contract: `connect_readonly()` / `open_history_readonly()` **raise
+  `HistoryUnavailable`**. `history_reader/_base.py::_connect_readonly()` stays as a thin
+  compatibility wrapper (same signature) that catches `HistoryError`, logs, and returns
+  `None`, so its ~70 callers are unchanged.
 - Explicit local targets remain explicit local targets: a caller passing a
   concrete path gets that path. Default-shaped arguments (`DEFAULT_DB_PATH`, `None`)
   select the configured history store via the existing precedence
@@ -78,13 +109,22 @@ _Added by `/ll:refine-issue` — 2026-09-22 — based on codebase analysis:_
   → `HistoryIntegrityError`, `sqlite3.OperationalError` on open → `HistoryUnavailable`,
   and any other `sqlite3.Error` → `HistoryOperationError`. Consumers never catch
   driver exception types or `ValueError` around whole operations.
-- `decisions.py::generate_from_completed()` and `cli/doctor.py::_schema_drift_data()`
-  resolve the store through the chokepoint.
+- The existing `issue_history/parsing.py::HistoryDbUnavailable` becomes a subclass of
+  `HistoryUnavailable` (no rename). Existing catches (`decisions.py:600`,
+  `cli/history.py:499,507`), the `issue_history/__init__.py` re-export, and
+  `test_issue_history_parsing.py:667-679` keep working unchanged.
+- `decisions.py::generate_from_completed()`, `cli/doctor.py::_schema_drift_data()`, and
+  `transport.py::wire_transports()`'s `"sqlite"` branch resolve the store through the
+  chokepoint. For `wire_transports()`: with no `log_dir`, use `resolve_history_db()`. An
+  explicit `log_dir` is a log/transport directory, not a history-store target, so it no
+  longer determines the history path either. The sqlite transport and the
+  `parallel.py`/`sprint/run.py` fallback then always agree.
 
 ## Motivation
 
-History-store access is spread across ~28 raw `sqlite3.connect` sites and 11 mirrored
-read-only opens, two of which bypass `LL_HISTORY_DB`/`history.db_path` entirely.
+History-store access is spread across ~27 raw `sqlite3.connect` sites and 7 mirrored
+history-store read-only opens with two incompatible contracts. Three callers bypass
+`LL_HISTORY_DB`/`history.db_path` entirely.
 Every consumer branches on raw `sqlite3` exception types. FEAT-3524 (remote libSQL)
 cannot be implemented safely on top of that, and the consolidation is independently
 valuable: one place to audit path precedence, one read-only contract, one error
@@ -99,12 +139,15 @@ Promote the spike at `scripts/tests/spike/session_store_backend_dialect/` into
 `provider` (following `codequery.core.resolve_provider`; lazy because dialect
 modules import shared types back from the core module). Add `open_history()` /
 `open_history_readonly()` as the backend-aware entry points and a `HistoryError`
-taxonomy raised only by narrow adapter wrappers around driver calls. Fold the 11
-read-only opens into `connect_readonly()`, preserving `queries.py::_connect_readonly()`'s
-no-migrate-on-open contract (D19) and `history_reader/_base.py`'s no-re-resolve
-contract (BUG-3181). Route classified history consumers through the entry points;
-leave `queue.db`, codegraph, and scratch stores untouched. Fix the `decisions.py`
-and `cli/doctor.py` path bypasses. See "Compatibility guarantees and intentional
+taxonomy raised only by narrow adapter wrappers around driver calls. Fold the 7 in-scope
+read-only opens (plus the `workspace_quality` read-only `ATTACH`) into the two named
+read-only contracts (strict vs. ensure-then-read, see Expected Behavior), preserving
+`queries.py::_connect_readonly()`'s no-migrate-on-open contract (D19),
+`history_reader/_base.py`'s no-re-resolve contract (BUG-3181), and `history_reader`'s
+migrate-before-read behavior. Route classified history consumers through the entry points;
+leave `queue.db`, codegraph, Codex's `~/.codex` index, and scratch stores untouched. Fix
+the three path bypasses (`decisions.py`, `cli/doctor.py`, `transport.py`). Add a gate test
+so the chokepoint stays the only opener. See "Compatibility guarantees and intentional
 changes" below for what is and is not preserved.
 
 ### Codebase Research Findings
@@ -123,7 +166,11 @@ _Added by `/ll:refine-issue` — 2026-09-22 — based on codebase analysis:_
 - `little_loops/history_reader/_base.py`, `little_loops/history_reader/digest.py`
 - `little_loops/issue_history/{evolution,workspace_quality,workspace_activity,rework,quality_regressions,_utils,parsing}.py`
 - `little_loops/cli/{history,logs,doctor,doctor_trim,ctx_stats,history_context,session,compact_session,backfill_worker,verify_kinds}.py`
+  (`cli/doctor_trim.py:278` is an in-scope strict read-only open)
+- `little_loops/issue_history/agent_quality.py`, `little_loops/issue_history/collisions.py`
+- `little_loops/transport.py:2023-2026` (third path bypass)
 - `little_loops/decisions.py:578-605`
+- New: `scripts/tests/test_history_store_chokepoint_gate.py` (raw-open gate, see Tests)
 - `docs/reference/API.md` (session-store signatures), `docs/ARCHITECTURE.md:89,636,832`
 
 _Wiring pass added by `/ll:wire-issue`:_
@@ -190,7 +237,7 @@ _Wiring pass added by `/ll:wire-issue`:_
   Implementation Step 2's `sqlite3.connect` classification sweep should also enumerate
   `DEFAULT_DB_PATH` direct-import sites rather than treat this list as settled. [Agent 1 finding]
 - `session_store/sessions.py:129` (`_query_threads_db`) and `:695` (`_list_codex_workspaces`),
-  already counted in the "11 raw read-only opens" above, open read-only connections against
+  (listed as excluded in Current Behavior), open read-only connections against
   `~/.codex/state_*.sqlite` — **Codex's own external session-index database, not `.ll/history.db`**.
   They never flow through `resolve_history_db()`/`LL_HISTORY_DB`/`history.db_path` precedence today.
   Folding them into `connect_readonly()` (whose BUG-3181/D19 contracts are specifically about the
@@ -213,7 +260,24 @@ _Wiring pass added by `/ll:wire-issue`:_
   `test_compaction.py`, `test_transport.py`, `test_feat3304_artifact_dashboard.py`,
   `test_feat3323_sse_bridge.py`.
 - New: `test_decisions_*` regression that `generate_from_completed()` honors
-  `LL_HISTORY_DB`; doctor regression that `_schema_drift_data()` honors it.
+  `LL_HISTORY_DB`; doctor regression that `_schema_drift_data()` honors it;
+  `test_transport.py` regression that `wire_transports()` with `"sqlite"` writes to the
+  `LL_HISTORY_DB` target, the same DB the `parallel.py` fallback would use.
+- New: ensure-then-read regression. An old-schema store opened via
+  `open_history_readonly(ensure=True)` is migrated first. A default-shaped argument migrates
+  and opens the **same** file (latent `_base` bug). A strict `connect_readonly()` against a
+  missing or old-schema store raises `HistoryUnavailable` and leaves the file byte-identical
+  (sha256 before/after, per `test_feat3304_artifact_dashboard.py::TestSourceDbUntouched`).
+- New: `_base._connect_readonly()` compatibility wrapper still returns `None` on open
+  failure. Re-verify `test_issue_history_agent_quality.py::TestEmptyAndMissingDb::test_missing_db_returns_empty_analysis`:
+  it passes today because `ensure_db()` *creates* the missing store, not via the `None` path.
+- New: `HistoryDbUnavailable` is caught by `except HistoryUnavailable`.
+- New gate: `scripts/tests/test_history_store_chokepoint_gate.py`. It AST/grep-scans
+  `scripts/little_loops/` and fails on any raw `sqlite3.connect(` outside
+  `session_store/backend.py` and a named allowlist: `queue_store.py`,
+  `codequery/codegraph.py`, `session_store/sessions.py` (Codex index), and scratch/snapshot
+  output sites, each with a one-line reason. This keeps the chokepoint from eroding, the same
+  way the host-CLI rule is enforced.
 - Promote from `scripts/tests/spike/session_store_backend_dialect/` the locking-sequence,
   idempotent-`ensure_schema`, concurrent-migration, and capability-gate tests.
 
@@ -251,52 +315,65 @@ _Added by `/ll:refine-issue` — 2026-09-22 — based on codebase analysis:_
 
 ## Implementation Steps
 
+> **Sizing:** ~30 files, a change to the exception types consumers raise, and seven
+> deliberate test rewrites is more than "Medium". Steps are grouped into two
+> independently landable commits (A1 / A2). If `/ll:issue-size-review` agrees, split A2
+> into its own issue that also blocks FEAT-3524.
+
+**A1 — chokepoint, contracts, bypass fixes (low risk, no consumer error-type changes)**
+
 1. Land `session_store/backend.py` (protocol, `SqliteBackend`, registry, `HistoryError`
-   taxonomy, `open_history()`/`open_history_readonly()`) with
+   taxonomy, `open_history()`/`open_history_readonly()`, strict `connect_readonly()`) with
    `test_session_store_backend.py`, promoting the spike's locking-sequence,
-   idempotent-`ensure_schema`, concurrent-migration, and capability-gate tests.
+   idempotent-`ensure_schema`, concurrent-migration, and capability-gate tests. Make
+   `HistoryDbUnavailable` subclass `HistoryUnavailable`.
 2. Classify every `sqlite3.connect` site (history consumer vs. independent local store
-   vs. scratch) and record the list in this issue; fold the 11 read-only opens into
-   `connect_readonly()` with BUG-3181 and D19 contract tests.
-3. Route classified consumers through the entry points; convert their `except sqlite3.*`
-   branches to `HistoryError` subclasses; update the seven tests that assert on
-   `sqlite3.OperationalError`/`sqlite3.Error` for "history failed" deliberately.
-4. Fix `decisions.py::generate_from_completed()` and `cli/doctor.py::_schema_drift_data()`
-   to resolve through the chokepoint, each with a regression test.
-   > ⚠ Superseded — third bypass found: `transport.py:2023` (wire-issue)
-5. Update `docs/reference/API.md` signatures and `docs/ARCHITECTURE.md:89,636,832`;
+   vs. scratch) and record the list in this issue. Fold the 7 in-scope read-only opens and
+   the `workspace_quality` `ATTACH` into the strict or ensure-then-read contract, recording
+   which caller gets which. Reimplement `history_reader/_base.py::_connect_readonly()` as
+   the `None`-returning wrapper over ensure-then-read. Add BUG-3181, D19, and
+   ensure-then-read contract tests.
+3. Fix all three path bypasses, each with a regression test:
+   `decisions.py::generate_from_completed()`, `cli/doctor.py::_schema_drift_data()`,
+   `transport.py::wire_transports()` `"sqlite"` branch.
+4. Add `test_history_store_chokepoint_gate.py` with the allowlist.
+
+**A2 — consumer error-type conversion (carries the behavioral risk)**
+
+5. Route remaining classified consumers through the entry points; convert their
+   `except sqlite3.*` branches to `HistoryError` subclasses; update the seven tests that
+   assert on `sqlite3.OperationalError`/`sqlite3.Error` for "history failed" deliberately.
+6. Update `docs/reference/API.md` signatures and `docs/ARCHITECTURE.md:89,636,832`;
    run the full suite and confirm every suite named under Tests stays green.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-- Fix `little_loops/transport.py:2023-2026`'s `wire_transports()` `"sqlite"` branch — it hardcodes
-  `base / "history.db"`, bypassing `resolve_history_db()`/`DEFAULT_DB_PATH`, the same bug shape as
-  the two bypasses already named in Expected Behavior and Acceptance Criteria.
-- Route `little_loops/issue_history/collisions.py:28,109` through the new entry points — it
-  currently calls `_connect_readonly` from `history_reader` directly, like `agent_quality.py` did
-  before being added to Files to Modify.
-- Explicitly classify `session_store/sessions.py:129,695` in Implementation Step 2's sqlite3.connect
-  sweep as opening Codex's external `~/.codex/state_*.sqlite`, not `.ll/history.db` — decide whether
-  these fold into `connect_readonly()` or stay a separate, un-migrated read-only path.
-- Decide the `HistoryDbUnavailable` (`issue_history/parsing.py:411`) reconciliation: keep it raising
-  unchanged (re-exported at `issue_history/__init__.py:163,267`, caught at `cli/history.py:499,507`,
-  asserted by `test_issue_history_parsing.py:667-679`) or fold it into the `HistoryError` taxonomy —
-  and update `agent_quality.py:511-513`'s `if conn is None: return empty` branch to match whatever
-  `connect_readonly()` does on open failure, since `TestEmptyAndMissingDb::test_missing_db_returns_empty_analysis`
-  depends on the current return-`None` contract.
-- Widen Implementation Step 2's `sqlite3.connect` classification sweep to also enumerate
-  `DEFAULT_DB_PATH` direct-import sites (~35 `cli/` files bypass `resolve_history_db()`'s precedence
-  by importing the constant directly) rather than treating the connection-site count as the full
-  inventory.
+- Fix `little_loops/transport.py:2023-2026`'s `wire_transports()` `"sqlite"` branch (now Step 3).
+- Route `little_loops/issue_history/collisions.py:28,109` through the new entry points. It
+  currently calls `_connect_readonly` from `history_reader` directly; the compatibility
+  wrapper covers it, so no call-site change is required.
+- **Decided:** `session_store/sessions.py:129,695` open Codex's external
+  `~/.codex/state_*.sqlite`, not `.ll/history.db`. They are **excluded** and stay raw
+  read-only opens, allowlisted in the gate test.
+- **Decided:** `HistoryDbUnavailable` subclasses `HistoryUnavailable`, unchanged otherwise.
+  `agent_quality.py:511-513`'s `if conn is None` branch is unchanged because `_base`'s
+  wrapper keeps returning `None`.
+- **Decided (bounded):** do not treat the ~35 `DEFAULT_DB_PATH` direct imports as bypasses
+  by default. Most are argparse defaults, which count as default-shaped arguments and are
+  resolved by the chokepoint. Step 2 audits only sites that **open or path-join a file
+  without resolving it** (the `decisions`/`doctor`/`transport` shape) and records any hits
+  here. It does not rewrite every import.
 
 ## Impact
 
 - **Priority**: P3 - prerequisite for FEAT-3524; independently reduces duplicated
   connection and error-handling logic.
-- **Effort**: Medium - one new module plus mechanical routing across ~15 modules;
-  the spike already proves the locking sequence survives parameterization.
+- **Effort**: Medium-Large. One new module, routing across ~30 files, a consumer
+  error-type conversion, and seven deliberate test rewrites. It is staged as A1/A2 (see
+  Implementation Steps). The spike already proves the locking sequence survives
+  parameterization.
 - **Risk**: Medium - the error-type change touches every consumer's degradation
   path; mitigated by the named existing suites and the intentional-change list.
 - **Breaking Change**: No for the default store location and precedence; yes,
@@ -309,7 +386,10 @@ This is not a zero-behavior-change refactor. Guaranteed unchanged: default store
 location, `LL_HISTORY_DB` / `history.db_path` precedence for every caller that
 already honored it, migration sequence and locking (`BEGIN IMMEDIATE`, manual
 `isolation_level`, `_split_sql_statements`), `meta.schema_version` semantics, FTS5 /
-WAL / VACUUM behavior, `SQLiteTransport`'s best-effort disable-on-failure contract,
+WAL / VACUUM behavior, `history_reader`'s migrate-before-read behavior and its
+`_connect_readonly()` return-`None`-on-failure contract, `HistoryDbUnavailable`'s name and
+catchability, `connect()`'s current two-connection open (deliberately out of scope),
+`SQLiteTransport`'s best-effort disable-on-failure contract,
 and the `ll-logs fleet-review` final-line-is-a-path and `ll-history summary`
 exit-0-on-degraded contracts used by loop fragments.
 
@@ -345,9 +425,11 @@ so the `HistoryError` taxonomy change does not affect them. [Agent 2 finding]
 ## Scope classification
 
 Migrate only classified history-store consumers. Audit, but do not migrate:
-`queue_store.py` (`queue.db`), `codequery/codegraph.py` (codegraph databases),
-snapshot scratch outputs, and any test helper that opens a throwaway local DB on
-purpose. Connection counts are the inventory to classify, not the scope.
+`queue_store.py` (`queue.db`), `codequery/codegraph.py:86` (codegraph databases),
+`session_store/sessions.py:129,695` (Codex's `~/.codex/state_*.sqlite` index), snapshot
+scratch outputs, and any test helper that opens a throwaway local DB on purpose. Each
+exclusion appears in the gate test's allowlist with its reason. Connection counts are the
+inventory to classify, not the scope.
 
 ## Program Design
 
@@ -359,14 +441,24 @@ purpose. Connection counts are the inventory to classify, not the scope.
 - `HistoryConnection`, `HistoryCursor`, `HistoryRow` protocols: `execute`,
   `executemany`, `commit`/`rollback`/`close`, `in_transaction`, fetch/iterate,
   `description`, `lastrowid`, `rowcount`, indexed and named row access
+  - `open_history*` **set the row factory themselves**, so named row access is part of the
+    contract. Consumers must not assign `conn.row_factory`: 8 files do today, and against a
+    `HistoryConnection` return type that is a mypy error.
+  - SQLite-only features used by consumers go behind `supports(capability)`, not the
+    protocol: `"attach"` (`ATTACH`, 5 files incl. `workspace_quality.py:209` and snapshot
+    export), `"vacuum"` (`VACUUM`, 4 files), and `"create_function"` (1 file). Callers
+    check the capability or receive `HistoryUnsupported`. `SqliteBackend` supports all
+    three. This is the seam FEAT-3524's libSQL remote (no `ATTACH`) needs.
 - `HistoryError(Exception)` with `HistoryUnavailable`, `HistoryIntegrityError`,
-  `HistoryUnsupported`, `HistoryOperationError`
+  `HistoryUnsupported`, `HistoryOperationError`; `HistoryDbUnavailable(HistoryUnavailable)`
 
 ### Signatures
 
-- `resolve_backend(config: dict | None = None) -> Backend` — lazy `(module_path, class_name)` registry keyed by `provider`; unknown provider raises a typed error listing available providers
+- `resolve_backend(provider: str = "sqlite") -> Backend` — **decided:** lazy `(module_path, class_name)` registry keyed by `provider`, zero-arg construction as in `codequery.core._instantiate()`; the store path is passed to `connect()`/`connect_readonly()`/`ensure_schema()`, not to the constructor. Replaces both the spike's `(kind, db_path)` shape and the earlier `config: dict` draft. Phase A has no config key; FEAT-3524 adds a config lookup that selects the `provider` string. Unknown provider raises a typed error listing available providers.
+- `Backend.connect(path) / connect_readonly(path) / ensure_schema(path) / supports(capability: str) -> bool`
 - `open_history(target: Path | str | None = None) -> HistoryConnection` — explicit local target opens that file; default-shaped target resolves via `resolve_history_db()` precedence
-- `open_history_readonly(target: Path | str | None = None) -> HistoryConnection` — never creates or migrates; absolute paths are not re-resolved (BUG-3181)
+- `open_history_readonly(target: Path | str | None = None, *, ensure: bool = False) -> HistoryConnection` — resolves once. `ensure=False` is strict (never creates or migrates, D19). `ensure=True` runs `ensure_schema()` on the resolved path, then opens that same path read-only. Absolute paths are never re-resolved (BUG-3181). Raises `HistoryUnavailable` on open failure.
+- `history_reader._base._connect_readonly(db_path) -> sqlite3.Connection | None` — signature unchanged; compatibility wrapper over `open_history_readonly(db_path, ensure=True)` that returns `None` on `HistoryError`
 - `resolve_history_db(...) -> Path`, `ensure_db(...) -> Path`, `connect(path) -> sqlite3.Connection` — signatures unchanged
 
 ### Call Path
@@ -382,31 +474,42 @@ sequence). `SQLiteTransport` -> `open_history` under its existing lock, catching
 _Added by `/ll:refine-issue` — 2026-09-22 — based on codebase analysis:_
 
 - Confirmed `codequery/core.py::resolve_provider()` signature: `resolve_provider(name: str = "auto") -> CodeQueryProvider` (`codequery/core.py:103`), backed by `_PROVIDER_MAP: dict[str, tuple[str, str]]` (`:97-100`) and `_instantiate()` (`:135-142`, plain `importlib.import_module` + `getattr` + zero-arg construction). This is the concrete shape `resolve_backend()` is meant to mirror.
-- The spike's existing `resolve_backend()` (`scripts/tests/spike/session_store_backend_dialect/backend.py:52-58`) has a different signature than this section's own `### Signatures`: `resolve_backend(kind: str, db_path: Path) -> Backend` (two positional args), not `resolve_backend(config: dict | None = None) -> Backend`. Reconciling these — whether the promoted module keeps the spike's `(kind, db_path)` shape, adopts the config-dict shape written above, or does both — is an open implementation decision, not resolved by either the spike or this section as written.
+- The spike's existing `resolve_backend()` (`scripts/tests/spike/session_store_backend_dialect/backend.py:52-58`) has signature `resolve_backend(kind: str, db_path: Path) -> Backend`. **Resolved 2026-09-22:** the promoted module uses `resolve_backend(provider: str = "sqlite")`, with the path passed per call (see Signatures). Promoted spike tests are adapted to that shape.
 
 ## Scope Boundaries
 
-In scope: `session_store/backend.py`, classified history consumers, the 11
-read-only opens, the two path-bypass repairs, the `HistoryError` taxonomy and its
-consumer catch sites, API/ARCHITECTURE doc updates. Out of scope: `history.backend`
-config key, any remote provider or driver dependency, `queue.db`, codegraph
-databases, snapshot scratch outputs, the `/ll:configure` history area, and any
-change to migration SQL or locking.
+In scope: `session_store/backend.py`, classified history consumers, the 7 in-scope
+read-only opens plus the `workspace_quality` read-only `ATTACH`, the three path-bypass
+repairs, the chokepoint gate test, the `HistoryError` taxonomy and its consumer catch sites,
+API/ARCHITECTURE doc updates. Out of scope: `history.backend` config key, any remote
+provider or driver dependency, `queue.db`, codegraph databases, Codex's `~/.codex` index,
+snapshot scratch outputs, the `/ll:configure` history area, collapsing `connect()`'s
+two-connection open, and any change to migration SQL or locking.
 
 ## Acceptance Criteria
 
 - [ ] `session_store/backend.py` exists with `Backend`, `SqliteBackend`, `resolve_backend()`
   keyed by `provider`, and `connect`/`connect_readonly`/`ensure_schema`/`supports`.
-- [ ] All classified history-store connections (writes and the 11 read-only opens)
-  go through the chokepoint; `queue.db`, codegraph, and scratch stores are audited
-  and left local; the classification list is recorded in the issue.
-- [ ] `connect_readonly()` has tests proving it never creates or migrates the store
-  and preserves the BUG-3181 and D19 contracts.
+- [ ] All classified history-store connections (writes, the 7 in-scope read-only opens,
+  and the `workspace_quality` read-only `ATTACH`) go through the chokepoint. `queue.db`,
+  codegraph, Codex's `~/.codex` index, and scratch stores are audited and left local. The
+  classification list, including which read-only callers are strict vs. ensure-then-read,
+  is recorded in the issue.
+- [ ] Strict `connect_readonly()` has tests proving it never creates or migrates the store
+  (byte-identical before/after) and preserves the BUG-3181 and D19 contracts.
+- [ ] Ensure-then-read has tests proving it migrates and opens the **same** resolved file,
+  and `history_reader`'s `_connect_readonly()` still returns `None` on failure.
 - [ ] Explicit local targets are honored verbatim; default-shaped arguments follow
   `explicit > LL_HISTORY_DB > history.db_path > DEFAULT_DB_PATH`; both covered by tests.
-- [ ] `decisions.py::generate_from_completed()` and `cli/doctor.py::_schema_drift_data()`
-  resolve through the chokepoint, with regressions.
-  > ⚠ Superseded — third bypass found: `transport.py:2023` (wire-issue)
+- [ ] `decisions.py::generate_from_completed()`, `cli/doctor.py::_schema_drift_data()`, and
+  `transport.py::wire_transports()`'s `"sqlite"` branch resolve through the chokepoint, each
+  with an `LL_HISTORY_DB` regression.
+- [ ] `test_history_store_chokepoint_gate.py` fails on any raw `sqlite3.connect(` outside
+  `backend.py` and the reasoned allowlist.
+- [ ] `open_history*` set the row factory; no history consumer assigns `row_factory`.
+  `ATTACH`/`VACUUM`/`create_function` use is gated by `supports()`.
+- [ ] `HistoryDbUnavailable` subclasses `HistoryUnavailable`;
+  `test_issue_history_parsing.py:667-679` passes unchanged.
 - [ ] `HistoryError` taxonomy is raised only by adapter wrappers around driver calls;
   `__cause__` preserves the driver exception; no consumer catches `ValueError` or a
   driver exception type for history-store failures.
@@ -418,7 +521,9 @@ change to migration SQL or locking.
 
 ## Related Key Documentation
 
-_No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
+- `docs/ARCHITECTURE.md` (`:89,636,832` — session-store / history.db architecture)
+- `docs/reference/API.md` (`little_loops.session_store` signatures)
+- FEAT-3524 (the remote libSQL feature this unblocks)
 
 ## Status
 
