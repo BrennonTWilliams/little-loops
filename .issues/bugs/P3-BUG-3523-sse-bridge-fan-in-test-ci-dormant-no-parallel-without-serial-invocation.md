@@ -378,6 +378,7 @@ _Added by `/ll:confidence-check` on 2026-09-22; re-checked 2026-09-22 — gap un
 - Deep per-site complexity concentrated in the new `test_no_parallel_serial_gate.py` file (process-group lifecycle, bounded retry across `subprocess.TimeoutExpired` and non-zero/non-5 exits, descendant cleanup) — the surrounding 6 touch-points (`pytest.ini`, `scripts/pyproject.toml`, two stale-comment rewords, two docs rewords) are mechanical, so the aggregate Complexity score undercounts the one genuinely stateful site; validate the retry/cleanup paths with controlled subprocess fixtures per AC-W8/AC-W11 before trusting a green run.
 
 ## Session Log
+- `/ll:reconcile-issue` - 2026-09-22T16:26:47 - `da6595a1-fc9b-4f09-92ce-9a598a4335fe.jsonl`
 - `/ll:confidence-check` - 2026-09-22T16:25:15 - `08d6ef1e-1b9c-4a4d-935a-fce06a8a019b.jsonl`
 - `/ll:verify-issues` - 2026-09-22T16:24:39 - `971b8e9e-da71-4859-ba73-1cc041bb9883.jsonl`
 - `/ll:reconcile-issue` - 2026-09-22T16:19:54 - `dd7982c9-14ba-4a41-940f-6fecc033ca70.jsonl`
