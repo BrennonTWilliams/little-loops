@@ -97,6 +97,18 @@ _Added by `/ll:refine-issue` — 2026-09-22 — based on codebase analysis:_
 - A meta-test that must enumerate marker usage across the whole `scripts/tests/` tree does so by AST-parsing test source files directly (`ast.parse`/`ast.walk` over `.decorator_list`), not via pytest's own collection/session API — `test_grader_coverage.py:10-13,57-93,115` is the sole precedent for this shape; its module docstring states the reason explicitly: a subset run (`-k`, `--lf`, a single file, mutmut's per-mutant `-n0` selection) must not make the gate fail spuriously because the tagged tests weren't collected alongside it. No meta-test in the repo enumerates markers via pytest's live collection API (`--collect-only`, `pytest_collection_finish`, a gating `pytest.main([...])` call); the only two `pytest.main(...)` sites (`test_loop_layout_alignment.py:725`, `spike/usage_events_run_id_writer/test_writer.py:108`) are manual `if __name__ == "__main__"` conveniences, not coverage gates.
 - Where a serial pass genuinely must execute in CI, the existing pattern is a normally-scheduled (non-`no_parallel`) test shelling out to a nested `pytest ... -n 0 ...` subprocess itself, scoped to one named test file — never a `no_parallel`-marked test and never a dedicated CI workflow step: `test_worktree_utils.py:1471-1480,1519-1522` states the rejection of `no_parallel` explicitly for this reason; `test_hook_session_start.py:739-757` does the same for a different guard. Neither is a suite-wide serial pass over the full `no_parallel` set as Proposed Solution option 2 describes — an unfiltered repo-wide search confirms no such invocation exists anywhere (not in `.github/workflows/ci.yml`, not in `docs/`, not as a standalone script).
 
+### Files to Modify
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `pytest.ini:26` — the `no_parallel` marker's *second* registration string still carries the pre-BUG-3522-fix wording ("marks tests that must not run on xdist workers … — see scripts/tests/conftest.py"), out of sync with `scripts/pyproject.toml:293`'s already-corrected wording; `pytest.ini:1-11`'s own header comment requires keeping the two in sync. Should get the same reword and, per the `grader_case` convention (`scripts/pyproject.toml:294`, "per ENH-3463's test_grader_coverage.py meta-test"), name the new wrapper test as `no_parallel`'s consumer [Agent 1/2 finding]
+
+### Tests
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_policy_builder_node_gate.py:53` (`test_node_conformance_suite_passes`, BUG-3522's still-`open` subject) also carries `@pytest.mark.no_parallel` — the new wrapper's `-m no_parallel -n 0` invocation will collect and execute this test too, not just the SSE fan-in test; its own runtime budget must be folded into the wrapper's outer timeout, and BUG-3522's unresolved status is a coordination risk [Agent 1/3 finding]
+- `scripts/tests/test_fsm_signal_integration.py:42` (`pytestmark = [pytest.mark.integration, pytest.mark.no_parallel]`) will also be collected by a bare `-m no_parallel -n 0` invocation unless the new wrapper scopes its `-m` expression to exclude `integration` (mirroring the outer CI job's own `-m "not integration and not conformance"` filter) — an explicit scoping decision the issue doesn't yet make [Agent 1/3 finding]
+- Reference idiom to copy: `scripts/tests/test_hook_session_start.py::TestAmbientAutomationEnvHermeticity.test_suite_passes_with_ambient_ll_automation` (lines 731-763) — exact `subprocess.run` shape, `cwd=repo_root`, `capture_output=True, text=True`, `returncode == 0` assertion with truncated stdout/stderr tails; the new wrapper test itself must **not** carry `@pytest.mark.no_parallel` (else the very hook it's meant to bypass would skip it too) [Agent 3 finding]
+
 ## Program Design
 
 This is decision-shaped (see Proposed Solution options 1-3); the shapes below
@@ -112,6 +124,7 @@ cover the identifiers each option touches, not a single committed design.
 - `test_two_producers_reach_one_client_with_distinct_producer_pid(self, ...) -> None` — in `scripts/tests/test_feat3323_sse_bridge.py:217`, `TestSseBridgeFanIn` (L200); option 1 drops `@pytest.mark.no_parallel` (L215) and raises `@pytest.mark.timeout(180)` (L214) strictly above the documented ~100-105s worst case
 - `pytest_collection_modifyitems(config, items) -> None` — in `scripts/tests/conftest.py`; unchanged by options 1/2, read (not modified) by option 3's meta-guard
 - new: `test_no_parallel_markers_have_named_serial_invocation() -> None` (option 3 only) — a new test in `scripts/tests/`; enumerates collected items carrying the `no_parallel` marker and fails any that lack an explicit annotation naming their serial invocation
+- new (option 2 — **the selected option**; added by `/ll:wire-issue`, filling the gap that this section previously covered only options 1 and 3): `test_no_parallel_serial_pass(self) -> None` — new wrapper test, home TBD (candidates: `scripts/tests/test_hook_session_start.py` alongside `TestAmbientAutomationEnvHermeticity`, or a new `scripts/tests/test_no_parallel_serial_gate.py` matching the `*_gate.py` convention of `test_policy_builder_node_gate.py`/`test_verify_evidence.py`). Shells out via `subprocess.run([sys.executable, "-m", "pytest", "scripts/tests/", "-n", "0", "-m", "no_parallel and not integration", ...])` (scope excludes `integration` — see Tests subsection above) and asserts `returncode == 0`, copying `test_hook_session_start.py:731-763`'s idiom. Pairs a new `SERIAL_GATE_TIMEOUT`-style constant — sized above the combined worst case of the SSE fan-in test's 180s budget and `test_policy_builder_node_gate.py::test_node_conformance_suite_passes`'s own budget, not just the SSE one alone — with `@pytest.mark.timeout(SERIAL_GATE_TIMEOUT + 30)` on itself and `timeout=SERIAL_GATE_TIMEOUT` on the inner `subprocess.run`, per the `GATE_TIMEOUT` convention already cited below. Must **not** itself carry `@pytest.mark.no_parallel`.
 
 ### Call Path
 
@@ -143,7 +156,17 @@ cover the identifiers each option touches, not a single committed design.
 - Stress-verify per the chosen option's acceptance criterion
 - Coordinate the shared doc surface with BUG-3522: `docs/development/TESTING.md` marker table and `docs/development/TROUBLESHOOTING.md` BUG-2523 section both reword "runs on the controller" claims
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `pytest.ini:26` — reword the `no_parallel` registration string to match `scripts/pyproject.toml:293`'s already-corrected wording, and name the new wrapper test as its consumer (mirroring `grader_case` at `scripts/pyproject.toml:294`)
+- Scope the new wrapper's `-m` expression to `no_parallel and not integration` so it doesn't also pull in `test_fsm_signal_integration.py`'s doubly-marked class
+- Size the new wrapper's timeout to cover the combined worst case of both currently-`no_parallel` tests (the SSE fan-in test's 180s budget and `test_policy_builder_node_gate.py::test_node_conformance_suite_passes`'s own budget), not just the SSE one alone
+- Do not mark the new wrapper test itself `@pytest.mark.no_parallel` — it must run normally under `-n logical` so it actually executes in CI
+
 ## Session Log
+- `/ll:wire-issue` - 2026-09-22T15:39:19 - `03d961d3-9a5a-4fcc-81d7-c9c6f85c6cd8.jsonl`
 - `/ll:decide-issue` - 2026-09-22T15:32:23 - `ac5fb0be-e93b-41b1-bfc9-5ed4d9b825c2.jsonl`
 - `/ll:refine-issue` - 2026-09-22T15:24:01 - `f6c11c46-8116-4e24-83a3-9e7ac209cbad.jsonl`
 - `/ll:format-issue` - 2026-09-22T15:16:00 - `484f6d1d-ca00-4295-b7f6-7aec856c3eee.jsonl`
