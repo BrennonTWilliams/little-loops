@@ -22,6 +22,7 @@ learning_tests_required:
 - pytest
 - pytest-timeout
 - pytest-xdist
+decision_needed: false
 ---
 
 # BUG-3523: SSE bridge fan-in test is CI-dormant — no_parallel marker with no serial invocation anywhere
@@ -51,11 +52,30 @@ Unlike BUG-3522, the marker here was added for a **legitimate wall-clock reason*
 
 ## Proposed Solution
 
-This is a **decision-shaped issue** — pick one and record the rationale here:
+**RESOLVED** — Option 2 (keep the marker, add a real serial invocation). This is a **decision-shaped issue** — pick one and record the rationale here:
 
 1. **Drop the marker, widen the budget.** If BUG-3484-era contention flakiness is no longer reproducible, remove `no_parallel` and set `@pytest.mark.timeout(N)` strictly above the documented 100-105s worst case plus margin (the `test_verify_evidence.py` `GATE_TIMEOUT + 30` convention; BUG-3522 uses 240 for the same reason). Prerequisite: a stress demonstration (repeated full-suite `-n logical` runs) showing the watchdog no longer fires, because the C-level block cannot be interrupted — budget ≥ worst case is the only protection.
 2. **Keep the marker, make the serial invocation real.** Add an explicit serial pass for the `no_parallel` set (e.g. a CI step or documented local command running `python -m pytest scripts/tests/ -n 0 -k <the set>`). Must stay within the AGENTS.md Testing & CI Policy shape (a pytest invocation under the local suite, no new hosted/paid CI); mind the cost — a full serial suite is ~24k tests, so scope the `-k` selection.
 3. **Meta-guard (structural; may be split as its own ENH).** A collection-time test that enumerates `no_parallel`-marked items and fails (or requires an explicit annotation naming the serial invocation) for any that lack one — turning "marker = silent coverage removal" into a visible decision. BUG-3522's history is the motivation: a marker landed as a "fix" and silently deleted the ratified FEAT-2390 gate from CI.
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-09-22.
+
+**Selected**: Option 2 — Keep the marker, make the serial invocation real
+
+**Reasoning**: Option 2 reuses two pieces already landed in this codebase: the `no_parallel` marker is pre-registered under `--strict-markers` (`pytest.ini:22-26`, `scripts/pyproject.toml:289-293`), so `pytest scripts/tests/ -n 0 -m no_parallel` selects the full (currently 2-test) set natively with no hand-maintained `-k` string; and `test_hook_session_start.py:712-763`'s `TestAmbientAutomationEnvHermeticity` already implements the exact nested `subprocess.run([..., "-m", "pytest", ..., "-n", "0"], ...)` + `assert returncode == 0` wrapper-test idiom this option needs, running inside the same `unit-tests` CI job with no new workflow step. `test_worktree_utils.py:1471-1480` independently reasons through this same "`no_parallel` marker vs. real nested `-n 0` serial invocation" trade-off for a comparable dormancy problem and chooses the nested-serial shape — direct in-repo precedent for this exact decision. Option 1, by contrast, would repeat BUG-3484's own resolution history: BUG-3484 already tried `@pytest.mark.timeout(180)` alone (no marker) and that was insufficient, which is presumably why `no_parallel` was added afterward — and Option 1's stated stress-test prerequisite (repeated full-suite `-n logical` runs proving the watchdog no longer fires) has no existing harness in the repo to satisfy it.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|--------------|------|-------|
+| Drop the marker, widen the budget | 1/3 | 2/3 | 1/3 | 1/3 | 5/12 |
+| Keep the marker, make the serial invocation real | 3/3 | 2/3 | 3/3 | 3/3 | 11/12 |
+
+**Key evidence**:
+- Option 1: Only one landed instance of the `GATE_TIMEOUT`-constant-plus-margin pairing exists repo-wide (`test_verify_evidence.py:77-81,1531`); a second `GATE_TIMEOUT` site (`test_verify_private_refs.py:44`) skips the pairing entirely, and BUG-3522's parallel case is unlanded. No stress-run/repeated-full-suite harness exists anywhere in `scripts/` to satisfy the option's own prerequisite; the closest artifact (`spike/epic_verify_gate_doc_flake/repro_harness.py`) is narrowly scoped to a different bug. BUG-3484's own resolution already tried raising the timeout alone on this exact test and it wasn't sufficient.
+- Option 2: `no_parallel` is a pre-registered strict marker (`pytest.ini:22-26`) selectable natively via `-m no_parallel` over exactly 2 tests suite-wide; `test_hook_session_start.py:712-763` supplies a directly reusable nested-serial-subprocess wrapper-test template already passing inside the `unit-tests` CI job; `test_worktree_utils.py:1471-1480` is an on-point in-repo precedent choosing this same approach over a bare `no_parallel` marker for a comparable problem.
 
 ## Integration Map
 
@@ -124,6 +144,7 @@ cover the identifiers each option touches, not a single committed design.
 - Coordinate the shared doc surface with BUG-3522: `docs/development/TESTING.md` marker table and `docs/development/TROUBLESHOOTING.md` BUG-2523 section both reword "runs on the controller" claims
 
 ## Session Log
+- `/ll:decide-issue` - 2026-09-22T15:32:23 - `ac5fb0be-e93b-41b1-bfc9-5ed4d9b825c2.jsonl`
 - `/ll:refine-issue` - 2026-09-22T15:24:01 - `f6c11c46-8116-4e24-83a3-9e7ac209cbad.jsonl`
 - `/ll:format-issue` - 2026-09-22T15:16:00 - `484f6d1d-ca00-4295-b7f6-7aec856c3eee.jsonl`
 

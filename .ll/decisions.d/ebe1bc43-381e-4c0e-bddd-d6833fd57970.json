@@ -1,0 +1,12 @@
+{
+  "id": "d5c62aa0-9c1f-4645-8c84-4711fc887ff9",
+  "type": "decision",
+  "timestamp": "2026-09-22T15:32:04Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Reuses the pre-registered strict no_parallel marker (native -m no_parallel selection over exactly 2 tests) and test_hook_session_start.py's already-landed nested subprocess.run([...,-m,pytest,...,-n,0]) wrapper-test idiom running inside the existing unit-tests CI job; test_worktree_utils.py independently precedents this exact trade-off. Dropping the marker and widening the timeout would repeat BUG-3484's already-tried-and-insufficient approach with no stress-test harness in the repo to validate the unverifiable prerequisite.",
+  "rule": "Keep the marker, make the serial invocation real",
+  "scope": "issue",
+  "alternatives_rejected": "Drop the marker, widen the budget (5/12 vs 11/12 \u2014 no stress-harness precedent, BUG-3484 already tried raising timeout alone and it wasn't sufficient); Meta-guard structural test (kept out of scope \u2014 issue text frames it as a separate, possibly split-off ENH, not a mutually exclusive alternative to options 1/2)",
+  "issue": "BUG-3523"
+}
