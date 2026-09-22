@@ -49,11 +49,12 @@ OTHE_203_PAYLOAD = 'entries:\n  - id: OTHE-203\n    type: decision\n    rational
 def validator() -> str:
     """Return the ``ll-verify-decisions`` binary path, skipping when missing.
 
-    Mirrors the canonical skip-when-missing idiom from
-    ``test_policy_builder_node_gate.py:52-57`` and
-    ``test_decisions_yaml_pre_commit_gate.py:155-163``. Marked
-    ``scope="module"`` so the ``shutil.which`` lookup runs once per file
-    rather than per test.
+    Mirrors the skip-when-missing shape of ``require_node()`` in
+    ``tests/helpers.py`` (BUG-3522) and
+    ``test_decisions_yaml_pre_commit_gate.py:155-163`` — this CLI has no
+    ``LL_REQUIRE_NODE``-style fail-on-CI escalation, so it stays an
+    unconditional skip when the binary is absent. Marked ``scope="module"``
+    so the ``shutil.which`` lookup runs once per file rather than per test.
     """
     path = shutil.which(CLI)
     if path is None:

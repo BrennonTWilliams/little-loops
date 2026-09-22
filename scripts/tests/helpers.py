@@ -12,7 +12,11 @@ import re
 import shutil
 import subprocess
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
+from typing import NoReturn
+
+import pytest
 
 from little_loops.fsm.schema import (
     EvaluateConfig,
@@ -154,3 +158,113 @@ def make_test_fsm(
         max_steps=max_steps,
         timeout=timeout,
     )
+
+
+# BUG-3522: shared Node-availability guard for the four Node-dependent gates
+# (policy-builder conformance + round-trip, feat3304 dashboard runtime, rlhf
+# smoke harness). Skips gracefully by default so contributors without Node
+# aren't hard-blocked; set LL_REQUIRE_NODE=1 (as CI does) to turn an
+# unavailable/unusable Node into a hard failure instead of a silent skip.
+_LL_REQUIRE_NODE_ENV = "LL_REQUIRE_NODE"
+
+
+@dataclass(frozen=True)
+class _NodeProbe:
+    """Result of a single ``node --version`` probe."""
+
+    node: str | None
+    major: int | None
+    stdout: str
+    stderr: str
+    exit_code: int | None
+    error: str | None
+
+
+def _probe_node() -> _NodeProbe:
+    node = shutil.which("node")
+    if node is None:
+        return _NodeProbe(
+            node=None,
+            major=None,
+            stdout="",
+            stderr="",
+            exit_code=None,
+            error="node executable not found on PATH",
+        )
+    try:
+        proc = subprocess.run([node, "--version"], capture_output=True, text=True, timeout=30)
+    except subprocess.TimeoutExpired as e:
+        return _NodeProbe(
+            node=node,
+            major=None,
+            stdout="",
+            stderr="",
+            exit_code=None,
+            error=f"`node --version` timed out: {e}",
+        )
+    except OSError as e:
+        return _NodeProbe(
+            node=node,
+            major=None,
+            stdout="",
+            stderr="",
+            exit_code=None,
+            error=f"`node --version` could not be run: {e}",
+        )
+    major = None
+    if proc.returncode == 0:
+        head = proc.stdout.strip().lstrip("v").split(".", 1)[0]
+        try:
+            major = int(head)
+        except ValueError:
+            major = None
+    return _NodeProbe(
+        node=node,
+        major=major,
+        stdout=proc.stdout,
+        stderr=proc.stderr,
+        exit_code=proc.returncode,
+        error=None,
+    )
+
+
+def require_node(min_major: int | None = 22) -> str:
+    """Return the ``node`` executable path, skipping or failing if unusable.
+
+    Probes ``node --version`` exactly once. With ``LL_REQUIRE_NODE=1`` set
+    (as the ``unit-tests`` CI job does) an unavailable or unusable Node is a
+    hard failure; otherwise it is a graceful skip, preserving the pattern the
+    four Node-dependent gates used individually before this consolidation.
+    ``min_major=None`` accepts any successfully-probed Node, including a
+    major below 22 (the ``rlhf`` smoke gate never had a version floor).
+    """
+    probe = _probe_node()
+    must_pass = os.environ.get(_LL_REQUIRE_NODE_ENV) == "1"
+
+    def _give_up(message: str) -> NoReturn:
+        if must_pass:
+            pytest.fail(message)
+        else:
+            pytest.skip(message)
+
+    if probe.node is None:
+        _give_up(probe.error or "node executable not found on PATH")
+    if probe.error is not None:
+        _give_up(probe.error)
+    if probe.exit_code != 0:
+        _give_up(
+            f"`node --version` exited {probe.exit_code}: "
+            f"stdout={probe.stdout!r} stderr={probe.stderr!r}"
+        )
+    if probe.major is None:
+        _give_up(f"could not parse a Node version from output: {probe.stdout!r}")
+    if min_major is not None and probe.major < min_major:
+        _give_up(
+            f"Node >= {min_major} required; found major {probe.major} ({probe.stdout.strip()})"
+        )
+
+    # Retained in the passing test's captured stdout — surfaced in
+    # pytest-junit.xml via junit_logging = "system-out" (BUG-3522), so a
+    # green CI run's artifact quotes the exact runner Node version.
+    print(f"require_node: using {probe.node} ({probe.stdout.strip()})")
+    return probe.node

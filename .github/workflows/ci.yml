@@ -122,6 +122,12 @@ jobs:
         # for triage scripts. `set -o pipefail` is required: without it the
         # pipeline's exit code is tee's (always 0), masking pytest's actual
         # failure status. Both files are uploaded on every CI outcome below.
+        # LL_REQUIRE_NODE=1 (BUG-3522): the runner is confirmed to ship Node
+        # >= 22, so an unavailable/unusable Node here must fail the four
+        # Node-dependent gates (tests/helpers.py require_node()) instead of
+        # silently skipping them — a missing toolchain must be a loud failure.
+        env:
+          LL_REQUIRE_NODE: "1"
         run: |
           set -o pipefail
           .venv/bin/python -m pytest scripts/tests/ \

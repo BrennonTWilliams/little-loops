@@ -16,8 +16,10 @@ stderr message format, etc.) is independently gated by
 This test skips (rather than fails) when ``pre-commit`` or
 ``ll-verify-decisions`` are absent from ``PATH`` — the project's CI is
 ``python -m pytest scripts/tests/`` and contributors without the toolchain
-are not hard-blocked (mirrors the FEAT-2390 ``test_node_conformance_suite_passes``
-template at ``scripts/tests/test_policy_builder_node_gate.py:45-71``).
+are not hard-blocked. This CLI has no ``LL_REQUIRE_NODE``-style fail-on-CI
+escalation, so unlike the Node-dependent gates routed through
+``require_node()`` in ``tests/helpers.py`` (BUG-3522), it stays an
+unconditional skip-when-missing.
 
 The sibling file name ``test_decisions_yaml_gate.py`` is owned by ENH-2591
 (the pytest CI belt); this file name preserves both transport-layer hooks

@@ -19,12 +19,12 @@ minified message.
 from __future__ import annotations
 
 import re
-import shutil
 import subprocess
 from pathlib import Path
 
-import pytest
 import yaml
+
+from tests.helpers import require_node
 
 BUILTIN_LOOPS_DIR = Path(__file__).parent.parent / "little_loops" / "loops"
 LOOP_FILE = BUILTIN_LOOPS_DIR / "rlhf-svg-evaluate.yaml"
@@ -98,11 +98,9 @@ def _extract_inline_node_script() -> str:
 
 
 def test_smoke_harness_survives_non_string_pageerror_message(tmp_path: Path) -> None:
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip(
-            "node not installed; smoke harness regression gate runs wherever Node is available"
-        )
+    # min_major=None: this gate never had a Node-version floor (BUG-3522);
+    # any successfully-probed Node is accepted.
+    node = require_node(min_major=None)
 
     script = _extract_inline_node_script()
 

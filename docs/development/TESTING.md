@@ -1047,7 +1047,7 @@ Verify the line is exactly in `exclude_lines` configuration.
 | `@pytest.mark.integration` | Integration test |
 | `@pytest.mark.slow` | Slow-running test |
 | `@pytest.mark.conformance` | Host conformance test (see `conformance/`); constructability and Tier 1/Tier 2 behavioral cases (FEAT-3455). Tier 1 is env-gated for non-fake hosts via `LL_HOST_CONFORMANCE_LIVE=1` — see `docs/development/CONFORMANCE.md` |
-| `@pytest.mark.no_parallel` | Must not run on xdist workers (subprocess signal-handling, timing-sensitive); `pytest_collection_modifyitems` in `scripts/tests/conftest.py` skips on workers — runs on the controller or in a serial `-n 0` invocation |
+| `@pytest.mark.no_parallel` | Must not run on xdist workers (subprocess signal-handling, timing-sensitive); `pytest_collection_modifyitems` in `scripts/tests/conftest.py` skips on workers. Under the default `-n logical` addopts the controller runs no tests itself, so this only actually executes in a serial `-n 0` invocation — a marker with no such invocation anywhere is dormant (BUG-3522) |
 
 ### Key Fixtures
 

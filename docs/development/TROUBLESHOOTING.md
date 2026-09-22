@@ -824,7 +824,7 @@ For comprehensive documentation, see [Session Handoff Guide](../guides/SESSION_H
 
 **Cause**: The test spawns a real `ll-loop run` subprocess, delivers SIGINT, and waits on a hard `proc.wait(timeout=10.0)`. Under xdist worker contention (`scripts/tests/conftest.py::pytest_xdist_auto_num_workers` spawns ~`cpus // 2` workers), 7 workers competing for the same cores can starve the spawned subprocess's SIGINT handler past its 10s wait. Raising the timeout is a band-aid — the structural fix is the `@pytest.mark.no_parallel` marker so the test only runs on the controller or in a serial `-n 0` invocation.
 
-**Solution**: Both `TestSubprocessSignalIntegration` tests are already annotated `@pytest.mark.no_parallel` (BUG-2523). `pytest_collection_modifyitems` in `scripts/tests/conftest.py` skips them on xdist workers. The tests still run — they just don't share cores with six other pytest invocations.
+**Solution**: Both `TestSubprocessSignalIntegration` tests are already annotated `@pytest.mark.no_parallel` (BUG-2523). `pytest_collection_modifyitems` in `scripts/tests/conftest.py` skips them on xdist workers; under the default `-n logical` addopts the controller runs no tests itself, so `no_parallel` only actually executes in a serial `-n 0` invocation, not "on the controller" (BUG-3522). These two tests also carry `@pytest.mark.integration`, so they are additionally excluded from the CI `unit-tests` job's `-m "not integration and not conformance"` selection — run them explicitly with `python -m pytest scripts/tests/test_fsm_signal_integration.py -n 0 -m integration` to exercise them.
 
 When adding **new** subprocess + signal-handling tests:
 

@@ -52,6 +52,7 @@ from little_loops.session_store.queries import (
     build_snapshot_db,
 )
 from little_loops.session_store.schema import SCHEMA_VERSION
+from tests.helpers import require_node
 
 VENDOR_DIR = Path(__file__).parent.parent / "little_loops" / "assets" / "vendor" / "sql.js"
 VENDOR_HTMX_DIR = Path(__file__).parent.parent / "little_loops" / "assets" / "vendor" / "htmx"
@@ -1138,20 +1139,6 @@ class TestRenderLiveFragment:
 # ---------------------------------------------------------------------------
 
 
-def _node_major(node: str) -> int | None:
-    try:
-        proc = subprocess.run(
-            [node, "--version"], capture_output=True, text=True, timeout=30, check=False
-        )
-    except (OSError, subprocess.SubprocessError):
-        return None
-    head = proc.stdout.strip().lstrip("v").split(".", 1)[0]
-    try:
-        return int(head)
-    except ValueError:
-        return None
-
-
 class TestDashboardNodeRuntimeGate:
     """Run the JS runtime proof against a real generated artifact.
 
@@ -1160,16 +1147,15 @@ class TestDashboardNodeRuntimeGate:
     that actually ships, including the multi-statement `SELECT 1; DELETE FROM
     loop_runs;` case a leading-SELECT check was measured to miss. No hosted CI
     exists here by design, so the gate rides inside `python -m pytest
-    scripts/tests/` (the FEAT-2390 precedent) and skips when Node is absent so
-    contributors without a Node toolchain are not hard-blocked.
+    scripts/tests/` (the FEAT-2390 precedent) and uses the shared
+    `require_node()` guard (`tests/helpers.py`, BUG-3522) so contributors
+    without a Node toolchain are not hard-blocked, while `LL_REQUIRE_NODE=1`
+    (as CI sets) turns an unavailable/unusable Node into a hard failure.
     """
 
+    @pytest.mark.timeout(240)
     def test_generated_page_runtime_behaviour(self, project: Path) -> None:
-        import shutil
-
-        node = shutil.which("node")
-        if node is None or (_node_major(node) or 0) < 22:
-            pytest.skip("node >= 22 not available")
+        node = require_node()
 
         code, out = _run(project, since="2026-07-01")
         assert code == 0

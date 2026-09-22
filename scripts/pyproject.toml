@@ -286,6 +286,13 @@ addopts = [
 # reworked to avoid (see tests/conftest.py `_isolate_history_db`).
 tmp_path_retention_count = 1
 tmp_path_retention_policy = "failed"
+# BUG-3522: captures each test's stdout into pytest-junit.xml <system-out>,
+# on pass or fail — the smallest reliable way to retain the probed Node
+# version (tests.helpers.require_node() prints it) in the uploaded CI
+# artifact of a passing run, since passing-test stdout is otherwise dropped
+# from both the terminal log (needs -s/-rP) and the default junit report
+# (junit_logging defaults to "no").
+junit_logging = "system-out"
 markers = [
     "integration: marks tests as integration tests (deselect with '-m \"not integration\"')",
     "slow: marks tests as slow running (deselect with '-m \"not slow\"')",

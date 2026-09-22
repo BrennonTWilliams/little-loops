@@ -41,10 +41,19 @@ function fakeTimers() {
   };
   return t;
 }
+// BUG-3522: waits for the controller's own onChange signal instead of a fixed
+// setImmediate-turn budget, so the result no longer depends on whether the
+// libuv threadpool thread carrying the digest gets scheduled in time.
 const settleHash = async (env) => {
-  for (let i = 0; i < 50 && env.ctl.getState().review.status === "hashing"; i++) {
-    await new Promise((r) => setImmediate(r));
-  }
+  if (env.ctl.getState().review.status !== "hashing") return; // synchronous refusals never enter "hashing"
+  await new Promise((resolve) => {
+    const unsubscribe = env.ctl.onChange((state) => {
+      if (state.review.status !== "hashing") {
+        unsubscribe();
+        resolve();
+      }
+    });
+  });
   await flush();
 };
 const flush = async () => { for (let i = 0; i < 12; i++) await Promise.resolve(); };
@@ -69,7 +78,7 @@ function setup(over = {}) {
     },
   };
   const ctl = createSubmissionController({
-    fetch: env.fetch, storage, subtle: globalThis.crypto.subtle,
+    fetch: env.fetch, storage, subtle: over.subtle || globalThis.crypto.subtle,
     setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout,
     randomUUID: () => `00000000-0000-4000-8000-${String(++uuid).padStart(12, "0")}`,
     makeAbortController: () => new AbortController(),
@@ -145,6 +154,39 @@ test("FEAT-3505 review refusals allocate no UUID", async () => {
   assert.notEqual(env.ctl.getState().review.status, "refused");
   assert.equal(allocated, 0);
   assert.equal(env.storage.m.size, 0);
+});
+
+test("BUG-3522 settleHash observes the exact hashing->ready transition, not a fixed spin budget", async () => {
+  let release;
+  const deferred = new Promise((r) => { release = r; });
+  const realDigest = globalThis.crypto.subtle.digest.bind(globalThis.crypto.subtle);
+  const subtle = { digest: async (...args) => { await deferred; return realDigest(...args); } };
+  const env = setup({ subtle });
+  env.ctl.review({ yaml: YAML });
+  assert.equal(env.ctl.getState().review.status, "hashing");
+  // Outlast the old 50-setImmediate-turn budget before releasing the digest;
+  // the old spin helper would have already given up and observed "hashing".
+  for (let i = 0; i < 60; i++) await new Promise((r) => setImmediate(r));
+  assert.equal(env.ctl.getState().review.status, "hashing");
+  release();
+  await settleHash(env);
+  assert.equal(env.ctl.getState().review.status, "ready");
+});
+
+test("BUG-3522 a rejected digest resolves settleHash via the refused emit; reviewed() reports the mismatch", async () => {
+  const subtle = { digest: async () => { throw new Error("boom"); } };
+  const env = setup({ subtle });
+  await assert.rejects(() => reviewed(env));
+  assert.equal(env.ctl.getState().review.status, "refused");
+  assert.match(env.ctl.getState().review.reason, /could not be hashed/);
+});
+
+test("BUG-3522 settleHash returns immediately for a synchronous refusal (never enters hashing)", async () => {
+  const env = setup();
+  env.ctl.review({ yaml: "" }); // no generated policy -> refused synchronously, no digest ever starts
+  assert.equal(env.ctl.getState().review.status, "refused");
+  await settleHash(env);
+  assert.equal(env.ctl.getState().review.status, "refused");
 });
 
 test("FEAT-3505 offline and non-lifecycle are unavailable with reason", () => {
