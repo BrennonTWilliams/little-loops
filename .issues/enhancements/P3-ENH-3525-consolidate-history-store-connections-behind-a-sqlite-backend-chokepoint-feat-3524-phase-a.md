@@ -11,6 +11,12 @@ captured_at: '2026-09-22T20:16:57Z'
 verify_verdict: VALID
 blocks:
 - FEAT-3524
+confidence_score: 100
+outcome_confidence: 55
+score_complexity: 5
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 0
 ---
 
 # ENH-3525: Consolidate history-store connections behind a SQLite backend chokepoint (FEAT-3524 Phase A)
@@ -588,8 +594,20 @@ of what was wrong and fixed, not an outstanding action item).
 
 **Open** | Created: 2026-09-22 | Priority: P3
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-22_
+
+**Readiness Score**: 100/100 → PROCEED
+**Outcome Confidence**: 55/100 → LOW
+
+### Outcome Risk Factors
+- Very wide blast radius (Change Surface 0/25): ~30 files to modify across 8+ subsystems (session_store, history_reader, issue_history, cli, transport, decisions, tests, docs), with 70+ confirmed callers of `_connect_readonly()` and 50+ callers of `resolve_history_db()` that must keep working unchanged. Classified as Pattern A (code blast radius), not Pattern B, because A2's consumer error-type conversion is a per-site behavioral change, not a uniform mechanical substitution.
+- Moderate per-site depth (Complexity 5/25): the `HistoryError` taxonomy conversion changes a shared contract (consumer degradation/catch behavior) across modules rather than being a contained local edit; 7 existing tests explicitly assert on raw `sqlite3.OperationalError`/`sqlite3.Error` for "history failed" and require deliberate rewrites — a missed rewrite breaks behavior silently rather than failing test collection.
+- Mitigation already built into the issue: Implementation Steps stage A1 (chokepoint + bypass fixes, no consumer error-type changes) ahead of A2 (consumer error-type conversion, "carries the behavioral risk") as independently landable commits. Recommend landing/soaking A1 first and re-running `/ll:confidence-check` before starting A2; the issue's own Sizing note already flags A2 as a candidate for `/ll:issue-size-review` split.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-22T21:25:58 - `6e23addb-913f-4751-95d4-9caf3143f43d.jsonl`
 - `/ll:verify-issues` - 2026-09-22T21:07:24 - `cfaf5a77-1b05-4ab4-a69c-2fd5f977d32f.jsonl`
 - `/ll:verify-issues` - 2026-09-22T20:50:47 - `d5913727-aee2-4da4-b9b6-0c7c106cc141.jsonl`
 - `/ll:wire-issue` - 2026-09-22T20:46:38 - `5e6fdfe4-a051-499c-b448-1629fbe99667.jsonl`
