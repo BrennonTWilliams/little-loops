@@ -23,9 +23,9 @@ learning_tests_required:
 - pytest-timeout
 - pytest-xdist
 decision_needed: false
-confidence_score: 90
-outcome_confidence: 75
-score_complexity: 14
+confidence_score: 95
+outcome_confidence: 79
+score_complexity: 18
 score_test_coverage: 18
 score_ambiguity: 18
 score_change_surface: 25
@@ -341,7 +341,21 @@ _Added by `/ll:refine-issue` — 2026-09-22 — based on codebase analysis:_
 - **Anchor**: `pytest_collection_modifyitems` (line 120)
 - **Cause**: The hook adds `pytest.mark.skip(reason="no_parallel: cannot run on xdist workers")` (lines 143-146) to every item carrying the `no_parallel` keyword whenever `config.workerinput` is truthy — i.e. on every xdist worker, never on the controller (lines 140-142). Under `-n N` the controller only collects and distributes work and never executes a test body itself (the hook's own docstring, lines 129-131). `scripts/pyproject.toml`'s `addopts` pins `-n logical` (no `-n 0` anywhere in that file), and `.github/workflows/ci.yml`'s `unit-tests` job invokes `pytest scripts/tests/ -m "not integration and not conformance"` with no `-n` override, so it inherits that default. `test_two_producers_reach_one_client_with_distinct_producer_pid` carries neither `integration` nor `conformance`, so the job's `-m` filter collects it — it is then unconditionally skipped on every worker and never run on the controller. This is not a logic defect in the hook itself (it matches BUG-2523's original intent, and `scripts/tests/test_conftest_cap.py::TestNoParallelMarkerRouting` already covers the hook's routing correctness in isolation); the defect is that `@pytest.mark.no_parallel` was stacked onto this test — for a legitimate reason, BUG-3484's historical contention overruns (the cited ~100-105s is a sum of per-step budgets, not measured normal runtime) — with no compensating serial invocation added anywhere, so the coverage loss is silent rather than a deliberate, visible trade-off.
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-22_
+
+**Readiness Score**: 95/100 → STOP — ADDRESS GAPS (Program Design hard override)
+**Outcome Confidence**: 79/100 → MODERATE
+
+### Gaps to Address
+- Program Design: no call-path anchors named in Call Path — the "Call Path" section describes the control flow in prose (`Outer pytest schedules wrapper on an xdist worker → wrapper starts isolated nested pytest session → ...`) but names no backtick-anchored, repo-resolvable symbol (e.g. the wrapper's own `test_no_parallel_serial_pass`). `ll-issues check-design BUG-3523` fails on this basis alone; the aggregate readiness score of 95 is overridden per the Program Design Hard Override (ENH-2852/ENH-2967). Remedy: name at least one concrete anchor in the Call Path prose (the wrapper function and/or `pytest_collection_modifyitems`), or run `/ll:reconcile-issue` to regenerate the section.
+
+### Outcome Risk Factors
+- Deep per-site complexity concentrated in the new `test_no_parallel_serial_gate.py` file (process-group lifecycle, bounded retry across `subprocess.TimeoutExpired` and non-zero/non-5 exits, descendant cleanup) — the surrounding 6 touch-points (`pytest.ini`, `scripts/pyproject.toml`, two stale-comment rewords, two docs rewords) are mechanical, so the aggregate Complexity score undercounts the one genuinely stateful site; validate the retry/cleanup paths with controlled subprocess fixtures per AC-W8/AC-W11 before trusting a green run.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-09-22T16:16:18 - `9771b48d-f4c0-41e2-91d6-313376eb5ef8.jsonl`
 - `/ll:verify-issues` - 2026-09-22T16:13:43 - `2426bc78-355e-49c0-b1d4-bbd04fabb869.jsonl`
 - `/ll:confidence-check` - 2026-09-22T16:00:45 - `f1a52e94-8652-4d09-be78-f2bf7d0ad19c.jsonl`
 - `/ll:verify-issues` - 2026-09-22T15:55:43 - `bfbb9153-ce71-46cf-a05b-72f0af991763.jsonl`
