@@ -8,10 +8,13 @@ discovered_by: ll-issues-create
 discovered_date: '2026-09-22'
 captured_at: '2026-09-22T15:39:38Z'
 learning_tests_required:
-  - libsql
+- libsql
+- libsql-remote
 spike_attempted: true
 spike_completed: true
 verify_verdict: NON_VALID
+blocked_by:
+- ENH-3525
 ---
 
 # FEAT-3524: Pluggable history.db backend with remote libSQL support
@@ -21,9 +24,19 @@ verify_verdict: NON_VALID
 Allow little-loops users to share a history store across machines running the same
 project by configuring a remote libSQL database through `history.backend` in
 `.ll/ll-config.json`. Preserve local SQLite as the unchanged default. This issue
-implements SQLite and the Python `libsql` driver's direct remote mode only;
-Postgres, MySQL, other Turso engines/drivers, and embedded-replica synchronization
-are out of scope.
+adds the `libsql` adapter, the `history.backend` configuration, the doctor
+diagnostic, and the shared-store safety rules on top of the SQLite-only chokepoint
+delivered by ENH-3525 (Phase A). Postgres, MySQL, other Turso engines/drivers, and
+embedded-replica synchronization are out of scope.
+
+## Blocked By
+
+- ENH-3525: Consolidate history-store connections behind a SQLite backend chokepoint
+  (Phase A) — delivers `session_store/backend.py`, `connect_readonly()`, the
+  `HistoryError` taxonomy, backend-aware entry points, and the path-bypass repairs
+  that this issue assumes exist.
+- `.ll/learning-tests/libsql-remote.md` with `status: proven` — real remote-mode
+  driver evidence (see Readiness Prerequisites).
 
 ## Current Behavior
 
@@ -43,8 +56,8 @@ directly, and roughly 28 other call sites across ~15 modules
 
 ## Expected Behavior
 
-An unset `history.backend` or `kind: sqlite` preserves today's local behavior.
-With `kind: libsql`, `ll-history`, `ll-logs`, session digests, compaction reads and
+An unset `history.backend` or `provider: sqlite` preserves today's local behavior.
+With `provider: libsql`, `ll-history`, `ll-logs`, session digests, compaction reads and
 writes, and event sinks use the configured remote history store. Unsupported
 FTS5/maintenance/export operations report a clear capability limitation rather
 than crashing or silently using a different local store. Compatibility is proven
@@ -60,25 +73,26 @@ Teams running little-loops across several machines or CI runners (e.g. the self-
 
 ## Proposed Solution
 
-Introduce `history.backend` with `kind: sqlite|libsql`, endpoint settings
-`url`/`url_env`, and `auth_token_env`. Implement a lazy-loaded backend resolver
-following `codequery.core.resolve_provider`, with connection, cursor, row,
-transaction, and error contracts derived from actual history consumers. Route
-history-store connections through it while preserving deliberately local stores
-and scratch artifacts.
+Introduce `history.backend` with `provider: sqlite|libsql`, endpoint settings
+`url`/`url_env`, and `auth_token_env`. Register a `LibsqlBackend` in the
+`resolve_backend()` registry that ENH-3525 lands, implementing the same
+`Backend` protocol, `HistoryError` taxonomy, and backend-aware entry points.
+Classified history consumers already route through that chokepoint; this issue
+makes the chokepoint select the remote adapter when configured, and preserves
+deliberately local stores, explicit local targets, and scratch artifacts.
 
-Reuse compatible SQL and the existing migration sequence only after real-driver
-learning tests prove it. Capability handling must cover connection setup,
-read-only access, search, maintenance, and local snapshot export. A connection
-chokepoint is necessary but does not remove SQL, filesystem, transaction, or
-network-latency assumptions. See Proposed Design and the remaining readiness
-questions below.
+Reuse compatible SQL and the existing migration sequence only after the
+`libsql-remote` learning test proves it against a real endpoint. Capability
+handling must cover connection setup, read-only access, search, maintenance,
+snapshot export, and — as a hard gate — shared-store mutation safety (see the
+operation matrix under Proposed Design). A connection chokepoint does not remove
+SQL, filesystem, transaction, or network-latency assumptions.
 
 ## Integration Map
 
 ### Files to Modify
-- New: `scripts/little_loops/session_store/backend.py` — resolver and adapter contracts
-- `scripts/pyproject.toml` — justified optional `libsql` extra after driver proof
+- `scripts/little_loops/session_store/backend.py` (created by ENH-3525) — add `LibsqlBackend` to the registry; `libsql` adapter module may live beside it
+- `scripts/pyproject.toml` — justified `libsql` extras entry after driver proof
 - `little_loops/session_store/__init__.py` — preserve public connection/path contracts
 - `little_loops/issue_manager.py` and other `SQLiteTransport` constructors — target resolution and lifecycle
 - `little_loops/session_store/db.py` (`_resolve_db_path`, `resolve_history_db`)
@@ -88,7 +102,7 @@ questions below.
 - `little_loops/issue_history/*`
 - `little_loops/cli/{history,logs,doctor,doctor_trim,ctx_stats}.py`
 - `little_loops/queue_store.py`, `little_loops/codequery/codegraph.py` — audit only to distinguish history consumers from independent local stores; do not migrate `queue.db` or codegraph databases
-- `little_loops/config-schema.json` (`history` block, line 2138 — add `backend`)
+- `little_loops/config-schema.json` (`history` block, line 2138 — add `backend` with a `provider` enum selector, matching `sync.provider` / `code_query.provider`)
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `little_loops/cli/session.py` — `help=` strings hardcode SQLite feature names for FTS5/VACUUM (`:117`, `:118`, `:269`, `:356`, `:368`); must stay accurate or become conditional once these features are capability-gated on non-sqlite backends [Agent 2 finding]
@@ -97,7 +111,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `little_loops/issue_history/workspace_quality.py:108-120` — `_open_member_readonly()` is a third independently-duplicated read-only-open helper (raw `sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)`), beyond the two already cited in Codebase Research Findings (`issue_history/evolution.py:30`, `codequery/codegraph.py:81`) [Agent 2 finding]
 
 _Second wiring pass added by `/ll:wire-issue`:_
-- `little_loops/decisions.py:578-605` (`generate_from_completed()`) — hardcodes `project_root / ".ll" / "history.db"` and gates on `.exists()`, bypassing `resolve_history_db()`/`LL_HISTORY_DB`/`history.backend` entirely; under `kind: libsql` this path never exists, so the function silently and permanently falls back to filesystem scanning instead of ever reading the remote backend — a real behavioral gap, not a deliberately-local store [Agent 2 finding]
+- `little_loops/decisions.py:578-605` (`generate_from_completed()`) — hardcodes `project_root / ".ll" / "history.db"` and gates on `.exists()`, bypassing `resolve_history_db()`/`LL_HISTORY_DB`/`history.backend` entirely; under `provider: libsql` this path never exists, so the function silently and permanently falls back to filesystem scanning instead of ever reading the remote backend — a real behavioral gap, not a deliberately-local store [Agent 2 finding]
 - `little_loops/issue_history/parsing.py` — `scan_completed_issues_from_db()` and `HistoryDbUnavailable`, called from the `decisions.py` coupling above; previously covered only implicitly by the `issue_history/*` wildcard [Agent 1 finding]
 - `little_loops/history_reader/_base.py:60` — `_connect_readonly()` is a distinct fourth readonly-open duplicate (opens `file:{db_path}?mode=ro`); its docstring documents that it deliberately does NOT re-resolve `db_path` through `ensure_db()`'s env/config chain, to avoid silently redirecting an already-root-anchored absolute path (BUG-3181) — a contract the new `connect_readonly()` chokepoint must preserve [Agent 2 finding]
 
@@ -257,35 +271,45 @@ _Added by `/ll:refine-issue` — 2026-09-22 — based on codebase analysis:_
 
 ## Implementation Steps
 
-1. Complete the `libsql` learning-test gate against a real remote endpoint: pin
-   the tested driver/version as a justified optional extra; prove connection,
-   cursor/row, transaction, read-only, error, authentication, and timeout behavior.
-   Resolve the readiness questions below before committing to the adapter design.
-2. Add `history.backend` config and resolver contracts. Define endpoint/env and
-   explicit-local-path precedence without changing SQLite defaults; reject
-   unsupported kinds and invalid combinations with redacted diagnostics.
-3. Implement the backend adapter and route history consumers through it. Include
-   public re-exports and `SQLiteTransport` construction, serialized cross-thread
-   writes, shutdown, and error handling; audit filesystem existence checks and
-   local-path assumptions as well as direct connection sites.
+0. Prerequisite: ENH-3525 merged (chokepoint, `HistoryError` taxonomy,
+   `open_history()` / `open_history_readonly()`, path-bypass repairs).
+1. Produce `.ll/learning-tests/libsql-remote.md` against a real remote endpoint
+   with `proven_package`/`proven_version` recorded (Readiness Prerequisites lists
+   the required and probe assertions). Pin the tested driver/version as a justified
+   extras entry. Resolve the remaining readiness decisions before writing the adapter.
+2. Add `history.backend` config (`provider`, `url`/`url_env`, `auth_token_env`) to
+   `config-schema.json` and the `/ll:configure` history area (+ mirrors). Encode the
+   precedence rules from Proposed Design §1; reject unknown providers, two endpoint
+   sources, or a missing token env with redacted diagnostics.
+3. Implement `LibsqlBackend`: connection/cursor/row adaptation (named-row access on
+   top of the driver's plain tuples), narrow error wrapping around driver calls into
+   the `HistoryError` taxonomy (default category `HistoryOperationError`), deferred
+   `import libsql` inside `__init__` with the missing-extra `RuntimeError` message.
+   `resolve_history_db()` / `ensure_db()` raise `HistoryBackendNotLocal` when the
+   configured target is remote and no explicit local target was given.
 4. Adapt connection setup and migrations using `meta.schema_version`. Verify the
    full migration chain, concurrent initialization, atomic rollback, schema-ahead
    behavior, and genuinely non-mutating reads against the remote driver. Do not
    promote the SQLite-backed spike as remote compatibility evidence.
-5. Implement capability handling and the chosen snapshot/export behavior.
-   Preserve local scratch SQLite output for supported dashboard snapshots; if
-   remote export is deferred, explicitly gate it and document the limitation.
-   Preserve same-project identity and foreign-machine source-path behavior as
-   settled in the readiness decisions.
-6. Normalize backend errors. Bound network waits; keep event sinks best-effort
-   with rate-limited redacted warnings, but surface explicit read/migration/
-   maintenance failures. Specify reconnect/retry behavior without blindly
-   retrying writes whose commit outcome is unknown.
-7. Add an explicit `ll-doctor` backend diagnostic that checks connectivity,
-   authentication, and schema compatibility without migrations or writes.
-8. Add focused local regressions and remote integration coverage, then update
-   configuration/API/CLI docs. Remote tests skip only when their required test
-   configuration is absent; a configured endpoint failure fails the test.
+5. Implement the shared-store operation matrix (Proposed Design §7): reject
+   `rebuild`, `backfill`, `prune`, `compact --and-prune`, `recompress`, `VACUUM`,
+   and `sweep_stale_refs` under `libsql` with `HistoryUnsupported` before any
+   mutation, unless the specific operation's cross-machine safety is proven and
+   tested in this issue. Implement the identity audit outcomes (event dedup,
+   copied sessions, foreign `jsonl_path`/`project_path`).
+6. Implement capability gating for FTS5, WAL, VACUUM, and `ATTACH` snapshot export;
+   preserve local scratch SQLite output for supported dashboard snapshots, or gate
+   and document the limitation.
+7. Failure policy: bounded network waits; event sinks (`SQLiteTransport`,
+   `cli_event_context`) stay best-effort with rate-limited redacted warnings and
+   catch `HistoryError` only; explicit reads/migrations/maintenance surface
+   failures; never retry a write whose commit outcome is unknown.
+8. Add the explicit `ll-doctor` backend diagnostic (connectivity, auth, schema
+   compatibility; timeout; no migrations/writes; redacted; flags `history.db_path`
+   set alongside a remote provider).
+9. Local regressions plus remote integration coverage (skip only on absent test
+   configuration; a configured endpoint failure fails the test), then update
+   configuration/API/CLI/guide docs and the `/ll:configure` mirrors.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -303,7 +327,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 _These additional touchpoints were identified by a second wiring pass and must be included in the implementation:_
 
-- Route `little_loops/decisions.py::generate_from_completed()` through `resolve_history_db()`/the backend chokepoint instead of its hardcoded `.ll/history.db` path check, so it doesn't permanently and silently fall back to filesystem scanning under `kind: libsql`
+- Route `little_loops/decisions.py::generate_from_completed()` through `resolve_history_db()`/the backend chokepoint instead of its hardcoded `.ll/history.db` path check, so it doesn't permanently and silently fall back to filesystem scanning under `provider: libsql`
 - Fold `little_loops/history_reader/_base.py:60` (`_connect_readonly()`) into the shared `connect_readonly()` chokepoint while preserving its documented no-re-resolve contract (BUG-3181)
 - Update `little_loops/cli/backfill_worker.py:52,70,78` — route the `REGISTERED_HOSTS`/`host_layout_for`/`backfill_incremental` lazy imports through the backend-aware path
 - Audit the ~35 CLI modules that only import `DEFAULT_DB_PATH, cli_event_context` (Dependent Files) — confirm `cli_event_context`'s best-effort contract holds unchanged under the new backend; no code change expected unless `DEFAULT_DB_PATH`'s type itself changes
@@ -313,15 +337,17 @@ _These additional touchpoints were identified by a second wiring pass and must b
 ## Impact
 
 - **Priority**: P3 — shared same-project history is useful; local history remains functional.
-- **Effort**: Large — connection routing plus cursor/row contracts, transaction and
-  migration compatibility, error normalization, local-file operations, and remote
-  round-trip costs. Package-wide SQLite-idiom counts include excluded stores and
-  are not an effort estimate. Postgres/MySQL dialect translation is separate work.
-- **Risk**: Medium to high until real-driver proofs pass — routing mistakes,
-  partial migrations, ambiguous network write outcomes, and shared-store identity
-  can lose or misattribute history. The existing spike retires only local mechanics.
-- **Breaking Change**: No intended change for default SQLite users; remote support
-  is opt-in and any unsupported remote operations must be documented explicitly.
+- **Effort**: Medium-Large after ENH-3525 — cursor/row adaptation, migration
+  compatibility, operation matrix, doctor check, docs. The connection routing,
+  error taxonomy, and path repairs move to ENH-3525. Postgres/MySQL dialect
+  translation is separate work.
+- **Risk**: Medium to high until real-driver proofs pass — partial migrations,
+  ambiguous network write outcomes, and shared-store maintenance operations
+  (`rebuild`/`backfill`/`prune`) can lose or misattribute other machines' history.
+  The existing spike retires only local mechanics.
+- **Breaking Change**: None for default SQLite users beyond the intentional
+  changes already documented in ENH-3525. Remote support is opt-in; every rejected
+  or unsupported remote operation is documented explicitly.
 
 ## Current State
 
@@ -337,46 +363,96 @@ _These additional touchpoints were identified by a second wiring pass and must b
    {
      "history": {
        "backend": {
-         "kind": "libsql",
+         "provider": "libsql",
          "url_env": "LL_HISTORY_URL",
          "auth_token_env": "LL_HISTORY_AUTH_TOKEN"
        }
      }
    }
    ```
-   Support a non-secret literal `url` or `url_env`, with exactly one endpoint
-   source for libSQL. Never commit tokens; redact credentials from errors and
-   diagnostics. Unset backend / `kind: sqlite` preserves `db_path` and
-   `LL_HISTORY_DB`. Specify remote-mode interactions with explicit local paths
-   and SQLite-only overrides before implementation; never silently fall back to
-   a local history store after remote failure.
+   `provider` is the selector (matching `sync.provider` and `code_query.provider`;
+   `"enum": ["sqlite", "libsql"]`, default `"sqlite"`). Support a non-secret
+   literal `url` or `url_env`, with exactly one endpoint source for libSQL. Never
+   commit tokens; redact credentials from errors and diagnostics. Never silently
+   fall back to a local history store after remote failure.
+
+   **Path and precedence semantics (settled):**
+   - Unset backend / `provider: sqlite`: unchanged. Resolution stays
+     `explicit path > LL_HISTORY_DB > history.db_path > DEFAULT_DB_PATH`.
+   - `provider: libsql`: default-shaped arguments (`DEFAULT_DB_PATH`, `None`) to
+     `open_history()` / `open_history_readonly()` / `cli_event_context` select the
+     configured remote store. A deliberate local target — an explicit non-default
+     path argument, or `LL_HISTORY_DB` set — remains an explicit local SQLite
+     target, exactly as the current code preserves deliberate overrides (BUG-3181,
+     WORKTREES.md `LL_HISTORY_DB` relay). `history.db_path` is ignored under
+     `libsql` and `ll-doctor` reports that both are set.
+   - Legacy path-returning APIs (`resolve_history_db()`, `ensure_db()`) keep their
+     SQLite behavior for explicit local targets and raise a typed
+     `HistoryBackendNotLocal` when asked for the configured remote target. No
+     fabricated filesystem path is ever returned for a remote store.
 2. Select Python `libsql` direct remote connections, not embedded replicas or
-   `turso_serverless`. Keep the driver behind a justified, version-bounded optional
-   extra with a clear missing-extra error. Prove the selected version against the
-   intended deployment before implementing production consumers. Official driver
-   distinctions and token usage: https://github.com/tursodatabase/turso-docs/blob/main/sdk/python/quickstart.mdx
-3. Resolve adapters lazily. Define connection, cursor, row, transaction, and error
-   contracts from consumer usage. Do not assume `sqlite3.Connection` inheritance,
-   `sqlite3.Row` compatibility, or identical exception classes. Update annotations
-   only for code that accepts multiple backends; retain SQLite types for truly
-   local-only operations.
+   `turso_serverless`. Keep the driver behind a justified, version-bounded extras
+   entry with a clear missing-extra error raised from `LibsqlBackend.__init__`
+   (deferred import, per `transport.py` `OTelTransport`/`WebhookTransport`). Prove
+   the selected version against the intended deployment before implementing
+   production consumers. Official driver distinctions and token usage:
+   https://github.com/tursodatabase/turso-docs/blob/main/sdk/python/quickstart.mdx
+3. Register `LibsqlBackend` in ENH-3525's lazy registry. Define connection, cursor,
+   row, and transaction adaptation from consumer usage: the driver returns plain
+   tuples with no row factory, so named-row access is adapted in the backend.
+   Do not assume `sqlite3.Connection` inheritance or `sqlite3.Row` compatibility.
+   Update annotations only for code that accepts multiple backends; retain SQLite
+   types for truly local-only operations.
+
+   **Error contract (settled):** the recorded learning test shows the driver
+   raises plain `ValueError` for both bad SQL and UNIQUE violations, with no
+   `libsql.Error` in the MRO. Classification by driver exception type is therefore
+   impossible; backend-neutral errors remain the contract. `LibsqlBackend` wraps
+   exceptions narrowly around each driver call (connect, execute, executemany,
+   commit, rollback) and maps them to `HistoryOperationError` ("other database
+   failure") unless a reliable classification is proven by the remote learning
+   test — connect-time auth/unreachable failures are the only expected candidates
+   for `HistoryUnavailable`. No message-pattern matching; no `except ValueError`
+   around whole consumer operations; the driver exception is preserved as
+   `__cause__`.
 4. History migration versioning uses `meta.schema_version`, not
    `PRAGMA user_version`. Reuse migration SQL where proven compatible; verify
    `BEGIN IMMEDIATE`/isolation control or an equivalent atomic locking sequence,
    rollback, version re-read under lock, full migrations, and schema-ahead checks.
    Read-only access and diagnostics must not create or migrate the remote store.
 5. Determine capabilities from tested driver/deployment behavior. Gate WAL setup,
-   FTS5, maintenance, and snapshot export as appropriate; SQLite dialect support
-   does not prove all PRAGMAs or file operations work remotely. Audit network
-   round trips in migration/event paths rather than assuming local latency.
+   FTS5, maintenance, and snapshot export as appropriate; a probe that shows FTS5
+   or `ATTACH` is rejected remotely establishes an unsupported capability, it does
+   not block basic remote support. Audit network round trips in migration/event
+   paths rather than assuming local latency.
 6. Preserve failure policy per operation: event telemetry is best-effort with
    bounded waits and rate-limited warnings; explicit reads/migrations/maintenance
    report failures. Define reconnect and ambiguous-commit handling. Doctor checks
    are explicitly invoked, bounded, non-mutating, and redact secrets.
-7. Sharing is limited to machines running the same logical project. Before
-   implementation, settle project/session/event identity and how machine-local
-   `jsonl_path`/`project_path` values are represented and consumed. Add provenance
-   only if needed for correctness; machine-filtered analytics are not required.
+7. **Shared-store mutation safety (hard gate).** Every maintenance operation is
+   classified before it can run under `libsql`, and a rejected operation fails
+   with `HistoryUnsupported` before any mutation:
+
+   | Operation | Why it is unsafe on a shared store | First remote release |
+   |---|---|---|
+   | `rebuild()` (`lifecycle.py:952`) | `DELETE FROM <table>` on derived tables, then replays `raw_events` from the database — global deletion with no concurrency or completeness guarantee against other machines' concurrent writes | rejected |
+   | `backfill` / `backfill_incremental` | upserts sessions from this machine's local JSONL; can overwrite or interleave with other machines' rows | rejected |
+   | `prune()` (`lifecycle.py:1283`) | deletes `raw_events` globally; gates on `db_path.stat().st_size`, which has no remote meaning | rejected |
+   | `compact` / `compact --and-prune` / `recompress` | rewrites `raw_events` rows other machines may be reading or writing | rejected |
+   | `VACUUM` / `sweep_stale_refs` | file-level or existence-based on a local path | rejected |
+   | reads, event writes, `search` (if FTS5 proven), `ll-history`, `ll-logs`, digests, compaction reads | additive or read-only | supported |
+   | snapshot export | `ATTACH` to a local destination | probe; supported via bounded row transfer or explicitly unsupported |
+
+   An operation moves from "rejected" to "supported" or "provenance-scoped" only
+   when this issue (or a follow-up) proves and tests its cross-machine safety.
+
+   **Identity audit (retained):** `sessions.session_id` is the host session UUID
+   primary key, which avoids session-row collisions, but that alone does not
+   establish event deduplication (`idx_issue_events_dedup`, `idx_corrections_dedup`
+   are content keys, not machine keys), safe handling of a session JSONL copied
+   between machines, or how readers treat a foreign `jsonl_path`/`project_path`.
+   Settle these before implementation; add provenance only if needed for
+   correctness. Machine-filtered analytics are not required.
 8. Out of scope: Postgres/MySQL or a general SQL dialect layer; other Turso
    engines/drivers; embedded replicas/offline synchronization; migrating
    `queue.db` or codegraph databases; workspace-manifest aggregation over remote
@@ -386,35 +462,41 @@ _These additional touchpoints were identified by a second wiring pass and must b
 
 ### Types
 
-- `BackendKind: Literal["sqlite", "libsql"]`
-- `BackendConfig: dataclass` (`kind: BackendKind`, `url: str | None`,
+- `BackendProvider: Literal["sqlite", "libsql"]`
+- `BackendConfig: dataclass` (`provider: BackendProvider`, `url: str | None`,
   `url_env: str | None`, `auth_token_env: str | None`)
-- New: `HistoryConnection`, `HistoryCursor`, and `HistoryRow` protocols in the
-  proposed backend module. Inventory required methods/properties from consumers:
-  `execute`, `executemany`, commit/rollback/close, transaction/isolation semantics,
-  cursor fetching/iteration, `lastrowid`, `rowcount`, and indexed/named row access.
-  Adapt row-factory behavior internally; finalize exact signatures after driver
-  learning tests. A five-method connection protocol is insufficient.
-- Backend-neutral error categories distinguish unavailable/authentication,
-  integrity, unsupported operation, and other query/migration failures; adapters
-  preserve causes without leaking credentials.
+- From ENH-3525: `Backend` protocol, `SqliteBackend`, `HistoryConnection`,
+  `HistoryCursor`, `HistoryRow` protocols, and the `HistoryError` taxonomy
+  (`HistoryUnavailable`, `HistoryIntegrityError`, `HistoryUnsupported`,
+  `HistoryOperationError`). This issue adds `LibsqlBackend` and
+  `HistoryBackendNotLocal(HistoryError)`.
+- Required connection/cursor/row members, inventoried from consumers: `execute`,
+  `executemany`, commit/rollback/close, `in_transaction`, cursor fetching and
+  iteration, `description`, `lastrowid`, `rowcount`, and indexed/named row access.
+  The libsql adapter supplies named access over the driver's plain tuples. A
+  five-method connection protocol is insufficient.
+- Adapter error wrapping is narrow (per driver call) and defaults to
+  `HistoryOperationError`; only proven classifications map elsewhere. Causes are
+  preserved; credentials are never included in messages.
 
 ### Signatures
 
-- `resolve_backend(config: dict) -> Backend` — lazy registry following `resolve_provider`
+- `resolve_backend(config: dict) -> Backend` — ENH-3525's lazy registry keyed by `provider`; this issue adds the `"libsql"` entry
+- `LibsqlBackend.__init__(self, config: BackendConfig)` — deferred `import libsql`; raises `RuntimeError("... pip install 'little-loops[libsql]'")` when absent
 - `Backend.connect(self) -> HistoryConnection`
 - `Backend.connect_readonly(self) -> HistoryConnection`
 - `Backend.ensure_schema(self) -> None`
 - `Backend.supports(self, capability: str) -> bool`
+- `open_history(target: Path | str | None = None) -> HistoryConnection` — default-shaped target selects the configured backend; explicit local target opens SQLite
+- `resolve_history_db(...) -> Path` / `ensure_db(...) -> Path` — unchanged for explicit local targets; raise `HistoryBackendNotLocal` when the configured target is remote
 
 ### Call Path
 
-Project configuration + explicit target policy -> `resolve_backend` -> connection
-adapter -> history consumer. Write initialization invokes `ensure_schema` and the
-proven migration sequence; read-only/doctor paths must not invoke migrations.
-Preserve public local-path APIs where needed: `ensure_db()` currently returns a
-`Path`, so a remote target must not be represented as a fabricated filesystem path.
-Finalize that integration contract before changing callers.
+Project configuration + explicit-target policy -> `resolve_backend` ->
+`LibsqlBackend` -> `open_history()` / `open_history_readonly()` -> history
+consumer. Write initialization invokes `ensure_schema` and the proven migration
+sequence; read-only/doctor paths must not invoke migrations. Maintenance
+commands consult the operation matrix (`supports()`) before touching the store.
 
 ### Codebase Research Findings
 
@@ -423,7 +505,7 @@ _Added by `/ll:refine-issue` — 2026-09-22 — based on codebase analysis:_
 - No backend-neutral error-category wrapper exists to model the "unavailable/auth, integrity, unsupported-operation, other" categories on: `session_store/schema.py`, `queries.py`, `lifecycle.py`, `writers.py` all catch and branch on raw `sqlite3.OperationalError`/`sqlite3.IntegrityError` directly at each call site (e.g. `schema.py:1458`, `:1485`; `queries.py:56`, `:212`, `:379`; `lifecycle.py:1447`), with no wrapped-exception hierarchy anywhere in the codebase. This taxonomy is new design, not a shared abstraction to reuse.
 - No existing convention masks a specific env-var-sourced credential value in error messages or diagnostic output. `pii.py`'s `redact_pii`/`CREDENTIAL_RULES` scans free-text corpora for embedded secrets (email/token/key regex patterns) for SFT training-data export (`cli/logs.py::_redact_input_context` is its only other caller) — it is not wired into any error-message or `ll-doctor`-style diagnostic path today. `host_runner.py`'s `CREDENTIAL_SCOPES` controls which env vars a child process inherits rather than masking a value for display — a different concern (access control, not display redaction). `auth_token_env` redaction in error/diagnostic output has no in-tree pattern to extend.
 - The closest structural analog for the `ll-doctor` backend diagnostic is `doctor.py`'s existing `_history_db_data()`/`@register_check _history_db_check()` pair (`doctor.py:444-513`): a pure `_xxx_data()` function that never raises and never creates the resource it probes (explicitly checks `Path.exists()` before calling `connect()`/`ensure_db()`, since both create-on-demand), returning a dict adapted by a thin `@register_check`-decorated function into `CheckResult(status: Literal["full","partial","unsupported"], note, severity: Literal["error","informational"])`. No existing doctor check in this codebase probes a network resource — every one of the currently registered checks operates on local filesystem/SQLite state, so there is no in-tree precedent for the connectivity/timeout half of the new check beyond this local-probe shape.
-- The Proposed Design's and this section's chosen selector key name (`"kind": "libsql"`, `BackendKind`) diverges from this codebase's only two existing discriminated-backend-selector precedents, both of which name the key `provider` rather than `kind`: `sync.provider` and `code_query.provider` (`config-schema.json:1390`, `:1449`). A repo-wide search of `config-schema.json` found no existing schema block using `kind` as a selector property name. This is a naming-convention deviation to make knowingly, not an error.
+- Selector naming (resolved 2026-09-22): the codebase's two existing discriminated-backend-selector precedents both name the key `provider` (`sync.provider`, `code_query.provider`; `config-schema.json:1390`, `:1449`) and no schema block uses `kind`. This issue uses `provider` / `BackendProvider` throughout (examples, types, schema, configure flow, mirrors); the spike's `kind` attribute is renamed on promotion.
 
 ## Use Case
 
@@ -445,62 +527,112 @@ of which machine ran a session, and database consumers can read the same store. 
 export remains subject to the explicit snapshot capability decision below; local
 JSONL paths are not assumed accessible from other machines.
 
-## Open Questions
+## Readiness Prerequisites
 
-The backend choice is resolved: libSQL first; Postgres/MySQL are excluded. The
-optional-extra policy and explicit doctor diagnostic are also resolved.
+Settled: libSQL first (Postgres/MySQL excluded); extras-entry policy; explicit
+doctor diagnostic; `provider` selector name; path/precedence semantics (Proposed
+Design §1); error contract (§3); shared-store operation matrix for the first
+release (§7); ENH-3525 as the SQLite-only prerequisite.
 
-The following remain readiness blockers, to be answered with driver learning tests
-and caller analysis rather than hidden by closing this section:
+**Learning-test gate (enforceable).** `.ll/learning-tests/libsql.md` is
+local-driver evidence only: all seven assertions use a bare path or `:memory:`,
+none exercise remote mode, no `proven_package`/`proven_version` is recorded, and
+the driver is not installed in the test interpreter. It stays as local evidence.
+Remote compatibility is a separate registry target, `libsql-remote`, added to
+`learning_tests_required` in this issue's frontmatter so
+`little_loops.learning_tests.gate` blocks implementation until
+`.ll/learning-tests/libsql-remote.md` exists with `status: proven`, a real
+`url`/`auth_token_env` endpoint, and `proven_package`/`proven_version` set. The
+assertion "raises `libsql.Error`" has `result: fail`; it is accepted as a known
+driver divergence (plain `ValueError`) and is the basis for the error contract in
+Proposed Design §3 — do not re-run it expecting a pass.
 
-- What exact driver version, adapter contracts, and transaction/read-only mechanism
-  pass the real remote compatibility checks, including the full migration chain?
-- How do explicit local-path arguments, `LL_HISTORY_DB`, and `history.db_path`
-  interact with a configured remote backend while preserving local scratch stores
-  and the existing `ensure_db() -> Path` / `resolve_history_db() -> Path` APIs?
-- What same-project/session/event identity rules prevent collisions across machines,
-  and how should readers handle foreign-machine source paths? Is provenance needed
-  for correctness, and if so how are existing rows handled?
-- Will remote dashboard snapshots be materialized into local SQLite via bounded
-  row transfer, or explicitly unsupported in this first cut? Preserve filtering
-  and redaction if supported; do not imply remote `ATTACH` creates a local file.
+`libsql-remote.md` **required** assertions (a `fail` blocks the adapter):
+- connect with `url` + auth token succeeds; wrong token and unreachable host fail
+  with recorded exception type and bounded time
+- `BEGIN IMMEDIATE` / manual `isolation_level` / `in_transaction` behave as the
+  migration sequence needs; rollback after a mid-migration failure leaves
+  `meta.schema_version` unchanged
+- full `_MIGRATIONS` chain applies from empty; repeat initialization is a no-op;
+  two concurrent initializers serialize
+- `PRAGMA table_info` and `meta.schema_version` reads work (schema-ahead check)
+- `INSERT OR IGNORE`, `executemany`, `lastrowid`, `rowcount`, `description`
+- one connection used from a second thread under a lock (the `SQLiteTransport`
+  serialized cross-thread pattern), or a per-thread connection if the driver
+  forbids sharing — record which
+- a write whose commit outcome is interrupted is detectable (ambiguous-commit rule)
+
+**Probe** assertions (a `fail` records an unsupported capability, does not block):
+- FTS5 virtual table creation and `MATCH`
+- `PRAGMA journal_mode = WAL`, `PRAGMA query_only = ON`, `busy_timeout`
+- `ATTACH DATABASE` to a local file
+- `VACUUM`
+
+Remaining decisions to record before implementation (caller analysis, not driver
+proof):
+- Identity audit outcomes: event dedup across machines, copied-session handling,
+  reader behavior on foreign `jsonl_path`/`project_path`, and whether provenance
+  is needed for correctness (Proposed Design §7).
+- Snapshot export: bounded row transfer into a local SQLite artifact (preserving
+  filtering/redaction), or explicitly unsupported in this first cut. Do not imply
+  remote `ATTACH` creates a local file.
 
 ## Acceptance Criteria
 
-- [ ] Readiness questions above are resolved and recorded; the `libsql` learning
-  gate proves the selected version and remote mode. No Postgres/MySQL support or
-  `psycopg` dependency is included.
-- [ ] Config supports `sqlite|libsql`, endpoint env references, and a separate token
-  env reference. Invalid combinations, missing extras, and auth errors produce
-  redacted diagnostics. Default SQLite path/env precedence tests remain unchanged.
-- [ ] All in-scope history connections use the backend adapter; independent local
-  stores and scratch artifacts remain local. Explicit-path precedence and public
-  path-returning APIs have regression coverage; remote failures never silently
-  switch history to a local database.
+- [ ] ENH-3525 is `done`; `.ll/learning-tests/libsql-remote.md` is `status: proven`
+  with every required assertion passing, probe results recorded, and
+  `proven_package`/`proven_version` set; the `libsql` extra pins that version. No
+  Postgres/MySQL support or `psycopg` dependency is included.
+- [ ] Config supports `history.backend.provider: sqlite|libsql` (schema enum,
+  `/ll:configure` history area and its three mirrors), `url`/`url_env`, and
+  `auth_token_env`. Unknown provider, two endpoint sources, missing token env,
+  missing extra, and auth errors produce redacted diagnostics. Default SQLite
+  path/env precedence tests remain unchanged.
+- [ ] Under `provider: libsql`, default-shaped targets select the remote store;
+  an explicit path argument or `LL_HISTORY_DB` still opens that local SQLite file;
+  `resolve_history_db()`/`ensure_db()` raise `HistoryBackendNotLocal` for the
+  remote target and never return a fabricated path. Each rule has a test. Remote
+  failures never silently switch history to a local database.
+- [ ] `LibsqlBackend` wraps only driver calls, defaults to `HistoryOperationError`,
+  preserves `__cause__`, and maps to another category only where the remote
+  learning test proved the classification. Tests assert no `except ValueError`
+  or driver-type catch exists around consumer operations.
 - [ ] Connection/cursor/row and transaction contracts are exercised for both
   adapters, including named/indexed rows, fetching, insert IDs, affected-row counts,
   and error mapping used by consumers.
 - [ ] Real remote tests cover the full migration chain using `meta.schema_version`,
   repeat initialization, concurrent initialization, rollback after failure, and
   schema compatibility. Read-only access does not create or migrate the store.
+- [ ] **Shared-store mutation safety**: the operation matrix in Proposed Design §7
+  is implemented; `rebuild`, `backfill`, `prune`, `compact --and-prune`,
+  `recompress`, `VACUUM`, and `sweep_stale_refs` are rejected with
+  `HistoryUnsupported` before any mutation under `libsql`, each with a test that
+  proves no row was deleted or written; any operation promoted to supported or
+  provenance-scoped has a cross-machine safety test.
+- [ ] Identity audit is recorded and implemented: same-project sessions/events from
+  two machines remain correctly attributed and deduplicated; a copied session
+  JSONL does not double-ingest; foreign-machine paths do not masquerade as local
+  readable sources; any provenance the decision requires is tested.
 - [ ] `ll-history`, `ll-logs`, session digests, and compaction reads/writes work
   against the remote store. `SQLiteTransport` lifecycle and serialized cross-thread
-  writes work through the adapter and remain best-effort under remote failure.
+  writes work through the adapter, catch `HistoryError` only, and remain
+  best-effort under remote failure. `ll-history summary` exits 0 on a degraded
+  remote store; `ll-logs fleet-review` keeps its final-line-is-a-path contract.
 - [ ] Network operations have bounded waits. Event-sink failures warn without
   aborting the observed operation; explicit reads/migrations/maintenance report
-  failure. Tests cover failure policy, redaction, and ambiguous-write retry rules.
-- [ ] Same-project sessions/events from two machines remain correctly attributed;
-  foreign-machine paths do not masquerade as local readable sources. Implement
-  and test any provenance needed by the documented identity decision.
-- [ ] Unsupported search/maintenance/export features produce clear capability
-  messages. Supported snapshot export preserves filtering/redaction and creates
-  a local SQLite artifact; otherwise its remote limitation is explicit and tested.
+  failure. Tests cover failure policy, redaction, and the ambiguous-write no-retry
+  rule.
+- [ ] Unsupported search/maintenance/export capabilities produce clear messages.
+  Supported snapshot export preserves filtering/redaction and creates a local
+  SQLite artifact; otherwise its remote limitation is explicit and tested.
 - [ ] An explicit `ll-doctor` check diagnoses connectivity/authentication/schema
-  compatibility with a timeout, no migrations/writes, and redacted output.
+  compatibility with a timeout, no migrations/writes, and redacted output, and
+  reports when `history.db_path` and a remote provider are both set.
 - [ ] Remote integration tests skip only when test configuration is absent;
   failures with a configured endpoint fail the tests. Local regressions pass.
-- [ ] User docs cover backend selection, optional installation, secrets, precedence,
-  same-project sharing, failure behavior, diagnostics, and capability limitations.
+- [ ] User docs cover backend selection, extras installation, secrets, precedence,
+  same-project sharing, the rejected-operation list, failure behavior, diagnostics,
+  and capability limitations.
 
 ## Spike Results
 
@@ -562,13 +694,13 @@ Verdict: NEEDS_UPDATE. Graph checks used `provider=codegraph`, `freshness=fresh`
   yet the record's overall `status` is still `proven` with no note reconciling
   the two.
 
-Remaining: this readiness blocker is not auto-correctable by this command (it
-requires a real remote endpoint to re-run the learning test) — `.ll/learning-tests/libsql.md`
-needs remote-mode assertions added and the `fail` result triaged (fixed, or
-explicitly accepted and documented as a known driver divergence) before the
-Open Questions / AC #1 readiness gate can be considered resolved. `spike_completed:
-true` and `spike_attempted: true` in frontmatter remain accurate for what they
-claim (local spike mechanics only) and are not affected.
+Resolution (2026-09-22 review): `libsql.md` is retained as local-driver evidence;
+remote compatibility is now a separate `libsql-remote` registry target required
+by frontmatter, so the gate blocks mechanically until that record is proven (see
+Readiness Prerequisites). The `fail` result is accepted as a known driver
+divergence and drives the error contract in Proposed Design §3.
+`spike_completed: true` and `spike_attempted: true` remain accurate for what they
+claim (local spike mechanics only).
 
 ## Related Key Documentation
 
@@ -580,6 +712,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:review-issue` - 2026-09-22T20:23:55 - `a4d36fa6-881b-478d-9b3a-16179bad6635.jsonl`
 - `/ll:verify-issues` - 2026-09-22T19:21:07 - `6cde693c-199f-46be-be94-59e50bb11494.jsonl`
 - `/ll:wire-issue` - 2026-09-22T16:47:36 - `48d447aa-e589-42cb-96ec-cab26ee6a78c.jsonl`
 - `/ll:refine-issue` - 2026-09-22T16:30:06 - `49a7e360-74a8-4694-abcb-c3e17b0da6de.jsonl`
