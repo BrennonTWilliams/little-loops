@@ -1,7 +1,8 @@
 ---
 id: BUG-3523
 type: BUG
-title: SSE bridge fan-in test is CI-dormant — no_parallel marker with no serial invocation anywhere
+title: "SSE bridge fan-in test is CI-dormant \u2014 no_parallel marker with no serial\
+  \ invocation anywhere"
 priority: P3
 status: open
 discovered_by: manual
@@ -17,6 +18,10 @@ relates_to:
 - BUG-3484
 - BUG-2523
 - FEAT-3323
+learning_tests_required:
+- pytest
+- pytest-timeout
+- pytest-xdist
 ---
 
 # BUG-3523: SSE bridge fan-in test is CI-dormant — no_parallel marker with no serial invocation anywhere
@@ -65,6 +70,13 @@ _Added by `/ll:refine-issue` — 2026-09-22 — based on codebase analysis:_
 - **Doc surface needing the same reword BUG-3522 already flagged**: `docs/development/TESTING.md` (`no_parallel` marker-table row, ~line 1050) still reads "runs on the controller or in a serial `-n 0` invocation"; `docs/development/TROUBLESHOOTING.md` (BUG-2523 section, ~lines 825-835) still reads "The tests still run — they just don't share cores with six other pytest invocations." Both predate the corrected wording already landed in `scripts/pyproject.toml:293`'s `no_parallel` marker registration string ("the controller never runs tests under `-n N`; it only actually runs in a serial `-n 0` invocation").
 - **No existing convention pairs a `no_parallel` marker with a required serial-invocation declaration** — the closest analog is the `grader_case` marker, whose registration string names its consuming meta-test (`test_grader_coverage.py`); `no_parallel`'s registration string does not name one, because none exists yet. The closest precedent for Proposed Solution option 3's shape is `scripts/tests/test_grader_coverage.py` (`TestGraderCoverage`, line 115+), which AST-scans `scripts/tests/*.py` source text (not pytest's own collection/session machinery, deliberately — so a subset run like `-k`/`--lf`/mutmut's `-n0` selection doesn't false-fail) and asserts a coverage property about decorator usage.
 
+### Conventions in Force
+
+- A pytest marker's own `pyproject.toml` registration string is where this codebase names the meta-test that consumes it, when one exists — `grader_case` does this (`scripts/pyproject.toml:294`, "per ENH-3463's test_grader_coverage.py meta-test"); `no_parallel` (`scripts/pyproject.toml:293`) describes the skip mechanism but names no consumer, confirming (not merely asserting) the "no existing convention pairs a `no_parallel` marker with a required serial-invocation declaration" claim already on file.
+- Where a per-test timeout must sit strictly above a documented inner worst-case budget (so the suite-wide `--timeout=120` watchdog doesn't kill the worker first), this codebase pairs a named constant with `@pytest.mark.timeout(CONSTANT + margin)` — `test_verify_evidence.py:77-81,1531` (`GATE_TIMEOUT = 120`, `@pytest.mark.timeout(GATE_TIMEOUT + 30)`) is the only site that actually pairs a constant with a strictly-greater marker; `test_verify_private_refs.py:44,358` defines the same `GATE_TIMEOUT` constant but carries no `@pytest.mark.timeout` decorator at all. BUG-3522's own proposed `timeout(240)` vs inner `timeout=180` pairing (its option 1) is not yet landed in `test_policy_builder_node_gate.py` — that file still carries bare `@pytest.mark.no_parallel` with no timeout decorator and BUG-3522's own `status:` is still `open` — so there is no in-repo precedent yet for what the pairing looks like once removed, only issue text.
+- A meta-test that must enumerate marker usage across the whole `scripts/tests/` tree does so by AST-parsing test source files directly (`ast.parse`/`ast.walk` over `.decorator_list`), not via pytest's own collection/session API — `test_grader_coverage.py:10-13,57-93,115` is the sole precedent for this shape; its module docstring states the reason explicitly: a subset run (`-k`, `--lf`, a single file, mutmut's per-mutant `-n0` selection) must not make the gate fail spuriously because the tagged tests weren't collected alongside it. No meta-test in the repo enumerates markers via pytest's live collection API (`--collect-only`, `pytest_collection_finish`, a gating `pytest.main([...])` call); the only two `pytest.main(...)` sites (`test_loop_layout_alignment.py:725`, `spike/usage_events_run_id_writer/test_writer.py:108`) are manual `if __name__ == "__main__"` conveniences, not coverage gates.
+- Where a serial pass genuinely must execute in CI, the existing pattern is a normally-scheduled (non-`no_parallel`) test shelling out to a nested `pytest ... -n 0 ...` subprocess itself, scoped to one named test file — never a `no_parallel`-marked test and never a dedicated CI workflow step: `test_worktree_utils.py:1471-1480,1519-1522` states the rejection of `no_parallel` explicitly for this reason; `test_hook_session_start.py:739-757` does the same for a different guard. Neither is a suite-wide serial pass over the full `no_parallel` set as Proposed Solution option 2 describes — an unfiltered repo-wide search confirms no such invocation exists anywhere (not in `.github/workflows/ci.yml`, not in `docs/`, not as a standalone script).
+
 ## Program Design
 
 This is decision-shaped (see Proposed Solution options 1-3); the shapes below
@@ -112,6 +124,7 @@ cover the identifiers each option touches, not a single committed design.
 - Coordinate the shared doc surface with BUG-3522: `docs/development/TESTING.md` marker table and `docs/development/TROUBLESHOOTING.md` BUG-2523 section both reword "runs on the controller" claims
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-22T15:24:01 - `f6c11c46-8116-4e24-83a3-9e7ac209cbad.jsonl`
 - `/ll:format-issue` - 2026-09-22T15:16:00 - `484f6d1d-ca00-4295-b7f6-7aec856c3eee.jsonl`
 
 ## Root Cause
