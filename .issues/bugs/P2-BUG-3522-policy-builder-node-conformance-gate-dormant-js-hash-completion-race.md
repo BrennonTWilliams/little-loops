@@ -148,6 +148,58 @@ _Wiring pass added by `/ll:wire-issue`:_
 _Wiring pass added by `/ll:wire-issue`:_
 - `.github/workflows/ci.yml` — **no** serial `-n 0` step is needed once the race is fixed: removing `no_parallel` restores the gate to the existing parallel `unit-tests` invocation. The workflow change reduces to setting `LL_REQUIRE_NODE=1` on the `unit-tests` job — the skip-to-fail logic itself lives in the Python test module, because a workflow step cannot see the "node present but < 22" skip path (review revision, 2026-09-21; the earlier "add a serial `-n 0` step" wiring rested on the falsified timeout hypothesis).
 
+## Verification Notes
+
+_Added by `/ll:verify-issues --auto` — 2026-09-22._
+
+**Verdict: EVIDENCE_UNVERIFIED** (check B7, `ll-verify-evidence`), on a single flagged
+span — advisory only, does not reflect on the issue's substance:
+
+- `## Current Behavior` (L36) paraphrases `scripts/pyproject.toml`'s `addopts` as the
+  single string `--timeout=120 --timeout-method=thread -n logical --dist loadfile`.
+  The file stores these as a TOML list (`addopts = ["--timeout=120",
+  "--timeout-method=thread", "-n", "logical", "--dist", "loadfile", ...]`,
+  `scripts/pyproject.toml:271-280`) — the checker can't match a reformatted-into-prose
+  span, which is the documented low-precision "paraphrase" class the command's own
+  advisory-verdict decision names, not a fabricated claim. Every flag named is
+  verifiably present and correctly attributed.
+
+Everything else checked clean, including several claims re-verified independently of
+the flagged span (line-exact, not just presence):
+- `settleHash`/`setup`/`reviewed` in `scripts/tests/js/policy_submission.test.mjs`
+  (L44-49, L56/L71-81, L87-91) and the `subtle` injection at L72 — exact.
+- `contextChanged`'s synchronous reset at
+  `scripts/little_loops/templates/policy_builder_core.mjs:4387`, and the
+  `review`/`sha256Hex` hashing path at L4428-4441 — exact (the causal/identity claim
+  in `## Notes` re: line 158 being only half-racy was read directly against this
+  code, not inferred).
+- CI shape: `.github/workflows/ci.yml` push-only (no `pull_request`), `unit-tests` on
+  `ubuntu-latest` with no `-n` override (inherits `-n logical` from addopts),
+  `conformance` on self-hosted Thinky with `-m conformance` — `test_node_conformance_suite_passes`
+  carries no `conformance` marker, so it is unreachable in either job as described.
+- `docs/development/TESTING.md:1050` and `docs/development/TROUBLESHOOTING.md:827`
+  quotes match verbatim; `.claude/CLAUDE.md:153` / `AGENTS.md:153` both cite the gate
+  test file as claimed.
+- `node --version` on this checkout is v26.0.0, confirming the "Notes" claim.
+- `test_node_22plus_runs_ok` / `test_node_test_runner_emits_tap_v13` (old AC refs)
+  confirmed absent; `_require_node`, `JS_TEST_DIR.glob("*.test.mjs")` (non-recursive)
+  confirmed present/as-described.
+- Sibling-dormancy sweep confirmed: `test_fsm_signal_integration.py:42` module
+  `pytestmark` includes both `integration` and `no_parallel`; `test_feat3323_sse_bridge.py:215-216`
+  stacks `no_parallel` + `timeout(180)`; `test_worktree_utils.py`/`test_dependency_mapper.py`
+  hits are comment/name matches only, no actual marker usage. `BUG-3523` exists,
+  status `open`, matching the "filed as BUG-3523" note.
+- No active required decision-log rules (`ll-issues decisions list --type rule
+  --enforcement required --active-only` empty) — no `DECISIONS_VIOLATION` possible.
+- All `relates_to` IDs (BUG-3486, BUG-3502, BUG-3484, BUG-2523, BUG-3523) resolve to
+  existing issue files.
+
+No `PROPOSAL_UNSOUND` findings: the Proposed Solution's four steps were traced
+against the code they touch (capturing-wrapper composition through `over.subtle`,
+the `LL_REQUIRE_NODE` skip-to-fail guard covering both gates, the AC's coverage of
+every Integration Map point) with no exception-handler, fixture-invalidation, or
+AC-coverage gap found.
+
 ## Program Design
 
 ### Types
@@ -198,6 +250,7 @@ _Revised 2026-09-20 after the evidence review; the original list assumed the tim
 - Re-run `scripts/tests/test_conftest_cap.py` (`TestNoParallelMarkerRouting`)
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-22T15:27:50 - `5972c48c-9075-49d4-83d4-288f2927cb32.jsonl`
 - `/ll:refine-issue` - 2026-09-22T15:21:53 - `83f6ed80-53e1-4d9e-8978-6a6d02a3e6c7.jsonl`
 - `/ll:wire-issue` - 2026-09-20T21:53:51 - `80e0a309-7358-453f-8fdc-92553921aa72.jsonl`
 - `/ll:refine-issue` - 2026-09-20T21:21:36 - `09272224-9351-4571-a369-7e216b7645b5.jsonl`
