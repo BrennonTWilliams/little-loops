@@ -273,6 +273,35 @@ wiring gaps below are now resolved by AC-W1..AC-W10; one new gap found)
 
 Fable 5.1's review has been folded into the selected design, AC-W8/AC-W11, and implementation steps: timeouts are explicitly retryable, process-group cleanup covers timeout and watchdog-exit paths, and runtime claims distinguish the reported 7.19s local baseline from timeout budgets. The earlier exception-handler gap is **addressed in the specification**; the historical verification verdicts above are retained as history, not evidence that implementation has been verified. Implementation and loaded-suite/artifact validation remain outstanding.
 
+### Re-verification (2026-09-22, `/ll:verify-issues`)
+
+Verdict: **VALID**
+
+- All cited `file:line` anchors re-checked against the working tree
+  (`conftest.py:120-146`, `pytest.ini:26`, `scripts/pyproject.toml:293`,
+  `test_feat3323_sse_bridge.py:210-216`, `transport.py` fan-in anchors,
+  `.github/workflows/ci.yml` unit-tests job, and all precedent test files:
+  `test_hook_session_start.py:712-763`, `test_worktree_utils.py:1471-1480`,
+  `test_conftest_cap.py:143`, `test_policy_builder_node_gate.py:53`) —
+  unchanged, no drift.
+- Reproduction reconfirmed: `pytest scripts/tests/test_feat3323_sse_bridge.py
+  -n 2 -q` → `46 passed, 2 skipped in 31.16s`.
+- **Both prior `PROPOSAL_UNSOUND` findings are now resolved**: the four
+  wiring-touchpoint gaps are covered by AC-W1..AC-W4, and the
+  `subprocess.TimeoutExpired` exception-handling gap is addressed by the
+  Program Design's `try/except subprocess.TimeoutExpired` wrap plus
+  AC-W8/AC-W11. Re-traced the full Files to Modify / Wiring Phase touchpoint
+  list against Acceptance Criteria — every touchpoint maps to an AC; no new
+  proposal-vs-code defect found.
+- `scripts/tests/test_no_parallel_serial_gate.py` still does not exist
+  (implementation not started, as expected).
+- BUG-3522 coordination note still accurate — still `status: open`.
+- `ll-verify-evidence --json` still flags only the same Steps-to-Reproduce
+  span already reviewed and dismissed as a tool misattribution, not
+  fabricated evidence.
+- Decisions log: no active required rules.
+- Graph: provider=`codegraph` freshness=`fresh` (corroboration only).
+
 ## Status
 
 **Open** | Created: 2026-09-21 | Priority: P3
@@ -313,6 +342,7 @@ _Added by `/ll:refine-issue` — 2026-09-22 — based on codebase analysis:_
 - **Cause**: The hook adds `pytest.mark.skip(reason="no_parallel: cannot run on xdist workers")` (lines 143-146) to every item carrying the `no_parallel` keyword whenever `config.workerinput` is truthy — i.e. on every xdist worker, never on the controller (lines 140-142). Under `-n N` the controller only collects and distributes work and never executes a test body itself (the hook's own docstring, lines 129-131). `scripts/pyproject.toml`'s `addopts` pins `-n logical` (no `-n 0` anywhere in that file), and `.github/workflows/ci.yml`'s `unit-tests` job invokes `pytest scripts/tests/ -m "not integration and not conformance"` with no `-n` override, so it inherits that default. `test_two_producers_reach_one_client_with_distinct_producer_pid` carries neither `integration` nor `conformance`, so the job's `-m` filter collects it — it is then unconditionally skipped on every worker and never run on the controller. This is not a logic defect in the hook itself (it matches BUG-2523's original intent, and `scripts/tests/test_conftest_cap.py::TestNoParallelMarkerRouting` already covers the hook's routing correctness in isolation); the defect is that `@pytest.mark.no_parallel` was stacked onto this test — for a legitimate reason, BUG-3484's historical contention overruns (the cited ~100-105s is a sum of per-step budgets, not measured normal runtime) — with no compensating serial invocation added anywhere, so the coverage loss is silent rather than a deliberate, visible trade-off.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-22T16:13:43 - `2426bc78-355e-49c0-b1d4-bbd04fabb869.jsonl`
 - `/ll:confidence-check` - 2026-09-22T16:00:45 - `f1a52e94-8652-4d09-be78-f2bf7d0ad19c.jsonl`
 - `/ll:verify-issues` - 2026-09-22T15:55:43 - `bfbb9153-ce71-46cf-a05b-72f0af991763.jsonl`
 - `/ll:verify-issues` - 2026-09-22T15:45:41 - `bfb59371-f535-4c56-8b82-ba5a535b470c.jsonl`

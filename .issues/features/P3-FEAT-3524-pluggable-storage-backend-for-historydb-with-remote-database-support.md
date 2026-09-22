@@ -79,11 +79,24 @@ behind capability checks that degrade gracefully, and reuse
 - `little_loops/queue_store.py`, `little_loops/codequery/codegraph.py` (evaluate whether in scope for the first cut — see Proposed Design item 5)
 - `little_loops/config-schema.json` (`history` block, line 2138 — add `backend`)
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `little_loops/cli/session.py` — `help=` strings hardcode SQLite feature names for FTS5/VACUUM (`:117`, `:118`, `:269`, `:356`, `:368`); must stay accurate or become conditional once these features are capability-gated on non-sqlite backends [Agent 2 finding]
+- `little_loops/cli/doctor.py:547` — `_schema_drift_data()` opens its own `sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)`, bypassing the proposed `connect_readonly()` chokepoint; also resolves `db_path` via `Path.cwd() / DEFAULT_DB_PATH` (`:542`) rather than `resolve_history_db()` [Agent 2 finding]
+- `little_loops/cli/history.py:793-802` — a fourth ad-hoc `sqlite3.connect(str(db_path))` inside the `root` subcommand handler, separate from the module's already-known connect sites [Agent 2 finding]
+- `little_loops/issue_history/workspace_quality.py:108-120` — `_open_member_readonly()` is a third independently-duplicated read-only-open helper (raw `sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)`), beyond the two already cited in Codebase Research Findings (`issue_history/evolution.py:30`, `codequery/codegraph.py:81`) [Agent 2 finding]
+
 ### Dependent Files (Callers/Importers)
 - The ~28 `sqlite3.connect(` call sites enumerated above are themselves the
   callers that must move behind the new `session_store.backend` chokepoint;
   no external module imports `session_store` internals directly beyond the
   files already listed.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `little_loops/session_store/__init__.py:79-151` — re-exports `connect`, `ensure_db`, `resolve_history_db`, and other backend-relevant symbols from `db.py`/`schema.py`/`lifecycle.py`/`queries.py`/`writers.py`/`sessions.py`; this is the package's public API surface and is not itself in Files to Modify above [Agent 1 finding]
+- `little_loops/cli/artifact/dashboard.py:35,42` — imports `session_store.queries.build_snapshot_db` and `session_store.schema.SCHEMA_VERSION` directly, bypassing the `session_store/__init__.py` re-export surface; downstream consumers `little_loops/cli/artifact/serve.py`, `little_loops/cli/artifact/__init__.py`, and `little_loops/cli/loop/run.py:634,675` (`render_live_fragment`) build on it [Agent 1 + Agent 2 finding]
+- `little_loops/user_messages.py:14,35,495,747,797,923,1191,1192` — imports `detect_sessions`, `SessionHandle`, `host_layout_for`, `iter_events`, `DEFAULT_DB_PATH`, `resolve_history_db` from `session_store` [Agent 1 finding]
+- ~19 further production modules import `little_loops.session_store`'s public re-export surface (`resolve_history_db`, `connect`, `ensure_db`, `record_*` event writers, `REGISTERED_HOSTS`, `SQLiteTransport`, etc.) and must keep working unchanged against whatever `Backend`-wrapped connection `connect()`/`ensure_db()` return: `little_loops/worktree_utils.py:334`, `little_loops/mcp_server/tools.py:158-172`, `little_loops/work_verification.py:278-280`, `little_loops/issue_manager.py:52`, `little_loops/transport.py:2024`, `little_loops/cli_args.py:352`, `little_loops/pytest_history_plugin.py:126`, `little_loops/runner_spec.py:323,326`, `little_loops/parallel/orchestrator.py:44`, `little_loops/parallel/merge_coordinator.py:28`, `little_loops/parallel/worker_pool.py:27`, `little_loops/init/cli.py:16`, `little_loops/compaction/instant.py:128`, `little_loops/compaction/result.py:43,100`, `little_loops/advisor.py:478`, `little_loops/fsm/executor.py:1946,2013,2630,4368,4393`, `little_loops/fsm/continuity.py:16`, `little_loops/hooks/{pre_compact,subagent_stop,session_start,sweep_stale_refs}.py`, `little_loops/workflow_sequence/io.py:47`, `little_loops/__init__.py:75` [Agent 1 finding]
+- `hooks/scripts/context-monitor.sh:56,82` — a shell hook with inline Python importing `record_session_lifecycle_event`/`record_context_pressure_event`, `resolve_history_db` from `session_store`; outside the Python package, easy to miss during the chokepoint migration [Agent 1 finding]
 
 ### Similar Patterns
 - `little_loops/host_runner.py` `resolve_host()` (line 2535) is the existing
@@ -100,13 +113,32 @@ behind capability checks that degrade gracefully, and reuse
 - New: an integration test for the first remote backend that skips when
   that backend is unavailable (per Acceptance Criteria)
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_config_schema.py:573-641` — per-key assertion suite enforcing `history`'s `additionalProperties: false`; needs a matching assertion block for `backend` following the pattern at lines 624-633 [Agent 2 finding]
+- `scripts/tests/test_codequery_core.py` (`TestResolveProvider`, `TestProtocolConformance`) and `scripts/tests/test_host_runner.py:383,2366` (`TestResolveHost`, `TestResolveHostNamed`) — existing test-shape precedent for `resolve_backend()`: a parametrized "every registered kind resolves," an "unknown kind raises a typed error," and a protocol-conformance class applied to every registered instance [Agent 3 finding]
+- `scripts/tests/test_feat3304_artifact_dashboard.py` (`TestPageStamps`, `TestBuildSnapshotDb`) and `scripts/tests/test_feat3323_sse_bridge.py` — break if `SCHEMA_VERSION`/`build_snapshot_db` change shape; cover the new `cli/artifact/dashboard.py` caller [Agent 3 finding]
+- `scripts/tests/test_user_messages.py` — covers the new `user_messages.py` caller (`SessionHandle` import) [Agent 3 finding]
+- `scripts/tests/test_codequery_codegraph.py`, `scripts/tests/test_queue_store.py`, `scripts/tests/test_cli_history.py`, `scripts/tests/test_ll_logs.py`, `scripts/tests/test_cli_doctor.py`, `scripts/tests/test_cli_doctor_full.py`, `scripts/tests/test_cli_doctor_install_checks.py`, `scripts/tests/test_cli_doctor_trim.py`, `scripts/tests/test_cli_ctx_stats.py`, `scripts/tests/test_issue_history_agent_quality.py`, `scripts/tests/test_feat3410_workspace_quality.py`, `scripts/tests/test_feat3418_workspace_quality.py`, `scripts/tests/test_evolution_triggers.py`, `scripts/tests/test_session_discovery.py` — existing coverage for the issue's already-known Files to Modify call sites; each becomes a break candidate if the backend wrapper's connect signature or return type diverges from raw `sqlite3.connect` [Agent 3 finding]
+- No dedicated test file exists for `session_store/__init__.py`'s re-export surface itself — exercised only transitively through the tests above [Agent 3 finding]
+
 ### Documentation
 - `docs/reference/` — new `history.backend` config keys and the env-var
   secret pattern (per Acceptance Criteria)
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/CONFIGURATION.md:608-662` (`### history`, `history.db_path` row at `:616`) — needs a new `history.backend` row/subsection documenting the config shape and secret env-var pattern [Agent 1 + Agent 2 finding]
+- `docs/reference/API.md` — types session-store function signatures as `conn: sqlite3.Connection` throughout (e.g. `:9906`, `:10311`) and narrates FTS5/VACUUM behavior (`:4862-10331` range) — needs updating for a dialect-agnostic connection type [Agent 2 finding]
+- `docs/reference/CLI.md` — `ll-session search --fts` (`:4118`), `compact --and-prune` (`:4183`), `prune`/`recompress` (`:4087-4089`, `:4256-4258`), `ll-history-context` (`:4413`) FTS5 matching, `ll-queue list` (`:4342`) `sqlite3.OperationalError` — document unconditional SQLite behavior that needs a capability-gate caveat [Agent 2 finding]
+- `docs/guides/HISTORY_SESSION_GUIDE.md:634` (VACUUM prose) and `docs/guides/WORKFLOW_ANALYSIS_GUIDE.md:251` (FTS5 caveat) [Agent 2 finding]
+- `docs/ARCHITECTURE.md:89` (module-overview table: "Unified per-project SQLite + FTS5 history store"), `:636` (`SQLiteTransport` `PRAGMA user_version` migrations), `:832` (states `queue_store.py` "copies `session_store/schema.py`'s ... shape rather than sharing code, matching every other sqlite consumer in this codebase" — becomes stale once `session_store` routes through the new backend chokepoint) [Agent 2 finding]
+- `skills/compact-session/SKILL.md:15,68` and `skills/improve-claude-md/SKILL.md:206,209,293,308` — reference `session_store.compact_session`/`_summarize_block`/`resolve_history_db`/`record_retirement` in prose/example code [Agent 1 finding]
+
 ### Configuration
 - `.ll/ll-config.json` `history.backend` block; `LL_HISTORY_DB` /
   `history.db_path` remain the sqlite-only path override, unchanged
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `.ll/learning-tests/sqlite3.md` (proven, 15 assertions) is the existing Learning Test Registry precedent this issue's own `learning_tests_required: [psycopg, libsql]` frontmatter is modeled on; `little_loops/learning_tests/gate.py` enforces that frontmatter against proven `psycopg.md`/`libsql.md` entries as a gate-blocking prerequisite before implementation [Agent 2 finding]
 
 ### Codebase Research Findings
 
@@ -127,6 +159,18 @@ _Added by `/ll:refine-issue` — 2026-09-22 — based on codebase analysis:_
 3. Gate SQLite-only features (FTS5 search, WAL PRAGMAs, `VACUUM`) behind capability checks with a clear "not supported by backend" degradation path.
 4. Extend `_apply_migrations` with per-dialect DDL for the first non-SQLite backend chosen (see Open Questions).
 5. Add an integration test for the chosen remote backend (skips when unavailable) and document the new config + secret pattern in `docs/reference/`.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `little_loops/cli/session.py` — make FTS5/VACUUM `help=` strings (`:117`, `:118`, `:269`, `:356`, `:368`) conditional or caveat them once these features are capability-gated
+- Update `little_loops/cli/doctor.py:547` — route `_schema_drift_data()`'s raw readonly connect through the new `connect_readonly()` chokepoint instead of its own `sqlite3.connect(...mode=ro...)`; also resolve `db_path` via `resolve_history_db()` rather than `Path.cwd() / DEFAULT_DB_PATH` (`:542`)
+- Update `little_loops/cli/history.py:793-802` — route the `root` subcommand's ad-hoc `sqlite3.connect(str(db_path))` through the new chokepoint
+- Update `little_loops/issue_history/workspace_quality.py:108-120` — fold `_open_member_readonly()` into the shared `connect_readonly()` chokepoint rather than a third independent duplicate
+- Add `scripts/tests/test_config_schema.py` assertion block for `history.backend` (pattern at `:624-633`)
+- Update `docs/reference/CONFIGURATION.md:608-662`, `docs/reference/API.md`, `docs/reference/CLI.md`, `docs/ARCHITECTURE.md:89,636,832`, `docs/guides/HISTORY_SESSION_GUIDE.md:634`, `docs/guides/WORKFLOW_ANALYSIS_GUIDE.md:251` — reflect the new backend, capability-gated FTS5/VACUUM caveats, and correct the now-stale `queue_store.py`-mirrors-`session_store` claim in `docs/ARCHITECTURE.md:832`
+- Spot-check (verification only, no code change expected) the ~20 downstream consumers of `session_store`'s public re-export surface listed under Dependent Files, to confirm they still work against the new `Backend`-wrapped connection
 
 ## Impact
 
@@ -236,6 +280,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-22T16:11:57 - `d11b4d88-e05e-48db-9617-b48caee451f5.jsonl`
 - `/ll:spike` - 2026-09-22T16:01:14 - `69316b42-0fe0-49ed-a8dc-481387700cff.jsonl`
 - `/ll:refine-issue` - 2026-09-22T15:53:02 - `24e361bf-844f-4527-b6ee-85c86b44db2a.jsonl`
 - `/ll:format-issue` - 2026-09-22T15:43:55 - `f8344c01-034b-4d86-8218-d0d7fb43cbd5.jsonl`

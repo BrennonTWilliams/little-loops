@@ -284,6 +284,7 @@ _Added by `/ll:confidence-check` on 2026-09-22_
 - Broad enumeration across ~25 call sites: the Proposed Solution notes the `settleHash`/`reviewed` fix "loses the real threadpool path across all ~25 `reviewed()` call sites" if done wrong — a wide blast radius by caller count even though every call site is same-file and mechanically uniform. Mitigation: the deterministic regression tests specified in the Acceptance Criteria (deferred-digest race, rejected-digest, already-refused-review) exercise this shared path directly before the marker is dropped, so a regression surfaces at the helper, not scattered across 25 individually-audited sites.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-22T16:11:13 - `0811de29-65d0-41d9-841e-7771cb3a3a37.jsonl`
 - `/ll:verify-issues` - 2026-09-22T16:05:28 - `7f52c921-4d99-4696-aadc-4f230bc180cd.jsonl`
 - `/ll:confidence-check` - 2026-09-22T15:56:07 - `68851bf3-365d-45b2-b4f4-498d3742ec29.jsonl`
 - `/ll:verify-issues` - 2026-09-22T15:27:50 - `5972c48c-9075-49d4-83d4-288f2927cb32.jsonl`
