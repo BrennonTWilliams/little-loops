@@ -218,6 +218,48 @@ Verdict: **PROPOSAL_UNSOUND**
 - Graph: provider=`codegraph` freshness=`fresh` (corroboration only, per
   the graph-assisted-checks contract — did not originate this verdict).
 
+### Re-verification (2026-09-22, `/ll:verify-issues --auto`)
+
+Verdict: **PROPOSAL_UNSOUND** (narrower than the previous pass — the four
+wiring gaps below are now resolved by AC-W1..AC-W10; one new gap found)
+
+- **Previous four wiring-touchpoint gaps — confirmed resolved**: AC-W1
+  (`pytest.ini:26` + `scripts/pyproject.toml:293` reword and wrapper
+  naming), AC-W2 (`-m` scope excludes `integration`), AC-W3 (timeout
+  sizing to the combined 180+120+30 worst case), AC-W4 (wrapper itself
+  unmarked) each map 1:1 onto the four touchpoints the previous verdict
+  flagged as AC-less. All cited file:line anchors re-checked against the
+  working tree (`pytest.ini:26`, `scripts/pyproject.toml:293`,
+  `scripts/tests/conftest.py:120-146`, `test_feat3323_sse_bridge.py:200-219`)
+  — unchanged, no drift. `scripts/tests/test_no_parallel_serial_gate.py`
+  does not yet exist (Implementation Steps not started); BUG-3522 is
+  still `open` (the coordination-risk note is accurate). Decisions log:
+  no active required rules. `ll-verify-evidence` still flags only the
+  same Steps-to-Reproduce span already reviewed and dismissed as a tool
+  misattribution, not fabricated evidence.
+- **New finding — exception-handler compatibility (check B6)**: the
+  Program Design's `subprocess.run(..., timeout=SERIAL_GATE_TIMEOUT)`
+  call (copying `test_hook_session_start.py:731-763`'s idiom, which
+  itself has no `try/except`) raises `subprocess.TimeoutExpired` rather
+  than returning a non-zero exit code when the inner run overruns its
+  wall-clock budget. AC-W8's "bounded retry ... on a first-attempt
+  failure" and the Decision Rationale's "one bounded retry of the inner
+  run on non-zero exit" are both phrased in terms of a returned exit
+  code; as literally specified, an implementer checks `proc.returncode`
+  after a call that can instead raise, so a first-attempt timeout — the
+  exact failure mode this retry exists to absorb (Known trade-off:
+  "silent skip becomes possibly-flaky red") — would propagate as an
+  uncaught `TimeoutExpired` and skip the retry entirely instead of
+  triggering the intended second attempt. `SERIAL_GATE_TIMEOUT=330` is
+  sized tight to the documented worst case (180+120+30, no slack beyond
+  that margin), so this is a live path, not a hypothetical one.
+  **Remaining**: the wrapper's retry loop must wrap each
+  `subprocess.run` call in `try/except subprocess.TimeoutExpired` and
+  treat it the same as a non-zero, non-5 return code for retry purposes
+  (the caught exception's own `.stdout`/`.stderr` attributes supply the
+  tail for the failure message). Add this to AC-W8 (or a new AC-W11)
+  before implementation.
+
 ## Status
 
 **Open** | Created: 2026-09-21 | Priority: P3
@@ -256,6 +298,7 @@ _Added by `/ll:refine-issue` — 2026-09-22 — based on codebase analysis:_
 - **Cause**: The hook adds `pytest.mark.skip(reason="no_parallel: cannot run on xdist workers")` (lines 143-146) to every item carrying the `no_parallel` keyword whenever `config.workerinput` is truthy — i.e. on every xdist worker, never on the controller (lines 140-142). Under `-n N` the controller only collects and distributes work and never executes a test body itself (the hook's own docstring, lines 129-131). `scripts/pyproject.toml`'s `addopts` pins `-n logical` (no `-n 0` anywhere in that file), and `.github/workflows/ci.yml`'s `unit-tests` job invokes `pytest scripts/tests/ -m "not integration and not conformance"` with no `-n` override, so it inherits that default. `test_two_producers_reach_one_client_with_distinct_producer_pid` carries neither `integration` nor `conformance`, so the job's `-m` filter collects it — it is then unconditionally skipped on every worker and never run on the controller. This is not a logic defect in the hook itself (it matches BUG-2523's original intent, and `scripts/tests/test_conftest_cap.py::TestNoParallelMarkerRouting` already covers the hook's routing correctness in isolation); the defect is that `@pytest.mark.no_parallel` was stacked onto this test — for a legitimate reason, BUG-3484's ~100-105s wall-clock budget exceeding the suite watchdog — with no compensating serial invocation added anywhere, so the coverage loss is silent rather than a deliberate, visible trade-off.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-22T15:55:43 - `bfbb9153-ce71-46cf-a05b-72f0af991763.jsonl`
 - `/ll:verify-issues` - 2026-09-22T15:45:41 - `bfb59371-f535-4c56-8b82-ba5a535b470c.jsonl`
 - `/ll:wire-issue` - 2026-09-22T15:39:19 - `03d961d3-9a5a-4fcc-81d7-c9c6f85c6cd8.jsonl`
 - `/ll:decide-issue` - 2026-09-22T15:32:23 - `ac5fb0be-e93b-41b1-bfc9-5ed4d9b825c2.jsonl`

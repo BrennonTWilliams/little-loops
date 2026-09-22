@@ -1,7 +1,8 @@
 ---
 id: BUG-3522
 type: BUG
-title: policy-builder node conformance gate is dormant in CI and the flake is a JS hash-completion race
+title: policy-builder node conformance gate is dormant in CI and the flake is a JS
+  hash-completion race
 priority: P2
 status: open
 discovered_by: ll-issues-create
@@ -19,6 +20,12 @@ relates_to:
 - BUG-3484
 - BUG-2523
 - BUG-3523
+confidence_score: 100
+outcome_confidence: 64
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 0
 ---
 
 # BUG-3522: policy-builder node conformance gate is dormant in CI and the flake is a JS hash-completion race
@@ -266,7 +273,18 @@ _Revised 2026-09-20 after the evidence review; the original list assumed the tim
 - Re-run `scripts/tests/test_conftest_cap.py` (`TestNoParallelMarkerRouting`), the new guard-policy tests, and `LL_REQUIRE_NODE=1 python -m pytest scripts/tests/test_policy_builder_node_gate.py -n 2` (6 passed, zero skipped). Run the full local suite before merge
 - After merge, cite a green `main` CI run and its JUnit artifact showing the gate passed as closure evidence
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-22_
+
+**Readiness Score**: 100/100 → PROCEED
+**Outcome Confidence**: 64/100 → MODERATE
+
+### Outcome Risk Factors
+- Broad enumeration across ~25 call sites: the Proposed Solution notes the `settleHash`/`reviewed` fix "loses the real threadpool path across all ~25 `reviewed()` call sites" if done wrong — a wide blast radius by caller count even though every call site is same-file and mechanically uniform. Mitigation: the deterministic regression tests specified in the Acceptance Criteria (deferred-digest race, rejected-digest, already-refused-review) exercise this shared path directly before the marker is dropped, so a regression surfaces at the helper, not scattered across 25 individually-audited sites.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-09-22T15:56:07 - `68851bf3-365d-45b2-b4f4-498d3742ec29.jsonl`
 - `/ll:verify-issues` - 2026-09-22T15:27:50 - `5972c48c-9075-49d4-83d4-288f2927cb32.jsonl`
 - `/ll:refine-issue` - 2026-09-22T15:21:53 - `83f6ed80-53e1-4d9e-8978-6a6d02a3e6c7.jsonl`
 - `/ll:wire-issue` - 2026-09-20T21:53:51 - `80e0a309-7358-453f-8fdc-92553921aa72.jsonl`
