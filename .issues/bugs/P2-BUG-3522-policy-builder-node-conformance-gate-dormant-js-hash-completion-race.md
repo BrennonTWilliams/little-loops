@@ -249,11 +249,12 @@ must still add the regression tests and run the pre-merge checks above.
 
 - Under `-n N` the controller only collects and distributes work, so a `no_parallel` skip means the test does not execute at all in parallel mode. That is why the marker dorms the gate, and why removing it (rather than adding a serial CI step) is the cheaper restoration path.
 - The controller leaves `review.status = "hashing"` while the digest is outstanding and reaches `ready`/`refused` from the digest's settle handlers, so any wait shorter than the digest's actual completion observes `hashing`. The one other exit from `hashing` is `contextChanged()` with a changed context, which resets to `none` synchronously (L4387) and fences the stale digest via `reviewGen`; the wait resolves on that emit too and `reviewed()`'s assertion then reports the mismatch. No production `emit()` fires after `dispose()`, which is why the wait must not span it.
+- Timeout protection is outside the JS. `settleHash()` has no budget of its own. If Node remains running without completing, the 180-second subprocess timeout reports the failure; the 240-second pytest timeout is an outer fallback. These are two independent guards, not sequential stages, and no further budget is added for this fix.
 
 ## Impact
 
 - **Priority**: P2 (bumped from P3 on 2026-09-21). The ratified FEAT-2390 bar — "an unenforced gate does not count as met" — is currently violated, and green CI is actively misleading: it hid the very race that prompted the marker. Not P1: no user-facing breakage, and the fix is test-side and CI-visibility only.
-- **Effort**: Small — rewrite one JS helper plus a regression test, remove one marker, extract one shared skip-to-fail guard used by four Node-dependent tests, refresh docs and two sibling docstrings
+- **Effort**: Small — rewrite one JS helper plus a regression test, remove one marker, add two `timeout(240)` markers, extract one shared skip-to-fail guard used by four Node-dependent tests, retain the probed Node version in a CI artifact, refresh docs and two sibling docstrings
 - **Risk**: Low — test-side and CI-visibility changes only; removing the marker adds coverage rather than removing it
 - **Breaking Change**: No
 
