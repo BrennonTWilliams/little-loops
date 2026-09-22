@@ -245,13 +245,6 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Accept inner exit code 5 (empty set) as pass; retry once on any other non-zero exit
 - Reword the stale "runs on the controller" comment in `test_feat3323_sse_bridge.py:210-214` and add the wrapper's name to `conftest.py:129-133`'s docstring
 
-## Session Log
-- `/ll:verify-issues` - 2026-09-22T15:45:41 - `bfb59371-f535-4c56-8b82-ba5a535b470c.jsonl`
-- `/ll:wire-issue` - 2026-09-22T15:39:19 - `03d961d3-9a5a-4fcc-81d7-c9c6f85c6cd8.jsonl`
-- `/ll:decide-issue` - 2026-09-22T15:32:23 - `ac5fb0be-e93b-41b1-bfc9-5ed4d9b825c2.jsonl`
-- `/ll:refine-issue` - 2026-09-22T15:24:01 - `f6c11c46-8116-4e24-83a3-9e7ac209cbad.jsonl`
-- `/ll:format-issue` - 2026-09-22T15:16:00 - `484f6d1d-ca00-4295-b7f6-7aec856c3eee.jsonl`
-
 ## Root Cause
 
 ### Codebase Research Findings
@@ -261,3 +254,10 @@ _Added by `/ll:refine-issue` — 2026-09-22 — based on codebase analysis:_
 - **File**: `scripts/tests/conftest.py`
 - **Anchor**: `pytest_collection_modifyitems` (line 120)
 - **Cause**: The hook adds `pytest.mark.skip(reason="no_parallel: cannot run on xdist workers")` (lines 143-146) to every item carrying the `no_parallel` keyword whenever `config.workerinput` is truthy — i.e. on every xdist worker, never on the controller (lines 140-142). Under `-n N` the controller only collects and distributes work and never executes a test body itself (the hook's own docstring, lines 129-131). `scripts/pyproject.toml`'s `addopts` pins `-n logical` (no `-n 0` anywhere in that file), and `.github/workflows/ci.yml`'s `unit-tests` job invokes `pytest scripts/tests/ -m "not integration and not conformance"` with no `-n` override, so it inherits that default. `test_two_producers_reach_one_client_with_distinct_producer_pid` carries neither `integration` nor `conformance`, so the job's `-m` filter collects it — it is then unconditionally skipped on every worker and never run on the controller. This is not a logic defect in the hook itself (it matches BUG-2523's original intent, and `scripts/tests/test_conftest_cap.py::TestNoParallelMarkerRouting` already covers the hook's routing correctness in isolation); the defect is that `@pytest.mark.no_parallel` was stacked onto this test — for a legitimate reason, BUG-3484's ~100-105s wall-clock budget exceeding the suite watchdog — with no compensating serial invocation added anywhere, so the coverage loss is silent rather than a deliberate, visible trade-off.
+
+## Session Log
+- `/ll:verify-issues` - 2026-09-22T15:45:41 - `bfb59371-f535-4c56-8b82-ba5a535b470c.jsonl`
+- `/ll:wire-issue` - 2026-09-22T15:39:19 - `03d961d3-9a5a-4fcc-81d7-c9c6f85c6cd8.jsonl`
+- `/ll:decide-issue` - 2026-09-22T15:32:23 - `ac5fb0be-e93b-41b1-bfc9-5ed4d9b825c2.jsonl`
+- `/ll:refine-issue` - 2026-09-22T15:24:01 - `f6c11c46-8116-4e24-83a3-9e7ac209cbad.jsonl`
+- `/ll:format-issue` - 2026-09-22T15:16:00 - `484f6d1d-ca00-4295-b7f6-7aec856c3eee.jsonl`
