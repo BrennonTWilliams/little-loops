@@ -209,8 +209,10 @@ class TestSseBridgeFanIn:
     # of failing just this test.
     #
     # Structural fix (BUG-2523): skip on xdist workers via the
-    # no_parallel marker. The test only runs on the controller (or in a
-    # serial `-n 0` invocation), where CPU contention is absent and the
+    # no_parallel marker. Under the default -n logical addopts the
+    # controller never runs tests under -n N, so this test only actually
+    # executes via scripts/tests/test_no_parallel_serial_gate.py's serial
+    # `-n 0` invocation (BUG-3523), where CPU contention is absent and the
     # legitimate 100-105s wall-clock budget is safe.
     @pytest.mark.no_parallel
     @pytest.mark.timeout(180)

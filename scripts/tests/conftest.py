@@ -129,8 +129,10 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
     workers so it only runs on the controller — but under ``-n N`` the
     controller only collects and distributes work, it never runs tests
     itself. Net effect: a ``no_parallel`` test does **not** run under the
-    default ``-n logical`` addopts; it runs only in a serial ``-n 0`` run
-    (see ``scripts/tests/test_worktree_utils.py:1228`` for the same warning).
+    default ``-n logical`` addopts; it runs only in a serial ``-n 0`` run —
+    ``scripts/tests/test_no_parallel_serial_gate.py`` provides that
+    invocation for the current ``no_parallel`` set (BUG-3523; see
+    ``scripts/tests/test_worktree_utils.py:1228`` for the same warning).
 
     Detection idiom mirrors
     ``scripts/little_loops/pytest_history_plugin.py:147-150``

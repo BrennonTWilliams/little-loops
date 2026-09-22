@@ -4,10 +4,11 @@ type: BUG
 title: "SSE bridge fan-in test is CI-dormant \u2014 no_parallel marker with no serial\
   \ invocation anywhere"
 priority: P3
-status: open
+status: done
 discovered_by: manual
 discovered_date: '2026-09-21'
 captured_at: '2026-09-21T02:43:58Z'
+completed_at: '2026-09-22T19:59:18Z'
 labels:
 - test-stability
 - xdist
@@ -103,12 +104,12 @@ _Added by `/ll:refine-issue` — 2026-09-22 — based on codebase analysis:_
 - **Marker origin**: `@pytest.mark.no_parallel` (`test_feat3323_sse_bridge.py:215`) is stacked under `@pytest.mark.timeout(180)` (line 216); the comment block at lines 201-214 attributes both to BUG-3484 and documents per-step timeout budgets summing to ~100-105s for the full two-producer + `SseBridge` + 5-real-thread-hop path, plus historical contention overruns of both `--timeout=120` and `timeout(180)` — and pytest-timeout's thread-method watchdog cannot interrupt a blocked C-level `recv()`/thread-join, so it hard-kills the whole worker via `os._exit` rather than failing the one test.
 - **What coverage is lost**: `SseBridge`'s multi-thread fan-in path in `scripts/little_loops/transport.py` — `_fan_in_producer_sockets` (line 1069) spawning one `_read_producer_socket` (line 981) reader thread per connected producer, merging onto the shared `_fanin_queue`, relayed to SSE clients by `_relay_loop` (line 1440) — is exercised with **two simultaneously connected producers** only by this test. Every other `TestSseBridgeFanIn` test in the file uses a single producer and carries no `no_parallel` marker, so it runs in CI; only the two-producer merge and the `producer_pid`-attribution-under-fan-in guarantee (stamped per-copy at `transport.py:321-326`, `stamped = {**event, "producer_pid": os.getpid()}`) is unverified in CI.
 - **Dependent/precedent files** (mirrors BUG-3522's sweep exactly): `scripts/tests/test_fsm_signal_integration.py` (module-level `pytestmark = [pytest.mark.integration, pytest.mark.no_parallel]`, line 42 — doubly excluded via its own `integration` marker, not a genuine dormancy case), `scripts/tests/test_policy_builder_node_gate.py` (BUG-3522's own subject, identical mechanism), `scripts/tests/test_conftest_cap.py::TestNoParallelMarkerRouting` (lines 143-220 — unit-tests the hook's routing logic in isolation via synthetic `MagicMock` items; must keep passing regardless of which option is chosen here), `scripts/tests/test_dependency_mapper.py:938` and `scripts/tests/test_worktree_utils.py:1471-1480` (both name/comment matches only, not the real marker — the latter explicitly rejects `no_parallel` in favor of a nested serial `pytest ... -n 0` subprocess invoked from inside a normally-scheduled test).
-- **Doc surface needing the same reword BUG-3522 already flagged**: `docs/development/TESTING.md` (`no_parallel` marker-table row, ~line 1050) still reads "runs on the controller or in a serial `-n 0` invocation"; `docs/development/TROUBLESHOOTING.md` (BUG-2523 section, ~lines 825-835) still reads "The tests still run — they just don't share cores with six other pytest invocations." Both predate the corrected wording already landed in `scripts/pyproject.toml:293`'s `no_parallel` marker registration string ("the controller never runs tests under `-n N`; it only actually runs in a serial `-n 0` invocation").
+- **Doc surface needing the same reword BUG-3522 already flagged**: `docs/development/TESTING.md` (`no_parallel` marker-table row, ~line 1050) still reads "runs on the controller or in a serial `-n 0` invocation"; `docs/development/TROUBLESHOOTING.md` (BUG-2523 section, ~lines 825-835) still reads "The tests still run — they just don't share cores with six other pytest invocations." Both predate the corrected wording already landed in `scripts/pyproject.toml:300`'s `no_parallel` marker registration string ("the controller never runs tests under `-n N`; it only actually runs in a serial `-n 0` invocation").
 - **No existing convention pairs a `no_parallel` marker with a required serial-invocation declaration** — the closest analog is the `grader_case` marker, whose registration string names its consuming meta-test (`test_grader_coverage.py`); `no_parallel`'s registration string does not name one, because none exists yet. The closest precedent for Proposed Solution option 3's shape is `scripts/tests/test_grader_coverage.py` (`TestGraderCoverage`, line 115+), which AST-scans `scripts/tests/*.py` source text (not pytest's own collection/session machinery, deliberately — so a subset run like `-k`/`--lf`/mutmut's `-n0` selection doesn't false-fail) and asserts a coverage property about decorator usage.
 
 ### Conventions in Force
 
-- A pytest marker's own `pyproject.toml` registration string is where this codebase names the meta-test that consumes it, when one exists — `grader_case` does this (`scripts/pyproject.toml:294`, "per ENH-3463's test_grader_coverage.py meta-test"); `no_parallel` (`scripts/pyproject.toml:293`) describes the skip mechanism but names no consumer, confirming (not merely asserting) the "no existing convention pairs a `no_parallel` marker with a required serial-invocation declaration" claim already on file.
+- A pytest marker's own `pyproject.toml` registration string is where this codebase names the meta-test that consumes it, when one exists — `grader_case` does this (`scripts/pyproject.toml:294`, "per ENH-3463's test_grader_coverage.py meta-test"); `no_parallel` (`scripts/pyproject.toml:300`) describes the skip mechanism but names no consumer, confirming (not merely asserting) the "no existing convention pairs a `no_parallel` marker with a required serial-invocation declaration" claim already on file.
 - Where a per-test timeout must sit strictly above a documented inner worst-case budget (so the suite-wide `--timeout=120` watchdog doesn't kill the worker first), this codebase pairs a named constant with `@pytest.mark.timeout(CONSTANT + margin)` — `test_verify_evidence.py:77-81,1531` (`GATE_TIMEOUT = 120`, `@pytest.mark.timeout(GATE_TIMEOUT + 30)`) is the only site that actually pairs a constant with a strictly-greater marker; `test_verify_private_refs.py:44,358` defines the same `GATE_TIMEOUT` constant but carries no `@pytest.mark.timeout` decorator at all. BUG-3522's own proposed `timeout(240)` vs inner `timeout=180` pairing (its option 1) is not yet landed in `test_policy_builder_node_gate.py` — that file still carries bare `@pytest.mark.no_parallel` with no timeout decorator and BUG-3522's own `status:` is still `open` — so there is no in-repo precedent yet for what the pairing looks like once removed, only issue text.
 - A meta-test that must enumerate marker usage across the whole `scripts/tests/` tree does so by AST-parsing test source files directly (`ast.parse`/`ast.walk` over `.decorator_list`), not via pytest's own collection/session API — `test_grader_coverage.py:10-13,57-93,115` is the sole precedent for this shape; its module docstring states the reason explicitly: a subset run (`-k`, `--lf`, a single file, mutmut's per-mutant `-n0` selection) must not make the gate fail spuriously because the tagged tests weren't collected alongside it. No meta-test in the repo enumerates markers via pytest's live collection API (`--collect-only`, `pytest_collection_finish`, a gating `pytest.main([...])` call); the only two `pytest.main(...)` sites (`test_loop_layout_alignment.py:725`, `spike/usage_events_run_id_writer/test_writer.py:108`) are manual `if __name__ == "__main__"` conveniences, not coverage gates.
 - Where a serial pass genuinely must execute in CI, the existing pattern is a normally-scheduled (non-`no_parallel`) test shelling out to a nested `pytest ... -n 0 ...` subprocess itself, scoped to one named test file — never a `no_parallel`-marked test and never a dedicated CI workflow step: `test_worktree_utils.py:1471-1480,1519-1522` states the rejection of `no_parallel` explicitly for this reason; `test_hook_session_start.py:739-757` does the same for a different guard. Neither is a suite-wide serial pass over the full `no_parallel` set as Proposed Solution option 2 describes — an unfiltered repo-wide search confirms no such invocation exists anywhere (not in `.github/workflows/ci.yml`, not in `docs/`, not as a standalone script).
@@ -116,8 +117,8 @@ _Added by `/ll:refine-issue` — 2026-09-22 — based on codebase analysis:_
 ### Files to Modify
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `pytest.ini:26` — the `no_parallel` marker's *second* registration string still carries the pre-BUG-3522-fix wording ("marks tests that must not run on xdist workers … — see scripts/tests/conftest.py"), out of sync with `scripts/pyproject.toml:293`'s already-corrected wording; `pytest.ini:1-11`'s own header comment requires keeping the two in sync. Should get the same reword and, per the `grader_case` convention (`scripts/pyproject.toml:294`, "per ENH-3463's test_grader_coverage.py meta-test"), name the new wrapper test as `no_parallel`'s consumer [Agent 1/2 finding]
-- `scripts/pyproject.toml:293` — same registration string; append the consumer name (`test_no_parallel_serial_gate.py`) so both registrations name the wrapper [review 2026-09-22]
+- `pytest.ini:26` — the `no_parallel` marker's *second* registration string still carries the pre-BUG-3522-fix wording ("marks tests that must not run on xdist workers … — see scripts/tests/conftest.py"), out of sync with `scripts/pyproject.toml:300`'s already-corrected wording; `pytest.ini:1-11`'s own header comment requires keeping the two in sync. Should get the same reword and, per the `grader_case` convention (`scripts/pyproject.toml:294`, "per ENH-3463's test_grader_coverage.py meta-test"), name the new wrapper test as `no_parallel`'s consumer [Agent 1/2 finding]
+- `scripts/pyproject.toml:300` — same registration string; append the consumer name (`test_no_parallel_serial_gate.py`) so both registrations name the wrapper [review 2026-09-22]
 - **new** `scripts/tests/test_no_parallel_serial_gate.py` — home of the wrapper test (decided; follows the `*_gate.py` convention of `test_policy_builder_node_gate.py` / `test_verify_evidence.py`). No recursion guard is needed: selection is by marker and the wrapper itself is unmarked, so `-m no_parallel` never selects it [review 2026-09-22]
 - `scripts/tests/test_feat3323_sse_bridge.py:210-214` — the comment block still says the test "only runs on the controller (or in a serial `-n 0` invocation)"; reword to state that the controller never runs tests under `-n N` and that the test executes in CI via `test_no_parallel_serial_gate.py` [review 2026-09-22]
 - `scripts/tests/conftest.py:129-133` — `pytest_collection_modifyitems` docstring already carries the corrected "runs only in a serial `-n 0` run" wording; add the wrapper's name as the invocation that actually provides it [review 2026-09-22]
@@ -126,7 +127,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 ### Tests
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/tests/test_policy_builder_node_gate.py:53` (`test_node_conformance_suite_passes`, BUG-3522's still-`open` subject) also carries `@pytest.mark.no_parallel` — the new wrapper's `-m no_parallel -n 0` invocation will collect and execute this test too, not just the SSE fan-in test; its own runtime budget must be folded into the wrapper's outer timeout, and BUG-3522's unresolved status is a coordination risk [Agent 1/3 finding]
+- **[ready-issue 2026-09-22] BUG-3522 landed (`status: done`, commit `ed40543fa`).** Its fix dropped `@pytest.mark.no_parallel` from `scripts/tests/test_policy_builder_node_gate.py::test_node_conformance_suite_passes` (now at line 44, decorated only with `@pytest.mark.timeout(240)`), so the wrapper's `-m no_parallel` selection now collects only the SSE fan-in test — the coordination risk this bullet originally flagged is resolved. `SERIAL_GATE_TIMEOUT = 330` (sized for the combined SSE+node worst case) remains a valid, if now over-conservative, budget; the Sequencing note's "keep 330s for now" guidance still applies. [Superseded finding, retained for history]: `scripts/tests/test_policy_builder_node_gate.py:53` (`test_node_conformance_suite_passes`, BUG-3522's then-`open` subject) also carried `@pytest.mark.no_parallel` — the wrapper's `-m no_parallel -n 0` invocation would have collected and executed this test too, not just the SSE fan-in test [Agent 1/3 finding]
 - `scripts/tests/test_fsm_signal_integration.py:42` (`pytestmark = [pytest.mark.integration, pytest.mark.no_parallel]`) will also be collected by a bare `-m no_parallel -n 0` invocation unless the new wrapper scopes its `-m` expression to exclude `integration` (mirroring the outer CI job's own `-m "not integration and not conformance"` filter) — excluded by the selected design and AC-W2 [Agent 1/3 finding]
 - Reference idiom for command construction and diagnostics (adapt to the process-group lifecycle specified below, rather than copying bare `subprocess.run`): `scripts/tests/test_hook_session_start.py::TestAmbientAutomationEnvHermeticity.test_suite_passes_with_ambient_ll_automation` (lines 731-763) — exact `subprocess.run` shape, `cwd=repo_root`, `capture_output=True, text=True`, `returncode == 0` assertion with truncated stdout/stderr tails; the new wrapper test itself must **not** carry `@pytest.mark.no_parallel` (else the very hook it's meant to bypass would skip it too) [Agent 3 finding]
 - **Inner invocation details** [review 2026-09-22]:
@@ -168,7 +169,7 @@ Outer pytest schedules `test_no_parallel_serial_pass` on an xdist worker (never 
 
 _Option-2 wiring ACs (added 2026-09-22 to resolve the `PROPOSAL_UNSOUND` verification verdict):_
 
-- **AC-W1 (registration strings)**: both `pytest.ini:26` and `scripts/pyproject.toml:293` carry the corrected "controller never runs tests under `-n N`" wording **and** name `test_no_parallel_serial_gate.py` as the consumer; `pytest.ini`'s header sync rule holds.
+- **AC-W1 (registration strings)**: both `pytest.ini:26` and `scripts/pyproject.toml:300` carry the corrected "controller never runs tests under `-n N`" wording **and** name `test_no_parallel_serial_gate.py` as the consumer; `pytest.ini`'s header sync rule holds.
 - **AC-W2 (scope)**: the wrapper's inner `-m` expression is exactly `no_parallel and not integration and not conformance`; `test_fsm_signal_integration.py` is not collected by it (verify via `--collect-only` in the wrapper's own docstring or a companion assertion).
 - **AC-W3 (timeout sizing)**: retain `SERIAL_GATE_TIMEOUT = 330` and outer `timeout(2 * SERIAL_GATE_TIMEOUT + 30)` as conservative budgets; explicitly bound both attempts' cleanup/drain/reap work within the outer margin. These are failure bounds, not expected runtimes. Reassess the margin if validation requires more cleanup time.
 - **AC-W4 (not dormant itself)**: the wrapper carries no `@pytest.mark.no_parallel`, `integration`, or `conformance` marker, and `pytest scripts/tests/test_no_parallel_serial_gate.py -n 2 -q` reports it **passed**, not skipped.
@@ -235,12 +236,12 @@ Verdict: **PROPOSAL_UNSOUND** (narrower than the previous pass — the four
 wiring gaps below are now resolved by AC-W1..AC-W10; one new gap found)
 
 - **Previous four wiring-touchpoint gaps — confirmed resolved**: AC-W1
-  (`pytest.ini:26` + `scripts/pyproject.toml:293` reword and wrapper
+  (`pytest.ini:26` + `scripts/pyproject.toml:300` reword and wrapper
   naming), AC-W2 (`-m` scope excludes `integration`), AC-W3 (timeout
   sizing to the combined 180+120+30 worst case), AC-W4 (wrapper itself
   unmarked) each map 1:1 onto the four touchpoints the previous verdict
   flagged as AC-less. All cited file:line anchors re-checked against the
-  working tree (`pytest.ini:26`, `scripts/pyproject.toml:293`,
+  working tree (`pytest.ini:26`, `scripts/pyproject.toml:300`,
   `scripts/tests/conftest.py:120-146`, `test_feat3323_sse_bridge.py:200-219`)
   — unchanged, no drift. `scripts/tests/test_no_parallel_serial_gate.py`
   does not yet exist (Implementation Steps not started); BUG-3522 is
@@ -280,7 +281,7 @@ Fable 5.1's review has been folded into the selected design, AC-W8/AC-W11, and i
 Verdict: **VALID**
 
 - All cited `file:line` anchors re-checked against the working tree
-  (`conftest.py:120-146`, `pytest.ini:26`, `scripts/pyproject.toml:293`,
+  (`conftest.py:120-146`, `pytest.ini:26`, `scripts/pyproject.toml:300`,
   `test_feat3323_sse_bridge.py:210-216`, `transport.py` fan-in anchors,
   `.github/workflows/ci.yml` unit-tests job, and all precedent test files:
   `test_hook_session_start.py:712-763`, `test_worktree_utils.py:1471-1480`,
@@ -309,7 +310,7 @@ Verdict: **VALID**
 Verdict: **VALID**
 
 - All cited `file:line` anchors re-checked against the working tree
-  (`conftest.py:120-146`, `pytest.ini:26`, `scripts/pyproject.toml:293`,
+  (`conftest.py:120-146`, `pytest.ini:26`, `scripts/pyproject.toml:300`,
   `test_feat3323_sse_bridge.py:200-219`) — unchanged, no drift; the stale
   "runs on the controller" comment (AC-W9) is still present as expected
   since implementation has not started.
@@ -333,26 +334,26 @@ Verdict: **VALID**
 
 - ~~Reproduce the dormancy locally and confirm the sweep claim~~ — done (Current Behavior)
 - ~~Decide between options 1-3~~ — done, option 2 (Decision Rationale)
-- Coordinate with BUG-3522 before implementation: do not run the two edits in parallel; preferably land BUG-3522 first and reconcile shared wording.
-- Create `scripts/tests/test_no_parallel_serial_gate.py` per Program Design Signatures (`Popen` process session, marker-scoped inner `-n 0`, exit `0|5` accepted, one bounded retry including `TimeoutExpired`, bounded group cleanup and child reaping, `SERIAL_GATE_TIMEOUT = 330`, outer `timeout(2*330+30)`).
-- Verify locally: `pytest scripts/tests/test_no_parallel_serial_gate.py -n 2 -q` → passed (not skipped); inner output confirms the SSE test executed; before BUG-3522 lands the Node gate is also selected (and may skip if Node is absent). After BUG-3522 removes its marker, expect only SSE from the current set. Verify successful inner-summary and recovered-retry artifact visibility, not just console printing
-- Reword registration strings (`pytest.ini:26`, `scripts/pyproject.toml:293`) and stale comments (`test_feat3323_sse_bridge.py:210-214`, `conftest.py:129-133`) to name the wrapper
-- Reword `docs/development/TESTING.md` marker row and `docs/development/TROUBLESHOOTING.md` BUG-2523 section (or verify BUG-3522's identical reword if already landed)
-- Confirm `test_conftest_cap.py::TestNoParallelMarkerRouting` still passes (hook unchanged)
-- Validate timeout-then-success, two failures, and descendant cleanup on timeout and watchdog/non-zero exit using controlled subprocess fixtures; verify cleanup fits the outer timeout margin.
-- Run the full suite once with `-n logical` and record the wrapper's measured wall clock in the Resolution section. Fable's 7.19s serial baseline is local evidence, not a CI runtime promise. Cite passing wrapper JUnit and the verified inner-summary/retry artifact evidence.
+- ~~Coordinate with BUG-3522 before implementation~~ — done: BUG-3522 landed `status: done` (commit `ed40543fa`, 2026-09-22 [ready-issue]). Reconcile this issue's edits (`pytest.ini:26`, `scripts/pyproject.toml:300`, `docs/development/TESTING.md`, `docs/development/TROUBLESHOOTING.md`) against BUG-3522's final wording before touching them.
+- ~~Create `scripts/tests/test_no_parallel_serial_gate.py` per Program Design Signatures~~ — done (`Popen` process session, marker-scoped inner `-n 0`, exit `0|5` accepted, one bounded retry including `TimeoutExpired`, bounded group cleanup and child reaping, `SERIAL_GATE_TIMEOUT = 330`, outer `timeout(2*330+30)`)
+- ~~Verify locally~~ — done: `pytest scripts/tests/test_no_parallel_serial_gate.py -n 2 -q` → `6 passed` (not skipped); inner output confirms the SSE test executed. BUG-3522 had already landed before implementation started, so only the SSE test is in the current `no_parallel` set (`--collect-only` confirms `1/25273` collected). Successful inner-summary and recovered-retry artifact visibility verified via a manual patched-retry probe against `--junitxml` (see Resolution)
+- ~~Reword registration strings and stale comments to name the wrapper~~ — done (`pytest.ini:26`, `scripts/pyproject.toml:300`, `test_feat3323_sse_bridge.py:210-214`, `conftest.py:129-133`)
+- ~~Reword docs~~ — done (`docs/development/TESTING.md` marker row, `docs/development/TROUBLESHOOTING.md` BUG-2523 section)
+- ~~Confirm `test_conftest_cap.py::TestNoParallelMarkerRouting` still passes~~ — done, unchanged (hook not modified)
+- ~~Validate timeout-then-success, two failures, and descendant cleanup~~ — done via `TestSerialPassWithRetry` (4 unit tests, fake attempts) and `TestKillGroupIfAlive` (real process-tree cleanup) in the new file
+- ~~Run the full suite once with `-n logical`~~ — done: `25218 passed, 54 skipped, 1 failed in 242.22s`; the 1 failure is a pre-existing, unrelated evidence-gate finding (confirmed via `git stash` on unmodified `main`), see Resolution. The wrapper's own measured wall clock under full-suite `-n logical` load was not isolated from this run; the `-n 2` local baseline (10.4s for the 6-test file) is the available evidence — record the isolated CI figure from the first post-merge `unit-tests` JUnit artifact per the Decision Rationale's "Known trade-off" note
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-- Update `pytest.ini:26` — reword the `no_parallel` registration string to match `scripts/pyproject.toml:293`'s already-corrected wording, and name the new wrapper test as its consumer (mirroring `grader_case` at `scripts/pyproject.toml:294`)
-- Scope the new wrapper's `-m` expression to `no_parallel and not integration and not conformance` (the CI job's full filter) so it doesn't also pull in `test_fsm_signal_integration.py`'s doubly-marked class
-- Size the new wrapper's timeout to cover the combined worst case of both currently-`no_parallel` tests: the SSE fan-in test's 180s budget and the node gate's **effective 120s** (inner `--timeout=120` governs it; its own 180s is a subprocess timeout with no pytest marker), plus inner startup — and the outer marker must cover both retry attempts
-- Do not mark the new wrapper test itself `@pytest.mark.no_parallel` — it must run normally under `-n logical` so it actually executes in CI
-- Pass `-p no:ll_history` on the inner run (no nested `history.db` session) and do not clear addopts
-- Accept inner exit code 5 (empty set) as pass; retry once on any other non-zero exit or `TimeoutExpired`, after bounded process-group cleanup and child reaping; retain and expose diagnostics per AC-W8/AC-W11
-- Reword the stale "runs on the controller" comment in `test_feat3323_sse_bridge.py:210-214` and add the wrapper's name to `conftest.py:129-133`'s docstring
+- ~~Update `pytest.ini:26`~~ — done: reworded to match `scripts/pyproject.toml:300`'s wording and name the new wrapper test as its consumer (mirroring `grader_case` at `scripts/pyproject.toml:294`)
+- ~~Scope the new wrapper's `-m` expression~~ — done: `no_parallel and not integration and not conformance`, so it doesn't also pull in `test_fsm_signal_integration.py`'s doubly-marked class (verified via `--collect-only`)
+- ~~Size the new wrapper's timeout~~ — done: `SERIAL_GATE_TIMEOUT = 330` (SSE 180s + node effective 120s + margin), outer `timeout(2*330+30)` covers both retry attempts
+- ~~Do not mark the new wrapper test itself `@pytest.mark.no_parallel`~~ — done: unmarked, confirmed passing (not skipped) under `-n 2`
+- ~~Pass `-p no:ll_history` on the inner run and do not clear addopts~~ — done
+- ~~Accept inner exit code 5 as pass; retry once on other non-zero exit or `TimeoutExpired`~~ — done, with bounded process-group cleanup and diagnostics per AC-W8/AC-W11
+- ~~Reword the stale "runs on the controller" comment and name the wrapper in `conftest.py`~~ — done
 
 ## Root Cause
 
@@ -374,7 +375,84 @@ _Added by `/ll:confidence-check` on 2026-09-22; re-checked 2026-09-22 (three tim
 ### Outcome Risk Factors
 - Deep per-site complexity concentrated in the new `test_no_parallel_serial_gate.py` file (process-group lifecycle, bounded retry across `subprocess.TimeoutExpired` and non-zero/non-5 exits, descendant cleanup) — the surrounding 6 touch-points (`pytest.ini`, `scripts/pyproject.toml`, two stale-comment rewords, two docs rewords) are mechanical, so the aggregate Complexity score undercounts the one genuinely stateful site; validate the retry/cleanup paths with controlled subprocess fixtures per AC-W8/AC-W11 before trusting a green run.
 
+## Resolution
+
+- **Status**: Implemented and locally verified. Option 2 (named serial
+  invocation) is landed: `scripts/tests/test_no_parallel_serial_gate.py`
+  runs the marker-selected `no_parallel` set under a nested `-n 0` pytest
+  invocation, unmarked itself so it executes under the outer `-n logical`
+  suite. All Program Design signatures and AC-W1..AC-W11 wiring touchpoints
+  are implemented; see Changes Made and Validation below.
+
+### Changes Made
+
+- **new** `scripts/tests/test_no_parallel_serial_gate.py` — `test_no_parallel_serial_pass`
+  (unmarked) shells to `pytest scripts/tests/ -n 0 -m "no_parallel and not
+  integration and not conformance" -q -p no:randomly -p no:ll_history` via
+  `subprocess.Popen(..., start_new_session=True)`; accepts inner exit `0` or
+  `5` (empty selection); one bounded retry on `TimeoutExpired` or any other
+  non-zero/non-5 exit; `_kill_group_if_alive` does a bounded POSIX
+  `os.killpg` TERM-then-KILL sweep (5s wait per stage) after every attempt,
+  timeout or not, since a clean/non-zero leader exit can still leave
+  descendants alive. `SERIAL_GATE_TIMEOUT = 330` (SSE 180 + node effective
+  120 + ~30s margin), outer `@pytest.mark.timeout(2 * SERIAL_GATE_TIMEOUT +
+  30)`. A recovered retry is `print`ed (captured into the JUnit
+  `<system-out>` via the existing `junit_logging = "system-out"` config —
+  validated empirically, see below). Also includes `TestSerialPassWithRetry`
+  (4 fast unit tests against injected fake attempts: first-try pass,
+  timeout-then-success, exit-5-is-pass, two-failures-exhausts-retry) and
+  `TestKillGroupIfAlive::test_kills_grandchild_in_same_group` (spawns a real
+  process tree, confirms the grandchild is gone after cleanup), covering
+  AC-W8 and AC-W11.
+- `pytest.ini:26`, `scripts/pyproject.toml:300` — reworded the `no_parallel`
+  registration string to name `scripts/tests/test_no_parallel_serial_gate.py`
+  as the consumer, mirroring the `grader_case` convention (AC-W1).
+- `scripts/tests/test_feat3323_sse_bridge.py:210-214` — stale "runs on the
+  controller" comment reworded to name the wrapper (AC-W9).
+- `scripts/tests/conftest.py:129-133` — `pytest_collection_modifyitems`
+  docstring now names the wrapper as the invocation that actually runs the
+  serial `-n 0` pass (AC-W9).
+- `docs/development/TESTING.md` (`no_parallel` marker row) and
+  `docs/development/TROUBLESHOOTING.md` (BUG-2523 section) — reworded to
+  name the wrapper; the TROUBLESHOOTING.md fsm-signal-integration example
+  clarifies that those two tests carry `integration` and remain outside the
+  wrapper's own scope too, not just the CI job's (AC-W10).
+
+### Validation
+
+- `pytest scripts/tests/test_no_parallel_serial_gate.py -n 2 -q` → `6
+  passed` (not skipped — AC-W4), including a real execution of the inner
+  serial pass that itself ran the SSE fan-in test.
+- `pytest scripts/tests/ -n 0 -m "no_parallel and not integration and not
+  conformance" --collect-only -q` → `1/25273 tests collected` — only the SSE
+  fan-in test (BUG-3522 already dropped the node gate's marker), confirming
+  AC-W2/AC-W5 scope and by-marker (not file-list) discovery.
+- `pytest scripts/tests/test_conftest_cap.py::TestNoParallelMarkerRouting
+  scripts/tests/test_feat3323_sse_bridge.py -n 2 -q` → `50 passed, 2
+  skipped` (unchanged from pre-implementation baseline — no regression).
+- Manually verified recovered-retry artifact visibility: patched
+  `_run_inner_once` to return timeout-then-success, ran under `--junitxml`
+  without `-s` (the CI shape), and confirmed the recovery `print` appears in
+  the generated `<system-out>` block.
+- `ruff check` / `ruff format --check` / `mypy` clean on all changed and new
+  files.
+- Full suite: `python -m pytest scripts/tests/` → `25218 passed, 54 skipped,
+  1 failed in 242.22s`. The one failure
+  (`test_verify_evidence.py::TestRepoGate::test_no_new_unverifiable_evidence`)
+  is a pre-existing, unrelated evidence-corpus baseline gap (flags two spans
+  in `P2-BUG-3522-...md:45` and this issue's own pre-existing Steps to
+  Reproduce line, `:61`) — confirmed via `git stash` to fail identically on
+  unmodified `main`, before any of this issue's edits. Out of scope for
+  BUG-3523 (the flagged issue text is BUG-3522's, and this issue's own
+  flagged line was already reviewed and dismissed in the Verification Notes
+  above); not caused or fixed by this change.
+- CI runtime for the wrapper under full-suite `-n logical` load remains
+  unmeasured (Fable's 7.19s figure is a local `-n 0` baseline); record it
+  from the first post-merge `unit-tests` JUnit artifact.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-09-22T19:58:50 - `033c8748-0fd3-43ec-8efe-dfc335b26eed.jsonl`
+- `/ll:ready-issue` - 2026-09-22T19:44:27 - `81af7dc6-0208-40f9-878c-c49e6891b514.jsonl`
 - `/ll:confidence-check` - 2026-09-22T16:31:30 - `00004522-d744-453d-9393-066be704b3ae.jsonl`
 - `/ll:confidence-check` - 2026-09-22T16:29:23 - `00004522-d744-453d-9393-066be704b3ae.jsonl`
 - `/ll:reconcile-issue` - 2026-09-22T16:26:47 - `da6595a1-fc9b-4f09-92ce-9a598a4335fe.jsonl`
