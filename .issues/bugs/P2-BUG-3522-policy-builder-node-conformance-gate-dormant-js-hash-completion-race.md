@@ -159,9 +159,9 @@ _Wiring pass added by `/ll:wire-issue`:_
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/js/policy_submission.test.mjs` — `settleHash` (L44-49), `reviewed` (L87-91) and `setup` (L71-81) are the primary fix site; the race is here, not in the Python gate [evidence review addition]
 - `scripts/little_loops/templates/policy_builder_core.mjs:4537` — `onChange(cb)` on the controller is the completion signal the fixed `settleHash` subscribes to; every `review.status` transition passes through `emit()` (L3864) [review addition, 2026-09-22]
-- A separate Python guard-policy test module — mock executable discovery and version probing to cover the success/failure/skip matrix (including `min_major=None`) and all four callers of `_require_node()`; keep the six real policy-builder gate cases in their existing module
+- A separate Python guard-policy test module — mock executable discovery and version probing to cover the success/failure/skip matrix (including `min_major=None`) and all four callers of `require_node()`; keep the six real policy-builder gate cases in their existing module
 - `scripts/tests/test_conftest_cap.py` — `TestNoParallelMarkerRouting` must keep passing if the marker is changed/removed [Agent 3 finding]
-- `scripts/tests/js/feat3304/feat3304_dashboard_runtime.test.mjs` — lives in a subdir, so the gate's non-recursive `JS_TEST_DIR.glob("*.test.mjs")` never runs it; it is nevertheless executed in CI by `scripts/tests/test_feat3304_artifact_dashboard.py::TestDashboardNodeRuntimeGate::test_generated_page_runtime_behaviour` (no `no_parallel`, inner `timeout=180`) — scope the "the gate covers X" discussion accordingly [Agent 3 finding, corrected during evidence review]
+- `scripts/tests/js/feat3304/feat3304_dashboard_runtime.test.mjs` — lives in a subdir, so the gate's non-recursive `JS_TEST_DIR.glob("*.test.mjs")` never runs it; it is nevertheless executed in CI by `scripts/tests/test_feat3304_artifact_dashboard.py::TestDashboardNodeRuntimeGate::test_generated_page_runtime_behaviour` (no `no_parallel`, inner `timeout=180`, and today no `@pytest.mark.timeout` — see Proposed Solution 3) — scope the "the gate covers X" discussion accordingly [Agent 3 finding, corrected during evidence review]
 
 ### Configuration
 
