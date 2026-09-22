@@ -2,7 +2,7 @@
 id: BUG-3522
 type: BUG
 title: policy-builder node conformance gate is dormant in CI and the flake is a JS hash-completion race
-priority: P3
+priority: P2
 status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-09-20'
@@ -14,11 +14,11 @@ labels:
 - flake
 - test-stability
 relates_to:
-- ENH-3453
 - BUG-3486
 - BUG-3502
 - BUG-3484
 - BUG-2523
+- BUG-3523
 ---
 
 # BUG-3522: policy-builder node conformance gate is dormant in CI and the flake is a JS hash-completion race
@@ -71,10 +71,10 @@ _The capture-era hypothesis — subprocess/CPU-contention timeout, possibly Node
 
 ## Proposed Solution
 
-1. **Fix the wait, not the schedule** in `scripts/tests/js/policy_submission.test.mjs`: replace the bounded `settleHash` spin with a real completion signal. Preferred: make `subtle` injectable via `setup()` (the `createSubmissionController` seam at line 72 already exists) and resolve the digest explicitly, so the interleaving test at line 158 becomes exact instead of racy; alternative: poll on real timers against a generous deadline.
-2. **Add a regression test for the race itself** — a starved or stubbed digest must still let `reviewed()` observe `ready`.
+1. **Fix the wait, not the schedule** in `scripts/tests/js/policy_submission.test.mjs`: replace the bounded `settleHash` spin with an **exact completion signal via a capturing wrapper, not a fake** (review sharpening, 2026-09-21). In `setup()`, wrap the digest so it records the promise it returns (`env.pendingDigests.push(p)`), and make `settleHash` await exactly those promises (`await Promise.allSettled(env.pendingDigests.splice(0)); await flush();`) — the wait then observes the very promise the controller itself awaits. `sha256Hex` makes exactly one `digest` call per review, so the capture is complete. `over.subtle` must compose *through* the capturing wrapper, so a test can inject a manually-deferred digest while the wait stays exact. Two inferior shapes to avoid: a fully fake `subtle` (trades away the real `crypto.subtle` threadpool path the CI race was about, across all ~25 `reviewed()` call sites) and timer-based polling against a generous deadline (reintroduces the time-dependence being fixed).
+2. **Add a deterministic regression test for the race** — no wall-clock, no threadpool: inject a `subtle` whose `digest` returns a manual deferred, release it on a `setImmediate` turn past the old budget (e.g. turn 60 of 50), then await `reviewed()`. The old spin helper exhausts its turns before the release and fails with `'hashing' !== 'ready'`; the exact wait releases, awaits, and passes. The pbkdf2 threadpool-starvation recipe in Steps to Reproduce stays a manual demonstrator — it is threadpool-scheduling-dependent (the 40-run loop under 48 CPU hogs reproduced 0 failures) and must not be the CI regression test.
 3. **Drop `@pytest.mark.no_parallel`** from `test_node_conformance_suite_passes` once (1) lands: with the race gone there is nothing for contention to break, and the gate returns to the default parallel invocation. Pair that with `@pytest.mark.timeout(240)` — strictly above the inner `timeout=180` — following the convention in `scripts/tests/test_verify_evidence.py`. Without it, a hung node process trips the 120-second thread watchdog first, whose `os._exit(1)` kills the worker instead of producing a clean `TimeoutExpired` assertion.
-4. **Make a skip loud:** in CI, a missing Node toolchain should fail rather than skip, and the failure message should name `process.version`. Today a green job and a skipped gate are indistinguishable, which is how this bug stayed invisible.
+4. **Make a skip loud — in Python, not in the workflow** (review revision, 2026-09-21). The guard belongs in the test module, keyed on an explicit env var (e.g. `LL_REQUIRE_NODE=1`) that the `unit-tests` job sets: a workflow step cannot see the "node present but < 22" skip path. When the var is set, convert skip → fail for **both** Node gates — `test_node_conformance_suite_passes` *and* `_require_node()` — else a missing Node still silently skips the five `test_round_trip_yaml_validates_for_each_mode` tests and the loud-failure criterion is half-met. The failure message must carry the full `node --version` probe output: `_node_major` currently discards the raw version string, so keep and print it (the earlier "`process.version`" phrasing named a Node-runtime concept the Python side never sees). Today a green job and a skipped gate are indistinguishable, which is how this bug stayed invisible.
 5. **Optional coverage tidy-up:** `JS_TEST_DIR.glob("*.test.mjs")` does not descend into `scripts/tests/js/feat3304/`. Those tests are not uncovered, though — `scripts/tests/test_feat3304_artifact_dashboard.py::TestDashboardNodeRuntimeGate::test_generated_page_runtime_behaviour` runs them in CI. Widen the glob only if you want a single home for JS gates.
 
 ### Codebase Research Findings
@@ -87,11 +87,11 @@ _Added by `/ll:refine-issue` — 2026-09-20 — based on codebase analysis:_
 
 ## Acceptance Criteria
 
-- A regression test reproduces the race deterministically (threadpool-starved or stubbed digest) and fails before the fix, passes after; the `settleHash`/`reviewed` wait observes `ready` under starvation in `scripts/tests/js/policy_submission.test.mjs`
+- A regression test reproduces the race deterministically — deferred digest released past the old 50-turn budget; no wall-clock, no threadpool dependence — and fails against the old spin helper while passing with the exact wait, in `scripts/tests/js/policy_submission.test.mjs`. The test ships in the same commit as the fix, so the fails-before/passes-after demonstration is recorded in the PR description (or a two-commit stack), not in-tree
 - `test_node_conformance_suite_passes` **executes** (not skipped) in the `unit-tests` job of `.github/workflows/ci.yml` on a push to `main`, and the uploaded `pytest-junit.xml` shows it as passed — no serial `-n 0` step required
-- 5+ consecutive CI runs on `main` are green **with the gate executed in each**; the junit artifact for at least one run is cited as evidence that green means executed, not skipped
+- At least one post-merge CI run on `main` is green with the gate executed, and its `pytest-junit.xml` artifact is cited as evidence that green means executed, not skipped. The deterministic regression test carries the correctness burden; further re-runs (`workflow_dispatch` on `main`) are optional confidence, not a gate — the earlier "5+ consecutive runs" bar was ceremony for a push-only workflow (review revision, 2026-09-21)
 - `scripts/tests/test_conftest_cap.py::TestNoParallelMarkerRouting` still passes, and no other test's marker semantics change
-- A Node toolchain absent from CI fails the gate (rather than skipping it), and the failure message names the Node version
+- With `LL_REQUIRE_NODE=1` set, an absent or too-old Node toolchain **fails** — rather than skips — **both** Node gates (the conformance suite and the five round-trip validations via `_require_node()`), and the failure message carries the full `node --version` probe output
 - `test_round_trip_yaml_validates_for_each_mode` and the `feat3304` dashboard runtime gate are unaffected
 
 ### Codebase Research Findings
@@ -107,7 +107,9 @@ _Added by `/ll:refine-issue` — 2026-09-20 — based on codebase analysis:_
 - **The cited "2-fail / 1-pass on the same base" comparison does not hold.** Run `35490420257` failed on `main @ fdf6773d2`; the passing run `35490447772` was a `workflow_dispatch` on `enh/ll-loop-rename-and-cleanup @ 2f84ad50`; the second failing run `35490782202` was a `workflow_dispatch` on `fix/bug-3484-addopts-suppression-restored @ b5ab95ad`. Three different trees, not one base. The nondeterminism is still established — but by the varying failure count (4 vs 1) on the same helper, not by the run tally.
 - **If a Node pin is still wanted,** it should pin what the runner actually ships, for reproducibility rather than for this bug, and it must not narrow the ratified "Node >= 22" posture that the gate itself enforces. `docs/development/TESTING.md` "Testing & CI Policy" in AGENTS.md forbids adding paid/hosted CI; `actions/setup-node` is free, but it is now unmotivated work.
 - The marker commit `60358e836` repeated the unverified timeout hypothesis in its message ("intermittently exceeds time budgets or hits timing-sensitive assertions"). That message is now the main reason the wrong theory is in circulation.
-- `relates_to` also carries `ENH-3453` (host capability map), which looks like an artifact of the BUG-3453 → BUG-3521 → BUG-3522 renumber chain rather than a real relationship.
+- ENH-3453 (host capability map) was dropped from `relates_to` on 2026-09-21 — it was a BUG-3453 → BUG-3521 → BUG-3522 renumber-chain artifact, not a real relationship.
+- **The interleaving test at line 158 is only half-racy** (review correction, 2026-09-21): its first assertion (`review.status === "none"` after `contextChanged`) is already deterministic — `contextChanged` resets review synchronously (`scripts/little_loops/templates/policy_builder_core.mjs:4387`) — so only its `reviewed()` call needs the fixed wait. An earlier draft of Proposed Solution 1 called the whole test "racy"; implementers should not re-engineer the synchronous part.
+- **Sibling dormancy, out of scope — filed as BUG-3523:** `scripts/tests/test_feat3323_sse_bridge.py:215` (`TestSseBridgeFanIn::test_two_producers_reach_one_client_with_distinct_producer_pid`) carries `@pytest.mark.no_parallel` with no `integration`/`conformance` marker and no `-n 0` invocation anywhere, so it is CI-dormant by the identical mechanism (verified locally 2026-09-21: under `-n 2` the file reports the fan-in test among its skips). A sweep of all `no_parallel` users found no other genuine cases: `test_fsm_signal_integration.py` is doubly excluded by its `integration` marker; `test_dependency_mapper.py` / `test_worktree_utils.py` are name/comment matches only. Keep it out of this fix; the structural follow-up — a meta-guard that makes `no_parallel`-without-serial-invocation visible instead of silent — belongs there.
 
 ## Integration Map
 
@@ -144,7 +146,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 ### Configuration
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `.github/workflows/ci.yml` — **no** serial `-n 0` step is needed once the race is fixed: removing `no_parallel` restores the gate to the existing parallel `unit-tests` invocation. The workflow change reduces to a skip-to-fail guard for the Node gate (evidence review revision; the earlier "add a serial `-n 0` step" wiring rested on the falsified timeout hypothesis).
+- `.github/workflows/ci.yml` — **no** serial `-n 0` step is needed once the race is fixed: removing `no_parallel` restores the gate to the existing parallel `unit-tests` invocation. The workflow change reduces to setting `LL_REQUIRE_NODE=1` on the `unit-tests` job — the skip-to-fail logic itself lives in the Python test module, because a workflow step cannot see the "node present but < 22" skip path (review revision, 2026-09-21; the earlier "add a serial `-n 0` step" wiring rested on the falsified timeout hypothesis).
 
 ## Program Design
 
@@ -154,9 +156,10 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ### Signatures
 
-- `settleHash(env) -> Promise<void>` and `reviewed(env, yaml = YAML) -> Promise<void>` — in `scripts/tests/js/policy_submission.test.mjs`; the bounded turn spin becomes a real completion wait (or an explicit digest resolution once `subtle` is injected)
-- `setup(over = {})` — same file; currently hardcodes `subtle: globalThis.crypto.subtle` (L72) and becomes injectable so tests control digest completion
+- `settleHash(env) -> Promise<void>` and `reviewed(env, yaml = YAML) -> Promise<void>` — in `scripts/tests/js/policy_submission.test.mjs`; the bounded turn spin becomes `await Promise.allSettled(env.pendingDigests.splice(0))` — an exact wait on the digest promises the controller itself awaits
+- `setup(over = {})` — same file; the hardcoded `subtle: globalThis.crypto.subtle` (L72) gains a capturing layer that records each `digest` promise into `env.pendingDigests`; `over.subtle` composes through the wrapper so an injected deferred digest stays exactly awaited
 - `test_node_conformance_suite_passes() -> None` — in `scripts/tests/test_policy_builder_node_gate.py`; loses `@pytest.mark.no_parallel` (L53) and gains `@pytest.mark.timeout(240)`
+- `_require_node() -> str` — same file; under `LL_REQUIRE_NODE=1` converts skip → fail (as does the conformance gate), with the full `node --version` output in the message
 - `pytest_collection_modifyitems(config, items) -> None` — in `scripts/tests/conftest.py`; unchanged, only this test's marker changes
 
 ### Call Path
@@ -170,14 +173,14 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Impact
 
-- **Priority**: P3 at capture — **revisit**. Scope has grown from "one marker on one test" to "the ratified FEAT-2390 JS gate is dormant in CI **and** the flake that justified that is a live test-side race in 231 assertions' worth of coverage". Reviewers may want P2.
+- **Priority**: P2 (bumped from P3 on 2026-09-21). The ratified FEAT-2390 bar — "an unenforced gate does not count as met" — is currently violated, and green CI is actively misleading: it hid the very race that prompted the marker. Not P1: no user-facing breakage, and the fix is test-side and CI-visibility only.
 - **Effort**: Small — rewrite one JS helper plus a regression test, remove one marker, add one skip-to-fail guard, refresh docs
 - **Risk**: Low — test-side and CI-visibility changes only; removing the marker adds coverage rather than removing it
 - **Breaking Change**: No
 
 ## Status
 
-**Open** | Created: 2026-09-20 | Priority: P3
+**Open** | Created: 2026-09-20 | Priority: P2 (bumped from P3, 2026-09-21)
 
 ## Implementation Steps
 
@@ -185,9 +188,11 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _Revised 2026-09-20 after the evidence review; the original list assumed the timeout hypothesis._
 
-- Fix the wait in `scripts/tests/js/policy_submission.test.mjs` (`settleHash` / `setup` `subtle` injection) and add the starvation regression test
+- Fix the wait in `scripts/tests/js/policy_submission.test.mjs`: capturing wrapper around the real `subtle` in `setup()` (records each `digest` promise into `env.pendingDigests`), `settleHash` awaits them exactly; `over.subtle` composes through the wrapper
+- Add the deterministic race regression test (deferred digest released past the 50-turn budget — no wall-clock, no threadpool), and record the fails-before/passes-after demonstration in the PR description
 - Remove `@pytest.mark.no_parallel` from `test_node_conformance_suite_passes`, add `@pytest.mark.timeout(240)`, and refresh the module docstring ("no hosted CI", "ships Node 22")
-- Add the skip-to-fail guard for a missing Node toolchain in `.github/workflows/ci.yml`, and include the Node version in the gate's failure message
+- Add the Python-side skip-to-fail guard (`LL_REQUIRE_NODE=1`): covers both the conformance gate and `_require_node()`, prints the full `node --version` output; the `unit-tests` job in `.github/workflows/ci.yml` only sets the env var
+- Do **not** scope in the `test_feat3323_sse_bridge.py:215` sibling dormancy — that is BUG-3523
 - Update `docs/development/TESTING.md` (`no_parallel` row wording) and `docs/development/TROUBLESHOOTING.md` (the "tests still run" claim)
 - Verify the `.claude/CLAUDE.md` / `AGENTS.md` gate-example wording still holds once the gate executes again
 - Re-run `scripts/tests/test_conftest_cap.py` (`TestNoParallelMarkerRouting`)
@@ -220,7 +225,7 @@ _Added 2026-09-20 by an evidence review of the CI artifacts — this section exi
 - `settleHash` bounds its wait at 50 `setImmediate` turns (`scripts/tests/js/policy_submission.test.mjs:44-49`); `review` sets `hashing` and settles from `sha256Hex(yaml, d.subtle).then(...)` (`scripts/little_loops/templates/policy_builder_core.mjs:4428-4441`), i.e. a real threadpool round-trip.
 - Idle: 50 turns ≈ 0.74 ms vs digest p50 0.011 ms → passes ~always.
 - Threadpool starved: the identical wait observes `hashing` after 2.16 ms → the CI assertion.
-- A 40-run loop of `node --test scripts/tests/js/policy_submission.test.mjs` under 48 CPU hogs on a 14-core machine reproduced **0** failures, which is consistent with the mechanism being threadpool-scheduling-dependent rather than purely CPU-bound: the deterministic starvation recipe above is the reliable reproducer, and the right basis for a regression test.
+- A 40-run loop of `node --test scripts/tests/js/policy_submission.test.mjs` under 48 CPU hogs on a 14-core machine reproduced **0** failures, which is consistent with the mechanism being threadpool-scheduling-dependent rather than purely CPU-bound: the deterministic starvation recipe above is the reliable *manual* reproducer. _(Correction, 2026-09-21: this originally called the starvation recipe "the right basis for a regression test" — withdrawn; precisely because it is threadpool-scheduling-dependent, the CI regression test is the deferred-digest design in Proposed Solution 2, with starvation kept for manual demonstration.)_
 
 ## Root Cause
 
