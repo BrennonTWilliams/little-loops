@@ -76,6 +76,19 @@ from __future__ import annotations
 import sqlite3
 import subprocess
 
+from little_loops.session_store.backend import (
+    Backend,
+    HistoryError,
+    HistoryIntegrityError,
+    HistoryOperationError,
+    HistoryUnavailable,
+    HistoryUnsupported,
+    SqliteBackend,
+    connect_readonly,
+    open_history,
+    open_history_readonly,
+    resolve_backend,
+)
 from little_loops.session_store.codex import CodexNormalizer
 from little_loops.session_store.db import DEFAULT_DB_PATH, resolve_history_db
 from little_loops.session_store.gemini import normalize_gemini_session
@@ -212,6 +225,18 @@ __all__ = [
     "REGISTERED_HOSTS",
     "ensure_db",
     "connect",
+    "resolve_history_db",
+    "Backend",
+    "SqliteBackend",
+    "resolve_backend",
+    "connect_readonly",
+    "open_history",
+    "open_history_readonly",
+    "HistoryError",
+    "HistoryUnavailable",
+    "HistoryIntegrityError",
+    "HistoryUnsupported",
+    "HistoryOperationError",
     "normalize_issue_id",
     "SQLiteTransport",
     "backfill",

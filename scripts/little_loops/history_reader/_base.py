@@ -60,28 +60,25 @@ def _stale_cutoff(days: int) -> str:
 def _connect_readonly(db_path: Path) -> sqlite3.Connection | None:
     """Open a read-only connection, or return None on failure.
 
-    Opens *db_path* as given, not `ensure_db()`'s return value: `ensure_db()`
-    re-resolves a default-shaped path (bare `DEFAULT_DB_PATH`, or any path
-    whose basename+parent look like `.ll/history.db`) through the env/config
-    chain with no root context, which would silently redirect an
-    already-root-anchored absolute path a caller resolved on purpose
-    (BUG-3181's `root=` contract) back to a cwd-relative guess. Callers that
-    want env/config resolution must resolve *before* calling in (see
-    `read_prepatch_evidence`/`harness_eval_*`'s `db=DEFAULT_DB_PATH` callers).
+    Thin compatibility wrapper (ENH-3525) over
+    :func:`little_loops.session_store.backend.open_history_readonly` with
+    ``ensure=True`` — same signature and same "return None on failure"
+    contract as before, so this module's ~70 callers are unchanged. Resolves
+    *db_path* exactly once and migrates+opens the *same* resolved path
+    (fixes the latent bug where the old inline implementation called
+    `ensure_db(db_path)`, discarded its resolved return value, and reopened
+    the unresolved `db_path` argument — silently divergent for a
+    default-shaped path). Still honors the BUG-3181 no-re-resolve contract
+    for an already-root-anchored absolute path, since `resolve_history_db()`
+    only re-resolves a default-shaped argument.
     """
+    from little_loops.session_store.backend import HistoryError, open_history_readonly
+
     try:
-        ensure_db(db_path)
-    except sqlite3.Error:
-        logger.warning("history_reader: could not ensure schema for %s", db_path, exc_info=True)
-        return None
-    try:
-        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA query_only = ON")
-    except sqlite3.Error:
+        return open_history_readonly(db_path, ensure=True)
+    except HistoryError:
         logger.warning("history_reader: could not open %s read-only", db_path, exc_info=True)
         return None
-    return conn
 
 
 def _row_to_dataclass(row: sqlite3.Row, dc: type[Any]) -> Any:

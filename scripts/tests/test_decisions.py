@@ -935,6 +935,51 @@ class TestGenerateFromCompleted:
 
         assert count == 2
 
+    def test_honors_ll_history_db_env_override(
+        self,
+        temp_project_dir: Path,
+        decisions_path: Path,
+        monkeypatch,
+    ) -> None:
+        """ENH-3525: generate_from_completed() previously hardcoded
+        `project_root / ".ll" / "history.db"`, silently ignoring
+        `LL_HISTORY_DB`. It must now resolve through `resolve_history_db()`."""
+        from unittest.mock import MagicMock
+
+        from little_loops.decisions import generate_from_completed
+        from little_loops.session_store import record_issue_event
+
+        # The default-shaped location has no db -- generate_from_completed()
+        # must not fall back to it or to a filesystem scan.
+        default_db = temp_project_dir / ".ll" / "history.db"
+        assert not default_db.exists()
+
+        redirected_db = temp_project_dir / "elsewhere" / "history.db"
+        redirected_db.parent.mkdir(parents=True)
+        monkeypatch.setenv("LL_HISTORY_DB", str(redirected_db))
+        record_issue_event(
+            redirected_db,
+            "FEAT-9001",
+            "done",
+            issue_type="FEAT",
+            priority="P3",
+            completed_at="2026-06-03T00:00:00Z",
+        )
+
+        config = MagicMock()
+        config.project_root = temp_project_dir
+        config.decisions.log_path = ".ll/decisions.yaml"
+        config.decisions.auto_generate = []
+        config.issues.base_dir = ".issues"
+
+        count = generate_from_completed(config)
+
+        assert count == 1
+        entries = load_decisions(decisions_path)
+        issue_ids = {e.issue for e in entries if isinstance(e, DecisionEntry) and e.issue}
+        assert "FEAT-9001" in issue_ids
+        assert not default_db.exists()
+
 
 # =============================================================================
 # TestIsNearDuplicate

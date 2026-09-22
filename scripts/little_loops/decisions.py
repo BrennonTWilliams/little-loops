@@ -589,10 +589,11 @@ def generate_from_completed(config: BRConfig) -> int:
         scan_completed_issues,
         scan_completed_issues_from_db,
     )
+    from little_loops.session_store import resolve_history_db
 
     project_root = Path(config.project_root)
     log_path = project_root / config.decisions.log_path
-    db_path = project_root / ".ll" / "history.db"
+    db_path = resolve_history_db(root=project_root)
 
     if db_path.exists():
         try:

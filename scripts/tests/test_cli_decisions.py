@@ -1361,7 +1361,19 @@ class TestDecisionsCLIGenerate:
         decisions_path: Path,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """generate runs generate_from_completed and reports entry count."""
+        """generate runs generate_from_completed and reports entry count.
+
+        ENH-3525: generate_from_completed() now resolves its DB path through
+        resolve_history_db() (root=project_root) instead of hardcoding
+        `project_root / ".ll" / "history.db"`. This suite's autouse
+        `_isolate_history_db` fixture (BUG-1995, conftest.py) always sets
+        LL_HISTORY_DB, and `main_issues()`'s own analytics `cli_event_context`
+        write already creates a (schema-only) DB at that env-pointed path
+        during this same CLI invocation -- so `db_path.exists()` is now True
+        and the code takes the DB-read branch, not the file-scan fallback.
+        Mock `scan_completed_issues_from_db` (the DB-read path) rather than
+        `scan_completed_issues` (the file-scan fallback) to match.
+        """
         from datetime import datetime
         from unittest.mock import patch as mock_patch
 
@@ -1378,7 +1390,8 @@ class TestDecisionsCLIGenerate:
         ]
         with (
             mock_patch(
-                "little_loops.issue_history.parsing.scan_completed_issues", return_value=completed
+                "little_loops.issue_history.parsing.scan_completed_issues_from_db",
+                return_value=completed,
             ),
             patch.object(
                 sys,

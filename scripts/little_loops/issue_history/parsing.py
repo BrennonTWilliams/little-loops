@@ -16,6 +16,7 @@ from typing import Any
 
 from little_loops.frontmatter import parse_frontmatter
 from little_loops.issue_history.models import CompletedIssue
+from little_loops.session_store.backend import HistoryUnavailable
 from little_loops.text_utils import extract_file_paths
 
 logger = logging.getLogger(__name__)
@@ -408,13 +409,17 @@ def scan_completed_issues(
     return issues
 
 
-class HistoryDbUnavailable(Exception):
+class HistoryDbUnavailable(HistoryUnavailable):
     """Raised when the session DB exists but cannot be opened or queried.
 
     Distinguishes "no such store" / "unqueryable" from a genuine empty
     result set (ENH-3237) — callers that need to gate a file-scan fallback
     on availability rather than row count should catch this, not treat an
     empty list as ambiguous.
+
+    ENH-3525: subclasses the backend-neutral ``HistoryUnavailable`` (no
+    rename, no signature change) so a caller that only wants to catch the
+    general taxonomy still catches this too.
     """
 
 

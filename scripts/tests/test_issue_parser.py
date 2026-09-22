@@ -4854,9 +4854,9 @@ class TestPriorityRegexCompletenessAllowlist:
             108: "extracts ID+slug from an issue filename; does not read priority as a value",
         },
         "issue_history/parsing.py": {
-            52: "comment describing the deliberately out-of-scope analytics filename convention",
-            58: "deliberately out-of-scope analytics reader (defaults to P5, not live planning signal)",
-            749: "deliberately out-of-scope analytics reader (defaults to P5, not live planning signal)",
+            53: "comment describing the deliberately out-of-scope analytics filename convention",
+            59: "deliberately out-of-scope analytics reader (defaults to P5, not live planning signal)",
+            754: "deliberately out-of-scope analytics reader (defaults to P5, not live planning signal)",
         },
         "issue_lifecycle.py": {
             1423: "BUG-3286 step 5: derives priority from the renamed filename to sync "

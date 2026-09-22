@@ -534,6 +534,27 @@ class TestSchemaDrift:
 
         assert db_path.read_bytes() == before
 
+    def test_honors_ll_history_db_env_override(self, tmp_path: Path, monkeypatch) -> None:
+        """ENH-3525: `_schema_drift_data()` previously hardcoded
+        `Path.cwd() / DEFAULT_DB_PATH`, silently ignoring `LL_HISTORY_DB`. It
+        must now resolve through `resolve_history_db()`."""
+        from little_loops.cli.doctor import _schema_drift_data
+        from little_loops.session_store import ensure_db
+
+        monkeypatch.chdir(tmp_path)
+        default_db = tmp_path / ".ll" / "history.db"
+        assert not default_db.exists()
+
+        redirected_db = tmp_path / "elsewhere" / "history.db"
+        redirected_db.parent.mkdir(parents=True)
+        ensure_db(redirected_db)
+        monkeypatch.setenv("LL_HISTORY_DB", str(redirected_db))
+
+        data = _schema_drift_data()
+
+        assert data["status"] == "full"
+        assert not default_db.exists()
+
 
 class TestLoopValidity:
     """Tests for `_loop_validity_data()`."""

@@ -481,13 +481,15 @@ def _history_db_data() -> dict:
 
     import sqlite3
 
+    from little_loops.session_store.backend import HistoryUnavailable, resolve_backend
+
     try:
-        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        conn = resolve_backend().connect_readonly(db_path)
         try:
             conn.execute("SELECT 1").fetchone()
         finally:
             conn.close()
-    except sqlite3.Error as exc:
+    except (sqlite3.Error, HistoryUnavailable) as exc:
         return {"status": "unsupported", "severity": "error", "note": f"unreadable: {exc}"}
     return {"status": "full", "severity": "error", "note": str(db_path)}
 
@@ -529,9 +531,16 @@ def _schema_drift_data() -> dict:
     opens read-only, mirroring `_history_db_data()`'s constraint. Reusing
     `ensure_db()`/`connect()` here would migrate away the very drift this
     check exists to report.
+
+    ENH-3525: resolves *db_path* via `resolve_history_db()` (LL_HISTORY_DB /
+    history.db_path / default precedence) instead of hardcoding
+    `Path.cwd() / DEFAULT_DB_PATH` — a path-resolution bypass that silently
+    ignored both overrides.
     """
     import sqlite3
 
+    from little_loops.session_store import resolve_history_db
+    from little_loops.session_store.backend import HistoryUnavailable, resolve_backend
     from little_loops.session_store.schema import (
         _MIGRATIONS,
         _current_version,
@@ -539,12 +548,12 @@ def _schema_drift_data() -> dict:
         _schema_manifest,
     )
 
-    db_path = Path.cwd() / DEFAULT_DB_PATH
+    db_path = resolve_history_db()
     if not db_path.exists():
         return {"status": "unsupported", "severity": "informational", "note": "not yet created"}
 
     try:
-        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+        conn = resolve_backend().connect_readonly(db_path)
         try:
             recorded = _current_version(conn)
             if recorded == 0:
@@ -570,7 +579,7 @@ def _schema_drift_data() -> dict:
             live = _schema_manifest(conn)
         finally:
             conn.close()
-    except sqlite3.Error as exc:
+    except (sqlite3.Error, HistoryUnavailable) as exc:
         return {"status": "unsupported", "severity": "error", "note": f"unreadable: {exc}"}
 
     reference = _reference_manifest_at(recorded)

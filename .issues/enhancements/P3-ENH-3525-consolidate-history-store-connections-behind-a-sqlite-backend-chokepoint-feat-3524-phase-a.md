@@ -4,7 +4,7 @@ type: ENH
 title: Consolidate history-store connections behind a SQLite backend chokepoint (FEAT-3524
   Phase A)
 priority: P3
-status: open
+status: in_progress
 discovered_by: ll-issues-create
 discovered_date: '2026-09-22'
 captured_at: '2026-09-22T20:16:57Z'
@@ -590,9 +590,82 @@ of what was wrong and fixed, not an outstanding action item).
   only `project_child_env()` is at `:2352`; `resolve_host()` is at `:2535`.
   Corrected inline.
 
+## A1 Landed (2026-09-22)
+
+Implementation Steps 1-4 (chokepoint, contracts, bypass fixes) are done:
+
+1. `session_store/backend.py` landed: `Backend` protocol, `SqliteBackend`,
+   lazy `resolve_backend(provider="sqlite")` registry, `HistoryError`
+   taxonomy (`HistoryUnavailable`/`HistoryIntegrityError`/`HistoryUnsupported`/
+   `HistoryOperationError`), `open_history()`/`open_history_readonly()`,
+   strict `connect_readonly()`. `HistoryDbUnavailable` now subclasses
+   `HistoryUnavailable`. `test_session_store_backend.py` promotes the spike's
+   dialect-migration, idempotent-`ensure_schema`, concurrent-migration, and
+   capability-gate tests, plus new BUG-3181/D19/ensure-then-read contract
+   tests.
+2. The 7 in-scope read-only opens (`evolution.py::_open_db`,
+   `workspace_quality.py::_open_member_readonly`,
+   `cli/doctor.py::_history_db_data`/`_schema_drift_data`,
+   `cli/doctor_trim.py::_usage_counts`,
+   `history_reader/_base.py::_connect_readonly`) now route through
+   `resolve_backend().connect_readonly(path)` or the module-level
+   `open_history_readonly()`, and the `workspace_quality` ATTACH
+   (`_open_union`) is gated on `backend.supports("attach")`.
+   `session_store/queries.py::_connect_readonly()` is the one deliberate
+   exception — left as a raw `mode=ro` open because
+   `test_feat3304_artifact_dashboard.py::
+   test_snapshot_builder_never_uses_the_migrating_open_path` pins its literal
+   source text, and it already implements the strict contract's behavior
+   exactly (D19-compliant). `history_reader/_base.py::_connect_readonly()` is
+   now a thin wrapper over `open_history_readonly(db_path, ensure=True)`,
+   fixing the latent migrate-a-different-file bug (BUG-3181) by resolving the
+   target exactly once. That single-resolve fix required one refinement
+   beyond the original design: `backend.py::_resolve_once()` only applies
+   `resolve_history_db()` to a `None`/relative target — an already-absolute
+   path is honored verbatim, never re-resolved. Without this, a caller that
+   pre-resolves under an explicit `root=` (e.g.
+   `mcp_server/tools.py::_tool_history_search`) would have its path silently
+   redirected by a second, root-less resolution under a foreign cwd; this
+   surfaced as a real regression in
+   `test_enh_3171_mcp_project_root.py::test_history_search_reads_db_under_explicit_root_from_foreign_cwd`
+   and is now fixed and covered.
+3. All three path bypasses fixed, each with an `LL_HISTORY_DB` regression
+   test: `decisions.py::generate_from_completed()`,
+   `cli/doctor.py::_schema_drift_data()`, and
+   `transport.py::wire_transports()`'s `"sqlite"` branch (which also no
+   longer lets `log_dir` influence the history-store path at all, matching
+   Expected Behavior).
+4. `test_history_store_chokepoint_gate.py` added: AST-scans
+   `scripts/little_loops/` for raw `sqlite3.connect(` and fails outside
+   `session_store/backend.py` and a reasoned allowlist. The allowlist is
+   wider than this issue's target end-state on purpose — it separates
+   **permanent** exemptions (codegraph.py, queue_store.py, sessions.py's
+   Codex index, `schema.py`'s own internal implementation, `queries.py`'s
+   pinned strict opener, `workspace_quality.py`'s ATTACH scratch hosts) from
+   **provisional** ones explicitly labeled "pending ENH-3525 A2"
+   (`session_store/writers.py`'s `SQLiteTransport`, `session_store/
+   lifecycle.py`'s VACUUM connections, `cli/logs.py`, `cli/ctx_stats.py`,
+   `cli/history.py`) — real history.db write connections Step 5 still needs
+   to route through the entry points. A2 should shrink this allowlist, not
+   just add to it; `test_allowlist_entries_still_exist_and_still_have_raw_connects`
+   catches an entry that should have been removed.
+
+Not done (A2, Steps 5-6, deliberately deferred per the confidence-check
+finding above): routing the ~70/~50 remaining consumers' `except sqlite3.*`
+branches to `HistoryError` subclasses, the seven named test rewrites, and
+the `docs/reference/API.md`/`docs/ARCHITECTURE.md` updates.
+
+Full suite (`python -m pytest scripts/tests/`): 25241 passed, 54 skipped, 2
+failed — both failures pre-existing and unrelated
+(`test_verify_evidence.py::TestRepoGate::test_no_new_unverifiable_evidence`,
+caused by unrelated BUG-3522/BUG-3523 issue content; `test_no_parallel_serial_gate.py::
+TestKillGroupIfAlive::test_kills_grandchild_in_same_group`, a flaky
+process-timing test). `ruff check`/`ruff format --check`/`mypy` clean on
+every file this pass touched.
+
 ## Status
 
-**Open** | Created: 2026-09-22 | Priority: P3
+**In Progress** | Created: 2026-09-22 | Priority: P3
 
 ## Confidence Check Notes
 
@@ -607,6 +680,7 @@ _Added by `/ll:confidence-check` on 2026-09-22_
 - Mitigation already built into the issue: Implementation Steps stage A1 (chokepoint + bypass fixes, no consumer error-type changes) ahead of A2 (consumer error-type conversion, "carries the behavioral risk") as independently landable commits. Recommend landing/soaking A1 first and re-running `/ll:confidence-check` before starting A2; the issue's own Sizing note already flags A2 as a candidate for `/ll:issue-size-review` split.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-22T22:09:47 - `6e23addb-913f-4751-95d4-9caf3143f43d.jsonl`
 - `/ll:confidence-check` - 2026-09-22T21:25:58 - `6e23addb-913f-4751-95d4-9caf3143f43d.jsonl`
 - `/ll:verify-issues` - 2026-09-22T21:07:24 - `cfaf5a77-1b05-4ab4-a69c-2fd5f977d32f.jsonl`
 - `/ll:verify-issues` - 2026-09-22T20:50:47 - `d5913727-aee2-4da4-b9b6-0c7c106cc141.jsonl`

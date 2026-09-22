@@ -2021,9 +2021,14 @@ def wire_transports(
                 )
             )
         elif name == "sqlite":
-            from little_loops.session_store import SQLiteTransport
+            from little_loops.session_store import SQLiteTransport, resolve_history_db
 
-            bus.add_transport(SQLiteTransport(base / "history.db"))
+            # ENH-3525: resolve via LL_HISTORY_DB/history.db_path/default, the
+            # same precedence every other history-store writer uses, instead
+            # of hardcoding `base / "history.db"` — `log_dir`/`base` is a
+            # log/transport directory, not a history-store target, and must
+            # not determine the history path.
+            bus.add_transport(SQLiteTransport(resolve_history_db()))
         elif name == "webhook":
             if config.webhook.url is None:
                 logger.warning("WebhookTransport: events.webhook.url is None; skipping")

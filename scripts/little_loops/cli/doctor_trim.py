@@ -275,7 +275,9 @@ def _usage_counts(db_path: Path, *, cutoff: datetime | None) -> tuple[dict[str, 
     if not db_path.exists():
         return None, 0
 
-    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    from little_loops.session_store.backend import resolve_backend
+
+    conn = resolve_backend().connect_readonly(db_path)
     try:
         try:
             rows = conn.execute("SELECT ts, session_id, skill_name FROM skill_events").fetchall()

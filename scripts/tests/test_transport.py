@@ -270,8 +270,15 @@ class TestWireTransports:
         files = list(tmp_path.rglob("*.jsonl"))
         assert files, "expected JsonlTransport to write at least one file"
 
-    def test_sqlite_registered_by_name(self, tmp_path: Path) -> None:
-        """The sqlite transport is registered and wires up successfully."""
+    def test_sqlite_registered_by_name(self, tmp_path: Path, monkeypatch) -> None:
+        """The sqlite transport is registered and wires up successfully.
+
+        ENH-3525: the sqlite branch resolves via `resolve_history_db()`
+        (LL_HISTORY_DB / history.db_path / default) rather than `log_dir`,
+        so this pins the target with `LL_HISTORY_DB`.
+        """
+        db_path = tmp_path / "history.db"
+        monkeypatch.setenv("LL_HISTORY_DB", str(db_path))
         bus = EventBus()
         config = EventsConfig(transports=["sqlite"])
         wire_transports(bus, config, log_dir=tmp_path)
@@ -280,10 +287,12 @@ class TestWireTransports:
         bus.emit({"event": "state_enter", "loop_name": "wired", "state": "go"})
         bus.close_transports()
 
-        assert (tmp_path / "history.db").exists()
+        assert db_path.exists()
 
-    def test_sqlite_records_issue_event_end_to_end(self, tmp_path: Path) -> None:
+    def test_sqlite_records_issue_event_end_to_end(self, tmp_path: Path, monkeypatch) -> None:
         """issue.* events emitted through bus.emit() appear in issue_events (ENH-1690)."""
+        db = tmp_path / "history.db"
+        monkeypatch.setenv("LL_HISTORY_DB", str(db))
         bus = EventBus()
         config = EventsConfig(transports=["sqlite"])
         wire_transports(bus, config, log_dir=tmp_path)
@@ -298,11 +307,40 @@ class TestWireTransports:
         )
         bus.close_transports()
 
-        db = tmp_path / "history.db"
         rows = recent(db, kind="issue")
         assert len(rows) == 1
         assert rows[0]["issue_id"] == "ENH-99"
         assert rows[0]["transition"] == "done"
+
+    def test_sqlite_branch_ignores_log_dir_and_honors_ll_history_db(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """ENH-3525: wire_transports()'s "sqlite" branch previously hardcoded
+        `(log_dir or Path(".ll")) / "history.db"`, a third path-resolution
+        bypass alongside decisions.py and cli/doctor.py -- `log_dir` is a
+        log/transport directory, not a history-store target, and must not
+        determine the history path. `parallel.py`/`sprint/run.py`'s
+        `SQLiteTransport(resolve_history_db())` fallback must agree with this
+        branch on the same DB."""
+        log_dir = tmp_path / "logs"
+        log_dir.mkdir()
+        redirected = tmp_path / "elsewhere" / "history.db"
+        redirected.parent.mkdir(parents=True)
+        monkeypatch.setenv("LL_HISTORY_DB", str(redirected))
+
+        bus = EventBus()
+        config = EventsConfig(transports=["sqlite"])
+        wire_transports(bus, config, log_dir=log_dir)
+
+        bus.emit({"event": "state_enter", "loop_name": "wired", "state": "go"})
+        bus.close_transports()
+
+        assert redirected.exists()
+        assert not (log_dir / "history.db").exists()
+
+        from little_loops.session_store import resolve_history_db
+
+        assert resolve_history_db() == redirected
 
     def test_unknown_transport_warns_and_skips(
         self, tmp_path: Path, caplog: pytest.LogCaptureFixture

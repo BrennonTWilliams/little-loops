@@ -108,16 +108,16 @@ def _label(member: WorkspaceMember) -> str:
 def _open_member_readonly(db_path: Path) -> sqlite3.Connection:
     """Open *db_path* read-only without running schema migrations.
 
-    Modeled on ``issue_history/evolution.py::_open_db()``. May raise
-    ``sqlite3.Error`` -- the caller wraps both this call and the
-    `read_schema_version()` read in one try/except, since a non-SQLite or
-    corrupt file opens lazily without error and only fails on its first
-    query.
+    ENH-3525: routes through the strict chokepoint
+    (``SqliteBackend.connect_readonly()``, never creates or migrates) rather
+    than a raw URI connect. May raise ``HistoryUnavailable`` -- the caller
+    wraps both this call and the `read_schema_version()` read in one
+    try/except, since a non-SQLite or corrupt file opens lazily without error
+    and only fails on its first query.
     """
-    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA query_only = ON")
-    return conn
+    from little_loops.session_store.backend import resolve_backend
+
+    return resolve_backend().connect_readonly(db_path)
 
 
 def _gate_member(
@@ -140,11 +140,13 @@ def _gate_member(
     if not member.db_path.exists():
         return None, f"history.db not found at {member.db_path}", "db_missing"
 
+    from little_loops.session_store.backend import HistoryUnavailable
+
     conn: sqlite3.Connection | None = None
     try:
         conn = _open_member_readonly(member.db_path)
         version = read_schema_version(conn)
-    except sqlite3.Error as exc:
+    except (sqlite3.Error, HistoryUnavailable) as exc:
         if conn is not None:
             conn.close()
         return None, f"could not read read-only: {exc}", "unreadable"
@@ -202,7 +204,19 @@ def _open_union(db_paths: list[Path]) -> sqlite3.Connection:
     Caller has already checked ``len(db_paths) <= _attach_limit(conn)``. The
     views are created *before* ``PRAGMA query_only = ON`` -- that pragma also
     blocks ``CREATE TEMP VIEW``.
+
+    ENH-3525: gated on the backend's ``"attach"`` capability -- the seam
+    FEAT-3524's remote (ATTACH-less) backend needs. The in-memory connection
+    below is a scratch host for the ATTACHed real ``history.db`` files, not
+    itself a history-store connection, so it opens directly rather than
+    through the chokepoint.
     """
+    from little_loops.session_store.backend import HistoryUnsupported, resolve_backend
+
+    backend = resolve_backend()
+    if not backend.supports("attach"):
+        raise HistoryUnsupported(f"'attach' is not supported by backend {backend.provider!r}")
+
     conn = sqlite3.connect(":memory:", uri=True)
     conn.row_factory = sqlite3.Row
     for i, path in enumerate(db_paths):

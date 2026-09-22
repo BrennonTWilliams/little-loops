@@ -30,19 +30,19 @@ _STALE_DAYS = 90  # Look back 90 days for evolution signals
 def _open_db(db_path: Path) -> sqlite3.Connection | None:
     """Open *db_path* for read-only querying without running schema migrations.
 
-    Uses a direct URI connection so the file is opened as-is.  This avoids the
-    ``ensure_db`` migration path inside ``_connect_readonly``, which fails when
-    the database was created by the test harness (tables already exist).
-    Returns ``None`` when the file does not exist.
+    Opens *db_path* exactly as given, through the strict chokepoint (ENH-3525:
+    ``SqliteBackend.connect_readonly()``, never creates or migrates) rather
+    than the ensure-then-read contract, which fails when the database was
+    created by the test harness (tables already exist). Returns ``None`` when
+    the file does not exist or cannot be opened.
     """
     if not db_path.exists():
         return None
+    from little_loops.session_store.backend import HistoryUnavailable, resolve_backend
+
     try:
-        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA query_only = ON")
-        return conn
-    except sqlite3.Error:
+        return resolve_backend().connect_readonly(db_path)
+    except HistoryUnavailable:
         logger.warning("evolution: could not open %s read-only", db_path, exc_info=True)
         return None
 
