@@ -25,6 +25,7 @@ learning_tests_required:
 decision_needed: false
 confidence_score: 95
 outcome_confidence: 79
+verify_verdict: VALID
 score_complexity: 18
 score_test_coverage: 18
 score_ambiguity: 18
@@ -303,6 +304,27 @@ Verdict: **VALID**
 - Decisions log: no active required rules.
 - Graph: provider=`codegraph` freshness=`fresh` (corroboration only).
 
+### Re-verification (2026-09-22, `/ll:verify-issues --auto`)
+
+Verdict: **VALID**
+
+- All cited `file:line` anchors re-checked against the working tree
+  (`conftest.py:120-146`, `pytest.ini:26`, `scripts/pyproject.toml:293`,
+  `test_feat3323_sse_bridge.py:200-219`) — unchanged, no drift; the stale
+  "runs on the controller" comment (AC-W9) is still present as expected
+  since implementation has not started.
+- `scripts/tests/test_no_parallel_serial_gate.py` still does not exist.
+- BUG-3522 still `status: open` — coordination note remains accurate.
+- `ll-verify-evidence --json` still flags only the same Steps-to-Reproduce
+  span already reviewed and dismissed as a tool misattribution, not
+  fabricated evidence.
+- Decisions log: no active required rules (`ll-issues decisions list --type
+  rule --enforcement required --active-only` → empty).
+- No `## Blocked By` section; `relates_to` entries are informational, not
+  blocking edges — no dependency issues found.
+- Proposal-vs-code check: AC-W1..AC-W11 still present and continue to cover
+  all Wiring Phase touchpoints; no new gap found.
+
 ## Status
 
 **Open** | Created: 2026-09-21 | Priority: P3
@@ -344,18 +366,20 @@ _Added by `/ll:refine-issue` — 2026-09-22 — based on codebase analysis:_
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-09-22_
+_Added by `/ll:confidence-check` on 2026-09-22; re-checked 2026-09-22 — gap unchanged by the intervening `/ll:reconcile-issue` and two `/ll:verify-issues` passes (neither touches Program Design)_
 
 **Readiness Score**: 95/100 → STOP — ADDRESS GAPS (Program Design hard override)
 **Outcome Confidence**: 79/100 → MODERATE
 
 ### Gaps to Address
-- Program Design: no call-path anchors named in Call Path — the "Call Path" section describes the control flow in prose (`Outer pytest schedules wrapper on an xdist worker → wrapper starts isolated nested pytest session → ...`) but names no backtick-anchored, repo-resolvable symbol (e.g. the wrapper's own `test_no_parallel_serial_pass`). `ll-issues check-design BUG-3523` fails on this basis alone; the aggregate readiness score of 95 is overridden per the Program Design Hard Override (ENH-2852/ENH-2967). Remedy: name at least one concrete anchor in the Call Path prose (the wrapper function and/or `pytest_collection_modifyitems`), or run `/ll:reconcile-issue` to regenerate the section.
+- Program Design: no call-path anchors named in Call Path — the "Call Path" section still describes the control flow in prose only (`Outer pytest schedules wrapper on an xdist worker → wrapper starts isolated nested pytest session → ...`) and names no backtick-anchored, repo-resolvable symbol (e.g. the wrapper's own `test_no_parallel_serial_pass`, which the Signatures subsection above it already names in backticks). `ll-issues check-design BUG-3523` still fails on this basis alone; the aggregate readiness score of 95 is overridden per the Program Design Hard Override (ENH-2852/ENH-2967). Remedy: name at least one concrete anchor in the Call Path prose (the wrapper function and/or `pytest_collection_modifyitems`), or run `/ll:reconcile-issue` to regenerate the section — note the prior `/ll:reconcile-issue` pass (2026-09-22T16:19:54) did not address this despite it being the prior confidence-check's sole gap.
 
 ### Outcome Risk Factors
 - Deep per-site complexity concentrated in the new `test_no_parallel_serial_gate.py` file (process-group lifecycle, bounded retry across `subprocess.TimeoutExpired` and non-zero/non-5 exits, descendant cleanup) — the surrounding 6 touch-points (`pytest.ini`, `scripts/pyproject.toml`, two stale-comment rewords, two docs rewords) are mechanical, so the aggregate Complexity score undercounts the one genuinely stateful site; validate the retry/cleanup paths with controlled subprocess fixtures per AC-W8/AC-W11 before trusting a green run.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-22T16:25:15 - `08d6ef1e-1b9c-4a4d-935a-fce06a8a019b.jsonl`
+- `/ll:verify-issues` - 2026-09-22T16:24:39 - `971b8e9e-da71-4859-ba73-1cc041bb9883.jsonl`
 - `/ll:reconcile-issue` - 2026-09-22T16:19:54 - `dd7982c9-14ba-4a41-940f-6fecc033ca70.jsonl`
 - `/ll:confidence-check` - 2026-09-22T16:16:18 - `9771b48d-f4c0-41e2-91d6-313376eb5ef8.jsonl`
 - `/ll:verify-issues` - 2026-09-22T16:13:43 - `2426bc78-355e-49c0-b1d4-bbd04fabb869.jsonl`
