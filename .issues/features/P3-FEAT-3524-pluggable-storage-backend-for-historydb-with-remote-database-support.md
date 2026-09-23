@@ -16,11 +16,11 @@ verify_verdict: VALID
 blocked_by:
 - ENH-3525
 - ENH-3526
-confidence_score: 85
-outcome_confidence: 35
+confidence_score: 80
+outcome_confidence: 43
 score_complexity: 0
 score_test_coverage: 25
-score_ambiguity: 10
+score_ambiguity: 18
 score_change_surface: 0
 missing_artifacts: true
 ---
@@ -1039,24 +1039,26 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-09-22_
+_Added by `/ll:confidence-check` on 2026-09-23_
 
-**Readiness Score**: 85/100 → STOP — ADDRESS GAPS (Learning Test Hard Override)
-**Outcome Confidence**: 35/100 → VERY LOW
+**Readiness Score**: 80/100 → STOP — ADDRESS GAPS (Learning Test Hard Override)
+**Outcome Confidence**: 43/100 → LOW
+
+### Concerns
+- `blocked_by` still lists ENH-3525/ENH-3526 in frontmatter although both are `done` (`format-check`: `stale_prose_dep`, `soft_dep_hard_edge`) — harmless to the Dependencies gate, but stale; clear them.
 
 ### Gaps to Address
-- `.ll/learning-tests/libsql-remote.md` does not exist (`ll-learning-tests check libsql-remote` → "no record found"). `learning_tests_required: [libsql, libsql-remote]` is unsatisfied, so the Learning Test Hard Override forces STOP regardless of the otherwise-85 aggregate. Remedy: produce it as Implementation Step 1, against both a local `turso dev`/`sqld` server and Turso Cloud, with every required assertion recorded and `proven_package`/`proven_version` set.
-- `.ll/learning-tests/libsql.md` is `status: proven` but has 1 failing claim ("invalid SQL and constraint violations raise `libsql.Error`" → fail). Accepted per the issue's own Verification Notes as a known driver divergence that drives the §3 error contract, not a new gap — but it still costs Criterion 1 its Learning Test modifier (−5 proven/failing, −10 missing → Criterion 1 scored 5/20).
-
-_Stale as of the 2026-09-23 review: the two open decisions below are now settled, and §7a adds scope. Re-run `/ll:confidence-check` before implementation._
+- `.ll/learning-tests/libsql-remote.md` does not exist (`ll-learning-tests check libsql-remote` → "no record found"), so the Learning Test Hard Override forces STOP regardless of aggregate. Remedy: produce it as Implementation Step 1 against a local `sqld`/`turso dev` server and Turso Cloud, with every required assertion recorded and `proven_package`/`proven_version` set. Auto-provision via `/ll:explore-api` was not run: it needs a real remote endpoint/token and the driver is not installed.
+- `libsql` is `proven` with 1 failing claim (`libsql.Error` assertion). Accepted driver divergence that drives the §3 error contract — costs Criterion 1 the −5 modifier, not a new gap.
 
 ### Outcome Risk Factors
-- Broad enumeration across many sites: the issue's own Impact section cites "the path-to-target refactor across the chokepoint's 102 entry-point call sites," ~20 downstream `session_store` consumers, and ~35 CLI modules to audit — Criterion A Breadth scored 0/12 (16+ sites) and Criterion D scored 0/25 (11+ callers, very wide blast radius, each site requiring site-specific judgment rather than a uniform substitution).
-- Deep per-site complexity: several sites are architectural rewiring/contract changes rather than mechanical edits — the target-type refactor changing `_resolve_once()`'s return type and the `Backend` protocol signature across all three entry points, the mixed-version migration chokepoint (§9), and the project-identity guard piggybacking on the schema check (§10) — Criterion A Depth scored 0/13.
-- Residual open design decisions: Readiness Prerequisites lists two decisions still "to record before implementation" — identity audit outcomes (event dedup, copied-session handling, foreign-path behavior) and snapshot-export scope (bounded local-artifact export vs. explicitly unsupported) — capping Criterion C's practical ambiguity at 10/25.
-- Real remote-driver compatibility remains unproven beyond the local spike: the Spike Results section explicitly excludes remote connectivity ("Both spike implementations use SQLite, so passing DDL/locking tests do not establish remote behavior"); the migration/transaction/timeout assumptions in Proposed Design §9 are unverified against a real Hrana/Turso Cloud endpoint until `libsql-remote.md` is proven.
+- Broad enumeration across ~94 chokepoint entry-point call sites plus ~20 downstream modules and ~35 CLI modules to audit — Complexity Breadth 0/12; Change Surface 0/25 (11+ dependents, site-specific judgment).
+- Deep per-site complexity: target-type refactor (`_resolve_once()` → `HistoryTarget`, `Backend` protocol change), mixed-version migration policy (§9), project-identity guard (§10), and remote ingestion with per-machine watermark (§7a) are contract changes, not mechanical edits — Complexity Depth 0/13.
+- Remote-driver behavior (transactions, timeouts, cross-thread use) is unproven until `libsql-remote.md` passes; §7a is a self-contained workstream and the natural split candidate to cut scope.
+- Design decisions are now settled (Ambiguity 18/25); residual ambiguity is only whether a provenance column proves necessary.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-23T19:50:48 - `cf354bec-9945-4c26-8202-11a55059cbe8.jsonl`
 - `/ll:verify-issues` - 2026-09-23T19:34:44 - `9cdcff0a-0bc1-428a-980c-013e7aa2e589.jsonl`
 - `/ll:confidence-check` - 2026-09-23T01:16:53 - `ca2bbd8f-3da0-4e15-879e-719591e63547.jsonl`
 - `/ll:verify-issues` - 2026-09-23T00:54:56 - `6dfad5ef-a609-4642-b1de-e08c59354d9f.jsonl`
