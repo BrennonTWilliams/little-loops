@@ -59,7 +59,7 @@ Unlike BUG-3522, the marker here was added for a **legitimate wall-clock reason*
 ## Steps to Reproduce
 
 1. `python -m pytest scripts/tests/test_feat3323_sse_bridge.py -n 2 -q` → the fan-in test is among the skips (`46 passed, 2 skipped`).
-2. Confirm no escape hatch exists: `grep -n '\-n 0' .github/workflows/ci.yml docs/` → nothing; the only documented serial invocation shape in `docs/development/TESTING.md` is the marker-table note that `no_parallel` "only actually runs in a serial `-n 0` invocation" — which nothing automates.
+2. Confirm no escape hatch exists: `grep -n '\-n 0' .github/workflows/ci.yml docs/` → nothing; the only documented serial invocation shape in `docs/development/TESTING.md` is the marker-table note that `no_parallel` "only actually runs in a serial `-n 0` invocation" — which nothing automates. <!-- ll-evidence-ok: quoted shell command the author ran, not file content; attribution to the test file is incidental -->
 
 ## Proposed Solution
 

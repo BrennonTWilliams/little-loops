@@ -230,10 +230,20 @@ class TestNewEventReaders:
         assert rates[0]["success_rate"] == 0.5
 
     def test_query_advisor_consults_and_consult_stats(self, tmp_path: Path) -> None:
+        from datetime import UTC, datetime, timedelta
+
         from little_loops.history_reader import consult_stats, query_advisor_consults
         from little_loops.session_store import write_advisor_consult
 
         db = tmp_path / "history.db"
+        # consult_stats() windows on wall-clock now, so fixtures must be
+        # now-relative: hardcoded dates silently age out of the 30-day window
+        # (this test started failing exactly 30 days after it was written).
+        now = datetime.now(UTC)
+
+        def ts(minutes_ago: int) -> str:
+            return (now - timedelta(minutes=minutes_ago)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
         write_advisor_consult(
             db,
             session_id="s1",
@@ -246,7 +256,7 @@ class TestNewEventReaders:
             latency_ms=4200,
             input_tokens=500,
             output_tokens=200,
-            ts="2026-08-24T10:00:00Z",
+            ts=ts(120),
         )
         write_advisor_consult(
             db,
@@ -257,7 +267,7 @@ class TestNewEventReaders:
             advisor_model=None,
             main_model="claude-sonnet-5",
             outcome="budget_exhausted",
-            ts="2026-08-24T11:00:00Z",
+            ts=ts(60),
         )
 
         rows = query_advisor_consults(db)
@@ -265,7 +275,7 @@ class TestNewEventReaders:
         assert rows[0].ts > rows[1].ts
         assert rows[0].outcome == "budget_exhausted"
 
-        since_rows = query_advisor_consults(db, since="2026-08-24T10:30:00Z")
+        since_rows = query_advisor_consults(db, since=ts(90))
         assert len(since_rows) == 1
         assert since_rows[0].outcome == "budget_exhausted"
 

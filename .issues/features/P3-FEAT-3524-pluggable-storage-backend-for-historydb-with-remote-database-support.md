@@ -39,15 +39,10 @@ embedded-replica synchronization are out of scope.
 
 ## Blocked By
 
-- ENH-3525: Consolidate history-store connections behind a SQLite backend chokepoint
-  (Phase A) — delivers `session_store/backend.py`, `connect_readonly()`, the
-  `HistoryError` taxonomy, backend-aware entry points, and the path-bypass repairs
-  that this issue assumes exist. **Satisfied** — `status: done` as of 2026-09-22;
-  verified in the codebase (see Verification Notes).
-- ENH-3526: Route remaining history-store write consumers through the backend
-  chokepoint (Phase A2) — the write-path completion split off ENH-3525.
-  **Satisfied** — `status: done` as of 2026-09-22; verified in the codebase (see
-  Verification Notes).
+- Both Phase A/A2 connection-chokepoint blockers were satisfied — merged
+  `status: done` on 2026-09-22 (ids in frontmatter `blocked_by`); see Current
+  Behavior for what they delivered and Verification Notes for the codebase
+  verification.
 - `.ll/learning-tests/libsql-remote.md` with `status: proven` — real remote-mode
   driver evidence (see Readiness Prerequisites). **Still open** — only
   `.ll/learning-tests/libsql.md` (local-only) exists; `libsql-remote.md` has not
