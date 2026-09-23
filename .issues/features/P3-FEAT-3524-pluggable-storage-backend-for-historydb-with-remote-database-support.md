@@ -36,6 +36,8 @@ embedded-replica synchronization are out of scope.
   (Phase A) — delivers `session_store/backend.py`, `connect_readonly()`, the
   `HistoryError` taxonomy, backend-aware entry points, and the path-bypass repairs
   that this issue assumes exist.
+- ENH-3526: Route remaining history-store write consumers through the backend
+  chokepoint (Phase A2) — the write-path completion split off ENH-3525.
 - `.ll/learning-tests/libsql-remote.md` with `status: proven` — real remote-mode
   driver evidence (see Readiness Prerequisites).
 
