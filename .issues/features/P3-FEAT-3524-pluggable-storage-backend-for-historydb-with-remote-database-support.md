@@ -932,9 +932,21 @@ what was wrong and fixed, not an outstanding action item). Graph checks used
   rule --enforcement required --active-only` → empty). Nothing to check against.
 - **Evidence-quote check (B7)**: `ll-verify-evidence` → `"ok": true, "count": 0`
   — no unverifiable evidence quotes found.
-- **Proposal-vs-code (B6)**: no new inconsistency found beyond the already
-  self-flagged `ensure_db() -> Path` fabricated-path tension under Open
-  Questions; unaffected by the ENH-3525/ENH-3526 merge.
+- **Proposal-vs-code (B6)**: no new inconsistency found; the earlier
+  `ensure_db() -> Path` fabricated-path tension is resolved in Proposed Design §1
+  (`HistoryBackendNotLocal`), and there is no longer an "Open Questions" section.
+  Unaffected by the ENH-3525/ENH-3526 merge.
+
+_Added by `/ll:verify-issues` — 2026-09-23 (re-check):_
+
+Verdict at time of check: **NEEDS_UPDATE** (the dangling "Open Questions"
+reference above was corrected in the same pass, so the issue as it now reads is up
+to date — this section is a record of what was fixed, not an outstanding action
+item). Graph: `provider=codegraph`, `freshness=fresh`. No commits touched
+`session_store/backend.py` since `a6f9c4960`; the raw `sqlite3.connect(` file count
+(7), `BackendProvider = Literal["sqlite"]` (`backend.py:47`), the absent `history.backend`
+schema key, and the missing `libsql-remote.md` all re-confirmed. Decisions log: no
+required rules. `ll-verify-evidence`: `ok: true`.
 
 ## Related Key Documentation
 
@@ -962,6 +974,7 @@ _Added by `/ll:confidence-check` on 2026-09-22_
 - Real remote-driver compatibility remains unproven beyond the local spike: the Spike Results section explicitly excludes remote connectivity ("Both spike implementations use SQLite, so passing DDL/locking tests do not establish remote behavior"); the migration/transaction/timeout assumptions in Proposed Design §9 are unverified against a real Hrana/Turso Cloud endpoint until `libsql-remote.md` is proven.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-23T19:34:44 - `9cdcff0a-0bc1-428a-980c-013e7aa2e589.jsonl`
 - `/ll:confidence-check` - 2026-09-23T01:16:53 - `ca2bbd8f-3da0-4e15-879e-719591e63547.jsonl`
 - `/ll:verify-issues` - 2026-09-23T00:54:56 - `6dfad5ef-a609-4642-b1de-e08c59354d9f.jsonl`
 - `/ll:verify-issues` - 2026-09-22T23:39:48 - `719ed6d0-2e4e-41db-ae76-8176f4dcd29a.jsonl`
