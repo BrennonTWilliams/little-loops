@@ -12,7 +12,7 @@ learning_tests_required:
 - libsql-remote
 spike_attempted: true
 spike_completed: true
-verify_verdict: NON_VALID
+verify_verdict: VALID
 blocked_by:
 - ENH-3525
 - ENH-3526
@@ -35,13 +35,34 @@ embedded-replica synchronization are out of scope.
 - ENH-3525: Consolidate history-store connections behind a SQLite backend chokepoint
   (Phase A) — delivers `session_store/backend.py`, `connect_readonly()`, the
   `HistoryError` taxonomy, backend-aware entry points, and the path-bypass repairs
-  that this issue assumes exist.
+  that this issue assumes exist. **Satisfied** — `status: done` as of 2026-09-22;
+  verified in the codebase (see Verification Notes).
 - ENH-3526: Route remaining history-store write consumers through the backend
   chokepoint (Phase A2) — the write-path completion split off ENH-3525.
+  **Satisfied** — `status: done` as of 2026-09-22; verified in the codebase (see
+  Verification Notes).
 - `.ll/learning-tests/libsql-remote.md` with `status: proven` — real remote-mode
-  driver evidence (see Readiness Prerequisites).
+  driver evidence (see Readiness Prerequisites). **Still open** — only
+  `.ll/learning-tests/libsql.md` (local-only) exists; `libsql-remote.md` has not
+  been created.
 
 ## Current Behavior
+
+_As of 2026-09-22, ENH-3525 and ENH-3526 have both merged (`status: done`) and
+delivered the consolidated chokepoint this section originally described as
+absent: `session_store/backend.py` now defines `Backend`/`SqliteBackend`,
+`resolve_backend()`, `open_history()`/`open_history_readonly()`,
+`connect_readonly()`, and the `HistoryError` taxonomy
+(`HistoryUnavailable`/`HistoryIntegrityError`/`HistoryUnsupported`/`HistoryOperationError`).
+Raw `sqlite3.connect(` call sites outside `session_store/backend.py` itself are
+down to 7 files (`queue_store.py`, `codequery/codegraph.py` — deliberately
+out of scope per this issue's own audit-only note; `session_store/{schema,
+sessions,queries}.py` and `issue_history/workspace_quality.py` — the sites this
+issue's wiring passes already name for migration onto the chokepoint). See
+Verification Notes for detail. `BackendProvider` is currently
+`Literal["sqlite"]` — no `libsql` entry exists yet, and `history.backend` is
+not yet in `config-schema.json` — both remain this issue's own scope, unchanged
+by ENH-3525/ENH-3526._
 
 `history.db` is always a local SQLite file. `history.db_path` (`config-schema.json`
 line 2164, `history` block) only overrides the local filesystem path — relative
@@ -231,7 +252,7 @@ _Added by `/ll:refine-issue` — 2026-09-22 — based on codebase analysis:_
 - **Config-schema shape for a discriminated backend selector**: a `"provider"`/`"kind"` string with a JSON Schema `"enum"` + `"default"` sits alongside a same-named nested settings object, even when only one provider currently exists (`sync.provider`, `config-schema.json:1390-1445`, `"enum": ["github"]` with a full nested `"github"` object) or several do (`code_query.provider`, `config-schema.json:1449-1484`, `"enum": ["auto", "codegraph", "fallback"]` with a nested `"codegraph"` settings object).
 - **Existing degradation precedent is exception-based, not a `supports()` boolean check**: `Unsupported(CodeQueryError)` (`codequery/core.py:39-44`) is raised by a provider for a query kind outside its `capabilities()`; its docstring claims the resolver catches this to fall through to a fallback provider, but a repo-wide search found no `except Unsupported` anywhere outside `cli/code.py:146` — the only live catch site logs and exits (`return 2`), it does not fall through. `HostCapabilities` (`host_runner.py:294-318`) is the other existing capability-flag precedent: a frozen dataclass of plain booleans, with an unsupported capability silently dropped and a `CapabilityNotSupported(UserWarning)` emitted rather than raised.
 - **`_apply_migrations` (`session_store/schema.py:1492-1567`) is single-dialect today**: it takes a live `sqlite3.Connection` directly (not a path or dialect token), `_MIGRATIONS` is an unconditional `list[str]` of raw SQL with no per-dialect branch, and locking is SQLite-specific (`BEGIN IMMEDIATE`, manual `isolation_level = None`, a custom `_split_sql_statements()` helper whose docstring explains it avoids `executescript()`'s implicit `COMMIT` that would release the write lock mid-migration). `_configure_connection()` (`schema.py:1443-1459`) applies WAL/`busy_timeout` pragmas wrapped in `try/except sqlite3.OperationalError` — today's one instance of graceful degradation in this file is per-pragma try/except, not a capability-flag check.
-- **No existing `connect_readonly()` counterpart anywhere in the tree** (repo-wide search, zero hits). The closest analog is two independently-duplicated private `_open_db()` helpers — `issue_history/evolution.py:30` and `codequery/codegraph.py:81` — both opening `file:{path}?mode=ro` with `uri=True` and `PRAGMA query_only = ON`, never raising (`except sqlite3.Error: return None`). The `codegraph.py` copy's docstring states it explicitly mirrors the `evolution.py` one rather than sharing a common module — i.e. the current convention for a read-only SQLite open is duplication-by-mirroring, not a shared function.
+- **Superseded 2026-09-22 (see Verification Notes): `connect_readonly()` now exists.** This finding originally read "No existing `connect_readonly()` counterpart anywhere in the tree (repo-wide search, zero hits)" — true when written, but ENH-3525 has since merged and added `connect_readonly()` at `session_store/backend.py:257` (plus a `Backend.connect_readonly` protocol method and `SqliteBackend.connect_readonly` implementation). The duplicated read-only helpers this finding named as the prior closest analog — `issue_history/evolution.py:30`, `codequery/codegraph.py:81`, and `issue_history/workspace_quality.py:108` (`_open_member_readonly`) — still exist and are still unmigrated; the wiring-pass items elsewhere in this issue already name folding them into the new chokepoint as in-scope work.
 - **Optional-dependency extras** (`pyproject.toml:141-199`) follow `<name> = ["pkg<constraint>"]` under `[project.optional-dependencies]`, with an inline justification comment on any version bound — the `mcp` extra (`pyproject.toml:178-191`) is the fullest example, explaining both the exact pin and why it's an extra rather than a base dependency (16 mandatory transitive deps otherwise landing on every install). A repo-wide search found no existing reference to `postgres`, `libsql`, `psycopg`, or `sqlalchemy` anywhere in `scripts/pyproject.toml` or `scripts/little_loops/`.
 - **No dialect abstraction exists anywhere in the codebase today**: a repo-wide search for `dialect` as a code identifier and for any `*Dialect` class found zero hits. `little_loops.session_store.backend` (the module this issue proposes) has no current counterpart in the tree.
 
@@ -705,6 +726,61 @@ divergence and drives the error contract in Proposed Design §3.
 `spike_completed: true` and `spike_attempted: true` remain accurate for what they
 claim (local spike mechanics only).
 
+_Added by `/ll:verify-issues` — 2026-09-23:_
+
+Verdict at time of check: **OUTDATED** (corrections below applied in the same
+pass, so the issue as it now reads is up to date — this section is a record of
+what was wrong and fixed, not an outstanding action item). Graph checks used
+`provider=codegraph`, `freshness=fresh` (§2B.0).
+
+- **Cause of drift**: `ENH-3526` merged at `a6f9c496` (2026-09-22 19:37:56 -0500),
+  ~1 hour after this issue's previous `/ll:verify-issues` pass (Session Log
+  23:39:48 UTC). `ENH-3525` (`status: done`) and `ENH-3526` (`status: done`) are
+  both this issue's `## Blocked By` entries #1 and #2 — both now satisfied.
+- **`## Blocked By` corrected** — both ENH-3525 and ENH-3526 marked satisfied
+  inline; the third blocker (`libsql-remote.md` `status: proven`) confirmed still
+  open — only `.ll/learning-tests/libsql.md` (local-only) exists on disk.
+- **`## Current Behavior` corrected** — it described the pre-ENH-3525/ENH-3526
+  state ("hardcoded to sqlite3", "~28 call sites") as current. Verified directly:
+  `scripts/little_loops/session_store/backend.py` now defines `Backend`
+  (Protocol, `:133`), `SqliteBackend` (`:159`), `resolve_backend()` (`:217`),
+  `open_history()` (`:270`), `open_history_readonly()` (`:284`),
+  `connect_readonly()` (`:257`), and the `HistoryError` taxonomy
+  (`HistoryError:50`, `HistoryUnavailable:54`, `HistoryIntegrityError:58`,
+  `HistoryUnsupported:62`, `HistoryOperationError:66`) — exactly the shape this
+  issue's own Program Design section already assumed as the ENH-3525 baseline.
+  `grep -rl "sqlite3.connect(" scripts/little_loops/ | grep -v test_` now returns
+  7 files, not ~28: `queue_store.py`, `codequery/codegraph.py` (both explicitly
+  out of scope per this issue's own audit-only note), `session_store/backend.py`
+  (the chokepoint's own implementation), and `session_store/{schema,sessions,
+  queries}.py` + `issue_history/workspace_quality.py` (already named in this
+  issue's wiring passes as pending migration). Added an inline correction to
+  Current Behavior; this issue's own scope (add `libsql` provider,
+  `history.backend` config, extras) is unaffected — confirmed
+  `BackendProvider = Literal["sqlite"]` (no `libsql` entry yet) and no `backend`
+  key under `history` in `config-schema.json`.
+- **Codebase Research Findings corrected** — "No existing `connect_readonly()`
+  counterpart anywhere in the tree" is now false; `connect_readonly()` exists at
+  `session_store/backend.py:257` (ENH-3525). Superseded in place; the three named
+  unmigrated duplicate read-only helpers (`evolution.py:30`, `codegraph.py:81`,
+  `workspace_quality.py:108`) still exist and remain correctly scoped as
+  wiring-pass work.
+- **Spot-checked additional file:line citations** not covered by the prior pass:
+  `session_store/queries.py:191` (`_connect_readonly`, exact),
+  `queries.py:248` (`build_snapshot_db`, ATTACH DATABASE at `:291` inside it —
+  the citation names the function, not the ATTACH line itself, so this is
+  accurate as written), `schema.py:204-208` (`sessions` table DDL: `session_id`,
+  `jsonl_path`, `started_at`, `project_path` — exact match),
+  `workspace_quality.py:108` (`_open_member_readonly` — exact match). No further
+  drift found.
+- **Decisions log**: no active required rules (`ll-issues decisions list --type
+  rule --enforcement required --active-only` → empty). Nothing to check against.
+- **Evidence-quote check (B7)**: `ll-verify-evidence` → `"ok": true, "count": 0`
+  — no unverifiable evidence quotes found.
+- **Proposal-vs-code (B6)**: no new inconsistency found beyond the already
+  self-flagged `ensure_db() -> Path` fabricated-path tension under Open
+  Questions; unaffected by the ENH-3525/ENH-3526 merge.
+
 ## Related Key Documentation
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
@@ -715,6 +791,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-23T00:54:56 - `6dfad5ef-a609-4642-b1de-e08c59354d9f.jsonl`
 - `/ll:verify-issues` - 2026-09-22T23:39:48 - `719ed6d0-2e4e-41db-ae76-8176f4dcd29a.jsonl`
 - `/ll:review-issue` - 2026-09-22T20:23:55 - `a4d36fa6-881b-478d-9b3a-16179bad6635.jsonl`
 - `/ll:verify-issues` - 2026-09-22T19:21:07 - `6cde693c-199f-46be-be94-59e50bb11494.jsonl`
