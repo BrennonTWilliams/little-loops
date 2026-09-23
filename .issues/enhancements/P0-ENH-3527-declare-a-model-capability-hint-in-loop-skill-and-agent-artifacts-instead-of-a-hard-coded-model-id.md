@@ -88,6 +88,67 @@ _Added by `/ll:refine-issue` — 2026-09-23 — based on codebase analysis:_
 **Scoping note**
 - Loop YAMLs that set a per-state `model:` were not enumerated; not needed while migration is out of scope.
 
+### Dependent Files (Callers/Importers)
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/fsm/executor.py` — `state.model or self.run_model` (prompt path), `state.model or self.fsm.llm.model` (two evaluator dispatches), and `_resolve_action_model` (SDK/batch); each of the three seams must resolve a hint [Agent 1 finding]
+- `scripts/little_loops/fsm/evaluators.py` — three evaluator signatures default `model: str = DEFAULT_LLM_MODEL` and one uses `model or DEFAULT_LLM_MODEL`; `build_blocking_json(..., model=model)` at three sites [Agent 1/2 finding]
+- `scripts/little_loops/fsm/__init__.py` — re-exports `DEFAULT_LLM_MODEL`; export any new public symbol (`ModelHint`) here if added to `fsm.schema` [Agent 1 finding]
+- `scripts/little_loops/cli/loop/run.py`, `cli/loop/lifecycle.py` (`fsm.llm.model` at run and resume), `cli/loop/runner.py` (re-forwards `--model`/`--llm-model` into the detached command) — plumb `run_model`/`llm.model`; a hint on `llm.model` must survive detach and resume [Agent 1/2 finding]
+- `scripts/little_loops/cli/loop/header.py` — `model_display` builds the `model: <x> [EFFORT]` header line; decide whether it shows the hint or the resolved id [Agent 2 finding]
+- `scripts/little_loops/cli/loop/info.py` — hard-codes `llm.model != "sonnet"` rather than importing `DEFAULT_LLM_MODEL`; a hint value flows through this print [Agent 1 finding]
+- `scripts/little_loops/fake_host.py` — echoes `d.args["model"]` into the `init` event; `FakeHostRunner` accepts and ignores `model` [Agent 1/2 finding]
+- `scripts/little_loops/cli/adapt_agents_for_codex.py` — `_emit_agent_toml(name, description, model, body)` writes the source frontmatter `model:` verbatim; a hint here would be emitted as a literal model id into `.codex/agents/*.toml` unless resolved [Agent 1/2 finding]
+- `scripts/little_loops/host_runner.py` — per-host `if model: args += ["--model", model]` at ten runner classes; codex `build_streaming` does `del model`; `__all__` lists `MODEL_ALIASES`/`resolve_model_alias` (add `resolve_model_hint`/`HINT_MODELS`) [Agent 2 finding]
+- `scripts/little_loops/cli/harness.py`, `cli/advise.py`, `cli/artifact/extract.py`, `cli/artifact/templatize.py` — user-supplied `--model` passes straight through; decide whether these accept a hint [Agent 2 finding]
+- `scripts/little_loops/cli/verify_host_map.py` — `_check_runtime_contradiction` checks `RuntimeHostEntry` key/host/flags/report_rows only; a new per-host hint table needs its own coverage check to be guarded [Agent 2 finding]
+
+### Files to Modify (wiring additions)
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/config-schema.json` — `advisor.model` (default `"opus"`) and the compaction `model` key are plain strings; decide whether they accept hints [Agent 1/2 finding]
+- `scripts/little_loops/fsm/fsm-loop-schema.json` — `llm.model` JSON default is `claude-sonnet-4-20250514`, not `DEFAULT_LLM_MODEL`; a new `stateConfig.model_hint` property is required (`additionalProperties: false`) [Agent 1/2 finding]
+
+### Documentation
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/LOOPS_GUIDE.md` — per-state field table `model:` row (~:614) and "Pinning haiku on verdict states" (~:617–629); add a `model_hint` row [Agent 2 finding]
+- `docs/reference/CLI.md` — `ll-loop run` `--model`/`--llm-model` rows (~:873–875) and run-header example (~:926–940) [Agent 2 finding]
+- `docs/reference/API.md` — `LLMConfig`/`evaluate_llm_structured` (~:6139, :6252), `RuntimeHostEntry` field table (~:10572–10731), `rank_model` section (~:12200); add `resolve_model_hint`/`HINT_MODELS` [Agent 2 finding]
+- `docs/generalized-fsm-loop.md` — `llm.model` docs (~:406, :909, :1375) [Agent 2 finding]
+- `docs/reference/HOST_COMPATIBILITY.md`, `docs/ARCHITECTURE.md` (~:869, :1345–1354) — runtime capability map descriptions [Agent 1/2 finding]
+- `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` (~:113) — `haiku-gen` row; a hint-only state bypasses the lint [Agent 2 finding]
+- `skills/audit-claude-config/wave1-prompts.md` (~:187) and `agents/plugin-config-auditor.md` (~:66, :124) — list `model` as a validated key/optional hook field; editing skills trips the mirror gates [Agent 2 finding]
+
+### Tests
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_fsm_schema.py` — `TestModelStateConfig` (~:2809) is the exact template for `model_hint` (defaults None, to_dict include/exclude, from_dict, round-trip); `TestEffort` (~:4645) and the tamper-guard tests (~:4848) are the same shape; add a `model_hint in schema["definitions"]["stateConfig"]["properties"]` test beside `test_schema_json_declares_state_and_loop_level_tamper_guard` (~:4936). No `stateConfig`↔`StateConfig` lockstep test exists, so schema drift is otherwise uncaught [Agent 3 finding]
+- `scripts/tests/test_fsm_validation_structural.py` — copy `TestModelStateValidation` (~:1217) / `TestEffortStateValidation` (~:1290) into a `TestModelHintStateValidation` plus an invalid-value case; neither existing class tests a closed vocabulary [Agent 3 finding]
+- `scripts/tests/test_fsm_validation_evaluator_rules.py` — add a case that a hint-only state on a verdict evaluator does or does not trip `haiku-gen` [Agent 2 finding]
+- `scripts/tests/test_fsm_executor.py` — BUG-2818 precedence tests (~:12349, :12397) and `test_sub_loop_inherits_run_model` (~:9321): add a hint tier at all three seams; existing asserts `kwargs["model"] == "claude-sonnet-5"` / `"haiku"` must still pass [Agent 1/3 finding]
+- `scripts/tests/test_fsm_evaluators.py` — `test_dispatch_llm_structured_uses_default_model_when_none_passed` (:1703) and `test_dispatch_llm_structured_threads_model_kwarg` (:1717): add hint-threading case [Agent 3 finding]
+- `scripts/tests/test_host_runner.py` — `test_build_streaming_with_model` / `test_build_streaming_without_model_omits_flag` (~:661/:669 plus per-host copies ~:1378, :1542, :1711, :1946): unset hint must leave argv unchanged; add per-host hint cases [Agent 3 finding]
+- `scripts/tests/test_host_runner_dispatch.py` — `TestModelAliasResolution` (:351): add `resolve_model_hint` cases; analog for the SDK seam [Agent 3 finding]
+- `scripts/tests/test_fsm_runners.py`, `test_ll_loop_execution.py`, `test_ll_loop_parsing.py`, `test_fake_host.py`, `test_cli_harness.py`, `test_cli_advise.py` — exact `--model`/`model` kwarg assertions; break only if an unset hint changes argv [Agent 1/3 finding]
+- `scripts/tests/test_codex_adapter.py`, `test_adapters.py` (`'model = "opus"' in toml`, `_make_agent` default `model: sonnet`) — no codex TOML `model` coverage in `test_codex_adapter.py`; add if hint frontmatter is honored on the codex path [Agent 2/3 finding]
+- `scripts/tests/test_wiring_reference_docs.py` (~:198) — add rows for `resolve_model_hint`/`HINT_MODELS` if API.md documents them (pattern: `("docs/reference/API.md", "rank_model", "FEAT-3108")`) [Agent 3 finding]
+- `scripts/tests/test_verify_host_map.py` — extend if a hint-table coverage check is added to `verify_host_map` [Agent 2 finding]
+
+### Configuration
+_Wiring pass added by `/ll:wire-issue`:_
+- Committed per-host mirrors carry literal `model:` in 49 files (`.gemini`, `.qwen`, `.kimi-code` skills/agents) and 9 `.codex/agents/*.toml` (`model = "sonnet"`); any change to source frontmatter needs `ll-adapt --host <gemini|kimi-code|qwen> --apply` and codex TOML regeneration [Agent 2 finding]
+
+## Implementation Steps
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Resolve the hint at all three model seams in `fsm/executor.py` (prompt `state.model or self.run_model`, evaluator `state.model or self.fsm.llm.model` ×2, `_resolve_action_model`) and thread through `fsm/evaluators.py`
+- Add `model_hint` to `StateConfig` (`to_dict`/`from_dict`) and to `stateConfig` in `fsm-loop-schema.json`; add the closed-vocab WARNING rule in `structural_rules.py` and reconcile the `haiku-gen` lint in `evaluator_rules.py`
+- Decide and document the CLI-path behavior in `host_runner.py` (alias vs concrete id on `--model`) before chaining `resolve_model_hint -> resolve_model_alias`; keep unset-hint argv byte-identical
+- Add a `verify_host_map` check so every host with a `--model` flag has a hint-table entry (opencode/pi raise on `--model`)
+- Update `cli/loop/header.py` `model_display`, `cli/loop/info.py` and `cli/loop/runner.py` detach forwarding for hint values
+- Update the docs listed above and add `test_wiring_reference_docs.py` rows
+- Add tests following `TestModelStateConfig`, `TestEffort`, `TestModelStateValidation`, and `TestModelAliasResolution`
+
 ## Program Design
 
 ### Types
@@ -117,5 +178,6 @@ _Added by `/ll:refine-issue` — 2026-09-23 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-23T23:43:26 - `96fe3651-90ba-4862-a958-697a2df577cc.jsonl`
 - `/ll:refine-issue` - 2026-09-23T23:20:19 - `1dd8afb6-deef-4834-bd0a-401f1160db13.jsonl`
 - `/ll:format-issue` - 2026-09-23T22:58:54 - `67a10285-a4b7-4192-bd9e-23ac30a3ffd0.jsonl`

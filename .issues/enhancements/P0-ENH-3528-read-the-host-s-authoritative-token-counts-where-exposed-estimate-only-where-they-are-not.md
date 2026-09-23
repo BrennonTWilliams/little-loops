@@ -85,6 +85,71 @@ _Added by `/ll:refine-issue` — 2026-09-23 — based on codebase analysis:_
 **Documentation**
 - `docs/reference/CLI.md` (`ll-ctx-stats` ~:568, JSON key list ~:578), `docs/reference/HOST_COMPATIBILITY.md` (token-reporting row ~:264, codex usage ~:316–327), `docs/reference/API.md` (`main_ctx_stats`), `docs/guides/SESSION_HANDOFF.md` (state file example), `docs/development/TROUBLESHOOTING.md` (~:1167).
 
+### Dependent Files (Callers/Importers)
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/host_runner.py` — `RUNTIME_HOST_CAPABILITIES` carries the codex `token_reporting: "full"` report row (~:647–648); `token_source` on `HostCapabilityEntry` is a second, separate surface — keep the two consistent [Agent 1/2 finding]
+- `scripts/little_loops/cli/doctor.py` — `_ADVISORY_CAPABILITIES = frozenset({"claude_md_suppression", "token_reporting"})` (~:102) [Agent 1/2 finding]
+- `scripts/little_loops/adapters/core.py` — `HOST_CAPABILITIES.get(getattr(emitter, "name", ""))` (~:573); `scripts/little_loops/text_utils.py` (~:291–293) also imports `HOST_CAPABILITIES` [Agent 1 finding]
+- `scripts/little_loops/cli/ctx_stats.py` — `_codex_cache_usage` (def ~:356, called ~:424) is the existing codex authoritative-count reader; `estimated_tokens` read in `_render_fallback` (~:594) and `_print_json` (~:669); `_print_json` emits `usage_by_model` (~:661, undocumented in CLI.md) and top-level `source` at ~:646/:668/:676 [Agent 1/2 finding]
+- `scripts/little_loops/subprocess_utils.py` — `usage_from_event` (def ~:81; calls ~:143, :169, :706, :730) parses claude `result` and codex `turn.completed` usage [Agent 1 finding]
+- `scripts/little_loops/fsm/executor.py` — live `record_usage_event` call (~:4393–4399); this is the writer that would stamp `source` [Agent 1 finding]
+- `scripts/little_loops/session_store/lifecycle.py` — `_backfill_usage_events` call (~:1004) and table-count list (~:949, :982) [Agent 1/2 finding]
+- `scripts/little_loops/session_store/{qwen,sessions,codex}.py` — `normalize_qwen_record` (qwen.py ~:59; sessions.py ~:1126/:1143), `codex.py` docstring on `_codex_cache_usage`/`event_msg`/`token_count`; the seams where native usage would be read [Agent 1 finding]
+- `scripts/little_loops/session_store/queries.py` — `_SHAREABLE_COLUMNS` (~:149) and `_SHAREABLE_ALLOWLIST_VERSION = 1` (~:179); `cli/artifact/dashboard.py` imports both (~:37–38, :98, :317) [Agent 1/2 finding]
+- `scripts/little_loops/history_reader/usage.py` — `cost_attribution` allows a raw `usage_events` column as `group_by`, so `source` would become groupable; also `waste_attribution`, `recent_usage_events`; `history_reader/models.py` `UsageEvent` (~:244) [Agent 2 finding]
+- `scripts/little_loops/history_reader/context.py` / `models.py` — `used_tokens_est` SELECTs (~:145, :174, :209) and dataclass field (~:276) [Agent 1 finding]
+- `scripts/little_loops/issue_history/{agent_quality,quality_regressions,workspace_quality}.py`, `init/core.py` — read `usage_events`; must tolerate a new nullable column [Agent 2 finding]
+- `scripts/little_loops/hooks/session_start.py` (~:174–196, ENH-2581) — a `SCHEMA_VERSION` advance triggers `--rebuild` on next SessionStart in every local-editable project [Agent 2 finding]
+- `scripts/little_loops/loops/context-health-monitor.yaml` (~:26–27) — echoes `jq -r '.estimated_tokens // "n/a"' .ll/ll-context-state.json` unlabeled [Agent 1 finding]
+- `hooks/scripts/context-monitor.sh` (`estimated_tokens` written ~:256/:404, read ~:300/:330; `used_tokens_est` to `context_events` ~:87) and `hooks/scripts/context-handoff-sentinel.sh` (~:40, :51) already distinguish `result_token_count` (measured) from `estimated_tokens` [Agent 1/2 finding]
+- `scripts/little_loops/cli/harness.py` — 26 hits on `input_tokens|total_tokens|cache_read` (ENH-3464 efficiency vector); candidate token-figure renderer to check for labeling [Agent 1 finding]
+
+### Files to Modify (wiring additions)
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/verify_host_map.py` — add a `token_source` consistency rule in `_check_emitter_agreement` or `_check_runtime_contradiction` (cross-check against the `token_reporting` report row); no check inspects token fields today [Agent 2 finding]
+- `scripts/little_loops/session_store/schema_manifest.json` — regenerate if a `usage_events.source` column is added; `package_data.py` ships it [Agent 1/2 finding]
+- `scripts/little_loops/session_store/queries.py` — `_SHAREABLE_COLUMNS["usage_events"]` (12 columns) and `_SHAREABLE_ALLOWLIST_VERSION` only if `source` joins the shareable export [Agent 2 finding]
+
+### Documentation
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/CLI.md` § `ll-ctx-stats` — `--json` key list (`cache_rate_host` etc.), intro "token estimates" wording; add per-figure source and document `usage_by_model`; ~:5178 dashboard allowlist prose [Agent 2 finding]
+- `docs/reference/HOST_COMPATIBILITY.md` — "Token reporting" row (~:264) with `[^tok]`/`[^tok-codex]`/`[^qwen]`/`[^kimi]`/`[^gemini]`/`[^omp]` footnotes, codex reader (~:316–333, :566); hand-authored per-host measured/estimated narrative [Agent 2 finding]
+- `docs/reference/API.md` — `main_ctx_stats` (~:5146), `_aggregate_context_pressure` (~:9452), `used_tokens_est` (~:9421, :10163), `cost_attribution`/`waste_attribution`/`recent_usage_events` (~:8801/:8821/:8431) [Agent 1/2 finding]
+- `docs/reference/CONFIGURATION.md` (~:567 `analytics.capture.usage_events`; ~:532 token-priority tiers; ~:968 `_SHAREABLE_COLUMNS`) [Agent 1/2 finding]
+- `docs/guides/HISTORY_SESSION_GUIDE.md` — schema-history table (last row `v52`; add v53) [Agent 2 finding]
+- `docs/ARCHITECTURE.md` — migration table (~:659–685, add v53) and `result_token_count` tiers (~:1414–1418) [Agent 1/2 finding]
+- `docs/guides/BUILTIN_HOOKS_GUIDE.md` (~:309), `docs/guides/SESSION_HANDOFF.md` (~:288, :366), `docs/development/TROUBLESHOOTING.md` (~:1167), `docs/observability/otel-mapping.md`, `docs/observability/realized-savings-verification.md`, `docs/codex/usage.md` (~:125) — mention estimated/measured tokens or `usage_events` columns [Agent 1/2 finding]
+
+### Tests
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_cli_ctx_stats.py` — add estimate-label and per-figure `source` cases in `TestMainCtxStats`/`TestAggregateUsageEvents`; follow `TestCacheHitRateInOutput.test_json_includes_cache_rate_host` (:1177) and `test_json_cache_rate_host_null_when_no_jsonl` (:1192). Existing substring asserts in the fallback test (~:374–396: `"12,345"`/`"12345"`, `"read"`) and `data["source"] == "sqlite"` (~:422) must keep passing [Agent 2/3 finding]
+- `scripts/tests/test_verify_host_map.py` (`subagents` per-host assertions :35–50; explicit `HostCapabilityEntry(...)` constructions ~:159, :192–237) and `test_adapters.py` `TestFixtureHostRegistration` (~:1271–1293) — survive only if `token_source` has a default; extend bad-map fixtures for a new check [Agent 2/3 finding]
+- `scripts/tests/test_session_store_schema.py` — new v53 column migration class following the v29 `run_id` tests (~:1518–1549); `test_manifest_schema_version_matches_live_schema_version` (~:3169) and `test_schema_manifest_matches_checked_in_file`; verify `test_usage_events_columns` (~:1030, v20) does not use exact `==` [Agent 2/3 finding]
+- `scripts/tests/test_session_store_writers.py` — hard-coded `SCHEMA_VERSION == 52` pins (~:521–522, :1386, :1516, :1855, :2097); `test_assistant_messages.py` (~:88) also pins 52; update all in the same commit [Agent 2/3 finding]
+- `scripts/tests/test_feat3304_artifact_dashboard.py` — `PINNED_VERSION`/`PINNED_HASH` in `test_allowlist_and_version_change_together` (~:659), hand-built fixture DDL (~:87–93) and `== _SHAREABLE_COLUMNS["usage_events"]` (~:237); touched only if `source` joins the allowlist [Agent 2/3 finding]
+- `scripts/tests/test_enh_3166_qwen_normalizer.py` — `test_ui_telemetry_has_no_normalized_equivalent` asserts the opposite of qwen token extraction; update if qwen is the chosen host [Agent 3 finding]
+- `scripts/tests/test_subprocess_utils.py` (`usage_from_event` ~:3280–3342), `test_session_store_lifecycle.py`, `test_history_reader_usage.py` (uses named-column INSERTs, safe), `test_hooks_integration.py` (`estimated_tokens` ~:105–1090, `used_tokens_est` ~:410), `test_cli_doctor.py` (~:149–182, `token_reporting` advisory), `test_host_runner.py` (~:2233–2238, codex `token_reporting == "full"`), `test_history_store_chokepoint_gate.py` (~:20, names `cli/ctx_stats.py` as a diagnostic aggregator — new raw-SQL reads fall under it) [Agent 1/2 finding]
+- `scripts/tests/fixtures/codex/rollout-interactive.jsonl` — fixture for a codex `token_count` → `usage_events` ingestion test [Agent 3 finding]
+
+### Configuration
+_Wiring pass added by `/ll:wire-issue`:_
+- `.ll/evidence-precision-labels.json` — precision-label registry that mentions `usage_events`; check whether it carries a rule tied to estimate labeling [Agent 1/2 finding — unverified]
+- `docs/reference/json-output-contracts.md` is not affected; no loop, hook, skill or command parses `ll-ctx-stats --json` [Agent 2 finding]
+
+## Implementation Steps
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Keep the per-figure `source` off the top level of `_print_json` (already `sqlite|fallback|none`); nest it under the figures or use a distinct key
+- Add `token_source` with a default to `HostCapabilityEntry` and set it explicitly on all 6 entries; add a `verify_host_map` rule tying it to the runtime `token_reporting` row
+- If `usage_events.source` is added: append one migration, bump `SCHEMA_VERSION` to 53, regenerate `schema_manifest.json`, update the `== 52` pins in `test_session_store_writers.py` and `test_assistant_messages.py`, add v53 rows to `HISTORY_SESSION_GUIDE.md` and `ARCHITECTURE.md`; expect a SessionStart `--rebuild` in every local-editable project
+- Decide allowlist membership up front: adding `source` to `_SHAREABLE_COLUMNS` requires the `_SHAREABLE_ALLOWLIST_VERSION` bump, the pinned hash, and the dashboard fixture DDL
+- For the codex or qwen ingestion half, extend `_backfill_usage_events` and the live `record_usage_event` path, add fixture-backed tests, and update `test_ui_telemetry_has_no_normalized_equivalent` if qwen is chosen
+- Label `context-health-monitor.yaml` and the `SESSION_HANDOFF.md`/`TROUBLESHOOTING.md` `estimated_tokens` examples
+- Update `CLI.md` (including the undocumented `usage_by_model` key) and `HOST_COMPATIBILITY.md`
+
 ## Program Design
 
 ### Types
@@ -115,5 +180,6 @@ _Added by `/ll:refine-issue` — 2026-09-23 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-23T23:43:26 - `96fe3651-90ba-4862-a958-697a2df577cc.jsonl`
 - `/ll:refine-issue` - 2026-09-23T23:20:19 - `1dd8afb6-deef-4834-bd0a-401f1160db13.jsonl`
 - `/ll:format-issue` - 2026-09-23T22:59:16 - `f909c28b-1081-4c2f-b215-fc2794a9d5b6.jsonl`
