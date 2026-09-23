@@ -72,18 +72,25 @@ not yet in `config-schema.json` — both remain this issue's own scope, unchange
 by ENH-3525/ENH-3526._
 
 `history.db` is always a local SQLite file. `history.db_path` (`config-schema.json`
-line 2164, `history` block) only overrides the local filesystem path — relative
-paths resolve against the project root and `LL_HISTORY_DB` takes precedence
-(ENH-2623), resolved by `little_loops.session_store.db._resolve_db_path` /
-`resolve_history_db`. The storage layer itself is hardcoded to `sqlite3`:
-`little_loops.session_store.schema.ensure_db` opens `sqlite3.connect(str(db_path))`
-directly, and roughly 28 other call sites across ~15 modules
-(`session_store/{schema,sessions,queries,lifecycle,writers}.py`,
-`history_reader/_base.py`, `issue_history/*`,
-`cli/{history,logs,doctor,doctor_trim,ctx_stats}.py`, `queue_store.py`,
-`codegraph.py`) do the same, many relying on SQLite-specific features
-(`file:{path}?mode=ro` URIs, WAL PRAGMAs, FTS5). There is no way to point
-`history.db` at a network-accessible database instead of a local file.
+`history` block) only overrides the local filesystem path — relative paths resolve
+against the project root and `LL_HISTORY_DB` takes precedence (ENH-2623), resolved by
+`little_loops.session_store.db._resolve_db_path` / `resolve_history_db`. The
+chokepoint is path-typed end to end and returns `sqlite3.Connection`; the only
+registered backend is `SqliteBackend`, and consumers still rely on SQLite-specific
+features (`file:{path}?mode=ro` URIs, WAL PRAGMAs, FTS5, `ATTACH`, Python UDFs). There
+is no way to point `history.db` at a network-accessible database instead of a local
+file.
+
+Session/transcript data reaches the store only through ingestion:
+`hooks/session_start.py` spawns the backfill worker, which calls
+`session_store/lifecycle.py` `backfill_incremental()` → `backfill_raw_events()` (`INSERT OR IGNORE` into the
+raw-events table, keyed on `(source_path, line_no)`, then advances a single global
+`meta.last_raw_event_ts` watermark, `lifecycle.py:857`). The derived cache tables in
+`_REBUILD_TABLES` (`lifecycle.py:940`: `tool_events`, `message_events`,
+`assistant_messages`, `skill_events`, `sessions`, `user_corrections`,
+`summary_nodes`, `summary_spans`) are materialized from `raw_events` by `rebuild()` —
+a `DELETE`-then-replay — which the worker runs (`--rebuild`) when `SCHEMA_VERSION`
+has advanced past `meta.last_rebuild_version`.
 
 ## Expected Behavior
 
@@ -161,6 +168,13 @@ _Second wiring pass added by `/ll:wire-issue`:_
 - `little_loops/cli/session.py` — add a new `migrate` subcommand (backed by `migrate_history()`, Proposed Design §9); `ll-session` has no migrate subcommand today
 - `little_loops/history_reader/formatting.py:55` (`ll_grep`) — registers a Python UDF `regexp_match` via `conn.create_function` and calls it inside SQL; cannot execute on a remote server (Proposed Design §5)
 
+_Review pass — 2026-09-23:_
+- `little_loops/hooks/session_start.py:145-200` — **split-brain writer, not just an env reader.** Builds `_db_path` as `LL_HISTORY_DB` or a hardcoded `root / ".ll" / "history.db"` (bypasses `history.db_path` and the chokepoint), passes it as the backfill worker's positional DB arg, and reads `meta.last_rebuild_version` via `connect(_db_path)` (migrate-on-open). Under `libsql` the worker would ingest into a local DB. Must resolve a `HistoryTarget`, pass the remote target to the worker (e.g. omit the positional path / pass a sentinel the worker resolves through config), never append `--rebuild`, and never migrate on open (Proposed Design §7a, §9)
+- `little_loops/cli/backfill_worker.py` — accept a remote target; refuse `--rebuild` under `libsql`
+- `little_loops/session_store/lifecycle.py` — `backfill_raw_events()`/`backfill_incremental()` global `last_raw_event_ts` watermark (`:857`, `:1123`, `:1175`) → per-machine key under `libsql`; new additive incremental materialization of `_REBUILD_TABLES` rows for newly ingested raw-event rows (Proposed Design §7a)
+- `little_loops/session_store/db.py` `_config_db_path()` (`:35-69`) — reads `ll-config.json` with raw `json.loads`, **no `.ll/ll.local.md` merge**. The new `history.backend` reader must not copy this pattern (Proposed Design §1)
+- `.gitignore` and `little_loops/init/writers.py` `_GITIGNORE_ENTRIES` (`:98`) — ignore the §8 unreachable marker and verification cache in this repo and in consuming projects (or name them to match an existing ignored glob such as `.ll/*.lock`)
+
 ### Dependent Files (Callers/Importers)
 - The ~28 `sqlite3.connect(` call sites enumerated above are themselves the
   inventory to classify; only history-store callers move behind the new chokepoint;
@@ -226,6 +240,7 @@ _Second wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/{test_compaction,test_enh_2497_agent_type,test_enh_2505_subagent_runs,test_enh_2511_mcp_telemetry,test_enh_3166_qwen_normalizer,test_enh_3393_gemini_normalizer,test_enh_omp_normalizer,test_issue_collisions,test_issue_history_rework,test_ll_session,test_pytest_history_plugin,test_sweep_stale_refs,test_transport}.py` — genuinely session_store-coupled (call `ensure_db`/`connect` or a direct `sqlite3.connect(str(db))` bypassing the store's own `connect()`); `test_ll_session.py` is the heaviest, exercising `rebuild`/`compact`/`recompress`/`backfill` end-to-end [Agent 3 finding]
 - New: dedicated test file for `little_loops/cli/compact_session.py`'s `main_compact_session()` — no existing test invokes the CLI wrapper; only the underlying `session_store.compact_session()` function is tested (`test_compaction.py`) [Agent 3 finding]
 - `test_codequery_core.py::TestResolveProvider`/`TestProtocolConformance` and `test_host_runner.py::TestResolveHost`/`TestResolveHostNamed` remain the applicable test-shape precedent for `resolve_backend()`; `test_host_runner.py::test_does_not_mutate_os_environ` (`:2394`) is the stricter of the two and should be followed if `resolve_backend()` reads env vars [Agent 3 finding]
+- New/extended (review pass 2026-09-23): per-machine watermark isolation (machine B's older un-ingested transcripts are still ingested after machine A advances its watermark); incremental materialization is additive (no `DELETE`) and idempotent on re-run; `session_start` under `libsql` spawns the worker against the remote target without `--rebuild`; `history.backend` set only in `.ll/ll.local.md` is honored; a malformed `ll.local.md` never raises on the hook path; the conftest session-wide `LL_HISTORY_DB` (`scripts/tests/conftest.py:974-981`) keeps the suite local — remote/config-resolution tests must `delenv("LL_HISTORY_DB")` explicitly
 - `scripts/tests/test_feat3323_sse_bridge.py:1198-1201`, `test_hook_user_prompt_submit.py:143-146,302-305,604-607`, `test_ll_issues_research_triage.py:145-148`, `test_set_status_cli.py:1309-1312`, `test_hook_post_tool_use.py:190-193`, `test_feat3445_workspace_activity.py:92-98` — assert on `sqlite3.OperationalError`/`sqlite3.Error` specifically as the stand-in for "the history store failed," separate from the four catch sites already named in Program Design; each caller's best-effort/degradation contract needs re-verification against the new backend-neutral error taxonomy [Agent 2 finding]
 
 ### Documentation
@@ -277,7 +292,7 @@ _Added by `/ll:refine-issue` — 2026-09-22 — based on codebase analysis:_
 - **Config-schema shape for a discriminated backend selector**: a `"provider"`/`"kind"` string with a JSON Schema `"enum"` + `"default"` sits alongside a same-named nested settings object, even when only one provider currently exists (`sync.provider`, `config-schema.json:1390-1445`, `"enum": ["github"]` with a full nested `"github"` object) or several do (`code_query.provider`, `config-schema.json:1449-1484`, `"enum": ["auto", "codegraph", "fallback"]` with a nested `"codegraph"` settings object).
 - **Existing degradation precedent is exception-based, not a `supports()` boolean check**: `Unsupported(CodeQueryError)` (`codequery/core.py:39-44`) is raised by a provider for a query kind outside its `capabilities()`; its docstring claims the resolver catches this to fall through to a fallback provider, but a repo-wide search found no `except Unsupported` anywhere outside `cli/code.py:146` — the only live catch site logs and exits (`return 2`), it does not fall through. `HostCapabilities` (`host_runner.py:294-318`) is the other existing capability-flag precedent: a frozen dataclass of plain booleans, with an unsupported capability silently dropped and a `CapabilityNotSupported(UserWarning)` emitted rather than raised.
 - **`_apply_migrations` (`session_store/schema.py:1492-1567`) is single-dialect today**: it takes a live `sqlite3.Connection` directly (not a path or dialect token), `_MIGRATIONS` is an unconditional `list[str]` of raw SQL with no per-dialect branch, and locking is SQLite-specific (`BEGIN IMMEDIATE`, manual `isolation_level = None`, a custom `_split_sql_statements()` helper whose docstring explains it avoids `executescript()`'s implicit `COMMIT` that would release the write lock mid-migration). `_configure_connection()` (`schema.py:1443-1459`) applies WAL/`busy_timeout` pragmas wrapped in `try/except sqlite3.OperationalError` — today's one instance of graceful degradation in this file is per-pragma try/except, not a capability-flag check.
-- **Superseded 2026-09-22 (see Verification Notes): `connect_readonly()` now exists.** This finding originally read "No existing `connect_readonly()` counterpart anywhere in the tree (repo-wide search, zero hits)" — true when written, but ENH-3525 has since merged and added `connect_readonly()` at `session_store/backend.py:257` (plus a `Backend.connect_readonly` protocol method and `SqliteBackend.connect_readonly` implementation). The duplicated read-only helpers this finding named as the prior closest analog — `issue_history/evolution.py:30`, `codequery/codegraph.py:81`, and `issue_history/workspace_quality.py:108` (`_open_member_readonly`) — still exist and are still unmigrated; the wiring-pass items elsewhere in this issue already name folding them into the new chokepoint as in-scope work.
+- _Superseded:_ `connect_readonly()` now exists (`session_store/backend.py`, ENH-3525). The duplicated read-only helpers `issue_history/evolution.py:30` and `codequery/codegraph.py:81` still exist; codegraph stays out of scope.
 - **Optional-dependency extras** (`pyproject.toml:141-199`) follow `<name> = ["pkg<constraint>"]` under `[project.optional-dependencies]`, with an inline justification comment on any version bound — the `mcp` extra (`pyproject.toml:178-191`) is the fullest example, explaining both the exact pin and why it's an extra rather than a base dependency (16 mandatory transitive deps otherwise landing on every install). A repo-wide search found no existing reference to `postgres`, `libsql`, `psycopg`, or `sqlalchemy` anywhere in `scripts/pyproject.toml` or `scripts/little_loops/`.
 - **No dialect abstraction exists anywhere in the codebase today**: a repo-wide search for `dialect` as a code identifier and for any `*Dialect` class found zero hits. `little_loops.session_store.backend` (the module this issue proposes) has no current counterpart in the tree.
 
@@ -325,8 +340,8 @@ _Added by `/ll:refine-issue` — 2026-09-22 — based on codebase analysis:_
 1. Produce `.ll/learning-tests/libsql-remote.md` against a real remote endpoint
    with `proven_package`/`proven_version` recorded (Readiness Prerequisites lists
    the required and probe assertions, the endpoint plan, and the target deployment).
-   Pin the tested driver/version as a justified extras entry. Resolve the remaining
-   readiness decisions before writing the adapter.
+   Pin the tested driver/version as a justified extras entry. If any required
+   assertion fails, stop here and re-scope (Proposed Design §2 contingency).
 1a. SQLite-only target-type refactor (Proposed Design §1a), landable and testable
    before the adapter exists: introduce `HistoryTarget`, change `_resolve_once()` and
    the `Backend` protocol to take it, narrow the three entry points' return type to
@@ -335,7 +350,9 @@ _Added by `/ll:refine-issue` — 2026-09-22 — based on codebase analysis:_
    `project_id`, `telemetry_timeout_ms`) to
    `config-schema.json` and the `/ll:configure` history area (+ mirrors). Encode the
    precedence rules from Proposed Design §1; reject unknown providers, two endpoint
-   sources, or a missing token env with redacted diagnostics.
+   sources, or a missing token env with redacted diagnostics. The backend config
+   reader merges `.ll/ll.local.md`, never raises on the hook path, and caches per
+   process (§1 config reader).
 3. Implement `LibsqlBackend`: connection/cursor/row adaptation (named-row access on
    top of the driver's plain tuples), narrow error wrapping around driver calls into
    the `HistoryError` taxonomy (default category `HistoryOperationError`), deferred
@@ -351,21 +368,28 @@ _Added by `/ll:refine-issue` — 2026-09-22 — based on codebase analysis:_
 4a. Worktree/env relay (Proposed Design §1b): `worktree_utils.py:336`,
    `hooks/session_start.py:146`, `pytest_history_plugin.py:45`.
 5. Implement the shared-store operation matrix (Proposed Design §7): reject
-   `rebuild`, `backfill`, `prune`, `compact --and-prune`, `recompress`, `VACUUM`,
-   and `sweep_stale_refs` under `libsql` with `HistoryUnsupported` before any
-   mutation, unless the specific operation's cross-machine safety is proven and
-   tested in this issue. Implement the identity audit outcomes (event dedup,
-   copied sessions, foreign `jsonl_path`/`project_path`).
+   `rebuild` (including the worker's `--rebuild`), full `backfill`, `prune`,
+   `compact --and-prune`, `recompress`, `VACUUM`, and `sweep_stale_refs` under
+   `libsql` with `HistoryUnsupported` before any mutation, unless the specific
+   operation's cross-machine safety is proven and tested in this issue. Implement the
+   identity audit outcomes (machine ID, copied-session dedup, existence-checked
+   foreign `jsonl_path`/`project_path`).
+5a. Remote ingestion (Proposed Design §7a): per-machine `last_raw_event_ts` watermark,
+   additive incremental materialization of `_REBUILD_TABLES` for newly ingested
+   `raw_events`, and `hooks/session_start.py` + `cli/backfill_worker.py` routed to the
+   remote target without `--rebuild` or migrate-on-open.
 6. Implement capability gating for FTS5, WAL, VACUUM, `create_function` (Python UDFs —
-   `history_reader/formatting.py` `ll_grep`'s `regexp_match`), and `ATTACH` snapshot
-   export; preserve local scratch SQLite output for supported dashboard snapshots, or
-   gate and document the limitation.
+   `history_reader/formatting.py` `ll_grep`'s `regexp_match`), and `ATTACH`. Snapshot
+   export (`build_snapshot_db`) raises `HistoryUnsupported` under `libsql` before any
+   `ATTACH`; local SQLite snapshot behavior is unchanged.
 7. Failure policy: bounded network waits; event sinks (`SQLiteTransport`,
    `cli_event_context`) stay best-effort with rate-limited redacted warnings and
    catch `HistoryError` only; explicit reads/migrations/maintenance surface
    failures; never retry a write whose commit outcome is unknown. Implement the
    telemetry latency budget (Proposed Design §8): telemetry timeouts, per-process
-   schema-ensured cache, and the unreachable-endpoint marker.
+   schema-ensured cache, the file-backed verification cache for hooks, and the
+   unreachable-endpoint marker — both gitignored in `.gitignore` and
+   `init/writers.py` `_GITIGNORE_ENTRIES`.
 8. Add the explicit `ll-doctor` backend diagnostic (connectivity, auth, schema
    compatibility; timeout; no migrations/writes; redacted; flags `history.db_path`
    set alongside a remote provider).
@@ -398,11 +422,16 @@ _These additional touchpoints were identified by a second wiring pass and must b
 
 - **Priority**: P3 — shared same-project history is useful; local history remains functional.
 - **Effort**: Large after ENH-3525/ENH-3526 — the path-to-target refactor across the
-  chokepoint's 102 entry-point call sites, cursor/row adaptation, migration
+  chokepoint's ~94 entry-point call sites (`open_history`/`open_history_readonly`/
+  `connect_readonly`, counted 2026-09-23), per-machine ingestion and incremental
+  derived-table materialization (§7a), cursor/row adaptation, migration
   compatibility and `ll-session` `migrate`, the telemetry latency budget, the operation
   matrix, the doctor check, and docs. The connection routing, error taxonomy, and path
   repairs already landed in ENH-3525/ENH-3526. Kept as one issue by decision
-  (2026-09-22); Implementation Step 1a is the natural first commit.
+  (2026-09-22); Implementation Step 1a is the natural first commit. The 2026-09-23
+  review added §7a (per-machine ingestion + incremental materialization), a
+  self-contained workstream that is the natural candidate to split out if scope needs
+  trimming.
   Postgres/MySQL dialect translation is separate work.
 - **Risk**: Medium to high until real-driver proofs pass — partial migrations,
   ambiguous network write outcomes, and shared-store maintenance operations
@@ -450,6 +479,16 @@ _These additional touchpoints were identified by a second wiring pass and must b
    - User docs recommend setting `history.backend` (especially a literal `url`) in
      `.ll/ll.local.md` rather than the committed `.ll/ll-config.json`, so a clone does
      not silently join a shared store.
+   - **Config reader (settled, review 2026-09-23).** That recommendation only works if
+     the backend reader applies the `ll.local.md` frontmatter deep-merge
+     (`config/core.py` `parse_local_override_frontmatter` + `deep_merge`). The existing
+     `_config_db_path()` (`db.py:35-69`) reads `ll-config.json` with raw `json.loads`
+     and would silently ignore an `ll.local.md` endpoint — do not copy it. The reader
+     must (a) merge local overrides, (b) never raise on the hook hot path (malformed
+     config → treat as `provider: sqlite` plus a one-time warning, never a silent
+     remote→local switch once a remote provider was readable), and (c) cache per
+     process. `ll.local.md` is already in `worktree_copy_files`
+     (`config/automation.py:102`), so worktrees inherit the endpoint.
 
    **1a. Target type (settled).** The shipped chokepoint is path-typed end to end:
    `Backend.connect(path: Path, *, check_same_thread)`, `connect_readonly(path)`,
@@ -482,8 +521,10 @@ _These additional touchpoints were identified by a second wiring pass and must b
    store); it neither raises nor exports a local path. If `LL_HISTORY_DB` is already
    set in the parent while `provider: libsql` is configured, the relay leaves it as-is
    (deliberate override) and `ll-doctor` reports the conflict. The same rule covers the
-   direct `LL_HISTORY_DB` readers `hooks/session_start.py:146` and
-   `pytest_history_plugin.py:45`.
+   direct `LL_HISTORY_DB` reader `pytest_history_plugin.py:45`.
+   `hooks/session_start.py:145-200` is more than an env reader: it hardcodes
+   `root / ".ll" / "history.db"` as the backfill worker's target and migrates on open to
+   read `last_rebuild_version`. It is handled as an ingestion writer under §7a.
 2. Select Python `libsql` direct remote connections, not embedded replicas or
    `turso_serverless`. Keep the driver behind a justified, version-bounded extras
    entry with a clear missing-extra error raised from `LibsqlBackend.__init__`
@@ -491,6 +532,15 @@ _These additional touchpoints were identified by a second wiring pass and must b
    the selected version against the intended deployment before implementing
    production consumers. Official driver distinctions and token usage:
    https://github.com/tursodatabase/turso-docs/blob/main/sdk/python/quickstart.mdx
+
+   **Step 1 failure contingency (settled, review 2026-09-23).** The design assumes the
+   `libsql` Python package supports direct remote mode with settable connect/statement
+   timeouts. If any *required* `libsql-remote` assertion fails — no direct remote mode
+   (embedded-replica only), no bounded connect to an unreachable host, no usable
+   transaction/isolation control, or unsafe cross-thread use with no per-thread
+   alternative — implementation **stops** after Step 1: record the result, set this
+   issue `blocked`, and re-scope (another driver, Hrana-over-HTTP client, or embedded
+   replicas) in a follow-up decision. Do not switch drivers mid-implementation.
 3. Register `LibsqlBackend` in ENH-3525's lazy registry. Define connection, cursor,
    row, and transaction adaptation from consumer usage: the driver returns plain
    tuples with no row factory, so named-row access is adapted in the backend.
@@ -538,8 +588,9 @@ _These additional touchpoints were identified by a second wiring pass and must b
 
    | Operation | Why it is unsafe on a shared store | First remote release |
    |---|---|---|
-   | `rebuild()` (`lifecycle.py:952`) | `DELETE FROM <table>` on derived tables, then replays `raw_events` from the database — global deletion with no concurrency or completeness guarantee against other machines' concurrent writes | rejected |
-   | `backfill` / `backfill_incremental` | upserts sessions from this machine's local JSONL; can overwrite or interleave with other machines' rows | rejected |
+   | `rebuild()` (`lifecycle.py:955`) | `DELETE FROM <table>` on derived tables, then replays `raw_events` from the database — global deletion with no concurrency or completeness guarantee against other machines' concurrent writes | rejected (incl. the backfill worker's `--rebuild`) |
+   | full `backfill` (`ll-session backfill`) | upserts sessions, issues, and loop state from this machine's local sources; can overwrite or interleave with other machines' rows | rejected |
+   | `backfill_incremental` / `backfill_raw_events` (SessionStart worker) | `INSERT OR IGNORE` into `raw_events` — additive; unsafe only because of the single global `last_raw_event_ts` watermark | **supported** with a per-machine watermark and incremental materialization (§7a) |
    | `prune()` (`lifecycle.py:1283`) | deletes `raw_events` globally; gates on `db_path.stat().st_size`, which has no remote meaning | rejected |
    | `ll-session compact` / `compact --and-prune` / `recompress` | rewrites `raw_events` rows other machines may be reading or writing | rejected |
    | `VACUUM` / `sweep_stale_refs` | file-level or existence-based on a local path | rejected |
@@ -561,13 +612,49 @@ _These additional touchpoints were identified by a second wiring pass and must b
    largest tables. A provenance-scoped prune is follow-up work and, like local prune,
    must stay manual-only — never triggered automatically.
 
-   **Identity audit (retained):** `sessions.session_id` is the host session UUID
-   primary key, which avoids session-row collisions, but that alone does not
-   establish event deduplication (`idx_issue_events_dedup`, `idx_corrections_dedup`
-   are content keys, not machine keys), safe handling of a session JSONL copied
-   between machines, or how readers treat a foreign `jsonl_path`/`project_path`.
-   Settle these before implementation; add provenance only if needed for
-   correctness. Machine-filtered analytics are not required.
+   **Identity audit (settled, review 2026-09-23):** `sessions.session_id` is the host
+   session UUID primary key, which avoids session-row collisions, but that alone does
+   not establish event deduplication (`idx_issue_events_dedup`,
+   `idx_corrections_dedup` are content keys, not machine keys), safe handling of a
+   session JSONL copied between machines, or how readers treat a foreign
+   `jsonl_path`/`project_path`. Decisions:
+   - **Machine ID**: a stable random ID generated once and stored in a gitignored
+     machine-local file (e.g. `~/.ll/machine-id`, not under the project so clones and
+     worktrees on one machine share it). Used for the per-machine watermark (§7a) and
+     nothing else in this release.
+   - **Copied session JSONL**: `raw_events` dedups on `(source_path, line_no)`; a copy
+     at a different path would double-ingest. Test it; if it double-ingests, add a
+     content-stable dedup key (`session_id`, `line_no`) for remote ingestion rather than
+     relying on the path.
+   - **Foreign paths**: any reader that opens `jsonl_path`/`source_path` from the store
+     checks existence first and treats a missing file as "recorded on another machine"
+     (skip / label), never as an error or as local data.
+   - **Provenance column**: not added unless the copied-session or dedup tests above
+     prove it necessary. Machine-filtered analytics are not required.
+
+7a. **Remote ingestion (settled, review 2026-09-23).** Session/transcript data — the
+   Motivation's core value — enters the store only via the SessionStart backfill worker
+   (`lifecycle.py` `backfill_incremental` → `backfill_raw_events`), and the derived `_REBUILD_TABLES`
+   are materialized only by `rebuild()`. Rejecting both would leave a remote store
+   with hook/CLI event rows and no session/usage data. Under `libsql`:
+   - **Per-machine watermark**: `backfill_raw_events()` reads and writes
+     `meta.last_raw_event_ts:<machine_id>` instead of the global key. With a global
+     key, machine A advancing to T makes machine B skip its older, not-yet-ingested
+     transcripts (`since_ts` filter) — silent data loss. SQLite keeps the global key
+     unchanged.
+   - **Incremental materialization**: after ingest, derive `_REBUILD_TABLES` rows for
+     only the newly inserted `raw_events` rows (by rowid or `session_id`), additive and
+     idempotent (`INSERT OR IGNORE`/upsert on existing keys; no `DELETE`). First verify
+     which derived tables live hooks already write directly (`writers.py`,
+     `hooks/post_tool_use.py` for `tool_events`, `fsm/continuity.py` for `sessions`) so
+     materialization does not double-write them. Any derived table without a natural
+     dedup key needs one (migration) before it is materialized remotely.
+   - **SessionStart**: `hooks/session_start.py` resolves a `HistoryTarget`, passes the
+     remote target to `cli/backfill_worker.py`, never appends `--rebuild`, and never
+     opens with migrate-on-open. `backfill_worker` refuses `--rebuild` under `libsql`.
+   - **Schema bumps** that would locally trigger a rebuild instead require an explicit,
+     documented follow-up (out of scope here); until then `ll-session` `migrate` reports
+     that derived tables for pre-bump rows are not re-materialized.
 8. **Telemetry latency budget (settled).** Under `libsql`, every tool call's hooks
    (`hooks/hooks.json` gives most hooks `"timeout": 5`) and every `ll-*` CLI
    (`cli_event_context` wraps ~35 `main()`s) would pay a TLS connect, and
@@ -580,6 +667,21 @@ _These additional touchpoints were identified by a second wiring pass and must b
      reads/maintenance use a longer bound (default 10 s).
    - `LibsqlBackend` caches "schema verified at version N" per process so a process
      pays the version check once, and never opens a second connection just to ensure.
+   - **Hooks are one process per event**, so the per-process cache gives them nothing.
+     Add a file-backed verification cache (review 2026-09-23): "endpoint hash H verified
+     at schema version N, `project_id` P" with a short TTL (default 300 s), next to the
+     unreachable marker. Telemetry writes within the TTL skip the version/`project_id`
+     round trips; a write that fails with a schema/constraint error invalidates the
+     cache. Explicit reads, migrations, and `ll-doctor` ignore it and always verify.
+   - **Gitignore**: the unreachable marker and the verification cache must be ignored
+     in this repo's `.gitignore` *and* in consuming projects via
+     `init/writers.py` `_GITIGNORE_ENTRIES` — `.ll/` is tracked with per-file ignores.
+     Either add explicit entries or name both files to match an existing ignored glob
+     (e.g. `.ll/*.lock`).
+   - **Success-path budget**: the `libsql-remote` learning test records cold-connect
+     and warm-statement latency; implementation adds an AC bounding a hook-path
+     telemetry write on a *healthy* endpoint (cache warm) well under the hook timeout,
+     not only the unreachable case.
    - On a connect failure/timeout in a telemetry path, write a short-TTL (default 60 s)
      unreachable marker under `.ll/` (gitignored, keyed by endpoint hash, never the
      token); subsequent telemetry writes within the TTL skip immediately with no
@@ -611,7 +713,12 @@ _These additional touchpoints were identified by a second wiring pass and must b
    `queue.db` or codegraph databases; workspace-manifest aggregation over remote
    backends (`history.workspace_manifest_path` stays local-only); unrelated-project
    multitenancy and machine-filtered analytics; a remote retention/prune path;
-   buffering or replaying dropped telemetry.
+   buffering or replaying dropped telemetry; **seeding a remote store from an existing
+   local `history.db`** (a new remote store starts empty apart from what each
+   machine's SessionStart ingestion backfills from its own transcripts — user docs
+   state this explicitly); **snapshot export under `libsql`** (explicitly unsupported
+   in the first release, see Readiness Prerequisites); re-materializing derived tables
+   after a schema bump on a remote store.
 
 ## Program Design
 
@@ -698,8 +805,12 @@ Settled: libSQL first (Postgres/MySQL excluded); extras-entry policy; explicit
 doctor diagnostic; `provider` selector name; path/precedence semantics (Proposed
 Design §1); target type (§1a); env relay (§1b); error contract (§3); UDF gating (§5);
 shared-store operation matrix and retention limitation for the first release (§7);
-telemetry latency budget (§8); mixed-version migration policy (§9); project identity
-guard (§10); ENH-3525 as the SQLite-only prerequisite.
+identity audit (§7); remote ingestion (§7a); telemetry latency budget and hook
+verification cache (§8); mixed-version migration policy (§9); project identity
+guard (§10); config reader merging `ll.local.md` (§1); Step 1 failure contingency
+(§2); snapshot export unsupported under `libsql`; ENH-3525 as the SQLite-only
+prerequisite. No design decisions remain open; only driver proof (Step 1) gates
+implementation.
 
 **Learning-test endpoint plan.** The `libsql-remote` learning test is produced as
 Implementation Step 1 of this issue (not split out). Run it against **both**:
@@ -750,14 +861,18 @@ Proposed Design §3 — do not re-run it expecting a pass.
 - `VACUUM`
 - `conn.create_function` (Python UDF) — expected unsupported remotely; confirms §5
 
-Remaining decisions to record before implementation (caller analysis, not driver
-proof):
-- Identity audit outcomes: event dedup across machines, copied-session handling,
-  reader behavior on foreign `jsonl_path`/`project_path`, and whether provenance
-  is needed for correctness (Proposed Design §7).
-- Snapshot export: bounded row transfer into a local SQLite artifact (preserving
-  filtering/redaction), or explicitly unsupported in this first cut. Do not imply
-  remote `ATTACH` creates a local file.
+Previously open decisions, settled in the 2026-09-23 review:
+- Identity audit outcomes: machine ID for the per-machine watermark, copied-session
+  dedup test, existence-checked foreign paths, provenance column only if tests
+  require it (Proposed Design §7).
+- Snapshot export: **explicitly unsupported under `libsql` in this first cut** —
+  `build_snapshot_db` raises `HistoryUnsupported` with a clear message before any
+  `ATTACH`; bounded row transfer is follow-up work. Do not imply remote `ATTACH`
+  creates a local file.
+- Remote ingestion: `backfill_incremental` supported with a per-machine watermark and
+  additive incremental materialization; `rebuild`/full `backfill` rejected (§7a).
+- Config reader merges `.ll/ll.local.md` (§1); hooks use a file-backed verification
+  cache (§8); Step 1 failure stops and re-scopes (§2).
 
 ## Acceptance Criteria
 
@@ -770,7 +885,8 @@ proof):
   `auth_token_env`, `project_id`, and `telemetry_timeout_ms`. Unknown provider, two
   endpoint sources, missing token env, missing `project_id` under `libsql`, missing
   extra, and auth errors produce redacted diagnostics. Default SQLite path/env
-  precedence tests remain unchanged.
+  precedence tests remain unchanged. `history.backend` set only in
+  `.ll/ll.local.md` is honored; a malformed config never raises on the hook path.
 - [ ] Target-type refactor (§1a) lands with the full local suite green and no SQLite
   behavior change: `_resolve_once()` returns `HistoryTarget`, the `Backend` protocol
   takes it, the three entry points return `HistoryConnection`, and the BUG-3181
@@ -802,16 +918,25 @@ proof):
 - [ ] Project identity (§10): `ll-session` `migrate` stamps `meta.project_id`; an open
   with a different `project_id` raises `HistoryUnsupported` before any read or write;
   `ll-doctor` reports the mismatch.
+- [ ] **Remote ingestion (§7a)**: under `libsql` the SessionStart worker ingests into
+  the remote store (never a local file, never with `--rebuild`, never migrating on
+  open); the watermark is per machine, and a test proves machine B's older
+  un-ingested transcripts are still ingested after machine A advances its watermark;
+  incremental materialization populates the derived tables for new `raw_events`
+  without any `DELETE`, is idempotent on re-run, and does not double-write rows live
+  hooks already wrote. SQLite keeps the global watermark and existing rebuild
+  behavior unchanged.
 - [ ] **Shared-store mutation safety**: the operation matrix in Proposed Design §7
-  is implemented; `rebuild`, `backfill`, `prune`, `compact --and-prune`,
+  is implemented; `rebuild`, full `backfill`, `prune`, `compact --and-prune`,
   `recompress`, `VACUUM`, and `sweep_stale_refs` are rejected with
   `HistoryUnsupported` before any mutation under `libsql`, each with a test that
   proves no row was deleted or written; any operation promoted to supported or
   provenance-scoped has a cross-machine safety test.
-- [ ] Identity audit is recorded and implemented: same-project sessions/events from
-  two machines remain correctly attributed and deduplicated; a copied session
-  JSONL does not double-ingest; foreign-machine paths do not masquerade as local
-  readable sources; any provenance the decision requires is tested.
+- [ ] Identity audit is implemented: a stable machine ID is generated once and kept
+  machine-local; same-project sessions/events from two machines remain correctly
+  attributed and deduplicated; a copied session JSONL does not double-ingest;
+  readers existence-check `jsonl_path`/`source_path` so foreign-machine paths do not
+  masquerade as local readable sources; any provenance the tests require is added.
 - [ ] `ll-history`, `ll-logs`, session digests, and compaction reads/writes work
   against the remote store. `SQLiteTransport` lifecycle and serialized cross-thread
   writes work through the adapter, catch `HistoryError` only, and remain
@@ -826,13 +951,18 @@ proof):
   after the first failure, subsequent telemetry writes within the marker TTL make no
   network attempt and emit no repeated warning; the marker never contains the token;
   explicit reads and `ll-doctor` ignore it. A process verifies schema/`project_id` at
-  most once. Tests cover each.
+  most once, and hook processes within the verification-cache TTL skip the check
+  entirely (a schema/constraint failure invalidates the cache). On a healthy endpoint
+  with a warm cache, a hook-path telemetry write stays within a bound derived from
+  the learning test's recorded latency. The marker and verification cache are
+  ignored by this repo's `.gitignore` and by the `ll-init` gitignore entries. Tests
+  cover each.
 - [ ] `ll_grep` (`history_reader/formatting.py`) works under `libsql` without
   `create_function` (Python-side regex over a bounded SQL prefilter), and every other
   `create_function` caller is gated on `supports("create_function")`.
 - [ ] Unsupported search/maintenance/export capabilities produce clear messages.
-  Supported snapshot export preserves filtering/redaction and creates a local
-  SQLite artifact; otherwise its remote limitation is explicit and tested.
+  Snapshot export under `libsql` raises `HistoryUnsupported` before any `ATTACH`
+  (tested); local snapshot export is unchanged.
 - [ ] An explicit `ll-doctor` check diagnoses connectivity/authentication/schema
   compatibility with a timeout, no migrations/writes, and redacted output, and
   reports when `history.db_path` and a remote provider are both set.
@@ -843,7 +973,9 @@ proof):
   `project_id`, `ll-session` `migrate` and the upgrade order across machines, the
   rejected-operation list (distinguishing context compaction from `ll-session
   compact`), the no-retention limitation, dropped-telemetry behavior, failure
-  behavior, diagnostics, and capability limitations.
+  behavior, diagnostics, and capability limitations. They also state that a new
+  remote store starts empty — existing local `history.db` contents are not seeded —
+  and that snapshot export is unavailable under `libsql`.
 
 ## Spike Results
 
@@ -871,82 +1003,31 @@ suppress this gate's findings. Do not create empty placeholders to silence it.
 
 ## Verification Notes
 
-_`/ll:verify-issues` — 2026-09-22 (collapsed 2026-09-22 review; its "no `connect_readonly()`" and "no `## Blocked By`" claims are superseded by ENH-3525/ENH-3526 and the 2026-09-23 pass below):_ citations and spike tests confirmed; gap found — `.ll/learning-tests/libsql.md` is local-only evidence (all 7 assertions use a bare path or `:memory:`) and its `libsql.Error` assertion is `result: fail` under `status: proven`.
+_Collapsed 2026-09-23 review. Full pass-by-pass records are in git history
+(`/ll:verify-issues` 2026-09-22 ×2, 2026-09-23 ×2)._
 
-Resolution (2026-09-22 review): `libsql.md` is retained as local-driver evidence;
-remote compatibility is now a separate `libsql-remote` registry target required
-by frontmatter, so the gate blocks mechanically until that record is proven (see
-Readiness Prerequisites). The `fail` result is accepted as a known driver
-divergence and drives the error contract in Proposed Design §3.
-`spike_completed: true` and `spike_attempted: true` remain accurate for what they
-claim (local spike mechanics only).
+- ENH-3525 and ENH-3526 are `done` and verified in code: `session_store/backend.py`
+  defines `Backend`, `SqliteBackend`, `resolve_backend()`, `connect_readonly()`,
+  `open_history()`, `open_history_readonly()`, and the `HistoryError` taxonomy.
+  `BackendProvider = Literal["sqlite"]`; no `history.backend` schema key yet.
+- Raw `sqlite3.connect(` remains in 7 files: `queue_store.py`,
+  `codequery/codegraph.py` (out of scope), `session_store/backend.py` (the chokepoint),
+  and `session_store/{schema,sessions,queries}.py` + `issue_history/workspace_quality.py`.
+- `.ll/learning-tests/libsql.md` is local-only evidence (bare path / `:memory:`); its
+  `libsql.Error` assertion `fail` is an accepted driver divergence that drives the §3
+  error contract. `libsql-remote.md` does not exist yet and gates implementation.
+- Spike results cover local mechanics only (`spike_attempted`/`spike_completed` are
+  accurate for that scope).
+- `ll-verify-evidence`: `ok: true`. Decisions log: no active required rules.
 
-_Added by `/ll:verify-issues` — 2026-09-23:_
-
-Verdict at time of check: **OUTDATED** (corrections below applied in the same
-pass, so the issue as it now reads is up to date — this section is a record of
-what was wrong and fixed, not an outstanding action item). Graph checks used
-`provider=codegraph`, `freshness=fresh` (§2B.0).
-
-- **Cause of drift**: `ENH-3526` merged at `a6f9c496` (2026-09-22 19:37:56 -0500),
-  ~1 hour after this issue's previous `/ll:verify-issues` pass (Session Log
-  23:39:48 UTC). `ENH-3525` (`status: done`) and `ENH-3526` (`status: done`) are
-  both this issue's `## Blocked By` entries #1 and #2 — both now satisfied.
-- **`## Blocked By` corrected** — both ENH-3525 and ENH-3526 marked satisfied
-  inline; the third blocker (`libsql-remote.md` `status: proven`) confirmed still
-  open — only `.ll/learning-tests/libsql.md` (local-only) exists on disk.
-- **`## Current Behavior` corrected** — it described the pre-ENH-3525/ENH-3526
-  state ("hardcoded to sqlite3", "~28 call sites") as current. Verified directly:
-  `scripts/little_loops/session_store/backend.py` now defines `Backend`
-  (Protocol, `:133`), `SqliteBackend` (`:159`), `resolve_backend()` (`:217`),
-  `open_history()` (`:270`), `open_history_readonly()` (`:284`),
-  `connect_readonly()` (`:257`), and the `HistoryError` taxonomy
-  (`HistoryError:50`, `HistoryUnavailable:54`, `HistoryIntegrityError:58`,
-  `HistoryUnsupported:62`, `HistoryOperationError:66`) — exactly the shape this
-  issue's own Program Design section already assumed as the ENH-3525 baseline.
-  `grep -rl "sqlite3.connect(" scripts/little_loops/ | grep -v test_` now returns
-  7 files, not ~28: `queue_store.py`, `codequery/codegraph.py` (both explicitly
-  out of scope per this issue's own audit-only note), `session_store/backend.py`
-  (the chokepoint's own implementation), and `session_store/{schema,sessions,
-  queries}.py` + `issue_history/workspace_quality.py` (already named in this
-  issue's wiring passes as pending migration). Added an inline correction to
-  Current Behavior; this issue's own scope (add `libsql` provider,
-  `history.backend` config, extras) is unaffected — confirmed
-  `BackendProvider = Literal["sqlite"]` (no `libsql` entry yet) and no `backend`
-  key under `history` in `config-schema.json`.
-- **Codebase Research Findings corrected** — "No existing `connect_readonly()`
-  counterpart anywhere in the tree" is now false; `connect_readonly()` exists at
-  `session_store/backend.py:257` (ENH-3525). Superseded in place; the three named
-  unmigrated duplicate read-only helpers (`evolution.py:30`, `codegraph.py:81`,
-  `workspace_quality.py:108`) still exist and remain correctly scoped as
-  wiring-pass work.
-- **Spot-checked additional file:line citations** not covered by the prior pass:
-  `session_store/queries.py:191` (`_connect_readonly`, exact),
-  `queries.py:248` (`build_snapshot_db`, ATTACH DATABASE at `:291` inside it —
-  the citation names the function, not the ATTACH line itself, so this is
-  accurate as written), `schema.py:204-208` (`sessions` table DDL: `session_id`,
-  `jsonl_path`, `started_at`, `project_path` — exact match),
-  `workspace_quality.py:108` (`_open_member_readonly` — exact match). No further
-  drift found.
-- **Decisions log**: no active required rules (`ll-issues decisions list --type
-  rule --enforcement required --active-only` → empty). Nothing to check against.
-- **Evidence-quote check (B7)**: `ll-verify-evidence` → `"ok": true, "count": 0`
-  — no unverifiable evidence quotes found.
-- **Proposal-vs-code (B6)**: no new inconsistency found; the earlier
-  `ensure_db() -> Path` fabricated-path tension is resolved in Proposed Design §1
-  (`HistoryBackendNotLocal`), and there is no longer an "Open Questions" section.
-  Unaffected by the ENH-3525/ENH-3526 merge.
-
-_Added by `/ll:verify-issues` — 2026-09-23 (re-check):_
-
-Verdict at time of check: **NEEDS_UPDATE** (the dangling "Open Questions"
-reference above was corrected in the same pass, so the issue as it now reads is up
-to date — this section is a record of what was fixed, not an outstanding action
-item). Graph: `provider=codegraph`, `freshness=fresh`. No commits touched
-`session_store/backend.py` since `a6f9c4960`; the raw `sqlite3.connect(` file count
-(7), `BackendProvider = Literal["sqlite"]` (`backend.py:47`), the absent `history.backend`
-schema key, and the missing `libsql-remote.md` all re-confirmed. Decisions log: no
-required rules. `ll-verify-evidence`: `ok: true`.
+_Review — 2026-09-23 (manual):_ found that §7 rejected the only session-ingestion
+path (`backfill_incremental`), that `hooks/session_start.py` hardcodes a local target
+for the backfill worker, that the config reader pattern ignores `.ll/ll.local.md`,
+that the per-process schema cache does not help one-process-per-event hooks, and that
+the §8 marker was not gitignored. Added §7a, the §1 config-reader rule, the §8
+verification cache + gitignore rule, the §2 Step 1 contingency; settled the identity
+audit and snapshot-export decisions; corrected Current Behavior and the call-site
+count (~94).
 
 ## Related Key Documentation
 
@@ -966,6 +1047,8 @@ _Added by `/ll:confidence-check` on 2026-09-22_
 ### Gaps to Address
 - `.ll/learning-tests/libsql-remote.md` does not exist (`ll-learning-tests check libsql-remote` → "no record found"). `learning_tests_required: [libsql, libsql-remote]` is unsatisfied, so the Learning Test Hard Override forces STOP regardless of the otherwise-85 aggregate. Remedy: produce it as Implementation Step 1, against both a local `turso dev`/`sqld` server and Turso Cloud, with every required assertion recorded and `proven_package`/`proven_version` set.
 - `.ll/learning-tests/libsql.md` is `status: proven` but has 1 failing claim ("invalid SQL and constraint violations raise `libsql.Error`" → fail). Accepted per the issue's own Verification Notes as a known driver divergence that drives the §3 error contract, not a new gap — but it still costs Criterion 1 its Learning Test modifier (−5 proven/failing, −10 missing → Criterion 1 scored 5/20).
+
+_Stale as of the 2026-09-23 review: the two open decisions below are now settled, and §7a adds scope. Re-run `/ll:confidence-check` before implementation._
 
 ### Outcome Risk Factors
 - Broad enumeration across many sites: the issue's own Impact section cites "the path-to-target refactor across the chokepoint's 102 entry-point call sites," ~20 downstream `session_store` consumers, and ~35 CLI modules to audit — Criterion A Breadth scored 0/12 (16+ sites) and Criterion D scored 0/25 (11+ callers, very wide blast radius, each site requiring site-specific judgment rather than a uniform substitution).
