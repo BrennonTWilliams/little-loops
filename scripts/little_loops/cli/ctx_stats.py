@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import sqlite3
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -33,11 +32,14 @@ from little_loops.learning_tests.import_scan import get_imported_packages
 from little_loops.logger import Logger
 from little_loops.session_store import (
     DEFAULT_DB_PATH,
+    HistoryError,
     SessionHandle,
     cli_event_context,
+    connect_readonly,
     detect_sessions,
     iter_events,
     resolve_history_db,
+    translate_sqlite_errors,
 )
 from little_loops.user_messages import _resolve_host
 
@@ -136,15 +138,18 @@ def _aggregate_tool_events(db_path: Path) -> dict[str, Any] | None:
     """
     if not db_path.exists():
         return None
-    conn = sqlite3.connect(str(db_path))
     try:
-        conn.row_factory = sqlite3.Row
+        conn = connect_readonly(db_path)
+    except HistoryError:
+        return None
+    try:
         try:
-            rows = conn.execute(
-                "SELECT tool_name, bytes_in, bytes_out, cache_hit "
-                "FROM tool_events WHERE bytes_in IS NOT NULL OR bytes_out IS NOT NULL"
-            ).fetchall()
-        except sqlite3.OperationalError:
+            with translate_sqlite_errors():
+                rows = conn.execute(
+                    "SELECT tool_name, bytes_in, bytes_out, cache_hit "
+                    "FROM tool_events WHERE bytes_in IS NOT NULL OR bytes_out IS NOT NULL"
+                ).fetchall()
+        except HistoryError:
             return None
     finally:
         conn.close()
@@ -242,18 +247,18 @@ def _aggregate_usage_events(db_path: Path) -> dict[str, Any] | None:
     if not db_path.exists():
         return None
     try:
-        conn = sqlite3.connect(str(db_path))
-    except sqlite3.Error:
+        conn = connect_readonly(db_path)
+    except HistoryError:
         return None
     try:
-        conn.row_factory = sqlite3.Row
         try:
-            rows = conn.execute(
-                "SELECT model, input_tokens, output_tokens, "
-                "cache_read_input_tokens, cache_creation_input_tokens, cost_usd "
-                "FROM usage_events"
-            ).fetchall()
-        except sqlite3.OperationalError:
+            with translate_sqlite_errors():
+                rows = conn.execute(
+                    "SELECT model, input_tokens, output_tokens, "
+                    "cache_read_input_tokens, cache_creation_input_tokens, cost_usd "
+                    "FROM usage_events"
+                ).fetchall()
+        except HistoryError:
             return None
     finally:
         conn.close()
@@ -306,16 +311,16 @@ def _aggregate_context_pressure(db_path: Path) -> dict[str, Any] | None:
     if not db_path.exists():
         return None
     try:
-        conn = sqlite3.connect(str(db_path))
-    except sqlite3.Error:
+        conn = connect_readonly(db_path)
+    except HistoryError:
         return None
     try:
-        conn.row_factory = sqlite3.Row
         try:
-            rows = conn.execute(
-                "SELECT used_pct, threshold_crossed, crossed_level FROM context_pressure_events"
-            ).fetchall()
-        except sqlite3.OperationalError:
+            with translate_sqlite_errors():
+                rows = conn.execute(
+                    "SELECT used_pct, threshold_crossed, crossed_level FROM context_pressure_events"
+                ).fetchall()
+        except HistoryError:
             return None
     finally:
         conn.close()

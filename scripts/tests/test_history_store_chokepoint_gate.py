@@ -7,18 +7,22 @@ same "enumerate every site, keep the chokepoint the only opener" pattern
 ``.claude/CLAUDE.md`` § Host CLI Abstraction already applies to host-CLI
 subprocess spawns.
 
-The allowlist has two kinds of entries:
+The allowlist has one kind of entry left:
 
 - **Permanent** — never a history-store connection at all (a different
   database entirely), or the chokepoint's own internal implementation.
-- **Provisional (ENH-3525 A2)** — a real history.db connection this issue's
-  Phase A ("A1") deliberately leaves unrouted. A1 folds the 7 in-scope
-  read-only opens plus the ``workspace_quality`` ATTACH into the chokepoint
-  and fixes the three path-resolution bypasses; routing the remaining write
-  call sites through ``open_history()`` is A2's "consumer error-type
-  conversion" pass (Implementation Steps 5-6), which also converts each
-  site's ``except sqlite3.*`` handling — shrink this allowlist as each site
-  is routed.
+
+ENH-3525 A1 folded the 7 in-scope read-only opens plus the
+``workspace_quality`` ATTACH into the chokepoint and fixed the three
+path-resolution bypasses; ENH-3526 (A2) routed the remaining write/read
+call sites (``writers.py``'s ``SQLiteTransport``, ``lifecycle.py``'s VACUUM
+maintenance connections and ``list_retirements``, and the read-only
+diagnostic aggregations in ``cli/logs.py``/``cli/ctx_stats.py``/
+``cli/history.py``) through ``open_history()``/``connect_readonly()``,
+converting each site's ``except sqlite3.*`` to ``except HistoryError``
+(translated via ``backend.translate_sqlite_errors()``) — the provisional
+entries these two issues shrunk are gone; a future write/read site must add
+a permanent allowlist reason here or route through the chokepoint.
 """
 
 from __future__ import annotations
@@ -59,19 +63,6 @@ _ALLOWLIST: dict[str, str] = {
         "for read-only-ATTACHed real history.db files (gated on the 'attach' "
         "capability), not themselves history-store connections"
     ),
-    # -- Provisional (ENH-3525 A2): real history.db writers not yet routed. --
-    "session_store/writers.py": (
-        "SQLiteTransport keeps one long-lived connection across many events "
-        "(not a per-call open); routing it through open_history() is A2 "
-        "Step 5 consumer-error-type-conversion territory"
-    ),
-    "session_store/lifecycle.py": (
-        "VACUUM maintenance connections (capability-gated by supports('vacuum') "
-        "in Program Design); routing pending ENH-3525 A2"
-    ),
-    "cli/logs.py": "raw history.db connections pending ENH-3525 A2 consumer routing",
-    "cli/ctx_stats.py": "raw history.db connections pending ENH-3525 A2 consumer routing",
-    "cli/history.py": "raw history.db connection pending ENH-3525 A2 consumer routing",
 }
 
 

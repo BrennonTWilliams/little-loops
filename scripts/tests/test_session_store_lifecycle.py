@@ -2462,6 +2462,31 @@ class TestPrune:
         assert result["project_age_days"] > 0
         assert result["db_size_mb"] > 0
 
+    def test_vacuum_failure_degrades_gracefully_and_logs(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """ENH-3526: the VACUUM chokepoint routing translates a raw sqlite3
+        failure into HistoryError -- prune() must still degrade (log, no
+        raise, vacuumed absent) exactly as it did for the raw sqlite3.Error
+        this replaces."""
+        import little_loops.session_store as session_store
+
+        db = tmp_path / "h.db"
+        conn = connect(db)
+        self._insert_raw_event(conn, compacted=1)
+        conn.close()
+
+        def boom(*_args, **_kwargs):  # type: ignore[no-untyped-def]
+            raise sqlite3.OperationalError("disk full")
+
+        monkeypatch.setattr(session_store, "open_history", boom)
+        with caplog.at_level(logging.WARNING):
+            result = prune(db, config=self._GATES_OPEN)
+
+        assert result["pruned"]
+        assert not result.get("vacuumed")
+        assert "VACUUM failed" in caplog.text
+
 
 class TestBackfillSnapshots:
     """ENH-2151: _backfill_snapshots() hydrates issue_snapshots from .issues/."""

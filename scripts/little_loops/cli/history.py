@@ -12,7 +12,14 @@ from little_loops.cli.output import configure_output, print_json, use_color_enab
 from little_loops.cli_args import add_config_arg, add_intent_arg, add_intent_limit_arg, add_json_arg
 from little_loops.config import BRConfig
 from little_loops.logger import Logger
-from little_loops.session_store import DEFAULT_DB_PATH, cli_event_context, resolve_history_db
+from little_loops.session_store import (
+    DEFAULT_DB_PATH,
+    HistoryError,
+    cli_event_context,
+    connect_readonly,
+    resolve_history_db,
+    translate_sqlite_errors,
+)
 
 if TYPE_CHECKING:
     from little_loops.issue_history.agent_quality import QualityAnalysis
@@ -790,16 +797,14 @@ Examples:
             db_path = resolve_history_db(project_root / DEFAULT_DB_PATH)
             conn = None
             try:
-                import sqlite3
-
-                conn = sqlite3.connect(str(db_path))
-                conn.row_factory = sqlite3.Row
-                root_row = conn.execute(
-                    "SELECT id FROM summary_nodes"
-                    " WHERE session_id IS NULL AND parent_id IS NULL"
-                    " ORDER BY level DESC LIMIT 1"
-                ).fetchone()
-            except sqlite3.Error:
+                conn = connect_readonly(db_path)
+                with translate_sqlite_errors():
+                    root_row = conn.execute(
+                        "SELECT id FROM summary_nodes"
+                        " WHERE session_id IS NULL AND parent_id IS NULL"
+                        " ORDER BY level DESC LIMIT 1"
+                    ).fetchone()
+            except HistoryError:
                 root_row = None
             finally:
                 if conn:

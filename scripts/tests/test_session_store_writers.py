@@ -111,6 +111,54 @@ class TestSQLiteTransport:
         transport.close()
         transport.close()  # must not raise
 
+    def test_open_failure_disables_sink_gracefully(self, tmp_path: Path) -> None:
+        """ENH-3526: open_history() translates the driver failure to HistoryError;
+        the sink must still disable itself rather than raise (a directory can't be
+        opened as a sqlite file, forcing a real open failure)."""
+        transport = SQLiteTransport(tmp_path)
+        assert transport._conn is None
+        transport.send({"event": "state_enter", "loop_name": "x"})  # no-op, must not raise
+        transport.close()  # no-op, must not raise
+
+    def test_send_degrades_on_history_error(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """ENH-3526: a translated HistoryError from conn.execute() during send()
+        must be swallowed (logged), matching the prior raw sqlite3.Error contract.
+        ``sqlite3.Connection`` is an immutable C type, so the faulty connection is
+        a stand-in object rather than a monkeypatched method."""
+
+        class _BoomConnection:
+            def execute(self, *_args, **_kwargs):  # type: ignore[no-untyped-def]
+                raise sqlite3.OperationalError("disk full")
+
+        transport = SQLiteTransport(tmp_path / "session.db")
+        real_conn = transport._conn
+        transport._conn = _BoomConnection()  # type: ignore[assignment]
+        try:
+            with caplog.at_level(logging.WARNING):
+                transport.send({"event": "state_enter", "loop_name": "x"})  # must not raise
+        finally:
+            transport._conn = real_conn
+            transport.close()
+        assert "write failed" in caplog.text
+
+    def test_close_degrades_on_history_error(self, tmp_path: Path) -> None:
+        """ENH-3526: a translated HistoryError from conn.close() must be swallowed."""
+
+        class _BoomConnection:
+            def close(self) -> None:
+                raise sqlite3.OperationalError("disk full")
+
+        transport = SQLiteTransport(tmp_path / "session.db")
+        real_conn = transport._conn
+        transport._conn = _BoomConnection()  # type: ignore[assignment]
+        try:
+            transport.close()  # must not raise
+        finally:
+            real_conn.close()
+        assert transport._conn is None
+
 
 class TestDeriveTransition:
     """_derive_transition() maps issue event types to canonical status strings."""

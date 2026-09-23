@@ -6,8 +6,9 @@ on-disk sources, ``SQLiteTransport`` (the EventBus sink), the raw_events
 zlib pack/unpack helpers, and the correction-detection helpers
 (``is_correction``/``normalize_issue_id``/``mine_corrections_from_messages``).
 Depends on :mod:`little_loops.session_store.schema` (``connect``, ``ensure_db``,
-``_configure_connection``, ``_LOOP_EVENT_TYPES``) and
-:mod:`little_loops.session_store.db` (``DEFAULT_DB_PATH``, ``resolve_history_db``).
+``_LOOP_EVENT_TYPES``), :mod:`little_loops.session_store.backend` (``open_history``,
+``translate_sqlite_errors`` -- ``SQLiteTransport``'s chokepoint routing, ENH-3526),
+and :mod:`little_loops.session_store.db` (``DEFAULT_DB_PATH``, ``resolve_history_db``).
 """
 
 from __future__ import annotations
@@ -31,8 +32,9 @@ from pathlib import Path
 from typing import Any
 
 import little_loops.session_store as _pkg
+from little_loops.session_store.backend import HistoryError, translate_sqlite_errors
 from little_loops.session_store.db import DEFAULT_DB_PATH, resolve_history_db
-from little_loops.session_store.schema import _LOOP_EVENT_TYPES, _configure_connection
+from little_loops.session_store.schema import _LOOP_EVENT_TYPES
 
 logger = logging.getLogger(__name__)
 
@@ -2907,10 +2909,8 @@ class SQLiteTransport:
         self._lock = threading.Lock()
         self._conn: sqlite3.Connection | None = None
         try:
-            _pkg.ensure_db(self._path)
-            self._conn = sqlite3.connect(str(self._path), check_same_thread=False)
-            _configure_connection(self._conn)
-        except sqlite3.Error:
+            self._conn = _pkg.open_history(self._path, check_same_thread=False)
+        except HistoryError:
             logger.warning(
                 "SQLiteTransport: could not open %s; sink disabled", self._path, exc_info=True
             )
@@ -2924,7 +2924,7 @@ class SQLiteTransport:
         event_type = str(event.get("event", ""))
         ts = str(event.get("ts") or _now())
         try:
-            with self._lock:
+            with translate_sqlite_errors(), self._lock:
                 if event_type in _LOOP_EVENT_TYPES:
                     loop_name = str(event.get("loop_name", "")) or None
                     state = event.get("state")
@@ -3007,23 +3007,25 @@ class SQLiteTransport:
                     file_path = event.get("file_path")
                     if file_path and issue_id and transition in ("done", "open", "cancelled"):
                         try:
-                            conn.commit()  # flush issue_events before spawning new conn
-                        except sqlite3.Error:
+                            with translate_sqlite_errors():
+                                conn.commit()  # flush issue_events before spawning new conn
+                        except HistoryError:
                             pass
                         record_issue_snapshot(self._path, str(issue_id), transition, str(file_path))
                         return  # skip second commit below; record_issue_snapshot committed
                 else:
                     return
                 conn.commit()
-        except sqlite3.Error:
+        except HistoryError:
             logger.warning("SQLiteTransport: write failed for event %r", event_type, exc_info=True)
 
     def close(self) -> None:
         """Close the underlying connection (best-effort)."""
         if self._conn is not None:
             try:
-                self._conn.close()
-            except sqlite3.Error:
+                with translate_sqlite_errors():
+                    self._conn.close()
+            except HistoryError:
                 pass
             self._conn = None
 

@@ -37,6 +37,8 @@ from __future__ import annotations
 
 import importlib
 import sqlite3
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Literal, Protocol, runtime_checkable
 
@@ -63,6 +65,27 @@ class HistoryUnsupported(HistoryError):
 
 class HistoryOperationError(HistoryError):
     """A database operation failed for a reason other than the three above."""
+
+
+@contextmanager
+def translate_sqlite_errors() -> Iterator[None]:
+    """Translate a raw ``sqlite3`` exception raised inside the block into the
+    matching :class:`HistoryError` subclass, preserving the original as
+    ``__cause__``.
+
+    Generalizes :meth:`SqliteBackend.connect_readonly`'s inline
+    ``try/except sqlite3.Error`` wrap (ENH-3525's Option (a): narrow
+    translation around driver calls, no ``HistoryConnection`` runtime wrapper)
+    so a write call site with several ``execute()``/``commit()`` calls under
+    one best-effort degrade boundary does not hand-roll the same
+    try/except chain (ENH-3526).
+    """
+    try:
+        yield
+    except sqlite3.IntegrityError as exc:
+        raise HistoryIntegrityError(str(exc)) from exc
+    except sqlite3.Error as exc:
+        raise HistoryOperationError(str(exc)) from exc
 
 
 @runtime_checkable
@@ -122,7 +145,7 @@ class Backend(Protocol):
 
     provider: str
 
-    def connect(self, path: Path) -> sqlite3.Connection: ...
+    def connect(self, path: Path, *, check_same_thread: bool = True) -> sqlite3.Connection: ...
     def connect_readonly(self, path: Path) -> sqlite3.Connection: ...
     def ensure_schema(self, path: Path) -> None: ...
     def supports(self, capability: str) -> bool: ...
@@ -143,10 +166,29 @@ class SqliteBackend:
     def supports(self, capability: str) -> bool:
         return capability in _SQLITE_CAPABILITIES
 
-    def connect(self, path: Path) -> sqlite3.Connection:
-        from little_loops.session_store.schema import connect as _connect
+    def connect(self, path: Path, *, check_same_thread: bool = True) -> sqlite3.Connection:
+        """Open a writable connection, ensuring the schema first.
 
-        return _connect(path)
+        ``check_same_thread=False`` opens a connection for a caller that
+        manages its own cross-thread synchronization (``SQLiteTransport``
+        keeps one long-lived connection shared across threads behind its own
+        lock, ENH-3526) -- ``schema.connect()``'s two-connection-per-call
+        shape has no such parameter and stays unchanged for every other
+        caller (the default path here delegates to it verbatim).
+        """
+        if check_same_thread:
+            from little_loops.session_store.schema import connect as _connect
+
+            return _connect(path)
+        from little_loops.session_store.schema import _configure_connection, ensure_db
+
+        try:
+            ensure_db(path)
+            conn = sqlite3.connect(str(path), check_same_thread=False)
+            _configure_connection(conn)
+        except sqlite3.Error as exc:
+            raise HistoryUnavailable(f"could not open {path}: {exc}") from exc
+        return conn
 
     def connect_readonly(self, path: Path) -> sqlite3.Connection:
         """Strict read-only open: never creates or migrates the store (D19)."""
@@ -225,14 +267,18 @@ def connect_readonly(target: Path | str | None = None) -> sqlite3.Connection:
     return resolve_backend().connect_readonly(resolved)
 
 
-def open_history(target: Path | str | None = None) -> sqlite3.Connection:
+def open_history(
+    target: Path | str | None = None, *, check_same_thread: bool = True
+) -> sqlite3.Connection:
     """Open a writable connection, ensuring the schema first.
 
     An explicit *target* opens that file; a default-shaped *target* resolves
-    via the existing ``resolve_history_db()`` precedence.
+    via the existing ``resolve_history_db()`` precedence. ``check_same_thread``
+    is forwarded to :meth:`Backend.connect` (ENH-3526: ``SQLiteTransport``'s
+    long-lived cross-thread connection).
     """
     resolved = _resolve_once(target)
-    return resolve_backend().connect(resolved)
+    return resolve_backend().connect(resolved, check_same_thread=check_same_thread)
 
 
 def open_history_readonly(

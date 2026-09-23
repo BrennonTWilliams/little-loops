@@ -4,10 +4,11 @@ type: ENH
 title: Route remaining history-store write consumers through the backend chokepoint
   (ENH-3525 A2)
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-22'
 captured_at: '2026-09-22T23:16:32Z'
+completed_at: '2026-09-23T00:37:34Z'
 verify_verdict: NON_VALID
 blocks:
 - FEAT-3524
@@ -237,42 +238,89 @@ tests that assert on raw `sqlite3` exceptions for "history failed", then
 
 - `HistoryError(Exception)` and its four subclasses `HistoryUnavailable`,
   `HistoryIntegrityError`, `HistoryUnsupported`, `HistoryOperationError`
-  already exist (`session_store/backend.py`, landed in A1) — this issue
-  raises them from write call sites, it does not add new types, unless
-  Step 1 resolves the design question to option (b) below, in which case a
-  translating connection/cursor wrapper type is added.
-- `sqlite3.Connection` — what `SqliteBackend.connect()` (`backend.py:146`)
-  returns today; the type the design question is about.
+  already existed (`session_store/backend.py`, landed in A1) — this issue
+  raises them from call sites; no new error types were added.
+- `sqlite3.Connection` — still what `open_history()`/`connect_readonly()`
+  return; **Step 1 resolved to Option (a)** (below), so no wrapper/protocol
+  type was introduced.
 
 ### Signatures
 
-Unresolved — Step 1 decides between the two options below.
+**Step 1 decision: Option (a), narrow per-site wrap** — Option (b)'s
+translating-connection-wrapper was rejected: it would have required
+auditing the ~50 confirmed `open_history()` callers already typed against a
+concrete `sqlite3.Connection`, a blast radius wider than this issue's five
+files, and Program Design's own note that `Backend.connect()` staying
+concretely `sqlite3.Connection`-typed is deliberate until FEAT-3524's
+second provider exists.
 
-- `open_history(target: Path | str | None = None) -> sqlite3.Connection` — current signature (`backend.py:228`); unchanged by Option (a), narrowed to `HistoryConnection` by Option (b).
-- **Option (a), narrow per-site wrap:** no signature change. Each write call
-  site wraps its own `conn.execute()`/`.commit()` block:
-  `try: ... except sqlite3.IntegrityError as exc: raise
-  HistoryIntegrityError(...) from exc except sqlite3.Error as exc: raise
-  HistoryOperationError(...) from exc`, mirroring
-  `SqliteBackend.connect_readonly()`'s existing shape.
-- **Option (b), translating wrapper:** `open_history()` returns
-  `HistoryConnection`, a thin proxy whose `execute`/`executemany`/`commit`
-  methods catch `sqlite3.Error` and re-raise the matching `HistoryError`
-  subclass. Requires auditing the ~50 confirmed
-  `resolve_history_db()`/`open_history()` callers that today type against
-  `sqlite3.Connection` concretely (per ENH-3525's Program Design note on
-  `Backend.connect()`'s current typing) for anything that depends on an
-  un-proxied `sqlite3.Connection` (e.g. `isinstance` checks,
-  `sqlite3`-specific methods outside the `HistoryConnection` protocol
-  surface such as `create_function`, `set_trace_callback`, or attribute
-  access this protocol doesn't cover).
+- `open_history(target: Path | str | None = None, *, check_same_thread: bool = True) -> sqlite3.Connection`
+  (`backend.py`) — additive keyword-only parameter, default preserves the
+  prior signature/behavior for all existing callers verbatim.
+- `translate_sqlite_errors() -> ContextManager[None]` (`backend.py`, new) —
+  generalizes `connect_readonly()`'s existing inline
+  `try/except sqlite3.Error as exc: raise HistoryOperationError(...) from
+  exc` wrap into a reusable context manager (also translating
+  `sqlite3.IntegrityError` to `HistoryIntegrityError`), so a call site with
+  several `execute()`/`commit()` calls under one best-effort degrade
+  boundary wraps the block once instead of hand-rolling the same
+  try/except chain at each of the ~10 converted sites. This is still
+  Option (a) in spirit — no `HistoryConnection` runtime type, `open_history()`
+  keeps returning a plain `sqlite3.Connection` — just de-duplicated
+  boilerplate the original issue text didn't anticipate.
 
 ### Call Path
 
-Unresolved pending Step 1. Both options preserve:
-`open_history()` -> `resolve_backend().connect()` -> (write call site) ->
-`SQLiteTransport` / CLI command, catching `HistoryError` at the same
-degrade boundary each site catches `sqlite3.Error` today.
+`open_history()`/`connect_readonly()` -> `resolve_backend().connect()`/
+`.connect_readonly()` -> call site wraps its execute/commit block in
+`translate_sqlite_errors()` -> `except HistoryError:` at the same degrade
+boundary each site previously caught `sqlite3.Error` at.
+
+### Deviations
+
+_2026-09-23, `/ll:manage-issue implement ENH-3526`_
+
+- **Read vs. write routing corrected.** The issue's Current Behavior/
+  Integration Map framed all five files uniformly as "write consumers."
+  Direct inspection found `cli/logs.py`'s two sites, `cli/ctx_stats.py`'s
+  three sites, and `cli/history.py`'s one site are all read-only (`SELECT`
+  only, no `INSERT`/`UPDATE`/`VACUUM`). These route through
+  `connect_readonly()` (the strict D19 contract, matching A1's own
+  read-only precedent) instead of `open_history()`; only
+  `writers.py`'s `SQLiteTransport` and `lifecycle.py`'s two VACUUM sites
+  plus `list_retirements` are genuine writes and route through
+  `open_history()`.
+- **`SqliteBackend.connect(check_same_thread=False)` added.**
+  `SQLiteTransport` needs one long-lived connection usable from multiple
+  threads (its own `threading.Lock` serializes access) — `schema.connect()`
+  has no such parameter and Program Design (ENH-3525) explicitly keeps its
+  signature fixed. Added an optional, default-`True` `check_same_thread`
+  keyword to `Backend.connect()`/`SqliteBackend.connect()`/`open_history()`:
+  the default path still delegates to `schema.connect()` verbatim (zero
+  behavior change for the ~50 other callers, none of which pass this
+  kwarg); `check_same_thread=False` opens its own connection inside
+  `backend.py` (`ensure_db()` + raw `sqlite3.connect(check_same_thread=False)`
+  + `_configure_connection()`), wrapped in the same open-failure ->
+  `HistoryUnavailable` translation `connect_readonly()` already used.
+- **Seven named tests needed no changes.** Verified by running all seven
+  with the implementation in place (all pass unmodified): six
+  (`test_hook_user_prompt_submit.py`, `test_ll_issues_research_triage.py`,
+  `test_set_status_cli.py`, `test_hook_post_tool_use.py`) monkeypatch
+  `session_store.connect`/`record_issue_event` directly to simulate a
+  failure and assert the *caller's* broad `except Exception`/
+  `contextlib.suppress(Exception)` degrade — unaffected by this issue's
+  narrower `HistoryError` taxonomy, and `session_store.connect`
+  (`schema.connect()`) is unchanged per Program Design. The seventh,
+  `test_feat3323_sse_bridge.py:1203`, exercises `session_store.queries`'s
+  own `_connect_readonly()` (a different, permanently-allowlisted
+  read-only opener, not `backend.py`'s), so its `sqlite3.OperationalError`
+  assertion is correct as written and untouched by this issue's scope.
+- **Regression tests added instead of "one per site."** Given ~10 converted
+  sites share only two behavioral shapes (open-failure degrade,
+  execute/commit-failure degrade), added targeted regressions for each
+  shape (`SQLiteTransport`'s open/send/close in
+  `test_session_store_writers.py`, `prune()`'s VACUUM path in
+  `test_session_store_lifecycle.py`) rather than one test per call site.
 
 ## Scope Boundaries
 
@@ -331,9 +379,46 @@ record of what was wrong and fixed, not an outstanding action item).
   verification fix); recommend `/ll:format-issue` or `/ll:refine-issue`
   before implementation starts.
 
+## Resolution
+
+Implemented per the Program Design Deviations above (Option (a), narrow
+per-site translation via a new `translate_sqlite_errors()` context manager;
+`SqliteBackend.connect(check_same_thread=False)` added for `SQLiteTransport`).
+
+- `session_store/backend.py`: added `translate_sqlite_errors()` and the
+  `check_same_thread` keyword on `Backend.connect()`/`SqliteBackend.connect()`/
+  `open_history()`.
+- `session_store/writers.py`: `SQLiteTransport` now opens via
+  `open_history(check_same_thread=False)` and catches `HistoryError`
+  (translated via `translate_sqlite_errors()`) in `send()`/`close()`.
+- `session_store/lifecycle.py`: both VACUUM sites and `list_retirements` route
+  through `open_history()`; `prune()`'s VACUUM degrade converted to
+  `except HistoryError`.
+- `cli/logs.py`, `cli/ctx_stats.py`, `cli/history.py`: all six sites are
+  read-only and route through `connect_readonly()` (corrected from the
+  issue's "write consumer" framing — see Deviations).
+- `scripts/tests/test_history_store_chokepoint_gate.py`: `_ALLOWLIST` shrunk
+  to zero provisional entries (only the pre-existing permanent entries
+  remain).
+- The seven tests named in Tests/Compatibility Guarantees needed no changes
+  (verified by running all seven; see Deviations for why).
+- Added regressions: `test_session_store_writers.py` (open/send/close
+  degrade under a simulated `HistoryError`), `test_session_store_lifecycle.py`
+  (`prune()`'s VACUUM degrade).
+- Fixed an unrelated line-number allowlist drift in
+  `test_issue_parser.py::TestPriorityRegexCompletenessAllowlist` caused by
+  this issue's line shifts in `writers.py`.
+- `docs/ARCHITECTURE.md` and `docs/reference/API.md` updated to document the
+  finished chokepoint.
+- Full suite: `python -m pytest scripts/tests/ -m "not integration and not
+  conformance"` — 24416 passed, 13 skipped, 2 pre-existing failures
+  unrelated to this change (`test_verify_evidence.py`,
+  `test_prose_dep_sweep_gate.py`; confirmed present on `main` before this
+  branch via `git stash`).
+
 ## Status
 
-**Open** | Created: 2026-09-22 | Priority: P3
+**Done** | Created: 2026-09-22 | Priority: P3
 
 ## Confidence Check Notes
 
@@ -349,6 +434,7 @@ _Added by `/ll:confidence-check` on 2026-09-22_
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-23T00:37:18 - `39e6472f-5cb7-45fb-a872-6efef2ed4bca.jsonl`
 - `/ll:refine-issue` - 2026-09-23T00:01:46 - `058f6a9a-c1ce-402e-92f0-f40af32a52a4.jsonl`
 - `/ll:confidence-check` - 2026-09-22T23:58:51 - `1605603b-2cc9-4989-a5b7-4d7f6139e9f1.jsonl`
 - `/ll:verify-issues` - 2026-09-22T23:39:32 - `719ed6d0-2e4e-41db-ae76-8176f4dcd29a.jsonl`

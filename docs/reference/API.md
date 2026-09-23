@@ -9781,6 +9781,41 @@ from little_loops.session_store import (
 )
 ```
 
+### Backend chokepoint: little_loops.session_store.backend (ENH-3525/ENH-3526)
+
+Every real `.ll/history.db` connection — read or write — funnels through this
+module, the SQLite-only prerequisite for a future remote (libSQL) provider:
+
+```python
+from little_loops.session_store.backend import (
+    HistoryError,             # base class for every backend-neutral error
+    HistoryUnavailable,       # store could not be opened (missing/locked/unreachable)
+    HistoryIntegrityError,    # a write violated a constraint
+    HistoryUnsupported,       # backend does not support a requested capability
+    HistoryOperationError,    # any other operation failure
+    translate_sqlite_errors,  # ctx manager: sqlite3.Error -> matching HistoryError, __cause__ preserved
+    open_history,             # writable connection, ensures schema first
+    open_history_readonly,    # read-only connection (ensure=False: strict D19; ensure=True: migrate-then-read)
+    connect_readonly,         # strict read-only open: never creates or migrates (D19)
+    resolve_backend,          # -> Backend for a provider (default "sqlite")
+)
+
+def open_history(target: Path | str | None = None, *, check_same_thread: bool = True) -> sqlite3.Connection
+```
+
+Call sites raise/catch `HistoryError` subclasses instead of raw `sqlite3.*`
+exceptions; `translate_sqlite_errors()` wraps a call site's `execute()`/
+`commit()` block and re-raises the matching subclass so a best-effort writer
+that used to catch `sqlite3.Error` catches `HistoryError` instead, with
+identical degrade behavior (log and continue, never raise). `open_history()`
+and `connect_readonly()` still return a plain `sqlite3.Connection` — Phase A
+translates errors narrowly around driver calls rather than through a
+translating connection wrapper type. `check_same_thread=False` is for a
+caller managing its own cross-thread synchronization (`SQLiteTransport` keeps
+one long-lived connection shared across threads behind its own lock); every
+other caller uses the default, which delegates to `schema.connect()`
+unchanged.
+
 ### Session discovery: list_workspaces / detect_sessions / iter_events (FEAT-3417, ENH-3420)
 
 `little_loops.session_store.sessions` is a separate seam from the write-side

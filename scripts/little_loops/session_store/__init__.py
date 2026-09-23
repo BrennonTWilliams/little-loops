@@ -88,6 +88,7 @@ from little_loops.session_store.backend import (
     open_history,
     open_history_readonly,
     resolve_backend,
+    translate_sqlite_errors,
 )
 from little_loops.session_store.codex import CodexNormalizer
 from little_loops.session_store.db import DEFAULT_DB_PATH, resolve_history_db
@@ -237,6 +238,7 @@ __all__ = [
     "HistoryIntegrityError",
     "HistoryUnsupported",
     "HistoryOperationError",
+    "translate_sqlite_errors",
     "normalize_issue_id",
     "SQLiteTransport",
     "backfill",

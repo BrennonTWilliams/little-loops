@@ -6,7 +6,9 @@ Covers the JSONL backfill/rebuild/compact/prune retention lifecycle
 ``record_retirement``/``list_retirements``) plus LCM hierarchical
 session-summary compaction (``compact_session``, ``compact_session_with_reasoning``
 and their helpers). Depends on :mod:`little_loops.session_store.schema`
-(``connect``, ``ensure_db``, ``_configure_connection``, ``SCHEMA_VERSION``),
+(``connect``, ``ensure_db``, ``SCHEMA_VERSION``),
+:mod:`little_loops.session_store.backend` (``open_history``,
+``translate_sqlite_errors`` -- VACUUM/retirement chokepoint routing, ENH-3526),
 :mod:`little_loops.session_store.db` (``DEFAULT_DB_PATH``), and
 :mod:`little_loops.session_store.writers` for the per-table ``_backfill_*``
 helpers and raw_events pack/unpack helpers. The deferred (inside-function)
@@ -29,8 +31,9 @@ from typing import TYPE_CHECKING, Any
 
 import little_loops.session_store as _pkg
 from little_loops.host_runner import project_child_env, resolve_host
+from little_loops.session_store.backend import HistoryError, translate_sqlite_errors
 from little_loops.session_store.db import DEFAULT_DB_PATH
-from little_loops.session_store.schema import SCHEMA_VERSION, _configure_connection
+from little_loops.session_store.schema import SCHEMA_VERSION
 from little_loops.session_store.sessions import (
     SessionHandle,
     handles_from_paths,
@@ -907,7 +910,7 @@ def recompress_raw_events(
     finally:
         conn.close()
     if recompressed:
-        vac = sqlite3.connect(str(db_path))
+        vac = _pkg.open_history(db_path)
         try:
             vac.execute("VACUUM")
         finally:
@@ -1385,15 +1388,15 @@ def prune(
     # VACUUM outside the original connection to avoid transaction conflicts
     if result["pruned"] and not dry_run:
         try:
-            vac_conn = sqlite3.connect(str(db_path))
-            _configure_connection(vac_conn)
-            vac_conn.isolation_level = None
-            try:
-                vac_conn.execute("VACUUM")
-                result["vacuumed"] = True
-            finally:
-                vac_conn.close()
-        except sqlite3.Error as exc:
+            with translate_sqlite_errors():
+                vac_conn = _pkg.open_history(db_path)
+                vac_conn.isolation_level = None
+                try:
+                    vac_conn.execute("VACUUM")
+                    result["vacuumed"] = True
+                finally:
+                    vac_conn.close()
+        except HistoryError as exc:
             logger.warning("prune: VACUUM failed: %s", exc)
 
     return result
@@ -1437,14 +1440,15 @@ def list_retirements(
     db_path = Path(db)
     if not db_path.exists():
         return []
-    conn = _pkg.connect(db)
+    conn = _pkg.open_history(db)
     try:
-        rows = conn.execute(
-            "SELECT topic_fingerprint, rule_id, addressed_at, session_id"
-            " FROM correction_retirements ORDER BY addressed_at DESC"
-        ).fetchall()
+        with translate_sqlite_errors():
+            rows = conn.execute(
+                "SELECT topic_fingerprint, rule_id, addressed_at, session_id"
+                " FROM correction_retirements ORDER BY addressed_at DESC"
+            ).fetchall()
         return [dict(r) for r in rows]
-    except sqlite3.OperationalError:
+    except HistoryError:
         return []
     finally:
         conn.close()

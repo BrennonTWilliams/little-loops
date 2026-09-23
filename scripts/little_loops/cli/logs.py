@@ -6,7 +6,6 @@ import argparse
 import json
 import re
 import shutil
-import sqlite3
 import sys
 import time
 from collections import Counter, defaultdict
@@ -33,13 +32,16 @@ from little_loops.logger import Logger
 from little_loops.session_store import (
     DEFAULT_DB_PATH,
     REGISTERED_HOSTS,
+    HistoryError,
     SessionHandle,
     cli_event_context,
+    connect_readonly,
     detect_sessions,
     explain_no_sessions,
     iter_events,
     list_workspaces,
     resolve_history_db,
+    translate_sqlite_errors,
 )
 from little_loops.user_messages import _resolve_host
 
@@ -862,14 +864,17 @@ def _aggregate_skill_stats(
     if not db_path.exists():
         return None
 
-    conn = sqlite3.connect(str(db_path))
-    conn.row_factory = sqlite3.Row
+    try:
+        conn = connect_readonly(db_path)
+    except HistoryError:
+        return None
     try:
         try:
-            skill_rows = conn.execute(
-                "SELECT ts, session_id, skill_name FROM skill_events ORDER BY ts"
-            ).fetchall()
-        except sqlite3.OperationalError:
+            with translate_sqlite_errors():
+                skill_rows = conn.execute(
+                    "SELECT ts, session_id, skill_name FROM skill_events ORDER BY ts"
+                ).fetchall()
+        except HistoryError:
             return None
 
         if not skill_rows:
@@ -890,10 +895,11 @@ def _aggregate_skill_stats(
             session_skills[sid].append((row["ts"] or "", row["skill_name"] or "unknown"))
 
         try:
-            corr_rows = conn.execute(
-                "SELECT ts, session_id FROM user_corrections ORDER BY ts"
-            ).fetchall()
-        except sqlite3.OperationalError:
+            with translate_sqlite_errors():
+                corr_rows = conn.execute(
+                    "SELECT ts, session_id FROM user_corrections ORDER BY ts"
+                ).fetchall()
+        except HistoryError:
             corr_rows = []
 
         for corr in corr_rows:
@@ -1600,16 +1606,19 @@ def _resolve_session_log(session_ref: str, db_path: Path) -> Path | None:
         return candidate
 
     if db_path.exists():
-        conn = sqlite3.connect(str(db_path))
-        conn.row_factory = sqlite3.Row
         try:
-            row = conn.execute(
-                "SELECT jsonl_path FROM sessions WHERE session_id = ?",
-                (session_ref,),
-            ).fetchone()
+            conn = connect_readonly(db_path)
+        except HistoryError:
+            return None
+        try:
+            with translate_sqlite_errors():
+                row = conn.execute(
+                    "SELECT jsonl_path FROM sessions WHERE session_id = ?",
+                    (session_ref,),
+                ).fetchone()
             if row and row["jsonl_path"]:
                 return Path(row["jsonl_path"])
-        except sqlite3.OperationalError:
+        except HistoryError:
             pass
         finally:
             conn.close()
