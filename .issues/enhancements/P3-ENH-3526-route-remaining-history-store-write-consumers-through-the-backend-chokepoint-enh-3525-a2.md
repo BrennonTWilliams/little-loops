@@ -13,6 +13,12 @@ blocks:
 - FEAT-3524
 relates_to:
 - ENH-3525
+confidence_score: 90
+outcome_confidence: 59
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 10
+score_change_surface: 10
 ---
 
 # ENH-3526: Route remaining history-store write consumers through the backend chokepoint (ENH-3525 A2)
@@ -329,7 +335,20 @@ record of what was wrong and fixed, not an outstanding action item).
 
 **Open** | Created: 2026-09-22 | Priority: P3
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-22_
+
+**Readiness Score**: 90/100 → PROCEED
+**Outcome Confidence**: 59/100 → LOW
+
+### Outcome Risk Factors
+- Deep per-site complexity: Step 1's translation-shape decision is unresolved between a narrow per-site `try/except` wrap (Option a) and a translating connection/cursor wrapper (Option b); Option b would require auditing ~50 confirmed `resolve_history_db()`/`open_history()` callers typed against a concrete `sqlite3.Connection` today, materially widening the blast radius beyond the 5 files this issue enumerates.
+- `session_store/writers.py`'s `SQLiteTransport` holds one long-lived connection shared across ~20 best-effort event-writer functions — a cross-module, shared-state site, not a mechanical one-line substitution like the CLI files.
+- Preserving each site's existing best-effort degrade behavior (return `False`/`None`/empty, never raise) exactly means every site needs individual verification rather than a single automated completeness check — mitigate by adding the "new regression per resolved write call site" test named in this issue's Tests section as each site lands, not deferring it to the end.
+
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-22T23:58:51 - `1605603b-2cc9-4989-a5b7-4d7f6139e9f1.jsonl`
 - `/ll:verify-issues` - 2026-09-22T23:39:32 - `719ed6d0-2e4e-41db-ae76-8176f4dcd29a.jsonl`
 - `/ll:manage-issue` - 2026-09-22T23:29:05 - `4f3ece7f-4412-4831-a895-fcf5c78a9b60.jsonl`
