@@ -1939,6 +1939,127 @@ class TestBackfillUsageEvents:
             conn.close()
         assert n == 1
 
+    def test_rebuild_preserves_live_usage_rows(self, tmp_path: Path) -> None:
+        """BUG-3530: record_usage_event rows survive rebuild; transcript rows replaced."""
+        from little_loops.session_store import record_usage_event
+
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        for st in ("s1", None):
+            record_usage_event(
+                db,
+                run_id="r1",
+                ts="2026-07-13T02:00:00Z",
+                state=st,
+                model="claude-sonnet-4-6",
+                input_tokens=5,
+                output_tokens=6,
+                cache_read_tokens=0,
+                cache_creation_tokens=0,
+            )
+        self._seed(
+            tmp_path,
+            db,
+            [
+                self._assistant_usage_record(
+                    "s1",
+                    "2026-07-13T03:00:00Z",
+                    "claude-opus-4-7",
+                    {"input_tokens": 1, "output_tokens": 1},
+                ),
+                # no sessionId -> skipped by replay
+                json.dumps(
+                    {
+                        "type": "assistant",
+                        "timestamp": "2026-07-13T03:01:00Z",
+                        "message": {"model": "m", "usage": {"input_tokens": 1}},
+                    }
+                ),
+            ],
+        )
+        query = (
+            "SELECT channel, run_id, state, input_tokens, cost_usd FROM usage_events "
+            "ORDER BY channel, state"
+        )
+        rebuild(db)
+        conn = connect(db)
+        try:
+            first = conn.execute(query).fetchall()
+        finally:
+            conn.close()
+        rebuild(db)
+        conn = connect(db)
+        try:
+            second = conn.execute(query).fetchall()
+        finally:
+            conn.close()
+        assert first == second
+        assert [r[0] for r in first].count("live") == 2
+        assert [r[0] for r in first].count("transcript") == 1
+        live = [r for r in first if r[0] == "live"]
+        assert {r[1] for r in live} == {"r1"} and {r[2] for r in live} == {"s1", None}
+
+    def test_rebuild_replaces_rollout_channel_rows(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = connect(db)
+        try:
+            conn.execute("INSERT INTO usage_events(ts, model, channel) VALUES('t', 'm', 'rollout')")
+            conn.commit()
+        finally:
+            conn.close()
+        rebuild(db)
+        conn = connect(db)
+        try:
+            assert conn.execute("SELECT COUNT(*) FROM usage_events").fetchone()[0] == 0
+        finally:
+            conn.close()
+
+    def test_rebuild_failure_rolls_back_usage_delete(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = connect(db)
+        try:
+            conn.execute(
+                "INSERT INTO usage_events(ts, session_id, model, channel) "
+                "VALUES('t', 's', 'm', 'transcript')"
+            )
+            conn.execute("INSERT INTO usage_events(ts, model, channel) VALUES('t', 'm', 'live')")
+            conn.commit()
+        finally:
+            conn.close()
+        with patch(
+            "little_loops.session_store.lifecycle._backfill_sessions",
+            side_effect=RuntimeError("boom"),
+        ):
+            with pytest.raises(RuntimeError):
+                rebuild(db)
+        conn = connect(db)
+        try:
+            n = conn.execute("SELECT COUNT(*) FROM usage_events").fetchone()[0]
+        finally:
+            conn.close()
+        assert n == 2
+
+    def test_v53_migration_classifies_legacy_rows(self, tmp_path: Path) -> None:
+        db = tmp_path / "history.db"
+        _bootstrap_schema_at(db, 52)
+        conn = sqlite3.connect(str(db))
+        try:
+            conn.execute("INSERT INTO usage_events(ts, session_id, model) VALUES('t', 's1', 'm')")
+            conn.execute("INSERT INTO usage_events(ts, model, run_id) VALUES('t', 'm', 'r1')")
+            conn.commit()
+        finally:
+            conn.close()
+        ensure_db(db)
+        rebuild(db)
+        conn = connect(db)
+        try:
+            rows = conn.execute("SELECT channel, run_id FROM usage_events").fetchall()
+        finally:
+            conn.close()
+        assert [tuple(r) for r in rows] == [("live", "r1")]
+
     def test_run_id_backfilled_from_unambiguous_loop_run_window(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
         ensure_db(db)

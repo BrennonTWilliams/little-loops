@@ -1954,8 +1954,8 @@ def record_usage_event(
     try:
         conn.execute(
             "INSERT INTO usage_events(ts, model, state, input_tokens, output_tokens, "
-            "cache_read_input_tokens, cache_creation_input_tokens, cost_usd, run_id) "
-            "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "cache_read_input_tokens, cache_creation_input_tokens, cost_usd, run_id, channel) "
+            "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, 'live')",
             (
                 ts,
                 model,
@@ -3611,6 +3611,10 @@ def _backfill_usage_events(conn: sqlite3.Connection, source: list[Path] | sqlite
         if input_tokens is None and output_tokens is None:
             continue
         session_id = record.get("sessionId")
+        # BUG-3530: a NULL session_id row would be classified 'live' by the
+        # channel migration and survive rebuild(); skip so replay never makes one.
+        if not session_id:
+            continue
         ts = str(record.get("timestamp") or "")
         model = message.get("model")
         cost_usd = estimate_cost_usd(
@@ -3624,8 +3628,8 @@ def _backfill_usage_events(conn: sqlite3.Connection, source: list[Path] | sqlite
         conn.execute(
             "INSERT INTO usage_events(ts, session_id, model, state, input_tokens, "
             "output_tokens, cache_read_input_tokens, cache_creation_input_tokens, cost_usd, "
-            "run_id) "
-            "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "run_id, channel) "
+            "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'transcript')",
             (
                 ts,
                 session_id,

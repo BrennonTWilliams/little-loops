@@ -22,7 +22,7 @@ from little_loops.session_store.db import DEFAULT_DB_PATH, _resolve_db_path
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 52
+SCHEMA_VERSION = 53
 
 VALID_KINDS: tuple[str, ...] = (
     "tool",
@@ -1436,6 +1436,15 @@ _MIGRATIONS: list[str] = [
     # (fix-forward: pre-migration rows and ungraded rows alike keep NULL).
     """
     ALTER TABLE harness_events ADD COLUMN channels_json TEXT;
+    """,
+    # v53 (BUG-3530): acquisition channel on usage_events so rebuild() can wipe
+    # only replayable rows. 'live' = record_usage_event (no transcript source);
+    # 'transcript' = _backfill_usage_events replay. Legacy rows are classified
+    # here, before any rebuild can run: record_usage_event has never written
+    # session_id, _backfill_usage_events always does.
+    """
+    ALTER TABLE usage_events ADD COLUMN channel TEXT;
+    UPDATE usage_events SET channel = CASE WHEN session_id IS NOT NULL THEN 'transcript' ELSE 'live' END;
     """,
 ]
 

@@ -937,6 +937,10 @@ def recompress_raw_events(
 # _backfill_prompt_opt), but as a non-destructive UPDATE-only pass called
 # separately below — it must NOT be added here or to _REBUILD_SEARCH_KINDS,
 # since a wipe would destroy the live offer rows it enriches.
+# usage_events is the one member that also receives live writes
+# (record_usage_event, channel = 'live'); it is wiped only for replayable
+# channels ('transcript', ENH-3532 'rollout') via _REBUILD_TABLE_PREDICATES
+# (BUG-3530). run_id/state are NOT valid discriminators: replay derives run_id.
 _REBUILD_TABLES = (
     "tool_events",
     "message_events",
@@ -948,6 +952,8 @@ _REBUILD_TABLES = (
     "summary_spans",
     "usage_events",
 )
+
+_REBUILD_TABLE_PREDICATES = {"usage_events": "channel IS NOT 'live'"}
 
 _REBUILD_SEARCH_KINDS = ("tool", "message", "skill", "correction", "usage")
 
@@ -984,7 +990,8 @@ def rebuild(
     }
     try:
         for table in _REBUILD_TABLES:
-            conn.execute(f"DELETE FROM {table}")
+            where = _REBUILD_TABLE_PREDICATES.get(table)
+            conn.execute(f"DELETE FROM {table}" + (f" WHERE {where}" if where else ""))
         placeholders = ",".join(["?"] * len(_REBUILD_SEARCH_KINDS))
         conn.execute(
             f"DELETE FROM search_index WHERE kind IN ({placeholders})",

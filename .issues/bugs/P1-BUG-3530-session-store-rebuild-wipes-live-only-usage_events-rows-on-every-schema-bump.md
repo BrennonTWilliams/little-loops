@@ -3,10 +3,11 @@ id: BUG-3530
 type: BUG
 title: Session-store rebuild wipes live-only usage_events rows on every schema bump
 priority: P1
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-24'
 captured_at: '2026-09-24T00:20:32Z'
+completed_at: '2026-09-24T01:55:13Z'
 labels:
 - observability
 - history
@@ -131,6 +132,8 @@ _Added by `/ll:confidence-check` on 2026-09-23 (re-scored 2026-09-24)_
 - Moderate per-site complexity: rebuild semantics, idempotency across repeated rebuilds, duplicate-row risk.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-24T01:55:12 - `59dbb2a7-57df-4d79-806b-af3b00edfefa.jsonl`
+- `/ll:ready-issue` - 2026-09-24T01:47:26 - `8fc1084c-2077-4dfa-b975-c6ec75d185b6.jsonl`
 - `/ll:confidence-check` - 2026-09-24T01:36:31 - `d6251dba-5797-46a2-be40-90b54a0c3358.jsonl`
 - `/ll:reconcile-issue` - 2026-09-24T01:28:09 - `0cc4d9ef-2be2-4686-8da4-17a975d2e357.jsonl`
 - `/ll:decide-issue` - 2026-09-24T01:27:18 - `34910629-d012-4bc0-9f28-9b313ee78c98.jsonl`
@@ -145,3 +148,7 @@ _Added by `/ll:confidence-check` on 2026-09-23 (re-scored 2026-09-24)_
 ## Scope Boundary
 
 **Note** (added by `/ll:audit-issue-conflicts`): This issue owns the `channel` column. `rebuild()` must delete every replayable channel (`transcript` and the Codex `rollout` rows ENH-3532 ingests), not only `channel = 'transcript'`, otherwise replay duplicates rollout rows and inflates totals. Add an acceptance criterion that ENH-3532 rollout rows are replaced, not duplicated, on rebuild. See ENH-3532.
+
+## Resolution
+
+Fixed: v53 migration adds `usage_events.channel` (legacy rows classified by `session_id`); `record_usage_event` writes `'live'`, `_backfill_usage_events` writes `'transcript'` and skips records without `sessionId`; `rebuild()` deletes `usage_events` rows where `channel IS NOT 'live'` (covers transcript and ENH-3532 rollout). Tests added in `test_session_store_lifecycle.py`; version pins and manifest updated. Full unit suite passes (24422). Not added: an end-to-end SessionStart → `backfill_worker` test (direct `rebuild()` path covered).

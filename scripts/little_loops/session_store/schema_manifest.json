@@ -2764,6 +2764,12 @@
           "notnull": false,
           "pk": false,
           "type": "TEXT"
+        },
+        {
+          "name": "channel",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
         }
       ],
       "type": "table"
@@ -2887,5 +2893,5 @@
       "type": "table"
     }
   },
-  "schema_version": 52
+  "schema_version": 53
 }
