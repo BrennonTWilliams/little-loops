@@ -439,8 +439,8 @@ states:
     action: "ll-issues check-verify-verdict ${captured.issue_id.output:shell} --proposal-unsound"
     fragment: shell_exit
     on_yes: check_reconcile_limit  # verify_verdict == PROPOSAL_UNSOUND → reconcile, not refine
-    on_no: check_refine_limit      # any other non-VALID verdict → today's behaviour, unchanged
-    on_error: check_refine_limit   # fail-open, matching this file's convention
+    on_no: check_gate_refine_limit      # any other non-VALID verdict → refine (BUG-3551: gate budget)
+    on_error: check_gate_refine_limit   # fail-open, matching this file's convention
 
   check_hedges:
     # Score-independent gate: forces a refine pass on unresolved hedges/open
@@ -472,7 +472,7 @@ states:
       type: output_numeric
       operator: lt
       target: 2
-    on_yes: check_refine_limit      # 1st red reading: allowed to ask for a refine (pre-filter, not a private budget)
+    on_yes: check_hedge_refine_limit  # 1st red reading: allowed to ask for a refine (pre-filter, not a private budget)
     on_no: check_placeholders       # 2nd red reading: proceed rather than exhaust the shared budget (ENH-3248)
     on_error: check_placeholders    # fail open, matching check_hedges
 
@@ -501,7 +501,7 @@ states:
       operator: eq
       target: 0
     on_yes: check_ac_automatable
-    on_no: check_refine_limit
+    on_no: check_gate_refine_limit  # BUG-3551
     on_error: check_ac_automatable
 
   check_ac_automatable:
@@ -524,7 +524,7 @@ states:
     action: "ll-issues check-design ${captured.issue_id.output:shell}"
     fragment: shell_exit
     on_yes: confidence_check
-    on_no: check_refine_limit  # Decision Rationale: Option B — shares the same 1-loopback-per-run budget as the other refine-triggering gates, rather than bypassing check_refine_limit's counter to reach refine_followup directly.
+    on_no: check_gate_refine_limit  # BUG-3551 (same shared counter). Decision Rationale: Option B — shares the same 1-loopback-per-run budget as the other refine-triggering gates, rather than bypassing check_refine_limit's counter to reach refine_followup directly.
     on_error: confidence_check  # fail-open, matching check_hedges / check_ac_automatable
 
   check_reconcile_limit:
@@ -549,8 +549,8 @@ states:
       operator: lt
       target: 2
     on_yes: reconcile_issue
-    on_no: check_refine_limit
-    on_error: check_refine_limit
+    on_no: check_gate_refine_limit  # BUG-3551
+    on_error: check_gate_refine_limit
 
   reconcile_issue:
     # ENH-3248: self-referential rewrite rung. check_ac_automatable's failure
@@ -602,14 +602,9 @@ states:
       import json, os, sys, subprocess
       from pathlib import Path
 
-      p = Path('.ll/ll-config.json')
-      cg = {}
-      if p.exists():
-          try:
-              cg = json.loads(p.read_text()).get('commands', {}).get('confidence_gate', {})
-          except Exception:
-              pass
-      readiness = cg.get('readiness_threshold', int(os.environ['LL_ARG_READINESS_THRESHOLD']))
+      # BUG-3552: the runner seeds this from commands.confidence_gate unless
+      # --context overrides it; re-reading ll-config here would shadow the override.
+      readiness = int(os.environ['LL_ARG_READINESS_THRESHOLD'])
 
       issue_id = Path('${context.run_dir}/check_readiness-issue_id.txt').read_text().rstrip("\n")
       r = subprocess.run(
@@ -649,14 +644,8 @@ states:
       import json, os, sys, subprocess
       from pathlib import Path
 
-      p = Path('.ll/ll-config.json')
-      cg = {}
-      if p.exists():
-          try:
-              cg = json.loads(p.read_text()).get('commands', {}).get('confidence_gate', {})
-          except Exception:
-              pass
-      outcome = cg.get('outcome_threshold', int(os.environ['LL_ARG_OUTCOME_THRESHOLD']))
+      # BUG-3552: seeded context value, not a config re-read (see check_readiness).
+      outcome = int(os.environ['LL_ARG_OUTCOME_THRESHOLD'])
 
       issue_id = Path('${context.run_dir}/check_outcome-issue_id.txt').read_text().rstrip("\n")
       r = subprocess.run(
@@ -793,6 +782,67 @@ states:
     on_no: breakdown_issue
     on_error: diagnose
 
+  check_gate_refine_limit:
+    # BUG-3551: the structure-gate twin of check_refine_limit. Same counter file,
+    # so the refine budget stays shared (check_design's Decision Rationale
+    # Option B) — only the exhaustion target differs. check_refine_limit is
+    # reached from check_readiness (a low *score* after refinement → scope may
+    # be too big → size review). This state is reached from the structure gates
+    # (verify verdict, placeholders, Program Design, reconcile exhaustion),
+    # where size review is the wrong remedy: decomposing an issue does not give
+    # it a Program Design section or remove a false claim. Exhaustion here exits
+    # via record_gate_unmet instead of breakdown_issue.
+    action: |
+      FILE="${context.run_dir}/refine-to-ready-refine-count"
+      N=$(cat "$FILE" 2>/dev/null || echo 0)
+      N=$((N + 1))
+      printf '%s' "$N" > "$FILE"
+      echo "$N"
+    action_type: shell
+    capture: check_gate_refine_limit
+    evaluate:
+      type: output_numeric
+      operator: lt
+      target: 2
+    on_yes: refine_followup
+    on_no: record_gate_unmet
+    on_error: diagnose
+
+  check_hedge_refine_limit:
+    # BUG-3551: hedge-scan twin of check_gate_refine_limit (same shared
+    # counter). The hedge scan is noisy by construction (BUG-3170: a residual
+    # count is the steady state for a well-refined issue), so an exhausted
+    # budget on a hedge reading proceeds into the next gate rather than
+    # failing or decomposing — matching check_hedge_attempts' own 2nd-reading
+    # fall-through.
+    action: |
+      FILE="${context.run_dir}/refine-to-ready-refine-count"
+      N=$(cat "$FILE" 2>/dev/null || echo 0)
+      N=$((N + 1))
+      printf '%s' "$N" > "$FILE"
+      echo "$N"
+    action_type: shell
+    evaluate:
+      type: output_numeric
+      operator: lt
+      target: 2
+    on_yes: refine_followup
+    on_no: check_placeholders
+    on_error: check_placeholders
+
+  record_gate_unmet:
+    # BUG-3551: a structure gate is still red with the run's refine budget
+    # spent. Writes its own terminal class (mirroring mark_rate_limit_infra /
+    # record_decision_unresolved) so callers see "not ready, needs a human"
+    # rather than a size-review decomposition. autodev's skip_inflight ledgers
+    # any non-infra class as refine_failed.
+    action: |
+      printf 'gate_unmet' > ${context.run_dir}/refine-terminal-class
+      echo "[GATE_UNMET]" ${captured.issue_id.output:shell} "- a structure gate (verify verdict, placeholders, Program Design, or acceptance criteria) still fails after this run's refine budget; not decomposing. Fix the gate finding, then re-run."
+    action_type: shell
+    next: failed
+    on_error: failed
+
   check_scores_from_file:
     # Error-recovery fallback: reached when check_readiness subprocess fails.
     # Reads both scores directly from frontmatter without Python eval.
@@ -806,15 +856,9 @@ states:
       import json, os, sys, subprocess
       from pathlib import Path
 
-      p = Path('.ll/ll-config.json')
-      cg = {}
-      if p.exists():
-          try:
-              cg = json.loads(p.read_text()).get('commands', {}).get('confidence_gate', {})
-          except Exception:
-              pass
-      readiness = cg.get('readiness_threshold', int(os.environ['LL_ARG_READINESS_THRESHOLD']))
-      outcome = cg.get('outcome_threshold', int(os.environ['LL_ARG_OUTCOME_THRESHOLD']))
+      # BUG-3552: seeded context values, not a config re-read (see check_readiness).
+      readiness = int(os.environ['LL_ARG_READINESS_THRESHOLD'])
+      outcome = int(os.environ['LL_ARG_OUTCOME_THRESHOLD'])
 
       issue_id = Path('${context.run_dir}/check_scores_from_file-issue_id.txt').read_text().rstrip("\n")
       r = subprocess.run(
@@ -969,6 +1013,7 @@ states:
       - refine_followup:        ${captured.refine_followup.stderr?}
       - check_outcome:          ${captured.check_outcome.stderr?}
       - check_refine_limit:     ${captured.check_refine_limit.stderr?}
+      - check_gate_refine_limit: ${captured.check_gate_refine_limit.stderr?}
       - check_hedge_attempts:   ${captured.check_hedge_attempts.stderr?}
       - check_reconcile_limit:  ${captured.check_reconcile_limit.stderr?}
       - check_scores_from_file: ${captured.check_scores_from_file.stderr?}
