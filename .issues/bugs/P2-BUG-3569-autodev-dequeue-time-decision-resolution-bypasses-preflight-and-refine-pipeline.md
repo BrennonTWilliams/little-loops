@@ -3,11 +3,12 @@ id: BUG-3569
 type: BUG
 title: Autodev dequeue-time decision resolution bypasses preflight and refine pipeline
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-24'
 captured_at: '2026-09-24T19:33:12Z'
 parent: EPIC-3565
+completed_at: '2026-09-24T19:41:21Z'
 ---
 
 # BUG-3569: Autodev dequeue-time decision resolution bypasses preflight and refine pipeline
@@ -118,3 +119,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ## Status
 
 **Open** | Created: 2026-09-24 | Priority: P2
+
+
+## Session Log
+- `/ll:capture-issue` - 2026-09-24T19:42:30 - `59fe3bd4-3622-4dd2-bb8b-ad5cc55e79ec.jsonl`

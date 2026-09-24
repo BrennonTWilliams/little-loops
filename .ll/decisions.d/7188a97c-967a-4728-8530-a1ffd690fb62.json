@@ -1,0 +1,11 @@
+{
+  "id": "0eabe6f0-8fbd-402e-8c6a-53ce3ee68326",
+  "type": "decision",
+  "timestamp": "2026-09-24T19:42:05Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "From 2026-09-24 autodev audit (EPIC-3565)",
+  "rule": "Captured: Consolidate autodev issue preparation into a single controller loop",
+  "scope": "issue",
+  "issue": "ENH-3577"
+}

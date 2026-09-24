@@ -1,0 +1,11 @@
+{
+  "id": "7aabb04b-7d4f-4b69-b2d6-2e79012bf2fa",
+  "type": "decision",
+  "timestamp": "2026-09-24T19:41:53Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "From 2026-09-24 autodev audit (EPIC-3565)",
+  "rule": "Captured: Autodev code formatting and quality evidence gate before closure credit",
+  "scope": "issue",
+  "issue": "FEAT-3573"
+}

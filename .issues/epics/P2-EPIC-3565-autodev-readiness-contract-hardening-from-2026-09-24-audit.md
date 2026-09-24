@@ -75,11 +75,11 @@ that. Also out of scope: the audit's composite scorecard, which is a judgment, n
 measurement.
 
 ## Children
-- **BUG-3566** — Autodev pre-deferral remedy dispatcher binds env vars to ll-issues instead of python3 (open)
-- **BUG-3567** — Autodev rate-limit exits bypass finalize_done and summary.json (open)
-- **BUG-3568** — Autodev residual decision group reaches implement_current with decision_needed armed (open)
-- **BUG-3569** — Autodev dequeue-time decision resolution bypasses preflight and refine pipeline (open)
-- **BUG-3570** — Confidence-check skill misstates format-check --fix repair coverage (open)
+- **BUG-3566** — Autodev pre-deferral remedy dispatcher binds env vars to ll-issues instead of python3 (done)
+- **BUG-3567** — Autodev rate-limit exits bypass finalize_done and summary.json (done)
+- **BUG-3568** — Autodev residual decision group reaches implement_current with decision_needed armed (done)
+- **BUG-3569** — Autodev dequeue-time decision resolution bypasses preflight and refine pipeline (done)
+- **BUG-3570** — Confidence-check skill misstates format-check --fix repair coverage (done)
 - **BUG-3571** — Refine-to-ready accepts stale or absent verify verdict and confidence scores (open)
 - **BUG-3572** — Failed spike suppresses unproven-mechanism outcome cap in confidence-check (open)
 - **FEAT-3573** — Autodev code formatting and quality evidence gate before closure credit (open)
@@ -87,18 +87,6 @@ measurement.
 - **ENH-3575** — Structured policy gate field replacing prose gate-phrase grep in autodev (open)
 - **ENH-3576** — Format-check repair coverage for missing and boilerplate sections with format-issue fallback (open)
 - **ENH-3577** — Consolidate autodev issue preparation into a single controller loop (open)
-
-
-
-
-
-
-
-
-
-
-
-
 
 ## Acceptance Criteria
 
@@ -113,3 +101,6 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ## Status
 
 **Open** | Created: 2026-09-24 | Priority: P2
+
+## Session Log
+- `/ll:capture-issue` - 2026-09-24T19:42:30 - `59fe3bd4-3622-4dd2-bb8b-ad5cc55e79ec.jsonl`

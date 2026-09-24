@@ -8,6 +8,8 @@ discovered_by: ll-issues-create
 discovered_date: '2026-09-24'
 captured_at: '2026-09-24T19:33:13Z'
 parent: EPIC-3565
+blocks:
+- ENH-3577
 ---
 
 # BUG-3572: Failed spike suppresses unproven-mechanism outcome cap in confidence-check
@@ -91,3 +93,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ## Status
 
 **Open** | Created: 2026-09-24 | Priority: P2
+
+
+## Session Log
+- `/ll:capture-issue` - 2026-09-24T19:42:31 - `59fe3bd4-3622-4dd2-bb8b-ad5cc55e79ec.jsonl`

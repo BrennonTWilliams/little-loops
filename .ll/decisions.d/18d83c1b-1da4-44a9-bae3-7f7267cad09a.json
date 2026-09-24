@@ -1,0 +1,11 @@
+{
+  "id": "8d64d969-233d-48b2-9b10-ee8f02d2265c",
+  "type": "decision",
+  "timestamp": "2026-09-24T19:41:50Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "From 2026-09-24 autodev audit (EPIC-3565)",
+  "rule": "Captured: Autodev readiness contract hardening from 2026-09-24 audit",
+  "scope": "issue",
+  "issue": "EPIC-3565"
+}

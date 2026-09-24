@@ -1,0 +1,11 @@
+{
+  "id": "ecdaac0f-03d8-4228-947d-a95b35e32c32",
+  "type": "decision",
+  "timestamp": "2026-09-24T19:41:57Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "From 2026-09-24 autodev audit (EPIC-3565)",
+  "rule": "Captured: Structured policy gate field replacing prose gate-phrase grep in autodev",
+  "scope": "issue",
+  "issue": "ENH-3575"
+}

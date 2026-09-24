@@ -1,0 +1,11 @@
+{
+  "id": "67285a0e-c4ba-4f06-8310-b36cbd7e673b",
+  "type": "decision",
+  "timestamp": "2026-09-24T19:42:01Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "From 2026-09-24 autodev audit (EPIC-3565)",
+  "rule": "Captured: Format-check repair coverage for missing and boilerplate sections with format-issue fallback",
+  "scope": "issue",
+  "issue": "ENH-3576"
+}
