@@ -14,6 +14,12 @@ labels:
 relates_to:
 - BUG-3541
 - BUG-3579
+confidence_score: 100
+outcome_confidence: 93
+score_complexity: 25
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 # BUG-3564: MODEL_PRICING has stale rates for Sonnet 5, Opus 4.5-4.7 and Haiku 4.5
@@ -105,3 +111,7 @@ These entries are correct: `claude-fable-5`, `claude-opus-5`, `claude-opus-4-8`,
 ## Status
 
 **Open** | Created: 2026-09-24 | Priority: P2
+
+
+## Session Log
+- `/ll:confidence-check` - 2026-09-24T22:09:36 - `6c1833f1-29b8-4569-8cd1-c7e84a3f7e66.jsonl`

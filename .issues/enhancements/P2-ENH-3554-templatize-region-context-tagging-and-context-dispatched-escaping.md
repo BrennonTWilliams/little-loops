@@ -12,6 +12,12 @@ labels:
 - artifacts
 blocked_by:
 - ENH-3558
+confidence_score: 95
+outcome_confidence: 82
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 25
 ---
 
 # ENH-3554: Templatize region-context tagging and context-dispatched escaping
@@ -179,4 +185,5 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-24T22:09:53 - `b03f0e56-e701-4b6d-bb94-8f4cb425b852.jsonl`
 - `/ll:capture-issue` - 2026-09-24T18:27:44 - `22a651e2-9185-4c57-93f1-1e1f8cfd0e15.jsonl`

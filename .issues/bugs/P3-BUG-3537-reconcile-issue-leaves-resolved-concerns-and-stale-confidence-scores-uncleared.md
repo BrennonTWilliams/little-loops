@@ -7,6 +7,12 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-09-24'
 captured_at: '2026-09-24T01:32:52Z'
+confidence_score: 100
+outcome_confidence: 75
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 # BUG-3537: reconcile-issue leaves resolved Concerns and stale confidence scores uncleared
@@ -128,5 +134,17 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 **Open** | Created: 2026-09-24 | Priority: P3
 
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-24_
+
+**Readiness Score**: 100/100 → PROCEED
+**Outcome Confidence**: 75/100 → MODERATE
+
+### Outcome Risk Factors
+- Broad enumeration across ~12 sites (reconcile command, `set_flags.py`, `set_scores.py` + parser, CLI.md, confidence-check SKILL/rubric, five test files), each a local change.
+- Which Concerns count as "resolved" is model judgment in `commands/reconcile-issue.md` and only prose-testable; the deterministic parts (`--clear`, strikethrough strip) are unit-testable.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-09-24T22:09:57 - `b03f0e56-e701-4b6d-bb94-8f4cb425b852.jsonl`
 - `/ll:capture-issue` - 2026-09-24T01:32:57 - `2f8f7a22-ff27-4b63-912d-b3be6e3850a5.jsonl`

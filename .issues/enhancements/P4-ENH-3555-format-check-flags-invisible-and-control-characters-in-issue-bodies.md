@@ -10,6 +10,12 @@ captured_at: '2026-09-24T18:27:36Z'
 labels:
 - issues
 - tooling
+confidence_score: 100
+outcome_confidence: 82
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 # ENH-3555: format-check flags invisible and control characters in issue bodies
@@ -131,4 +137,5 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-24T22:10:01 - `b03f0e56-e701-4b6d-bb94-8f4cb425b852.jsonl`
 - `/ll:capture-issue` - 2026-09-24T18:27:44 - `3f3defe9-b6c6-432f-af65-d7ce83807520.jsonl`
