@@ -1195,7 +1195,6 @@ class CodexRunner:
         workspace_root: Path | None = None,
     ) -> HostInvocation:
         automation = resolve_automation(automation, automation_profile, disable_background_tasks)
-        del model  # codex does not support --model in streaming mode
         if workspace_root is not None:
             warnings.warn(
                 "codex host_runner has no workspace-sandboxing implementation "
@@ -1239,6 +1238,8 @@ class CodexRunner:
         ]
         if working_dir is not None and not resume:
             args += ["-C", str(working_dir)]
+        if model:
+            args += ["--model", model]
         args.append(prompt)
 
         env: dict[str, str] = {

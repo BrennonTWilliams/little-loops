@@ -3,10 +3,11 @@ id: BUG-3529
 type: BUG
 title: Codex streaming runner silently drops the per-state model override
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-24'
 captured_at: '2026-09-24T00:20:31Z'
+completed_at: '2026-09-24T02:40:57Z'
 labels:
 - multi-host
 - loops
@@ -66,10 +67,10 @@ Remove `del model` and its stale comment from `CodexRunner.build_streaming`. Aft
 
 ## Acceptance Criteria
 
-- [ ] `CodexRunner.build_streaming(model="X")` emits exactly one `--model X` pair before the final unchanged prompt for fresh and resume invocations, and after `resume` when present. Cover the existing directory/sandbox matrix with a model supplied; parent `-C`/`--sandbox` placement remains correct. `model=None` and `model=""` preserve the post-BUG-3536 argv and invocation environment.
-- [ ] Dispatch-level tests use the real executor → action runner → subprocess helper → Codex builder and mock only process launch/stream plumbing, asserting on spawned argv: (a) state and run models set → state wins; (b) only state model set → forwarded; (c) only run model set → forwarded; (d) neither set → no `--model` (host default retained even if `fsm.llm.model` is populated). Exercise explicit `prompt`, explicit `slash_command`, and inferred slash-prefixed actions. Force Codex host selection; a capturing action runner alone is insufficient.
-- [ ] Add a focused opt-in conformance parser test for complete generated fresh/resume argv with a supplied model, including a directory containing spaces and explicit sandbox mode. Invoke `HostInvocation.binary` + `.args` + trailing `--help`, capture output, bound the timeout, and report the CLI version on failure. Use `live_conformance`; skip when opt-in is disabled or the CLI is absent. This proves parser acceptance without launching a model session, not successful model availability or session selection. BUG-3536 did not add this test.
-- [ ] Remove the stale `# codex does not support --model in streaming mode` comment. No runtime capability change is required: `HostCapabilities` / `RuntimeHostEntry` have no model-support field, and `HOST_COMPATIBILITY.md` does not list per-state model as unsupported for Codex streaming (checked 2026-09-23). If a model-support flag is wanted, that is ENH-3527's scope.
+- [x] `CodexRunner.build_streaming(model="X")` emits exactly one `--model X` pair before the final unchanged prompt for fresh and resume invocations, and after `resume` when present. Cover the existing directory/sandbox matrix with a model supplied; parent `-C`/`--sandbox` placement remains correct. `model=None` and `model=""` preserve the post-BUG-3536 argv and invocation environment.
+- [x] Dispatch-level tests use the real executor → action runner → subprocess helper → Codex builder and mock only process launch/stream plumbing, asserting on spawned argv: (a) state and run models set → state wins; (b) only state model set → forwarded; (c) only run model set → forwarded; (d) neither set → no `--model` (host default retained even if `fsm.llm.model` is populated). Exercise explicit `prompt`, explicit `slash_command`, and inferred slash-prefixed actions. Force Codex host selection; a capturing action runner alone is insufficient.
+- [x] Add a focused opt-in conformance parser test for complete generated fresh/resume argv with a supplied model, including a directory containing spaces and explicit sandbox mode. Invoke `HostInvocation.binary` + `.args` + trailing `--help`, capture output, bound the timeout, and report the CLI version on failure. Use `live_conformance`; skip when opt-in is disabled or the CLI is absent. This proves parser acceptance without launching a model session, not successful model availability or session selection. BUG-3536 did not add this test.
+- [x] Remove the stale `# codex does not support --model in streaming mode` comment. No runtime capability change is required: `HostCapabilities` / `RuntimeHostEntry` have no model-support field, and `HOST_COMPATIBILITY.md` does not list per-state model as unsupported for Codex streaming (checked 2026-09-23). If a model-support flag is wanted, that is ENH-3527's scope.
 
 ## Program Design
 
@@ -92,6 +93,10 @@ Reviewed on `main` at `9b16bb1c5` in the little-loops repository (2026-09-23 loc
 
 Manually inserted the proposed `--model test-model` pair before the prompt in generated argv and appended `--help`: all 20 combinations of fresh/resume × five sandbox settings × absent/spaced working directory exited 0. No model session was launched, and this is parser evidence only. Corrected the previous false exclusion of `slash_command` states using `FSMExecutor._action_mode`, and replaced reliance on a nonexistent BUG-3536 parser test with an explicit conformance test plan. No active required decision rules were found.
 
+## Resolution
+
+Fixed 2026-09-23: `CodexRunner.build_streaming` now forwards a truthy `model` as `--model <model>` (fresh and `resume --last`), removing the stale `del model`. Added builder matrix tests (`test_host_runner.py`), executor→runner→Codex-builder dispatch tests (`test_codex_model_dispatch.py`), and an opt-in parser conformance test.
+
 ## Status
 
 **Open** | Created: 2026-09-24 | Priority: P2
@@ -108,6 +113,8 @@ _Added by `/ll:confidence-check` on 2026-09-23_
 - `build_streaming` has ~13 call sites; existing argv-equality tests for Codex must keep passing with `model=None`.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-24T02:40:57 - `6b600827-2d1e-4489-ba3c-1ae1bea5658f.jsonl`
+- `/ll:ready-issue` - 2026-09-24T02:30:23 - `b0b0087c-8154-4a9a-a6dd-f91b33923334.jsonl`
 - `/ll:confidence-check` - 2026-09-24T02:26:22 - `c2618a05-1e63-43c7-a628-77cbaa4fb454.jsonl`
 - `/ll:ready-issue` - 2026-09-24T02:24:53 - `81ea4c5e-a825-4566-9e56-fd0ad97eab82.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-09-24T01:05:29 - `af4614fc-00c0-4ee9-995a-e89a43f1523c.jsonl`

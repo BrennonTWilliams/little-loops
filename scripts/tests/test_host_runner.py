@@ -792,6 +792,36 @@ class TestCodexRunner:
             assert before[before.index("--sandbox") + 1] == sandbox
             assert "--dangerously-bypass-approvals-and-sandbox" not in args
 
+    @pytest.mark.parametrize("resume", [False, True])
+    @pytest.mark.parametrize("dir_name", [None, "dir with spaces"])
+    @pytest.mark.parametrize(
+        "sandbox", [None, "off", "read-only", "workspace-write", "danger-full-access"]
+    )
+    def test_build_streaming_forwards_model(
+        self, tmp_path: Path, sandbox: str | None, dir_name: str | None, resume: bool
+    ) -> None:
+        """BUG-3529: a supplied model becomes exactly one `--model X` before the prompt."""
+        wd = tmp_path / dir_name if dir_name else None
+        runner = CodexRunner()
+        kwargs = {"prompt": "p q", "resume": resume, "working_dir": wd, "sandbox_mode": sandbox}
+        args = runner.build_streaming(model="X", **kwargs).args  # type: ignore[arg-type]
+        assert args.count("--model") == 1
+        assert args[-3:-1] == ["--model", "X"]
+        assert args[-1] == "p q"
+        if resume:
+            assert args.index("--model") > args.index("resume")
+        # Removing the pair yields the model-less argv.
+        base = runner.build_streaming(**kwargs).args  # type: ignore[arg-type]
+        assert args[:-3] + args[-1:] == base
+
+    @pytest.mark.parametrize("model", [None, ""])
+    @pytest.mark.parametrize("resume", [False, True])
+    def test_build_streaming_no_model_flag_when_empty(
+        self, model: str | None, resume: bool
+    ) -> None:
+        inv = CodexRunner().build_streaming(prompt="p", resume=resume, model=model)
+        assert "--model" not in inv.args
+
     def test_resume_invalid_sandbox_still_raises(self) -> None:
         with pytest.raises(ValueError):
             CodexRunner().build_streaming(prompt="p", resume=True, sandbox_mode="bogus")

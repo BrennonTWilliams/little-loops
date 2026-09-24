@@ -848,3 +848,36 @@ def test_scripted_result_then_hang_grace_kill(tmp_path: Path, isolated_env: None
     assert obs.completed is not None
     assert obs.completed.returncode < 0
     assert_group_gone(obs)
+
+
+@pytest.mark.parametrize("resume", [False, True])
+@pytest.mark.parametrize("sandbox", [None, "read-only", "workspace-write"])
+def test_codex_streaming_argv_with_model_parses(
+    tmp_path: Path, live_conformance: bool, sandbox: str | None, resume: bool
+) -> None:
+    """BUG-3529: Codex accepts the generated streaming argv with `--model` (parser only).
+
+    Appends ``--help`` so the CLI parses the argv and prints usage without
+    launching a model session; this proves flag acceptance, not model
+    availability or session selection.
+    """
+    if not live_conformance:
+        pytest.skip("requires LL_HOST_CONFORMANCE_LIVE=1")
+    if shutil.which("codex") is None:
+        pytest.skip("'codex' binary not found on PATH")
+    wd = tmp_path / "dir with spaces"
+    wd.mkdir()
+    inv = CodexRunner().build_streaming(
+        prompt="p", working_dir=wd, resume=resume, sandbox_mode=sandbox, model="test-model"
+    )
+    assert inv.args[-3:-1] == ["--model", "test-model"]
+    cmd = [inv.binary, *inv.args, "--help"]
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+    except subprocess.TimeoutExpired as exc:
+        pytest.fail(f"codex --help timed out: {cmd!r}: {exc}")
+    if proc.returncode != 0:
+        version = subprocess.run(
+            ["codex", "--version"], capture_output=True, text=True, timeout=30
+        ).stdout.strip()
+        pytest.fail(f"codex ({version}) rejected argv {cmd!r}: {proc.stderr or proc.stdout}")
