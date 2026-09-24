@@ -79,25 +79,61 @@ _Added by `/ll:refine-issue` — 2026-09-24 — based on codebase analysis:_
 - Shell files outside `hooks/scripts/` that ship or run: 11 `hooks/adapters/claude-code/*.sh`, the per-host adapters under `scripts/little_loops/hooks/adapters/{codex,gemini,kimi,qwen}/*.sh`, and `.github/scripts/ci-history.sh` (CI-only, runs on Linux Thinky). `scripts/little_loops/hooks/adapters/omp/node_modules/**` also contains a `.sh` — vendored third-party, must be excluded from any glob.
 - Stale CI-policy text exists in two more places beyond `.claude/CLAUDE.md:142`: `AGENTS.md:142` (the Codex-flavored copy of CLAUDE.md, same "Do not add **paid/hosted** CI" line) and `CONTRIBUTING.md:426` ("there is no hosted/paid CI").
 
+### Review Corrections (2026-09-24)
+
+_Manual review after refine; supersedes the conflicting claims above._
+
+- **Loop YAML shell actions do have divergences.** The refine note that nothing turned up in `loops/*.yaml` was wrong. The shipped loops live under `scripts/little_loops/loops/` (there is no top-level `loops/`), and they run on users' machines on both OSes:
+  - `scripts/little_loops/loops/cli-anything-bootstrap.yaml:214` runs `sed -i '' '/^```/d' "$RUBRIC"`. That is the **BSD-only** form. GNU `sed` reads `''` as the script and `/^```/d` as a filename, so the step fails on Linux. **This is a live Linux bug.**
+  - `scripts/little_loops/loops/oracles/plan-node-refine.yaml:346` uses `sort -V`. That is **not** a divergence: macOS `/usr/bin/sort` (`2.3-Apple`) supports `-V` (verified: `printf 'a10\na2\n' | sort -V` sorts `a2` first). `sort -V` is dropped from the flagged forms.
+  - `cua-agent-desktop.yaml:1017` and `oracles/generator-evaluator.yaml:118,125` use a same-line `stat -f %m ... || stat -c %Y ...` pair. That form is portable, and the gate has to accept it.
+  - `harness-multi-item.yaml:42`, `mechanize-skills.yaml:662`, and `prompt-across-issues.yaml:138-139` mention `sed -i` only inside `#` comments. The gate must skip comment lines.
+- **The `sed -i` rule was backwards.** "`sed -i` without a suffix argument" would let `sed -i ''` through, and that is exactly the BSD-only form. Only an **attached** suffix (`sed -i.bak`) works under both BSD and GNU. Bare `sed -i` is GNU-only, and `sed -i ''` / `sed -i ""` are BSD-only.
+- **macOS ships `jq` in `/usr/bin`.** `/usr/bin/jq` exists on the maintainer's Darwin 25, and `validate_json()` gates on `command -v jq` (`lib/common.sh:168`). Shrinking PATH to `/usr/bin:/bin` (the `test_record_hook_event_shim.py:94-107` precedent) does **not** remove `jq` on macOS. The no-`jq` test needs a shim dir that holds only symlinks to the binaries the function uses.
+- **The bash version differs across platforms.** macOS `/bin/bash` is 3.2.57, which is what many users' hooks resolve to via `bash ${CLAUDE_PLUGIN_ROOT}/...`. GitHub's macOS runner images are believed to put Homebrew bash 5 first on PATH (verify from the userland step below). If they do, the macOS leg would not catch bash-4-only syntax. No bash-4-only syntax exists today in `hooks/` or `scripts/little_loops/hooks/adapters/` (`declare -A`, `mapfile`, `readarray`, `${x,,}`, `${x^^}`, `&>>`, `|&`, `coproc`, `local -n`: zero hits), so a static rule for it costs nothing.
+- **Node version on the runners is unconfirmed.** The unit job sets `LL_REQUIRE_NODE: "1"` on the basis that the Ubuntu runner ships Node >= 22. The macOS image has not been checked. `ci.yml` has no `actions/setup-node` step, so the Node version drifts with the runner image.
+
 ## Scope
 
 1. Add a `macos-latest` job (GitHub-hosted, same trigger and posture as the
    existing `ubuntu-latest` unit-tests job: push to `main` + `workflow_dispatch`,
    no `pull_request`) running the same unit tier. GitHub-hosted runners are
    free for public repos, matching the existing `ubuntu-latest` job.
+   **Shape (decided):** convert `unit-tests` to a matrix over
+   `os: [ubuntu-latest, macos-latest]` with `fail-fast: false`, so one OS
+   failing does not cancel the other leg's signal. Rename the upload artifact to
+   `pytest-unit-failures-${{ matrix.os }}-${{ github.run_id }}-${{ github.run_attempt }}`
+   so the legs do not collide. `conformance` keeps `needs: [unit-tests]`,
+   which waits on both legs. That is intended: conformance runs only
+   after the deterministic tier is green on both OSes. Add
+   `actions/setup-node@v4` with `node-version: '22'` on both legs so
+   `LL_REQUIRE_NODE=1` does not depend on runner-image drift. Add a
+   "Report userland" step that prints `bash --version`, `command -v bash date grep sed`,
+   and `date --version 2>&1 || echo BSD date`. On the macOS leg, fail if
+   `date`, `grep`, or `sed` resolve to GNU. A macOS leg running GNU tools
+   off Homebrew would be pointless.
 2. Update `.claude/CLAUDE.md` § Testing & CI Policy to match `ci.yml` (hosted
    `ubuntu-latest` + `macos-latest` unit jobs, self-hosted Thinky conformance
    only) and restate the rule as "no *paid* CI".
-3. Add a deterministic static portability gate (pytest) that scans
-   `hooks/scripts/**/*.sh` (and any shell snippets in shipped `ll-verify-*`
-   gates) for GNU-only forms: `date +%N` / `%s%N`, `grep -P`, `\s`/`\b`/`\w`
-   inside `grep -E` patterns, `sed -i` without a suffix argument,
-   `readlink -f`, `stat -c` / `date -d` not paired with a BSD fallback, and
-   `sort -V`. Allow a per-line suppression marker for justified uses.
-4. Fix every divergence the audit/gate finds — starting with
-   `record-hook-event.sh` `%N` (use a portable millisecond source, e.g. a
-   `python3 -c` / `perl` fallback, or validate the `date` output is numeric
-   before arithmetic).
+3. Add a deterministic static portability gate (pytest). It scans every
+   tracked `*.sh` under `hooks/` and `scripts/little_loops/hooks/adapters/`,
+   plus the shipped loop YAMLs under `scripts/little_loops/loops/**/*.yaml`
+   (line-based; `#` comment lines are skipped). It flags GNU-only forms:
+   `date +%N` / `%s%N`, `grep -P`, `\s`/`\b`/`\w` inside `grep -E` patterns,
+   bare `sed -i`, `readlink -f`, and `stat -c` / `date -d` not paired with a
+   BSD fallback. It also flags the BSD-only form `sed -i ''` / `sed -i ""`,
+   and bash-4-only syntax (`declare -A`, `mapfile`/`readarray`, `${x,,}`,
+   `${x^^}`, `&>>`, `|&`, `coproc`, `local -n`). `sort -V` is **not** flagged
+   because macOS sort supports it. Allow a per-line suppression marker for
+   justified uses.
+4. Fix every divergence the audit/gate finds:
+   - `record-hook-event.sh` `%N`: use a portable millisecond source, e.g. a
+     `python3 -c` / `perl` fallback, or check that the `date` output is numeric
+     before the arithmetic.
+   - `lib/common.sh:174`: replace `\s` with `[[:space:]]`.
+   - `scripts/little_loops/loops/cli-anything-bootstrap.yaml:214`: replace
+     `sed -i '' '/^```/d' "$RUBRIC"` with a portable form (a `grep -v` into a
+     temp file plus `mv`, or `sed -i.bak ... && rm -f "$RUBRIC.bak"`).
 5. Document the portability convention (point at `lib/common.sh` helpers) and
    the Bash-tool `ugrep` authoring hazard in `CONTRIBUTING.md`.
 
@@ -105,14 +141,23 @@ _Added by `/ll:refine-issue` — 2026-09-24 — based on codebase analysis:_
 
 - [ ] `ci.yml` runs the unit tier on both `ubuntu-latest` and `macos-latest`
       on push to `main`; neither job has a `pull_request` trigger.
+- [ ] The matrix uses `fail-fast: false`. Artifact names include `matrix.os`.
+      Both legs pin Node 22 via `actions/setup-node`. The macOS leg has a
+      userland step that fails if `date`/`grep`/`sed` resolve to GNU.
 - [ ] `.claude/CLAUDE.md` § Testing & CI Policy accurately describes the
       runner split, and the same stale "paid/hosted CI" wording is fixed in
       `AGENTS.md:142` and `CONTRIBUTING.md:426`.
 - [ ] `lib/common.sh` `validate_json()`'s no-`jq` fallback matches padded
-      JSON under BSD grep (replace `\s` with `[[:space:]]`); a test runs it
-      with `jq` removed from PATH.
-- [ ] A pytest portability gate fails on each GNU-only form listed in Scope 3
-      (fixture per form) and passes on the current `hooks/scripts/` tree.
+      JSON under BSD grep (replace `\s` with `[[:space:]]`). A test runs it
+      with a PATH that is only a shim dir of symlinked required binaries, not
+      `/usr/bin:/bin`, because macOS ships `/usr/bin/jq`. The test asserts
+      `command -v jq` fails under that PATH.
+- [ ] A pytest portability gate fails on each form listed in Scope 3 (one
+      fixture per form, including `sed -i ''` and a bash-4 construct). It
+      passes on same-line `stat -f ... || stat -c ...` pairs and on `#`
+      comment lines. It passes on the current tree, including
+      `scripts/little_loops/loops/`, after the Scope 4 fixes.
+- [ ] `cli-anything-bootstrap.yaml:214` no longer uses `sed -i ''`.
 - [ ] `record-hook-event.sh` produces a numeric duration when `date +%s%N`
       prints a literal `N` (test simulates BSD `date` via a PATH shim).
 - [ ] `CONTRIBUTING.md` documents the portable-pattern convention and the
@@ -120,7 +165,11 @@ _Added by `/ll:refine-issue` — 2026-09-24 — based on codebase analysis:_
 
 ## Integration Map
 
-- `.github/workflows/ci.yml` — new macOS job (or matrix over the unit-tests job).
+- `.github/workflows/ci.yml` — matrix the `unit-tests` job over OS
+  (`fail-fast: false`, `matrix.os` in the artifact name, `setup-node` 22,
+  macOS userland assertion step).
+- `scripts/little_loops/loops/cli-anything-bootstrap.yaml:214` — `sed -i ''` fix.
+- `AGENTS.md:142`, `CONTRIBUTING.md:426` — stale CI-policy text.
 - `.claude/CLAUDE.md` — Testing & CI Policy section.
 - `hooks/scripts/record-hook-event.sh` — `%N` fix.
 - `hooks/scripts/lib/common.sh` — reference implementation; possible home for
@@ -165,9 +214,17 @@ _Added by `/ll:refine-issue` — 2026-09-24 — based on codebase analysis:_
 `hooks/hooks.json` Stop entry -> `hooks/scripts/record-hook-event.sh` (`date +%s%N` at :43/:49 -> `DURATION_MS` at :50 -> `ll-session record-hook-event --duration-ms`) -> `main_session` -> `record_hook_event`
 
 ### Decision Rules
-- Gate scan set: every tracked `*.sh` under `hooks/` and `scripts/little_loops/hooks/adapters/`, excluding any path containing `node_modules/`. (`ll-verify-*` modules contain no shell to scan — see Current Behavior findings.)
-- Flagged forms (literal): `%N` in a `date` format; `grep -P`; `\s`, `\b`, `\w` inside a `grep -E`/`egrep` pattern; `sed -i` not followed by a suffix argument; `readlink -f`; `sort -V`; `stat -c` and `date -d` **unless** the same line carries the suppression marker.
-- Escape hatch: a per-line suppression token (name is the implementer's choice; `ll-audience-ok:` is the existing precedent) honored on the same line or the line immediately above. The GNU halves of the paired fallbacks in `lib/common.sh` (`date -d` at :108, `stat -c` at :151) are the known required suppressions if the `date -d`/`stat -c` rules are line-based.
+- Gate scan set: every tracked `*.sh` under `hooks/` and `scripts/little_loops/hooks/adapters/`, plus every tracked `scripts/little_loops/loops/**/*.yaml`, excluding any path containing `node_modules/`. Lines whose stripped form starts with `#` are skipped. (`ll-verify-*` modules contain no shell to scan — see Current Behavior findings.)
+- Flagged forms (literal):
+  - `%N` in a `date` format
+  - `grep -P`
+  - `\s`, `\b`, `\w` inside a `grep -E`/`egrep` pattern
+  - `sed -i` **not** immediately followed by an attached suffix (`sed -i.ext`); this covers both bare `sed -i` (GNU-only) and `sed -i ''`/`sed -i ""` (BSD-only)
+  - `readlink -f`
+  - bash-4-only syntax: `declare -A`, `mapfile`, `readarray`, `${var,,}`, `${var^^}`, `&>>`, `|&`, `coproc`, `local -n`
+  - `stat -c` and `date -d`, **unless** the same line also contains the BSD counterpart (`stat -f` / `date -j`) or the suppression marker
+- Not flagged: `sort -V` (macOS sort supports it).
+- Escape hatch: a per-line suppression token (name is the implementer's choice; `ll-audience-ok:` is the existing precedent) honored on the same line or the line immediately above. The GNU halves of the multi-line paired fallbacks in `lib/common.sh` (`date -d` at :108, `stat -c` at :151) are the known required suppressions. The same-line `stat -f ... || stat -c ...` pairs in `cua-agent-desktop.yaml:1017` and `oracles/generator-evaluator.yaml:118,125` pass via the same-line pairing rule.
 - Pass condition: zero unsuppressed hits on the current tree after Scope 4 fixes; each rule has a positive fixture that fires.
 
 ## Status
@@ -175,6 +232,7 @@ _Added by `/ll:refine-issue` — 2026-09-24 — based on codebase analysis:_
 **Open** | Created: 2026-09-23 | Priority: P1
 
 ## Session Log
+- Manual review - 2026-09-24 - found `sed -i ''` in the loop YAMLs (live Linux break); dropped `sort -V`; fixed the `sed -i` rule; added bash-4 rules, the macOS `/usr/bin/jq` shim requirement, and the matrix/Node/userland CI decisions
 - `/ll:confidence-check` - 2026-09-24T05:15:41 - `27ae30f6-009c-4b0e-9ac3-8684b7ff61cd.jsonl`
 - `/ll:refine-issue` - 2026-09-24T05:03:01 - `ba06500e-9e68-4c34-9f78-d2557696e4a2.jsonl`
 - Manual review - 2026-09-23 - corrected grep/ugrep premise, CI-policy drift, added `%N` divergence and static gate scope
