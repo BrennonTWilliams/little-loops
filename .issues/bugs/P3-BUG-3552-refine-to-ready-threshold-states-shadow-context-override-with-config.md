@@ -36,8 +36,8 @@ from config when no override was given.
 ## Steps to Reproduce
 
 1. Set `commands.confidence_gate.readiness_threshold: 85` in `.ll/ll-config.json`.
-2. Run the loop with `--context readiness_threshold=70` on an issue scored 75.
-3. `check_readiness` exits 1 (75 < 85) instead of 0.
+2. Run the loop with a CLI override: `ll-loop run refine-to-ready-issue X --context readiness_threshold=70` on an issue scored 75.
+3. `check_readiness` exits 1 (75 < 85) instead of 0 — the config value shadows the CLI override.
 
 ## Proposed Solution
 
