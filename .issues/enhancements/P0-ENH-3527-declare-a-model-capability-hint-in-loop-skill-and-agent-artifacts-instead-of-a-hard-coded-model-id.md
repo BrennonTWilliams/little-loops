@@ -1,6 +1,6 @@
 ---
 id: ENH-3527
-title: Declare a model capability hint in loop, skill, and agent artifacts instead of a hard-coded model id
+title: Resolve model capability hints for loop execution
 type: ENH
 priority: P0
 status: open
@@ -10,174 +10,172 @@ labels:
 - loops
 ---
 
-# Declare a model capability hint in loop, skill, and agent artifacts instead of a hard-coded model id
+# Resolve model capability hints for loop execution
 
 ## Summary
 
-Any artifact that names a concrete model id carries a value it cannot keep current: model ids change on a release cadence the artifacts do not track, and the id that is correct on one host is meaningless on another. Both failures show up as a loop that ran fine last month and now errors on a name. Replace the id with a capability-class hint the artifact declares — a small closed vocabulary along the lines of `coding`, `reasoning`, and `burst` — and let the host adapter resolve it to whatever that host currently offers. The artifact then states what kind of model the step needs, which is the part that is actually stable, and the mapping lives in one place per host where a rename is a single edit.
+Introduce a closed `model_hint` vocabulary for loop states and evaluator defaults, resolved against the actual execution backend. Preserve existing literal model IDs and CLI aliases. This issue delivers loop execution first; skill and agent frontmatter adaptation is a separate follow-up because accepting a key does not establish that the host will honor it.
 
 ## Current Behavior
 
-Skills (`skills/*/SKILL.md`, e.g. `model: sonnet`, `model: haiku`), agents, and loop YAML states (`model:` on FSM states, default `fsm.schema.DEFAULT_LLM_MODEL`) carry a literal model alias or id. `host_runner.resolve_model_alias` maps those aliases to concrete Anthropic ids via a single Anthropic-specific `MODEL_ALIASES` table, and each `HostRunner.build_streaming` passes the value through as `--model`. An alias valid for one host is meaningless on another, and a model rename requires touching the table plus any artifact that names an id directly.
+- `StateConfig.model` overrides the run model for CLI actions. Evaluators use `state.model or fsm.llm.model`; SDK/batch actions use `state.model or run_model or fsm.llm.model`.
+- `LLMConfig.model` defaults to `DEFAULT_LLM_MODEL` (`sonnet`). Its deserializer currently supplies that default immediately; a hint-only configuration must not acquire a conflicting explicit model.
+- CLI runners generally pass aliases through unchanged. `resolve_model_alias` is called by `advisor.rank_model` and `build_anthropic_request`, not by CLI builders. The API path requires concrete Anthropic IDs.
+- `CodexRunner.build_streaming` currently discards `model`, while its blocking path accepts it. Opencode/pi are unconfigured runtime runners. A mapping entry alone cannot establish model-selection support.
+- Claude skills and agents are served natively without an LL model-resolution step. Codex agent TOML is generated ahead of execution, and `emit_agent` copies `model` from frontmatter. `main_verify_skills` checks file sizes, not model selection.
 
 ## Expected Behavior
 
-Artifacts may declare a capability-class hint (`coding` | `reasoning` | `burst`) instead of a model id. The host adapter resolves the hint to that host's current concrete model at run time via a per-host table, so a rename is one edit and an artifact moved between hosts needs no change. Artifacts that still carry a literal model id or alias keep working unchanged.
+A supported loop execution path resolves an optional hint into a backend-valid model selection before dispatch. Unsupported hint selections fail explicitly before a subprocess/API request rather than silently using another model. Moving a hint-bearing loop between supported backends requires no artifact edit. Runs without hints retain their current precedence, argv, and defaults.
 
 ## Design
 
-One field and one resolution step:
+### Vocabulary
 
-- Loop, skill, and agent artifacts declare a capability-class hint from a closed vocabulary — `coding` | `reasoning` | `burst` — instead of a hard-coded model id.
-- The host adapter owns the hint → concrete-id mapping, one table per host, so a model rename is a single edit in one place.
-- The hint is what survives: an artifact moved between hosts resolves to whatever the target host currently offers, with no artifact edit.
-- Composes with the existing model-tier-by-task guidance by giving that guidance a machine-readable place to live.
-- Additive: artifacts that still carry a literal model id keep working.
+| Hint | Selection intent |
+|------|------------------|
+| `coding` | General implementation, editing, and tool-driven development |
+| `reasoning` | Difficult analysis, planning, or review where reasoning capability takes priority |
+| `burst` | Short, bounded classification or extraction where responsiveness and low resource use take priority |
+
+These are selection preferences, not guarantees of quality, latency, price, or reasoning effort. Multiple hints may map to the same model. `effort` remains independent. A `burst` selection on a generation state receives the same advisory scrutiny as the existing `haiku-gen` guidance; vocabulary errors are validation errors.
+
+### Declaration and precedence
+
+Add optional `model_hint` to `StateConfig` and `LLMConfig`; do not overload `model` or existing CLI `--model` strings with hint semantics. At either declaration level, explicitly supplying both `model` and `model_hint` is an error. Unknown values, empty hints, and hints on non-LLM states are errors.
+
+Select a model declaration before resolving it, preserving the existing precedence by execution path:
+
+| Path | Highest to lowest precedence |
+|------|------------------------------|
+| CLI action | State model-or-hint → run `--model` → host default |
+| Evaluator | State model-or-hint → effective `llm` model-or-hint → existing evaluator default |
+| SDK/batch action | State model-or-hint → run `--model` → effective `llm` model-or-hint → existing API default |
+
+`--llm-model` replaces the `llm` declaration and clears an inherited hint. A run `--model` does not gain new precedence over state declarations or evaluator defaults. A hint in `llm` does not become a new CLI-action default.
+
+Preserve the distinction between an omitted model and an explicitly supplied model during parsing and serialization. Apply `DEFAULT_LLM_MODEL` only when no declaration exists at the relevant fallback level; never inject it beside `model_hint`. Hint-only round trips must stay hint-only. Existing construction sites and no-hint behavior must remain compatible.
+
+### Resolve against the effective backend
+
+Resolve `_resolve_request_path` first, including SDK/batch downgrades. Then resolve the selected declaration against that path:
+
+- CLI execution uses the selected runner and its operation (`streaming` or `blocking`). Hint mappings may return host-supported aliases or concrete IDs. Existing literal values pass through unchanged; do not introduce `resolve_model_alias` into CLI dispatch.
+- SDK/batch execution uses the Anthropic mapping and concrete-ID resolution, regardless of the configured CLI host. A configured Codex/Gemini host must not cause a non-Anthropic model ID to reach `build_anthropic_request`.
+- A downgrade to CLI resolves the original declaration afresh for that runner. Do not reuse a model already resolved for another backend.
+- Keep mappings in the runtime model-selection layer, with explicit operation support and parity checks against the runtime registry. Use one canonical entry for each backend model target; multiple hints can reference it so a rename does not require duplicate ID edits. Reuse the existing Anthropic alias table for its API targets.
+- Missing mappings and unsupported operations produce actionable errors naming the hint, backend, and operation. An unknown hint must never return `None` and silently select the host default.
+
+### Supported artifact/host matrix
+
+The implementation must publish a tested matrix, not infer support from a `--model` flag somewhere in a runner.
+
+| Artifact / operation | Delivery requirement |
+|----------------------|----------------------|
+| Loop CLI actions, Claude/Gemini/OMP/Kimi/Qwen | Prove each supported runner forwards the resolved selection; mark unsupported combinations explicitly |
+| Loop Codex streaming actions | Explicit unsupported-hint error while the runner discards `model`; support requires separately proving and wiring model selection |
+| Loop blocking evaluators | Test each runner/operation advertised as supported, including Codex |
+| Loop Anthropic SDK/batch | Concrete Anthropic resolution, including foreign configured CLI hosts and CLI downgrade |
+| Opencode/pi | Preserve unconfigured-runner behavior; do not advertise hint support |
+| Native skills/agents and generated agent files | Deferred follow-up; no portability claim from accepting frontmatter alone |
+
+Do not migrate shipped skills/agents or regenerate mirrors in this issue. The follow-up must establish resolution timing (native invocation versus generation), stale generated-file handling after mapping changes, and an executable test for every artifact/host combination it claims to support.
+
+### Lifecycle and model identity
+
+Persist the requested declaration through sub-loop inheritance, detach, and resume rather than replacing it with a resolved ID. Existing override rules continue to apply. Each dispatch resolves against the effective backend and records the hint/literal requested, resolved selection, backend, and operation. Resume may resolve a changed mapping and must make the new selection visible.
+
+Keep the observed model reported by the host separate from requested/resolved selections. Missing host model identity remains unknown; do not label a requested alias as an observed model. Headers may show `hint → resolved selection`, while usage records use observed identity where available. Coordinate this contract with ENH-3528 without introducing a hard dependency: both changes must work independently.
 
 ## Acceptance Criteria
 
-- [ ] Loop, skill, and agent artifacts can declare a model capability hint from a closed vocabulary (`coding`, `reasoning`, `burst`).
-- [ ] The host adapter resolves the hint to a concrete model id for the current host at run time.
-- [ ] A model id rename requires editing exactly one mapping entry per host.
-- [ ] An artifact moved between hosts resolves to the target host's current model without any artifact edit.
-- [ ] Existing artifacts carrying hard-coded model ids continue to run unchanged.
+- [ ] State and `llm` hints accept exactly `coding`, `reasoning`, and `burst`; explicit model-plus-hint, invalid hints, and inapplicable states fail validation before execution.
+- [ ] Schema, parsing, serialization, and direct construction cover omitted, literal-only, and hint-only cases; implicit defaults do not create conflicts or mask hints.
+- [ ] Tests cover every precedence row, including state hints versus run literals and `--llm-model` replacing an `llm` hint. Existing no-hint behavior and literal CLI argv remain unchanged.
+- [ ] CLI action, blocking evaluator, SDK, and batch paths use the same declaration semantics with backend-appropriate resolution. Foreign configured CLI hosts never supply their model mapping to Anthropic requests; downgrade re-resolves for CLI.
+- [ ] Every advertised artifact/host/operation combination has a dispatch-level test. Unsupported selections produce explicit errors, including the current Codex streaming path; no hint silently falls back.
+- [ ] Canonical mapping targets avoid duplicate model IDs for hints sharing a target, and runtime-map coverage is checked by `ll-verify-host-map` tests.
+- [ ] Sub-loop, detach, and resume tests preserve requested declarations and existing precedence; each dispatch exposes requested, resolved, and observed identities distinctly.
+- [ ] Vocabulary semantics, support matrix, precedence, and deferred skill/agent scope are documented. `haiku-gen` guidance covers hint-only burst generation without rejecting valid burst verdict states.
 
 ## Scope Boundaries
 
-- **In scope**: closed capability vocabulary (`coding`, `reasoning`, `burst`); a `model_hint` declaration on loop states, skills, and agents; per-host hint → id resolution in `host_runner`; back-compat for literal ids/aliases.
-- **Out of scope**: rewriting existing artifacts to use hints (migration is separate, incremental); adding new vocabulary values beyond the three; changing how hosts select models internally; cost- or latency-based automatic routing.
+- **In scope**: loop state/evaluator declarations, backend-aware resolution, operation support checks, lifecycle preservation, selection diagnostics, compatibility tests, and documentation.
+- **Deferred follow-up**: native skill/agent hints, generated-agent materialization, and any expansion of Codex streaming model support needed to advertise that combination.
+- **Out of scope**: artifact migration; new hint vocabulary; hints in advisor/compaction configuration or unrelated CLI commands; new run-level hint flags; automatic cost routing; price tables; changing host-internal model selection or reasoning effort.
 
 ## Integration Map
 
-### Codebase Research Findings
+### Files to Modify
 
-_Added by `/ll:refine-issue` — 2026-09-23 — based on codebase analysis:_
+- `scripts/little_loops/host_runner.py` — runtime mappings, operation support, resolver, public exports; preserve literal CLI forwarding and existing API alias resolution.
+- `scripts/little_loops/fsm/schema.py`, `fsm/fsm-loop-schema.json` — state and `llm` declarations, exclusivity, absent-versus-default handling; align the stale JSON `llm.model` default with Python behavior.
+- `scripts/little_loops/fsm/validation/structural_rules.py`, `fsm/validation/evaluator_rules.py` — declaration errors and hint-aware generation guidance.
+- `scripts/little_loops/fsm/executor.py`, `fsm/evaluators.py`, `fsm/runners.py`, `subprocess_utils.py` — all dispatch seams, effective-backend ordering, selection/observed-model diagnostics.
+- `scripts/little_loops/cli/loop/{run,lifecycle,runner,header,info}.py`, `fsm/persistence.py` — overrides, detach, resume, headers, and serialized intent; inspect persistence before changing its format.
+- `scripts/little_loops/cli/verify_host_map.py`, `fsm/__init__.py` — runtime consistency checks and any required public exports.
 
-**Files to Modify (ground truth, not a prescription)**
-- `scripts/little_loops/host_runner.py` — `MODEL_ALIASES` (:97) is a single Anthropic-only table (fable/opus/sonnet/haiku); `resolve_model_alias` (:105) is `dict.get(model.strip().lower(), model)`. `RuntimeHostEntry`/`HostCapabilities` (:294, :506, :523) carry no model data today, so a per-host hint table has no existing home; `advisor.MODEL_RANKS` is the only other per-host model table (keyed by concrete id, only `claude-code` populated).
-- `scripts/little_loops/fsm/schema.py` — `StateConfig.model` (to_dict ~:849, from_dict ~:970) and `LLMConfig.model` (~:1044–1078); `DEFAULT_LLM_MODEL = "sonnet"` (:24).
-- `scripts/little_loops/fsm/fsm-loop-schema.json` — `stateConfig` (`additionalProperties: false`) and the `llm` block each type `model` as a bare string; a new state field is rejected by the schema unless declared there. The `llm.model` JSON default differs from the Python default.
-- `scripts/little_loops/fsm/validation/structural_rules.py` (~:464–494) — `model:` applicability WARNING for non-LLM states; `evaluator_rules.py` (~:536–550) — `haiku-gen` lint does a substring test on `state.model`, so a hint-only state would bypass it.
-- `scripts/little_loops/adapters/codex.py` (~:233, :444–453) — the only code in this repo that reads agent `model:` frontmatter (writes it verbatim into the Codex agent TOML). `adapters/capabilities.py` `frontmatter_fields_read` lists no `model` for any host.
+### Dependent Files and Similar Patterns
 
-**Current model flow (corrects the issue's Current Behavior)**
-- `resolve_model_alias` has exactly two callers: `advisor.py:90` (`rank_model`) and `host_runner.py:2939` (`build_anthropic_request`, the SDK/Batches path). It is **not** called from any per-host `build_streaming`/`build_blocking_json`; the CLI path passes the literal alias through as `--model` (claude-code :977, gemini :1548, omp :1689, kimi-code :1835, qwen :1983; codex passes it only in `build_blocking_json` and drops it in `build_streaming`; opencode/pi raise `HostNotConfigured`). `build_detached` takes no `model` parameter.
-- The BUG-2828 comment above `MODEL_ALIASES` records that the claude CLI resolves aliases itself and only the API path needs concrete ids. Chaining hint resolution through `resolve_model_alias` on the CLI path would therefore change CLI argv from alias to concrete id — a behavior change for existing runs, not just for hint users. The Program Design Call Path (`build_streaming -> resolve_model_hint -> resolve_model_alias`) implies exactly that chain; whether the CLI path should emit an alias or a concrete id is an open constraint the implementer must decide knowingly.
-- FSM flow: `state.model or self.run_model` reaches `run_claude_command` -> `resolve_host().build_streaming(model=...)` (`fsm/executor.py` ~:2658, `fsm/runners.py`, `subprocess_utils.py`); evaluator paths use `state.model or self.fsm.llm.model` -> `build_blocking_json`; the SDK/batch path uses `_resolve_action_model` -> `dispatch_anthropic_request`. A hint must be resolved at every one of these three seams to satisfy AC 2, and they are separate code paths.
-
-**Skills/agents seam (largest unknown)**
-- 9 `agents/*.md`, 20 `skills/*/SKILL.md` and `commands/commit.md` carry a literal `model:` (sonnet; `analyze-history` uses haiku). No code in `scripts/little_loops/` validates or resolves that key. On claude-code the plugin is served natively (`agents=False`, `commands=False` in `HOST_CAPABILITIES`), so the host itself reads `model:` and this repo has no resolution seam there; for codex the only seam is the agent TOML emitter. Whether a hint declared in skill/agent frontmatter can be honored on claude-code at all is not established by any existing site. (Unvalidated: the researcher did not read the rest of `main_verify_skills`; treat "no frontmatter-key validator" as unconfirmed.)
-
-**Dependents / callers**
-- `host_runner` importers include `fsm/executor.py:81`, `fsm/runners.py:23`, `fsm/evaluators.py:46`, `cli/loop/runner.py:31`, `runner_spec.py:39` (passes `spec.args.get("model")` to `build_blocking_json`), `advisor.py:34`, `cli/advise.py`, `cli/verify_host_map.py:49`, `parallel/worker_pool.py`, `issue_manager.py`, `subprocess_utils.py`.
-- Other `DEFAULT_LLM_MODEL` consumers: `cli/harness.py`, `cli/doctor.py`, `cli/issues/link_epics.py`, `cli/artifact/extract.py`, `cli/artifact/discover.py`, `advisor.py`.
-
-**Conventions in Force**
-- New optional FSM state field: dataclass field defaulting to `None`, `to_dict` emits the key only when set, `from_dict` uses `data.get`, a matching `stateConfig` property in `fsm-loop-schema.json`, a validation rule, docs. Evidence: `effort` (ENH-2869), `tamper_guard`, `prepatch_check`, `scopes` in `fsm/schema.py`.
-- Closed vocabularies on FSM state fields are a `str | None` field plus a module-level `frozenset[str]` and a WARNING-severity rule, with `enum` in the JSON schema — not `Literal` (`_TAMPER_GUARD_VALUES` in `fsm/validation/evaluator_rules.py`). `Literal` aliases are used outside FSM state fields (`SubagentSupport` in `adapters/capabilities.py`, `TamperPolicy`). Two conventions disagree; the issue's Program Design uses `Literal`.
-- Per-host tables are frozen dataclasses keyed by host id, guarded by `ll-verify-host-map` parity checks (`cli/verify_host_map.py`); build-time (`HOST_CAPABILITIES`, 6 hosts) and runtime (`RUNTIME_HOST_CAPABILITIES`, 8 hosts incl. opencode/pi) maps are not congruent and are joined by docstring only. Any new per-host hint table has to choose which host set it must cover (opencode/pi raise on `--model` anyway).
-- `resolve_model_alias` tests: `scripts/tests/test_host_runner_dispatch.py` `TestModelAliasResolution` (~:351); `test_default_fsm_model_is_a_resolvable_alias` there pins `DEFAULT_LLM_MODEL`.
-
-**Tests**
-- `scripts/tests/test_fsm_schema.py` (StateConfig round-trip/absent-when-None pattern ~:4649; per-field `stateConfig` presence assertions ~:4936), `test_fsm_validation_structural.py`, `test_fsm_validation_evaluator_rules.py`, `test_host_runner_dispatch.py`, `test_host_runner.py`, `test_verify_host_map.py`, `conformance/test_host_conformance.py` (argv-per-capability tiers), `test_adapters.py`, `test_codex_adapter.py`.
-- Editing any `skills/*/SKILL.md` or `agents/*.md` trips `test_wiring_skills_and_commands.py::test_host_artifacts_are_not_stale` (regenerate mirrors with `ll-adapt --host <h> --apply`) and the 500-line skill cap (`test_enh494_skill_companions.py`). The issue's scope excludes migrating existing artifacts, which keeps those gates untouched unless a hint is added to a shipped artifact.
-
-**Documentation**
-- `docs/reference/API.md` (`host_runner`, `StateConfig`, `LLMConfig`), `docs/reference/CLI.md`, `docs/reference/HOST_COMPATIBILITY.md` (~:355 Codex agent `model`), `docs/guides/LOOPS_GUIDE.md` (per-state field table ~:615), `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` (`haiku-gen` rule). Model-tier guidance the issue says this "composes with" exists only as the `haiku-gen` lint plus prose in these docs; no machine-readable tier data exists.
-
-**Scoping note**
-- Loop YAMLs that set a per-state `model:` were not enumerated; not needed while migration is out of scope.
-
-### Dependent Files (Callers/Importers)
-_Wiring pass added by `/ll:wire-issue`:_
-- `scripts/little_loops/fsm/executor.py` — `state.model or self.run_model` (prompt path), `state.model or self.fsm.llm.model` (two evaluator dispatches), and `_resolve_action_model` (SDK/batch); each of the three seams must resolve a hint [Agent 1 finding]
-- `scripts/little_loops/fsm/evaluators.py` — three evaluator signatures default `model: str = DEFAULT_LLM_MODEL` and one uses `model or DEFAULT_LLM_MODEL`; `build_blocking_json(..., model=model)` at three sites [Agent 1/2 finding]
-- `scripts/little_loops/fsm/__init__.py` — re-exports `DEFAULT_LLM_MODEL`; export any new public symbol (`ModelHint`) here if added to `fsm.schema` [Agent 1 finding]
-- `scripts/little_loops/cli/loop/run.py`, `cli/loop/lifecycle.py` (`fsm.llm.model` at run and resume), `cli/loop/runner.py` (re-forwards `--model`/`--llm-model` into the detached command) — plumb `run_model`/`llm.model`; a hint on `llm.model` must survive detach and resume [Agent 1/2 finding]
-- `scripts/little_loops/cli/loop/header.py` — `model_display` builds the `model: <x> [EFFORT]` header line; decide whether it shows the hint or the resolved id [Agent 2 finding]
-- `scripts/little_loops/cli/loop/info.py` — hard-codes `llm.model != "sonnet"` rather than importing `DEFAULT_LLM_MODEL`; a hint value flows through this print [Agent 1 finding]
-- `scripts/little_loops/fake_host.py` — echoes `d.args["model"]` into the `init` event; `FakeHostRunner` accepts and ignores `model` [Agent 1/2 finding]
-- `scripts/little_loops/cli/adapt_agents_for_codex.py` — `_emit_agent_toml(name, description, model, body)` writes the source frontmatter `model:` verbatim; a hint here would be emitted as a literal model id into `.codex/agents/*.toml` unless resolved [Agent 1/2 finding]
-- `scripts/little_loops/host_runner.py` — per-host `if model: args += ["--model", model]` at ten runner classes; codex `build_streaming` does `del model`; `__all__` lists `MODEL_ALIASES`/`resolve_model_alias` (add `resolve_model_hint`/`HINT_MODELS`) [Agent 2 finding]
-- `scripts/little_loops/cli/harness.py`, `cli/advise.py`, `cli/artifact/extract.py`, `cli/artifact/templatize.py` — user-supplied `--model` passes straight through; decide whether these accept a hint [Agent 2 finding]
-- `scripts/little_loops/cli/verify_host_map.py` — `_check_runtime_contradiction` checks `RuntimeHostEntry` key/host/flags/report_rows only; a new per-host hint table needs its own coverage check to be guarded [Agent 2 finding]
-
-### Files to Modify (wiring additions)
-_Wiring pass added by `/ll:wire-issue`:_
-- `scripts/little_loops/config-schema.json` — `advisor.model` (default `"opus"`) and the compaction `model` key are plain strings; decide whether they accept hints [Agent 1/2 finding]
-- `scripts/little_loops/fsm/fsm-loop-schema.json` — `llm.model` JSON default is `claude-sonnet-4-20250514`, not `DEFAULT_LLM_MODEL`; a new `stateConfig.model_hint` property is required (`additionalProperties: false`) [Agent 1/2 finding]
-
-### Documentation
-_Wiring pass added by `/ll:wire-issue`:_
-- `docs/guides/LOOPS_GUIDE.md` — per-state field table `model:` row (~:614) and "Pinning haiku on verdict states" (~:617–629); add a `model_hint` row [Agent 2 finding]
-- `docs/reference/CLI.md` — `ll-loop run` `--model`/`--llm-model` rows (~:873–875) and run-header example (~:926–940) [Agent 2 finding]
-- `docs/reference/API.md` — `LLMConfig`/`evaluate_llm_structured` (~:6139, :6252), `RuntimeHostEntry` field table (~:10572–10731), `rank_model` section (~:12200); add `resolve_model_hint`/`HINT_MODELS` [Agent 2 finding]
-- `docs/generalized-fsm-loop.md` — `llm.model` docs (~:406, :909, :1375) [Agent 2 finding]
-- `docs/reference/HOST_COMPATIBILITY.md`, `docs/ARCHITECTURE.md` (~:869, :1345–1354) — runtime capability map descriptions [Agent 1/2 finding]
-- `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md` (~:113) — `haiku-gen` row; a hint-only state bypasses the lint [Agent 2 finding]
-- `skills/audit-claude-config/wave1-prompts.md` (~:187) and `agents/plugin-config-auditor.md` (~:66, :124) — list `model` as a validated key/optional hook field; editing skills trips the mirror gates [Agent 2 finding]
+- `runner_spec.py`, `advisor.py`, `cli/{harness,advise}.py`, `cli/artifact/`, `issue_manager.py`, `parallel/worker_pool.py` consume existing model APIs; preserve literal semantics without broadening their configuration.
+- `StateConfig` optional `effort`/`tamper_guard` fields illustrate round trips. `LLMConfig.model` needs additional omitted/default handling; copying a nullable state field alone is insufficient.
+- `adapters/codex.py`, `cli/adapt_agents_for_codex.py`, native `skills/` and `agents/` are follow-up research points, not mandatory edits for this delivery.
 
 ### Tests
-_Wiring pass added by `/ll:wire-issue`:_
-- `scripts/tests/test_fsm_schema.py` — `TestModelStateConfig` (~:2809) is the exact template for `model_hint` (defaults None, to_dict include/exclude, from_dict, round-trip); `TestEffort` (~:4645) and the tamper-guard tests (~:4848) are the same shape; add a `model_hint in schema["definitions"]["stateConfig"]["properties"]` test beside `test_schema_json_declares_state_and_loop_level_tamper_guard` (~:4936). No `stateConfig`↔`StateConfig` lockstep test exists, so schema drift is otherwise uncaught [Agent 3 finding]
-- `scripts/tests/test_fsm_validation_structural.py` — copy `TestModelStateValidation` (~:1217) / `TestEffortStateValidation` (~:1290) into a `TestModelHintStateValidation` plus an invalid-value case; neither existing class tests a closed vocabulary [Agent 3 finding]
-- `scripts/tests/test_fsm_validation_evaluator_rules.py` — add a case that a hint-only state on a verdict evaluator does or does not trip `haiku-gen` [Agent 2 finding]
-- `scripts/tests/test_fsm_executor.py` — BUG-2818 precedence tests (~:12349, :12397) and `test_sub_loop_inherits_run_model` (~:9321): add a hint tier at all three seams; existing asserts `kwargs["model"] == "claude-sonnet-5"` / `"haiku"` must still pass [Agent 1/3 finding]
-- `scripts/tests/test_fsm_evaluators.py` — `test_dispatch_llm_structured_uses_default_model_when_none_passed` (:1703) and `test_dispatch_llm_structured_threads_model_kwarg` (:1717): add hint-threading case [Agent 3 finding]
-- `scripts/tests/test_host_runner.py` — `test_build_streaming_with_model` / `test_build_streaming_without_model_omits_flag` (~:661/:669 plus per-host copies ~:1378, :1542, :1711, :1946): unset hint must leave argv unchanged; add per-host hint cases [Agent 3 finding]
-- `scripts/tests/test_host_runner_dispatch.py` — `TestModelAliasResolution` (:351): add `resolve_model_hint` cases; analog for the SDK seam [Agent 3 finding]
-- `scripts/tests/test_fsm_runners.py`, `test_ll_loop_execution.py`, `test_ll_loop_parsing.py`, `test_fake_host.py`, `test_cli_harness.py`, `test_cli_advise.py` — exact `--model`/`model` kwarg assertions; break only if an unset hint changes argv [Agent 1/3 finding]
-- `scripts/tests/test_codex_adapter.py`, `test_adapters.py` (`'model = "opus"' in toml`, `_make_agent` default `model: sonnet`) — no codex TOML `model` coverage in `test_codex_adapter.py`; add if hint frontmatter is honored on the codex path [Agent 2/3 finding]
-- `scripts/tests/test_wiring_reference_docs.py` (~:198) — add rows for `resolve_model_hint`/`HINT_MODELS` if API.md documents them (pattern: `("docs/reference/API.md", "rank_model", "FEAT-3108")`) [Agent 3 finding]
-- `scripts/tests/test_verify_host_map.py` — extend if a hint-table coverage check is added to `verify_host_map` [Agent 2 finding]
 
-### Configuration
-_Wiring pass added by `/ll:wire-issue`:_
-- Committed per-host mirrors carry literal `model:` in 49 files (`.gemini`, `.qwen`, `.kimi-code` skills/agents) and 9 `.codex/agents/*.toml` (`model = "sonnet"`); any change to source frontmatter needs `ll-adapt --host <gemini|kimi-code|qwen> --apply` and codex TOML regeneration [Agent 2 finding]
+- `test_fsm_schema.py`, `test_fsm_validation_structural.py`, `test_fsm_validation_evaluator_rules.py` — declarations, JSON/Python parity, invalid/conflicting values, defaults and lint.
+- `test_fsm_executor.py`, `test_fsm_evaluators.py`, `test_fsm_runners.py`, `test_ll_loop_execution.py`, `test_ll_loop_parsing.py` — precedence, all dispatch paths, backend downgrade, sub-loops/detach/resume.
+- `test_host_runner.py`, `test_host_runner_dispatch.py`, `test_verify_host_map.py`, `conformance/test_host_conformance.py` — supported operation matrix, unchanged literals, map coverage, Anthropic-only API selection.
+- `test_fake_host.py`, `test_cli_harness.py`, `test_cli_advise.py`, `test_subprocess_utils.py` — compatibility and requested/resolved/observed identity. Fake-host coverage must assert the forwarded selection rather than accepting an ignored parameter as proof.
+- `test_wiring_reference_docs.py` — public API/doc coverage. Adapter/mirror tests belong to the deferred artifact work unless shared changes actually affect them.
+
+### Documentation
+
+`docs/guides/LOOPS_GUIDE.md`, `docs/generalized-fsm-loop.md`, `docs/reference/{API,CLI,HOST_COMPATIBILITY}.md`, `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md`, and relevant runtime-map prose in `docs/ARCHITECTURE.md`.
 
 ## Implementation Steps
 
-### Wiring Phase (added by `/ll:wire-issue`)
-
-_These touchpoints were identified by wiring analysis and must be included in the implementation:_
-
-- Resolve the hint at all three model seams in `fsm/executor.py` (prompt `state.model or self.run_model`, evaluator `state.model or self.fsm.llm.model` ×2, `_resolve_action_model`) and thread through `fsm/evaluators.py`
-- Add `model_hint` to `StateConfig` (`to_dict`/`from_dict`) and to `stateConfig` in `fsm-loop-schema.json`; add the closed-vocab WARNING rule in `structural_rules.py` and reconcile the `haiku-gen` lint in `evaluator_rules.py`
-- Decide and document the CLI-path behavior in `host_runner.py` (alias vs concrete id on `--model`) before chaining `resolve_model_hint -> resolve_model_alias`; keep unset-hint argv byte-identical
-- Add a `verify_host_map` check so every host with a `--model` flag has a hint-table entry (opencode/pi raise on `--model`)
-- Update `cli/loop/header.py` `model_display`, `cli/loop/info.py` and `cli/loop/runner.py` detach forwarding for hint values
-- Update the docs listed above and add `test_wiring_reference_docs.py` rows
-- Add tests following `TestModelStateConfig`, `TestEffort`, `TestModelStateValidation`, and `TestModelAliasResolution`
+1. Add schema/serialization tests for explicit declarations and the precedence matrix; implement hint fields without changing legacy defaults.
+2. Add backend/operation resolution and mapping-coverage tests. Preserve literal CLI aliases and isolate Anthropic ID conversion to its API path.
+3. Wire actions and both evaluator dispatch sites after effective-path selection; cover SDK/batch downgrade and unsupported operations before launching requests.
+4. Preserve declarations through overrides, sub-loops, detach, and resume. Add requested/resolved/observed diagnostics without fabricating observed identity.
+5. Update validation, host-map checks, headers, and the documented support matrix. Keep skill/agent adaptation explicitly deferred.
+6. Run focused schema, dispatch, lifecycle, and compatibility tests; then the required local suite and applicable lint/type checks.
 
 ## Program Design
 
-### Types
+### Types and Contracts
 
-- `ModelHint: Literal["coding", "reasoning", "burst"]`
-- `HINT_MODELS: dict[str, dict[ModelHint, str]]` — host id → hint → concrete model id/alias
+- `ModelHint = Literal["coding", "reasoning", "burst"]`; FSM fields may use `str | None` with runtime validation to match existing schema conventions.
+- A model declaration represents exactly one explicit literal or hint, or no selection. It must retain omission until fallback selection; choose its concrete dataclass representation without changing existing no-hint public behavior.
+- A resolved selection records requested literal/hint, effective backend, operation, and selected model string. Observed model identity is separate and optional.
+- Runtime hint mappings reference canonical backend model targets. Operation support is explicit, including unsupported combinations.
 
-### Signatures
+### Resolution Contract
 
-- `resolve_model_hint(hint: str, host_id: str) -> str | None`
-- `resolve_model_alias(model: str) -> str`
+`resolve_model_hint(hint, *, backend, operation) -> str` returns a usable selection or raises a validation/capability error. It does not return `None` for an invalid/unsupported hint. Existing `resolve_model_alias(model)` remains the Anthropic API alias resolver.
 
 ### Call Path
 
-`ClaudeCodeRunner.build_streaming` -> `resolve_model_hint` -> `resolve_model_alias`
+`parse declaration → select by existing precedence → select effective request path (including downgrade) → resolve for backend/operation → CLI runner or Anthropic request builder → observe host model separately`.
 
 ## Impact
 
-- **Priority**: P0 - Model-id drift breaks loops that previously ran, and blocks multi-host portability of artifacts.
-- **Effort**: Medium - one new resolver and per-host tables in `host_runner.py`, plus schema/frontmatter acceptance of the new field across loops, skills, and agents.
-- **Risk**: Low - additive; literal ids and aliases keep resolving through the existing path.
-- **Breaking Change**: No
+- **Priority**: P0 (retained from issue triage).
+- **Effort**: Medium to high — multiple dispatch and lifecycle paths, with native artifact adaptation explicitly deferred.
+- **Risk**: Medium — default injection, precedence, unsupported operations, and backend mismatches can silently select the wrong model.
+- **Breaking Change**: No for existing no-hint artifacts; new hint declarations have explicit validation and support constraints.
+
+## Verification Notes
+
+Review corrections applied on 2026-09-23: narrowed delivery to loop execution; corrected CLI alias flow; defined vocabulary, precedence, effective-backend resolution, unsupported combinations, lifecycle behavior, and model identity. Reconciled prior research/wiring notes into the directive sections rather than retaining contradictory instructions. Graph corroboration used fresh `codegraph` results for alias callers and direct source inspection. The review's 30 focused existing tests passed; they establish current behavior, not completion of the new acceptance criteria.
 
 ## Status
 
 **Open** | Created: 2026-09-23 | Priority: P0
 
-
 ## Session Log
+- `/ll:verify-issues` - 2026-09-24T00:01:43 - `d1e0cad9-5218-4c39-a990-a91f5f18af0d.jsonl`
 - `/ll:wire-issue` - 2026-09-23T23:43:26 - `96fe3651-90ba-4862-a958-697a2df577cc.jsonl`
 - `/ll:refine-issue` - 2026-09-23T23:20:19 - `1dd8afb6-deef-4834-bd0a-401f1160db13.jsonl`
 - `/ll:format-issue` - 2026-09-23T22:58:54 - `67a10285-a4b7-4192-bd9e-23ac30a3ffd0.jsonl`
