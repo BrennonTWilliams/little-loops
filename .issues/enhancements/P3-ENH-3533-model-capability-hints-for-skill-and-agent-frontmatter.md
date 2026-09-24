@@ -74,6 +74,16 @@ A skill or agent can declare `model_hint` instead of `model`; each supported hos
 
 - `emit_agent` → `resolve_model_hint` → generated `.codex/agents/<name>.toml`
 
+## Verification Notes
+
+Verdict at time of check: **VALID** (no corrections needed; this section is a record of what was checked, not an outstanding action item). Evidence-quote check clean (`ll-verify-evidence`); no required decisions rules; graph provider `codegraph` (fresh) available.
+
+Checked 2026-09-24: `CodexAdapter.emit_agent(self, agent_meta: dict) -> str` exists at `adapters/codex.py` L429 with the stated signature; `main_verify_skills` (`cli/docs.py` L244) exists; `resolve_model_hint` does not exist yet and is provided by blocker ENH-3527 (open) as stated.
+
 ## Status
 
 **Open** | Created: 2026-09-24 | Priority: P3
+
+
+## Session Log
+- `/ll:verify-issues` - 2026-09-24T00:46:09 - `047cda0b-279f-4078-b31f-1d7b1fcc2181.jsonl`

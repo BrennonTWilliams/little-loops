@@ -220,11 +220,18 @@ Review corrections applied on 2026-09-23: narrowed delivery to loop execution; c
 
 Review follow-up on 2026-09-23: reprioritized P0 → P2 and renamed the file to match the narrowed title; decided the hint mapping (built-in for `claude-code`/`anthropic-api` only, `model_hints` (under `orchestration`) override for all hosts); replaced the Codex streaming "unsupported" row with a dependency on BUG-3529 after confirming `codex exec [resume] --model` exists; added validate-time warnings, JSON-default removal, and a portability proof AC; split deferred skill/agent work to ENH-3533.
 
+### Verify pass 2026-09-24
+
+Verdict at time of check: **VALID** (no corrections needed; this section is a record of what was checked, not an outstanding action item). Evidence-quote check clean (`ll-verify-evidence`); no required decisions rules; graph provider `codegraph` (fresh) available.
+
+Checked 2026-09-24: Codex `build_streaming` still does `del model` (`host_runner.py` ~L1190, stale 'does not support --model' comment) — matches BUG-3529 premise; `MODEL_ALIASES`/`resolve_model_alias` (L97–114) match the derived `anthropic-api` targets; `fsm-loop-schema.json` `llm.model` default is still `claude-sonnet-4-20250514` (L1017); no `model_hint(s)` exists yet in code or config schema. Dependency note: BUG-3529 is open and has no `blocks:` backlink to ENH-3527 (advisory).
+
 ## Status
 
 **Open** | Created: 2026-09-23 | Priority: P2
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-24T00:46:08 - `047cda0b-279f-4078-b31f-1d7b1fcc2181.jsonl`
 - `/ll:verify-issues` - 2026-09-24T00:01:43 - `d1e0cad9-5218-4c39-a990-a91f5f18af0d.jsonl`
 - `/ll:wire-issue` - 2026-09-23T23:43:26 - `96fe3651-90ba-4862-a958-697a2df577cc.jsonl`
 - `/ll:refine-issue` - 2026-09-23T23:20:19 - `1dd8afb6-deef-4834-bd0a-401f1160db13.jsonl`

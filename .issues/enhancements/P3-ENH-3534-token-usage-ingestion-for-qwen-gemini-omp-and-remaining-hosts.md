@@ -67,6 +67,16 @@ For each host whose transcripts expose usage, usage reaches `usage_events` as `m
 - `_backfill_usage_events` → `normalize_host_usage` → `usage_events` insert
 - `_compute_cache_rate_from_jsonl` reads the same normalized components.
 
+## Verification Notes
+
+Verdict at time of check: **VALID** (no corrections needed; this section is a record of what was checked, not an outstanding action item). Evidence-quote check clean (`ll-verify-evidence`); no required decisions rules; graph provider `codegraph` (fresh) available.
+
+Checked 2026-09-24: `_compute_cache_rate_from_jsonl` (`ctx_stats.py` L402) docstring confirms qwen/gemini/omp cache rates are unreachable because normalizers strip `message.usage`; `normalize_host_usage` not yet present, as proposed. Blocker ENH-3532 is open.
+
 ## Status
 
 **Open** | Created: 2026-09-24 | Priority: P3
+
+
+## Session Log
+- `/ll:verify-issues` - 2026-09-24T00:46:10 - `047cda0b-279f-4078-b31f-1d7b1fcc2181.jsonl`

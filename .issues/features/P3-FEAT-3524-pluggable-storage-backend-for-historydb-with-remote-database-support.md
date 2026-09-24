@@ -3,8 +3,8 @@ id: FEAT-3524
 type: FEAT
 title: Pluggable history.db backend with remote libSQL support
 priority: P3
-status: blocked
-decision_needed: true
+status: cancelled
+decision_needed: false
 discovered_by: ll-issues-create
 discovered_date: '2026-09-22'
 captured_at: '2026-09-22T15:39:38Z'
@@ -110,6 +110,7 @@ both; `PRAGMA journal_mode`/`busy_timeout`/`query_only`, `ATTACH`, `VACUUM`, and
    syncing to the remote. Avoids per-call network latency but is currently out of
    scope (§11) and needs a separate learning test of write-forwarding semantics.
 - **Option D — Descope remote support** and close the libSQL half of this issue.
+  > **Selected:** (D) — descope; driver immaturity (7 failed required assertions) outweighs a P3 opt-in feature with no downstream dependents
 
 ## Current Behavior
 
@@ -186,6 +187,38 @@ handling must cover connection setup, read-only access, search, maintenance,
 snapshot export, and — as a hard gate — shared-store mutation safety (see the
 operation matrix under Proposed Design). A connection chokepoint does not remove
 SQL, filesystem, transaction, or network-latency assumptions.
+
+### Decision Rationale
+
+**Decision point:** Step 1 re-scope (Options A–D)
+
+Decided by `/ll:decide-issue` on 2026-09-23.
+
+**Selected**: Option D — Descope remote support
+
+**Reasoning**: The reusable groundwork (connection chokepoint, `HistoryError` taxonomy,
+path repairs) already shipped in ENH-3525/ENH-3526 and stands on its own; no other
+issue lists FEAT-3524 in `blocked_by`/`depends_on`. The remaining work was already rated
+Large effort / Medium-high risk before the `libsql` 0.1.11 driver failed 7 required
+assertions (F1–F7), and CLAUDE.md's minimize-dependencies rule argues against adopting a
+defect-laden driver for a P3 opt-in feature. Option A (stdlib Hrana-over-HTTP client) is
+the viable path if remote history is revisited; it is captured as FEAT-3535, gated on its own
+`hrana-http` learning test.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| A — Stdlib Hrana-over-HTTP client | 2/3 | 1/3 | 2/3 | 1/3 | 6/12 |
+| B — Contain `libsql` out of process | 1/3 | 2/3 | 1/3 | 1/3 | 5/12 |
+| C — Embedded replicas | 0/3 | 1/3 | 1/3 | 0/3 | 2/12 |
+| D — Descope remote support | 3/3 | 3/3 | 3/3 | 3/3 | 12/12 |
+
+**Key evidence**:
+- A: `link_checker.py:256` (`urllib` with bounded timeouts, classified errors) and `mcp_call.py:75` (hand-rolled JSON-RPC client with deadline) are precedents; but no `http.client` usage or Hrana implementation exists, and it needs a new learning test before design lands.
+- B: No precedent for sandboxing an in-process library call in a subprocess or for `socket.create_connection` pre-flight; most hooks run on a 5 s budget (`hooks/hooks.json`); F5 (no statement timeout) stays open.
+- C: Explicitly out of scope four times (Summary, §2, §11, options list); single-truth `meta.schema_version` / `last_raw_event_ts` assumptions (`schema.py:1492`, `lifecycle.py:857`) conflict with replica sync.
+- D: No downstream dependents (repo-wide `FEAT-3524` grep); ENH-3525/ENH-3526 `done`; issue's own Impact section rates remaining work Large / Medium-high risk.
 
 ## Integration Map
 
@@ -1125,6 +1158,7 @@ _Added by `/ll:confidence-check` on 2026-09-23_
 - Design decisions are now settled (Ambiguity 18/25); residual ambiguity is only whether a provenance column proves necessary.
 
 ## Session Log
+- `/ll:decide-issue` - 2026-09-24T00:43:19 - `037fa15a-ec40-4d82-9ee3-839372456150.jsonl`
 - `/ll:confidence-check` - 2026-09-23T19:50:48 - `cf354bec-9945-4c26-8202-11a55059cbe8.jsonl`
 - `/ll:verify-issues` - 2026-09-23T19:34:44 - `9cdcff0a-0bc1-428a-980c-013e7aa2e589.jsonl`
 - `/ll:confidence-check` - 2026-09-23T01:16:53 - `ca2bbd8f-3da0-4e15-879e-719591e63547.jsonl`

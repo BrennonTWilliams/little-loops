@@ -11,6 +11,12 @@ captured_at: '2026-09-24T00:20:32Z'
 labels:
 - observability
 - multi-host
+confidence_score: 95
+outcome_confidence: 71
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 10
+score_change_surface: 18
 ---
 
 # BUG-3531: Codex live usage stores cache-inclusive input_tokens in the uncached-input column
@@ -71,6 +77,29 @@ Live Codex usage is normalized to the canonical disjoint contract before it leav
 - `usage_from_event` → `record_usage_event` (live FSM path)
 - `_codex_cache_usage` → `normalize_codex_input` (ctx-stats cache rate)
 
+## Verification Notes
+
+Verdict: **VALID** (2026-09-23). `usage_from_event` `turn.completed` branch stores `input_tokens` unchanged (`subprocess_utils.py:105-110`); `_codex_cache_usage` documents inclusive input and subtracts. Inclusive-input claim read directly from `scripts/tests/fixtures/codex/rollout-exec.jsonl` (`input_tokens` 13001 ⊇ `cache_write_input_tokens` 12998; `total_tokens` 13006 = input + output, so reasoning is not double-added). `ll-verify-evidence` clean.
+
 ## Status
 
 **Open** | Created: 2026-09-24 | Priority: P2
+
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-23_
+
+**Readiness Score**: 95/100 → PROCEED
+**Outcome Confidence**: 71/100 → MODERATE
+
+### Concerns
+- Two Acceptance Criteria defer decisions to implementation time: outcome for inconsistent components (cache > input) and policy for already-written Codex rows. Resolve both before coding.
+- `usage_from_event` has 5 call sites (`subprocess_utils.py` 143/169/706/730) feeding live usage rows; stored values change for new Codex rows.
+
+### Outcome Risk Factors
+- Minor open design decisions (inconsistent-component representation; existing-row handling) — resolvable during implementation but affect stored data.
+- Shared normalizer touches two modules (`subprocess_utils`, `ctx_stats`) plus ENH-3532 coupling.
+
+## Session Log
+- `/ll:confidence-check` - 2026-09-24T00:45:01 - `047cda0b-279f-4078-b31f-1d7b1fcc2181.jsonl`
+- `/ll:verify-issues` - 2026-09-24T00:37:52 - `97f40d76-766f-412a-a4ef-794728276e4c.jsonl`

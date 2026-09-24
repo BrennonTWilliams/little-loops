@@ -10,6 +10,12 @@ captured_at: '2026-09-24T00:20:32Z'
 labels:
 - observability
 - history
+confidence_score: 95
+outcome_confidence: 59
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 10
+score_change_surface: 10
 ---
 
 # BUG-3530: Session-store rebuild wipes live-only usage_events rows on every schema bump
@@ -71,6 +77,31 @@ A rebuild replaces only transcript-derived (replayable) usage rows. Live-only ro
 - SessionStart version advance → `rebuild` → `_backfill_usage_events`
 - `record_usage_event` rows must survive `rebuild`.
 
+## Verification Notes
+
+Verdict: **VALID** (2026-09-23). `usage_events` is in `_REBUILD_TABLES` and is `DELETE`d wholesale (`lifecycle.py:940-951, 986-987`); `_backfill_usage_events` writes `state = NULL`; `record_usage_event` (`writers.py:1929`) inserts with `run_id`; SessionStart appends `--rebuild` when `last_rebuild_version < SCHEMA_VERSION` (`session_start.py:196`). `ll-verify-evidence` clean.
+
+Design note: `usage_events.run_id` already exists (v29, ENH-2723) and `record_usage_event` requires it, while transcript-backfilled rows leave it NULL. A narrowed `DELETE FROM usage_events WHERE run_id IS NULL` may therefore need no new column or migration; worth weighing against the `origin` column candidate in Program Design.
+
 ## Status
 
 **Open** | Created: 2026-09-24 | Priority: P1
+
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-23_
+
+**Readiness Score**: 95/100 → PROCEED
+**Outcome Confidence**: 59/100 → LOW
+
+### Concerns
+- The Verification Notes' design hint (`DELETE ... WHERE run_id IS NULL`, no migration) is contradicted by code: `_backfill_usage_events` derives `run_id` for transcript rows via a timestamp-window join (`writers.py:_derive_run_id_for_ts`, ENH-2725), so backfilled rows can carry a `run_id`. That filter would leave stale transcript rows and cause duplicates on replay. Live rows may also have `state=None`, so `state IS NOT NULL` isn't a safe discriminator either.
+
+### Outcome Risk Factors
+- Unresolved design decision: nullable `origin` column (append-only migration, schema_manifest/version pins) vs. a narrowed DELETE — must be chosen before implementing; legacy-row policy also undecided.
+- Broad change surface: `usage_events` is referenced in ~24 modules, and a schema migration itself triggers a rebuild on every consuming project (the very path under repair).
+- Moderate per-site complexity: rebuild semantics, idempotency across repeated rebuilds, duplicate-row risk.
+
+## Session Log
+- `/ll:confidence-check` - 2026-09-24T00:45:00 - `047cda0b-279f-4078-b31f-1d7b1fcc2181.jsonl`
+- `/ll:verify-issues` - 2026-09-24T00:37:52 - `97f40d76-766f-412a-a4ef-794728276e4c.jsonl`

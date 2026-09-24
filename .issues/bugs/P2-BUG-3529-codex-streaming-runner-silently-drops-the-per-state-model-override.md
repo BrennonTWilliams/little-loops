@@ -10,6 +10,12 @@ captured_at: '2026-09-24T00:20:31Z'
 labels:
 - multi-host
 - loops
+confidence_score: 95
+outcome_confidence: 93
+score_complexity: 25
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 # BUG-3529: Codex streaming runner silently drops the per-state model override
@@ -68,6 +74,25 @@ labels:
 - `FSMExecutor` → `CodexRunner.build_streaming` → `HostInvocation`
 - Parity reference: `CodexRunner.build_blocking_json` already forwards `--model`.
 
+## Verification Notes
+
+Verdict: **VALID** (2026-09-23). `CodexRunner.build_streaming` still does `del model` (`host_runner.py:1198`); repro argv lacks `--model`; `build_blocking_json` forwards it (`:1272`). Installed `codex exec` and `codex exec resume` both list `-m, --model`. Resume argv is built at `:1224`. Proposal is additive and sound. `ll-verify-evidence` clean.
+
 ## Status
 
 **Open** | Created: 2026-09-24 | Priority: P2
+
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-23_
+
+**Readiness Score**: 95/100 → PROCEED
+**Outcome Confidence**: 93/100 → HIGH CONFIDENCE
+
+### Concerns
+- Two Acceptance Criteria are conditional ("if it does today"); grep `RUNTIME_HOST_CAPABILITIES` and `HOST_COMPATIBILITY.md` first to see whether they apply.
+- `build_streaming` has ~13 call sites; existing argv-equality tests for Codex must keep passing with `model=None`.
+
+## Session Log
+- `/ll:confidence-check` - 2026-09-24T00:44:59 - `047cda0b-279f-4078-b31f-1d7b1fcc2181.jsonl`
+- `/ll:verify-issues` - 2026-09-24T00:37:52 - `97f40d76-766f-412a-a4ef-794728276e4c.jsonl`

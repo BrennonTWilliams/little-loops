@@ -165,11 +165,18 @@ Review corrections applied on 2026-09-23: separated runtime capability from obse
 
 Review follow-up on 2026-09-23: reprioritized P0 → P2; narrowed to the labeling/provenance slice (former Delivery A) and renamed the file; split Codex historical ingestion to ENH-3532, Codex live input normalization to BUG-3531, other hosts to ENH-3534; made BUG-3530 (rebuild wipes live-only `usage_events`, confirmed in `lifecycle._REBUILD_TABLES`) a blocking prerequisite; fixed the `token_provenance` path convention as RFC 6901 JSON Pointers.
 
+### Verify pass 2026-09-24
+
+Verdict at time of check: **VALID** (no corrections needed; this section is a record of what was checked, not an outstanding action item). Evidence-quote check clean (`ll-verify-evidence`); no required decisions rules; graph provider `codegraph` (fresh) available.
+
+Checked 2026-09-24: `SCHEMA_VERSION = 52`; `usage_events` is in `lifecycle._REBUILD_TABLES` (BUG-3530 premise holds); `record_usage_event` uses plain `INSERT` with no uniqueness constraint; `token_reporting` is advisory in `doctor.py` (`_ADVISORY_CAPABILITIES`) and `host_runner.py` L648; `_SHAREABLE_ALLOWLIST_VERSION`/`_SHAREABLE_COLUMNS` exist. Dependency note: BUG-3530 is open and has no `blocks:` backlink to ENH-3528 (advisory).
+
 ## Status
 
 **Open** | Created: 2026-09-23 | Priority: P2
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-24T00:46:08 - `047cda0b-279f-4078-b31f-1d7b1fcc2181.jsonl`
 - `/ll:verify-issues` - 2026-09-24T00:01:43 - `d1e0cad9-5218-4c39-a990-a91f5f18af0d.jsonl`
 - `/ll:wire-issue` - 2026-09-23T23:43:26 - `96fe3651-90ba-4862-a958-697a2df577cc.jsonl`
 - `/ll:refine-issue` - 2026-09-23T23:20:19 - `1dd8afb6-deef-4834-bd0a-401f1160db13.jsonl`

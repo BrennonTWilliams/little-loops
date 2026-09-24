@@ -85,6 +85,16 @@ Normalize native events into the canonical contract shared with live capture (BU
 - `_backfill_usage_events` → `normalize_codex_usage` → `usage_events` insert
 - `usage_from_event` → `record_usage_event` (live path, unchanged except BUG-3531)
 
+## Verification Notes
+
+Verdict at time of check: **VALID** (no corrections needed; this section is a record of what was checked, not an outstanding action item). Evidence-quote check clean (`ll-verify-evidence`); no required decisions rules; graph provider `codegraph` (fresh) available.
+
+Checked 2026-09-24: `_iter_events` (`writers.py` L3430) yields `(raw_line, source_label)` only; `_codex_cache_usage` (`ctx_stats.py` L356) is the sole rollout `token_count` reader; `_backfill_usage_events` (L3568) and `normalize_codex_usage` (not yet present, as proposed) consistent with Program Design. Dependency note: blockers BUG-3530/BUG-3531/ENH-3528 all open; BUG-3530/3531 lack `blocks:` backlinks (advisory).
+
 ## Status
 
 **Open** | Created: 2026-09-24 | Priority: P2
+
+
+## Session Log
+- `/ll:verify-issues` - 2026-09-24T00:46:09 - `047cda0b-279f-4078-b31f-1d7b1fcc2181.jsonl`
