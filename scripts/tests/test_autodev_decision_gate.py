@@ -135,15 +135,43 @@ class TestCheckDecisionAtDequeueStructural:
     def test_check_decision_at_dequeue_on_yes_routes_to_resolve_decision(
         self, data: dict[str, Any]
     ) -> None:
-        """decision_needed=true must route into the shared resolve_decision
-        sub-loop call state (ENH-3075), which owns the decidability probe and
-        deposit-options detour that used to live inline (BUG-2605)."""
+        """decision_needed=true must route into the resolve-decision oracle
+        (ENH-3075) via the entry-time call state, whose success resumes the
+        preparation pipeline at check_blockers_at_dequeue rather than the
+        shared post-decide chain that ends at implement_current."""
         state = data["states"]["check_decision_at_dequeue"]
-        assert state.get("on_yes") == "resolve_decision", (
-            f"check_decision_at_dequeue.on_yes should be 'resolve_decision' "
-            f"(ENH-3075: route into the shared decision sub-loop), "
+        assert state.get("on_yes") == "resolve_decision_at_dequeue", (
+            f"check_decision_at_dequeue.on_yes should be 'resolve_decision_at_dequeue', "
             f"got {state.get('on_yes')!r}"
         )
+        call = data["states"]["resolve_decision_at_dequeue"]
+        assert call.get("loop") == "oracles/resolve-decision"
+        assert call.get("on_success") == "mark_decide_ran_at_dequeue"
+        assert call.get("on_failure") == "check_decide_rate_limited"
+        assert call.get("on_error") == "check_decide_rate_limited"
+
+    def test_dequeue_decision_resumes_preparation_not_implementation(
+        self, data: dict[str, Any]
+    ) -> None:
+        """A decision resolved at dequeue must continue into blocker/gate
+        preflight and refine, never short-circuit to implement_current; a
+        residual armed flag is held for human review."""
+        mark = data["states"]["mark_decide_ran_at_dequeue"]
+        assert "autodev-decide-ran" in mark.get("action", "")
+        assert "check-flag" in mark.get("action", "")
+        assert mark.get("on_yes") == "record_decision_unresolved"
+        assert mark.get("on_no") == "check_blockers_at_dequeue"
+        assert mark.get("on_error") == "check_blockers_at_dequeue"
+
+    def test_mark_decide_ran_holds_residual_decision(self, data: dict[str, Any]) -> None:
+        """resolve-decision can return done with a residual group still armed;
+        mark_decide_ran must re-check the flag so a passing score cannot send a
+        still-gated issue to implement_current."""
+        mark = data["states"]["mark_decide_ran"]
+        assert "check-flag" in mark.get("action", "")
+        assert "decision_needed" in mark.get("action", "")
+        assert mark.get("on_yes") == "record_decision_unresolved"
+        assert mark.get("on_no") == "rerun_confidence_after_decide"
 
     def test_check_decision_at_dequeue_on_no_routes_to_refine_current(
         self, data: dict[str, Any]
@@ -428,7 +456,7 @@ class TestSpikeTriageStructural:
         # confidence rerun.
         assert state.get("next") == "count_repair_cycle_spike"
         assert state.get("on_error") == "count_repair_cycle_spike"
-        assert state.get("on_rate_limit_exhausted") == "done"
+        assert state.get("on_rate_limit_exhausted") == "finalize_rate_limited"
         counter_state = data["states"]["count_repair_cycle_spike"]
         assert counter_state.get("next") == "rerun_confidence_after_spike"
         assert counter_state.get("on_error") == "rerun_confidence_after_spike"
@@ -439,7 +467,7 @@ class TestSpikeTriageStructural:
         assert state.get("fragment") == "with_rate_limit_handling"
         assert state.get("next") == "enqueue_or_skip"
         assert state.get("on_error") == "enqueue_or_skip"
-        assert state.get("on_rate_limit_exhausted") == "done"
+        assert state.get("on_rate_limit_exhausted") == "finalize_rate_limited"
 
 
 class TestDecidePathSpikeGate:
@@ -574,7 +602,7 @@ class TestReconcilePlateauStructural:
         # confidence rerun.
         assert state.get("next") == "count_repair_cycle_reconcile"
         assert state.get("on_error") == "count_repair_cycle_reconcile"
-        assert state.get("on_rate_limit_exhausted") == "done"
+        assert state.get("on_rate_limit_exhausted") == "finalize_rate_limited"
         counter_state = data["states"]["count_repair_cycle_reconcile"]
         assert counter_state.get("next") == "rerun_confidence_after_reconcile"
         assert counter_state.get("on_error") == "rerun_confidence_after_reconcile"
@@ -694,7 +722,7 @@ class TestDesignGateRefineRemedy:
         assert state.get("fragment") == "with_rate_limit_handling"
         assert state.get("next") == "count_repair_cycle_refine_for_design"
         assert state.get("on_error") == "count_repair_cycle_refine_for_design"
-        assert state.get("on_rate_limit_exhausted") == "done"
+        assert state.get("on_rate_limit_exhausted") == "finalize_rate_limited"
         counter_state = data["states"]["count_repair_cycle_refine_for_design"]
         assert counter_state.get("next") == "rerun_confidence_after_reconcile"
         assert counter_state.get("on_error") == "rerun_confidence_after_reconcile"

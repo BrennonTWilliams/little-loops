@@ -63,7 +63,7 @@ Artifact output directories are predictable (`artifacts.default_output_dir`, `--
 - `scripts/little_loops/cli/artifact/templatize.py` — `.rejected` writes (defense in depth).
 
 ### Dependent Files (Callers/Importers)
-- ~80 existing `atomic_write` / `atomic_write_json` call sites across `cli/issues/`, `hooks/`, `init/`, `session_log.py`, and elsewhere inherit the mode change. None write secrets (checked 2026-09-24); the only deliberate `0600` in the package is `transport.py:229`, which calls `chmod` itself and is unaffected.
+- ~69 existing `atomic_write` / `atomic_write_json` call sites (52 + 17 by grep, 2026-09-24) across `cli/issues/`, `hooks/`, `init/`, `session_log.py`, and elsewhere inherit the mode change. None write secrets (checked 2026-09-24); the only deliberate `0600` in the package is `transport.py:229`, which calls `chmod` itself and is unaffected.
 - Shares `dashboard.py`, `policy_builder.py`, and `extract.py` with ENH-3557 and ENH-3558; blocked on ENH-3558 so the three land sequentially without merge conflicts on the epic branch.
 
 ### Similar Patterns
@@ -121,6 +121,7 @@ Artifact output directories are predictable (`artifacts.default_output_dir`, `--
 - [ ] Every artifact output write listed under Files to Modify uses `atomic_write`; a parametrized test plants a symlink at each output path (dashboard, render, policy-builder, design-md, extract/refresh `data.json`) and asserts the target is untouched, the output path is a regular file, and its mode is `0o666 & ~umask`.
 - [ ] `policy_builder.py` and `design_md.py` output is written as UTF-8 regardless of locale.
 - [ ] `extract`/`refresh` `data.json` bytes are unchanged apart from the write path.
+- [ ] The templatize `.rejected` writes (`_write_rejected_discovery` and the `roundtrip.diff` / `lift-reversibility.diff` / `lift-render-check.txt` writes into `rejected_dir`) use `atomic_write`; `test_artifact_templatize.py` passes unchanged (no symlink test, per Proposed Solution §3).
 - [ ] The full `python -m pytest scripts/tests/` passes with the global mode change; `mypy` and `ruff check` pass.
 
 ## Related
@@ -128,11 +129,21 @@ Artifact output directories are predictable (`artifacts.default_output_dir`, `--
 - EPIC-3556 (parent); ENH-3540 (cancelled, original spec)
 - ENH-3558 (sequencing blocker: shared files `dashboard.py`, `extract.py`)
 
+## Verification Notes
+
+Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the same pass, so the issue as it now reads is up to date — this section is a record of what was wrong and fixed, not an outstanding action item)
+
+- Verified against code 2026-09-24: `atomic_write` (`file_utils.py:16`, `mkstemp` + `os.replace`, no chmod), the six `write_text` sites (`dashboard.py:475`, `render.py:68`, `policy_builder.py:143`, `design_md.py:129`, `extract.py:227,289`), locale-dependent writes at `policy_builder.py:143` and `design_md.py:129`, `transport.py:229` `chmod(0o600)` as the only deliberate `0600`, and `mkstemp` + `os.replace` in `policy_revision.py`/`lockfile.py` all match. No test patches `mkstemp`, and no existing test asserts a `0600` mode.
+- Corrected: caller count was "~80"; grep finds 52 `atomic_write(` + 17 `atomic_write_json(` call sites (~69).
+- Corrected (proposal-vs-integration-map gap, check B6): the Integration Map listed the templatize `.rejected` writes but no Acceptance Criterion covered them; one added.
+- Evidence-quote check: clean. Decisions log: no active required rules.
+
 ## Status
 
 **Open** | Created: 2026-09-24 | Priority: P2
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-24T19:13:35 - `27bdfde5-d1ef-4e98-b8ff-2728ac43d651.jsonl`
 - `/ll:scope-epic` - 2026-09-24T18:30:39 - `bd7b32d0-d305-4468-99d3-61a8a02d4caa.jsonl`
 - Manual review - 2026-09-24 - ported ENH-3540 Scope §4 and ACs into this child; replaced the umask-read idiom with `os.open(..., 0o666)`; dropped `atomic_write_bytes` (no caller); added `design_md.py` encoding fix and `blocked_by: ENH-3558` for sequencing

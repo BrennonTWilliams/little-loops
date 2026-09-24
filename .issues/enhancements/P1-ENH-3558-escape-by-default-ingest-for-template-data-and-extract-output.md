@@ -34,7 +34,7 @@ Carved out of cancelled ENH-3540 (Scope §2, §3, Option A decision); see that f
 - **`html.escape` does not neutralize `javascript:` URLs.** `javascript:alert(1)` contains no character `html.escape` changes.
 - **Templatize can lift markup fragments.** Regions are arbitrary byte spans (`apply_regions`, `templatize.py:474-510`); nothing restricts a region to a text node, and the manifest records no per-region context. So escaping every string leaf on `refresh` renders markup inside a markup-spanning region as literal text (safe but visibly broken).
 - **The manifest has no annotation slot.** `_validate_schema_shape()` rejects any `data_schema` key outside `_SCHEMA_ALLOWED_KEYS = {type, required, properties, items, enum, description}` (`artifact_templates.py:33`).
-- **The schema reaches the host twice.** `extract_data()` passes `template.data_schema` into the prompt (`extract.py:154`) and as `json_schema` to `build_blocking_json` (`:162`). Codex materializes that schema, so an unknown keyword risks rejection.
+- **The schema reaches the host twice.** `extract_data()` passes `template.data_schema` into the prompt (`extract.py:150-152`) and as `json_schema` to `build_blocking_json` (`:163`). Codex materializes that schema, so an unknown keyword risks rejection.
 
 ## Expected Behavior
 
@@ -174,11 +174,21 @@ Carved out of cancelled ENH-3540 (Scope §2, §3, Option A decision); see that f
 - ENH-3554 (follow-up: extends `x-ll-context` with region-context classification)
 - FEAT-3308 (byte-exact round-trip contract)
 
+## Verification Notes
+
+Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the same pass, so the issue as it now reads is up to date — this section is a record of what was wrong and fixed, not an outstanding action item)
+
+- Verified against code 2026-09-24: `_SCHEMA_ALLOWED_KEYS` (`artifact_templates.py:33`), `autoescape=False` (`:278`), the five per-key `html.escape` calls (`dashboard.py:314,315,318,320,337`), `_PROMPT_TEMPLATE` (`extract.py:51`), `extract_data` (`:102`), `data.json` writes (`:227,289`), and the `render_live_fragment` `autoescape=True` env (`dashboard.py:376`) all match.
+- Corrected: schema-to-host line refs were `extract.py:154`/`:162`; actual `:150-152` (prompt) and `:163` (`json_schema`).
+- Evidence-quote check (`ll-verify-evidence`): clean. Decisions log: no active required rules.
+- Graph provider `codegraph` was `stale`; not used for any verdict (Grep only).
+
 ## Status
 
 **Open** | Created: 2026-09-24 | Priority: P1
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-24T19:13:35 - `27bdfde5-d1ef-4e98-b8ff-2728ac43d651.jsonl`
 - `/ll:scope-epic` - 2026-09-24T18:30:39 - `bd7b32d0-d305-4468-99d3-61a8a02d4caa.jsonl`
 - Manual review - 2026-09-24 - ported ENH-3540 Scope §2/§3, Option A decision, and ACs into this child; decided the annotation keys (`x-ll-context` + separate `x-ll-trusted`) and path derivation; added validate-then-escape ordering and `blocked_by: ENH-3557`

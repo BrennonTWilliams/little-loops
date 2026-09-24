@@ -21,6 +21,8 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
+import textwrap
 from pathlib import Path
 from typing import Any
 
@@ -648,13 +650,9 @@ def _run_pre_deferral_remedy_selector(
     invoking this script, passed through CONTRA_ONLY like GATE_MARKER.
     """
     action = _load_autodev_yaml()["states"]["recheck_after_size_review"]["action"]
-    marker = (
-        'REMEDY=$(GATE_MARKER="$GATE_MARKER" CONTRA_ONLY="$CONTRA_ONLY" '
-        'll-issues show "$ID" --json 2>/dev/null | python3 -c "'
-    )
-    idx = action.index(marker)
-    tail = action[idx + len(marker) :]
-    script, _, _ = tail.partition('" 2>/dev/null || echo "")')
+    start = action.index("REMEDY=$(")
+    end = action.index('|| echo "")', start) + len('|| echo "")')
+    pipeline = textwrap.dedent(action[start:end])
     payload = json.dumps(
         {
             "spike_attempted": "true" if spike_attempted else "false",
@@ -665,18 +663,28 @@ def _run_pre_deferral_remedy_selector(
             "score_change_surface": score_change_surface,
         }
     )
-    result = subprocess.run(
-        [sys.executable, "-c", script],
-        input=payload,
-        capture_output=True,
-        text=True,
-        check=False,
-        env={
-            **os.environ,
-            "GATE_MARKER": gate_marker,
-            "CONTRA_ONLY": "true" if contradiction_sourced else "false",
-        },
-    )
+    # Run the real shell pipeline (not the extracted python alone) against a
+    # stub ll-issues, with GATE_MARKER/CONTRA_ONLY as plain unexported shell
+    # variables exactly as the action sets them — so an env prefix bound to
+    # the wrong side of the pipe is caught.
+    with tempfile.TemporaryDirectory() as tmp:
+        stub = Path(tmp) / "ll-issues"
+        stub.write_text(f"#!/bin/sh\ncat <<'JSON'\n{payload}\nJSON\n")
+        stub.chmod(0o755)
+        script = (
+            f'ID=ENH-1\nGATE_MARKER="{gate_marker}"\n'
+            f'CONTRA_ONLY="{"true" if contradiction_sourced else "false"}"\n'
+            f'{pipeline}\nprintf "%s" "$REMEDY"\n'
+        )
+        env = {k: v for k, v in os.environ.items() if k not in ("GATE_MARKER", "CONTRA_ONLY")}
+        env["PATH"] = f"{tmp}{os.pathsep}{env.get('PATH', '')}"
+        result = subprocess.run(
+            ["bash", "-c", script],
+            capture_output=True,
+            text=True,
+            check=False,
+            env=env,
+        )
     return result.stdout.strip()
 
 

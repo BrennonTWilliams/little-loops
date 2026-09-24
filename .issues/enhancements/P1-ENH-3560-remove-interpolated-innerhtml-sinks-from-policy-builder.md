@@ -49,7 +49,7 @@ Builder project files are meant to be shared. Opening someone else's project sho
    - Pull `renderDimensions`, `renderOutcomes`, and `renderLifecycleOutcomes` source out of the template with `_extractBetween` (`scripts/tests/js/policy_validator.test.mjs:1519`, template path at `:1514`), and run it in `vm.createContext` with a stub `document` / `$` like the BUG-3516 sandbox (`policy_validator.test.mjs:1873`).
    - The stub `createElement` returns element objects that record `innerHTML` assignments, `textContent`, and children.
    - Build `state` from a project parsed with `parseBuilderProject` (the Open path) whose outcome name, dimension name, and dimension type are `<img src=x onerror=alert(1)>`.
-   - Assert: no recorded `innerHTML` assignment contains `<img`, and the payload appears verbatim in some element's `textContent`.
+   - Assert: no recorded `innerHTML` assignment contains `<img`, and the payload appears verbatim in some element's `textContent`. Note `renderDimensions` renders the *normalized* dimension name (`normalizeDimName` hyphenates whitespace, so `<img src=x onerror=alert(1)>` becomes `<img-src=x-onerror=alert(1)>`); the verbatim assertion holds for the outcome name and the dimension type, not the dimension name. For the dimension name, assert the normalized text is in `textContent` and no `<img` reaches `innerHTML`.
 
 ## Integration Map
 
@@ -117,11 +117,20 @@ Builder project files are meant to be shared. Opening someone else's project sho
 
 - EPIC-3556 (parent); ENH-3540 (cancelled, original spec)
 
+## Verification Notes
+
+Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the same pass, so the issue as it now reads is up to date — this section is a record of what was wrong and fixed, not an outstanding action item)
+
+- Verified against code 2026-09-24: sinks at `policy-router-builder.html.tmpl:832,839,926,1038`; `parseBuilderProject` call at `:2264`; `validateProjectStructure` (`policy_builder_core.mjs:993`) and `normalizeDimName` (`:320`); `_extractBetween` and `TEMPLATE_PATH` in `policy_validator.test.mjs`; every other `innerHTML`/`insertAdjacentHTML` in the template assigns a constant string; `policy_builder_core.mjs` has no `innerHTML` use.
+- Corrected: the Proposed Solution's "payload appears verbatim in `textContent`" assertion does not hold for the dimension name, which is normalized before rendering (see §3 note).
+- Evidence-quote check: clean. Decisions log: no active required rules.
+
 ## Status
 
 **Open** | Created: 2026-09-24 | Priority: P1
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-24T19:13:36 - `27bdfde5-d1ef-4e98-b8ff-2728ac43d651.jsonl`
 - `/ll:scope-epic` - 2026-09-24T18:30:40 - `bd7b32d0-d305-4468-99d3-61a8a02d4caa.jsonl`
 - Manual review - 2026-09-24 - ported ENH-3540 Scope §6 and ACs into this child; widened the static check to constant-literal-only (the `${`-only rule missed the `:839` variable assignment); specified the stub-DOM `vm` harness (no jsdom in the zero-dependency suite)

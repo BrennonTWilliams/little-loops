@@ -70,6 +70,7 @@ states:
       printf '' > ${context.run_dir}/autodev-not-started-attempts.txt
       rm -f ${context.run_dir}/autodev-broke-down
       rm -f ${context.run_dir}/autodev-inflight
+      rm -f ${context.run_dir}/autodev-stop-reason
       tr ',' '\n' < ${context.run_dir}/autodev-input.txt \
         | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' \
         | grep -v '^[[:space:]]*$' \
@@ -245,7 +246,37 @@ states:
     # post-refine path.
     action: "ll-issues check-flag ${captured.input.output:shell} decision_needed"
     fragment: shell_exit
-    on_yes: resolve_decision
+    on_yes: resolve_decision_at_dequeue
+    on_no: check_blockers_at_dequeue
+    on_error: check_blockers_at_dequeue
+
+  resolve_decision_at_dequeue:
+    # Entry-time sibling of resolve_decision. The shared resolve_decision
+    # returns through mark_decide_ran → rerun_confidence_after_decide →
+    # recheck_after_decide → implement_current, which let a dequeue-time
+    # decision skip blocker/gate preflight and the whole refine pipeline.
+    # A decision resolved at dequeue instead resumes the normal preparation
+    # path at check_blockers_at_dequeue. `with:` is bound per call state, so
+    # this cannot share resolve_decision's state.
+    loop: oracles/resolve-decision
+    with:
+      issue_id: "${captured.input.output}"
+    capture: resolve_decision_at_dequeue
+    on_success: mark_decide_ran_at_dequeue
+    on_failure: check_decide_rate_limited
+    on_error: check_decide_rate_limited
+
+  mark_decide_ran_at_dequeue:
+    # Same marker as mark_decide_ran (cleared per-issue at dequeue_next) so
+    # decide_current does not re-run decide for this issue later in the chain.
+    # The oracle can return done with a residual decision group still armed
+    # (resolve-decision.yaml check_residual_decision); hold that issue for
+    # human review rather than refining it.
+    action: |
+      printf '1' > ${context.run_dir}/autodev-decide-ran
+      ll-issues check-flag ${captured.input.output:shell} decision_needed
+    fragment: shell_exit
+    on_yes: record_decision_unresolved
     on_no: check_blockers_at_dequeue
     on_error: check_blockers_at_dequeue
 
@@ -699,14 +730,14 @@ states:
     # a child that dies with terminated_by == "error" (or, since ENH-3471,
     # terminated_by == "no_route" — a decision-step failure) after a 429
     # cannot skip the check — reads it. Present: the 429 budget is exhausted; terminate
-    # the run gracefully, matching every other on_rate_limit_exhausted: done
-    # site in this file, rather than deferring this issue and immediately
+    # the run gracefully via finalize_rate_limited, matching every
+    # on_rate_limit_exhausted site in this file, rather than deferring this issue and immediately
     # walking the rest of the queue into the same exhaustion. Absent: decide
     # genuinely didn't resolve the flag (or errored for an unrelated reason);
     # fall through to record_decision_unresolved as before.
     action: "[ -f ${context.run_dir}/decide-rate-limited-${captured.input.output:shell} ]"
     fragment: shell_exit
-    on_yes: done
+    on_yes: finalize_rate_limited
     on_no: record_decision_unresolved
     on_error: record_decision_unresolved
 
@@ -715,10 +746,17 @@ states:
     # decide_current short-circuits if size-review routes back via
     # recheck_after_size_review → on_yes: decide_current. The flag is cleared
     # per-issue at dequeue_next.
+    # The oracle can return done with the flag still armed when a residual
+    # decision group survives (resolve-decision.yaml check_residual_decision
+    # routes that to done for human review). recheck_after_decide only reads
+    # scores, so without this check a passing score sent a still-gated issue
+    # into implement_current, where ll-auto halts at the decision gate.
     action: |
       printf '1' > ${context.run_dir}/autodev-decide-ran
-    action_type: shell
-    next: rerun_confidence_after_decide
+      ll-issues check-flag ${captured.input.output:shell} decision_needed
+    fragment: shell_exit
+    on_yes: record_decision_unresolved
+    on_no: rerun_confidence_after_decide
     on_error: rerun_confidence_after_decide
 
   rerun_confidence_after_decide:
@@ -738,7 +776,7 @@ states:
       suppress_claude_md: true
     next: recheck_after_decide
     on_error: recheck_after_decide
-    on_rate_limit_exhausted: done
+    on_rate_limit_exhausted: finalize_rate_limited
 
   recheck_after_decide:
     # Re-validate readiness/outcome scores after rerun_confidence_after_decide
@@ -828,7 +866,7 @@ states:
       suppress_claude_md: true
     next: count_repair_cycle_wire
     on_error: count_repair_cycle_wire
-    on_rate_limit_exhausted: done
+    on_rate_limit_exhausted: finalize_rate_limited
 
   count_repair_cycle_wire:
     # FEAT-2751: run_wire is one of the six repair-class states counted
@@ -858,7 +896,7 @@ states:
       suppress_claude_md: true
     next: rerun_confidence_after_wire
     on_error: rerun_confidence_after_wire
-    on_rate_limit_exhausted: done
+    on_rate_limit_exhausted: finalize_rate_limited
 
   rerun_confidence_after_wire:
     # After run_wire → run_refine repairs a wiring gap, frontmatter scores still hold
@@ -874,7 +912,7 @@ states:
       suppress_claude_md: true
     next: enqueue_or_skip
     on_error: enqueue_or_skip
-    on_rate_limit_exhausted: done
+    on_rate_limit_exhausted: finalize_rate_limited
 
   implement_current:
     # Interleaved implementation: as soon as a leaf passes refinement, run
@@ -1425,7 +1463,7 @@ states:
     rate_limit_max_wait_seconds: 14400
     next: count_repair_cycle_spike
     on_error: count_repair_cycle_spike
-    on_rate_limit_exhausted: done
+    on_rate_limit_exhausted: finalize_rate_limited
 
   count_repair_cycle_spike:
     # FEAT-2751: run_spike is one of the six repair-class states counted
@@ -1453,7 +1491,7 @@ states:
       suppress_claude_md: true
     next: enqueue_or_skip
     on_error: enqueue_or_skip
-    on_rate_limit_exhausted: done
+    on_rate_limit_exhausted: finalize_rate_limited
 
   check_missing_artifacts:
     # Gate before size-review: if missing_artifacts=true, route to run_wire so
@@ -1837,7 +1875,7 @@ states:
       suppress_claude_md: true
     next: rerun_confidence_after_atomic_remediation
     on_error: rerun_confidence_after_atomic_remediation
-    on_rate_limit_exhausted: done
+    on_rate_limit_exhausted: finalize_rate_limited
 
   rerun_confidence_after_atomic_remediation:
     # BUG-2734: re-run confidence-check once so remediate_oversized_atomic's
@@ -1852,7 +1890,7 @@ states:
       suppress_claude_md: true
     next: regate_after_atomic_remediation
     on_error: regate_after_atomic_remediation
-    on_rate_limit_exhausted: done
+    on_rate_limit_exhausted: finalize_rate_limited
 
   regate_after_atomic_remediation:
     # BUG-2734 Step 2 (honest deferral): one-shot re-check of the full
@@ -2011,7 +2049,7 @@ states:
       suppress_claude_md: true
     next: check_go_no_go_waiver
     on_error: check_go_no_go_waiver
-    on_rate_limit_exhausted: done
+    on_rate_limit_exhausted: finalize_rate_limited
 
   check_go_no_go_waiver:
     # BUG-3390: check-flag reads raw frontmatter, so this is correct even where
@@ -2067,7 +2105,7 @@ states:
       suppress_claude_md: true
     next: count_repair_cycle_refine_for_design
     on_error: count_repair_cycle_refine_for_design
-    on_rate_limit_exhausted: done
+    on_rate_limit_exhausted: finalize_rate_limited
 
   count_repair_cycle_refine_for_design:
     # BUG-3002: refine_for_design is one of the six repair-class states
@@ -2106,7 +2144,7 @@ states:
       suppress_claude_md: true
     next: count_repair_cycle_reconcile
     on_error: count_repair_cycle_reconcile
-    on_rate_limit_exhausted: done
+    on_rate_limit_exhausted: finalize_rate_limited
 
   count_repair_cycle_reconcile:
     # FEAT-2751: reconcile_current is one of the six repair-class states
@@ -2165,7 +2203,7 @@ states:
       suppress_claude_md: true
     next: recheck_after_size_review
     on_error: recheck_after_size_review
-    on_rate_limit_exhausted: done
+    on_rate_limit_exhausted: finalize_rate_limited
 
   recheck_after_size_review:
     # BUG-1230: size-review declined to decompose the issue (leaf-sized or
@@ -2344,7 +2382,9 @@ states:
           if [ -f ${context.run_dir}/autodev-contradiction-reconcile-$ID ]; then
             CONTRA_ONLY="true"
           fi
-          REMEDY=$(GATE_MARKER="$GATE_MARKER" CONTRA_ONLY="$CONTRA_ONLY" ll-issues show "$ID" --json 2>/dev/null | python3 -c "
+          # Env assignments must prefix python3 (the os.environ reader), not
+          # ll-issues — a `VAR=x a | b` prefix binds only to `a`.
+          REMEDY=$(ll-issues show "$ID" --json 2>/dev/null | GATE_MARKER="$GATE_MARKER" CONTRA_ONLY="$CONTRA_ONLY" python3 -c "
       import json, os, sys
       d = json.load(sys.stdin)
       if d.get('spike_attempted') == 'true':
@@ -2457,6 +2497,18 @@ states:
     on_yes: run_spike
     on_no: reconcile_current
     on_error: reconcile_current
+
+  finalize_rate_limited:
+    # Every 429-budget-exhaustion exit used to route straight to the bare
+    # `done` terminal, skipping finalize_done — no summary.json, no
+    # staged→passed promotion, no abandoned-inflight detection, and the
+    # unprocessed queue silently dropped. Stamp the stop reason and run the
+    # same finalization; finalize_done reports it as verdict rate_limited.
+    action: |
+      printf 'rate_limit' > ${context.run_dir}/autodev-stop-reason
+    action_type: shell
+    next: finalize_done
+    on_error: finalize_done
 
   finalize_done:
     action_type: shell
@@ -2599,6 +2651,18 @@ states:
       if [ "$UNVERIFIED_COUNT" -gt 0 ]; then
         printf 'Unverified   (%d): %s  (threshold passed; implementation did not close — re-queue to retry)\n' "$UNVERIFIED_COUNT" "$UNVERIFIED_LIST"
       fi
+      # finalize_rate_limited stamps the stop reason; the queue still holds
+      # every issue never dequeued, so surface it rather than dropping it.
+      STOP_REASON=$(cat ${context.run_dir}/autodev-stop-reason 2>/dev/null | tr -d '[:space:]' || true)
+      [ -z "$STOP_REASON" ] && STOP_REASON=completed
+      PENDING_IDS=$(cat ${context.run_dir}/autodev-queue.txt 2>/dev/null \
+        | grep -v '^[[:space:]]*$' || true)
+      PENDING_COUNT=$(echo "$PENDING_IDS" | grep -c '[^[:space:]]' || true)
+      [ -z "$PENDING_COUNT" ] && PENDING_COUNT=0
+      if [ "$STOP_REASON" != completed ]; then
+        PENDING_LIST=$(echo "$PENDING_IDS" | tr '\n' ',' | sed 's/,$//')
+        printf 'Stopped early: %s — pending (%d): %s  (re-run to continue)\n' "$STOP_REASON" "$PENDING_COUNT" "$${PENDING_LIST:-none}"
+      fi
       printf '\n'
 
       # BUG-2908: verdict reflects verified closure, not threshold-pass. A run
@@ -2621,9 +2685,15 @@ states:
       else
         VERDICT=no-op
       fi
+      # A rate-limit stop is an interrupted run, not a phantom implementation
+      # failure: the in-flight issue (if any) is already counted as abandoned
+      # above, and the verdict names the stop so callers can retry.
+      if [ "$STOP_REASON" = rate_limit ]; then
+        VERDICT=rate_limited
+      fi
 
-      printf '{"verdict":"%s","closed":%s,"not_closed":%s,"skipped":%s,"gate_blocked":%s,"decision_unresolved":%s,"not_started":%s,"inflight_unresolved":%s,"abandoned":%s}\n' \
-        "$VERDICT" "$PASSED_COUNT" "$UNVERIFIED_COUNT" "$SKIPPED_COUNT" "$GATE_BLOCKED_COUNT" "$DECISION_UNRESOLVED_COUNT" "$NOT_STARTED_COUNT" "$ABANDONED" "$ABANDONED" \
+      printf '{"verdict":"%s","closed":%s,"not_closed":%s,"skipped":%s,"gate_blocked":%s,"decision_unresolved":%s,"not_started":%s,"inflight_unresolved":%s,"abandoned":%s,"stop_reason":"%s","pending":%s}\n' \
+        "$VERDICT" "$PASSED_COUNT" "$UNVERIFIED_COUNT" "$SKIPPED_COUNT" "$GATE_BLOCKED_COUNT" "$DECISION_UNRESOLVED_COUNT" "$NOT_STARTED_COUNT" "$ABANDONED" "$ABANDONED" "$STOP_REASON" "$PENDING_COUNT" \
         > ${context.run_dir}/summary.json
 
       # BUG-2908: route the FSM terminal on verified closure, not "reached the
@@ -2644,9 +2714,7 @@ states:
     terminal: true
     failure: true
   done:
-    # Emit a structured summary of passed and skipped issues for this run.
-    # BUG-1226: also surface any still-in-flight issue recorded by dequeue_next,
-    # so if the loop reaches `done` with a stale autodev-inflight (e.g. the
-    # executor flushed copy_broke_down but the wall-clock timeout fired before
-    # resolution completed), the user knows which issue needs re-queueing.
+    # Bare terminal. The run summary (summary.json, inflight/abandoned
+    # accounting) is written by finalize_done, which every exit — including
+    # rate-limit stops via finalize_rate_limited — routes through first.
     terminal: true

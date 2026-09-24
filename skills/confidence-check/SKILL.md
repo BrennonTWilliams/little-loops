@@ -222,9 +222,10 @@ verdict. It combines `template_placeholders` and `boilerplate` (taken unfiltered
 `missing` entries (`Status`, `Impact`, etc.) do not contribute, since a structural-section
 absence covered by a stronger hard override elsewhere carries no additional signal here, and
 the rest carry no signal about specification quality. Remedy differs by key: `format-check
---fix` repairs `boilerplate` and structurally inserts `missing` sections, but
-`template_placeholders` has no `--fix` — it is literal template debris that needs authored
-content.
+--fix` has no repair for `boilerplate` or `missing` — both need authored content
+(`/ll:format-issue` inserts missing sections). For `template_placeholders`, `--fix` fills only
+the frontmatter-derivable tokens (Priority, Status date, type label); every other placeholder
+is literal template debris that needs authored content.
 
 ### Phase 1.9: Pre-Fetch Unproven Mechanism Flag (ENH-3350)
 ```bash

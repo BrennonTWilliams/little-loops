@@ -7456,6 +7456,50 @@ class TestAutodevLoop:
         run_dir = tmp_path
         summary, _ = self._run_finalize_done(data, run_dir)
         assert summary["verdict"] == "no-op"
+        assert summary["stop_reason"] == "completed"
+        assert summary["pending"] == 0
+
+    def test_rate_limit_exits_route_through_finalize(self, data: dict) -> None:
+        """Every 429-exhaustion exit must reach finalize_done (via
+        finalize_rate_limited), never the bare `done` terminal, which writes no
+        summary.json and drops the pending queue."""
+        states = data["states"]
+        offenders = [
+            name for name, st in states.items() if st.get("on_rate_limit_exhausted") == "done"
+        ]
+        assert not offenders, f"rate-limit exits bypass finalize_done: {offenders}"
+        assert states["check_decide_rate_limited"].get("on_yes") == "finalize_rate_limited"
+        stop = states["finalize_rate_limited"]
+        assert "autodev-stop-reason" in stop.get("action", "")
+        assert stop.get("next") == "finalize_done"
+        assert stop.get("on_error") == "finalize_done"
+        only_done_edge = [
+            name
+            for name, st in states.items()
+            if "done" in (st.get("next"), st.get("on_yes"), st.get("on_no"), st.get("on_error"))
+        ]
+        assert only_done_edge == ["finalize_done"], only_done_edge
+
+    def test_finalize_done_reports_rate_limited_stop_with_pending(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """A rate-limit stop records verdict=rate_limited (exit 0, not phantom),
+        its stop_reason, and the still-queued issues."""
+        run_dir = tmp_path
+        (run_dir / "autodev-stop-reason").write_text("rate_limit")
+        (run_dir / "autodev-queue.txt").write_text("FEAT-301\nFEAT-302\n")
+        (run_dir / "autodev-inflight").write_text("FEAT-300")
+        state = data["states"].get("finalize_done", {})
+        script = state.get("action", "").replace("${context.run_dir}", str(run_dir))
+        script = script.replace("$${", "${")
+        result = subprocess.run(["bash", "-c", script], cwd=run_dir, capture_output=True, text=True)
+        assert result.returncode == 0, result.stderr
+        summary = json.loads((run_dir / "summary.json").read_text())
+        assert summary["verdict"] == "rate_limited"
+        assert summary["stop_reason"] == "rate_limit"
+        assert summary["pending"] == 2
+        assert summary["abandoned"] == 1
+        assert "FEAT-301,FEAT-302" in result.stdout
 
     # --- ENH-2989: Phase-1-not-reached discriminator -------------------------
 

@@ -11,6 +11,12 @@ parent: EPIC-3556
 labels:
 - security
 - artifacts
+confidence_score: 100
+outcome_confidence: 90
+score_complexity: 20
+score_test_coverage: 22
+score_ambiguity: 25
+score_change_surface: 23
 ---
 
 # ENH-3557: Script-context-safe JSON and single-pass placeholder substitution
@@ -137,11 +143,21 @@ The skill catalog is agent-authorable and is embedded in a page that people othe
 - ENH-3558 (blocked on this issue: allowlists the `_js` keys as verbatim)
 - FEAT-3308 (byte-exact round-trip contract; `render_template` stays unchanged)
 
+## Verification Notes
+
+Verdict at time of check: **VALID** (no corrections needed)
+
+- Verified against code 2026-09-24: JSON splices at `policy_builder.py:88,91,97,117,120` (`json.dumps`, no escaping); `html.replace` chain at `:114-123` where the later replacements rescan already-spliced catalog and core JS; `dashboard.py:343-344` `_json.dumps` and template `fetch(...)` sites at `dashboard.llat/template.html.j2:327,393`; the six policy-builder placeholders each appear once in the template.
+- Evidence-quote check: clean. Decisions log: no active required rules.
+- Graph provider `codegraph` was `stale`; not used for any verdict (Grep only).
+
 ## Status
 
 **Open** | Created: 2026-09-24 | Priority: P1
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-24T19:14:49 - `6b43fbf3-9a37-436a-ad6c-0f27aa9fd0d2.jsonl`
+- `/ll:verify-issues` - 2026-09-24T19:13:34 - `27bdfde5-d1ef-4e98-b8ff-2728ac43d651.jsonl`
 - `/ll:scope-epic` - 2026-09-24T18:30:39 - `bd7b32d0-d305-4468-99d3-61a8a02d4caa.jsonl`
 - Manual review - 2026-09-24 - ported ENH-3540 Scope §1/§5, Decision Rules, and ACs into this child; added the unmatched-placeholder raise
