@@ -18,6 +18,12 @@ relates_to:
 - ENH-3532
 blocks:
 - ENH-3532
+confidence_score: 100
+outcome_confidence: 70
+score_complexity: 10
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 10
 ---
 
 # BUG-3542: Raw-event backfill stamps the configured host instead of each handle's source host
@@ -113,4 +119,5 @@ blocks:
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-24T21:53:41 - `75725027-e884-41d2-8414-83c4661c85da.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-09-24T17:53:59 - `5250dd00-ed7b-4310-8dee-527fe13b2b07.jsonl`
