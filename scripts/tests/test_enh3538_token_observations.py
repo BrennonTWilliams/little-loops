@@ -114,8 +114,12 @@ class TestFakeHostPartialEvents:
         (event,) = self._emit("result in=1 out=2 cache=3")
         assert event["usage"]["cache_creation_input_tokens"] == 0
 
-    def test_turn_completed_omits_cache_write_by_default(self) -> None:
+    def test_turn_completed_emits_cache_write_zero_by_default(self) -> None:
         (event,) = self._emit("turn_completed in=1 out=2 cached=3")
+        assert event["usage"]["cache_write_input_tokens"] == 0
+
+    def test_turn_completed_omit_cache_write(self) -> None:
+        (event,) = self._emit("turn_completed in=1 out=2 cached=3 omit=cache_write")
         assert "cache_write_input_tokens" not in event["usage"]
 
     def test_omit_and_explicit_null(self) -> None:

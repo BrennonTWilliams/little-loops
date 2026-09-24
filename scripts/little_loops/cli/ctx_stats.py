@@ -41,6 +41,7 @@ from little_loops.session_store import (
     resolve_history_db,
     translate_sqlite_errors,
 )
+from little_loops.subprocess_utils import normalize_codex_input
 from little_loops.user_messages import _resolve_host
 
 DEFAULT_DB_RELPATH = Path(".ll") / "history.db"
@@ -357,46 +358,57 @@ def _codex_cache_usage(handle: SessionHandle) -> dict[str, Any] | None:
     """Compute cache hit rate from a Codex rollout's ``token_count`` events.
 
     ``last_token_usage`` (not the cumulative ``total_token_usage``, which
-    resets across a mid-session compaction) is summed across every
-    ``token_count`` event to get the session-aggregate ``input_tokens``,
-    ``cached_input_tokens``, and ``cache_write_input_tokens``. Codex
-    ``input_tokens`` is inclusive of cached/cache-write tokens (unlike
-    Claude's disjoint three-way split), so ``uncached`` is derived by
-    subtraction and clamped to 0 in case a future CLI version switches
-    ``input_tokens`` to exclusive. Events with ``info: null`` (rate-limit-only
-    events) are skipped. Returns ``None`` when no usable ``token_count``
-    event is seen, exactly as the Claude reader returns ``None`` on
-    ``total == 0``.
+    resets across a mid-session compaction) is normalized per observation via
+    :func:`~little_loops.subprocess_utils.normalize_codex_input` (Codex input is
+    inclusive of cached/cache-write tokens) and only consistent splits are
+    summed. Incomplete, malformed, or over-cached observations are excluded from
+    the rate and counted in ``inconsistent_events`` rather than clamped; a
+    mapping ``info`` without ``last_token_usage`` and ``info: null`` records
+    are not observations. With no consistent observation the rate and token
+    totals are ``None``. Always returns a dict for a Codex session (BUG-3531).
     """
-    input_tokens = 0
-    cached_input_tokens = 0
-    cache_write_input_tokens = 0
+    cache_read = cache_write = uncached = 0
+    consistent = inconsistent = 0
 
     for event in iter_events(handle):
         if event.type != "event_msg" or event.payload.get("type") != "token_count":
             continue
         info = event.payload.get("info")
-        if not info:
+        if info is None:
             continue
-        last = info.get("last_token_usage") or {}
-        input_tokens += int(last.get("input_tokens", 0))
-        cached_input_tokens += int(last.get("cached_input_tokens", 0))
-        cache_write_input_tokens += int(last.get("cache_write_input_tokens", 0))
+        if not isinstance(info, dict):
+            inconsistent += 1
+            continue
+        if "last_token_usage" not in info:
+            continue
+        split = normalize_codex_input(info["last_token_usage"])
+        if (
+            not split.consistent
+            or split.uncached_input is None
+            or split.cache_read is None
+            or split.cache_write is None
+        ):
+            inconsistent += 1
+            continue
+        consistent += 1
+        cache_read += split.cache_read
+        cache_write += split.cache_write
+        uncached += split.uncached_input
 
-    cache_read = cached_input_tokens
-    cache_write = cache_write_input_tokens
-    uncached = max(0, input_tokens - cached_input_tokens - cache_write_input_tokens)
-    total = cache_read + cache_write + uncached
-    if total == 0:
-        return None
-
-    return {
-        "cache_read": cache_read,
-        "cache_write": cache_write,
-        "uncached": uncached,
-        "hit_rate_pct": round(cache_read / total * 100),
+    result: dict[str, Any] = {
+        "cache_read": None,
+        "cache_write": None,
+        "uncached": None,
+        "hit_rate_pct": None,
         "host": handle.host,
+        "consistent_events": consistent,
+        "inconsistent_events": inconsistent,
     }
+    if consistent:
+        total = cache_read + cache_write + uncached
+        result.update(cache_read=cache_read, cache_write=cache_write, uncached=uncached)
+        result["hit_rate_pct"] = round(cache_read / total * 100) if total else None
+    return result
 
 
 def _compute_cache_rate_from_jsonl(cwd: Path, host: str | None) -> dict[str, Any] | None:
@@ -522,15 +534,30 @@ def _render(
         logger.info("Cache: no hits recorded in this session")
 
     if cache_rate is not None:
-        cr = cache_rate["cache_read"]
-        cw = cache_rate["cache_write"]
-        u = cache_rate["uncached"]
-        pct = cache_rate["hit_rate_pct"]
         rate_host = cache_rate.get("host")
         suffix = f" [{rate_host}]" if rate_host and rate_host != "claude-code" else ""
-        print(
-            f"Cache hit rate: {pct}%  (cache_read={cr:,} | cache_write={cw:,} | uncached={u:,}){suffix}"
-        )
+        good = cache_rate.get("consistent_events")
+        bad = cache_rate.get("inconsistent_events")
+        if cache_rate["cache_read"] is None:
+            if good == 0 and not bad:
+                print(f"Cache hit rate: no usage observed{suffix}")
+            else:
+                print(
+                    f"Cache hit rate: unavailable ({bad} observation(s) excluded as "
+                    f"inconsistent){suffix}"
+                )
+        else:
+            cr = cache_rate["cache_read"]
+            cw = cache_rate["cache_write"]
+            u = cache_rate["uncached"]
+            pct = cache_rate["hit_rate_pct"]
+            shown = f"{pct}%" if pct is not None else "n/a (zero usage)"
+            print(
+                f"Cache hit rate: {shown}  "
+                f"(cache_read={cr:,} | cache_write={cw:,} | uncached={u:,}){suffix}"
+            )
+            if bad:
+                print(f"  based on {good} accepted observation(s); {bad} excluded as inconsistent")
 
     if skill_stats:
         print()
@@ -655,6 +682,12 @@ def _print_json(
             "cache_write_tokens": cache_rate["cache_write"] if cache_rate else None,
             "uncached_tokens": cache_rate["uncached"] if cache_rate else None,
             "cache_rate_host": cache_rate.get("host") if cache_rate else None,
+            "cache_rate_consistent_events": (
+                cache_rate.get("consistent_events") if cache_rate else None
+            ),
+            "cache_rate_inconsistent_events": (
+                cache_rate.get("inconsistent_events") if cache_rate else None
+            ),
             "per_tool": summary["per_tool"],
             "skill_health": skill_health,
             "learning_tests": lt_stats,

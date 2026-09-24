@@ -1952,7 +1952,7 @@ def record_usage_event(
 
     ENH-3538: token components may be ``None`` (unknown; the row's cost is then
     ``NULL``), and the keyword-only metadata records provenance (default
-    ``'unknown'`` — nothing here certifies ``measured``), the runtime host,
+    ``'unknown'``; ``'measured'`` only for validated), the runtime host,
     scope kind and observation time with its basis.
 
     Unlike :func:`_backfill_usage_events` (post-hoc, ``state`` always ``NULL``),

@@ -16,7 +16,7 @@ import signal
 import subprocess
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -84,12 +84,55 @@ class TokenUsage:
     eligible for the flat 50% batch discount in :func:`~little_loops.pricing.estimate_cost_usd`.
     Defaults to False so every existing construction site is unaffected."""
     provenance: TokenProvenance = "unknown"
-    """Trust classification of the observation. No acquisition path is ``measured`` yet."""
+    """Trust classification of the observation. Live Codex ``turn.completed`` with a
+    consistent input split and known output is ``measured``; everything else is ``unknown``."""
     host: str | None = None
     """Runtime host that produced the observation (``claude-code``, ``codex``, ...)."""
     scope_kind: TokenScopeKind = "unknown"
     observed_at: str | None = None
     observed_at_basis: ObservedAtBasis | None = None
+
+
+@dataclass(frozen=True)
+class CodexInputSplit:
+    """One Codex usage observation normalized to the disjoint contract (BUG-3531).
+
+    Codex ``input_tokens`` is inclusive of cached and cache-write tokens;
+    ``uncached_input`` is ``input - cache_read - cache_write``. It is ``None``
+    (unavailable, never zero) unless every component is a known nonnegative
+    integer and ``consistent`` is ``True``.
+    """
+
+    uncached_input: int | None
+    cache_read: int | None
+    cache_write: int | None
+    consistent: bool
+
+
+def _valid_count(value: Any) -> int | None:
+    """Return *value* when it is a nonnegative non-boolean ``int``, else ``None``."""
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        return None
+    return value
+
+
+def normalize_codex_input(usage: Mapping[str, Any]) -> CodexInputSplit:
+    """Normalize one Codex usage block (inclusive input) to an uncached-input split.
+
+    Never coerces missing, null, or malformed components to zero. An omitted
+    ``cache_write_input_tokens`` (pre-field CLI) leaves the split unavailable.
+    """
+    if not isinstance(usage, Mapping):
+        return CodexInputSplit(None, None, None, False)
+    total = _valid_count(usage.get("input_tokens"))
+    cache_read = _valid_count(usage.get("cached_input_tokens"))
+    cache_write = _valid_count(usage.get("cache_write_input_tokens"))
+    if total is None or cache_read is None or cache_write is None:
+        return CodexInputSplit(None, cache_read, cache_write, False)
+    uncached = total - cache_read - cache_write
+    if uncached < 0:
+        return CodexInputSplit(None, cache_read, cache_write, False)
+    return CodexInputSplit(uncached, cache_read, cache_write, True)
 
 
 # Detailed usage callback — receives all four token fields plus model ID.
@@ -145,15 +188,21 @@ def usage_from_event(event: dict[str, Any], *, default_model: str) -> TokenUsage
     ``cache_write_input_tokens``, no ``model`` field) (ENH-3464 Decision 8a).
     Returns ``None`` when *event* isn't a recognized terminal event type or
     carries no ``usage`` block. A missing or explicit-``null`` component stays
-    ``None`` (unknown); only a reported ``0`` is zero. This supersedes ENH-3464
-    Decision 3: an omitted Codex ``cache_write_input_tokens`` is unknown until
-    BUG-3531 Decision 6 establishes otherwise (ENH-3538).
+    ``None`` (unknown); only a reported ``0`` is zero. ``input_tokens`` is
+    **uncached** input for every host: Codex's inclusive input is normalized via
+    :func:`normalize_codex_input` (BUG-3531). A live Codex block that is empty,
+    malformed, inconsistent, or all-zero (the producer's ``Usage::default()``
+    fallback) yields ``provenance='unknown'``; a complete consistent block is
+    ``measured``. The Claude ``result`` branch ignores absent, null, empty, or
+    non-object ``usage``.
     """
     etype = event.get("type")
     usage = event.get("usage")
-    if not usage:
+    if usage is None:
         return None
     if etype == "result":
+        if not isinstance(usage, dict) or not usage:
+            return None
         return TokenUsage(
             input_tokens=usage.get("input_tokens"),
             output_tokens=usage.get("output_tokens"),
@@ -162,11 +211,34 @@ def usage_from_event(event: dict[str, Any], *, default_model: str) -> TokenUsage
             model=event.get("model", default_model),
         )
     if etype == "turn.completed":
+        block: Mapping[str, Any] = usage if isinstance(usage, dict) else {}
+        split = normalize_codex_input(block)
+        output = _valid_count(block.get("output_tokens"))
+        if (
+            split.consistent
+            and output is not None
+            and (split.uncached_input or split.cache_read or split.cache_write or output)
+        ):
+            return TokenUsage(
+                input_tokens=split.uncached_input,
+                output_tokens=output,
+                cache_read_tokens=split.cache_read,
+                cache_creation_tokens=split.cache_write,
+                model=default_model,
+                provenance="measured",
+            )
+        if (
+            split.consistent
+            and output == 0
+            and not (split.uncached_input or split.cache_read or split.cache_write)
+        ):
+            # Producer's ``Usage::default()`` fallback, not a measurement.
+            return TokenUsage(None, None, None, None, model=default_model)
         return TokenUsage(
-            input_tokens=usage.get("input_tokens"),
-            output_tokens=usage.get("output_tokens"),
-            cache_read_tokens=usage.get("cached_input_tokens"),
-            cache_creation_tokens=usage.get("cache_write_input_tokens"),
+            input_tokens=split.uncached_input,
+            output_tokens=output,
+            cache_read_tokens=split.cache_read,
+            cache_creation_tokens=split.cache_write,
             model=default_model,
         )
     return None

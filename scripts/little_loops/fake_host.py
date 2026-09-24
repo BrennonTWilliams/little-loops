@@ -280,15 +280,15 @@ def emit(script: DirectivesScript, *, stdout: TextIO, stderr: TextIO) -> int:
                 event["structured_output"] = json.loads(d.args["structured"])
             _write_json(stdout, event)
         elif d.kind == "turn_completed":
-            # Codex omits cache_write_input_tokens by default (the real shape);
-            # pass ``cache_write=N`` to emit it (ENH-3538).
+            # codex-cli 0.152.1 always emits cache_write_input_tokens (BUG-3531);
+            # ``omit=cache_write`` reproduces the older-CLI shape.
             usage = _usage_block(
                 d.args,
                 {
                     "input_tokens": ("in", 0),
                     "output_tokens": ("out", 0),
                     "cached_input_tokens": ("cached", 0),
-                    "cache_write_input_tokens": ("cache_write", None),
+                    "cache_write_input_tokens": ("cache_write", 0),
                 },
             )
             _write_json(stdout, {"type": "turn.completed", "usage": usage})

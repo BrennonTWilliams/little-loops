@@ -650,7 +650,8 @@ RUNTIME_HOST_CAPABILITIES: dict[str, RuntimeHostEntry] = {
                 "codex exec --json's turn.completed event carries a usage block "
                 "(input_tokens/output_tokens/cached_input_tokens/"
                 "cache_write_input_tokens); parsed into TokenUsage by "
-                "run_claude_command()'s shared event-type branch",
+                "run_claude_command()'s shared event-type branch. Codex input is "
+                "inclusive of cached tokens and is normalized to uncached input",
             ),
         ),
     ),

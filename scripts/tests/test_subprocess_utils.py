@@ -1855,7 +1855,7 @@ class TestRunClaudeCommandModelDetection:
 
         assert len(detailed_calls) == 1
         u = detailed_calls[0]
-        assert u.input_tokens == 1000
+        assert u.input_tokens == 425
         assert u.output_tokens == 200
         assert u.cache_read_tokens == 500
         assert u.cache_creation_tokens == 75
@@ -3347,10 +3347,11 @@ class TestUsageFromEvent:
         }
         usage = usage_from_event(event, default_model="unknown")
         assert usage is not None
-        assert usage.input_tokens == 1000
+        assert usage.input_tokens == 425  # 1000 - 500 - 75: uncached input
         assert usage.output_tokens == 200
         assert usage.cache_read_tokens == 500
         assert usage.cache_creation_tokens == 75
+        assert usage.provenance == "measured"
 
     def test_codex_turn_completed_missing_cache_write_is_unknown(self) -> None:
         """ENH-3538 supersedes ENH-3464 Decision 3: an omitted key is unknown, not zero."""
@@ -3462,3 +3463,135 @@ class TestUsageFromStreamLines:
         )
         _usage, tool_calls = usage_from_stream_lines(stdout)
         assert tool_calls == 0
+
+
+class TestNormalizeCodexInput:
+    """BUG-3531: Codex inclusive input normalized to uncached input."""
+
+    def test_consistent_split(self) -> None:
+        from little_loops.subprocess_utils import normalize_codex_input
+
+        split = normalize_codex_input(
+            {"input_tokens": 1000, "cached_input_tokens": 600, "cache_write_input_tokens": 0}
+        )
+        assert (split.uncached_input, split.cache_read, split.cache_write) == (400, 600, 0)
+        assert split.consistent
+
+    @pytest.mark.parametrize(
+        "usage",
+        [
+            {"input_tokens": 10, "cached_input_tokens": 60, "cache_write_input_tokens": 30},
+            {"input_tokens": 10, "cached_input_tokens": 1},  # cache_write omitted
+            {"input_tokens": None, "cached_input_tokens": 1, "cache_write_input_tokens": 0},
+            {"input_tokens": 10, "cached_input_tokens": -1, "cache_write_input_tokens": 0},
+            {"input_tokens": True, "cached_input_tokens": 0, "cache_write_input_tokens": 0},
+            {"input_tokens": 10.0, "cached_input_tokens": 0, "cache_write_input_tokens": 0},
+            {"input_tokens": "10", "cached_input_tokens": 0, "cache_write_input_tokens": 0},
+            {},
+        ],
+    )
+    def test_unavailable(self, usage: dict) -> None:
+        from little_loops.subprocess_utils import normalize_codex_input
+
+        split = normalize_codex_input(usage)
+        assert split.uncached_input is None
+        assert not split.consistent
+
+    def test_non_mapping(self) -> None:
+        from little_loops.subprocess_utils import normalize_codex_input
+
+        assert not normalize_codex_input([1]).consistent  # type: ignore[arg-type]
+
+
+class TestUsageFromEventCodexNormalization:
+    def _turn(self, usage: object) -> dict:
+        return {"type": "turn.completed", "usage": usage}
+
+    def test_fixture_exec_turn(self) -> None:
+        import json
+        from pathlib import Path
+
+        from little_loops.subprocess_utils import usage_from_stream_lines
+
+        fx = Path(__file__).parent / "fixtures" / "codex" / "exec-json-turn.jsonl"
+        usage, _ = usage_from_stream_lines(fx.read_text())
+        assert usage is not None
+        assert (usage.input_tokens, usage.cache_read_tokens) == (12193, 26752)
+        assert usage.cache_creation_tokens == 0 and usage.output_tokens == 117
+        assert usage.provenance == "measured"
+        del json
+
+    def test_fixture_exec_resume(self) -> None:
+        from pathlib import Path
+
+        from little_loops.subprocess_utils import usage_from_stream_lines
+
+        fx = Path(__file__).parent / "fixtures" / "codex" / "exec-json-resume.jsonl"
+        usage, _ = usage_from_stream_lines(fx.read_text())
+        assert usage is not None
+        assert (usage.input_tokens, usage.cache_read_tokens, usage.output_tokens) == (
+            231,
+            19328,
+            5,
+        )
+        assert usage.provenance == "measured"
+
+    def test_omitted_cache_write_is_unknown(self) -> None:
+        u = usage_from_event(
+            self._turn({"input_tokens": 1000, "cached_input_tokens": 600, "output_tokens": 10}),
+            default_model="x",
+        )
+        assert u is not None and u.input_tokens is None and u.provenance == "unknown"
+        assert u.cache_read_tokens == 600
+
+    def test_inconsistent_keeps_cache_components(self) -> None:
+        u = usage_from_event(
+            self._turn(
+                {
+                    "input_tokens": 10,
+                    "cached_input_tokens": 60,
+                    "cache_write_input_tokens": 30,
+                    "output_tokens": 1,
+                }
+            ),
+            default_model="x",
+        )
+        assert u is not None and u.input_tokens is None
+        assert (u.cache_read_tokens, u.cache_creation_tokens) == (60, 30)
+        assert u.provenance == "unknown"
+
+    def test_live_all_zero_is_unknown_observation(self) -> None:
+        zero = {
+            "input_tokens": 0,
+            "cached_input_tokens": 0,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 0,
+        }
+        u = usage_from_event(self._turn(zero), default_model="x")
+        assert u is not None
+        assert (u.input_tokens, u.output_tokens, u.cache_read_tokens) == (None, None, None)
+        assert u.cache_creation_tokens is None and u.provenance == "unknown"
+
+    def test_missing_output_not_measured(self) -> None:
+        u = usage_from_event(
+            self._turn(
+                {"input_tokens": 10, "cached_input_tokens": 4, "cache_write_input_tokens": 0}
+            ),
+            default_model="x",
+        )
+        assert u is not None and u.input_tokens == 6
+        assert u.output_tokens is None and u.provenance == "unknown"
+
+    @pytest.mark.parametrize("bad", [[], [1], "s", True, 5, {}])
+    def test_container_shapes_yield_empty_observation(self, bad: object) -> None:
+        u = usage_from_event(self._turn(bad), default_model="x")
+        assert u is not None
+        assert u.input_tokens is None and u.provenance == "unknown"
+
+    def test_absent_or_null_usage_is_no_observation(self) -> None:
+        assert usage_from_event({"type": "turn.completed"}, default_model="x") is None
+        assert usage_from_event(self._turn(None), default_model="x") is None
+
+    @pytest.mark.parametrize("bad", [[1], "s", 5, {}, None])
+    def test_claude_result_non_object_or_empty_returns_none(self, bad: object) -> None:
+        assert usage_from_event({"type": "result", "usage": bad}, default_model="x") is None

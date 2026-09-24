@@ -13284,7 +13284,7 @@ Subprocess utilities for Claude CLI invocation. Provides shared functionality fo
 
 ### TokenUsage
 
-Token usage from a single host-CLI invocation. Passed to `DetailedUsageCallback` / `on_usage_detailed`.
+Token usage from a single host-CLI invocation. Passed to `DetailedUsageCallback` / `on_usage_detailed`. `input_tokens` is **uncached** input for every host: Codex's inclusive input is normalized by `normalize_codex_input(usage) -> CodexInputSplit` (`uncached_input`, `cache_read`, `cache_write`, `consistent`), which yields `None` (never a clamped zero) for missing, malformed, or over-cached components (BUG-3531).
 
 ```python
 @dataclass

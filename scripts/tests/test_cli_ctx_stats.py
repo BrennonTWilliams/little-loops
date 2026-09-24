@@ -1003,7 +1003,13 @@ class TestComputeCacheRateFromJsonl:
         )
         handle = self._handle(session, host="codex", session_id="rollout")
         with patch("little_loops.cli.ctx_stats.detect_sessions", return_value=[handle]):
-            assert _compute_cache_rate_from_jsonl(tmp_path, "codex") is None
+            result = _compute_cache_rate_from_jsonl(tmp_path, "codex")
+        assert result is not None
+        assert result["host"] == "codex"
+        assert result["consistent_events"] == 0
+        assert result["inconsistent_events"] == 0
+        assert result["hit_rate_pct"] is None
+        assert result["cache_read"] is None
 
     def test_codex_skips_null_info_token_count_event(self, tmp_path: Path) -> None:
         session = tmp_path / "rollout.jsonl"
@@ -1039,9 +1045,37 @@ class TestComputeCacheRateFromJsonl:
         assert result["cache_write"] == 30
         assert result["uncached"] == 10
 
-    def test_codex_clamps_negative_uncached_to_zero(self, tmp_path: Path) -> None:
-        """A future CLI version might switch input_tokens to exclusive; guard
-        against printing a hit rate above 100%."""
+    def test_codex_inconsistent_turn_excluded_not_absorbed(self, tmp_path: Path) -> None:
+        """One over-cached turn is excluded and counted, not hidden by another turn."""
+
+        def tc(inp: int, cached: int, write: int) -> dict[str, Any]:
+            return {
+                "timestamp": "t",
+                "type": "event_msg",
+                "payload": {
+                    "type": "token_count",
+                    "info": {
+                        "last_token_usage": {
+                            "input_tokens": inp,
+                            "cached_input_tokens": cached,
+                            "cache_write_input_tokens": write,
+                        }
+                    },
+                },
+            }
+
+        session = tmp_path / "rollout.jsonl"
+        self._write_jsonl(session, [tc(10, 60, 30), tc(100, 50, 0)])
+        handle = self._handle(session, host="codex", session_id="rollout")
+        with patch("little_loops.cli.ctx_stats.detect_sessions", return_value=[handle]):
+            result = _compute_cache_rate_from_jsonl(tmp_path, "codex")
+        assert result is not None
+        assert result["consistent_events"] == 1
+        assert result["inconsistent_events"] == 1
+        assert (result["cache_read"], result["uncached"]) == (50, 50)
+        assert result["hit_rate_pct"] == 50
+
+    def test_codex_all_excluded_is_unavailable(self, tmp_path: Path) -> None:
         session = tmp_path / "rollout.jsonl"
         self._write_jsonl(
             session,
@@ -1051,14 +1085,34 @@ class TestComputeCacheRateFromJsonl:
                     "type": "event_msg",
                     "payload": {
                         "type": "token_count",
-                        "info": {
-                            "last_token_usage": {
-                                "input_tokens": 10,
-                                "cached_input_tokens": 60,
-                                "cache_write_input_tokens": 30,
-                            }
-                        },
+                        "info": {"last_token_usage": {"input_tokens": 5}},
                     },
+                },
+                {
+                    "timestamp": "t",
+                    "type": "event_msg",
+                    "payload": {"type": "token_count", "info": {"last_token_usage": []}},
+                },
+            ],
+        )
+        handle = self._handle(session, host="codex", session_id="rollout")
+        with patch("little_loops.cli.ctx_stats.detect_sessions", return_value=[handle]):
+            result = _compute_cache_rate_from_jsonl(tmp_path, "codex")
+        assert result is not None
+        assert result["inconsistent_events"] == 2
+        assert result["consistent_events"] == 0
+        assert result["cache_read"] is None and result["hit_rate_pct"] is None
+
+    def test_codex_valid_zero_usage_is_accepted(self, tmp_path: Path) -> None:
+        session = tmp_path / "rollout.jsonl"
+        zero = {"input_tokens": 0, "cached_input_tokens": 0, "cache_write_input_tokens": 0}
+        self._write_jsonl(
+            session,
+            [
+                {
+                    "timestamp": "t",
+                    "type": "event_msg",
+                    "payload": {"type": "token_count", "info": {"last_token_usage": zero}},
                 }
             ],
         )
@@ -1066,7 +1120,8 @@ class TestComputeCacheRateFromJsonl:
         with patch("little_loops.cli.ctx_stats.detect_sessions", return_value=[handle]):
             result = _compute_cache_rate_from_jsonl(tmp_path, "codex")
         assert result is not None
-        assert result["uncached"] == 0
+        assert result["consistent_events"] == 1
+        assert result["cache_read"] == 0 and result["hit_rate_pct"] is None
 
 
 class TestCacheHitRateInOutput:

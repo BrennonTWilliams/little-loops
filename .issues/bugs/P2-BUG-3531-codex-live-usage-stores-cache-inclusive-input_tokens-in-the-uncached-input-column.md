@@ -4,10 +4,11 @@ type: BUG
 title: Codex live usage stores cache-inclusive input_tokens in the uncached-input
   column
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-24'
 captured_at: '2026-09-24T00:20:32Z'
+completed_at: '2026-09-24T17:27:46Z'
 blocks:
 - ENH-3528
 - ENH-3532
@@ -38,7 +39,7 @@ Codex's `turn.completed` usage reports `input_tokens` **inclusive** of cached an
 
 - `usage_from_event` for `turn.completed` (post-ENH-3538): `input_tokens=usage.get("input_tokens")`, `cache_read_tokens=usage.get("cached_input_tokens")`, `cache_creation_tokens=usage.get("cache_write_input_tokens")` — no subtraction, no validation of component types; `provenance` stays `'unknown'`.
 - `ctx_stats._codex_cache_usage` already treats Codex input as inclusive and derives `uncached = max(0, input_tokens - cached_input_tokens - cache_write_input_tokens)` (`ctx_stats.py`), so the two Codex paths disagree.
-- `_codex_cache_usage` sums `input_tokens`, `cached_input_tokens` and `cache_write_input_tokens` across all turns first and only then clamps with `max(0, …)` (`ctx_stats.py:388`). One inconsistent turn is therefore hidden by another turn's positive uncached balance, and `test_codex_clamps_negative_uncached_to_zero` (`test_cli_ctx_stats.py:1043`) enshrines the silent clamp.
+- `_codex_cache_usage` sums `input_tokens`, `cached_input_tokens` and `cache_write_input_tokens` across all turns first and only then clamps with `max(0, …)` (`ctx_stats.py:388`). One inconsistent turn is therefore hidden by another turn's positive uncached balance, and `test_codex_clamps_negative_uncached_to_zero` (`test_cli_ctx_stats.py:1042`) enshrines the silent clamp.
 - `ctx_stats._aggregate_usage_events` sums `input_tokens` and the cache columns across all rows regardless of host. **Out of scope here**: mixed-host/legacy aggregate composition belongs to ENH-3528.
 - The Claude cache-rate reader in `_compute_cache_rate_from_jsonl` (`ctx_stats.py:451-453`) has the same `int(usage.get(..., 0))` coercion. **Out of scope here**: this bug changes only the Codex reader.
 - `FSMExecutor` sums `TokenUsage` fields across a state's usage events into the `action_complete` payload (`executor.py:2697`). Any status carried outside `TokenUsage` is lost there.
@@ -61,7 +62,7 @@ Live Codex usage is normalized to the canonical disjoint contract before it leav
 - `scripts/little_loops/fake_host.py` — the `turn_completed` directive defaults `cache_write_input_tokens` to `0` (0.152.1 shape); `omit=cache_write` keeps the older-CLI shape available. Update the stale "Codex omits cache_write_input_tokens by default" comment. With all defaults, a bare `turn_completed` now emits all-zero usage and triggers Decision 1's live all-zero rule. Tests that need a measured row must pass nonzero values.
 - `scripts/little_loops/runner_spec.py` (`_run_skill` / `_run_prompt`, lines ~276, ~459) — `RunnerResult` efficiency fields (ENH-3464) come from `usage_from_stream_lines` → `usage_from_event`, so Codex `input_tokens` there also becomes uncached input (or `None` when inconsistent). Codex efficiency figures captured before this fix aren't comparable; note this in the CHANGELOG entry.
 - Stale docstrings/notes to update: `TokenUsage.provenance` ("No acquisition path is `measured` yet", `subprocess_utils.py:87`); the `usage_from_event` docstring ("until BUG-3531 Decision 6 establishes otherwise", `subprocess_utils.py:149-150`, and it should state that `input_tokens` is uncached input for every host); `record_usage_event` ("nothing here certifies `measured`", `session_store/writers.py:1955`); the Codex `token_reporting` capability note (`host_runner.py:643-652`), which should say that Codex input is normalized to uncached.
-- Existing tests that change: `test_codex_turn_completed_event_with_usage` (`test_subprocess_utils.py:3338`) asserts `input_tokens == 1000` (becomes `425` = 1000 − 500 − 75, measured); `test_turn_completed_omits_cache_write_by_default` (`test_enh3538_token_observations.py:117`) flips to assert a default `0`, with a separate `omit=cache_write` case; `test_codex_clamps_negative_uncached_to_zero` (`test_cli_ctx_stats.py:1043`) is replaced (see AC).
+- Existing tests that change: `test_codex_turn_completed_event_with_usage` (`test_subprocess_utils.py:3338`) asserts `input_tokens == 1000` (becomes `425` = 1000 − 500 − 75, measured); `test_turn_completed_omits_cache_write_by_default` (`test_enh3538_token_observations.py:117`) flips to assert a default `0`, with a separate `omit=cache_write` case; `test_codex_clamps_negative_uncached_to_zero` (`test_cli_ctx_stats.py:1042`) is replaced (see AC).
 - Tests: `test_subprocess_utils.py`, `test_cli_ctx_stats.py` (replace `test_codex_clamps_negative_uncached_to_zero`; test public JSON/text output), `test_fsm_runners.py`, `test_fsm_executor.py`, `runner_spec` usage tests; fixtures `scripts/tests/fixtures/codex/` (`rollout-interactive.jsonl` for reasoning; matched stdout/rollout captures for the live path). Add null/negative/boolean/nonnumeric component cases, empty/wrong-type `usage`/`info`/`last_token_usage` containers, and mixed, all-excluded, valid-zero, and no-observation cache-rate cases.
 - Fixtures (captured 2026-09-24, committed with this review): `exec-json-turn.jsonl` (fresh `codex exec --json`, 2 model requests), `exec-json-resume.jsonl` (`codex exec resume --last --json`, 1 request), `rollout-exec-resume.jsonl` (matching rollout, trimmed to token-accounting records).
 - Documentation: fixture README (§ Live `codex exec --json` usage contract) records CLI version, capture procedure, observation scope, and cache-write evidence; CHANGELOG documents new Codex input semantics and public cache-rate exclusion fields. `docs/reference/CLI.md:578` (`ll-ctx-stats --json`) documents `cache_rate_consistent_events`/`cache_rate_inconsistent_events`, their `null`-for-non-Codex rule, and nullable cache-rate token fields. `ll-ctx-stats` has no JSON schema under `docs/reference/schemas/`. `docs/reference/API.md` documents `normalize_codex_input`/`CodexInputSplit` and that `TokenUsage.input_tokens` is uncached input for every host.
@@ -177,6 +178,10 @@ Resolved Decision 6 from the `rust-v0.152.1` source and a live capture (`codex e
 
 Checked the design against post-ENH-3538 code. Fixture figures (12193, 231, 58504/46080 over 3 observations) reproduce. Added: the `fake_host` `turn_completed` cache-write default flip (it omitted the field and would have made every simulated Codex run unknown), and the Claude `result` branch's shared container check (mapping guard, semantics otherwise unchanged). Also added the no-observation vs. no-session vs. non-Codex distinction for the public counts (`null` outside a Codex rollout source), the existing tests that change, stale docstrings/capability note, and concrete doc targets (`CLI.md:578`, `API.md`). Marked `_aggregate_usage_events` and the Claude cache-rate reader coercion as out of scope. Dropped the resolved `blocked_by: ENH-3538` edge (done) and the stale frontmatter scores. Re-run `/ll:confidence-check`.
 
+## Resolution
+
+Implemented `normalize_codex_input`/`CodexInputSplit` in `subprocess_utils.py`; `usage_from_event` now yields uncached input (measured only when complete, consistent, non-zero); `_codex_cache_usage` normalizes per observation with consistent/inconsistent counts surfaced in text and `--json`; `fake_host` defaults cache-write to 0; docs updated. CHANGELOG entry deferred to release prep.
+
 ## Status
 
 **Open** | Created: 2026-09-24 | Priority: P2
@@ -189,6 +194,8 @@ _Added by `/ll:confidence-check` on 2026-09-24 (supersedes the earlier STOP verd
 **Outcome Confidence**: 78/100 → MODERATE
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-24T17:27:46 - `6d303eec-f265-417e-965e-acfc4c54e57f.jsonl`
+- `/ll:ready-issue` - 2026-09-24T17:11:15 - `2768240a-77d0-4c49-8d12-dad77a329248.jsonl`
 - `/ll:confidence-check` - 2026-09-24T17:06:45 - `61aa07d8-3d41-48a3-ba23-aacb1d3144bd.jsonl`
 - `/ll:confidence-check` - 2026-09-24T03:50:15 - `a1bbb8d4-d93b-4517-a766-21a26af03296.jsonl`
 - `/ll:verify-issues` - 2026-09-24T03:44:03 - `747bdb3d-c82b-437c-9f00-ae0dbc6a8638.jsonl`
