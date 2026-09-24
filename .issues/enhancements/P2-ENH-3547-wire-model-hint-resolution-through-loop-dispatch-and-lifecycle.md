@@ -4,6 +4,8 @@ type: ENH
 title: Wire model hint resolution through loop dispatch and lifecycle
 priority: P2
 status: open
+parent: EPIC-3563
+epic: EPIC-3563
 discovered_by: ll-issues-create
 discovered_date: '2026-09-24'
 captured_at: '2026-09-24T17:40:15Z'

@@ -4,6 +4,8 @@ title: Resolve model capability hints for loop execution
 type: ENH
 priority: P2
 status: open
+parent: EPIC-3563
+epic: EPIC-3563
 discovered_date: '2026-09-23'
 labels:
 - multi-host

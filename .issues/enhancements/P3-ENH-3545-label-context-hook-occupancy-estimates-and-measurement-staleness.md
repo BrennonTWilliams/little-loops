@@ -4,6 +4,8 @@ type: ENH
 title: Label context-hook occupancy estimates and measurement staleness
 priority: P3
 status: open
+parent: EPIC-3562
+epic: EPIC-3562
 discovered_by: ll-issues-create
 discovered_date: '2026-09-24'
 captured_at: '2026-09-24T17:40:14Z'

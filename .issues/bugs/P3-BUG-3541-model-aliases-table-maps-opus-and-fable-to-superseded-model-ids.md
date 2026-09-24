@@ -4,6 +4,8 @@ title: MODEL_ALIASES maps opus and fable to superseded model IDs
 type: BUG
 priority: P3
 status: open
+parent: EPIC-3563
+epic: EPIC-3563
 discovered_date: '2026-09-23'
 labels:
 - multi-host

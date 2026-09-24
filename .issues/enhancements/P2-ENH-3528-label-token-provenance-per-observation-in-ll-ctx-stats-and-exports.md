@@ -4,6 +4,8 @@ title: Label token provenance per observation in ll-ctx-stats and exports
 type: ENH
 priority: P2
 status: open
+parent: EPIC-3562
+epic: EPIC-3562
 discovered_date: '2026-09-23'
 labels:
 - observability

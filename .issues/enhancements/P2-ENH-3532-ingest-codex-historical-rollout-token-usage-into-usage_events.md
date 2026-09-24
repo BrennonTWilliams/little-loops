@@ -4,6 +4,8 @@ type: ENH
 title: Ingest Codex historical rollout token usage into usage_events
 priority: P2
 status: open
+parent: EPIC-3562
+epic: EPIC-3562
 discovered_by: ll-issues-create
 discovered_date: '2026-09-24'
 captured_at: '2026-09-24T00:20:39Z'

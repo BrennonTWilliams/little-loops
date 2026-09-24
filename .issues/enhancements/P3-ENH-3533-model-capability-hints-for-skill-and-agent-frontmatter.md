@@ -4,6 +4,8 @@ type: ENH
 title: Model capability hints for skill and agent frontmatter
 priority: P3
 status: open
+parent: EPIC-3563
+epic: EPIC-3563
 discovered_by: ll-issues-create
 discovered_date: '2026-09-24'
 captured_at: '2026-09-24T00:20:40Z'

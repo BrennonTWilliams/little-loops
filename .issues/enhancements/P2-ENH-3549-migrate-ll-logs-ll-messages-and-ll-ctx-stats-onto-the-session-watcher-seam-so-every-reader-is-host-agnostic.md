@@ -4,6 +4,8 @@ title: Migrate ll-logs, ll-messages, and ll-ctx-stats onto the session-watcher s
 type: ENH
 priority: P2
 status: open
+parent: EPIC-3562
+epic: EPIC-3562
 discovered_date: '2026-09-24'
 labels:
 - observability
