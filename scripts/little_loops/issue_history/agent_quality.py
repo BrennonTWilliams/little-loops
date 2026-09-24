@@ -40,7 +40,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
-from little_loops.history_reader import _connect_readonly
+from little_loops.history_reader import _connect_readonly, select_usage_observations
 from little_loops.issue_history._utils import MetricDefinition, classify_verdict, month_key
 from little_loops.issue_history._utils import orchestrator_labels as _orchestrator_labels
 from little_loops.issue_history.quality_regressions import (
@@ -308,11 +308,7 @@ def _usage_totals(
     issue_window: dict[int, tuple[str, str]],
 ) -> dict[tuple[str, str], dict[str, float]]:
     try:
-        rows = conn.execute(
-            "SELECT session_id, cost_usd, input_tokens, output_tokens, "
-            "cache_read_input_tokens, cache_creation_input_tokens "
-            "FROM usage_events WHERE session_id IS NOT NULL"
-        ).fetchall()
+        rows = [row for row in select_usage_observations(conn) if row["session_id"] is not None]
     except sqlite3.Error:
         logger.warning("agent_quality: usage_events query failed", exc_info=True)
         return {}

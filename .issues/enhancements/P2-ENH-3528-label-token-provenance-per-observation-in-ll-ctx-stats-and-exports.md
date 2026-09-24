@@ -3,10 +3,11 @@ id: ENH-3528
 title: Label token provenance per observation in ll-ctx-stats and exports
 type: ENH
 priority: P2
-status: open
+status: done
 parent: EPIC-3562
 epic: EPIC-3562
 discovered_date: '2026-09-23'
+completed_at: '2026-09-24T23:08:22Z'
 labels:
 - observability
 - multi-host
@@ -339,6 +340,16 @@ Checked against the code and applied:
 - Made the text group-header rule deterministic.
 - Split former Step 4 (`UsageEvent` fields, shareable allowlist v2) to ENH-3580.
 
+## Resolution
+
+**Completed** — 2026-09-24
+
+- Added `history_reader.usage.select_usage_observations` (streaming, old-schema safe) and routed `aggregate_usage`, `cost_attribution`, `waste_attribution` (Python `loop_runs` join), `ctx_stats._aggregate_usage_events` and `agent_quality._usage_totals` through it; gate test `test_usage_selection_chokepoint_gate.py`.
+- New `little_loops/token_provenance.py`: per-component known/missing counts, provenance composition, verified-host (`host_basis='handle'`) attribution, identity-based live/transcript coverage (`overlap_unresolved` unless disjoint), RFC 6901 pointers, text suffix/group-header rendering.
+- `ll-ctx-stats`: top-level `token_provenance`, `[provenance · qualifiers]` text suffixes, fallback/pressure labeled `estimated`, cache-rate labeled single-session transcript read; zero coercion and the explicit-`null` crash removed; NULL models bucket as `(unknown model)`.
+- Docs: `docs/reference/{CLI,API}.md`. Tests: `test_enh3528_token_provenance.py` plus updated `test_cli_ctx_stats.py`.
+- Pre-existing unrelated failures on `main`: `test_fsm_topology::test_autodev_topology`, `test_verify_evidence::test_no_new_unverifiable_evidence`.
+
 ## Status
 
 **Open** | Created: 2026-09-23 | Priority: P2
@@ -359,6 +370,8 @@ _Added by `/ll:confidence-check` on 2026-09-24_
 - Wide caller surface with a JSON contract change: `null` replaces coerced zeros, so consumers of `usage_by_model`, cost and waste rollups (`pricing.py`, `fsm/cost_graph.py`, `issue_history/*`, dashboard) must be audited.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-24T23:08:22 - `3d68329d-2ae3-4ebb-95fe-ad1e57da4e86.jsonl`
+- `/ll:ready-issue` - 2026-09-24T22:50:26 - `640c0dab-fee8-4321-b068-1ab896d5e25b.jsonl`
 - `/ll:confidence-check` - 2026-09-24T22:33:36 - `7e20fb59-55ae-4670-b670-af8f48757525.jsonl`
 - `/ll:confidence-check` - 2026-09-24T22:23:59 - `40b8f248-36ef-4bdd-ab01-17d5e1770f77.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-09-24T17:53:57 - `5250dd00-ed7b-4310-8dee-527fe13b2b07.jsonl`

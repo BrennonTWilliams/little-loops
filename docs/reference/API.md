@@ -8836,6 +8836,34 @@ follow-on). Each returned dict carries `loop_name`, `tokens_total`,
 no matching `loop_runs` row are excluded by the inner join. Returns `[]` on a
 missing/unreadable DB.
 
+ENH-3528: the join runs in Python over `select_usage_observations()`. A row
+missing `input_tokens` or `output_tokens` has an unavailable count, so
+`tokens_total` / `tokens_wasted` are `None` when any contributing row is missing a component
+(the shortfall is in `tokens_total_missing` / `tokens_wasted_missing`) and `waste_pct` is
+`None` when either operand is `None` or the denominator is 0. Each dict also
+carries `provenance`, `coverage` (`overlap_unresolved` when live and transcript
+rows may cover the same work) and per-channel `channel_subtotals`;
+`aggregate_usage()` and `cost_attribution()` add the same three fields.
+
+### select_usage_observations
+
+```python
+def select_usage_observations(
+    conn: sqlite3.Connection,
+    *,
+    since: str | None = None,
+    require_run_id: bool = False,
+) -> Iterator[sqlite3.Row]
+```
+
+The single row-selection point for token/cost aggregation over `usage_events`
+(ENH-3528). Streams every row (token components, `cost_usd`, `model`,
+`session_id`, `invocation_id`, `run_id`, `channel`, `host`, `host_basis`,
+`provenance`, `scope_kind`, `observed_at`, `observed_at_basis`); columns missing
+from older schemas read as `NULL`. `require_run_id=True` keeps only rows with a
+non-NULL `run_id`. Raises `sqlite3.OperationalError` when the table is absent.
+This is the replacement point for a shared coverage selector.
+
 ### recent_commit_events
 
 ```python

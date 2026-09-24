@@ -42,6 +42,19 @@ from little_loops.session_store import (
     translate_sqlite_errors,
 )
 from little_loops.subprocess_utils import normalize_codex_input
+from little_loops.token_provenance import (
+    COST_COLUMN,
+    TOKEN_COLUMNS,
+    UNKNOWN_MODEL_BUCKET,
+    ObservationGroup,
+    counted_entry,
+    estimated_entry,
+    footnotes,
+    format_figure,
+    json_pointer,
+    same_metadata,
+    suffix_for,
+)
 from little_loops.user_messages import _resolve_host
 
 DEFAULT_DB_RELPATH = Path(".ll") / "history.db"
@@ -212,41 +225,36 @@ def _aggregate_waste(db_path: Path) -> list[dict[str, Any]] | None:
 def _aggregate_usage_events(db_path: Path) -> dict[str, Any] | None:
     """Aggregate real LLM token usage from ``usage_events``, by model (ENH-2461).
 
-    Reads the per-call ``usage_events`` rows — populated by
-    ``session_store._backfill_usage_events`` (historical, transcript-derived,
-    ``state`` always ``NULL``) and by the live per-invocation writer at
-    loop-run finish (``state`` populated with the FSM state each invocation
-    ran in, ENH-2724) — and rolls them up into overall totals plus a
-    per-model breakdown. The breakdown is keyed by ``model``, not by loop
-    state, since backfilled rows still carry no state boundary. Returns a
-    dict shaped like::
+    Reads the per-call ``usage_events`` rows through
+    :func:`~little_loops.history_reader.usage.select_usage_observations` (the
+    single token/cost selection point, ENH-3528) — populated by
+    ``session_store._backfill_usage_events`` (historical, transcript-derived)
+    and by the live per-invocation writer — and rolls them up into overall
+    totals plus a per-model breakdown. Returns a dict shaped like::
 
         {
-            "totals": {
-                "input_tokens": ...,
-                "output_tokens": ...,
-                "cache_read_input_tokens": ...,
-                "cache_creation_input_tokens": ...,
-                "cost_usd": ...,
-            },
-            "per_model": {
-                "model_name": {
-                    "events": ...,
-                    "input_tokens": ...,
-                    "output_tokens": ...,
-                    "cache_read_input_tokens": ...,
-                    "cache_creation_input_tokens": ...,
-                    "cost_usd": ...,
-                },
-                ...
-            },
+            "totals": {"input_tokens": ..., "output_tokens": ...,
+                       "cache_read_input_tokens": ...,
+                       "cache_creation_input_tokens": ..., "cost_usd": ...},
+            "per_model": {"model_name": {"events": ..., <same token/cost keys>}},
+            "provenance": {"<RFC 6901 pointer>": {<token_provenance entry>}},
         }
+
+    A component is the sum of its *known* contributors and is ``None`` when no
+    observation supplied it (missing is unavailable, never a measured zero);
+    ``provenance`` entries carry the known/missing counts, so a partial
+    subtotal is labeled ``availability='partial'``. Rows with a NULL model
+    share the reserved ``"(unknown model)"`` bucket, distinct from a model
+    literally named ``"unknown"``. ``provenance`` is keyed by pointers relative
+    to the ``--json`` document root (``/usage_by_model/...``).
 
     Returns ``None`` when the DB file is missing or the ``usage_events`` table
     is absent (legacy DB predating the v20 migration).
     """
     if not db_path.exists():
         return None
+    from little_loops.history_reader.usage import select_usage_observations
+
     try:
         conn = connect_readonly(db_path)
     except HistoryError:
@@ -254,52 +262,28 @@ def _aggregate_usage_events(db_path: Path) -> dict[str, Any] | None:
     try:
         try:
             with translate_sqlite_errors():
-                rows = conn.execute(
-                    "SELECT model, input_tokens, output_tokens, "
-                    "cache_read_input_tokens, cache_creation_input_tokens, cost_usd "
-                    "FROM usage_events"
-                ).fetchall()
+                total = ObservationGroup()
+                by_model: dict[str, ObservationGroup] = {}
+                for row in select_usage_observations(conn):
+                    total.add(row)
+                    model = str(row["model"]) if row["model"] is not None else UNKNOWN_MODEL_BUCKET
+                    by_model.setdefault(model, ObservationGroup()).add(row)
         except HistoryError:
             return None
     finally:
         conn.close()
 
-    totals = {
-        "input_tokens": 0,
-        "output_tokens": 0,
-        "cache_read_input_tokens": 0,
-        "cache_creation_input_tokens": 0,
-        "cost_usd": 0.0,
-    }
-    per_model: dict[str, dict[str, Any]] = defaultdict(
-        lambda: {
-            "events": 0,
-            "input_tokens": 0,
-            "output_tokens": 0,
-            "cache_read_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "cost_usd": 0.0,
-        }
-    )
-    for row in rows:
-        model = str(row["model"] or "unknown")
-        bucket = per_model[model]
-        bucket["events"] += 1
-        for col in (
-            "input_tokens",
-            "output_tokens",
-            "cache_read_input_tokens",
-            "cache_creation_input_tokens",
-        ):
-            val = int(row[col] or 0)
-            bucket[col] += val
-            totals[col] += val
-        cost = row["cost_usd"]
-        if cost is not None:
-            bucket["cost_usd"] += cost
-            totals["cost_usd"] += cost
-
-    return {"totals": totals, "per_model": dict(per_model)}
+    columns = (*TOKEN_COLUMNS, COST_COLUMN)
+    provenance: dict[str, dict[str, Any]] = {}
+    totals = {col: total.subtotal(col) for col in columns}
+    for col in columns:
+        provenance[json_pointer("usage_by_model", "totals", col)] = total.entry(col)
+    per_model: dict[str, dict[str, Any]] = {}
+    for model, group in by_model.items():
+        per_model[model] = {"events": group.rows, **{c: group.subtotal(c) for c in columns}}
+        for col in columns:
+            provenance[json_pointer("usage_by_model", "per_model", model, col)] = group.entry(col)
+    return {"totals": totals, "per_model": per_model, "provenance": provenance}
 
 
 def _aggregate_context_pressure(db_path: Path) -> dict[str, Any] | None:
@@ -395,12 +379,19 @@ def _codex_cache_usage(handle: SessionHandle) -> dict[str, Any] | None:
         cache_write += split.cache_write
         uncached += split.uncached_input
 
+    counts = {
+        name: {"known": consistent, "missing": inconsistent}
+        for name in ("cache_read", "cache_write", "uncached", "hit_rate_pct")
+    }
     result: dict[str, Any] = {
         "cache_read": None,
         "cache_write": None,
         "uncached": None,
         "hit_rate_pct": None,
         "host": handle.host,
+        "session_id": handle.session_id,
+        "provenance": "measured",
+        "counts": counts,
         "consistent_events": consistent,
         "inconsistent_events": inconsistent,
     }
@@ -426,6 +417,16 @@ def _compute_cache_rate_from_jsonl(cwd: Path, host: str | None) -> dict[str, Any
     native usage reader for them is a follow-up, not this function's job.
 
     Formula: hit_rate = cache_read / (cache_read + cache_write + uncached) * 100
+
+    ENH-3528: this is a single-session transcript read (not ``usage_events``).
+    An absent or ``null`` usage component is *missing*, never a measured zero:
+    each component sums its known values and is ``None`` when none supplied it,
+    while the hit rate uses only records that carry all three components (the
+    common eligible set; excluded records are counted in
+    ``counts['hit_rate_pct']['missing']``). A usage mapping with none of the
+    three keys is not an observation. The result carries ``provenance``
+    (``measured`` for Codex, ``unknown`` for other hosts until ENH-3546),
+    ``session_id`` and per-component ``counts``.
     """
     handles = detect_sessions(cwd, host, include_agents=False, limit=1)
     if not handles:
@@ -435,9 +436,16 @@ def _compute_cache_rate_from_jsonl(cwd: Path, host: str | None) -> dict[str, Any
     if latest.host == "codex":
         return _codex_cache_usage(latest)
 
-    cache_read = 0
-    cache_write = 0
-    uncached = 0
+    fields = (
+        ("cache_read", "cache_read_input_tokens"),
+        ("cache_write", "cache_creation_input_tokens"),
+        ("uncached", "input_tokens"),
+    )
+    sums = {name: 0 for name, _ in fields}
+    known = {name: 0 for name, _ in fields}
+    missing = {name: 0 for name, _ in fields}
+    eligible = {name: 0 for name, _ in fields}
+    eligible_events = excluded_events = 0
     seen_uuids: set[str] = set()
 
     try:
@@ -450,33 +458,168 @@ def _compute_cache_rate_from_jsonl(cwd: Path, host: str | None) -> dict[str, Any
                     record = json.loads(line)
                 except json.JSONDecodeError:
                     continue
-                if record.get("type") != "assistant":
+                if not isinstance(record, dict) or record.get("type") != "assistant":
                     continue
                 uuid = record.get("uuid")
                 if uuid:
                     if uuid in seen_uuids:
                         continue
                     seen_uuids.add(uuid)
-                usage = record.get("message", {}).get("usage", {})
-                if not usage:
+                message = record.get("message")
+                usage = message.get("usage") if isinstance(message, dict) else None
+                # A usage mapping with none of the three keys is not an observation.
+                if not isinstance(usage, dict) or not any(key in usage for _, key in fields):
                     continue
-                cache_read += int(usage.get("cache_read_input_tokens", 0))
-                cache_write += int(usage.get("cache_creation_input_tokens", 0))
-                uncached += int(usage.get("input_tokens", 0))
+                values: dict[str, int | None] = {}
+                for name, key in fields:
+                    values[name] = _known_int(usage.get(key))
+                for name, value in values.items():
+                    if value is None:
+                        missing[name] += 1
+                    else:
+                        known[name] += 1
+                        sums[name] += value
+                if all(v is not None for v in values.values()):
+                    eligible_events += 1
+                    for name, value in values.items():
+                        eligible[name] += value or 0
+                else:
+                    excluded_events += 1
     except OSError:
         return None
 
-    total = cache_read + cache_write + uncached
-    if total == 0:
+    if not eligible_events and not excluded_events:
+        return None
+    total = sum(eligible.values())
+    if not any(sums.values()) and not any(missing.values()):
         return None
 
+    counts = {name: {"known": known[name], "missing": missing[name]} for name in sums}
+    counts["hit_rate_pct"] = {"known": eligible_events, "missing": excluded_events}
     return {
-        "cache_read": cache_read,
-        "cache_write": cache_write,
-        "uncached": uncached,
-        "hit_rate_pct": round(cache_read / total * 100),
+        **{name: (sums[name] if known[name] else None) for name in sums},
+        "hit_rate_pct": round(eligible["cache_read"] / total * 100) if total else None,
         "host": latest.host,
+        "session_id": latest.session_id,
+        "provenance": "unknown",
+        "counts": counts,
     }
+
+
+def _known_int(value: Any) -> int | None:
+    """Coerce a transcript usage component to ``int``; absent/null/malformed → ``None``."""
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+_CACHE_SCOPE_REASON = "single-session transcript read (newest session only, not the whole history)"
+
+
+def _cache_rate_provenance(cache_rate: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Pointer → entry for the single-session transcript cache figures (ENH-3528)."""
+    counts = cache_rate.get("counts") or {}
+    provenance = cache_rate.get("provenance") or "unknown"
+    host = cache_rate.get("host")
+    fields = (
+        ("cache_read_tokens", "cache_read", "cache_read_input_tokens"),
+        ("cache_write_tokens", "cache_write", "cache_creation_input_tokens"),
+        ("uncached_tokens", "uncached", "input_tokens"),
+        ("cache_hit_rate_pct", "hit_rate_pct", "cache_hit_rate_pct"),
+    )
+    entries: dict[str, dict[str, Any]] = {}
+    for json_key, src_key, metric in fields:
+        default_known = 1 if cache_rate.get(src_key) is not None else 0
+        count = counts.get(src_key) or {"known": default_known, "missing": 0}
+        entries[json_pointer(json_key)] = counted_entry(
+            metric,
+            provenance=provenance,
+            known=int(count["known"]),
+            missing=int(count["missing"]),
+            scope_kind="session",
+            hosts=[host] if host else None,
+            channels=["transcript_file"],
+            session_id=cache_rate.get("session_id"),
+            reason=_CACHE_SCOPE_REASON,
+        )
+    return entries
+
+
+def _waste_provenance(waste: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Pointer → entry for each loop's token totals and waste ratio."""
+    entries: dict[str, dict[str, Any]] = {}
+    for index, row in enumerate(waste):
+        subtotals = row.get("channel_subtotals") or {}
+        events = sum(int(sub.get("events", 0)) for sub in subtotals.values())
+        reason = row.get("coverage_reason")
+        base: dict[str, Any] = {
+            "provenance": row.get("provenance") or "unknown",
+            "coverage": row.get("coverage") or "unknown",
+            "channels": sorted(subtotals) or None,
+            "reason": reason,
+        }
+        for key, missing_key in (
+            ("tokens_total", "tokens_total_missing"),
+            ("tokens_wasted", "tokens_wasted_missing"),
+        ):
+            missing = int(row.get(missing_key) or 0)
+            entries[json_pointer("waste", str(index), key)] = counted_entry(
+                key, known=max(events - missing, 0), missing=missing, **base
+            )
+        known = events if row.get("waste_pct") is not None else 0
+        entries[json_pointer("waste", str(index), "waste_pct")] = counted_entry(
+            "waste_pct", known=known, missing=events - known, **base
+        )
+    return entries
+
+
+def _pressure_provenance(pressure: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Pointer → entry for context-pressure percentages (always ``estimated``)."""
+    return {
+        json_pointer("context_pressure", key): estimated_entry(
+            "context_pressure_used_pct",
+            scope_kind="context",
+            available=pressure.get(key) is not None,
+        )
+        for key in ("peak_pct", "avg_pct")
+    }
+
+
+def _fallback_provenance(state: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Pointer → entry for the context-state fallback estimates."""
+    entries = {
+        json_pointer("estimated_tokens"): estimated_entry(
+            "estimated_tokens",
+            scope_kind="context",
+            available=state.get("estimated_tokens") is not None,
+        )
+    }
+    breakdown = state.get("breakdown")
+    if isinstance(breakdown, dict):
+        for tool in breakdown:
+            entries[json_pointer("breakdown", str(tool))] = estimated_entry(
+                "estimated_tokens", scope_kind="context"
+            )
+    return entries
+
+
+def _render_provenance_group(
+    header: str, figures: list[tuple[str, Any, dict[str, Any]]]
+) -> tuple[str, list[str]]:
+    """Apply the group-header rule to *figures* of ``(label, value, entry)``.
+
+    Returns ``(header_line, figure_texts)``: one suffix on the header when every
+    figure's metadata matches, otherwise per-figure suffixes and a bare header.
+    """
+    uniform = same_metadata(entry for _, _, entry in figures)
+    if uniform and figures:
+        # Unavailable values still render "—" but the shared suffix stays the group's.
+        header_line = f"{header} {suffix_for(figures[0][2])}"
+        return header_line, [format_figure(v, e, suffix=False) for _, v, e in figures]
+    return header, [format_figure(v, e) for _, v, e in figures]
 
 
 def _render(
@@ -535,16 +678,19 @@ def _render(
 
     if cache_rate is not None:
         rate_host = cache_rate.get("host")
-        suffix = f" [{rate_host}]" if rate_host and rate_host != "claude-code" else ""
+        entries = _cache_rate_provenance(cache_rate)
+        rate_entry = entries[json_pointer("cache_hit_rate_pct")]
         good = cache_rate.get("consistent_events")
         bad = cache_rate.get("inconsistent_events")
+        counts = cache_rate.get("counts") or {}
+        excluded = int((counts.get("hit_rate_pct") or {}).get("missing") or 0)
         if cache_rate["cache_read"] is None:
             if good == 0 and not bad:
-                print(f"Cache hit rate: no usage observed{suffix}")
+                print(f"Cache hit rate: no usage observed {suffix_for(rate_entry)}")
             else:
                 print(
-                    f"Cache hit rate: unavailable ({bad} observation(s) excluded as "
-                    f"inconsistent){suffix}"
+                    f"Cache hit rate: unavailable ({bad or excluded} observation(s) excluded as "
+                    f"inconsistent) {suffix_for(rate_entry)}"
                 )
         else:
             cr = cache_rate["cache_read"]
@@ -552,12 +698,32 @@ def _render(
             u = cache_rate["uncached"]
             pct = cache_rate["hit_rate_pct"]
             shown = f"{pct}%" if pct is not None else "n/a (zero usage)"
-            print(
-                f"Cache hit rate: {shown}  "
-                f"(cache_read={cr:,} | cache_write={cw:,} | uncached={u:,}){suffix}"
-            )
+            figures = [
+                ("rate", shown, rate_entry),
+                ("cache_read", cr, entries[json_pointer("cache_read_tokens")]),
+                ("cache_write", cw, entries[json_pointer("cache_write_tokens")]),
+                ("uncached", u, entries[json_pointer("uncached_tokens")]),
+            ]
+            if same_metadata(entry for _, _, entry in figures):
+                print(
+                    f"Cache hit rate: {shown}  "
+                    f"(cache_read={_fmt_count(cr)} | cache_write={_fmt_count(cw)} | "
+                    f"uncached={_fmt_count(u)}) {suffix_for(rate_entry)}"
+                )
+            else:
+                parts = [
+                    f"{label}={format_figure(value, entry)}" for label, value, entry in figures[1:]
+                ]
+                print(f"Cache hit rate: {shown} {suffix_for(rate_entry)}  ({' | '.join(parts)})")
             if bad:
                 print(f"  based on {good} accepted observation(s); {bad} excluded as inconsistent")
+            elif excluded:
+                print(
+                    f"  based on {(counts['hit_rate_pct'] or {}).get('known')} eligible "
+                    f"record(s); {excluded} excluded (missing usage component)"
+                )
+        host_note = f"; host: {rate_host}" if rate_host else ""
+        print(f"* {_CACHE_SCOPE_REASON}{host_note}")
 
     if skill_stats:
         print()
@@ -590,17 +756,36 @@ def _render(
 
     if waste:
         print()
-        print("Waste (runs ending without an accepted artifact):")
-        for row in waste:
+        entries = _waste_provenance(waste)
+        all_entries = list(entries.values())
+        uniform = same_metadata(all_entries)
+        header = "Waste (runs ending without an accepted artifact):"
+        print(f"{header} {suffix_for(all_entries[0])}" if uniform else header)
+        for index, row in enumerate(waste):
             pct = f"{row['waste_pct']:.0%}" if row["waste_pct"] is not None else "n/a"
+            wasted = format_figure(
+                row["tokens_wasted"],
+                entries[json_pointer("waste", str(index), "tokens_wasted")],
+                suffix=not uniform,
+            )
+            total = format_figure(
+                row["tokens_total"],
+                entries[json_pointer("waste", str(index), "tokens_total")],
+                suffix=not uniform,
+            )
             print(
                 f"  {row['loop_name']:<22} {row['runs_wasted']:>3}/{row['runs_total']:<3} runs wasted   "
-                f"waste={pct} ({row['tokens_wasted']:,}/{row['tokens_total']:,} tokens)"
+                f"waste={pct} ({wasted}/{total} tokens)"
             )
+        for note in footnotes(all_entries):
+            print(note)
 
     if pressure and pressure["samples"]:
         print()
-        print("Context pressure curve:")
+        print(
+            "Context pressure curve: "
+            f"{suffix_for(estimated_entry('context_pressure_used_pct', scope_kind='context'))}"
+        )
         print(
             f"  {pressure['samples']} samples   "
             f"peak={pressure['peak_pct']:.0f}%   avg={pressure['avg_pct']:.0f}%"
@@ -616,24 +801,68 @@ def _render(
         _render_learning_tests_section(lt_stats)
 
 
+def _fmt_count(value: Any) -> str:
+    """Thousands-grouped count; unavailable renders ``—``, never ``0``."""
+    return "—" if value is None else f"{int(value):,}"
+
+
 def _render_fallback(state: dict[str, Any], logger: Logger) -> None:
-    """Render the ``.ll/ll-context-state.json`` fallback (token estimates)."""
-    estimated = int(state.get("estimated_tokens") or 0)
+    """Render the ``.ll/ll-context-state.json`` fallback (token estimates).
+
+    Every figure is a context-state estimate, so the group is labeled
+    ``[estimated]`` (ENH-3528); an absent estimate renders ``—``, not ``0``.
+    """
+    raw_estimate = state.get("estimated_tokens")
     tool_calls = int(state.get("tool_calls") or 0)
     breakdown = state.get("breakdown") or {}
+    entries = _fallback_provenance(state)
 
     logger.info(
         "SQLite session store not found — falling back to .ll/ll-context-state.json "
         "(enable analytics (analytics.enabled: true) and ensure analytics.capture.file_events is not disabled)."
     )
     print()
-    print(f"Estimated tokens in context: {estimated:,}")
+    print(
+        "Estimated tokens in context: "
+        f"{format_figure(raw_estimate, entries[json_pointer('estimated_tokens')])}"
+    )
     print(f"Tool calls this session:     {tool_calls}")
     if isinstance(breakdown, dict) and breakdown:
         print()
-        print("Per-tool token estimates:")
+        tool_entries = [entries[json_pointer("breakdown", str(t))] for t in breakdown]
+        header = "Per-tool token estimates:"
+        uniform = same_metadata(tool_entries)
+        print(f"{header} {suffix_for(tool_entries[0])}" if uniform else header)
         for tool, tokens in sorted(breakdown.items(), key=lambda kv: kv[1], reverse=True):
-            print(f"  {str(tool):<20} {int(tokens):>8} tokens")
+            entry = entries[json_pointer("breakdown", str(tool))]
+            print(
+                f"  {str(tool):<20} "
+                f"{format_figure(int(tokens), entry, suffix=not uniform):>8} tokens"
+            )
+
+
+def _token_provenance(
+    summary: dict[str, Any] | None,
+    state: dict[str, Any] | None,
+    cache_rate: dict[str, Any] | None,
+    usage_events: dict[str, Any] | None,
+    waste: list[dict[str, Any]] | None,
+    pressure: dict[str, Any] | None,
+) -> dict[str, dict[str, Any]]:
+    """Assemble the top-level ``token_provenance`` map (RFC 6901 pointer keys)."""
+    entries: dict[str, dict[str, Any]] = {}
+    if summary is not None:
+        if cache_rate:
+            entries.update(_cache_rate_provenance(cache_rate))
+        if usage_events:
+            entries.update(usage_events.get("provenance") or {})
+        if waste:
+            entries.update(_waste_provenance(waste))
+    elif state is not None:
+        entries.update(_fallback_provenance(state))
+    if pressure and pressure.get("samples"):
+        entries.update(_pressure_provenance(pressure))
+    return entries
 
 
 def _print_json(
@@ -691,15 +920,20 @@ def _print_json(
             "per_tool": summary["per_tool"],
             "skill_health": skill_health,
             "learning_tests": lt_stats,
-            "usage_by_model": usage_events,
+            "usage_by_model": (
+                {k: v for k, v in usage_events.items() if k != "provenance"}
+                if usage_events is not None
+                else None
+            ),
             "mcp_health": mcp_health,
             "waste": waste,
             "context_pressure": pressure,
         }
     elif state is not None:
+        raw_estimate = state.get("estimated_tokens")
         payload = {
             "source": "fallback",
-            "estimated_tokens": int(state.get("estimated_tokens") or 0),
+            "estimated_tokens": int(raw_estimate) if raw_estimate is not None else None,
             "tool_calls": int(state.get("tool_calls") or 0),
             "breakdown": state.get("breakdown") or {},
             "learning_tests": lt_stats,
@@ -707,6 +941,10 @@ def _print_json(
         }
     else:
         payload = {"source": "none"}
+    if payload["source"] != "none":
+        payload["token_provenance"] = _token_provenance(
+            summary, state, cache_rate, usage_events, waste, pressure
+        )
     print(json.dumps(payload, indent=2))
 
 

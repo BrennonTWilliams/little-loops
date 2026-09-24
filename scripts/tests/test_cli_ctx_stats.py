@@ -65,6 +65,17 @@ def _insert_correction(db_path: Path, ts: str, session_id: str, content: str) ->
         conn.close()
 
 
+_WASTE_CORE_EXPECTED = {
+    "loop_name": "rn-implement",
+    "tokens_total": 120,
+    "tokens_wasted": 120,
+    "waste_pct": 1.0,
+    "runs_total": 1,
+    "runs_wasted": 1,
+}
+_WASTE_CORE_KEYS = tuple(_WASTE_CORE_EXPECTED)
+
+
 def _populate_waste_run(
     db_path: Path,
     *,
@@ -564,16 +575,8 @@ class TestAggregateWaste:
             output_tokens=20,
         )
         rows = _aggregate_waste(db)
-        assert rows == [
-            {
-                "loop_name": "rn-implement",
-                "tokens_total": 120,
-                "tokens_wasted": 120,
-                "waste_pct": 1.0,
-                "runs_total": 1,
-                "runs_wasted": 1,
-            }
-        ]
+        assert rows is not None and len(rows) == 1
+        assert {k: rows[0][k] for k in _WASTE_CORE_KEYS} == _WASTE_CORE_EXPECTED
 
     def test_empty_db_returns_empty_list(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"
@@ -606,16 +609,8 @@ class TestMainCtxStatsWasteSection:
             result = main_ctx_stats()
         assert result == 0
         data = json.loads("\n".join(lines))
-        assert data.get("waste") == [
-            {
-                "loop_name": "rn-implement",
-                "tokens_total": 120,
-                "tokens_wasted": 120,
-                "waste_pct": 1.0,
-                "runs_total": 1,
-                "runs_wasted": 1,
-            }
-        ]
+        assert len(data["waste"]) == 1
+        assert {k: data["waste"][0][k] for k in _WASTE_CORE_KEYS} == _WASTE_CORE_EXPECTED
 
     def test_json_mode_waste_none_when_no_rows(self, tmp_path: Path, monkeypatch) -> None:
         monkeypatch.chdir(tmp_path)
@@ -1212,7 +1207,9 @@ class TestCacheHitRateInOutput:
         assert "Cache hit rate: 69%" in output
         assert output.count("Cache hit rate:") == 1
         line = next(line for line in output.splitlines() if line.startswith("Cache hit rate:"))
-        assert line.endswith(" [codex]")
+        assert line.endswith(" [unknown]")
+        assert "* single-session transcript read" in output
+        assert "host: codex" in output
 
     def test_hit_rate_line_byte_identical_for_claude_code_host(
         self, tmp_path: Path, monkeypatch
@@ -1227,7 +1224,10 @@ class TestCacheHitRateInOutput:
         rc, output = self._populate_and_run(tmp_path, monkeypatch, cache_rate=cache_rate)
         assert rc == 0
         line = next(line for line in output.splitlines() if line.startswith("Cache hit rate:"))
-        assert line == "Cache hit rate: 94%  (cache_read=61,559 | cache_write=3,689 | uncached=1)"
+        assert (
+            line
+            == "Cache hit rate: 94%  (cache_read=61,559 | cache_write=3,689 | uncached=1) [unknown]"
+        )
 
     def test_json_includes_cache_rate_host(self, tmp_path: Path, monkeypatch) -> None:
         cache_rate = {

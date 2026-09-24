@@ -79,6 +79,7 @@ Public API:
     cost_attribution(group_by, ...) -> list[dict]
     waste_attribution(since, ...) -> list[dict] (ENH-2722)
     recent_usage_events(...) -> list[UsageEvent]
+    select_usage_observations(conn, *, since, require_run_id) -> Iterator[Row] (ENH-3528)
     aggregate_usage(group_by, ...) -> list[dict]
     context_pressure_curve(session_id, ...) -> list[ContextPressureEvent]
     pressure_crossings(session_id, ...) -> list[ContextPressureEvent]
@@ -263,6 +264,7 @@ from little_loops.history_reader.usage import (
     mcp_server_usage,
     recent_tool_events,
     recent_usage_events,
+    select_usage_observations,
     waste_attribution,
 )
 
@@ -351,6 +353,7 @@ __all__ = [
     "recent_test_runs",
     "recent_tool_events",
     "recent_usage_events",
+    "select_usage_observations",
     "recent_verdict_events",
     "related_issue_events",
     "render_project_context",

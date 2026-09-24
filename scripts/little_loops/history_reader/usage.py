@@ -12,6 +12,7 @@ them despite each backing a different table.
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, Literal
 
@@ -22,6 +23,7 @@ from little_loops.history_reader._base import (
     logger,
 )
 from little_loops.history_reader.models import UsageEvent
+from little_loops.token_provenance import ObservationGroup, group_rows
 
 __all__ = [
     "agent_usage",
@@ -31,6 +33,7 @@ __all__ = [
     "mcp_server_usage",
     "recent_tool_events",
     "recent_usage_events",
+    "select_usage_observations",
     "waste_attribution",
 ]
 
@@ -231,16 +234,6 @@ _COST_ATTR_GROUP_COLUMNS: dict[str, str] = {
 }
 
 
-# ENH-3538: SUM() ignores NULL contributors, so a bare SUM can present a partial
-# subtotal as a total. Pair every SUM with the count of rows that lack the
-# component (COUNT(*) - COUNT(col)); a non-zero count makes the total unavailable.
-_MISSING_COUNTS_SQL = (
-    "COUNT(*) - COUNT(input_tokens) AS input_tokens_missing, "
-    "COUNT(*) - COUNT(output_tokens) AS output_tokens_missing, "
-    "COUNT(*) - COUNT(cache_read_input_tokens) AS cache_read_input_tokens_missing, "
-    "COUNT(*) - COUNT(cache_creation_input_tokens) AS cache_creation_input_tokens_missing, "
-    "COUNT(*) - COUNT(cost_usd) AS cost_usd_missing"
-)
 _USAGE_TOKEN_COLUMNS = (
     "input_tokens",
     "output_tokens",
@@ -248,12 +241,103 @@ _USAGE_TOKEN_COLUMNS = (
     "cache_creation_input_tokens",
 )
 
+# Optional ``usage_events`` columns: pre-v54/v55 (and pre-channel) databases lack
+# some of them, so the chokepoint selects ``NULL`` for any that are absent.
+_OPTIONAL_USAGE_COLUMNS = (
+    "state",
+    "run_id",
+    "invocation_id",
+    "provider_vendor",
+    "channel",
+    "host",
+    "host_basis",
+    "provenance",
+    "scope_kind",
+    "observed_at",
+    "observed_at_basis",
+)
 
-def _complete_total(row: sqlite3.Row, column: str) -> Any:
-    """Return ``SUM(column)`` only when no contributing row lacked it, else ``None``."""
-    if row[f"{column}_missing"]:
+
+def select_usage_observations(
+    conn: sqlite3.Connection,
+    *,
+    since: str | None = None,
+    require_run_id: bool = False,
+) -> Iterator[sqlite3.Row]:
+    """Stream every ``usage_events`` row -- the single token/cost selection point (ENH-3528).
+
+    All token/cost aggregation reads go through here so a coverage selector
+    (ENH-3543) can replace the selection policy in one place. For now every row
+    is yielded (the unreconciled observation sum). Columns missing from older
+    schemas are selected as ``NULL``. *since* is an ISO 8601 lower bound on
+    ``ts``; *require_run_id* keeps only rows with a non-NULL ``run_id`` (no
+    ``IN (...)`` list, which would hit SQLite's bound-parameter limit). Raises
+    ``sqlite3.OperationalError`` when the table is absent. Rows must be
+    consumed while *conn* is open.
+    """
+    present = {row[1] for row in conn.execute("PRAGMA table_info(usage_events)")}
+    if not present:
+        raise sqlite3.OperationalError("no such table: usage_events")
+    optional = ", ".join(
+        col if col in present else f"NULL AS {col}" for col in _OPTIONAL_USAGE_COLUMNS
+    )
+    sql = (
+        "SELECT id, ts, session_id, model, input_tokens, output_tokens, "
+        "cache_read_input_tokens, cache_creation_input_tokens, cost_usd, "
+        f"{optional} FROM usage_events "  # noqa: S608 - column names are module constants
+    )
+    clauses: list[str] = []
+    params: list[Any] = []
+    if since is not None:
+        clauses.append("ts >= ?")
+        params.append(since)
+    if require_run_id and "run_id" in present:
+        clauses.append("run_id IS NOT NULL")
+    elif require_run_id:
+        return
+    if clauses:
+        sql += "WHERE " + " AND ".join(clauses) + " "
+    sql += "ORDER BY id"
+    cursor = conn.execute(sql, params)
+    yield from cursor
+
+
+def _provenance_fields(group: ObservationGroup) -> dict[str, Any]:
+    """Coverage/provenance qualification shared by every rollup (ENH-3528)."""
+    coverage = group.coverage()
+    fields: dict[str, Any] = {
+        "provenance": group.aggregate_provenance("input_tokens"),
+        "coverage": coverage,
+        "channel_subtotals": group.channel_subtotals(),
+    }
+    if coverage == "overlap_unresolved":
+        fields["coverage_reason"] = (
+            "live and transcript observations may cover the same work; unreconciled observation sum"
+        )
+    return fields
+
+
+def _sort_desc(value: Any) -> tuple[bool, float]:
+    """Sort key placing ``None`` last in a descending sort (SQLite NULL order)."""
+    return (value is not None, value if value is not None else 0.0)
+
+
+def _read_groups(
+    db: Path | str, key: Any, *, since: str | None, name: str, require_run_id: bool = False
+) -> dict[Any, ObservationGroup] | None:
+    """Group chokepoint rows by ``key(row)``; ``None`` when the store is unreadable."""
+    conn = _connect_readonly(Path(db))
+    if conn is None:
         return None
-    return row[column] if row[column] is not None else 0
+    try:
+        return group_rows(
+            select_usage_observations(conn, since=since, require_run_id=require_run_id), key
+        )
+    except sqlite3.Error:
+        logger.warning("history_reader: %s query failed", name, exc_info=True)
+        return None
+    finally:
+        conn.close()
 
 
 def cost_attribution(
@@ -282,6 +366,11 @@ def cost_attribution(
     attribute is omitted rather than exported as a partial subtotal. Each row
     also carries ``<column>_missing`` counts for the four token columns and
     ``cost_usd``.
+
+    ENH-3528: rows are read through :func:`select_usage_observations` and
+    grouped in Python; each dict also carries ``provenance``, ``coverage`` and
+    per-channel subtotals (a combined live/transcript rollup is an unreconciled
+    observation sum with ``coverage='overlap_unresolved'``).
     """
     from little_loops.observability.tracing import (
         GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS,
@@ -296,50 +385,30 @@ def cost_attribution(
             f"cost_attribution: unsupported group_by {group_by!r}; "
             f"expected one of {sorted(_COST_ATTR_GROUP_COLUMNS)}"
         )
-    db_path = Path(db)
-    conn = _connect_readonly(db_path)
-    if conn is None:
+    groups = _read_groups(db, lambda row: row[column], since=since, name="cost_attribution")
+    if groups is None:
         return []
-    try:
-        sql = (
-            f"SELECT {column} AS grp, "
-            "SUM(input_tokens) AS input_tokens, "
-            "SUM(output_tokens) AS output_tokens, "
-            "SUM(cache_read_input_tokens) AS cache_read_input_tokens, "
-            "SUM(cache_creation_input_tokens) AS cache_creation_input_tokens, "
-            "SUM(cost_usd) AS cost_usd, "
-            f"{_MISSING_COUNTS_SQL}, "
-            "COUNT(*) AS invocations "
-            "FROM usage_events "
-        )
-        params: list[Any] = []
-        if since is not None:
-            sql += "WHERE ts >= ? "
-            params.append(since)
-        sql += "GROUP BY grp ORDER BY input_tokens DESC"
-        rows = conn.execute(sql, params).fetchall()
-    except sqlite3.Error:
-        logger.warning("history_reader: cost_attribution query failed", exc_info=True)
-        return []
-    finally:
-        conn.close()
     otel_names = {
         "input_tokens": GEN_AI_USAGE_INPUT_TOKENS,
         "output_tokens": GEN_AI_USAGE_OUTPUT_TOKENS,
         "cache_read_input_tokens": GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS,
         "cache_creation_input_tokens": GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS,
     }
+    ordered = sorted(
+        groups.items(), key=lambda kv: _sort_desc(kv[1].subtotal("input_tokens")), reverse=True
+    )
     result: list[dict] = []
-    for row in rows:
-        entry: dict[str, Any] = {group_by: row["grp"]}
-        for column in _USAGE_TOKEN_COLUMNS:
-            total = _complete_total(row, column)
+    for key, group in ordered:
+        entry: dict[str, Any] = {group_by: key}
+        for token_col in _USAGE_TOKEN_COLUMNS:
+            total = group.total(token_col)
             if total is not None:
-                entry[otel_names[column]] = total
-        entry["cost_usd"] = _complete_total(row, "cost_usd")
-        entry["invocations"] = row["invocations"]
-        for column in (*_USAGE_TOKEN_COLUMNS, "cost_usd"):
-            entry[f"{column}_missing"] = row[f"{column}_missing"]
+                entry[otel_names[token_col]] = total
+        entry["cost_usd"] = group.total("cost_usd")
+        entry["invocations"] = group.rows
+        for col in (*_USAGE_TOKEN_COLUMNS, "cost_usd"):
+            entry[f"{col}_missing"] = group.missing(col)
+        entry.update(_provenance_fields(group))
         result.append(entry)
     return result
 
@@ -364,49 +433,86 @@ def waste_attribution(
     since ENH-2723/2724 — no time-range join). ``usage_events`` rows with no
     matching ``loop_runs`` row (unbackfilled historical rows, or rows whose
     backfill timestamp matched zero/multiple overlapping run windows) are
-    excluded by the inner join rather than misattributed. See
-    ``_WASTED_RUN_PREDICATE`` for the "wasted" definition.
+    excluded rather than misattributed. See ``_WASTED_RUN_PREDICATE`` for the
+    "wasted" definition.
+
+    ENH-3528: the join happens in Python over
+    :func:`select_usage_observations`. A row missing ``input_tokens`` or
+    ``output_tokens`` has an unavailable token count, so ``tokens_total`` /
+    ``tokens_wasted`` are ``None`` when any contributor is missing (with the
+    shortfall in ``tokens_total_missing`` / ``tokens_wasted_missing``) and
+    ``waste_pct`` is ``None`` when either operand is ``None`` or the
+    denominator is zero. Each dict also carries ``provenance`` / ``coverage`` /
+    ``channel_subtotals`` (see :func:`cost_attribution`).
     """
     db_path = Path(db)
     conn = _connect_readonly(db_path)
     if conn is None:
         return []
     try:
-        sql = (
-            "SELECT lr.loop_name AS loop_name, "
-            "SUM(COALESCE(ue.input_tokens, 0) + COALESCE(ue.output_tokens, 0)) AS tokens_total, "
-            f"SUM(CASE WHEN {_WASTED_RUN_PREDICATE} THEN "
-            "COALESCE(ue.input_tokens, 0) + COALESCE(ue.output_tokens, 0) ELSE 0 END) "
-            "AS tokens_wasted, "
-            "COUNT(DISTINCT lr.run_id) AS runs_total, "
-            f"COUNT(DISTINCT CASE WHEN {_WASTED_RUN_PREDICATE} THEN lr.run_id END) AS runs_wasted "
-            "FROM usage_events ue JOIN loop_runs lr ON ue.run_id = lr.run_id "
-        )
-        params: list[Any] = []
-        if since is not None:
-            sql += "WHERE ue.ts >= ? "
-            params.append(since)
-        sql += "GROUP BY lr.loop_name ORDER BY tokens_wasted DESC"
-        rows = conn.execute(sql, params).fetchall()
+        runs = {
+            row["run_id"]: (row["loop_name"], bool(row["wasted"]))
+            for row in conn.execute(
+                "SELECT lr.run_id AS run_id, lr.loop_name AS loop_name, "
+                f"CASE WHEN {_WASTED_RUN_PREDICATE} THEN 1 ELSE 0 END AS wasted "
+                "FROM loop_runs lr"
+            )
+        }
+        per_loop: dict[Any, dict[str, Any]] = {}
+        for row in select_usage_observations(conn, since=since, require_run_id=True):
+            match = runs.get(row["run_id"])
+            if match is None:
+                continue
+            loop_name, wasted = match
+            slot = per_loop.setdefault(
+                loop_name,
+                {
+                    "group": ObservationGroup(),
+                    "runs": set(),
+                    "wasted_runs": set(),
+                    "total": 0,
+                    "total_missing": 0,
+                    "wasted": 0,
+                    "wasted_missing": 0,
+                },
+            )
+            slot["group"].add(row)
+            slot["runs"].add(row["run_id"])
+            known = row["input_tokens"] is not None and row["output_tokens"] is not None
+            tokens = row["input_tokens"] + row["output_tokens"] if known else 0
+            slot["total"] += tokens
+            slot["total_missing"] += 0 if known else 1
+            if wasted:
+                slot["wasted_runs"].add(row["run_id"])
+                slot["wasted"] += tokens
+                slot["wasted_missing"] += 0 if known else 1
     except sqlite3.Error:
         logger.warning("history_reader: waste_attribution query failed", exc_info=True)
         return []
     finally:
         conn.close()
     result: list[dict] = []
-    for row in rows:
-        tokens_total = row["tokens_total"] or 0
-        tokens_wasted = row["tokens_wasted"] or 0
+    for loop_name, slot in per_loop.items():
+        tokens_total = None if slot["total_missing"] else slot["total"]
+        tokens_wasted = None if slot["wasted_missing"] else slot["wasted"]
         result.append(
             {
-                "loop_name": row["loop_name"],
+                "loop_name": loop_name,
                 "tokens_total": tokens_total,
                 "tokens_wasted": tokens_wasted,
-                "waste_pct": (tokens_wasted / tokens_total) if tokens_total else None,
-                "runs_total": row["runs_total"] or 0,
-                "runs_wasted": row["runs_wasted"] or 0,
+                "tokens_total_missing": slot["total_missing"],
+                "tokens_wasted_missing": slot["wasted_missing"],
+                "waste_pct": (
+                    tokens_wasted / tokens_total
+                    if tokens_total and tokens_wasted is not None
+                    else None
+                ),
+                "runs_total": len(slot["runs"]),
+                "runs_wasted": len(slot["wasted_runs"]),
+                **_provenance_fields(slot["group"]),
             }
         )
+    result.sort(key=lambda r: _sort_desc(r["tokens_wasted"]), reverse=True)
     return result
 
 
@@ -471,46 +577,27 @@ def aggregate_usage(
     contributor (a missing token component, or an unpriced/incomplete row's
     ``NULL`` cost) is ``None`` — never a partial subtotal (ENH-3538) — with the
     contributor shortfall in ``<column>_missing``. *since* is an ISO
-    8601 lower bound on ``ts``. Sorted by ``cost_usd`` descending. Grain is
+    8601 lower bound on ``ts``. Sorted by ``cost_usd`` descending. Rows are read
+    through :func:`select_usage_observations` (ENH-3528) and each dict also
+    carries ``provenance`` / ``coverage`` / ``channel_subtotals``. Grain is
     per-call — usage_events carries no FSM ``state``, so per-state rollups are
     not offered here (ENH-2461 Addendum 2).
     """
     key_col = "model" if group_by == "model" else "session_id"
-    db_path = Path(db)
-    conn = _connect_readonly(db_path)
-    if conn is None:
+    groups = _read_groups(db, lambda row: row[key_col], since=since, name="aggregate_usage")
+    if groups is None:
         return []
-    try:
-        sql = (
-            f"SELECT {key_col} AS group_key, COUNT(*) AS events, "  # noqa: S608 - key_col fixed
-            "SUM(input_tokens) AS input_tokens, SUM(output_tokens) AS output_tokens, "
-            "SUM(cache_read_input_tokens) AS cache_read_input_tokens, "
-            "SUM(cache_creation_input_tokens) AS cache_creation_input_tokens, "
-            "SUM(cost_usd) AS cost_usd, "
-            f"{_MISSING_COUNTS_SQL} "
-            "FROM usage_events "
-        )
-        params: list[Any] = []
-        if since is not None:
-            sql += "WHERE ts >= ? "
-            params.append(since)
-        sql += f"GROUP BY {key_col} ORDER BY cost_usd DESC"  # noqa: S608 - key_col fixed
-        rows = conn.execute(sql, params).fetchall()
-    except sqlite3.Error:
-        logger.warning("history_reader: aggregate_usage query failed", exc_info=True)
-        return []
-    finally:
-        conn.close()
+    ordered = sorted(
+        groups.items(), key=lambda kv: _sort_desc(kv[1].subtotal("cost_usd")), reverse=True
+    )
     return [
         {
-            group_by: row["group_key"],
-            "events": row["events"],
-            **{column: _complete_total(row, column) for column in _USAGE_TOKEN_COLUMNS},
-            "cost_usd": _complete_total(row, "cost_usd"),
-            **{
-                f"{column}_missing": row[f"{column}_missing"]
-                for column in (*_USAGE_TOKEN_COLUMNS, "cost_usd")
-            },
+            group_by: key,
+            "events": group.rows,
+            **{col: group.total(col) for col in _USAGE_TOKEN_COLUMNS},
+            "cost_usd": group.total("cost_usd"),
+            **{f"{col}_missing": group.missing(col) for col in (*_USAGE_TOKEN_COLUMNS, "cost_usd")},
+            **_provenance_fields(group),
         }
-        for row in rows
+        for key, group in ordered
     ]
