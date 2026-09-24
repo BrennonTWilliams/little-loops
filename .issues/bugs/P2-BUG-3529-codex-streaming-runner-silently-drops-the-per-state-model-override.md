@@ -18,6 +18,8 @@ score_ambiguity: 25
 score_change_surface: 18
 relates_to:
 - BUG-3536
+depends_on:
+- BUG-3536
 ---
 
 # BUG-3529: Codex streaming runner silently drops the per-state model override
@@ -98,5 +100,6 @@ _Added by `/ll:confidence-check` on 2026-09-23_
 - `build_streaming` has ~13 call sites; existing argv-equality tests for Codex must keep passing with `model=None`.
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-09-24T01:05:29 - `af4614fc-00c0-4ee9-995a-e89a43f1523c.jsonl`
 - `/ll:confidence-check` - 2026-09-24T00:44:59 - `047cda0b-279f-4078-b31f-1d7b1fcc2181.jsonl`
 - `/ll:verify-issues` - 2026-09-24T00:37:52 - `97f40d76-766f-412a-a4ef-794728276e4c.jsonl`

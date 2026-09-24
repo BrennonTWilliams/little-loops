@@ -4,10 +4,12 @@ title: Policy Builder & Router Execution
 type: EPIC
 priority: P3
 status: open
-captured_at: "2026-09-16T23:04:36Z"
+captured_at: '2026-09-16T23:04:36Z'
 discovered_date: 2026-09-16
 discovered_by: link-epics
 relates_to: []
+depends_on:
+- EPIC-3299
 ---
 
 # EPIC-3493: Policy Builder & Router Execution
@@ -45,3 +47,6 @@ Group of 8 related issues: Policy builder preview, validation, and editing corre
 ## Implementation Order
 
 ENH-3487 → ENH-3491 → ENH-3492 → FEAT-3488 → FEAT-3498. BUG-3499 (executor `failure_terminal` for cap-routed finishes) is independent of the builder chain and must land before ENH-3492. The connected-execution split lets offline authoring and scenario suites ship without waiting for queue approval/result integration.
+
+## Session Log
+- `/ll:audit-issue-conflicts` - 2026-09-24T01:05:30 - `af4614fc-00c0-4ee9-995a-e89a43f1523c.jsonl`

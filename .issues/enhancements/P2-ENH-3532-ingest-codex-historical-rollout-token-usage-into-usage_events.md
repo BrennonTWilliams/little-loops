@@ -97,4 +97,11 @@ Checked 2026-09-24: `_iter_events` (`writers.py` L3430) yields `(raw_line, sourc
 
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-09-24T01:05:29 - `af4614fc-00c0-4ee9-995a-e89a43f1523c.jsonl`
 - `/ll:verify-issues` - 2026-09-24T00:46:09 - `047cda0b-279f-4078-b31f-1d7b1fcc2181.jsonl`
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): The `channel` column is introduced by BUG-3530 (not ENH-3528); list BUG-3530 as its owner in Prerequisites. Rollout rows tagged `rollout` are replayable, so BUG-3530's `rebuild()` must delete them alongside `transcript` rows to keep "repeated ingestion and rebuild leave canonical totals stable" true.

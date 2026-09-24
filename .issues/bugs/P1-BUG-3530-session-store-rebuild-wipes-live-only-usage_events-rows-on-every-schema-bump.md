@@ -112,5 +112,12 @@ _Added by `/ll:confidence-check` on 2026-09-23_
 - Moderate per-site complexity: rebuild semantics, idempotency across repeated rebuilds, duplicate-row risk.
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-09-24T01:05:29 - `af4614fc-00c0-4ee9-995a-e89a43f1523c.jsonl`
 - `/ll:confidence-check` - 2026-09-24T00:45:00 - `047cda0b-279f-4078-b31f-1d7b1fcc2181.jsonl`
 - `/ll:verify-issues` - 2026-09-24T00:37:52 - `97f40d76-766f-412a-a4ef-794728276e4c.jsonl`
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue owns the `channel` column. `rebuild()` must delete every replayable channel (`transcript` and the Codex `rollout` rows ENH-3532 ingests), not only `channel = 'transcript'`, otherwise replay duplicates rollout rows and inflates totals. Add an acceptance criterion that ENH-3532 rollout rows are replaced, not duplicated, on rebuild. See ENH-3532.

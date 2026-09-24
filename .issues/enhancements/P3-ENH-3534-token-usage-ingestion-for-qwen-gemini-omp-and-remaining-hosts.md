@@ -12,6 +12,7 @@ labels:
 - multi-host
 blocked_by:
 - ENH-3532
+- ENH-3528
 ---
 
 # ENH-3534: Token usage ingestion for Qwen, Gemini, OMP and remaining hosts
@@ -79,4 +80,5 @@ Checked 2026-09-24: `_compute_cache_rate_from_jsonl` (`ctx_stats.py` L402) docst
 
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-09-24T01:05:30 - `af4614fc-00c0-4ee9-995a-e89a43f1523c.jsonl`
 - `/ll:verify-issues` - 2026-09-24T00:46:10 - `047cda0b-279f-4078-b31f-1d7b1fcc2181.jsonl`
