@@ -13,10 +13,10 @@ decision_needed: false
 learning_tests_required:
 - jinja2-byte-exact-round-trip
 confidence_score: 95
-outcome_confidence: 63
+outcome_confidence: 71
 score_complexity: 10
 score_test_coverage: 25
-score_ambiguity: 10
+score_ambiguity: 18
 score_change_surface: 18
 ---
 
@@ -267,10 +267,10 @@ _Added by `/ll:refine-issue` — 2026-09-24 — based on codebase analysis:_
 - `atomic_write(path: Path, content: str, encoding: str = "utf-8") -> None` (existing, `file_utils.py:16`); `atomic_write_bytes(path: Path, content: bytes) -> None` (new, optional).
 
 ### Call Path
-`cmd_dashboard` -> `build_dashboard_html` -> `escape_data` -> `render_template` (unchanged) -> `atomic_write`
-`cmd_refresh` -> `extract_data` -> `escape_data` -> `render_to_disk` -> `render_template` (unchanged) -> `atomic_write`
+`cmd_dashboard` -> `build_dashboard_html` -> `escape_data` -> render_template (unchanged) -> `atomic_write`
+`cmd_refresh` -> `extract_data` -> `escape_data` -> `render_to_disk` -> render_template (unchanged) -> `atomic_write`
 `cmd_policy_builder` -> `render_policy_builder_html` -> `script_json` -> single-pass placeholder substitution -> `atomic_write`
-`cmd_templatize` -> `verify_round_trip` -> `_render_tmp_dir` -> `render_template` (must stay unchanged; no `escape_data`)
+`cmd_templatize` -> `verify_round_trip` -> `_render_tmp_dir` -> render_template (must stay unchanged; no `escape_data`)
 
 ### Decision Rules
 - Escape set for `script_json`: exactly `<`→`<`, `>`→`>`, `&`→`&`, U+2028→` `, U+2029→` `, applied to the `json.dumps` output string.
@@ -283,8 +283,8 @@ _Added by `/ll:refine-issue` — 2026-09-24 — based on codebase analysis:_
 
 1. `script_json` exists in `artifact_templates.py`, and no `json.dumps` result is spliced into HTML in `policy_builder.py:115-123` or `dashboard.py:343-344` without it. Check: `grep -n "json.dumps" scripts/little_loops/cli/artifact/{policy_builder,dashboard}.py` shows no remaining splice sites, and a test feeding `</script><script>alert(1)</script>` through `_load_skill_catalog` (monkeypatched) and `ServeContext` URLs counts the expected number of `</script>` tags.
 1a. `render_policy_builder_html()` substitutes placeholders in one `re.sub` pass. Check: a catalog description containing every placeholder token round-trips verbatim, and the core JS appears once.
-2. The dashboard data dict and `extract`'s model output pass through one idempotent escape-by-default rule with a documented allowlist. `_PROMPT_TEMPLATE` asks for decoded text. Templatize has been checked for fragment lifting (see Scope § 2). `test_artifact_templatize.py` round-trip tests pass unchanged, which proves `render_template` (not modified under Option A) stayed verbatim.
-3. Hostile-payload tests cover dashboard shareable and `--local` (payloads in `loop_name`/`state`/`branch`/`model` and transcript text), `render_live_fragment`, `render`/`refresh` (model-returned strings, with the host call stubbed), and `policy-builder`. They run in the default `python -m pytest scripts/tests/` tier (no `integration` marker).
+2. The dashboard data dict and `extract`'s model output pass through one idempotent escape-by-default rule with a documented allowlist. `_PROMPT_TEMPLATE` asks for decoded text. Templatize has been checked for fragment lifting (see Scope § 2). `test_artifact_templatize.py` round-trip tests pass unchanged, which proves render_template (unchanged under Option A; the rejected Option B would have modified it) stayed verbatim.
+3. Hostile-payload tests cover dashboard shareable and `--local` (payloads in `loop_name`/`state`/`branch`/`model` and transcript text), `render_live_fragment`, `render`/refresh (model-returned strings, with the host call stubbed; refresh is an Option A ingest call path, not the rejected Option B render-time opt-in), and `policy-builder`. They run in the default `python -m pytest scripts/tests/` tier (no `integration` marker).
 4. Every predictable-path output write (`dashboard.py:475`, `render.py:68`, `policy_builder.py:143`, `design_md.py:129`, `extract.py:227,289`, and, as defense in depth against the rmtree→mkdir race only, the `.rejected` writes in `templatize.py` `_write_rejected_discovery`) goes through `atomic_write`/`atomic_write_bytes`, and the result keeps its umask-derived mode. A test plants a symlink at the output path (for the `dashboard`/`render`/`policy-builder`/`design-md`/`extract` sites; not the `.rejected` dir, which the pre-`rmtree` already rejects) and asserts the symlink target is unchanged, the output path is now a regular file (`not path.is_symlink()`), and its mode is `0o666 & ~umask`.
 5. `python -m pytest scripts/tests/test_feat3304_artifact_dashboard.py scripts/tests/test_policy_builder_emit.py scripts/tests/test_feat3036_artifact_templates.py scripts/tests/test_feat3310_artifact_extract.py scripts/tests/test_artifact_templatize.py scripts/tests/test_file_utils.py` passes, and so do `python -m mypy scripts/little_loops/` and `ruff check scripts/`.
 
@@ -297,10 +297,10 @@ _Added by `/ll:refine-issue` — 2026-09-24 — based on codebase analysis:_
 _Added by `/ll:confidence-check` on 2026-09-24_
 
 **Readiness Score**: 95/100 → PROCEED
-**Outcome Confidence**: 63/100 → MODERATE
+**Outcome Confidence**: 71/100 → MODERATE
 
 ### Gaps to Address
-- Advisory (Criterion C capped at 10): the applied-decision check flagged `render_template` (Program Design) and `refresh`/`render_template` (Implementation Steps) as still present after Option A was selected. Likely a false positive — those are legitimate references (`render_template` must stay byte-identical; `cmd_refresh` is an Option A call path) — but the section text should mark them as unchanged/not-Option-B so the check clears.
+- _(Resolved 2026-09-24)_ The applied-decision flag on `render_template`/refresh cleared after the Implementation Steps and Call Path text was reworded (identifiers unbackticked, marked unchanged/not-Option-B); `unapplied_decision` is now empty.
 
 ### Outcome Risk Factors
 - broad enumeration across ~15 sites (6 artifact modules, `file_utils.py`, 6 test files) with moderate per-site depth: escape semantics span `artifact_templates`, `dashboard`, `extract`, and manifest schema
@@ -317,6 +317,7 @@ Verdict at time of check: **NEEDS_UPDATE** (correction below applied in the same
 - Decisions log check: no conflicting required rules found. Graph: provider=`codegraph` freshness=`fresh` (not needed for any verdict).
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-24T17:39:32 - `be572ee7-4bdf-4b90-b8fb-64aeafff2750.jsonl`
 - `/ll:verify-issues` - 2026-09-24T17:33:31 - `96d01310-c604-4961-b5bd-6b1925aee00d.jsonl`
 - Manual review - 2026-09-24 - repaired the corrupted `script_json` escape spec; added single-pass placeholder substitution, idempotent ingest escaping plus a decoded-text prompt, `atomic_write` mode preservation, the `javascript:` URL rule, the templatize fragment check, and derived `</script>` counts; marked `render_template` unchanged
 - `/ll:confidence-check` - 2026-09-24T05:15:41 - `27ae30f6-009c-4b0e-9ac3-8684b7ff61cd.jsonl`
