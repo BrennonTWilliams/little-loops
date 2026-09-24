@@ -10,11 +10,11 @@ captured_at: '2026-09-24T00:20:32Z'
 labels:
 - observability
 - history
-confidence_score: 90
-outcome_confidence: 59
+confidence_score: 95
+outcome_confidence: 67
 score_complexity: 14
 score_test_coverage: 25
-score_ambiguity: 10
+score_ambiguity: 18
 score_change_surface: 10
 reconcile_attempted: true
 ---
@@ -113,15 +113,17 @@ Verdict: **VALID** (2026-09-23). `usage_events` is in `_REBUILD_TABLES` and is `
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-09-23 (re-scored 2026-09-23)_
+_Added by `/ll:confidence-check` on 2026-09-23 (re-scored 2026-09-24)_
 
-**Readiness Score**: 90/100 → PROCEED
-**Outcome Confidence**: 59/100 → LOW
+**Readiness Score**: 95/100 → PROCEED
+**Outcome Confidence**: 67/100 → MODERATE
 
 ### Concerns
 - ~~Internal contradiction on the delete predicate: Acceptance Criteria say `rebuild()` deletes only `channel = 'transcript'`, but the Scope Boundary note (audit-issue-conflicts) requires deleting every replayable channel (incl. ENH-3532 Codex `rollout` rows). Reconcile the AC to "delete all replayable channels" and add the rollout-not-duplicated criterion.~~ Resolved: AC now say "delete all replayable channels" with a rollout-not-duplicated criterion.
 - ~~The no-`sessionId` transcript-record policy is left as "skip or `'unknown'`" — pick one before implementing.~~ Resolved 2026-09-24: skip (see Acceptance Criteria).
 - ~~The Verification Notes' design hint (`DELETE ... WHERE run_id IS NULL`, no migration) is contradicted by code: `_backfill_usage_events` derives `run_id` for transcript rows via a timestamp-window join (`writers.py:_derive_run_id_for_ts`, ENH-2725), so backfilled rows can carry a `run_id`. That filter would leave stale transcript rows and cause duplicates on replay. Live rows may also have `state=None`, so `state IS NOT NULL` isn't a safe discriminator either.~~ Resolved: hint withdrawn in Verification Notes; AC name both as invalid discriminators.
+
+- In-migration `UPDATE` classifying legacy rows and a per-channel `DELETE` predicate in `rebuild()` are both new shapes with no in-repo precedent; rollback and pre-migration-fixture tests have no template.
 
 ### Outcome Risk Factors
 - ~~Unresolved design decision: nullable `origin` column vs. a narrowed DELETE; legacy-row policy undecided.~~ Resolved 2026-09-23: a `channel` column, with legacy rows classified by `session_id` presence in the migration.
@@ -129,6 +131,7 @@ _Added by `/ll:confidence-check` on 2026-09-23 (re-scored 2026-09-23)_
 - Moderate per-site complexity: rebuild semantics, idempotency across repeated rebuilds, duplicate-row risk.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-24T01:36:31 - `d6251dba-5797-46a2-be40-90b54a0c3358.jsonl`
 - `/ll:reconcile-issue` - 2026-09-24T01:28:09 - `0cc4d9ef-2be2-4686-8da4-17a975d2e357.jsonl`
 - `/ll:decide-issue` - 2026-09-24T01:27:18 - `34910629-d012-4bc0-9f28-9b313ee78c98.jsonl`
 - `/ll:confidence-check` - 2026-09-24T01:24:53 - `f2782d90-4a24-474c-afe0-ce24c17410f3.jsonl`
