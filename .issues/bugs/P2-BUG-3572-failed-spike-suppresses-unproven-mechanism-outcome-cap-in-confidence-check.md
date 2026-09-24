@@ -32,6 +32,12 @@ threshold on an approach its own spike refuted.
 Only a proven spike retires the proof requirement. A refuted spike routes to a decision,
 design change or decomposition. An inconclusive or errored spike keeps the cap.
 
+## Steps to Reproduce
+
+1. Take an issue with `unproven_mechanism: true` whose mechanism is wrong
+2. Run `/ll:spike --auto`; verification fails, and only `spike_attempted: true` is written
+3. Run `/ll:confidence-check`: Phase 1.9 sets `SPIKE_SUPPRESSED`, and the outcome is scored with no unproven-mechanism cap
+
 ## Motivation
 
 Spikes exist to prove a mechanism before implementation. Treating a disproof as permission to proceed defeats the purpose.

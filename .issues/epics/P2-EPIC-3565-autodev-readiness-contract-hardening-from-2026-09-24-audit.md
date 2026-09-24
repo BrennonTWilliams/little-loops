@@ -27,6 +27,10 @@ children here. The last child consolidates the duplicated parent/child repair ro
 one preparation controller. It is deliberately blocked until the behavioral fixes are
 covered by regression tests.
 
+## Goal
+
+Every route into implementation passes the same current-evidence readiness contract as autodev's normal path, and every run ends with truthful accounting. Then consolidate the duplicated preparation routing behind regression tests.
+
 ## Motivation
 
 - Every little-loops project on this machine is `local-editable` against this checkout, so

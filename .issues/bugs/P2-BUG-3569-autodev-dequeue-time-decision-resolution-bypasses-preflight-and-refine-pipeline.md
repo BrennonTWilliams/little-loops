@@ -33,6 +33,12 @@ blocker, gate, refine, wire or verify.
 A decision resolved at dequeue resumes normal preflight at `check_blockers_at_dequeue`, then
 gate check, then `refine_current`.
 
+## Steps to Reproduce
+
+1. Take an open issue with `decision_needed: true` and passing pre-existing scores
+2. Run autodev on it (pre-fix, commit `958bf1f90`)
+3. Observe dequeue → `resolve_decision` → `recheck_after_decide` → `implement_current`, never visiting `check_blockers_at_dequeue` or `refine_current`
+
 ## Motivation
 
 Issues arriving with `decision_needed: true` skipped blocker, gate, refine, wire and verify. That breaks the autodev preparation contract on its most decision-heavy inputs.

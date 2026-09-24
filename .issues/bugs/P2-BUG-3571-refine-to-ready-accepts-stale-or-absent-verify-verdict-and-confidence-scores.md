@@ -38,6 +38,12 @@ A gate passes only on evidence produced by the current invocation, or on cached 
 provably bound to the current issue content. A missing result from a current call is a
 retryable infrastructure failure, not a pass.
 
+## Steps to Reproduce
+
+1. Run refine-to-ready-issue on an issue carrying `verify_verdict: VALID` and scores from an earlier run
+2. Make `/ll:verify-issues --check` error (e.g. host failure) and have confidence-check write nothing
+3. Observe `check_verify_verdict` exit 0 and `verify_scores_persisted` exit 0 on the stale values
+
 ## Motivation
 
 Autodev's repair loop edits issue content (reconcile, wire, refine) and then rescores. Without freshness, the implementation gate can be satisfied by evidence about content that no longer exists.

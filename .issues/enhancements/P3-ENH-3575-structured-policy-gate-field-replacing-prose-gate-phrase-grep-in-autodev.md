@@ -45,8 +45,7 @@ False-positive gate matches park good issues indefinitely, and the only workarou
 Add a structured frontmatter field, e.g.
 `gate: {kind: external|manual|proof, satisfied: bool, evidence: <ref>, owner: <who>}` (or a
 list). Autodev reads the field first and falls back to the prose grep only when the field is
-absent. Extract the duplicated phrase regex into one shared helper (`ll-issues check-gate` or
-similar), which is the extraction BUG-3147 and ENH-3148 deferred.
+absent. Extract the duplicated phrase regex into one shared helper (a new `ll-issues` gate-check subcommand), which is the extraction BUG-3147 and ENH-3148 deferred.
 
 ## Integration Map
 
@@ -73,7 +72,7 @@ similar), which is the extraction BUG-3147 and ENH-3148 deferred.
 ## Implementation Steps
 
 1. Define the frontmatter `gate` schema (and validation in `ll-issues`)
-2. Add a shared `ll-issues check-gate` helper that reads structured first, then falls back to prose
+2. Add a shared gate-check helper that reads structured first, then falls back to prose
 3. Replace both inline regexes in autodev
 4. Route `proof` gates to spike/explore-api
 5. Tests for satisfied, external and proof gates
@@ -83,6 +82,11 @@ similar), which is the extraction BUG-3147 and ENH-3148 deferred.
 - **Priority**: P3
 - **Effort**: Medium
 - **Risk**: Low. The fallback keeps today's behavior for issues without the field.
+
+## Scope Boundaries
+
+- In scope: autodev's two gate detectors and the new field.
+- Out of scope: migrating existing issues' prose gates to the field (the fallback covers them); rn-* loops' gate handling.
 
 ## Acceptance Criteria
 

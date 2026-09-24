@@ -34,6 +34,12 @@ reconcile stamp was contradiction-only got an empty remedy and was deferred as
 `GATE_MARKER=true` dispatches `spike`. A contradiction-only reconcile stamp with no prior
 spike dispatches `spike`.
 
+## Steps to Reproduce
+
+1. Extract the `REMEDY=$(...)` pipeline from `recheck_after_size_review` (pre-fix, commit `958bf1f90`)
+2. Run it under bash with `GATE_MARKER=true` as an unexported shell variable and a stub `ll-issues` emitting scores where ambiguity is not the weakest
+3. Observe `REMEDY=reconcile` (expected `spike`); with `CONTRA_ONLY=true` + `reconcile_attempted`, observe an empty remedy (expected `spike`)
+
 ## Motivation
 
 The ENH-2978 measurement-gate → spike route and the ENH-2992 contradiction exemption were documented and tested, but never took effect at runtime.

@@ -30,6 +30,11 @@ and that placeholders have no repair when some do.
 
 The doc matches the dispatch table.
 
+## Steps to Reproduce
+
+1. Read `skills/confidence-check/SKILL.md` Phase 1.8 (pre-fix, commit `958bf1f90`)
+2. Compare with `format_check._REPAIR_DISPATCH`: no fixer for `boilerplate`/`missing`; `_fix_template_placeholders` exists
+
 ## Motivation
 
 The scorer used this guidance to decide whether structural gaps are self-healing. Wrong guidance hides real gaps (tracked in ENH-3576).

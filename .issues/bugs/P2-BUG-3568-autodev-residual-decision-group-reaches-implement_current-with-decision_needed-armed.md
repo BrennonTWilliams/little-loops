@@ -34,6 +34,12 @@ ll-auto decision halt → `autodev-unverified.txt`.
 A still-armed flag after the oracle returns `done` is ledgered via
 `record_decision_unresolved` and deferred for human review.
 
+## Steps to Reproduce
+
+1. Take an issue whose `/ll:decide-issue --auto` pass leaves a residual bullet-tier decision group (flag stays armed), with scores above threshold
+2. Run autodev on it (pre-fix, commit `958bf1f90`)
+3. Observe `resolve-decision` → `done` → `recheck_after_decide` → `implement_current`, then the ll-auto decision halt and the ID ledgered as unverified
+
 ## Motivation
 
 Held-for-review issues wasted an ll-auto implementation attempt, and were misreported as unverified instead of decision-unresolved.

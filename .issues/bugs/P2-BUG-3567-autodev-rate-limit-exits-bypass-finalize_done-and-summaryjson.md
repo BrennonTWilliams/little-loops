@@ -31,6 +31,11 @@ were never checked for closure, and the remaining queue was unreported.
 Every exit goes through `finalize_done`. A rate-limit stop is reported as an interrupted run,
 with its stop reason and pending queue.
 
+## Steps to Reproduce
+
+1. Run autodev on a multi-issue queue until a skill state exhausts its 429 retry budget (pre-fix, commit `958bf1f90`)
+2. Observe the run end at `done` with no `summary.json` in the run dir, and the remaining `autodev-queue.txt` entries unreported
+
 ## Motivation
 
 Rate-limit exhaustion is a common way for long autodev runs to end. Those runs left no summary and no record of unprocessed work.

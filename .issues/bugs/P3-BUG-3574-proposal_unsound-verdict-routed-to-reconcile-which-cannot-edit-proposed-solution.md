@@ -33,6 +33,12 @@ Directive drift goes to reconcile. A refuted selected proposal goes to a bounded
 revision (re-open the decision via `resolve-decision`, or refine with a design focus), then
 wire and verify the revised approach.
 
+## Steps to Reproduce
+
+1. Take an issue whose Proposed Solution, implemented as written, contradicts the code it names
+2. Run refine-to-ready-issue; verify-issues persists `verify_verdict: PROPOSAL_UNSOUND`
+3. Observe the route to `/ll:reconcile-issue`, which leaves `## Proposed Solution` untouched per its contract; the verdict recurs until the reconcile budget is spent
+
 ## Motivation
 
 Unsound proposals are exactly the cases where implementation would do the most damage. Routing them to a remedy that cannot touch the proposal guarantees a wasted budget and eventual deferral.

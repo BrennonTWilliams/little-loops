@@ -20,7 +20,7 @@ accounting. Today repair and rescoring policy is split between parent and child.
 re-implements spike, reconcile, size-review, design-remedy and decision routing, with its own
 marker files (`autodev-pre-deferral-remedy.txt`, `autodev-decide-ran`, the fired markers),
 and `ll-issues show` + inline Python predicates are copied across states. The route-specific
-contract gaps in the sibling issues come directly from this duplication.
+contract gaps in EPIC-3565's children come directly from this duplication.
 
 ## Current Behavior
 
