@@ -15,6 +15,12 @@ blocked_by:
 - ENH-3557
 learning_tests_required:
 - jinja2-byte-exact-round-trip
+confidence_score: 95
+outcome_confidence: 82
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 # ENH-3558: Escape-by-default ingest for template data and extract output
@@ -201,6 +207,7 @@ Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the sam
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-24T19:44:39 - `a13ea329-0bac-4e0c-ae19-52c2a57cea17.jsonl`
 - `/ll:verify-issues` - 2026-09-24T19:13:35 - `27bdfde5-d1ef-4e98-b8ff-2728ac43d651.jsonl`
 - `/ll:scope-epic` - 2026-09-24T18:30:39 - `bd7b32d0-d305-4468-99d3-61a8a02d4caa.jsonl`
 - Manual review - 2026-09-24 - pre-implementation review: replaced bare `html.unescape` in the escape rule with `;`-terminated-only decoding (legacy-entity corruption verified); tuple paths with `ARRAY_ITEM` sentinel (dotted-string trust collision via undeclared keys); annotation placement rules; URL-rule step order and `ExtractError` wrapping; mapping-key escaping; validate-then-escape in the dashboard; `artifact_mode: template` added to the outside-boundary docs; refreshed `dashboard.py` line refs after ENH-3557 (done, `c6972b69d`)
