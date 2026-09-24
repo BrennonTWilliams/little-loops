@@ -2,9 +2,11 @@
 id: ENH-3527
 title: Resolve model capability hints for loop execution
 type: ENH
-priority: P0
+priority: P2
 status: open
 discovered_date: '2026-09-23'
+blocked_by:
+- BUG-3529
 labels:
 - multi-host
 - loops
@@ -14,15 +16,17 @@ labels:
 
 ## Summary
 
-Introduce a closed `model_hint` vocabulary for loop states and evaluator defaults, resolved against the actual execution backend. Preserve existing literal model IDs and CLI aliases. This issue delivers loop execution first; skill and agent frontmatter adaptation is a separate follow-up because accepting a key does not establish that the host will honor it.
+Introduce a closed `model_hint` vocabulary for loop states and evaluator defaults, resolved against the actual execution backend through built-in defaults plus a per-host `model_hints` (under `orchestration`) config override. Preserve existing literal model IDs and CLI aliases. This issue delivers loop execution first; skill and agent frontmatter adaptation is ENH-3533 because accepting a key does not establish that the host will honor it.
 
 ## Current Behavior
 
 - `StateConfig.model` overrides the run model for CLI actions. Evaluators use `state.model or fsm.llm.model`; SDK/batch actions use `state.model or run_model or fsm.llm.model`.
 - `LLMConfig.model` defaults to `DEFAULT_LLM_MODEL` (`sonnet`). Its deserializer currently supplies that default immediately; a hint-only configuration must not acquire a conflicting explicit model.
 - CLI runners generally pass aliases through unchanged. `resolve_model_alias` is called by `advisor.rank_model` and `build_anthropic_request`, not by CLI builders. The API path requires concrete Anthropic IDs.
-- `CodexRunner.build_streaming` currently discards `model`, while its blocking path accepts it. Opencode/pi are unconfigured runtime runners. A mapping entry alone cannot establish model-selection support.
+- `CodexRunner.build_streaming` currently discards `model`, while its blocking path accepts it. The discard is a stale assumption — `codex exec` and `codex exec resume` (0.152.1) accept `-m/--model` — tracked and fixed by BUG-3529, which this issue is blocked by. Opencode/pi are unconfigured runtime runners. A mapping entry alone cannot establish model-selection support.
 - Claude skills and agents are served natively without an LL model-resolution step. Codex agent TOML is generated ahead of execution, and `emit_agent` copies `model` from frontmatter. `main_verify_skills` checks file sizes, not model selection.
+- No shipped loop under `scripts/little_loops/loops/` declares `model:` today, so no built-in loop exercises per-state model selection on any host.
+- `fsm-loop-schema.json` gives `llm.model` a JSON `default` of `claude-sonnet-4-20250514`, which is stale versus `DEFAULT_LLM_MODEL` (`sonnet`) and would be injected beside a hint by any default-applying JSON-schema tool.
 
 ## Expected Behavior
 
@@ -66,20 +70,48 @@ Resolve `_resolve_request_path` first, including SDK/batch downgrades. Then reso
 - Keep mappings in the runtime model-selection layer, with explicit operation support and parity checks against the runtime registry. Use one canonical entry for each backend model target; multiple hints can reference it so a rename does not require duplicate ID edits. Reuse the existing Anthropic alias table for its API targets.
 - Missing mappings and unsupported operations produce actionable errors naming the hint, backend, and operation. An unknown hint must never return `None` and silently select the host default.
 
+### Hint mapping (decided)
+
+Ship built-in defaults only where the target is verified against this repo's own model tables; every other host resolves through configuration. Lineups on non-Claude hosts change too often, and too few of them are verifiable here, to hard-code.
+
+| Backend key | `coding` | `reasoning` | `burst` | Source |
+|-------------|----------|-------------|---------|--------|
+| `claude-code` (CLI) | `sonnet` | `opus` | `haiku` | Built-in; host CLI aliases passed through unchanged, as literal values are today |
+| `anthropic-api` (SDK/batch) | `claude-sonnet-5` | `claude-opus-5` | `claude-haiku-4-5` | Built-in; derived from the existing `MODEL_ALIASES` entries for `sonnet`/`opus`/`haiku` so the canonical ID lives in one place |
+| `codex`, `gemini`, `omp`, `kimi-code`, `qwen` | — | — | — | No built-in default; config only. An unmapped hint on these hosts raises the actionable missing-mapping error |
+| `opencode`, `pi` | — | — | — | Not advertised; hints error regardless of config |
+
+**Config override (in scope).** Add `model_hints` (under `orchestration`) to `config-schema.json` and `OrchestrationConfig`:
+
+```json
+"orchestration": {
+  "model_hints": {
+    "codex": { "coding": "<codex-model>", "reasoning": "<codex-model>", "burst": "<small-codex-model>" },
+    "claude-code": { "burst": "sonnet" }
+  }
+}
+```
+
+- Keys are runtime backend keys (the `RUNTIME_HOST_CAPABILITIES` host names plus `anthropic-api`); an unknown backend key or hint name is a config validation error. Values are non-empty strings passed through as literals — no nested hint resolution.
+- Per-hint deep merge over built-in defaults: a host entry may override one hint and inherit the rest. Explicit `null` removes a built-in mapping for that hint, which makes the hint error on that backend (standard `ll.local.md` merge semantics).
+- `anthropic-api` values still pass through `resolve_model_alias`, so an alias such as `opus` is valid there.
+- Precedence is unchanged: config supplies only the hint → model table; a literal `model:` or run `--model` beats a hint exactly as in the precedence table above.
+- `ll-loop validate` resolves each declared hint against the configured host (`orchestration.host_cli` / `LL_HOST_CLI`) and the loop's request path, and emits a WARNING — not an error, because the host can differ at run time — for any hint that would fail to resolve. The runtime error remains authoritative.
+
 ### Supported artifact/host matrix
 
 The implementation must publish a tested matrix, not infer support from a `--model` flag somewhere in a runner.
 
 | Artifact / operation | Delivery requirement |
 |----------------------|----------------------|
-| Loop CLI actions, Claude/Gemini/OMP/Kimi/Qwen | Prove each supported runner forwards the resolved selection; mark unsupported combinations explicitly |
-| Loop Codex streaming actions | Explicit unsupported-hint error while the runner discards `model`; support requires separately proving and wiring model selection |
+| Loop CLI actions, Claude/Codex/Gemini/OMP/Kimi/Qwen | Prove each supported runner forwards the resolved selection; mark unsupported combinations explicitly |
+| Loop Codex streaming actions | Supported once BUG-3529 forwards `--model` in `build_streaming` (blocking dependency); dispatch test asserts the resolved selection in argv |
 | Loop blocking evaluators | Test each runner/operation advertised as supported, including Codex |
 | Loop Anthropic SDK/batch | Concrete Anthropic resolution, including foreign configured CLI hosts and CLI downgrade |
 | Opencode/pi | Preserve unconfigured-runner behavior; do not advertise hint support |
-| Native skills/agents and generated agent files | Deferred follow-up; no portability claim from accepting frontmatter alone |
+| Native skills/agents and generated agent files | Deferred to ENH-3533; no portability claim from accepting frontmatter alone |
 
-Do not migrate shipped skills/agents or regenerate mirrors in this issue. The follow-up must establish resolution timing (native invocation versus generation), stale generated-file handling after mapping changes, and an executable test for every artifact/host combination it claims to support.
+Do not migrate shipped skills/agents or regenerate mirrors in this issue. ENH-3533 must establish resolution timing (native invocation versus generation), stale generated-file handling after mapping changes, and an executable test for every artifact/host combination it claims to support.
 
 ### Lifecycle and model identity
 
@@ -97,12 +129,17 @@ Keep the observed model reported by the host separate from requested/resolved se
 - [ ] Canonical mapping targets avoid duplicate model IDs for hints sharing a target, and runtime-map coverage is checked by `ll-verify-host-map` tests.
 - [ ] Sub-loop, detach, and resume tests preserve requested declarations and existing precedence; each dispatch exposes requested, resolved, and observed identities distinctly.
 - [ ] Vocabulary semantics, support matrix, precedence, and deferred skill/agent scope are documented. `haiku-gen` guidance covers hint-only burst generation without rejecting valid burst verdict states.
+- [ ] Built-in mappings exist only for `claude-code` and `anthropic-api`, with `anthropic-api` targets derived from `MODEL_ALIASES` (no duplicated concrete IDs). `model_hints` (under `orchestration`) is in `config-schema.json` and `OrchestrationConfig`; tests cover per-hint merge over defaults, `null` removal, unknown backend/hint keys rejected, and a config-only Codex mapping reaching argv.
+- [ ] `ll-loop validate` warns (not errors) when a declared hint cannot resolve for the configured host and request path; no warning when it resolves.
+- [ ] The `llm.model` JSON `default` is removed from `fsm-loop-schema.json`; the fallback to `DEFAULT_LLM_MODEL` is described in its `description` instead, and a JSON/Python parity test covers it.
+- [ ] Portability proof: an eval or test fixture loop with `coding`/`burst` hinted states runs unedited under two backends (e.g. fake host plus `claude-code` argv, and `anthropic-api`), asserting the resolved selection per backend. No shipped loop is migrated.
 
 ## Scope Boundaries
 
-- **In scope**: loop state/evaluator declarations, backend-aware resolution, operation support checks, lifecycle preservation, selection diagnostics, compatibility tests, and documentation.
-- **Deferred follow-up**: native skill/agent hints, generated-agent materialization, and any expansion of Codex streaming model support needed to advertise that combination.
-- **Out of scope**: artifact migration; new hint vocabulary; hints in advisor/compaction configuration or unrelated CLI commands; new run-level hint flags; automatic cost routing; price tables; changing host-internal model selection or reasoning effort.
+- **In scope**: loop state/evaluator declarations, backend-aware resolution, built-in `claude-code`/`anthropic-api` mappings, the `model_hints` (under `orchestration`) config override, validate-time resolution warnings, operation support checks, lifecycle preservation, selection diagnostics, compatibility tests, and documentation.
+- **Prerequisite**: BUG-3529 (Codex streaming `--model` forwarding).
+- **Deferred follow-up**: ENH-3533 — native skill/agent hints and generated-agent materialization.
+- **Out of scope**: artifact migration; new hint vocabulary; built-in default mappings for non-Claude hosts; hints in advisor/compaction configuration or unrelated CLI commands; new run-level hint flags; automatic cost routing; price tables; changing host-internal model selection or reasoning effort.
 
 ## Integration Map
 
@@ -114,6 +151,8 @@ Keep the observed model reported by the host separate from requested/resolved se
 - `scripts/little_loops/fsm/executor.py`, `fsm/evaluators.py`, `fsm/runners.py`, `subprocess_utils.py` — all dispatch seams, effective-backend ordering, selection/observed-model diagnostics.
 - `scripts/little_loops/cli/loop/{run,lifecycle,runner,header,info}.py`, `fsm/persistence.py` — overrides, detach, resume, headers, and serialized intent; inspect persistence before changing its format.
 - `scripts/little_loops/cli/verify_host_map.py`, `fsm/__init__.py` — runtime consistency checks and any required public exports.
+- `scripts/little_loops/config/orchestration.py` (`OrchestrationConfig`), `scripts/little_loops/config-schema.json` — new hint-mapping config override under `orchestration`; `docs/reference/CONFIGURATION.md`.
+- `scripts/little_loops/fsm/validation/` — validate-time resolution WARNING against the configured host.
 
 ### Dependent Files and Similar Patterns
 
@@ -136,7 +175,7 @@ Keep the observed model reported by the host separate from requested/resolved se
 ## Implementation Steps
 
 1. Add schema/serialization tests for explicit declarations and the precedence matrix; implement hint fields without changing legacy defaults.
-2. Add backend/operation resolution and mapping-coverage tests. Preserve literal CLI aliases and isolate Anthropic ID conversion to its API path.
+2. Add backend/operation resolution and mapping-coverage tests. Preserve literal CLI aliases and isolate Anthropic ID conversion to its API path. Add `model_hints` (under `orchestration`) (schema, `OrchestrationConfig`, merge over built-in defaults) in the same step.
 3. Wire actions and both evaluator dispatch sites after effective-path selection; cover SDK/batch downgrade and unsupported operations before launching requests.
 4. Preserve declarations through overrides, sub-loops, detach, and resume. Add requested/resolved/observed diagnostics without fabricating observed identity.
 5. Update validation, host-map checks, headers, and the documented support matrix. Keep skill/agent adaptation explicitly deferred.
@@ -144,24 +183,33 @@ Keep the observed model reported by the host separate from requested/resolved se
 
 ## Program Design
 
-### Types and Contracts
+### Types
 
 - `ModelHint = Literal["coding", "reasoning", "burst"]`; FSM fields may use `str | None` with runtime validation to match existing schema conventions.
+- `model_hint: str | None` — new optional field on both `StateConfig` and `LLMConfig`.
+- `model_hints: dict[str, dict[str, str | None]]` — new `OrchestrationConfig` field; backend key → hint → model, `None` removes a built-in mapping.
 - A model declaration represents exactly one explicit literal or hint, or no selection. It must retain omission until fallback selection; choose its concrete dataclass representation without changing existing no-hint public behavior.
 - A resolved selection records requested literal/hint, effective backend, operation, and selected model string. Observed model identity is separate and optional.
 - Runtime hint mappings reference canonical backend model targets. Operation support is explicit, including unsupported combinations.
 
-### Resolution Contract
+### Signatures
 
-`resolve_model_hint(hint, *, backend, operation) -> str` returns a usable selection or raises a validation/capability error. It does not return `None` for an invalid/unsupported hint. Existing `resolve_model_alias(model)` remains the Anthropic API alias resolver.
+- `resolve_model_hint(hint: str, *, backend: str, operation: str, overrides: dict[str, dict[str, str | None]] | None = None) -> str` — returns a usable selection or raises a validation/capability error; never returns `None`. `overrides` is the parsed config mapping, merged per hint over the built-in defaults.
+- `resolve_model_alias(model: str) -> str` — unchanged; remains the Anthropic API alias resolver and the source of `anthropic-api` hint targets.
 
 ### Call Path
 
-`parse declaration → select by existing precedence → select effective request path (including downgrade) → resolve for backend/operation → CLI runner or Anthropic request builder → observe host model separately`.
+Declaration selection and backend resolution happen after the effective request path is known:
+
+- `FSMExecutor._resolve_request_path` → `resolve_model_hint` → `build_anthropic_request` (SDK/batch; concrete IDs via `resolve_model_alias`)
+- `FSMExecutor._resolve_request_path` → `resolve_model_hint` → `CodexRunner.build_streaming` / `ClaudeCodeRunner.build_streaming` (CLI actions)
+- `resolve_model_hint` → `build_blocking_json` (evaluators)
+
+Host-observed model identity is recorded separately after dispatch.
 
 ## Impact
 
-- **Priority**: P0 (retained from issue triage).
+- **Priority**: P2 — a portability enhancement with no current breakage; no shipped loop declares a model today.
 - **Effort**: Medium to high — multiple dispatch and lifecycle paths, with native artifact adaptation explicitly deferred.
 - **Risk**: Medium — default injection, precedence, unsupported operations, and backend mismatches can silently select the wrong model.
 - **Breaking Change**: No for existing no-hint artifacts; new hint declarations have explicit validation and support constraints.
@@ -170,9 +218,11 @@ Keep the observed model reported by the host separate from requested/resolved se
 
 Review corrections applied on 2026-09-23: narrowed delivery to loop execution; corrected CLI alias flow; defined vocabulary, precedence, effective-backend resolution, unsupported combinations, lifecycle behavior, and model identity. Reconciled prior research/wiring notes into the directive sections rather than retaining contradictory instructions. Graph corroboration used fresh `codegraph` results for alias callers and direct source inspection. The review's 30 focused existing tests passed; they establish current behavior, not completion of the new acceptance criteria.
 
+Review follow-up on 2026-09-23: reprioritized P0 → P2 and renamed the file to match the narrowed title; decided the hint mapping (built-in for `claude-code`/`anthropic-api` only, `model_hints` (under `orchestration`) override for all hosts); replaced the Codex streaming "unsupported" row with a dependency on BUG-3529 after confirming `codex exec [resume] --model` exists; added validate-time warnings, JSON-default removal, and a portability proof AC; split deferred skill/agent work to ENH-3533.
+
 ## Status
 
-**Open** | Created: 2026-09-23 | Priority: P0
+**Open** | Created: 2026-09-23 | Priority: P2
 
 ## Session Log
 - `/ll:verify-issues` - 2026-09-24T00:01:43 - `d1e0cad9-5218-4c39-a990-a91f5f18af0d.jsonl`
