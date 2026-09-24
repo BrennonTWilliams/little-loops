@@ -3,7 +3,7 @@ id: ENH-3558
 type: ENH
 title: Escape-by-default ingest for template data and extract output
 priority: P1
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-24'
 captured_at: '2026-09-24T18:30:10Z'
@@ -21,6 +21,7 @@ score_complexity: 14
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 18
+completed_at: '2026-09-24T20:01:32Z'
 ---
 
 # ENH-3558: Escape-by-default ingest for template data and extract output
@@ -207,6 +208,8 @@ Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the sam
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-24T20:01:32 - `5c251a84-c85e-4420-bfe1-86dc791fb9bc.jsonl`
+- `/ll:ready-issue` - 2026-09-24T19:53:02 - `b6ca14b7-eeaf-4b51-a622-4f2e47360e5b.jsonl`
 - `/ll:confidence-check` - 2026-09-24T19:44:39 - `a13ea329-0bac-4e0c-ae19-52c2a57cea17.jsonl`
 - `/ll:verify-issues` - 2026-09-24T19:13:35 - `27bdfde5-d1ef-4e98-b8ff-2728ac43d651.jsonl`
 - `/ll:scope-epic` - 2026-09-24T18:30:39 - `bd7b32d0-d305-4468-99d3-61a8a02d4caa.jsonl`

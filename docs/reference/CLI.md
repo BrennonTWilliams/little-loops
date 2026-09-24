@@ -5144,6 +5144,8 @@ A `.llat/` template directory contains `manifest.yaml` (identity, `data_schema`,
 
 The render context is `data.json`'s top-level keys plus a reserved `ll` namespace: `ll.theme_css` (themed CSS custom properties, populated only when `manifest.theme: design-tokens`) and `ll.assets` (every file under `assets/`, keyed by relative path, read as UTF-8 text). A top-level `ll` key in `data.json` or `data_schema` is a validation error.
 
+`render` stamps `data.json` verbatim — its input is **trusted**. Escaping happens at ingest (`extract`/`refresh`, the dashboard), not here.
+
 **Flags:**
 
 | Flag | Short | Description |
@@ -5365,6 +5367,8 @@ The prompt sent to the host is not `manifest.extraction.prompt` verbatim: a modu
 
 Model resolution: `--model` > `manifest.extraction.model` > the fsm default model. `manifest.extraction.host` is diagnostic only and never overrides `resolve_host()`'s ambient host selection (`LL_HOST_CLI` / `orchestration.host_cli`) — a manifest committed on one machine must not silently redirect another machine's host. The source document is guarded against `artifacts.templatize_max_input_bytes` (default `400000` bytes; for `extract` this measures the source document alone, unlike `templatize`'s combined artifact+source measurement) before the host call is built — over the ceiling exits `1` naming the measured size, with no host call issued.
 
+**Escaping.** Extracted strings are HTML-escaped at ingest, idempotently (`Tom &amp; Jerry` and `Tom & Jerry` both land as `Tom &amp; Jerry`), so `data.json` holds entity-encoded text; the prompt asks the model for decoded plain text. Validation runs before escaping. Two optional `data_schema` annotations, stripped before the schema reaches the host: `x-ll-context: url` (string nodes; rejects schemes other than `http`, `https`, `mailto`, relative, or `#fragment` — a violation exits `1` naming the path and writes no `data.json`) and `x-ll-trusted: true` (string nodes; stamped verbatim, author opt-in only). A templatized region whose value contains markup renders as escaped text on `refresh`, not live tags; templatized URL regions are not covered by the URL rule until region-context tagging lands.
+
 **Flags:**
 
 | Flag | Short | Description |
@@ -5388,6 +5392,8 @@ Composes `extract` + `render` in one shot: extracts `data.json` from a source do
 The lockfile write happens only after the render's output-file write succeeds, and only records the **same source bytes the extraction consumed** (never a re-read, which would open a TOCTOU window against a source edited mid-refresh). The write is atomic (temp sibling + `os.replace`) and merges into any existing `renders` mapping — refreshing one source's entry never drops another source's entry for the same template (EPIC-3299's one-template-many-sources case). A lock-write failure after a successful render still exits `1`, but the message states that the render already succeeded and only the lock write failed, so a filesystem problem doesn't cost a re-paid LLM call to fix.
 
 Every path recorded in the lockfile (`renders` keys and `output`) goes through the same path-storage rule as `manifest.source`: project-root-relative (POSIX separators) when inside the project root, absolute otherwise, never `..`-prefixed.
+
+Escaping follows `extract`: values are entity-encoded at ingest, and a region whose value contains markup renders as escaped text rather than live tags.
 
 **Flags:**
 

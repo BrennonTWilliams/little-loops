@@ -31,8 +31,11 @@ from little_loops.artifact_templates import (
     DataValidationError,
     ManifestError,
     TemplateResolutionError,
+    escape_data,
     load_manifest,
     resolve_template,
+    schema_annotation_paths,
+    strip_schema_annotations,
     validate_top_level_data,
 )
 from little_loops.cli.artifact.lockfile import lock_path_for, relativize_path, write_lockfile
@@ -50,7 +53,8 @@ _DEFAULT_TIMEOUT_SECONDS = 180
 # have to hand-inline their own data_schema and keep it in sync.
 _PROMPT_TEMPLATE = """{extraction_prompt}
 
-Return a JSON object matching this schema exactly:
+Return a JSON object matching this schema exactly. String values must be plain decoded
+text: no HTML entities (write "&", not "&amp;") and no markup.
 {data_schema}
 
 Source document:
@@ -147,7 +151,7 @@ def extract_data(
             f"{source_path}: could not decode source document as UTF-8: {exc}"
         ) from exc
 
-    data_schema = template.data_schema
+    data_schema = strip_schema_annotations(template.data_schema)
     resolved_model = _resolve_model(model, extraction)
     prompt = _PROMPT_TEMPLATE.format(
         extraction_prompt=prompt_fragment,
@@ -178,7 +182,14 @@ def extract_data(
     except DataValidationError as exc:
         raise ExtractError(f"extraction response failed schema validation: {exc}") from exc
 
-    return raw, source_bytes
+    # Validate first (escaping would break enum matches), then escape at ingest.
+    trusted_paths, url_paths = schema_annotation_paths(template.data_schema)
+    try:
+        escaped = escape_data(raw, markup_keys=trusted_paths, url_keys=url_paths)
+    except ValueError as exc:
+        raise ExtractError(f"extraction response rejected: {exc}") from exc
+
+    return escaped, source_bytes
 
 
 def cmd_extract(args: argparse.Namespace, logger: Logger) -> int:
@@ -368,6 +379,11 @@ def add_refresh_parser(subparsers: argparse._SubParsersAction) -> None:
     refresh = subparsers.add_parser(
         "refresh",
         help="extract + render composed against the template's bound source",
+        description=(
+            "Extract values from the source and render. Extracted strings are HTML-escaped "
+            "at ingest (data.json holds entity-encoded text); a templatized region whose "
+            "value contains markup renders as escaped text, not live tags."
+        ),
     )
     refresh.add_argument(
         "template",

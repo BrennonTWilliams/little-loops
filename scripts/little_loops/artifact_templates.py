@@ -13,7 +13,9 @@ must never import ``host_runner`` or ``anthropic`` — that is Phase 2's
 
 from __future__ import annotations
 
+import html
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -30,7 +32,19 @@ _MANIFEST_OPTIONAL_KEYS = {"theme", "source", "extraction", "produced_by"}
 _MANIFEST_ALLOWED_KEYS = _MANIFEST_REQUIRED_KEYS | _MANIFEST_OPTIONAL_KEYS
 
 _SCHEMA_ALLOWED_TYPES = {"object", "array", "string", "number", "integer", "boolean", "null"}
-_SCHEMA_ALLOWED_KEYS = {"type", "required", "properties", "items", "enum", "description"}
+_SCHEMA_ALLOWED_KEYS = {
+    "type",
+    "required",
+    "properties",
+    "items",
+    "enum",
+    "description",
+    "x-ll-context",
+    "x-ll-trusted",
+}
+# Values accepted for the ``x-ll-context`` annotation (ENH-3558). ENH-3554
+# extends this with attr/script/style/markup.
+_CONTEXT_VALUES = {"text", "url"}
 
 _RESERVED_CONTEXT_KEY = "ll"
 
@@ -99,8 +113,29 @@ def _validate_schema_shape(schema: Any, path: str = "data_schema") -> None:
     if unknown:
         raise ManifestError(
             f"{path}: unsupported construct(s) {sorted(unknown)} — the data_schema "
-            "subset supports only: type, required, properties, items, enum, description"
+            "subset supports only: type, required, properties, items, enum, description, "
+            "x-ll-context, x-ll-trusted"
         )
+
+    if "x-ll-context" in schema:
+        context = schema["x-ll-context"]
+        if context not in _CONTEXT_VALUES:
+            raise ManifestError(
+                f"{path}.x-ll-context: {context!r} is not one of {sorted(_CONTEXT_VALUES)}"
+            )
+        if context == "url" and schema.get("type") != "string":
+            raise ManifestError(f"{path}.x-ll-context: 'url' is only permitted on type: string")
+    if "x-ll-trusted" in schema:
+        trusted = schema["x-ll-trusted"]
+        if not isinstance(trusted, bool):
+            raise ManifestError(f"{path}.x-ll-trusted: expected a boolean, got {trusted!r}")
+        if schema.get("type") != "string":
+            raise ManifestError(f"{path}.x-ll-trusted: only permitted on type: string")
+        if trusted and schema.get("x-ll-context") == "url":
+            raise ManifestError(
+                f"{path}: x-ll-trusted: true cannot be combined with x-ll-context: url "
+                "(a verbatim URL would bypass the scheme rule)"
+            )
 
     schema_type = schema.get("type")
     if schema_type is not None and schema_type not in _SCHEMA_ALLOWED_TYPES:
@@ -254,6 +289,141 @@ def validate_top_level_data(data: Any, schema: dict[str, Any]) -> None:
             f"data: top-level key '{_RESERVED_CONTEXT_KEY}' is reserved for the render context"
         )
     validate_data(data, schema, "data")
+
+
+# --- Escape-by-default ingest (ENH-3558) -----------------------------------
+#
+# ``render_template`` runs under ``autoescape=False`` and must stay byte-exact
+# (FEAT-3308 round trips), so escaping happens where untrusted strings ENTER a
+# data dict: ``build_dashboard_html`` and ``extract_data``. ``data.json`` then
+# holds artifact byte form.
+#
+# Allowlist (verbatim, unescaped) sources:
+#   * code-built dicts pass ``markup_keys`` explicitly (the dashboard documents
+#     its own ``DASHBOARD_MARKUP_KEYS`` next to its definition);
+#   * ``extract`` derives it from ``x-ll-trusted: true`` on string schema nodes.
+# Templatized markup-spanning regions render as escaped text on ``refresh``
+# (fail visible, never fail open) and templatized URL regions are uncovered
+# until ENH-3554 adds region-context tagging. ``ll-artifact render`` of a
+# hand-written ``data.json`` is trusted input and stays verbatim. LLM-written
+# HTML loops (``vega-viz``, ``rlhf-svg-generate``, ``html-anything``) and
+# ``artifact_mode: template`` promotion sit outside any Python render boundary.
+
+DataPath = tuple[str, ...]
+# Stands for "any array index" in a DataPath; array positions never yield key
+# segments, so it cannot collide with a JSON object key at the same position.
+ARRAY_ITEM = "[]"
+
+_TERMINATED_REF_RE = re.compile(r"&(?:#[0-9]+|#[xX][0-9a-fA-F]+|[A-Za-z][A-Za-z0-9]*);")
+_URL_ALLOWED_SCHEMES = {"http", "https", "mailto"}
+_URL_STRIP_RE = re.compile("[\x00-\x20\x7f]")
+
+
+def _escape_text(value: str) -> str:
+    """Idempotently HTML-escape *value*.
+
+    Decodes only ``;``-terminated character references first, so an already
+    escaped value is not double-escaped. Bare ``html.unescape`` is never used:
+    its legacy rules decode ``&not``/``&copy`` without a ``;``.
+    """
+    decoded = _TERMINATED_REF_RE.sub(lambda m: html.unescape(m.group(0)), value)
+    return html.escape(decoded, quote=True)
+
+
+def _check_url(value: str, path: DataPath) -> None:
+    """Raise ValueError if *value* carries a scheme outside the URL allowlist."""
+    decoded = html.unescape(value)
+    compact = _URL_STRIP_RE.sub("", decoded).lower()
+    if compact.startswith("#"):
+        return
+    scheme_end = re.search(r"[:/?#]", compact)
+    if scheme_end is None or compact[scheme_end.start()] != ":":
+        return  # relative reference, no scheme
+    scheme = compact[: scheme_end.start()]
+    if scheme not in _URL_ALLOWED_SCHEMES:
+        raise ValueError(f"{_format_path(path)}: URL scheme {scheme!r} is not allowed")
+
+
+def _format_path(path: DataPath) -> str:
+    return ".".join(path) if path else "<root>"
+
+
+def _as_paths(entries: frozenset[str | DataPath]) -> frozenset[DataPath]:
+    return frozenset((e,) if isinstance(e, str) else e for e in entries)
+
+
+def escape_data(
+    data: dict[str, Any],
+    markup_keys: frozenset[str | DataPath] = frozenset(),
+    url_keys: frozenset[str | DataPath] = frozenset(),
+) -> dict[str, Any]:
+    """Return a copy of *data* with every string leaf and string mapping key escaped.
+
+    Paths in *markup_keys* are stamped verbatim; paths in *url_keys* are checked
+    against the URL scheme rule first (``ValueError`` naming the path on a
+    disallowed scheme). A ``str`` entry is the one-segment path ``(name,)``;
+    array indices collapse to ``ARRAY_ITEM``. Never mutates *data*.
+    """
+    trusted = _as_paths(markup_keys)
+    urls = _as_paths(url_keys)
+
+    def walk(node: Any, path: DataPath) -> Any:
+        if isinstance(node, dict):
+            out: dict[Any, Any] = {}
+            for key, value in node.items():
+                if isinstance(key, str):
+                    child = (*path, key)
+                    new_key = key if child in trusted else _escape_text(key)
+                else:
+                    child, new_key = (*path, str(key)), key
+                out[new_key] = walk(value, child)
+            return out
+        if isinstance(node, list):
+            return [walk(item, (*path, ARRAY_ITEM)) for item in node]
+        if isinstance(node, str):
+            if path in urls:
+                _check_url(node, path)
+            return node if path in trusted else _escape_text(node)
+        return node
+
+    result: dict[str, Any] = walk(data, ())
+    return result
+
+
+def schema_annotation_paths(
+    schema: dict[str, Any],
+) -> tuple[frozenset[DataPath], frozenset[DataPath]]:
+    """Return ``(trusted_paths, url_paths)`` from ``x-ll-trusted`` / ``x-ll-context: url``."""
+    trusted: set[DataPath] = set()
+    urls: set[DataPath] = set()
+
+    def walk(node: dict[str, Any], path: DataPath) -> None:
+        if node.get("x-ll-trusted") is True:
+            trusted.add(path)
+        if node.get("x-ll-context") == "url":
+            urls.add(path)
+        for key, sub in (node.get("properties") or {}).items():
+            walk(sub, (*path, key))
+        items = node.get("items")
+        if isinstance(items, dict):
+            walk(items, (*path, ARRAY_ITEM))
+
+    walk(schema, ())
+    return frozenset(trusted), frozenset(urls)
+
+
+def strip_schema_annotations(schema: dict[str, Any]) -> dict[str, Any]:
+    """Return a deep copy of *schema* with every ``x-ll-*`` key removed at every depth."""
+
+    def strip(node: Any) -> Any:
+        if isinstance(node, dict):
+            return {k: strip(v) for k, v in node.items() if not str(k).startswith("x-ll-")}
+        if isinstance(node, list):
+            return [strip(v) for v in node]
+        return node
+
+    result: dict[str, Any] = strip(schema)
+    return result
 
 
 _SCRIPT_JSON_ESCAPES = {

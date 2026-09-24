@@ -15,7 +15,6 @@ from __future__ import annotations
 import argparse
 import base64
 import gzip
-import html
 import importlib.resources
 import tempfile
 from dataclasses import dataclass
@@ -27,6 +26,7 @@ from little_loops.artifact_templates import (
     ArtifactTemplate,
     DataValidationError,
     ManifestError,
+    escape_data,
     load_manifest,
     render_template,
     script_json,
@@ -48,6 +48,21 @@ if TYPE_CHECKING:
 # D17: a 30-day snapshot holds ~150k usage_events rows; rendering them all would
 # hang the tab. The page renders at most this many and states the true total.
 RENDER_ROW_CAP = 500
+
+# Dashboard data keys stamped verbatim by ``escape_data`` (ENH-3558); every other
+# string value is HTML-escaped. base64 blobs contain no markup characters; the
+# vendored JS keys are ``</script>``-checked at vendoring time; the ``*_url_js``
+# keys are already ``script_json``-encoded (ENH-3557).
+DASHBOARD_MARKUP_KEYS: frozenset[str] = frozenset(
+    {
+        "snapshot_gzip_b64",
+        "sql_wasm_b64",
+        "sql_wasm_js",
+        "serve_htmax_js",
+        "serve_interaction_url_js",
+        "serve_history_url_js",
+    }
+)
 
 _VENDOR_PARTS = ("assets", "vendor", "sql.js")
 
@@ -304,21 +319,20 @@ def build_dashboard_html(
 
     warning_text = schema_version_warning(source_version)
 
-    # D18: autoescape=False, so every stamped value is escaped here. These
-    # are all allowlisted or parsed already; escaping is the rule that has to
-    # survive the next flag someone adds, not a fix for a live defect.
+    # D18: autoescape=False, so string values are escaped once, below, by
+    # escape_data (everything except DASHBOARD_MARKUP_KEYS).
     data: dict[str, Any] = {
         "snapshot_gzip_b64": snapshot_b64,
         "sql_wasm_b64": wasm_b64,
         "sql_wasm_js": wasm_js,
         "exported_at": payload.exported_at,
-        "filter_tables": html.escape(", ".join(tables)),
-        "filter_since": html.escape(since_iso) if since_iso else "all history",
+        "filter_tables": ", ".join(tables),
+        "filter_since": since_iso if since_iso else "all history",
         "export_mode": mode,
         "allowlist_version": _SHAREABLE_ALLOWLIST_VERSION,
-        "source_schema_version": html.escape(str(source_version or "unknown")),
+        "source_schema_version": str(source_version or "unknown"),
         "installed_schema_version": SCHEMA_VERSION,
-        "schema_version_warning": html.escape(warning_text),
+        "schema_version_warning": warning_text,
         "row_cap": RENDER_ROW_CAP,
         "serve_enabled": serve_context is not None,
         # StrictUndefined (artifact_templates.py) requires this present even
@@ -333,7 +347,7 @@ def build_dashboard_html(
             encoding="utf-8"
         )
         data["serve_htmax_js"] = htmax_js
-        data["serve_events_url"] = html.escape(serve_context.events_url)
+        data["serve_events_url"] = serve_context.events_url
         # Embedded inside an inline <script> as a JS string literal, not an
         # HTML attribute — script_json gives correct JS-string quoting (and
         # </script>-safe escaping) rather than HTML-attribute escaping. script_json(None) == "null", which is
@@ -347,6 +361,12 @@ def build_dashboard_html(
         validate_top_level_data(data, manifest["data_schema"])
     except DataValidationError as exc:
         raise ValueError(str(exc)) from exc
+
+    # Validate-then-escape (same order as extract); a disallowed URL scheme
+    # propagates as ValueError.
+    data = escape_data(
+        data, markup_keys=DASHBOARD_MARKUP_KEYS, url_keys=frozenset({"serve_events_url"})
+    )
 
     try:
         rendered = render_template(template, data, config)
