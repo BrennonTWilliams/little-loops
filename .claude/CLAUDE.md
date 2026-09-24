@@ -119,27 +119,29 @@ the docs means `python -m pytest scripts/tests/` exits 0:
 python -m pytest scripts/tests/
 ```
 
-A **self-hosted GitHub Actions runner on Thinky** (cost-free, see
-`.github/workflows/ci.yml`) automates this on every push to `main`. It runs the
-unit suite (`-m "not integration and not conformance"`); integration and
-conformance tests stay local/manual for now. It is deliberately **not** triggered
-on `pull_request`: the repo is public and a self-hosted runner executes untrusted
-fork code, so PR runs would be a remote-code-execution surface on Thinky. If PR
-coverage is added later, it must gate on approval / trusted branches.
+The unit suite (`-m "not integration and not conformance"`) runs on every push
+to `main` on **GitHub-hosted** `ubuntu-latest` (GNU userland) and `macos-latest`
+(BSD userland) as an OS matrix with independent pass/fail signals (ENH-3539);
+host conformance runs only on the **self-hosted Thinky runner**
+(see `.github/workflows/ci.yml`). Integration tests stay local/manual for now.
+CI is deliberately **not** triggered on `pull_request`: the repo is public and a
+self-hosted runner executes untrusted fork code, so PR runs would be a
+remote-code-execution surface on Thinky. If PR coverage is added later, it must
+gate on approval / trusted branches.
 
 On **every CI run** (success, failure, or cancellation), each job uploads
 its pytest log + junit XML as a scoped artifact with 7-day retention.
-The **unit-tests** job uploads `pytest.log` / `pytest-junit.xml` as
-`pytest-unit-failures-*`; the **conformance** job uploads
+The **unit-tests** job (one artifact per OS leg) uploads `pytest.log` / `pytest-junit.xml` as
+`pytest-unit-failures-<os>-<run_id>-<run_attempt>`; the **conformance** job uploads
 `/tmp/conformance.log` / `pytest-conformance-junit.xml` as
-`pytest-conformance-failures-*`. Both artifact names include
+`pytest-conformance-failures-*`. Artifact names include
 `run_id + run_attempt` so retries don't clobber. These are the paper
 trail for every CI outcome — download from the Actions run page to
 triage a failure *or verify a clean green finish*. (Originally landed
 as `if: failure()` only; flipped to `if: always()` so the clean-finish
 signal stays downloadable after the BUG-3208 wedge fix.)
 
-Do not add **paid/hosted** CI. When an issue asks for a "CI-gated" check, satisfy
+Do not add **paid** CI (GitHub-hosted runners on this public repo are free). When an issue asks for a "CI-gated" check, satisfy
 it **inside this suite**, not with a workflow file:
 
 - Pure-Python gates are ordinary pytest tests / `ll-verify-*` CLIs invoked from a

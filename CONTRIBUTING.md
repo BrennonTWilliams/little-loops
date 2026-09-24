@@ -423,7 +423,26 @@ test(config): add tests for configuration merging
 - Keep PRs focused on a single concern
 - Include tests for new functionality
 - Update CHANGELOG.md for user-facing changes
-- Ensure the local test suite passes before requesting review — `python -m pytest scripts/tests/` **is** our CI (there is no hosted/paid CI; see the Testing & CI Policy in `.claude/CLAUDE.md`). Any "will fail CI" note elsewhere in these docs refers to this suite. Language-external gates (e.g. the Node `node:test` conformance suite) are wrapped as pytest tests so they run in the same command.
+- Ensure the local test suite passes before requesting review — `python -m pytest scripts/tests/` **is** our CI (there is no paid CI — unit tests also run on free GitHub-hosted Linux and macOS runners on push to `main`; see the Testing & CI Policy in `.claude/CLAUDE.md`). Any "will fail CI" note elsewhere in these docs refers to this suite. Language-external gates (e.g. the Node `node:test` conformance suite) are wrapped as pytest tests so they run in the same command.
+
+### Shell Portability (BSD vs GNU, bash 3.2)
+
+Shipped hooks and loop shell actions run on both macOS (BSD userland, `/bin/bash`
+3.2) and Linux (GNU). `scripts/tests/test_portability_gate.py` statically flags
+GNU-only (`date +%N`, `grep -P`, `\s` in `grep -E`, bare `sed -i`,
+`readlink -f`, unpaired `stat -c` / `date -d`), BSD-only (`sed -i ''`) and
+bash-4-only forms (`declare -A`, `mapfile`, `${x,,}`, `&>>`, `|&`, ...). Use the
+`hooks/scripts/lib/common.sh` helpers (`to_epoch`, `get_mtime`, `now_ms`), or
+`sed -i.bak ... && rm -f f.bak`. Suppress a justified line with
+`ll-portability-ok: <reason>` on the same or preceding line. bash 3.2
+compatibility is enforced statically plus the explicit `/bin/bash` runs in
+`test_record_hook_event_shim.py`; the rest of the hook suite runs under whichever
+`bash` is first on PATH.
+
+**Authoring hazard:** the Claude Code Bash tool aliases `grep` to `ugrep` (a shell
+function from its snapshot). Hooks and pytest subprocesses use `/usr/bin/grep`,
+so a pattern hand-tested through the Bash tool may behave differently when
+shipped.
 
 ### Documentation wiring for new CLI tools
 

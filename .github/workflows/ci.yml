@@ -4,12 +4,15 @@
 # `conformance` job runs on the self-hosted Thinky runner, which executes
 # whatever it checks out — a fork-PR trigger on that job would be a
 # remote-code-execution surface. Unit tests run on GitHub-hosted `ubuntu-latest`
-# (ephemeral, isolated), so they carry no self-hosted RCE surface. If PR
+# and `macos-latest` (ephemeral, isolated), so they carry no self-hosted RCE
+# surface. If PR
 # coverage is added later, gate it on approval / trusted-branch labels — never
 # on fork events for the self-hosted job.
 #
 # Architectural split (Buzz #ci-cd 2026-08-18):
-#   - unit-tests  -> ubuntu-latest. The Thinky runner cannot survive the
+#   - unit-tests  -> matrix of ubuntu-latest (GNU userland) + macos-latest (BSD
+#                   userland, ENH-3539; fail-fast off so each OS reports
+#                   independently). The Thinky runner cannot survive the
 #                   CPU-heavy unit-test surface (four+ distinct fixes tried:
 #                   auto-update, fixed-name, config-volume/reusage,
 #                   DISABLE_AUTO_UPDATE — each bought survival time, none solved
@@ -60,9 +63,13 @@ permissions:
 
 jobs:
   unit-tests:
-    name: Unit tests (ubuntu-latest)
-    runs-on: ubuntu-latest
+    name: Unit tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
     steps:
       - uses: actions/checkout@v4
         # BUG-3442: fetch-depth: 0 (full history) is required —
@@ -77,6 +84,29 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+
+      # Pin Node so LL_REQUIRE_NODE=1 does not depend on runner-image drift.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Report userland
+        run: |
+          bash --version | head -1
+          /bin/bash --version | head -1
+          command -v bash date grep sed
+          date --version 2>&1 | head -1 || echo "BSD date"
+          grep --version 2>&1 | head -1
+
+      - name: Assert BSD userland (macOS leg)
+        if: runner.os == 'macOS'
+        # A macOS leg running GNU tools off Homebrew would be pointless. BSD
+        # grep answers --version (exit 0), so match on its banner instead.
+        run: |
+          if date --version >/dev/null 2>&1; then echo "::error::date is GNU on the macOS leg"; exit 1; fi
+          if sed --version >/dev/null 2>&1; then echo "::error::sed is GNU on the macOS leg"; exit 1; fi
+          grep --version 2>&1 | grep -q BSD \
+            || { echo "::error::grep is not BSD grep on the macOS leg"; exit 1; }
 
       - name: Pin assertion (pytest-xdist < 3.8 — BUG-3208)
         # Fails fast on a future commit that drops the BUG-3208 pin, BEFORE
@@ -145,7 +175,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: pytest-unit-failures-${{ github.run_id }}-${{ github.run_attempt }}
+          name: pytest-unit-failures-${{ matrix.os }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             pytest.log
             pytest-junit.xml

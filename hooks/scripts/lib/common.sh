@@ -105,6 +105,7 @@ to_epoch() {
     fi
 
     # Try GNU date format (Linux)
+    # ll-portability-ok: GNU half of the BSD-first pair above
     epoch=$(date -d "$date" +%s 2>/dev/null)
     if [ $? -eq 0 ] && [ -n "$epoch" ]; then
         echo "$epoch"
@@ -148,6 +149,7 @@ get_mtime() {
     fi
 
     # Try GNU stat (Linux)
+    # ll-portability-ok: GNU half of the BSD-first pair above
     mtime=$(stat -c %Y "$file" 2>/dev/null)
     if [ $? -eq 0 ] && [ -n "$mtime" ]; then
         echo "$mtime"
@@ -159,23 +161,34 @@ get_mtime() {
     return 0
 }
 
-# Validate JSON content
-# Usage: validate_json "$json_string"
-# Returns: 0 if valid, 1 if invalid
-validate_json() {
-    local json="$1"
-
-    if command -v jq >/dev/null 2>&1; then
-        echo "$json" | jq empty 2>/dev/null
-        return $?
-    fi
-
-    # Fallback: basic check (not comprehensive)
-    if echo "$json" | grep -qE '^\s*[{\[].*[}\]]\s*$'; then
+# Current epoch milliseconds as an integer (pure shell, bash 3.2 safe)
+# Usage: now_ms
+# Order: $EPOCHREALTIME (bash 5) -> date +%s%N if all digits -> $(date +%s)000.
+# BSD date may print a literal "N" for %N (exit 0), hence the digit check.
+# Never spawns python3 (macOS xcode-select stub opens a GUI dialog).
+now_ms() {
+    if [ -n "${EPOCHREALTIME:-}" ]; then
+        local sec="${EPOCHREALTIME%%[.,]*}"
+        local frac="${EPOCHREALTIME#*[.,]}000"
+        echo "${sec}${frac:0:3}"
         return 0
     fi
 
-    return 1
+    local ns
+    # ll-portability-ok: output is digit-checked below (BSD may print literal N)
+    ns=$(date +%s%N 2>/dev/null || true)
+    case "$ns" in
+        ''|*[!0-9]*) ;;
+        *)
+            if [ "${#ns}" -gt 6 ]; then
+                echo "${ns%??????}"
+                return 0
+            fi
+            ;;
+    esac
+
+    echo "$(date +%s 2>/dev/null || echo 0)000"
+    return 0
 }
 
 # Resolve ll-config.json file path

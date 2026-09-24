@@ -20,7 +20,9 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import stat
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -28,6 +30,15 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SHIM = REPO_ROOT / "hooks/scripts/record-hook-event.sh"
 INVOKE_TIMEOUT = 10
+
+
+def _available_bashes() -> list[str]:
+    """Distinct bash interpreters: PATH ``bash`` plus darwin ``/bin/bash`` (3.2)."""
+    found = [shutil.which("bash") or "bash"]
+    if sys.platform == "darwin" and Path("/bin/bash").exists():
+        if Path("/bin/bash").resolve() != Path(found[0]).resolve():
+            found.append("/bin/bash")
+    return found
 
 
 def _run_shim(
@@ -105,3 +116,61 @@ class TestRecordHookEventShim:
             timeout=INVOKE_TIMEOUT,
         )
         assert result.returncode == 0
+
+
+@pytest.mark.parametrize("bash_bin", _available_bashes())
+class TestNowMsPortability:
+    """``%N`` on BSD ``date`` prints a literal ``N`` with exit 0 (ENH-3539)."""
+
+    def test_literal_n_date_does_not_break_shim(self, tmp_path: Path, bash_bin: str) -> None:
+        _write_config(tmp_path, analytics_enabled=True)
+        shim_dir = tmp_path / "shims"
+        shim_dir.mkdir()
+        real_date = shutil.which("date")
+        fake_date = shim_dir / "date"
+        fake_date.write_text(
+            "#!/bin/sh\n"
+            'case "$*" in\n'
+            '  *%N*) echo "$(' + str(real_date) + ' +%s)N"; exit 0;;\n'
+            "esac\n"
+            "exec " + str(real_date) + ' "$@"\n',
+            encoding="utf-8",
+        )
+        capture = tmp_path / "duration.txt"
+        fake_session = shim_dir / "ll-session"
+        fake_session.write_text(
+            "#!/bin/sh\n"
+            "while [ $# -gt 0 ]; do\n"
+            '  if [ "$1" = "--duration-ms" ]; then printf %s "$2" > "' + str(capture) + '"; fi\n'
+            "  shift\n"
+            "done\n",
+            encoding="utf-8",
+        )
+        for f in (fake_date, fake_session):
+            f.chmod(f.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+        env = dict(os.environ)
+        env["PATH"] = f"{shim_dir}{os.pathsep}{env['PATH']}"
+        result = subprocess.run(
+            [bash_bin, str(SHIM), "Stop", "hooks/scripts/session-cleanup.sh"],
+            input="{}",
+            capture_output=True,
+            text=True,
+            cwd=str(tmp_path),
+            env=env,
+            timeout=INVOKE_TIMEOUT,
+        )
+        assert result.returncode == 0
+        assert result.stderr == ""
+        assert capture.read_text(encoding="utf-8").isdigit()
+
+    def test_now_ms_is_all_digits(self, bash_bin: str) -> None:
+        common = REPO_ROOT / "hooks/scripts/lib/common.sh"
+        result = subprocess.run(
+            [bash_bin, "-c", f'source "{common}"; now_ms'],
+            capture_output=True,
+            text=True,
+            timeout=INVOKE_TIMEOUT,
+        )
+        assert result.returncode == 0
+        out = result.stdout.strip()
+        assert out.isdigit() and len(out) >= 13

@@ -40,13 +40,13 @@ if [ "$(jq -r '.analytics.capture.hooks == false' "$LL_CONFIG_FILE" 2>/dev/null)
     exit 0
 fi
 
-START_MS=$(($(date +%s%N 2>/dev/null || echo 0) / 1000000))
+START_MS=$(now_ms)
 INPUT=$(cat 2>/dev/null || echo "{}")
 SESSION_ID=""
 if command -v jq &> /dev/null; then
     SESSION_ID=$(echo "$INPUT" | jq -r '.session_id // empty' 2>/dev/null || echo "")
 fi
-END_MS=$(($(date +%s%N 2>/dev/null || echo 0) / 1000000))
+END_MS=$(now_ms)
 DURATION_MS=$((END_MS - START_MS))
 
 ARGS=(--event-name "$EVENT_NAME" --exit-code 0 --duration-ms "$DURATION_MS")

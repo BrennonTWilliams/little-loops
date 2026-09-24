@@ -3,15 +3,16 @@ id: ENH-3539
 title: Run the deterministic test layer on both macOS and Linux
 type: ENH
 priority: P1
-status: open
+status: done
 discovered_date: '2026-09-23'
 labels: []
-confidence_score: 95
+confidence_score: 100
 outcome_confidence: 68
 score_complexity: 14
 score_test_coverage: 18
 score_ambiguity: 18
 score_change_surface: 18
+completed_at: '2026-09-24T18:07:09Z'
 ---
 
 # Run the deterministic test layer on both macOS and Linux
@@ -310,11 +311,20 @@ Verdict: **VALID** — no corrections needed.
 - Confirmed: `ci.yml` has `unit-tests` on `ubuntu-latest` only, `conformance` `needs: [unit-tests]` (:163), artifact name without an OS discriminator (:148), `workflow_dispatch` (:47), no `pull_request`, no `setup-node`; stale "paid/hosted" text at `AGENTS.md:142`, `.claude/CLAUDE.md:142`, `CONTRIBUTING.md:426`.
 - `ll-verify-evidence`: clean (0 findings). Proposal-vs-code check (B6): no unsound consequences found; every Integration Map point has a matching AC. Decisions check: no conflicts.
 
+## Resolution
+
+**Implemented 2026-09-24.** `ci.yml` `unit-tests` is now an OS matrix (`ubuntu-latest`, `macos-latest`, `fail-fast: false`, Node 22, userland report + macOS BSD assertion, per-OS artifact names). Added `scripts/tests/test_portability_gate.py` (static BSD/GNU/bash-4 gate, `ll-portability-ok:` suppression). Added pure-shell `now_ms` to `lib/common.sh` and used it in `record-hook-event.sh`; deleted dead `validate_json()`; fixed `sed -i ''` in `cli-anything-bootstrap.yaml`. Extended `test_record_hook_event_shim.py` with a literal-`N` `date` shim test parametrized over PATH bash and `/bin/bash` (3.2). Updated CLAUDE.md, AGENTS.md, CONTRIBUTING.md (policy + portability section).
+
+**Not done locally:** the `workflow_dispatch` matrix run from a branch (AC 3) and macOS-leg duration measurement require GitHub; run `gh workflow run ci.yml --ref <branch>` before/after pushing. Full local suite: 25393 passed; 1 pre-existing unrelated failure (`test_no_new_unverifiable_evidence`, BUG-1688 quote).
+
 ## Status
 
 **Open** | Created: 2026-09-23 | Priority: P1
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-24T18:07:08 - `bb1eb081-85cd-48d3-92d1-ffd7b53652ce.jsonl`
+- `/ll:ready-issue` - 2026-09-24T17:59:35 - `4d79ad0e-1c9e-4936-b081-4554b45ec99a.jsonl`
+- `/ll:confidence-check` - 2026-09-24T17:57:52 - `215cd4b7-a015-4e0f-8d0a-2c0f5092b353.jsonl`
 - `/ll:verify-issues` - 2026-09-24T17:54:36 - `5250dd00-ed7b-4310-8dee-527fe13b2b07.jsonl`
 - `/ll:format-issue` - 2026-09-24T17:51:52 - `f302ede5-3bd4-4d4c-9d95-f837dfdf259d.jsonl`
 - Manual review (second pass) - 2026-09-24 - `validate_json()` is dead code, so delete it (drops the jq-shim AC); `%N` makes the hook exit 1 under bash 3.2; no `python3` fallback (macOS xcode-select stub), use a pure-shell `now_ms`; bash 3.2 is untested by either leg, so targeted `/bin/bash` parametrization; BSD-grep-aware userland check; branch `workflow_dispatch` rollout; stale ci.yml header, job name, and CLAUDE.md artifact text; gate prototype confirmed 6 hits over 180 files

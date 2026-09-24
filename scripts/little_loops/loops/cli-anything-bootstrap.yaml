@@ -211,7 +211,7 @@ states:
     action_type: shell
     action: |
       RUBRIC="${captured.run_dir.output}/rubric.yaml"  # ll-lint: mr11-ok(captured.run_dir.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
-      sed -i '' '/^```/d' "$RUBRIC"
+      sed -i.bak '/^```/d' "$RUBRIC" && rm -f "$RUBRIC.bak"
       python3 -c "
       import yaml
       d = yaml.safe_load(open('$RUBRIC'))
