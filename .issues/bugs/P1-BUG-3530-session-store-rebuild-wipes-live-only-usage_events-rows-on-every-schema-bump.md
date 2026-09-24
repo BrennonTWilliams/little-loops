@@ -10,7 +10,7 @@ captured_at: '2026-09-24T00:20:32Z'
 labels:
 - observability
 - history
-confidence_score: 95
+confidence_score: 90
 outcome_confidence: 59
 score_complexity: 14
 score_test_coverage: 25
@@ -111,12 +111,14 @@ Verdict: **VALID** (2026-09-23). `usage_events` is in `_REBUILD_TABLES` and is `
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-09-23_
+_Added by `/ll:confidence-check` on 2026-09-23 (re-scored 2026-09-23)_
 
-**Readiness Score**: 95/100 → PROCEED
+**Readiness Score**: 90/100 → PROCEED
 **Outcome Confidence**: 59/100 → LOW
 
 ### Concerns
+- Internal contradiction on the delete predicate: Acceptance Criteria say `rebuild()` deletes only `channel = 'transcript'`, but the Scope Boundary note (audit-issue-conflicts) requires deleting every replayable channel (incl. ENH-3532 Codex `rollout` rows). Reconcile the AC to "delete all replayable channels" and add the rollout-not-duplicated criterion.
+- The no-`sessionId` transcript-record policy is left as "skip or `'unknown'`" — pick one before implementing.
 - The Verification Notes' design hint (`DELETE ... WHERE run_id IS NULL`, no migration) is contradicted by code: `_backfill_usage_events` derives `run_id` for transcript rows via a timestamp-window join (`writers.py:_derive_run_id_for_ts`, ENH-2725), so backfilled rows can carry a `run_id`. That filter would leave stale transcript rows and cause duplicates on replay. Live rows may also have `state=None`, so `state IS NOT NULL` isn't a safe discriminator either.
 
 ### Outcome Risk Factors
@@ -125,6 +127,8 @@ _Added by `/ll:confidence-check` on 2026-09-23_
 - Moderate per-site complexity: rebuild semantics, idempotency across repeated rebuilds, duplicate-row risk.
 
 ## Session Log
+- `/ll:decide-issue` - 2026-09-24T01:27:18 - `34910629-d012-4bc0-9f28-9b313ee78c98.jsonl`
+- `/ll:confidence-check` - 2026-09-24T01:24:53 - `f2782d90-4a24-474c-afe0-ce24c17410f3.jsonl`
 - `/ll:refine-issue` - 2026-09-24T01:11:53 - `b8e8635a-fb67-47b8-a409-92a092610b22.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-09-24T01:05:29 - `af4614fc-00c0-4ee9-995a-e89a43f1523c.jsonl`
 - `/ll:confidence-check` - 2026-09-24T00:45:00 - `047cda0b-279f-4078-b31f-1d7b1fcc2181.jsonl`
