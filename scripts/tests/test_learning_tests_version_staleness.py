@@ -101,6 +101,43 @@ class TestResolveTargetVersion:
         ):
             assert resolve_target_version("definitely-not-installed") is None
 
+    def test_hyphen_slug_falls_back_to_longest_installed_prefix(self) -> None:
+        """BUG-3578: a slug target resolves via its longest installed hyphen prefix."""
+
+        def _version(name: str) -> str:
+            if name == "jinja2":
+                return "3.1.6"
+            raise importlib.metadata.PackageNotFoundError(name)
+
+        with patch(
+            "little_loops.init.install_check.importlib.metadata.version", side_effect=_version
+        ) as mock_version:
+            assert resolve_target_version("jinja2-byte-exact-round-trip") == ("jinja2", "3.1.6")
+        assert [c.args[0] for c in mock_version.call_args_list] == [
+            "jinja2-byte-exact-round-trip",
+            "jinja2-byte-exact-round",
+            "jinja2-byte-exact",
+            "jinja2-byte",
+            "jinja2",
+        ]
+
+    def test_hyphenated_distribution_name_wins_over_prefix(self) -> None:
+        """A full hyphenated distribution name is tried before any shorter prefix."""
+        with patch(
+            "little_loops.init.install_check.importlib.metadata.version", return_value="4.0.0"
+        ) as mock_version:
+            assert resolve_target_version("typing-extensions") == ("typing-extensions", "4.0.0")
+        mock_version.assert_called_once_with("typing-extensions")
+
+    def test_hyphen_fallback_stops_at_stdlib_prefix(self) -> None:
+        """AC-5 holds for the fallback: a stdlib prefix never binds to a squatted dist."""
+        with patch(
+            "little_loops.init.install_check.importlib.metadata.version",
+            side_effect=importlib.metadata.PackageNotFoundError("nope"),
+        ) as mock_version:
+            assert resolve_target_version("asyncio-cancellation-semantics") is None
+        assert "asyncio" not in [c.args[0] for c in mock_version.call_args_list]
+
     def test_empty_target_returns_none(self) -> None:
         assert resolve_target_version("") is None
         assert resolve_target_version("   ") is None
@@ -298,7 +335,7 @@ class TestProveStampsVersion:
         assert json.loads(capsys.readouterr().out)["proven_version"] == "2.31.0"
 
     def test_prove_leaves_unresolvable_target_untouched(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         from little_loops.cli.learning_tests import main_learning_tests
 
@@ -315,6 +352,36 @@ class TestProveStampsVersion:
         stored = read_record("asyncio", base_dir=base)
         assert stored is not None
         assert stored.proven_version is None
+        # BUG-3578: the skipped stamp is reported, not silent.
+        assert "no installed distribution" in capsys.readouterr().err
+
+    def test_prove_stamps_hyphen_slug_target(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """BUG-3578: a slug target is stamped with its leading installed distribution."""
+        from little_loops.cli.learning_tests import main_learning_tests
+
+        target = "jinja2-byte-exact-round-trip"
+        base = tmp_path / ".ll" / "learning-tests"
+        write_record(_record(target=target), base_dir=base)
+        monkeypatch.chdir(tmp_path)
+
+        def _version(name: str) -> str:
+            if name == "jinja2":
+                return "3.1.6"
+            raise importlib.metadata.PackageNotFoundError(name)
+
+        with (
+            patch("sys.argv", ["ll-learning-tests", "prove", target]),
+            patch("subprocess.run", return_value=Mock(returncode=0)),
+            patch("little_loops.init.install_check.importlib.metadata.version", _version),
+        ):
+            assert main_learning_tests() == 0
+
+        stored = read_record(target, base_dir=base)
+        assert stored is not None
+        assert (stored.proven_package, stored.proven_version) == ("jinja2", "3.1.6")
+        assert capsys.readouterr().err == ""
 
 
 class TestBackfillVersions:

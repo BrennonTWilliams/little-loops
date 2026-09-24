@@ -98,6 +98,14 @@ def cmd_prove(args: argparse.Namespace) -> int:
     _record_learning_test_mirror(args.target)
 
     print_json(record.to_dict())
+    if record.proven_version is None:
+        # Not a failure (stdlib/free-text targets are age-based by design), but
+        # never silent: callers were told prove stamps the version (BUG-3578).
+        print(
+            f"Note: no installed distribution matched {args.target!r}; "
+            "proven_package/proven_version not stamped — record uses age-based staleness only",
+            file=sys.stderr,
+        )
     if record.status != "proven":
         print(f"Error: {args.target!r} re-proven as {record.status}", file=sys.stderr)
         return 1

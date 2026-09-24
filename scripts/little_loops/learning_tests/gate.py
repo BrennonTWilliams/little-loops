@@ -59,6 +59,13 @@ def resolve_target_version(target: str) -> tuple[str, str] | None:
       ("Anthropic SDK streaming", "Python pathlib") rather than an installable
       identifier.
 
+    A hyphen-joined slug target ("jinja2-byte-exact-round-trip") has no
+    whitespace to split on, so when the whole first token is not installed the
+    resolver retries progressively shorter hyphen prefixes, longest first
+    (BUG-3578). Longest-first keeps a real hyphenated distribution name
+    ("typing-extensions") from being shadowed by its first segment, and the
+    stdlib guard applies to every candidate.
+
     Never raises: any unexpected ``importlib.metadata`` failure degrades to
     ``None`` so a resolver problem falls back to today's age-based staleness
     rather than breaking a gate.
@@ -69,19 +76,20 @@ def resolve_target_version(target: str) -> tuple[str, str] | None:
         parts = target.split() if target else []
         if not parts:
             return None
-        name = parts[0].lower()
-        if name.split(".")[0] in sys.stdlib_module_names:
-            return None
 
         from little_loops.init.install_check import installed_package_version
 
-        version = installed_package_version(name)
+        segments = parts[0].lower().split("-")
+        for end in range(len(segments), 0, -1):
+            name = "-".join(segments[:end])
+            if name.split(".")[0] in sys.stdlib_module_names:
+                return None
+            version = installed_package_version(name)
+            if version is not None:
+                return name, version
     except Exception:  # noqa: BLE001 — resolver failure must degrade, never propagate
         logger.debug("version resolution failed for target %r", target, exc_info=True)
-        return None
-    if version is None:
-        return None
-    return name, version
+    return None
 
 
 def _installed_version_for(record: LearnTestRecord, installed_version: str | None) -> str | None:
