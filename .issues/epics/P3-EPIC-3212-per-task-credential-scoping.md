@@ -3,7 +3,8 @@ id: EPIC-3212
 title: Per-Task Credential Scoping
 type: EPIC
 priority: P3
-status: open
+status: done
+completed_at: '2026-09-24T18:12:30Z'
 captured_at: "2026-08-16T16:53:55Z"
 discovered_date: 2026-08-16
 discovered_by: link-epics
@@ -63,9 +64,11 @@ A task (loop-YAML state or `ActionSpec`) declares the credential scopes it needs
 
 ## Status
 
-**Open** | Created: 2026-08-16 | Priority: P3
+**Done** | Created: 2026-08-16 | Priority: P3 | Completed: 2026-09-24
 
 2026-09-07: All five original children merged to `main` via the `epic/EPIC-3212` integration branch (57c0a3af1; `verify_before_merge: false`, so no automated gate ran). Post-merge `/code-review high` of the branch diff (db393717e..1927af68d) found three defects that break the epic-level acceptance criteria (`gh` isolation and the "every declaring dispatch leaves an audit row" guarantee are both missing on the `ActionSpec`/queue path). Filed as BUG-3400 and wired as a child; the epic stays open until it lands. An unrelated suite flake surfaced during verification (stale `.ll/events-*.sock` files) is tracked separately as BUG-3401.
+
+2026-09-24: Closed. The 2026-09-07 hold is satisfied — BUG-3400 (done 2026-09-08) restored `gh` isolation and the audit-row guarantee on the `ActionSpec`/queue path, and BUG-3402 (done 2026-09-08) closed the Keychain bypass. All six children are done: ENH-3203, ENH-3204, ENH-3205, ENH-3403, BUG-3400, BUG-3402.
 
 ## Review Notes (2026-09-04)
 
