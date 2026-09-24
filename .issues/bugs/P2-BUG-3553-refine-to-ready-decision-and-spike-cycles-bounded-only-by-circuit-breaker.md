@@ -1,13 +1,15 @@
 ---
 id: BUG-3553
-title: refine-to-ready-issue decision/spike re-score cycles are bounded only by the circuit breaker
+title: refine-to-ready-issue decision/spike re-score cycles are bounded only by the
+  circuit breaker
 type: BUG
 priority: P2
-status: open
+status: done
 discovered_date: '2026-09-24'
 labels:
 - loops
 - refine-to-ready-issue
+completed_at: '2026-09-24T18:33:38Z'
 ---
 
 # refine-to-ready-issue decision/spike re-score cycles are bounded only by the circuit breaker
@@ -80,3 +82,10 @@ Python changes. Mirrors the `check_reconcile_limit` counter shape.
 ## Status
 
 Open
+
+## Resolution
+
+Implemented directly in `scripts/little_loops/loops/refine-to-ready-issue.yaml`
+with routing and behavioral tests in `scripts/tests/test_builtin_loops.py`
+(`TestRefineToReadyIssueSubLoop`) and the `docs/guides/LOOPS_REFERENCE.md`
+refine-to-ready section updated. `ll-loop validate refine-to-ready-issue` is clean.

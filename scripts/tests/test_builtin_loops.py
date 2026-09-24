@@ -1641,9 +1641,9 @@ class TestRefineToReadyIssueSubLoop:
         assert evaluate.get("target") == 2, (
             f"check_hedge_attempts.evaluate.target should be 2, got {evaluate.get('target')!r}"
         )
-        assert state.get("on_yes") == "check_refine_limit", (
-            f"check_hedge_attempts.on_yes should be 'check_refine_limit' (pre-filter, not a "
-            f"private budget), got {state.get('on_yes')!r}"
+        assert state.get("on_yes") == "check_hedge_refine_limit", (
+            f"check_hedge_attempts.on_yes should be 'check_hedge_refine_limit' (pre-filter, "
+            f"not a private budget; BUG-3551), got {state.get('on_yes')!r}"
         )
         assert state.get("on_no") == "check_placeholders", (
             f"check_hedge_attempts.on_no should be 'check_placeholders' (ENH-3248), "
@@ -1740,8 +1740,9 @@ class TestRefineToReadyIssueSubLoop:
         assert state.get("on_yes") == "confidence_check", (
             f"check_design.on_yes should be 'confidence_check', got {state.get('on_yes')!r}"
         )
-        assert state.get("on_no") == "check_refine_limit", (
-            f"check_design.on_no should be 'check_refine_limit', got {state.get('on_no')!r}"
+        assert state.get("on_no") == "check_gate_refine_limit", (
+            f"check_design.on_no should be 'check_gate_refine_limit' (BUG-3551), "
+            f"got {state.get('on_no')!r}"
         )
         assert state.get("on_error") == "confidence_check", (
             f"check_design.on_error should be 'confidence_check' (fail-open), "
@@ -1821,8 +1822,9 @@ class TestRefineToReadyIssueSubLoop:
         assert state.get("on_yes") == "check_ac_automatable", (
             f"check_placeholders.on_yes should be 'check_ac_automatable', got {state.get('on_yes')!r}"
         )
-        assert state.get("on_no") == "check_refine_limit", (
-            f"check_placeholders.on_no should be 'check_refine_limit', got {state.get('on_no')!r}"
+        assert state.get("on_no") == "check_gate_refine_limit", (
+            f"check_placeholders.on_no should be 'check_gate_refine_limit' (BUG-3551), "
+            f"got {state.get('on_no')!r}"
         )
         assert state.get("on_error") == "check_ac_automatable", (
             f"check_placeholders.on_error should be 'check_ac_automatable' (fail-open), "
@@ -1874,17 +1876,172 @@ class TestRefineToReadyIssueSubLoop:
         assert state.get("on_yes") == "reconcile_issue", (
             f"check_reconcile_limit.on_yes should be 'reconcile_issue', got {state.get('on_yes')!r}"
         )
-        assert state.get("on_no") == "check_refine_limit", (
-            f"check_reconcile_limit.on_no should be 'check_refine_limit' (escalation is "
-            f"mandatory, never discretionary), got {state.get('on_no')!r}"
+        assert state.get("on_no") == "check_gate_refine_limit", (
+            f"check_reconcile_limit.on_no should be 'check_gate_refine_limit' (escalation is "
+            f"mandatory, never discretionary; BUG-3551), got {state.get('on_no')!r}"
         )
-        assert state.get("on_error") == "check_refine_limit", (
-            f"check_reconcile_limit.on_error should be 'check_refine_limit', "
+        assert state.get("on_error") == "check_gate_refine_limit", (
+            f"check_reconcile_limit.on_error should be 'check_gate_refine_limit', "
             f"got {state.get('on_error')!r}"
         )
         assert "${context.run_dir}/refine-to-ready-reconcile-attempts" in state.get("action", ""), (
             "check_reconcile_limit.action should target the run-scoped counter file"
         )
+
+    # --- BUG-3551: structure-gate budget exhaustion must not decompose ---
+
+    @staticmethod
+    def _run_counter_state(data: dict, name: str, run_dir: Path) -> str:
+        """Execute a counter state's bash `action` against `run_dir`; return stdout."""
+        action = data["states"][name]["action"]
+        script = action.replace("${context.run_dir}", str(run_dir))
+        assert "${" not in script, f"unsubstituted interpolation token remains: {script}"
+        result = subprocess.run(["bash", "-c", script], cwd=run_dir, capture_output=True, text=True)
+        assert result.returncode == 0, f"{name} failed: {result.stderr}"
+        return result.stdout.strip()
+
+    def test_refine_budget_counters_share_one_file(self, data: dict) -> None:
+        """All three refine-budget states increment the same counter, so the budget stays
+        shared (check_design Decision Rationale Option B); only exhaustion targets differ."""
+        for name in ("check_refine_limit", "check_gate_refine_limit", "check_hedge_refine_limit"):
+            state = data["states"].get(name, {})
+            assert state, f"State {name!r} not found (BUG-3551)"
+            assert "${context.run_dir}/refine-to-ready-refine-count" in state.get("action", ""), (
+                f"{name} must use the shared refine-to-ready-refine-count file"
+            )
+            evaluate = state.get("evaluate", {})
+            assert (evaluate.get("operator"), evaluate.get("target")) == ("lt", 2), (
+                f"{name} must gate at lt 2 like check_refine_limit, got {evaluate!r}"
+            )
+            assert state.get("on_yes") == "refine_followup", (
+                f"{name}.on_yes should be 'refine_followup', got {state.get('on_yes')!r}"
+            )
+
+    def test_refine_budget_exhaustion_targets(self, data: dict) -> None:
+        """Only the score-driven path decomposes; structure gates fail, hedges proceed."""
+        states = data["states"]
+        assert states["check_refine_limit"]["on_no"] == "breakdown_issue"
+        assert states["check_gate_refine_limit"]["on_no"] == "record_gate_unmet"
+        assert states["check_hedge_refine_limit"]["on_no"] == "check_placeholders"
+        assert states["check_hedge_refine_limit"]["on_error"] == "check_placeholders"
+        assert states["check_readiness"]["on_no"] == "check_refine_limit"
+
+    def test_no_structure_gate_routes_to_check_refine_limit(self, data: dict) -> None:
+        """check_refine_limit (whose exhaustion decomposes) is reachable only from the
+        score-driven check_readiness gate (BUG-3551)."""
+        sources = sorted(
+            name
+            for name, state in data["states"].items()
+            for key in ("on_yes", "on_no", "on_error", "next")
+            if state.get(key) == "check_refine_limit"
+        )
+        assert sources == ["check_readiness"], (
+            f"only check_readiness may route to check_refine_limit, got {sources}"
+        )
+
+    def test_gate_budget_shared_with_readiness_budget(self, data: dict, tmp_path: Path) -> None:
+        """A gate-forced refine spends the same budget check_refine_limit reads."""
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        assert self._run_counter_state(data, "check_gate_refine_limit", run_dir) == "1"
+        assert self._run_counter_state(data, "check_refine_limit", run_dir) == "2"
+
+    def test_record_gate_unmet_writes_class_and_fails(self, data: dict, tmp_path: Path) -> None:
+        """record_gate_unmet writes terminal class gate_unmet and exits via failed."""
+        state = data["states"].get("record_gate_unmet", {})
+        assert state.get("next") == "failed" and state.get("on_error") == "failed"
+        script = (
+            state["action"]
+            .replace("${context.run_dir}", str(tmp_path))
+            .replace("${captured.issue_id.output:shell}", "BUG-9701")
+        )
+        result = subprocess.run(["bash", "-c", script], capture_output=True, text=True)
+        assert result.returncode == 0, result.stderr
+        assert (tmp_path / "refine-terminal-class").read_text() == "gate_unmet"
+        assert "BUG-9701" in result.stdout
+
+    # --- BUG-3553: decision / spike cycles bounded in-loop ---
+
+    def test_check_decision_needed_routes_through_decide_attempts(self, data: dict) -> None:
+        states = data["states"]
+        assert states["check_decision_needed"]["on_yes"] == "check_decide_attempts"
+        state = states.get("check_decide_attempts", {})
+        assert state.get("on_yes") == "resolve_decision_pre_breakdown"
+        assert state.get("on_no") == "record_decision_unresolved"
+        assert state.get("on_error") == "record_decision_unresolved"
+        assert "${context.run_dir}/refine-to-ready-decide-attempts" in state.get("action", "")
+
+    def test_check_decide_attempts_allows_one_resolve_per_run(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+        evaluate = data["states"]["check_decide_attempts"]["evaluate"]
+        assert (evaluate["operator"], evaluate["target"]) == ("lt", 2)
+        assert self._run_counter_state(data, "check_decide_attempts", run_dir) == "1"
+        assert self._run_counter_state(data, "check_decide_attempts", run_dir) == "2"
+
+    def test_resolve_issue_resets_decide_and_spike_state(self, data: dict) -> None:
+        action = data["states"]["resolve_issue"]["action"]
+        assert "printf '0' > ${context.run_dir}/refine-to-ready-decide-attempts" in action
+        assert "rm -f ${context.run_dir}/refine-to-ready-spike-ran" in action
+
+    def test_check_spike_needed_is_one_shot_per_run(self, data: dict, tmp_path: Path) -> None:
+        """The run-dir marker makes the spike gate one-shot even when the skill never
+        stamps spike_attempted (BUG-3553)."""
+        action = data["states"]["check_spike_needed"]["action"]
+        bin_dir = tmp_path / "bin"
+        bin_dir.mkdir()
+        fake = bin_dir / "ll-issues"
+        fake.write_text('#!/bin/sh\necho \'{"spike_needed": "true", "spike_attempted": null}\'\n')
+        fake.chmod(0o755)
+        script = action.replace("${context.run_dir}", str(tmp_path)).replace(
+            "${captured.issue_id.output}", "BUG-9702"
+        )
+        env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"}
+        first = subprocess.run(["bash", "-c", script], env=env, capture_output=True, text=True)
+        assert first.returncode == 0, first.stderr
+        assert (tmp_path / "refine-to-ready-spike-ran").exists()
+        second = subprocess.run(["bash", "-c", script], env=env, capture_output=True, text=True)
+        assert second.returncode == 1, (
+            "a second spike_needed reading in the same run must not re-fire"
+        )
+
+    # --- BUG-3552: thresholds come from the seeded context only ---
+
+    def test_check_readiness_honors_context_over_config(self, data: dict, tmp_path: Path) -> None:
+        """Config readiness 85, context override 70, issue scored 75 -> passes (BUG-3552)."""
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text(
+            json.dumps({"commands": {"confidence_gate": {"readiness_threshold": 85}}})
+        )
+        bin_dir = tmp_path / "bin"
+        bin_dir.mkdir()
+        fake = bin_dir / "ll-issues"
+        fake.write_text('#!/bin/sh\necho \'{"confidence": 75, "outcome": 75}\'\n')
+        fake.chmod(0o755)
+        script = (
+            data["states"]["check_readiness"]["action"]
+            .replace("${context.run_dir}", str(tmp_path))
+            .replace("${captured.issue_id.output}", "BUG-9703")
+            .replace("${context.readiness_threshold:shell}", "70")
+        )
+        assert "${" not in script, script
+        env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"}
+        result = subprocess.run(
+            ["bash", "-c", script], cwd=tmp_path, env=env, capture_output=True, text=True
+        )
+        assert result.returncode == 0, (result.returncode, result.stderr)
+
+    def test_threshold_states_do_not_reread_config(self, data: dict) -> None:
+        """Re-reading ll-config.json inside the state would shadow a --context override
+        that seed_confidence_thresholds already ranked above config (BUG-3552)."""
+        for name in ("check_readiness", "check_outcome", "check_scores_from_file"):
+            action = data["states"][name]["action"]
+            assert "ll-config.json" not in action, f"{name} must not re-read ll-config.json"
+            assert "confidence_gate" not in action.replace("commands.confidence_gate", ""), (
+                f"{name} must take thresholds from ${{context.*}} only"
+            )
 
     def test_reconcile_issue_state_routing(self, data: dict) -> None:
         """reconcile_issue (ENH-3248) is a bare slash-command state — no rate-limit fragment,
@@ -2693,12 +2850,17 @@ class TestRefineToReadyIssueSubLoop:
     def test_check_decision_needed_on_yes_routes_to_resolve_decision_pre_breakdown(
         self, data: dict
     ) -> None:
-        """check_decision_needed.on_yes (decision_needed=true) must route to the
-        resolve-decision sub-loop call state, not exit via done (BUG-3065)."""
-        state = data["states"].get("check_decision_needed", {})
-        assert state.get("on_yes") == "resolve_decision_pre_breakdown", (
-            f"check_decision_needed.on_yes should be 'resolve_decision_pre_breakdown', "
-            f"got {state.get('on_yes')!r}"
+        """check_decision_needed.on_yes (decision_needed=true) must reach the
+        resolve-decision sub-loop call state, not exit via done (BUG-3065) — via
+        the check_decide_attempts one-shot guard (BUG-3553)."""
+        states = data["states"]
+        first = states.get("check_decision_needed", {}).get("on_yes")
+        assert first == "check_decide_attempts", (
+            f"check_decision_needed.on_yes should be 'check_decide_attempts', got {first!r}"
+        )
+        assert states[first].get("on_yes") == "resolve_decision_pre_breakdown", (
+            f"check_decide_attempts.on_yes should be 'resolve_decision_pre_breakdown', "
+            f"got {states[first].get('on_yes')!r}"
         )
 
     def test_three_decision_gates_no_longer_route_on_yes_to_done(self, data: dict) -> None:
@@ -2902,18 +3064,19 @@ class TestRefineToReadyIssueSubLoop:
             f"got {state.get('on_yes')!r}"
         )
 
-    def test_check_proposal_unsound_on_no_and_on_error_route_to_check_refine_limit(
+    def test_check_proposal_unsound_on_no_and_on_error_route_to_check_gate_refine_limit(
         self, data: dict
     ) -> None:
-        """check_proposal_unsound.on_no/.on_error must preserve today's behaviour
-        (route to check_refine_limit) for every other non-VALID verdict and for a
-        probe failure (fail-open, matching this file's convention)."""
+        """check_proposal_unsound.on_no/.on_error route every other non-VALID verdict
+        (and a probe failure, fail-open) to a refine via the structure-gate budget
+        state, whose exhaustion fails the run rather than decomposing it (BUG-3551)."""
         state = data["states"].get("check_proposal_unsound", {})
-        assert state.get("on_no") == "check_refine_limit", (
-            f"check_proposal_unsound.on_no should be 'check_refine_limit', got {state.get('on_no')!r}"
+        assert state.get("on_no") == "check_gate_refine_limit", (
+            f"check_proposal_unsound.on_no should be 'check_gate_refine_limit', "
+            f"got {state.get('on_no')!r}"
         )
-        assert state.get("on_error") == "check_refine_limit", (
-            f"check_proposal_unsound.on_error should be 'check_refine_limit', "
+        assert state.get("on_error") == "check_gate_refine_limit", (
+            f"check_proposal_unsound.on_error should be 'check_gate_refine_limit', "
             f"got {state.get('on_error')!r}"
         )
 

@@ -1,13 +1,15 @@
 ---
 id: BUG-3551
-title: refine-to-ready-issue decomposes issues when a structure gate exhausts the shared refine budget
+title: refine-to-ready-issue decomposes issues when a structure gate exhausts the
+  shared refine budget
 type: BUG
 priority: P2
-status: open
+status: done
 discovered_date: '2026-09-24'
 labels:
 - loops
 - refine-to-ready-issue
+completed_at: '2026-09-24T18:33:38Z'
 ---
 
 # refine-to-ready-issue decomposes issues when a structure gate exhausts the shared refine budget
@@ -81,3 +83,10 @@ Python changes. New states `check_gate_refine_limit`, `check_hedge_refine_limit`
 ## Status
 
 Open
+
+## Resolution
+
+Implemented directly in `scripts/little_loops/loops/refine-to-ready-issue.yaml`
+with routing and behavioral tests in `scripts/tests/test_builtin_loops.py`
+(`TestRefineToReadyIssueSubLoop`) and the `docs/guides/LOOPS_REFERENCE.md`
+refine-to-ready section updated. `ll-loop validate refine-to-ready-issue` is clean.

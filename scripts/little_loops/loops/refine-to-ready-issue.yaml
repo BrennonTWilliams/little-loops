@@ -18,24 +18,30 @@ category: issue-management
 #     check_evidence_unverified (ll-issues check-verify-verdict --evidence-unverified) → (on_yes) check_proposal_unsound (F3: advisory, not routed)
 #                                                                                       → (on_no)  check_proposal_unsound (ENH-3250)
 #     check_proposal_unsound (ll-issues check-verify-verdict --proposal-unsound) → (on_yes) check_reconcile_limit
-#                                                                                 → (on_no)  check_refine_limit
+#                                                                                 → (on_no)  check_gate_refine_limit
 #     check_hedges (ll-issues check-open-questions)          → (on_yes) check_placeholders
 #                                                            → (on_no)  check_hedge_attempts
-#     check_hedge_attempts (BUG-3170: one hedge-forced refine per run) → (on_yes, 1st) check_refine_limit
+#     check_hedge_attempts (BUG-3170: one hedge-forced refine per run) → (on_yes, 1st) check_hedge_refine_limit
 #                                                                       → (on_no, 2nd)  check_placeholders
 #     check_placeholders (ENH-3248: template_placeholders class, count via
 #     --format json; no counter, no normalize_structure loopback)      → (on_yes) check_ac_automatable
-#                                                                       → (on_no)  check_refine_limit
+#                                                                       → (on_no)  check_gate_refine_limit
 #     check_ac_automatable (ll-issues check-acceptance-criteria)  → (on_yes) check_design (BUG-3249)
 #                                                                  → (on_no)  check_reconcile_limit (ENH-3248; was check_refine_limit)
 #     check_design (BUG-3249: ll-issues check-design)              → (on_yes) confidence_check
-#                                                                    → (on_no)  check_refine_limit
+#                                                                    → (on_no)  check_gate_refine_limit
 #     check_reconcile_limit (ENH-3248: 1 reconcile attempt/run)   → (on_yes, 1st) reconcile_issue → normalize_structure
-#                                                                  → (on_no, 2nd)  check_refine_limit
+#                                                                  → (on_no, 2nd)  check_gate_refine_limit
+#   BUG-3551: three counter states share one refine budget (refine-to-ready-refine-count,
+#   one refine_followup per run) and differ only in where exhaustion goes:
+#     check_refine_limit      (from check_readiness: low score)  → exhausted: breakdown_issue
+#     check_gate_refine_limit (from the structure gates)         → exhausted: record_gate_unmet → failed
+#     check_hedge_refine_limit (from check_hedge_attempts)       → exhausted: check_placeholders
 #   confidence_check (oracle: verify-confidence-scores) → (on_success) check_readiness → (on_yes) check_outcome → (on_yes) done
 #                                                       → (on_failure) diagnose
 #                      check_readiness         → (on_no)  check_refine_limit → refine_followup (additive --gap-analysis)
-#                      check_outcome           → (on_no)  check_decision_needed → (on_yes) resolve_decision_pre_breakdown
+#                      check_outcome           → (on_no)  check_decision_needed → (on_yes) check_decide_attempts (BUG-3553: 1/run)
+#                                                                                   → resolve_decision_pre_breakdown | 2nd: record_decision_unresolved
 #                                                                               → (on_no)  check_spike_needed (ENH-3250)
 #                      check_spike_needed (spike_needed AND NOT spike_attempted, autodev.yaml's
 #                      two-field one-shot guard) → (on_yes) run_spike → confidence_check
@@ -68,8 +74,8 @@ scope:
 # ~6 more steps than the ENH-3031 budget accounted for (### Three gates need
 # three call states). Post-BUG-3278 the sub-loop's done terminal no longer
 # guarantees decision_needed: false (a legitimate residual lower-tier group
-# can survive), so this cycle is bounded by circuit.recurrent_window below,
-# not by the oracle's terminal.
+# can survive), so this cycle is bounded by check_decide_attempts (BUG-3553;
+# was circuit.recurrent_window), not by the oracle's terminal.
 # ENH-3248: 40 -> 55. Three new states: normalize_structure adds 1 step per
 # refine/wire pass on the happy path (≤3 passes = 3); check_placeholders adds
 # 1 per gate-band pass (≤3 = 3); a reconcile_issue cycle costs ~6
@@ -126,11 +132,10 @@ import:
 #   ENH-2245): the effective guard. Sized 6 = hottest legitimate recurrence
 #   (~4: a gate-band `(0, yes)` triple recurs once per band pass — initial +
 #   refine_followup + reconcile + mid-wire-decision resume) + 2 margin. It
-#   bounds the real spin shapes: the post-BUG-3278 residual-decision cycle
-#   (oracles/resolve-decision can reach `done` with decision_needed
-#   legitimately still set, so check_decision_needed re-fires once per
-#   ~5-step lap → fires near lap 6 ≈ 30 steps) and a spike that never writes
-#   spike_attempted.
+#   is now a backstop only: the two spin shapes it used to bound (the
+#   post-BUG-3278 residual-decision cycle and a spike that never writes
+#   spike_attempted) are bounded in-loop by check_decide_attempts and the
+#   refine-to-ready-spike-ran marker (BUG-3553).
 circuit:
   repeated_failure:
     window: 3
@@ -147,6 +152,8 @@ states:
       printf '0' > ${context.run_dir}/refine-broke-down &&
       printf '0' > ${context.run_dir}/refine-to-ready-hedge-attempts &&
       printf '0' > ${context.run_dir}/refine-to-ready-reconcile-attempts &&
+      printf '0' > ${context.run_dir}/refine-to-ready-decide-attempts &&
+      rm -f ${context.run_dir}/refine-to-ready-spike-ran &&
       { [ -n ${context.input:shell} ] && printf '%s' ${context.input:shell} ||
       ll-issues next-issue; } | tr -d '\n\r '
     action_type: shell
@@ -680,12 +687,37 @@ states:
     # Resolve it inline via the resolve-decision sub-loop and re-enter
     # confidence_check to re-score against the resolved decision (BUG-3065;
     # was: exit via done and dead-end). on_no falls through to
-    # check_missing_artifacts before breakdown_issue.
+    # check_missing_artifacts before breakdown_issue. BUG-3553: on_yes goes
+    # through check_decide_attempts, which bounds the re-score cycle.
     action: "ll-issues check-flag ${captured.issue_id.output:shell} decision_needed"
     fragment: shell_exit
-    on_yes: resolve_decision_pre_breakdown
+    on_yes: check_decide_attempts
     on_no: check_spike_needed
     on_error: check_spike_needed
+
+  check_decide_attempts:
+    # BUG-3553: one pre-breakdown resolve attempt per run, matching autodev's
+    # write-once autodev-decide-ran marker. Post-BUG-3278 oracles/resolve-decision
+    # can reach `done` with decision_needed legitimately still set (a residual
+    # lower-tier group is a defined human-review exit), so the flag alone never
+    # broke the check_decision_needed -> resolve -> confidence_check cycle; only
+    # circuit.recurrent_window did, ~6 oracle + sub-loop runs later, and then
+    # via diagnose -> classify_terminal as `quality`. A second decision_needed
+    # reading now defers the issue for human review with its real class.
+    action: |
+      FILE="${context.run_dir}/refine-to-ready-decide-attempts"
+      N=$(cat "$FILE" 2>/dev/null || echo 0)
+      N=$((N + 1))
+      printf '%s' "$N" > "$FILE"
+      echo "$N"
+    action_type: shell
+    evaluate:
+      type: output_numeric
+      operator: lt
+      target: 2
+    on_yes: resolve_decision_pre_breakdown
+    on_no: record_decision_unresolved
+    on_error: record_decision_unresolved
 
   check_spike_needed:
     # ENH-3250 (B3): mirrors autodev.yaml's check_spike_needed predicate
@@ -699,11 +731,17 @@ states:
     # idiom over `show --json` rather than a literal check-flag invocation. The
     # spike_attempted guard makes this one-shot: a completed-or-attempted spike
     # never re-fires this gate on a later pass.
+    # BUG-3553: spike_attempted is stamped by the /ll:spike skill, so a spike
+    # that errors or never stamps it would re-fire until the circuit tripped.
+    # The run-dir marker (reset in resolve_issue, written here on the yes
+    # branch) makes the gate one-shot per run regardless of the skill.
     action: |
+      [ ! -f ${context.run_dir}/refine-to-ready-spike-ran ] || exit 1
       ll-issues show ${captured.issue_id.output} --json | python3 -c "  # ll-lint: mr11-ok(captured.issue_id.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       import json, sys
       d = json.load(sys.stdin)
-      sys.exit(0 if (d.get('spike_needed') == 'true' and d.get('spike_attempted') != 'true') else 1)"
+      sys.exit(0 if (d.get('spike_needed') == 'true' and d.get('spike_attempted') != 'true') else 1)" || exit 1
+      printf '1' > ${context.run_dir}/refine-to-ready-spike-ran
     fragment: shell_exit
     on_yes: run_spike
     on_no: check_missing_artifacts
@@ -736,10 +774,9 @@ states:
     # autodev's run_decide -> rerun_confidence_after_decide ordering). The
     # resulting confidence_check -> check_readiness -> check_outcome ->
     # check_decision_needed -> resolve_decision_pre_breakdown -> confidence_check
-    # cycle is bounded by circuit.recurrent_window: post-BUG-3278 the
+    # cycle is bounded by check_decide_attempts (BUG-3553): post-BUG-3278 the
     # sub-loop's done terminal can legitimately leave decision_needed set
-    # (a residual lower-tier group), so the flag alone no longer breaks the
-    # cycle.
+    # (a residual lower-tier group), so the flag alone does not break it.
     loop: oracles/resolve-decision
     with:
       issue_id: "${captured.issue_id.output}"
@@ -1147,8 +1184,8 @@ states:
     # on_max_steps fall-through (one execution at the step cap; `next: failed`
     # does not run on that path). The other routes to `failed`
     # (record_decision_unresolved, write_broke_down.on_error,
-    # mark_rate_limit_infra) bypass this state — the first two by design write
-    # no class, the third writes its own. Never runs on the done path.
+    # mark_rate_limit_infra, record_gate_unmet) bypass this state —
+    # write_broke_down.on_error writes no class, the others write their own. Never runs on the done path.
     # Classifies THIS run's failure as `infra` when the failing state
     # was killed externally (exit 143/137/124 = SIGTERM/OOM/timeout, or a
     # negative signal code) — a re-runnable transient — else `quality` (a genuine
