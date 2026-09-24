@@ -164,6 +164,7 @@ Remaining: BUG-3564 has no `blocks: [BUG-3579]` backlink (it lists BUG-3579 unde
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-24T23:44:29 - `01d913d6-09f5-4671-9f2f-afb2a136b503.jsonl`
 - `/ll:verify-issues` - 2026-09-24T23:39:13 - `ce8bec5b-7632-4ff9-a3da-7cdd35c70217.jsonl`
 - `/ll:verify-issues` - 2026-09-24T22:56:17 - `4279401a-9acc-474c-b872-fd398cd78a8e.jsonl`
 - `/ll:confidence-check` - 2026-09-24T22:35:17 - `193eb57f-e9f6-4072-bd61-43000a1d97b1.jsonl`
