@@ -36,20 +36,26 @@ depends_on:
 
 ## Current Behavior
 
-- `scripts/little_loops/host_runner.py` `CodexRunner.build_streaming` builds `codex exec [resume --last] <sandbox> --json --skip-git-repo-check [-C dir] <prompt>` and drops `model`.
+- `scripts/little_loops/host_runner.py` `CodexRunner.build_streaming` drops `model` on both fresh and resume paths. BUG-3536 is done: resume now places parent `--sandbox` and `-C` options before `resume --last`.
 - `CodexRunner.build_blocking_json` appends `--model <model>` when supplied.
-- Result: loop `prompt` states on Codex ignore `state.model` and run `--model` with no warning (`slash_command` states never forward a model on any host, so they are out of scope); evaluators (blocking path) honor it. The drop was introduced with the original per-state model override (fc2fb7676) and was never re-verified against the CLI.
+- Result: loop states dispatched in prompt mode on Codex ignore `state.model` and run `--model` with no warning; the blocking builder honors it. `FSMExecutor._action_mode` maps both explicit `prompt` and `slash_command` states, plus inferred slash-prefixed actions, to prompt mode, so all are affected. The drop was introduced with the original per-state model override (fc2fb7676).
 
 ## Expected Behavior
 
-`build_streaming` forwards a supplied `model` as `--model <model>` for both fresh and `resume --last` invocations, exactly as `build_blocking_json` does. `model=None` leaves argv unchanged. On the resume path, `--model` goes after `resume` (the `codex exec resume` subparser accepts `-m, --model`).
+`build_streaming` forwards a non-empty `model` as `--model <model>` for both fresh and `resume --last` invocations, exactly as `build_blocking_json` does. `model=None` or `model=""` leaves argv unchanged relative to the post-BUG-3536 baseline. On the resume path, `--model` goes after `resume` (the `codex exec resume` subparser accepts `-m, --model`).
+
+## Proposed Solution
+
+Remove `del model` and its stale comment from `CodexRunner.build_streaming`. After emitting the common streaming flags, append `["--model", model]` when `model` is truthy, before the final prompt argument. Preserve BUG-3536's parent-option placement, environment construction, persona injection, and sandbox selection. Forward the model string unchanged; model-hint resolution belongs to ENH-3527.
 
 ## Integration Map
 
 - `scripts/little_loops/host_runner.py` — `CodexRunner.build_streaming`.
-- `scripts/little_loops/fsm/executor.py` — resolves `state.model or self.run_model` for `prompt` actions only (`slash_command` passes `model=None` for every host); `fsm/runners.py` forwards it to `run_claude_command` → `build_streaming`. Dispatch tests must use a `prompt` state.
-- Tests: `scripts/tests/test_host_runner.py` (builder argv); FSM/subprocess tests — `test_fsm_runners.py` / `test_subprocess_utils.py` (dispatch regression, with the host resolved to Codex). **Not** `test_host_runner_dispatch.py`: it covers `dispatch_anthropic_request` / `dispatch_batch_request` (Anthropic SDK and batch dispatch) and has no Codex coverage.
-- Related: BUG-3536 — the same resume argv places `-C` and `--sandbox` after `resume`, which the installed parser rejects. Coordinate argv placement; the parser-level test there must cover `--model` too.
+- `scripts/little_loops/fsm/executor.py` — `_action_mode` normalizes `prompt`, `slash_command`, and inferred slash-prefixed actions to prompt mode; `_run_action` then resolves `state.model or self.run_model`. `ActionRunner.run` in `fsm/runners.py` forwards it to `subprocess_utils.run_claude_command` → `build_streaming`. No production changes are needed in these callers.
+- Tests: `scripts/tests/test_host_runner.py` (builder argv); `scripts/tests/test_ll_loop_execution.py` already contains `test_state_model_overrides_run_model` and `test_run_model_used_as_fallback_for_host_action`, but these stop at a capturing action runner. Extend coverage through the real `ActionRunner` and Codex builder to mocked `Popen`. `scripts/tests/test_fsm_runners.py` and `scripts/tests/test_subprocess_utils.py` provide forwarding/spawn mock patterns. Explicitly override the subprocess suite's autouse `_patch_resolve_host` fixture, which selects Claude. **Not** `test_host_runner_dispatch.py`: it tests Anthropic SDK/batch dispatch.
+- Related prerequisite: BUG-3536 is `done` and landed on `main` in commit `9b16bb1c5`. Its builder matrix and subprocess resume test exist, but its Resolution explicitly says the parser test was omitted. This issue owns model-bearing parser coverage; do not assume that coverage already exists.
+- Parser test location: `scripts/tests/conformance/test_host_conformance.py`, using the existing `live_conformance` fixture with `@pytest.mark.conformance` and `LL_HOST_CONFORMANCE_LIVE=1`. Ordinary unit tests prohibit real host CLI spawns. Keep unconditional argv tests in `test_host_runner.py`; do not weaken the suite-wide spawn guard.
+- Documentation/configuration: no public interface or configuration changes required.
 
 ## Impact
 
@@ -60,9 +66,9 @@ depends_on:
 
 ## Acceptance Criteria
 
-- [ ] `CodexRunner.build_streaming(model="X")` argv contains `--model X` for fresh and resume invocations; `model=None` argv is byte-identical to today.
-- [ ] Dispatch-level tests in the FSM/subprocess suites (Codex host), asserting on the spawned argv: (a) state `model:` set and run `--model` set → the state model wins; (b) only run `--model` set → it is forwarded; (c) neither set → no `--model` in argv (host default retained).
-- [ ] Resume argv with `model` is accepted by the `codex exec resume` grammar (covered by BUG-3536's parser-level test; `--model` present alone is not sufficient evidence).
+- [ ] `CodexRunner.build_streaming(model="X")` emits exactly one `--model X` pair before the final unchanged prompt for fresh and resume invocations, and after `resume` when present. Cover the existing directory/sandbox matrix with a model supplied; parent `-C`/`--sandbox` placement remains correct. `model=None` and `model=""` preserve the post-BUG-3536 argv and invocation environment.
+- [ ] Dispatch-level tests use the real executor → action runner → subprocess helper → Codex builder and mock only process launch/stream plumbing, asserting on spawned argv: (a) state and run models set → state wins; (b) only state model set → forwarded; (c) only run model set → forwarded; (d) neither set → no `--model` (host default retained even if `fsm.llm.model` is populated). Exercise explicit `prompt`, explicit `slash_command`, and inferred slash-prefixed actions. Force Codex host selection; a capturing action runner alone is insufficient.
+- [ ] Add a focused opt-in conformance parser test for complete generated fresh/resume argv with a supplied model, including a directory containing spaces and explicit sandbox mode. Invoke `HostInvocation.binary` + `.args` + trailing `--help`, capture output, bound the timeout, and report the CLI version on failure. Use `live_conformance`; skip when opt-in is disabled or the CLI is absent. This proves parser acceptance without launching a model session, not successful model availability or session selection. BUG-3536 did not add this test.
 - [ ] Remove the stale `# codex does not support --model in streaming mode` comment. No runtime capability change is required: `HostCapabilities` / `RuntimeHostEntry` have no model-support field, and `HOST_COMPATIBILITY.md` does not list per-state model as unsupported for Codex streaming (checked 2026-09-23). If a model-support flag is wanted, that is ENH-3527's scope.
 
 ## Program Design
@@ -73,16 +79,18 @@ depends_on:
 
 ### Signatures
 
-- `CodexRunner.build_streaming(self, *, prompt: str, resume: bool = False, model: str | None = None) -> HostInvocation` — (other keyword parameters unchanged) appends `--model <model>` after the sandbox args when `model` is set, for both fresh and `resume --last` argv.
+- `CodexRunner.build_streaming(self, *, prompt: str, resume: bool = False, model: str | None = None) -> HostInvocation` — (other keyword parameters unchanged) appends `--model <model>` among the common streaming options when `model` is truthy, after `resume` when present and before the prompt.
 
 ### Call Path
 
-- `FSMExecutor` → `CodexRunner.build_streaming` → `HostInvocation`
+- `FSMExecutor._action_mode` → `FSMExecutor._run_action` → `ActionRunner.run` → `subprocess_utils.run_claude_command` → `resolve_host().build_streaming` (`CodexRunner`) → `HostInvocation` → `subprocess.Popen`
 - Parity reference: `CodexRunner.build_blocking_json` already forwards `--model`.
 
 ## Verification Notes
 
-Verdict: **VALID** (2026-09-23). `CodexRunner.build_streaming` still does `del model` (`host_runner.py:1198`); repro argv lacks `--model`; `build_blocking_json` forwards it (`:1272`). Installed `codex exec` and `codex exec resume` both list `-m, --model`. Resume argv is built at `:1224`. Proposal is additive and sound. `ll-verify-evidence` clean.
+Reviewed on `main` at `9b16bb1c5` in the little-loops repository (2026-09-23 local date), with installed `codex-cli 0.152.1`. `CodexRunner.build_streaming` still discards `model`; fresh and resume builder repros omit the flag, while `build_blocking_json` includes it. BUG-3536 is done, so the structured dependency is satisfied.
+
+Manually inserted the proposed `--model test-model` pair before the prompt in generated argv and appended `--help`: all 20 combinations of fresh/resume × five sandbox settings × absent/spaced working directory exited 0. No model session was launched, and this is parser evidence only. Corrected the previous false exclusion of `slash_command` states using `FSMExecutor._action_mode`, and replaced reliance on a nonexistent BUG-3536 parser test with an explicit conformance test plan. No active required decision rules were found.
 
 ## Status
 
@@ -100,6 +108,7 @@ _Added by `/ll:confidence-check` on 2026-09-23_
 - `build_streaming` has ~13 call sites; existing argv-equality tests for Codex must keep passing with `model=None`.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-09-24T02:24:53 - `81ea4c5e-a825-4566-9e56-fd0ad97eab82.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-09-24T01:05:29 - `af4614fc-00c0-4ee9-995a-e89a43f1523c.jsonl`
 - `/ll:confidence-check` - 2026-09-24T00:44:59 - `047cda0b-279f-4078-b31f-1d7b1fcc2181.jsonl`
 - `/ll:verify-issues` - 2026-09-24T00:37:52 - `97f40d76-766f-412a-a4ef-794728276e4c.jsonl`
