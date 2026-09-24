@@ -15,6 +15,12 @@ blocks:
 - BUG-3531
 - ENH-3528
 - ENH-3532
+confidence_score: 95
+outcome_confidence: 55
+score_complexity: 5
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 0
 ---
 
 # ENH-3538: Token observation foundation: nullable usage components and per-observation provenance storage
@@ -47,8 +53,11 @@ See **Design** below.
 
 ### Files to Modify
 
-- `scripts/little_loops/subprocess_utils.py` — `TokenUsage`, `usage_from_event`, callbacks.
-- `scripts/little_loops/fsm/runners.py`, `fsm/executor.py` — attach host/observation time at collection; completeness-aware payload sums; `_finish` persistence.
+- `scripts/little_loops/subprocess_utils.py` — `TokenUsage`, `usage_from_event`, callbacks. `run_claude_command` is the **host/observation-time stamping site**: it resolves the host at `runner = resolve_host()` (~line 610) and parses usage at the `result` (~706) and `turn.completed` (~730) branches. Stamp there before either callback fires (see Design → Host stamping precedence).
+- `scripts/little_loops/fsm/runners.py`, `fsm/executor.py` — completeness-aware payload sums; `_finish` persistence. `fsm/runners.py` never sees the `HostRunner`, so it forwards the already-stamped `TokenUsage` unchanged. `_run_baseline_arm` (~3790) also calls `run_claude_command` directly and gets stamping there. `_dispatch_live` (sdk/batch, ~2567) reaches `host_runner._usage_from_response`, which stamps its own host.
+- `scripts/little_loops/fsm/executor.py` `_execute_with_baseline` (~3675–3710) — the A/B `harness_tokens`/`baseline_tokens` totals come from the legacy `UsageCallback`; see Design → Legacy-callback consumers.
+- `scripts/little_loops/issue_manager.py` (`_tracking_usage` ~343, `_on_usage_writer` ~799) and `scripts/little_loops/parallel/worker_pool.py` (`_usage_tracker` ~1079) — these legacy `UsageCallback` consumers feed the context-limit handoff guard (`_last_input`/`_last_output`, used at `issue_manager.py:463`/`:492` and `worker_pool.py:1173`/`:1197`) and `result_token_count`; see Design → Legacy-callback consumers.
+- `scripts/little_loops/fake_host.py` (~256–276) — every usage key is emitted with `int(d.args.get(..., 0))`, so it cannot produce an omitted or `null` component. Add a way to omit a key or send an explicit `null` so the partial-event fixtures (Implementation Step 1) can run end to end.
 - `scripts/little_loops/session_store/{schema,writers,queries}.py`, `schema_manifest.json` — migration, writer, metadata-aware iterator, `_backfill_usage_events`.
 - `scripts/little_loops/pricing.py` — `None`-aware cost.
 - `scripts/little_loops/fsm/persistence.py` — `usage.jsonl` writer (`action_complete` → per-state usage row, line ~1100); carries `None` components and the `*_missing` counts through.
@@ -61,13 +70,14 @@ See **Design** below.
 - `fsm/cost_graph.py`, `observability/tracing.py`, `issue_history/{agent_quality,quality_regressions,workspace_quality}.py`, `cli/ctx_stats.py`, `hooks/session_start.py` — `None` audit / rebuild path.
 - `observability/tracing.py` `_read_token`, `OTelAttributes.from_usage`, `StampUsageEvent.usage_event`, `StreamingParityChecker.diff` / `within_threshold` — omit unknown or partial OTel components; a nullable helper must not cause `float(None)` in the parity checker or certify two unknowns as equal.
 - `history_reader/usage.py` (`cost_attribution`, `aggregate_usage`, other usage rollups) — SQL `SUM` ignores NULL contributors, so removing `or 0` is insufficient. Track component/cost completeness before exposing totals or OTel attributes. Audit `history_reader/events.py` and other dependent readers for the same null-to-zero behavior.
-- `runner_spec.py` (lines ~276, ~459) via `usage_from_stream_lines` — `RunnerResult` token fields are already `int | None`; verify pass-through only.
+- `runner_spec.py` (lines ~276, ~459) via `usage_from_stream_lines` — `RunnerResult` token fields are already `int | None`; verify pass-through only. This path has no `HostRunner` in hand, so it leaves `host=None`, `scope_kind='unknown'`, `observed_at=None`.
+- `cli/harness.py`, `history_reader/harness.py`, `history_reader/models.py` — token fields are already `int | None`; audit only for `or 0` / `SUM` totals that hide missing values.
 - `host_runner.py` `_usage_from_response` (~3100) — Anthropic API / batch path; keeps `provenance='unknown'` in this issue, sets `host`/`scope_kind='request'`.
 
 ### Tests
 
 - `test_subprocess_utils.py`, `test_fsm_runners.py`, `test_fsm_executor.py`, `test_session_store_schema.py`, `test_session_store_writers.py`, `test_assistant_messages.py`, `test_pricing.py`.
-- Also: `fsm/persistence.py` `usage.jsonl` tests, `test_fsm_cost_graph.py` (JSON write/read and rendering round trips), `test_generate_schemas.py`, `test_otel_attributes.py` (partial aggregates and parity checker), `history_reader.usage` SQL/export tests, `runner_spec` usage pass-through. Each aggregate path covers complete, all-missing, and mixed known/missing inputs, including genuine zero.
+- Also: `fsm/persistence.py` `usage.jsonl` tests, `test_fsm_cost_graph.py` (JSON write/read and rendering round trips), `test_generate_schemas.py`, `test_otel_attributes.py` (partial aggregates and parity checker), `history_reader.usage` SQL/export tests, `runner_spec` usage pass-through, `issue_manager` / `worker_pool` context-guard lower bound, `_execute_with_baseline` A/B incompleteness, `fake_host` omitted/`null` keys. Each aggregate path covers complete, all-missing, and mixed known/missing inputs, including genuine zero.
 
 ### Documentation
 
@@ -110,10 +120,10 @@ See **Design** below.
 
 ## Design
 
-- **Nullable components.** `TokenUsage` token components become `int | None`. `TokenUsage` gains `provenance: TokenProvenance = "unknown"`, `host: str | None = None`, `scope_kind: str = "unknown"`, `observed_at: str | None = None` and `observed_at_basis: str | None = None` (default-compatible, same pattern as `is_batch`). Parsers keep missing components as `None` except where a verified host contract establishes that omission means zero. Codex's omitted `cache_write_input_tokens` is not established by an omission-only fixture or ENH-3464's assertion: use the matched-capture/producer-contract evidence requirement in BUG-3531. Until verified, preserve omission as `None`; the foundation need not wait for BUG-3531 or add a reverse dependency. Explicit `null` is never an omission-based zero.
+- **Nullable components.** `TokenUsage` token components become `int | None`. `TokenUsage` gains `provenance: TokenProvenance = "unknown"`, `host: str | None = None`, `scope_kind: TokenScopeKind = "unknown"`, `observed_at: str | None = None` and `observed_at_basis: ObservedAtBasis | None = None` (use the Literal aliases from Program Design, never bare `str`, so mypy catches a misspelled value) (default-compatible, same pattern as `is_batch`). Parsers keep missing components as `None` except where a verified host contract establishes that omission means zero. Codex's omitted `cache_write_input_tokens` is not established by an omission-only fixture or ENH-3464's assertion: use the matched-capture/producer-contract evidence requirement in BUG-3531. Until verified, preserve omission as `None`; the foundation need not wait for BUG-3531 or add a reverse dependency. Explicit `null` is never an omission-based zero.
 - **Provenance values.** `TokenProvenance = Literal["measured", "estimated", "unknown"]`. Writers and parsers default to `unknown`. This issue opts **no** acquisition path into `measured`. BUG-3531 is the first to do so, for normalized Codex rows.
 - **Host vs vendor.** New `host` = runtime host that produced the observation (`claude-code`, `codex`, …). Existing `provider_vendor` = vendor of the runtime host (`anthropic`, `openai`, …), derived via the existing `observability.tracing.vendor_for_runner(host)` so it matches the OTel `gen_ai.provider.vendor` addendum already emitted; a model-vendor split (e.g. `claude-code` driving a non-Anthropic model) is out of scope. `invocation_id` is written when the runner supplies it.
-- **Host stamping precedence.** (1) The runner stamps `host` from the `HostRunner.name` of the specific invocation that produced the event, at collection time in the runner callback — `_finish` never calls `resolve_host()` again, so a config change mid-run or a per-state host override can't relabel rows. (2) A parser may set `host` only for an event type unique to one host (Codex `turn.completed`); Claude's `result` event shape isn't host-unique, so its parser leaves `host=None` for the runner to fill. (3) Replay takes `raw_events.host`. A parser-set host that disagrees with the runner's is a bug: log it and keep the runner's value.
+- **Host stamping precedence.** (1) `run_claude_command` stamps `host` from the `HostRunner.name` it resolved for that invocation (`runner = resolve_host()`, `subprocess_utils.py` ~610). It does this in the `result` / `turn.completed` branches, with `dataclasses.replace(parsed_usage, host=runner.name, scope_kind="invocation", observed_at=<receipt time>, observed_at_basis="received")`, before `on_usage` / `on_usage_detailed` fire. `fsm/runners.py` never holds a `HostRunner`, so it must not stamp or re-resolve anything. `_finish` never calls `resolve_host()` again, so a config change mid-run or a per-state host override can't relabel rows. The sdk/batch path (`_dispatch_live` → `host_runner._usage_from_response`) stamps its own host with `scope_kind='request'`. `usage_from_stream_lines` (runner_spec) has no host and leaves it `None`. (2) A parser may set `host` only for an event type unique to one host (Codex `turn.completed`); Claude's `result` event shape isn't host-unique, so its parser leaves `host=None` for the runner to fill. (3) Replay takes `raw_events.host`. A parser-set host that disagrees with the runner's is a bug: log it and keep the runner's value.
 - **Observation time.** Captured when the event arrives: host event timestamp → `observed_at_basis='event'`; otherwise receipt time → `'received'`. Neither Claude's `result` nor Codex's `turn.completed` carries a timestamp, so **every live row in this issue is `received`**; `event` arises only on transcript replay (the record's `timestamp`). `ts` keeps its current meaning; legacy rows keep NULL `observed_at`.
 - **Scope kind per path.** Live `result` / `turn.completed` → `invocation`; transcript `assistant` records (backfill) and `_usage_from_response` (one API request) → `request`; everything else → `unknown`.
 - **Migration.** Append-only migration at the next free schema version (54 unless taken) adds nullable `provenance`, `host`, `scope_kind`, `observed_at`, `observed_at_basis` to `usage_events`. Reuses `channel`, `session_id`, `invocation_id`, `provider_vendor`. Legacy rows read as `provenance='unknown'`. Update `schema_manifest.json` and version pins together.
@@ -123,6 +133,9 @@ See **Design** below.
 - **SQL and OTel aggregate completeness.** `SUM(component)` ignores NULL, so pair it with contributing/missing counts (for raw usage rows, `COUNT(*) - COUNT(component)` gives the missing count). `[100, NULL]` is a partial subtotal of 100, not a total of 100; `[NULL, NULL]` is unavailable, not zero. Use the same completeness rule for costs. Existing total-only reader fields return `None` for incomplete totals; paths exposing known subtotals must carry explicit completeness. `OTelAttributes.from_usage`, `StampUsageEvent.usage_event`, and `history_reader.usage.cost_attribution` omit a component's `gen_ai.usage.*` attribute when its value is `None` **or** any contributor is missing, even when the subtotal is numeric. Complete components in the same observation/aggregate remain exportable. This minimal correctness work is in scope here; ENH-3528 still owns richer provenance/composition reporting.
 - **Parity comparisons.** Audit `StreamingParityChecker` when changing `_read_token`: its current `float(_read_token(...))` cannot accept `None`. Represent an incomplete comparison as unavailable and make `within_threshold` return `False` if any required component is unknown/partial on either side. Do not silently skip missing components (including an empty comparison set) or compare two unknowns as zero. Tests cover one-sided unknown, both sides unknown, partial numeric subtotals, and complete zero counts; complete numeric comparisons retain current behavior.
 - **Consumers.** `estimate_cost_usd` returns `None` when any required component is missing. The legacy two-int `UsageCallback` is called with `input_tokens + cache_read_tokens` (`subprocess_utils.py` `result` branch), so it fires only when input, output **and** cache_read are all known; `DetailedUsageCallback` always receives the partial observation. Audit `pricing.py`, `fsm/cost_graph.py`, `fsm/persistence.py`, `observability/tracing.py`, `history_reader/{usage,events}.py`, `issue_history/*quality*.py` and `cli/ctx_stats.py` aggregators for `None` safety and for incomplete values masquerading as totals. Numeric output stays the same in the no-missing case, except an unverified omission must no longer fabricate zero.
+- **Legacy-callback consumers.** Suppressing `UsageCallback` suits accounting consumers but not budget guards. Decide per consumer:
+  - *Context-limit handoff guard* (`issue_manager._tracking_usage`, `_on_usage_writer`, `worker_pool._usage_tracker`): if the callback is suppressed, `_last_input` stays at its reset value of 0, so the guard under-reports context use and misses a needed handoff. These consumers need a **lower bound**, not silence. Give them a dedicated path that sums the *known* input + cache_read components, and log at debug level when a component is missing. Do not route them through the all-known `UsageCallback` rule. The Codex `turn.completed` branch still never fires the legacy callback, which is unchanged from today.
+  - *A/B comparison* (`_execute_with_baseline`): if one arm's callback is suppressed and the other's is not, that invocation silently drops out of `harness_total_tokens` / `baseline_total_tokens` and biases the comparison. If either arm has an incomplete observation, mark the A/B token comparison unavailable (same rule as Parity comparisons) rather than comparing partial sums.
 - **Codex transition.** Live Codex rows written after this lands carry `host='codex'`, `provenance='unknown'`. Host identity alone does not certify their still-unnormalized input.
 
 ## Acceptance Criteria
@@ -130,6 +143,9 @@ See **Design** below.
 - [ ] `TokenUsage` components are `int | None`; new metadata fields default to unknown/None; existing construction sites compile and complete-data cases behave identically.
 - [ ] A partial-event fixture survives `usage_from_event` → detailed callback → executor payload → `usage_events` row with missing components still NULL and completeness counts preserved in aggregate artifacts. Known zero stays zero; omitted Codex cache-write is `None` unless matched-capture/producer-contract evidence establishes zero, and explicit `null` stays unknown.
 - [ ] Legacy `UsageCallback` is invoked only when input, output and cache_read are all known; callback-consumer tests cover both callbacks.
+- [ ] The context-limit handoff guard (`issue_manager`, `worker_pool`) still receives a known-component lower bound when a component is missing. A test with a missing `cache_read` shows `_last_input` is non-zero (not left at 0) and `result_token_count` is written.
+- [ ] `_execute_with_baseline` marks the A/B token comparison unavailable when either arm has an incomplete observation. Complete-data A/B totals are unchanged.
+- [ ] `fake_host` can omit a usage key or send explicit `null`; the partial-event fixtures use it.
 - [ ] `estimate_cost_usd` returns `None` (not 0) when any required component is missing; audited consumers don't raise on `None`.
 - [ ] `action_complete` payload: a component sums known contributors (`None` when none is known), with `<component>_missing` and `usage_event_count` set; the generated event schema accepts null and the count fields. That payload flows through `usage.jsonl` into `cost_graph` as an unpriced bucket with no fabricated cost.
 - [ ] Cost reports preserve unknown cost and token completeness through `from_usage_jsonl` → `to_dict` / JSON write → `read_json` → table rendering. Mixed priced/unpriced states and runs have `cost_usd=null`, never a partial cost or fabricated zero; all-missing tokens remain unavailable and partial subtotals stay identified. Legacy numeric reports remain readable, and affected serialization schemas/version contracts are updated.
@@ -138,7 +154,7 @@ See **Design** below.
 - [ ] `_backfill_usage_events` returns `None` cost for a transcript record with a missing component and writes `scope_kind='request'`, `observed_at_basis='event'` from the record timestamp.
 - [ ] Migration adds the five columns at the next free version; manifest/version pins updated together; old-schema DBs remain readable; SessionStart-triggered rebuild preserves `channel='live'` rows and their new metadata.
 - [ ] `record_usage_event` defaults `provenance='unknown'`; no code path in this issue writes `measured`. A live Codex write persists `host='codex'`, `provenance='unknown'`.
-- [ ] `host` is stamped from the invocation's `HostRunner.name` at collection time and `provider_vendor = vendor_for_runner(host)`; a test that changes the configured host between collection and `_finish` shows the rows keep the invoking host.
+- [ ] `host` is stamped inside `run_claude_command` from the invocation's `HostRunner.name`, before callbacks fire (covers both the harness arm via `ActionRunner` and the A/B baseline arm) and `provider_vendor = vendor_for_runner(host)`; a test that changes the configured host between collection and `_finish` shows the rows keep the invoking host.
 - [ ] Observation time survives delayed loop completion; live rows carry `observed_at_basis='received'`, replayed transcript rows `'event'`; legacy loop-finish `ts` is never copied into `observed_at`.
 - [ ] `scope_kind` follows the per-path mapping in Design (live → `invocation`; transcript and `_usage_from_response` → `request`).
 - [ ] Raw-event host survives backfill/rebuild through the new iterator; existing `_iter_events` consumers are unchanged.
@@ -154,6 +170,13 @@ See **Design** below.
 
 Applied the review findings to the design, integration map, and acceptance criteria: cost-report JSON loses the existing unpriced flag; SQL `SUM` and OTel stamping can expose partial subtotals as totals; and making `_read_token` nullable requires updating `StreamingParityChecker`. Focused probes reproduced the cost round-trip (`n/a` → `$0.0000`) and nullable-helper failure. The omitted Codex cache-write zero assumption now requires evidence; no acquisition path is promoted to measured by this foundation.
 
+### Pre-implementation review 2026-09-23 (2)
+
+- **Stamping site:** host stamping moved from the "runner callback" to `run_claude_command`, where the `HostRunner` is actually resolved. `fsm/runners.py` never holds one.
+- **Legacy-callback consumers:** added the context-limit handoff guard (`issue_manager`, `worker_pool`) and the A/B `_execute_with_baseline` totals. Suppressing the callback would have left `_last_input` at 0 and biased A/B sums. The guard now gets a known-component lower bound, and A/B is marked unavailable when an observation is incomplete.
+- **Types and paths:** Design field types aligned to the `TokenScopeKind` / `ObservedAtBasis` Literals. The no-host `usage_from_stream_lines` path is specified.
+- **Fixtures:** `fake_host` must be able to emit omitted/`null` components for the partial-event fixtures.
+
 ## Related Key Documentation
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
@@ -163,5 +186,17 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 **Open** | Created: 2026-09-24 | Priority: P2
 
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-24_
+
+**Readiness Score**: 95/100 → PROCEED
+**Outcome Confidence**: 55/100 → LOW
+
+### Outcome Risk Factors
+- Deep per-site complexity: nullable components ripple through shared state (`TokenUsage`, executor sums, cost graph, SQL/OTel aggregates, parity checker) across ~20 modules.
+- Very wide blast radius: `TokenUsage`/`usage_from_event` are referenced from 26 modules; `estimate_cost_usd` and `record_usage_event` have multiple dependents. Consider landing in the 5 Implementation Steps as separate commits with the no-missing-case parity tests first.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-09-24T03:50:14 - `a1bbb8d4-d93b-4517-a766-21a26af03296.jsonl`
 - `/ll:verify-issues` - 2026-09-24T03:44:03 - `747bdb3d-c82b-437c-9f00-ae0dbc6a8638.jsonl`

@@ -16,6 +16,12 @@ blocks:
 labels:
 - observability
 - multi-host
+confidence_score: 65
+outcome_confidence: 63
+score_complexity: 10
+score_test_coverage: 25
+score_ambiguity: 10
+score_change_surface: 18
 ---
 
 # BUG-3531: Codex live usage stores cache-inclusive input_tokens in the uncached-input column
@@ -139,22 +145,21 @@ Applied public text/JSON exclusion reporting and all-excluded/valid-zero behavio
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-09-23_
+_Added by `/ll:confidence-check` on 2026-09-24 (supersedes the earlier 95/71 scores)_
 
-**Historical only — superseded by pre-implementation review (3).** These scores are not a current proceed recommendation; producer-contract evidence is still required and no replacement score has been computed.
+**Readiness Score**: 65/100 → STOP — ADDRESS GAPS
+**Outcome Confidence**: 63/100 → MODERATE
 
-**Readiness Score**: 95/100 → PROCEED
-**Outcome Confidence**: 71/100 → MODERATE
-
-### Concerns
-- ~~Two Acceptance Criteria defer decisions to implementation time~~ — resolved 2026-09-23; see Design Decisions.
-- `usage_from_event` has 4 call sites (`subprocess_utils.py` 143/169/706/730) feeding live usage rows; stored values change for new Codex rows.
+### Gaps to Address
+- **Unresolved dependency (hard override)**: `blocked_by` ENH-3538 is `open` — land the foundation first (nullable components, `provenance`/`host` columns, completeness-aware executor sums).
+- **Producer-contract evidence outstanding (Decision 6)**: matched `codex exec --json` stdout/rollout captures, per-turn vs thread-cumulative usage, and omitted `cache_write_input_tokens` semantics are unresolved; no live `turn.completed` fixture exists under `scripts/tests/fixtures/codex/` (only `rollout-exec.jsonl`, `rollout-interactive.jsonl`). This is Implementation Step 1 and gates `measured` provenance.
 
 ### Outcome Risk Factors
-- Minor open design decisions (inconsistent-component representation; existing-row handling) — resolvable during implementation but affect stored data.
-- Shared normalizer touches two modules (`subprocess_utils`, `ctx_stats`) plus ENH-3532 coupling.
+- Several design decisions left open pending the evidence: omission rule and cumulative-count/baseline-difference handling (may change the `usage_from_event` call path/signature).
+- Shared normalizer spans `subprocess_utils`, `ctx_stats`, `runner_spec` and executor/persistence, plus ENH-3532 coupling.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-24T03:50:15 - `a1bbb8d4-d93b-4517-a766-21a26af03296.jsonl`
 - `/ll:verify-issues` - 2026-09-24T03:44:03 - `747bdb3d-c82b-437c-9f00-ae0dbc6a8638.jsonl`
 - `/ll:confidence-check` - 2026-09-24T00:45:01 - `047cda0b-279f-4078-b31f-1d7b1fcc2181.jsonl`
 - `/ll:verify-issues` - 2026-09-24T00:37:52 - `97f40d76-766f-412a-a4ef-794728276e4c.jsonl`
