@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from little_loops.artifact_templates import script_json
+from little_loops.file_utils import atomic_write
 from little_loops.logger import Logger
 
 if TYPE_CHECKING:
@@ -157,7 +158,7 @@ def cmd_policy_builder(args: argparse.Namespace, logger: Logger) -> int:
             output_dir = config.project_root / output_dir
         output_dir.mkdir(parents=True, exist_ok=True)
         out_path = output_dir / "policy-router-builder.html"
-        out_path.write_text(html)
+        atomic_write(out_path, html, encoding="utf-8", shared_mode=True)
 
         logger.success(f"Wrote policy-router builder to {out_path}")
         return 0

@@ -32,6 +32,7 @@ from little_loops.artifact_templates import (
     script_json,
     validate_top_level_data,
 )
+from little_loops.file_utils import atomic_write
 from little_loops.logger import Logger
 from little_loops.session_store.queries import (
     _EXPORT_TABLE_MAP,
@@ -491,7 +492,7 @@ def cmd_dashboard(args: argparse.Namespace, logger: Logger) -> int:
         output_dir.mkdir(parents=True, exist_ok=True)
         manifest = load_manifest(_packaged_path("templates", "dashboard.llat"))
         out_path = output_dir / manifest["output"]
-        out_path.write_text(result.html, encoding="utf-8")
+        atomic_write(out_path, result.html, encoding="utf-8", shared_mode=True)
 
         if result.schema_version_warning:
             logger.warning(result.schema_version_warning)

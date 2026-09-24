@@ -12,6 +12,7 @@ import importlib.resources
 import sys
 from pathlib import Path
 
+from little_loops.file_utils import atomic_write
 from little_loops.logger import Logger
 
 
@@ -126,7 +127,7 @@ def cmd_design_md_export(args: argparse.Namespace, logger: Logger) -> int:
             if not out_path.is_absolute():
                 out_path = config.project_root / out_path
             out_path.parent.mkdir(parents=True, exist_ok=True)
-            out_path.write_text(document)
+            atomic_write(out_path, document, encoding="utf-8", shared_mode=True)
             logger.success(f"Wrote DESIGN.md export to {out_path}")
         else:
             sys.stdout.write(document)

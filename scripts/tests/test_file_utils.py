@@ -14,7 +14,7 @@ from unittest.mock import patch
 
 import pytest
 
-from little_loops.file_utils import acquire_lock, atomic_write_json
+from little_loops.file_utils import acquire_lock, atomic_write, atomic_write_json
 
 
 class TestAtomicWriteJson:
@@ -242,3 +242,112 @@ class TestFlockSameProcessContention:
                 contender.close()
         finally:
             holder.close()
+
+
+@pytest.fixture
+def umask_022():
+    old = os.umask(0o022)
+    try:
+        yield
+    finally:
+        os.umask(old)
+
+
+def _mode(p: Path) -> int:
+    return p.stat().st_mode & 0o777
+
+
+def _tmp_entries(d: Path) -> list[Path]:
+    return list(d.glob(".ll-*.tmp"))
+
+
+class TestAtomicWriteHardening:
+    """ENH-3559: symlink replacement, opt-in shared mode, safe temp handling."""
+
+    @pytest.mark.parametrize("shared", [False, True])
+    def test_symlink_replaced_not_followed(self, tmp_path: Path, shared: bool) -> None:
+        victim = tmp_path / "victim.txt"
+        victim.write_text("keep")
+        target = tmp_path / "out.html"
+        target.symlink_to(victim)
+        atomic_write(target, "new", shared_mode=shared)
+        assert victim.read_text() == "keep"
+        assert not target.is_symlink() and target.read_text() == "new"
+
+    @pytest.mark.parametrize("umask", [0o022, 0o077])
+    def test_default_mode_is_0600(self, tmp_path: Path, umask: int) -> None:
+        old = os.umask(umask)
+        try:
+            atomic_write(tmp_path / "f", "x")
+        finally:
+            os.umask(old)
+        assert _mode(tmp_path / "f") == 0o600
+
+    @pytest.mark.parametrize("umask", [0o022, 0o077])
+    def test_shared_mode_new_file_uses_umask(self, tmp_path: Path, umask: int) -> None:
+        old = os.umask(umask)
+        try:
+            atomic_write(tmp_path / "f", "x", shared_mode=True)
+        finally:
+            os.umask(old)
+        assert _mode(tmp_path / "f") == 0o666 & ~umask
+
+    def test_shared_mode_preserves_existing_mode(self, tmp_path: Path, umask_022) -> None:
+        f = tmp_path / "f"
+        f.write_text("old")
+        f.chmod(0o600)
+        atomic_write(f, "new", shared_mode=True)
+        assert _mode(f) == 0o600 and f.read_text() == "new"
+
+    def test_shared_mode_over_symlink_ignores_target_mode(self, tmp_path: Path, umask_022) -> None:
+        victim = tmp_path / "victim"
+        victim.write_text("v")
+        victim.chmod(0o600)
+        f = tmp_path / "f"
+        f.symlink_to(victim)
+        atomic_write(f, "new", shared_mode=True)
+        assert _mode(f) == 0o644
+
+    def test_temp_name_collision_leaves_planted_file(self, tmp_path: Path) -> None:
+        planted = tmp_path / ".ll-aaaaaaaaaaaaaaaa.tmp"
+        planted.write_text("other")
+        with patch("little_loops.file_utils.secrets.token_hex", side_effect=["a" * 16, "b" * 16]):
+            atomic_write(tmp_path / "f", "x")
+        assert planted.read_text() == "other"
+        assert (tmp_path / "f").read_text() == "x"
+
+    def test_dangling_symlink_collision_refused(self, tmp_path: Path) -> None:
+        outside = tmp_path / "outside"
+        planted = tmp_path / ".ll-aaaaaaaaaaaaaaaa.tmp"
+        planted.symlink_to(outside)
+        with patch("little_loops.file_utils.secrets.token_hex", side_effect=["a" * 16, "b" * 16]):
+            atomic_write(tmp_path / "f", "x")
+        assert planted.is_symlink() and not outside.exists()
+        assert (tmp_path / "f").read_text() == "x"
+
+    def test_retry_exhaustion_raises(self, tmp_path: Path) -> None:
+        planted = tmp_path / ".ll-aaaaaaaaaaaaaaaa.tmp"
+        planted.write_text("other")
+        with patch("little_loops.file_utils.secrets.token_hex", return_value="a" * 16):
+            with pytest.raises(FileExistsError):
+                atomic_write(tmp_path / "f", "x")
+        assert planted.read_text() == "other" and not (tmp_path / "f").exists()
+
+    def test_cleanup_on_replace_failure(self, tmp_path: Path) -> None:
+        with patch("little_loops.file_utils.os.replace", side_effect=OSError("boom")):
+            with pytest.raises(OSError):
+                atomic_write(tmp_path / "f", "x")
+        assert _tmp_entries(tmp_path) == []
+
+    def test_cleanup_on_encoding_failure(self, tmp_path: Path) -> None:
+        f = tmp_path / "f"
+        f.write_text("orig")
+        with pytest.raises(UnicodeEncodeError):
+            atomic_write(f, "\ud800")
+        assert f.read_text() == "orig" and _tmp_entries(tmp_path) == []
+
+    def test_multibyte_long_filename(self, tmp_path: Path) -> None:
+        name = "é" * 120  # 240 bytes + ".md" stays under 255
+        target = tmp_path / (name + ".md")
+        atomic_write(target, "x")
+        assert target.read_text() == "x"

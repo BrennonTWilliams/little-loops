@@ -30,6 +30,7 @@ from little_loops.artifact_templates import (
     render_template,
     validate_top_level_data,
 )
+from little_loops.file_utils import atomic_write
 from little_loops.logger import Logger
 
 if TYPE_CHECKING:
@@ -1460,7 +1461,9 @@ def cmd_templatize(args: argparse.Namespace, logger: Logger) -> int:
             if diff is not None:
                 rejected_dir.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copytree(tmp_dir, rejected_dir)
-                (rejected_dir / "roundtrip.diff").write_text(diff, encoding="utf-8")
+                atomic_write(
+                    rejected_dir / "roundtrip.diff", diff, encoding="utf-8", shared_mode=True
+                )
                 _write_rejected_discovery(rejected_dir, discovery_raw, discovery_resolved)
                 logger.error(
                     f"round-trip verification failed — candidate + diff written to {rejected_dir}"
@@ -1484,8 +1487,11 @@ def cmd_templatize(args: argparse.Namespace, logger: Logger) -> int:
                     if reversibility_diff is not None:
                         rejected_dir.parent.mkdir(parents=True, exist_ok=True)
                         shutil.copytree(tmp_dir, rejected_dir)
-                        (rejected_dir / "lift-reversibility.diff").write_text(
-                            reversibility_diff, encoding="utf-8"
+                        atomic_write(
+                            rejected_dir / "lift-reversibility.diff",
+                            reversibility_diff,
+                            encoding="utf-8",
+                            shared_mode=True,
                         )
                         _write_rejected_discovery(rejected_dir, discovery_raw, discovery_resolved)
                         logger.error(
@@ -1510,8 +1516,11 @@ def cmd_templatize(args: argparse.Namespace, logger: Logger) -> int:
                     if render_err is not None:
                         rejected_dir.parent.mkdir(parents=True, exist_ok=True)
                         shutil.copytree(tmp_dir, rejected_dir)
-                        (rejected_dir / "lift-render-check.txt").write_text(
-                            render_err, encoding="utf-8"
+                        atomic_write(
+                            rejected_dir / "lift-render-check.txt",
+                            render_err,
+                            encoding="utf-8",
+                            shared_mode=True,
                         )
                         _write_rejected_discovery(rejected_dir, discovery_raw, discovery_resolved)
                         logger.error(
@@ -1569,12 +1578,18 @@ def _write_rejected_discovery(
     if raw is None:
         return
     rejected_dir.mkdir(parents=True, exist_ok=True)
-    (rejected_dir / "discovery.json").write_text(
-        json.dumps(raw, indent=2, ensure_ascii=False), encoding="utf-8"
+    atomic_write(
+        rejected_dir / "discovery.json",
+        json.dumps(raw, indent=2, ensure_ascii=False),
+        encoding="utf-8",
+        shared_mode=True,
     )
     if resolved is not None:
-        (rejected_dir / "regions.json").write_text(
-            json.dumps(resolved, indent=2, ensure_ascii=False), encoding="utf-8"
+        atomic_write(
+            rejected_dir / "regions.json",
+            json.dumps(resolved, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+            shared_mode=True,
         )
 
 

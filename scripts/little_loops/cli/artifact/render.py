@@ -26,6 +26,7 @@ from little_loops.artifact_templates import (
     resolve_template,
     validate_top_level_data,
 )
+from little_loops.file_utils import atomic_write
 from little_loops.logger import Logger
 
 
@@ -65,7 +66,7 @@ def render_to_disk(
 
     output_dir.mkdir(parents=True, exist_ok=True)
     out_path = output_dir / template.manifest["output"]
-    out_path.write_text(rendered, encoding="utf-8")
+    atomic_write(out_path, rendered, encoding="utf-8", shared_mode=True)
     return out_path
 
 

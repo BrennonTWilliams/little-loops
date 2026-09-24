@@ -3,7 +3,7 @@ id: ENH-3559
 type: ENH
 title: Symlink-safe artifact writes and umask-preserving atomic_write
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-24'
 captured_at: '2026-09-24T18:30:10Z'
@@ -19,6 +19,7 @@ score_complexity: 14
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 0
+completed_at: '2026-09-24T21:12:21Z'
 ---
 
 # ENH-3559: Symlink-safe artifact writes and umask-preserving atomic_write
@@ -193,6 +194,8 @@ _Added by `/ll:confidence-check` on 2026-09-24_ (re-run after the opt-in `shared
 - Broad enumeration across 7 modified files plus a local-logic rewrite of `atomic_write` (foreign-temp-safe cleanup, retry bound) — expect some iteration on the collision/cleanup tests.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-24T21:12:20 - `e506bf14-da13-40db-98f3-54573a054734.jsonl`
+- `/ll:ready-issue` - 2026-09-24T21:04:41 - `c5e3d26e-eebd-42fb-abe2-77c1e058f0b3.jsonl`
 - `/ll:confidence-check` - 2026-09-24T21:02:35 - `f7a68862-e3ea-425a-b71a-21cc3db44d65.jsonl`
 - Manual review - 2026-09-24 - external review (Astra): global mode change reverted to opt-in `atomic_write(..., shared_mode=True)` because `.mcp.json` / `.qwen` / `.gemini` `settings.json` rewrites carry secrets (existing `0600` would become `0644`); shared mode preserves an existing regular file's mode; temp name changed from `.{name[:64]}.<hex>.tmp` (could exceed 255 bytes for multibyte names) to fixed `.ll-<hex>.tmp`; `.rejected` leaf-symlink exemption removed (`_write_rejected_discovery` mkdir is umask-derived, group-writable under `002`) and a symlink test added; tests added for retry exhaustion, dangling-symlink collision, real encoding failure, multibyte filename, non-ASCII `data.json` bytes, and `.mcp.json` mode regression; caller count unified at 69; write-site count corrected to six artifact + five `.rejected`
 - `/ll:confidence-check` - 2026-09-24T20:29:53 - `7ccc0a63-5f30-4b64-83f4-7cfd1905bff1.jsonl`
@@ -200,3 +203,7 @@ _Added by `/ll:confidence-check` on 2026-09-24_ (re-run after the opt-in `shared
 - `/ll:scope-epic` - 2026-09-24T18:30:39 - `bd7b32d0-d305-4468-99d3-61a8a02d4caa.jsonl`
 - Manual review - 2026-09-24 - post-ENH-3558 review: refreshed write-site line numbers; recast templatize `.rejected` routing as consistency-only (leaf `atomic_write` cannot close a dir-swap race); added cleanup-must-not-unlink-foreign-temp, bounded retry, and temp-name truncation to §1 with tests + AC; corrected Program Design call paths; scoped out symlinked parent dirs explicitly
 - Manual review - 2026-09-24 - ported ENH-3540 Scope §4 and ACs into this child; replaced the umask-read idiom with `os.open(..., 0o666)`; dropped `atomic_write_bytes` (no caller); added `design_md.py` encoding fix and `blocked_by: ENH-3558` for sequencing
+
+## Resolution
+
+Implemented: `atomic_write` now uses `os.open(O_EXCL)` on a `.ll-<hex>.tmp` sibling with bounded retry, foreign-temp-safe cleanup, and opt-in `shared_mode`. Six artifact writes and five templatize `.rejected` writes route through it. Tests added in `test_file_utils.py`, `test_adapters.py`, and `test_enh3559_artifact_symlink_safe_writes.py`. Full suite: 2 pre-existing failures (`test_verify_evidence`, `test_fsm_topology`), unrelated; pre-existing mypy/ruff errors unchanged.

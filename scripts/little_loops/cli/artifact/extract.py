@@ -40,6 +40,7 @@ from little_loops.artifact_templates import (
 )
 from little_loops.cli.artifact.lockfile import lock_path_for, relativize_path, write_lockfile
 from little_loops.cli.artifact.render import OutputPathError, render_to_disk
+from little_loops.file_utils import atomic_write
 from little_loops.fsm.schema import DEFAULT_LLM_MODEL
 from little_loops.host_runner import BlockingJsonError, resolve_host, run_blocking_json
 from little_loops.logger import Logger
@@ -235,7 +236,12 @@ def cmd_extract(args: argparse.Namespace, logger: Logger) -> int:
 
         data_path = _resolve_data_path(args.data, root, config)
         data_path.parent.mkdir(parents=True, exist_ok=True)
-        data_path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+        atomic_write(
+            data_path,
+            json.dumps(data, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+            shared_mode=True,
+        )
 
         logger.success(f"Wrote {data_path}")
         return 0
@@ -297,7 +303,12 @@ def cmd_refresh(args: argparse.Namespace, logger: Logger) -> int:
 
         data_path = _resolve_data_path(args.data, root, config)
         data_path.parent.mkdir(parents=True, exist_ok=True)
-        data_path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+        atomic_write(
+            data_path,
+            json.dumps(data, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+            shared_mode=True,
+        )
 
         try:
             out_path = render_to_disk(template, data, config, args.output)

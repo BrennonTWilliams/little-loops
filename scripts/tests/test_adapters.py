@@ -2192,3 +2192,12 @@ class TestQwenEmitterEmitMcpConfig:
     def test_mcp_stub_returns_skipped(self, tmp_path: Path) -> None:
         meta = {"output_dir": tmp_path, "apply": True, "quiet": True}
         assert QwenEmitter().emit_mcp_config(meta) == "skipped"
+
+
+def test_emit_mcp_config_preserves_0600_mode(tmp_path: Path) -> None:
+    """ENH-3559: atomic_write's default stays 0600, so .mcp.json is not loosened."""
+    from little_loops.file_utils import atomic_write
+
+    f = tmp_path / ".mcp.json"
+    atomic_write(f, "{}")
+    assert (f.stat().st_mode & 0o777) == 0o600

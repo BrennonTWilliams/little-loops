@@ -5,26 +5,61 @@ from __future__ import annotations
 import fcntl
 import json
 import os
-import tempfile
+import secrets
+import stat
 import time
 from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
+_TMP_NAME_ATTEMPTS = 100
 
-def atomic_write(path: Path, content: str, encoding: str = "utf-8") -> None:
-    """Write *content* to *path* atomically using tempfile + os.replace.
 
-    Writes to a sibling temp file in the same directory (same filesystem),
-    then renames it over the target so readers never observe a partial file.
+def atomic_write(
+    path: Path, content: str, encoding: str = "utf-8", *, shared_mode: bool = False
+) -> None:
+    """Write *content* to *path* atomically using a sibling temp file + os.replace.
+
+    Writes to a ``.ll-<hex>.tmp`` sibling in the same directory (same filesystem),
+    then renames it over the target so readers never observe a partial file. A
+    symlink at *path* is replaced, never followed. The temp file is opened with
+    ``O_EXCL``, so a pre-planted entry at the temp name is never opened or unlinked.
+
+    By default the new file is mode ``0600``. With ``shared_mode=True`` it gets
+    ``0o666 & ~umask`` (the kernel applies the umask), except that an existing
+    regular file at *path* keeps its current mode.
+
+    Raises:
+        FileExistsError: if no unused temp name is found after a bounded retry.
     """
-    tmp_fd, tmp_path = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
+    create_mode = 0o666 if shared_mode else 0o600
+    tmp_fd = -1
+    tmp_path = ""
+    for _ in range(_TMP_NAME_ATTEMPTS):
+        tmp_path = str(path.parent / f".ll-{secrets.token_hex(8)}.tmp")
+        try:
+            tmp_fd = os.open(tmp_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, create_mode)
+            break
+        except FileExistsError:
+            continue
+    else:
+        raise FileExistsError(f"could not create a unique temp file next to {path}")
     try:
+        if shared_mode:
+            try:
+                st = os.lstat(path)
+            except FileNotFoundError:
+                st = None
+            if st is not None and stat.S_ISREG(st.st_mode):
+                os.fchmod(tmp_fd, stat.S_IMODE(st.st_mode))
         with os.fdopen(tmp_fd, "w", encoding=encoding) as f:
+            tmp_fd = -1
             f.write(content)
         os.replace(tmp_path, path)
     except Exception:
+        if tmp_fd >= 0:
+            os.close(tmp_fd)
         try:
             os.unlink(tmp_path)
         except FileNotFoundError:
