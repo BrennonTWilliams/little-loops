@@ -1641,8 +1641,8 @@ class TestRefineToReadyIssueSubLoop:
         assert evaluate.get("target") == 2, (
             f"check_hedge_attempts.evaluate.target should be 2, got {evaluate.get('target')!r}"
         )
-        assert state.get("on_yes") == "check_hedge_refine_limit", (
-            f"check_hedge_attempts.on_yes should be 'check_hedge_refine_limit' (pre-filter, not a "
+        assert state.get("on_yes") == "check_refine_limit", (
+            f"check_hedge_attempts.on_yes should be 'check_refine_limit' (pre-filter, not a "
             f"private budget), got {state.get('on_yes')!r}"
         )
         assert state.get("on_no") == "check_placeholders", (
@@ -1740,8 +1740,8 @@ class TestRefineToReadyIssueSubLoop:
         assert state.get("on_yes") == "confidence_check", (
             f"check_design.on_yes should be 'confidence_check', got {state.get('on_yes')!r}"
         )
-        assert state.get("on_no") == "check_gate_refine_limit", (
-            f"check_design.on_no should be 'check_gate_refine_limit' (BUG-3551: structure-gate budget), got {state.get('on_no')!r}"
+        assert state.get("on_no") == "check_refine_limit", (
+            f"check_design.on_no should be 'check_refine_limit', got {state.get('on_no')!r}"
         )
         assert state.get("on_error") == "confidence_check", (
             f"check_design.on_error should be 'confidence_check' (fail-open), "
@@ -1821,8 +1821,8 @@ class TestRefineToReadyIssueSubLoop:
         assert state.get("on_yes") == "check_ac_automatable", (
             f"check_placeholders.on_yes should be 'check_ac_automatable', got {state.get('on_yes')!r}"
         )
-        assert state.get("on_no") == "check_gate_refine_limit", (
-            f"check_placeholders.on_no should be 'check_gate_refine_limit' (BUG-3551: structure-gate budget), got {state.get('on_no')!r}"
+        assert state.get("on_no") == "check_refine_limit", (
+            f"check_placeholders.on_no should be 'check_refine_limit', got {state.get('on_no')!r}"
         )
         assert state.get("on_error") == "check_ac_automatable", (
             f"check_placeholders.on_error should be 'check_ac_automatable' (fail-open), "
@@ -1874,13 +1874,13 @@ class TestRefineToReadyIssueSubLoop:
         assert state.get("on_yes") == "reconcile_issue", (
             f"check_reconcile_limit.on_yes should be 'reconcile_issue', got {state.get('on_yes')!r}"
         )
-        assert state.get("on_no") == "check_gate_refine_limit", (
-            f"check_reconcile_limit.on_no should be 'check_gate_refine_limit' (BUG-3551: structure-gate budget; "
-            f"escalation is mandatory, never discretionary), got {state.get('on_no')!r}"
+        assert state.get("on_no") == "check_refine_limit", (
+            f"check_reconcile_limit.on_no should be 'check_refine_limit' (escalation is "
+            f"mandatory, never discretionary), got {state.get('on_no')!r}"
         )
-        assert state.get("on_error") == "check_gate_refine_limit", (
-            f"check_reconcile_limit.on_error should be 'check_gate_refine_limit' (BUG-3551: structure-gate budget; "
-            f"fail-open), got {state.get('on_error')!r}"
+        assert state.get("on_error") == "check_refine_limit", (
+            f"check_reconcile_limit.on_error should be 'check_refine_limit', "
+            f"got {state.get('on_error')!r}"
         )
         assert "${context.run_dir}/refine-to-ready-reconcile-attempts" in state.get("action", ""), (
             "check_reconcile_limit.action should target the run-scoped counter file"
@@ -2909,12 +2909,12 @@ class TestRefineToReadyIssueSubLoop:
         (route to check_refine_limit) for every other non-VALID verdict and for a
         probe failure (fail-open, matching this file's convention)."""
         state = data["states"].get("check_proposal_unsound", {})
-        assert state.get("on_no") == "check_gate_refine_limit", (
-            f"check_proposal_unsound.on_no should be 'check_gate_refine_limit' (BUG-3551: structure-gate budget), got {state.get('on_no')!r}"
+        assert state.get("on_no") == "check_refine_limit", (
+            f"check_proposal_unsound.on_no should be 'check_refine_limit', got {state.get('on_no')!r}"
         )
-        assert state.get("on_error") == "check_gate_refine_limit", (
-            f"check_proposal_unsound.on_error should be 'check_gate_refine_limit' (BUG-3551: structure-gate budget; "
-            f"fail-open), got {state.get('on_error')!r}"
+        assert state.get("on_error") == "check_refine_limit", (
+            f"check_proposal_unsound.on_error should be 'check_refine_limit', "
+            f"got {state.get('on_error')!r}"
         )
 
     def test_check_verify_verdict_on_no_reaches_check_proposal_unsound(self, data: dict) -> None:
