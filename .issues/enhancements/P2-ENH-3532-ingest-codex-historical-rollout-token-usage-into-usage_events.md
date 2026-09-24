@@ -11,16 +11,17 @@ labels:
 - observability
 - multi-host
 blocked_by:
-- ENH-3528
-- BUG-3530
+- ENH-3538
 - BUG-3531
+relates_to:
+- ENH-3528
 ---
 
 # ENH-3532: Ingest Codex historical rollout token usage into usage_events
 
 ## Summary
 
-Ingest Codex historical rollout usage (`event_msg` / `token_count`) into `usage_events` with defined normalization, deduplication, and rebuild behavior. This is Delivery B split out of ENH-3528: it builds on ENH-3528's per-observation provenance columns and on the Codex normalization fix in BUG-3531. Codex live `turn.completed` capture already works and must keep working.
+Ingest Codex historical rollout usage (`event_msg` / `token_count`) into `usage_events` with defined normalization, deduplication, and rebuild behavior. This is Delivery B split out of ENH-3528: it builds on ENH-3538's per-observation provenance/host/observation-time columns (the foundation extracted from ENH-3528) and on the Codex normalization fix in BUG-3531. It does not depend on ENH-3528's reporting work; ENH-3528 reports the rollout rows once both land. Codex live `turn.completed` capture already works and must keep working.
 
 ## Current Behavior
 
@@ -66,7 +67,7 @@ Normalize native events into the canonical contract shared with live capture (BU
 ## Scope Boundaries
 
 - **In scope**: Codex rollout `token_count` normalization and ingestion into `usage_events`, request/snapshot/reset identity, live-vs-historical coverage policy, idempotent replay.
-- **Prerequisites**: ENH-3528 (provenance/host/channel columns), BUG-3530 (rebuild preserves live rows), BUG-3531 (shared Codex input normalizer).
+- **Prerequisites**: ENH-3538 (provenance/host/observation-time columns, nullable components, host-preserving replay iterator), BUG-3531 (shared `normalize_codex_input`). BUG-3530 (`channel` column; rebuild preserves live rows) is done.
 - **Out of scope**: other hosts (ENH-3534); Codex pricing; changing live capture beyond BUG-3531.
 
 ## Program Design
@@ -77,7 +78,7 @@ Normalize native events into the canonical contract shared with live capture (BU
 
 ### Signatures
 
-- `normalize_codex_usage(event: dict[str, Any], *, session_id: str, prior: dict[str, int] | None = None) -> list[UsageObservation]` — returns zero or one observation per event; `prior` carries the last cumulative snapshot for reset/duplicate detection.
+- `normalize_codex_usage(event: dict[str, Any], *, session_id: str, prior: dict[str, int] | None = None) -> list[UsageObservation]` — returns zero or one observation per event; `prior` carries the last cumulative snapshot for reset/duplicate detection. Per-observation input splitting delegates to BUG-3531's `normalize_codex_input`, and the observation type is ENH-3538's `TokenUsage` (nullable components, `provenance`, `host`, `observed_at`) unless a separate `UsageObservation` is justified.
 - `_backfill_usage_events(conn: sqlite3.Connection, source: list[Path] | sqlite3.Cursor) -> int` — existing; extended to route Codex rollouts through the normalizer.
 
 ### Call Path
