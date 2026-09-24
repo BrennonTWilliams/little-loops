@@ -33,8 +33,8 @@ After a reconcile that substantively rewrites an issue:
 - **Flag ownership is unchanged.**
   - Reconcile never clears `decision_needed` or the other outcome flags; clearing stays owned by `/ll:decide-issue` (`set_flags.py:262-264`, `skills/decide-issue/SKILL.md:289-297`).
   - Reconcile's own branch that *sets* `decision_needed: true` (`commands/reconcile-issue.md:240`) keeps working.
-- **No-op runs preserve everything.** `--check` already never writes (`commands/reconcile-issue.md:125-126`, §7). A non-check run that finds nothing stale and rewrites no directive section must also leave the scores and notes untouched.
-- **Defense in depth.** `set-flags` strips `~~…~~` spans before phrase matching, so hand-written strikethroughs elsewhere cannot fire flags either.
+- **No-op runs preserve scores, notes and outcome flags.** `--check` already never writes (`commands/reconcile-issue.md:125-126`, §7). A non-check run that finds nothing stale and rewrites no directive section must also leave the scores, Confidence Check Notes and outcome flags untouched. The one exception is `reconcile_attempted: true`: step 2 (`:139-146`) deliberately writes it on every non-check run, no-op or not, to arm `autodev.yaml`'s one-shot guard. That stays.
+- **Defense in depth.** `set-flags` strips `~~…~~` spans before phrase matching, so hand-written strikethroughs elsewhere cannot fire flags either. Use a non-greedy, multiline-safe pattern: `re.sub(r"~~.+?~~", "", notes, flags=re.S)`.
 
 ## Motivation
 
@@ -44,25 +44,56 @@ Reconcile exists to stop `/ll:confidence-check` from re-raising a Concern the re
 
 1. **`commands/reconcile-issue.md`**: in the write step, which runs only when at least one directive section was rewritten and never under `--check`, add these sub-steps:
    - (a) Move each resolved Concern bullet to `## Resolved Concerns` using the format above.
-   - (b) Remove the six score keys from frontmatter.
+   - (b) Remove the six score keys by calling `ll-issues set-scores` with the new `--clear` flag (below), not by hand-editing frontmatter. Deciding which Concerns are resolved is the model's judgment; clearing the scores is mechanical and should be deterministic and unit-testable.
    - (c) Change the CONCERNS output nudge from optional to "scores cleared — re-run `/ll:confidence-check`".
    - Leave the §2b `decision_needed: true` path untouched.
 2. **`little_loops.cli.issues.set_flags`**: remove `~~…~~` spans from `notes` before `lowered = notes.lower()`.
+2a. **`little_loops.cli.issues.set_scores`**: add a `--clear` flag to `ll-issues set-scores` that removes all six score keys and is mutually exclusive with the per-score arguments. Absent keys are a no-op, so it is idempotent.
 3. **`skills/confidence-check`**: when re-scoring, read `## Resolved Concerns` and do not re-raise a listed concern unless there is new evidence. Keep the `## Resolved Concerns` section when rewriting Confidence Check Notes.
 
 ## Integration Map
 
 - `commands/reconcile-issue.md`: the rewrite/write step, §2b (`:240`, preserve), `--check` / §7 (`:19`, `:125-126`, `:257-267`), and `reconcile_attempted` (`:146`).
 - `scripts/little_loops/cli/issues/set_flags.py`: notes scan (`:291-307`), outcome-threshold precondition (`:130-134`, `:214`), and the set-only docstring (`:262-264`).
+- `scripts/little_loops/cli/issues/set_scores.py` (`cmd_set_scores`, `:13`) and its parser in `scripts/little_loops/cli/issues/__init__.py` (`set-scores`, `:801`): the new `--clear` flag. `docs/reference/CLI.md`: document it.
 - `skills/confidence-check/SKILL.md` (Phase 4.5 notes write, `:438`) and `skills/confidence-check/rubric.md` (Confidence Check Notes template, `:616`).
 - Readers of missing scores, which must still behave with the scores cleared (no change expected): `check_readiness.py:129-132`, `issue_manager.py:838-841`, `refine_status.py:453-458`.
-- `loops/refine-to-ready-issue.yaml`: confirm the reconcile → re-score path re-runs confidence-check after scores are cleared.
-- Tests: `scripts/tests/test_reconcile_issue_command.py`, `test_set_flags_cli.py`, `test_check_readiness.py`, `test_confidence_check_skill.py`.
+- `scripts/little_loops/loops/refine-to-ready-issue.yaml`: confirm the `check_reconcile_limit` → `reconcile_issue` → `normalize_structure` path re-runs confidence-check after scores are cleared.
+- Tests: `scripts/tests/test_reconcile_issue_command.py`, `test_set_flags_cli.py`, `test_check_readiness.py`, `test_confidence_check_skill.py`, and the `set-scores` CLI tests (for `--clear`).
+
+### Behavior Parity
+
+| Artifact | Behavior | Disposition | Notes |
+|---|---|---|---|
+| `commands/reconcile-issue.md` | Step 2 sets `reconcile_attempted: true` on every non-check run, including no-ops | PRESERVED | The no-op AC excludes this key. |
+| `commands/reconcile-issue.md` | §2b sets `decision_needed: true` when a rewrite exposes an open decision | PRESERVED | Reconcile still never clears outcome flags. |
+| `commands/reconcile-issue.md` | `--check` never writes (§7) | PRESERVED | No score clear or Concern move under `--check`. |
+| `commands/reconcile-issue.md` | `## Confidence Check Notes` is excluded from the rewrite scope (`:92`) | CHANGED | Reconcile now moves resolved Concern bullets out of it; unresolved bullets and the rest of the section are untouched. |
+| `commands/reconcile-issue.md` | Stored scores survive a reconcile | CHANGED | The six score keys are cleared after a substantive rewrite. |
+
+## Program Design
+
+### Types
+- No new types.
+
+### Signatures
+- `apply_flags_from_notes(config: BRConfig, issue_id: str, notes: str | None, dry_run: bool) -> FlagResult` — strips `~~…~~` spans from `notes` before phrase matching (`set_flags.py:257`).
+- `cmd_set_scores(config: BRConfig, args: argparse.Namespace) -> int` — gains `--clear`, which removes all six score keys (`set_scores.py:13`).
+
+### Call Path
+`/ll:reconcile-issue` write step -> `ll-issues set-scores` (new `--clear` flag) -> `cmd_set_scores`
+`ll-issues set-flags` -> `apply_flags_from_notes` -> strikethrough strip -> phrase match
+
+### Decision Rules
+- Scores are cleared only when at least one directive section was rewritten, and never under `--check`.
+- A Concern is moved only when the rewrite resolved it; unresolved Concerns stay in `## Confidence Check Notes` and keep firing flags.
+- `--clear` is mutually exclusive with the per-score arguments.
 
 ## Implementation Steps
 
 1. `set_flags.py`: strip strikethrough spans; add a test showing a struck-through resolved note does not fire.
-2. `reconcile-issue.md`: add the Resolved Concerns move and the six-key score clear to the write step, gated on a substantive rewrite.
+1a. `set_scores.py`: add `--clear`; test that it removes all six keys, is idempotent, and rejects combination with a score argument.
+2. `reconcile-issue.md`: add the Resolved Concerns move and the `set-scores --clear` call to the write step, gated on a substantive rewrite.
 3. `confidence-check`: honor `## Resolved Concerns` on re-score.
 4. Tests for each acceptance criterion; run `python -m pytest scripts/tests/`.
 
@@ -84,7 +115,8 @@ Reconcile exists to stop `/ll:confidence-check` from re-raising a Concern the re
 - [ ] After a substantive reconcile, `confidence_score`, `outcome_confidence` and all four `score_*` keys are absent from frontmatter. `ll-issues check-readiness` then reports the issue as needing reassessment.
 - [ ] Unresolved Concerns remain in `## Confidence Check Notes`. With a sub-threshold `outcome_confidence` present, they still fire their flags through `set-flags`.
 - [ ] Resolved Concerns do not re-trigger flags. Neither a `## Resolved Concerns` entry nor a `~~struck~~` note in Confidence Check Notes fires `set-flags`, even at `outcome_confidence: 59`.
-- [ ] `--check` runs, and non-check runs that rewrite nothing, leave scores, notes and flags byte-for-byte unchanged.
+- [ ] `--check` runs leave the file byte-for-byte unchanged. Non-check runs that rewrite nothing leave scores, Confidence Check Notes and outcome flags unchanged; their only write is `reconcile_attempted: true`.
+- [ ] The new `--clear` flag on `ll-issues set-scores` removes all six score keys, is a no-op when they are absent, and errors when combined with a per-score argument.
 - [ ] Reconcile never clears `decision_needed` (or other outcome flags); the §2b path that sets it still works.
 
 ## Related Key Documentation
