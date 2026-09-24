@@ -183,16 +183,17 @@ Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the sam
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-09-24_ — **stale**: predates the 2026-09-24 external-review revision (global mode change → opt-in `shared_mode`); re-run before implementation.
+_Added by `/ll:confidence-check` on 2026-09-24_ (re-run after the opt-in `shared_mode` revision; write-site line numbers re-verified against `main`)
 
 **Readiness Score**: 100/100 → PROCEED
 **Outcome Confidence**: 64/100 → MODERATE
 
 ### Outcome Risk Factors
-- Wide blast radius: ~69 existing `atomic_write`/`atomic_write_json` callers inherit the `0600` → umask-derived mode change; the full-suite run (Implementation Step 2) is the only guard, so run it before routing the artifact sites. _(Resolved by the revision: the mode change is now opt-in.)_
-- Broad enumeration across 7 modified files plus a local-logic rewrite of `atomic_write` (bounded retry, foreign-temp-safe cleanup, name truncation) — expect some iteration on the collision/cleanup tests.
+- Wide blast radius: `atomic_write` has ~69 callers (`atomic_write`/`atomic_write_json`); the mode default is unchanged, but every one inherits the temp-file rework (`mkstemp` → `os.open(O_EXCL)`, `.ll-<hex>.tmp` name, bounded retry). Run the full suite right after step 1, before routing artifact sites.
+- Broad enumeration across 7 modified files plus a local-logic rewrite of `atomic_write` (foreign-temp-safe cleanup, retry bound) — expect some iteration on the collision/cleanup tests.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-24T21:02:35 - `f7a68862-e3ea-425a-b71a-21cc3db44d65.jsonl`
 - Manual review - 2026-09-24 - external review (Astra): global mode change reverted to opt-in `atomic_write(..., shared_mode=True)` because `.mcp.json` / `.qwen` / `.gemini` `settings.json` rewrites carry secrets (existing `0600` would become `0644`); shared mode preserves an existing regular file's mode; temp name changed from `.{name[:64]}.<hex>.tmp` (could exceed 255 bytes for multibyte names) to fixed `.ll-<hex>.tmp`; `.rejected` leaf-symlink exemption removed (`_write_rejected_discovery` mkdir is umask-derived, group-writable under `002`) and a symlink test added; tests added for retry exhaustion, dangling-symlink collision, real encoding failure, multibyte filename, non-ASCII `data.json` bytes, and `.mcp.json` mode regression; caller count unified at 69; write-site count corrected to six artifact + five `.rejected`
 - `/ll:confidence-check` - 2026-09-24T20:29:53 - `7ccc0a63-5f30-4b64-83f4-7cfd1905bff1.jsonl`
 - `/ll:verify-issues` - 2026-09-24T19:13:35 - `27bdfde5-d1ef-4e98-b8ff-2728ac43d651.jsonl`
