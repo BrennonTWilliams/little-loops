@@ -256,6 +256,30 @@ def validate_top_level_data(data: Any, schema: dict[str, Any]) -> None:
     validate_data(data, schema, "data")
 
 
+_SCRIPT_JSON_ESCAPES = {
+    "<": "\\u003c",
+    ">": "\\u003e",
+    "&": "\\u0026",
+    "\u2028": "\\u2028",
+    "\u2029": "\\u2029",
+}
+
+
+def script_json(obj: Any) -> str:
+    """Serialize *obj* as JSON that is safe to splice into an inline ``<script>``.
+
+    ``json.dumps`` leaves ``<`` unescaped, so a value containing ``</script>``
+    would close the HTML script block. This escapes ``<``, ``>``, ``&``,
+    U+2028 and U+2029 as JSON unicode escapes (U+2028/U+2029 are line
+    terminators in older JS). The result is still valid JSON and ``json.loads``
+    returns *obj*.
+    """
+    out = json.dumps(obj)
+    for ch, esc in _SCRIPT_JSON_ESCAPES.items():
+        out = out.replace(ch, esc)
+    return out
+
+
 def build_environment() -> SandboxedEnvironment:
     """Construct the frozen Jinja2 environment for FEAT-3036 templates.
 

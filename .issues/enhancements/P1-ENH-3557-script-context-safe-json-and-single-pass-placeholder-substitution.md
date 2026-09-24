@@ -3,10 +3,11 @@ id: ENH-3557
 type: ENH
 title: Script-context-safe JSON and single-pass placeholder substitution
 priority: P1
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-24'
 captured_at: '2026-09-24T18:30:10Z'
+completed_at: '2026-09-24T19:31:48Z'
 parent: EPIC-3556
 labels:
 - security
@@ -130,12 +131,12 @@ The skill catalog is agent-authorable and is embedded in a page that people othe
 
 ## Acceptance Criteria
 
-- [ ] `script_json` exists in `artifact_templates.py`; unit tests show its output contains none of `<`, `>`, `&`, U+2028, U+2029 and `json.loads` returns the input.
-- [ ] No `json.dumps` result is spliced into emitted HTML in `policy_builder.py` or `dashboard.py` without `script_json`.
-- [ ] A skill description of `</script><script>alert(1)</script>` (via monkeypatched `_load_skill_catalog`) and serve URLs containing the same payload produce a page whose `</script>` count equals a clean-input render's count (derived, not hard-coded), and each spliced JSON blob, extracted from the page, `json.loads` back to the hostile input.
-- [ ] `render_policy_builder_html()` substitutes placeholders in one pass. A skill description containing each policy-builder placeholder token (`/*__BUILDER_CORE_JS__*/`, `/*__GRAMMAR_SPEC_JSON__*/`, etc.) round-trips verbatim through the catalog JSON, and the core JS appears exactly once in the page.
-- [ ] An unknown placeholder in the template, or a value whose placeholder is missing from the template, raises.
-- [ ] Tests run in the default `python -m pytest scripts/tests/` tier (no `integration` marker); `mypy` and `ruff check` pass.
+- [x] `script_json` exists in `artifact_templates.py`; unit tests show its output contains none of `<`, `>`, `&`, U+2028, U+2029 and `json.loads` returns the input.
+- [x] No `json.dumps` result is spliced into emitted HTML in `policy_builder.py` or `dashboard.py` without `script_json`.
+- [x] A skill description of `</script><script>alert(1)</script>` (via monkeypatched `_load_skill_catalog`) and serve URLs containing the same payload produce a page whose `</script>` count equals a clean-input render's count (derived, not hard-coded), and each spliced JSON blob, extracted from the page, `json.loads` back to the hostile input.
+- [x] `render_policy_builder_html()` substitutes placeholders in one pass. A skill description containing each policy-builder placeholder token (`/*__BUILDER_CORE_JS__*/`, `/*__GRAMMAR_SPEC_JSON__*/`, etc.) round-trips verbatim through the catalog JSON, and the core JS appears exactly once in the page.
+- [x] An unknown placeholder in the template, or a value whose placeholder is missing from the template, raises.
+- [x] Tests run in the default `python -m pytest scripts/tests/` tier (no `integration` marker); `mypy` and `ruff check` pass.
 
 ## Related
 
@@ -157,6 +158,8 @@ Verdict at time of check: **VALID** (no corrections needed)
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-24T19:31:48 - `9c2ab09a-49a3-4cc6-9528-5d6e54c762b5.jsonl`
+- `/ll:ready-issue` - 2026-09-24T19:18:16 - `c0e9b3d4-646e-4432-a88c-f6d34a4addad.jsonl`
 - `/ll:confidence-check` - 2026-09-24T19:14:49 - `6b43fbf3-9a37-436a-ad6c-0f27aa9fd0d2.jsonl`
 - `/ll:verify-issues` - 2026-09-24T19:13:34 - `27bdfde5-d1ef-4e98-b8ff-2728ac43d651.jsonl`
 - `/ll:scope-epic` - 2026-09-24T18:30:39 - `bd7b32d0-d305-4468-99d3-61a8a02d4caa.jsonl`

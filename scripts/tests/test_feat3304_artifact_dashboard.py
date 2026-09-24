@@ -1085,7 +1085,10 @@ class TestServeContextRelaxation:
             ),
         )
         assert "&amp;" not in result.html.split("refreshHistory")[1][:400]
-        assert json.dumps("http://127.0.0.1:9/tok/history?a=1&b='x'") in result.html
+        assert (
+            json.dumps("http://127.0.0.1:9/tok/history?a=1&b='x'").replace("&", "\\u0026")
+            in result.html
+        )
 
     def test_default_file_url_path_renders_with_no_serve_context_and_no_strict_undefined_error(
         self, project: Path
@@ -1204,3 +1207,32 @@ class TestArtifactCLIDispatchDashboard:
         )
         assert "dashboard" in proc.stdout
         assert "max_artifact_bytes" in proc.stdout
+
+
+class TestEnh3557ServeUrlScriptSafety:
+    def test_hostile_serve_urls_cannot_close_script(self, tmp_path: Path) -> None:
+        from little_loops.config.core import BRConfig
+
+        (tmp_path / ".ll").mkdir()
+        (tmp_path / ".ll" / "ll-config.json").write_text("{}", encoding="utf-8")
+        config = BRConfig(tmp_path)
+
+        def render(url: str) -> str:
+            return build_dashboard_html(
+                db_path=tmp_path / ".ll" / "history.db",
+                config=config,
+                tables=list(_SHAREABLE_EXPORT_TYPES),
+                since_iso=None,
+                mode="shareable",
+                serve_context=ServeContext(
+                    events_url="http://127.0.0.1:9/tok/events",
+                    interaction_url=url,
+                    history_url=url,
+                ),
+            ).html
+
+        payload = "http://x/</script><script>alert(1)</script>"
+        clean = render("http://x/ok")
+        hostile = render(payload)
+        assert hostile.count("</script>") == clean.count("</script>")
+        assert json.dumps(payload).replace("<", "\\u003c").replace(">", "\\u003e") in hostile

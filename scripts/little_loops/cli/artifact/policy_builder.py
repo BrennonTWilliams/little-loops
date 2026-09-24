@@ -10,10 +10,11 @@ into the template at generation time.
 from __future__ import annotations
 
 import argparse
-import json
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from little_loops.artifact_templates import script_json
 from little_loops.logger import Logger
 
 if TYPE_CHECKING:
@@ -85,16 +86,16 @@ def render_policy_builder_html(config: BRConfig, *, workspace_id: str | None = N
     spec_for_js = dict(spec)
     if isinstance(pred_pattern, str):
         spec_for_js["pred_pattern"] = _py_pattern_to_js(pred_pattern)
-    grammar_json = json.dumps(spec_for_js)
+    grammar_json = script_json(spec_for_js)
 
     catalog = _load_skill_catalog(config.project_root)
-    catalog_json = json.dumps(catalog)
+    catalog_json = script_json(catalog)
 
     # ENH-3492: stamp the project's confidence-gate thresholds so the
     # builder can display them alongside authored rule thresholds —
     # informational only, never used to rewrite saved predicates.
     gate = config.commands.confidence_gate
-    confidence_gate_json = json.dumps(
+    confidence_gate_json = script_json(
         {
             "enabled": gate.enabled,
             "readiness_threshold": gate.readiness_threshold,
@@ -112,15 +113,31 @@ def render_policy_builder_html(config: BRConfig, *, workspace_id: str | None = N
     active_theme = config.design_tokens.active_theme or "light"
 
     html = stamp_page_shell(template, active_theme=active_theme, css_vars=css_vars)
-    html = html.replace("/*__GRAMMAR_SPEC_JSON__*/", grammar_json)
-    html = html.replace("/*__SKILL_CATALOG_JSON__*/", catalog_json)
-    html = html.replace("/*__GENERATOR_VERSION_JSON__*/", json.dumps(__version__))
-    html = html.replace("/*__CONFIDENCE_GATE_JSON__*/", confidence_gate_json)
-    html = html.replace("/*__BUILDER_CORE_JS__*/", core_js)
-    connected_context_json = json.dumps(
+    connected_context_json = script_json(
         {"workspaceId": workspace_id} if workspace_id is not None else None
     )
-    html = html.replace("/*__CONNECTED_CONTEXT_JSON__*/", connected_context_json)
+    # Single pass: spliced content is never rescanned for placeholder tokens.
+    values = {
+        "GRAMMAR_SPEC_JSON": grammar_json,
+        "SKILL_CATALOG_JSON": catalog_json,
+        "GENERATOR_VERSION_JSON": script_json(__version__),
+        "CONFIDENCE_GATE_JSON": confidence_gate_json,
+        "BUILDER_CORE_JS": core_js,
+        "CONNECTED_CONTEXT_JSON": connected_context_json,
+    }
+    matched: set[str] = set()
+
+    def _fill(m: re.Match[str]) -> str:
+        name = m.group(1)
+        if name not in values:
+            raise ValueError(f"Unknown policy-builder placeholder: {m.group(0)}")
+        matched.add(name)
+        return values[name]
+
+    html = re.sub(r"/\*__([A-Z_]+)__\*/", _fill, html)
+    missing = sorted(set(values) - matched)
+    if missing:
+        raise ValueError(f"Policy-builder template is missing placeholders: {missing}")
     return html
 
 

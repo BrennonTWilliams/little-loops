@@ -459,3 +459,69 @@ class TestEnh3514StatusVocabulary:
         html = _emit_html(tmp_path)
         assert not re.search(r"<h2\b[^>]*\bstyle=", html)
         assert re.search(r"^\.panel h2 \{", html, re.MULTILINE)
+
+
+class TestEnh3557ScriptContextSafety:
+    """ENH-3557: hostile catalog content cannot break out of the inline script."""
+
+    PAYLOAD = "</script><script>alert(1)</script>"
+    TOKENS = [
+        "/*__BUILDER_CORE_JS__*/",
+        "/*__GRAMMAR_SPEC_JSON__*/",
+        "/*__SKILL_CATALOG_JSON__*/",
+        "/*__GENERATOR_VERSION_JSON__*/",
+        "/*__CONFIDENCE_GATE_JSON__*/",
+        "/*__CONNECTED_CONTEXT_JSON__*/",
+    ]
+
+    @staticmethod
+    def _render(tmp_path: Path, catalog: list[dict]) -> str:
+        from little_loops.cli.artifact import policy_builder
+        from little_loops.config.core import BRConfig
+
+        with patch.object(policy_builder, "_load_skill_catalog", return_value=catalog):
+            return policy_builder.render_policy_builder_html(BRConfig(tmp_path))
+
+    def test_hostile_description_cannot_close_script(self, tmp_path: Path) -> None:
+        clean = self._render(tmp_path, [{"name": "x", "description": "ok", "args_hint": None}])
+        hostile_entry = {"name": "x", "description": self.PAYLOAD, "args_hint": None}
+        html = self._render(tmp_path, [hostile_entry])
+        assert html.count("</script>") == clean.count("</script>")
+        assert _extract_skill_catalog(html) == [hostile_entry]
+
+    def test_placeholder_tokens_round_trip_and_core_js_appears_once(self, tmp_path: Path) -> None:
+        catalog = [{"name": "x", "description": " ".join(self.TOKENS), "args_hint": None}]
+        clean = self._render(tmp_path, [{"name": "x", "description": "ok", "args_hint": None}])
+        html = self._render(tmp_path, catalog)
+        assert _extract_skill_catalog(html) == catalog
+        assert len(html) - len(clean) == len(json.dumps(catalog)) - len(
+            json.dumps([{"name": "x", "description": "ok", "args_hint": None}])
+        )
+        core = (
+            Path(__file__).parent.parent / "little_loops" / "templates" / "policy_builder_core.mjs"
+        ).read_text()
+        assert html.count(core) == 1
+
+    def test_unknown_placeholder_raises(self, tmp_path: Path) -> None:
+        import little_loops.artifact_template_kit as kit
+        from little_loops.cli.artifact import policy_builder
+        from little_loops.config.core import BRConfig
+
+        orig = kit.stamp_page_shell
+        with patch.object(kit, "stamp_page_shell", lambda *a, **k: orig(*a, **k) + "/*__NOPE__*/"):
+            with pytest.raises(ValueError, match="Unknown policy-builder placeholder"):
+                policy_builder.render_policy_builder_html(BRConfig(tmp_path))
+
+    def test_missing_placeholder_raises(self, tmp_path: Path) -> None:
+        import little_loops.artifact_template_kit as kit
+        from little_loops.cli.artifact import policy_builder
+        from little_loops.config.core import BRConfig
+
+        orig = kit.stamp_page_shell
+        with patch.object(
+            kit,
+            "stamp_page_shell",
+            lambda *a, **k: orig(*a, **k).replace("/*__CONFIDENCE_GATE_JSON__*/", "null"),
+        ):
+            with pytest.raises(ValueError, match="missing placeholders"):
+                policy_builder.render_policy_builder_html(BRConfig(tmp_path))

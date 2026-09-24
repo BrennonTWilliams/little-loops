@@ -29,6 +29,7 @@ from little_loops.artifact_templates import (
     ManifestError,
     load_manifest,
     render_template,
+    script_json,
     validate_top_level_data,
 )
 from little_loops.logger import Logger
@@ -328,20 +329,18 @@ def build_dashboard_html(
         and serve_context.history_url is not None,
     }
     if serve_context is not None:
-        import json as _json
-
         htmax_js = _packaged_path("assets", "vendor", "htmx", "htmax.js").read_text(
             encoding="utf-8"
         )
         data["serve_htmax_js"] = htmax_js
         data["serve_events_url"] = html.escape(serve_context.events_url)
         # Embedded inside an inline <script> as a JS string literal, not an
-        # HTML attribute — json.dumps gives correct JS-string quoting rather
-        # than HTML-attribute escaping. json.dumps(None) == "null", which is
+        # HTML attribute — script_json gives correct JS-string quoting (and
+        # </script>-safe escaping) rather than HTML-attribute escaping. script_json(None) == "null", which is
         # exactly the literal the disabled case needs — no special-casing.
         data["serve_interaction_enabled"] = serve_context.interaction_url is not None
-        data["serve_interaction_url_js"] = _json.dumps(serve_context.interaction_url)
-        data["serve_history_url_js"] = _json.dumps(serve_context.history_url)
+        data["serve_interaction_url_js"] = script_json(serve_context.interaction_url)
+        data["serve_history_url_js"] = script_json(serve_context.history_url)
         data["serve_history_poll_s"] = serve_context.history_poll_s
 
     try:

@@ -19,6 +19,7 @@ from little_loops.artifact_templates import (
     load_manifest,
     render_template,
     resolve_template,
+    script_json,
     validate_top_level_data,
 )
 from little_loops.logger import Logger
@@ -524,3 +525,25 @@ class TestArtifactCLIDispatchRender:
             code = main_artifact()
         assert code == 0
         handler.assert_called_once()
+
+
+class TestScriptJson:
+    """ENH-3557: script_json output is safe inside an inline <script>."""
+
+    HOSTILE = "a<b>c&d" + chr(0x2028) + chr(0x2029) + "</script><script>alert(1)</script>"
+
+    def test_output_has_none_of_the_escaped_characters(self) -> None:
+        out = script_json({"k": self.HOSTILE, "l": [self.HOSTILE]})
+        for ch in ("<", ">", "&", chr(0x2028), chr(0x2029)):
+            assert ch not in out
+
+    def test_round_trips(self) -> None:
+        obj = {"a": [self.HOSTILE, None, 1, 2.5, True], "b": {"c": "h\u00e9llo"}, "d": []}
+        assert json.loads(script_json(obj)) == obj
+
+    def test_none_is_null(self) -> None:
+        assert script_json(None) == "null"
+
+    def test_clean_input_matches_json_dumps(self) -> None:
+        obj = {"a": [1, "two", None]}
+        assert script_json(obj) == json.dumps(obj)

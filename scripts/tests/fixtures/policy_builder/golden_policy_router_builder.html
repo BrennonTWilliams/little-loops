@@ -387,7 +387,7 @@ button[aria-disabled="true"] { opacity: 0.5; cursor: default; }
 
   <!-- Stamped project-derived JSON globals (plain script, before the module). -->
   <script>
-    window.__GRAMMAR_SPEC__ = {"ordered_ops": ["<", "<=", ">", ">="], "all_ops": ["!=", "<", "<=", "==", ">", ">="], "pred_pattern": "^(?<dim>[\\w][\\w\\s\\-]*?)\\s*:\\s*(?<op>>=|<=|==|!=|<|>)\\s*(?<value>\\S.*?)$"};
+    window.__GRAMMAR_SPEC__ = {"ordered_ops": ["\u003c", "\u003c=", "\u003e", "\u003e="], "all_ops": ["!=", "\u003c", "\u003c=", "==", "\u003e", "\u003e="], "pred_pattern": "^(?\u003cdim\u003e[\\w][\\w\\s\\-]*?)\\s*:\\s*(?\u003cop\u003e\u003e=|\u003c=|==|!=|\u003c|\u003e)\\s*(?\u003cvalue\u003e\\S.*?)$"};
     window.__SKILL_CATALOG__ = [];
     window.__GENERATOR_VERSION__ = "0.0.0-golden";
     window.__CONFIDENCE_GATE__ = {"enabled": false, "readiness_threshold": 85, "outcome_threshold": 65};
