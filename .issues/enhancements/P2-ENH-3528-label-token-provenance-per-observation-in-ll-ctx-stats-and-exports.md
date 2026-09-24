@@ -18,6 +18,8 @@ relates_to:
 - ENH-3544
 - ENH-3545
 - ENH-3546
+blocked_by:
+- BUG-3542
 ---
 
 # Label token provenance per observation in ll-ctx-stats and exports
@@ -28,7 +30,7 @@ Make token provenance explicit per observation and metric. Host capabilities des
 
 Both prerequisites are done: ENH-3538 (foundation, schema v54) and BUG-3531 (Codex live normalization). Where the Design sections below describe foundation behavior, ENH-3538 is authoritative and this issue consumes it.
 
-**Landing order (decided 2026-09-24):** this issue lands **before** ENH-3532/ENH-3543. Its acceptance criteria cover independent delivery only: conservative unresolved coverage and unknown historical host attribution. The combined behavior (reporting honoring the shared coverage selector and verified host attribution) is tested by ENH-3543 and BUG-3542, which land later.
+**Landing order (decided 2026-09-24, revised 2026-09-24):** BUG-3542 lands **first** (`blocked_by`). It delivers the source-host correction and the `host_basis` discriminator, and owns the storage and replay tests. This issue lands after BUG-3542 and **before** ENH-3532/ENH-3543. It owns reporting and export consumption of `host_basis`, including the reporting-layer tests for both verified and legacy (unverified) host attribution. Coverage remains independent delivery: conservative unresolved coverage here, with the combined behavior of reporting honoring the shared coverage selector tested by ENH-3543, which lands later.
 
 **Split out 2026-09-24:** typed runtime telemetry map → ENH-3544; context-hook estimate/staleness labeling → ENH-3545; Claude `measured` promotion → ENH-3546. Without ENH-3546, Claude rows (most history) render as `unknown`. That is correct but low-signal, so land ENH-3546 close behind this issue.
 
@@ -41,7 +43,7 @@ Both prerequisites are done: ENH-3538 (foundation, schema v54) and BUG-3531 (Cod
 - `context-monitor.sh` combines measured baselines with estimates and adds heuristic overhead even after the `result_token_count` branch. Its `estimated_tokens` is not automatically measured context occupancy.
 - `RUNTIME_HOST_CAPABILITIES` describes runtime operations; the adapter map describes artifact emission. Runtime `token_reporting` is an advisory `ll-doctor` report, not observation provenance.
 - `provider_vendor` follows ENH-3538's runtime-host-vendor contract via `vendor_for_runner(host)`; it is not a separate model-vendor field. The foundation's live observations still lack end-to-end session/invocation identity; ENH-3532 owns the additional plumbing for Codex overlap reconciliation.
-- ENH-3538 preserves replay host and observation time, but `raw_events.host` can contain the ingesting host rather than the source host. ENH-3532 owns correcting new raw ingestion and establishing durable attribution evidence. Existing non-NULL host values are not automatically trustworthy.
+- ENH-3538 preserves replay host and observation time, but `raw_events.host` can contain the ingesting host rather than the source host. BUG-3542 (prerequisite) corrects new raw ingestion and persists `host_basis` on `raw_events` and replay-derived `usage_events`. Existing non-NULL host values on NULL-basis rows are not automatically trustworthy.
 - Existing Claude live invocation totals and transcript assistant usage can cover the same work. Current aggregation sums both channels without resolving overlap; this predates ENH-3532's Codex ingestion.
 
 ## Expected Behavior
@@ -79,7 +81,16 @@ Keep these quantities distinct: per-request/per-invocation consumption, cumulati
 
 Read acquisition metadata from ENH-3538's stored columns; retain event-versus-receipt time and never relabel legacy loop-finish `ts` as observation time. Preserve supplied identities without inventing a host-observed identity from model choice, run ID, or persistence time. ENH-3532 owns additional live identity plumbing and metadata-bearing Codex replay.
 
-Treat historical host attribution separately from numeric token provenance. Legacy `raw_events.host` may name the ingesting host: a populated column alone does not certify the source. Include only verified source hosts in `token_provenance.hosts`; qualify uncertain attribution with a reason and do not derive a certified provider vendor from it. Readers/exports must preserve this distinction. ENH-3532 owns correcting new raw ingestion and persisting trustworthy attribution evidence; that correction is required before certifying those historical host labels. This reporting issue can land independently by exposing uncertain historical host attribution as unknown, using conservative channel/schema evidence and never the configured reporting host. Tests must include a Codex source ingested under a Claude-configured process and legacy rows whose origin cannot be recovered.
+Treat historical host attribution separately from numeric token provenance. Legacy `raw_events.host` may name the ingesting host: a populated column alone does not certify the source. Include only verified source hosts in `token_provenance.hosts`; qualify uncertain attribution with a reason and do not derive a certified provider vendor from it. Readers/exports must preserve this distinction. BUG-3542 (prerequisite) corrects new raw ingestion and persists `usage_events.host_basis`. This issue consumes it as follows:
+
+- A replay-derived row (`channel='transcript'`) has a verified host only when `host_basis='handle'`.
+- A NULL basis on a replay-derived row is unverified attribution.
+- Live rows get their `host` from the invocation, and NULL `host_basis` does not qualify them.
+- `host_basis` never changes numeric `provenance`.
+- Databases that predate the column read as NULL basis.
+- Never fall back to the configured reporting host.
+
+Tests must include a Codex source ingested under a Claude-configured process, verified (`'handle'`) attribution, and legacy rows whose origin cannot be recovered.
 
 Replace an estimate only with an applicable measurement of the same metric, scope, and interval. Never use cumulative usage as current context occupancy or add a cumulative total to its constituent request counts. A context sample becomes stale when relevant context changes or compaction occurs; expose its observation boundary/staleness rather than presenting it as current. Between measurements, an existing supported estimator may continue with `estimated` provenance. Without either a valid measurement or estimator, report unavailable.
 
@@ -121,7 +132,7 @@ Keep requested/resolved model selections separate from observed model identity, 
 - [ ] Tests cover measured, estimated, unknown, mixed, unavailable, partial, and legacy data; a missing field is not a measured zero. Aggregation preserves source composition across multiple hosts.
 - [ ] Unannotated writers default to `unknown`. A foundation-only Codex write remains unknown; after BUG-3531, only newly normalized observations satisfying its producer-contract, consistent-input, and valid-output gates become measured. No host-based promotion of intermediate/legacy rows.
 - [ ] A partial-event fixture survives parsing → detailed callback → executor payload → database → history aggregation → export with missing components still null and completeness preserved. Known zero, all-missing, empty datasets, partial pricing, zero-denominator ratios, and legacy callback behavior are covered.
-- [ ] Reporting retains foundation observation times and completeness through delayed persistence and export, distinguishing event/receipt time from legacy loop-finish `ts`. Unverified historical ingest-host labels are not reported as source-host facts; tests cover mixed-host ingestion and legacy unknown attribution (verified attribution is tested in BUG-3542).
+- [ ] Reporting retains foundation observation times and completeness through delayed persistence and export, distinguishing event/receipt time from legacy loop-finish `ts`. Replay-derived host labels are reported as source-host facts only when `host_basis='handle'` (BUG-3542). NULL-basis replay-derived rows render as unverified with a reason, and live rows keep their invocation host. Reporting-layer tests cover mixed-host ingestion, verified attribution, legacy unknown attribution, and schemas that predate `host_basis`. BUG-3542 owns the storage-layer tests.
 - [ ] Existing Claude live/transcript overlap is exposed as unresolved coverage with channel subtotals and unknown aggregate provenance, including waste/cost rollups. Fixtures cover overlapping and demonstrably disjoint coverage; no deduplication by token equality or timestamp proximity.
 - [ ] The fixed pointer-metadata schema is tested, including per-component known/missing counts, provenance composition, coverage, observation-time ranges/bases, and stale/unavailable reasons.
 - [ ] `ll-ctx-stats` fallback figures derived from context-state estimates render as `estimated` (hook-side staleness labeling is ENH-3545).
@@ -135,9 +146,9 @@ Keep requested/resolved model selections separate from observed model identity, 
 ## Scope Boundaries
 
 - **In scope**: consumption of stored provenance, `ll-ctx-stats` labeling and `token_provenance` contract, and affected history/dashboard exports.
-- **Prerequisites**: none open (ENH-3538, BUG-3531 and BUG-3530 are done).
+- **Prerequisites**: BUG-3542 (raw-ingest source host and `host_basis`). ENH-3538, BUG-3531 and BUG-3530 are done.
 - **Split out**: ENH-3544 (typed runtime telemetry map); ENH-3545 (context-hook estimate/staleness labeling); ENH-3546 (Claude measured provenance); ENH-3532 (Codex historical rollout ingestion); ENH-3543 (live/rollout coverage selector); BUG-3542 (raw-ingest source host); ENH-3534 (Qwen/Gemini/OMP and other hosts).
-- **Out of scope**: ENH-3538's storage/writer/callback foundation; ENH-3532's raw-ingest host correction and live identity plumbing; exact reconciliation of existing live/transcript overlap (exposing unresolved coverage is in scope); improving estimator accuracy; deleting the context estimator globally; using consumption as occupancy; new context monitors; changing time-saved/non-token metrics; new model pricing/routing; a universal provenance rewrite of unrelated CLIs.
+- **Out of scope**: ENH-3538's storage/writer/callback foundation; BUG-3542's raw-ingest host correction, `host_basis` migration and storage tests; ENH-3543's live identity plumbing; exact reconciliation of existing live/transcript overlap (exposing unresolved coverage is in scope); improving estimator accuracy; deleting the context estimator globally; using consumption as occupancy; new context monitors; changing time-saved/non-token metrics; new model pricing/routing; a universal provenance rewrite of unrelated CLIs.
 
 ## Integration Map
 
@@ -149,7 +160,7 @@ Keep requested/resolved model selections separate from observed model identity, 
 
 ### Dependent Files and Similar Patterns
 
-- `subprocess_utils.py`, `fsm/{runners,executor}.py`, `session_store/{schema,writers,lifecycle}.py`, `schema_manifest.json` — ENH-3538 owns nullable observations, migration, callbacks, and persistence; ENH-3532 owns extra live/replay identity and source-host attribution. Consume their final contracts rather than independently changing acquisition semantics.
+- `subprocess_utils.py`, `fsm/{runners,executor}.py`, `session_store/{schema,writers,lifecycle}.py`, `schema_manifest.json` — ENH-3538 owns nullable observations, migration, callbacks, and persistence; ENH-3543 owns extra live/replay identity; BUG-3542 owns source-host attribution and `host_basis`. Consume their final contracts rather than independently changing acquisition semantics.
 
 - `scripts/little_loops/hooks/session_start.py` — version-triggered `--rebuild`; test this path, not only explicit manual rebuild.
 - `pricing.py`, `fsm/cost_graph.py`, `observability/tracing.py`, `issue_history/{agent_quality,quality_regressions,workspace_quality}.py`, `init/core.py` — audit assumptions about null values and new columns; update affected consumers without expanding to unrelated metrics.
@@ -158,7 +169,7 @@ Keep requested/resolved model selections separate from observed model identity, 
 ### Tests
 
 - `test_cli_ctx_stats.py`, `test_history_reader_usage.py`, context reader tests — mixed/unknown/partial data, unchanged store `source`, numeric locations, JSON Pointer paths, host-independent aggregation, and null-versus-zero behavior.
-- Reuse ENH-3538's parser/executor/writer fixtures for end-to-end reporting assertions; do not duplicate foundation migration or callback implementation tests. Add old-schema reader and legacy-attribution cases here. ENH-3532 owns identity/host correction/rebuild regressions; this issue tests their reported meaning.
+- Reuse ENH-3538's parser/executor/writer fixtures for end-to-end reporting assertions; do not duplicate foundation migration or callback implementation tests. Add old-schema reader (including pre-`host_basis`), verified-attribution and legacy-attribution cases here. BUG-3542 owns host correction and rebuild storage regressions; ENH-3543 owns identity regressions; this issue tests their reported meaning.
 - `test_feat3304_artifact_dashboard.py` — allowlist version/hash, fixture DDL, safe provenance export, and missing/partial totals.
 - `test_history_store_chokepoint_gate.py` — history-read boundaries.
 - Usage/history/export fixtures — existing Claude live/transcript overlap and disjoint coverage; channel subtotals; partial known-model pricing; all-missing and observed-zero components; unchanged legacy iterator consumers.
@@ -196,7 +207,7 @@ Update `docs/reference/{CLI,API,HOST_COMPATIBILITY,CONFIGURATION}.md`, `docs/gui
 ### Call Path
 
 - Live event → `usage_from_event` → runner detailed callback/metadata attachment → executor collection → `_finish` → `record_usage_event` → aggregation → text/JSON.
-- Stored raw event + host → metadata-aware usage iterator → `_backfill_usage_events` → aggregation → text/JSON.
+- Stored raw event + host + `host_basis` (BUG-3542) → metadata-aware usage iterator → `_backfill_usage_events` → aggregation (host certified only for `'handle'`) → text/JSON.
 - Context-state estimator → fallback state → `_render_fallback` / `_print_json`; usage backfill does not feed the fallback renderer.
 
 Host event or estimator → attach provenance, host, channel → persist → aggregate values and composition → text / JSON (`token_provenance`) / safe export.
@@ -237,6 +248,10 @@ Reconciled remaining foundation duplication and contradictory cache-write/vendor
 ### Pre-implementation review 2026-09-24 (split)
 
 Removed the resolved `blocked_by` (ENH-3538, BUG-3531 done). Decided the landing order: this issue first, and its ACs cover independent delivery only; the combined-behavior ACs moved to ENH-3543/BUG-3542. Split out ENH-3544 (telemetry map), ENH-3545 (hook staleness) and ENH-3546 (Claude measured provenance, the gap that would otherwise leave most figures `unknown`). Scoped `token_provenance` entries to token and token-derived fields.
+
+### Ownership reconciliation with BUG-3542 (2026-09-24)
+
+Resolved the conflicting landing order. BUG-3542 now lands first and is recorded in `blocked_by`. This issue owns reporting and export consumption of `host_basis`, including the verified-attribution reporting tests that were previously deferred to BUG-3542. Scoped NULL basis to replay-derived rows so live rows are not downgraded. Retargeted leftover ENH-3532 ownership references to BUG-3542 (host attribution) and ENH-3543 (live identity).
 
 ## Status
 
