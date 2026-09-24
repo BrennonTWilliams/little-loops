@@ -32,37 +32,39 @@ The doc matches the dispatch table.
 
 ## Motivation
 
-[Why this issue matters - business value, user impact, technical debt cost]
+The scorer used this guidance to decide whether structural gaps are self-healing. Wrong guidance hides real gaps (tracked in ENH-3576).
 
 ## Proposed Solution
 
-TBD - requires investigation
+Correct the Phase 1.8 remedy sentence to match `_REPAIR_DISPATCH`. Implemented; see Resolution.
 
 ## Integration Map
 
 ### Files to Modify
-- TBD - requires codebase analysis
+- `skills/confidence-check/SKILL.md` — Phase 1.8
+- `.gemini/`, `.kimi-code/`, `.qwen/` skill mirrors
 
 ### Dependent Files (Callers/Importers)
-- TBD - use grep to find references
+- N/A — loop-internal routing
 
 ### Similar Patterns
-- TBD - search for consistency
+- N/A
 
 ### Tests
-- TBD - identify test files to update
+- `scripts/tests/test_confidence_check_skill.py` — `test_phase_1_8_documents_remedy_split`
+- `scripts/tests/test_enh494_skill_companions.py` — line cap
 
 ### Documentation
-- TBD - docs that need updates
+- N/A
 
 ### Configuration
-- N/A or list config files
+- N/A
 
 ## Implementation Steps
 
-1. [Major phase 1]
-2. [Major phase 2]
-3. [Verification approach]
+1. Rewrite the Phase 1.8 remedy sentence within the 500-line cap
+2. Update `test_phase_1_8_documents_remedy_split`
+3. Run `ll-adapt --host gemini|kimi-code|qwen --apply`
 
 ## Impact
 
@@ -85,8 +87,7 @@ corrected claims, and re-ran `ll-adapt --apply` for the gemini, kimi-code and qw
 The first rewrite landed in `9a5d0f523`. The 4-line version, test update and mirrors were
 uncommitted at capture time.
 
-The underlying gap (no repair path for `missing`/`boilerplate`) is tracked separately under
-the parent EPIC.
+The underlying gap (no repair path for `missing`/`boilerplate`) is tracked in ENH-3576.
 
 ## Acceptance Criteria
 

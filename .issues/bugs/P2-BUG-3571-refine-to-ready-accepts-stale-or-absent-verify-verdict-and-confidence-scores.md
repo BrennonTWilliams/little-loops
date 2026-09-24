@@ -40,7 +40,7 @@ retryable infrastructure failure, not a pass.
 
 ## Motivation
 
-[Why this issue matters - business value, user impact, technical debt cost]
+Autodev's repair loop edits issue content (reconcile, wire, refine) and then rescores. Without freshness, the implementation gate can be satisfied by evidence about content that no longer exists.
 
 ## Proposed Solution
 
@@ -59,22 +59,26 @@ Option 3 is the cheapest. Option 2 also covers the outer loop's post-repair resc
 ## Integration Map
 
 ### Files to Modify
-- TBD - requires codebase analysis
+- `scripts/little_loops/cli/issues/check_verify_verdict.py` — `cmd_check_verify_verdict`
+- `scripts/little_loops/loops/oracles/verify-confidence-scores.yaml` — `verify_scores_persisted`, `verify_scores_persisted_final`
+- `scripts/little_loops/loops/refine-to-ready-issue.yaml` — `verify_issue`, `check_verify_verdict`
+- `scripts/little_loops/loops/autodev.yaml` — `rerun_confidence_after_*` `on_error` routes
 
 ### Dependent Files (Callers/Importers)
-- TBD - use grep to find references
+- `commands/verify-issues.md` (`--check` verdict persistence)
+- `skills/confidence-check/SKILL.md` (score persistence via `ll-issues set-scores`)
 
 ### Similar Patterns
-- TBD - search for consistency
+- The resolve-decision oracle's `done` terminal: its description should also be corrected, since it can return `done` with the flag armed (see BUG-3568)
 
 ### Tests
-- TBD - identify test files to update
+- `scripts/tests/test_builtin_loops.py`, `scripts/tests/test_autodev_loop.py`; new stateful-stub regression cases
 
 ### Documentation
-- TBD - docs that need updates
+- N/A
 
 ### Configuration
-- N/A or list config files
+- N/A
 
 ## Implementation Steps
 

@@ -44,7 +44,7 @@ blockers.
 
 ## Motivation
 
-[Why this issue matters - business value, user impact, technical debt cost]
+Malformed structure is cheap to detect and fix deterministically. Leaving it to incidental repair during expensive research wastes budget and lowers score quality.
 
 ## Proposed Solution
 
@@ -59,28 +59,30 @@ blockers.
 ## Integration Map
 
 ### Files to Modify
-- TBD - requires codebase analysis
+- `scripts/little_loops/loops/refine-to-ready-issue.yaml` — normalization step
+- `scripts/little_loops/cli/issues/format_check.py` — `_REPAIR_DISPATCH` (optional new fixer)
 
 ### Dependent Files (Callers/Importers)
-- TBD - use grep to find references
+- `skills/confidence-check/SKILL.md` Phase 1.8 (`STRUCT_GAP`), corrected in BUG-3570
 
 ### Similar Patterns
-- TBD - search for consistency
+- Existing `_fix_*` fixers in `format_check.py`
 
 ### Tests
-- TBD - identify test files to update
+- `scripts/tests/test_ll_issues_format_check.py`, `scripts/tests/test_builtin_loops.py`
 
 ### Documentation
-- TBD - docs that need updates
+- N/A
 
 ### Configuration
-- N/A or list config files
+- N/A
 
 ## Implementation Steps
 
-1. [Major phase 1]
-2. [Major phase 2]
-3. [Verification approach]
+1. Add `recheck_format` after `format-check --fix --apply` in refine-to-ready-issue
+2. Conditionally run `/ll:format-issue --auto` once for remaining directive gaps
+3. Optionally add a ceremonial-`missing` heading inserter to `_REPAIR_DISPATCH`
+4. Tests for the conditional format-issue route
 
 ## Impact
 

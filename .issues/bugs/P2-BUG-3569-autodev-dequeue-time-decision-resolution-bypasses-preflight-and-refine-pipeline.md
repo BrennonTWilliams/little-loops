@@ -35,37 +35,39 @@ gate check, then `refine_current`.
 
 ## Motivation
 
-[Why this issue matters - business value, user impact, technical debt cost]
+Issues arriving with `decision_needed: true` skipped blocker, gate, refine, wire and verify. That breaks the autodev preparation contract on its most decision-heavy inputs.
 
 ## Proposed Solution
 
-TBD - requires investigation
+Give the dequeue entry its own call state, whose success resumes preflight. Implemented; see Resolution.
 
 ## Integration Map
 
 ### Files to Modify
-- TBD - requires codebase analysis
+- `scripts/little_loops/loops/autodev.yaml` — `check_decision_at_dequeue`, `resolve_decision_at_dequeue`, `mark_decide_ran_at_dequeue`
 
 ### Dependent Files (Callers/Importers)
-- TBD - use grep to find references
+- N/A — loop-internal routing
 
 ### Similar Patterns
-- TBD - search for consistency
+- N/A
 
 ### Tests
-- TBD - identify test files to update
+- `scripts/tests/test_autodev_decision_gate.py`
+- `scripts/tests/test_builtin_loops.py` — `test_no_loop_call_state_declares_on_rate_limit_exhausted`
+- `scripts/tests/test_fsm_topology.py`
 
 ### Documentation
-- TBD - docs that need updates
+- N/A
 
 ### Configuration
-- N/A or list config files
+- N/A
 
 ## Implementation Steps
 
-1. [Major phase 1]
-2. [Major phase 2]
-3. [Verification approach]
+1. Add `resolve_decision_at_dequeue` + `mark_decide_ran_at_dequeue`
+2. Retarget `check_decision_at_dequeue.on_yes`
+3. Update the loop-state set and routing tests; set the topology count to 87
 
 ## Impact
 

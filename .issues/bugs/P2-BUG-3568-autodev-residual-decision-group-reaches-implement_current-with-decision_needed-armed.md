@@ -36,37 +36,38 @@ A still-armed flag after the oracle returns `done` is ledgered via
 
 ## Motivation
 
-[Why this issue matters - business value, user impact, technical debt cost]
+Held-for-review issues wasted an ll-auto implementation attempt, and were misreported as unverified instead of decision-unresolved.
 
 ## Proposed Solution
 
-TBD - requires investigation
+Re-check `decision_needed` in `mark_decide_ran` before rescoring. Implemented; see Resolution.
 
 ## Integration Map
 
 ### Files to Modify
-- TBD - requires codebase analysis
+- `scripts/little_loops/loops/autodev.yaml` — `mark_decide_ran`
 
 ### Dependent Files (Callers/Importers)
-- TBD - use grep to find references
+- N/A — loop-internal routing
 
 ### Similar Patterns
-- TBD - search for consistency
+- N/A
 
 ### Tests
-- TBD - identify test files to update
+- `scripts/tests/test_autodev_decision_gate.py` — `test_mark_decide_ran_holds_residual_decision`
+- `scripts/tests/test_builtin_loops.py` — `test_mark_decide_ran_next_routes_to_rerun_confidence_after_decide`
 
 ### Documentation
-- TBD - docs that need updates
+- N/A
 
 ### Configuration
-- N/A or list config files
+- N/A
 
 ## Implementation Steps
 
-1. [Major phase 1]
-2. [Major phase 2]
-3. [Verification approach]
+1. Make `mark_decide_ran` a `shell_exit` check-flag state
+2. Armed → `record_decision_unresolved`; cleared → `rerun_confidence_after_decide`
+3. Update routing tests
 
 ## Impact
 
@@ -87,12 +88,12 @@ TBD - requires investigation
 `ll-issues check-flag <ID> decision_needed` (`fragment: shell_exit`): `on_yes` →
 `record_decision_unresolved`, `on_no`/`on_error` → `rerun_confidence_after_decide`. This also
 saves one confidence-check call for held issues. The entry-time sibling
-`mark_decide_ran_at_dequeue` has the same check (see the F1 sibling issue). Tests:
+`mark_decide_ran_at_dequeue` has the same check (see BUG-3569). Tests:
 `test_mark_decide_ran_holds_residual_decision` and the updated
 `test_mark_decide_ran_next_routes_to_rerun_confidence_after_decide`. Landed in commit
 `9a5d0f523`; the `test_builtin_loops.py` update was uncommitted at capture time.
 
-Follow-up (open, part of the stale-evidence sibling): the resolve-decision oracle's
+Follow-up (open, tracked in BUG-3571): the resolve-decision oracle's
 description still says `done` means the flag was cleared.
 
 ## Acceptance Criteria

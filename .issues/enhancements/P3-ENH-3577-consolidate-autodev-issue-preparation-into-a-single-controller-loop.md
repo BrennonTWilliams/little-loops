@@ -24,11 +24,11 @@ contract gaps in the sibling issues come directly from this duplication.
 
 ## Current Behavior
 
-[If applicable - describe what currently happens]
+Autodev (~87 states) duplicates the child loop's repair routing, with its own marker handshakes and copied inline predicates.
 
 ## Expected Behavior
 
-[What should happen instead]
+The child owns all per-issue preparation and returns a typed outcome. Autodev owns only the queue, dispatch and accounting.
 
 ## Motivation
 
@@ -53,28 +53,31 @@ contract gaps in the sibling issues come directly from this duplication.
 ## Integration Map
 
 ### Files to Modify
-- TBD - requires codebase analysis
+- `scripts/little_loops/loops/autodev.yaml`
+- `scripts/little_loops/loops/refine-to-ready-issue.yaml`
 
 ### Dependent Files (Callers/Importers)
-- TBD - use grep to find references
+- Loops invoking refine-to-ready-issue (e.g. `rn-*` loops, `recursive-refine` wrappers)
 
 ### Similar Patterns
-- TBD - search for consistency
+- `oracles/resolve-decision.yaml` extraction (ENH-3075)
 
 ### Tests
-- TBD - identify test files to update
+- `scripts/tests/test_builtin_loops.py`, `test_autodev_loop.py`, `test_autodev_decision_gate.py`, `test_fsm_topology.py`
 
 ### Documentation
-- TBD - docs that need updates
+- `docs/ARCHITECTURE.md` loop section
 
 ### Configuration
-- N/A or list config files
+- N/A
 
 ## Implementation Steps
 
-1. [Major phase 1]
-2. [Major phase 2]
-3. [Verification approach]
+1. Land BUG-3571, BUG-3572, FEAT-3573, BUG-3574, ENH-3575 and ENH-3576 with real-FSM regression tests
+2. Define the typed per-issue outcome/run-record schema
+3. Build the shared deterministic assessment + repair selector
+4. Move parent repair routing into the child; delete duplicated states and markers
+5. Re-run the regression scenarios
 
 ## Impact
 
@@ -84,7 +87,7 @@ contract gaps in the sibling issues come directly from this duplication.
 
 ## Scope Boundaries
 
-- Blocked until the behavioral fixes in the sibling issues land with real-FSM regression
+- Blocked until the behavioral fixes (BUG-3571, BUG-3572, FEAT-3573, BUG-3574, ENH-3575, ENH-3576) land with real-FSM regression
   tests (stateful stub skills/CLIs asserting outcomes and evidence freshness, not state
   names). Consolidating first would lose the behavior those tests protect.
 - No state-count target.
@@ -93,7 +96,7 @@ contract gaps in the sibling issues come directly from this duplication.
 
 - [ ] Autodev contains no repair routing that duplicates the child's
 - [ ] A single typed per-issue outcome drives the outer ledger
-- [ ] The regression scenarios listed in the parent EPIC's audit pass unchanged before and after
+- [ ] The regression scenarios listed in EPIC-3565 pass unchanged before and after
 
 ## Related Key Documentation
 

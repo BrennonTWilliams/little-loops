@@ -35,7 +35,7 @@ wire and verify the revised approach.
 
 ## Motivation
 
-[Why this issue matters - business value, user impact, technical debt cost]
+Unsound proposals are exactly the cases where implementation would do the most damage. Routing them to a remedy that cannot touch the proposal guarantees a wasted budget and eventual deferral.
 
 ## Proposed Solution
 
@@ -53,9 +53,10 @@ decision/design revision. Alternatively, keep one verdict and have
 
 ## Implementation Steps
 
-1. [Major phase 1]
-2. [Major phase 2]
-3. [Verification approach]
+1. Decide: split the verdict in verify-issues, or inspect cited sections in the gate
+2. Add the new verdict/query mode to `check_verify_verdict.py`
+3. Route refuted proposals to resolve-decision/design refinement, then wire and verify
+4. Tests for both routes
 
 ## Impact
 

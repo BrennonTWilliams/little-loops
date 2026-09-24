@@ -36,37 +36,37 @@ spike dispatches `spike`.
 
 ## Motivation
 
-[Why this issue matters - business value, user impact, technical debt cost]
+The ENH-2978 measurement-gate → spike route and the ENH-2992 contradiction exemption were documented and tested, but never took effect at runtime.
 
 ## Proposed Solution
 
-TBD - requires investigation
+Bind the env assignments to the `python3` consumer, and test the real shell pipeline rather than the extracted Python. Implemented; see Resolution.
 
 ## Integration Map
 
 ### Files to Modify
-- TBD - requires codebase analysis
+- `scripts/little_loops/loops/autodev.yaml` — `recheck_after_size_review`
 
 ### Dependent Files (Callers/Importers)
-- TBD - use grep to find references
+- N/A — loop-internal routing
 
 ### Similar Patterns
-- TBD - search for consistency
+- N/A
 
 ### Tests
-- TBD - identify test files to update
+- `scripts/tests/test_autodev_loop.py` — `_run_pre_deferral_remedy_selector`
 
 ### Documentation
-- TBD - docs that need updates
+- N/A
 
 ### Configuration
-- N/A or list config files
+- N/A
 
 ## Implementation Steps
 
-1. [Major phase 1]
-2. [Major phase 2]
-3. [Verification approach]
+1. Move the `GATE_MARKER`/`CONTRA_ONLY` prefix onto `python3` in `recheck_after_size_review`
+2. Rewrite `_run_pre_deferral_remedy_selector` to run the pipeline under bash with a stub `ll-issues`
+3. Confirm the tests fail on the pre-fix YAML and pass on the fix
 
 ## Impact
 

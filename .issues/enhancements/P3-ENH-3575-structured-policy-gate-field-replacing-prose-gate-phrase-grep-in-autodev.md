@@ -38,7 +38,7 @@ not block.
 
 ## Motivation
 
-[Why this issue matters - business value, user impact, technical debt cost]
+False-positive gate matches park good issues indefinitely, and the only workaround (deleting history) destroys useful context.
 
 ## Proposed Solution
 
@@ -51,28 +51,32 @@ similar), which is the extraction BUG-3147 and ENH-3148 deferred.
 ## Integration Map
 
 ### Files to Modify
-- TBD - requires codebase analysis
+- `scripts/little_loops/loops/autodev.yaml` — `check_gate_at_dequeue`, `recheck_after_size_review`
+- `scripts/little_loops/cli/issues/` — new gate helper
+- `scripts/little_loops/config-schema.json` / frontmatter validation if the field is schema'd
 
 ### Dependent Files (Callers/Importers)
-- TBD - use grep to find references
+- `defer_gated`, `mark_gate_blocked` ledgers
 
 ### Similar Patterns
-- TBD - search for consistency
+- `ll-issues check-flag`, `ll-issues check-readiness`
 
 ### Tests
-- TBD - identify test files to update
+- `scripts/tests/test_autodev_loop.py` — `TestCheckGateAtDequeueMarkerLiterals`
 
 ### Documentation
-- TBD - docs that need updates
+- `docs/reference/DEFERRAL_CODES.md` (`blocked_by_gate`)
 
 ### Configuration
-- N/A or list config files
+- N/A
 
 ## Implementation Steps
 
-1. [Major phase 1]
-2. [Major phase 2]
-3. [Verification approach]
+1. Define the frontmatter `gate` schema (and validation in `ll-issues`)
+2. Add a shared `ll-issues check-gate` helper that reads structured first, then falls back to prose
+3. Replace both inline regexes in autodev
+4. Route `proof` gates to spike/explore-api
+5. Tests for satisfied, external and proof gates
 
 ## Impact
 

@@ -38,23 +38,29 @@ covered by regression tests.
 ## Integration Map
 
 ### Files to Modify
-- TBD - requires codebase analysis
+- `scripts/little_loops/loops/autodev.yaml`, `refine-to-ready-issue.yaml`, `oracles/resolve-decision.yaml`, `oracles/verify-confidence-scores.yaml`
+- `skills/confidence-check/`, `skills/spike/`, `skills/manage-issue/`
 
 ### Dependent Files (Callers/Importers)
-- TBD - use grep to find references
+- See children
+
+### Similar Patterns
+- See children
 
 ### Tests
-- TBD - identify shared test infrastructure
+- See children
 
 ### Documentation
-- TBD - docs that need updates
+- See children
+
+### Configuration
+- N/A
 
 ## Impact
 
-- **Priority**: [P0-P5] - [Justification]
-- **Effort**: [Small/Medium/Large] - [Justification]
-- **Risk**: [Low/Medium/High] - [Justification]
-- **Breaking Change**: [Yes/No]
+- **Priority**: P2 — the autodev readiness contract does not hold on every route
+- **Effort**: Large (sum of children)
+- **Risk**: Medium — autodev is live in every local-editable project
 
 ## Scope
 

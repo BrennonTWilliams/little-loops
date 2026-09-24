@@ -34,7 +34,7 @@ design change or decomposition. An inconclusive or errored spike keeps the cap.
 
 ## Motivation
 
-[Why this issue matters - business value, user impact, technical debt cost]
+Spikes exist to prove a mechanism before implementation. Treating a disproof as permission to proceed defeats the purpose.
 
 ## Proposed Solution
 
@@ -60,9 +60,11 @@ spike → score → spike loop. The attempt bound should already prevent that.
 
 ## Implementation Steps
 
-1. [Major phase 1]
-2. [Major phase 2]
-3. [Verification approach]
+1. Confirm no loop depends on attempted-only suppression for termination
+2. Change Phase 1.9 suppression to `spike_completed` only
+3. Add a refuted marker to the spike failure contract
+4. Route refuted results to decision/size-review in autodev and refine-to-ready-issue
+5. Regression test: failed spike keeps the cap; refuted spike never reaches implementation
 
 ## Impact
 

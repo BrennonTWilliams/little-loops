@@ -33,37 +33,40 @@ with its stop reason and pending queue.
 
 ## Motivation
 
-[Why this issue matters - business value, user impact, technical debt cost]
+Rate-limit exhaustion is a common way for long autodev runs to end. Those runs left no summary and no record of unprocessed work.
 
 ## Proposed Solution
 
-TBD - requires investigation
+Route every rate-limit exit through a stop-reason stamp into `finalize_done`. Implemented; see Resolution.
 
 ## Integration Map
 
 ### Files to Modify
-- TBD - requires codebase analysis
+- `scripts/little_loops/loops/autodev.yaml` — `finalize_rate_limited`, `finalize_done`, `init`, `done`
 
 ### Dependent Files (Callers/Importers)
-- TBD - use grep to find references
+- N/A — loop-internal routing
 
 ### Similar Patterns
-- TBD - search for consistency
+- N/A
 
 ### Tests
-- TBD - identify test files to update
+- `scripts/tests/test_builtin_loops.py` — `TestAutodevLoop`
+- `scripts/tests/test_autodev_decision_gate.py`
+- `scripts/tests/test_fsm_topology.py` — autodev state count (87)
 
 ### Documentation
-- TBD - docs that need updates
+- N/A
 
 ### Configuration
-- N/A or list config files
+- N/A
 
 ## Implementation Steps
 
-1. [Major phase 1]
-2. [Major phase 2]
-3. [Verification approach]
+1. Add `finalize_rate_limited` → `finalize_done`
+2. Retarget all `on_rate_limit_exhausted` sites and `check_decide_rate_limited.on_yes`
+3. Add `stop_reason`/`pending` to `summary.json`, plus the `rate_limited` verdict
+4. Tests: no edge to `done` except `finalize_done`; finalize output under a rate-limit stop
 
 ## Impact
 

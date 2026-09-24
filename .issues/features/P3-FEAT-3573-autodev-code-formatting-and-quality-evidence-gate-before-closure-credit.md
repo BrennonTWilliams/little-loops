@@ -28,11 +28,11 @@ That is an agent instruction, not a machine-readable result. Specific gaps:
 
 ## Current Behavior
 
-[If applicable - describe what currently happens]
+Autodev credits closure from frontmatter status alone. `manage-issue` runs checks by instruction, never runs `format_cmd`, and appends arguments to configured commands.
 
 ## Expected Behavior
 
-[What should happen instead]
+Closure credit requires a recorded passing format/lint/type/test result for the resulting revision, with formatting limited to changed files.
 
 ## Motivation
 
@@ -58,28 +58,33 @@ Split `cancelled` from `closed` in the summary.
 ## Integration Map
 
 ### Files to Modify
-- TBD - requires codebase analysis
+- `scripts/little_loops/loops/autodev.yaml` — `implement_current`, `verify_impl_closed`, `finalize_done`
+- `scripts/little_loops/loops/oracles/code-run-gate.yaml`
+- `skills/manage-issue/SKILL.md` — Phase 4 verification commands
 
 ### Dependent Files (Callers/Importers)
-- TBD - use grep to find references
+- `scripts/little_loops/issue_lifecycle.py` — lifecycle verification
+- `scripts/little_loops/issue_manager.py` — ll-auto
 
 ### Similar Patterns
-- TBD - search for consistency
+- `rn-implement.yaml` usage of `oracles/code-run-gate`
 
 ### Tests
-- TBD - identify test files to update
+- `scripts/tests/test_builtin_loops.py` — `TestAutodevLoop` finalize tests
 
 ### Documentation
-- TBD - docs that need updates
+- `docs/guides/` loop guide for autodev, if it documents closure semantics
 
 ### Configuration
-- N/A or list config files
+- `project.format_cmd`, `lint_cmd`, `type_cmd`, `test_cmd`
 
 ## Implementation Steps
 
-1. [Major phase 1]
-2. [Major phase 2]
-3. [Verification approach]
+1. Decide the single owner of the post-implementation quality run (manage-issue vs. an autodev gate)
+2. Extend `oracles/code-run-gate` (or a shared runner) with a changed-files format stage
+3. Persist structured results per revision; gate `finalize_done` promotion on them
+4. Fix manage-issue Phase 4 to use configured commands verbatim
+5. Split cancelled from implemented closures in `summary.json`
 
 ## Impact
 
