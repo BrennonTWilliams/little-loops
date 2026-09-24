@@ -105,7 +105,7 @@ This is latent today. BUG-3564 removes the only live entry (`claude-sonnet-5`), 
 
 - **Priority**: P4 — latent; no live `INTRO_PRICING` entries after BUG-3564.
 - **Effort**: Small.
-- **Risk**: Low — an optional keyword argument with a backward-compatible default.
+- **Risk**: Low — a new keyword argument with a backward-compatible default.
 - **Breaking Change**: No.
 
 ## Steps to Reproduce
