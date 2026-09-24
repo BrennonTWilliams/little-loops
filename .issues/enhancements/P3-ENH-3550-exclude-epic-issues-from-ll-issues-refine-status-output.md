@@ -133,6 +133,7 @@ In `cmd_refine_status`:
 - [ ] An EPIC whose Session Log has a command no other issue has adds no column and no Key legend entry, and doesn't change row or scored counts.
 - [ ] An EPIC-only project gives the `No refinable issues found …` prose and an empty project keeps `No active issues found.`, both exit 0; in both, `--json` prints exactly `[]` and exits 0, and `--format json` prints no records and exits 0.
 - [ ] `--type EPIC`, `refine-status EPIC-NNN`, and a bare numeric ID that resolves to an EPIC each print the diagnostic on stderr, nothing on stdout, and exit 1 in every format, with no `IndexError`.
+- [ ] Regression: a non-EPIC single-ID call with `--json` still prints one JSON object (not an array), and when both `--json` and `--format json` are given, `--json` still takes precedence (`use_json_array`, `refine_status.py:326`).
 - [ ] `find_issues` behavior is unchanged; other `ll-issues` subcommands still list EPICs.
 - [ ] `--help` and `docs/reference/CLI.md` document the exclusion, the exit code and the empty-JSON contract.
 
@@ -150,6 +151,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-24T22:56:16 - `4279401a-9acc-474c-b872-fd398cd78a8e.jsonl`
 - `/ll:confidence-check` - 2026-09-24T22:35:10 - `193eb57f-e9f6-4072-bd61-43000a1d97b1.jsonl`
 - `/ll:confidence-check` - 2026-09-24T22:09:50 - `b03f0e56-e701-4b6d-bb94-8f4cb425b852.jsonl`
 - `/ll:capture-issue` - 2026-09-24T18:17:16 - `12e7e1d6-d62f-431d-b8e0-a48dad1b4619.jsonl`

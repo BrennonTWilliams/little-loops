@@ -9,6 +9,8 @@ discovered_date: '2026-09-24'
 captured_at: '2026-09-24T21:22:50Z'
 relates_to:
 - BUG-3564
+blocked_by:
+- BUG-3564
 confidence_score: 100
 outcome_confidence: 79
 score_complexity: 18
@@ -36,7 +38,9 @@ This is latent today. BUG-3564 removes the only live entry (`claude-sonnet-5`), 
 
 - `estimate_cost_usd` accepts an optional `as_of: date | None = None`. `None` means today, so every existing caller keeps its current behavior.
 - The intro override applies when `as_of <= expires`.
-- Replay passes the record's timestamp (parsed to a date, falling back to today when absent or unparseable). The live writer passes the date of `observed_at or ts`.
+- **Event dates are UTC dates.** A timestamp is parsed as ISO-8601 (`Z` accepted), converted to UTC, and only then truncated to a date. A naive timestamp (no offset) is treated as UTC. Without a canonical zone, the same instant written as `2026-08-31T23:30:00-05:00` and `2026-09-01T04:30:00Z` would get different rates. `expires` is likewise an inclusive UTC date.
+- Replay passes the record's timestamp (parsed to a UTC date, falling back to today when absent or unparseable).
+- The live writer passes the date of the **first parseable** of `observed_at`, then `ts`, then today. A present but malformed `observed_at` falls through to `ts`; it does not short-circuit to today.
 - `cost_graph` passes each `usage.jsonl` row's `"timestamp"` (same parse-and-fallback rule; legacy rows with `""` price at today).
 
 ## Motivation
@@ -47,11 +51,11 @@ This is latent today. BUG-3564 removes the only live entry (`claude-sonnet-5`), 
 
 1. Add `as_of: date | None = None` to `estimate_cost_usd`; replace `date.today()` with `as_of or date.today()`.
 2. `_backfill_usage_events`: parse `ts` (ISO-8601) to a date and pass it.
-3. Live writer: pass the date of `observed_at or ts`.
+3. Live writer: pass `_event_date(observed_at) or _event_date(ts)` (first parseable wins; `None` falls back to today).
 4. `cost_graph`: pass the date of each row's `"timestamp"`.
-5. Put the ISO-8601 → `date` parse in one small helper (e.g. `pricing._event_date(ts: str | None) -> date | None`, returning `None` on missing/unparseable input so `estimate_cost_usd` falls back to today) and use it at all three call sites.
+5. Put the ISO-8601 → UTC `date` parse in one small helper (e.g. `pricing._event_date(ts: str | None) -> date | None`: `datetime.fromisoformat`, naive → UTC, `astimezone(UTC).date()`; returns `None` on missing/unparseable input so `estimate_cost_usd` falls back to today) and use it at all three call sites.
 
-**Ordering:** land after BUG-3564. It replaces the Sonnet 5 intro tests with a synthetic, monkeypatched `INTRO_PRICING` fixture in `test_pricing.py`; this issue reuses that fixture instead of adding a second one.
+**Ordering:** blocked by BUG-3564 (`blocked_by` in frontmatter). It replaces the Sonnet 5 intro tests with a synthetic, monkeypatched `INTRO_PRICING` fixture in `test_pricing.py`; this issue reuses that fixture instead of adding a second one.
 
 ## Integration Map
 
@@ -62,7 +66,9 @@ This is latent today. BUG-3564 removes the only live entry (`claude-sonnet-5`), 
 
 ### Tests
 - `scripts/tests/test_pricing.py` — reuse BUG-3564's synthetic `INTRO_PRICING` fixture (monkeypatch): an event inside the intro window is priced at the intro rate when today is past expiry, an event after expiry at the standard rate when today is inside the window, and `as_of=None` matches the current behavior.
+- `_event_date` unit tests: offset boundary (`2026-08-31T23:30:00-05:00` and `2026-09-01T04:30:00Z` both → 2026-09-01), `Z` suffix, naive timestamp (treated as UTC), and malformed / empty / `None` input (→ `None`, never raises).
 - A replay test showing `_backfill_usage_events` prices by record timestamp.
+- A live-writer integration test for `record_usage_event` precedence: valid `observed_at` wins over `ts`; malformed `observed_at` falls through to `ts`; both malformed price at today.
 - `scripts/tests/test_fsm_cost_graph.py` — a `usage.jsonl` row dated inside the intro window is priced at the intro rate after expiry.
 
 ### Documentation
@@ -85,6 +91,8 @@ This is latent today. BUG-3564 removes the only live entry (`claude-sonnet-5`), 
 - `as_of=None` means today (backward compatible).
 - An intro entry applies when `as_of <= expires` (the expiry date is inclusive, as today).
 - An unparseable or missing timestamp falls back to today, never raises.
+- Event dates are UTC: convert to UTC before truncating; naive timestamps are UTC.
+- Live writer precedence: first parseable of `observed_at`, `ts`, today.
 
 ## Implementation Steps
 
@@ -122,12 +130,13 @@ This is latent today. BUG-3564 removes the only live entry (`claude-sonnet-5`), 
 - [ ] `estimate_cost_usd` accepts `as_of`; omitting it gives today's behavior.
 - [ ] With a synthetic intro entry, an event dated inside the window is priced at the intro rate even when today is after expiry, and vice versa.
 - [ ] `_backfill_usage_events` prices each record by its own timestamp; a missing or malformed timestamp falls back to today without raising.
-- [ ] The live writer prices by `observed_at` when it is given, else by `ts`.
+- [ ] The live writer prices by the first parseable of `observed_at`, `ts`, then today; a malformed `observed_at` falls through to `ts` (integration test through `record_usage_event`).
+- [ ] The same instant in different offsets (`2026-08-31T23:30:00-05:00`, `2026-09-01T04:30:00Z`) gets the same rate; a naive timestamp is priced as UTC.
 - [ ] `cost_graph` prices each `usage.jsonl` row by its own `"timestamp"`; a row with an empty or malformed timestamp falls back to today.
 
 ## Related
 
-- BUG-3564 — its Follow-up section records this flaw; removing the Sonnet 5 intro entry makes it latent. Land it first: this issue reuses its synthetic `INTRO_PRICING` test fixture.
+- BUG-3564 (blocker) — its Follow-up section records this flaw; removing the Sonnet 5 intro entry makes it latent. Land it first: this issue reuses its synthetic `INTRO_PRICING` test fixture.
 
 ## Related Key Documentation
 
@@ -139,6 +148,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-24T22:56:17 - `4279401a-9acc-474c-b872-fd398cd78a8e.jsonl`
 - `/ll:confidence-check` - 2026-09-24T22:35:17 - `193eb57f-e9f6-4072-bd61-43000a1d97b1.jsonl`
 - `/ll:confidence-check` - 2026-09-24T22:10:05 - `b03f0e56-e701-4b6d-bb94-8f4cb425b852.jsonl`
 - `/ll:capture-issue` - 2026-09-24T21:22:59 - `9791f4b4-37b2-4bef-91d5-0ac00eeb812a.jsonl`

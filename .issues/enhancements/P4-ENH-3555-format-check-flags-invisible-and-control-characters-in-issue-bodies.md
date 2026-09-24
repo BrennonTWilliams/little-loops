@@ -36,7 +36,10 @@ The most likely cause is upstream of little-loops: tool-call arguments are JSON,
 - `ll-issues format-check` exits non-zero on it, like the other structural gaps. The class is **blocking**: it is not added to `_ADVISORY_GAP_CLASSES` (`issue_parser.py:515`), and it is rendered in `format_check.py`'s report (a class counted by `has_gaps` but not rendered exits 1 with an empty report; see the comment at `format_check.py:435`).
 - The report names the code point in words (e.g. `U+2028 LINE SEPARATOR at line 291`), never by reproducing the character. `unicodedata.name()` raises `ValueError` for C0/C1 controls and DEL (they have no name), so the scan needs a fallback: the control-code alias (`NULL`, `UNIT SEPARATOR`, …) from a small table, or `<control>` plus the code point.
 - The scan covers the whole file, frontmatter included (a `title:` can carry these too). Only a U+FEFF at offset 0 is exempt.
-- **Line numbers count `\n` only**: `content.count("\n", 0, offset) + 1`. Do not number lines with `str.splitlines()`: it treats U+2028, U+2029, U+0085, U+001C–U+001E, VT and FF as line boundaries, the very characters being detected, so every later line number in the report would be off.
+- **Scan the raw file, not the newline-translated text.** `check_format_gaps` currently reads with `issue_path.read_text(encoding="utf-8")` (`issue_parser.py:940`), which applies universal-newline translation: a standalone CR and CRLF both become LF. The scan instead decodes `issue_path.read_bytes().decode("utf-8")` (no newline translation) and runs on that string.
+- **The scan runs before the template-dependent early returns.** `check_format_gaps` returns early when the filename has no type prefix (`_ISSUE_TYPE_RE`) or `load_issue_sections` fails; the scan must run before both so those files are still checked.
+- **Line numbers count `\n` only** in the raw decoded text: `raw.count("\n", 0, offset) + 1`. A standalone CR is not a line break, and CRLF counts once (via its LF). Do not number lines with `str.splitlines()`: it treats CR, U+2028, U+2029, U+0085, U+001C–U+001E, VT and FF as line boundaries, the very characters being detected, so every later line number in the report would be off.
+- **`--fix --apply` does not remove or hide them.** The class is report-only; a fix run leaves offending characters in the file, and `format-check` still reports them afterwards.
 
 ## Motivation
 
@@ -69,8 +72,8 @@ The ones checked (FEAT-2390, ENH-2939, ENH-2507, ENH-2495) are `done`; cleaning 
 - Existing report-only gap classes in `FormatGaps` (e.g. `template_placeholders`, which reports "no --fix, needs content").
 
 ### Tests
-- `scripts/tests/test_issue_parser.py` — per-character detection, allowed characters (tab, LF, CR, leading BOM) not flagged.
-- `scripts/tests/test_ll_issues_format_check.py` — CLI report text and non-zero exit. The existing `FormatGaps` field-parity test (`:3222`, iterates `dataclasses.fields(FormatGaps)`) fails if the new field is not rendered, which enforces the render requirement above.
+- `scripts/tests/test_issue_parser.py` — per-character detection, allowed characters (tab, LF, CR, leading BOM) not flagged; standalone-CR and CRLF fixtures (written with `write_bytes`) for line numbering; a file whose name has no type prefix is still scanned.
+- `scripts/tests/test_ll_issues_format_check.py` — CLI report text and non-zero exit; `--fix --apply` leaves the offending characters in place and a following `format-check` still reports them. The existing `FormatGaps` field-parity test (`:3222`, iterates `dataclasses.fields(FormatGaps)`) fails if the new field is not rendered, which enforces the render requirement above.
 
 ### Documentation
 - `docs/reference/CLI.md` — list the new gap class under `ll-issues format-check`.
@@ -93,14 +96,15 @@ The ones checked (FEAT-2390, ENH-2939, ENH-2507, ENH-2495) are `done`; cleaning 
 
 ### Decision Rules
 - Flag U+2028, U+2029, U+200B, U+200C, U+200D, U+2060; U+FEFF except at offset 0; U+202A–U+202E, U+2066–U+2069, U+200E, U+200F, U+061C; U+E0000–U+E007F; U+00AD; U+007F; U+0080–U+009F; code points below U+0020 other than tab, LF, CR.
-- Scan the whole file, frontmatter included.
-- Line numbers count `\n` only, never `splitlines()` boundaries.
+- Scan the whole file, frontmatter included, from `read_bytes().decode("utf-8")` (no newline translation), before any template-dependent early return.
+- Line numbers count `\n` only in the raw text, never `splitlines()` boundaries; a standalone CR is not a line break.
+- `--fix --apply` never removes flagged characters.
 - Report the code point by name, never by reproducing the character; fall back to a control-alias table where `unicodedata.name()` has no name.
 - Blocking, not advisory.
 
 ## Implementation Steps
 
-1. Add the scan to `check_format_gaps` and the `invisible_chars` field to `FormatGaps` (plus `has_gaps` and `to_dict`), reporting code point name and line number, with the control-name fallback.
+1. Add the scan to `check_format_gaps` over the raw-decoded bytes, placed before the template-dependent early returns, and the `invisible_chars` field to `FormatGaps` (plus `has_gaps` and `to_dict`), reporting code point name and line number, with the control-name fallback.
 2. Surface it in `ll-issues format-check` output (text and JSON) with a non-zero exit.
 3. Clean the existing offenders listed under Existing Offenders.
 4. Verify: unit tests per character class and allowed character (including a nameless control), a CLI test, and a clean run over the current `.issues/` tree.
@@ -124,6 +128,9 @@ The ones checked (FEAT-2390, ENH-2939, ENH-2507, ENH-2495) are `done`; cleaning 
 - [ ] A nameless control (e.g. U+001F) is reported by its alias or `<control>` label without raising.
 - [ ] A character in frontmatter (e.g. in `title:`) is flagged.
 - [ ] Line numbers stay correct after a U+2028 or U+001E earlier in the file: a second offender on physical line N is reported at line N.
+- [ ] Line numbers follow `\n` in the raw bytes: with a standalone CR earlier on a line, the offender is still reported on that line; in a CRLF file, each CRLF counts as one line break.
+- [ ] A file skipped by the template-dependent early returns (no type prefix in the filename, or unloadable templates) is still scanned.
+- [ ] `ll-issues format-check --fix --apply` leaves flagged characters in the file, and a following `format-check` still reports them and exits non-zero.
 - [ ] U+200E, U+200F, U+061C and a tag character (e.g. U+E0041) are each flagged.
 - [ ] After the listed offenders are cleaned, the full `.issues/` tree produces no `invisible_chars` gaps. (A 2026-09-24 scan found the offenders listed above, so this does not hold without the cleanup.)
 
@@ -141,6 +148,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-24T22:56:17 - `4279401a-9acc-474c-b872-fd398cd78a8e.jsonl`
 - `/ll:confidence-check` - 2026-09-24T22:35:26 - `55203869-e869-482b-b191-d68f9782af86.jsonl`
 - `/ll:confidence-check` - 2026-09-24T22:10:01 - `b03f0e56-e701-4b6d-bb94-8f4cb425b852.jsonl`
 - `/ll:capture-issue` - 2026-09-24T18:27:44 - `3f3defe9-b6c6-432f-af65-d7ce83807520.jsonl`

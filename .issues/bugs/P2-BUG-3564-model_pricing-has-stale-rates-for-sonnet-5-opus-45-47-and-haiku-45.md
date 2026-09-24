@@ -60,6 +60,7 @@ These entries are correct: `claude-fable-5`, `claude-opus-5`, `claude-opus-4-8`,
 - `scripts/little_loops/pricing.py` (`MODEL_PRICING`, `INTRO_PRICING`, docstring).
 - Consumers, which need no code change but whose behavior shifts: `session_store/writers.py` (ingest and replay `cost_usd`), `fsm/cost_graph.py`, cost-ceiling enforcement (`test_cost_ceiling_enforcement.py`), `ll-history quality` cost coverage (`issue_history/agent_quality.py:214`).
 - Tests: `test_pricing.py`, `test_fsm_cost_graph.py`, `test_cli_cost_table.py` (check for hard-coded dollar expectations).
+- `docs/reference/API.md`: the `little_loops.pricing` module row (`:84`) and section (`:12360`, `INTRO_PRICING` at `:12380`) still describe Sonnet 5's $2/$10 rate as an intro entry expiring 2026-08-31. Rewrite them to match, and add the stored-rows note from Scope Boundaries.
 
 ## Program Design
 
@@ -91,7 +92,10 @@ These entries are correct: `claude-fable-5`, `claude-opus-5`, `claude-opus-4-8`,
 ## Scope Boundaries
 
 - **In scope**: correcting existing rates; removing the expired Sonnet 5 intro entry; rate-assertion tests.
-- **Out of scope**: adding keys for new aliases/IDs (BUG-3541); 1-hour cache-write pricing (`cache_creation` models the 5-minute rate only); inference-geo / fast-mode multipliers; recomputing `cost_usd` already stored in `usage_events`. Stored rows keep the wrong cost until replayed through `_backfill_usage_events`. Document that, or capture a follow-up if a reprice command is wanted.
+- **Out of scope**: adding keys for new aliases/IDs (BUG-3541); 1-hour cache-write pricing (`cache_creation` models the 5-minute rate only); inference-geo / fast-mode multipliers; recomputing `cost_usd` already stored in `usage_events`, including a reprice command. Document what happens to stored rows:
+  - **Live rows (`channel = 'live'`) are never repriced.** The rebuild wipes only `channel IS NOT 'live'` (`session_store/lifecycle.py:954`), so live rows keep their wrong cost even after a rebuild.
+  - **Replayable rows (e.g. `transcript`) are repriced** at the corrected rates when a rebuild replays them through `_backfill_usage_events`.
+  - After a rebuild, historical `cost_usd` therefore mixes old rates (live rows) and new rates (replayed rows). Record this in the `little_loops.pricing` section of `docs/reference/API.md`; a reprice command, if wanted, is a separate follow-up.
 
 ## Acceptance Criteria
 
@@ -101,6 +105,7 @@ These entries are correct: `claude-fable-5`, `claude-opus-5`, `claude-opus-4-8`,
 - [ ] The `INTRO_PRICING` mechanism stays covered by a synthetic-entry test.
 - [ ] The `is_batch` discount still halves each corrected rate.
 - [ ] The module docstring no longer describes Sonnet 5 as intro-priced, and `claude-opus-4-5` sits under the "Claude 4.x" comment.
+- [ ] `docs/reference/API.md` no longer describes Sonnet 5 as intro-priced, and states that live-channel `usage_events` rows keep their stored cost across a rebuild while replayed rows are repriced.
 - [ ] The synthetic `INTRO_PRICING` fixture is reusable (a module-level pytest fixture or helper), since BUG-3579 builds on it.
 
 ## Follow-up (captured as BUG-3579)
@@ -117,5 +122,6 @@ These entries are correct: `claude-fable-5`, `claude-opus-5`, `claude-opus-4-8`,
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-24T22:56:15 - `4279401a-9acc-474c-b872-fd398cd78a8e.jsonl`
 - `/ll:confidence-check` - 2026-09-24T22:35:23 - `193eb57f-e9f6-4072-bd61-43000a1d97b1.jsonl`
 - `/ll:confidence-check` - 2026-09-24T22:09:36 - `6c1833f1-29b8-4569-8cd1-c7e84a3f7e66.jsonl`

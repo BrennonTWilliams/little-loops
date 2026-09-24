@@ -32,7 +32,7 @@ After a reconcile that substantively rewrites an issue:
 - **Resolved Concerns leave the scanned section.** Each resolved Concern bullet is removed from `## Confidence Check Notes` and recorded under a `## Resolved Concerns` section in a fixed, machine-readable form:
   `- [resolved <YYYY-MM-DD> by /ll:reconcile-issue] <original concern text> — <how the rewrite resolved it>`.
   - **Which section.** Every `/ll:confidence-check` run appends a fresh `## Confidence Check Notes`, and `_section_body_with_offset` (`issue_parser.py:449-488`) resolves the **last** occurrence; that is the only one `set-flags` scans. Reconcile moves Concerns out of the last occurrence. Earlier occurrences are inert for `set-flags` and are left untouched.
-  - **Where it goes.** `## Resolved Concerns` is placed immediately after the last `## Confidence Check Notes` section (before `## Session Log`). If the section already exists, new entries are appended to it; reconcile never writes a second `## Resolved Concerns` heading, which would trip format-check's `duplicate_heading` gap.
+  - **Where it goes.** `## Resolved Concerns` is placed immediately after the last `## Confidence Check Notes` section (before `## Session Log`). If the section already exists, new entries are appended to it; reconcile never writes a second `## Resolved Concerns` heading. (format-check's `duplicate_heading` gap does not catch this: it detects repeated `###` headings within one `##` section, not repeated `##` sections, so tests must count the H2 heading directly.)
 
   Strikethrough in place is **not** enough. `ll-issues set-flags` substring-matches the whole Confidence Check Notes body (`cli/issues/set_flags.py:291-307`) and ignores `~~…~~`. It was reproduced: a `~~Open decision: …~~ Resolved` note with `outcome_confidence: 59` still stamped `decision_needed: true`. Moving the note out of the scanned section keeps a later low re-score from reactivating it.
 - **All six scores are cleared.** Reconcile removes `confidence_score`, `outcome_confidence` and the four components `score_complexity`, `score_test_coverage`, `score_ambiguity` and `score_change_surface` (`issue_parser.py:3780-3783`).
@@ -42,7 +42,10 @@ After a reconcile that substantively rewrites an issue:
 - **Flag ownership is unchanged.**
   - Reconcile never clears `decision_needed` or the other outcome flags; clearing stays owned by `/ll:decide-issue` (`set_flags.py:262-264`, `skills/decide-issue/SKILL.md:289-297`).
   - Reconcile's own branch that *sets* `decision_needed: true` (`commands/reconcile-issue.md:240`) keeps working.
-- **No-op runs preserve scores, notes and outcome flags.** `--check` already never writes (`commands/reconcile-issue.md:125-126`, §7). A non-check run that finds nothing stale and rewrites no directive section must also leave the scores, Confidence Check Notes and outcome flags untouched. The one exception is `reconcile_attempted: true`: step 2 (`:139-146`) deliberately writes it on every non-check run, no-op or not, to arm `autodev.yaml`'s one-shot guard. That stays.
+- **No-op runs preserve scores, notes and outcome flags.** `--check` already never writes (`commands/reconcile-issue.md:125-126`, §7). A non-check run that finds nothing stale and rewrites no directive section must also leave the scores, Confidence Check Notes and outcome flags untouched. Its existing no-op writes stay:
+  - `reconcile_attempted: true`: step 2 (`:139-146`) deliberately writes it on every non-check run, no-op or not, to arm `autodev.yaml`'s one-shot guard.
+  - Clearing consumed `> ⚠ Superseded — …` marker lines under directive lines (ENH-2992, `:65-72`, `:184-195`): the no-op branch still deletes the markers it adjudicated, so `check_reconcile_needed` stops re-firing.
+  - The `/ll:reconcile-issue` Session Log entry (§6, `:244`).
 - **Defense in depth.** `set-flags` strips `~~…~~` spans before phrase matching, so hand-written strikethroughs elsewhere cannot fire flags either. Use a non-greedy, **single-line** pattern: `re.sub(r"~~[^\n]+?~~", "", notes)`. Do not use `re.S`: a stray unpaired `~~` (e.g. "~~50%") would pair with a later one and delete every live Concern between them, silently suppressing flags (fail-open). A strikethrough that wraps across lines is left in place and may still fire, which is the safe direction.
 
 ## Motivation
@@ -77,6 +80,7 @@ Reconcile exists to stop `/ll:confidence-check` from re-raising a Concern the re
 | `commands/reconcile-issue.md` | Step 2 sets `reconcile_attempted: true` on every non-check run, including no-ops | PRESERVED | The no-op AC excludes this key. |
 | `commands/reconcile-issue.md` | §2b sets `decision_needed: true` when a rewrite exposes an open decision | PRESERVED | Reconcile still never clears outcome flags. |
 | `commands/reconcile-issue.md` | `--check` never writes (§7) | PRESERVED | No score clear or Concern move under `--check`. |
+| `commands/reconcile-issue.md` | No-op branch clears consumed `⚠ Superseded` markers and appends the Session Log entry (ENH-2992, §6) | PRESERVED | The no-op AC allows these writes alongside `reconcile_attempted`. |
 | `commands/reconcile-issue.md` | `## Confidence Check Notes` is excluded from the rewrite scope (`:92`) | CHANGED | Reconcile now moves resolved Concern bullets out of it; unresolved bullets and the rest of the section are untouched. |
 | `commands/reconcile-issue.md` | Stored scores survive a reconcile | CHANGED | The six score keys are cleared after a substantive rewrite. |
 
@@ -127,8 +131,8 @@ Reconcile exists to stop `/ll:confidence-check` from re-raising a Concern the re
 - [ ] Unresolved Concerns remain in `## Confidence Check Notes`. With a sub-threshold `outcome_confidence` present, they still fire their flags through `set-flags`.
 - [ ] Resolved Concerns do not re-trigger flags. Neither a `## Resolved Concerns` entry nor a `~~struck~~` note in Confidence Check Notes fires `set-flags`, even at `outcome_confidence: 59`.
 - [ ] A stray unpaired `~~` on one line does not suppress a live Concern phrase on a later line: that Concern still fires `set-flags`.
-- [ ] With two `## Confidence Check Notes` sections, reconcile edits only the last. A second reconcile appends to the existing `## Resolved Concerns` rather than adding a second heading, and `ll-issues format-check` reports no `duplicate_heading`.
-- [ ] `--check` runs leave the file byte-for-byte unchanged. Non-check runs that rewrite nothing leave scores, Confidence Check Notes and outcome flags unchanged; their only write is `reconcile_attempted: true`.
+- [ ] With two `## Confidence Check Notes` sections, reconcile edits only the last. A second reconcile appends to the existing `## Resolved Concerns` rather than adding a second heading: the file contains exactly one unfenced, line-anchored `## Resolved Concerns` heading.
+- [ ] `--check` runs leave the file byte-for-byte unchanged. Non-check runs that rewrite nothing leave scores, Confidence Check Notes and outcome flags unchanged; their only writes are `reconcile_attempted: true`, deleting consumed `⚠ Superseded` marker lines, and the Session Log entry.
 - [ ] The new `--clear` flag on `ll-issues set-scores` removes all six score keys, is a no-op when they are absent, and errors when combined with a per-score argument.
 - [ ] Reconcile never clears `decision_needed` (or other outcome flags); the §2b path that sets it still works.
 
@@ -153,6 +157,7 @@ _Added by `/ll:confidence-check` on 2026-09-24_
 - Which Concerns count as "resolved" is model judgment in `commands/reconcile-issue.md` and only prose-testable; the deterministic parts (`--clear`, strikethrough strip) are unit-testable.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-24T22:56:16 - `4279401a-9acc-474c-b872-fd398cd78a8e.jsonl`
 - `/ll:confidence-check` - 2026-09-24T22:35:31 - `55203869-e869-482b-b191-d68f9782af86.jsonl`
 - `/ll:confidence-check` - 2026-09-24T22:09:57 - `b03f0e56-e701-4b6d-bb94-8f4cb425b852.jsonl`
 - `/ll:capture-issue` - 2026-09-24T01:32:57 - `2f8f7a22-ff27-4b63-912d-b3be6e3850a5.jsonl`
