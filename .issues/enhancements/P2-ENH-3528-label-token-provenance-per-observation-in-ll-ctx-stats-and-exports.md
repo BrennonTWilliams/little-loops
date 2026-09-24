@@ -18,19 +18,26 @@ relates_to:
 - ENH-3544
 - ENH-3545
 - ENH-3546
+- ENH-3580
+confidence_score: 95
+outcome_confidence: 63
+score_complexity: 10
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 10
 ---
 
 # Label token provenance per observation in ll-ctx-stats and exports
 
 ## Summary
 
-Make token provenance explicit per observation and metric. Host capabilities describe which telemetry a host can expose; they cannot determine whether every figure from that host is measured. This issue is the labeling/provenance slice (formerly "Delivery A"): consumption of stored per-observation provenance, and a provenance contract rendered by `ll-ctx-stats` and carried through history readers and shareable exports. New Codex historical rollout ingestion is split out to ENH-3532; other hosts to ENH-3534. Preserve useful context estimates where no measurement of the same quantity and interval is available.
+Make token provenance explicit per observation and metric. Host capabilities describe which telemetry a host can expose; they cannot determine whether every figure from that host is measured. This issue is the labeling/provenance slice (formerly "Delivery A"): consumption of stored per-observation provenance, and a provenance contract rendered by `ll-ctx-stats` and carried through history-reader aggregations (reader fields and shareable-export columns: ENH-3580). New Codex historical rollout ingestion is split out to ENH-3532; other hosts to ENH-3534. Preserve useful context estimates where no measurement of the same quantity and interval is available.
 
 All prerequisites are done: ENH-3538 (foundation, schema v54), BUG-3531 (Codex live normalization) and BUG-3542 (source-host correction and `host_basis` on `raw_events`/`usage_events`, schema v55). Where the Design sections below describe foundation behavior, ENH-3538 is authoritative and this issue consumes it. Read against schema v55.
 
 **Landing order:** BUG-3542 has landed and owns the storage and replay tests. This issue lands **before** ENH-3532/ENH-3543. It owns reporting and export consumption of `host_basis`, including the reporting-layer tests for both verified and legacy (unverified) host attribution. Coverage remains independent delivery: conservative unresolved coverage here, with the combined behavior of reporting honoring the shared coverage selector tested by ENH-3543, which lands later.
 
-**Split out 2026-09-24:** typed runtime telemetry map → ENH-3544; context-hook estimate/staleness labeling → ENH-3545; Claude `measured` promotion → ENH-3546. Without ENH-3546, Claude rows (most history) render as `unknown`. That is correct but low-signal, so land ENH-3546 close behind this issue.
+**Split out 2026-09-24:** typed runtime telemetry map → ENH-3544; context-hook estimate/staleness labeling → ENH-3545; Claude `measured` promotion → ENH-3546; `UsageEvent` fields and shareable-export columns (allowlist v2) → ENH-3580. Without ENH-3546, Claude rows (most history) render as `unknown`. That is correct but low-signal, so land ENH-3546 close behind this issue.
 
 ## Current Behavior
 
@@ -69,7 +76,12 @@ Writer and observation defaults are `unknown`, never `measured`. Verified acquis
 
 Consume ENH-3538's nullable components and completeness metadata through history readers and exports. BUG-3531 Decision 6 controls Codex omission semantics per acquisition path: an omitted cache-write field remains `None` unless producer evidence establishes zero; explicit null/malformed values never use that exception. A known numeric zero remains zero. This issue does not reimplement parsing, callbacks, executor sums, or the foundation migration.
 
-Aggregate each component independently: sum known contributors, retain known/missing counts, return `null` when no contributor supplies that component, and label a subtotal partial when some contributors are missing. Empty datasets also have unavailable token totals (zero observation count), distinct from observed zero usage. Consume the foundation's executor missing counts without dropping them. Its legacy two-integer callback requires known input, output **and cache_read**, while detailed callbacks retain partial observations; ENH-3538 owns that implementation and its consumer tests.
+Aggregate each component independently and retain known/missing counts; return `null` when no contributor supplies that component. What a *partially* known component returns depends on the surface:
+
+- **`history_reader` APIs and OTel exports** (`aggregate_usage`, `cost_attribution`, `waste_attribution`): keep ENH-3538's contract. A total with any missing contributor is `None` (via `_complete_total`), and the shortfall is in `<column>_missing`. Never return a partial subtotal from these APIs.
+- **`ll-ctx-stats` rendering only**: show the sum of known contributors, with `availability='partial'` and the known/missing counts in `token_provenance` (text: `[… · partial k/n]`). The JSON numeric field holds that labeled subtotal.
+
+Empty datasets also have unavailable token totals (zero observation count), distinct from observed zero usage. Consume the foundation's executor missing counts without dropping them. Its legacy two-integer callback requires known input, output **and cache_read**, while detailed callbacks retain partial observations; ENH-3538 owns that implementation and its consumer tests.
 
 Preserve ENH-3538's cost/completeness rules: compute cost only when pricing and every required token component are known; otherwise retain `cost_usd=null`. Do not turn a known-cost subtotal into a complete cost or relax completeness-safe OTel exports. A known-price model with missing output is not zero-cost or fully priced. Ratios use a common eligible observation set for numerator and denominator, expose excluded/missing counts, and return `null` for an unavailable or zero denominator.
 
@@ -98,13 +110,21 @@ Retain the context estimator for its existing use cases. Remove redundant estima
 
 Audit `ll-ctx-stats` usage totals/by-model, cache token figures and ratios, fallback total/breakdown, waste token totals, and context-pressure derivations. A measured numerator does not make a heuristic derived figure measured. Do not broaden this issue into time-saved or other non-token metrics.
 
+**Zero-coercion sites to fix.** Each of these turns a missing value into a measured zero, and each needs a fixture proving missing → `null`/missing count:
+
+- `ctx_stats._aggregate_usage_events`: `int(row[col] or 0)` for the four token columns. It also sums only known `cost_usd` into a total that looks complete. Track known/missing per component and label cost partial, not complete.
+- `history_reader.usage.waste_attribution`: `SUM(COALESCE(ue.input_tokens, 0) + COALESCE(ue.output_tokens, 0))` and `row["tokens_total"] or 0`. Compute in Python from chokepoint rows. A row missing input or output counts as missing for `tokens_total`/`tokens_wasted` (reported in `tokens_total_missing`/`tokens_wasted_missing`). Those totals follow the history_reader rule above (`None` when any contributor is missing), and `waste_pct` is `None` when either operand is `None` or the denominator is zero.
+- `ctx_stats._compute_cache_rate_from_jsonl` (non-Codex branch): see the cache-rate section below.
+
+`_aggregate_usage_events` also buckets NULL models under `model or "unknown"`, which merges them with a real model literally named `"unknown"`. Key NULL models under a reserved bucket that no model ID can produce (e.g. `"(unknown model)"`), and document it.
+
 Keep existing numeric field locations and the top-level `source`. Add a top-level `token_provenance` object whose keys are **RFC 6901 JSON Pointers** to the numeric field they describe, relative to the JSON document root (e.g. `/usage_by_model/totals/input_tokens`). Dynamic keys such as model IDs and tool names are embedded verbatim with standard JSON Pointer escaping (`~` → `~0`, `/` → `~1`); dots need no escaping, so model IDs like `claude-haiku-4.5` stay unambiguous. Each value identifies provenance, metric/scope, channel and observation time where known, availability/completeness, and aggregate composition where relevant. Do not wrap existing numbers in new objects.
 
-**Text rendering format.** Text output derives from the same metadata. Every labeled figure gets a bracketed suffix after its value. The suffix holds the provenance, followed by qualifiers joined with ` · ` in this fixed order: availability (only when not `available`), coverage (only when not `non_overlapping`), then `stale` (when true). For example: `12,345 [measured]`, `12,345 [unknown · overlap unresolved]`, `8,200 [mixed · partial 3/5]`, `— [unavailable]`. Here `partial k/n` means `known_count`/`known_count + missing_count`, and unavailable values render as `—`, never `0`. Figures in a group whose metadata is identical (e.g. every row of the per-model table) may carry one suffix on the group header instead. Reasons print once in a footnote block (`* <reason>`) under the section, not inline. Tests assert this format exactly.
+**Text rendering format.** Text output derives from the same metadata. Every labeled figure gets a bracketed suffix after its value. The suffix holds the provenance, followed by qualifiers joined with ` · ` in this fixed order: availability (only when not `available`), coverage (only when not `non_overlapping`), then `stale` (when true). For example: `12,345 [measured]`, `12,345 [unknown · overlap unresolved]`, `8,200 [mixed · partial 3/5]`, `— [unavailable]`. Here `partial k/n` means `known_count`/`known_count + missing_count`, and unavailable values render as `—`, never `0`. **Group-header rule:** when every figure in a rendered table or section has identical metadata (all fields except `reason` equal), the suffix goes once on the group header and is omitted from the figures. When any figure differs, every figure carries its own suffix and the header carries none. There is no mixed form. The JSON `token_provenance` still has one entry per numeric field either way. Reasons print once in a footnote block (`* <reason>`) under the section, not inline. Tests assert this format exactly.
 
 **Entry scope.** Only token-count fields (per-model/per-tool/total input, output, cache-read, cache-write, waste tokens, fallback estimates) and figures derived from tokens (cache-hit ratio, context pressure, token cost) get pointer entries. Event/row counts, timestamps, and non-token metrics do not. This explicitly excludes the byte-based fields `bytes_processed`, `bytes_in_context`, `bytes_saved`, `reduction_pct`, `cache_hits` and `cache_bytes_saved`, even though they sit beside the token fields in `_print_json`. When a group of dynamic entries (e.g. every model under `usage_by_model`) shares identical metadata, still emit one entry per numeric field. Keep entries compact: omit null-valued optional keys and do not repeat default-valued ones. The metadata-shape test asserts the required keys: `provenance`, `metric`, `availability`, `known_count`, `missing_count`, `coverage`.
 
-Preserve JSON compatibility where existing values remain valid. Correctly changing an absent measurement previously coerced to zero into `null` is an intentional semantic correction: document the affected fields and update consumer tests. Partial aggregates retain their numeric subtotal but identify missing contributors; all-missing measurements return `null`, never a misleading measured zero.
+Preserve JSON compatibility where existing values remain valid. Correctly changing an absent measurement previously coerced to zero into `null` is an intentional semantic correction: document the affected fields and update consumer tests. Partial aggregates follow the per-surface rule in "Missing values through the pipeline": in `ll-ctx-stats` they are a labeled subtotal, and in `history_reader`/OTel they are `None` plus missing counts. All-missing measurements return `null`, never a misleading measured zero.
 
 Each pointer entry has a fixed contract: `provenance`, `metric`, `scope_kind`, nullable `session_id`/`invocation_id`, `hosts`, `channels`, nullable `observed_from`/`observed_to`, `observation_time_basis`, `availability` (`available | partial | unavailable`), `known_count`, `missing_count`, `composition` (component counts and subtotals by provenance), `coverage` (`non_overlapping | overlap_unresolved | unknown`), nullable `stale`, and nullable `reason`. Unknown identities/times remain null or empty collections; do not substitute the reporting host or report-generation time. Observation provenance is conservative at row level; component availability is independent. Derived ratios inherit uncertainty from every required operand. Validate the metadata shape as well as pointer resolution.
 
@@ -115,21 +135,38 @@ Each pointer entry has a fixed contract: `provenance`, `metric`, `scope_kind`, n
 - `scope_kind='session'`, `channels=['transcript_file']`, with `session_id` taken from the handle. It covers one session, not the whole history that `usage_by_model` covers. Say so in the entry's `reason` and in the text output.
 - `hosts=[handle.host]`. The handle's host comes from the session's detected source, so it counts as a verified source host. `cache_rate_host` stays as it is and must equal `token_provenance.../hosts[0]`.
 - Codex (`_codex_cache_usage`) keeps its BUG-3531 semantics: consistent observations are `measured`, and inconsistent ones are counted in `missing_count`. The Claude/other-host branch is `unknown` until ENH-3546.
-- **Fix the zero coercion in the non-Codex branch.** `int(usage.get("cache_read_input_tokens", 0))` (and the same pattern for the other two fields) turns absent keys into measured zeros. Absent or null components must count as missing. Sum known values only, track known/missing counts, and return `null` for a component that no record supplied. A record whose `usage` has none of the three keys is not an observation. Do not move this path onto `usage_events` here; unifying the two sources is out of scope.
+- **Fix the zero coercion in the non-Codex branch.** `int(usage.get("cache_read_input_tokens", 0))` (and the same pattern for the other two fields) turns absent keys into measured zeros. Absent or null components must count as missing. Sum known values only, track known/missing counts, and return `null` for a component that no record supplied. A record whose `usage` has none of the three keys is not an observation. An explicit JSON `null` currently crashes the scan (`int(None)` raises `TypeError`, and only `OSError` is caught), so a fixture must cover explicit `null` as well as absent keys. A record missing any of the three is excluded from the hit-rate numerator and denominator (common eligible set) but its known components still count toward their own totals. Do not move this path onto `usage_events` here; unifying the two sources is out of scope.
 
 ### Single usage-selection chokepoint
 
 Add one row-selection function in `little_loops.history_reader.usage`:
 
-`select_usage_observations(conn: sqlite3.Connection, *, since: str | None = None, run_ids: Sequence[str] | None = None) -> list[sqlite3.Row]`
+`select_usage_observations(conn: sqlite3.Connection, *, since: str | None = None, require_run_id: bool = False) -> Iterator[sqlite3.Row]`
 
-It returns `usage_events` rows with the token components, `cost_usd`, `model`, `session_id`, `invocation_id`, `run_id`, `channel`, `host`, `host_basis`, `provenance`, `scope_kind`, `observed_at` and `observed_at_basis`. Columns missing from pre-v54/v55 schemas are selected as `NULL` (detect them via `PRAGMA table_info`). Every token/cost aggregation must go through it, and composition/coverage metadata is computed in Python from the returned rows:
+This signature is the stable replacement point for ENH-3543's selector, so it is fixed here:
 
-- `ctx_stats._aggregate_usage_events` (currently its own `SELECT … FROM usage_events`)
-- `history_reader.usage.aggregate_usage`, `cost_attribution` (including `_complete_total`) and `waste_attribution` (joins `loop_runs`; keep the join, but source usage rows from the chokepoint, e.g. by `run_ids`)
-- `recent_usage_events`
+- **Iterator, not list.** It streams rows from the cursor so the aggregators that currently use SQL `SUM` don't load the whole table into memory.
+- **No `run_ids` parameter.** A per-run `IN (...)` list hits SQLite's bound-parameter limit on large histories. `require_run_id=True` adds `WHERE run_id IS NOT NULL` instead.
+- **No other filters.** Grouping and joins happen in Python over the streamed rows.
 
-For this issue it returns every row (the unreconciled observation sum). ENH-3543 replaces its selection policy with the shared coverage selector. It must not consult the configured host. A gate test asserts that no other module in `little_loops` runs `SUM(...)` over `usage_events`.
+It yields `usage_events` rows with the token components, `cost_usd`, `model`, `session_id`, `invocation_id`, `run_id`, `channel`, `host`, `host_basis`, `provenance`, `scope_kind`, `observed_at` and `observed_at_basis`. Columns missing from pre-v54/v55 schemas are selected as `NULL` (detect them via `PRAGMA table_info`). Every token/cost **aggregation** must go through it, and composition/coverage metadata is computed in Python from the rows:
+
+- `ctx_stats._aggregate_usage_events` (currently its own `SELECT … FROM usage_events`).
+- `history_reader.usage.aggregate_usage` and `cost_attribution` (group in Python and keep `_complete_total` semantics: `None` on any missing contributor).
+- `waste_attribution`: read `loop_runs` once into a `run_id → (loop_name, wasted)` dict (evaluating `_WASTED_RUN_PREDICATE` in SQL over `loop_runs` alone), then join in Python over `select_usage_observations(conn, since=since, require_run_id=True)`. Rows whose `run_id` has no `loop_runs` match stay excluded, as they are today.
+- `issue_history/agent_quality.py:_usage_totals`: sums tokens/cost per issue from its own `SELECT … FROM usage_events WHERE session_id IS NOT NULL`. Route it through the chokepoint (filtering `session_id` in Python) so ENH-3543's selector also covers per-issue totals. Its reports keep their current shape; propagating provenance labels into them is out of scope.
+
+**Not routed:** `recent_usage_events` is a row listing (filters by `session_id`/`model`, `ORDER BY id DESC LIMIT`), not an aggregation. It keeps its own SQL. Widening its SELECT for the new fields belongs to ENH-3580.
+
+For this issue the chokepoint yields every row (the unreconciled observation sum). ENH-3543 replaces its selection policy with the shared coverage selector. It must not consult the configured host.
+
+**Gate test.** A SQL `SUM` check misses the current Python-side aggregations (`ctx_stats`, `agent_quality`). Instead, AST/string-scan `scripts/little_loops/` for SQL that reads a token or cost column (`input_tokens`, `output_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens`, `cost_usd`) `FROM usage_events`. Fail on any site outside `select_usage_observations`, except a reasoned allowlist:
+
+- `recent_usage_events`: row listing, not aggregation.
+- The `session_store/queries.py` export path: row copy of allowlisted columns.
+- `session_store` writers/lifecycle/schema: write, rebuild and migration paths.
+
+`issue_history/quality_regressions.py` reads only `session_id, model, COUNT(*)`, so it doesn't match the scan.
 
 ### Coverage and existing live/transcript overlap
 
@@ -143,9 +180,7 @@ Persistence of provenance, host, scope kind, and observation-time metadata is de
 
 BUG-3531 (Codex live input normalization) depends on ENH-3538, not this issue. It persists inconsistent Codex observations (`cache_read + cache_write > input`) with `input_tokens=None` and `provenance='unknown'`, and only producer-verified observations with a consistent input split and valid known output as `'measured'` with `host='codex'`. Pre-foundation rows and intermediate unnormalized rows stay `unknown`. Existing context-state/pressure data retains `estimated` provenance.
 
-The shareable export must retain non-sensitive provenance needed to interpret its token figures. Append exactly these columns to `_SHAREABLE_COLUMNS["usage_events"]`: `channel`, `host`, `host_basis`, `provenance`, `scope_kind`, `observed_at`, `observed_at_basis`. Nothing else is added. No transcript paths, `raw_events` columns or source identifiers. Bump `_SHAREABLE_ALLOWLIST_VERSION` from 1 to 2. In the same commit, set `TestAllowlistVersionLockstep.PINNED_VERSION = 2` and recompute `PINNED_HASH` in `test_feat3304_artifact_dashboard.py` (`sha256(repr(sorted(_SHAREABLE_COLUMNS.items())))`), and update the fixture DDL to include the v54/v55 columns. Add a test asserting the new column set exactly, alongside the existing free-text/absolute-path exclusion test.
-
-**`UsageEvent` carry-through.** Append these fields to the `UsageEvent` dataclass (`history_reader/models.py`) after `cost_usd`, each defaulting to `None`: `channel`, `host`, `host_basis`, `provenance`, `scope_kind`, `observed_at`, `observed_at_basis`, `invocation_id`, `run_id`. Keyword and positional construction of the existing nine fields must keep working, so existing iterator consumers are unchanged. `recent_usage_events` populates them through the chokepoint. A NULL stored `provenance` is surfaced as `"unknown"`; the other fields surface NULL as `None`. Dashboard token exports built on these readers pick up the new fields.
+**Split to ENH-3580:** the shareable-export provenance columns (allowlist v2, pinned hash, fixture DDL) and the trailing `UsageEvent` fields populated by `recent_usage_events`. This issue does not touch `_SHAREABLE_COLUMNS`, `_SHAREABLE_ALLOWLIST_VERSION` or `UsageEvent`. The two issues are independent and can land in either order.
 
 Keep requested/resolved model selections separate from observed model identity, following ENH-3527's contract. An unknown observed model remains unknown; it must not become a hint, assumed model ID, or zero-cost claim. Neither issue requires the other to land first.
 
@@ -162,31 +197,31 @@ Keep requested/resolved model selections separate from observed model identity, 
 - [ ] The fixed pointer-metadata schema is tested, including per-component known/missing counts, provenance composition, coverage, observation-time ranges/bases, and stale/unavailable reasons.
 - [ ] `ll-ctx-stats` fallback figures derived from context-state estimates render as `estimated` (hook-side staleness labeling is ENH-3545).
 - [ ] Reporting reads ENH-3538's columns and handles pre-migration schemas and unknown legacy origins (read as `unknown`) without error.
-- [ ] History readers and shareable dashboard exports retain safe provenance, with allowlist version/hash and fixture updates; no private source paths are added to exports.
+- [ ] Partial aggregates follow the per-surface rule. `aggregate_usage`/`cost_attribution`/`waste_attribution` return `None` with `<column>_missing` counts for any component with a missing contributor (ENH-3538 contract preserved). `ll-ctx-stats` renders the known subtotal labeled `partial k/n`. Tests cover both surfaces on the same fixture.
+- [ ] Zero coercion is removed from `_aggregate_usage_events` (`int(row[col] or 0)` and the known-only `cost_usd` total) and `waste_attribution` (`COALESCE(…, 0)` and `or 0`). Fixtures with NULL components yield missing counts/`None`, not zero. NULL models no longer share a bucket with a model named `"unknown"`.
 - [ ] Requested/resolved model identity is never presented as host-observed identity; unavailable pricing is not reported as measured zero cost. Semantic JSON corrections and the provenance contract are documented.
 - [ ] No new ingestion path is added; Codex historical ingestion is ENH-3532.
 - [ ] Reporting consumes ENH-3538's stored metadata without redefining its migration, writer, callback, or cost contracts; `host` and runtime-host `provider_vendor` remain distinct dimensions. Codex omission rules and measured eligibility exactly follow BUG-3531.
-- [ ] Without a coverage selector, combined live/transcript/rollout aggregates expose unknown aggregate provenance and unreconciled channel subtotals rather than claiming verified deduplication. All usage aggregation (`_aggregate_usage_events`, `aggregate_usage`, `cost_attribution`, `waste_attribution`, `recent_usage_events`) goes through `select_usage_observations`, which ENH-3543 can replace with its selector. A gate test finds no other `SUM(...)` over `usage_events`.
-- [ ] Cache-rate figures are labeled as a single-session transcript read (`scope_kind='session'`, `hosts=[handle.host]`, Codex `measured` / others `unknown`). The non-Codex branch no longer coerces absent usage keys to `0`, and a fixture with missing keys yields missing counts and `null`, not zero.
-- [ ] Text output uses the specified `[provenance · qualifiers]` suffix format with `—` for unavailable values and footnoted reasons. The byte-based fields get no `token_provenance` entries.
-- [ ] `_SHAREABLE_COLUMNS["usage_events"]` gains exactly the seven listed columns, the allowlist version is 2, and the pinned hash is updated. `UsageEvent` gains the listed trailing fields with `None` defaults, and existing constructions still work.
+- [ ] Without a coverage selector, combined live/transcript/rollout aggregates expose unknown aggregate provenance and unreconciled channel subtotals rather than claiming verified deduplication. All usage aggregation (`_aggregate_usage_events`, `aggregate_usage`, `cost_attribution`, `waste_attribution`, `agent_quality._usage_totals`) goes through `select_usage_observations(conn, *, since, require_run_id) -> Iterator[sqlite3.Row]`, which ENH-3543 can replace with its selector. `waste_attribution` joins `loop_runs` in Python (no `IN (...)` run-ID list). A gate test finds no SQL reading token/cost columns `FROM usage_events` outside the chokepoint and the reasoned allowlist (`recent_usage_events`, export row copy, `session_store` write/rebuild/migration paths).
+- [ ] Cache-rate figures are labeled as a single-session transcript read (`scope_kind='session'`, `hosts=[handle.host]`, Codex `measured` / others `unknown`). The non-Codex branch no longer coerces absent usage keys to `0` or crashes on explicit `null`. Fixtures with missing keys and with explicit `null` yield missing counts and `null`, not zero or an exception.
+- [ ] Text output uses the specified `[provenance · qualifiers]` suffix format with `—` for unavailable values and footnoted reasons. The group-header rule is deterministic: one header suffix when every figure's metadata (excluding `reason`) is identical, otherwise per-figure suffixes only. Tests cover both cases. The byte-based fields get no `token_provenance` entries.
 
 ## Scope Boundaries
 
-- **In scope**: consumption of stored provenance, `ll-ctx-stats` labeling and `token_provenance` contract, and affected history/dashboard exports.
+- **In scope**: consumption of stored provenance, `ll-ctx-stats` labeling and `token_provenance` contract, the `select_usage_observations` chokepoint and the history-reader aggregations routed through it.
 - **Prerequisites**: none outstanding. ENH-3538, BUG-3531, BUG-3530 and BUG-3542 are done.
-- **Split out**: ENH-3544 (typed runtime telemetry map); ENH-3545 (context-hook estimate/staleness labeling); ENH-3546 (Claude measured provenance); ENH-3532 (Codex historical rollout ingestion); ENH-3543 (live/rollout coverage selector); BUG-3542 (raw-ingest source host); ENH-3534 (Qwen/Gemini/OMP and other hosts).
+- **Split out**: ENH-3580 (`UsageEvent` fields and shareable-export columns, allowlist v2); ENH-3544 (typed runtime telemetry map); ENH-3545 (context-hook estimate/staleness labeling); ENH-3546 (Claude measured provenance); ENH-3532 (Codex historical rollout ingestion); ENH-3543 (live/rollout coverage selector); BUG-3542 (raw-ingest source host); ENH-3534 (Qwen/Gemini/OMP and other hosts).
 - **Out of scope**: ENH-3538's storage/writer/callback foundation; BUG-3542's raw-ingest host correction, `host_basis` migration and storage tests; ENH-3543's live identity plumbing; exact reconciliation of existing live/transcript overlap (exposing unresolved coverage is in scope); improving estimator accuracy; deleting the context estimator globally; using consumption as occupancy; new context monitors; changing time-saved/non-token metrics; new model pricing/routing; a universal provenance rewrite of unrelated CLIs.
 
 ## Integration Map
 
 ### Files to Modify
 
-- `scripts/little_loops/session_store/queries.py` — safe shareable provenance/coverage columns and allowlist version/hash; conservative legacy attribution and consumption of ENH-3532's shared coverage policy when available. No foundation migration or writer reimplementation.
-- `scripts/little_loops/cli/ctx_stats.py` — `_aggregate_usage_events` (route through the chokepoint), `_compute_cache_rate_from_jsonl` (remove zero coercion, add session-scope labeling), `_codex_cache_usage`, `_render_fallback`, `_print_json`, and provenance rendering for both store and fallback branches.
-- `scripts/little_loops/history_reader/usage.py` — new `select_usage_observations`; route `aggregate_usage`, `cost_attribution`/`_complete_total`, `waste_attribution` and `recent_usage_events` through it.
-- `scripts/little_loops/history_reader/models.py` — trailing `UsageEvent` fields.
-- `scripts/little_loops/history_reader/{__init__,context}.py`, `cli/artifact/dashboard.py` and its `dashboard.llat` template — export `select_usage_observations`, and carry provenance/completeness through readers and export.
+- `scripts/little_loops/cli/ctx_stats.py` — `_aggregate_usage_events` (route through the chokepoint, remove `int(row[col] or 0)` and known-only cost total, fix NULL-model bucket), `_compute_cache_rate_from_jsonl` (remove zero coercion and the explicit-null crash, add session-scope labeling), `_codex_cache_usage`, `_render_fallback`, `_print_json`, and provenance rendering for both store and fallback branches.
+- `scripts/little_loops/history_reader/usage.py` — new `select_usage_observations`; route `aggregate_usage`, `cost_attribution` (keeping `_complete_total` semantics) and `waste_attribution` (Python join, no `COALESCE(…, 0)`) through it. `recent_usage_events` is not routed.
+- `scripts/little_loops/issue_history/agent_quality.py` — `_usage_totals` routed through the chokepoint.
+- `scripts/little_loops/history_reader/{__init__,context}.py` — export `select_usage_observations`; carry provenance/completeness through readers.
+- (`session_store/queries.py` shareable columns and `history_reader/models.py` `UsageEvent` fields → ENH-3580.)
 
 ### Dependent Files and Similar Patterns
 
@@ -200,23 +235,23 @@ Keep requested/resolved model selections separate from observed model identity, 
 
 - `test_cli_ctx_stats.py`, `test_history_reader_usage.py`, context reader tests — mixed/unknown/partial data, unchanged store `source`, numeric locations, JSON Pointer paths, host-independent aggregation, and null-versus-zero behavior.
 - Reuse ENH-3538's parser/executor/writer fixtures for end-to-end reporting assertions; do not duplicate foundation migration or callback implementation tests. Add old-schema reader (including pre-`host_basis`), verified-attribution and legacy-attribution cases here. BUG-3542 owns host correction and rebuild storage regressions; ENH-3543 owns identity regressions; this issue tests their reported meaning.
-- `test_feat3304_artifact_dashboard.py` — allowlist version/hash, fixture DDL, safe provenance export, and missing/partial totals.
-- `test_history_store_chokepoint_gate.py` — history-read boundaries.
+- `test_history_store_chokepoint_gate.py` — history-read boundaries (precedent for the new usage-selection gate's AST scan + reasoned allowlist).
+- New usage-selection gate test (e.g. `test_usage_selection_chokepoint_gate.py`) — token/cost-column reads `FROM usage_events` only via `select_usage_observations` plus the allowlist.
+- `agent_quality` tests — per-issue totals unchanged in shape after routing through the chokepoint.
 - Usage/history/export fixtures — existing Claude live/transcript overlap and disjoint coverage; channel subtotals; partial known-model pricing; all-missing and observed-zero components; unchanged legacy iterator consumers.
 
 ### Documentation
 
-Update `docs/reference/{CLI,API,HOST_COMPATIBILITY,CONFIGURATION}.md`, `docs/guides/HISTORY_SESSION_GUIDE.md`, `docs/ARCHITECTURE.md`. Document the JSON Pointer convention, partial/mixed/unknown provenance, JSON compatibility corrections, and shareable fields. Check `docs/observability/{otel-mapping,realized-savings-verification}.md` for affected token semantics.
+Update `docs/reference/{CLI,API,HOST_COMPATIBILITY,CONFIGURATION}.md`, `docs/guides/HISTORY_SESSION_GUIDE.md`, `docs/ARCHITECTURE.md`. Document the JSON Pointer convention, partial/mixed/unknown provenance, JSON compatibility corrections (including the `waste_attribution` `None`-on-missing change), and the `select_usage_observations` chokepoint. Check `docs/observability/{otel-mapping,realized-savings-verification}.md` for affected token semantics.
 
 ## Implementation Steps
 
 (Foundation, normalization and source-host prerequisites are done; hook staleness is ENH-3545.)
 
-1. **Chokepoint:** add `select_usage_observations` with old-schema column detection, route all usage aggregations through it, and add the no-stray-`SUM` gate test.
-2. **Aggregation metadata:** per-component known/missing counts, provenance composition, `host_basis` attribution and the unresolved-overlap coverage policy.
-3. **ctx_stats contract:** `token_provenance` JSON Pointer entries (byte fields excluded), the text suffix format, fallback-as-`estimated`, and cache-rate session-scope labeling with the zero-coercion fix. Document the null corrections.
-4. **Readers and export:** `UsageEvent` trailing fields, the seven shareable columns, allowlist v2, and the pinned hash/fixture DDL updated together.
-5. Update docs. Run focused tests, then the required local suite and lint/type checks.
+1. **Chokepoint:** add the iterator-returning `select_usage_observations` with old-schema column detection. Route `_aggregate_usage_events`, `aggregate_usage`, `cost_attribution`, `waste_attribution` (Python join) and `agent_quality._usage_totals` through it, and add the token-column gate test with its allowlist.
+2. **Aggregation metadata:** per-component known/missing counts, the per-surface partial rule, provenance composition, `host_basis` attribution and the unresolved-overlap coverage policy. Remove the `ctx_stats`/`waste_attribution` zero coercion.
+3. **ctx_stats contract:** `token_provenance` JSON Pointer entries (byte fields excluded), the text suffix format with the deterministic group-header rule, fallback-as-`estimated`, and cache-rate session-scope labeling with the zero-coercion/explicit-null fix. Document the null corrections.
+4. Update docs. Run focused tests, then the required local suite and lint/type checks. (Reader/export fields: ENH-3580.)
 
 ## Program Design
 
@@ -233,7 +268,7 @@ Update `docs/reference/{CLI,API,HOST_COMPATIBILITY,CONFIGURATION}.md`, `docs/gui
 - `record_usage_event` and `TokenUsage` — consume ENH-3538's final signatures; do not restate or extend the writer here. ENH-3532 owns any additional live identity parameters.
 - `UsageCallback = Callable[[int, int], None]` — the foundation invokes it only when input, output **and cache_read** are known; `DetailedUsageCallback` receives partial observations. Reporting consumes persisted completeness instead of changing either callback.
 - `_aggregate_usage_events(db_path: Path) -> dict[str, Any] | None` — unchanged signature; the result gains provenance/completeness beside existing numeric fields and never consults the currently configured host.
-- `select_usage_observations(conn: sqlite3.Connection, *, since: str | None = None, run_ids: Sequence[str] | None = None) -> list[sqlite3.Row]` — new chokepoint in `history_reader.usage`. It returns all rows (with NULL for columns missing from older schemas) and is the replacement point for ENH-3543's selector.
+- `select_usage_observations(conn: sqlite3.Connection, *, since: str | None = None, require_run_id: bool = False) -> Iterator[sqlite3.Row]` — new chokepoint in `history_reader.usage`. It streams all rows (with NULL for columns missing from older schemas) and is the replacement point for ENH-3543's selector.
 - `_print_json(...)` and `_render_fallback(state: dict[str, Any], logger: Logger) -> None` — render the same provenance contract, preserving the top-level store `source`.
 
 ### Call Path
@@ -247,7 +282,7 @@ Host event or estimator → attach provenance, host, channel → persist → agg
 ## Impact
 
 - **Priority**: P2 — accuracy/observability enhancement; no current breakage beyond the bugs split out.
-- **Effort**: Large. No migrations, but it touches ctx_stats JSON/text output, four history-reader aggregators behind a new chokepoint, the shareable export allowlist and docs. Steps 1–3 and step 4 could be split into separate issues if needed.
+- **Effort**: Large. No migrations, but it touches ctx_stats JSON/text output, three history-reader aggregators plus `agent_quality` behind a new chokepoint, and docs. Reader/export fields are split to ENH-3580.
 - **Risk**: Medium — output-contract changes affect JSON consumers; mitigated by keeping numeric locations and top-level `source`.
 - **Breaking Change**: Additive provenance metadata and unchanged store `source`; intentional missing-value corrections must be documented and covered by consumer tests.
 
@@ -293,11 +328,38 @@ Resolved the conflicting landing order. BUG-3542 now lands first and is recorded
 - Specified the `UsageEvent` trailing fields, the exact shareable columns with allowlist v2 and pinned hash, the text suffix format, and the byte-field exclusion.
 - Rewrote the Implementation Steps and Effort.
 
+### Pre-implementation review 2026-09-24 (code check)
+
+Checked against the code and applied:
+
+- Partial aggregates follow a per-surface rule. `history_reader`/OTel keep ENH-3538's `None`-on-missing contract; only `ll-ctx-stats` renders a labeled partial subtotal. This resolves a contradiction with `aggregate_usage`'s docstring.
+- Added the unlisted zero-coercion sites: `_aggregate_usage_events` (`int(row[col] or 0)`, known-only cost) and `waste_attribution` (`COALESCE(…, 0)`). Added the cache-rate explicit-`null` crash.
+- Fixed the chokepoint signature before ENH-3543 depends on it: it returns an `Iterator` and takes `require_run_id` instead of `run_ids`, and `waste_attribution` joins in Python. `recent_usage_events` is exempt as a row listing. `agent_quality._usage_totals` is added as an aggregator.
+- Replaced the `SUM(...)` gate, which missed Python-side aggregation, with a token-column read scan plus a reasoned allowlist.
+- Made the text group-header rule deterministic.
+- Split former Step 4 (`UsageEvent` fields, shareable allowlist v2) to ENH-3580.
+
 ## Status
 
 **Open** | Created: 2026-09-23 | Priority: P2
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-24_
+
+**Readiness Score**: 95/100 → PROCEED
+**Outcome Confidence**: 63/100 → MODERATE
+
+### Concerns
+- Cross-issue coupling: `select_usage_observations` is the replacement point for ENH-3543's coverage selector, so its signature must stay stable; ENH-3543/ENH-3546 land after this issue.
+
+### Outcome Risk Factors
+- Moderate per-site complexity: nullable-component aggregation, provenance composition, and coverage logic are cross-function with shared state across `ctx_stats.py`, `history_reader/usage.py` and `session_store/queries.py`.
+- Broad enumeration across ~12+ sites: four aggregators behind a new chokepoint plus `ctx_stats`, `UsageEvent`, dashboard export and docs.
+- Wide caller surface with a JSON contract change: `null` replaces coerced zeros, so consumers of `usage_by_model`, cost and waste rollups (`pricing.py`, `fsm/cost_graph.py`, `issue_history/*`, dashboard) must be audited.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-09-24T22:23:59 - `40b8f248-36ef-4bdd-ab01-17d5e1770f77.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-09-24T17:53:57 - `5250dd00-ed7b-4310-8dee-527fe13b2b07.jsonl`
 - `/ll:verify-issues` - 2026-09-24T00:46:08 - `047cda0b-279f-4078-b31f-1d7b1fcc2181.jsonl`
 - `/ll:verify-issues` - 2026-09-24T00:01:43 - `d1e0cad9-5218-4c39-a990-a91f5f18af0d.jsonl`

@@ -46,7 +46,8 @@ These entries are correct: `claude-fable-5`, `claude-opus-5`, `claude-opus-4-8`,
 
 - `MODEL_PRICING` matches the live pricing table for every key it holds.
 - Sonnet 5 is priced at $2/$10 standard from `MODEL_PRICING` itself. Its `INTRO_PRICING` entry is removed, since the intro rate became the permanent rate. Keep the `INTRO_PRICING` mechanism itself for future launches.
-- The module docstring's "Source … as of" date is updated.
+- The module docstring's "Source … as of" date is updated, and its sentence saying Sonnet 5's intro rate is "modeled via `INTRO_PRICING`" is rewritten (the rate is now standard in `MODEL_PRICING`; the mechanism stays for future launches).
+- `claude-opus-4-5` moves out from under the "Claude 3.x (legacy)" comment into the "Claude 4.x" group.
 
 ## Proposed Solution
 
@@ -99,6 +100,8 @@ These entries are correct: `claude-fable-5`, `claude-opus-5`, `claude-opus-4-8`,
 - [ ] `claude-opus-4-5/6/7` price at $5/$25; `claude-haiku-4-5-20251001` at $1/$5.
 - [ ] The `INTRO_PRICING` mechanism stays covered by a synthetic-entry test.
 - [ ] The `is_batch` discount still halves each corrected rate.
+- [ ] The module docstring no longer describes Sonnet 5 as intro-priced, and `claude-opus-4-5` sits under the "Claude 4.x" comment.
+- [ ] The synthetic `INTRO_PRICING` fixture is reusable (a module-level pytest fixture or helper), since BUG-3579 builds on it.
 
 ## Follow-up (captured as BUG-3579)
 

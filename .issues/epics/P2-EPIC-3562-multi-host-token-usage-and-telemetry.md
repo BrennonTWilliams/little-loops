@@ -27,3 +27,4 @@ Group of 9 related issues: token usage ingestion, provenance labeling, and runti
 - **ENH-3546** — Establish Claude usage producer contract and measured provenance (open)
 - **ENH-3549** — Migrate ll-logs, ll-messages and ll-ctx-stats onto the session-watcher seam (open)
 - **BUG-3542** — Raw-event backfill stamps the configured host instead of each handle's source host (open)
+- **ENH-3580** — Carry usage_events provenance columns through UsageEvent and shareable export (open)

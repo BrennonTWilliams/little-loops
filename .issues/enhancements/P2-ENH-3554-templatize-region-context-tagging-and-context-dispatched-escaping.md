@@ -39,14 +39,16 @@ score_change_surface: 25
 - **A property bound by more than one region** (e.g. one value in a text node and in an `href`) takes the strictest context among them, by this order: `markup` > `style` > `script` > `url` > `attr` > `text`. Two contexts whose encodings are incompatible (`script` with any HTML context, `url` with `script`) classify as `markup`, which fails closed unless trusted.
 - `escape_data` dispatches on the recorded context:
   - `text` / `attr`: `html.escape(html.unescape(v), quote=True)` (the ENH-3558 rule). `attr` requires a **quoted** attribute value; an unquoted value classifies as `markup`, since `html.escape` does not escape spaces, `=` or backticks.
-  - `url`: the ENH-3558 scheme allowlist (`http`, `https`, `mailto`, relative, `#`), then HTML-escape. Applies only when the region **starts at offset 0 of the attribute value**; a region later in the value (`href="https://x/[[= slug =]]"`) cannot change the scheme and takes the `attr` rule. URL attributes: `href`, `src`, `action`, `formaction`, `poster`, `cite`, `background`, `ping`, `xlink:href`, and `<base href>`. `srcset` (a comma-separated URL list) and `<meta http-equiv="refresh" content>` classify as `markup`.
+  - `url`: the ENH-3558 scheme allowlist (`http`, `https`, `mailto`, relative, `#`), then HTML-escape. Applies only when the region **starts at offset 0 of the attribute value**; a region later in the value (`href="https://x/[[= slug =]]"`) cannot change the scheme and takes the `attr` rule. URL attributes (navigation and passive media only): `<a href>`, `<area href>`, `<img src>`, `<audio src>`, `<video src>`, `<source src>`, `<track src>`, `<video poster>`, `cite`, `background`, `ping`. `srcset` (a comma-separated URL list) and `<meta http-equiv="refresh" content>` classify as `markup`.
+  - **Resource-loading and navigation-hijacking attributes classify as `markup`**, not `url`: `<script src>`, `<iframe src>`, `<frame src>`, `<object data>`, `<embed src>`, `<link href>`, `<base href>`, `<form action>`, `formaction`. The scheme allowlist admits any `https:` value, which is enough to load attacker script (`script`/`iframe`/`object`/`embed`), attacker CSS (`link`), rebase every relative URL on the page (`base`), or send form submissions off-site (`action`/`formaction`). An unlisted attribute on an element not named above takes `attr`.
+  - SVG `xlink:href` is not a URL attribute: SVG is foreign content and already classifies as `markup`.
   - `script`, inside a `<script>` block:
     - **code position** (not inside a JS string): stamp `script_json(v)` (ENH-3557), a complete quoted JSON value.
     - **inside a `"…"` or `'…'` string literal**: the JSON string body without surrounding quotes, with the enclosing quote character, backslash, `<`, `>`, `&`, U+2028 and U+2029 escaped.
     - **inside a backtick template literal** or any position the tokenizer cannot resolve: `markup` (fail closed).
   - `script`, inside an `on*=` handler attribute: apply the JS encoding above, **then** HTML-attribute escaping. The browser entity-decodes the attribute before parsing JS, so the JSON quotes must not reach the attribute raw.
   - `style` (block or `style=` attribute) / `markup`: refuse (raise) unless the property is annotated `x-ll-trusted: true`.
-- **Fail closed** on: HTML comments, RCDATA/raw-text elements other than `<script>`/`<style>` where the tokenizer is unsure, `<noscript>`/`<template>`, SVG/MathML foreign content, CDATA, and any tokenizer ambiguity. All classify as `markup`.
+- **Fail closed** on: HTML comments, RCDATA/raw-text elements other than `<script>`/`<style>` where the tokenizer is unsure, `<noscript>`/`<template>`, SVG/MathML foreign content, CDATA, `<iframe srcdoc>` (its value is a whole HTML document), the resource-loading attributes listed under `url`, and any tokenizer ambiguity. All classify as `markup`.
 - **Validation matrix** in `_validate_schema_shape()`:
   - all six contexts are permitted only on `type: string`;
   - `x-ll-trusted: true` is permitted only with `style` or `markup` (or no context);
@@ -61,7 +63,7 @@ score_change_surface: 25
 ## Proposed Solution
 
 1. **Classifier.** At templatize time, before `apply_regions`, run over each region and group-field span in the original artifact (stdlib `html.parser` driven over the decoded text, or a small tokenizer) and find the innermost context:
-   - inside a quoted attribute value, and which attribute (the URL list above → `url` when the span starts the value, else `attr`; `on*` → `script`; `style` → `style`; else `attr`);
+   - inside a quoted attribute value, and which attribute (resource-loading attributes → `markup`; the URL list above → `url` when the span starts the value, else `attr`; `on*` → `script`; `style` → `style`; `srcdoc` → `markup`; else `attr`). Match on the (element, attribute) pair; `html.parser` lowercases both;
    - an unquoted attribute value → `markup`;
    - inside `<script>` raw text, plus a JS string sub-context from a minimal quote/comment scanner;
    - inside `<style>` raw text → `style`;
@@ -127,6 +129,7 @@ score_change_surface: 25
 - `style` and `markup` raise unless the property is annotated `x-ll-trusted: true`.
 - A property bound in several places takes the strictest context; incompatible encodings merge to `markup`.
 - `url` applies only when the region starts the attribute value; otherwise `attr`.
+- Resource-loading attributes (`script`/`iframe`/`frame` `src`, `object data`, `embed src`, `link href`, `base href`, `form action`, `formaction`) and `srcdoc` classify as `markup`, never `url`.
 - Unquoted attributes, comments, foreign content, backtick templates and any tokenizer ambiguity classify as `markup`.
 - `x-ll-trusted: true` is valid only with `style`, `markup`, or no context.
 
@@ -152,13 +155,14 @@ score_change_surface: 25
 ## Acceptance Criteria
 
 - [ ] Templatize writes a context for every lifted property, group fields included. A fixture artifact with one region per context (text, attr, `href`, `onclick`, `<script>` string, `<style>` value, tag-spanning span) produces the expected six classes.
-- [ ] Fail-closed cases classify as `markup`: unquoted attribute, HTML comment, SVG foreign content, backtick template literal, `srcset`, meta refresh.
+- [ ] Fail-closed cases classify as `markup`: unquoted attribute, HTML comment, SVG foreign content (including `xlink:href`), backtick template literal, `srcset`, meta refresh, `<iframe srcdoc>`.
+- [ ] A region starting the value of `<script src>`, `<iframe src>`, `<object data>`, `<embed src>`, `<link href>`, `<base href>`, `<form action>` or `formaction` classifies as `markup`; the same region in `<a href>` or `<img src>` classifies as `url`.
 - [ ] A region later in an `href` value (`https://x/[[= slug =]]`) classifies as `attr`; one starting the value classifies as `url`.
 - [ ] A property bound in a text node and an `href` gets `url`; one bound in a text node and a `<script>` gets `markup`.
 - [ ] Classification is correct for regions after multi-byte UTF-8 characters.
 - [ ] `refresh` with hostile model output per context:
   - text/attr values are HTML-escaped;
-  - `javascript:alert(1)` in a `url` property raises;
+  - `javascript:alert(1)` in a `url` property raises, and so do its evasion variants: mixed case (`JaVaScript:`), leading whitespace or control characters, a tab or newline inside the scheme (`java\tscript:`), and entity-encoded forms (`&#106;avascript:`, `&#x6A;avascript:`), which must be judged after `html.unescape`;
   - a `</script>` in a `script` property does not close the block and decodes back to the input in JS, in both code position and inside a `"…"` / `'…'` literal;
   - a value with `"` in an `onclick` property does not terminate the attribute and decodes back to the input in JS;
   - `style`/`markup` properties raise unless annotated `x-ll-trusted: true`, and a trusted `markup` property stamps verbatim.

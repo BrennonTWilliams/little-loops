@@ -47,7 +47,7 @@ score_change_surface: 25
 
 The JSON half of this contract also fixes the existing invalid-JSON bug for a genuinely empty project.
 
-**How an EPIC is identified.** `IssueInfo.issue_type` holds directory-style categories (`"bugs"`, `"features"`, `issue_parser.py:3728`), not `EPIC`. Filter with the same ID-prefix test `find_issues` applies for `type_prefixes` (`issue_parser.py:4452-4454`): an issue is an EPIC when the prefix of `issue.issue_id` is `EPIC`. Factor it into a small helper so the listing filter and the single-ID check share one definition.
+**How an EPIC is identified.** `IssueInfo.issue_type` holds directory-style categories (`"bugs"`, `"features"`, `issue_parser.py:3728`), not `EPIC`. Filter with the same ID-prefix test `find_issues` applies for `type_prefixes` (`issue_parser.py:4452-4454`): an issue is an EPIC when the prefix of `issue.issue_id` is `EPIC`. Factor it into a small helper so the listing filter and the single-ID check share one definition. Optional: if the prefix extraction in `find_issues` is already a named helper (or can be lifted into one cheaply), have `_is_epic` call it so the two definitions cannot drift; `find_issues`' behavior stays unchanged either way.
 
 **Explicit EPIC requests** fail with a clear diagnostic on stderr and **exit 1**, matching the command's existing "not found" exit code. This covers `--type EPIC`, `refine-status EPIC-NNN`, and a bare number that resolves to an EPIC. The message: `Error: EPICs are not tracked by refine-status; use 'll-issues epic-progress <ID>' instead.` Stdout stays empty in all formats. The single-ID check happens before records are built, so the `records[0]` path is never reached with an empty list.
 

@@ -7,6 +7,8 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-09-24'
 captured_at: '2026-09-24T21:22:50Z'
+relates_to:
+- BUG-3564
 confidence_score: 100
 outcome_confidence: 79
 score_complexity: 18
@@ -26,16 +28,16 @@ This is latent today. BUG-3564 removes the only live entry (`claude-sonnet-5`), 
 ## Current Behavior
 
 - `estimate_cost_usd(model, input_tokens, output_tokens, cache_read_tokens=0, cache_creation_tokens=0, is_batch=False)` has no date parameter; the intro override check reads `date.today()`.
-- The transcript replay path in `_backfill_usage_events` (`scripts/little_loops/session_store/writers.py:3603`) has each record's `timestamp` in hand (`ts`, read just before the call at `:3657`) but does not pass it.
-- The live writer (`writers.py:1965`) takes an `observed_at` argument but prices without it. For live rows today's date is usually right, but a delayed flush at loop-run finish can straddle an expiry boundary.
-- `fsm/cost_graph.py:321` recomputes cost from aggregated token rows at report time, which is also "today".
+- The transcript replay path in `_backfill_usage_events` (`scripts/little_loops/session_store/writers.py:3607`) has each record's `timestamp` in hand (`ts`, read just before the call at `:3661`) but does not pass it.
+- The live writer `record_usage_event` (`writers.py:1965`) takes a required `ts: str` and an optional `observed_at`, but prices with neither. For live rows today's date is usually right, but a delayed flush at loop-run finish can straddle an expiry boundary.
+- `fsm/cost_graph.py:321` (`CostReport.from_usage_jsonl`) recomputes cost at report time ("today"), even though every `usage.jsonl` row it reads carries its own `"timestamp"` (written at `fsm/persistence.py:1105`).
 
 ## Expected Behavior
 
 - `estimate_cost_usd` accepts an optional `as_of: date | None = None`. `None` means today, so every existing caller keeps its current behavior.
 - The intro override applies when `as_of <= expires`.
-- Replay passes the record's timestamp (parsed to a date, falling back to today when absent or unparseable). The live writer passes `observed_at` when present.
-- `cost_graph` passes a per-row date if the rows carry one; if they only carry aggregates, document that its costs are priced at report time.
+- Replay passes the record's timestamp (parsed to a date, falling back to today when absent or unparseable). The live writer passes the date of `observed_at or ts`.
+- `cost_graph` passes each `usage.jsonl` row's `"timestamp"` (same parse-and-fallback rule; legacy rows with `""` price at today).
 
 ## Motivation
 
@@ -45,19 +47,23 @@ This is latent today. BUG-3564 removes the only live entry (`claude-sonnet-5`), 
 
 1. Add `as_of: date | None = None` to `estimate_cost_usd`; replace `date.today()` with `as_of or date.today()`.
 2. `_backfill_usage_events`: parse `ts` (ISO-8601) to a date and pass it.
-3. Live writer: pass the date of `observed_at` when given.
-4. `cost_graph`: pass a row date if available; otherwise leave it and note the limitation.
+3. Live writer: pass the date of `observed_at or ts`.
+4. `cost_graph`: pass the date of each row's `"timestamp"`.
+5. Put the ISO-8601 → `date` parse in one small helper (e.g. `pricing._event_date(ts: str | None) -> date | None`, returning `None` on missing/unparseable input so `estimate_cost_usd` falls back to today) and use it at all three call sites.
+
+**Ordering:** land after BUG-3564. It replaces the Sonnet 5 intro tests with a synthetic, monkeypatched `INTRO_PRICING` fixture in `test_pricing.py`; this issue reuses that fixture instead of adding a second one.
 
 ## Integration Map
 
 ### Files to Modify
 - `scripts/little_loops/pricing.py` — `estimate_cost_usd`.
-- `scripts/little_loops/session_store/writers.py` — the live writer call (`:1965`) and `_backfill_usage_events` (`:3657`).
-- `scripts/little_loops/fsm/cost_graph.py` — `:321`, if rows carry a date.
+- `scripts/little_loops/session_store/writers.py` — the live writer call in `record_usage_event` (`:1965`) and `_backfill_usage_events` (call at `:3661`).
+- `scripts/little_loops/fsm/cost_graph.py` — `CostReport.from_usage_jsonl` (`:321`), per-row `"timestamp"`.
 
 ### Tests
-- `scripts/tests/test_pricing.py` — synthetic `INTRO_PRICING` fixture via monkeypatch: an event inside the intro window is priced at the intro rate when today is past expiry, an event after expiry at the standard rate when today is inside the window, and `as_of=None` matches the current behavior.
+- `scripts/tests/test_pricing.py` — reuse BUG-3564's synthetic `INTRO_PRICING` fixture (monkeypatch): an event inside the intro window is priced at the intro rate when today is past expiry, an event after expiry at the standard rate when today is inside the window, and `as_of=None` matches the current behavior.
 - A replay test showing `_backfill_usage_events` prices by record timestamp.
+- `scripts/tests/test_fsm_cost_graph.py` — a `usage.jsonl` row dated inside the intro window is priced at the intro rate after expiry.
 
 ### Documentation
 - `docs/reference/API.md` — `estimate_cost_usd`'s new parameter.
@@ -72,7 +78,8 @@ This is latent today. BUG-3564 removes the only live entry (`claude-sonnet-5`), 
 
 ### Call Path
 `_backfill_usage_events` -> `estimate_cost_usd(..., as_of=<record date>)`
-live `usage_events` writer -> `estimate_cost_usd(..., as_of=<observed_at date>)`
+`record_usage_event` -> `estimate_cost_usd(..., as_of=<observed_at or ts date>)`
+`CostReport.from_usage_jsonl` -> `estimate_cost_usd(..., as_of=<row timestamp date>)`
 
 ### Decision Rules
 - `as_of=None` means today (backward compatible).
@@ -83,7 +90,7 @@ live `usage_events` writer -> `estimate_cost_usd(..., as_of=<observed_at date>)`
 
 1. Write failing tests with the synthetic intro fixture.
 2. Add `as_of` to `estimate_cost_usd`.
-3. Thread event dates through the replay and live call sites; decide on `cost_graph`.
+3. Thread event dates through the replay, live and `cost_graph` call sites.
 4. Run `python -m pytest scripts/tests/`.
 
 ## Impact
@@ -115,11 +122,12 @@ live `usage_events` writer -> `estimate_cost_usd(..., as_of=<observed_at date>)`
 - [ ] `estimate_cost_usd` accepts `as_of`; omitting it gives today's behavior.
 - [ ] With a synthetic intro entry, an event dated inside the window is priced at the intro rate even when today is after expiry, and vice versa.
 - [ ] `_backfill_usage_events` prices each record by its own timestamp; a missing or malformed timestamp falls back to today without raising.
-- [ ] The live writer prices by `observed_at` when it is given.
+- [ ] The live writer prices by `observed_at` when it is given, else by `ts`.
+- [ ] `cost_graph` prices each `usage.jsonl` row by its own `"timestamp"`; a row with an empty or malformed timestamp falls back to today.
 
 ## Related
 
-- BUG-3564 — its Follow-up section records this flaw; removing the Sonnet 5 intro entry makes it latent.
+- BUG-3564 — its Follow-up section records this flaw; removing the Sonnet 5 intro entry makes it latent. Land it first: this issue reuses its synthetic `INTRO_PRICING` test fixture.
 
 ## Related Key Documentation
 

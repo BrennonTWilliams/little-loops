@@ -22,7 +22,7 @@ score_change_surface: 18
 
 ## Summary
 
-`ll-issues format-check` should flag invisible and control characters in issue files: U+2028 LINE SEPARATOR, U+2029 PARAGRAPH SEPARATOR, zero-width characters (U+200B, U+200C, U+200D, U+2060, and U+FEFF anywhere but offset 0), bidirectional controls (U+202A–U+202E, U+2066–U+2069), U+00AD SOFT HYPHEN, DEL (U+007F), C1 controls (U+0080–U+009F), and C0 control characters other than tab, LF and CR. These never belong in an issue file, and they are the one visible trace of a silent corruption that has already broken a spec once.
+`ll-issues format-check` should flag invisible and control characters in issue files: U+2028 LINE SEPARATOR, U+2029 PARAGRAPH SEPARATOR, zero-width characters (U+200B, U+200C, U+200D, U+2060, and U+FEFF anywhere but offset 0), bidirectional controls and marks (U+202A–U+202E, U+2066–U+2069, U+200E, U+200F, U+061C), Unicode tag characters (U+E0000–U+E007F), U+00AD SOFT HYPHEN, DEL (U+007F), C1 controls (U+0080–U+009F), and C0 control characters other than tab, LF and CR. These never belong in an issue file, and they are the one visible trace of a silent corruption that has already broken a spec once.
 
 ## Current Behavior
 
@@ -36,6 +36,7 @@ The most likely cause is upstream of little-loops: tool-call arguments are JSON,
 - `ll-issues format-check` exits non-zero on it, like the other structural gaps. The class is **blocking**: it is not added to `_ADVISORY_GAP_CLASSES` (`issue_parser.py:515`), and it is rendered in `format_check.py`'s report (a class counted by `has_gaps` but not rendered exits 1 with an empty report; see the comment at `format_check.py:435`).
 - The report names the code point in words (e.g. `U+2028 LINE SEPARATOR at line 291`), never by reproducing the character. `unicodedata.name()` raises `ValueError` for C0/C1 controls and DEL (they have no name), so the scan needs a fallback: the control-code alias (`NULL`, `UNIT SEPARATOR`, …) from a small table, or `<control>` plus the code point.
 - The scan covers the whole file, frontmatter included (a `title:` can carry these too). Only a U+FEFF at offset 0 is exempt.
+- **Line numbers count `\n` only**: `content.count("\n", 0, offset) + 1`. Do not number lines with `str.splitlines()`: it treats U+2028, U+2029, U+0085, U+001C–U+001E, VT and FF as line boundaries, the very characters being detected, so every later line number in the report would be off.
 
 ## Motivation
 
@@ -43,7 +44,7 @@ The corruption is silent, invisible in most renderers, and turns a precise spec 
 
 ## Proposed Solution
 
-Add a scan over the whole issue file in `check_format_gaps`: flag U+2028, U+2029, U+200B, U+200C, U+200D, U+2060, U+FEFF (except at offset 0), U+202A–U+202E, U+2066–U+2069, U+00AD, U+007F, U+0080–U+009F, and code points below U+0020 other than tab, LF, and CR. The bidi controls are the strongest case: they can reorder how text renders without changing what a parser reads (the "Trojan Source" class). Add the new field to `FormatGaps` and its serialized/rendered output, and a report-only gap with no auto-fix (removal is not always the right fix, since the intended text was an escape sequence). Optionally add a CONTRIBUTING note: write escape sequences in specs out in words or as hex-digit tables, never as literal backslash-u text.
+Add a scan over the whole issue file in `check_format_gaps`: flag U+2028, U+2029, U+200B, U+200C, U+200D, U+2060, U+FEFF (except at offset 0), U+202A–U+202E, U+2066–U+2069, U+200E, U+200F, U+061C, U+E0000–U+E007F, U+00AD, U+007F, U+0080–U+009F, and code points below U+0020 other than tab, LF, and CR. The bidi controls and marks are a strong case: they can reorder how text renders without changing what a parser reads (the "Trojan Source" class, whose paper also lists LRM/RLM/ALM). The tag characters are the other: they are invisible and a known carrier for smuggled prompt-injection text, and issue files are read by models. (A 2026-09-24 scan found no existing offenders in the added ranges.) Add the new field to `FormatGaps` and its serialized/rendered output, and a report-only gap with no auto-fix (removal is not always the right fix, since the intended text was an escape sequence). Optionally add a CONTRIBUTING note: write escape sequences in specs out in words or as hex-digit tables, never as literal backslash-u text.
 
 ## Integration Map
 
@@ -69,7 +70,7 @@ The ones checked (FEAT-2390, ENH-2939, ENH-2507, ENH-2495) are `done`; cleaning 
 
 ### Tests
 - `scripts/tests/test_issue_parser.py` — per-character detection, allowed characters (tab, LF, CR, leading BOM) not flagged.
-- `scripts/tests/test_ll_issues_format_check.py` — CLI report text and non-zero exit.
+- `scripts/tests/test_ll_issues_format_check.py` — CLI report text and non-zero exit. The existing `FormatGaps` field-parity test (`:3222`, iterates `dataclasses.fields(FormatGaps)`) fails if the new field is not rendered, which enforces the render requirement above.
 
 ### Documentation
 - `docs/reference/CLI.md` — list the new gap class under `ll-issues format-check`.
@@ -91,8 +92,9 @@ The ones checked (FEAT-2390, ENH-2939, ENH-2507, ENH-2495) are `done`; cleaning 
 `cmd_format_check` -> `check_format_gaps` -> `FormatGaps`
 
 ### Decision Rules
-- Flag U+2028, U+2029, U+200B, U+200C, U+200D, U+2060; U+FEFF except at offset 0; U+202A–U+202E and U+2066–U+2069; U+00AD; U+007F; U+0080–U+009F; code points below U+0020 other than tab, LF, CR.
+- Flag U+2028, U+2029, U+200B, U+200C, U+200D, U+2060; U+FEFF except at offset 0; U+202A–U+202E, U+2066–U+2069, U+200E, U+200F, U+061C; U+E0000–U+E007F; U+00AD; U+007F; U+0080–U+009F; code points below U+0020 other than tab, LF, CR.
 - Scan the whole file, frontmatter included.
+- Line numbers count `\n` only, never `splitlines()` boundaries.
 - Report the code point by name, never by reproducing the character; fall back to a control-alias table where `unicodedata.name()` has no name.
 - Blocking, not advisory.
 
@@ -121,6 +123,8 @@ The ones checked (FEAT-2390, ENH-2939, ENH-2507, ENH-2495) are `done`; cleaning 
 - [ ] Tab, LF, CR, and a leading U+FEFF BOM are not flagged.
 - [ ] A nameless control (e.g. U+001F) is reported by its alias or `<control>` label without raising.
 - [ ] A character in frontmatter (e.g. in `title:`) is flagged.
+- [ ] Line numbers stay correct after a U+2028 or U+001E earlier in the file: a second offender on physical line N is reported at line N.
+- [ ] U+200E, U+200F, U+061C and a tag character (e.g. U+E0041) are each flagged.
 - [ ] After the listed offenders are cleaned, the full `.issues/` tree produces no `invisible_chars` gaps. (A 2026-09-24 scan found the offenders listed above, so this does not hold without the cleanup.)
 
 ## Related
