@@ -829,14 +829,22 @@ function renderDimensions() {
     row.className = "rule-row";
     const norm = normalizeDimName(d.name);
     const isBuiltin = isLifecycle && BUILTIN_DIM_NAMES.has(norm);
-    let html = `<strong>${norm}</strong> <em>(${d.type})</em>`;
+    // ENH-3560: model-derived text goes in via textContent, never innerHTML.
+    const nameEl = document.createElement("strong");
+    nameEl.textContent = norm;
+    const typeEl = document.createElement("em");
+    typeEl.textContent = `(${d.type})`;
+    row.append(nameEl, " ", typeEl);
+    const _hint = (text) => {
+      const small = document.createElement("small");
+      small.className = "help";
+      small.textContent = text;
+      row.append(" ", small);
+    };
     if (isBuiltin) {
-      html += ` <small class="help">built-in</small>`;
-      if (norm === "priority_rank") {
-        html += ` <small class="help">(numeric, derived from priority)</small>`;
-      }
+      _hint("built-in");
+      if (norm === "priority_rank") _hint("(numeric, derived from priority)");
     }
-    row.innerHTML = html;
     if (!isBuiltin) {
       const del = document.createElement("button");
       del.className = "secondary del";
@@ -923,7 +931,9 @@ function renderOutcomes() {
     grp.className = "outcome-group";
     const title = document.createElement("div");
     title.className = "row";
-    title.innerHTML = `<strong>${oc.name}</strong>`;
+    const nameEl = document.createElement("strong");
+    nameEl.textContent = oc.name;
+    title.appendChild(nameEl);
     const delOc = document.createElement("button");
     delOc.className = "secondary del";
     delOc.textContent = "✕ outcome";
@@ -1035,7 +1045,9 @@ function renderLifecycleOutcomes() {
 
     const title = document.createElement("div");
     title.className = "row";
-    title.innerHTML = `<strong>${oc.name}</strong>`;
+    const nameEl = document.createElement("strong");
+    nameEl.textContent = oc.name;
+    title.appendChild(nameEl);
     grp.appendChild(title);
 
     const skillRow = document.createElement("div");

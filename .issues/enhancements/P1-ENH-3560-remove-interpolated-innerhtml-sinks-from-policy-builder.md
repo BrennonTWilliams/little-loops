@@ -3,10 +3,11 @@ id: ENH-3560
 type: ENH
 title: Remove interpolated innerHTML sinks from policy builder
 priority: P1
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-24'
 captured_at: '2026-09-24T18:30:10Z'
+completed_at: '2026-09-24T21:36:04Z'
 parent: EPIC-3556
 labels:
 - security
@@ -137,7 +138,16 @@ Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the sam
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-24T21:36:04 - `6ccc1d18-22f1-45e0-8c52-048e322d5f5e.jsonl`
+- `/ll:ready-issue` - 2026-09-24T21:26:48 - `b6953986-b219-42cc-bc3f-27862cccccee.jsonl`
 - `/ll:confidence-check` - 2026-09-24T21:21:37 - `2c0fb02b-c823-4a59-94a2-1bc2d90ae255.jsonl`
 - `/ll:verify-issues` - 2026-09-24T19:13:36 - `27bdfde5-d1ef-4e98-b8ff-2728ac43d651.jsonl`
 - `/ll:scope-epic` - 2026-09-24T18:30:40 - `bd7b32d0-d305-4468-99d3-61a8a02d4caa.jsonl`
 - Manual review - 2026-09-24 - ported ENH-3540 Scope §6 and ACs into this child; widened the static check to constant-literal-only (the `${`-only rule missed the `:839` variable assignment); specified the stub-DOM `vm` harness (no jsdom in the zero-dependency suite)
+
+## Resolution
+
+- Rewrote the three interpolated `innerHTML` sinks in `renderDimensions`, `renderOutcomes`, `renderLifecycleOutcomes` with `createElement` + `textContent`.
+- Added `scripts/tests/js/policy_builder_dom_sinks.test.mjs`: fail-closed constant-literal scan of every `innerHTML`/`outerHTML`/`insertAdjacentHTML` write, plus a stub-DOM `vm` hostile-project render test.
+- Regenerated `golden_policy_router_builder.html` (pinned render inputs).
+- Full suite: 25473 passed; 2 pre-existing unrelated failures (`test_no_new_unverifiable_evidence` on BUG-1688, `test_autodev_topology` state count).
