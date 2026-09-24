@@ -9,8 +9,10 @@ discovered_by: ll-issues-create
 discovered_date: '2026-09-24'
 captured_at: '2026-09-24T00:20:32Z'
 blocked_by:
-- BUG-3530
+- ENH-3538
+blocks:
 - ENH-3528
+- ENH-3532
 labels:
 - observability
 - multi-host
@@ -50,19 +52,19 @@ Live Codex usage is normalized to the canonical disjoint contract before it leav
 ## Integration Map
 
 - `scripts/little_loops/subprocess_utils.py` `usage_from_event`, `TokenUsage`; `scripts/little_loops/cli/ctx_stats.py` `_codex_cache_usage`.
-- `scripts/little_loops/fsm/executor.py` — `action_complete` usage aggregation (propagate the consistency flag).
-- `scripts/little_loops/session_store/writers.py` `record_usage_event` — persist inconsistent observations as `provenance='unknown'` using ENH-3528's columns.
+- `scripts/little_loops/fsm/executor.py` — `action_complete` usage aggregation; relies on ENH-3538's completeness-aware sums (no new flag).
+- `scripts/little_loops/session_store/writers.py` `record_usage_event` — persist inconsistent observations as `provenance='unknown'` using ENH-3538's columns.
 - Tests: `test_subprocess_utils.py`, `test_cli_ctx_stats.py` (replace `test_codex_clamps_negative_uncached_to_zero`), `test_fsm_runners.py`, `test_fsm_executor.py`; fixtures `scripts/tests/fixtures/codex/` (`rollout-interactive.jsonl` for reasoning; a new captured `turn.completed` fixture for the live path).
 
 ## Design Decisions
 
 _Resolved 2026-09-23 (review of BUG-3529/3530/3531)._
 
-1. **Representation.** `normalize_codex_input(usage) -> CodexInputSplit`, a frozen dataclass `(uncached_input: int, cache_read: int, cache_write: int, consistent: bool)`. A consistent observation gives `uncached_input = input - cache_read - cache_write`. When `cache_read + cache_write > input`, the result is `consistent=False`, with `uncached_input=0` and the cache components kept exactly as reported. The flag, not the numbers, carries the error.
-2. **Survives aggregation.** `TokenUsage` gains `input_consistent: bool = True` (default-compatible, same pattern as `is_batch`). `usage_from_event` sets it from the split. The executor payload carries `input_consistent = all(...)` across the state's events, and each `TokenUsage` is still collected individually for per-row persistence.
-3. **Survives persistence.** An inconsistent observation is written with ENH-3528's `provenance='unknown'` (a value exists but its semantics can't be established). A normalized one is `'measured'`, with `host='codex'` and `channel='live'`. Because this relies on ENH-3528's migration, BUG-3531 is blocked by it. Landing the normalization first would mix corrected and uncorrected rows with nothing to tell them apart.
+1. **Representation.** `normalize_codex_input(usage) -> CodexInputSplit`, a frozen dataclass `(uncached_input: int | None, cache_read: int, cache_write: int, consistent: bool)`. A consistent observation gives `uncached_input = input - cache_read - cache_write`. When `cache_read + cache_write > input`, the result is `consistent=False`, with `uncached_input=None` (unavailable, per ENH-3538's null-not-zero rule) and the cache components kept exactly as reported. `consistent` is local to the split; it is not added to `TokenUsage`.
+2. **Survives aggregation.** No new `TokenUsage` flag. `usage_from_event` maps the split onto ENH-3538's fields: consistent → `input_tokens=uncached_input`, `provenance='measured'`, `host='codex'`; inconsistent → `input_tokens=None`, `provenance='unknown'`, `host='codex'`. ENH-3538's completeness-aware executor sums carry the missing input count into the `action_complete` payload, and each `TokenUsage` is still collected individually for per-row persistence. (Revised 2026-09-23: replaces the earlier `input_consistent: bool` field, which duplicated provenance and would have been dropped by payload summing.)
+3. **Survives persistence.** Rows are written through ENH-3538's writer with the provenance above and `channel='live'`. Because this relies on ENH-3538's migration and nullable components, BUG-3531 is blocked by ENH-3538 (not by all of ENH-3528). Landing the normalization first would mix corrected and uncorrected rows with nothing to tell them apart.
 4. **Per-observation, before summing.** `_codex_cache_usage` normalizes each turn and then sums the consistent ones. Inconsistent turns are excluded from the hit-rate numerator and denominator, and the result reports their count (`inconsistent_events`). It never clamps an aggregate.
-5. **Legacy rows.** No correction. Pre-fix live Codex rows can't be told apart from other hosts' rows (model `"unknown"`, no host), so they are not selected by model name and cached tokens are not subtracted wholesale. They keep ENH-3528's legacy `provenance='unknown'`, and ENH-3528's aggregation reports that composition rather than presenting a clean total.
+5. **Legacy rows.** No correction. Pre-fix live Codex rows can't be told apart from other hosts' rows (model `"unknown"`, no host), so they are not selected by model name and cached tokens are not subtracted wholesale. They keep ENH-3538's legacy `provenance='unknown'`, and ENH-3528's aggregation reports that composition rather than presenting a clean total.
 
 ## Impact
 
@@ -73,9 +75,9 @@ _Resolved 2026-09-23 (review of BUG-3529/3530/3531)._
 
 ## Acceptance Criteria
 
-- [ ] Fixture-backed test: a Codex `turn.completed` with `input_tokens=1000, cached_input_tokens=600` yields `input_tokens=400, cache_read_tokens=600, input_consistent=True`.
+- [ ] Fixture-backed test: a Codex `turn.completed` with `input_tokens=1000, cached_input_tokens=600` yields `input_tokens=400, cache_read_tokens=600, provenance='measured', host='codex'`.
 - [ ] Missing `cache_write_input_tokens` stays a real zero (ENH-3464 Decision 3).
-- [ ] Inconsistent components (`cache_read + cache_write > input`) yield `input_consistent=False`, keep the reported cache components, and persist as `provenance='unknown'`. Covered at the `usage_from_event`, executor-payload and `usage_events` row levels.
+- [ ] Inconsistent components (`cache_read + cache_write > input`) yield `input_tokens=None`, keep the reported cache components, and persist as `provenance='unknown'`. Covered at the `usage_from_event`, executor-payload (missing-input count) and `usage_events` row levels.
 - [ ] `_codex_cache_usage` and `usage_from_event` share `normalize_codex_input`. `_codex_cache_usage` normalizes per turn before summing: a test with one inconsistent turn and one consistent turn shows the inconsistent turn excluded and counted, not absorbed.
 - [ ] `test_codex_clamps_negative_uncached_to_zero` is replaced by a test asserting the inconsistent-turn outcome. No test requires a silent clamp.
 - [ ] Output/reasoning inclusion is verified against `rollout-interactive.jsonl`, whose turns have nonzero `reasoning_output_tokens` (9, 158) and `total_tokens == input_tokens + output_tokens` (so reasoning is included in output and must not be added again). `rollout-exec.jsonl` can't establish this because its reasoning count is 0.
@@ -86,12 +88,12 @@ _Resolved 2026-09-23 (review of BUG-3529/3530/3531)._
 
 ### Types
 
-- `TokenUsage` gains `input_consistent: bool = True`; its `input_tokens` field is documented as uncached input for every host.
-- `CodexInputSplit` — new frozen dataclass `(uncached_input: int, cache_read: int, cache_write: int, consistent: bool)`.
+- `TokenUsage` — no new fields (uses ENH-3538's nullable components and `provenance`/`host`); its `input_tokens` field is documented as uncached input for every host.
+- `CodexInputSplit` — new frozen dataclass `(uncached_input: int | None, cache_read: int, cache_write: int, consistent: bool)`.
 
 ### Signatures
 
-- `usage_from_event(event: dict[str, Any], *, default_model: str) -> TokenUsage | None` — signature unchanged; the `turn.completed` branch builds its fields from `normalize_codex_input` and sets `input_consistent`.
+- `usage_from_event(event: dict[str, Any], *, default_model: str) -> TokenUsage | None` — signature unchanged; the `turn.completed` branch builds its fields from `normalize_codex_input` and sets `provenance`/`host`.
 - `normalize_codex_input(usage: dict[str, Any]) -> CodexInputSplit` — new shared helper for one observation; also used per turn by `_codex_cache_usage`.
 
 ### Call Path
@@ -104,6 +106,10 @@ _Resolved 2026-09-23 (review of BUG-3529/3530/3531)._
 Verdict: **VALID** (2026-09-23). `usage_from_event` `turn.completed` branch stores `input_tokens` unchanged (`subprocess_utils.py:105-110`); `_codex_cache_usage` documents inclusive input and subtracts. Inclusive-input claim read directly from `scripts/tests/fixtures/codex/rollout-exec.jsonl` (`input_tokens` 13001 ⊇ `cache_write_input_tokens` 12998). `ll-verify-evidence` clean.
 
 **Correction (2026-09-23)**: the exec fixture's `reasoning_output_tokens` is 0, so `total_tokens = input + output` there cannot show whether reasoning is included in output. `rollout-interactive.jsonl` can: for example `output_tokens=237, reasoning_output_tokens=158, total_tokens=26316 = 26079 + 237`, so reasoning is a subset of output.
+
+### Pre-implementation review 2026-09-23
+
+Retargeted `blocked_by` from BUG-3530 (done) + ENH-3528 to ENH-3538 (extracted foundation). Replaced the `input_consistent` flag with `input_tokens=None` + `provenance='unknown'` so inconsistent input is unavailable rather than a fabricated 0 and survives payload summing.
 
 ## Status
 
