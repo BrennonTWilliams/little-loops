@@ -84,3 +84,13 @@ blocks:
 ## Status
 
 **Open** | Created: 2026-09-24 | Priority: P2
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This bug owns the raw-ingest source-host correction and the `host_basis` attribution discriminator (split out of ENH-3532). ENH-3532 only consumes it, and ENH-3528's host attribution depends on it; ENH-3528 references to ENH-3532 owning this work should be read as BUG-3542.
+
+
+## Session Log
+- `/ll:audit-issue-conflicts` - 2026-09-24T17:53:59 - `5250dd00-ed7b-4310-8dee-527fe13b2b07.jsonl`

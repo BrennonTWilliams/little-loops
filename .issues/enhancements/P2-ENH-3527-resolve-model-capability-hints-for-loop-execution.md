@@ -262,8 +262,15 @@ Applied the delivery split: this issue keeps declaration, resolver and config; d
 **Open** | Created: 2026-09-23 | Priority: P2
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-09-24T17:53:55 - `5250dd00-ed7b-4310-8dee-527fe13b2b07.jsonl`
 - `/ll:verify-issues` - 2026-09-24T00:46:08 - `047cda0b-279f-4078-b31f-1d7b1fcc2181.jsonl`
 - `/ll:verify-issues` - 2026-09-24T00:01:43 - `d1e0cad9-5218-4c39-a990-a91f5f18af0d.jsonl`
 - `/ll:wire-issue` - 2026-09-23T23:43:26 - `96fe3651-90ba-4862-a958-697a2df577cc.jsonl`
 - `/ll:refine-issue` - 2026-09-23T23:20:19 - `1dd8afb6-deef-4834-bd0a-401f1160db13.jsonl`
 - `/ll:format-issue` - 2026-09-23T22:58:54 - `67a10285-a4b7-4192-bd9e-23ac30a3ffd0.jsonl`
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue covers the hint declaration, resolver, and config slice only. Dispatch/lifecycle wiring belongs to ENH-3547; validate-time warnings, `haiku-gen` guidance, and documentation belong to ENH-3548. Any Integration Map, Implementation Steps, or Files to Modify entries here for those areas are shared spec, not this issue's deliverable. The `operation` parameter of `resolve_model_hint` must be settled here before ENH-3547/ENH-3548 (which hard-code it) start.

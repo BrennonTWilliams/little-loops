@@ -88,3 +88,13 @@ One `codex exec` invocation = one `turn.completed` (BUG-3531 Decision 6). Its li
 ## Status
 
 **Open** | Created: 2026-09-24 | Priority: P2
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue owns live identity plumbing and shared coverage selection (split out of ENH-3532); ENH-3532 keeps rollout ingestion and ENH-3528 consumes the selector via a single replaceable aggregation function. Before adding `host_session_id`/`invocation_id` columns to `usage_events`, check the existing identity columns ENH-3528 says to reuse, and either reuse them with a basis marker or state why new columns are needed; also state how ENH-3532's `session_id` on rollout rows joins to live `host_session_id`.
+
+
+## Session Log
+- `/ll:audit-issue-conflicts` - 2026-09-24T17:53:58 - `5250dd00-ed7b-4310-8dee-527fe13b2b07.jsonl`

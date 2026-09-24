@@ -81,3 +81,13 @@ These carry over from ENH-3527 (its criteria 3, 4, 5, 7 and 12):
 ## Status
 
 **Open** | Created: 2026-09-24 | Priority: P2
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue covers runtime dispatch, CLI downgrade re-resolution, and lifecycle wiring only; the resolver and config slice is ENH-3527 and validate-time warnings/docs are ENH-3548. The `operation` parameter in `resolve_model_hint(hint, *, backend, operation, ...)` and the `model_operation` event field depend on ENH-3527 keeping `operation` — reconcile if ENH-3527 drops it.
+
+
+## Session Log
+- `/ll:audit-issue-conflicts` - 2026-09-24T17:53:56 - `5250dd00-ed7b-4310-8dee-527fe13b2b07.jsonl`

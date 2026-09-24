@@ -70,3 +70,13 @@ Add `ll-loop validate` warnings for model hints that will not resolve, and docum
 ## Status
 
 **Open** | Created: 2026-09-24 | Priority: P3
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue covers validate-time WARNINGs, `haiku-gen` guidance, and documentation only. Resolver/config is ENH-3527 and dispatch wiring is ENH-3547. Its use of the `operation` parameter follows whatever ENH-3527 settles.
+
+
+## Session Log
+- `/ll:audit-issue-conflicts` - 2026-09-24T17:53:57 - `5250dd00-ed7b-4310-8dee-527fe13b2b07.jsonl`

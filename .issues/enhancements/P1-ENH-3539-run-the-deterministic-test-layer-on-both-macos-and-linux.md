@@ -1,5 +1,5 @@
 ---
-id: 3539
+id: ENH-3539
 title: Run the deterministic test layer on both macOS and Linux
 type: ENH
 priority: P1
@@ -108,6 +108,13 @@ _Supersedes conflicting claims above._
 - **BSD grep answers `--version`.** It prints `grep (BSD grep, GNU compatible) 2.6.0-FreeBSD` and exits 0, so a userland check of the form "`grep --version` succeeds ⇒ GNU" would fail every macOS run.
 - **Gate prototype confirms the Decision Rules.** A regex prototype of the rules over the 180-file scan set produced exactly six hits, with no false positives in loop-YAML text: `lib/common.sh:108` and `:151` (need suppression markers), `lib/common.sh:174` (goes away with the deletion above), `record-hook-event.sh:43,49`, and `cli-anything-bootstrap.yaml:214`.
 - **Out of scope:** `scripts/verify_learning_citations.sh` (tracked, dev-only, not shipped), `.github/scripts/ci-history.sh` (runs only on Linux Thinky), and `scripts/tests/fixtures/**/*.sh`.
+
+## Expected Behavior
+
+- Every push to `main` runs the unit tier on both `ubuntu-latest` (GNU) and `macos-latest` (BSD) with independent pass/fail signals; the macOS leg is proven to use BSD `date`/`grep`/`sed`.
+- A static portability gate, part of the unit tier, fails on GNU-only, BSD-only, and bash-4-only forms in shipped shell and loop-YAML shell actions, so the divergence class is caught on any runner.
+- `record-hook-event.sh` never fails its calling hook regardless of `date` flavor or bash version (3.2 and 5), and `cli-anything-bootstrap.yaml` works on Linux.
+- `.claude/CLAUDE.md`, `AGENTS.md`, `CONTRIBUTING.md`, and `ci.yml` agree on the runner split and "no *paid* CI" policy.
 
 ## Scope
 
@@ -281,11 +288,35 @@ _Added by `/ll:refine-issue` — 2026-09-24 — based on codebase analysis:_
 - Escape hatch: a per-line suppression token (name is the implementer's choice; `ll-audience-ok:` is the existing precedent) honored on the same line or the line immediately above. The GNU halves of the multi-line paired fallbacks in `lib/common.sh` (`date -d` at :108, `stat -c` at :151) are the known required suppressions. The same-line `stat -f ... || stat -c ...` pairs in `cua-agent-desktop.yaml:1017` and `oracles/generator-evaluator.yaml:118,125` pass via the same-line pairing rule.
 - Pass condition: zero unsuppressed hits on the current tree after Scope 4 fixes; each rule has a positive fixture that fires.
 
+## Impact
+
+- **Priority**: P1 — fixes a live Linux break (`sed -i ''` in a shipped loop) and a Stop-hook failure on bash 3.2/older BSD `date`, and closes the manual-only macOS coverage gap.
+- **Effort**: Medium — CI matrix conversion, one new pytest gate, three small shell/YAML fixes, doc updates.
+- **Risk**: Low–Medium — a red macOS leg on `main` blocks `conformance` (mitigated by validating via `workflow_dispatch` from the branch first); macOS runtime may stress `timeout-minutes: 120`.
+- **Breaking Change**: No
+
+## Scope Boundaries
+
+- **In scope**: `unit-tests` OS matrix in `ci.yml`, static portability gate, `now_ms` helper and `record-hook-event.sh` fix, `validate_json()` deletion, `cli-anything-bootstrap.yaml:214` fix, CI-policy and portability docs, targeted `/bin/bash` 3.2 coverage for the new `record-hook-event.sh` tests.
+- **Out of scope**: `pull_request` triggers or any paid CI; retrofitting every existing hook test to run under `/bin/bash` 3.2; `scripts/verify_learning_citations.sh`, `.github/scripts/ci-history.sh`, `scripts/tests/fixtures/**`; model/prompt-layer multi-host divergence and host artifact parity; `python3`/`perl` timing fallbacks.
+
+## Verification Notes
+
+_Added by `/ll:verify-issues` — 2026-09-24 (graph: provider=`codegraph`, freshness=`fresh`; not needed for any verdict)._
+
+Verdict: **VALID** — no corrections needed.
+
+- Confirmed: `record-hook-event.sh:43,49` `date +%s%N`; `lib/common.sh` `to_epoch` (:90, `date -d` :108), `get_mtime` (:134, `stat -c` :151), `validate_json` (:165) with zero callers in `hooks/`, adapters, and shipped loops; `cli-anything-bootstrap.yaml:214` `sed -i ''`; `sed -i` in the other loop YAMLs appears only in `#` comments; no `readlink -f`/`mapfile`/`readarray`/`declare -A`/`grep -P` in scope.
+- Confirmed: `ci.yml` has `unit-tests` on `ubuntu-latest` only, `conformance` `needs: [unit-tests]` (:163), artifact name without an OS discriminator (:148), `workflow_dispatch` (:47), no `pull_request`, no `setup-node`; stale "paid/hosted" text at `AGENTS.md:142`, `.claude/CLAUDE.md:142`, `CONTRIBUTING.md:426`.
+- `ll-verify-evidence`: clean (0 findings). Proposal-vs-code check (B6): no unsound consequences found; every Integration Map point has a matching AC. Decisions check: no conflicts.
+
 ## Status
 
 **Open** | Created: 2026-09-23 | Priority: P1
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-24T17:54:36 - `5250dd00-ed7b-4310-8dee-527fe13b2b07.jsonl`
+- `/ll:format-issue` - 2026-09-24T17:51:52 - `f302ede5-3bd4-4d4c-9d95-f837dfdf259d.jsonl`
 - Manual review (second pass) - 2026-09-24 - `validate_json()` is dead code, so delete it (drops the jq-shim AC); `%N` makes the hook exit 1 under bash 3.2; no `python3` fallback (macOS xcode-select stub), use a pure-shell `now_ms`; bash 3.2 is untested by either leg, so targeted `/bin/bash` parametrization; BSD-grep-aware userland check; branch `workflow_dispatch` rollout; stale ci.yml header, job name, and CLAUDE.md artifact text; gate prototype confirmed 6 hits over 180 files
 - `/ll:confidence-check` - 2026-09-24T17:39:27 - `facad079-34ac-4ff6-9162-d08bebc806a4.jsonl`
 - `/ll:verify-issues` - 2026-09-24T17:33:31 - `96d01310-c604-4961-b5bd-6b1925aee00d.jsonl`

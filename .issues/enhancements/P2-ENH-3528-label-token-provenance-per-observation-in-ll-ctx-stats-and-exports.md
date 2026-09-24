@@ -241,8 +241,15 @@ Removed the resolved `blocked_by` (ENH-3538, BUG-3531 done). Decided the landing
 **Open** | Created: 2026-09-23 | Priority: P2
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-09-24T17:53:57 - `5250dd00-ed7b-4310-8dee-527fe13b2b07.jsonl`
 - `/ll:verify-issues` - 2026-09-24T00:46:08 - `047cda0b-279f-4078-b31f-1d7b1fcc2181.jsonl`
 - `/ll:verify-issues` - 2026-09-24T00:01:43 - `d1e0cad9-5218-4c39-a990-a91f5f18af0d.jsonl`
 - `/ll:wire-issue` - 2026-09-23T23:43:26 - `96fe3651-90ba-4862-a958-697a2df577cc.jsonl`
 - `/ll:refine-issue` - 2026-09-23T23:20:19 - `1dd8afb6-deef-4834-bd0a-401f1160db13.jsonl`
 - `/ll:format-issue` - 2026-09-23T22:59:16 - `f909c28b-1081-4c2f-b215-fc2794a9d5b6.jsonl`
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): Shared coverage selection and live identity plumbing are owned by ENH-3543, not ENH-3532; the raw-ingest source-host correction and attribution discriminator (`host_basis`) are owned by BUG-3542, not ENH-3532. ENH-3532 keeps historical rollout ingestion only. Treat older references here to ENH-3532 ownership of those items as pointing at ENH-3543 / BUG-3542.
