@@ -6697,12 +6697,15 @@ class TestAutodevLoop:
         must route into the shared resolve_decision sub-loop call state, not directly
         to a local run_decide, so a fresh dequeue gets the deposit_options detour
         (now owned by oracles/resolve-decision.yaml) before decide-issue is asked to
-        choose an option."""
+        choose an option. The entry-time call state resumes preflight on success
+        instead of the shared post-decide chain that ends at implement_current."""
         state = data["states"].get("check_decision_at_dequeue", {})
-        assert state.get("on_yes") == "resolve_decision", (
-            f"check_decision_at_dequeue.on_yes should be 'resolve_decision', "
+        assert state.get("on_yes") == "resolve_decision_at_dequeue", (
+            f"check_decision_at_dequeue.on_yes should be 'resolve_decision_at_dequeue', "
             f"got {state.get('on_yes')!r}"
         )
+        call = data["states"]["resolve_decision_at_dequeue"]
+        assert call.get("loop") == "oracles/resolve-decision"
 
     def test_refine_current_delegates_to_refine_to_ready_issue(self, data: dict) -> None:
         """refine_current must delegate to refine-to-ready-issue (NOT recursive-refine)."""
@@ -7827,7 +7830,12 @@ class TestAutodevLoop:
         provably covers refine_current and both resolve-decision call states."""
         states = data["states"]
         loop_states = {name for name, s in states.items() if s.get("loop")}
-        assert loop_states == {"refine_current", "resolve_decision", "resolve_decision_direct"}
+        assert loop_states == {
+            "refine_current",
+            "resolve_decision",
+            "resolve_decision_direct",
+            "resolve_decision_at_dequeue",
+        }
         offenders = [
             name
             for name in sorted(loop_states)
@@ -8108,7 +8116,7 @@ class TestAutodevLoop:
         assert run.get("pruning_profile", {}).get("enabled") is True
         assert run.get("next") == "check_go_no_go_waiver"
         assert run.get("on_error") == "check_go_no_go_waiver"
-        assert run.get("on_rate_limit_exhausted") == "done"
+        assert run.get("on_rate_limit_exhausted") == "finalize_rate_limited"
 
         waiver = states["check_go_no_go_waiver"]
         assert "check-flag" in waiver["action"] and "outcome_gate_waived" in waiver["action"]
@@ -8885,7 +8893,7 @@ class TestAutodevLoop:
         assert state.get("fragment") == "with_rate_limit_handling"
         assert state.get("next") == "count_repair_cycle_spike"
         assert state.get("on_error") == "count_repair_cycle_spike"
-        assert state.get("on_rate_limit_exhausted") == "done"
+        assert state.get("on_rate_limit_exhausted") == "finalize_rate_limited"
         counter_state = data["states"].get("count_repair_cycle_spike", {})
         assert counter_state.get("next") == "rerun_confidence_after_spike"
         assert counter_state.get("on_error") == "rerun_confidence_after_spike"
@@ -8898,7 +8906,7 @@ class TestAutodevLoop:
         assert state.get("fragment") == "with_rate_limit_handling"
         assert state.get("next") == "enqueue_or_skip"
         assert state.get("on_error") == "enqueue_or_skip"
-        assert state.get("on_rate_limit_exhausted") == "done"
+        assert state.get("on_rate_limit_exhausted") == "finalize_rate_limited"
 
     def test_enqueue_or_skip_on_no_routes_to_decide_path_spike_gate(self, data: dict) -> None:
         """BUG-2654: enqueue_or_skip.on_no (no children) must still reach the
@@ -9003,7 +9011,7 @@ class TestAutodevLoop:
         assert state.get("fragment") == "with_rate_limit_handling"
         assert state.get("next") == "count_repair_cycle_reconcile"
         assert state.get("on_error") == "count_repair_cycle_reconcile"
-        assert state.get("on_rate_limit_exhausted") == "done"
+        assert state.get("on_rate_limit_exhausted") == "finalize_rate_limited"
         counter_state = data["states"].get("count_repair_cycle_reconcile", {})
         assert counter_state.get("next") == "rerun_confidence_after_reconcile"
         assert counter_state.get("on_error") == "rerun_confidence_after_reconcile"
@@ -9015,7 +9023,7 @@ class TestAutodevLoop:
         assert state.get("fragment") == "with_rate_limit_handling"
         assert state.get("next") == "recheck_after_size_review"
         assert state.get("on_error") == "recheck_after_size_review"
-        assert state.get("on_rate_limit_exhausted") == "done"
+        assert state.get("on_rate_limit_exhausted") == "finalize_rate_limited"
 
     def test_triage_outcome_failure_on_error_routes_to_detect_children(self, data: dict) -> None:
         """triage_outcome_failure.on_error must fall back safely to detect_children."""
@@ -9188,13 +9196,13 @@ class TestAutodevLoop:
 
     def test_check_decide_rate_limited_gate_routing(self, data: dict) -> None:
         """ENH-3075 Option A: check_decide_rate_limited reads the per-issue
-        decide-rate-limited marker; present -> done (terminate the run, matching
-        the pre-conversion on_rate_limit_exhausted: done semantics), absent ->
-        record_decision_unresolved (as before)."""
+        decide-rate-limited marker; present -> finalize_rate_limited (terminate
+        the run through finalize_done, matching every on_rate_limit_exhausted
+        site), absent -> record_decision_unresolved (as before)."""
         state = data["states"].get("check_decide_rate_limited", {})
         assert state.get("fragment") == "shell_exit"
         assert "decide-rate-limited-" in state.get("action", "")
-        assert state.get("on_yes") == "done"
+        assert state.get("on_yes") == "finalize_rate_limited"
         assert state.get("on_no") == "record_decision_unresolved"
         assert state.get("on_error") == "record_decision_unresolved"
 
@@ -9248,13 +9256,15 @@ class TestAutodevLoop:
             f"rerun_confidence_after_decide.on_error should be 'recheck_after_decide', got {state.get('on_error')!r}"
         )
 
-    def test_rerun_confidence_after_decide_on_rate_limit_exhausted_routes_to_done(
+    def test_rerun_confidence_after_decide_on_rate_limit_exhausted_routes_to_finalize(
         self, data: dict
     ) -> None:
-        """rerun_confidence_after_decide.on_rate_limit_exhausted must terminate the loop."""
+        """rerun_confidence_after_decide.on_rate_limit_exhausted must terminate the loop
+        through finalize_rate_limited so summary.json is still written."""
         state = data["states"].get("rerun_confidence_after_decide", {})
-        assert state.get("on_rate_limit_exhausted") == "done", (
-            f"rerun_confidence_after_decide.on_rate_limit_exhausted should be 'done', got {state.get('on_rate_limit_exhausted')!r}"
+        assert state.get("on_rate_limit_exhausted") == "finalize_rate_limited", (
+            f"rerun_confidence_after_decide.on_rate_limit_exhausted should be "
+            f"'finalize_rate_limited', got {state.get('on_rate_limit_exhausted')!r}"
         )
 
     # ENH-1415: route post-decide outcome failures to size-review instead of dropping the issue.
@@ -9267,11 +9277,13 @@ class TestAutodevLoop:
         )
 
     def test_mark_decide_ran_next_routes_to_rerun_confidence_after_decide(self, data: dict) -> None:
-        """ENH-1415: mark_decide_ran.next must route to rerun_confidence_after_decide so the
-        post-decide score refresh still runs."""
+        """ENH-1415: with the decision flag cleared, mark_decide_ran must route to
+        rerun_confidence_after_decide so the post-decide score refresh still runs; a
+        residual armed flag is held via record_decision_unresolved."""
         state = data["states"].get("mark_decide_ran", {})
-        assert state.get("next") == "rerun_confidence_after_decide"
+        assert state.get("on_no") == "rerun_confidence_after_decide"
         assert state.get("on_error") == "rerun_confidence_after_decide"
+        assert state.get("on_yes") == "record_decision_unresolved"
 
     def test_mark_decide_ran_writes_decide_ran_flag(self, data: dict) -> None:
         """ENH-1415: mark_decide_ran.action must write the .loops/tmp/autodev-decide-ran flag."""
@@ -9417,13 +9429,15 @@ class TestAutodevLoop:
             f"rerun_confidence_after_wire.on_error should be 'enqueue_or_skip', got {state.get('on_error')!r}"
         )
 
-    def test_rerun_confidence_after_wire_on_rate_limit_exhausted_routes_to_done(
+    def test_rerun_confidence_after_wire_on_rate_limit_exhausted_routes_to_finalize(
         self, data: dict
     ) -> None:
-        """rerun_confidence_after_wire.on_rate_limit_exhausted must terminate the loop."""
+        """rerun_confidence_after_wire.on_rate_limit_exhausted must terminate the loop
+        through finalize_rate_limited so summary.json is still written."""
         state = data["states"].get("rerun_confidence_after_wire", {})
-        assert state.get("on_rate_limit_exhausted") == "done", (
-            f"rerun_confidence_after_wire.on_rate_limit_exhausted should be 'done', got {state.get('on_rate_limit_exhausted')!r}"
+        assert state.get("on_rate_limit_exhausted") == "finalize_rate_limited", (
+            f"rerun_confidence_after_wire.on_rate_limit_exhausted should be "
+            f"'finalize_rate_limited', got {state.get('on_rate_limit_exhausted')!r}"
         )
 
     def test_skip_inflight_shell_action_writes_skipped_and_clears_inflight(
