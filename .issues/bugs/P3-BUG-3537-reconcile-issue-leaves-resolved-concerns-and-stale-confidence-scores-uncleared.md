@@ -156,7 +156,17 @@ _Added by `/ll:confidence-check` on 2026-09-24_
 - Broad enumeration across ~12 sites (reconcile command, `set_flags.py`, `set_scores.py` + parser, CLI.md, confidence-check SKILL/rubric, five test files), each a local change.
 - Which Concerns count as "resolved" is model judgment in `commands/reconcile-issue.md` and only prose-testable; the deterministic parts (`--clear`, strikethrough strip) are unit-testable.
 
+## Verification Notes
+
+_Verified by `/ll:verify-issues` on 2026-09-24._ Verdict at time of check: **VALID** (no corrections needed).
+
+- All `path:line` anchors hold against the working tree: `issue_parser.py:449-488` (`_section_body_with_offset`, last occurrence wins), `:3780-3783` (four `score_*` fields); `set_flags.py:130-134`, `:154-155`, `:214`, `:257`, `:262-264`, `:291-307` (plain substring match on `notes.lower()`, no `~~` stripping, so the strikethrough repro follows from the code; `"open decision"` is a `_DECISION_NEEDED_PHRASES` entry); `set_scores.py:13`; `cli/issues/__init__.py:801`; `check_readiness.py:129-132` (a missing score coerces to 0, so `meets_readiness` fails); `issue_manager.py:838-841`; `refine_status.py:453-458`; `skills/confidence-check/SKILL.md:438`; `rubric.md:616`; `skills/decide-issue/SKILL.md:289-297`; `commands/reconcile-issue.md` `:19`, `:65-72`, `:92`, `:125-126`, `:139-146`, `:184-195`, `:240`, `:244`, `:257-267`, and the CONCERNS re-run nudge at `:303`.
+- Not yet fixed: there is no `~~` handling in `set_flags.py`, no `--clear` in `set_scores.py`, and no `Resolved Concerns` text in `skills/`, `commands/` or the package.
+- Implementation hints (no change to the proposal needed): `little_loops.frontmatter.remove_frontmatter_keys` (`frontmatter.py:474`) already removes keys, so use it for `--clear`. `--clear` must also bypass the `if not updates` early return in `cmd_set_scores` (`set_scores.py:49-51`), which would otherwise print "no score flags provided" and write nothing.
+- No `## Blocked By` section, so there are no dependencies to check. `ll-verify-evidence`: clean (0 findings).
+
 ## Session Log
+- `/ll:verify-issues` - 2026-09-24T23:38:16 - `b172455c-1f24-43cb-b559-e544617a9e15.jsonl`
 - `/ll:verify-issues` - 2026-09-24T22:56:16 - `4279401a-9acc-474c-b872-fd398cd78a8e.jsonl`
 - `/ll:confidence-check` - 2026-09-24T22:35:31 - `55203869-e869-482b-b191-d68f9782af86.jsonl`
 - `/ll:confidence-check` - 2026-09-24T22:09:57 - `b03f0e56-e701-4b6d-bb94-8f4cb425b852.jsonl`

@@ -79,7 +79,7 @@ score_change_surface: 25
    - add `contexts: Mapping[DataPath, RegionContext]` to `escape_data`, keeping `markup_keys` for trust;
    - add `schema_context_paths(schema) -> dict[DataPath, RegionContext]`;
    - reduce `schema_annotation_paths` to trusted paths only, or keep it as a thin wrapper;
-   - update the one caller (`extract.py:189`) and the ENH-3558 tests. The `script_string` encoder lives beside `script_json`; do not duplicate it. `text`, `attr` and `url` reuse `_escape_text` and `_check_url`.
+   - update **both** production callers and the ENH-3558 tests: `extract.py:189` (`extract_data`) and `dashboard.py:368-369` (`build_dashboard_html`, which passes `url_keys=frozenset({"serve_events_url"})`; migrate it to `contexts={("serve_events_url",): "url"}` so the dashboard URL scheme rule keeps holding). The `script_string` encoder lives beside `script_json`; do not duplicate it. `text`, `attr` and `url` reuse `_escape_text` and `_check_url`.
 4. **Host isolation.** Keep ENH-3558's rule (`strip_schema_annotations`): strip the annotations from a deep copy of `data_schema` before `_PROMPT_TEMPLATE` formatting and before `json_schema` is passed to `build_blocking_json` (`scripts/little_loops/cli/artifact/extract.py`, `extract_data`).
 5. **Round trips.** `render_template` and `build_environment()` stay unchanged; `escape_data` never runs on the templatize round-trip path, so FEAT-3308 byte-exact round trips are unaffected.
 
@@ -89,6 +89,7 @@ score_change_surface: 25
 - `scripts/little_loops/cli/artifact/templatize.py` — classify each region and group field against the original bytes, before `apply_regions` (`:475`); write the annotation into the schema that `build_manifest` (`:520`) receives.
 - `scripts/little_loops/artifact_templates.py` — extend `_CONTEXT_VALUES` (`:47`) and the validation matrix in `_validate_schema_shape()` (`:102`); add context dispatch to `escape_data` (`:355`), reusing `_escape_text` (`:322`) and `_check_url` (`:333`); add `schema_context_paths` next to `schema_annotation_paths` (`:393`); add the `script_string` encoder next to `script_json` (`:438`).
 - `scripts/little_loops/cli/artifact/extract.py` — `extract_data` (`:107`) reads contexts from the manifest, passes them at `:189`, and keeps stripping annotations (`strip_schema_annotations`, `:155`) before the prompt and host call.
+- `scripts/little_loops/cli/artifact/dashboard.py` — `build_dashboard_html` (`:274`) calls `escape_data(..., url_keys=frozenset({"serve_events_url"}))` at `:368-369`; migrate to the `contexts` map when `url_keys` is folded in.
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/cli/artifact/render.py` (`render_to_disk`, used by `cmd_refresh`) — unchanged, but consumes the escaped data.
@@ -100,7 +101,7 @@ score_change_surface: 25
 ### Tests
 - `scripts/tests/test_artifact_templatize.py` — context classification per region and group field, including non-ASCII artifacts and multi-binding merges; round-trip tests stay green unchanged.
 - `scripts/tests/test_feat3036_artifact_templates.py` — the new context values and the validation matrix; unknown keys still rejected.
-- ENH-3558's `escape_data` / `schema_annotation_paths` tests — update for the new signature.
+- `scripts/tests/test_enh3558_escape_ingest.py` — ENH-3558's `escape_data` / `schema_annotation_paths` tests (`url_keys=` calls at `:74`, `:87`; 2-tuple unpack at `:129`) — update for the new signature.
 - `scripts/tests/test_feat3310_artifact_extract.py` — per-context hostile refresh payloads (host call stubbed).
 
 ### Documentation
@@ -141,7 +142,7 @@ score_change_surface: 25
 
 1. Classifier: a pure function mapping (original artifact bytes, start, end) to one of the seven contexts, with unit tests per context, per fail-closed case, per URL position (whole value, scheme-fixing prefix, scheme-changing position), per script sub-position, and for non-ASCII offsets.
 2. Manifest: extend `_CONTEXT_VALUES` and the validation matrix; have templatize write the context per lifted property (regions and group fields), merging multi-binding properties; legacy manifests read as `text`.
-3. Dispatch: change `escape_data` to take a path→context map and pick the encoding per context, reusing `_escape_text` and `_check_url`; `style`/`markup` raise unless annotated trusted. Update the `extract.py:189` caller and ENH-3558's tests.
+3. Dispatch: change `escape_data` to take a path→context map and pick the encoding per context, reusing `_escape_text` and `_check_url`; `style`/`markup` raise unless annotated trusted. Update the `extract.py:189` and `dashboard.py:368-369` callers and ENH-3558's tests.
 4. Verify: per-context hostile `refresh` tests, annotation absent from host inputs, and `test_artifact_templatize.py` round trips unchanged.
 
 ## Impact
@@ -175,6 +176,7 @@ score_change_surface: 25
 - [ ] A manifest with no context annotations behaves exactly like ENH-3558 (all `text`).
 - [ ] The annotation never appears in the prompt text or the `json_schema` passed to the host (host call stubbed).
 - [ ] `test_artifact_templatize.py` round-trip tests pass unchanged.
+- [ ] The dashboard caller (`dashboard.py`, `build_dashboard_html`) still rejects a disallowed scheme in `serve_events_url` after `url_keys` is folded into `contexts`.
 
 ## Related
 
@@ -187,12 +189,24 @@ score_change_surface: 25
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
+## Verification Notes
+
+Verdict at time of check: **PROPOSAL_UNSOUND** (corrections below applied in the same pass, so the issue as it now reads is up to date — this section is a record of what was wrong and fixed, not an outstanding action item)
+
+Verified 2026-09-24 against the working tree. All Current Behavior anchors hold: `templatize.py` `_splice_group:387`, `apply_regions:475`, `build_manifest:520`; `artifact_templates.py` `_SCHEMA_ALLOWED_KEYS:35`, `_CONTEXT_VALUES:47` (`{"text", "url"}`), `_validate_schema_shape:102` (rejections as described), `_escape_text:322`, `_check_url:333`, `escape_data:355`, `schema_annotation_paths:393`, `strip_schema_annotations:415`, `script_json:438`; `extract.py` `extract_data:107`, strip at `:155`, caller at `:187-189`. ENH-3558 and ENH-3557 are done; ENH-3540 is cancelled and superseded by EPIC-3556.
+
+- **Fixed:** Proposed Solution step 3 said `escape_data` has "the one caller (`extract.py:189`)". A second production caller exists: `dashboard.py:368-369` (`build_dashboard_html`) passes `url_keys=frozenset({"serve_events_url"})`. Folding `url_keys` into `contexts` as proposed would have broken it. Added it to step 3, Implementation Step 3, Files to Modify, and a new Acceptance Criterion.
+- **Fixed:** The Tests entry for ENH-3558's tests now names `scripts/tests/test_enh3558_escape_ingest.py` and the call sites the signature change affects.
+
+Remaining: ENH-3558 has no `blocks:` frontmatter entry for ENH-3554 (its Related section does say "blocked on this issue"); left for a human to add, since this pass edits only this issue.
+
 ## Status
 
 **Open** | Created: 2026-09-24 | Priority: P2
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-24T23:38:37 - `ce8bec5b-7632-4ff9-a3da-7cdd35c70217.jsonl`
 - `/ll:verify-issues` - 2026-09-24T22:56:15 - `4279401a-9acc-474c-b872-fd398cd78a8e.jsonl`
 - `/ll:confidence-check` - 2026-09-24T22:35:32 - `193eb57f-e9f6-4072-bd61-43000a1d97b1.jsonl`
 - `/ll:confidence-check` - 2026-09-24T22:09:53 - `b03f0e56-e701-4b6d-bb94-8f4cb425b852.jsonl`

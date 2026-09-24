@@ -56,7 +56,8 @@ Add a scan over the whole issue file in `check_format_gaps`: flag U+2028, U+2029
 - `scripts/little_loops/cli/issues/format_check.py` — report lines and exit code for the new gap class.
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/cli/issues/check_design.py` — consumes `format-check --format json` output; confirm the new key does not break it.
+- `scripts/little_loops/cli/issues/check_design.py` — calls `check_format_gaps(path)` directly (not the JSON output) and reads only `design_gate_failed(gaps)` (`program_design_nonspecific`, `missing`, `empty`), so the new field does not affect it. No change needed.
+- Other consumers of `format-check --format json` (loops, skills) read specific keys from `FormatGaps.to_dict()`; the new `invisible_chars` key is additive.
 
 ### Existing Offenders (must be cleaned in this issue)
 A scan on 2026-09-24 over `.issues/` with the widened character set finds these. Each must be replaced with the intended visible text: a spelled-out escape, or deleted when it is stray.
@@ -132,6 +133,7 @@ The ones checked (FEAT-2390, ENH-2939, ENH-2507, ENH-2495) are `done`; cleaning 
 - [ ] A file skipped by the template-dependent early returns (no type prefix in the filename, or unloadable templates) is still scanned.
 - [ ] `ll-issues format-check --fix --apply` leaves flagged characters in the file, and a following `format-check` still reports them and exits non-zero.
 - [ ] U+200E, U+200F, U+061C and a tag character (e.g. U+E0041) are each flagged.
+- [ ] `ll-issues format-check --format json` includes an `invisible_chars` key (from `FormatGaps.to_dict()`) carrying the same entries as the text report.
 - [ ] After the listed offenders are cleaned, the full `.issues/` tree produces no `invisible_chars` gaps. (A 2026-09-24 scan found the offenders listed above, so this does not hold without the cleanup.)
 
 ## Related
@@ -142,12 +144,26 @@ The ones checked (FEAT-2390, ENH-2939, ENH-2507, ENH-2495) are `done`; cleaning 
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
+## Verification Notes
+
+Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the same pass, so the issue as it now reads is up to date — this section is a record of what was wrong and fixed, not an outstanding action item)
+
+Checked 2026-09-24 against the working tree.
+
+- Confirmed: `_ADVISORY_GAP_CLASSES` at `issue_parser.py:515`, `FormatGaps` at `:521`, `check_format_gaps` signature at `:684`, `read_text(encoding="utf-8")` at `:940`, early returns on `_ISSUE_TYPE_RE` (`:965`) and `load_issue_sections` (`:971`), render-parity comment at `format_check.py:434-440`, `cmd_format_check` at `format_check.py:517`, field-parity test at `test_ll_issues_format_check.py:3222`. `has_blocking_gaps` iterates `fields(self)`, so a new field outside `_ADVISORY_GAP_CLASSES` is blocking automatically; `has_gaps` (explicit OR chain) and `to_dict` (explicit dict) both need the field added by hand, as Implementation Step 1 says.
+- Confirmed: `unicodedata.name()` has no name for U+001F, U+007F, U+0085 (fallback table needed).
+- Confirmed: a re-scan of `.issues/` with the full character set finds exactly the eight listed occurrences across five files, and no others. All five offender issues are `done` (ENH-2746 included).
+- Corrected: `check_design.py` was described as consuming `format-check --format json` output. It calls `check_format_gaps()` directly and reads only `design_gate_failed()` fields, so it is unaffected.
+- Added: an Acceptance Criterion for the JSON `invisible_chars` key, which the Integration Map and Implementation Step 2 required but no criterion covered.
+- `ll-verify-evidence`: clean (0 findings). No `## Blocked By` dependencies.
+
 ## Status
 
 **Open** | Created: 2026-09-24 | Priority: P4
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-24T23:39:33 - `ce8bec5b-7632-4ff9-a3da-7cdd35c70217.jsonl`
 - `/ll:verify-issues` - 2026-09-24T22:56:17 - `4279401a-9acc-474c-b872-fd398cd78a8e.jsonl`
 - `/ll:confidence-check` - 2026-09-24T22:35:26 - `55203869-e869-482b-b191-d68f9782af86.jsonl`
 - `/ll:confidence-check` - 2026-09-24T22:10:01 - `b03f0e56-e701-4b6d-bb94-8f4cb425b852.jsonl`

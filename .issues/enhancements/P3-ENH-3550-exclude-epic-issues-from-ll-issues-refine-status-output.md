@@ -32,7 +32,7 @@ score_change_surface: 25
 
   An EPIC whose Session Log carries a command no other issue has (e.g. `/ll:scope-epic`) adds a column of its own. This was reproduced.
 - The empty-result branch (`:297-299`) prints the prose line `No active issues found.` and exits 0 even under `--json` and `--format json`, so JSON consumers get invalid output. This already happens today; EPIC filtering makes it more common (for example, a project whose only active issues are EPICs).
-- `--type` explicitly accepts `EPIC` (`cli/issues/__init__.py:595-596`). The positional `ISSUE-ID` resolves via `_resolve_issue_id` (`:292`), including zero-padded bare numbers (`001` → EPIC-001).
+- `--type` explicitly accepts `EPIC` (`cli/issues/__init__.py:595-596`). The positional `ISSUE-ID` resolves via `_resolve_issue_id` (`:292`), including bare numbers (`1867` → EPIC-1867; the number is matched literally against the filename's anchored number, so `001` resolves only to a file named `…-EPIC-001-…`).
 - With an ID and `--json`, the code prints `records[0]` (`:351`). Filtering an EPIC out *after* the lookup would leave `records` empty and raise `IndexError`.
 
 ## Expected Behavior
@@ -53,7 +53,7 @@ The JSON half of this contract also fixes the existing invalid-JSON bug for a ge
 
 Keep `EPIC` in the `--type` choices so existing invocations get the explanatory message rather than an argparse usage error.
 
-**The filter is local to `cmd_refine_status`.** `find_issues` (`issue_parser.py:4399`) is shared by about 25 modules, several of which need EPICs (`epic_progress`, `link_epics`, `epic_consistency`, `sprint`, `deps`, `parallel/orchestrator`). It must not change.
+**The filter is local to `cmd_refine_status`.** `find_issues` (`issue_parser.py:4399`) is shared by about 30 modules (29 files under `scripts/little_loops/` besides `issue_parser.py`), several of which need EPICs (`epic_progress`, `link_epics`, `epic_consistency`, `sprint`, `deps`, `parallel/orchestrator`). It must not change.
 
 ## Motivation
 
@@ -84,6 +84,7 @@ In `cmd_refine_status`:
 
 ### Tests
 - `scripts/tests/test_refine_status.py` has no EPIC coverage today. Add cases for every acceptance criterion below; `:98` (`No active issues found` on an empty project) keeps passing unchanged.
+- `scripts/tests/test_issue_parser.py:4834-4836` (`TestPriorityRegexCompletenessAllowlist._ALLOWLIST`) keys a `P[0-5]` regex-shape allowlist entry to **line 541** of `refine_status.py` (the `norm` line in `_print_key`). Adding `_is_epic`, the diagnostics and the empty branch above it shifts that line, so this test fails until the key is re-derived to the line's new number (the test's own comment at `:4819-4823` says to re-run the scan and update it). Update it in the same change.
 
 ### Documentation
 - `docs/reference/CLI.md` (`refine-status` section): EPICs excluded; the explicit-request exit code; the empty JSON contract.
@@ -113,7 +114,8 @@ In `cmd_refine_status`:
 1. Write failing tests: a mixed project with an EPIC carrying a unique command, an EPIC-only project, an empty project, `--type EPIC`, `EPIC-NNN`, and a bare numeric EPIC ID.
 2. Add the early filter and the explicit-request diagnostics.
 3. Add the format-aware empty branch.
-4. Update help text and `docs/reference/CLI.md`; run `python -m pytest scripts/tests/`.
+4. Re-key the `cli/issues/refine_status.py` entry in `scripts/tests/test_issue_parser.py` `TestPriorityRegexCompletenessAllowlist._ALLOWLIST` (currently `541`) to the shifted line of the `norm` Key line.
+5. Update help text and `docs/reference/CLI.md`; run `python -m pytest scripts/tests/`.
 
 ## Impact
 
@@ -145,12 +147,25 @@ In `cmd_refine_status`:
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
+## Verification Notes
+
+Verdict at time of check: **PROPOSAL_UNSOUND** (corrections below applied in the same pass, so the issue as it now reads is up to date — this section is a record of what was wrong and fixed, not an outstanding action item)
+
+Checked 2026-09-24 against the working tree.
+
+- **Confirmed**: every `refine_status.py` anchor (`:265`, `:286-295`, `:292`, `:295`, `:297-299`, `:301-315`, `:324`, `:326`, `:329-375`, `:351`, `:527-529`, `:532`); `cli/issues/__init__.py:180`, `:590-623` and `:595-596` (`--type` choices include `EPIC`); `issue_parser.py:3728`, `:4399`, `:4452-4454`; `test_refine_status.py:98` (no EPIC coverage there); consumer anchors `refine-to-ready-issue.yaml:217/:234`, `evaluation-quality.yaml:30`, `create-sprint.md:375`.
+- **Behavior reproduced**: `ll-issues refine-status --json` currently emits EPIC rows (EPIC-1867, EPIC-1918, …); `/ll:scope-epic` appears only on EPIC rows and gets its own column and Key entry; an empty project prints `No active issues found.` with exit 0 under both `--json` and `--format json`.
+- **Proposal consequence (fixed)**: `scripts/tests/test_issue_parser.py:4834-4836` keys a line-number allowlist entry to `refine_status.py:541`. Implementing the proposal shifts that line and fails the test. Added it to Tests and Implementation Steps (step 4).
+- **Minor corrections**: `find_issues` has about 30 importers (29 files), not about 25. The bare-number claim was reworded, because matching is literal: `01867` does not resolve to EPIC-1867.
+- `ll-verify-evidence`: clean (0 findings). No `## Blocked By` dependencies.
+
 ## Status
 
 **Open** | Created: 2026-09-24 | Priority: P3
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-24T23:40:13 - `ce8bec5b-7632-4ff9-a3da-7cdd35c70217.jsonl`
 - `/ll:verify-issues` - 2026-09-24T22:56:16 - `4279401a-9acc-474c-b872-fd398cd78a8e.jsonl`
 - `/ll:confidence-check` - 2026-09-24T22:35:10 - `193eb57f-e9f6-4072-bd61-43000a1d97b1.jsonl`
 - `/ll:confidence-check` - 2026-09-24T22:09:50 - `b03f0e56-e701-4b6d-bb94-8f4cb425b852.jsonl`

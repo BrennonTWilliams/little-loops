@@ -23,15 +23,15 @@ score_change_surface: 18
 
 ## Summary
 
-`little_loops.pricing.estimate_cost_usd` decides whether an `INTRO_PRICING` entry applies by comparing `date.today()` against the entry's `expires` date (`scripts/little_loops/pricing.py:143`). It never sees when the usage actually happened. A replay or backfill therefore prices historical events at whatever rate is in force on the day of the replay, not the rate that applied when the tokens were spent.
+`little_loops.pricing.estimate_cost_usd` decides whether an `INTRO_PRICING` entry applies by comparing `date.today()` against the entry's `expires` date (`scripts/little_loops/pricing.py:137`). It never sees when the usage actually happened. A replay or backfill therefore prices historical events at whatever rate is in force on the day of the replay, not the rate that applied when the tokens were spent.
 
-This is latent today. BUG-3564 removes the only live entry (`claude-sonnet-5`), whose intro and standard rates are now identical. The `INTRO_PRICING` mechanism is deliberately kept for future launches, though, and the next time it is used every replay after expiry will reprice intro-window events at the standard rate.
+This is latent today. BUG-3564 removed the only live entry (`claude-sonnet-5`), whose intro and standard rates are now identical. The `INTRO_PRICING` mechanism is deliberately kept for future launches, though, and the next time it is used every replay after expiry will reprice intro-window events at the standard rate.
 
 ## Current Behavior
 
 - `estimate_cost_usd(model, input_tokens, output_tokens, cache_read_tokens=0, cache_creation_tokens=0, is_batch=False)` has no date parameter; the intro override check reads `date.today()`.
 - The transcript replay path in `_backfill_usage_events` (`scripts/little_loops/session_store/writers.py:3607`) has each record's `timestamp` in hand (`ts`, read just before the call at `:3661`) but does not pass it.
-- The live writer `record_usage_event` (`writers.py:1965`) takes a required `ts: str` and an optional `observed_at`, but prices with neither. For live rows today's date is usually right, but a delayed flush at loop-run finish can straddle an expiry boundary.
+- The live writer `record_usage_event` (`writers.py:1965`) takes a required `ts: str` and an optional `observed_at`, but prices with neither. Its only caller, the loop-run-finish flush in `fsm/executor.py:4413`, sets `ts = _iso_now()` (flush time, one value for the whole batch) and passes each usage's own `observed_at` (stamped at collection, `subprocess_utils.py:157`, `...Z` format). For live rows today's date is usually right, but a delayed flush at loop-run finish can straddle an expiry boundary.
 - `fsm/cost_graph.py:321` (`CostReport.from_usage_jsonl`) recomputes cost at report time ("today"), even though every `usage.jsonl` row it reads carries its own `"timestamp"` (written at `fsm/persistence.py:1105`).
 
 ## Expected Behavior
@@ -45,7 +45,7 @@ This is latent today. BUG-3564 removes the only live entry (`claude-sonnet-5`), 
 
 ## Motivation
 
-`usage_events.cost_usd` is the source for reported spend and cost-ceiling enforcement, and replay is the documented way to rebuild it. A replay that silently reprices past events makes historical spend depend on the day it was recomputed. Fixing this before the next `INTRO_PRICING` entry lands is cheap; finding it afterwards means an unexplained jump in historical costs.
+`usage_events.cost_usd` is the source for reported spend, and replay is the documented way to rebuild it. Per-state cost-ceiling enforcement (`fsm/executor.py:4138`) reads `CostReport.from_usage_jsonl`, the `cost_graph` call site below, not `usage_events`. A replay that silently reprices past events makes historical spend depend on the day it was recomputed. Fixing this before the next `INTRO_PRICING` entry lands is cheap; finding it afterwards means an unexplained jump in historical costs.
 
 ## Proposed Solution
 
@@ -72,7 +72,7 @@ This is latent today. BUG-3564 removes the only live entry (`claude-sonnet-5`), 
 - `scripts/tests/test_fsm_cost_graph.py` — a `usage.jsonl` row dated inside the intro window is priced at the intro rate after expiry.
 
 ### Documentation
-- `docs/reference/API.md` — `estimate_cost_usd`'s new parameter.
+- `docs/reference/API.md` — `estimate_cost_usd`'s new parameter (`### estimate_cost_usd`, `:12392`), plus the two `little_loops.pricing` summaries (`:84`, `:12360`) that say it "checks `date.today()`".
 
 ## Program Design
 
@@ -80,7 +80,7 @@ This is latent today. BUG-3564 removes the only live entry (`claude-sonnet-5`), 
 - No new types.
 
 ### Signatures
-- `estimate_cost_usd(model: str, input_tokens: int | None, output_tokens: int | None, cache_read_tokens: int | None = 0, cache_creation_tokens: int | None = 0, is_batch: bool = False, as_of: date | None = None) -> float | None` — the intro window is checked against `as_of`, defaulting to today (`pricing.py:113`).
+- `estimate_cost_usd(model: str, input_tokens: int | None, output_tokens: int | None, cache_read_tokens: int | None = 0, cache_creation_tokens: int | None = 0, is_batch: bool = False, as_of: date | None = None) -> float | None` — the intro window is checked against `as_of`, defaulting to today (`pricing.py:107`).
 
 ### Call Path
 `_backfill_usage_events` -> `estimate_cost_usd(..., as_of=<record date>)`
@@ -133,6 +133,7 @@ This is latent today. BUG-3564 removes the only live entry (`claude-sonnet-5`), 
 - [ ] The live writer prices by the first parseable of `observed_at`, `ts`, then today; a malformed `observed_at` falls through to `ts` (integration test through `record_usage_event`).
 - [ ] The same instant in different offsets (`2026-08-31T23:30:00-05:00`, `2026-09-01T04:30:00Z`) gets the same rate; a naive timestamp is priced as UTC.
 - [ ] `cost_graph` prices each `usage.jsonl` row by its own `"timestamp"`; a row with an empty or malformed timestamp falls back to today.
+- [ ] `docs/reference/API.md` documents `as_of`, and its `little_loops.pricing` summaries no longer say pricing always checks `date.today()`.
 
 ## Related
 
@@ -142,12 +143,28 @@ This is latent today. BUG-3564 removes the only live entry (`claude-sonnet-5`), 
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
+## Verification Notes
+
+Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the same pass, so the issue as it now reads is up to date — this section is a record of what was wrong and fixed, not an outstanding action item)
+
+Checked 2026-09-24 against the working tree. That tree holds BUG-3564's uncommitted `pricing.py` / `test_pricing.py` / `API.md` edits.
+
+- **Line drift (fixed):** the `date.today()` check is at `pricing.py:137` and `def estimate_cost_usd` at `:107` in the working tree. The old `:143` / `:113` anchors match HEAD only, because BUG-3564 shortened the module docstring and emptied `INTRO_PRICING`.
+- **Motivation (fixed):** cost-ceiling enforcement does not read `usage_events.cost_usd`. `_check_cost_ceiling` (`fsm/executor.py:4138`) uses `CostReport.from_usage_jsonl`, which is already in scope.
+- **Live writer (clarified):** `record_usage_event` has one caller, `fsm/executor.py:4413`. That caller passes `ts=_iso_now()`, the flush time, so `ts` is a flush-time fallback and not an event date.
+- **Docs (fixed):** added the `API.md` summaries at `:84` and `:12360`, which describe `date.today()`, and added an Acceptance Criterion for the Documentation point, which had none.
+- **Confirmed:** there are exactly three production callers: `writers.py:1965`, `writers.py:3661` (`ts` read at `:3659`) and `cost_graph.py:321`. `persistence.py:1105` writes `"timestamp"` from `event.get("ts", "")`. The `synthetic_intro_pricing` fixture exists (`test_pricing.py:33`). BUG-3564 is `done`, and `INTRO_PRICING` is `{}` in the working tree but still holds the Sonnet 5 entry at HEAD.
+- **Implementer caution:** the existing intro tests patch `little_loops.pricing.date` with a mock that defines only `today` and `fromisoformat`. `as_of or date.today()` works with that mock. Build `_event_date` on `datetime` rather than `date`, or keep it out of the code path those tests patch.
+
+Remaining: BUG-3564 has no `blocks: [BUG-3579]` backlink (it lists BUG-3579 under `relates_to` only). It is advisory, since the blocker is done.
+
 ## Status
 
 **Open** | Created: 2026-09-24 | Priority: P4
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-24T23:39:13 - `ce8bec5b-7632-4ff9-a3da-7cdd35c70217.jsonl`
 - `/ll:verify-issues` - 2026-09-24T22:56:17 - `4279401a-9acc-474c-b872-fd398cd78a8e.jsonl`
 - `/ll:confidence-check` - 2026-09-24T22:35:17 - `193eb57f-e9f6-4072-bd61-43000a1d97b1.jsonl`
 - `/ll:confidence-check` - 2026-09-24T22:10:05 - `b03f0e56-e701-4b6d-bb94-8f4cb425b852.jsonl`
