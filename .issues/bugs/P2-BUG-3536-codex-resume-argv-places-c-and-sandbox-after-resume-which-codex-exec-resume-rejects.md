@@ -13,6 +13,12 @@ labels:
 - parallel
 relates_to:
 - BUG-3529
+confidence_score: 100
+outcome_confidence: 86
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 # BUG-3536: Codex resume argv places -C and --sandbox after resume, which codex exec resume rejects
@@ -118,5 +124,6 @@ Reviewed on `main` in the little-loops repository with a clean working tree befo
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-24T02:09:21 - `b8072267-aeca-4266-83b6-f3360ec8d848.jsonl`
 - `/ll:verify-issues` - 2026-09-24T02:07:33 - `294f94b4-388d-48a0-aa53-cb5a7c8aa062.jsonl`
 - `/ll:ready-issue` - 2026-09-24T02:01:51 - `7ee029e4-88ce-4fa6-8e18-bd8b5cfa3ced.jsonl`
