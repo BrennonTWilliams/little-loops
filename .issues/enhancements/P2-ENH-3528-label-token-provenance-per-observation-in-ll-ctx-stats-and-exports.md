@@ -6,7 +6,8 @@ priority: P2
 status: open
 discovered_date: '2026-09-23'
 blocked_by:
-- BUG-3530
+- ENH-3538
+- BUG-3531
 labels:
 - observability
 - multi-host
@@ -20,7 +21,7 @@ relates_to:
 
 Make token provenance explicit per observation and metric. Host capabilities describe which telemetry a host can expose; they cannot determine whether every figure from that host is measured. This issue is the labeling/provenance slice (formerly "Delivery A"): runtime telemetry availability, per-observation provenance persisted with usage rows, and a provenance contract rendered by `ll-ctx-stats` and carried through history readers and shareable exports. New Codex historical rollout ingestion is split out to ENH-3532; other hosts to ENH-3534. Preserve useful context estimates where no measurement of the same quantity and interval is available.
 
-Deliver the storage/writer foundation separately from reporting: foundation → BUG-3531 normalization → reporting/export/staleness work. Before implementation scheduling, extract the foundation into its own issue and retarget BUG-3531's dependency to that issue; do not make the correctness fix wait for this entire reporting feature. The extraction is planned here, not yet a created issue or an updated dependency graph.
+Delivery order: foundation (**ENH-3538**) → BUG-3531 normalization → this issue's reporting/export/staleness work. The storage/writer foundation (nullable observations, migration, unknown-default writers, host/vendor/observation-time plumbing, host-preserving replay) now lives in ENH-3538, and BUG-3531 is blocked by ENH-3538, not by this issue. Where the Design sections below describe foundation behavior, ENH-3538 is authoritative and this issue consumes it.
 
 ## Current Behavior
 
@@ -30,7 +31,8 @@ Deliver the storage/writer foundation separately from reporting: foundation → 
 - Codex live `turn.completed` usage already reaches `usage_events` (`usage_from_event` → runner `ActionResult.usage_events` → `FSMExecutor._finish` → `record_usage_event`) but stores cache-inclusive input in the uncached-input column — tracked separately as BUG-3531.
 - `context-monitor.sh` combines measured baselines with estimates and adds heuristic overhead even after the `result_token_count` branch. The stored `estimated_tokens` is not automatically a measured context-occupancy value when a host reports usage.
 - `RUNTIME_HOST_CAPABILITIES` describes runtime operations for eight hosts; the six-host adapter map describes artifact emission. Runtime `token_reporting` is currently an advisory report row in `ll-doctor`, not per-observation provenance.
-- BUG-3530 is done and schema version is 53 at this review. Its migration added `usage_events.channel`; rebuild preserves `channel='live'` rows. The retained `blocked_by` reference is a satisfied prerequisite, not an outstanding blocker. Use the next free migration version when implementation starts.
+- BUG-3530 is done and schema version is 53 at this review. Its migration added `usage_events.channel`; rebuild preserves `channel='live'` rows. ENH-3538 adds the provenance/host/scope/observation-time columns at the next free version.
+- `usage_events` already carries `invocation_id` and `provider_vendor` (v21, OTel `gen_ai.*`); the live writer currently leaves both NULL. `provider_vendor` is the model vendor, not the runtime host.
 - `usage_from_event` coerces missing token components to zero; `TokenUsage`, executor sums, and pricing currently assume integers. Historical writers can retain null components, but aggregators commonly coerce them to zero again.
 - `_iter_events` reads `raw_events.host` but yields only `(raw_line, source_label)`, discarding host metadata before usage backfill. `FSMExecutor._finish` assigns one loop-finish timestamp to all collected usage rows; it is not their observation time.
 - Existing Claude live invocation totals and transcript assistant usage can cover the same work. `_aggregate_usage_events` sums both channels without resolving overlap; this problem predates ENH-3532's future Codex ingestion.
@@ -90,9 +92,9 @@ Add a Claude fixture containing a live invocation total plus its constituent tra
 
 ### Storage, exports, and model identity
 
-Persist provenance, host, scope kind, and observation-time metadata alongside usage observations with nullable/default-compatible columns in an append-only migration at the next free schema version (53 is already occupied). BUG-3530's rebuild fix has landed. The acquisition channel is **not** added here: reuse its `usage_events.channel` (`'live' | 'transcript'`, legacy rows classified by `session_id` presence). Reuse existing session/invocation identity columns. A new channel value (e.g. ENH-3532's `'rollout'`) must also declare whether rebuild treats it as replayable. Legacy rows with unproven provenance remain `unknown`, with unknown observation times; replay may recover facts only from trustworthy raw-event metadata.
+Persistence of provenance, host, scope kind, and observation-time metadata is delivered by ENH-3538 (append-only migration at the next free schema version). The new `host` column is the runtime host that produced an observation; the existing `provider_vendor` column stays the model vendor. Both are filled from the actual invocation; neither substitutes for the other in reporting. BUG-3530's rebuild fix has landed. The acquisition channel is **not** added here: reuse its `usage_events.channel` (`'live' | 'transcript'`, legacy rows classified by `session_id` presence). Reuse existing session/invocation identity columns. A new channel value (e.g. ENH-3532's `'rollout'`) must also declare whether rebuild treats it as replayable. Legacy rows with unproven provenance remain `unknown`, with unknown observation times; replay may recover facts only from trustworthy raw-event metadata.
 
-BUG-3531 (Codex live input normalization) requires the separately landable foundation. It persists inconsistent Codex observations (`cache_read + cache_write > input`) as `provenance='unknown'` and normalized, consistent ones as `'measured'` with `host='codex'`. Pre-foundation rows and intermediate unnormalized rows stay `unknown`. Extract the foundation and retarget BUG-3531 before scheduling implementation; do not add a reverse whole-issue dependency that creates a cycle. Existing context-state/pressure data retains `estimated` provenance.
+BUG-3531 (Codex live input normalization) depends on ENH-3538, not this issue. It persists inconsistent Codex observations (`cache_read + cache_write > input`) with `input_tokens=None` and `provenance='unknown'`, and normalized, consistent ones as `'measured'` with `host='codex'`. Pre-foundation rows and intermediate unnormalized rows stay `unknown`. Existing context-state/pressure data retains `estimated` provenance.
 
 The shareable export must retain non-sensitive provenance needed to interpret its token figures. Add safe provenance columns to `_SHAREABLE_COLUMNS`, bump `_SHAREABLE_ALLOWLIST_VERSION` and update the hash and fixtures together, and omit private transcript paths/raw source identifiers. Carry provenance through `UsageEvent`, history readers, and dashboard token exports affected by the new columns.
 
@@ -110,17 +112,17 @@ Keep requested/resolved model selections separate from observed model identity, 
 - [ ] Existing Claude live/transcript overlap is exposed as unresolved coverage with channel subtotals and unknown aggregate provenance, including waste/cost rollups. Fixtures cover overlapping and demonstrably disjoint coverage; no deduplication by token equality or timestamp proximity.
 - [ ] The fixed pointer-metadata schema is tested, including per-component known/missing counts, provenance composition, coverage, observation-time ranges/bases, and stale/unavailable reasons.
 - [ ] Context estimates are replaced only by equivalent in-scope measurements; measured baselines plus overhead remain estimated. Tests cover missing/stale measurements, tool activity between observations, and compaction invalidation without removing existing fallback estimation.
-- [ ] Foundation migration adds provenance/host/scope/observation-time columns and reuses BUG-3530's `channel` plus existing identity columns; migration-triggered SessionStart rebuild preserves live-only rows and their metadata; old schemas and unknown legacy origins remain readable. Manifest/version pins updated together.
+- [ ] Reporting reads ENH-3538's columns and handles pre-migration schemas and unknown legacy origins (read as `unknown`) without error.
 - [ ] History readers and shareable dashboard exports retain safe provenance, with allowlist version/hash and fixture updates; no private source paths are added to exports.
 - [ ] Requested/resolved model identity is never presented as host-observed identity; unavailable pricing is not reported as measured zero cost. Semantic JSON corrections and the provenance contract are documented.
 - [ ] No new ingestion path is added; Codex historical ingestion is ENH-3532.
-- [ ] Before implementation scheduling, the foundation is extracted into a separately tracked issue and BUG-3531's dependency is retargeted to it. Foundation validation passes independently of unfinished reporting work; reporting remains open until its own criteria pass.
+- [ ] Reporting consumes ENH-3538's stored metadata without redefining it; `host` and `provider_vendor` are reported as distinct dimensions.
 
 ## Scope Boundaries
 
 - **In scope**: runtime telemetry availability, per-observation provenance columns, `ll-ctx-stats` labeling and `token_provenance` contract, context estimate/staleness labeling, and affected history/dashboard exports.
-- **Satisfied prerequisite**: BUG-3530 is done; schema v53 supplies `channel` and preserves live rows during rebuild.
-- **Delivery boundary**: foundation (nullable observations, migration, safe writers, acquisition metadata, compatible consumers) lands first; BUG-3531 follows; reporting/export/staleness follows normalization. Retarget BUG-3531 to the extracted foundation issue before automated scheduling, rather than blocking it on all of ENH-3528.
+- **Prerequisites**: ENH-3538 (foundation) and BUG-3531 (normalization). BUG-3530 is done.
+- **Delivery boundary**: context-hook estimate/staleness labeling (Implementation Step 5) touches only hook scripts and `context-health-monitor.yaml`; it may be split into its own follow-up if reporting needs to ship first. Everything else in this issue lands together.
 - **Split out**: ENH-3532 (Codex historical rollout ingestion, overlap reconciliation); BUG-3531 (Codex live input normalization); ENH-3534 (Qwen/Gemini/OMP and other hosts).
 - **Out of scope**: exact reconciliation of existing live/transcript overlap (exposing unresolved coverage is in scope); improving estimator accuracy; deleting the context estimator globally; using consumption as occupancy; new context monitors; changing time-saved/non-token metrics; new model pricing/routing; a universal provenance rewrite of unrelated CLIs.
 
@@ -157,9 +159,9 @@ Update `docs/reference/{CLI,API,HOST_COMPATIBILITY,CONFIGURATION}.md`, `docs/gui
 
 ## Implementation Steps
 
-1. Extract the foundation described below into its own issue; retarget BUG-3531 to that prerequisite and record the extracted ID here. Keep reporting separately tracked and avoid a dependency cycle. BUG-3530 is already satisfied.
-2. **Foundation:** characterize current rows/output and add partial-event, timestamp/host retention, and legacy compatibility fixtures. Implement nullable observations and compatible callbacks/consumers; add the next-free migration, unknown-default writers, scope/observation metadata, and host-preserving replay. Keep pre-normalization Codex observations unknown. Run focused tests and required local checks; land this delivery independently.
-3. **Normalization handoff:** land BUG-3531 against the foundation, retaining unknown intermediate/legacy rows. Its tests establish when new Codex observations may opt into measured provenance. Do not wait for reporting/export work to unblock it.
+1. ~~Extract the foundation~~ — done: ENH-3538; BUG-3531 retargeted to it.
+2. **Foundation** — ENH-3538 (prerequisite).
+3. **Normalization** — BUG-3531 (prerequisite).
 4. **Reporting:** implement typed runtime telemetry and `token_reporting` parity; aggregation completeness/composition and unresolved-overlap policy; fixed `token_provenance` metadata and JSON Pointer validation; text/JSON labels for store and fallback branches. Document null/completeness corrections.
 5. Label context estimates and staleness in hooks without changing thresholds. Preserve actual observation boundaries, including compaction invalidation.
 6. Carry provenance/completeness/coverage through history readers and shareable exports (allowlist version/hash/fixtures together). Update docs. Run focused tests, then the required local suite and applicable lint/type checks. Complete this issue only after reporting criteria pass.
@@ -214,7 +216,11 @@ At that earlier check, `SCHEMA_VERSION = 52` and BUG-3530 was open. This prerequ
 
 Applied the review findings to the directive sections: unknown-default provenance (including the pre-BUG-3531 transition), end-to-end nullable values and callback/pricing behavior, explicit host/scope/observation-time plumbing, a fixed metadata contract, unresolved existing Claude live/transcript overlap, and a mandatory foundation-first delivery split. Corrected the fallback call path and refreshed the prerequisite: BUG-3530 is done and schema version is 53. The earlier VALID verdict did not resolve these prospective implementation gaps.
 
-This follow-up changes the issue specification only. The foundation issue extraction and cross-issue dependency retargeting remain the first implementation-planning step; no new issue ID or completed split is claimed here.
+This follow-up changed the issue specification only.
+
+### Pre-implementation review 2026-09-23
+
+Extracted the foundation into ENH-3538 and retargeted BUG-3531 to it; `blocked_by` now lists ENH-3538 and BUG-3531 (BUG-3530 removed as satisfied). Added the `host` vs existing `provider_vendor` distinction. Marked hook staleness labeling as separable.
 
 ## Status
 
