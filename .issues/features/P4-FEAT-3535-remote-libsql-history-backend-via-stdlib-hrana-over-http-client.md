@@ -62,7 +62,7 @@ or CI runners have no shared history/analytics store.
 
 ## Proposed Solution
 
-1. **Gate first:** produce a new learning test, `.ll/learning-tests/hrana-http.md`, against
+1. **Gate first:** produce a new learning test, `.ll/learning-tests/hrana-http.md` (new), against
    both `sqld` and Turso Cloud. It must prove:
    - `/v3/pipeline` request/response shape and baton/stream handling;
    - atomic `batch` with step conditions (rollback on a failed step);
@@ -87,6 +87,7 @@ or CI runners have no shared history/analytics store.
    - shared-store operation matrix (§7);
    - per-machine ingestion watermark and incremental materialization (§7a);
    - telemetry latency budget (§8);
+   <!-- ll-prose-ok: migrate is a planned new subcommand delivered by this issue -->
    - `ll-session migrate` and no migrate-on-open (§9);
    - project-identity stamp (§10);
    - the `ll-doctor` backend diagnostic.
@@ -111,12 +112,44 @@ or CI runners have no shared history/analytics store.
 - Unit tests for the Hrana client against a local stub HTTP server: timeouts, error-code
   mapping, batch encoding.
 
+## Acceptance Criteria
+
+- [ ] With `history.backend` unset or `provider: sqlite`, the existing history test suite passes unchanged.
+- [ ] `resolve_backend("libsql")` returns a `LibsqlBackend`; history reads and writes round-trip against a `sqld` endpoint.
+- [ ] Every network wait uses a socket-level timeout; a connect to a blackholed host fails within the configured limit and raises a `HistoryError` subclass.
+- [ ] Hrana error codes (`SQLITE_CONSTRAINT`, `SQLITE_BUSY`, `STREAM_EXPIRED`, auth failure) map to distinct `HistoryError` classes without message matching.
+- [ ] Unsupported operations (FTS5, maintenance, `ATTACH`, `create_function`, snapshot export) raise a capability-limitation error naming the operation.
+- [ ] Two concurrent remote migrations serialize or one fails safely, leaving the schema consistent.
+- [ ] A failing best-effort telemetry write never aborts the observed operation and stays within the telemetry latency budget.
+- [ ] The `hrana-http` learning test passes against `sqld` and Turso Cloud before any client code lands.
+- [ ] Remote integration tests skip only when `LL_TEST_LIBSQL_URL` / `LL_TEST_LIBSQL_AUTH_TOKEN` are absent; `python -m pytest scripts/tests/` exits 0.
+
+## Program Design
+
+### Types
+
+- `HranaClient`: stdlib `http.client` client for `/v3/pipeline` holding base URL, auth token, connect/read timeouts, and the current baton
+- `HranaError(HistoryError)`: carries the structured Hrana error `code` and message
+- `LibsqlBackend`: `Backend` implementation built on `HranaClient`; `supports()` returns False for FTS5, maintenance, `ATTACH`, `create_function`, and snapshot export
+
+### Signatures
+
+- `HranaClient.execute(sql: str, params: Sequence[Any] = ()) -> HistoryCursor` — one statement over a pipeline request
+- `HranaClient.batch(steps: Sequence[BatchStep]) -> list[StepResult]` — atomic batch with step conditions
+- `LibsqlBackend.connect(path: Path | HistoryTarget, *, check_same_thread: bool = True) -> HistoryConnection` — open a remote connection
+- `resolve_backend(provider: str = "sqlite") -> Backend` — gains a `"libsql"` branch
+
+### Call Path
+
+`open_history` -> `resolve_backend` -> `LibsqlBackend.connect` -> `HranaClient.execute`
+
 ## Implementation Steps
 
-1. Produce `.ll/learning-tests/hrana-http.md` (prerequisite gate).
+1. Produce `.ll/learning-tests/hrana-http.md` (new) (prerequisite gate).
 2. Land FEAT-3524 §1a's SQLite-only `HistoryTarget` refactor, with no behavior change.
 3. Add the Hrana HTTP client and its unit tests.
 4. Add `history.backend` config and `LibsqlBackend`.
+<!-- ll-prose-ok: migrate is a planned new subcommand delivered by this issue -->
 5. Remote migrations via atomic `batch`, plus `ll-session migrate`.
 6. Operation matrix, per-machine ingestion, telemetry budget, and the doctor diagnostic.
 7. Docs and the `/ll:configure` history-area mirrors.
@@ -153,4 +186,5 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:format-issue` - 2026-09-24T00:50:45 - `037fa15a-ec40-4d82-9ee3-839372456150.jsonl`
 - `/ll:capture-issue` - 2026-09-24T00:46:36 - `037fa15a-ec40-4d82-9ee3-839372456150.jsonl`
