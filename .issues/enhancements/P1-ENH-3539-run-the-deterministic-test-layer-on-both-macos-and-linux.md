@@ -6,6 +6,12 @@ priority: P1
 status: open
 discovered_date: '2026-09-23'
 labels: []
+confidence_score: 95
+outcome_confidence: 68
+score_complexity: 14
+score_test_coverage: 18
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 # Run the deterministic test layer on both macOS and Linux
@@ -169,5 +175,6 @@ _Added by `/ll:refine-issue` — 2026-09-24 — based on codebase analysis:_
 **Open** | Created: 2026-09-23 | Priority: P1
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-24T05:15:41 - `27ae30f6-009c-4b0e-9ac3-8684b7ff61cd.jsonl`
 - `/ll:refine-issue` - 2026-09-24T05:03:01 - `ba06500e-9e68-4c34-9f78-d2557696e4a2.jsonl`
 - Manual review - 2026-09-23 - corrected grep/ugrep premise, CI-policy drift, added `%N` divergence and static gate scope

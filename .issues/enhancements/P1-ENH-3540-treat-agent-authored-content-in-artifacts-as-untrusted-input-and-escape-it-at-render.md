@@ -1,6 +1,7 @@
 ---
 id: 3540
-title: Treat agent-authored content in artifacts as untrusted input and escape it at render
+title: Treat agent-authored content in artifacts as untrusted input and escape it
+  at render
 type: ENH
 priority: P1
 status: open
@@ -11,6 +12,12 @@ labels:
 decision_needed: false
 learning_tests_required:
 - jinja2-byte-exact-round-trip
+confidence_score: 95
+outcome_confidence: 63
+score_complexity: 10
+score_test_coverage: 25
+score_ambiguity: 10
+score_change_surface: 18
 ---
 
 # Treat agent-authored content in artifacts as untrusted input and escape it at render
@@ -224,7 +231,22 @@ _Added by `/ll:refine-issue` — 2026-09-24 — based on codebase analysis:_
 
 **Open** | Created: 2026-09-23 | Priority: P1
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-24_
+
+**Readiness Score**: 95/100 → PROCEED
+**Outcome Confidence**: 63/100 → MODERATE
+
+### Gaps to Address
+- Advisory (Criterion C capped at 10): the applied-decision check flagged `render_template` (Program Design) and `refresh`/`render_template` (Implementation Steps) as still present after Option A was selected. Likely a false positive — those are legitimate references (`render_template` must stay byte-identical; `cmd_refresh` is an Option A call path) — but the section text should mark them as unchanged/not-Option-B so the check clears.
+
+### Outcome Risk Factors
+- broad enumeration across ~15 sites (6 artifact modules, `file_utils.py`, 6 test files) with moderate per-site depth: escape semantics span `artifact_templates`, `dashboard`, `extract`, and manifest schema
+- 4 direct `render_template` callers plus the serve layer; `templatize.py:554` must stay byte-identical, so a wrong escape boundary fails the FEAT-3308 round trips
+
 ## Session Log
+- `/ll:confidence-check` - 2026-09-24T05:15:41 - `27ae30f6-009c-4b0e-9ac3-8684b7ff61cd.jsonl`
 - `/ll:decide-issue` - 2026-09-24T05:08:54 - `99248bf9-5b09-479f-986e-d42c22c65074.jsonl`
 - `/ll:refine-issue` - 2026-09-24T05:05:07 - `b4ebbfb3-ca8e-4bb4-bf8e-9713ebdfe185.jsonl`
 - Manual review - 2026-09-23 - corrected exposure premise (base64 blob + textContent already safe), retargeted to autoescape=False template env, script-context JSON splices, and atomic_write instead of unlink-before-write

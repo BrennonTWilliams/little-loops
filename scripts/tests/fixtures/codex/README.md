@@ -114,3 +114,55 @@ file or directory\n` — its paired output at line 15 has the exact same
 `"Script completed\nWall time 0.1 seconds\nOutput:\n"` header as every
 successful call's, which is why the failure signal must come from this item,
 never from the output text.
+
+## Live `codex exec --json` usage contract (BUG-3531 Decision 6)
+
+Captured 2026-09-24 against `codex-cli 0.152.1`, model `gpt-5.6-sol` (pinned
+with `-m`; the machine's configured default model is rejected by 0.152.1), in an
+empty scratch directory with `--sandbox read-only --skip-git-repo-check` and
+stdin closed:
+
+1. `codex exec --json "Run the shell command 'echo hello', then reply with just the word ok."`
+   → `exec-json-turn.jsonl` (stdout, verbatim)
+2. `codex exec resume --last --json "Reply with just the word again."`
+   → `exec-json-resume.jsonl` (stdout, verbatim)
+
+`rollout-exec-resume.jsonl` is the matching rollout for that thread (both
+invocations append to the same rollout file), **trimmed to the token-accounting
+records**: `session_meta`, `turn_context`, the `custom_tool_call`/
+`custom_tool_call_output` pair, and the `task_started`/`token_count`/
+`task_complete`/`thread_settings_applied` `event_msg`s. The developer/user/
+assistant `message` items, `world_state` and `item_completed` records were
+dropped (they carry machine-local memories, skill listings and paths). The
+scratch working directory was rewritten to `/workspace/project` and the home
+directory to `/workspace/home`; `base_instructions.text` truncated (original
+length 17,730 chars). `ll-verify-private-refs` → PASS.
+
+### Findings
+
+| | stdout `turn.completed.usage` | rollout `token_count` |
+|---|---|---|
+| Invocation 1 (2 model requests) | `input 38945, cached 26752, cache_write 0, output 117` | request 1 `last` = `19404/7552/0/112`; request 2 `last` = `19541/19200/0/5`; `total` after request 2 = `38945/26752/0/117` |
+| Invocation 2 (`resume --last`, 1 request) | `input 19559, cached 19328, cache_write 0, output 5` | `last` = `total` = `19559/19328/0/5` |
+
+- **Scope is per invocation.** The live value is the thread-usage `total`
+  (`codex-rs/exec/src/event_processor_with_jsonl_output.rs::usage_from_last_total`,
+  tag `rust-v0.152.1`), which sums every model request in the invocation. The
+  total is **not** restored by `exec resume`: the resumed invocation's `total`
+  restarts at its own first request. `codex exec` shuts down after one
+  `turn.completed`, so no live-path differencing is needed; `scope_kind =
+  "invocation"` is correct.
+- **Input is inclusive.** `cached_input_tokens (+ cache_write_input_tokens) <=
+  input_tokens` on every observation; uncached = `input - cached - cache_write`.
+- **`cache_write_input_tokens` is always emitted by 0.152.1.**
+  `exec_events.rs::Usage` has `#[serde(default)]` (deserialization only) and no
+  `skip_serializing_if`; both captures carry an explicit `0`. An omitted field
+  therefore indicates an older CLI that predates the field, and stays unknown.
+- **All-zero usage is not a measurement.** When no `ThreadTokenUsageUpdated`
+  notification arrived before the turn completed, the producer emits
+  `Usage::default()` (all zeros). A `turn.completed` whose components are all
+  `0` is indistinguishable from "no usage observed".
+- **Not covered by this capture:** a mid-invocation auto-compaction. The
+  `_codex_cache_usage` docstring records that `total_token_usage` resets across
+  a compaction; if so, a compacted invocation's live total undercounts (it can
+  only omit tokens, never double-count them).
