@@ -359,6 +359,7 @@ _Added by `/ll:confidence-check` on 2026-09-24_
 - Wide caller surface with a JSON contract change: `null` replaces coerced zeros, so consumers of `usage_by_model`, cost and waste rollups (`pricing.py`, `fsm/cost_graph.py`, `issue_history/*`, dashboard) must be audited.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-24T22:33:36 - `7e20fb59-55ae-4670-b670-af8f48757525.jsonl`
 - `/ll:confidence-check` - 2026-09-24T22:23:59 - `40b8f248-36ef-4bdd-ab01-17d5e1770f77.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-09-24T17:53:57 - `5250dd00-ed7b-4310-8dee-527fe13b2b07.jsonl`
 - `/ll:verify-issues` - 2026-09-24T00:46:08 - `047cda0b-279f-4078-b31f-1d7b1fcc2181.jsonl`
