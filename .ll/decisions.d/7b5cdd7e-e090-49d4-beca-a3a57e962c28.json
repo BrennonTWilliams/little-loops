@@ -1,0 +1,12 @@
+{
+  "id": "5e04f8d1-deca-4c58-8b36-c24ccfa5ddc8",
+  "type": "decision",
+  "timestamp": "2026-09-24T05:08:48Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Matches dashboard escape-at-ingest convention; covers extract/refresh; render_template stays byte-identical",
+  "rule": "Option A: escape at ingest via escape_data",
+  "scope": "issue",
+  "alternatives_rejected": "Option B: manifest opt-in escape at render",
+  "issue": "ENH-3540"
+}
