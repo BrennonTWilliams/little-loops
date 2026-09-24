@@ -2,7 +2,7 @@
 id: 3561
 title: 'Next-action recommender arena — Phase 0+1: utility scorer extraction, ll-next CLI, acceptance logging'
 type: FEAT
-priority: P2
+priority: P3
 status: open
 discovered_date: '2026-09-24'
 labels: []

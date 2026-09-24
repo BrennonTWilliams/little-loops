@@ -17,11 +17,34 @@ captured_at: '2026-09-24T18:17:10Z'
 
 ## Current Behavior
 
-[If applicable - describe what currently happens]
+- `cmd_refine_status` (`little_loops.cli.issues.refine_status`) loads every active issue via `find_issues`, EPICs included. The full list then drives:
+  - the dynamic per-command columns (`:301-315`);
+  - the ID column width (`:324`);
+  - both JSON outputs (`:329-375`);
+  - the row count and scored count (`:527-529`);
+  - the Key legend (`_print_key(all_cmds)`, `:532`).
+
+  An EPIC whose Session Log carries a command no other issue has (e.g. `/ll:scope-epic`) adds a column of its own. This was reproduced.
+- The empty-result branch (`:297-299`) prints the prose line `No active issues found.` and exits 0 even under `--json` and `--format json`, so JSON consumers get invalid output. This already happens today; EPIC filtering makes it more common (for example, a project whose only active issues are EPICs).
+- `--type` explicitly accepts `EPIC` (`cli/issues/__init__.py:595-596`). The positional `ISSUE-ID` resolves via `_resolve_issue_id` (`:292`), including zero-padded bare numbers (`001` → EPIC-001).
+- With an ID and `--json`, the code prints `records[0]` (`:351`). Filtering an EPIC out *after* the lookup would leave `records` empty and raise `IndexError`.
 
 ## Expected Behavior
 
-[What should happen instead]
+**The filter runs early.** EPICs are dropped right after loading (after `find_issues` / the single-ID lookup, around `:295`), before columns, width, totals, scored counts, JSON records or the Key legend are derived. An EPIC's unique commands produce no column and no Key entry.
+
+**Default listing where every active issue is an EPIC, or nothing is left after filtering.** Exit 0 in every format:
+- table: the prose line `No refinable issues found (EPICs are excluded from refine-status).`
+- `--json`: exactly `[]`
+- `--format json`: zero NDJSON records (empty stdout)
+
+The same empty-output contract applies to a genuinely empty project, which fixes the existing invalid-JSON bug.
+
+**Explicit EPIC requests** fail with a clear diagnostic on stderr and **exit 1**, matching the command's existing "not found" exit code. This covers `--type EPIC`, `refine-status EPIC-NNN`, and a bare number that resolves to an EPIC. The message: `Error: EPICs are not tracked by refine-status; use 'll-issues epic-progress <ID>' instead.` Stdout stays empty in all formats. The single-ID check happens before records are built, so the `records[0]` path is never reached with an empty list.
+
+Keep `EPIC` in the `--type` choices so existing invocations get the explanatory message rather than an argparse usage error.
+
+**The filter is local to `cmd_refine_status`.** `find_issues` (`issue_parser.py:4399`) is shared by about 25 modules, several of which need EPICs (`epic_progress`, `link_epics`, `epic_consistency`, `sprint`, `deps`, `parallel/orchestrator`). It must not change.
 
 ## Motivation
 
@@ -29,54 +52,59 @@ captured_at: '2026-09-24T18:17:10Z'
 
 ## Proposed Solution
 
-TBD - requires investigation
+In `cmd_refine_status`:
+
+1. On the explicit-request paths, return the stderr diagnostic with exit 1:
+   - `args.type == "EPIC"`: before loading.
+   - single-ID path: right after `_resolve_issue_id` + `parse_file`, when the parsed issue's type is EPIC.
+2. On the listing path, run `issues = [i for i in issues if <type> != "EPIC"]` immediately after `find_issues`.
+3. Replace the empty-result branch with a format-aware one: table prose, `[]` for `--json`, nothing for `--format json`, all exit 0.
 
 ## Integration Map
 
 ### Files to Modify
-- TBD - requires codebase analysis
+- `scripts/little_loops/cli/issues/refine_status.py`: `cmd_refine_status` (lookup at `:286-295`, empty branch at `:297-299`; the derivations at `:301-375` and `:527-532` need no change once the list is filtered).
+- `scripts/little_loops/cli/issues/__init__.py`: `refine-status` `--help` text and the `--type` help (`:590-623`); add a note to the `refine-status --type BUG` usage example (`:180`).
 
 ### Dependent Files (Callers/Importers)
-- TBD - use grep to find references
-
-### Similar Patterns
-- TBD - search for consistency
+- None change. `find_issues` stays untouched (see Expected Behavior).
 
 ### Tests
-- TBD - identify test files to update
+- `scripts/tests/test_refine_status.py` has no EPIC coverage today. Add cases for every acceptance criterion below.
 
 ### Documentation
-- TBD - docs that need updates
+- `docs/reference/CLI.md` (`refine-status` section): EPICs excluded; the explicit-request exit code; the empty JSON contract.
 
 ### Configuration
-- N/A or list config files
+- N/A
 
 ## Implementation Steps
 
-1. [Major phase 1]
-2. [Major phase 2]
-3. [Verification approach]
+1. Write failing tests: a mixed project with an EPIC carrying a unique command, an EPIC-only project, an empty project, `--type EPIC`, `EPIC-NNN`, and a bare numeric EPIC ID.
+2. Add the early filter and the explicit-request diagnostics.
+3. Add the format-aware empty branch.
+4. Update help text and `docs/reference/CLI.md`; run `python -m pytest scripts/tests/`.
 
 ## Impact
 
-- **Priority**: [P0-P5] - [Justification]
-- **Effort**: [Small/Medium/Large] - [Justification]
-- **Risk**: [Low/Medium/High] - [Justification]
-- **Breaking Change**: [Yes/No]
+- **Priority**: P3 — cosmetic noise in the default view, plus an existing invalid-JSON bug on empty results.
+- **Effort**: Small — one function, early filter plus the empty branch.
+- **Risk**: Low — local to one command; `find_issues` untouched.
+- **Breaking Change**: Minor. `--type EPIC` and EPIC IDs change from exit 0 with rows to exit 1 with a diagnostic, and empty `--json` output changes from prose to `[]`.
 
-## Proposed Change
+## Scope Boundaries
 
-- Filter out issues of type `EPIC` in `cmd_refine_status` before rendering, for all output formats.
-- Decide behavior for explicit `--type EPIC` and for `refine-status EPIC-NNN` (single-ID lookup): recommend keeping the exclusion silent for the default listing, and returning a clear "EPICs are not tracked by refine-status" message for explicit requests rather than an empty table.
-- Update `ll-issues refine-status --help` / `docs/reference/CLI.md` to note EPICs are excluded.
+- **In scope**: EPIC filtering, explicit-EPIC diagnostics, and the format-aware empty-result contract in `cmd_refine_status`; help text and CLI reference.
+- **Out of scope**: `find_issues` and every other `ll-issues` subcommand; refine-status colorization (ENH-596); showing done issues through the single-ID path. That path currently skips the active-status filter; this issue does not change it.
 
 ## Acceptance Criteria
 
-- [ ] Default `ll-issues refine-status` output contains no EPIC rows
-- [ ] `--json` / `--format json` output contains no EPIC entries
-- [ ] Explicit EPIC `--type` / ID request gives a clear message instead of a confusing empty result
-- [ ] Test added under `scripts/tests/` covering EPIC exclusion
-- [ ] CLI reference updated
+- [ ] Default `ll-issues refine-status` output (table, `--json`, `--format json`) contains no EPIC rows or entries.
+- [ ] An EPIC whose Session Log has a command no other issue has adds no column and no Key legend entry, and doesn't change row or scored counts.
+- [ ] An EPIC-only project, or an empty one, gives: table prose and exit 0; `--json` prints exactly `[]` and exits 0; `--format json` prints no records and exits 0.
+- [ ] `--type EPIC`, `refine-status EPIC-NNN`, and a bare numeric ID that resolves to an EPIC each print the diagnostic on stderr, nothing on stdout, and exit 1 in every format, with no `IndexError`.
+- [ ] `find_issues` behavior is unchanged; other `ll-issues` subcommands still list EPICs.
+- [ ] `--help` and `docs/reference/CLI.md` document the exclusion, the exit code and the empty-JSON contract.
 
 ## Related
 

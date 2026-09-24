@@ -33,7 +33,7 @@ A skill or agent can declare `model_hint` instead of `model`; each supported hos
 
 ## Integration Map
 
-- `scripts/little_loops/adapters/codex.py`, `cli/adapt_agents_for_codex.py`, other adapters; `skills/`, `agents/` frontmatter; `ll-verify-skills`.
+- `scripts/little_loops/adapters/codex.py`, `cli/adapt_agents_for_codex.py`, and the Gemini/Kimi/Qwen adapters (`ll-adapt --host <gemini|kimi-code|qwen>`) plus their generated mirrors; `skills/`, `agents/` frontmatter; `ll-verify-skills`.
 - Depends on ENH-3527's resolver and `orchestration.model_hints` config.
 
 ## Impact
@@ -43,6 +43,8 @@ A skill or agent can declare `model_hint` instead of `model`; each supported hos
 - **Risk**: Medium — generated artifacts can silently go stale.
 
 ## Open Questions (resolve before implementation)
+
+**Not implementation-ready.** Answer these with `/ll:spike` (can Claude Code honor a frontmatter hint at all, and does it tolerate an unknown `model_hint` key in skill/agent frontmatter?) and `/ll:decide-issue` before any implementation. Exclude from the first implementation wave; it must not gate EPIC-3563 closure.
 
 - **Resolution timing**: native invocation (Claude Code reads frontmatter — can a hint be honored at all without rewriting the file?) versus generation time (Codex/Gemini/Kimi/Qwen adapters resolve through ENH-3527's resolver when emitting).
 - **Staleness**: how generated agent files are detected as stale and regenerated after a mapping or `orchestration.model_hints` change.
@@ -70,7 +72,7 @@ A skill or agent can declare `model_hint` instead of `model`; each supported hos
 ### Signatures
 
 - `CodexAdapter.emit_agent(self, agent_meta: dict) -> str` — existing; resolves `model_hint` through `resolve_model_hint` instead of copying `model` verbatim.
-- `resolve_model_hint(hint: str, *, backend: str, operation: str, overrides: dict | None = None) -> str` — provided by ENH-3527.
+- `resolve_model_hint(hint: str, *, backend: str, overrides: dict | None = None) -> str` — provided by ENH-3527 (no `operation` parameter).
 
 ### Call Path
 

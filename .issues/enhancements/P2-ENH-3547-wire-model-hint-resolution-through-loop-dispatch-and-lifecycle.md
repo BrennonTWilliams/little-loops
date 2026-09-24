@@ -35,7 +35,7 @@ Everything below is specified in ENH-3527 (Design → Declaration and precedence
 
 - Resolve after `FSMExecutor._resolve_request_path`. SDK/batch always resolves against `anthropic-api`; a downgrade to CLI re-resolves the original declaration for that runner.
 - Evaluator hints are resolved in `FSMExecutor._evaluate` and passed down as `model: str`; no config is threaded into `evaluators.py`.
-- Each dispatch adds `model_requested`, `model_resolved`, `model_backend` and `model_operation` to its event payload and the run header. No DB columns; observed model identity stays separate.
+- Each dispatch adds `model_requested`, `model_resolved` and `model_backend` to its event payload and the run header. No DB columns; observed model identity stays separate.
 
 ## Scope Boundaries
 
@@ -50,7 +50,7 @@ Everything below is specified in ENH-3527 (Design → Declaration and precedence
 
 ### Signatures
 
-- `resolve_model_hint(hint, *, backend, operation, overrides=None) -> str` — from ENH-3527, called at each dispatch seam.
+- `resolve_model_hint(hint, *, backend, overrides=None) -> str` — from ENH-3527 (no `operation` parameter, decided 2026-09-24), called at each dispatch seam.
 - Evaluator functions keep `model: str`.
 
 ### Call Path
@@ -67,17 +67,21 @@ Everything below is specified in ENH-3527 (Design → Declaration and precedence
 ## Impact
 
 - **Priority**: P2.
-- **Effort**: Medium.
+- **Effort**: Medium to high — ~10 source files, six test files, and a persistence-format check. If lifecycle proves large, split sub-loop/detach/resume/persistence from dispatch wiring.
 - **Risk**: Medium — a precedence or backend mismatch silently selects the wrong model.
 
 ## Acceptance Criteria
 
-These carry over from ENH-3527 (its criteria 3, 4, 5, 7 and 12):
+Carried over from ENH-3527's original criteria (stated inline; ENH-3527's numbering has since changed):
 
 - [ ] Tests cover every precedence row; no-hint behavior and literal CLI argv are unchanged.
 - [ ] CLI action, blocking evaluator, SDK and batch paths share declaration semantics; a foreign configured CLI host never supplies an Anthropic request model; downgrade re-resolves.
 - [ ] Every advertised host/operation combination has a dispatch-level argv test, including Codex streaming; opencode/pi and missing/disabled mappings error explicitly.
-- [ ] Sub-loop/detach/resume preserve requested declarations; event payloads carry the four selection fields.
+- [ ] Sub-loop/detach/resume preserve requested declarations; event payloads carry the three selection fields (`model_requested`, `model_resolved`, `model_backend`).
+- [ ] Sub-loops follow ENH-3527's decided semantics: run `--model` inherits into children; a parent state's declaration does not propagate; children resolve against their own `llm`.
+- [ ] A state with both a prompt action and an LLM evaluator resolves its single declaration separately for each and may yield two different model strings.
+- [ ] `--llm-model` replaces the `llm` declaration and clears an inherited hint.
+- [ ] Resuming under a changed mapping or host resolves afresh and makes the new selection visible (event/header).
 - [ ] Portability proof: a fixture loop with `coding`/`burst` states runs unedited under fake host / `claude-code` and `anthropic-api`.
 
 ## Status
@@ -88,7 +92,7 @@ These carry over from ENH-3527 (its criteria 3, 4, 5, 7 and 12):
 
 ## Scope Boundary
 
-**Note** (added by `/ll:audit-issue-conflicts`): This issue covers runtime dispatch, CLI downgrade re-resolution, and lifecycle wiring only; the resolver and config slice is ENH-3527 and validate-time warnings/docs are ENH-3548. The `operation` parameter in `resolve_model_hint(hint, *, backend, operation, ...)` and the `model_operation` event field depend on ENH-3527 keeping `operation` — reconcile if ENH-3527 drops it.
+**Note** (added by `/ll:audit-issue-conflicts`): This issue covers runtime dispatch, CLI downgrade re-resolution, and lifecycle wiring only; the resolver and config slice is ENH-3527 and validate-time warnings/docs are ENH-3548. ENH-3527 dropped the `operation` parameter (2026-09-24), so there is no `model_operation` event field.
 
 
 ## Session Log
