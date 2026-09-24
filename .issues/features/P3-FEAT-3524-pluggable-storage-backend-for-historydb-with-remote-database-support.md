@@ -3,7 +3,8 @@ id: FEAT-3524
 type: FEAT
 title: Pluggable history.db backend with remote libSQL support
 priority: P3
-status: open
+status: blocked
+decision_needed: true
 discovered_by: ll-issues-create
 discovered_date: '2026-09-22'
 captured_at: '2026-09-22T15:39:38Z'
@@ -13,9 +14,6 @@ learning_tests_required:
 spike_attempted: true
 spike_completed: true
 verify_verdict: VALID
-blocked_by:
-- ENH-3525
-- ENH-3526
 confidence_score: 80
 outcome_confidence: 43
 score_complexity: 0
@@ -39,14 +37,79 @@ embedded-replica synchronization are out of scope.
 
 ## Blocked By
 
-- Both Phase A/A2 connection-chokepoint blockers were satisfied — merged
-  `status: done` on 2026-09-22 (ids in frontmatter `blocked_by`); see Current
-  Behavior for what they delivered and Verification Notes for the codebase
-  verification.
-- `.ll/learning-tests/libsql-remote.md` with `status: proven` — real remote-mode
-  driver evidence (see Readiness Prerequisites). **Still open** — only
-  `.ll/learning-tests/libsql.md` (local-only) exists; `libsql-remote.md` has not
-  been created.
+- Both Phase A/A2 connection-chokepoint blockers were satisfied — ENH-3525 and
+  ENH-3526 merged `status: done` on 2026-09-22 (removed from frontmatter
+  `blocked_by` 2026-09-23); see Current Behavior for what they delivered and
+  Verification Notes for the codebase verification.
+- `.ll/learning-tests/libsql-remote.md` — **produced 2026-09-23 (Step 1), and 7
+  required assertions failed.** Per the §2 Step 1 failure contingency this issue is
+  `blocked` pending a re-scope decision (`decision_needed: true`). See
+  [Step 1 Learning Test Result](#step-1-learning-test-result-2026-09-23).
+
+## Step 1 Learning Test Result (2026-09-23)
+
+Implementation Step 1 ran against both planned endpoints with `libsql` 0.1.11
+(Python 3.12): a self-hosted `sqld` 0.24.8 (`http://`, SQLite 3.44.0, JWT auth) and
+Turso Cloud (`libsql://…aws-us-east-2.turso.io`, SQLite 3.47.0). Record:
+`.ll/learning-tests/libsql-remote.md` (`proven`, 24 claims — 12 pass / 12 fail,
+`proven_package: libsql`, `proven_version: 0.1.11`). Raw output (gitignored):
+`.ll/learning-tests/raw/libsql-remote.txt`. Both endpoints behaved the same except
+where noted, so the "Turso Cloud governs" tie-break was never needed.
+
+**Required assertions that passed:** direct remote mode (`connect(url,
+auth_token=…)`; `connect()` is lazy — no network until the first execute); bad or
+missing token fails in <0.35 s; `connect(isolation_level=None)` + explicit
+`BEGIN IMMEDIATE`/`COMMIT` with correct `in_transaction`; rollback after a
+mid-migration failure leaves `meta.schema_version` unchanged; the full `_MIGRATIONS`
+chain (52 migrations / 244 statements incl. FTS5) applies from empty in one
+transaction (sqld 4.7 s, Turso 26.2 s) and repeats as a no-op; `PRAGMA table_info` /
+schema-version reads; `INSERT OR IGNORE`/`executemany`/`lastrowid`/`rowcount`/
+`description`; one connection shared across threads under a lock; ambiguous commit is
+detectable (sqld via a response-dropping proxy: the client raises
+`ValueError: connection closed before message completed` while the commit landed; an
+idempotent marker re-read detects it; the client's `in_transaction` stays stale
+`True`). Latency medians: sqld cold 103 ms / warm 20 ms; Turso cold 339 ms / warm
+79 ms. Each `execute()` is two HTTP round trips (`describe` + `batch`).
+
+**Required assertions that failed (contingency triggers):**
+
+| # | Failure | Source | Design impact |
+|---|---|---|---|
+| F1 | No bounded connect to an unreachable host: `connect(timeout=)` is ignored; a blackholed IP blocks the first execute ~75 s (OS TCP timeout). Refused ports / unknown Turso hosts fail in <0.4 s | driver | §8 telemetry budget unenforceable in-process |
+| F2 | The driver **holds the GIL** for the whole network call — every thread in the process freezes, so no thread-based deadline can bound F1/F5 | driver | §8; also stalls `SQLiteTransport`'s background thread |
+| F3 | `Connection.isolation_level` is read-only after connect (`AttributeError`); only `connect(isolation_level=…)` sets it | driver | `_apply_migrations` cannot be reused unchanged (§4) |
+| F4 | Two concurrent initializers do not serialize: the lock-waiter's interactive transaction is aborted server-side (sqld `TRANSACTION_TIMEOUT` ~5 s; Turso `SQLITE_BUSY` "stream idle" ~10 s) and its `ROLLBACK` then raises "no transaction is active". Final schema is correct; a naive retry livelocked on Turso (>120 s) | server | §9's explicit `ll-session migrate` makes this rarer but two concurrent `migrate` runs remain unsafe |
+| F5 | No statement timeout: a 60–87 s query ran despite `timeout=1.0`; no API exists | driver | §8 |
+| F6 | Idle connections die: sqld expires the stream after ~10 s idle (`STREAM_EXPIRED`, permanent — the connection must be replaced); Turso rolls back an interactive transaction idle ~10 s | server | long-lived connections (`SQLiteTransport`, cached per-process connections) need reconnect-on-expiry |
+| F7 | `executescript` **silently swallows every error** in remote mode, stops at the first failure, and can leave a transaction open | driver | never usable for migrations or batch writes |
+
+Also confirmed: every error is a plain `builtins.ValueError` carrying a
+Hrana-formatted message with the SQLite/Hrana code only in the text (e.g.
+`SQLITE_CONSTRAINT`, `SQLITE_BUSY`, `STREAM_EXPIRED`, `TRANSACTION_TIMEOUT`) — the §3
+error contract stands. **Probes** (non-blocking): FTS5 + `MATCH` + `bm25()` work on
+both; `PRAGMA journal_mode`/`busy_timeout`/`query_only`, `ATTACH`, `VACUUM`, and
+`create_function` are unsupported on both.
+
+**Re-scope options (decision needed — do not switch drivers mid-implementation):**
+
+- **Option A — Stdlib Hrana-over-HTTP client (recommended to evaluate first).** F1, F2, F3,
+   F5, F7 are properties of the `libsql` 0.1.11 binding, not the protocol. A small
+   client on `http.client`/`urllib` speaking `/v3/pipeline` gets real socket
+   timeouts, releases the GIL, returns structured Hrana error codes (making the §3
+   classification reliable instead of message-matching), and adds no dependency.
+   Server-side atomic `batch` requests (with step conditions) could replace the
+   interactive migration transaction, sidestepping F4/F6 for migrations. Cost: we own
+   a protocol client. Needs its own learning test (e.g. `hrana-http`) proving batch
+   atomicity, concurrent `migrate`, and error codes before design changes land.
+- **Option B — Keep `libsql`, contain it out of process.** Run every remote call in a bounded
+   subprocess (or a pre-flight `socket.create_connection(timeout=…)` check) to satisfy
+   §8; reconnect on `STREAM_EXPIRED`; open with `isolation_level=None`; serialize
+   `migrate` with an advisory lock row. Cheapest code change, but a per-hook
+   subprocess adds latency on top of the 339 ms cold connect, and F5 stays open.
+- **Option C — Embedded replicas** (`sync_url`) — local reads/writes against a replica file,
+   syncing to the remote. Avoids per-call network latency but is currently out of
+   scope (§11) and needs a separate learning test of write-forwarding semantics.
+- **Option D — Descope remote support** and close the libSQL half of this issue.
 
 ## Current Behavior
 
@@ -536,6 +599,9 @@ _These additional touchpoints were identified by a second wiring pass and must b
    alternative — implementation **stops** after Step 1: record the result, set this
    issue `blocked`, and re-scope (another driver, Hrana-over-HTTP client, or embedded
    replicas) in a follow-up decision. Do not switch drivers mid-implementation.
+   **Triggered 2026-09-23** — bounded connect (F1/F2), statement timeout (F5), and
+   post-connect isolation control (F3) failed; see
+   [Step 1 Learning Test Result](#step-1-learning-test-result-2026-09-23).
 3. Register `LibsqlBackend` in ENH-3525's lazy registry. Define connection, cursor,
    row, and transaction adaptation from consumer usage: the driver returns plain
    tuples with no row factory, so named-row access is adapted in the backend.
@@ -554,6 +620,9 @@ _These additional touchpoints were identified by a second wiring pass and must b
    for `HistoryUnavailable`. No message-pattern matching; no `except ValueError`
    around whole consumer operations; the driver exception is preserved as
    `__cause__`.
+   The `libsql-remote` learning test (2026-09-23) confirms remote errors are also
+   plain `ValueError`, with the Hrana/SQLite code present only in message text — no
+   reliable type-based classification under the `libsql` driver.
 4. History migration versioning uses `meta.schema_version`, not
    `PRAGMA user_version`. Reuse migration SQL where proven compatible; verify
    `BEGIN IMMEDIATE`/isolation control or an equivalent atomic locking sequence,
@@ -1030,7 +1099,9 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Status
 
-**Open** | Created: 2026-09-22 | Priority: P3
+**Blocked** | Created: 2026-09-22 | Priority: P3 | Blocked 2026-09-23: Step 1
+`libsql-remote` learning test failed required assertions; awaiting re-scope decision
+(see [Step 1 Learning Test Result](#step-1-learning-test-result-2026-09-23)).
 
 ## Confidence Check Notes
 
@@ -1043,7 +1114,8 @@ _Added by `/ll:confidence-check` on 2026-09-23_
 - `blocked_by` still lists ENH-3525/ENH-3526 in frontmatter although both are `done` (`format-check`: `stale_prose_dep`, `soft_dep_hard_edge`) — harmless to the Dependencies gate, but stale; clear them.
 
 ### Gaps to Address
-- `.ll/learning-tests/libsql-remote.md` does not exist (`ll-learning-tests check libsql-remote` → "no record found"), so the Learning Test Hard Override forces STOP regardless of aggregate. Remedy: produce it as Implementation Step 1 against a local `sqld`/`turso dev` server and Turso Cloud, with every required assertion recorded and `proven_package`/`proven_version` set. Auto-provision via `/ll:explore-api` was not run: it needs a real remote endpoint/token and the driver is not installed.
+- **Update 2026-09-23:** `libsql-remote.md` now exists (`proven`, `libsql` 0.1.11) but 7 required assertions failed, triggering the §2 contingency — re-scope decision required before any further confidence check.
+- ~~`.ll/learning-tests/libsql-remote.md` does not exist (`ll-learning-tests check libsql-remote` → "no record found")~~, so the Learning Test Hard Override forces STOP regardless of aggregate. Remedy: produce it as Implementation Step 1 against a local `sqld`/`turso dev` server and Turso Cloud, with every required assertion recorded and `proven_package`/`proven_version` set. Auto-provision via `/ll:explore-api` was not run: it needs a real remote endpoint/token and the driver is not installed.
 - `libsql` is `proven` with 1 failing claim (`libsql.Error` assertion). Accepted driver divergence that drives the §3 error contract — costs Criterion 1 the −5 modifier, not a new gap.
 
 ### Outcome Risk Factors
