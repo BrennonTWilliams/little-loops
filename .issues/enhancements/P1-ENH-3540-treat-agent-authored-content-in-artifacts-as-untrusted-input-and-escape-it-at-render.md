@@ -4,7 +4,7 @@ title: Treat agent-authored content in artifacts as untrusted input and escape i
   at render
 type: ENH
 priority: P1
-status: open
+status: cancelled
 discovered_date: '2026-09-23'
 labels:
 - security
@@ -13,11 +13,12 @@ decision_needed: false
 learning_tests_required:
 - jinja2-byte-exact-round-trip
 confidence_score: 95
-outcome_confidence: 71
-score_complexity: 10
+outcome_confidence: 58
+score_complexity: 5
 score_test_coverage: 25
 score_ambiguity: 18
-score_change_surface: 18
+score_change_surface: 10
+closed_reason: superseded
 ---
 
 # Treat agent-authored content in artifacts as untrusted input and escape it at render
@@ -107,7 +108,7 @@ _Found in a manual review after refine and decide. Each finding changes Scope/AC
 
 _Found in a second manual review. Each finding changes Scope/AC below._
 
-- **The `script_json` escape spec had been corrupted into identity mappings.** Scope § 1 and the Decision Rules mapped each character to itself: the six-character JSON unicode escapes had been decoded back into raw characters, including literal U+2028/U+2029 bytes in the file. No committed revision of this file ever held the escape sequences, so the earlier "repaired" Session Log entry never landed. The rule is now a table of hex digits written in words.
+- **The `script_json` escape spec had been corrupted into identity mappings.** Scope § 1 and the Decision Rules mapped each character to itself: the six-character JSON unicode escapes had been decoded back into raw characters, including literal U+2028/U+2029 bytes in the file. No committed revision of this file ever held the escape sequences, so the earlier "repaired" Session Log entry never landed. The rule is now a table of hex digits written in words. ENH-3555 adds a `format-check` guard for the invisible characters this corruption leaves behind.
 - **The policy builder has client-side DOM-XSS sinks.** Script-context-safe JSON splices only protect the HTML parser. The builder then interpolates model state into `innerHTML`: `policy-router-builder.html.tmpl:832` (`` `<strong>${norm}</strong> <em>(${d.type})</em>` `` — dimension name/type) and `:926`, `:1038` (`` `<strong>${oc.name}</strong>` `` — outcome name). That state arrives from **Open project** (`parseBuilderProject` in `policy_builder_core.mjs`, whose `validateProjectStructure` checks shape only, never names), from localStorage drafts, and from serve-mode revisions. A shared project file with an outcome named `<img src=x onerror=alert(1)>` executes script on open. `normalizeDimName` (`policy_builder_core.mjs:320`) only trims, lowercases, and hyphenates whitespace; it does not sanitize. The skill catalog is safe client-side: it reaches the DOM only via `textContent`/`title` (`:971-978`, `:1085`).
 - **Templatize can lift markup fragments (answered, no longer hypothetical).** Regions are arbitrary byte spans (`start`/`end` from a hand-written `--regions` map or from model discovery; see `apply_regions`, `templatize.py:480-510`). Nothing constrains a region to a text node or attribute value, and templatize records no per-region context in the manifest. Consequences: (a) escaping every string leaf on `refresh` renders real markup inside a markup-spanning region as literal text (safe but visibly broken); (b) a region can sit inside `href`/`src`, `<script>`, an `on*=` handler, or `<style>`, where `html.escape` is the wrong encoding. So the `javascript:` URL case is real for templatized templates, but there is no annotation to key the URL rule on.
 - **The manifest annotation must not reach the host.** `extract_data()` passes `template.data_schema` both into the prompt (`extract.py:154`) and as `json_schema` to `build_blocking_json` (`:162`). Codex materializes that schema (see the comment after `run_blocking_json`), so an unknown keyword risks rejection. Decision: strip the annotation from a copy of the schema before both uses.
@@ -154,7 +155,7 @@ Every `ll-artifact` generator treats agent-influenced strings as untrusted at th
      the allowlist docs and in the `refresh` help text. A template author can
      opt a property into verbatim stamping only through the explicit
      manifest markup annotation.
-   - **Follow-up (separate issue, not yet captured):** templatize records
+   - **Follow-up (ENH-3554):** templatize records
      each region's context (`text`, `attr`, `url`, `script`, `style`,
      `markup`) in the manifest per property, and `escape_data` dispatches on
      it: HTML-escape for `text`/`attr`, the URL scheme rule for `url`,
@@ -229,7 +230,7 @@ Every `ll-artifact` generator treats agent-influenced strings as untrusted at th
 ## Scope Boundaries
 
 - **In scope**: `script_json` helper; `escape_data` ingest escaping plus a path-based markup allowlist and the URL scheme rule for declared URL keys; stripping the annotation from the schema sent to the host; `extract` prompt change; single-pass placeholder substitution in `render_policy_builder_html()`; the three interpolating `innerHTML` sinks in `policy-router-builder.html.tmpl` plus a static no-interpolated-`innerHTML` check; `atomic_write`/`atomic_write_bytes` global mode fix and routing for the artifact output sites listed under Current Behavior; hostile-payload (Python and Node) and symlink tests.
-- **Out of scope**: templatize region-context tagging and context-dispatched escaping (follow-up issue; until then markup-spanning regions render as escaped text and templatized URL regions are uncovered); changing `render_template`/`build_environment()` (`autoescape=False` stays; FEAT-3308 byte-exact round trips); the already-safe dashboard `textContent` rendering and SSE `autoescape=True` env; `policy_revision.py`/`lockfile.py` writes (already symlink-safe); `templatize.py` tmp-dir writes; LLM-written HTML loops (`vega-viz`, `rlhf-svg-generate`, `html-anything`), which sit outside any Python render boundary (note them in the allowlist docs only); hand-written `data.json` given to `ll-artifact render`, documented as trusted input.
+- **Out of scope**: templatize region-context tagging and context-dispatched escaping (ENH-3554; until then markup-spanning regions render as escaped text and templatized URL regions are uncovered); changing `render_template`/`build_environment()` (`autoescape=False` stays; FEAT-3308 byte-exact round trips); the already-safe dashboard `textContent` rendering and SSE `autoescape=True` env; `policy_revision.py`/`lockfile.py` writes (already symlink-safe); `templatize.py` tmp-dir writes; LLM-written HTML loops (`vega-viz`, `rlhf-svg-generate`, `html-anything`), which sit outside any Python render boundary (note them in the allowlist docs only); hand-written `data.json` given to `ll-artifact render`, documented as trusted input.
 
 ## Acceptance Criteria
 
@@ -408,17 +409,20 @@ _Added by `/ll:refine-issue` — 2026-09-24 — based on codebase analysis:_
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-09-24_
+_Added by `/ll:confidence-check` on 2026-09-24 (re-scored after the second review pass)_
 
 **Readiness Score**: 95/100 → PROCEED
-**Outcome Confidence**: 71/100 → MODERATE
+**Outcome Confidence**: 58/100 → LOW
 
-### Gaps to Address
-- _(Resolved 2026-09-24)_ The applied-decision flag on `render_template`/refresh cleared after the Implementation Steps and Call Path text was reworded (identifiers unbackticked, marked unchanged/not-Option-B); `unapplied_decision` is now empty.
+### Concerns
+- Learning test `jinja2-byte-exact-round-trip` is `stale` (2026-08-24, 15/0/0): −5 on Criterion 1. Re-run `/ll:explore-api jinja2-byte-exact-round-trip` if `render_template` is touched.
 
 ### Outcome Risk Factors
-- broad enumeration across ~15 sites (6 artifact modules, `file_utils.py`, 6 test files) with moderate per-site depth: escape semantics span `artifact_templates`, `dashboard`, `extract`, and manifest schema
-- 4 direct `render_template` callers plus the serve layer; `templatize.py:554` must stay byte-identical, so a wrong escape boundary fails the FEAT-3308 round trips
+- Scope roughly doubled in the second review pass: about 18 change sites (6 artifact modules, `file_utils.py`, the builder template's client JS, 7+ test files, a new Node test) with moderate per-site depth (path-based allowlist, URL scheme rule, schema-annotation stripping, single-pass substitution)
+- The global `atomic_write`/`atomic_write_bytes` mode change touches 40+ existing callers, so the blast radius reaches well past `cli/artifact/`; the full suite is the only guard
+- `templatize.py:554` must stay byte-identical. A wrong escape boundary fails the FEAT-3308 round trips
+- The manifest annotation's key name and path syntax are still unspecified (minor ambiguity). This work needs a decision before coding
+- Consider splitting into sub-issues (script-context JSON + single-pass substitution; `escape_data` + extract; `atomic_write` mode fix; client-side DOM sinks) to lower per-issue risk
 
 ## Verification Notes
 
@@ -431,6 +435,7 @@ Verdict at time of check: **NEEDS_UPDATE** (correction below applied in the same
 - Decisions log check: no conflicting required rules found. Graph: provider=`codegraph` freshness=`fresh` (not needed for any verdict).
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-24T18:27:35 - `3f3defe9-b6c6-432f-af65-d7ce83807520.jsonl`
 - Manual review (second pass) - 2026-09-24 - rewrote the `script_json` escape table in words (it had been decoded into identity mappings); added the builder's client-side `innerHTML` sinks (Scope § 6); resolved templatize fragment lifting (escape-as-text default, region-context tagging deferred to a follow-up); decided annotation stripping, a path-based allowlist, and a global `atomic_write` mode fix
 - `/ll:format-issue` - 2026-09-24T18:15:48 - `b1a4f1ac-1b29-4ce0-8044-3ed15a90327a.jsonl`
 - `/ll:confidence-check` - 2026-09-24T17:39:32 - `be572ee7-4bdf-4b90-b8fb-64aeafff2750.jsonl`
