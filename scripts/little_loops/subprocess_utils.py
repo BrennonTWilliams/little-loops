@@ -6,6 +6,7 @@ real-time output streaming, timeout handling, and context handoff detection.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import logging
 import os
@@ -17,8 +18,9 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from little_loops.context_window import context_window_for
 from little_loops.host_runner import (
@@ -59,23 +61,79 @@ ResultSeenCallback = Callable[[bool], None]
 SessionIdCallback = Callable[[str], None]
 
 
+TokenProvenance = Literal["measured", "estimated", "unknown"]
+TokenScopeKind = Literal["request", "invocation", "session", "context", "unknown"]
+ObservedAtBasis = Literal["event", "received"]
+
+
 @dataclass
 class TokenUsage:
-    """Token usage from a single host-CLI invocation."""
+    """Token usage from a single host-CLI invocation (ENH-3538).
 
-    input_tokens: int
-    output_tokens: int
-    cache_read_tokens: int
-    cache_creation_tokens: int
+    Components are ``None`` when the host did not report them; ``None`` is
+    *unknown*, never an implicit zero.
+    """
+
+    input_tokens: int | None
+    output_tokens: int | None
+    cache_read_tokens: int | None
+    cache_creation_tokens: int | None
     model: str
     is_batch: bool = False
     """True when this usage came from the Message Batches API (FEAT-2716),
     eligible for the flat 50% batch discount in :func:`~little_loops.pricing.estimate_cost_usd`.
     Defaults to False so every existing construction site is unaffected."""
+    provenance: TokenProvenance = "unknown"
+    """Trust classification of the observation. No acquisition path is ``measured`` yet."""
+    host: str | None = None
+    """Runtime host that produced the observation (``claude-code``, ``codex``, ...)."""
+    scope_kind: TokenScopeKind = "unknown"
+    observed_at: str | None = None
+    observed_at_basis: ObservedAtBasis | None = None
 
 
 # Detailed usage callback — receives all four token fields plus model ID.
 DetailedUsageCallback = Callable[[TokenUsage], None]
+
+
+def _stamp_usage(usage: TokenUsage, host: str) -> TokenUsage:
+    """Attach the invoking host, invocation scope and receipt time (ENH-3538).
+
+    Stamped in :func:`run_claude_command` where the ``HostRunner`` is resolved,
+    before any usage callback fires. Terminal events carry no timestamp, so the
+    observation time is the receipt time (``observed_at_basis='received'``).
+    """
+    if usage.host is not None and usage.host != host:
+        logger.warning(
+            "usage host %r disagrees with runner host %r; keeping runner", usage.host, host
+        )
+    return dataclasses.replace(
+        usage,
+        host=host,
+        scope_kind="invocation",
+        observed_at=datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
+        observed_at_basis="received",
+    )
+
+
+def known_input_lower_bound(usage: TokenUsage) -> tuple[int, int]:
+    """Return ``(input + cache_read, output)`` summing only the known components.
+
+    A lower bound for budget guards that must not go silent when a component is
+    missing (ENH-3538).
+    """
+    return (
+        (usage.input_tokens or 0) + (usage.cache_read_tokens or 0),
+        usage.output_tokens or 0,
+    )
+
+
+def _fire_legacy_usage(on_usage: UsageCallback, usage: TokenUsage) -> None:
+    """Invoke the legacy two-int callback only when input/output/cache_read are all known."""
+    if usage.input_tokens is None or usage.output_tokens is None or usage.cache_read_tokens is None:
+        logger.debug("legacy UsageCallback suppressed: incomplete usage observation")
+        return
+    on_usage(usage.input_tokens + usage.cache_read_tokens, usage.output_tokens)
 
 
 def usage_from_event(event: dict[str, Any], *, default_model: str) -> TokenUsage | None:
@@ -86,9 +144,10 @@ def usage_from_event(event: dict[str, Any], *, default_model: str) -> TokenUsage
     ``turn.completed`` event's key names (``cached_input_tokens``/
     ``cache_write_input_tokens``, no ``model`` field) (ENH-3464 Decision 8a).
     Returns ``None`` when *event* isn't a recognized terminal event type or
-    carries no ``usage`` block. Codex reports no ``cache_write_input_tokens``
-    key when it bills no cache writes — that yields ``cache_creation_tokens
-    == 0`` (a real zero), not ``None`` (ENH-3464 Decision 3).
+    carries no ``usage`` block. A missing or explicit-``null`` component stays
+    ``None`` (unknown); only a reported ``0`` is zero. This supersedes ENH-3464
+    Decision 3: an omitted Codex ``cache_write_input_tokens`` is unknown until
+    BUG-3531 Decision 6 establishes otherwise (ENH-3538).
     """
     etype = event.get("type")
     usage = event.get("usage")
@@ -96,18 +155,18 @@ def usage_from_event(event: dict[str, Any], *, default_model: str) -> TokenUsage
         return None
     if etype == "result":
         return TokenUsage(
-            input_tokens=usage.get("input_tokens", 0),
-            output_tokens=usage.get("output_tokens", 0),
-            cache_read_tokens=usage.get("cache_read_input_tokens", 0),
-            cache_creation_tokens=usage.get("cache_creation_input_tokens", 0),
+            input_tokens=usage.get("input_tokens"),
+            output_tokens=usage.get("output_tokens"),
+            cache_read_tokens=usage.get("cache_read_input_tokens"),
+            cache_creation_tokens=usage.get("cache_creation_input_tokens"),
             model=event.get("model", default_model),
         )
     if etype == "turn.completed":
         return TokenUsage(
-            input_tokens=usage.get("input_tokens", 0),
-            output_tokens=usage.get("output_tokens", 0),
-            cache_read_tokens=usage.get("cached_input_tokens", 0),
-            cache_creation_tokens=usage.get("cache_write_input_tokens", 0),
+            input_tokens=usage.get("input_tokens"),
+            output_tokens=usage.get("output_tokens"),
+            cache_read_tokens=usage.get("cached_input_tokens"),
+            cache_creation_tokens=usage.get("cache_write_input_tokens"),
             model=default_model,
         )
     return None
@@ -705,11 +764,9 @@ def run_claude_command(
                 elif etype == "result":
                     parsed_usage = usage_from_event(event, default_model=detected_model)
                     if parsed_usage is not None:
+                        parsed_usage = _stamp_usage(parsed_usage, runner.name)
                         if on_usage:
-                            on_usage(
-                                parsed_usage.input_tokens + parsed_usage.cache_read_tokens,
-                                parsed_usage.output_tokens,
-                            )
+                            _fire_legacy_usage(on_usage, parsed_usage)
                         if on_usage_detailed:
                             on_usage_detailed(parsed_usage)
                     if event.get("is_error"):
@@ -729,7 +786,7 @@ def run_claude_command(
                     # cached_input_tokens count and never echoes the model).
                     parsed_usage = usage_from_event(event, default_model=detected_model)
                     if parsed_usage is not None and on_usage_detailed:
-                        on_usage_detailed(parsed_usage)
+                        on_usage_detailed(_stamp_usage(parsed_usage, runner.name))
                     return  # skip other event types (item.*, etc.)
                 else:
                     return  # skip other event types (tool_use, etc.)

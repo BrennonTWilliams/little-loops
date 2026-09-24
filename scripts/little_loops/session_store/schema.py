@@ -22,7 +22,7 @@ from little_loops.session_store.db import DEFAULT_DB_PATH, _resolve_db_path
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 53
+SCHEMA_VERSION = 54
 
 VALID_KINDS: tuple[str, ...] = (
     "tool",
@@ -1445,6 +1445,16 @@ _MIGRATIONS: list[str] = [
     """
     ALTER TABLE usage_events ADD COLUMN channel TEXT;
     UPDATE usage_events SET channel = CASE WHEN session_id IS NOT NULL THEN 'transcript' ELSE 'live' END;
+    """,
+    # v54 (ENH-3538): per-observation provenance/host/scope/observation-time on
+    # usage_events. All nullable, no backfill: legacy rows read as
+    # provenance='unknown' (NULL) with no host/scope/observation time.
+    """
+    ALTER TABLE usage_events ADD COLUMN provenance TEXT;
+    ALTER TABLE usage_events ADD COLUMN host TEXT;
+    ALTER TABLE usage_events ADD COLUMN scope_kind TEXT;
+    ALTER TABLE usage_events ADD COLUMN observed_at TEXT;
+    ALTER TABLE usage_events ADD COLUMN observed_at_basis TEXT;
     """,
 ]
 

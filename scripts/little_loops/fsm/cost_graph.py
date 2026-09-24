@@ -38,6 +38,28 @@ _STATE_KEYS = (
 )
 
 
+# ENH-3538: token components tracked for completeness. A ``None`` component is
+# unknown (no contributor reported it); ``<component>_missing > 0`` marks a
+# numeric value as a partial subtotal.
+_TOKEN_COMPONENTS = (
+    "input_tokens",
+    "output_tokens",
+    "cache_read_tokens",
+    "cache_creation_tokens",
+)
+
+
+def _missing_key(component: str) -> str:
+    return f"{component}_missing"
+
+
+def _fmt_tokens(value: int | None, missing: int) -> str:
+    """Render a token figure: ``n/a`` when unknown, ``N+`` for a partial subtotal."""
+    if value is None:
+        return "n/a"
+    return f"{value}+" if missing else str(value)
+
+
 @dataclass
 class PerStateCost:
     """Aggregated cost / usage for a single FSM state.
@@ -49,38 +71,59 @@ class PerStateCost:
         output_tokens: Sum of output tokens across invocations.
         cache_read_tokens: Sum of cache-read tokens.
         cache_creation_tokens: Sum of cache-creation tokens.
-        cost_usd: Sum of ``estimate_cost_usd`` across invocations;
-            falls back to ``0.0`` if any row used an unknown model
-            (see ``has_unknown_model``).
+        cost_usd: Sum of ``estimate_cost_usd`` across invocations, or
+            ``None`` when any contribution was unpriced (unknown model or
+            an incomplete token observation) — a known-cost subtotal is
+            never exposed as the total (ENH-3538).
         wallclock_ms: Sum of wallclock_ms across invocations.
-        has_unknown_model: True if any contributing row had a model
-            that ``estimate_cost_usd`` could not price — in that case
-            ``cost_usd`` is left at 0 and the table renderer prints
-            ``"n/a"`` for the row.
+        has_unknown_model: True if any contributing row could not be
+            priced (unknown model, a ``None`` token component, or a
+            partial-subtotal row). ``cost_usd`` is then ``None`` and the
+            table renderer prints ``"n/a"`` for the row. Serialized as
+            ``cost_usd: null``.
+        input_tokens_missing / output_tokens_missing /
+        cache_read_tokens_missing / cache_creation_tokens_missing: number of
+            contributing observations that lacked that component. Token
+            fields are ``None`` when no contributor reported the component
+            and a partial subtotal when the matching count is non-zero.
     """
 
     state: str
     iterations: int = 0
-    input_tokens: int = 0
-    output_tokens: int = 0
-    cache_read_tokens: int = 0
-    cache_creation_tokens: int = 0
-    cost_usd: float = 0.0
+    input_tokens: int | None = 0
+    output_tokens: int | None = 0
+    cache_read_tokens: int | None = 0
+    cache_creation_tokens: int | None = 0
+    cost_usd: float | None = 0.0
     wallclock_ms: int = 0
     has_unknown_model: bool = False
+    input_tokens_missing: int = 0
+    output_tokens_missing: int = 0
+    cache_read_tokens_missing: int = 0
+    cache_creation_tokens_missing: int = 0
 
     def to_dict(self) -> dict[str, Any]:
-        """Return the locked stable-JSON shape for this state."""
-        return {
+        """Return the locked stable-JSON shape for this state.
+
+        ``cost_usd`` is ``None`` for an unpriced state. ``<component>_missing``
+        keys are emitted only when non-zero, so complete-data output is
+        byte-identical to the pre-ENH-3538 shape.
+        """
+        data: dict[str, Any] = {
             "state": self.state,
             "iterations": self.iterations,
             "input_tokens": self.input_tokens,
             "output_tokens": self.output_tokens,
             "cache_read_tokens": self.cache_read_tokens,
             "cache_creation_tokens": self.cache_creation_tokens,
-            "cost_usd": self.cost_usd,
+            "cost_usd": None if self.has_unknown_model else self.cost_usd,
             "wallclock_ms": self.wallclock_ms,
         }
+        for component in _TOKEN_COMPONENTS:
+            missing = getattr(self, _missing_key(component))
+            if missing:
+                data[_missing_key(component)] = missing
+        return data
 
     def table_row(self) -> str:
         """Render one row in the existing CLI table column layout.
@@ -94,12 +137,26 @@ class PerStateCost:
         output (8w right), cache (8w right = cache_read + cache_creation),
         est_cost (10w right = ``$X.XXXX`` or ``n/a``).
         """
-        cache = self.cache_read_tokens + self.cache_creation_tokens
-        cost_str = f"${self.cost_usd:.4f}" if not self.has_unknown_model else "n/a"
+        if self.cache_read_tokens is None and self.cache_creation_tokens is None:
+            cache_str = "n/a"
+        else:
+            cache = (self.cache_read_tokens or 0) + (self.cache_creation_tokens or 0)
+            partial = (
+                self.cache_read_tokens is None
+                or self.cache_creation_tokens is None
+                or self.cache_read_tokens_missing
+                or self.cache_creation_tokens_missing
+            )
+            cache_str = f"{cache}+" if partial else str(cache)
+        input_str = _fmt_tokens(self.input_tokens, self.input_tokens_missing)
+        output_str = _fmt_tokens(self.output_tokens, self.output_tokens_missing)
+        cost_str = (
+            "n/a" if self.has_unknown_model or self.cost_usd is None else f"${self.cost_usd:.4f}"
+        )
         return (
             f"{self.state:<24} {self.iterations:>5} "
-            f"{self.input_tokens:>8} {self.output_tokens:>8} "
-            f"{cache:>8} {cost_str:>10}"
+            f"{input_str:>8} {output_str:>8} "
+            f"{cache_str:>8} {cost_str:>10}"
         )
 
 
@@ -160,16 +217,26 @@ class CostReport:
             return None
         states: list[PerStateCost] = []
         for entry in data.get("states") or []:
+            # ENH-3538: an explicit null token/cost is unknown, not zero. A
+            # missing key (legacy report) keeps the historical 0 default; the
+            # uncertainty of a legacy numeric zero was never stored.
+            tokens: dict[str, Any] = {
+                c: (None if entry.get(c, 0) is None else int(entry.get(c, 0) or 0))
+                for c in _TOKEN_COMPONENTS
+            }
+            missing: dict[str, Any] = {
+                _missing_key(c): int(entry.get(_missing_key(c), 0) or 0) for c in _TOKEN_COMPONENTS
+            }
+            cost_raw = entry.get("cost_usd", 0.0)
             states.append(
                 PerStateCost(
                     state=str(entry.get("state", "unknown")),
                     iterations=int(entry.get("iterations", 0) or 0),
-                    input_tokens=int(entry.get("input_tokens", 0) or 0),
-                    output_tokens=int(entry.get("output_tokens", 0) or 0),
-                    cache_read_tokens=int(entry.get("cache_read_tokens", 0) or 0),
-                    cache_creation_tokens=int(entry.get("cache_creation_tokens", 0) or 0),
-                    cost_usd=float(entry.get("cost_usd", 0.0) or 0.0),
+                    cost_usd=None if cost_raw is None else float(cost_raw or 0.0),
                     wallclock_ms=int(entry.get("wallclock_ms", 0) or 0),
+                    has_unknown_model=cost_raw is None,
+                    **tokens,
+                    **missing,
                 )
             )
         totals = data.get("totals") or {}
@@ -208,6 +275,10 @@ class CostReport:
                 "cost_usd": 0.0,
                 "wallclock_ms": 0,
                 "has_unknown_model": False,
+                # ENH-3538: contributors that reported each component, and
+                # how many observations lacked it.
+                **{f"{c}_known": 0 for c in _TOKEN_COMPONENTS},
+                **{_missing_key(c): 0 for c in _TOKEN_COMPONENTS},
             }
         )
         for raw in text.splitlines():
@@ -219,20 +290,43 @@ class CostReport:
                 continue
             state = str(row.get("state", "unknown"))
             model = str(row.get("model", "unknown"))
-            inp = int(row.get("input_tokens", 0) or 0)
-            out = int(row.get("output_tokens", 0) or 0)
-            cr = int(row.get("cache_read_tokens", 0) or 0)
-            cc = int(row.get("cache_creation_tokens", 0) or 0)
             wallclock = int(row.get("wallclock_ms", 0) or 0)
             is_batch = bool(row.get("is_batch", False))
             bucket = buckets[state]
             bucket["iterations"] += 1
-            bucket["input_tokens"] += inp
-            bucket["output_tokens"] += out
-            bucket["cache_read_tokens"] += cr
-            bucket["cache_creation_tokens"] += cc
             bucket["wallclock_ms"] += wallclock
-            cost = estimate_cost_usd(model, inp, out, cr, cc, is_batch=is_batch)
+            # ENH-3538: an explicit null component is unknown; an absent key is a
+            # legacy row and keeps the historical 0. `<component>_missing > 0`
+            # on the row marks its value a partial subtotal.
+            values: dict[str, int | None] = {}
+            row_incomplete = False
+            for component in _TOKEN_COMPONENTS:
+                raw_value = row.get(component, 0)
+                row_missing = int(row.get(_missing_key(component), 0) or 0)
+                if raw_value is None:
+                    values[component] = None
+                    bucket[_missing_key(component)] += max(row_missing, 1)
+                    row_incomplete = True
+                    continue
+                value = int(raw_value or 0)
+                values[component] = value
+                bucket[component] += value
+                bucket[f"{component}_known"] += 1
+                if row_missing:
+                    bucket[_missing_key(component)] += row_missing
+                    row_incomplete = True
+            cost = (
+                None
+                if row_incomplete
+                else estimate_cost_usd(
+                    model,
+                    values["input_tokens"],
+                    values["output_tokens"],
+                    values["cache_read_tokens"],
+                    values["cache_creation_tokens"],
+                    is_batch=is_batch,
+                )
+            )
             if cost is None:
                 bucket["has_unknown_model"] = True
             else:
@@ -242,13 +336,19 @@ class CostReport:
             PerStateCost(
                 state=state_name,
                 iterations=b["iterations"],
-                input_tokens=b["input_tokens"],
-                output_tokens=b["output_tokens"],
-                cache_read_tokens=b["cache_read_tokens"],
-                cache_creation_tokens=b["cache_creation_tokens"],
-                cost_usd=b["cost_usd"],
+                cost_usd=None if b["has_unknown_model"] else b["cost_usd"],
                 wallclock_ms=b["wallclock_ms"],
                 has_unknown_model=b["has_unknown_model"],
+                input_tokens=b["input_tokens"] if b["input_tokens_known"] else None,
+                output_tokens=b["output_tokens"] if b["output_tokens_known"] else None,
+                cache_read_tokens=b["cache_read_tokens"] if b["cache_read_tokens_known"] else None,
+                cache_creation_tokens=(
+                    b["cache_creation_tokens"] if b["cache_creation_tokens_known"] else None
+                ),
+                input_tokens_missing=b["input_tokens_missing"],
+                output_tokens_missing=b["output_tokens_missing"],
+                cache_read_tokens_missing=b["cache_read_tokens_missing"],
+                cache_creation_tokens_missing=b["cache_creation_tokens_missing"],
             )
             for state_name, b in buckets.items()
         ]
@@ -257,17 +357,27 @@ class CostReport:
 
 
 def _compute_totals(states: list[PerStateCost]) -> dict[str, Any]:
-    """Aggregate per-state metrics into run-wide totals."""
-    totals: dict[str, Any] = {
-        "iterations": sum(s.iterations for s in states),
-        "input_tokens": sum(s.input_tokens for s in states),
-        "output_tokens": sum(s.output_tokens for s in states),
-        "cache_read_tokens": sum(s.cache_read_tokens for s in states),
-        "cache_creation_tokens": sum(s.cache_creation_tokens for s in states),
-        "wallclock_ms": sum(s.wallclock_ms for s in states),
-        "cost_usd": 0.0,
-        "has_unknown_model": any(s.has_unknown_model for s in states),
-    }
-    if not totals["has_unknown_model"]:
-        totals["cost_usd"] = sum(s.cost_usd for s in states)
+    """Aggregate per-state metrics into run-wide totals.
+
+    Token components sum the known per-state values (``None`` when no state
+    knows the component); ``<component>_missing`` keys are added only when
+    non-zero, and a state that is itself ``None`` or partial counts as missing.
+    ``cost_usd`` is ``None`` whenever any state is unpriced (ENH-3538).
+    """
+    totals: dict[str, Any] = {"iterations": sum(s.iterations for s in states)}
+    for component in _TOKEN_COMPONENTS:
+        known = [v for s in states if (v := getattr(s, component)) is not None]
+        totals[component] = sum(known) if known else None
+    totals["wallclock_ms"] = sum(s.wallclock_ms for s in states)
+    totals["has_unknown_model"] = any(s.has_unknown_model for s in states)
+    totals["cost_usd"] = (
+        None if totals["has_unknown_model"] else sum(s.cost_usd or 0.0 for s in states)
+    )
+    for component in _TOKEN_COMPONENTS:
+        missing = sum(
+            getattr(s, _missing_key(component)) + (1 if getattr(s, component) is None else 0)
+            for s in states
+        )
+        if missing:
+            totals[_missing_key(component)] = missing
     return totals

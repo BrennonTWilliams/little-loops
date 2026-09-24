@@ -63,6 +63,7 @@ from little_loops.subprocess_utils import (
     clear_shutdown,
     detect_context_handoff,
     is_shutdown_requested,
+    known_input_lower_bound,
     read_continuation_prompt,
     read_sentinel,
     request_shutdown,
@@ -346,6 +347,20 @@ def run_with_continuation(
         if _external_on_usage is not None:
             _external_on_usage(input_tokens, output_tokens)
 
+    def _tracking_usage_detailed(usage: TokenUsage) -> None:
+        # ENH-3538: the legacy two-int callback is suppressed for incomplete
+        # observations, which would leave _last_input at 0 and blind the
+        # context-limit guard. Feed it a known-component lower bound instead.
+        if (
+            usage.input_tokens is not None
+            and usage.output_tokens is not None
+            and usage.cache_read_tokens is not None
+        ):
+            return  # complete: _tracking_usage already handled it
+        lower_input, lower_output = known_input_lower_bound(usage)
+        logger.debug("token usage incomplete; using known-component lower bound")
+        _tracking_usage(lower_input, lower_output)
+
     def _tracking_result_seen(result_seen: bool) -> None:
         _last_result_seen[0] = result_seen
 
@@ -365,6 +380,7 @@ def run_with_continuation(
             timeout=timeout,
             stream_output=stream_output,
             on_usage=_tracking_usage,
+            on_usage_detailed=_tracking_usage_detailed,
             preview_full=preview_full,
             on_result_seen=_tracking_result_seen,
             automation=automation,
@@ -546,6 +562,7 @@ def run_with_continuation(
                 timeout=timeout,
                 stream_output=stream_output,
                 on_usage=_tracking_usage,
+                on_usage_detailed=_tracking_usage_detailed,
                 preview_full=preview_full,
                 resume_session=True,
                 on_result_seen=_tracking_result_seen,

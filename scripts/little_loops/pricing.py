@@ -112,15 +112,17 @@ rates included."""
 
 def estimate_cost_usd(
     model: str,
-    input_tokens: int,
-    output_tokens: int,
-    cache_read_tokens: int = 0,
-    cache_creation_tokens: int = 0,
+    input_tokens: int | None,
+    output_tokens: int | None,
+    cache_read_tokens: int | None = 0,
+    cache_creation_tokens: int | None = 0,
     is_batch: bool = False,
 ) -> float | None:
     """Estimate cost in USD for a token usage event.
 
-    Returns None if the model is not in MODEL_PRICING.
+    Returns None if the model is not in MODEL_PRICING, or if any token
+    component is None (unknown): an incomplete observation is never priced
+    (ENH-3538).
 
     ``is_batch`` applies the flat 50% Message Batches API discount
     (:data:`BATCH_DISCOUNT`) to the computed total. Appended at the end of
@@ -129,6 +131,13 @@ def estimate_cost_usd(
     """
     pricing = MODEL_PRICING.get(model)
     if pricing is None:
+        return None
+    if (
+        input_tokens is None
+        or output_tokens is None
+        or cache_read_tokens is None
+        or cache_creation_tokens is None
+    ):
         return None
     intro = INTRO_PRICING.get(model)
     if intro is not None and date.today() <= date.fromisoformat(str(intro["expires"])):

@@ -870,6 +870,9 @@ class StateFeedRenderer:
                 b_ms = event.get("baseline_duration_ms", 0)
                 h_tok = event.get("harness_tokens", 0)
                 b_tok = event.get("baseline_tokens", 0)
+                # ENH-3538: null = an arm's usage observation was incomplete.
+                h_tok = "n/a" if h_tok is None else h_tok
+                b_tok = "n/a" if b_tok is None else b_tok
                 print(
                     f"{indent}       baseline: {colorize(f'{b_ms / 1000:.1f}s', '2')}, "
                     f"{colorize(str(b_tok), '2')} tokens  |  "

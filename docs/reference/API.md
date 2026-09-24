@@ -13289,13 +13289,20 @@ Token usage from a single host-CLI invocation. Passed to `DetailedUsageCallback`
 ```python
 @dataclass
 class TokenUsage:
-    input_tokens: int
-    output_tokens: int
-    cache_read_tokens: int
-    cache_creation_tokens: int
+    input_tokens: int | None
+    output_tokens: int | None
+    cache_read_tokens: int | None
+    cache_creation_tokens: int | None
     model: str
     is_batch: bool = False
+    provenance: TokenProvenance = "unknown"
+    host: str | None = None
+    scope_kind: TokenScopeKind = "unknown"
+    observed_at: str | None = None
+    observed_at_basis: ObservedAtBasis | None = None
 ```
+
+A token component is `None` when the host did not report it (missing key or explicit `null`); `None` means *unknown*, never zero, and a reported `0` stays `0`. `estimate_cost_usd` returns `None` for an observation with any `None` component. The legacy two-int `UsageCallback` fires only when input, output and cache-read are all known; `on_usage_detailed` always receives the observation.
 
 **Fields:**
 
@@ -13307,6 +13314,12 @@ class TokenUsage:
 | `cache_creation_tokens` | `int` | *(required)* | `cache_creation_input_tokens` from `usage`. |
 | `model` | `str` | *(required)* | Model ID reported by the `result` event, falling back to the model detected from the earlier `system`/`init` event. |
 | `is_batch` | `bool` | `False` | True when this usage came from the Message Batches API (FEAT-2716), eligible for the flat 50% batch discount in `little_loops.pricing.estimate_cost_usd`. Defaults to `False` so every existing construction site is unaffected. |
+| `provenance` | `"measured" \| "estimated" \| "unknown"` | `"unknown"` | Trust classification of the observation. No acquisition path is `measured` yet. |
+| `host` | `str \| None` | `None` | Runtime host that produced the observation (`claude-code`, `codex`, ...), stamped by `run_claude_command` from the invocation's `HostRunner`. |
+| `scope_kind` | `"request" \| "invocation" \| "session" \| "context" \| "unknown"` | `"unknown"` | Live host-CLI terminal events are `invocation`; transcript records and SDK requests are `request`. |
+| `observed_at` / `observed_at_basis` | `str \| None` / `"event" \| "received" \| None` | `None` | Observation time and its basis: `received` for live rows (terminal events carry no timestamp), `event` for transcript replay. |
+
+`record_usage_event(...)` accepts `int | None` token components plus the keyword-only metadata `provenance` (default `"unknown"`), `host`, `provider_vendor`, `scope_kind`, `observed_at`, `observed_at_basis` and `invocation_id`.
 
 ### ToolCall
 

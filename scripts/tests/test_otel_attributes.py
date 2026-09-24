@@ -106,10 +106,27 @@ class TestOTelAttributeNames:
         assert attrs[GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS] == 3
         assert attrs[GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS] == 4
 
-    def test_missing_fields_default_to_zero(self) -> None:
+    def test_missing_fields_are_omitted_not_zero(self) -> None:
+        """ENH-3538: an unknown component is omitted; complete siblings stay."""
         attrs = OTelAttributes.from_usage({"input_tokens": 5})
+        assert attrs[GEN_AI_USAGE_INPUT_TOKENS] == 5
+        assert GEN_AI_USAGE_OUTPUT_TOKENS not in attrs
+        assert GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS not in attrs
+
+    def test_partial_subtotal_is_omitted_and_zero_is_kept(self) -> None:
+        attrs = OTelAttributes.from_usage(
+            {
+                "input_tokens": 100,
+                "input_tokens_missing": 1,
+                "output_tokens": 0,
+                "cache_read_tokens": None,
+                "cache_creation_tokens": 4,
+            }
+        )
+        assert GEN_AI_USAGE_INPUT_TOKENS not in attrs
         assert attrs[GEN_AI_USAGE_OUTPUT_TOKENS] == 0
-        assert attrs[GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS] == 0
+        assert GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS not in attrs
+        assert attrs[GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS] == 4
 
     def test_invocation_id_and_vendor_omitted_when_none(self) -> None:
         attrs = OTelAttributes.from_usage(TokenUsage(1, 1, 0, 0, "m"))

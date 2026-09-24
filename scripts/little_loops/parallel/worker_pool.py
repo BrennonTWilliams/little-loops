@@ -30,8 +30,10 @@ from little_loops.session_store import (
     resolve_history_db,
 )
 from little_loops.subprocess_utils import (
+    TokenUsage,
     assemble_guillotine_prompt,
     detect_context_handoff,
+    known_input_lower_bound,
     read_continuation_prompt,
     read_sentinel,
 )
@@ -937,6 +939,7 @@ class WorkerPool:
         issue_id: str | None = None,
         on_usage: Callable[[int, int], None] | None = None,
         resume_session: bool = False,
+        on_usage_detailed: Callable[[TokenUsage], None] | None = None,
         disable_background_tasks: bool = False,
     ) -> subprocess.CompletedProcess[str]:
         """Run a Claude CLI command with real-time output streaming.
@@ -996,6 +999,7 @@ class WorkerPool:
             on_process_end=on_end if issue_id else None,
             automation=automation,
             on_usage=on_usage,
+            on_usage_detailed=on_usage_detailed,
             resume_session=resume_session,
             timeout_kill_grace_seconds=self.parallel_config.timeout_kill_grace_seconds,
             extra_env={"LL_ISSUE_ID": issue_id} if issue_id else None,
@@ -1080,12 +1084,25 @@ class WorkerPool:
             _last_input[0] = input_tokens
             _last_output[0] = output_tokens
 
+        def _usage_tracker_detailed(usage: TokenUsage) -> None:
+            # ENH-3538: legacy callback is suppressed for incomplete observations;
+            # keep the context guard fed with a known-component lower bound.
+            if (
+                usage.input_tokens is not None
+                and usage.output_tokens is not None
+                and usage.cache_read_tokens is not None
+            ):
+                return
+            lower_input, lower_output = known_input_lower_bound(usage)
+            _usage_tracker(lower_input, lower_output)
+
         while continuation_count <= max_continuations:
             result = self._run_claude_command(
                 current_command,
                 working_dir,
                 issue_id=issue_id,
                 on_usage=_usage_tracker,
+                on_usage_detailed=_usage_tracker_detailed,
             )
 
             all_stdout.append(result.stdout)
@@ -1236,6 +1253,7 @@ class WorkerPool:
                     working_dir,
                     issue_id=issue_id,
                     on_usage=_usage_tracker,
+                    on_usage_detailed=_usage_tracker_detailed,
                     resume_session=True,
                 )
                 all_stdout.append(result.stdout)

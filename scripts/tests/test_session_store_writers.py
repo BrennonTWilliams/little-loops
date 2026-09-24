@@ -518,8 +518,8 @@ class TestCliEventContext:
         finally:
             conn.close()
         assert "cli_events" in names
-        assert SCHEMA_VERSION == 53
-        assert int(row[0]) == 53
+        assert SCHEMA_VERSION == 54
+        assert int(row[0]) == 54
 
     def test_cli_event_context_respects_LL_HISTORY_DB(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -1383,7 +1383,7 @@ class TestOrchestrationRuns:
         return recorder
 
     def test_v21_db_upgrades_gains_orchestration_runs(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 53
+        assert SCHEMA_VERSION == 54
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 21)
         ensure_db(db)
@@ -1513,7 +1513,7 @@ class TestPrepatchEvidence:
     """ENH-2997: prepatch_evidence table, writer, and reader round trip."""
 
     def test_v39_db_upgrades_gains_prepatch_evidence(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 53
+        assert SCHEMA_VERSION == 54
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 39)
         ensure_db(db)
@@ -1852,7 +1852,7 @@ class TestLoopRuns:
         return updater
 
     def test_v22_db_upgrades_gains_loop_runs(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 53
+        assert SCHEMA_VERSION == 54
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 22)
         ensure_db(db)
@@ -2094,7 +2094,7 @@ class TestRecordLearningTestEvent:
         assert recent(db, kind="learning_test") == []
 
     def test_v25_db_upgrades_gains_learning_test_events(self, tmp_path: Path) -> None:
-        assert SCHEMA_VERSION == 53
+        assert SCHEMA_VERSION == 54
         db = tmp_path / "history.db"
         _bootstrap_schema_at(db, 25)
         ensure_db(db)

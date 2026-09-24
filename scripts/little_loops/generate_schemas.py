@@ -76,6 +76,10 @@ def _nullable_str(description: str) -> dict[str, Any]:
     return {"type": ["string", "null"], "description": description}
 
 
+def _nullable_int(description: str) -> dict[str, Any]:
+    return {"type": ["integer", "null"], "description": description}
+
+
 def _nullable_bool(description: str) -> dict[str, Any]:
     return {"type": ["boolean", "null"], "description": description}
 
@@ -171,11 +175,37 @@ SCHEMA_DEFINITIONS: dict[str, dict[str, Any]] = {
             "session_jsonl": _nullable_str(
                 "Path to Claude session JSONL file (prompt-only, null for shell commands)"
             ),
-            "input_tokens": _int("Input tokens consumed (prompt/slash_command only)"),
-            "output_tokens": _int("Output tokens generated (prompt/slash_command only)"),
-            "cache_read_tokens": _int("Cache read tokens consumed (prompt/slash_command only)"),
-            "cache_creation_tokens": _int(
-                "Cache creation tokens written (prompt/slash_command only)"
+            "input_tokens": _nullable_int(
+                "Input tokens: sum of the known contributors, null when none reported "
+                "(prompt/slash_command only)"
+            ),
+            "output_tokens": _nullable_int(
+                "Output tokens: sum of the known contributors, null when none reported "
+                "(prompt/slash_command only)"
+            ),
+            "cache_read_tokens": _nullable_int(
+                "Cache read tokens: sum of the known contributors, null when none reported "
+                "(prompt/slash_command only)"
+            ),
+            "cache_creation_tokens": _nullable_int(
+                "Cache creation tokens: sum of the known contributors, null when none "
+                "reported (prompt/slash_command only)"
+            ),
+            "usage_event_count": _int(
+                "Number of usage observations aggregated into the token fields "
+                "(present only when usage was observed)"
+            ),
+            "input_tokens_missing": _int(
+                "Observations missing input_tokens; non-zero marks a partial subtotal"
+            ),
+            "output_tokens_missing": _int(
+                "Observations missing output_tokens; non-zero marks a partial subtotal"
+            ),
+            "cache_read_tokens_missing": _int(
+                "Observations missing cache_read_tokens; non-zero marks a partial subtotal"
+            ),
+            "cache_creation_tokens_missing": _int(
+                "Observations missing cache_creation_tokens; non-zero marks a partial subtotal"
             ),
             "model": _str("Model ID reported by the host CLI (prompt/slash_command only)"),
             "state": _str(
@@ -272,8 +302,14 @@ SCHEMA_DEFINITIONS: dict[str, dict[str, Any]] = {
         {
             "harness_duration_ms": _int("Wall-clock duration of the harness arm, in ms"),
             "baseline_duration_ms": _int("Wall-clock duration of the baseline arm, in ms"),
-            "harness_tokens": _int("Total tokens (input + output) consumed by the harness arm"),
-            "baseline_tokens": _int("Total tokens (input + output) consumed by the baseline arm"),
+            "harness_tokens": _nullable_int(
+                "Total tokens (input + output) consumed by the harness arm; null when "
+                "either arm's usage observation was incomplete"
+            ),
+            "baseline_tokens": _nullable_int(
+                "Total tokens (input + output) consumed by the baseline arm; null when "
+                "either arm's usage observation was incomplete"
+            ),
         },
         ["harness_duration_ms", "baseline_duration_ms", "harness_tokens", "baseline_tokens"],
     ),

@@ -29,12 +29,15 @@ from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import little_loops.session_store as _pkg
 from little_loops.session_store.backend import HistoryError, translate_sqlite_errors
 from little_loops.session_store.db import DEFAULT_DB_PATH, resolve_history_db
 from little_loops.session_store.schema import _LOOP_EVENT_TYPES
+
+if TYPE_CHECKING:
+    from little_loops.subprocess_utils import ObservedAtBasis, TokenProvenance, TokenScopeKind
 
 logger = logging.getLogger(__name__)
 
@@ -1933,12 +1936,24 @@ def record_usage_event(
     ts: str,
     state: str | None,
     model: str,
-    input_tokens: int,
-    output_tokens: int,
-    cache_read_tokens: int,
-    cache_creation_tokens: int,
+    input_tokens: int | None,
+    output_tokens: int | None,
+    cache_read_tokens: int | None,
+    cache_creation_tokens: int | None,
+    provenance: TokenProvenance = "unknown",
+    host: str | None = None,
+    provider_vendor: str | None = None,
+    scope_kind: TokenScopeKind = "unknown",
+    observed_at: str | None = None,
+    observed_at_basis: ObservedAtBasis | None = None,
+    invocation_id: str | None = None,
 ) -> None:
     """Write one live per-invocation row to ``usage_events`` (ENH-2724).
+
+    ENH-3538: token components may be ``None`` (unknown; the row's cost is then
+    ``NULL``), and the keyword-only metadata records provenance (default
+    ``'unknown'`` — nothing here certifies ``measured``), the runtime host,
+    scope kind and observation time with its basis.
 
     Unlike :func:`_backfill_usage_events` (post-hoc, ``state`` always ``NULL``),
     this is called at loop-run finish with the FSM state each invocation ran in
@@ -1954,8 +1969,10 @@ def record_usage_event(
     try:
         conn.execute(
             "INSERT INTO usage_events(ts, model, state, input_tokens, output_tokens, "
-            "cache_read_input_tokens, cache_creation_input_tokens, cost_usd, run_id, channel) "
-            "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, 'live')",
+            "cache_read_input_tokens, cache_creation_input_tokens, cost_usd, run_id, channel, "
+            "provenance, host, provider_vendor, scope_kind, observed_at, observed_at_basis, "
+            "invocation_id) "
+            "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, 'live', ?, ?, ?, ?, ?, ?, ?)",
             (
                 ts,
                 model,
@@ -1966,6 +1983,13 @@ def record_usage_event(
                 cache_creation_tokens,
                 cost_usd,
                 run_id,
+                provenance,
+                host,
+                provider_vendor,
+                scope_kind,
+                observed_at,
+                observed_at_basis,
+                invocation_id,
             ),
         )
         conn.commit()
@@ -3427,8 +3451,10 @@ def _backfill_loops(conn: sqlite3.Connection, loops_dir: Path) -> int:
     return count
 
 
-def _iter_events(source: list[Path] | sqlite3.Cursor) -> Generator[tuple[str, str], None, None]:
-    """Yield ``(raw_line, source_label)`` pairs from JSONL files or a raw_events cursor.
+def _iter_events_with_host(
+    source: list[Path] | sqlite3.Cursor,
+) -> Generator[tuple[str, str, str | None], None, None]:
+    """Yield ``(raw_line, source_label, host)`` triples from JSONL files or a raw_events cursor.
 
     Lets the JSONL-derived ``_backfill_*`` functions accept either a legacy
     ``list[Path]`` (re-reads files line-by-line) or a ``raw_events`` cursor
@@ -3444,6 +3470,9 @@ def _iter_events(source: list[Path] | sqlite3.Cursor) -> Generator[tuple[str, st
     here (ENH-3422, D2) re-normalizes those legacy rows on replay, keyed on
     record *shape* (:func:`is_raw_qwen_record`) rather than on ``HostLayout``,
     so it is idempotent over a DB holding both legacy and current qwen rows.
+
+    ``host`` is ``raw_events.host`` (ENH-3538), ``None`` for the JSONL ``list[Path]``
+    source and for pre-ENH-3166 rows. It is the ingest-time host, not the transcript's.
     """
     if isinstance(source, sqlite3.Cursor):
         from little_loops.session_store.qwen import is_raw_qwen_record, normalize_qwen_record
@@ -3462,7 +3491,7 @@ def _iter_events(source: list[Path] | sqlite3.Cursor) -> Generator[tuple[str, st
                     if normalized is None:
                         continue
                     line = json.dumps(normalized)
-            yield line, source_label
+            yield line, source_label, host
         return
     for jsonl_file in source:
         try:
@@ -3473,7 +3502,13 @@ def _iter_events(source: list[Path] | sqlite3.Cursor) -> Generator[tuple[str, st
             for line in handle:
                 line = line.strip()
                 if line:
-                    yield line, str(jsonl_file)
+                    yield line, str(jsonl_file), None
+
+
+def _iter_events(source: list[Path] | sqlite3.Cursor) -> Generator[tuple[str, str], None, None]:
+    """Yield ``(raw_line, source_label)`` pairs; see :func:`_iter_events_with_host`."""
+    for line, source_label, _host in _iter_events_with_host(source):
+        yield line, source_label
 
 
 def _backfill_tool_events(conn: sqlite3.Connection, source: list[Path] | sqlite3.Cursor) -> int:
@@ -3589,7 +3624,9 @@ def _backfill_usage_events(conn: sqlite3.Connection, source: list[Path] | sqlite
 
     count = 0
     windows = _load_loop_run_windows(conn)
-    for line, source_label in _iter_events(source):
+    from little_loops.observability.tracing import vendor_for_runner
+
+    for line, source_label, host in _iter_events_with_host(source):
         try:
             record = json.loads(line)
         except json.JSONDecodeError:
@@ -3619,17 +3656,18 @@ def _backfill_usage_events(conn: sqlite3.Connection, source: list[Path] | sqlite
         model = message.get("model")
         cost_usd = estimate_cost_usd(
             str(model or ""),
-            int(input_tokens or 0),
-            int(output_tokens or 0),
-            int(cache_read or 0),
-            int(cache_creation or 0),
+            input_tokens,
+            output_tokens,
+            cache_read,
+            cache_creation,
         )
         run_id = _derive_run_id_for_ts(ts, windows)
         conn.execute(
             "INSERT INTO usage_events(ts, session_id, model, state, input_tokens, "
             "output_tokens, cache_read_input_tokens, cache_creation_input_tokens, cost_usd, "
-            "run_id, channel) "
-            "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'transcript')",
+            "run_id, channel, provenance, host, provider_vendor, scope_kind, observed_at, "
+            "observed_at_basis) "
+            "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'transcript', 'unknown', ?, ?, 'request', ?, ?)",
             (
                 ts,
                 session_id,
@@ -3641,6 +3679,10 @@ def _backfill_usage_events(conn: sqlite3.Connection, source: list[Path] | sqlite
                 cache_creation,
                 cost_usd,
                 run_id,
+                host,
+                vendor_for_runner(host) if host else None,
+                ts or None,
+                "event" if ts else None,
             ),
         )
         _index(

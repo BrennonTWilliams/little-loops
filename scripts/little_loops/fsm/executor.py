@@ -2695,15 +2695,20 @@ class FSMExecutor:
             payload["effort"] = effort_value
         # Aggregate token usage from host-CLI invocations (prompt / slash_command only)
         if result.usage_events:
-            total_input = sum(u.input_tokens for u in result.usage_events)
-            total_output = sum(u.output_tokens for u in result.usage_events)
-            total_cache_read = sum(u.cache_read_tokens for u in result.usage_events)
-            total_cache_creation = sum(u.cache_creation_tokens for u in result.usage_events)
+            # ENH-3538: sum only the known contributors per component; None when
+            # no event supplies it. `<component>_missing` counts the events that
+            # lack it, so a nonzero count marks the value a partial subtotal.
             model = result.usage_events[-1].model
-            payload["input_tokens"] = total_input
-            payload["output_tokens"] = total_output
-            payload["cache_read_tokens"] = total_cache_read
-            payload["cache_creation_tokens"] = total_cache_creation
+            payload["usage_event_count"] = len(result.usage_events)
+            for payload_key, attr in (
+                ("input_tokens", "input_tokens"),
+                ("output_tokens", "output_tokens"),
+                ("cache_read_tokens", "cache_read_tokens"),
+                ("cache_creation_tokens", "cache_creation_tokens"),
+            ):
+                known = [v for u in result.usage_events if (v := getattr(u, attr)) is not None]
+                payload[payload_key] = sum(known) if known else None
+                payload[f"{payload_key}_missing"] = len(result.usage_events) - len(known)
             payload["model"] = model
             # FEAT-2716: one result per action in practice, so take the last
             # event's is_batch flag the same way `model` is taken above.
@@ -3706,8 +3711,16 @@ class FSMExecutor:
         for usage in baseline_result.usage_events:
             self._usage_events_collected.append((self.current_state, usage))
 
-        harness_total_tokens = sum(t[0] + t[1] for t in harness_tokens)
-        baseline_total_tokens = sum(t[0] + t[1] for t in baseline_tokens)
+        harness_total_tokens: int | None = sum(t[0] + t[1] for t in harness_tokens)
+        baseline_total_tokens: int | None = sum(t[0] + t[1] for t in baseline_tokens)
+        # ENH-3538: an incomplete observation on either arm makes the A/B token
+        # comparison unavailable rather than comparing partial sums.
+        if any(
+            None in (u.input_tokens, u.output_tokens, u.cache_read_tokens)
+            for u in (*harness_result.usage_events, *baseline_result.usage_events)
+        ):
+            harness_total_tokens = None
+            baseline_total_tokens = None
 
         self._emit(
             "baseline_complete",
@@ -4142,7 +4155,7 @@ class FSMExecutor:
             # shell/mcp_tool action) — genuinely 0 cost, not unknown.
             return False
 
-        if bucket.has_unknown_model:
+        if bucket.has_unknown_model or bucket.cost_usd is None:
             if state_name not in self._cost_ceiling_unknown_logged_states:
                 self._cost_ceiling_unknown_logged_states.add(state_name)
                 self._emit(
@@ -4390,6 +4403,7 @@ class FSMExecutor:
         if self._usage_events_collected:
             try:
                 from little_loops.config import BRConfig
+                from little_loops.observability.tracing import vendor_for_runner
                 from little_loops.session_store import record_usage_event, resolve_history_db
 
                 if BRConfig(Path.cwd()).analytics_capture.usage_events:
@@ -4406,6 +4420,12 @@ class FSMExecutor:
                             output_tokens=usage.output_tokens,
                             cache_read_tokens=usage.cache_read_tokens,
                             cache_creation_tokens=usage.cache_creation_tokens,
+                            provenance=usage.provenance,
+                            host=usage.host,
+                            provider_vendor=(vendor_for_runner(usage.host) if usage.host else None),
+                            scope_kind=usage.scope_kind,
+                            observed_at=usage.observed_at,
+                            observed_at_basis=usage.observed_at_basis,
                         )
             except Exception:
                 pass  # Non-fatal: loop still completes (ENH-2724, mirrors ENH-2463)

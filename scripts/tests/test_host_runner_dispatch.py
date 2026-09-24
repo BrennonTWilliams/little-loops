@@ -107,11 +107,30 @@ class TestDispatchAnthropicRequest:
         assert "boom" in result.stderr
         assert result.usage_events == []
 
-    def test_null_cache_usage_fields_normalize_to_zero(self) -> None:
+    def test_null_cache_usage_fields_stay_unknown(self) -> None:
+        """ENH-3538: a None SDK cache component stays None; a reported 0 stays 0."""
         fake_client = MagicMock()
         fake_client.messages.create.return_value = _fake_message(
             cache_read=None, cache_creation=None
         )
+
+        with patch("anthropic.Anthropic", return_value=fake_client):
+            result = dispatch_anthropic_request(
+                action="say hi",
+                model="claude-sonnet-4-6",
+                fragment_store=FragmentStore(),
+            )
+
+        usage = result.usage_events[0]
+        assert usage.cache_read_tokens is None
+        assert usage.cache_creation_tokens is None
+        assert usage.host == "anthropic-api"
+        assert usage.scope_kind == "request"
+        assert usage.provenance == "unknown"
+
+    def test_reported_zero_cache_usage_fields_stay_zero(self) -> None:
+        fake_client = MagicMock()
+        fake_client.messages.create.return_value = _fake_message(cache_read=0, cache_creation=0)
 
         with patch("anthropic.Anthropic", return_value=fake_client):
             result = dispatch_anthropic_request(

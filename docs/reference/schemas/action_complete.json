@@ -60,20 +60,52 @@
       "description": "Path to Claude session JSONL file (prompt-only, null for shell commands)"
     },
     "input_tokens": {
-      "type": "integer",
-      "description": "Input tokens consumed (prompt/slash_command only)"
+      "type": [
+        "integer",
+        "null"
+      ],
+      "description": "Input tokens: sum of the known contributors, null when none reported (prompt/slash_command only)"
     },
     "output_tokens": {
-      "type": "integer",
-      "description": "Output tokens generated (prompt/slash_command only)"
+      "type": [
+        "integer",
+        "null"
+      ],
+      "description": "Output tokens: sum of the known contributors, null when none reported (prompt/slash_command only)"
     },
     "cache_read_tokens": {
-      "type": "integer",
-      "description": "Cache read tokens consumed (prompt/slash_command only)"
+      "type": [
+        "integer",
+        "null"
+      ],
+      "description": "Cache read tokens: sum of the known contributors, null when none reported (prompt/slash_command only)"
     },
     "cache_creation_tokens": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "description": "Cache creation tokens: sum of the known contributors, null when none reported (prompt/slash_command only)"
+    },
+    "usage_event_count": {
       "type": "integer",
-      "description": "Cache creation tokens written (prompt/slash_command only)"
+      "description": "Number of usage observations aggregated into the token fields (present only when usage was observed)"
+    },
+    "input_tokens_missing": {
+      "type": "integer",
+      "description": "Observations missing input_tokens; non-zero marks a partial subtotal"
+    },
+    "output_tokens_missing": {
+      "type": "integer",
+      "description": "Observations missing output_tokens; non-zero marks a partial subtotal"
+    },
+    "cache_read_tokens_missing": {
+      "type": "integer",
+      "description": "Observations missing cache_read_tokens; non-zero marks a partial subtotal"
+    },
+    "cache_creation_tokens_missing": {
+      "type": "integer",
+      "description": "Observations missing cache_creation_tokens; non-zero marks a partial subtotal"
     },
     "model": {
       "type": "string",

@@ -2770,6 +2770,36 @@
           "notnull": false,
           "pk": false,
           "type": "TEXT"
+        },
+        {
+          "name": "provenance",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "host",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "scope_kind",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "observed_at",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
+        },
+        {
+          "name": "observed_at_basis",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
         }
       ],
       "type": "table"
@@ -2893,5 +2923,5 @@
       "type": "table"
     }
   },
-  "schema_version": 53
+  "schema_version": 54
 }

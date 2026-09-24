@@ -151,11 +151,15 @@ def _parse_line(line: str, lineno: int) -> Directive:
         return Directive(kind, args, lineno)
 
     if kind == "result":
-        known = frozenset({"error", "in", "out", "cache", "structured"})
+        known = frozenset({"error", "in", "out", "cache", "create", "omit", "structured"})
         return Directive(kind, _parse_kv(rest, lineno, known), lineno)
 
     if kind == "turn_completed":
-        return Directive(kind, _parse_kv(rest, lineno, frozenset({"in", "out", "cached"})), lineno)
+        return Directive(
+            kind,
+            _parse_kv(rest, lineno, frozenset({"in", "out", "cached", "cache_write", "omit"})),
+            lineno,
+        )
 
     if kind == "sleep":
         value = rest.strip()
@@ -252,11 +256,17 @@ def emit(script: DirectivesScript, *, stdout: TextIO, stderr: TextIO) -> int:
             _write_json(stdout, {"type": "assistant", "message": {"content": [block]}})
         elif d.kind == "result":
             is_error = "error" in d.args
-            usage = {
-                "input_tokens": int(d.args.get("in", 0)),
-                "output_tokens": int(d.args.get("out", 0)),
-                "cache_read_input_tokens": int(d.args.get("cache", 0)),
-            }
+            # ENH-3538: emit all four keys by default (real Claude ``result``
+            # events do) so complete-data tests stay complete.
+            usage = _usage_block(
+                d.args,
+                {
+                    "input_tokens": ("in", 0),
+                    "output_tokens": ("out", 0),
+                    "cache_read_input_tokens": ("cache", 0),
+                    "cache_creation_input_tokens": ("create", 0),
+                },
+            )
             event = {
                 "type": "result",
                 "subtype": "success",
@@ -270,11 +280,17 @@ def emit(script: DirectivesScript, *, stdout: TextIO, stderr: TextIO) -> int:
                 event["structured_output"] = json.loads(d.args["structured"])
             _write_json(stdout, event)
         elif d.kind == "turn_completed":
-            usage = {
-                "input_tokens": int(d.args.get("in", 0)),
-                "output_tokens": int(d.args.get("out", 0)),
-                "cached_input_tokens": int(d.args.get("cached", 0)),
-            }
+            # Codex omits cache_write_input_tokens by default (the real shape);
+            # pass ``cache_write=N`` to emit it (ENH-3538).
+            usage = _usage_block(
+                d.args,
+                {
+                    "input_tokens": ("in", 0),
+                    "output_tokens": ("out", 0),
+                    "cached_input_tokens": ("cached", 0),
+                    "cache_write_input_tokens": ("cache_write", None),
+                },
+            )
             _write_json(stdout, {"type": "turn.completed", "usage": usage})
         elif d.kind == "raw":
             print(d.args["text"], file=stdout, flush=True)
@@ -288,6 +304,28 @@ def emit(script: DirectivesScript, *, stdout: TextIO, stderr: TextIO) -> int:
             while True:
                 signal.pause()
     return exit_code
+
+
+def _usage_block(
+    args: dict[str, Any], keys: dict[str, tuple[str, int | None]]
+) -> dict[str, int | None]:
+    """Build a usage dict from directive args (ENH-3538).
+
+    *keys* maps each emitted usage key to ``(arg_name, default)``; a ``None``
+    default means "omit unless the arg is given". Per-key options: ``omit=k1,k2``
+    drops those arg names, and ``<arg>=null`` emits an explicit JSON ``null``.
+    """
+    omitted = {name for name in str(args.get("omit", "")).split(",") if name}
+    usage: dict[str, int | None] = {}
+    for usage_key, (arg_name, default) in keys.items():
+        if arg_name in omitted:
+            continue
+        if arg_name in args:
+            raw = args[arg_name]
+            usage[usage_key] = None if raw == "null" else int(raw)
+        elif default is not None:
+            usage[usage_key] = default
+    return usage
 
 
 def main(argv: Sequence[str] | None = None) -> int:

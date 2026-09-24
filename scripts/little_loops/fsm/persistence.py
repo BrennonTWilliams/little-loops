@@ -1108,6 +1108,18 @@ class PersistentExecutor:
                 # usage, so existing readers ignoring unknown keys are unaffected.
                 if event.get("is_batch"):
                     entry["is_batch"] = True
+                # ENH-3538: carry the completeness counts through unchanged; a
+                # nonzero `<component>_missing` marks that token value a partial
+                # subtotal (cost_graph treats it like an unpriced model).
+                for count_key in (
+                    "usage_event_count",
+                    "input_tokens_missing",
+                    "output_tokens_missing",
+                    "cache_read_tokens_missing",
+                    "cache_creation_tokens_missing",
+                ):
+                    if count_key in event:
+                        entry[count_key] = event[count_key]
                 # FEAT-2478 — stamp OTel-canonical gen_ai.usage.* keys alongside the
                 # flat keys (additive; flat-key consumers cost_graph/_print_usage_summary
                 # ignore the extras). The four token gen_ai keys derive purely from the

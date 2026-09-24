@@ -2666,7 +2666,8 @@ class TestRunClaudeCommandResultBreak:
         )
         result_event = (
             '{"type": "result", "subtype": "success", '
-            '"usage": {"input_tokens": 1000, "output_tokens": 200}}\n'
+            '"usage": {"input_tokens": 1000, "output_tokens": 200, '
+            '"cache_read_input_tokens": 0, "cache_creation_input_tokens": 0}}\n'
         )
         fake_stdout = _NeverEOFStdout([assistant_event, result_event])
         mock_process = Mock()
@@ -3351,15 +3352,15 @@ class TestUsageFromEvent:
         assert usage.cache_read_tokens == 500
         assert usage.cache_creation_tokens == 75
 
-    def test_codex_turn_completed_missing_cache_write_is_zero_not_none(self) -> None:
-        """Codex genuinely bills no cache writes when the key is absent (Decision 3)."""
+    def test_codex_turn_completed_missing_cache_write_is_unknown(self) -> None:
+        """ENH-3538 supersedes ENH-3464 Decision 3: an omitted key is unknown, not zero."""
         event = {
             "type": "turn.completed",
             "usage": {"input_tokens": 1, "output_tokens": 2, "cached_input_tokens": 0},
         }
         usage = usage_from_event(event, default_model="unknown")
         assert usage is not None
-        assert usage.cache_creation_tokens == 0
+        assert usage.cache_creation_tokens is None
 
     def test_turn_completed_with_no_usage_returns_none(self) -> None:
         assert usage_from_event({"type": "turn.completed"}, default_model="unknown") is None
@@ -3443,7 +3444,7 @@ class TestUsageFromStreamLines:
         )
         usage, tool_calls = usage_from_stream_lines(stdout)
         assert usage is not None
-        assert usage.cache_creation_tokens == 0
+        assert usage.cache_creation_tokens is None
         assert tool_calls is None
 
     def test_non_json_noise_returns_none_none(self) -> None:

@@ -3097,13 +3097,17 @@ def _usage_from_response(response: Any, *, is_batch: bool = False) -> TokenUsage
     from little_loops.subprocess_utils import TokenUsage
 
     usage = response.usage
+    # ENH-3538: the SDK types both cache fields as optional. A missing attribute
+    # or explicit None stays None (unknown); a reported 0 stays 0.
     return TokenUsage(
         input_tokens=usage.input_tokens,
         output_tokens=usage.output_tokens,
-        cache_read_tokens=getattr(usage, "cache_read_input_tokens", None) or 0,
-        cache_creation_tokens=getattr(usage, "cache_creation_input_tokens", None) or 0,
+        cache_read_tokens=getattr(usage, "cache_read_input_tokens", None),
+        cache_creation_tokens=getattr(usage, "cache_creation_input_tokens", None),
         model=response.model,
         is_batch=is_batch,
+        host="anthropic-api",
+        scope_kind="request",
     )
 
 

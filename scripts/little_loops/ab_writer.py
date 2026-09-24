@@ -49,11 +49,11 @@ _AB_SCHEMA: dict[str, Any] = {
                     "description": "Pass-rate delta (harness - baseline)",
                 },
                 "median_tokens_harness": {
-                    "type": "integer",
+                    "type": ["integer", "null"],
                     "description": "Median token count for harness arm",
                 },
                 "median_tokens_baseline": {
-                    "type": "integer",
+                    "type": ["integer", "null"],
                     "description": "Median token count for baseline arm",
                 },
                 "median_duration_harness": {
@@ -92,11 +92,11 @@ _AB_SCHEMA: dict[str, Any] = {
                         "description": "Whether baseline arm passed evaluation",
                     },
                     "harness_tokens": {
-                        "type": "integer",
+                        "type": ["integer", "null"],
                         "description": "Token count for harness arm",
                     },
                     "baseline_tokens": {
-                        "type": "integer",
+                        "type": ["integer", "null"],
                         "description": "Token count for baseline arm",
                     },
                     "harness_duration_ms": {
@@ -146,8 +146,8 @@ class ABResults:
     harness_pass_rate: float
     baseline_pass_rate: float
     delta: float
-    median_tokens_harness: int
-    median_tokens_baseline: int
+    median_tokens_harness: int | None
+    median_tokens_baseline: int | None
     median_duration_harness: float
     median_duration_baseline: float
     per_item: list[dict[str, Any]] = field(default_factory=list)
@@ -156,6 +156,13 @@ class ABResults:
 # ---------------------------------------------------------------------------
 # Aggregation
 # ---------------------------------------------------------------------------
+
+
+def _median_tokens(values: list[int | None]) -> int | None:
+    """Median token count, or None when any item's count is unavailable (ENH-3538)."""
+    if any(v is None for v in values):
+        return None
+    return int(statistics.median(v for v in values if v is not None))
 
 
 def calculate_ab_summary(per_item_results: list[dict[str, Any]]) -> ABResults:
@@ -194,8 +201,8 @@ def calculate_ab_summary(per_item_results: list[dict[str, Any]]) -> ABResults:
         harness_pass_rate=harness_passes / n,
         baseline_pass_rate=baseline_passes / n,
         delta=(harness_passes - baseline_passes) / n,
-        median_tokens_harness=int(statistics.median(harness_tokens)),
-        median_tokens_baseline=int(statistics.median(baseline_tokens)),
+        median_tokens_harness=_median_tokens(harness_tokens),
+        median_tokens_baseline=_median_tokens(baseline_tokens),
         median_duration_harness=float(statistics.median(harness_durations)),
         median_duration_baseline=float(statistics.median(baseline_durations)),
         per_item=per_item_results,

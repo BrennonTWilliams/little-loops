@@ -69,6 +69,7 @@ _TOKEN_FIELDS: tuple[str, ...] = (
 DEFAULT_VENDOR = "other"
 _VENDOR_BY_RUNNER: dict[str, str] = {
     "claude-code": "anthropic",
+    "anthropic-api": "anthropic",  # ENH-3538: sdk/batch path (host_runner._usage_from_response)
     "codex": "openai",
     "gemini": "google",
     "opencode": DEFAULT_VENDOR,
@@ -88,16 +89,42 @@ def vendor_for_runner(name: str | None) -> str:
     return _VENDOR_BY_RUNNER.get(name, DEFAULT_VENDOR)
 
 
-def _read_token(source: Any, field: str) -> int:
-    """Read one internal token field from a TokenUsage-like object or a dict."""
+def _read_token(source: Any, field: str) -> int | None:
+    """Read one internal token field from a TokenUsage-like object or a dict.
+
+    Returns ``None`` when the field is absent, ``None`` or non-numeric: an
+    unknown component is never coerced to zero (ENH-3538). A reported ``0``
+    stays ``0``.
+    """
     if isinstance(source, dict):
-        value = source.get(field, 0)
+        value = source.get(field)
     else:
-        value = getattr(source, field, 0)
+        value = getattr(source, field, None)
+    if value is None:
+        return None
     try:
-        return int(value or 0)
+        return int(value)
     except (TypeError, ValueError):
-        return 0
+        return None
+
+
+def _is_partial(source: Any, field: str) -> bool:
+    """True when *field* is a subtotal with contributors missing (``<field>_missing > 0``)."""
+    key = f"{field}_missing"
+    raw = source.get(key) if isinstance(source, dict) else getattr(source, key, None)
+    if raw is None:
+        return False
+    try:
+        return int(raw) > 0
+    except (TypeError, ValueError):
+        return False
+
+
+def _complete_token(source: Any, field: str) -> int | None:
+    """Return the token value only when it is known and not a partial subtotal."""
+    if _is_partial(source, field):
+        return None
+    return _read_token(source, field)
 
 
 class OTelAttributes:
@@ -119,9 +146,13 @@ class OTelAttributes:
         *vendor* / *invocation_id*, when provided, add
         ``gen_ai.provider.vendor`` / ``gen_ai.invocation.id`` respectively.
         """
-        attrs: dict[str, Any] = {
-            _FIELD_TO_OTEL[field]: _read_token(usage, field) for field in _TOKEN_FIELDS
-        }
+        # ENH-3538: omit a component's attribute when it is None or a partial
+        # subtotal; complete sibling components stay exportable.
+        attrs: dict[str, Any] = {}
+        for field in _TOKEN_FIELDS:
+            value = _complete_token(usage, field)
+            if value is not None:
+                attrs[_FIELD_TO_OTEL[field]] = value
         if invocation_id is not None:
             attrs[GEN_AI_INVOCATION_ID] = invocation_id
         if vendor is not None:
@@ -154,9 +185,9 @@ class ParityDiff:
     """One field's blocking-vs-streaming relative diff."""
 
     field: str
-    blocking: float
-    streaming: float
-    diff_pct: float  # relative fraction: 0.001 == 0.1%
+    blocking: float | None  # None: unknown or partial (ENH-3538)
+    streaming: float | None
+    diff_pct: float | None  # relative fraction: 0.001 == 0.1%; None when incomplete
     within_threshold: bool
 
 
@@ -188,8 +219,22 @@ class StreamingParityChecker:
         """Return a :class:`ParityDiff` per token field (canonical order)."""
         diffs: list[ParityDiff] = []
         for field in self.TOKEN_FIELDS:
-            b = float(_read_token(blocking_usage, field))
-            s = float(_read_token(streaming_usage, field))
+            b_raw = _complete_token(blocking_usage, field)
+            s_raw = _complete_token(streaming_usage, field)
+            if b_raw is None or s_raw is None:
+                # ENH-3538: an incomplete comparison is unavailable, never
+                # equal — two unknowns are not two zeros.
+                diffs.append(
+                    ParityDiff(
+                        field=field,
+                        blocking=None if b_raw is None else float(b_raw),
+                        streaming=None if s_raw is None else float(s_raw),
+                        diff_pct=None,
+                        within_threshold=False,
+                    )
+                )
+                continue
+            b, s = float(b_raw), float(s_raw)
             rel = self._relative_diff(b, s)
             diffs.append(
                 ParityDiff(

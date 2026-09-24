@@ -43,12 +43,18 @@
       "description": "Wall-clock duration of the baseline arm, in ms"
     },
     "harness_tokens": {
-      "type": "integer",
-      "description": "Total tokens (input + output) consumed by the harness arm"
+      "type": [
+        "integer",
+        "null"
+      ],
+      "description": "Total tokens (input + output) consumed by the harness arm; null when either arm's usage observation was incomplete"
     },
     "baseline_tokens": {
-      "type": "integer",
-      "description": "Total tokens (input + output) consumed by the baseline arm"
+      "type": [
+        "integer",
+        "null"
+      ],
+      "description": "Total tokens (input + output) consumed by the baseline arm; null when either arm's usage observation was incomplete"
     }
   },
   "additionalProperties": true

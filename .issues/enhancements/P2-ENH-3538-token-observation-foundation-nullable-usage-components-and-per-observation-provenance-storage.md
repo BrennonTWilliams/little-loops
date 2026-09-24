@@ -4,10 +4,11 @@ type: ENH
 title: 'Token observation foundation: nullable usage components and per-observation
   provenance storage'
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-23'
 captured_at: '2026-09-24T02:48:36Z'
+completed_at: '2026-09-24T05:04:06Z'
 labels:
 - observability
 - multi-host
@@ -217,7 +218,16 @@ _Added by `/ll:confidence-check` on 2026-09-24_
 - Deep per-site complexity: nullable components ripple through shared state (`TokenUsage`, executor sums, cost graph, SQL/OTel aggregates, parity checker) across ~20 modules.
 - Very wide blast radius: `TokenUsage`/`usage_from_event` are referenced from 26 modules; `estimate_cost_usd` and `record_usage_event` have multiple dependents. Consider landing in the 5 Implementation Steps as separate commits with the no-missing-case parity tests first.
 
+## Resolution
+
+- **Status**: Completed
+- **Implemented**: nullable `TokenUsage` components with `provenance`/`host`/`scope_kind`/`observed_at`/`observed_at_basis` (defaults unknown); `run_claude_command` stamps host, invocation scope and receipt time before callbacks; legacy `UsageCallback` fires only for complete observations while the context-limit guards (`issue_manager`, `worker_pool`) get a known-component lower bound via `on_usage_detailed`; `estimate_cost_usd` returns `None` for any missing component; `action_complete` payload sums known contributors with `*_missing`/`usage_event_count`; `usage.jsonl` → `cost_graph` carries unknown cost/token completeness through JSON round trips; schema v54 (5 nullable `usage_events` columns) with extended `record_usage_event` and metadata-aware `_iter_events_with_host` replay; `history_reader` SQL rollups, OTel stamping and `StreamingParityChecker` are completeness-aware; A/B token totals become `null` when either arm is incomplete; `fake_host` gained omit/`null` options; `_usage_from_response` keeps `None` cache components.
+- **Deviations**: SDK/batch rows use `host='anthropic-api'` (added to `_VENDOR_BY_RUNNER` → `anthropic`); `<component>_missing` keys are emitted in cost-report JSON only when non-zero so complete-data output is unchanged. `ll-ctx-stats` aggregation and `waste_attribution` were audited for None-safety only (no output changes; richer reporting stays with ENH-3528).
+- **Tests**: `scripts/tests/test_enh3538_token_observations.py` (31); full suite green except pre-existing `test_verify_evidence` (BUG-1688 quote) failure.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-09-24T05:04:05 - `ba06500e-9e68-4c34-9f78-d2557696e4a2.jsonl`
+- `/ll:ready-issue` - 2026-09-24T04:35:32 - `1f6443cc-baca-401a-ae53-3a0b1a8d6942.jsonl`
 - `/ll:confidence-check` - 2026-09-24T04:14:14 - `efe34cee-94ab-423e-b95b-9a8ce7ab0855.jsonl`
 - `/ll:confidence-check` - 2026-09-24T04:03:59 - `1a64f304-b365-4ea9-a985-50129074336b.jsonl`
 - `/ll:confidence-check` - 2026-09-24T03:50:14 - `a1bbb8d4-d93b-4517-a766-21a26af03296.jsonl`

@@ -2949,6 +2949,7 @@ class TestWorkerPoolRunClaudeCommand:
             on_process_end: Any,
             automation: Any = None,
             on_usage: Any = None,
+            on_usage_detailed: Any = None,
             resume_session: bool = False,
             timeout_kill_grace_seconds: float = 0.0,
             extra_env: Any = None,

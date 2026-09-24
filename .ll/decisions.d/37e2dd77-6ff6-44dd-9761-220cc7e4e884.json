@@ -1,0 +1,11 @@
+{
+  "id": "1dce0ae3-1919-4c10-857d-8ca7ee3e4a2b",
+  "type": "decision",
+  "timestamp": "2026-09-24T04:57:16Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "ENH-3538 reverses ENH-3464 Decision 3, which treated an omitted Codex cache_write_input_tokens as a real zero. Omission-only fixtures do not prove that; BUG-3531 Decision 6 owns the evidence requirement. No cost impact today: Codex models are absent from MODEL_PRICING.",
+  "rule": "An omitted usage key (e.g. Codex cache_write_input_tokens) is unknown (None), not zero, until matched-capture/producer-contract evidence establishes otherwise.",
+  "scope": "issue",
+  "issue": "ENH-3538"
+}

@@ -231,6 +231,31 @@ _COST_ATTR_GROUP_COLUMNS: dict[str, str] = {
 }
 
 
+# ENH-3538: SUM() ignores NULL contributors, so a bare SUM can present a partial
+# subtotal as a total. Pair every SUM with the count of rows that lack the
+# component (COUNT(*) - COUNT(col)); a non-zero count makes the total unavailable.
+_MISSING_COUNTS_SQL = (
+    "COUNT(*) - COUNT(input_tokens) AS input_tokens_missing, "
+    "COUNT(*) - COUNT(output_tokens) AS output_tokens_missing, "
+    "COUNT(*) - COUNT(cache_read_input_tokens) AS cache_read_input_tokens_missing, "
+    "COUNT(*) - COUNT(cache_creation_input_tokens) AS cache_creation_input_tokens_missing, "
+    "COUNT(*) - COUNT(cost_usd) AS cost_usd_missing"
+)
+_USAGE_TOKEN_COLUMNS = (
+    "input_tokens",
+    "output_tokens",
+    "cache_read_input_tokens",
+    "cache_creation_input_tokens",
+)
+
+
+def _complete_total(row: sqlite3.Row, column: str) -> Any:
+    """Return ``SUM(column)`` only when no contributing row lacked it, else ``None``."""
+    if row[f"{column}_missing"]:
+        return None
+    return row[column] if row[column] is not None else 0
+
+
 def cost_attribution(
     group_by: str = "gen_ai.invocation.id",
     *,
@@ -251,6 +276,12 @@ def cost_attribution(
     counts under the canonical dotted OTel names, so a
     ``GROUP BY gen_ai.invocation.id`` rollup matches raw ``result``-event
     ``usage`` totals row-for-row (see FEAT-2478 § Acceptance Criteria).
+
+    ENH-3538: a token component (or ``cost_usd``) with any NULL contributor is
+    unavailable — the flat field is ``None`` and the ``gen_ai.usage.*``
+    attribute is omitted rather than exported as a partial subtotal. Each row
+    also carries ``<column>_missing`` counts for the four token columns and
+    ``cost_usd``.
     """
     from little_loops.observability.tracing import (
         GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS,
@@ -277,6 +308,7 @@ def cost_attribution(
             "SUM(cache_read_input_tokens) AS cache_read_input_tokens, "
             "SUM(cache_creation_input_tokens) AS cache_creation_input_tokens, "
             "SUM(cost_usd) AS cost_usd, "
+            f"{_MISSING_COUNTS_SQL}, "
             "COUNT(*) AS invocations "
             "FROM usage_events "
         )
@@ -291,19 +323,24 @@ def cost_attribution(
         return []
     finally:
         conn.close()
+    otel_names = {
+        "input_tokens": GEN_AI_USAGE_INPUT_TOKENS,
+        "output_tokens": GEN_AI_USAGE_OUTPUT_TOKENS,
+        "cache_read_input_tokens": GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS,
+        "cache_creation_input_tokens": GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS,
+    }
     result: list[dict] = []
     for row in rows:
-        result.append(
-            {
-                group_by: row["grp"],
-                GEN_AI_USAGE_INPUT_TOKENS: row["input_tokens"] or 0,
-                GEN_AI_USAGE_OUTPUT_TOKENS: row["output_tokens"] or 0,
-                GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS: row["cache_read_input_tokens"] or 0,
-                GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS: (row["cache_creation_input_tokens"] or 0),
-                "cost_usd": row["cost_usd"] or 0.0,
-                "invocations": row["invocations"],
-            }
-        )
+        entry: dict[str, Any] = {group_by: row["grp"]}
+        for column in _USAGE_TOKEN_COLUMNS:
+            total = _complete_total(row, column)
+            if total is not None:
+                entry[otel_names[column]] = total
+        entry["cost_usd"] = _complete_total(row, "cost_usd")
+        entry["invocations"] = row["invocations"]
+        for column in (*_USAGE_TOKEN_COLUMNS, "cost_usd"):
+            entry[f"{column}_missing"] = row[f"{column}_missing"]
+        result.append(entry)
     return result
 
 
@@ -430,8 +467,10 @@ def aggregate_usage(
 
     Each result dict carries the group key, ``events`` (row count), summed
     ``input_tokens`` / ``output_tokens`` / ``cache_read_input_tokens`` /
-    ``cache_creation_input_tokens``, and ``cost_usd`` (rows with an unpriced
-    model contribute ``NULL`` cost, summed as 0 by SQLite). *since* is an ISO
+    ``cache_creation_input_tokens``, and ``cost_usd``. A total with any NULL
+    contributor (a missing token component, or an unpriced/incomplete row's
+    ``NULL`` cost) is ``None`` — never a partial subtotal (ENH-3538) — with the
+    contributor shortfall in ``<column>_missing``. *since* is an ISO
     8601 lower bound on ``ts``. Sorted by ``cost_usd`` descending. Grain is
     per-call — usage_events carries no FSM ``state``, so per-state rollups are
     not offered here (ENH-2461 Addendum 2).
@@ -447,7 +486,8 @@ def aggregate_usage(
             "SUM(input_tokens) AS input_tokens, SUM(output_tokens) AS output_tokens, "
             "SUM(cache_read_input_tokens) AS cache_read_input_tokens, "
             "SUM(cache_creation_input_tokens) AS cache_creation_input_tokens, "
-            "SUM(cost_usd) AS cost_usd "
+            "SUM(cost_usd) AS cost_usd, "
+            f"{_MISSING_COUNTS_SQL} "
             "FROM usage_events "
         )
         params: list[Any] = []
@@ -465,11 +505,12 @@ def aggregate_usage(
         {
             group_by: row["group_key"],
             "events": row["events"],
-            "input_tokens": row["input_tokens"] or 0,
-            "output_tokens": row["output_tokens"] or 0,
-            "cache_read_input_tokens": row["cache_read_input_tokens"] or 0,
-            "cache_creation_input_tokens": row["cache_creation_input_tokens"] or 0,
-            "cost_usd": row["cost_usd"],
+            **{column: _complete_total(row, column) for column in _USAGE_TOKEN_COLUMNS},
+            "cost_usd": _complete_total(row, "cost_usd"),
+            **{
+                f"{column}_missing": row[f"{column}_missing"]
+                for column in (*_USAGE_TOKEN_COLUMNS, "cost_usd")
+            },
         }
         for row in rows
     ]

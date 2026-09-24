@@ -63,9 +63,17 @@ def _print_ab_summary(ab_path: Path) -> None:
     h_lo, h_hi = wilson_ci(k_harness, n)
     b_lo, b_hi = wilson_ci(k_baseline, n)
 
+    # ENH-3538: medians are None when any item's token count was incomplete.
+    tokens_available = (
+        results.median_tokens_harness is not None and results.median_tokens_baseline is not None
+    )
     tokens_ratio = (
         results.median_tokens_harness / results.median_tokens_baseline
-        if results.median_tokens_baseline > 0
+        if (
+            results.median_tokens_harness is not None
+            and results.median_tokens_baseline is not None
+            and results.median_tokens_baseline > 0
+        )
         else 0
     )
     dur_ratio = (
@@ -82,7 +90,13 @@ def _print_ab_summary(ab_path: Path) -> None:
         else:
             return f"{ms / 60000:.1f}m"
 
+    def _fmt_tokens(value: int | None) -> str:
+        return "n/a" if value is None else str(value)
+
     tokens_dir = "+" if tokens_ratio > 1 else "-"
+    tokens_delta = (
+        f"({tokens_dir}{abs(tokens_ratio - 1) * 100:.0f}%)" if tokens_available else "(n/a)"
+    )
     dur_dir = "+" if dur_ratio > 1 else "-"
 
     print()
@@ -92,9 +106,9 @@ def _print_ab_summary(ab_path: Path) -> None:
     print(f"  Delta:              {delta_pct:+.0f}%")
     print()
     print(
-        f"  Median tokens:      harness={results.median_tokens_harness}  "
-        f"baseline={results.median_tokens_baseline}  "
-        f"({tokens_dir}{abs(tokens_ratio - 1) * 100:.0f}%)"
+        f"  Median tokens:      harness={_fmt_tokens(results.median_tokens_harness)}  "
+        f"baseline={_fmt_tokens(results.median_tokens_baseline)}  "
+        f"{tokens_delta}"
     )
     print(
         f"  Median duration:    harness={_fmt_dur(results.median_duration_harness)}  "
@@ -116,7 +130,9 @@ def _print_ab_summary(ab_path: Path) -> None:
             f"{direction} wins on quality ({favor}/{discordant} discordant pairs favor {direction})"
         )
     cost_verdict = (
-        f"costs ~{abs(tokens_ratio - 1) * 100:.0f}% more tokens"
+        "token cost unavailable (incomplete usage)"
+        if not tokens_available
+        else f"costs ~{abs(tokens_ratio - 1) * 100:.0f}% more tokens"
         if tokens_ratio > 1
         else (
             f"costs ~{abs(tokens_ratio - 1) * 100:.0f}% fewer tokens"
