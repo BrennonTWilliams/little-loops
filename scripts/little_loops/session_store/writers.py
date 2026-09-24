@@ -3453,8 +3453,8 @@ def _backfill_loops(conn: sqlite3.Connection, loops_dir: Path) -> int:
 
 def _iter_events_with_host(
     source: list[Path] | sqlite3.Cursor,
-) -> Generator[tuple[str, str, str | None], None, None]:
-    """Yield ``(raw_line, source_label, host)`` triples from JSONL files or a raw_events cursor.
+) -> Generator[tuple[str, str, str | None, str | None], None, None]:
+    """Yield ``(raw_line, source_label, host, host_basis)`` from JSONL files or a raw_events cursor.
 
     Lets the JSONL-derived ``_backfill_*`` functions accept either a legacy
     ``list[Path]`` (re-reads files line-by-line) or a ``raw_events`` cursor
@@ -3468,11 +3468,14 @@ def _iter_events_with_host(
     Rows ingested before it store raw qwen wire format (``message.parts``),
     which the extractors don't understand — the one host-specific shim left
     here (ENH-3422, D2) re-normalizes those legacy rows on replay, keyed on
-    record *shape* (:func:`is_raw_qwen_record`) rather than on ``HostLayout``,
-    so it is idempotent over a DB holding both legacy and current qwen rows.
+    record shape (:func:`is_raw_qwen_record`) but only for rows whose stored
+    host is ``"qwen"``, regardless of ``host_basis``; it is idempotent over a DB
+    holding both legacy and current qwen rows.
 
     ``host`` is ``raw_events.host`` (ENH-3538), ``None`` for the JSONL ``list[Path]``
-    source and for pre-ENH-3166 rows. It is the ingest-time host, not the transcript's.
+    source and for pre-ENH-3166 rows. ``host_basis`` (BUG-3542) is ``'handle'``
+    when the host was stamped from the source handle and ``None`` for legacy
+    rows (host possibly the ingesting host) and for sources lacking the column.
     """
     if isinstance(source, sqlite3.Cursor):
         from little_loops.session_store.qwen import is_raw_qwen_record, normalize_qwen_record
@@ -3481,6 +3484,7 @@ def _iter_events_with_host(
             line = _unpack_payload(row[0])
             source_label = row[1]
             host = row[2] if len(row) > 2 else None
+            host_basis = row[3] if len(row) > 3 else None
             if host == "qwen":
                 try:
                     record = json.loads(line)
@@ -3491,7 +3495,7 @@ def _iter_events_with_host(
                     if normalized is None:
                         continue
                     line = json.dumps(normalized)
-            yield line, source_label, host
+            yield line, source_label, host, host_basis
         return
     for jsonl_file in source:
         try:
@@ -3502,12 +3506,12 @@ def _iter_events_with_host(
             for line in handle:
                 line = line.strip()
                 if line:
-                    yield line, str(jsonl_file), None
+                    yield line, str(jsonl_file), None, None
 
 
 def _iter_events(source: list[Path] | sqlite3.Cursor) -> Generator[tuple[str, str], None, None]:
     """Yield ``(raw_line, source_label)`` pairs; see :func:`_iter_events_with_host`."""
-    for line, source_label, _host in _iter_events_with_host(source):
+    for line, source_label, _host, _basis in _iter_events_with_host(source):
         yield line, source_label
 
 
@@ -3626,7 +3630,7 @@ def _backfill_usage_events(conn: sqlite3.Connection, source: list[Path] | sqlite
     windows = _load_loop_run_windows(conn)
     from little_loops.observability.tracing import vendor_for_runner
 
-    for line, source_label, host in _iter_events_with_host(source):
+    for line, source_label, host, host_basis in _iter_events_with_host(source):
         try:
             record = json.loads(line)
         except json.JSONDecodeError:
@@ -3666,8 +3670,8 @@ def _backfill_usage_events(conn: sqlite3.Connection, source: list[Path] | sqlite
             "INSERT INTO usage_events(ts, session_id, model, state, input_tokens, "
             "output_tokens, cache_read_input_tokens, cache_creation_input_tokens, cost_usd, "
             "run_id, channel, provenance, host, provider_vendor, scope_kind, observed_at, "
-            "observed_at_basis) "
-            "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'transcript', 'unknown', ?, ?, 'request', ?, ?)",
+            "observed_at_basis, host_basis) "
+            "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'transcript', 'unknown', ?, ?, 'request', ?, ?, ?)",
             (
                 ts,
                 session_id,
@@ -3683,6 +3687,7 @@ def _backfill_usage_events(conn: sqlite3.Connection, source: list[Path] | sqlite
                 vendor_for_runner(host) if host else None,
                 ts or None,
                 "event" if ts else None,
+                host_basis,
             ),
         )
         _index(

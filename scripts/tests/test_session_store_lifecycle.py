@@ -658,7 +658,7 @@ class TestBackfillRawEventsDirectHandles:
         ensure_db(db)
         conn = connect(db)
         try:
-            count = _backfill_raw_events(conn, [handle], host="claude-code")
+            count = _backfill_raw_events(conn, [handle])
             conn.commit()
             row = conn.execute("SELECT event_type, session_id, line_no FROM raw_events").fetchone()
         finally:
@@ -685,6 +685,149 @@ class TestBackfillRawEventsDirectHandles:
         finally:
             conn.close()
         assert count == 0
+
+
+class TestBackfillHostBasisBug3542:
+    """BUG-3542: raw rows carry handle.host + host_basis='handle'; legacy rows stay unverified."""
+
+    FIXTURE = Path(__file__).parent / "fixtures" / "codex" / "rollout-exec.jsonl"
+
+    def _claude_file(self, tmp_path: Path, name: str = "c.jsonl", n: int = 1) -> Path:
+        path = tmp_path / name
+        path.write_text(
+            "".join(
+                json.dumps(
+                    {
+                        "type": "assistant",
+                        "sessionId": "cs",
+                        "timestamp": f"2026-05-22T00:00:0{i}Z",
+                        "message": {
+                            "model": "claude-opus-4-7",
+                            "usage": {"input_tokens": 5, "output_tokens": 2},
+                        },
+                    }
+                )
+                + "\n"
+                for i in range(n)
+            ),
+            encoding="utf-8",
+        )
+        return path
+
+    def _handles(self, tmp_path: Path) -> list:
+        from little_loops.session_store.sessions import SessionHandle
+
+        return [
+            SessionHandle("codex", "x1", self.FIXTURE, tmp_path, 1.0),
+            SessionHandle("claude-code", "cs", self._claude_file(tmp_path), tmp_path, 1.0),
+        ]
+
+    def test_mixed_batch_stores_each_handles_host_and_replays_it(self, tmp_path: Path) -> None:
+        from little_loops.session_store.writers import _iter_events_with_host
+
+        db = tmp_path / "h.db"
+        ensure_db(db)
+        with patch.dict("os.environ", {"LL_HOST_CLI": "claude-code"}):
+            backfill_raw_events(db, handles=self._handles(tmp_path), host="claude-code")
+        conn = connect(db)
+        try:
+            rows = conn.execute("SELECT DISTINCT host, host_basis FROM raw_events").fetchall()
+            assert {(r[0], r[1]) for r in rows} == {("codex", "handle"), ("claude-code", "handle")}
+            cursor = conn.execute("SELECT raw_line, source_path, host, host_basis FROM raw_events")
+            replayed = {(h, b) for _, _, h, b in _iter_events_with_host(cursor)}
+        finally:
+            conn.close()
+        assert replayed == {("codex", "handle"), ("claude-code", "handle")}
+
+    def test_usage_rows_carry_host_basis_after_rebuild(self, tmp_path: Path) -> None:
+        db = tmp_path / "h.db"
+        ensure_db(db)
+        backfill_raw_events(db, handles=self._handles(tmp_path))
+        conn = connect(db)
+        try:  # a NULL-basis legacy raw row alongside the verified one
+            conn.execute(
+                "INSERT INTO raw_events(ts, session_id, host, source_path, line_no, event_type,"
+                " raw_line, parsed_json) VALUES('t', 'ls', 'claude-code', 'legacy', 1,"
+                " 'assistant', ?, ?)",
+                (
+                    json.dumps(
+                        {
+                            "type": "assistant",
+                            "sessionId": "ls",
+                            "timestamp": "2026-05-22T00:00:09Z",
+                            "message": {"usage": {"input_tokens": 1, "output_tokens": 1}},
+                        }
+                    ),
+                )
+                * 2,
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        rebuild(db)
+        conn = connect(db)
+        try:
+            got = dict(conn.execute("SELECT session_id, host_basis FROM usage_events").fetchall())
+        finally:
+            conn.close()
+        assert got == {"cs": "handle", "ls": None}
+
+    def test_iterator_yields_none_basis_for_short_cursors_and_files(self, tmp_path: Path) -> None:
+        from little_loops.session_store.writers import _iter_events, _iter_events_with_host
+
+        conn = sqlite3.connect(":memory:")
+        conn.execute("CREATE TABLE r(a, b, c)")
+        conn.execute("INSERT INTO r VALUES('{}', 'a', 'codex')")
+        assert [x[3] for x in _iter_events_with_host(conn.execute("SELECT a, b FROM r"))] == [None]
+        assert [x[3] for x in _iter_events_with_host(conn.execute("SELECT a, b, c FROM r"))] == [
+            None
+        ]
+        jsonl = tmp_path / "t.jsonl"
+        jsonl.write_text("{}\n")
+        assert [x[3] for x in _iter_events_with_host([jsonl])] == [None]
+        assert list(_iter_events([jsonl])) == [("{}", str(jsonl))]
+
+    def test_reingest_and_append_leave_legacy_rows_untouched(self, tmp_path: Path) -> None:
+        from little_loops.session_store.sessions import SessionHandle
+
+        db = tmp_path / "h.db"
+        ensure_db(db)
+        path = self._claude_file(tmp_path, n=1)
+        handle = SessionHandle("claude-code", "cs", path, tmp_path, 1.0)
+        backfill_raw_events(db, handles=[handle])
+        conn = connect(db)
+        try:  # simulate a pre-migration row
+            conn.execute("UPDATE raw_events SET host = 'codex', host_basis = NULL")
+            conn.commit()
+        finally:
+            conn.close()
+        backfill_raw_events(db, handles=[handle])
+        self._claude_file(tmp_path, n=2)  # appends one event to the same source
+        assert backfill_raw_events(db, handles=[handle]) == 1
+        conn = connect(db)
+        try:
+            rows = conn.execute(
+                "SELECT line_no, host, host_basis FROM raw_events ORDER BY line_no"
+            ).fetchall()
+        finally:
+            conn.close()
+        assert [tuple(r) for r in rows] == [(1, "codex", None), (2, "claude-code", "handle")]
+
+    def test_legacy_null_basis_qwen_row_still_normalized(self) -> None:
+        from little_loops.session_store.writers import _iter_events_with_host
+
+        record = {
+            "type": "assistant",
+            "sessionId": "q",
+            "timestamp": "t",
+            "message": {"role": "model", "parts": [{"text": "hi"}]},
+        }
+        conn = sqlite3.connect(":memory:")
+        conn.execute("CREATE TABLE r(a, b, c, d)")
+        conn.execute("INSERT INTO r VALUES(?, 's', 'qwen', NULL)", (json.dumps(record),))
+        ((line, _, host, basis),) = _iter_events_with_host(conn.execute("SELECT * FROM r"))
+        assert (host, basis) == ("qwen", None)
+        assert json.loads(line) is not None
 
 
 class TestBackfillWrapperContractD4:

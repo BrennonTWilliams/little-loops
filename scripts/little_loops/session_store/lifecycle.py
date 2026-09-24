@@ -764,9 +764,7 @@ def _backfill_sessions(conn: sqlite3.Connection, source: list[Path] | sqlite3.Cu
     return count
 
 
-def _backfill_raw_events(
-    conn: sqlite3.Connection, handles: list[SessionHandle], *, host: str | None = None
-) -> int:
+def _backfill_raw_events(conn: sqlite3.Connection, handles: list[SessionHandle]) -> int:
     """Parse *handles* via ``iter_events`` and INSERT OR IGNORE one row per event.
 
     Idempotent via the ``(source_path, line_no)`` dedup index. ``event_type``
@@ -776,12 +774,12 @@ def _backfill_raw_events(
     rows), so raw_events stores the event payload rather than a cache-table
     kind (ENH-2581).
 
-    *host* overrides the ambient ``resolve_host().name`` for the
-    ``raw_events.host`` column (ENH-3166) — ``ll-session backfill --host
-    qwen`` must stamp qwen, not whatever CLI orchestrates the call; it does
-    **not** override ``handle.host``, which drives ``iter_events`` dispatch —
-    a handle carries its own true host regardless of which CLI invocation
-    orchestrates the call.
+    ``raw_events.host`` is each ``handle.host`` (BUG-3542), never the ambient
+    host of the ingesting process, and ``host_basis='handle'`` marks the row as
+    verified. ``ll-session backfill --host qwen`` (ENH-3166) still stamps qwen
+    because ``handles_from_paths`` builds its handles with that host. Legacy
+    rows keep their host and a NULL ``host_basis``; re-ingestion is
+    ``INSERT OR IGNORE`` and never certifies them.
 
     ENH-3422 (D1-D6): every host is ingested through the single
     ``iter_events``/``_PARSERS`` dispatch instead of per-host ``HostLayout``
@@ -792,7 +790,6 @@ def _backfill_raw_events(
     are both the re-serialized ``event.payload`` (D6) — no longer verbatim
     for per-line hosts, but JSON-equal to the parser's own output.
     """
-    effective_host = host if host is not None else resolve_host().name
     count = 0
     for handle in handles:
         source_path = str(handle.path)
@@ -801,12 +798,13 @@ def _backfill_raw_events(
             session_id = event.payload.get("sessionId") or handle.session_id
             cur = conn.execute(
                 "INSERT OR IGNORE INTO raw_events"
-                "(ts, session_id, host, source_path, line_no, event_type, raw_line, parsed_json)"
-                " VALUES(?, ?, ?, ?, ?, ?, ?, ?)",
+                "(ts, session_id, host, host_basis, source_path, line_no, event_type,"
+                " raw_line, parsed_json)"
+                " VALUES(?, ?, ?, 'handle', ?, ?, ?, ?, ?)",
                 (
                     event.timestamp,
                     session_id,
-                    effective_host,
+                    handle.host,
                     source_path,
                     event.line_no,
                     event.type or "unknown",
@@ -852,7 +850,7 @@ def backfill_raw_events(
         filtered = (
             [h for h in handles if h.updated_at >= since_ts] if since_ts is not None else handles
         )
-        count = _backfill_raw_events(conn, filtered, host=effective_host)
+        count = _backfill_raw_events(conn, filtered)
         conn.execute(
             "INSERT INTO meta(key, value) VALUES('last_raw_event_ts', ?) "
             "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
@@ -999,7 +997,9 @@ def rebuild(
         )
 
         def _raw_events_cursor() -> sqlite3.Cursor:
-            return conn.execute("SELECT raw_line, source_path, host FROM raw_events ORDER BY id")
+            return conn.execute(
+                "SELECT raw_line, source_path, host, host_basis FROM raw_events ORDER BY id"
+            )
 
         # sessions first: assistant_messages/backfill order elsewhere relies on
         # the sessions table already being populated (ENH-1710).
@@ -1120,7 +1120,7 @@ def backfill(
                     jsonl_files or [], host if host is not None else resolve_host().name
                 )
             )
-            counts["raw_events"] = _backfill_raw_events(conn, raw_handles, host=host)
+            counts["raw_events"] = _backfill_raw_events(conn, raw_handles)
         if registry_dir.is_dir():
             counts["learning_tests"] = _backfill_learning_test_events(conn, registry_dir)
         if sessions_root is not None and sessions_root.is_dir():

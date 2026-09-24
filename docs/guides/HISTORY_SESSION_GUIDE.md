@@ -240,6 +240,8 @@ ll-session backfill --host omp
 
 `--host` defaults to `None` (auto-detect from `LL_HOOK_HOST`); valid choices also include `pi`, `kimi-code`, `qwen`, `gemini`, and `omp`.
 
+**Host attribution.** Each `raw_events` row stores the host of the session it came from, not the host of the process that ingested it, and is marked `host_basis = 'handle'`. `--host` only tells `backfill` which host's transcripts the plain paths are. Rows written before this change have a NULL `host_basis`: their `host` may be the ingesting host and should be treated as unverified. Re-running `backfill` never relabels them. `--rebuild` copies `host_basis` onto the replayed `usage_events` rows (`channel = 'transcript'`); live-written usage rows leave it NULL and take their host from the actual invocation.
+
 ---
 
 ## Querying Sessions

@@ -4,12 +4,13 @@ type: BUG
 title: Raw-event backfill stamps the configured host instead of each handle's source
   host
 priority: P2
-status: open
+status: done
 parent: EPIC-3562
 epic: EPIC-3562
 discovered_by: ll-issues-create
 discovered_date: '2026-09-24'
 captured_at: '2026-09-24T17:40:14Z'
+completed_at: '2026-09-24T22:14:58Z'
 labels:
 - observability
 - multi-host
@@ -25,6 +26,7 @@ score_complexity: 10
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 10
+completed_at: '2026-09-24T22:14:58Z'
 ---
 
 # BUG-3542: Raw-event backfill stamps the configured host instead of each handle's source host
@@ -130,6 +132,8 @@ score_change_surface: 10
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-24T22:14:57 - `6c1833f1-29b8-4569-8cd1-c7e84a3f7e66.jsonl`
+- `/ll:ready-issue` - 2026-09-24T22:06:36 - `438a4d24-5495-4289-943b-89892f749cdc.jsonl`
 - `/ll:confidence-check` - 2026-09-24T22:02:24 - `44e0975b-9955-4c8e-912d-3044973292e1.jsonl`
 - `/ll:confidence-check` - 2026-09-24T21:53:41 - `75725027-e884-41d2-8414-83c4661c85da.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-09-24T17:53:59 - `5250dd00-ed7b-4310-8dee-527fe13b2b07.jsonl`

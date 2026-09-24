@@ -989,7 +989,7 @@ class TestBackfillRawEventsCodexHandleD3:
         ensure_db(db)
         conn = connect(db)
         try:
-            count = _backfill_raw_events(conn, [handle], host="codex")
+            count = _backfill_raw_events(conn, [handle])
             conn.commit()
             session_ids = {
                 row[0] for row in conn.execute("SELECT DISTINCT session_id FROM raw_events")

@@ -22,7 +22,7 @@ from little_loops.session_store.db import DEFAULT_DB_PATH, _resolve_db_path
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 54
+SCHEMA_VERSION = 55
 
 VALID_KINDS: tuple[str, ...] = (
     "tool",
@@ -1455,6 +1455,14 @@ _MIGRATIONS: list[str] = [
     ALTER TABLE usage_events ADD COLUMN scope_kind TEXT;
     ALTER TABLE usage_events ADD COLUMN observed_at TEXT;
     ALTER TABLE usage_events ADD COLUMN observed_at_basis TEXT;
+    """,
+    # v55 (BUG-3542): how a row's host was derived. 'handle' = stamped from the
+    # source SessionHandle.host at ingest; NULL = legacy (host may be the
+    # ingesting host, unverified). On usage_events it is copied from the raw row
+    # on replay and is meaningful only for channel='transcript'. No backfill.
+    """
+    ALTER TABLE raw_events ADD COLUMN host_basis TEXT;
+    ALTER TABLE usage_events ADD COLUMN host_basis TEXT;
     """,
 ]
 

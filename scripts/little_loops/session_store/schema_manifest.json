@@ -2050,6 +2050,12 @@
           "notnull": false,
           "pk": false,
           "type": "INTEGER"
+        },
+        {
+          "name": "host_basis",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
         }
       ],
       "type": "table"
@@ -2800,6 +2806,12 @@
           "notnull": false,
           "pk": false,
           "type": "TEXT"
+        },
+        {
+          "name": "host_basis",
+          "notnull": false,
+          "pk": false,
+          "type": "TEXT"
         }
       ],
       "type": "table"
@@ -2923,5 +2935,5 @@
       "type": "table"
     }
   },
-  "schema_version": 54
+  "schema_version": 55
 }

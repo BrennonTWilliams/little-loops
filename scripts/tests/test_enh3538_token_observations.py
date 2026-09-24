@@ -233,13 +233,13 @@ class TestReplay:
 
     def test_iterator_preserves_host_and_jsonl_source_has_none(self, tmp_path: Path) -> None:
         cursor = self._cursor(tmp_path / "x", [("{}", "a", "codex"), ("{}", "b", None)])
-        assert [(lbl, host) for _, lbl, host in _iter_events_with_host(cursor)] == [
+        assert [(lbl, host) for _, lbl, host, _basis in _iter_events_with_host(cursor)] == [
             ("a", "codex"),
             ("b", None),
         ]
         jsonl = tmp_path / "t.jsonl"
         jsonl.write_text("{}\n")
-        assert [host for _, _, host in _iter_events_with_host([jsonl])] == [None]
+        assert [host for _, _, host, _basis in _iter_events_with_host([jsonl])] == [None]
 
     def test_backfill_writes_metadata_and_none_cost_for_missing_component(
         self, tmp_path: Path
