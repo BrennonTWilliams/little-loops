@@ -16,6 +16,7 @@ score_complexity: 14
 score_test_coverage: 25
 score_ambiguity: 10
 score_change_surface: 10
+reconcile_attempted: true
 ---
 
 # BUG-3530: Session-store rebuild wipes live-only usage_events rows on every schema bump
@@ -71,9 +72,10 @@ _Added by `/ll:refine-issue` — 2026-09-24 — based on codebase analysis:_
 ## Acceptance Criteria
 
 - [ ] Add a nullable `usage_events.channel` column (`'live'` | `'transcript'`) in an append-only migration at the next free schema version. `record_usage_event` writes `'live'`; `_backfill_usage_events` writes `'transcript'`.
-- [ ] `rebuild()` deletes only `channel = 'transcript'` rows before replay. The discriminator is documented next to `_REBUILD_TABLES`. `run_id IS NULL` and `state IS NOT NULL` are **not** valid discriminators: backfill derives `run_id` via `_derive_run_id_for_ts`, and live rows permit `state=None`.
+- [ ] `rebuild()` deletes every replayable channel before replay — `channel = 'transcript'` and the Codex `'rollout'` rows ENH-3532 ingests (Scope Boundary note) — and never `channel = 'live'`. The discriminator is documented next to `_REBUILD_TABLES`. `run_id IS NULL` and `state IS NOT NULL` are **not** valid discriminators: backfill derives `run_id` via `_derive_run_id_for_ts`, and live rows permit `state=None`.
+- [ ] ENH-3532 `'rollout'` rows are replaced, not duplicated, on rebuild: running `rebuild()` twice leaves `usage_events` totals unchanged with rollout rows present.
 - [ ] Legacy classification happens inside the migration (before any rebuild can run): `session_id IS NOT NULL` → `'transcript'`, otherwise `'live'`. This is provable from the writers: `record_usage_event` has never inserted `session_id` (since ENH-2724, b06a15bba), and `_backfill_usage_events` always inserts it from the record's `sessionId`. No other `INSERT INTO usage_events` exists.
-- [ ] Transcript records with no `sessionId` (which would be classified `'live'` and then recreated on replay) are handled explicitly: backfill either skips them or they get a documented `'unknown'` classification that is deleted on rebuild. Whatever the choice, repeated rebuilds must not grow totals.
+- [ ] Decided (2026-09-24): `_backfill_usage_events` **skips** transcript records with no `sessionId` (extend the existing no-token-signal `continue` guard near `writers.py:3609`), so replay can never create a `session_id IS NULL` row that the migration/`rebuild()` would treat as `'live'`. No `'unknown'` channel. Test: a transcript record without `sessionId` yields no `usage_events` row, and repeated rebuilds leave totals unchanged.
 - [ ] Rows written by `record_usage_event` survive `rebuild()` unchanged (count, `run_id`, `state`, token and cost columns), including live rows with `state=None`.
 - [ ] Transcript rows carrying a non-null derived `run_id` are still replaced by replay; running `rebuild()` twice yields identical `usage_events` totals.
 - [ ] Migration test on an **actual pre-migration database** (fixture at the prior `SCHEMA_VERSION`, with mixed live and transcript rows): after migration and the rebuild it triggers, live rows are intact and there are no duplicate transcript rows.
@@ -117,9 +119,9 @@ _Added by `/ll:confidence-check` on 2026-09-23 (re-scored 2026-09-23)_
 **Outcome Confidence**: 59/100 → LOW
 
 ### Concerns
-- Internal contradiction on the delete predicate: Acceptance Criteria say `rebuild()` deletes only `channel = 'transcript'`, but the Scope Boundary note (audit-issue-conflicts) requires deleting every replayable channel (incl. ENH-3532 Codex `rollout` rows). Reconcile the AC to "delete all replayable channels" and add the rollout-not-duplicated criterion.
-- The no-`sessionId` transcript-record policy is left as "skip or `'unknown'`" — pick one before implementing.
-- The Verification Notes' design hint (`DELETE ... WHERE run_id IS NULL`, no migration) is contradicted by code: `_backfill_usage_events` derives `run_id` for transcript rows via a timestamp-window join (`writers.py:_derive_run_id_for_ts`, ENH-2725), so backfilled rows can carry a `run_id`. That filter would leave stale transcript rows and cause duplicates on replay. Live rows may also have `state=None`, so `state IS NOT NULL` isn't a safe discriminator either.
+- ~~Internal contradiction on the delete predicate: Acceptance Criteria say `rebuild()` deletes only `channel = 'transcript'`, but the Scope Boundary note (audit-issue-conflicts) requires deleting every replayable channel (incl. ENH-3532 Codex `rollout` rows). Reconcile the AC to "delete all replayable channels" and add the rollout-not-duplicated criterion.~~ Resolved: AC now say "delete all replayable channels" with a rollout-not-duplicated criterion.
+- ~~The no-`sessionId` transcript-record policy is left as "skip or `'unknown'`" — pick one before implementing.~~ Resolved 2026-09-24: skip (see Acceptance Criteria).
+- ~~The Verification Notes' design hint (`DELETE ... WHERE run_id IS NULL`, no migration) is contradicted by code: `_backfill_usage_events` derives `run_id` for transcript rows via a timestamp-window join (`writers.py:_derive_run_id_for_ts`, ENH-2725), so backfilled rows can carry a `run_id`. That filter would leave stale transcript rows and cause duplicates on replay. Live rows may also have `state=None`, so `state IS NOT NULL` isn't a safe discriminator either.~~ Resolved: hint withdrawn in Verification Notes; AC name both as invalid discriminators.
 
 ### Outcome Risk Factors
 - ~~Unresolved design decision: nullable `origin` column vs. a narrowed DELETE; legacy-row policy undecided.~~ Resolved 2026-09-23: a `channel` column, with legacy rows classified by `session_id` presence in the migration.
@@ -127,6 +129,7 @@ _Added by `/ll:confidence-check` on 2026-09-23 (re-scored 2026-09-23)_
 - Moderate per-site complexity: rebuild semantics, idempotency across repeated rebuilds, duplicate-row risk.
 
 ## Session Log
+- `/ll:reconcile-issue` - 2026-09-24T01:28:09 - `0cc4d9ef-2be2-4686-8da4-17a975d2e357.jsonl`
 - `/ll:decide-issue` - 2026-09-24T01:27:18 - `34910629-d012-4bc0-9f28-9b313ee78c98.jsonl`
 - `/ll:confidence-check` - 2026-09-24T01:24:53 - `f2782d90-4a24-474c-afe0-ce24c17410f3.jsonl`
 - `/ll:refine-issue` - 2026-09-24T01:11:53 - `b8e8635a-fb67-47b8-a409-92a092610b22.jsonl`
