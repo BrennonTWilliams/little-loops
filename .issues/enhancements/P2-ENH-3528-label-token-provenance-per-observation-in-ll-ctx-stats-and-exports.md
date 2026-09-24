@@ -65,7 +65,9 @@ Preserve JSON compatibility where existing values remain valid. Correctly changi
 
 ### Storage, exports, and model identity
 
-Persist provenance, host, and acquisition channel alongside usage observations with nullable/default-compatible columns in an append-only migration at the next free schema version (do not assume 53). This migration requires BUG-3530's rebuild fix to have landed. Legacy rows with unproven provenance remain `unknown`. Existing context-state/pressure data retains `estimated` provenance.
+Persist provenance and host alongside usage observations with nullable/default-compatible columns in an append-only migration at the next free schema version (do not assume 53). This migration requires BUG-3530's rebuild fix to have landed. The acquisition channel is **not** added here: BUG-3530 adds `usage_events.channel` (`'live'` | `'transcript'`, legacy rows classified by `session_id` presence) as its rebuild discriminator, and this issue reuses that column. A new channel value (e.g. ENH-3532's `'rollout'`) must also declare whether rebuild treats it as replayable. Legacy rows with unproven provenance remain `unknown`.
+
+BUG-3531 (Codex live input normalization) is blocked by this migration. It persists inconsistent Codex observations (`cache_read + cache_write > input`) as `provenance='unknown'` and normalized ones as `'measured'` with `host='codex'`. Once this migration exists, new Codex rows are identifiable by `host`; pre-existing ones are not (model `"unknown"`, no host) and stay `unknown`. If this issue's full scope would hold BUG-3531 back too long, split step 3 (migration and writers) out so BUG-3531 only waits on that. Existing context-state/pressure data retains `estimated` provenance.
 
 The shareable export must retain non-sensitive provenance needed to interpret its token figures. Add safe provenance columns to `_SHAREABLE_COLUMNS`, bump `_SHAREABLE_ALLOWLIST_VERSION` and update the hash and fixtures together, and omit private transcript paths/raw source identifiers. Carry provenance through `UsageEvent`, history readers, and dashboard token exports affected by the new columns.
 
@@ -78,7 +80,7 @@ Keep requested/resolved model selections separate from observed model identity, 
 - [ ] `token_provenance` keys are RFC 6901 JSON Pointers; tests cover escaping of `~` and `/` in dynamic model/tool keys, dotted model IDs, and that every pointer resolves to an existing numeric (or `null`) field in the same document.
 - [ ] Tests cover measured, estimated, unknown, mixed, unavailable, partial, and legacy data; a missing field is not a measured zero. Aggregation preserves source composition across multiple hosts.
 - [ ] Context estimates are replaced only by equivalent in-scope measurements; measured baselines plus overhead remain estimated. Tests cover missing/stale measurements, tool activity between observations, and compaction invalidation without removing existing fallback estimation.
-- [ ] Migration adds provenance/host/channel columns; migration-triggered SessionStart rebuild preserves live-only rows and their provenance (with BUG-3530 landed); old schemas and unknown legacy origins remain readable. Manifest/version pins updated together.
+- [ ] Migration adds provenance/host columns and reuses BUG-3530's `channel` column (no second channel column); migration-triggered SessionStart rebuild preserves live-only rows and their provenance (with BUG-3530 landed); old schemas and unknown legacy origins remain readable. Manifest/version pins updated together.
 - [ ] History readers and shareable dashboard exports retain safe provenance, with allowlist version/hash and fixture updates; no private source paths are added to exports.
 - [ ] Requested/resolved model identity is never presented as host-observed identity; unavailable pricing is not reported as measured zero cost. Semantic JSON corrections and the provenance contract are documented.
 - [ ] No new ingestion path is added; Codex historical ingestion is ENH-3532.
@@ -86,7 +88,8 @@ Keep requested/resolved model selections separate from observed model identity, 
 ## Scope Boundaries
 
 - **In scope**: runtime telemetry availability, per-observation provenance columns, `ll-ctx-stats` labeling and `token_provenance` contract, context estimate/staleness labeling, and affected history/dashboard exports.
-- **Prerequisite**: BUG-3530 (rebuild must preserve live-only usage rows before this migration ships).
+- **Prerequisite**: BUG-3530 (rebuild must preserve live-only usage rows before this migration ships; it also supplies the `channel` column).
+- **Blocks**: BUG-3531 (needs the provenance/host columns to persist inconsistent Codex observations and to keep corrected and uncorrected rows distinguishable).
 - **Split out**: ENH-3532 (Codex historical rollout ingestion, overlap reconciliation); BUG-3531 (Codex live input normalization); ENH-3534 (Qwen/Gemini/OMP and other hosts).
 - **Out of scope**: improving estimator accuracy; deleting the context estimator globally; using consumption as occupancy; new context monitors; changing time-saved/non-token metrics; new model pricing/routing; a universal provenance rewrite of unrelated CLIs.
 
@@ -124,7 +127,7 @@ Update `docs/reference/{CLI,API,HOST_COMPATIBILITY,CONFIGURATION}.md`, `docs/gui
 
 1. Characterize existing `ll-ctx-stats` text/JSON output and usage rows with fixtures before changing anything.
 2. Implement typed runtime telemetry availability and the check against `token_reporting`.
-3. Add the provenance/host/channel migration (after BUG-3530) and provenance-aware writers; classify legacy rows `unknown`.
+3. Add the provenance/host migration (after BUG-3530, reusing its `channel` column) and provenance-aware writers; classify legacy rows `unknown`. This step unblocks BUG-3531.
 4. Implement aggregation composition and the `token_provenance` JSON Pointer contract; render labels in text and JSON for store and fallback branches; document null/completeness corrections.
 5. Label context estimates and staleness in hooks without changing thresholds.
 6. Carry provenance through history readers and the shareable export (allowlist version/hash/fixtures together). Update docs. Run focused tests, then the required local suite and applicable lint/type checks.
@@ -135,13 +138,13 @@ Update `docs/reference/{CLI,API,HOST_COMPATIBILITY,CONFIGURATION}.md`, `docs/gui
 
 - `TokenProvenance = Literal["measured", "estimated", "unknown"]` for observations; aggregate metadata also permits `mixed` and includes source composition/completeness.
 - `provenance: str | None` — new nullable `usage_events` column; legacy rows read as `unknown`.
-- `channel: str | None` — new nullable `usage_events` column (e.g. `live`, `transcript`, `rollout`).
+- `channel: str | None` — existing `usage_events` column added by BUG-3530 (`live`, `transcript`); reused here, not re-added. New values (e.g. `rollout` from ENH-3532) must declare rebuild replayability.
 - A frozen runtime telemetry capability describes availability for a metric/channel. It is not a token value's provenance.
 - A persisted observation carries nullable token components, host/channel, metric/scope, observation time, provenance, and observed model separately from requested/resolved selection.
 
 ### Signatures
 
-- `record_usage_event(db_path: Path | str, *, run_id: str, ts: str, state: str | None, model: str, input_tokens: int, output_tokens: int, cache_read_tokens: int, cache_creation_tokens: int, provenance: str = "measured", host: str | None = None, channel: str | None = None) -> None` — additive keyword-only metadata; existing callers unchanged.
+- `record_usage_event(db_path: Path | str, *, run_id: str, ts: str, state: str | None, model: str, input_tokens: int, output_tokens: int, cache_read_tokens: int, cache_creation_tokens: int, provenance: str = "measured", host: str | None = None) -> None` — additive keyword-only metadata; existing callers unchanged. `channel` is always `'live'` for this writer (set by BUG-3530), so it is not a parameter.
 - `_aggregate_usage_events(db_path: Path) -> dict[str, Any] | None` — unchanged signature; the result gains provenance/completeness beside existing numeric fields and never consults the currently configured host.
 - `_print_json(...)` and `_render_fallback(state: dict[str, Any], logger: Logger) -> None` — render the same provenance contract, preserving the top-level store `source`.
 

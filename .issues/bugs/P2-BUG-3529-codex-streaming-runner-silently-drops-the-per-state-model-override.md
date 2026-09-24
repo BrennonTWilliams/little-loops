@@ -16,6 +16,8 @@ score_complexity: 25
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 18
+relates_to:
+- BUG-3536
 ---
 
 # BUG-3529: Codex streaming runner silently drops the per-state model override
@@ -34,16 +36,18 @@ score_change_surface: 18
 
 - `scripts/little_loops/host_runner.py` `CodexRunner.build_streaming` builds `codex exec [resume --last] <sandbox> --json --skip-git-repo-check [-C dir] <prompt>` and drops `model`.
 - `CodexRunner.build_blocking_json` appends `--model <model>` when supplied.
-- Result: loop prompt/slash_command states on Codex ignore `state.model` and run `--model` with no warning; evaluators (blocking path) honor it. The drop was introduced with the original per-state model override (fc2fb7676) and was never re-verified against the CLI.
+- Result: loop `prompt` states on Codex ignore `state.model` and run `--model` with no warning (`slash_command` states never forward a model on any host, so they are out of scope); evaluators (blocking path) honor it. The drop was introduced with the original per-state model override (fc2fb7676) and was never re-verified against the CLI.
 
 ## Expected Behavior
 
-`build_streaming` forwards a supplied `model` as `--model <model>` for both fresh and `resume --last` invocations, exactly as `build_blocking_json` does. `model=None` leaves argv unchanged.
+`build_streaming` forwards a supplied `model` as `--model <model>` for both fresh and `resume --last` invocations, exactly as `build_blocking_json` does. `model=None` leaves argv unchanged. On the resume path, `--model` goes after `resume` (the `codex exec resume` subparser accepts `-m, --model`).
 
 ## Integration Map
 
 - `scripts/little_loops/host_runner.py` — `CodexRunner.build_streaming`.
-- Tests: `scripts/tests/test_host_runner.py`, `test_host_runner_dispatch.py`, `conformance/test_host_conformance.py`.
+- `scripts/little_loops/fsm/executor.py` — resolves `state.model or self.run_model` for `prompt` actions only (`slash_command` passes `model=None` for every host); `fsm/runners.py` forwards it to `run_claude_command` → `build_streaming`. Dispatch tests must use a `prompt` state.
+- Tests: `scripts/tests/test_host_runner.py` (builder argv); FSM/subprocess tests — `test_fsm_runners.py` / `test_subprocess_utils.py` (dispatch regression, with the host resolved to Codex). **Not** `test_host_runner_dispatch.py`: it covers `dispatch_anthropic_request` / `dispatch_batch_request` (Anthropic SDK and batch dispatch) and has no Codex coverage.
+- Related: BUG-3536 — the same resume argv places `-C` and `--sandbox` after `resume`, which the installed parser rejects. Coordinate argv placement; the parser-level test there must cover `--model` too.
 
 ## Impact
 
@@ -55,9 +59,9 @@ score_change_surface: 18
 ## Acceptance Criteria
 
 - [ ] `CodexRunner.build_streaming(model="X")` argv contains `--model X` for fresh and resume invocations; `model=None` argv is byte-identical to today.
-- [ ] Runtime capability/conformance data no longer describe Codex streaming as model-unsupported (check `RUNTIME_HOST_CAPABILITIES` and `conformance/test_host_conformance.py`).
-- [ ] Dispatch-level test: an FSM prompt state with `model:` under the Codex host reaches the runner argv (not just the builder).
-- [ ] `docs/reference/HOST_COMPATIBILITY.md` no longer lists per-state model as unsupported for Codex streaming, if it does today.
+- [ ] Dispatch-level tests in the FSM/subprocess suites (Codex host), asserting on the spawned argv: (a) state `model:` set and run `--model` set → the state model wins; (b) only run `--model` set → it is forwarded; (c) neither set → no `--model` in argv (host default retained).
+- [ ] Resume argv with `model` is accepted by the `codex exec resume` grammar (covered by BUG-3536's parser-level test; `--model` present alone is not sufficient evidence).
+- [ ] Remove the stale `# codex does not support --model in streaming mode` comment. No runtime capability change is required: `HostCapabilities` / `RuntimeHostEntry` have no model-support field, and `HOST_COMPATIBILITY.md` does not list per-state model as unsupported for Codex streaming (checked 2026-09-23). If a model-support flag is wanted, that is ENH-3527's scope.
 
 ## Program Design
 
@@ -90,7 +94,7 @@ _Added by `/ll:confidence-check` on 2026-09-23_
 **Outcome Confidence**: 93/100 → HIGH CONFIDENCE
 
 ### Concerns
-- Two Acceptance Criteria are conditional ("if it does today"); grep `RUNTIME_HOST_CAPABILITIES` and `HOST_COMPATIBILITY.md` first to see whether they apply.
+- ~~Two Acceptance Criteria are conditional ("if it does today")~~ — resolved 2026-09-23: neither the runtime registry nor `HOST_COMPATIBILITY.md` records Codex streaming model support; replaced with concrete criteria.
 - `build_streaming` has ~13 call sites; existing argv-equality tests for Codex must keep passing with `model=None`.
 
 ## Session Log

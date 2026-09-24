@@ -44,7 +44,9 @@ A rebuild replaces only transcript-derived (replayable) usage rows. Live-only ro
 ## Integration Map
 
 - `scripts/little_loops/session_store/{lifecycle,writers,schema}.py`, `schema_manifest.json`, `scripts/little_loops/hooks/session_start.py`.
+- `scripts/little_loops/cli/backfill_worker.py` — the detached worker SessionStart spawns; it passes `--rebuild` into `backfill_incremental(..., also_rebuild=True)`. This is the bridge from the version-advance check to `rebuild()`.
 - Tests: `test_session_store_lifecycle.py`, `test_session_store_schema.py`, `test_session_store_writers.py`.
+- Coordinated with ENH-3528, which plans host/provenance/channel columns on `usage_events`. This issue introduces the **channel** column; ENH-3528 reuses it rather than adding its own.
 
 ## Impact
 
@@ -55,33 +57,40 @@ A rebuild replaces only transcript-derived (replayable) usage rows. Live-only ro
 
 ## Acceptance Criteria
 
-- [ ] Rows written by `record_usage_event` survive `rebuild()` unchanged (count, `run_id`, `state`, token and cost columns).
-- [ ] Transcript-derived usage rows are still replaced by replay; running `rebuild()` twice yields identical `usage_events` totals.
-- [ ] The SessionStart version-advance path is covered, not only a direct `rebuild()` call.
-- [ ] The mechanism distinguishing live from replayable rows is documented next to `_REBUILD_TABLES` (e.g. a nullable origin column via an append-only migration, or a narrowed `DELETE ... WHERE <replayable>`). Existing rows with unprovable origin follow a documented policy.
-- [ ] `schema_manifest.json`/version pins updated together if a migration is added.
+- [ ] Add a nullable `usage_events.channel` column (`'live'` | `'transcript'`) in an append-only migration at the next free schema version. `record_usage_event` writes `'live'`; `_backfill_usage_events` writes `'transcript'`.
+- [ ] `rebuild()` deletes only `channel = 'transcript'` rows before replay. The discriminator is documented next to `_REBUILD_TABLES`. `run_id IS NULL` and `state IS NOT NULL` are **not** valid discriminators: backfill derives `run_id` via `_derive_run_id_for_ts`, and live rows permit `state=None`.
+- [ ] Legacy classification happens inside the migration (before any rebuild can run): `session_id IS NOT NULL` → `'transcript'`, otherwise `'live'`. This is provable from the writers: `record_usage_event` has never inserted `session_id` (since ENH-2724, b06a15bba), and `_backfill_usage_events` always inserts it from the record's `sessionId`. No other `INSERT INTO usage_events` exists.
+- [ ] Transcript records with no `sessionId` (which would be classified `'live'` and then recreated on replay) are handled explicitly: backfill either skips them or they get a documented `'unknown'` classification that is deleted on rebuild. Whatever the choice, repeated rebuilds must not grow totals.
+- [ ] Rows written by `record_usage_event` survive `rebuild()` unchanged (count, `run_id`, `state`, token and cost columns), including live rows with `state=None`.
+- [ ] Transcript rows carrying a non-null derived `run_id` are still replaced by replay; running `rebuild()` twice yields identical `usage_events` totals.
+- [ ] Migration test on an **actual pre-migration database** (fixture at the prior `SCHEMA_VERSION`, with mixed live and transcript rows): after migration and the rebuild it triggers, live rows are intact and there are no duplicate transcript rows.
+- [ ] If replay raises mid-rebuild, the delete is rolled back, so no transcript rows are lost and live rows are untouched.
+- [ ] The SessionStart version-advance path is covered end to end (`session_start` → `backfill_worker --rebuild` → `rebuild`), not only a direct `rebuild()` call.
+- [ ] `schema_manifest.json`/version pins updated together.
 
 ## Program Design
 
 ### Types
 
-- `origin: str | None` — candidate nullable `usage_events` column (`live` vs `transcript`) if the fix chooses the column approach; legacy rows need a documented policy.
+- `channel: str | None` — new nullable `usage_events` column, `'live'` or `'transcript'` (acquisition channel, shared with ENH-3528). Legacy rows are classified by `session_id` presence in the migration.
 
 ### Signatures
 
 - `rebuild(db: Path | str = DEFAULT_DB_PATH, *, config: dict | None = None, max_sessions: int | None = None) -> dict[str, int]` — signature unchanged; deletes only replayable usage rows before replay.
-- `record_usage_event(db_path: Path | str, *, run_id: str, ts: str, state: str | None, model: str, input_tokens: int, output_tokens: int, cache_read_tokens: int, cache_creation_tokens: int) -> None` — marks rows live (if the column approach is chosen).
+- `record_usage_event(db_path: Path | str, *, run_id: str, ts: str, state: str | None, model: str, input_tokens: int, output_tokens: int, cache_read_tokens: int, cache_creation_tokens: int) -> None` — signature unchanged; inserts `channel = 'live'`.
 
 ### Call Path
 
-- SessionStart version advance → `rebuild` → `_backfill_usage_events`
+- SessionStart version advance → `backfill_worker --rebuild` → `backfill_incremental` → `rebuild` → `_backfill_usage_events`
 - `record_usage_event` rows must survive `rebuild`.
 
 ## Verification Notes
 
 Verdict: **VALID** (2026-09-23). `usage_events` is in `_REBUILD_TABLES` and is `DELETE`d wholesale (`lifecycle.py:940-951, 986-987`); `_backfill_usage_events` writes `state = NULL`; `record_usage_event` (`writers.py:1929`) inserts with `run_id`; SessionStart appends `--rebuild` when `last_rebuild_version < SCHEMA_VERSION` (`session_start.py:196`). `ll-verify-evidence` clean.
 
-Design note: `usage_events.run_id` already exists (v29, ENH-2723) and `record_usage_event` requires it, while transcript-backfilled rows leave it NULL. A narrowed `DELETE FROM usage_events WHERE run_id IS NULL` may therefore need no new column or migration; worth weighing against the `origin` column candidate in Program Design.
+~~Design note: a narrowed `DELETE FROM usage_events WHERE run_id IS NULL` may need no new column.~~ **Withdrawn (2026-09-23)**: transcript backfill assigns `run_id` via `_derive_run_id_for_ts` (`writers.py:3623`), so that filter would leave stale transcript rows and duplicate them on replay. Resolved to the `channel` column; see Acceptance Criteria.
+
+**Design decision (2026-09-23)**: this issue adds the `channel` column. It is itself a schema bump, so it triggers the rebuild it fixes. Legacy rows must therefore be classified inside the migration, before the first rebuild after the version advance runs.
 
 ## Status
 
@@ -98,7 +107,7 @@ _Added by `/ll:confidence-check` on 2026-09-23_
 - The Verification Notes' design hint (`DELETE ... WHERE run_id IS NULL`, no migration) is contradicted by code: `_backfill_usage_events` derives `run_id` for transcript rows via a timestamp-window join (`writers.py:_derive_run_id_for_ts`, ENH-2725), so backfilled rows can carry a `run_id`. That filter would leave stale transcript rows and cause duplicates on replay. Live rows may also have `state=None`, so `state IS NOT NULL` isn't a safe discriminator either.
 
 ### Outcome Risk Factors
-- Unresolved design decision: nullable `origin` column (append-only migration, schema_manifest/version pins) vs. a narrowed DELETE — must be chosen before implementing; legacy-row policy also undecided.
+- ~~Unresolved design decision: nullable `origin` column vs. a narrowed DELETE; legacy-row policy undecided.~~ Resolved 2026-09-23: a `channel` column, with legacy rows classified by `session_id` presence in the migration.
 - Broad change surface: `usage_events` is referenced in ~24 modules, and a schema migration itself triggers a rebuild on every consuming project (the very path under repair).
 - Moderate per-site complexity: rebuild semantics, idempotency across repeated rebuilds, duplicate-row risk.
 
