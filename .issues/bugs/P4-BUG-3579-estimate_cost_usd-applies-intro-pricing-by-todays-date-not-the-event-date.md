@@ -139,5 +139,6 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-24T22:35:17 - `193eb57f-e9f6-4072-bd61-43000a1d97b1.jsonl`
 - `/ll:confidence-check` - 2026-09-24T22:10:05 - `b03f0e56-e701-4b6d-bb94-8f4cb425b852.jsonl`
 - `/ll:capture-issue` - 2026-09-24T21:22:59 - `9791f4b4-37b2-4bef-91d5-0ac00eeb812a.jsonl`
