@@ -51,14 +51,23 @@ See **Design** below.
 - `scripts/little_loops/fsm/runners.py`, `fsm/executor.py` — attach host/observation time at collection; completeness-aware payload sums; `_finish` persistence.
 - `scripts/little_loops/session_store/{schema,writers,queries}.py`, `schema_manifest.json` — migration, writer, metadata-aware iterator, `_backfill_usage_events`.
 - `scripts/little_loops/pricing.py` — `None`-aware cost.
+- `scripts/little_loops/fsm/persistence.py` — `usage.jsonl` writer (`action_complete` → per-state usage row, line ~1100); carries `None` components and the `*_missing` counts through.
+- `scripts/little_loops/fsm/cost_graph.py` — reads `usage.jsonl` with `int(... or 0)` then prices it (line ~223); a missing component must mark the bucket unpriced (same path as `has_unknown_model`), never cost it as 0.
+- `scripts/little_loops/generate_schemas.py` — `action_complete` token fields (lines 174-178) are `_int`; become integer-or-null and gain the `*_missing` count fields; regenerate the generated schemas.
+- `scripts/little_loops/session_store/writers.py` `_backfill_usage_events` — currently prices with `int(x or 0)` (line ~3615); switch to `None`-aware cost and write transcript-channel metadata (see Design → Replay).
 
 ### Dependent Files and Similar Patterns
 
 - `fsm/cost_graph.py`, `observability/tracing.py`, `issue_history/{agent_quality,quality_regressions,workspace_quality}.py`, `cli/ctx_stats.py`, `hooks/session_start.py` — `None` audit / rebuild path.
+- `observability/tracing.py` `_read_token` — coerces `None` → 0; unknown components must omit the OTel attribute instead.
+- `history_reader/usage.py` (lines ~299, ~468) and `history_reader/events.py` (line ~304) — `row[...] or 0`; OTel export must omit unknown `gen_ai.usage.*` attributes rather than emit 0; totals must not present missing as 0.
+- `runner_spec.py` (lines ~276, ~459) via `usage_from_stream_lines` — `RunnerResult` token fields are already `int | None`; verify pass-through only.
+- `host_runner.py` `_usage_from_response` (~3100) — Anthropic API / batch path; keeps `provenance='unknown'` in this issue, sets `host`/`scope_kind='request'`.
 
 ### Tests
 
 - `test_subprocess_utils.py`, `test_fsm_runners.py`, `test_fsm_executor.py`, `test_session_store_schema.py`, `test_session_store_writers.py`, `test_assistant_messages.py`, `test_pricing.py`.
+- Also: `fsm/persistence.py` `usage.jsonl` tests, `cost_graph` tests, `test_generate_schemas.py`, OTel tracing / `history_reader.usage` export tests, `runner_spec` usage pass-through.
 
 ### Documentation
 
@@ -70,11 +79,12 @@ See **Design** below.
 
 - `TokenProvenance = Literal["measured", "estimated", "unknown"]`.
 - `TokenUsage` — components `int | None`; adds `provenance`, `host`, `scope_kind`, `observed_at`, `observed_at_basis`.
-- `scope_kind` values: `request | invocation | session | context | unknown`; `observed_at_basis`: `event | received | None`.
+- `TokenScopeKind = Literal["request", "invocation", "session", "context", "unknown"]`.
+- `ObservedAtBasis = Literal["event", "received"]` (field type `ObservedAtBasis | None`).
 
 ### Signatures
 
-- `record_usage_event(db_path: Path | str, *, run_id: str, ts: str, state: str | None, model: str, input_tokens: int | None, output_tokens: int | None, cache_read_tokens: int | None, cache_creation_tokens: int | None, provenance: TokenProvenance = "unknown", host: str | None = None, provider_vendor: str | None = None, scope_kind: str = "unknown", observed_at: str | None = None, observed_at_basis: str | None = None, invocation_id: str | None = None) -> None` — additive keyword-only metadata; `run_id` keeps its current column; `channel` stays `'live'`.
+- `record_usage_event(db_path: Path | str, *, run_id: str, ts: str, state: str | None, model: str, input_tokens: int | None, output_tokens: int | None, cache_read_tokens: int | None, cache_creation_tokens: int | None, provenance: TokenProvenance = "unknown", host: str | None = None, provider_vendor: str | None = None, scope_kind: TokenScopeKind = "unknown", observed_at: str | None = None, observed_at_basis: ObservedAtBasis | None = None, invocation_id: str | None = None) -> None` — additive keyword-only metadata; `run_id` keeps its current column; `channel` stays `'live'`.
 - `estimate_cost_usd(model: str, input_tokens: int | None, output_tokens: int | None, cache_read_tokens: int | None = 0, cache_creation_tokens: int | None = 0, is_batch: bool = False) -> float | None` — already returns `None` for unpriced models; now also `None` when a required component is `None`.
 
 ### Call Path
@@ -101,23 +111,30 @@ See **Design** below.
 
 - **Nullable components.** `TokenUsage` token components become `int | None`. `TokenUsage` gains `provenance: TokenProvenance = "unknown"`, `host: str | None = None`, `scope_kind: str = "unknown"`, `observed_at: str | None = None` and `observed_at_basis: str | None = None` (default-compatible, same pattern as `is_batch`). Parsers keep missing components as `None` except where a fixture-backed host contract says omission means zero (Codex's omitted `cache_write_input_tokens`).
 - **Provenance values.** `TokenProvenance = Literal["measured", "estimated", "unknown"]`. Writers and parsers default to `unknown`. This issue opts **no** acquisition path into `measured`. BUG-3531 is the first to do so, for normalized Codex rows.
-- **Host vs vendor.** New `host` = runtime host that produced the observation (`claude-code`, `codex`, …, from the actual invocation or `raw_events.host`). Existing `provider_vendor` = model vendor (`anthropic`, `openai`, …). The writer fills both when known and never derives either from the currently configured host. `invocation_id` is written when the runner supplies it.
-- **Observation time.** Captured when the event arrives: host event timestamp → `observed_at_basis='event'`; otherwise receipt time → `'received'`. `ts` keeps its current meaning; legacy rows keep NULL `observed_at`.
+- **Host vs vendor.** New `host` = runtime host that produced the observation (`claude-code`, `codex`, …). Existing `provider_vendor` = vendor of the runtime host (`anthropic`, `openai`, …), derived via the existing `observability.tracing.vendor_for_runner(host)` so it matches the OTel `gen_ai.provider.vendor` addendum already emitted; a model-vendor split (e.g. `claude-code` driving a non-Anthropic model) is out of scope. `invocation_id` is written when the runner supplies it.
+- **Host stamping precedence.** (1) The runner stamps `host` from the `HostRunner.name` of the specific invocation that produced the event, at collection time in the runner callback — `_finish` never calls `resolve_host()` again, so a config change mid-run or a per-state host override can't relabel rows. (2) A parser may set `host` only for an event type unique to one host (Codex `turn.completed`); Claude's `result` event shape isn't host-unique, so its parser leaves `host=None` for the runner to fill. (3) Replay takes `raw_events.host`. A parser-set host that disagrees with the runner's is a bug: log it and keep the runner's value.
+- **Observation time.** Captured when the event arrives: host event timestamp → `observed_at_basis='event'`; otherwise receipt time → `'received'`. Neither Claude's `result` nor Codex's `turn.completed` carries a timestamp, so **every live row in this issue is `received`**; `event` arises only on transcript replay (the record's `timestamp`). `ts` keeps its current meaning; legacy rows keep NULL `observed_at`.
+- **Scope kind per path.** Live `result` / `turn.completed` → `invocation`; transcript `assistant` records (backfill) and `_usage_from_response` (one API request) → `request`; everything else → `unknown`.
 - **Migration.** Append-only migration at the next free schema version (54 unless taken) adds nullable `provenance`, `host`, `scope_kind`, `observed_at`, `observed_at_basis` to `usage_events`. Reuses `channel`, `session_id`, `invocation_id`, `provider_vendor`. Legacy rows read as `provenance='unknown'`. Update `schema_manifest.json` and version pins together.
-- **Replay.** Add a metadata-aware usage iterator yielding host alongside the raw line; `_backfill_usage_events` uses it. Existing `_iter_events` tuple consumers are unchanged.
-- **Consumers.** `estimate_cost_usd` returns `None` when any required component is missing. Executor payload sums are per-component with known/missing counts, and they don't raise on `None`. The legacy two-int `UsageCallback` fires only when input and output are both known; `DetailedUsageCallback` always receives the partial observation. Audit `pricing.py`, `fsm/cost_graph.py`, `observability/tracing.py`, `issue_history/*quality*.py` and `cli/ctx_stats.py` aggregators for `None` safety. Numeric output stays the same in the no-missing case.
+- **Replay.** Add a metadata-aware usage iterator yielding host alongside the raw line; `_backfill_usage_events` uses it. Existing `_iter_events` tuple consumers are unchanged. The JSONL `list[Path]` source has no host, so it yields `host=None`. Transcript rows are written with `provenance='unknown'`, `scope_kind='request'`, `observed_at` = record `timestamp` with basis `'event'` (NULL/`None` basis when the record has no timestamp), and `host` from `raw_events.host`. `_backfill_usage_events` stops pricing with `int(x or 0)`: cost is `None` when a required component is missing.
+- **`action_complete` payload shape.** For each of `input_tokens`, `output_tokens`, `cache_read_tokens`, `cache_creation_tokens`: the payload value is the sum of the **known** contributors, or `None` when no event supplies that component (same rule as ENH-3528's aggregation). Add `usage_event_count: int` and, per component, `<component>_missing: int` (count of events missing it), emitted only when `usage_events` is non-empty. A value with `_missing > 0` is a partial subtotal and must never be priced or reported as a total. `fsm/persistence.py` copies the values and counts into `usage.jsonl` unchanged. `fsm/cost_graph.py` treats a `None` component **or** any `_missing > 0` like an unpriced model (sets the bucket's unknown flag, adds no cost) and sums tokens over known values only. `generate_schemas.py` declares the four fields integer-or-null and adds the count fields.
+- **Consumers.** `estimate_cost_usd` returns `None` when any required component is missing. The legacy two-int `UsageCallback` is called with `input_tokens + cache_read_tokens` (`subprocess_utils.py` `result` branch), so it fires only when input, output **and** cache_read are all known; `DetailedUsageCallback` always receives the partial observation. OTel export (`observability/tracing.py` `_read_token`, `history_reader/usage.py`) omits a `gen_ai.usage.*` attribute whose component is unknown instead of emitting 0. Audit `pricing.py`, `fsm/cost_graph.py`, `fsm/persistence.py`, `observability/tracing.py`, `history_reader/{usage,events}.py`, `issue_history/*quality*.py` and `cli/ctx_stats.py` aggregators for `None` safety. Numeric output stays the same in the no-missing case.
 - **Codex transition.** Live Codex rows written after this lands carry `host='codex'`, `provenance='unknown'`. Host identity alone does not certify their still-unnormalized input.
 
 ## Acceptance Criteria
 
 - [ ] `TokenUsage` components are `int | None`; new metadata fields default to unknown/None; existing construction sites compile and behave identically.
 - [ ] A partial-event fixture survives `usage_from_event` → detailed callback → executor payload → `usage_events` row with missing components still NULL and completeness counts preserved. Known zero stays zero; the Codex omitted-cache-write-means-zero rule is fixture-backed.
-- [ ] Legacy `UsageCallback` is invoked only for known input/output pairs; callback-consumer tests cover both callbacks.
+- [ ] Legacy `UsageCallback` is invoked only when input, output and cache_read are all known; callback-consumer tests cover both callbacks.
 - [ ] `estimate_cost_usd` returns `None` (not 0) when any required component is missing; audited consumers don't raise on `None`.
+- [ ] `action_complete` payload: a component sums known contributors (`None` when none is known), with `<component>_missing` and `usage_event_count` set; the generated event schema accepts null and the count fields. That payload flows through `usage.jsonl` into `cost_graph` as an unpriced bucket with no fabricated cost.
+- [ ] OTel export omits (does not zero) a `gen_ai.usage.*` attribute whose component is unknown.
+- [ ] `_backfill_usage_events` returns `None` cost for a transcript record with a missing component and writes `scope_kind='request'`, `observed_at_basis='event'` from the record timestamp.
 - [ ] Migration adds the five columns at the next free version; manifest/version pins updated together; old-schema DBs remain readable; SessionStart-triggered rebuild preserves `channel='live'` rows and their new metadata.
 - [ ] `record_usage_event` defaults `provenance='unknown'`; no code path in this issue writes `measured`. A live Codex write persists `host='codex'`, `provenance='unknown'`.
-- [ ] `host` and `provider_vendor` are both populated from the actual invocation when known; tests show neither comes from the configured host.
-- [ ] Observation time survives delayed loop completion; `event` vs `received` bases are distinguishable; legacy loop-finish `ts` is never copied into `observed_at`.
+- [ ] `host` is stamped from the invocation's `HostRunner.name` at collection time and `provider_vendor = vendor_for_runner(host)`; a test that changes the configured host between collection and `_finish` shows the rows keep the invoking host.
+- [ ] Observation time survives delayed loop completion; live rows carry `observed_at_basis='received'`, replayed transcript rows `'event'`; legacy loop-finish `ts` is never copied into `observed_at`.
+- [ ] `scope_kind` follows the per-path mapping in Design (live → `invocation`; transcript and `_usage_from_response` → `request`).
 - [ ] Raw-event host survives backfill/rebuild through the new iterator; existing `_iter_events` consumers are unchanged.
 
 ## Scope Boundaries
