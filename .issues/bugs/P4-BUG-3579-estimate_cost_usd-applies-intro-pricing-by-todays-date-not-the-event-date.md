@@ -33,7 +33,7 @@ This is latent today. BUG-3564 removes the only live entry (`claude-sonnet-5`), 
 
 ## Motivation
 
-[Why this issue matters - business value, user impact, technical debt cost]
+`usage_events.cost_usd` is the source for reported spend and cost-ceiling enforcement, and replay is the documented way to rebuild it. A replay that silently reprices past events makes historical spend depend on the day it was recomputed. Fixing this before the next `INTRO_PRICING` entry lands is cheap; finding it afterwards means an unexplained jump in historical costs.
 
 ## Proposed Solution
 
