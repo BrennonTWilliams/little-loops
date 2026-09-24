@@ -3,7 +3,8 @@ id: 3127
 title: 'll-mcp: MCP server as little-loops'' host-agnostic serving layer'
 type: EPIC
 priority: P3
-status: open
+status: done
+completed_at: '2026-09-24T18:24:45Z'
 verify_verdict: NON_VALID
 discovered_date: '2026-08-09'
 labels:
@@ -412,6 +413,27 @@ resource/prompt indices, P2), ENH-3173 (HTTP bind host/port, P3), ENH-3174
 2026-08-12 (`/ll:verify-issues`): Verdict: **NON_VALID (NEEDS_UPDATE)**. Two real children, FEAT-3128 and FEAT-3132 (both `status: done`, `parent: EPIC-3127`), were missing from frontmatter `relates_to` — added above. Also corrected the prior note's stated completion: actual status across the full child set (via `ll-issues show EPIC-3127`) is 10 of 12 done (FEAT-3134 and FEAT-3151 are `deferred`), not the "4 of 5" figure previously recorded.
 
 2026-08-16 (`/ll:verify-issues`): `mcp_server/` exists, 23/24 items resolved, but the "Known gaps" section still listed ENH-3171, ENH-3172, ENH-3173, ENH-3174, BUG-3177, and BUG-3178 as unresolved even though they are now all `status: done` — updated the Known gaps section above to mark them done. Verdict: NEEDS_UPDATE.
+
+## Closure, 2026-09-24
+
+**Done** | Created: 2026-08-09 | Priority: P3 | Completed: 2026-09-24
+
+All three tiers shipped and every gap child landed: 23 of the 24 `relates_to`
+children are `done`. The one exception, **FEAT-3134** (ll-ctx-stats
+ttlMs/cacheScope measurement), remains `deferred` (`readiness_stagnated`,
+2026-08-09) and stands on its own as a backlog item — its value is no longer
+contingent on this epic now that every tier and every gap child, including
+ENH-3174 (resource-surface bounding), has shipped. The 2026-08-15
+disposition line "reviving FEAT-3134 is the precondition for deciding ENH-3174
+on data" is moot: ENH-3174 was decided and shipped without it. The two
+disposition items that stayed genuinely open carry forward there and in the
+body above: context-cost measurement (FEAT-3134) and the prompt-fidelity
+capability filter (capture an issue on first observed host degradation).
+
+Closed with `verify_verdict: NON_VALID` carried from the 2026-08-12/16
+`/ll:verify-issues` passes — the NEEDS_UPDATE gaps those runs flagged
+(stale Known-gaps list, missing `relates_to` entries) were corrected in the
+same passes, and this body was reviewed against landed scope before closing.
 
 ## Session Log
 - `/ll:verify-issues` - 2026-08-16T16:40:25 - `688cfc38-322a-447f-94a0-315f2c2aee33.jsonl`
