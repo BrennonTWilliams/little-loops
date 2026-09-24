@@ -13,6 +13,12 @@ labels:
 - artifacts
 blocked_by:
 - ENH-3558
+confidence_score: 100
+outcome_confidence: 64
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 0
 ---
 
 # ENH-3559: Symlink-safe artifact writes and umask-preserving atomic_write
@@ -154,8 +160,19 @@ Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the sam
 
 **Open** | Created: 2026-09-24 | Priority: P2
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-24_
+
+**Readiness Score**: 100/100 → PROCEED
+**Outcome Confidence**: 64/100 → MODERATE
+
+### Outcome Risk Factors
+- Wide blast radius: ~69 existing `atomic_write`/`atomic_write_json` callers inherit the `0600` → umask-derived mode change; the full-suite run (Implementation Step 2) is the only guard, so run it before routing the artifact sites.
+- Broad enumeration across 7 modified files plus a local-logic rewrite of `atomic_write` (bounded retry, foreign-temp-safe cleanup, name truncation) — expect some iteration on the collision/cleanup tests.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-24T20:29:53 - `7ccc0a63-5f30-4b64-83f4-7cfd1905bff1.jsonl`
 - `/ll:verify-issues` - 2026-09-24T19:13:35 - `27bdfde5-d1ef-4e98-b8ff-2728ac43d651.jsonl`
 - `/ll:scope-epic` - 2026-09-24T18:30:39 - `bd7b32d0-d305-4468-99d3-61a8a02d4caa.jsonl`
 - Manual review - 2026-09-24 - post-ENH-3558 review: refreshed write-site line numbers; recast templatize `.rejected` routing as consistency-only (leaf `atomic_write` cannot close a dir-swap race); added cleanup-must-not-unlink-foreign-temp, bounded retry, and temp-name truncation to §1 with tests + AC; corrected Program Design call paths; scoped out symlinked parent dirs explicitly
