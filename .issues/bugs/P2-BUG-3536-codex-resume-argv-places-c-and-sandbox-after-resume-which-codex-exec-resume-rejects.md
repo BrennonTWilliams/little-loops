@@ -118,4 +118,5 @@ Reviewed on `main` in the little-loops repository with a clean working tree befo
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-24T02:07:33 - `294f94b4-388d-48a0-aa53-cb5a7c8aa062.jsonl`
 - `/ll:ready-issue` - 2026-09-24T02:01:51 - `7ee029e4-88ce-4fa6-8e18-bd8b5cfa3ced.jsonl`
