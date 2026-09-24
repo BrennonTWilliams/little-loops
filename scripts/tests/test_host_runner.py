@@ -759,6 +759,43 @@ class TestCodexRunner:
         assert invocation.args[:3] == ["exec", "resume", "--last"]
         assert "--continue" not in invocation.args
 
+    @pytest.mark.parametrize("dir_name", [None, "dir with spaces"])
+    @pytest.mark.parametrize(
+        "sandbox", [None, "off", "read-only", "workspace-write", "danger-full-access"]
+    )
+    def test_resume_places_parent_options_before_resume(
+        self, tmp_path: Path, sandbox: str | None, dir_name: str | None
+    ) -> None:
+        """BUG-3536: --sandbox and -C belong to `codex exec`, not `exec resume`."""
+        wd = tmp_path / dir_name if dir_name else None
+        args = (
+            CodexRunner()
+            .build_streaming(prompt="p q", resume=True, working_dir=wd, sandbox_mode=sandbox)
+            .args
+        )
+        idx = args.index("resume")
+        before, after = args[:idx], args[idx:]
+        assert args[0] == "exec"
+        assert after[:2] == ["resume", "--last"]
+        assert after.count("--json") == 1 and after.count("--skip-git-repo-check") == 1
+        assert args[-1] == "p q"
+        assert "-C" not in after and "--sandbox" not in after
+        if wd is None:
+            assert "-C" not in before
+        else:
+            assert before.count("-C") == 1 and before[before.index("-C") + 1] == str(wd)
+        if sandbox in (None, "off"):
+            assert "--sandbox" not in before
+            assert after.count("--dangerously-bypass-approvals-and-sandbox") == 1
+        else:
+            assert before.count("--sandbox") == 1
+            assert before[before.index("--sandbox") + 1] == sandbox
+            assert "--dangerously-bypass-approvals-and-sandbox" not in args
+
+    def test_resume_invalid_sandbox_still_raises(self) -> None:
+        with pytest.raises(ValueError):
+            CodexRunner().build_streaming(prompt="p", resume=True, sandbox_mode="bogus")
+
     def test_build_streaming_emits_warning_for_agent_when_toml_absent(self, tmp_path: Path) -> None:
         """ENH-1533: warning fires only when .codex/agents/<name>.toml is absent
         (fallback path). When the TOML exists with developer_instructions, persona

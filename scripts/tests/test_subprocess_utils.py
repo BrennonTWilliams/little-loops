@@ -2201,6 +2201,32 @@ class TestRunClaudeCommandResumeSession:
         p_idx = args.index("-p")
         assert continue_idx < p_idx, "--continue must appear before -p"
 
+    def test_codex_resume_with_working_dir_places_c_before_resume(self, tmp_path: Path) -> None:
+        """BUG-3536: real Codex builder + resume_session + worktree dir → -C precedes resume."""
+        from little_loops.host_runner import CodexRunner
+
+        mock_process = self._make_mock_process()
+        captured: list[Any] = []
+
+        def capture_popen(args: Any, **kwargs: Any) -> Mock:
+            captured.append((args, kwargs))
+            return mock_process
+
+        with (
+            patch("little_loops.subprocess_utils.resolve_host", return_value=CodexRunner()),
+            patch("subprocess.Popen", side_effect=capture_popen),
+            patch("selectors.DefaultSelector") as mock_selector,
+        ):
+            _patch_selector_cm(mock_selector)
+            mock_selector.return_value.get_map.return_value = {}
+            run_claude_command("handoff", working_dir=tmp_path, resume_session=True)
+
+        args, kwargs = captured[0]
+        assert args[0] == "codex"
+        assert args.index("-C") < args.index("resume")
+        assert args[args.index("-C") + 1] == str(tmp_path)
+        assert kwargs["cwd"] == tmp_path
+
     def test_no_continue_flag_by_default(self) -> None:
         """resume_session=False (default) does not add --continue to cmd_args."""
         mock_process = self._make_mock_process()

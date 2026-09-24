@@ -4,10 +4,11 @@ type: BUG
 title: Codex resume argv places -C and --sandbox after resume, which codex exec resume
   rejects
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-24'
 captured_at: '2026-09-24T00:52:52Z'
+completed_at: '2026-09-24T02:20:27Z'
 labels:
 - multi-host
 - parallel
@@ -120,10 +121,16 @@ Reviewed on `main` in the little-loops repository with a clean working tree befo
 
 ## Status
 
-**Open** | Created: 2026-09-24 | Priority: P2
+**Done** | Created: 2026-09-24 | Priority: P2
 
+
+## Resolution
+
+Fixed in `CodexRunner.build_streaming`: on resume, `--sandbox <mode>` and `-C <dir>` now precede `resume --last`; the bypass flag stays after it. Fresh argv unchanged. Added parameterized builder tests (host_runner) and a subprocess-boundary test. Live parser smoke test omitted: conftest `_LiveHostCLISpawn` guard forbids spawning real host CLIs; parser acceptance/rejection was verified manually against codex-cli 0.152.1.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-24T02:20:27 - `c979625f-ab29-4a61-9f5a-57d46c100a89.jsonl`
+- `/ll:ready-issue` - 2026-09-24T02:12:41 - `eec4340c-3757-4072-9fa0-efdcf61be46f.jsonl`
 - `/ll:confidence-check` - 2026-09-24T02:09:21 - `b8072267-aeca-4266-83b6-f3360ec8d848.jsonl`
 - `/ll:verify-issues` - 2026-09-24T02:07:33 - `294f94b4-388d-48a0-aa53-cb5a7c8aa062.jsonl`
 - `/ll:ready-issue` - 2026-09-24T02:01:51 - `7ee029e4-88ce-4fa6-8e18-bd8b5cfa3ced.jsonl`

@@ -1220,15 +1220,24 @@ class CodexRunner:
                 stacklevel=2,
             )
 
+        sandbox_args = self._sandbox_args(sandbox_mode)
         args: list[str] = ["exec"]
         if resume:
+            # `codex exec resume` rejects --sandbox and -C; they are parent `exec`
+            # options and must precede `resume` (BUG-3536). The bypass flag is
+            # accepted by the resume subparser, so it stays after `resume`.
+            if sandbox_args[0] == "--sandbox":
+                args += sandbox_args
+                sandbox_args = []
+            if working_dir is not None:
+                args += ["-C", str(working_dir)]
             args += ["resume", "--last"]
-        args += self._sandbox_args(sandbox_mode)
+        args += sandbox_args
         args += [
             "--json",
             "--skip-git-repo-check",
         ]
-        if working_dir is not None:
+        if working_dir is not None and not resume:
             args += ["-C", str(working_dir)]
         args.append(prompt)
 
