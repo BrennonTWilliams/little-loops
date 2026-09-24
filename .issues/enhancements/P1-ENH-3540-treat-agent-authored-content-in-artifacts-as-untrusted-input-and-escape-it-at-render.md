@@ -92,6 +92,17 @@ _Added by `/ll:refine-issue` — 2026-09-24 — based on codebase analysis:_
 - **Already symlink-safe (no change needed):** `cli/artifact/policy_revision.py:153-158` (`mkstemp` + `os.fdopen(fd,"wb")` + `os.replace`) and `cli/artifact/lockfile.py:108-110` (`.llat.lock`, `mkstemp` + `os.replace`).
 - **Other HTML emitters outside `cli/artifact/`:** `mcp_server/templates/issues-view.html` is static; it receives agent-authored issue fields over `postMessage` and passes each through its own client-side `escapeHtml()` (`issues-view.html:58`, applied at `:48,52`), so it is safe. `transport.py` `_LOCAL_BRIDGE_DEFAULT_PAGE_HTML` (`:82`) and `_SSE_BRIDGE_PAGE_HTML` (`:918`) are fixed literals with no interpolation. `cli/artifact/serve.py` re-serves the `render_policy_builder_html()`/`build_dashboard_html()` output verbatim and adds no interpolation, so it inherits the fixes. `loops/vega-viz.yaml` and `loops/rlhf-svg-generate.yaml` have an LLM write whole HTML files directly, which puts them outside any Python render boundary. They are out of scope, but worth a note in the allowlist docs. Checked with no HTML emission found: `ab_writer.py`, `cli/loop/summary.py`, and `ll-logs fleet-review` (markdown output).
 
+### Review Corrections (2026-09-24)
+
+_Found in a manual review after refine and decide. Each finding changes Scope/AC below._
+
+- **The policy builder can be injected through its own placeholders.** `render_policy_builder_html()` fills placeholders with a chain of `html.replace` calls (`policy_builder.py:115-123`), and each call rescans the whole page. `catalog_json` is spliced at `:116`. The later replacements at `:117-123` (`/*__GENERATOR_VERSION_JSON__*/`, `/*__CONFIDENCE_GATE_JSON__*/`, `/*__BUILDER_CORE_JS__*/`, `/*__CONNECTED_CONTEXT_JSON__*/`) then also match inside the catalog text just inserted. A skill description containing `/*__BUILDER_CORE_JS__*/` gets the whole core JS (quotes, newlines, `</script>`-free but string-breaking) spliced into the middle of a JSON string literal. `script_json` escapes neither `/` nor `*`, so it does not close this hole. The fix is single-pass substitution.
+- **`extract` output would be double-escaped.** `_PROMPT_TEMPLATE` (`extract.py:51-58`) says nothing about encoding. When the source document is HTML, the model can copy entity-encoded text such as `&amp;` verbatim, and a plain `html.escape` at ingest then yields `&amp;amp;`. Ingest must be idempotent, and the prompt must ask for decoded text.
+- **`atomic_write` makes artifact files owner-only.** `file_utils.atomic_write` (`file_utils.py:16`) creates the file with `tempfile.mkstemp` (mode `0600`) and `os.replace`s it into place without a chmod. Today `write_text` yields `0644` under a typical `022` umask. Routing artifact writes through it unchanged would silently make shared/served HTML owner-only.
+- **`html.escape` does not neutralize `javascript:` URLs.** `javascript:alert(1)` contains no characters that `html.escape` changes, so it stays live in an `href`/`src` attribute. The dashboard template stamps no data key into a URL attribute except `serve_events_url` (`hx-sse:connect`, server-built), but templatize-produced templates may lift attribute values.
+- **Refresh may escape real markup.** Templates that templatize already produced carry no per-property markup annotation, so every string leaf would be escaped on `refresh`. That is correct only if templatize lifts text/attribute values and never HTML fragments. This has not been verified yet.
+- **`policy_builder.py:143` writes without an encoding.** It calls `out_path.write_text(html)` with no `encoding=`, so the write depends on the locale. Moving it to `atomic_write` (UTF-8 default) fixes that too.
+
 ## Scope
 
 1. **Script-context JSON helper.** Add one helper (e.g.
@@ -104,33 +115,79 @@ _Added by `/ll:refine-issue` — 2026-09-24 — based on codebase analysis:_
    need it, in the `.llat` manifest). Document which keys carry markup and why
    (e.g. `sql_wasm_b64`/`snapshot_gzip_b64` are base64, not markup; `_js` keys
    use `script_json`).
+   - **Idempotent ingest escaping:** `escape_data` escapes a leaf as
+     `html.escape(html.unescape(v), quote=True)`, so text that is already
+     entity-encoded is not double-escaped.
+   - **Prompt for decoded text:** extend `_PROMPT_TEMPLATE` (`extract.py:51`)
+     so the model returns plain decoded text and never HTML entities or markup.
+   - **Check templatize before relying on the allowlist:** confirm that
+     templatize lifts only text/attribute values, never HTML fragments. If it
+     can lift fragments, templatize must write the per-property markup
+     annotation for those properties. Otherwise `refresh` escapes them.
 3. **Hostile-payload tests** (deterministic tier) through each export path:
    `<script>`, `</script>` inside JSON strings, `onerror=`/`onload=` attribute
-   injection, `javascript:` URLs, and payloads sourced from metadata
+   injection, and payloads sourced from metadata
    (`loop_name`, `state`, `branch`, `model`, skill-catalog description,
-   `--local` transcript text). Assert on the emitted HTML: no unescaped
-   payload outside the base64 blob and no early `</script>`.
+   `--local` transcript text), plus a skill description containing each
+   policy-builder placeholder token (`/*__BUILDER_CORE_JS__*/` etc.). Assert on
+   the emitted HTML: no unescaped payload outside the base64 blob, and a
+   `</script>` count equal to a clean-input render's count (derived, not
+   hard-coded). Also assert that each spliced JSON blob, extracted from the
+   page, `json.loads` back to the hostile input.
+   - **`javascript:` URLs:** `html.escape` cannot neutralize them. For any
+     data key stamped into an `href`/`src`/`action`/`formaction` attribute,
+     `escape_data` rejects (raises on) values whose scheme, after stripping
+     whitespace and lowercasing, is not `http`, `https`, `mailto`, relative,
+     or `#`. Which keys count as URL attributes is declared alongside the
+     markup allowlist. If templatize never lifts URL attributes and no
+     code-built dict stamps one, record that finding and test that the
+     dashboard's `serve_events_url` is server-built. Do not claim
+     `javascript:` coverage from escaping alone.
 4. **Symlink-safe writes.** Route artifact output writes through
    `file_utils.atomic_write` (sibling `mkstemp` + `os.replace`, which replaces
    a symlink rather than following it). Do **not** implement
    unlink-then-write — it has a TOCTOU window between unlink and open.
-   Add `atomic_write_bytes` if a bytes variant is needed.
+   Add `atomic_write_bytes` if a bytes variant is needed. **Preserve the
+   normal file mode:** `mkstemp` creates `0600`, so before the `os.replace`,
+   `os.fchmod` the temp file to `0o666 & ~umask` (read umask once with the
+   `os.umask(0); os.umask(old)` idiom, or accept a `mode=` parameter). Apply
+   the fix in `atomic_write`/`atomic_write_bytes` themselves if the 40+
+   existing callers tolerate it. Otherwise add it as an opt-in parameter the
+   artifact sites pass.
+5. **Single-pass placeholder substitution.** Replace the chain of
+   `html.replace` calls in `render_policy_builder_html()`
+   (`policy_builder.py:115-123`) with one substitution pass: a single
+   `re.sub` over `/\*__([A-Z_]+)__\*/` with a dict lookup that raises on an
+   unknown or missing key. Spliced content is then never rescanned for
+   placeholders.
 
 ## Acceptance Criteria
 
 - [ ] No `json.dumps` result is spliced into emitted HTML without the
       script-context helper; a test feeds `</script><script>alert(1)</script>`
-      through the skill catalog and serve URLs and asserts exactly the
-      expected number of `</script>` tags.
+      through the skill catalog and serve URLs. It asserts that the
+      `</script>` count equals a clean-input render's count, and that each
+      spliced JSON blob `json.loads` back to the hostile input.
+- [ ] `render_policy_builder_html()` substitutes placeholders in one pass. A
+      skill description containing `/*__BUILDER_CORE_JS__*/` (and each other
+      placeholder token) round-trips verbatim through the catalog JSON, and
+      the core JS appears exactly once in the page.
 - [ ] Template data values are escaped unless on the documented markup
       allowlist; existing templates' byte-exact round trips (FEAT-3308) still
       pass.
+- [ ] Ingest escaping is idempotent: a model value of `Tom &amp; Jerry` and
+      one of `Tom & Jerry` both land in `data.json` as `Tom &amp; Jerry`.
+      `_PROMPT_TEMPLATE` asks the model for decoded plain text.
+- [ ] URL-attribute keys (if any exist) reject non-allowlisted schemes such
+      as `javascript:`, or the issue records that no URL-attribute key exists.
 - [ ] Hostile-payload tests cover dashboard (shareable + `--local`), serve-mode
       fragments, `render`, and `policy-builder`, and run in the default
       `python -m pytest scripts/tests/` tier.
 - [ ] Every artifact output write listed above uses `atomic_write`; a test
       plants a symlink at the output path pointing outside the output dir and
       asserts the target is untouched and the output path is now a regular file.
+      The same test asserts the output's mode is `0o666 & ~umask` (e.g.
+      `0644` under umask `022`), not `0600`.
 - [ ] The markup allowlist is documented in `artifact_templates.py` (which
       keys carry markup and why).
 
@@ -200,31 +257,35 @@ _Added by `/ll:refine-issue` — 2026-09-24 — based on codebase analysis:_
 - `MARKUP_KEYS: frozenset[str]` (new, `artifact_templates.py`): the documented allowlist of data keys that carry markup, base64, or pre-encoded JS and are stamped verbatim. For `dashboard.llat` the candidates are `snapshot_gzip_b64`, `sql_wasm_b64`, `sql_wasm_js`, `serve_htmax_js`, `serve_interaction_url_js`, and `serve_history_url_js`. Non-string leaves (ints, bools) are never escaped, so they need no allowlist entry.
 
 ### Signatures
-- `render_template(template: ArtifactTemplate, data: dict[str, Any], config: object) -> str` (existing, `artifact_templates.py:321`): must stay byte-identical for existing inputs. It is the round-trip oracle for `templatize.py:_render_tmp_dir`.
+- `render_template(template: ArtifactTemplate, data: dict[str, Any], config: object) -> str` (existing, `artifact_templates.py:321`): **unchanged under Option A (not modified by this issue)**. It must stay byte-identical for existing inputs. It is the round-trip oracle for `templatize.py:_render_tmp_dir`.
 - `build_environment() -> SandboxedEnvironment` (existing, `artifact_templates.py:259`): frozen. `autoescape=False` stays.
 - `script_json(obj: Any) -> str` (new, `artifact_templates.py`): the output must be valid JSON/JS that `json.loads` decodes to `obj`, and must contain no `<`, `>`, `&`, U+2028, or U+2029 characters.
-- `escape_data(data: dict[str, Any], markup_keys: frozenset[str]) -> dict[str, Any]` (new, per Option A): `html.escape`s string leaves whose key is not in `markup_keys`.
+- `escape_data(data: dict[str, Any], markup_keys: frozenset[str]) -> dict[str, Any]` (new, per Option A): escapes each string leaf whose key is not in `markup_keys` as `html.escape(html.unescape(v), quote=True)`, which is idempotent.
 - `render_policy_builder_html(config: BRConfig, *, workspace_id: str | None = None) -> str` (existing, `policy_builder.py:66`): its six `/*__*__*/` splices (`:115-123`) are the `script_json` consumers. `/*__BUILDER_CORE_JS__*/` is raw packaged JS, not JSON, and is out of scope for `script_json`.
 - `build_dashboard_html(*, db_path: Path, config: BRConfig, tables: list[str], since_iso: str | None, mode: str, serve_context: ServeContext | None = None) -> RenderedDashboard` (existing, `dashboard.py:257`): builds the data dict at `:309-345`.
 - `extract_data(...)` (existing, `extract.py:102`): returns `(data, source_bytes)`; its `data` is the model-authored ingest point.
 - `atomic_write(path: Path, content: str, encoding: str = "utf-8") -> None` (existing, `file_utils.py:16`); `atomic_write_bytes(path: Path, content: bytes) -> None` (new, optional).
 
 ### Call Path
-`cmd_dashboard` -> `build_dashboard_html` -> `escape_data` -> `render_template` -> `atomic_write`
-`cmd_refresh` -> `extract_data` -> `escape_data` -> `render_to_disk` -> `render_template` -> `atomic_write`
-`cmd_policy_builder` -> `render_policy_builder_html` -> `script_json` -> `atomic_write`
+`cmd_dashboard` -> `build_dashboard_html` -> `escape_data` -> `render_template` (unchanged) -> `atomic_write`
+`cmd_refresh` -> `extract_data` -> `escape_data` -> `render_to_disk` -> `render_template` (unchanged) -> `atomic_write`
+`cmd_policy_builder` -> `render_policy_builder_html` -> `script_json` -> single-pass placeholder substitution -> `atomic_write`
 `cmd_templatize` -> `verify_round_trip` -> `_render_tmp_dir` -> `render_template` (must stay unchanged; no `escape_data`)
 
 ### Decision Rules
 - Escape set for `script_json`: exactly `<`→`<`, `>`→`>`, `&`→`&`, U+2028→` `, U+2029→` `, applied to the `json.dumps` output string.
-- Escape rule for data: a `str` leaf is `html.escape(value, quote=True)`d unless its top-level key is in the markup allowlist. Where the allowlist is declared is decided by Option A vs. Option B above.
+- Escape rule for data: a `str` leaf becomes `html.escape(html.unescape(value), quote=True)` unless its top-level key is in the markup allowlist (Option A: the code-built allowlist, plus the per-property manifest annotation for `extract`).
+- URL rule: a key declared as a URL attribute rejects any value whose stripped, lowercased scheme is not `http`, `https`, or `mailto`. Values with no scheme (relative) or starting with `#` are allowed.
+- Placeholder rule: the policy-builder placeholders are substituted in a single pass; spliced content is never rescanned.
+- Write-mode rule: artifact outputs end up with mode `0o666 & ~umask`.
 
 ## Implementation Steps
 
 1. `script_json` exists in `artifact_templates.py`, and no `json.dumps` result is spliced into HTML in `policy_builder.py:115-123` or `dashboard.py:343-344` without it. Check: `grep -n "json.dumps" scripts/little_loops/cli/artifact/{policy_builder,dashboard}.py` shows no remaining splice sites, and a test feeding `</script><script>alert(1)</script>` through `_load_skill_catalog` (monkeypatched) and `ServeContext` URLs counts the expected number of `</script>` tags.
-2. The dashboard data dict and `extract`'s model output pass through one escape-by-default rule with a documented allowlist. `test_artifact_templatize.py` round-trip tests pass unchanged, which proves `render_template` stayed verbatim.
+1a. `render_policy_builder_html()` substitutes placeholders in one `re.sub` pass. Check: a catalog description containing every placeholder token round-trips verbatim, and the core JS appears once.
+2. The dashboard data dict and `extract`'s model output pass through one idempotent escape-by-default rule with a documented allowlist. `_PROMPT_TEMPLATE` asks for decoded text. Templatize has been checked for fragment lifting (see Scope § 2). `test_artifact_templatize.py` round-trip tests pass unchanged, which proves `render_template` (not modified under Option A) stayed verbatim.
 3. Hostile-payload tests cover dashboard shareable and `--local` (payloads in `loop_name`/`state`/`branch`/`model` and transcript text), `render_live_fragment`, `render`/`refresh` (model-returned strings, with the host call stubbed), and `policy-builder`. They run in the default `python -m pytest scripts/tests/` tier (no `integration` marker).
-4. Every predictable-path output write (`dashboard.py:475`, `render.py:68`, `policy_builder.py:143`, `design_md.py:129`, `extract.py:227,289`, and the `.rejected` writes in `templatize.py` `_write_rejected_discovery`) goes through `atomic_write`/`atomic_write_bytes`. A test plants a symlink at the output path and asserts the symlink target is unchanged and the output path is now a regular file (`not path.is_symlink()`).
+4. Every predictable-path output write (`dashboard.py:475`, `render.py:68`, `policy_builder.py:143`, `design_md.py:129`, `extract.py:227,289`, and the `.rejected` writes in `templatize.py` `_write_rejected_discovery`) goes through `atomic_write`/`atomic_write_bytes`, and the result keeps its umask-derived mode. A test plants a symlink at the output path and asserts the symlink target is unchanged, the output path is now a regular file (`not path.is_symlink()`), and its mode is `0o666 & ~umask`.
 5. `python -m pytest scripts/tests/test_feat3304_artifact_dashboard.py scripts/tests/test_policy_builder_emit.py scripts/tests/test_feat3036_artifact_templates.py scripts/tests/test_feat3310_artifact_extract.py scripts/tests/test_artifact_templatize.py scripts/tests/test_file_utils.py` passes, and so do `python -m mypy scripts/little_loops/` and `ruff check scripts/`.
 
 ## Status
@@ -246,6 +307,7 @@ _Added by `/ll:confidence-check` on 2026-09-24_
 - 4 direct `render_template` callers plus the serve layer; `templatize.py:554` must stay byte-identical, so a wrong escape boundary fails the FEAT-3308 round trips
 
 ## Session Log
+- Manual review - 2026-09-24 - repaired the corrupted `script_json` escape spec; added single-pass placeholder substitution, idempotent ingest escaping plus a decoded-text prompt, `atomic_write` mode preservation, the `javascript:` URL rule, the templatize fragment check, and derived `</script>` counts; marked `render_template` unchanged
 - `/ll:confidence-check` - 2026-09-24T05:15:41 - `27ae30f6-009c-4b0e-9ac3-8684b7ff61cd.jsonl`
 - `/ll:decide-issue` - 2026-09-24T05:08:54 - `99248bf9-5b09-479f-986e-d42c22c65074.jsonl`
 - `/ll:refine-issue` - 2026-09-24T05:05:07 - `b4ebbfb3-ca8e-4bb4-bf8e-9713ebdfe185.jsonl`
