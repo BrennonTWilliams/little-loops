@@ -1,0 +1,11 @@
+{
+  "id": "36fc30c4-7622-4706-abd4-66170bff8dfa",
+  "type": "decision",
+  "timestamp": "2026-09-24T00:46:36Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Successor to cancelled FEAT-3524 (Option A); gated on hrana-http learning test",
+  "rule": "Captured: Remote libSQL history backend via stdlib Hrana-over-HTTP client",
+  "scope": "issue",
+  "issue": "FEAT-3535"
+}

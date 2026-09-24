@@ -1,0 +1,12 @@
+{
+  "id": "1ac53117-b2ac-4ae8-9172-7ddc1a12edc9",
+  "type": "decision",
+  "timestamp": "2026-09-24T00:43:19Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "libsql 0.1.11 failed 7 required remote assertions; chokepoint groundwork already shipped in ENH-3525/3526; no downstream dependents; P3 opt-in",
+  "rule": "Descope remote libSQL history backend (Option D)",
+  "scope": "issue",
+  "alternatives_rejected": "A: stdlib Hrana-over-HTTP client; B: out-of-process libsql; C: embedded replicas",
+  "issue": "FEAT-3524"
+}
