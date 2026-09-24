@@ -48,6 +48,19 @@ A rebuild replaces only transcript-derived (replayable) usage rows. Live-only ro
 - Tests: `test_session_store_lifecycle.py`, `test_session_store_schema.py`, `test_session_store_writers.py`.
 - Coordinated with ENH-3528, which plans host/provenance/channel columns on `usage_events`. This issue introduces the **channel** column; ENH-3528 reuses it rather than adding its own.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-24 — based on codebase analysis:_
+
+**Conventions in force (pattern-finder):**
+- `SCHEMA_VERSION` is derived from the length of `_MIGRATIONS` (`schema.py`, 52 entries at research time). Each change appends one entry with a leading `# vN (ISSUE-ID): ...` comment; `ensure_db`/`_apply_migrations` replay from the recorded version under one write lock. Column-add precedents on `usage_events`: v21 (`invocation_id`, `provider_vendor`) and v29 (`run_id` + index) — nullable, additive, no FK. v52 (`channels_json`) is fix-forward: no DEFAULT, no backfill.
+- Contested/absent: no existing migration classifies legacy rows in place with an `UPDATE` (searched `ALTER TABLE`/`_MIGRATIONS` lines only, not full SQL bodies). The in-migration classification this issue requires has no confirmed precedent; the implementer must make that call knowingly.
+- A schema bump touches four places that must move together: `schema_manifest.json` (checked by `TestSchemaManifest.test_schema_manifest_matches_checked_in_file`), the manifest-vs-live version test, the ~15 literal `SCHEMA_VERSION == 52` assertions in `test_session_store_schema.py` (e.g. near lines 650, 664, 716, 812), and `_reference_manifest_at(len(_MIGRATIONS))` (downgrade/heal path, BUG-3255; referenced by `test_history_store_chokepoint_gate.py`).
+- Tables that cannot be replayed are excluded from `_REBUILD_TABLES` at table level, with a comment above the tuple (`lifecycle.py` ~926–939) stating why; `prompt_opt_events` is the precedent (excluded, then UPDATE-only `_backfill_prompt_opt` after replay). `usage_events` is the only tuple member that also receives live writes, and the `DELETE FROM {table}` loop in `rebuild()` has no per-table predicate today — a predicate is a new shape, and the exclusion tests (`test_<table>_excluded_from_rebuild_tables`, asserting tuple membership) would not cover it.
+- `rebuild()` runs replay inside one `try/finally` with a single `conn.commit()` at the end; on exception the connection closes uncommitted, so DELETEs roll back implicitly (no explicit `rollback`). The rollback acceptance criterion depends on that property holding after the DELETE is narrowed.
+- Test layout: migration tests are `TestSchemaVNN...` classes / `test_vN_db_upgrades_*` in `test_session_store_schema.py` (v52 class near line 3445); rebuild tests live in `test_session_store_lifecycle.py` (`test_rebuild_is_idempotent_for_usage` ~1918, `test_rebuild_does_not_touch_out_of_scope_tables` ~1759).
+- Searched, no hits: no existing test injects a mid-`rebuild()` failure; no fixture DB pinned at a prior `SCHEMA_VERSION` was found (tests build fresh DBs via `ensure_db`; how `test_v8_to_v9_migration`-style tests construct their old DB was not confirmed). Both acceptance criteria that need these (rollback, pre-migration fixture) have no in-repo template.
+
 ## Impact
 
 - **Priority**: P1 — silent, recurring data loss on every schema bump.
@@ -112,6 +125,7 @@ _Added by `/ll:confidence-check` on 2026-09-23_
 - Moderate per-site complexity: rebuild semantics, idempotency across repeated rebuilds, duplicate-row risk.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-24T01:11:53 - `b8e8635a-fb67-47b8-a409-92a092610b22.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-09-24T01:05:29 - `af4614fc-00c0-4ee9-995a-e89a43f1523c.jsonl`
 - `/ll:confidence-check` - 2026-09-24T00:45:00 - `047cda0b-279f-4078-b31f-1d7b1fcc2181.jsonl`
 - `/ll:verify-issues` - 2026-09-24T00:37:52 - `97f40d76-766f-412a-a4ef-794728276e4c.jsonl`
