@@ -1,5 +1,5 @@
 ---
-id: 3540
+id: ENH-3540
 title: Treat agent-authored content in artifacts as untrusted input and escape it
   at render
 type: ENH
@@ -103,6 +103,16 @@ _Found in a manual review after refine and decide. Each finding changes Scope/AC
 - **Refresh may escape real markup.** Templates that templatize already produced carry no per-property markup annotation, so every string leaf would be escaped on `refresh`. That is correct only if templatize lifts text/attribute values and never HTML fragments. This has not been verified yet.
 - **`policy_builder.py:143` writes without an encoding.** It calls `out_path.write_text(html)` with no `encoding=`, so the write depends on the locale. Moving it to `atomic_write` (UTF-8 default) fixes that too.
 
+## Expected Behavior
+
+Every `ll-artifact` generator treats agent-influenced strings as untrusted at the point they enter emitted HTML:
+
+- JSON spliced into inline `<script>` blocks is script-context-safe (`</script>` in a value cannot close the block) and round-trips via `json.loads`.
+- Template data strings are escaped by default (idempotently) unless the key is on a documented markup allowlist; `render_template` bytes for existing templates are unchanged.
+- Policy-builder placeholders are substituted in a single pass, so spliced content is never rescanned.
+- Artifact output writes replace, rather than follow, a symlink at the output path and keep the umask-derived file mode.
+- Hostile-payload tests in the default pytest tier pin all of the above.
+
 ## Scope
 
 1. **Script-context JSON helper.** Add one helper (e.g.
@@ -160,6 +170,11 @@ _Found in a manual review after refine and decide. Each finding changes Scope/AC
    `re.sub` over `/\*__([A-Z_]+)__\*/` with a dict lookup that raises on an
    unknown or missing key. Spliced content is then never rescanned for
    placeholders.
+
+## Scope Boundaries
+
+- **In scope**: `script_json` helper; `escape_data` ingest escaping plus markup allowlist; `extract` prompt change; single-pass placeholder substitution in `render_policy_builder_html()`; `atomic_write` routing (with mode preservation) for the artifact output sites listed under Current Behavior; hostile-payload and symlink tests.
+- **Out of scope**: changing `render_template`/`build_environment()` (`autoescape=False` stays; FEAT-3308 byte-exact round trips); the already-safe dashboard `textContent` rendering and SSE `autoescape=True` env; `policy_revision.py`/`lockfile.py` writes (already symlink-safe); `templatize.py` tmp-dir writes; LLM-written HTML loops (`vega-viz`, `rlhf-svg-generate`, `html-anything`), which sit outside any Python render boundary (note them in the allowlist docs only); hand-written `data.json` given to `ll-artifact render`, documented as trusted input.
 
 ## Acceptance Criteria
 
@@ -288,6 +303,13 @@ _Added by `/ll:refine-issue` — 2026-09-24 — based on codebase analysis:_
 4. Every predictable-path output write (`dashboard.py:475`, `render.py:68`, `policy_builder.py:143`, `design_md.py:129`, `extract.py:227,289`, and, as defense in depth against the rmtree→mkdir race only, the `.rejected` writes in `templatize.py` `_write_rejected_discovery`) goes through `atomic_write`/`atomic_write_bytes`, and the result keeps its umask-derived mode. A test plants a symlink at the output path (for the `dashboard`/`render`/`policy-builder`/`design-md`/`extract` sites; not the `.rejected` dir, which the pre-`rmtree` already rejects) and asserts the symlink target is unchanged, the output path is now a regular file (`not path.is_symlink()`), and its mode is `0o666 & ~umask`.
 5. `python -m pytest scripts/tests/test_feat3304_artifact_dashboard.py scripts/tests/test_policy_builder_emit.py scripts/tests/test_feat3036_artifact_templates.py scripts/tests/test_feat3310_artifact_extract.py scripts/tests/test_artifact_templatize.py scripts/tests/test_file_utils.py` passes, and so do `python -m mypy scripts/little_loops/` and `ruff check scripts/`.
 
+## Impact
+
+- **Priority**: P1 — a prompt injection becomes stored XSS against whoever opens a shared artifact, often not the person who ran the session.
+- **Effort**: Medium — ~15 sites across 6 artifact modules, `file_utils.py`, and 6 test files.
+- **Risk**: Medium — a wrong escape boundary breaks FEAT-3308 byte-exact round trips (`templatize.py:554` must stay unchanged); mitigated by choosing ingest-time escaping (Option A) and running `test_artifact_templatize.py` unchanged.
+- **Breaking Change**: No; `extract`/`refresh` `data.json` now holds entity-encoded text (already the byte-form contract).
+
 ## Status
 
 **Open** | Created: 2026-09-23 | Priority: P1
@@ -317,6 +339,7 @@ Verdict at time of check: **NEEDS_UPDATE** (correction below applied in the same
 - Decisions log check: no conflicting required rules found. Graph: provider=`codegraph` freshness=`fresh` (not needed for any verdict).
 
 ## Session Log
+- `/ll:format-issue` - 2026-09-24T18:15:48 - `b1a4f1ac-1b29-4ce0-8044-3ed15a90327a.jsonl`
 - `/ll:confidence-check` - 2026-09-24T17:39:32 - `be572ee7-4bdf-4b90-b8fb-64aeafff2750.jsonl`
 - `/ll:verify-issues` - 2026-09-24T17:33:31 - `96d01310-c604-4961-b5bd-6b1925aee00d.jsonl`
 - Manual review - 2026-09-24 - repaired the corrupted `script_json` escape spec; added single-pass placeholder substitution, idempotent ingest escaping plus a decoded-text prompt, `atomic_write` mode preservation, the `javascript:` URL rule, the templatize fragment check, and derived `</script>` counts; marked `render_template` unchanged
