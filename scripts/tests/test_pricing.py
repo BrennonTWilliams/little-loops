@@ -2,10 +2,56 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from datetime import date
 from unittest.mock import patch
 
+import pytest
+
+from little_loops import pricing
 from little_loops.pricing import BATCH_DISCOUNT, MODEL_PRICING, estimate_cost_usd
+
+SYNTHETIC_MODEL = "claude-synthetic-intro"
+
+# Live rates (USD/Mtok): input, output, cache_read, cache_creation. Checked 2026-09-24.
+LIVE_RATES: dict[str, tuple[float, float, float, float]] = {
+    "claude-fable-5": (10.0, 50.0, 1.0, 12.50),
+    "claude-opus-5": (5.0, 25.0, 0.50, 6.25),
+    "claude-opus-4-8": (5.0, 25.0, 0.50, 6.25),
+    "claude-opus-4-7": (5.0, 25.0, 0.50, 6.25),
+    "claude-opus-4-6": (5.0, 25.0, 0.50, 6.25),
+    "claude-opus-4-5": (5.0, 25.0, 0.50, 6.25),
+    "claude-sonnet-5": (2.0, 10.0, 0.20, 2.50),
+    "claude-sonnet-4-6": (3.0, 15.0, 0.30, 3.75),
+    "claude-sonnet-3-7": (3.0, 15.0, 0.30, 3.75),
+    "claude-haiku-4-5-20251001": (1.0, 5.0, 0.10, 1.25),
+    "claude-haiku-3-5": (0.80, 4.0, 0.08, 1.0),
+}
+
+
+@pytest.fixture
+def synthetic_intro_pricing(monkeypatch: pytest.MonkeyPatch) -> Iterator[str]:
+    """Register a synthetic model with an intro rate expiring 2026-08-31.
+
+    Standard rate is 3/15/0.30/3.75; intro rate is 2/10/0.20/2.50. Yields the model id.
+    """
+    monkeypatch.setitem(
+        MODEL_PRICING,
+        SYNTHETIC_MODEL,
+        {"input": 3.0, "output": 15.0, "cache_read": 0.30, "cache_creation": 3.75},
+    )
+    monkeypatch.setitem(
+        pricing.INTRO_PRICING,
+        SYNTHETIC_MODEL,
+        {
+            "expires": "2026-08-31",
+            "input": 2.0,
+            "output": 10.0,
+            "cache_read": 0.20,
+            "cache_creation": 2.50,
+        },
+    )
+    yield SYNTHETIC_MODEL
 
 
 class TestModelPricing:
@@ -29,6 +75,35 @@ class TestModelPricing:
             assert prices["output"] > prices["input"], (
                 f"{model}: output should cost more than input"
             )
+
+
+class TestLiveRates:
+    @pytest.mark.parametrize("model", sorted(LIVE_RATES))
+    def test_rates_match_live_table(self, model: str) -> None:
+        inp, out, cr, cc = LIVE_RATES[model]
+        assert MODEL_PRICING[model] == {
+            "input": inp,
+            "output": out,
+            "cache_read": cr,
+            "cache_creation": cc,
+        }
+
+    def test_every_model_pinned(self) -> None:
+        assert set(MODEL_PRICING) == set(LIVE_RATES)
+
+    def test_sonnet_5_standard_rate_any_date(self) -> None:
+        assert estimate_cost_usd("claude-sonnet-5", 1_000_000, 1_000_000) == 12.0
+        with patch("little_loops.pricing.date") as mock_date:
+            mock_date.today.return_value = date(2026, 8, 15)
+            mock_date.fromisoformat = date.fromisoformat
+            assert estimate_cost_usd("claude-sonnet-5", 1_000_000, 1_000_000) == 12.0
+
+    @pytest.mark.parametrize("model", sorted(LIVE_RATES))
+    def test_batch_halves_each_rate(self, model: str) -> None:
+        sync = estimate_cost_usd(model, 1_000_000, 1_000_000, 1_000_000, 1_000_000)
+        batch = estimate_cost_usd(model, 1_000_000, 1_000_000, 1_000_000, 1_000_000, is_batch=True)
+        assert sync is not None and batch is not None
+        assert batch == sync * BATCH_DISCOUNT
 
 
 class TestEstimateCostUsd:
@@ -68,38 +143,36 @@ class TestEstimateCostUsd:
 
 
 class TestIntroPricing:
-    def test_pre_expiry_uses_intro_rate(self) -> None:
+    def test_pre_expiry_uses_intro_rate(self, synthetic_intro_pricing: str) -> None:
         with patch("little_loops.pricing.date") as mock_date:
             mock_date.today.return_value = date(2026, 8, 15)
             mock_date.fromisoformat = date.fromisoformat
-            cost = estimate_cost_usd("claude-sonnet-5", 1_000_000, 1_000_000)
+            cost = estimate_cost_usd(synthetic_intro_pricing, 1_000_000, 1_000_000)
         assert cost == 2.0 + 10.0
 
-    def test_post_expiry_uses_standard_rate(self) -> None:
+    def test_post_expiry_uses_standard_rate(self, synthetic_intro_pricing: str) -> None:
         with patch("little_loops.pricing.date") as mock_date:
             mock_date.today.return_value = date(2026, 9, 1)
             mock_date.fromisoformat = date.fromisoformat
-            cost = estimate_cost_usd("claude-sonnet-5", 1_000_000, 1_000_000)
+            cost = estimate_cost_usd(synthetic_intro_pricing, 1_000_000, 1_000_000)
         assert cost == 3.0 + 15.0
 
-    def test_boundary_2026_08_31_uses_intro_rate(self) -> None:
+    def test_boundary_2026_08_31_uses_intro_rate(self, synthetic_intro_pricing: str) -> None:
         with patch("little_loops.pricing.date") as mock_date:
             mock_date.today.return_value = date(2026, 8, 31)
             mock_date.fromisoformat = date.fromisoformat
-            cost = estimate_cost_usd("claude-sonnet-5", 1_000_000, 1_000_000)
+            cost = estimate_cost_usd(synthetic_intro_pricing, 1_000_000, 1_000_000)
         assert cost == 2.0 + 10.0
 
-    def test_unaffected_model_regression(self) -> None:
+    def test_unaffected_model_regression(self, synthetic_intro_pricing: str) -> None:
         with patch("little_loops.pricing.date") as mock_date:
             mock_date.today.return_value = date(2026, 8, 15)
             mock_date.fromisoformat = date.fromisoformat
             cost = estimate_cost_usd("claude-sonnet-4-6", 1_000_000, 1_000_000)
         assert cost == 3.0 + 15.0
 
-    def test_intro_sub_dict_has_all_rate_keys(self) -> None:
-        from little_loops.pricing import INTRO_PRICING
-
-        for model, rates in INTRO_PRICING.items():
+    def test_intro_sub_dict_has_all_rate_keys(self, synthetic_intro_pricing: str) -> None:
+        for model, rates in pricing.INTRO_PRICING.items():
             for key in ("input", "output", "cache_read", "cache_creation", "expires"):
                 assert key in rates, f"{model} intro pricing missing {key}"
 

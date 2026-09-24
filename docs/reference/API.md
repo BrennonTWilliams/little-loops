@@ -81,7 +81,7 @@ pip install little-loops
 | `little_loops.output` | Output-parsing subpackage — stop-sequence / prefill JSON helpers (`extract_between_tags`, `parse_prefilled_json`) for bounding LLM output-token cost (FEAT-2470). |
 | `little_loops.package_data` | Declarative manifest of runtime-read package assets (templates, prompts, adapter configs) — `check_asset_accessible(parts)` and `list_missing_assets()`. Backs `ll-verify-package-data`. |
 | `little_loops.paths` | Dependency-free project-root resolution (ENH-2924, relocated from `little_loops.issues.program_design`) — `find_project_root(start)` and `resolve_ll_dir(start, create=False)`. |
-| `little_loops.pricing` | Model pricing constants (USD per million tokens) for token cost estimation across the model registry. `INTRO_PRICING` overrides `MODEL_PRICING` for a model while a time-bounded introductory rate is active (e.g. Sonnet 5's $2/$10 rate through 2026-08-31 inclusive, ENH-2835); `estimate_cost_usd()` checks `date.today()` against each entry's `expires` date and falls back to standard `MODEL_PRICING` once it lapses. |
+| `little_loops.pricing` | Model pricing constants (USD per million tokens) for token cost estimation across the model registry. `INTRO_PRICING` overrides `MODEL_PRICING` for a model while a time-bounded introductory rate is active; `estimate_cost_usd()` checks `date.today()` against each entry's `expires` date and falls back to standard `MODEL_PRICING` once it lapses. Sonnet 5's $2/$10 introductory rate became its standard price, so it is priced from `MODEL_PRICING` directly (BUG-3564). |
 | `little_loops.pytest_history_plugin` | Pytest plugin (registered under `pytest11` entry point) that records test-run pass/fail counts, duration, and failing node IDs into `.ll/history.db` (ENH-2459). |
 | `little_loops.queue_store` | Persisted `ll-queue` entry store (`.ll/queue.db`; FEAT-2682) — schema `{id, action, enqueuedAt, priority, status, result, claimedAt, ownerPid, attempt, nextAttemptAt}` with tiered `(priority, enqueuedAt)` ordering. |
 | `little_loops.recursive_finalize` | Decomposed-parent lifecycle and EPIC re-linking. Powers `ll-issues finalize-decomposition` (ENH-1977 Fix 4), invoked from `rn-decompose` and `autodev`'s decomposition states (ENH-2615). |
@@ -12357,7 +12357,7 @@ The single caller of `consult()` — no other code path may call it. Resolves th
 
 ## little_loops.pricing
 
-Model pricing constants (USD per million tokens) for token cost estimation across the model registry. `INTRO_PRICING` overrides `MODEL_PRICING` for a model while a time-bounded introductory rate is active (e.g. Sonnet 5's $2/$10 rate through 2026-08-31 inclusive, ENH-2835); `estimate_cost_usd()` checks `date.today()` against each entry's `expires` date and falls back to standard `MODEL_PRICING` once it lapses.
+Model pricing constants (USD per million tokens) for token cost estimation across the model registry. `INTRO_PRICING` overrides `MODEL_PRICING` for a model while a time-bounded introductory rate is active; `estimate_cost_usd()` checks `date.today()` against each entry's `expires` date and falls back to standard `MODEL_PRICING` once it lapses. Sonnet 5's $2/$10 introductory rate became its standard price, so it is priced from `MODEL_PRICING` directly (BUG-3564).
 
 ```python
 from little_loops.pricing import MODEL_PRICING, INTRO_PRICING, BATCH_DISCOUNT, estimate_cost_usd
@@ -12377,7 +12377,9 @@ Per-model pricing table: `{model_id: {"input": ..., "output": ..., "cache_read":
 INTRO_PRICING: dict[str, dict[str, float | str]]
 ```
 
-Time-bounded introductory rates that override `MODEL_PRICING` while active: `{model_id: {"expires": iso_date, "input": ..., "output": ..., "cache_read": ..., "cache_creation": ...}}`. Currently holds only `claude-sonnet-5`, expiring `2026-08-31`.
+Time-bounded introductory rates that override `MODEL_PRICING` while active: `{model_id: {"expires": iso_date, "input": ..., "output": ..., "cache_read": ..., "cache_creation": ...}}`. Currently empty: Sonnet 5's intro rate became its standard price and moved into `MODEL_PRICING` (BUG-3564). The mechanism is kept for future launches.
+
+**Stored rows after a rate correction.** `usage_events.cost_usd` is computed at ingest. Live-channel rows (`channel = 'live'`) are never repriced, not even by a rebuild, so they keep the cost stored when they were written. Replayable rows (e.g. `transcript`) are repriced at the current rates when a rebuild replays them. After a rebuild, historical `cost_usd` therefore mixes old rates (live rows) and new rates (replayed rows).
 
 ### BATCH_DISCOUNT
 

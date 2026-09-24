@@ -1976,7 +1976,7 @@ class TestBackfillUsageEvents:
         assert row["cache_read_input_tokens"] == 50
         assert row["cache_creation_input_tokens"] == 10
         # 100*15 + 20*75 + 50*1.5 + 10*18.75, all /1e6
-        assert row["cost_usd"] == pytest.approx(0.0032625)
+        assert row["cost_usd"] == pytest.approx(0.0010875)
 
     def test_unknown_model_cost_is_null(self, tmp_path: Path) -> None:
         db = tmp_path / "history.db"

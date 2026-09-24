@@ -3,10 +3,11 @@ id: BUG-3564
 type: BUG
 title: MODEL_PRICING has stale rates for Sonnet 5, Opus 4.5-4.7 and Haiku 4.5
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-24'
 captured_at: '2026-09-24T19:03:48Z'
+completed_at: '2026-09-24T23:38:06Z'
 labels:
 - models
 - pricing
@@ -116,12 +117,18 @@ These entries are correct: `claude-fable-5`, `claude-opus-5`, `claude-opus-4-8`,
 
 - BUG-3541: adds the missing keys for `claude-opus-5-5`, `claude-fable-5-1` and undated `claude-haiku-4-5`. Either can land first. If BUG-3541 lands first, its haiku alias must share the dated entry's dict so this fix corrects both.
 
+## Resolution
+
+Corrected Sonnet 5, Opus 4.5-4.7 and Haiku 4.5 rates in `MODEL_PRICING`; removed the expired Sonnet 5 `INTRO_PRICING` entry (mechanism kept, now with a reusable `synthetic_intro_pricing` fixture); added per-key live-rate tests; updated API.md.
+
 ## Status
 
 **Open** | Created: 2026-09-24 | Priority: P2
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-24T23:38:06 - `b172455c-1f24-43cb-b559-e544617a9e15.jsonl`
+- `/ll:ready-issue` - 2026-09-24T23:30:23 - `824f0424-011a-4fbc-91c3-2b1c7a3a5b6f.jsonl`
 - `/ll:verify-issues` - 2026-09-24T22:56:15 - `4279401a-9acc-474c-b872-fd398cd78a8e.jsonl`
 - `/ll:confidence-check` - 2026-09-24T22:35:23 - `193eb57f-e9f6-4072-bd61-43000a1d97b1.jsonl`
 - `/ll:confidence-check` - 2026-09-24T22:09:36 - `6c1833f1-29b8-4569-8cd1-c7e84a3f7e66.jsonl`

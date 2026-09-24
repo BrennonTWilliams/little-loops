@@ -1,10 +1,12 @@
 """Model pricing constants for token cost estimation.
 
 Prices are in USD per million tokens ($/Mtok).
-Source: Anthropic pricing page (as of July 2026; ENH-2745 added
-claude-sonnet-5/claude-opus-4-8/claude-fable-5). Sonnet 5's introductory rate
-($2/$10 through 2026-08-31, inclusive) is modeled via `INTRO_PRICING`, which
-overrides `MODEL_PRICING` while active (ENH-2835). claude-opus-5 added
+Source: Anthropic pricing page (as of 2026-09-24; BUG-3564 corrected stale
+Sonnet 5, Opus 4.5-4.7 and Haiku 4.5 rates; ENH-2745 added
+claude-sonnet-5/claude-opus-4-8/claude-fable-5). Sonnet 5's introductory
+$2/$10 rate became its standard price, so it lives in `MODEL_PRICING`.
+`INTRO_PRICING` (ENH-2835) stays as the mechanism for time-bounded launch
+rates that override `MODEL_PRICING` while active. claude-opus-5 added
 2026-08-29 (FEAT-3183): it was the largest source of null `cost_usd` rows in
 `usage_events` (37,269 rows on this repo's own history.db at time of fix).
 This closes the gap going forward only — already-written null rows are not
@@ -37,23 +39,23 @@ MODEL_PRICING: dict[str, dict[str, float]] = {
         "cache_creation": 6.25,
     },
     "claude-sonnet-5": {
-        "input": 3.0,
-        "output": 15.0,
-        "cache_read": 0.30,
-        "cache_creation": 3.75,
+        "input": 2.0,
+        "output": 10.0,
+        "cache_read": 0.20,
+        "cache_creation": 2.50,
     },
     # Claude 4.x
     "claude-opus-4-7": {
-        "input": 15.0,
-        "output": 75.0,
-        "cache_read": 1.50,
-        "cache_creation": 18.75,
+        "input": 5.0,
+        "output": 25.0,
+        "cache_read": 0.50,
+        "cache_creation": 6.25,
     },
     "claude-opus-4-6": {
-        "input": 15.0,
-        "output": 75.0,
-        "cache_read": 1.50,
-        "cache_creation": 18.75,
+        "input": 5.0,
+        "output": 25.0,
+        "cache_read": 0.50,
+        "cache_creation": 6.25,
     },
     "claude-sonnet-4-6": {
         "input": 3.0,
@@ -62,18 +64,18 @@ MODEL_PRICING: dict[str, dict[str, float]] = {
         "cache_creation": 3.75,
     },
     "claude-haiku-4-5-20251001": {
-        "input": 0.80,
-        "output": 4.0,
-        "cache_read": 0.08,
-        "cache_creation": 1.0,
+        "input": 1.0,
+        "output": 5.0,
+        "cache_read": 0.10,
+        "cache_creation": 1.25,
+    },
+    "claude-opus-4-5": {
+        "input": 5.0,
+        "output": 25.0,
+        "cache_read": 0.50,
+        "cache_creation": 6.25,
     },
     # Claude 3.x (legacy, may still appear in logs)
-    "claude-opus-4-5": {
-        "input": 15.0,
-        "output": 75.0,
-        "cache_read": 1.50,
-        "cache_creation": 18.75,
-    },
     "claude-sonnet-3-7": {
         "input": 3.0,
         "output": 15.0,
@@ -91,15 +93,7 @@ MODEL_PRICING: dict[str, dict[str, float]] = {
 
 # Time-bounded introductory rates that override MODEL_PRICING while active.
 # {model_id: {"expires": iso_date, token_type: usd_per_million, ...}}
-INTRO_PRICING: dict[str, dict[str, float | str]] = {
-    "claude-sonnet-5": {
-        "expires": "2026-08-31",
-        "input": 2.0,
-        "output": 10.0,
-        "cache_read": 0.20,
-        "cache_creation": 2.50,
-    },
-}
+INTRO_PRICING: dict[str, dict[str, float | str]] = {}
 
 
 BATCH_DISCOUNT = 0.5
