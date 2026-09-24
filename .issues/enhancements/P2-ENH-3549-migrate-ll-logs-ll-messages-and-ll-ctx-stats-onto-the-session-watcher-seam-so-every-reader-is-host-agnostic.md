@@ -1,6 +1,7 @@
 ---
 id: 3549
-title: Migrate ll-logs, ll-messages, and ll-ctx-stats onto the session-watcher seam so every reader is host-agnostic
+title: Migrate ll-logs, ll-messages, and ll-ctx-stats onto the session-watcher seam
+  so every reader is host-agnostic
 type: ENH
 priority: P2
 status: open
@@ -10,6 +11,9 @@ discovered_date: '2026-09-24'
 labels:
 - observability
 - multi-host
+depends_on:
+- ENH-3532
+- ENH-3534
 ---
 
 # Migrate ll-logs, ll-messages, and ll-ctx-stats onto the session-watcher seam so every reader is host-agnostic
@@ -32,3 +36,13 @@ Migrate all three readers onto the session-watcher seam — detect, watch, emit 
 - A Codex session for the current workspace appears in `ll-logs` and `ll-messages` output with the same fidelity as a Claude Code session over the same period.
 - `ll-ctx-stats` carries per-observation provenance for the records it counts: where a host exposes authoritative token counts they are read, and where it does not the figure is labeled an estimate (companion work: ENH-3528 and its ingestion splits ENH-3532/ENH-3534).
 - No reader in the migrated set reaches for `~/.claude/projects/` directly; a mechanical check (grep or import rule) proves it.
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): The "no common abstraction over tool-call shapes or token accounting" constraint applies to the session-watcher seam and its per-host typed events only. It does not prohibit the downstream `usage_events` contract: the shared `UsageObservation` normalization (ENH-3532, ENH-3534) and the single `select_usage_coverage` aggregation entry point (ENH-3543) are out of scope here and remain valid. `ll-ctx-stats` provenance (third acceptance criterion) consumes those stored observations; it does not re-derive token accounting in the seam.
+
+
+## Session Log
+- `/ll:audit-issue-conflicts` - 2026-09-24T23:55:45 - `2bb94109-d967-427c-a647-9b0a7a8e368e.jsonl`

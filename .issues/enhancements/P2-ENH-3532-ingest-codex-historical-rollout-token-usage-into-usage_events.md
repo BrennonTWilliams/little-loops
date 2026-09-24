@@ -168,7 +168,14 @@ Removed the resolved blockers (ENH-3538, BUG-3531); now blocked by BUG-3542. Imp
 
 **Open** | Created: 2026-09-24 | Priority: P2
 
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue persists the rollout `session_id` (rollout `session_meta.payload.session_id`) plus the `task_started`/`task_complete` span on each rollout row. ENH-3543 separately proposes `host_session_id`/`invocation_id` columns on `usage_events` for live rows. Before either migration lands, agree with ENH-3543 on one canonical session-identity column (reuse with a basis marker, or two named columns with a documented join). Do not add a second, unjoined session-ID column in this issue's migration.
+
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-09-24T23:55:44 - `2bb94109-d967-427c-a647-9b0a7a8e368e.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-09-24T01:05:29 - `af4614fc-00c0-4ee9-995a-e89a43f1523c.jsonl`
 - `/ll:verify-issues` - 2026-09-24T00:46:09 - `047cda0b-279f-4078-b31f-1d7b1fcc2181.jsonl`
