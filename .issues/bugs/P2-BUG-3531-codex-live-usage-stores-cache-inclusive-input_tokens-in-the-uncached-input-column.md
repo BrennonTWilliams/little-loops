@@ -14,6 +14,12 @@ blocks:
 labels:
 - observability
 - multi-host
+confidence_score: 100
+outcome_confidence: 78
+score_complexity: 10
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 # BUG-3531: Codex live usage stores cache-inclusive input_tokens in the uncached-input column
@@ -177,21 +183,13 @@ Checked the design against post-ENH-3538 code. Fixture figures (12193, 231, 5850
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-09-24 (supersedes the earlier 95/71 scores). **Historical**: frontmatter scores removed in review 2026-09-24 (2); re-run before implementing._
+_Added by `/ll:confidence-check` on 2026-09-24 (supersedes the earlier STOP verdict; ENH-3538 is done and Decision 6 evidence is committed)_
 
-**Readiness Score**: 65/100 → STOP — ADDRESS GAPS
-**Outcome Confidence**: 63/100 → MODERATE
-
-### Gaps to Address
-_Both gaps resolved 2026-09-24: ENH-3538 is done; Decision 6 evidence and live fixtures are committed. Scores below are stale until the next confidence check._
-- **Unresolved dependency (hard override)**: `blocked_by` ENH-3538 is `open` — land the foundation first (nullable components, `provenance`/`host` columns, completeness-aware executor sums).
-- **Producer-contract evidence outstanding (Decision 6)**: matched `codex exec --json` stdout/rollout captures, per-turn vs thread-cumulative usage, and omitted `cache_write_input_tokens` semantics are unresolved; no live `turn.completed` fixture exists under `scripts/tests/fixtures/codex/` (only `rollout-exec.jsonl`, `rollout-interactive.jsonl`). This is Implementation Step 1 and gates `measured` provenance.
-
-### Outcome Risk Factors
-- Several design decisions left open pending the evidence: omission rule and cumulative-count/baseline-difference handling (may change the `usage_from_event` call path/signature).
-- Shared normalizer spans `subprocess_utils`, `ctx_stats`, `runner_spec` and executor/persistence, plus ENH-3532 coupling.
+**Readiness Score**: 100/100 → PROCEED
+**Outcome Confidence**: 78/100 → MODERATE
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-24T17:06:45 - `61aa07d8-3d41-48a3-ba23-aacb1d3144bd.jsonl`
 - `/ll:confidence-check` - 2026-09-24T03:50:15 - `a1bbb8d4-d93b-4517-a766-21a26af03296.jsonl`
 - `/ll:verify-issues` - 2026-09-24T03:44:03 - `747bdb3d-c82b-437c-9f00-ae0dbc6a8638.jsonl`
 - `/ll:confidence-check` - 2026-09-24T00:45:01 - `047cda0b-279f-4078-b31f-1d7b1fcc2181.jsonl`
