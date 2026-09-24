@@ -223,9 +223,10 @@ Diff expected vs actual and emit the registry record.
    ---
    ```
 
-   - Two further optional keys, `proven_package` and `proven_version`, are part of the format (ENH-3125) but are **not yours to write**: `ll-learning-tests prove` stamps them deterministically from `importlib.metadata` after this skill returns. Omit them — a typed-from-memory version would silently poison version-drift staleness toward "not stale".
+   - Two further optional keys, `proven_package` and `proven_version`, are part of the format (ENH-3125) but are **not yours to write**: `ll-learning-tests prove` stamps them deterministically from `importlib.metadata` after this skill returns — but **only when the target's first word, or its longest hyphen prefix (`jinja2-byte-exact` → `jinja2`), names an installed Python distribution**. Standard-library and free-text targets stay unstamped by design, and `prove` prints a note when it skips. Omit the keys regardless — a typed-from-memory version would silently poison version-drift staleness toward "not stale". To make a record version-aware, lead the target with the package name.
    - File body is **empty** — frontmatter fences only, then a single trailing newline.
    - Use single-quoted ISO date (`'2026-05-11'`) to match `yaml.dump` output.
+   - Single-quote any `claim` containing ` #` or `: ` (double any inner `'`). Unquoted, YAML reads ` #` as a comment and silently truncates the claim, e.g. `a [[# ... #]] comment` parses as `a [[# ...`.
    - `target` is the original free-text string, not the slug.
    - Write path: `.ll/learning-tests/<slug>.md` (the directory was already ensured to exist by the `mkdir -p .ll/learning-tests/raw/` in Phase 3, but call `mkdir -p .ll/learning-tests/` as well if the raw step was skipped).
 
