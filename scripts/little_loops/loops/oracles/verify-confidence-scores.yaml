@@ -4,13 +4,21 @@ description: |
   Runs confidence-check on an issue, then verifies that scores were persisted to
   frontmatter. Retries once if the first run fails to write scores. Extracted from
   refine-to-ready-issue.
-initial: confidence_check
+initial: clear_scores
 parameters:
   issue_id:
     type: string
     required: true
 
 states:
+  clear_scores:
+    # BUG-3571: drop scores from earlier runs so presence after confidence_check
+    # proves this invocation wrote them. Covers every caller entry.
+    action: "ll-issues set-scores ${context.issue_id:shell} --clear"
+    action_type: shell
+    next: confidence_check
+    on_error: confidence_check
+
   confidence_check:
     action: "/ll:confidence-check ${context.issue_id}"
     action_type: slash_command
@@ -19,7 +27,7 @@ states:
       name: confidence-check-recheck
       suppress_claude_md: true
     next: verify_scores_persisted
-    on_error: failed
+    on_error: retry_confidence_check
 
   verify_scores_persisted:
     # Guard: assert that confidence-check actually wrote scores to frontmatter.

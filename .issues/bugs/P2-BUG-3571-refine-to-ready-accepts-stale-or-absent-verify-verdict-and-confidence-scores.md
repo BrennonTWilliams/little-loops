@@ -3,10 +3,11 @@ id: BUG-3571
 type: BUG
 title: Refine-to-ready accepts stale or absent verify verdict and confidence scores
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-24'
 captured_at: '2026-09-24T19:33:13Z'
+completed_at: '2026-09-25T02:14:48Z'
 parent: EPIC-3565
 decision_needed: false
 blocks:
@@ -197,17 +198,21 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Acceptance Criteria
 
-- [ ] A verify call that errors cannot pass on a verdict from a prior run
-- [ ] An erroring `check_verify_verdict` probe does not route to `check_hedges`
-- [ ] A confidence-check that writes nothing cannot pass on pre-existing scores (including after `run_spike`)
-- [ ] Absent evidence after a completed call is retried once, then classified as infra via `mark_evidence_absent_infra` — not `NON_VALID`, not `refine_followup`, not an unclassified `diagnose`
-- [ ] The verify retry counter is reset per issue in `resolve_issue`
-- [ ] `ll-issues check-verify-verdict` exits 3 on an absent verdict; 0/1/2 semantics otherwise unchanged
-- [ ] Session Log appends between a call and its check do not affect the gate
+- [x] A verify call that errors cannot pass on a verdict from a prior run
+- [x] An erroring `check_verify_verdict` probe does not route to `check_hedges`
+- [x] A confidence-check that writes nothing cannot pass on pre-existing scores (including after `run_spike`)
+- [x] Absent evidence after a completed call is retried once, then classified as infra via `mark_evidence_absent_infra` — not `NON_VALID`, not `refine_followup`, not an unclassified `diagnose`
+- [x] The verify retry counter is reset per issue in `resolve_issue`
+- [x] `ll-issues check-verify-verdict` exits 3 on an absent verdict; 0/1/2 semantics otherwise unchanged
+- [x] Session Log appends between a call and its check do not affect the gate
 
 ## Related Key Documentation
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
+
+## Resolution
+
+Implemented Option 3 (clear-then-require). `check-verify-verdict` exits 3 (`VERIFY_VERDICT_ABSENT`) on an absent verdict; new `ll-issues clear-verify-verdict`; refine-to-ready clears before `verify_issue`, retries once via `check_verify_retries` (counter seeded per issue in `resolve_issue`), and routes absence/probe errors/oracle failure to `mark_evidence_absent_infra` (class `infra`). The scores oracle clears scores first and retries on `confidence_check` error. Tests and CLI/loop docs updated. Two unrelated failures pre-exist on main (`test_no_new_unverifiable_evidence`, `test_autodev_topology`).
 
 ## Status
 
@@ -226,6 +231,8 @@ _Added by `/ll:confidence-check` on 2026-09-24; scores cleared 2026-09-25 after 
 - _Resolved:_ `confidence_check.on_failure`/`on_error` route to `mark_evidence_absent_infra`.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-25T02:14:47 - `c7e90b5f-625f-45b3-83aa-bfd944e4d83f.jsonl`
+- `/ll:ready-issue` - 2026-09-25T02:04:21 - `5af81d8a-1dd8-4009-bfe9-b6aa8410d743.jsonl`
 - `/ll:confidence-check` - 2026-09-25T02:02:24 - `5a030a02-b57b-4f48-9915-c2922670f102.jsonl`
 - `/ll:confidence-check` - 2026-09-25T01:45:32 - `ce904479-7e73-4d58-aa48-892e2cdb88b3.jsonl`
 - `/ll:wire-issue` - 2026-09-25T01:11:23 - `283a56a1-35bd-43bb-b2f7-64d9f104c2c4.jsonl`

@@ -153,6 +153,7 @@ states:
       printf '0' > ${context.run_dir}/refine-to-ready-hedge-attempts &&
       printf '0' > ${context.run_dir}/refine-to-ready-reconcile-attempts &&
       printf '0' > ${context.run_dir}/refine-to-ready-decide-attempts &&
+      printf '0' > ${context.run_dir}/refine-to-ready-verify-retries &&
       rm -f ${context.run_dir}/refine-to-ready-spike-ran &&
       { [ -n ${context.input:shell} ] && printf '%s' ${context.input:shell} ||
       ll-issues next-issue; } | tr -d '\n\r '
@@ -370,6 +371,17 @@ states:
     # fall-through, not write_broke_down's): on_error equals next.
     action: ll-issues format-check ${captured.issue_id.output:shell} --fix --apply || true
     action_type: shell
+    next: clear_verify_verdict
+    on_error: clear_verify_verdict
+
+  clear_verify_verdict:
+    # BUG-3571: drop any verify_verdict left by an earlier run/revision before
+    # verify_issue, so check_verify_verdict can only ever read evidence produced
+    # by THIS invocation. Absence afterwards means the verify call wrote nothing.
+    # Not load-bearing on failure (on_error equals next): a failed clear at worst
+    # leaves a stale verdict, the pre-existing behaviour.
+    action: ll-issues clear-verify-verdict ${captured.issue_id.output:shell} || true
+    action_type: shell
     next: verify_issue
     on_error: verify_issue
 
@@ -399,11 +411,38 @@ states:
     # code, which never reaches the host CLI's exit status. This gate reads
     # that written artifact — the write-verdict/read-verdict shape used
     # throughout this file (decision_needed / check-flag).
+    #
+    # BUG-3571: the verdict is cleared by clear_verify_verdict before verify_issue,
+    # so an ABSENT verdict (exit 3) means the verify call produced nothing — an
+    # abstention, retried once (check_verify_retries) and then classed infra. It
+    # is never a pass and never a NON_VALID quality verdict.
     action: "ll-issues check-verify-verdict ${captured.issue_id.output:shell}"
-    fragment: shell_exit
-    on_yes: check_hedges                # exit 0 = verdict VALID (or absent, fail-open)
+    fragment: harness_exit
+    on_yes: check_hedges                # exit 0 = verdict VALID
     on_no: check_evidence_unverified    # exit 1 = VERIFY_VERDICT_NON_VALID → BUG-3282: evidence outranks proposal
-    on_error: check_hedges
+    on_cannot_judge: check_verify_retries  # exit 3 = VERIFY_VERDICT_ABSENT (BUG-3571)
+    on_error: mark_evidence_absent_infra   # an erroring probe is not a pass (BUG-3571)
+
+  check_verify_retries:
+    # BUG-3571: one retry of a verify call that left no verdict. Counter is seeded
+    # in resolve_issue (autodev reuses one run_dir across issues) and is per run,
+    # not per gate-band pass. Retries via clear_verify_verdict so the retry also
+    # starts from a cleared field.
+    action: |
+      FILE="${context.run_dir}/refine-to-ready-verify-retries"
+      N=$(cat "$FILE" 2>/dev/null || echo 0)
+      N=$((N + 1))
+      printf '%s' "$N" > "$FILE"
+      echo "$N"
+    action_type: shell
+    capture: check_verify_retries
+    evaluate:
+      type: output_numeric
+      operator: lt
+      target: 2
+    on_yes: clear_verify_verdict        # 1st absence: retry once
+    on_no: mark_evidence_absent_infra   # 2nd absence: infra, not quality
+    on_error: mark_evidence_absent_infra
 
   check_evidence_unverified:
     # BUG-3282: placed ahead of check_proposal_unsound (Decision Rules → Verdict
@@ -594,8 +633,10 @@ states:
     # terminated_by / failure_terminal still land under `confidence_check`.
     capture: confidence_check_events
     on_success: check_readiness
-    on_failure: diagnose
-    on_error: diagnose
+    # BUG-3571: the oracle clears scores first, so its `failed` terminal means
+    # absent evidence after a retry — infra, not something diagnose can classify.
+    on_failure: mark_evidence_absent_infra
+    on_error: mark_evidence_absent_infra
 
   check_readiness:
     # Step 1 of 2: check only technical readiness (confidence_score vs readiness_threshold).
@@ -971,6 +1012,17 @@ states:
     # (which key off per-state captures a sub-loop failure never populates), so
     # the infra verdict still reaches autodev's skip_inflight contract.
     action: printf 'infra' > ${context.run_dir}/refine-terminal-class
+    action_type: shell
+    next: failed
+    on_error: failed
+
+  mark_evidence_absent_infra:
+    # BUG-3571: a verify/confidence-check call left no verdict/scores even after a
+    # retry. Writes the terminal class directly (like mark_rate_limit_infra, which
+    # is rate-limit-specific) so postmortems can tell an evidence outage from a 429.
+    action: |
+      printf 'infra' > ${context.run_dir}/refine-terminal-class
+      echo "[VERIFY_VERDICT_ABSENT] or [SCORES_ABSENT]: readiness evidence missing after retry; classified infra"
     action_type: shell
     next: failed
     on_error: failed

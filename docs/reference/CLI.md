@@ -2344,7 +2344,7 @@ ll-issues check-acceptance-criteria BUG-3186   # Exit 1 — at least one needs m
 
 #### `ll-issues check-verify-verdict`
 
-Exit 0 if the issue's persisted `verify_verdict` is `VALID` **or absent** (fail-open), 1 if it is `NON_VALID` (ENH-3031). On failure it writes the token `VERIFY_VERDICT_NON_VALID` to stderr so an FSM evaluator can route on the reason rather than the bare exit code.
+Exit 0 if the issue's persisted `verify_verdict` is `VALID`, 1 if it is `NON_VALID` (ENH-3031), 3 if it is **absent** (BUG-3571 — no evidence, an abstention rather than a pass). It writes `VERIFY_VERDICT_NON_VALID` / `VERIFY_VERDICT_ABSENT` to stderr so an FSM evaluator can route on the reason rather than the bare exit code. Pair it with `ll-issues clear-verify-verdict <ID>`, which removes the field before `/ll:verify-issues --check` so only a verdict from the current call can pass.
 
 | Argument | Description |
 |----------|-------------|
@@ -2357,7 +2357,7 @@ Exit 0 if the issue's persisted `verify_verdict` is `VALID` **or absent** (fail-
 
 **Examples:**
 ```bash
-ll-issues check-verify-verdict ENH-3031   # Exit 0 — verdict VALID, or never recorded
+ll-issues check-verify-verdict ENH-3031   # Exit 0 — verdict VALID (exit 3 if never recorded)
 ll-issues check-verify-verdict BUG-9999   # Exit 1 — verdict NON_VALID (stderr: VERIFY_VERDICT_NON_VALID)
 ll-issues check-verify-verdict ENH-3250 --proposal-unsound  # Exit 0 only if verdict is PROPOSAL_UNSOUND
 ```

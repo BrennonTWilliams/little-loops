@@ -1,8 +1,8 @@
 """Subprocess-level tests for ll-issues check-verify-verdict (ENH-3031).
 
 Mirrors test_ll_issues_check_open_questions.py's exact structure: subprocess
-invocation with the CLI binary, exit-code contract (0 = VALID or absent /
-1 = NON_VALID), side-effect-free, deterministic.
+invocation with the CLI binary, exit-code contract (0 = VALID /
+1 = NON_VALID / 3 = absent), side-effect-free, deterministic.
 """
 
 from __future__ import annotations
@@ -83,14 +83,36 @@ class TestCheckVerifyVerdictValid:
             f"stdout={result.stdout!r} stderr={result.stderr!r}"
         )
 
-    def test_absent_field_exits_zero_fail_open(self, temp_project_dir: Path) -> None:
+    def test_absent_field_exits_three(self, temp_project_dir: Path) -> None:
         body = _feature("FEAT-9202")
         _write_issue(temp_project_dir, body)
         result = _invoke(temp_project_dir, "check-verify-verdict", "FEAT-9202")
-        assert result.returncode == 0, (
-            f"Absent verify_verdict must fail-open (exit 0), got {result.returncode}: "
+        assert result.returncode == 3, (
+            f"Absent verify_verdict must abstain (exit 3), got {result.returncode}: "
             f"stdout={result.stdout!r} stderr={result.stderr!r}"
         )
+        assert "VERIFY_VERDICT_ABSENT" in result.stderr
+
+
+class TestClearVerifyVerdict:
+    def test_clear_removes_verdict_then_check_abstains(self, temp_project_dir: Path) -> None:
+        path = _write_issue(temp_project_dir, _feature("FEAT-9290", "verify_verdict: VALID\n"))
+        result = _invoke(temp_project_dir, "clear-verify-verdict", "FEAT-9290")
+        assert result.returncode == 0, result.stderr
+        assert "verify_verdict" not in path.read_text()
+        check = _invoke(temp_project_dir, "check-verify-verdict", "FEAT-9290")
+        assert check.returncode == 3
+
+    def test_clear_is_noop_when_absent(self, temp_project_dir: Path) -> None:
+        body = _feature("FEAT-9291")
+        path = _write_issue(temp_project_dir, body)
+        result = _invoke(temp_project_dir, "clear-verify-verdict", "FEAT-9291")
+        assert result.returncode == 0
+        assert path.read_text() == body
+
+    def test_clear_unknown_issue_exits_two(self, temp_project_dir: Path) -> None:
+        result = _invoke(temp_project_dir, "clear-verify-verdict", "FEAT-9999")
+        assert result.returncode == 2
 
 
 class TestCheckVerifyVerdictNonValid:

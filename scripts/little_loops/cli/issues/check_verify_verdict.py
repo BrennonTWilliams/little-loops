@@ -28,8 +28,8 @@ def add_check_verify_verdict_parser(
     p = subs.add_parser(
         "check-verify-verdict",
         help=(
-            "Exit 0 if the issue's persisted verify_verdict is VALID (or absent — "
-            "fail-open), 1 if NON_VALID (ENH-3031)"
+            "Exit 0 if the issue's persisted verify_verdict is VALID, 1 if NON_VALID, "
+            "3 if absent (BUG-3571)"
         ),
     )
     p.set_defaults(command="check-verify-verdict")
@@ -60,7 +60,7 @@ def add_check_verify_verdict_parser(
 
 
 def cmd_check_verify_verdict(config: BRConfig, args: argparse.Namespace) -> int:
-    """Exit 0 unless the issue's frontmatter records verify_verdict: NON_VALID (ENH-3031).
+    """Exit 0 if the issue's frontmatter records verify_verdict: VALID (ENH-3031).
 
     With ``--proposal-unsound`` (ENH-3250), behaves as a distinct query mode
     instead: exit 0 if ``verify_verdict == PROPOSAL_UNSOUND``, 1 otherwise
@@ -70,10 +70,11 @@ def cmd_check_verify_verdict(config: BRConfig, args: argparse.Namespace) -> int:
     non-VALID → exit 1, so the default contract is unchanged.
 
     Returns:
-        0 when ``verify_verdict`` is ``VALID`` or absent (fail-open, matching
-        this loop's non-fatal ``on_error`` convention for every other gate in
-        this file). 1 with a ``VERIFY_VERDICT_NON_VALID`` stderr token when it
-        is ``NON_VALID``.
+        0 when ``verify_verdict`` is ``VALID``. 1 with a ``VERIFY_VERDICT_NON_VALID``
+        stderr token when it is anything else present. 3 with a
+        ``VERIFY_VERDICT_ABSENT`` stderr token when it is absent (BUG-3571): callers
+        clear the field before ``/ll:verify-issues --check``, so absence afterwards
+        means the call produced no evidence — an abstention, not a pass.
     """
     from little_loops.cli.issues.show import _resolve_issue_id
     from little_loops.frontmatter import parse_frontmatter
@@ -106,7 +107,14 @@ def cmd_check_verify_verdict(config: BRConfig, args: argparse.Namespace) -> int:
         )
         return 1
 
-    if verdict is None or str(verdict).upper() == "VALID":
+    if verdict is None:
+        print(
+            f"VERIFY_VERDICT_ABSENT: {args.issue_id} — no verify_verdict in frontmatter",
+            file=sys.stderr,
+        )
+        return 3
+
+    if str(verdict).upper() == "VALID":
         print(f"Verified: {args.issue_id} verify_verdict={verdict!r}")
         return 0
 

@@ -41,6 +41,10 @@ def main_issues() -> int:
             add_check_verify_verdict_parser,
             cmd_check_verify_verdict,
         )
+        from little_loops.cli.issues.clear_verify_verdict import (
+            add_clear_verify_verdict_parser,
+            cmd_clear_verify_verdict,
+        )
         from little_loops.cli.issues.clusters import cmd_clusters
         from little_loops.cli.issues.count_cmd import cmd_count
         from little_loops.cli.issues.create import add_create_parser, cmd_create
@@ -157,7 +161,8 @@ Sub-commands:
   normalize        Detect/fix filename & ID mechanics (missing_id/malformed_filename/duplicate_id/legacy_dir/type_mismatch)
   prioritize       Priority-rename mechanics: discover unprioritized/prioritized issues, apply a priority map from stdin JSON
   check-acceptance-criteria  Exit 0 if no Acceptance Criteria checkbox item requires manual verification
-  check-verify-verdict       Exit 0 unless the issue's persisted verify_verdict is NON_VALID
+  check-verify-verdict       Exit 0 if verify_verdict is VALID, 1 if NON_VALID, 3 if absent
+  clear-verify-verdict       Remove the persisted verify_verdict (run before verify-issues --check)
 
 Examples:
   %(prog)s next-id
@@ -761,6 +766,7 @@ Examples:
         add_check_unresolved_decisions_parser(subs)
         add_check_acceptance_criteria_parser(subs)
         add_check_verify_verdict_parser(subs)
+        add_clear_verify_verdict_parser(subs)
 
         cr = subs.add_parser(
             "check-readiness",
@@ -1068,6 +1074,8 @@ Examples:
             return cmd_check_acceptance_criteria(config, args)
         if args.command == "check-verify-verdict":
             return cmd_check_verify_verdict(config, args)
+        if args.command == "clear-verify-verdict":
+            return cmd_clear_verify_verdict(config, args)
         if args.command == "check-readiness":
             return cmd_check_readiness(config, args)
         if args.command == "set-scores":

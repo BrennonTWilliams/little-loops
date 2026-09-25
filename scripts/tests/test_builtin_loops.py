@@ -1455,12 +1455,15 @@ class TestRefineToReadyIssueSubLoop:
         )
 
     def test_confidence_check_has_on_error(self, data: dict) -> None:
-        """confidence_check must define on_error so a SIGKILL'd subprocess routes to diagnose
-        rather than calling request_shutdown() and cascading a full loop termination."""
+        """confidence_check must define on_error so a SIGKILL'd subprocess routes to a state
+        rather than calling request_shutdown() and cascading a full loop termination.
+        BUG-3571: it routes to mark_evidence_absent_infra (absent evidence is infra)."""
         confidence_check = data["states"].get("confidence_check", {})
-        assert confidence_check.get("on_error") == "diagnose", (
-            f"confidence_check.on_error should be 'diagnose', got {confidence_check.get('on_error')!r}"
+        assert confidence_check.get("on_error") == "mark_evidence_absent_infra", (
+            f"confidence_check.on_error should be 'mark_evidence_absent_infra', "
+            f"got {confidence_check.get('on_error')!r}"
         )
+        assert confidence_check.get("on_failure") == "mark_evidence_absent_infra"
 
     def test_circuit_repeated_failure_configured(self, data: dict) -> None:
         """BUG-2685: the stall detector must be wired so a phantom-convergence loop
@@ -1592,10 +1595,20 @@ class TestRefineToReadyIssueSubLoop:
             f"check_proposal_unsound, preserving ENH-3250's triage-before-refine), "
             f"got {state.get('on_no')!r}"
         )
-        assert state.get("on_error") == "check_hedges", (
-            f"check_verify_verdict.on_error should be 'check_hedges' (fail-open), "
+        assert state.get("on_cannot_judge") == "check_verify_retries", (
+            "check_verify_verdict exit 3 (absent verdict) must retry (BUG-3571), "
+            f"got {state.get('on_cannot_judge')!r}"
+        )
+        assert state.get("on_error") == "mark_evidence_absent_infra", (
+            f"check_verify_verdict.on_error must not pass (BUG-3571), "
             f"got {state.get('on_error')!r}"
         )
+        retries = data["states"]["check_verify_retries"]
+        assert retries.get("on_yes") == "clear_verify_verdict"
+        assert retries.get("on_no") == "mark_evidence_absent_infra"
+        infra = data["states"]["mark_evidence_absent_infra"]
+        assert "infra" in infra["action"] and "refine-terminal-class" in infra["action"]
+        assert infra.get("next") == "failed"
 
     def test_check_hedges_state_routing(self, data: dict) -> None:
         """check_hedges routes on_no through the attempt-bounded gate, not check_refine_limit
@@ -1667,6 +1680,26 @@ class TestRefineToReadyIssueSubLoop:
         assert "refine-to-ready-hedge-attempts" in action, (
             "resolve_issue.action should seed refine-to-ready-hedge-attempts"
         )
+
+    def test_resolve_issue_seeds_verify_retries_counter(self, data: dict) -> None:
+        """BUG-3571: the verify retry counter is reset per issue (shared autodev run_dir)."""
+        action = data["states"]["resolve_issue"]["action"]
+        assert "refine-to-ready-verify-retries" in action
+
+    def test_clear_verify_verdict_precedes_verify_issue(self, data: dict) -> None:
+        state = data["states"]["clear_verify_verdict"]
+        assert "clear-verify-verdict" in state["action"]
+        assert state["next"] == "verify_issue" and state["on_error"] == "verify_issue"
+
+    def test_scores_oracle_clears_before_scoring(self) -> None:
+        """BUG-3571: pre-existing scores must not satisfy the persistence check."""
+        oracle = yaml.safe_load(
+            (BUILTIN_LOOPS_DIR / "oracles" / "verify-confidence-scores.yaml").read_text()
+        )
+        assert oracle["initial"] == "clear_scores"
+        assert "set-scores" in oracle["states"]["clear_scores"]["action"]
+        assert "--clear" in oracle["states"]["clear_scores"]["action"]
+        assert oracle["states"]["confidence_check"]["on_error"] == "retry_confidence_check"
 
     @staticmethod
     def _run_check_hedge_attempts(data: dict, run_dir: Path) -> str:
@@ -2080,8 +2113,9 @@ class TestRefineToReadyIssueSubLoop:
         assert "evaluate" not in state and "on_yes" not in state and "on_no" not in state, (
             "normalize_structure must be a pass-through with no evaluate:/on_yes:/on_no:"
         )
-        assert state.get("next") == "verify_issue", (
-            f"normalize_structure.next should be 'verify_issue', got {state.get('next')!r}"
+        assert state.get("next") == "clear_verify_verdict", (
+            f"normalize_structure.next should be 'clear_verify_verdict' (BUG-3571), "
+            f"got {state.get('next')!r}"
         )
         assert state.get("on_error") == state.get("next"), (
             "normalize_structure.on_error should equal .next (not load-bearing downstream)"
@@ -2561,7 +2595,6 @@ class TestRefineToReadyIssueSubLoop:
             "resolve_issue",
             "check_lifetime_limit",
             "refine_issue",
-            "confidence_check",
             "check_outcome",
             "check_refine_limit",
             "check_scores_from_file",
