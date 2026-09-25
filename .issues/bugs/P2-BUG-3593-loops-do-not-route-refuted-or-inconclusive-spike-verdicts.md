@@ -15,6 +15,12 @@ blocked_by:
 - BUG-3592
 blocks:
 - ENH-3577
+confidence_score: 100
+outcome_confidence: 78
+score_complexity: 10
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 # BUG-3593: Loops do not route refuted or inconclusive spike verdicts
@@ -290,3 +296,7 @@ refine-to-ready running nested inside autodev.
 ## Status
 
 **Open** | Created: 2026-09-25 | Priority: P2
+
+
+## Session Log
+- `/ll:confidence-check` - 2026-09-25T05:49:00 - `08995910-f634-410e-8b96-6975d65f9656.jsonl`
