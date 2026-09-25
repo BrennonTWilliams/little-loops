@@ -26,7 +26,7 @@ judges **image pairs** instead of text descriptions.
 
 ## Current Behavior
 
-[If applicable - describe what currently happens]
+Brainstorm judges every idea as text, including visual ones: a "dense, warm-paper landing page" is ranked from its one-line description, never from a rendering.
 
 ## Expected Behavior
 
@@ -42,46 +42,84 @@ judges **image pairs** instead of text descriptions.
 - Degrades gracefully when Playwright is unavailable: judges HTML source and notes
   the degradation in the report.
 
+## Use Case
+
+**Who**: A little-loops user brainstorming visual directions (landing page, UI theme, brand look).
+
+**Context**: Text descriptions of visual ideas are hard to compare; the real differences show only when rendered.
+
+**Goal**: Have finalists rendered as mockups and judged from screenshots rather than prose.
+
+**Outcome**: `brainstorm.md` includes a ranked gallery linking each mockup and screenshot under the run dir.
+
 ## Motivation
 
-[Why this issue matters - business value, user impact, technical debt cost]
+EPIC-3581 lists visual designs as needing rendered candidates judged visually. Judging screenshots side by side (position swapped) removes the gap between how a design is described and how it looks, and follows the existing on-demand Playwright probe pattern rather than adding a new browser dependency.
 
 ## Proposed Solution
 
-TBD - requires investigation
+Add a gated `materialize` state to `scripts/little_loops/loops/brainstorm.yaml`, run only when the resolved profile sets `materialize=render`:
+
+1. For each shortlisted idea, an LLM writes a self-contained HTML/SVG mockup to `${context.run_dir}/mockups/`.
+2. A Playwright probe (on-demand pattern under `.loops/probes/`, Playwright resolved from the global npm install) captures a PNG per mockup.
+3. `tournament` judges pairs from the two screenshots side by side, position swapped.
+4. Output gains a gallery section linking mockups and screenshots.
+5. If Playwright is unavailable, judge the HTML source and note the degradation in the report; a render failure drops only that idea.
+
+## Program Design
+
+### Types
+
+- `Mockup`: `{idea_id: str, html_path: str, png_path: str, rendered: bool}`
+
+### Signatures
+
+- `render_mockup(idea: IdeaRecord, run_dir: str) -> Mockup` — LLM writes HTML/SVG under `mockups/`
+- `capture_screenshot(html_path: str, png_path: str) -> bool` — Playwright probe, False on failure
+- `judge_pair_visual(a: Mockup, b: Mockup) -> PairVerdict` — image-pair judgment, both orders
+
+### Call Path
+
+`diverge` -> `materialize` -> `capture_screenshot` -> `feat-3488-browser-probes.mjs` -> `tournament`
 
 ## Integration Map
 
 ### Files to Modify
-- TBD - requires codebase analysis
+- `scripts/little_loops/loops/brainstorm.yaml` — add gated `materialize` state, screenshot step, image-pair judging, gallery output
+- New probe under `.loops/probes/` (proposed name: `brainstorm-materialize-probes.mjs`)
 
 ### Dependent Files (Callers/Importers)
-- TBD - use grep to find references
+- `ll-loop run brainstorm` callers and the sink adapters (`route_sink`, `sink_file`, `sink_issue`, `sink_decision`) inside the loop
+- `scripts/little_loops/loops/lib/common.yaml` — imported fragments (`parse_tagged_json`, `queue_pop`, `retry_counter`)
 
 ### Similar Patterns
-- TBD - search for consistency
+- `.loops/probes/feat-3488-browser-probes.mjs`, `enh-3506-theme-probes.mjs`, `enh-3507-served-page-probes.mjs` — existing on-demand Playwright probe pattern
 
 ### Tests
-- TBD - identify test files to update
+- `scripts/tests/test_brainstorm.py` — brainstorm loop structure/behavior tests
+- `scripts/tests/test_builtin_loops.py` — built-in loop validation (`ll-loop validate`)
+- No pytest gate may depend on Playwright; test only the gating and degradation logic with stubbed probe output
 
 ### Documentation
-- TBD - docs that need updates
+- `scripts/little_loops/loops/README.md`, `docs/guides/LOOPS_GUIDE.md`, `docs/guides/LOOPS_REFERENCE.md` — brainstorm loop descriptions
 
 ### Configuration
-- N/A or list config files
+- Context key: `materialize` (none|render), normally resolved from the profile (FEAT-3583); Playwright from the global npm install (`~/.npm-global/@playwright/test`)
 
 ## Implementation Steps
 
-1. [Major phase 1]
-2. [Major phase 2]
-3. [Verification approach]
+1. Add the `materialize` state, gated on the resolved profile (FEAT-3583), writing only under `${context.run_dir}/mockups/`.
+2. Write the Playwright screenshot probe modeled on the existing `.loops/probes/*.mjs` scripts, resolving Playwright from the global npm install.
+3. Extend `tournament` to judge screenshot pairs (position swapped) and fall back to HTML-source judging when Playwright is missing.
+4. Add the gallery section to the output and drop, not fail on, per-idea render errors.
+5. Validate with `ll-loop validate brainstorm` and one documented manual visual-mode run; keep browser probes out of the pytest gate.
 
 ## Impact
 
-- **Priority**: [P0-P5] - [Justification]
-- **Effort**: [Small/Medium/Large] - [Justification]
-- **Risk**: [Low/Medium/High] - [Justification]
-- **Breaking Change**: [Yes/No]
+- **Priority**: P3 - improves visual-mode quality only; the core and other modes work without it
+- **Effort**: Large - LLM-authored mockups, a browser probe, image-pair judging, and graceful degradation
+- **Risk**: Medium - depends on a local Playwright install; contained by graceful fallback and per-idea failure handling
+- **Breaking Change**: No
 
 ## Acceptance Criteria
 
@@ -100,4 +138,5 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:format-issue` - 2026-09-25T01:01:32 - `825370f4-2bf5-4bb8-a770-49c1a90d8b61.jsonl`
 - `/ll:capture-issue` - 2026-09-25T00:33:48 - `ba660a81-2414-4092-808d-95f51543dbb1.jsonl`

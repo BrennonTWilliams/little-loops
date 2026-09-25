@@ -26,7 +26,7 @@ selection**: profiles `artifact`, `visual`, `functional`, `business`, selected b
 
 ## Current Behavior
 
-[If applicable - describe what currently happens]
+Brainstorm has a single fixed pipeline with no notion of mode: every brief runs the same lenses, the same ranking prompt, and the same output shape, regardless of whether it is a name, a visual design, a functional design, or a business opportunity.
 
 ## Expected Behavior
 
@@ -42,33 +42,70 @@ selection**: profiles `artifact`, `visual`, `functional`, `business`, selected b
 - Downstream states read resolved profile values rather than hardcoded behavior;
   gated states route via `classify`-style routing like the current `route_sink`.
 
+## Use Case
+
+**Who**: A little-loops user running `ll-loop run brainstorm "<brief>"` with briefs of very different kinds — a product name, a landing-page look, an API design, a market opportunity.
+
+**Context**: The engine should not treat every brief the same way; visual briefs need rendering, functional briefs need codebase grounding, business briefs need reframing and market evidence.
+
+**Goal**: Have the loop pick the right behavior automatically, while still allowing an explicit `mode=` or per-knob override for mixed briefs.
+
+**Outcome**: The run writes `${context.run_dir}/profile.json` recording the resolved profile, and downstream states behave per that profile.
+
 ## Motivation
 
-[Why this issue matters - business value, user impact, technical debt cost]
+EPIC-3581 identifies a mode mismatch: visual designs need rendered candidates judged visually, functional designs need codebase grounding, business opportunities need market grounding and reframing, and artifacts need breadth more than a single winner. Encoding this as data profiles avoids forking the loop into four copies and lets FEAT-3584/3585/3586 stay gated behind profile knobs.
 
 ## Proposed Solution
 
-TBD - requires investigation
+Add profiles as data alongside `scripts/little_loops/loops/brainstorm.yaml`, plus two states after `init`:
+
+- Four profile presets (`artifact`, `visual`, `functional`, `business`), each setting `reframe`, grid axes, idea schema, `ground` (none|codebase|web), `materialize` (none|render), tournament rubric, `premortem`, and output shape.
+- `classify_mode` (LLM, only when `mode=auto`) emits `{mode, confidence, rationale}`; confidence below a threshold falls back to `artifact`.
+- `resolve_profile` (script) merges precedence explicit `mode=` > per-knob context override > profile default > fallback, and writes `${context.run_dir}/profile.json`.
+
+Downstream states read resolved values from `profile.json`, and gated states route the way `route_sink` does today.
+
+## Program Design
+
+### Types
+
+- `Profile`: `{mode: str, reframe: bool, axes: [str, str], ground: "none" | "codebase" | "web", materialize: "none" | "render", rubric: str, premortem: bool, output_shape: str}`
+- `ModeDecision`: `{mode: str, confidence: float, rationale: str}`
+
+### Signatures
+
+- `classify_mode(brief: str) -> ModeDecision` — LLM state; result written to the run dir
+- `resolve_profile(mode: str, overrides: dict[str, str], decision: ModeDecision | None) -> Profile` — deterministic script
+
+### Call Path
+
+`init` -> `classify_mode` -> `resolve_profile` -> `frame` -> `diverge` -> `route_sink`
 
 ## Integration Map
 
 ### Files to Modify
-- TBD - requires codebase analysis
+- `scripts/little_loops/loops/brainstorm.yaml` — add `classify_mode` and `resolve_profile` states; thread resolved values into `frame`/`diverge`/`tournament`/output prompts; add `mode` context key
+- New profile files (proposed: `scripts/little_loops/loops/brainstorm-profiles/{artifact,visual,functional,business}.yaml`) — verify loop package-data inclusion in `scripts/pyproject.toml`
 
 ### Dependent Files (Callers/Importers)
-- TBD - use grep to find references
+- `ll-loop run brainstorm` callers and the sink adapters (`route_sink`, `sink_file`, `sink_issue`, `sink_decision`) inside the loop
+- `scripts/little_loops/loops/lib/common.yaml` — imported fragments (`parse_tagged_json`, `queue_pop`, `retry_counter`)
+- FEAT-3584, FEAT-3585, FEAT-3586 — read `ground`, `materialize`, and `premortem` from the resolved profile
 
 ### Similar Patterns
-- TBD - search for consistency
+- `route_sink` in `scripts/little_loops/loops/brainstorm.yaml` — existing gated-routing pattern for the profile-gated states
 
 ### Tests
-- TBD - identify test files to update
+- `scripts/tests/test_brainstorm.py` — brainstorm loop structure/behavior tests
+- `scripts/tests/test_builtin_loops.py` — built-in loop validation (`ll-loop validate`)
+- New tests: profile schema validation, resolution precedence (explicit > override > profile > fallback), stubbed-classifier routing for one reference brief per mode
 
 ### Documentation
-- TBD - docs that need updates
+- `scripts/little_loops/loops/README.md`, `docs/guides/LOOPS_GUIDE.md`, `docs/guides/LOOPS_REFERENCE.md` — brainstorm loop descriptions
 
 ### Configuration
-- N/A or list config files
+- Context keys: add `mode` (default `auto`) and per-knob overrides (`ground`, `materialize`, `premortem`, `reframe`)
 
 ## Implementation Steps
 
@@ -79,10 +116,10 @@ TBD - requires investigation
 
 ## Impact
 
-- **Priority**: [P0-P5] - [Justification]
-- **Effort**: [Small/Medium/Large] - [Justification]
-- **Risk**: [Low/Medium/High] - [Justification]
-- **Breaking Change**: [Yes/No]
+- **Priority**: P2 - unblocks the gated states in FEAT-3584/3585/3586 but adds no value until FEAT-3582 lands
+- **Effort**: Medium - new profile schema and two states; mostly data plus one deterministic resolver script
+- **Risk**: Low - additive and gated behind `mode`; `mode=artifact` preserves generic behavior
+- **Breaking Change**: No
 
 ## Acceptance Criteria
 
@@ -103,4 +140,5 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:format-issue` - 2026-09-25T01:01:32 - `825370f4-2bf5-4bb8-a770-49c1a90d8b61.jsonl`
 - `/ll:capture-issue` - 2026-09-25T00:33:40 - `ba660a81-2414-4092-808d-95f51543dbb1.jsonl`
