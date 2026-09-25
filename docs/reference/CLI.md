@@ -2342,6 +2342,16 @@ ll-issues check-acceptance-criteria BUG-3186   # Exit 1 — at least one needs m
 
 ---
 
+#### `ll-issues rearm-spike`
+
+Re-arms a refuted spike after its decision resolves (BUG-3593). If the issue carries `spike_refuted: true`, removes `spike_attempted` and `spike_refuted` from frontmatter and prints `[SPIKE_REARMED] <ID>`, so `spike_needed` re-applies and one new spike can run on the chosen approach; otherwise a no-op. Exits 0 for any resolvable ID, 2 when the issue is not found. Called by the `resolve-decision` oracle's `rearm_refuted_spike` state.
+
+```bash
+ll-issues rearm-spike BUG-3593
+```
+
+---
+
 #### `ll-issues check-verify-verdict`
 
 Exit 0 if the issue's persisted `verify_verdict` is `VALID`, 1 if it is `NON_VALID` (ENH-3031), 3 if it is **absent** (BUG-3571 — no evidence, an abstention rather than a pass). It writes `VERIFY_VERDICT_NON_VALID` / `VERIFY_VERDICT_ABSENT` to stderr so an FSM evaluator can route on the reason rather than the bare exit code. Pair it with `ll-issues clear-verify-verdict <ID>`, which removes the field before `/ll:verify-issues --check` so only a verdict from the current call can pass.

@@ -481,7 +481,7 @@ and the residual-decisions line Phase 3b step 4 / Phase 7b populate on exit 1).
 ```
 
 - **Before**: `/ll:refine-issue --auto` — deposits implementation options, sets `decision_needed: true`
-- **After**: `/ll:wire-issue` — traces callers and integration points for the now-selected implementation approach
+- **After**: `/ll:wire-issue` — traces callers and integration points for the now-selected implementation approach; if the issue carries a resolved `**Refuted option**:` marker, run `/ll:spike <ID> --force` first (manual decisions do not re-arm the spike; loops do)
 
 See [reference.md](reference.md) for the "When to Use vs. Related Commands" table.
 
