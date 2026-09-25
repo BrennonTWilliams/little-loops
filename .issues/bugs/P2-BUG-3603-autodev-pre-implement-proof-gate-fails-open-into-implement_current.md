@@ -114,7 +114,7 @@ successful `check-gate` call reporting no gate (`none` / `structured_satisfied`)
 
 _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 
-- `summary.json` (`autodev.yaml` `finalize_done` ~L3165) is a fixed printf with keys `verdict, closed, not_closed, skipped, gate_blocked, decision_unresolved, not_started, inflight_unresolved, abandoned, stop_reason, pending` — no infra key exists today. Infra deferrals currently surface only as text lines: `finalize_done` filters `refine_failed_infra`-suffixed entries out of `SKIPPED_IDS` into `INFRA_SKIPPED_IDS` (~L3005-3022), and the per-reason ledgers (`autodev-scores-absent.txt`, `autodev-gate-infra.txt`, `autodev-spike-no-verdict.txt`) are never counted into the JSON. Satisfying AC 3 therefore means either extending the `summary.json` key set or adding a per-reason ledger `finalize_done` counts — no existing mechanism puts infra deferrals in that file.
+- `summary.json` (`autodev.yaml` `finalize_done` ~L3165) is a fixed printf with keys `verdict, closed, not_closed, skipped, gate_blocked, decision_unresolved, not_started, inflight_unresolved, abandoned, stop_reason, pending` — no infra key exists today. Infra deferrals currently surface only as text lines: `finalize_done` filters `refine_failed_infra`-suffixed entries out of `SKIPPED_IDS` into `INFRA_SKIPPED_IDS` (~L3005-3022), and the per-reason ledgers (`autodev-scores-absent.txt`, `autodev-gate-infra.txt`, `autodev-spike-no-verdict.txt`) are never counted into the JSON. Satisfying AC 4 (infra deferrals in `summary.json`) therefore means either extending the `summary.json` key set or adding a per-reason ledger `finalize_done` counts — no existing mechanism puts infra deferrals in that file.
 
 ## Program Design
 
@@ -189,7 +189,7 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 
 - Infra-deferral state convention — the rule shared by `mark_scores_absent_infra` (~L1301), `mark_gate_infra` (~L1286), `mark_spike_no_verdict_infra` (~L1756), and `skip_inflight_infra` (~L609): append the ID to a per-reason file under `${context.run_dir}/`, `rm -f ${context.run_dir}/autodev-inflight`, echo a `[TAG] $ID` line, route `next`/`on_error` to `dequeue_next`, and never call `ll-issues set-status`. `init` (~L63-73) truncates the ledger files it knows about — a new ledger file must be added there.
 - Structural-test convention: load `autodev.yaml` via `yaml.safe_load(...)["states"]` and loop every state collecting its route targets, asserting the forbidden target absent — same shape as `test_commit_change_reachable_only_via_accept_gate_on_yes` (`scripts/tests/test_builtin_loops.py` ~L14138) and `test_check_residual_decision_never_reenters_open_question_progress` (~L3887). Edge sets vary between those tests (some omit `next`, none seen include `route` values); the new invariant should collect the full `{on_yes, on_no, on_cannot_judge, on_error, next}` set plus `classify` `route:` values.
-- Real-state-action test convention: extract `action` from the YAML, textually replace `${captured.input.output[:shell]}`/`${context.run_dir}`, run under `bash -c` with a stub `ll-issues` first on `PATH` — `test_ll_issues_check_gate.py:_run_state` (~L26-51) and the one-line stub in `test_spike_verdict_routing.py`. No existing test stubs `check-gate` to exit nonzero/empty against the two proof-gate states (searched, none found) — the new failure-path coverage is genuinely new, not a duplicate.
+- Real-state-action test convention: extract `action` from the YAML, textually replace `${captured.input.output[:shell]}`/`${context.run_dir}`, run under `bash -c` with a stub `ll-issues` first on `PATH` — `test_ll_issues_check_gate.py:_run_state` (:165; the ~L26-51 cite in an earlier draft pointed at the `_cli`/`_write`/`_run` helpers) and the one-line stub in `test_spike_verdict_routing.py`. No existing test stubs `check-gate` to exit nonzero/empty against the two proof-gate states (searched, none found) — the new failure-path coverage is genuinely new, not a duplicate.
 - Existing pins that must keep passing: `test_ll_issues_check_gate.py:240` `test_implement_edges_route_through_guard` (`check_passed.on_yes` → `check_proof_gate_before_implement`; `check_proof_defer_or_implement.on_no` → `implement_current`); `test_fsm_topology.py` ~L253-258 asserts the autodev **state count** (+2 from ENH-3575) — adding any new state changes the expected number there; `test_builtin_loops.py:7935` `test_check_readiness_call_sites_pass_honor_waiver`.
 
 ## Impact
@@ -211,11 +211,65 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
+## Verification Notes
+
+Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the same
+pass, so the issue as it now reads is up to date — this section is a record of
+what was wrong and fixed, not an outstanding action item). Verified via
+`/ll:verify-issues BUG-3603 --auto` on 2026-09-25:
+
+- **Fail-open claims confirmed exact**: lines 728/743/744 are the only routing
+  edges into `implement_current` (all other mentions are comments); both states
+  run `ll-issues check-gate "$ID" 2>/dev/null || true` with a `*) → PROOF_CLEAR`
+  fallthrough; the line-697 comment reads verbatim "Fail-open (implement_current)
+  on helper error, matching the dequeue gate."
+- **`prose` inconsistency confirmed**: dequeue (`check_gate_at_dequeue`, state at
+  :420) maps `structured_open|prose` → gated; `recheck_after_size_review`
+  (~:2822) maps `structured_proof|prose` → `GATE_MARKER=true`. The proof states'
+  `*)` case is the only consumer that waves `prose` through.
+- **Helper contract confirmed**: `_IN_FORCE = ("structured_open",
+  "structured_proof", "prose")` (`check_gate.py:29`); exit 0 in-force / 1
+  not-in-force / 2 not-found — the `|| true` wrapper erases exactly that
+  discriminator.
+- **Summary/infra claims confirmed**: `summary.json` printf (~:3165) has exactly
+  the listed keys, no infra key; `INFRA_SKIPPED_IDS` filter (~:3005-3022) and
+  `INFRA_SKIPPED_COUNT` (~:3044, computed but never printed) as described;
+  infra-state convention sites (`skip_inflight_infra` :609, `mark_gate_infra`
+  :1286, `mark_scores_absent_infra` :1301, `mark_spike_no_verdict_infra` :1756)
+  and `init` ledger truncation (~:63-73) verified.
+- **Executor phantom confirmed resolved**: `skip_inflight_infra` appears in
+  `fsm/executor.py` only at :155 and :4320, both inside BUG-2731 comments — no
+  executor change needed, as the wiring pass states.
+- **Test/doc pins spot-checked**: `_run_state` :165, `test_no_gate_reaches_implement`
+  :236, `test_implement_edges_route_through_guard` :240, topology count 105 at
+  `test_fsm_topology.py:259`, routing pins `test_builtin_loops.py:8372/:9226/:9234/:9426`
+  (all assert routes *to* `check_proof_gate_before_implement`, so "rename-sensitive"
+  is accurate), `test_autodev_decision_gate.py:990/:1004`,
+  `test_autodev_scores_freshness.py:76`, `test_builtin_loops.py:8072`,
+  `test_spike_verdict_routing.py:108/:231`, CLI.md check-gate section, and
+  audit-loop-run SKILL.md Step 6a all present as cited.
+- **Fixed in this pass**: the codebase-research line cited `_run_state` at
+  "~L26-51"; those lines hold the `_cli`/`_write`/`_run` helpers. Corrected to
+  :165 (which the Tests section already had right). Also corrected a stale
+  cross-reference in the summary.json research finding: "Satisfying AC 3" →
+  "Satisfying AC 4" (the infra-deferrals-in-summary.json requirement is the
+  fourth Acceptance Criterion; AC 3 is the structural `on_error` test).
+- **Checks run clean**: decisions required-rules query (no active required
+  rules), `ll-verify-evidence` (0 findings), dependency integrity (`blocks:
+  ENH-3599` exists with BUG-3603 in its Blocked By; `parent: EPIC-3565` exists).
+- **Proposal consequence check (ENH-3250)**: no conflict found — the proposal's
+  discriminator, `prose` → `PROOF_DEFER` case, infra state + ledger + init
+  truncation + topology bump, and summary-key addition each name the code they
+  touch, and the ACs cover every Integration Map point. The
+  exit-1-with-`none`-token → `PROOF_CLEAR` nuance is correctly preserved against
+  `test_no_gate_reaches_implement`.
+
 ## Status
 
 **Open** | Created: 2026-09-25 | Priority: P2
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-25T22:07:56 - `2f707f2c-dcf9-4b23-953c-4a951adbadbc.jsonl`
 - Review revision - 2026-09-25 - pre-implementation review: folded the `prose`-verdict fail-open into scope, reconciled the PROOF_INFRA discriminator spec with the wiring nuance (exit ≥ 2 / empty stdout / unrecognised token; exit-1-with-recognised-token stays PROOF_CLEAR), corrected the phantom executor.py special-case claim, resolved the recheck_after_size_review decision (keep fail-open, backstopped)
 - `/ll:confidence-check` - 2026-09-25T21:22:42 - `345d0814-f8e9-469f-ad62-bef9083d17be.jsonl`
 - `/ll:wire-issue` - 2026-09-25T20:51:15 - `85e4cae3-0d07-49cf-9a70-1d94df7e46ab.jsonl`
