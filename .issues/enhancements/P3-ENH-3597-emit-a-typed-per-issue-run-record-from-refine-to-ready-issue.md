@@ -3,10 +3,11 @@ id: ENH-3597
 type: ENH
 title: Emit a typed per-issue run record from refine-to-ready-issue
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-25'
 captured_at: '2026-09-25T18:51:49Z'
+completed_at: '2026-09-25T23:24:18Z'
 blocks:
 - ENH-3599
 - ENH-3601
@@ -207,13 +208,13 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Acceptance Criteria
 
-- [ ] Every terminal of `refine-to-ready-issue` that has an issue ID writes a valid run record; `no_work` writes none
-- [ ] `outcome == "ready"` iff autodev's `check_passed` would pass for the same issue state
-- [ ] Running two issues in one shared `run_dir` never lets issue A's record be read as issue B's (real-FSM test)
-- [ ] The schema and writer accept `writer: prepare-issue` (unit test), ready for ENH-3601
-- [ ] Legacy `refine-terminal-class` / `refine-broke-down` output is byte-identical to before
-- [ ] No routing change in `autodev.yaml` or any other caller
-- [ ] The record write is mirrored in `.claude/workflows/refine-to-ready.js` (Finalize-phase handling)
+- [x] Every terminal of `refine-to-ready-issue` that has an issue ID writes a valid run record; `no_work` writes none
+- [x] `outcome == "ready"` iff autodev's `check_passed` would pass for the same issue state
+- [x] Running two issues in one shared `run_dir` never lets issue A's record be read as issue B's (real-FSM test)
+- [x] The schema and writer accept `writer: prepare-issue` (unit test), ready for ENH-3601
+- [x] Legacy `refine-terminal-class` / `refine-broke-down` output is byte-identical to before
+- [x] No routing change in `autodev.yaml` or any other caller
+- [x] The record write is mirrored in `.claude/workflows/refine-to-ready.js` (Finalize-phase handling)
 
 ## Verification Notes
 
@@ -226,6 +227,31 @@ All claims about current state verified accurate — every code/test/doc citatio
 Secondary gap (not verdict-driving): `.claude/workflows/refine-to-ready.js` is a Files-to-Modify integration point with no corresponding Acceptance Criterion (the research itself notes no test pins the mirror).
 
 Citation nits (no action needed): `_run_classify_terminal` sits at `test_builtin_loops.py:2522` (decorator at :2521); `dequeue_next`'s state header is at `autodev.yaml:88` with the `rm -f refine-broke-down` at :107 — both resolve unambiguously as cited.
+
+## Resolution
+
+- **Action**: improve (implement)
+- **Completed**: 2026-09-25
+- **Status**: Completed
+
+### Changes Made
+
+- `scripts/little_loops/run_record.py` (new): `PreparationOutcome`/`RunRecordWriter` Literals, frozen `RunRecord` dataclass with `to_dict`/`from_dict`, `record_path`, atomic `write_run_record`, tolerant `read_run_record` (None on absent/malformed/OSError/writer-or-issue mismatch), and the first-match-wins `outcome_from_legacy_class` mapping.
+- `scripts/little_loops/cli/issues/run_record.py` (new): `ll-issues run-record write` — gathers frontmatter status/scores, the `refine-broke-down` counter, and children derived from `parent:` frontmatter (autodev `detect_children`'s provenance); `ready` resolved in-process via `readiness_status` with the waiver honored and scores-absent counting as not-met; prints `[RUN_RECORD_WRITTEN] <ID> <outcome> <path>`; exit 2 on unresolvable ID.
+- `scripts/little_loops/cli/issues/__init__.py`: registers the subcommand (import, parser build, dispatch, epilog line).
+- `scripts/little_loops/loops/refine-to-ready-issue.yaml`: `resolve_issue` now computes the ID in-shell and deletes this writer's `<ID>.json` on entry (stdout unchanged); all 11 terminal-bearing states (seven `record_*`/`mark_*`, `classify_terminal`, `write_broke_down`, `check_outcome`, `check_scores_from_file`, `check_missing_artifacts`) append an exit-code-neutral `ll-issues run-record write … || true`; the done-path gates write only on their done-bound (exit-0) exit with the gate's exit code preserved. No edges re-routed; legacy files byte-identical.
+- `.claude/workflows/refine-to-ready.js` (gitignored mirror): Finalize phase gained a `run-record:<ID>` step that runs the same CLI write and reports the `[RUN_RECORD_WRITTEN]` line.
+- `scripts/tests/test_run_record.py` (new, 82 tests): round-trip/isolation/mapping units, real-CLI tests against a tmp `.issues/` tree (incl. `ready` iff `check-readiness --honor-waiver` exits 0, waiver, scores-absent, cancelled-precedence, child derivation, `prepare-issue` writer), YAML call-site structure, real state-action execution per terminal (legacy byte-identity pins included), and the skip-when-absent mirror test.
+- `scripts/tests/test_wiring_reference_docs.py`: five DOC_STRINGS_PRESENT rows for the new docs.
+- `docs/reference/CLI.md`, `docs/reference/API.md`, `docs/guides/LOOPS_REFERENCE.md`: `ll-issues run-record` section + tables + the **Typed run record (ENH-3597)** contract paragraph.
+
+### Verification Results
+
+- Tests: PASS — `python -m pytest scripts/tests/` → 26003 passed, 60 skipped, 1 pre-existing failure (`test_issue_parser.py::TestBug3295ContainmentCorpusDifferential` corpus-count baseline), proven unrelated by re-running with this change stashed: it is caused by other in-flight working-tree `.issues/` edits (FEAT-3589/3594, ENH-3602), not by ENH-3597.
+- Lint: PASS — `ruff check` clean on every touched file (16 pre-existing errors in untouched `cli/loop/`/spike-test files remain, per known main drift).
+- Types: PASS — `python -m mypy scripts/little_loops/` reports no errors in any touched file (88 pre-existing errors in untouched files).
+- Run: `ll-loop validate refine-to-ready-issue` → valid; `ll-issues run-record --help` lists `write`.
+- Integration: PASS — reuses `readiness_status`, `_resolve_issue_id`, `atomic_write_json`; no routing changes anywhere; `MR11_MARKER_ALLOWLIST` untouched (all new `${captured.*}` refs are `:shell`-suffixed or single-quoted).
 
 ## Parent Issue
 
@@ -243,6 +269,7 @@ Decomposed from ENH-3577: Consolidate autodev issue preparation into a single co
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-25T23:24:17 - `7b789d67-fc48-44f9-855e-6fe5312352e1.jsonl`
 - `/ll:confidence-check` - 2026-09-25T22:29:31 - `b8c40ebf-16af-4b02-99b1-152fd47cd2b8.jsonl`
 - `bounded design revision (PROPOSAL_UNSOUND remediation)` - 2026-09-25T22:25:11 - `3888403c-6bad-4d3f-8a59-c1af5a2bbcd2.jsonl`
 - `/ll:verify-issues` - 2026-09-25T22:20:36 - `3888403c-6bad-4d3f-8a59-c1af5a2bbcd2.jsonl`

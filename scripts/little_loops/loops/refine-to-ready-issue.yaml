@@ -179,8 +179,10 @@ states:
       rm -f ${context.run_dir}/refine-to-ready-proposal-revision &&
       printf '0' > ${context.run_dir}/refine-to-ready-verify-retries &&
       printf '0' > ${context.run_dir}/refine-to-ready-format-fallback &&
-      { [ -n ${context.input:shell} ] && printf '%s' ${context.input:shell} ||
-      ll-issues next-issue; } | tr -d '\n\r '
+      ID=$({ [ -n ${context.input:shell} ] && printf '%s' ${context.input:shell} ||
+      ll-issues next-issue; } | tr -d '\n\r ') &&
+      rm -f "${context.run_dir}/run-records/refine-to-ready-issue/$${ID}.json" &&
+      printf '%s' "$${ID}"
     action_type: shell
     capture: issue_id
     next: check_issue_resolved
@@ -716,6 +718,7 @@ states:
         ll-issues set-status "$ID" deferred --by automation --reason proposal_unsound 2>/dev/null || true
         echo "[PROPOSAL_UNSOUND] $ID — the selected proposal is refuted and no eligible alternative remains; revise ## Proposed Solution, then re-run to resurface"
       fi
+      ll-issues run-record write ${captured.issue_id.output:shell} --run-dir ${context.run_dir} --writer refine-to-ready-issue --legacy-class proposal_unsound || true
     action_type: shell
     next: failed
     on_error: failed
@@ -946,6 +949,11 @@ states:
           sys.exit(2)
       sys.exit(0 if int(d.get('outcome') or 0) >= outcome else 1)
       PYEOF
+      RC=$?
+      if [ "$RC" -eq 0 ]; then
+        ll-issues run-record write ${captured.issue_id.output:shell} --run-dir ${context.run_dir} --writer refine-to-ready-issue || true
+      fi
+      exit $RC
     fragment: shell_exit
     # BUG-2726: capture so ${captured.check_outcome.stderr} carries the inner
     # ll-issues failure into the diagnose prompt.
@@ -1115,7 +1123,13 @@ states:
     # outer loop's triage_outcome_failure → check_missing_artifacts → run_wire path
     # can handle the repair. Mirrors check_decision_needed above and
     # autodev.yaml's check_missing_artifacts state.
-    action: "ll-issues check-flag ${captured.issue_id.output:shell} missing_artifacts"
+    action: |
+      ll-issues check-flag ${captured.issue_id.output:shell} missing_artifacts
+      RC=$?
+      if [ "$RC" -eq 0 ]; then
+        ll-issues run-record write ${captured.issue_id.output:shell} --run-dir ${context.run_dir} --writer refine-to-ready-issue || true
+      fi
+      exit $RC
     fragment: shell_exit
     on_yes: done
     on_no: breakdown_issue
@@ -1200,6 +1214,7 @@ states:
     action: |
       printf 'gate_unmet' > ${context.run_dir}/refine-terminal-class
       echo "[GATE_UNMET]" ${captured.issue_id.output:shell} "- a structure gate (verify verdict, placeholders, Program Design, or acceptance criteria) still fails after this run's refine budget; not decomposing. Fix the gate finding, then re-run."
+      ll-issues run-record write ${captured.issue_id.output:shell} --run-dir ${context.run_dir} --writer refine-to-ready-issue --legacy-class gate_unmet || true
     action_type: shell
     next: failed
     on_error: failed
@@ -1240,6 +1255,11 @@ states:
       sys.exit(0 if int(d.get('confidence') or 0) >= readiness
                  and int(d.get('outcome') or 0) >= outcome else 1)
       PYEOF
+      RC=$?
+      if [ "$RC" -eq 0 ]; then
+        ll-issues run-record write ${captured.issue_id.output:shell} --run-dir ${context.run_dir} --writer refine-to-ready-issue || true
+      fi
+      exit $RC
     fragment: shell_exit
     # BUG-2726: capture so ${captured.check_scores_from_file.stderr} carries the
     # inner ll-issues failure into the diagnose prompt.
@@ -1267,8 +1287,9 @@ states:
     on_error: diagnose
 
   write_broke_down:
-    action: printf '1' > ${context.run_dir}/refine-broke-down
-    action_type: shell
+    action: |
+      printf '1' > ${context.run_dir}/refine-broke-down
+      ll-issues run-record write ${captured.issue_id.output:shell} --run-dir ${context.run_dir} --writer refine-to-ready-issue || true
     next: done
     # ENH-2825: failing to record the decomposition marker loses the signal the
     # parent loop reads — surface it instead of exiting 0.
@@ -1294,7 +1315,9 @@ states:
     # Writes the terminal class directly, bypassing diagnose/classify_terminal
     # (which key off per-state captures a sub-loop failure never populates), so
     # the infra verdict still reaches autodev's skip_inflight contract.
-    action: printf 'infra' > ${context.run_dir}/refine-terminal-class
+    action: |
+      printf 'infra' > ${context.run_dir}/refine-terminal-class
+      ll-issues run-record write ${captured.issue_id.output:shell} --run-dir ${context.run_dir} --writer refine-to-ready-issue --legacy-class infra || true
     action_type: shell
     next: failed
     on_error: failed
@@ -1306,6 +1329,7 @@ states:
     action: |
       printf 'infra' > ${context.run_dir}/refine-terminal-class
       echo "[VERIFY_VERDICT_ABSENT] or [SCORES_ABSENT]: readiness evidence missing after retry; classified infra"
+      ll-issues run-record write ${captured.issue_id.output:shell} --run-dir ${context.run_dir} --writer refine-to-ready-issue --legacy-class infra || true
     action_type: shell
     next: failed
     on_error: failed
@@ -1316,6 +1340,7 @@ states:
     action: |
       printf 'infra' > ${context.run_dir}/refine-terminal-class
       echo "[SPIKE_NO_VERDICT] ${captured.issue_id.output:shell}"
+      ll-issues run-record write ${captured.issue_id.output:shell} --run-dir ${context.run_dir} --writer refine-to-ready-issue --legacy-class infra || true
     action_type: shell
     next: failed
     on_error: failed
@@ -1338,6 +1363,7 @@ states:
         ll-issues set-status "$ID" deferred --by automation --reason spike_inconclusive 2>/dev/null || true
         echo "[SPIKE_INCONCLUSIVE] $ID — spike could not reach a verdict (neither proven nor refuted); fix the cause, then run /ll:spike $ID --force and re-run to resurface"
       fi
+      ll-issues run-record write ${captured.issue_id.output:shell} --run-dir ${context.run_dir} --writer refine-to-ready-issue --legacy-class spike_inconclusive || true
     action_type: shell
     next: failed
     on_error: failed
@@ -1373,6 +1399,7 @@ states:
         ll-issues set-status "$ID" deferred --by automation --reason decision_unresolved 2>/dev/null || true
         echo "[DECISION_UNRESOLVED] $ID — resolve-decision sub-loop did not clear decision_needed; deferred (resolve with /ll:decide-issue, then re-run to resurface)"
       fi
+      ll-issues run-record write ${captured.issue_id.output:shell} --run-dir ${context.run_dir} --writer refine-to-ready-issue --legacy-class decision_unresolved || true
     action_type: shell
     next: failed
     on_error: failed
@@ -1610,6 +1637,7 @@ states:
         esac
       done
       printf '%s' "$CLASS" > ${context.run_dir}/refine-terminal-class
+      ll-issues run-record write '${captured.issue_id.output?}' --run-dir ${context.run_dir} --writer refine-to-ready-issue --legacy-class "$CLASS" || true
     action_type: shell
     next: failed
     on_error: failed

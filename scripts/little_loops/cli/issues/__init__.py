@@ -21,6 +21,10 @@ def main_issues() -> int:
     with cli_event_context(DEFAULT_DB_PATH, "ll-issues", sys.argv[1:]):
         from little_loops.cli.issues.anchor_sweep import cmd_anchor_sweep
         from little_loops.cli.issues.append_log import cmd_append_log
+        from little_loops.cli.issues.arm_proposal_revision import (
+            add_arm_proposal_revision_parser,
+            cmd_arm_proposal_revision,
+        )
         from little_loops.cli.issues.check_acceptance_criteria import (
             add_check_acceptance_criteria_parser,
             cmd_check_acceptance_criteria,
@@ -49,11 +53,6 @@ def main_issues() -> int:
         from little_loops.cli.issues.clusters import cmd_clusters
         from little_loops.cli.issues.count_cmd import cmd_count
         from little_loops.cli.issues.create import add_create_parser, cmd_create
-        from little_loops.cli.issues.arm_proposal_revision import (
-            add_arm_proposal_revision_parser,
-            cmd_arm_proposal_revision,
-        )
-        from little_loops.cli.issues.rearm_spike import add_rearm_spike_parser, cmd_rearm_spike
         from little_loops.cli.issues.decisions import (
             add_decisions_parser,
             cmd_decisions,
@@ -102,10 +101,15 @@ def main_issues() -> int:
             add_prioritize_parser,
             cmd_prioritize,
         )
+        from little_loops.cli.issues.rearm_spike import add_rearm_spike_parser, cmd_rearm_spike
         from little_loops.cli.issues.refine_status import cmd_refine_status
         from little_loops.cli.issues.research_triage import (
             add_research_triage_parser,
             cmd_research_triage,
+        )
+        from little_loops.cli.issues.run_record import (
+            add_run_record_parser,
+            cmd_run_record,
         )
         from little_loops.cli.issues.scaffold_epic import (
             add_scaffold_epic_parser,
@@ -177,6 +181,7 @@ Sub-commands:
   clear-verify-verdict       Remove the persisted verify_verdict (run before verify-issues --check)
   rearm-spike                Re-arm a refuted spike (drop spike_attempted/spike_refuted)
   arm-proposal-revision      Mark the selected option refuted + decision_needed (exit 1: no alternative)
+  run-record        Write the typed per-issue preparation run record (ENH-3597)
 
 Examples:
   %(prog)s next-id
@@ -785,6 +790,7 @@ Examples:
         add_clear_verify_verdict_parser(subs)
         add_rearm_spike_parser(subs)
         add_arm_proposal_revision_parser(subs)
+        add_run_record_parser(subs)
 
         cr = subs.add_parser(
             "check-readiness",
@@ -1102,6 +1108,8 @@ Examples:
             return cmd_rearm_spike(config, args)
         if args.command == "arm-proposal-revision":
             return cmd_arm_proposal_revision(config, args)
+        if args.command == "run-record":
+            return cmd_run_record(config, args)
         if args.command == "check-readiness":
             return cmd_check_readiness(config, args)
         if args.command == "set-scores":

@@ -4,7 +4,7 @@ type: FEAT
 title: 'continue-task loop: run a continuation prompt until done with automatic handoff/resume'
 priority: P3
 status: open
-decision_needed: true
+decision_needed: false
 discovered_by: ll-issues-create
 discovered_date: '2026-09-25'
 captured_at: '2026-09-25T04:27:08Z'
@@ -51,9 +51,30 @@ As-built deltas vs this section (implementation landed in e4556ec95; constraints
 
 **Option A**: Correct the API/Interface example — drop `--context max_passes=20`. Nothing in `continue-task.yaml` reads a `max_passes` context key; the run accepts it as a silent no-op. The real pass budget is `max_steps: 150` plus the `diff_stall_gate` (max_stall 3).
 
+> **Selected:** Option A — `max_steps` + stall gate already bound passes with no distinct failure mode for a second budget; dropping the dead knob restores the declare-then-document convention.
+
 **Option B**: Implement the `max_passes` knob — declare it in the loop's `context:` block and cap passes in `start_pass` against `pass-count.txt` — so the documented example works as written.
 
 **Recommended**: Option A — `max_steps` and the stall gate already bound runaway passes; a second overlapping budget adds config surface with no distinct failure mode. Option B remains cheap if a per-pass budget is ever wanted.
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-09-25.
+
+**Selected**: Option A
+
+**Reasoning**: The pass budget is already doubly bounded — `max_steps: 150` (~25 passes per the loop's own header comment) plus `diff_stall_gate` max_stall 3 — and a `max_passes` default above ~25 can never fire before `max_steps`, while one below it routes to the same `summarize_partial` terminal: no distinct failure mode, only extra config surface on an already-shipped loop. Every other documented `--context` example in the repo cites a key its loop declares and reads (e.g. `min_pass_rate` → `general-task.yaml:17`, `max_remediation_passes` → `rn-remediate.yaml:48,:866`); repo-wide grep confirms `max_passes` is the sole documented-but-unread exception, hitting only generic test fixtures and this issue. The example keeps `--context test_cmd="..."`, which is real (`continue-task.yaml:48`, consumed at `:89`), so the `--context` capability remains demonstrated.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| Option A | 3/3 | 3/3 | 3/3 | 3/3 | 12/12 |
+| Option B | 2/3 | 2/3 | 2/3 | 2/3 | 8/12 |
+
+**Key evidence**:
+- For Option A — `max_passes` is read by nothing (repo-wide unfiltered grep: only mechanism-test fixtures — `test_ll_loop_commands.py:5883-5999` etc. — and this issue); a `.issues/` edit hits no gate (`test_docs_audience_gate.py:34-36`, wiring needles, packaging mirror all out of scope); matches the issue's own `**Recommended**` marker.
+- For Option B — the counter + `output_numeric lt` cap idiom ships in three loops (mechanize-skills `diagnosis_retry:307-325`, rn-remediate `check_remediation_budget:861-879`, general-task `spin_gate:410-418`) and `start_pass` already maintains `pass-count.txt` — genuinely cheap, but it overlaps the documented `max_steps` budget with no distinct failure mode and re-enters the builtin-loop lint battery (ENH-2825 failure-edge routing, MR-11 markers, `$${}` escaping) for no behavioral gain.
 
 ## Integration Map
 
@@ -63,18 +84,37 @@ As-built deltas vs this section (implementation landed in e4556ec95; constraints
 ### Dependent Files (Callers/Importers)
 - N/A — standalone built-in loop, discovered by the loop loader
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/fsm/loop_paths.py` (`resolve_loop_path()`, `get_builtin_loops_dir()`), `scripts/little_loops/cli/loop/run.py` (`cmd_run()`, `required_inputs` guard :350-357), `scripts/little_loops/cli/loop/lifecycle.py` (`cmd_resume()`), `scripts/little_loops/cli/loop/config_cmds.py` (`cmd_validate()`, `cmd_install()`) — the generic loader/discovery chain; fully name-parametric (no continue-task branch anywhere in `scripts/little_loops`). No edit needed [Agent 1 finding]
+- `commands/resume.md` — reads the same `continuation.prompt_expiry_hours` but only warns (`:48-50`) and additionally checks a user-level `~/.ll/ll-continue-prompt.md` fallback (`:38-40`) that `load_prompt` lacks; the reject-vs-warn strictness difference is a wording choice for the LOOPS_REFERENCE row, not an edit here [Agent 2 finding]
+- `scripts/little_loops/loops/lib/common.yaml:183` — `diff_stall_gate` fragment definition (`stall_check` dependency); tested in `scripts/tests/test_fsm_fragments.py::TestDiffStallGate` (:1710-1747). No edit needed [Agent 1 finding]
+
 ### Similar Patterns
 - `scripts/little_loops/loops/general-task.yaml` — handoff wiring, `check_baseline_tests` test-cmd resolution
 - `scripts/little_loops/loops/prompt-across-issues.yaml` — quoted-heredoc input capture
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_incremental_refactor_loop.py` — `_load_state_script()` (:18) + `_bash()`, writing a real `.ll/ll-config.json` into tmp_path so `ll-config get` resolves for real — closest analog for `load_prompt`'s expiry / test_cmd fallback tests [Agent 3 finding]
+- `scripts/tests/test_spike_verdict_routing.py` — standalone per-loop routing-test model: `_load()` (:17) / `_run()` (:30) with the MR-11 `:shell}` → `}` strip (:36) and a PATH-stubbed CLI — the template for `read_verdict` parametrized cases [Agent 3 finding]
+
 ### Tests
 - `scripts/tests/test_builtin_loops.py` — expected built-in loop list
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_continue_task_loop.py` — NEW dedicated test file (or a `TestContinueTaskLoop` class in `test_builtin_loops.py`, `TestSpikeGateLoop` at :13503 is the shape): `load_prompt` shell-level cases (explicit input → `goal.md` + `PROMPT_SOURCE: input`; fresh handoff + empty input → `PROMPT_MTIME`/`PROMPT_FIRST_LINE` provenance; stale handoff → exit 1 naming `continuation.prompt_expiry_hours`; neither source → exit 1 usage; whitespace-only input falls through; non-numeric/missing expiry defaults to 24), `required_inputs`-absence (`assert not data.get("required_inputs")`, precedent at :6019), and `read_verdict` gate (DONE / NOT_DONE / missing / whitespace vs `grep -qx`). No existing test asserts any of the loop's strings — these establish the contracts [Agent 3 finding]
 
 ### Documentation
 - `scripts/little_loops/loops/README.md`, `docs/guides/LOOPS_GUIDE.md`, `README.md` loop count
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/LOOPS_REFERENCE.md` — add the continue-task row to the General-Purpose table (`general-task`/`stepwise-task` rows at :78-79; gap re-confirmed by grep). Wording must pass `test_docs_audience_gate.py` (end-user framing) and read consistently with the `required_inputs` contract paragraph at :97 [Agent 1/2 finding]
+- `README.md:198`, `README.md:232` — additional "Loops Reference" coverage claims ("Every built-in loop and fragment library") in `Where to go next` / the docs table, alongside the known `:118` claim; the row makes all three true. No edit needed beyond the row itself [Agent 2 finding]
+
 ### Configuration
 - Reads `continuation.prompt_expiry_hours`, `project.test_cmd` (no new keys)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/config-schema.json` — `continuation.prompt_expiry_hours` is bounded min 1 / max 168 / default 24 (`:903-909`); `fsm-loop-schema.json` `context` block is free-form. No schema change under either Option A or B [Agent 1/2 finding]
 
 ### Codebase Research Findings
 
@@ -133,6 +173,15 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 - Outcomes the shell-level tests should hold true: explicit input -> `goal.md` written from `input.txt` and `PROMPT_SOURCE: input`; fresh handoff file + empty input -> `goal.md` copied with `PROMPT_MTIME` / `PROMPT_FIRST_LINE` provenance; stale handoff -> exit 1 naming `continuation.prompt_expiry_hours` and the explicit-prompt remedy; neither source -> exit 1 with usage; whitespace-only input falls through to the handoff branch; non-numeric/missing expiry config defaults to 24.
 - Step 4 verified accurate as written: `_spawn_continuation` discards stdout/stderr/stdin (DEVNULL) and detaches via `start_new_session=True` (`scripts/little_loops/fsm/handoff_handler.py:123-131`).
 
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Add the `docs/guides/LOOPS_REFERENCE.md` continue-task row (General-Purpose table) — end-user framing for the audience gate, consistent with the `required_inputs` paragraph at `:97`
+- Create the dedicated continue-task tests — `load_prompt` six cases + `required_inputs`-absence + `read_verdict` gate, following the `test_incremental_refactor_loop.py` / `test_spike_verdict_routing.py` harness patterns
+- Resolve Option A/B via `/ll:decide-issue` before `/ll:ready-issue` — `decision_needed: true` gates the decision oracles (`refine-to-ready`, `autodev`, `rn-remediate`); the `max_passes` example appears nowhere outside this issue, so Option A edits only this file
+- Gates in force, none needing edits: `test_docs_audience_gate.py` (row wording), `test_wiring_guides_and_meta.py::test_string_present_in_doc` needles (additive edits safe), `test_doc_counts_all_match` (loop already counted), `test_packaging_duplicate_files.py` mirror (trips only if `README.md` itself is edited)
+
 ## Impact
 
 - **Priority**: P3 - Workflow convenience; manual `/ll:resume` works today
@@ -149,7 +198,7 @@ A developer's interactive session hits the context threshold mid-task and runs `
 ```
 ll-loop run continue-task                 # resume newest .ll/ll-continue-prompt.md
 ll-loop run continue-task "<prompt>"      # explicit continuation prompt / task
-ll-loop run continue-task --context test_cmd="pytest -x" --context max_passes=20
+ll-loop run continue-task --context test_cmd="pytest -x"
 ```
 
 ### Codebase Research Findings
@@ -186,6 +235,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:decide-issue` - 2026-09-25T22:57:17 - `5830abf4-70be-40d6-a44c-678fd54b71da.jsonl`
+- `/ll:wire-issue` - 2026-09-25T22:45:30 - `4ad816e2-21f5-4785-88cc-12616ff52711.jsonl`
 - `/ll:refine-issue` - 2026-09-25T22:27:12 - `bff3e917-f6b3-4423-97e1-f84bce0f9928.jsonl`
 - `/ll:format-issue` - 2026-09-25T22:14:32 - `d4531072-4651-4af1-8df5-773eb121a569.jsonl`
 - `/ll:capture-issue` - 2026-09-25T04:27:15 - `a8472ba4-4c46-48b4-8f68-409c6b4973fa.jsonl`

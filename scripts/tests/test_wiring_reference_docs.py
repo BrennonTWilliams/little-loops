@@ -253,6 +253,11 @@ DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     ("docs/ARCHITECTURE.md", "are the level-2\ninbound path", "FEAT-3504"),
     ("docs/guides/POLICY_ROUTER_GUIDE.md", "Connected authoring & submission", "FEAT-3504"),
     ("docs/guides/POLICY_ROUTER_GUIDE.md", "Using the connected page", "FEAT-3505"),
+    ("docs/reference/CLI.md", "#### `ll-issues run-record`", "ENH-3597"),
+    ("docs/reference/CLI.md", "RUN_RECORD_WRITTEN", "ENH-3597"),
+    ("docs/reference/API.md", "| `run-record` |", "ENH-3597"),
+    ("docs/reference/API.md", "| `little_loops.run_record` |", "ENH-3597"),
+    ("docs/guides/LOOPS_REFERENCE.md", "Typed run record (ENH-3597)", "ENH-3597"),
 ]
 
 

@@ -2375,6 +2375,50 @@ ll-issues arm-proposal-revision BUG-3574
 
 ---
 
+#### `ll-issues run-record`
+
+Write the typed per-issue preparation run record (ENH-3597): one JSON file at
+`<run_dir>/run-records/<writer>/<ID>.json` carrying
+`{writer, issue_id, outcome, child_ids, evidence_refs, legacy_class, readiness, outcome_confidence}`.
+Called by every terminal-bearing state of the `refine-to-ready-issue` loop (and,
+later, its `prepare-issue` wrapper) so a caller can read one issue's verdict
+without re-deriving it from frontmatter. The command itself gathers the issue's
+terminal-time state — frontmatter status and scores, the shared
+`refine-broke-down` counter, children derived from `parent:` frontmatter — and
+maps it to an `outcome` of `ready | decomposed | cancelled | blocked | deferred |
+retryable_error` (first match wins: cancelled status → broke-down → infra →
+decision/proposal/quality → spike/gate → done-path readiness). `ready` is
+exactly the `check-readiness --honor-waiver` predicate, with absent scores
+counting as not-met. Prints `[RUN_RECORD_WRITTEN] <ID> <outcome> <path>`.
+
+| Argument | Description |
+|----------|-------------|
+| `issue_id` | Issue ID (e.g., `3597`, `ENH-3597`, `P3-ENH-3597`) |
+
+| Flag | Description |
+|------|-------------|
+| `--run-dir DIR` | **Required.** The run's run_dir (an FSM state passes `${context.run_dir}`) |
+| `--writer NAME` | **Required.** `refine-to-ready-issue` or `prepare-issue` — the per-writer record subdirectory |
+| `--legacy-class CLASS` | The `refine-terminal-class` token this terminal just wrote (`proposal_unsound`, `gate_unmet`, `infra`, `spike_inconclusive`, `decision_unresolved`, `quality`); omit on the done paths, which write no class file |
+| `--child-ids ID...` | Override child derivation with an explicit list (default: derive from `parent:` frontmatter) |
+| `--evidence-refs REF...` | Run artifacts evidencing the outcome (recorded verbatim) |
+| `--readiness-threshold N` / `--outcome-threshold N` | Explicit thresholds beating `ll-config.json`, as on `check-readiness` |
+
+**Examples:**
+```bash
+ll-issues run-record write ENH-3597 --run-dir "$RUN_DIR" --writer refine-to-ready-issue
+ll-issues run-record write BUG-42 --run-dir "$RUN_DIR" --writer refine-to-ready-issue --legacy-class gate_unmet
+```
+
+Exit 0 once written, 2 when the issue cannot be resolved (nothing is written).
+Read the record back from Python with `little_loops.run_record.read_run_record`,
+which returns `None` for a missing, malformed, or writer/issue-mismatched file —
+a stale record reads as absent, never as this run's verdict. The per-writer,
+per-issue path is what keeps one issue's record from leaking into the next
+issue's exit when a parent loop reuses one run_dir.
+
+---
+
 #### `ll-issues check-verify-verdict`
 
 Exit 0 if the issue's persisted `verify_verdict` is `VALID`, 1 if it is `NON_VALID` (ENH-3031), 3 if it is **absent** (BUG-3571 — no evidence, an abstention rather than a pass). It writes `VERIFY_VERDICT_NON_VALID` / `VERIFY_VERDICT_ABSENT` to stderr so an FSM evaluator can route on the reason rather than the bare exit code. Pair it with `ll-issues clear-verify-verdict <ID>`, which removes the field before `/ll:verify-issues --check` so only a verdict from the current call can pass.

@@ -16,12 +16,12 @@ parent: EPIC-3565
 blocks:
 - FEAT-3598
 - ENH-3601
-confidence_score: 90
-outcome_confidence: 50
+confidence_score: 95
+outcome_confidence: 60
 score_complexity: 14
 score_test_coverage: 18
 score_ambiguity: 18
-score_change_surface: 0
+score_change_surface: 10
 ---
 
 # ENH-3602: Single budget owner for learning-proof evidence
@@ -69,9 +69,9 @@ skill, but staleness becomes as fresh as the last scoring run.
 
 ### Option C: Preparation controller owns it
 
-The ENH-3577 child controller owns the proof budget and emits `PROOF` via
-`ll-issues next-obligation`; the `ll-auto` gate becomes a pure assertion that should never
-fire after a `ready` outcome.
+The ENH-3577 child controller owns the proof budget and emits `PROOF` as an obligation
+outcome (FEAT-3598's planned obligation-selector subcommand — unbuilt today);
+the `ll-auto` gate becomes a pure assertion that should never fire after a `ready` outcome.
 
 ### Decision Rationale
 
@@ -172,7 +172,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Update `docs/reference/API.md` (`assess_proof` section + `run_learning_gate_for_issue` prose) and `docs/reference/ISSUE_TEMPLATE.md:933` verdict mapping
 - Keep the marker triple (`LEARNING_GATE_BLOCKED` / `IMPLEMENT_FAILED` / `GATE_INFRA_FAILED`) emitting from `process_issue_inplace` at the same site — `loops/lib/common.yaml`'s fragment and the rn-* report tallies grep them
 - Keep `run_learning_gate_for_issue` backward-compatible (keyword-only additions with defaults) — `TestAutoManagerLearningGate` mocks it by dotted path
-- Decide the disposition of the additional `is_record_stale` consumers listed under Dependent Files (executor, hooks ×2, cli ×3, release_gate, migrate-sdk-version.yaml): consume `assess_proof` or record as explicit residual surface
+- ~~Decide the disposition of the additional `is_record_stale` consumers listed under Dependent Files (executor, hooks ×2, cli ×3, release_gate, migrate-sdk-version.yaml): consume `assess_proof` or record as explicit residual surface~~ — decided 2026-09-25: recorded as explicit residual surface (see Scope Boundaries); they keep calling the stable pure functions and are not migrated in this issue
 
 ## Impact
 
@@ -185,6 +185,16 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 - No change to how learning tests are authored (`/ll:explore-api`).
 - The spike attempt counter stays in the caller's `run_dir`. Only the cap/policy moves into `assess_proof`.
+- **Residual surface — decided 2026-09-25, out of scope:** every consumer listed under Dependent
+  Files beyond the three in-scope ones keeps its current behavior. The additional
+  `is_record_stale`/`describe_staleness` callers (`fsm/executor.py` `_execute_learning_state`,
+  `hooks/learning_tests_gate.py`, `hooks/install_learning_gate.py`, `cli/learning_tests.py`
+  `--stale-aware`, `cli/ctx_stats.py`, `cli/history_context.py`, `learning_tests/release_gate.py`,
+  `loops/migrate-sdk-version.yaml`) keep calling the pure functions, which stay public and stable.
+  The additional proof-status consumers (`go-no-go`, `parallel/worker_pool.py` proof-first-task
+  gate, sprint preflight, `cli/history_context.py`, `loop/scaffold_eval.py`, `rn-implement.yaml`
+  `check_learning_ready`) are likewise not migrated here. In-scope consumers stay exactly three:
+  confidence-check, ready-issue, and the `ll-auto` learning gate.
 
 ## Acceptance Criteria
 
@@ -212,7 +222,16 @@ Decomposed from ENH-3577: Consolidate autodev issue preparation into a single co
 - Consumer-parity test coverage is new territory — no multi-module fixture exists today; the "shared fixture, same verdict from every consumer" test must be authored from scratch (model on `test_route_spike_verdict_classification`'s dual-parametrize idiom)
 - Residual judgment load: disposition of ~10 additional `is_record_stale` consumers (consume `assess_proof` vs record out of scope) is deferred to implementation
 
-Advisory (Criterion 4 claim cap): `ll-issues next-obligation` (Option C text) does not resolve — a forward-looking reference to a nonexistent subcommand under the rejected option; harmless, but caps Criterion 4 at 10.
+Advisory (Criterion 4 claim cap): Option C text cited a nonexistent `ll-issues` subcommand (FEAT-3598's planned obligation selector) as if it resolved today; harmless, but capped Criterion 4 at 10. Resolved 2026-09-25: the Option C text now marks it as planned/unbuilt, and the residual-surface scope decision (see Scope Boundaries) addresses the third risk factor above.
+
+**Confidence Check — 2026-09-25 re-score** (Readiness 95/100 → PROCEED · Outcome Confidence 60/100 → MODERATE)
+
+Prior run's Criterion 4 claim cap cleared (Option C text fixed, `stale_cli_flag` now empty);
+prior risk factor 3 (residual judgment load) resolved by the Scope Boundaries decision.
+
+### Outcome Risk Factors
+- Broad preserved-contract surface: the marker triple (`LEARNING_GATE_BLOCKED` / `IMPLEMENT_FAILED` / `GATE_INFRA_FAILED`) consumers (`loops/lib/common.yaml` fragment, rn-implement/rn-remediate report tallies, audit-loop-run) must keep receiving identical tokens while the verdict source changes underneath — mitigation: keep the emit site at `issue_manager.py:1216-1255` unmoved and `run_learning_gate_for_issue`'s return contract + keyword-only signature backward-compatible (pinned by `TestAutoManagerLearningGate` and `test_fsm_fragments` ordering pins)
+- Consumer-parity fixture is new territory — no repo-wide multi-module fixture exists today; model the "same fixture, same verdict from every consumer" test on the dual-parametrize idiom of `test_spike_verdict_routing.py:50-63`
 
 ## Session Log
 - `/ll:confidence-check` - 2026-09-25T21:22:43 - `345d0814-f8e9-469f-ad62-bef9083d17be.jsonl`
