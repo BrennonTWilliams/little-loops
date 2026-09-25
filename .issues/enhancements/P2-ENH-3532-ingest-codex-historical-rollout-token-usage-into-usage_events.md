@@ -12,14 +12,13 @@ captured_at: '2026-09-24T00:20:39Z'
 labels:
 - observability
 - multi-host
-blocked_by:
-- BUG-3542
 relates_to:
+- BUG-3542
 - ENH-3528
 - ENH-3543
 blocks:
 - ENH-3543
-confidence_score: 55
+confidence_score: 85
 outcome_confidence: 48
 score_complexity: 10
 score_test_coverage: 18
@@ -33,7 +32,7 @@ score_change_surface: 10
 
 Ingest Codex historical rollout usage (`event_msg` / `token_count`) into `usage_events` with defined normalization, deduplication, and rebuild behavior. This is Delivery B split out of ENH-3528: it builds on ENH-3538's per-observation provenance/host/observation-time columns (the foundation extracted from ENH-3528) and on the Codex normalization fix in BUG-3531. Both are done. It does not depend on ENH-3528's reporting work; ENH-3528 lands first and reports the rollout rows conservatively. Codex live `turn.completed` capture already works and must keep working.
 
-**Split 2026-09-24:** the raw-ingest source-host correction → BUG-3542 (prerequisite); live identity plumbing and the shared live/rollout coverage selector → ENH-3543 (follows this issue). This issue keeps rollout normalization, persisted identity/uniqueness, metadata-bearing replay and idempotent rebuild.
+**Split 2026-09-24:** the raw-ingest source-host correction → BUG-3542 (completed prerequisite); live identity plumbing and the shared live/rollout coverage selector → ENH-3543 (follows this issue). This issue keeps rollout normalization, persisted identity/uniqueness, metadata-bearing replay and idempotent rebuild.
 
 ## Current Behavior
 
@@ -41,7 +40,7 @@ Ingest Codex historical rollout usage (`event_msg` / `token_count`) into `usage_
 - Historical rollout `token_count` events are read only by `ctx_stats._codex_cache_usage` for a cache-hit rate; they never reach `usage_events`.
 - `parse_codex_rollout` yields a `SessionEvent` whose payload is the inner Codex object. `_backfill_raw_events` serializes that payload: stored usage records have `type='token_count'`, not the original `event_msg` envelope. Timestamp, session ID, outer event type, and line position are stored separately; native envelope ordinals are not preserved by this path.
 - The in-progress metadata iterator in `scripts/little_loops/session_store/writers.py` supplies line/source/host, but not the other replay metadata. The rebuild cursor in `scripts/little_loops/session_store/lifecycle.py` selects only `raw_line, source_path, host` ordered by database ID.
-- `_backfill_raw_events` stamps the ingesting/configured host instead of `SessionHandle.host`; BUG-3542 fixes this and adds a verified-attribution discriminator, which this issue's replay consumes.
+- `_backfill_raw_events` previously stamped the ingesting/configured host instead of `SessionHandle.host`; BUG-3542 (completed) fixed this and added a verified-attribution discriminator, which this issue's replay consumes.
 - Live observations carry no session/invocation identity (ENH-3543 owns adding it). The raw-ingest function in `scripts/little_loops/session_store/lifecycle.py` documents uniqueness as `(source_path, line_no)`, which does not deduplicate moved or copied rollouts.
 
 ## Expected Behavior
@@ -127,7 +126,7 @@ If a case lacks producer evidence, choose the conservative unresolved behavior r
 ## Scope Boundaries
 
 - **In scope**: Codex rollout normalization/ingestion, metadata-bearing replay, request/reset identity, persisted uniqueness, idempotent transactional replay.
-- **Prerequisites**: BUG-3542 (verified source host). ENH-3538, BUG-3531 and BUG-3530 are done.
+- **Prerequisites** (all done): BUG-3542 (verified source host), ENH-3538, BUG-3531 and BUG-3530.
 - **Split out**: BUG-3542 (raw-ingest host correction); ENH-3543 (live identity plumbing, shared coverage selector, reader/export selection).
 - **Out of scope**: other-host usage ingestion (ENH-3534); Codex pricing; changing live token normalization beyond BUG-3531; exact Claude overlap reconciliation; ENH-3528's richer rendering contract.
 
@@ -185,22 +184,20 @@ Removed the resolved blockers (ENH-3538, BUG-3531); now blocked by BUG-3542. Imp
 
 _Added by `/ll:confidence-check` on 2026-09-24_
 
-**Readiness Score**: 55/100 → STOP — ADDRESS GAPS
+**Readiness Score**: 85/100 → PROCEED WITH CAUTION
 **Outcome Confidence**: 48/100 → LOW
 
 ### Concerns
-- Dependencies hard override: `blocked_by` BUG-3542 (verified source host) is still `open`; replay consumes its attribution discriminator.
-- Three readiness gates (request key, reset namespace, ordering) are still open and must be recorded in the issue before implementation.
-
-### Gaps to Address
-- Wait for/complete BUG-3542, or drop the dependency if no longer applicable.
-- Close the open readiness gates against the fixtures and record the exact persisted key, fallback rules and unique constraint.
+- `blocked_by` BUG-3542 is now Completed, but the issue body still lists it as an outstanding prerequisite ("now blocked by BUG-3542"); refresh the frontmatter/prose so it no longer reads as open.
+- Three readiness gates (request key, reset namespace, ordering) are still open and must be recorded in the issue before implementation; the issue itself makes this a precondition.
+- The session-identity column must be agreed with ENH-3543 before either migration lands (see Scope Boundary note).
 
 ### Outcome Risk Factors
-- Moderate per-site complexity across ~8 source modules plus schema migration and transactional replay.
-- Unresolved design decisions on observation identity/uniqueness leave ambiguity; wide test/reader surface.
+- Moderate-to-deep per-site complexity across ~8 source modules plus an append-only schema migration and transactional replay.
+- Unresolved design decisions on observation identity/uniqueness (request key, reset namespace, ordering) leave ambiguity; wide reader/test surface.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-25T01:06:55 - `4d305eb6-e0ad-4528-8217-7edc572927c3.jsonl`
 - `/ll:confidence-check` - 2026-09-25T01:02:39 - `f35cbaf1-740e-46e5-84c9-0ecf04a645f4.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-09-24T23:55:44 - `2bb94109-d967-427c-a647-9b0a7a8e368e.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-09-24T01:05:29 - `af4614fc-00c0-4ee9-995a-e89a43f1523c.jsonl`

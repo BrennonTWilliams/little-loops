@@ -102,6 +102,40 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 - **Unaffected by new IDs**: `cache_marking_oracle.py` matches by family substring (`"opus"`), so `claude-opus-5-5` behaves like `claude-opus-5`; `claude-fable-*` and haiku use the same default minimum before and after.
 - **Pricing details relevant to the haiku shared-dict scope item**: `INTRO_PRICING` is keyed by model ID separately and is currently empty (`{}`), so a shared rate dict cannot diverge on intro pricing today; nothing mutates `MODEL_PRICING` entries.
 
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/host_runner.py` — `build_anthropic_request()` (~`:2950`) calls `resolve_model_alias(model)`; SDK and batch both inherit the new targets [Agent 1 finding]
+- `scripts/tests/test_host_runner_dispatch.py` — `test_non_aliases_pass_through_unchanged` (`:399-404`) and the `DEFAULT_LLM_MODEL` resolution test (`:438`) also exercise the table; confirm `DEFAULT_LLM_MODEL` does not resolve through `opus`/`fable` [Agent 3 finding]
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/API.md` — `### MODEL_PRICING` (`:12366`) prose says it "covers the current Claude 5.x / 4.x model registry"; add `claude-opus-5-5`, `claude-fable-5-1`, `claude-haiku-4-5` and note the shared haiku dict [Agent 2 finding]
+- `docs/observability/tier0-traces.md:231` — cites `pricing.py:15-80` for `MODEL_PRICING`; line range goes stale as rows are added [Agent 2 finding]
+- `docs/observability/realized-savings-verification.md:43-44` — lists which models ENH-2745 added to `MODEL_PRICING` (history; no edit needed, informational) [Agent 2 finding]
+
+### Tests
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_pricing.py` — `LIVE_RATES` (`:20-32`) needs `claude-opus-5-5`, `claude-fable-5-1`, `claude-haiku-4-5` rows; `test_every_model_pinned` (`:94-95`) fails otherwise. Note `:67` `assert "claude-fable-5" in MODEL_PRICING` is a presence check and stays valid [Agent 3 finding]
+- `scripts/tests/test_advisor.py:42` (`ranks["claude-haiku-4-5"] < ranks["claude-opus-5"]`) — stays valid; add an equivalent assertion for `claude-opus-5-5` [Agent 3 finding]
+- `scripts/tests/test_session_store_writers.py`, `test_session_store_queries.py`, `test_history_reader_events.py`, `test_issue_history_agent_quality.py` — use `claude-opus-5` as a literal `advisor_model`/`model` fixture value; unaffected (no alias resolution), confirms old IDs must stay accepted [Agent 3 finding]
+
+### Configuration
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/context_window.py:19-33` — `MODEL_CONTEXT_WINDOW` has `claude-haiku-4-5` but no 5.x rows; out of scope, no change required [Agent 2 finding]
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `scripts/tests/test_pricing.py` — add the three new keys to `LIVE_RATES` in the same change as the `pricing.py` edit
+- Update `scripts/tests/test_advisor.py:30-38,58` — extend the exact rank-ID set and fix the `opus` equality assertion
+- Update `docs/reference/API.md:12228,12236,12366` — refresh current-model names and the `MODEL_PRICING` coverage sentence
+- Update `scripts/little_loops/advisor.py:49,88` — fix stale `host_runner.py:79-84` cite and the `claude-opus-5` docstring example
+
 ## Program Design
 
 ### Types
@@ -147,6 +181,8 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-25T01:11:17 - `283a56a1-35bd-43bb-b2f7-64d9f104c2c4.jsonl`
+- `/ll:refine-issue` - 2026-09-25T01:06:50 - `42a934e3-5df9-4ac6-9296-d0ced0bc2261.jsonl`
 - `/ll:format-issue` - 2026-09-25T01:01:19 - `4b76ee9e-e590-41ab-940d-a6df6f1554bd.jsonl`
 
 ## Conventions in Force
