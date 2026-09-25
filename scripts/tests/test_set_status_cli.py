@@ -339,6 +339,7 @@ class TestIssuesCLISetStatus:
             "low_readiness",
             "gate_blocked",
             "decision_unresolved",
+            "spike_inconclusive",
             "oversized_atomic",
             "readiness_stagnated",
             "design_gate_failed",

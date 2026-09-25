@@ -2017,11 +2017,13 @@ class TestRefineToReadyIssueSubLoop:
     def test_resolve_issue_resets_decide_and_spike_state(self, data: dict) -> None:
         action = data["states"]["resolve_issue"]["action"]
         assert "printf '0' > ${context.run_dir}/refine-to-ready-decide-attempts" in action
-        assert "rm -f ${context.run_dir}/refine-to-ready-spike-ran" in action
+        # BUG-3593: the shared spike-runs-<ID> counter is never reset per issue.
+        assert "spike-ran" not in action
+        assert "spike-runs" not in action
 
     def test_check_spike_needed_is_one_shot_per_run(self, data: dict, tmp_path: Path) -> None:
-        """The run-dir marker makes the spike gate one-shot even when the skill never
-        stamps spike_attempted (BUG-3553)."""
+        """The shared spike-runs-<ID> counter bounds the gate to two spikes even when the
+        skill never stamps spike_attempted (BUG-3553/BUG-3593)."""
         action = data["states"]["check_spike_needed"]["action"]
         bin_dir = tmp_path / "bin"
         bin_dir.mkdir()
@@ -2034,11 +2036,12 @@ class TestRefineToReadyIssueSubLoop:
         env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"}
         first = subprocess.run(["bash", "-c", script], env=env, capture_output=True, text=True)
         assert first.returncode == 0, first.stderr
-        assert (tmp_path / "refine-to-ready-spike-ran").exists()
+        assert (tmp_path / "spike-runs-BUG-9702").read_text() == "1"
         second = subprocess.run(["bash", "-c", script], env=env, capture_output=True, text=True)
-        assert second.returncode == 1, (
-            "a second spike_needed reading in the same run must not re-fire"
-        )
+        assert second.returncode == 0, "one re-armed spike is allowed (counter < 2)"
+        assert (tmp_path / "spike-runs-BUG-9702").read_text() == "2"
+        third = subprocess.run(["bash", "-c", script], env=env, capture_output=True, text=True)
+        assert third.returncode == 1, "a third spike in the same run must not fire"
 
     # --- BUG-3552: thresholds come from the seeded context only ---
 
@@ -3260,17 +3263,13 @@ class TestRefineToReadyIssueSubLoop:
             f"run_spike.action should call '/ll:spike ... --auto', got {action!r}"
         )
 
-    def test_run_spike_reenters_confidence_check(self, data: dict) -> None:
-        """run_spike.next and .on_error must both re-enter confidence_check so the
-        score reflects the post-spike state (fail-open on error, like
-        wire_issue/reconcile_issue elsewhere in this file)."""
+    def test_run_spike_routes_through_verdict_router(self, data: dict) -> None:
+        """run_spike.next/.on_error go to route_spike_verdict (BUG-3593); only a proven
+        verdict re-enters confidence_check."""
         state = data["states"].get("run_spike", {})
-        assert state.get("next") == "confidence_check", (
-            f"run_spike.next should be 'confidence_check', got {state.get('next')!r}"
-        )
-        assert state.get("on_error") == "confidence_check", (
-            f"run_spike.on_error should be 'confidence_check', got {state.get('on_error')!r}"
-        )
+        assert state.get("next") == "route_spike_verdict"
+        assert state.get("on_error") == "route_spike_verdict"
+        assert data["states"]["route_spike_verdict"]["route"]["PROVEN"] == "confidence_check"
 
     def test_max_steps_at_least_60(self, data: dict) -> None:
         """max_steps must be >= 60 (ENH-3250: check_proposal_unsound and
