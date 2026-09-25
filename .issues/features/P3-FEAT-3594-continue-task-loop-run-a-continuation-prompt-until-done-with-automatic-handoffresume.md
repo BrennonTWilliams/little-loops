@@ -4,6 +4,7 @@ type: FEAT
 title: 'continue-task loop: run a continuation prompt until done with automatic handoff/resume'
 priority: P3
 status: open
+decision_needed: true
 discovered_by: ll-issues-create
 discovered_date: '2026-09-25'
 captured_at: '2026-09-25T04:27:08Z'
@@ -39,6 +40,20 @@ A thin loop (~5 states), decoupled from the Issue system:
 6. Terminals `done` / `partial` (summary via `on_max_steps` or stall) / `failed`.
 
 Top level: `on_handoff: spawn`, `max_steps` + `on_max_steps` cap, input NOT in `required_inputs` (otherwise `ll-loop run` rejects the empty-input fallback case before `load_prompt` runs).
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
+
+As-built deltas vs this section (implementation landed in e4556ec95; constraints below describe what must stay true):
+- Step 4's `check_done (prompt + llm_structured)` shipped as prompt + mechanical verdict file (one-word `verdict.txt` gate in `read_verdict`) — same judge-independence outcome ("You did NOT do this work; judge it skeptically", `continue-task.yaml:216-217`; worker told "Do NOT declare the task finished", :153-154), different mechanism.
+- Step 2's `/ll:resume`-on-fresher-handoff re-entry is present: `work` runs `/ll:resume` iff `.ll/ll-continue-prompt.md` is `-nt` `pass-started.txt`; the marker is deliberately NOT refreshed mid-pass so an intra-pass handoff is still detected (`continue-task.yaml:108-111`), mirroring `general-task.yaml:364-368, 516-518`.
+
+**Option A**: Correct the API/Interface example — drop `--context max_passes=20`. Nothing in `continue-task.yaml` reads a `max_passes` context key; the run accepts it as a silent no-op. The real pass budget is `max_steps: 150` plus the `diff_stall_gate` (max_stall 3).
+
+**Option B**: Implement the `max_passes` knob — declare it in the loop's `context:` block and cap passes in `start_pass` against `pass-count.txt` — so the documented example works as written.
+
+**Recommended**: Option A — `max_steps` and the stall gate already bound runaway passes; a second overlapping budget adds config surface with no distinct failure mode. Option B remains cheap if a per-pass budget is ever wanted.
 
 ## Integration Map
 
@@ -92,12 +107,31 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 
 `ll-loop run` -> `load_prompt` -> `work` -> (`run_tests` -> `check_done`) -> `done` | `summarize_partial`; on context threshold `work` -> `HandoffHandler` spawns a detached `ll-loop resume continue-task`; `stall_check` (via the `diff_stall_gate` fragment from `loops/lib/common.yaml`) -> `summarize_partial`
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
+
+- As-built verdict mechanism replaces the sketched `llm_structured` evaluator: `check_done` (prompt state) writes exactly one word — `DONE` or `NOT_DONE` — to `${context.run_dir}/verdict.txt`; `read_verdict` (shell) gates on `grep -qx 'DONE' verdict.txt` so free-text output can never be mistaken for a verdict. There is no `evaluate:` block on `check_done`.
+- As-built test gating: `run_tests` exits 1 only on a regression (current exit != 0 AND baseline = 0), routing `on_no -> start_pass` and bypassing the LLM check for that pass (it overwrites `done-check.md` with the regression report itself); exit 127 at baseline keeps `baseline-exit.txt` at `SKIP` so command-not-found is never classified REGRESSED; pre-existing failures are recorded `FAILING (pre-existing)` and exit 0 — advisory by design.
+- As-built staleness strictness: `load_prompt` REJECTS a stale handoff file (exit 1, naming `continuation.prompt_expiry_hours` and the explicit-prompt remedy), whereas `/ll:resume` only warns on the same key (`commands/resume.md:48-50`) — same key, different strictness.
+- The `max_passes` context key shown in the API/Interface example is read by nothing in `continue-task.yaml`; the pass budget is `max_steps: 150` (~25 passes at ~6 steps/pass) plus `diff_stall_gate` max_stall 3 (state-level override of the fragment default 2 via deep-merge, `scripts/little_loops/fsm/fragments.py:142`).
+
 ## Implementation Steps
 
 1. Add `scripts/little_loops/loops/continue-task.yaml` (states above).
 2. Register it: expected-loop list in `scripts/tests/test_builtin_loops.py`, the table in `scripts/little_loops/loops/README.md`, the General-purpose row in `docs/guides/LOOPS_GUIDE.md`, and the README loop count if it changes.
 3. Tests: `ll-loop validate continue-task` passes; `load_prompt` fallback / staleness / missing-both cases (shell-level, tmp project dir); input absent from `required_inputs`.
 4. Document that `on_handoff: spawn` is detached (`HandoffHandler._spawn_continuation` in `little_loops.fsm.handoff_handler` discards stdout), so the foreground view ends at the first handoff — follow along with `ll-loop status` / run logs.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
+
+- Steps 1-2 are DONE as of e4556ec95 (file exists; every registration point verified — see Integration Map findings). The LOOPS_REFERENCE.md row found there extends step 2's doc surface.
+- Step 3 is PARTIALLY done: `ll-loop validate` coverage exists via `test_all_validate_as_valid_fsm` (`scripts/tests/test_builtin_loops.py:77-80`) and expected-set membership at :300, but the dedicated `load_prompt` shell-level tests and the `required_inputs`-absence test do not exist anywhere in `scripts/tests/` (searched; the only hit is the expected-set entry).
+- Precedent for those tests: extract the state's shell action from the YAML, substitute `${context.*}` refs from declared defaults + overrides, run under `bash -c` with cwd = a tmp "project" dir, and assert on stdout markers + returncode + run_dir file contents — the `_load_state_script` / `_setup_run_dir` / `_bash` harness in `scripts/tests/test_general_task_loop.py:509-531, 1058-1059` (e.g. `TestBatchedPasses` at :2740-2784).
+- Outcomes the shell-level tests should hold true: explicit input -> `goal.md` written from `input.txt` and `PROMPT_SOURCE: input`; fresh handoff file + empty input -> `goal.md` copied with `PROMPT_MTIME` / `PROMPT_FIRST_LINE` provenance; stale handoff -> exit 1 naming `continuation.prompt_expiry_hours` and the explicit-prompt remedy; neither source -> exit 1 with usage; whitespace-only input falls through to the handoff branch; non-numeric/missing expiry config defaults to 24.
+- Step 4 verified accurate as written: `_spawn_continuation` discards stdout/stderr/stdin (DEVNULL) and detaches via `start_new_session=True` (`scripts/little_loops/fsm/handoff_handler.py:123-131`).
 
 ## Impact
 
@@ -117,6 +151,12 @@ ll-loop run continue-task                 # resume newest .ll/ll-continue-prompt
 ll-loop run continue-task "<prompt>"      # explicit continuation prompt / task
 ll-loop run continue-task --context test_cmd="pytest -x" --context max_passes=20
 ```
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
+
+- The `--context max_passes=20` example does not correspond to any knob the loop reads — see the Option A/B decision under Proposed Solution -> Codebase Research Findings.
 
 ## Acceptance Criteria
 
@@ -146,5 +186,6 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-25T22:27:12 - `bff3e917-f6b3-4423-97e1-f84bce0f9928.jsonl`
 - `/ll:format-issue` - 2026-09-25T22:14:32 - `d4531072-4651-4af1-8df5-773eb121a569.jsonl`
 - `/ll:capture-issue` - 2026-09-25T04:27:15 - `a8472ba4-4c46-48b4-8f68-409c6b4973fa.jsonl`

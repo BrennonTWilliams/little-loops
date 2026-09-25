@@ -16,8 +16,8 @@ relates_to:
 confidence_score: 100
 outcome_confidence: 75
 score_complexity: 14
-score_test_coverage: 25
-score_ambiguity: 18
+score_test_coverage: 18
+score_ambiguity: 25
 score_change_surface: 18
 ---
 
@@ -243,6 +243,7 @@ Decomposed from ENH-3577: Consolidate autodev issue preparation into a single co
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-25T22:29:31 - `b8c40ebf-16af-4b02-99b1-152fd47cd2b8.jsonl`
 - `bounded design revision (PROPOSAL_UNSOUND remediation)` - 2026-09-25T22:25:11 - `3888403c-6bad-4d3f-8a59-c1af5a2bbcd2.jsonl`
 - `/ll:verify-issues` - 2026-09-25T22:20:36 - `3888403c-6bad-4d3f-8a59-c1af5a2bbcd2.jsonl`
 - `/ll:confidence-check` - 2026-09-25T21:22:43 - `345d0814-f8e9-469f-ad62-bef9083d17be.jsonl`
