@@ -54,14 +54,18 @@ These are selection preferences, not guarantees of quality, latency, price, or r
 
 Add optional `model_hint` to `StateConfig` and `LLMConfig`; do not overload `model` or existing CLI `--model` strings with hint semantics. At either declaration level, explicitly supplying both `model` and `model_hint` is an error. Unknown values, empty hints, and hints on non-LLM states are errors.
 
-**Applicability.** A state-level hint follows the same reach as `state.model` does today: it applies to a prompt-mode action (`executor.py:2658`, `action_mode == "prompt"`) and to an LLM evaluator (`executor.py:3174,3221`). A state is an "LLM state" if it has either. A shell action with an `llm_structured` evaluator is valid, and its hint governs only the evaluator. A state with neither is a validation error. When a state has both a prompt action and an LLM evaluator, the one declaration is resolved separately for each: the action against its effective path, the evaluator against the evaluator (blocking) call on its effective path. The two may resolve to different model strings.
+**Applicability.** A state-level hint follows the same reach as `state.model` does today: it applies to a prompt-mode action (`executor.py:2658`, `action_mode == "prompt"`) and to an LLM evaluator (`executor.py:3174,3221`). A state is an "LLM state" if it has either. A shell action with an `llm_structured` evaluator is valid, and its hint governs only the evaluator. A state with neither is a validation error. When a state has both a prompt action and an LLM evaluator, the one declaration is resolved separately for each: the action against its effective request path, the evaluator against the CLI host (see below). The two may resolve to different model strings.
+
+- **Evaluators are CLI-only.** `fsm/evaluators.py` has no SDK/batch path and never reads `request_path`: `evaluate_llm_structured` and `evaluate` always dispatch through `resolve_host().build_blocking_json`. An evaluator hint therefore always resolves against the CLI runner `resolve_host()` returns, even on a `request_path: sdk`/`batch` state. Only a prompt *action* follows `request_path` and can reach `anthropic-api`.
+- **Implicit evaluator.** A prompt-mode state with no `evaluate:` block still gets an implicit `evaluate_llm_structured` verdict (`executor.py:3174`). A hint on such a state governs both the action and that implicit verdict. For example, `burst` selects the burst model for the generation and for its verdict.
+- **Error, not warning (deliberate).** A literal `model:` on a state with no LLM step is only a WARNING today (`fsm-loop-schema.json` `state.model` description). A `model_hint` there is an ERROR on purpose: hints are new, so no existing loop breaks, and a hint that can never be honored contradicts the no-silent-fallback rule. Do not downgrade it to match `model:`.
 
 Select a model declaration before resolving it, preserving the existing precedence by execution path:
 
 | Path | Highest to lowest precedence |
 |------|------------------------------|
 | CLI action | State model-or-hint → run `--model` → host default |
-| Evaluator | State model-or-hint → effective `llm` model-or-hint → existing evaluator default |
+| Evaluator (always CLI host) | State model-or-hint → effective `llm` model-or-hint → existing evaluator default |
 | SDK/batch action | State model-or-hint → run `--model` → effective `llm` model-or-hint → existing API default |
 
 `--llm-model` replaces the `llm` declaration and clears an inherited hint. A run `--model` does not gain new precedence over state declarations or evaluator defaults. A hint in `llm` does not become a new CLI-action default.
@@ -72,6 +76,7 @@ Preserve the distinction between an omitted model and an explicitly supplied mod
 
 Resolve `_resolve_request_path` first, including SDK/batch downgrades. Then resolve the selected declaration against that path:
 
+- Evaluators always resolve against the CLI runner (see Applicability); the request-path rules below apply to actions.
 - CLI execution uses the selected runner. Hint mappings may return host-supported aliases or concrete IDs. Existing literal values pass through unchanged; do not introduce `resolve_model_alias` into CLI dispatch.
 - SDK/batch execution uses the Anthropic mapping and concrete-ID resolution, regardless of the configured CLI host. A configured Codex/Gemini host must not cause a non-Anthropic model ID to reach `build_anthropic_request`.
 - A downgrade to CLI resolves the original declaration afresh for that runner. Do not reuse a model already resolved for another backend.
@@ -85,9 +90,10 @@ Ship built-in defaults only where the target is verified against this repo's own
 | Backend key | `coding` | `reasoning` | `burst` | Source |
 |-------------|----------|-------------|---------|--------|
 | `claude-code` (CLI) | `sonnet` | `opus` | `haiku` | Built-in; host CLI aliases passed through unchanged, as literal values are today |
-| `anthropic-api` (SDK/batch) | `MODEL_ALIASES["sonnet"]` | `MODEL_ALIASES["opus"]` | `MODEL_ALIASES["haiku"]` | Built-in; derived at lookup time from `MODEL_ALIASES` so the canonical ID lives in one place. Do not copy concrete IDs into the hint table or docs. `MODEL_ALIASES` is itself stale (`opus → claude-opus-5`, `fable → claude-fable-5`); refreshing it is tracked separately (see Related) and is not a blocker here |
+| `anthropic-api` (SDK/batch) | `MODEL_ALIASES["sonnet"]` | `MODEL_ALIASES["opus"]` | `MODEL_ALIASES["haiku"]` | Built-in; derived at lookup time from `MODEL_ALIASES` so the canonical ID lives in one place. Do not copy concrete IDs into the hint table or docs. BUG-3541 (done) refreshed `MODEL_ALIASES` to current IDs |
 | `codex`, `gemini`, `omp`, `kimi-code`, `qwen` | — | — | — | No built-in default; config only. An unmapped hint on these hosts raises the actionable missing-mapping error |
 | `opencode`, `pi` | — | — | — | Not advertised; hints error regardless of config |
+| `fake`, `fake-minimal` (`TEST_ONLY_HOSTS`) | `fake-coding` | `fake-reasoning` | `fake-burst` | Built-in test-only pass-through. Needed so ENH-3547's portability proof can run a hint-bearing loop under the fake host. Each hint maps to a distinct sentinel so tests can assert *which* hint resolved. These hosts are not in `RUNTIME_HOST_CAPABILITIES` (`host_runner.py:2230`), so the resolver's backend set must add them explicitly. Not documented to end users |
 
 **Config override (in scope).** Add `model_hints` (under `orchestration`) to `config-schema.json` and `OrchestrationConfig`:
 
@@ -100,12 +106,12 @@ Ship built-in defaults only where the target is verified against this repo's own
 }
 ```
 
-- Keys are runtime backend keys (the `RUNTIME_HOST_CAPABILITIES` host names plus `anthropic-api`); an unknown backend key or hint name is a config validation error. Values are non-empty strings passed through as literals (no nested hint resolution), or `false` to disable.
+- Keys are runtime backend keys (the `RUNTIME_HOST_CAPABILITIES` host names, `TEST_ONLY_HOSTS`, and `anthropic-api`); an unknown backend key or hint name is a config validation error. Values are non-empty strings passed through as literals (no nested hint resolution), or `false` to disable.
 - JSON-schema shape in `config-schema.json`: `model_hints` is an object with `propertyNames` enumerating the backend keys and `additionalProperties: false`; each backend value is an object with `properties` `coding`/`reasoning`/`burst` and `additionalProperties: false`; each hint value is `{"oneOf": [{"type": "string", "minLength": 1}, {"const": false}]}`. `null` and `true` fail schema validation.
 - Per-hint merge over built-in defaults: a host entry may override one hint and inherit the rest. The value `false` disables a built-in mapping for that hint, which makes the hint error on that backend. `null` is **not** the disable sentinel: `config.core.deep_merge` treats `None` in `ll.local.md` as key removal, which would silently restore the built-in default, and a `null` written directly in `ll-config.json` would reach the resolver as a value — the two files would disagree. A `null` value is therefore a config validation error.
 - `anthropic-api` values still pass through `resolve_model_alias`, so an alias such as `opus` is valid there.
 - Precedence is unchanged: config supplies only the hint → model table; a literal `model:` or run `--model` beats a hint exactly as in the precedence table above.
-- `ll-loop validate` resolves each declared hint against the configured host (`orchestration.host_cli` / `LL_HOST_CLI`) and emits a WARNING — not an error, because the host can differ at run time — for any hint that would fail to resolve. It checks every request path the declaration could reach, mirroring `FSMExecutor._resolve_request_path`: the state's own `request_path` override if set, else `orchestration.request_path`; plus the CLI fallback for SDK/batch (downgrade re-resolves for the CLI runner). States that `_resolve_request_path` always downgrades to CLI (action invokes a `/ll:` skill per `_SKILL_INVOKE_RE`, or declares `tools:` — BUG-2831) are checked for CLI only; do not warn about an `anthropic-api` mapping they can never reach. The runtime error remains authoritative.
+- `ll-loop validate` resolves each declared hint against the configured host (`orchestration.host_cli` / `LL_HOST_CLI`) and emits a WARNING — not an error, because the host can differ at run time — for any hint that would fail to resolve. It checks every request path the declaration could reach, mirroring `FSMExecutor._resolve_request_path`: the state's own `request_path` override if set, else `orchestration.request_path`; plus the CLI fallback for SDK/batch (downgrade re-resolves for the CLI runner). An evaluator hint is checked against the CLI host only, whatever the state's `request_path`. States that `_resolve_request_path` always downgrades to CLI (action invokes a `/ll:` skill per `_SKILL_INVOKE_RE`, or declares `tools:` — BUG-2831) are checked for CLI only; do not warn about an `anthropic-api` mapping they can never reach. The runtime error remains authoritative.
 
 ### Supported artifact/host matrix
 
@@ -115,7 +121,8 @@ The implementation must publish a tested matrix, not infer support from a `--mod
 |----------------------|----------------------|
 | Loop CLI actions, Claude/Codex/Gemini/OMP/Kimi/Qwen | Prove each supported runner forwards the resolved selection; mark unsupported combinations explicitly |
 | Loop Codex streaming actions | Supported (BUG-3529 done); dispatch test asserts the resolved selection in argv |
-| Loop blocking evaluators | Test each runner advertised as supported, including Codex |
+| Loop blocking evaluators | CLI host only (no SDK evaluator path exists); test each runner advertised as supported, including Codex |
+| Fake host (`fake`, `fake-minimal`) | Test-only built-in mapping; `FakeHostRunner` must echo `--model` into argv (ENH-3547) so dispatch tests can assert it |
 | Loop Anthropic SDK/batch | Concrete Anthropic resolution, including foreign configured CLI hosts and CLI downgrade |
 | Opencode/pi | Preserve unconfigured-runner behavior; do not advertise hint support |
 | Native skills/agents and generated agent files | Deferred to ENH-3533; no portability claim from accepting frontmatter alone |
@@ -124,21 +131,21 @@ Do not migrate shipped skills/agents or regenerate mirrors in this issue. ENH-35
 
 ### Lifecycle and model identity
 
-Persist the requested declaration through sub-loop inheritance, detach, and resume rather than replacing it with a resolved ID. Existing override rules continue to apply. Each dispatch resolves against the effective backend and records the hint/literal requested, resolved selection, and backend **in the FSM event stream** (the existing state/action event payloads, as additive `model_requested`, `model_resolved`, `model_backend` fields) and in the run header. This issue adds no database columns; `usage_events` stays owned by ENH-3528/ENH-3538 and records only observed model identity. Resume may resolve a changed mapping and must make the new selection visible.
+Persist the requested declaration through sub-loop inheritance, detach, and resume rather than replacing it with a resolved ID. Existing override rules continue to apply. Each dispatch resolves against the effective backend and records the hint/literal requested, resolved selection, and backend **in the FSM event stream** (the existing state/action event payloads, as additive `model_requested`, `model_resolved`, `model_backend` fields) and in the run header. This issue adds no database columns; `usage_events` (ENH-3528/ENH-3538, both done) records only observed model identity in its `model` column, where NULL is bucketed as `token_provenance.UNKNOWN_MODEL_BUCKET`. Resume may resolve a changed mapping and must make the new selection visible.
 
 **Sub-loops (decided 2026-09-24).** Matches how `run_model` is passed to child executors today (`executor.py:1268`): the run-level `--model` inherits into child loops unchanged; a parent state's `model`/`model_hint` does **not** propagate into the child. Each child state resolves against its own declaration, then the run `--model`, then the *child* loop's `llm` — never the parent's `llm`. The requested declaration (not a resolved ID) is what persists, so a child resolves afresh against the effective backend.
 
-Keep the observed model reported by the host separate from requested/resolved selections. Missing host model identity remains unknown; do not label a requested alias as an observed model. Headers may show `hint → resolved selection`, while usage records use observed identity where available. Coordinate this contract with ENH-3528 without introducing a hard dependency: both changes must work independently.
+Keep the observed model reported by the host separate from requested/resolved selections. Missing host model identity remains unknown; do not label a requested alias as an observed model. Headers may show `hint → resolved selection`, while usage records use observed identity where available. ENH-3528 has landed; do not write requested or resolved selections into `usage_events.model`.
 
 ## Acceptance Criteria
 
 - [ ] State and `llm` hints accept exactly `coding`, `reasoning`, and `burst`; explicit model-plus-hint, invalid hints, and inapplicable states fail validation before execution.
 - [ ] Schema, parsing, serialization, and direct construction cover omitted, literal-only, and hint-only cases; implicit defaults do not create conflicts or mask hints.
-- [ ] Applicability follows `state.model`'s reach: prompt actions and LLM evaluators; shell-action + LLM-evaluator states are valid; states with neither fail validation.
-- [ ] `resolve_model_hint` unit tests cover every backend key × hint, unsupported backends (opencode/pi), and disabled or missing mappings; it never returns `None`.
+- [ ] Applicability follows `state.model`'s reach: prompt actions and LLM evaluators (explicit or implicit); shell-action + LLM-evaluator states are valid; states with neither fail validation (ERROR, deliberately stricter than `model:`'s WARNING).
+- [ ] `resolve_model_hint` unit tests cover every backend key × hint (including `fake`/`fake-minimal`), unsupported backends (opencode/pi), and disabled or missing mappings; it never returns `None`.
 - [ ] Canonical mapping targets avoid duplicate model IDs for hints sharing a target, and runtime-map coverage is checked by `ll-verify-host-map` tests.
 - [ ] Until ENH-3547 lands, executing a hint-bearing state fails before dispatch with an explicit not-yet-supported error; no-hint behavior and literal CLI argv are unchanged.
-- [ ] Built-in mappings exist only for `claude-code` and `anthropic-api`, with `anthropic-api` targets derived from `MODEL_ALIASES` (no duplicated concrete IDs). `model_hints` (under `orchestration`) is in `config-schema.json` and `OrchestrationConfig`; tests cover per-hint merge over defaults, `false` disabling a built-in hint (via both `ll-config.json` and `ll.local.md`), `null` rejected, unknown backend/hint keys rejected, and a config-only Codex mapping reaching argv.
+- [ ] Built-in mappings exist only for `claude-code` and `anthropic-api`, with `anthropic-api` targets derived from `MODEL_ALIASES` (no duplicated concrete IDs). `model_hints` (under `orchestration`) is in `config-schema.json` and `OrchestrationConfig`; tests cover per-hint merge over defaults, `false` disabling a built-in hint (via both `ll-config.json` and `ll.local.md`), `null` rejected, unknown backend/hint keys rejected, `fake`/`fake-minimal` accepted as keys, and `resolve_model_hint("coding", backend="codex", overrides=...)` returning a config-only Codex mapping. The argv assertion belongs to ENH-3547, because this issue's guard stops dispatch.
 - [ ] The `llm.model` JSON `default` is removed from `fsm-loop-schema.json`; the fallback to `DEFAULT_LLM_MODEL` is described in its `description` instead, and a JSON/Python parity test covers it.
 
 Moved to split issues: precedence/dispatch/lifecycle/diagnostics/portability-proof criteria → ENH-3547; `ll-loop validate` warnings and documentation → ENH-3548.
@@ -161,7 +168,7 @@ This issue's slice only (declaration + resolver + config). Dispatch/lifecycle fi
 - `scripts/little_loops/fsm/schema.py`, `fsm/fsm-loop-schema.json` — state and `llm` declarations, exclusivity, absent-versus-default handling; remove the stale JSON `llm.model` default.
 - `scripts/little_loops/fsm/validation/structural_rules.py` — declaration errors (vocabulary, exclusivity, inapplicable states).
 - `scripts/little_loops/fsm/executor.py` — only the pre-dispatch not-yet-supported guard.
-- `scripts/little_loops/cli/verify_host_map.py`, `fsm/__init__.py` — runtime consistency checks and public exports.
+- `scripts/little_loops/cli/verify_host_map.py`, `fsm/__init__.py` — runtime consistency checks and public exports. Hint-support coverage must include `TEST_ONLY_HOSTS`, which check 2 currently exempts from the runtime map.
 - `scripts/little_loops/config/orchestration.py` (`OrchestrationConfig`), `scripts/little_loops/config-schema.json` — `model_hints` override under `orchestration`; `docs/reference/CONFIGURATION.md` entry for the new key.
 
 ### Dependent Files and Similar Patterns
@@ -206,9 +213,9 @@ Declaration selection and backend resolution happen after the effective request 
 
 - `FSMExecutor._resolve_request_path` → `resolve_model_hint` → `build_anthropic_request` (SDK/batch; concrete IDs via `resolve_model_alias`)
 - `FSMExecutor._resolve_request_path` → `resolve_model_hint` → `CodexRunner.build_streaming` / `ClaudeCodeRunner.build_streaming` (CLI actions)
-- `FSMExecutor._evaluate` → `resolve_model_hint` → `evaluate_llm_structured` / `evaluate` → `resolve_host().build_blocking_json` (evaluators)
+- `FSMExecutor._evaluate` → `resolve_model_hint` (CLI backend only) → `evaluate_llm_structured` / `evaluate` → `resolve_host().build_blocking_json` (evaluators)
 
-Evaluators do not receive `orchestration_config`; they take a plain `model: str` and call `resolve_host()` themselves (`fsm/evaluators.py:1117,1227,1483`). Resolve the hint in `FSMExecutor._evaluate` (today `model=state.model or self.fsm.llm.model` at `executor.py:3174,3221`), where `self.orchestration_config` is available, against the same backend `resolve_host()` will return, and pass the resolved string down. Evaluator signatures stay `model: str`; do not thread config into `evaluators.py`.
+Evaluators do not receive `orchestration_config`; they take a plain `model: str` and call `resolve_host()` themselves (`fsm/evaluators.py:1117,1227,1483`). Resolve the hint in `FSMExecutor._evaluate` (today `model=state.model or self.fsm.llm.model` at `executor.py:3174,3221`), where `self.orchestration_config` is available, against the CLI backend `resolve_host()` will return. Do not use `_resolve_request_path` here, because evaluators have no SDK path. Pass the resolved string down. Evaluator signatures stay `model: str`; do not thread config into `evaluators.py`.
 
 Host-observed model identity is recorded separately after dispatch.
 
@@ -255,10 +262,18 @@ Applied the delivery split: this issue keeps declaration, resolver and config; d
 
 Dropped `resolve_model_hint`'s `operation` parameter and the `model_operation` event field; decided sub-loop semantics; trimmed Integration Map/Steps to this issue's slice; added `blocks: ENH-3533`. BUG-3541 should land before the `anthropic-api` hint tests.
 
+### Pre-implementation review 2026-09-25
+
+- Added built-in test-only mappings for `fake`/`fake-minimal`, which are excluded from `RUNTIME_HOST_CAPABILITIES`. Without them, ENH-3547's fake-host portability proof would fail as an unknown backend.
+- Evaluators have no SDK path (`fsm/evaluators.py` never reads `request_path`), so evaluator hints resolve against the CLI host only.
+- The config criterion no longer asserts argv, which this issue's own guard prevents; argv moved to ENH-3547.
+- Documented the implicit-evaluator reach and the deliberate ERROR (vs `model:`'s WARNING) for inapplicable hints.
+- Removed stale `MODEL_ALIASES` text now that BUG-3541 is done.
+
 ## Related
 
 - ENH-3547, ENH-3548 — split pieces 2 and 3 (blocked by this issue).
-- BUG-3541 — `MODEL_ALIASES` `opus`/`fable` targets are superseded IDs; land it first so `anthropic-api` hint tests assert current IDs.
+- BUG-3541 (done) — refreshed `MODEL_ALIASES` `opus`/`fable` targets; `anthropic-api` hint tests assert current IDs.
 
 ## Status
 

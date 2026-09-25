@@ -46,6 +46,8 @@ A skill or agent can declare `model_hint` instead of `model`; each supported hos
 
 **Not implementation-ready.** Answer these with `/ll:spike` (can Claude Code honor a frontmatter hint at all, and does it tolerate an unknown `model_hint` key in skill/agent frontmatter?) and `/ll:decide-issue` before any implementation. Exclude from the first implementation wave; it must not gate EPIC-3563 closure.
 
+The spike does not depend on ENH-3527: it probes Claude Code's frontmatter handling, not the resolver. It can run now, in parallel with the loop-execution work. Only implementation is blocked by ENH-3527.
+
 - **Resolution timing**: native invocation (Claude Code reads frontmatter — can a hint be honored at all without rewriting the file?) versus generation time (Codex/Gemini/Kimi/Qwen adapters resolve through ENH-3527's resolver when emitting).
 - **Staleness**: how generated agent files are detected as stale and regenerated after a mapping or `orchestration.model_hints` change.
 - **Claude-native path**: whether hints require an `ll-adapt`-style materialization for Claude Code too, or are limited to generated hosts.
