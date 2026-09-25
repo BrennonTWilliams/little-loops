@@ -16,6 +16,12 @@ parent: EPIC-3565
 blocks:
 - FEAT-3598
 - ENH-3601
+confidence_score: 90
+outcome_confidence: 50
+score_complexity: 14
+score_test_coverage: 18
+score_ambiguity: 18
+score_change_surface: 0
 ---
 
 # ENH-3602: Single budget owner for learning-proof evidence
@@ -197,7 +203,19 @@ Decomposed from ENH-3577: Consolidate autodev issue preparation into a single co
 **Open** | Created: 2026-09-25 | Priority: P3
 
 
+## Confidence Check Notes
+
+**Confidence Check — 2026-09-25** (Readiness 90/100 · Outcome Confidence 50/100)
+
+### Outcome Risk Factors
+- Very wide blast radius for learning-proof staleness verdicts — ~20 dependent consumers (executor, hooks ×2, cli ×3, release_gate, go-no-go, worker_pool, sprint preflight, rn-implement, `loops/lib/common.yaml` fragment, mirror gates ×3 hosts) must keep receiving identical verdict tokens; regression risk concentrates in the consumers whose stale/refuted behavior legitimately shifts (confidence-check, ready-issue, `ll-auto` gate)
+- Consumer-parity test coverage is new territory — no multi-module fixture exists today; the "shared fixture, same verdict from every consumer" test must be authored from scratch (model on `test_route_spike_verdict_classification`'s dual-parametrize idiom)
+- Residual judgment load: disposition of ~10 additional `is_record_stale` consumers (consume `assess_proof` vs record out of scope) is deferred to implementation
+
+Advisory (Criterion 4 claim cap): `ll-issues next-obligation` (Option C text) does not resolve — a forward-looking reference to a nonexistent subcommand under the rejected option; harmless, but caps Criterion 4 at 10.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-09-25T21:22:43 - `345d0814-f8e9-469f-ad62-bef9083d17be.jsonl`
 - `/ll:wire-issue` - 2026-09-25T20:51:15 - `85e4cae3-0d07-49cf-9a70-1d94df7e46ab.jsonl`
 - `/ll:refine-issue` - 2026-09-25T19:41:25 - `2f63920a-850e-4ac5-bf34-e7b8eb47e2e0.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-09-25T19:09:20 - `dcfdf31c-be65-47ce-9e6e-5b65d63239f2.jsonl`

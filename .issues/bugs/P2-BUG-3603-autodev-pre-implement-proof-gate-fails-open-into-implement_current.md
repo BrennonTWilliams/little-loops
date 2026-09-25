@@ -10,6 +10,12 @@ captured_at: '2026-09-25T20:00:00Z'
 parent: EPIC-3565
 blocks:
 - ENH-3599
+confidence_score: 100
+outcome_confidence: 75
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 # BUG-3603: Autodev pre-implement proof gate fails open into implement_current
@@ -185,6 +191,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 **Open** | Created: 2026-09-25 | Priority: P2
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-25T21:22:42 - `345d0814-f8e9-469f-ad62-bef9083d17be.jsonl`
 - `/ll:wire-issue` - 2026-09-25T20:51:15 - `85e4cae3-0d07-49cf-9a70-1d94df7e46ab.jsonl`
 - `/ll:refine-issue` - 2026-09-25T19:48:48 - `2f63920a-850e-4ac5-bf34-e7b8eb47e2e0.jsonl`
 - `/ll:capture-issue` - 2026-09-25 - EPIC-3565 child review
