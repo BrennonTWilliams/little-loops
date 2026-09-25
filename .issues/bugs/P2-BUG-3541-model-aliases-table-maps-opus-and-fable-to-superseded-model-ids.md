@@ -87,6 +87,21 @@ table recognize both the new and the superseded IDs (history rows keep old IDs).
 7. Add a guard test asserting every `MODEL_ALIASES` target has an advisor rank
    and a `MODEL_PRICING` entry, so the three tables cannot drift again.
 
+## Integration Map
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
+
+- **Tables that must agree, all exact-key lookups** (a missing row fails silently — `None` or passthrough): `MODEL_ALIASES` (`host_runner.py:97-102`), `MODEL_RANKS["claude-code"]` (`advisor.py:52-59`), `MODEL_PRICING` (`pricing.py:21-91`). `MODEL_CONTEXT_WINDOW` (`context_window.py:19-33`) is a fourth table with no 5.x entries at all (`claude-sonnet-5`, `claude-opus-5`, `claude-fable-5` all fall to the 200k floor); it is outside this issue's Scope but shares the drift shape.
+- **Only two non-test callers of `resolve_model_alias`**: `build_anthropic_request()` in `host_runner.py` (batch reuses this builder, so SDK and batch are both covered) and `rank_model()` in `advisor.py`. `MODEL_ALIASES` is referenced nowhere outside `host_runner.py`.
+- **Correction to Current Behavior**: `rank_model` returns `None` for an unranked ID — there is no "unknown-model default" rank.
+- **Correction to Scope 4**: the line 383-387 range in `test_host_runner_dispatch.py` also contains the `haiku` (384) and `Sonnet` (386) rows; only 383 (`opus`), 385 (`fable`) and 387 (`" opus "`) change.
+- **Tests that break as a direct consequence of the alias change and must be updated together**: `test_advisor.py:58` (`rank_model(.., "opus") == rank_model(.., "claude-opus-5")` becomes `None` vs `3`); `test_advisor.py:30-38` asserts an exact five-ID set, so any new rank row edits it; `test_pricing.py:20-32` `LIVE_RATES` is a second hand-typed copy of the rates and `test_every_model_pinned` (`:94-95`) asserts `set(MODEL_PRICING) == set(LIVE_RATES)`, so every new pricing key must be added to `LIVE_RATES` in the same change (which also pulls it into `test_rates_match_live_table` and `test_batch_halves_each_rate`).
+- **Stale references adjacent to the change**: the `advisor.py:49` comment cites `host_runner.py:79-84` (now the `__all__` list; `resolve_model_alias` is at `:105-114`); `advisor.py:88` docstring and `docs/reference/API.md:12228,12236` name `claude-opus-5` as the current opus.
+- **Unaffected by new IDs**: `cache_marking_oracle.py` matches by family substring (`"opus"`), so `claude-opus-5-5` behaves like `claude-opus-5`; `claude-fable-*` and haiku use the same default minimum before and after.
+- **Pricing details relevant to the haiku shared-dict scope item**: `INTRO_PRICING` is keyed by model ID separately and is currently empty (`{}`), so a shared rate dict cannot diverge on intro pricing today; nothing mutates `MODEL_PRICING` entries.
+
 ## Program Design
 
 ### Types
@@ -133,3 +148,14 @@ table recognize both the new and the superseded IDs (history rows keep old IDs).
 
 ## Session Log
 - `/ll:format-issue` - 2026-09-25T01:01:19 - `4b76ee9e-e590-41ab-940d-a6df6f1554bd.jsonl`
+
+## Conventions in Force
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
+
+- Model tables are hand-edited and keyed on the concrete ID; superseded IDs are retained when new ones are added (`pricing.py` keeps `claude-opus-4-5`..`4-8` beside `claude-opus-5`; `advisor.py:57-58` keeps `claude-fable-5` and `claude-fable-5-1` at the same rank). Each module's tests hold a second hand-typed copy of the expected keys, and equality against that copy is the drift signal (`LIVE_RATES`, the literal rank set, the `(alias, expected)` parametrize list).
+- **No cross-table guard exists today**, and no test references `MODEL_ALIASES` directly; the Scope 7 guard test is genuinely new coupling.
+- **Contested point**: `MODEL_PRICING` uses only independent inline dict literals (`pricing.py:23-90`, even where values are identical) and no test asserts dict identity. The issue's shared-dict `is` requirement for the two haiku keys would be the first such use; the identical-rates outcome can also be enforced by value equality.
+- The SDK/batch dispatch tests are `sonnet`-only (`test_host_runner_dispatch.py:406-432`) while the alias-map test is already parametrized over all four aliases.

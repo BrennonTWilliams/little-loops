@@ -70,4 +70,5 @@ _Added by `/ll:confidence-check` on 2026-09-24_
 - Wide blast radius: `user_messages` has many dependents.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-25T01:02:51 - `f35cbaf1-740e-46e5-84c9-0ecf04a645f4.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-09-24T23:55:45 - `2bb94109-d967-427c-a647-9b0a7a8e368e.jsonl`

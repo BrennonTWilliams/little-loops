@@ -123,4 +123,5 @@ _Added by `/ll:confidence-check` on 2026-09-24_
 - Broad blast radius: usage, cost, waste and export readers all reroute through `select_usage_coverage`.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-25T01:02:49 - `f35cbaf1-740e-46e5-84c9-0ecf04a645f4.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-09-24T17:53:58 - `5250dd00-ed7b-4310-8dee-527fe13b2b07.jsonl`
