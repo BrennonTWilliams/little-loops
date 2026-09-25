@@ -196,7 +196,7 @@ CLAIM_GAP=$(echo "$FC_JSON" | python -c "import json,sys; d=json.load(sys.stdin)
 # <!-- ll-prose-ok: mirrors the pre-existing PD_GAP idiom (SKILL.md Phase 1.6) for a one-off JSON field extraction, not a reimplemented algorithm -->
 DECISION_GAP=$(echo "$FC_JSON" | python -c "import json,sys; print('; '.join(json.load(sys.stdin).get('unapplied_decision', [])))" 2>/dev/null || true)
 # <!-- ll-prose-ok: mirrors the pre-existing PD_GAP idiom (SKILL.md Phase 1.6) for a one-off JSON field extraction, not a reimplemented algorithm -->
-STRUCT_GAP=$(echo "$FC_JSON" | python -c "import json,sys; d=json.load(sys.stdin); D={'Summary','Acceptance Criteria'}; print('; '.join(d.get('template_placeholders', []) + d.get('boilerplate', []) + [m for m in d.get('missing', []) if m in D]))" 2>/dev/null || true)
+STRUCT_GAP=$(echo "$FC_JSON" | python -c "import json,sys; d=json.load(sys.stdin); print('; '.join(d.get('template_placeholders', []) + d.get('directive_gaps', [])))" 2>/dev/null || true)
 ```
 
 `PARITY_GAP` is non-empty when the issue is missing a `### Behavior Parity` subsection
@@ -216,14 +216,14 @@ Criterion C) and, like `CLAIM_GAP`, must never be escalated to a `STOP` verdict.
 
 `STRUCT_GAP` (ENH-3257) is **advisory input to Criterion 4 only** — it caps the criterion (see
 [rubric.md](rubric.md) Criterion 4) and, like `CLAIM_GAP`, must never be escalated to a `STOP`
-verdict. It combines `template_placeholders` and `boilerplate` (taken unfiltered) with
-`missing`, filtered to the directive allowlist `{Summary, Acceptance Criteria}` — ceremonial
-`missing` entries (`Status`, `Impact`, etc.) do not contribute, since a structural-section
-absence covered by a stronger hard override elsewhere carries no additional signal here, and
-the rest carry no signal about specification quality. Remedy differs by key: `boilerplate` and
-`missing` have no `--fix` repair (`/ll:format-issue` inserts missing sections); `--fix` fills only
-the frontmatter-derivable `template_placeholders` tokens (Priority, Status date, type label) — the
-rest is literal template debris that needs authored content.
+verdict. It combines `template_placeholders` (taken unfiltered) with
+the payload's `directive_gaps` key (missing/empty/boilerplate/renamed sections projected onto the
+directive set — e.g. Summary, Acceptance Criteria, Steps to Reproduce; ceremonial Impact/Status and the
+design-gated section are excluded), since a structural-section absence covered by a stronger hard override
+elsewhere carries no additional signal here. Remedy differs by key: `--fix --apply` repairs only a
+missing `Status` section and fills the frontmatter-derivable `template_placeholders` tokens
+(Priority, Status date, type label); other missing/boilerplate directive sections need
+`/ll:format-issue`, and the rest is literal template debris that needs authored content.
 
 ### Phase 1.9: Pre-Fetch Unproven Mechanism Flag (ENH-3350)
 ```bash

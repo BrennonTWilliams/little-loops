@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import re
 import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -385,6 +386,41 @@ def _fix_template_placeholders(
         print(f"  [dry-run] would fill {len(values)} template placeholder(s)")
 
 
+def _fix_missing_status(
+    config: BRConfig, source_id: str, path: Path, targets: list[str], *, apply: bool
+) -> None:
+    """Insert a frontmatter-rendered ``## Status`` section when it is missing (ENH-3576).
+
+    Acts only when ``Status`` is among *targets* and every value
+    (priority, ``discovered_date``, status) resolves — never writes a partial
+    line. Inserts before ``## Session Log`` when present, else appends.
+    """
+    from little_loops.file_utils import atomic_write
+    from little_loops.frontmatter import parse_frontmatter
+    from little_loops.issue_parser import resolve_priority
+
+    if "Status" not in targets:
+        return
+    content = path.read_text(encoding="utf-8")
+    fm = parse_frontmatter(content)
+    priority = resolve_priority(path.name, fm, config, default=None)
+    discovered_date = fm.get("discovered_date")
+    status = fm.get("status")
+    if not (priority and discovered_date and status):
+        return
+    display = str(status).replace("_", " ").title()
+    block = f"## Status\n\n**{display}** | Created: {discovered_date} | Priority: {priority}\n"
+    match = re.search(r"^## Session Log[ \t]*$", content, re.MULTILINE)
+    if match:
+        updated = content[: match.start()] + block + "\n" + content[match.start() :]
+    else:
+        updated = content.rstrip("\n") + "\n\n" + block
+    if apply:
+        atomic_write(path, updated)
+    else:
+        print("  [dry-run] would insert ## Status section")
+
+
 # ENH-3247: gap-class -> repair function dispatch table, replacing the two
 # hardcoded `_fix_prose_deps` call sites. Every fixer shares the signature
 # `(config, source_id, path, targets, *, apply) -> None`.
@@ -395,6 +431,7 @@ _REPAIR_DISPATCH = {
     "empty_provenance_stub": _fix_empty_provenance_stubs,
     "template_placeholders": _fix_template_placeholders,
     "duplicate_session_log": _fix_duplicate_session_log,
+    "missing": _fix_missing_status,
 }
 
 # Impact › Risk — sweep blast radius: --all --fix --apply may only run
@@ -504,7 +541,7 @@ def _print_gaps(gaps: FormatGaps) -> None:
         print(f"  empty_provenance_stub: {entry}")
     for entry in gaps.template_placeholders:
         print(
-            f"  template_placeholders: {entry} (literal template debris; no --fix, needs content)"
+            f"  template_placeholders: {entry} (literal template debris; --fix --apply fills derivable tokens, rest needs content)"
         )
     for entry in gaps.unapplied_decision:
         print(f"  unapplied_decision: {entry}")
@@ -550,6 +587,7 @@ def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
     from little_loops.cli.output import print_json
     from little_loops.issue_parser import (
         check_format_gaps,
+        directive_gaps,
         find_highest_priority_issue,
         find_issues,
         superseded_marker_count,
@@ -735,6 +773,9 @@ def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
         # in bulk.
         payload: dict[str, object] = dict(gaps.to_dict())
         payload["superseded_marker_count"] = superseded_marker_count(path)
+        # ENH-3576: directive-section projection for refine-to-ready-issue and
+        # confidence-check Phase 1.8; not a FormatGaps field (exit code unchanged).
+        payload["directive_gaps"] = directive_gaps(gaps)
         print_json(payload)
         return 1 if gaps.has_blocking_gaps else 0
 

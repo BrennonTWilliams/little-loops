@@ -163,6 +163,13 @@
       "human_value": "HIGH",
       "question": "How will we measure if this enhancement is successful?"
     },
+    "Acceptance Criteria": {
+      "level": "required",
+      "description": "Criteria that must be met for the work to be complete",
+      "ai_usage": "HIGH",
+      "human_value": "HIGH",
+      "question": "What criteria must be met for this work to be complete?"
+    },
     "Scope Boundaries": {
       "level": "required",
       "description": "What is explicitly out of scope",

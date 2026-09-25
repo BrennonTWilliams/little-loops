@@ -117,7 +117,9 @@ scope:
 # -> normalize_structure -> clear_verify_verdict -> verify_issue ->
 # check_verify_verdict -> check_evidence_unverified -> check_proposal_unsound
 # -> check_directive_drift, plus one hop onward.
-max_steps: 85
+# ENH-3576: 85 -> 90. +1 precheck_format on every run, +1 for the single shared
+# /ll:format-issue fallback (pre or post, one counter), rounded for headroom.
+max_steps: 90
 # Step-cap fall-through: the executor runs the named state exactly once at the
 # cap; its `next:` is never followed and terminated_by stays "max_steps".
 # classify_terminal then writes refine-terminal-class so autodev's
@@ -176,6 +178,7 @@ states:
       printf '0' > ${context.run_dir}/refine-to-ready-proposal-revisions &&
       rm -f ${context.run_dir}/refine-to-ready-proposal-revision &&
       printf '0' > ${context.run_dir}/refine-to-ready-verify-retries &&
+      printf '0' > ${context.run_dir}/refine-to-ready-format-fallback &&
       { [ -n ${context.input:shell} ] && printf '%s' ${context.input:shell} ||
       ll-issues next-issue; } | tr -d '\n\r '
     action_type: shell
@@ -261,7 +264,7 @@ states:
       type: output_numeric
       operator: lt
       target: 1
-    on_yes: refine_issue
+    on_yes: precheck_format  # ENH-3576: structural check before research
     on_no: breakdown_issue
     on_error: diagnose
 
@@ -384,16 +387,109 @@ states:
     # ENH-3248: deterministic, no-LLM structural repair pass. Unconditional
     # after refine_issue / refine_followup / wire_issue, placed before
     # verify_issue so every downstream gate reads a post-normalize file.
-    # cmd_format_check returns 1 whenever ANY gap remains — fixable or not —
-    # so its exit code carries no routing signal here (this is a
-    # pass-through, not a gate: no evaluate:/on_yes:/on_no:); `|| true` keeps
-    # a routine post-fix nonzero exit from being misread as a real error.
-    # Not load-bearing for any downstream reader (mirrors mark_wire_done's
-    # fall-through, not write_broke_down's): on_error equals next.
-    action: ll-issues format-check ${captured.issue_id.output:shell} --fix --apply || true
+    # ENH-3576: now a gate. Two calls: `format-check --fix --apply` (output
+    # discarded — fixers print to the same stdout as --format json, so a
+    # combined call would corrupt the payload; `|| true` because the exit code
+    # is 1 whenever ANY gap remains), then `--format json` reading
+    # directive_gaps. The one-shot budget counter
+    # (refine-to-ready-format-fallback, seeded 0 by resolve_issue) is folded
+    # into the probe: gaps + counter 0 -> set counter, route to
+    # format_issue_post (one /ll:format-issue per run, shared with
+    # precheck_format); gaps + counter 1 -> [STRUCT_GAP_REMAINS] on stderr and
+    # proceed (advisory: caps confidence-check Phase 1.8 STRUCT_GAP). Every
+    # probe failure emits 0 (fail-open).
+    action: |
+      ll-issues format-check ${captured.issue_id.output:shell} --fix --apply >/dev/null 2>&1 || true
+      LL_ID=${captured.issue_id.output:shell} LL_CTR=${context.run_dir}/refine-to-ready-format-fallback python3 - << 'PYEOF'
+      import json, os, subprocess, sys
+      from pathlib import Path
+      try:
+          out = subprocess.run(
+              ["ll-issues", "format-check", os.environ["LL_ID"], "--format", "json"],
+              capture_output=True, text=True, timeout=120,
+          ).stdout
+          gaps = json.loads(out).get("directive_gaps", [])
+          ctr = Path(os.environ["LL_CTR"])
+          used = ctr.exists() and int(ctr.read_text().strip() or 0) >= 1
+          if not gaps:
+              print(0)
+          elif used:
+              print(f"[STRUCT_GAP_REMAINS] {os.environ['LL_ID']}: {', '.join(gaps)}", file=sys.stderr)
+              print(0)
+          else:
+              ctr.write_text("1")
+              print(len(gaps))
+      except Exception:
+          print(0)  # fail-open: never block the loop on a probe failure
+      PYEOF
     action_type: shell
+    evaluate:
+      type: output_numeric
+      operator: eq
+      target: 0
+    on_yes: clear_verify_verdict
+    on_no: format_issue_post
+    on_error: clear_verify_verdict
+
+  format_issue_post:
+    # ENH-3576: the one bounded /ll:format-issue fallback after normalize_structure.
+    # Bare slash-command shape, no rate-limit fragment (host-file convention,
+    # see reconcile_issue). Non-fatal: both exits rejoin the gate band.
+    action: "/ll:format-issue ${captured.issue_id.output} --auto"
+    action_type: slash_command
+    pruning_profile:
+      enabled: true
+      name: format-issue-auto
+      suppress_claude_md: true
     next: clear_verify_verdict
     on_error: clear_verify_verdict
+
+  precheck_format:
+    # ENH-3576: same probe as normalize_structure, run before refine_issue so
+    # research starts from a well-formed file. Shares the one fallback counter.
+    action: |
+      ll-issues format-check ${captured.issue_id.output:shell} --fix --apply >/dev/null 2>&1 || true
+      LL_ID=${captured.issue_id.output:shell} LL_CTR=${context.run_dir}/refine-to-ready-format-fallback python3 - << 'PYEOF'
+      import json, os, subprocess, sys
+      from pathlib import Path
+      try:
+          out = subprocess.run(
+              ["ll-issues", "format-check", os.environ["LL_ID"], "--format", "json"],
+              capture_output=True, text=True, timeout=120,
+          ).stdout
+          gaps = json.loads(out).get("directive_gaps", [])
+          ctr = Path(os.environ["LL_CTR"])
+          used = ctr.exists() and int(ctr.read_text().strip() or 0) >= 1
+          if not gaps:
+              print(0)
+          elif used:
+              print(f"[STRUCT_GAP_REMAINS] {os.environ['LL_ID']}: {', '.join(gaps)}", file=sys.stderr)
+              print(0)
+          else:
+              ctr.write_text("1")
+              print(len(gaps))
+      except Exception:
+          print(0)  # fail-open: never block the loop on a probe failure
+      PYEOF
+    action_type: shell
+    evaluate:
+      type: output_numeric
+      operator: eq
+      target: 0
+    on_yes: refine_issue
+    on_no: format_issue_pre
+    on_error: refine_issue
+
+  format_issue_pre:
+    # ENH-3576: one bounded /ll:format-issue fallback before refine_issue.
+    action: "/ll:format-issue ${captured.issue_id.output} --auto"
+    action_type: slash_command
+    pruning_profile:
+      enabled: true
+      name: format-issue-auto
+      suppress_claude_md: true
+    next: refine_issue
+    on_error: refine_issue
 
   clear_verify_verdict:
     # BUG-3571: drop any verify_verdict left by an earlier run/revision before

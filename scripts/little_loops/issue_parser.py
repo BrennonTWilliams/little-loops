@@ -4765,3 +4765,22 @@ def find_highest_priority_issue(
     """
     issues = find_issues(config, category, skip_ids, only_ids, type_prefixes)
     return issues[0] if issues else None
+
+
+#: Required sections that are never "directive" (ENH-3576): Program Design is owned by
+#: ``check_design``; Impact and Status are ceremonial. Every other required
+#: template section is a directive section.
+DIRECTIVE_EXCLUDED_SECTIONS: frozenset[str] = frozenset({"Program Design", "Impact", "Status"})
+
+
+def directive_gaps(gaps: FormatGaps) -> list[str]:
+    """Project structural gaps onto the directive section set (ENH-3576).
+
+    Collects ``missing``/``empty``/``boilerplate`` names and ``renamed`` targets
+    (the text after ``→``), drops :data:`DIRECTIVE_EXCLUDED_SECTIONS`, and
+    returns the sorted, de-duplicated remainder.
+    """
+    names: set[str] = set(gaps.missing) | set(gaps.empty) | set(gaps.boilerplate)
+    for entry in gaps.renamed:
+        names.add(entry.split("→", 1)[-1].strip())
+    return sorted(names - DIRECTIVE_EXCLUDED_SECTIONS)

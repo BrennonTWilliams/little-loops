@@ -147,6 +147,13 @@
     }
   },
   "type_sections": {
+    "Acceptance Criteria": {
+      "level": "required",
+      "description": "Criteria that must be met for the work to be complete",
+      "ai_usage": "HIGH",
+      "human_value": "HIGH",
+      "question": "What criteria must be met for this work to be complete?"
+    },
     "Steps to Reproduce": {
       "level": "required",
       "description": "Numbered steps to reproduce the bug",

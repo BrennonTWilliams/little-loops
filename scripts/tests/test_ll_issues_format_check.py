@@ -38,6 +38,9 @@ _CLEAN_BUG_BODY = "\n".join(
         "1. Do the thing.",
         "2. Observe failure.",
         "",
+        "## Acceptance Criteria",
+        "- [ ] It does not break.",
+        "",
         "## Impact",
         "- **Priority**: P3 - Low",
         "- **Effort**: Small",
@@ -384,6 +387,7 @@ class TestFormatCheckJsonOutput:
             # ENH-2992: marker presence rides the same payload; not a gap, so
             # it does not affect the exit code above.
             "superseded_marker_count": 0,
+            "directive_gaps": [],
         }
 
     def test_gapped_issue_json_output(
@@ -2582,6 +2586,9 @@ class TestFormatCheckTemplatePlaceholdersFix:
                 "1. Do the thing.",
                 "2. Observe failure.",
                 "",
+                "## Acceptance Criteria",
+                "- [ ] It does not break.",
+                "",
                 "## Impact",
                 "- **Priority**: [P0-P5] - [Justification]",
                 "- **Effort**: [Small/Medium/Large] - [Justification]",
@@ -3172,6 +3179,9 @@ _DOC_ONLY_BODY = "\n".join(
         "1. Open the guide.",
         "2. Click the broken link.",
         "",
+        "## Acceptance Criteria",
+        "- [ ] The link resolves.",
+        "",
         "## Impact",
         "- **Priority**: P3 - Low",
         "- **Effort**: Small",
@@ -3439,3 +3449,66 @@ class TestDuplicateFindingsBlock:
 
         assert "duplicate_findings_block" not in out
         assert result == 0
+
+
+class TestDirectiveGapsAndStatusFixer:
+    """ENH-3576: directive_gaps projection, AC requirement, _fix_missing_status."""
+
+    def test_directive_gaps_projection(self) -> None:
+        from little_loops.issue_parser import FormatGaps, directive_gaps
+
+        gaps = FormatGaps(
+            missing=["Status", "Impact", "Summary"],
+            renamed=["Use Cases → Use Case"],
+            empty=["Program Design", "Expected Behavior"],
+            boilerplate=["Summary"],
+        )
+        assert directive_gaps(gaps) == ["Expected Behavior", "Summary", "Use Case"]
+
+    @pytest.mark.parametrize("prefix,itype", [("BUG", "BUG"), ("ENH", "ENH")])
+    def test_bug_enh_require_acceptance_criteria(self, prefix: str, itype: str) -> None:
+        import json as _json
+
+        from little_loops.issue_parser import _required_sections
+
+        data = _json.loads(
+            (
+                Path(__file__).parent.parent
+                / "little_loops"
+                / "templates"
+                / f"{itype.lower()}-sections.json"
+            ).read_text()
+        )
+        assert "Acceptance Criteria" in _required_sections(data)
+
+    def test_fix_missing_status_inserts_and_is_idempotent(self, tmp_path: Path) -> None:
+        from little_loops.cli.issues.format_check import _fix_missing_status
+
+        path = tmp_path / "P3-ENH-900-x.md"
+        path.write_text(
+            "---\nid: ENH-900\nstatus: open\ndiscovered_date: '2026-09-24'\n---\n\n"
+            "# ENH-900: x\n\n## Summary\n\nx\n\n## Session Log\n- entry\n"
+        )
+        config = type("C", (), {"issue_priorities": ["P0", "P1", "P2", "P3", "P4", "P5"]})()
+        _fix_missing_status(config, "ENH-900", path, ["Status"], apply=True)  # type: ignore[arg-type]
+        text = path.read_text()
+        assert "## Status\n\n**Open** | Created: 2026-09-24 | Priority: P3\n" in text
+        assert text.index("## Status") < text.index("## Session Log")
+        # second run: Status no longer in targets in real use; direct re-call must not corrupt
+        _fix_missing_status(config, "ENH-900", path, [], apply=True)  # type: ignore[arg-type]
+        assert path.read_text() == text
+
+    def test_fix_missing_status_noop_without_discovered_date(self, tmp_path: Path) -> None:
+        from little_loops.cli.issues.format_check import _fix_missing_status
+
+        path = tmp_path / "P3-ENH-901-x.md"
+        body = "---\nid: ENH-901\nstatus: open\n---\n\n# ENH-901: x\n"
+        path.write_text(body)
+        config = type("C", (), {"issue_priorities": ["P0", "P1", "P2", "P3", "P4", "P5"]})()
+        _fix_missing_status(config, "ENH-901", path, ["Status"], apply=True)  # type: ignore[arg-type]
+        assert path.read_text() == body
+
+    def test_missing_status_not_sweep_safe(self) -> None:
+        from little_loops.cli.issues.format_check import _SWEEP_SAFE_REPAIRS
+
+        assert "missing" not in _SWEEP_SAFE_REPAIRS

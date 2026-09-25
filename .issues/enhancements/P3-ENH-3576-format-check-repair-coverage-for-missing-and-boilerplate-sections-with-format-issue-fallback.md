@@ -4,10 +4,11 @@ type: ENH
 title: Format-check repair coverage for missing and boilerplate sections with format-issue
   fallback
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-24'
 captured_at: '2026-09-24T19:33:14Z'
+completed_at: '2026-09-25T18:01:35Z'
 parent: EPIC-3565
 blocks:
 - ENH-3577
@@ -182,12 +183,12 @@ fixer — its Effort/Risk fields are judgment, and inserting its template would 
 
 ## Acceptance Criteria
 
-- [ ] A BUG or ENH issue with no `## Acceptance Criteria` reports `Acceptance Criteria` under `missing` in `ll-issues format-check --format json`
-- [ ] The single-issue `--format json` payload carries `directive_gaps`, excluding `Program Design`, `Impact` and `Status`, and the exit code matches the pre-change exit code for the same gaps
-- [ ] `ll-issues format-check <ID> --fix --apply` on an issue missing only `## Status` (with `priority` and `discovered_date` resolvable) leaves it with no `missing` gaps
-- [ ] With a directive gap and counter 0, the probe emits a nonzero count and writes 1 to `refine-to-ready-format-fallback`; with counter 1 it emits 0 and prints `[STRUCT_GAP_REMAINS]` to stderr
-- [ ] `check_lifetime_limit.on_yes` is `precheck_format`; `format_issue_pre` routes to `refine_issue` and `format_issue_post` to `clear_verify_verdict` on every exit; `resolve_issue` seeds the counter to 0
-- [ ] `ll-loop validate refine-to-ready-issue` passes
+- [x] A BUG or ENH issue with no `## Acceptance Criteria` reports `Acceptance Criteria` under `missing` in `ll-issues format-check --format json`
+- [x] The single-issue `--format json` payload carries `directive_gaps`, excluding `Program Design`, `Impact` and `Status`, and the exit code matches the pre-change exit code for the same gaps
+- [x] `ll-issues format-check <ID> --fix --apply` on an issue missing only `## Status` (with `priority` and `discovered_date` resolvable) leaves it with no `missing` gaps
+- [x] With a directive gap and counter 0, the probe emits a nonzero count and writes 1 to `refine-to-ready-format-fallback`; with counter 1 it emits 0 and prints `[STRUCT_GAP_REMAINS]` to stderr
+- [x] `check_lifetime_limit.on_yes` is `precheck_format`; `format_issue_pre` routes to `refine_issue` and `format_issue_post` to `clear_verify_verdict` on every exit; `resolve_issue` seeds the counter to 0
+- [x] `ll-loop validate refine-to-ready-issue` passes
 
 ## Related Key Documentation
 
@@ -204,10 +205,16 @@ Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the sam
 
 ## Status
 
-**Open** | Created: 2026-09-24 | Priority: P3
+**Done** | Created: 2026-09-24 | Priority: P3
 
+
+## Resolution
+
+Implemented: BUG/ENH `Acceptance Criteria` required; `directive_gaps` projection + JSON key; `_fix_missing_status`; `precheck_format`/`normalize_structure` probe gates with one shared `/ll:format-issue --auto` fallback; `max_steps` 90.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-25T18:01:35 - `e22a5582-f640-4248-a4ce-34068f335196.jsonl`
+- `/ll:ready-issue` - 2026-09-25T17:40:26 - `4f0855a3-01fd-4c00-875a-a00b42ed9327.jsonl`
 - `/ll:confidence-check` - 2026-09-25T17:25:07 - `b51bc121-4424-46da-83bd-8c5c91334957.jsonl`
 - `/ll:format-issue` - 2026-09-25T17:14:23 - `6249b55a-80e7-48d1-ad8e-6ad301b4a4d0.jsonl`
 - `/ll:verify-issues` - 2026-09-25T15:27:34 - `bc279096-6a89-4a82-b7c2-8e6f11cc30f5.jsonl`

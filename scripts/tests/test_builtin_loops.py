@@ -2108,31 +2108,36 @@ class TestRefineToReadyIssueSubLoop:
             f"reconcile_issue.on_error should be 'normalize_structure', got {state.get('on_error')!r}"
         )
 
-    def test_normalize_structure_state_is_pass_through(self, data: dict) -> None:
-        """normalize_structure (ENH-3248) carries no evaluate:/on_yes:/on_no: — it is a
-        pass-through, not a gate, since cmd_format_check's exit code is not a usable routing
-        signal (returns 1 for ANY remaining gap, fixable or not). on_error equals next, mirroring
-        mark_wire_done's not-load-bearing fall-through."""
+    def test_normalize_structure_is_probe_gate(self, data: dict) -> None:
+        """normalize_structure (ENH-3576) is a gate: `--fix --apply` (|| true) then a
+        directive_gaps probe; 0 → clear_verify_verdict, gaps → format_issue_post."""
         state = data["states"].get("normalize_structure", {})
-        assert state, "State 'normalize_structure' not found (ENH-3248)"
-        assert "evaluate" not in state and "on_yes" not in state and "on_no" not in state, (
-            "normalize_structure must be a pass-through with no evaluate:/on_yes:/on_no:"
-        )
-        assert state.get("next") == "clear_verify_verdict", (
-            f"normalize_structure.next should be 'clear_verify_verdict' (BUG-3571), "
-            f"got {state.get('next')!r}"
-        )
-        assert state.get("on_error") == state.get("next"), (
-            "normalize_structure.on_error should equal .next (not load-bearing downstream)"
-        )
+        assert state, "State 'normalize_structure' not found"
         action = state.get("action", "")
-        assert "format-check" in action and "--fix" in action and "--apply" in action, (
-            "normalize_structure.action should run format-check --fix --apply"
+        assert "--fix --apply" in action and "|| true" in action
+        assert "directive_gaps" in action
+        assert state.get("on_yes") == "clear_verify_verdict"
+        assert state.get("on_no") == "format_issue_post"
+        assert state.get("on_error") == "clear_verify_verdict"
+
+    def test_precheck_format_and_fallback_routing(self, data: dict) -> None:
+        """ENH-3576: check_lifetime_limit → precheck_format → format_issue_pre → refine_issue."""
+        states = data["states"]
+        assert states["check_lifetime_limit"]["on_yes"] == "precheck_format"
+        pre = states["precheck_format"]
+        assert (pre["on_yes"], pre["on_no"], pre["on_error"]) == (
+            "refine_issue",
+            "format_issue_pre",
+            "refine_issue",
         )
-        assert "|| true" in action, (
-            "normalize_structure.action must end in `|| true` — cmd_format_check's exit code "
-            "is not a usable gate signal here"
-        )
+        assert states["format_issue_pre"]["next"] == "refine_issue"
+        assert states["format_issue_pre"]["on_error"] == "refine_issue"
+        assert states["format_issue_post"]["next"] == "clear_verify_verdict"
+        assert states["format_issue_post"]["on_error"] == "clear_verify_verdict"
+        for name in ("format_issue_pre", "format_issue_post"):
+            assert states[name]["action"].startswith("/ll:format-issue")
+        assert "refine-to-ready-format-fallback" in states["resolve_issue"]["action"]
+        assert data["max_steps"] == 90
 
     def test_resolve_issue_seeds_reconcile_attempts_counter(self, data: dict) -> None:
         """resolve_issue seeds the reconcile-attempts counter alongside its siblings (ENH-3248)."""
@@ -8977,7 +8982,9 @@ class TestAutodevLoop:
         # BUG-3593: the verdict router precedes the (proven-only) clear -> rescore chain.
         assert counter_state.get("next") == "route_spike_verdict"
         assert counter_state.get("on_error") == "route_spike_verdict"
-        assert data["states"]["route_spike_verdict"]["route"]["PROVEN"] == "clear_scores_before_spike"
+        assert (
+            data["states"]["route_spike_verdict"]["route"]["PROVEN"] == "clear_scores_before_spike"
+        )
 
     def test_rerun_confidence_after_spike_routing(self, data: dict) -> None:
         """ENH-2640: rerun_confidence_after_spike re-scores and routes to enqueue_or_skip

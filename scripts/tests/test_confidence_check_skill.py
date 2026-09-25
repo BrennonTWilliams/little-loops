@@ -691,10 +691,10 @@ class TestConfidenceCheckStructGapPrefetch:
 
     def test_phase_1_8_documents_remedy_split(self) -> None:
         phase_text = self._phase_text("### Phase 1.8: Pre-Fetch Claim and Parity Gaps")
-        # format_check._REPAIR_DISPATCH has no fixer for boilerplate/missing, and
+        # format_check._REPAIR_DISPATCH fixes only a missing Status (ENH-3576), and
         # _fix_template_placeholders fills only frontmatter-derivable tokens.
-        assert "`missing` have no `--fix`" in phase_text, (
-            "Phase 1.8 must document that boilerplate/missing have no --fix repair"
+        assert "`--fix --apply` repairs only a" in phase_text, (
+            "Phase 1.8 must document that --fix repairs only a missing Status section"
         )
         assert "frontmatter-derivable `template_placeholders`" in phase_text, (
             "Phase 1.8 must document that --fix fills only derivable template_placeholders"

@@ -64,9 +64,9 @@ not Decision Rules content.
 
 ### Type-Specific Sections
 
-**BUG**: Steps to Reproduce (required), Actual Behavior (informal), Root Cause (conditional, NEW), Error Messages (conditional), Location (conditional)
+**BUG**: Steps to Reproduce (required), Actual Behavior (informal), Root Cause (conditional, NEW), Error Messages (conditional), Location (conditional), Acceptance Criteria (required)
 **FEAT**: Use Case (renamed from User Story), Acceptance Criteria, API/Interface (NEW)
-**ENH**: Success Metrics, Scope Boundaries
+**ENH**: Success Metrics, Scope Boundaries, Acceptance Criteria (required)
 **EPIC**: Goal, Scope, Children, Success Metrics (conditional)
 
 ### Deprecated Sections (Still Supported)
