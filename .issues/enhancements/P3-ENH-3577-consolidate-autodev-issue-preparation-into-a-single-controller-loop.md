@@ -34,7 +34,7 @@ contract gaps in EPIC-3565's children come directly from this duplication.
 
 ## Current Behavior
 
-Autodev (~87 states) duplicates the child loop's repair routing, with its own marker handshakes and copied inline predicates.
+Autodev (~103 states) duplicates the child loop's repair routing, with its own marker handshakes and copied inline predicates.
 
 ## Expected Behavior
 
@@ -42,7 +42,7 @@ The child owns all per-issue preparation and returns a typed outcome. Autodev ow
 
 ## Motivation
 
-- The outer loop has about 87 states, with a large inline `finalize_done`.
+- The outer loop has about 103 states, with a large inline `finalize_done`.
 - Learning-proof ownership is spread across confidence-check, ready-issue and the learning
   primitive, which each treat refuted/stale records differently.
 - Each duplicated route is a place where the readiness invariant can silently fail to apply.
@@ -83,7 +83,7 @@ The child owns all per-issue preparation and returns a typed outcome. Autodev ow
 
 ## Implementation Steps
 
-1. Land BUG-3571, BUG-3588, BUG-3572, FEAT-3573, BUG-3574, ENH-3575 and ENH-3576 with real-FSM regression tests
+1. Land BUG-3571, BUG-3588, FEAT-3573, BUG-3574, ENH-3575 and ENH-3576 with real-FSM regression tests
 2. Define the typed per-issue outcome/run-record schema
 3. Build the shared deterministic assessment + repair selector
 4. Move parent repair routing into the child; delete duplicated states and markers
@@ -97,7 +97,7 @@ The child owns all per-issue preparation and returns a typed outcome. Autodev ow
 
 ## Scope Boundaries
 
-- Blocked until the behavioral fixes (BUG-3571, BUG-3588, BUG-3572, FEAT-3573, BUG-3574, ENH-3575, ENH-3576) land with real-FSM regression
+- Blocked until the behavioral fixes (BUG-3571, BUG-3588, FEAT-3573, BUG-3574, ENH-3575, ENH-3576) land with real-FSM regression
   tests (stateful stub skills/CLIs asserting outcomes and evidence freshness, not state
   names). Consolidating first would lose the behavior those tests protect.
 - No state-count target.
@@ -112,10 +112,19 @@ The child owns all per-issue preparation and returns a typed outcome. Autodev ow
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
+## Verification Notes
+
+Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the same pass, so the issue as it now reads is up to date — this section is a record of what was wrong and fixed, not an outstanding action item)
+
+- `autodev.yaml` has 103 states, not ~87 — corrected.
+- BUG-3572 is cancelled and was never in `blocked_by`; removed from the prerequisite lists in Implementation Steps and Scope Boundaries.
+- Still blocking: FEAT-3573 (open). BUG-3571/3574/3588/3591/3592/3593 are done. `blocks` backlinks verified on all blockers.
+
 ## Status
 
 **Open** | Created: 2026-09-24 | Priority: P3
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-25T15:27:34 - `bc279096-6a89-4a82-b7c2-8e6f11cc30f5.jsonl`
 - `/ll:capture-issue` - 2026-09-24T19:42:32 - `59fe3bd4-3622-4dd2-bb8b-ad5cc55e79ec.jsonl`

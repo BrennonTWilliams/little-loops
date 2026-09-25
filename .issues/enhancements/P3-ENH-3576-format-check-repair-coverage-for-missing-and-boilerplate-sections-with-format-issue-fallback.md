@@ -50,8 +50,8 @@ Malformed structure is cheap to detect and fix deterministically. Leaving it to 
 
 ## Proposed Solution
 
-- Add a `recheck_format` state after `format-check --fix --apply` that reads the remaining
-  gap classes from `format-check --json`.
+- Add a `recheck_format` state after `normalize_structure` (`format-check --fix --apply`) that reads the remaining
+  gap classes from `format-check --format json` (the CLI has no `--json` flag).
 - On remaining `missing`/`boilerplate` in directive sections (at least `Summary` and
   `Acceptance Criteria`, matching Phase 1.8's allowlist), conditionally run
   `/ll:format-issue <ID> --auto`, bounded once per issue per run.
@@ -101,10 +101,19 @@ Malformed structure is cheap to detect and fix deterministically. Leaving it to 
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
+## Verification Notes
+
+Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the same pass, so the issue as it now reads is up to date — this section is a record of what was wrong and fixed, not an outstanding action item)
+
+- `format-check --json` does not exist; the flag is `--format json` — corrected.
+- The normalization state is `normalize_structure` in `refine-to-ready-issue.yaml`; it runs after `refine_issue`/`refine_followup`/`wire_issue`, not before research. The "run before expensive research" expectation therefore needs a second placement, not just a `recheck_format` after the existing state — noted for implementation.
+- All six `_REPAIR_DISPATCH` classes, the `|| true` tolerance and the Phase 1.8 `STRUCT_GAP` allowlist verified accurate.
+
 ## Status
 
 **Open** | Created: 2026-09-24 | Priority: P3
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-25T15:27:34 - `bc279096-6a89-4a82-b7c2-8e6f11cc30f5.jsonl`
 - `/ll:capture-issue` - 2026-09-24T19:42:32 - `59fe3bd4-3622-4dd2-bb8b-ad5cc55e79ec.jsonl`
