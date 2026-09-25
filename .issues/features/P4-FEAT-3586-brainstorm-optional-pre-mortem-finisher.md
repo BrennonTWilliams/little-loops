@@ -76,6 +76,13 @@ Add an optional `premortem` finisher to `scripts/little_loops/loops/brainstorm.y
 
 `tournament` -> `premortem_critic` -> `premortem_defender` -> `retry_counter` -> `portfolio` -> `verify_artifacts`
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
+
+- Verified anchors: `converge` (state), `route_sink` (state, `classify` evaluator routing `none|file|issue|decision`), `verify_artifacts` (asserts non-empty `brainstorm.md`), `retry_counter` (`lib/common.yaml` fragment). `tournament` and `portfolio` do not yet exist in `brainstorm.yaml` — FEAT-3582 dependency.
+- Decision Rules: skip route — `premortem` false (resolved from profile or explicit `premortem=true`) must route straight past the finisher with `brainstorm.md`/`winners.md` byte-identical to the no-finisher output. Round bound: the counter must increment per round and route out at `premortem_rounds`; a still-unconceded idea at the bound ships with its risks (not demoted). Concede = defender verdict `conceded: true`; the next finalist is promoted only if one remains, otherwise the demoted idea ships flagged.
+
 ## Integration Map
 
 ### Files to Modify
@@ -98,6 +105,15 @@ Add an optional `premortem` finisher to `scripts/little_loops/loops/brainstorm.y
 
 ### Configuration
 - Context keys: `premortem` (bool, resolved from profile) and `premortem_rounds`
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
+
+- **Loop shape today**: `scripts/little_loops/loops/brainstorm.yaml` has no `tournament`/`portfolio`/`premortem` states yet (states: `init … rank → converge → route_sink → verify_artifacts → finalize_done`). The Call Path in `## Program Design` names states that only exist once FEAT-3582 lands (already in `blocked_by`); the finisher's insertion point is between `converge` and `route_sink`, since `converge` writes `brainstorm.md` and `winners.md` and `route_sink` fans out to the sinks.
+- **Winners live in `winners.md`, not `ideas.jsonl`**: `converge` writes `${captured.run_dir.output}/winners.md` (JSON lines, same schema as `ideas.jsonl`); sinks consume it. "Reflected in `winners`" therefore means rewriting `winners.md` (and any `winners` structure FEAT-3582 introduces); the `ideas.jsonl` record of demotion/promotion is an additional append-only trail, not a replacement.
+- **`retry_counter` scope constraint**: `lib/common.yaml` `retry_counter` writes its counter to `.loops/tmp/${param.counter_key}` — shared scratch outside the run's isolation boundary, and it persists across runs (a stale file from a prior run would pre-exhaust the bound). `mechanize-skills.yaml` `diagnosis_retry` documents this (MR-3) and hand-rolls a counter under `${captured.run_dir.output}` with `evaluate: output_numeric / lt`. The Proposed Solution's "use the `retry_counter` fragment" is unsafe as written; the bound must be per-run.
+- **Existing test pins**: `scripts/tests/test_brainstorm.py::TestBrainstormYaml::test_max_steps_is_60` pins `max_steps == 60`; adding critic/defender/verdict states with bounded rounds must fit the budget or change the pin deliberately. `test_required_states_exist` and `test_context_has_required_knobs`/`test_context_defaults` enumerate states and context keys, so new `premortem`/`premortem_rounds` keys and states extend those contracts.
 
 ## Implementation Steps
 
@@ -130,5 +146,6 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-25T01:46:43 - `2ac59930-bb65-4013-a3d3-8f842b856fd9.jsonl`
 - `/ll:format-issue` - 2026-09-25T01:01:32 - `825370f4-2bf5-4bb8-a770-49c1a90d8b61.jsonl`
 - `/ll:capture-issue` - 2026-09-25T00:33:52 - `ba660a81-2414-4092-808d-95f51543dbb1.jsonl`

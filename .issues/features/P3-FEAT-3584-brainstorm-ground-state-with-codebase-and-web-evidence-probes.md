@@ -104,6 +104,19 @@ Issue-ID probing activates only when `.issues/` / `ll-issues` is available so th
 ### Configuration
 - Context key: `ground` (none|codebase|web), normally resolved from the profile (FEAT-3583)
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
+
+- **Stale state names in this issue**: `brainstorm.yaml` (459 lines) has no `shortlist` or `tournament` state today. The live flow is `init → frame → pop_lens ⇄ diverge → dedup_novelty → saturation_gate → (pop_lens | cluster) → rank → converge → route_sink`. `ideas.jsonl` is appended per lens round inside `dedup_novelty`, so a `ground` pass can only see the complete set after the lens loop drains. Placement "between `dedup` and `shortlist`" is therefore only meaningful relative to FEAT-3582's restructure (blocked_by); until it lands, the natural seam is immediately before `cluster`.
+- **Routing constraint**: three edges currently target `cluster` — `pop_lens.on_no`, `saturation_gate.on_no`, and `saturation_gate.on_error` (plus `dedup_novelty.on_no`). A gated `ground` state must intercept all of them, or ungrounded ideas reach `cluster`/`rank` via the unintercepted edge. `test_brainstorm.py::TestBrainstormShellStates` asserts routing of `pop_lens`, `saturation_gate`, `dedup_novelty`, and `cluster`/`rank` `on_error`; those contracts must keep passing or be updated deliberately.
+- **Idea schema today is `{text, rationale}` only** (`diverge` prompt and `dedup_novelty` parser); no `IdeaRecord` class exists in `scripts/little_loops/` — the `Program Design` type is a JSONL row shape, not a Python dataclass. `dedup_novelty` writes rows verbatim (`json.dumps(idea)`), so added `evidence`/`grounded` keys survive downstream states that read `ideas.jsonl` (`cluster`, `rank`, `converge` all read it via prompt and would need to be told to exclude `grounded: false`).
+- **Exit-code contract to inherit**: `dedup_novelty` documents (BUG-2468) that exit 2 = crash → `on_error: finalize_failed`, and a crash must never look like "nothing to do". A probe script must likewise separate "anchor not found" (a normal grounding result, exit 0 with `grounded: false`) from script failure (exit 2). LLM payloads reach Python only via a quoted heredoc file, never interpolated into source.
+- **`ll-issues show <ID>`** exits 0 on found, 1 with `Error: Issue '<id>' not found.` on stdout when absent (`cli/issues/show.py:cmd_show`) — exit 1 is "unknown ID", so an unavailable/absent `ll-issues` binary (exit 127) or missing `.issues/` must be distinguished from exit 1 to keep the Issue-system decoupling AC honest.
+- **`.loops/probes/` is not a matching precedent**: its contents are `.mjs` browser/DOM probes (`feat-3488-browser-probes.mjs`, etc.), not shell/Python existence probes. The Integration Map "Similar Patterns" entry should not be read as a template; the in-repo convention for non-LLM checks is an inline `action_type: shell` state with an `exit_code` evaluator (`dedup_novelty`, `saturation_gate`).
+- **Loop-authoring constraints**: `test_required_states_exist` lists required states (adding `ground` is safe; renaming existing ones is not); `max_steps: 60` bounds the run; bash `${...}` inside FSM shell actions must be escaped `$${...}`; `${captured.run_dir.output}` uses in new states need the same `mr11-ok` handling or a `${context.run_dir}` path as `dedup_novelty` does; `ll-loop validate` enforces MR-1..MR-14, and `test_builtin_loops.py` (~line 20421 onward) carries per-loop interpolation-site allowlists that a new state referencing `${context.*}` may trip.
+- **Open dependency on FEAT-3583**: the `ground` context key (`none|codebase|web`) is expected to be resolved from the mode profile; until that lands the key needs a standalone default (`none`, so existing behavior is unchanged) in `context:`.
+
 ## Implementation Steps
 
 1. Add the `ground` state with `none|codebase|web` routing driven by the resolved profile (FEAT-3583).
@@ -138,5 +151,6 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-25T01:46:47 - `2ac59930-bb65-4013-a3d3-8f842b856fd9.jsonl`
 - `/ll:format-issue` - 2026-09-25T01:01:32 - `825370f4-2bf5-4bb8-a770-49c1a90d8b61.jsonl`
 - `/ll:capture-issue` - 2026-09-25T00:33:44 - `ba660a81-2414-4092-808d-95f51543dbb1.jsonl`

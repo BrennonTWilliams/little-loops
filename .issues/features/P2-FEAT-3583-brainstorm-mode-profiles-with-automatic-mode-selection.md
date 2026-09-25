@@ -107,6 +107,20 @@ Downstream states read resolved values from `profile.json`, and gated states rou
 ### Configuration
 - Context keys: add `mode` (default `auto`) and per-knob overrides (`ground`, `materialize`, `premortem`, `reframe`)
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
+
+- Package data: `scripts/pyproject.toml:203` includes `little_loops/**` wholesale, so a new profile directory under `scripts/little_loops/loops/` ships without a pyproject edit; `ll-verify-package-data` is the check.
+- Constraint: `scripts/little_loops/loops/` subdirectories are scanned for loops (`loops/oracles/` is runnable, only `loops/lib/` is fragments). Profile YAMLs placed in a new sibling dir may be picked up by loop discovery and `test_builtin_loops.py` validation as if they were loops (no `initial`/`states`) — placement must be verified against discovery, or profiles stored as non-loop data (e.g. `.json`, or under `loops/lib/`).
+- Current shape: `brainstorm.yaml` states are `init -> frame -> pop_lens -> diverge -> dedup_novelty -> (loop) -> cluster -> rank -> converge -> route_sink`; the `context:` block (`brainstorm.yaml:23-32`) holds string-valued knobs, so profile knobs must be string-encoded (`"true"`/`"false"`) there. `init` (`:36-52`) captures `run_dir` and `next: frame`, so `classify_mode`/`resolve_profile` insert between `init` and `frame`.
+- Hardcoded behavior the profile must replace: universal lens catalog in `frame` (`:77-83`), `diverge` idea schema `{text, rationale}` (`:132-137`), `rank`/`converge` output shape and rubric (`:280-328`). `dedup_novelty` parses IDEAS_JSON with `text`/`rationale` keys, so any per-profile idea schema must keep `text` (dedup key) intact.
+- Call-path correction: the issue's Call Path `frame -> diverge` omits `pop_lens`, which sits between them.
+- Downstream ordering: `blocked_by: FEAT-3582` — the engine core rewrite changes these states; line anchors above describe the pre-3582 file and will shift.
+- Sink routing precedent for gated states: `route_sink` (`:332-344`) uses `evaluate: type: classify` over an echoed token with `_:` default route; a `mode=auto` gate reads the same way. Interpolated `${context.*:shell}` form is used for the shell echo.
+- Test conventions: `scripts/tests/test_brainstorm.py` loads `LOOP_FILE` via `load_and_validate`/`validate_fsm` and exercises shell states by extracting `action` and running `bash -c` in `tmp_path` (`_bash` helper) — a deterministic `resolve_profile` shell/python state is testable the same way, and stubbed-classifier routing can be tested by pre-writing the classifier output file.
+- Bash-brace rule: any `${...}` shell expansion inside FSM actions must be escaped `$${...}` (interpolated before bash).
+
 ## Implementation Steps
 
 1. Define profile schema and the four presets.
@@ -140,5 +154,6 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-25T01:46:34 - `ce904479-7e73-4d58-aa48-892e2cdb88b3.jsonl`
 - `/ll:format-issue` - 2026-09-25T01:01:32 - `825370f4-2bf5-4bb8-a770-49c1a90d8b61.jsonl`
 - `/ll:capture-issue` - 2026-09-25T00:33:40 - `ba660a81-2414-4092-808d-95f51543dbb1.jsonl`
