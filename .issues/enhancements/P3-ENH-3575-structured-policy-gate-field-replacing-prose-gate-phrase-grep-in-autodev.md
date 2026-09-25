@@ -112,17 +112,55 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 - `scripts/little_loops/cli/issues/` — new gate helper
 - `scripts/little_loops/config-schema.json` / frontmatter validation if the field is schema'd
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/issues/__init__.py` — three hand-edited touchpoints for the new subcommand: the lazy import block (~lines 31-42), the `add_*_parser(subs)` registration (~lines 778-781), and the `if args.command == ...: return cmd_...` dispatch chain (~lines 1086-1093); plus the hand-written subcommand epilog list (~lines 134-175, check family at 152-155/173-174) [Agent 1 + 2 finding]
+- `scripts/little_loops/cli/issues/show.py` — `--json` output is an explicit per-field dict (~lines 300-365, `frontmatter.get("decision_needed")` at ~129); add `gate` here if any autodev `python3 -c` selector needs to read it [Agent 1 + 2 finding]
+- `scripts/little_loops/issue_parser.py` — `IssueInfo` (`to_dict`/`from_dict`/parse path) only if a typed `gate` field is wanted; optional, since `parse_gate` reads raw frontmatter [Agent 2 finding]
+- `scripts/little_loops/loops/autodev.yaml` `recheck_after_size_review` (`GATE_MARKER`, ~lines 2760-2790) — `REMEDY` selector is `python3 -c` piped from `ll-issues show --json` with `GATE_MARKER` as an env prefix; the helper must expose the phrase/gate signal separately from the dequeue-only placeholder-AC signal [Agent 2 finding]
+
 ### Dependent Files (Callers/Importers)
 - `defer_gated`, `mark_gate_blocked` ledgers
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/issue_lifecycle.py` — `DeferReason.BLOCKED_BY_GATE` (~line 95) feeds `_DEFERRAL_REASON_CODES` / `set-status --reason`; no change if the reason code stays `blocked_by_gate` [Agent 1 finding]
+- `scripts/little_loops/cli/issues/deferred_triage.py` — `"blocked_by_gate": 7` reason-code ranking; no change unless a new code is introduced [Agent 1 finding]
+- `scripts/little_loops/loops/refine-to-ready-issue.yaml` — has `check_spike_needed` / `run_spike` but no gate-phrase grep; the only other loop on the proof-routing surface, not a consumer of the prose detector [Agent 1 finding]
+- `scripts/little_loops/frontmatter.py` — `parse_frontmatter` (BaseLoader: all scalars → strings), `update_frontmatter` (yaml round-trip), `remove_frontmatter_keys`; the `_parse_frontmatter_lines` fallback warns on non-scalar list items, so list-of-mappings depends on the PyYAML path [Agent 2 finding]
+- The prose phrases and `blocked_by_gate` occur in no other loop, skill, hook, agent or `.loops/` file — `autodev.yaml` is the sole live consumer [Agents 1 + 2 finding]
+
 ### Similar Patterns
 - `ll-issues check-flag`, `ll-issues check-readiness`
+- `scripts/little_loops/cli/issues/check_open_questions.py`, `check_verify_verdict.py` — each defines `add_<name>_parser(subs)` + `cmd_<name>(config, args)` with `p.set_defaults(command="...")` [Agent 2 finding]
+- `check-design` replacing an inline block in `autodev.yaml` (ENH-2967; call sites ~lines 1511, 1521, 2236, 2616) — closest precedent for swapping inline shell for an exit-code probe [Agent 2 finding]
 
 ### Tests
 - `scripts/tests/test_autodev_loop.py` — `TestCheckGateAtDequeueMarkerLiterals`
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_autodev_loop.py` — `TestRecheckAfterSizeReviewMeasurementGateBranch.test_marker_literals_present_in_action` (~line 715) asserts the 8 literals in the `recheck_after_size_review` action; will break when the grep moves to the helper — re-point [Agent 3 finding]
+- `scripts/tests/test_autodev_loop.py` — `TestRecheckAfterSizeReviewMeasurementGateBranch.test_gate_check_precedes_ambiguity_fallback` (~line 729) does `action.index("GATE_MARKER")`; breaks if the identifier is renamed/removed [Agent 3 finding]
+- `scripts/tests/test_autodev_loop.py` — `_run_pre_deferral_remedy_selector` (~line 640) runs the `REMEDY=$(...)` block in bash with a stub `ll-issues` that returns one fixed JSON payload for every call; a new `ll-issues check-gate` call ahead of the pipeline would receive JSON, so the stub needs a `check-gate` arm. Behavioral cases `test_marker_present_forces_spike_even_when_ambiguity_not_weakest`, `test_marker_absent_falls_back_to_ambiguity_weakest_regression`, `test_marker_absent_and_ambiguity_not_weakest_falls_back_to_reconcile_regression`, `test_marker_present_but_already_attempted_yields_no_remedy`, `test_marker_absent_and_ambiguity_ties_weakest_falls_back_to_reconcile_regression` depend on it [Agent 2 + 3 finding]
+- `scripts/tests/test_builtin_loops.py` — `test_check_gate_at_dequeue_routing` (~7199, incl. fail-open `on_error` at ~7206, `evaluate.pattern == "GATE_YES"`), `test_defer_gated_defers_via_set_status` (asserts `--reason blocked_by_gate`), and the literal/`GATE_MARKER` assertions on `recheck_after_size_review` (~lines 8761-8773); update if the state's command or evaluator changes [Agent 2 + 3 finding]
+- `scripts/tests/test_check_family_not_found_exit_code.py` — `test_family_has_seven_members` will break (bump to 8) if the module is named `check_gate.py`; `_family_subcommands()` globs `cli/issues/check_*.py`, so a new module is auto-parametrized (exit 2 on unresolvable ID); add to `_EXTRA_ARGV` if it takes an extra positional [Agent 2 + 3 finding]
+- `scripts/tests/test_autodev_scores_freshness.py` (~line 137) — stub `ll-issues` switches on subcommand (`check-design`); add a `check-gate` arm if that path is exercised [Agent 2 finding]
+- `scripts/tests/test_fsm_topology.py` (~line 248) — state-count assertion (79); changes only if states are added/removed [Agent 1 + 2 finding]
+- `scripts/tests/test_autodev_loop.py` — `TestRecheckScoresDesignGateEndToEnd` (~line 1046) and `TestPreDeferralRemedyContradictionExemption` (~line 840) — closest end-to-end templates for new structured-gate routing cases [Agent 3 finding]
+- New: `scripts/tests/test_ll_issues_check_gate.py` — model on `test_ll_issues_check_flag.py` (`TestCheckFlagHappyPath` / `FalseOrAbsent` / `ErrorHandling` / `TestCliRegistration::test_subcommand_in_help`): exit 0/1/2, help registration [Agent 3 finding]
+- New: `gate` frontmatter test in `scripts/tests/test_frontmatter.py` (near `TestUpdateFrontmatter::test_nested_dict_value_round_trips`, ~line 551) — list-of-mappings parse + round-trip, `satisfied: false` → `'false'` not treated as satisfied; no `gate`-specific test exists [Agent 3 finding]
+- New: autodev behavioral cases for structured `gate` (satisfied → no defer; `proof` → spike routing; prose fallback when field absent) [Agent 3 finding]
+- `scripts/tests/test_show.py` — no dedicated `--json` test exists; add a `gate` case if `show.py` is extended [Agent 3 finding]
+- `scripts/tests/test_wiring_cli_registry.py` — list of `(file, literal, issue-id)` tuples; adding an entry for the new command is optional [Agent 2 finding]
+
 ### Documentation
 - `docs/reference/DEFERRAL_CODES.md` (`blocked_by_gate`)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/CLI.md` — new `#### ll-issues <name>` section in the check family (~lines 2247-2454; `check-design` "FSM loop use" paragraph at ~2321 is the precedent) [Agent 1 + 2 finding]
+- `docs/reference/API.md` — one-line row for the new probe; `check_gate_at_dequeue` / `blocked_by_gate` prose at ~lines 4662-4678 [Agent 1 + 2 finding]
+- `docs/reference/ISSUE_TEMPLATE.md` — frontmatter field table (~lines 918-921, `spike_attempted`/`spike_completed` rows): add a `gate` row [Agent 1 + 2 finding]
+- `docs/guides/LOOPS_REFERENCE.md` — autodev flow diagram "explicitly gated (prose/placeholder ACs)?" (~lines 1034-1035) and `recheck_after_size_review` text (~1067-1087) [Agent 1 + 2 finding]
+- `docs/reference/DEFERRAL_CODES.md` line ~28 — `blocked_by_gate` "Emitted by" wording currently says "prose gate language and/or a placeholder Acceptance Criteria section" [Agent 2 finding]
+- No mirror regeneration needed unless a skill/command is edited (then `ll-adapt --host <gemini|kimi-code|qwen> --apply`) [Agent 2 finding]
 
 ### Configuration
 - N/A
@@ -154,6 +192,18 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 
 - Outcome constraints (order incidental except where noted): (1) `gate` parses via one reader that handles mapping / list / absent and coerces nested-scalar strings — covered by a unit test asserting `satisfied: false` is *not* treated as satisfied; (2) the phrase regex has exactly one source in the repo, and `TestCheckGateAtDequeueMarkerLiterals` / `TestRecheckAfterSizeReviewMeasurementGateBranch` (which today assert the literals inside each state's `action`) are re-pointed at the helper without losing the literal coverage; (3) both autodev states keep fail-open on helper error and keep their differing consumers (defer vs. spike bias) and the dequeue-only placeholder-AC signal; (4) the new module leaves `test_check_family_not_found_exit_code.py` green (exit 2 on unresolvable ID, family-size pin); (5) `show.py` or the new subcommand exposes `gate` state to any autodev selector that needs it; (6) `docs/reference/CLI.md`, `API.md`, the `__init__.py` epilog and the `DEFERRAL_CODES.md` `blocked_by_gate` row describe the new behavior. Verification: `python -m pytest scripts/tests/test_autodev_loop.py scripts/tests/test_check_family_not_found_exit_code.py -v` plus the new subcommand's own subprocess-style test (pattern: `test_ll_issues_check_design.py` grouping — passes / fails / error handling / CLI registration). Forced order: the reader and helper must exist before either autodev state is switched to call them.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Register the new subcommand in `scripts/little_loops/cli/issues/__init__.py` — lazy import, `add_*_parser` call, dispatch branch, and epilog list entry
+- Update `scripts/little_loops/cli/issues/show.py` — surface `gate` in `--json` if any autodev selector reads it (otherwise the loop reads it via the new subcommand)
+- Update `scripts/tests/test_check_family_not_found_exit_code.py` — bump `test_family_has_seven_members` to 8 (if named `check_gate.py`); add `_EXTRA_ARGV` entry if an extra positional is taken
+- Update `scripts/tests/test_autodev_loop.py` — re-point `TestCheckGateAtDequeueMarkerLiterals` and `TestRecheckAfterSizeReviewMeasurementGateBranch` literal/`GATE_MARKER`-index tests at the helper; add a `check-gate` arm to the `_run_pre_deferral_remedy_selector` stub `ll-issues`
+- Update `scripts/tests/test_builtin_loops.py` (~7199-7261, ~8761-8773) and `scripts/tests/test_autodev_scores_freshness.py` stub — adapt to the changed state actions
+- Add `scripts/tests/test_ll_issues_check_gate.py` and a `gate` list-of-mappings round-trip test in `scripts/tests/test_frontmatter.py`
+- Update `docs/reference/CLI.md`, `docs/reference/API.md`, `docs/reference/ISSUE_TEMPLATE.md`, `docs/guides/LOOPS_REFERENCE.md`, and the `blocked_by_gate` row of `docs/reference/DEFERRAL_CODES.md`
 
 ## Impact
 
@@ -199,6 +249,7 @@ _Added by `/ll:confidence-check` on 2026-09-25_
 - Moderate per-site complexity: two autodev.yaml states plus a new `ll-issues` subcommand and a fallback path that must preserve current prose-grep behavior.
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-25T16:16:14 - `53cc9ee9-2fce-4262-8fb3-74a571d4aabf.jsonl`
 - `/ll:decide-issue` - 2026-09-25T15:50:09 - `15f88de1-71aa-4840-8254-7f346d788eff.jsonl`
 - `/ll:refine-issue` - 2026-09-25T15:48:14 - `2c2217f3-faed-46a2-9f48-d3c79062bfca.jsonl`
 - `/ll:confidence-check` - 2026-09-25T15:43:11 - `88d59a88-839a-4f32-8b82-4e5b4f322725.jsonl`

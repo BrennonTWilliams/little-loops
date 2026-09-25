@@ -1,0 +1,12 @@
+{
+  "id": "eb390960-74cd-49f8-a91f-6fa2ae80aea5",
+  "type": "decision",
+  "timestamp": "2026-09-25T15:50:09Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Superset shape matching parse_gate -> list[GateSpec]; avoids later schema break",
+  "rule": "Option B: gate is a list of mappings (lone mapping normalized)",
+  "scope": "issue",
+  "alternatives_rejected": "Option A: single mapping",
+  "issue": "ENH-3575"
+}
