@@ -11,6 +11,8 @@ parent: EPIC-3565
 decision_needed: false
 blocks:
 - ENH-3577
+- BUG-3572
+- BUG-3574
 ---
 
 # BUG-3571: Refine-to-ready accepts stale or absent verify verdict and confidence scores
@@ -30,10 +32,16 @@ Readiness evidence is checked for presence, not currency:
   current `/ll:confidence-check` call wrote nothing, and the oracle's retry path is then
   unreachable.
 - Autodev's `rerun_confidence_after_decide|wire|spike|atomic_remediation` states route both
-  `next` and `on_error` to a successor that reads scores through `ll-issues check-readiness`.
-  None of them clears scores first (only the reconcile path does, via `/ll:reconcile-issue`'s
-  `set-scores --clear`). A failed rescoring after a repair therefore falls through to the
-  pre-repair scores.
+  `next` and `on_error` to a successor that reads scores — through `ll-issues check-readiness`
+  (`recheck_after_decide`) or inline Python over `ll-issues show --json`
+  (`recheck_after_size_review`, reached from wire/spike via `enqueue_or_skip`;
+  `regate_after_atomic_remediation`). None of them clears scores first (only the reconcile
+  path does, via `/ll:reconcile-issue`'s `set-scores --clear`). A failed rescoring after a
+  repair therefore falls through to the pre-repair scores.
+- The reconcile path shows the opposite failure today: it clears scores, and if
+  `rerun_confidence_after_reconcile` then writes nothing, `recheck_after_size_review`'s
+  `int(d.get('confidence') or 0)` reads 0 and defers the issue as `low_readiness` — an infra
+  failure recorded as a quality verdict.
 
 ## Current Behavior
 
@@ -136,17 +144,30 @@ the two evidence gates on an explicit `ABSENT` outcome.
 - `scripts/little_loops/cli/issues/` — new `clear_verify_verdict.py` (register in `cli/issues/__init__.py` dispatch and `_USAGE` epilog)
 - `scripts/little_loops/loops/refine-to-ready-issue.yaml`:
   - new `clear_verify_verdict` state ahead of `verify_issue` (every entry into `verify_issue` must pass through it)
-  - `check_verify_verdict`: switch to `fragment: harness_exit`; `on_cannot_judge` → retry `verify_issue` once, then an infra terminal (mirror `check_decide_rate_limited` → `mark_rate_limit_infra`); `on_error` → the same infra path, not `check_hedges`
+  - `check_verify_verdict`: switch to `fragment: harness_exit`; `on_cannot_judge` → retry once via `clear_verify_verdict` (not `verify_issue` directly, so the retry also starts from a cleared field; bound with a run-dir counter file), then an infra terminal (mirror `check_decide_rate_limited` → `mark_rate_limit_infra`); `on_error` → the same infra path, not `check_hedges`. `verify_issue` has a single predecessor today (`normalize_structure`, `next` and `on_error`), so retargeting that one state covers every entry
   - `confidence_check` entry, including the `run_spike` return (`next`/`on_error: confidence_check`) — scores cleared by the oracle's first state, see below
-- `scripts/little_loops/loops/oracles/verify-confidence-scores.yaml` — new initial state running `ll-issues set-scores <ID> --clear` before `confidence_check`; `verify_scores_persisted`/`_final` logic unchanged (presence is now sufficient because scores were cleared)
+  - `confidence_check.on_failure`/`on_error` (currently `diagnose`): an oracle `failed` after a cleared start means absent evidence — route it to the infra terminal (or make `diagnose` record `refine-terminal-class = infra` for this source state); today nothing classifies it
+- `scripts/little_loops/loops/oracles/verify-confidence-scores.yaml` — new initial state running `ll-issues set-scores <ID> --clear` before `confidence_check`; `verify_scores_persisted`/`_final` logic unchanged (presence is now sufficient because scores were cleared). Also `confidence_check.on_error: failed` skips the retry entirely — route it to `retry_confidence_check` so an erroring first call gets the same one retry as a no-op call
 - `scripts/little_loops/loops/autodev.yaml`:
   - `set-scores --clear` before each of `rerun_confidence_after_decide|wire|spike|atomic_remediation` (reconcile's path already clears)
-  - the successors' `check-readiness` calls (`recheck_after_decide`, `enqueue_or_skip`, `regate_after_atomic_remediation`, `recheck_after_size_review`): route exit 3 to an infra classification (model on `mark_gate_infra`, `:1097`) instead of deferral. Several call `check-readiness` inside compound shell (`:656`, `:791`, `:1370`); audit each so exit 3 is not swallowed by a pipe or `||`
+  - **`check-readiness` call sites** — `shell_exit` maps exit 3 to `error`, so each site's `on_error` decides where absence lands, and today most of those are quality paths. Each needs an explicit exit-3 → infra route (model on `mark_gate_infra`, `:1097`):
+
+    | State | Line | Current `on_error` | Reached after a rescore? |
+    |---|---|---|---|
+    | `check_passed` | `:656` | `detect_children` | no — after the refine-to-ready sub-loop |
+    | `recheck_after_decide` | `:791` | `snap_and_size_review` | yes (`rerun_confidence_after_decide`) |
+    | `recheck_scores` | `:1370` | `check_decision_before_size_review` → size review | no — after the refine sub-loop |
+
+    All three are `check-readiness … && …` chains; `&&` short-circuits with the failing status, so exit 3 survives — keep it that way (no `|| true`, no pipes). Switching these states to `harness_exit` gives exit 3 its own `on_cannot_judge` edge without touching `on_error`.
+  - **Inline-Python score readers** — not covered by the `check-readiness` change at all. Both use `int(d.get('confidence') or 0)` / `int(d.get('outcome') or 0)`, so after a clear a failed rescore reads 0 and defers as a quality verdict. Add an `is None` check before the threshold comparison that routes to infra:
+    - `recheck_after_size_review` (`:2208`) — reached from `rerun_confidence_after_wire|spike` via `enqueue_or_skip` (which reads no scores itself) and from `rerun_confidence_after_reconcile`; the absent case would otherwise hit the `low_readiness` / `readiness_stagnated` deferrals
+    - `regate_after_atomic_remediation` (`:1895`) — absent would otherwise defer as `oversized_atomic`
 
 ### Dependent Files (Callers/Importers)
 - `commands/verify-issues.md` (`--check` verdict persistence) — writer unchanged; § "Frontmatter sync" (~L389) still correct
 - `skills/confidence-check/SKILL.md` (score persistence via `ll-issues set-scores`) — writer unchanged
-- Every other `ll-issues check-readiness` caller (sprints, `ll-auto`, manage-issue gates) now sees exit 3 for unscored issues — grep all callers and confirm each treats non-zero-non-1 correctly
+- Every other `ll-issues check-readiness` caller now sees exit 3 for unscored issues. Full CLI caller set (grep of `scripts/little_loops`, `skills`, `commands`, `hooks`): the three autodev states above plus `rn-remediate.yaml:198` `check_readiness`. rn-remediate is safe — its preceding state exits 1 to `emit_scores_missing` when either score is missing, so `check_readiness` never sees absence; exit 3 there would land on `on_error: check_outcome`. `ll-auto` / manage-issue use `readiness_status()` in-process (`issue_manager.py:835`), not the CLI, and already report `raw_confidence is None` as "never assessed" — unaffected
+- `scripts/little_loops/cli/issues/check_design.py` — chained after `check-readiness` in `recheck_scores`; returns only 0/1/2, so it cannot produce a spurious exit 3 if that state moves to `harness_exit`
 
 ### Similar Patterns
 - ENH-2630 verdict freshness in `auto-refine-and-implement.yaml` `merge_epic_branch`: a persisted verdict (`verify-verdict.txt`) is reused only when its recorded SHA (`verify-sha.txt`) matches the current tip; absent → re-run
@@ -176,7 +197,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 
-- **Autodev does not use the scores oracle.** `oracles/verify-confidence-scores` is referenced only by `refine-to-ready-issue.yaml` (`confidence_check` state). Autodev's five rerun states (`rerun_confidence_after_decide|wire|spike|atomic_remediation|reconcile`) set `next` and `on_error` to the same successor — `recheck_after_decide`, `enqueue_or_skip` (wire and spike), `regate_after_atomic_remediation`, `recheck_after_size_review` — which read scores through `ll-issues check-readiness`. They already use `with_rate_limit_handling` / `on_rate_limit_exhausted: finalize_rate_limited`.
+- **Autodev does not use the scores oracle.** `oracles/verify-confidence-scores` is referenced only by `refine-to-ready-issue.yaml` (`confidence_check` state). Autodev's five rerun states (`rerun_confidence_after_decide|wire|spike|atomic_remediation|reconcile`) set `next` and `on_error` to the same successor — `recheck_after_decide`, `enqueue_or_skip` (wire and spike), `regate_after_atomic_remediation`, `recheck_after_size_review` — of which only `recheck_after_decide` reads scores through `ll-issues check-readiness`; `enqueue_or_skip` reads none (it routes to `recheck_after_size_review`), and the other two use inline Python with absent → 0. They already use `with_rate_limit_handling` / `on_rate_limit_exhausted: finalize_rate_limited`.
 - **Scores are already cleared on one path.** `ll-issues set-scores --clear` removes the six `SCORE_KEYS`; `commands/reconcile-issue.md` § 5 step 2 calls it after a rewrite (commit `b2f7e09a9`). No loop YAML calls `--clear`, and nothing clears `verify_verdict` anywhere.
 - **Invariant for any freshness design**: verdict/score persistence must not be invalidated by Session Log appends (the `ll-issues append-log` step runs inside the same passes) — and Step 6.5-style log appends occur *between* verify and check. Clear-then-require satisfies this by construction.
 - **Freshness conventions already in the codebase** (none applied to `verify_verdict` or scores): (1) per-run scoping via `${context.run_dir}` marker/counter files reset in `resolve_issue` (`refine-to-ready-issue.yaml:146-158`); (2) content/fingerprint binding recomputed at read time (`general-task.yaml` `input_hash`/`task_hash`, `git hash-object` working-tree fingerprint at `:434-485`; `cli/artifact/status.py` `_sha256_file`; `cli/verify_evidence.py` `_span_hash`/`_worktree_fingerprint`); (3) timestamp comparison (`issues/research_triage.py:_triage_axis`); (4) rescore-and-compare against a dequeue snapshot (`autodev-pre-readiness.txt`, ~2224-2307).
@@ -188,10 +209,10 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 1. `check-verify-verdict` default mode: absent → exit 3 (`VERIFY_VERDICT_ABSENT`); update parser help, `_USAGE`, and the CLI test that pins fail-open
 2. `check-readiness`: absent score → exit 3 (`SCORES_ABSENT`) before threshold comparison; grep every caller and confirm exit 3 is handled
 3. Add `ll-issues clear-verify-verdict <ID>` (via `remove_frontmatter_keys`) with a CLI test
-4. refine-to-ready: `clear_verify_verdict` state before every entry to `verify_issue`; `check_verify_verdict` on `harness_exit` with `on_cannot_judge` → one retry of `verify_issue`, then infra terminal; `on_error` → infra path
-5. Scores oracle: initial `set-scores --clear` state before `confidence_check` (covers every refine-to-ready entry, including the `run_spike` return)
-6. autodev: `set-scores --clear` before each `rerun_confidence_after_{decide,wire,spike,atomic_remediation}`; route `check-readiness` exit 3 in each successor to an infra classification instead of deferral
-7. Regression tests (stateful stubs): failed verify with a prior `VALID` does not pass; no-op confidence-check with prior scores does not pass; failed autodev rescoring after wire does not pass on pre-repair scores; each absent case lands on the infra path, not NON_VALID/deferral
+4. refine-to-ready: `clear_verify_verdict` state between `normalize_structure` and `verify_issue`; `check_verify_verdict` on `harness_exit` with `on_cannot_judge` → one retry via `clear_verify_verdict` (run-dir counter), then infra terminal; `on_error` → infra path
+5. Scores oracle: initial `set-scores --clear` state before `confidence_check` (covers every refine-to-ready entry, including the `run_spike` return); `confidence_check.on_error` → `retry_confidence_check`. refine-to-ready: route the oracle's `failed` to an infra classification instead of an unclassified `diagnose`
+6. autodev: `set-scores --clear` before each `rerun_confidence_after_{decide,wire,spike,atomic_remediation}`; route `check-readiness` exit 3 to infra in `check_passed`, `recheck_after_decide`, `recheck_scores`; add an absent → infra branch to the inline-Python readers in `recheck_after_size_review` and `regate_after_atomic_remediation`
+7. Regression tests (stateful stubs): failed verify with a prior `VALID` does not pass; no-op confidence-check with prior scores does not pass; failed autodev rescoring after wire does not pass on pre-repair scores; failed rescoring after reconcile (scores already cleared) and after atomic remediation lands on infra, not `low_readiness` / `oversized_atomic`; each absent case lands on the infra path, not NON_VALID/deferral
 8. Update `docs/reference/CLI.md` and `docs/guides/LOOPS_REFERENCE.md` gate contracts
 
 ## Impact
@@ -200,9 +221,13 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
   post-repair content goes unverified.
 - **Effort**: Medium
 - **Risk**: Medium. A stricter gate raises infra-classified stops; routing absence to infra
-  (not quality) keeps it from inflating deferral rates. Shares `refine-to-ready-issue.yaml`'s
-  `run_spike` → `confidence_check` path and the confidence-check skill with BUG-3572 — land
-  the two sequentially.
+  (not quality) keeps it from inflating deferral rates. A run that clears scores and then
+  stops (rate-limit finalize, crash) leaves the issue unscored; `ll-auto`'s gate then reports
+  it as "no confidence score (never assessed)" — accurate, but a visible change.
+- **Sequencing**: lands first. BUG-3572 (shares refine-to-ready's `run_spike` →
+  `confidence_check` path, the confidence-check skill, and autodev's
+  `rerun_confidence_after_spike` successor) and BUG-3574 (shares `check_verify_verdict.py`
+  and the verify gate band) are `blocked_by` this issue.
 
 ## Acceptance Criteria
 
@@ -210,6 +235,8 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 - [ ] An erroring `check_verify_verdict` probe does not route to `check_hedges`
 - [ ] A confidence-check that writes nothing cannot pass on pre-existing scores (refine-to-ready, including after `run_spike`)
 - [ ] An autodev rescoring that fails after decide/wire/spike/atomic remediation cannot pass on pre-repair scores
+- [ ] An autodev rescoring that writes nothing after reconcile, wire, spike or atomic remediation is not deferred as `low_readiness`, `readiness_stagnated` or `oversized_atomic` (inline-Python readers treat absence as infra)
+- [ ] Every `check-readiness` call site in autodev routes exit 3 explicitly; none reaches size review or deferral through `on_error`
 - [ ] Absent evidence after a completed call is classified as infra (retry once, then infra stop) — not `NON_VALID` and not a low-readiness deferral
 - [ ] `ll-issues check-verify-verdict` and `check-readiness` exit 3 on absent evidence; 0/1/2 semantics otherwise unchanged
 - [ ] Session Log appends between a call and its check do not affect the gate

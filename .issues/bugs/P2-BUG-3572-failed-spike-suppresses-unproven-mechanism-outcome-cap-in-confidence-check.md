@@ -10,6 +10,9 @@ captured_at: '2026-09-24T19:33:13Z'
 parent: EPIC-3565
 blocks:
 - ENH-3577
+- BUG-3574
+blocked_by:
+- BUG-3571
 ---
 
 # BUG-3572: Failed spike suppresses unproven-mechanism outcome cap in confidence-check
@@ -67,32 +70,58 @@ Separate evidence truth from attempt bounding:
 
 1. **Encoding — boolean `spike_refuted: true`** (not a `spike_verdict` enum). It matches the
    lowercase-bool spike flag convention, works with `ll-issues check-flag` and the existing
-   `show --json` emission pattern with no new CLI, and yields three states:
+   `show --json` emission pattern with no new flag-reading CLI, and yields three states:
    - **proven**: `spike_completed: true`
    - **refuted**: `spike_attempted: true` + `spike_refuted: true`
    - **inconclusive**: `spike_attempted: true` with neither of the others — which is also how
      every legacy attempted-only issue reads, so legacy issues fail safe (cap stays).
-2. **Deterministic refuted-vs-inconclusive rule** in spike Phase 5/6:
-   - **Refuted** only when the spike's acceptance-test module was collected and failed
-     (pytest exit 1) **and** the regression-guard suite passed.
-   - **Inconclusive** otherwise: collection/import errors, no tests collected (exit 5),
-     usage/internal errors (exit 2–4), timeouts, or a failing regression suite.
+2. **Deterministic refuted-vs-inconclusive rule** in spike Phase 5/6. The pytest exit code
+   alone cannot carry it: the plan's regression-guard test lives in `$SPIKE_DIR` next to the
+   AC tests (`skills/spike/SKILL.md` Phase 3 "at least one regression-guard test", Phase 4
+   "Include the regression-guard test"), and both run in the single
+   `pytest "$SPIKE_DIR/"` command — so exit 1 does not say *which* test failed. Exit 1 also
+   covers test-time errors (fixture/setup errors, an `ImportError` inside a test body),
+   which are not refutations. Classify per test from JUnit XML instead:
+   - Phase 5 runs each Verification command with `--junitxml=<run file>`.
+   - **Refuted** only when ≥1 AC test reports `<failure>` (an assertion failure, not
+     `<error>`), **and** every regression-guard test in `$SPIKE_DIR` passed, **and** every
+     named existing regression suite passed.
+   - **Inconclusive** otherwise: any `<error>`, collection/import errors, no tests collected
+     (exit 5), usage/internal errors (exit 2–4), timeouts, a failing guard test, or a failing
+     regression suite.
+   - Guard tests must be identifiable: the plan template names them (e.g. a
+     `test_guard_*` prefix or a `@pytest.mark.spike_guard` marker) so the classifier does
+     not rely on the model's reading.
+   - Put the classification in a small CLI (e.g. `ll-issues spike-verdict --junit <xml>...
+     --guard-pattern <p>` → prints `PROVEN|REFUTED|INCONCLUSIVE`, exits 0/1/3) so it is
+     unit-testable; written as prose in the skill it remains the model's judgment, and the
+     skill tests are literal-string assertions that cannot check it.
+   - Residual, accepted: an AC `<failure>` caused by a bug in the spike's own implementation
+     reads as refuted. The Findings entry must quote the failing assertion so a human can
+     tell the two apart.
    - Inconclusive writes `spike_attempted: true` only and a `## Spike Findings` entry naming
      the non-verdict cause; it does not claim the approach is wrong.
 3. **Cap**: Phase 1.9 sets `SPIKE_SUPPRESSED` on `spike_completed` only. `spike_attempted`
    stays purely an attempt bound (autodev's remedy dispatcher and `check_spike_needed` rely
    on it).
-4. **Routing via `decision_needed`, not new FSM states.** On refuted, the spike skill also
+4. **Routing via `decision_needed` and the existing decision gates** (one new autodev check
+   state, below; no new remedy states). On refuted, the spike skill also
    arms `decision_needed: true` and adds an Open Questions item naming the refuted approach
    and the alternatives from `## Spike Findings`, so `/ll:decide-issue` has a decidable
    group. The existing decision gates then route it; because the cap stays on, outcome stays
    below threshold and the loops' fail paths reach those gates:
    - refine-to-ready: `confidence_check` → `check_outcome` (fail) → `check_decision_needed`
      → `check_decide_attempts` → `resolve_decision_pre_breakdown`
-   - autodev: the post-spike path is `rerun_confidence_after_spike` → `enqueue_or_skip`;
-     confirm a newly armed `decision_needed` is caught before deferral
-     (`check_decision_before_size_review` → `resolve_decision` is reachable only from
-     `recheck_scores` today) and add the check on this path if not
+   - autodev: **not reached today — must be added.** The post-spike path is
+     `rerun_confidence_after_spike` → `enqueue_or_skip` → (no children)
+     `recheck_after_size_review`, and that state re-reads `decision_needed` only to *defer*
+     it as `decision_unresolved` (ENH-2936 branch, ~`autodev.yaml:2318-2337`); it never
+     calls `resolve_decision`. `check_decision_before_size_review` → `resolve_decision` is
+     reachable only from `recheck_scores`. Fix: retarget `rerun_confidence_after_spike`'s
+     `next`/`on_error` to a new `check_decision_after_spike` (`ll-issues check-flag <ID>
+     decision_needed`, `fragment: shell_exit`) with `on_yes: resolve_decision`,
+     `on_no`/`on_error: enqueue_or_skip`. Existing decide bounds (the ENH-1415 decide-ran
+     flag, `check_decide_rate_limited`) apply unchanged
    - not decidable (no alternative exists) → the existing size-review/deferral path, which is
      the correct stop for a refuted approach with no replacement
 5. **Re-arm rule**: when `/ll:decide-issue` resolves a decision on an issue carrying
@@ -101,6 +130,18 @@ Separate evidence truth from attempt bounding:
    re-apply). Cycles are bounded by the existing once-per-run markers
    (`refine-to-ready-spike-ran`, `check_decide_attempts`, autodev's
    `autodev-pre-deferral-remedy-fired`) and the FEAT-2751 stagnation counter.
+   When the new spike runs differs by loop, and the AC states both:
+   - **refine-to-ready**: the run-dir marker `refine-to-ready-spike-ran` blocks a second
+     spike in the same run, so the chosen approach stays capped and the run ends not-ready;
+     the new spike runs on the **next** run (fresh run dir).
+   - **autodev**: `check_spike_needed` is predicate-only (`spike_needed == 'true' and
+     spike_attempted != 'true'`), so the re-arm allows the new spike in the **same** run.
+     Bound: at most one re-armed spike per issue per run — add a run-dir marker if the
+     existing counters do not already guarantee it.
+   - Set-only flag writes are safe here: a later `/ll:confidence-check` cannot clear the
+     spike's `decision_needed`, because `ll-issues set-flags` only sets flags
+     (`set_flags.py:apply_flags_from_notes`, "clearing a flag stays owned by
+     `/ll:decide-issue`").
 6. **Inconclusive is not retried automatically.** It consumes the attempt and keeps the cap;
    the loops stop (deferral), and recovery is `/ll:spike <ID> --force` after fixing the
    cause. The deferral reason must say so, so the stop is actionable rather than a silent
@@ -119,19 +160,23 @@ loop regresses into spike → score → spike cycling.
 
 - `cmd_show(config: BRConfig, args: argparse.Namespace) -> int` — existing `ll-issues show`; its `--json` spike-flag block gains `spike_refuted`.
 - `cmd_check_flag(config: BRConfig, args: argparse.Namespace) -> int` — existing `ll-issues check-flag`; used unchanged by confidence-check Phase 1.9 (`spike_completed`) and loop predicates (`spike_refuted`).
+- `classify_spike_junit(junit_paths: list[Path], guard_pattern: str) -> str` — new pure function; returns `PROVEN`, `REFUTED` or `INCONCLUSIVE` from JUnit XML per the rule in Proposed Solution 2.
+- `cmd_spike_verdict(config: BRConfig, args: argparse.Namespace) -> int` — new `ll-issues spike-verdict --junit <xml>`; prints the verdict, exits 0 proven / 1 refuted / 3 inconclusive.
 
 ### Call Path
 
-`cmd_check_flag` -> `parse_frontmatter`; `cmd_show` -> `_parse_card_fields` -> `parse_frontmatter`
+`cmd_check_flag` -> `parse_frontmatter`; `cmd_show` -> `_parse_card_fields` -> `parse_frontmatter`; `cmd_spike_verdict` -> `classify_spike_junit`
 
 ## Integration Map
 
 ### Files to Modify
-- `skills/spike/SKILL.md` — Phase 5 refuted/inconclusive classification; Phase 6 failure branch split (refuted: `spike_refuted`, `decision_needed`, alternatives entry; inconclusive: `spike_attempted` only); Phase 7 messages
+- `skills/spike/SKILL.md` — Phase 5 runs Verification with `--junitxml` and calls the classifier; Phase 6 failure branch split (refuted: `spike_refuted`, `decision_needed`, alternatives entry; inconclusive: `spike_attempted` only); Phase 7 messages
+- `skills/spike/plan-template.md` — regression-guard tests must follow a fixed naming/marker convention the classifier can select
+- `scripts/little_loops/cli/issues/` — new `spike_verdict.py` (JUnit XML → `PROVEN|REFUTED|INCONCLUSIVE`); register in `cli/issues/__init__.py` dispatch and `_USAGE` epilog
 - `skills/confidence-check/SKILL.md` Phase 1.9 — suppress on `spike_completed` only; `skills/confidence-check/rubric.md` cap row wording
 - `skills/decide-issue/SKILL.md` — re-arm: remove `spike_attempted`/`spike_refuted` after resolving a decision on a refuted issue
 - `scripts/little_loops/cli/issues/show.py` — emit `spike_refuted` as a lowercased string alongside the other `spike_*` flags
-- `scripts/little_loops/loops/autodev.yaml` — post-spike path (`rerun_confidence_after_spike` → `enqueue_or_skip`) must reach a `decision_needed` check before deferral; `recheck_after_size_review` remedy selector (`spike_attempted == 'true'` → no remedy) must not treat a refuted issue as remedy-exhausted
+- `scripts/little_loops/loops/autodev.yaml` — new `check_decision_after_spike` between `rerun_confidence_after_spike` and `enqueue_or_skip` (see Proposed Solution 4); `recheck_after_size_review` remedy selector (`spike_attempted == 'true'` → no remedy) must not treat a refuted issue as remedy-exhausted
 - `scripts/little_loops/loops/refine-to-ready-issue.yaml` — no routing change expected (decision gate already downstream of `confidence_check`); add a comment at `run_spike` recording the refuted → `decision_needed` contract
 - `scripts/little_loops/loops/README.md` (~L85) — `spike-gate` row describes spike flags
 
@@ -187,11 +232,12 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 
 ## Implementation Steps
 
-1. Spike skill: Phase 5 refuted/inconclusive classification rule; Phase 6 failure branch split (refuted writes `spike_refuted: true`, `decision_needed: true`, an Open Questions item and `## Spike Findings`; inconclusive writes `spike_attempted: true` and a findings entry naming the cause)
+0. New `spike-verdict` ll-issues subcommand (JUnit XML in, `PROVEN|REFUTED|INCONCLUSIVE` out) with unit tests covering `<failure>` vs `<error>`, failing guard test, failing regression suite, no tests collected; guard-test naming convention in `plan-template.md`
+1. Spike skill: Phase 5 runs Verification with `--junitxml` and routes on the classifier; Phase 6 failure branch split (refuted writes `spike_refuted: true`, `decision_needed: true`, an Open Questions item and `## Spike Findings`; inconclusive writes `spike_attempted: true` and a findings entry naming the cause)
 2. `show.py`: emit `spike_refuted`
 3. Confidence-check Phase 1.9: suppress on `spike_completed` only; update `rubric.md` cap row
 4. Decide-issue: re-arm (remove `spike_attempted` / `spike_refuted`) when resolving a decision on a refuted issue
-5. autodev: make the post-spike path reach a `decision_needed` check before deferral; fix the `recheck_after_size_review` remedy selector for refuted issues; make inconclusive deferrals name `/ll:spike --force` as the recovery
+5. autodev: add `check_decision_after_spike` → `resolve_decision` on the post-spike path; fix the `recheck_after_size_review` remedy selector for refuted issues; make inconclusive deferrals name `/ll:spike --force` as the recovery
 6. Regression tests: attempted-only keeps the cap; refuted routes to decision (both loops) and never reaches implementation; inconclusive keeps the cap and is not re-spiked automatically; decide re-arm allows one new spike; attempt limits still bound re-runs
 7. Docs and mirrors: ISSUE_TEMPLATE, COMMANDS, CLI, API, LOOPS_REFERENCE, loops README; `ll-adapt --host <gemini|kimi-code|qwen|codex|omp> --apply`
 
@@ -204,16 +250,20 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
   (legacy failed spikes) become capped at their next rescoring and read as inconclusive.
   Expect a one-time rise in deferrals among `unproven_mechanism: true` issues; list them
   (`spike_attempted: true`, no `spike_completed`) before landing.
-- **Sequencing**: shares `skills/confidence-check/SKILL.md` (and mirrors) and refine-to-ready's
-  `run_spike` → `confidence_check` path with BUG-3571; land the two sequentially.
+- **Sequencing**: `blocked_by: BUG-3571` — shares `skills/confidence-check/SKILL.md` (and
+  mirrors), refine-to-ready's `run_spike` → `confidence_check` path, and autodev's
+  `rerun_confidence_after_spike` successor (BUG-3571 adds a score clear before it; this
+  issue retargets its `next`). BUG-3574 is `blocked_by` this issue: it reuses the
+  refuted → `decision_needed` contract defined here.
 
 ## Acceptance Criteria
 
 - [ ] A failed spike does not suppress the unproven-mechanism cap
-- [ ] A Verification failure caused by collection/import/env errors or a failing regression suite is recorded as inconclusive, not refuted
-- [ ] A refuted spike routes to decision/design/decomposition, not straight to rescoring, in both autodev and refine-to-ready
+- [ ] A Verification failure caused by collection/import/env errors, a test-time `<error>`, a failing regression-guard test or a failing regression suite is recorded as inconclusive, not refuted
+- [ ] Refuted/inconclusive classification is made by a CLI from JUnit XML, not by the model reading exit codes
+- [ ] A refuted spike routes to decision/design/decomposition, not straight to rescoring, in both autodev and refine-to-ready; in autodev it reaches `resolve_decision` rather than a `decision_unresolved` deferral
 - [ ] An inconclusive spike keeps the cap, is not re-spiked automatically, and its deferral names `/ll:spike --force` as the recovery
-- [ ] Resolving a decision on a refuted issue re-arms exactly one new spike on the chosen approach
+- [ ] Resolving a decision on a refuted issue re-arms exactly one new spike on the chosen approach — in the same run under autodev, on the next run under refine-to-ready
 - [ ] Attempt limits still bound spike re-runs
 
 ## Related Key Documentation

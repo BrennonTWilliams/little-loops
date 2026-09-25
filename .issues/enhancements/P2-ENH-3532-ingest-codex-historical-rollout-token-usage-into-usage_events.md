@@ -56,6 +56,22 @@ Codex rollout usage is persisted as normalized, provenance-labeled observations.
 - Tests: `test_session_store_writers.py`, `test_session_store_lifecycle.py`, schema/manifest tests, Codex parser tests, `test_subprocess_utils.py`, `test_fsm_runners.py`, `test_fsm_executor.py`, `test_cli_ctx_stats.py`, `test_history_reader_usage.py`, `test_feat3304_artifact_dashboard.py`, and `scripts/tests/fixtures/codex/`.
 - Docs: `docs/codex/usage.md`, `docs/guides/HISTORY_SESSION_GUIDE.md`, `docs/reference/HOST_COMPATIBILITY.md`.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
+
+**Conventions in force (pattern-finder, this pass):**
+- Usage replay is one function fed by a shared iterator: `_backfill_usage_events` (`writers.py`) reads `_iter_events_with_host`, which yields `(line, source_label, host, host_basis)`; other `_backfill_*` parsers use the two-tuple `_iter_events` wrapper. The `rebuild()` cursor in `lifecycle.py` already selects `raw_line, source_path, host, host_basis` (v55 added `host_basis`) — Current Behavior's "selects only `raw_line, source_path, host`" is stale. The iterator reads extra columns positionally, guarded by row length, so added replay metadata (line number, ordinal) must extend the cursor and tuple in lockstep while leaving `_iter_events` callers intact.
+- `_backfill_usage_events` accepts only `type == "assistant"` records with `message.usage`; Codex `token_count` is an `event_msg` payload and is not admitted today. Only qwen has a replay-time host shim (keyed on `host == "qwen"`). `_codex_cache_usage` (`cli/ctx_stats.py`) is the only current `token_count` reader and reads live files via `iter_events(handle)`, not `raw_events`.
+- Codex token normalization has a single entry point: `normalize_codex_input` (`subprocess_utils.py`) returning frozen `CodexInputSplit(uncached_input, cache_read, cache_write, consistent)`; missing values are never coerced to zero. `TokenUsage` already carries nullable components, `provenance`, `host`, `scope_kind`, `observed_at`, `observed_at_basis` (ENH-3538).
+- Provenance for backfilled rows is set differently per path today: the backfill path hardcodes `unknown`/`request`, while `_codex_cache_usage` labels its aggregate `measured`. The issue's conditional-`measured` rule is a decision, not an inherited convention.
+- `usage_events` has no uniqueness constraint today (`record_usage_event` docstring states so); columns arrive via nullable `ALTER TABLE ADD COLUMN` (v29 `run_id`, v53 `channel`, v54 provenance/host/scope/observed_at, v55 `host_basis`); v53 is the only migration that backfilled. Current `SCHEMA_VERSION` is 55, so this lands as v56, and ~20 tests hardcode `SCHEMA_VERSION == 55` in `test_session_store_schema.py`.
+- Migrations are an append-only `_MIGRATIONS` list of SQL strings, each preceded by a `# vN (ISSUE-ID): ...` comment, split on `;` by `_split_sql_statements` (no semicolons in literals). Unique indexes are named `idx_<table>_dedup`; scoped uniqueness uses a partial `WHERE` (e.g. `idx_summary_nodes_leaf_dedup`, `idx_issue_events_dedup`). **Contested**: original migrations create the index bare, while a later repair migration deletes duplicates first because a bare create on existing duplicates raises `IntegrityError` and rolls back — `usage_events` already holds duplicate-prone rows, so the repair-first shape is the one that applies. Writers rely on such indexes through `INSERT OR IGNORE`, which silently swallows conflicting content — the issue's "conflict must surface" requirement diverges from that convention and needs a deliberate mechanism.
+- `schema_manifest.json` is PRAGMA-derived and regenerated (snippet in the `TestSchemaManifest` docstring), guarded by `test_schema_manifest_matches_checked_in_file`; it records partial-unique flags but not the `WHERE` predicate.
+- Rebuild scope is `_REBUILD_TABLE_PREDICATES["usage_events"] = "channel IS NOT 'live'"` (`lifecycle.py`), whose comment already names `rollout` as replayable. `rebuild()` issues per-table DELETEs, replays, then one `conn.commit()`, with no explicit `BEGIN`/`SAVEPOINT` in `lifecycle.py` — transactional atomicity of derived-row replacement is not an existing property and must be established and tested.
+- Test convention for rebuild idempotency: `test_rebuild_derives_codex_tool_events` (`test_session_store_lifecycle.py`) copies a `scripts/tests/fixtures/codex/` rollout into a temp `.codex/sessions/` tree, runs `detect_sessions` → `backfill` → `rebuild`, then re-runs `rebuild` and asserts equal counts; `test_usage_rows_carry_host_basis_after_rebuild` shows `usage_events` assertions post-rebuild. Fixtures `rollout-interactive.jsonl`, `rollout-exec.jsonl`, `rollout-exec-resume.jsonl` already contain `token_count` records.
+- Searched, no precedent: another host's `token_count` ingestion into `usage_events`; any unique index on `usage_events`; `line_no`/`source_path` columns on `usage_events`.
+
 ## Impact
 
 - **Priority**: P2.
@@ -198,6 +214,8 @@ _Added by `/ll:confidence-check` on 2026-09-24_
 - Unresolved design decisions on observation identity/uniqueness (request key, reset namespace, ordering) leave ambiguity; wide reader/test surface.
 
 ## Session Log
+- `/ll:reconcile-issue` - 2026-09-25T01:38:47 - `00481f16-3cf9-4411-85c4-2628bffdfe50.jsonl`
+- `/ll:refine-issue` - 2026-09-25T01:33:29 - `8209a6c5-0048-4df0-9c81-a0ae9f75a965.jsonl`
 - `/ll:reconcile-issue` - 2026-09-25T01:19:08 - `49a0f922-81ea-47c1-887c-a8f9378dfd2a.jsonl`
 - `/ll:confidence-check` - 2026-09-25T01:06:55 - `4d305eb6-e0ad-4528-8217-7edc572927c3.jsonl`
 - `/ll:confidence-check` - 2026-09-25T01:02:39 - `f35cbaf1-740e-46e5-84c9-0ecf04a645f4.jsonl`
