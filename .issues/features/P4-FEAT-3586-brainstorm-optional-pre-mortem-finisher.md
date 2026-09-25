@@ -14,6 +14,7 @@ labels:
 - captured
 blocked_by:
 - FEAT-3582
+- FEAT-3583
 ---
 
 # FEAT-3586: Brainstorm optional pre-mortem finisher
@@ -21,8 +22,9 @@ blocked_by:
 ## Summary
 
 Add an optional `premortem` finisher (approach D from EPIC-3581): the portfolio
-winner (and optionally the runner-up) is attacked by a critic, a defender revises,
-and the final report ships each idea with its known risks and kill criteria.
+winner (and optionally the runner-up) is attacked by a critic, a defender responds
+with mitigations or concedes, and the final report ships each idea with its known
+risks and kill criteria. The idea body itself is never rewritten.
 
 ## Current Behavior
 
@@ -32,9 +34,18 @@ Brainstorm ships the tournament winner as-is: no step challenges it, and the rep
 
 - Enabled per profile (`functional`, `business` default on) or via `premortem=true`.
 - Critic produces the top failure modes ("it's 12 months later and this failed
-  because…"); defender revises the idea or concedes; a bounded number of rounds.
+  because…"); defender either adds a mitigation per risk (annotation only — the
+  idea's `title`/`body` are immutable, so the shipped idea is the one that was
+  grounded, rendered, and ranked) or concedes; a bounded number of rounds.
 - Report gains a `Risks & Kill Criteria` section per finalist; an idea the defender
   concedes is demoted and the next finalist promoted.
+- A promoted finalist receives its own critique round, counted against the same
+  `premortem_rounds` bound; if the bound is exhausted it ships flagged
+  `not_premortemed`.
+- Conceded ideas are excluded from `winners.md` and never reach a sink. If every
+  finalist concedes, the report states so, `winners.md` is empty, sinks are
+  skipped, and the run still ends `done` (the engine worked; the answer is "none
+  of these survive").
 
 ## Use Case
 
@@ -52,36 +63,38 @@ EPIC-3581 approach D adds an adversarial pre-mortem to reduce false confidence i
 
 ## Proposed Solution
 
-Add an optional `premortem` finisher to `scripts/little_loops/loops/brainstorm.yaml`, after `tournament`/`portfolio` selection:
+Add an optional `premortem` finisher to `scripts/little_loops/loops/brainstorm.yaml`, after `portfolio` and before the core's `validate_portfolio` gate:
 
-- Enabled by profile (`functional`, `business` default on) or `premortem=true`.
-- A critic states the top failure modes ("it's 12 months later and this failed because…"); a defender revises or concedes.
-- Rounds are bounded by a context value and enforced by the FSM with a per-run counter kept under `${captured.run_dir.output}` (not the shared-scratch `retry_counter` fragment).
-- The report gains a `Risks & Kill Criteria` section per finalist; a conceded idea is demoted, the next finalist promoted, and the change recorded in `ideas.jsonl`.
+- Enabled by the resolved profile (`functional`, `business` default on) or an explicit `premortem=true` override.
+- A critic states the top failure modes ("it's 12 months later and this failed because…"); a defender attaches a mitigation per risk or concedes. Mitigations are annotations; the idea body is not revised, so no grounding/rendering/ranking needs to be repeated.
+- Rounds are bounded by a context value and enforced by the FSM with a per-run counter kept under `${captured.run_dir.output}` (not the shared-scratch `retry_counter` fragment). Promoted finalists consume rounds from the same bound.
+- `apply_verdicts` rewrites `portfolio.json` and `winners.md`: conceded ideas are removed from `winners.md` and flagged `conceded` in `portfolio.json`; the next finalist is promoted; changes are appended to `ideas.jsonl`.
+- All finalists conceded → empty `winners.md`, sinks skipped, report says so, run ends `done`. `validate_portfolio` treats "all conceded" as a valid outcome, not a floor violation.
+- The report gains a `Risks & Kill Criteria` section per finalist.
 
 ## Program Design
 
 ### Types
 
-- `Risk`: `{failure_mode: str, kill_criterion: str}`
-- `PremortemVerdict`: `{idea_id: str, conceded: bool, risks: [Risk]}`
+- `Risk`: `{failure_mode: str, kill_criterion: str, mitigation: str | null}`
+- `PremortemVerdict`: `{idea_id: str, conceded: bool, risks: [Risk]}` — no field may carry a revised idea body
 
 ### Signatures
 
 - `critique(idea: IdeaRecord) -> list[Risk]` — critic LLM state
-- `defend(idea: IdeaRecord, risks: list[Risk]) -> PremortemVerdict` — defender revises or concedes
-- `apply_verdicts(winners: list[str], verdicts: list[PremortemVerdict]) -> list[str]` — script demotes conceded ideas and promotes the next finalist
+- `defend(idea: IdeaRecord, risks: list[Risk]) -> PremortemVerdict` — defender adds mitigations or concedes
+- `apply_verdicts(portfolio: dict, verdicts: list[PremortemVerdict], ranking: list[str]) -> dict` — script demotes conceded ideas, promotes the next finalist, flags `not_premortemed` when the bound is exhausted
 
 ### Call Path
 
-`tournament` -> `premortem_critic` -> `premortem_defender` -> `premortem_round_gate` -> `portfolio` -> `verify_artifacts`
+`portfolio` -> `premortem_critic` -> `premortem_defender` -> `premortem_round_gate` -> `apply_verdicts` -> `validate_portfolio` -> `route_sink`
 
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 
 - Verified anchors: `converge` (state), `route_sink` (state, `classify` evaluator routing `none|file|issue|decision`), `verify_artifacts` (asserts non-empty `brainstorm.md`), `retry_counter` (`lib/common.yaml` fragment). `tournament` and `portfolio` do not yet exist in `brainstorm.yaml` — FEAT-3582 dependency.
-- Decision Rules: skip route — `premortem` false (resolved from profile or explicit `premortem=true`) must route straight past the finisher with `brainstorm.md`/`winners.md` byte-identical to the no-finisher output. Round bound: the counter must increment per round and route out at `premortem_rounds`; a still-unconceded idea at the bound ships with its risks (not demoted). Concede = defender verdict `conceded: true`; the next finalist is promoted only if one remains, otherwise the demoted idea ships flagged.
+- Decision Rules: skip route — `premortem` false (resolved from profile or explicit `premortem=true`) must route straight past the finisher with `brainstorm.md`/`winners.md` byte-identical to the no-finisher output. Round bound: the counter must increment per round and route out at `premortem_rounds`; a still-unconceded idea at the bound ships with its risks (not demoted). Concede = defender verdict `conceded: true`; the next finalist is promoted only if one remains. _Superseded 2026-09-25 (Astra review): a conceded idea never ships as a winner — if none remain, `winners.md` is empty and sinks are skipped (see § Expected Behavior)._
 
 ## Integration Map
 
@@ -98,7 +111,7 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 ### Tests
 - `scripts/tests/test_brainstorm.py` — brainstorm loop structure/behavior tests
 - `scripts/tests/test_builtin_loops.py` — built-in loop validation (`ll-loop validate`)
-- New tests: round bound enforced by the FSM, demotion/promotion recorded in `ideas.jsonl`, clean skip when disabled
+- New tests: round bound enforced by the FSM, demotion/promotion recorded in `ideas.jsonl`, clean skip when disabled, promoted finalist critiqued within the bound, all-conceded → empty `winners.md` + no sink, defender output containing a revised body rejected
 
 ### Documentation
 - `scripts/little_loops/loops/README.md`, `docs/guides/LOOPS_GUIDE.md`, `docs/guides/LOOPS_REFERENCE.md` — brainstorm loop descriptions
@@ -110,7 +123,7 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 
 _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 
-- **Loop shape today**: `scripts/little_loops/loops/brainstorm.yaml` has no `tournament`/`portfolio`/`premortem` states yet (states: `init … rank → converge → route_sink → verify_artifacts → finalize_done`). The Call Path in `## Program Design` names states that only exist once FEAT-3582 lands (already in `blocked_by`); the finisher's insertion point is between `converge` and `route_sink`, since `converge` writes `brainstorm.md` and `winners.md` and `route_sink` fans out to the sinks.
+- **Loop shape today**: `scripts/little_loops/loops/brainstorm.yaml` has no `tournament`/`portfolio`/`premortem` states yet (states: `init … rank → converge → route_sink → verify_artifacts → finalize_done`). The Call Path in `## Program Design` names states that only exist once FEAT-3582 lands (already in `blocked_by`); in the pre-3582 file the insertion point would be between `converge` and `route_sink`; after FEAT-3582 it is between `portfolio` and `validate_portfolio` (see Call Path), so no sink sees a conceded winner.
 - **Winners live in `winners.md`, not `ideas.jsonl`**: `converge` writes `${captured.run_dir.output}/winners.md` (JSON lines, same schema as `ideas.jsonl`); sinks consume it. "Reflected in `winners`" therefore means rewriting `winners.md` (and any `winners` structure FEAT-3582 introduces); the `ideas.jsonl` record of demotion/promotion is an additional append-only trail, not a replacement.
 - **`retry_counter` scope constraint**: `lib/common.yaml` `retry_counter` writes its counter to `.loops/tmp/${param.counter_key}` — shared scratch outside the run's isolation boundary, and it persists across runs (a stale file from a prior run would pre-exhaust the bound). `mechanize-skills.yaml` `diagnosis_retry` documents this (MR-3) and hand-rolls a counter under `${captured.run_dir.output}` with `evaluate: output_numeric / lt`. The Proposed Solution's "use the `retry_counter` fragment" is unsafe as written; the bound must be per-run.
 - **Existing test pins**: `scripts/tests/test_brainstorm.py::TestBrainstormYaml::test_max_steps_is_60` pins `max_steps == 60`; adding critic/defender/verdict states with bounded rounds must fit the budget or change the pin deliberately. `test_required_states_exist` and `test_context_has_required_knobs`/`test_context_defaults` enumerate states and context keys, so new `premortem`/`premortem_rounds` keys and states extend those contracts.
@@ -157,8 +170,14 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Acceptance Criteria
 
-- Round count is bounded by context and enforced by the FSM (no unbounded debate).
-- Demotion/promotion is recorded in `ideas.jsonl` and reflected in `winners`.
+- Round count is bounded by context and enforced by the FSM (no unbounded debate);
+  promoted finalists count against the same bound.
+- The shipped idea's `title`/`body` are byte-identical to the ranked idea; the
+  defender contributes mitigations only.
+- Demotion/promotion is recorded in `ideas.jsonl` and reflected in `portfolio.json`
+  and `winners.md`.
+- A conceded idea never reaches a sink; all-conceded runs end `done` with empty
+  `winners.md` and no sink executed.
 - Skipped cleanly when disabled; no change to output shape otherwise.
 
 ## Related Key Documentation

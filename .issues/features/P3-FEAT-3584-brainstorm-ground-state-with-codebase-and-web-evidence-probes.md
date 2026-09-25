@@ -14,6 +14,7 @@ labels:
 - captured
 blocked_by:
 - FEAT-3582
+- FEAT-3583
 ---
 
 # FEAT-3584: Brainstorm ground state with codebase and web evidence probes
@@ -32,13 +33,22 @@ Brainstorm performs no evidence check: an idea that cites a nonexistent file, sy
 ## Expected Behavior
 
 - `codebase`: each idea must cite concrete anchors (file paths, symbols, issue IDs);
-  a script verifies they exist (git-tracked files, `git grep` for symbols,
-  `ll-issues show` for IDs) and flags conflicts with open issues.
-- `web`: research competitors, prior art, and demand signals; each idea carries
-  cited sources and an explicit assumption list.
-- Ideas failing grounding are dropped or marked `ungrounded` and excluded from the
-  tournament per profile policy.
-- Skipped entirely when `ground=none`.
+  a script verifies **only that they exist** (git-tracked files, `git grep` for
+  symbols, `ll-issues show` for IDs). Existence is anchor validation, not proof the
+  anchor supports the idea; semantic support and conflicts with open issues are out
+  of scope for the gate.
+- `web`: an LLM searches for competitors, prior art, and demand signals and cites
+  sources with a quoted snippet each; a **non-LLM probe** then fetches every cited
+  URL and checks that it loads and that the quoted snippet appears on the page.
+  Each idea also carries an explicit assumption list.
+- `grounded` is tri-state: `true` (all anchors/sources verified), `false` (an
+  anchor or source failed verification), `unknown` (retrieval failed, network
+  unavailable, or the host lacks web tools). `false` ideas are excluded from the
+  tournament; `unknown` ideas stay eligible and are flagged in the report.
+- Web grounding runs on **shortlisted** ideas only (cost); an excluded finalist is
+  replaced by the next-best idea from the same cell, and the FEAT-3582 finalist
+  floor is rechecked in `validate_portfolio`.
+- Skipped entirely when the resolved `ground` is `none`.
 
 ## Use Case
 
@@ -48,7 +58,7 @@ Brainstorm performs no evidence check: an idea that cites a nonexistent file, sy
 
 **Goal**: Have unsupported ideas rejected by deterministic probes before they reach the tournament.
 
-**Outcome**: `ideas.jsonl` records `evidence` and `grounded` per idea; ungrounded ideas are dropped or excluded per profile policy.
+**Outcome**: `ideas.jsonl` records `evidence` and `grounded` per idea; `grounded: false` ideas are excluded from the tournament and `unknown` ideas are flagged.
 
 ## Motivation
 
@@ -56,29 +66,33 @@ EPIC-3581 notes that functional designs need codebase grounding and business opp
 
 ## Proposed Solution
 
-Add a gated `ground` state to `scripts/little_loops/loops/brainstorm.yaml`, between `dedup` and `shortlist`, skipped when `ground=none`:
+Add a gated `ground` state to `scripts/little_loops/loops/brainstorm.yaml`, skipped when the resolved `ground` is `none`:
 
-- `codebase`: each idea must cite anchors (file paths, symbols, issue IDs); a script verifies files with `git ls-files`, symbols with `git grep`, issue IDs with `ll-issues show`, and flags conflicts with open issues.
-- `web`: an LLM step researches competitors, prior art, and demand signals; each idea carries cited sources and an explicit assumption list.
-- Failing ideas are dropped or marked `ungrounded` and excluded from the tournament per profile policy.
+- `codebase` (between `dedup` and `shortlist`; cheap, runs on all ideas): a script verifies files with `git ls-files`, symbols with `git grep`, issue IDs with `ll-issues show`. Existence only — no semantic-support or open-issue-conflict judgement.
+- `web` (after `shortlist`; runs on finalists only): an LLM step searches and emits `{url, quote}` sources plus an assumption list per idea; a non-LLM probe (`curl` fetch + fixed-string match of `quote`) verifies each source. Retrieval failure or missing web capability yields `grounded: unknown`, never a silent drop.
+- `grounded: false` ideas are excluded from the tournament and backfilled from the same cell; the finalist floor is rechecked by `validate_portfolio` (FEAT-3582).
 
 Issue-ID probing activates only when `.issues/` / `ll-issues` is available so the core stays decoupled from the Issue system.
+
+**Out of scope (follow-up candidate):** a bounded pre-ideation context-gathering pass that feeds repo or market context into `diverge`. Post-generation grounding only filters; it cannot inform generation.
 
 ## Program Design
 
 ### Types
 
-- `Evidence`: `{anchors: [str], sources: [str], assumptions: [str]}`
-- `IdeaRecord` gains `evidence: Evidence` and `grounded: bool`
+- `Source`: `{url: str, quote: str, verified: bool | null}` — `null` = retrieval failed
+- `Evidence`: `{anchors: [str], sources: [Source], assumptions: [str]}`
+- `IdeaRecord.extra` gains `evidence: Evidence` and `grounded: true | false | "unknown"`
 
 ### Signatures
 
 - `probe_anchor(anchor: str) -> bool` — file/symbol/issue-ID existence check, no LLM
+- `probe_source(url: str, quote: str) -> bool | None` — fetch + fixed-string match, no LLM; `None` on retrieval failure
 - `ground_idea(idea: IdeaRecord, source: str) -> IdeaRecord` — attaches evidence and sets `grounded`
 
 ### Call Path
 
-`diverge` -> `ground` -> `probe_anchor` -> `ll-issues show`
+`dedup` -> `ground` (codebase) -> `probe_anchor` -> `ll-issues show`; `shortlist` -> `ground` (web) -> `probe_source` -> `tournament`
 
 ## Integration Map
 
@@ -91,7 +105,7 @@ Issue-ID probing activates only when `.issues/` / `ll-issues` is available so th
 - `ll-issues show` CLI (`scripts/little_loops/cli/issues/`) — issue-ID probe
 
 ### Similar Patterns
-- `.loops/probes/` — existing non-LLM probe scripts for deterministic verification
+- Inline `action_type: shell` state with an `exit_code` evaluator (`dedup_novelty`, `saturation_gate` in the pre-3582 `brainstorm.yaml`) — the in-repo convention for non-LLM checks
 
 ### Tests
 - `scripts/tests/test_brainstorm.py` — brainstorm loop structure/behavior tests
@@ -113,9 +127,9 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 - **Idea schema today is `{text, rationale}` only** (`diverge` prompt and `dedup_novelty` parser); no `IdeaRecord` class exists in `scripts/little_loops/` — the `Program Design` type is a JSONL row shape, not a Python dataclass. `dedup_novelty` writes rows verbatim (`json.dumps(idea)`), so added `evidence`/`grounded` keys survive downstream states that read `ideas.jsonl` (`cluster`, `rank`, `converge` all read it via prompt and would need to be told to exclude `grounded: false`).
 - **Exit-code contract to inherit**: `dedup_novelty` documents (BUG-2468) that exit 2 = crash → `on_error: finalize_failed`, and a crash must never look like "nothing to do". A probe script must likewise separate "anchor not found" (a normal grounding result, exit 0 with `grounded: false`) from script failure (exit 2). LLM payloads reach Python only via a quoted heredoc file, never interpolated into source.
 - **`ll-issues show <ID>`** exits 0 on found, 1 with `Error: Issue '<id>' not found.` on stdout when absent (`cli/issues/show.py:cmd_show`) — exit 1 is "unknown ID", so an unavailable/absent `ll-issues` binary (exit 127) or missing `.issues/` must be distinguished from exit 1 to keep the Issue-system decoupling AC honest.
-- **`.loops/probes/` is not a matching precedent**: its contents are `.mjs` browser/DOM probes (`feat-3488-browser-probes.mjs`, etc.), not shell/Python existence probes. The Integration Map "Similar Patterns" entry should not be read as a template; the in-repo convention for non-LLM checks is an inline `action_type: shell` state with an `exit_code` evaluator (`dedup_novelty`, `saturation_gate`).
+- **`.loops/probes/` is not a matching precedent**: its contents are `.mjs` browser/DOM probes (`feat-3488-browser-probes.mjs`, etc.), not shell/Python existence probes. The in-repo convention for non-LLM checks is an inline `action_type: shell` state with an `exit_code` evaluator (`dedup_novelty`, `saturation_gate`); Similar Patterns updated accordingly.
 - **Loop-authoring constraints**: `test_required_states_exist` lists required states (adding `ground` is safe; renaming existing ones is not); `max_steps: 60` bounds the run; bash `${...}` inside FSM shell actions must be escaped `$${...}`; `${captured.run_dir.output}` uses in new states need the same `mr11-ok` handling or a `${context.run_dir}` path as `dedup_novelty` does; `ll-loop validate` enforces MR-1..MR-14, and `test_builtin_loops.py` (~line 20421 onward) carries per-loop interpolation-site allowlists that a new state referencing `${context.*}` may trip.
-- **Open dependency on FEAT-3583**: the `ground` context key (`none|codebase|web`) is expected to be resolved from the mode profile; until that lands the key needs a standalone default (`none`, so existing behavior is unchanged) in `context:`.
+- **Dependency on FEAT-3583** (now `blocked_by`): the `ground` value is read from the resolved `profile.json`. The context key defaults to `""` (inherit from profile) per FEAT-3583; the earlier standalone-`none` default is superseded.
 
 ### Wiring Additions
 
@@ -138,8 +152,8 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 1. Add the `ground` state with `none|codebase|web` routing driven by the resolved profile (FEAT-3583).
 2. Implement the deterministic `probe_anchor` script (git-tracked file, `git grep` symbol, guarded `ll-issues show`).
-3. Add the `web` research step with cited sources and assumption list, and the drop/mark-`ungrounded` policy.
-4. Record `evidence` and `grounded` per idea in `ideas.jsonl`; exclude ungrounded ideas from `shortlist`/`tournament`.
+3. Add the `web` research step (finalists only) emitting `{url, quote}` sources and an assumption list, plus the non-LLM `probe_source` check.
+4. Record `evidence` and tri-state `grounded` per idea in `ideas.jsonl`; exclude `false` ideas from the tournament, backfill from the same cell, flag `unknown` ideas in the report.
 5. Add probe pass/fail tests with fixture ideas and run `ll-loop validate brainstorm`.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
@@ -162,7 +176,13 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 - Codebase probes are deterministic and cover: missing file, missing symbol,
   unknown issue ID.
-- Grounding results recorded per idea in `ideas.jsonl` (`evidence`, `grounded`).
+- Web source probe is non-LLM and covers: URL loads with quote present (pass),
+  URL loads without quote (fail), retrieval failure (`unknown`), no web capability
+  (`unknown`, not dropped).
+- Grounding results recorded per idea in `ideas.jsonl` (`evidence`, tri-state
+  `grounded`).
+- A `grounded: false` finalist is backfilled from its cell; if that leaves fewer
+  than 2 eligible finalists, `validate_portfolio` fails the run before any sink.
 - Core loop stays decoupled from the Issue system: issue-ID probing is only active
   when `.issues/` / `ll-issues` is available.
 - Tests cover probe pass/fail with fixture ideas.

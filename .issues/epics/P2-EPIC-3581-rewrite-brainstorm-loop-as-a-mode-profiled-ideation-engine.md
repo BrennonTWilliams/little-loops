@@ -59,24 +59,48 @@ state, 2026-06-27 … 2026-07-02, not committed):
 
 ## Integration Map
 
+### Behavior Parity
+
+Per-state dispositions are itemized in FEAT-3582 § Behavior Parity; epic-level summary:
+
+| Artifact | Behavior | Disposition |
+|----------|----------|-------------|
+| `scripts/little_loops/loops/brainstorm.yaml` | lens queue (`frame`/`pop_lens`) feeding `diverge` | preserved |
+| `scripts/little_loops/loops/brainstorm.yaml` | difflib novelty dedup + saturation early exit | dropped — duplicate-group dedup |
+| `scripts/little_loops/loops/brainstorm.yaml` | listwise `cluster`/`rank`/`converge` hybrid | changed — Swiss tournament + portfolio |
+| `scripts/little_loops/loops/brainstorm.yaml` | sinks run before `verify_artifacts` | changed — `validate_portfolio` gates sinks |
+| `scripts/little_loops/loops/brainstorm.yaml` | sink contract (`none`/`file`/`issue`/`decision`, `winners.md` `text`/`rationale`) | preserved |
+
 ### Files to Modify
-- TBD - requires codebase analysis
+- `scripts/little_loops/loops/brainstorm.yaml` — every child rewrites or adds states here
+- Profile data files (FEAT-3583; `.json` preferred to avoid loop-discovery `rglob` scanners)
+- `scripts/little_loops/fsm/fence.py` — `FENCE_ROLES` / `KNOWN_UNFENCED_PROMPT_SITES` for new and removed prompt states
+- `README.md` + `scripts/README.md`, `CHANGELOG.md` (breaking change, FEAT-3582)
 
 ### Dependent Files (Callers/Importers)
-- TBD - use grep to find references
+- Sinks inside the loop (`route_sink`, `sink_file`, `sink_issue`, `sink_decision`) — contract preserved, read `winners.md` with `text`/`rationale` keys
+- `scripts/little_loops/loops/lib/common.yaml` — `parse_tagged_json`, `queue_pop`
+- No loop, skill, command, or Python module outside `brainstorm.yaml` consumes its artifacts
 
 ### Tests
-- TBD - identify shared test infrastructure
+- `scripts/tests/test_brainstorm.py` (rewritten per FEAT-3582), `scripts/tests/test_builtin_loops.py` (fence, MR-11 allowlist, warning budget), `scripts/tests/data/loop_interpolation_baseline.json`, `scripts/tests/test_builtin_loop_hardcode_gate.py`
+- Cross-child failure-path fixtures and the combined step budget: FEAT-3596
 
 ### Documentation
-- TBD - docs that need updates
+- `scripts/little_loops/loops/README.md`, `docs/guides/LOOPS_GUIDE.md`, `docs/guides/LOOPS_REFERENCE.md`
+
+### Cross-Child Contracts (Astra review, 2026-09-25)
+- **Data contract** (stable IDs, common fields, enumerated axis bins, canonical `portfolio.json`, generation vs. finalist floors) is owned by FEAT-3582; other children extend it only.
+- **Validation before sinks**: `validate_portfolio` gates `route_sink`; no sink fires on an invalid run.
+- **Profile precedence**: mode selects the base profile, explicit knobs override it, `""` means inherit (FEAT-3583).
+- **Ordering**: FEAT-3582 → FEAT-3583 → {FEAT-3584, FEAT-3585, FEAT-3586} → FEAT-3596.
 
 ## Impact
 
-- **Priority**: [P0-P5] - [Justification]
-- **Effort**: [Small/Medium/Large] - [Justification]
-- **Risk**: [Low/Medium/High] - [Justification]
-- **Breaking Change**: [Yes/No]
+- **Priority**: P2 - brainstorm is a shipped built-in loop whose core machinery is inert in every observed run
+- **Effort**: Large - six children; full rewrite of a ~460-line loop plus profiles, grounding, rendering, and pre-mortem
+- **Risk**: Medium - replaces a shipped loop's behavior; mitigated by `ll-loop validate`, deterministic script-side scoring, and FEAT-3596 fixtures
+- **Breaking Change**: Yes - removed context keys (`novelty_threshold`, `max_saturation`, `novelty_backend`) and portfolio output shape
 
 ## Goal
 
@@ -91,9 +115,10 @@ not.
 
 In scope:
 
-- Core engine: reframe → grid-tagged diverge → script dedup by cell + cluster →
-  per-cell shortlist → pairwise tournament → portfolio output; hard min-idea
-  invariant. Replaces difflib novelty and the saturation counter.
+- Core engine: reframe → grid-tagged diverge (enumerated axis bins) → duplicate-group
+  dedup → per-cell shortlist → Swiss pairwise tournament → portfolio →
+  `validate_portfolio` before sinks; hard generation and finalist floors. Replaces
+  difflib novelty and the saturation counter.
 - Mode profiles (`artifact`, `visual`, `functional`, `business`, `auto`) as data:
   reframe on/off, grid axes, idea schema, ground source, materialize, tournament
   rubric, pre-mortem on/off, output shape.
@@ -103,9 +128,12 @@ In scope:
   An explicit `mode=<x>` skips classification; individual profile knobs
   (`materialize`, `ground`, `premortem`, …) are overridable per run so mixed
   briefs (e.g. a product concept that also needs a landing-page visual) work.
-- `ground` state: none | codebase | web, with non-LLM evidence probes.
+- `ground` state: none | codebase | web, with non-LLM evidence probes (anchor
+  existence; cited-URL fetch + quote match).
 - `materialize` state for visual mode: HTML/SVG mockups → Playwright screenshots →
-  image-pairwise judging.
+  image-capability canary → image-pairwise judging.
+- Integration and evaluation (FEAT-3596): reference runs, failure-path fixtures,
+  combined step budget, comparison against the old loop.
 - Optional `premortem` finisher.
 
 Out of scope:
@@ -121,6 +149,8 @@ Out of scope:
 - **FEAT-3584** — Brainstorm ground state with codebase and web evidence probes (open)
 - **FEAT-3585** — Brainstorm materialize state: rendered mockups judged visually (open)
 - **FEAT-3586** — Brainstorm optional pre-mortem finisher (open)
+- **FEAT-3596** — Brainstorm engine integration, reference runs, and evaluation (open)
+
 
 
 
@@ -129,10 +159,13 @@ Out of scope:
 
 ## Success Metrics
 
-- A run with fewer than the configured minimum ideas routes to `failed`, never `done`.
+- A run with fewer than the configured minimum ideas routes to `failed`, never `done`,
+  and no sink executes on a failed run.
 - Diversity is measured non-LLM: occupied grid cells ≥ a configured floor.
-- Finalists are ranked by pairwise matches with position-swapped judging; the
-  bracket is built and scored by script.
+- Finalists are ranked by pairwise matches with position-swapped judging in
+  independent calls; the Swiss bracket is built and scored by script.
+- Versus the old loop on 2 fixed briefs (FEAT-3596): fewer retained duplicates, more
+  occupied cells, token/runtime cost recorded.
 - Each of the 4 modes has a profile and at least one reference run producing its
   expected output shape (visual mode produces rendered mockups + screenshots).
 - `mode: auto` selects the expected profile for one reference brief per mode, and

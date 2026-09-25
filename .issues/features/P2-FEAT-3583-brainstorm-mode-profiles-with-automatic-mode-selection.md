@@ -39,6 +39,16 @@ Brainstorm has a single fixed pipeline with no notion of mode: every brief runs 
   back to `artifact`.
 - `mode=<x>` skips classification. Individual profile knobs can be overridden via
   context for mixed briefs.
+- **Precedence**: the mode (explicit `mode=`, else classifier result, else the
+  `artifact` fallback) selects the **base profile**; explicit per-knob context
+  values then override that profile's defaults. `mode=business materialize=render`
+  therefore renders.
+- **Unset vs. explicit**: knob context keys default to `""` (inherit from profile).
+  An explicit `none`/`false` is an override that disables the profile's behavior.
+- Each profile axis declares enumerated bins (`axes: [{name, bins}, {name, bins}]`)
+  per the FEAT-3582 Data Contract, so cells cannot be invented.
+- Every profile produces the canonical `portfolio.json`; `output_shape` changes only
+  how `brainstorm.md` is rendered.
 - Downstream states read resolved profile values rather than hardcoded behavior;
   gated states route via `classify`-style routing like the current `route_sink`.
 
@@ -60,9 +70,9 @@ EPIC-3581 identifies a mode mismatch: visual designs need rendered candidates ju
 
 Add profiles as data alongside `scripts/little_loops/loops/brainstorm.yaml`, plus two states after `init`:
 
-- Four profile presets (`artifact`, `visual`, `functional`, `business`), each setting `reframe`, grid axes, idea schema, `ground` (none|codebase|web), `materialize` (none|render), tournament rubric, `premortem`, and output shape.
-- `classify_mode` (LLM, only when `mode=auto`) emits `{mode, confidence, rationale}`; confidence below a threshold falls back to `artifact`.
-- `resolve_profile` (script) merges precedence explicit `mode=` > per-knob context override > profile default > fallback, and writes `${context.run_dir}/profile.json`.
+- Four profile presets (`artifact`, `visual`, `functional`, `business`), each setting `reframe`, grid axes with enumerated bins, profile-specific idea fields (under the core `extra` object), `ground` (none|codebase|web), `materialize` (none|render), tournament rubric, `premortem`, and output shape (rendering only).
+- `classify_mode` (LLM, only when `mode=auto`) emits `{mode, confidence, rationale}`; confidence below a threshold falls back to `artifact`. Malformed or unknown-mode output also falls back to `artifact` and is recorded as such.
+- `resolve_profile` (script): (1) base profile = explicit `mode=` if set, else classifier mode, else `artifact`; (2) each knob whose context value is non-empty overrides the base profile's value; (3) writes `${context.run_dir}/profile.json` including which knobs were overridden. An invalid explicit `mode=` or knob value fails the run (exit 1 → `finalize_failed`) rather than silently falling back.
 
 Downstream states read resolved values from `profile.json`, and gated states route the way `route_sink` does today.
 
@@ -70,17 +80,18 @@ Downstream states read resolved values from `profile.json`, and gated states rou
 
 ### Types
 
-- `Profile`: `{mode: str, reframe: bool, axes: [str, str], ground: "none" | "codebase" | "web", materialize: "none" | "render", rubric: str, premortem: bool, output_shape: str}`
+- `Axis`: `{name: str, bins: [str]}` — cell values must be members of `bins`
+- `Profile`: `{mode: str, reframe: bool, axes: [Axis, Axis], ground: "none" | "codebase" | "web", materialize: "none" | "render", rubric: str, premortem: bool, output_shape: "grid" | "portfolio" | "winner_risks", overridden: [str]}`
 - `ModeDecision`: `{mode: str, confidence: float, rationale: str}`
 
 ### Signatures
 
 - `classify_mode(brief: str) -> ModeDecision` — LLM state; result written to the run dir
-- `resolve_profile(mode: str, overrides: dict[str, str], decision: ModeDecision | None) -> Profile` — deterministic script
+- `resolve_profile(mode: str, overrides: dict[str, str], decision: ModeDecision | None) -> Profile` — deterministic script; empty-string override = inherit
 
 ### Call Path
 
-`init` -> `classify_mode` -> `resolve_profile` -> `frame` -> `diverge` -> `route_sink`
+`init` -> `classify_mode` -> `resolve_profile` -> `frame` -> `pop_lens` -> `diverge` -> `route_sink`
 
 ## Integration Map
 
@@ -99,13 +110,13 @@ Downstream states read resolved values from `profile.json`, and gated states rou
 ### Tests
 - `scripts/tests/test_brainstorm.py` — brainstorm loop structure/behavior tests
 - `scripts/tests/test_builtin_loops.py` — built-in loop validation (`ll-loop validate`)
-- New tests: profile schema validation, resolution precedence (explicit > override > profile > fallback), stubbed-classifier routing for one reference brief per mode
+- New tests: profile schema validation (incl. axis bins), resolution precedence (mode selects base profile, explicit knob overrides it), stubbed-classifier routing for one reference brief per mode, invalid explicit mode, malformed classifier output, confidence exactly at the threshold, explicit `false`/`none` override vs. empty-string inherit
 
 ### Documentation
 - `scripts/little_loops/loops/README.md`, `docs/guides/LOOPS_GUIDE.md`, `docs/guides/LOOPS_REFERENCE.md` — brainstorm loop descriptions
 
 ### Configuration
-- Context keys: add `mode` (default `auto`) and per-knob overrides (`ground`, `materialize`, `premortem`, `reframe`)
+- Context keys: add `mode` (default `auto`) and per-knob overrides (`ground`, `materialize`, `premortem`, `reframe`), each defaulting to `""` (inherit). This supersedes any child issue's standalone `none`/`false` default for these keys.
 
 ### Codebase Research Findings
 
@@ -115,7 +126,7 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 - Constraint: `scripts/little_loops/loops/` subdirectories are scanned for loops (`loops/oracles/` is runnable, only `loops/lib/` is fragments). Profile YAMLs placed in a new sibling dir may be picked up by loop discovery and `test_builtin_loops.py` validation as if they were loops (no `initial`/`states`) — placement must be verified against discovery, or profiles stored as non-loop data (e.g. `.json`, or under `loops/lib/`).
 - Current shape: `brainstorm.yaml` states are `init -> frame -> pop_lens -> diverge -> dedup_novelty -> (loop) -> cluster -> rank -> converge -> route_sink`; the `context:` block (`brainstorm.yaml:23-32`) holds string-valued knobs, so profile knobs must be string-encoded (`"true"`/`"false"`) there. `init` (`:36-52`) captures `run_dir` and `next: frame`, so `classify_mode`/`resolve_profile` insert between `init` and `frame`.
 - Hardcoded behavior the profile must replace: universal lens catalog in `frame` (`:77-83`), `diverge` idea schema `{text, rationale}` (`:132-137`), `rank`/`converge` output shape and rubric (`:280-328`). `dedup_novelty` parses IDEAS_JSON with `text`/`rationale` keys, so any per-profile idea schema must keep `text` (dedup key) intact.
-- Call-path correction: the issue's Call Path `frame -> diverge` omits `pop_lens`, which sits between them.
+- Call-path correction: `pop_lens` sits between `frame` and `diverge` (Call Path updated).
 - Downstream ordering: `blocked_by: FEAT-3582` — the engine core rewrite changes these states; line anchors above describe the pre-3582 file and will shift.
 - Sink routing precedent for gated states: `route_sink` (`:332-344`) uses `evaluate: type: classify` over an echoed token with `_:` default route; a `mode=auto` gate reads the same way. Interpolated `${context.*:shell}` form is used for the shell echo.
 - Test conventions: `scripts/tests/test_brainstorm.py` loads `LOOP_FILE` via `load_and_validate`/`validate_fsm` and exercises shell states by extracting `action` and running `bash -c` in `tmp_path` (`_bash` helper) — a deterministic `resolve_profile` shell/python state is testable the same way, and stubbed-classifier routing can be tested by pre-writing the classifier output file.
@@ -146,7 +157,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 1. Define profile schema and the four presets.
 2. Add `classify_mode` + `resolve_profile` states.
 3. Thread resolved values into reframe/diverge/tournament/output prompts.
-4. Tests for resolution precedence (explicit > override > profile > fallback).
+4. Tests for resolution precedence (mode selects base profile; explicit knob overrides it; empty string inherits) and the invalid/malformed/boundary cases.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -169,7 +180,13 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Four profile files exist and are validated by a schema/test.
 - One reference brief per mode is classified to the expected profile (test with a
   stubbed classifier output plus a documented manual reference run).
-- Explicit `mode=` bypasses `classify_mode`; per-knob override beats profile default.
+- Explicit `mode=` bypasses `classify_mode`; per-knob override beats profile default
+  (e.g. `mode=business materialize=render` resolves `materialize: render`).
+- Empty-string knob values inherit the profile default; explicit `none`/`false`
+  disables it.
+- Invalid explicit `mode=` fails the run; malformed classifier output falls back to
+  `artifact` and is recorded in `profile.json`.
+- Every profile axis has enumerated bins, validated by the schema test.
 - Profile resolution is deterministic (script), and the resolved profile is written
   to `${context.run_dir}/profile.json`.
 
