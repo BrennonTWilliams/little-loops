@@ -3,7 +3,7 @@ id: BUG-3593
 type: BUG
 title: Loops do not route refuted or inconclusive spike verdicts
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-25'
 captured_at: '2026-09-25T03:40:43Z'
@@ -21,6 +21,7 @@ score_complexity: 10
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 18
+completed_at: '2026-09-25T14:49:29Z'
 ---
 
 # BUG-3593: Loops do not route refuted or inconclusive spike verdicts
@@ -293,11 +294,20 @@ refine-to-ready running nested inside autodev.
 - **Risk**: Medium - routing changes in autodev, refine-to-ready and resolve-decision; oscillation after re-arm rests on the shared budget plus the FEAT-2751 backstop
 - **Breaking Change**: No
 
+## Resolution
+
+**Closed - Already Fixed** (2026-09-25, via `/ll:ready-issue`)
+
+- **Fix commits**: `878fd83be` (implementation), `f920f9f6c` (tests), `58387a41f` (docs)
+- **Files changed**: `autodev.yaml`, `refine-to-ready-issue.yaml`, `oracles/resolve-decision.yaml`, `cli/issues/rearm_spike.py`, `cli/issues/__init__.py`, `cli/issues/deferred_triage.py`, `issue_lifecycle.py`, `test_spike_verdict_routing.py`
+- **Verification**: `test_spike_verdict_routing.py` and `test_set_status_cli.py` pass (64 passed).
+
 ## Status
 
 **Open** | Created: 2026-09-25 | Priority: P2
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-09-25T14:49:29 - `7215fdc5-6786-48b7-8156-e25bda365061.jsonl`
 - `/ll:ready-issue` - 2026-09-25T05:53:56 - `191d33d2-a8d5-4cd7-9f91-97bbd5c914d2.jsonl`
 - `/ll:confidence-check` - 2026-09-25T05:49:00 - `08995910-f634-410e-8b96-6975d65f9656.jsonl`
