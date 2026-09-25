@@ -7,7 +7,7 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-09-25'
 captured_at: '2026-09-25T18:51:59Z'
-decision_needed: true
+decision_needed: false
 relates_to:
 - ENH-3601
 - ENH-3577
@@ -45,6 +45,8 @@ per-issue attempt budget. Other consumers read its verdict and do not re-derive 
 
 ### Option A: Registry owns it
 
+> **Selected:** Option A — registry already holds `is_record_stale`/`describe_staleness`/`run_learning_gate_for_issue`; deterministic and consumable by B/C-style callers.
+
 `little_loops.learning_tests` exposes `assess_proof(issue_id) -> ProofVerdict`
 (`proven | stale | refuted | absent`, plus budget remaining). Confidence-check, ready-issue
 and the `ll-auto` gate all call it. Deterministic; one staleness rule.
@@ -60,6 +62,23 @@ skill, but staleness becomes as fresh as the last scoring run.
 The ENH-3577 child controller owns the proof budget and emits `PROOF` via
 `ll-issues next-obligation`; the `ll-auto` gate becomes a pure assertion that should never
 fire after a `ready` outcome.
+
+### Decision Rationale
+
+**Selected:** Option A (Registry owns it).
+
+Scoring (0–3 each): 
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| A | 3 | 2 | 3 | 2 | 10/12 |
+| B | 1 | 2 | 1 | 1 | 5/12 |
+| C | 1 | 1 | 2 | 1 | 5/12 |
+
+Key evidence: `learning_tests/gate.py` already owns staleness (`is_record_stale`, `describe_staleness`) and
+`issue_manager` already calls `run_learning_gate_for_issue`, so A extends an existing seam. B makes a
+deterministic fact depend on an LLM scoring run's freshness. C depends on unbuilt FEAT-3598/ENH-3577 and
+still needs a verdict source; the controller (C) can consume A's `assess_proof` to emit `PROOF`.
 
 ## Integration Map
 
@@ -99,3 +118,7 @@ Decomposed from ENH-3577: Consolidate autodev issue preparation into a single co
 ## Status
 
 **Open** | Created: 2026-09-25 | Priority: P3
+
+
+## Session Log
+- `/ll:decide-issue` - 2026-09-25T19:02:00 - `ccfdabfd-5c2e-49a6-bfd7-abb914a90640.jsonl`

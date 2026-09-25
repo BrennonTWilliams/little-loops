@@ -7,7 +7,7 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-09-25'
 captured_at: '2026-09-25T18:51:59Z'
-decision_needed: true
+decision_needed: false
 blocked_by:
 - ENH-3597
 - FEAT-3598
@@ -71,6 +71,8 @@ risk.
 
 ### Option B: New wrapper controller
 
+> **Selected:** Option B — matches the existing `loop:` wrapper pattern, isolates blast radius, and satisfies ENH-3577's "autodev owns only the queue" goal.
+
 New `prepare-issue` loop wraps `refine-to-ready-issue` and owns the second-pass repairs
 (size-review/atomic, go/no-go, pre-deferral remedy, design remedy). Autodev calls
 `prepare-issue`; other callers keep calling `refine-to-ready-issue` unchanged. Isolates blast
@@ -82,6 +84,27 @@ Leave second-pass repair in autodev but replace the fan-out with one dispatch on
 `ll-issues next-obligation` plus a single shared rescoring sub-loop (replacing the five
 rescoring triplets). Smallest change; does not satisfy ENH-3577's "autodev owns only the
 queue" goal.
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-09-25.
+
+**Selected**: Option B — New wrapper controller
+
+**Reasoning**: Wrapping a child loop via `loop:` + `context_passthrough` is already the standard shape (`autodev.yaml:533-548`, `recursive-refine.yaml:237-241`, multi-level nesting in `scan-and-implement` → `autodev` → `refine-to-ready-issue`), and other callers stay unchanged. Option A grows an already budget-tuned 68-state child (`max_steps` tuning, BUG-3593) and risks double decomposition with `recursive-refine`; Option C leaves ~103 states in autodev and fails the epic's goal and two acceptance criteria.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| Option A | 2/3 | 1/3 | 2/3 | 0/3 | 5/12 |
+| Option B | 2/3 | 2/3 | 2/3 | 2/3 | 8/12 |
+| Option C | 1/3 | 2/3 | 2/3 | 2/3 | 7/12 |
+
+**Key evidence**:
+- Rejected A (child absorbs): `no_recursion` flag precedent (`recursive-refine.yaml:45,83`) gates a caller's own states, not a child's; autodev ledgers (`autodev-repair-cycle-count.txt`, `spike-runs-<ID>`) would have to move.
+- Selected B (wrapper): `loop:` states lack rate-limit handling (`autodev.yaml:527-532`), so the wrapper needs the RunRecord (ENH-3597) rather than sentinel files; `test_builtin_loops.py:304-305` stem set and README loop counts need updating.
+- Rejected C (collapse in place): contradicts Expected Behavior and acceptance criteria; still blocked on FEAT-3598 `next-obligation`.
 
 ## Integration Map
 
@@ -135,3 +158,7 @@ Decomposed from ENH-3577: Consolidate autodev issue preparation into a single co
 ## Status
 
 **Open** | Created: 2026-09-25 | Priority: P3
+
+
+## Session Log
+- `/ll:decide-issue` - 2026-09-25T19:03:07 - `26d04b78-61d2-44f6-aa98-56c6d251288d.jsonl`

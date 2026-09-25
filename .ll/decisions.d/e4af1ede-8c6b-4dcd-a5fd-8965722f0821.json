@@ -1,0 +1,12 @@
+{
+  "id": "7efcbc9b-3c57-41fa-a918-f1a55809caef",
+  "type": "decision",
+  "timestamp": "2026-09-25T19:02:00Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Registry already owns staleness logic; deterministic, extends existing seam",
+  "rule": "Option A: Registry owns proof verdict",
+  "scope": "issue",
+  "alternatives_rejected": "Option B (LLM-freshness), Option C (depends on unbuilt controller)",
+  "issue": "ENH-3602"
+}
