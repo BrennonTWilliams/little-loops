@@ -15,6 +15,12 @@ relates_to:
 labels:
 - observability
 - context-monitor
+confidence_score: 100
+outcome_confidence: 93
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # BUG-3587: Invocation consumption is used as context occupancy
@@ -228,6 +234,7 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-25T02:22:20 - `248f636e-d153-477c-a9d3-1eb14f4ff017.jsonl`
 - `/ll:wire-issue` - 2026-09-25T02:10:49 - `dd11e427-8257-4f96-897e-d90f77550ff1.jsonl`
 - `/ll:refine-issue` - 2026-09-25T02:06:17 - `19d71a6c-75f4-47f1-9198-08c2f11c9949.jsonl`
 - `/ll:capture-issue` - 2026-09-25T01:52:41 - `344bbaba-06f1-4c37-b3c7-3b36aa7bfabc.jsonl`
