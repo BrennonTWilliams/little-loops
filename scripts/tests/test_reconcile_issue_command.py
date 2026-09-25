@@ -290,3 +290,19 @@ class TestReconcileCheckModeCoverage:
             "--check mode must extend its staleness verdict to a contradicted "
             "Scope Boundaries claim, not just the three unconditional sections"
         )
+
+
+class TestReconcileClearsResolvedConcernsAndScores:
+    """BUG-3537: substantive reconcile moves resolved Concerns and clears scores."""
+
+    def test_step_moves_resolved_concerns_and_clears_scores(self) -> None:
+        text = COMMAND_FILE.read_text()
+        step = text[text.index("### 5b.") : text.index("### 6.")]
+        assert "## Resolved Concerns" in step
+        assert "[resolved <YYYY-MM-DD> by /ll:reconcile-issue]" in step
+        assert "ll-issues set-scores" in step and "--clear" in step
+        assert "`--check`" in step
+        assert "decision_needed" in step
+
+    def test_nudge_says_scores_cleared(self) -> None:
+        assert "scores cleared" in COMMAND_FILE.read_text()

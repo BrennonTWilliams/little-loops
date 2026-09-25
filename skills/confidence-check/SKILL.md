@@ -438,7 +438,7 @@ If `HAS_FINDINGS` is false: skip (clean bill of health — no update needed).
 If `HAS_FINDINGS` is true, append a `## Confidence Check Notes` section to the issue file using the Edit tool. Insert it before `## Session Log` (or before `## Status` if no session log exists):
 
 See [rubric.md](rubric.md) § Confidence Check Notes template for the exact
-section to append.
+section to append, and § Resolved Concerns for honoring `/ll:reconcile-issue` output.
 
 After appending findings (or skipping if no findings), stage the updated issue file:
 

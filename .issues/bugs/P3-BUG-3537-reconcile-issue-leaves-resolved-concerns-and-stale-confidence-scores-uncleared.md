@@ -3,10 +3,11 @@ id: BUG-3537
 type: BUG
 title: reconcile-issue leaves resolved Concerns and stale confidence scores uncleared
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-24'
 captured_at: '2026-09-24T01:32:52Z'
+completed_at: '2026-09-25T00:13:56Z'
 confidence_score: 100
 outcome_confidence: 75
 score_complexity: 14
@@ -140,6 +141,12 @@ Reconcile exists to stop `/ll:confidence-check` from re-raising a Concern the re
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
+## Resolution
+
+- `ll-issues set-scores --clear` removes all six score keys (idempotent, exclusive with score args).
+- `set-flags` strips single-line `~~…~~` spans before phrase matching.
+- `commands/reconcile-issue.md` step 5b moves resolved Concerns to `## Resolved Concerns` and clears scores after a substantive rewrite; confidence-check rubric honors the section.
+
 ## Status
 
 **Open** | Created: 2026-09-24 | Priority: P3
@@ -166,6 +173,8 @@ _Verified by `/ll:verify-issues` on 2026-09-24._ Verdict at time of check: **VAL
 - No `## Blocked By` section, so there are no dependencies to check. `ll-verify-evidence`: clean (0 findings).
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-25T00:13:56 - `c21e939f-188d-4644-abb2-f59d9dfe4a1e.jsonl`
+- `/ll:ready-issue` - 2026-09-25T00:06:09 - `ce4b2b04-141e-4cf3-bacf-88d6fbeba8d4.jsonl`
 - `/ll:confidence-check` - 2026-09-24T23:44:26 - `01d913d6-09f5-4671-9f2f-afb2a136b503.jsonl`
 - `/ll:verify-issues` - 2026-09-24T23:38:16 - `b172455c-1f24-43cb-b559-e544617a9e15.jsonl`
 - `/ll:verify-issues` - 2026-09-24T22:56:16 - `4279401a-9acc-474c-b872-fd398cd78a8e.jsonl`

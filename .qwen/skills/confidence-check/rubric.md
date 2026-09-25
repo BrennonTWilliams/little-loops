@@ -645,3 +645,14 @@ _(omit this subsection if no gaps)_
 - [risk 1 — phrase by dominant axis: "deep per-site complexity" for low-Depth issues, "broad enumeration across N sites" for high-Breadth issues]
 _(omit this subsection if no risk factors)_
 ```
+
+## Resolved Concerns
+
+`/ll:reconcile-issue` moves Concerns its rewrite resolved out of the last
+`## Confidence Check Notes` into a `## Resolved Concerns` section placed right
+after it, one line each: `- [resolved <YYYY-MM-DD> by /ll:reconcile-issue]
+<concern> — <how resolved>`. When re-scoring, read that section and do not
+re-raise a listed concern unless there is new evidence. Keep the section
+intact when writing new Confidence Check Notes: insert the new Notes section
+before it (or before `## Session Log`), never over it, and never add a second
+`## Resolved Concerns` heading.

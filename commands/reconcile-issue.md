@@ -89,7 +89,10 @@ subsequent pass.
 - `## Proposed Solution` and any `### Option …` / `### Decision Rationale`
   (human-authored prose and recorded decisions)
 - `### Codebase Research Findings`, `### Wiring Phase`, `### Constraints`,
-  `## Confidence Check Notes`, `## Session Log`, `## Status`
+  `## Session Log`, `## Status`
+- `## Confidence Check Notes`, except that step 5b moves *resolved* Concern
+  bullets out of its last occurrence; unresolved bullets and the rest of the
+  section stay untouched.
 - `## Scope Boundaries`, except for the narrow contradicted-claim carve-out above
 - Every other section not in the rewrite list above.
 
@@ -241,6 +244,29 @@ the findings. Rules:
   frontmatter — without this flag `/ll:decide-issue` never picks the
   directive up.
 
+### 5b. Clear resolved Concerns and stale scores
+
+Runs **only** when step 5 rewrote at least one directive section, and **never**
+under `--check`. A no-op run leaves scores, Confidence Check Notes and outcome
+flags untouched.
+
+1. **Move resolved Concerns.** In the **last** `## Confidence Check Notes`
+   occurrence (the one `ll-issues set-flags` scans), remove each `### Concerns`
+   bullet that the rewrite resolved and record it under a `## Resolved Concerns`
+   section placed immediately after that Notes section (before `## Session
+   Log`), one line each:
+   `- [resolved <YYYY-MM-DD> by /ll:reconcile-issue] <original concern text> — <how the rewrite resolved it>`.
+   If `## Resolved Concerns` already exists, append to it — never write a second
+   heading. Leave earlier Notes occurrences and unresolved Concerns in place.
+   Strikethrough in place is not enough: move, don't strike.
+2. **Clear the six scores** deterministically:
+   `ll-issues set-scores "${issue_id}" --clear`
+   (removes `confidence_score`, `outcome_confidence` and the four `score_*`
+   keys; consumers read a missing score as "never assessed").
+3. Never clear `decision_needed` or other outcome flags — that stays owned by
+   `/ll:decide-issue`. The §2b branch that *sets* `decision_needed: true` is
+   unaffected.
+
 ### 6. Append Session Log entry
 
 ```bash
@@ -300,7 +326,7 @@ This integrates with FSM `evaluate: type: exit_code` routing.
 - [Or "None"]
 
 ## NEXT_STEPS
-- [Re-run `/ll:confidence-check [ISSUE_ID]` to re-score against the reconciled body]
+- [If any section was rewritten: "scores cleared — re-run `/ll:confidence-check [ISSUE_ID]`"; otherwise scores were left as-is]
 ```
 
 **Correction category** (new with this command):

@@ -203,6 +203,7 @@ Examples:
   %(prog)s fp .issues/bugs/P2-BUG-042-example.md
   %(prog)s set-scores BUG-1307 --confidence 95 --outcome 80
   %(prog)s set-scores BUG-1307 --confidence 95 --outcome 80 --score-complexity 22 --score-test-coverage 20 --score-ambiguity 25 --score-change-surface 15
+  %(prog)s set-scores BUG-1307 --clear
   %(prog)s set-flags BUG-1307
   %(prog)s set-flags BUG-1307 --from-notes - --dry-run --json
   %(prog)s set-status ENH-1725 in_progress
@@ -849,6 +850,11 @@ Examples:
             metavar="N",
             dest="score_change_surface",
             help="Change surface dimension score (0–25)",
+        )
+        ss.add_argument(
+            "--clear",
+            action="store_true",
+            help="Remove all six score keys (exclusive with the score arguments)",
         )
         add_config_arg(ss)
 

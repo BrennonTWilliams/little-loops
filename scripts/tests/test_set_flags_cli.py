@@ -313,6 +313,42 @@ class TestApplyFlagsFromNotes:
         assert result.set_flags["decision_needed"] is False
         assert "decision_needed: true" not in issue_file.read_text()
 
+    def test_struck_through_note_does_not_fire_flag(
+        self, temp_project_dir: Path, sample_config: dict[str, Any], issues_dir: Path
+    ) -> None:
+        """BUG-3537: a ~~struck~~ resolved note must not fire, even at low outcome."""
+        from little_loops.cli.issues.set_flags import apply_flags_from_notes
+        from little_loops.config import BRConfig
+
+        (temp_project_dir / ".ll" / "ll-config.json").write_text(json.dumps(sample_config))
+        issue_file = issues_dir / "bugs" / "P0-BUG-001-critical-crash.md"
+        _write_issue(issue_file, outcome_confidence=59)
+
+        result = apply_flags_from_notes(
+            BRConfig(temp_project_dir),
+            "BUG-001",
+            "~~Open decision: pick A or B~~ Resolved",
+            dry_run=False,
+        )
+
+        assert result.set_flags["decision_needed"] is False
+
+    def test_unpaired_strikethrough_does_not_suppress_later_line(
+        self, temp_project_dir: Path, sample_config: dict[str, Any], issues_dir: Path
+    ) -> None:
+        """BUG-3537: a stray `~~` on one line must not swallow a live Concern below."""
+        from little_loops.cli.issues.set_flags import apply_flags_from_notes
+        from little_loops.config import BRConfig
+
+        (temp_project_dir / ".ll" / "ll-config.json").write_text(json.dumps(sample_config))
+        issue_file = issues_dir / "bugs" / "P0-BUG-001-critical-crash.md"
+        _write_issue(issue_file, outcome_confidence=59)
+
+        notes = "- coverage is ~~50% today\n- There is an open decision about approach.\n- ~~x"
+        result = apply_flags_from_notes(BRConfig(temp_project_dir), "BUG-001", notes, dry_run=False)
+
+        assert result.set_flags["decision_needed"] is True
+
     def test_dry_run_does_not_write(
         self, temp_project_dir: Path, sample_config: dict[str, Any], issues_dir: Path
     ) -> None:

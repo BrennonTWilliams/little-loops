@@ -21,6 +21,7 @@ in the skill, not phrase matching — it is intentionally not ported here.
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -297,7 +298,9 @@ def apply_flags_from_notes(
     )
 
     existing_fm = parse_frontmatter(content, coerce_types=True)
-    lowered = notes.lower()
+    # Strip single-line ~~struck~~ spans (no re.S: a stray unpaired ~~ must not
+    # swallow live Concerns on later lines).
+    lowered = re.sub(r"~~[^\n]+?~~", "", notes).lower()
 
     matched_phrases: dict[str, list[str]] = {}
     suppressed: dict[str, str] = {}

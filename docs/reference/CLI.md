@@ -2791,9 +2791,11 @@ Write `confidence_score`, `outcome_confidence`, and the four per-dimension score
 | `--score-test-coverage N` | `None` | Test-coverage dimension score (0–25) |
 | `--score-ambiguity N` | `None` | Ambiguity dimension score (0–25) |
 | `--score-change-surface N` | `None` | Change-surface dimension score (0–25) |
+| `--clear` | `false` | Remove all six score keys (no-op when absent); errors if combined with a score argument |
 
 **Examples:**
 ```bash
+ll-issues set-scores BUG-1307 --clear
 ll-issues set-scores BUG-1307 --confidence 95 --outcome 80
 ll-issues ss FEAT-518 --confidence 88 --outcome 72 --score-complexity 22 --score-test-coverage 20 --score-ambiguity 25 --score-change-surface 15
 ```

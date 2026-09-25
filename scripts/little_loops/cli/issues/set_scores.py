@@ -9,13 +9,31 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from little_loops.config import BRConfig
 
+SCORE_KEYS = (
+    "confidence_score",
+    "outcome_confidence",
+    "score_complexity",
+    "score_test_coverage",
+    "score_ambiguity",
+    "score_change_surface",
+)
+_SCORE_ARG_DESTS = (
+    "confidence",
+    "outcome",
+    "score_complexity",
+    "score_test_coverage",
+    "score_ambiguity",
+    "score_change_surface",
+)
+
 
 def cmd_set_scores(config: BRConfig, args: argparse.Namespace) -> int:
     """Write confidence and outcome scores into an issue's YAML frontmatter.
 
     Idempotent: calling with the same values has no net effect. Only the
     flags that are explicitly provided are written; omitted flags leave the
-    corresponding frontmatter field unchanged.
+    corresponding frontmatter field unchanged. ``--clear`` instead removes all
+    six score keys (absent keys are a no-op) and is exclusive with score flags.
 
     Args:
         config: Project configuration
@@ -25,12 +43,22 @@ def cmd_set_scores(config: BRConfig, args: argparse.Namespace) -> int:
         Exit code (0 = success, 1 = error)
     """
     from little_loops.cli.issues.show import _resolve_issue_id
-    from little_loops.frontmatter import update_frontmatter
+    from little_loops.frontmatter import remove_frontmatter_keys, update_frontmatter
 
     path = _resolve_issue_id(config, args.issue_id)
     if path is None:
         print(f"Error: Issue '{args.issue_id}' not found.", file=sys.stderr)
         return 1
+
+    if getattr(args, "clear", False):
+        if any(getattr(args, dest, None) is not None for dest in _SCORE_ARG_DESTS):
+            print("Error: --clear cannot be combined with score arguments.", file=sys.stderr)
+            return 1
+        content = path.read_text()
+        new_content = remove_frontmatter_keys(content, SCORE_KEYS)
+        if new_content != content:
+            path.write_text(new_content)
+        return 0
 
     updates: dict[str, str | int] = {}
     if args.confidence is not None:

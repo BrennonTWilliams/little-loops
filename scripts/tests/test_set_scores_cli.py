@@ -252,3 +252,63 @@ class TestIssuesCLISetScores:
         # ENH-2535 regression guard: a synthetic issue with no `decision_ref`
         # in frontmatter must not be polluted by the new coupling rendering.
         assert data["decision_ref"] is None
+
+
+class TestSetScoresClear:
+    """BUG-3537: --clear removes all six score keys."""
+
+    def _run(self, temp_project_dir: Path, sample_config: dict[str, Any], *extra: str) -> int:
+        (temp_project_dir / ".ll" / "ll-config.json").write_text(json.dumps(sample_config))
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "set-scores", "BUG-001", *extra, "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            return main_issues()
+
+    def test_clear_removes_all_six_keys_and_is_idempotent(
+        self, temp_project_dir: Path, sample_config: dict[str, Any], issues_dir: Path
+    ) -> None:
+        issue_file = issues_dir / "bugs" / "P0-BUG-001-critical-crash.md"
+        assert (
+            self._run(
+                temp_project_dir,
+                sample_config,
+                "--confidence",
+                "95",
+                "--outcome",
+                "80",
+                "--score-complexity",
+                "22",
+                "--score-test-coverage",
+                "20",
+                "--score-ambiguity",
+                "25",
+                "--score-change-surface",
+                "15",
+            )
+            == 0
+        )
+        assert self._run(temp_project_dir, sample_config, "--clear") == 0
+        content = issue_file.read_text()
+        for key in (
+            "confidence_score",
+            "outcome_confidence",
+            "score_complexity",
+            "score_test_coverage",
+            "score_ambiguity",
+            "score_change_surface",
+        ):
+            assert f"{key}:" not in content
+        assert self._run(temp_project_dir, sample_config, "--clear") == 0
+        assert issue_file.read_text() == content
+
+    def test_clear_with_score_argument_errors(
+        self, temp_project_dir: Path, sample_config: dict[str, Any], issues_dir: Path
+    ) -> None:
+        issue_file = issues_dir / "bugs" / "P0-BUG-001-critical-crash.md"
+        before = issue_file.read_text()
+        assert self._run(temp_project_dir, sample_config, "--clear", "--outcome", "50") == 1
+        assert issue_file.read_text() == before
