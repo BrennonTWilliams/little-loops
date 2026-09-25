@@ -15,6 +15,12 @@ labels:
 blocked_by:
 - FEAT-3582
 reconcile_attempted: true
+confidence_score: 70
+outcome_confidence: 75
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 # FEAT-3583: Brainstorm mode profiles with automatic mode selection
@@ -199,8 +205,26 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 **Open** | Created: 2026-09-25 | Priority: P2
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-25_
+
+**Readiness Score**: 70/100 → STOP — ADDRESS GAPS
+**Outcome Confidence**: 75/100 → MODERATE
+
+### Gaps to Address
+- Unresolved dependency (hard override): `blocked_by` FEAT-3582 is `Open`. Implement FEAT-3582 first, or remove the dependency if it no longer applies.
+- The four presets' contents (axes/bins, rubrics, per-mode defaults) and the classifier confidence threshold value are not specified; pin them.
+
+### Concerns
+- Line anchors in the Codebase Research Findings describe the pre-FEAT-3582 file and will shift once it lands.
+
+### Outcome Risk Factors
+- Profile storage location is "prefer `.json`, or a YAML dir verified against scanners": decide it up front, since a wrong choice trips unfiltered `rglob("*.yaml")` scanners and `PACKAGE_DATA_ASSETS`.
+
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-25T17:21:39 - `823eec8e-b4aa-4134-9728-fb6281ade224.jsonl`
 - `/ll:reconcile-issue` - 2026-09-25T17:15:27 - `284cb1d7-e993-4a6e-afc1-6ece8366d2db.jsonl`
 - `/ll:wire-issue` - 2026-09-25T02:07:45 - `6e813375-6da8-496a-a222-6bd92b308c4c.jsonl`
 - `/ll:refine-issue` - 2026-09-25T01:46:34 - `ce904479-7e73-4d58-aa48-892e2cdb88b3.jsonl`

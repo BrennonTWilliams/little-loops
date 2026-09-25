@@ -15,6 +15,12 @@ labels:
 relates_to:
 - FEAT-2248
 reconcile_attempted: true
+confidence_score: 85
+outcome_confidence: 66
+score_complexity: 5
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 # FEAT-3582: Brainstorm engine core: reframe, grid diverge, pairwise tournament, portfolio
@@ -283,8 +289,24 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 **Open** | Created: 2026-09-25 | Priority: P2
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-25_
+
+**Readiness Score**: 85/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 66/100 → MODERATE
+
+### Concerns
+- Defaults for `min_ideas`, `min_cells`, and the number of framings `reframe` selects are still unpinned; pin them before implementing `validate_portfolio`.
+- The `max_steps` budget (60) is exceeded for F=3 framings; pin a core-only budget (raise `max_steps`, cap F·L, or batch lenses) before starting.
+
+### Outcome Risk Factors
+- Deep per-site complexity: most states of one loop YAML are rewritten (graph restructure, new tournament/dedup scripts), and existing tests that assert removed behavior must be rewritten.
+- Validator/registry coupling (`fence.py` `FENCE_ROLES`, `loop_interpolation_baseline.json`, MR-10/MR-11, warning budget) means a small miss fails the gates.
+
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-25T17:21:38 - `823eec8e-b4aa-4134-9728-fb6281ade224.jsonl`
 - `/ll:reconcile-issue` - 2026-09-25T17:15:30 - `fa11583b-aa00-4da8-b0f0-fc89c6cf8f64.jsonl`
 - `/ll:wire-issue` - 2026-09-25T02:07:44 - `6e813375-6da8-496a-a222-6bd92b308c4c.jsonl`
 - `/ll:refine-issue` - 2026-09-25T01:47:12 - `344bbaba-06f1-4c37-b3c7-3b36aa7bfabc.jsonl`

@@ -16,6 +16,12 @@ blocked_by:
 - FEAT-3582
 - FEAT-3583
 reconcile_attempted: true
+confidence_score: 80
+outcome_confidence: 64
+score_complexity: 10
+score_test_coverage: 18
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 # FEAT-3586: Brainstorm optional pre-mortem finisher
@@ -189,8 +195,26 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 **Open** | Created: 2026-09-25 | Priority: P4
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-25_
+
+**Readiness Score**: 80/100 → STOP — ADDRESS GAPS
+**Outcome Confidence**: 64/100 → MODERATE
+
+### Gaps to Address
+- Unresolved dependencies (hard override): `blocked_by` FEAT-3582 and FEAT-3583 are both `Open`. The `portfolio`/`validate_portfolio` states and resolved `premortem` profile value this issue extends do not exist yet.
+
+### Concerns
+- "Winner (and optionally the runner-up)" leaves the critiqued-finalist count open; pin it.
+
+### Outcome Risk Factors
+- Moderate per-site complexity: `apply_verdicts` demotes/promotes across `portfolio.json`, `winners.md`, and `ideas.jsonl`, and `validate_portfolio` must be extended for all-conceded.
+- No executable test exists for the hand-rolled round counter pattern (`diagnosis_retry`), so the bound test must be written from scratch; also constrained by `max_steps` and `_validate_zero_retry_counter`.
+
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-25T17:21:40 - `823eec8e-b4aa-4134-9728-fb6281ade224.jsonl`
 - `/ll:reconcile-issue` - 2026-09-25T17:15:35 - `fa11583b-aa00-4da8-b0f0-fc89c6cf8f64.jsonl`
 - `/ll:wire-issue` - 2026-09-25T02:07:46 - `6e813375-6da8-496a-a222-6bd92b308c4c.jsonl`
 - `/ll:refine-issue` - 2026-09-25T01:46:43 - `2ac59930-bb65-4013-a3d3-8f842b856fd9.jsonl`
