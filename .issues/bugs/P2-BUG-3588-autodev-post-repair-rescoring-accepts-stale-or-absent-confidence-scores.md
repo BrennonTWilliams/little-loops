@@ -85,29 +85,51 @@ Option 3):
 1. **Clear before each rerun.** A dedicated shell state (`ll-issues set-scores <ID> --clear`)
    immediately before each of the five `rerun_confidence_after_*` states. The rerun states use
    `fragment: with_rate_limit_handling` on a slash command, so the clear cannot go in their
-   action. Predecessors to retarget: `mark_decide_ran` (`on_no`/`on_error`), `run_refine` (wire
-   path — the clear goes after `run_refine`, not after `count_repair_cycle_wire`),
-   `count_repair_cycle_spike`, `remediate_oversized_atomic`, `reconcile_current` and
-   `count_repair_cycle_refine_for_design`. Clearing again after `reconcile_current` is a no-op
-   and keeps the two reconcile-entry paths identical.
-2. **Presence gate after each rerun.** Retarget every rerun's `next`/`on_error` to a per-path
-   presence gate (`ll-issues show --json`; exit 0 when `confidence` and `outcome` are both
-   non-`None`, 1 when either is missing) that routes present → the original successor, absent →
-   one retry of the rerun (run-dir counter keyed by path and issue, reset in `dequeue_next`),
-   then → a new infra state. This catches absence before any downstream reader — including
-   `check_reconcile_needed` — so the reader-by-reader fixes below are a second line of defense,
-   not the primary fix.
+   action. Predecessors to retarget (six, feeding five clear states): `mark_decide_ran`
+   (`on_no`/`on_error`), `run_refine` (wire path — the clear goes after `run_refine`, not after
+   `count_repair_cycle_wire`), `count_repair_cycle_spike`, `remediate_oversized_atomic`,
+   `count_repair_cycle_reconcile` and `count_repair_cycle_refine_for_design`. The reconcile
+   path's predecessor is `count_repair_cycle_reconcile` (`:2149`), not `reconcile_current` —
+   `reconcile_current` routes to the counter, which routes to the rerun. Both reconcile-entry
+   predecessors target one shared clear state; clearing again after `/ll:reconcile-issue`
+   already cleared is a no-op and keeps the two entry paths identical.
+2. **Presence gate after each rerun — one state per path, gate and retry folded together.**
+   Retarget every rerun's `next`/`on_error` to a per-path `fragment: harness_exit` state
+   whose action reads `ll-issues show --json` and:
+   - exits 0 when `confidence` and `outcome` are both non-`None` → `on_yes`: the original
+     successor;
+   - on the first miss, increments a run-dir counter
+     (`autodev-rescore-retry-<path>-$ID`), exits 1 → `on_no`: back to the rerun state itself
+     (not the clear state — the scores are already absent);
+   - on the second miss, exits 3 → `on_cannot_judge: mark_scores_absent_infra`.
+
+   `on_error` → `mark_scores_absent_infra`. The counter is filename-scoped per issue; clear it
+   in `dequeue_next` anyway so a re-dequeue in the same run gets its retry back. This catches
+   absence before any downstream reader — including `check_reconcile_needed` — so the
+   reader-by-reader fixes below are a second line of defense, not the primary fix.
 3. **Infra state.** New `mark_scores_absent_infra`, modelled on `mark_gate_infra` (`:1097`):
-   append the ID to `autodev-gate-infra.txt`, `rm -f autodev-inflight`, echo a distinct
-   `[SCORES_ABSENT]` token (not the learning-gate message), `next: dequeue_next`.
+   append the ID to a new `autodev-scores-absent.txt` (not `autodev-gate-infra.txt`, which is
+   the learning-gate record — keep the two causes separable), `rm -f autodev-inflight`, echo a
+   distinct `[SCORES_ABSENT]` token, `next: dequeue_next`. The issue is not deferred.
 4. **`check-readiness` exit 3.** `cmd_check_readiness` returns 3 with a `SCORES_ABSENT` stderr
    token when `confidence_score` or `outcome_confidence` is absent, before threshold comparison
    and regardless of `--honor-waiver`. Test key presence (`fm.get(key) is None`), not
    `raw_* is None` — `_coerce_optional_int` also returns `None` for present non-digit values,
    which are not "absent".
-5. **Defense in depth at existing readers.** Switch the three `check-readiness` call sites to
-   `fragment: harness_exit` with `on_cannot_judge: mark_scores_absent_infra`; add an `is None`
-   → infra branch ahead of the deferral cascade in the two inline-Python GATE readers.
+5. **Defense in depth at existing readers — per-site exit-3 targets.**
+   - Switch the three `check-readiness` call sites to `fragment: harness_exit`, but route
+     `on_cannot_judge` per site (see the Integration Map table). Only `recheck_after_decide`
+     is post-rescore and routes to `mark_scores_absent_infra`. `check_passed` and
+     `recheck_scores` run after the refine-to-ready sub-loop, where absent scores are
+     legitimate (the sub-loop can break the issue down before scoring): today that is exit 1 →
+     `triage_outcome_failure` → … → `detect_children`. Routing it to infra would skip
+     `detect_children` and orphan the children, so those two sites route exit 3 to their
+     current `on_no` target — explicit, behaviour-preserving.
+   - In the two inline-Python GATE readers (`recheck_after_size_review`,
+     `regate_after_atomic_remediation`), add the `is None` → exit 3 branch **after** the
+     `resolved_by_subloop` status check and **before** the design-gate / `readiness_stagnated`
+     / `low_readiness` / `oversized_atomic` branches. A done/cancelled parent with no scores
+     must still record `resolved_by_subloop`, not infra.
 
 ## Program Design
 
@@ -131,26 +153,31 @@ Option 3):
 
 - `scripts/little_loops/cli/issues/check_readiness.py` — `cmd_check_readiness`: absent key →
   exit 3; update docstring
-- `scripts/little_loops/cli/issues/__init__.py` — `check-readiness` help / `_USAGE` line (~139)
-- `scripts/little_loops/loops/autodev.yaml`:
+- `scripts/little_loops/cli/issues/__init__.py` — `check-readiness` help / `_USAGE` line (`:143`)
+- `scripts/little_loops/loops/autodev.yaml` — 11 new states (5 clear + 5 presence gate + 1
+  infra):
   - five `clear_scores_before_*` states and six predecessor retargets (Proposed Solution 1)
-  - five presence-gate states + retry counters; reset the counters in `dequeue_next`
-  - `mark_scores_absent_infra`
-  - `check-readiness` call sites → `harness_exit`:
+  - five presence-gate states (`harness_exit`, retry folded in); clear the retry counters in
+    `dequeue_next`
+  - `mark_scores_absent_infra` (writes `autodev-scores-absent.txt`)
+  - `check-readiness` call sites → `harness_exit`, with a per-site exit-3 target:
 
-    | State | `check-readiness` call line | Current `on_error` | Reached after a rescore? |
-    |---|---|---|---|
-    | `check_passed` | `:656` | `detect_children` | no — after the refine-to-ready sub-loop |
-    | `recheck_after_decide` | `:791` | `snap_and_size_review` | yes (`rerun_confidence_after_decide`) |
-    | `recheck_scores` | `:1370` | `check_decision_before_size_review` | no — after the refine sub-loop |
+    | State | `check-readiness` call line | Current `on_no` / `on_error` | Reached after a rescore? | Exit-3 (`on_cannot_judge`) target |
+    |---|---|---|---|---|
+    | `check_passed` | `:656` | `triage_outcome_failure` / `detect_children` | no — after the refine-to-ready sub-loop | `triage_outcome_failure` (unchanged behaviour; keeps the breakdown → `detect_children` path) |
+    | `recheck_after_decide` | `:791` | `snap_and_size_review` | yes (`rerun_confidence_after_decide`) | `mark_scores_absent_infra` |
+    | `recheck_scores` | `:1370` | `check_decision_before_size_review` | no — after the refine sub-loop | `check_decision_before_size_review` (unchanged behaviour) |
 
     All three are `check-readiness … && …` chains; `&&` short-circuits with the failing status,
     so exit 3 survives — keep it that way (no `|| true`, no pipes). `check-design` (chained in
     `recheck_scores`) returns only 0/1/2.
-  - inline-Python `is None` → infra: `recheck_after_size_review` (`:2208`),
+  - inline-Python `is None` → exit 3: `recheck_after_size_review` (`:2208`),
     `regate_after_atomic_remediation` (`:1895`); both route via `shell_exit`
-    (`on_error: dequeue_next`), so add an exit-3 path via `harness_exit` +
-    `on_cannot_judge: mark_scores_absent_infra`
+    (`on_error: dequeue_next`), so switch to `harness_exit` +
+    `on_cannot_judge: mark_scores_absent_infra`. Place the branch after the
+    `resolved_by_subloop` check, before every deferral branch. `recheck_after_size_review` has
+    about seven predecessors (`:1667`, `:1768`, `:1788`, `:1818`, `:1836`, `:1857`, `:2204`), most
+    of them not rescore paths — the branch applies to all of them
 
 ### Dependent Files (Callers/Importers)
 
@@ -170,6 +197,10 @@ Option 3):
 ### Documentation
 
 - `docs/reference/CLI.md` — `ll-issues check-readiness` exit codes (add 3)
+- `docs/guides/LOOPS_REFERENCE.md:1041-1063` — autodev flow diagram shows
+  `rerun_confidence_after_* → recheck/enqueue` directly; insert the clear and presence-gate hops
+- `docs/reference/DEFERRAL_CODES.md` — note that scores-absent is an infra outcome
+  (`[SCORES_ABSENT]`, `autodev-scores-absent.txt`), not a deferral code
 
 ### Tests
 
@@ -178,7 +209,9 @@ Option 3):
   non-digit value case that is not reported as absent
 - `scripts/tests/test_autodev_loop.py` — clear-before-rerun routing for all five reruns; presence
   gate → retry → `mark_scores_absent_infra`; `check-readiness` exit 3 routing at the three call
-  sites
+  sites (per-site targets from the table); breakdown-without-scores at `check_passed` still
+  reaches `detect_children`; done/cancelled parent with no scores at
+  `recheck_after_size_review` records `resolved_by_subloop`, not infra
 - `scripts/tests/test_autodev_decision_gate.py` — stubs `check-readiness` exit codes
   (`:955`, `:1096`, `:1117`); re-check those cases after the `harness_exit` switch
 - Technique: run the real state `action` under `bash -c` against a stub `ll-issues` on `PATH`
@@ -187,16 +220,21 @@ Option 3):
 ## Implementation Steps
 
 1. `check-readiness`: absent key → exit 3 (`SCORES_ABSENT`); CLI tests; help text; CLI.md
-2. autodev: `mark_scores_absent_infra`
-3. autodev: clear state before each rerun; retarget the six predecessors
-4. autodev: presence gate + one retry after each rerun; counters reset in `dequeue_next`
-5. autodev: `check-readiness` call sites → `harness_exit` with `on_cannot_judge`
-6. autodev: `is None` → infra branch in `recheck_after_size_review` and
-   `regate_after_atomic_remediation`
-7. Regression tests (stateful stubs): failed rescoring after decide/wire/spike/atomic/
+2. autodev: `mark_scores_absent_infra` (writes `autodev-scores-absent.txt`)
+3. autodev: clear state before each rerun; retarget the six predecessors (reconcile path:
+   `count_repair_cycle_reconcile`)
+4. autodev: one `harness_exit` presence-gate state per rerun (0 → successor, 1 → retry the
+   rerun, 3 → infra); counters cleared in `dequeue_next`
+5. autodev: `check-readiness` call sites → `harness_exit` with per-site `on_cannot_judge`
+   (infra only at `recheck_after_decide`)
+6. autodev: `is None` → exit 3 branch in `recheck_after_size_review` and
+   `regate_after_atomic_remediation`, after `resolved_by_subloop`, before deferral branches
+7. Docs: LOOPS_REFERENCE.md flow diagram, DEFERRAL_CODES.md infra note
+8. Regression tests (stateful stubs): failed rescoring after decide/wire/spike/atomic/
    refine-for-design does not pass on pre-repair scores; failed rescoring after reconcile lands on
    infra, not `low_readiness`; a first-attempt no-write followed by a successful retry proceeds
-   normally
+   normally; breakdown without scores still reaches `detect_children`; done parent without
+   scores records `resolved_by_subloop`
 
 ## Impact
 
@@ -206,6 +244,11 @@ Option 3):
   the issue unscored: `ll-auto` reports it as "never assessed", and `ll-issues next-issue` (which
   ranks by `outcome_confidence`/`confidence_score`) orders it below scored issues until it is
   rescored.
+- **Accepted risk — unscorable issue repeats across runs**: `mark_scores_absent_infra` does not
+  defer, so an issue that `/ll:confidence-check` can never score takes the infra path on every
+  run with no bound (previously it deferred as `low_readiness`). Accepted for this fix; if it
+  shows up in practice, follow up with a cross-run `[SCORES_ABSENT]` counter under
+  `.loops/diagnostics/` that defers after N runs.
 - **Sequencing**: independent of BUG-3571 (disjoint files). BUG-3572 retargets
   `rerun_confidence_after_spike`'s `next`, which this issue routes through a new presence gate —
   land this first. ENH-3577 is blocked by both.
@@ -218,7 +261,11 @@ Option 3):
       `mark_scores_absent_infra`, not `low_readiness`, `readiness_stagnated`, `oversized_atomic`
       or a reconcile rewrite
 - [ ] Every `check-readiness` call site in autodev routes exit 3 explicitly; none reaches size
-      review or deferral through `on_error`
+      review or deferral through `on_error`. Post-rescore sites route to
+      `mark_scores_absent_infra`; post-sub-loop sites (`check_passed`, `recheck_scores`) keep
+      their current `on_no` behaviour
+- [ ] An issue broken down by the refine-to-ready sub-loop without scores still reaches
+      `detect_children`; a done/cancelled parent without scores records `resolved_by_subloop`
 - [ ] `ll-issues check-readiness` exits 3 when a score key is absent; 0/1/2 semantics otherwise
       unchanged
 
