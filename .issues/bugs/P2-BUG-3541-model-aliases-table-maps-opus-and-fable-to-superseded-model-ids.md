@@ -12,6 +12,12 @@ labels:
 - models
 relates_to:
 - BUG-3564
+confidence_score: 95
+outcome_confidence: 93
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # MODEL_ALIASES maps opus and fable to superseded model IDs
@@ -181,6 +187,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-25T01:17:35 - `f2929467-388f-4f26-bd46-bd63a1730405.jsonl`
 - `/ll:wire-issue` - 2026-09-25T01:11:17 - `283a56a1-35bd-43bb-b2f7-64d9f104c2c4.jsonl`
 - `/ll:refine-issue` - 2026-09-25T01:06:50 - `42a934e3-5df9-4ac6-9296-d0ced0bc2261.jsonl`
 - `/ll:format-issue` - 2026-09-25T01:01:19 - `4b76ee9e-e590-41ab-940d-a6df6f1554bd.jsonl`

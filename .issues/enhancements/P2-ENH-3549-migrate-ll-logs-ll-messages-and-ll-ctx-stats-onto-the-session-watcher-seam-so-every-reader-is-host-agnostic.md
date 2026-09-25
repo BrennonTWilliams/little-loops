@@ -120,7 +120,24 @@ N/A — no new decision logic
 - `scripts/little_loops/session_store/sessions.py` — `_list_claude_workspaces` and `_explain_encoded_dir_host` carry their own `home / ... / "projects"` joins
 - `scripts/tests/conformance/test_host_composition.py` — write-side only today
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_session_reader_no_claude_projects_gate.py` — NEW gate test (name suggested); no gate over Python source exists today (`test_session_log_prose_sweep.py` only scans skill prose) [Agent 1, 2, 3 finding]
+- `scripts/little_loops/cli/ctx_stats.py:main_ctx_stats` — the `explain_no_sessions` call belongs here, not inside `_compute_cache_rate_from_jsonl`; changing that function's `dict | None` return would break the `None`-on-empty tests [Agent 2, 3 finding]
+
 ### Dependent Files (Callers/Importers)
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/logs.py` — already on the seam: `detect_sessions` (`:157`, `:583`, `:1958`, `:2705`), `iter_events`, `explain_no_sessions`; several raw `open()` sites remain (`:659`, `:726`, `:827`, `:1633`, `:2108`), not yet classified as transcript vs. non-transcript reads [Agent 1, 3 finding]
+- `scripts/little_loops/cli/messages.py:main_messages` — already calls `detect_sessions` (`:188`) and `explain_no_sessions`; `extract_user_messages` not traced for direct file reads [Agent 1, 2 finding]
+- `scripts/little_loops/session_store/__init__.py` — re-exports `NoSessionsCause`, `explain_no_sessions`, `iter_events`, `host_layout_for`; `ctx_stats` should import via this path [Agent 1 finding]
+- `scripts/little_loops/session_store/lifecycle.py` — calls `iter_events` (`:796`) and `host_layout_for` (`:1127`); consumers of the seam, unaffected unless signatures change [Agent 1 finding]
+- `scripts/little_loops/session_store/sessions.py:19-47` — imports `_get_claude_project_folder` from `user_messages` (circular seam); `_explain_encoded_dir_host` is used only inside `sessions.py` (`:778`, `:916`) [Agent 1 finding]
+- `scripts/little_loops/cli/verify_private_refs.py`, `scripts/little_loops/cli/verify_skill_prose.py` — carry `~/.claude/projects` regex/docstring literals; lint tools, not readers — must be excluded from (or allowlisted in) the new gate [Agent 1, 2 finding]
+
+### Wiring Notes
+_Wiring pass added by `/ll:wire-issue`:_
+- `iter_events` payload sufficiency for the non-Codex branch: `claude-code`, `opencode`, `pi` yield the full record (`_parse_claude_shaped`), so `uuid` and `message.usage` are reachable and the `uuid` dedup stays in the caller. `qwen`, `gemini`, `omp` normalizers strip `message.usage` and `kimi-code` yields raw wire records, so those hosts stay `unknown` regardless of this migration (ENH-3546 territory). `iter_events` swallows `OSError`, so the `open()` vanish-guard collapses into the existing "no eligible events → `None`" return [Agent 2 finding]
+- Gate scan method: `_ENCODED_DIR_HOSTS` in `sessions.py` builds the path from separate `".claude"` / `"projects"` strings, so a contiguous-substring scan would miss it. Use an AST `Path`-join scan plus a string-constant scan. Files holding the literal today: `user_messages.py:_get_claude_project_folder` (`:503`, docstring `:4`), `session_store/sessions.py:_list_claude_workspaces` (`:612`), `session_store/writers.py:host_layout_for` (`:2768`) [Agent 1, 2 finding]
+- No live consumer of `ll-ctx-stats --json` was found in `hooks/`, `commands/`, `skills/`, or `scripts/little_loops/loops/`; `.loops/` live loop YAMLs were not inspected (search returned only run logs) [Agent 2 finding]
 - `scripts/little_loops/cli/session.py` — non-Codex `backfill` paths still call `get_project_folder(host=...)` (lines 710, 769)
 - `scripts/little_loops/hooks/session_start.py` — `get_project_folder(root, host=...)`
 - `scripts/little_loops/session_log.py`, `scripts/little_loops/fsm/continuity.py` — `get_sessions_folder`
@@ -137,8 +154,30 @@ N/A — no new decision logic
 - `scripts/tests/test_cli_ctx_stats.py`, `test_ll_logs.py`, `test_cli_messages.py`, `test_session_discovery.py`, `test_user_messages.py` — existing reader coverage that must keep passing
 - `scripts/tests/conformance/test_host_composition.py` — hosts the read-side composition test
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_cli_ctx_stats.py:TestComputeCacheRateFromJsonl` — update: non-Codex tests (`test_computes_hit_rate`, `test_aggregates_multiple_turns`, `test_deduplicates_by_uuid`, `test_skips_agent_jsonl_files`, `test_returns_none_when_total_zero`, `test_skips_non_assistant_entries`) write Claude-shaped JSONL read by raw `open()`; `test_skips_file_that_vanishes_before_stat` asserts the `OSError` path that `iter_events` swallows [Agent 3 finding]
+- `scripts/tests/test_cli_ctx_stats.py:test_resolves_qwen_chats_transcript`, `test_resolves_gemini_chats_transcript` — highest break risk: unpatched real chain asserting `cache_read == 61559`, but qwen/gemini normalizers strip `message.usage` [Agent 3 finding]
+- `scripts/tests/test_cli_ctx_stats.py` — render tests `test_hit_rate_line_shows_host_suffix_for_non_claude_host` and `test_hit_rate_line_byte_identical_for_claude_code_host` get `[unknown]` from the `_cache_rate_provenance` fallback, not the reader; keep passing if the reader still returns no `provenance` key [Agent 2 finding]
+- `scripts/tests/test_enh3528_token_provenance.py:TestCacheRateFromTranscript` — update: `test_absent_keys_are_missing_not_zero` asserts `provenance == "unknown"`; `test_explicit_null_does_not_crash` and `test_usage_without_any_key_is_not_an_observation` share the raw-file path; `test_codex_result_is_measured` is unaffected [Agent 3 finding]
+- `scripts/tests/test_cli_ctx_stats.py` — NEW: empty-discovery test patching `little_loops.cli.ctx_stats.explain_no_sessions`, modelled on `scripts/tests/test_ll_session.py` (patches at `:792`, `:814`) and `_EXPLAIN_NO_SESSIONS_PATH` in `test_cli_messages.py:344` [Agent 3 finding]
+- `scripts/tests/test_ll_logs.py` — may break: fake-home `~/.claude/projects/<encoded-cwd>` helpers (docstring ~`:168`, `:1635`, `:4480`) if any raw `open()` site in `cli/logs.py` is replaced [Agent 3 finding]
+- `scripts/tests/test_cli_messages.py` — may break only if the `explain_no_sessions` import location changes (patch target `little_loops.session_store.explain_no_sessions`) [Agent 3 finding]
+- `scripts/tests/conformance/test_host_composition.py` — read-side test builds `SessionHandle(host="fake"|"fake-minimal", ...)` directly; `FakeHostRunner`/`FakeMinimalHostRunner` (`host_runner.py:2066`, `:2151`) have no session-log surface and neither host is in `_PARSERS`/`_REGISTERED_HOSTS`, so the test needs either registered fake parsers or a fixture-driven per-host parser stub; `_FAKES = ("fake", "fake-minimal")` at `:47` [Agent 3 finding]
+- `scripts/tests/test_usage_selection_chokepoint_gate.py`, `scripts/tests/test_history_store_chokepoint_gate.py` — templates for the new gate: string-constant scan with `_enclosing_functions()` and `test_gate_detects_a_stray_site` (usage gate); stale-entry test `test_allowlist_entries_still_exist_and_still_have_raw_connects` (history gate) [Agent 1, 3 finding]
+- `scripts/tests/conftest.py:_isolate_session_log_dir` (`:1135`) — autouse fixture redirecting `Path.home` to an empty fake home; per-test overrides win [Agent 3 finding]
+- `scripts/tests/test_session_log_prose_sweep.py:30` — only existing `.claude/projects` check (skill prose); unaffected [Agent 1 finding]
+- Indirect only, no direct unit tests exist for `_get_claude_project_folder`, `_list_claude_workspaces`, `_explain_encoded_dir_host` — covered via `test_session_discovery.py` (`explain_no_sessions` tests `:1277`–`:1484`) and `test_user_messages.py` [Agent 3 finding]
+- `scripts/tests/test_hook_session_start.py`, `test_fsm_continuity.py`, `test_session_log.py`, `test_ll_session.py`, `test_enh_3166_qwen_normalizer.py` — monkeypatch `get_project_folder`/`host_layout_for`; break only if those helpers' signatures change [Agent 1 finding]
+
 ### Documentation
 - `docs/reference/CLI.md`, `docs/reference/HOST_COMPATIBILITY.md` — reader host-coverage statements
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/CLI.md` `### ll-ctx-stats` — "Cache figures" bullet ("Codex observations are `measured`; other hosts are `unknown`") stays accurate until ENH-3546; add a bullet describing the new empty-discovery named-cause output [Agent 2 finding]
+- `docs/reference/HOST_COMPATIBILITY.md` — footnote on `ll-ctx-stats`'s cache-rate reader (ENH-3429) says `_codex_cache_usage` returns the same four keys "the Claude reader returns"; reword if the non-Codex reader changes [Agent 2 finding]
+- `docs/reference/API.md` — `get_project_folder` prose ("`ll-ctx-stats`'s cache-rate reader moved off this helper onto `detect_sessions` — ENH-3429") is historical and stays accurate [Agent 2 finding]
+- `skills/configure/areas.md` — mentions `ll-ctx-stats`; no edit needed, and any edit trips the host-mirror gates (`ll-adapt --apply`) [Agent 2 finding]
+- `scripts/tests/test_wiring_cli_registry.py`, `scripts/tests/test_wiring_init_and_configure.py` — presence-only assertions for `ll-ctx-stats` in `CLI.md` / `areas.md`; unaffected [Agent 2 finding]
 
 ### Configuration
 - N/A
@@ -150,6 +189,18 @@ N/A — no new decision logic
 3. A read-side composition test drives both divergent fakes' session records through the migrated readers, alongside the existing write-side suite.
 4. A gate test asserts no reader module carries a `.claude/projects` literal, with an allowlist for the seam's own path resolvers that fails when stale.
 5. `pytest scripts/tests/` passes.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `scripts/little_loops/cli/ctx_stats.py` — call `explain_no_sessions` in `main_ctx_stats` (not inside `_compute_cache_rate_from_jsonl`, whose `dict | None` contract the existing tests pin); import it via `little_loops.session_store`
+- Update `scripts/little_loops/cli/ctx_stats.py:_compute_cache_rate_from_jsonl` — replace the raw `open(latest.path)` with `iter_events(handle)`, reading `event.payload["message"]["usage"]`; keep `uuid` dedup in the caller; keep `provenance` absent/`unknown` for non-Codex
+- Update `scripts/tests/test_cli_ctx_stats.py` and `scripts/tests/test_enh3528_token_provenance.py` — adapt the non-Codex raw-reader tests; re-verify `test_resolves_qwen_chats_transcript` / `test_resolves_gemini_chats_transcript` (qwen/gemini normalizers strip `message.usage`)
+- Add empty-discovery test in `scripts/tests/test_cli_ctx_stats.py` — patch `little_loops.cli.ctx_stats.explain_no_sessions`
+- Add read-side composition test in `scripts/tests/conformance/test_host_composition.py` — decide how the divergent fakes get session records, since neither is in `_PARSERS`/`_REGISTERED_HOSTS`
+- Add `scripts/tests/test_session_reader_no_claude_projects_gate.py` — AST `Path`-join + string-constant scan of `scripts/little_loops/**/*.py`, reasoned allowlist for `session_store/sessions.py`, `session_store/writers.py`, `user_messages.py`, `cli/verify_private_refs.py`, `cli/verify_skill_prose.py`, a stale-entry test, and a stray-site self-check
+- Update `docs/reference/CLI.md` (`### ll-ctx-stats`) and `docs/reference/HOST_COMPATIBILITY.md` (`ll-ctx-stats` footnote) — describe empty-discovery output and, if changed, the reader wording
 
 ## Confidence Check Notes
 
@@ -171,6 +222,7 @@ _Added by `/ll:confidence-check` on 2026-09-24_
 - Wide blast radius: `user_messages` has many dependents.
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-25T01:20:25 - `d7aee0ef-9942-42c4-9fcc-7d8d7c2a43ed.jsonl`
 - `/ll:refine-issue` - 2026-09-25T01:12:50 - `4d305eb6-e0ad-4528-8217-7edc572927c3.jsonl`
 - `/ll:format-issue` - 2026-09-25T01:06:51 - `4d305eb6-e0ad-4528-8217-7edc572927c3.jsonl`
 - `/ll:confidence-check` - 2026-09-25T01:02:51 - `f35cbaf1-740e-46e5-84c9-0ecf04a645f4.jsonl`
