@@ -6,7 +6,6 @@ Claude CLI integration and state persistence for resume capability.
 
 from __future__ import annotations
 
-import json
 import os
 import re
 import signal
@@ -808,21 +807,6 @@ def process_issue_inplace(
     # Track whether we used fallback path resolution for ready-issue.
     validated_via_fallback = False
 
-    # Build on_usage closure that writes result_token_count to the context state file.
-    # Mirrors the on_model_detected closure pattern in AutoManager._process_issue.
-    _state_file = (config.repo_path or Path.cwd()) / ".ll" / "ll-context-state.json"
-    _external_on_usage = on_usage
-
-    def _on_usage_writer(input_tokens: int, output_tokens: int) -> None:
-        try:
-            state = json.loads(_state_file.read_text()) if _state_file.exists() else {}
-            state["result_token_count"] = input_tokens + output_tokens
-            _state_file.write_text(json.dumps(state))
-        except Exception:
-            pass  # never block execution on state write failures
-        if _external_on_usage is not None:
-            _external_on_usage(input_tokens, output_tokens)
-
     # BUG-3004: pre-Phase-1 confidence gate. `ll-auto` used to spend a full
     # `/ll:ready-issue` pass on issues `manage-issue` Phase 2.5 would
     # immediately halt on. Hoisted here (rather than at the Phase 2 site
@@ -1344,7 +1328,7 @@ def process_issue_inplace(
                 max_continuations=config.automation.max_continuations,
                 repo_path=config.repo_path,
                 resume_command=_slash_cmd,
-                on_usage=_on_usage_writer,
+                on_usage=on_usage,
                 preview_full=preview_full,
                 issue_path=info.path,
                 sprint_context=sprint_context,

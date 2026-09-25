@@ -1048,10 +1048,10 @@ class TestContextMonitor:
             f"Hook took {elapsed:.2f}s, exceeding 5s timeout. stderr: {result.stderr}"
         )
 
-    def test_result_token_count_used_when_present(
+    def test_legacy_result_token_count_ignored(
         self, hook_script: Path, test_config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ):
-        """When result_token_count > 0 in state, context-monitor uses it instead of heuristics."""
+        """A legacy result_token_count in state is inert; occupancy comes from the estimate (BUG-3587)."""
 
         monkeypatch.chdir(tmp_path)
 
@@ -1059,7 +1059,7 @@ class TestContextMonitor:
         config_link.parent.mkdir(exist_ok=True)
         config_link.write_text(test_config.read_text())
 
-        # Pre-write state with result_token_count (simulating on_usage closure write)
+        # Pre-write state with a legacy result_token_count (no longer produced or read)
         state_file = tmp_path / "ll-context-state.json"
         state_file.write_text(
             json.dumps(
@@ -1087,17 +1087,15 @@ class TestContextMonitor:
         assert result.returncode == 0, f"Hook failed: {result.stderr}"
 
         state = json.loads(state_file.read_text())
-        # With result_token_count=80000, estimated_tokens should reflect that value
-        # (plus per-turn overhead), not the heuristic path from 1000.
-        assert state["estimated_tokens"] >= 80000, (
-            f"estimated_tokens {state['estimated_tokens']} should be >= 80000 "
-            f"(result_token_count path). Full state: {state}"
+        assert state["estimated_tokens"] < 80000, (
+            f"estimated_tokens {state['estimated_tokens']} must not adopt the legacy "
+            f"result_token_count. Full state: {state}"
         )
 
-    def test_result_token_count_zero_falls_back_to_heuristics(
+    def test_legacy_zero_result_token_count_uses_heuristics(
         self, hook_script: Path, test_config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ):
-        """When result_token_count is 0 in state, context-monitor falls back to heuristics."""
+        """A zero legacy result_token_count leaves the heuristic estimate in charge."""
 
         monkeypatch.chdir(tmp_path)
 
@@ -1254,14 +1252,10 @@ class TestContextMonitor:
             f"Expected '1000000' in stderr to confirm explicit 1M limit. stderr: {result.stderr}"
         )
 
-    def test_impossible_baseline_clamped(
+    def test_impossible_legacy_count_does_not_trigger(
         self, hook_script: Path, test_config: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ):
-        """Impossible token count (> 1.05x limit) is clamped to prior estimate, no spurious trigger.
-
-        Pre-write state with result_token_count=1517046 (> 200k limit x 1.05 = 210k).
-        Clamp falls back to CURRENT_TOKENS (1000) -> exit 0. Without clamp: 758% -> exit 2.
-        """
+        """A huge legacy result_token_count (1517046) never triggers a handoff (BUG-3587)."""
 
         monkeypatch.chdir(tmp_path)
 
@@ -1298,7 +1292,7 @@ class TestContextMonitor:
         )
         state = json.loads(state_file.read_text())
         assert state["estimated_tokens"] <= 200000, (
-            f"estimated_tokens {state['estimated_tokens']} should be <= 200000 after clamp. "
+            f"estimated_tokens {state['estimated_tokens']} should be <= 200000. "
             f"Full state: {state}"
         )
 
@@ -3162,18 +3156,18 @@ class TestContextHandoffSentinel:
             "session-cleanup.sh should delete ll-context-state.json"
         )
 
-    def test_result_token_count_preferred_over_estimated(
+    def test_legacy_result_token_count_ignored(
         self, hook_script: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """result_token_count (accurate) is preferred over estimated_tokens (heuristic)."""
+        """A high legacy result_token_count does not write the sentinel (BUG-3587)."""
 
         monkeypatch.chdir(tmp_path)
         (tmp_path / ".ll").mkdir(exist_ok=True)
 
-        # estimated_tokens is low (heuristic underestimate) but result_token_count is high
+        # estimated_tokens is low; legacy result_token_count is high but must be ignored
         state = {
             "estimated_tokens": 30000,  # below threshold — would not trigger
-            "result_token_count": 160000,  # accurate — should trigger at 80%
+            "result_token_count": 160000,  # legacy key — inert
             "handoff_complete": False,
             "context_limit": 200000,
         }
@@ -3191,12 +3185,9 @@ class TestContextHandoffSentinel:
         )
 
         sentinel_file = tmp_path / ".ll" / "ll-context-handoff-needed"
-        assert sentinel_file.exists(), (
-            "Sentinel must be written when result_token_count is above threshold "
-            "even if estimated_tokens is below"
+        assert not sentinel_file.exists(), (
+            "Sentinel must not be written from a legacy result_token_count"
         )
-        data = json.loads(sentinel_file.read_text())
-        assert data["token_count"] == 160000
 
 
 class TestSessionCleanupWorktrees:

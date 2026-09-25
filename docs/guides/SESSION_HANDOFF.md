@@ -365,7 +365,6 @@ You'll rarely need to inspect this directly, but it's useful for debugging stuck
   "session_start": "2024-01-15T10:30:00Z",
   "estimated_tokens": 125000,
   "transcript_baseline_tokens": 122000,
-  "result_token_count": 124500,
   "tool_calls": 63,
   "threshold_crossed_at": "2024-01-15T11:45:00Z",
   "handoff_complete": false,
@@ -387,7 +386,6 @@ You'll rarely need to inspect this directly, but it's useful for debugging stuck
 ```
 
 - `transcript_baseline_tokens`: The raw API token sum from the last assistant entry in the JSONL transcript (0 when unavailable or `use_transcript_baseline: false`). Useful for diagnosing estimation accuracy.
-- `result_token_count`: The authoritative `input_tokens + output_tokens` total from the most recent stream-json `result` event, written by the `_on_usage_writer` callback in `process_issue_inplace` (note: this does **not** include `cache_read_input_tokens`, contrary to other heuristic estimators in the file). When non-zero, the context monitor uses this value directly instead of heuristics or the transcript baseline (zero lag, maximum accuracy).
 - `last_baseline_mtime`: The transcript file's mtime (epoch seconds, as a string) at the time `transcript_baseline_tokens` was last read. Used to detect turn boundaries — the transcript baseline is only re-read when the mtime advances, so repeated tool calls within the same turn serve the cached value.
 - `breakdown.claude_overhead`: Cumulative `per_turn_overhead` (plus the one-time `system_prompt_baseline` on the first call) added across all tool calls, tracked separately from per-tool estimates for diagnosing where estimated tokens come from.
 - `detected_model`: The model id detected from the last `assistant` transcript entry, cached so only the first hook invocation per session needs to read the transcript for this purpose.

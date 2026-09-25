@@ -1162,12 +1162,11 @@ there's nothing to record there.
      }
    }
    ```
-2. Check state file is updating (watch both heuristic and authoritative counts):
+2. Check state file is updating (watch both heuristic and transcript-baseline counts):
    ```bash
-   watch -n 1 'cat .ll/ll-context-state.json | jq "{estimated_tokens, result_token_count, transcript_baseline_tokens}"'
+   watch -n 1 'cat .ll/ll-context-state.json | jq "{estimated_tokens, transcript_baseline_tokens}"'
    ```
-   When `result_token_count > 0`, the context monitor uses it directly (zero lag, most accurate).
-   When `result_token_count == 0`, it falls back to `transcript_baseline_tokens` or pure heuristics.
+   The context monitor (`hooks/scripts/context-monitor.sh`) uses `transcript_baseline_tokens` when non-zero, otherwise pure heuristics. A leftover `result_token_count` key from an older version is ignored.
 3. Verify PostToolUse hook is running:
    ```bash
    # Add this to context-monitor.sh temporarily for debugging

@@ -3,10 +3,11 @@ id: BUG-3587
 type: BUG
 title: Invocation consumption is used as context occupancy
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-25'
 captured_at: '2026-09-25T01:46:08Z'
+completed_at: '2026-09-25T02:52:56Z'
 parent: EPIC-3562
 relates_to:
 - ENH-3545
@@ -234,7 +235,13 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-25T02:52:56 - `4718fb0b-1d13-4db0-bd7b-73e1781a9872.jsonl`
+- `/ll:ready-issue` - 2026-09-25T02:40:39 - `e8e1d2bc-6d31-441f-bfd5-59234966cda4.jsonl`
 - `/ll:confidence-check` - 2026-09-25T02:22:20 - `248f636e-d153-477c-a9d3-1eb14f4ff017.jsonl`
 - `/ll:wire-issue` - 2026-09-25T02:10:49 - `dd11e427-8257-4f96-897e-d90f77550ff1.jsonl`
 - `/ll:refine-issue` - 2026-09-25T02:06:17 - `19d71a6c-75f4-47f1-9198-08c2f11c9949.jsonl`
 - `/ll:capture-issue` - 2026-09-25T01:52:41 - `344bbaba-06f1-4c37-b3c7-3b36aa7bfabc.jsonl`
+
+## Resolution
+
+Retired `result_token_count`: deleted `_on_usage_writer` in `process_issue_inplace` (caller's `on_usage` forwarded directly), removed tier 1 from `context-monitor.sh` and the override from `context-handoff-sentinel.sh`, updated the four tier-order docs, and rewrote the defect-encoding tests to assert a legacy key is ignored. Unrelated pre-existing failures: `test_no_new_unverifiable_evidence` (BUG-1688 span), `test_autodev_topology`.

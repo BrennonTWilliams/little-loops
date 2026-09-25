@@ -1409,15 +1409,14 @@ flowchart TB
     RESUME -->|Work continues| ESTIMATE
 ```
 
-**Context Estimation**: The hook uses a three-tier priority for token counts:
+**Context Estimation**: The hook uses a two-tier priority for token counts:
 
 | Priority | Source | When Active |
 |----------|--------|-------------|
-| 1 (highest) | `result_token_count` in state file | Non-zero; written by `on_usage` callback from stream-json `result` events — zero lag, authoritative |
-| 2 | `transcript_baseline_tokens` | `use_transcript_baseline: true` and transcript available — one-turn lag, API-exact |
-| 3 (fallback) | Heuristic estimates | When both above are absent |
+| 1 (highest) | `transcript_baseline_tokens` | `use_transcript_baseline: true` and transcript available — one-turn lag, API-exact |
+| 2 (fallback) | Heuristic estimates | When the baseline is absent |
 
-When `result_token_count > 0` in `.ll/ll-context-state.json`, the context monitor uses it directly and skips heuristics entirely.
+Invocation token consumption (`on_usage` / `TokenUsage`) is reported separately and never enters `.ll/ll-context-state.json`: cumulative consumption across a multi-request run is not current context occupancy. A leftover `result_token_count` key in an old state file is ignored.
 
 **Heuristic estimates (fallback only)**:
 

@@ -35,24 +35,20 @@ SENTINEL_THRESHOLD=$(ll_config_value "context_monitor.sentinel_threshold" "50")
 [ -f "$STATE_FILE" ] || exit 0
 
 # Extract fields in a single jq pass
-IFS=$'\t' read -r ESTIMATED_TOKENS RESULT_TOKEN_COUNT HANDOFF_COMPLETE CONFIG_CONTEXT_LIMIT <<< \
+IFS=$'\t' read -r ESTIMATED_TOKENS HANDOFF_COMPLETE CONFIG_CONTEXT_LIMIT <<< \
     "$(jq -r '[
         (.estimated_tokens // 0),
-        (.result_token_count // 0),
         (.handoff_complete // "false"),
         (.context_limit // 0)
-    ] | @tsv' "$STATE_FILE" 2>/dev/null || echo "0	0	false	0")"
+    ] | @tsv' "$STATE_FILE" 2>/dev/null || echo "0	false	0")"
 
 # Skip if handoff already completed in this session — nothing to do
 if [ "$HANDOFF_COMPLETE" = "true" ]; then
     exit 0
 fi
 
-# Choose best available token count: result_token_count (accurate) over estimated_tokens (heuristic)
+# Invocation consumption is not context occupancy (BUG-3587); use the estimate only.
 TOKEN_COUNT="$ESTIMATED_TOKENS"
-if [ "${RESULT_TOKEN_COUNT:-0}" -gt 0 ]; then
-    TOKEN_COUNT="$RESULT_TOKEN_COUNT"
-fi
 
 # Skip if no usable token data
 if [ "${TOKEN_COUNT:-0}" -le 0 ]; then

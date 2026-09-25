@@ -6260,3 +6260,16 @@ class TestConfidenceGatePreCheck:
         info_text = " ".join(str(call.args[0]) for call in manager.logger.info.call_args_list)
         assert "Auto-corrections: 1/1 (100.0%) (1 gated before Phase 1)" in info_text
         assert "Skipped issues: 1" in info_text
+
+
+class TestOnUsageDoesNotWriteContextState:
+    """BUG-3587: invocation consumption must never be written to the occupancy state file."""
+
+    def test_on_usage_forwarded_without_state_write(self) -> None:
+        import inspect
+
+        from little_loops import issue_manager
+
+        src = inspect.getsource(issue_manager.process_issue_inplace)
+        assert "result_token_count" not in src
+        assert "on_usage=on_usage," in src

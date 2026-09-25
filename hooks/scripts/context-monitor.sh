@@ -292,7 +292,6 @@ main() {
         read -r CACHED_BASELINE
         read -r OVERHEAD_CURRENT
         read -r TOOL_CURRENT
-        read -r RESULT_TOKEN_COUNT
         read -r LAST_BASELINE_MTIME
         read -r PRESSURE_LEVELS_EMITTED_JSON
         read -r LAST_PRESSURE_EPOCH
@@ -306,7 +305,6 @@ main() {
         (.transcript_baseline_tokens // 0 | tostring),
         (.breakdown["claude_overhead"] // 0 | tostring),
         (.breakdown[$key] // 0 | tostring),
-        (.result_token_count // 0 | tostring),
         (.last_baseline_mtime // "0"),
         (.pressure_levels_emitted // [] | @json),
         (.last_pressure_write_epoch // 0 | tostring)
@@ -358,11 +356,9 @@ main() {
     fi
 
     # Calculate new totals
-    # Priority: authoritative result event count > transcript baseline > pure heuristics.
-    # result_token_count already reflects full turn usage — do NOT add TOKENS on top.
-    if [ "${RESULT_TOKEN_COUNT}" -gt 0 ] 2>/dev/null; then
-        NEW_TOKENS=$RESULT_TOKEN_COUNT
-    elif [ "${TRANSCRIPT_BASELINE}" -gt 0 ] 2>/dev/null; then
+    # Priority: transcript baseline > pure heuristics. Invocation consumption is not occupancy
+    # (BUG-3587), so no result-event count is consulted here.
+    if [ "${TRANSCRIPT_BASELINE}" -gt 0 ] 2>/dev/null; then
         NEW_TOKENS=$((TRANSCRIPT_BASELINE + TOKENS))
     else
         NEW_TOKENS=$((CURRENT_TOKENS + TOKENS))
