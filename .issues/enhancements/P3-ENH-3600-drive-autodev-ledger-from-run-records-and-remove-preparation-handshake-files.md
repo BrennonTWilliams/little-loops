@@ -41,17 +41,42 @@ evidence) stay; preparation markers go.
 
 ## Proposed Solution
 
-- Collect per-issue run records under `${context.run_dir}/records/<ID>.json` (child record
-  copied at dequeue completion).
+- Read per-issue run records directly from `${context.run_dir}/run-records/prepare-issue/<ID>.json`
+  (ENH-3597 layout; the wrapper record is authoritative). No copy step.
 - Move `finalize_done`'s logic into a Python function (e.g. `little_loops.autodev_summary`)
   with a thin shell state calling it; unit-test it directly.
+- **Missing or malformed record**: a dequeued issue may have no record if it crashed,
+  hit `max_steps`, exhausted its rate-limit retries (BUG-3567) or was interrupted by a
+  handoff. `build_summary` counts such an issue as `retryable_error` with reason
+  `record_absent`. It never drops the issue, and never counts it as passed.
 - Delete preparation markers no longer written after C and D; verify with a grep gate
   test that `autodev.yaml` references none of them.
+- **Child-written `autodev-*` markers**: `refine-to-ready-issue.yaml` itself writes
+  `autodev-decide-ran`, `autodev-decision-unresolved.txt`, `autodev-proposal-unsound.txt`
+  and `autodev-spike-inconclusive.txt`. `auto-refine-and-implement.yaml:1112` reads
+  `autodev-decision-unresolved.txt`, and `oracles/resolve-decision.yaml:249` relies on
+  `autodev-decide-ran`. Migrate those readers to run records (the
+  `writer: refine-to-ready-issue` record) before the child stops writing the markers, or
+  keep writing the markers and list them as a documented exception.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
+
+- Python-module delegation precedent (thin shell state → importable module): `python3 -m little_loops.<module> <subcommand> --run-dir ${context.run_dir}` with `main(argv) -> int` + argparse subparsers, routing on exit code — in force in `fleet-loop-improve.yaml` (10 call sites; module `fleet_improve.py`, `build_parser()` :762, `main()` :812) and `oracles/integrate-node.yaml` (3 sites; `rn_synth_queue.py`, `try_pop_ready` :109). These are the only two loops using the shape; `autodev.yaml` has zero `python3 -m` calls today — its dominant shape is `ll-*` CLI + inline heredoc Python (BUG-3339), which is what the extraction replaces.
+- JSON writes go through `atomic_write_json` (`scripts/little_loops/file_utils.py:70`; `indent=2`, `allow_nan=False`, defensive re-parse, `os.replace`, parent dirs auto-created) — matches ENH-3597's atomic-write requirement for records and should serve `summary.json` too.
+- Grep-gate styles in force (three, pick knowingly): whole-file `read_text()` substring assertion (`test_autodev_loop.py:983-989`, the only form that also catches marker mentions in comments — where most autodev marker references live today); per-state action scan (`test_builtin_loops.py:6732-6738`); parametrized forbidden-pattern class with a shared collector (`test_builtin_loops.py:910-949`).
+- Contested convention — malformed-record tolerance: every existing per-ID JSON-directory reader silently skips bad files (`decisions.py:_load_fragments` :55-77 with its docstring naming the rule; `cli/loop/queue.py:39-45`; `cli/harness.py:2205-2210`), i.e. the record disappears from results. This issue's `record_absent` → `retryable_error` semantics are a deliberate departure from the house default — only `cli/verify_decisions.py:66-77` departs from skip (by failing hard). The unit tests must pin the departure explicitly, and the reader cannot reuse `_load_fragments`-style silent-skip semantics unchanged.
+- Naming hazard: `write_summary` already exists as inline shell functions inside `rn-refine.yaml`, `rlhf-svg-refine.yaml`, and `rlhf-animated-svg.yaml` (their own unrelated summaries). A Python `little_loops.autodev_summary.write_summary` does not collide at import time, but greps for the name hit both.
+- None of `build_summary`, `read_run_record`, `write_summary` (as Python), `scripts/little_loops/autodev_summary.py`, or the `run-records/` layout exists yet (repo-wide search excluding `.issues/`) — they arrive with ENH-3597/ENH-3601 (both open), matching the `blocked_by` edges. `cli/logs.py`'s `_LoopRunRecord` is an unrelated history-DB concept.
 
 ## Integration Map
 
 ### Files to Modify
 - `scripts/little_loops/loops/autodev.yaml`
+- `scripts/little_loops/loops/refine-to-ready-issue.yaml` (stop writing `autodev-*` markers once readers migrate)
+- `scripts/little_loops/loops/auto-refine-and-implement.yaml` (reads `autodev-decision-unresolved.txt`)
+- `scripts/little_loops/loops/oracles/resolve-decision.yaml` (`autodev-decide-ran` dependency)
 - new `scripts/little_loops/autodev_summary.py` (or equivalent)
 - `docs/ARCHITECTURE.md` loop section
 
@@ -59,6 +84,18 @@ evidence) stay; preparation markers go.
 - New unit tests for summary construction from records
 - `summary.json` truthfulness on every exit (EPIC-3565 AC) incl. rate-limit exits (BUG-3567)
 - Structural, rewrite: `test_autodev_loop.py`, `test_fsm_topology.py`
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
+
+- `finalize_done`'s actual read set is narrower than the Summary's "~50 files": it reads the `autodev-staged/passed/unverified/skipped/gate-blocked/decision-unresolved/not-started/spike-inconclusive/proposal-unsound/spike-no-verdict` ledgers, `autodev-inflight`, `autodev-stop-reason`, and `autodev-queue.txt` (only when stop reason ≠ completed). It never reads `autodev-scores-absent.txt`, `autodev-gate-infra.txt`, or any per-ID `*-attempted-*`/`*-retry-*` marker — those are per-iteration routing state consumed by other states, invisible to the summary.
+- Correction to the Proposed Solution bullet: `autodev-decide-ran` is NOT written by `refine-to-ready-issue.yaml`. The child writes its own counter (`refine-to-ready-decide-attempts` in `check_decide_attempts`, whose comment cites autodev's write-once marker as the one-attempt model). `autodev-decide-ran` is written by autodev's `mark_decide_ran_at_dequeue`/`mark_decide_ran`, cleared in `dequeue_next`, and short-circuits `decide_current`.
+- `oracles/resolve-decision.yaml`'s `autodev-decide-ran` reference (~:249) is a comment documenting a behavioral dependency (autodev's one-decide-pass-per-dequeue), not a file read of the child's markers. The only genuine external file reader of the child markers is `auto-refine-and-implement.yaml`'s finalize (~:1112, counts `autodev-decision-unresolved.txt` into that loop's own summary). autodev itself reads the three child ledgers in `skip_inflight` (grep-before-`refine_failed`) and truncates them at `init`.
+- The child's three autodev-ledger writers are `record_proposal_unsound`, `record_spike_inconclusive`, and `record_decision_unresolved` in `refine-to-ready-issue.yaml` — each also writes `refine-terminal-class` and defers via `ll-issues set-status`.
+- Ledger lifecycle facts: `init` pre-creates 12 ledger files (single `printf '' >` each); `autodev-gate-infra.txt` and `autodev-scores-absent.txt` are append-only and NOT pre-created; `autodev-stop-reason` is written only by `finalize_rate_limited`; `autodev-passed.txt` is written only by `finalize_done` (test-enforced).
+- Test locations differ from the Tests section: `finalize_done` behavioral coverage lives in `test_builtin_loops.py` `TestAutodevLoop` (:6643; `_run_finalize_done` harness :7475 executes the action under `bash -c`; promotion/phantom/no-op/rate-limit tests :7389-:7574; `test_check_passed_stages_instead_of_passes` :7459). `test_autodev_loop.py` has zero `finalize_done` references (it covers per-iteration markers); `test_fsm_topology.py` only pins the autodev state count (105). `scripts/tests/data/loop_interpolation_baseline.json` carries a `finalize_done` interpolation-baseline entry that must stay valid through the rewrite.
+- `summary.json` current key set (single printf at the end of `finalize_done`): `verdict`, `closed`, `not_closed`, `skipped`, `gate_blocked`, `decision_unresolved`, `not_started`, `inflight_unresolved`, `abandoned`, `stop_reason`, `pending`; verdict ladder success → partial → phantom → not_started → no-op, with `rate_limit` stop reason overriding to `rate_limited`, and `phantom` exiting 1 to route `on_no: failed`. This is the FEAT-3573-as-of shape the Scope Boundary pins.
 
 ## Impact
 
@@ -75,23 +112,33 @@ evidence) stay; preparation markers go.
 
 ### Signatures
 
-- `build_summary(run_dir: Path) -> AutodevSummary` — reads `records/<ID>.json` plus closure files
+- `build_summary(run_dir: Path) -> AutodevSummary` — reads `run-records/prepare-issue/<ID>.json` for each dequeued ID plus closure files; an absent/malformed record counts as `retryable_error` (`record_absent`)
 - `write_summary(run_dir: Path, summary: AutodevSummary) -> Path` — writes `summary.json`
 
 ### Call Path
 
 `autodev.yaml:finalize_done` -> `build_summary` -> `read_run_record` -> `write_summary`
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
+
+- ENH-3597's proposed reader returns `RunRecord | None` on absent/malformed record (or writer/ID mismatch), so `build_summary`'s `record_absent` bucket maps from a `None` return plus the dequeued-ID list — which must come from the closure/queue files that remain (`autodev-staged.txt`/`autodev-unverified.txt`/`autodev-inflight`), since the queue alone does not retain dequeued IDs.
+- ENH-3597 specifies `read_run_record(run_dir, writer, issue_id) -> RunRecord | None`; after ENH-3601 the authoritative writer is `prepare-issue` (the wrapper), not `refine-to-ready-issue` — the audit-conflicts Scope Boundary note already reflects this.
+- Serialization conventions for `AutodevSummary`: hand-written `to_dict` on the dataclass is the house style (`state.py:49-86` is the canonical both-directions example with `from_dict`; `queue_store.py:391` emits camelCase keys with `_from_row` :421; `issue_history/models.py` is to_dict-only), sets converted to lists for JSON, writes via `atomic_write_json` (`file_utils.py:70`).
+
 ## Scope Boundaries
 
 - Queue files and closure accounting (`autodev-queue.txt`, `autodev-inflight`, `autodev-staged.txt`, `autodev-passed.txt`, `autodev-unverified.txt`, FEAT-3573 evidence) stay.
-- `summary.json` keys keep their current shape.
+- `summary.json` keys keep their shape **as of FEAT-3573**, which adds the cancelled/implemented split.
 
 ## Acceptance Criteria
 
 - [ ] `summary.json` is derived only from run records + closure accounting files
 - [ ] No `autodev-*` preparation marker is read or written by `autodev.yaml`
 - [ ] Every autodev exit still writes a truthful `summary.json`
+- [ ] A dequeued issue with no run record is reported as `retryable_error` / `record_absent`, never dropped or passed (unit test)
+- [ ] `auto-refine-and-implement` and `oracles/resolve-decision` read run records, not `autodev-*` markers (or the exception is documented)
 - [ ] `docs/ARCHITECTURE.md` describes the parent/child contract
 
 ## Parent Issue
@@ -106,8 +153,9 @@ Decomposed from ENH-3577: Consolidate autodev issue preparation into a single co
 
 ## Scope Boundary
 
-**Note** (added by `/ll:audit-issue-conflicts`): After ENH-3601 (Option B) autodev re-enters the `prepare-issue` wrapper, not `refine-to-ready-issue` directly. The authoritative per-issue run record is the wrapper's record, which supersedes/wraps the child's; it is the one copied to `records/<ID>.json`. ENH-3597 must list the wrapper as a second record writer. The ledger reads the wrapper's record (ENH-3601), not the child's.
+**Note** (added by `/ll:audit-issue-conflicts`, applied 2026-09-25): The ledger reads the wrapper's record (`run-records/prepare-issue/<ID>.json`, ENH-3597 layout), not the child's. The body above reflects this.
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-25T19:53:36 - `52506a27-e6a0-49d9-99b0-9b89990953d8.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-09-25T19:09:18 - `dcfdf31c-be65-47ce-9e6e-5b65d63239f2.jsonl`

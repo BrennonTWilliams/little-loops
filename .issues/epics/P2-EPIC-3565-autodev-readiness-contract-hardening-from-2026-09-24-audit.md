@@ -14,6 +14,8 @@ relates_to:
 - ENH-3601
 - ENH-3602
 - ENH-3600
+- BUG-3603
+- ENH-3590
 ---
 
 # EPIC-3565: Autodev readiness contract hardening from 2026-09-24 audit
@@ -95,7 +97,6 @@ measurement.
 - **ENH-3576** — Format-check repair coverage for missing and boilerplate sections with format-issue fallback (done)
 - **ENH-3577** — Consolidate autodev issue preparation into a single controller loop (done — decomposed into ENH-3597, FEAT-3598, ENH-3599, ENH-3601, ENH-3602, ENH-3600)
 - **BUG-3588** — Autodev post-repair rescoring accepts stale or absent confidence scores (done)
-- **ENH-3590** — Add advise second-model consult step to autodev (open)
 - **BUG-3591** — Confidence-check suppresses unproven-mechanism cap on attempted-only spikes (done)
 - **BUG-3592** — Spike treats any non-zero Verification exit as a refutation (done)
 - **BUG-3593** — Loops do not route refuted or inconclusive spike verdicts (done)
@@ -105,11 +106,20 @@ measurement.
 - **ENH-3601** — Move autodev second-pass preparation routing into a preparation controller (open)
 - **ENH-3602** — Single budget owner for learning-proof evidence (open)
 - **ENH-3600** — Drive autodev ledger from run records and remove preparation handshake files (open)
+- **BUG-3603** — Autodev pre-implement proof gate fails open into implement_current (open)
+
+Moved out 2026-09-25: **ENH-3590** (advise consult) is a new capability, not an audit
+finding. It stays linked through `relates_to`.
+
+### Implementation order
+
+BUG-3603, ENH-3597, ENH-3602 (independent) → FEAT-3598 → ENH-3599 → ENH-3601 → FEAT-3573 →
+ENH-3600. FEAT-3573 blocks only ENH-3600, which rewrites the same closure accounting.
 
 ## Acceptance Criteria
 
 - [ ] Every child issue is `done` or `cancelled`
-- [ ] Every edge into `implement_current` passes the same preparation gates as the normal path
+- [ ] Every edge into `implement_current` passes the same preparation gates as the normal path (enforced by BUG-3603's structural invariant test)
 - [ ] Every autodev exit writes `summary.json` with a truthful verdict
 
 ## Related Key Documentation

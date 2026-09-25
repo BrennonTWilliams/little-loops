@@ -13,6 +13,9 @@ relates_to:
 - ENH-3577
 - FEAT-3598
 parent: EPIC-3565
+blocks:
+- FEAT-3598
+- ENH-3601
 ---
 
 # ENH-3602: Single budget owner for learning-proof evidence
@@ -81,6 +84,42 @@ Key evidence: `learning_tests/gate.py` already owns staleness (`is_record_stale`
 deterministic fact depend on an LLM scoring run's freshness. C depends on unbuilt FEAT-3598/ENH-3577 and
 still needs a verdict source; the controller (C) can consume A's `assess_proof` to emit `PROOF`.
 
+## Proof sources and budget scope (post-decision)
+
+The registry (`little_loops.learning_tests`) stores only learning-test records, keyed by
+target string from `learning_tests_required`. Spike proof lives elsewhere: issue
+frontmatter (`spike_attempted`, the spike verdict read by `ll-issues spike-verdict`, the
+`check-gate` `structured_proof`/`structured_open` state). The spike attempt counter is
+run-scoped: `${context.run_dir}/spike-runs-<ID>`, cap 2. The registry has no run
+identity, so it cannot hold a per-run counter. Therefore:
+
+- `assess_proof` aggregates **both** sources: registry records for each
+  `learning_tests_required` target, and the issue's spike verdict and gate state via the
+  existing `spike-verdict` / `check-gate` functions.
+- `assess_proof` owns the budget **policy** (the attempt cap and what "exhausted" means).
+  The caller passes the attempt **count**, because it lives in the caller's `run_dir`.
+  Standalone callers pass `None`, which means no run budget applies.
+- `commands/ready-issue.md` (Learning Test Gate, lines 254-261) currently spends attempts
+  on its own: it auto-invokes `/ll:explore-api` on `refuted` and on missing records. It
+  moves onto `assess_proof`'s verdict and budget, so it stops re-deriving
+  stale/refuted/missing itself.
+
+## Program Design
+
+### Types
+
+- `ProofStatus: Literal["proven", "stale", "refuted", "absent"]` — overall verdict; the worst status among targets wins
+- `ProofVerdict: dataclass` — `issue_id`, `status: ProofStatus`, `targets: dict[str, ProofStatus]` (learning-test targets plus `spike`), `budget_remaining: int | None`, `reason: str`
+
+### Signatures
+
+- `assess_proof(issue_path: Path, *, attempts_used: int | None = None, stale_after_days: int | None = None) -> ProofVerdict` — the single source of truth for proof sufficiency, staleness and refutation. Uses `is_record_stale` for registry records and the `spike-verdict` / `check-gate` helpers for spike proof
+- `run_learning_gate_for_issue(issue_path: Path, *, skip: bool = False, cwd: Path | None = None, targets: list[str] | None = None) -> Literal["passed", "blocked", "impl_failed", "infra_failed", "skipped"]` — existing; its stale/refuted decision is taken from `assess_proof` instead of being re-derived
+
+### Call Path
+
+`issue_manager.process_issue_inplace` -> `run_learning_gate_for_issue` -> `assess_proof` -> `is_record_stale`
+
 ## Integration Map
 
 ### Files to Modify
@@ -103,14 +142,15 @@ still needs a verdict source; the controller (C) can consume A's `assess_proof` 
 ## Scope Boundaries
 
 - No change to how learning tests are authored (`/ll:explore-api`).
-- Program Design is written after the owner is selected (`/ll:decide-issue`).
+- The spike attempt counter stays in the caller's `run_dir`. Only the cap/policy moves into `assess_proof`.
 
 ## Acceptance Criteria
 
-- [ ] Owner option selected and recorded
-- [ ] One function/field is the source of truth for proof sufficiency and budget
+- [x] Owner option selected and recorded (Option A, registry)
+- [ ] `assess_proof` is the source of truth for proof sufficiency and the attempt-budget policy, covering learning-test targets and spike proof
 - [ ] Confidence-check, ready-issue and the `ll-auto` learning gate agree on a shared stale and refuted fixture
-- [ ] A `ready` preparation outcome never hits `LEARNING_GATE_BLOCKED` for a reason the controller could have detected
+- [ ] `ready-issue` no longer spends `/ll:explore-api` attempts outside `assess_proof`'s budget
+- [ ] The shared stale/refuted fixture yields the same verdict from `assess_proof` and the `ll-auto` gate (the controller-level learning-gate criterion now lives in ENH-3601's AC)
 
 ## Parent Issue
 
@@ -122,6 +162,7 @@ Decomposed from ENH-3577: Consolidate autodev issue preparation into a single co
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-25T19:41:25 - `2f63920a-850e-4ac5-bf34-e7b8eb47e2e0.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-09-25T19:09:20 - `dcfdf31c-be65-47ce-9e6e-5b65d63239f2.jsonl`
 - `/ll:decide-issue` - 2026-09-25T19:02:00 - `ccfdabfd-5c2e-49a6-bfd7-abb914a90640.jsonl`
 
@@ -129,4 +170,4 @@ Decomposed from ENH-3577: Consolidate autodev issue preparation into a single co
 
 ## Scope Boundary
 
-**Note** (added by `/ll:audit-issue-conflicts`): The AC 'A `ready` preparation outcome never hits `LEARNING_GATE_BLOCKED` for a reason the controller could have detected' depends on ENH-3601's controller. Test this issue via the shared stale/refuted fixture yielding the same verdict from `assess_proof` and the `ll-auto` gate; the controller-level AC belongs to ENH-3601.
+**Note** (added by `/ll:audit-issue-conflicts`, applied 2026-09-25): The controller-level learning-gate criterion moved to ENH-3601, which this issue blocks. Test this issue with the shared stale/refuted fixture.

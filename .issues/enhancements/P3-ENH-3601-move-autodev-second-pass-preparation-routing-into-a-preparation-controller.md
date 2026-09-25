@@ -12,7 +12,7 @@ blocked_by:
 - ENH-3597
 - FEAT-3598
 - ENH-3599
-- FEAT-3573
+- ENH-3602
 blocks:
 - ENH-3600
 relates_to:
@@ -106,22 +106,91 @@ Decided by `/ll:decide-issue` on 2026-09-25.
 - Selected B (wrapper): `loop:` states lack rate-limit handling (`autodev.yaml:527-532`), so the wrapper needs the RunRecord (ENH-3597) rather than sentinel files; `test_builtin_loops.py:304-305` stem set and README loop counts need updating.
 - Rejected C (collapse in place): contradicts Expected Behavior and acceptance criteria; still blocked on FEAT-3598 `next-obligation`.
 
+### Go/no-go trigger (resolves the Open Question)
+
+Keep today's trigger unchanged: go/no-go runs only for `deferred_reason: oversized_atomic`.
+The trigger is deterministic, based on the `oversized_atomic` reason code written in the
+size-review path. Moving it into `prepare-issue` unchanged keeps "behavioral test set
+passes unchanged" achievable. Widening it with a risk signal (`score_complexity`,
+`score_change_surface`, `outcome_confidence` band, file count) changes behavior and
+belongs in a separate follow-up issue, not in this migration. The epic's "risk-conditional
+go/no-go" wording is satisfied by this documented predicate.
+
+## Program Design
+
+### Types
+
+- No new Python types. Uses `RunRecord` and `RunRecordWriter` from ENH-3597 with `writer = "prepare-issue"`, and `ObligationResult` from FEAT-3598.
+
+### Signatures
+
+- `write_run_record(run_dir: Path, record: RunRecord) -> Path` — (ENH-3597) called by every `prepare-issue` terminal with `writer="prepare-issue"`
+- `read_run_record(run_dir: Path, writer: RunRecordWriter, issue_id: str) -> RunRecord | None` — (ENH-3597) `prepare-issue` reads the child's record after its `loop: refine-to-ready-issue` state; autodev reads the wrapper's record
+- `select_next_obligation(config: BRConfig, issue_id: str) -> ObligationResult` — (FEAT-3598) replaces `triage_outcome_failure`'s fan-out predicates inside the wrapper
+
+### Loop shape (`prepare-issue.yaml`)
+
+- `loop: refine-to-ready-issue` with `context_passthrough: true`, so the wrapper shares
+  autodev's `run_dir` and the `spike-runs-<ID>` / `autodev-repair-cycle-count.txt` counters.
+- The second-pass repair states move here from autodev, keeping their names where
+  possible: wire/refine, reconcile/design remedy, pre-deferral remedy, size-review/atomic,
+  go/no-go. The five rescoring triplets collapse into one shared rescoring path that keeps
+  BUG-3588's freshness rules.
+- **Rate limits**: `loop:` call states cannot use `with_rate_limit_handling` (BUG-3390,
+  `autodev.yaml:527-532`). Skill states inside the wrapper use the fragment. On
+  exhaustion they route to a wrapper terminal that writes `outcome: retryable_error`.
+  They never route to autodev's `finalize_rate_limited`, which does not exist in the
+  wrapper. Autodev's `loop: prepare-issue` state keeps the BUG-2611 rule (no `on_no`) and
+  routes `on_error` to `skip_inflight_infra`.
+- Autodev routes only on the wrapper's `RunRecord.outcome`. `ready` → fail-closed proof
+  gate (BUG-3603) → `implement_current`.
+
+### Call Path
+
+`autodev.yaml:refine_current` -> `prepare-issue.yaml` -> `refine-to-ready-issue.yaml:classify_terminal` -> `write_run_record`
+
+`prepare-issue.yaml` (second-pass dispatch) -> `select_next_obligation` -> `write_run_record` -> `autodev.yaml:check_proof_defer_or_implement` -> `cmd_check_gate`
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
+
+- **Decision Rules**: N/A — no new decision logic. The go/no-go trigger stays the existing `deferred_reason: oversized_atomic` predicate; moving states must be behavior-preserving.
+- **Constraint on the wrapper's `outcome` vocabulary**: autodev must be able to distinguish, from the wrapper's record alone, at least `ready`, quality failure, infra failure (including rate-limit exhaustion as `retryable_error`) and children-enqueued (breakdown); today these are encoded in sentinel files and terminal names (`refine-terminal-class`, `copy_broke_down`/`enqueue_children`). The record's enum is owned by ENH-3597 — this issue must not invent extra outcome values.
+- **Constraint on ordering with BUG-3603**: the fail-closed proof gate before `implement_current` (`check_proof_gate_before_implement` / `check_proof_defer_or_implement`) remains in autodev and is downstream of the wrapper's `ready` outcome; no `prepare-issue` terminal may route into `implement_current`.
+
 ## Integration Map
 
 ### Files to Modify
 - `scripts/little_loops/loops/autodev.yaml`
-- `scripts/little_loops/loops/refine-to-ready-issue.yaml` (Option A) or new `scripts/little_loops/loops/prepare-issue.yaml` (Option B)
-- `.claude/workflows/refine-to-ready.js` (gitignored, machine-local; Option A)
-- `scripts/little_loops/loops/README.md` (Option B, loop count)
+- new `scripts/little_loops/loops/prepare-issue.yaml`
+- `scripts/little_loops/loops/README.md` and root `README.md` loop count (mirror to `scripts/README.md`)
+- `docs/ARCHITECTURE.md` loop section (new wrapper)
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/loops/recursive-refine.yaml`, `issue-refinement.yaml`, `auto-refine-and-implement.yaml`
+- `scripts/little_loops/loops/recursive-refine.yaml`, `issue-refinement.yaml`, `auto-refine-and-implement.yaml` — unchanged; they keep calling `refine-to-ready-issue` directly (Option B)
 
 ### Tests
 - Behavioral, must pass unchanged: `test_autodev_scores_freshness.py`, `test_check_readiness.py`,
   `test_arm_proposal_revision.py`, `test_format_probe_routing.py`, `test_ll_issues_check_gate.py`
-- Structural, rewrite: `test_fsm_topology.py`, `test_builtin_loops.py`, `test_autodev_loop.py`
-- New: recursive-refine does not double-decompose (Option A)
+- Structural, rewrite: `test_fsm_topology.py`, `test_builtin_loops.py` (stem set at lines 304-305), `test_autodev_loop.py`
+- New: `prepare-issue` rate-limit exhaustion writes `retryable_error` and autodev ledgers it
+- New: a `ready` outcome never hits `LEARNING_GATE_BLOCKED` for a reason `assess_proof` (ENH-3602) reports (controller-level AC, moved here from ENH-3602)
+- BUG-3603's invariant test (no fail-open edge into `implement_current`) still passes
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
+
+- **Current size (measured, `autodev.yaml`)**: 105 states, `max_steps: 500`, 3190 lines; `refine-to-ready-issue.yaml` has 67 states, `max_steps: 90`. `prepare-issue.yaml` does not exist yet. Every state named in Current Behavior exists today.
+- **Reachable set is wider than the listed ~45 states.** Everything reachable from `triage_outcome_failure` before `implement_current` is 94 states in total, because the fan-out also reaches the spike states (`check_spike_needed`, `run_spike`, `route_spike_verdict`, `*_spike`), the decide states (`resolve_decision_direct`, `decide_current`, `*_decide`) and the dequeue-time gates. Those belong to ENH-3599, not this issue. The ~45 estimate only holds if ENH-3599 lands first and moves the spike/decide subgraph into `refine-to-ready-issue`; the `blocked_by` edge is load-bearing for scope, not just ordering.
+- **Rescoring triplets present today**: `clear_scores_before_{wire,reconcile,atomic}` / `rerun_confidence_after_{wire,reconcile,atomic_remediation}` / `check_scores_present_{wire,reconcile,atomic}` (the spike and decide triplets also exist and are ENH-3599's). `count_repair_cycle_*` has six variants: `refine`, `wire`, `spike`, `size_review`, `refine_for_design`, `reconcile`.
+- **Sub-loop wiring invariants** (`fsm/executor.py`): a `loop:` state with `context_passthrough` inherits the parent context, and `run_dir` is re-injected into the child via `setdefault` (executor lines ~1132-1151), so a `prepare-issue` wrapper and its `refine-to-ready-issue` child share one `run_dir`. Captures from the child are merged back into the parent when `context_passthrough` or `with:` is set (~line 1315). Shared counters (`spike-runs-<ID>`, `autodev-repair-cycle-count.txt`) therefore keep working across the extra nesting level.
+- **Existing exit-class contract that the wrapper must not regress**: `refine-to-ready-issue`'s `classify_terminal` writes `refine-terminal-class`; autodev's `skip_inflight` reads it to split quality failures (`refine_failed`) from infra kills (`skip_inflight_infra`, `refine_failed_infra`). Autodev's `refine_current` routes `on_success` to `count_repair_cycle_refine`, `on_failure` to `skip_inflight`, `on_error` to `skip_inflight_infra`, with no `on_no` (BUG-2611: an explicit `on_no` shadows `on_failure`). The new `loop: prepare-issue` state has to preserve that shape until the run record replaces the sentinel.
+- **Contested convention — rate-limit fragment on `loop:` states**: `autodev.yaml` (BUG-3390 comment on `refine_current`) says `fragment: with_rate_limit_handling` is inert on a `loop:` call state, whereas `recursive-refine.yaml` `run_refine` still applies that fragment to a `loop:` state. The wrapper must follow the autodev reading (no fragment on the `loop:` state; rate-limit handling only on skill states inside the wrapper), which is what Program Design already says.
+- **Run-record dependency state**: ENH-3597 (`RunRecord`/`write_run_record`/`read_run_record`) and FEAT-3598 (`select_next_obligation`) have not landed; no `RunRecord` symbol exists in `scripts/little_loops` yet (the `_LoopRunRecord` in `cli/logs.py` is unrelated fleet-review aggregation). Signatures in Program Design are therefore forward references to sibling issues and must be re-checked against their final shapes before implementation.
+- **Structural test hook**: `test_builtin_loops.py` asserts `expected == actual` over the stem set of `BUILTIN_LOOPS_DIR.glob("*.yaml")` (around lines 295-306), so adding `prepare-issue` fails that test until the stem is listed. Behavioral test files named in Tests all exist under `scripts/tests/`.
+- **Mirror gates**: a new loop YAML bumps the loop count in root `README.md` (mirrored to `scripts/README.md`) and `scripts/little_loops/loops/README.md`; skills/README edits also trip the `ll-adapt` mirror gates.
 
 ## Impact
 
@@ -132,23 +201,27 @@ Decided by `/ll:decide-issue` on 2026-09-25.
 
 ## Open Questions
 
-- Go/no-go is "risk-conditional" per ENH-3577, but no risk signal is defined. Today it runs
-  only for `oversized_atomic` deferrals. Which signal widens or narrows it
-  (`score_complexity`, `score_change_surface`, `outcome_confidence` band, file count)?
-- Coordinate with ENH-3590 (advise consult step), which hooks into the same decision points.
+- ~~Which risk signal widens go/no-go?~~ Resolved above: keep the `oversized_atomic`-only trigger; widening is a follow-up.
+- ENH-3590 (advise consult) lands after this issue and targets `prepare-issue.yaml`.
 
 ## Scope Boundaries
 
-- Implementation waits for the boundary option to be selected (`/ll:decide-issue`).
-- Program Design is written after the decision; it depends on the chosen option.
 - Keep distinct skills for research, wiring, decisions and reconciliation; do not merge them into one prompt (ENH-3577).
+- Callers other than autodev are untouched.
+- No change to the go/no-go trigger condition.
+- **Size**: about 45 states move, plus a new loop, at High risk. Run
+  `/ll:issue-size-review` before implementation. A natural split is D1 (wrapper +
+  wire/refine + reconcile/design remedy + shared rescoring path) and D2 (size-review/atomic
+  + go/no-go + pre-deferral remedy).
 
 ## Acceptance Criteria
 
-- [ ] Boundary option selected and recorded
+- [x] Boundary option selected and recorded (Option B, 2026-09-25)
 - [ ] `autodev.yaml` has no wire/reconcile/design-remedy/pre-deferral/size-review/go-no-go states
-- [ ] The five rescoring triplets are gone from autodev
-- [ ] Go/no-go trigger is a documented, deterministic risk predicate
+- [ ] The five rescoring triplets are gone from autodev; `prepare-issue` has one shared rescoring path with BUG-3588 freshness rules
+- [ ] Go/no-go trigger is the documented, deterministic `oversized_atomic` predicate, unchanged
+- [ ] `prepare-issue` writes a `writer: prepare-issue` run record on every terminal, including rate-limit exhaustion (`retryable_error`)
+- [ ] A `ready` preparation outcome never hits `LEARNING_GATE_BLOCKED` for a reason `assess_proof` could have detected (moved from ENH-3602)
 - [ ] Behavioral test set passes unchanged
 
 ## Parent Issue
@@ -161,4 +234,5 @@ Decomposed from ENH-3577: Consolidate autodev issue preparation into a single co
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-25T19:42:32 - `2f63920a-850e-4ac5-bf34-e7b8eb47e2e0.jsonl`
 - `/ll:decide-issue` - 2026-09-25T19:03:07 - `26d04b78-61d2-44f6-aa98-56c6d251288d.jsonl`

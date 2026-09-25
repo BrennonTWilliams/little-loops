@@ -10,7 +10,7 @@ captured_at: '2026-09-25T18:51:50Z'
 blocked_by:
 - ENH-3597
 - FEAT-3598
-- FEAT-3573
+- BUG-3603
 blocks:
 - ENH-3601
 - ENH-3600
@@ -42,6 +42,15 @@ the markers `autodev-decide-ran`, `autodev-spike-inconclusive.txt`,
 `autodev-spike-no-verdict.txt`, `autodev-decision-unresolved.txt`,
 `autodev-pre-spike-readiness.txt`, `spike-runs-*`.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
+
+- The eight named states are duplicates in name only. Autodev's copies differ from the child's in ways the removal must account for: autodev reads the ID from `captured.input.output`, the child from `captured.issue_id.output`; autodev's `run_spike` (`autodev.yaml:1662`) carries `with_rate_limit_handling`, `rate_limit_max_wait_seconds: 14400`, `on_rate_limit_exhausted: finalize_rate_limited` and a `count_repair_cycle_spike` successor (FEAT-2751 stagnation counter), none of which the child's `run_spike` (`refine-to-ready-issue.yaml:1031`) has.
+- Both proof-gate states in autodev fail open today: `check_proof_gate_before_implement` (`autodev.yaml:690`) and `check_proof_defer_or_implement` (`autodev.yaml:730`) both set `on_error: implement_current`, and both map unrecognised `ll-issues check-gate` output to `PROOF_CLEAR`. That is BUG-3603, still open; the "fail-closed" route this issue depends on does not exist yet.
+- `spike-runs-<ID>` is written by both loops today: the child increments it in `check_spike_needed` (`refine-to-ready-issue.yaml:1018`), autodev in `check_spike_needed` (`autodev.yaml:1643`), `check_spike_needed_before_skip` (`:1987`), `check_proof_gate_before_implement` (`:703`) and `dispatch_pre_deferral_remedy` (`:2943`). Removing autodev's writers leaves the child as the sole writer, so carry-over across re-entries holds only if `resolve_issue` in the child keeps not touching it (BUG-3593 comment at `:1012`).
+- `RunRecord`, `read_run_record` and `write_run_record` do not exist in `scripts/little_loops` yet (ENH-3597 is open); no code in this issue can be verified against them until that lands.
+
 ## Expected Behavior
 
 Autodev never invokes `/ll:spike` or `oracles/resolve-decision` directly. When the child
@@ -57,8 +66,42 @@ autodev re-enters the child rather than running its own route.
   refine pipeline) and the post-refine decision/spike states listed above.
 - Remove the `decide`/`spike` rescoring triplets; the child's `confidence_check` owns
   rescoring (BUG-3588 freshness rules must carry over).
-- Delete the listed marker files; ledger rows (`autodev-skipped.txt` etc.) are written from
-  the run record.
+- Stop autodev from reading or writing the listed marker files. Ledger rows
+  (`autodev-skipped.txt` etc.) are written from the run record.
+
+### Replacement edge into `implement_current`
+
+`check_proof_gate_before_implement` is one of only two predecessors of
+`implement_current`. Deleting it without a replacement would leave an edge into
+implementation that skips the proof gate, which breaks EPIC-3565's AC. The route after
+this change must be:
+
+`refine_current` → read the `RunRecord` → `outcome == ready` →
+`check_proof_defer_or_implement` (fail-closed per BUG-3603) → `implement_current`
+
+The proof gate stays as a cheap deterministic assertion before implementation, even
+though the child now owns spike routing. BUG-3603's structural invariant test (no
+`on_error` edge into `implement_current`; every predecessor is a proof-gate state) must
+keep passing.
+
+### Markers the child writes and other loops read
+
+The child itself writes `autodev-decide-ran`, `autodev-decision-unresolved.txt`,
+`autodev-proposal-unsound.txt` and `autodev-spike-inconclusive.txt`
+(`refine-to-ready-issue.yaml`). Two other loops depend on them:
+
+- `auto-refine-and-implement.yaml:1112` counts `autodev-decision-unresolved.txt` for its
+  own summary.
+- `oracles/resolve-decision.yaml:249` relies on the write-once `autodev-decide-ran`.
+
+This issue removes only **autodev's** reads and writes. The child keeps writing these
+files until ENH-3600 migrates `auto-refine-and-implement` to run records.
+
+### Spike budget across re-entries
+
+`spike-runs-<ID>` lives in the shared `run_dir`, and both loops count against it
+(BUG-3553/BUG-3593). When autodev re-enters the child, the counter must carry over and
+must not be reset. Otherwise every re-entry grants a fresh spike budget.
 
 ## Integration Map
 
@@ -67,12 +110,27 @@ autodev re-enters the child rather than running its own route.
 - `scripts/little_loops/loops/refine-to-ready-issue.yaml` (only if a route is missing in the child)
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/loops/oracles/resolve-decision.yaml` (callers change, contract doesn't)
+- `scripts/little_loops/loops/oracles/resolve-decision.yaml` (callers change, contract doesn't; relies on the `autodev-decide-ran` marker at line 249)
+- `scripts/little_loops/loops/auto-refine-and-implement.yaml` (reads `autodev-decision-unresolved.txt` at line 1112; unchanged here, migrated in ENH-3600)
 
 ### Tests
 - Behavioral, must pass unchanged: `test_spike_verdict_routing.py`,
   `test_autodev_decision_gate.py`, `test_autodev_scores_freshness.py`
 - Structural, rewrite: `test_fsm_topology.py`, `test_builtin_loops.py`, `test_autodev_loop.py`
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
+
+- Autodev sites that touch the listed spike/decision markers or run a spike/decision route but are NOT among the twenty-odd states named in Current Behavior — each must be resolved for AC 1 and AC 3 to hold:
+  - `skip_inflight` (`autodev.yaml:550-600`) greps `autodev-decision-unresolved.txt`, `autodev-spike-inconclusive.txt` and `autodev-proposal-unsound.txt` to avoid double-counting a child-ledgered stop (BUG-3390/BUG-3593/BUG-3574). With run records this must become an outcome check, or child-ledgered stops are counted as `refine_failed` a second time.
+  - `dispatch_pre_deferral_remedy` (`autodev.yaml:2943`, reached via `check_pre_deferral_remedy:2880` / `dispatch_design_remedy:2901`) writes `autodev-pre-spike-readiness.txt` and routes into the spike family; `recheck_after_size_review` (`:2833`) reads `spike-runs-<ID>`. These are spike routes outside the eight states and are not addressed by Scope Boundaries (size-review stays until ENH-3601).
+  - `finalize_done` summary reads `autodev-decision-unresolved.txt` (`:3030`) and `autodev-spike-inconclusive.txt` (`:3106`); the initial-state block truncates the markers (`:68-71`), `dequeue_next` removes `autodev-pre-spike-readiness.txt` (`:140`), and `autodev-decide-ran` is removed at `:108`.
+  - `recheck_after_decide` (`:901`) and `recheck_scores` (`:1552`) are the shared rescoring states the `decide`/`spike` triplets feed; their BUG-3588 freshness checks must be preserved when the triplets go (`test_autodev_scores_freshness.py`).
+- The only autodev predecessors of `implement_current` are `check_proof_gate_before_implement` (`on_error`, `:728`) and `check_proof_defer_or_implement` (`on_no` `:743`, `on_error` `:744`); `check_proof_gate_before_implement` is entered from `check_passed` (`:685`), `check_decision_after_refine`-family states (`:929`) and `check_decision_before_size_review`-family retries (`:760-761`).
+- `cmd_check_gate` lives at `scripts/little_loops/cli/issues/check_gate.py:145` (verdicts `structured_proof` / `structured_open` / other).
+- Existing behavioral tests (`test_autodev_decision_gate.py`, e.g. `post_decide_chain_fsm` fixtures near `:140-170`, `:980-1115`) hard-code `implement_current` reachability through the post-decide chain; the "pass unchanged" AC conflicts with removing that chain, so which of those tests are behavioral (kept) versus structural (rewritten) needs a per-test call at implementation time.
+- Conventions in force: the child owns `oracles/resolve-decision` through `check_decision_mid_refine`/`resolve_decision_mid_refine` (`refine-to-ready-issue.yaml:309-322`), `..._mid_wire` (`:363-374`) and `resolve_decision_pre_breakdown` (`:1092`); a decision route belongs in the child as a `loop: oracles/resolve-decision` state, evidence: those three states.
 
 ## Impact
 
@@ -89,11 +147,13 @@ autodev re-enters the child rather than running its own route.
 
 ### Signatures
 
-- `read_run_record(run_dir: Path) -> RunRecord | None` — (from ENH-3597) read by the state that replaces `check_passed` for decision/proof routing
+- `read_run_record(run_dir: Path, writer: RunRecordWriter, issue_id: str) -> RunRecord | None` — (from ENH-3597) read by the state that replaces `check_passed` for decision/proof routing
 
 ### Call Path
 
-`autodev.yaml:refine_current` -> `refine-to-ready-issue.yaml:run_spike` -> `cmd_spike_verdict` -> `read_run_record` -> `autodev.yaml:dequeue_next`
+`autodev.yaml:refine_current` -> `refine-to-ready-issue.yaml:classify_terminal` -> `write_run_record`
+
+`autodev.yaml` (post-refine routing state) -> `read_run_record` -> `autodev.yaml:check_proof_defer_or_implement` -> `cmd_check_gate` -> `autodev.yaml:implement_current`
 
 ## Scope Boundaries
 
@@ -106,6 +166,9 @@ autodev re-enters the child rather than running its own route.
 - [ ] No state in `autodev.yaml` runs `/ll:spike` or `oracles/resolve-decision`
 - [ ] The eight duplicated states are gone from `autodev.yaml`
 - [ ] The listed spike/decision marker files are no longer read or written by autodev
+- [ ] The only route into `implement_current` is `outcome == ready` → fail-closed proof gate; BUG-3603's invariant test passes
+- [ ] `spike-runs-<ID>` persists across autodev re-entries into the child (real-FSM test: the spike budget does not reset)
+- [ ] `auto-refine-and-implement` and `oracles/resolve-decision` behavior unchanged
 - [ ] Behavioral test set passes unchanged; refuted/inconclusive spike routing (BUG-3593) still holds end to end
 
 ## Parent Issue
@@ -120,8 +183,9 @@ Decomposed from ENH-3577: Consolidate autodev issue preparation into a single co
 
 ## Scope Boundary
 
-**Note** (added by `/ll:audit-issue-conflicts`): This issue's Expected Behavior and Call Path apply to autodev until ENH-3601 lands; afterwards autodev re-enters `prepare-issue`. After ENH-3601 (Option B) autodev re-enters the `prepare-issue` wrapper, not `refine-to-ready-issue` directly. The authoritative per-issue run record is the wrapper's record, which supersedes/wraps the child's; it is the one copied to `records/<ID>.json`. ENH-3597 must list the wrapper as a second record writer.
+**Note** (added by `/ll:audit-issue-conflicts`, applied 2026-09-25): This issue lands before ENH-3601, so autodev reads the child's record (`writer: refine-to-ready-issue`). After ENH-3601, autodev re-enters the `prepare-issue` wrapper and reads the wrapper's record (`writer: prepare-issue`, `run-records/prepare-issue/<ID>.json`; see ENH-3597). FEAT-3573 was removed from `blocked_by`. It changes closure accounting only and blocks ENH-3600.
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-25T19:42:47 - `2f63920a-850e-4ac5-bf34-e7b8eb47e2e0.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-09-25T19:09:18 - `dcfdf31c-be65-47ce-9e6e-5b65d63239f2.jsonl`

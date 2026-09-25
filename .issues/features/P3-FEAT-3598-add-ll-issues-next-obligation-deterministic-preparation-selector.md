@@ -14,6 +14,8 @@ parent: EPIC-3565
 relates_to:
 - ENH-3577
 - ENH-3602
+blocked_by:
+- ENH-3602
 ---
 
 # FEAT-3598: Add ll-issues next-obligation deterministic preparation selector
@@ -36,9 +38,43 @@ Individual gates already exist as separate subcommands (`format-check`, `check-d
 ## Expected Behavior
 
 `ll-issues next-obligation ID --format json` emits
-`{issue_id, obligation, reason, evidence}` where `obligation` is one of `FORMAT`, `DESIGN`,
-`ACCEPTANCE_CRITERIA`, `DECISION`, `PROOF`, `SCORES`, `NONE` (checked in that order, first
-unmet wins). Deterministic; no LLM calls.
+`{issue_id, obligation, reason, evidence}`. Deterministic; no LLM calls. Obligations are
+checked in a fixed order, and the first unmet one wins.
+
+### Obligation set and order must match the child
+
+The order must reproduce `refine-to-ready-issue`'s current gate sequence. Otherwise
+"first unmet wins" reorders routing and the behavioral test set cannot pass unchanged.
+The child's sequence, from `resolve_issue` onward, is:
+
+format (`precheck_format`) → verify verdict (`check_verify_verdict`) → proposal soundness
+(`check_proposal_unsound`, `check_directive_drift`) → hedges/placeholders (`check_hedges`,
+`check_placeholders`) → AC (`check_ac_automatable`) → design (`check_design`) → **scores**
+(`confidence_check`, `check_readiness`, `check_outcome`) → **decision**
+(`check_decision_needed`) → **proof** (`check_spike_needed`) → artifacts
+(`check_missing_artifacts`).
+
+Starting enum, to be confirmed state by state during implementation:
+`FORMAT`, `VERIFY`, `PROPOSAL`, `SPEC_QUALITY` (hedges/placeholders), `ACCEPTANCE_CRITERIA`,
+`DESIGN`, `SCORES`, `DECISION`, `PROOF`, `ARTIFACTS`, `NONE`.
+
+- SCORES comes **before** DECISION/PROOF. `confidence-check` is what sets
+  `decision_needed` and applies the unproven-mechanism cap (BUG-3591), so the decision and
+  proof checks read state that scoring produces.
+- `GATE` (`ll-issues check-gate`, ENH-3575) folds into PROOF (`structured_proof` /
+  `structured_open`). Record that in the enum docstring.
+- Wiring and refine counts are per-run state (`refine-to-ready-wire-done`,
+  `refine-to-ready-refine-count`), not issue state. They stay out of the selector.
+
+### Relationship to `ll-issues next-action`
+
+`ll-issues next-action` (`little_loops.cli.issues.next_action`) already exists. It is a
+**cross-issue** queue selector that emits `NEEDS_FORMAT|NEEDS_VERIFY|NEEDS_SCORE|NEEDS_REFINE <id>`
+using its own `is_formatted` / session-log / threshold checks. `next-obligation` is
+**per-issue**. To avoid two readiness orderings that drift apart, `next-action`'s
+per-issue check should call `select_next_obligation` and map the result to its existing
+output tokens. Its output format and exit codes stay unchanged, because
+`issue-refinement.yaml`, `recursive-refine.yaml` and `lib/cli.yaml` consume them.
 
 ## Use Case
 
@@ -49,11 +85,13 @@ and routes on `obligation`.
 
 ## Proposed Solution
 
-- `select_next_obligation(config: BRConfig, issue_id: str) -> Obligation` composing the
+- `select_next_obligation(config: BRConfig, issue_id: str) -> ObligationResult` composing the
   existing check functions (`check_format_gaps` in `little_loops.issue_parser`, and the
-  functions behind `check-design`, `check-acceptance-criteria`,
-  `check-unresolved-decisions`, `spike-verdict`, `check-readiness`) — reuse, don't
-  reimplement.
+  functions behind `check-verify-verdict`, `check-design`, `check-acceptance-criteria`,
+  `check-unresolved-decisions`, `check-gate`, `spike-verdict`, `check-readiness`). Reuse
+  them; do not reimplement.
+- PROOF delegates to `little_loops.learning_tests.assess_proof` (ENH-3602, now a
+  `blocked_by` edge), not to a separate staleness/refutation derivation.
 - `cmd_next_obligation(config, args) -> int` subcommand wrapper; exit 0 always on a
   successful assessment, non-zero only on read errors.
 - Replace the child's per-gate predicate states with a single dispatch on `obligation`
@@ -66,15 +104,47 @@ and routes on `obligation`.
 ### Files to Modify
 - `scripts/little_loops/cli/issues/__init__.py` (register subcommand)
 - `scripts/little_loops/cli/issues/next_obligation.py` (new)
+- `scripts/little_loops/cli/issues/next_action.py` (per-issue check delegates to the selector; output unchanged)
 - `scripts/little_loops/loops/refine-to-ready-issue.yaml`
 - `.claude/workflows/refine-to-ready.js` (gitignored, machine-local mirror of the loop)
 - `docs/reference/CLI.md`
 
+### Behavior Parity
+
+`next_action.py`'s per-issue checks delegate to `select_next_obligation`. Parity to keep:
+
+- Output tokens `NEEDS_FORMAT|NEEDS_VERIFY|NEEDS_SCORE|NEEDS_REFINE <id>` / `ALL_DONE` and
+  exit codes (1 = work remains, 0 = all done) are unchanged.
+- Map: `FORMAT` → `NEEDS_FORMAT`, `VERIFY` → `NEEDS_VERIFY`, `SCORES` (absent) →
+  `NEEDS_SCORE`, and below-threshold scores under `--refine-cap` → `NEEDS_REFINE`.
+  Obligations that `next-action` does not report today (`PROPOSAL`, `DESIGN`,
+  `DECISION`, `PROOF`, ...) keep today's behavior and are not surfaced as new tokens.
+- `NEEDS_VERIFY` currently means "`/ll:verify-issues` absent from the session log", while
+  `VERIFY` checks the verify verdict. If those semantics differ on a fixture, keep
+  `next-action`'s current rule and record the difference here. Parity wins over
+  unification.
+
 ### Tests
 - Unit tests per obligation, plus ordering tests (two unmet → first wins)
+- Ordering parity test: for fixtures that each fail exactly one child gate, the selector's first obligation matches the child state that would fire first
+- `ll-issues next-action` output unchanged on existing fixtures
 - Behavioral set must pass unchanged: `test_spike_verdict_routing.py`,
   `test_format_probe_routing.py`, `test_arm_proposal_revision.py`,
   `test_ll_issues_check_verify_verdict.py`, `test_check_readiness.py`
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
+
+- Existing predicates are mostly embedded in `cmd_*` bodies, not importable functions, so "reuse, don't reimplement" requires the selector to share them without duplicating: `cmd_check_verify_verdict` (`cli/issues/check_verify_verdict.py`) reads `verify_verdict` frontmatter inline (VALID → 0, absent → 3, `PROPOSAL_UNSOUND`/`DIRECTIVE_DRIFT`/`EVIDENCE_UNVERIFIED` are distinct probe modes); `cmd_check_acceptance_criteria` wraps `_find_manual_criteria(content)`; `cmd_check_design` is `design_gate_failed(check_format_gaps(path))` (`issue_parser.py`); `check_gate.py` exposes `resolve_gate_verdict(fm, text, spike_proven)`; `check_readiness.py` exposes `readiness_status(config, issue_id, ...) -> ReadinessStatus | None` (has `confidence_absent`/`outcome_absent`, `meets_readiness`, `meets_outcome_or_waived`); `check_open_questions.py` and `check_flag.py` are CLI-only.
+- Predicates the child evaluates without any `ll-issues` subcommand: placeholders (`check_placeholders` counts `template_placeholders` from `format-check --format json`; `placeholder_count()` at `issue_parser.py:2375` has no CLI), spike need (`check_spike_needed`: `spike_needed == 'true' and spike_attempted != 'true'` via `show --json`), and hedges (`check-open-questions`, backed by `count_open_questions_in_sections`, `issue_parser.py:3702`).
+- `ll-issues check-gate` is **not invoked** by `refine-to-ready-issue.yaml` (its only `check_gate*` matches are `check_gate_refine_limit`, a shared refine-budget state). The `GATE`→`PROOF` fold therefore adds a check the child does not run today; it cannot be part of the "must reproduce the child's sequence" parity claim.
+- `check_spike_needed` and every retry/limit state (`check_hedge_attempts`, `check_refine_limit`, `check_gate_refine_limit`, `check_decide_attempts`, `spike-runs-<ID>`) carry per-run `${context.run_dir}` counters. The selector is stateless and per-issue, so it can report "obligation is unmet" but not "budget for retrying it is spent"; routing states that consume budget must stay.
+- `confidence_check` is an LLM skill state that *produces* the scores the SCORES obligation reads; the selector can replace `check_readiness`/`check_outcome` predicates, not the scoring state.
+- `next_action.py` has no per-issue helper today: `cmd_next_action` inlines `is_formatted` → `"/ll:verify-issues" in session_commands` → score absence → refine-count vs threshold inside its loop over `find_issues(...)`. Its `NEEDS_FORMAT` uses `is_formatted` (honors the `/ll:format-issue` session-log shortcut) whereas `FORMAT` should use `check_format_gaps` (which deliberately does not) — a fixture-level divergence Behavior Parity already anticipates.
+- `assess_proof` (`little_loops.learning_tests`) does not exist yet; `learning_tests/` currently has only `extractor.py`, `gate.py`, `import_scan.py`, `release_gate.py`. PROOF cannot be implemented until ENH-3602 lands (already a `blocked_by` edge).
+- Subcommands are registered in `cli/issues/__init__.py` two ways: `add_*_parser(subs)` helpers (e.g. `add_check_gate_parser`, `add_check_verify_verdict_parser`, called near `:781-784`) and inline parser blocks (`next-action` at `:661`, dispatch at `:1073`). Also add the entry to the help epilog list (`:149`).
+- Tests present: `test_next_action.py`, `test_spike_verdict_routing.py`, `test_format_probe_routing.py`, `test_arm_proposal_revision.py`, `test_ll_issues_check_verify_verdict.py`, `test_check_readiness.py` (all under `scripts/tests/`).
 
 ## Impact
 
@@ -87,16 +157,25 @@ and routes on `obligation`.
 
 ### Types
 
-- `Obligation: Enum` — `FORMAT`, `DESIGN`, `ACCEPTANCE_CRITERIA`, `DECISION`, `PROOF`, `SCORES`, `NONE`
+- `Obligation: Enum` — `FORMAT`, `VERIFY`, `PROPOSAL`, `SPEC_QUALITY`, `ACCEPTANCE_CRITERIA`, `DESIGN`, `SCORES`, `DECISION`, `PROOF`, `ARTIFACTS`, `NONE`, declared in check order
+- `ObligationResult: dataclass` — `issue_id`, `obligation: Obligation`, `reason: str`, `evidence: list[str]`
 
 ### Signatures
 
-- `select_next_obligation(config: BRConfig, issue_id: str) -> Obligation` — reads the issue once and returns the first unmet obligation
+- `select_next_obligation(config: BRConfig, issue_id: str) -> ObligationResult` — reads the issue once and returns the first unmet obligation with its reason and evidence
 - `cmd_next_obligation(config: BRConfig, args: argparse.Namespace) -> int` — CLI wrapper emitting `{issue_id, obligation, reason, evidence}`
 
 ### Call Path
 
 `cmd_next_obligation` -> `select_next_obligation` -> `check_format_gaps`
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
+
+- Each obligation needs a defined `evidence` element type (`list[str]`) and a mapping from the underlying probe's non-pass exit codes; probes that return exit 2 (unresolvable issue) must surface as a read error from `cmd_next_obligation`, not as an unmet obligation.
+- `Obligation` order must be asserted against the child's edge list (`on_yes` chain from `precheck_format` through `check_missing_artifacts`) by the parity test, since the enum is declared in check order and the YAML is the source of truth for the order.
+- Decision Rules: N/A — no new decision logic beyond composing existing gates in the child's order (SCORES before DECISION/PROOF).
 
 ## Scope Boundaries
 
@@ -107,6 +186,8 @@ and routes on `obligation`.
 
 - [ ] `ll-issues next-obligation` returns the documented JSON for every obligation
 - [ ] The selector calls existing check functions; no duplicated predicate logic
+- [ ] Obligation order matches the child's gate sequence (parity test)
+- [ ] `ll-issues next-action` reuses the selector's per-issue checks, with unchanged output
 - [ ] `refine-to-ready-issue` uses the selector for at least the format/design/AC/decision gates
 - [ ] Behavioral test set passes unchanged
 
@@ -122,8 +203,9 @@ Decomposed from ENH-3577: Consolidate autodev issue preparation into a single co
 
 ## Scope Boundary
 
-**Note** (added by `/ll:audit-issue-conflicts`): The `PROOF` obligation delegates to `little_loops.learning_tests.assess_proof` once ENH-3602 lands, rather than deriving staleness/refutation independently. Sequence the PROOF branch after ENH-3602 or record a follow-up swap.
+**Note** (added by `/ll:audit-issue-conflicts`, applied 2026-09-25): The `PROOF` obligation delegates to `little_loops.learning_tests.assess_proof`. ENH-3602 is now a `blocked_by` edge, so no follow-up swap is needed.
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-25T19:42:22 - `2f63920a-850e-4ac5-bf34-e7b8eb47e2e0.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-09-25T19:09:20 - `dcfdf31c-be65-47ce-9e6e-5b65d63239f2.jsonl`
