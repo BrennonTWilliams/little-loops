@@ -17,11 +17,14 @@ Add a standalone built-in FSM loop, `html-webapp-generator`, that produces a sin
 
 ## Current Behavior
 
-[If applicable - describe what currently happens]
+No built-in loop produces a single-viewport, app-shell HTML artifact:
+
+- `html-website-generator` emits scrolling single-page websites (its rubric scores a full-page screenshot).
+- `html-anything` classifies the artifact type but has no viewport-fit rubric and no type override (inputs are only `description` and `artifact_mode`), so an app-shell request can be routed to `html-dashboard`/`html-website` non-deterministically.
 
 ## Expected Behavior
 
-[What should happen instead]
+`ll-loop run html-webapp-generator "<description>"` converges on a self-contained `index.html` app-shell (header / sidebar / main panes) that fills the viewport (`100dvh`) with no document-level scroll at every configured viewport (default 1440x900, 1024x768, 375x667). Overflow is confined to internal scroll panes. Violations are caught by the non-LLM `viewport_gate`, which appends per-viewport measurements to the run's `critique.md` and routes back to `run_gen_eval` for regeneration; harness faults route to `failed`.
 
 ## Motivation
 
@@ -50,29 +53,54 @@ plan → run_gen_eval (loop: oracles/generator-evaluator) → smoke_test → vie
 
 Do **not** modify `scripts/little_loops/loops/oracles/generator-evaluator.yaml`. Its evaluate state hardcodes `playwright screenshot --full-page`, and 7 loops consume the oracle. No change is needed: for a page that doesn't scroll, a full-page screenshot equals the viewport screenshot. For a page that overflows, the full-page screenshot shows the overflow to the LLM scorer, which is better evidence than a viewport crop.
 
+## Program Design
+
+### Types
+
+- Loop context contract mirrors `html-website-generator` (`pass_threshold`, `design_tokens_context`, `design_guidance_context`) plus `viewports: str` — space-separated `WxH` list, default `"1440x900 1024x768 375x667"`, parsed inside the `viewport_gate` node script.
+
+### Signatures
+
+- `cmd_validate(loop_name: str, args: argparse.Namespace, loops_dir: Path, logger: Logger) -> int` — existing `ll-loop validate` entry; validates the new YAML with no code change.
+- `test_expected_loops_exist() -> None` — existing builtin-loop inventory test; extend its expected-name list with `html-webapp-generator`.
+- `test_html_webapp_generator_structure(builtin_loops: list[Path]) -> None` — new: asserts the state set (`plan → run_gen_eval → smoke_test → viewport_gate → vision_gate → done`), the `viewport_gate` exit-code routing, and the critique-append contract.
+
+### Call Path
+
+`resolve_loop_path(loop_name, loops_dir)` (little_loops.fsm.loop_paths) -> `load_and_validate(path)` (little_loops.fsm.validation) -> FSM executor dispatches the `viewport_gate` shell action (non-LLM `node -e` Playwright probe) -> on `FAIL:` appends measurements to `${context.run_dir}/critique.md` and routes `on_no: run_gen_eval`.
+
+No Python source changes: the loop is package data picked up by `get_builtin_loops_dir()` automatically; the only touched Python files are tests.
+
 ## Integration Map
 
 ### Files to Modify
-- TBD - requires codebase analysis
+- `scripts/little_loops/loops/html-webapp-generator.yaml` (new file; the deliverable)
+- `README.md` — loop count line (~185) and loop list
+- `scripts/README.md` — mirror sync (`command cp -f README.md scripts/README.md`)
+- `scripts/tests/test_builtin_loops.py` — extend `test_expected_loops_exist` name list; add structure tests
 
 ### Dependent Files (Callers/Importers)
-- TBD - use grep to find references
+- `scripts/little_loops/loops/oracles/generator-evaluator.yaml` — consumed read-only via the `run_gen_eval` state (loop: oracles/generator-evaluator); must remain unchanged
+- `little_loops.fsm.loop_paths` (`get_builtin_loops_dir`, `resolve_loop_path`) — discovers the new loop automatically once the YAML lands in package data
 
 ### Similar Patterns
-- TBD - search for consistency
+- `scripts/little_loops/loops/html-website-generator.yaml` — state skeleton to copy (`plan → run_gen_eval → smoke_test → vision_gate → done` thin wrapper)
+- `html-anything` / `html-dashboard` — classification-based generators without viewport-fit rubrics (the gap this loop fills)
+- `smoke_test` / `vision_gate` states — Playwright `node -e` shell pattern, `FAIL:` exit-0 contract, and `.vision_rounds` round-cap file to mirror in `viewport_gate`
 
 ### Tests
-- TBD - identify test files to update
+- `scripts/tests/test_builtin_loops.py` — `builtin_loops` fixture auto-includes the new YAML (parse/validate/gate-completeness suites run over it); add name to `test_expected_loops_exist` (~line 254); add loop-specific structure tests next to the website-generator ones
 
 ### Documentation
-- TBD - docs that need updates
+- `docs/reference/loops.md`, `docs/guides/LOOPS_REFERENCE.md` — add the loop alongside `html-website-generator`
+- README loop-count bump trips mirror gates (see Files to Modify)
 
 ### Configuration
-- N/A or list config files
+- None required — the loop is self-contained; `viewports` is an optional per-run context override, not an `.ll/ll-config.json` key
 
 ## Implementation Steps
 
-1. Create `scripts/little_loops/loops/html-webapp-generator.yaml` from `html-website-generator.yaml` with the app-shell generator prompt and rubric.
+1. Create `scripts/little_loops/loops/html-webapp-generator.yaml` (new file) from `html-website-generator.yaml` with the app-shell generator prompt and rubric.
 2. Add the `viewport_gate` state (multi-viewport overflow + bounding-box check, critique append, round cap).
 3. Run `ll-loop validate html-webapp-generator` (MR rules, per-run artifacts under `${context.run_dir}`).
 4. Update the README.md loop count and sync mirrors (`command cp -f README.md scripts/README.md`). Add the loop to the loop docs / catalog alongside `html-website-generator`.
@@ -81,10 +109,10 @@ Do **not** modify `scripts/little_loops/loops/oracles/generator-evaluator.yaml`.
 
 ## Impact
 
-- **Priority**: [P0-P5] - [Justification]
-- **Effort**: [Small/Medium/Large] - [Justification]
-- **Risk**: [Low/Medium/High] - [Justification]
-- **Breaking Change**: [Yes/No]
+- **Priority**: P3 - additive generator variant; no consumer blocked, quality-of-life for HTML artifact workflows
+- **Effort**: Medium - one new loop YAML with a new non-LLM gate state plus tests and doc/mirror updates; no Python source changes
+- **Risk**: Low - purely additive; `oracles/generator-evaluator.yaml` and its 7 consumers untouched
+- **Breaking Change**: No
 
 ## Use Case
 
@@ -117,4 +145,5 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:format-issue` - 2026-09-25T22:12:18 - `8c81fde2-1b8f-4d35-a9d4-d9e034fb1af8.jsonl`
 - `/ll:capture-issue` - 2026-09-25T02:02:39 - `09b7cc1a-1227-48d7-9d78-dac3ced876ba.jsonl`
