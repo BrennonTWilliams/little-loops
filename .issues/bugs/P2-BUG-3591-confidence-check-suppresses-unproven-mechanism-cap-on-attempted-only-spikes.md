@@ -71,17 +71,37 @@ A second, related hole: Phase 6 only adds flags ("skip the write if already `tru
    (`spike_completed`)".
 2. **Stale-flag removal on failure**: spike Phase 6 "On failure" sets `spike_attempted: true`
    **and removes `spike_completed`** if present (same Edit-the-frontmatter convention as the
-   writes; there is no `set-flag` verb and `set-flags` is set-only). "On success" is
+   writes; there is no `set-flag`/unset verb and `set-flags` is set-only). If the issue
+   already carries a `## Spike Results` section from an earlier proven run, the failure
+   branch also marks it superseded (e.g. a `_Superseded by the failed /ll:spike --force run
+   on [YYYY-MM-DD] — see ## Spike Findings_` line under its heading), so the body does not
+   show a "✓ pass" table next to the new findings for the LLM scorer to read. "On success" is
    unchanged. BUG-3592 later replaces the success/failure pair with the full three-verdict
    flag table (proven/refuted/inconclusive); this child only needs the proven-vs-not split.
-3. **Phase 7 message**: the failure message stops asserting "Approach disproven" — until
-   BUG-3592 lands, the skill cannot tell a refutation from an environment failure. Use
-   "Spike did not prove the mechanism — see `## Spike Findings`".
-4. **Docs**: correct `docs/reference/API.md`'s "cleared by /ll:spike (spike_completed)"
-   comment (the spike skill never clears `unproven_mechanism`; suppression is purely the
-   Phase 1.9 read); `docs/reference/ISSUE_TEMPLATE.md` `spike_attempted` row states it no
-   longer suppresses the cap; `docs/reference/COMMANDS.md` / `docs/guides/LOOPS_REFERENCE.md`
-   where they describe cap suppression.
+3. **Stop asserting disproof**: until BUG-3592 lands, the skill cannot tell a refutation
+   from an environment failure. Soften all three sites together:
+   - Phase 6 "On failure" preamble (`skills/spike/SKILL.md` ~L255, "A failed spike is
+     signal: the approach is wrong.") → "A failed spike did not prove the mechanism; the
+     cause may be the approach or the environment."
+   - Phase 6 "On failure" step 2 (~L258, "documenting what was disproven") → "documenting
+     which Verification commands failed and the failing output".
+   - Phase 7 failure message → "Spike did not prove the mechanism — see `## Spike Findings`".
+4. **Docs**:
+   - `docs/reference/API.md:719` — the `unproven_mechanism` comment's "cleared by /ll:spike
+     (spike_completed) or /ll:reconcile-issue" is wrong on both halves: nothing clears
+     `unproven_mechanism` (`commands/reconcile-issue.md` never mentions it). Replace with
+     "cap suppressed only by `spike_completed: true` (confidence-check Phase 1.9); the flag
+     itself is never cleared".
+   - `docs/reference/ISSUE_TEMPLATE.md` — `spike_attempted` row (L919) states it does not
+     suppress the unproven-mechanism cap; `spike_completed` row (L920) states it is the sole
+     flag that suppresses the cap, and that a failed spike run removes it.
+   - `docs/reference/COMMANDS.md` `/ll:spike` **Write-back** paragraph (~L382) — "On
+     failure" also removes a stale `spike_completed` (and marks a prior `## Spike Results`
+     superseded); drop "documenting what was disproven".
+   - `scripts/little_loops/loops/spike-gate.yaml:63` — the comment cites
+     `SKILL.md:248,257`, which shift with the Phase 6 edit; cite "Phase 6" instead of line
+     numbers.
+   - `docs/guides/LOOPS_REFERENCE.md` needs no change: it does not describe cap suppression.
 
 ### Interim behavior (until BUG-3593 lands)
 
@@ -94,9 +114,15 @@ A failed spike now keeps the cap, and neither loop routes on the spike's result 
 - **autodev**: the rescored, capped issue falls into the existing sub-threshold paths
   (size review / deferral) instead of `implement_current`.
 
-Both are conservative: decomposing or deferring is safer than implementing an unproven
-approach. BUG-3593 replaces them with verdict routing. Accept this as known interim
-behavior; do not add routing here.
+- **Re-decided issues stay capped**: nothing clears `unproven_mechanism`, and
+  `spike_attempted` blocks an automatic re-spike. An issue whose spike failed and that
+  `/ll:decide-issue` then moved to a different approach stays capped until a spike
+  succeeds. BUG-3593's re-arm rule (in `/ll:decide-issue`) removes `spike_attempted` after
+  such a decision; until then the manual escape is `/ll:spike <ID> --force`.
+
+All of these are conservative: decomposing or deferring is safer than implementing an
+unproven approach. BUG-3593 replaces them with verdict routing. Accept this as known
+interim behavior; do not add routing here.
 
 ## Program Design
 
@@ -117,27 +143,43 @@ behavior; do not add routing here.
 ### Files to Modify
 - `skills/confidence-check/SKILL.md` — Phase 1.9 `SPIKE_SUPPRESSED` on `spike_completed` only
 - `skills/confidence-check/rubric.md` — cap row wording (companion file; mirror drift check covers it)
-- `skills/spike/SKILL.md` — Phase 6 "On failure" removes stale `spike_completed`; Phase 7 failure message
-- `docs/reference/API.md`, `docs/reference/ISSUE_TEMPLATE.md`, `docs/reference/COMMANDS.md`, `docs/guides/LOOPS_REFERENCE.md`
+- `skills/spike/SKILL.md` — Phase 6 "On failure" removes stale `spike_completed` and marks a prior `## Spike Results` superseded; softened disproof wording at ~L255, ~L258 and the Phase 7 failure message
+- `docs/reference/API.md` (L719), `docs/reference/ISSUE_TEMPLATE.md` (L919–920), `docs/reference/COMMANDS.md` (`/ll:spike` Write-back, ~L382)
+- `scripts/little_loops/loops/spike-gate.yaml` — L63 comment only (line citation → "Phase 6")
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/cli/issues/set_flags.py` — `_spike_not_already_flagged()` gates `spike_needed` re-flagging on attempted-or-completed; stays attempt-bound (unchanged)
-- `scripts/little_loops/loops/spike-gate.yaml` — already completion-keyed; unchanged
+- `scripts/little_loops/loops/spike-gate.yaml` — already completion-keyed; logic unchanged (comment-only edit above)
+- `scripts/little_loops/loops/autodev.yaml` (`check_spike_needed` ~L1545, `check_spike_needed_before_skip` ~L1806, remedy dispatcher ~L2641) and `scripts/little_loops/loops/refine-to-ready-issue.yaml` (`check_spike_needed` ~L784) — key on `spike_attempted` as an attempt bound; unchanged
 - `commands/refine-issue.md` (~L1083), `commands/reconcile-issue.md` (~L144) — read the spike flags; confirm semantics unchanged
 
 ### Tests
-- `scripts/tests/test_confidence_check_skill.py` — update the Phase 1.9 assertions / `test_spike_attempted_guard_enforced`; add: attempted-only keeps the cap
-- `scripts/tests/test_spike_skill.py` — "On failure" removes a stale `spike_completed` (literal-string pattern at `:100-107`)
+- `scripts/tests/test_confidence_check_skill.py`:
+  - `test_phase_1_9_reads_spike_suppression` (`:766-773`) — **will fail as written** (it
+    requires Phase 1.9 to name both `spike_attempted` and `spike_completed`). Invert it:
+    the `SPIKE_SUPPRESSED` assignment line names `spike_completed` and does **not** name
+    `spike_attempted`.
+  - `test_cap_suppressed_by_spike_completion` (`:828`) — also assert the rubric cap
+    section's new "suppressed only by a proven spike (`spike_completed`)" wording.
+  - `test_spike_attempted_guard_enforced` (`:315`) — tests `set_flags._spike_not_already_flagged`,
+    not Phase 1.9; leave unchanged.
+- `scripts/tests/test_spike_skill.py` — add literal-string assertions (same pattern as
+  `:100-107`): the Phase 6 "On failure" block contains "remove `spike_completed`"; the
+  failure branch no longer contains "Approach disproven" or "the approach is wrong".
 - `scripts/tests/test_set_flags_cli.py` — `_spike_not_already_flagged` behavior unchanged
 - `scripts/tests/test_wiring_skills_and_commands.py` — `test_host_artifacts_are_not_stale` (all five `GATED_HOSTS`, incl. `rubric.md` companion drift)
 
 ## Implementation Steps
 
-1. Before landing, list the affected legacy issues: `unproven_mechanism: true` +
-   `spike_attempted: true` with no `spike_completed`. Record the list in the PR/commit body.
+1. Re-run the legacy scan just before landing (`unproven_mechanism: true` +
+   `spike_attempted: true`, no `spike_completed`) and record the result in the commit
+   body. As of 2026-09-24 the only match is FEAT-3498 (`status: done`), so no active issue
+   changes behavior.
 2. Phase 1.9 change + `rubric.md` wording.
-3. Spike Phase 6 stale-flag removal + Phase 7 message.
-4. Tests, docs, then `ll-adapt --host <gemini|kimi-code|qwen|codex|omp> --apply`.
+3. Spike Phase 6 stale-flag removal + superseded `## Spike Results` marker + softened
+   disproof wording (Phase 6 preamble, step 2, Phase 7 message).
+4. Tests, docs, `spike-gate.yaml` comment, then
+   `ll-adapt --host <gemini|kimi-code|qwen|codex|omp> --apply`.
 
 ## Acceptance Criteria
 
@@ -146,13 +188,16 @@ behavior; do not add routing here.
 - [ ] A failed `--force` rerun after a proven spike removes `spike_completed`, and the cap re-applies
 - [ ] `spike_attempted` still bounds re-spiking in both loops and in `set_flags.py`
 - [ ] Legacy attempted-only issues are listed before landing
+- [ ] The spike skill no longer claims a failed spike disproved the approach (Phase 6 preamble, step 2, Phase 7)
+- [ ] A failed `--force` rerun marks an earlier `## Spike Results` section superseded
+- [ ] `docs/reference/API.md` no longer claims `/ll:spike` or `/ll:reconcile-issue` clears `unproven_mechanism`
 
 ## Impact
 
 - **Priority**: P2 - a refuted approach can pass the outcome gate and reach implementation
 - **Effort**: Small - a one-line cap change, one skill-phase edit, docs and mirrors
 - **Risk**: Low - fail-safe direction (more issues capped, never fewer)
-- **Breaking Change**: No; expect a one-time rise in capped/deferred `unproven_mechanism` issues at their next rescoring
+- **Breaking Change**: No. The only legacy attempted-only issue today (FEAT-3498) is `done`, so no active issue is newly capped at landing; the change affects future failed spikes only
 
 ## Status
 
