@@ -151,6 +151,16 @@ Unsound proposals are exactly the cases where implementation would do the most d
 - `docs/reference/DEFERRAL_CODES.md` — `proposal_unsound`
 - Host mirrors of `commands/verify-issues.md` and `skills/decide-issue/SKILL.md`: `ll-adapt --host <gemini|kimi-code|qwen|codex|omp> --apply` (gated by `test_host_artifacts_are_not_stale`)
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
+
+- `scripts/little_loops/issue_lifecycle.py` — `DeferReason` enum (`DECISION_UNRESOLVED = "decision_unresolved"` at ~line 78) is the registry the `ll-issues set-status --reason` argparse `choices` validate against; a `proposal_unsound` deferral code must be a member or the CLI rejects it, and the shell state's `|| true` hides the rejection
+- `scripts/tests/test_set_status_cli.py::test_set_status_deferred_stamps_autodev_reason_codes` (~line 341) — parametrized list of registered reason codes; guards exactly the silent-rejection failure above
+- `scripts/tests/test_enh3250_verify_issues_proposal_vs_code.py` — pins that each verdict appears in `commands/verify-issues.md` §C and as `verify_verdict: X` in §2.5; `DIRECTIVE_DRIFT` must satisfy the same contract
+- `scripts/tests/test_decide_issue_skill.py` — existing contract test for `skills/decide-issue/SKILL.md`; the option-exclusion contract belongs alongside it
+- Conventions in force: (1) `check-verify-verdict` query modes are mutually exclusive binary probes — exit 0 only when `verify_verdict` equals that value case-insensitively, exit 1 for absent/other/VALID, `NOT_<VERDICT>` on stderr (evidence: `check_verify_verdict.py` `cmd_check_verify_verdict`, `--evidence-unverified` and `--proposal-unsound` branches; tests are one class per flag in `test_ll_issues_check_verify_verdict.py`); (2) gate states in `refine-to-ready-issue.yaml` are `fragment: shell_exit` with `on_yes`/`on_no`/`on_error`, `on_error` failing open to the `on_no` target, chain order encoding precedence (`check_verify_verdict` → `check_evidence_unverified` → `check_proposal_unsound`); (3) each new gate state bumps the `max_steps` value (currently 60, line ~104) and its comment; (4) loop routing tests assert state existence, `fragment`, action flag, and each edge separately in `test_builtin_loops.py` (~3029-3160, `max_steps` test ~3243); (5) run-dir markers live under `${context.run_dir}/`, initialized in the init state and tested with `[ -f ... ]`; (6) deferral emit pattern is `mark_decision_unresolved` — write `refine-terminal-class`, skip if status already done/cancelled, then `ll-issues set-status "$ID" deferred --by automation --reason <code> || true`; `refine-terminal-class` values today are `gate_unmet`, `infra`, `decision_unresolved`, so `proposal_unsound` needs one too
+
 ## Implementation Steps
 
 1. verify-issues: split B6 verdict by fix location; add `DIRECTIVE_DRIFT`; on `PROPOSAL_UNSOUND` arm `decision_needed` + Open Questions item
@@ -184,4 +194,5 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-25T01:44:08 - `b5d091e6-10b4-4f2f-9812-d49831a68b8b.jsonl`
 - `/ll:capture-issue` - 2026-09-24T19:42:32 - `59fe3bd4-3622-4dd2-bb8b-ad5cc55e79ec.jsonl`

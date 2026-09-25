@@ -8,11 +8,17 @@ discovered_by: ll-issues-create
 discovered_date: '2026-09-24'
 captured_at: '2026-09-24T19:33:13Z'
 parent: EPIC-3565
-decision_needed: false
+decision_needed: true
 blocks:
 - ENH-3577
 - BUG-3572
 - BUG-3574
+confidence_score: 100
+outcome_confidence: 64
+score_complexity: 10
+score_test_coverage: 18
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 # BUG-3571: Refine-to-ready accepts stale or absent verify verdict and confidence scores
@@ -249,8 +255,23 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 **Open** | Created: 2026-09-24 | Priority: P2
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-24_
+
+**Readiness Score**: 100/100 → PROCEED
+**Outcome Confidence**: 64/100 → MODERATE
+
+### Concerns
+- Line citations in the Integration Map have drifted slightly (`check_passed` is at `:646` not `:656`; `recheck_scores` at `:1348` not `:1370`) — locate by state name.
+
+### Outcome Risk Factors
+- Broad enumeration across ~12 change sites (3 Python CLI files, 2 loop YAMLs + oracle, 5 autodev routing/reader states) with moderate cross-module routing semantics (exit 3 → `on_cannot_judge` via `harness_exit`).
+- No successive-call stateful stub exists yet; the regression tests need new test infrastructure.
+- `confidence_check.on_failure` infra classification still offers an either/or (route to infra terminal vs. make `diagnose` record the class) — pick one before implementing.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-25T01:45:32 - `ce904479-7e73-4d58-aa48-892e2cdb88b3.jsonl`
 - `/ll:wire-issue` - 2026-09-25T01:11:23 - `283a56a1-35bd-43bb-b2f7-64d9f104c2c4.jsonl`
 - `/ll:refine-issue` - 2026-09-25T01:06:50 - `42a934e3-5df9-4ac6-9296-d0ced0bc2261.jsonl`
 - `/ll:format-issue` - 2026-09-25T01:01:19 - `4b76ee9e-e590-41ab-940d-a6df6f1554bd.jsonl`
