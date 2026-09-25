@@ -87,8 +87,19 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
   `read_run_record(run_dir) -> RunRecord | None` in a small `little_loops` module.
 - Expose a CLI writer (e.g. `ll-issues run-record write ...`) so FSM shell states don't
   hand-roll JSON.
-- Call it from `classify_terminal`, `write_broke_down` and the `done` paths
-  (`check_outcome`, `check_missing_artifacts`, `check_scores_from_file` → `done`).
+- Call it from **every terminal-bearing path**, not a subset: the `done` paths
+  (`check_outcome`, `check_missing_artifacts`, `check_scores_from_file` → `done`),
+  `write_broke_down`, `classify_terminal`, **and each state whose `next`/`on_error` is
+  `failed` and which writes its own terminal class** — `record_proposal_unsound`,
+  `record_gate_unmet`, `mark_rate_limit_infra`, `mark_evidence_absent_infra`,
+  `mark_spike_no_verdict_infra`, `record_spike_inconclusive`, `record_decision_unresolved`
+  — all of which bypass `classify_terminal` (refine-to-ready-issue.yaml:1551's own
+  comment enumerates them). Each call passes the legacy class that state just wrote, so
+  the mapping below resolves its outcome (`decision_unresolved`/`proposal_unsound` →
+  `blocked`, `spike_inconclusive`/`gate_unmet` → `deferred`, `infra` → `retryable_error`).
+  This stays additive: the write rides each state's existing action — no edge is
+  re-routed. A hard crash before any terminal runs leaves no record; readers already
+  treat that as absent.
 - Mapping, first match wins:
   1. The issue's frontmatter `status` is `cancelled` at terminal time (closed during
      verify/refine) → `cancelled`.
@@ -180,6 +191,8 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 `refine-to-ready-issue.yaml:classify_terminal` -> `cmd_run_record_write`
 
+`refine-to-ready-issue.yaml:{record_proposal_unsound, record_gate_unmet, mark_rate_limit_infra, mark_evidence_absent_infra, mark_spike_no_verdict_infra, record_spike_inconclusive, record_decision_unresolved, write_broke_down, check_outcome, check_missing_artifacts, check_scores_from_file}` -> `cmd_run_record_write`
+
 ## Impact
 
 - **Priority**: P3 - child of ENH-3577 (EPIC-3565 consolidation)
@@ -200,6 +213,19 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - [ ] The schema and writer accept `writer: prepare-issue` (unit test), ready for ENH-3601
 - [ ] Legacy `refine-terminal-class` / `refine-broke-down` output is byte-identical to before
 - [ ] No routing change in `autodev.yaml` or any other caller
+- [ ] The record write is mirrored in `.claude/workflows/refine-to-ready.js` (Finalize-phase handling)
+
+## Verification Notes
+
+**Verdict at time of check: PROPOSAL_UNSOUND** — resolved 2026-09-25 by a bounded design revision (same session): the call-site bullet in `## Proposed Solution` now enumerates every terminal-bearing path (the seven `record_*`/`mark_*` states that bypass `classify_terminal`, verified as the complete `next/on_error: failed` set at refine-to-ready-issue.yaml:720/1204/1275/1299/1310/1320/1342/1377/1614), the Program Design Call Path lists them, and a mirror AC was added for `.claude/workflows/refine-to-ready.js`. The mechanism was never refuted; only the call-site enumeration was incomplete. Re-verify with `/ll:verify-issues ENH-3597 --check` to persist a fresh verdict.
+
+All claims about current state verified accurate — every code/test/doc citation was spot-checked: the `refine-terminal-class` writer map and terminal inventory in `refine-to-ready-issue.yaml` (done via `check_outcome`/`check_missing_artifacts`/`check_scores_from_file` `.on_yes`, `write_broke_down.next`; `no_work` only from `check_issue_resolved.on_no`; `on_max_steps` → `classify_terminal`); `resolve_issue`'s entry action (rm + 9 seeded counters + proposal-revision marker removal); autodev `refine_current:510`/`context_passthrough:534`, `skip_inflight` class read (~L570), `copy_broke_down:641`, `dequeue_next` clearing `refine-broke-down` at :107 but not the class; `recursive-refine.yaml` :217/:237/:484; `fsm/executor.py` `_execute_sub_loop` context merge (:1148); `ab_writer.py` write/read pair; `decisions.py:88-100`; `advisor.py:81`; `issue_lifecycle.py` StrEnum note (:124-129, `DeferReason`:65/`ClosureReason`:98); `atomic_write_json` (`file_utils.py:70`; call sites `decisions.py:426`, `advisor.py:400`); `cli/issues/__init__.py` registration touchpoints (:779/:1087/epilog) and sibling modules; `check_readiness` exit-code contract (2/3/1/0, `--honor-waiver` → `meets_outcome_or_waived`) matching autodev `check_passed:666`'s predicate; all test-file line cites (`test_builtin_loops.py` :77/:87/:1434/:1993/:2522/:7935/:20974/:21037/:21129-21167, spike-routing :153, `TestABJsonIO:157`, `TestRecordVersionFields:283`, arm-proposal `_run:40`, check-gate `test_subcommand_in_help:157`, scores-freshness `_interpolate:113`/`_run_action:125`, `meta_rules.py:202`); `cli/logs.py:1110` `_LoopRunRecord`; `.claude/workflows/refine-to-ready.js` exists with zero terminal-state names; docs cites (CLI.md ~L2234, API.md :4648, LOOPS_REFERENCE.md :82/:144/~L1081). Evidence-quote check (`ll-verify-evidence`): clean. Graph: codegraph, stale — every conclusion was confirmed by direct read; none graph-originated. Dependencies: backlinks present in ENH-3599, ENH-3601, EPIC-3565, and ENH-3577's decomposition note; no cycles. No completed-issue match; no regression analysis applicable. Active required decision rules: none.
+
+**B6 proposal-consequence finding (drives the verdict)**: the Proposed Solution's call-site list — "Call it from `classify_terminal`, `write_broke_down` and the `done` paths" — does not cover the `failed` terminals reached directly from `record_proposal_unsound`, `record_gate_unmet`, `mark_rate_limit_infra`, `mark_evidence_absent_infra`, `mark_spike_no_verdict_infra`, `record_spike_inconclusive`, `record_decision_unresolved` (each `next: failed`, bypassing `classify_terminal` — the loop's own comment at `refine-to-ready-issue.yaml:1551-1554` and this issue's Current Behavior writer map both say so). Implemented as written, those exits write no run record, contradicting the issue's own Expected Behavior ("Every child exit with an issue ID (`done`, `failed`, …)") and failing AC1 plus the Tests-section per-terminal real-FSM test. The mapping's rules 4–5 consume legacy classes (`decision_unresolved`, `proposal_unsound`, `spike_inconclusive`, `gate_unmet`) that *only* those bypassing states ever write — the mapping presumes call sites the call-site bullet omits. The fix belongs in `## Proposed Solution` (extend the call-site enumeration to the `record_*`/`mark_*` states, or a shared pre-`failed` write), which `reconcile-issue` cannot edit — hence PROPOSAL_UNSOUND rather than DIRECTIVE_DRIFT (BUG-3574). The selected mechanism (typed record + CLI writer + `run-records/<writer>/<ID>.json` layout) is not refuted.
+
+Secondary gap (not verdict-driving): `.claude/workflows/refine-to-ready.js` is a Files-to-Modify integration point with no corresponding Acceptance Criterion (the research itself notes no test pins the mirror).
+
+Citation nits (no action needed): `_run_classify_terminal` sits at `test_builtin_loops.py:2522` (decorator at :2521); `dequeue_next`'s state header is at `autodev.yaml:88` with the `rm -f refine-broke-down` at :107 — both resolve unambiguously as cited.
 
 ## Parent Issue
 
@@ -217,6 +243,8 @@ Decomposed from ENH-3577: Consolidate autodev issue preparation into a single co
 
 
 ## Session Log
+- `bounded design revision (PROPOSAL_UNSOUND remediation)` - 2026-09-25T22:25:11 - `3888403c-6bad-4d3f-8a59-c1af5a2bbcd2.jsonl`
+- `/ll:verify-issues` - 2026-09-25T22:20:36 - `3888403c-6bad-4d3f-8a59-c1af5a2bbcd2.jsonl`
 - `/ll:confidence-check` - 2026-09-25T21:22:43 - `345d0814-f8e9-469f-ad62-bef9083d17be.jsonl`
 - `/ll:wire-issue` - 2026-09-25T20:51:15 - `85e4cae3-0d07-49cf-9a70-1d94df7e46ab.jsonl`
 - `/ll:refine-issue` - 2026-09-25T19:50:11 - `2f63920a-850e-4ac5-bf34-e7b8eb47e2e0.jsonl`
