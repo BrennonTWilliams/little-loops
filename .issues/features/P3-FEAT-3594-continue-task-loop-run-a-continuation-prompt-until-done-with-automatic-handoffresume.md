@@ -9,6 +9,12 @@ reconcile_attempted: true
 discovered_by: ll-issues-create
 discovered_date: '2026-09-25'
 captured_at: '2026-09-25T04:27:08Z'
+confidence_score: 100
+outcome_confidence: 96
+score_complexity: 21
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # FEAT-3594: continue-task loop: run a continuation prompt until done with automatic handoff/resume
@@ -259,6 +265,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-25T23:38:00 - `45d43ec4-b840-43ef-b61e-afb3edaab08c.jsonl`
 - `/ll:reconcile-issue` - 2026-09-25T23:26:13 - `8a0a45f1-b52b-4c03-a859-99ea828324c5.jsonl`
 - `/ll:verify-issues` - 2026-09-25T23:12:36 - `95f633b7-5064-467a-9466-762178a1aff0.jsonl`
 - `/ll:decide-issue` - 2026-09-25T22:57:17 - `5830abf4-70be-40d6-a44c-678fd54b71da.jsonl`
