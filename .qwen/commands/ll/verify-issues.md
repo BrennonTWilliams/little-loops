@@ -167,11 +167,17 @@ Program Design gate's arming.
    implementer would before writing it, not the way checks 1-4 read the issue's
    prose against the code.
 
-   **Verdict**: any finding above → `PROPOSAL_UNSOUND` (§C). If checks 1-4 *also*
+   **Verdict** (BUG-3574): classify each finding by **which section must change to
+   fix it**, not by sub-check. If the fix is confined to Implementation Steps /
+   Acceptance Criteria / Integration Map and the selected mechanism stands (e.g. an
+   AC gap, a fixture-invalidation step) → `DIRECTIVE_DRIFT` (§C). If the selected
+   option / Proposed Solution itself must change (the chosen mechanism is refuted)
+   → `PROPOSAL_UNSOUND` (§C). When both kinds of finding exist,
+   `PROPOSAL_UNSOUND` wins (a refuted proposal makes directive drift moot). If checks 1-4 *also*
    find a claim about current state to be false, the claim-verdict wins
    (`OUTDATED`/`INVALID`/`NEEDS_UPDATE`/etc.) — the existing `refine_followup`
    remedy repairs the research the proposal check itself depends on, so it must
-   run first. Only assign `PROPOSAL_UNSOUND` when every claim about current state
+   run first. Only assign `PROPOSAL_UNSOUND` / `DIRECTIVE_DRIFT` when every claim about current state
    holds and the defect is purely in the proposal's consequences.
 7. **Evidence-quote existence check (BUG-3282)** — deterministic, run via the CLI
    rather than LLM judgment. A quote attributed to a named artifact (another
@@ -228,7 +234,8 @@ verification output.
 | POSSIBLE_REGRESSION | Matches completed issue, but can't confirm regression |
 | DEP_ISSUES | Dependency references have problems (broken refs, missing backlinks, cycles) |
 | DECISIONS_VIOLATION | Issue violates an active required rule in the decisions log |
-| PROPOSAL_UNSOUND | The Proposed Solution, implemented as written, contradicts the code it names (check B6) — a claim-verification defect, not a claim, so it is not remedied by `refine_followup` |
+| PROPOSAL_UNSOUND | The Proposed Solution, implemented as written, contradicts the code it names (check B6) and the selected option must change — a claim-verification defect, not a claim, so it is not remedied by `refine_followup` or `reconcile-issue` |
+| DIRECTIVE_DRIFT | Check B6 finding whose fix is confined to Implementation Steps / Acceptance Criteria / Integration Map; the selected mechanism stands (BUG-3574) — remedied by `reconcile-issue` |
 | EVIDENCE_UNVERIFIED | A quoted evidence span attributed to a named artifact (check B7) exists in no revision of that artifact — outranks `PROPOSAL_UNSOUND` when both apply |
 
 #### E. Validate Dependency References
@@ -305,10 +312,21 @@ or update a `verify_verdict:` line in that issue's YAML frontmatter block:
 - `PROPOSAL_UNSOUND` verdict (ENH-3250, check B6) → `verify_verdict:
   PROPOSAL_UNSOUND` — persisted as its own value, **not** collapsed into
   `NON_VALID`, so `check_proposal_unsound` in `refine-to-ready-issue.yaml` can
-  route it to `reconcile_issue` instead of `refine_followup`. It still counts
-  as a non-VALID, `exit 1` outcome in `--check` mode below — the split is in
-  the persisted value, not the exit-code contract. Only assigned when the
-  issue does not also qualify for `EVIDENCE_UNVERIFIED` above.
+  route it to a bounded design revision (BUG-3574) instead of `reconcile_issue`,
+  which cannot edit `## Proposed Solution`. It still counts as a non-VALID,
+  `exit 1` outcome in `--check` mode below — the split is in the persisted
+  value, not the exit-code contract. Only assigned when the issue does not also
+  qualify for `EVIDENCE_UNVERIFIED` above. Also write a one-line
+  `verify_evidence:` field holding the B6 finding as a **double-quoted YAML
+  scalar** on a single line (no newlines) with `"` and `\` escaped, e.g.
+  `verify_evidence: "handler at x.py:40 swallows it"` — a bare value holding
+  `: `, a leading backtick, `#` or quotes breaks the frontmatter and the gate
+  then reads the verdict as absent. Frontmatter only; `--check` makes no body
+  edits, and never invents alternatives.
+- `DIRECTIVE_DRIFT` verdict (BUG-3574, check B6) → `verify_verdict:
+  DIRECTIVE_DRIFT` — persisted as its own value so `check_directive_drift` can
+  route it to `reconcile_issue`. Non-VALID, `exit 1` in `--check` mode. Ranks
+  below `EVIDENCE_UNVERIFIED` and `PROPOSAL_UNSOUND`.
 - Any other verdict (`OUTDATED`, `RESOLVED`, `INVALID`, `NEEDS_UPDATE`,
   `REGRESSION_LIKELY`, `POSSIBLE_REGRESSION`, `DEP_ISSUES`,
   `DECISIONS_VIOLATION`) → `verify_verdict: NON_VALID`

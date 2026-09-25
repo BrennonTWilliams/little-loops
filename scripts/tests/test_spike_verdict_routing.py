@@ -76,7 +76,10 @@ def test_refine_to_ready_routing_table() -> None:
     # Refuted edge bypasses check_decide_attempts and runs before any rescoring.
     assert st["check_spike_budget"]["on_yes"] == "resolve_decision_pre_breakdown"
     assert st["check_spike_budget"]["on_no"] == "record_decision_unresolved"
-    assert st["resolve_decision_pre_breakdown"]["on_success"] == "confidence_check"
+    assert (
+        st["resolve_decision_pre_breakdown"]["on_success"] == "check_proposal_revision"
+    )  # BUG-3574
+    assert st["check_proposal_revision"]["on_no"] == "confidence_check"
     assert st["mark_spike_no_verdict_infra"]["next"] == "failed"
     assert "infra" in st["mark_spike_no_verdict_infra"]["action"]
     assert "spike_inconclusive" in st["record_spike_inconclusive"]["action"]
@@ -217,3 +220,12 @@ def test_defer_reason_and_triage_rank() -> None:
 
     assert DeferReason.SPIKE_INCONCLUSIVE.value == "spike_inconclusive"
     assert "spike_inconclusive" in _REASON_RANK
+
+
+def test_autodev_ledgers_proposal_unsound_stop_not_as_refine_failed() -> None:
+    """BUG-3574: a nested proposal_unsound stop is not also ledgered as refine_failed."""
+    st = _load("autodev.yaml")["states"]
+    skip = st["skip_inflight"]["action"]
+    assert 'grep -qxF "$ID" ${context.run_dir}/autodev-proposal-unsound.txt' in skip
+    assert skip.index("autodev-proposal-unsound.txt") < skip.index('refine_failed" >>')
+    assert "autodev-proposal-unsound.txt" in st["init"]["action"]

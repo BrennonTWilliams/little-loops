@@ -67,6 +67,7 @@ states:
       printf '' > ${context.run_dir}/autodev-gate-blocked.txt
       printf '' > ${context.run_dir}/autodev-decision-unresolved.txt
       printf '' > ${context.run_dir}/autodev-spike-inconclusive.txt
+      printf '' > ${context.run_dir}/autodev-proposal-unsound.txt
       printf '' > ${context.run_dir}/autodev-spike-no-verdict.txt
       printf '' > ${context.run_dir}/autodev-not-started.txt
       printf '' > ${context.run_dir}/autodev-not-started-attempts.txt
@@ -587,6 +588,12 @@ states:
       # record_spike_inconclusive already deferred the issue and ledgered it.
       if grep -qxF "$ID" ${context.run_dir}/autodev-spike-inconclusive.txt 2>/dev/null; then
         echo "[SPIKE_INCONCLUSIVE] $ID already ledgered by sub-loop; not counting as refine_failed"
+        rm -f ${context.run_dir}/autodev-inflight
+        exit 0
+      fi
+      # BUG-3574: same for a nested refine-to-ready proposal_unsound stop.
+      if grep -qxF "$ID" ${context.run_dir}/autodev-proposal-unsound.txt 2>/dev/null; then
+        echo "[PROPOSAL_UNSOUND] $ID already ledgered by sub-loop; not counting as refine_failed"
         rm -f ${context.run_dir}/autodev-inflight
         exit 0
       fi
@@ -3038,6 +3045,10 @@ states:
       SPIKE_INCONCLUSIVE_LIST=$(grep -v '^[[:space:]]*$' ${context.run_dir}/autodev-spike-inconclusive.txt 2>/dev/null | sort -u | tr '\n' ',' | sed 's/,$//' || true)
       if [ -n "$SPIKE_INCONCLUSIVE_LIST" ]; then
         printf 'Spike-inconclusive (%d): %s  (fix the cause, run /ll:spike <ID> --force, then re-run)\n' "$(echo "$SPIKE_INCONCLUSIVE_LIST" | tr ',' '\n' | wc -l | tr -d ' ')" "$SPIKE_INCONCLUSIVE_LIST"
+      fi
+      PROPOSAL_UNSOUND_LIST=$(grep -v '^[[:space:]]*$' ${context.run_dir}/autodev-proposal-unsound.txt 2>/dev/null | sort -u | tr '\n' ',' | sed 's/,$//' || true)
+      if [ -n "$PROPOSAL_UNSOUND_LIST" ]; then
+        printf 'Proposal-unsound (%d): %s  (selected proposal refuted, no alternative; revise ## Proposed Solution, then re-run)\n' "$(echo "$PROPOSAL_UNSOUND_LIST" | tr ',' '\n' | wc -l | tr -d ' ')" "$PROPOSAL_UNSOUND_LIST"
       fi
       SPIKE_NO_VERDICT_LIST=$(grep -v '^[[:space:]]*$' ${context.run_dir}/autodev-spike-no-verdict.txt 2>/dev/null | sort -u | tr '\n' ',' | sed 's/,$//' || true)
       if [ -n "$SPIKE_NO_VERDICT_LIST" ]; then

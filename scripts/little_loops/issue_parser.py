@@ -3454,12 +3454,23 @@ def is_group_resolved(content: str, group: DecisionGroup) -> bool:
     Does not cover ``provisional_e`` groups: a directive group is retired by
     suppressing the probe (see :func:`_iter_decision_groups`), never by
     satisfying this function.
+
+    BUG-3574: a callout on an option named by :func:`refuted_option_labels` does
+    not resolve the group, and the section-level ``### Decision Rationale``
+    branch does not resolve a group with a refuted member (the rationale cannot
+    say which option it chose) — only an eligible member's callout does.
     """
+    # BUG-3574: a refuted option's callout / a rationale that cannot say which
+    # option it chose must not keep a refuted selection "resolved".
+    refuted = refuted_option_labels(content)
+    has_refuted_member = any(_normalize_option_label(o.label) in refuted for o in group.options)
     for option in group.options:
+        if _normalize_option_label(option.label) in refuted:
+            continue
         if _SELECTED_CALLOUT_RE.search(option.text):
             return True
 
-    if group.heading is None:
+    if group.heading is None or has_refuted_member:
         return False
 
     section = _section_body(content, group.heading)

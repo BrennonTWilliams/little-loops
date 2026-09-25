@@ -70,3 +70,34 @@ def test_unresolved_marker_counts_as_open_question_resolved_does_not() -> None:
     assert count_open_questions_in_sections(_issue(TWO)) == 1
     resolved = MARKER + " ✅ RESOLVED (2026-09-24 by /ll:decide-issue: Option B)"
     assert count_open_questions_in_sections(_issue(TWO, resolved)) == 0
+
+
+# --- BUG-3574: a refuted selection no longer counts as a resolved decision ---
+
+DECIDED = (
+    "### Option A: refuted\n> **Selected:** Option A: refuted — simplest\n1. step\n\n"
+    "### Option B: alt\nbody\n\n### Decision Rationale\n\nA won.\n"
+)
+
+
+def test_decided_group_without_marker_is_resolved() -> None:
+    content = _issue(DECIDED, "- Unrelated question?")
+    assert locate_unresolved_decisions(content, include_approximate_tiers=True) == []
+
+
+def test_callout_on_refuted_option_reopens_group() -> None:
+    groups = locate_unresolved_decisions(_issue(DECIDED), include_approximate_tiers=True)
+    assert len(groups) == 1
+
+
+def test_callout_on_eligible_option_alongside_refuted_is_resolved() -> None:
+    decided_b = DECIDED.replace("> **Selected:** Option A: refuted — simplest\n", "").replace(
+        "body\n", "> **Selected:** Option B: alt\nbody\n", 1
+    )
+    assert locate_unresolved_decisions(_issue(decided_b), include_approximate_tiers=True) == []
+
+
+def test_rationale_with_refuted_member_and_no_eligible_callout_is_unresolved() -> None:
+    no_callouts = DECIDED.replace("> **Selected:** Option A: refuted — simplest\n", "")
+    groups = locate_unresolved_decisions(_issue(no_callouts), include_approximate_tiers=True)
+    assert len(groups) == 1

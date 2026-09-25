@@ -278,6 +278,10 @@ under `## Open Questions`:
 `all_refuted` per group, so exclusion is deterministic rather than prose-driven. A `✅ RESOLVED`
 suffix closes the question but never makes the refuted option eligible again.
 
+A `> **Selected:**` callout on a refuted option does not resolve its group (BUG-3574), so an
+already-decided issue re-opens once the marker is armed: the old callout and `### Decision
+Rationale` stay as history, and only a callout on an eligible option re-resolves the group.
+
 - ≥1 eligible option: select among the eligible options as usual, then mark the marker item
   `✅ RESOLVED (YYYY-MM-DD by /ll:decide-issue: <selected label>)` (Phase 7a step 3).
 - 0 eligible options: emit the token below, leave the marker unresolved and

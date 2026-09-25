@@ -4859,9 +4859,9 @@ class TestPriorityRegexCompletenessAllowlist:
             754: "deliberately out-of-scope analytics reader (defaults to P5, not live planning signal)",
         },
         "issue_lifecycle.py": {
-            1423: "BUG-3286 step 5: derives priority from the renamed filename to sync "
+            1425: "BUG-3286 step 5: derives priority from the renamed filename to sync "
             "frontmatter on skip (write path, not a duplicate resolver)",
-            1430: "extracts issue_id from the renamed filename for event emission; "
+            1432: "extracts issue_id from the renamed filename for event emission; "
             "priority group discarded",
         },
         "issue_parser.py": {
@@ -4875,10 +4875,10 @@ class TestPriorityRegexCompletenessAllowlist:
             "frontmatter directly by design — drift IS the comparison, not a resolution",
             2049: "_DEP_ID_RE (BUG-3059): dependency-ID shape validation; optional prefix "
             "group discarded",
-            4290: "comment describing the P[0-5]-NNN- filename shape",
-            4294: "_parse_type_and_id's directory-fallback number extraction; priority digit "
+            4301: "comment describing the P[0-5]-NNN- filename shape",
+            4305: "_parse_type_and_id's directory-fallback number extraction; priority digit "
             "skipped over, not read as a value",
-            4315: "_generate_id_from_filename strips a leading priority token before "
+            4326: "_generate_id_from_filename strips a leading priority token before "
             "digit-scanning for ID generation",
         },
         "issues/prose_deps.py": {

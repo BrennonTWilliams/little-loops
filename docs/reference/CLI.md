@@ -2352,6 +2352,16 @@ ll-issues rearm-spike BUG-3593
 
 ---
 
+#### `ll-issues arm-proposal-revision`
+
+Re-opens the decision for a refuted proposal (BUG-3574). Writes a refuted-option marker for the selected option (using `verify_evidence` from frontmatter) into `## Open Questions` and sets `decision_needed: true`, so `/ll:decide-issue` re-decides among the remaining eligible options; prints `[PROPOSAL_REVISION_ARMED] <ID>`. Exits 1 with `[NO_ALTERNATIVE] <ID>` and no file change when there are no enumerable `### Option` blocks, no `Selected:` callout on an eligible option, or no other eligible option; 2 when the issue is not found. `ll-issues clear-verify-verdict` also removes `verify_evidence`.
+
+```bash
+ll-issues arm-proposal-revision BUG-3574
+```
+
+---
+
 #### `ll-issues check-verify-verdict`
 
 Exit 0 if the issue's persisted `verify_verdict` is `VALID`, 1 if it is `NON_VALID` (ENH-3031), 3 if it is **absent** (BUG-3571 — no evidence, an abstention rather than a pass). It writes `VERIFY_VERDICT_NON_VALID` / `VERIFY_VERDICT_ABSENT` to stderr so an FSM evaluator can route on the reason rather than the bare exit code. Pair it with `ll-issues clear-verify-verdict <ID>`, which removes the field before `/ll:verify-issues --check` so only a verdict from the current call can pass.
@@ -2363,7 +2373,8 @@ Exit 0 if the issue's persisted `verify_verdict` is `VALID`, 1 if it is `NON_VAL
 | Flag | Description |
 |------|-------------|
 | `--config` | Path to `ll-config.json` |
-| `--proposal-unsound` | Query mode (ENH-3250): exit 0 if `verify_verdict == PROPOSAL_UNSOUND`, 1 otherwise (including when the field is absent). Does not change the default flag's VALID/NON_VALID contract — `PROPOSAL_UNSOUND` still exits 1 without this flag. Used by `refine-to-ready-issue.yaml`'s `check_proposal_unsound` gate to route that failure kind to `reconcile_issue` instead of `refine_followup`. |
+| `--proposal-unsound` | Query mode (ENH-3250): exit 0 if `verify_verdict == PROPOSAL_UNSOUND`, 1 otherwise (including when the field is absent). Does not change the default flag's VALID/NON_VALID contract — `PROPOSAL_UNSOUND` still exits 1 without this flag. Used by `refine-to-ready-issue.yaml`'s `check_proposal_unsound` gate to route a refuted proposal to a bounded design revision (BUG-3574). |
+| `--directive-drift` | Query mode (BUG-3574): exit 0 if `verify_verdict == DIRECTIVE_DRIFT`, 1 otherwise. Used by the `check_directive_drift` gate to route directive-only drift to `reconcile_issue`. |
 
 **Examples:**
 ```bash

@@ -3,10 +3,11 @@ id: BUG-3574
 type: BUG
 title: PROPOSAL_UNSOUND verdict routed to reconcile, which cannot edit Proposed Solution
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-24'
 captured_at: '2026-09-24T19:33:13Z'
+completed_at: '2026-09-25T15:23:18Z'
 parent: EPIC-3565
 blocks:
 - ENH-3577
@@ -344,24 +345,30 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 
 ## Acceptance Criteria
 
-- [ ] A refuted Proposed Solution is never routed only to reconcile
-- [ ] Directive-only drift (`DIRECTIVE_DRIFT`) still routes to reconcile
-- [ ] A refuted proposal with a remaining eligible alternative is re-decided, then reconciled, re-wired and re-verified before scoring
-- [ ] On an already-decided issue (`Selected:` callout + `### Decision Rationale` on the refuted option), arming makes `ll-issues check-unresolved-decisions` report the group as unresolved
-- [ ] After a revision, Implementation Steps / Acceptance Criteria / Integration Map are rewritten for the new option even when the run's `check_reconcile_limit` budget is already spent
-- [ ] `ll-issues clear-verify-verdict` removes `verify_evidence` as well as `verify_verdict`
-- [ ] The revision path is not gated by `check_decide_attempts`: a decision resolved earlier in the same run does not defer the revision as `decision_unresolved`
-- [ ] `/ll:decide-issue` never re-selects an option named as refuted
-- [ ] A refuted proposal with no enumerable `### Option` blocks defers as `proposal_unsound` without invoking decide-issue
-- [ ] A refuted proposal whose alternatives are all refuted defers as `proposal_unsound`, not via exhausted reconcile/refine budgets
-- [ ] A revised option that verify also finds `PROPOSAL_UNSOUND` defers as `proposal_unsound` once the revision budget is spent
-- [ ] `/ll:verify-issues --check` makes no body edits (frontmatter `verify_verdict` / `verify_evidence` only)
-- [ ] The proposal-revision marker is consumed by `check_proposal_revision`, so a later unrelated decision in the same run returns to `confidence_check`
-- [ ] Under autodev, a nested `proposal_unsound` stop is not also ledgered as `refine_failed`
+- [x] A refuted Proposed Solution is never routed only to reconcile
+- [x] Directive-only drift (`DIRECTIVE_DRIFT`) still routes to reconcile
+- [x] A refuted proposal with a remaining eligible alternative is re-decided, then reconciled, re-wired and re-verified before scoring
+- [x] On an already-decided issue (`Selected:` callout + `### Decision Rationale` on the refuted option), arming makes `ll-issues check-unresolved-decisions` report the group as unresolved
+- [x] After a revision, Implementation Steps / Acceptance Criteria / Integration Map are rewritten for the new option even when the run's `check_reconcile_limit` budget is already spent
+- [x] `ll-issues clear-verify-verdict` removes `verify_evidence` as well as `verify_verdict`
+- [x] The revision path is not gated by `check_decide_attempts`: a decision resolved earlier in the same run does not defer the revision as `decision_unresolved`
+- [x] `/ll:decide-issue` never re-selects an option named as refuted
+- [x] A refuted proposal with no enumerable `### Option` blocks defers as `proposal_unsound` without invoking decide-issue
+- [x] A refuted proposal whose alternatives are all refuted defers as `proposal_unsound`, not via exhausted reconcile/refine budgets
+- [x] A revised option that verify also finds `PROPOSAL_UNSOUND` defers as `proposal_unsound` once the revision budget is spent
+- [x] `/ll:verify-issues --check` makes no body edits (frontmatter `verify_verdict` / `verify_evidence` only)
+- [x] The proposal-revision marker is consumed by `check_proposal_revision`, so a later unrelated decision in the same run returns to `confidence_check`
+- [x] Under autodev, a nested `proposal_unsound` stop is not also ledgered as `refine_failed`
 
 ## Related Key Documentation
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
+
+## Resolution
+
+Implemented: `DIRECTIVE_DRIFT` verdict + `verify_evidence` in verify-issues; `check-verify-verdict --directive-drift`; `ll-issues arm-proposal-revision`; `is_group_resolved` ignores refuted selections; `clear-verify-verdict` clears `verify_evidence`; `DeferReason.PROPOSAL_UNSOUND`; refine-to-ready proposal-revision cycle (`max_steps` 85, `recurrent_window` stays 6 after recount = 5); autodev ledger. Host mirrors regenerated.
+
+Known unrelated failures on clean `main` (BUG-3593 leftovers, not touched here): spike-routing tests in test_builtin_loops / autodev topology / interp-sweep baseline, README loop count, evidence gate on BUG-1688.
 
 ## Status
 
@@ -369,6 +376,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-25T15:23:18 - `5d21391f-77bd-4745-a714-575794ff0d5b.jsonl`
+- `/ll:ready-issue` - 2026-09-25T15:07:38 - `4310a48d-60cd-49e8-81df-b0e629e139c1.jsonl`
 - `/ll:confidence-check` - 2026-09-25T15:04:36 - `2879e1b8-58ef-47c7-a4d2-34a25e460e4e.jsonl`
 - `/ll:refine-issue` - 2026-09-25T01:44:08 - `b5d091e6-10b4-4f2f-9812-d49831a68b8b.jsonl`
 - `/ll:capture-issue` - 2026-09-24T19:42:32 - `59fe3bd4-3622-4dd2-bb8b-ad5cc55e79ec.jsonl`

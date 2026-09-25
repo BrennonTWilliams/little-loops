@@ -109,3 +109,17 @@ class TestProposalUnsoundVerdict:
             "outcome in --check mode — the split is in the persisted verdict, "
             "not the exit-code contract"
         )
+
+
+class TestDirectiveDriftVerdict:
+    """BUG-3574: B6 findings split by fix location; --check stays frontmatter-only."""
+
+    def test_verdict_table_and_persistence_have_directive_drift(self) -> None:
+        body = _body(VERIFY_CMD)
+        assert "| DIRECTIVE_DRIFT |" in body
+        persist_start = body.index("Persist the verdict to frontmatter")
+        approval_start = body.index("### 3. Request User Approval")
+        persist = " ".join(body[persist_start:approval_start].split())
+        assert "verify_verdict: DIRECTIVE_DRIFT" in persist
+        assert "verify_evidence:" in persist
+        assert "double-quoted YAML scalar" in persist

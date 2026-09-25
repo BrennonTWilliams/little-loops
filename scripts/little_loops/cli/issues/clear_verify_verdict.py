@@ -32,7 +32,7 @@ def add_clear_verify_verdict_parser(
 
 
 def cmd_clear_verify_verdict(config: BRConfig, args: argparse.Namespace) -> int:
-    """Remove ``verify_verdict`` from an issue's frontmatter (absent key is a no-op).
+    """Remove ``verify_verdict`` and ``verify_evidence`` (BUG-3574) from an issue's frontmatter (absent key is a no-op).
 
     Returns:
         0 on success, 2 when the issue is not found.
@@ -46,7 +46,7 @@ def cmd_clear_verify_verdict(config: BRConfig, args: argparse.Namespace) -> int:
         return 2
 
     content = path.read_text()
-    new_content = remove_frontmatter_keys(content, ("verify_verdict",))
+    new_content = remove_frontmatter_keys(content, ("verify_verdict", "verify_evidence"))
     if new_content != content:
         path.write_text(new_content)
     return 0

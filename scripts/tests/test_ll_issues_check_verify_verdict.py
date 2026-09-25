@@ -103,6 +103,21 @@ class TestClearVerifyVerdict:
         check = _invoke(temp_project_dir, "check-verify-verdict", "FEAT-9290")
         assert check.returncode == 3
 
+    def test_clear_removes_verify_evidence_too(self, temp_project_dir: Path) -> None:
+        """BUG-3574: a stale finding must never reach a later refuted-option marker."""
+        path = _write_issue(
+            temp_project_dir,
+            _feature(
+                "FEAT-9292",
+                'verify_verdict: PROPOSAL_UNSOUND\nverify_evidence: "handler swallows it"\n',
+            ),
+        )
+        result = _invoke(temp_project_dir, "clear-verify-verdict", "FEAT-9292")
+        assert result.returncode == 0, result.stderr
+        text = path.read_text()
+        assert "verify_verdict" not in text
+        assert "verify_evidence" not in text
+
     def test_clear_is_noop_when_absent(self, temp_project_dir: Path) -> None:
         body = _feature("FEAT-9291")
         path = _write_issue(temp_project_dir, body)
@@ -113,6 +128,27 @@ class TestClearVerifyVerdict:
     def test_clear_unknown_issue_exits_two(self, temp_project_dir: Path) -> None:
         result = _invoke(temp_project_dir, "clear-verify-verdict", "FEAT-9999")
         assert result.returncode == 2
+
+
+class TestCheckVerifyVerdictDirectiveDrift:
+    """BUG-3574: --directive-drift is a distinct query mode."""
+
+    def test_directive_drift_exits_zero_with_flag(self, temp_project_dir: Path) -> None:
+        _write_issue(temp_project_dir, _feature("FEAT-9293", "verify_verdict: DIRECTIVE_DRIFT\n"))
+        result = _invoke(temp_project_dir, "check-verify-verdict", "FEAT-9293", "--directive-drift")
+        assert result.returncode == 0, result.stderr
+
+    def test_other_verdict_exits_one_with_flag(self, temp_project_dir: Path) -> None:
+        _write_issue(temp_project_dir, _feature("FEAT-9294", "verify_verdict: PROPOSAL_UNSOUND\n"))
+        result = _invoke(temp_project_dir, "check-verify-verdict", "FEAT-9294", "--directive-drift")
+        assert result.returncode == 1
+        assert "NOT_DIRECTIVE_DRIFT" in result.stderr
+
+    def test_default_mode_exits_one_on_directive_drift(self, temp_project_dir: Path) -> None:
+        _write_issue(temp_project_dir, _feature("FEAT-9295", "verify_verdict: DIRECTIVE_DRIFT\n"))
+        result = _invoke(temp_project_dir, "check-verify-verdict", "FEAT-9295")
+        assert result.returncode == 1
+        assert "VERIFY_VERDICT_NON_VALID" in result.stderr
 
 
 class TestCheckVerifyVerdictNonValid:

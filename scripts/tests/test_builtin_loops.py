@@ -2956,8 +2956,8 @@ class TestRefineToReadyIssueSubLoop:
         )
         assert state.get("fragment") == "shell_exit"
         assert state.get("on_yes") == "mark_rate_limit_infra"
-        assert state.get("on_no") == "record_decision_unresolved"
-        assert state.get("on_error") == "record_decision_unresolved"
+        assert state.get("on_no") == "check_proposal_revision_failed"
+        assert state.get("on_error") == "check_proposal_revision_failed"
 
     def test_mark_rate_limit_infra_writes_class_and_exits_failed(self, data: dict) -> None:
         """mark_rate_limit_infra must write class `infra` to refine-terminal-class
@@ -2994,15 +2994,17 @@ class TestRefineToReadyIssueSubLoop:
     def test_resolve_decision_pre_breakdown_on_success_reenters_confidence_check(
         self, data: dict
     ) -> None:
-        """resolve_decision_pre_breakdown.on_success must be confidence_check, NOT
+        """resolve_decision_pre_breakdown.on_success must reach confidence_check (via
+        check_proposal_revision, whose marker-absent branch re-enters it), NOT
         check_decision_needed's on_no target (check_missing_artifacts) — otherwise
         the outcome score is graded against the stale pre-decision ambiguity instead
-        of being recomputed against the resolved decision (BUG-3065)."""
-        state = data["states"].get("resolve_decision_pre_breakdown", {})
-        assert state.get("on_success") == "confidence_check", (
-            f"resolve_decision_pre_breakdown.on_success should be 'confidence_check', "
-            f"got {state.get('on_success')!r}"
+        of being recomputed against the resolved decision (BUG-3065, BUG-3574)."""
+        states = data["states"]
+        assert states["resolve_decision_pre_breakdown"].get("on_success") == (
+            "check_proposal_revision"
         )
+        assert states["check_proposal_revision"].get("on_no") == "confidence_check"
+        assert states["check_proposal_revision"].get("on_error") == "confidence_check"
 
     def test_resolve_decision_mid_refine_on_success_resumes_check_wire_done(
         self, data: dict
@@ -3088,33 +3090,77 @@ class TestRefineToReadyIssueSubLoop:
             f"'ll-issues check-verify-verdict ... --proposal-unsound', got {action!r}"
         )
 
-    def test_check_proposal_unsound_on_yes_routes_to_check_reconcile_limit(
+    def test_check_proposal_unsound_on_yes_routes_to_check_proposal_revision_budget(
         self, data: dict
     ) -> None:
-        """check_proposal_unsound.on_yes (verdict == PROPOSAL_UNSOUND) must route to
-        check_reconcile_limit -> reconcile_issue, not check_refine_limit ->
-        refine_followup — refining cannot repair an unsound proposal (ENH-3250)."""
+        """A refuted proposal goes to a bounded design revision, not reconcile, which
+        cannot edit ## Proposed Solution (BUG-3574; supersedes ENH-3250's route)."""
         state = data["states"].get("check_proposal_unsound", {})
-        assert state.get("on_yes") == "check_reconcile_limit", (
-            f"check_proposal_unsound.on_yes should be 'check_reconcile_limit', "
-            f"got {state.get('on_yes')!r}"
+        assert state.get("on_yes") == "check_proposal_revision_budget"
+
+    def test_check_proposal_unsound_on_no_and_on_error_route_to_check_directive_drift(
+        self, data: dict
+    ) -> None:
+        state = data["states"].get("check_proposal_unsound", {})
+        assert state.get("on_no") == "check_directive_drift"
+        assert state.get("on_error") == "check_directive_drift"
+
+    def test_check_directive_drift_routes_reconcile_else_gate_refine(self, data: dict) -> None:
+        """DIRECTIVE_DRIFT -> reconcile (BUG-3574); any other non-VALID verdict keeps
+        today's structure-gate refine target (BUG-3551)."""
+        state = data["states"].get("check_directive_drift", {})
+        assert state.get("fragment") == "shell_exit"
+        assert "--directive-drift" in state.get("action", "")
+        assert state.get("on_yes") == "check_reconcile_limit"
+        assert state.get("on_no") == "check_gate_refine_limit"
+        assert state.get("on_error") == "check_gate_refine_limit"
+
+    def test_proposal_revision_cycle_routing(self, data: dict) -> None:
+        """BUG-3574: budget -> arm -> decide -> consume marker -> unbudgeted reconcile -> wire."""
+        st = data["states"]
+        budget = st["check_proposal_revision_budget"]
+        assert budget["on_yes"] == "arm_proposal_revision"
+        assert budget["on_no"] == "record_proposal_unsound"
+        assert budget["evaluate"]["target"] == 2
+        assert "check_decide_attempts" not in budget["action"]
+        arm = st["arm_proposal_revision"]
+        assert "arm-proposal-revision" in arm["action"]
+        assert arm["on_yes"] == "resolve_decision_pre_breakdown"
+        assert arm["on_no"] == "record_proposal_unsound"
+        assert arm["on_error"] == "record_proposal_unsound"
+        check = st["check_proposal_revision"]
+        assert check["on_yes"] == "reconcile_revision"
+        assert "rm -f" in check["action"]
+        rec = st["reconcile_revision"]
+        assert rec["action"].startswith("/ll:reconcile-issue")
+        assert rec["next"] == "wire_issue" and rec["on_error"] == "wire_issue"
+        # reconcile_revision is never reached through check_reconcile_limit
+        assert st["check_reconcile_limit"]["on_yes"] == "reconcile_issue"
+        assert all(
+            v.get(k) != "reconcile_revision"
+            for n, v in st.items()
+            if n != "check_proposal_revision"
+            for k in ("next", "on_yes", "on_no", "on_error", "on_success")
         )
 
-    def test_check_proposal_unsound_on_no_and_on_error_route_to_check_gate_refine_limit(
-        self, data: dict
-    ) -> None:
-        """check_proposal_unsound.on_no/.on_error route every other non-VALID verdict
-        (and a probe failure, fail-open) to a refine via the structure-gate budget
-        state, whose exhaustion fails the run rather than decomposing it (BUG-3551)."""
-        state = data["states"].get("check_proposal_unsound", {})
-        assert state.get("on_no") == "check_gate_refine_limit", (
-            f"check_proposal_unsound.on_no should be 'check_gate_refine_limit', "
-            f"got {state.get('on_no')!r}"
-        )
-        assert state.get("on_error") == "check_gate_refine_limit", (
-            f"check_proposal_unsound.on_error should be 'check_gate_refine_limit', "
-            f"got {state.get('on_error')!r}"
-        )
+    def test_proposal_revision_failure_routing(self, data: dict) -> None:
+        st = data["states"]
+        assert st["check_decide_rate_limited"]["on_no"] == "check_proposal_revision_failed"
+        failed = st["check_proposal_revision_failed"]
+        assert failed["on_yes"] == "record_proposal_unsound"
+        assert failed["on_no"] == "record_decision_unresolved"
+        rec = st["record_proposal_unsound"]
+        assert "--reason proposal_unsound" in rec["action"]
+        assert "autodev-proposal-unsound.txt" in rec["action"]
+        assert rec["next"] == "failed"
+
+    def test_resolve_issue_resets_proposal_revision_state(self, data: dict) -> None:
+        action = data["states"]["resolve_issue"]["action"]
+        assert "refine-to-ready-proposal-revisions" in action
+        assert "rm -f ${context.run_dir}/refine-to-ready-proposal-revision" in action
+
+    def test_max_steps_covers_proposal_revision_cycle(self, data: dict) -> None:
+        assert data["max_steps"] >= 85
 
     def test_check_verify_verdict_on_no_reaches_check_proposal_unsound(self, data: dict) -> None:
         """check_verify_verdict.on_no must triage before forcing refine — it must

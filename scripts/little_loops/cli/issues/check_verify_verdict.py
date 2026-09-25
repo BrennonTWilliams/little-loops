@@ -55,6 +55,16 @@ def add_check_verify_verdict_parser(
             "behavior."
         ),
     )
+    p.add_argument(
+        "--directive-drift",
+        action="store_true",
+        help=(
+            "Query mode (BUG-3574): exit 0 if verify_verdict == DIRECTIVE_DRIFT, "
+            "1 otherwise. Used by refine-to-ready-issue.yaml's check_directive_drift "
+            "gate to route directive-only drift to reconcile_issue. Does not affect "
+            "the default VALID/NON_VALID behavior."
+        ),
+    )
     add_config_arg(p)
     return p
 
@@ -103,6 +113,16 @@ def cmd_check_verify_verdict(config: BRConfig, args: argparse.Namespace) -> int:
             return 0
         print(
             f"NOT_PROPOSAL_UNSOUND: {args.issue_id} — verify_verdict={verdict!r}",
+            file=sys.stderr,
+        )
+        return 1
+
+    if getattr(args, "directive_drift", False):
+        if verdict is not None and str(verdict).upper() == "DIRECTIVE_DRIFT":
+            print(f"Verified: {args.issue_id} verify_verdict={verdict!r}")
+            return 0
+        print(
+            f"NOT_DIRECTIVE_DRIFT: {args.issue_id} — verify_verdict={verdict!r}",
             file=sys.stderr,
         )
         return 1

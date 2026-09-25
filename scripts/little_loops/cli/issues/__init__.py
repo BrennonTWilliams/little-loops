@@ -48,6 +48,10 @@ def main_issues() -> int:
         from little_loops.cli.issues.clusters import cmd_clusters
         from little_loops.cli.issues.count_cmd import cmd_count
         from little_loops.cli.issues.create import add_create_parser, cmd_create
+        from little_loops.cli.issues.arm_proposal_revision import (
+            add_arm_proposal_revision_parser,
+            cmd_arm_proposal_revision,
+        )
         from little_loops.cli.issues.rearm_spike import add_rearm_spike_parser, cmd_rearm_spike
         from little_loops.cli.issues.decisions import (
             add_decisions_parser,
@@ -170,6 +174,7 @@ Sub-commands:
   check-verify-verdict       Exit 0 if verify_verdict is VALID, 1 if NON_VALID, 3 if absent
   clear-verify-verdict       Remove the persisted verify_verdict (run before verify-issues --check)
   rearm-spike                Re-arm a refuted spike (drop spike_attempted/spike_refuted)
+  arm-proposal-revision      Mark the selected option refuted + decision_needed (exit 1: no alternative)
 
 Examples:
   %(prog)s next-id
@@ -776,6 +781,7 @@ Examples:
         add_check_verify_verdict_parser(subs)
         add_clear_verify_verdict_parser(subs)
         add_rearm_spike_parser(subs)
+        add_arm_proposal_revision_parser(subs)
 
         cr = subs.add_parser(
             "check-readiness",
@@ -1089,6 +1095,8 @@ Examples:
             return cmd_clear_verify_verdict(config, args)
         if args.command == "rearm-spike":
             return cmd_rearm_spike(config, args)
+        if args.command == "arm-proposal-revision":
+            return cmd_arm_proposal_revision(config, args)
         if args.command == "check-readiness":
             return cmd_check_readiness(config, args)
         if args.command == "set-scores":

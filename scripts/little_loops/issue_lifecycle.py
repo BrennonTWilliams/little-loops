@@ -77,6 +77,7 @@ class DeferReason(Enum):
     GATE_BLOCKED = "gate_blocked"  # autodev: unproven external-API deps
     DECISION_UNRESOLVED = "decision_unresolved"  # autodev: decide-issue produced no decision
     SPIKE_INCONCLUSIVE = "spike_inconclusive"  # BUG-3593: spike could not reach a verdict
+    PROPOSAL_UNSOUND = "proposal_unsound"  # BUG-3574: refuted proposal, no eligible alternative
     # BUG-2734: readiness passed but a Very Large, deliberately-atomic issue's
     # outcome-confidence still fails after Pattern-B rescoring remediation.
     OVERSIZED_ATOMIC = "oversized_atomic"
