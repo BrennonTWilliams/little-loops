@@ -14,6 +14,12 @@ blocks:
 blocked_by:
 - BUG-3571
 - BUG-3588
+confidence_score: 95
+outcome_confidence: 58
+score_complexity: 5
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 10
 ---
 
 # BUG-3572: Failed spike suppresses unproven-mechanism outcome cap in confidence-check
@@ -383,8 +389,23 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 **Open** | Created: 2026-09-24 | Priority: P2
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-24_
+
+**Readiness Score**: 95/100 → PROCEED
+**Outcome Confidence**: 58/100 → LOW
+
+### Concerns
+- New pytest plugin (`spike_junit_plugin`) is loaded via `-p` inside the spike skill, which runs in consuming projects; confirm the module resolves there (editable/pypi install) before relying on it.
+
+### Outcome Risk Factors
+- Broad enumeration across 16+ sites (skill, plan template, plugin, CLI, two loops, decide-issue, show.py, docs, mirrors for five hosts) with deep per-site complexity: a new verdict contract plus loop routing changes in `autodev.yaml` and `refine-to-ready-issue.yaml`.
+- Wide blast radius on spike flags: `set_flags.py`, `show.py`, three loops, `refine-issue`, `reconcile-issue`, `decide-issue`, `spike-gate.yaml`.
+- Repeated-refutation cycling (refute → decide → re-arm → refute) rests on the new `spike-runs-<ID>` budget plus the FEAT-2751 backstop; oscillation is not statically verifiable. Consider splitting: (1) classifier CLI + plugin, (2) cap/flag contract, (3) loop routing + budget.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-25T03:34:09 - `1d2aa8fb-1dc2-4396-a044-d0a19e8f17b9.jsonl`
 - `/ll:wire-issue` - 2026-09-25T01:11:18 - `283a56a1-35bd-43bb-b2f7-64d9f104c2c4.jsonl`
 - `/ll:refine-issue` - 2026-09-25T01:06:50 - `42a934e3-5df9-4ac6-9296-d0ced0bc2261.jsonl`
 - `/ll:format-issue` - 2026-09-25T01:01:19 - `4b76ee9e-e590-41ab-940d-a6df6f1554bd.jsonl`

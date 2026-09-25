@@ -88,6 +88,8 @@ measurement.
 - **ENH-3576** — Format-check repair coverage for missing and boilerplate sections with format-issue fallback (open)
 - **ENH-3577** — Consolidate autodev issue preparation into a single controller loop (open)
 - **BUG-3588** — Autodev post-repair rescoring accepts stale or absent confidence scores (open)
+- **ENH-3590** — Add advise second-model consult step to autodev (open)
+
 
 ## Acceptance Criteria
 
