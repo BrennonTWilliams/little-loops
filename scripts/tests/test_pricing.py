@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+import json
+import sqlite3
 from collections.abc import Iterator
 from datetime import date
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
 from little_loops import pricing
-from little_loops.pricing import BATCH_DISCOUNT, MODEL_PRICING, estimate_cost_usd
+from little_loops.pricing import BATCH_DISCOUNT, MODEL_PRICING, _event_date, estimate_cost_usd
 
 SYNTHETIC_MODEL = "claude-synthetic-intro"
 
@@ -195,3 +198,190 @@ class TestBatchDiscount:
 
     def test_is_batch_zero_tokens_returns_zero(self) -> None:
         assert estimate_cost_usd("claude-sonnet-4-6", 0, 0, 0, 0, is_batch=True) == 0.0
+
+
+INTRO_TOTAL = 2.0 + 10.0
+STANDARD_TOTAL = 3.0 + 15.0
+_M = 1_000_000
+
+
+def _pin_today(day: date) -> patch[object]:  # type: ignore[type-arg]
+    mock = patch("little_loops.pricing.date")
+    m = mock.start()
+    m.today.return_value = day
+    m.fromisoformat = date.fromisoformat
+    return mock
+
+
+class TestEventDate:
+    @pytest.mark.parametrize(
+        "ts",
+        ["2026-08-31T23:30:00-05:00", "2026-09-01T04:30:00Z", "2026-09-01T04:30:00"],
+    )
+    def test_normalises_to_utc_date(self, ts: str) -> None:
+        assert _event_date(ts) == date(2026, 9, 1)
+
+    @pytest.mark.parametrize("ts", [None, "", "garbage", "2026-13-45T00:00:00Z"])
+    def test_unparseable_returns_none(self, ts: str | None) -> None:
+        assert _event_date(ts) is None
+
+
+class TestAsOf:
+    def test_event_inside_window_after_expiry_uses_intro(
+        self, synthetic_intro_pricing: str
+    ) -> None:
+        patcher = _pin_today(date(2026, 9, 15))
+        try:
+            cost = estimate_cost_usd(synthetic_intro_pricing, _M, _M, as_of=date(2026, 8, 15))
+        finally:
+            patcher.stop()
+        assert cost == INTRO_TOTAL
+
+    def test_event_after_expiry_inside_window_uses_standard(
+        self, synthetic_intro_pricing: str
+    ) -> None:
+        patcher = _pin_today(date(2026, 8, 15))
+        try:
+            cost = estimate_cost_usd(synthetic_intro_pricing, _M, _M, as_of=date(2026, 9, 1))
+        finally:
+            patcher.stop()
+        assert cost == STANDARD_TOTAL
+
+    def test_as_of_none_means_today(self, synthetic_intro_pricing: str) -> None:
+        patcher = _pin_today(date(2026, 9, 15))
+        try:
+            cost = estimate_cost_usd(synthetic_intro_pricing, _M, _M, as_of=None)
+        finally:
+            patcher.stop()
+        assert cost == STANDARD_TOTAL
+
+
+def _pin_expired_today() -> patch[object]:  # type: ignore[type-arg]
+    return _pin_today(date(2026, 9, 15))
+
+
+class TestEventDatePricingCallSites:
+    def _record(self, db: Path, model: str, ts: str, observed_at: str | None) -> float | None:
+        from little_loops.session_store import connect, ensure_db, record_usage_event
+
+        ensure_db(db)
+        record_usage_event(
+            db,
+            run_id="r",
+            ts=ts,
+            state="s",
+            model=model,
+            input_tokens=_M,
+            output_tokens=_M,
+            cache_read_tokens=0,
+            cache_creation_tokens=0,
+            observed_at=observed_at,
+        )
+        conn = connect(db)
+        try:
+            return conn.execute("SELECT cost_usd FROM usage_events").fetchone()[0]
+        finally:
+            conn.close()
+
+    @pytest.mark.parametrize(
+        ("ts", "observed_at", "expected"),
+        [
+            ("2026-09-10T00:00:00Z", "2026-08-15T00:00:00Z", INTRO_TOTAL),  # observed_at wins
+            ("2026-08-15T00:00:00Z", "not-a-date", INTRO_TOTAL),  # falls through to ts
+            ("bad", "also-bad", STANDARD_TOTAL),  # both malformed -> today (expired)
+        ],
+    )
+    def test_live_writer_precedence(
+        self,
+        tmp_path: Path,
+        synthetic_intro_pricing: str,
+        ts: str,
+        observed_at: str,
+        expected: float,
+    ) -> None:
+        patcher = _pin_expired_today()
+        try:
+            cost = self._record(tmp_path / "h.db", synthetic_intro_pricing, ts, observed_at)
+        finally:
+            patcher.stop()
+        assert cost == expected
+
+    def test_replay_prices_by_record_timestamp(
+        self, tmp_path: Path, synthetic_intro_pricing: str
+    ) -> None:
+        from little_loops.session_store import connect, ensure_db
+        from little_loops.session_store.writers import _backfill_usage_events
+
+        db = tmp_path / "h.db"
+        ensure_db(db)
+        usage = {
+            "input_tokens": _M,
+            "output_tokens": _M,
+            "cache_read_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+        }
+
+        def line(ts: str | None) -> str:
+            rec: dict[str, object] = {
+                "type": "assistant",
+                "sessionId": "sess",
+                "message": {"model": synthetic_intro_pricing, "usage": usage},
+            }
+            if ts:
+                rec["timestamp"] = ts
+            return json.dumps(rec)
+
+        src = sqlite3.connect(":memory:")
+        src.execute("CREATE TABLE raw_events(raw_line TEXT, source_path TEXT, host TEXT)")
+        src.executemany(
+            "INSERT INTO raw_events VALUES(?, ?, NULL)",
+            [(line("2026-08-15T00:00:00Z"), "a"), (line("junk"), "b"), (line(None), "c")],
+        )
+        cursor = src.execute("SELECT raw_line, source_path, host FROM raw_events")
+        patcher = _pin_expired_today()
+        conn = connect(db)
+        try:
+            _backfill_usage_events(conn, cursor)
+            conn.commit()
+            costs = [r[0] for r in conn.execute("SELECT cost_usd FROM usage_events ORDER BY id")]
+        finally:
+            conn.close()
+            patcher.stop()
+        assert costs == [INTRO_TOTAL, STANDARD_TOTAL, STANDARD_TOTAL]
+
+    def test_cost_graph_prices_by_row_timestamp(
+        self, tmp_path: Path, synthetic_intro_pricing: str
+    ) -> None:
+        from little_loops.fsm.cost_graph import CostReport
+
+        base = {
+            "state": "s",
+            "model": synthetic_intro_pricing,
+            "input_tokens": _M,
+            "output_tokens": _M,
+            "cache_read_tokens": 0,
+            "cache_creation_tokens": 0,
+        }
+        p = tmp_path / "usage.jsonl"
+        p.write_text(
+            "\n".join(
+                json.dumps({**base, "state": name, "timestamp": ts})
+                for name, ts in [
+                    ("inside", "2026-08-15T00:00:00Z"),
+                    ("legacy", ""),
+                    ("bad", "junk"),
+                ]
+            )
+            + "\n"
+        )
+        patcher = _pin_expired_today()
+        try:
+            report = CostReport.from_usage_jsonl(p)
+        finally:
+            patcher.stop()
+        by_state = {s.state: s.cost_usd for s in report.states}
+        assert by_state == {
+            "inside": INTRO_TOTAL,
+            "legacy": STANDARD_TOTAL,
+            "bad": STANDARD_TOTAL,
+        }

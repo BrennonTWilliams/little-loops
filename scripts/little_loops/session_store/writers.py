@@ -1960,10 +1960,15 @@ def record_usage_event(
     already known. ``usage_events`` has no uniqueness constraint — plain
     ``INSERT``, one row per :class:`~little_loops.subprocess_utils.TokenUsage`.
     """
-    from little_loops.pricing import estimate_cost_usd
+    from little_loops.pricing import _event_date, estimate_cost_usd
 
     cost_usd = estimate_cost_usd(
-        model, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens
+        model,
+        input_tokens,
+        output_tokens,
+        cache_read_tokens,
+        cache_creation_tokens,
+        as_of=_event_date(observed_at) or _event_date(ts),
     )
     conn = _pkg.connect(db_path)
     try:
@@ -3624,7 +3629,7 @@ def _backfill_usage_events(conn: sqlite3.Connection, source: list[Path] | sqlite
     ``run_id`` stay ``NULL``, matching the live-writer path's behavior for
     non-loop sessions.
     """
-    from little_loops.pricing import estimate_cost_usd
+    from little_loops.pricing import _event_date, estimate_cost_usd
 
     count = 0
     windows = _load_loop_run_windows(conn)
@@ -3664,6 +3669,7 @@ def _backfill_usage_events(conn: sqlite3.Connection, source: list[Path] | sqlite
             output_tokens,
             cache_read,
             cache_creation,
+            as_of=_event_date(ts),
         )
         run_id = _derive_run_id_for_ts(ts, windows)
         conn.execute(

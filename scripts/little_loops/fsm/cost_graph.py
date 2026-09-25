@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from little_loops.pricing import estimate_cost_usd
+from little_loops.pricing import _event_date, estimate_cost_usd
 
 # Locked JSON keys (do not reorder / rename without a schema version bump).
 _STATE_KEYS = (
@@ -325,6 +325,7 @@ class CostReport:
                     values["cache_read_tokens"],
                     values["cache_creation_tokens"],
                     is_batch=is_batch,
+                    as_of=_event_date(str(row.get("timestamp") or "")),
                 )
             )
             if cost is None:

@@ -15,7 +15,7 @@ recomputed, so `ll-history quality`'s cost-coverage gate remains required.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, date, datetime
 
 # Per-model pricing: {model_id: {token_type: usd_per_million}}
 MODEL_PRICING: dict[str, dict[str, float]] = {
@@ -104,6 +104,24 @@ discount is a flat 50% off the synchronous per-token rate, cache-adjusted
 rates included."""
 
 
+def _event_date(ts: str | None) -> date | None:
+    """Parse an ISO-8601 timestamp to its UTC calendar date (BUG-3579).
+
+    ``Z`` is accepted and a naive timestamp is treated as UTC. Returns ``None``
+    for missing or unparseable input, never raises, so callers can fall back to
+    today via ``estimate_cost_usd(as_of=None)``.
+    """
+    if not ts:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(ts).strip())
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC).date()
+
+
 def estimate_cost_usd(
     model: str,
     input_tokens: int | None,
@@ -111,6 +129,7 @@ def estimate_cost_usd(
     cache_read_tokens: int | None = 0,
     cache_creation_tokens: int | None = 0,
     is_batch: bool = False,
+    as_of: date | None = None,
 ) -> float | None:
     """Estimate cost in USD for a token usage event.
 
@@ -122,6 +141,9 @@ def estimate_cost_usd(
     (:data:`BATCH_DISCOUNT`) to the computed total. Appended at the end of
     the signature (not inserted) so existing positional callers
     (``fsm/cost_graph.py``, ``session_store.py``) are unaffected.
+
+    ``as_of`` is the (UTC) date the usage occurred; an ``INTRO_PRICING`` entry
+    applies when ``as_of <= expires``. ``None`` means today (BUG-3579).
     """
     pricing = MODEL_PRICING.get(model)
     if pricing is None:
@@ -134,7 +156,7 @@ def estimate_cost_usd(
     ):
         return None
     intro = INTRO_PRICING.get(model)
-    if intro is not None and date.today() <= date.fromisoformat(str(intro["expires"])):
+    if intro is not None and (as_of or date.today()) <= date.fromisoformat(str(intro["expires"])):
         input_rate, output_rate = float(intro["input"]), float(intro["output"])
         cache_read_rate = float(intro["cache_read"])
         cache_creation_rate = float(intro["cache_creation"])

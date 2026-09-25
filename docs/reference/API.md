@@ -81,7 +81,7 @@ pip install little-loops
 | `little_loops.output` | Output-parsing subpackage — stop-sequence / prefill JSON helpers (`extract_between_tags`, `parse_prefilled_json`) for bounding LLM output-token cost (FEAT-2470). |
 | `little_loops.package_data` | Declarative manifest of runtime-read package assets (templates, prompts, adapter configs) — `check_asset_accessible(parts)` and `list_missing_assets()`. Backs `ll-verify-package-data`. |
 | `little_loops.paths` | Dependency-free project-root resolution (ENH-2924, relocated from `little_loops.issues.program_design`) — `find_project_root(start)` and `resolve_ll_dir(start, create=False)`. |
-| `little_loops.pricing` | Model pricing constants (USD per million tokens) for token cost estimation across the model registry. `INTRO_PRICING` overrides `MODEL_PRICING` for a model while a time-bounded introductory rate is active; `estimate_cost_usd()` checks `date.today()` against each entry's `expires` date and falls back to standard `MODEL_PRICING` once it lapses. Sonnet 5's $2/$10 introductory rate became its standard price, so it is priced from `MODEL_PRICING` directly (BUG-3564). |
+| `little_loops.pricing` | Model pricing constants (USD per million tokens) for token cost estimation across the model registry. `INTRO_PRICING` overrides `MODEL_PRICING` for a model while a time-bounded introductory rate is active; `estimate_cost_usd()` checks the event's UTC date (`as_of`, defaulting to today) against each entry's `expires` date and falls back to standard `MODEL_PRICING` once it lapses. Sonnet 5's $2/$10 introductory rate became its standard price, so it is priced from `MODEL_PRICING` directly (BUG-3564). |
 | `little_loops.pytest_history_plugin` | Pytest plugin (registered under `pytest11` entry point) that records test-run pass/fail counts, duration, and failing node IDs into `.ll/history.db` (ENH-2459). |
 | `little_loops.queue_store` | Persisted `ll-queue` entry store (`.ll/queue.db`; FEAT-2682) — schema `{id, action, enqueuedAt, priority, status, result, claimedAt, ownerPid, attempt, nextAttemptAt}` with tiered `(priority, enqueuedAt)` ordering. |
 | `little_loops.recursive_finalize` | Decomposed-parent lifecycle and EPIC re-linking. Powers `ll-issues finalize-decomposition` (ENH-1977 Fix 4), invoked from `rn-decompose` and `autodev`'s decomposition states (ENH-2615). |
@@ -12357,7 +12357,7 @@ The single caller of `consult()` — no other code path may call it. Resolves th
 
 ## little_loops.pricing
 
-Model pricing constants (USD per million tokens) for token cost estimation across the model registry. `INTRO_PRICING` overrides `MODEL_PRICING` for a model while a time-bounded introductory rate is active; `estimate_cost_usd()` checks `date.today()` against each entry's `expires` date and falls back to standard `MODEL_PRICING` once it lapses. Sonnet 5's $2/$10 introductory rate became its standard price, so it is priced from `MODEL_PRICING` directly (BUG-3564).
+Model pricing constants (USD per million tokens) for token cost estimation across the model registry. `INTRO_PRICING` overrides `MODEL_PRICING` for a model while a time-bounded introductory rate is active; `estimate_cost_usd()` checks the event's UTC date (`as_of`, defaulting to today) against each entry's `expires` date and falls back to standard `MODEL_PRICING` once it lapses. Sonnet 5's $2/$10 introductory rate became its standard price, so it is priced from `MODEL_PRICING` directly (BUG-3564).
 
 ```python
 from little_loops.pricing import MODEL_PRICING, INTRO_PRICING, BATCH_DISCOUNT, estimate_cost_usd
@@ -12399,16 +12399,18 @@ def estimate_cost_usd(
     cache_read_tokens: int = 0,
     cache_creation_tokens: int = 0,
     is_batch: bool = False,
+    as_of: date | None = None,
 ) -> float | None
 ```
 
-Estimates cost in USD for a token usage event. Returns `None` if `model` is not in `MODEL_PRICING`. Checks `INTRO_PRICING` first and uses it while unexpired, otherwise falls back to `MODEL_PRICING`. `is_batch=True` applies `BATCH_DISCOUNT` to the computed total. `is_batch` is appended at the end of the signature (not inserted) so existing positional callers (`fsm/cost_graph.py`, `session_store.py`) are unaffected.
+Estimates cost in USD for a token usage event. Returns `None` if `model` is not in `MODEL_PRICING`. Checks `INTRO_PRICING` first and uses it while `as_of` (the UTC date the usage occurred; `None` means today) is on or before the entry's `expires`, otherwise falls back to `MODEL_PRICING`. `is_batch=True` applies `BATCH_DISCOUNT` to the computed total. `is_batch` is appended at the end of the signature (not inserted) so existing positional callers (`fsm/cost_graph.py`, `session_store.py`) are unaffected.
 
 **Parameters:**
 
 - `model` — model ID to look up in the pricing tables.
 - `input_tokens`, `output_tokens`, `cache_read_tokens`, `cache_creation_tokens` — token counts by type.
 - `is_batch` — apply the Message Batches API flat discount.
+- `as_of` — UTC date the usage occurred, for the `INTRO_PRICING` window check; `None` (default) means today (BUG-3579).
 
 **Returns:** estimated cost in USD, or `None` if the model is unrecognized.
 

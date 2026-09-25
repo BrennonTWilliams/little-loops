@@ -3,10 +3,11 @@ id: BUG-3579
 type: BUG
 title: estimate_cost_usd applies intro pricing by today's date, not the event date
 priority: P4
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-24'
 captured_at: '2026-09-24T21:22:50Z'
+completed_at: '2026-09-25T00:31:16Z'
 relates_to:
 - BUG-3564
 blocked_by:
@@ -137,7 +138,7 @@ This is latent today. BUG-3564 removed the only live entry (`claude-sonnet-5`), 
 
 ## Related
 
-- BUG-3564 (blocker) — its Follow-up section records this flaw; removing the Sonnet 5 intro entry makes it latent. Land it first: this issue reuses its synthetic `INTRO_PRICING` test fixture.
+- BUG-3564 (done) — its Follow-up section records this flaw; removing the Sonnet 5 intro entry makes it latent. This issue reuses its synthetic `INTRO_PRICING` test fixture.
 
 ## Related Key Documentation
 
@@ -158,12 +159,18 @@ Checked 2026-09-24 against the working tree. That tree holds BUG-3564's uncommit
 
 Remaining: BUG-3564 has no `blocks: [BUG-3579]` backlink (it lists BUG-3579 under `relates_to` only). It is advisory, since the blocker is done.
 
+## Resolution
+
+Added `as_of` to `estimate_cost_usd` and `pricing._event_date` (UTC-normalising parser); replay, live writer (observed_at → ts → today) and `cost_graph` now pass event dates. Tests in `test_pricing.py`; `API.md` updated.
+
 ## Status
 
-**Open** | Created: 2026-09-24 | Priority: P4
+**Done** | Created: 2026-09-24 | Priority: P4
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-25T00:31:16 - `2e81bf64-17c6-44d9-94fa-aafcc6196611.jsonl`
+- `/ll:ready-issue` - 2026-09-25T00:24:08 - `7934a557-1931-4792-9e81-02299c81f508.jsonl`
 - `/ll:confidence-check` - 2026-09-24T23:44:29 - `01d913d6-09f5-4671-9f2f-afb2a136b503.jsonl`
 - `/ll:verify-issues` - 2026-09-24T23:39:13 - `ce8bec5b-7632-4ff9-a3da-7cdd35c70217.jsonl`
 - `/ll:verify-issues` - 2026-09-24T22:56:17 - `4279401a-9acc-474c-b872-fd398cd78a8e.jsonl`
