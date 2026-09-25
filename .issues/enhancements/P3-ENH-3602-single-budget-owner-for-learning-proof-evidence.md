@@ -31,7 +31,7 @@ score_change_surface: 10
 Give learning-proof evidence (learning tests, spike proofs) a single budget owner. Today
 confidence-check, ready-issue and the `ll-auto` learning gate each consult it and each
 treat refuted/stale records their own way. Step E of the ENH-3577 decomposition (Proposed
-Solution item 4, first half). **Needs a decision on the owner.**
+Solution item 4, first half). Owner decided: Option A, the registry (see Decision Rationale).
 
 ## Current Behavior
 
@@ -90,41 +90,54 @@ Key evidence: `learning_tests/gate.py` already owns staleness (`is_record_stale`
 deterministic fact depend on an LLM scoring run's freshness. C depends on unbuilt FEAT-3598/ENH-3577 and
 still needs a verdict source; the controller (C) can consume A's `assess_proof` to emit `PROOF`.
 
-## Proof sources and budget scope (post-decision)
+## Proof sources and budget scope (post-decision; review-hardened 2026-09-25)
 
 The registry (`little_loops.learning_tests`) stores only learning-test records, keyed by
-target string from `learning_tests_required`. Spike proof lives elsewhere: issue
-frontmatter (`spike_attempted`, the spike verdict read by `ll-issues spike-verdict`, the
-`check-gate` `structured_proof`/`structured_open` state). The spike attempt counter is
-run-scoped: `${context.run_dir}/spike-runs-<ID>`, cap 2. The registry has no run
-identity, so it cannot hold a per-run counter. Therefore:
+target string from `learning_tests_required`. Spike proof lives elsewhere, and the only
+spike state readable from the issue file alone is its frontmatter: the flag set
+`spike_attempted` / `spike_completed` / `spike_refuted` (written back by `/ll:spike`,
+`skills/spike/SKILL.md:275` and `:285`) and the `gate:` entries via
+`resolve_gate_verdict(frontmatter, text, spike_proven)`
+(`little_loops.cli.issues.check_gate:110`). **Not** usable here: `ll-issues spike-verdict`
+/ `classify_spike_junit` is a JUnit-XML classifier — it needs the spike run's
+`--report role:xml:exit` artifacts, which the issue does not carry.
+`resolve_gate_verdict` takes `spike_proven` as an input; `assess_proof` derives it from
+the frontmatter flags. The spike attempt counter is run-scoped:
+`${context.run_dir}/spike-runs-<ID>`, cap 2. The registry has no run identity, so it
+cannot hold a per-run counter. Therefore:
 
-- `assess_proof` aggregates **both** sources: registry records for each
-  `learning_tests_required` target, and the issue's spike verdict and gate state via the
-  existing `spike-verdict` / `check-gate` functions.
-- `assess_proof` owns the budget **policy** (the attempt cap and what "exhausted" means).
-  The caller passes the attempt **count**, because it lives in the caller's `run_dir`.
-  Standalone callers pass `None`, which means no run budget applies.
-- `commands/ready-issue.md` (Learning Test Gate, lines 254-261) currently spends attempts
-  on its own: it auto-invokes `/ll:explore-api` on `refuted` and on missing records. It
-  moves onto `assess_proof`'s verdict and budget, so it stops re-deriving
-  stale/refuted/missing itself.
+- `assess_proof` aggregates **both** readable sources: registry records for each
+  `learning_tests_required` target, and the issue's spike flags + gate state.
+- `assess_proof` owns the budget **policy**; callers pass counts, never rules:
+  - Run-scoped callers (FSM gates) pass `attempts_used` from their `run_dir` counter;
+    `budget_remaining = max(0, 2 - attempts_used)`.
+  - `attempts_used=None` (standalone skills) → `budget_remaining: None`, no run-scoped
+    budget applies. This is **not** unlimited spend: the policy caps provisioning at one
+    attempt per unproven target per caller invocation, followed by a re-assessment whose
+    verdict is final.
+  - Per-status *response* (WARN vs block vs provision) stays consumer-specific —
+    consumers may not re-derive the *classification*, only map it: ready-issue keeps
+    stale→WARN (no spend) / refuted·absent→provision-once→NOT_READY; confidence-check
+    keeps stale −5 / refuted −10 + STOP.
+- `commands/ready-issue.md` (Learning Test Gate, lines 254-263) already spends
+  provision-once; it moves onto `assess_proof`'s classification and policy so it stops
+  re-deriving stale/refuted/missing itself.
 
 ## Program Design
 
 ### Types
 
-- `ProofStatus: Literal["proven", "stale", "refuted", "absent"]` — overall verdict; the worst status among targets wins
-- `ProofVerdict: dataclass` — `issue_id`, `status: ProofStatus`, `targets: dict[str, ProofStatus]` (learning-test targets plus `spike`), `budget_remaining: int | None`, `reason: str`
+- `ProofStatus: Literal["proven", "stale", "refuted", "absent", "not_required"]` — overall verdict; the worst status among declared targets wins. `absent` is reserved for a *declared* target with no registry record; `not_required` means the issue declares no `learning_tests_required` targets and carries no spike proof requirement — it must not block or trigger provisioning
+- `ProofVerdict: dataclass` — `issue_id`, `status: ProofStatus`, `targets: dict[str, ProofStatus]` (learning-test targets plus `spike`; the `spike` key is omitted when no spike requirement exists), `budget_remaining: int | None`, `reason: str`
 
 ### Signatures
 
-- `assess_proof(issue_path: Path, *, attempts_used: int | None = None, stale_after_days: int | None = None) -> ProofVerdict` — the single source of truth for proof sufficiency, staleness and refutation. Uses `is_record_stale` for registry records and the `spike-verdict` / `check-gate` helpers for spike proof
-- `run_learning_gate_for_issue(issue_path: Path, *, skip: bool = False, cwd: Path | None = None, targets: list[str] | None = None) -> Literal["passed", "blocked", "impl_failed", "infra_failed", "skipped"]` — existing; its stale/refuted decision is taken from `assess_proof` instead of being re-derived
+- `assess_proof(issue_path: Path, *, attempts_used: int | None = None, stale_after_days: int | None = None, cwd: Path | None = None) -> ProofVerdict` — the single source of truth for proof classification, staleness and refutation. Learning-test leg: `is_record_stale` per registry record. Spike leg: the issue's frontmatter flags + `resolve_gate_verdict` (see Proof sources — NOT the JUnit-XML classifier). Staleness knobs: `stale_after_days=None` resolves the `learning_tests` config trio (`stale_after_days`, `version_aware_staleness`, `version_match_backstop_multiplier` — the same set `fsm/executor.py:_execute_learning_state` reads); when `learning_tests.enabled` is false, staleness evaluation is off entirely (proven counts fresh), matching the executor. Import note: leaf imports of `little_loops.cli.issues.check_gate` execute that package `__init__` (`set_status`, `session_store`) — no cycle today (verified 2026-09-25); hoist `resolve_gate_verdict` to a neutral module only if that weight ever matters
+- `run_learning_gate_for_issue(issue_path: Path, *, skip: bool = False, cwd: Path | None = None, targets: list[str] | None = None) -> Literal["passed", "blocked", "impl_failed", "infra_failed", "skipped"]` — existing; gains an `assess_proof` **pre-check**: `status in ("proven", "not_required")` returns "passed" without spawning the subprocess gate; any other status takes the existing subprocess path unchanged (keyword-only additions keep the `TestAutoManagerLearningGate` dotted-path mocks intact). The child loop's `type: learning` state keeps its own stale→re-prove spend (declared residual surface), so a stale fixture legitimately yields "stale" from the pre-check yet may still yield "passed" after the gate re-proves — classification vs remediation, by design; parity ACs key on the pre-check
 
 ### Call Path
 
-`issue_manager.process_issue_inplace` -> `run_learning_gate_for_issue` -> `assess_proof` -> `is_record_stale`
+`issue_manager.process_issue_inplace` -> `run_learning_gate_for_issue` -> `assess_proof` (pre-check; the subprocess gate spawns only when status ∉ {proven, not_required}) -> `is_record_stale`
 
 ## Integration Map
 
@@ -133,6 +146,7 @@ identity, so it cannot hold a per-run counter. Therefore:
 - `commands/ready-issue.md`
 - `scripts/little_loops/issue_manager.py`
 - `scripts/little_loops/learning_tests/`
+- `scripts/little_loops/cli/learning_tests.py` — new `assess` subcommand: `ll-learning-tests assess --issue <ID> [--json]`, the surface prompt-driven consumers call; JSON `ProofVerdict` on stdout, exit 0 when `status ∈ {proven, not_required}`, 1 otherwise, 2 usage/issue-not-found
 _Wiring pass added by `/ll:wire-issue`:_
 - `.gemini/skills/confidence-check/{SKILL.md,rubric.md,reference.md}`, `.kimi-code/skills/confidence-check/{...}`, `.qwen/skills/confidence-check/{...}` — host mirrors of the skill; regenerate with `ll-adapt --host <gemini|kimi-code|qwen> --apply` (gated by `test_wiring_skills_and_commands.py::test_host_artifacts_are_not_stale` :489 and `test_skill_mirrors_carry_companions` :612)
 - `.gemini/commands/ready-issue.toml`, `.kimi-code/skills/ll-ready-issue/SKILL.md` — command mirrors of `commands/ready-issue.md` (kimi renames it to a skill bridge)
@@ -152,7 +166,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_issue_manager.py` — `TestAutoManagerLearningGate` (:5243-5553) patches `"little_loops.issue_manager.run_learning_gate_for_issue"`; that dotted import path must remain, and :5511 asserts the `targets` kwarg
 - `scripts/tests/test_ready_issue_lint.py` — pins today's auto-invoke policy: refuted (:168) / missing (:180) auto-invoke `/ll:explore-api`, stale does NOT (:187, WARN-only), rubric auto-provision rows (:197, :203) — moving ready-issue onto `assess_proof`'s budget means updating these, not just the prose
 - `scripts/tests/test_confidence_check_skill.py` — content pins on the skill/rubric text: Phase 1.5 prefetch (:368-409, incl. STOP override :399), penalty rows −10 missing/refuted / −5 stale (:421-426) — keep or consciously update
-- `scripts/tests/test_cli_learning_tests.py` (:274-340) — `--stale-aware` `cmd_check` behavior pins
+- `scripts/tests/test_cli_learning_tests.py` (:274-340) — `--stale-aware` `cmd_check` behavior pins; plus new `assess` subcommand pins (exit contract 0/1/2, JSON verdict shape, `not_required` for empty requirements)
 - `scripts/tests/test_learning_tests_version_staleness.py` + `test_learning_tests_discoverability.py:450-498` — `is_record_stale`/`describe_staleness` stay green (pure functions); new coverage should assert `ProofVerdict` carries the reason and that the budget cap is enforced
 - `scripts/tests/test_fsm_fragments.py` (:2754, :2775 — `GATE_INFRA_FAILED`-before-`LEARNING_GATE_BLOCKED` ordering), `test_builtin_loops.py` (`TestLearningGateConsistency` :18467, learning-gate routing :7985-8066, `--skip-learning-gate` :8341, :18178, `LEARNING_GATE_BLOCKED_TOTAL` :17052), `test_rn_implement.py:464-472` (per-issue sidecar outcome)
 - Shared-fixture convention: no repo-wide multi-module fixture exists — model the new "same fixture, every consumer" test on the dual-parametrize idiom of `test_route_spike_verdict_classification` (`test_spike_verdict_routing.py:50-63`); consumer-parity coverage over executor/hooks/ctx_stats/history_context/release_gate entry points is new territory (none tested today)
@@ -161,7 +175,8 @@ _Wiring pass added by `/ll:wire-issue`:_
 ### Documentation
 _Wiring pass added by `/ll:wire-issue`:_
 - `docs/reference/ISSUE_TEMPLATE.md:933` — the `learning_tests_required` verdict mapping (proven→PASS, stale→WARN, refuted/missing→NOT_READY) that `assess_proof` takes ownership of
-- `docs/reference/API.md` — `little_loops.learning_tests` Public Functions table (:7458-7469) plus a new `### assess_proof` section; `### run_learning_gate_for_issue` (:7555-7572) prose needs the delegated stale/refuted decision
+- `docs/reference/API.md` — `little_loops.learning_tests` Public Functions table (:7458-7469) plus a new `### assess_proof` section; `### run_learning_gate_for_issue` (:7555-7572) prose needs the pre-check behavior
+- `docs/reference/CLI.md` — new `ll-learning-tests assess` subcommand entry (exit contract + JSON verdict shape); the existing `:4489` row covers ll-history-context statuses only
 - `docs/guides/LEARNING_TESTS_GUIDE.md` (:333-353), `docs/guides/RECURSIVE_LOOPS_GUIDE.md` (:264-338 outcome-token table), `docs/guides/LOOPS_REFERENCE.md` (:469-488 pre-gate section), `docs/ARCHITECTURE.md` (Learning Test Registry :1543, schema v26 :665), `docs/reference/CLI.md:4489` (ll-history-context statuses)
 
 ### Wiring Phase (added by `/ll:wire-issue`)
@@ -199,10 +214,10 @@ _These touchpoints were identified by wiring analysis and must be included in th
 ## Acceptance Criteria
 
 - [x] Owner option selected and recorded (Option A, registry)
-- [ ] `assess_proof` is the source of truth for proof sufficiency and the attempt-budget policy, covering learning-test targets and spike proof
-- [ ] Confidence-check, ready-issue and the `ll-auto` learning gate agree on a shared stale and refuted fixture
-- [ ] `ready-issue` no longer spends `/ll:explore-api` attempts outside `assess_proof`'s budget
-- [ ] The shared stale/refuted fixture yields the same verdict from `assess_proof` and the `ll-auto` gate (the controller-level learning-gate criterion now lives in ENH-3601's AC)
+- [ ] `assess_proof` is the source of truth for proof classification and the attempt-budget policy, covering learning-test targets and spike proof, exposed to prompt-driven consumers via `ll-learning-tests assess --issue` (exit 0 = implementation may proceed)
+- [ ] A shared stale/refuted fixture classifies identically from `assess_proof`, the `assess` CLI, and the `ll-auto` pre-check; consumer *responses* may differ (WARN vs block vs provision) and must be declared in terms of `ProofStatus` (the controller-level learning-gate criterion lives in ENH-3601's AC)
+- [ ] `ready-issue` spends provisioning attempts only within `assess_proof`'s policy — at most one `/ll:explore-api` per unproven target per invocation, final verdict from the re-assessment; the `test_ready_issue_lint.py` auto-invoke pins (:168, :180, :187) are updated to match
+- [ ] `run_learning_gate_for_issue` short-circuits to "passed" on `proven`/`not_required` without spawning the subprocess gate, and returns blocked/impl_failed/infra_failed verbatim otherwise
 
 ## Parent Issue
 
@@ -233,7 +248,10 @@ prior risk factor 3 (residual judgment load) resolved by the Scope Boundaries de
 - Broad preserved-contract surface: the marker triple (`LEARNING_GATE_BLOCKED` / `IMPLEMENT_FAILED` / `GATE_INFRA_FAILED`) consumers (`loops/lib/common.yaml` fragment, rn-implement/rn-remediate report tallies, audit-loop-run) must keep receiving identical tokens while the verdict source changes underneath — mitigation: keep the emit site at `issue_manager.py:1216-1255` unmoved and `run_learning_gate_for_issue`'s return contract + keyword-only signature backward-compatible (pinned by `TestAutoManagerLearningGate` and `test_fsm_fragments` ordering pins)
 - Consumer-parity fixture is new territory — no repo-wide multi-module fixture exists today; model the "same fixture, same verdict from every consumer" test on the dual-parametrize idiom of `test_spike_verdict_routing.py:50-63`
 
+**Review hardening — 2026-09-25** (pre-implementation review against source): pinned the ll-auto-gate integration to an `assess_proof` pre-check inside `run_learning_gate_for_issue` (the child loop's verdict-producing `type: learning` state stays residual; the stale-classification vs re-prove-remediation distinction is explicit), added the `ll-learning-tests assess` CLI surface required by the two prompt-driven consumers, corrected the spike source to frontmatter flags + `resolve_gate_verdict` (`classify_spike_junit` needs run artifacts the issue doesn't carry), added `not_required` to disambiguate `absent`, and pinned standalone budget semantics, staleness-knob resolution, and the `learning_tests.enabled` off-switch.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-09-25T22:57:17 - `615cf176-9cbb-485a-ab2f-e88a0321da3a.jsonl`
 - `/ll:confidence-check` - 2026-09-25T21:22:43 - `345d0814-f8e9-469f-ad62-bef9083d17be.jsonl`
 - `/ll:wire-issue` - 2026-09-25T20:51:15 - `85e4cae3-0d07-49cf-9a70-1d94df7e46ab.jsonl`
 - `/ll:refine-issue` - 2026-09-25T19:41:25 - `2f63920a-850e-4ac5-bf34-e7b8eb47e2e0.jsonl`
