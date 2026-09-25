@@ -44,7 +44,14 @@ Premature context-pressure handoffs interrupt useful work even when the active c
 
 ## Proposed Solution
 
-Separate consumption and occupancy at the producer/consumer boundary. Audit the context-limit guards in `issue_manager.py` and `parallel/worker_pool.py` as well as both shell consumers; preserve consumption-budget behavior, but remove invocation totals from occupancy-only decisions. Reuse ENH-3545's additive state metadata when present and remain compatible with older state files. Define invalidation on compaction and session changes so an old consumption value cannot regain priority. Do not replace the existing estimator with a new accuracy project.
+Retire `result_token_count` at both ends:
+
+1. **Producer** — delete `_on_usage_writer` in `process_issue_inplace` (`issue_manager.py:811-825`) and pass the caller's `on_usage` straight through at its call site (~1347). Consumption reporting is unchanged because the closure only added the state-file write.
+2. **Monitor** — remove tier 1 from `context-monitor.sh` `main()`: drop the field from the jq `@tsv` list and the `read -r` list together (position-coupled), remove the tier-1 branch and its "do NOT add TOKENS" comment. Occupancy order becomes transcript baseline + per-tool tokens > stored estimate + tokens.
+3. **Sentinel** — remove the `TOKEN_COUNT` override in `context-handoff-sentinel.sh` (jq read ~38-44, its four-field default string, override ~51-55, the "accurate" comment); it uses `estimated_tokens` only.
+4. **Compatibility** — no migration: both hooks simply stop reading the key, so a leftover value in an old state file is inert.
+
+Already audited (no change): the Python context guards in `issue_manager.py` / `parallel/worker_pool.py` do not read the key or the state file — the cumulative `usage_ratio` arm was removed under BUG-2280. No consumption-budget consumer of the key exists. No new state keys, no ENH-3545 metadata dependency, and no compaction/session invalidation contract are needed, because nothing reads the key after this change. Do not replace the existing estimator.
 
 ## Integration Map
 
@@ -114,11 +121,11 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ### Types
 
-Reuse the existing context-state mapping and additive metric/scope/freshness metadata from ENH-3545. Keep consumption values separate from occupancy measurement/estimate values; exact additive key names and compatibility rules must be recorded before implementation. No replacement estimator is required.
+No new types or state keys. `result_token_count` is retired from `.ll/ll-context-state.json`: no producer writes it and no consumer reads it. Existing keys (`estimated_tokens`, `transcript_baseline_tokens`, etc.) are unchanged. No replacement estimator is required.
 
 ### Signatures
 
-- `_on_usage_writer(input_tokens: int, output_tokens: int) -> None` — existing nested callback in the issue manager; retain consumption reporting while removing any implicit occupancy certification.
+- `process_issue_inplace(..., on_usage: Callable[[int, int], None] | None = None, ...)` (`issue_manager.py`) — signature unchanged; the nested `_on_usage_writer` closure is deleted and `on_usage` is forwarded as-is at the ~1347 call site.
 - Shell monitor/sentinel entry points remain unchanged; their metric selection changes, not their configured thresholds.
 
 ### Call Path
