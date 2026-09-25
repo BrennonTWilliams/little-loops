@@ -14,6 +14,12 @@ blocks:
 - BUG-3592
 - BUG-3593
 - ENH-3577
+confidence_score: 100
+outcome_confidence: 93
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # BUG-3591: Confidence-check suppresses unproven-mechanism cap on attempted-only spikes
@@ -202,3 +208,7 @@ interim behavior; do not add routing here.
 ## Status
 
 **Open** | Created: 2026-09-25 | Priority: P2
+
+
+## Session Log
+- `/ll:confidence-check` - 2026-09-25T03:58:39 - `e649b48b-f380-457c-89a4-a5ed32cc660d.jsonl`
