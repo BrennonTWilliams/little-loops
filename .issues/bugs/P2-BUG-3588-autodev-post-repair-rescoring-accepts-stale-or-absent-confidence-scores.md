@@ -11,6 +11,12 @@ parent: EPIC-3565
 blocks:
 - BUG-3572
 - ENH-3577
+confidence_score: 100
+outcome_confidence: 78
+score_complexity: 10
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 # BUG-3588: Autodev post-repair rescoring accepts stale or absent confidence scores
@@ -276,3 +282,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ## Status
 
 **Open** | Created: 2026-09-25 | Priority: P2
+
+
+## Session Log
+- `/ll:confidence-check` - 2026-09-25T02:37:40 - `fc091aae-52aa-4a34-b6c1-775f9e4b8dff.jsonl`
