@@ -10,11 +10,11 @@ captured_at: '2026-09-24T19:33:14Z'
 parent: EPIC-3565
 blocks:
 - ENH-3577
-confidence_score: 85
-outcome_confidence: 60
+confidence_score: 90
+outcome_confidence: 75
 score_complexity: 14
-score_test_coverage: 18
-score_ambiguity: 10
+score_test_coverage: 25
+score_ambiguity: 18
 score_change_surface: 18
 decision_needed: false
 ---
@@ -295,6 +295,7 @@ _Added by `/ll:confidence-check` on 2026-09-25_
 - Moderate per-site complexity: two autodev.yaml states plus a new `ll-issues` subcommand and a fallback path that must preserve current prose-grep behavior.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-25T16:30:23 - `03923b45-5716-4a22-9dec-0c57f46fa8b6.jsonl`
 - `/ll:wire-issue` - 2026-09-25T16:16:14 - `53cc9ee9-2fce-4262-8fb3-74a571d4aabf.jsonl`
 - `/ll:decide-issue` - 2026-09-25T15:50:09 - `15f88de1-71aa-4840-8254-7f346d788eff.jsonl`
 - `/ll:refine-issue` - 2026-09-25T15:48:14 - `2c2217f3-faed-46a2-9f48-d3c79062bfca.jsonl`
