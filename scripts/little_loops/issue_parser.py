@@ -559,6 +559,9 @@ class FormatGaps:
     # BUG-3424: an entry-shaped bullet line sits outside any ``## Session Log``
     # section. Advisory (see _ADVISORY_GAP_CLASSES) -- report-only, no repair.
     orphaned_session_log_entries: list[str] = field(default_factory=list)
+    # ENH-3555: invisible / control characters anywhere in the raw file. Blocking,
+    # report-only (no --fix: the intended text cannot be recovered mechanically).
+    invisible_chars: list[str] = field(default_factory=list)
 
     @property
     def has_gaps(self) -> bool:
@@ -592,6 +595,7 @@ class FormatGaps:
             or self.priority_drift
             or self.duplicate_session_log
             or self.orphaned_session_log_entries
+            or self.invisible_chars
         )
 
     @property
@@ -638,6 +642,7 @@ class FormatGaps:
             "unapplied_decision_detail": self.unapplied_decision_detail,
             "duplicate_session_log": self.duplicate_session_log,
             "orphaned_session_log_entries": self.orphaned_session_log_entries,
+            "invisible_chars": self.invisible_chars,
         }
 
 
@@ -679,6 +684,81 @@ class QuestionGaps:
             "unresolved_options": self.unresolved_options,
             "open_questions": self.open_questions,
         }
+
+
+# ENH-3555: code point ranges that never belong in an issue file.
+_INVISIBLE_RANGES: tuple[tuple[int, int], ...] = (
+    (0x0000, 0x0008),
+    (0x000B, 0x000C),
+    (0x000E, 0x001F),  # C0 controls except tab, LF, CR
+    (0x007F, 0x009F),  # DEL + C1 controls
+    (0x00AD, 0x00AD),  # SOFT HYPHEN
+    (0x061C, 0x061C),  # ARABIC LETTER MARK
+    (0x200B, 0x200F),  # zero-width chars + LRM/RLM
+    (0x2028, 0x202E),  # line/paragraph separators + bidi embeddings/overrides
+    (0x2060, 0x2060),  # WORD JOINER
+    (0x2066, 0x2069),  # bidi isolates
+    (0xFEFF, 0xFEFF),  # ZWNBSP/BOM (exempt at offset 0)
+    (0xE0000, 0xE007F),  # Unicode tag characters
+)
+
+# unicodedata.name() has no name for C0/C1 controls or DEL.
+_CONTROL_ALIASES: dict[int, str] = {
+    0x00: "NULL",
+    0x01: "START OF HEADING",
+    0x02: "START OF TEXT",
+    0x03: "END OF TEXT",
+    0x04: "END OF TRANSMISSION",
+    0x05: "ENQUIRY",
+    0x06: "ACKNOWLEDGE",
+    0x07: "BELL",
+    0x08: "BACKSPACE",
+    0x0B: "LINE TABULATION",
+    0x0C: "FORM FEED",
+    0x0E: "SHIFT OUT",
+    0x0F: "SHIFT IN",
+    0x10: "DATA LINK ESCAPE",
+    0x11: "DEVICE CONTROL ONE",
+    0x12: "DEVICE CONTROL TWO",
+    0x13: "DEVICE CONTROL THREE",
+    0x14: "DEVICE CONTROL FOUR",
+    0x15: "NEGATIVE ACKNOWLEDGE",
+    0x16: "SYNCHRONOUS IDLE",
+    0x17: "END OF TRANSMISSION BLOCK",
+    0x18: "CANCEL",
+    0x19: "END OF MEDIUM",
+    0x1A: "SUBSTITUTE",
+    0x1B: "ESCAPE",
+    0x1C: "INFORMATION SEPARATOR FOUR",
+    0x1D: "INFORMATION SEPARATOR THREE",
+    0x1E: "INFORMATION SEPARATOR TWO",
+    0x1F: "UNIT SEPARATOR",
+    0x7F: "DELETE",
+}
+
+
+def _invisible_char_gaps(raw: str) -> list[str]:
+    """Gap-report strings for the ``invisible_chars`` class (ENH-3555).
+
+    ``raw`` is the file decoded without newline translation. Lines are counted
+    by ``\\n`` only (never ``splitlines()``, whose boundaries include the very
+    characters being detected). Characters are named, never reproduced.
+    """
+    import unicodedata
+
+    out: list[str] = []
+    for i, ch in enumerate(raw):
+        cp = ord(ch)
+        if cp < 0x20 and ch in "\t\n\r":
+            continue
+        if cp == 0xFEFF and i == 0:
+            continue
+        if not any(lo <= cp <= hi for lo, hi in _INVISIBLE_RANGES):
+            continue
+        name = unicodedata.name(ch, "") or _CONTROL_ALIASES.get(cp, "<control>")
+        line = raw.count("\n", 0, i) + 1
+        out.append(f"U+{cp:04X} {name} at line {line}")
+    return out
 
 
 def check_format_gaps(
@@ -940,6 +1020,13 @@ def check_format_gaps(
         content = issue_path.read_text(encoding="utf-8")
     except Exception:
         return gaps
+
+    # ENH-3555: scan the raw bytes (no newline translation) before any
+    # template-dependent early return.
+    try:
+        gaps.invisible_chars = _invisible_char_gaps(issue_path.read_bytes().decode("utf-8"))
+    except Exception:
+        pass
 
     from little_loops.frontmatter import has_multiple_frontmatter_blocks
 

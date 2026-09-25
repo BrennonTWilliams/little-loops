@@ -1078,7 +1078,7 @@ Implementation Steps (22–33):
   silently shifts fields when an interior field (`transcript_path`) is empty —
   bash treats tab as "IFS whitespace" and collapses consecutive delimiters
   even when IFS is set to tab alone. Switched to `\x1f` (unit separator) via
-  `join("")`, which is not whitespace-collapsed.
+  `join("\x1f")`, which is not whitespace-collapsed.
 - **Read API**: `history_reader.LifecycleEvent` (parses `detail` JSON into a
   `dict`, unlike sibling `*_json` columns which stay raw strings),
   `recent_lifecycle_events(event, since, limit)`, `handoff_frequency(since)`.

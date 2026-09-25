@@ -559,7 +559,7 @@ file change in the commit was discarded (out of scope, FEAT-2301 stays open).
   (`test_policy_builder_node_gate.py`) so it runs under `python -m pytest scripts/tests/`.
   Codified in `.claude/CLAUDE.md` (Testing & CI Policy) and `CONTRIBUTING.md`.
 - **Fixed a NUL byte** in `policy_builder_core.mjs` (raw `\x00` delimiters in shadow-key
-  template literals made the file binary); replaced with the ` ` source escape —
+  template literals made the file binary); replaced with the `\x00` source escape —
   byte-identical runtime string, pure-text source, HTML output no longer inlines a NUL.
 - Added `BRConfig.to_dict()` `artifacts` block the on-branch commit missed (wiring gap).
 - README "37 CLI tools" count left as-is: it is test-pinned (FEAT-1045) and the issue

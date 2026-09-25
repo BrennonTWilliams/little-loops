@@ -41,7 +41,7 @@ transcripts. Shrink ratios were 89.6%, 73.8%, and 61.3% (mean 74.9%) —
   soft-threshold-gated `summarize_6_section` LLM pass was not exercised
   since it requires a live model call and was out of scope for a read-only
   measurement pass.
-- The measured range (61.3-89.6%) oversh­oots the 50-70% gate on the two
+- The measured range (61.3-89.6%) overshoots the 50-70% gate on the two
   longer sessions, suggesting either the gate band was set against the
   combined eviction+summarization behavior (not eviction alone), or the
   default `sink_n`/`window_n` produce more aggressive shrinkage than

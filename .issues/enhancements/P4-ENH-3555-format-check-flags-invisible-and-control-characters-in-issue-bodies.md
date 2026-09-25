@@ -3,10 +3,11 @@ id: ENH-3555
 type: ENH
 title: format-check flags invisible and control characters in issue bodies
 priority: P4
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-24'
 captured_at: '2026-09-24T18:27:36Z'
+completed_at: '2026-09-25T00:42:54Z'
 labels:
 - issues
 - tooling
@@ -124,17 +125,17 @@ The ones checked (FEAT-2390, ENH-2939, ENH-2507, ENH-2495) are `done`; cleaning 
 
 ## Acceptance Criteria
 
-- [ ] An issue body containing each listed character yields one `invisible_chars` entry per occurrence with its code point name and line number, and `format-check` exits non-zero.
-- [ ] Tab, LF, CR, and a leading U+FEFF BOM are not flagged.
-- [ ] A nameless control (e.g. U+001F) is reported by its alias or `<control>` label without raising.
-- [ ] A character in frontmatter (e.g. in `title:`) is flagged.
-- [ ] Line numbers stay correct after a U+2028 or U+001E earlier in the file: a second offender on physical line N is reported at line N.
-- [ ] Line numbers follow `\n` in the raw bytes: with a standalone CR earlier on a line, the offender is still reported on that line; in a CRLF file, each CRLF counts as one line break.
-- [ ] A file skipped by the template-dependent early returns (no type prefix in the filename, or unloadable templates) is still scanned.
-- [ ] `ll-issues format-check --fix --apply` leaves flagged characters in the file, and a following `format-check` still reports them and exits non-zero.
-- [ ] U+200E, U+200F, U+061C and a tag character (e.g. U+E0041) are each flagged.
-- [ ] `ll-issues format-check --format json` includes an `invisible_chars` key (from `FormatGaps.to_dict()`) carrying the same entries as the text report.
-- [ ] After the listed offenders are cleaned, the full `.issues/` tree produces no `invisible_chars` gaps. (A 2026-09-24 scan found the offenders listed above, so this does not hold without the cleanup.)
+- [x] An issue body containing each listed character yields one `invisible_chars` entry per occurrence with its code point name and line number, and `format-check` exits non-zero.
+- [x] Tab, LF, CR, and a leading U+FEFF BOM are not flagged.
+- [x] A nameless control (e.g. U+001F) is reported by its alias or `<control>` label without raising.
+- [x] A character in frontmatter (e.g. in `title:`) is flagged.
+- [x] Line numbers stay correct after a U+2028 or U+001E earlier in the file: a second offender on physical line N is reported at line N.
+- [x] Line numbers follow `\n` in the raw bytes: with a standalone CR earlier on a line, the offender is still reported on that line; in a CRLF file, each CRLF counts as one line break.
+- [x] A file skipped by the template-dependent early returns (no type prefix in the filename, or unloadable templates) is still scanned.
+- [x] `ll-issues format-check --fix --apply` leaves flagged characters in the file, and a following `format-check` still reports them and exits non-zero.
+- [x] U+200E, U+200F, U+061C and a tag character (e.g. U+E0041) are each flagged.
+- [x] `ll-issues format-check --format json` includes an `invisible_chars` key (from `FormatGaps.to_dict()`) carrying the same entries as the text report.
+- [x] After the listed offenders are cleaned, the full `.issues/` tree produces no `invisible_chars` gaps. (A 2026-09-24 scan found the offenders listed above, so this does not hold without the cleanup.)
 
 ## Related
 
@@ -157,12 +158,18 @@ Checked 2026-09-24 against the working tree.
 - Added: an Acceptance Criterion for the JSON `invisible_chars` key, which the Integration Map and Implementation Step 2 required but no criterion covered.
 - `ll-verify-evidence`: clean (0 findings). No `## Blocked By` dependencies.
 
+## Resolution
+
+Implemented `invisible_chars` gap class (`_invisible_char_gaps` in `issue_parser.py`, rendered in `format_check.py`): blocking, report-only, scans raw bytes before early returns, `\n`-only line numbering. Cleaned the five existing offenders. Unrelated pre-existing failures: `test_no_new_unverifiable_evidence` (BUG-1688), `test_autodev_topology`.
+
 ## Status
 
 **Open** | Created: 2026-09-24 | Priority: P4
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-25T00:42:54 - `ba660a81-2414-4092-808d-95f51543dbb1.jsonl`
+- `/ll:ready-issue` - 2026-09-25T00:32:11 - `393a39b3-6e31-4e0a-89cc-6dce475ac438.jsonl`
 - `/ll:confidence-check` - 2026-09-24T23:44:32 - `01d913d6-09f5-4671-9f2f-afb2a136b503.jsonl`
 - `/ll:verify-issues` - 2026-09-24T23:39:33 - `ce8bec5b-7632-4ff9-a3da-7cdd35c70217.jsonl`
 - `/ll:verify-issues` - 2026-09-24T22:56:17 - `4279401a-9acc-474c-b872-fd398cd78a8e.jsonl`

@@ -377,6 +377,8 @@ class TestFormatCheckJsonOutput:
             "duplicate_session_log": [],
             # BUG-3424: entry-shaped line outside any ## Session Log section.
             "orphaned_session_log_entries": [],
+            # ENH-3555: invisible / control characters in the raw file.
+            "invisible_chars": [],
             # ENH-2992: marker presence rides the same payload; not a gap, so
             # it does not affect the exit code above.
             "superseded_marker_count": 0,
@@ -2240,6 +2242,72 @@ class TestFormatCheckDuplicateSessionLogFix:
         assert result == 0
         assert "orphaned_session_log_entries:" in out
         assert path.read_text() == body
+
+
+# ---------------------------------------------------------------------------
+# TestFormatCheckInvisibleChars (ENH-3555)
+# ---------------------------------------------------------------------------
+
+
+class TestFormatCheckInvisibleChars:
+    """invisible_chars is a blocking, report-only gap."""
+
+    def _write(self, format_check_dir: Path, tail: str) -> Path:
+        body = _CLEAN_BUG_BODY.replace("id: BUG-9101", "id: BUG-9555") + tail
+        path = format_check_dir / "bugs" / "P3-BUG-9555-test-bug.md"
+        path.write_bytes(body.encode("utf-8"))
+        return path
+
+    def test_reports_by_name_and_exits_nonzero(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        self._write(format_check_dir, "\nbad\u2028line\n")
+        result = _invoke(
+            ["ll-issues", "format-check", "BUG-9555", "--config", str(temp_project_dir)]
+        )
+        out, _ = capsys.readouterr()
+        assert result == 1
+        assert "invisible_chars: U+2028 LINE SEPARATOR at line" in out
+        assert "\u2028" not in out
+
+    def test_json_key(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        self._write(format_check_dir, "\nx\x1fy\n")
+        _invoke(
+            [
+                "ll-issues",
+                "format-check",
+                "BUG-9555",
+                "--format",
+                "json",
+                "--config",
+                str(temp_project_dir),
+            ]
+        )
+        out, _ = capsys.readouterr()
+        entries = json.loads(out)["invisible_chars"]
+        assert len(entries) == 1
+        assert entries[0].startswith("U+001F UNIT SEPARATOR at line ")
+
+    def test_fix_apply_leaves_characters(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+    ) -> None:
+        path = self._write(format_check_dir, "\nbad\u200bzw\n")
+        before = path.read_bytes()
+        argv = ["ll-issues", "format-check", "BUG-9555", "--config", str(temp_project_dir)]
+        _invoke([*argv, "--fix", "--apply"])
+        assert "\u200b".encode() in path.read_bytes()
+        assert path.read_bytes() == before
+        assert _invoke(argv) == 1
 
 
 # ---------------------------------------------------------------------------

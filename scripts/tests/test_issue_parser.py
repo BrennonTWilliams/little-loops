@@ -4871,14 +4871,14 @@ class TestPriorityRegexCompletenessAllowlist:
             177: "resolve_issue_path's P-TYPE-NNN user-input parsing; priority captured from "
             "input, not resolved planning priority",
             351: "docstring for is_normalized",
-            1045: "BUG-3286 step 6: priority_drift gap detection compares filename vs. "
+            1132: "BUG-3286 step 6: priority_drift gap detection compares filename vs. "
             "frontmatter directly by design — drift IS the comparison, not a resolution",
-            1962: "_DEP_ID_RE (BUG-3059): dependency-ID shape validation; optional prefix "
+            2049: "_DEP_ID_RE (BUG-3059): dependency-ID shape validation; optional prefix "
             "group discarded",
-            4133: "comment describing the P[0-5]-NNN- filename shape",
-            4137: "_parse_type_and_id's directory-fallback number extraction; priority digit "
+            4220: "comment describing the P[0-5]-NNN- filename shape",
+            4224: "_parse_type_and_id's directory-fallback number extraction; priority digit "
             "skipped over, not read as a value",
-            4158: "_generate_id_from_filename strips a leading priority token before "
+            4245: "_generate_id_from_filename strips a leading priority token before "
             "digit-scanning for ID generation",
         },
         "issues/prose_deps.py": {
@@ -6818,3 +6818,69 @@ class TestParseIssueFilename:
 
         assert parse_issue_filename("notes-2100-old-capture.md") is None
         assert parse_issue_filename("README.md") is None
+
+
+class TestInvisibleCharDetection:
+    """ENH-3555: invisible_chars gap class."""
+
+    @staticmethod
+    def _gaps(tmp_path: Path, text: str, name: str = "P3-BUG-9555-x.md") -> list[str]:
+        from little_loops.issue_parser import check_format_gaps
+
+        path = tmp_path / name
+        path.write_bytes(text.encode("utf-8"))
+        return check_format_gaps(path).invisible_chars
+
+    @pytest.mark.parametrize(
+        ("ch", "label"),
+        [
+            ("\u2028", "U+2028 LINE SEPARATOR"),
+            ("\u2029", "U+2029 PARAGRAPH SEPARATOR"),
+            ("\u200b", "U+200B ZERO WIDTH SPACE"),
+            ("\u200c", "U+200C"),
+            ("\u200d", "U+200D"),
+            ("\u2060", "U+2060 WORD JOINER"),
+            ("\ufeff", "U+FEFF"),
+            ("\u202a", "U+202A"),
+            ("\u202e", "U+202E"),
+            ("\u2066", "U+2066"),
+            ("\u2069", "U+2069"),
+            ("\u200e", "U+200E"),
+            ("\u200f", "U+200F"),
+            ("\u061c", "U+061C"),
+            ("\U000e0041", "U+E0041"),
+            ("\u00ad", "U+00AD SOFT HYPHEN"),
+            ("\x7f", "U+007F DELETE"),
+            ("\x85", "U+0085 "),
+            ("\x1f", "U+001F UNIT SEPARATOR"),
+            ("\x00", "U+0000 NULL"),
+        ],
+    )
+    def test_each_character_flagged(self, tmp_path: Path, ch: str, label: str) -> None:
+        result = self._gaps(tmp_path, f"# t\n\nab{ch}cd\n")
+        assert len(result) == 1
+        assert result[0].startswith(label)
+        assert result[0].endswith("at line 3")
+        assert ch not in result[0]
+
+    def test_allowed_characters_not_flagged(self, tmp_path: Path) -> None:
+        assert self._gaps(tmp_path, "\ufeff# t\n\tx\r\ny\rz\n") == []
+
+    def test_frontmatter_scanned(self, tmp_path: Path) -> None:
+        result = self._gaps(tmp_path, "---\ntitle: a\u200bb\n---\n# t\n")
+        assert result == ["U+200B ZERO WIDTH SPACE at line 2"]
+
+    def test_no_type_prefix_still_scanned(self, tmp_path: Path) -> None:
+        assert self._gaps(tmp_path, "a\u200bb\n", name="notes.md") == [
+            "U+200B ZERO WIDTH SPACE at line 1"
+        ]
+
+    def test_line_numbers_ignore_splitlines_boundaries(self, tmp_path: Path) -> None:
+        text = "a\u2028b\x1ec\rd\nx\u200by\n"
+        result = self._gaps(tmp_path, text)
+        assert result[-1] == "U+200B ZERO WIDTH SPACE at line 2"
+        assert len(result) == 3
+
+    def test_crlf_counts_once(self, tmp_path: Path) -> None:
+        result = self._gaps(tmp_path, "a\r\nb\r\nc\u200b\r\n")
+        assert result == ["U+200B ZERO WIDTH SPACE at line 3"]

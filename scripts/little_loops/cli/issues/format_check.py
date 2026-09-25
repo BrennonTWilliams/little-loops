@@ -68,7 +68,7 @@ def add_format_check_parser(subs: argparse._SubParsersAction) -> argparse.Argume
         "soft_dep_hard_edge/malformed_dep_id/stale_symbol_ref/mislocated_symbol_ref/"
         "stale_cli_flag/duplicate_heading/empty_provenance_stub/"
         "template_placeholders/unapplied_decision/priority_drift/"
-        "duplicate_session_log/orphaned_session_log_entries)",
+        "duplicate_session_log/orphaned_session_log_entries/invisible_chars)",
     )
     p.set_defaults(command="format-check")
     p.add_argument(
@@ -512,6 +512,8 @@ def _print_gaps(gaps: FormatGaps) -> None:
         print(f"  duplicate_session_log: {entry}")
     for entry in gaps.orphaned_session_log_entries:
         print(f"  orphaned_session_log_entries: {entry} (report-only; no --fix)")
+    for entry in gaps.invisible_chars:
+        print(f"  invisible_chars: {entry} (report-only; no --fix, replace with visible text)")
 
 
 def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
@@ -524,7 +526,7 @@ def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
     soft_dep_hard_edge/malformed_dep_id/stale_symbol_ref/mislocated_symbol_ref/
     stale_cli_flag/duplicate_heading/empty_provenance_stub/
     template_placeholders/unapplied_decision/priority_drift/
-    duplicate_session_log/orphaned_session_log_entries.
+    duplicate_session_log/orphaned_session_log_entries/invisible_chars.
 
     Every class in :class:`FormatGaps` must have a matching loop in
     :func:`_print_gaps`; a class counted by ``has_gaps`` but not rendered

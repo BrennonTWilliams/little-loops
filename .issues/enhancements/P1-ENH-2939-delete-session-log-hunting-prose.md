@@ -97,15 +97,15 @@ Copy `commands/refine-issue.md:561-573`'s block verbatim (only the `/ll:<command
 ```markdown
 After updating the issue, use the Bash tool to append a session log entry:
 
-​```bash
+```bash
 ll-issues append-log <path-to-issue-file> /ll:<command-name>
-​```
+```
 
 If `ll-issues` is not available, fall back to manually appending with **exactly** this format (backticks required):
 
-​```
+```
 - `/ll:<command-name>` - YYYY-MM-DDTHH:MM:SS - `<absolute path to session JSONL>`
-​```
+```
 ```
 
 For `skills/manage-issue/SKILL.md` + `templates.md`, since there's no existing two-file-split precedent, remove the hunting sentence from both: replace `SKILL.md:418-422`'s pointer with the CLI call directly, and replace `templates.md:386-395`'s "Session Log Entry Format" hunting sentence with a one-line note that the format is produced automatically by `append_session_log_entry`.
