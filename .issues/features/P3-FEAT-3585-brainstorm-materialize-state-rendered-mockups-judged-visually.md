@@ -131,6 +131,23 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 - **Current state of `brainstorm.yaml` (459 lines)**: has `cluster`/`rank`/`converge`, no `shortlist`/`tournament`/`portfolio` yet — those land with FEAT-3582 (already in `blocked_by`), and the `materialize` gate reads a profile that FEAT-3583 introduces. `scope:` already covers `${context.run_dir}`, so `mockups/` needs no scope change.
 - `scripts/tests/test_brainstorm.py` asserts required states, context keys/defaults, and terminal states; a new `materialize` state and `materialize` context key are covered by extending those assertions, and a default of `none` keeps existing default-value tests valid.
 
+### Wiring Additions
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+**Files to Modify**
+- `scripts/little_loops/fsm/fence.py` — `FENCE_ROLES` entries for the mockup-authoring and image-pair judge prompt states if they interpolate `${context.brief}` [Agent 3]
+- `scripts/tests/data/loop_interpolation_baseline.json` — new inline `node -e` shell-state sites [Agent 2]
+
+**Tests**
+- `scripts/tests/test_builtin_loops.py` — `test_no_bare_bash_variable_in_shell_actions` (`$${…}` escape rule applies to inline JS template literals), `MR11_MARKER_ALLOWLIST`, `TestValidatorWarningBudget`; `test_builtin_loop_hardcode_gate.py` scans the inline probe [Agent 3]
+- Gating/degradation tests only: extract `materialize` gate via `_bash` with stubbed probe output; no test may launch Playwright [Agent 3]
+
+**Configuration**
+- Scope: `mockups/` already under `${context.run_dir}`; `_validate_missing_scope` needs no change [Agent 2]
+- Step budget: if `materialize` is a per-idea loop it adds ~2 steps per shortlisted idea to the `max_steps: 60` budget tracked in FEAT-3582 [Agent 2]
+- Learning-test registry: `learning_tests_required: [playwright]` already set; confirm registry entry before implementation
+
 ## Implementation Steps
 
 1. Add the `materialize` state, gated on the resolved profile (FEAT-3583), writing only under `${context.run_dir}/mockups/`.
@@ -139,6 +156,15 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 3. Extend `tournament` to judge screenshot pairs (position swapped) and fall back to HTML-source judging when Playwright is missing.
 4. Add the gallery section to the output and drop, not fail on, per-idea render errors.
 5. Validate with `ll-loop validate brainstorm` and one documented manual visual-mode run; keep browser probes out of the pytest gate.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Add mockup/judge prompt states to `fence.py` `FENCE_ROLES`
+- Escape every JS `${…}` in the inline probe as `$${…}`; add MR-11 marker handling and update `MR11_MARKER_ALLOWLIST`/`loop_interpolation_baseline.json` as needed
+- Budget per-idea materialize steps against `max_steps`
+- Test gating/degradation with stubbed probe output only
 
 ## Impact
 
@@ -164,6 +190,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-25T02:07:46 - `6e813375-6da8-496a-a222-6bd92b308c4c.jsonl`
 - `/ll:refine-issue` - 2026-09-25T01:47:08 - `344bbaba-06f1-4c37-b3c7-3b36aa7bfabc.jsonl`
 - `/ll:format-issue` - 2026-09-25T01:01:32 - `825370f4-2bf5-4bb8-a770-49c1a90d8b61.jsonl`
 - `/ll:capture-issue` - 2026-09-25T00:33:48 - `ba660a81-2414-4092-808d-95f51543dbb1.jsonl`

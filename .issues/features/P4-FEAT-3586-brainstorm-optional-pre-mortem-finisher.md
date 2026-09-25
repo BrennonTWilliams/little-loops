@@ -115,6 +115,22 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 - **`retry_counter` scope constraint**: `lib/common.yaml` `retry_counter` writes its counter to `.loops/tmp/${param.counter_key}` — shared scratch outside the run's isolation boundary, and it persists across runs (a stale file from a prior run would pre-exhaust the bound). `mechanize-skills.yaml` `diagnosis_retry` documents this (MR-3) and hand-rolls a counter under `${captured.run_dir.output}` with `evaluate: output_numeric / lt`. The Proposed Solution's "use the `retry_counter` fragment" is unsafe as written; the bound must be per-run.
 - **Existing test pins**: `scripts/tests/test_brainstorm.py::TestBrainstormYaml::test_max_steps_is_60` pins `max_steps == 60`; adding critic/defender/verdict states with bounded rounds must fit the budget or change the pin deliberately. `test_required_states_exist` and `test_context_has_required_knobs`/`test_context_defaults` enumerate states and context keys, so new `premortem`/`premortem_rounds` keys and states extend those contracts.
 
+### Wiring Additions
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+**Files to Modify**
+- `scripts/little_loops/fsm/fence.py` — `FENCE_ROLES` entries for `premortem_critic`/`premortem_defender` (interpolate `${context.brief}`) [Agent 3]
+- `scripts/tests/data/loop_interpolation_baseline.json` — new counter/apply_verdicts shell sites [Agent 2]
+
+**Tests**
+- No existing test executes the hand-rolled counter in `mechanize-skills.yaml` `diagnosis_retry` (only structural tests in `test_builtin_loops.py`, ~lines 13991/14023); write a Pattern-A `_bash` test for the round bound, modeled on `test_brainstorm.py` `test_saturation_counter_increments_on_zero_novel` [Agent 3]
+- `scripts/tests/test_builtin_loops.py` — `MR11_MARKER_ALLOWLIST` (exact set; the `# ll-lint: mr11-ok` marker on a counter under `${captured.run_dir.output}` changes it) and `TestValidatorWarningBudget` [Agent 3]
+
+**Configuration**
+- Validator: `_validate_zero_retry_counter` flags a counter + `output_numeric lt` with target ≤ 1, so `premortem_rounds` must default to ≥ 2 or the gate be shaped differently [Agent 2]
+- Adds ~3 steps per premortem round to the `max_steps: 60` budget tracked in FEAT-3582; `test_max_steps_is_60` pin [Agent 2]
+
 ## Implementation Steps
 
 1. Add `premortem_critic` and `premortem_defender` states, gated on the resolved profile (FEAT-3583) or `premortem=true`.
@@ -122,6 +138,15 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 3. Implement `apply_verdicts` to demote/promote and record changes in `ideas.jsonl` and `winners`.
 4. Render `Risks & Kill Criteria` per finalist in `brainstorm.md`; leave output shape unchanged when disabled.
 5. Add tests for bounded rounds, demotion/promotion, and the disabled path; run `ll-loop validate brainstorm`.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Add critic/defender states to `fence.py` `FENCE_ROLES`
+- Set `premortem_rounds` default ≥ 2 to satisfy `_validate_zero_retry_counter`
+- Write an executable round-bound test (none exists for `diagnosis_retry`); update `MR11_MARKER_ALLOWLIST` and `loop_interpolation_baseline.json`
+- Budget premortem rounds against `max_steps` (see FEAT-3582)
 
 ## Impact
 
@@ -146,6 +171,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-25T02:07:46 - `6e813375-6da8-496a-a222-6bd92b308c4c.jsonl`
 - `/ll:refine-issue` - 2026-09-25T01:46:43 - `2ac59930-bb65-4013-a3d3-8f842b856fd9.jsonl`
 - `/ll:format-issue` - 2026-09-25T01:01:32 - `825370f4-2bf5-4bb8-a770-49c1a90d8b61.jsonl`
 - `/ll:capture-issue` - 2026-09-25T00:33:52 - `ba660a81-2414-4092-808d-95f51543dbb1.jsonl`

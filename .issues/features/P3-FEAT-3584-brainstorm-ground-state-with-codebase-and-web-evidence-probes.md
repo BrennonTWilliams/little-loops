@@ -117,6 +117,23 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 - **Loop-authoring constraints**: `test_required_states_exist` lists required states (adding `ground` is safe; renaming existing ones is not); `max_steps: 60` bounds the run; bash `${...}` inside FSM shell actions must be escaped `$${...}`; `${captured.run_dir.output}` uses in new states need the same `mr11-ok` handling or a `${context.run_dir}` path as `dedup_novelty` does; `ll-loop validate` enforces MR-1..MR-14, and `test_builtin_loops.py` (~line 20421 onward) carries per-loop interpolation-site allowlists that a new state referencing `${context.*}` may trip.
 - **Open dependency on FEAT-3583**: the `ground` context key (`none|codebase|web`) is expected to be resolved from the mode profile; until that lands the key needs a standalone default (`none`, so existing behavior is unchanged) in `context:`.
 
+### Wiring Additions
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+**Files to Modify**
+- `scripts/little_loops/fsm/fence.py` — `FENCE_ROLES` entry for the `web` research prompt state (interpolates `${context.brief}`) [Agent 3]
+- `scripts/tests/data/loop_interpolation_baseline.json` — new `ground` shell-state interpolation sites [Agent 2]
+
+**Tests**
+- `scripts/tests/test_builtin_loop_hardcode_gate.py` — scans every loop YAML for this-repo hardcodes; codebase probes must take paths/symbols from idea anchors, never name little-loops paths [Agent 3]
+- `scripts/tests/test_builtin_loops.py` — `MR11_MARKER_ALLOWLIST` (exact set) and `TestValidatorWarningBudget` apply to the new `ground` heredoc/probe state [Agent 3]
+- Probe tests: extract the `ground` action with `_bash` (`test_brainstorm.py` `TestBug2468ErrorRouting._dedup_action` shape) and run against a `tmp_path` git repo fixture for missing file / missing symbol / unknown ID [Agent 3]
+
+**Configuration**
+- Validator: MR-10 parse-swallow — probe script must keep exit 2 for crash, exit 0 + `grounded: false` for "not found", with `on_error` routed [Agent 2]
+- Adds 1 fixed step to the `max_steps: 60` budget tracked in FEAT-3582 [Agent 2]
+
 ## Implementation Steps
 
 1. Add the `ground` state with `none|codebase|web` routing driven by the resolved profile (FEAT-3583).
@@ -124,6 +141,15 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 3. Add the `web` research step with cited sources and assumption list, and the drop/mark-`ungrounded` policy.
 4. Record `evidence` and `grounded` per idea in `ideas.jsonl`; exclude ungrounded ideas from `shortlist`/`tournament`.
 5. Add probe pass/fail tests with fixture ideas and run `ll-loop validate brainstorm`.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Add the `web` research prompt state to `fence.py` `FENCE_ROLES`
+- Keep probe script free of little-loops-specific paths (`test_builtin_loop_hardcode_gate.py`)
+- Update `loop_interpolation_baseline.json`; check `MR11_MARKER_ALLOWLIST` and warning-budget tests
+- Probe pass/fail tests via `_bash` on a `tmp_path` git fixture
 
 ## Impact
 
@@ -151,6 +177,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-25T02:07:45 - `6e813375-6da8-496a-a222-6bd92b308c4c.jsonl`
 - `/ll:refine-issue` - 2026-09-25T01:46:47 - `2ac59930-bb65-4013-a3d3-8f842b856fd9.jsonl`
 - `/ll:format-issue` - 2026-09-25T01:01:32 - `825370f4-2bf5-4bb8-a770-49c1a90d8b61.jsonl`
 - `/ll:capture-issue` - 2026-09-25T00:33:44 - `ba660a81-2414-4092-808d-95f51543dbb1.jsonl`

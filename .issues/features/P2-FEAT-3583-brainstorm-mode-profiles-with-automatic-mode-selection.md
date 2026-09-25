@@ -121,12 +121,41 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 - Test conventions: `scripts/tests/test_brainstorm.py` loads `LOOP_FILE` via `load_and_validate`/`validate_fsm` and exercises shell states by extracting `action` and running `bash -c` in `tmp_path` (`_bash` helper) — a deterministic `resolve_profile` shell/python state is testable the same way, and stubbed-classifier routing can be tested by pre-writing the classifier output file.
 - Bash-brace rule: any `${...}` shell expansion inside FSM actions must be escaped `$${...}` (interpolated before bash).
 
+### Wiring Additions
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+**Files to Modify**
+- `scripts/little_loops/fsm/fence.py` — `FENCE_ROLES` entry for `classify_mode` (interpolates `${context.brief}`) [Agent 3]
+- `scripts/little_loops/package_data.py` `PACKAGE_DATA_ASSETS` — add explicit tuples per profile file if profiles are read at runtime via `importlib.resources` (manifest is tuple-by-tuple; omissions are false-green); check with `ll-verify-package-data` [Agent 1, Agent 3]
+
+**Dependent Files (Callers/Importers)**
+- Profile-directory discovery hazard: `is_runnable_loop` (`fsm/validation/structural_rules.py`) skips YAML lacking `name`/`initial`/`states`, so `doc_counts.py`, `cli/loop/info.py`, `cli/doctor.py`, `test_builtin_loops.py:66` ignore it — but unfiltered `rglob("*.yaml")` scanners will still read it: `fsm/interp_sweep.py:~250`, `fsm/validation/reachability.py:~131`, `cli/loop/rename.py:~83`, and `scripts/tests/test_builtin_loop_hardcode_gate.py::_all_loop_files` (`**/*.yaml`, skips only dot-dirs). Storing profiles as `.json` avoids all of these [Agent 1, Agent 3]
+
+**Tests**
+- Profile schema validation: model on `scripts/tests/test_enh1768_profile_system.py` (required-layer-file assertions) and `test_package_data_manifest.py` [Agent 3]
+- `scripts/tests/test_builtin_loop_hardcode_gate.py` and `test_builtin_loop_interpolation.py` (rglob) — run against any YAML profile files [Agent 3]
+- `resolve_profile` and stubbed-classifier routing: use the `_bash` helper pattern in `test_brainstorm.py` (`TestPopLensEmptyQueue` shape) [Agent 3]
+
+**Configuration**
+- Validator: `classify_mode`/gated routes using `evaluate: classify` need `default:`/`_:` (`_validate_classify_route_default`); an `llm_structured` classifier needs `on_error`/`cannot_judge` (`_validate_abstention_route`) [Agent 2]
+- Adds 2 fixed steps (`classify_mode`, `resolve_profile`) to the `max_steps: 60` budget tracked in FEAT-3582 [Agent 2]
+
 ## Implementation Steps
 
 1. Define profile schema and the four presets.
 2. Add `classify_mode` + `resolve_profile` states.
 3. Thread resolved values into reframe/diverge/tournament/output prompts.
 4. Tests for resolution precedence (explicit > override > profile > fallback).
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Choose profile storage (prefer `.json`, or a YAML dir verified against the unfiltered rglob scanners and `test_builtin_loop_hardcode_gate.py`)
+- Register profile files in `package_data.py` `PACKAGE_DATA_ASSETS` if read via `importlib.resources`; run `ll-verify-package-data`
+- Add `classify_mode` to `fence.py` `FENCE_ROLES`
+- Add profile schema test modeled on `test_enh1768_profile_system.py`; add `resolve_profile` precedence tests via `_bash`
 
 ## Impact
 
@@ -154,6 +183,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-25T02:07:45 - `6e813375-6da8-496a-a222-6bd92b308c4c.jsonl`
 - `/ll:refine-issue` - 2026-09-25T01:46:34 - `ce904479-7e73-4d58-aa48-892e2cdb88b3.jsonl`
 - `/ll:format-issue` - 2026-09-25T01:01:32 - `825370f4-2bf5-4bb8-a770-49c1a90d8b61.jsonl`
 - `/ll:capture-issue` - 2026-09-25T00:33:40 - `ba660a81-2414-4092-808d-95f51543dbb1.jsonl`
