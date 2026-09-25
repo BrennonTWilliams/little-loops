@@ -12225,7 +12225,7 @@ Outcome of comparing an advisor model's rank against the main model's. `"ok"` â€
 MODEL_RANKS: dict[str, dict[str, int]]
 ```
 
-Per-host capability rank, keyed on the concrete model ID that `resolve_model_alias()` normalizes aliases to. Only `claude-code` is populated today (`claude-haiku-4-5` < `claude-sonnet-5` < `claude-opus-5` < `claude-fable-5`); every other canonical host (`codex`, `opencode`, `pi`, `gemini`, `omp`, `kimi-code`) carries an empty table until a follow-up issue supplies real capability data.
+Per-host capability rank, keyed on the concrete model ID that `resolve_model_alias()` normalizes aliases to. Only `claude-code` is populated today (`claude-haiku-4-5` < `claude-sonnet-5` < `claude-opus-5` = `claude-opus-5-5` < `claude-fable-5` = `claude-fable-5-1`); every other canonical host (`codex`, `opencode`, `pi`, `gemini`, `omp`, `kimi-code`) carries an empty table until a follow-up issue supplies real capability data.
 
 ### rank_model
 
@@ -12233,7 +12233,7 @@ Per-host capability rank, keyed on the concrete model ID that `resolve_model_ali
 def rank_model(host: str, model: str) -> int | None
 ```
 
-Capability rank of `model` within `host`; `None` when unrankable. Normalizes `model` through `resolve_model_alias()` before lookup, so an alias (`"opus"`) and its concrete ID (`"claude-opus-5"`) rank the same.
+Capability rank of `model` within `host`; `None` when unrankable. Normalizes `model` through `resolve_model_alias()` before lookup, so an alias (`"opus"`) and its concrete ID (`"claude-opus-5-5"`) rank the same.
 
 ### check_floor
 
@@ -12369,7 +12369,7 @@ from little_loops.pricing import MODEL_PRICING, INTRO_PRICING, BATCH_DISCOUNT, e
 MODEL_PRICING: dict[str, dict[str, float]]
 ```
 
-Per-model pricing table: `{model_id: {"input": ..., "output": ..., "cache_read": ..., "cache_creation": ...}}`, all in USD per million tokens. Covers the current Claude 5.x / 4.x model registry plus legacy 3.x models that may still appear in historical logs.
+Per-model pricing table: `{model_id: {"input": ..., "output": ..., "cache_read": ..., "cache_creation": ...}}`, all in USD per million tokens. Covers the current Claude 5.x / 4.x model registry (including `claude-opus-5-5`, `claude-fable-5-1` and the undated `claude-haiku-4-5`, which shares one rate dict with `claude-haiku-4-5-20251001`) plus legacy 3.x models that may still appear in historical logs.
 
 ### INTRO_PRICING
 

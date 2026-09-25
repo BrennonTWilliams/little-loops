@@ -46,7 +46,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Per-host capability rank, keyed on the concrete model ID that
-# `resolve_model_alias()` normalizes aliases to (host_runner.py:79-84).
+# `resolve_model_alias()` normalizes aliases to (`host_runner.MODEL_ALIASES`).
 # Higher rank == more capable. Hosts with no populated table below rank
 # every model as unknown (`rank_model` returns None) rather than guessing.
 MODEL_RANKS: dict[str, dict[str, int]] = {
@@ -54,6 +54,7 @@ MODEL_RANKS: dict[str, dict[str, int]] = {
         "claude-haiku-4-5": 1,
         "claude-sonnet-5": 2,
         "claude-opus-5": 3,
+        "claude-opus-5-5": 3,
         "claude-fable-5": 4,
         "claude-fable-5-1": 4,
     },
@@ -85,7 +86,7 @@ def rank_model(host: str, model: str) -> int | None:
     """Capability rank of *model* within *host*; `None` when unrankable.
 
     Normalizes *model* through `resolve_model_alias()` before lookup, so an
-    alias (`"opus"`) and its concrete ID (`"claude-opus-5"`) rank the same.
+    alias (`"opus"`) and its concrete ID (`"claude-opus-5-5"`) rank the same.
     """
     normalized = resolve_model_alias(model)
     return MODEL_RANKS.get(host, {}).get(normalized)

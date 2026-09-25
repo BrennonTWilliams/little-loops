@@ -18,7 +18,9 @@ SYNTHETIC_MODEL = "claude-synthetic-intro"
 
 # Live rates (USD/Mtok): input, output, cache_read, cache_creation. Checked 2026-09-24.
 LIVE_RATES: dict[str, tuple[float, float, float, float]] = {
+    "claude-fable-5-1": (10.0, 50.0, 0.25, 12.50),
     "claude-fable-5": (10.0, 50.0, 1.0, 12.50),
+    "claude-opus-5-5": (4.0, 20.0, 0.20, 5.0),
     "claude-opus-5": (5.0, 25.0, 0.50, 6.25),
     "claude-opus-4-8": (5.0, 25.0, 0.50, 6.25),
     "claude-opus-4-7": (5.0, 25.0, 0.50, 6.25),
@@ -27,6 +29,7 @@ LIVE_RATES: dict[str, tuple[float, float, float, float]] = {
     "claude-sonnet-5": (2.0, 10.0, 0.20, 2.50),
     "claude-sonnet-4-6": (3.0, 15.0, 0.30, 3.75),
     "claude-sonnet-3-7": (3.0, 15.0, 0.30, 3.75),
+    "claude-haiku-4-5": (1.0, 5.0, 0.10, 1.25),
     "claude-haiku-4-5-20251001": (1.0, 5.0, 0.10, 1.25),
     "claude-haiku-3-5": (0.80, 4.0, 0.08, 1.0),
 }
@@ -90,6 +93,15 @@ class TestLiveRates:
             "cache_read": cr,
             "cache_creation": cc,
         }
+
+    def test_new_alias_target_prices(self) -> None:
+        assert estimate_cost_usd(
+            "claude-opus-5-5", 1_000_000, 1_000_000, 1_000_000, 1_000_000
+        ) == pytest.approx(4.0 + 20.0 + 0.20 + 5.0)
+        assert estimate_cost_usd("claude-fable-5-1", 0, 0, 1_000_000, 0) == pytest.approx(0.25)
+
+    def test_haiku_ids_share_one_rate_dict(self) -> None:
+        assert MODEL_PRICING["claude-haiku-4-5"] is MODEL_PRICING["claude-haiku-4-5-20251001"]
 
     def test_every_model_pinned(self) -> None:
         assert set(MODEL_PRICING) == set(LIVE_RATES)

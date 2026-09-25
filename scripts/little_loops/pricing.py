@@ -17,14 +17,35 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime
 
+# Shared by the undated and dated Haiku 4.5 IDs so the two keys cannot drift
+# (`haiku` resolves to the undated ID; usage rows may carry the dated one).
+_HAIKU_4_5: dict[str, float] = {
+    "input": 1.0,
+    "output": 5.0,
+    "cache_read": 0.10,
+    "cache_creation": 1.25,
+}
+
 # Per-model pricing: {model_id: {token_type: usd_per_million}}
 MODEL_PRICING: dict[str, dict[str, float]] = {
     # Claude 5.x / current-generation
+    "claude-fable-5-1": {
+        "input": 10.0,
+        "output": 50.0,
+        "cache_read": 0.25,
+        "cache_creation": 12.50,
+    },
     "claude-fable-5": {
         "input": 10.0,
         "output": 50.0,
         "cache_read": 1.0,
         "cache_creation": 12.50,
+    },
+    "claude-opus-5-5": {
+        "input": 4.0,
+        "output": 20.0,
+        "cache_read": 0.20,
+        "cache_creation": 5.0,
     },
     "claude-opus-4-8": {
         "input": 5.0,
@@ -63,12 +84,8 @@ MODEL_PRICING: dict[str, dict[str, float]] = {
         "cache_read": 0.30,
         "cache_creation": 3.75,
     },
-    "claude-haiku-4-5-20251001": {
-        "input": 1.0,
-        "output": 5.0,
-        "cache_read": 0.10,
-        "cache_creation": 1.25,
-    },
+    "claude-haiku-4-5": _HAIKU_4_5,
+    "claude-haiku-4-5-20251001": _HAIKU_4_5,
     "claude-opus-4-5": {
         "input": 5.0,
         "output": 25.0,

@@ -95,8 +95,8 @@ logger = logging.getLogger(__name__)
 # lineup; unknown values (already-concrete IDs, dated snapshots, provider-prefixed
 # Bedrock IDs) pass through untouched.
 MODEL_ALIASES: dict[str, str] = {
-    "fable": "claude-fable-5",
-    "opus": "claude-opus-5",
+    "fable": "claude-fable-5-1",
+    "opus": "claude-opus-5-5",
     "sonnet": "claude-sonnet-5",
     "haiku": "claude-haiku-4-5",
 }

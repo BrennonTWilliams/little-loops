@@ -380,11 +380,11 @@ class TestModelAliasResolution:
         ("alias", "expected"),
         [
             ("sonnet", "claude-sonnet-5"),
-            ("opus", "claude-opus-5"),
+            ("opus", "claude-opus-5-5"),
             ("haiku", "claude-haiku-4-5"),
-            ("fable", "claude-fable-5"),
+            ("fable", "claude-fable-5-1"),
             ("Sonnet", "claude-sonnet-5"),
-            (" opus ", "claude-opus-5"),
+            (" opus ", "claude-opus-5-5"),
         ],
     )
     def test_aliases_map_to_concrete_ids(self, alias: str, expected: str) -> None:
@@ -394,6 +394,8 @@ class TestModelAliasResolution:
         "model",
         [
             "claude-sonnet-5",
+            "claude-opus-5",
+            "claude-fable-5",
             "claude-opus-4-8",
             "claude-haiku-4-5-20251001",
             "anthropic.claude-opus-5",
@@ -403,20 +405,28 @@ class TestModelAliasResolution:
     def test_non_aliases_pass_through_unchanged(self, model: str) -> None:
         assert resolve_model_alias(model) == model
 
-    def test_dispatch_sends_resolved_model_to_sdk(self) -> None:
+    @pytest.mark.parametrize(
+        ("alias", "expected"),
+        [("sonnet", "claude-sonnet-5"), ("opus", "claude-opus-5-5"), ("fable", "claude-fable-5-1")],
+    )
+    def test_dispatch_sends_resolved_model_to_sdk(self, alias: str, expected: str) -> None:
         fake_client = MagicMock()
         fake_client.messages.create.return_value = _fake_message()
 
         with patch("anthropic.Anthropic", return_value=fake_client):
             dispatch_anthropic_request(
                 action="say hi",
-                model="sonnet",
+                model=alias,
                 fragment_store=FragmentStore(),
             )
 
-        assert fake_client.messages.create.call_args.kwargs["model"] == "claude-sonnet-5"
+        assert fake_client.messages.create.call_args.kwargs["model"] == expected
 
-    def test_batch_submission_sends_resolved_model_to_sdk(self) -> None:
+    @pytest.mark.parametrize(
+        ("alias", "expected"),
+        [("sonnet", "claude-sonnet-5"), ("opus", "claude-opus-5-5"), ("fable", "claude-fable-5-1")],
+    )
+    def test_batch_submission_sends_resolved_model_to_sdk(self, alias: str, expected: str) -> None:
         fake_client = MagicMock()
         fake_client.messages.batches.create.return_value = SimpleNamespace(id="batch_1")
 
@@ -424,12 +434,21 @@ class TestModelAliasResolution:
             dispatch_batch_request(
                 custom_id="c1",
                 action="say hi",
-                model="sonnet",
+                model=alias,
                 fragment_store=FragmentStore(),
             )
 
         requests = fake_client.messages.batches.create.call_args.kwargs["requests"]
-        assert requests[0]["params"]["model"] == "claude-sonnet-5"
+        assert requests[0]["params"]["model"] == expected
+
+    def test_every_alias_target_is_ranked_and_priced(self) -> None:
+        from little_loops.advisor import rank_model
+        from little_loops.host_runner import MODEL_ALIASES
+        from little_loops.pricing import MODEL_PRICING
+
+        for alias, target in MODEL_ALIASES.items():
+            assert rank_model("claude-code", target) is not None, alias
+            assert target in MODEL_PRICING, alias
 
     def test_default_fsm_model_is_a_resolvable_alias(self) -> None:
         """Guards the exact BUG-2828 failure: the FSM default must not 404."""

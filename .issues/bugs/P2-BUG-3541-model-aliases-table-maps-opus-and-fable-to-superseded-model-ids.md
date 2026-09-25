@@ -3,10 +3,11 @@ id: BUG-3541
 title: MODEL_ALIASES maps opus and fable to superseded model IDs
 type: BUG
 priority: P2
-status: open
+status: done
 parent: EPIC-3563
 epic: EPIC-3563
 discovered_date: '2026-09-23'
+completed_at: '2026-09-25T01:35:43Z'
 labels:
 - multi-host
 - models
@@ -57,7 +58,7 @@ hints too.
 
 ## Impact
 
-- **Priority**: P3 — only SDK/batch request paths are affected; the CLI path resolves aliases itself.
+- **Priority**: P2 — only SDK/batch request paths are affected (the CLI path resolves aliases itself), but ENH-3527 is `blocked_by` this bug, so it is raised to P2.
 - **Effort**: Small — table entries plus tests.
 - **Risk**: Low. It changes which model `opus` / `fable` hit on SDK/batch paths, but explicitly named old IDs still pass through unchanged.
 
@@ -181,12 +182,18 @@ _These touchpoints were identified by wiring analysis and must be included in th
   Opus 4.5-4.7, Haiku 4.5). This issue only adds keys. Either can land first.
 - Pricing source: platform.claude.com/docs/en/about-claude/pricing (checked 2026-09-24).
 
+## Resolution
+
+Fixed: `opus`/`fable` alias targets updated; rank, pricing (incl. shared `_HAIKU_4_5` dict), tests, guard test and API docs added.
+
 ## Status
 
-**Open** | Created: 2026-09-23 | Priority: P2
+**Done** | Created: 2026-09-23 | Priority: P2
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-25T01:35:43 - `78c573a3-d8de-4658-8e06-ee4d39711fd8.jsonl`
+- `/ll:ready-issue` - 2026-09-25T01:29:52 - `559586e1-5e99-4e04-8b13-db7e1060b910.jsonl`
 - `/ll:confidence-check` - 2026-09-25T01:17:35 - `f2929467-388f-4f26-bd46-bd63a1730405.jsonl`
 - `/ll:wire-issue` - 2026-09-25T01:11:17 - `283a56a1-35bd-43bb-b2f7-64d9f104c2c4.jsonl`
 - `/ll:refine-issue` - 2026-09-25T01:06:50 - `42a934e3-5df9-4ac6-9296-d0ced0bc2261.jsonl`
