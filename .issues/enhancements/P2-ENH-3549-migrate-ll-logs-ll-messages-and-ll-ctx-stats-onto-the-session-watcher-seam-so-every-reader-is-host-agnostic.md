@@ -14,6 +14,12 @@ labels:
 depends_on:
 - ENH-3532
 - ENH-3534
+confidence_score: 65
+outcome_confidence: 52
+score_complexity: 14
+score_test_coverage: 18
+score_ambiguity: 10
+score_change_surface: 10
 ---
 
 # Migrate ll-logs, ll-messages, and ll-ctx-stats onto the session-watcher seam so every reader is host-agnostic
@@ -43,6 +49,25 @@ Migrate all three readers onto the session-watcher seam — detect, watch, emit 
 
 **Note** (added by `/ll:audit-issue-conflicts`): The "no common abstraction over tool-call shapes or token accounting" constraint applies to the session-watcher seam and its per-host typed events only. It does not prohibit the downstream `usage_events` contract: the shared `UsageObservation` normalization (ENH-3532, ENH-3534) and the single `select_usage_coverage` aggregation entry point (ENH-3543) are out of scope here and remain valid. `ll-ctx-stats` provenance (third acceptance criterion) consumes those stored observations; it does not re-derive token accounting in the seam.
 
+
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-24_
+
+**Readiness Score**: 65/100 → STOP — ADDRESS GAPS
+**Outcome Confidence**: 52/100 → LOW
+
+### Concerns
+- `depends_on` ENH-3532 and ENH-3534 are not yet done; the ctx-stats provenance criterion consumes their observations.
+
+### Gaps to Address
+- Program Design gate fails: `## Program Design` is missing. Populate it with the seam types, signatures and call path (`/ll:refine-issue` or `/ll:reconcile-issue`), or set `program_design_not_applicable: true`.
+- No Integration Map, Files to Modify, or implementation steps. Which reader modules migrate (e.g. `little_loops/user_messages.py`, the ll-logs and ll-ctx-stats CLIs) and which session-watcher entry points they attach to are not enumerated.
+- Missing sections: Current Behavior, Expected Behavior, Impact, Scope Boundaries, Status.
+
+### Outcome Risk Factors
+- Broad enumeration across three readers plus a Codex parser, with an unspecified per-reader migration design (moderate per-site complexity).
+- Wide blast radius: `user_messages` has many dependents.
 
 ## Session Log
 - `/ll:audit-issue-conflicts` - 2026-09-24T23:55:45 - `2bb94109-d967-427c-a647-9b0a7a8e368e.jsonl`

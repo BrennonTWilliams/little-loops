@@ -19,7 +19,7 @@ blocks:
 Readiness evidence is checked for presence, not currency:
 
 - `ll-issues check-verify-verdict` (`cli/issues/check_verify_verdict.py`) returns 0 when
-  `verify_verdict` is absent. This fail-open is deliberate (ENH-3031). But nothing in
+  the verdict frontmatter field is absent. This fail-open is deliberate (ENH-3031). But nothing in
   `refine-to-ready-issue` clears a prior verdict before `verify_issue` runs, and
   `verify_issue.on_error` routes into the check. A `VALID` from an earlier run, against
   earlier content, satisfies the gate even when the current verification errored.
@@ -63,6 +63,23 @@ verdict passes. Options:
    after a completed call fail (keeping fail-open only for the pre-ENH-3031 legacy case).
 
 Option 3 is the cheapest. Option 2 also covers the outer loop's post-repair rescoring.
+
+## Program Design
+
+Provisional on the freshness-mechanism decision above; signatures assume Option 2 (content fingerprint).
+
+### Types
+
+- `verdict_fingerprint: str` — frontmatter field persisted beside the verdict and scores.
+
+### Signatures
+
+- `cmd_check_verify_verdict(config: BRConfig, args: argparse.Namespace) -> int` — existing; compares the stored fingerprint to the recomputed one.
+- `content_fingerprint(body: str) -> str` — new; hashes the body excluding the Session Log and score fields.
+
+### Call Path
+
+`parse_frontmatter` -> `cmd_check_verify_verdict` -> `content_fingerprint`
 
 ## Integration Map
 
@@ -118,4 +135,5 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:format-issue` - 2026-09-25T01:01:19 - `4b76ee9e-e590-41ab-940d-a6df6f1554bd.jsonl`
 - `/ll:capture-issue` - 2026-09-24T19:42:31 - `59fe3bd4-3622-4dd2-bb8b-ad5cc55e79ec.jsonl`

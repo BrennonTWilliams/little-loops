@@ -14,6 +14,12 @@ labels:
 relates_to:
 - ENH-3528
 - BUG-3531
+confidence_score: 90
+outcome_confidence: 79
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 # ENH-3546: Establish Claude usage producer contract and measured provenance
@@ -75,6 +81,21 @@ This establishes provenance only. Live/transcript overlap (ENH-3528 coverage) is
 - [ ] Contract-satisfying new rows persist as `measured`; malformed, partial or unverified rows stay `unknown`; legacy rows are unchanged (tests).
 - [ ] `usage_from_event`'s Claude `result` branch and the transcript usage path set provenance explicitly; related docstrings are updated.
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-24_
+
+**Readiness Score**: 90/100 → PROCEED
+**Outcome Confidence**: 79/100 → MODERATE
+
+### Concerns
+- Integration Map cites transcript backfill in `session_store/lifecycle.py`, but `_backfill_usage_events` is defined in `session_store/writers.py` (lifecycle only imports it).
+- The `measured` eligibility rule is left to fixture evidence ("Decide and implement"); the exact validity predicate for Claude components is not stated up front.
+
 ## Status
 
 **Open** | Created: 2026-09-24 | Priority: P2
+
+
+## Session Log
+- `/ll:confidence-check` - 2026-09-25T01:02:57 - `1524097a-5772-41c1-ba3b-6e5742f08a6c.jsonl`

@@ -14,6 +14,12 @@ labels:
 relates_to:
 - ENH-3528
 - ENH-3543
+confidence_score: 98
+outcome_confidence: 93
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-3580: Carry usage_events provenance columns through UsageEvent and shareable export
@@ -105,3 +111,17 @@ Additive only. Extend the dataclass and the one row-listing reader, then extend 
 ## Status
 
 **Open** | Created: 2026-09-24 | Priority: P2
+
+
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-24_
+
+**Readiness Score**: 98/100 → PROCEED
+**Outcome Confidence**: 93/100 → HIGH CONFIDENCE
+
+### Concerns
+- Pre-v55 export tolerance is a stated requirement, but `session_store/queries.py` has no `PRAGMA table_info` handling today; check how the shareable export selects columns (Step 2).
+
+## Session Log
+- `/ll:confidence-check` - 2026-09-25T01:02:59 - `42a934e3-5df9-4ac6-9296-d0ced0bc2261.jsonl`

@@ -16,6 +16,12 @@ blocked_by:
 - ENH-3532
 relates_to:
 - ENH-3528
+confidence_score: 70
+outcome_confidence: 63
+score_complexity: 10
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 10
 ---
 
 # ENH-3543: Codex live identity plumbing and shared live/rollout coverage selection
@@ -97,6 +103,24 @@ One `codex exec` invocation = one `turn.completed` (BUG-3531 Decision 6). Its li
 
 **Note** (added by `/ll:audit-issue-conflicts`): This issue owns live identity plumbing and shared coverage selection (split out of ENH-3532); ENH-3532 keeps rollout ingestion and ENH-3528 consumes the selector via a single replaceable aggregation function. Before adding `host_session_id`/`invocation_id` columns to `usage_events`, check the existing identity columns ENH-3528 says to reuse, and either reuse them with a basis marker or state why new columns are needed; also state how ENH-3532's `session_id` on rollout rows joins to live `host_session_id`.
 
+
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-24_
+
+**Readiness Score**: 70/100 → STOP — ADDRESS GAPS (Dependencies Hard Override)
+**Outcome Confidence**: 63/100 → MODERATE
+
+### Concerns
+- Architecture: new `host_session_id`/`invocation_id` columns vs reusing the identity columns ENH-3528 names is still unresolved (Scope Boundary note); also state how ENH-3532 rollout `session_id` joins to live `host_session_id`.
+- `schema_manifest.json` in Integration Map does not resolve at `scripts/little_loops/schema_manifest.json`; confirm its real path.
+
+### Gaps to Address
+- Unresolved `blocked_by`: ENH-3532 (open). Wait for it, or drop the edge if rollout ingestion is not truly a prerequisite for the live-identity half.
+
+### Outcome Risk Factors
+- Deep per-site complexity: cross-module identity plumbing (parser → runner → executor → writer) plus a shared selector rewiring 4 reader families.
+- Broad blast radius: usage, cost, waste and export readers all reroute through `select_usage_coverage`.
 
 ## Session Log
 - `/ll:audit-issue-conflicts` - 2026-09-24T17:53:58 - `5250dd00-ed7b-4310-8dee-527fe13b2b07.jsonl`

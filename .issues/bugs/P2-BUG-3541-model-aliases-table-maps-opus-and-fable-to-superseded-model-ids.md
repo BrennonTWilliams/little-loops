@@ -87,6 +87,25 @@ table recognize both the new and the superseded IDs (history rows keep old IDs).
 7. Add a guard test asserting every `MODEL_ALIASES` target has an advisor rank
    and a `MODEL_PRICING` entry, so the three tables cannot drift again.
 
+## Program Design
+
+### Types
+
+- `MODEL_ALIASES: dict[str, str]`
+- `MODEL_PRICING: dict[str, dict[str, float]]`
+- `MODEL_RANKS: dict[str, dict[str, int]]`
+
+### Signatures
+
+- `resolve_model_alias(model: str) -> str` — unchanged; reads the updated table.
+- `rank_model(host: str, model: str) -> int | None` — unchanged; gains a `claude-opus-5-5` row.
+- `estimate_cost_usd(model: str, input_tokens: int | None, output_tokens: int | None, cache_read_tokens: int | None = 0, cache_creation_tokens: int | None = 0, is_batch: bool = False, as_of: date | None = None) -> float | None` — unchanged; gains the three new keys.
+- `test_every_alias_target_is_ranked_and_priced() -> None` — new guard test.
+
+### Call Path
+
+`resolve_model_alias` -> `rank_model` and `estimate_cost_usd`; the guard test iterates `MODEL_ALIASES` and asserts both resolve for every target.
+
 ## Acceptance Criteria
 
 - [ ] `resolve_model_alias("opus") == "claude-opus-5-5"` and
@@ -110,3 +129,7 @@ table recognize both the new and the superseded IDs (history rows keep old IDs).
 ## Status
 
 **Open** | Created: 2026-09-23 | Priority: P2
+
+
+## Session Log
+- `/ll:format-issue` - 2026-09-25T01:01:19 - `4b76ee9e-e590-41ab-940d-a6df6f1554bd.jsonl`

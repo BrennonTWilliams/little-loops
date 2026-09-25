@@ -58,6 +58,21 @@ Separate evidence truth from attempt bounding:
 Check first: whether anything relies on attempted-only suppression to avoid a
 spike → score → spike loop. The attempt bound should already prevent that.
 
+## Program Design
+
+### Types
+
+- `spike_verdict: str` — frontmatter field, one of `proven`, `refuted`, `inconclusive`; `spike_attempted` stays an attempt bound only.
+
+### Signatures
+
+- `check_spike_needed(spike_needed: bool, spike_attempted: bool) -> bool` — existing autodev guard; unchanged.
+- `route_spike_result(spike_verdict: str) -> str` — new routing rule: `refuted` goes to `resolve_decision` or size review, anything else to rescoring.
+
+### Call Path
+
+`run_spike` -> `route_spike_result` -> `rerun_confidence_after_spike`
+
 ## Integration Map
 
 - `skills/spike/SKILL.md` (failure contract)
@@ -96,4 +111,5 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:format-issue` - 2026-09-25T01:01:19 - `4b76ee9e-e590-41ab-940d-a6df6f1554bd.jsonl`
 - `/ll:capture-issue` - 2026-09-24T19:42:31 - `59fe3bd4-3622-4dd2-bb8b-ad5cc55e79ec.jsonl`

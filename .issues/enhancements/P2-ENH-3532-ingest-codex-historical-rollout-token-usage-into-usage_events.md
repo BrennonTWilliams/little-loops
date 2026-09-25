@@ -19,6 +19,12 @@ relates_to:
 - ENH-3543
 blocks:
 - ENH-3543
+confidence_score: 55
+outcome_confidence: 48
+score_complexity: 10
+score_test_coverage: 18
+score_ambiguity: 10
+score_change_surface: 10
 ---
 
 # ENH-3532: Ingest Codex historical rollout token usage into usage_events
@@ -175,7 +181,27 @@ Removed the resolved blockers (ENH-3538, BUG-3531); now blocked by BUG-3542. Imp
 **Note** (added by `/ll:audit-issue-conflicts`): This issue persists the rollout `session_id` (rollout `session_meta.payload.session_id`) plus the `task_started`/`task_complete` span on each rollout row. ENH-3543 separately proposes `host_session_id`/`invocation_id` columns on `usage_events` for live rows. Before either migration lands, agree with ENH-3543 on one canonical session-identity column (reuse with a basis marker, or two named columns with a documented join). Do not add a second, unjoined session-ID column in this issue's migration.
 
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-24_
+
+**Readiness Score**: 55/100 → STOP — ADDRESS GAPS
+**Outcome Confidence**: 48/100 → LOW
+
+### Concerns
+- Dependencies hard override: `blocked_by` BUG-3542 (verified source host) is still `open`; replay consumes its attribution discriminator.
+- Three readiness gates (request key, reset namespace, ordering) are still open and must be recorded in the issue before implementation.
+
+### Gaps to Address
+- Wait for/complete BUG-3542, or drop the dependency if no longer applicable.
+- Close the open readiness gates against the fixtures and record the exact persisted key, fallback rules and unique constraint.
+
+### Outcome Risk Factors
+- Moderate per-site complexity across ~8 source modules plus schema migration and transactional replay.
+- Unresolved design decisions on observation identity/uniqueness leave ambiguity; wide test/reader surface.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-09-25T01:02:39 - `f35cbaf1-740e-46e5-84c9-0ecf04a645f4.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-09-24T23:55:44 - `2bb94109-d967-427c-a647-9b0a7a8e368e.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-09-24T01:05:29 - `af4614fc-00c0-4ee9-995a-e89a43f1523c.jsonl`
 - `/ll:verify-issues` - 2026-09-24T00:46:09 - `047cda0b-279f-4078-b31f-1d7b1fcc2181.jsonl`
