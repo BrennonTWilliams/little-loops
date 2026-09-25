@@ -130,11 +130,16 @@ No new types or state keys. `result_token_count` is retired from `.ll/ll-context
 
 ### Call Path
 
-- `subprocess_utils._fire_legacy_usage` → `issue_manager._on_usage_writer` → `.ll/ll-context-state.json` key `result_token_count` (today's path; no budget consumer exists).
-- `_on_usage_writer` → consumption accounting/state → consumption-budget consumers.
-- `context-monitor.sh` `main()` and `context-handoff-sentinel.sh` (script body) read the key, then `check_compaction()` in the monitor resets other fields but not this one; `session_start.handle` deletes the file on session start.
-- Qualified occupancy measurement or existing estimator → context state → monitor/sentinel/Python occupancy guards.
-- Session change or compaction → invalidate occupancy baseline evidence; an old invocation total never becomes the fallback measurement.
+Today (defective):
+
+- `subprocess_utils._fire_legacy_usage` → `issue_manager.process_issue_inplace` nested `_on_usage_writer` → `.ll/ll-context-state.json` key `result_token_count` (written after the child session's Stop cleanup; no budget consumer exists).
+- `context-monitor.sh` `main()` and `context-handoff-sentinel.sh` (script body) read the key as tier 1; `check_compaction()` resets other fields but not this one.
+
+After the fix:
+
+- `subprocess_utils._fire_legacy_usage` → caller's `on_usage` (via `process_issue_inplace`) → consumption reporting only; nothing touches the state file.
+- `context-monitor.sh` `main()`: transcript baseline + per-tool tokens, else stored `estimated_tokens` + tokens → `USAGE_PERCENT` → pressure levels / handoff threshold.
+- `context-handoff-sentinel.sh`: `estimated_tokens` → sentinel threshold → `.ll/ll-context-handoff-needed` → `subprocess_utils.read_sentinel` in `issue_manager` / `parallel/worker_pool.py`.
 
 ### Codebase Research Findings
 
@@ -151,20 +156,21 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 
 ## Implementation Steps
 
-1. Classify every result-count/usage-callback consumer as consumption accounting, consumption budget, or context occupancy; record the chosen occupancy source and fallback contract.
-2. Separate the metrics and update occupancy consumers, preserving consumption reporting and configured threshold values.
-3. Test repeated requests, absent/partial usage, old state files, compaction, and session changes, including monitor/sentinel agreement; update docs and run project checks.
+1. Write failing tests first (TDD): high `result_token_count` + low `estimated_tokens` in the state file → monitor does not hand off and sentinel does not write `.ll/ll-context-handoff-needed`; `process_issue_inplace` with a fake `on_usage` firing does not create or modify `.ll/ll-context-state.json`.
+2. Delete `_on_usage_writer` and forward `on_usage` directly in `issue_manager.py`.
+3. Remove tier 1 from `context-monitor.sh` and the override from `context-handoff-sentinel.sh`.
+4. Rewrite the four defect-encoding tests and `test_impossible_baseline_clamped`; update docs; run project checks.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-- Update `hooks/scripts/context-monitor.sh` `main()` — remove/qualify tier 1 in the jq/`read` list together; blank `RESULT_TOKEN_COUNT` after `check_compaction()`; re-verify `+ TOKENS` / `overhead` / `SYSTEM_PROMPT_BASELINE` additions when falling through to tier 2/3; update the ~362 comment
-- Update `hooks/scripts/context-handoff-sentinel.sh` — apply the identical selection rule (jq read ~38-44 with its four-field default, override ~51-55) and fix the "accurate" comment; consider that it has no compaction check
-- Update `scripts/little_loops/issue_manager.py` `_on_usage_writer` — qualify/relocate the write; update header comment at 811
-- Update `scripts/tests/test_hooks_integration.py` — four known defect-encoding tests plus `test_impossible_baseline_clamped` re-seeding, and sentinel fixtures at ~3052/3089/3118
-- Add tests: `_on_usage_writer` via `process_issue_inplace`; monitor/sentinel agreement; compaction and session invalidation; old-format state; partial-usage `None` field in `test_subprocess_utils.py`
-- Update docs: `SESSION_HANDOFF.md`, `ARCHITECTURE.md`, `CONFIGURATION.md`, `TROUBLESHOOTING.md` (keep the `context-monitor.sh` reference for `test_wiring_guides_and_meta.py:165`); fix the cache-read inconsistency; regenerate `site/` copies if tracked
+- Update `hooks/scripts/context-monitor.sh` `main()` — remove tier 1 from the jq/`read` list together and delete the tier-1 branch; re-verify `+ TOKENS` / `overhead` / `SYSTEM_PROMPT_BASELINE` additions now that tier 2/3 is always taken; delete the ~362 comment. Check whether the 3x-`CONTEXT_LIMIT` clamp (~385-387) is still needed — its main target was inflated tier-1 values — and keep it only if the transcript baseline can still exceed it
+- Update `hooks/scripts/context-handoff-sentinel.sh` — drop the field from the jq read (~38-44) and shorten the default string to three fields; remove the override (~51-55) and the "accurate" comment
+- Update `scripts/little_loops/issue_manager.py` — delete `_on_usage_writer` and its header comment (811-825); pass `on_usage` directly at ~1347
+- Update `scripts/tests/test_hooks_integration.py` — invert/replace `test_result_token_count_used_when_present`, `test_result_token_count_zero_falls_back_to_heuristics`, `TestContextHandoffSentinel.test_result_token_count_preferred_over_estimated` so they assert the key is ignored; re-seed `test_impossible_baseline_clamped` through the transcript-baseline tier; drop the key from sentinel fixtures at ~3052/3089/3118 (or keep it as legacy noise to prove it's ignored)
+- Add tests: `process_issue_inplace` leaves the state file untouched when `on_usage` fires (pattern: `test_issue_manager.py:2252`); monitor and sentinel ignore a legacy key when seeded with the same state; a stream-json `result` fixture whose `usage` sums several requests' `cache_read_input_tokens` above the context limit, confirming `result.usage` is cumulative across a `-p` run (the premise of the repro)
+- Update docs: remove tier 1 from `SESSION_HANDOFF.md` (~359-397), `ARCHITECTURE.md` (~1412-1420), `CONFIGURATION.md` (~532), `TROUBLESHOOTING.md` (~1165-1170; keep the `context-monitor.sh` reference for `test_wiring_guides_and_meta.py:165`). The cache-read inconsistency in `SESSION_HANDOFF.md` disappears with the tier-1 text. Regenerate `site/` copies if tracked
 
 ## Impact
 
