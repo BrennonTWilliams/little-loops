@@ -1,0 +1,11 @@
+{
+  "id": "7fb16950-3326-4f43-8f9d-81cc0934b065",
+  "type": "decision",
+  "timestamp": "2026-09-25T04:27:16Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Thin general-purpose loop distinct from general-task; pinned goal + independent done-check",
+  "rule": "Captured: continue-task loop: run a continuation prompt until done with automatic handoff/resume",
+  "scope": "issue",
+  "issue": "FEAT-3594"
+}

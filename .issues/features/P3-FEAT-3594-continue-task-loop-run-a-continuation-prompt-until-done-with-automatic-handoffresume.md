@@ -34,10 +34,11 @@ A thin loop (~5 states), decoupled from the Issue system:
 1. `load_prompt` (shell) — write `${context.input}` via quoted heredoc (BUG-2622 pattern from `prompt-across-issues.yaml` `init`). If empty, fall back to `.ll/ll-continue-prompt.md`, rejecting it when older than `continuation.prompt_expiry_hours` (default 24, same key `/ll:resume` reads). Print the source, mtime and first line for provenance. Fail clearly if neither is available. Snapshot the starting prompt to `${context.run_dir}/goal.md` — this pins the goal so repeated handoff summaries cannot drift it.
 2. `work` (prompt) — mark the pass start; run `/ll:resume` if the handoff file is newer than the pass marker (general-task's `pass-started.txt` freshness pattern), else work from `goal.md`. Keep `${context.run_dir}/progress.md` current (done / remaining / evidence). On the context-monitor threshold, update progress and run `/ll:handoff`.
 3. `run_tests` (shell, non-LLM signal) — run the resolved test command (explicit `context.test_cmd`, else `ll-config get project.test_cmd`); record exit code. Skip cleanly when none is configured.
-4. `check_done` (prompt + `llm_structured`) — judge `progress.md` evidence and the test exit code against the pinned `goal.md`, re-verifying claims by reading files / running commands. The worker's own "done" claim is never sufficient. Test failure forces NO.
-5. Terminals `done` / `partial` (with a summary on `on_max_iterations`) / `failed`.
+4. `check_done` (prompt + `llm_structured`) — judge `progress.md` evidence and the test exit code against the pinned `goal.md`, re-verifying claims by reading files / running commands. The worker's own "done" claim is never sufficient. A test *regression* (passed at baseline, fails now) forces NO mechanically in `run_tests`, before the LLM check; a suite already failing at baseline is advisory, so a pre-existing failure cannot pin the loop open.
+5. `stall_check` (`diff_stall_gate`, max_stall 3) after `work` — working tree unchanged across 3 passes routes to a partial summary.
+6. Terminals `done` / `partial` (summary via `on_max_steps` or stall) / `failed`.
 
-Top level: `on_handoff: spawn`, `max_iterations` cap, input NOT in `required_inputs` (otherwise `ll-loop run` rejects the empty-input fallback case before `load_prompt` runs).
+Top level: `on_handoff: spawn`, `max_steps` + `on_max_steps` cap, input NOT in `required_inputs` (otherwise `ll-loop run` rejects the empty-input fallback case before `load_prompt` runs).
 
 ## Integration Map
 

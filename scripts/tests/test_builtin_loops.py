@@ -297,6 +297,7 @@ class TestBuiltinLoopFiles:
             "workflow-generator",
             "rn-stepwise",
             "stepwise-task",
+            "continue-task",
             "fleet-loop-improve",
             "human-approval-example",
         }

@@ -1,0 +1,276 @@
+name: "continue-task"
+category: harness
+description: |
+  Continuation-prompt runner: takes a continuation prompt and keeps working it
+  until an independent done-check passes, surviving context exhaustion via
+  automatic /ll:handoff -> spawned /ll:resume sessions (on_handoff: spawn).
+
+  Input is optional. With no input, the loop starts from the newest
+  .ll/ll-continue-prompt.md (rejected when older than
+  continuation.prompt_expiry_hours, default 24). The starting prompt is pinned
+  to ${context.run_dir}/goal.md so repeated handoff summaries cannot drift the
+  goal the done-check judges against.
+
+  Deliberately thin: unlike general-task there is no define_done / plan /
+  step-abandonment machinery — a continuation prompt already carries its plan
+  and state. Completion is never the worker's self-report: check_done
+  re-verifies evidence against goal.md, and a test regression (tests passed at
+  baseline, fail now) forces another pass without asking the LLM.
+
+  The spawned continuation is detached (stdout discarded), so the foreground
+  view ends at the first handoff; follow along with `ll-loop status
+  continue-task`.
+
+  Run as: ll-loop run continue-task ["<continuation prompt>"]
+initial: load_prompt
+scope:
+  - "."
+# 6 steps per pass (start_pass, work, stall_check, run_tests, check_done,
+# read_verdict) -> roughly 25 passes before on_max_steps diverts to a partial
+# summary.
+max_steps: 150
+default_timeout: 14400
+on_handoff: spawn
+on_max_steps: summarize_partial
+# pass-count/pass-started/verdict are per-pass control files, not artifacts.
+artifact_versioning_ok: true
+# `input` is intentionally NOT in required_inputs: an empty input is the
+# "resume the newest handoff prompt" mode, resolved by load_prompt.
+
+import:
+  - lib/common.yaml
+
+context:
+  input: ""     # populated from the positional CLI arg (default input_key: input)
+  # Whole-suite test command. Empty = fall back to `ll-config get
+  # project.test_cmd`; unresolvable/null = no test signal (check_done judges
+  # on evidence alone).
+  test_cmd: ""
+
+states:
+  load_prompt:
+    # Resolves the starting prompt and pins it to goal.md. Input is written via
+    # a quoted heredoc so shell metacharacters in the prompt are read literally
+    # (BUG-2622). Also resolves the test command once and records a baseline
+    # exit code, so run_tests can tell a regression from a pre-existing failure.
+    # No bash brace-expansion for locals (the FSM interpolates the action first).
+    action: |
+      RUN_DIR="${context.run_dir}"
+      GOAL="$RUN_DIR/goal.md"
+      HANDOFF=".ll/ll-continue-prompt.md"
+      cat > "$RUN_DIR/input.txt" <<'LL_INPUT_EOF'
+      ${context.input}
+      LL_INPUT_EOF
+      if grep -q '[^[:space:]]' "$RUN_DIR/input.txt"; then
+        cp "$RUN_DIR/input.txt" "$GOAL"
+        echo "PROMPT_SOURCE: input"
+      elif [ -s "$HANDOFF" ]; then
+        HOURS=$(ll-config get continuation.prompt_expiry_hours 2>/dev/null)
+        case "$HOURS" in ''|*[!0-9]*) HOURS=24 ;; esac
+        if [ -z "$(find "$HANDOFF" -mmin -$((HOURS * 60)) 2>/dev/null)" ]; then
+          echo "ERROR: $HANDOFF is older than $HOURS hours (continuation.prompt_expiry_hours)."
+          echo "Pass the prompt explicitly: ll-loop run continue-task \"<prompt>\""
+          exit 1
+        fi
+        cp "$HANDOFF" "$GOAL"
+        echo "PROMPT_SOURCE: $HANDOFF"
+        echo "PROMPT_MTIME: $(ls -l "$HANDOFF" | awk '{print $6, $7, $8}')"
+        echo "PROMPT_FIRST_LINE: $(grep -m1 '[^[:space:]]' "$HANDOFF")"
+      else
+        echo "ERROR: no input given and no $HANDOFF found."
+        echo "Usage: ll-loop run continue-task \"<continuation prompt>\""
+        echo "   or: run /ll:handoff in a session first, then ll-loop run continue-task"
+        exit 1
+      fi
+      : > "$RUN_DIR/resolved-test-cmd.txt"
+      echo "SKIP" > "$RUN_DIR/baseline-exit.txt"
+      # :shell shlex-quotes the override so it lands in CMD verbatim (MR-11);
+      # it is then run with eval, like project.test_cmd.
+      CMD=${context.test_cmd:shell}
+      if [ -z "$CMD" ]; then
+        CMD=$(ll-config get project.test_cmd 2>/dev/null) || CMD=""
+      fi
+      if [ -n "$CMD" ]; then
+        echo "$CMD" > "$RUN_DIR/resolved-test-cmd.txt"
+        ( eval "$CMD" ) > "$RUN_DIR/baseline-test-output.txt" 2>&1
+        EXIT=$?
+        if [ "$EXIT" != "127" ]; then
+          echo "$EXIT" > "$RUN_DIR/baseline-exit.txt"
+        fi
+      fi
+      echo "BASELINE_TEST_EXIT: $(cat "$RUN_DIR/baseline-exit.txt")"
+    fragment: shell_exit
+    on_yes: start_pass
+    on_no: failed
+    on_error: failed
+
+  start_pass:
+    # Marks the start of a pass. pass-started.txt lets a re-entered `work`
+    # session (spawned after a handoff) tell a handoff prompt written during
+    # THIS pass from a stale one. A spawned continuation re-enters `work`
+    # directly, so this marker is NOT refreshed mid-pass.
+    action: |
+      : > "${context.run_dir}/pass-started.txt"
+      N=$(cat "${context.run_dir}/pass-count.txt" 2>/dev/null || echo 0)
+      N=$((N + 1))
+      echo "$N" > "${context.run_dir}/pass-count.txt"
+      echo "PASS: $N"
+    action_type: shell
+    next: work
+
+  work:
+    action: |
+      You are continuing a task across sessions. The goal is pinned in
+      ${context.run_dir}/goal.md — read it first. It is the authoritative
+      statement of what "done" means; handoff summaries may paraphrase it, but
+      goal.md wins on any conflict.
+
+      Re-entry check — run this shell test before anything else:
+        [ .ll/ll-continue-prompt.md -nt ${context.run_dir}/pass-started.txt ] && echo RESUME
+      If it prints RESUME, a previous session of THIS pass handed off: run
+      /ll:resume to load its notes before continuing.
+
+      Also read, if they exist:
+      - ${context.run_dir}/progress.md — the running progress log (done /
+        remaining / evidence) kept across passes.
+      - ${context.run_dir}/done-check.md — the last done-check's findings: why
+        the previous pass was judged NOT done. Address those gaps first.
+
+      Then do the remaining work. Keep ${context.run_dir}/progress.md current
+      AS YOU GO (not only at the end), in three sections:
+        ## Done       — completed items
+        ## Remaining  — what is left
+        ## Evidence   — for each completed item, how it can be verified
+                        (file paths, commands and their results)
+
+      Handoff chain — if the context monitor reports usage at or above the
+      handoff threshold ("[ll] Context ~N% used ... Run /ll:handoff"), stop
+      starting new work. Bring progress.md up to date, then run /ll:handoff
+      and end your turn. The loop spawns a fresh session that re-enters this
+      state and resumes from your handoff.
+
+      When you believe the goal is fully met, make sure progress.md's
+      Evidence section is complete and end your turn. Do NOT declare the task
+      finished — a separate check decides that.
+    action_type: prompt
+    next: stall_check
+    on_error: stall_check
+    timeout: 3600
+
+  stall_check:
+    # Non-LLM progress signal: if the working-tree diff is byte-identical
+    # across 3 consecutive passes, further passes are unlikely to help —
+    # stop with a partial summary instead of burning the step budget.
+    fragment: diff_stall_gate
+    action: echo "stall check"
+    action_type: shell
+    evaluate:
+      max_stall: 3
+    on_yes: run_tests
+    on_no: summarize_partial
+    on_error: run_tests
+
+  run_tests:
+    # Non-LLM done signal. Exit 1 (route straight back to start_pass, skipping
+    # the LLM check) ONLY on a regression: tests passed at baseline and fail
+    # now. A suite that was already failing at baseline is reported to
+    # check_done as advisory rather than blocking, so a pre-existing failure
+    # cannot pin the loop open forever.
+    action: |
+      RUN_DIR="${context.run_dir}"
+      rm -f "$RUN_DIR/verdict.txt"
+      CMD=$(cat "$RUN_DIR/resolved-test-cmd.txt" 2>/dev/null)
+      BASE=$(cat "$RUN_DIR/baseline-exit.txt" 2>/dev/null || echo SKIP)
+      if [ -z "$CMD" ]; then
+        echo "TEST_STATUS: SKIP (no test command)" | tee "$RUN_DIR/tests.txt"
+        exit 0
+      fi
+      ( eval "$CMD" ) > "$RUN_DIR/test-output.txt" 2>&1
+      EXIT=$?
+      if [ "$EXIT" = "0" ]; then
+        echo "TEST_STATUS: PASS" | tee "$RUN_DIR/tests.txt"
+      elif [ "$BASE" = "0" ]; then
+        echo "TEST_STATUS: REGRESSED (exit $EXIT; passed at baseline)" | tee "$RUN_DIR/tests.txt"
+        {
+          echo "# Done check: NOT DONE (test regression)"
+          echo ""
+          echo "The test command passed before this run and now fails (exit $EXIT)."
+          echo "Command: $CMD"
+          echo "Output tail:"
+          tail -30 "$RUN_DIR/test-output.txt"
+        } > "$RUN_DIR/done-check.md"
+        exit 1
+      else
+        echo "TEST_STATUS: FAILING (exit $EXIT; baseline exit $BASE — pre-existing)" | tee "$RUN_DIR/tests.txt"
+      fi
+    fragment: shell_exit
+    on_yes: check_done
+    on_no: start_pass
+    on_error: check_done
+
+  check_done:
+    # Independent judgment against the PINNED goal, not the worker's claim.
+    # Writes a one-token verdict file that read_verdict checks mechanically,
+    # so free-text reasoning in the output can never be mistaken for a verdict.
+    action: |
+      Decide whether the task is complete. You did NOT do this work; judge it
+      skeptically.
+
+      Read:
+      - ${context.run_dir}/goal.md — the pinned goal (authoritative)
+      - ${context.run_dir}/progress.md — the worker's progress log and evidence
+      - ${context.run_dir}/tests.txt — the test command's status
+
+      Verify by evidence, not by the worker's description: for every
+      requirement in goal.md, read the files / run the commands the Evidence
+      section cites (or find your own evidence). A requirement with no
+      verifiable evidence is NOT met. A "## Remaining" section with open items
+      means NOT done unless you verify each is actually complete.
+      If tests.txt reports FAILING (pre-existing), treat it as done-blocking
+      only when goal.md asks for those tests to pass.
+
+      Write ${context.run_dir}/done-check.md: each requirement, met/unmet,
+      and the evidence you checked. For unmet ones, say concretely what is
+      missing — the next pass reads this file.
+
+      Finally, write exactly one word to ${context.run_dir}/verdict.txt:
+      DONE if every requirement is verified met, otherwise NOT_DONE.
+    action_type: prompt
+    next: read_verdict
+    on_error: start_pass
+    timeout: 1800
+
+  read_verdict:
+    action: grep -qx 'DONE' "${context.run_dir}/verdict.txt"
+    fragment: shell_exit
+    on_yes: done
+    on_no: start_pass
+    on_error: start_pass
+
+  summarize_partial:
+    # Reached from stall_check (no diff progress) and the on_max_steps cap.
+    action: |
+      The continue-task loop has stopped before its done-check passed —
+      either the working tree stopped changing across passes or the step
+      budget ran out. The work done so far is real; do not discard it.
+
+      Read ${context.run_dir}/goal.md, ${context.run_dir}/progress.md and
+      ${context.run_dir}/done-check.md (if they exist). Write
+      ${context.run_dir}/summary.md with: (1) what was accomplished, (2) what
+      remains unmet per the last done-check, (3) recommended next actions for
+      a human operator — including whether to re-run with an adjusted prompt.
+    action_type: prompt
+    next: partial
+    # ENH-2825: an error edge must not end in a non-failure terminal.
+    on_error: failed
+
+  partial:
+    # Distinct from `done` so a parent loop never launders a stall into success.
+    terminal: true
+
+  done:
+    terminal: true
+
+  failed:
+    terminal: true
+    failure: true
