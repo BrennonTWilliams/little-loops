@@ -299,4 +299,5 @@ refine-to-ready running nested inside autodev.
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-09-25T05:53:56 - `191d33d2-a8d5-4cd7-9f91-97bbd5c914d2.jsonl`
 - `/ll:confidence-check` - 2026-09-25T05:49:00 - `08995910-f634-410e-8b96-6975d65f9656.jsonl`
