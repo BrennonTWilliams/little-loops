@@ -170,6 +170,13 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/loops/recursive-refine.yaml`, `issue-refinement.yaml`, `auto-refine-and-implement.yaml` — unchanged; they keep calling `refine-to-ready-issue` directly (Option B)
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/loops/scan-and-implement.yaml:79` — `loop: autodev` caller outside the known list; consumes autodev's terminal shape, which this issue reshapes [Agent 1 finding]
+- `scripts/little_loops/cli/loop/next_loop.py:152` — `_PARAM_RESOLVERS` special-cases only `autodev` (`_resolve_autodev_params`, ~:131-154; documented at `docs/reference/CLI.md:1359`); decide whether `prepare-issue` needs an analogous input resolver or a deliberate absence [Agent 2 finding]
+- `scripts/little_loops/cli/issues/show.py:148` — `outcome_gate_waived` comment cites `regate_after_atomic_remediation` / `recheck_after_size_review` as readers [Agent 1 finding]
+- `scripts/little_loops/loops/rn-refine.yaml:419` — comments mirror autodev's `count_repair_cycle_refine` convention (also `:500`); go stale when the states leave [Agent 1 finding]
+- `scripts/little_loops/templates/policy_builder_core.mjs:1867` — existing policy-builder preset id `"prepare-issue-loop"` (naming adjacency; no code link found — keep both names, don't conflate) [Agent 2 finding]
+
 ### Tests
 - Behavioral, must pass unchanged: `test_autodev_scores_freshness.py`, `test_check_readiness.py`,
   `test_arm_proposal_revision.py`, `test_format_probe_routing.py`, `test_ll_issues_check_gate.py`
@@ -177,6 +184,29 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 - New: `prepare-issue` rate-limit exhaustion writes `retryable_error` and autodev ledgers it
 - New: a `ready` outcome never hits `LEARNING_GATE_BLOCKED` for a reason `assess_proof` (ENH-3602) reports (controller-level AC, moved here from ENH-3602)
 - BUG-3603's invariant test (no fail-open edge into `implement_current`) still passes
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_fsm_fragments.py:998` — `TestBuiltinLoopMigration` hand-maintained `migration_targets` list must add `prepare-issue.yaml` [Agent 3 finding]
+- `scripts/tests/test_builtin_loops.py` — beyond the stem set (~:304-305): the `TestAutodevLoop` second-pass cluster (~:8095-8920: `test_recheck_after_size_review_*`, `test_check_guard2_*`, `test_go_no_go_escalation_chain_shape` (~:8187), `test_check_go_no_go_eligible_one_shot_and_reason_scoped` (~:8239), `test_reopen_waived_reopens_stages_and_rearms_inflight` (~:8252), `test_check_reconcile_needed_*`, `test_enqueue_or_skip_*`, `test_pre_deferral_remedy_*` (~:8717-8786), `test_run_wire_*` / `test_run_refine_next_routes_to_rerun_confidence_after_wire` (~:9132-9528)); `TestMr11MarkerSet::test_marker_set_matches_enumeration` (~:21243) if marked states move with their `mr11-ok` annotations; `TestSubLoopStateTimeoutAudit::test_no_unreviewed_timeout_on_loop_states` (~:21326) if timeout-bearing `loop:` states move; `TestConfidenceGateThresholdsNotHardcoded.LOOPS` (~:21283) if `prepare-issue` references `${context.*_threshold}` [Agent 3 finding]
+- `scripts/tests/test_autodev_loop.py` — reconcile/size-review/repair-counter suites cover the moving states: `TestCheckReconcileNeeded*` (~:203-445), `TestRepairCycleCounterStates::test_all_six_counter_states_exist` (~:450), `TestRecheckAfterSizeReview*` (~:497-849), `TestRegateAfterAtomicRemediationDesignGateBranch` (~:917); `_run_recheck_scores` (~:1040) runs the real action and is the template for `prepare-issue` behavioral tests [Agent 3 finding]
+- `scripts/tests/test_autodev_decision_gate.py` — second-pass suites absent from the known list: `TestReconcilePlateauStructural` (~:532) / `TestReconcilePlateauRouting` (~:619), `TestDesignGateRefineRemedy` (~:698), `TestAtomicDesignRemedyRouting` (~:772), `TestGuard2VerdictBypass` (~:820) [Agent 3 finding]
+- `scripts/tests/test_go_no_go_skill.py:42` — `TestGoNoGoWaiverStampRegardlessOfFindings` docstring cites `check_go_no_go_waiver` as autodev's escalation valve [Agent 1 finding]
+- `scripts/tests/data/loop_interpolation_baseline.json` — `check_reconcile_needed` (:105), `enqueue_or_skip` (:717), `recheck_scores` (:735) entries go stale when states leave autodev.yaml, and new `prepare-issue` interpolation sites need entries (`test_completeness_guard` ratchet) [Agent 1 finding]
+- `scripts/tests/test_rn_decompose.py:78` — `TestDecompositionChain::test_run_size_review_has_rate_limit_exhausted_handler` is the `on_rate_limit_exhausted` routing template for the planned exhaustion test [Agent 3 finding]
+- Pattern for the new `prepare-issue` structural suite: `TestRecursiveRefineLoop`'s second-pass tests (`test_size_review_snap_routes_to_check_broke_down`, `test_check_broke_down_on_no_routes_to_enqueue_or_skip`, `test_enqueue_or_skip_*`) in `scripts/tests/test_builtin_loops.py` (~:9887-10056) — recursive-refine already owns a decompose/size-review/enqueue pipeline [Agent 3 finding]
+
+### Documentation
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/LOOPS_REFERENCE.md` — needs a new `### prepare-issue` section (per-loop template: Technique / When to use / Invocation / diagram / Notes), and the autodev section's second-pass paragraphs move with the states: score-freshness five-triplet paragraph (~:1077), BUG-2734 earn-the-pass + BUG-3390 go/no-go escalation (~:1085), pre-deferral remedy dispatcher and `recheck_after_size_review` cascade (~:1085); the `scan-and-implement` section (~:1089-1093) describes the autodev handoff [Agent 2 finding]
+- `docs/reference/DEFERRAL_CODES.md:24` — `low_readiness` / `readiness_stagnated` / `design_gate_failed` / `oversized_atomic` Source citations name `recheck_after_size_review`, `remediate_oversized_atomic`, `regate_after_atomic_remediation` [Agent 1 finding]
+- `docs/reference/CLI.md` — FSM-loop-use attributions naming moved states: `:2318` (`check_gate_at_dequeue`, `recheck_after_size_review`, `check_proof_gate_before_implement`), `:2334` (`recheck_scores`, `regate_after_atomic_remediation`), `:2621` (`check_reconcile_needed`), `:2828` [Agent 1 finding]
+- `docs/reference/API.md` — `:981` (`check_reconcile_needed` reads `format-check --format json`) and `:4662-4678` (not-ready-exit writers) [Agent 1 finding]
+- `docs/reference/COMMANDS.md:305` — reconcile-issue handshake (`:305-311`), decision-gate auto-fire (`:364`), `run_wire` repair path (`:366`) [Agent 1 finding]
+- `skills/go-no-go/SKILL.md:402` — describes `check_go_no_go_eligible → run_go_no_go → check_go_no_go_waiver` as autodev's chain; must re-anchor to `prepare-issue` (+ regenerate `.gemini` / `.qwen` / `.kimi-code` mirrors via `ll-adapt --host <host> --apply`) [Agent 1 finding]
+- `skills/audit-loop-run/SKILL.md:271` — same chain plus `skipped_breakdown` / `oversized_atomic` bucket provenance [Agent 1 finding]
+- `commands/reconcile-issue.md:83` — the `check_reconcile_needed` / `reconcile_current` handshake (also `:145-146`, `:197`, `:368`) moves to the wrapper [Agent 1 finding]
+- `docs/ARCHITECTURE.md:676` — v38 migration row cites `implement_current`'s `ll-auto --only` shell-out (known file, unlisted anchor) [Agent 2 finding]
+- `docs/reference/CONFIGURATION.md:456` — threshold-seeded loop enumeration; add `prepare-issue` if it gates on `${context.*_threshold}` [Agent 2 finding]
 
 ### Codebase Research Findings
 
@@ -191,6 +221,18 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 - **Run-record dependency state**: ENH-3597 (`RunRecord`/`write_run_record`/`read_run_record`) and FEAT-3598 (`select_next_obligation`) have not landed; no `RunRecord` symbol exists in `scripts/little_loops` yet (the `_LoopRunRecord` in `cli/logs.py` is unrelated fleet-review aggregation). Signatures in Program Design are therefore forward references to sibling issues and must be re-checked against their final shapes before implementation.
 - **Structural test hook**: `test_builtin_loops.py` asserts `expected == actual` over the stem set of `BUILTIN_LOOPS_DIR.glob("*.yaml")` (around lines 295-306), so adding `prepare-issue` fails that test until the stem is listed. Behavioral test files named in Tests all exist under `scripts/tests/`.
 - **Mirror gates**: a new loop YAML bumps the loop count in root `README.md` (mirrored to `scripts/README.md`) and `scripts/little_loops/loops/README.md`; skills/README edits also trip the `ll-adapt` mirror gates.
+
+## Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Register `prepare-issue` in `scripts/tests/test_fsm_fragments.py` `migration_targets` and the `test_builtin_loops.py` expected stem set
+- Update `scripts/tests/data/loop_interpolation_baseline.json` — stale autodev entries out, `prepare-issue` interpolation sites in, same commit
+- Update `docs/guides/LOOPS_REFERENCE.md` — new `prepare-issue` section + autodev second-pass paragraphs move
+- Update `skills/go-no-go/SKILL.md`, `skills/audit-loop-run/SKILL.md`, `commands/reconcile-issue.md` — re-anchor chain/state citations to `prepare-issue`; regenerate host mirrors (`ll-adapt --host <gemini|kimi-code|qwen> --apply`)
+- Update `docs/reference/DEFERRAL_CODES.md`, `docs/reference/CLI.md`, `docs/reference/API.md`, `docs/reference/COMMANDS.md` — re-attribute moved-state citations
+- Decide `ll-loop next` input resolution for `prepare-issue` (`scripts/little_loops/cli/loop/next_loop.py` `_PARAM_RESOLVERS`)
+- `ll-loop validate` gates the new YAML: MR-3 artifact isolation (markers under `${context.run_dir}`), MR-7/9/11 shell interpolation (`:default=` on both refs, `$${...}` escaping), MR-14 evaluate keys, capture reachability for `${captured.*}` from the wrapped child, `scope:` for `.issues/` reads
 
 ## Impact
 
@@ -223,6 +265,7 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 - [ ] `prepare-issue` writes a `writer: prepare-issue` run record on every terminal, including rate-limit exhaustion (`retryable_error`)
 - [ ] A `ready` preparation outcome never hits `LEARNING_GATE_BLOCKED` for a reason `assess_proof` could have detected (moved from ENH-3602)
 - [ ] Behavioral test set passes unchanged
+  > ⚠ Superseded — freshness tests pin moving repair predecessors
 
 ## Parent Issue
 
@@ -234,5 +277,6 @@ Decomposed from ENH-3577: Consolidate autodev issue preparation into a single co
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-25T20:46:48 - `2b4a714f-91fd-41aa-b2ac-63b11e2476ce.jsonl`
 - `/ll:refine-issue` - 2026-09-25T19:42:32 - `2f63920a-850e-4ac5-bf34-e7b8eb47e2e0.jsonl`
 - `/ll:decide-issue` - 2026-09-25T19:03:07 - `26d04b78-61d2-44f6-aa98-56c6d251288d.jsonl`

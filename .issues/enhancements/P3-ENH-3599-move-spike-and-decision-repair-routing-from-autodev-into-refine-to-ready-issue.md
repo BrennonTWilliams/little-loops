@@ -113,10 +113,37 @@ must not be reset. Otherwise every re-entry grants a fresh spike budget.
 - `scripts/little_loops/loops/oracles/resolve-decision.yaml` (callers change, contract doesn't; relies on the `autodev-decide-ran` marker at line 249)
 - `scripts/little_loops/loops/auto-refine-and-implement.yaml` (reads `autodev-decision-unresolved.txt` at line 1112; unchanged here, migrated in ENH-3600)
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/loops/scan-and-implement.yaml:79` — `loop: autodev` sub-loop dispatch outside the known list; consumes autodev's terminal shape, which this issue reshapes [Agent 1 finding]
+- `scripts/little_loops/loops/auto-refine-and-implement.yaml` — beyond the known `:1112` reader, `finalize` also counts `autodev-skipped.txt` (`:1099`), `autodev-gate-blocked.txt` (`:1105`), reads `autodev-inflight` sentinels (`:1048-1058`) and awks `autodev-decision-unresolved.txt` (`:1133-1144`); the run-record ledger replacing autodev's markers must keep these counts meaningful until ENH-3600 [Agent 2 finding]
+- `scripts/little_loops/cli/issues/show.py:134` — ENH-2640 comment "spike-remediation flags read by autodev's check_spike_needed" (also `:339`); flags stay, comment goes stale [Agent 1 finding]
+- `scripts/little_loops/cli/issues/check_gate.py:4` — module docstring cites `check_gate_at_dequeue` and `recheck_after_size_review` as consumers [Agent 1 finding]
+- `scripts/little_loops/issue_lifecycle.py:75` — deferral-reason enum comments attribute `decision_unresolved` and neighbors to autodev states; values are loop-agnostic, comments need re-attribution [Agent 2 finding]
+- `scripts/little_loops/loops/spike-gate.yaml:28` — carries its own same-named `check_spike_needed` / `run_spike_auto` states; no edit needed, but any state-name grep sweep must scope to `autodev.yaml` [Agent 1 finding]
+- `scripts/little_loops/loops/rn-remediate.yaml:301` — its own `resolve_decision` / `resolve_decision_direct` / `check_decide_rate_limited` survive; the `:307` comment "Mirrors autodev's resolve_decision_direct" goes stale, and `scripts/tests/test_rn_remediate.py:279` docstrings assert that parity [Agent 1 finding]
+
 ### Tests
 - Behavioral, must pass unchanged: `test_spike_verdict_routing.py`,
   `test_autodev_decision_gate.py`, `test_autodev_scores_freshness.py`
 - Structural, rewrite: `test_fsm_topology.py`, `test_builtin_loops.py`, `test_autodev_loop.py`
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_ll_issues_check_gate.py` (TestAutodevRouting) — `test_unsatisfied_proof_gate_reaches_run_spike()` (~:214) asserts `check_proof_gate_before_implement.on_yes == run_spike` and writes `spike-runs-<ID>`; `test_spent_spike_budget_defers()` (~:228) and `test_implement_edges_route_through_guard()` (~:240) cover the deleted state's edges — currently listed only under ENH-3601 [Agent 1 finding]
+- `scripts/tests/test_builtin_loops.py` — beyond topology: the decide chain `test_decide_current_*` / `test_resolve_decision_direct_*` / `test_mark_decide_ran_*` / `test_recheck_after_decide_*` (~:9190-9457), the spike chain `test_check_spike_needed_*` / `test_run_spike_action_and_routing` / `test_rerun_confidence_after_spike_routing` (~:8940-9058), dequeue-decision routing (~:6754, :6783), skip-ledger tests (~:7949-7961), `test_record_decision_unresolved_defers_via_set_status` (~:8087), and `AUTODEV_NOT_READY_STATES` including `record_decision_unresolved` (~:9698) [Agent 3 finding]
+- `scripts/tests/test_autodev_decision_gate.py` — `TestSpikeTriageStructural` (~:417) asserts `check_spike_needed`/`run_spike` exist in autodev.yaml; `TestCheckDecisionAtDequeue*` (~:97, :225), `TestCheckDecisionBeforeSizeReview*` (~:334, :903) and `TestDecidePathSpikeGate` (~:474) cover the removed chain; `TestAssertDecisionClearedStructural::test_assert_decision_cleared_absent_from_autodev_states` (~:1004) is the "state must stay deleted" guard pattern to copy for the removal [Agent 3 finding]
+- `scripts/tests/test_spike_verdict_routing.py` — `test_autodev_routing_table()` (~:89-108) asserts `autodev-spike-inconclusive.txt` inside `skip_inflight`/`init` actions and `check_rearmed_spike_after_decide → run_spike`; `test_autodev_spike_gate_budget`, `test_dispatch_pre_deferral_remedy_spike_budget` (~:141), `test_rearm_spike_*` (~:181-215) and `test_autodev_ledgers_proposal_unsound_stop_not_as_refine_failed` (~:225) parametrize the removed gates [Agent 3 finding]
+- `scripts/tests/data/loop_interpolation_baseline.json` — `check_spike_needed` (:114) and `check_spike_needed_before_skip` (:123) entries go stale; delete in the same commit (`TestInterpSweepBaseline::test_completeness_guard` ratchet) [Agent 1 finding]
+- `scripts/tests/test_show.py:372` — `test_spike_flags_surfaced_as_bool_strings()` contract unchanged; docstrings naming autodev's gates go stale [Agent 1 finding]
+
+### Documentation
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/LOOPS_REFERENCE.md` — the autodev section (`### autodev — Targeted Refine-and-Implement`, ~:1013) names the removed states/markers verbatim: score-freshness paragraph (~:1077), diagram omissions (~:1079), outcome-failure triage (~:1085), decidability gate parity (~:1087); `:146` also credits `record_decision_unresolved` as "mirroring autodev's state of the same name" [Agent 2 finding]
+- `docs/reference/DEFERRAL_CODES.md:21` — Source column cites `record_decision_unresolved` and `record_spike_inconclusive` in both loops; this issue removes autodev's writers [Agent 1 finding]
+- `docs/reference/CLI.md:2318` — `**FSM loop use**` for `check-gate` names `check_gate_at_dequeue`, `recheck_after_size_review` and `check_proof_gate_before_implement`; `:2828` names `recheck_after_decide`/`recheck_scores` as `--honor-waiver` callers [Agent 1 finding]
+- `docs/reference/API.md:4663` — documents `record_decision_unresolved` and `recheck_after_size_review` as autodev deferral-code writers [Agent 1 finding]
+- `docs/reference/ISSUE_TEMPLATE.md:919` — `spike_attempted` row: "Read by autodev's `check_spike_needed` gate … never re-enters `run_spike`" [Agent 1 finding]
+- `docs/guides/DECISIONS_LOG_GUIDE.md:644` — describes autodev's `check_decision_needed` / `resolve_decision` handling [Agent 1 finding]
+- `skills/decide-issue/reference.md:290` — cites `record_decision_unresolved` (BUG-3593 routing); host mirrors under `.gemini/`, `.qwen/`, `.kimi-code/` regenerate via `ll-adapt --host <host> --apply` [Agent 1 finding]
 
 ### Codebase Research Findings
 
@@ -131,6 +158,16 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 - `cmd_check_gate` lives at `scripts/little_loops/cli/issues/check_gate.py:145` (verdicts `structured_proof` / `structured_open` / other).
 - Existing behavioral tests (`test_autodev_decision_gate.py`, e.g. `post_decide_chain_fsm` fixtures near `:140-170`, `:980-1115`) hard-code `implement_current` reachability through the post-decide chain; the "pass unchanged" AC conflicts with removing that chain, so which of those tests are behavioral (kept) versus structural (rewritten) needs a per-test call at implementation time.
 - Conventions in force: the child owns `oracles/resolve-decision` through `check_decision_mid_refine`/`resolve_decision_mid_refine` (`refine-to-ready-issue.yaml:309-322`), `..._mid_wire` (`:363-374`) and `resolve_decision_pre_breakdown` (`:1092`); a decision route belongs in the child as a `loop: oracles/resolve-decision` state, evidence: those three states.
+
+## Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `scripts/tests/data/loop_interpolation_baseline.json` — delete the stale `check_spike_needed` / `check_spike_needed_before_skip` entries in the same commit as the state removal
+- Update `docs/guides/LOOPS_REFERENCE.md` — rewrite the autodev-section paragraphs naming the removed spike/decision states and markers
+- Update `docs/reference/DEFERRAL_CODES.md`, `docs/reference/CLI.md`, `docs/reference/API.md`, `docs/reference/ISSUE_TEMPLATE.md` — re-attribute citations naming removed autodev states
+- Update `skills/decide-issue/reference.md` — drop the `record_decision_unresolved` autodev-routing mention; regenerate host mirrors (`ll-adapt --host <gemini|kimi-code|qwen> --apply`)
+- Scope state-name greps to `autodev.yaml` — `spike-gate.yaml` and `rn-remediate.yaml` carry same-named states that must survive
 
 ## Impact
 
@@ -170,6 +207,7 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 - [ ] `spike-runs-<ID>` persists across autodev re-entries into the child (real-FSM test: the spike budget does not reset)
 - [ ] `auto-refine-and-implement` and `oracles/resolve-decision` behavior unchanged
 - [ ] Behavioral test set passes unchanged; refuted/inconclusive spike routing (BUG-3593) still holds end to end
+  > ⚠ Superseded — spike-routing tests assert removed autodev markers
 
 ## Parent Issue
 
@@ -187,5 +225,6 @@ Decomposed from ENH-3577: Consolidate autodev issue preparation into a single co
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-25T20:46:48 - `2b4a714f-91fd-41aa-b2ac-63b11e2476ce.jsonl`
 - `/ll:refine-issue` - 2026-09-25T19:42:47 - `2f63920a-850e-4ac5-bf34-e7b8eb47e2e0.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-09-25T19:09:18 - `dcfdf31c-be65-47ce-9e6e-5b65d63239f2.jsonl`

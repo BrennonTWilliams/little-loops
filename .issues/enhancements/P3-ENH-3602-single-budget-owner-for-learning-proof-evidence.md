@@ -127,10 +127,46 @@ identity, so it cannot hold a per-run counter. Therefore:
 - `commands/ready-issue.md`
 - `scripts/little_loops/issue_manager.py`
 - `scripts/little_loops/learning_tests/`
+_Wiring pass added by `/ll:wire-issue`:_
+- `.gemini/skills/confidence-check/{SKILL.md,rubric.md,reference.md}`, `.kimi-code/skills/confidence-check/{...}`, `.qwen/skills/confidence-check/{...}` — host mirrors of the skill; regenerate with `ll-adapt --host <gemini|kimi-code|qwen> --apply` (gated by `test_wiring_skills_and_commands.py::test_host_artifacts_are_not_stale` :489 and `test_skill_mirrors_carry_companions` :612)
+- `.gemini/commands/ready-issue.toml`, `.kimi-code/skills/ll-ready-issue/SKILL.md` — command mirrors of `commands/ready-issue.md` (kimi renames it to a skill bridge)
+
+### Dependent Files (Callers/Importers)
+_Wiring pass added by `/ll:wire-issue`:_
+- Additional `is_record_stale` consumers that re-derive staleness today (the "single staleness rule" claim has this residual surface — consume `assess_proof` or record as explicitly out of scope): `scripts/little_loops/fsm/executor.py` `_execute_learning_state` (:1404, :1459), `scripts/little_loops/hooks/learning_tests_gate.py` (:28, :138, :145 — the only production `describe_staleness` consumer outside gate.py), `scripts/little_loops/hooks/install_learning_gate.py` (:32, :123), `scripts/little_loops/cli/learning_tests.py` `cmd_check --stale-aware` (:35-59), `scripts/little_loops/cli/ctx_stats.py` (:30, :1010), `scripts/little_loops/cli/history_context.py` (:69, :76), `scripts/little_loops/learning_tests/release_gate.py` `run_release_gate` (:36, :59), `scripts/little_loops/loops/migrate-sdk-version.yaml` (:37-44, embedded import)
+- Proof-status consumers beyond the issue's three: `skills/go-no-go/SKILL.md` (:160-295 — runs `ll-learning-tests check` per target, a fourth stale/refuted judge), `scripts/little_loops/parallel/worker_pool.py` proof-first-task gate (:61-102 — ll-parallel), `scripts/little_loops/cli/sprint/run.py` `_run_learning_gate_preflight` (~:206), `scripts/little_loops/cli/history_context.py` (:104-121), `scripts/little_loops/cli/loop/scaffold_eval.py` (:64, :100, :178-192 — `check_proof_*` states shell `--stale-aware`), `scripts/little_loops/loops/rn-implement.yaml` `check_learning_ready` (:640, :1136)
+- `LEARNING_GATE_BLOCKED` verdict-vocabulary consumers that must keep receiving the same tokens: `scripts/little_loops/loops/lib/common.yaml` `ll_auto_learning_gate_check` fragment (:368-386; consumed by autodev, rn-implement, rn-remediate), `rn-implement.yaml` (:995-1009, :1342-1353, :1431-1460, report-tally keys :1693-1694), `rn-remediate.yaml` (:887-1127), `skills/audit-loop-run/SKILL.md` (:275). The marker emit site `issue_manager.py:1216/:1234/:1255` (`LEARNING_GATE_BLOCKED` / `IMPLEMENT_FAILED` / `GATE_INFRA_FAILED`) must not move or rename
+- `loops/oracles/verify-confidence-scores.yaml` (:23, :73) and `rn-remediate.yaml` (:148, :725) — additional `/ll:confidence-check` invokers sharing the rubric contract being edited
 
 ### Tests
 - `scripts/tests/test_confidence_check_skill.py`, `test_spike_verdict.py`, `test_spike_skill.py`
 - New: one staleness/refutation fixture yields the same verdict from every consumer
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_learning_tests_gate.py` (:12-353) — the full `run_learning_gate_for_issue` suite mocks `subprocess.run`; no test pins staleness there today. Signature-stability constraint: stay `(issue_path, *, skip, cwd, targets)` — a new `attempts_used` parameter must carry a default or the mocks break
+- `scripts/tests/test_issue_manager.py` — `TestAutoManagerLearningGate` (:5243-5553) patches `"little_loops.issue_manager.run_learning_gate_for_issue"`; that dotted import path must remain, and :5511 asserts the `targets` kwarg
+- `scripts/tests/test_ready_issue_lint.py` — pins today's auto-invoke policy: refuted (:168) / missing (:180) auto-invoke `/ll:explore-api`, stale does NOT (:187, WARN-only), rubric auto-provision rows (:197, :203) — moving ready-issue onto `assess_proof`'s budget means updating these, not just the prose
+- `scripts/tests/test_confidence_check_skill.py` — content pins on the skill/rubric text: Phase 1.5 prefetch (:368-409, incl. STOP override :399), penalty rows −10 missing/refuted / −5 stale (:421-426) — keep or consciously update
+- `scripts/tests/test_cli_learning_tests.py` (:274-340) — `--stale-aware` `cmd_check` behavior pins
+- `scripts/tests/test_learning_tests_version_staleness.py` + `test_learning_tests_discoverability.py:450-498` — `is_record_stale`/`describe_staleness` stay green (pure functions); new coverage should assert `ProofVerdict` carries the reason and that the budget cap is enforced
+- `scripts/tests/test_fsm_fragments.py` (:2754, :2775 — `GATE_INFRA_FAILED`-before-`LEARNING_GATE_BLOCKED` ordering), `test_builtin_loops.py` (`TestLearningGateConsistency` :18467, learning-gate routing :7985-8066, `--skip-learning-gate` :8341, :18178, `LEARNING_GATE_BLOCKED_TOTAL` :17052), `test_rn_implement.py:464-472` (per-issue sidecar outcome)
+- Shared-fixture convention: no repo-wide multi-module fixture exists — model the new "same fixture, every consumer" test on the dual-parametrize idiom of `test_route_spike_verdict_classification` (`test_spike_verdict_routing.py:50-63`); consumer-parity coverage over executor/hooks/ctx_stats/history_context/release_gate entry points is new territory (none tested today)
+- Mirror/content gates: `test_wiring_skills_and_commands.py` (:489, :612, content rows :67/:364/:678/:888), `test_docs_audience_gate.py` (harness dirs — cite `little_loops.<module>`, never source-repo paths)
+
+### Documentation
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/ISSUE_TEMPLATE.md:933` — the `learning_tests_required` verdict mapping (proven→PASS, stale→WARN, refuted/missing→NOT_READY) that `assess_proof` takes ownership of
+- `docs/reference/API.md` — `little_loops.learning_tests` Public Functions table (:7458-7469) plus a new `### assess_proof` section; `### run_learning_gate_for_issue` (:7555-7572) prose needs the delegated stale/refuted decision
+- `docs/guides/LEARNING_TESTS_GUIDE.md` (:333-353), `docs/guides/RECURSIVE_LOOPS_GUIDE.md` (:264-338 outcome-token table), `docs/guides/LOOPS_REFERENCE.md` (:469-488 pre-gate section), `docs/ARCHITECTURE.md` (Learning Test Registry :1543, schema v26 :665), `docs/reference/CLI.md:4489` (ll-history-context statuses)
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Regenerate host mirrors after editing skills/commands: `ll-adapt --host <gemini|kimi-code|qwen> --apply` (confidence-check companions ×3 hosts; `.gemini/commands/ready-issue.toml`; `.kimi-code/skills/ll-ready-issue/SKILL.md`)
+- Update `docs/reference/API.md` (`assess_proof` section + `run_learning_gate_for_issue` prose) and `docs/reference/ISSUE_TEMPLATE.md:933` verdict mapping
+- Keep the marker triple (`LEARNING_GATE_BLOCKED` / `IMPLEMENT_FAILED` / `GATE_INFRA_FAILED`) emitting from `process_issue_inplace` at the same site — `loops/lib/common.yaml`'s fragment and the rn-* report tallies grep them
+- Keep `run_learning_gate_for_issue` backward-compatible (keyword-only additions with defaults) — `TestAutoManagerLearningGate` mocks it by dotted path
+- Decide the disposition of the additional `is_record_stale` consumers listed under Dependent Files (executor, hooks ×2, cli ×3, release_gate, migrate-sdk-version.yaml): consume `assess_proof` or record as explicit residual surface
 
 ## Impact
 
@@ -162,6 +198,7 @@ Decomposed from ENH-3577: Consolidate autodev issue preparation into a single co
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-25T20:51:15 - `85e4cae3-0d07-49cf-9a70-1d94df7e46ab.jsonl`
 - `/ll:refine-issue` - 2026-09-25T19:41:25 - `2f63920a-850e-4ac5-bf34-e7b8eb47e2e0.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-09-25T19:09:20 - `dcfdf31c-be65-47ce-9e6e-5b65d63239f2.jsonl`
 - `/ll:decide-issue` - 2026-09-25T19:02:00 - `ccfdabfd-5c2e-49a6-bfd7-abb914a90640.jsonl`

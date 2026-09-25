@@ -80,10 +80,21 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 - new `scripts/little_loops/autodev_summary.py` (or equivalent)
 - `docs/ARCHITECTURE.md` loop section
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/loops/README.md` — `autodev` (:34) and `refine-to-ready-issue` (:31) catalog rows describe the run_dir marker pattern; update as markers go [Agent 1 finding]
+
 ### Tests
 - New unit tests for summary construction from records
 - `summary.json` truthfulness on every exit (EPIC-3565 AC) incl. rate-limit exits (BUG-3567)
 - Structural, rewrite: `test_autodev_loop.py`, `test_fsm_topology.py`
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_autodev_decision_gate.py` — pins `autodev-decide-ran` in `mark_decide_ran_at_dequeue` (:160), `record_decision_unresolved`'s ledger write (:1028), design-remedy attempted markers (:732, :739), and four `on_rate_limit_exhausted == "finalize_rate_limited"` pins (:459, :471, :606, :727) — breaks as markers/routing move [Agent 1 finding]
+- `scripts/tests/test_spike_verdict_routing.py` — `test_autodev_routing_table` (:107-108) asserts `autodev-spike-inconclusive.txt` in `skip_inflight` AND `init`; `test_autodev_ledgers_proposal_unsound_stop_not_as_refine_failed` (:229) pins the exact `grep -qxF "$ID" ... autodev-proposal-unsound.txt` line — both break [Agent 1 finding]
+- `scripts/tests/test_auto_refine_closure_accounting.py` — seeds `autodev-passed.txt` (:116) against a real mini project (`_make_project` :43); the closest fixture precedent for `build_summary` closure tests [Agent 3 finding]
+- `scripts/tests/test_recursive_finalize.py:134` — seeds `autodev-new-children.txt` [Agent 1 finding]
+- `scripts/tests/test_builtin_loops.py` — breaking sites beyond `TestAutodevLoop`: `TestRefineToReadyIssueSubLoop.test_proposal_revision_failure_routing` (:3161, `autodev-proposal-unsound.txt` in action), the `autodev-decide-ran` trio (:9378, :9448, :9457), the `skip_inflight` ledger pair (:7949, :7961), `TestAutoRefineAndImplementLoop._run_finalize` harness (:5018) + literal-filename gates (:5634, :5663), the loop-state set pin (:7913), `MR11_MARKER_ALLOWLIST` (:21037, asserted :21249), and the `TestInterpSweepBaseline` bidirectional ratchet (:20974) [Agent 3 finding]
+- `scripts/tests/test_fleet_improve.py` — the module-test pattern for `autodev_summary`: `main(argv)` + `EXIT_*` constants, malformed-JSON → `EXIT_ERROR` (`test_cmd_select_bad_sidecar_exit_2` :328); plus `TestFleetLoopImproveLoop.test_shell_states_call_helper_module_not_inline_logic` (:21440 in test_builtin_loops.py) — the thin-shell structural gate to imitate for the rewritten `finalize_done` [Agent 3 finding]
 
 ### Codebase Research Findings
 
@@ -96,6 +107,34 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 - Ledger lifecycle facts: `init` pre-creates 12 ledger files (single `printf '' >` each); `autodev-gate-infra.txt` and `autodev-scores-absent.txt` are append-only and NOT pre-created; `autodev-stop-reason` is written only by `finalize_rate_limited`; `autodev-passed.txt` is written only by `finalize_done` (test-enforced).
 - Test locations differ from the Tests section: `finalize_done` behavioral coverage lives in `test_builtin_loops.py` `TestAutodevLoop` (:6643; `_run_finalize_done` harness :7475 executes the action under `bash -c`; promotion/phantom/no-op/rate-limit tests :7389-:7574; `test_check_passed_stages_instead_of_passes` :7459). `test_autodev_loop.py` has zero `finalize_done` references (it covers per-iteration markers); `test_fsm_topology.py` only pins the autodev state count (105). `scripts/tests/data/loop_interpolation_baseline.json` carries a `finalize_done` interpolation-baseline entry that must stay valid through the rewrite.
 - `summary.json` current key set (single printf at the end of `finalize_done`): `verdict`, `closed`, `not_closed`, `skipped`, `gate_blocked`, `decision_unresolved`, `not_started`, `inflight_unresolved`, `abandoned`, `stop_reason`, `pending`; verdict ladder success → partial → phantom → not_started → no-op, with `rate_limit` stop reason overriding to `rate_limited`, and `phantom` exiting 1 to route `on_no: failed`. This is the FEAT-3573-as-of shape the Scope Boundary pins.
+
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/loops/auto-refine-and-implement.yaml` — `init` deletes the shared `run_dir/summary.json` (:95) and `finalize` overwrites it (:1255), so autodev's summary.json is transient on the sprint path; `finalize` reads six ledger files plus `autodev-queue.txt` (`recheck_set` :477 residual fold-back) — any ledger in the removal set orphans its counts, and if the child stops writing `autodev-decision-unresolved.txt`, `DECISION_UNRESOLVED` undercounts child-side unresolved [Agent 2 finding]
+- `scripts/little_loops/loops/sprint-refine-and-implement.yaml` — `read_outcome` cats and `record_crash` overwrites the same shared `summary.json` path (third writer) [Agent 2 finding]
+- `scripts/little_loops/loops/oracles/resolve-decision.yaml` — writes `decide-options-deposited-<ID>` (:56) and `decide-rate-limited-<ID>` handshake markers autodev reads (`dequeue_next`, `check_decide_rate_limited`); not `autodev-`-prefixed, so the AC's "No `autodev-*` preparation marker" wording does not cover them — they remain the cross-loop run-dir contract after this issue [Agent 2 finding]
+- `scripts/little_loops/fsm/executor.py:653` — no `on_max_steps` handler exists, so the step-cap exit calls `_finish("max_steps")` without passing through `finalize_done`: no summary.json on that path today (the parent compensates on the sprint path only) — the every-exit AC's known gap [Agent 2 finding]
+- `scripts/little_loops/fsm/persistence.py` (`archive_run`), `scripts/little_loops/cli/loop/audit.py`, `scripts/little_loops/cli/loop/evidence.py`, `scripts/little_loops/hooks/pre_compact_handoff.py` — shape-agnostic summary.json consumers; safe under key-shape preservation [Agent 2 finding]
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/LOOPS_REFERENCE.md` — autodev section (:1013-1087) documents the marker vocabulary (:1033, :1035, :1079, :1083, :1085) and the parent/child closure-accounting contract (:1007) — prune marker references as they are removed; the end-user account stays here even after the ARCHITECTURE.md contract lands [Agent 1+2 finding]
+- `docs/reference/DEFERRAL_CODES.md:30` — names `autodev-scores-absent.txt` / `autodev-gate-infra.txt` by filename [Agent 1 finding]
+- `docs/reference/COMMANDS.md:944` — `ll-loop audit` phantom/honest-failure classification keyed on summary.json presence and claimed-success counters [Agent 2 finding]
+- `skills/audit-loop-run/SKILL.md:271` — documents autodev's summary keys (`not_started`, `notstarted_*`, `refine_failed_infra`, `oversized_atomic`); update for the FEAT-3573 key split [Agent 2 finding]
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Preserve `summary.json`'s key set through the Python rewrite — `test_auto_refine_closure_accounting.py`, `TestAutoRefineAndImplementLoop` key assertions, and MR-13's `"abandoned"`-key emission requirement all depend on it; MR-13's shell-text scan goes vacuously silent when the printf moves to Python, so its enforcement shifts to the new module's unit tests
+- Keep autodev's four interpolation-baseline entries valid (`check_blockers_at_dequeue`, `check_reconcile_needed`, `check_spike_needed`, `check_spike_needed_before_skip`); the thin `python3 -m little_loops.autodev_summary --run-dir ${context.run_dir}` call is plain interpolation and needs no new entry
+- Migrate `auto-refine-and-implement.yaml`'s `autodev-decision-unresolved.txt` count together with the child's writer, or document the closure-ledger exception — the six ledger reads plus `recheck_set`'s queue read stay by Scope Boundaries
+- Decide `decide-options-deposited-<ID>` / `decide-rate-limited-<ID>` (resolve-decision handshake, not `autodev-`-prefixed) — keep or migrate; the AC grep gate's wording must name what it covers
+- Add the thin-shell structural gate (`test_shell_states_call_helper_module_not_inline_logic` pattern, :21440) for the rewritten `finalize_done`
+- Update `scripts/little_loops/loops/README.md` rows and `docs/guides/LOOPS_REFERENCE.md` marker references as markers are removed
 
 ## Impact
 
@@ -157,5 +196,6 @@ Decomposed from ENH-3577: Consolidate autodev issue preparation into a single co
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-25T20:49:53 - `4a475966-a47c-4657-a3e4-16e6706f4c4d.jsonl`
 - `/ll:refine-issue` - 2026-09-25T19:53:36 - `52506a27-e6a0-49d9-99b0-9b89990953d8.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-09-25T19:09:18 - `dcfdf31c-be65-47ce-9e6e-5b65d63239f2.jsonl`

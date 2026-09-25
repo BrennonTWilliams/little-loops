@@ -113,10 +113,28 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 - `scripts/little_loops/cli/issues/` (writer subcommand)
 - `.claude/workflows/refine-to-ready.js` (gitignored, machine-local mirror of the loop)
 
+### Dependent Files (Callers/Importers)
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/loops/autodev.yaml` — `skip_inflight` (~L571) is the **only** loop reader of `refine-terminal-class` (`CLASS=$(cat ... || printf 'quality')`); byte-identical legacy output is load-bearing for its infra-vs-quality split. `copy_broke_down` (~L642) copies `refine-broke-down` → `autodev-broke-down`; `dequeue_next` (:107) clears it (but not the terminal class)
+- `scripts/little_loops/loops/recursive-refine.yaml` — also subloops refine-to-ready-issue (`loop: refine-to-ready-issue` at :237); consumes `refine-broke-down` (:217 clear, :484 read)
+
 ### Tests
 - New unit tests for the record schema/round-trip
 - Real-FSM test: each child terminal writes a record whose `outcome` matches the mapping
 - `scripts/tests/test_builtin_loops.py` (structural)
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_builtin_loops.py` — `MR11_MARKER_ALLOWLIST` (:21037) and the captured-key allowlist (:21129-21167, incl. `captured.check_outcome.*`): new `capture:` keys or lint markers on added states/actions require allowlist additions. Interp-sweep scope: `loop_interpolation_baseline.json` records only `${...}` tokens inside **Python bodies** (`interp_sweep.py:37-48`) — a plain `ll-issues run-record write` shell action creates no site; the JSON is hand-maintained in-commit (no regen CLI; `test_completeness_guard` :20974 is bidirectional)
+- Byte-identity pins: `test_builtin_loops.py:1993` (`read_text() == "gate_unmet"` byte-exact); `test_resolve_issue_does_not_reset_spike_counter` (`test_spike_verdict_routing.py:153`) asserts `"spike" not in` the `resolve_issue` action — the per-writer record deletion must preserve that
+- Exemplars: record round-trip → `TestABJsonIO` (`test_ab_writer.py:157-216`) and `TestRecordVersionFields` (`test_learning_tests_version_staleness.py:283-299`); `cmd_` invocation → `_run` (`test_arm_proposal_revision.py:40`); state-action idioms → `TestRefineToReadyIssueSubLoop` (`test_builtin_loops.py:1434`), `_run_classify_terminal` (:2521), stub-ll-issues (`test_spike_verdict_routing.py:21-39`)
+- No test pins `.claude/workflows/refine-to-ready.js` content — the mirror change is untested territory; a mirror-content test would be new
+- Corpus gates for any new state: `test_all_validate_as_valid_fsm` (:77), `test_no_failure_edge_routes_to_a_success_terminal` (:87); no epilog/subcommand-enumeration test exists — mirror `test_subcommand_in_help` (`test_ll_issues_check_gate.py:157`) for the new subcommand
+- Grep-noise warning: `scripts/little_loops/cli/logs.py:1110` defines an unrelated `_LoopRunRecord` (fleet-review history aggregation)
+
+### Documentation
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/CLI.md` — `#### ll-issues run-record` section plus the subcommand-list line (~L2234)
+- `docs/reference/API.md` — Sub-commands table row under the `ll-issues` docs (~L4625-4651; check-gate row at :4648); full `## little_loops.cli.issues.<name>` sections are NOT the convention (only create/scaffold_epic/link_epics have them)
+- `docs/guides/LOOPS_REFERENCE.md` — refine-to-ready-issue section: inventory row (:82), ENH-3031 gate-chain paragraph (:144), and the autodev "Notes" paragraph (~L1081) documenting the `classify_terminal` → `refine-terminal-class` contract — the run record parallels this contract; extend with record semantics
 
 ### Codebase Research Findings
 
@@ -125,6 +143,15 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 - Test idioms for the write sites, all established: run the real state action under `bash -c` with a stub `ll-issues` first on PATH (test_spike_verdict_routing.py one-line stub; test_autodev_scores_freshness.py `_interpolate`/`_run_action` ~L113-144), run the real `ll-issues` against a tmp `.issues/` tree (test_ll_issues_check_gate.py `_run_state` ~L26-51), or invoke `cmd_<name>(config, args)` directly (test_arm_proposal_revision.py:40). Routing-level assertions use a `yaml.safe_load` fixture over the loop YAML (test_builtin_loops.py `TestRefineToReadyIssueSubLoop` ~L1434), and test_builtin_loops.py:7935 `test_check_readiness_call_sites_pass_honor_waiver` pins `--honor-waiver` at every call site.
 - MR-3 (`fsm/validation/meta_rules.py:202`) lints that loop shell actions write artifacts under `${context.run_dir}/` — the record path satisfies it by construction; `.issues/` and `.loops/diagnostics/` are the sanctioned exceptions.
 - `.claude/workflows/refine-to-ready.js` exists but contains none of the terminal-state names (classify_terminal, check_outcome, breakdown_issue, check_issue_resolved — searched, zero hits); the mirror is structural, not state-complete. "Mirror the record write" means adding it to whatever terminal handling the mirror does have, not porting the FSM state graph.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `docs/guides/LOOPS_REFERENCE.md` — run-record semantics alongside the `refine-terminal-class` contract paragraphs
+- Extend `MR11_MARKER_ALLOWLIST` / captured-key allowlists in `scripts/tests/test_builtin_loops.py` when adding captures or markers to the new states
+- Keep the `resolve_issue` spike-counter pin green (`test_spike_verdict_routing.py:153` — no "spike" token in the action)
+- Mirror note: `.claude/workflows/refine-to-ready.js` is phase-structural (`meta.phases`) — add the record write to its Finalize-phase handling, not a state port
 
 ## Program Design
 
@@ -184,5 +211,6 @@ Decomposed from ENH-3577: Consolidate autodev issue preparation into a single co
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-25T20:51:15 - `85e4cae3-0d07-49cf-9a70-1d94df7e46ab.jsonl`
 - `/ll:refine-issue` - 2026-09-25T19:50:11 - `2f63920a-850e-4ac5-bf34-e7b8eb47e2e0.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-09-25T19:09:19 - `dcfdf31c-be65-47ce-9e6e-5b65d63239f2.jsonl`

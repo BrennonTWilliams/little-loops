@@ -81,6 +81,15 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 ### Dependent Files (Callers/Importers)
 - `ll-advise` CLI (`--json` payload contract; see `skills/advise/SKILL.md` step 3 for the 7 keys)
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/issue_manager.py:849` — `process_issue_inplace` calls `consult_for_trigger` with trigger `confidence_gate`; `scripts/little_loops/hooks/pre_done.py:175` calls it with trigger `pre_done` — both spend the same per-task `max_consults_per_task=3` budget the advise state competes with; exhaustion surfaces as exit 2 (`budget_exhausted`) [Agent 1 finding]
+- `scripts/little_loops/cli/loop/runner.py:359` — sets `LL_LOOP_RUN_ID` for the whole run, so a bare shell-state `ll-advise` bills the per-run budget bucket; the per-issue idiom (`LL_ISSUE_ID="$ID" ...`, autodev.yaml:2065) is the alternative — pick deliberately [Agent 2 finding]
+- `scripts/little_loops/cli/loop/run.py:345` — run pre-flight aborts on any `${context.<key>}` without `:default=` that is missing from that loop's `context:` block; the flag must be declared in BOTH `autodev.yaml` and `prepare-issue.yaml` [Agent 2 finding]
+- `scripts/little_loops/cli/loop/next_loop.py:131` — `_resolve_autodev_params` binds only `input` for `ll-loop next`; the new autodev context key must stay optional or this resolver's behavior changes [Agent 1 finding]
+- `scripts/little_loops/init/writers.py:133` — `Bash(ll-advise:*)` is already in consuming projects' permission allowlist (synced by `ll-verify-cli-allowlist`); no change needed — confirms the shell-state route won't hit a permission wall [Agent 1 finding]
+- `scripts/little_loops/session_store/writers.py:2272` — every consult writes an `advisor_consults` telemetry row (`write_advisor_consult`); enabled advise states generate rows automatically [Agent 1 finding]
+- `scripts/tests/test_advisor.py:718` — `test_only_consult_for_trigger_calls_consult` pins `consult()`'s single-caller contract; the shell route via `ll-advise` is unaffected, a direct Python call would break it [Agent 1 finding]
+
 ### Similar Patterns
 - `run_go_no_go` (moves to `prepare-issue.yaml` in ENH-3601) - existing adversarial-review state and its `outcome_gate_waived` stamping
 
@@ -89,11 +98,20 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 - `scripts/tests/test_fsm_validation_meta_rules.py` - MR rules (MR-1 no stdout parsing) still pass
 - `scripts/tests/test_advise_skill.py`, `scripts/tests/test_cli_advise.py` - reference for advise invocation contract
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_builtin_loops.py` — the anchor-pattern file (not previously listed): `test_go_no_go_escalation_chain_shape` (:8187) + `_run_go_no_go_eligible` (:8223, bash -c with a stub CLI on PATH) are the template for the advise chain; `TestLearningGateConsistency.test_skip_flag_threads_through_sprint_chain` (:18698) is the flag pass-through chain pattern; `TestNoContextParameterKeyDuplication` (:21482) forbids the flag in both `context:` and `parameters:`; `TestBuiltinLoopReferencesResolve` (:17511) fails on any `loop: prepare-issue` reference before ENH-3601 lands [Agent 3 finding]
+- `scripts/tests/test_cli_advise.py:38` — `_isolate_advisor_budget` isolates `.ll/advisor-budget/` state to tmp_path — reuse it so repeated state-routing tests don't trip the budget; `test_success_prints_exact_json_keys` (:53) pins the 7-key payload the mapping state parses [Agent 3 finding]
+- `scripts/tests/test_autodev_decision_gate.py:315` — `test_autodev_yaml_loads_and_validates` is the in-process `ll-loop validate autodev` equivalent (no subprocess test runs the CLI) [Agent 3 finding]
+- `scripts/tests/test_fsm_schema.py:2461` / `scripts/tests/test_fsm_executor.py:7402` — `context_passthrough` schema round-trip and executor merge semantics — the pass-through mechanism's contract tests [Agent 3 finding]
+
 ### Documentation
 - `docs/reference/CLI.md` - `ll-advise` reference (link only if the new flag is user-facing)
 
 ### Configuration
 - New autodev `context:` flag, default off (name TBD in Open Questions resolution)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- No new schema keys needed: `fsm-loop-schema.json` top-level `context` is free-form and all `AdvisorConfig` keys already exist (`config-schema.json:1879`); the flag needs only `context:` declarations in both loop files (MR-11) [Agent 2 finding]
 
 ### Codebase Research Findings
 
@@ -114,6 +132,16 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 3. Route on the verdict; when the flag is off, skip the state so the existing flow is unchanged.
 4. Add tests to `test_autodev_loop.py` covering default-off, enabled routing, and rate-limit exhaustion.
 5. Verify with `ll-loop validate autodev` and `python -m pytest scripts/tests/test_autodev_loop.py scripts/tests/test_fsm_validation_meta_rules.py`.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Declare the opt-in flag in BOTH `autodev.yaml` and `prepare-issue.yaml` `context:` blocks (run pre-flight `cli/loop/run.py:345` + MR-11); keep it out of `parameters:` (`TestNoContextParameterKeyDuplication`); adding only a context flag avoids the 105-state pin — adding advise *states* to `autodev.yaml` would bump it (states in `prepare-issue.yaml` do not)
+- Match the go-no-go chain shape: gate state (flag check, default-off skip route) → advise state (writes `advise-<ID>.json`; `fragment: with_rate_limit_handling` only on non-`loop:` states, per the `:7913` loop-state pin) → verdict-read state (embedded Python, MR-1)
+- Exit-code routing: exit 2 (incl. `budget_exhausted`) = "no advice" continue or `retryable_error`; any failure edge into a success terminal trips `test_no_failure_edge_routes_to_a_success_terminal`; `retryable_error` exists in no shipped loop — it arrives with ENH-3601 (ordering dependency already in `blocked_by`)
+- Budget billing: decide per-run (`LL_LOOP_RUN_ID` default) vs per-issue (`LL_ISSUE_ID` prefix idiom, autodev.yaml:2065) — the state competes with `issue_manager.py:849` and `hooks/pre_done.py:175` consults for the same cap
+- Write the new structural tests in `test_builtin_loops.py` alongside the go-no-go chain tests (chain-shape pins + bash -c stub-`ll-advise` execution + default-off), not only in `test_autodev_loop.py`
 
 ## Impact
 
@@ -172,6 +200,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-25T20:49:53 - `4a475966-a47c-4657-a3e4-16e6706f4c4d.jsonl`
 - `/ll:refine-issue` - 2026-09-25T19:53:37 - `52506a27-e6a0-49d9-99b0-9b89990953d8.jsonl`
 - `/ll:decide-issue` - 2026-09-25T19:38:31 - `5a268ea5-1e20-43b6-ab65-c60ca9422822.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-09-25T19:09:19 - `dcfdf31c-be65-47ce-9e6e-5b65d63239f2.jsonl`

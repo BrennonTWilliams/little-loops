@@ -87,9 +87,18 @@ Split `cancelled` from `closed` in the summary.
 - `scripts/little_loops/loops/oracles/code-run-gate.yaml`
 - `skills/manage-issue/SKILL.md` — Phase 4 verification commands
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `.gemini/skills/manage-issue/SKILL.md`, `.kimi-code/skills/manage-issue/SKILL.md`, `.qwen/skills/manage-issue/SKILL.md` (+ each mirror's `templates.md`) — host mirrors carry the same Phase 4 command-append bug (`{{config.project.test_cmd}}` at :355); `test_wiring_skills_and_commands.py` mirror gates enforce regeneration via `ll-adapt --host <host> --apply` [Agent 1 finding]
+- `scripts/little_loops/loops/README.md` — package-data catalog row for `oracles/code-run-gate` (:194) documents the six-command matrix; a format stage joins it [Agent 1 finding]
+
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/issue_lifecycle.py` — lifecycle verification
 - `scripts/little_loops/issue_manager.py` — ll-auto
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/loops/auto-refine-and-implement.yaml` — `finalize` derives `NOT_CLOSED`/`SKIPPED`/`GATE_BLOCKED`/`DECISION_UNRESOLVED` from `autodev-passed.txt`/`autodev-skipped.txt`/`autodev-gate-blocked.txt`/`autodev-decision-unresolved.txt`/`autodev-inflight`/`autodev-queue.txt` in the shared run_dir (reads :1058-:1112); under the new gate, a frontmatter-closed issue that fails quality evidence stays out of `autodev-passed.txt` and silently disappears from the parent's `closed`/`not_closed` accounting unless a new ledger or summary key is read there [Agent 1+2 finding]
+- `scripts/little_loops/parallel/worker_pool.py` — imports `verify_work_was_done` in `_verify_work_was_done` (:43, :1380); the ll-parallel/ll-sprint quality-evidence consumer — consistency overlap, no autodev-path edit [Agent 1 finding]
+- `scripts/little_loops/fsm/persistence.py` (`archive_run` copies `run_dir/summary.json`, :660), `scripts/little_loops/cli/loop/audit.py` (:194), `scripts/little_loops/cli/loop/evidence.py` (:214, :314), `scripts/little_loops/hooks/pre_compact_handoff.py` (:126-:130) — shape-agnostic summary.json consumers (copy/hash/passthrough, no key reads); additive cancelled/implemented keys are safe for all four [Agent 1 finding]
 
 ### Similar Patterns
 - `rn-implement.yaml` usage of `oracles/code-run-gate`
@@ -97,8 +106,27 @@ Split `cancelled` from `closed` in the summary.
 ### Tests
 - `scripts/tests/test_builtin_loops.py` — `TestAutodevLoop` finalize tests
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_builtin_loops.py:633` — `TestPrePatchCheckReachability.test_code_run_gate_state_set_unchanged` freezes the oracle's state set to exact equality (9 states); adding a format *state* trips it, and per its own comment requires re-reading ENH-2997's Scope Boundaries [Agent 1 finding]
+- `scripts/tests/test_builtin_loops.py:15117` — `TestCodeRunGateOracle.test_run_states_chain_forward_and_terminate_at_aggregate` and `test_run_states_converging_routing_not_regressed` (:15428) pin the run_* chain edges pairwise; `aggregate`'s sidecar loop (`for f in build.txt test-results.txt typecheck.txt lint.txt health.txt`) must grow the format sidecar [Agent 3 finding]
+- `scripts/tests/test_builtin_loops.py:578` — `TestCodeRunGateOptionalParams.test_resolve_commands_interpolates_without_cmd_overrides` is the `:default=` tripwire: every new `format_cmd` guard AND assignment RHS needs `:default=` or the GATE_FAILED_INFRA laundering regression returns [Agent 1 finding]
+- `scripts/tests/test_builtin_loops.py:20963` — `TestInterpSweepBaseline` and `MR11_MARKER_ALLOWLIST` (:21037, asserted :21249): a new `context.format_cmd` ref in the oracle needs both a baseline entry and an allowlist tuple [Agent 1 finding]
+- `scripts/tests/test_bug3269_test_cmd_resolution_gate.py` — `format_cmd` already in `PROJECT_COMMAND_KEYS` (:47); the oracle is a permanent exemption (:58); assertion 2 requires any `${context.format_cmd}` ref in `autodev.yaml` to resolve against a declared `context:`/`parameters:` key [Agent 1 finding]
+- `scripts/tests/test_builtin_loops.py` — `TestAutodevLoop` promotion/phantom/no-op/mixed-run tests execute `finalize_done` with no quality-evidence artifacts (fixtures must gain them when promotion is gated); `test_implement_current_routes_to_verify_impl_closed` breaks if a gate state is interposed; `TestAutodevAuthGuard.test_autodev_implement_current_failure_chain_clears_inflight` (:18306) requires new states in that region to clear `autodev-inflight` or route only to clearing states [Agent 3 finding]
+- `scripts/tests/test_rn_remediate.py` — `TestRunCodeGate` (:2015) pins the existing call-site contract (`run_code_gate.loop`, `with:` bindings, GATE_PASS/GATE_SKIP routing) that must stay behaviorally unchanged; `scripts/tests/test_rn_refine.py:1648` pins `verify_leaf`'s `oracles/code-run-gate` wiring likewise [Agent 1 finding]
+- `scripts/tests/test_manage_issue_changelog_gate.py` — asserts a verbatim `GATE_SNIPPET` inside `skills/manage-issue/SKILL.md`; drift-sensitive to any Phase 4 edit [Agent 1 finding]
+- `scripts/tests/test_wiring_skills_and_commands.py` — mirror gates plus BUG-2408 substring pins (`foreground-blocking`, `scheduled wakeup`) and the `SPAWN_SITE_INVENTORY` line pin (`skills/manage-issue/SKILL.md`, line 110) — Phase 4 rewording must preserve these or regenerate mirrors [Agent 1 finding]
+- `scripts/tests/test_enh494_skill_companions.py` — 500-line cap; `skills/manage-issue/SKILL.md` sits at the cap, so Phase 4 growth requires companion extraction to `templates.md` [Agent 1 finding]
+
 ### Documentation
 - `docs/guides/` loop guide for autodev, if it documents closure semantics
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/loops.md:874` — full `oracles/code-run-gate` reference (params table :889, stage flow, direct-call example :927) gains the format stage/param [Agent 1 finding]
+- `docs/guides/LOOPS_REFERENCE.md:1007` — `Closure accounting` documents `autodev-passed.txt`/`autodev-skipped.txt` as auto-refine's sources; `:1079` documents `finalize_done`'s bucket list — the cancelled/implemented split edits both [Agent 2 finding]
+- `docs/guides/RECURSIVE_LOOPS_GUIDE.md:253` — `GATE_FAILED` outcome-token row enumerates "build / test / typecheck / lint / health"; format joins the enumeration [Agent 2 finding]
+- `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md:692` — declares `oracles/code-run-gate.yaml` a permanent exemption for command resolution; the format stage's `format_cmd` resolution follows the same exemption [Agent 2 finding]
+- `docs/reference/CONFIGURATION.md:305` — `format_cmd` entry gains its first runtime reader [Agent 2 finding]
 
 ### Configuration
 - `project.format_cmd`, `lint_cmd`, `type_cmd`, `test_cmd`
@@ -137,6 +165,18 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 3. Persist structured results per revision; gate `finalize_done` promotion on them
 4. Fix manage-issue Phase 4 to use configured commands verbatim
 5. Split cancelled from implemented closures in `summary.json`
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `aggregate` in `oracles/code-run-gate.yaml` — add the format sidecar to its file list and keep the `SKIP <cmd>=null` first-line convention so `classify` routing survives
+- Handle `TestPrePatchCheckReachability` — a new oracle *state* trips the frozen 9-state exact-set equality; either extend the freeze knowingly (its comment requires re-reading ENH-2997's Scope Boundaries) or add format as a stage of an existing state
+- Route gate-failed closures through the parent — `auto-refine-and-implement.yaml` `finalize` must count them (new ledger or summary key) or they vanish from `closed`/`not_closed`
+- Add baseline + MR11 allowlist entries for the oracle's new `context.format_cmd` refs; keep `:default=` on both guard and RHS in `resolve_commands`
+- Update `docs/reference/loops.md`, `docs/guides/LOOPS_REFERENCE.md` (:1007, :1079), `docs/guides/RECURSIVE_LOOPS_GUIDE.md:253`, and `scripts/little_loops/loops/README.md:194` for the format stage
+- Regenerate `skills/manage-issue` mirrors — `ll-adapt --host gemini|kimi-code|qwen --apply` after the Phase 4 fix; keep the BUG-2408 substrings and the `SPAWN_SITE_INVENTORY` line pin; extract to `templates.md` if the 500-line cap is crossed
+- Update `test_builtin_loops.py` finalize fixtures with quality-evidence artifacts when promotion is gated, and keep new autodev states inside the `autodev-inflight`-clearing chain (`test_autodev_implement_current_failure_chain_clears_inflight`)
 
 ### Codebase Research Findings
 
@@ -202,6 +242,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-25T20:49:53 - `4a475966-a47c-4657-a3e4-16e6706f4c4d.jsonl`
 - `/ll:refine-issue` - 2026-09-25T19:53:36 - `52506a27-e6a0-49d9-99b0-9b89990953d8.jsonl`
 - `/ll:decide-issue` - 2026-09-25T19:39:02 - `f72e39ee-7f4f-46b8-b438-d29d8550cab9.jsonl`
 - `/ll:capture-issue` - 2026-09-24T19:42:31 - `59fe3bd4-3622-4dd2-bb8b-ad5cc55e79ec.jsonl`

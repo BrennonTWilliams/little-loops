@@ -105,9 +105,15 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 
 ### Files to Modify
 - `scripts/little_loops/loops/autodev.yaml` — `check_proof_gate_before_implement`, `check_proof_defer_or_implement`
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/loops/autodev.yaml` — `recheck_after_size_review` (~L2821) is a third `check-gate` consumer (GATE_MARKER remedy-selector branch); decide whether it keeps the fail-open shape (later gates still apply) or adopts the same exit-code discriminator
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/cli/issues/` — `check-gate` output/exit contract (read only; confirm the recognised verdict set)
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/fsm/executor.py` — hardcodes the `skip_inflight_infra` special case (:155, :4320, ENH-2727); any new infra-deferral state is outside that special-case set — audit what it does before adding a sibling state
+- `scripts/little_loops/loops/scan-and-implement.yaml` — `loop: autodev` subloop at :79, the only loop YAML invoking autodev; inherits the new gate behavior
+- `scripts/little_loops/cli/loop/audit.py` — `audit_run` (~L194) embeds summary.json into `verdict_inputs["summary"]` (~L247); no strict key-set parser exists for autodev's summary (the strict asserts at `test_rn_refine.py:1485/:1540` are rn-refine's), so a new infra key is additive-safe
 
 ### Similar Patterns
 - `mark_evidence_absent_infra` / `skip_inflight_infra` infra deferral routes
@@ -116,12 +122,36 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 - New real-FSM test: `check-gate` stub failing → issue is deferred as infra, `implement_current` not entered
 - New structural test: no `on_error`/`on_cannot_judge` edge into `implement_current`
 - Must still pass: `scripts/tests/test_spike_verdict_routing.py`, `test_ll_issues_check_gate.py`
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_ll_issues_check_gate.py` — `_run_state` (:165) returns only stdout; PROOF_INFRA tests need returncode+stderr surfaced — extend the helper, don't fork it. Discriminator nuance: the `none` verdict ("no proof gate") exits **1** with token `none` (TestCli param row in `test_verdict_and_exit_code`; `test_no_gate_reaches_implement` :236 pins `PROOF_CLEAR`) — the discriminator must keep exit-1-with-recognised-token → PROOF_CLEAR; `PROOF_INFRA` is only for exit 2 / empty stdout / unrecognised output
+- May break: `scripts/tests/test_fsm_topology.py:259` — `len(states) == 105` must be bumped with a change-log comment line naming BUG-3603 (convention :239-258)
+- Rename-sensitive pins (break only if the guard is renamed/interposed): `test_autodev_decision_gate.py:990` `test_recheck_after_decide_on_yes_routes_to_implement_current`; routing pins `test_builtin_loops.py:8372` (`check_passed.on_yes`), :9226/:9234 (`decide_current` on_no/on_error), :9426 (`recheck_after_decide.on_yes`)
+- Infra-state test exemplars: `test_skip_inflight_infra_*` family (`test_builtin_loops.py:6921-7019`); `test_infra_state_is_distinct_and_does_not_defer` (`test_autodev_scores_freshness.py:76` — per-reason ledger separation, no `set-status`, `next == dequeue_next`); `test_mark_gate_infra_advances_queue_without_defers` (:8072)
+- Structural-invariant exemplars: `test_assert_decision_cleared_absent_from_autodev_states` (`test_autodev_decision_gate.py:1004` — every-state × every-edge-kind iteration), the `only_done_edge` predecessor-set comprehension (`test_builtin_loops.py:7567-7572`), graph-walk idiom (:18306); host in `TestAutodevLoop` (`test_builtin_loops.py:6643`) or a dedicated per-fix file
+- Corpus gates every new state must clear: `test_all_validate_as_valid_fsm` (:77), `test_no_failure_edge_routes_to_a_success_terminal` (:87), `MR11_MARKER_ALLOWLIST` ratchet (:21037) if a lint marker is added
+- Additive summary-key test exemplars: `test_finalize_summary_has_enh_2404_keys` (:5436) / `test_finalize_sources_gate_blocked_ledger` (:5630) — extend the `_run_finalize_done` harness (:7475) with a ledger-seeding parameter
+- Init-ledger tests to extend: `test_spike_verdict_routing.py:108`/:231 (init must reference each per-reason ledger), `test_init_resets_autodev_inflight` (`test_builtin_loops.py:8548`)
 
 ### Documentation
 - N/A
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/LOOPS_REFERENCE.md` — autodev section: the state-flow diagram (~L1033-1085) already omits the ENH-3575 proof-gate states; the "Diagram omissions" paragraph (~L1079) documents the fail-open policy — BUG-3603 creates the first deliberately fail-closed gate, record the distinction; the "Notes" paragraph (~L1081) documents the infra-deferral ledger set the new ledger joins
+- `docs/reference/CLI.md` — `#### ll-issues check-gate` (~L2316-2318): the verdict/exit-code contract and the FSM-consumer-states note; after this change the pre-implement states consume the exit code, not just the stdout token
+- `skills/audit-loop-run/SKILL.md` — "Step 6a: Summary Cross-Check" (~L258-279) lists summary.json keys under an explicit additive-keys convention; add the new infra key there (test exemplars: `test_audit_loop_run_skill.py` :144/:157/:168)
 
 ### Configuration
 - N/A
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `docs/guides/LOOPS_REFERENCE.md` — fail-closed gate distinction, new infra ledger, diagram omission note
+- Update `docs/reference/CLI.md` check-gate section and `skills/audit-loop-run/SKILL.md` Step 6a key list for the new summary.json infra key
+- Audit `scripts/little_loops/fsm/executor.py` `skip_inflight_infra` special case (:155, :4320) — decide whether the new infra-deferral state needs the same treatment
+- Extend `_run_state` in `scripts/tests/test_ll_issues_check_gate.py` to surface returncode+stderr for the PROOF_INFRA failure-path tests
+- Bump `test_fsm_topology.py:259` autodev state count (105 → 106+) with a BUG-3603 change-log comment
+- Keep exit-1-with-`none`-token routing to `PROOF_CLEAR` — `test_no_gate_reaches_implement` pins it; "non-zero exit" alone cannot be the discriminator
 
 ### Codebase Research Findings
 
@@ -155,5 +185,6 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 **Open** | Created: 2026-09-25 | Priority: P2
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-25T20:51:15 - `85e4cae3-0d07-49cf-9a70-1d94df7e46ab.jsonl`
 - `/ll:refine-issue` - 2026-09-25T19:48:48 - `2f63920a-850e-4ac5-bf34-e7b8eb47e2e0.jsonl`
 - `/ll:capture-issue` - 2026-09-25 - EPIC-3565 child review

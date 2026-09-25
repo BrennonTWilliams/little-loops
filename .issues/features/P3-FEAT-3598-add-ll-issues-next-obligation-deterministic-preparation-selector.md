@@ -124,6 +124,19 @@ and routes on `obligation`.
   `next-action`'s current rule and record the difference here. Parity wins over
   unification.
 
+### Dependent Files (Callers/Importers)
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/loops/issue-refinement.yaml`, `scripts/little_loops/loops/recursive-refine.yaml`, `scripts/little_loops/loops/lib/cli.yaml` (fragment `ll_issues_next`, `lib/cli.yaml:40`) — consume `next-action` output tokens and exit codes; the contract is unchanged by this issue, so no edit expected, but they are the parity blast radius [Agent 1 finding]
+- `scripts/little_loops/cli/issues/next_action.py:37` — `cmd_next_action()` re-implements threshold config reading separately from `fsm/context_seed.py::seed_confidence_thresholds` (`cli/loop/run.py`, `cli/loop/lifecycle.py`, `cli/loop/info.py` call the seeder); the delegation must keep both paths consistent [Agent 2 finding]
+- `scripts/tests/test_fsm_fragments.py:913` — `test_ll_issues_next_defined()` asserts the `ll_issues_next` fragment action string [Agent 1 finding]
+- `scripts/tests/test_issue_refinement_broke_down.py:39` — `test_alias_passes_next_action_ordering()` asserts issue-refinement binds `order: next-action` [Agent 1 finding]
+- `scripts/tests/test_issue_parser.py:1626` — expectation table pins a `next_action:30` line anchor into `cmd_next_action`; a refactor that moves the function invalidates the entry [Agent 1 finding]
+
+### Documentation
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/API.md:4637` — ll-issues subcommand table needs a `next-obligation` row next to the `next-action` row [Agent 1 finding]
+- `docs/reference/CLI.md:1763` — add a `#### ll-issues next-obligation` section following the `next-action` section pattern (flags table + `**FSM loop use**` attribution), plus a line in the quick-reference examples block (~:2013) [Agent 2 finding]
+
 ### Tests
 - Unit tests per obligation, plus ordering tests (two unmet → first wins)
 - Ordering parity test: for fixtures that each fail exactly one child gate, the selector's first obligation matches the child state that would fire first
@@ -131,6 +144,14 @@ and routes on `obligation`.
 - Behavioral set must pass unchanged: `test_spike_verdict_routing.py`,
   `test_format_probe_routing.py`, `test_arm_proposal_revision.py`,
   `test_ll_issues_check_verify_verdict.py`, `test_check_readiness.py`
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_builtin_loops.py` (TestRefineToReadyIssueSubLoop) — routing-table tests for every state the selector dispatch replaces: `test_check_verify_verdict_state_routing()` (~:1586), `test_check_hedges_state_routing()` (~:1613), `test_check_design_state_routing()` (~:1762), `test_check_decision_needed_routes_through_decide_attempts()` (~:1998), `test_precheck_format_and_fallback_routing()` (~:2123), `test_check_missing_artifacts_on_no_routes_to_breakdown_issue()` (~:2877), the spike cluster (~:3254-3319) and the decision-mid-refine/wire cluster (~:3412-3510) [Agent 3 finding]
+- `scripts/tests/test_format_probe_routing.py:34` — module parametrize loads `refine-to-ready-issue.yaml` `["states"]["precheck_format"]["action"]`; KeyError if `precheck_format` is deleted rather than kept as an action behind the dispatcher [Agent 3 finding]
+- `scripts/tests/test_spike_verdict_routing.py:66` — `test_refine_to_ready_routing_table()` asserts the child's spike/decision route table; `test_resolve_issue_does_not_reset_spike_counter()` (~:153) pins `resolve_issue` counter behavior [Agent 3 finding]
+- `scripts/tests/test_ll_issues_check_verify_verdict.py:317` — `TestCliRegistration::test_subcommand_in_help()` is the registration-check pattern to copy for `next-obligation` [Agent 3 finding]
+- `scripts/tests/data/loop_interpolation_baseline.json:744` — `check_outcome` baseline entry goes stale if the state is deleted rather than converted; `TestInterpSweepBaseline::test_completeness_guard` fails in both directions [Agent 3 finding]
+- `scripts/tests/test_arm_proposal_revision.py` — direct `cmd_*` + `argparse.Namespace` call pattern for the new `cmd_next_obligation` unit tests [Agent 3 finding]
 
 ### Codebase Research Findings
 
@@ -145,6 +166,16 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 - `assess_proof` (`little_loops.learning_tests`) does not exist yet; `learning_tests/` currently has only `extractor.py`, `gate.py`, `import_scan.py`, `release_gate.py`. PROOF cannot be implemented until ENH-3602 lands (already a `blocked_by` edge).
 - Subcommands are registered in `cli/issues/__init__.py` two ways: `add_*_parser(subs)` helpers (e.g. `add_check_gate_parser`, `add_check_verify_verdict_parser`, called near `:781-784`) and inline parser blocks (`next-action` at `:661`, dispatch at `:1073`). Also add the entry to the help epilog list (`:149`).
 - Tests present: `test_next_action.py`, `test_spike_verdict_routing.py`, `test_format_probe_routing.py`, `test_arm_proposal_revision.py`, `test_ll_issues_check_verify_verdict.py`, `test_check_readiness.py` (all under `scripts/tests/`).
+
+## Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `scripts/tests/test_builtin_loops.py` — TestRefineToReadyIssueSubLoop routing tests for the replaced predicate states
+- Update `scripts/tests/data/loop_interpolation_baseline.json` — delete/convert the `check_outcome` entry in the same commit (`test_completeness_guard` ratchet)
+- Update `docs/reference/API.md` — add `next-obligation` row to the ll-issues subcommand table
+- Update `docs/reference/CLI.md` — new `#### ll-issues next-obligation` section + quick-reference example line
+- Check `scripts/tests/test_issue_parser.py` `next_action:30` expectation-table anchor if `cmd_next_action` moves within `next_action.py`
 
 ## Impact
 
@@ -207,5 +238,6 @@ Decomposed from ENH-3577: Consolidate autodev issue preparation into a single co
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-25T20:46:48 - `2b4a714f-91fd-41aa-b2ac-63b11e2476ce.jsonl`
 - `/ll:refine-issue` - 2026-09-25T19:42:22 - `2f63920a-850e-4ac5-bf34-e7b8eb47e2e0.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-09-25T19:09:20 - `dcfdf31c-be65-47ce-9e6e-5b65d63239f2.jsonl`
