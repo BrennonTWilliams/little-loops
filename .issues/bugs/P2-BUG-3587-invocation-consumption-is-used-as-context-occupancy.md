@@ -110,7 +110,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_pre_compact.py:277` `test_check_compaction_reads_compacted_at` — script-text grep of `context-monitor.sh`; breaks if `check_compaction` is restructured. `test_pre_compact.py:107` (`context_state_at_compact` snapshot) stays valid [Agent 3 finding]
 - `scripts/tests/test_subprocess_utils.py:1735,1760,2689` (`on_usage` sum semantics) — regression anchors for `_fire_legacy_usage`; no change unless it changes. Add a partial-usage case (a `None` field) beside 1760 [Agent 3 finding]
 - `scripts/tests/test_issue_manager.py:1910` `test_high_cumulative_usage_does_not_write_sentinel` and the BUG-2280 test (~2150), `scripts/tests/test_worker_pool.py:3405` — regression anchors; they patch `run_with_continuation` and never reach `_on_usage_writer` [Agent 3 finding]
-- New: `_on_usage_writer` test driven through `process_issue_inplace` — pattern: `TestReadyIssueErrorHandling.test_forwards_on_usage_detailed_to_ready_issue_call` (`test_issue_manager.py:2252`), `mock_config` fixture (~2196), fake `mock_run(command, *a, **kw)` calling `kw.get("on_usage")`, then read `temp_project_dir/.ll/ll-context-state.json` (path hardcoded, so control `repo_path`) [Agent 3 finding]
+- New: `_on_usage_writer` test driven through `process_issue_inplace` — pattern: `TestReadyIssueErrorHandling.test_forwards_on_usage_detailed_to_ready_issue_call` (`test_issue_manager.py:2252`), `mock_config` fixture (~2196), fake `mock_run(command, *a, **kw)` calling `kw.get("on_usage")`, then read the context state file under the `temp_project_dir` fixture (path hardcoded, so control `repo_path`) [Agent 3 finding]
 - New (monitor): shell-hook tests in `TestContextMonitor` (`test_hooks_integration.py:38`, `test_config` fixture ~47, `tmp_path/"ll-context-state.json"`; multi-step template `test_transcript_baseline_refreshed_on_new_turn` ~1305) for high `result_token_count` + low `estimated_tokens` → no handoff; compaction invalidation (seed `last_compaction` / `.compacted_at`); legacy unqualified key [Agent 3 finding]
 - New (sentinel): `TestContextHandoffSentinel` pattern (`monkeypatch.chdir(tmp_path)`, `.ll/ll-config.json` with `context_monitor.sentinel_threshold`, assert `.ll/ll-context-handoff-needed`) for old-format state; plus a monitor/sentinel agreement test with identical seeded state [Agent 3 finding]
 - `scripts/tests/test_hook_session_start.py:83` — only session-invalidation coverage (file deletion); extend only if a session/interval tag is introduced
@@ -165,7 +165,7 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-- Update `hooks/scripts/context-monitor.sh` `main()` — remove tier 1 from the jq/`read` list together and delete the tier-1 branch; re-verify `+ TOKENS` / `overhead` / `SYSTEM_PROMPT_BASELINE` additions now that tier 2/3 is always taken; delete the ~362 comment. Check whether the 3x-`CONTEXT_LIMIT` clamp (~385-387) is still needed — its main target was inflated tier-1 values — and keep it only if the transcript baseline can still exceed it
+- Update `hooks/scripts/context-monitor.sh` `main()` — remove tier 1 from the jq/`read` list together and delete the tier-1 branch; re-verify `+ TOKENS` / `overhead` / `SYSTEM_PROMPT_BASELINE` additions now that tier 2/3 is always taken; delete the ~362 comment. Keep the 3x-`CONTEXT_LIMIT` clamp (~385-387) unchanged — it guards transcript-baseline misreads (per its comment), which still apply to tier 2
 - Update `hooks/scripts/context-handoff-sentinel.sh` — drop the field from the jq read (~38-44) and shorten the default string to three fields; remove the override (~51-55) and the "accurate" comment
 - Update `scripts/little_loops/issue_manager.py` — delete `_on_usage_writer` and its header comment (811-825); pass `on_usage` directly at ~1347
 - Update `scripts/tests/test_hooks_integration.py` — invert/replace `test_result_token_count_used_when_present`, `test_result_token_count_zero_falls_back_to_heuristics`, `TestContextHandoffSentinel.test_result_token_count_preferred_over_estimated` so they assert the key is ignored; re-seed `test_impossible_baseline_clamped` through the transcript-baseline tier; drop the key from sentinel fixtures at ~3052/3089/3118 (or keep it as legacy noise to prove it's ignored)
@@ -179,9 +179,11 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Steps to Reproduce
 
-1. Feed `process_issue_inplace` a stream-json `result` event whose `usage` block sums several requests (e.g. `input_tokens: 2000`, `cache_read_input_tokens: 600000`, `output_tokens: 8000` against a 200K context limit), as a multi-request `-p` run produces.
-2. Observe `_on_usage_writer` writing `result_token_count: 610000` into `.ll/ll-context-state.json` after the child session's Stop cleanup has already deleted the file.
-3. In another session sharing the repo root (or by invoking the hooks directly against that state with `estimated_tokens` well below threshold), run `context-monitor.sh` and `context-handoff-sentinel.sh`: the monitor reports ~305% usage (clamped at 3x) and exits 2, and the sentinel writes `.ll/ll-context-handoff-needed`.
+1. Feed `process_issue_inplace` a stream-json `result` event whose `usage` block sums several requests (e.g. `input_tokens: 2000`, `cache_read_input_tokens: 300000`, `output_tokens: 8000` against a 200K context limit), as a multi-request `-p` run produces.
+2. Observe `_on_usage_writer` writing `result_token_count: 310000` into `.ll/ll-context-state.json` after the child session's Stop cleanup has already deleted the file.
+3. In another session sharing the repo root (or by invoking the hooks directly against that state with `estimated_tokens` well below threshold), run `context-monitor.sh` and `context-handoff-sentinel.sh`: the monitor reports ~155% usage and exits 2, and the sentinel writes `.ll/ll-context-handoff-needed`.
+
+Note: the monitor's 3x-`CONTEXT_LIMIT` clamp discards tier-1 values above 600K (falling back to the stored estimate), so very large totals are partly masked in the monitor. The sentinel has no clamp and fires on any value above its threshold, so the two hooks already disagree at large totals.
 
 ## Root Cause
 
