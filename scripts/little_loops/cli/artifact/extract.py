@@ -35,6 +35,7 @@ from little_loops.artifact_templates import (
     load_manifest,
     resolve_template,
     schema_annotation_paths,
+    schema_context_paths,
     strip_schema_annotations,
     validate_top_level_data,
 )
@@ -184,9 +185,12 @@ def extract_data(
         raise ExtractError(f"extraction response failed schema validation: {exc}") from exc
 
     # Validate first (escaping would break enum matches), then escape at ingest.
-    trusted_paths, url_paths = schema_annotation_paths(template.data_schema)
     try:
-        escaped = escape_data(raw, markup_keys=trusted_paths, url_keys=url_paths)
+        escaped = escape_data(
+            raw,
+            markup_keys=schema_annotation_paths(template.data_schema),
+            contexts=schema_context_paths(template.data_schema),
+        )
     except ValueError as exc:
         raise ExtractError(f"extraction response rejected: {exc}") from exc
 

@@ -13,6 +13,9 @@ constraint on ``artifact_templates.py`` — Phase A has no LLM call).
 from __future__ import annotations
 
 import argparse
+import bisect
+import functools
+import html
 import json
 import os
 import re
@@ -26,6 +29,7 @@ from little_loops.artifact_templates import (
     ArtifactTemplate,
     DataValidationError,
     ManifestError,
+    RegionContext,
     load_manifest,
     render_template,
     validate_top_level_data,
@@ -318,6 +322,375 @@ def derive_schema(result: DiscoveryResult) -> dict[str, Any]:
         props[parts[-1]] = {"type": "array", "items": item_schema}
 
     return schema
+
+
+# --------------------------------------------------------------------------
+# classify_region (ENH-3554)
+# --------------------------------------------------------------------------
+#
+# Region context tagging. Each lifted span is classified against the ORIGINAL
+# artifact bytes (before ``apply_regions`` shifts offsets) so ``escape_data`` can
+# pick the encoding that matches where the value lands. Everything the small
+# tokenizer below is unsure about classifies as ``markup`` (fail closed).
+
+_RAW_TEXT_ELEMENTS = {"script", "style"}
+# RCDATA where escaped text is the correct encoding.
+_RCDATA_TEXT_ELEMENTS = {"title", "textarea"}
+# Raw-text / foreign / inert-content elements: every span inside is ``markup``.
+_OPAQUE_RAW_ELEMENTS = {"xmp", "iframe", "noembed", "noframes", "plaintext"}
+_FOREIGN_ELEMENTS = {"svg", "math", "noscript", "template"}
+_JS_SCRIPT_TYPES = {
+    "",
+    "module",
+    "text/javascript",
+    "application/javascript",
+    "application/json",
+    "application/ld+json",
+}
+# (element, attribute) pairs that load resources or hijack navigation.
+_RESOURCE_ATTRS = {
+    ("script", "src"),
+    ("iframe", "src"),
+    ("frame", "src"),
+    ("object", "data"),
+    ("embed", "src"),
+    ("link", "href"),
+    ("base", "href"),
+    ("form", "action"),
+}
+_RESOURCE_ATTR_ANY_ELEMENT = {"formaction"}
+_URL_ATTRS = {
+    ("a", "href"),
+    ("area", "href"),
+    ("img", "src"),
+    ("audio", "src"),
+    ("video", "src"),
+    ("source", "src"),
+    ("track", "src"),
+    ("video", "poster"),
+}
+_URL_ATTR_ANY_ELEMENT = {"cite", "background", "ping"}
+_CONTEXT_RANK: dict[str, int] = {
+    "text": 0,
+    "attr": 1,
+    "url": 2,
+    "script": 3,
+    "script_string": 3,
+    "style": 4,
+    "markup": 5,
+}
+_SCRIPT_CONTEXTS = {"script", "script_string"}
+_HTML_CONTEXTS = {"text", "attr", "url"}
+_URL_STRIP_CHARS_RE = re.compile("[\x00-\x20\x7f]")
+_SCHEME_RE = re.compile(r"^[a-z][a-z0-9+.\-]*:")
+_ALLOWED_URL_SCHEMES = {"http:", "https:", "mailto:"}
+
+
+@dataclass
+class _Attr:
+    name: str
+    quoted: bool
+    vstart: int
+    vend: int
+
+
+@dataclass
+class _Token:
+    start: int
+    end: int
+    kind: str  # text | tag | script | style | markup
+    foreign: bool = False
+    element: str = ""
+    attrs: list[_Attr] = field(default_factory=list)
+    script_is_js: bool = True
+
+
+@dataclass
+class _Scan:
+    text: str
+    byte_offsets: list[int]
+    tokens: list[_Token]
+
+
+def _tokenize(text: str) -> list[_Token]:
+    tokens: list[_Token] = []
+    depth: dict[str, int] = dict.fromkeys(_FOREIGN_ELEMENTS, 0)
+    n = len(text)
+    i = 0
+    text_start = 0
+
+    def in_foreign() -> bool:
+        return any(depth.values())
+
+    def flush(upto: int) -> None:
+        nonlocal text_start
+        if upto > text_start:
+            tokens.append(_Token(text_start, upto, "text", in_foreign()))
+        text_start = upto
+
+    def emit(start: int, end: int, kind: str, **kw: Any) -> None:
+        nonlocal i, text_start
+        tokens.append(_Token(start, end, kind, kw.pop("foreign", in_foreign()), **kw))
+        i = text_start = end
+
+    while i < n:
+        if text[i] != "<":
+            i += 1
+            continue
+        if text.startswith("<!--", i):
+            flush(i)
+            close = text.find("-->", i + 4)
+            emit(i, n if close == -1 else close + 3, "markup")
+            continue
+        if text.startswith("<![CDATA[", i):
+            flush(i)
+            close = text.find("]]>", i)
+            emit(i, n if close == -1 else close + 3, "markup")
+            continue
+        if text.startswith(("<!", "<?"), i):
+            flush(i)
+            close = text.find(">", i)
+            emit(i, n if close == -1 else close + 1, "markup")
+            continue
+        end_tag = text.startswith("</", i) and i + 2 < n and text[i + 2].isalpha()
+        if not (end_tag or (i + 1 < n and text[i + 1].isalpha())):
+            i += 1
+            continue
+        flush(i)
+        name_start = i + (2 if end_tag else 1)
+        j = name_start
+        while j < n and not text[j].isspace() and text[j] not in "/>":
+            j += 1
+        name = text[name_start:j].lower()
+        attrs: list[_Attr] = []
+        closed = False
+        while j < n:
+            while j < n and (text[j].isspace() or text[j] == "/"):
+                j += 1
+            if j >= n:
+                break
+            if text[j] == ">":
+                j += 1
+                closed = True
+                break
+            a_start = j
+            while j < n and not text[j].isspace() and text[j] not in "=/>":
+                j += 1
+            a_name = text[a_start:j].lower()
+            k = j
+            while k < n and text[k].isspace():
+                k += 1
+            if k < n and text[k] == "=":
+                k += 1
+                while k < n and text[k].isspace():
+                    k += 1
+                if k < n and text[k] in "\"'":
+                    q = text[k]
+                    v_end = text.find(q, k + 1)
+                    if v_end == -1:
+                        j = n
+                        break
+                    attrs.append(_Attr(a_name, True, k + 1, v_end))
+                    j = v_end + 1
+                else:
+                    v_start = k
+                    while k < n and not text[k].isspace() and text[k] != ">":
+                        k += 1
+                    attrs.append(_Attr(a_name, False, v_start, k))
+                    j = k
+            else:
+                attrs.append(_Attr(a_name, False, j, j))
+        if not closed:
+            emit(i, n, "markup")
+            break
+        tag_end = j
+        self_closing = text[i:tag_end].endswith("/>")
+        if end_tag:
+            foreign = in_foreign()
+            if name in depth and depth[name] > 0:
+                depth[name] -= 1
+            emit(i, tag_end, "markup", foreign=foreign)
+            continue
+        if name in depth and not self_closing:
+            depth[name] += 1
+        emit(i, tag_end, "tag", foreign=in_foreign() or name in depth, element=name, attrs=attrs)
+        if name in _RAW_TEXT_ELEMENTS | _RCDATA_TEXT_ELEMENTS | _OPAQUE_RAW_ELEMENTS:
+            close_match = re.compile(rf"</{name}[\s/>]", re.IGNORECASE).search(text, tag_end)
+            body_end = close_match.start() if close_match else n
+            if body_end > tag_end:
+                if name in _RAW_TEXT_ELEMENTS:
+                    script_type = next((a for a in attrs if a.name == "type"), None)
+                    is_js = script_type is None or (
+                        text[script_type.vstart : script_type.vend].strip().lower()
+                        in _JS_SCRIPT_TYPES
+                    )
+                    emit(tag_end, body_end, name, script_is_js=is_js)
+                elif name in _RCDATA_TEXT_ELEMENTS:
+                    emit(tag_end, body_end, "text")
+                else:
+                    emit(tag_end, body_end, "markup")
+            i = text_start = body_end
+    flush(n)
+    return tokens
+
+
+@functools.lru_cache(maxsize=2)
+def _scan_artifact(artifact: bytes) -> _Scan | None:
+    try:
+        text = artifact.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+    byte_offsets = [0]
+    for ch in text:
+        byte_offsets.append(byte_offsets[-1] + len(ch.encode("utf-8")))
+    return _Scan(text, byte_offsets, _tokenize(text))
+
+
+def _js_state_after(text: str, start: int, end: int, state: str) -> str | None:
+    """Advance a minimal JS scanner over ``text[start:end]``.
+
+    States: ``code``, ``dq``, ``sq``. Returns ``None`` on anything it cannot resolve
+    (template literal, comment, regex literal, newline or pending escape in a string).
+    """
+    i = start
+    prev_sig = ""
+    while i < end:
+        ch = text[i]
+        if state == "code":
+            if ch in "\"'":
+                state = "dq" if ch == '"' else "sq"
+            elif ch == "`":
+                return None
+            elif ch == "/":
+                nxt = text[i + 1] if i + 1 < len(text) else ""
+                if nxt in "/*":
+                    return None
+                if prev_sig == "" or prev_sig in "(,=:[!&|?{};+-*%<>~^":
+                    return None  # regex literal: may hide quote characters
+            if not ch.isspace():
+                prev_sig = ch
+        else:
+            if ch == "\\":
+                if i + 1 >= end:
+                    return None  # escape pending across the span boundary
+                i += 1
+            elif ch in "\n\r  ":
+                return None
+            elif (state == "dq" and ch == '"') or (state == "sq" and ch == "'"):
+                state = "code"
+                prev_sig = ch
+        i += 1
+    return state
+
+
+def _classify_script(text: str, body_start: int, cs: int, ce: int) -> RegionContext:
+    before = _js_state_after(text, body_start, cs, "code")
+    if before is None:
+        return "markup"
+    after = _js_state_after(text, cs, ce, before)
+    if after != before:
+        return "markup"
+    return "script" if before == "code" else "script_string"
+
+
+def _prefix_fixes_scheme(prefix: str) -> bool:
+    compact = _URL_STRIP_CHARS_RE.sub("", html.unescape(prefix)).lower()
+    if compact.startswith(("/", "#", "?", "./")):
+        return True
+    match = _SCHEME_RE.match(compact)
+    return match is not None and match.group(0) in _ALLOWED_URL_SCHEMES
+
+
+def _classify_attr(text: str, token: _Token, attr: _Attr, cs: int, ce: int) -> RegionContext:
+    element, name = token.element, attr.name
+    if not attr.quoted or token.foreign:
+        return "markup"
+    if name.startswith("on") or name in {"srcdoc", "srcset"}:
+        return "markup"
+    if name == "style":
+        return "style"
+    if (element, name) in _RESOURCE_ATTRS or name in _RESOURCE_ATTR_ANY_ELEMENT:
+        return "markup"
+    if element == "meta" and name == "content":
+        equiv = next((a for a in token.attrs if a.name == "http-equiv"), None)
+        if equiv is not None and text[equiv.vstart : equiv.vend].strip().lower() == "refresh":
+            return "markup"
+    if (element, name) in _URL_ATTRS or name in _URL_ATTR_ANY_ELEMENT:
+        prefix, suffix = text[attr.vstart : cs], text[ce : attr.vend]
+        if prefix == "" and suffix == "":
+            return "url"
+        return "attr" if _prefix_fixes_scheme(prefix) else "markup"
+    return "attr"
+
+
+def classify_region(artifact: bytes, start: int, end: int) -> RegionContext:
+    """Classify where the byte span ``[start, end)`` of *artifact* lands in the page.
+
+    Pure; offsets are byte offsets into the original artifact. Returns ``markup``
+    for anything ambiguous (fail closed).
+    """
+    scan = _scan_artifact(artifact)
+    if scan is None or not 0 <= start <= end <= len(artifact):
+        return "markup"
+    ci = bisect.bisect_left(scan.byte_offsets, start)
+    cj = bisect.bisect_left(scan.byte_offsets, end)
+    if scan.byte_offsets[ci] != start or scan.byte_offsets[cj] != end:
+        return "markup"  # span lands mid-multibyte-sequence
+    text = scan.text
+    for token in scan.tokens:
+        if token.start <= ci and (cj <= token.end) and (ci < token.end or ci == len(text)):
+            break
+    else:
+        return "markup"
+    if token.foreign:
+        return "markup"
+    if token.kind == "text":
+        return "text"
+    if token.kind == "style":
+        return "style"
+    if token.kind == "script":
+        return _classify_script(text, token.start, ci, cj) if token.script_is_js else "markup"
+    if token.kind == "tag":
+        for attr in token.attrs:
+            if attr.vstart <= ci and cj <= attr.vend:
+                return _classify_attr(text, token, attr, ci, cj)
+    return "markup"
+
+
+def merge_contexts(a: RegionContext, b: RegionContext) -> RegionContext:
+    """Merge two contexts bound to one property: strictest wins; incompatible -> markup."""
+    if a == b:
+        return a
+    pair = {a, b}
+    if pair == _SCRIPT_CONTEXTS or (pair & _SCRIPT_CONTEXTS and pair & _HTML_CONTEXTS):
+        return "markup"
+    return a if _CONTEXT_RANK[a] >= _CONTEXT_RANK[b] else b
+
+
+def annotate_contexts(artifact: bytes, result: DiscoveryResult, schema: dict[str, Any]) -> None:
+    """Write ``x-ll-context`` onto every lifted property of *schema* (regions and group fields).
+
+    A property bound by several regions takes the merged (strictest) context.
+    Never writes ``x-ll-trusted``. Mutates *schema* in place.
+    """
+    contexts: dict[tuple[str, ...], RegionContext] = {}
+    groups = {g.id: g for g in result.groups}
+    for region in result.regions:
+        if region.group is None:
+            path = (*region.expr.split("."),)
+        else:
+            path = (*groups[region.group].array_path.split("."), "[]", region.expr)
+        ctx = classify_region(artifact, region.start, region.end)
+        contexts[path] = merge_contexts(contexts[path], ctx) if path in contexts else ctx
+
+    for path, ctx in contexts.items():
+        node = schema
+        for part in path:
+            if part == "[]":
+                node = node["items"]
+            else:
+                node = node["properties"][part]
+        node["x-ll-context"] = ctx
 
 
 # --------------------------------------------------------------------------
@@ -1424,6 +1797,7 @@ def cmd_templatize(args: argparse.Namespace, logger: Logger) -> int:
         try:
             data = extract_data(artifact_bytes, result)
             schema = derive_schema(result)
+            annotate_contexts(artifact_bytes, result, schema)
             spliced = apply_regions(artifact_bytes, result)
             name = out_dir.stem
             from little_loops.cli.artifact.lockfile import relativize_path

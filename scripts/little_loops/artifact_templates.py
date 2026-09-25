@@ -16,9 +16,10 @@ from __future__ import annotations
 import html
 import json
 import re
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, get_args
 
 import yaml
 from jinja2 import StrictUndefined, TemplateSyntaxError
@@ -42,9 +43,13 @@ _SCHEMA_ALLOWED_KEYS = {
     "x-ll-context",
     "x-ll-trusted",
 }
-# Values accepted for the ``x-ll-context`` annotation (ENH-3558). ENH-3554
-# extends this with attr/script/style/markup.
-_CONTEXT_VALUES = {"text", "url"}
+# Where a lifted value lands in the page (ENH-3554); persisted per property as
+# ``x-ll-context``. ``script`` is a JS code position, ``script_string`` sits
+# inside a quoted JS string literal; the two need incompatible encodings.
+RegionContext = Literal["text", "attr", "url", "script", "script_string", "style", "markup"]
+_CONTEXT_VALUES = set(get_args(RegionContext))
+# Contexts a property may combine with ``x-ll-trusted: true`` ("stamp verbatim").
+_TRUSTABLE_CONTEXTS = {"style", "markup"}
 
 _RESERVED_CONTEXT_KEY = "ll"
 
@@ -123,18 +128,21 @@ def _validate_schema_shape(schema: Any, path: str = "data_schema") -> None:
             raise ManifestError(
                 f"{path}.x-ll-context: {context!r} is not one of {sorted(_CONTEXT_VALUES)}"
             )
-        if context == "url" and schema.get("type") != "string":
-            raise ManifestError(f"{path}.x-ll-context: 'url' is only permitted on type: string")
+        if schema.get("type") != "string":
+            raise ManifestError(
+                f"{path}.x-ll-context: {context!r} is only permitted on type: string"
+            )
     if "x-ll-trusted" in schema:
         trusted = schema["x-ll-trusted"]
         if not isinstance(trusted, bool):
             raise ManifestError(f"{path}.x-ll-trusted: expected a boolean, got {trusted!r}")
         if schema.get("type") != "string":
             raise ManifestError(f"{path}.x-ll-trusted: only permitted on type: string")
-        if trusted and schema.get("x-ll-context") == "url":
+        context = schema.get("x-ll-context")
+        if trusted and context is not None and context not in _TRUSTABLE_CONTEXTS:
             raise ManifestError(
-                f"{path}: x-ll-trusted: true cannot be combined with x-ll-context: url "
-                "(a verbatim URL would bypass the scheme rule)"
+                f"{path}: x-ll-trusted: true cannot be combined with x-ll-context: {context} "
+                "(a verbatim value would bypass that context's encoding)"
             )
 
     schema_type = schema.get("type")
@@ -302,9 +310,9 @@ def validate_top_level_data(data: Any, schema: dict[str, Any]) -> None:
 #   * code-built dicts pass ``markup_keys`` explicitly (the dashboard documents
 #     its own ``DASHBOARD_MARKUP_KEYS`` next to its definition);
 #   * ``extract`` derives it from ``x-ll-trusted: true`` on string schema nodes.
-# Templatized markup-spanning regions render as escaped text on ``refresh``
-# (fail visible, never fail open) and templatized URL regions are uncovered
-# until ENH-3554 adds region-context tagging. ``ll-artifact render`` of a
+# Templatize records each region's context as ``x-ll-context`` (ENH-3554) and
+# ``escape_data`` encodes per context; a property with no annotation (legacy
+# manifest) is escaped as text. ``ll-artifact render`` of a
 # hand-written ``data.json`` is trusted input and stays verbatim. LLM-written
 # HTML loops (``vega-viz``, ``rlhf-svg-generate``, ``html-anything``) and
 # ``artifact_mode: template`` promotion sit outside any Python render boundary.
@@ -355,17 +363,37 @@ def _as_paths(entries: frozenset[str | DataPath]) -> frozenset[DataPath]:
 def escape_data(
     data: dict[str, Any],
     markup_keys: frozenset[str | DataPath] = frozenset(),
-    url_keys: frozenset[str | DataPath] = frozenset(),
+    contexts: Mapping[DataPath, RegionContext] | None = None,
 ) -> dict[str, Any]:
     """Return a copy of *data* with every string leaf and string mapping key escaped.
 
-    Paths in *markup_keys* are stamped verbatim; paths in *url_keys* are checked
-    against the URL scheme rule first (``ValueError`` naming the path on a
-    disallowed scheme). A ``str`` entry is the one-segment path ``(name,)``;
-    array indices collapse to ``ARRAY_ITEM``. Never mutates *data*.
+    String leaves are encoded per the context recorded for their path in
+    *contexts* (absent means ``text``): ``text``/``attr`` HTML-escape, ``url``
+    checks the scheme rule then HTML-escapes, ``script`` stamps a JSON value,
+    ``script_string`` stamps a JS string-literal body. ``style``/``markup``
+    raise ``ValueError`` unless the path is in *markup_keys*, which stamps
+    verbatim (trust is ignored for every other context). A ``str`` entry is the
+    one-segment path ``(name,)``; array indices collapse to ``ARRAY_ITEM``.
+    Never mutates *data*.
     """
     trusted = _as_paths(markup_keys)
-    urls = _as_paths(url_keys)
+    ctx_map = contexts or {}
+
+    def encode(value: str, path: DataPath) -> str:
+        context = ctx_map.get(path, "text")
+        if context in _TRUSTABLE_CONTEXTS:
+            if path in trusted:
+                return value
+            raise ValueError(
+                f"{_format_path(path)}: context {context!r} requires x-ll-trusted: true"
+            )
+        if context == "script":
+            return script_json(value)
+        if context == "script_string":
+            return script_string_body(value)
+        if context == "url":
+            _check_url(value, path)
+        return _escape_text(value)
 
     def walk(node: Any, path: DataPath) -> Any:
         if isinstance(node, dict):
@@ -381,27 +409,18 @@ def escape_data(
         if isinstance(node, list):
             return [walk(item, (*path, ARRAY_ITEM)) for item in node]
         if isinstance(node, str):
-            if path in urls:
-                _check_url(node, path)
-            return node if path in trusted else _escape_text(node)
+            if path in trusted and path not in ctx_map:
+                return node
+            return encode(node, path)
         return node
 
     result: dict[str, Any] = walk(data, ())
     return result
 
 
-def schema_annotation_paths(
-    schema: dict[str, Any],
-) -> tuple[frozenset[DataPath], frozenset[DataPath]]:
-    """Return ``(trusted_paths, url_paths)`` from ``x-ll-trusted`` / ``x-ll-context: url``."""
-    trusted: set[DataPath] = set()
-    urls: set[DataPath] = set()
-
+def _walk_schema(schema: dict[str, Any], visit: Callable[[dict[str, Any], DataPath], None]) -> None:
     def walk(node: dict[str, Any], path: DataPath) -> None:
-        if node.get("x-ll-trusted") is True:
-            trusted.add(path)
-        if node.get("x-ll-context") == "url":
-            urls.add(path)
+        visit(node, path)
         for key, sub in (node.get("properties") or {}).items():
             walk(sub, (*path, key))
         items = node.get("items")
@@ -409,7 +428,31 @@ def schema_annotation_paths(
             walk(items, (*path, ARRAY_ITEM))
 
     walk(schema, ())
-    return frozenset(trusted), frozenset(urls)
+
+
+def schema_annotation_paths(schema: dict[str, Any]) -> frozenset[DataPath]:
+    """Return the ``x-ll-trusted: true`` paths of *schema*."""
+    trusted: set[DataPath] = set()
+
+    def visit(node: dict[str, Any], path: DataPath) -> None:
+        if node.get("x-ll-trusted") is True:
+            trusted.add(path)
+
+    _walk_schema(schema, visit)
+    return frozenset(trusted)
+
+
+def schema_context_paths(schema: dict[str, Any]) -> dict[DataPath, RegionContext]:
+    """Return ``{path: context}`` from ``x-ll-context`` at every depth, array items included."""
+    contexts: dict[DataPath, RegionContext] = {}
+
+    def visit(node: dict[str, Any], path: DataPath) -> None:
+        context = node.get("x-ll-context")
+        if context is not None:
+            contexts[path] = context
+
+    _walk_schema(schema, visit)
+    return contexts
 
 
 def strip_schema_annotations(schema: dict[str, Any]) -> dict[str, Any]:
@@ -445,6 +488,19 @@ def script_json(obj: Any) -> str:
     returns *obj*.
     """
     out = json.dumps(obj)
+    for ch, esc in _SCRIPT_JSON_ESCAPES.items():
+        out = out.replace(ch, esc)
+    return out
+
+
+def script_string_body(value: str) -> str:
+    """Encode *value* as the body of a JS string literal (no surrounding quotes).
+
+    Escapes both quote characters, backslash, ``<``, ``>``, ``&``, U+2028 and
+    U+2029, so the result is safe inside either a ``"…"`` or a ``'…'`` literal
+    within an inline ``<script>`` and decodes back to *value* in JS.
+    """
+    out = json.dumps(value)[1:-1].replace("'", "\\u0027")
     for ch, esc in _SCRIPT_JSON_ESCAPES.items():
         out = out.replace(ch, esc)
     return out

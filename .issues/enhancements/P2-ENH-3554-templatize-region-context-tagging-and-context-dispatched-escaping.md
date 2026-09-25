@@ -3,10 +3,11 @@ id: ENH-3554
 type: ENH
 title: Templatize region-context tagging and context-dispatched escaping
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-24'
 captured_at: '2026-09-24T18:27:36Z'
+completed_at: '2026-09-25T00:05:25Z'
 labels:
 - security
 - artifacts
@@ -200,12 +201,18 @@ Verified 2026-09-24 against the working tree. All Current Behavior anchors hold:
 
 Remaining: ENH-3558 has no `blocks:` frontmatter entry for ENH-3554 (its Related section does say "blocked on this issue"); left for a human to add, since this pass edits only this issue.
 
+## Resolution
+
+Implemented `classify_region`/`merge_contexts`/`annotate_contexts` (templatize.py), seven-value `RegionContext` + validation matrix, `script_string_body`, context-dispatched `escape_data(markup_keys, contexts)` and `schema_context_paths` (artifact_templates.py); `extract.py` and `dashboard.py` callers migrated; `docs/reference/CLI.md` updated. Tests: `test_enh3554_region_context.py` (new), `test_enh3558_escape_ingest.py` updated. Full suite: 3 pre-existing unrelated failures (verify_evidence repo gate, autodev topology, prose dep sweep) also fail without these changes.
+
 ## Status
 
 **Open** | Created: 2026-09-24 | Priority: P2
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-25T00:05:25 - `db64a583-97da-49ac-aed7-5bd21da721c5.jsonl`
+- `/ll:ready-issue` - 2026-09-24T23:51:37 - `668fb02d-3246-4624-8263-1d2bb09c9333.jsonl`
 - `/ll:confidence-check` - 2026-09-24T23:44:29 - `01d913d6-09f5-4671-9f2f-afb2a136b503.jsonl`
 - `/ll:verify-issues` - 2026-09-24T23:38:37 - `ce8bec5b-7632-4ff9-a3da-7cdd35c70217.jsonl`
 - `/ll:verify-issues` - 2026-09-24T22:56:15 - `4279401a-9acc-474c-b872-fd398cd78a8e.jsonl`

@@ -16,6 +16,7 @@ from little_loops.artifact_templates import (
     _validate_schema_shape,
     escape_data,
     schema_annotation_paths,
+    schema_context_paths,
     strip_schema_annotations,
 )
 from little_loops.cli.artifact.extract import ExtractError, extract_data
@@ -71,7 +72,7 @@ class TestEscapeData:
     )
     def test_url_rule_rejects(self, value: str) -> None:
         with pytest.raises(ValueError, match="link"):
-            escape_data({"link": value}, url_keys=frozenset({"link"}))
+            escape_data({"link": value}, contexts={("link",): "url"})
 
     @pytest.mark.parametrize(
         ("value", "stored"),
@@ -84,7 +85,7 @@ class TestEscapeData:
         ],
     )
     def test_url_rule_accepts(self, value: str, stored: str) -> None:
-        out = escape_data({"link": value}, url_keys=frozenset({"link"}))
+        out = escape_data({"link": value}, contexts={("link",): "url"})
         assert out == {"link": stored}
 
 
@@ -101,7 +102,7 @@ class TestAnnotations:
     @pytest.mark.parametrize(
         "schema",
         [
-            {"type": "string", "x-ll-context": "script"},
+            {"type": "string", "x-ll-context": "bogus"},
             {"type": "number", "x-ll-context": "url"},
             {"type": "number", "x-ll-trusted": True},
             {"type": "string", "x-ll-trusted": "true"},
@@ -126,9 +127,8 @@ class TestAnnotations:
                 },
             },
         }
-        trusted, urls = schema_annotation_paths(schema)
-        assert trusted == {("list", ARRAY_ITEM, "body")}
-        assert urls == {("u",)}
+        assert schema_annotation_paths(schema) == {("list", ARRAY_ITEM, "body")}
+        assert schema_context_paths(schema) == {("u",): "url"}
         assert "x-ll-" not in json.dumps(strip_schema_annotations(schema))
         assert "x-ll-trusted" in json.dumps(schema)
 

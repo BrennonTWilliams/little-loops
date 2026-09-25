@@ -366,7 +366,7 @@ def build_dashboard_html(
     # Validate-then-escape (same order as extract); a disallowed URL scheme
     # propagates as ValueError.
     data = escape_data(
-        data, markup_keys=DASHBOARD_MARKUP_KEYS, url_keys=frozenset({"serve_events_url"})
+        data, markup_keys=DASHBOARD_MARKUP_KEYS, contexts={("serve_events_url",): "url"}
     )
 
     try:
