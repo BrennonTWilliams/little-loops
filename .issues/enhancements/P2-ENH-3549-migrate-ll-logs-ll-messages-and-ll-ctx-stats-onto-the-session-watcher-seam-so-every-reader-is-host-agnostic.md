@@ -118,7 +118,7 @@ Preserve latest eligible session and host/workspace scope, and exclude agent rec
 - `scripts/little_loops/cli/logs.py`, `cli/messages.py` — classify remaining raw opens as transcript or non-transcript; route only genuine transcript bypasses through the seam. They already use discovery and named-cause diagnostics.
 - `scripts/little_loops/session_store/sessions.py`, `writers.py` — existing host-layout resolvers are legitimate seam internals. Do not relocate them solely to satisfy the gate.
 - `scripts/tests/conformance/test_host_composition.py` and/or a neighboring read-side test module — promote the existing spike's injection mechanism, then test actual consumers. Fixture-only unit coverage must run without host binaries.
-- `scripts/tests/test_session_reader_no_claude_projects_gate.py` — NEW: AST path-join/string scan with narrowly justified function-level exceptions where practical, stale-entry and stray-site tests. Scan all host transcript roots; exclude config/output directories and lint-tool examples with reasons.
+- `scripts/tests/test_session_reader_no_claude_projects_gate.py` (new file) — AST path-join/string scan with narrowly justified function-level exceptions where practical, stale-entry and stray-site tests. Scan all host transcript roots; exclude config/output directories and lint-tool examples with reasons.
 
 ### Tests and Compatibility
 
