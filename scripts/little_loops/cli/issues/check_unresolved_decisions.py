@@ -85,5 +85,9 @@ def cmd_check_unresolved_decisions(config: BRConfig, args: argparse.Namespace) -
     )
     for group in unresolved:
         heading = group.heading or "(whole document)"
-        print(f"  - {heading} (lines {group.start_line}-{group.end_line})", file=sys.stderr)
+        note = " — all options refuted" if group.all_refuted else ""
+        print(
+            f"  - {heading} (lines {group.start_line}-{group.end_line}){note}",
+            file=sys.stderr,
+        )
     return 1

@@ -88,7 +88,7 @@ class TestTraceCapture:
 
         assert [c.name for c in calls] == ["Read"]
 
-    def test_spike_does_not_import_production_subprocess_utils(self):
+    def test_guard_spike_does_not_import_production_subprocess_utils(self):
         source = Path(__file__).parent.joinpath("trace_capture.py").read_text()
         tree = ast.parse(source)
         imported_modules = set()

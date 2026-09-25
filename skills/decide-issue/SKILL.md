@@ -135,14 +135,10 @@ no agents, and performs no writes to the issue file — it only reads the CLI's 
     `true`, so the next bullet's condition applies — fall through to Phase 3, which falls
     through to Phase 3b's inline provisional-language scan when `AUTO_MODE = true` and
     `OPTIONS == 0` (Pattern D can lock in a clear winner even when no formal
-    `### Option A/B` blocks exist). `MANUAL_REVIEW_RECOMMENDED` is no longer emitted from
-    this phase: an exhausted retry now reaches Phase 3b before any manual-review
-    disposition is considered, rather than short-circuiting to one.
+    `### Option A/B` blocks exist). `MANUAL_REVIEW_RECOMMENDED` is no longer emitted here.
   - If not `VALIDATE_ONLY` and (`AUTO_MODE = false` or `DEPOSIT_ATTEMPTED = true`): fall
-    through to Phase 3 unchanged — Phase 3's own `OPTIONS` empty-handling (interactive
-    "nothing to decide" message, or Phase 3b's inline scan in auto mode) already covers
-    this case and remains the source of truth for non-validate-only runs that reach it a
-    second time.
+    through to Phase 3 unchanged — its own empty-`OPTIONS` handling (interactive message,
+    or Phase 3b's inline scan in auto mode) is the source of truth.
 
 ### `OPTIONS_MISSING` token shape
 
@@ -164,7 +160,7 @@ issue text by hand:
 ll-issues locate-options "${ISSUE_ID}" --json
 ```
 
-The JSON result is `{id, count, pattern, heading, options: [{label, text, start_line, end_line}, ...]}`.
+The JSON result is `{id, count, eligible_count, pattern, heading, options: [{label, text, start_line, end_line, eligible}, ...]}`. An option with `eligible: false` is named by a refuted-option marker (BUG-3592) — never score, select, or count it; read `eligible_count`, not `count`.
 `pattern` names which precedence tier fired: `section_header` (`### Option A`),
 `bold_label` (`**Option A**: ...`), `numbered` (`1. **Option A** ...`), `bullet`
 (`- (a) ...` / `- **Option A**: ...`), or `provisional_e` (an un-preferenced decision
@@ -188,6 +184,7 @@ source **`unresolved[0]`** (first group in document order) as the candidate belo
 **Auto-mode bullet-list handling**: if `pattern == "bullet"` and `AUTO_MODE = true`, do NOT route them to Phase 4 scoring — automation must not re-litigate an informal list the author may have already settled. Treat `OPTIONS` as empty so flow proceeds to Phase 3b, where Pattern D resolves the case: a declarative recommendation marker naming one of the bullet options locks it in; absent a marker, a residual bullet-tier group under `--auto` stays a human-review exit by design (`decision_needed` stays `true`; Phase 9 names it). In interactive mode, bullet-pattern options ARE scored through Phases 4–7 normally.
 
 - If `count == 0` and `check-unresolved-decisions` also finds zero groups: `AUTO_MODE = false` → print `No options found in Proposed Solution — nothing to decide.` and exit cleanly; `AUTO_MODE = true` → proceed to Phase 3b. **Exception (BUG-3278 part 4b)**: if `pattern == "decision_rules_numbered"` (BUG-3293 Program Design rulings — never a decision group), keep today's behavior instead — score via `locate-options` — or the flag clears with nothing scored.
+- **Refuted options (BUG-3592)**: `unresolved[0].options[*].eligible` is computed by the CLI. If `unresolved[0].all_refuted` is `true` (no eligible option), emit `## RESULT: ALL_OPTIONS_REFUTED` (shape in [reference.md](reference.md)), leave the marker and `decision_needed: true`, exit 1, and skip to Phase 8 — never take the one-option clear below. Otherwise score only the eligible options, and treat "one option" below as one *eligible* option.
 - If `unresolved[0]` holds one option (the group-vocabulary re-expression of the old `count == 1` check) and no other group is unresolved: print `Only one option present — no decision required. Clearing decision_needed if set.` then proceed to Phase 7 (7b's own gate re-verifies before writing). This subsumes BUG-3287's `residual_directive is null` guard by construction — the group probe already treats a co-located `provisional_e` directive as a second unresolved group, so a stale read here can never clear a flag Phase 7b would refuse.
 - If `unresolved[0]` holds 2+ options, or 2+ groups remain: proceed to Phase 4, scoring `unresolved[0]`'s options.
 
@@ -205,6 +202,8 @@ Before scanning for provisional language, collect all numbered list items under 
 
 Markers appear inline after the bold question label, e.g.:
 `**Fork vs. flag.** ✅ **RESOLVED** (2026-06-04 by …)`
+
+Skip `**Refuted option**:` marker items in this scan and never take a refuted label as a Phase 3b candidate (BUG-3592).
 
 **If the `## Open Questions` section exists with items and they are ALL marked resolved, and `decision_needed: true`**:
 
@@ -389,6 +388,8 @@ Use the Edit tool on the **selected group** (`unresolved[0]`, per Phase 3):
    (`_unapplied_decision`'s strict heading regex depends on the exact form). Disambiguate a second
    decided group sharing a section in the **body** instead: `**Decision point:** <group heading or
    first option label>` as the subsection's first line.
+
+3. If the issue has a `**Refuted option**:` marker (BUG-3592), append ` ✅ RESOLVED (YYYY-MM-DD by /ll:decide-issue: <selected label>)` to that marker item. The refuted option stays ineligible.
 
 **Idempotency rule (per-group, BUG-3278)**: skip the annotation write only when **the selected
 group** is already resolved per `is_group_resolved` — not "a `### Decision Rationale` section

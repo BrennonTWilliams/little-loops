@@ -379,11 +379,11 @@ Retire concentrated technical risk on an issue by planning, implementing, and ve
 
 **Budget discipline**: one spike per issue. If the frontmatter already carries `spike_attempted: true`, the skill refuses and exits 0 unless `--force` is passed.
 
-**Write-back**: on success, appends `## Spike Results` (retired-risk table, spike location, verification counts, promotion note) and sets both `spike_completed: true` and `spike_attempted: true`. On failure, sets `spike_attempted: true`, removes any stale `spike_completed` (marking a prior `## Spike Results` superseded), and appends `## Spike Findings` documenting which Verification commands failed. Either way it appends a session log via `ll-issues append-log` and `git add`s the issue file. Skipped entirely in `--check` mode.
+**Write-back**: on success, appends `## Spike Results` (retired-risk table, spike location, verification counts, promotion note) and sets both `spike_completed: true` and `spike_attempted: true`. A deterministic classifier (`ll-issues spike-verdict`, run over role-tagged JUnit XML) decides the verdict — never the raw exit code. **Refuted** (an `AssertionError` in an AC test, all guard tests and regression suites passing): sets `spike_attempted` + `spike_refuted`, removes `spike_completed`, rewrites `## Proposed Solution` into `### Option` blocks, adds a `**Refuted option**` marker under `## Open Questions`, arms `decision_needed`, and points at `/ll:decide-issue`. **Inconclusive** (import/collection/environment errors, non-assertion exceptions, skipped ACs, failing guard or regression tests, missing reports): sets `spike_attempted` only, removes stale `spike_completed`/`spike_refuted`, and recommends `/ll:spike <ID> --force` after fixing the cause. Both append `## Spike Findings` and mark a prior `## Spike Results` superseded. Guard tests must be named `test_guard_*`. Either way it appends a session log via `ll-issues append-log` and `git add`s the issue file. Skipped entirely in `--check` mode.
 
 **`--check` mode**: runs the spike's AC suite with no writes and exits 0 (pass) / 1 (fail), matching FSM `evaluate: type: exit_code` routing. The `spike-gate.yaml` wrapper loop (ENH-2641) consumes this contract to gate an implementation loop on a proven internal mechanism.
 
-**Related frontmatter:** `spike_needed`, `spike_attempted`, `spike_completed` — see [ISSUE_TEMPLATE.md](ISSUE_TEMPLATE.md).
+**Related frontmatter:** `spike_needed`, `spike_attempted`, `spike_completed`, `spike_refuted` — see [ISSUE_TEMPLATE.md](ISSUE_TEMPLATE.md).
 
 ### `/ll:issue-workflow`
 Quick reference for the little-loops issue management workflow. Displays the issue lifecycle diagram and command order.

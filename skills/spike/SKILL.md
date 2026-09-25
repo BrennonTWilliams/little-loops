@@ -17,6 +17,8 @@ allowed-tools:
   - Bash(mkdir:*)
   - Bash(git:*)
   - Bash(find:*)
+  - Bash(mktemp:*)
+  - Bash(rm:*)
 metadata:
   short-description: Prove an unproven internal mechanism with a code spike before implementing.
 trigger_fixtures:
@@ -203,26 +205,51 @@ Build the spike package + test class exactly as planned:
   unmatched write prompts in interactive mode and is allowed outright in
   automation. Isolation is enforced by convention plus the plan's mandatory
   regression-guard test, not by `allowed-tools`.
-- Include the regression-guard test from the plan (isolation guard).
+- Include the regression-guard test from the plan (isolation guard). Name every
+  guard test `test_guard_*` — the verdict classifier identifies guards by that prefix.
+- Install the exception-recording hook (the classifier needs each failed test's
+  exception type). It goes in `$SPIKE_DIR/conftest.py` — not a `-p little_loops...`
+  plugin, since `little_loops` may not be importable by the project's pytest:
+
+  ```bash
+  ll-issues spike-verdict --emit-conftest --out "$SPIKE_DIR/conftest.py"
+  ```
+
+  This appends a sentinel-delimited block and replaces it in place on a rerun, so a
+  spike's own fixtures in `conftest.py` are never overwritten or duplicated.
 
 ## Phase 5: Verify
 
 Run the plan's Verification commands **foreground-blocking** (never background the
-result-blocking suite). All must exit 0:
+result-blocking suite). Tag each command's role from the plan: `spike` (the
+`$SPIKE_DIR` suite: AC + guard tests) or `regression` (a named existing suite).
+
+Pick `<reports-dir>`: inside an FSM loop `${context.run_dir}/spike-junit/`;
+interactively `REPORTS_DIR=$(mktemp -d)`, removed after classification. **Never**
+`.ll/spikes/` — it is git-tracked and JUnit XML there would be committed noise.
+Delete stale reports first, then run every command with
+`--junitxml=<reports-dir>/<role>-<n>.xml` and `--maxfail=0` appended after the plan's
+own flags (a project `addopts = -x` would otherwise stop before the guard tests run,
+reading every refutation as inconclusive). Record each command's exit code:
 
 ```bash
-python -m pytest "$SPIKE_DIR/" -v
-python -m pytest "${TEST_DIR%/}/<named-regression-suite>.py" -v
+python -m pytest "$SPIKE_DIR/" -v --junitxml="$REPORTS_DIR/spike-1.xml" --maxfail=0; E1=$?
+python -m pytest "${TEST_DIR%/}/<named-regression-suite>.py" -v --junitxml="$REPORTS_DIR/regression-2.xml" --maxfail=0; E2=$?
+ll-issues spike-verdict --report "spike:$REPORTS_DIR/spike-1.xml:$E1" "regression:$REPORTS_DIR/regression-2.xml:$E2"
 ```
 
-If any command exits non-zero, the spike **failed** — proceed to Phase 6 (failure
-branch).
+`spike-verdict` prints `PROVEN` / `REFUTED` / `INCONCLUSIVE` plus a one-line cause and
+exits 0 / 1 / 3. **Use its verdict, not the raw exit codes** — do not classify by
+reading pytest output yourself. Only an `AssertionError` in an AC test, with every
+guard test and regression suite passing, is `REFUTED`; anything ambiguous (import or
+collection errors, non-assertion exceptions, fixture errors, skipped ACs, missing
+reports, failing guards or regression suites) is `INCONCLUSIVE`.
 
 ## Phase 6: Write-Back
 
 **Skip this phase entirely if `CHECK_MODE` is true** (see Check Mode Behavior).
 
-### On success (all Verification commands exit 0)
+### PROVEN
 
 1. Append a `## Spike Results` section to the issue with the Edit tool. Follow
    wire-issue's append-only pattern: insert **before `## Session Log`** (or before
@@ -245,24 +272,39 @@ branch).
    its test under `project.test_dir`, in a separate PR.
    ```
 
-2. Set `spike_completed: true` and `spike_attempted: true` in the frontmatter
+2. Remove `spike_refuted` if present, and set `spike_completed: true` and `spike_attempted: true` in the frontmatter
    `---` block with the Edit tool — the same inline-block convention
    confidence-check Phase 4.10 uses (there is no `set-flag` CLI verb). Always
    write `true`, never `false`; skip the write if already `true` (idempotent).
 
-### On failure (any Verification command non-zero)
+### REFUTED / INCONCLUSIVE
 
-A failed spike did not prove the mechanism; the cause may be the approach or the environment.
+Every verdict writes the full flag set (there is no unset verb — edit the frontmatter
+`---` block with the Edit tool):
 
-1. Set `spike_attempted: true` and remove `spike_completed` if present (same
-   Edit-the-frontmatter convention; there is no unset verb). A failed `--force` rerun
-   must not leave a stale `spike_completed: true` suppressing the unproven-mechanism cap.
-   If the issue already has a `## Spike Results` section from an earlier proven run, add
-   a `_Superseded by the failed /ll:spike --force run on [YYYY-MM-DD] — see ## Spike
-   Findings_` line under its heading.
-2. Append a `## Spike Findings` section documenting which Verification commands failed
-   and the failing output. Recommend routing to `/ll:decide-issue` or
-   `/ll:issue-size-review`.
+| Verdict | `spike_attempted` | `spike_completed` | `spike_refuted` | `decision_needed` |
+|---|---|---|---|---|
+| proven | set | set | **remove** | unchanged |
+| refuted | set | **remove** | set | set |
+| inconclusive | set | **remove** | **remove** | unchanged |
+
+A failed `--force` rerun must not leave a stale `spike_completed: true` suppressing the
+unproven-mechanism cap. Removing `spike_refuted` on a later verdict does not clear a
+`decision_needed` a refutation armed — `/ll:decide-issue` owns that. If the issue
+already has a `## Spike Results` section from an earlier proven run, add a
+`_Superseded by the failed /ll:spike --force run on [YYYY-MM-DD] — see ## Spike
+Findings_` line under its heading.
+
+Append a `## Spike Findings` section quoting the classifier's cause line and the failing
+commands' output.
+
+- **INCONCLUSIVE**: the Findings entry names the cause and does **not** claim the
+  approach is wrong (the environment, a test bug, or an unrelated failure may be to
+  blame). Do not route to `/ll:decide-issue`.
+- **REFUTED**: additionally rewrite the issue so `/ll:decide-issue` can act on it —
+  `## Proposed Solution` into `### Option <X>` header blocks, the refuted-option marker
+  under `## Open Questions`, and `decision_needed: true`. Exact shapes:
+  [write-back.md](write-back.md).
 
 ### Always
 
@@ -278,8 +320,9 @@ Then stage the issue file: `git add "[issue-file-path]"`.
 
 Print the next action:
 
-- On success: `✓ Spike passed. Run /ll:confidence-check $ISSUE_ID to re-score, then implement.`
-- On failure: `✗ Spike did not prove the mechanism — see ## Spike Findings; route to /ll:decide-issue or /ll:issue-size-review.`
+- PROVEN: `✓ Spike passed. Run /ll:confidence-check $ISSUE_ID to re-score, then implement.`
+- REFUTED: `✗ Spike refuted the approach — see ## Spike Findings; run /ll:decide-issue $ISSUE_ID to pick a replacement (or /ll:issue-size-review if the issue is too large).`
+- INCONCLUSIVE: `? Spike inconclusive — <cause>. Fix the cause, then re-run /ll:spike $ISSUE_ID --force.` Do **not** recommend `/ll:decide-issue`; a decision cannot fix an environment failure.
 
 ## Check Mode Behavior (--check)
 
@@ -293,7 +336,8 @@ When `CHECK_MODE` is true, run as an FSM loop evaluator with **no writes**:
    passed, print `Spike ACs pass`, then `exit 0`.
 
 This integrates with FSM `evaluate: type: exit_code` routing (0=pass, 1=fail,
-2+=error). `--check` implies `AUTO_MODE=true` and performs no frontmatter or
+2+=error). `--check` stays exit-code-only — it is not routed through `spike-verdict` (any non-pass
+correctly blocks the gate). It implies `AUTO_MODE=true` and performs no frontmatter or
 issue-body writes. The `spike-gate.yaml` wrapper loop (ENH-2641) consumes this
 exit-code contract to gate any implementation loop on a proven internal mechanism.
 
@@ -313,3 +357,4 @@ run non-interactively for `ll-auto` / `ll-parallel` / `ll-sprint` contexts. When
 - `docs/reference/ISSUE_TEMPLATE.md` — documents the
   `spike_needed`/`spike_attempted`/`spike_completed` frontmatter fields.
 - `plan-template.md` — the mandatory-section plan shape.
+- `write-back.md` — the refuted-verdict issue rewrite (Option headers + marker).

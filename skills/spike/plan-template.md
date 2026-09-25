@@ -61,23 +61,29 @@ block them).
 _One row per retired risk._ Map each test to the AC / risk factor it retires. Every
 `### Outcome Risk Factor` that names an unproven mechanism becomes a row. Include
 **at least one regression-guard test** — e.g. an AST sniff asserting the spike does
-not import the forbidden production module, so the spike stays isolated.
+not import the forbidden production module, so the spike stays isolated. Name every
+guard test `test_guard_*`: the verdict classifier identifies guards by that prefix
+(every other test in the spike suite is an AC test), and a spike with no
+`test_guard_*` test can never read as proven.
 
 | Test | Retires (AC / risk) | Kind |
 |------|---------------------|------|
 | `test_readiness_gate_blocks_until_ready` | Risk (a): unprecedented gated pop | behavior |
 | `test_n_worker_barrier_synchronizes` | Risk (b): untested N-worker fan-out | behavior |
-| `test_spike_does_not_import_production_core` | isolation guard | regression |
+| `test_guard_spike_does_not_import_production_core` | isolation guard | regression |
 
 ## Verification
 
 _Exact commands, all must exit 0._ List the precise `pytest` invocations — the
 spike's own AC suite **plus** the named existing regression suites the mechanism
-must not break.
+must not break. Tag each command with its role: `spike` (the `<test_dir>/spike/<slug>/`
+suite: AC + guard tests) or `regression` (a named existing suite). `/ll:spike` appends
+`--junitxml` and `--maxfail=0` when it runs them and classifies the result with
+`ll-issues spike-verdict`.
 
 ```bash
-python -m pytest <test_dir>/spike/<slug>/ -v
-python -m pytest <test_dir>/<named-regression-suite>.py -v
+python -m pytest <test_dir>/spike/<slug>/ -v                 # role: spike
+python -m pytest <test_dir>/<named-regression-suite>.py -v   # role: regression
 ```
 
 ## Out of Scope
@@ -92,4 +98,5 @@ _Post-spike fold, separate PR._ On acceptance, fold the proven code from
 `<test_dir>/spike/<slug>/` into its production module under `project.src_dir`
 and its test under `project.test_dir`, in a **separate PR**. There is no
 promotion directory — this is a manual step documented here, not performed by
-`/ll:spike`.
+`/ll:spike`. The `conftest.py` sentinel block (`# >>> ll-spike-verdict hook >>>` …
+`# <<< ll-spike-verdict hook <<<`) is spike scaffolding and is **not** promoted.

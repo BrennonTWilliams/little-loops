@@ -126,7 +126,7 @@ class TestRollingBaselineGate:
 
 
 class TestIsolationGuard:
-    def test_rolling_gate_module_has_no_production_imports(self):
+    def test_guard_rolling_gate_module_has_no_production_imports(self):
         """Regression guard: the spike must stay a standalone reimplementation,
         not a wrapper around little_loops production code -- otherwise it
         would prove nothing about the mechanism's viability in isolation."""

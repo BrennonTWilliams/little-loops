@@ -102,8 +102,9 @@ class TestSpikeSkillContract:
 
     def test_failure_branch_removes_stale_completed_and_does_not_assert_disproof(self) -> None:
         text = SKILL_FILE.read_text()
-        block = text.split("### On failure", 1)[1].split("### Always", 1)[0]
-        assert "remove `spike_completed`" in block
+        block = text.split("### REFUTED / INCONCLUSIVE", 1)[1].split("### Always", 1)[0]
+        assert "stale `spike_completed: true`" in block
+        assert "| **remove** |" in block
         assert "the approach is wrong" not in text
         assert "Approach disproven" not in text
 
@@ -175,3 +176,60 @@ class TestSpikeSkillLayoutPortability:
 
     def test_declares_python_pytest_only_scope(self) -> None:
         assert "Python/pytest" in SKILL_FILE.read_text()
+
+
+class TestSpikeVerdictContract:
+    """BUG-3592: three-verdict classifier contract in the skill and plan template."""
+
+    def _skill(self) -> str:
+        return SKILL_FILE.read_text()
+
+    def test_classifier_cli_is_the_verdict_source(self) -> None:
+        text = self._skill()
+        assert "ll-issues spike-verdict --report" in text
+        assert "--emit-conftest --out" in text
+        for verdict in ("PROVEN", "REFUTED", "INCONCLUSIVE"):
+            assert verdict in text
+
+    def test_flag_table_covers_every_verdict(self) -> None:
+        text = self._skill()
+        assert "| proven | set | set | **remove** | unchanged |" in text
+        assert "| refuted | set | **remove** | set | set |" in text
+        assert "| inconclusive | set | **remove** | **remove** | unchanged |" in text
+
+    def test_reports_never_under_ll_spikes(self) -> None:
+        text = self._skill()
+        assert "**Never**\n`.ll/spikes/`" in text
+        assert "mktemp -d" in text
+        assert "--maxfail=0" in text
+
+    def test_allowed_tools_include_mktemp_and_rm(self) -> None:
+        text = self._skill()
+        assert "Bash(mktemp:*)" in text
+        assert "Bash(rm:*)" in text
+
+    def test_inconclusive_does_not_route_to_decide_issue(self) -> None:
+        text = self._skill()
+        line = next(ln for ln in text.splitlines() if ln.startswith("- INCONCLUSIVE:"))
+        assert "--force" in line
+        assert "Do **not** recommend `/ll:decide-issue`" in line
+
+    def test_check_mode_stays_exit_code_only(self) -> None:
+        assert "not routed through `spike-verdict`" in self._skill()
+
+    def test_refuted_write_back_companion(self) -> None:
+        companion = (SKILL_DIR / "write-back.md").read_text()
+        assert "write-back.md" in self._skill()
+        assert "### Option <X>: <title>" in companion
+        assert (
+            "1. **Refuted option**: Option A — /ll:spike 2026-09-24: "
+            "`assert result.ready is True`. Which remaining option replaces it?"
+        ) in companion
+        assert "decision_needed: true" in companion
+
+    def test_plan_template_requires_guard_prefix_and_role_tags(self) -> None:
+        text = _plan_text()
+        assert "test_guard_" in text
+        assert "# role: spike" in text
+        assert "# role: regression" in text
+        assert "not** promoted" in text

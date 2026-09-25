@@ -113,6 +113,10 @@ def main_issues() -> int:
         from little_loops.cli.issues.show import cmd_show
         from little_loops.cli.issues.size import add_size_parser, cmd_size
         from little_loops.cli.issues.skip import cmd_skip
+        from little_loops.cli.issues.spike_verdict import (
+            add_spike_verdict_parser,
+            cmd_spike_verdict,
+        )
         from little_loops.cli_args import VALID_PRIORITIES, add_config_arg, add_skip_arg
         from little_loops.config import BRConfig
 
@@ -145,6 +149,7 @@ Sub-commands:
   check-decidable  Exit 0 if an issue has >=1 enumerable option to decide between
   check-design     Exit 0 if the Program Design gate passes for an issue
   locate-options   Print count/pattern/heading/spans of enumerable options in an issue
+  spike-verdict    Classify a spike PROVEN/REFUTED/INCONCLUSIVE from role-tagged JUnit XML
   set-scores       Write confidence and dimension scores to issue frontmatter
   set-flags        Write decision_needed/missing_artifacts/implementation_order_risk/spike_needed flags from confidence-check findings
   set-status       Transition an issue to a new status value
@@ -762,6 +767,7 @@ Examples:
         loc.add_argument("--json", "-j", action="store_true", help="Output as JSON object")
         add_config_arg(loc)
 
+        add_spike_verdict_parser(subs)
         add_check_open_questions_parser(subs)
         add_check_unresolved_decisions_parser(subs)
         add_check_acceptance_criteria_parser(subs)
@@ -1066,6 +1072,8 @@ Examples:
             return cmd_check_design(config, args)
         if args.command == "locate-options":
             return cmd_locate_options(config, args)
+        if args.command == "spike-verdict":
+            return cmd_spike_verdict(config, args)
         if args.command == "check-open-questions":
             return cmd_check_open_questions(config, args)
         if args.command == "check-unresolved-decisions":

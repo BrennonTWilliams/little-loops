@@ -99,7 +99,7 @@ class TestUnionDedupe:
 
 
 class TestSpikeIsolation:
-    def test_spike_does_not_import_cli_logs_discover_all_projects(self):
+    def test_guard_spike_does_not_import_cli_logs_discover_all_projects(self):
         union_source = (Path(__file__).parent / "union.py").read_text(encoding="utf-8")
         tree = ast.parse(union_source)
         imported_names: set[str] = set()

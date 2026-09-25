@@ -1,7 +1,7 @@
 """Isolated proof of the `defer_loading` + tool-search-tool request shape.
 
 Deliberately does not import `little_loops.tool_catalog` or
-`little_loops.host_runner` — see `test_spike_does_not_import_tool_catalog_or_host_runner`.
+`little_loops.host_runner` — see `test_guard_spike_does_not_import_tool_catalog_or_host_runner`.
 Mirrors their assembly logic against the real installed `anthropic` SDK types
 so a shape mismatch here would also break the real integration.
 """

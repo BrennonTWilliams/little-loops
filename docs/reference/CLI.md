@@ -2376,8 +2376,8 @@ Print count/pattern/heading/spans of enumerable options in an issue (ENH-2950). 
 **Examples:**
 ```bash
 ll-issues locate-options ENH-2950 --json
-# {"id": "ENH-2950", "count": 2, "pattern": "bold_label", "heading": "Proposed Solution",
-#  "options": [{"label": "Option A", "text": "...", "start_line": 12, "end_line": 14}, ...],
+# {"id": "ENH-2950", "count": 2, "eligible_count": 2, "pattern": "bold_label", "heading": "Proposed Solution",
+#  "options": [{"label": "Option A", "text": "...", "start_line": 12, "end_line": 14, "eligible": true}, ...],
 #  "residual_directive": null}
 ```
 
@@ -2385,7 +2385,22 @@ ll-issues locate-options ENH-2950 --json
 
 `residual_directive` (BUG-3287): a co-located Pattern E directive that a tier or H2-scan match preempted from being the primary result — the directive probe runs alongside those stages, not only as a terminal fallback, so a document holding both an enumerated option set and a separate un-preferenced decision directive reports both. It is a nested `LocatedOptions` object (same shape, `pattern` always `"provisional_e"`) rather than a bare option, and is `null` whenever no such directive exists (including on the nested object itself — it never recurses). The human-readable (non-`--json`) output prints an additional `+ residual decision directive in '<heading>' (line N) — not counted` line when present.
 
+`eligible` / `eligible_count` (BUG-3592): an option named by a `**Refuted option**` marker under `## Open Questions` (written by `/ll:spike` on a refuted verdict) reports `eligible: false` and is excluded from `eligible_count`. `check-unresolved-decisions --json` marks the same options and adds `all_refuted` to each group; a group with no eligible option stays unresolved.
+
 **FSM loop use**: Prefer `check-decidable` for a pure gate (`evaluate: {type: exit_code}`); use `locate-options --json` when a downstream state needs the actual option text, not just a boolean.
+
+---
+
+#### `ll-issues spike-verdict`
+
+Classify a code spike as `PROVEN`, `REFUTED` or `INCONCLUSIVE` from role-tagged JUnit XML (BUG-3592). Used by `/ll:spike` Phase 5; the model never classifies from raw pytest exit codes.
+
+| Argument/Flag | Description |
+|---------------|-------------|
+| `--report ROLE:XML:EXIT ...` | One Verification run. `ROLE` is `spike` (the spike directory: AC + `test_guard_*` guard tests) or `regression` (a named existing suite); `XML` is its `--junitxml` path; `EXIT` its pytest exit code |
+| `--emit-conftest --out PATH` | Write the exception-recording hook into `PATH` (a spike's `conftest.py`) as a sentinel-delimited block; appends to an existing file and replaces the block in place on a rerun |
+
+Prints the verdict and a one-line cause. Exit codes: `0` proven, `1` refuted, `3` inconclusive, `2` usage error. Only an `AssertionError` (including `unittest` assertions and a non-raising `pytest.raises`) in an AC test, with every guard test and regression report passing, is `REFUTED`; any import/collection/fixture error, non-assertion exception, skipped AC, failing guard or regression suite, missing/malformed report, or zero AC/guard tests is `INCONCLUSIVE`, and inconclusive triggers win. See the `spike_refuted` field in [ISSUE_TEMPLATE.md](ISSUE_TEMPLATE.md).
 
 ---
 

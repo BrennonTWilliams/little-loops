@@ -143,7 +143,7 @@ class TestConcurrentMigration:
 
 
 class TestSpikeIsolation:
-    def test_spike_does_not_import_production_session_store(self):
+    def test_guard_spike_does_not_import_production_session_store(self):
         spike_dir = Path(__file__).parent
         for source_file in ("backend.py", "dialects.py"):
             tree = ast.parse((spike_dir / source_file).read_text(encoding="utf-8"))

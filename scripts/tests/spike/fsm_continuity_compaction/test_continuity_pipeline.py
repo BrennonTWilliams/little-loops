@@ -227,7 +227,7 @@ class TestSummaryIncludesAssistantContent:
 class TestSpikeIsolation:
     """Regression guard: the spike must not import FSM production modules."""
 
-    def test_spike_does_not_import_fsm_production_modules(self) -> None:
+    def test_guard_spike_does_not_import_fsm_production_modules(self) -> None:
         spike_dir = Path(__file__).parent
         forbidden_prefixes = ("little_loops.fsm",)
         for py_file in spike_dir.glob("*.py"):

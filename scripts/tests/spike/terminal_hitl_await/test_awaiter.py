@@ -120,7 +120,7 @@ class TestSingleReadMechanism:
 
 
 class TestSpikeIsolation:
-    def test_spike_does_not_import_production_adapter_modules(self) -> None:
+    def test_guard_spike_does_not_import_production_adapter_modules(self) -> None:
         forbidden = {"little_loops.fsm.adapters.terminal_adapter", "little_loops.fsm.executor"}
         spike_dir = Path(__file__).parent
         for py_file in spike_dir.glob("*.py"):

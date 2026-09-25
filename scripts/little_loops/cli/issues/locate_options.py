@@ -41,13 +41,17 @@ def cmd_locate_options(config: BRConfig, args: argparse.Namespace) -> int:
         print_json({"id": args.issue_id, **located.to_dict()})
         return 0
 
-    print(f"{args.issue_id}: {located.count} enumerable option(s)")
+    summary = f"{args.issue_id}: {located.count} enumerable option(s)"
+    if located.eligible_count != located.count:
+        summary += f" ({located.eligible_count} eligible)"
+    print(summary)
     if located.pattern is not None:
         print(f"  pattern: {located.pattern}")
     if located.heading is not None:
         print(f"  heading: {located.heading}")
     for option in located.options:
-        print(f"  - {option.label} (lines {option.start_line}-{option.end_line})")
+        refuted = "" if option.eligible else " [refuted]"
+        print(f"  - {option.label} (lines {option.start_line}-{option.end_line}){refuted}")
     if located.residual_directive is not None:
         rd = located.residual_directive
         line = rd.options[0].start_line if rd.options else "?"

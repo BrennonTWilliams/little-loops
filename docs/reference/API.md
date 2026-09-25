@@ -1041,10 +1041,19 @@ out of scope for the directive probe (measured 0/0 corpus impact; see BUG-3287).
 
 **Returns:** A `LocatedOptions` dataclass:
 - `count: int` - Number of options found (0 when there is nothing to decide)
+- `eligible_count: int` (property) - Options not named by a refuted-option marker (BUG-3592)
 - `pattern: str | None` - Which tier fired (`section_header` | `bold_label` | `numbered` | `bullet` | `decision_rules_numbered` | `provisional_e`), or `None` when `count == 0`
 - `heading: str | None` - The section the options were found under, or `None` when `count == 0`
-- `options: list[LocatedOption]` - Per-option spans; each `LocatedOption` has `label: str`, `text: str`, `start_line: int`, `end_line: int` (1-indexed), and a `to_dict()` for JSON serialization. `LocatedOptions.to_dict()` nests the full option list.
+- `options: list[LocatedOption]` - Per-option spans; each `LocatedOption` has `label: str`, `text: str`, `start_line: int`, `end_line: int` (1-indexed), `eligible: bool` (`False` when a `**Refuted option**` marker in `## Open Questions` names the option, BUG-3592), and a `to_dict()` for JSON serialization. `LocatedOptions.to_dict()` nests the full option list.
 - `residual_directive: LocatedOptions | None` - A co-located Pattern E directive preempted by a tier/H2-scan win (BUG-3287), or `None`. Always `None` on the nested object itself (no recursion).
+
+#### refuted_option_labels
+
+```python
+def refuted_option_labels(content: str) -> set[str]
+```
+
+Normalized (whitespace-collapsed, casefolded) labels named by `1. **Refuted option**: Option A — ...` markers in `## Open Questions`, resolved (`✅ RESOLVED`) or not (BUG-3592). `locate_enumerable_options` and `locate_unresolved_decisions` use it to mark options `eligible=False`.
 
 #### count_enumerable_options
 
@@ -1120,8 +1129,8 @@ those are the issue's own settled design rulings, not mutually exclusive alterna
 - `include_approximate_tiers` - Widen to `numbered`/`bullet` tiers plus the Pattern E directive probe (default `False`)
 
 **Returns:** `DecisionGroup` list — `heading: str | None`, `tier: str`, `options: list[LocatedOption]`,
-`start_line: int`, `end_line: int` — for every group that fails `is_group_resolved`. Empty when no
-unresolved decision point remains.
+`start_line: int`, `end_line: int`, `all_refuted: bool` (property; no option is eligible, BUG-3592) — for every group that fails `is_group_resolved`. Empty when no
+unresolved decision point remains. Options named by a refuted-option marker are marked `eligible=False`; a group left with none stays in the list.
 
 #### count_open_questions_in_sections
 

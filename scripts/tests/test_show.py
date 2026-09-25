@@ -383,6 +383,15 @@ class TestParseCardFields:
         assert fields["spike_attempted"] == "true"
         assert fields["spike_completed"] == "false"
 
+    def test_spike_refuted_surfaced_as_bool_string(self, tmp_path: Path) -> None:
+        """BUG-3592: spike_refuted surfaces like the other spike_* flags."""
+        path, config = self._write_issue(
+            tmp_path,
+            "---\nstatus: open\nspike_attempted: true\nspike_refuted: true\n---\n# ENH-5098: T\n",
+            "P3-ENH-5098-t.md",
+        )
+        assert _parse_card_fields(path, config)["spike_refuted"] == "true"
+
     def test_spike_flags_absent_are_none(self, tmp_path: Path) -> None:
         """ENH-2640: absent spike flags surface as None (predicate reads != 'true')."""
         path, config = self._write_issue(
@@ -394,6 +403,7 @@ class TestParseCardFields:
         assert fields["spike_needed"] is None
         assert fields["spike_attempted"] is None
         assert fields["spike_completed"] is None
+        assert fields["spike_refuted"] is None
 
     def test_reconcile_attempted_surfaced_as_bool_string(self, tmp_path: Path) -> None:
         """ENH-2689: reconcile_attempted surfaces as a lowercased boolean string

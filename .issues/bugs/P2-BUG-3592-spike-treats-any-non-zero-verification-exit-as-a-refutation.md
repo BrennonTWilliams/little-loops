@@ -3,10 +3,11 @@ id: BUG-3592
 type: BUG
 title: Spike treats any non-zero Verification exit as a refutation
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-25'
 captured_at: '2026-09-25T03:40:43Z'
+completed_at: '2026-09-25T04:48:49Z'
 parent: EPIC-3565
 supersedes:
 - BUG-3572
@@ -22,6 +23,7 @@ score_complexity: 10
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 10
+completed_at: '2026-09-25T04:48:49Z'
 ---
 
 # BUG-3592: Spike treats any non-zero Verification exit as a refutation
@@ -304,17 +306,17 @@ Everything ambiguous reads as inconclusive and does not claim the approach is wr
 
 ## Acceptance Criteria
 
-- [ ] A Verification failure caused by collection/import/env errors, a non-assertion exception in a test body, a test-time `<error>`, a failing guard test, a failing regression suite, a missing/malformed report, any skipped AC test, or zero matching AC/guard tests is recorded as inconclusive, not refuted
-- [ ] An AC failure from `assert`, a `unittest` assertion, or a non-raising `pytest.raises` / `pytest.warns` counts as an assertion; a mix of assertion and non-assertion AC failures is inconclusive
-- [ ] Refuted/inconclusive classification is made by ll-issues `spike-verdict` from role-tagged JUnit XML with recorded exception types, not by the model reading exit codes
-- [ ] The exception-type hook works in a project where `little_loops` is not importable by the project's pytest (conftest, not `-p`), and never overwrites or duplicates content in an existing spike `conftest.py`
-- [ ] JUnit reports are never written under `.ll/spikes/`
-- [ ] Every verdict writes the full flag set: a failed `--force` rerun clears a stale `spike_completed`; a proven rerun clears a stale `spike_refuted`
-- [ ] A refuted spike leaves ≥1 enumerable option for `/ll:decide-issue` when an alternative exists, and decide-issue never re-selects the refuted option — including when it is the only option left
-- [ ] The refuted-option exclusion is computed by `locate-options` / `check-unresolved-decisions`, not by skill prose
-- [ ] With no eligible option, decide-issue emits `ALL_OPTIONS_REFUTED`, exits 1 and leaves `decision_needed: true`; after a replacement is selected, the marker item is `✅ RESOLVED` and `check-open-questions` no longer counts it
-- [ ] `ll-issues show --json` emits `spike_refuted`
-- [ ] `--check` mode is unchanged
+- [x] A Verification failure caused by collection/import/env errors, a non-assertion exception in a test body, a test-time `<error>`, a failing guard test, a failing regression suite, a missing/malformed report, any skipped AC test, or zero matching AC/guard tests is recorded as inconclusive, not refuted
+- [x] An AC failure from `assert`, a `unittest` assertion, or a non-raising `pytest.raises` / `pytest.warns` counts as an assertion; a mix of assertion and non-assertion AC failures is inconclusive
+- [x] Refuted/inconclusive classification is made by ll-issues `spike-verdict` from role-tagged JUnit XML with recorded exception types, not by the model reading exit codes
+- [x] The exception-type hook works in a project where `little_loops` is not importable by the project's pytest (conftest, not `-p`), and never overwrites or duplicates content in an existing spike `conftest.py`
+- [x] JUnit reports are never written under `.ll/spikes/`
+- [x] Every verdict writes the full flag set: a failed `--force` rerun clears a stale `spike_completed`; a proven rerun clears a stale `spike_refuted`
+- [x] A refuted spike leaves ≥1 enumerable option for `/ll:decide-issue` when an alternative exists, and decide-issue never re-selects the refuted option — including when it is the only option left
+- [x] The refuted-option exclusion is computed by `locate-options` / `check-unresolved-decisions`, not by skill prose
+- [x] With no eligible option, decide-issue emits `ALL_OPTIONS_REFUTED`, exits 1 and leaves `decision_needed: true`; after a replacement is selected, the marker item is `✅ RESOLVED` and `check-open-questions` no longer counts it
+- [x] `ll-issues show --json` emits `spike_refuted`
+- [x] `--check` mode is unchanged
 
 ## Impact
 
@@ -324,10 +326,24 @@ Everything ambiguous reads as inconclusive and does not claim the approach is wr
 - **Breaking Change**: No (legacy attempted-only issues read as inconclusive). Behavior change: a proven verdict now requires a `test_guard_*` test, so a `--force` rerun of a pre-existing spike without one reads inconclusive
 - **Sequencing**: BUG-3591 is done (`fb3d305`), so this issue is unblocked
 
+## Resolution
+
+Fixed 2026-09-25. New `ll-issues spike-verdict` (`cli/issues/spike_verdict.py`) classifies role-tagged
+JUnit XML into PROVEN/REFUTED/INCONCLUSIVE (exit 0/1/3) and writes a sentinel-delimited
+`conftest.py` hook recording exception types. `/ll:spike` Phases 4–7 use it, write the full flag
+set incl. `spike_refuted`, and (refuted) rewrite Proposed Solution into `### Option` blocks plus a
+`**Refuted option**` marker (`skills/spike/write-back.md`). `issue_parser` gains
+`refuted_option_labels`, `LocatedOption.eligible`, `all_refuted`; `locate-options` /
+`check-unresolved-decisions` emit them; `/ll:decide-issue` reads `eligible_count`, resolves the
+marker, and emits `ALL_OPTIONS_REFUTED`. `show --json` emits `spike_refuted`. Existing spike
+packages' guard tests renamed `test_guard_*`.
+
 ## Status
 
 **Open** | Created: 2026-09-25 | Priority: P2
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-25T04:48:49 - `c959968e-2b0f-4381-8fac-de7361f2d7b5.jsonl`
+- `/ll:ready-issue` - 2026-09-25T04:31:52 - `a8472ba4-4c46-48b4-8f68-409c6b4973fa.jsonl`
 - `/ll:confidence-check` - 2026-09-25T04:25:20 - `9aefaaf2-024d-4b80-b438-1a2a0085bef6.jsonl`

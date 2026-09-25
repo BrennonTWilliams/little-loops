@@ -86,7 +86,7 @@ class TestUsageEventsRunIdWriter:
 
         assert derive_run_id(started_at, loop_name) == expected
 
-    def test_spike_does_not_import_production_modules(self) -> None:
+    def test_guard_spike_does_not_import_production_modules(self) -> None:
         writer_path = Path(__file__).parent / "writer.py"
         tree = ast.parse(writer_path.read_text())
 

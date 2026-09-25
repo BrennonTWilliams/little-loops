@@ -78,7 +78,7 @@ def test_nonexistent_ref_returns_nonzero(repo: Path) -> None:
     assert res.returncode != 0
 
 
-def test_uses_gitlock_no_bare_subprocess() -> None:
+def test_guard_uses_gitlock_no_bare_subprocess() -> None:
     """Regression guard: blob_reader must route git through GitLock, not bare subprocess."""
     src = (Path(__file__).parent / "blob_reader.py").read_text()
     tree = ast.parse(src)

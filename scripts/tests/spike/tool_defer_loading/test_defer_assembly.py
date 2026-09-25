@@ -56,7 +56,7 @@ class TestDeferLoadingAssembly:
 
 
 class TestSpikeIsolation:
-    def test_spike_does_not_import_tool_catalog_or_host_runner(self):
+    def test_guard_spike_does_not_import_tool_catalog_or_host_runner(self):
         source = Path(__file__).parent.joinpath("defer_assembly.py").read_text()
         tree = ast.parse(source)
         forbidden = {"little_loops.tool_catalog", "little_loops.host_runner"}

@@ -30,6 +30,7 @@ class TestLocatedOptionsDataclass:
             "text": "**Option A**\nDo X.",
             "start_line": 3,
             "end_line": 4,
+            "eligible": True,
         }
 
     def test_located_options_to_dict_nests_options(self) -> None:
@@ -43,6 +44,7 @@ class TestLocatedOptionsDataclass:
         )
         assert located.to_dict() == {
             "count": 1,
+            "eligible_count": 1,
             "pattern": "bold_label",
             "heading": "Proposed Solution",
             "options": [option.to_dict()],

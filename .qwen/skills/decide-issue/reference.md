@@ -263,3 +263,31 @@ Propagation (Phase 7c): not evaluated under --dry-run
 
 ================================================================================
 ```
+
+## Refuted-option handling (BUG-3592)
+
+`/ll:spike` (refuted verdict) and BUG-3574's `PROPOSAL_UNSOUND` write one numbered item
+under `## Open Questions`:
+
+```markdown
+1. **Refuted option**: Option A — /ll:spike 2026-09-24: `assert result.ready is True`. Which remaining option replaces it?
+```
+
+`issue_parser.refuted_option_labels` parses it (resolved or not); `locate-options --json` and
+`check-unresolved-decisions --json` carry `eligible` per option, `eligible_count`, and
+`all_refuted` per group, so exclusion is deterministic rather than prose-driven. A `✅ RESOLVED`
+suffix closes the question but never makes the refuted option eligible again.
+
+- ≥1 eligible option: select among the eligible options as usual, then mark the marker item
+  `✅ RESOLVED (YYYY-MM-DD by /ll:decide-issue: <selected label>)` (Phase 7a step 3).
+- 0 eligible options: emit the token below, leave the marker unresolved and
+  `decision_needed: true`. Distinct from `NO_ACTIONABLE_DECISIONS` (every Open Questions item
+  already resolved, which the unresolved marker prevents). Exit 1 fails the resolve-decision
+  oracle, which BUG-3593 routes to `record_decision_unresolved`.
+
+```
+## RESULT: ALL_OPTIONS_REFUTED
+reason: every option in ## Proposed Solution is named by a refuted-option marker
+decision_needed remains true
+exit_code: 1
+```

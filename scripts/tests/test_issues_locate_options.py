@@ -91,7 +91,7 @@ class TestLocateOptionsJsonFlag:
         assert data["heading"] == "Proposed Solution"
         assert len(data["options"]) == 2
         for option in data["options"]:
-            assert set(option) == {"label", "text", "start_line", "end_line"}
+            assert set(option) == {"label", "text", "start_line", "end_line", "eligible"}
         assert data["options"][0]["label"] == "Option A"
 
     def test_pattern_e_directive_json_shape(self, temp_project_dir: Path) -> None:

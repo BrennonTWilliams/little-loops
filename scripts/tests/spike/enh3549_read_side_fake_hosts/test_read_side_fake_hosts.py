@@ -113,7 +113,7 @@ class TestIsolation:
         assert "fake" not in sessions._REGISTERED_HOSTS
         assert "fake" not in sessions._LAYOUT_HOSTS
 
-    def test_spike_does_not_edit_production_registries(self):
+    def test_guard_spike_does_not_edit_production_registries(self):
         """Regression guard: the spike only ever touches registries via monkeypatch."""
         src = Path(__file__).with_name("fake_read_hosts.py").read_text(encoding="utf-8")
         tree = ast.parse(src)

@@ -48,7 +48,7 @@ class TestBoundedLoopStaysWithinCaps:
         else:
             raise AssertionError("expected ValueError for max_workers over the spike cap")
 
-    def test_spike_does_not_import_production_worktree_module_source(self) -> None:
+    def test_guard_spike_does_not_import_production_worktree_module_source(self) -> None:
         """AST sniff: the spike may call verify_epic_branch_before_merge() (a
         read-only dependency) but must not import internals meant to stay
         production-only (e.g. cleanup_worktree, setup_worktree) that would let

@@ -2482,6 +2482,8 @@ class LocatedOption:
     text: str
     start_line: int
     end_line: int
+    eligible: bool = True
+    """``False`` when a refuted-option marker names this option (BUG-3592)."""
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -2489,6 +2491,7 @@ class LocatedOption:
             "text": self.text,
             "start_line": self.start_line,
             "end_line": self.end_line,
+            "eligible": self.eligible,
         }
 
 
@@ -2512,9 +2515,15 @@ class LocatedOptions:
     otherwise have been reported on its own. ``None`` whenever no such directive
     exists, and always ``None`` on the nested object itself (no recursion)."""
 
+    @property
+    def eligible_count(self) -> int:
+        """Options not named by a refuted-option marker (BUG-3592)."""
+        return sum(1 for o in self.options if o.eligible)
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "count": self.count,
+            "eligible_count": self.eligible_count,
             "pattern": self.pattern,
             "heading": self.heading,
             "options": [o.to_dict() for o in self.options],
@@ -2844,7 +2853,54 @@ def _locate_decision_rules_numbered(content: str) -> LocatedOptions | None:
     )
 
 
+def _normalize_option_label(label: str) -> str:
+    return " ".join(label.split()).casefold()
+
+
+# BUG-3592: refuted-option marker — a numbered/bulleted `## Open Questions` item
+# written by /ll:spike (refuted) and /ll:go-no-go-style PROPOSAL_UNSOUND flows.
+_REFUTED_OPTION_RE = re.compile(
+    r"^\s*(?:\d+[.)]|[-*])\s+\*\*Refuted option\*\*:\s*(?P<label>.+?)\s+—",
+    re.MULTILINE,
+)
+
+
+def refuted_option_labels(content: str) -> set[str]:
+    """Normalized labels named by refuted-option markers in ``## Open Questions`` (BUG-3592).
+
+    Reads markers whether or not they carry a ``✅ RESOLVED`` suffix: closing the
+    question never makes the refuted option eligible again. Labels are
+    whitespace-collapsed and casefolded to compare against
+    :attr:`LocatedOption.label`.
+    """
+    body = _section_body(content, "Open Questions")
+    if not body:
+        return set()
+    return {_normalize_option_label(m.group("label")) for m in _REFUTED_OPTION_RE.finditer(body)}
+
+
+def _mark_refuted(options: list[LocatedOption], refuted: set[str]) -> None:
+    for option in options:
+        if _normalize_option_label(option.label) in refuted:
+            option.eligible = False
+
+
 def locate_enumerable_options(content: str) -> LocatedOptions:
+    """Locate enumerable option blocks anywhere in *content* (ENH-2821).
+
+    Options named by a refuted-option marker (:func:`refuted_option_labels`) carry
+    ``eligible=False`` (BUG-3592).
+    """
+    located = _locate_enumerable_options_raw(content)
+    refuted = refuted_option_labels(content)
+    if refuted:
+        _mark_refuted(located.options, refuted)
+        if located.residual_directive is not None:
+            _mark_refuted(located.residual_directive.options, refuted)
+    return located
+
+
+def _locate_enumerable_options_raw(content: str) -> LocatedOptions:
     """Locate enumerable option blocks anywhere in *content* (ENH-2821).
 
     Tries, in precedence order: (1) the scoped scan — ``## Proposed Solution``,
@@ -3106,6 +3162,11 @@ class DecisionGroup:
     start_line: int
     end_line: int
 
+    @property
+    def all_refuted(self) -> bool:
+        """True when every option is named by a refuted-option marker (BUG-3592)."""
+        return bool(self.options) and not any(o.eligible for o in self.options)
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "heading": self.heading,
@@ -3113,6 +3174,7 @@ class DecisionGroup:
             "options": [o.to_dict() for o in self.options],
             "start_line": self.start_line,
             "end_line": self.end_line,
+            "all_refuted": self.all_refuted,
         }
 
 
@@ -3432,8 +3494,16 @@ def locate_unresolved_decisions(
     See :func:`_iter_decision_groups` for the ``decision_rules_numbered``
     exclusion and the ``provisional_e`` Pattern E limitation (at most one
     directive group per document); both apply here unchanged.
+
+    BUG-3592: options named by a refuted-option marker are marked ineligible
+    within each group; a group left with none stays in the result with
+    ``all_refuted`` true.
     """
     groups = _iter_decision_groups(content, include_approximate_tiers=include_approximate_tiers)
+    refuted = refuted_option_labels(content)
+    if refuted:
+        for g in groups:
+            _mark_refuted(g.options, refuted)
     return [g for g in groups if not is_group_resolved(content, g)]
 
 

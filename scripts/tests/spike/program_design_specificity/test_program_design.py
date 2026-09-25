@@ -135,7 +135,7 @@ class TestRealRepoResolution:
 
 
 class TestIsolation:
-    def test_spike_does_not_import_production_core(self):
+    def test_guard_spike_does_not_import_production_core(self):
         source = (Path(__file__).parent / "program_design.py").read_text(encoding="utf-8")
         tree = ast.parse(source)
         imported: list[str] = []

@@ -954,3 +954,34 @@ class TestBug3278DecisionGroupGating:
             "Phase 7b must run check-unresolved-decisions after 7a's annotation write "
             "and leave decision_needed: true on a residual (BUG-3278)"
         )
+
+
+class TestRefutedOptionHandling:
+    """BUG-3592: refuted options are excluded deterministically and reported."""
+
+    def _skill(self) -> str:
+        return (PROJECT_ROOT / "skills" / "decide-issue" / "SKILL.md").read_text()
+
+    def _reference(self) -> str:
+        return (PROJECT_ROOT / "skills" / "decide-issue" / "reference.md").read_text()
+
+    def test_reads_eligible_flag_not_count(self) -> None:
+        text = self._skill()
+        assert "eligible_count" in text
+        assert "never score, select, or count it" in text
+
+    def test_all_refuted_never_reaches_one_option_clear(self) -> None:
+        text = self._skill()
+        assert "ALL_OPTIONS_REFUTED" in text
+        assert "never take the one-option clear below" in text
+
+    def test_all_options_refuted_token_shape(self) -> None:
+        ref = self._reference()
+        assert "## RESULT: ALL_OPTIONS_REFUTED" in ref
+        assert "decision_needed remains true" in ref
+        assert "exit_code: 1" in ref
+
+    def test_marker_resolved_on_selection_and_phase_3b_skips_it(self) -> None:
+        text = self._skill()
+        assert "✅ RESOLVED (YYYY-MM-DD by /ll:decide-issue: <selected label>)" in text
+        assert "Skip `**Refuted option**:` marker items" in text
