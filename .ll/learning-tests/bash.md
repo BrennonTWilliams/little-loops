@@ -1,26 +1,21 @@
 ---
 target: bash
-date: '2026-08-22'
+date: '2026-09-25'
 status: proven
 assertions:
-- claim: bash -c script exit code is that of the last command executed, not the
-    first failing one, when set -e is not used
+- claim: a command whose exit status is tested by an if condition does not trigger a set -e abort
   result: pass
-- claim: bash -c with a nonexistent command exits 127, with stderr populated and
-    stdout empty
+- claim: without pipefail a pipeline's exit status is that of the last command only
   result: pass
-- claim: a shell-level `exit N` (N=137) yields Popen.returncode == N (positive),
-    distinct from a signal kill
+- claim: with set -o pipefail a pipeline exits non-zero when any stage fails and reports the rightmost failing stage's status
   result: pass
-- claim: a process killed via os.killpg(pgid, SIGKILL) reports Popen.returncode
-    == -9 (negative signal number) to the Python parent
+- claim: local var=$(false) masks the failure (exit 0) while plain var=$(false) yields exit status 1
   result: pass
-- claim: with start_new_session=True, killing the process group via os.killpg also
-    terminates a background grandchild spawned inside the script (not just the top-level
-    bash process)
+- claim: variable assignments inside a subshell are not visible in the parent shell
   result: pass
-- claim: referencing an unset variable (no set -u) expands to an empty string, prints
-    without error, and exits 0
+- claim: $$ reports the top-level shell PID inside a subshell while $BASHPID reports the subshell PID
+  result: pass
+- claim: an EXIT trap fires when set -e terminates the script early
   result: pass
 raw_output_path: .ll/learning-tests/raw/bash.txt
 ---
