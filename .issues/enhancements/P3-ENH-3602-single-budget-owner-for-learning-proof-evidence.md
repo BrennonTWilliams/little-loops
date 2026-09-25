@@ -11,6 +11,7 @@ decision_needed: false
 relates_to:
 - ENH-3601
 - ENH-3577
+- FEAT-3598
 parent: EPIC-3565
 ---
 
@@ -121,4 +122,11 @@ Decomposed from ENH-3577: Consolidate autodev issue preparation into a single co
 
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-09-25T19:09:20 - `dcfdf31c-be65-47ce-9e6e-5b65d63239f2.jsonl`
 - `/ll:decide-issue` - 2026-09-25T19:02:00 - `ccfdabfd-5c2e-49a6-bfd7-abb914a90640.jsonl`
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): The AC 'A `ready` preparation outcome never hits `LEARNING_GATE_BLOCKED` for a reason the controller could have detected' depends on ENH-3601's controller. Test this issue via the shared stale/refuted fixture yielding the same verdict from `assess_proof` and the `ll-auto` gate; the controller-level AC belongs to ENH-3601.

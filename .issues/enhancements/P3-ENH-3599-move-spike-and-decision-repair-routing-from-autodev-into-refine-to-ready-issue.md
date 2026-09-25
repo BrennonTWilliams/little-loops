@@ -115,3 +115,13 @@ Decomposed from ENH-3577: Consolidate autodev issue preparation into a single co
 ## Status
 
 **Open** | Created: 2026-09-25 | Priority: P3
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): This issue's Expected Behavior and Call Path apply to autodev until ENH-3601 lands; afterwards autodev re-enters `prepare-issue`. After ENH-3601 (Option B) autodev re-enters the `prepare-issue` wrapper, not `refine-to-ready-issue` directly. The authoritative per-issue run record is the wrapper's record, which supersedes/wraps the child's; it is the one copied to `records/<ID>.json`. ENH-3597 must list the wrapper as a second record writer.
+
+
+## Session Log
+- `/ll:audit-issue-conflicts` - 2026-09-25T19:09:18 - `dcfdf31c-be65-47ce-9e6e-5b65d63239f2.jsonl`

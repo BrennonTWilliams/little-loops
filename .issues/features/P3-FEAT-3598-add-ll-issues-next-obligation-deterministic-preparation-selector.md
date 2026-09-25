@@ -13,6 +13,7 @@ blocks:
 parent: EPIC-3565
 relates_to:
 - ENH-3577
+- ENH-3602
 ---
 
 # FEAT-3598: Add ll-issues next-obligation deterministic preparation selector
@@ -116,3 +117,13 @@ Decomposed from ENH-3577: Consolidate autodev issue preparation into a single co
 ## Status
 
 **Open** | Created: 2026-09-25 | Priority: P3
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): The `PROOF` obligation delegates to `little_loops.learning_tests.assess_proof` once ENH-3602 lands, rather than deriving staleness/refutation independently. Sequence the PROOF branch after ENH-3602 or record a follow-up swap.
+
+
+## Session Log
+- `/ll:audit-issue-conflicts` - 2026-09-25T19:09:20 - `dcfdf31c-be65-47ce-9e6e-5b65d63239f2.jsonl`

@@ -10,6 +10,8 @@ captured_at: '2026-09-25T03:36:09Z'
 parent: EPIC-3565
 relates_to:
 - ENH-3601
+blocked_by:
+- ENH-3601
 ---
 
 # ENH-3590: Add advise second-model consult step to autodev
@@ -106,5 +108,12 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:audit-issue-conflicts` - 2026-09-25T19:09:19 - `dcfdf31c-be65-47ce-9e6e-5b65d63239f2.jsonl`
 - `/ll:format-issue` - 2026-09-25T03:38:19 - `ad599d43-c063-4f11-b93f-27c8bb93bc23.jsonl`
 - `/ll:capture-issue` - 2026-09-25T03:36:14 - `d36455b9-41a7-4bb9-9928-6288b5c7fed1.jsonl`
+
+---
+
+## Scope Boundary
+
+**Note** (added by `/ll:audit-issue-conflicts`): The consult is opt-in and disabled by default, so it stays off the default path (consistent with EPIC-3565's out-of-scope clause on adding skills to the happy path). Anchor states (`run_go_no_go` etc.) move to `prepare-issue.yaml` under ENH-3601; target that loop after it lands. Open Question to resolve against ENH-3601's deterministic go/no-go predicate: may an advise verdict waive a go-no-go result?
