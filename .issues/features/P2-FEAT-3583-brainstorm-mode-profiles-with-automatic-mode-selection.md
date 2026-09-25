@@ -14,6 +14,7 @@ labels:
 - captured
 blocked_by:
 - FEAT-3582
+reconcile_attempted: true
 ---
 
 # FEAT-3583: Brainstorm mode profiles with automatic mode selection
@@ -97,7 +98,7 @@ Downstream states read resolved values from `profile.json`, and gated states rou
 
 ### Files to Modify
 - `scripts/little_loops/loops/brainstorm.yaml` — add `classify_mode` and `resolve_profile` states; thread resolved values into `frame`/`diverge`/`tournament`/output prompts; add `mode` context key
-- New profile files (proposed: `scripts/little_loops/loops/brainstorm-profiles/{artifact,visual,functional,business}.yaml`) — verify loop package-data inclusion in `scripts/pyproject.toml`
+- New profile files (prefer `.json`, e.g. `scripts/little_loops/loops/brainstorm-profiles/{artifact,visual,functional,business}.json`, so unfiltered `rglob("*.yaml")` loop scanners never read them — Wiring Phase finding) — no `scripts/pyproject.toml` edit needed (`little_loops/**` is included wholesale, `pyproject.toml:203`); confirm with `ll-verify-package-data`
 
 ### Dependent Files (Callers/Importers)
 - `ll-loop run brainstorm` callers and the sink adapters (`route_sink`, `sink_file`, `sink_issue`, `sink_decision`) inside the loop
@@ -200,6 +201,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:reconcile-issue` - 2026-09-25T17:15:27 - `284cb1d7-e993-4a6e-afc1-6ece8366d2db.jsonl`
 - `/ll:wire-issue` - 2026-09-25T02:07:45 - `6e813375-6da8-496a-a222-6bd92b308c4c.jsonl`
 - `/ll:refine-issue` - 2026-09-25T01:46:34 - `ce904479-7e73-4d58-aa48-892e2cdb88b3.jsonl`
 - `/ll:format-issue` - 2026-09-25T01:01:32 - `825370f4-2bf5-4bb8-a770-49c1a90d8b61.jsonl`

@@ -15,6 +15,7 @@ labels:
 blocked_by:
 - FEAT-3582
 - FEAT-3583
+reconcile_attempted: true
 ---
 
 # FEAT-3586: Brainstorm optional pre-mortem finisher
@@ -99,14 +100,14 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/loops/brainstorm.yaml` — add `premortem_critic`, `premortem_defender`, and demote/promote script; extend report rendering
+- `scripts/little_loops/loops/brainstorm.yaml` — add `premortem_critic`, `premortem_defender`, round-gate, and `apply_verdicts` demote/promote script between `portfolio` and `validate_portfolio`; extend report rendering and `validate_portfolio` (all-conceded valid)
 
 ### Dependent Files (Callers/Importers)
 - `ll-loop run brainstorm` callers and the sink adapters (`route_sink`, `sink_file`, `sink_issue`, `sink_decision`) inside the loop
 - `scripts/little_loops/loops/lib/common.yaml` — imported fragments (`parse_tagged_json`, `queue_pop`, `retry_counter`)
 
 ### Similar Patterns
-- `scripts/little_loops/loops/lib/common.yaml` `retry_counter` / `convergence_gate` — bounded-round counters
+- `scripts/little_loops/loops/mechanize-skills.yaml` `diagnosis_retry` — hand-rolled per-run bounded-round counter under `${captured.run_dir.output}` (`output_numeric / lt`); `lib/common.yaml` `retry_counter` is NOT reusable here (shared `.loops/tmp/` counter persists across runs)
 
 ### Tests
 - `scripts/tests/test_brainstorm.py` — brainstorm loop structure/behavior tests
@@ -146,11 +147,11 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Implementation Steps
 
-1. Add `premortem_critic` and `premortem_defender` states, gated on the resolved profile (FEAT-3583) or `premortem=true`.
+1. Add `premortem_critic` and `premortem_defender` states between `portfolio` and `validate_portfolio` (Blocked by FEAT-3582; the states do not exist until it lands), gated on the resolved profile (FEAT-3583) or `premortem=true`; a false gate routes straight past the finisher. The defender output must be schema-checked to reject any revised idea body.
 2. Bound rounds with a per-run counter under `${captured.run_dir.output}` (`evaluate: output_numeric / lt`, as `mechanize-skills.yaml` `diagnosis_retry` does) and a `premortem_rounds` context value; do not use the `retry_counter` fragment, whose `.loops/tmp/` counter persists across runs.
-3. Implement `apply_verdicts` to demote/promote and record changes in `ideas.jsonl` and `winners`.
+3. Implement `apply_verdicts` to demote conceded ideas (flag `conceded` in `portfolio.json`, remove from `winners.md`), promote the next finalist (critiqued within the same `premortem_rounds` bound, else flagged `not_premortemed`), and append changes to `ideas.jsonl`. If all finalists concede, write an empty `winners.md`, skip sinks, and end `done`; make `validate_portfolio` accept "all conceded".
 4. Render `Risks & Kill Criteria` per finalist in `brainstorm.md`; leave output shape unchanged when disabled.
-5. Add tests for bounded rounds, demotion/promotion, and the disabled path; run `ll-loop validate brainstorm`.
+5. Add tests for bounded rounds, demotion/promotion (incl. promoted finalist critiqued within the bound), all-conceded (empty `winners.md`, no sink), rejected revised-body defender output, and the disabled path; run `ll-loop validate brainstorm`.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -190,6 +191,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:reconcile-issue` - 2026-09-25T17:15:35 - `fa11583b-aa00-4da8-b0f0-fc89c6cf8f64.jsonl`
 - `/ll:wire-issue` - 2026-09-25T02:07:46 - `6e813375-6da8-496a-a222-6bd92b308c4c.jsonl`
 - `/ll:refine-issue` - 2026-09-25T01:46:43 - `2ac59930-bb65-4013-a3d3-8f842b856fd9.jsonl`
 - `/ll:format-issue` - 2026-09-25T01:01:32 - `825370f4-2bf5-4bb8-a770-49c1a90d8b61.jsonl`
