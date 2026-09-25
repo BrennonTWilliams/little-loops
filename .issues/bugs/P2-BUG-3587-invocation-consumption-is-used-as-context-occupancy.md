@@ -179,9 +179,9 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Steps to Reproduce
 
-1. Supply a completed invocation with multiple model requests whose total consumption exceeds the configured context threshold while its current context occupancy remains below it.
-2. Observe the usage callback writing that consumption into the context state.
-3. Run the monitor and Stop sentinel against that state and observe that the consumption total takes priority over the lower occupancy estimate.
+1. Feed `process_issue_inplace` a stream-json `result` event whose `usage` block sums several requests (e.g. `input_tokens: 2000`, `cache_read_input_tokens: 600000`, `output_tokens: 8000` against a 200K context limit), as a multi-request `-p` run produces.
+2. Observe `_on_usage_writer` writing `result_token_count: 610000` into `.ll/ll-context-state.json` after the child session's Stop cleanup has already deleted the file.
+3. In another session sharing the repo root (or by invoking the hooks directly against that state with `estimated_tokens` well below threshold), run `context-monitor.sh` and `context-handoff-sentinel.sh`: the monitor reports ~305% usage (clamped at 3x) and exits 2, and the sentinel writes `.ll/ll-context-handoff-needed`.
 
 ## Root Cause
 
@@ -201,17 +201,18 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 
 ## Acceptance Criteria
 
-- [ ] A multi-request invocation with high total consumption and low current occupancy does not trigger an occupancy handoff from consumption alone.
-- [ ] Genuine high occupancy still triggers the configured guard using a valid occupancy measurement or the existing estimator.
-- [ ] Invocation consumption and known-component lower bounds remain available to their accounting/budget consumers.
-- [ ] Legacy `result_token_count` is never implicitly promoted to measured occupancy; session changes and compaction cannot reuse a stale value as an authoritative baseline.
-- [ ] Monitor, sentinel, and Python occupancy guards agree on metric selection; threshold configuration is unchanged, with intentional trigger changes documented.
-- [ ] ENH-3545 labels/staleness behavior remains additive and compatible; no dependency cycle is introduced between the two issues.
+- [ ] `process_issue_inplace` no longer writes `result_token_count` (or any key) to `.ll/ll-context-state.json` when `on_usage` fires; the caller's `on_usage` / `on_usage_detailed` still receive the same values.
+- [ ] Given a state file with a high `result_token_count` and low `estimated_tokens`, `context-monitor.sh` does not exit 2 or log a threshold crossing, and `context-handoff-sentinel.sh` does not write `.ll/ll-context-handoff-needed`.
+- [ ] Genuine high occupancy (high `estimated_tokens` or transcript baseline) still triggers the monitor handoff and the sentinel at the configured thresholds.
+- [ ] `git grep result_token_count -- hooks scripts/little_loops docs` returns no hits (CHANGELOG and `site/` history excepted).
+- [ ] Threshold configuration is unchanged; the removed tier and resulting trigger change are documented in the four tier-order docs.
+- [ ] No dependency on ENH-3545: this issue adds no state keys, and ENH-3545's AC ("Metadata does not relabel `result_token_count` as measured occupancy") is satisfied trivially.
 
 ## Scope Boundaries
 
 - In scope: correcting consumption-as-occupancy decisions and their producers, compatibility, and regression coverage.
 - Out of scope: estimator accuracy improvements, threshold tuning, usage ingestion/coverage reconciliation, and ENH-3545's UI metadata implementation.
+- Out of scope, capture separately: `session-cleanup.sh` deletes `.ll/ll-context-state.json` on **Stop** (every turn end), which resets the monitor's running estimate each turn and runs in parallel with the Stop sentinel reading the same file. Likewise `check_compaction()` leaves `transcript_baseline_tokens` untouched; confirm it refreshes on the next turn now that tier 2 is the primary path.
 - ENH-3545 can land independently; this issue owns behavior changes to occupancy decisions.
 
 ## Related Key Documentation
