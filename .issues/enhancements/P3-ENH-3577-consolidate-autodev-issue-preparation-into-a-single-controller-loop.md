@@ -10,7 +10,9 @@ captured_at: '2026-09-24T19:33:14Z'
 parent: EPIC-3565
 blocked_by:
 - BUG-3571
-- BUG-3572
+- BUG-3591
+- BUG-3592
+- BUG-3593
 - FEAT-3573
 - BUG-3574
 - ENH-3575

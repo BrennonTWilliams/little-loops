@@ -3,14 +3,11 @@ id: BUG-3572
 type: BUG
 title: Failed spike suppresses unproven-mechanism outcome cap in confidence-check
 priority: P2
-status: open
+status: cancelled
 discovered_by: ll-issues-create
 discovered_date: '2026-09-24'
 captured_at: '2026-09-24T19:33:13Z'
 parent: EPIC-3565
-blocks:
-- ENH-3577
-- BUG-3574
 blocked_by:
 - BUG-3571
 - BUG-3588
@@ -23,6 +20,44 @@ score_change_surface: 10
 ---
 
 # BUG-3572: Failed spike suppresses unproven-mechanism outcome cap in confidence-check
+
+## Resolution
+
+**Cancelled 2026-09-24 — split, not abandoned.** Outcome confidence was 58 across 16+
+change sites, so the work was split into three children of EPIC-3565, each declaring
+`supersedes: [BUG-3572]`:
+
+- **BUG-3591** — (a) cap and flag contract: Phase 1.9 suppresses on `spike_completed` only;
+  a failed rerun removes stale `spike_completed`. Closes the P2 hole on its own.
+- **BUG-3592** — (b) verdict classifier (ll-issues `spike-verdict` + generated conftest
+  hook), `spike_refuted`, the full flag table, and the refuted write-back + decide-issue
+  exclusion.
+- **BUG-3593** — (c) loop routing, shared spike budget, `spike_inconclusive` deferral,
+  decide-issue re-arm.
+
+Dependents re-pointed: ENH-3577 → all three; BUG-3574 → BUG-3592. This file stays as the
+design record; the 2026-09-24 review amendments below are applied inline and carried into
+the children.
+
+### Review amendments (2026-09-24)
+
+1. **refine-to-ready runs nested in autodev and shares its run dir** (`refine_current`,
+   `context_passthrough: true`, `autodev.yaml:529-530`). The spike budget is one shared
+   counter with nesting semantics, never reset per issue; the re-arm AC distinguishes
+   standalone from nested. (Items 6, 7.)
+2. **`auto-refine-and-implement.yaml` does not read `refine-terminal-class`.** The only other
+   reader is autodev `skip_inflight`, which ledgers any non-`infra` class as `refine_failed`;
+   it needs a `spike_inconclusive` check (BUG-3390 pattern). (Item 8.)
+3. **A free-text Open Questions item gives `/ll:decide-issue` nothing to decide**
+   (`locate_enumerable_options`, Phase 2.5), and the refuted approach stays selectable. The
+   write-back must emit enumerable options plus a refuted-option marker that decide-issue
+   excludes. (Item 5.)
+4. **`-p little_loops.spike_junit_plugin` fails when `little_loops` is not importable by the
+   project's pytest** (pipx / uv-tool installs). Use a generated `conftest.py` in `$SPIKE_DIR`.
+   (Item 2.)
+5. **JUnit report location**: interactive runs have no `run_dir`, and the `.ll/spikes/`
+   fallback is git-tracked. Use `${context.run_dir}/spike-junit/` or a `mktemp -d` dir.
+   (Item 2.) `--check` mode stays exit-code-only.
 
 ## Summary
 
@@ -96,16 +131,20 @@ Separate evidence truth from attempt bounding:
    `assert` has message `"assert 1 == 2"` with no `AssertionError` prefix, so parsing the
    message is fragile. Classify per test from JUnit XML **plus structured exception
    metadata**:
-   - **Exception-type plugin**: ship a pytest plugin in the package
-     (`little_loops.spike_junit_plugin`), loaded with `-p little_loops.spike_junit_plugin`.
-     Its `pytest_runtest_makereport` hookwrapper appends
+   - **Exception-type hook** (amended): the skill writes a `conftest.py` in `$SPIKE_DIR` with the
+     hook, content from ll-issues `spike-verdict --emit-conftest`. Not
+     `-p little_loops.spike_junit_plugin`: the spike runs under the consuming project's
+     pytest, where `little_loops` is not importable under a pipx / uv-tool install. Only the
+     `spike` suite needs exception types. Its `pytest_runtest_makereport` hookwrapper appends
      `("ll_exc_type", call.excinfo.type.__name__)` to **`item.user_properties`** on a failed
      `call` phase. It must be `item.user_properties`, not `rep.user_properties`: junitxml
      reads properties from the teardown report, which copies the item's list (verified —
      `rep.user_properties` emits nothing). Result:
      `<property name="ll_exc_type" value="AssertionError"/>` inside the `<testcase>`.
    - **Evidence contract**: Phase 5 runs **every** planned Verification command with
-     `--junitxml=<run_dir>/<role>-<n>.xml` and the plugin, and passes each report to the
+     `--junitxml=<reports-dir>/<role>-<n>.xml` (amended: `<reports-dir>` =
+     `${context.run_dir}/spike-junit/` in a loop, a `mktemp -d` dir interactively — never the
+     git-tracked `.ll/spikes/`), and passes each report to the
      classifier **tagged with its role**: `spike` (the `$SPIKE_DIR` suite, containing AC and
      guard tests) or `regression` (a named existing suite). Each report must be fresh from
      this run (stale files are deleted before the run), and the command's exit status is
@@ -162,9 +201,13 @@ Separate evidence truth from attempt bounding:
    rescoring routes `check_readiness.on_no` → `check_refine_limit` → `refine_followup` /
    `breakdown_issue`, never reaching `check_decision_needed`. Rescoring before a decision is
    also wasted work, since the decision rewrites the issue and forces another rescoring.
-   On refuted, the spike skill arms `decision_needed: true` and adds an Open Questions item
-   naming the refuted approach and the alternatives from `## Spike Findings`, so
-   `/ll:decide-issue` has a decidable group. A new three-way post-spike state reads the flags
+   On refuted, the spike skill arms `decision_needed: true`, writes the alternatives from
+   `## Spike Findings` as **enumerable option blocks** under `## Proposed Solution` (the
+   shape `issue_parser.locate_enumerable_options` recognizes — a free-text Open Questions
+   item alone yields `OPTIONS == 0`), and adds an Open Questions item carrying a
+   **refuted-option marker**. `/ll:decide-issue` treats a marked option as ineligible, so it
+   cannot re-select the refuted approach (marker and exclusion shared with BUG-3574 step 3).
+   A new three-way post-spike state reads the flags
    (inline python over `ll-issues show --json`, per Conventions in Force):
    - **refine-to-ready**: `run_spike.next`/`on_error` → new `route_spike_verdict`:
      `spike_refuted == 'true'` → `check_decide_attempts` (→
@@ -209,6 +252,11 @@ Separate evidence truth from attempt bounding:
    BUG-3553's `refine-to-ready-spike-ran`). Budget: **2 per issue per run in autodev**
    (original + one re-armed spike), **1 in refine-to-ready**. A refuted verdict with the
    budget spent routes to `record_decision_unresolved`, not `resolve_decision`.
+   **Nesting (amended)**: autodev runs refine-to-ready with `context_passthrough: true`, so
+   both loops see the same `${context.run_dir}` and the same counter. refine-to-ready spikes
+   only when the counter is 0; autodev spikes when it is < 2. The counter is never reset per
+   issue — drop `refine-to-ready-spike-ran` and its `rm -f` in `resolve_issue`
+   (`refine-to-ready-issue.yaml:~157`), or the nested child would wipe autodev's budget.
 7. **Re-arm rule**: `/ll:decide-issue` removes `spike_attempted` and `spike_refuted` only
    when **both** (a) the issue carries `spike_refuted: true` and (b) `decision_needed` was
    actually cleared in this invocation, meaning the refuted approach was replaced by a
@@ -219,10 +267,10 @@ Separate evidence truth from attempt bounding:
    residual decision group still armed (`resolve-decision.yaml` `check_residual_decision`),
    because the approach has not changed. `unproven_mechanism` stays true, so the cap and
    `spike_needed` re-apply. When the new spike runs differs by loop, and the AC states both:
-   - **refine-to-ready**: the spike budget (1) blocks a second spike in the same run, so the
-     chosen approach stays capped and the run ends not-ready; the new spike runs on the
-     **next** run (fresh run dir).
-   - **autodev**: `check_spike_needed` is predicate-only (`spike_needed == 'true' and
+   - **refine-to-ready standalone**: the spike budget (1) blocks a second spike in the same
+     run, so the chosen approach stays capped and the run ends not-ready; the new spike runs
+     on the **next** top-level run (fresh run dir).
+   - **autodev (incl. refine-to-ready nested under it)**: `check_spike_needed` is predicate-only (`spike_needed == 'true' and
      spike_attempted != 'true'`), so the re-arm allows the new spike in the **same** run,
      within the budget of 2.
    - Set-only flag writes are safe here: a later `/ll:confidence-check` cannot clear the
@@ -245,9 +293,11 @@ Separate evidence truth from attempt bounding:
    - Both echo the classifier's cause, followed by
      `[SPIKE_INCONCLUSIVE] <ID> — spike could not reach a verdict (<cause>); fix the cause,
      then run /ll:spike <ID> --force and re-run to resurface`.
-   - `auto-refine-and-implement` and any other caller reading `refine-terminal-class` must
-     treat `spike_inconclusive` as a non-quality, human-needed stop (like
-     `decision_unresolved`).
+   - **refine-to-ready** also writes the ID to a `refine-spike-inconclusive.txt` run-dir
+     ledger. autodev `skip_inflight` — the only other `refine-terminal-class` reader
+     (`auto-refine-and-implement.yaml` does not read it) — must check that ledger, as it
+     does `autodev-decision-unresolved.txt` for BUG-3390, and skip the `refine_failed` line;
+     otherwise a nested inconclusive stop is mislabelled and double-counted.
 
 Termination does not depend on attempted-only cap suppression (see research below), so no
 loop regresses into spike → score → spike cycling.
@@ -277,14 +327,13 @@ loop regresses into spike → score → spike cycling.
 ### Files to Modify
 - `skills/spike/SKILL.md` — Phase 5 deletes stale reports, runs every Verification command with `--junitxml=<run_dir>/<role>-<n>.xml -p little_loops.spike_junit_plugin`, and calls the new `spike-verdict` classifier; Phase 6 writes the full flag set per verdict (Proposed Solution 3 table; refuted also arms `decision_needed` + Open Questions item); Phase 7 messages
 - `skills/spike/plan-template.md` — regression-guard tests are named `test_guard_*` (not a marker: markers are absent from JUnit output); Verification section tags each command `spike` or `regression`
-- `scripts/little_loops/spike_junit_plugin.py` (new) — pytest plugin recording `ll_exc_type` via `item.user_properties`
-- `scripts/little_loops/cli/issues/` — new `spike_verdict.py` (`SpikeReport` list → `SpikeVerdict`); register in `cli/issues/__init__.py` dispatch and `_USAGE` epilog
+- `scripts/little_loops/cli/issues/` — new `spike_verdict.py` (`SpikeReport` list → `SpikeVerdict`; `--emit-conftest` prints the hook recording `ll_exc_type` via `item.user_properties`, which the skill writes to a `conftest.py` in `$SPIKE_DIR`); register in `cli/issues/__init__.py` dispatch and `_USAGE` epilog
 - `skills/confidence-check/SKILL.md` Phase 1.9 — suppress on `spike_completed` only; `skills/confidence-check/rubric.md` cap row wording
 - `skills/decide-issue/SKILL.md` — re-arm: remove `spike_attempted`/`spike_refuted` only when the issue is refuted **and** `decision_needed` was cleared in this invocation (not on a residual-group `done`)
 - `scripts/little_loops/cli/issues/show.py` — emit `spike_refuted` as a lowercased string alongside the other `spike_*` flags
 - `scripts/little_loops/loops/autodev.yaml` — new `route_spike_verdict` between `count_repair_cycle_spike` and `clear_scores_before_spike` (Proposed Solution 5; BUG-3588's clear → rescore → `check_scores_present_spike` chain stays on the proven branch); new `check_spike_budget` and `record_spike_inconclusive`; the `spike-runs-<ID>` budget check at every `run_spike` entry (`check_spike_needed`, `check_spike_needed_before_skip`, `dispatch_pre_deferral_remedy`); `recheck_after_size_review` remedy selector (`spike_attempted == 'true'` → no remedy) must not treat a refuted issue as remedy-exhausted
 - `scripts/little_loops/loops/refine-to-ready-issue.yaml` — **routing change**: `run_spike.next`/`on_error` → new `route_spike_verdict` (refuted → `check_decide_attempts`; inconclusive → new `record_spike_inconclusive` → `failed`; proven → `confidence_check`); `check_spike_needed` switches from `refine-to-ready-spike-ran` to the shared `spike-runs-<ID>` budget
-- `scripts/little_loops/loops/auto-refine-and-implement.yaml` (and any other `refine-terminal-class` reader) — treat `spike_inconclusive` as a non-quality, human-needed stop
+- `scripts/little_loops/loops/autodev.yaml` `skip_inflight` — the only other `refine-terminal-class` reader; check `refine-spike-inconclusive.txt` so a nested `spike_inconclusive` stop is not ledgered `refine_failed` (`auto-refine-and-implement.yaml` needs no change)
 - `scripts/little_loops/loops/README.md` (~L85) — `spike-gate` row describes spike flags
 
 ### Dependent Files (Callers/Importers)
@@ -377,7 +426,10 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 - [ ] Every spike verdict writes the full flag set: a failed `--force` rerun clears a stale `spike_completed`, and a proven rerun clears a stale `spike_refuted`
 - [ ] A refuted spike routes to a decision **before any rescoring** in both autodev and refine-to-ready, whatever its readiness score; in autodev it reaches `resolve_decision` rather than a `decision_unresolved` deferral, while budget remains
 - [ ] An inconclusive spike keeps the cap, is not re-spiked automatically, and stops at `record_spike_inconclusive` in both loops (deferral code `spike_inconclusive`, not decomposition), with a message naming `/ll:spike <ID> --force` as the recovery
-- [ ] Resolving a decision on a refuted issue re-arms exactly one new spike on the chosen approach — in the same run under autodev, on the next run under refine-to-ready; a residual-group `done` with `decision_needed` still armed does not re-arm
+- [ ] Resolving a decision on a refuted issue re-arms exactly one new spike on the chosen approach — in the same run under autodev (nested or not), on the next run for standalone refine-to-ready; a residual-group `done` with `decision_needed` still armed does not re-arm
+- [ ] A refuted spike leaves ≥1 enumerable option for `/ll:decide-issue` when an alternative exists, and decide-issue never re-selects the refuted option
+- [ ] The exception-type hook works where `little_loops` is not importable by the project's pytest; JUnit reports are never written under `.ll/spikes/`
+- [ ] Under autodev, a nested refine-to-ready `spike_inconclusive` stop is not ledgered as `refine_failed`
 - [ ] A per-issue, per-run spike budget, shared by every `run_spike` entry path, bounds re-runs; a repeated refutation within one run stops with `decision_unresolved`
 - [ ] autodev's proven path still passes BUG-3588's score-presence gate (`check_scores_present_spike`)
 
@@ -387,7 +439,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Status
 
-**Open** | Created: 2026-09-24 | Priority: P2
+**Cancelled** | Created: 2026-09-24 | Priority: P2 | Superseded by BUG-3591, BUG-3592, BUG-3593
 
 ## Confidence Check Notes
 

@@ -12,7 +12,7 @@ blocks:
 - ENH-3577
 blocked_by:
 - BUG-3571
-- BUG-3572
+- BUG-3592
 ---
 
 # BUG-3574: PROPOSAL_UNSOUND verdict routed to reconcile, which cannot edit Proposed Solution
@@ -85,13 +85,16 @@ Unsound proposals are exactly the cases where implementation would do the most d
      revision.
    - Precedence: `EVIDENCE_UNVERIFIED` > `PROPOSAL_UNSOUND` > `DIRECTIVE_DRIFT` (a refuted
      proposal makes directive drift moot).
-2. **Reuse BUG-3572's refuted → `decision_needed` contract** — no new FSM remedy states.
-   On `PROPOSAL_UNSOUND`, verify-issues also arms `decision_needed: true` and adds an
-   `## Open Questions` item naming the refuted option, the B6 evidence, and the remaining
-   alternatives.
-3. **Decide-issue exclusion.** `/ll:decide-issue` treats an option named as refuted in an
-   Open Questions item as ineligible. With ≥1 remaining option it selects and rewrites
-   `### Decision Rationale`; with none it exits `NO_ACTIONABLE_DECISIONS`.
+2. **Reuse BUG-3592's refuted → `decision_needed` contract** (split from BUG-3572) — no new
+   FSM remedy states. On `PROPOSAL_UNSOUND`, verify-issues also arms `decision_needed: true`,
+   leaves the alternatives as enumerable options (a free-text Open Questions item alone
+   gives decide-issue `OPTIONS == 0`), and adds an `## Open Questions` item with BUG-3592's
+   refuted-option marker naming the refuted option and the B6 evidence.
+3. **Decide-issue exclusion — delivered by BUG-3592.** `/ll:decide-issue` treats an option
+   named by the refuted-option marker as ineligible. With ≥1 remaining option it selects and
+   rewrites `### Decision Rationale`; with none it exits `NO_ACTIONABLE_DECISIONS`. This
+   issue reuses that rule; confirm the `NO_ACTIONABLE_DECISIONS` exit matches BUG-3592's
+   no-remaining-option behavior rather than defining the exclusion a second time.
 4. **Routing in refine-to-ready:**
    - `check_proposal_unsound` `on_yes` → `check_decide_attempts` (existing bound) →
      `resolve_decision_pre_breakdown`; write a run-dir marker
@@ -126,7 +129,7 @@ Unsound proposals are exactly the cases where implementation would do the most d
 
 ### Files to Modify
 - `commands/verify-issues.md` — §B6 verdict split by fix location; §C verdict table adds `DIRECTIVE_DRIFT`; § 2.5 frontmatter mapping; on `PROPOSAL_UNSOUND`, arm `decision_needed` and write the Open Questions item
-- `skills/decide-issue/SKILL.md` — exclude options named refuted; `NO_ACTIONABLE_DECISIONS` when none remain
+- `skills/decide-issue/SKILL.md` — option exclusion lands in BUG-3592; here only confirm the `NO_ACTIONABLE_DECISIONS` exit when none remain
 - `scripts/little_loops/cli/issues/check_verify_verdict.py` — `--directive-drift` query mode; default mode non-VALID for it
 - `scripts/little_loops/cli/issues/__init__.py` — parser flag and `_USAGE` / help text
 - `scripts/little_loops/loops/refine-to-ready-issue.yaml` — new `check_directive_drift` gate (→ `check_reconcile_limit`); `check_proposal_unsound.on_yes` → marker + `check_decide_attempts`; new `check_proposal_revision` after `resolve_decision_pre_breakdown.on_success`; `proposal_unsound` deferral; header comment chain (lines ~15-20) and ENH-3250 comment on `check_proposal_unsound`
@@ -136,7 +139,7 @@ Unsound proposals are exactly the cases where implementation would do the most d
 - `scripts/little_loops/loops/autodev.yaml` — no direct `verify_verdict` reads (it sees the verdict only through the refine-to-ready sub-loop); confirm `decision_needed` armed by verify is handled by its existing decision gates
 
 ### Similar Patterns
-- BUG-3572 refuted spike → `decision_needed` + Open Questions item
+- BUG-3592 (split from BUG-3572) refuted spike → `decision_needed` + enumerable options + refuted-option marker
 - autodev `refine_for_design` (BUG-3002): a dedicated remedy chosen because the default remedy's contract excludes the failing section
 
 ### Tests
@@ -165,7 +168,7 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 
 1. verify-issues: split B6 verdict by fix location; add `DIRECTIVE_DRIFT`; on `PROPOSAL_UNSOUND` arm `decision_needed` + Open Questions item
 2. `check_verify_verdict.py`: `--directive-drift` query mode; default mode non-VALID for it
-3. decide-issue: exclude refuted options; `NO_ACTIONABLE_DECISIONS` when none remain
+3. decide-issue: reuse BUG-3592's refuted-option exclusion; confirm `NO_ACTIONABLE_DECISIONS` when none remain
 4. refine-to-ready: `check_directive_drift` → reconcile; `PROPOSAL_UNSOUND` → marker → `check_decide_attempts` → decide → `check_proposal_revision` → `wire_issue`; `proposal_unsound` deferral
 5. Tests for each route; docs and mirrors
 
@@ -174,7 +177,7 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 - **Priority**: P3
 - **Effort**: Medium
 - **Risk**: Low-Medium — changes the verify-issues verdict taxonomy and adds a decide-issue exclusion rule.
-- **Sequencing**: `blocked_by` BUG-3571 (same `check_verify_verdict.py` and verify gate band; its verdict clearing removes the legacy-value question) and BUG-3572 (defines the refuted → `decision_needed` contract reused here).
+- **Sequencing**: `blocked_by` BUG-3571 (same `check_verify_verdict.py` and verify gate band; its verdict clearing removes the legacy-value question) and BUG-3592 (split from BUG-3572; defines the refuted → `decision_needed` contract and the decide-issue exclusion reused here).
 
 ## Acceptance Criteria
 

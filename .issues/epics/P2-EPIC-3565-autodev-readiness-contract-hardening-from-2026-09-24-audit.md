@@ -81,7 +81,7 @@ measurement.
 - **BUG-3569** — Autodev dequeue-time decision resolution bypasses preflight and refine pipeline (done)
 - **BUG-3570** — Confidence-check skill misstates format-check --fix repair coverage (done)
 - **BUG-3571** — Refine-to-ready accepts stale or absent verify verdict and confidence scores (open)
-- **BUG-3572** — Failed spike suppresses unproven-mechanism outcome cap in confidence-check (open)
+- **BUG-3572** — Failed spike suppresses unproven-mechanism outcome cap in confidence-check (cancelled — split into BUG-3591, BUG-3592, BUG-3593)
 - **FEAT-3573** — Autodev code formatting and quality evidence gate before closure credit (open)
 - **BUG-3574** — PROPOSAL_UNSOUND verdict routed to reconcile, which cannot edit Proposed Solution (open)
 - **ENH-3575** — Structured policy gate field replacing prose gate-phrase grep in autodev (open)
@@ -89,6 +89,12 @@ measurement.
 - **ENH-3577** — Consolidate autodev issue preparation into a single controller loop (open)
 - **BUG-3588** — Autodev post-repair rescoring accepts stale or absent confidence scores (open)
 - **ENH-3590** — Add advise second-model consult step to autodev (open)
+- **BUG-3591** — Confidence-check suppresses unproven-mechanism cap on attempted-only spikes (open)
+- **BUG-3592** — Spike treats any non-zero Verification exit as a refutation (open)
+- **BUG-3593** — Loops do not route refuted or inconclusive spike verdicts (open)
+
+
+
 
 
 ## Acceptance Criteria

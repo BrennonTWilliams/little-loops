@@ -18,11 +18,11 @@ Add an `/ll:advise` (second-model consult, `ll-advise`) step to `scripts/little_
 
 ## Current Behavior
 
-[If applicable - describe what currently happens]
+`autodev.yaml` never consults a stronger or different model. The only adversarial check is `run_go_no_go` (same-model `Agent` subagent debate, `oversized_atomic` deferrals only); `/ll:confidence-check` and `oracles/resolve-decision` run on the default model, and no state references `advise`, `ll-advise`, or a `model:` override.
 
 ## Expected Behavior
 
-[What should happen instead]
+autodev can, when explicitly enabled, run a non-interactive `/ll:advise` consult at one or more decision points and route on a verdict persisted to frontmatter/JSON. When disabled (the default), behavior and cost are unchanged.
 
 ## Motivation
 
@@ -37,38 +37,49 @@ Add an advise state (alongside or after `run_go_no_go`, or before repair/defer d
 - Resolve the host via `resolve_host()` / `host_runner`; add no new `"claude"` literals.
 - Make it configurable and opt-out so it adds no cost by default.
 
+## Scope Boundaries
+
+- **In scope**: an opt-in advise state in `autodev.yaml` with a persisted, deterministically-read verdict; rate-limit handling via the existing fragment; a context flag to enable it.
+- **Out of scope**: changing `/ll:advise` or `ll-advise` internals; replacing `run_go_no_go`; enabling the consult by default; consult steps in loops other than `autodev` (e.g. `oracles/resolve-decision`) unless the open questions resolve otherwise.
+
 ## Integration Map
 
 ### Files to Modify
-- TBD - requires codebase analysis
+- `scripts/little_loops/loops/autodev.yaml` - new advise state (near `run_go_no_go`, ~line 2236) plus an opt-in `context:` flag
 
 ### Dependent Files (Callers/Importers)
-- TBD - use grep to find references
+- `skills/advise/SKILL.md` - invoked by the new state via `/ll:advise`; the verdict-persistence contract must be confirmed here
+- `scripts/little_loops/loops/lib/common.yaml` - provides the `with_rate_limit_handling` fragment
 
 ### Similar Patterns
-- TBD - search for consistency
+- `run_go_no_go` in `autodev.yaml` - existing adversarial-review state and its `outcome_gate_waived` stamping
+- States using `fragment: with_rate_limit_handling` with `on_rate_limit_exhausted: finalize_rate_limited` in `autodev.yaml`
 
 ### Tests
-- TBD - identify test files to update
+- `scripts/tests/test_autodev_loop.py` - state wiring, routing, default-off behavior
+- `scripts/tests/test_fsm_validation_meta_rules.py` - MR rules (MR-1 no stdout parsing) still pass
+- `scripts/tests/test_advise_skill.py`, `scripts/tests/test_cli_advise.py` - reference for advise invocation contract
 
 ### Documentation
-- TBD - docs that need updates
+- `docs/reference/CLI.md` - `ll-advise` reference (link only if the new flag is user-facing)
 
 ### Configuration
-- N/A or list config files
+- New autodev `context:` flag, default off (name TBD in Open Questions resolution)
 
 ## Implementation Steps
 
-1. [Major phase 1]
-2. [Major phase 2]
-3. [Verification approach]
+1. Decide the decision point(s) and verdict semantics (see Open Questions); confirm how `/ll:advise` persists its verdict to frontmatter/JSON.
+2. Add the opt-in context flag and the advise state to `autodev.yaml` using `with_rate_limit_handling` (`on_rate_limit_exhausted: finalize_rate_limited`), reading the verdict from persisted output, not stdout.
+3. Route on the verdict; when the flag is off, skip the state so the existing flow is unchanged.
+4. Add tests to `test_autodev_loop.py` covering default-off, enabled routing, and rate-limit exhaustion.
+5. Verify with `ll-loop validate autodev` and `python -m pytest scripts/tests/test_autodev_loop.py scripts/tests/test_fsm_validation_meta_rules.py`.
 
 ## Impact
 
-- **Priority**: [P0-P5] - [Justification]
-- **Effort**: [Small/Medium/Large] - [Justification]
-- **Risk**: [Low/Medium/High] - [Justification]
-- **Breaking Change**: [Yes/No]
+- **Priority**: P3 - quality improvement to autodev review, opt-in and not blocking
+- **Effort**: Medium - one new state plus tests, but verdict persistence and decision points need design
+- **Risk**: Low - disabled by default, so no change to existing runs
+- **Breaking Change**: No
 
 ## Open Questions
 
@@ -93,4 +104,5 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:format-issue` - 2026-09-25T03:38:19 - `ad599d43-c063-4f11-b93f-27c8bb93bc23.jsonl`
 - `/ll:capture-issue` - 2026-09-25T03:36:14 - `d36455b9-41a7-4bb9-9928-6288b5c7fed1.jsonl`
