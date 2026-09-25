@@ -16,7 +16,7 @@ parent: EPIC-3565
 blocks:
 - FEAT-3598
 - ENH-3601
-confidence_score: 95
+confidence_score: 90
 outcome_confidence: 60
 score_complexity: 14
 score_test_coverage: 18
@@ -250,7 +250,20 @@ prior risk factor 3 (residual judgment load) resolved by the Scope Boundaries de
 
 **Review hardening — 2026-09-25** (pre-implementation review against source): pinned the ll-auto-gate integration to an `assess_proof` pre-check inside `run_learning_gate_for_issue` (the child loop's verdict-producing `type: learning` state stays residual; the stale-classification vs re-prove-remediation distinction is explicit), added the `ll-learning-tests assess` CLI surface required by the two prompt-driven consumers, corrected the spike source to frontmatter flags + `resolve_gate_verdict` (`classify_spike_junit` needs run artifacts the issue doesn't carry), added `not_required` to disambiguate `absent`, and pinned standalone budget semantics, staleness-knob resolution, and the `learning_tests.enabled` off-switch.
 
+**Confidence Check — 2026-09-25 post-hardening re-score** (Readiness 90/100 → PROCEED · Outcome Confidence 60/100 → MODERATE)
+
+Readiness dropped 95→90 solely from the Criterion 4 claim cap: the review-hardened Integration Map now cites
+`ll-learning-tests assess --issue` (Files to Modify, :149), and `format-check` flags it `stale_cli_flag` because the
+subcommand doesn't exist yet. Unlike the prior run's cap (Option C misrepresenting an unbuilt command as resolving
+today), this reference is the issue's own forward-looking deliverable — benign, but the cap applies deterministically
+and will clear when the subcommand lands.
+
+### Outcome Risk Factors
+- Broad preserved-contract surface: the marker triple (`LEARNING_GATE_BLOCKED` / `IMPLEMENT_FAILED` / `GATE_INFRA_FAILED`) consumers (`loops/lib/common.yaml` fragment, rn-implement/rn-remediate report tallies, audit-loop-run) must keep receiving identical tokens while the verdict source changes underneath — mitigation: keep the emit site at `issue_manager.py:1216-1255` unmoved and `run_learning_gate_for_issue`'s return contract + keyword-only signature backward-compatible (pinned by `TestAutoManagerLearningGate` and `test_fsm_fragments` ordering pins)
+- Consumer-parity fixture is new territory — no repo-wide multi-module fixture exists today; model the "same fixture, same verdict from every consumer" test on the dual-parametrize idiom of `test_spike_verdict_routing.py:50-63`
+
 ## Session Log
+- `/ll:confidence-check` - 2026-09-25T23:34:16 - `e7df29a8-9e71-4fe4-b767-7083a19df1fc.jsonl`
 - `/ll:confidence-check` - 2026-09-25T22:57:17 - `615cf176-9cbb-485a-ab2f-e88a0321da3a.jsonl`
 - `/ll:confidence-check` - 2026-09-25T21:22:43 - `345d0814-f8e9-469f-ad62-bef9083d17be.jsonl`
 - `/ll:wire-issue` - 2026-09-25T20:51:15 - `85e4cae3-0d07-49cf-9a70-1d94df7e46ab.jsonl`
