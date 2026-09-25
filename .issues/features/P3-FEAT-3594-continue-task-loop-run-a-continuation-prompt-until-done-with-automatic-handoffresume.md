@@ -43,7 +43,7 @@ Top level: `on_handoff: spawn`, `max_steps` + `on_max_steps` cap, input NOT in `
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/loops/continue-task.yaml` (new)
+- `scripts/little_loops/loops/continue-task.yaml` (exists — implemented in e4556ec95 after this issue was captured; verify against Acceptance Criteria rather than re-implementing)
 
 ### Dependent Files (Callers/Importers)
 - N/A — standalone built-in loop, discovered by the loop loader
@@ -60,6 +60,37 @@ Top level: `on_handoff: spawn`, `max_steps` + `on_max_steps` cap, input NOT in `
 
 ### Configuration
 - Reads `continuation.prompt_expiry_hours`, `project.test_cmd` (no new keys)
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
+
+- As-built verification (commit e4556ec95): all 5 Acceptance Criteria satisfied by `scripts/little_loops/loops/continue-task.yaml`. Actual shape is 8 non-terminal states (`load_prompt`, `start_pass`, `work`, `stall_check`, `run_tests`, `check_done`, `read_verdict`, `summarize_partial`) plus terminals `done` / `partial` (deliberately non-failure) / `failed` — not the ~5 states sketched in Proposed Solution.
+- Input handling as built: no `required_inputs` key (`FSMLoop.required_inputs` defaults to `[]`, `scripts/little_loops/fsm/schema.py:1428`); `cmd_run` rejects only listed keys (`scripts/little_loops/cli/loop/run.py:350-357`), so empty input reaches `load_prompt` — declared intentional by in-file comment at `continue-task.yaml:37-38`.
+- Registration verified complete: expected-set entry `scripts/tests/test_builtin_loops.py:300` (exact set equality asserted by `test_expected_loops_exist` at :204), `scripts/little_loops/loops/README.md:93`, `docs/guides/LOOPS_GUIDE.md:391`, README loop count 108 = 97 top-level + 11 oracles (enforced by `scripts/tests/test_wiring_guides_and_meta.py::test_doc_counts_all_match` -> `scripts/little_loops/doc_counts.py:206-208`).
+- GAP — `docs/guides/LOOPS_REFERENCE.md` has no continue-task entry (general-task/stepwise-task rows at :78-79) while root `README.md:118` claims every built-in loop is documented there; no test enforces that coverage, so the miss is silent.
+- Handoff chain as built: `work` session runs `/ll:handoff` -> `CONTEXT_HANDOFF:` marker (`commands/handoff.md:194`) -> `SignalDetector` (`scripts/little_loops/fsm/signal_detector.py:74`) -> `_handle_handoff` (`scripts/little_loops/fsm/executor.py:4466`) -> `HandoffHandler.handle` (`scripts/little_loops/fsm/handoff_handler.py:68`) -> `_spawn_continuation` (:96) via `resolve_host().build_detached(...)` with DEVNULL stdio and `start_new_session=True` (:123-131). Run persists `terminated_by="handoff"` -> status `awaiting_continuation` (`scripts/little_loops/fsm/persistence.py:174-175`, in `RESUMABLE_STATUSES` at :55); `ll-loop resume` restores the `work` state directly (`persistence.py:1388`), where the `pass-started.txt -nt` check fires `/ll:resume`.
+- Conventions in force for any edit to this loop: (1) built-in registration is exact-set test-enforced (`test_builtin_loops.py:204`) plus auto-applying file gates (`test_all_validate_as_valid_fsm`, the ENH-2825 failure-edge rule, bare-PASS / bare-bash-`${}`/ grep `-c` bans); (2) `scripts/tests/test_builtin_loop_hardcode_gate.py` (ENH-3281) bans this-repo paths in `states[*].action` bodies — loops ship to consuming projects; (3) `scripts/tests/test_builtin_loop_interpolation.py` fails any bare shell `${VAR}` in actions — escape as `$${VAR}`; (4) MR-3 per-run artifact isolation applies to ALL loops, not just meta-loops (`scripts/little_loops/fsm/validation/meta_rules.py:201-231`) — write only under `${context.run_dir}`; (5) MR-5 artifact versioning binds `category: harness` loops regardless of meta status (`meta_rules.py:278-293`) — hence `artifact_versioning_ok: true` at `continue-task.yaml:36`, same declaration as `general-task.yaml:10`; (6) shell-injected context values interpolate with the `:shell` suffix (`${context.test_cmd:shell}`, MR-11; `scripts/little_loops/fsm/interpolation.py:280-316`).
+
+## Program Design
+
+### Types
+
+- `input: str` — continuation prompt; empty string selects the newest `.ll/ll-continue-prompt.md` fallback
+- `test_cmd: str` — resolved from `context.test_cmd`, else `ll-config get project.test_cmd`; empty skips `run_tests`
+- `max_steps: int` (150) with `on_max_steps: summarize_partial` — iteration cap diverts to a partial summary
+- `on_handoff: str` (`spawn`) — detached continuation session via `HandoffHandler`
+
+### Signatures
+
+- `load_prompt(input: str, handoff: Path) -> goal_path: Path`
+- `work(goal: Path, progress: Path) -> None`
+- `run_tests(test_cmd: str) -> exit_code: int`
+- `check_done(goal: str, progress: str, test_exit: int) -> verdict: str`
+
+### Call Path
+
+`ll-loop run` -> `load_prompt` -> `work` -> (`run_tests` -> `check_done`) -> `done` | `summarize_partial`; on context threshold `work` -> `HandoffHandler` spawns a detached `ll-loop resume continue-task`; `stall_check` (via the `diff_stall_gate` fragment from `loops/lib/common.yaml`) -> `summarize_partial`
 
 ## Implementation Steps
 
@@ -115,4 +146,5 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:format-issue` - 2026-09-25T22:14:32 - `d4531072-4651-4af1-8df5-773eb121a569.jsonl`
 - `/ll:capture-issue` - 2026-09-25T04:27:15 - `a8472ba4-4c46-48b4-8f68-409c6b4973fa.jsonl`
