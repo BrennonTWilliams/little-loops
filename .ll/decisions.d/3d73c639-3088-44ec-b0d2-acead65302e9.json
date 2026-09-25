@@ -1,0 +1,11 @@
+{
+  "id": "60fea4a6-7298-4f79-9ad5-4b5034248dbf",
+  "type": "decision",
+  "timestamp": "2026-09-25T00:33:48Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Brainstorm loop rewrite (EPIC-3581) as a mode-profiled ideation engine",
+  "rule": "Captured: Brainstorm ground state with codebase and web evidence probes",
+  "scope": "issue",
+  "issue": "FEAT-3584"
+}

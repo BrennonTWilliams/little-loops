@@ -1,0 +1,11 @@
+{
+  "id": "03128840-900b-4e8b-a459-acfb8f0adef2",
+  "type": "decision",
+  "timestamp": "2026-09-25T00:33:40Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Brainstorm loop rewrite (EPIC-3581) as a mode-profiled ideation engine",
+  "rule": "Captured: Brainstorm engine core: reframe, grid diverge, pairwise tournament, portfolio",
+  "scope": "issue",
+  "issue": "FEAT-3582"
+}

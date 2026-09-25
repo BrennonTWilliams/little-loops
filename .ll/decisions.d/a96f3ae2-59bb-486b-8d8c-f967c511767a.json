@@ -1,0 +1,11 @@
+{
+  "id": "9b61adac-04c3-447d-9875-a7fe0c2ba954",
+  "type": "decision",
+  "timestamp": "2026-09-25T00:33:56Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Brainstorm loop rewrite (EPIC-3581) as a mode-profiled ideation engine",
+  "rule": "Captured: Brainstorm optional pre-mortem finisher",
+  "scope": "issue",
+  "issue": "FEAT-3586"
+}
