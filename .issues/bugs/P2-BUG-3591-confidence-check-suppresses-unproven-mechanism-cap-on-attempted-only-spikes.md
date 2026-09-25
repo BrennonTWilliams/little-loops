@@ -3,10 +3,11 @@ id: BUG-3591
 type: BUG
 title: Confidence-check suppresses unproven-mechanism cap on attempted-only spikes
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-25'
 captured_at: '2026-09-25T03:40:42Z'
+completed_at: '2026-09-25T04:11:00Z'
 parent: EPIC-3565
 supersedes:
 - BUG-3572
@@ -189,14 +190,14 @@ interim behavior; do not add routing here.
 
 ## Acceptance Criteria
 
-- [ ] A failed (attempted-only) spike does not suppress the unproven-mechanism cap
-- [ ] Only `spike_completed: true` suppresses the cap
-- [ ] A failed `--force` rerun after a proven spike removes `spike_completed`, and the cap re-applies
-- [ ] `spike_attempted` still bounds re-spiking in both loops and in `set_flags.py`
-- [ ] Legacy attempted-only issues are listed before landing
-- [ ] The spike skill no longer claims a failed spike disproved the approach (Phase 6 preamble, step 2, Phase 7)
-- [ ] A failed `--force` rerun marks an earlier `## Spike Results` section superseded
-- [ ] `docs/reference/API.md` no longer claims `/ll:spike` or `/ll:reconcile-issue` clears `unproven_mechanism`
+- [x] A failed (attempted-only) spike does not suppress the unproven-mechanism cap
+- [x] Only `spike_completed: true` suppresses the cap
+- [x] A failed `--force` rerun after a proven spike removes `spike_completed`, and the cap re-applies
+- [x] `spike_attempted` still bounds re-spiking in both loops and in `set_flags.py`
+- [x] Legacy attempted-only issues are listed before landing
+- [x] The spike skill no longer claims a failed spike disproved the approach (Phase 6 preamble, step 2, Phase 7)
+- [x] A failed `--force` rerun marks an earlier `## Spike Results` section superseded
+- [x] `docs/reference/API.md` no longer claims `/ll:spike` or `/ll:reconcile-issue` clears `unproven_mechanism`
 
 ## Impact
 
@@ -211,4 +212,10 @@ interim behavior; do not add routing here.
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-25T04:11:07 - `0e8bde7c-8501-42eb-b927-1676bc5093a0.jsonl`
+- `/ll:ready-issue` - 2026-09-25T04:04:19 - `1141043d-8132-4061-8bf5-8659d7dec5c0.jsonl`
 - `/ll:confidence-check` - 2026-09-25T03:58:39 - `e649b48b-f380-457c-89a4-a5ed32cc660d.jsonl`
+
+## Resolution
+
+Phase 1.9 now suppresses the cap on `spike_completed` only; spike Phase 6 failure removes stale `spike_completed`, marks prior `## Spike Results` superseded, and no longer asserts disproof. Docs, spike-gate comment, mirrors, and tests updated. Legacy scan: only FEAT-3498 (done).

@@ -60,7 +60,7 @@ states:
     on_error: blocked
 
   # One remediation attempt: /ll:spike --auto proves the mechanism autonomously and
-  # writes spike_attempted/spike_completed (SKILL.md:248,257), then re-check.
+  # writes spike_attempted/spike_completed (spike SKILL.md Phase 6), then re-check.
   run_spike_auto:
     action: "/ll:spike ${context.issue_id} --auto"
     action_type: slash_command

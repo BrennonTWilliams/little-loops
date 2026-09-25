@@ -379,7 +379,7 @@ Retire concentrated technical risk on an issue by planning, implementing, and ve
 
 **Budget discipline**: one spike per issue. If the frontmatter already carries `spike_attempted: true`, the skill refuses and exits 0 unless `--force` is passed.
 
-**Write-back**: on success, appends `## Spike Results` (retired-risk table, spike location, verification counts, promotion note) and sets both `spike_completed: true` and `spike_attempted: true`. On failure, sets only `spike_attempted: true` and appends `## Spike Findings` documenting what was disproven and which approach it rules out. Either way it appends a session log via `ll-issues append-log` and `git add`s the issue file. Skipped entirely in `--check` mode.
+**Write-back**: on success, appends `## Spike Results` (retired-risk table, spike location, verification counts, promotion note) and sets both `spike_completed: true` and `spike_attempted: true`. On failure, sets `spike_attempted: true`, removes any stale `spike_completed` (marking a prior `## Spike Results` superseded), and appends `## Spike Findings` documenting which Verification commands failed. Either way it appends a session log via `ll-issues append-log` and `git add`s the issue file. Skipped entirely in `--check` mode.
 
 **`--check` mode**: runs the spike's AC suite with no writes and exits 0 (pass) / 1 (fail), matching FSM `evaluate: type: exit_code` routing. The `spike-gate.yaml` wrapper loop (ENH-2641) consumes this contract to gate an implementation loop on a proven internal mechanism.
 

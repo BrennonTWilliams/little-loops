@@ -769,8 +769,10 @@ class TestConfidenceCheckUnprovenMechanismPrefetch:
             "Phase 1.9 must extract a SPIKE_SUPPRESSED variable for spike_attempted/"
             "spike_completed suppression (ENH-3350)"
         )
-        assert "spike_attempted" in phase_text and "spike_completed" in phase_text, (
-            "Phase 1.9 must read both spike_attempted and spike_completed (ENH-3350)"
+        line = next(ln for ln in phase_text.splitlines() if "SPIKE_SUPPRESSED=" in ln)
+        assign = line.split('SPIKE_SUPPRESSED=""', 1)[1]
+        assert "spike_completed" in assign and "spike_attempted" not in assign, (
+            "Phase 1.9 SPIKE_SUPPRESSED must key on spike_completed only (BUG-3591)"
         )
 
     def test_phase_2b_cap_documented_as_hard_cap_not_penalty(self) -> None:
@@ -830,6 +832,9 @@ class TestConfidenceCheckRubricOutcomeConfidenceCap:
         assert "SPIKE_SUPPRESSED" in section, (
             "rubric.md's Outcome Confidence Cap must document SPIKE_SUPPRESSED suppression "
             "(ENH-3350)"
+        )
+        assert "suppressed only by a proven spike" in section and "spike_completed" in section, (
+            "rubric.md cap section must say only a proven spike suppresses (BUG-3591)"
         )
 
 

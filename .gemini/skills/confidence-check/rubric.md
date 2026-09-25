@@ -355,7 +355,7 @@ Criteria A-D — after all four are scored:
 | Condition | Effect |
 |-----------|--------|
 | `UNPROVEN_MECHANISM` is `"true"` and `SPIKE_SUPPRESSED` is empty (Phase 1.9) | `outcome_confidence = min(raw_sum, outcome_threshold − 1)` — hard cap, applied regardless of how high Criteria A-D otherwise sum | 
-| `UNPROVEN_MECHANISM` is empty, or `SPIKE_SUPPRESSED` is non-empty | No cap — `outcome_confidence` is the raw Criteria A-D sum |
+| `UNPROVEN_MECHANISM` is empty, or `SPIKE_SUPPRESSED` is non-empty (suppressed only by a proven spike, `spike_completed`; `spike_attempted` alone never suppresses) | No cap — `outcome_confidence` is the raw Criteria A-D sum |
 
 `outcome_threshold` is `config.commands.confidence_gate.outcome_threshold` (default 75), so the
 default cap value is 74. This is a **hard cap, not a fixed-point penalty** — a penalty (e.g.

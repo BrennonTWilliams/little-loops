@@ -228,7 +228,7 @@ rest is literal template debris that needs authored content.
 
 ### Phase 1.9: Pre-Fetch Unproven Mechanism Flag (ENH-3350)
 ```bash
-UNPROVEN_MECHANISM=""; ll-issues check-flag {{issue_id}} unproven_mechanism >/dev/null 2>&1 && UNPROVEN_MECHANISM="true"; SPIKE_SUPPRESSED=""; { ll-issues check-flag {{issue_id}} spike_attempted || ll-issues check-flag {{issue_id}} spike_completed; } >/dev/null 2>&1 && SPIKE_SUPPRESSED="yes"
+UNPROVEN_MECHANISM=""; ll-issues check-flag {{issue_id}} unproven_mechanism >/dev/null 2>&1 && UNPROVEN_MECHANISM="true"; SPIKE_SUPPRESSED=""; ll-issues check-flag {{issue_id}} spike_completed >/dev/null 2>&1 && SPIKE_SUPPRESSED="yes"
 ```
 
 ### Phase 2: Five-Point Assessment

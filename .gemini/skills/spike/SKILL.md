@@ -251,11 +251,16 @@ branch).
 
 ### On failure (any Verification command non-zero)
 
-A failed spike is signal: the approach is wrong.
+A failed spike did not prove the mechanism; the cause may be the approach or the environment.
 
-1. Set only `spike_attempted: true` (not `spike_completed`).
-2. Append a `## Spike Findings` section documenting what was disproven and which
-   approach it rules out. Recommend routing to `/ll:decide-issue` or
+1. Set `spike_attempted: true` and remove `spike_completed` if present (same
+   Edit-the-frontmatter convention; there is no unset verb). A failed `--force` rerun
+   must not leave a stale `spike_completed: true` suppressing the unproven-mechanism cap.
+   If the issue already has a `## Spike Results` section from an earlier proven run, add
+   a `_Superseded by the failed /ll:spike --force run on [YYYY-MM-DD] — see ## Spike
+   Findings_` line under its heading.
+2. Append a `## Spike Findings` section documenting which Verification commands failed
+   and the failing output. Recommend routing to `/ll:decide-issue` or
    `/ll:issue-size-review`.
 
 ### Always
@@ -273,7 +278,7 @@ Then stage the issue file: `git add "[issue-file-path]"`.
 Print the next action:
 
 - On success: `✓ Spike passed. Run /ll:confidence-check $ISSUE_ID to re-score, then implement.`
-- On failure: `✗ Spike failed. Approach disproven — see ## Spike Findings; route to /ll:decide-issue or /ll:issue-size-review.`
+- On failure: `✗ Spike did not prove the mechanism — see ## Spike Findings; route to /ll:decide-issue or /ll:issue-size-review.`
 
 ## Check Mode Behavior (--check)
 

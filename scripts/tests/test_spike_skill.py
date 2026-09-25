@@ -100,6 +100,13 @@ class TestSpikeSkillContract:
     def test_sets_spike_completed_flag(self) -> None:
         assert "spike_completed: true" in SKILL_FILE.read_text()
 
+    def test_failure_branch_removes_stale_completed_and_does_not_assert_disproof(self) -> None:
+        text = SKILL_FILE.read_text()
+        block = text.split("### On failure", 1)[1].split("### Always", 1)[0]
+        assert "remove `spike_completed`" in block
+        assert "the approach is wrong" not in text
+        assert "Approach disproven" not in text
+
     def test_sets_spike_attempted_flag(self) -> None:
         assert "spike_attempted: true" in SKILL_FILE.read_text()
 
