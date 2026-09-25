@@ -2030,8 +2030,10 @@ class TestRefineToReadyIssueSubLoop:
         fake = bin_dir / "ll-issues"
         fake.write_text('#!/bin/sh\necho \'{"spike_needed": "true", "spike_attempted": null}\'\n')
         fake.chmod(0o755)
-        script = action.replace("${context.run_dir}", str(tmp_path)).replace(
-            "${captured.issue_id.output}", "BUG-9702"
+        script = (
+            action.replace("${context.run_dir}", str(tmp_path))
+            .replace("${captured.issue_id.output:shell}", "BUG-9702")
+            .replace("${captured.issue_id.output}", "BUG-9702")
         )
         env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"}
         first = subprocess.run(["bash", "-c", script], env=env, capture_output=True, text=True)
@@ -3835,9 +3837,12 @@ class TestResolveDecisionOracle:
             f"assert_decision_cleared.on_yes should be 'check_residual_decision', "
             f"got {state.get('on_yes')!r}"
         )
-        assert state.get("on_no") == "done", (
-            f"assert_decision_cleared.on_no should be 'done', got {state.get('on_no')!r}"
+        # BUG-3593: the flag-cleared edge passes through the spike re-arm state.
+        assert state.get("on_no") == "rearm_refuted_spike", (
+            f"assert_decision_cleared.on_no should be 'rearm_refuted_spike', "
+            f"got {state.get('on_no')!r}"
         )
+        assert data["states"]["rearm_refuted_spike"].get("next") == "done"
 
     def test_check_residual_decision_routes_a_real_residual_to_done(self, data: dict) -> None:
         """BUG-3278: check_residual_decision.on_no (check-unresolved-decisions exit 1
@@ -8969,8 +8974,10 @@ class TestAutodevLoop:
         assert state.get("on_error") == "count_repair_cycle_spike"
         assert state.get("on_rate_limit_exhausted") == "finalize_rate_limited"
         counter_state = data["states"].get("count_repair_cycle_spike", {})
-        assert counter_state.get("next") == "clear_scores_before_spike"
-        assert counter_state.get("on_error") == "clear_scores_before_spike"
+        # BUG-3593: the verdict router precedes the (proven-only) clear -> rescore chain.
+        assert counter_state.get("next") == "route_spike_verdict"
+        assert counter_state.get("on_error") == "route_spike_verdict"
+        assert data["states"]["route_spike_verdict"]["route"]["PROVEN"] == "clear_scores_before_spike"
 
     def test_rerun_confidence_after_spike_routing(self, data: dict) -> None:
         """ENH-2640: rerun_confidence_after_spike re-scores and routes to enqueue_or_skip
@@ -9395,9 +9402,14 @@ class TestAutodevLoop:
         """ENH-1415: when outcome still fails after decide, route to snap_and_size_review so
         the issue gets a decomposition attempt rather than being silently dropped."""
         state = data["states"].get("recheck_after_decide", {})
-        assert state.get("on_no") == "snap_and_size_review", (
-            f"recheck_after_decide.on_no should be 'snap_and_size_review' "
-            f"(was 'dequeue_next' pre-ENH-1415), got {state.get('on_no')!r}"
+        # BUG-3593: on_no first checks for a re-armed spike, whose on_no is size review.
+        assert state.get("on_no") == "check_rearmed_spike_after_decide", (
+            f"recheck_after_decide.on_no should be 'check_rearmed_spike_after_decide', "
+            f"got {state.get('on_no')!r}"
+        )
+        assert (
+            data["states"]["check_rearmed_spike_after_decide"].get("on_no")
+            == "snap_and_size_review"
         )
         assert state.get("on_error") == "snap_and_size_review", (
             f"recheck_after_decide.on_error should also fall through to snap_and_size_review, "

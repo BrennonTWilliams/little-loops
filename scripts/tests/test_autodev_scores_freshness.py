@@ -67,7 +67,7 @@ class TestRoutingStructure:
     def test_repair_predecessors_target_clear_states(self, states: dict[str, Any]) -> None:
         assert states["mark_decide_ran"]["on_no"] == "clear_scores_before_decide"
         assert states["run_refine"]["next"] == "clear_scores_before_wire"
-        assert states["count_repair_cycle_spike"]["next"] == "clear_scores_before_spike"
+        assert states["route_spike_verdict"]["route"]["PROVEN"] == "clear_scores_before_spike"
         assert states["remediate_oversized_atomic"]["next"] == "clear_scores_before_atomic"
         for pred in ("count_repair_cycle_reconcile", "count_repair_cycle_refine_for_design"):
             assert states[pred]["next"] == "clear_scores_before_reconcile"

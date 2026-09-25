@@ -49,7 +49,7 @@ designed to produce is silently dropped.
 - **File**: `scripts/little_loops/fsm/executor.py`
 - **Anchor**: `FSMExecutor.run()` — iteration-cap check at line 284
 - **Cause**: Pre-commit `931db9e9`, the cap check was a bare
-  `return self._finish("max_iterations")` with no `on_max_iterations`
+  `return self._finish("max_iterations")` with no `on_max_iterations` <!-- ll-evidence-ok: historical pre-fix code, no longer in HEAD -->
   consultation. The handler lookup code path did not exist.
 
 ### Codebase Research Findings

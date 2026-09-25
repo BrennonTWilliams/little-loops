@@ -942,11 +942,11 @@ states:
       SPIKE_N=$(cat "$SPIKE_RUNS" 2>/dev/null || echo 0)
       [ "$SPIKE_N" -lt 2 ] || exit 1
       SPIKE_ISSUE_JSON=$(ll-issues show ${captured.input.output} --json)  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
-      SPIKE_ISSUE_JSON="$SPIKE_ISSUE_JSON" python3 << 'PYEOF' || exit 1
+      SPIKE_ISSUE_JSON="$SPIKE_ISSUE_JSON" PRE_SPIKE_FILE="${context.run_dir}/autodev-pre-spike-readiness.txt" python3 << 'PYEOF' || exit 1
       import json, os, sys
       d = json.loads(os.environ['SPIKE_ISSUE_JSON'])
       if d.get('spike_needed') == 'true' and d.get('spike_attempted') != 'true':
-          with open('${context.run_dir}/autodev-pre-spike-readiness.txt', 'w') as fh:
+          with open(os.environ['PRE_SPIKE_FILE'], 'w') as fh:
               fh.write(str(d.get('confidence') or ''))
           sys.exit(0)
       sys.exit(1)

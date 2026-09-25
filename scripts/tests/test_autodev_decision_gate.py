@@ -458,8 +458,8 @@ class TestSpikeTriageStructural:
         assert state.get("on_error") == "count_repair_cycle_spike"
         assert state.get("on_rate_limit_exhausted") == "finalize_rate_limited"
         counter_state = data["states"]["count_repair_cycle_spike"]
-        assert counter_state.get("next") == "clear_scores_before_spike"
-        assert counter_state.get("on_error") == "clear_scores_before_spike"
+        assert counter_state.get("next") == "route_spike_verdict"
+        assert counter_state.get("on_error") == "route_spike_verdict"
 
     def test_rerun_confidence_after_spike_routing(self, data: dict[str, Any]) -> None:
         state = data["states"]["rerun_confidence_after_spike"]
@@ -995,8 +995,9 @@ class TestAssertDecisionClearedStructural:
         is unchanged end to end since that is what assert_decision_cleared's
         own on_no/on_error already routed to."""
         state = data["states"]["recheck_after_decide"]
-        assert state.get("on_yes") == "implement_current", (
-            f"recheck_after_decide.on_yes should be 'implement_current' "
+        # ENH-3575: implement_current is reached via the proof-gate guard.
+        assert state.get("on_yes") == "check_proof_gate_before_implement", (
+            f"recheck_after_decide.on_yes should be the proof-gate guard "
             f"(ENH-3075: assert_decision_cleared deleted), got {state.get('on_yes')!r}"
         )
 
