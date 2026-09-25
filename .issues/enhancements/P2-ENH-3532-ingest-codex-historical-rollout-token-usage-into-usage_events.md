@@ -40,7 +40,7 @@ Ingest Codex historical rollout usage (`event_msg` / `token_count`) into `usage_
 - Codex live usage reaches `usage_events` via `usage_from_event` → runner `ActionResult.usage_events` → `FSMExecutor._finish` → `record_usage_event`.
 - Historical rollout `token_count` events are read only by `ctx_stats._codex_cache_usage` for a cache-hit rate; they never reach `usage_events`.
 - `parse_codex_rollout` yields a `SessionEvent` whose payload is the inner Codex object. `_backfill_raw_events` serializes that payload: stored usage records have `type='token_count'`, not the original `event_msg` envelope. Timestamp, session ID, outer event type, and line position are stored separately; native envelope ordinals are not preserved by this path.
-- The in-progress metadata iterator in `scripts/little_loops/session_store/writers.py` supplies line/source/host, but not the other replay metadata. The rebuild cursor in `scripts/little_loops/session_store/lifecycle.py` selects only `raw_line, source_path, host` ordered by database ID.
+- The existing metadata iterator in `scripts/little_loops/session_store/writers.py` supplies line/source/host, but not the other replay metadata. The rebuild cursor in `scripts/little_loops/session_store/lifecycle.py` selects `raw_line, source_path, host, host_basis` ordered by database ID.
 - `_backfill_raw_events` previously stamped the ingesting/configured host instead of `SessionHandle.host`; BUG-3542 (completed) fixed this and added a verified-attribution discriminator, which this issue's replay consumes.
 - Live observations carry no session/invocation identity (ENH-3543 owns adding it). The raw-ingest function in `scripts/little_loops/session_store/lifecycle.py` documents uniqueness as `(source_path, line_no)`, which does not deduplicate moved or copied rollouts.
 
@@ -51,8 +51,8 @@ Codex rollout usage is persisted as normalized, provenance-labeled observations.
 ## Integration Map
 
 - `scripts/little_loops/session_store/{codex,sessions,writers,lifecycle}.py` — rollout normalization, metadata-bearing replay, verified source host, stable source identity and idempotent `_backfill_usage_events`.
-- `scripts/little_loops/session_store/{schema,queries}.py`, `schema_manifest.json` — append-only migration for observation identity/uniqueness and any required attribution/coverage metadata; shared aggregate selection; safe export compatibility. Reuse ENH-3538's columns rather than adding them again.
-- `scripts/little_loops/cli/ctx_stats.py` — `_codex_cache_usage` may switch to stored observations only when session selection stays equivalent (optional).
+- `scripts/little_loops/session_store/{schema,queries}.py`, `scripts/little_loops/session_store/schema_manifest.json` — append-only migration for observation identity/uniqueness and any required attribution/coverage metadata; identity fields consumed by ENH-3543; aggregate selection and export reconciliation belong to ENH-3543. Reuse ENH-3538's columns rather than adding them again.
+- `scripts/little_loops/cli/ctx_stats.py` — ENH-3549 owns switching cache reporting to stored observations with equivalent session selection; no second reader migration belongs here.
 - Tests: `test_session_store_writers.py`, `test_session_store_lifecycle.py`, schema/manifest tests, Codex parser tests, `test_subprocess_utils.py`, `test_fsm_runners.py`, `test_fsm_executor.py`, `test_cli_ctx_stats.py`, `test_history_reader_usage.py`, `test_feat3304_artifact_dashboard.py`, and `scripts/tests/fixtures/codex/`.
 - Docs: `docs/codex/usage.md`, `docs/guides/HISTORY_SESSION_GUIDE.md`, `docs/reference/HOST_COMPATIBILITY.md`.
 
@@ -61,7 +61,7 @@ Codex rollout usage is persisted as normalized, provenance-labeled observations.
 _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 
 **Conventions in force (pattern-finder, this pass):**
-- Usage replay is one function fed by a shared iterator: `_backfill_usage_events` (`writers.py`) reads `_iter_events_with_host`, which yields `(line, source_label, host, host_basis)`; other `_backfill_*` parsers use the two-tuple `_iter_events` wrapper. The `rebuild()` cursor in `lifecycle.py` already selects `raw_line, source_path, host, host_basis` (v55 added `host_basis`) — Current Behavior's "selects only `raw_line, source_path, host`" is stale. The iterator reads extra columns positionally, guarded by row length, so added replay metadata (line number, ordinal) must extend the cursor and tuple in lockstep while leaving `_iter_events` callers intact.
+- Usage replay is one function fed by a shared iterator: `_backfill_usage_events` (`writers.py`) reads `_iter_events_with_host`, which yields `(line, source_label, host, host_basis)`; other `_backfill_*` parsers use the two-tuple `_iter_events` wrapper. The `rebuild()` cursor in `lifecycle.py` already selects `raw_line, source_path, host, host_basis` (v55 added `host_basis`) — Current Behavior now records all four cursor columns after the epic review. The iterator reads extra columns positionally, guarded by row length, so added replay metadata (line number, ordinal) must extend the cursor and tuple in lockstep while leaving `_iter_events` callers intact.
 - `_backfill_usage_events` accepts only `type == "assistant"` records with `message.usage`; Codex `token_count` is an `event_msg` payload and is not admitted today. Only qwen has a replay-time host shim (keyed on `host == "qwen"`). `_codex_cache_usage` (`cli/ctx_stats.py`) is the only current `token_count` reader and reads live files via `iter_events(handle)`, not `raw_events`.
 - Codex token normalization has a single entry point: `normalize_codex_input` (`subprocess_utils.py`) returning frozen `CodexInputSplit(uncached_input, cache_read, cache_write, consistent)`; missing values are never coerced to zero. `TokenUsage` already carries nullable components, `provenance`, `host`, `scope_kind`, `observed_at`, `observed_at_basis` (ENH-3538).
 - Provenance for backfilled rows is set differently per path today: the backfill path hardcodes `unknown`/`request`, while `_codex_cache_usage` labels its aggregate `measured`. The issue's conditional-`measured` rule is a decision, not an inherited convention.
@@ -103,6 +103,14 @@ Use explicit mutable state per verified session/stream for key/span bookkeeping 
 
 `channel='rollout'` is replayable. BUG-3530's existing `channel IS NOT 'live'` rebuild predicate already includes it; test that behavior rather than adding a conflicting deletion rule. Perform derived-row replacement and replay transactionally so interruption cannot leave half-rebuilt accounting; preserve live rows and make retries stable. Test source relocation and copies as well as repeated ingestion of an unchanged path.
 
+### Persisted key and evidence boundary
+
+The candidate source-event key is verified host + canonical session ID + verified stream/reset namespace + native envelope ordinal. This is not yet a proven request key. Record the exact migration/index and fallback decision before implementation; do not substitute physical line number or token-event sequence for native ordinal without evidence. In the trimmed `rollout-exec-resume.jsonl`, token events are at physical lines 6, 7, 12 with native ordinals 15, 18, 27. Direct and database replay must preserve the chosen position basis. Legacy rows without that basis remain unresolved rather than acquiring a fabricated native identity.
+
+Exact re-ingestion deduplication and duplicate notifications for one request are separate guarantees. The current captures contain no repeated usage notification demonstrating that second case. Synthetic fixtures can test conservative behavior, but cannot establish a producer contract. Do not label unknown request uniqueness as verified deduplicated consumption merely because all rows have `channel='rollout'`.
+
+Use existing `usage_events.session_id` for the verified host-observed session ID on both rollout and live rows, qualified by host and an identity-basis marker. Reuse existing `invocation_id` for local correlation in ENH-3543. The two issues must agree on span/identity-basis field names before either migration; no second unjoined session column or duplicate invocation column.
+
 ### Live identity and coverage selection
 
 Moved to ENH-3543. Until it lands, rollout rows and live rows for the same work coexist, and readers expose them as an unreconciled observation sum (ENH-3528's conservative contract). Rows written here must carry the source identity (session ID + `task_started`/`task_complete` span) that ENH-3543 needs for matching.
@@ -121,7 +129,7 @@ Moved to ENH-3543. Until it lands, rollout rows and live rows for the same work 
 
 **Still open; record decisions here before implementation:**
 
-1. **Request key.** Candidate: `(host, session_id, ordinal_of_token_count_within_session_file)`. The fixtures show a top-level `ordinal` on each rollout line; verify it survives replay (the stored inner payload lacks it, so `_backfill_raw_events` must persist it or `line_no` must be proven equivalent) and archive. Duplicate `token_count` notifications for one request: check `rollout-interactive.jsonl` for a repeated `last_token_usage` with no intervening model request. If none exists in any fixture, record "no duplicate notifications observed in 0.152.1" and let the unique key handle exact re-ingestion only.
+1. **Request key.** Candidate source-event key: `(host, session_id, stream_namespace, native_ordinal)`; request identity is separately qualified. The fixtures show a top-level `ordinal` on each rollout line; persist it through replay (the stored inner payload lacks it), verify its namespace across resume/archive, and define a separately qualified fallback for sources without it. Physical `line_no` is not equivalent in the trimmed fixture. Duplicate `token_count` notifications for one request: check `rollout-interactive.jsonl` for a repeated `last_token_usage` with no intervening model request. If none exists in any fixture, record "no duplicate notifications observed in 0.152.1" and let the unique key handle exact re-ingestion only.
 2. **Reset namespace.** Mid-invocation compaction is uncaptured. Decide the conservative rule: since `last_token_usage` is per request, compaction does not affect per-request rows; only the span-sum consistency check in ENH-3543 is affected.
 3. **Ordering.** Normalization no longer needs cumulative state (item 1 above), so per-session mutable state reduces to the key/span bookkeeping. Confirm and simplify `CodexUsageState` accordingly.
 
@@ -129,7 +137,10 @@ If a case lacks producer evidence, choose the conservative unresolved behavior r
 
 ## Acceptance Criteria
 
-- [ ] Historical rollout usage reaches `usage_events` (`channel='rollout'`) through `normalize_codex_input` and BUG-3531's rollout container rules; `rollout-exec-resume.jsonl` yields exactly three rows (58504 input / 46080 cached / 0 cache-write in total); live capture continues to work.
+- [ ] Physical line, native ordinal, and token-event sequence remain distinct through trimmed-file/direct/DB replay fixtures; unknown request uniqueness stays explicitly unresolved even in rollout-only reports.
+- [ ] The shared session/span schema is recorded with ENH-3543 before migrations; existing `session_id`/`invocation_id` columns are reused with explicit identity basis.
+
+- [ ] Historical rollout usage reaches `usage_events` (`channel='rollout'`) through `normalize_codex_input` and BUG-3531's rollout container rules; `rollout-exec-resume.jsonl` yields exactly three rows (12424 uncached input / 46080 cache-read / 0 cache-write / 122 output in total; native inclusive input is 58504); live capture continues to work.
 - [ ] Fixtures cover repeated notifications, per-request vs cumulative values, compaction resets, multiple sessions, malformed/partial records, rate-limit-only records, and observed-model absence. Valid distinct requests with equal counts remain distinct.
 - [ ] Repeated ingestion and rebuild leave canonical totals stable and preserve live-only rows (relies on BUG-3530).
 - [ ] Rollout rows take their host from BUG-3542's verified attribution, never from the currently configured host; legacy-attributed rows carry an unknown host with a reason.
@@ -184,7 +195,7 @@ Fixture probes confirmed replay receives an inner `token_count` payload without 
 
 ### Pre-implementation review 2026-09-24 (split)
 
-Removed the resolved blockers (ENH-3538, BUG-3531); now blocked by BUG-3542. Imported BUG-3531's resolved decisions into the readiness gates, leaving three open gates (request key, reset namespace, ordering). Moved live identity and coverage selection to ENH-3543, and host correction to BUG-3542.
+Historical split: BUG-3542 was the remaining prerequisite then; it is now done, as are ENH-3538 and BUG-3531. Imported BUG-3531's resolved decisions into the readiness gates, leaving three open gates (request key, reset namespace, ordering). Moved live identity and coverage selection to ENH-3543, and host correction to BUG-3542.
 
 ## Status
 
@@ -194,7 +205,7 @@ Removed the resolved blockers (ENH-3538, BUG-3531); now blocked by BUG-3542. Imp
 
 ## Scope Boundary
 
-**Note** (added by `/ll:audit-issue-conflicts`): This issue persists the rollout `session_id` (rollout `session_meta.payload.session_id`) plus the `task_started`/`task_complete` span on each rollout row. ENH-3543 separately proposes `host_session_id`/`invocation_id` columns on `usage_events` for live rows. Before either migration lands, agree with ENH-3543 on one canonical session-identity column (reuse with a basis marker, or two named columns with a documented join). Do not add a second, unjoined session-ID column in this issue's migration.
+**Note** (added by `/ll:audit-issue-conflicts`): This issue persists the rollout `session_id` (rollout `session_meta.payload.session_id`) plus the `task_started`/`task_complete` span on each rollout row. ENH-3543 owns live identity capture and local invocation correlation. Use existing `session_id` for both channels with verified host/identity basis, and reuse existing `invocation_id` for local correlation. Agree the remaining span/basis field names with ENH-3543 before either migration; do not add duplicate identity columns.
 
 
 ## Confidence Check Notes
@@ -205,7 +216,7 @@ _Added by `/ll:confidence-check` on 2026-09-24_
 **Outcome Confidence**: 48/100 → LOW
 
 ### Concerns
-- `blocked_by` BUG-3542 is now Completed, but the issue body still lists it as an outstanding prerequisite ("now blocked by BUG-3542"); refresh the frontmatter/prose so it no longer reads as open.
+- Prerequisite prose refreshed by the epic review: BUG-3542 is done; identity/readiness decisions below remain outstanding.
 - Three readiness gates (request key, reset namespace, ordering) are still open and must be recorded in the issue before implementation; the issue itself makes this a precondition.
 - The session-identity column must be agreed with ENH-3543 before either migration lands (see Scope Boundary note).
 

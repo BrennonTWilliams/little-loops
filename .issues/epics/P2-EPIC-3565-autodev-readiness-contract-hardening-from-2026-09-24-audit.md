@@ -87,6 +87,7 @@ measurement.
 - **ENH-3575** — Structured policy gate field replacing prose gate-phrase grep in autodev (open)
 - **ENH-3576** — Format-check repair coverage for missing and boilerplate sections with format-issue fallback (open)
 - **ENH-3577** — Consolidate autodev issue preparation into a single controller loop (open)
+- **BUG-3588** — Autodev post-repair rescoring accepts stale or absent confidence scores (open)
 
 ## Acceptance Criteria
 

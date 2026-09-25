@@ -1,7 +1,6 @@
 ---
 id: ENH-3549
-title: Migrate ll-logs, ll-messages, and ll-ctx-stats onto the session-watcher seam
-  so every reader is host-agnostic
+title: Finish session-reader isolation and consume stored usage in ll-ctx-stats
 type: ENH
 priority: P2
 status: open
@@ -25,165 +24,118 @@ score_ambiguity: 10
 score_change_surface: 10
 ---
 
-# Migrate ll-logs, ll-messages, and ll-ctx-stats onto the session-watcher seam so every reader is host-agnostic
+# ENH-3549: Finish session-reader isolation and consume stored usage in ll-ctx-stats
 
 ## Summary
 
-The runtime-adapter seam for host log ingestion shipped in v1.162.0 (FEAT-3417, with Codex as the second implementation), and the write-side divergent-fakes acceptance landed in v1.164.0 (ENH-3456/ENH-3459). The migration itself has not: `ll-logs`, `ll-messages`, and `ll-ctx-stats` still reach directly for `~/.claude/projects/<munged-cwd>/`, so every log-derived surface remains Claude-Code-only by construction even though the seam that fixes it is in the tree. The toolkit can write a Codex session's artifacts and then cannot read a single Codex session back.
+Finish the remaining read-side isolation and diagnostics after ENH-3428/3429/3430 migrated discovery in `ll-messages`, `ll-ctx-stats`, and `ll-logs`. The existing seam is `detect_sessions`/`iter_events`; there is no new watcher lifecycle to build. Remove the remaining cache-accounting transcript bypass by reading stored normalized observations through `select_usage_observations`, preserve workspace/session selection, add named-cause diagnostics, and prove the reader boundary with divergent fake hosts.
 
-Migrate all three readers onto the session-watcher seam — detect, watch, emit typed events, stop — with per-host parsers behind it and one shared fan-in above it, so a Codex session reads back as naturally as a Claude Code one. One implementation serves many readers: `ll-logs`, `ll-messages`, `ll-ctx-stats`, and any future dashboard or export consumer attach to the same seam rather than each re-parsing host transcripts directly. Downstream, the dataset export and the quality rollups consume these readers and remain single-host until this lands.
+The existing Codex parser/captures and the read-side spike are evidence to reuse. This issue does not redo discovery migration, add a new Codex parser, or define another token normalizer.
 
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 
-- **Scope is narrower than the Summary states.** `cli/logs.py`, `cli/messages.py` and `cli/ctx_stats.py` contain no `.claude/projects` literal and make no calls into the `user_messages` project-folder helpers; they already route through `detect_sessions`/`iter_events` (ENH-3428/3429/3430). The direct joins remain in `user_messages._get_claude_project_folder`, `sessions._list_claude_workspaces`, `sessions._explain_encoded_dir_host`, and `writers.host_layout_for` (write-side).
+- **Discovery migration already landed.** `cli/logs.py`, `cli/messages.py` and `cli/ctx_stats.py` contain no `.claude/projects` literal and make no calls into the legacy project-folder helpers; they already route through `detect_sessions`/`iter_events` (ENH-3428/3429/3430). The direct joins remain in `user_messages._get_claude_project_folder`, `sessions._list_claude_workspaces`, `sessions._explain_encoded_dir_host`, and `writers.host_layout_for` (write-side).
 - **No `SessionWatcher` symbol exists in code.** "Session-watcher seam" is the session-discovery seam (`SessionHandle`, `detect_sessions`, `iter_events`) in `session_store/sessions.py`.
-- **Related open work overlaps:** ENH-3419 (adopt seam in the three readers), ENH-3546 (non-Codex cache-rate provenance, referenced in `_compute_cache_rate_from_jsonl`). Confirm which acceptance criteria these already satisfy before implementing.
-- **Read-side divergent-fake gap confirmed:** the fakes (`FakeHostRunner`, `FakeMinimalHostRunner`) have no session-log discovery or parser; `_PARSERS`/`_REGISTERED_HOSTS` hold only the eight real hosts. The composition test would need read-side fake session records or an equivalent fixture.
+- **Ownership:** ENH-3419 and its reader-migration children are done. ENH-3546 owns Claude producer eligibility; ENH-3534 owns the other remaining hosts. This issue consumes stored provenance and does not certify producers.
+- **Read-side divergent-fake gap confirmed:** the fakes (`FakeHostRunner`, `FakeMinimalHostRunner`) have no session-log discovery or parser; `_PARSERS`/`_REGISTERED_HOSTS` hold only the eight real hosts. The spike below supplies fixture registration at the seam layer; actual reader-consumer integration remains outstanding.
 
 ## Current Behavior
 
-The three CLIs already discover sessions through `detect_sessions` and read events through `iter_events` (or handle-taking extractors in `little_loops.user_messages`); ENH-3428/3429/3430 landed that. The remaining gaps are narrower than the Summary states:
+The three CLIs already discover sessions through `detect_sessions` and read events through `iter_events` (or handle-taking extractors in `little_loops.user_messages`); ENH-3428/3429/3430 landed that. The remaining gaps are:
 
 - `little_loops.user_messages._get_claude_project_folder` and `little_loops.session_store.sessions._list_claude_workspaces` still join `~/.claude/projects` themselves, and `detect_sessions` reaches the former.
 - `ll-ctx-stats` (`_compute_cache_rate_from_jsonl`) reads Codex through `iter_events` but keeps a raw `open(handle.path)` reader for every other host, and labels non-Codex cache figures `provenance: "unknown"`.
 - `ll-ctx-stats` has no named-cause warning when no sessions are found (`explain_no_sessions` is not called).
-- The composition suite (`tests/conformance/test_host_composition.py`) exercises only the write/executor side; no fake host has a read-side session record, and no test asserts source files avoid a `.claude/projects` literal.
+- The production composition suite (`tests/conformance/test_host_composition.py`) exercises the write/executor side. The separate spike now supplies read-side fake records and proves seam injection, but actual reader-consumer coverage and the transcript-root isolation gate remain outstanding.
 
 ## Expected Behavior
 
-All three readers attach to the session-watcher seam (detect, watch, emit typed events) and consume per-host parsers behind it. A Codex session for the current workspace reads back in `ll-logs` and `ll-messages` like a Claude Code one, `ll-ctx-stats` carries per-observation provenance (authoritative vs estimate), and no migrated reader references `~/.claude/projects/` directly.
+Session discovery and message/log parsing stay behind `detect_sessions`/`iter_events`. Cache-rate accounting uses persisted normalized `usage_events` through `select_usage_observations`, preserving the existing latest-session/workspace/host selection (including agent exclusion) instead of summing the entire database. Producer eligibility stays with ENH-3532/3534/3546 and reconciliation stays with ENH-3543.
+
+For a discovered session without stored eligible usage, return unavailable with a diagnostic explaining missing/not-yet-ingested usage; do not silently parse raw transcripts or backfill during a read-only report. Missing fields are unknown/unavailable, and estimates exist only when an actual estimator supplies them. An unreadable store and genuine absence remain distinguishable. Empty discovery emits `explain_no_sessions` diagnostics to stderr so JSON stdout remains valid.
 
 ## Design constraints
 
-- The seam stays at the lifecycle only. Per-host parsers live behind it and share nothing above it. Do not introduce a common abstraction over tool-call shapes or token accounting: the runtimes do not overlap enough for a forced common record to beat two honest per-host ones.
+- The discovery seam owns discovery and per-host event parsing. Do not add a common tool-call or token-accounting abstraction to that seam. The existing downstream normalized usage store and selector remain the accounting contract consumed by reports.
 - Discovery failure and genuine absence must remain distinguishable after the migration. A workspace whose sessions exist on disk but match nothing renders a named-cause warning, not an empty result; the migration must not regress that behavior where it exists today.
 - The Codex parser is tested against a captured real-shape rollout fixture, treated as perishable — vendor shape drift is one re-capture away from detection. The fixture complements, not replaces, the scripted fake hosts.
 
-## Acceptance criteria
+## Acceptance Criteria
 
-- The divergent fakes pass on the **read** side, not only the write side: the composition test drives both fakes' session records through the migrated readers, proving the readers host-agnostic rather than asserting it.
-- A Codex session for the current workspace appears in `ll-logs` and `ll-messages` output with the same fidelity as a Claude Code session over the same period.
-- `ll-ctx-stats` carries per-observation provenance for the records it counts: where a host exposes authoritative token counts they are read, and where it does not the figure is labeled an estimate (companion work: ENH-3528 and its ingestion splits ENH-3532/ENH-3534).
-- No reader in the migrated set reaches for `~/.claude/projects/` directly; a mechanical check (grep or import rule) proves it.
-
----
+- [ ] Divergent fake fixtures pass through the actual message/log readers and stored-usage cache-rate consumer, not only discovery/parser helpers. Reuse the spike injection surface and close the `extract_user_messages` host-gate gap identified by the spike.
+- [ ] Existing Codex/Claude workspace readback and agent/session selection stay equivalent; reuse captured Codex fixtures rather than creating another parser.
+- [ ] Cache-rate reporting uses stored normalized observations via `select_usage_observations`, preserving producer provenance and coverage qualification; no host-wide unknown override or direct transcript accounting remains.
+- [ ] Missing/partial usage, no stored rows, unreadable store and empty discovery have conservative, distinguishable behavior. No usage is labeled estimated without an estimator, and report reads do not mutate ingestion state.
+- [ ] A mechanical AST/path-join gate catches direct reader access to host transcript roots, with narrowly justified seam/layout allowlist entries, a stale-entry test and a stray-site self-check.
+- [ ] Named-cause diagnostics go to stderr and JSON stdout remains parseable. Unit-level fixture tests run without installed host CLIs; project tests pass.
 
 ## Scope Boundaries
 
-- **In scope**: migrating `ll-logs`, `ll-messages`, and `ll-ctx-stats` onto the session-watcher seam; Codex parser behind the seam with a captured real-shape rollout fixture; read-side divergent-fake composition test; mechanical no-direct-`~/.claude/projects/` check.
-- **Out of scope**: a common abstraction over tool-call shapes or token accounting; the `UsageObservation` normalization (ENH-3532, ENH-3534) and `select_usage_coverage` aggregation (ENH-3543); dataset export and quality rollups (downstream consumers).
-
-### Scope Boundary Note
-
-**Note** (added by `/ll:audit-issue-conflicts`): The "no common abstraction over tool-call shapes or token accounting" constraint applies to the session-watcher seam and its per-host typed events only. It does not prohibit the downstream `usage_events` contract: the shared `UsageObservation` normalization (ENH-3532, ENH-3534) and the single `select_usage_coverage` aggregation entry point (ENH-3543) are out of scope here and remain valid. `ll-ctx-stats` provenance (third acceptance criterion) consumes those stored observations; it does not re-derive token accounting in the seam.
-
+- **In scope**: remaining reader bypass classification/removal, stored-usage cache-rate integration, empty-discovery/store diagnostics, read-side composition tests, and a mechanical host-layout isolation gate.
+- **Out of scope**: redoing completed discovery migration, replacing the Codex parser, a new watcher service, common tool-call shapes, token normalization/producer promotion, live/rollout reconciliation, dataset export or quality rollup redesign.
+- **Accounting boundary**: ENH-3532/3534 persist normalized observations; ENH-3546 qualifies Claude provenance; ENH-3543 enhances the existing `select_usage_observations` policy. This issue consumes that entry point with conservative behavior before reconciliation exists.
+- **Dependencies**: ENH-3532/3534 remain dependencies for complete stored host coverage. Diagnostics/gate/spike promotion can proceed independently. No reader-local normalization or UUID-based usage deduplication replaces producer identity contracts.
 
 ## Impact
 
-- **Priority**: P2 - every log-derived surface is Claude-Code-only until this lands; blocks host-agnostic dataset export and quality rollups.
-- **Effort**: Large - three readers plus a Codex parser, fixture, and composition test.
-- **Risk**: Medium - `user_messages` has many dependents; discovery-failure vs genuine-absence warnings must not regress.
-- **Breaking Change**: No
+- **Priority**: P2 — closes the remaining raw accounting bypass and strengthens multi-host reader regression coverage.
+- **Effort**: Medium — existing discovery/parsers are reused; stored-usage selection and consumer-level fake integration remain substantive.
+- **Risk**: Medium — latest-session selection, missing-store behavior, provenance and consumer dispatch must remain consistent.
+- **Breaking Change**: No command-line interface change; missing un-ingested usage is explicitly unavailable rather than silently parsed from disk.
 
 ## Program Design
 
 ### Types
 
-- `SessionHandle`: frozen dataclass (`host: str`, `session_id: str`, `path: Path`, `cwd: Path`, `updated_at: float`, `is_agent: bool`) in `little_loops.session_store.sessions`; existing, unchanged
-- `SessionEvent`: frozen dataclass (`type: str`, `timestamp: str`, `host: str`, `payload: dict[str, Any]`, `line_no: int | None`); existing, unchanged
-- `NoSessionsCause`: `str` Enum naming why discovery came back empty; existing, consumed by `ll-ctx-stats` after this change
+- Reuse `SessionHandle`, `SessionEvent`, and `NoSessionsCause` from `session_store`; no watcher type is introduced.
+- Reuse the stored observation/provenance contract and existing selection entry point. No common tool-call representation or new token-accounting type is needed in the discovery seam.
 
 ### Signatures
 
-- `detect_sessions(cwd: Path, host: str | None = None, *, include_agents: bool = False, limit: int | None = None, home: Path | None = None) -> list[SessionHandle]` — existing seam entry point
-- `iter_events(handle: SessionHandle) -> Iterator[SessionEvent]` — existing per-host parser dispatch
-- `explain_no_sessions(cwd: Path, host: str | None = None, *, include_agents: bool = False, home: Path | None = None) -> tuple[NoSessionsCause, str]` — existing; to be called from `ll-ctx-stats`
-- `_compute_cache_rate_from_jsonl(cwd: Path, host: str | None) -> dict | None` — existing in `little_loops.cli.ctx_stats`; non-Codex branch to move onto `iter_events`
-- `_get_claude_project_folder(encoded_path: str, *, home: Path | None = None) -> Path | None` — existing in `little_loops.user_messages`; the one join the seam still delegates to
+- Keep existing `detect_sessions`, `iter_events`, and `explain_no_sessions` signatures.
+- `_compute_cache_rate_from_usage(cwd: Path, host: str | None, *, db: Path | str | None = None) -> dict | None` — proposed stored-observation consumer. Preserve existing numeric keys and add qualification from stored observations. Retire the misleading private `_compute_cache_rate_from_jsonl` helper and update its callers/tests; any temporary compatibility wrapper delegates to the stored consumer, never parses transcripts.
+- Record the existing latest-session selection and missing-store/no-eligible-rows diagnostic contract in focused tests before replacing the helper.
 
 ### Call Path
 
-`main_messages` -> `detect_sessions` -> `iter_events` -> `extract_user_messages`
-
-`main_logs` -> `detect_sessions` -> `iter_events`
-
-`main_ctx_stats` -> `_compute_cache_rate_from_jsonl` -> `detect_sessions` -> `iter_events`
+- `main_messages` / `main_logs` → `detect_sessions` → `iter_events` / handle-taking extractors.
+- `main_ctx_stats` → selected `SessionHandle` → read-only history connection → `select_usage_observations` → selected session's cache components and provenance.
+- Empty discovery → `explain_no_sessions` → stderr; missing/unreadable stored usage → distinct stderr diagnostic and unavailable cache result.
 
 ### Decision Rules
 
-N/A — no new decision logic
+Preserve latest eligible session and host/workspace scope, and exclude agent records as before. Do not widen to all-session totals, infer zeros, perform an implicit backfill, or fall back to a separate raw token parser. Usage deduplication belongs to persisted identity/coverage policy, not a reader-local UUID filter.
 
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/cli/ctx_stats.py` — non-Codex branch of `_compute_cache_rate_from_jsonl` opens `handle.path` directly; no `explain_no_sessions` on empty discovery
-- `scripts/little_loops/user_messages.py` — `_get_claude_project_folder` and sibling per-host joins; module docstring line 4
-- `scripts/little_loops/session_store/sessions.py` — `_list_claude_workspaces` and `_explain_encoded_dir_host` carry their own `home / ... / "projects"` joins
-- `scripts/tests/conformance/test_host_composition.py` — write-side only today
 
-_Wiring pass added by `/ll:wire-issue`:_
-- `scripts/tests/test_session_reader_no_claude_projects_gate.py` — NEW gate test (name suggested); no gate over Python source exists today (`test_session_log_prose_sweep.py` only scans skill prose) [Agent 1, 2, 3 finding]
-- `scripts/little_loops/cli/ctx_stats.py:main_ctx_stats` — the `explain_no_sessions` call belongs here, not inside `_compute_cache_rate_from_jsonl`; changing that function's `dict | None` return would break the `None`-on-empty tests [Agent 2, 3 finding]
+- `scripts/little_loops/cli/ctx_stats.py` — replace raw cache-accounting helper with stored observation selection; preserve selection/return semantics, propagate provenance, and emit diagnostics outside the numeric helper.
+- `scripts/little_loops/history_reader/usage.py`, `token_provenance.py` — reuse existing selection/qualification APIs; modify only if narrow support is required, without adding a bypass.
+- `scripts/little_loops/user_messages.py` — close the fake-host extraction gate found by the spike using an explicit per-host consumer dispatch/fixture adapter; preserve real-host output and keep tool/token semantics out of discovery.
+- `scripts/little_loops/cli/logs.py`, `cli/messages.py` — classify remaining raw opens as transcript or non-transcript; route only genuine transcript bypasses through the seam. They already use discovery and named-cause diagnostics.
+- `scripts/little_loops/session_store/sessions.py`, `writers.py` — existing host-layout resolvers are legitimate seam internals. Do not relocate them solely to satisfy the gate.
+- `scripts/tests/conformance/test_host_composition.py` and/or a neighboring read-side test module — promote the existing spike's injection mechanism, then test actual consumers. Fixture-only unit coverage must run without host binaries.
+- `scripts/tests/test_session_reader_no_claude_projects_gate.py` — NEW: AST path-join/string scan with narrowly justified function-level exceptions where practical, stale-entry and stray-site tests. Scan all host transcript roots; exclude config/output directories and lint-tool examples with reasons.
 
-### Dependent Files (Callers/Importers)
-_Wiring pass added by `/ll:wire-issue`:_
-- `scripts/little_loops/cli/logs.py` — already on the seam: `detect_sessions` (`:157`, `:583`, `:1958`, `:2705`), `iter_events`, `explain_no_sessions`; several raw `open()` sites remain (`:659`, `:726`, `:827`, `:1633`, `:2108`), not yet classified as transcript vs. non-transcript reads [Agent 1, 3 finding]
-- `scripts/little_loops/cli/messages.py:main_messages` — already calls `detect_sessions` (`:188`) and `explain_no_sessions`; `extract_user_messages` not traced for direct file reads [Agent 1, 2 finding]
-- `scripts/little_loops/session_store/__init__.py` — re-exports `NoSessionsCause`, `explain_no_sessions`, `iter_events`, `host_layout_for`; `ctx_stats` should import via this path [Agent 1 finding]
-- `scripts/little_loops/session_store/lifecycle.py` — calls `iter_events` (`:796`) and `host_layout_for` (`:1127`); consumers of the seam, unaffected unless signatures change [Agent 1 finding]
-- `scripts/little_loops/session_store/sessions.py:19-47` — imports `_get_claude_project_folder` from `user_messages` (circular seam); `_explain_encoded_dir_host` is used only inside `sessions.py` (`:778`, `:916`) [Agent 1 finding]
-- `scripts/little_loops/cli/verify_private_refs.py`, `scripts/little_loops/cli/verify_skill_prose.py` — carry `~/.claude/projects` regex/docstring literals; lint tools, not readers — must be excluded from (or allowlisted in) the new gate [Agent 1, 2 finding]
+### Tests and Compatibility
 
-### Wiring Notes
-_Wiring pass added by `/ll:wire-issue`:_
-- `iter_events` payload sufficiency for the non-Codex branch: `claude-code`, `opencode`, `pi` yield the full record (`_parse_claude_shaped`), so `uuid` and `message.usage` are reachable and the `uuid` dedup stays in the caller. `qwen`, `gemini`, `omp` normalizers strip `message.usage` and `kimi-code` yields raw wire records, so those hosts stay `unknown` regardless of this migration (ENH-3546 territory). `iter_events` swallows `OSError`, so the `open()` vanish-guard collapses into the existing "no eligible events → `None`" return [Agent 2 finding]
-- Gate scan method: `_ENCODED_DIR_HOSTS` in `sessions.py` builds the path from separate `".claude"` / `"projects"` strings, so a contiguous-substring scan would miss it. Use an AST `Path`-join scan plus a string-constant scan. Files holding the literal today: `user_messages.py:_get_claude_project_folder` (`:503`, docstring `:4`), `session_store/sessions.py:_list_claude_workspaces` (`:612`), `session_store/writers.py:host_layout_for` (`:2768`) [Agent 1, 2 finding]
-- No live consumer of `ll-ctx-stats --json` was found in `hooks/`, `commands/`, `skills/`, or `scripts/little_loops/loops/`; `.loops/` live loop YAMLs were not inspected (search returned only run logs) [Agent 2 finding]
-- `scripts/little_loops/cli/session.py` — non-Codex `backfill` paths still call `get_project_folder(host=...)` (lines 710, 769)
-- `scripts/little_loops/hooks/session_start.py` — `get_project_folder(root, host=...)`
-- `scripts/little_loops/session_log.py`, `scripts/little_loops/fsm/continuity.py` — `get_sessions_folder`
-- `scripts/little_loops/session_store/writers.py` — `host_layout_for` `projects_root` table (write-side layout, not a reader)
-
-### Conventions in Force
-- Readers take `SessionHandle`s from `detect_sessions` and parse only through `iter_events`; `home=` is threaded so tests pass `tmp_path` — evidence: `cli/logs.py`, `cli/messages.py`, `cli/ctx_stats.py`
-- `session_store` never imports from `cli` — evidence: `list_workspaces` docstring (ENH-3430)
-- Mechanical "must not reference X" gates are pytest tests with a reasoned allowlist that fails when an entry goes stale — evidence: `test_history_store_chokepoint_gate.py`, `test_usage_selection_chokepoint_gate.py`
-- Codex fixtures are committed captures with a version-keyed re-capture rule — evidence: `scripts/tests/fixtures/codex/README.md`, `.ll/learning-tests/codex-rollout.md`
-- Token provenance is `Literal["measured","estimated","unknown"]`, components `None` when unreported — evidence: `subprocess_utils.TokenUsage`, `token_provenance.py`
-
-### Tests
-- `scripts/tests/test_cli_ctx_stats.py`, `test_ll_logs.py`, `test_cli_messages.py`, `test_session_discovery.py`, `test_user_messages.py` — existing reader coverage that must keep passing
-- `scripts/tests/conformance/test_host_composition.py` — hosts the read-side composition test
-
-_Wiring pass added by `/ll:wire-issue`:_
-- `scripts/tests/test_cli_ctx_stats.py:TestComputeCacheRateFromJsonl` — update: non-Codex tests (`test_computes_hit_rate`, `test_aggregates_multiple_turns`, `test_deduplicates_by_uuid`, `test_skips_agent_jsonl_files`, `test_returns_none_when_total_zero`, `test_skips_non_assistant_entries`) write Claude-shaped JSONL read by raw `open()`; `test_skips_file_that_vanishes_before_stat` asserts the `OSError` path that `iter_events` swallows [Agent 3 finding]
-- `scripts/tests/test_cli_ctx_stats.py:test_resolves_qwen_chats_transcript`, `test_resolves_gemini_chats_transcript` — highest break risk: unpatched real chain asserting `cache_read == 61559`, but qwen/gemini normalizers strip `message.usage` [Agent 3 finding]
-- `scripts/tests/test_cli_ctx_stats.py` — render tests `test_hit_rate_line_shows_host_suffix_for_non_claude_host` and `test_hit_rate_line_byte_identical_for_claude_code_host` get `[unknown]` from the `_cache_rate_provenance` fallback, not the reader; keep passing if the reader still returns no `provenance` key [Agent 2 finding]
-- `scripts/tests/test_enh3528_token_provenance.py:TestCacheRateFromTranscript` — update: `test_absent_keys_are_missing_not_zero` asserts `provenance == "unknown"`; `test_explicit_null_does_not_crash` and `test_usage_without_any_key_is_not_an_observation` share the raw-file path; `test_codex_result_is_measured` is unaffected [Agent 3 finding]
-- `scripts/tests/test_cli_ctx_stats.py` — NEW: empty-discovery test patching `little_loops.cli.ctx_stats.explain_no_sessions`, modelled on `scripts/tests/test_ll_session.py` (patches at `:792`, `:814`) and `_EXPLAIN_NO_SESSIONS_PATH` in `test_cli_messages.py:344` [Agent 3 finding]
-- `scripts/tests/test_ll_logs.py` — may break: fake-home `~/.claude/projects/<encoded-cwd>` helpers (docstring ~`:168`, `:1635`, `:4480`) if any raw `open()` site in `cli/logs.py` is replaced [Agent 3 finding]
-- `scripts/tests/test_cli_messages.py` — may break only if the `explain_no_sessions` import location changes (patch target `little_loops.session_store.explain_no_sessions`) [Agent 3 finding]
-- `scripts/tests/conformance/test_host_composition.py` — read-side test builds `SessionHandle(host="fake"|"fake-minimal", ...)` directly; `FakeHostRunner`/`FakeMinimalHostRunner` (`host_runner.py:2066`, `:2151`) have no session-log surface and neither host is in `_PARSERS`/`_REGISTERED_HOSTS`, so the test needs either registered fake parsers or a fixture-driven per-host parser stub; `_FAKES = ("fake", "fake-minimal")` at `:47` [Agent 3 finding]
-- `scripts/tests/test_usage_selection_chokepoint_gate.py`, `scripts/tests/test_history_store_chokepoint_gate.py` — templates for the new gate: string-constant scan with `_enclosing_functions()` and `test_gate_detects_a_stray_site` (usage gate); stale-entry test `test_allowlist_entries_still_exist_and_still_have_raw_connects` (history gate) [Agent 1, 3 finding]
-- `scripts/tests/conftest.py:_isolate_session_log_dir` (`:1135`) — autouse fixture redirecting `Path.home` to an empty fake home; per-test overrides win [Agent 3 finding]
-- `scripts/tests/test_session_log_prose_sweep.py:30` — only existing `.claude/projects` check (skill prose); unaffected [Agent 1 finding]
-- Indirect only, no direct unit tests exist for `_get_claude_project_folder`, `_list_claude_workspaces`, `_explain_encoded_dir_host` — covered via `test_session_discovery.py` (`explain_no_sessions` tests `:1277`–`:1484`) and `test_user_messages.py` [Agent 3 finding]
-- `scripts/tests/test_hook_session_start.py`, `test_fsm_continuity.py`, `test_session_log.py`, `test_ll_session.py`, `test_enh_3166_qwen_normalizer.py` — monkeypatch `get_project_folder`/`host_layout_for`; break only if those helpers' signatures change [Agent 1 finding]
+- Preserve `test_session_discovery.py`, `test_user_messages.py`, `test_ll_logs.py`, `test_cli_messages.py` and real-host parser regressions.
+- Update `test_cli_ctx_stats.py` and `test_enh3528_token_provenance.py` to seed normalized usage via the store, then exercise actual session selection/reporting. Assert totals, provenance and missing counts; do not weaken Qwen/Gemini expectations just because their older parsers stripped usage.
+- Add tests for no store, unreadable store, selected session not ingested, missing components, same-session multi-channel observations, host/agent exclusion and latest-session equivalence. Keep unresolved coverage qualified through the shared selector.
+- Reuse `scripts/tests/spike/enh3549_read_side_fake_hosts/`; preserve real host registries outside test-scoped monkeypatching. The spike proves the seam only, not full message/log extraction.
+- Keep `ll-ctx-stats --json` stdout machine-readable when discovery/storage diagnostics are present.
 
 ### Documentation
-- `docs/reference/CLI.md`, `docs/reference/HOST_COMPATIBILITY.md` — reader host-coverage statements
 
-_Wiring pass added by `/ll:wire-issue`:_
-- `docs/reference/CLI.md` `### ll-ctx-stats` — "Cache figures" bullet ("Codex observations are `measured`; other hosts are `unknown`") stays accurate until ENH-3546; add a bullet describing the new empty-discovery named-cause output [Agent 2 finding]
-- `docs/reference/HOST_COMPATIBILITY.md` — footnote on `ll-ctx-stats`'s cache-rate reader (ENH-3429) says `_codex_cache_usage` returns the same four keys "the Claude reader returns"; reword if the non-Codex reader changes [Agent 2 finding]
-- `docs/reference/API.md` — `get_project_folder` prose ("`ll-ctx-stats`'s cache-rate reader moved off this helper onto `detect_sessions` — ENH-3429") is historical and stays accurate [Agent 2 finding]
-- `skills/configure/areas.md` — mentions `ll-ctx-stats`; no edit needed, and any edit trips the host-mirror gates (`ll-adapt --apply`) [Agent 2 finding]
-- `scripts/tests/test_wiring_cli_registry.py`, `scripts/tests/test_wiring_init_and_configure.py` — presence-only assertions for `ll-ctx-stats` in `CLI.md` / `areas.md`; unaffected [Agent 2 finding]
+- `docs/reference/CLI.md`, `docs/reference/HOST_COMPATIBILITY.md`, `docs/reference/API.md` — document stored-usage selection, unavailable/not-yet-ingested cases, explicit backfill guidance, and stderr diagnostics. Do not claim all non-Codex hosts stay unknown after their producer contracts land.
+- `docs/ARCHITECTURE.md` — describe the reader boundary and reused fake-host mechanism if its documented composition surface changes.
 
-### Configuration
-- N/A
+### Preserved Research Context
+
+The following research records discovered paths and conventions. The Program Design and Implementation Steps above/below supersede earlier raw-transcript accounting proposals; the spike supersedes the lack-of-injection-precedent observation.
 
 ### Codebase Research Findings
 
@@ -195,49 +147,37 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 - **Existing read-side fixtures usable without new capture:** `scripts/tests/fixtures/codex/` (`rollout-exec.jsonl`, `rollout-interactive.jsonl`, `rollout-exec-resume.jsonl`), `fixtures/qwen/`, `fixtures/gemini/`, `fixtures/omp/`, and Claude-shaped `fixtures/streaming_parity/trace_*/recorded.jsonl`. No `claude`, `opencode`, `pi` or `kimi` fixture directories exist. Also in the neighbourhood: `scripts/tests/conformance/conftest.py`, `conformance/test_host_conformance.py`, and `scripts/tests/spike/enh3430_workspace_union/` (`fixtures.py:37` references `_get_claude_project_folder`).
 - **Test helpers and coverage not previously listed:** `test_session_discovery.py:_write_claude_session` (`:1268`) and `test_detect_sessions_claude_code_resolves_via_home_not_get_project_folder` (`:257`); `test_user_messages.py` `get_project_folder` per-host tests (`:106-594`); `test_session_store_lifecycle.py`, `test_enh3538_token_observations.py`, `test_enh_3393_gemini_normalizer.py`, `test_cli.py` reference the seam symbols; `test_verify_private_refs.py` and `test_verify_skill_prose.py` hold `.claude/projects` literals for the two lint tools the gate must allowlist.
 - **Documentation not previously listed:** `docs/reference/API.md` documents `_get_claude_project_folder` (`:3473`) and `get_sessions_folder` (`:3512-3526`); `docs/reference/HOST_COMPATIBILITY.md` has further `get_project_folder` mentions (`:544`, `:566`, `:629`); `docs/codex/usage.md:95`; `docs/ARCHITECTURE.md` (seam symbols; fakes at `:880-881`). Docs holding a `.claude/projects` literal that the existing prose sweep does not cover: `docs/guides/HISTORY_SESSION_GUIDE.md`, `EXAMPLES_MINING_GUIDE.md`, `docs/reference/EVENT-SCHEMA.md`, `docs/claude-code/*`. `skills/audit-claude-config/` and `agents/consistency-checker.md` (with `.qwen`/`.kimi-code`/`.gemini` mirrors) also carry the literal; editing any trips the mirror gates.
-- **Convention — fake hosts are runner-side only.** Fakes register in `_HOST_RUNNER_REGISTRY`/`TEST_ONLY_HOSTS` and drive a real `ll-fake-host` executable; the session-side registries are module constants that no test patches (`monkeypatch.setattr` on `_PARSERS`/`_REGISTERED_HOSTS`/`detect_sessions`/`iter_events` has zero hits in `scripts/tests`). Tests that need the seam either mock it by dotted string (`_DETECT_SESSIONS_PATH`, `_EXPLAIN_NO_SESSIONS_PATH` in `test_cli_messages.py`) or write real files under a fake home.
-  ⚠ Unproven mechanism — no precedent injects a fake host into session discovery
+- **Convention — fake hosts are runner-side only.** Fakes register in `_HOST_RUNNER_REGISTRY`/`TEST_ONLY_HOSTS` and drive a real `ll-fake-host` executable; the session-side registries are module constants that production does not dynamically extend; the spike below now patches them in tests (the earlier zero-hit search predates the spike). Tests that need the seam either mock it by dotted string (`_DETECT_SESSIONS_PATH`, `_EXPLAIN_NO_SESSIONS_PATH` in `test_cli_messages.py`) or write real files under a fake home.
+  Historical risk retired at the seam layer by the spike below; end-to-end reader dispatch remains to be proven.
 - **Convention — gate tests** scan `scripts/little_loops/**/*.py` with `ast.parse`, hold a module-level allowlist with a reason per entry, and assert collected `rel:lineno` violations equal `[]`. Two allowlist shapes exist: file-keyed (`test_history_store_chokepoint_gate.py`) and `(file, enclosing function)`-keyed (`test_usage_selection_chokepoint_gate.py`). They disagree on staleness: only the history gate fails on a stale entry (`test_allowlist_entries_still_exist_and_still_have_raw_connects`); the usage gate instead has a scan-pattern self-check (`test_gate_detects_a_stray_site`). The ENH's own criterion requires both behaviours.
 - **Convention — named-cause warnings** are two plain `print(..., file=sys.stderr)` lines (`No sessions found for: {cwd}` then the `explain_no_sessions` reason; cause discarded) — `cli/messages.py:188-196`, `cli/logs.py:583-589`, `cli/session.py:697-771`. `messages`/`logs` do not thread `home=` into `detect_sessions`, so their CLI tests rely on patching `Path.home`; seam-level tests thread `home=`. The autouse `_isolate_session_log_dir` fixture already redirects `Path.home` in every test.
 
+_Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
+
+- **Convention — a migrated reader parses transcripts only through `iter_events(handle)` and treats `event.payload` as the old parsed record**; raw `open()` survives only on non-transcript files plus two transcript cases. Evidence: `user_messages.extract_user_messages` (handle-based since ENH-3428), `cli/logs.py:_cmd_extract`. The two surviving transcript reads are `ctx_stats._compute_cache_rate_from_jsonl` (the one this issue migrates) and a pre-`iter_events` probe in `_cmd_extract` (`cli/logs.py:721-730`) kept so unreadable files land in `skipped`; `test_extract_unreadable_file_reported` locks that reporting contract.
+- **Contested: unreadable-file handling.** `_cmd_extract` keeps a raw probe to report unreadable files; `ctx_stats` wraps the whole read and returns `None`; `iter_events` itself yields nothing on `OSError`. That concern applied to the earlier transcript-to-iter_events proposal. The revised stored-usage path distinguishes unreadable store from no eligible observations; retain unreadable-file reporting for message/log extraction.
+- **Payload shape is host-dependent, so a raw-record reader sees different data per host.** `claude-code`, `codex`, `kimi-code` yield host-native records; `qwen`, `gemini`, `omp` yield normalizer-output (Claude-shaped, `message.usage` stripped); `opencode`, `pi` share the Claude loop. Codex `payload` is the inner payload of a `response_item`/`event_msg` record, not the whole record. Evidence: `sessions.py` module docstring "Payload rule (ENH-3420)", `_PARSERS`; `extract_user_messages` dispatches on `handle.host` and `_CLAUDE_SHAPED_HOSTS`.
+- **Convention — parsers are `parse_<host>(path) -> Iterator[SessionEvent]` registered in `_PARSERS`, never raise on malformed lines.** `line_no` is the real file line for per-line parsers but an `enumerate` index for `parse_gemini_session`/`parse_omp_session`. No test file asserts `_PARSERS` membership; normalizer tests (`test_enh_3166_qwen_normalizer.py`, `test_enh_3393_gemini_normalizer.py`) test the normalizer and layout only, with fixtures under `tests/fixtures/<host>/`.
+- **Convention — home isolation has three co-existing styles.** (A) seam-level tests thread `home=tmp_path` (`test_session_discovery.py`, the spike tests); (B) CLI-level tests patch `Path.home` (`test_ll_logs.py`, `test_cli_ctx_stats.py:test_resolves_qwen_chats_transcript`) because the CLIs call `detect_sessions` without `home=`; (C) unit tests patch the seam call site with a hand-built `SessionHandle` (`test_cli_ctx_stats.py` helper `_handle`). Patch targets disagree: `ctx_stats`/`logs` import `detect_sessions` at module level (`little_loops.cli.<mod>.detect_sessions`), whereas `messages.py` imports lazily (`little_loops.session_store.detect_sessions`) — a new `explain_no_sessions` import in `ctx_stats` must pick one and its test patch target must match.
+- **Convention — uuid dedup lives only in the `ctx_stats` single-session reader** (`seen_uuids`; `test_deduplicates_by_uuid`). `_codex_cache_usage` does not dedup; the `usage_events` backfill in `writers.py` dedups via `raw_events` `(source_path, line_no)`. `SessionEvent.line_no` is documented as matching that index, but the revised stored-usage reader delegates identity/coverage to the shared selector; do not carry this old local dedup proposal into the new accounting path.
+- **Reusable helpers that already exist:** `token_provenance` (`counted_entry`, `json_pointer`, `format_figure`, `footnotes`; already imported by `ctx_stats`), `ctx_stats._known_int`, `subprocess_utils.normalize_codex_input`, `sessions.handles_from_paths`/`session_id_for` (synthesize handles from bare paths), and `cli/logs.py:_detect_project_handles`.
+- **No read-side conformance precedent exists outside the spike.** `test_host_composition.py`, `test_host_conformance.py` and `conformance/conftest.py` contain no `detect_sessions`/`iter_events`/`Path.home` usage; the only test-side `_PARSERS` writes are `monkeypatch.setitem` in `scripts/tests/spike/enh3549_read_side_fake_hosts/fake_read_hosts.py`. The spike's `monkeypatch` injection is therefore the sole precedent, and its "no production change needed" result holds only at the seam layer (see Spike Results finding on `_CLAUDE_SHAPED_HOSTS`).
+
 ## Implementation Steps
 
-1. The three readers reach transcripts only through `detect_sessions`/`iter_events`, including `ll-ctx-stats` for non-Codex hosts; `test_cli_ctx_stats.py` keeps passing.
-2. `ll-ctx-stats` surfaces `explain_no_sessions` output when discovery is empty, matching `ll-messages`/`ll-logs`.
-3. A read-side composition test drives both divergent fakes' session records through the migrated readers, alongside the existing write-side suite.
-4. A gate test asserts no reader module carries a `.claude/projects` literal, with an allowlist for the seam's own path resolvers that fails when stale.
-5. `pytest scripts/tests/` passes.
-
-### Wiring Phase (added by `/ll:wire-issue`)
-
-_These touchpoints were identified by wiring analysis and must be included in the implementation:_
-
-- Update `scripts/little_loops/cli/ctx_stats.py` — call `explain_no_sessions` in `main_ctx_stats` (not inside `_compute_cache_rate_from_jsonl`, whose `dict | None` contract the existing tests pin); import it via `little_loops.session_store`
-- Update `scripts/little_loops/cli/ctx_stats.py:_compute_cache_rate_from_jsonl` — replace the raw `open(latest.path)` with `iter_events(handle)`, reading `event.payload["message"]["usage"]`; keep `uuid` dedup in the caller; keep `provenance` absent/`unknown` for non-Codex
-- Update `scripts/tests/test_cli_ctx_stats.py` and `scripts/tests/test_enh3528_token_provenance.py` — adapt the non-Codex raw-reader tests; re-verify `test_resolves_qwen_chats_transcript` / `test_resolves_gemini_chats_transcript` (qwen/gemini normalizers strip `message.usage`)
-- Add empty-discovery test in `scripts/tests/test_cli_ctx_stats.py` — patch `little_loops.cli.ctx_stats.explain_no_sessions`
-- Add read-side composition test in `scripts/tests/conformance/test_host_composition.py` — decide how the divergent fakes get session records, since neither is in `_PARSERS`/`_REGISTERED_HOSTS`
-- Add `scripts/tests/test_session_reader_no_claude_projects_gate.py` — AST `Path`-join + string-constant scan of `scripts/little_loops/**/*.py`, reasoned allowlist for `session_store/sessions.py`, `session_store/writers.py`, `user_messages.py`, `cli/verify_private_refs.py`, `cli/verify_skill_prose.py`, a stale-entry test, and a stray-site self-check
-- Update `docs/reference/CLI.md` (`### ll-ctx-stats`) and `docs/reference/HOST_COMPATIBILITY.md` (`ll-ctx-stats` footnote) — describe empty-discovery output and, if changed, the reader wording
+1. Pin existing latest-session/host/agent selection and cache result semantics in store-backed tests; classify remaining message/log raw reads before changing them.
+2. Replace cache transcript accounting with the read-only stored-observation helper through `select_usage_observations`; preserve known components and qualification, and make missing/unreadable usage explicit.
+3. Call `explain_no_sessions` from `main_ctx_stats` on empty discovery; keep diagnostics off JSON stdout.
+4. Promote the spike injection fixtures and extend them through actual reader consumers, resolving the `extract_user_messages` host gate without changing production registries for fake hosts.
+5. Add the host transcript-root isolation gate with reasoned exceptions and stale-entry/stray-site checks. Update docs and run focused tests plus `python -m pytest scripts/tests/`.
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-09-24_
+Historical score: readiness 65/100, outcome 52/100, recorded before refinement/spike and this epic review. Re-run confidence checking after the revised contracts are refined; these numbers do not certify the revised scope.
 
-**Readiness Score**: 65/100 → STOP — ADDRESS GAPS
-**Outcome Confidence**: 52/100 → LOW
+Resolved specification gaps: Program Design, Integration Map, implementation steps and standard sections are present; discovery migration is already complete; the seam-level fake injection mechanism has spike evidence.
 
-### Concerns
-- `depends_on` ENH-3532 and ENH-3534 are not yet done; the ctx-stats provenance criterion consumes their observations.
-
-### Gaps to Address
-- Program Design gate fails: `## Program Design` is missing. Populate it with the seam types, signatures and call path (`/ll:refine-issue` or `/ll:reconcile-issue`), or set `program_design_not_applicable: true`.
-- No Integration Map, Files to Modify, or implementation steps. Which reader modules migrate (e.g. `little_loops/user_messages.py`, the ll-logs and ll-ctx-stats CLIs) and which session-watcher entry points they attach to are not enumerated.
-- Missing sections: Current Behavior, Expected Behavior, Impact, Scope Boundaries, Status.
-
-### Outcome Risk Factors
-- Broad enumeration across three readers plus a Codex parser, with an unspecified per-reader migration design (moderate per-site complexity).
-- Wide blast radius: `user_messages` has many dependents.
+Remaining readiness work: finalize/test stored-usage session selection and missing-store behavior; demonstrate fake fixtures through actual readers (the spike identifies an `extract_user_messages` gate); wait for ENH-3532/3534 for full stored host coverage. Preserve the completed spike and its limitations below.
 
 ## Spike Results
 
@@ -260,6 +200,7 @@ _Added by `/ll:spike` on 2026-09-24_
 **Promotion**: fold into `scripts/tests/conformance/` beside `test_host_composition.py`, in a separate PR.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-25T01:49:59 - `2a69c442-43f4-408a-839a-d32ff801a6aa.jsonl`
 - `/ll:decide-issue` - 2026-09-25T01:45:38 - `2ac59930-bb65-4013-a3d3-8f842b856fd9.jsonl`
 - `/ll:spike` - 2026-09-25T01:44:07 - `d516d85d-c844-46f9-818c-1329a5ea8e8a.jsonl`
 - `/ll:refine-issue` - 2026-09-25T01:41:16 - `e0edff4d-cab8-40c4-ab83-ef8eab746346.jsonl`

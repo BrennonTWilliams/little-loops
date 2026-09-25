@@ -48,6 +48,10 @@ Stored provenance is useless to consumers who read it through `history_reader` o
 
 Additive only. Extend the dataclass and the one row-listing reader, then extend the shareable allowlist under its existing version-lockstep control. `recent_usage_events` is a row listing, not an aggregation, so it does **not** route through ENH-3528's `select_usage_observations` chokepoint. The shareable export must tolerate DBs that predate v54/v55: select only allowlisted columns that exist in the source table.
 
+### Export boundary with ENH-3543
+
+This issue remains independently implementable and exports raw observation metadata only. Seven additional columns do not prove live/rollout reconciliation, and `recent_usage_events` must remain a raw row listing. ENH-3543 owns a privacy-safe selection/qualification representation in snapshots, built-in dashboard aggregation, and an exported-snapshot-versus-source regression for matched/partial/unresolved coverage. It must preserve qualification when private source identifiers are omitted. Any later allowlist expansion receives a new version/hash; it must not silently redefine this issue's v2 seven-column contract. Docs must distinguish raw row provenance from aggregate coverage claims.
+
 ## Integration Map
 
 ### Files to Modify
@@ -91,6 +95,8 @@ Additive only. Extend the dataclass and the one row-listing reader, then extend 
 - **Breaking Change**: No (shareable exports gain columns; allowlist version stamp changes 1 → 2).
 
 ## Acceptance Criteria
+
+- [ ] Raw row listings/exports retain their observation semantics; docs do not claim that the seven-column projection reconciles overlap. ENH-3543 owns selected aggregate/export parity and any subsequent allowlist version.
 
 - [ ] `UsageEvent` gains the nine trailing fields with `None` defaults; existing positional/keyword constructions and iterator consumers are unchanged.
 - [ ] `recent_usage_events` populates the new fields, surfaces NULL `provenance` as `"unknown"`, and reads pre-v54 and pre-v55 schemas without error.

@@ -56,7 +56,7 @@ Add an optional `premortem` finisher to `scripts/little_loops/loops/brainstorm.y
 
 - Enabled by profile (`functional`, `business` default on) or `premortem=true`.
 - A critic states the top failure modes ("it's 12 months later and this failed because…"); a defender revises or concedes.
-- Rounds are bounded by a context value and enforced by the FSM using the `retry_counter` fragment from `lib/common.yaml`.
+- Rounds are bounded by a context value and enforced by the FSM with a per-run counter kept under `${captured.run_dir.output}` (not the shared-scratch `retry_counter` fragment).
 - The report gains a `Risks & Kill Criteria` section per finalist; a conceded idea is demoted, the next finalist promoted, and the change recorded in `ideas.jsonl`.
 
 ## Program Design
@@ -74,7 +74,7 @@ Add an optional `premortem` finisher to `scripts/little_loops/loops/brainstorm.y
 
 ### Call Path
 
-`tournament` -> `premortem_critic` -> `premortem_defender` -> `retry_counter` -> `portfolio` -> `verify_artifacts`
+`tournament` -> `premortem_critic` -> `premortem_defender` -> `premortem_round_gate` -> `portfolio` -> `verify_artifacts`
 
 ### Codebase Research Findings
 
@@ -118,7 +118,7 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 ## Implementation Steps
 
 1. Add `premortem_critic` and `premortem_defender` states, gated on the resolved profile (FEAT-3583) or `premortem=true`.
-2. Bound rounds with the `retry_counter` fragment and a `premortem_rounds` context value.
+2. Bound rounds with a per-run counter under `${captured.run_dir.output}` (`evaluate: output_numeric / lt`, as `mechanize-skills.yaml` `diagnosis_retry` does) and a `premortem_rounds` context value; do not use the `retry_counter` fragment, whose `.loops/tmp/` counter persists across runs.
 3. Implement `apply_verdicts` to demote/promote and record changes in `ideas.jsonl` and `winners`.
 4. Render `Risks & Kill Criteria` per finalist in `brainstorm.md`; leave output shape unchanged when disabled.
 5. Add tests for bounded rounds, demotion/promotion, and the disabled path; run `ll-loop validate brainstorm`.
@@ -126,7 +126,7 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 ## Impact
 
 - **Priority**: P4 - optional finisher that refines output but is not needed for a working engine
-- **Effort**: Small - two LLM states, one bounded counter, and one small script; reuses `retry_counter`
+- **Effort**: Small - two LLM states, one per-run bounded counter, and one small script
 - **Risk**: Low - off by default for `artifact`/`visual` profiles and skipped cleanly when disabled
 - **Breaking Change**: No
 

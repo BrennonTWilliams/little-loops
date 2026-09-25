@@ -8,6 +8,10 @@ discovered_by: ll-issues-create
 discovered_date: '2026-09-25'
 captured_at: '2026-09-25T01:46:08Z'
 parent: EPIC-3562
+relates_to:
+- ENH-3545
+- ENH-3538
+- ENH-1376
 labels:
 - observability
 - context-monitor
@@ -21,7 +25,7 @@ Invocation token consumption is written to `result_token_count` and treated as c
 
 ## Current Behavior
 
-`scripts/little_loops/issue_manager.py` writes the sum of the legacy usage callback's input and output to `result_token_count`. `hooks/scripts/context-monitor.sh` prioritizes that value over its transcript baseline and estimator, and `hooks/scripts/context-handoff-sentinel.sh` prioritizes it over `estimated_tokens`. The field has no metric/scope/freshness qualification and can survive context changes and compaction. ENH-3538's known-component lower bounds preserve consumption reporting; they do not establish current occupancy.
+`scripts/little_loops/issue_manager.py` writes the sum of the legacy usage callback's input and output to the result_token_count state field. `hooks/scripts/context-monitor.sh` prioritizes that value over its transcript baseline and estimator, and `hooks/scripts/context-handoff-sentinel.sh` prioritizes it over `estimated_tokens`. The field has no metric/scope/freshness qualification and can survive context changes and compaction. ENH-3538's known-component lower bounds preserve consumption reporting; they do not establish current occupancy.
 
 ## Expected Behavior
 
@@ -29,7 +33,7 @@ Consumption remains available for usage accounting and consumption budgets, but 
 
 ## Motivation
 
-[Why this issue matters - business value, user impact, technical debt cost]
+Premature context-pressure handoffs interrupt useful work even when the active context fits. Correcting the metric lets occupancy protection remain useful without discarding valid consumption accounting.
 
 ## Proposed Solution
 
@@ -40,6 +44,23 @@ Separate consumption and occupancy at the producer/consumer boundary. Audit the 
 - Files: `scripts/little_loops/issue_manager.py`, `scripts/little_loops/parallel/worker_pool.py`, `hooks/scripts/context-monitor.sh`, `hooks/scripts/context-handoff-sentinel.sh`; context state readers as needed.
 - Tests: `scripts/tests/test_hooks_integration.py`, issue-manager and worker-pool usage/guard tests, `scripts/tests/test_enh3538_token_observations.py` where prior lower-bound expectations encode occupancy behavior.
 - Docs: `docs/guides/BUILTIN_HOOKS_GUIDE.md`, `docs/guides/SESSION_HANDOFF.md`, `docs/development/TROUBLESHOOTING.md`.
+
+## Program Design
+
+### Types
+
+Reuse the existing context-state mapping and additive metric/scope/freshness metadata from ENH-3545. Keep consumption values separate from occupancy measurement/estimate values; exact additive key names and compatibility rules must be recorded before implementation. No replacement estimator is required.
+
+### Signatures
+
+- `_on_usage_writer(input_tokens: int, output_tokens: int) -> None` — existing nested callback in the issue manager; retain consumption reporting while removing any implicit occupancy certification.
+- Shell monitor/sentinel entry points remain unchanged; their metric selection changes, not their configured thresholds.
+
+### Call Path
+
+- Usage callback → consumption accounting/state → consumption-budget consumers.
+- Qualified occupancy measurement or existing estimator → context state → monitor/sentinel/Python occupancy guards.
+- Session change or compaction → invalidate occupancy baseline evidence; an old invocation total never becomes the fallback measurement.
 
 ## Implementation Steps
 
@@ -87,3 +108,7 @@ Separate consumption and occupancy at the producer/consumer boundary. Audit the 
 ## Status
 
 **Open** | Created: 2026-09-25 | Priority: P2
+
+
+## Session Log
+- `/ll:capture-issue` - 2026-09-25T01:52:41 - `344bbaba-06f1-4c37-b3c7-3b36aa7bfabc.jsonl`

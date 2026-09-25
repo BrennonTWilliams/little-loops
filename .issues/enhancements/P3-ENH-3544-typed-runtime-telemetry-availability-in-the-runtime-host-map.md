@@ -14,6 +14,8 @@ labels:
 - multi-host
 relates_to:
 - ENH-3528
+blocks:
+- ENH-3534
 ---
 
 # ENH-3544: Typed runtime telemetry availability in the runtime host map
@@ -33,6 +35,14 @@ Add typed telemetry availability to the runtime host map: per host, which metric
 - The `token_reporting` text is derived from, or checked against, that record by `ll-verify-host-map`.
 - Capabilities describe what a host *can* expose. They are never used to label a stored observation's provenance, and there is no `token_source_for(host)`.
 
+### Availability semantics and evidence
+
+`supported` means version/channel evidence establishes that the host can expose the metric (directly or with a verified normalization). `unsupported` means evidence establishes absence or inapplicability; lack of a captured sample or missing little-loops ingestion is `unknown`, not proof of unsupported capability. Notes identify the producer version/acquisition evidence and limitations. Capability never certifies a particular stored observation.
+
+Do not overload native availability with ingestion implementation status. If doctor discusses both, render them separately; ENH-3534 can add ingestion while leaving a previously supported native metric unchanged. Derive the `token_reporting` report summary from the typed entries with a documented deterministic rule, preserving distinctions between partial channel/metric support and complete absence. Do not compare arbitrary prose strings as the parity contract.
+
+Required host coverage is the production registry excluding `TEST_ONLY_HOSTS` (currently eight hosts). Scripted fake hosts remain test-only; tests prove the exclusion and verify that adding a production host without a complete matrix fails.
+
 ## Scope Boundaries
 
 - **In scope**: the typed runtime telemetry map, `token_reporting` parity, `ll-verify-host-map` coverage.
@@ -43,7 +53,10 @@ Add typed telemetry availability to the runtime host map: per host, which metric
 ### Types
 
 - `TelemetryAvailability = Literal["supported", "unsupported", "unknown"]`.
-- `TelemetryCapability` (frozen dataclass): `metric: str`, `channel: str`, `availability: TelemetryAvailability`, `note: str | None`.
+- `TelemetryMetric = Literal["input_tokens", "output_tokens", "cache_read_input_tokens", "cache_creation_input_tokens", "context_occupancy_tokens"]` — normalized disjoint consumption components plus the separate occupancy metric.
+- `TelemetryChannel = Literal["live", "rollout", "transcript", "context_hook"]`.
+- `TelemetryCapability` (frozen dataclass): `metric: TelemetryMetric`, `channel: TelemetryChannel`, `availability: TelemetryAvailability`, `note: str | None`.
+- The required matrix is the Cartesian product of these metrics/channels for each production runtime host. Reject unknown vocabulary and duplicate pairs, as well as omissions. An inapplicable pair is explicitly unsupported; an uninvestigated pair is unknown.
 - `RUNTIME_HOST_CAPABILITIES` entries gain `telemetry: tuple[TelemetryCapability, ...]`.
 
 ### Signatures
@@ -66,6 +79,11 @@ Add typed telemetry availability to the runtime host map: per host, which metric
 - **Risk**: Low.
 
 ## Acceptance Criteria
+
+- [ ] The closed metric/channel vocabulary and required matrix are documented; missing pairs, duplicate pairs, and unknown keys fail verification.
+- [ ] Tests distinguish unsupported from uninvestigated and native capability from ingestion support; supported claims carry version/channel evidence.
+- [ ] Test-only hosts are explicitly excluded, and a newly registered production host without telemetry entries fails.
+- [ ] A deterministic typed-map-to-report summary covers partial metric/channel support; doctor does not imply unsupported ingestion means the producer lacks usage.
 
 - [ ] Every runtime host has explicit entries for each metric/channel; `ll-verify-host-map` fails when a host is missing.
 - [ ] `token_reporting` agrees with the typed map (test).
