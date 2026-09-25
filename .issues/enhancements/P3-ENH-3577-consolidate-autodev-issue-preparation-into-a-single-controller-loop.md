@@ -15,6 +15,7 @@ blocked_by:
 - BUG-3574
 - ENH-3575
 - ENH-3576
+- BUG-3588
 ---
 
 # ENH-3577: Consolidate autodev issue preparation into a single controller loop
@@ -80,7 +81,7 @@ The child owns all per-issue preparation and returns a typed outcome. Autodev ow
 
 ## Implementation Steps
 
-1. Land BUG-3571, BUG-3572, FEAT-3573, BUG-3574, ENH-3575 and ENH-3576 with real-FSM regression tests
+1. Land BUG-3571, BUG-3588, BUG-3572, FEAT-3573, BUG-3574, ENH-3575 and ENH-3576 with real-FSM regression tests
 2. Define the typed per-issue outcome/run-record schema
 3. Build the shared deterministic assessment + repair selector
 4. Move parent repair routing into the child; delete duplicated states and markers
@@ -94,7 +95,7 @@ The child owns all per-issue preparation and returns a typed outcome. Autodev ow
 
 ## Scope Boundaries
 
-- Blocked until the behavioral fixes (BUG-3571, BUG-3572, FEAT-3573, BUG-3574, ENH-3575, ENH-3576) land with real-FSM regression
+- Blocked until the behavioral fixes (BUG-3571, BUG-3588, BUG-3572, FEAT-3573, BUG-3574, ENH-3575, ENH-3576) land with real-FSM regression
   tests (stateful stub skills/CLIs asserting outcomes and evidence freshness, not state
   names). Consolidating first would lose the behavior those tests protect.
 - No state-count target.

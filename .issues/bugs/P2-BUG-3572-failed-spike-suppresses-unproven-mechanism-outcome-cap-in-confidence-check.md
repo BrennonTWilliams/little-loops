@@ -13,6 +13,7 @@ blocks:
 - BUG-3574
 blocked_by:
 - BUG-3571
+- BUG-3588
 ---
 
 # BUG-3572: Failed spike suppresses unproven-mechanism outcome cap in confidence-check
@@ -251,9 +252,10 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
   Expect a one-time rise in deferrals among `unproven_mechanism: true` issues; list them
   (`spike_attempted: true`, no `spike_completed`) before landing.
 - **Sequencing**: `blocked_by: BUG-3571` — shares `skills/confidence-check/SKILL.md` (and
-  mirrors), refine-to-ready's `run_spike` → `confidence_check` path, and autodev's
-  `rerun_confidence_after_spike` successor (BUG-3571 adds a score clear before it; this
-  issue retargets its `next`). BUG-3574 is `blocked_by` this issue: it reuses the
+  mirrors) and refine-to-ready's `run_spike` → `confidence_check` path. `blocked_by: BUG-3588`
+  — autodev's `rerun_confidence_after_spike` successor (BUG-3588 adds a score clear before it
+  and a presence gate after it; this issue retargets its `next`, which then means the presence
+  gate's success edge). BUG-3574 is `blocked_by` this issue: it reuses the
   refuted → `decision_needed` contract defined here.
 
 ## Acceptance Criteria
