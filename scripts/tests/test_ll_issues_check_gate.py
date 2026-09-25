@@ -162,8 +162,15 @@ def _state_action(state: str) -> str:
     return yaml.safe_load(LOOP.read_text())["states"][state]["action"]
 
 
-def _run_state(project: Path, state: str) -> str:
-    """Run a real autodev state action against the real ll-issues; return stdout."""
+def _run_state_proc(
+    project: Path, state: str, env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess:
+    """Run a real autodev state action; return the full CompletedProcess.
+
+    BUG-3603: failure-path tests need returncode/stderr alongside stdout (the
+    proof-gate states discriminate on the check-gate exit code, not just the
+    stdout token). Pass ``env`` to shadow ``ll-issues`` with a stub on PATH.
+    """
     run_dir = project / "run"
     run_dir.mkdir(exist_ok=True)
     script = (
@@ -172,13 +179,29 @@ def _run_state(project: Path, state: str) -> str:
         .replace("${captured.input.output}", ID)
         .replace("${context.run_dir}", str(run_dir))
     )
-    env = {**os.environ}
+    run_env = dict(env) if env is not None else {**os.environ}
     ll = shutil.which("ll-issues")
-    if ll:
-        env["PATH"] = f"{Path(ll).parent}:{env['PATH']}"
+    if ll and env is None:
+        run_env["PATH"] = f"{Path(ll).parent}:{run_env['PATH']}"
     return subprocess.run(
-        ["bash", "-c", script], cwd=str(project), env=env, capture_output=True, text=True
-    ).stdout
+        ["bash", "-c", script], cwd=str(project), env=run_env, capture_output=True, text=True
+    )
+
+
+def _run_state(project: Path, state: str) -> str:
+    """Run a real autodev state action against the real ll-issues; return stdout."""
+    return _run_state_proc(project, state).stdout
+
+
+def _stub_env(project: Path, stub_body: str) -> dict[str, str]:
+    """Env with a stub ll-issues first on PATH (delegates nothing; every call
+    runs the stub body)."""
+    bin_dir = project / "bin"
+    bin_dir.mkdir(exist_ok=True)
+    fake = bin_dir / "ll-issues"
+    fake.write_text(f"#!/bin/sh\n{stub_body}\n")
+    fake.chmod(0o755)
+    return {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"}
 
 
 class TestAutodevRouting:
@@ -236,10 +259,125 @@ class TestAutodevRouting:
     def test_no_gate_reaches_implement(self, project: Path) -> None:
         _write(project, "")
         assert "PROOF_CLEAR" in _run_state(project, "check_proof_gate_before_implement")
+        # Exit-1-with-recognized-token (`none`) is a real verdict, not infra:
+        # the second state must also clear it (BUG-3603 keeps this path clear).
+        assert "PROOF_CLEAR" in _run_state(project, "check_proof_defer_or_implement")
+
+    def test_prose_gate_defers_at_both_proof_states(self, project: Path) -> None:
+        """BUG-3603: a real `prose` verdict is a gate in force — dequeue and
+        recheck_after_size_review already treat it as gated, so the pre-implement
+        states must route it to PROOF_DEFER, never PROOF_CLEAR."""
+        _write(project, "", GATE_PROSE)
+        for state in ("check_proof_gate_before_implement", "check_proof_defer_or_implement"):
+            out = _run_state(project, state)
+            assert "PROOF_DEFER" in out, f"{state} must defer a prose gate, got: {out!r}"
+            assert "PROOF_CLEAR" not in out
+
+    def test_helper_exit_two_emits_proof_infra(self, project: Path) -> None:
+        """BUG-3603: check-gate exiting 2 (unresolvable ID) with empty stdout is a
+        helper failure — both proof states must emit PROOF_INFRA, not PROOF_CLEAR."""
+        _write(project, "")
+        env = _stub_env(project, 'if [ "$1" = "check-gate" ]; then exit 2; fi\nexit 0')
+        for state in ("check_proof_gate_before_implement", "check_proof_defer_or_implement"):
+            result = _run_state_proc(project, state, env)
+            assert "PROOF_INFRA" in result.stdout, (
+                f"{state} must emit PROOF_INFRA on helper exit 2, "
+                f"got {result.stdout!r} (stderr: {result.stderr!r})"
+            )
+            assert "PROOF_CLEAR" not in result.stdout
+
+    def test_unknown_token_emits_proof_infra(self, project: Path) -> None:
+        """BUG-3603: unrecognised stdout (helper printed garbage, exit 0) is a
+        helper failure, not a clear verdict."""
+        _write(project, "")
+        env = _stub_env(
+            project, 'if [ "$1" = "check-gate" ]; then echo "TRACE: something"; exit 0; fi\nexit 0'
+        )
+        for state in ("check_proof_gate_before_implement", "check_proof_defer_or_implement"):
+            out = _run_state_proc(project, state, env).stdout
+            assert "PROOF_INFRA" in out, f"{state} must emit PROOF_INFRA on unknown token, got {out!r}"
 
     def test_implement_edges_route_through_guard(self) -> None:
         states = yaml.safe_load(LOOP.read_text())["states"]
         assert states["check_passed"]["on_yes"] == "check_proof_gate_before_implement"
         assert states["check_proof_gate_before_implement"]["on_yes"] == "run_spike"
-        assert states["check_proof_defer_or_implement"]["on_yes"] == "defer_gated"
-        assert states["check_proof_defer_or_implement"]["on_no"] == "implement_current"
+        route = states["check_proof_defer_or_implement"].get("route", {})
+        assert route.get("PROOF_DEFER") == "defer_gated"
+        assert route.get("PROOF_CLEAR") == "implement_current"
+        assert route.get("PROOF_INFRA") == "mark_proof_gate_infra"
+        assert route.get("_") == "mark_proof_gate_infra"
+        assert route.get("_error") == "mark_proof_gate_infra"
+
+
+class TestProofGateFailClosed:
+    """BUG-3603: the pre-implement proof gate is the LAST gate before
+    implement_current — it must fail closed, not open."""
+
+    @pytest.fixture(scope="class")
+    def states(self) -> dict[str, Any]:
+        return yaml.safe_load(LOOP.read_text())["states"]
+
+    def test_no_error_edge_targets_implement_current(self, states: dict[str, Any]) -> None:
+        offenders = []
+        for name, state in states.items():
+            for edge in ("on_error", "on_cannot_judge"):
+                if state.get(edge) == "implement_current":
+                    offenders.append(f"{name}.{edge}")
+        assert not offenders, (
+            "failure edges must not target implement_current (BUG-3603 fail-closed): "
+            f"{offenders}"
+        )
+
+    def test_implement_current_reachable_only_from_proof_defer_state(
+        self, states: dict[str, Any]
+    ) -> None:
+        predecessors: set[str] = set()
+        for name, state in states.items():
+            targets = {
+                state.get(edge)
+                for edge in ("on_yes", "on_no", "on_error", "on_cannot_judge", "next")
+            }
+            targets |= set((state.get("route") or {}).values())
+            if "implement_current" in targets:
+                predecessors.add(name)
+        assert predecessors == {"check_proof_defer_or_implement"}, (
+            "implement_current must be reachable only from the proof gate's "
+            f"PROOF_CLEAR route, got predecessors: {sorted(predecessors)}"
+        )
+
+    def test_first_proof_state_fails_closed_on_error(self, states: dict[str, Any]) -> None:
+        state = states["check_proof_gate_before_implement"]
+        assert state.get("on_error") == "mark_proof_gate_infra", (
+            "check_proof_gate_before_implement.on_error must route to the infra "
+            "deferral, never implement_current (BUG-3603)"
+        )
+        for edge in ("on_yes", "on_no", "on_error"):
+            assert state.get(edge) != "implement_current"
+
+    def test_defer_state_classifies_all_outcomes(self, states: dict[str, Any]) -> None:
+        state = states["check_proof_defer_or_implement"]
+        assert state.get("evaluate", {}).get("type") == "classify"
+        route = state.get("route", {})
+        assert route.get("PROOF_CLEAR") == "implement_current"
+        assert route.get("PROOF_DEFER") == "defer_gated"
+        for key in ("PROOF_INFRA", "_", "_error"):
+            assert route.get(key) == "mark_proof_gate_infra", (
+                f"route.{key} must fail closed to the infra deferral"
+            )
+
+    def test_mark_proof_gate_infra_state_convention(self, states: dict[str, Any]) -> None:
+        state = states.get("mark_proof_gate_infra", {})
+        action = state.get("action", "")
+        assert "autodev-proof-gate-infra.txt" in action
+        assert "autodev-inflight" in action
+        assert "[PROOF_GATE_INFRA]" in action
+        assert "ll-issues set-status" not in action, "infra deferral must not set status"
+        assert state.get("action_type") == "shell"
+        assert state.get("next") == "dequeue_next"
+        assert state.get("on_error") == "dequeue_next"
+
+    def test_init_truncates_proof_gate_infra_ledger(self, states: dict[str, Any]) -> None:
+        assert "autodev-proof-gate-infra.txt" in states["init"]["action"], (
+            "init must truncate autodev-proof-gate-infra.txt so a stale ledger from a "
+            "prior run cannot inflate the summary count (BUG-3603)"
+        )

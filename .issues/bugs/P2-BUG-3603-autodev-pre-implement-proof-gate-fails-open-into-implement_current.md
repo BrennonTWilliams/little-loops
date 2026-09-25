@@ -3,10 +3,11 @@ id: BUG-3603
 type: BUG
 title: Autodev pre-implement proof gate fails open into implement_current
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-25'
 captured_at: '2026-09-25T20:00:00Z'
+completed_at: '2026-09-25T22:40:16Z'
 parent: EPIC-3565
 blocks:
 - ENH-3599
@@ -201,11 +202,56 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 
 ## Acceptance Criteria
 
-- [ ] A failing `check-gate` (exit ≥ 2 / empty stdout / unrecognised token) never routes to `implement_current`
-- [ ] A `prose` verdict at either pre-implement state routes to `PROOF_DEFER` (consistent with dequeue/recheck consumers)
-- [ ] No `on_error` / `on_cannot_judge` in `autodev.yaml` targets `implement_current` (structural test)
-- [ ] Infra deferrals from this gate appear in `summary.json`
-- [ ] Behavioral spike/gate tests pass unchanged
+- [x] A failing `check-gate` (exit ≥ 2 / empty stdout / unrecognised token) never routes to `implement_current`
+- [x] A `prose` verdict at either pre-implement state routes to `PROOF_DEFER` (consistent with dequeue/recheck consumers)
+- [x] No `on_error` / `on_cannot_judge` in `autodev.yaml` targets `implement_current` (structural test)
+- [x] Infra deferrals from this gate appear in `summary.json`
+- [x] Behavioral spike/gate tests pass unchanged
+
+## Resolution
+
+**Completed 2026-09-25 via `/ll:manage-issue` (TDD: 16 Red tests → Green).**
+
+- Both `check_proof_gate_before_implement` and `check_proof_defer_or_implement`
+  capture the `check-gate` exit code in-shell (`VERDICT=$(...); RC=$?`) and emit
+  `PROOF_INFRA` on helper failure (exit ≥ 2, empty stdout, or unrecognised token).
+  Exit 1 with a recognised token (`none`/`structured_satisfied`) stays `PROOF_CLEAR`.
+- `prose` joined `structured_open|structured_proof` in the `PROOF_DEFER` cases of
+  both states, matching the dequeue and recheck consumers.
+- `check_proof_defer_or_implement` converted from `output_contains` + on_yes/on_no
+  to `evaluate: classify` + a route table: `PROOF_CLEAR → implement_current` is now
+  the only edge into implementation; `PROOF_INFRA`, `_` (unknown token), and
+  `_error` (exceptions and non-zero action exits — `classify` is not exit-code
+  aware, so BUG-1815's short-circuit becomes another fail-closed net) all route to
+  the new infra deferral.
+- `check_proof_gate_before_implement.on_error` retargeted to the new
+  `mark_proof_gate_infra` state — ledger `autodev-proof-gate-infra.txt`, clears
+  `autodev-inflight`, `next/on_error: dequeue_next`, no `set-status` — modeled on
+  `mark_gate_infra` / `mark_scores_absent_infra`. A `PROOF_INFRA` from the first
+  state falls to `on_no` into the second, which re-runs the helper (a self-healing
+  double-check; persistent failure lands in the infra deferral).
+- `init` truncates the new ledger; `finalize_done` counts it
+  (`PROOF_GATE_INFRA_COUNT`), prints a `Proof-gate-infra [infra]` bucket line, and
+  emits an additive `proof_gate_infra` summary.json key.
+- `recheck_after_size_review`'s `check-gate` call stays fail-open per the DECIDED
+  backstop rationale, now recorded in a comment at the site.
+- Docs: `LOOPS_REFERENCE.md` (first deliberately fail-closed gate + new ledger),
+  `CLI.md` check-gate section (exit code now consumed), `audit-loop-run` SKILL.md
+  Step 6a (new additive key).
+- Tests: `_run_state_proc` (extends `_run_state`, surfacing returncode/stderr) +
+  helper-failure and prose tests for both states; structural invariants (no error
+  edge into `implement_current`, reachable only from
+  `check_proof_defer_or_implement`); infra-state convention family; finalize trio
+  (sources-ledger / count-surfaces / zero-default); init truncation; topology
+  105 → 106.
+
+**Verification**: full suite 25,915 passed with 2 pre-existing failures
+(`test_total_report_count_does_not_exceed_post_bug_3448_baseline` — corpus baseline
+573 → 574 already broken on HEAD, reproduces with this fix stashed; the FEAT-3589
+format commit added the extra report; `test_kills_grandchild_in_same_group` —
+passes serially with and without the fix, failed only under xdist in the full run).
+`ll-loop validate autodev` clean; `ruff check` clean on all changed files; `mypy`
+identical to baseline (4 pre-existing errors in `cli/loop/cleanup.py`).
 
 ## Related Key Documentation
 
@@ -269,6 +315,7 @@ what was wrong and fixed, not an outstanding action item). Verified via
 **Open** | Created: 2026-09-25 | Priority: P2
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-25T22:40:01 - `6d05524f-61a4-4752-9f86-e07e70e250be.jsonl`
 - `/ll:ready-issue` - 2026-09-25T22:15:11 - `d4531072-4651-4af1-8df5-773eb121a569.jsonl`
 - `/ll:confidence-check` - 2026-09-25T22:10:56 - `68bedf9c-cf80-44d6-a349-888f4359bf99.jsonl`
 - `/ll:verify-issues` - 2026-09-25T22:07:56 - `2f707f2c-dcf9-4b23-953c-4a951adbadbc.jsonl`

@@ -69,6 +69,7 @@ states:
       printf '' > ${context.run_dir}/autodev-spike-inconclusive.txt
       printf '' > ${context.run_dir}/autodev-proposal-unsound.txt
       printf '' > ${context.run_dir}/autodev-spike-no-verdict.txt
+      printf '' > ${context.run_dir}/autodev-proof-gate-infra.txt
       printf '' > ${context.run_dir}/autodev-not-started.txt
       printf '' > ${context.run_dir}/autodev-not-started-attempts.txt
       rm -f ${context.run_dir}/autodev-broke-down
@@ -694,54 +695,81 @@ states:
     # check_spike_needed (`spike-runs-<ID>`, cap 2, incremented before run_spike);
     # route_spike_verdict's PROVEN chain returns here with spike_proven set.
     # Budget spent with the proof still open defers as blocked_by_gate.
-    # Fail-open (implement_current) on helper error, matching the dequeue gate.
+    # BUG-3603: fail-closed. Unlike the dequeue gate (whose fail-open is safe —
+    # later gates still apply), this is the LAST gate before implement_current;
+    # nothing downstream re-checks the proof obligation. A helper failure (exit
+    # >= 2, empty stdout, unrecognised token) emits PROOF_INFRA and never
+    # reaches implement_current; `prose` is a real in-force verdict (matching
+    # the dequeue and recheck consumers) and defers. Exit 1 with a recognised
+    # token (none/structured_satisfied) is a real clear verdict: PROOF_CLEAR.
     action: |
       ID=${captured.input.output:shell}
-      VERDICT=$(ll-issues check-gate "$ID" 2>/dev/null || true)
-      case "$VERDICT" in
-        structured_proof)
-          SPIKE_RUNS=${context.run_dir}/spike-runs-$ID
-          SPIKE_N=$(cat "$SPIKE_RUNS" 2>/dev/null || echo 0)
-          ATTEMPTED=$(ll-issues check-flag "$ID" spike_attempted && echo true || echo false)
-          if [ "$ATTEMPTED" != "true" ] && [ "$SPIKE_N" -lt 2 ] 2>/dev/null; then
-            CONF=$(ll-issues show "$ID" --json 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin).get('confidence') or '')" 2>/dev/null || echo "")
-            printf '%s' "$CONF" > ${context.run_dir}/autodev-pre-spike-readiness.txt
-            printf '%s' "$((SPIKE_N + 1))" > "$SPIKE_RUNS"
-            echo "PROOF_SPIKE"
-          else
+      VERDICT=$(ll-issues check-gate "$ID" 2>/dev/null); RC=$?
+      if [ "$RC" -ge 2 ] || [ -z "$VERDICT" ]; then
+        echo "PROOF_INFRA"
+      else
+        case "$VERDICT" in
+          structured_proof)
+            SPIKE_RUNS=${context.run_dir}/spike-runs-$ID
+            SPIKE_N=$(cat "$SPIKE_RUNS" 2>/dev/null || echo 0)
+            ATTEMPTED=$(ll-issues check-flag "$ID" spike_attempted && echo true || echo false)
+            if [ "$ATTEMPTED" != "true" ] && [ "$SPIKE_N" -lt 2 ] 2>/dev/null; then
+              CONF=$(ll-issues show "$ID" --json 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin).get('confidence') or '')" 2>/dev/null || echo "")
+              printf '%s' "$CONF" > ${context.run_dir}/autodev-pre-spike-readiness.txt
+              printf '%s' "$((SPIKE_N + 1))" > "$SPIKE_RUNS"
+              echo "PROOF_SPIKE"
+            else
+              echo "PROOF_DEFER"
+            fi
+            ;;
+          structured_open|prose)
             echo "PROOF_DEFER"
-          fi
-          ;;
-        structured_open)
-          echo "PROOF_DEFER"
-          ;;
-        *)
-          echo "PROOF_CLEAR"
-          ;;
-      esac
+            ;;
+          none|structured_satisfied)
+            echo "PROOF_CLEAR"
+            ;;
+          *)
+            echo "PROOF_INFRA"
+            ;;
+        esac
+      fi
     action_type: shell
     evaluate:
       type: output_contains
       pattern: "PROOF_SPIKE"
     on_yes: run_spike
     on_no: check_proof_defer_or_implement
-    on_error: implement_current
+    on_error: mark_proof_gate_infra
 
   check_proof_defer_or_implement:
     # ENH-3575: split of check_proof_gate_before_implement's non-spike outcomes.
+    # BUG-3603: fail-closed via classify routing — PROOF_CLEAR (a successful
+    # check-gate call reporting no gate in force: none/structured_satisfied) is
+    # the ONLY route to implement_current; prose joins structured_open/
+    # structured_proof in PROOF_DEFER; helper failures and evaluator errors
+    # (including any non-zero action exit, which the classify evaluator maps to
+    # _error) route to the mark_proof_gate_infra deferral.
     action: |
       ID=${captured.input.output:shell}
-      case "$(ll-issues check-gate "$ID" 2>/dev/null || true)" in
-        structured_open|structured_proof) echo "PROOF_DEFER" ;;
-        *) echo "PROOF_CLEAR" ;;
-      esac
+      VERDICT=$(ll-issues check-gate "$ID" 2>/dev/null); RC=$?
+      if [ "$RC" -ge 2 ] || [ -z "$VERDICT" ]; then
+        echo "PROOF_INFRA"
+      else
+        case "$VERDICT" in
+          structured_open|structured_proof|prose) echo "PROOF_DEFER" ;;
+          none|structured_satisfied) echo "PROOF_CLEAR" ;;
+          *) echo "PROOF_INFRA" ;;
+        esac
+      fi
     action_type: shell
     evaluate:
-      type: output_contains
-      pattern: "PROOF_DEFER"
-    on_yes: defer_gated
-    on_no: implement_current
-    on_error: implement_current
+      type: classify
+    route:
+      PROOF_DEFER: defer_gated
+      PROOF_CLEAR: implement_current
+      PROOF_INFRA: mark_proof_gate_infra
+      _: mark_proof_gate_infra
+      _error: mark_proof_gate_infra
 
   decide_current:
     # Check if the issue requires a decision before implementation. Reads
@@ -1309,6 +1337,23 @@ states:
       echo "$ID" >> ${context.run_dir}/autodev-scores-absent.txt
       rm -f ${context.run_dir}/autodev-inflight
       echo "[SCORES_ABSENT] $ID — confidence-check wrote no scores after repair; not deferred, retry later"
+    action_type: shell
+    next: dequeue_next
+    on_error: dequeue_next
+
+  mark_proof_gate_infra:
+    # BUG-3603: the pre-implement check-gate call could not produce a verdict
+    # (crash, unresolvable ID, unrecognised output) — infra, not a quality
+    # verdict. Modeled on mark_gate_infra / mark_scores_absent_infra: ledger to
+    # its own per-reason file, clear inflight, advance the queue, do NOT defer
+    # (blocked_by_gate would fabricate a reason the helper never established)
+    # and never reach implement_current. The issue is retried on a later run,
+    # where the gate runs again.
+    action: |
+      ID=${captured.input.output:shell}
+      echo "$ID" >> ${context.run_dir}/autodev-proof-gate-infra.txt
+      rm -f ${context.run_dir}/autodev-inflight
+      echo "[PROOF_GATE_INFRA] $ID — check-gate produced no verdict before implement; not deferred, retry later"
     action_type: shell
     next: dequeue_next
     on_error: dequeue_next
@@ -2817,6 +2862,11 @@ states:
           GATE_MARKER="false"
           # ENH-3575: shared helper; a spike can satisfy a proof gate or a legacy
           # prose gate, never an external/manual prerequisite.
+          # BUG-3603: this call STAYS fail-open deliberately — unlike the
+          # pre-implement proof gate, every path out of this state is backstopped
+          # by it (on_yes -> decide_current -> proof gate; on_no/on_error ->
+          # remedy/dequeue paths that never implement), so a helper error here
+          # can never put an unproven issue into implement_current.
           if [ -n "$ISSUE_FILE" ]; then
             case "$(ll-issues check-gate "$ID" 2>/dev/null || true)" in
               structured_proof|prose) GATE_MARKER="true" ;;
@@ -3051,6 +3101,10 @@ states:
       [ -z "$DECISION_UNRESOLVED_COUNT" ] && DECISION_UNRESOLVED_COUNT=0
       NOT_STARTED_COUNT=$(echo "$NOT_STARTED_IDS" | grep -c '[^[:space:]]' || true)
       [ -z "$NOT_STARTED_COUNT" ] && NOT_STARTED_COUNT=0
+      # BUG-3603: pre-implement proof-gate helper failures get their own bucket,
+      # sourced from the mark_proof_gate_infra ledger.
+      PROOF_GATE_INFRA_COUNT=$(grep -c '[^[:space:]]' ${context.run_dir}/autodev-proof-gate-infra.txt 2>/dev/null || true)
+      [ -z "$PROOF_GATE_INFRA_COUNT" ] && PROOF_GATE_INFRA_COUNT=0
 
       INFLIGHT=$(cat ${context.run_dir}/autodev-inflight 2>/dev/null | tr -d '[:space:]' || true)
       # BUG-2908 Step 4: a residual autodev-inflight sentinel at finalize means
@@ -3115,6 +3169,10 @@ states:
       if [ -n "$SPIKE_NO_VERDICT_LIST" ]; then
         printf 'Spike-no-verdict [infra] (%d): %s  (spike wrote no verdict; retry later)\n' "$(echo "$SPIKE_NO_VERDICT_LIST" | tr ',' '\n' | wc -l | tr -d ' ')" "$SPIKE_NO_VERDICT_LIST"
       fi
+      PROOF_GATE_INFRA_LIST=$(grep -v '^[[:space:]]*$' ${context.run_dir}/autodev-proof-gate-infra.txt 2>/dev/null | sort -u | tr '\n' ',' | sed 's/,$//' || true)
+      if [ -n "$PROOF_GATE_INFRA_LIST" ]; then
+        printf 'Proof-gate-infra [infra] (%d): %s  (check-gate produced no verdict before implement; retry later)\n' "$PROOF_GATE_INFRA_COUNT" "$PROOF_GATE_INFRA_LIST"
+      fi
       if [ "$NOT_STARTED_COUNT" -gt 0 ]; then
         printf 'Not-started  (%d): %s  (never reached implementation — Phase 1 rejected)\n' "$NOT_STARTED_COUNT" "$NOT_STARTED_LIST"
       fi
@@ -3162,8 +3220,8 @@ states:
         VERDICT=rate_limited
       fi
 
-      printf '{"verdict":"%s","closed":%s,"not_closed":%s,"skipped":%s,"gate_blocked":%s,"decision_unresolved":%s,"not_started":%s,"inflight_unresolved":%s,"abandoned":%s,"stop_reason":"%s","pending":%s}\n' \
-        "$VERDICT" "$PASSED_COUNT" "$UNVERIFIED_COUNT" "$SKIPPED_COUNT" "$GATE_BLOCKED_COUNT" "$DECISION_UNRESOLVED_COUNT" "$NOT_STARTED_COUNT" "$ABANDONED" "$ABANDONED" "$STOP_REASON" "$PENDING_COUNT" \
+      printf '{"verdict":"%s","closed":%s,"not_closed":%s,"skipped":%s,"gate_blocked":%s,"decision_unresolved":%s,"not_started":%s,"inflight_unresolved":%s,"abandoned":%s,"stop_reason":"%s","pending":%s,"proof_gate_infra":%s}\n' \
+        "$VERDICT" "$PASSED_COUNT" "$UNVERIFIED_COUNT" "$SKIPPED_COUNT" "$GATE_BLOCKED_COUNT" "$DECISION_UNRESOLVED_COUNT" "$NOT_STARTED_COUNT" "$ABANDONED" "$ABANDONED" "$STOP_REASON" "$PENDING_COUNT" "$PROOF_GATE_INFRA_COUNT" \
         > ${context.run_dir}/summary.json
 
       # BUG-2908: route the FSM terminal on verified closure, not "reached the

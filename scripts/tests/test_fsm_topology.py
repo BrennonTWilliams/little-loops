@@ -256,7 +256,9 @@ class TestAutodevSmoke:
         # Count re-synced to 105 (BUG-3593 spike states landed unrecorded);
         # ENH-3575 added check_proof_gate_before_implement and
         # check_proof_defer_or_implement (+2).
-        assert len(topo["states"]) == 105
+        # BUG-3603 added mark_proof_gate_infra (+1) — fail-closed infra deferral
+        # for the pre-implement proof gate.
+        assert len(topo["states"]) == 106
 
         # Every edge endpoint is a known state id, or the target of a
         # declared sub-loop (`loop:`) cross-graph edge. `from` may be null

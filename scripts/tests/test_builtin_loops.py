@@ -7787,6 +7787,38 @@ class TestAutodevLoop:
         assert summary["not_started"] == 0
         assert summary["verdict"] == "no-op"
 
+    def test_finalize_done_sources_proof_gate_infra_ledger(self, data: dict) -> None:
+        """BUG-3603: finalize_done must read autodev-proof-gate-infra.txt — without
+        this, a pre-implement gate helper failure vanishes from summary.json with
+        no trace (the same blind spot ENH-2404 fixed for gate_blocked)."""
+        action = data["states"].get("finalize_done", {}).get("action", "")
+        assert "autodev-proof-gate-infra.txt" in action, (
+            "finalize_done must source autodev-proof-gate-infra.txt to surface "
+            "proof_gate_infra (BUG-3603)"
+        )
+
+    def test_finalize_done_proof_gate_infra_count_surfaces(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """BUG-3603: infra deferrals from the pre-implement proof gate appear in
+        summary.json as proof_gate_infra, with an operator-facing bucket line."""
+        run_dir = tmp_path
+        (run_dir / "autodev-proof-gate-infra.txt").write_text("FEAT-701\nFEAT-702\n")
+        summary, out = self._run_finalize_done(data, run_dir)
+        assert summary["proof_gate_infra"] == 2, f"got {summary}"
+        infra_line = [ln for ln in out.splitlines() if ln.startswith("Proof-gate-infra")]
+        assert infra_line and "(2)" in infra_line[0] and "FEAT-701" in infra_line[0]
+
+    def test_finalize_done_proof_gate_infra_zero_when_no_ledger_entries(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """BUG-3603 companion: proof_gate_infra defaults to 0 when the ledger is
+        absent (resumed run, or no helper failure occurred)."""
+        run_dir = tmp_path
+        assert not (run_dir / "autodev-proof-gate-infra.txt").exists()
+        summary, _ = self._run_finalize_done(data, run_dir)
+        assert summary["proof_gate_infra"] == 0
+
     def test_finalize_done_mixed_run_still_resolves_success(
         self, data: dict, tmp_path: Path
     ) -> None:
@@ -8083,6 +8115,25 @@ class TestAutodevLoop:
             "mark_gate_infra must not defer — infra contention is transient"
         )
         assert state.get("next") == "dequeue_next"
+
+    def test_mark_proof_gate_infra_advances_queue_without_defers(self, data: dict) -> None:
+        """BUG-3603: mark_proof_gate_infra records a pre-implement check-gate helper
+        failure distinctly (its own ledger, not gate_blocked) and advances the queue.
+        It must NOT defer — the helper could not produce a verdict, so blocked_by_gate
+        would be a fabricated reason — and must NOT reach implement_current."""
+        state = data["states"].get("mark_proof_gate_infra", {})
+        assert state, "mark_proof_gate_infra state not found (BUG-3603)"
+        action = state.get("action", "")
+        assert "autodev-proof-gate-infra.txt" in action, (
+            "mark_proof_gate_infra should record the issue to autodev-proof-gate-infra.txt"
+        )
+        assert "[PROOF_GATE_INFRA]" in action
+        assert "autodev-inflight" in action, "must clear autodev-inflight like its siblings"
+        assert "ll-issues set-status" not in action, (
+            "mark_proof_gate_infra must not defer — a helper failure is not a gate block"
+        )
+        assert state.get("next") == "dequeue_next"
+        assert state.get("on_error") == "dequeue_next"
 
     def test_record_decision_unresolved_defers_via_set_status(self, data: dict) -> None:
         """ENH-2666: record_decision_unresolved aligns to rn-implement's mark_deferred

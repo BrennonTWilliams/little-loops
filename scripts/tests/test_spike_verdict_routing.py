@@ -106,6 +106,11 @@ def test_autodev_routing_table() -> None:
     assert st["check_rearmed_spike_after_decide"]["on_no"] == "snap_and_size_review"
     assert "autodev-spike-inconclusive.txt" in st["skip_inflight"]["action"]
     assert "autodev-spike-inconclusive.txt" in st["init"]["action"]
+    # BUG-3603: the pre-implement proof-gate infra deferral gets the same
+    # per-reason ledger discipline — written by mark_proof_gate_infra, truncated
+    # by init so a stale prior-run ledger cannot inflate the count.
+    assert "autodev-proof-gate-infra.txt" in st["mark_proof_gate_infra"]["action"]
+    assert "autodev-proof-gate-infra.txt" in st["init"]["action"]
 
 
 @pytest.mark.parametrize(

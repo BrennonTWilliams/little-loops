@@ -2315,7 +2315,7 @@ ll-issues check-gate ENH-3575 --json   # {"verdict": ..., "gates": [...]}
 
 Verdicts: `structured_open` (an unsatisfied `external`/`manual` gate), `structured_proof` (an unsatisfied `proof` gate with no proven spike), `structured_satisfied`, `prose` (legacy phrase match), `none`. Exit 0 when a gate is in force (`structured_open`, `structured_proof`, `prose`), 1 when not, 2 when the issue is not found (BUG-3294).
 
-**FSM loop use**: `autodev.yaml`'s `check_gate_at_dequeue`, `recheck_after_size_review` and `check_proof_gate_before_implement` states read the verdict token from stdout.
+**FSM loop use**: `autodev.yaml`'s `check_gate_at_dequeue`, `recheck_after_size_review` and `check_proof_gate_before_implement` states read the verdict token from stdout. The two pre-implement proof-gate states (`check_proof_gate_before_implement` / `check_proof_defer_or_implement`) additionally consume the exit code to tell a real verdict (exit 0 or 1 with a recognized token) from a helper failure (exit ≥ 2, empty stdout, or an unrecognized token), routing the latter to an infra deferral instead of implementation (BUG-3603). The dequeue and recheck consumers remain fail-open on the stdout token alone — later gates still apply on their paths.
 
 #### `ll-issues check-design`
 
