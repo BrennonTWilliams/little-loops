@@ -1,0 +1,11 @@
+{
+  "id": "73da5bc3-d883-4ff0-a119-84fe6099a38d",
+  "type": "decision",
+  "timestamp": "2026-09-25T02:02:39Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Standalone loop (not html-anything type) for deterministic routing; non-LLM Playwright viewport_gate; shared oracle unchanged.",
+  "rule": "Captured: Add html-webapp-generator loop enforcing single-viewport app-shell artifacts",
+  "scope": "issue",
+  "issue": "FEAT-3589"
+}
