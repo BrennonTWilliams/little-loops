@@ -269,6 +269,7 @@ what was wrong and fixed, not an outstanding action item). Verified via
 **Open** | Created: 2026-09-25 | Priority: P2
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-25T22:10:56 - `68bedf9c-cf80-44d6-a349-888f4359bf99.jsonl`
 - `/ll:verify-issues` - 2026-09-25T22:07:56 - `2f707f2c-dcf9-4b23-953c-4a951adbadbc.jsonl`
 - Review revision - 2026-09-25 - pre-implementation review: folded the `prose`-verdict fail-open into scope, reconciled the PROOF_INFRA discriminator spec with the wiring nuance (exit ≥ 2 / empty stdout / unrecognised token; exit-1-with-recognised-token stays PROOF_CLEAR), corrected the phantom executor.py special-case claim, resolved the recheck_after_size_review decision (keep fail-open, backstopped)
 - `/ll:confidence-check` - 2026-09-25T21:22:42 - `345d0814-f8e9-469f-ad62-bef9083d17be.jsonl`
