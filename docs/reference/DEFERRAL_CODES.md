@@ -25,6 +25,8 @@ mechanism itself (`deferred_by`/`deferred_reason`/`deferred_date`, and why
 | `design_gate_failed` | `autodev.yaml`'s `regate_after_atomic_remediation` / `recheck_after_size_review` | The deterministic `## Program Design` gate failed even after the one-shot `refine_for_design` remedy (`/ll:refine-issue --auto --gap-analysis`, BUG-3002) — retargeted from `reconcile_current`, whose contract excludes that section. |
 | `blocked_by_gate` | `autodev.yaml`'s `defer_gated` state | The issue is explicitly gated by policy (prose gate language and/or a placeholder Acceptance Criteria section) — caught by the pre-dequeue `check_gate_at_dequeue` state before the remediation ladder runs, since no refine/wire/confidence-check cycle can unblock an external evidence gate (ENH-3148). Distinct from `gate_blocked`, which is a different, post-implementation learning-gate condition. |
 
+**Not a deferral — scores absent (BUG-3588):** when a post-repair `/ll:confidence-check` in `autodev.yaml` writes no scores (after one retry), the issue is *not* deferred. It is recorded in `autodev-scores-absent.txt` with a `[SCORES_ABSENT]` token and left in place to retry on a later run — an infra failure, never a `low_readiness` quality verdict. Distinct from `autodev-gate-infra.txt` (the learning-gate record).
+
 ## Related
 
 - `ll-issues deferred-triage` — visibility into deferred issues by reason code, without re-evaluating each one every run.

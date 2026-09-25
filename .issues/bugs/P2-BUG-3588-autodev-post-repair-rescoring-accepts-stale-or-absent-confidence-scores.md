@@ -3,10 +3,11 @@ id: BUG-3588
 type: BUG
 title: Autodev post-repair rescoring accepts stale or absent confidence scores
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-25'
 captured_at: '2026-09-25T01:54:10Z'
+completed_at: '2026-09-25T03:22:25Z'
 parent: EPIC-3565
 blocks:
 - BUG-3572
@@ -279,10 +280,16 @@ Option 3):
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
+## Resolution
+
+**Fixed** — 2026-09-24. `ll-issues check-readiness` now exits 3 (`SCORES_ABSENT`) when a score key is absent. In `autodev.yaml`, each of the five `rerun_confidence_after_*` states is bracketed by a `clear_scores_before_*` state and a `check_scores_present_*` `harness_exit` presence gate (retry once, then `mark_scores_absent_infra` → `autodev-scores-absent.txt`, not deferred). The three `check-readiness` call sites and the two inline GATE readers route exit 3 per site (infra only post-rescore; `check_passed`/`recheck_scores` keep their prior route so `detect_children` is still reached; `resolved_by_subloop` is checked first). Tests: `test_autodev_scores_freshness.py`, `test_check_readiness.py`; docs: CLI.md, LOOPS_REFERENCE.md, DEFERRAL_CODES.md.
+
 ## Status
 
-**Open** | Created: 2026-09-25 | Priority: P2
+**Done** | Created: 2026-09-25 | Priority: P2
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-25T03:22:25 - `68c4f623-5400-49a9-b917-a95a7635d6bc.jsonl`
+- `/ll:ready-issue` - 2026-09-25T02:54:18 - `1abdf515-848b-4e92-a02f-f1a9ca14a640.jsonl`
 - `/ll:confidence-check` - 2026-09-25T02:37:40 - `fc091aae-52aa-4a34-b6c1-775f9e4b8dff.jsonl`

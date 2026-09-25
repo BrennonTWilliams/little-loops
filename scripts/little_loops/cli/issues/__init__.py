@@ -140,7 +140,7 @@ Sub-commands:
   next-issue     Print the issue ID ranked highest by outcome confidence and readiness
   next-issues    Print all active issues in ranked order (alias: nxs)
   clusters       Visualize issue dependency clusters as box diagrams
-  check-readiness  Exit 0 if an issue meets readiness and outcome thresholds
+  check-readiness  Exit 0 if an issue meets readiness and outcome thresholds (3 = scores absent)
   check-flag       Exit 0 if a boolean frontmatter field equals 'true'
   check-decidable  Exit 0 if an issue has >=1 enumerable option to decide between
   check-design     Exit 0 if the Program Design gate passes for an issue
@@ -771,7 +771,7 @@ Examples:
         cr = subs.add_parser(
             "check-readiness",
             aliases=["cr"],
-            help="Exit 0 if an issue meets readiness and outcome thresholds",
+            help="Exit 0 if an issue meets readiness and outcome thresholds (3 = scores absent)",
         )
         cr.set_defaults(command="check-readiness")
         cr.add_argument("issue_id", help="Issue ID (e.g., 518, FEAT-518, P3-FEAT-518)")

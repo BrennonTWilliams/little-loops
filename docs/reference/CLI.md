@@ -2759,7 +2759,7 @@ child-issue creation mechanics now go through `ll-issues create` / `ll-issues sc
 
 #### `ll-issues check-readiness` / `ll-issues cr`
 
-Exit 0 if an issue's `confidence_score` and `outcome_confidence` frontmatter fields both meet the thresholds. Threshold resolution (BUG-3390): an explicit `--readiness` / `--outcome` wins; otherwise `commands.confidence_gate` in `ll-config.json`; otherwise 85 / 65. Exit 2 when the issue ID cannot be resolved.
+Exit 0 if an issue's `confidence_score` and `outcome_confidence` frontmatter fields both meet the thresholds. Threshold resolution (BUG-3390): an explicit `--readiness` / `--outcome` wins; otherwise `commands.confidence_gate` in `ll-config.json`; otherwise 85 / 65. Exit 2 when the issue ID cannot be resolved. Exit 3 (`SCORES_ABSENT` on stderr) when either score key is absent from frontmatter — checked before thresholds and regardless of `--honor-waiver`, so a cleared or never-written score is "cannot judge" rather than a failing `0`.
 
 | Argument/Flag | Default | Description |
 |---------------|---------|-------------|

@@ -1600,8 +1600,7 @@ class TestRefineToReadyIssueSubLoop:
             f"got {state.get('on_cannot_judge')!r}"
         )
         assert state.get("on_error") == "mark_evidence_absent_infra", (
-            f"check_verify_verdict.on_error must not pass (BUG-3571), "
-            f"got {state.get('on_error')!r}"
+            f"check_verify_verdict.on_error must not pass (BUG-3571), got {state.get('on_error')!r}"
         )
         retries = data["states"]["check_verify_retries"]
         assert retries.get("on_yes") == "clear_verify_verdict"
@@ -8110,11 +8109,11 @@ class TestAutodevLoop:
         assert readiness_state.get("on_no") == "recheck_after_size_review"
 
         remediate_state = data["states"].get("remediate_oversized_atomic", {})
-        assert remediate_state.get("next") == "rerun_confidence_after_atomic_remediation"
+        assert remediate_state.get("next") == "clear_scores_before_atomic"
         assert "/ll:wire-issue" in remediate_state.get("action", "")
 
         rerun_state = data["states"].get("rerun_confidence_after_atomic_remediation", {})
-        assert rerun_state.get("next") == "regate_after_atomic_remediation"
+        assert rerun_state.get("next") == "check_scores_present_atomic"
         assert "/ll:confidence-check" in rerun_state.get("action", "")
 
         regate_state = data["states"].get("regate_after_atomic_remediation", {})
@@ -8635,8 +8634,8 @@ class TestAutodevLoop:
     def test_recheck_after_size_review_uses_shell_exit_fragment(self, data: dict) -> None:
         """recheck_after_size_review must use shell_exit fragment."""
         state = data["states"].get("recheck_after_size_review", {})
-        assert state.get("fragment") == "shell_exit", (
-            f"recheck_after_size_review.fragment should be 'shell_exit', "
+        assert state.get("fragment") == "harness_exit", (
+            f"recheck_after_size_review.fragment should be 'harness_exit', "
             f"got {state.get('fragment')!r}"
         )
 
@@ -8928,8 +8927,8 @@ class TestAutodevLoop:
         assert state.get("on_error") == "count_repair_cycle_spike"
         assert state.get("on_rate_limit_exhausted") == "finalize_rate_limited"
         counter_state = data["states"].get("count_repair_cycle_spike", {})
-        assert counter_state.get("next") == "rerun_confidence_after_spike"
-        assert counter_state.get("on_error") == "rerun_confidence_after_spike"
+        assert counter_state.get("next") == "clear_scores_before_spike"
+        assert counter_state.get("on_error") == "clear_scores_before_spike"
 
     def test_rerun_confidence_after_spike_routing(self, data: dict) -> None:
         """ENH-2640: rerun_confidence_after_spike re-scores and routes to enqueue_or_skip
@@ -8937,8 +8936,9 @@ class TestAutodevLoop:
         state = data["states"].get("rerun_confidence_after_spike", {})
         assert "/ll:confidence-check" in state.get("action", "")
         assert state.get("fragment") == "with_rate_limit_handling"
-        assert state.get("next") == "enqueue_or_skip"
-        assert state.get("on_error") == "enqueue_or_skip"
+        # BUG-3588: routes through the presence gate, which forwards to enqueue_or_skip
+        assert state.get("next") == "check_scores_present_spike"
+        assert state.get("on_error") == "check_scores_present_spike"
         assert state.get("on_rate_limit_exhausted") == "finalize_rate_limited"
 
     def test_enqueue_or_skip_on_no_routes_to_decide_path_spike_gate(self, data: dict) -> None:
@@ -9046,16 +9046,16 @@ class TestAutodevLoop:
         assert state.get("on_error") == "count_repair_cycle_reconcile"
         assert state.get("on_rate_limit_exhausted") == "finalize_rate_limited"
         counter_state = data["states"].get("count_repair_cycle_reconcile", {})
-        assert counter_state.get("next") == "rerun_confidence_after_reconcile"
-        assert counter_state.get("on_error") == "rerun_confidence_after_reconcile"
+        assert counter_state.get("next") == "clear_scores_before_reconcile"
+        assert counter_state.get("on_error") == "clear_scores_before_reconcile"
 
     def test_rerun_confidence_after_reconcile_routing(self, data: dict) -> None:
         """After reconcile, re-score once, then fall to recheck_after_size_review."""
         state = data["states"].get("rerun_confidence_after_reconcile", {})
         assert "/ll:confidence-check" in state.get("action", "")
         assert state.get("fragment") == "with_rate_limit_handling"
-        assert state.get("next") == "recheck_after_size_review"
-        assert state.get("on_error") == "recheck_after_size_review"
+        assert state.get("next") == "check_scores_present_reconcile"
+        assert state.get("on_error") == "check_scores_present_reconcile"
         assert state.get("on_rate_limit_exhausted") == "finalize_rate_limited"
 
     def test_triage_outcome_failure_on_error_routes_to_detect_children(self, data: dict) -> None:
@@ -9276,8 +9276,8 @@ class TestAutodevLoop:
     ) -> None:
         """rerun_confidence_after_decide.next must route to recheck_after_decide."""
         state = data["states"].get("rerun_confidence_after_decide", {})
-        assert state.get("next") == "recheck_after_decide", (
-            f"rerun_confidence_after_decide.next should be 'recheck_after_decide', got {state.get('next')!r}"
+        assert state.get("next") == "check_scores_present_decide", (
+            f"rerun_confidence_after_decide.next should be 'check_scores_present_decide', got {state.get('next')!r}"
         )
 
     def test_rerun_confidence_after_decide_on_error_routes_to_recheck_after_decide(
@@ -9285,8 +9285,8 @@ class TestAutodevLoop:
     ) -> None:
         """rerun_confidence_after_decide.on_error must fall back to recheck_after_decide."""
         state = data["states"].get("rerun_confidence_after_decide", {})
-        assert state.get("on_error") == "recheck_after_decide", (
-            f"rerun_confidence_after_decide.on_error should be 'recheck_after_decide', got {state.get('on_error')!r}"
+        assert state.get("on_error") == "check_scores_present_decide", (
+            f"rerun_confidence_after_decide.on_error should be 'check_scores_present_decide', got {state.get('on_error')!r}"
         )
 
     def test_rerun_confidence_after_decide_on_rate_limit_exhausted_routes_to_finalize(
@@ -9314,8 +9314,8 @@ class TestAutodevLoop:
         rerun_confidence_after_decide so the post-decide score refresh still runs; a
         residual armed flag is held via record_decision_unresolved."""
         state = data["states"].get("mark_decide_ran", {})
-        assert state.get("on_no") == "rerun_confidence_after_decide"
-        assert state.get("on_error") == "rerun_confidence_after_decide"
+        assert state.get("on_no") == "clear_scores_before_decide"
+        assert state.get("on_error") == "clear_scores_before_decide"
         assert state.get("on_yes") == "record_decision_unresolved"
 
     def test_mark_decide_ran_writes_decide_ran_flag(self, data: dict) -> None:
@@ -9405,15 +9405,15 @@ class TestAutodevLoop:
     def test_run_refine_next_routes_to_rerun_confidence_after_wire(self, data: dict) -> None:
         """BUG-1491: run_refine.next must route to rerun_confidence_after_wire, not enqueue_or_skip."""
         state = data["states"].get("run_refine", {})
-        assert state.get("next") == "rerun_confidence_after_wire", (
-            f"run_refine.next should be 'rerun_confidence_after_wire', got {state.get('next')!r}"
+        assert state.get("next") == "clear_scores_before_wire", (
+            f"run_refine.next should be 'clear_scores_before_wire', got {state.get('next')!r}"
         )
 
     def test_run_refine_on_error_routes_to_rerun_confidence_after_wire(self, data: dict) -> None:
         """BUG-1491: run_refine.on_error must route to rerun_confidence_after_wire."""
         state = data["states"].get("run_refine", {})
-        assert state.get("on_error") == "rerun_confidence_after_wire", (
-            f"run_refine.on_error should be 'rerun_confidence_after_wire', got {state.get('on_error')!r}"
+        assert state.get("on_error") == "clear_scores_before_wire", (
+            f"run_refine.on_error should be 'clear_scores_before_wire', got {state.get('on_error')!r}"
         )
 
     def test_rerun_confidence_after_wire_state_exists(self, data: dict) -> None:
@@ -9449,8 +9449,8 @@ class TestAutodevLoop:
     def test_rerun_confidence_after_wire_next_routes_to_enqueue_or_skip(self, data: dict) -> None:
         """rerun_confidence_after_wire.next must route to enqueue_or_skip."""
         state = data["states"].get("rerun_confidence_after_wire", {})
-        assert state.get("next") == "enqueue_or_skip", (
-            f"rerun_confidence_after_wire.next should be 'enqueue_or_skip', got {state.get('next')!r}"
+        assert state.get("next") == "check_scores_present_wire", (
+            f"rerun_confidence_after_wire.next should be 'check_scores_present_wire', got {state.get('next')!r}"
         )
 
     def test_rerun_confidence_after_wire_on_error_routes_to_enqueue_or_skip(
@@ -9458,8 +9458,8 @@ class TestAutodevLoop:
     ) -> None:
         """rerun_confidence_after_wire.on_error must fall back to enqueue_or_skip."""
         state = data["states"].get("rerun_confidence_after_wire", {})
-        assert state.get("on_error") == "enqueue_or_skip", (
-            f"rerun_confidence_after_wire.on_error should be 'enqueue_or_skip', got {state.get('on_error')!r}"
+        assert state.get("on_error") == "check_scores_present_wire", (
+            f"rerun_confidence_after_wire.on_error should be 'check_scores_present_wire', got {state.get('on_error')!r}"
         )
 
     def test_rerun_confidence_after_wire_on_rate_limit_exhausted_routes_to_finalize(

@@ -115,6 +115,9 @@ states:
       # BUG-3390: positive guard-2 provenance marker (written only by
       # count_repair_cycle_size_review) — cleared per issue.
       rm -f ${context.run_dir}/autodev-size-review-ran-this-pass
+      # BUG-3588: rescore-retry markers (check_scores_present_*) get their retry
+      # back if this issue is re-dequeued in the same run.
+      rm -f ${context.run_dir}/autodev-rescore-retry-*-$CURRENT
 
       # FEAT-2751: snapshot the pre-refine Readiness score per-issue so
       # check_reconcile_needed can detect a plateau even on the common
@@ -658,9 +661,13 @@ states:
         --outcome ${context.outcome_threshold:shell} \
         --honor-waiver \
         && echo "${captured.input.output}" >> ${context.run_dir}/autodev-staged.txt  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
-    fragment: shell_exit
+    # BUG-3588: exit 3 = scores absent. Reached after the refine-to-ready
+    # sub-loop, which can break the issue down before scoring — absence is
+    # legitimate here, so keep the pre-existing exit-1 path (→ detect_children).
+    fragment: harness_exit
     on_yes: implement_current
     on_no: triage_outcome_failure
+    on_cannot_judge: triage_outcome_failure
     on_error: detect_children
 
   decide_current:
@@ -756,8 +763,8 @@ states:
       ll-issues check-flag ${captured.input.output:shell} decision_needed
     fragment: shell_exit
     on_yes: record_decision_unresolved
-    on_no: rerun_confidence_after_decide
-    on_error: rerun_confidence_after_decide
+    on_no: clear_scores_before_decide
+    on_error: clear_scores_before_decide
 
   rerun_confidence_after_decide:
     # After /ll:decide-issue resolves open design questions, the Ambiguity
@@ -774,9 +781,49 @@ states:
       enabled: true
       name: confidence-check-recheck
       suppress_claude_md: true
-    next: recheck_after_decide
-    on_error: recheck_after_decide
+    next: check_scores_present_decide
+    on_error: check_scores_present_decide
     on_rate_limit_exhausted: finalize_rate_limited
+
+  clear_scores_before_decide:
+    # BUG-3588: clear stale pre-repair scores immediately before the rescoring, so
+    # the successor can only ever read scores the rescoring itself wrote. Cannot
+    # live in the rerun state's action (slash command under with_rate_limit_handling).
+    # Clearing an already-cleared issue is a no-op. A failed clear leaves stale
+    # scores in place, which is exactly what this guards against — so infra.
+    action: 'll-issues set-scores ${captured.input.output:shell} --clear'
+    action_type: shell
+    next: rerun_confidence_after_decide
+    on_error: mark_scores_absent_infra
+
+  check_scores_present_decide:
+    # BUG-3588: presence gate for rerun_confidence_after_decide. Both scores
+    # non-null → proceed to recheck_after_decide. First miss → retry the rescoring once (the
+    # dominant no-write cause is the model skipping `ll-issues set-scores`);
+    # second miss → exit 3 → infra. The retry marker is per issue and cleared
+    # here on a pass and at dequeue_next.
+    action: |
+      ID=${captured.input.output:shell}
+      MARK=${context.run_dir}/autodev-rescore-retry-decide-$ID
+      ABSENT=$(ll-issues show "$ID" --json 2>/dev/null | python3 -c "
+      import json, sys
+      d = json.load(sys.stdin)
+      print('true' if d.get('confidence') is None or d.get('outcome') is None else 'false')" 2>/dev/null || echo true)
+      if [ "$ABSENT" = "false" ]; then
+        rm -f "$MARK"
+        exit 0
+      fi
+      if [ ! -f "$MARK" ]; then
+        touch "$MARK"
+        echo "[RESCORE_RETRY] $ID — rescoring wrote no scores; retrying once"
+        exit 1
+      fi
+      exit 3
+    fragment: harness_exit
+    on_yes: recheck_after_decide
+    on_no: rerun_confidence_after_decide
+    on_cannot_judge: mark_scores_absent_infra
+    on_error: mark_scores_absent_infra
 
   recheck_after_decide:
     # Re-validate readiness/outcome scores after rerun_confidence_after_decide
@@ -793,7 +840,9 @@ states:
         --outcome ${context.outcome_threshold:shell} \
         --honor-waiver \
         && echo "${captured.input.output}" >> ${context.run_dir}/autodev-staged.txt  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
-    fragment: shell_exit
+    # BUG-3588: post-rescore site — exit 3 (scores absent) is an infra outcome,
+    # never a size-review/quality verdict.
+    fragment: harness_exit
     # ENH-3075: assert_decision_cleared (BUG-2595's post-decide flag
     # re-verify) moved into oracles/resolve-decision.yaml, where it now sits
     # directly after run_decide rather than after this re-score chain — an
@@ -806,6 +855,7 @@ states:
     # score branch was added to preserve that escape (decided, ENH-3075).
     on_yes: implement_current
     on_no: snap_and_size_review
+    on_cannot_judge: mark_scores_absent_infra
     on_error: snap_and_size_review
 
   record_decision_unresolved:
@@ -894,8 +944,8 @@ states:
       enabled: true
       name: refine-issue-repair
       suppress_claude_md: true
-    next: rerun_confidence_after_wire
-    on_error: rerun_confidence_after_wire
+    next: clear_scores_before_wire
+    on_error: clear_scores_before_wire
     on_rate_limit_exhausted: finalize_rate_limited
 
   rerun_confidence_after_wire:
@@ -910,9 +960,49 @@ states:
       enabled: true
       name: confidence-check-recheck
       suppress_claude_md: true
-    next: enqueue_or_skip
-    on_error: enqueue_or_skip
+    next: check_scores_present_wire
+    on_error: check_scores_present_wire
     on_rate_limit_exhausted: finalize_rate_limited
+
+  clear_scores_before_wire:
+    # BUG-3588: clear stale pre-repair scores immediately before the rescoring, so
+    # the successor can only ever read scores the rescoring itself wrote. Cannot
+    # live in the rerun state's action (slash command under with_rate_limit_handling).
+    # Clearing an already-cleared issue is a no-op. A failed clear leaves stale
+    # scores in place, which is exactly what this guards against — so infra.
+    action: 'll-issues set-scores ${captured.input.output:shell} --clear'
+    action_type: shell
+    next: rerun_confidence_after_wire
+    on_error: mark_scores_absent_infra
+
+  check_scores_present_wire:
+    # BUG-3588: presence gate for rerun_confidence_after_wire. Both scores
+    # non-null → proceed to enqueue_or_skip. First miss → retry the rescoring once (the
+    # dominant no-write cause is the model skipping `ll-issues set-scores`);
+    # second miss → exit 3 → infra. The retry marker is per issue and cleared
+    # here on a pass and at dequeue_next.
+    action: |
+      ID=${captured.input.output:shell}
+      MARK=${context.run_dir}/autodev-rescore-retry-wire-$ID
+      ABSENT=$(ll-issues show "$ID" --json 2>/dev/null | python3 -c "
+      import json, sys
+      d = json.load(sys.stdin)
+      print('true' if d.get('confidence') is None or d.get('outcome') is None else 'false')" 2>/dev/null || echo true)
+      if [ "$ABSENT" = "false" ]; then
+        rm -f "$MARK"
+        exit 0
+      fi
+      if [ ! -f "$MARK" ]; then
+        touch "$MARK"
+        echo "[RESCORE_RETRY] $ID — rescoring wrote no scores; retrying once"
+        exit 1
+      fi
+      exit 3
+    fragment: harness_exit
+    on_yes: enqueue_or_skip
+    on_no: rerun_confidence_after_wire
+    on_cannot_judge: mark_scores_absent_infra
+    on_error: mark_scores_absent_infra
 
   implement_current:
     # Interleaved implementation: as soon as a leaf passes refinement, run
@@ -1105,6 +1195,21 @@ states:
       echo "$ID" >> ${context.run_dir}/autodev-gate-infra.txt
       rm -f ${context.run_dir}/autodev-inflight
       echo "[GATE_INFRA_FAILED] $ID — learning gate could not run (scope-lock contention, missing binary, or wedged child); retry later"
+    action_type: shell
+    next: dequeue_next
+    on_error: dequeue_next
+
+  mark_scores_absent_infra:
+    # BUG-3588: a post-repair rescoring wrote no scores (after one retry), so no
+    # gate could judge the issue. Record it distinctly from the learning-gate
+    # record (autodev-gate-infra.txt) and advance the queue — do NOT defer: an
+    # infra failure is not a quality verdict (low_readiness), and the issue is
+    # left in place to be retried on a later run.
+    action: |
+      ID=${captured.input.output:shell}
+      echo "$ID" >> ${context.run_dir}/autodev-scores-absent.txt
+      rm -f ${context.run_dir}/autodev-inflight
+      echo "[SCORES_ABSENT] $ID — confidence-check wrote no scores after repair; not deferred, retry later"
     action_type: shell
     next: dequeue_next
     on_error: dequeue_next
@@ -1373,9 +1478,12 @@ states:
         --honor-waiver \
         && ll-issues check-design "$ID" \
         && echo "$ID" >> ${context.run_dir}/autodev-staged.txt
-    fragment: shell_exit
+    # BUG-3588: exit 3 = scores absent; post-sub-loop site, so behaviour is
+    # unchanged (route as a score failure) — explicit rather than implicit.
+    fragment: harness_exit
     on_yes: decide_current
     on_no: check_decision_before_size_review
+    on_cannot_judge: check_decision_before_size_review
     on_error: check_decision_before_size_review
 
   check_decision_before_size_review:
@@ -1473,8 +1581,8 @@ states:
       N=$((N + 1))
       printf '%s' "$N" > ${context.run_dir}/autodev-repair-cycle-count.txt
     action_type: shell
-    next: rerun_confidence_after_spike
-    on_error: rerun_confidence_after_spike
+    next: clear_scores_before_spike
+    on_error: clear_scores_before_spike
 
   rerun_confidence_after_spike:
     # ENH-2640: after run_spike proves (or attempts) the mechanism, frontmatter
@@ -1489,9 +1597,49 @@ states:
       enabled: true
       name: confidence-check-recheck
       suppress_claude_md: true
-    next: enqueue_or_skip
-    on_error: enqueue_or_skip
+    next: check_scores_present_spike
+    on_error: check_scores_present_spike
     on_rate_limit_exhausted: finalize_rate_limited
+
+  clear_scores_before_spike:
+    # BUG-3588: clear stale pre-repair scores immediately before the rescoring, so
+    # the successor can only ever read scores the rescoring itself wrote. Cannot
+    # live in the rerun state's action (slash command under with_rate_limit_handling).
+    # Clearing an already-cleared issue is a no-op. A failed clear leaves stale
+    # scores in place, which is exactly what this guards against — so infra.
+    action: 'll-issues set-scores ${captured.input.output:shell} --clear'
+    action_type: shell
+    next: rerun_confidence_after_spike
+    on_error: mark_scores_absent_infra
+
+  check_scores_present_spike:
+    # BUG-3588: presence gate for rerun_confidence_after_spike. Both scores
+    # non-null → proceed to enqueue_or_skip. First miss → retry the rescoring once (the
+    # dominant no-write cause is the model skipping `ll-issues set-scores`);
+    # second miss → exit 3 → infra. The retry marker is per issue and cleared
+    # here on a pass and at dequeue_next.
+    action: |
+      ID=${captured.input.output:shell}
+      MARK=${context.run_dir}/autodev-rescore-retry-spike-$ID
+      ABSENT=$(ll-issues show "$ID" --json 2>/dev/null | python3 -c "
+      import json, sys
+      d = json.load(sys.stdin)
+      print('true' if d.get('confidence') is None or d.get('outcome') is None else 'false')" 2>/dev/null || echo true)
+      if [ "$ABSENT" = "false" ]; then
+        rm -f "$MARK"
+        exit 0
+      fi
+      if [ ! -f "$MARK" ]; then
+        touch "$MARK"
+        echo "[RESCORE_RETRY] $ID — rescoring wrote no scores; retrying once"
+        exit 1
+      fi
+      exit 3
+    fragment: harness_exit
+    on_yes: enqueue_or_skip
+    on_no: rerun_confidence_after_spike
+    on_cannot_judge: mark_scores_absent_infra
+    on_error: mark_scores_absent_infra
 
   check_missing_artifacts:
     # Gate before size-review: if missing_artifacts=true, route to run_wire so
@@ -1873,8 +2021,8 @@ states:
       enabled: true
       name: wire-issue-auto
       suppress_claude_md: true
-    next: rerun_confidence_after_atomic_remediation
-    on_error: rerun_confidence_after_atomic_remediation
+    next: clear_scores_before_atomic
+    on_error: clear_scores_before_atomic
     on_rate_limit_exhausted: finalize_rate_limited
 
   rerun_confidence_after_atomic_remediation:
@@ -1888,9 +2036,49 @@ states:
       enabled: true
       name: confidence-check-recheck
       suppress_claude_md: true
-    next: regate_after_atomic_remediation
-    on_error: regate_after_atomic_remediation
+    next: check_scores_present_atomic
+    on_error: check_scores_present_atomic
     on_rate_limit_exhausted: finalize_rate_limited
+
+  clear_scores_before_atomic:
+    # BUG-3588: clear stale pre-repair scores immediately before the rescoring, so
+    # the successor can only ever read scores the rescoring itself wrote. Cannot
+    # live in the rerun state's action (slash command under with_rate_limit_handling).
+    # Clearing an already-cleared issue is a no-op. A failed clear leaves stale
+    # scores in place, which is exactly what this guards against — so infra.
+    action: 'll-issues set-scores ${captured.input.output:shell} --clear'
+    action_type: shell
+    next: rerun_confidence_after_atomic_remediation
+    on_error: mark_scores_absent_infra
+
+  check_scores_present_atomic:
+    # BUG-3588: presence gate for rerun_confidence_after_atomic_remediation. Both scores
+    # non-null → proceed to regate_after_atomic_remediation. First miss → retry the rescoring once (the
+    # dominant no-write cause is the model skipping `ll-issues set-scores`);
+    # second miss → exit 3 → infra. The retry marker is per issue and cleared
+    # here on a pass and at dequeue_next.
+    action: |
+      ID=${captured.input.output:shell}
+      MARK=${context.run_dir}/autodev-rescore-retry-atomic-$ID
+      ABSENT=$(ll-issues show "$ID" --json 2>/dev/null | python3 -c "
+      import json, sys
+      d = json.load(sys.stdin)
+      print('true' if d.get('confidence') is None or d.get('outcome') is None else 'false')" 2>/dev/null || echo true)
+      if [ "$ABSENT" = "false" ]; then
+        rm -f "$MARK"
+        exit 0
+      fi
+      if [ ! -f "$MARK" ]; then
+        touch "$MARK"
+        echo "[RESCORE_RETRY] $ID — rescoring wrote no scores; retrying once"
+        exit 1
+      fi
+      exit 3
+    fragment: harness_exit
+    on_yes: regate_after_atomic_remediation
+    on_no: rerun_confidence_after_atomic_remediation
+    on_cannot_judge: mark_scores_absent_infra
+    on_error: mark_scores_absent_infra
 
   regate_after_atomic_remediation:
     # BUG-2734 Step 2 (honest deferral): one-shot re-check of the full
@@ -1954,6 +2142,17 @@ states:
           rm -f ${context.run_dir}/autodev-inflight
           exit 1
         fi
+        # BUG-3588: absent scores are an infra outcome, not a quality verdict.
+        # Placed after resolved_by_subloop (a done parent with no scores must still
+        # record that) and before every deferral branch.
+        ABSENT=$(ll-issues show "$ID" --json 2>/dev/null | python3 -c "
+      import json, sys
+      d = json.load(sys.stdin)
+      print('true' if d.get('confidence') is None or d.get('outcome') is None else 'false')" 2>/dev/null || echo false)
+        if [ "$ABSENT" = "true" ]; then
+          echo "[SCORES_ABSENT] $ID — confidence/outcome score absent at gate"
+          exit 3
+        fi
         if [ -f ${context.run_dir}/autodev-design-gate-failed-$ID ]; then
           if [ ! -f ${context.run_dir}/autodev-design-remedy-attempted-$ID ]; then
             touch ${context.run_dir}/autodev-atomic-design-remedy-pending
@@ -1969,9 +2168,10 @@ states:
         ll-issues set-status "$ID" deferred --by automation --reason oversized_atomic 2>/dev/null || true
         exit 1
       fi
-    fragment: shell_exit
+    fragment: harness_exit
     on_yes: decide_current
     on_no: check_atomic_design_remedy
+    on_cannot_judge: mark_scores_absent_infra
     on_error: dequeue_next
 
   check_atomic_design_remedy:
@@ -2125,8 +2325,8 @@ states:
       printf '%s' "$N" > ${context.run_dir}/autodev-repair-cycle-count.txt
       touch ${context.run_dir}/autodev-design-remedy-attempted-$ID
     action_type: shell
-    next: rerun_confidence_after_reconcile
-    on_error: rerun_confidence_after_reconcile
+    next: clear_scores_before_reconcile
+    on_error: clear_scores_before_reconcile
 
   reconcile_current:
     # ENH-2689: targeted, in-place rewrite of the issue's Implementation Steps /
@@ -2180,8 +2380,8 @@ states:
         touch ${context.run_dir}/autodev-contradiction-reconcile-$ID
       fi
     action_type: shell
-    next: rerun_confidence_after_reconcile
-    on_error: rerun_confidence_after_reconcile
+    next: clear_scores_before_reconcile
+    on_error: clear_scores_before_reconcile
 
   rerun_confidence_after_reconcile:
     # ENH-2689: after reconcile_current rewrites the stale directive sections,
@@ -2201,9 +2401,49 @@ states:
       enabled: true
       name: confidence-check-recheck
       suppress_claude_md: true
-    next: recheck_after_size_review
-    on_error: recheck_after_size_review
+    next: check_scores_present_reconcile
+    on_error: check_scores_present_reconcile
     on_rate_limit_exhausted: finalize_rate_limited
+
+  clear_scores_before_reconcile:
+    # BUG-3588: clear stale pre-repair scores immediately before the rescoring, so
+    # the successor can only ever read scores the rescoring itself wrote. Cannot
+    # live in the rerun state's action (slash command under with_rate_limit_handling).
+    # Clearing an already-cleared issue is a no-op. A failed clear leaves stale
+    # scores in place, which is exactly what this guards against — so infra.
+    action: 'll-issues set-scores ${captured.input.output:shell} --clear'
+    action_type: shell
+    next: rerun_confidence_after_reconcile
+    on_error: mark_scores_absent_infra
+
+  check_scores_present_reconcile:
+    # BUG-3588: presence gate for rerun_confidence_after_reconcile. Both scores
+    # non-null → proceed to recheck_after_size_review. First miss → retry the rescoring once (the
+    # dominant no-write cause is the model skipping `ll-issues set-scores`);
+    # second miss → exit 3 → infra. The retry marker is per issue and cleared
+    # here on a pass and at dequeue_next.
+    action: |
+      ID=${captured.input.output:shell}
+      MARK=${context.run_dir}/autodev-rescore-retry-reconcile-$ID
+      ABSENT=$(ll-issues show "$ID" --json 2>/dev/null | python3 -c "
+      import json, sys
+      d = json.load(sys.stdin)
+      print('true' if d.get('confidence') is None or d.get('outcome') is None else 'false')" 2>/dev/null || echo true)
+      if [ "$ABSENT" = "false" ]; then
+        rm -f "$MARK"
+        exit 0
+      fi
+      if [ ! -f "$MARK" ]; then
+        touch "$MARK"
+        echo "[RESCORE_RETRY] $ID — rescoring wrote no scores; retrying once"
+        exit 1
+      fi
+      exit 3
+    fragment: harness_exit
+    on_yes: recheck_after_size_review
+    on_no: rerun_confidence_after_reconcile
+    on_cannot_judge: mark_scores_absent_infra
+    on_error: mark_scores_absent_infra
 
   recheck_after_size_review:
     # BUG-1230: size-review declined to decompose the issue (leaf-sized or
@@ -2285,6 +2525,17 @@ states:
           rm -f ${context.run_dir}/autodev-inflight
           echo "[SKIP-DEFER] $ID already $STATUS; leaving status untouched"
           exit 1
+        fi
+        # BUG-3588: absent scores are an infra outcome, not a quality verdict.
+        # Placed after resolved_by_subloop (a done parent with no scores must still
+        # record that) and before every deferral branch.
+        ABSENT=$(ll-issues show "$ID" --json 2>/dev/null | python3 -c "
+      import json, sys
+      d = json.load(sys.stdin)
+      print('true' if d.get('confidence') is None or d.get('outcome') is None else 'false')" 2>/dev/null || echo false)
+        if [ "$ABSENT" = "true" ]; then
+          echo "[SCORES_ABSENT] $ID — confidence/outcome score absent at gate"
+          exit 3
         fi
         CYCLE_COUNT=$(cat ${context.run_dir}/autodev-repair-cycle-count.txt 2>/dev/null || echo 0)
         PRE_READINESS=$(cat ${context.run_dir}/autodev-pre-readiness.txt 2>/dev/null || echo "")
@@ -2419,9 +2670,10 @@ states:
         ll-issues set-status "$ID" deferred --by automation --reason low_readiness 2>/dev/null || true
         exit 1
       fi
-    fragment: shell_exit
+    fragment: harness_exit
     on_yes: decide_current
     on_no: check_pre_deferral_remedy
+    on_cannot_judge: mark_scores_absent_infra
     on_error: dequeue_next
 
   check_pre_deferral_remedy:

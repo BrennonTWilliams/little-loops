@@ -249,7 +249,11 @@ class TestAutodevSmoke:
         # BUG-3390 added verify_impl_closed (+1) and the go-no-go escalation chain
         # check_go_no_go_eligible / run_go_no_go / check_go_no_go_waiver /
         # reopen_waived (+4), raising it to 84.
-        assert len(topo["states"]) == 84
+        # BUG-3588 added five clear_scores_before_* states, five
+        # check_scores_present_* presence gates and mark_scores_absent_infra
+        # (+11). The count was already stale at 87 before this fix (later
+        # issues added states without updating it); it is now 98.
+        assert len(topo["states"]) == 98
 
         # Every edge endpoint is a known state id, or the target of a
         # declared sub-loop (`loop:`) cross-graph edge. `from` may be null

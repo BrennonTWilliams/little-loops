@@ -171,7 +171,7 @@ class TestCheckDecisionAtDequeueStructural:
         assert "check-flag" in mark.get("action", "")
         assert "decision_needed" in mark.get("action", "")
         assert mark.get("on_yes") == "record_decision_unresolved"
-        assert mark.get("on_no") == "rerun_confidence_after_decide"
+        assert mark.get("on_no") == "clear_scores_before_decide"
 
     def test_check_decision_at_dequeue_on_no_routes_to_refine_current(
         self, data: dict[str, Any]
@@ -458,15 +458,16 @@ class TestSpikeTriageStructural:
         assert state.get("on_error") == "count_repair_cycle_spike"
         assert state.get("on_rate_limit_exhausted") == "finalize_rate_limited"
         counter_state = data["states"]["count_repair_cycle_spike"]
-        assert counter_state.get("next") == "rerun_confidence_after_spike"
-        assert counter_state.get("on_error") == "rerun_confidence_after_spike"
+        assert counter_state.get("next") == "clear_scores_before_spike"
+        assert counter_state.get("on_error") == "clear_scores_before_spike"
 
     def test_rerun_confidence_after_spike_routing(self, data: dict[str, Any]) -> None:
         state = data["states"]["rerun_confidence_after_spike"]
         assert "/ll:confidence-check" in state.get("action", "")
         assert state.get("fragment") == "with_rate_limit_handling"
-        assert state.get("next") == "enqueue_or_skip"
-        assert state.get("on_error") == "enqueue_or_skip"
+        # BUG-3588: routes through the presence gate, which forwards to enqueue_or_skip
+        assert state.get("next") == "check_scores_present_spike"
+        assert state.get("on_error") == "check_scores_present_spike"
         assert state.get("on_rate_limit_exhausted") == "finalize_rate_limited"
 
 
@@ -604,14 +605,15 @@ class TestReconcilePlateauStructural:
         assert state.get("on_error") == "count_repair_cycle_reconcile"
         assert state.get("on_rate_limit_exhausted") == "finalize_rate_limited"
         counter_state = data["states"]["count_repair_cycle_reconcile"]
-        assert counter_state.get("next") == "rerun_confidence_after_reconcile"
-        assert counter_state.get("on_error") == "rerun_confidence_after_reconcile"
+        assert counter_state.get("next") == "clear_scores_before_reconcile"
+        assert counter_state.get("on_error") == "clear_scores_before_reconcile"
 
     def test_rerun_confidence_after_reconcile_routing(self, data: dict[str, Any]) -> None:
         state = data["states"]["rerun_confidence_after_reconcile"]
         assert "/ll:confidence-check" in state.get("action", "")
-        assert state.get("next") == "recheck_after_size_review"
-        assert state.get("on_error") == "recheck_after_size_review"
+        # BUG-3588: routes through the presence gate, which forwards to recheck_after_size_review
+        assert state.get("next") == "check_scores_present_reconcile"
+        assert state.get("on_error") == "check_scores_present_reconcile"
 
 
 class TestReconcilePlateauRouting:
@@ -724,8 +726,8 @@ class TestDesignGateRefineRemedy:
         assert state.get("on_error") == "count_repair_cycle_refine_for_design"
         assert state.get("on_rate_limit_exhausted") == "finalize_rate_limited"
         counter_state = data["states"]["count_repair_cycle_refine_for_design"]
-        assert counter_state.get("next") == "rerun_confidence_after_reconcile"
-        assert counter_state.get("on_error") == "rerun_confidence_after_reconcile"
+        assert counter_state.get("next") == "clear_scores_before_reconcile"
+        assert counter_state.get("on_error") == "clear_scores_before_reconcile"
 
     def test_counter_state_writes_design_remedy_attempted_marker(
         self, data: dict[str, Any]

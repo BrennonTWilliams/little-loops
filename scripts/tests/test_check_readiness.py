@@ -211,6 +211,44 @@ class TestCheckReadinessHonorWaiver:
         _make_issue(bugs_dir, "P1-BUG-001-test.md", confidence_score=90, outcome_confidence=50)
         assert _run_check_readiness(temp_project_dir, ["--honor-waiver"]) == 1
 
+    @pytest.mark.parametrize("waiver_args", [[], ["--honor-waiver"]])
+    @pytest.mark.parametrize(
+        "scores",
+        [
+            {"outcome_confidence": 90},
+            {"confidence_score": 90},
+            {},
+        ],
+    )
+    def test_absent_score_key_exits_3(
+        self, temp_project_dir: Path, scores: dict[str, int], waiver_args: list[str]
+    ) -> None:
+        """BUG-3588: an absent score key is "cannot judge" (3), not a failing 0 (1)."""
+        bugs_dir = _setup_dirs(temp_project_dir)
+        _make_issue(bugs_dir, "P2-BUG-001-test.md", **scores)
+        assert _run_check_readiness(temp_project_dir, waiver_args) == 3
+
+    def test_absent_score_exits_3_even_when_waived(self, temp_project_dir: Path) -> None:
+        bugs_dir = _setup_dirs(temp_project_dir)
+        _make_issue(bugs_dir, "P2-BUG-001-test.md", confidence_score=90, outcome_gate_waived=True)
+        assert _run_check_readiness(temp_project_dir, ["--honor-waiver"]) == 3
+
+    def test_absent_score_reports_token_on_stderr(
+        self, temp_project_dir: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        bugs_dir = _setup_dirs(temp_project_dir)
+        _make_issue(bugs_dir, "P2-BUG-001-test.md")
+        _run_check_readiness(temp_project_dir)
+        assert "SCORES_ABSENT" in capsys.readouterr().err
+
+    def test_present_non_digit_score_is_not_absent(self, temp_project_dir: Path) -> None:
+        """A present value `_coerce_optional_int` rejects (negative) is not 'absent': exit 1."""
+        bugs_dir = _setup_dirs(temp_project_dir)
+        (bugs_dir / "P2-BUG-001-test.md").write_text(
+            "---\nid: BUG-001\nconfidence_score: -5\noutcome_confidence: 70\n---\n\n# BUG-001: t\n"
+        )
+        assert _run_check_readiness(temp_project_dir) == 1
+
     def test_readiness_status_exposes_outcome_gate_waived(self, temp_project_dir: Path) -> None:
         from little_loops.cli.issues.check_readiness import readiness_status
         from little_loops.config import BRConfig

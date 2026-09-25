@@ -30,6 +30,11 @@ class ReadinessStatus:
     enabled: bool
     raw_confidence: int | None = None
     raw_outcome: int | None = None
+    # BUG-3588: key presence in frontmatter, distinct from `raw_*` (which is also
+    # None for a present non-digit value). Absence means "never scored / cleared",
+    # not "scored 0".
+    confidence_absent: bool = False
+    outcome_absent: bool = False
     # BUG-3390: per-issue escalation valve stamped by /ll:go-no-go on a GO
     # verdict over an `oversized_atomic` deferral (BUG-2734). Read from raw
     # frontmatter so the CLI gate and autodev's inline gates agree.
@@ -141,6 +146,8 @@ def readiness_status(
         raw_confidence=raw_confidence,
         raw_outcome=raw_outcome,
         outcome_gate_waived=waived,
+        confidence_absent=fm.get("confidence_score") is None,
+        outcome_absent=fm.get("outcome_confidence") is None,
     )
 
 
@@ -156,12 +163,17 @@ def cmd_check_readiness(config: BRConfig, args: argparse.Namespace) -> int:
     `outcome_gate_waived: true` (the BUG-2734 escalation valve stamped by
     /ll:go-no-go); readiness is still enforced.
 
+    BUG-3588: exits 3 (``SCORES_ABSENT`` on stderr) when either score key is
+    absent from frontmatter, before threshold comparison and regardless of
+    ``--honor-waiver`` — an absent score is "cannot judge", not a failing 0.
+
     Args:
         config: Project configuration
         args: Parsed arguments with .issue_id, .readiness, .outcome, .honor_waiver
 
     Returns:
-        0 if both thresholds are met, 1 otherwise, 2 if the issue is unresolvable
+        0 if both thresholds are met, 1 otherwise, 2 if the issue is unresolvable,
+        3 if a score key is absent
     """
     status = readiness_status(
         config,
@@ -172,6 +184,10 @@ def cmd_check_readiness(config: BRConfig, args: argparse.Namespace) -> int:
     if status is None:
         print(f"Error: Issue '{args.issue_id}' not found.", file=sys.stderr)
         return 2
+
+    if status.confidence_absent or status.outcome_absent:
+        print(f"SCORES_ABSENT: {args.issue_id}", file=sys.stderr)
+        return 3
 
     outcome_ok = (
         status.meets_outcome_or_waived
