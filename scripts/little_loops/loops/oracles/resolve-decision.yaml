@@ -198,8 +198,22 @@ states:
     action: "ll-issues check-flag ${context.issue_id:shell} decision_needed"
     fragment: shell_exit
     on_yes: check_residual_decision
-    on_no: done
+    on_no: rearm_refuted_spike
     on_error: failed
+
+  rearm_refuted_spike:
+    # BUG-3593: the flag-cleared edge (assert_decision_cleared.on_no) is the only
+    # path that means "the decision replaced the refuted approach", so it is the
+    # deterministic re-arm point for every loop caller. `ll-issues rearm-spike`
+    # drops spike_attempted/spike_refuted only when spike_refuted: true (no-op
+    # otherwise), letting the caller's spike_needed gate run one new spike. The
+    # residual-group path (check_residual_decision -> done) never passes here.
+    # `|| true` (no on_error edge — a failure edge into the success terminal
+    # `done` is gated): the decision itself is resolved; a failed re-arm only
+    # leaves the spike un-re-run.
+    action: "ll-issues rearm-spike ${context.issue_id:shell} || true"
+    action_type: shell
+    next: done
 
   check_residual_decision:
     # BUG-3278: assert_decision_cleared's on_yes (flag still true) used to

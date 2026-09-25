@@ -66,6 +66,8 @@ states:
       printf '' > ${context.run_dir}/autodev-skipped.txt
       printf '' > ${context.run_dir}/autodev-gate-blocked.txt
       printf '' > ${context.run_dir}/autodev-decision-unresolved.txt
+      printf '' > ${context.run_dir}/autodev-spike-inconclusive.txt
+      printf '' > ${context.run_dir}/autodev-spike-no-verdict.txt
       printf '' > ${context.run_dir}/autodev-not-started.txt
       printf '' > ${context.run_dir}/autodev-not-started-attempts.txt
       rm -f ${context.run_dir}/autodev-broke-down
@@ -581,6 +583,13 @@ states:
         rm -f ${context.run_dir}/autodev-inflight
         exit 0
       fi
+      # BUG-3593: same for a nested refine-to-ready spike_inconclusive stop — its
+      # record_spike_inconclusive already deferred the issue and ledgered it.
+      if grep -qxF "$ID" ${context.run_dir}/autodev-spike-inconclusive.txt 2>/dev/null; then
+        echo "[SPIKE_INCONCLUSIVE] $ID already ledgered by sub-loop; not counting as refine_failed"
+        rm -f ${context.run_dir}/autodev-inflight
+        exit 0
+      fi
       echo "$ID  refine_failed" >> ${context.run_dir}/autodev-skipped.txt
       rm -f ${context.run_dir}/autodev-inflight
     fragment: shell_exit
@@ -854,8 +863,34 @@ states:
     # is deferred via record_decision_unresolved instead. No caller-side
     # score branch was added to preserve that escape (decided, ENH-3075).
     on_yes: implement_current
-    on_no: snap_and_size_review
+    on_no: check_rearmed_spike_after_decide
     on_cannot_judge: mark_scores_absent_infra
+    on_error: snap_and_size_review
+
+  check_rearmed_spike_after_decide:
+    # BUG-3593: a refuted spike's decision re-arms one new spike
+    # (rearm_refuted_spike in oracles/resolve-decision). That spike must run
+    # BEFORE size review / decomposition, so intercept recheck_after_decide.on_no:
+    # spike_needed AND NOT spike_attempted AND counter < 2 -> snapshot pre-spike
+    # readiness, bump the shared counter, run_spike. Otherwise snap_and_size_review.
+    action: |
+      SPIKE_RUNS=${context.run_dir}/spike-runs-${captured.input.output:shell}
+      SPIKE_N=$(cat "$SPIKE_RUNS" 2>/dev/null || echo 0)
+      [ "$SPIKE_N" -lt 2 ] || exit 1
+      SPIKE_ISSUE_JSON=$(ll-issues show ${captured.input.output} --json)  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      SPIKE_ISSUE_JSON="$SPIKE_ISSUE_JSON" python3 << 'PYEOF' || exit 1
+      import json, os, sys
+      d = json.loads(os.environ['SPIKE_ISSUE_JSON'])
+      if d.get('spike_needed') == 'true' and d.get('spike_attempted') != 'true':
+          with open('${context.run_dir}/autodev-pre-spike-readiness.txt', 'w') as fh:
+              fh.write(str(d.get('confidence') or ''))
+          sys.exit(0)
+      sys.exit(1)
+      PYEOF
+      printf '%s' "$((SPIKE_N + 1))" > "$SPIKE_RUNS"
+    fragment: shell_exit
+    on_yes: run_spike
+    on_no: snap_and_size_review
     on_error: snap_and_size_review
 
   record_decision_unresolved:
@@ -1538,8 +1573,14 @@ states:
     # downstream check_reconcile_needed gate can detect a "spike ran but Readiness
     # is bit-identical" plateau. Written only on the on_yes (spike) branch.
     action: |
+      # BUG-3593: shared per-issue spike budget (`spike-runs-<ID>`, also read by
+      # the nested refine-to-ready-issue): spike only while the counter is < 2,
+      # incremented on the yes branch before run_spike so a crashed spike counts.
+      SPIKE_RUNS=${context.run_dir}/spike-runs-${captured.input.output:shell}
+      SPIKE_N=$(cat "$SPIKE_RUNS" 2>/dev/null || echo 0)
+      [ "$SPIKE_N" -lt 2 ] || exit 1
       SPIKE_ISSUE_JSON=$(ll-issues show ${captured.input.output} --json)  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
-      SPIKE_ISSUE_JSON="$SPIKE_ISSUE_JSON" python3 << 'PYEOF'
+      SPIKE_ISSUE_JSON="$SPIKE_ISSUE_JSON" python3 << 'PYEOF' || exit 1
       import json, os, sys
       d = json.loads(os.environ['SPIKE_ISSUE_JSON'])
       if d.get('spike_needed') == 'true' and d.get('spike_attempted') != 'true':
@@ -1548,6 +1589,7 @@ states:
           sys.exit(0)
       sys.exit(1)
       PYEOF
+      printf '%s' "$((SPIKE_N + 1))" > "$SPIKE_RUNS"
     fragment: shell_exit
     on_yes: run_spike
     on_no: check_missing_artifacts
@@ -1581,8 +1623,84 @@ states:
       N=$((N + 1))
       printf '%s' "$N" > ${context.run_dir}/autodev-repair-cycle-count.txt
     action_type: shell
-    next: clear_scores_before_spike
-    on_error: clear_scores_before_spike
+    next: route_spike_verdict
+    on_error: route_spike_verdict
+
+  route_spike_verdict:
+    # BUG-3593: four-way spike-outcome router (refuted, proven, inconclusive,
+    # no verdict; evaluated in that order). Refuted goes to a decision BEFORE any
+    # rescoring; proven keeps BUG-3588's clear -> rescore -> check_scores_present_spike
+    # chain unchanged, so no scoring path bypasses that gate.
+    action: |
+      ll-issues show ${captured.input.output:shell} --json | python3 -c "
+      import json, sys
+      d = json.load(sys.stdin)
+      a = d.get('spike_attempted') == 'true'
+      if a and d.get('spike_refuted') == 'true':
+          print('REFUTED')
+      elif a and d.get('spike_completed') == 'true':
+          print('PROVEN')
+      elif a:
+          print('INCONCLUSIVE')
+      else:
+          print('NO_VERDICT')"
+    action_type: shell
+    evaluate:
+      type: classify
+    route:
+      REFUTED: check_spike_budget
+      PROVEN: clear_scores_before_spike
+      INCONCLUSIVE: record_spike_inconclusive
+      NO_VERDICT: mark_spike_no_verdict_infra
+      _: mark_spike_no_verdict_infra
+      _error: mark_spike_no_verdict_infra
+
+  check_spike_budget:
+    # BUG-3593: refuted edge. Counter < 2 -> decide; a second refutation (counter
+    # 2 after the re-armed spike) defers as decision_unresolved. Scores are NOT
+    # cleared here: resolve_decision -> mark_decide_ran ->
+    # rerun_confidence_after_decide rescores, and the failure path
+    # (record_decision_unresolved) reads no scores.
+    action: |
+      N=$(cat ${context.run_dir}/spike-runs-${captured.input.output:shell} 2>/dev/null || echo 0)
+      [ "$N" -lt 2 ]
+    fragment: shell_exit
+    on_yes: resolve_decision
+    on_no: record_decision_unresolved
+    on_error: record_decision_unresolved
+
+  record_spike_inconclusive:
+    # BUG-3593: spike ran but reached neither verdict. Not re-spiked; deferred
+    # with a named human-needed code. Shared ledger with refine-to-ready-issue.
+    action: |
+      ID=${captured.input.output:shell}
+      echo "$ID" >> ${context.run_dir}/autodev-spike-inconclusive.txt
+      rm -f ${context.run_dir}/autodev-inflight
+      STATUS=$(ll-issues show "$ID" --json 2>/dev/null \
+        | python3 -c "import json,sys; print((json.load(sys.stdin).get('raw_status') or '').lower())" \
+        2>/dev/null || echo "")
+      if [ "$STATUS" = "done" ] || [ "$STATUS" = "completed" ] || [ "$STATUS" = "cancelled" ]; then
+        echo "[SKIP-DEFER] $ID already $STATUS; leaving status untouched"
+      else
+        ll-issues set-status "$ID" deferred --by automation --reason spike_inconclusive 2>/dev/null || true
+        echo "[SPIKE_INCONCLUSIVE] $ID — spike could not reach a verdict (neither proven nor refuted); fix the cause, then run /ll:spike $ID --force and re-run to resurface"
+      fi
+    action_type: shell
+    next: dequeue_next
+    on_error: dequeue_next
+
+  mark_spike_no_verdict_infra:
+    # BUG-3593: the spike wrote no verdict (crash/kill before write-back) —
+    # infra, not a quality verdict. Modeled on mark_scores_absent_infra: ledger,
+    # clear inflight, advance the queue, no deferral.
+    action: |
+      ID=${captured.input.output:shell}
+      echo "$ID" >> ${context.run_dir}/autodev-spike-no-verdict.txt
+      rm -f ${context.run_dir}/autodev-inflight
+      echo "[SPIKE_NO_VERDICT] $ID — spike wrote no verdict; not deferred, retry later"
+    action_type: shell
+    next: dequeue_next
+    on_error: dequeue_next
 
   rerun_confidence_after_spike:
     # ENH-2640: after run_spike proves (or attempts) the mechanism, frontmatter
@@ -1799,8 +1917,14 @@ states:
     # than straight to recheck_after_size_review, so a "spike ran but Readiness is
     # pinned" plateau gets one reconcile pass before the low_readiness deferral.
     action: |
+      # BUG-3593: shared per-issue spike budget (`spike-runs-<ID>`, also read by
+      # the nested refine-to-ready-issue): spike only while the counter is < 2,
+      # incremented on the yes branch before run_spike so a crashed spike counts.
+      SPIKE_RUNS=${context.run_dir}/spike-runs-${captured.input.output:shell}
+      SPIKE_N=$(cat "$SPIKE_RUNS" 2>/dev/null || echo 0)
+      [ "$SPIKE_N" -lt 2 ] || exit 1
       SPIKE_ISSUE_JSON=$(ll-issues show ${captured.input.output} --json)  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
-      SPIKE_ISSUE_JSON="$SPIKE_ISSUE_JSON" python3 << 'PYEOF'
+      SPIKE_ISSUE_JSON="$SPIKE_ISSUE_JSON" python3 << 'PYEOF' || exit 1
       import json, os, sys
       d = json.loads(os.environ['SPIKE_ISSUE_JSON'])
       if d.get('spike_needed') == 'true' and d.get('spike_attempted') != 'true':
@@ -1809,6 +1933,7 @@ states:
           sys.exit(0)
       sys.exit(1)
       PYEOF
+      printf '%s' "$((SPIKE_N + 1))" > "$SPIKE_RUNS"
     fragment: shell_exit
     on_yes: run_spike
     on_no: check_reconcile_needed
@@ -2635,16 +2760,24 @@ states:
           fi
           # Env assignments must prefix python3 (the os.environ reader), not
           # ll-issues — a `VAR=x a | b` prefix binds only to `a`.
-          REMEDY=$(ll-issues show "$ID" --json 2>/dev/null | GATE_MARKER="$GATE_MARKER" CONTRA_ONLY="$CONTRA_ONLY" python3 -c "
+          # BUG-3593: spike budget spent (counter >= 2) -> spike-exhausted, so the
+          # selector never picks `spike` for a re-armed issue.
+          SPIKE_N=$(cat ${context.run_dir}/spike-runs-$ID 2>/dev/null || echo 0)
+          SPIKE_SPENT="false"
+          [ "$SPIKE_N" -ge 2 ] 2>/dev/null && SPIKE_SPENT="true"
+          REMEDY=$(ll-issues show "$ID" --json 2>/dev/null | GATE_MARKER="$GATE_MARKER" CONTRA_ONLY="$CONTRA_ONLY" SPIKE_SPENT="$SPIKE_SPENT" python3 -c "
       import json, os, sys
       d = json.load(sys.stdin)
+      spent = os.environ.get('SPIKE_SPENT') == 'true'
       if d.get('spike_attempted') == 'true':
           print('')
       elif (d.get('reconcile_attempted') == 'true'
             and os.environ.get('CONTRA_ONLY') == 'true'):
-          print('spike')
+          print('' if spent else 'spike')
       elif d.get('reconcile_attempted') == 'true':
           print('')
+      elif spent:
+          print('reconcile')
       elif os.environ.get('GATE_MARKER') == 'true':
           print('spike')
       else:
@@ -2738,6 +2871,11 @@ states:
       REMEDY=$(cat ${context.run_dir}/autodev-pre-deferral-remedy.txt 2>/dev/null || echo "")
       rm -f ${context.run_dir}/autodev-pre-deferral-remedy.txt
       if [ "$REMEDY" = "spike" ]; then
+        # BUG-3593: shared spike budget — exhausted -> exit 1 -> reconcile_current.
+        SPIKE_RUNS=${context.run_dir}/spike-runs-${captured.input.output:shell}
+        SPIKE_N=$(cat "$SPIKE_RUNS" 2>/dev/null || echo 0)
+        [ "$SPIKE_N" -lt 2 ] || exit 1
+        printf '%s' "$((SPIKE_N + 1))" > "$SPIKE_RUNS"
         (ll-issues show ${captured.input.output} --json | python3 -c "  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       import json, sys
       d = json.load(sys.stdin)
@@ -2896,6 +3034,14 @@ states:
       fi
       if [ "$DECISION_UNRESOLVED_COUNT" -gt 0 ]; then
         printf 'Decision-unresolved (%d): %s  (resolve with /ll:decide-issue, then re-run)\n' "$DECISION_UNRESOLVED_COUNT" "$DECISION_UNRESOLVED_LIST"
+      fi
+      SPIKE_INCONCLUSIVE_LIST=$(grep -v '^[[:space:]]*$' ${context.run_dir}/autodev-spike-inconclusive.txt 2>/dev/null | sort -u | tr '\n' ',' | sed 's/,$//' || true)
+      if [ -n "$SPIKE_INCONCLUSIVE_LIST" ]; then
+        printf 'Spike-inconclusive (%d): %s  (fix the cause, run /ll:spike <ID> --force, then re-run)\n' "$(echo "$SPIKE_INCONCLUSIVE_LIST" | tr ',' '\n' | wc -l | tr -d ' ')" "$SPIKE_INCONCLUSIVE_LIST"
+      fi
+      SPIKE_NO_VERDICT_LIST=$(grep -v '^[[:space:]]*$' ${context.run_dir}/autodev-spike-no-verdict.txt 2>/dev/null | sort -u | tr '\n' ',' | sed 's/,$//' || true)
+      if [ -n "$SPIKE_NO_VERDICT_LIST" ]; then
+        printf 'Spike-no-verdict [infra] (%d): %s  (spike wrote no verdict; retry later)\n' "$(echo "$SPIKE_NO_VERDICT_LIST" | tr ',' '\n' | wc -l | tr -d ' ')" "$SPIKE_NO_VERDICT_LIST"
       fi
       if [ "$NOT_STARTED_COUNT" -gt 0 ]; then
         printf 'Not-started  (%d): %s  (never reached implementation — Phase 1 rejected)\n' "$NOT_STARTED_COUNT" "$NOT_STARTED_LIST"

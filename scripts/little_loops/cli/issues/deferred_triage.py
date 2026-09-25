@@ -17,6 +17,7 @@ _REASON_RANK = {
     "blocked_by_unmet": 1,
     "gate_blocked": 2,
     "decision_unresolved": 3,
+    "spike_inconclusive": 3,  # BUG-3593: same needs-human tier as decision_unresolved
     # BUG-2734: readiness passed but a Very Large, atomic issue's outcome risk
     # still failed after Pattern-B rescoring — a more actionable, explicit
     # needs-human-decision signal than generic low_readiness.

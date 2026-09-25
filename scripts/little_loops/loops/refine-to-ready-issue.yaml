@@ -101,7 +101,10 @@ scope:
 # terminal-path only (outside the convergence budget); on_max_steps consumes
 # the cap's single fall-through execution, not budget; circuit.recurrent_window
 # reduces worst-case burn by firing stalls near ~30 steps. 60 unchanged.
-max_steps: 60
+# BUG-3593: 60 -> 70 for the refuted -> check_spike_budget -> resolve ->
+# confidence_check -> check_readiness -> check_outcome cycle plus a second
+# check_spike_needed -> run_spike -> route_spike_verdict pass.
+max_steps: 70
 # Step-cap fall-through: the executor runs the named state exactly once at the
 # cap; its `next:` is never followed and terminated_by stays "max_steps".
 # classify_terminal then writes refine-terminal-class so autodev's
@@ -135,7 +138,7 @@ import:
 #   is now a backstop only: the two spin shapes it used to bound (the
 #   post-BUG-3278 residual-decision cycle and a spike that never writes
 #   spike_attempted) are bounded in-loop by check_decide_attempts and the
-#   refine-to-ready-spike-ran marker (BUG-3553).
+#   shared spike-runs-<ID> counter (BUG-3553/BUG-3593).
 circuit:
   repeated_failure:
     window: 3
@@ -154,7 +157,6 @@ states:
       printf '0' > ${context.run_dir}/refine-to-ready-reconcile-attempts &&
       printf '0' > ${context.run_dir}/refine-to-ready-decide-attempts &&
       printf '0' > ${context.run_dir}/refine-to-ready-verify-retries &&
-      rm -f ${context.run_dir}/refine-to-ready-spike-ran &&
       { [ -n ${context.input:shell} ] && printf '%s' ${context.input:shell} ||
       ll-issues next-issue; } | tr -d '\n\r '
     action_type: shell
@@ -776,13 +778,21 @@ states:
     # that errors or never stamps it would re-fire until the circuit tripped.
     # The run-dir marker (reset in resolve_issue, written here on the yes
     # branch) makes the gate one-shot per run regardless of the skill.
+    # BUG-3593: the one-shot run-dir marker is replaced by the per-issue
+    # `spike-runs-<ID>` counter shared with autodev (this loop nests under it
+    # with context_passthrough, so they share ${context.run_dir}). Spike only
+    # while the counter is < 2 (original + one re-armed spike); incremented on
+    # the yes branch BEFORE run_spike so a crashed spike still counts. Never
+    # reset per issue (resolve_issue no longer touches it).
     action: |
-      [ ! -f ${context.run_dir}/refine-to-ready-spike-ran ] || exit 1
+      F="${context.run_dir}/spike-runs-${captured.issue_id.output:shell}"
+      N=$(cat "$F" 2>/dev/null || echo 0)
+      [ "$N" -lt 2 ] || exit 1
       ll-issues show ${captured.issue_id.output} --json | python3 -c "  # ll-lint: mr11-ok(captured.issue_id.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       import json, sys
       d = json.load(sys.stdin)
       sys.exit(0 if (d.get('spike_needed') == 'true' and d.get('spike_attempted') != 'true') else 1)" || exit 1
-      printf '1' > ${context.run_dir}/refine-to-ready-spike-ran
+      printf '%s' "$((N + 1))" > "$F"
     fragment: shell_exit
     on_yes: run_spike
     on_no: check_missing_artifacts
@@ -803,8 +813,51 @@ states:
       enabled: true
       name: spike-auto
       suppress_claude_md: true
-    next: confidence_check
-    on_error: confidence_check
+    next: route_spike_verdict
+    on_error: route_spike_verdict
+
+  route_spike_verdict:
+    # BUG-3593: four-way spike-outcome router, evaluated in order: refuted,
+    # proven, inconclusive, no verdict (spike_attempted absent: the skill
+    # crashed before write-back). A refuted spike goes to a decision BEFORE any
+    # rescoring, so a readiness drop cannot divert it to breakdown_issue.
+    action: |
+      ll-issues show ${captured.issue_id.output:shell} --json | python3 -c "
+      import json, sys
+      d = json.load(sys.stdin)
+      a = d.get('spike_attempted') == 'true'
+      if a and d.get('spike_refuted') == 'true':
+          print('REFUTED')
+      elif a and d.get('spike_completed') == 'true':
+          print('PROVEN')
+      elif a:
+          print('INCONCLUSIVE')
+      else:
+          print('NO_VERDICT')"
+    action_type: shell
+    evaluate:
+      type: classify
+    route:
+      REFUTED: check_spike_budget
+      PROVEN: confidence_check
+      INCONCLUSIVE: record_spike_inconclusive
+      NO_VERDICT: mark_spike_no_verdict_infra
+      _: mark_spike_no_verdict_infra
+      _error: mark_spike_no_verdict_infra
+
+  check_spike_budget:
+    # BUG-3593: refuted edge. Deliberately bypasses check_decide_attempts (a
+    # decision resolved earlier in the run leaves that counter at 1, which would
+    # defer a refuted issue as decision_unresolved without a decision); the
+    # shared spike counter bounds this edge instead: 1 after the original spike
+    # -> decide; 2 after the re-armed spike -> a second refutation defers.
+    action: |
+      N=$(cat "${context.run_dir}/spike-runs-${captured.issue_id.output:shell}" 2>/dev/null || echo 0)
+      [ "$N" -lt 2 ]
+    fragment: shell_exit
+    on_yes: resolve_decision_pre_breakdown
+    on_no: record_decision_unresolved
+    on_error: record_decision_unresolved
 
   resolve_decision_pre_breakdown:
     # BUG-3065: resolves the decision_needed flag that drove the outcome-score
@@ -1023,6 +1076,38 @@ states:
     action: |
       printf 'infra' > ${context.run_dir}/refine-terminal-class
       echo "[VERIFY_VERDICT_ABSENT] or [SCORES_ABSENT]: readiness evidence missing after retry; classified infra"
+    action_type: shell
+    next: failed
+    on_error: failed
+
+  mark_spike_no_verdict_infra:
+    # BUG-3593: the spike wrote no verdict (crash/kill before write-back) —
+    # infra, not inconclusive or refuted. Modeled on mark_evidence_absent_infra.
+    action: |
+      printf 'infra' > ${context.run_dir}/refine-terminal-class
+      echo "[SPIKE_NO_VERDICT] ${captured.issue_id.output:shell}"
+    action_type: shell
+    next: failed
+    on_error: failed
+
+  record_spike_inconclusive:
+    # BUG-3593: the spike ran but reached neither verdict. Not re-spiked
+    # automatically; defers with a named human-needed code. Writes the shared
+    # ledger autodev's skip_inflight reads so a nested stop is not re-ledgered
+    # as refine_failed (same pattern as record_decision_unresolved, BUG-3390).
+    action: |
+      printf 'spike_inconclusive' > ${context.run_dir}/refine-terminal-class
+      ID=${captured.issue_id.output:shell}
+      echo "$ID" >> ${context.run_dir}/autodev-spike-inconclusive.txt
+      STATUS=$(ll-issues show "$ID" --json 2>/dev/null \
+        | python3 -c "import json,sys; print((json.load(sys.stdin).get('raw_status') or '').lower())" \
+        2>/dev/null || echo "")
+      if [ "$STATUS" = "done" ] || [ "$STATUS" = "completed" ] || [ "$STATUS" = "cancelled" ]; then
+        echo "[SKIP-DEFER] $ID already $STATUS; leaving status untouched"
+      else
+        ll-issues set-status "$ID" deferred --by automation --reason spike_inconclusive 2>/dev/null || true
+        echo "[SPIKE_INCONCLUSIVE] $ID — spike could not reach a verdict (neither proven nor refuted); fix the cause, then run /ll:spike $ID --force and re-run to resurface"
+      fi
     action_type: shell
     next: failed
     on_error: failed
