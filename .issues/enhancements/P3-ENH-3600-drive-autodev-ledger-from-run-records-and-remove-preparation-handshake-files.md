@@ -14,6 +14,12 @@ blocked_by:
 parent: EPIC-3565
 relates_to:
 - ENH-3577
+confidence_score: 75
+outcome_confidence: 71
+score_complexity: 10
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 # ENH-3600: Drive autodev ledger from run records and remove preparation handshake files
@@ -194,8 +200,18 @@ Decomposed from ENH-3577: Consolidate autodev issue preparation into a single co
 
 **Note** (added by `/ll:audit-issue-conflicts`, applied 2026-09-25): The ledger reads the wrapper's record (`run-records/prepare-issue/<ID>.json`, ENH-3597 layout), not the child's. The body above reflects this.
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-25_
+
+**Readiness Score**: 75/100 → STOP — ADDRESS GAPS
+**Outcome Confidence**: 71/100 → MODERATE
+
+### Gaps to Address
+- blocked_by ENH-3599, ENH-3601, FEAT-3573 (all open) — the run-record layout, the `prepare-issue` wrapper writer, and the summary-key split this issue preserves all arrive with those issues. Land the chain first.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-25T21:32:36 - `672e0da1-840e-4b60-a432-7b20e9ebbd01.jsonl`
 - `/ll:wire-issue` - 2026-09-25T20:49:53 - `4a475966-a47c-4657-a3e4-16e6706f4c4d.jsonl`
 - `/ll:refine-issue` - 2026-09-25T19:53:36 - `52506a27-e6a0-49d9-99b0-9b89990953d8.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-09-25T19:09:18 - `dcfdf31c-be65-47ce-9e6e-5b65d63239f2.jsonl`

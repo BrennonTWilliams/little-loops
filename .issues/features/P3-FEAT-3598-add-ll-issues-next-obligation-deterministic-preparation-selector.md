@@ -16,6 +16,12 @@ relates_to:
 - ENH-3602
 blocked_by:
 - ENH-3602
+confidence_score: 60
+outcome_confidence: 71
+score_complexity: 10
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 # FEAT-3598: Add ll-issues next-obligation deterministic preparation selector
@@ -236,8 +242,20 @@ Decomposed from ENH-3577: Consolidate autodev issue preparation into a single co
 
 **Note** (added by `/ll:audit-issue-conflicts`, applied 2026-09-25): The `PROOF` obligation delegates to `little_loops.learning_tests.assess_proof`. ENH-3602 is now a `blocked_by` edge, so no follow-up swap is needed.
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-25_
+
+**Readiness Score**: 60/100 → STOP — ADDRESS GAPS
+**Outcome Confidence**: 71/100 → MODERATE
+
+### Gaps to Address
+- blocked_by ENH-3602 (open) — `assess_proof` does not exist yet, so the PROOF obligation cannot be implemented until it lands. Wait for ENH-3602 (or descope PROOF from the first cut).
+- Advisory claim gap (`stale_cli_flag`): `ll-issues next-obligation` does not exist — forward-looking reference to this issue's own deliverable; no action beyond implementing it.
+- Expected Behavior says `GATE` folds into `PROOF`, but Codebase Research found `check-gate` is not invoked by `refine-to-ready-issue.yaml` today, so the fold adds a check outside the parity claim. Resolve the directive/research tension before implementing.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-25T21:32:34 - `672e0da1-840e-4b60-a432-7b20e9ebbd01.jsonl`
 - `/ll:wire-issue` - 2026-09-25T20:46:48 - `2b4a714f-91fd-41aa-b2ac-63b11e2476ce.jsonl`
 - `/ll:refine-issue` - 2026-09-25T19:42:22 - `2f63920a-850e-4ac5-bf34-e7b8eb47e2e0.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-09-25T19:09:20 - `dcfdf31c-be65-47ce-9e6e-5b65d63239f2.jsonl`

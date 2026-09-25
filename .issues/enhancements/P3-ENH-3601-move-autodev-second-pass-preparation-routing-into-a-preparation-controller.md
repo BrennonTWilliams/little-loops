@@ -20,6 +20,12 @@ relates_to:
 - ENH-3590
 - ENH-3577
 parent: EPIC-3565
+confidence_score: 65
+outcome_confidence: 61
+score_complexity: 0
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 # ENH-3601: Move autodev second-pass preparation routing into a preparation controller
@@ -275,8 +281,23 @@ Decomposed from ENH-3577: Consolidate autodev issue preparation into a single co
 
 **Open** | Created: 2026-09-25 | Priority: P3
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-25_
+
+**Readiness Score**: 65/100 → STOP — ADDRESS GAPS
+**Outcome Confidence**: 61/100 → MODERATE
+
+### Gaps to Address
+- blocked_by ENH-3597, FEAT-3598, ENH-3599, ENH-3602 (all open) — the wrapper's run-record, selector, and spike/decision migration prerequisites; the ~45-state scope estimate only holds after ENH-3599 lands.
+- Advisory claim gaps (`stale_cli_flag`): `ll-issues next-obligation` and `ll-loop next` do not resolve — forward-looking references to sibling deliverables; re-check against their final CLI shapes before implementation.
+- Run `/ll:issue-size-review` before implementation (the issue's own Scope Boundaries recommend a D1/D2 split).
+
+### Outcome Risk Factors
+- deep per-site complexity — moves ~45 states into a new wrapper loop, collapses five rescoring triplets, and restructures rate-limit handling; `max_steps` tuning, `context_passthrough` run_dir sharing, and BUG-3588 freshness rules must all survive (mitigation: the enumerated structural suites + the new `prepare-issue` rate-limit exhaustion test).
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-25T21:32:35 - `672e0da1-840e-4b60-a432-7b20e9ebbd01.jsonl`
 - `/ll:wire-issue` - 2026-09-25T20:46:48 - `2b4a714f-91fd-41aa-b2ac-63b11e2476ce.jsonl`
 - `/ll:refine-issue` - 2026-09-25T19:42:32 - `2f63920a-850e-4ac5-bf34-e7b8eb47e2e0.jsonl`
 - `/ll:decide-issue` - 2026-09-25T19:03:07 - `26d04b78-61d2-44f6-aa98-56c6d251288d.jsonl`

@@ -12,6 +12,12 @@ relates_to:
 - EPIC-3565
 blocked_by:
 - ENH-3601
+confidence_score: 65
+outcome_confidence: 71
+score_complexity: 18
+score_test_coverage: 18
+score_ambiguity: 10
+score_change_surface: 25
 ---
 
 # ENH-3590: Add advise second-model consult step to autodev
@@ -198,8 +204,20 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 **Open** | Created: 2026-09-25 | Priority: P3
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-25_
+
+**Readiness Score**: 65/100 → STOP — ADDRESS GAPS
+**Outcome Confidence**: 71/100 → MODERATE
+
+### Gaps to Address
+- blocked_by ENH-3601 (open) — `prepare-issue.yaml` does not exist yet; the advise state anchors to states that live there after ENH-3601.
+- Advisory claim gap (`stale_cli_flag`): `ll-loop next` does not resolve as written; re-check the subcommand name before citing it in directives.
+- Three Open Questions unresolved (decision points, advise-vs-go-no-go override, cost budget) plus the verdict-mapping threshold — resolve via `/ll:decide-issue` before implementation.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-25T21:32:37 - `672e0da1-840e-4b60-a432-7b20e9ebbd01.jsonl`
 - `/ll:wire-issue` - 2026-09-25T20:49:53 - `4a475966-a47c-4657-a3e4-16e6706f4c4d.jsonl`
 - `/ll:refine-issue` - 2026-09-25T19:53:37 - `52506a27-e6a0-49d9-99b0-9b89990953d8.jsonl`
 - `/ll:decide-issue` - 2026-09-25T19:38:31 - `5a268ea5-1e20-43b6-ab65-c60ca9422822.jsonl`

@@ -12,6 +12,12 @@ decision_needed: false
 blocks:
 - ENH-3577
 - ENH-3600
+confidence_score: 95
+outcome_confidence: 63
+score_complexity: 10
+score_test_coverage: 25
+score_ambiguity: 10
+score_change_surface: 18
 ---
 
 # FEAT-3573: Autodev code formatting and quality evidence gate before closure credit
@@ -240,8 +246,19 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 **Open** | Created: 2026-09-24 | Priority: P3
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-25_
+
+**Readiness Score**: 95/100 → PROCEED
+**Outcome Confidence**: 63/100 → MODERATE
+
+### Outcome Risk Factors
+- decision gap — recorded Option B (autodev gate) is not fully applied: Acceptance Criteria still specifies `manage-issue` (rejected Option A identifier). Apply the decision to the AC before implementation so the gate owner is unambiguous (clears via `/ll:decide-issue` or a directive edit).
+- broad enumeration across ~12 sites (oracle + autodev closure states + `skills/manage-issue/SKILL.md` + 3 host mirrors + ~6 docs + frozen test sets); the 9-state oracle freeze, MR11 allowlist, and interpolation baseline all need same-commit updates.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-25T21:32:36 - `672e0da1-840e-4b60-a432-7b20e9ebbd01.jsonl`
 - `/ll:wire-issue` - 2026-09-25T20:49:53 - `4a475966-a47c-4657-a3e4-16e6706f4c4d.jsonl`
 - `/ll:refine-issue` - 2026-09-25T19:53:36 - `52506a27-e6a0-49d9-99b0-9b89990953d8.jsonl`
 - `/ll:decide-issue` - 2026-09-25T19:39:02 - `f72e39ee-7f4f-46b8-b438-d29d8550cab9.jsonl`

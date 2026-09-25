@@ -17,6 +17,12 @@ blocks:
 parent: EPIC-3565
 relates_to:
 - ENH-3577
+confidence_score: 70
+outcome_confidence: 53
+score_complexity: 0
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 10
 ---
 
 # ENH-3599: Move spike and decision repair routing from autodev into refine-to-ready-issue
@@ -223,8 +229,22 @@ Decomposed from ENH-3577: Consolidate autodev issue preparation into a single co
 
 **Note** (added by `/ll:audit-issue-conflicts`, applied 2026-09-25): This issue lands before ENH-3601, so autodev reads the child's record (`writer: refine-to-ready-issue`). After ENH-3601, autodev re-enters the `prepare-issue` wrapper and reads the wrapper's record (`writer: prepare-issue`, `run-records/prepare-issue/<ID>.json`; see ENH-3597). FEAT-3573 was removed from `blocked_by`. It changes closure accounting only and blocks ENH-3600.
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-25_
+
+**Readiness Score**: 70/100 → STOP — ADDRESS GAPS
+**Outcome Confidence**: 53/100 → LOW
+
+### Gaps to Address
+- blocked_by ENH-3597, FEAT-3598, BUG-3603 (all open) — `RunRecord`/`read_run_record` and the selector do not exist yet, and the fail-closed proof gate this issue routes through is BUG-3603's deliverable. Land the chain first.
+
+### Outcome Risk Factors
+- deep per-site complexity — removes ~30 states and rewires routing into `implement_current` in the most-used loop (`autodev.yaml`); marker lifecycles and `spike-runs-<ID>` budget carry-over must survive the rewrite (mitigation: the named behavioral suites + BUG-3603's structural invariant test).
+- broad enumeration across ~20 files (2 loop YAMLs + ~10 test files + ~8 docs/skills mirrors); scope state-name greps to `autodev.yaml` so `spike-gate.yaml` / `rn-remediate.yaml` same-named states survive.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-25T21:32:35 - `672e0da1-840e-4b60-a432-7b20e9ebbd01.jsonl`
 - `/ll:wire-issue` - 2026-09-25T20:46:48 - `2b4a714f-91fd-41aa-b2ac-63b11e2476ce.jsonl`
 - `/ll:refine-issue` - 2026-09-25T19:42:47 - `2f63920a-850e-4ac5-bf34-e7b8eb47e2e0.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-09-25T19:09:18 - `dcfdf31c-be65-47ce-9e6e-5b65d63239f2.jsonl`
