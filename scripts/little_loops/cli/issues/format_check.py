@@ -484,6 +484,11 @@ def _print_gaps(gaps: FormatGaps) -> None:
             f"  malformed_dep_id: {entry} (DependencyGraph matches IDs by exact "
             "string, so this edge is silently dropped from the graph)"
         )
+    for entry in gaps.malformed_gate:
+        print(
+            f"  malformed_gate: {entry} (autodev treats a malformed gate as an "
+            "unsatisfied manual gate and parks the issue)"
+        )
     for entry in gaps.stale_symbol_ref:
         print(f"  stale_symbol_ref: {entry}")
     for entry in gaps.mislocated_symbol_ref:

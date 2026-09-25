@@ -2231,7 +2231,7 @@ ll-issues find-similar --batch --against open
 ---
 
 **`check-*` family exit-code convention (BUG-3294):** every probe below
-(`check-flag`, `check-decidable`, `check-design`, `check-acceptance-criteria`,
+(`check-flag`, `check-decidable`, `check-design`, `check-gate`, `check-acceptance-criteria`,
 `check-verify-verdict`, `check-open-questions`, `check-readiness`) shares one
 contract — **0** = yes / gate passes, **1** = no / genuine negative verdict,
 **2** = cannot evaluate (the issue ID could not be resolved, or — for
@@ -2303,6 +2303,19 @@ ll-issues check-decidable ENH-277    # Exit 0 — 2+ options found
 **FSM loop use**: The `check_decision_decidable` gate lives in the shared `oracles/resolve-decision.yaml` sub-loop (extracted from `autodev.yaml` by BUG-3065/ENH-3075; adopted by `rn-remediate.yaml` via ENH-3090) and calls this as a shell action with `evaluate: {type: exit_code}`, routing to a bounded `/ll:refine-issue --auto` deposit-options retry on exit 1 rather than letting `run_decide` run with nothing to score.
 
 ---
+
+#### `ll-issues check-gate`
+
+Print the policy-gate verdict for an issue (ENH-3575). Reads the structured `gate` frontmatter field first; falls back to the legacy prose gate phrases only when the field is absent.
+
+```bash
+ll-issues check-gate ENH-3575          # prints one verdict token
+ll-issues check-gate ENH-3575 --json   # {"verdict": ..., "gates": [...]}
+```
+
+Verdicts: `structured_open` (an unsatisfied `external`/`manual` gate), `structured_proof` (an unsatisfied `proof` gate with no proven spike), `structured_satisfied`, `prose` (legacy phrase match), `none`. Exit 0 when a gate is in force (`structured_open`, `structured_proof`, `prose`), 1 when not, 2 when the issue is not found (BUG-3294).
+
+**FSM loop use**: `autodev.yaml`'s `check_gate_at_dequeue`, `recheck_after_size_review` and `check_proof_gate_before_implement` states read the verdict token from stdout.
 
 #### `ll-issues check-design`
 

@@ -253,7 +253,10 @@ class TestAutodevSmoke:
         # check_scores_present_* presence gates and mark_scores_absent_infra
         # (+11). The count was already stale at 87 before this fix (later
         # issues added states without updating it); it is now 98.
-        assert len(topo["states"]) == 98
+        # Count re-synced to 105 (BUG-3593 spike states landed unrecorded);
+        # ENH-3575 added check_proof_gate_before_implement and
+        # check_proof_defer_or_implement (+2).
+        assert len(topo["states"]) == 105
 
         # Every edge endpoint is a known state id, or the target of a
         # declared sub-loop (`loop:`) cross-graph edge. `from` may be null

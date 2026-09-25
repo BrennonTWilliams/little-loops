@@ -347,6 +347,8 @@ class TestFormatCheckJsonOutput:
             "soft_dep_hard_edge": [],
             # BUG-3059: dependency entry that isn't a well-formed TYPE-NNN ID.
             "malformed_dep_id": [],
+            # ENH-3575: present `gate` field that isn't a valid mapping/kind.
+            "malformed_gate": [],
             # FEAT-3048: backticked symbol claim attributed to a cited file
             # that doesn't resolve as a def-site/module constant in it.
             "stale_symbol_ref": [],

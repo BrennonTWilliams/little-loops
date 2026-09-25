@@ -75,7 +75,7 @@ class TestCheckFamilyNotFoundExitsTwo:
             f"got {result.returncode}: stdout={result.stdout!r} stderr={result.stderr!r}"
         )
 
-    def test_family_has_seven_members(self) -> None:
+    def test_family_has_eight_members(self) -> None:
         """Guards against silent family shrinkage (a probe renamed/removed
         without updating this test's assumptions)."""
-        assert len(_family_subcommands()) == 7, _family_subcommands()
+        assert len(_family_subcommands()) == 8, _family_subcommands()

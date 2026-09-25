@@ -422,14 +422,10 @@ states:
     # spending refine_current's format -> refine -> wire -> confidence-check
     # cycle on an issue that cycle cannot unblock (measured cost: $4.48 /
     # 38m37s / 36 iterations on one FEAT-3145 run, per this issue's Summary).
-    # Detection signals, in preference order per the issue's Proposed
-    # Solution: (1) structural frontmatter gate field -- does not exist
-    # anywhere in the schema yet, out of scope here; (2) prose gate-phrase
-    # matching, reusing GATE_MARKER's regex verbatim from
-    # recheck_after_size_review below (BUG-3147 kept it inline rather than
-    # extracted, and named this issue's landing as the trigger point for
-    # extraction -- not a prerequisite already done, so it stays duplicated
-    # here); (3) a placeholder Acceptance Criteria section (no checkbox
+    # Detection signals, in preference order: (1) structural frontmatter `gate`
+    # field and (2) prose gate-phrase matching, both resolved by
+    # `ll-issues check-gate` (ENH-3575 extracted the regex BUG-3147/ENH-3148
+    # had duplicated inline); (3) a placeholder Acceptance Criteria section (no checkbox
     # items, and its prose reads as a deferral note) is independently
     # disqualifying since the gate cannot be verified either way.
     #
@@ -442,10 +438,15 @@ states:
       ISSUE_FILE=$(ll-issues path "$ID" 2>/dev/null || echo "")
       GATED="false"
       if [ -n "$ISSUE_FILE" ] && [ -f "$ISSUE_FILE" ]; then
-        if grep -qiE 'do not start otherwise|measurement \(gate\)|pre-implementation measurement|⚠ Gated|do not implement before|evidence gate|gate opens|is explicitly gated' "$ISSUE_FILE" 2>/dev/null; then
-          GATED="true"
-        fi
-        if [ "$GATED" = "false" ]; then
+        # ENH-3575: structured `gate` field first, prose fallback inside the helper.
+        # Empty output (helper error / exit 2) is fail-open: treated as no verdict.
+        VERDICT=$(ll-issues check-gate "$ID" 2>/dev/null || true)
+        case "$VERDICT" in
+          structured_open|prose) GATED="true" ;;
+        esac
+        # Placeholder-AC runs only when the helper reports no gate signal at all
+        # (`none`); a present `gate` field replaces both prose signals.
+        if [ "$GATED" = "false" ] && [ "$VERDICT" = "none" ]; then
           PLACEHOLDER=$(ISSUE_FILE="$ISSUE_FILE" python3 << 'PYEOF'
       import os, re, sys
       from pathlib import Path
@@ -681,10 +682,66 @@ states:
     # sub-loop, which can break the issue down before scoring — absence is
     # legitimate here, so keep the pre-existing exit-1 path (→ detect_children).
     fragment: harness_exit
-    on_yes: implement_current
+    on_yes: check_proof_gate_before_implement
     on_no: triage_outcome_failure
     on_cannot_judge: triage_outcome_failure
     on_error: detect_children
+
+  check_proof_gate_before_implement:
+    # ENH-3575: an unsatisfied `proof` gate must never reach implement_current.
+    # check_spike_needed is only reachable through triage_outcome_failure, so a
+    # high-scoring issue would otherwise skip it. Same spike budget as
+    # check_spike_needed (`spike-runs-<ID>`, cap 2, incremented before run_spike);
+    # route_spike_verdict's PROVEN chain returns here with spike_proven set.
+    # Budget spent with the proof still open defers as blocked_by_gate.
+    # Fail-open (implement_current) on helper error, matching the dequeue gate.
+    action: |
+      ID=${captured.input.output:shell}
+      VERDICT=$(ll-issues check-gate "$ID" 2>/dev/null || true)
+      case "$VERDICT" in
+        structured_proof)
+          SPIKE_RUNS=${context.run_dir}/spike-runs-$ID
+          SPIKE_N=$(cat "$SPIKE_RUNS" 2>/dev/null || echo 0)
+          ATTEMPTED=$(ll-issues check-flag "$ID" spike_attempted && echo true || echo false)
+          if [ "$ATTEMPTED" != "true" ] && [ "$SPIKE_N" -lt 2 ] 2>/dev/null; then
+            CONF=$(ll-issues show "$ID" --json 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin).get('confidence') or '')" 2>/dev/null || echo "")
+            printf '%s' "$CONF" > ${context.run_dir}/autodev-pre-spike-readiness.txt
+            printf '%s' "$((SPIKE_N + 1))" > "$SPIKE_RUNS"
+            echo "PROOF_SPIKE"
+          else
+            echo "PROOF_DEFER"
+          fi
+          ;;
+        structured_open)
+          echo "PROOF_DEFER"
+          ;;
+        *)
+          echo "PROOF_CLEAR"
+          ;;
+      esac
+    action_type: shell
+    evaluate:
+      type: output_contains
+      pattern: "PROOF_SPIKE"
+    on_yes: run_spike
+    on_no: check_proof_defer_or_implement
+    on_error: implement_current
+
+  check_proof_defer_or_implement:
+    # ENH-3575: split of check_proof_gate_before_implement's non-spike outcomes.
+    action: |
+      ID=${captured.input.output:shell}
+      case "$(ll-issues check-gate "$ID" 2>/dev/null || true)" in
+        structured_open|structured_proof) echo "PROOF_DEFER" ;;
+        *) echo "PROOF_CLEAR" ;;
+      esac
+    action_type: shell
+    evaluate:
+      type: output_contains
+      pattern: "PROOF_DEFER"
+    on_yes: defer_gated
+    on_no: implement_current
+    on_error: implement_current
 
   decide_current:
     # Check if the issue requires a decision before implementation. Reads
@@ -700,8 +757,8 @@ states:
       ll-issues check-flag ${captured.input.output} decision_needed  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
     fragment: shell_exit
     on_yes: resolve_decision
-    on_no: implement_current
-    on_error: implement_current
+    on_no: check_proof_gate_before_implement
+    on_error: check_proof_gate_before_implement
 
   resolve_decision:
     # ENH-3075: shared decision-cluster sub-loop (BUG-3065's
@@ -869,7 +926,7 @@ states:
     # failing scores no longer reaches snap_and_size_review (ENH-1415) — it
     # is deferred via record_decision_unresolved instead. No caller-side
     # score branch was added to preserve that escape (decided, ENH-3075).
-    on_yes: implement_current
+    on_yes: check_proof_gate_before_implement
     on_no: check_rearmed_spike_after_decide
     on_cannot_judge: mark_scores_absent_infra
     on_error: snap_and_size_review
@@ -2758,8 +2815,12 @@ states:
         if [ ! -f "$FIRED" ]; then
           ISSUE_FILE=$(ll-issues path "$ID" 2>/dev/null || echo "")
           GATE_MARKER="false"
-          if [ -n "$ISSUE_FILE" ] && grep -qiE 'do not start otherwise|measurement \(gate\)|pre-implementation measurement|⚠ Gated|do not implement before|evidence gate|gate opens|is explicitly gated' "$ISSUE_FILE" 2>/dev/null; then
-            GATE_MARKER="true"
+          # ENH-3575: shared helper; a spike can satisfy a proof gate or a legacy
+          # prose gate, never an external/manual prerequisite.
+          if [ -n "$ISSUE_FILE" ]; then
+            case "$(ll-issues check-gate "$ID" 2>/dev/null || true)" in
+              structured_proof|prose) GATE_MARKER="true" ;;
+            esac
           fi
           CONTRA_ONLY="false"
           if [ -f ${context.run_dir}/autodev-contradiction-reconcile-$ID ]; then

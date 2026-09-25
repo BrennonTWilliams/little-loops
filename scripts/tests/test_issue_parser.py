@@ -4871,14 +4871,14 @@ class TestPriorityRegexCompletenessAllowlist:
             177: "resolve_issue_path's P-TYPE-NNN user-input parsing; priority captured from "
             "input, not resolved planning priority",
             351: "docstring for is_normalized",
-            1132: "BUG-3286 step 6: priority_drift gap detection compares filename vs. "
+            1155: "BUG-3286 step 6: priority_drift gap detection compares filename vs. "
             "frontmatter directly by design — drift IS the comparison, not a resolution",
-            2049: "_DEP_ID_RE (BUG-3059): dependency-ID shape validation; optional prefix "
+            2072: "_DEP_ID_RE (BUG-3059): dependency-ID shape validation; optional prefix "
             "group discarded",
-            4301: "comment describing the P[0-5]-NNN- filename shape",
-            4305: "_parse_type_and_id's directory-fallback number extraction; priority digit "
+            4324: "comment describing the P[0-5]-NNN- filename shape",
+            4328: "_parse_type_and_id's directory-fallback number extraction; priority digit "
             "skipped over, not read as a value",
-            4326: "_generate_id_from_filename strips a leading priority token before "
+            4349: "_generate_id_from_filename strips a leading priority token before "
             "digit-scanning for ID generation",
         },
         "issues/prose_deps.py": {

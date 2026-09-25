@@ -543,6 +543,7 @@ class FormatGaps:
     missing_behavior_parity: list[str] = field(default_factory=list)
     soft_dep_hard_edge: list[str] = field(default_factory=list)
     malformed_dep_id: list[str] = field(default_factory=list)
+    malformed_gate: list[str] = field(default_factory=list)
     stale_symbol_ref: list[str] = field(default_factory=list)
     mislocated_symbol_ref: list[str] = field(default_factory=list)
     stale_cli_flag: list[str] = field(default_factory=list)
@@ -585,6 +586,7 @@ class FormatGaps:
             or self.missing_behavior_parity
             or self.soft_dep_hard_edge
             or self.malformed_dep_id
+            or self.malformed_gate
             or self.stale_symbol_ref
             or self.mislocated_symbol_ref
             or self.stale_cli_flag
@@ -631,6 +633,7 @@ class FormatGaps:
             "missing_behavior_parity": self.missing_behavior_parity,
             "soft_dep_hard_edge": self.soft_dep_hard_edge,
             "malformed_dep_id": self.malformed_dep_id,
+            "malformed_gate": self.malformed_gate,
             "stale_symbol_ref": self.stale_symbol_ref,
             "mislocated_symbol_ref": self.mislocated_symbol_ref,
             "stale_cli_flag": self.stale_cli_flag,
@@ -872,6 +875,8 @@ def check_format_gaps(
             cosmetic: ``DependencyGraph`` matches IDs by exact string, so a
             malformed entry silently drops the edge from the graph. The
             optional ``P<n>-`` filename prefix is accepted and normalized.
+        malformed_gate: a present ``gate`` field (ENH-3575) that is not a mapping or
+            list of mappings, or whose ``kind`` is not external/manual/proof.
         stale_symbol_ref: a backticked symbol claim (FEAT-3048,
             :func:`little_loops.issues.symbol_claims.extract_symbol_claims`)
             attributed to a cited file that itself resolves via *ref_index*,
@@ -1125,6 +1130,24 @@ def check_format_gaps(
         for dep_entry in dep_entries:
             if dep_entry and not _DEP_ID_RE.fullmatch(dep_entry):
                 gaps.malformed_dep_id.append(f"{dep_key}: {dep_entry} (expected TYPE-NNN)")
+
+    # ENH-3575: shape-check the structured policy gate field. The reader fails
+    # toward parking on malformed data, so surface it here rather than silently.
+    if "gate" in fm:
+        gate_value = fm["gate"]
+        gate_items = gate_value if isinstance(gate_value, list) else [gate_value]
+        if gate_value not in (None, "", "[]"):
+            for gate_item in gate_items:
+                if not isinstance(gate_item, dict):
+                    gaps.malformed_gate.append(f"gate: {gate_item!r} (expected mapping)")
+                elif str(gate_item.get("kind") or "").strip().lower() not in (
+                    "external",
+                    "manual",
+                    "proof",
+                ):
+                    gaps.malformed_gate.append(
+                        f"gate.kind: {gate_item.get('kind')!r} (expected external|manual|proof)"
+                    )
 
     # BUG-3286: filename prefix vs. frontmatter priority drift. Fires only when
     # both sources are present and differ — an absent frontmatter priority is

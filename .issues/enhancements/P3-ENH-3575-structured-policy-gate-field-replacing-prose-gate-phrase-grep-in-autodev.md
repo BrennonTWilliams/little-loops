@@ -3,10 +3,11 @@ id: ENH-3575
 type: ENH
 title: Structured policy gate field replacing prose gate-phrase grep in autodev
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-24'
 captured_at: '2026-09-24T19:33:14Z'
+completed_at: '2026-09-25T17:09:02Z'
 parent: EPIC-3565
 blocks:
 - ENH-3577
@@ -140,6 +141,14 @@ it. A refuted or inconclusive spike with the budget spent defers as `blocked_by_
 proof obligation is still open, and `low_readiness` would misstate why.
 `/ll:explore-api` routing is out of scope (see Scope Boundaries).
 
+### Deviations
+
+_2026-09-25 (implementation):_
+- `resolve_gate_verdict` returns `(GateVerdict, list[GateSpec])` rather than a bare `GateVerdict`, so `--json` can emit the parsed gates without re-parsing.
+- The guard is two states, `check_proof_gate_before_implement` (spike vs. not) and `check_proof_defer_or_implement` (defer vs. implement), because a single `output_contains` state cannot route three ways.
+- A third edge into `implement_current` also retargets to the guard: `decide_current.on_no`/`on_error`, reached after `recheck_scores` passes. Without it a passing rescore bypassed the proof guard.
+- `gate` shape validation surfaces as a new `FormatGaps.malformed_gate` field (also rendered by `ll-issues format-check`).
+
 ## Integration Map
 
 ### Files to Modify
@@ -270,6 +279,10 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
+## Resolution
+
+Implemented `ll-issues check-gate` (`cli/issues/check_gate.py`) as the single home of the prose regex plus the structured `gate` field (list-of-mappings, lone mapping normalized). `check_gate_at_dequeue` and `recheck_after_size_review` now call it; new `check_proof_gate_before_implement` guard routes unsatisfied `proof` gates to `run_spike`. Tests: `test_ll_issues_check_gate.py` plus re-pointed literal/routing tests. Pre-existing unrelated failures on main (spike one-shot, assert_decision_cleared, run_spike, recheck_after_decide.on_no, interp-sweep completeness, repair_predecessors) were left untouched.
+
 ## Status
 
 **Open** | Created: 2026-09-24 | Priority: P3
@@ -295,6 +308,8 @@ _Added by `/ll:confidence-check` on 2026-09-25_
 - Moderate per-site complexity: two autodev.yaml states plus a new `ll-issues` subcommand and a fallback path that must preserve current prose-grep behavior.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-25T17:09:02 - `ffcc073e-0855-4ab3-9df3-f410a33a15b4.jsonl`
+- `/ll:ready-issue` - 2026-09-25T16:53:29 - `84fc7b34-7006-48d8-abc4-91484ec736bc.jsonl`
 - `/ll:confidence-check` - 2026-09-25T16:30:23 - `03923b45-5716-4a22-9dec-0c57f46fa8b6.jsonl`
 - `/ll:wire-issue` - 2026-09-25T16:16:14 - `53cc9ee9-2fce-4262-8fb3-74a571d4aabf.jsonl`
 - `/ll:decide-issue` - 2026-09-25T15:50:09 - `15f88de1-71aa-4840-8254-7f346d788eff.jsonl`

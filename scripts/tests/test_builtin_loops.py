@@ -8363,7 +8363,8 @@ class TestAutodevLoop:
         """On threshold pass, proceed directly to implementation (decision_needed already handled
         by check_decision_after_refine before scores are evaluated)."""
         state = data["states"].get("check_passed", {})
-        assert state.get("on_yes") == "implement_current"
+        # ENH-3575: routes through the proof-gate guard on the way to implementation.
+        assert state.get("on_yes") == "check_proof_gate_before_implement"
 
     def test_check_passed_on_no_routes_to_triage_outcome_failure(self, data: dict) -> None:
         """On threshold fail, triage outcome before routing to size-review or decide."""
@@ -8760,14 +8761,9 @@ class TestAutodevLoop:
         remedy-arming block, and its marker literals must be present."""
         action = data["states"].get("recheck_after_size_review", {}).get("action", "")
         assert "GATE_MARKER" in action
-        assert "do not start otherwise" in action
-        assert "measurement \\(gate\\)" in action
-        assert "pre-implementation measurement" in action
-        assert "⚠ Gated" in action
-        assert "do not implement before" in action
-        assert "evidence gate" in action
-        assert "gate opens" in action
-        assert "is explicitly gated" in action
+        # ENH-3575: the phrase literals live once, in cli/issues/check_gate.py
+        # (asserted in test_autodev_loop.py); the state just calls the helper.
+        assert "ll-issues check-gate" in action
         assert action.index("GATE_MARKER") < action.index("amb = int(d.get('score_ambiguity')"), (
             "the measurement-gate check must run before the ambiguity-subscore fallback"
         )
@@ -9216,16 +9212,17 @@ class TestAutodevLoop:
     def test_decide_current_on_no_routes_to_implement_current(self, data: dict) -> None:
         """decide_current.on_no (no decision needed) must route to implement_current."""
         state = data["states"].get("decide_current", {})
-        assert state.get("on_no") == "implement_current", (
-            f"decide_current.on_no should be 'implement_current', got {state.get('on_no')!r}"
+        # ENH-3575: via the proof-gate guard, which forwards to implement_current.
+        assert state.get("on_no") == "check_proof_gate_before_implement", (
+            f"decide_current.on_no should be the proof-gate guard, got {state.get('on_no')!r}"
         )
 
     def test_decide_current_on_error_routes_to_implement_current(self, data: dict) -> None:
         """BUG-3294: an unevaluable decision_needed flag (e.g. unresolvable issue ID)
         degrades open the same as on_no, rather than aborting the run."""
         state = data["states"].get("decide_current", {})
-        assert state.get("on_error") == "implement_current", (
-            f"decide_current.on_error should be 'implement_current', got {state.get('on_error')!r}"
+        assert state.get("on_error") == "check_proof_gate_before_implement", (
+            f"decide_current.on_error should be the proof-gate guard, got {state.get('on_error')!r}"
         )
 
     def test_resolve_decision_call_states_declare_on_error_matching_on_failure(
@@ -9414,8 +9411,9 @@ class TestAutodevLoop:
         implement_current (the target assert_decision_cleared.on_no/.on_error
         already used), leaving the score-passing path unchanged end to end."""
         state = data["states"].get("recheck_after_decide", {})
-        assert state.get("on_yes") == "implement_current", (
-            f"recheck_after_decide.on_yes should be 'implement_current', got "
+        # ENH-3575: implement_current is now reached via the proof-gate guard.
+        assert state.get("on_yes") == "check_proof_gate_before_implement", (
+            f"recheck_after_decide.on_yes should be the proof-gate guard, got "
             f"{state.get('on_yes')!r}"
         )
         assert "assert_decision_cleared" not in data["states"], (

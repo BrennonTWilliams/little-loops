@@ -28,6 +28,7 @@ def main_issues() -> int:
         from little_loops.cli.issues.check_decidable import cmd_check_decidable
         from little_loops.cli.issues.check_design import cmd_check_design
         from little_loops.cli.issues.check_flag import cmd_check_flag
+        from little_loops.cli.issues.check_gate import add_check_gate_parser, cmd_check_gate
         from little_loops.cli.issues.check_open_questions import (
             add_check_open_questions_parser,
             cmd_check_open_questions,
@@ -153,6 +154,7 @@ Sub-commands:
   check-flag       Exit 0 if a boolean frontmatter field equals 'true'
   check-decidable  Exit 0 if an issue has >=1 enumerable option to decide between
   check-design     Exit 0 if the Program Design gate passes for an issue
+  check-gate       Print the policy-gate verdict; exit 0 if a gate is in force
   locate-options   Print count/pattern/heading/spans of enumerable options in an issue
   spike-verdict    Classify a spike PROVEN/REFUTED/INCONCLUSIVE from role-tagged JUnit XML
   set-scores       Write confidence and dimension scores to issue frontmatter
@@ -776,6 +778,7 @@ Examples:
 
         add_spike_verdict_parser(subs)
         add_check_open_questions_parser(subs)
+        add_check_gate_parser(subs)
         add_check_unresolved_decisions_parser(subs)
         add_check_acceptance_criteria_parser(subs)
         add_check_verify_verdict_parser(subs)
@@ -1083,6 +1086,8 @@ Examples:
             return cmd_locate_options(config, args)
         if args.command == "spike-verdict":
             return cmd_spike_verdict(config, args)
+        if args.command == "check-gate":
+            return cmd_check_gate(config, args)
         if args.command == "check-open-questions":
             return cmd_check_open_questions(config, args)
         if args.command == "check-unresolved-decisions":

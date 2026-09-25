@@ -694,6 +694,11 @@ class TestCheckGateAtDequeueMarkerLiterals:
 
     def test_marker_literals_present_in_action(self) -> None:
         action = _load_autodev_yaml()["states"]["check_gate_at_dequeue"]["action"]
+        # ENH-3575: the phrase regex lives once, in the shared helper.
+        assert "ll-issues check-gate" in action
+        assert "grep -qiE" not in action
+        from little_loops.cli.issues.check_gate import _PROSE_GATE_RE
+
         for literal in (
             "do not start otherwise",
             "measurement \\(gate\\)",
@@ -704,7 +709,7 @@ class TestCheckGateAtDequeueMarkerLiterals:
             "gate opens",
             "is explicitly gated",
         ):
-            assert literal in action
+            assert literal in _PROSE_GATE_RE.pattern
 
 
 class TestRecheckAfterSizeReviewMeasurementGateBranch:
@@ -714,6 +719,11 @@ class TestRecheckAfterSizeReviewMeasurementGateBranch:
 
     def test_marker_literals_present_in_action(self) -> None:
         action = _load_autodev_yaml()["states"]["recheck_after_size_review"]["action"]
+        # ENH-3575: the phrase regex lives once, in the shared helper.
+        assert "ll-issues check-gate" in action
+        assert "grep -qiE" not in action
+        from little_loops.cli.issues.check_gate import _PROSE_GATE_RE
+
         for literal in (
             "do not start otherwise",
             "measurement \\(gate\\)",
@@ -724,7 +734,7 @@ class TestRecheckAfterSizeReviewMeasurementGateBranch:
             "gate opens",
             "is explicitly gated",
         ):
-            assert literal in action
+            assert literal in _PROSE_GATE_RE.pattern
 
     def test_gate_check_precedes_ambiguity_fallback(self) -> None:
         action = _load_autodev_yaml()["states"]["recheck_after_size_review"]["action"]

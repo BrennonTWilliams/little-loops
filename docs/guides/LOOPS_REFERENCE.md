@@ -1031,7 +1031,7 @@ init → dequeue_next → [queue empty?]
          ├─ YES → done
          └─ NO  → check_status_at_dequeue → check_decision_at_dequeue → check_blockers_at_dequeue → [unmet blocked_by deps?]  (ENH-2909)
                     ├─ YES → skip_blocked (ledgers "ID  blocked_by_unmet" to autodev-skipped.txt, clears autodev-inflight) → dequeue_next
-                    └─ NO  → check_gate_at_dequeue → [explicitly gated (prose/placeholder ACs)?]  (ENH-3148)
+                    └─ NO  → check_gate_at_dequeue → [explicitly gated (`gate` field, else prose/placeholder ACs)?]  (ENH-3148, ENH-3575)
                                ├─ YES → defer_gated (defers "blocked_by_gate", clears autodev-inflight) → dequeue_next
                                └─ NO  → refine_current (sub-loop: refine-to-ready-issue)
                     ├─ on_success → copy_broke_down → check_passed → [thresholds met?]
