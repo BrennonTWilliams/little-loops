@@ -4832,7 +4832,7 @@ class TestPriorityRegexCompletenessAllowlist:
             61: "docstring for _priority_prefix_re",
         },
         "cli/issues/refine_status.py": {
-            541: "normalized-filename convention check help text",
+            567: "normalized-filename convention check help text",
         },
         "cli/issues/search.py": {
             114: "--priority P1-P3 range argument parser, not a filename regex",

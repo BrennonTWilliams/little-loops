@@ -262,6 +262,16 @@ def _elide_columns(
     return pre, cmds, post
 
 
+_EPIC_DIAGNOSTIC = (
+    "Error: EPICs are not tracked by refine-status; use 'll-issues epic-progress <ID>' instead."
+)
+
+
+def _is_epic(issue: IssueInfo) -> bool:
+    """Return True when the issue's ID prefix is ``EPIC`` (same test as ``find_issues``)."""
+    return issue.issue_id.split("-", 1)[0] == "EPIC"
+
+
 def cmd_refine_status(config: BRConfig, args: argparse.Namespace) -> int:
     """Render a refinement depth table for all active issues.
 
@@ -281,7 +291,14 @@ def cmd_refine_status(config: BRConfig, args: argparse.Namespace) -> int:
     from little_loops.issue_parser import IssueParser, find_issues, is_formatted, is_normalized
 
     issue_id_filter = getattr(args, "issue_id", None)
+    use_json_array = getattr(args, "json", False)
+    fmt = getattr(args, "format", "table")
 
+    if getattr(args, "type", None) == "EPIC":
+        print(_EPIC_DIAGNOSTIC, file=sys.stderr)
+        return 1
+
+    had_active_issues = True
     if issue_id_filter:
         from little_loops.cli.issues.show import _resolve_issue_id
 
@@ -290,12 +307,24 @@ def cmd_refine_status(config: BRConfig, args: argparse.Namespace) -> int:
             print(f"Error: Issue '{issue_id_filter}' not found.", file=sys.stderr)
             return 1
         issues = [IssueParser(config).parse_file(path)]
+        if _is_epic(issues[0]):
+            print(_EPIC_DIAGNOSTIC, file=sys.stderr)
+            return 1
     else:
         type_prefixes = {args.type} if getattr(args, "type", None) else None
         issues = find_issues(config, type_prefixes=type_prefixes)
+        had_active_issues = bool(issues)
+        issues = [i for i in issues if not _is_epic(i)]
 
     if not issues:
-        print("No active issues found.")
+        if use_json_array:
+            print_json([])
+        elif fmt == "json":
+            pass
+        elif had_active_issues:
+            print("No refinable issues found (EPICs are excluded from refine-status).")
+        else:
+            print("No active issues found.")
         return 0
 
     # Derive dynamic column set: all distinct commands across all issues
@@ -322,9 +351,6 @@ def cmd_refine_status(config: BRConfig, args: argparse.Namespace) -> int:
 
     # Dynamic ID column width: size to the longest issue_id present, minimum 8
     id_width = max((len(issue.issue_id) for issue in sorted_issues), default=7) + 1
-
-    use_json_array = getattr(args, "json", False)
-    fmt = getattr(args, "format", "table")
 
     if use_json_array:
         records = [

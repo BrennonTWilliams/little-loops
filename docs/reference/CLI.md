@@ -1745,14 +1745,14 @@ Display an impact vs. effort matrix for active issues.
 
 #### `ll-issues refine-status` / `ll-issues rs`
 
-Show refinement depth table sorted by commands touched. Columns: ID, Pri, size, Title, source, norm, fmt, per-command session indicators (✓/—), Ready (confidence score), conf (outcome confidence), cmplx (complexity score 0–25), tcov (test coverage score 0–25), ambig (ambiguity score 0–25), chsrf (change surface score 0–25), total.
+Show refinement depth table sorted by commands touched. EPIC issues are excluded (they are containers, not refined per-issue); use `ll-issues epic-progress` for them. Columns: ID, Pri, size, Title, source, norm, fmt, per-command session indicators (✓/—), Ready (confidence score), conf (outcome confidence), cmplx (complexity score 0–25), tcov (test coverage score 0–25), ambig (ambiguity score 0–25), chsrf (change surface score 0–25), total.
 
 | Argument/Flag | Description |
 |---------------|-------------|
 | `ISSUE-ID` | (Optional) Filter to a single issue by ID (e.g. `FEAT-873`, `BUG-525`, or a bare number like `873`), resolved regardless of status (`open`, `deferred`, `done`, `cancelled`, etc). Ignores `--type` when set. Prints `Error: Issue '<id>' not found.` to stderr and exits 1 if the issue is not found. |
-| `--type` | Filter by type: `BUG`, `FEAT`, `ENH`, `EPIC` (ignored when `ISSUE-ID` is provided) |
+| `--type` | Filter by type: `BUG`, `FEAT`, `ENH` (ignored when `ISSUE-ID` is provided). `EPIC` is accepted but rejected: like `refine-status EPIC-NNN`, it prints an error to stderr and exits 1 |
 | `--format` | Output format: `table` (default), `json` (NDJSON) |
-| `--json` / `-j` | Output as JSON array; with `ISSUE-ID` outputs a single JSON object instead |
+| `--json` / `-j` | Output as JSON array (`[]` when nothing matches; `--format json` then emits no records); with `ISSUE-ID` outputs a single JSON object instead |
 | `--no-key` | Suppress the key/legend section at the bottom of output |
 | `--config` | Path to project root |
 

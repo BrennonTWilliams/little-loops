@@ -590,11 +590,14 @@ Examples:
         refine_s = subs.add_parser(
             "refine-status",
             aliases=["rs"],
-            help="Show refinement depth table sorted by commands touched",
+            help="Show refinement depth table sorted by commands touched (EPICs excluded)",
         )
         refine_s.set_defaults(command="refine-status")
         refine_s.add_argument(
-            "--type", "-T", choices=["BUG", "FEAT", "ENH", "EPIC"], help="Filter by issue type"
+            "--type",
+            "-T",
+            choices=["BUG", "FEAT", "ENH", "EPIC"],
+            help="Filter by issue type (EPIC is rejected with exit 1; use epic-progress)",
         )
         refine_s.add_argument(
             "--format",
@@ -614,7 +617,7 @@ Examples:
             "-j",
             action="store_true",
             default=False,
-            help="Output as JSON array. Matches ll-issues list --json interface. (--format json outputs NDJSON instead)",
+            help="Output as JSON array (`[]` when empty). Matches ll-issues list --json interface. (--format json outputs NDJSON instead)",
         )
         refine_s.add_argument(
             "issue_id",

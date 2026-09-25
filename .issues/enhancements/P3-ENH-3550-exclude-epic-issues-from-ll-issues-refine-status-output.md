@@ -3,10 +3,11 @@ id: ENH-3550
 type: ENH
 title: Exclude EPIC issues from ll-issues refine-status output
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-24'
 captured_at: '2026-09-24T18:17:10Z'
+completed_at: '2026-09-25T00:23:04Z'
 confidence_score: 100
 outcome_confidence: 96
 score_complexity: 21
@@ -165,6 +166,8 @@ Checked 2026-09-24 against the working tree.
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-25T00:23:03 - `f51f0560-5252-48a7-8a81-10d11331e067.jsonl`
+- `/ll:ready-issue` - 2026-09-25T00:14:53 - `e5100a72-3fea-40ab-9997-b71ac9c315e8.jsonl`
 - `/ll:confidence-check` - 2026-09-24T23:44:27 - `01d913d6-09f5-4671-9f2f-afb2a136b503.jsonl`
 - `/ll:verify-issues` - 2026-09-24T23:40:13 - `ce8bec5b-7632-4ff9-a3da-7cdd35c70217.jsonl`
 - `/ll:verify-issues` - 2026-09-24T22:56:16 - `4279401a-9acc-474c-b872-fd398cd78a8e.jsonl`

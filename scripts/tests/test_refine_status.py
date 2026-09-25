@@ -2332,3 +2332,87 @@ class TestRefineStatusSingleIssue:
         out = capsys.readouterr().out
         assert "BUG-001" in out
         assert "FEAT-873" not in out
+
+
+class TestRefineStatusEpicExclusion:
+    """EPICs are excluded from refine-status; explicit EPIC requests exit 1."""
+
+    def _run(self, temp_project_dir: Path, *extra: str) -> int:
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "refine-status", "--config", str(temp_project_dir), *extra],
+        ):
+            from little_loops.cli import main_issues
+
+            return main_issues()
+
+    def _setup(self, temp_project_dir: Path, sample_config: dict[str, Any]) -> tuple[Path, Path]:
+        _write_config(temp_project_dir, sample_config)
+        issues = temp_project_dir / ".issues"
+        for name in ("bugs", "features", "epics"):
+            (issues / name).mkdir(parents=True, exist_ok=True)
+        return issues / "bugs", issues / "epics"
+
+    def test_epic_excluded_and_adds_no_column(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        bugs, epics = self._setup(temp_project_dir, sample_config)
+        _make_issue(bugs, "P2-BUG-001-a.md", "Bug A", session_commands=["/ll:refine-issue"])
+        _make_issue(epics, "P2-EPIC-002-e.md", "Epic E", session_commands=["/ll:scope-epic"])
+
+        assert self._run(temp_project_dir, "--json") == 0
+        records = json.loads(capsys.readouterr().out)
+        assert [r["id"] for r in records] == ["BUG-001"]
+
+        assert self._run(temp_project_dir) == 0
+        out = capsys.readouterr().out
+        assert "EPIC-002" not in out
+        assert "scope-epic" not in out
+
+    def test_epic_only_project(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        _, epics = self._setup(temp_project_dir, sample_config)
+        _make_issue(epics, "P2-EPIC-002-e.md", "Epic E")
+
+        assert self._run(temp_project_dir) == 0
+        assert "No refinable issues found" in capsys.readouterr().out
+        assert self._run(temp_project_dir, "--json") == 0
+        assert capsys.readouterr().out.strip() == "[]"
+        assert self._run(temp_project_dir, "--format", "json") == 0
+        assert capsys.readouterr().out == ""
+
+    def test_empty_project_json(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        self._setup(temp_project_dir, sample_config)
+        assert self._run(temp_project_dir, "--json") == 0
+        assert capsys.readouterr().out.strip() == "[]"
+        assert self._run(temp_project_dir, "--format", "json") == 0
+        assert capsys.readouterr().out == ""
+
+    @pytest.mark.parametrize("extra", [["--type", "EPIC"], ["EPIC-002"], ["002", "--json"]])
+    def test_explicit_epic_request_exits_1(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+        extra: list[str],
+    ) -> None:
+        _, epics = self._setup(temp_project_dir, sample_config)
+        _make_issue(epics, "P2-EPIC-002-e.md", "Epic E")
+
+        assert self._run(temp_project_dir, *extra) == 1
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert "EPICs are not tracked by refine-status" in captured.err
