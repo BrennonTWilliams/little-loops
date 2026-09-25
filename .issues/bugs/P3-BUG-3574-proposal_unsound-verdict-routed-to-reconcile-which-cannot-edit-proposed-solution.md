@@ -87,14 +87,25 @@ Unsound proposals are exactly the cases where implementation would do the most d
      proposal makes directive drift moot).
 2. **Reuse BUG-3592's refuted → `decision_needed` contract** (split from BUG-3572) — no new
    FSM remedy states. On `PROPOSAL_UNSOUND`, verify-issues also arms `decision_needed: true`,
-   leaves the alternatives as enumerable options (a free-text Open Questions item alone
-   gives decide-issue `OPTIONS == 0`), and adds an `## Open Questions` item with BUG-3592's
-   refuted-option marker naming the refuted option and the B6 evidence.
-3. **Decide-issue exclusion — delivered by BUG-3592.** `/ll:decide-issue` treats an option
-   named by the refuted-option marker as ineligible. With ≥1 remaining option it selects and
-   rewrites `### Decision Rationale`; with none it exits `NO_ACTIONABLE_DECISIONS`. This
-   issue reuses that rule; confirm the `NO_ACTIONABLE_DECISIONS` exit matches BUG-3592's
-   no-remaining-option behavior rather than defining the exclusion a second time.
+   leaves the alternatives as `### Option <X>:` header blocks under `## Proposed Solution`
+   (a free-text Open Questions item alone gives decide-issue `OPTIONS == 0`), and adds an
+   `## Open Questions` item in BUG-3592's literal refuted-option marker shape, with the B6
+   evidence in place of the failing assertion:
+   `1. **Refuted option**: Option A — /ll:verify-issues <date>: <B6 evidence>. Which remaining option replaces it?`
+3. **Decide-issue exclusion — delivered by BUG-3592; nothing new here.** The exclusion is
+   computed in code: `issue_parser.refuted_option_labels` feeds `LocatedOption.eligible` /
+   `eligible_count` (`ll-issues locate-options --json`) and the `all_refuted` group flag
+   (`ll-issues check-unresolved-decisions --json`). With ≥1 eligible option, decide-issue
+   selects among them, rewrites `### Decision Rationale`, and marks the marker item
+   `✅ RESOLVED`. With none, it emits **`## RESULT: ALL_OPTIONS_REFUTED`**, exits 1, and
+   leaves `decision_needed: true` and the marker unresolved.
+   - **Not `NO_ACTIONABLE_DECISIONS`** (corrected 2026-09-24). That exit (decide-issue
+     Phase 3b-i) fires only when every `## Open Questions` item is already marked resolved.
+     The unresolved marker item prevents that, so it can never be the no-remaining-option
+     exit.
+   - Step 4's `proposal_unsound` deferral keys on the oracle failure that
+     `ALL_OPTIONS_REFUTED`'s exit 1 produces, plus the `refine-to-ready-proposal-revision`
+     marker, which tells it apart from an ordinary `decision_unresolved`.
 4. **Routing in refine-to-ready:**
    - `check_proposal_unsound` `on_yes` → `check_decide_attempts` (existing bound) →
      `resolve_decision_pre_breakdown`; write a run-dir marker
@@ -129,7 +140,7 @@ Unsound proposals are exactly the cases where implementation would do the most d
 
 ### Files to Modify
 - `commands/verify-issues.md` — §B6 verdict split by fix location; §C verdict table adds `DIRECTIVE_DRIFT`; § 2.5 frontmatter mapping; on `PROPOSAL_UNSOUND`, arm `decision_needed` and write the Open Questions item
-- `skills/decide-issue/SKILL.md` — option exclusion lands in BUG-3592; here only confirm the `NO_ACTIONABLE_DECISIONS` exit when none remain
+- `skills/decide-issue/SKILL.md` — no change here: the option exclusion, marker resolution and `ALL_OPTIONS_REFUTED` exit all land in BUG-3592
 - `scripts/little_loops/cli/issues/check_verify_verdict.py` — `--directive-drift` query mode; default mode non-VALID for it
 - `scripts/little_loops/cli/issues/__init__.py` — parser flag and `_USAGE` / help text
 - `scripts/little_loops/loops/refine-to-ready-issue.yaml` — new `check_directive_drift` gate (→ `check_reconcile_limit`); `check_proposal_unsound.on_yes` → marker + `check_decide_attempts`; new `check_proposal_revision` after `resolve_decision_pre_breakdown.on_success`; `proposal_unsound` deferral; header comment chain (lines ~15-20) and ENH-3250 comment on `check_proposal_unsound`
@@ -145,7 +156,7 @@ Unsound proposals are exactly the cases where implementation would do the most d
 ### Tests
 - `scripts/tests/test_ll_issues_check_verify_verdict.py` — `--directive-drift` query mode; default mode exits 1 on `DIRECTIVE_DRIFT`
 - `scripts/tests/test_builtin_loops.py` — `check_proposal_unsound` routing assertions (incl. `test_check_verify_verdict_on_no_reaches_check_proposal_unsound`, ~3083) and new states; stub `ll-issues` on `PATH` running the real state `action`
-- decide-issue skill contract test for option exclusion
+- decide-issue contract for option exclusion is BUG-3592's; here add only a verify-issues → decide-issue case: a `PROPOSAL_UNSOUND` write-back with no alternative yields `ALL_OPTIONS_REFUTED` and a `proposal_unsound` deferral
 - verify-issues command contract test for the split and the `decision_needed` write
 
 ### Documentation
@@ -168,7 +179,7 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 
 1. verify-issues: split B6 verdict by fix location; add `DIRECTIVE_DRIFT`; on `PROPOSAL_UNSOUND` arm `decision_needed` + Open Questions item
 2. `check_verify_verdict.py`: `--directive-drift` query mode; default mode non-VALID for it
-3. decide-issue: reuse BUG-3592's refuted-option exclusion; confirm `NO_ACTIONABLE_DECISIONS` when none remain
+3. decide-issue: reuse BUG-3592's refuted-option exclusion unchanged; the no-remaining-option exit is `ALL_OPTIONS_REFUTED` (not `NO_ACTIONABLE_DECISIONS`)
 4. refine-to-ready: `check_directive_drift` → reconcile; `PROPOSAL_UNSOUND` → marker → `check_decide_attempts` → decide → `check_proposal_revision` → `wire_issue`; `proposal_unsound` deferral
 5. Tests for each route; docs and mirrors
 
