@@ -16,7 +16,7 @@ score_complexity: 14
 score_test_coverage: 18
 score_ambiguity: 10
 score_change_surface: 18
-decision_needed: true
+decision_needed: false
 ---
 
 # ENH-3575: Structured policy gate field replacing prose gate-phrase grep in autodev
@@ -199,6 +199,7 @@ _Added by `/ll:confidence-check` on 2026-09-25_
 - Moderate per-site complexity: two autodev.yaml states plus a new `ll-issues` subcommand and a fallback path that must preserve current prose-grep behavior.
 
 ## Session Log
+- `/ll:decide-issue` - 2026-09-25T15:50:09 - `15f88de1-71aa-4840-8254-7f346d788eff.jsonl`
 - `/ll:refine-issue` - 2026-09-25T15:48:14 - `2c2217f3-faed-46a2-9f48-d3c79062bfca.jsonl`
 - `/ll:confidence-check` - 2026-09-25T15:43:11 - `88d59a88-839a-4f32-8b82-4e5b4f322725.jsonl`
 - `/ll:verify-issues` - 2026-09-25T15:27:33 - `bc279096-6a89-4a82-b7c2-8e6f11cc30f5.jsonl`
