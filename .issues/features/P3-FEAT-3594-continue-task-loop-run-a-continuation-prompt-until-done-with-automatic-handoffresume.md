@@ -5,6 +5,7 @@ title: 'continue-task loop: run a continuation prompt until done with automatic 
 priority: P3
 status: open
 decision_needed: false
+reconcile_attempted: true
 discovered_by: ll-issues-create
 discovered_date: '2026-09-25'
 captured_at: '2026-09-25T04:27:08Z'
@@ -80,6 +81,8 @@ Decided by `/ll:decide-issue` on 2026-09-25.
 
 ### Files to Modify
 - `scripts/little_loops/loops/continue-task.yaml` (exists — implemented in e4556ec95 after this issue was captured; verify against Acceptance Criteria rather than re-implementing)
+- `docs/guides/LOOPS_REFERENCE.md` — add the still-missing continue-task row to the General-Purpose table (GAP finding below; now an AC)
+- `scripts/tests/test_continue_task_loop.py` — NEW dedicated test file, or a `TestContinueTaskLoop` class in `scripts/tests/test_builtin_loops.py` (shape detailed in Tests below)
 
 ### Dependent Files (Callers/Importers)
 - N/A — standalone built-in loop, discovered by the loop loader
@@ -104,7 +107,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_continue_task_loop.py` — NEW dedicated test file (or a `TestContinueTaskLoop` class in `test_builtin_loops.py`, `TestSpikeGateLoop` at :13503 is the shape): `load_prompt` shell-level cases (explicit input → `goal.md` + `PROMPT_SOURCE: input`; fresh handoff + empty input → `PROMPT_MTIME`/`PROMPT_FIRST_LINE` provenance; stale handoff → exit 1 naming `continuation.prompt_expiry_hours`; neither source → exit 1 usage; whitespace-only input falls through; non-numeric/missing expiry defaults to 24), `required_inputs`-absence (`assert not data.get("required_inputs")`, precedent at :6019), and `read_verdict` gate (DONE / NOT_DONE / missing / whitespace vs `grep -qx`). No existing test asserts any of the loop's strings — these establish the contracts [Agent 3 finding]
 
 ### Documentation
-- `scripts/little_loops/loops/README.md`, `docs/guides/LOOPS_GUIDE.md`, `README.md` loop count
+- DONE as of e4556ec95: `scripts/little_loops/loops/README.md`, `docs/guides/LOOPS_GUIDE.md`, README loop count (108). REMAINING: the `docs/guides/LOOPS_REFERENCE.md` General-Purpose row (wiring block below; now an AC).
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `docs/guides/LOOPS_REFERENCE.md` — add the continue-task row to the General-Purpose table (`general-task`/`stepwise-task` rows at :78-79; gap re-confirmed by grep). Wording must pass `test_docs_audience_gate.py` (end-user framing) and read consistently with the `required_inputs` contract paragraph at :97 [Agent 1/2 finding]
@@ -158,9 +161,9 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 
 ## Implementation Steps
 
-1. Add `scripts/little_loops/loops/continue-task.yaml` (states above).
-2. Register it: expected-loop list in `scripts/tests/test_builtin_loops.py`, the table in `scripts/little_loops/loops/README.md`, the General-purpose row in `docs/guides/LOOPS_GUIDE.md`, and the README loop count if it changes.
-3. Tests: `ll-loop validate continue-task` passes; `load_prompt` fallback / staleness / missing-both cases (shell-level, tmp project dir); input absent from `required_inputs`.
+1. DONE as of e4556ec95 — `scripts/little_loops/loops/continue-task.yaml` exists; as built it has 8 non-terminal states and a `verdict.txt` / `read_verdict` gate instead of `llm_structured` (see findings). Verify against Acceptance Criteria rather than re-implementing.
+2. Registration DONE as of e4556ec95 (expected-set entry `scripts/tests/test_builtin_loops.py:300`, `scripts/little_loops/loops/README.md:93`, `docs/guides/LOOPS_GUIDE.md:391`, README loop count 108). REMAINING: the `docs/guides/LOOPS_REFERENCE.md` General-Purpose row — still missing (GAP finding).
+3. REMAINING: the dedicated tests — `load_prompt` shell-level cases (six), `required_inputs`-absence, `read_verdict` gate (case list in Integration Map → Tests wiring block). `ll-loop validate` coverage already exists (`test_all_validate_as_valid_fsm` + expected-set membership); no `load_prompt` test exists anywhere yet.
 4. Document that `on_handoff: spawn` is detached (`HandoffHandler._spawn_continuation` in `little_loops.fsm.handoff_handler` discards stdout), so the foreground view ends at the first handoff — follow along with `ll-loop status` / run logs.
 
 ### Codebase Research Findings
@@ -211,9 +214,30 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 
 - `ll-loop run continue-task` with no input and a fresh handoff file starts from that file and writes `goal.md`.
 - With no input and no (or stale) handoff file, the run fails at `load_prompt` with an actionable message.
-- `check_done` cannot pass on the worker's self-report alone; a failing test command forces NO.
+- `check_done` cannot pass on the worker's self-report alone; a test regression (passed at baseline, fails now) forces NO — pre-existing baseline failures are advisory.
 - Loop validates cleanly and appears in the built-in loop listings/tests.
 - Loop contains no Issue-system coupling.
+- `continue-task` has a row in `docs/guides/LOOPS_REFERENCE.md`'s General-Purpose table.
+
+## Verification Notes
+
+_Verified by `/ll:verify-issues --auto` — 2026-09-25:_
+
+Verdict at time of check: **DIRECTIVE_DRIFT** (one check-B6 finding below; every claim about current code verified accurate — see the per-claim log — so this is a directive-level gap only, not a claim failure)
+
+**Verified accurate** (all at working tree, `main` @ 98c033121 + unstaged edits):
+- `scripts/little_loops/loops/continue-task.yaml` exists; every cited line anchor holds: `:36` (`artifact_versioning_ok: true`), `:37-38` (input-not-in-`required_inputs` comment), `:48`/`:89` (`test_cmd` declared/consumed), `:108-111` (pass-marker not refreshed mid-pass), `:129` (`-nt` resume check), `:153-154` ("Do NOT declare the task finished"), `:216-217` ("You did NOT do this work; judge it skeptically"), `:244` (`grep -qx 'DONE'`). State inventory (8 non-terminal + `done`/`partial`/`failed`), `max_steps: 150`, `diff_stall_gate` max_stall 3, `on_handoff: spawn` all as documented.
+- e4556ec95 is the implementation commit (confirmed via `git show`).
+- Cross-file anchors all hold: `general-task.yaml:17/:364-368/:410-418/:516-518`, `rn-remediate.yaml:48/:861-879`, `schema.py:1428` (`required_inputs` defaults `[]`), `run.py:350-357` guard, `handoff_handler.py:68/:96/:123-131` (DEVNULL + `start_new_session=True`), `persistence.py:55/:174-175/:1388`, `signal_detector.py:74`, `executor.py:4466`, `commands/handoff.md:194`, `commands/resume.md:38-40/:48-50` (warn-only strictness difference confirmed), `config-schema.json:903-909`, `fragments.py:142`, `common.yaml:183`, `meta_rules.py:201-231/:278-293`, `interpolation.py:280-316`, `test_builtin_loops.py:77-80/:204/:300/:6019/:13503`, `test_fsm_fragments.py:1710-1747`, `test_spike_verdict_routing.py:17/:30/:36`, `test_incremental_refactor_loop.py:18`, `test_docs_audience_gate.py:34-36`, `mechanize-skills.yaml` `diagnosis_retry` at `:304-305`.
+- GAP claims still true as of this check: `docs/guides/LOOPS_REFERENCE.md` has **no** continue-task row (general-task/stepwise-task at `:78-79`, `required_inputs` paragraph at `:97`), while `README.md:118/:198/:232` claim full coverage; `scripts/tests/test_continue_task_loop.py` / `TestContinueTaskLoop` do not exist, no `load_prompt` tests anywhere — step 3 remains PARTIALLY done exactly as the research findings state.
+- Option A decision verified: repo-wide grep confirms `max_passes` appears only in generic mechanism-test fixtures (`test_ll_loop_commands.py:5883-5999`) and this issue — no loop reads it; the API/Interface example already drops it (decision applied).
+- Evidence-quote check (`ll-verify-evidence`): clean, 0 findings. Decisions log: no active required rules. No dependency declarations to check.
+
+**DIRECTIVE_DRIFT finding (check B6 — AC-coverage gap)**: the Integration Map's Documentation section and the Wiring Phase both require the `docs/guides/LOOPS_REFERENCE.md` continue-task row, but no Acceptance Criterion covers it — the closest AC ("appears in the built-in loop listings/tests") covers `loops/README.md` / `LOOPS_GUIDE.md` / the expected-set test, not LOOPS_REFERENCE. Since eval harnesses (`/ll:create-eval-from-issues`) and readiness gates consume ACs, an implementer working to the ACs could ship without the doc row and pass every criterion.
+
+Remaining:
+- Add an AC covering the LOOPS_REFERENCE.md row (e.g. "continue-task documented in the LOOPS_REFERENCE General-Purpose table"), or run `/ll:reconcile-issue FEAT-3594` — this is `DIRECTIVE_DRIFT`'s designated remedy; not applied here (auto-mode scope is verification notes only).
+- Implement the Wiring Phase items (doc row + dedicated tests) — still open, accurately tracked by this issue.
 
 ## Risks
 
@@ -235,6 +259,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:reconcile-issue` - 2026-09-25T23:26:13 - `8a0a45f1-b52b-4c03-a859-99ea828324c5.jsonl`
+- `/ll:verify-issues` - 2026-09-25T23:12:36 - `95f633b7-5064-467a-9466-762178a1aff0.jsonl`
 - `/ll:decide-issue` - 2026-09-25T22:57:17 - `5830abf4-70be-40d6-a44c-678fd54b71da.jsonl`
 - `/ll:wire-issue` - 2026-09-25T22:45:30 - `4ad816e2-21f5-4785-88cc-12616ff52711.jsonl`
 - `/ll:refine-issue` - 2026-09-25T22:27:12 - `bff3e917-f6b3-4423-97e1-f84bce0f9928.jsonl`

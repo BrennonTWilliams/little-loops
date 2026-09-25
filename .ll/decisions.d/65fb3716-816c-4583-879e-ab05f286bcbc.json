@@ -1,0 +1,12 @@
+{
+  "id": "27c3f7f0-86ac-448c-a0e1-3b3334680cfd",
+  "type": "decision",
+  "timestamp": "2026-09-25T22:56:05Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "max_steps: 150 (~25 passes) plus diff_stall_gate max_stall 3 already bound runaway passes; a max_passes default above ~25 can never fire before max_steps and one below it routes to the same summarize_partial terminal \u2014 no distinct failure mode, only config surface. Repo-wide convention is that documented --context keys are declared and read; max_passes was the sole documented-but-unread exception.",
+  "rule": "Option A: drop the dead --context max_passes=20 example from the issue's API/Interface section; continue-task's pass budget stays max_steps + diff_stall_gate",
+  "scope": "issue",
+  "alternatives_rejected": "Option B (implement the max_passes knob: context declaration + start_pass cap against pass-count.txt)",
+  "issue": "FEAT-3594"
+}
