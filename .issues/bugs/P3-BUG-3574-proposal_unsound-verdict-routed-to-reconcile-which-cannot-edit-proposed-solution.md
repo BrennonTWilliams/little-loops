@@ -10,6 +10,12 @@ captured_at: '2026-09-24T19:33:13Z'
 parent: EPIC-3565
 blocks:
 - ENH-3577
+confidence_score: 100
+outcome_confidence: 78
+score_complexity: 10
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 # BUG-3574: PROPOSAL_UNSOUND verdict routed to reconcile, which cannot edit Proposed Solution
@@ -363,5 +369,6 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-25T15:04:36 - `2879e1b8-58ef-47c7-a4d2-34a25e460e4e.jsonl`
 - `/ll:refine-issue` - 2026-09-25T01:44:08 - `b5d091e6-10b4-4f2f-9812-d49831a68b8b.jsonl`
 - `/ll:capture-issue` - 2026-09-24T19:42:32 - `59fe3bd4-3622-4dd2-bb8b-ad5cc55e79ec.jsonl`
