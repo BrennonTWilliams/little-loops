@@ -388,7 +388,7 @@ Dozens of loops ship with little-loops, grouped by purpose:
 | Group | Examples |
 |-------|----------|
 | Routing & orchestration | `loop-router`, `loop-composer`, `goal-cluster` |
-| General-purpose | `general-task`, `stepwise-task`, `rn-build`, `dataset-curation` |
+| General-purpose | `general-task`, `stepwise-task`, `continue-task`, `rn-build`, `dataset-curation` |
 | API adoption | `adopt-third-party-api`, `assumption-firewall`, `integrate-sdk` |
 | Risk-reduction gates | `proof-first-task`, `spike-gate`, `ready-to-implement-gate` |
 | Research & knowledge | `deep-research`, `apply-research`, `rn-plan` |
