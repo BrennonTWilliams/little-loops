@@ -42,8 +42,8 @@ Any occurrence of a gate phrase, current or historical, parks the issue.
 ## Expected Behavior
 
 Gate state is explicit and routable. External or manual prerequisites park the issue. Proof
-obligations that a spike or `explore-api` can satisfy route to that remedy. Satisfied gates do
-not block.
+obligations route to a spike, and an issue with an unsatisfied proof gate never reaches
+implementation. Satisfied gates do not block.
 
 ## Motivation
 
@@ -54,7 +54,9 @@ False-positive gate matches park good issues indefinitely, and the only workarou
 Add a structured frontmatter field, e.g.
 `gate: {kind: external|manual|proof, satisfied: bool, evidence: <ref>, owner: <who>}` (or a
 list). Autodev reads the field first and falls back to the prose grep only when the field is
-absent. Extract the duplicated phrase regex into one shared helper (a new `ll-issues` gate-check subcommand), which is the extraction BUG-3147 and ENH-3148 deferred.
+absent. Extract the duplicated phrase regex into one shared helper (a new `ll-issues check-gate`
+subcommand, module `cli/issues/check_gate.py`), which is the extraction BUG-3147 and ENH-3148
+deferred.
 
 ### Codebase Research Findings
 
@@ -84,33 +86,66 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 ## Program Design
 
 ### Types
-- `GateSpec(kind: Literal["external", "manual", "proof"], satisfied: bool, evidence: str | None, owner: str | None)` — new dataclass; parsed from the `gate` frontmatter mapping (or each list item) with `satisfied` coerced from the string `'false'`/`'true'` that `parse_frontmatter` returns for nested scalars
-- `GateVerdict: Literal["structured_open", "structured_satisfied", "structured_proof", "prose", "none"]` — outcome of the read-structured-first-then-fall-back-to-prose resolution
+- `GateSpec(kind: Literal["external", "manual", "proof"], satisfied: bool, evidence: str | None, owner: str | None)` — new dataclass; parsed from the `gate` frontmatter mapping (or each list item). Nested scalars arrive as raw strings from `parse_frontmatter`, so the parser normalizes them: `kind` is lowercased, `satisfied` is coerced from `'true'`/`'false'`, and the string `'null'` / `'~'` / `''` in `evidence` or `owner` becomes `None`
+- `GateVerdict: Literal["structured_open", "structured_proof", "structured_satisfied", "prose", "none"]` — outcome of the read-structured-first-then-fall-back-to-prose resolution
 
 ### Signatures
-- `parse_gate(frontmatter: dict[str, Any]) -> list[GateSpec]` — normalizes a lone mapping or a list of mappings; returns `[]` when the field is absent
-- `detect_prose_gate(text: str) -> bool` — the single home of the 8-phrase regex now duplicated in `check_gate_at_dequeue` and `recheck_after_size_review`
-- `cmd_check_gate(config: BRConfig, args: argparse.Namespace) -> int` — new `ll-issues` subcommand handler, modeled on the `cmd_check_flag` / `cmd_check_design` handler shape
+- `parse_gate(frontmatter: dict[str, Any]) -> list[GateSpec] | None` — normalizes a lone mapping or a list of mappings. Returns `None` when the field is **absent** and `[]` when it is present but empty (`gate: []`). The two must stay distinct: the precedence rule keys on presence, not on entry count
+- `detect_prose_gate(text: str) -> bool` — the single home of the 8-phrase regex now duplicated in `check_gate_at_dequeue` and `recheck_after_size_review` (literals, `re.IGNORECASE`, and the `measurement \(gate\)` escape carried over unchanged)
+- `resolve_gate_verdict(frontmatter: dict[str, Any], text: str, spike_proven: bool) -> GateVerdict` — applies the Decision Rules below; `spike_proven` is `spike_completed == 'true' and spike_refuted != 'true'` (the `PROVEN` branch of `route_spike_verdict`)
+- `cmd_check_gate(config: BRConfig, args: argparse.Namespace) -> int` — new `ll-issues check-gate <ID>` handler, modeled on the `cmd_check_flag` / `cmd_check_design` handler shape
 - `add_check_gate_parser(subs: argparse._SubParsersAction) -> None` — parser registration, same shape as `add_spike_verdict_parser`
 
+### CLI Contract (`ll-issues check-gate <ID>`)
+- **stdout**: exactly one line, the `GateVerdict` token (e.g. `structured_proof`). `--json` emits `{"verdict": ..., "gates": [...]}` instead.
+- **Exit codes** (check-family convention, BUG-3294): `0` = a gate is in force (`structured_open`, `structured_proof`, `prose`); `1` = no gate in force (`structured_satisfied`, `none`); `2` = issue unresolvable. No exit `3`: every resolvable issue gets a verdict.
+- Takes no extra positional, so no `_EXTRA_ARGV` entry is needed in `test_check_family_not_found_exit_code.py`.
+
 ### Call Path
-`check_gate_at_dequeue` -> `main_issues` -> `cmd_check_gate` -> `parse_frontmatter` -> `parse_gate` -> `detect_prose_gate`
-`recheck_after_size_review` -> `main_issues` -> `cmd_check_gate` -> `parse_gate`
+`check_gate_at_dequeue` -> `main_issues` -> `cmd_check_gate` -> `parse_frontmatter` -> `resolve_gate_verdict` -> `parse_gate` -> `detect_prose_gate`
+`recheck_after_size_review` -> `main_issues` -> `cmd_check_gate` -> `resolve_gate_verdict`
+`check_proof_gate_before_implement` (new state) -> `main_issues` -> `cmd_check_gate` -> `resolve_gate_verdict`
 
 ### Decision Rules
-- **Inputs**: the issue's frontmatter `gate` value (mapping, list of mappings, or absent) and, only when absent, the whole-file text.
-- **Precedence**: any `gate` field present → structured path only; the prose regex is not consulted. Absent → prose fallback with the current 8 literal phrases, unchanged.
-- **Structured verdicts**: an entry with `satisfied` true never blocks; `kind` `external` or `manual` with `satisfied` false parks (`blocked_by_gate`); `kind` `proof` with `satisfied` false routes to the spike / learning-test remedy instead of parking, subject to the existing `spike_attempted` and `spike-runs-<ID>` (cap 2) guards so an unprovable gate still terminates in a deferral.
-- **`satisfied` coercion**: nested scalars arrive as strings; only the literal `true` (case-insensitive) counts as satisfied. Missing/unparseable `kind` or `satisfied` → treated as unsatisfied `manual` (fail toward parking is the stated bias of the gate; fail-open applies to helper errors, not malformed data).
-- **Escape hatch**: an issue that sets a satisfied gate, or removes the field and its gate prose, is not parked; the prose fallback is inert once the field exists.
-- **Dequeue-only signal**: the placeholder-Acceptance-Criteria check stays in the dequeue path and is not folded into the phrase helper's result for the `recheck_after_size_review` caller.
+- **Inputs**: the issue's frontmatter `gate` value (mapping, list of mappings, or absent), the `spike_completed` / `spike_refuted` flags, and, only when `gate` is absent, the whole-file text.
+- **Precedence**: `gate` present (including `gate: []`) → structured path only. The prose regex is not consulted, **and the dequeue-only placeholder-Acceptance-Criteria check is not consulted either**: the field replaces both prose signals. Absent → prose fallback with the current 8 literal phrases, unchanged, then (at dequeue only) the placeholder-AC check.
+- **Structured verdict, most restrictive wins across entries**: any entry `external`/`manual` with `satisfied` false → `structured_open`; else any entry `proof` with `satisfied` false and `spike_proven` false → `structured_proof`; else (including `gate: []`) → `structured_satisfied`.
+- **A proven spike satisfies a proof gate.** `/ll:spike` never writes `gate[].satisfied`, so `spike_proven` counts as satisfaction for `proof` entries. Autodev does not write back to the `gate` field.
+- **`satisfied` coercion**: only the literal `true` (case-insensitive) counts as satisfied. Missing/unparseable `kind` or `satisfied` → treated as unsatisfied `manual` (fail toward parking is the stated bias of the gate; fail-open applies to helper errors, not malformed data).
+- **Self-asserted**: `satisfied` is taken at face value. `evidence` and `owner` are informational (a free-form reference: issue ID, path, URL or learning-test record) and autodev never verifies them.
+- **Escape hatch**: an issue that sets a satisfied gate, or `gate: []`, is not parked by the prose it still carries; the prose fallback is inert once the field exists.
+
+### Verdict → Routing, per caller
+
+| Verdict | `check_gate_at_dequeue` | `recheck_after_size_review` (`GATE_MARKER`) | `check_proof_gate_before_implement` (new) |
+|---|---|---|---|
+| `structured_open` | `defer_gated` | `false` (a spike cannot satisfy an external/manual prerequisite) | unreachable (parked at dequeue); `defer_gated` if reached |
+| `structured_proof` | `refine_current` (not parked) | `true` (spike bias) | `run_spike` while `spike_attempted != 'true'` and `spike-runs-<ID>` < 2; otherwise `defer_gated` |
+| `structured_satisfied` | `refine_current` | `false` | `implement_current` |
+| `prose` | `defer_gated` (today) | `true` (today) | `implement_current` (today's behavior; prose issues were already parked or let through upstream) |
+| `none` | placeholder-AC check, then `defer_gated` / `refine_current` (today) | `false` (today) | `implement_current` |
+| helper error / exit 2 | `refine_current` (fail-open, today) | `false` (today) | `implement_current` (fail-open) |
+
+### Pre-implementation proof guard
+Routing `structured_proof` to `refine_current` alone would let a high-scoring issue reach
+`implement_current` without any proof: `check_spike_needed` is only reached through
+`triage_outcome_failure`, and the `GATE_MARKER` bias only fires below the readiness threshold.
+A new state `check_proof_gate_before_implement` closes that path. Both current edges into
+`implement_current` (`check_passed.on_yes` and the post-rescore `check-readiness` state's
+`on_yes`) retarget to it. On `structured_proof` it applies the same spike budget as
+`check_spike_needed` (`${context.run_dir}/spike-runs-<ID>`, cap 2, increment before `run_spike`,
+snapshot `autodev-pre-spike-readiness.txt`). `run_spike`'s existing `route_spike_verdict` chain
+brings a `PROVEN` issue back through rescoring to this guard, where `spike_proven` now clears
+it. A refuted or inconclusive spike with the budget spent defers as `blocked_by_gate`: the
+proof obligation is still open, and `low_readiness` would misstate why.
+`/ll:explore-api` routing is out of scope (see Scope Boundaries).
 
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/loops/autodev.yaml` — `check_gate_at_dequeue`, `recheck_after_size_review`
-- `scripts/little_loops/cli/issues/` — new gate helper
-- `scripts/little_loops/config-schema.json` / frontmatter validation if the field is schema'd
+- `scripts/little_loops/loops/autodev.yaml` — `check_gate_at_dequeue`, `recheck_after_size_review`, new `check_proof_gate_before_implement` state, and the two `on_yes: implement_current` edges (`check_passed` and the post-rescore `check-readiness` state) retargeted to it
+- `scripts/little_loops/cli/issues/check_gate.py` — new module: `GateSpec`, `parse_gate`, `detect_prose_gate`, `resolve_gate_verdict`, `cmd_check_gate`, `add_check_gate_parser`
+- `scripts/little_loops/issue_parser.py` — `check_format_gaps`: shape-check a present `gate` field (mapping or list of mappings; `kind` in the allowed set), following the `gaps.malformed_dep_id` precedent. There is no frontmatter schema in `config-schema.json`, so this is the only validation target
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/cli/issues/__init__.py` — three hand-edited touchpoints for the new subcommand: the lazy import block (~lines 31-42), the `add_*_parser(subs)` registration (~lines 778-781), and the `if args.command == ...: return cmd_...` dispatch chain (~lines 1086-1093); plus the hand-written subcommand epilog list (~lines 134-175, check family at 152-155/173-174) [Agent 1 + 2 finding]
@@ -119,7 +154,8 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/loops/autodev.yaml` `recheck_after_size_review` (`GATE_MARKER`, ~lines 2760-2790) — `REMEDY` selector is `python3 -c` piped from `ll-issues show --json` with `GATE_MARKER` as an env prefix; the helper must expose the phrase/gate signal separately from the dequeue-only placeholder-AC signal [Agent 2 finding]
 
 ### Dependent Files (Callers/Importers)
-- `defer_gated`, `mark_gate_blocked` ledgers
+- `defer_gated` (`autodev-skipped.txt`, `set-status --reason blocked_by_gate`) and the `recheck_after_size_review` `REMEDY` selector → `autodev-pre-deferral-remedy.txt` → `check_pre_deferral_remedy` → dispatcher states. (`mark_gate_blocked` is **not** a dependent: it is fed by `check_learning_gate` and writes the separate `gate_blocked` code.)
+- `run_spike` → `route_spike_verdict` chain — reused unchanged by the new proof guard
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/issue_lifecycle.py` — `DeferReason.BLOCKED_BY_GATE` (~line 95) feeds `_DEFERRAL_REASON_CODES` / `set-status --reason`; no change if the reason code stays `blocked_by_gate` [Agent 1 finding]
@@ -143,21 +179,22 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_builtin_loops.py` — `test_check_gate_at_dequeue_routing` (~7199, incl. fail-open `on_error` at ~7206, `evaluate.pattern == "GATE_YES"`), `test_defer_gated_defers_via_set_status` (asserts `--reason blocked_by_gate`), and the literal/`GATE_MARKER` assertions on `recheck_after_size_review` (~lines 8761-8773); update if the state's command or evaluator changes [Agent 2 + 3 finding]
 - `scripts/tests/test_check_family_not_found_exit_code.py` — `test_family_has_seven_members` will break (bump to 8) if the module is named `check_gate.py`; `_family_subcommands()` globs `cli/issues/check_*.py`, so a new module is auto-parametrized (exit 2 on unresolvable ID); add to `_EXTRA_ARGV` if it takes an extra positional [Agent 2 + 3 finding]
 - `scripts/tests/test_autodev_scores_freshness.py` (~line 137) — stub `ll-issues` switches on subcommand (`check-design`); add a `check-gate` arm if that path is exercised [Agent 2 finding]
-- `scripts/tests/test_fsm_topology.py` (~line 248) — state-count assertion (79); changes only if states are added/removed [Agent 1 + 2 finding]
+- `scripts/tests/test_fsm_topology.py` (~line 256) — autodev state-count assertion, currently `98`; bump to `99` for `check_proof_gate_before_implement` and add a comment line in the running history above it [Agent 1 + 2 finding; count corrected in review]
 - `scripts/tests/test_autodev_loop.py` — `TestRecheckScoresDesignGateEndToEnd` (~line 1046) and `TestPreDeferralRemedyContradictionExemption` (~line 840) — closest end-to-end templates for new structured-gate routing cases [Agent 3 finding]
 - New: `scripts/tests/test_ll_issues_check_gate.py` — model on `test_ll_issues_check_flag.py` (`TestCheckFlagHappyPath` / `FalseOrAbsent` / `ErrorHandling` / `TestCliRegistration::test_subcommand_in_help`): exit 0/1/2, help registration [Agent 3 finding]
 - New: `gate` frontmatter test in `scripts/tests/test_frontmatter.py` (near `TestUpdateFrontmatter::test_nested_dict_value_round_trips`, ~line 551) — list-of-mappings parse + round-trip, `satisfied: false` → `'false'` not treated as satisfied; no `gate`-specific test exists [Agent 3 finding]
 - New: autodev behavioral cases for structured `gate` (satisfied → no defer; `proof` → spike routing; prose fallback when field absent) [Agent 3 finding]
+- New: **real-FSM regression tests** (ENH-3577 blocks on this issue landing with them), driving the actual `autodev` FSM rather than stubbed actions: (a) satisfied gate with historical gate prose in the body → reaches `refine_current`, not `defer_gated`; (b) unsatisfied `proof` gate on an issue whose scores pass → reaches `run_spike`, never `implement_current`; (c) `proof` gate with `spike_completed: true` → reaches `implement_current`; (d) `proof` gate with spike budget spent → `defer_gated`; (e) `gate` absent + prose phrase → `defer_gated` (fallback unchanged); (f) `gate: []` + prose phrase → not parked
+- New: unit cases for `parse_gate` / `resolve_gate_verdict`: absent → `None` vs `gate: []` → `[]`; `kind: External` lowercased; `evidence: null` → `None`; mixed list (`external` unsatisfied + `proof` unsatisfied) → `structured_open`; placeholder-AC not consulted when `gate` is present
 - `scripts/tests/test_show.py` — no dedicated `--json` test exists; add a `gate` case if `show.py` is extended [Agent 3 finding]
 - `scripts/tests/test_wiring_cli_registry.py` — list of `(file, literal, issue-id)` tuples; adding an entry for the new command is optional [Agent 2 finding]
 
 ### Documentation
-- `docs/reference/DEFERRAL_CODES.md` (`blocked_by_gate`)
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `docs/reference/CLI.md` — new `#### ll-issues <name>` section in the check family (~lines 2247-2454; `check-design` "FSM loop use" paragraph at ~2321 is the precedent) [Agent 1 + 2 finding]
 - `docs/reference/API.md` — one-line row for the new probe; `check_gate_at_dequeue` / `blocked_by_gate` prose at ~lines 4662-4678 [Agent 1 + 2 finding]
-- `docs/reference/ISSUE_TEMPLATE.md` — frontmatter field table (~lines 918-921, `spike_attempted`/`spike_completed` rows): add a `gate` row [Agent 1 + 2 finding]
+- `docs/reference/ISSUE_TEMPLATE.md` — frontmatter field table (~lines 918-921, `spike_attempted`/`spike_completed` rows): add a `gate` row with both shapes, the three `kind` values, the `gate: []` opt-out, and a note that `satisfied` is self-asserted. This row is the only place authors learn the field exists, since no skill writes it [Agent 1 + 2 finding]
 - `docs/guides/LOOPS_REFERENCE.md` — autodev flow diagram "explicitly gated (prose/placeholder ACs)?" (~lines 1034-1035) and `recheck_after_size_review` text (~1067-1087) [Agent 1 + 2 finding]
 - `docs/reference/DEFERRAL_CODES.md` line ~28 — `blocked_by_gate` "Emitted by" wording currently says "prose gate language and/or a placeholder Acceptance Criteria section" [Agent 2 finding]
 - No mirror regeneration needed unless a skill/command is edited (then `ll-adapt --host <gemini|kimi-code|qwen> --apply`) [Agent 2 finding]
@@ -181,11 +218,11 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 
 ## Implementation Steps
 
-1. Define the frontmatter `gate` schema (and validation in `ll-issues`)
-2. Add a shared gate-check helper that reads structured first, then falls back to prose
-3. Replace both inline regexes in autodev
-4. Route `proof` gates to spike/explore-api
-5. Tests for satisfied, external and proof gates
+1. Add `cli/issues/check_gate.py` (`GateSpec`, `parse_gate`, `detect_prose_gate`, `resolve_gate_verdict`) and register `ll-issues check-gate` per the CLI Contract; add the `gate` shape check to `check_format_gaps`
+2. Replace the inline regex in `check_gate_at_dequeue` with a `check-gate` call; keep the placeholder-AC heredoc, run only when the verdict is `none`
+3. Replace `GATE_MARKER`'s inline grep in `recheck_after_size_review` with a `check-gate` call; `GATE_MARKER=true` only for `structured_proof` / `prose`
+4. Add `check_proof_gate_before_implement` and retarget both `on_yes: implement_current` edges to it
+5. Tests: unit, subcommand, re-pointed literal tests, and the real-FSM regression cases listed under Tests; docs
 
 ### Codebase Research Findings
 
@@ -215,12 +252,19 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 - In scope: autodev's two gate detectors and the new field.
 - Out of scope: migrating existing issues' prose gates to the field (the fallback covers them); rn-* loops' gate handling.
+- Out of scope: routing `proof` gates to `/ll:explore-api`. Autodev's only explore-api surface (`LEARNING_GATE_BLOCKED` → `mark_gate_blocked`) defers; it does not route. Spike is the only proof remedy here.
+- Out of scope: writing the `gate` field from any skill (capture, refine, spike). Authors set it by hand; `ISSUE_TEMPLATE.md` documents it.
+- Out of scope: reopening issues already deferred as `blocked_by_gate`. Autodev dequeues only open issues, so satisfying the gate on a deferred issue does not un-park it; the author must reopen it (`ll-issues set-status <ID> open`). A future `deferred_triage` pass could automate this.
 
 ## Acceptance Criteria
 
-- [ ] A satisfied structured gate does not defer the issue
-- [ ] A `proof` gate routes to spike/explore-api rather than parking
+- [ ] A satisfied structured gate does not defer the issue, even when the body still contains gate prose or a placeholder Acceptance Criteria section
+- [ ] An unsatisfied `proof` gate routes to `run_spike` rather than parking, and never reaches `implement_current` until a spike is proven or the gate is marked satisfied
+- [ ] A `proof` gate whose spike budget is spent without a proven spike defers as `blocked_by_gate`
+- [ ] An unsatisfied `external`/`manual` gate defers as `blocked_by_gate` and does not bias the pre-deferral remedy toward `spike`
+- [ ] `gate: []` disables the prose fallback; an absent `gate` keeps today's prose and placeholder-AC behavior unchanged
 - [ ] One shared gate-detection helper; no duplicated phrase regex in autodev
+- [ ] Real-FSM regression tests cover the routing cases listed under Tests
 
 ## Related Key Documentation
 
@@ -234,6 +278,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ## Confidence Check Notes
 
 _Added by `/ll:confidence-check` on 2026-09-25_
+
+> **Stale (2026-09-25 review):** the gaps below were addressed afterwards. Program Design now exists, the schema shape is decided (Option B), and the review added the CLI contract, per-caller routing table and pre-implementation proof guard. Re-run `/ll:confidence-check` before implementing; the scores in frontmatter predate these changes.
 
 **Readiness Score**: 85/100 → STOP — ADDRESS GAPS (Program Design hard override; raw tier PROCEED WITH CAUTION)
 **Outcome Confidence**: 60/100 → MODERATE
