@@ -58,6 +58,29 @@ Malformed structure is cheap to detect and fix deterministically. Leaving it to 
 - Consider adding a deterministic `missing` fixer that inserts empty template headings for
   ceremonial sections.
 
+## Program Design
+
+### Types
+
+- `_REPAIR_DISPATCH: dict[str, Callable[..., None]]` — gap-class → fixer table in `format_check.py`
+- `FormatGaps.missing: list[str]` — remaining missing template sections, read via `format-check --format json`
+
+### Signatures
+
+- `_fix_missing_sections(config: BRConfig, source_id: str, path: Path, targets: list[str], *, apply: bool) -> None` — optional ceremonial-heading inserter (same shape as the other `_fix_*` fixers)
+- `recheck_format` — new FSM shell state in `refine-to-ready-issue.yaml`; routes to `format_issue_fallback` when directive `missing`/`boilerplate` gaps remain
+
+### Call Path
+
+`cmd_format_check` -> `_apply_fix_dispatch` -> `_REPAIR_DISPATCH` fixer; loop: `normalize_structure` -> `recheck_format` -> `format_issue_fallback` (`/ll:format-issue <ID> --auto`, once per run) -> `clear_verify_verdict`
+
+## Scope Boundaries
+
+- Out of scope: changing `check_format_gaps` gap detection or its exit-code semantics
+- Out of scope: authoring substantive content for empty directive sections beyond what `/ll:format-issue --auto` infers
+- Out of scope: sweep mode (`--all --fix --apply`) repairs; new fixers stay single-issue only (see `_SWEEP_SAFE_REPAIRS`)
+- Out of scope: consolidating the preparation pipeline into one controller (ENH-3577)
+
 ## Integration Map
 
 ### Files to Modify
@@ -115,5 +138,6 @@ Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the sam
 
 
 ## Session Log
+- `/ll:format-issue` - 2026-09-25T17:14:23 - `6249b55a-80e7-48d1-ad8e-6ad301b4a4d0.jsonl`
 - `/ll:verify-issues` - 2026-09-25T15:27:34 - `bc279096-6a89-4a82-b7c2-8e6f11cc30f5.jsonl`
 - `/ll:capture-issue` - 2026-09-24T19:42:32 - `59fe3bd4-3622-4dd2-bb8b-ad5cc55e79ec.jsonl`
