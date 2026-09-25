@@ -8,7 +8,7 @@ discovered_by: ll-issues-create
 discovered_date: '2026-09-24'
 captured_at: '2026-09-24T19:33:13Z'
 parent: EPIC-3565
-decision_needed: true
+decision_needed: false
 blocks:
 - ENH-3577
 - BUG-3572
@@ -152,13 +152,13 @@ the two evidence gates on an explicit `ABSENT` outcome.
   - new `clear_verify_verdict` state ahead of `verify_issue` (every entry into `verify_issue` must pass through it)
   - `check_verify_verdict`: switch to `fragment: harness_exit`; `on_cannot_judge` → retry once via `clear_verify_verdict` (not `verify_issue` directly, so the retry also starts from a cleared field; bound with a run-dir counter file), then an infra terminal (mirror `check_decide_rate_limited` → `mark_rate_limit_infra`); `on_error` → the same infra path, not `check_hedges`. `verify_issue` has a single predecessor today (`normalize_structure`, `next` and `on_error`), so retargeting that one state covers every entry
   - `confidence_check` entry, including the `run_spike` return (`next`/`on_error: confidence_check`) — scores cleared by the oracle's first state, see below
-  - `confidence_check.on_failure`/`on_error` (currently `diagnose`): an oracle `failed` after a cleared start means absent evidence — route it to the infra terminal (or make `diagnose` record `refine-terminal-class = infra` for this source state); today nothing classifies it
+  - `confidence_check.on_failure`/`on_error` (currently `diagnose`): an oracle `failed` after a cleared start means absent evidence — route both to the infra terminal (mirror `check_decide_rate_limited` → `mark_rate_limit_infra`), not through `diagnose`; today nothing classifies it
 - `scripts/little_loops/loops/oracles/verify-confidence-scores.yaml` — new initial state running `ll-issues set-scores <ID> --clear` before `confidence_check`; `verify_scores_persisted`/`_final` logic unchanged (presence is now sufficient because scores were cleared). Also `confidence_check.on_error: failed` skips the retry entirely — route it to `retry_confidence_check` so an erroring first call gets the same one retry as a no-op call
 - `scripts/little_loops/loops/autodev.yaml`:
   - `set-scores --clear` before each of `rerun_confidence_after_decide|wire|spike|atomic_remediation` (reconcile's path already clears)
   - **`check-readiness` call sites** — `shell_exit` maps exit 3 to `error`, so each site's `on_error` decides where absence lands, and today most of those are quality paths. Each needs an explicit exit-3 → infra route (model on `mark_gate_infra`, `:1097`):
 
-    | State | Line | Current `on_error` | Reached after a rescore? |
+    | State | `check-readiness` call line | Current `on_error` | Reached after a rescore? |
     |---|---|---|---|
     | `check_passed` | `:656` | `detect_children` | no — after the refine-to-ready sub-loop |
     | `recheck_after_decide` | `:791` | `snap_and_size_review` | yes (`rerun_confidence_after_decide`) |
@@ -263,12 +263,12 @@ _Added by `/ll:confidence-check` on 2026-09-24_
 **Outcome Confidence**: 64/100 → MODERATE
 
 ### Concerns
-- Line citations in the Integration Map have drifted slightly (`check_passed` is at `:646` not `:656`; `recheck_scores` at `:1348` not `:1370`) — locate by state name.
+- _Resolved:_ the Integration Map's `:656`/`:791`/`:1370` are the `check-readiness` call lines (state headers sit at `:646`/`:781`/`:1348`); citations are correct, table column relabeled.
 
 ### Outcome Risk Factors
 - Broad enumeration across ~12 change sites (3 Python CLI files, 2 loop YAMLs + oracle, 5 autodev routing/reader states) with moderate cross-module routing semantics (exit 3 → `on_cannot_judge` via `harness_exit`).
 - No successive-call stateful stub exists yet; the regression tests need new test infrastructure.
-- `confidence_check.on_failure` infra classification still offers an either/or (route to infra terminal vs. make `diagnose` record the class) — pick one before implementing.
+- _Resolved:_ `confidence_check.on_failure`/`on_error` route to the infra terminal (mirrors `check_decide_rate_limited` → `mark_rate_limit_infra`).
 
 ## Session Log
 - `/ll:confidence-check` - 2026-09-25T01:45:32 - `ce904479-7e73-4d58-aa48-892e2cdb88b3.jsonl`
