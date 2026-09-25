@@ -8,6 +8,8 @@ discovered_by: ll-issues-create
 discovered_date: '2026-09-25'
 captured_at: '2026-09-25T03:36:09Z'
 parent: EPIC-3565
+relates_to:
+- ENH-3601
 ---
 
 # ENH-3590: Add advise second-model consult step to autodev

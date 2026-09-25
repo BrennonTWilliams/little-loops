@@ -10,6 +10,9 @@ captured_at: '2026-09-24T19:33:13Z'
 parent: EPIC-3565
 blocks:
 - ENH-3577
+- ENH-3599
+- ENH-3601
+- ENH-3600
 ---
 
 # FEAT-3573: Autodev code formatting and quality evidence gate before closure credit

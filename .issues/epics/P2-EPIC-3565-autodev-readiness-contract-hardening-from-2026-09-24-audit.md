@@ -7,6 +7,13 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-09-24'
 captured_at: '2026-09-24T19:31:05Z'
+relates_to:
+- ENH-3597
+- FEAT-3598
+- ENH-3599
+- ENH-3601
+- ENH-3602
+- ENH-3600
 ---
 
 # EPIC-3565: Autodev readiness contract hardening from 2026-09-24 audit
@@ -35,7 +42,7 @@ Every route into implementation passes the same current-evidence readiness contr
 
 - Every little-loops project on this machine is `local-editable` against this checkout, so
   autodev routing defects show up across all of them.
-- The outer loop has grown to ~87 states, with repair and rescoring policy duplicated
+- The outer loop has grown to 105 states, with repair and rescoring policy duplicated
   between parent and child. That makes contract gaps like F1 easy to introduce and hard to
   see.
 
@@ -80,22 +87,24 @@ measurement.
 - **BUG-3568** — Autodev residual decision group reaches implement_current with decision_needed armed (done)
 - **BUG-3569** — Autodev dequeue-time decision resolution bypasses preflight and refine pipeline (done)
 - **BUG-3570** — Confidence-check skill misstates format-check --fix repair coverage (done)
-- **BUG-3571** — Refine-to-ready accepts stale or absent verify verdict and confidence scores (open)
+- **BUG-3571** — Refine-to-ready accepts stale or absent verify verdict and confidence scores (done)
 - **BUG-3572** — Failed spike suppresses unproven-mechanism outcome cap in confidence-check (cancelled — split into BUG-3591, BUG-3592, BUG-3593)
 - **FEAT-3573** — Autodev code formatting and quality evidence gate before closure credit (open)
-- **BUG-3574** — PROPOSAL_UNSOUND verdict routed to reconcile, which cannot edit Proposed Solution (open)
-- **ENH-3575** — Structured policy gate field replacing prose gate-phrase grep in autodev (open)
-- **ENH-3576** — Format-check repair coverage for missing and boilerplate sections with format-issue fallback (open)
-- **ENH-3577** — Consolidate autodev issue preparation into a single controller loop (open)
-- **BUG-3588** — Autodev post-repair rescoring accepts stale or absent confidence scores (open)
+- **BUG-3574** — PROPOSAL_UNSOUND verdict routed to reconcile, which cannot edit Proposed Solution (done)
+- **ENH-3575** — Structured policy gate field replacing prose gate-phrase grep in autodev (done)
+- **ENH-3576** — Format-check repair coverage for missing and boilerplate sections with format-issue fallback (done)
+- **ENH-3577** — Consolidate autodev issue preparation into a single controller loop (done — decomposed into ENH-3597, FEAT-3598, ENH-3599, ENH-3601, ENH-3602, ENH-3600)
+- **BUG-3588** — Autodev post-repair rescoring accepts stale or absent confidence scores (done)
 - **ENH-3590** — Add advise second-model consult step to autodev (open)
-- **BUG-3591** — Confidence-check suppresses unproven-mechanism cap on attempted-only spikes (open)
-- **BUG-3592** — Spike treats any non-zero Verification exit as a refutation (open)
-- **BUG-3593** — Loops do not route refuted or inconclusive spike verdicts (open)
-
-
-
-
+- **BUG-3591** — Confidence-check suppresses unproven-mechanism cap on attempted-only spikes (done)
+- **BUG-3592** — Spike treats any non-zero Verification exit as a refutation (done)
+- **BUG-3593** — Loops do not route refuted or inconclusive spike verdicts (done)
+- **ENH-3597** — Emit a typed per-issue run record from refine-to-ready-issue (open)
+- **FEAT-3598** — Add ll-issues next-obligation deterministic preparation selector (open)
+- **ENH-3599** — Move spike and decision repair routing from autodev into refine-to-ready-issue (open)
+- **ENH-3601** — Move autodev second-pass preparation routing into a preparation controller (open)
+- **ENH-3602** — Single budget owner for learning-proof evidence (open)
+- **ENH-3600** — Drive autodev ledger from run records and remove preparation handshake files (open)
 
 ## Acceptance Criteria
 
