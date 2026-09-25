@@ -16,6 +16,12 @@ blocks:
 - BUG-3593
 - BUG-3574
 - ENH-3577
+confidence_score: 100
+outcome_confidence: 70
+score_complexity: 10
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 10
 ---
 
 # BUG-3592: Spike treats any non-zero Verification exit as a refutation
@@ -321,3 +327,7 @@ Everything ambiguous reads as inconclusive and does not claim the approach is wr
 ## Status
 
 **Open** | Created: 2026-09-25 | Priority: P2
+
+
+## Session Log
+- `/ll:confidence-check` - 2026-09-25T04:25:20 - `9aefaaf2-024d-4b80-b438-1a2a0085bef6.jsonl`
