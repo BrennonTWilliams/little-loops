@@ -124,6 +124,8 @@ ENH-3600. FEAT-3573 blocks only ENH-3600, which rewrites the same closure accoun
 - **ENH-3611** — Move autodev spike and proof-gate repair into refine-to-ready-issue (open)
 - **ENH-3612** — manage-issue Phase 4 runs configured verification commands verbatim (open)
 - **ENH-3613** — Autodev summary.json splits cancelled from implemented closures (open)
+- **BUG-3614** — Autodev DECISION re-entry routes lifetime-capped issues to breakdown (open)
+
 
 
 

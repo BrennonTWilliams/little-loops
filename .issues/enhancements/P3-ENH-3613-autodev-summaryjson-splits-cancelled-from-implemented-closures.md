@@ -3,10 +3,11 @@ id: ENH-3613
 type: ENH
 title: Autodev summary.json splits cancelled from implemented closures
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-26'
 captured_at: '2026-09-26T05:02:45Z'
+completed_at: '2026-09-26T06:54:54Z'
 parent: EPIC-3565
 decision_needed: false
 blocks:
@@ -380,6 +381,7 @@ what was wrong and fixed, not an outstanding action item)
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-26T06:54:54 - `0ab9c443-0b4b-4b68-b98f-d6899d8aa427.jsonl`
 - `/ll:ready-issue` - 2026-09-26T06:41:54 - `f4536461-4b4c-49df-b9dd-8cc9f5906a6c.jsonl`
 - `/ll:confidence-check` - 2026-09-26T06:35:03 - `4feeec57-f041-445f-8943-e7f88d866fbf.jsonl`
 - `/ll:confidence-check` - 2026-09-26T06:27:09 - `54149cb8-ad12-45b6-badc-4def259c8764.jsonl`

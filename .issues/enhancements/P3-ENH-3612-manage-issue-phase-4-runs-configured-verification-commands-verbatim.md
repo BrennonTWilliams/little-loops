@@ -10,6 +10,12 @@ captured_at: '2026-09-26T05:02:45Z'
 parent: EPIC-3565
 relates_to:
 - FEAT-3573
+confidence_score: 100
+outcome_confidence: 82
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 # ENH-3612: manage-issue Phase 4 runs configured verification commands verbatim
@@ -206,4 +212,5 @@ _Added by `/ll:refine-issue` — 2026-09-26 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-26T06:54:48 - `b6236edd-3c2e-4487-b3b9-c892c0144a8f.jsonl`
 - `/ll:refine-issue` - 2026-09-26T06:42:16 - `f4536461-4b4c-49df-b9dd-8cc9f5906a6c.jsonl`

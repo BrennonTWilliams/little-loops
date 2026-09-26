@@ -7494,7 +7494,7 @@ class TestAutodevLoop:
 
     def _stub_statuses(self, run_dir: Path, statuses: dict[str, str]) -> dict:
         """Per-ID ll-issues stub returning display-cased statuses; returns env."""
-        arms = "".join(f"{i}) echo '{{\"status\":\"{s}\"}}';; " for i, s in statuses.items())
+        arms = "".join(f'{i}) echo \'{{"status":"{s}"}}\';; ' for i, s in statuses.items())
         stub = run_dir / "ll-issues"
         stub.write_text(f'#!/bin/sh\nif [ "$1" = "show" ]; then case "$2" in {arms}esac; fi\n')
         stub.chmod(0o755)
@@ -7536,9 +7536,7 @@ class TestAutodevLoop:
         assert (summary["closed"], summary["closed_implemented"]) == (2, 0)
         assert summary["closed_cancelled"] == 2
 
-    def test_finalize_done_all_cancelled_with_not_started(
-        self, data: dict, tmp_path: Path
-    ) -> None:
+    def test_finalize_done_all_cancelled_with_not_started(self, data: dict, tmp_path: Path) -> None:
         (tmp_path / "autodev-staged.txt").write_text("FEAT-1\n")
         (tmp_path / "autodev-not-started.txt").write_text("FEAT-9  notstarted_x\n")
         env = self._stub_statuses(tmp_path, {"FEAT-1": "Cancelled"})
