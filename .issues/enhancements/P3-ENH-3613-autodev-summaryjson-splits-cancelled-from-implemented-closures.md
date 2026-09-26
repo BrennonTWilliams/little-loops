@@ -21,162 +21,220 @@ blocks:
 autodev's `finalize_done` puts `cancelled` closures in the same `closed` bucket as
 implemented ones. The run summary cannot tell "implemented and closed" apart from "closed
 without implementation". Split out of FEAT-3573. This split sets the `summary.json` shape
-that ENH-3600 preserves.
+that FEAT-3573 extends and ENH-3600 preserves.
 
 ## Current Behavior
 
-`finalize_done` (`scripts/little_loops/loops/autodev.yaml:3041`) promotes every staged ID
-whose status is `done|completed|cancelled` to `autodev-passed.txt` (:3058-:3060).
-`summary.json` (:3243) reports one `closed` count. The current keys are `verdict`,
-`closed`, `not_closed`, `skipped`, `gate_blocked`, `decision_unresolved`, `not_started`,
-`inflight_unresolved`, `abandoned`, `stop_reason`, `pending` and `proof_gate_infra`
-(12 keys; BUG-3603 added `proof_gate_infra`).
+`finalize_done` (`scripts/little_loops/loops/autodev.yaml`, state header ~`:3115`) promotes
+every staged ID whose status is `done|completed|cancelled` to `autodev-passed.txt` (the
+promotion `case` arm, ~`:3133`). After the `case` arm the status is discarded. The human
+summary prints one `Passed (N)` line (~`:3237`) and `summary.json` (printf ~`:3317`)
+reports one `closed` count. The current keys are `verdict`, `closed`, `not_closed`,
+`skipped`, `gate_blocked`, `decision_unresolved`, `not_started`, `inflight_unresolved`,
+`abandoned`, `stop_reason`, `pending` and `proof_gate_infra` (12 keys; BUG-3603 added
+`proof_gate_infra`).
+
+Cancelled closures reach `finalize_done` when implementation (or `/ll:ready-issue`) closes
+an issue as invalid; `verify_impl_closed` (~`:1198`) accepts `cancelled` as closed for the
+same reason.
 
 ## Expected Behavior
 
 - `closed` stays the total count, for back-compat.
 - Two new keys are added: `closed_implemented` (`done`/`completed`) and `closed_cancelled`
   (`cancelled`). The rule `closed_implemented + closed_cancelled == closed` always holds.
-- The human-readable summary shows the split, for example `Passed (3): ... (2 implemented, 1 cancelled)`.
-- The verdict ladder does not change. A cancelled closure still counts toward
-  `success`/`partial`.
+- The human-readable summary shows the split and names the cancelled IDs, for example
+  `Passed (3): BUG-1,FEAT-1,FEAT-2  (2 implemented, 1 cancelled: FEAT-2)`. The suffix is
+  printed only when `closed_cancelled > 0`.
+- Verdict behavior: see **Verdict policy** below (open decision).
 
 ## Motivation
 
 A run that cancels every issue reports the same `closed` count as a run that implements
-them all. Operators and ENH-3600's run-record ledger need the split.
+them all. Operators, `/ll:audit-loop-run`, and ENH-3600's run-record ledger need the split.
 
 ## Proposed Solution
 
-In the `finalize_done` promotion loop, record the status next to each promoted ID. Two
-options: a sidecar `autodev-closed-status.txt` with `ID status` lines, or a separate
-`autodev-cancelled.txt`. `autodev-passed.txt` must keep one bare ID per line, because
-`auto-refine-and-implement.yaml` `finalize` and the `grep -qxF` checks read it. Count each
-bucket and add the two keys to the `summary.json` printf.
+### Design (revised 2026-09-26)
 
-### Codebase Research Findings
+Count cancellations **in memory inside the `finalize_done` promotion loop**. Do not add a
+ledger file.
 
-_Added by `/ll:refine-issue` — 2026-09-26 — based on codebase analysis:_
+- In the `cancelled` case, append the ID to a shell variable `CANCELLED_IDS` next to the
+  existing bare-ID `autodev-passed.txt` append. Split the `case` arm into
+  `done|completed)` and `cancelled)`; both still append to `autodev-passed.txt`.
+- `CLOSED_CANCELLED` = count of `CANCELLED_IDS` (`grep -c '[^[:space:]]' || true` idiom,
+  empty → 0). `CLOSED_IMPLEMENTED` = `PASSED_COUNT - CLOSED_CANCELLED`.
+- Append `"closed_implemented":%s,"closed_cancelled":%s` at the end of the `summary.json`
+  printf format and argument list, after `proof_gate_infra`.
 
-**Option A**: Status sidecar `autodev-closed-status.txt` with `ID status` lines written next to the bare-ID `autodev-passed.txt` append; implemented/cancelled counts derived from the sidecar. Two-column ledgers already exist (`ID  reason` files), so the format has precedent, but the sidecar must be read with regex-anchored greps and kept consistent with `sort -u` dedupe of `autodev-passed.txt`.
+Why the sum rule holds by construction:
+- `autodev-passed.txt` is written only by `finalize_done` (BUG-2908; pinned by
+  `test_check_passed_stages_instead_of_passes`), and `finalize_done` runs once per run
+  directory (it routes only to the `done`/`failed` terminals).
+- `STAGED_IDS` is already deduped by `sort -u`, so each cancelled ID is counted once, and
+  every counted ID was also appended to `autodev-passed.txt`, so it is in `PASSED_IDS`.
+- `CLOSED_IMPLEMENTED` is derived by subtraction, so the two keys always sum to `closed`
+  even if `autodev-passed.txt` held extra IDs.
 
-**Option B**: Separate bare-ID `autodev-cancelled.txt` bucket ledger (init-truncated, counted via the `grep -c` idiom); `closed_cancelled` is its count and `closed_implemented` is `closed` minus that count. Matches the dominant bare-ID bucket convention and keeps `grep -qxF` usable, but the sum rule holds by construction only if cancelled IDs are always also in `autodev-passed.txt`.
+Why no ledger file (supersedes the earlier "Option B — `autodev-cancelled.txt`" selection):
+the status is only observable inside the promotion loop, and that loop is the only
+producer of `autodev-passed.txt`. A persisted ledger would add an `init` truncation line,
+an init-truncation test, resumed-run "ledger absent" handling, and an
+intersection-with-`autodev-passed.txt` step, none of which buys anything. ENH-3600 moves
+`finalize_done` into Python and removes handshake files, so a new ledger would be deleted
+soon after it landed.
 
-> **Selected:** Option B — one-ledger-per-bucket convention with the least new parsing; bare-ID format keeps `grep -qxF`/`sort -u` readers intact.
+`autodev-passed.txt` keeps one bare ID per line, because `finalize_done`'s own
+`grep -qxF "$INFLIGHT"` check (~`:3210`) and `auto-refine-and-implement.yaml` `finalize`
+(`sort -u` → `comm -23`, ~`:1088-:1095`) read it.
 
-**Recommended**: Option B — fits the existing one-ledger-per-bucket convention and the count idiom with the least new parsing; the sum rule must still be asserted by tests, including the resumed-run (ledger-absent) case.
+### Verdict policy (open decision)
+
+The ladder keys on `PASSED_COUNT` (~`:3295-:3315`), so a cancelled-only run currently
+yields `verdict: success`. This contradicts the precedent set by **BUG-3449** for the
+parent loop: `auto-refine-and-implement` `finalize` counts only `status: done` as closed,
+because counting cancellations "could flip verdict to success on a run that closed nothing"
+(pinned by `test_finalize_does_not_count_cancelled_as_closed`, `test_builtin_loops.py`
+~`:5364`). After this issue, autodev's `closed_implemented` has the same meaning as the
+parent's `closed`.
+
+**Option A**: Keep the verdict ladder unchanged. A cancelled closure still counts toward
+`success`/`partial`. The new keys are reporting-only. Document the divergence from BUG-3449
+in the `audit-loop-run` Step 6a paragraph: autodev's `closed` means "verified terminal
+status, not phantom", and `closed > 0` with `closed_implemented == 0` means closed without
+implementation. Smallest change; no existing verdict fixture moves.
+
+**Option B**: Key `success`/`partial` on `CLOSED_IMPLEMENTED > 0`. A run whose only closures
+are cancellations falls through the ladder: `phantom` if anything is unverified or
+abandoned, otherwise `not_started`/`no-op`. Aligns autodev with BUG-3449. Cost: a verdict
+change visible to `ll-loop audit` and parent loops, plus a new all-cancelled verdict test.
+Cancellation is not an infra failure, so check that `no-op` is the right landing verdict
+rather than adding a dedicated one.
+
+> **Selected:** Option B — matches the BUG-3449 precedent pinned by `test_finalize_does_not_count_cancelled_as_closed`; a run that implemented nothing must not report `success`.
 
 ### Decision Rationale
 
-**Selected option:** Option B — separate bare-ID `autodev-cancelled.txt` bucket ledger.
+**Selected option:** Option B — key `success`/`partial` on `CLOSED_IMPLEMENTED > 0`.
 
-**Reasoning:** Bucket ledgers in `finalize_done` are one bare-ID file per bucket, counted with the `grep -c '[^[:space:]]'` idiom. Option B adds one `echo` in the `cancelled` case arm and one count; Option A introduces a two-column sidecar that needs regex-anchored greps and its own `sort -u` dedupe handling. To keep `closed_implemented + closed_cancelled == closed` by construction, derive `closed_cancelled` from the sorted-unique cancelled IDs that are also present in the deduped `autodev-passed.txt`, and `closed_implemented` as `closed` minus that count.
+**Reasoning:** The parent loop already refuses to count cancellations as closed (BUG-3449), so
+autodev's `closed_implemented` should carry the same meaning in the verdict. Reporting-only keys
+(Option A) would leave `success` on a run that closed nothing, which is the failure BUG-3449 fixed.
+Implementation must confirm `not_started`/`no-op` is the right landing verdict for an
+all-cancelled run (no dedicated verdict).
 
 | Option | Consistency | Simplicity | Testability | Risk | Total |
 |--------|-------------|------------|-------------|------|-------|
-| A — status sidecar | 2 | 1 | 2 | 2 | 7/12 |
-| B — cancelled ledger | 3 | 2 | 3 | 2 | 10/12 |
+| A | 1 | 3 | 3 | 3 | 10/12 |
+| B | 3 | 2 | 3 | 2 | 10/12 |
 
-**Key evidence:** `finalize_done` promotion `case` arm (`done|completed|cancelled)`) writes bare IDs; existing bucket ledgers (`-staged`, `-gate-blocked`, `-decision-unresolved`, `-proof-gate-infra`) are bare-ID; `auto-refine-and-implement.yaml` `finalize` requires bare sortable IDs in `autodev-passed.txt`. Tests must cover all-implemented, all-cancelled, mixed, and ledger-absent (resumed-run) fixtures.
+**Key evidence:** Tie on total; broken by Consistency per the scoring rule. Evidence is the
+BUG-3449 precedent and its pinning test (`test_builtin_loops.py` ~`:5364`) cited above. Scored from
+the issue's own citations; no separate per-option agent sweep was run.
 
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/loops/autodev.yaml` — `finalize_done` promotion loop, counts, printf, human summary
-- `docs/guides/LOOPS_REFERENCE.md` — `:1079` `finalize_done` bucket list
-- `skills/audit-loop-run/SKILL.md:271` — lists autodev's summary keys; add the two new ones. Mirror regen via `ll-adapt` if this file is mirrored.
-
-_Wiring pass added by `/ll:wire-issue`:_
-- `scripts/little_loops/loops/autodev.yaml` — `init` state ledger-truncation block (`printf '' > ${context.run_dir}/autodev-*.txt`, ~`:63-77`): add an `autodev-cancelled.txt` line. Step 1 says "truncated at init" but no Files-to-Modify entry names this site [Agent 1, 3 finding]
-- `skills/audit-loop-run/SKILL.md` — Step 6a: add a bolded per-key paragraph after the BUG-3603 `proof_gate_infra` paragraph (~`:275`). File is 464 lines against the 500 cap (36 lines of headroom; one paragraph plus a blank line fits) [Agent 2, 3 finding]
+- `scripts/little_loops/loops/autodev.yaml` — `finalize_done` only: split the promotion
+  `case` arm, derive the two counts, add the `Passed` line suffix, append the two keys to
+  the `summary.json` printf. Under Option B, also the verdict ladder. `init` is **not**
+  touched.
+- `skills/audit-loop-run/SKILL.md` — Step 6a: add a bolded per-key paragraph after the
+  BUG-3603 `proof_gate_infra` paragraph (~`:275`). It must say how to read the keys, not
+  just list them: `closed > 0` with `closed_implemented == 0` is "closed without
+  implementation", and autodev's `closed_implemented` corresponds to the parent loop's
+  `closed` (BUG-3449). End with "additive; older `summary.json` files will lack them —
+  treat absence as no split data, and fall back to `closed`." File is 464 lines against the
+  500 cap.
+- `docs/guides/LOOPS_REFERENCE.md` — no page lists autodev's `summary.json` keys. The only
+  key-level mention is the BUG-3603 sentence at the end of the "Diagram omissions"
+  paragraph (~`:1081`: "…surfaces as a dedicated `Proof-gate-infra` summary bucket and
+  `proof_gate_infra` `summary.json` key."). Add one sentence after it naming
+  `closed_implemented`/`closed_cancelled`, the sum rule, and the `Passed` line suffix.
 
 ### Dependent Files
-- `scripts/little_loops/loops/auto-refine-and-implement.yaml` — `finalize` reads `autodev-passed.txt` (bare IDs) and writes its own `summary.json`. Keep the bare-ID format unchanged. The parent does not need the split.
-- `scripts/little_loops/fsm/persistence.py`, `scripts/little_loops/cli/loop/audit.py`, `scripts/little_loops/cli/loop/evidence.py`, `scripts/little_loops/hooks/pre_compact_handoff.py` — shape-agnostic summary.json consumers. Adding keys is safe.
-
-_Wiring pass added by `/ll:wire-issue`:_
-- `scripts/little_loops/loops/autodev.yaml` `finalize_rate_limited` — routes into `finalize_done` (`next`/`on_error`), so early exits also emit the new keys; no separate edit needed [Agent 2 finding]
-- `scripts/little_loops/loops/auto-refine-and-implement.yaml` `finalize` (~`:1088`, `:1254-:1260`) — reads `autodev-passed.txt` and prints its own `closed`; unaffected provided cancelled IDs stay in `autodev-passed.txt` [Agent 1 finding]
-- `scripts/little_loops/loops/refine-to-ready-issue.yaml` `record_decision_unresolved` (~`:1396`) — writes the shared `autodev-decision-unresolved.txt` run_dir ledger; confirms ledgers are shared across loops but has no `autodev-cancelled.txt` writer to add [Agent 1 finding]
-- `docs/guides/LOOPS_REFERENCE.md` (~`:1009`, `auto-refine-and-implement` `finalize`) — depends on `autodev-passed.txt` staying the total closed ledger; no edit needed for Option B [Agent 2 finding]
-- No gate consumer reads autodev's `summary.json` `.closed` via `jq`, and no consumer parses the human `Passed (N):` line. `cli/loop/audit.py` and `evidence.py` treat the dict opaquely [Agent 2 finding]
+- `scripts/little_loops/loops/auto-refine-and-implement.yaml` `finalize` (~`:1088`,
+  `:1254-:1260`) — reads `autodev-passed.txt` and computes its own `closed`; unaffected
+  because cancelled IDs stay in `autodev-passed.txt` and the bare-ID format is unchanged.
+- `scripts/little_loops/loops/autodev.yaml` `finalize_rate_limited` — routes into
+  `finalize_done`, so early exits also emit the new keys; no separate edit.
+- `scripts/little_loops/fsm/persistence.py`, `scripts/little_loops/cli/loop/audit.py`,
+  `scripts/little_loops/cli/loop/evidence.py`, `scripts/little_loops/hooks/pre_compact_handoff.py`
+  — shape-agnostic `summary.json` consumers. Adding keys is safe. No consumer reads
+  autodev's `closed` via `jq` or parses the human `Passed (N):` line.
 
 ### Tests
-- `scripts/tests/test_builtin_loops.py` `TestAutodevLoop` — `_run_finalize_done` harness; the promotion, phantom, no-op and BUG-3390 dedupe tests. Add cases for all implemented, all cancelled, and mixed runs, and assert the new keys and the sum rule.
-- `scripts/tests/data/loop_interpolation_baseline.json` / `TestInterpSweepBaseline` — the `finalize_done` entry stays valid if no new `${...}` refs are added.
-
-_Wiring pass added by `/ll:wire-issue`:_
-- `scripts/tests/test_ll_issues_check_gate.py` `test_init_truncates_proof_gate_infra_ledger` (~`:371-381`) and `scripts/tests/test_spike_verdict_routing.py` (~`:112-113`) — per-ledger `init` truncation pins; copy as a new `test_init_truncates_cancelled_ledger`. No test enumerates the full init ledger list, so nothing breaks [Agent 3 finding]
-- `scripts/tests/test_builtin_loops.py` `TestAutodevLoop.test_finalize_done_proof_gate_infra_zero_when_no_ledger_entries` (~`:7818`) and `test_finalize_done_not_started_zero_when_no_ledger_entries` (~`:7785`) — templates for the ledger-absent (resumed-run) test asserting the file does not exist and the key is 0 [Agent 3 finding]
-- `scripts/tests/test_builtin_loops.py` `test_finalize_done_promotes_verified_closure_to_passed` (~`:7524`) and `test_finalize_done_mixed_run_still_resolves_success` (~`:7828`) — stub `Done`, assert `closed == 1`; should keep passing. Extend them to also assert `closed_implemented == 1` and `closed_cancelled == 0` [Agent 3 finding]
-- `scripts/tests/test_builtin_loops.py` `TestAutodevLoop` — new cancelled/mixed tests need a per-ID `ll-issues` stub (existing inline stubs ignore `$2` and return one status). Sketch: `case "$2" in FEAT-1) echo '{"status":"Completed"}';; FEAT-2) echo '{"status":"Cancelled"}';; esac`. `show.py` `_STATUS_DISPLAY` (~`:108`) confirms `show --json` emits `"Cancelled"`/`"Completed"`; existing stubs' `"Done"` is not a real display value [Agent 3 finding]
-- `scripts/tests/test_audit_loop_run_skill.py` `TestAssessLoopSkill.test_skill_step6a_reads_closed_via_recovery_key` (~`:157`) and `test_skill_step6a_reads_enh_2404_keys` (~`:144`) — pattern for a new `test_skill_step6a_reads_closed_implemented_cancelled_keys` (slice `## Step 6:` to `## Step 7:`, assert both keys and "additive") [Agent 3 finding]
-- Will not break: `test_fsm_topology.py` `TestAutodevSmoke.test_autodev_topology` (`len(states) == 110`) if no state is added; `test_fsm_interpolation.py:411` (synthetic `$${PASSED_LIST:-none}` template, not autodev's action); `test_cli_loop_audit.py:170` (synthetic summary). No test pins the autodev `summary.json` key set or the `Passed (N)` text [Agent 3 finding]
-- `TestInterpSweepBaseline` — no baseline entry exists for autodev `init` or `finalize_done`; keep new logic in plain shell and avoid a heredoc/`python3 -c` block with `${context.run_dir}` [Agent 3 finding]
-- `scripts/tests/test_adapt_skills_for_codex.py`, `test_adapters.py`, `test_enh494_skill_companions.py`, `test_docs_audience_gate.py` — run after the SKILL.md and LOOPS_REFERENCE.md edits. No host mirror of `audit-loop-run` was found under `.gemini/`, `.kimi-code/` or `.qwen/` [Agent 2, 3 finding]
-
-### Codebase Research Findings
-
-_Added by `/ll:refine-issue` — 2026-09-26 — based on codebase analysis:_
-
-- **Anchors have drifted from the Current Behavior/Integration Map text.** In `scripts/little_loops/loops/autodev.yaml` the `finalize_done` state header is now at `:3115`, the promotion `case` arm (`done|completed|cancelled)`) at `:3133`, the `Passed (%d)` human line at `:3237`, and the `summary.json` printf at `:3317`. In `docs/guides/LOOPS_REFERENCE.md` the `finalize_done` bucket prose is the "Diagram omissions" paragraph at `:1081`; in `skills/audit-loop-run/SKILL.md` the per-key additive paragraphs (ENH-2404, ENH-2743, BUG-3603) sit at `:271-:275` (Step 6a). Re-resolve by symbol, not line number.
-- **The verdict ladder keys on `PASSED_COUNT`** (`autodev.yaml` ~`:3295-:3315`), so a cancelled-only run currently yields `success`. The Expected Behavior constraint that the ladder does not change means the new keys must be derived alongside, never substituted into, `PASSED_COUNT`.
-- **`autodev-passed.txt` has exact-line readers.** `finalize_done` itself uses `grep -qxF "$INFLIGHT"` against it (~`:3210`), and `auto-refine-and-implement.yaml` `finalize` (~`:1088-:1095`) pipes it through `sort -u` into `comm -23`. Both require bare, sortable IDs; any status data must live outside this file.
-- **Only `finalize_done` writes `autodev-passed.txt`** (BUG-2908; pinned by `test_check_passed_stages_instead_of_passes`). The promotion loop is therefore the sole point where implemented-vs-cancelled is observable; after the `case` arm the status is discarded.
-- **Staged IDs are deduped by `sort -u`** before promotion, and `autodev-passed.txt` is re-deduped at count time. A split derived from a second ledger must survive the same dedupe or `closed_implemented + closed_cancelled == closed` can drift (e.g. an ID appended twice across a resumed run).
-- **Resumed runs bypass `init`.** Every existing ledger key has a "ledger absent → 0" companion test; a new ledger-derived key inherits that requirement.
-- **`summary.json` consumers are shape-agnostic.** `cli/loop/audit.py` (~`:194`, `:242-:247`) stores the whole dict; `evidence.py` copies it by filename. `auto-refine-and-implement` never reads autodev's `closed`; it computes its own from filesystem snapshots. `skills/audit-loop-run/SKILL.md` Step 6a treats `closed` as the claimed-success signal and treats absent additive keys as "no data".
+- `scripts/tests/test_builtin_loops.py` `TestAutodevLoop` (`_run_finalize_done` ~`:7481`):
+  - New tests with a **per-ID** `ll-issues` stub (existing stubs ignore `$2` and return one
+    fixed status). Sketch: `case "$2" in FEAT-1) echo '{"status":"Completed"}';;
+    FEAT-2) echo '{"status":"Cancelled"}';; esac`. These are the real display values
+    (`show.py` `_STATUS_DISPLAY` ~`:108`: `done` → `"Completed"`, `cancelled` →
+    `"Cancelled"`).
+  - Fixtures: all implemented, all cancelled, mixed. Assert both keys, the sum rule, the
+    `Passed` line suffix naming the cancelled ID (absent when none are cancelled), and that
+    `autodev-passed.txt` still holds bare IDs matchable by `grep -qxF`.
+  - Dedupe: a cancelled ID appended twice to `autodev-staged.txt` counts once.
+  - Nothing staged (extend `test_finalize_done_no_op_when_nothing_staged` ~`:7550`): both
+    keys are 0.
+  - Extend `test_finalize_done_promotes_verified_closure_to_passed` (~`:7524`) and
+    `test_finalize_done_mixed_run_still_resolves_success` (~`:7828`) to assert
+    `closed_implemented == 1`, `closed_cancelled == 0`.
+  - Verdict: the all-cancelled fixture pins `success` (Option A) or the chosen
+    fall-through verdict (Option B).
+- `scripts/tests/test_audit_loop_run_skill.py` — add
+  `test_skill_step6a_reads_closed_implemented_cancelled_keys` modeled on
+  `test_skill_step6a_reads_enh_2404_keys` (~`:144`) /
+  `test_skill_step6a_reads_closed_via_recovery_key` (~`:157`): slice `## Step 6:` to
+  `## Step 7:`, assert both keys and "additive".
+- Will not break: `test_fsm_topology.py` autodev state count (no state is added);
+  `TestInterpSweepBaseline` (no baseline entry for `finalize_done`; keep new logic in plain
+  shell with `$${...}` escaping, no heredoc or `python3 -c` block containing
+  `${context.run_dir}`). No test pins autodev's full `summary.json` key set or the
+  `Passed (N)` text.
+- Run after the SKILL.md and LOOPS_REFERENCE.md edits: `test_enh494_skill_companions.py`,
+  `test_docs_audience_gate.py`, `test_adapt_skills_for_codex.py`, `test_adapters.py`.
+  No host mirror of `audit-loop-run` exists under `.gemini/`, `.kimi-code/` or `.qwen/`.
 
 ### Conventions in Force
-- **Bucket ledgers are `${context.run_dir}/autodev-<bucket>.txt`, truncated at init and read only by `finalize_done`** — evidence: `autodev.yaml` init `:63-:74`. Two line formats coexist: bare-ID (`-passed`, `-staged`, `-gate-blocked`, `-decision-unresolved`, `-proof-gate-infra`) and `ID  reason` two-space (`-skipped`, `-not-started`, `-unverified`). Reasoned files need regex-anchored greps (`grep -qE "^$ID([[:space:]]|$)"`, BUG-3390) because `grep -qxF`/`sort -u` cannot match them.
-- **Counts use `grep -c '[^[:space:]]' || true` followed by `[ -z "$COUNT" ] && COUNT=0`** (BUG-2827 guard against the two-line `grep -c ... || echo 0` bug) — evidence: `finalize_done` counting block `:3145-:3234`.
-- **New `summary.json` keys are appended at the end of both the format string and the argument list; keys are flat scalars** — evidence: `proof_gate_infra` (BUG-3603), `pending`, `not_started` at the `:3317` printf.
-- **Splitting one ledger into display buckets is done in `finalize_done` by stem filtering** (`grep`/`awk` on the reason column, with each new stem excluded from the generic bucket to prevent double-counting) — evidence: skipped-ledger chain ENH-2727/2868/2909/2989 and `test_finalize_done_buckets_already_resolved_separately`.
-- **FSM escaping**: bash `${...}` in the action must be `$${...}`, and interpolation covers the whole action including comments — evidence: `$${PASSED_LIST:-none}` at `:3237`; harness substitution in `_run_finalize_done`. `finalize_done` has no entry in `loop_interpolation_baseline.json`, so introducing a heredoc with `${...}` would add one (the file forbids additions).
-- **Docs/skill convention for a new additive key** is a bolded per-key paragraph in `skills/audit-loop-run/SKILL.md` Step 6a ending "additive; older `summary.json` files will lack it — treat absence as zero", plus one inline mention in `LOOPS_REFERENCE.md` `:1081`. `SKILL.md` is capped at 500 lines (`ll-verify-skills`); skill edits can trip `ll-adapt` mirror gates.
-
-### Test Constraints
-- `TestAutodevLoop` `_run_finalize_done` (`test_builtin_loops.py` ~`:7481`) runs the action under `bash -c`; existing `ll-issues` stubs return **one fixed status for every ID** and none emits a cancelled status. A mixed implemented/cancelled fixture needs a per-ID stub, and the cancelled status string `ll-issues show --json` actually emits was not verified — check it against the lowercase-and-match logic rather than assuming `"Cancelled"`.
-- No `TestAutodevLoop` test asserts autodev's full `summary.json` key list; tests assert individual keys (`test_finalize_done_promotes_verified_closure_to_passed` asserts `closed==1`). `test_finalize_summary_has_closure_keys` (~`:5426`) and `test_finalize_does_not_count_cancelled_as_closed` (~`:5364`) belong to `auto-refine-and-implement`, not autodev.
-- If the change adds no new state, the pinned state count in `test_fsm_topology.py` (~`:263`) is unaffected.
-- `test_audit_loop_run_skill.py` (~`:145-:170`) carries per-key Step 6a tests for ENH-2404/ENH-2743; a matching test for the new keys is the local convention (no BUG-3603 test was confirmed there).
+- **Counts use `grep -c '[^[:space:]]' || true` followed by `[ -z "$COUNT" ] && COUNT=0`**
+  (BUG-2827) — evidence: `finalize_done` counting block.
+- **New `summary.json` keys are appended at the end of both the printf format string and
+  the argument list; keys are flat scalars** — evidence: `proof_gate_infra` (BUG-3603).
+- **FSM escaping**: bash `${...}` in the action must be `$${...}`; interpolation covers the
+  whole action including comments — evidence: `$${PASSED_LIST:-none}` on the `Passed` line.
+- **Docs convention for a new additive key**: a bolded per-key paragraph in
+  `audit-loop-run` Step 6a ending with the "additive … treat absence as …" sentence, plus an
+  inline mention in `LOOPS_REFERENCE.md`.
 
 ## Implementation Steps
 
-1. In the promotion loop, append the bare ID to `autodev-cancelled.txt` (truncated at init) when the status is `cancelled`, next to the bare-ID `autodev-passed.txt` append.
-2. Compute `CLOSED_CANCELLED` from the deduped `autodev-cancelled.txt` IDs that are also in `autodev-passed.txt` (`grep -c` idiom, absent ledger → 0) and `CLOSED_IMPLEMENTED` as `PASSED_COUNT` minus that, and add both to the printf and the human summary.
-3. Add tests; update `LOOPS_REFERENCE.md` and `audit-loop-run` docs.
-
-### Codebase Research Findings
-
-_Added by `/ll:refine-issue` — 2026-09-26 — based on codebase analysis:_
-
-- Anchors cited in the steps above resolve by symbol (`finalize_done`, its promotion `case` arm, the `summary.json` printf), not by the older line numbers in Current Behavior — see Integration Map findings.
-- Verification target: the new keys satisfy `closed_implemented + closed_cancelled == closed` for all-implemented, all-cancelled, mixed, and ledger-absent (resumed-run) fixtures, and `autodev-passed.txt` remains bare-ID/`grep -qxF`-matchable.
-
-### Wiring Phase (added by `/ll:wire-issue`)
-
-_These touchpoints were identified by wiring analysis and must be included in the implementation:_
-
-- Update `scripts/little_loops/loops/autodev.yaml` `init` — add `printf '' > ${context.run_dir}/autodev-cancelled.txt` to the truncation block
-- Update `scripts/little_loops/loops/autodev.yaml` `finalize_done` — read `autodev-cancelled.txt` tolerating an absent file (resumed runs bypass `init`); append `closed_implemented`/`closed_cancelled` at the end of the `summary.json` printf format and args (after `proof_gate_infra`); keep `$${...}` escaping on any new bash expansions
-- Add `test_init_truncates_cancelled_ledger` modeled on `test_init_truncates_proof_gate_infra_ledger`
-- Add per-ID-stub tests in `TestAutodevLoop` for all-implemented, all-cancelled, mixed and ledger-absent fixtures, asserting the sum rule; extend the existing `Done`-stub promotion test with the new keys
-- Add `test_skill_step6a_reads_closed_implemented_cancelled_keys` to `test_audit_loop_run_skill.py` alongside the `skills/audit-loop-run/SKILL.md` Step 6a paragraph
-- Run `test_enh494_skill_companions.py`, `test_docs_audience_gate.py`, `test_fsm_topology.py`, `TestInterpSweepBaseline` and the adapter tests after editing
+1. Wait for ENH-3610 to land. Its uncommitted changes to `autodev.yaml` and the
+   `check_decision_at_dequeue` states named in `LOOPS_REFERENCE.md:1081` overlap this edit.
+2. Verdict policy resolved: Option B (see Decision Rationale).
+3. `finalize_done`: split the promotion `case` arm into `done|completed)` and
+   `cancelled)` (both append to `autodev-passed.txt`; `cancelled)` also accumulates
+   `CANCELLED_IDS`). Derive `CLOSED_CANCELLED` and `CLOSED_IMPLEMENTED`. Add the `Passed`
+   line suffix. Append both keys to the printf. Under Option B, change the ladder's success
+   and partial conditions to `CLOSED_IMPLEMENTED`.
+4. Add the `TestAutodevLoop` tests and the `test_audit_loop_run_skill.py` test.
+5. Add the `audit-loop-run` Step 6a paragraph and the `LOOPS_REFERENCE.md` sentence.
+6. Run the full suite plus the gates listed under Tests.
 
 ## Impact
 
 - **Priority**: P3
 - **Effort**: Small
-- **Risk**: Low
+- **Risk**: Low (Option A) / Low-Medium (Option B changes a verdict)
 
 ## Program Design
 
 ### Types
 
-- `summary.json` (autodev `finalize_done`) gains two integer keys: `closed_implemented` and `closed_cancelled`. The rule `closed_implemented + closed_cancelled == closed` always holds.
-- Cancelled bucket ledger `${run_dir}/autodev-cancelled.txt`: bare IDs, init-truncated, written next to the bare-ID `autodev-passed.txt` (Option B selected; cancelled IDs are always also in `autodev-passed.txt`).
+- `summary.json` (autodev `finalize_done`) gains two integer keys, `closed_implemented` and
+  `closed_cancelled`, appended after `proof_gate_infra` (14 keys total). The rule
+  `closed_implemented + closed_cancelled == closed` always holds.
+- No new ledger file. `autodev-passed.txt` stays bare IDs, one per line.
 
 ### Signatures
 
@@ -184,27 +242,31 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ### Call Path
 
-`autodev.yaml:finalize_done` (:3041) → per staged ID `ll-issues show --json` (`cmd_show`, `show.py:786`) → lowercased status → `done|completed` counts as implemented, `cancelled` counts as cancelled → `autodev-passed.txt` (bare ID) + `autodev-cancelled.txt` (cancelled only) → counts → `summary.json` printf (:3243).
+`autodev.yaml:finalize_done` → per staged ID `ll-issues show --json` (`cmd_show`, `show.py:786`) → lowercased status → `done|completed` appends to `autodev-passed.txt`; `cancelled` appends to `autodev-passed.txt` and to in-memory `CANCELLED_IDS` → `PASSED_COUNT`, `CLOSED_CANCELLED`, `CLOSED_IMPLEMENTED = PASSED_COUNT - CLOSED_CANCELLED` → `Passed` summary line + `summary.json` printf.
 
 ### Decision Rules
 
 - `done` and `completed` count as implemented. `cancelled` counts as cancelled.
-- The verdict ladder does not change. A cancelled closure still counts as `closed`.
+- A cancelled closure still counts in `closed` and still lands in `autodev-passed.txt`.
+- A cancelled closure does not count toward `success`/`partial`; those key on `CLOSED_IMPLEMENTED > 0` (Verdict policy: Option B).
 - The `autodev-passed.txt` format does not change (bare IDs).
-
 
 ## Acceptance Criteria
 
-- [ ] `summary.json` has `closed_implemented` and `closed_cancelled`, and their sum equals `closed`
-- [ ] `autodev-passed.txt` format is unchanged (bare IDs)
-- [ ] The verdict is unchanged for all existing `TestAutodevLoop` fixtures
-- [ ] Docs list the new keys
+- [ ] `summary.json` has `closed_implemented` and `closed_cancelled`, and their sum equals `closed` for all-implemented, all-cancelled, mixed, and nothing-staged runs
+- [ ] The `Passed` summary line names the cancelled IDs when any exist, and is unchanged when none do
+- [ ] `autodev-passed.txt` format is unchanged (bare IDs, `grep -qxF`-matchable)
+- [ ] No new ledger file and no `init` change
+- [ ] Verdict behavior matches the chosen **Verdict policy** option. Under Option A, the verdict is unchanged for all existing `TestAutodevLoop` fixtures.
+- [ ] `audit-loop-run` Step 6a explains how to read the keys (including closed-without-implementation and the BUG-3449 relationship); `LOOPS_REFERENCE.md` names them
 
 ## Scope Boundaries
 
-- FEAT-3573 adds the quality-gate bucket (`quality_failed`) on top of this shape. This
-  issue does not add it.
-- The parent `auto-refine-and-implement` summary is out of scope.
+- FEAT-3573 adds the quality-gate buckets (`quality_failed`, `quality_gate_infra`) on top
+  of this shape. This issue does not add them.
+- The parent `auto-refine-and-implement` summary is out of scope. It already excludes
+  cancellations from `closed` (BUG-3449).
+- Moving `finalize_done` into Python is ENH-3600.
 
 ## Status
 
@@ -212,6 +274,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 
 ## Session Log
+- `/ll:decide-issue` - 2026-09-26T06:18:44 - `8ade3bc4-e17f-4d10-aa22-4a48a2f01bb0.jsonl`
 - `/ll:wire-issue` - 2026-09-26T06:05:49 - `7d4fe7ad-aaa1-48a1-b0d0-90c193fc70c2.jsonl`
 - `/ll:decide-issue` - 2026-09-26T06:01:33 - `95a3ad40-ecc6-4e5c-befd-9be7a282a332.jsonl`
 - `/ll:refine-issue` - 2026-09-26T05:58:48 - `e3c050f9-1131-496e-87dd-53db8a85423f.jsonl`

@@ -351,5 +351,6 @@ gate: no violations. Graph: provider=`codegraph` freshness=`stale` (not used to 
   edges retarget to `check_passed`. Retarget count updated 13 → 16.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-09-26T06:04:27 - `ec595975-3769-4082-8e09-cc13cbd0f9b9.jsonl`
 - `/ll:confidence-check` - 2026-09-26T06:01:37 - `95a3ad40-ecc6-4e5c-befd-9be7a282a332.jsonl`
 - `/ll:verify-issues` - 2026-09-26T05:50:13 - `3a196c8d-c8cb-4f09-ab88-54c0f0f49d57.jsonl`

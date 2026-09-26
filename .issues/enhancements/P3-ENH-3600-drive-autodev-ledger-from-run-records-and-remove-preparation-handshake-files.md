@@ -121,7 +121,7 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 - The child's three autodev-ledger writers are `record_proposal_unsound`, `record_spike_inconclusive`, and `record_decision_unresolved` in `refine-to-ready-issue.yaml` — each also writes `refine-terminal-class` and defers via `ll-issues set-status`.
 - Ledger lifecycle facts: `init` pre-creates 12 ledger files (single `printf '' >` each); `autodev-gate-infra.txt` and `autodev-scores-absent.txt` are append-only and NOT pre-created; `autodev-stop-reason` is written only by `finalize_rate_limited`; `autodev-passed.txt` is written only by `finalize_done` (test-enforced).
 - Test locations differ from the Tests section: `finalize_done` behavioral coverage lives in `test_builtin_loops.py` `TestAutodevLoop` (:6643; `_run_finalize_done` harness :7475 executes the action under `bash -c`; promotion/phantom/no-op/rate-limit tests :7389-:7574; `test_check_passed_stages_instead_of_passes` :7459). `test_autodev_loop.py` has zero `finalize_done` references (it covers per-iteration markers); `test_fsm_topology.py` only pins the autodev state count (105). `scripts/tests/data/loop_interpolation_baseline.json` carries a `finalize_done` interpolation-baseline entry that must stay valid through the rewrite.
-- `summary.json` current key set (single printf at the end of `finalize_done`): `verdict`, `closed`, `not_closed`, `skipped`, `gate_blocked`, `decision_unresolved`, `not_started`, `inflight_unresolved`, `abandoned`, `stop_reason`, `pending`; verdict ladder success → partial → phantom → not_started → no-op, with `rate_limit` stop reason overriding to `rate_limited`, and `phantom` exiting 1 to route `on_no: failed`. This is the FEAT-3573-as-of shape the Scope Boundary pins.
+- `summary.json` current key set (single printf at the end of `finalize_done`): `verdict`, `closed`, `not_closed`, `skipped`, `gate_blocked`, `decision_unresolved`, `not_started`, `inflight_unresolved`, `abandoned`, `stop_reason`, `pending`, `proof_gate_infra` (12 keys; BUG-3603 added `proof_gate_infra`; ENH-3613 appends `closed_implemented`/`closed_cancelled` → 14; FEAT-3573 appends `quality_failed`/`quality_gate_infra` → 16); verdict ladder success → partial → phantom → not_started → no-op, with `rate_limit` stop reason overriding to `rate_limited`, and `phantom` exiting 1 to route `on_no: failed`. This is the FEAT-3573-as-of shape the Scope Boundary pins.
 
 _Added by `/ll:refine-issue` — 2026-09-26 — based on codebase analysis:_
 
@@ -200,7 +200,7 @@ _Added by `/ll:refine-issue` — 2026-09-26 — based on codebase analysis:_
 ## Scope Boundaries
 
 - Queue files and closure accounting (`autodev-queue.txt`, `autodev-inflight`, `autodev-staged.txt`, `autodev-passed.txt`, `autodev-unverified.txt`, FEAT-3573 evidence) stay.
-- `summary.json` keys keep their shape **as of FEAT-3573**, which adds the cancelled/implemented split.
+- `summary.json` keys keep their shape **as of FEAT-3573**, which builds on ENH-3613's cancelled/implemented split (`closed_implemented`/`closed_cancelled`, derived in memory in the promotion loop — no ledger file).
 
 ## Acceptance Criteria
 
@@ -241,7 +241,7 @@ _Added by `/ll:confidence-check` on 2026-09-25 (re-scored 2026-09-26)_
 - Dequeued-ID source is an open design decision: no cumulative dequeue ledger exists, so `record_absent` is unsatisfiable by enumerating `run-records/prepare-issue/*.json` alone. Choose (enumerate records vs. introduce a dequeue ledger) before implementing.
 
 ### Outcome Risk Factors
-- Deep per-site complexity: `finalize_done` (~220 lines of inline shell) rewritten into Python while preserving the 12-key `summary.json` shape and verdict ladder/exit-code routing exactly.
+- Deep per-site complexity: `finalize_done` (~220 lines of inline shell) rewritten into Python while preserving the `summary.json` key shape (16 keys once ENH-3613 and FEAT-3573 land) and verdict ladder/exit-code routing exactly.
 - Broad enumeration across ~15+ sites (3 loop YAMLs, new module, 5+ test files, README, LOOPS_REFERENCE, ARCHITECTURE) with several existing tests that break as markers move.
 - Several design decisions left open (dequeue-ID source, gate scope, child-marker migration vs. documented exception).
 
