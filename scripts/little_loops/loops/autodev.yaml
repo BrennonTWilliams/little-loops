@@ -122,6 +122,9 @@ states:
       # BUG-3588: rescore-retry markers (check_scores_present_*) get their retry
       # back if this issue is re-dequeued in the same run.
       rm -f ${context.run_dir}/autodev-rescore-retry-*-$CURRENT
+      # ENH-3610: obligation-selector re-entry caps get their budget back if this
+      # issue is re-dequeued in the same run.
+      rm -f ${context.run_dir}/autodev-reentry-*-$CURRENT
 
       # FEAT-2751: snapshot the pre-refine Readiness score per-issue so
       # check_reconcile_needed can detect a plateau even on the common
@@ -219,8 +222,8 @@ states:
       pattern: "SKIP_CLOSED"
     capture: dequeue_status
     on_yes: skip_already_resolved
-    on_no: check_decision_at_dequeue
-    on_error: check_decision_at_dequeue
+    on_no: check_blockers_at_dequeue
+    on_error: check_blockers_at_dequeue
 
   skip_already_resolved:
     # ENH-2868: ledger a pre-flight status skip and advance the queue. Uses the
@@ -241,51 +244,6 @@ states:
     action_type: shell
     next: dequeue_next
     on_error: dequeue_next
-
-  check_decision_at_dequeue:
-    # BUG-2513: route decision_needed:true issues to the resolve_decision
-    # sub-loop on first dequeue, BEFORE refine_current runs. Decouples the
-    # decision gate from the sub-loop's on_success / on_failure / on_error
-    # outcome. dequeue_next clears autodev-decide-ran and this issue's
-    # per-issue decide-options-deposited-<ID> marker on every dequeue, so this
-    # gate enters clean. The existing check_decision_after_refine gate still
-    # catches flags added during refinement (defense in depth) on the
-    # post-refine path.
-    action: "ll-issues check-flag ${captured.input.output:shell} decision_needed"
-    fragment: shell_exit
-    on_yes: resolve_decision_at_dequeue
-    on_no: check_blockers_at_dequeue
-    on_error: check_blockers_at_dequeue
-
-  resolve_decision_at_dequeue:
-    # Entry-time sibling of resolve_decision. The shared resolve_decision
-    # returns through mark_decide_ran → rerun_confidence_after_decide →
-    # recheck_after_decide → implement_current, which let a dequeue-time
-    # decision skip blocker/gate preflight and the whole refine pipeline.
-    # A decision resolved at dequeue instead resumes the normal preparation
-    # path at check_blockers_at_dequeue. `with:` is bound per call state, so
-    # this cannot share resolve_decision's state.
-    loop: oracles/resolve-decision
-    with:
-      issue_id: "${captured.input.output}"
-    capture: resolve_decision_at_dequeue
-    on_success: mark_decide_ran_at_dequeue
-    on_failure: check_decide_rate_limited
-    on_error: check_decide_rate_limited
-
-  mark_decide_ran_at_dequeue:
-    # Same marker as mark_decide_ran (cleared per-issue at dequeue_next) so
-    # decide_current does not re-run decide for this issue later in the chain.
-    # The oracle can return done with a residual decision group still armed
-    # (resolve-decision.yaml check_residual_decision); hold that issue for
-    # human review rather than refining it.
-    action: |
-      printf '1' > ${context.run_dir}/autodev-decide-ran
-      ll-issues check-flag ${captured.input.output:shell} decision_needed
-    fragment: shell_exit
-    on_yes: record_decision_unresolved
-    on_no: check_blockers_at_dequeue
-    on_error: check_blockers_at_dequeue
 
   check_blockers_at_dequeue:
     # ENH-2909: cheap upfront gate ported from rn-implement.yaml's check_blocked_by
@@ -564,7 +522,7 @@ states:
       type: classify
     # ENH-3609: the child's own ledgered stops go to ledger_child_stop (no
     # autodev-skipped row; the child already ledgered them in its marker file).
-    # No edge to check_decision_after_refine / check_passed / detect_children: a
+    # No edge to check_passed / detect_children: a
     # failed child never reuses the success path (ENH-1679).
     route:
       RETRYABLE_ERROR:rate_limited: finalize_rate_limited
@@ -719,9 +677,9 @@ states:
     evaluate:
       type: classify
     route:
-      READY: check_decision_after_refine
-      BLOCKED: check_decision_after_refine
-      MISSING: check_decision_after_refine
+      READY: check_passed
+      BLOCKED: check_passed
+      MISSING: check_passed
       DECOMPOSED: detect_children
       CANCELLED: skip_cancelled
       BLOCKED:decision_unresolved: skip_inflight
@@ -731,8 +689,8 @@ states:
       DEFERRED:spike_inconclusive: skip_inflight
       RETRYABLE_ERROR:infra: skip_inflight
       RETRYABLE_ERROR:rate_limited: skip_inflight
-      _: check_decision_after_refine
-      _error: check_decision_after_refine
+      _: check_passed
+      _error: check_passed
 
   skip_cancelled:
     # ENH-3609: the child's record says the issue was cancelled during
@@ -747,16 +705,6 @@ states:
     action_type: shell
     next: dequeue_next
     on_error: dequeue_next
-
-  check_decision_after_refine:
-    # Check decision_needed immediately after confidence-check (via sub-loop)
-    # completes. Runs /ll:decide-issue before score thresholds are evaluated,
-    # so an unresolved design decision is resolved on the direct post-refine path.
-    action: "ll-issues check-flag ${captured.input.output:shell} decision_needed"
-    fragment: shell_exit
-    on_yes: resolve_decision
-    on_no: check_passed
-    on_error: check_passed
 
   check_passed:
     # Verify confidence and outcome scores meet project thresholds. Even on
@@ -777,15 +725,137 @@ states:
     # sub-loop, which can break the issue down before scoring — absence is
     # legitimate here, so keep the pre-existing exit-1 path (→ detect_children).
     fragment: harness_exit
-    on_yes: check_proof_gate_before_implement
-    on_no: triage_outcome_failure
-    on_cannot_judge: triage_outcome_failure
+    on_yes: select_obligation_pre_implement
+    on_no: select_obligation_post_refine
+    on_cannot_judge: select_obligation_post_refine
     on_error: detect_children
+
+  select_obligation_post_refine:
+    # ENH-3610: post-refine obligation selector (check_passed.on_no /
+    # .on_cannot_judge). Replaces triage_outcome_failure's decide leg: autodev
+    # never resolves a decision itself — a still-set decision_needed flag sends
+    # the issue back into refine-to-ready-issue (whose check_decision_before_done
+    # and mid-chain gates own resolution). Probe order: `check-flag` first (valid
+    # at any score state), then `next-obligation` (its DECISION predicate is the
+    # same flag, so it cannot print DECISION here; it is present so ENH-3611 can
+    # add PROOF:* routes). Re-entry is capped at one per issue
+    # (autodev-reentry-DECISION-<ID>, cleared at dequeue_next); a second
+    # reading routes DECISION_EXHAUSTED → record_reentry_exhausted. `_error`
+    # copies triage_outcome_failure.on_error (detect_children).
+    action: |
+      ID=${captured.input.output:shell}
+      ll-issues check-flag "$ID" decision_needed
+      RC=$?
+      if [ "$RC" -eq 0 ]; then
+        # Flag set: never run next-obligation (it reports NONE once scores pass).
+        # Un-stage first (grep -vxF idiom from mark_not_started): every
+        # pre-implement placement site appends the ID to autodev-staged.txt
+        # before this selector runs.
+        if [ -f "${context.run_dir}/autodev-staged.txt" ]; then
+          grep -vxF "$ID" "${context.run_dir}/autodev-staged.txt" \
+            > "${context.run_dir}/autodev-staged.tmp" 2>/dev/null || true
+          mv "${context.run_dir}/autodev-staged.tmp" "${context.run_dir}/autodev-staged.txt"
+        fi
+        F="${context.run_dir}/autodev-reentry-DECISION-$ID"
+        N=$(cat "$F" 2>/dev/null || echo 0)
+        if [ "$N" -ge 1 ] 2>/dev/null; then
+          echo "DECISION_EXHAUSTED"
+        else
+          printf '%s' "$((N + 1))" > "$F"
+          echo "DECISION"
+        fi
+        exit 0
+      fi
+      ll-issues next-obligation "$ID" --format token \
+        --readiness-threshold ${context.readiness_threshold:shell} \
+        --outcome-threshold ${context.outcome_threshold:shell} \
+        --honor-waiver
+    action_type: shell
+    evaluate:
+      type: classify
+    route:
+      DECISION: refine_current
+      DECISION_EXHAUSTED: record_reentry_exhausted
+      _: check_spike_needed
+      _error: detect_children
+
+  select_obligation_pre_implement:
+    # ENH-3610: pre-implement obligation selector, shared by the five score-pass
+    # sites (check_passed.on_yes, recheck_scores.on_yes,
+    # recheck_after_size_review.on_yes, regate_after_atomic_remediation.on_yes,
+    # reopen_waived.next). Replaces decide_current: `check-flag` runs first
+    # because next-obligation returns NONE once scores pass. On DECISION /
+    # DECISION_EXHAUSTED the ID is un-staged (all five sites append it to
+    # autodev-staged.txt before this state runs) so a re-entry that defers never
+    # lands in autodev-unverified.txt. `_` / `_error` go to the fail-closed proof
+    # gate (BUG-3603), the removed decide_current's on_no / on_error target.
+    action: |
+      ID=${captured.input.output:shell}
+      ll-issues check-flag "$ID" decision_needed
+      RC=$?
+      if [ "$RC" -eq 0 ]; then
+        # Flag set: never run next-obligation (it reports NONE once scores pass).
+        # Un-stage first (grep -vxF idiom from mark_not_started): every
+        # pre-implement placement site appends the ID to autodev-staged.txt
+        # before this selector runs.
+        if [ -f "${context.run_dir}/autodev-staged.txt" ]; then
+          grep -vxF "$ID" "${context.run_dir}/autodev-staged.txt" \
+            > "${context.run_dir}/autodev-staged.tmp" 2>/dev/null || true
+          mv "${context.run_dir}/autodev-staged.tmp" "${context.run_dir}/autodev-staged.txt"
+        fi
+        F="${context.run_dir}/autodev-reentry-DECISION-$ID"
+        N=$(cat "$F" 2>/dev/null || echo 0)
+        if [ "$N" -ge 1 ] 2>/dev/null; then
+          echo "DECISION_EXHAUSTED"
+        else
+          printf '%s' "$((N + 1))" > "$F"
+          echo "DECISION"
+        fi
+        exit 0
+      fi
+      ll-issues next-obligation "$ID" --format token \
+        --readiness-threshold ${context.readiness_threshold:shell} \
+        --outcome-threshold ${context.outcome_threshold:shell} \
+        --honor-waiver
+    action_type: shell
+    evaluate:
+      type: classify
+    route:
+      DECISION: refine_current
+      DECISION_EXHAUSTED: record_reentry_exhausted
+      _: check_proof_gate_before_implement
+      _error: check_proof_gate_before_implement
+
+  record_reentry_exhausted:
+    # ENH-3610: the obligation selectors' re-entry cap fired (the child was
+    # re-entered once for the obligation and the flag is still set). Same shape
+    # as recheck_after_size_review's decision branch (ENH-2936): ledger
+    # `decision_unresolved`, clear inflight, defer via set-status (BUG-2729
+    # guard leaves a done/completed/cancelled issue unchanged), advance.
+    # Not skip_inflight (ledgers refine_failed, does not defer, so every run
+    # would re-pick the issue). Generic name so ENH-3611 can reuse it for PROOF.
+    action: |
+      ID=${captured.input.output:shell}
+      echo "$ID  decision_unresolved" >> ${context.run_dir}/autodev-skipped.txt
+      rm -f ${context.run_dir}/autodev-inflight
+      STATUS=$(ll-issues show "$ID" --json 2>/dev/null \
+        | python3 -c "import json,sys; print((json.load(sys.stdin).get('status') or '').lower())" \
+        2>/dev/null || echo "")
+      if [ "$STATUS" = "done" ] || [ "$STATUS" = "completed" ] || [ "$STATUS" = "cancelled" ]; then
+        echo "[SKIP-DEFER] $ID already $STATUS; leaving status untouched"
+      else
+        ll-issues set-status "$ID" deferred --by automation --reason decision_unresolved 2>/dev/null || true
+        echo "[DECISION_UNRESOLVED] $ID — decision still needed after child re-entry; deferred"
+      fi
+    action_type: shell
+    next: dequeue_next
+    on_error: dequeue_next
 
   check_proof_gate_before_implement:
     # ENH-3575: an unsatisfied `proof` gate must never reach implement_current.
-    # check_spike_needed is only reachable through triage_outcome_failure, so a
-    # high-scoring issue would otherwise skip it. Same spike budget as
+    # check_spike_needed is only reachable through select_obligation_post_refine's
+    # `_` route (the score-failing path), so a high-scoring issue would otherwise
+    # skip it. Same spike budget as
     # check_spike_needed (`spike-runs-<ID>`, cap 2, incremented before run_spike);
     # route_spike_verdict's PROVEN chain returns here with spike_proven set.
     # Budget spent with the proof still open defers as blocked_by_gate.
@@ -865,33 +935,17 @@ states:
       _: mark_proof_gate_infra
       _error: mark_proof_gate_infra
 
-  decide_current:
-    # Check if the issue requires a decision before implementation. Reads
-    # decision_needed from ll-issues show --json; if true, runs /ll:decide-issue
-    # to resolve competing options before handing off to ll-auto.
-    # ENH-1415: when re-entered after size-review (recheck_after_size_review →
-    # on_yes), short-circuit straight to implement_current if decide already
-    # ran in this iteration. The flag is cleared per-issue at dequeue_next.
-    action: |
-      if [ -f ${context.run_dir}/autodev-decide-ran ]; then
-        exit 1
-      fi
-      ll-issues check-flag ${captured.input.output} decision_needed  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
-    fragment: shell_exit
-    on_yes: resolve_decision
-    on_no: check_proof_gate_before_implement
-    on_error: check_proof_gate_before_implement
-
   resolve_decision:
     # ENH-3075: shared decision-cluster sub-loop (BUG-3065's
     # oracles/resolve-decision.yaml) — probes decidability (ENH-2443/ENH-2446),
     # deposits competing options via /ll:refine-issue --auto if needed, runs
     # /ll:decide-issue --auto, and re-verifies decision_needed cleared
-    # (BUG-2595). Entered from the four probe-first entry points:
-    # check_decision_at_dequeue, check_decision_after_refine,
-    # decide_current.on_yes, and check_decision_before_size_review.on_yes —
-    # all bind issue_id only, relying on the sub-loop's skip_probe: "false"
-    # default. mark_decide_ran / rerun_confidence_after_decide /
+    # (BUG-2595). ENH-3610: autodev no longer resolves decisions at its own
+    # entry points (the refine-to-ready-issue child owns them, re-entered via
+    # the select_obligation_* selectors); the only remaining entry is
+    # check_spike_budget (the refuted-spike leg, removed with the spike states
+    # in ENH-3611). It binds issue_id only, relying on the sub-loop's
+    # skip_probe: "false" default. mark_decide_ran / rerun_confidence_after_decide /
     # recheck_after_decide / record_decision_unresolved stay caller-side;
     # see oracles/resolve-decision.yaml for the extracted cluster's own
     # contract and Behavior Parity notes in ENH-3075.
@@ -899,23 +953,6 @@ states:
     with:
       issue_id: "${captured.input.output}"
     capture: resolve_decision
-    on_success: mark_decide_ran
-    on_failure: check_decide_rate_limited
-    on_error: check_decide_rate_limited
-
-  resolve_decision_direct:
-    # Same sub-loop as resolve_decision, but entered directly from
-    # triage_outcome_failure.on_yes with skip_probe: "true" — the fifth entry
-    # point BUG-3065's route_entry demultiplexer exists to serve (BUG-2513's
-    # direct-to-decide route: triage_outcome_failure's predicate is
-    # score_ambiguity <= 10 OR decision_needed, not "is this decidable", so
-    # the decidability probe is skipped rather than run redundantly). `with:`
-    # is bound per call state, so this cannot share resolve_decision's state.
-    loop: oracles/resolve-decision
-    with:
-      issue_id: "${captured.input.output}"
-      skip_probe: "true"
-    capture: resolve_decision_direct
     on_success: mark_decide_ran
     on_failure: check_decide_rate_limited
     on_error: check_decide_rate_limited
@@ -945,9 +982,9 @@ states:
 
   mark_decide_ran:
     # ENH-1415: record that decide has already run for the current issue so
-    # decide_current short-circuits if size-review routes back via
-    # recheck_after_size_review → on_yes: decide_current. The flag is cleared
-    # per-issue at dequeue_next.
+    # a size-review re-entry does not re-decide (legacy autodev-decide-ran
+    # marker; ENH-3610 removed its only reader, decide_current, ENH-3600 retires
+    # it). The flag is cleared per-issue at dequeue_next.
     # The oracle can return done with the flag still armed when a residual
     # decision group survives (resolve-decision.yaml check_residual_decision
     # routes that to done for human review). recheck_after_decide only reads
@@ -1700,7 +1737,7 @@ states:
     # gap still lets check-readiness pass, but the compound command's overall
     # exit code goes non-zero, so on_no fires exactly like a score failure.
     # No new deferral branch here — the not-ready path already funnels
-    # through check_decision_before_size_review down to
+    # through run_size_review down to
     # recheck_after_size_review, which owns the design_gate_failed deferral.
     action: |
       ID="${captured.input.output}"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
@@ -1719,45 +1756,10 @@ states:
     # BUG-3588: exit 3 = scores absent; post-sub-loop site, so behaviour is
     # unchanged (route as a score failure) — explicit rather than implicit.
     fragment: harness_exit
-    on_yes: decide_current
-    on_no: check_decision_before_size_review
-    on_cannot_judge: check_decision_before_size_review
-    on_error: check_decision_before_size_review
-
-  check_decision_before_size_review:
-    # Defense-in-depth for the pre-size-review path. Reachable only from
-    # recheck_scores.on_no / recheck_scores.on_error (autodev.yaml:557-558)
-    # when decision_needed was added during refine (e.g., a future decide
-    # hook). The upstream check_decision_at_dequeue (BUG-2513) catches
-    # every pre-refine decision_needed:true issue. Mirrors the
-    # check_decision_after_refine defense-in-depth precedent. Originally
-    # added by BUG-1277; on_error closes the latent dead-end BUG-2519.
-    action: "ll-issues check-flag ${captured.input.output:shell} decision_needed"
-    fragment: shell_exit
-    on_yes: resolve_decision
+    on_yes: select_obligation_pre_implement
     on_no: run_size_review
+    on_cannot_judge: run_size_review
     on_error: run_size_review
-
-  triage_outcome_failure:
-    # Diagnose why outcome_confidence failed before routing to size-review.
-    # decision_needed=true (authoritative flag) OR low score_ambiguity (≤10,
-    # proxy) routes to resolve_decision_direct, bypassing the decidability
-    # probe (skip_probe: "true") since the predicate here already IS the
-    # decide-or-not decision, not "is this decidable". Otherwise →
-    # check_spike_needed (ENH-2640) to test for an unproven internal
-    # mechanism before check_missing_artifacts / size-review. Decide-first
-    # ordering: an unresolved design decision must be settled before spiking
-    # an approach.
-    # on_error falls back to detect_children safely.
-    action: |
-      ll-issues show ${captured.input.output} --json | python3 -c "  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
-      import json, sys
-      d = json.load(sys.stdin)
-      sys.exit(0 if (int(d.get('score_ambiguity') or 25) <= 10 or d.get('decision_needed') == 'true') else 1)"
-    fragment: shell_exit
-    on_yes: resolve_decision_direct
-    on_no: check_spike_needed
-    on_error: detect_children
 
   check_spike_needed:
     # ENH-2640: an outcome-confidence failure caused by a zero-precedent internal
@@ -1767,7 +1769,7 @@ states:
     # autodev-skipped.txt. Route it to run_spike to prove the mechanism first.
     # Predicate is a two-field condition (spike_needed AND NOT spike_attempted)
     # that ll-issues check-flag can't express in one call, so mirror
-    # triage_outcome_failure's inline-python idiom reading show --json. The
+    # the child's check_spike_needed inline-python idiom reading show --json. The
     # spike_attempted guard makes this a one-shot: a completed-or-attempted spike
     # never re-runs. On no match, fall through to check_missing_artifacts,
     # preserving the existing wire/size-review chain.
@@ -1965,7 +1967,7 @@ states:
   check_missing_artifacts:
     # Gate before size-review: if missing_artifacts=true, route to run_wire so
     # absent files and unwired components are resolved before decomposition is
-    # attempted. Mirrors check_decision_before_size_review logic; on_no falls
+    # attempted. Mirrors the check-flag gate idiom; on_no falls
     # through to detect_children (size-review path).
     action: "ll-issues check-flag ${captured.input.output:shell} missing_artifacts"
     fragment: shell_exit
@@ -2103,7 +2105,7 @@ states:
     # BUG-2654: the decide path (recheck_after_decide.on_no → snap_and_size_review
     # → run_size_review → enqueue_or_skip) and the no-decide size-review path both
     # funnel through enqueue_or_skip before any low_readiness skip, but neither
-    # ever visits triage_outcome_failure's check_spike_needed gate. A
+    # ever visits the post-refine path's check_spike_needed gate. A
     # spike_needed:true issue was therefore skipped as low_readiness with its spike
     # remedy structurally bypassed. Interpose this decide-path-specific spike gate
     # on the no-children skip edge so a pending spike gets its one shot before the
@@ -2412,7 +2414,7 @@ states:
     # BUG-2734 Step 2 (honest deferral): one-shot re-check of the full
     # readiness+outcome gate after remediation — this state is reached at most
     # once per issue per run (no loop back to check_guard2_verdict), so there
-    # is no rescore loop. A pass routes to decide_current exactly like
+    # is no rescore loop. A pass routes to select_obligation_pre_implement exactly like
     # recheck_after_size_review's on_yes. A still-failing outcome defers with
     # the oversized_atomic reason code (never low_readiness — readiness itself
     # already passed to get here) so deferred-triage surfaces it distinctly and
@@ -2497,7 +2499,7 @@ states:
         exit 1
       fi
     fragment: harness_exit
-    on_yes: decide_current
+    on_yes: select_obligation_pre_implement
     on_no: check_atomic_design_remedy
     on_cannot_judge: mark_scores_absent_infra
     on_error: dequeue_next
@@ -2590,7 +2592,7 @@ states:
 
   reopen_waived:
     # BUG-3390: GO + waiver — undo this pass's oversized_atomic deferral and
-    # re-enter the implement chain at decide_current (regate's own on_yes
+    # re-enter the implement chain at select_obligation_pre_implement (regate's own on_yes
     # target). `set-status open` leaves deferred_reason/deferred_by/
     # deferred_date in place (set_status.py's status_frontmatter_updates only
     # adds keys) — harmless, every consumer keys on status. Re-arm
@@ -2611,7 +2613,7 @@ states:
       printf '%s' "$ID" > ${context.run_dir}/autodev-inflight
       echo "[GO-NO-GO] $ID GO with outcome gate waived; re-opened and staged for implementation"
     action_type: shell
-    next: decide_current
+    next: select_obligation_pre_implement
     on_error: dequeue_next
 
   refine_for_design:
@@ -2958,7 +2960,7 @@ states:
           # prose gate, never an external/manual prerequisite.
           # BUG-3603: this call STAYS fail-open deliberately — unlike the
           # pre-implement proof gate, every path out of this state is backstopped
-          # by it (on_yes -> decide_current -> proof gate; on_no/on_error ->
+          # by it (on_yes -> select_obligation_pre_implement -> proof gate; on_no/on_error ->
           # remedy/dequeue paths that never implement), so a helper error here
           # can never put an unproven issue into implement_current.
           if [ -n "$ISSUE_FILE" ]; then
@@ -3016,7 +3018,7 @@ states:
         exit 1
       fi
     fragment: harness_exit
-    on_yes: decide_current
+    on_yes: select_obligation_pre_implement
     on_no: check_pre_deferral_remedy
     on_cannot_judge: mark_scores_absent_infra
     on_error: dequeue_next

@@ -304,8 +304,9 @@ states:
     # decision is needed and should skip the decidability probe/deposit
     # detour: check_decision_needed_post.on_yes (post-refine/wire re-check)
     # and diagnose's DECIDE route (dimensional classification already found
-    # decision_needed: true). Mirrors autodev's resolve_decision_direct
-    # (entered from triage_outcome_failure.on_yes).
+    # decision_needed: true). Formerly mirrored autodev's
+    # resolve_decision_direct, removed by ENH-3610 (autodev re-enters the
+    # refine-to-ready-issue child instead).
     loop: oracles/resolve-decision
     with:
       issue_id: "${context.issue_id}"

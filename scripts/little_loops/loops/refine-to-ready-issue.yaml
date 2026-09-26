@@ -919,7 +919,7 @@ states:
   check_outcome:
     # Step 2 of 2: check outcome confidence (outcome_confidence vs outcome_threshold).
     # Outcome below threshold → check_decision_needed before falling through to breakdown_issue.
-    # Outcome passes → done.
+    # Outcome passes → check_decision_before_done (ENH-3610).
     action: |
       cat > "${context.run_dir}/check_outcome-issue_id.txt" << 'LL_RAW_9F3C1A7E_EOF'
       ${captured.issue_id.output}
@@ -950,18 +950,37 @@ states:
           sys.exit(2)
       sys.exit(0 if int(d.get('outcome') or 0) >= outcome else 1)
       PYEOF
-      RC=$?
-      if [ "$RC" -eq 0 ]; then
-        ll-issues run-record write ${captured.issue_id.output:shell} --run-dir ${context.run_dir} --writer refine-to-ready-issue --readiness-threshold ${context.readiness_threshold:shell} --outcome-threshold ${context.outcome_threshold:shell} || true
-      fi
-      exit $RC
+      exit $?
     fragment: shell_exit
     # BUG-2726: capture so ${captured.check_outcome.stderr} carries the inner
     # ll-issues failure into the diagnose prompt.
     capture: check_outcome
-    on_yes: done
+    on_yes: check_decision_before_done
     on_no: check_decision_needed
     on_error: diagnose
+
+  check_decision_before_done:
+    # ENH-3610: child invariant — this loop never reaches `done` with
+    # decision_needed: true (except via write_broke_down). Sits on the three
+    # no-class done edges (check_outcome.on_yes, check_missing_artifacts.on_yes,
+    # check_scores_from_file.on_yes). Flag set → check_decide_attempts (the
+    # existing decide budget and path, which re-scores via confidence_check);
+    # otherwise → write_done_record → done. Fail-open on error: a probe failure
+    # must not strand a ready issue, and autodev's selectors re-check the flag.
+    action: "ll-issues check-flag ${captured.issue_id.output:shell} decision_needed"
+    fragment: shell_exit
+    on_yes: check_decide_attempts
+    on_no: write_done_record
+    on_error: write_done_record
+
+  write_done_record:
+    # ENH-3610: the no-class run-record write, moved here from check_outcome /
+    # check_missing_artifacts / check_scores_from_file so a record is written
+    # only when `done` is really next (not when a decision gate diverts).
+    action: |
+      ll-issues run-record write ${captured.issue_id.output:shell} --run-dir ${context.run_dir} --writer refine-to-ready-issue --readiness-threshold ${context.readiness_threshold:shell} --outcome-threshold ${context.outcome_threshold:shell} || true
+    action_type: shell
+    next: done
 
   check_decision_needed:
     # Gate before size-review: if decision_needed=true the low outcome score is driven
@@ -1116,6 +1135,8 @@ states:
     # cycle is bounded by check_decide_attempts (BUG-3553): post-BUG-3278 the
     # sub-loop's done terminal can legitimately leave decision_needed set
     # (a residual lower-tier group), so the flag alone does not break it.
+    # ENH-3610: also reached from check_decision_before_done (the child
+    # invariant: never `done` with decision_needed: true).
     loop: oracles/resolve-decision
     with:
       issue_id: "${captured.issue_id.output}"
@@ -1126,19 +1147,14 @@ states:
 
   check_missing_artifacts:
     # Gate before size-review: if missing_artifacts=true the low outcome score is
-    # caused by absent files/unwired components, not scope. Exit via done so the
-    # outer loop's triage_outcome_failure → check_missing_artifacts → run_wire path
-    # can handle the repair. Mirrors check_decision_needed above and
+    # caused by absent files/unwired components, not scope. Exit via done (through
+    # check_decision_before_done) so the outer loop's remediation ladder
+    # (check_passed.on_no → select_obligation_post_refine → check_spike_needed →
+    # check_missing_artifacts → run_wire path) can handle the repair. Mirrors check_decision_needed above and
     # autodev.yaml's check_missing_artifacts state.
-    action: |
-      ll-issues check-flag ${captured.issue_id.output:shell} missing_artifacts
-      RC=$?
-      if [ "$RC" -eq 0 ]; then
-        ll-issues run-record write ${captured.issue_id.output:shell} --run-dir ${context.run_dir} --writer refine-to-ready-issue --readiness-threshold ${context.readiness_threshold:shell} --outcome-threshold ${context.outcome_threshold:shell} || true
-      fi
-      exit $RC
+    action: "ll-issues check-flag ${captured.issue_id.output:shell} missing_artifacts"
     fragment: shell_exit
-    on_yes: done
+    on_yes: check_decision_before_done
     on_no: breakdown_issue
     on_error: breakdown_issue
 
@@ -1262,16 +1278,12 @@ states:
       sys.exit(0 if int(d.get('confidence') or 0) >= readiness
                  and int(d.get('outcome') or 0) >= outcome else 1)
       PYEOF
-      RC=$?
-      if [ "$RC" -eq 0 ]; then
-        ll-issues run-record write ${captured.issue_id.output:shell} --run-dir ${context.run_dir} --writer refine-to-ready-issue --readiness-threshold ${context.readiness_threshold:shell} --outcome-threshold ${context.outcome_threshold:shell} || true
-      fi
-      exit $RC
+      exit $?
     fragment: shell_exit
     # BUG-2726: capture so ${captured.check_scores_from_file.stderr} carries the
     # inner ll-issues failure into the diagnose prompt.
     capture: check_scores_from_file
-    on_yes: done
+    on_yes: check_decision_before_done
     on_no: breakdown_issue
     on_error: diagnose
 

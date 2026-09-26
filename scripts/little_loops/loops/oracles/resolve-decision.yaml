@@ -30,12 +30,12 @@ import:
 states:
   route_entry:
     # Entry demultiplexer (### Fifth entry point). Four callers enter via the
-    # decidability probe (skip_probe unset/false). autodev's
-    # triage_outcome_failure enters directly at run_decide (skip_probe:
-    # "true") because its predicate is score_ambiguity <= 10 OR
-    # decision_needed, where check-decidable is not the right gate. That
-    # binding itself lands with ENH-3075; this sub-loop only needs to expose
-    # the branch.
+    # decidability probe (skip_probe unset/false).
+    # rn-remediate's resolve_decision_direct enters directly at run_decide
+    # (skip_probe: "true") because its predicate is already "a decision is
+    # needed", where check-decidable is not the right gate (it is now the only
+    # skip_probe: "true" caller; ENH-3610 removed autodev's). This sub-loop
+    # only needs to expose the branch.
     action: "[ \"${context.skip_probe:shell}\" = \"true\" ]"
     fragment: shell_exit
     on_yes: run_decide
@@ -245,11 +245,12 @@ states:
     # forever — progress -> on_no -> run_decide -> assert -> on_yes ->
     # progress -> ... with no exit the stall gate can break.
     #
-    # Verified non-spinning: autodev.yaml's decide_current short-circuits on
-    # a write-once autodev-decide-ran marker, so a multi-decision issue under
-    # autodev gets exactly one decide pass per dequeue before this state's
-    # on_no routes it to human review — bounded by the caller, not by a
-    # retry loop here.
+    # Verified non-spinning: a multi-decision issue is bounded by the callers,
+    # not by a retry loop here. Under refine-to-ready-issue,
+    # check_decide_attempts allows one resolve per child entry at
+    # check_decision_needed / check_decision_before_done; autodev re-enters the
+    # child at most once per issue (autodev-reentry-DECISION-<ID>, ENH-3610)
+    # before record_reentry_exhausted defers it for human review.
     action: "ll-issues check-unresolved-decisions ${context.issue_id:shell}"
     fragment: shell_exit
     on_yes: failed
