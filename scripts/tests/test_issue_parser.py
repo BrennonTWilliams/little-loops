@@ -5787,7 +5787,10 @@ class TestBug3295ContainmentCorpusDifferential:
     # ENH-3602 Deviations note), not a detector regression -- same
     # succession pattern as BUG-3448/ENH-3449 above. Measured at fix time
     # (.issues/, every `.md` file: total report count 573 -> 574).
-    _ENH_3602_TOTAL_REPORTS = 574
+    # ENH-3611 session (2026-09-26): grew again from issue-file editing
+    # (total report count 574 -> 578), not a detector regression; the
+    # constant name is kept to avoid churn.
+    _ENH_3602_TOTAL_REPORTS = 578
 
     def test_previously_spurious_files_now_clear(self) -> None:
         from little_loops.issue_parser import _unapplied_decision

@@ -273,7 +273,15 @@ class TestAutodevSmoke:
         # the post-implement quality gate between verify_impl_closed and dequeue_next.
         # ENH-3611 (commit 1) added select_obligation_post_size_review (+1), raising it
         # to 112.
-        assert len(topo["states"]) == 112
+        # ENH-3611 (commit 2) removed the 22 autodev spike/decision states
+        # (check_spike_needed, run_spike, count_repair_cycle_spike, route_spike_verdict,
+        # check_spike_budget, record_spike_inconclusive, mark_spike_no_verdict_infra,
+        # the spike and decide rescoring triplets, check_spike_needed_before_skip,
+        # resolve_decision, check_decide_rate_limited, mark_decide_ran,
+        # recheck_after_decide, check_rearmed_spike_after_decide,
+        # record_decision_unresolved, snap_and_size_review,
+        # check_proof_gate_before_implement) (-22), lowering it to 90.
+        assert len(topo["states"]) == 90
 
         # Every edge endpoint is a known state id, or the target of a
         # declared sub-loop (`loop:`) cross-graph edge. `from` may be null

@@ -131,7 +131,8 @@ def _parse_card_fields(path: Path, config: BRConfig) -> dict[str, str | None]:
     # and read by /ll:confidence-check before scoring. Mirrors decision_needed.
     unproven_mechanism_raw = frontmatter.get("unproven_mechanism")
     missing_artifacts_raw = frontmatter.get("missing_artifacts")
-    # ENH-2640: spike-remediation flags read by autodev's check_spike_needed
+    # ENH-2640: spike-remediation flags read by the refine-to-ready-issue child's check_spike_needed
+    # (autodev's copy was removed in ENH-3611)
     # (spike_needed set by /ll:confidence-check Phase 4.10; spike_attempted/
     # spike_completed written by /ll:spike). Surfaced as lowercased boolean
     # strings via `show --json`, mirroring the decision_needed pattern.
@@ -336,7 +337,7 @@ def _parse_card_fields(path: Path, config: BRConfig) -> dict[str, str | None]:
         "implementation_order_risk": str(implementation_order_risk_raw).lower()
         if implementation_order_risk_raw is not None
         else None,
-        # ENH-2640: spike-remediation flags for autodev check_spike_needed
+        # ENH-2640: spike-remediation flags for the child's check_spike_needed (ENH-3611)
         "spike_needed": str(spike_needed_raw).lower() if spike_needed_raw is not None else None,
         "spike_attempted": str(spike_attempted_raw).lower()
         if spike_attempted_raw is not None

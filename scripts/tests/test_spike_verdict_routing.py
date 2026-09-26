@@ -28,7 +28,7 @@ def _stub_path(tmp_path: Path, show_json: str) -> dict[str, str]:
 
 
 def _run(
-    action: str, tmp_path: Path, env: dict[str, str], input_ref: str
+    action: str, tmp_path: Path, env: dict[str, str], input_ref: str, cwd: Path | None = None
 ) -> subprocess.CompletedProcess:
     script = action.replace("${context.run_dir}", str(tmp_path))
     if input_ref:
@@ -36,7 +36,7 @@ def _run(
     script = script.replace(":shell}", "}")
     script = script.replace("${captured.issue_id.output}", "BUG-9800")
     script = script.replace("${captured.input.output}", "BUG-9800")
-    return subprocess.run(["bash", "-c", script], env=env, capture_output=True, text=True)
+    return subprocess.run(["bash", "-c", script], env=env, capture_output=True, text=True, cwd=cwd)
 
 
 CASES = [
@@ -47,19 +47,17 @@ CASES = [
 ]
 
 
-@pytest.mark.parametrize(
-    "loop,ref",
-    [
-        ("refine-to-ready-issue.yaml", "${captured.issue_id.output}"),
-        ("autodev.yaml", "${captured.input.output}"),
-    ],
-)
 @pytest.mark.parametrize("show_json,expected", CASES)
-def test_route_spike_verdict_classification(
-    tmp_path: Path, loop: str, ref: str, show_json: str, expected: str
-) -> None:
-    state = _load(loop)["states"]["route_spike_verdict"]
-    result = _run(state["action"], tmp_path, _stub_path(tmp_path, show_json), ref)
+def test_route_spike_verdict_classification(tmp_path: Path, show_json: str, expected: str) -> None:
+    # ENH-3611: autodev's copy was removed; the child's route_spike_verdict is the
+    # only verdict router.
+    state = _load("refine-to-ready-issue.yaml")["states"]["route_spike_verdict"]
+    result = _run(
+        state["action"],
+        tmp_path,
+        _stub_path(tmp_path, show_json),
+        "${captured.issue_id.output}",
+    )
     assert result.stdout.strip() == expected, result.stderr
 
 
@@ -86,26 +84,56 @@ def test_refine_to_ready_routing_table() -> None:
     assert st["record_spike_inconclusive"]["next"] == "failed"
 
 
-def test_autodev_routing_table() -> None:
+#: ENH-3611: the 22 autodev spike/decision states removed in commit 2 (stays-deleted).
+REMOVED_AUTODEV_STATES = (
+    "check_spike_needed",
+    "run_spike",
+    "count_repair_cycle_spike",
+    "route_spike_verdict",
+    "check_spike_budget",
+    "record_spike_inconclusive",
+    "mark_spike_no_verdict_infra",
+    "rerun_confidence_after_spike",
+    "clear_scores_before_spike",
+    "check_scores_present_spike",
+    "check_spike_needed_before_skip",
+    "resolve_decision",
+    "mark_decide_ran",
+    "rerun_confidence_after_decide",
+    "clear_scores_before_decide",
+    "check_scores_present_decide",
+    "recheck_after_decide",
+    "check_rearmed_spike_after_decide",
+    "check_decide_rate_limited",
+    "record_decision_unresolved",
+    "snap_and_size_review",
+    "check_proof_gate_before_implement",
+)
+
+
+def test_autodev_spike_and_decision_states_stay_deleted() -> None:
+    """ENH-3611: the child owns spike/decision routing; autodev has none of it."""
     st = _load("autodev.yaml")["states"]
-    assert st["count_repair_cycle_spike"]["next"] == "route_spike_verdict"
-    route = st["route_spike_verdict"]["route"]
-    assert route["REFUTED"] == "check_spike_budget"
-    assert route["PROVEN"] == "clear_scores_before_spike"  # BUG-3588 chain unchanged
-    assert route["INCONCLUSIVE"] == "record_spike_inconclusive"
-    assert route["NO_VERDICT"] == "mark_spike_no_verdict_infra"
-    assert st["check_spike_budget"]["on_yes"] == "resolve_decision"
-    assert st["check_spike_budget"]["on_no"] == "record_decision_unresolved"
-    assert st["check_scores_present_spike"]["on_yes"] == "enqueue_or_skip"
-    assert st["record_spike_inconclusive"]["next"] == "dequeue_next"
-    assert st["mark_spike_no_verdict_infra"]["next"] == "dequeue_next"
-    assert "set-status" not in st["mark_spike_no_verdict_infra"]["action"]  # no deferral
-    # Re-armed spike runs before size review.
-    assert st["recheck_after_decide"]["on_no"] == "check_rearmed_spike_after_decide"
-    assert st["check_rearmed_spike_after_decide"]["on_yes"] == "run_spike"
-    assert st["check_rearmed_spike_after_decide"]["on_no"] == "snap_and_size_review"
+    assert len(REMOVED_AUTODEV_STATES) == 22
+    assert [n for n in REMOVED_AUTODEV_STATES if n in st] == []
+    # No surviving state routes to a removed state.
+    removed = set(REMOVED_AUTODEV_STATES)
+    for name, state in st.items():
+        for key in ("next", "on_yes", "on_no", "on_error", "on_success", "on_failure"):
+            assert state.get(key) not in removed, (name, key)
+        assert not (set((state.get("route") or {}).values()) & removed), name
+
+
+def test_autodev_ledger_discipline_after_spike_removal() -> None:
+    st = _load("autodev.yaml")["states"]
+    # skip_inflight still suppresses the child's spike_inconclusive stop.
     assert "autodev-spike-inconclusive.txt" in st["skip_inflight"]["action"]
     assert "autodev-spike-inconclusive.txt" in st["init"]["action"]
+    # ENH-3611: nothing in autodev writes or reads the no-verdict / pre-spike markers.
+    for name, state in st.items():
+        action = state.get("action") or ""
+        assert "autodev-spike-no-verdict.txt" not in action, name
+        assert "autodev-pre-spike-readiness.txt" not in action, name
     # BUG-3603: the pre-implement proof-gate infra deferral gets the same
     # per-reason ledger discipline — written by mark_proof_gate_infra, truncated
     # by init so a stale prior-run ledger cannot inflate the count.
@@ -113,46 +141,89 @@ def test_autodev_routing_table() -> None:
     assert "autodev-proof-gate-infra.txt" in st["init"]["action"]
 
 
+def test_autodev_never_writes_spike_runs_counter() -> None:
+    """ENH-3611: autodev only READS spike-runs-<ID> (the child spends the budget)."""
+    for name, state in _load("autodev.yaml")["states"].items():
+        for line in (state.get("action") or "").splitlines():
+            if "spike-runs-" in line:
+                assert ">" not in line.replace("2>/dev/null", "").replace(">/dev/null", ""), (
+                    name,
+                    line,
+                )
+
+
+def test_child_crashed_spike_still_counts_and_budget_check(tmp_path: Path) -> None:
+    action = _load("refine-to-ready-issue.yaml")["states"]["check_spike_budget"]["action"]
+    env = _stub_path(tmp_path, "{}")
+    counter = tmp_path / "spike-runs-BUG-9800"
+    counter.write_text("1")
+    assert _run(action, tmp_path, env, "").returncode == 0  # decide
+    counter.write_text("2")
+    assert _run(action, tmp_path, env, "").returncode != 0  # second refutation defers
+
+
+def _dispatch_env(tmp_path: Path, refine_count: int, cap: int | None) -> dict[str, str]:
+    """ll-issues stub whose `refine-status` reports ``refine_count``; config in cwd."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(exist_ok=True)
+    fake = bin_dir / "ll-issues"
+    fake.write_text(
+        "#!/bin/sh\n"
+        'if [ "$1" = "refine-status" ]; then\n'
+        f"  echo '{{\"refine_count\": {refine_count}}}'\n"
+        "else\n"
+        "  echo '{}'\n"
+        "fi\n"
+    )
+    fake.chmod(0o755)
+    cfg_dir = tmp_path / ".ll"
+    cfg_dir.mkdir(exist_ok=True)
+    cfg = {} if cap is None else {"commands": {"max_refine_count": cap}}
+    (cfg_dir / "ll-config.json").write_text(__import__("json").dumps(cfg))
+    return {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"}
+
+
+def _dispatch_spike(tmp_path: Path, runs: int | None, refine_count: int, cap: int | None) -> int:
+    action = _load("autodev.yaml")["states"]["dispatch_pre_deferral_remedy"]["action"]
+    (tmp_path / "autodev-pre-deferral-remedy.txt").write_text("spike")
+    counter = tmp_path / "spike-runs-BUG-9800"
+    if runs is None:
+        counter.unlink(missing_ok=True)
+    else:
+        counter.write_text(str(runs))
+    env = _dispatch_env(tmp_path, refine_count, cap)
+    return _run(action, tmp_path, env, "", cwd=tmp_path).returncode
+
+
+def test_dispatch_pre_deferral_remedy_spike_leg_leaves_counter_unchanged(tmp_path: Path) -> None:
+    """ENH-3611: the spike leg only reads the shared budget; on_yes -> refine_current."""
+    assert _dispatch_spike(tmp_path, runs=2, refine_count=0, cap=None) == 1  # spent -> reconcile
+    assert (tmp_path / "spike-runs-BUG-9800").read_text() == "2"
+    assert _dispatch_spike(tmp_path, runs=1, refine_count=0, cap=None) == 0
+    assert (tmp_path / "spike-runs-BUG-9800").read_text() == "1"  # NOT incremented
+    assert _dispatch_spike(tmp_path, runs=None, refine_count=0, cap=None) == 0
+    assert not (tmp_path / "spike-runs-BUG-9800").exists()  # NOT created
+    assert not (tmp_path / "autodev-pre-spike-readiness.txt").exists()  # no snapshot write
+    st = _load("autodev.yaml")["states"]["dispatch_pre_deferral_remedy"]
+    assert st["on_yes"] == "refine_current"
+    assert st["on_no"] == "reconcile_current"
+
+
 @pytest.mark.parametrize(
-    "state_name",
+    "refine_count,cap,expected",
     [
-        "check_spike_needed",
-        "check_spike_needed_before_skip",
-        "check_rearmed_spike_after_decide",
+        (4, None, 0),  # default cap 5, one refine left -> re-enter the child
+        (5, None, 1),  # at the default cap -> reconcile_current, never refine_current
+        (7, None, 1),
+        (3, 3, 1),  # configured commands.max_refine_count honored
+        (2, 3, 0),
     ],
 )
-def test_autodev_spike_gate_budget(tmp_path: Path, state_name: str) -> None:
-    action = _load("autodev.yaml")["states"][state_name]["action"]
-    env = _stub_path(tmp_path, '{"spike_needed": "true", "confidence": 70}')
-    counter = tmp_path / "spike-runs-BUG-9800"
-    assert _run(action, tmp_path, env, "").returncode == 0
-    assert counter.read_text() == "1"
-    assert _run(action, tmp_path, env, "").returncode == 0
-    assert counter.read_text() == "2"
-    assert _run(action, tmp_path, env, "").returncode == 1  # budget spent
-
-
-def test_crashed_spike_still_counts_and_budget_check(tmp_path: Path) -> None:
-    for loop, ref in (("autodev.yaml", ""), ("refine-to-ready-issue.yaml", "")):
-        action = _load(loop)["states"]["check_spike_budget"]["action"]
-        env = _stub_path(tmp_path, "{}")
-        counter = tmp_path / "spike-runs-BUG-9800"
-        counter.write_text("1")
-        assert _run(action, tmp_path, env, ref).returncode == 0  # decide
-        counter.write_text("2")
-        assert _run(action, tmp_path, env, ref).returncode != 0  # second refutation defers
-
-
-def test_dispatch_pre_deferral_remedy_spike_budget(tmp_path: Path) -> None:
-    action = _load("autodev.yaml")["states"]["dispatch_pre_deferral_remedy"]["action"]
-    env = _stub_path(tmp_path, '{"confidence": 60}')
-    (tmp_path / "autodev-pre-deferral-remedy.txt").write_text("spike")
-    (tmp_path / "spike-runs-BUG-9800").write_text("2")
-    assert _run(action, tmp_path, env, "").returncode == 1  # -> reconcile_current
-    (tmp_path / "autodev-pre-deferral-remedy.txt").write_text("spike")
-    (tmp_path / "spike-runs-BUG-9800").write_text("1")
-    assert _run(action, tmp_path, env, "").returncode == 0
-    assert (tmp_path / "spike-runs-BUG-9800").read_text() == "2"
+def test_dispatch_pre_deferral_remedy_spike_leg_respects_lifetime_cap(
+    tmp_path: Path, refine_count: int, cap: int | None, expected: int
+) -> None:
+    """ENH-3611: a lifetime-capped child would route to breakdown_issue."""
+    assert _dispatch_spike(tmp_path, runs=0, refine_count=refine_count, cap=cap) == expected
 
 
 def test_resolve_issue_does_not_reset_spike_counter() -> None:

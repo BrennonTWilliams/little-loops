@@ -107,25 +107,7 @@
       "class": "C",
       "host_shape": "heredoc",
       "line": 10,
-      "count": 4
-    },
-    {
-      "file": "loops/autodev.yaml",
-      "state": "check_spike_needed",
-      "var": "context.run_dir",
-      "class": "C",
-      "host_shape": "heredoc",
-      "line": 6,
-      "count": 1
-    },
-    {
-      "file": "loops/autodev.yaml",
-      "state": "check_spike_needed_before_skip",
-      "var": "context.run_dir",
-      "class": "C",
-      "host_shape": "heredoc",
-      "line": 6,
-      "count": 1
+      "count": 3
     },
     {
       "file": "loops/brainstorm.yaml",

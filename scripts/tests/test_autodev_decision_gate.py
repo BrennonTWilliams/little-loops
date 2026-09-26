@@ -114,6 +114,33 @@ _DECISION_STATES_REMOVED = (
     "resolve_decision_direct",
 )
 
+#: ENH-3611 (commit 2): the 22 autodev spike/decision states removed; the
+#: refine-to-ready-issue child owns spike and decision repair.
+_SPIKE_STATES_REMOVED = (
+    "check_spike_needed",
+    "run_spike",
+    "count_repair_cycle_spike",
+    "route_spike_verdict",
+    "check_spike_budget",
+    "record_spike_inconclusive",
+    "mark_spike_no_verdict_infra",
+    "rerun_confidence_after_spike",
+    "clear_scores_before_spike",
+    "check_scores_present_spike",
+    "check_spike_needed_before_skip",
+    "resolve_decision",
+    "mark_decide_ran",
+    "rerun_confidence_after_decide",
+    "clear_scores_before_decide",
+    "check_scores_present_decide",
+    "recheck_after_decide",
+    "check_rearmed_spike_after_decide",
+    "check_decide_rate_limited",
+    "record_decision_unresolved",
+    "snap_and_size_review",
+    "check_proof_gate_before_implement",
+)
+
 _PRE_IMPLEMENT_SITES = (
     ("check_passed", "on_yes"),
     ("recheck_scores", "on_yes"),
@@ -148,22 +175,34 @@ class TestRemovedDecisionEntryPoints:
                     dangling.append(f"{name} -> {target}")
         assert not dangling, dangling
 
-    def test_resolve_decision_is_the_only_oracle_caller(self, data: dict[str, Any]) -> None:
+    def test_no_state_calls_the_resolve_decision_oracle(self, data: dict[str, Any]) -> None:
+        """ENH-3611: resolve_decision (the last oracle caller) is gone; no autodev
+        state runs oracles/resolve-decision or /ll:spike."""
         callers = [
             n for n, s in data["states"].items() if s.get("loop") == "oracles/resolve-decision"
         ]
-        assert callers == ["resolve_decision"]
+        assert callers == []
+        spikers = [
+            n
+            for n, s in data["states"].items()
+            if s.get("action_type") == "slash_command"
+            and (s.get("action") or "").startswith("/ll:spike")
+        ]
+        assert spikers == []
 
-    def test_resolve_decision_reachable_only_from_check_spike_budget(
-        self, data: dict[str, Any]
-    ) -> None:
-        inbound = []
+    def test_spike_states_stay_deleted(self, data: dict[str, Any]) -> None:
+        assert len(_SPIKE_STATES_REMOVED) == 22
+        assert [n for n in _SPIKE_STATES_REMOVED if n in data["states"]] == []
+
+    def test_no_edge_targets_a_removed_spike_state(self, data: dict[str, Any]) -> None:
+        dangling: list[str] = []
         for name, state in data["states"].items():
             targets = [v for k, v in state.items() if k.startswith("on_") or k == "next"]
             targets += list((state.get("route") or {}).values())
-            if "resolve_decision" in targets:
-                inbound.append(name)
-        assert inbound == ["check_spike_budget"]
+            for target in targets:
+                if target in _SPIKE_STATES_REMOVED:
+                    dangling.append(f"{name} -> {target}")
+        assert not dangling, dangling
 
     def test_dequeue_routes_through_status_then_blockers(self, data: dict[str, Any]) -> None:
         state = data["states"]["check_status_at_dequeue"]
@@ -195,7 +234,7 @@ class TestObligationSelectorStructural:
             "DECISION": "refine_current",
             "DECISION_EXHAUSTED": "record_reentry_exhausted",
             "PROOF": "refine_current",
-            "_": "check_spike_needed",
+            "_": "check_missing_artifacts",  # ENH-3611: was check_spike_needed
             "_error": "detect_children",
         }
 
@@ -206,8 +245,8 @@ class TestObligationSelectorStructural:
             "DECISION": "refine_current",
             "DECISION_EXHAUSTED": "record_reentry_exhausted",
             "PROOF": "refine_current",
-            "_": "check_proof_gate_before_implement",
-            "_error": "check_proof_gate_before_implement",
+            "_": "check_proof_defer_or_implement",  # ENH-3611: only proof stage
+            "_error": "check_proof_defer_or_implement",
         }
 
     @pytest.mark.parametrize(
@@ -520,7 +559,7 @@ def _drive(
             (run_dir / "autodev-staged.txt").open("a").write(f"{issue_id}\n")  # check_passed
             node = "select_obligation_pre_implement"
             continue
-        if node == "check_proof_gate_before_implement":
+        if node == "check_proof_defer_or_implement":
             node = "implement_current"
             continue
         state = states[node]
@@ -606,7 +645,7 @@ class TestDecisionReentryFlow:
         visited = _drive(states, stub, run_dir, "select_obligation_pre_implement", lambda s: None)
         assert visited == [
             "select_obligation_pre_implement",
-            "check_proof_gate_before_implement",
+            "check_proof_defer_or_implement",
             "implement_current",
         ]
 
@@ -672,122 +711,76 @@ class TestChildDecisionInvariant:
 
 
 class TestSpikeTriageStructural:
-    """ENH-2640: structural assertions on the spike-remediation triad
-    (check_spike_needed / run_spike / rerun_confidence_after_spike).
-
-    Mirrors ``TestCheckDecisionBeforeSizeReviewStructural`` for the sibling gate
-    introduced by the triage_outcome_failure spike-branch routing.
-    """
+    """ENH-2640, moved by ENH-3611: the spike-remediation triad now lives in the
+    refine-to-ready-issue child; autodev has none of it (stays-deleted guards)."""
 
     @pytest.fixture
     def data(self) -> dict[str, Any]:
         return _load_autodev_yaml()
 
-    def test_spike_states_exist(self, data: dict[str, Any]) -> None:
+    @pytest.fixture
+    def child(self) -> dict[str, Any]:
+        path = AUTODEV_LOOP_PATH.parent / "refine-to-ready-issue.yaml"
+        return yaml.safe_load(path.read_text())["states"]
+
+    def test_spike_states_removed_from_autodev(self, data: dict[str, Any]) -> None:
         states = data.get("states", {})
         for name in ("check_spike_needed", "run_spike", "rerun_confidence_after_spike"):
-            assert name in states, f"{name} state missing from autodev.yaml (ENH-2640)"
+            assert name not in states, f"{name} was removed from autodev by ENH-3611"
 
-    def test_check_spike_needed_predicate_reads_both_flags(self, data: dict[str, Any]) -> None:
+    def test_child_owns_spike_states(self, child: dict[str, Any]) -> None:
+        for name in ("check_spike_needed", "run_spike", "route_spike_verdict"):
+            assert name in child, f"{name} missing from refine-to-ready-issue.yaml"
+
+    def test_child_check_spike_needed_predicate_reads_both_flags(
+        self, child: dict[str, Any]
+    ) -> None:
         """Predicate must be spike_needed AND NOT spike_attempted (two-field one-shot)."""
-        action = data["states"]["check_spike_needed"].get("action", "")
-        assert "spike_needed" in action, "check_spike_needed must read spike_needed"
-        assert "spike_attempted" in action, (
-            "check_spike_needed must read spike_attempted for the one-shot guard"
-        )
-        assert data["states"]["check_spike_needed"].get("fragment") == "shell_exit"
+        action = child["check_spike_needed"].get("action", "")
+        assert "spike_needed" in action
+        assert "spike_attempted" in action
+        assert child["check_spike_needed"]["on_no"] == "check_missing_artifacts"
 
-    def test_check_spike_needed_routing(self, data: dict[str, Any]) -> None:
-        state = data["states"]["check_spike_needed"]
-        assert state.get("on_yes") == "run_spike"
-        assert state.get("on_no") == "check_missing_artifacts"
-        assert state.get("on_error") == "check_missing_artifacts"
-
-    def test_run_spike_invokes_spike_skill(self, data: dict[str, Any]) -> None:
-        state = data["states"]["run_spike"]
+    def test_child_run_spike_invokes_spike_skill(self, child: dict[str, Any]) -> None:
+        state = child["run_spike"]
         assert "/ll:spike" in state.get("action", "")
         assert "--auto" in state.get("action", "")
         assert state.get("action_type") == "slash_command"
         assert state.get("fragment") == "with_rate_limit_handling"
-        # FEAT-2751: routes through the repair-cycle counter state before the
-        # confidence rerun.
-        assert state.get("next") == "count_repair_cycle_spike"
-        assert state.get("on_error") == "count_repair_cycle_spike"
-        assert state.get("on_rate_limit_exhausted") == "finalize_rate_limited"
-        counter_state = data["states"]["count_repair_cycle_spike"]
-        assert counter_state.get("next") == "route_spike_verdict"
-        assert counter_state.get("on_error") == "route_spike_verdict"
-
-    def test_rerun_confidence_after_spike_routing(self, data: dict[str, Any]) -> None:
-        state = data["states"]["rerun_confidence_after_spike"]
-        assert "/ll:confidence-check" in state.get("action", "")
-        assert state.get("fragment") == "with_rate_limit_handling"
-        # BUG-3588: routes through the presence gate, which forwards to enqueue_or_skip
-        assert state.get("next") == "check_scores_present_spike"
-        assert state.get("on_error") == "check_scores_present_spike"
-        assert state.get("on_rate_limit_exhausted") == "finalize_rate_limited"
 
 
 class TestDecidePathSpikeGate:
-    """BUG-2654: the decide/size-review skip path must give a pending spike its
-    one shot at run_spike before writing low_readiness.
-
-    ENH-2640 wired check_spike_needed only onto triage_outcome_failure.on_no.
-    An issue routed down the decide path (or the no-decide size-review path)
-    funnels through enqueue_or_skip → recheck_after_size_review and skips as
-    low_readiness without ever visiting the spike gate. This gate closes that
-    class by interposing check_spike_needed_before_skip on enqueue_or_skip.on_no.
-    """
+    """BUG-2654, reworked by ENH-3611: the post-size-review skip edge is protected by
+    select_obligation_post_size_review (PROOF re-entry into the child) instead of
+    autodev's own check_spike_needed_before_skip, which is gone."""
 
     @pytest.fixture
     def data(self) -> dict[str, Any]:
         return _load_autodev_yaml()
 
-    def test_gate_state_exists(self, data: dict[str, Any]) -> None:
-        assert "check_spike_needed_before_skip" in data.get("states", {}), (
-            "check_spike_needed_before_skip missing from autodev.yaml (BUG-2654)"
-        )
+    def test_old_gate_stays_deleted(self, data: dict[str, Any]) -> None:
+        assert "check_spike_needed_before_skip" not in data.get("states", {})
 
-    def test_enqueue_or_skip_routes_to_spike_gate(self, data: dict[str, Any]) -> None:
-        """The no-children skip edge must still reach the spike gate — now via the
-        BUG-2729 parent-resolved gate, whose on_no preserves the spike gate edge."""
+    def test_enqueue_or_skip_routes_to_post_size_review_selector(
+        self, data: dict[str, Any]
+    ) -> None:
         state = data["states"]["enqueue_or_skip"]
-        assert state.get("on_no") == "check_parent_resolved_post_size_review", (
-            "enqueue_or_skip.on_no must route through the BUG-2729 parent-resolved "
-            "gate before the spike gate"
-        )
+        assert state.get("on_no") == "check_parent_resolved_post_size_review"
         resolved_gate = data["states"]["check_parent_resolved_post_size_review"]
-        # ENH-3611: the post-size-review selector fronts the spike gate.
         assert resolved_gate.get("on_no") == "select_obligation_post_size_review"
+        assert resolved_gate.get("on_error") == "select_obligation_post_size_review"
         selector = data["states"]["select_obligation_post_size_review"]
         assert selector["route"]["PROOF"] == "refine_current"
-        assert selector["route"]["_"] == "check_spike_needed_before_skip", (
-            "the selector's `_` must preserve the spike gate edge (BUG-2654) so "
-            "pending spikes keep their one shot at run_spike"
-        )
+        assert selector["route"]["_"] == "check_reconcile_needed"
+        assert selector["route"]["_error"] == "recheck_after_size_review"
 
-    def test_gate_predicate_reads_both_flags(self, data: dict[str, Any]) -> None:
-        """Predicate must be spike_needed AND NOT spike_attempted (one-shot)."""
-        state = data["states"]["check_spike_needed_before_skip"]
-        action = state.get("action", "")
+    def test_selector_guards_a_spikeable_issue_only(self, data: dict[str, Any]) -> None:
+        """The selector reads the same two-field predicate the old gate did
+        (spike_needed AND NOT spike_attempted) plus the shared budget."""
+        action = data["states"]["select_obligation_post_size_review"]["action"]
         assert "spike_needed" in action
-        assert "spike_attempted" in action, (
-            "gate must read spike_attempted for the one-shot guard (AC 2)"
-        )
-        assert state.get("fragment") == "shell_exit"
-
-    def test_gate_routing(self, data: dict[str, Any]) -> None:
-        state = data["states"]["check_spike_needed_before_skip"]
-        assert state.get("on_yes") == "run_spike", "spike match must reach run_spike (AC 1)"
-        # No-match must preserve the leaf-skip regression (AC 3). ENH-2689 routes
-        # the on_no edge through check_reconcile_needed (a pass-through for
-        # non-plateau issues) before the low_readiness write; on_error still skips
-        # straight to recheck_after_size_review.
-        assert state.get("on_no") == "check_reconcile_needed", (
-            "ENH-2689: no-match routes through check_reconcile_needed before the "
-            "low_readiness skip (AC 3 preserved via its recheck_after_size_review fall-through)"
-        )
-        assert state.get("on_error") == "recheck_after_size_review"
+        assert "spike_attempted" in action
+        assert "spike-runs-" in action
 
 
 class TestReconcilePlateauStructural:
@@ -812,17 +805,19 @@ class TestReconcilePlateauStructural:
         ):
             assert name in states, f"{name} missing from autodev.yaml (ENH-2689)"
 
-    def test_spike_gate_routes_to_reconcile_gate(self, data: dict[str, Any]) -> None:
-        """check_spike_needed_before_skip.on_no now interposes the reconcile gate."""
-        state = data["states"]["check_spike_needed_before_skip"]
-        assert state.get("on_no") == "check_reconcile_needed"
+    def test_post_size_review_selector_routes_to_reconcile_gate(self, data: dict[str, Any]) -> None:
+        """ENH-3611: select_obligation_post_size_review's `_` (the retired
+        check_spike_needed_before_skip's slot) interposes the reconcile gate."""
+        state = data["states"]["select_obligation_post_size_review"]
+        assert state["route"]["_"] == "check_reconcile_needed"
 
     def test_reconcile_predicate_reads_snapshot_and_guard(self, data: dict[str, Any]) -> None:
-        """Predicate: pre-spike snapshot == current Readiness AND NOT reconcile_attempted."""
+        """Predicate: pre-refine snapshot == current Readiness AND NOT reconcile_attempted."""
         state = data["states"]["check_reconcile_needed"]
         action = state.get("action", "")
         assert state.get("fragment") == "shell_exit"
-        assert "autodev-pre-spike-readiness.txt" in action
+        assert "autodev-pre-readiness.txt" in action
+        assert "autodev-pre-spike-readiness.txt" not in action  # ENH-3611
         assert "confidence" in action
         assert "reconcile_attempted" in action, (
             "reconcile gate must read reconcile_attempted for the one-shot guard (AC 3)"
@@ -889,13 +884,15 @@ class TestReconcilePlateauRouting:
     def reconcile_chain_fsm(self) -> Any:
         return _loop(
             name="autodev-reconcile-gate-mini",
-            initial="check_spike_needed_before_skip",
+            initial="select_obligation_post_size_review",
             states={
-                "check_spike_needed_before_skip": _state(
+                # ENH-3611: the selector's `_` route (classify token `_`) enters the
+                # reconcile gate; modelled here as a shell gate that always falls through.
+                "select_obligation_post_size_review": _state(
                     action="false",
                     action_type="shell",
                     fragment_name="shell_exit",
-                    on_yes="run_spike",
+                    on_yes="refine_current",
                     on_no="check_reconcile_needed",
                     on_error="recheck_after_size_review",
                 ),
@@ -907,7 +904,7 @@ class TestReconcilePlateauRouting:
                     on_no="recheck_after_size_review",
                     on_error="recheck_after_size_review",
                 ),
-                "run_spike": _state(action="true", action_type="shell", next="done"),
+                "refine_current": _state(action="true", action_type="shell", next="done"),
                 "reconcile_current": _state(action="true", action_type="shell", next="done"),
                 "recheck_after_size_review": _state(
                     action="true", action_type="shell", next="done"
@@ -1022,10 +1019,11 @@ class TestDesignGateRefineRemedy:
     def test_dispatch_pre_deferral_remedy_plateau_routing_unmodified(
         self, data: dict[str, Any]
     ) -> None:
-        """The plateau path (spike/reconcile tokens) must still resolve via
-        dispatch_pre_deferral_remedy exactly as before BUG-3002."""
+        """The plateau path (spike/reconcile tokens) still resolves via
+        dispatch_pre_deferral_remedy; ENH-3611 retargeted the spike leg from the
+        removed run_spike to refine_current (child re-entry, interim until ENH-3606)."""
         state = data["states"]["dispatch_pre_deferral_remedy"]
-        assert state.get("on_yes") == "run_spike"
+        assert state.get("on_yes") == "refine_current"
         assert state.get("on_no") == "reconcile_current"
         assert state.get("on_error") == "reconcile_current"
 
@@ -1162,33 +1160,31 @@ class TestGuard2VerdictBypass:
 
 
 class TestAssertDecisionClearedStructural:
-    """BUG-2595 / ENH-3075: the post-decide decision-gate re-check
-    (``assert_decision_cleared``) moved into ``oracles/resolve-decision.yaml``
-    (see ``TestResolveDecisionOracle`` in ``test_builtin_loops.py``) — it no
-    longer exists inline in ``autodev.yaml``'s own ``states:`` block. This
-    class now guards the dangling-edge fix that deletion forced:
-    ``recheck_after_decide.on_yes`` retargets to ``implement_current`` (the
-    same target ``assert_decision_cleared.on_no``/``.on_error`` already used),
-    and the caller-side ``record_decision_unresolved`` behaviour survives
-    unchanged.
+    """BUG-2595 / ENH-3075 / ENH-3611: the post-decide decision-gate re-check
+    (``assert_decision_cleared``) lives in ``oracles/resolve-decision.yaml`` and the
+    caller-side chain (``recheck_after_decide``, ``record_decision_unresolved``) was
+    removed from ``autodev.yaml`` by ENH-3611 — the refine-to-ready-issue child owns
+    decision repair (``check_decision_before_done``) and autodev's selectors re-enter
+    it. This class guards the removals and the child-side contract that replaced them.
     """
 
     @pytest.fixture
     def data(self) -> dict[str, Any]:
         return _load_autodev_yaml()
 
-    def test_recheck_after_decide_on_yes_routes_to_implement_current(
-        self, data: dict[str, Any]
-    ) -> None:
-        """ENH-3075: recheck_after_decide.on_yes retargets from the now-deleted
-        assert_decision_cleared to implement_current — the score-passing path
-        is unchanged end to end since that is what assert_decision_cleared's
-        own on_no/on_error already routed to."""
-        state = data["states"]["recheck_after_decide"]
-        # ENH-3575: implement_current is reached via the proof-gate guard.
-        assert state.get("on_yes") == "check_proof_gate_before_implement", (
-            f"recheck_after_decide.on_yes should be the proof-gate guard "
-            f"(ENH-3075: assert_decision_cleared deleted), got {state.get('on_yes')!r}"
+    @pytest.fixture
+    def child(self) -> dict[str, Any]:
+        path = AUTODEV_LOOP_PATH.parent / "refine-to-ready-issue.yaml"
+        return yaml.safe_load(path.read_text())["states"]
+
+    def test_recheck_after_decide_stays_deleted(self, data: dict[str, Any]) -> None:
+        """ENH-3611: recheck_after_decide (and its ENH-3075 on_yes retarget) is gone;
+        the pre-implement selector -> check_proof_defer_or_implement is the only
+        route into implement_current."""
+        states = data["states"]
+        assert "recheck_after_decide" not in states
+        assert states["select_obligation_pre_implement"]["route"]["_"] == (
+            "check_proof_defer_or_implement"
         )
 
     def test_assert_decision_cleared_absent_from_autodev_states(self, data: dict[str, Any]) -> None:
@@ -1207,29 +1203,28 @@ class TestAssertDecisionClearedStructural:
                     "assert_decision_cleared (ENH-3075)"
                 )
 
-    def test_record_decision_unresolved_advances_queue_without_failing(
+    def test_record_decision_unresolved_stays_deleted_from_autodev(
         self, data: dict[str, Any]
     ) -> None:
-        """record_decision_unresolved records the issue distinctly (mirrors
-        mark_gate_blocked) and returns to dequeue_next so the queue keeps
-        draining rather than crashing the run."""
-        state = data["states"].get("record_decision_unresolved", {})
-        action = state.get("action", "")
-        assert "autodev-decision-unresolved.txt" in action, (
-            "record_decision_unresolved should record the issue to autodev-decision-unresolved.txt"
-        )
-        assert "/ll:decide-issue" in action, (
-            "record_decision_unresolved should point the operator at /ll:decide-issue"
-        )
-        assert state.get("next") == "dequeue_next"
+        """ENH-3611: autodev's record_decision_unresolved is gone; the surviving
+        decision deferral is record_reentry_exhausted (ledgers decision_unresolved)."""
+        assert "record_decision_unresolved" not in data["states"]
+        assert "decision_unresolved" in data["states"]["record_reentry_exhausted"]["action"]
 
-    def test_record_decision_unresolved_defers_via_set_status(self, data: dict[str, Any]) -> None:
-        """ENH-2666: record_decision_unresolved aligns to rn-implement's mark_deferred
-        model — stamps an automation deferral instead of leaving the issue open."""
-        action = data["states"].get("record_decision_unresolved", {}).get("action", "")
+    def test_child_record_decision_unresolved_advances_and_defers(
+        self, child: dict[str, Any]
+    ) -> None:
+        """The child's record_decision_unresolved keeps the old autodev contract:
+        ledger to autodev-decision-unresolved.txt (ENH-2666 deferral via set-status)
+        and stop, so autodev sees BLOCKED:decision_unresolved."""
+        state = child["record_decision_unresolved"]
+        action = state["action"]
+        assert "autodev-decision-unresolved.txt" in action
+        assert "/ll:decide-issue" in action
         assert "ll-issues set-status" in action and "deferred" in action
         assert "--by automation" in action
         assert "--reason decision_unresolved" in action
+        assert state["next"] == "failed"
 
 
 # ENH-2717's check_decision_after_decide_error is deleted (ENH-3075): its
@@ -1244,81 +1239,24 @@ class TestAssertDecisionClearedStructural:
 
 
 class TestAssertDecisionClearedRouting:
-    """BUG-2595: FSMExecutor-driven assertions on the new gate's routing."""
+    """BUG-2595, re-rooted by ENH-3611: a still-armed decision flag must never reach
+    implement_current. The old synthetic recheck_after_decide mini-FSM is replaced by
+    real-state walks through the selectors (``TestDecisionReentryFlow`` covers the
+    armed/cleared paths); this class pins the invariant on the real routing table."""
 
-    @pytest.fixture
-    def post_decide_chain_fsm(self) -> Any:
-        """Minimal autodev-shaped FSM: recheck_after_decide → assert_decision_cleared
-        → record_decision_unresolved (on_yes) | implement_current (on_no/on_error)."""
-        return _loop(
-            name="autodev-post-decide-gate-mini",
-            initial="recheck_after_decide",
-            states={
-                "recheck_after_decide": _state(
-                    action="ll-issues check-readiness BUG-2588 --readiness 90 --outcome 75",
-                    action_type="shell",
-                    fragment_name="shell_exit",
-                    on_yes="assert_decision_cleared",
-                    on_no="done",
-                    on_error="done",
-                ),
-                "assert_decision_cleared": _state(
-                    action="ll-issues check-flag BUG-2588 decision_needed",
-                    action_type="shell",
-                    fragment_name="shell_exit",
-                    on_yes="record_decision_unresolved",
-                    on_no="implement_current",
-                    on_error="implement_current",
-                ),
-                "record_decision_unresolved": _state(
-                    action="echo BUG-2588 >> decision-unresolved.txt", next="done"
-                ),
-                "implement_current": _state(action="true", action_type="shell", next="done"),
-                "done": _state(terminal=True),
-            },
-        )
+    def test_selector_decision_route_never_targets_implement(self) -> None:
+        states = _load_autodev_yaml()["states"]
+        for name in ("select_obligation_post_refine", "select_obligation_pre_implement"):
+            route = states[name]["route"]
+            assert route["DECISION"] == "refine_current"
+            assert route["DECISION_EXHAUSTED"] == "record_reentry_exhausted"
 
-    def test_decision_still_armed_routes_to_record_decision_unresolved_not_implement(
-        self, post_decide_chain_fsm: Any
-    ) -> None:
-        """BUG-2595: scores pass but decision_needed is still true (silent
-        decide-issue no-op) — must route to record_decision_unresolved, never
-        implement_current."""
-        runner = _StubRunner(
-            results=[
-                ("ll-issues check-readiness", {"exit_code": 0}),
-                ("ll-issues check-flag", {"exit_code": 0}),
-            ]
-        )
-
-        result, visited = _run_decision_chain(post_decide_chain_fsm, runner)
-
-        assert "record_decision_unresolved" in visited, (
-            f"record_decision_unresolved must be entered when decision_needed is "
-            f"still true; visited={visited!r}"
-        )
-        assert "implement_current" not in visited, (
-            f"implement_current must NOT be entered when decision_needed is still "
-            f"true (BUG-2595: guaranteed-halt path); visited={visited!r}"
-        )
-
-    def test_decision_cleared_routes_to_implement_current(self, post_decide_chain_fsm: Any) -> None:
-        """decision_needed cleared (check-flag exit 1) — the happy path — must
-        still reach implement_current unchanged."""
-        runner = _StubRunner(
-            results=[
-                ("ll-issues check-readiness", {"exit_code": 0}),
-                ("ll-issues check-flag", {"exit_code": 1}),
-            ]
-        )
-
-        result, visited = _run_decision_chain(post_decide_chain_fsm, runner)
-
-        assert "implement_current" in visited, (
-            f"implement_current must be entered when decision_needed is cleared; "
-            f"visited={visited!r}"
-        )
-        assert "record_decision_unresolved" not in visited, (
-            f"record_decision_unresolved must NOT be entered when decision_needed "
-            f"is cleared; visited={visited!r}"
-        )
+    def test_implement_current_only_reached_via_proof_defer_state(self) -> None:
+        states = _load_autodev_yaml()["states"]
+        preds = set()
+        for name, state in states.items():
+            targets = [v for k, v in state.items() if k.startswith("on_") or k == "next"]
+            targets += list((state.get("route") or {}).values())
+            if "implement_current" in targets:
+                preds.add(name)
+        assert preds == {"check_proof_defer_or_implement"}

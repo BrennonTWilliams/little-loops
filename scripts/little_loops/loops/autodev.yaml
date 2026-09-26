@@ -75,7 +75,6 @@ states:
       printf '' > ${context.run_dir}/autodev-decision-unresolved.txt
       printf '' > ${context.run_dir}/autodev-spike-inconclusive.txt
       printf '' > ${context.run_dir}/autodev-proposal-unsound.txt
-      printf '' > ${context.run_dir}/autodev-spike-no-verdict.txt
       printf '' > ${context.run_dir}/autodev-proof-gate-infra.txt
       printf '' > ${context.run_dir}/autodev-not-started.txt
       printf '' > ${context.run_dir}/autodev-not-started-attempts.txt
@@ -113,7 +112,6 @@ states:
       printf '%s' "$CURRENT" > ${context.run_dir}/autodev-inflight
 
       rm -f ${context.run_dir}/refine-broke-down ${context.run_dir}/autodev-broke-down
-      rm -f ${context.run_dir}/autodev-decide-ran
       # ENH-3075: per-issue marker shared with oracles/resolve-decision.yaml
       # (which now owns deposit_options/record_options_deposited). Unlike the
       # neighbouring per-issue markers on this line, which deliberately are
@@ -135,10 +133,9 @@ states:
 
       # FEAT-2751: snapshot the pre-refine Readiness score per-issue so
       # check_reconcile_needed can detect a plateau even on the common
-      # non-spike path (autodev-pre-spike-readiness.txt is written only when
-      # check_spike_needed's on_yes branch fires). Reset the repair-cycle
-      # counter and clear any stale spike snapshot from a prior issue this run
-      # — both are run-dir-scoped and would otherwise leak across issues.
+      # spiked and non-spiked paths alike (ENH-3611 removed the separate
+      # spike-only snapshot). Reset the repair-cycle
+      # counter, which is run-dir-scoped and would otherwise leak across issues.
       (ll-issues show "$CURRENT" --json | python3 -c "
       import json, sys
       try:
@@ -148,7 +145,6 @@ states:
           pass
       " > ${context.run_dir}/autodev-pre-readiness.txt) || true
       printf '0' > ${context.run_dir}/autodev-repair-cycle-count.txt
-      rm -f ${context.run_dir}/autodev-pre-spike-readiness.txt
       # ENH-2992: the contradiction-reconcile budget is per-issue-per-run (cap
       # 2), so reset it alongside the repair-cycle counter — leaving it would
       # make one queue-head issue's fires exhaust every later issue's budget.
@@ -209,7 +205,7 @@ states:
     # blocked issue is often what unblocks it.
     #
     # `ll-issues show --json` reports status display-cased ("Done", "Deferred")
-    # — lowercase before comparing, the same idiom as record_decision_unresolved
+    # — lowercase before comparing, the same idiom as record_reentry_exhausted
     # and mark_gate_blocked. Fail-open: an unresolvable ID, missing status, or
     # parse error yields PROCESS so a gate error never blocks the queue.
     action_type: shell
@@ -495,8 +491,8 @@ states:
     # finalize_rate_limited), every other token still reaches skip_inflight.
     # BUG-3390: no `fragment: with_rate_limit_handling` / `on_rate_limit_exhausted`
     # here — both are inert on a `loop:` call state. The executor's 429
-    # interception is gated on an action_result a sub-loop never produces (see
-    # check_decide_rate_limited below and executor.py's `if action_result is not
+    # interception is gated on an action_result a sub-loop never produces (the
+    # removed decide-rate-limit gate documented this in ENH-3075; see executor.py's `if action_result is not
     # None:` guard); the child loop's own rate-limit handling writes
     # refine-terminal-class=infra, which skip_inflight reads.
     loop: refine-to-ready-issue
@@ -603,7 +599,7 @@ states:
         exit 0
       fi
       # BUG-3593: same for a nested refine-to-ready spike_inconclusive stop — its
-      # record_spike_inconclusive already deferred the issue and ledgered it.
+      # record_spike_inconclusive (child state) already deferred the issue and ledgered it.
       if grep -qxF "$ID" ${context.run_dir}/autodev-spike-inconclusive.txt 2>/dev/null; then
         echo "[SPIKE_INCONCLUSIVE] $ID already ledgered by sub-loop; not counting as refine_failed"
         rm -f ${context.run_dir}/autodev-inflight
@@ -821,7 +817,7 @@ states:
       DECISION: refine_current
       DECISION_EXHAUSTED: record_reentry_exhausted
       PROOF: refine_current  # ENH-3611
-      _: check_spike_needed
+      _: check_missing_artifacts
       _error: detect_children
 
   select_obligation_pre_implement:
@@ -905,8 +901,8 @@ states:
       DECISION: refine_current
       DECISION_EXHAUSTED: record_reentry_exhausted
       PROOF: refine_current  # ENH-3611
-      _: check_proof_gate_before_implement
-      _error: check_proof_gate_before_implement
+      _: check_proof_defer_or_implement
+      _error: check_proof_defer_or_implement
 
   select_obligation_post_size_review:
     # ENH-3611: post-size-review obligation selector (check_parent_resolved_post_size_review
@@ -959,7 +955,7 @@ states:
       type: classify
     route:
       PROOF: refine_current
-      _: check_spike_needed_before_skip  # commit 2 of ENH-3611 retargets to check_reconcile_needed
+      _: check_reconcile_needed  # ENH-3611: was check_spike_needed_before_skip (removed)
       _error: recheck_after_size_review
 
   record_reentry_exhausted:
@@ -969,7 +965,8 @@ states:
     # `decision_unresolved`, clear inflight, defer via set-status (BUG-2729
     # guard leaves a done/completed/cancelled issue unchanged), advance.
     # Not skip_inflight (ledgers refine_failed, does not defer, so every run
-    # would re-pick the issue). Generic name so ENH-3611 can reuse it for PROOF.
+    # would re-pick the issue). DECISION-only (ENH-3611: PROOF falls through the selectors' `_` route instead;
+    # an open gate defers as blocked_by_gate via check_proof_defer_or_implement).
     action: |
       ID=${captured.input.output:shell}
       echo "$ID  decision_unresolved" >> ${context.run_dir}/autodev-skipped.txt
@@ -987,62 +984,10 @@ states:
     next: dequeue_next
     on_error: dequeue_next
 
-  check_proof_gate_before_implement:
-    # ENH-3575: an unsatisfied `proof` gate must never reach implement_current.
-    # check_spike_needed is only reachable through select_obligation_post_refine's
-    # `_` route (the score-failing path), so a high-scoring issue would otherwise
-    # skip it. Same spike budget as
-    # check_spike_needed (`spike-runs-<ID>`, cap 2, incremented before run_spike);
-    # route_spike_verdict's PROVEN chain returns here with spike_proven set.
-    # Budget spent with the proof still open defers as blocked_by_gate.
-    # BUG-3603: fail-closed. Unlike the dequeue gate (whose fail-open is safe —
-    # later gates still apply), this is the LAST gate before implement_current;
-    # nothing downstream re-checks the proof obligation. A helper failure (exit
-    # >= 2, empty stdout, unrecognised token) emits PROOF_INFRA and never
-    # reaches implement_current; `prose` is a real in-force verdict (matching
-    # the dequeue and recheck consumers) and defers. Exit 1 with a recognised
-    # token (none/structured_satisfied) is a real clear verdict: PROOF_CLEAR.
-    action: |
-      ID=${captured.input.output:shell}
-      VERDICT=$(ll-issues check-gate "$ID" 2>/dev/null); RC=$?
-      if [ "$RC" -ge 2 ] || [ -z "$VERDICT" ]; then
-        echo "PROOF_INFRA"
-      else
-        case "$VERDICT" in
-          structured_proof)
-            SPIKE_RUNS=${context.run_dir}/spike-runs-$ID
-            SPIKE_N=$(cat "$SPIKE_RUNS" 2>/dev/null || echo 0)
-            ATTEMPTED=$(ll-issues check-flag "$ID" spike_attempted && echo true || echo false)
-            if [ "$ATTEMPTED" != "true" ] && [ "$SPIKE_N" -lt 2 ] 2>/dev/null; then
-              CONF=$(ll-issues show "$ID" --json 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin).get('confidence') or '')" 2>/dev/null || echo "")
-              printf '%s' "$CONF" > ${context.run_dir}/autodev-pre-spike-readiness.txt
-              printf '%s' "$((SPIKE_N + 1))" > "$SPIKE_RUNS"
-              echo "PROOF_SPIKE"
-            else
-              echo "PROOF_DEFER"
-            fi
-            ;;
-          structured_open|prose)
-            echo "PROOF_DEFER"
-            ;;
-          none|structured_satisfied)
-            echo "PROOF_CLEAR"
-            ;;
-          *)
-            echo "PROOF_INFRA"
-            ;;
-        esac
-      fi
-    action_type: shell
-    evaluate:
-      type: output_contains
-      pattern: "PROOF_SPIKE"
-    on_yes: run_spike
-    on_no: check_proof_defer_or_implement
-    on_error: mark_proof_gate_infra
-
   check_proof_defer_or_implement:
-    # ENH-3575: split of check_proof_gate_before_implement's non-spike outcomes.
+    # ENH-3575/ENH-3611: the only proof stage before implement_current (the spike
+    # half, check_proof_gate_before_implement, was removed in ENH-3611; the child's
+    # check_proof_before_done and the selectors' PROOF re-entry own the spike).
     # BUG-3603: fail-closed via classify routing — PROOF_CLEAR (a successful
     # check-gate call reporting no gate in force: none/structured_satisfied) is
     # the ONLY route to implement_current; prose joins structured_open/
@@ -1070,232 +1015,6 @@ states:
       PROOF_INFRA: mark_proof_gate_infra
       _: mark_proof_gate_infra
       _error: mark_proof_gate_infra
-
-  resolve_decision:
-    # ENH-3075: shared decision-cluster sub-loop (BUG-3065's
-    # oracles/resolve-decision.yaml) — probes decidability (ENH-2443/ENH-2446),
-    # deposits competing options via /ll:refine-issue --auto if needed, runs
-    # /ll:decide-issue --auto, and re-verifies decision_needed cleared
-    # (BUG-2595). ENH-3610: autodev no longer resolves decisions at its own
-    # entry points (the refine-to-ready-issue child owns them, re-entered via
-    # the select_obligation_* selectors); the only remaining entry is
-    # check_spike_budget (the refuted-spike leg, removed with the spike states
-    # in ENH-3611). It binds issue_id only, relying on the sub-loop's
-    # skip_probe: "false" default. mark_decide_ran / rerun_confidence_after_decide /
-    # recheck_after_decide / record_decision_unresolved stay caller-side;
-    # see oracles/resolve-decision.yaml for the extracted cluster's own
-    # contract and Behavior Parity notes in ENH-3075.
-    loop: oracles/resolve-decision
-    with:
-      issue_id: "${captured.input.output}"
-    capture: resolve_decision
-    on_success: mark_decide_ran
-    on_failure: check_decide_rate_limited
-    on_error: check_decide_rate_limited
-
-  check_decide_rate_limited:
-    # ENH-3075 Option A: a `loop:` call state can never observe
-    # oracles/resolve-decision's rate-limit-exhaustion terminal directly —
-    # _execute_sub_loop (executor.py:1055-1079) routes only on
-    # terminated_by/failure_terminal (a bool, not a terminal name), and the
-    # 429 interception at executor.py:1673-1686 is gated on action_result,
-    # which a loop: state never produces. So the sub-loop's
-    # mark_decide_rate_limited writes a marker before exiting `failed`, and
-    # this gate — reached from both call states' on_failure AND on_error, so
-    # a child that dies with terminated_by == "error" (or, since ENH-3471,
-    # terminated_by == "no_route" — a decision-step failure) after a 429
-    # cannot skip the check — reads it. Present: the 429 budget is exhausted; terminate
-    # the run gracefully via finalize_rate_limited, matching every
-    # on_rate_limit_exhausted site in this file, rather than deferring this issue and immediately
-    # walking the rest of the queue into the same exhaustion. Absent: decide
-    # genuinely didn't resolve the flag (or errored for an unrelated reason);
-    # fall through to record_decision_unresolved as before.
-    action: "[ -f ${context.run_dir}/decide-rate-limited-${captured.input.output:shell} ]"
-    fragment: shell_exit
-    on_yes: finalize_rate_limited
-    on_no: record_decision_unresolved
-    on_error: record_decision_unresolved
-
-  mark_decide_ran:
-    # ENH-1415: record that decide has already run for the current issue so
-    # a size-review re-entry does not re-decide (legacy autodev-decide-ran
-    # marker; ENH-3610 removed its only reader, decide_current, ENH-3600 retires
-    # it). The flag is cleared per-issue at dequeue_next.
-    # The oracle can return done with the flag still armed when a residual
-    # decision group survives (resolve-decision.yaml check_residual_decision
-    # routes that to done for human review). recheck_after_decide only reads
-    # scores, so without this check a passing score sent a still-gated issue
-    # into implement_current, where ll-auto halts at the decision gate.
-    action: |
-      printf '1' > ${context.run_dir}/autodev-decide-ran
-      ll-issues check-flag ${captured.input.output:shell} decision_needed
-    fragment: shell_exit
-    on_yes: record_decision_unresolved
-    on_no: clear_scores_before_decide
-    on_error: clear_scores_before_decide
-
-  rerun_confidence_after_decide:
-    # After /ll:decide-issue resolves open design questions, the Ambiguity
-    # dimension of outcome confidence (and sometimes Simplicity) changes
-    # materially — but the scores in frontmatter still hold the stale
-    # pre-decision values. Re-run confidence-check so recheck_after_decide
-    # evaluates fresh scores. Without this, an issue whose only blocker was
-    # an unresolved decision can never recover from outcome <75 even though
-    # decide-issue resolved the very ambiguity that caused the failure.
-    fragment: with_rate_limit_handling
-    action: "/ll:confidence-check ${captured.input.output}"
-    action_type: slash_command
-    pruning_profile:
-      enabled: true
-      name: confidence-check-recheck
-      suppress_claude_md: true
-    next: check_scores_present_decide
-    on_error: check_scores_present_decide
-    on_rate_limit_exhausted: finalize_rate_limited
-
-  clear_scores_before_decide:
-    # BUG-3588: clear stale pre-repair scores immediately before the rescoring, so
-    # the successor can only ever read scores the rescoring itself wrote. Cannot
-    # live in the rerun state's action (slash command under with_rate_limit_handling).
-    # Clearing an already-cleared issue is a no-op. A failed clear leaves stale
-    # scores in place, which is exactly what this guards against — so infra.
-    action: 'll-issues set-scores ${captured.input.output:shell} --clear'
-    action_type: shell
-    next: rerun_confidence_after_decide
-    on_error: mark_scores_absent_infra
-
-  check_scores_present_decide:
-    # BUG-3588: presence gate for rerun_confidence_after_decide. Both scores
-    # non-null → proceed to recheck_after_decide. First miss → retry the rescoring once (the
-    # dominant no-write cause is the model skipping `ll-issues set-scores`);
-    # second miss → exit 3 → infra. The retry marker is per issue and cleared
-    # here on a pass and at dequeue_next.
-    action: |
-      ID=${captured.input.output:shell}
-      MARK=${context.run_dir}/autodev-rescore-retry-decide-$ID
-      ABSENT=$(ll-issues show "$ID" --json 2>/dev/null | python3 -c "
-      import json, sys
-      d = json.load(sys.stdin)
-      print('true' if d.get('confidence') is None or d.get('outcome') is None else 'false')" 2>/dev/null || echo true)
-      if [ "$ABSENT" = "false" ]; then
-        rm -f "$MARK"
-        exit 0
-      fi
-      if [ ! -f "$MARK" ]; then
-        touch "$MARK"
-        echo "[RESCORE_RETRY] $ID — rescoring wrote no scores; retrying once"
-        exit 1
-      fi
-      exit 3
-    fragment: harness_exit
-    on_yes: recheck_after_decide
-    on_no: rerun_confidence_after_decide
-    on_cannot_judge: mark_scores_absent_infra
-    on_error: mark_scores_absent_infra
-
-  recheck_after_decide:
-    # Re-validate readiness/outcome scores after rerun_confidence_after_decide
-    # so that implementation only proceeds when thresholds are met. Mirrors
-    # check_passed logic. ENH-1415: on failure, route to snap_and_size_review
-    # rather than dropping the issue. After decide runs, the only outcome
-    # dimensions that can still drag the score below threshold are Complexity
-    # and Change Surface — both decomposable. The decide-ran flag set by
-    # mark_decide_ran prevents re-entering decide if size-review routes back.
-    action: |
-      # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
-      ll-issues check-readiness ${captured.input.output} \
-        --readiness ${context.readiness_threshold:shell} \
-        --outcome ${context.outcome_threshold:shell} \
-        --honor-waiver \
-        && echo "${captured.input.output}" >> ${context.run_dir}/autodev-staged.txt  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
-    # BUG-3588: post-rescore site — exit 3 (scores absent) is an infra outcome,
-    # never a size-review/quality verdict.
-    fragment: harness_exit
-    # ENH-3075: assert_decision_cleared (BUG-2595's post-decide flag
-    # re-verify) moved into oracles/resolve-decision.yaml, where it now sits
-    # directly after run_decide rather than after this re-score chain — an
-    # accepted reorder (ENH-3075 Behavior Parity table). on_yes retargets to
-    # implement_current, the same target assert_decision_cleared.on_no /
-    # .on_error already used, so the score-passing path is unchanged end to
-    # end. The one accepted loss: an issue with a still-armed flag AND
-    # failing scores no longer reaches snap_and_size_review (ENH-1415) — it
-    # is deferred via record_decision_unresolved instead. No caller-side
-    # score branch was added to preserve that escape (decided, ENH-3075).
-    on_yes: check_proof_gate_before_implement
-    on_no: check_rearmed_spike_after_decide
-    on_cannot_judge: mark_scores_absent_infra
-    on_error: snap_and_size_review
-
-  check_rearmed_spike_after_decide:
-    # BUG-3593: a refuted spike's decision re-arms one new spike
-    # (rearm_refuted_spike in oracles/resolve-decision). That spike must run
-    # BEFORE size review / decomposition, so intercept recheck_after_decide.on_no:
-    # spike_needed AND NOT spike_attempted AND counter < 2 -> snapshot pre-spike
-    # readiness, bump the shared counter, run_spike. Otherwise snap_and_size_review.
-    action: |
-      SPIKE_RUNS=${context.run_dir}/spike-runs-${captured.input.output:shell}
-      SPIKE_N=$(cat "$SPIKE_RUNS" 2>/dev/null || echo 0)
-      [ "$SPIKE_N" -lt 2 ] || exit 1
-      SPIKE_ISSUE_JSON=$(ll-issues show ${captured.input.output} --json)  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
-      SPIKE_ISSUE_JSON="$SPIKE_ISSUE_JSON" PRE_SPIKE_FILE="${context.run_dir}/autodev-pre-spike-readiness.txt" python3 << 'PYEOF' || exit 1
-      import json, os, sys
-      d = json.loads(os.environ['SPIKE_ISSUE_JSON'])
-      if d.get('spike_needed') == 'true' and d.get('spike_attempted') != 'true':
-          with open(os.environ['PRE_SPIKE_FILE'], 'w') as fh:
-              fh.write(str(d.get('confidence') or ''))
-          sys.exit(0)
-      sys.exit(1)
-      PYEOF
-      printf '%s' "$((SPIKE_N + 1))" > "$SPIKE_RUNS"
-    fragment: shell_exit
-    on_yes: run_spike
-    on_no: snap_and_size_review
-    on_error: snap_and_size_review
-
-  record_decision_unresolved:
-    # Record the still-gated issue distinctly (mirrors mark_gate_blocked) and
-    # advance the queue rather than entering implement_current, where ll-auto
-    # is guaranteed to halt at the decision gate. ENH-2666: deferred via the
-    # same set-status transition rn-implement's mark_deferred uses, so the
-    # issue leaves active selection and re-surfaces via FEAT-2665's triage
-    # surface rather than being retried every run.
-    action: |
-      ID="${captured.input.output}"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
-      echo "$ID" >> ${context.run_dir}/autodev-decision-unresolved.txt
-      rm -f ${context.run_dir}/autodev-inflight
-      # BUG-2729 postmortem: never flip an already-resolved issue to deferred.
-      STATUS=$(ll-issues show "$ID" --json 2>/dev/null \
-        | python3 -c "import json,sys; print((json.load(sys.stdin).get('status') or '').lower())" \
-        2>/dev/null || echo "")
-      if [ "$STATUS" = "done" ] || [ "$STATUS" = "completed" ] || [ "$STATUS" = "cancelled" ]; then
-        echo "[SKIP-DEFER] $ID already $STATUS; leaving status untouched"
-      else
-        ll-issues set-status "$ID" deferred --by automation --reason decision_unresolved 2>/dev/null || true
-        echo "[DECISION_UNRESOLVED] $ID — decide-issue produced no actionable decision; deferred (resolve with /ll:decide-issue, then re-run to resurface)"
-      fi
-    action_type: shell
-    next: dequeue_next
-    on_error: dequeue_next
-
-  snap_and_size_review:
-    # ENH-1415: snapshot current issue IDs as the new pre-ids baseline before
-    # handing off to run_size_review, so enqueue_or_skip's diff reflects only
-    # the children created by this explicit size-review (mirrors
-    # size_review_snap on the no-decide path). Reached when recheck_after_decide
-    # still fails outcome after decide has run.
-    action: |
-      ll-issues list --json | python3 -c "
-      import json, sys
-      try:
-          issues = json.load(sys.stdin)
-          for i in sorted(i['id'] for i in issues):
-              print(i)
-      except Exception:
-          pass
-      " > ${context.run_dir}/autodev-pre-ids.txt
-    action_type: shell
-    next: run_size_review
-    on_error: run_size_review
 
   run_wire:
     # Run /ll:wire-issue to resolve absent files or unwired integration points
@@ -1346,7 +1065,7 @@ states:
     # After run_wire → run_refine repairs a wiring gap, frontmatter scores still hold
     # pre-repair values. Re-run confidence-check so enqueue_or_skip /
     # recheck_after_size_review evaluate fresh scores — mirrors
-    # rerun_confidence_after_decide (BUG-1491).
+    # rerun_confidence_after_reconcile (BUG-1491).
     fragment: with_rate_limit_handling
     action: "/ll:confidence-check ${captured.input.output}"
     action_type: slash_command
@@ -2144,209 +1863,6 @@ states:
     on_cannot_judge: run_size_review
     on_error: run_size_review
 
-  check_spike_needed:
-    # ENH-2640: an outcome-confidence failure caused by a zero-precedent internal
-    # mechanism (spike_needed:true, set by `ll-issues set-flags` — FLAG_RULES,
-    # ENH-2946) fits
-    # none of the decide/wire/size-review remedies and would thrash into
-    # autodev-skipped.txt. Route it to run_spike to prove the mechanism first.
-    # Predicate is a two-field condition (spike_needed AND NOT spike_attempted)
-    # that ll-issues check-flag can't express in one call, so mirror
-    # the child's check_spike_needed inline-python idiom reading show --json. The
-    # spike_attempted guard makes this a one-shot: a completed-or-attempted spike
-    # never re-runs. On no match, fall through to check_missing_artifacts,
-    # preserving the existing wire/size-review chain.
-    # ENH-2689: when a spike is about to run, snapshot the current (pre-spike)
-    # Readiness score to ${context.run_dir}/autodev-pre-spike-readiness.txt so the
-    # downstream check_reconcile_needed gate can detect a "spike ran but Readiness
-    # is bit-identical" plateau. Written only on the on_yes (spike) branch.
-    action: |
-      # BUG-3593: shared per-issue spike budget (`spike-runs-<ID>`, also read by
-      # the nested refine-to-ready-issue): spike only while the counter is < 2,
-      # incremented on the yes branch before run_spike so a crashed spike counts.
-      SPIKE_RUNS=${context.run_dir}/spike-runs-${captured.input.output:shell}
-      SPIKE_N=$(cat "$SPIKE_RUNS" 2>/dev/null || echo 0)
-      [ "$SPIKE_N" -lt 2 ] || exit 1
-      SPIKE_ISSUE_JSON=$(ll-issues show ${captured.input.output} --json)  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
-      SPIKE_ISSUE_JSON="$SPIKE_ISSUE_JSON" python3 << 'PYEOF' || exit 1
-      import json, os, sys
-      d = json.loads(os.environ['SPIKE_ISSUE_JSON'])
-      if d.get('spike_needed') == 'true' and d.get('spike_attempted') != 'true':
-          with open('${context.run_dir}/autodev-pre-spike-readiness.txt', 'w') as fh:
-              fh.write(str(d.get('confidence') or ''))
-          sys.exit(0)
-      sys.exit(1)
-      PYEOF
-      printf '%s' "$((SPIKE_N + 1))" > "$SPIKE_RUNS"
-    fragment: shell_exit
-    on_yes: run_spike
-    on_no: check_missing_artifacts
-    on_error: check_missing_artifacts
-
-  run_spike:
-    # ENH-2640: prove the unproven internal mechanism via /ll:spike --auto before
-    # attempting implementation. A spike proves a mechanism (it does not edit
-    # integration points like run_wire, so it routes directly to the confidence
-    # rerun with no run_refine interposition). /ll:spike writes spike_attempted/
-    # spike_completed to frontmatter, arming the check_spike_needed one-shot
-    # guard. rate_limit_max_wait_seconds is capped tighter than the fragment
-    # default given the rn-refine long-run history (ENH-2565).
-    fragment: with_rate_limit_handling
-    action: "/ll:spike ${captured.input.output} --auto"
-    action_type: slash_command
-    pruning_profile:
-      enabled: true
-      name: spike-auto
-      suppress_claude_md: true
-    rate_limit_max_wait_seconds: 14400
-    next: count_repair_cycle_spike
-    on_error: count_repair_cycle_spike
-    on_rate_limit_exhausted: finalize_rate_limited
-
-  count_repair_cycle_spike:
-    # FEAT-2751: run_spike is one of the six repair-class states counted
-    # toward the stagnation backstop threshold (see count_repair_cycle_refine).
-    action: |
-      N=$(cat ${context.run_dir}/autodev-repair-cycle-count.txt 2>/dev/null || echo 0)
-      N=$((N + 1))
-      printf '%s' "$N" > ${context.run_dir}/autodev-repair-cycle-count.txt
-    action_type: shell
-    next: route_spike_verdict
-    on_error: route_spike_verdict
-
-  route_spike_verdict:
-    # BUG-3593: four-way spike-outcome router (refuted, proven, inconclusive,
-    # no verdict; evaluated in that order). Refuted goes to a decision BEFORE any
-    # rescoring; proven keeps BUG-3588's clear -> rescore -> check_scores_present_spike
-    # chain unchanged, so no scoring path bypasses that gate.
-    action: |
-      ll-issues show ${captured.input.output:shell} --json | python3 -c "
-      import json, sys
-      d = json.load(sys.stdin)
-      a = d.get('spike_attempted') == 'true'
-      if a and d.get('spike_refuted') == 'true':
-          print('REFUTED')
-      elif a and d.get('spike_completed') == 'true':
-          print('PROVEN')
-      elif a:
-          print('INCONCLUSIVE')
-      else:
-          print('NO_VERDICT')"
-    action_type: shell
-    evaluate:
-      type: classify
-    route:
-      REFUTED: check_spike_budget
-      PROVEN: clear_scores_before_spike
-      INCONCLUSIVE: record_spike_inconclusive
-      NO_VERDICT: mark_spike_no_verdict_infra
-      _: mark_spike_no_verdict_infra
-      _error: mark_spike_no_verdict_infra
-
-  check_spike_budget:
-    # BUG-3593: refuted edge. Counter < 2 -> decide; a second refutation (counter
-    # 2 after the re-armed spike) defers as decision_unresolved. Scores are NOT
-    # cleared here: resolve_decision -> mark_decide_ran ->
-    # rerun_confidence_after_decide rescores, and the failure path
-    # (record_decision_unresolved) reads no scores.
-    action: |
-      N=$(cat ${context.run_dir}/spike-runs-${captured.input.output:shell} 2>/dev/null || echo 0)
-      [ "$N" -lt 2 ]
-    fragment: shell_exit
-    on_yes: resolve_decision
-    on_no: record_decision_unresolved
-    on_error: record_decision_unresolved
-
-  record_spike_inconclusive:
-    # BUG-3593: spike ran but reached neither verdict. Not re-spiked; deferred
-    # with a named human-needed code. Shared ledger with refine-to-ready-issue.
-    action: |
-      ID=${captured.input.output:shell}
-      echo "$ID" >> ${context.run_dir}/autodev-spike-inconclusive.txt
-      rm -f ${context.run_dir}/autodev-inflight
-      STATUS=$(ll-issues show "$ID" --json 2>/dev/null \
-        | python3 -c "import json,sys; print((json.load(sys.stdin).get('raw_status') or '').lower())" \
-        2>/dev/null || echo "")
-      if [ "$STATUS" = "done" ] || [ "$STATUS" = "completed" ] || [ "$STATUS" = "cancelled" ]; then
-        echo "[SKIP-DEFER] $ID already $STATUS; leaving status untouched"
-      else
-        ll-issues set-status "$ID" deferred --by automation --reason spike_inconclusive 2>/dev/null || true
-        echo "[SPIKE_INCONCLUSIVE] $ID — spike could not reach a verdict (neither proven nor refuted); fix the cause, then run /ll:spike $ID --force and re-run to resurface"
-      fi
-    action_type: shell
-    next: dequeue_next
-    on_error: dequeue_next
-
-  mark_spike_no_verdict_infra:
-    # BUG-3593: the spike wrote no verdict (crash/kill before write-back) —
-    # infra, not a quality verdict. Modeled on mark_scores_absent_infra: ledger,
-    # clear inflight, advance the queue, no deferral.
-    action: |
-      ID=${captured.input.output:shell}
-      echo "$ID" >> ${context.run_dir}/autodev-spike-no-verdict.txt
-      rm -f ${context.run_dir}/autodev-inflight
-      echo "[SPIKE_NO_VERDICT] $ID — spike wrote no verdict; not deferred, retry later"
-    action_type: shell
-    next: dequeue_next
-    on_error: dequeue_next
-
-  rerun_confidence_after_spike:
-    # ENH-2640: after run_spike proves (or attempts) the mechanism, frontmatter
-    # scores still hold pre-spike values. Re-run confidence-check so
-    # enqueue_or_skip evaluates fresh scores — mirrors rerun_confidence_after_wire
-    # (a spike is a repair action like wiring, not a decision resolution, so it
-    # does not get a dedicated recheck state like the decide path).
-    fragment: with_rate_limit_handling
-    action: "/ll:confidence-check ${captured.input.output}"
-    action_type: slash_command
-    pruning_profile:
-      enabled: true
-      name: confidence-check-recheck
-      suppress_claude_md: true
-    next: check_scores_present_spike
-    on_error: check_scores_present_spike
-    on_rate_limit_exhausted: finalize_rate_limited
-
-  clear_scores_before_spike:
-    # BUG-3588: clear stale pre-repair scores immediately before the rescoring, so
-    # the successor can only ever read scores the rescoring itself wrote. Cannot
-    # live in the rerun state's action (slash command under with_rate_limit_handling).
-    # Clearing an already-cleared issue is a no-op. A failed clear leaves stale
-    # scores in place, which is exactly what this guards against — so infra.
-    action: 'll-issues set-scores ${captured.input.output:shell} --clear'
-    action_type: shell
-    next: rerun_confidence_after_spike
-    on_error: mark_scores_absent_infra
-
-  check_scores_present_spike:
-    # BUG-3588: presence gate for rerun_confidence_after_spike. Both scores
-    # non-null → proceed to enqueue_or_skip. First miss → retry the rescoring once (the
-    # dominant no-write cause is the model skipping `ll-issues set-scores`);
-    # second miss → exit 3 → infra. The retry marker is per issue and cleared
-    # here on a pass and at dequeue_next.
-    action: |
-      ID=${captured.input.output:shell}
-      MARK=${context.run_dir}/autodev-rescore-retry-spike-$ID
-      ABSENT=$(ll-issues show "$ID" --json 2>/dev/null | python3 -c "
-      import json, sys
-      d = json.load(sys.stdin)
-      print('true' if d.get('confidence') is None or d.get('outcome') is None else 'false')" 2>/dev/null || echo true)
-      if [ "$ABSENT" = "false" ]; then
-        rm -f "$MARK"
-        exit 0
-      fi
-      if [ ! -f "$MARK" ]; then
-        touch "$MARK"
-        echo "[RESCORE_RETRY] $ID — rescoring wrote no scores; retrying once"
-        exit 1
-      fi
-      exit 3
-    fragment: harness_exit
-    on_yes: enqueue_or_skip
-    on_no: rerun_confidence_after_spike
-    on_cannot_judge: mark_scores_absent_infra
-    on_error: mark_scores_absent_infra
-
   check_missing_artifacts:
     # Gate before size-review: if missing_artifacts=true, route to run_wire so
     # absent files and unwired components are resolved before decomposition is
@@ -2484,70 +2000,25 @@ states:
     on_no: select_obligation_post_size_review  # ENH-3611
     on_error: select_obligation_post_size_review
 
-  check_spike_needed_before_skip:
-    # BUG-2654: the decide path (recheck_after_decide.on_no → snap_and_size_review
-    # → run_size_review → enqueue_or_skip) and the no-decide size-review path both
-    # funnel through enqueue_or_skip before any low_readiness skip, but neither
-    # ever visits the post-refine path's check_spike_needed gate. A
-    # spike_needed:true issue was therefore skipped as low_readiness with its spike
-    # remedy structurally bypassed. Interpose this decide-path-specific spike gate
-    # on the no-children skip edge so a pending spike gets its one shot before the
-    # recheck_after_size_review low_readiness write. Predicate is identical to
-    # check_spike_needed (spike_needed AND NOT spike_attempted); only the no-match
-    # fall-through differs — on_no → recheck_after_size_review keeps the leaf-skip
-    # semantics identical to the pre-fix behaviour (vs. check_spike_needed's
-    # triage-path check_missing_artifacts fall-through). The spike_attempted
-    # one-shot guard prevents a double-fire across the triage and decide paths and
-    # is what lets the post-spike re-entry (rerun_confidence_after_spike.next →
-    # enqueue_or_skip → here) fall through cleanly to the skip write.
-    # ENH-2689: snapshot the pre-spike Readiness on the spike branch (same as
-    # check_spike_needed), and on no-match route to check_reconcile_needed rather
-    # than straight to recheck_after_size_review, so a "spike ran but Readiness is
-    # pinned" plateau gets one reconcile pass before the low_readiness deferral.
-    action: |
-      # BUG-3593: shared per-issue spike budget (`spike-runs-<ID>`, also read by
-      # the nested refine-to-ready-issue): spike only while the counter is < 2,
-      # incremented on the yes branch before run_spike so a crashed spike counts.
-      SPIKE_RUNS=${context.run_dir}/spike-runs-${captured.input.output:shell}
-      SPIKE_N=$(cat "$SPIKE_RUNS" 2>/dev/null || echo 0)
-      [ "$SPIKE_N" -lt 2 ] || exit 1
-      SPIKE_ISSUE_JSON=$(ll-issues show ${captured.input.output} --json)  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
-      SPIKE_ISSUE_JSON="$SPIKE_ISSUE_JSON" python3 << 'PYEOF' || exit 1
-      import json, os, sys
-      d = json.loads(os.environ['SPIKE_ISSUE_JSON'])
-      if d.get('spike_needed') == 'true' and d.get('spike_attempted') != 'true':
-          with open('${context.run_dir}/autodev-pre-spike-readiness.txt', 'w') as fh:
-              fh.write(str(d.get('confidence') or ''))
-          sys.exit(0)
-      sys.exit(1)
-      PYEOF
-      printf '%s' "$((SPIKE_N + 1))" > "$SPIKE_RUNS"
-    fragment: shell_exit
-    on_yes: run_spike
-    on_no: check_reconcile_needed
-    on_error: recheck_after_size_review
-
   check_reconcile_needed:
-    # ENH-2689: plateau detector. Both the spike-triage path and the decide/
-    # size-review path funnel through check_spike_needed_before_skip →
-    # recheck_after_size_review before the low_readiness deferral. When a spike
-    # already ran (spike_attempted true, so check_spike_needed_before_skip fell
-    # through here) but the post-spike /ll:confidence-check produced a Readiness
-    # score bit-identical to the pre-spike snapshot, the findings accumulated but
+    # ENH-2689: plateau detector. The post-size-review path funnels through
+    # select_obligation_post_size_review (ENH-3611; it replaced
+    # check_spike_needed_before_skip) → here → recheck_after_size_review before
+    # the low_readiness deferral. When a repair already ran but the
+    # /ll:confidence-check produced a Readiness
+    # score bit-identical to the pre-refine snapshot, the findings accumulated but
     # the issue's own directive sections were never reconciled — /ll:refine-issue
     # only appends. Route to reconcile_current for one targeted rewrite pass.
     # Predicate is a two-condition guard (pre-repair snapshot == current
-    # Readiness AND NOT reconcile_attempted), mirroring check_spike_needed's
+    # Readiness AND NOT reconcile_attempted), mirroring the
     # two-field inline-Python one-shot idiom. The reconcile_attempted guard
     # (written by /ll:reconcile-issue) makes this fire at most once per issue
     # per run. On no plateau, no snapshot, or any error, fall through unchanged
     # to recheck_after_size_review — non-plateau issues behave exactly as
     # before.
-    # FEAT-2751: generalizes beyond the spike-armed path. Prefer
-    # autodev-pre-spike-readiness.txt when present (the fresher pre-repair
-    # baseline for a spike-triage issue); otherwise fall back to
-    # autodev-pre-readiness.txt, the dequeue-time snapshot written for every
-    # issue regardless of spike_needed.
+    # FEAT-2751: the baseline is autodev-pre-readiness.txt, the dequeue-time
+    # snapshot written for every issue (ENH-3611 removed the separate
+    # autodev-pre-spike-readiness.txt preference with the spike states).
     # BUG-2803: a freshly captured issue has no confidence_score at dequeue, so
     # its pre-readiness snapshot is EMPTY and the plateau predicate (pre != '')
     # excluded it by construction — the most common below-threshold case
@@ -2591,9 +2062,8 @@ states:
       d = json.loads(os.environ['LL_ISSUE_JSON'])
       cur = str(d.get('confidence') or '')
       attempted = d.get('reconcile_attempted') == 'true'
-      spike_snap = '${context.run_dir}/autodev-pre-spike-readiness.txt'
       fallback_snap = '${context.run_dir}/autodev-pre-readiness.txt'
-      snap = spike_snap if os.path.exists(spike_snap) else fallback_snap
+      snap = fallback_snap
       pre = ''
       if os.path.exists(snap):
           with open(snap) as fh:
@@ -2635,11 +2105,11 @@ states:
     # per-issue (executor.py:227). The original gate keyed on a NEGATIVE marker
     # written only by check_broke_down's shortcut, so provenances that skip
     # BOTH run_size_review and check_broke_down — rerun_confidence_after_wire
-    # and rerun_confidence_after_spike, whose `next` is enqueue_or_skip —
+    # (whose `next` is enqueue_or_skip; formerly also rerun_confidence_after_spike, removed in ENH-3611) —
     # reached check_guard2_verdict with a PRIOR issue's capture and could defer
     # the wrong issue as oversized_atomic. Require a POSITIVE marker instead:
     # written by count_repair_cycle_size_review (run_size_review's only
-    # successor), cleared at dequeue_next. Not consumed here — a post-spike
+    # successor), cleared at dequeue_next. Not consumed here — a post-wire
     # re-entry via enqueue_or_skip in the same pass still refers to this
     # issue's own capture. on_error fails CLOSED: unverifiable provenance must
     # never evaluate possibly-stale text.
@@ -2703,7 +2173,7 @@ states:
     # `ll-issues check-readiness` hard-ANDs both halves against config
     # thresholds (ignoring CLI overrides when config sets them), so read
     # confidence_score directly from frontmatter instead, mirroring
-    # check_spike_needed's inline-Python idiom.
+    # the child's check_spike_needed inline-Python idiom.
     action: |
       ISSUE_JSON=$(ll-issues show ${captured.input.output} --json)  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       READINESS_THRESHOLD=${context.readiness_threshold:shell}
@@ -3047,7 +2517,7 @@ states:
     # Codebase Research Findings / Wiring Phase, via the /ll:reconcile-issue skill
     # (the state owns no rewrite logic — only the call and routing). The skill
     # writes reconcile_attempted: true, arming the check_reconcile_needed one-shot
-    # guard. Rate-limit handling mirrors run_spike.
+    # guard. Rate-limit handling mirrors the child's run_spike.
     fragment: with_rate_limit_handling
     action: "/ll:reconcile-issue ${captured.input.output}"
     action_type: slash_command
@@ -3101,7 +2571,7 @@ states:
     # re-run /ll:confidence-check once so a successful reconciliation gets one more
     # chance to cross the readiness threshold, then fall through to
     # recheck_after_size_review (the existing implement-or-defer gate). Mirrors
-    # rerun_confidence_after_spike's rate-limit shape.
+    # rerun_confidence_after_wire's rate-limit shape.
     # BUG-3002: also the successor for refine_for_design (the Program Design
     # remedy) — this state is remedy-agnostic, it just reruns confidence-check
     # and falls into recheck_after_size_review, so it serves both the plateau
@@ -3452,15 +2922,27 @@ states:
     on_error: dispatch_pre_deferral_remedy
 
   dispatch_pre_deferral_remedy:
-    # BUG-2803: consume the armed remedy and route to it. On the spike branch,
-    # snapshot the pre-spike Readiness exactly like check_spike_needed's
-    # on_yes so the downstream plateau detector has the fresher baseline.
-    # Anything unexpected falls through to reconcile_current (the generic
-    # rewrite remedy) rather than dead-ending. Both remedies re-run
-    # /ll:confidence-check and funnel back to recheck_after_size_review, where
-    # the frontmatter attempted-flags (and the fired marker as backstop) make
-    # a second arming impossible — repeat failures defer as
-    # readiness_stagnated via the FEAT-2751 backstop.
+    # BUG-2803: consume the armed remedy and route to it. Anything unexpected
+    # falls through to reconcile_current (the generic rewrite remedy) rather
+    # than dead-ending. The reconcile remedy re-runs /ll:confidence-check and
+    # funnels back to recheck_after_size_review.
+    # ENH-3611 (interim until ENH-3606): the `spike` leg no longer runs a spike
+    # in autodev (run_spike was removed). It routes to refine_current, so the
+    # refine-to-ready-issue child gets another pass and spikes only if it reaches
+    # `done` with an open structured_proof gate or spike_needed is set in its
+    # low-outcome band; a remedy armed by the ambiguity heuristic alone gets a
+    # plain refine pass. The leg neither increments `spike-runs-<ID>` (the child
+    # owns that budget; a pre-bumped counter would make a child-spike refutation
+    # see N=2 and skip the refute -> decide step) nor writes a pre-spike
+    # snapshot (check_reconcile_needed reads autodev-pre-readiness.txt). Budget
+    # spent (counter >= 2) or refine_count at the lifetime cap (a capped child
+    # routes to breakdown_issue) -> exit 1 -> reconcile_current. Return path:
+    # refine_current -> count_repair_cycle_refine -> route_refine_success ->
+    # check_passed -> selectors -> full post-refine triage; the
+    # autodev-pre-deferral-remedy-fired marker (cleared only at dequeue_next)
+    # blocks a second arming, so a still-failing issue reaches
+    # recheck_after_size_review again and defers as
+    # readiness_stagnated/low_readiness.
     # BUG-3002: the refine_design token is intercepted upstream by
     # dispatch_design_remedy and never reaches here; this state's own routing
     # (spike / reconcile_current) is unmodified.
@@ -3468,20 +2950,22 @@ states:
       REMEDY=$(cat ${context.run_dir}/autodev-pre-deferral-remedy.txt 2>/dev/null || echo "")
       rm -f ${context.run_dir}/autodev-pre-deferral-remedy.txt
       if [ "$REMEDY" = "spike" ]; then
-        # BUG-3593: shared spike budget — exhausted -> exit 1 -> reconcile_current.
-        SPIKE_RUNS=${context.run_dir}/spike-runs-${captured.input.output:shell}
-        SPIKE_N=$(cat "$SPIKE_RUNS" 2>/dev/null || echo 0)
+        # BUG-3593: shared spike budget (read only) — exhausted -> exit 1 -> reconcile_current.
+        ID=${captured.input.output:shell}
+        SPIKE_N=$(cat "${context.run_dir}/spike-runs-$ID" 2>/dev/null || echo 0)
         [ "$SPIKE_N" -lt 2 ] || exit 1
-        printf '%s' "$((SPIKE_N + 1))" > "$SPIKE_RUNS"
-        (ll-issues show ${captured.input.output} --json | python3 -c "  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
-      import json, sys
-      d = json.load(sys.stdin)
-      print(d.get('confidence') or '')" > ${context.run_dir}/autodev-pre-spike-readiness.txt) || true
+        # ENH-3611: lifetime refine cap (BUG-3614 snippet) — a capped child would
+        # route to breakdown_issue, so defer via reconcile_current instead.
+        CNT=$(ll-issues refine-status "$ID" --json 2>/dev/null | python3 -c 'import json,sys; print(int(json.load(sys.stdin).get("refine_count", 0)))' 2>/dev/null || echo 0)
+        CAP=$(python3 -c 'import json; print(int(json.load(open(".ll/ll-config.json")).get("commands", {}).get("max_refine_count", 5)))' 2>/dev/null || echo 5)
+        [ -z "$CNT" ] && CNT=0
+        [ -z "$CAP" ] && CAP=5
+        [ "$CNT" -lt "$CAP" ] 2>/dev/null || exit 1
         exit 0
       fi
       exit 1
     fragment: shell_exit
-    on_yes: run_spike
+    on_yes: refine_current
     on_no: reconcile_current
     on_error: reconcile_current
 
@@ -3718,10 +3202,6 @@ states:
       PROPOSAL_UNSOUND_LIST=$(grep -v '^[[:space:]]*$' ${context.run_dir}/autodev-proposal-unsound.txt 2>/dev/null | sort -u | tr '\n' ',' | sed 's/,$//' || true)
       if [ -n "$PROPOSAL_UNSOUND_LIST" ]; then
         printf 'Proposal-unsound (%d): %s  (selected proposal refuted, no alternative; revise ## Proposed Solution, then re-run)\n' "$(echo "$PROPOSAL_UNSOUND_LIST" | tr ',' '\n' | wc -l | tr -d ' ')" "$PROPOSAL_UNSOUND_LIST"
-      fi
-      SPIKE_NO_VERDICT_LIST=$(grep -v '^[[:space:]]*$' ${context.run_dir}/autodev-spike-no-verdict.txt 2>/dev/null | sort -u | tr '\n' ',' | sed 's/,$//' || true)
-      if [ -n "$SPIKE_NO_VERDICT_LIST" ]; then
-        printf 'Spike-no-verdict [infra] (%d): %s  (spike wrote no verdict; retry later)\n' "$(echo "$SPIKE_NO_VERDICT_LIST" | tr ',' '\n' | wc -l | tr -d ' ')" "$SPIKE_NO_VERDICT_LIST"
       fi
       PROOF_GATE_INFRA_LIST=$(grep -v '^[[:space:]]*$' ${context.run_dir}/autodev-proof-gate-infra.txt 2>/dev/null | sort -u | tr '\n' ',' | sed 's/,$//' || true)
       if [ -n "$PROOF_GATE_INFRA_LIST" ]; then

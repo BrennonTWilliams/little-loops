@@ -51,7 +51,7 @@ category: issue-management
 #                                                        → resolve_decision_pre_breakdown | 2nd: record_decision_unresolved
 #                                                    → (on_no)  check_spike_needed (ENH-3250)
 #     _ / _error               → diagnose
-#                      check_spike_needed (spike_needed AND NOT spike_attempted, two-field one-shot guard) → (on_yes) run_spike → confidence_check
+#                      check_spike_needed (spike_needed AND NOT spike_attempted; shared spike-runs-<ID> cap 2) → (on_yes) run_spike → confidence_check
 #                                                → (on_no)  check_missing_artifacts
 #   BUG-3065: the three decision_needed gates (check_decision_mid_refine,
 #   check_decision_mid_wire, check_decision_needed) no longer exit via done on
@@ -97,7 +97,7 @@ scope:
 # on every pass through check_verify_verdict's on_no branch (already budgeted
 # via check_refine_limit's existing traversal, so this is +1, not a new
 # cycle). check_spike_needed/run_spike is a one-shot (spike_attempted guards
-# re-entry, mirroring autodev.yaml's check_spike_needed) that costs ~4 more
+# re-entry; ENH-3250 modeled it on autodev's since-removed check_spike_needed) that costs ~4 more
 # on the branch it fires (check_spike_needed -> run_spike ->
 # confidence_check -> check_readiness -> check_outcome, re-entering the
 # existing check_outcome -> check_decision_needed cycle already in budget) ->
@@ -811,7 +811,8 @@ states:
     # the only tokens are NONE and SCORES:{absent,readiness_below,outcome_below}.
     # Tier 3 stays in the child (check_decision_needed -> check_spike_needed ->
     # check_missing_artifacts): check_spike_needed owns the shared spike-runs-<ID>
-    # budget the selector's PROOF does not. --honor-waiver is deliberately omitted:
+    # budget, and check_proof_before_done (ENH-3611) spends the same budget for the
+    # structured_proof gate on the done edges; the selector's PROOF does not. --honor-waiver is deliberately omitted:
     # the child never consulted outcome_gate_waived at this gate.
     #
     # `_` = selector exit 2 (empty stdout) or executor failure: an unreadable issue
@@ -837,7 +838,7 @@ states:
 
   check_decision_before_done:
     # ENH-3610: child invariant — this loop never reaches `done` with
-    # decision_needed: true (except via write_broke_down). Sits on the three
+    # decision_needed: true (except via write_broke_down). Sits on the two
     # done edges (route_score_obligation NONE, check_missing_artifacts.on_yes). Flag set → check_decide_attempts (the
     # existing decide budget and path, which re-scores via confidence_check);
     # otherwise → check_proof_before_done → write_done_record → done. Fail-open on error: a probe failure
@@ -926,9 +927,8 @@ states:
     on_error: record_decision_unresolved
 
   check_spike_needed:
-    # ENH-3250 (B3): was mirrored by autodev.yaml's check_spike_needed (being removed in ENH-3611) predicate
-    # (autodev additionally snapshots pre-spike readiness; the rate-limit
-    # fragment IS carried on run_spike below, ENH-3607)
+    # ENH-3250 (B3): was modeled on autodev's check_spike_needed (removed in ENH-3611) predicate
+    # (the rate-limit fragment IS carried on run_spike below, ENH-3607)
     # — spike_needed is a FlagRule written by apply_flags_from_notes()
     # (set_flags.py) on the same sub-threshold-outcome precondition as
     # decision_needed/missing_artifacts, so it belongs in this gate band. The
@@ -962,7 +962,7 @@ states:
     on_error: check_missing_artifacts
 
   run_spike:
-    # ENH-3250 (B3): autodev's run_spike (being removed in ENH-3611) was its mirror — proves the
+    # ENH-3250 (B3): autodev's run_spike (removed in ENH-3611) was its model — proves the
     # unproven internal mechanism via /ll:spike --auto, which writes
     # spike_attempted/spike_completed to frontmatter (arming check_spike_needed's
     # one-shot guard), then re-enters confidence_check so the score reflects the
@@ -1055,7 +1055,7 @@ states:
     # caused by absent files/unwired components, not scope. Exit via done (through
     # check_decision_before_done) so the outer loop's remediation ladder
     # (check_passed.on_no → select_obligation_post_refine → check_missing_artifacts →
-    # run_wire path; ENH-3611 removes autodev's check_spike_needed) can handle the repair. Mirrors check_decision_needed above and
+    # run_wire path; ENH-3611 removed autodev's check_spike_needed) can handle the repair. Mirrors check_decision_needed above and
     # autodev.yaml's check_missing_artifacts state.
     action: "ll-issues check-flag ${captured.issue_id.output:shell} missing_artifacts"
     fragment: shell_exit
@@ -1175,15 +1175,15 @@ states:
     on_error: failed
 
   check_decide_rate_limited:
-    # Mirrors autodev.yaml's check_decide_rate_limited: oracles/resolve-decision
+    # (ENH-3611: autodev's own check_decide_rate_limited was removed; this is the
+    # sole decide-rate-limit gate.) oracles/resolve-decision
     # writes ${run_dir}/decide-rate-limited-<ID> before its failed terminal
     # when 429-exhausted. Without this probe a rate-limit outage was ledgered
     # as DECISION_UNRESOLVED and the issue deferred — a quality verdict for an
     # infrastructure fault. Marker present → mark the run infra and exit via
     # failed (autodev's skip_inflight then reads `infra` → refine_failed_infra,
-    # no deferral). Residual (out of scope): autodev's own equivalent halts its
-    # queue on 429-exhaustion; this nested path only infra-skips the current
-    # issue, so an autodev queue keeps walking into fast infra-skips.
+    # no deferral). Residual (out of scope): this nested path only infra-skips
+    # the current issue, so an autodev queue keeps walking into fast infra-skips.
     action: "[ -f ${context.run_dir}/decide-rate-limited-${captured.issue_id.output:shell} ]"
     fragment: shell_exit
     on_yes: mark_rate_limit_infra
@@ -1250,8 +1250,9 @@ states:
   record_decision_unresolved:
     # BUG-3065: shared fallthrough target for all three resolve_decision_*
     # call states (via check_decide_rate_limited when no rate-limit marker
-    # exists). Mirrors autodev.yaml's
-    # record_decision_unresolved so the DECISION_UNRESOLVED ledger contract
+    # exists). Formerly mirrored
+    # autodev's record_decision_unresolved (removed in ENH-3611; the child now owns
+    # it) so the DECISION_UNRESOLVED ledger contract
     # auto-refine-and-implement.yaml:840 reads holds regardless of which loop
     # resolved (or failed to resolve) the decision — this loop is now
     # reachable both standalone and nested under autodev. Defers the issue

@@ -234,9 +234,14 @@ class TestAutodevRouting:
         _write(project, "", body)
         assert "GATE_YES" in _run_state(project, "check_gate_at_dequeue")
 
-    def test_unsatisfied_proof_gate_reaches_run_spike(self, project: Path) -> None:
+    def test_unsatisfied_proof_gate_defers_at_pre_implement_gate(self, project: Path) -> None:
+        """ENH-3611: autodev no longer spikes (PROOF_SPIKE is gone); the child's
+        check_proof_before_done / the selectors' PROOF re-entry own the spike, and an
+        open gate that reaches the fail-closed stage defers as blocked_by_gate."""
         _write(project, "gate:\n  kind: proof\n  satisfied: false\n")
-        assert "PROOF_SPIKE" in _run_state(project, "check_proof_gate_before_implement")
+        out = _run_state(project, "check_proof_defer_or_implement")
+        assert "PROOF_DEFER" in out
+        assert "PROOF_SPIKE" not in out
 
     def test_proven_spike_clears_proof_gate(self, project: Path) -> None:
         _write(
@@ -244,23 +249,21 @@ class TestAutodevRouting:
             "gate:\n  kind: proof\n  satisfied: false\nspike_attempted: true\n"
             "spike_completed: true\n",
         )
-        out = _run_state(project, "check_proof_gate_before_implement")
+        out = _run_state(project, "check_proof_defer_or_implement")
         assert "PROOF_CLEAR" in out
-        assert _run_state(project, "check_proof_defer_or_implement").count("PROOF_DEFER") == 0
+        assert out.count("PROOF_DEFER") == 0
 
     def test_spent_spike_budget_defers(self, project: Path) -> None:
         _write(project, "gate:\n  kind: proof\n  satisfied: false\n")
         run_dir = project / "run"
         run_dir.mkdir()
         (run_dir / f"spike-runs-{ID}").write_text("2")
-        assert "PROOF_DEFER" in _run_state(project, "check_proof_gate_before_implement")
         assert "PROOF_DEFER" in _run_state(project, "check_proof_defer_or_implement")
 
     def test_no_gate_reaches_implement(self, project: Path) -> None:
         _write(project, "")
-        assert "PROOF_CLEAR" in _run_state(project, "check_proof_gate_before_implement")
         # Exit-1-with-recognized-token (`none`) is a real verdict, not infra:
-        # the second state must also clear it (BUG-3603 keeps this path clear).
+        # the state must clear it (BUG-3603 keeps this path clear).
         assert "PROOF_CLEAR" in _run_state(project, "check_proof_defer_or_implement")
 
     def test_prose_gate_defers_at_both_proof_states(self, project: Path) -> None:
@@ -268,7 +271,7 @@ class TestAutodevRouting:
         recheck_after_size_review already treat it as gated, so the pre-implement
         states must route it to PROOF_DEFER, never PROOF_CLEAR."""
         _write(project, "", GATE_PROSE)
-        for state in ("check_proof_gate_before_implement", "check_proof_defer_or_implement"):
+        for state in ("check_proof_defer_or_implement",):
             out = _run_state(project, state)
             assert "PROOF_DEFER" in out, f"{state} must defer a prose gate, got: {out!r}"
             assert "PROOF_CLEAR" not in out
@@ -278,7 +281,7 @@ class TestAutodevRouting:
         helper failure — both proof states must emit PROOF_INFRA, not PROOF_CLEAR."""
         _write(project, "")
         env = _stub_env(project, 'if [ "$1" = "check-gate" ]; then exit 2; fi\nexit 0')
-        for state in ("check_proof_gate_before_implement", "check_proof_defer_or_implement"):
+        for state in ("check_proof_defer_or_implement",):
             result = _run_state_proc(project, state, env)
             assert "PROOF_INFRA" in result.stdout, (
                 f"{state} must emit PROOF_INFRA on helper exit 2, "
@@ -293,7 +296,7 @@ class TestAutodevRouting:
         env = _stub_env(
             project, 'if [ "$1" = "check-gate" ]; then echo "TRACE: something"; exit 0; fi\nexit 0'
         )
-        for state in ("check_proof_gate_before_implement", "check_proof_defer_or_implement"):
+        for state in ("check_proof_defer_or_implement",):
             out = _run_state_proc(project, state, env).stdout
             assert "PROOF_INFRA" in out, (
                 f"{state} must emit PROOF_INFRA on unknown token, got {out!r}"
@@ -305,9 +308,10 @@ class TestAutodevRouting:
         # selector, whose `_` / `_error` routes reach the fail-closed proof gate.
         assert states["check_passed"]["on_yes"] == "select_obligation_pre_implement"
         selector = states["select_obligation_pre_implement"]
-        assert selector["route"]["_"] == "check_proof_gate_before_implement"
-        assert selector["route"]["_error"] == "check_proof_gate_before_implement"
-        assert states["check_proof_gate_before_implement"]["on_yes"] == "run_spike"
+        # ENH-3611: check_proof_defer_or_implement is the only proof stage.
+        assert selector["route"]["_"] == "check_proof_defer_or_implement"
+        assert selector["route"]["_error"] == "check_proof_defer_or_implement"
+        assert "check_proof_gate_before_implement" not in states
         route = states["check_proof_defer_or_implement"].get("route", {})
         assert route.get("PROOF_DEFER") == "defer_gated"
         assert route.get("PROOF_CLEAR") == "implement_current"
@@ -351,14 +355,15 @@ class TestProofGateFailClosed:
             f"PROOF_CLEAR route, got predecessors: {sorted(predecessors)}"
         )
 
-    def test_first_proof_state_fails_closed_on_error(self, states: dict[str, Any]) -> None:
-        state = states["check_proof_gate_before_implement"]
-        assert state.get("on_error") == "mark_proof_gate_infra", (
-            "check_proof_gate_before_implement.on_error must route to the infra "
-            "deferral, never implement_current (BUG-3603)"
-        )
-        for edge in ("on_yes", "on_no", "on_error"):
-            assert state.get(edge) != "implement_current"
+    def test_first_proof_state_stays_deleted(self, states: dict[str, Any]) -> None:
+        """ENH-3611: check_proof_gate_before_implement (the spiking first stage) is
+        gone; check_proof_defer_or_implement is the only proof stage and no state
+        routes to a removed proof-spike target."""
+        assert "check_proof_gate_before_implement" not in states
+        for name, state in states.items():
+            targets = {state.get(e) for e in ("on_yes", "on_no", "on_error", "next")}
+            targets |= set((state.get("route") or {}).values())
+            assert "check_proof_gate_before_implement" not in targets, name
 
     def test_defer_state_classifies_all_outcomes(self, states: dict[str, Any]) -> None:
         state = states["check_proof_defer_or_implement"]

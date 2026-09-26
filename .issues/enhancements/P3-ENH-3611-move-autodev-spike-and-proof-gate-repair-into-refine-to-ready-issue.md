@@ -3,7 +3,8 @@ id: ENH-3611
 type: ENH
 title: Move autodev spike and proof-gate repair into refine-to-ready-issue
 priority: P3
-status: in_progress
+status: done
+completed_at: '2026-09-26T18:00:00Z'
 discovered_by: issue-size-review
 discovered_date: '2026-09-26'
 captured_at: '2026-09-26T03:47:27Z'
@@ -651,7 +652,7 @@ ENH-3610's review changed parts of the selector contract that this issue builds 
 
 ## Status
 
-**Open** | Created: 2026-09-26 | Priority: P3
+**Done** | Created: 2026-09-26 | Priority: P3
 
 
 ## Implementation Progress
@@ -662,9 +663,20 @@ ENH-3610's review changed parts of the selector contract that this issue builds 
   `check_parent_resolved_post_size_review`. Tests: `test_autodev_proof_reentry.py` (new) plus
   retargeted assertions in `test_autodev_decision_gate.py`, `test_builtin_loops.py`,
   `test_fsm_topology.py` (112 states).
-- **Commit 2 (subtractive) — pending**: delete the 22 states, retargets, marker cleanup,
-  `dispatch_pre_deferral_remedy` change, stays-deleted guards, topology 112 → 90, baseline
-  entries, stale-comment sweep, docs. The child's header comments already say "being removed".
+- **Commit 2 (subtractive) — done 2026-09-26**: deleted the 22 autodev spike/decision states
+  (topology 112 → 90); retargets applied (`select_obligation_post_refine` `_` →
+  `check_missing_artifacts`, `select_obligation_pre_implement` `_`/`_error` →
+  `check_proof_defer_or_implement`, `select_obligation_post_size_review` `_` →
+  `check_reconcile_needed`); `dispatch_pre_deferral_remedy` `spike` leg now read-only on
+  `spike-runs-<ID>` with a lifetime-cap check and `on_yes` → `refine_current`; markers cleaned
+  (`autodev-pre-spike-readiness.txt`, `autodev-spike-no-verdict.txt`, `autodev-decide-ran` clear);
+  `check_reconcile_needed` reads only `autodev-pre-readiness.txt`; stale-comment sweep (autodev,
+  child, oracle, `show.py`, `next_obligation.py`, `check_gate.py`, `issue_lifecycle.py`);
+  interpolation-baseline entries removed; docs updated. Tests rewritten with stays-deleted guards
+  (`test_autodev_decision_gate.py`, `test_builtin_loops.py`, `test_spike_verdict_routing.py`,
+  `test_ll_issues_check_gate.py`, `test_autodev_scores_freshness.py`, `test_autodev_loop.py`,
+  `test_fsm_topology.py`); new real-action tests for the `dispatch_pre_deferral_remedy` spike leg
+  (counter unchanged, lifetime cap). Status left `in_progress` for the caller.
 
 ## Confidence Check Notes
 

@@ -185,7 +185,7 @@ class TestCheckGuard2ScoreFallback:
 
 class TestDequeueNextPreReadinessSnapshot:
     """FEAT-2751: dequeue_next must snapshot pre-refine confidence per-issue and
-    reset the repair-cycle counter / stale spike snapshot."""
+    reset the repair-cycle counter. ENH-3611: the separate pre-spike snapshot is gone."""
 
     def test_action_writes_pre_readiness_snapshot(self) -> None:
         action = _load_autodev_yaml()["states"]["dequeue_next"]["action"]
@@ -195,19 +195,22 @@ class TestDequeueNextPreReadinessSnapshot:
         action = _load_autodev_yaml()["states"]["dequeue_next"]["action"]
         assert "autodev-repair-cycle-count.txt" in action
 
-    def test_action_clears_stale_spike_snapshot(self) -> None:
+    def test_action_no_longer_touches_spike_snapshot_or_decide_marker(self) -> None:
+        """ENH-3611 stays-deleted: autodev-pre-spike-readiness.txt and the
+        autodev-decide-ran clear left dequeue_next with the spike/decide states."""
         action = _load_autodev_yaml()["states"]["dequeue_next"]["action"]
-        assert "rm -f ${context.run_dir}/autodev-pre-spike-readiness.txt" in action
+        assert "autodev-pre-spike-readiness.txt" not in action
+        assert "autodev-decide-ran" not in action
 
 
 class TestCheckReconcileNeededFallbackSnapshot:
     """FEAT-2751: check_reconcile_needed must fall back to the dequeue-time
-    autodev-pre-readiness.txt snapshot when the spike-only snapshot is absent,
-    generalizing the ENH-2689 plateau gate beyond the spike-armed path."""
+    autodev-pre-readiness.txt snapshot (ENH-3611: now its only baseline; the
+    spike-only snapshot was removed with the spike states)."""
 
-    def test_predicate_reads_both_snapshots(self) -> None:
+    def test_predicate_reads_only_the_pre_readiness_snapshot(self) -> None:
         action = _load_autodev_yaml()["states"]["check_reconcile_needed"]["action"]
-        assert "autodev-pre-spike-readiness.txt" in action
+        assert "autodev-pre-spike-readiness.txt" not in action
         assert "autodev-pre-readiness.txt" in action
 
     def test_fires_from_fallback_snapshot_without_spike(self, tmp_path: Path) -> None:
@@ -219,23 +222,14 @@ class TestCheckReconcileNeededFallbackSnapshot:
 
         assert exit_code == 0, "plateau must be detected from the fallback snapshot alone"
 
-    def test_prefers_spike_snapshot_when_present(self, tmp_path: Path) -> None:
-        """Both snapshots exist with different values — the spike snapshot (the
-        fresher pre-repair baseline) must govern the plateau comparison."""
+    def test_spike_snapshot_is_ignored(self, tmp_path: Path) -> None:
+        """ENH-3611: a stray autodev-pre-spike-readiness.txt no longer governs the
+        plateau comparison; only autodev-pre-readiness.txt does."""
         (tmp_path / "autodev-pre-spike-readiness.txt").write_text("85")
         (tmp_path / "autodev-pre-readiness.txt").write_text("70")
 
-        # Current confidence matches the spike snapshot, not the stale fallback —
-        # plateau should fire only because the spike snapshot is preferred.
-        exit_code = _run_reconcile_predicate(tmp_path, confidence="85", reconcile_attempted=False)
-
-        assert exit_code == 0
-
-        # Current confidence matches the fallback snapshot instead — since the
-        # spike snapshot takes precedence and does NOT match, no plateau.
-        exit_code = _run_reconcile_predicate(tmp_path, confidence="70", reconcile_attempted=False)
-
-        assert exit_code == 1
+        assert _run_reconcile_predicate(tmp_path, confidence="85", reconcile_attempted=False) == 1
+        assert _run_reconcile_predicate(tmp_path, confidence="70", reconcile_attempted=False) == 0
 
     def test_no_fire_on_confidence_improvement(self, tmp_path: Path) -> None:
         (tmp_path / "autodev-pre-readiness.txt").write_text("85")
@@ -447,18 +441,22 @@ class TestRepairCycleCounterStates:
     """FEAT-2751: dedicated count_repair_cycle_* states increment the shared
     repair-cycle counter file, matching the recursive-refine counter idiom."""
 
-    def test_all_six_counter_states_exist(self) -> None:
+    def test_all_five_counter_states_exist(self) -> None:
         states = _load_autodev_yaml()["states"]
         for name in (
             "count_repair_cycle_refine",
             "count_repair_cycle_wire",
             "count_repair_cycle_size_review",
-            "count_repair_cycle_spike",
             "count_repair_cycle_reconcile",
             "count_repair_cycle_refine_for_design",
         ):
             assert name in states, f"{name} missing from autodev.yaml (FEAT-2751/BUG-3002)"
             assert "autodev-repair-cycle-count.txt" in states[name]["action"]
+
+    def test_count_repair_cycle_spike_stays_deleted(self) -> None:
+        """ENH-3611: every spike re-entry passes refine_current ->
+        count_repair_cycle_refine, so the spike counter state is gone."""
+        assert "count_repair_cycle_spike" not in _load_autodev_yaml()["states"]
 
     def test_counter_increments_monotonically(self, tmp_path: Path) -> None:
         action = _load_autodev_yaml()["states"]["count_repair_cycle_refine"]["action"]

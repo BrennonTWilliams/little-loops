@@ -75,7 +75,7 @@ class DeferReason(Enum):
     # ENH-2666: autodev's not-ready exits, aligned to the same deferred model.
     LOW_READINESS = "low_readiness"  # autodev: below readiness/outcome threshold
     GATE_BLOCKED = "gate_blocked"  # autodev: unproven external-API deps
-    DECISION_UNRESOLVED = "decision_unresolved"  # autodev: decide-issue produced no decision
+    DECISION_UNRESOLVED = "decision_unresolved"  # decide-issue produced no decision
     SPIKE_INCONCLUSIVE = "spike_inconclusive"  # BUG-3593: spike could not reach a verdict
     PROPOSAL_UNSOUND = "proposal_unsound"  # BUG-3574: refuted proposal, no eligible alternative
     # BUG-2734: readiness passed but a Very Large, deliberately-atomic issue's

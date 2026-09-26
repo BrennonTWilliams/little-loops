@@ -37,7 +37,7 @@ class Obligation(Enum):
     DESIGN. Tier 2: SCORES. Tier 3 (low-outcome diagnosis): DECISION, PROOF,
     ARTIFACTS. ``NONE`` means nothing is unmet.
 
-    Known PROOF departure from ``check_spike_needed`` parity: PROOF delegates to
+    Known PROOF departure from the child's ``check_spike_needed`` parity: PROOF delegates to
     ``assess_proof`` (ENH-3602), so it also reports ``absent`` for
     ``spike_attempted=true`` without ``spike_completed`` and folds in a
     ``structured_proof`` gate verdict (check-gate, ENH-3575); the child does

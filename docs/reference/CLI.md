@@ -2270,7 +2270,7 @@ from confidence-check findings — this command is the gate that reads them back
 by `check_decision_mid_refine`/`check_decision_mid_wire`/`check_decision_needed`
 in `refine-to-ready-issue.yaml` and by `select_obligation_post_refine` / `select_obligation_pre_implement`
 in `autodev.yaml` (via `check-flag` then `next-obligation`). `missing_artifacts` is read by `check_missing_artifacts` in both
-loops. `spike_needed` is read by `check_spike_needed` in both loops (paired with
+loops. `spike_needed` is read by the `refine-to-ready-issue.yaml` child's `check_spike_needed` (ENH-3611 removed autodev's copy; autodev's selectors re-enter the child on `PROOF`) (paired with
 a `spike_attempted` re-check via an inline `show --json` predicate, not a plain
 `check-flag` call, since the gate is a two-field one-shot guard).
 `implementation_order_risk` is written by `set-flags` but **consumed by no gate
@@ -2282,7 +2282,7 @@ only indirectly, by making `/ll:confidence-check` cap `outcome_confidence`
 below `outcome_threshold`, which in turn makes `set-flags`' `spike_needed`
 `FlagRule` fire directly on the `unproven_mechanism: true` frontmatter trigger
 (bypassing its usual `score_test_coverage <= 10` numeric gate and phrase
-match). `check_spike_needed` (both loops, above) is the actual gate this
+match). `check_spike_needed` (the child, above) is the actual gate this
 reaches — the same state `spike_needed` already routes to.
 
 ---
@@ -2316,7 +2316,7 @@ ll-issues check-gate ENH-3575 --json   # {"verdict": ..., "gates": [...]}
 
 Verdicts: `structured_open` (an unsatisfied `external`/`manual` gate), `structured_proof` (an unsatisfied `proof` gate with no proven spike), `structured_satisfied`, `prose` (legacy phrase match), `none`. Exit 0 when a gate is in force (`structured_open`, `structured_proof`, `prose`), 1 when not, 2 when the issue is not found (BUG-3294).
 
-**FSM loop use**: `autodev.yaml`'s `check_gate_at_dequeue`, `recheck_after_size_review` and `check_proof_gate_before_implement` states read the verdict token from stdout. The two pre-implement proof-gate states (`check_proof_gate_before_implement` / `check_proof_defer_or_implement`) additionally consume the exit code to tell a real verdict (exit 0 or 1 with a recognized token) from a helper failure (exit ≥ 2, empty stdout, or an unrecognized token), routing the latter to an infra deferral instead of implementation (BUG-3603). The dequeue and recheck consumers remain fail-open on the stdout token alone — later gates still apply on their paths.
+**FSM loop use**: `autodev.yaml`'s `check_gate_at_dequeue`, `recheck_after_size_review` and `select_obligation_pre_implement` states read the verdict token from stdout (the selector re-enters `refine-to-ready-issue` on `structured_proof`, whose `check_proof_before_done` reads the same token; ENH-3611). The pre-implement proof gate `check_proof_defer_or_implement` — the only proof stage before `implement_current` since ENH-3611 removed `check_proof_gate_before_implement` — additionally consumes the exit code to tell a real verdict (exit 0 or 1 with a recognized token) from a helper failure (exit ≥ 2, empty stdout, or an unrecognized token), routing the latter to an infra deferral instead of implementation (BUG-3603). The dequeue and recheck consumers remain fail-open on the stdout token alone — later gates still apply on their paths.
 
 #### `ll-issues check-design`
 
@@ -2913,7 +2913,7 @@ ll-issues check-readiness 518 --readiness 80 --outcome 70
 ll-issues check-readiness 518 --honor-waiver   # outcome half satisfied by outcome_gate_waived: true
 ```
 
-**FSM loop use**: Use as a shell gate in `refine-to-ready-issue`-style loops to branch without an LLM call. `autodev.yaml`'s `check_passed`, `recheck_after_decide`, and `recheck_scores` pass `--honor-waiver` so the CLI gates agree with the loop's inline gates (which read `outcome_gate_waived` from `ll-issues show --json`). Pair with `ll-issues show --json` when you need the raw scores.
+**FSM loop use**: Use as a shell gate in `refine-to-ready-issue`-style loops to branch without an LLM call. `autodev.yaml`'s `check_passed` and `recheck_scores` (and the `select_obligation_post_refine` / `select_obligation_post_size_review` selectors' `next-obligation` calls) pass `--honor-waiver` so the CLI gates agree with the loop's inline gates (which read `outcome_gate_waived` from `ll-issues show --json`). Pair with `ll-issues show --json` when you need the raw scores.
 
 #### `ll-issues set-scores` / `ll-issues ss`
 

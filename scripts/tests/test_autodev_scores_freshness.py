@@ -1,10 +1,15 @@
 """Tests for BUG-3588: autodev post-repair rescoring must gate on fresh scores.
 
-Each of the five ``rerun_confidence_after_*`` states is now bracketed by a
-``clear_scores_before_*`` state (clear stale scores) and a
-``check_scores_present_*`` presence gate (retry once, then infra), so a rescoring
-that writes nothing can never pass on pre-repair scores nor surface as a
-``low_readiness`` quality deferral.
+Each of the remaining ``rerun_confidence_after_*`` states (wire, atomic
+remediation, reconcile) is bracketed by a ``clear_scores_before_*`` state (clear
+stale scores) and a ``check_scores_present_*`` presence gate (retry once, then
+infra), so a rescoring that writes nothing can never pass on pre-repair scores nor
+surface as a ``low_readiness`` quality deferral.
+
+ENH-3611 removed autodev's ``decide`` and ``spike`` triplets; that freshness
+guarantee now lives in the refine-to-ready-issue child (``route_spike_verdict``
+``PROVEN`` -> ``confidence_check``, whose ``on_failure`` is
+``mark_evidence_absent_infra``), pinned by ``TestChildSpikeRescoringFreshness``.
 """
 
 from __future__ import annotations
@@ -24,9 +29,7 @@ AUTODEV_LOOP_PATH = Path(__file__).parent.parent / "little_loops" / "loops" / "a
 
 # path key -> (rerun state suffix, successor of the presence gate)
 PATHS = {
-    "decide": ("decide", "recheck_after_decide"),
     "wire": ("wire", "enqueue_or_skip"),
-    "spike": ("spike", "enqueue_or_skip"),
     "atomic": ("atomic_remediation", "regate_after_atomic_remediation"),
     "reconcile": ("reconcile", "recheck_after_size_review"),
 }
@@ -65,9 +68,7 @@ class TestRoutingStructure:
         assert gate["on_error"] == "mark_scores_absent_infra"
 
     def test_repair_predecessors_target_clear_states(self, states: dict[str, Any]) -> None:
-        assert states["mark_decide_ran"]["on_no"] == "clear_scores_before_decide"
         assert states["run_refine"]["next"] == "clear_scores_before_wire"
-        assert states["route_spike_verdict"]["route"]["PROVEN"] == "clear_scores_before_spike"
         assert states["remediate_oversized_atomic"]["next"] == "clear_scores_before_atomic"
         for pred in ("count_repair_cycle_reconcile", "count_repair_cycle_refine_for_design"):
             assert states[pred]["next"] == "clear_scores_before_reconcile"
@@ -88,8 +89,6 @@ class TestRoutingStructure:
     @pytest.mark.parametrize(
         ("state", "exit3_target"),
         [
-            # Post-rescore site: infra.
-            ("recheck_after_decide", "mark_scores_absent_infra"),
             # Post-sub-loop sites: absence is legitimate (breakdown before
             # scoring) — keep the pre-existing route so detect_children is reached.
             ("check_passed", "select_obligation_post_refine"),
@@ -103,6 +102,14 @@ class TestRoutingStructure:
     ) -> None:
         assert states[state]["fragment"] == "harness_exit"
         assert states[state]["on_cannot_judge"] == exit3_target
+
+    @pytest.mark.parametrize("key", ["decide", "spike"])
+    def test_decide_and_spike_triplets_stay_deleted(self, states: dict[str, Any], key: str) -> None:
+        """ENH-3611: autodev's decide/spike rescoring triplets moved to the child."""
+        for prefix in ("clear_scores_before_", "check_scores_present_"):
+            assert f"{prefix}{key}" not in states
+        assert f"rerun_confidence_after_{key}" not in states
+        assert "recheck_after_decide" not in states
 
     def test_check_passed_still_reaches_detect_children_on_error(
         self, states: dict[str, Any]
@@ -168,7 +175,7 @@ class TestPresenceGateBehavior:
     def test_retry_then_success_proceeds_and_resets_counter(
         self, states: dict[str, Any], tmp_path: Path
     ) -> None:
-        action = states["check_scores_present_spike"]["action"]
+        action = states["check_scores_present_atomic"]["action"]
         assert _run_action(action, tmp_path, {"confidence": None, "outcome": None}).returncode == 1
         assert _run_action(action, tmp_path, {"confidence": "90", "outcome": "70"}).returncode == 0
         # Counter reset on the pass: a later miss gets its retry again.
@@ -180,7 +187,7 @@ class TestPresenceGateBehavior:
     def test_either_score_missing_counts_as_absent(
         self, states: dict[str, Any], tmp_path: Path, issue: dict[str, Any]
     ) -> None:
-        action = states["check_scores_present_decide"]["action"]
+        action = states["check_scores_present_atomic"]["action"]
         assert _run_action(action, tmp_path, issue).returncode == 1
 
     def test_unreadable_show_output_is_absent_not_pass(
@@ -248,3 +255,21 @@ class TestInlineGateAbsence:
         )
         assert result.returncode == 1
         assert "[SCORES_ABSENT]" not in result.stdout
+
+
+class TestChildSpikeRescoringFreshness:
+    """BUG-3588 freshness for the spike path, now in refine-to-ready-issue (ENH-3611)."""
+
+    @pytest.fixture(scope="class")
+    def child(self) -> dict[str, Any]:
+        path = AUTODEV_LOOP_PATH.parent / "refine-to-ready-issue.yaml"
+        return yaml.safe_load(path.read_text())["states"]
+
+    def test_proven_spike_rescores_through_confidence_check(self, child: dict[str, Any]) -> None:
+        assert child["route_spike_verdict"]["route"]["PROVEN"] == "confidence_check"
+
+    def test_missing_scores_after_rescore_are_infra(self, child: dict[str, Any]) -> None:
+        cc = child["confidence_check"]
+        assert cc["on_success"] == "route_score_obligation"
+        assert cc["on_failure"] == "mark_evidence_absent_infra"
+        assert cc["on_error"] == "mark_evidence_absent_infra"

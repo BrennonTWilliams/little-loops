@@ -5,6 +5,10 @@ Autodev used to grep the whole issue file for gate phrases in two places
 single home of that detection plus the structured ``gate`` frontmatter field
 that supersedes it. When ``gate`` is present it alone decides; the prose regex
 is only the fallback for issues without the field.
+
+Loop callers (ENH-3611): autodev's ``check_gate_at_dequeue``, ``recheck_after_size_review``,
+``select_obligation_pre_implement`` and the fail-closed ``check_proof_defer_or_implement``,
+plus the refine-to-ready-issue child's ``check_proof_before_done``.
 """
 
 from __future__ import annotations

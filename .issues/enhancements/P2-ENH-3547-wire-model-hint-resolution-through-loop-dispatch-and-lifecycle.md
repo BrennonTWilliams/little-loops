@@ -108,7 +108,7 @@ Carried over from ENH-3527's original criteria (stated inline; ENH-3527's number
 
 Pre-implementation review 2026-09-25 made these changes:
 
-- Added fake-host `--model` forwarding. It is needed for the portability proof and depends on ENH-3527's new `fake`/`fake-minimal` mapping.
+- Added fake-host `--model` forwarding. It is needed for the portability proof and uses the ENH-3527 (landed) new `fake`/`fake-minimal` mapping.
 - Evaluators resolve against the CLI host only.
 - Moved the config-only Codex argv criterion here from ENH-3527.
 - Decided resume scope: hint declarations survive through the YAML re-read, and run-level literal flags are out of scope.

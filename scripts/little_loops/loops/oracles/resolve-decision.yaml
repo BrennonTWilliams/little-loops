@@ -144,8 +144,9 @@ states:
     # Run /ll:decide-issue to select a winning implementation option and
     # clear decision_needed. Extracted from autodev.yaml's run_decide, minus
     # the caller-side mark_decide_ran / rerun_confidence_after_decide /
-    # recheck_after_decide chain (### The extraction boundary) — those stay
-    # in each caller, downstream of this sub-loop's terminal.
+    # recheck_after_decide chain (### The extraction boundary) — those stayed
+    # in the caller, downstream of this sub-loop's terminal (autodev's chain was
+    # removed in ENH-3611; the refine-to-ready-issue child now owns decision repair).
     # check_decision_after_decide_error (ENH-2717) collapses into
     # assert_decision_cleared below, which every exit path — success or
     # error — now reaches directly.
