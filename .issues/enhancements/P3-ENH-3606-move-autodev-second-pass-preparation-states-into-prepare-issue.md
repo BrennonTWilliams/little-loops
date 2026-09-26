@@ -7,6 +7,8 @@ status: open
 discovered_by: issue-size-review
 discovered_date: '2026-09-26'
 decision_needed: false
+blocked_by:
+- ENH-3615
 blocks:
 - ENH-3600
 relates_to:
@@ -253,6 +255,11 @@ thresholds-unmet inner `done` must run the ladder. Replace it with a wrapper-loc
 
 ### Shared rescoring path
 
+ENH-3615 builds this path in `autodev.yaml` first. This issue then relocates it: its
+unknown-origin exit and `on_error` exits change from `mark_scores_absent_infra` to the
+wrapper's `mark_scores_absent`, and its rate-limit exit from `finalize_rate_limited` to
+`mark_rate_limited`. The design as ENH-3615 implements it:
+
 Replace the `wire`, `reconcile` and `atomic` triplets with one path. Each entry point
 writes `autodev-rescore-origin-<ID>` (`wire` | `reconcile` | `atomic`; the `autodev-`
 prefix matches the other per-pass markers, and `dequeue_next` clears it) → `clear_scores` →
@@ -345,6 +352,14 @@ the ledger row with the same reason string as today, and autodev routes every
   record (for example `record_reentry_exhausted` erroring after its `set-status`), the
   existing record stands. An infra record on top would send the issue to
   `skip_inflight_infra` and add a second row.
+- **Every terminal that ends in `failed` writes `refine-terminal-class` before its record
+  write**, as `mark_inner_error` and the inner loop's stop states do. Record writes are
+  `|| true`. When one fails, autodev reads `MISSING` and `skip_inflight` falls back to the
+  sentinel. `mark_rate_limited`, `mark_scores_absent` and `mark_ladder_error` write
+  `infra`. Without it, a failed write ledgers an infra stop as `refine_failed` (quality).
+  The stop states write their legacy class (`gate_unmet`, `decision_unresolved`,
+  `quality`). This keeps the MISSING fallback's classification correct. Removing that
+  fallback is ENH-3600's job.
 - **`mark_ready` and the done-path writes pass `--readiness-threshold` /
   `--outcome-threshold`** from context, as the inner loop's writes do; without them
   `thresholds_met` falls back to config and can disagree with the gates the ladder used.
@@ -385,6 +400,19 @@ Document these in `docs/guides/LOOPS_REFERENCE.md`:
 
 ### Mechanics
 
+- Add `import: [lib/common.yaml]` to `prepare-issue.yaml`. The wrapper imports nothing
+  today, and the moved states use the `with_rate_limit_handling`, `shell_exit` and
+  `harness_exit` fragments. Rewrite the header comment's "No rate-limit fragment" note: it
+  still holds for `run_refine_to_ready` (a `loop:` state, BUG-3390), but the moved slash
+  states use the fragment.
+- Move `capture_reachability_ok: true` and its rationale comment from `autodev.yaml` to
+  `prepare-issue.yaml`. The validator reports `check_guard2_verdict`'s
+  `${captured.size_review_output.output}` as reachable without `run_size_review`, through
+  `check_reconcile_needed.on_no` → `check_size_review_ran_this_pass`. The runtime marker
+  gate (BUG-2744) closes that path, but the static validator cannot model it. After the
+  move, autodev has no reader of that capture. Drop the flag from autodev, whose comment
+  also cites the deleted `check_broke_down`. Confirm that `ll-loop validate autodev`
+  passes without the flag.
 - Rewrite every `${captured.input.output}` in the moved states to `${context.input}`
   (passthrough flattens `captured` into the child context). Update or remove the
   `# ll-lint: mr11-ok(captured.input.output)` markers (`TestMr11MarkerSet`).
@@ -429,7 +457,9 @@ Document these in `docs/guides/LOOPS_REFERENCE.md`:
   `check_scores_present` / `route_after_rescore` chain; `run_refine_to_ready.on_yes`
   targets `route_inner_success`; no wrapper state appends to `autodev-staged.txt` or writes
   a `resolved_by_subloop` / `decomposed` row; no wrapper stop state routes through
-  `forward_stop`; `max_steps` matches its pinned arithmetic.
+  `forward_stop`; `max_steps` matches its pinned arithmetic; the wrapper imports
+  `lib/common.yaml` and sets `capture_reachability_ok: true`; every `failed`-bound
+  terminal writes `refine-terminal-class` before its record write.
 - **Wrapper execution** (real FSM, stub skills):
   - one case per terminal-table row, asserting the record token and the exact ledger rows
     (no double count);
@@ -448,10 +478,13 @@ Document these in `docs/guides/LOOPS_REFERENCE.md`:
   - `record_reentry_exhausted` records `BLOCKED:decision_unresolved` with one
     `decision_unresolved` row;
   - `mark_ladder_error` after a stop record exists leaves that record in place (one row);
+  - a failed record write on `mark_scores_absent` (record absent, sentinel `infra`)
+    reaches `skip_inflight_infra` in autodev, not `refine_failed`;
   - inner `CANCELLED` forwards and ends `done`.
 - **Autodev**:
   - `check_passed.on_no` / `on_cannot_judge` → `skip_inflight`;
   - `size_review_snap`, `check_broke_down` and `mark_scores_absent_infra` are absent;
+  - `autodev.yaml` no longer sets `capture_reachability_ok` and still validates;
     `detect_children.on_no` → `check_parent_resolved`, and `check_parent_resolved.on_no` →
     `skip_inflight`;
   - real-FSM: a wrapper `decomposed` record for a resolved parent with no children
@@ -515,49 +548,71 @@ Document these in `docs/guides/LOOPS_REFERENCE.md`:
 - [ ] Autodev edges are retargeted: `refine_current.on_success` → `copy_broke_down`, `check_passed.on_yes` → `check_proof_defer_or_implement`; a structural test pins both, plus that no autodev state targets a removed state
 - [ ] The wrapper ends only `ready` / `decomposed` in `done` and every `BLOCKED:*` / `DEFERRED:*` / `RETRYABLE_ERROR:*` stop in `failed`; a real-FSM test asserts no stop reaches `route_refine_success`'s `skip_inflight` legs (no double ledger row)
 - [ ] `implement_current`'s only predecessor is `check_proof_defer_or_implement`, and `READY` comes only from the wrapper's pass gate plus `select_obligation_pre_implement`
-- [ ] The relocated behavioral suites pass; `auto-refine-and-implement` summary counts are unchanged in a real-FSM run
+- [ ] The relocated behavioral suites pass. `auto-refine-and-implement` summary counts in a real-FSM run are unchanged except for the "Accepted behavior changes": scores-absent / `on_error` exits add a `refine_failed_infra` row, `run_size_review` rate-limit exhaustion halts, and a cancelled parent is ledgered `cancelled`. Each difference is pinned by its own test
 - [ ] Every re-entry edge (selectors and `dispatch_pre_deferral_remedy.on_yes`) targets the wrapper's `count_repair_cycle_refine`, never `run_refine_to_ready` directly
 - [ ] An inner `DECOMPOSED` with no children and an unresolved parent continues to the wrapper's size-review (BUG-1183 fallback kept), and no wrapper terminal is written while `refine-broke-down` is `1` except `mark_decomposed`
 - [ ] `record_reentry_exhausted` lives in the wrapper and records `BLOCKED:decision_unresolved`
 - [ ] Autodev's `check_passed` is the only writer of `autodev-staged.txt`, and `recover_subloop_children` is the only writer of `resolved_by_subloop` rows
 - [ ] `size_review_snap`, `check_broke_down` and `mark_scores_absent_infra` are deleted from autodev
+- [ ] `prepare-issue.yaml` imports `lib/common.yaml` and carries `capture_reachability_ok: true` with its rationale; `autodev.yaml` drops the flag and still passes `ll-loop validate`
+- [ ] Every wrapper terminal that ends in `failed` writes `refine-terminal-class` before its record write, so a failed record write still routes infra stops to `skip_inflight_infra`
 
 ## Impact
 
 - **Priority**: P3 - completes the ENH-3601 decomposition and unblocks ENH-3600
 - **Effort**: Very Large - ~40 states plus the selectors, a rescoring consolidation and a large test/doc migration; not splittable further because the cluster is strongly connected
 - **Risk**: High - rewrites the second-pass routing of the most-used loop; mitigated by ENH-3605's plumbing and ledger rule landing first, per-row terminal tests, and an unchanged go/no-go predicate
-- **Breaking Change**: No (the accepted behavior changes above are ledger-visibility only)
-- **Sequencing option (not yet decided)**: "not splittable" holds for the move itself, but
-  four parts do not depend on the wrapper and could land first in `autodev.yaml` as a
-  behavior-preserving prep issue:
+- **Breaking Change**: No public interface changes. There is one control-flow change:
+  `run_size_review` rate-limit exhaustion now halts the whole autodev queue through
+  `finalize_rate_limited` instead of skipping the issue. The other accepted behavior
+  changes add ledger rows only. All of them are listed under "Accepted behavior changes".
+- **Sequencing (decided 2026-09-26)**: land ENH-3615 first. It lands three parts in
+  `autodev.yaml` before the move; none of them depends on the wrapper:
   - the shared rescoring path;
-  - the `run_size_review` rate-limit halt;
-  - record writes next to ledger rows;
-  - the single-writer rules for staging and `resolved_by_subloop`.
+  - the `run_size_review` rate-limit halt (to `finalize_rate_limited`);
+  - record writes next to ledger rows, plus the `refine-broke-down` reset at the ladder
+    entry.
 
-  That would leave ENH-3606 as a mostly mechanical relocation and lower its risk. Decide
-  before implementation starts.
+  After ENH-3615, ENH-3606 relocates the shared rescoring chain
+  (`clear_scores` / `rerun_confidence` / `check_scores_present` / `route_after_rescore`)
+  instead of the three triplets. It retargets `run_size_review`'s halt to
+  `mark_rate_limited`, and it moves the record writes as they are.
+  **The single-writer rules for staging and `resolved_by_subloop` stay in ENH-3606.**
+  Today `recheck_scores`, `recheck_after_size_review`, `regate_after_atomic_remediation`
+  and `reopen_waived` stage and then reach `check_proof_defer_or_implement` through
+  `select_obligation_pre_implement`, without passing `check_passed`. Removing their
+  staging appends is only safe once autodev's `check_passed` runs after the wrapper.
 
 ## Integration Map
 
-_Line anchors and edge names below predate ENH-3609–3611 (and partly ENH-3607). Refresh
-them in the first implementation step. Research from the original ENH-3605 (wire/refine,
-reconcile/design) was merged here on 2026-09-26._
+_`autodev.yaml` anchors in "Files to modify" were refreshed 2026-09-26 against
+post-ENH-3611 `autodev.yaml` (from the Verification Notes). ENH-3615 lands first and
+shifts them again, so treat them as approximate. Test-file anchors below are older.
+Research from the original ENH-3605 (wire/refine, reconcile/design) was merged here on
+2026-09-26._
 
 ### Codebase Research Findings
 
 - **Files to modify**:
-  - `scripts/little_loops/loops/autodev.yaml`. Wire/reconcile/design: `refine_current`
-    ~:511, `run_wire` ~:1033, `check_missing_artifacts` ~:1871, `check_reconcile_needed`
-    ~:2051, `check_atomic_design_remedy` ~:2411, `refine_for_design` ~:2523,
-    `reconcile_current` ~:2565, `dispatch_design_remedy` ~:2951.
-  - The same file, size-review/go-no-go/pre-deferral: `detect_children` ~:1413,
-    `size_review_snap` ~:1490, `check_broke_down` ~:1503, `run_size_review` ~:1882,
-    `count_repair_cycle_size_review` ~:1905, `enqueue_or_skip` ~:1924, guard2 / readiness /
-    `remediate_oversized_atomic` ~:2152-2242, `regate_after_atomic_remediation` ~:2317,
-    go/no-go ~:2436-2497, `recheck_after_size_review` ~:2682, pre-deferral ~:2930/2975.
-  - `scripts/little_loops/loops/prepare-issue.yaml` (new) — created by ENH-3605.
+  - `scripts/little_loops/loops/autodev.yaml`, boundary states that stay:
+    - `refine_current` ~:472, `route_refine_outcome` ~:514, `ledger_child_stop` ~:547;
+    - `count_repair_cycle_refine` ~:641 (moves), `route_refine_success` ~:671,
+      `check_passed` ~:713, `check_proof_defer_or_implement` ~:988.
+  - Selectors: `select_obligation_post_refine` ~:737, `select_obligation_pre_implement`
+    ~:824, `select_obligation_post_size_review` ~:908.
+  - Wire/reconcile/design:
+    - `run_wire` ~:1020, `run_refine` ~:1046, `check_missing_artifacts` ~:1867;
+    - `check_reconcile_needed` ~:2004, `check_atomic_design_remedy` ~:2361;
+    - `refine_for_design` ~:2473, `reconcile_current` ~:2515, `dispatch_design_remedy`
+      ~:2901.
+  - Size-review/go-no-go/pre-deferral:
+    - `mark_scores_absent_infra` ~:1563, `detect_children` ~:1647, `size_review_snap`
+      ~:1724, `check_broke_down` ~:1737;
+    - `recheck_scores` ~:1831, `run_size_review` ~:1878, `enqueue_or_skip` ~:1920;
+    - `regate_after_atomic_remediation` ~:2267, `run_go_no_go` ~:2420, `reopen_waived`
+      ~:2447, `recheck_after_size_review` ~:2632;
+    - `check_pre_deferral_remedy` ~:2880, `dispatch_pre_deferral_remedy` ~:2925.
+  - `scripts/little_loops/loops/prepare-issue.yaml` (created by ENH-3605; 7 states today).
 - **Rescoring triplets**: five existed (`decide`, `wire`, `spike`, `atomic`, `reconcile`);
   ENH-3610/3611 remove `decide` and `spike`. The remaining three differ only in entry point,
   successor and retry-marker name, and are cleared by `dequeue_next`. `refine_for_design`
@@ -711,6 +766,8 @@ reconcile/design) was merged here on 2026-09-26._
 
 ## Implementation Steps
 
+0. Confirm ENH-3615 is `done`. Its shared rescoring chain replaces the three triplets in
+   the move set; its record writes and `refine-broke-down` reset move unchanged.
 1. Re-run the boundary edge computation (Scope, "Boundary edge table") and confirm it still
    matches; update the table if `autodev.yaml` has changed.
 2. Pin the terminal table (the `TestOutcomeMapping` and CLI rows) and the `run_size_review`
@@ -792,8 +849,8 @@ _Re-scored 2026-09-26 after ENH-3605 and ENH-3609–3611 landed and the boundary
 **Outcome Confidence**: 46/100 → LOW
 
 ### Concerns
-- The sequencing option under Impact ("not yet decided": land the shared rescoring path, `run_size_review` halt, record-next-to-row writes and single-writer rules in `autodev.yaml` first) is still open; the issue says to decide before implementation starts.
-- Integration Map line anchors are stale (Implementation Step 1 refreshes them); the Scope edge table is current.
+- ~~The sequencing option under Impact is still open.~~ Decided 2026-09-26: ENH-3615 lands first.
+- ~~Integration Map line anchors are stale.~~ `autodev.yaml` anchors refreshed 2026-09-26; ENH-3615 shifts them, so they are approximate.
 
 ### Outcome Risk Factors
 - Deep per-site complexity: rewires the strongly connected second-pass cluster, rescoring consolidation and terminal routing.
@@ -823,7 +880,27 @@ Steps and Impact:
 - Decided: delete `size_review_snap`, `check_broke_down`, `mark_scores_absent_infra`.
 - `max_steps`, `--*-threshold` flags on the ready write, `autodev-rescore-origin-<ID>`
   naming, capture-name collisions and `run_go_no_go`'s pruning profile added to Mechanics.
-- Open: the sequencing option under Impact.
+- Sequencing decided 2026-09-26: ENH-3615 lands first (see Impact).
+
+### Second review (2026-09-26)
+
+Folded into Terminal table, Mechanics, Tests, Acceptance Criteria, Impact and Integration
+Map:
+
+- `prepare-issue.yaml` needs `import: [lib/common.yaml]`: the moved states use its
+  fragments.
+- `capture_reachability_ok: true` moves from autodev to the wrapper along with its only
+  reason, `check_guard2_verdict`.
+- Wrapper terminals that end in `failed` write the `refine-terminal-class` sentinel, so the
+  MISSING-record fallback classifies correctly.
+- The summary-count AC now excepts the accepted behavior changes.
+- The Breaking Change line names the `run_size_review` halt as a control-flow change.
+- The Integration Map `autodev.yaml` anchors were refreshed from the Verification Notes.
+- Checked with no change needed:
+  - `mark_rate_limited`'s write yields `RETRYABLE_ERROR:rate_limited`;
+  - `run-record write` honors the outcome waiver;
+  - the inner loop clears its own record and `refine-broke-down` at `resolve_issue`;
+  - no capture-name collisions.
 
 ## Session Log
 - `/ll:confidence-check` - 2026-09-26T20:34:15 - `dcc4151f-8515-4923-9336-bb585d1a7e59.jsonl`

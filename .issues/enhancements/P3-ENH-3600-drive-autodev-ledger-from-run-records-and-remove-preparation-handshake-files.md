@@ -13,11 +13,11 @@ parent: EPIC-3565
 relates_to:
 - ENH-3577
 reconcile_attempted: true
-confidence_score: 75
-outcome_confidence: 55
+confidence_score: 90
+outcome_confidence: 63
 score_complexity: 10
 score_test_coverage: 25
-score_ambiguity: 10
+score_ambiguity: 18
 score_change_surface: 10
 missing_artifacts: true
 ---
@@ -366,23 +366,22 @@ Decomposed from ENH-3577: Consolidate autodev issue preparation into a single co
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-09-25 (re-scored 2026-09-26)_
+_Added by `/ll:confidence-check` on 2026-09-25 (re-scored 2026-09-26, again after the design-decision review)_
 
-**Readiness Score**: 75/100 → STOP — ADDRESS GAPS (Dependencies hard override)
-**Outcome Confidence**: 55/100 → LOW
+**Readiness Score**: 90/100 → STOP — ADDRESS GAPS (Dependencies hard override; raw sum is PROCEED)
+**Outcome Confidence**: 63/100 → MODERATE
 
 ### Concerns
-- ✅ RESOLVED (2026-09-26 review): Grep-gate scope was undecided: `autodev-spike-no-verdict.txt`, `autodev-proof-gate-infra.txt`, `autodev-pre-*`, `autodev-repair-cycle-count.txt` etc. may or may not count as "preparation markers" — now scoped by the Marker disposition table.
-- ✅ RESOLVED (2026-09-26 review): `decide-options-deposited-<ID>` / `decide-rate-limited-<ID>` handshake markers — kept as the cross-loop contract (Scope Boundaries, out of scope).
+- ✅ RESOLVED (2026-09-26 review): Grep-gate scope — now scoped by the Marker disposition table.
+- ✅ RESOLVED (2026-09-26 review): `decide-options-deposited-<ID>` / `decide-rate-limited-<ID>` handshake markers — kept as the cross-loop contract (out of scope).
 
 ### Gaps to Address
-- ✅ RESOLVED (2026-09-26 review): blocked_by chain — all four earlier blockers are done; the only blocker is now ENH-3606.
-- ✅ RESOLVED (2026-09-26 review): Dequeued-ID source — introduce `autodev-prepared.txt` (Design decisions).
+- `blocked_by: ENH-3606` is `open`, so the dependency gate forces STOP. Sequencing step 1 (golden fixtures, `autodev_summary` module, thin `finalize_done`) does not depend on ENH-3606. Either land ENH-3606 first, or drop/relax `blocked_by` and implement only step 1 now (steps 2–3 need ENH-3606).
+- ✅ RESOLVED (2026-09-26 review): Dequeued-ID source — `autodev-prepared.txt` (Design decisions).
 
 ### Outcome Risk Factors
-- Deep per-site complexity: `finalize_done` (~220 lines of inline shell) rewritten into Python while preserving the `summary.json` key shape (16 keys once ENH-3613 and FEAT-3573 land) and verdict ladder/exit-code routing exactly.
-- Broad enumeration across ~15+ sites (3 loop YAMLs, new module, 5+ test files, README, LOOPS_REFERENCE, ARCHITECTURE) with several existing tests that break as markers move.
-- Several design decisions left open (dequeue-ID source, gate scope, child-marker migration vs. documented exception).
+- Deep per-site complexity: `finalize_done` (~300 lines of inline shell) rewritten into Python while preserving the 16-key `summary.json` shape, verdict ladder and exit-code routing exactly.
+- Broad enumeration across ~15+ sites (loop YAML, new module, 5+ test files, README, LOOPS_REFERENCE, ARCHITECTURE), with several existing tests that break as markers move; ENH-3606 will shift the line anchors and the Marker disposition table must be re-derived first.
 
 ## Verification Notes
 
@@ -419,6 +418,7 @@ _Added by manual review — 2026-09-26_
 - The confidence scores (75/55) predate these changes. Re-score after ENH-3606 lands.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-26T20:41:31 - `b6e9bba8-3f37-46ef-bab4-0e3a573a871f.jsonl`
 - `/ll:verify-issues` - 2026-09-26T20:09:35 - `57be1948-59d1-446a-b252-a9b0fec818aa.jsonl`
 - `/ll:confidence-check` - 2026-09-26T02:52:27 - `28baa352-2934-411c-bced-7bb0e7406cbf.jsonl`
 - `/ll:reconcile-issue` - 2026-09-26T02:50:41 - `1a6e3280-98dc-4084-b164-9f1e529dd9fb.jsonl`
