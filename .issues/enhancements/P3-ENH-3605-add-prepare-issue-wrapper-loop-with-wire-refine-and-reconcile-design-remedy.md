@@ -8,7 +8,7 @@ discovered_by: issue-size-review
 discovered_date: '2026-09-26'
 decision_needed: false
 blocked_by:
-- ENH-3608
+- ENH-3611
 - ENH-3602
 blocks:
 - ENH-3606

@@ -3,7 +3,7 @@ id: ENH-3608
 type: ENH
 title: Remove autodev spike and decision routes and route on the child run record
 priority: P3
-status: open
+status: done
 discovered_by: issue-size-review
 discovered_date: '2026-09-26'
 captured_at: '2026-09-26T03:19:50Z'
@@ -25,6 +25,7 @@ score_complexity: 5
 score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 0
+completed_at: '2026-09-26T03:48:02Z'
 ---
 
 # ENH-3608: Remove autodev spike and decision routes and route on the child run record
@@ -253,3 +254,13 @@ _Added by `/ll:confidence-check` on 2026-09-25_
 ## Session Log
 - `/ll:confidence-check` - 2026-09-26T03:32:06 - `e6ad8ea2-14d6-441f-a607-435314c2d056.jsonl`
 - `/ll:verify-issues` - 2026-09-26T03:26:55 - `0645a9c4-2e38-4d02-9b76-47ae90b8a2ea.jsonl`
+
+---
+
+## Resolution
+
+- **Status**: Decomposed
+- **Closed**: 2026-09-26
+- **Decomposed into**: ENH-3609, ENH-3610, ENH-3611
+
+Work for ENH-3608 is now carried by its child issues; this parent was closed by rn-decompose.

@@ -16,6 +16,12 @@ blocks:
 - ENH-3547
 - ENH-3548
 - ENH-3533
+confidence_score: 100
+outcome_confidence: 63
+score_complexity: 10
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 10
 ---
 
 # Resolve model capability hints for loop execution
@@ -279,7 +285,20 @@ Dropped `resolve_model_hint`'s `operation` parameter and the `model_operation` e
 
 **Open** | Created: 2026-09-23 | Priority: P2
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-25_
+
+**Readiness Score**: 100/100 → PROCEED
+**Outcome Confidence**: 63/100 → MODERATE
+
+### Outcome Risk Factors
+- Broad enumeration across ~8 change sites (host_runner, fsm schema/JSON schema, structural_rules, executor guard, verify_host_map, orchestration config, config-schema, CONFIGURATION.md).
+- Deep per-site complexity in `LLMConfig`: omitted-vs-default handling for `model` (currently a hard `DEFAULT_LLM_MODEL` default) touches serialization, parsing, and existing construction sites; the concrete dataclass representation is left to the implementer.
+- Wide blast radius: `StateConfig`, `LLMConfig`, and `OrchestrationConfig` have many construction/consumer sites, so any change to the no-hint default must be verified against existing tests.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-09-26T03:44:04 - `ca8c81c6-3907-43f2-b123-5aad7f9c65b9.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-09-24T17:53:55 - `5250dd00-ed7b-4310-8dee-527fe13b2b07.jsonl`
 - `/ll:verify-issues` - 2026-09-24T00:46:08 - `047cda0b-279f-4078-b31f-1d7b1fcc2181.jsonl`
 - `/ll:verify-issues` - 2026-09-24T00:01:43 - `d1e0cad9-5218-4c39-a990-a91f5f18af0d.jsonl`

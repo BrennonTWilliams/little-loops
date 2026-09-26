@@ -16,7 +16,9 @@ relates_to:
 - BUG-3603
 - ENH-3590
 - ENH-3607
-- ENH-3608
+- ENH-3609
+- ENH-3610
+- ENH-3611
 ---
 
 # EPIC-3565: Autodev readiness contract hardening from 2026-09-24 audit
@@ -117,6 +119,12 @@ finding. It stays linked through `relates_to`.
 BUG-3603, ENH-3597, ENH-3602 (independent) → FEAT-3598 → ENH-3599 → ENH-3601 → FEAT-3573 →
 ENH-3600. FEAT-3573 blocks only ENH-3600, which rewrites the same closure accounting.
 - **ENH-3604** — Adopt ll-issues next-obligation inside refine-to-ready-issue and settle next-action delegation (open)
+- **ENH-3609** — Route autodev on the child run record outcome and ledger child stops (open)
+- **ENH-3610** — Move autodev decision repair into refine-to-ready-issue behind an obligation selector (open)
+- **ENH-3611** — Move autodev spike and proof-gate repair into refine-to-ready-issue (open)
+
+
+
 
 
 ## Acceptance Criteria

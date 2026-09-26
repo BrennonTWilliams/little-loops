@@ -15,6 +15,7 @@ relates_to:
 - ENH-3577
 - ENH-3599
 - ENH-3608
+- ENH-3610
 - ENH-3601
 ---
 
