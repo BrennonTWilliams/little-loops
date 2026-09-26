@@ -115,6 +115,8 @@ finding. It stays linked through `relates_to`.
 
 BUG-3603, ENH-3597, ENH-3602 (independent) → FEAT-3598 → ENH-3599 → ENH-3601 → FEAT-3573 →
 ENH-3600. FEAT-3573 blocks only ENH-3600, which rewrites the same closure accounting.
+- **ENH-3604** — Adopt ll-issues next-obligation inside refine-to-ready-issue and settle next-action delegation (open)
+
 
 ## Acceptance Criteria
 
