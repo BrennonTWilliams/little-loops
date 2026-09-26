@@ -52,7 +52,7 @@ In `_check_little_loops_version()`:
 
 1. Read `direct_url.json` from the installed distribution. If `dir_info.editable` is true and `url` is a `file://` URL, hint `"{sys.executable}" -m pip install -e '<that path>'`, and word the message to say the code is live and only the metadata is stale.
 2. Otherwise (PyPI or unreadable metadata), hint `"{sys.executable}" -m pip install --upgrade little-loops`.
-3. For the not-installed branch, drop the `project_root / "scripts"` guess. Only suggest an editable path when `project_root/scripts/pyproject.toml` exists *and* declares `name = "little-loops"`; otherwise use `"{sys.executable}" -m pip install little-loops`.
+3. For the not-installed branch, drop the `project_root / "scripts"` guess. Only suggest an editable path when the `pyproject.toml` inside `project_root`'s `scripts/` dir exists *and* declares `name = "little-loops"`; otherwise use `"{sys.executable}" -m pip install little-loops`.
 
 Related but separate: `scripts/little_loops/init/tui.py` prints a placeholder `pip install -e <editable-path>[dev]` for outdated local-editable installs. That could reuse the same resolver.
 
@@ -78,6 +78,21 @@ Related but separate: `scripts/little_loops/init/tui.py` prints a placeholder `p
 
 ### Configuration
 - N/A
+
+## Program Design
+
+### Types
+
+- `DepWarning.install_hint: str` — existing field, now built from `sys.executable` and the recorded editable source
+
+### Signatures
+
+- `_editable_source_dir() -> Path | None` — parse `direct_url.json` from the `little-loops` distribution; return the `file://` path when `dir_info.editable` is true, else `None`
+- `_check_little_loops_version(plugin_version: str, project_root: Path) -> DepWarning | None` — existing; both hint branches rewritten
+
+### Call Path
+
+`validate_deps` -> `_check_little_loops_version` -> `_editable_source_dir`
 
 ## Implementation Steps
 
@@ -136,4 +151,6 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-26T22:52:32 - `242c13c2-daff-4514-b4c7-3c6299f5c0af.jsonl`
+- `/ll:format-issue` - 2026-09-26T22:51:44 - `2d14fe2c-428f-4be0-80df-471f93ad0e5d.jsonl`
 - `/ll:capture-issue` - 2026-09-26T22:48:59 - `58016881-a136-4f55-8da0-640ef93df277.jsonl`
