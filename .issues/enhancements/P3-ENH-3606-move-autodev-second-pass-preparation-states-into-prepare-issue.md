@@ -15,7 +15,7 @@ relates_to:
 - ENH-3609
 - ENH-3610
 parent: ENH-3601
-confidence_score: 80
+confidence_score: 100
 outcome_confidence: 46
 score_complexity: 0
 score_test_coverage: 18
@@ -959,25 +959,19 @@ Re-parsed `autodev.yaml` (86 states) at HEAD `74747fb1e`. `ll-verify-evidence` c
 
 _Added by `/ll:confidence-check` on 2026-09-26_
 
-_Re-scored 2026-09-26 after the sequencing decision made ENH-3615 a hard `blocked_by` edge._
+_Re-scored 2026-09-26 after ENH-3615 landed (`74747fb1e`) and the third design review; the ENH-3615 blocker is cleared._
 
-**Readiness Score**: 80/100 → STOP — ADDRESS GAPS (Dependencies Hard Override)
+**Readiness Score**: 100/100 → PROCEED
 **Outcome Confidence**: 46/100 → LOW
 
-### Gaps to Address
-- **Unresolved blocker**: `blocked_by: ENH-3615` is `open` (needs `done`/`cancelled`). Land ENH-3615 first, per the Impact sequencing decision, then re-run. Criterion 5 scores 0; the other four readiness criteria score 20 each.
-
 ### Concerns
-- ~~The sequencing option under Impact is still open.~~ Decided 2026-09-26: ENH-3615 lands first.
-- ENH-3615 shifts the `autodev.yaml` line anchors in the Integration Map, so they are approximate; re-run the boundary edge computation before editing.
+- `autodev.yaml` line anchors in the Integration Map are approximate (ENH-3615 shifted them); Implementation Step 1 (re-run the boundary edge computation) must run before editing.
+- Wrapper `max_steps` (20 today, 7 states) must be sized from the longest path times the re-entry caps; the issue specifies the arithmetic but not the final value.
 
 ### Outcome Risk Factors
 - Deep per-site complexity: rewires the strongly connected second-pass cluster, rescoring consolidation and terminal routing.
 - Broad enumeration across ~40 states plus a large test/doc migration (Breadth 0).
 - Broad change surface: autodev consumers (`auto-refine-and-implement`, `scan-and-implement`, run-record, ledger readers) must keep counts unchanged.
-- ~~Mitigation: adopt the behavior-preserving prep issue from the sequencing option to shrink the final move.~~ Done: ENH-3615 landed in `74747fb1e`.
-
-_Stale as of 2026-09-26: these scores predate ENH-3615 landing and the third design review. Re-run `/ll:confidence-check`._
 
 ## Design Review Notes
 
@@ -1050,6 +1044,7 @@ Accepted behavior changes, Tests, Docs, Acceptance Criteria and Implementation S
   already listed).
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-26T22:21:52 - `b7dfb7f1-4ecd-4b66-aee7-106b539c07bc.jsonl`
 - `/ll:verify-issues` - 2026-09-26T22:05:24 - `c4864ff1-acf7-4101-a722-b28e5ccfc698.jsonl`
 - `/ll:confidence-check` - 2026-09-26T21:19:22 - `80a78edd-363d-4d79-9451-fe1325611d39.jsonl`
 - `/ll:confidence-check` - 2026-09-26T20:34:15 - `dcc4151f-8515-4923-9336-bb585d1a7e59.jsonl`
