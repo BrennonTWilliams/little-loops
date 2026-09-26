@@ -250,7 +250,10 @@ _Added by `/ll:refine-issue` — 2026-09-26 — based on codebase analysis:_
     `blocked_by_unmet`, `notstarted_` and `refine_failed_infra` buckets, and
     `auto-refine-and-implement`'s `SKILL_BREAKDOWN`), `autodev-gate-blocked.txt`,
     `autodev-not-started.txt` / `-attempts.txt`, `autodev-proof-gate-infra.txt` and
-    `autodev-stop-reason`.
+    `autodev-stop-reason`;
+  - child-written ledgers (documented exception; see Marker disposition):
+    `autodev-decision-unresolved.txt`, `autodev-spike-inconclusive.txt`,
+    `autodev-proposal-unsound.txt`.
 
   Run records cannot replace the skip reasons: `legacy_class` has six values and
   `gate_unmet` drops the specific reason (`oversized_atomic`, `design_gate_failed`,
@@ -281,17 +284,21 @@ ENH-3606 moves and renames states.
 | Queue / closure accounting | listed in Scope Boundaries | stay |
 | Shared per-pass state (ENH-3606 keeps the names; the wrapper writes them, and autodev's `dequeue_next` is their only cleaner) | `autodev-repair-cycle-count.txt`, `autodev-pre-readiness.txt`, `autodev-design-gate-failed-<ID>`, `autodev-design-remedy-attempted-<ID>`, `autodev-atomic-design-remedy-pending`, `autodev-contradiction-reconcile-*`, `autodev-go-no-go-attempted-<ID>`, `autodev-pre-deferral-remedy*`, `autodev-size-review-ran-this-pass`, `autodev-rescore-retry-*`, `autodev-rescore-origin-<ID>`, `autodev-reentry-*` | stay. `autodev.yaml` may reference them **only** in `init` / `dequeue_next` clears |
 | Decomposition diff | `autodev-pre-ids.txt`, `-post-ids.txt`, `-diff-ids.txt`, `-new-children.txt`, `autodev-broke-down` | stay (queue-owned child detection) |
-| Child-written ledgers (documented exception) | `autodev-decision-unresolved.txt`, `autodev-spike-inconclusive.txt`, `autodev-proposal-unsound.txt` | the child keeps writing them; `auto-refine-and-implement` keeps reading them. **autodev stops reading them**: `skip_inflight`'s grep-before-`refine_failed` switches to the `prepare-issue` record token, and `finalize_done`'s lists come from records. `init` may still truncate them |
+| Child-written ledgers (documented exception) | `autodev-decision-unresolved.txt`, `autodev-spike-inconclusive.txt`, `autodev-proposal-unsound.txt` | The child keeps writing them, and `auto-refine-and-implement` keeps reading them. `build_summary` also keeps reading them as closure accounting. The `decision_unresolved` key counts **only** this ledger today; the child's `record_decision_unresolved` writes no `autodev-skipped.txt` row, while autodev's own `decision_unresolved` rows go to `autodev-skipped.txt`. Counting that key from records would pull in the wrapper's `record_reentry_exhausted` stops and change the count. Inside `autodev.yaml`, the only references left are `init` truncation and `skip_inflight`'s grep-before-`refine_failed` (~:597). Remove the grep if a test shows `route_refine_outcome`'s record-token routing already covers it (`BLOCKED:decision_unresolved` → `ledger_child_stop`, ~:532) |
 | Dead | `autodev-scores-absent.txt` (writer deleted by ENH-3606), `autodev-pre-spike-readiness.txt`, and any other file with no writer after ENH-3606 | delete every reference |
 
 ## Acceptance Criteria
 
-- [ ] `summary.json` is derived only from run records + closure accounting files
-- [ ] No `autodev-*` preparation marker is read or written by `autodev.yaml`
-- [ ] Every autodev exit still writes a truthful `summary.json`
-- [ ] A dequeued issue with no run record is reported as `retryable_error` / `record_absent`, never dropped or passed (unit test)
-- [ ] `auto-refine-and-implement` reads run records, not `autodev-decision-unresolved.txt` (or the exception is documented); `oracles/resolve-decision` needs no change (its `autodev-decide-ran` mention is a comment only)
-- [ ] `docs/ARCHITECTURE.md` describes the parent/child contract
+- [ ] `build_summary` reads only `run-records/prepare-issue/*.json` plus the files listed in Scope Boundaries (unit test with a `run_dir` that also contains a decoy unlisted `autodev-*` file, which must have no effect)
+- [ ] `finalize_done` is a thin shell state calling `python3 -m little_loops.autodev_summary … --run-dir ${context.run_dir}`, with no inline summary logic (structural gate modelled on `test_shell_states_call_helper_module_not_inline_logic`, plus an explicit absence assertion)
+- [ ] Golden parity: for every existing `_run_finalize_done` scenario, the Python module's `summary.json` (minus the new `record_absent` key) and stdout report match fixtures captured from the pre-change shell `finalize_done`
+- [ ] Exit codes are unchanged: `phantom` → 1, error → 2, every other verdict → 0 (unit test per verdict)
+- [ ] `autodev.yaml` references only markers the Marker disposition table allows, in the positions it allows (grep gate driven by that table; dead markers have zero references, including comments)
+- [ ] The `finalize_done` path (`init`-empty queue, normal drain, `finalize_rate_limited`) writes a truthful `summary.json`; the `max_steps` gap is documented as a known limitation
+- [ ] An ID in `autodev-prepared.txt` with no or malformed `prepare-issue` record, not in flight, and in no closure or skip ledger is counted once under `record_absent`, never dropped or passed; dequeue-time skips are never `record_absent`; an in-flight ID counts as `abandoned`, not `record_absent` (unit tests for each)
+- [ ] When an ID is dequeued twice, the last record wins and the ID is counted once (unit test)
+- [ ] The child-written ledger exception is documented in `LOOPS_REFERENCE.md`; `auto-refine-and-implement`'s counts are unchanged; `oracles/resolve-decision` needs no change (its `autodev-decide-ran` mention is a comment only)
+- [ ] `docs/ARCHITECTURE.md` describes the parent/child contract (records vs. ledgers, which is the count source, and the prepared-ID set)
 
 ## Parent Issue
 
