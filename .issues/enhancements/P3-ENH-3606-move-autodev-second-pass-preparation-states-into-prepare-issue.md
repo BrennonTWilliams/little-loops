@@ -553,6 +553,25 @@ reconcile/design) was merged here on 2026-09-26._
 
 **Open** | Created: 2026-09-26 | Priority: P3
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` on 2026-09-26_
+
+Verdict at time of check: **NEEDS_UPDATE** (findings below are recorded, not edited into the sections above; `Remaining:` lists what the implementer must fold in)
+
+Checks: all 40+ named states exist in `autodev.yaml` (3294 lines); no decisions rules apply; `ll-verify-evidence` clean. Graph: provider=`codegraph` freshness=`stale` (not used to originate any verdict).
+
+- **Dependencies satisfied**: ENH-3605 and ENH-3611 are both `done`. `prepare-issue.yaml` and `test_prepare_issue.py` now exist (commit 80449dc2f), so the Confidence Check "Gaps to Address" note is out of date. The wrapper currently has only `clear_record`, `run_refine_to_ready`, `forward_done`, `forward_stop`, `mark_inner_error`, `done`, `failed`. `blocked_by` in frontmatter can drop ENH-3605/ENH-3611.
+- **Anchors refreshed (post-ENH-3611)**: `refine_current` :472, `route_refine_outcome` :514, `ledger_child_stop` :547, `count_repair_cycle_refine` :641, `route_refine_success` :671, `check_passed` :713, `select_obligation_post_refine` :737, `select_obligation_pre_implement` :824, `select_obligation_post_size_review` :908, `check_proof_defer_or_implement` :988, `run_wire` :1020, `run_refine` :1046, `mark_scores_absent_infra` :1563, `detect_children` :1647, `size_review_snap` :1724, `check_broke_down` :1737, `recheck_scores` :1831, `check_missing_artifacts` :1867, `run_size_review` :1878, `enqueue_or_skip` :1920, `check_reconcile_needed` :2004, `regate_after_atomic_remediation` :2267, `check_atomic_design_remedy` :2361, `run_go_no_go` :2420, `reopen_waived` :2447, `refine_for_design` :2473, `reconcile_current` :2515, `recheck_after_size_review` :2632, `check_pre_deferral_remedy` :2880, `dispatch_design_remedy` :2901, `dispatch_pre_deferral_remedy` :2925. `snap_and_size_review` is gone (ENH-3611); `detect_children.on_no` → `size_review_snap` is still live.
+- **Boundary edges not in the Scope section** (part of the unperformed edge-table step):
+  - `refine_current.on_success` → `count_repair_cycle_refine` → `copy_broke_down` → `route_refine_success` (:671). Since `count_repair_cycle_refine` moves, `refine_current.on_success` must retarget to `copy_broke_down`.
+  - `route_refine_success` (ENH-3609) routes `READY`/`BLOCKED`/`MISSING`/`_` → `check_passed`, `DECOMPOSED` → `detect_children`, and every suffixed `BLOCKED:*`/`DEFERRED:*`/`RETRYABLE_ERROR:*` → `skip_inflight` (treated as impossible on the success path). The terminal table's `decomposed` and `ready` rows must therefore end in the wrapper's `done` terminal, and every stop row in `failed` (→ `route_refine_outcome` → `ledger_child_stop`); a stop ending in `done` would be double-ledgered by `skip_inflight`.
+  - `check_passed.on_yes` currently targets `select_obligation_pre_implement`, which moves. Autodev's `check_passed.on_yes` must retarget to `check_proof_defer_or_implement`. The issue says `check_passed` both moves (wrapper-local) and stays; it means two copies, so state that explicitly.
+  - `route_refine_outcome` maps `DECOMPOSED` → `skip_inflight` (:541); the wrapper `decomposed` must not reach it via the failed terminal.
+- **Proposal check (B6)**: the mechanism stands. No exception-handler or fixture conflicts found.
+
+Remaining: fold the three edge retargets above and the `done`/`failed` terminal placement into Scope and Acceptance Criteria (no AC covers the `route_refine_success` retargets).
+
 ## Confidence Check Notes
 
 _Added by `/ll:confidence-check` on 2026-09-26_
@@ -572,6 +591,7 @@ _Added by `/ll:confidence-check` on 2026-09-26_
 - Broad change surface: autodev consumers (`auto-refine-and-implement`, `scan-and-implement`, run-record, ledger readers) must keep counts unchanged.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-26T19:59:52 - `b7feb4d7-6b74-47e8-9464-2371879b3a6f.jsonl`
 - `/ll:confidence-check` - 2026-09-26T17:56:40 - `1617bd47-448f-4338-8379-3ae73f71f9bc.jsonl`
 - `/ll:verify-issues` - 2026-09-26T17:51:04 - `88c2d513-b5ef-46f0-9f72-8998adaef5bb.jsonl`
 - `/ll:wire-issue` - 2026-09-26T03:36:28 - `e6ad8ea2-14d6-441f-a607-435314c2d056.jsonl`
