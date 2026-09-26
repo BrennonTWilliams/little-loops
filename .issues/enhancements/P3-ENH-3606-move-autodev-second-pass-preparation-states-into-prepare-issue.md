@@ -116,10 +116,10 @@ has changed since.
 | `select_obligation_post_refine._error`, `check_missing_artifacts.on_no` / `on_error` | `detect_children` | wrapper `detect_ladder_children` (see Inner-loop success routing) |
 | `check_parent_resolved_post_size_review.on_yes` | `recover_subloop_children` | `mark_decomposed` terminal (see Queue ownership) |
 | `enqueue_or_skip.on_yes` | `dequeue_next` | `mark_decomposed` terminal |
-| `check_scores_present.on_cannot_judge` / `on_error`, `clear_scores.on_error`, `mark_rescore_origin_atomic.on_error`, `recheck_after_size_review.on_cannot_judge`, `regate_after_atomic_remediation.on_cannot_judge` (post-ENH-3615 shared chain; the per-origin `*_wire` / `*_reconcile` / `*_atomic` triplet names no longer exist) | `mark_scores_absent_infra` | `mark_scores_absent` terminal |
+| `check_scores_present.on_cannot_judge` / `on_error`, `clear_scores.on_error`, `mark_rescore_origin_atomic.on_error`, `recheck_after_size_review.on_cannot_judge`, `regate_after_atomic_remediation.on_cannot_judge`, `route_after_rescore` `UNKNOWN` / `_` / `_error` (post-ENH-3615 shared chain; the per-origin `*_wire` / `*_reconcile` / `*_atomic` triplet names no longer exist) | `mark_scores_absent_infra` | `mark_scores_absent` terminal |
 | `on_rate_limit_exhausted` of `run_wire`, `run_refine`, `rerun_confidence` (shared), `reconcile_current`, `refine_for_design`, `remediate_oversized_atomic`, `run_go_no_go` | `finalize_rate_limited` | `mark_rate_limited` terminal |
 | `run_size_review.on_rate_limit_exhausted` | `dequeue_next` | `mark_rate_limited` terminal (decided halt, see Rate limits) |
-| `check_go_no_go_eligible.on_no`, `check_go_no_go_waiver.on_no`, `check_pre_deferral_remedy.on_no`, `record_reentry_exhausted.next` | `dequeue_next` | `failed` (the stop was already ledgered and recorded upstream; see Terminal table) |
+| `check_go_no_go_eligible.on_no`, `check_go_no_go_waiver.on_no`, `check_pre_deferral_remedy.on_no`, `record_reentry_exhausted.next` | `dequeue_next` | `route_ladder_stop` (reads the status and the stop record; see Terminal table). Not `failed` directly: the resolved-parent branches reach these exits with no record |
 | `on_error` of `check_atomic_design_remedy`, `check_go_no_go_eligible`, `check_go_no_go_waiver`, `check_pre_deferral_remedy`, `enqueue_or_skip`, `recheck_after_size_review`, `regate_after_atomic_remediation`, `reopen_waived`, `record_reentry_exhausted` | `dequeue_next` | `mark_ladder_error` terminal (see Terminal table) |
 
 ### States that move into `prepare-issue.yaml`
@@ -192,6 +192,20 @@ has changed since.
   states target it (verified by the edge table), and the wrapper's `mark_scores_absent`
   terminal replaces it. `autodev-scores-absent.txt` loses its only writer; remove any
   reader or note that it is no longer written.
+- **Decided (2026-09-26)**: `autodev-broke-down` loses its only reader (`check_broke_down`,
+  ~`autodev.yaml:1810`). Shrink `copy_broke_down` to the `refine-broke-down` reset: drop
+  its `cp` / `printf '0' > autodev-broke-down` and the `autodev-broke-down` removals in
+  `init` (~:81) and `dequeue_next` (~:114), and rewrite its ENH-3615 comment, which cites
+  `check_broke_down`. Keep the state name so `refine_current.on_success` still has a
+  target.
+- **Decided (2026-09-26)**: autodev `check_passed.on_error` → `skip_inflight_infra` (was
+  `detect_children`). Once the ladder is gone, the `detect_children` leg would run
+  `check_parent_resolved.on_no` → `skip_inflight`, so a `check-readiness` harness error
+  would be ledgered `refine_failed` (quality) instead of `refine_failed_infra`. It is no
+  safety net for a lost `decomposed` record either: that arrives as `MISSING` and
+  `check_passed` returns `no`, not an error. Rewrite
+  `test_check_passed_still_reaches_detect_children_on_error`
+  (`test_autodev_scores_freshness.py`) to pin the new target.
 
 ### Boundary edge retargets (autodev, verified 2026-09-26 against post-ENH-3611)
 
@@ -199,7 +213,8 @@ has changed since.
   moves into the wrapper).
 - autodev `check_passed.on_yes` → `check_proof_defer_or_implement` (was
   `select_obligation_pre_implement`, which moves); `on_no` / `on_cannot_judge` →
-  `skip_inflight`; `on_error` stays `detect_children`.
+  `skip_inflight`; `on_error` → `skip_inflight_infra` (was `detect_children`; see States
+  that stay).
 - `route_refine_success` (ENH-3609) sends `READY` / `BLOCKED` / `MISSING` / `_` →
   `check_passed`, `DECOMPOSED` → `detect_children`, and every suffixed `BLOCKED:*` /
   `DEFERRED:*` / `RETRYABLE_ERROR:*` → `skip_inflight`. So the wrapper ends `ready` and
@@ -300,8 +315,11 @@ successors are `enqueue_or_skip`, `recheck_after_size_review` and
 - Autodev's existing `DECOMPOSED` → `detect_children` → `enqueue_children` path does the
   enqueue. `enqueue_children` already writes the `decomposed` row and runs
   `finalize-decomposition`, exactly as `enqueue_or_skip`'s queue branch does today.
-- Confirm that `detect_children`'s `autodev-pre-ids.txt` baseline predates the wrapper, so
-  size-review children fall inside its diff. Pin this with a test.
+- Confirm that `detect_children`'s `autodev-pre-ids.txt` baseline predates
+  `run_size_review`, so size-review children fall inside its diff. It does not predate the
+  wrapper: `detect_ladder_children` refreshes it inside the wrapper (`size_review_snap`'s
+  old job) before `recheck_scores`. Pin "baseline written before `run_size_review`" with a
+  test.
 - **Guarantee**: the wrapper emits `decomposed` only when `child_ids` is non-empty or the
   parent is resolved. `check_parent_resolved_post_size_review.on_yes` emits `decomposed`, so
   autodev reaches `recover_subloop_children` through `detect_children` (no children) →
@@ -318,6 +336,19 @@ successors are `enqueue_or_skip`, `recheck_after_size_review` and
   when the wrapper's `decomposed` record reaches it. Drop the row write from the moved
   states; `recover_subloop_children` owns it. The wrapper also writes no `decomposed` row
   (`enqueue_children` owns that).
+- **The resolved-parent branches need an exit.** Today the done/cancelled branch in
+  `recheck_after_size_review` and `regate_after_atomic_remediation` writes the
+  `resolved_by_subloop` row and exits 1. From there it falls through
+  `check_pre_deferral_remedy.on_no` or `check_atomic_design_remedy.on_no` →
+  `check_go_no_go_eligible.on_no`. With the row write dropped, the branch writes no row
+  and no record. If those exits went straight to `failed`, autodev would read `MISSING`,
+  `skip_inflight` would write a spurious `refine_failed` row, and
+  `recover_subloop_children` would never run, so the parent's open children would never be
+  enqueued. `route_ladder_stop` (Terminal table) sends a done/cancelled issue to
+  `mark_decomposed`, which reaches `recover_subloop_children` through autodev's
+  `detect_children` → `check_parent_resolved`. `record_reentry_exhausted`'s
+  done/cancelled branch (row, no record) takes the same route; drop its row write in that
+  branch too.
 - **Staging has one writer.** Five moving states append to `autodev-staged.txt`
   (`check_passed`, `recheck_scores`, `recheck_after_size_review`,
   `regate_after_atomic_remediation`, `reopen_waived`), and autodev's `check_passed` appends
@@ -353,8 +384,15 @@ the ledger row with the same reason string as today, and autodev routes every
   `regate_after_atomic_remediation`, `record_reentry_exhausted`) and the exits that follow
   (`check_pre_deferral_remedy.on_no`, `check_go_no_go_eligible.on_no`,
   `check_go_no_go_waiver.on_no`, `record_reentry_exhausted.next`) cannot tell which reason
-  was written. With the record written next to the row, those exits go straight to
-  `failed`.
+  was written. With the record written next to the row, those exits go to one router,
+  `route_ladder_stop`, not straight to `failed`:
+  - issue status done/cancelled → `mark_decomposed` (the resolved-parent branches; see
+    Queue ownership). For a cancelled issue, rule 1 of `outcome_from_legacy_class` turns
+    this into `CANCELLED`, which is accepted behavior change 3;
+  - a `prepare-issue` record exists (`run-record read --writer prepare-issue`) → `failed`;
+  - no record → `mark_ladder_error`, so any future exit without a record is ledgered as an
+    infra stop, not as `refine_failed`.
+  - its own `on_error` → `mark_ladder_error`.
 - **A stop row with a later remedy is not final.** `recheck_after_size_review` can arm a
   pre-deferral remedy instead of deferring; that branch writes no row and no record. A
   remedy that re-enters the inner loop therefore starts with no stop record for the pass.
@@ -387,6 +425,17 @@ the ledger row with the same reason string as today, and autodev routes every
   also clear the `DEFERRED:gate_unmet` record it is undoing
   (`run-record clear --writer prepare-issue`). Otherwise `mark_ladder_error` would leave a
   stale stop record in place if a later state errors. Pin both with a test.
+- **Decided (2026-09-26): `reopen_waived` re-checks readiness before `mark_ready`.** The
+  go/no-go waiver waives only the outcome gate. `regate_after_atomic_remediation` runs
+  after a rescore, so the rescore can leave confidence below `readiness_threshold` even
+  though `check_readiness_for_atomic_remediation` passed. Today that issue is implemented
+  anyway (`reopen_waived` → `select_obligation_pre_implement` →
+  `check_proof_defer_or_implement`). After the move, `mark_ready`'s record would compute
+  `blocked` (rule 6), autodev's `check_passed` would reject it, and `skip_inflight` would
+  ledger a misleading `refine_failed`. Instead, a readiness shortfall in `reopen_waived`
+  takes the `low_readiness` stop path: `low_readiness` row, `set-status deferred --reason
+  low_readiness`, and a `gate_unmet` record, all written by that state (after its own
+  `oversized_atomic` undo). Then `failed`. See accepted behavior change 4.
 
 ### Rate limits
 
@@ -413,6 +462,11 @@ Document these in `docs/guides/LOOPS_REFERENCE.md`:
   `outcome_from_legacy_class`) and is ledgered `cancelled` by autodev's `skip_cancelled`,
   instead of `resolved_by_subloop`. A `done` parent keeps today's `decomposed` /
   `resolved_by_subloop` row through `recover_subloop_children`.
+- An `oversized_atomic` issue whose go/no-go waiver is granted, but whose post-remediation
+  readiness is below threshold, is now deferred `low_readiness` instead of implemented.
+  The waiver covers only the outcome gate.
+- An error in autodev's retained `check_passed` now ledgers `refine_failed_infra` (was:
+  the size-review ladder through `detect_children`).
 
 ### Mechanics
 
@@ -473,7 +527,11 @@ Document these in `docs/guides/LOOPS_REFERENCE.md`:
   `check_scores_present` / `route_after_rescore` chain; `run_refine_to_ready.on_yes`
   targets `route_inner_success`; no wrapper state appends to `autodev-staged.txt` or writes
   a `resolved_by_subloop` / `decomposed` row; no wrapper stop state routes through
-  `forward_stop`; `max_steps` matches its pinned arithmetic; the wrapper imports
+  `forward_stop`; `check_pre_deferral_remedy.on_no`, `check_go_no_go_eligible.on_no`,
+  `check_go_no_go_waiver.on_no` and `record_reentry_exhausted.next` target
+  `route_ladder_stop`, and no non-terminal state other than `route_ladder_stop` and the
+  `mark_*` / `forward_*` terminals targets `failed`; `max_steps` matches its pinned
+  arithmetic; the wrapper imports
   `lib/common.yaml` and sets `capture_reachability_ok: true`; every `failed`-bound
   terminal writes `refine-terminal-class` before its record write.
 - **Wrapper execution** (real FSM, stub skills):
@@ -498,10 +556,25 @@ Document these in `docs/guides/LOOPS_REFERENCE.md`:
   - `mark_ladder_error` after a stop record exists leaves that record in place (one row);
   - a failed record write on `mark_scores_absent` (record absent, sentinel `infra`)
     reaches `skip_inflight_infra` in autodev, not `refine_failed`;
-  - inner `CANCELLED` forwards and ends `done`.
+  - inner `CANCELLED` forwards and ends `done`;
+  - resolved-parent branches: `recheck_after_size_review` and
+    `regate_after_atomic_remediation` on a `done` parent with no children each end in
+    `done` with a `DECOMPOSED` record. In autodev they reach `recover_subloop_children` and
+    write exactly one `resolved_by_subloop` row, with no `refine_failed` row. A `done`
+    parent with open children gets them enqueued;
+  - `route_ladder_stop`: done/cancelled → `mark_decomposed`; record present → `failed`
+    with that record unchanged; no record → `mark_ladder_error` (one `refine_failed_infra`
+    row);
+  - `record_reentry_exhausted` on a done issue takes the resolved-parent route (no
+    `decision_unresolved` row);
+  - `reopen_waived` with readiness below threshold records `DEFERRED:gate_unmet` with one
+    `low_readiness` row and no `oversized_atomic` row; with readiness at threshold it
+    reaches `mark_ready`.
 - **Autodev**:
-  - `check_passed.on_no` / `on_cannot_judge` → `skip_inflight`;
-  - `size_review_snap`, `check_broke_down` and `mark_scores_absent_infra` are absent;
+  - `check_passed.on_no` / `on_cannot_judge` → `skip_inflight`, `on_error` →
+    `skip_inflight_infra`;
+  - `size_review_snap`, `check_broke_down` and `mark_scores_absent_infra` are absent, and no
+    autodev state references `autodev-broke-down`;
   - `autodev.yaml` no longer sets `capture_reachability_ok` and still validates;
     `detect_children.on_no` → `check_parent_resolved`, and `check_parent_resolved.on_no` →
     `skip_inflight`;
@@ -532,7 +605,10 @@ Document these in `docs/guides/LOOPS_REFERENCE.md`:
   - the BUG-2734/BUG-3390 go/no-go, pre-deferral and `recheck_after_size_review`
     paragraphs, and `:579` (`run_size_review`);
   - move the wire/reconcile/score-freshness paragraphs to `### prepare-issue`, and add the
-    accepted behavior changes.
+    accepted behavior changes;
+  - the autodev Notes paragraph (~:1101): its broke-down handshake sentence names a stale
+    `recursive-refine-broke-down` file and describes `autodev-broke-down`, which this issue
+    retires. Rewrite it around `refine-broke-down` and the run record.
 - `docs/reference/DEFERRAL_CODES.md` `:24-30`: Source citations name `prepare-issue` states.
 - `docs/reference/CLI.md`: `:2272`, `:2318`, `:2334-2335`, `:2687`, `:2884`,
   `:3090-3095`, and the run-record section (`:2403-2438`).
@@ -566,7 +642,7 @@ Document these in `docs/guides/LOOPS_REFERENCE.md`:
 - [ ] Autodev edges are retargeted: `refine_current.on_success` → `copy_broke_down`, `check_passed.on_yes` → `check_proof_defer_or_implement`; a structural test pins both, plus that no autodev state targets a removed state
 - [ ] The wrapper ends only `ready` / `decomposed` in `done` and every `BLOCKED:*` / `DEFERRED:*` / `RETRYABLE_ERROR:*` stop in `failed`; a real-FSM test asserts no stop reaches `route_refine_success`'s `skip_inflight` legs (no double ledger row)
 - [ ] `implement_current`'s only predecessor is `check_proof_defer_or_implement`, and `READY` comes only from the wrapper's pass gate plus `select_obligation_pre_implement`
-- [ ] The relocated behavioral suites pass. `auto-refine-and-implement` summary counts in a real-FSM run are unchanged except for the "Accepted behavior changes": scores-absent / `on_error` exits add a `refine_failed_infra` row, `run_size_review` rate-limit exhaustion halts, and a cancelled parent is ledgered `cancelled`. Each difference is pinned by its own test
+- [ ] The relocated behavioral suites pass. `auto-refine-and-implement` summary counts in a real-FSM run are unchanged except for the "Accepted behavior changes": scores-absent / `on_error` exits add a `refine_failed_infra` row, `run_size_review` rate-limit exhaustion halts, a cancelled parent is ledgered `cancelled`, a waived-but-under-readiness `oversized_atomic` issue is deferred `low_readiness`, and an autodev `check_passed` error is ledgered `refine_failed_infra`. Each difference is pinned by its own test
 - [ ] Every re-entry edge (selectors and `dispatch_pre_deferral_remedy.on_yes`) targets the wrapper's `count_repair_cycle_refine`, never `run_refine_to_ready` directly
 - [ ] `route_inner_success` resets `refine-broke-down` to `0` on every inner success; an inner `DECOMPOSED` with no children and an unresolved parent continues to the wrapper's size-review (BUG-1183 fallback kept); and no wrapper terminal is written while `refine-broke-down` is `1` except `mark_decomposed`, including after a `MISSING` inner record
 - [ ] `record_reentry_exhausted` lives in the wrapper and records `BLOCKED:decision_unresolved`
@@ -574,6 +650,9 @@ Document these in `docs/guides/LOOPS_REFERENCE.md`:
 - [ ] `size_review_snap`, `check_broke_down` and `mark_scores_absent_infra` are deleted from autodev
 - [ ] `prepare-issue.yaml` imports `lib/common.yaml` and carries `capture_reachability_ok: true` with its rationale; `autodev.yaml` drops the flag and still passes `ll-loop validate`
 - [ ] Every wrapper terminal that ends in `failed` writes `refine-terminal-class` before its record write, so a failed record write still routes infra stops to `skip_inflight_infra`
+- [ ] No ladder exit goes straight to `failed` without a record: the four stop exits go through `route_ladder_stop`, and a resolved parent (from `recheck_after_size_review`, `regate_after_atomic_remediation` or `record_reentry_exhausted`) reaches `recover_subloop_children` with exactly one row and no `refine_failed` row
+- [ ] `reopen_waived` defers `low_readiness` when post-remediation readiness is below threshold; `mark_ready` is never reached with readiness below threshold
+- [ ] Autodev `check_passed.on_error` → `skip_inflight_infra`; `autodev-broke-down` has no remaining writer or reader
 
 ## Impact
 
@@ -798,13 +877,15 @@ Research from the original ENH-3605 (wire/refine, reconcile/design) was merged h
 3. Build the wrapper ladder: `route_inner_success`, `detect_ladder_children`, the pass gate,
    the moved states with `${context.input}` rewrites, the shared rescoring path, the wrapper
    terminals (`mark_ready`, `mark_decomposed`, `mark_rate_limited`, `mark_scores_absent`,
-   `mark_ladder_error`), record writes next to each ledger row, the broke-down flag rule,
-   and `count_repair_cycle_refine` as the pre-state of the inner loop. Raise `max_steps`.
+   `mark_ladder_error`), `route_ladder_stop`, record writes next to each ledger row, the
+   `reopen_waived` readiness re-check, the broke-down flag rule, and
+   `count_repair_cycle_refine` as the pre-state of the inner loop. Raise `max_steps`.
 4. In the same commit: delete the moved states from autodev, apply the "Boundary edge
    retargets" (including `refine_current.on_success` and `check_passed.on_yes`), set
    `check_passed.on_no` / `on_cannot_judge` → `skip_inflight`, delete `size_review_snap`,
-   `check_broke_down` and `mark_scores_absent_infra`, and retarget `detect_children.on_no`
-   and `check_parent_resolved.on_no`.
+   `check_broke_down` and `mark_scores_absent_infra`, retarget `detect_children.on_no`,
+   `check_parent_resolved.on_no` and `check_passed.on_error`, and shrink `copy_broke_down`
+   to its reset.
 5. Relocate and rewrite the suites; add the absence, queue-writer, terminal-table, rescoring
    dispatch, counter and DECOMPOSED-guarantee tests; update the topology count and the
    baseline JSON.
@@ -894,7 +975,9 @@ _Re-scored 2026-09-26 after the sequencing decision made ENH-3615 a hard `blocke
 - Deep per-site complexity: rewires the strongly connected second-pass cluster, rescoring consolidation and terminal routing.
 - Broad enumeration across ~40 states plus a large test/doc migration (Breadth 0).
 - Broad change surface: autodev consumers (`auto-refine-and-implement`, `scan-and-implement`, run-record, ledger readers) must keep counts unchanged.
-- Mitigation: adopt the behavior-preserving prep issue from the sequencing option to shrink the final move.
+- ~~Mitigation: adopt the behavior-preserving prep issue from the sequencing option to shrink the final move.~~ Done: ENH-3615 landed in `74747fb1e`.
+
+_Stale as of 2026-09-26: these scores predate ENH-3615 landing and the third design review. Re-run `/ll:confidence-check`._
 
 ## Design Review Notes
 
@@ -939,6 +1022,32 @@ Map:
   - `run-record write` honors the outcome waiver;
   - the inner loop clears its own record and `refine-broke-down` at `resolve_issue`;
   - no capture-name collisions.
+
+### Third review (2026-09-26, against HEAD `e658655dd`)
+
+Re-computed the boundary edges from `autodev.yaml` (86 states); every "Today" entry
+matches. Folded into the edge table, Queue ownership, Terminal table, States that stay,
+Accepted behavior changes, Tests, Docs, Acceptance Criteria and Implementation Steps:
+
+- **High**: the resolved-parent branches of `recheck_after_size_review` /
+  `regate_after_atomic_remediation` (and `record_reentry_exhausted`'s done/cancelled
+  branch) would reach `failed` with no record once their row writes drop. The result is a
+  spurious `refine_failed` row and a skipped `recover_subloop_children`, so open children
+  are never enqueued. Fixed with the `route_ladder_stop` router.
+- **Medium**: `reopen_waived` can reach `mark_ready` with readiness below threshold. The
+  waiver covers only the outcome gate, so this became a `low_readiness` stop, listed as an
+  accepted behavior change.
+- **Low**:
+  - `autodev-broke-down` loses its only reader, so `copy_broke_down` shrinks to its reset;
+  - `route_after_rescore`'s fail-closed exits were added to the edge table;
+  - the `autodev-pre-ids.txt` invariant is "predates `run_size_review`", not "predates the
+    wrapper";
+  - autodev `check_passed.on_error` → `skip_inflight_infra`;
+  - the stale `recursive-refine-broke-down` note in `LOOPS_REFERENCE.md` gets rewritten.
+- Checked with no change needed: `readiness_threshold` / `outcome_threshold` reach the
+  wrapper through `context_seed` plus passthrough; the only new capture name is
+  `size_review_output`; no Python code routes on the moved state names (comments only,
+  already listed).
 
 ## Session Log
 - `/ll:verify-issues` - 2026-09-26T22:05:24 - `c4864ff1-acf7-4101-a722-b28e5ccfc698.jsonl`
