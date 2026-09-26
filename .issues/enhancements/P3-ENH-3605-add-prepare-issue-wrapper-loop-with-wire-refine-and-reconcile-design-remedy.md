@@ -155,6 +155,79 @@ _Added by `/ll:refine-issue` — 2026-09-26 — based on codebase analysis:_
 - README loop count lives at `README.md:185` (`~108 FSM loops`); `doc_counts.py` counts top-level `loops/*.yaml`. Mirrors: `command cp -f README.md scripts/README.md`; `ll-adapt --host <gemini|kimi-code|qwen> --apply` after skills edits.
 - `ll-loop validate` rules relevant here: MR-3, MR-7, MR-9, MR-11 (`# ll-lint: mr11-ok(...)` per-site opt-out), MR-14, static `loop:` refs use the full relative path, `scope:` declared (see `rn-decompose.yaml`).
 
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `scripts/little_loops/loops/auto-refine-and-implement.yaml` — `loop: autodev` (~:381); reads autodev's shared-`run_dir` ledgers (`autodev-queue.txt` ~:477/:1077, `autodev-inflight` ~:1058, `-passed`/`-skipped`/`-gate-blocked`/`-decision-unresolved` ~:1088-1144). Ledger writers must keep writing these until ENH-3600. `scan-and-implement.yaml:79` also calls `loop: autodev` [Agent 1]
+- `scripts/little_loops/loops/recursive-refine.yaml` — second `refine-to-ready-issue` caller (`run_refine` ~:237); shares the `refine-broke-down` file (~:217, :484) and has its **own** `check_missing_artifacts` (~:594-602). Name collision only, not moved [Agent 1/2]
+- `scripts/little_loops/cli/issues/run_record.py` — `add_run_record_parser` (`choices=WRITERS`/`LEGACY_CLASSES`, both already accept `prepare-issue`); `_read_broke_down` reads the shared `<run_dir>/refine-broke-down`, so a wrapper `decomposed` terminal must write it [Agent 1/2]
+- `scripts/little_loops/fsm/validation/reachability.py` — `_validate_loop_references`: `autodev.refine_current` → `prepare-issue` is a load ERROR until `prepare-issue.yaml` exists (land YAML and autodev edit in one commit) [Agent 2]
+- `scripts/little_loops/fsm/executor.py` — `_execute_sub_loop`: with a 3-level passthrough chain, autodev's `captured.refine_current` nests one level deeper; no YAML/Python reads `captured.refine_current` today, so no break [Agent 2]
+- Inbound edges from states that **stay** in autodev into moved states (each needs a new destination): `check_spike_needed` on_no/on_error → `check_missing_artifacts` (~:1704); `check_spike_needed_before_skip` on_no → `check_reconcile_needed` (~:2048); `regate_after_atomic_remediation` on_no → `check_atomic_design_remedy` (~:2407); `check_pre_deferral_remedy` on_yes → `dispatch_design_remedy` (~:2947); `dispatch_pre_deferral_remedy` on_no/on_error → `reconcile_current` (~:3006) [Agent 2]
+- Rate-limit behavior change: moved slash states use `with_rate_limit_handling` with `on_rate_limit_exhausted: finalize_rate_limited` (autodev-only; halts the queue). A wrapper-local `retryable_error` terminal infra-skips one issue instead; decide and document. The wrapper also lacks `${captured.issue_id.output}` / `${context.issue_id}` that `mark_rate_limit_infra` and `subloop_rate_limit_diagnostic` (`lib/common.yaml`) read [Agent 2]
+- Stale-record isolation: `read_run_record` has no run-instance field; `prepare-issue` needs a `resolve_issue`-style delete of its own `run-records/prepare-issue/<ID>.json` on entry (as `refine-to-ready-issue` does, `test_run_record.py:524`) [Agent 2]
+
+### Files to Modify
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `scripts/little_loops/loops/prepare-issue.yaml` — re-declare per-state `pruning_profile:` blocks for moved slash states (`run_wire` `wire-issue-auto`, `run_refine`/`refine_for_design` `refine-issue-repair`, `rerun_confidence_after_wire`/`_reconcile` `confidence-check-recheck`, `reconcile_current` `reconcile-issue-auto`) or MR-12 warns; declare `scope:` (BUG-3107) and no `timeout:` on the `loop:` state (`TestSubLoopStateTimeoutAudit`) [Agent 2/3]
+- `docs/guides/LOOPS_REFERENCE.md` — autodev ASCII tree (~:1038-1069, :1184-1186), notes paragraph ~:1083, wire/reconcile paragraph ~:1087, ~:1081 dispatch description; keep heading "Typed run record (ENH-3597)" (pinned by `test_wiring_reference_docs.py:260`) [Agent 2]
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `docs/reference/DEFERRAL_CODES.md` — `:26` (`readiness_stagnated` repair-class list), `:27` (`design_gate_failed` cites `refine_for_design`/`reconcile_current`), `:30` (`autodev-scores-absent`/`-gate-infra` ledgers) [Agent 2]
+- `docs/reference/CLI.md` — `:2272` (`missing_artifacts` read by `check_missing_artifacts` "in both" loops), `:2335`, `:2687` (`check_reconcile_needed`), `:1359` (`next-loop` autodev-only resolver), `:2404-2432` (run-record section already names `prepare-issue` writer) [Agent 2]
+- `docs/reference/API.md` — `:983` (`check_reconcile_needed` payload), `:4681` (`refine_for_design`) [Agent 2]
+- `docs/reference/COMMANDS.md` — `:307`, `:311` (reconcile one-shot/plateau), `:366` (`run_wire`) [Agent 2]
+- `docs/reference/ISSUE_TEMPLATE.md` — `:916` (`missing_artifacts` routes autodev to wire-issue), `:919` (`spike_attempted`) [Agent 2]
+- `docs/reference/CONFIGURATION.md:456` — list of loops that must not pin confidence thresholds; add `prepare-issue` (matches `TestConfidenceGateThresholdsNotHardcoded.LOOPS`, `test_builtin_loops.py` ~:21326) [Agent 2]
+- `commands/reconcile-issue.md` — `:83`, `:145`, `:197`, `:368` describe `check_reconcile_needed` routing/one-shot guard and "Called by `reconcile_current`"; `commands/refine-issue.md:1073` cites the `autodev.yaml` remedy [Agent 2]
+- `skills/audit-loop-run/SKILL.md:119` — `ll-loop show <loop> --resolved` expands one sub-loop level (`cli/loop/info.py` `cmd_show`), so autodev will show `prepare-issue`'s states, not `refine-to-ready-issue`'s [Agent 2]
+- `docs/guides/LOOPS_GUIDE.md` (`:88`, `:395`), `docs/ARCHITECTURE.md` (`:463`, `:676`), `docs/guides/RECURSIVE_LOOPS_GUIDE.md:271-302` — loop tables/pickers; add wrapper row [Agent 2]
+- `scripts/little_loops/loops/refine-to-ready-issue.yaml` header comments citing autodev states (comment-only; no gate) [Agent 1]
+
+### Tests
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `scripts/tests/test_builtin_loops.py::TestAutodevLoop` — `test_required_states_exist` (~:6659; also lists ENH-3606 states), `test_refine_current_delegates_to_refine_to_ready_issue` (~:6798, asserts `loop == refine-to-ready-issue`; hard break), `test_context_passthrough_on_refine_current` (~:8588), moved-state edge pins: `check_missing_artifacts` (~:9183-9209), `run_wire`/`run_refine` (~:9214-9238, :9519-9531), `rerun_confidence_after_wire` (~:9534-9590), `check_reconcile_needed` (~:8328, :8636-8660, :8839-8872, :9121-9165), `reconcile_current`/`count_repair_cycle_reconcile` (~:9145-9166), `dispatch_design_remedy` (~:8771-8793), `check_atomic_design_remedy` (~:8229). Cross-boundary assertions on staying states change too (`check_spike_needed_before_skip` ~:9081) [Agent 3]
+- `scripts/tests/test_autodev_decision_gate.py` (~64 hits, not in issue) — `TestSpikeTriageStructural` (~:446-447), `TestReconcilePlateauStructural`/`Routing` (~:532-695), `TestDesignGateRefineRemedy` (~:698-770), `TestAtomicDesignRemedyRouting` (~:772-818), `TestGuard2VerdictBypass` (~:820); file loads only `autodev.yaml` via `_load_autodev_yaml`, so moved suites need a `prepare-issue.yaml` loader [Agent 3]
+- `scripts/tests/test_autodev_loop.py::TestRepairCycleCounterStates` (~:450-486; `count_repair_cycle_wire`/`_reconcile`/`_refine_for_design`, `test_refine_current_routes_through_counter_before_copy_broke_down`) and `check_reconcile_needed` tests (~:190-300, :923-961) [Agent 2/3]
+- `scripts/tests/test_spike_verdict_routing.py` — `test_autodev_routing_table` (~:89-106), `test_dispatch_pre_deferral_remedy_*` (~:147, comment `-> reconcile_current`); loop over `("autodev.yaml", "refine-to-ready-issue.yaml")` (~:136); verify no moved key is indexed [Agent 3]
+- `scripts/tests/test_cli_loop_next.py` (~:224-225, :336-344) — add a `prepare-issue` case beside `test_unknown_loop_returns_empty_dict` if a resolver is added [Agent 2/3]
+- Global gates that will run on the new file automatically: `TestBuiltinLoopFiles` (~:66, `test_all_have_scope_field` ~:183, `test_all_failure_terminals_have_diagnostic_action` ~:416, `test_no_failure_edge_routes_to_a_success_terminal` ~:87), `TestBuiltinLoopReferencesResolve`, `TestMr11MarkerSet`, `TestSubLoopStateTimeoutAudit` (~:21377), `TestHostRunnerEnvSweep` (`test_host_runner.py:2720`); `test_concurrency.py` scope-lock tests keyed on loop names (~:738-860) [Agent 3/1]
+- `scripts/tests/data/loop_interpolation_baseline.json` — correction: autodev entries for the moved cluster are `check_reconcile_needed` plus `check_blockers_at_dequeue`, `check_spike_needed`, `check_spike_needed_before_skip` (latter three stay); `enqueue_or_skip`/`recheck_scores` entries are keyed to `recursive-refine.yaml`, not autodev [Agent 3, from ENH-3606 pass]
+- **New**: `scripts/tests/test_prepare_issue.py` modeled on `test_rn_decompose.py` (`_load_loop`, `TestDecompositionChain`, `TestTerminalStates`, `TestFSMHealth`) plus the `test_run_record.py` two-layer run-record pattern (`TestLoopCallSites`-style structural pins incl. `--writer prepare-issue` window check; `TestTerminalExecution`-style `_run_state` execution asserting `retryable_error` for rate-limit exhaustion) [Agent 3]
+- **New**: a `prepare-issue` twin of `test_no_loop_call_state_declares_on_rate_limit_exhausted` (existing at `test_builtin_loops.py` ~:3335 for refine-to-ready-issue and ~:7945 for autodev) [Agent 3]
+- **New**: graph-wide "no `prepare-issue` terminal routes into `implement_current`" test — none exists; BUG-3603 pins are per-state only (~:8119, :8423, :9277) [Agent 3]
+- Unaffected despite name hits: `test_run_record.py` `DONE_PATH_GATES`/`TestLoopCallSites` (target `refine-to-ready-issue.yaml`'s own states), `TestRecursiveRefineLoop`, `test_ll_issues_next_obligation.py:377`, `test_rn_remediate.py` [Agent 3]
+
+### Configuration
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `scripts/little_loops/cli/loop/next_loop.py` — `_scan_history` reads `.loops/.history/<run_id>-<loop>`; a wrapper run only as a sub-loop never produces one, so the "no resolver" decision matters only for direct `ll-loop run prepare-issue` [Agent 2]
+- No change needed: `pyproject.toml` (`include = ["little_loops/**"]` glob), `.claude-plugin/*.json`, `hooks/`, `config-schema.json` (only `max_refine_count` prose at :542), `fsm/` (no loop-name-keyed logic). README count `README.md:185` is a manual bump [Agent 1/2]
+
+## Implementation Steps
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Land `prepare-issue.yaml` and the `refine_current` → `loop: prepare-issue` edit in one commit (static `loop:` ref is a load error otherwise)
+- Give each inbound cross-boundary edge from a staying autodev state (`check_spike_needed`, `check_spike_needed_before_skip`, `regate_after_atomic_remediation`, `check_pre_deferral_remedy`, `dispatch_pre_deferral_remedy`) a defined destination
+- Add an autodev-side probe state after `refine_current` that reads the `prepare-issue` run record (the executor never reads records); reconcile ownership with ENH-3599's `route_refine_outcome`
+- Delete stale `run-records/prepare-issue/<ID>.json` on wrapper entry; write `refine-broke-down` before any `decomposed` terminal
+- Re-declare `pruning_profile:` blocks and `scope:` in the new YAML; no `timeout:` on the `loop:` state
+- Update `test_builtin_loops.py`, `test_autodev_decision_gate.py`, `test_autodev_loop.py`, `test_spike_verdict_routing.py` per the Tests list; add `test_prepare_issue.py`, the rate-limit pin twin and the no-edge-into-`implement_current` test
+- Update `loop_interpolation_baseline.json` (moved `check_reconcile_needed` site → `prepare-issue.yaml`), `test_fsm_topology.py` count, README count and mirror (`command cp -f README.md scripts/README.md`)
+- Update the docs/commands/skill lines in the Documentation list; `ll-adapt --host <gemini|kimi-code|qwen> --apply` if skills change
+
 ## Program Design
 
 ### Types
@@ -176,5 +249,6 @@ _Added by `/ll:refine-issue` — 2026-09-26 — based on codebase analysis:_
 **Open** | Created: 2026-09-26 | Priority: P3
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-26T03:36:28 - `e6ad8ea2-14d6-441f-a607-435314c2d056.jsonl`
 - `/ll:refine-issue` - 2026-09-26T03:22:24 - `7612ef86-47f8-4d5d-aa01-e50211538dc3.jsonl`
 - `/ll:format-issue` - 2026-09-26T03:07:12 - `34887897-5e19-4ee2-b656-5f0a00c15f02.jsonl`

@@ -133,6 +133,66 @@ _Added by `/ll:refine-issue` — 2026-09-26 — based on codebase analysis:_
 - Mirror gates after skills/README edits: `test_adapters.py` (~:1176-1203) and `test_packaging_duplicate_files.py` (~:22); docs-audience gate (`test_docs_audience_gate.py`) forbids `scripts/tests/` and `scripts/little_loops/` path citations in `docs/guides`, `docs/reference`, `skills/`, `commands/`.
 - No existing test spans the whole autodev graph for "no wire/reconcile/design/pre-deferral/size-review/go-no-go states"; the "autodev is queue-only" acceptance criterion needs an explicit absence assertion of the `REMOVED_INLINE_STATES` shape.
 
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `scripts/little_loops/loops/auto-refine-and-implement.yaml` — builds `SKILL_BREAKDOWN` from the reason column of `autodev-skipped.txt` (~:1118-1133); `oversized_atomic`/`decomposed` reasons appear there. Ledger writers must keep writing `ID  <reason>` lines until ENH-3600 [Agent 1/2]
+- `scripts/little_loops/loops/autodev.yaml` `finalize_done` (~:3066-3129) parses `autodev-skipped.txt` by reason substring (`refine_failed_infra`, `already_`, `blocked_by_unmet`, `notstarted_`); `oversized_atomic`/`decomposed`/`design_gate_failed` fall into the generic Skipped bucket. `reopen_waived` (~:2511-2514) edits the ledger with `grep -vxF "$ID  oversized_atomic"` — line-exact format coupling [Agent 2]
+- `scripts/little_loops/loops/recursive-refine.yaml` — has its **own** `size_review_snap`, `check_broke_down`, `recheck_scores`, `enqueue_or_skip`, `detect_children`; name collision only, do not touch or count as moved. `rn-decompose.yaml` has its own `run_size_review` (`size_review_snap_$${ID}.json` artifact) [Agent 1]
+- `scripts/little_loops/cli/issues/run_record.py` + `scripts/little_loops/run_record.py` — `outcome_from_legacy_class` is first-match-wins (`cancelled` → `broke_down` → `infra` → `decision_unresolved`/`proposal_unsound`/`quality` → `spike_inconclusive`/`gate_unmet` → thresholds). Reachable terminal mapping without a 7th outcome: go/no-go escalation and `oversized_atomic` → `--legacy-class gate_unmet` (loses reason in `legacy_class`; `deferred_reason` frontmatter via `ll-issues set-status --reason oversized_atomic` still carries it); atomic-remediation failure → `--legacy-class quality`; breakdown → write `1` to shared `refine-broke-down` (CLI `_read_broke_down`) [Agent 2]
+- `scripts/little_loops/cli/issues/check_readiness.py` (`--honor-waiver`, `outcome_gate_waived`), `show.py:147-158`/`:296`, `deferred_triage.py:25` (`_REASON_RANK`), `set_status.py` (`DeferReason` validation), `issue_lifecycle.py:83` (`OVERSIZED_ATOMIC`), `check_gate.py:4` docstring (names `recheck_after_size_review`), `issue_manager.py:1230` comment — consumers of `deferred_reason`/moved-state names; no code change, comments may go stale [Agent 1/2]
+- Rate-limit: `run_size_review` currently routes `on_rate_limit_exhausted: dequeue_next` (~:1882-1903) while `run_go_no_go` routes to `finalize_rate_limited` (~:2486, pinned `test_builtin_loops.py:8254-8258`). Inside the wrapper both need a wrapper-local `retryable_error` terminal; `subloop_rate_limit_diagnostic` (`lib/common.yaml:446`) needs `operation` via `with:` and `${context.issue_id}` [Agent 2]
+- Queue coupling: `enqueue_children`, `recover_subloop_children`, `dequeue_next` mutate `autodev-queue.txt`; `detect_children`/`enqueue_or_skip`/`recover_subloop_children` write `autodev-new-children.txt` read by `check_broke_down`/`enqueue_children`/`ll-issues finalize-decomposition --children-file`. Nothing stops a child writing the parent queue (shared `run_dir` copy), but `dequeue_next` must remain sole cleaner of `autodev-size-review-ran-this-pass` and `autodev-pre-deferral-remedy*` [Agent 2]
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `docs/reference/DEFERRAL_CODES.md` — additionally `:25` (`oversized_atomic` cites `remediate_oversized_atomic`) and `:26` (`readiness_stagnated` cites `recheck_after_size_review`) [Agent 2]
+- `docs/reference/CLI.md` — additionally `:3090-3095` (`deferred-triage` "autodev's not-ready exits" + rank order), `:2403-2438` (run-record section; new terminals), `:2884` (`--honor-waiver`) [Agent 2]
+- `docs/guides/LOOPS_REFERENCE.md` — additionally `:1035-1037` (pre-dequeue flow), `:1069-1072` (state-graph diagram with `check_guard2_verdict`/`recheck_after_size_review`), `:1087` (pre-deferral/`oversized_atomic`/go-no-go paragraph), `:579` (`run_size_review` with `with_rate_limit_handling`; confirm which loop). `:1128` covers `recursive-refine`'s own states — likely no change [Agent 2]
+- `docs/ARCHITECTURE.md:672`, `:821` — go/no-go/size-review mentions (unread; check) [Agent 2]
+- `docs/reference/ISSUE_TEMPLATE.md:916` (`missing_artifacts` "before attempting size-review") [Agent 2]
+- `skills/go-no-go/SKILL.md:402` mirrors at `.gemini/`, `.kimi-code/`, `.qwen/skills/go-no-go/SKILL.md:401` regenerate via `ll-adapt`; `skills/audit-loop-run/SKILL.md` has no mirror hits. Incidental (no change): `skills/create-loop/loop-types.md`, `spike`, `verify-issue-loop`, `advise` [Agent 1/2]
+- Comments: `cli/issues/deferred_triage.py:12,25`, `cli/issues/check_gate.py:4` [Agent 1]
+
+### Tests
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `scripts/tests/test_builtin_loops.py::TestAutodevLoop` beyond the listed ~8095-8920 range — hard break: `test_required_states_exist` (~:6659; lists `detect_children`, `size_review_snap`, `check_broke_down`, `recheck_scores`, `run_size_review`, `enqueue_or_skip`, `recheck_after_size_review`, `snap_and_size_review`, `check_guard2_verdict`, `check_readiness_for_atomic_remediation`, `remediate_oversized_atomic`, `rerun_confidence_after_atomic_remediation`, `regate_after_atomic_remediation`). Edge pins to retarget: `test_recheck_scores_on_*` (~:8890-8920), `test_check_decision_before_size_review_on_no/on_error` (~:8943-8960), `test_enqueue_or_skip_on_no_routes_to_decide_path_spike_gate` (:9051), `test_check_spike_needed_before_skip_on_error` (~:9084), `test_check_reconcile_needed` routing (~:9136), `test_triage_outcome_failure_on_error_routes_to_detect_children` (:9168), `test_check_missing_artifacts_on_no/on_error_routes_to_detect_children` (:9197, :9204), `test_snap_and_size_review_*` (~:9437-9473), `test_rerun_confidence_after_wire_next_routes_to_enqueue_or_skip` (~:9563-9573), the loop at :7970. Queue-adjacent: `test_enqueue_children_*` (~:8443-8716), `test_check_broke_down_on_no_routes_to_enqueue_or_skip` (:8510), `test_dequeue_next_clears_pre_deferral_remedy_files` (:8832), `test_dequeue_next_resets_contradiction_budget` (:8878); `TestAutodevRnImplementDeferralParity::test_autodev_not_ready_exit_matches_mark_deferred_shape` (~:9736; `recheck_after_size_review` in `AUTODEV_NOT_READY_STATES`) [Agent 3]
+- `scripts/tests/test_autodev_scores_freshness.py` — `_PAIRS` (:28-31), `test_repair_predecessors_target_clear_states`, `test_readiness_readers_route_exit_3`, `test_check_passed_still_reaches_detect_children_on_error` (cross-loop edge), `TestInlineGateAbsence` (:218-219), `test_dequeue_next_clears_retry_markers` [Agent 3]
+- `scripts/tests/test_autodev_loop.py` — additionally `TestRepairCycleCounterStates` (`test_all_six_counter_states_exist`, `test_run_size_review_routes_through_counter_before_enqueue_or_skip`), `TestDesignGateStep0Detection`, `TestRecheckAfterSizeReviewStagnationBackstop` (:497), `...DesignGateBranch` (:571), `...MeasurementGateBranch` (:715), `...DecisionUnresolvedBranch` (:807), `TestDequeueNextPreReadinessSnapshot::test_action_resets_repair_cycle_counter` (cross-loop file contract), `TestCheckGateAtDequeueMarkerLiterals` [Agent 3]
+- `scripts/tests/test_autodev_decision_gate.py` — additionally `TestDesignGateRefineRemedy` (`test_dispatch_design_remedy_routes_refine_design_token`, `test_check_pre_deferral_remedy_routes_through_design_gate_first`, `test_dispatch_pre_deferral_remedy_plateau_routing_unmodified`, `test_marker_not_cleared_at_dequeue_next`), `TestAtomicDesignRemedyRouting`, `TestCheckDecisionBeforeSizeReviewRouting` (:903) [Agent 3]
+- `scripts/tests/test_spike_verdict_routing.py` — `test_dispatch_pre_deferral_remedy_spike_budget` (loads `autodev.yaml`, KeyError after move), `test_autodev_routing_table` (:99, :106; `check_scores_present_spike.on_yes == "enqueue_or_skip"`, `check_rearmed_spike_after_decide.on_no == "snap_and_size_review"` — both targets move) [Agent 3]
+- `scripts/tests/test_ll_issues_check_gate.py` (docstring ~:268 cites `recheck_after_size_review`; ~:376 asserts an autodev state `next == "dequeue_next"`), `test_recursive_finalize.py:133-140` (`autodev-new-children.txt`), `test_auto_refine_closure_accounting.py`, `TestAutoRefineAndImplementLoop` (~:4761, :4998-5146, :5001-5620) — pin queue/ledger files that must stay autodev-owned [Agent 3/2]
+- `scripts/tests/test_run_record.py` — extend: `TestOutcomeMapping.CASES` (:235-250), `TestCmdRunRecordWrite::test_legacy_class_mapping_via_cli` (:340-348) with rows for the terminals' chosen legacy classes; `test_prepare_issue_writer_via_cli` (:430); a `prepare-issue` mirror of `TestLoopCallSites` (hard-wired to `refine-to-ready-issue.yaml`, :494-550) [Agent 3]
+- `scripts/tests/data/loop_interpolation_baseline.json` — correction to the Tests bullet: `enqueue_or_skip`/`recheck_scores` entries (~:715-741) are keyed to `loops/recursive-refine.yaml` and do **not** move; autodev's baselined states are `check_blockers_at_dequeue`, `check_reconcile_needed`, `check_spike_needed`, `check_spike_needed_before_skip` (none in this issue's scope). Add `prepare-issue.yaml` entries if the moved states carry unbaselined interpolation sites (`TestInterpSweepBaseline::test_completeness_guard`) [Agent 3]
+- **Unaffected (name collision with recursive-refine)**: `test_loops_recursive_refine.py`, `TestRecursiveRefineLoop` (~:9780-10170), `test_issue_refinement_broke_down.py`, `test_rn_refine.py`, `test_rn_implement.py` [Agent 3]
+- `scripts/tests/test_wiring_skills_and_commands.py` (~:750-751) — line-pinned entries for `skills/go-no-go/SKILL.md` at 176 and 276; break if the SKILL.md edit shifts lines [Agent 3]
+- **New**: whole-autodev-graph queue-only absence test in `REMOVED_INLINE_STATES` shape (`TestIssueRefinementSubLoop` ~:1323/:1413; `TestAutodevLoop::test_old_states_removed` ~:6705 is the set-intersection variant), plus an explicit assertion that `enqueue_children`/`dequeue_next`/`recover_subloop_children` are autodev's only queue writers [Agent 3]
+
+### Configuration
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- No schema/config/manifest change: `run_record.py` already accepts `prepare-issue` writer and the six `LEGACY_CLASSES`; `pyproject.toml` glob covers the YAML [Agent 1/2]
+
+## Implementation Steps
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Decide and pin the terminal → `--legacy-class` mapping (`gate_unmet` for go/no-go and `oversized_atomic`, `quality` for atomic failure, `refine-broke-down=1` for breakdown) and add `TestOutcomeMapping`/CLI rows
+- Keep one shared `autodev-repair-cycle-count.txt` across `count_repair_cycle_*` states in both loops; keep `dequeue_next` as sole cleaner of moved sentinels
+- Preserve `ID  oversized_atomic` ledger line format for `reopen_waived` and `auto-refine-and-implement` breakdown until ENH-3600
+- Give exits into staying autodev states (`decide_current`, `resolve_decision`, `run_spike`, `recover_subloop_children`, `enqueue_children`) wrapper-local destinations or outcome terminals
+- Route `run_size_review` and go/no-go rate-limit exhaustion to a wrapper-local `retryable_error` terminal
+- Retarget/relocate tests listed above; add the queue-only absence test; update `test_fsm_topology.py` count with a delta comment
+- Update the docs listed above; re-anchor `skills/go-no-go`, regenerate mirrors with `ll-adapt --host <gemini|kimi-code|qwen> --apply`; re-check `test_wiring_skills_and_commands.py` line pins
+
 ## Program Design
 
 ### Types
@@ -152,5 +212,6 @@ _Added by `/ll:refine-issue` — 2026-09-26 — based on codebase analysis:_
 **Open** | Created: 2026-09-26 | Priority: P3
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-26T03:36:28 - `e6ad8ea2-14d6-441f-a607-435314c2d056.jsonl`
 - `/ll:refine-issue` - 2026-09-26T03:22:25 - `7612ef86-47f8-4d5d-aa01-e50211538dc3.jsonl`
 - `/ll:format-issue` - 2026-09-26T03:07:12 - `34887897-5e19-4ee2-b656-5f0a00c15f02.jsonl`
