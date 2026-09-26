@@ -18,6 +18,12 @@ relates_to:
 - ENH-3597
 - ENH-3599
 - ENH-3600
+confidence_score: 100
+outcome_confidence: 82
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 # ENH-3609: Route autodev on the child run record outcome and ledger child stops
@@ -301,4 +307,5 @@ Design review before implementation; all findings applied above:
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-26T04:53:16 - `7eed8935-b54f-432a-8611-fa62522272e9.jsonl`
 - `/ll:verify-issues` - 2026-09-26T04:42:56 - `4d8f5d10-1720-42e8-a014-431353de1c43.jsonl`
