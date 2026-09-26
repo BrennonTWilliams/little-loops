@@ -380,6 +380,7 @@ what was wrong and fixed, not an outstanding action item)
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-09-26T06:41:54 - `f4536461-4b4c-49df-b9dd-8cc9f5906a6c.jsonl`
 - `/ll:confidence-check` - 2026-09-26T06:35:03 - `4feeec57-f041-445f-8943-e7f88d866fbf.jsonl`
 - `/ll:confidence-check` - 2026-09-26T06:27:09 - `54149cb8-ad12-45b6-badc-4def259c8764.jsonl`
 - `/ll:verify-issues` - 2026-09-26T06:25:28 - `984378ad-0d20-4d38-bbc9-894028359a45.jsonl`

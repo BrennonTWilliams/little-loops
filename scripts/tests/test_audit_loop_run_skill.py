@@ -165,6 +165,16 @@ class TestAssessLoopSkill:
         assert "closed_via_recovery" in step6_section, "Step 6 must mention closed_via_recovery"
         assert "additive" in step6_section.lower() or "legacy" in step6_section.lower()
 
+    def test_skill_step6a_reads_closed_implemented_cancelled_keys(self) -> None:
+        """ENH-3613: Step 6a must recognize the additive closed_implemented /
+        closed_cancelled summary.json keys and note legacy back-compat."""
+        skill_path = Path(__file__).parent.parent.parent / "skills" / "audit-loop-run" / "SKILL.md"
+        content = skill_path.read_text()
+        step6_section = content[content.index("## Step 6:") : content.index("## Step 7:")]
+        for key in ("closed_implemented", "closed_cancelled"):
+            assert key in step6_section, f"Step 6 must mention {key!r}"
+        assert "additive" in step6_section.lower()
+
     def test_skill_step6b_reads_enh_2533_keys(self) -> None:
         """ENH-2533: Step 6b must recognize the additive per_issue and learning_followups
         summary.json keys so per-issue verdicts can cite specific parked IDs (rather than

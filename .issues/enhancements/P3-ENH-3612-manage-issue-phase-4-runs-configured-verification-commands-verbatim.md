@@ -50,6 +50,14 @@ Do not remove the full-suite run from Phase 4. Phase 4 is the only verification 
 `ll-auto`, `ll-parallel` and `ll-sprint` when FEAT-3573's autodev gate is not in the call
 path.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-26 — based on codebase analysis:_
+
+- Conventions in force for the regression test: SKILL.md section tests define a local `_phase_text`-style slicer per file (heading `.index()` to the next heading), live in flat `scripts/tests/test_<skill>_skill.py` files, and group assertions in `Test<Skill><Topic>` classes (evidence: `test_capture_issue_skill.py`, `test_issue_size_review_skill.py`, `test_audit_issue_conflicts_skill.py`). There is no shared helper; the end boundary varies (next `\n### `, a named sibling heading, or an explicit end header). The only fenced-block extraction is `re.findall(r"```bash\n(.*?)```", content, re.DOTALL)` in `test_audit_issue_conflicts_skill.py`.
+- The `*_cmd` placeholder convention is split: bare form in `SKILL.md:42-43`, `templates.md`, `commands/iterate-plan.md:125`, `commands/run-tests.md:22` (which states the configured value "already includes the test path"); args-appended form in `SKILL.md:213`, `:356`, `:359`, `:362`, `commands/check-code.md`. This issue moves Phase 4 to the bare form only.
+- Net line budget: the Phase 4 edit must land at ≤ +1 line (499 → ≤500). Extra "run verbatim" prose competes with that budget; overflow belongs in `skills/manage-issue/templates.md`, which `test_enh494_skill_companions.py` already lists in `EXPECTED_COMPANIONS`.
+
 ## Integration Map
 
 ### Files to Modify
@@ -61,6 +69,17 @@ path.
 - `scripts/tests/test_manage_issue_changelog_gate.py` — verbatim `GATE_SNIPPET`; do not touch it.
 - `scripts/tests/test_enh494_skill_companions.py` — 500-line cap. The file is at 499 lines, so the edit must not add net lines. If it does, move content to `templates.md`.
 - Add a regression test: the Phase 4 block of `skills/manage-issue/SKILL.md` contains no `{{config.project.<x>_cmd}}` placeholder followed by more text on the same line.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-26 — based on codebase analysis:_
+
+- Placeholders are substituted only by `skill_expander._substitute_config` (`scripts/little_loops/skill_expander.py`, called from `expand_skill()` in the `ll-auto`/`ll-parallel`/`ll-sprint` path via `issue_manager.py`). An unset value (`None`) becomes `""`; no line is dropped. Bare placeholders therefore leave a blank line when `type_cmd`/`build_cmd` is unset, where today's text leaves a stray ` src/`. The "skip silently if not configured" behavior is prose the model follows, not something the expander enforces.
+- Host mirrors are byte-copies of `SKILL.md` with `{{config.*}}` left unexpanded (`.gemini/skills/manage-issue/SKILL.md` Phase 4 heading sits at line 349, one line above source). `test_host_artifacts_are_not_stale` (`test_wiring_skills_and_commands.py`, parametrized over `GATED_HOSTS` × kinds) fails for gemini/kimi-code/qwen until `ll-adapt --host <h> --apply` is run after any source edit. `test_skill_mirrors_carry_companions` covers companions only, not `SKILL.md` bodies.
+- The Phase 4 block (`SKILL.md:354-372`) also carries three lines outside this issue's scope that legitimately take arguments: `build_cmd` (bare), `run_cmd` (`& pid=$!; sleep 3; kill $pid`, shell-level backgrounding), and the commented `custom_verification`. The regression-test rule must not flag the `run_cmd` line.
+- `### Headless-Safe Final Test Run` (`SKILL.md:376-400`) uses bare `{{config.project.test_cmd}}` redirected to `.loops/tmp/scratch/test-results.txt`, and never says whether it replaces or follows the Phase 4 test line. Both BUG-2408 pins (`foreground-blocking`, `scheduled wakeup`) live only in that subsection, so they are unaffected by a Phase 4 block edit.
+- `SKILL.md` is 499 lines (`wc -l`); `test_enh494_skill_companions.py` fails above 500, so there is exactly one line of headroom. Phase 3 (`SKILL.md:213`) also appends args to `test_cmd` (`[newly_written_test_files] -v`); that is a different, intentional targeted run and is not in this issue's scope.
+- No existing test asserts on Phase 4 `tests/ -v` or the `src_dir` lint/type lines, so no test pins the current wrong text.
 
 ## Implementation Steps
 
@@ -114,3 +133,7 @@ path.
 ## Status
 
 **Open** | Created: 2026-09-26 | Priority: P3
+
+
+## Session Log
+- `/ll:refine-issue` - 2026-09-26T06:42:16 - `f4536461-4b4c-49df-b9dd-8cc9f5906a6c.jsonl`

@@ -3127,13 +3127,21 @@ states:
       # reported and gate the verdict below rather than laundered as a pass.
       STAGED_IDS=$(cat ${context.run_dir}/autodev-staged.txt 2>/dev/null \
         | grep -v '^[[:space:]]*$' | sort -u || true)
+      # ENH-3613: cancelled closures are tallied in memory (CANCELLED_IDS) so the
+      # summary can split them from implemented ones; they still land in
+      # autodev-passed.txt as bare IDs.
+      CANCELLED_IDS=""
       for ID in $STAGED_IDS; do
         STATUS=$(ll-issues show "$ID" --json 2>/dev/null \
           | python3 -c "import json,sys; print((json.load(sys.stdin).get('status') or '').lower())" \
           2>/dev/null || echo "")
         case "$STATUS" in
-          done|completed|cancelled)
+          done|completed)
             echo "$ID" >> ${context.run_dir}/autodev-passed.txt ;;
+          cancelled)
+            echo "$ID" >> ${context.run_dir}/autodev-passed.txt
+            CANCELLED_IDS="$CANCELLED_IDS $ID"
+            ;;
           *)
             # BUG-3390: verify_impl_closed may already hold "ID  reason"; sort -u
             # cannot merge that with a bare "ID", so guard like the ABANDONED
@@ -3183,6 +3191,11 @@ states:
 
       PASSED_COUNT=$(echo "$PASSED_IDS" | grep -c '[^[:space:]]' || true)
       [ -z "$PASSED_COUNT" ] && PASSED_COUNT=0
+      # ENH-3613: closed_implemented + closed_cancelled == closed by construction.
+      CLOSED_CANCELLED=$(echo "$CANCELLED_IDS" | tr ' ' '\n' | grep -c '[^[:space:]]' || true)
+      [ -z "$CLOSED_CANCELLED" ] && CLOSED_CANCELLED=0
+      CLOSED_IMPLEMENTED=$((PASSED_COUNT - CLOSED_CANCELLED))
+      CANCELLED_LIST=$(echo "$CANCELLED_IDS" | tr ' ' '\n' | grep -v '^[[:space:]]*$' | tr '\n' ',' | sed 's/,$//')
       SKIPPED_COUNT=$(echo "$SKIPPED_IDS" | grep -c '[^[:space:]]' || true)
       [ -z "$SKIPPED_COUNT" ] && SKIPPED_COUNT=0
       INFRA_SKIPPED_COUNT=$(echo "$INFRA_SKIPPED_IDS" | grep -c '[^[:space:]]' || true)
@@ -3236,7 +3249,11 @@ states:
       UNVERIFIED_LIST=$(echo "$UNVERIFIED_IDS" | tr '\n' ',' | sed 's/,$//')
 
       printf '\n=== Autodev Summary ===\n\n'
-      printf 'Passed       (%d): %s\n' "$PASSED_COUNT" "$${PASSED_LIST:-none}"
+      if [ "$CLOSED_CANCELLED" -gt 0 ]; then
+        printf 'Passed       (%d): %s  (%d implemented, %d cancelled: %s)\n' "$PASSED_COUNT" "$${PASSED_LIST:-none}" "$CLOSED_IMPLEMENTED" "$CLOSED_CANCELLED" "$CANCELLED_LIST"
+      else
+        printf 'Passed       (%d): %s\n' "$PASSED_COUNT" "$${PASSED_LIST:-none}"
+      fi
       printf 'Skipped      (%d): %s\n' "$SKIPPED_COUNT" "$${SKIPPED_LIST:-none}"
       if [ "$INFRA_SKIPPED_COUNT" -gt 0 ]; then
         printf 'Infra-skipped (%d): %s  (transient kill — just re-run)\n' "$INFRA_SKIPPED_COUNT" "$INFRA_SKIPPED_LIST"
@@ -3291,20 +3308,22 @@ states:
 
       # BUG-2908: verdict reflects verified closure, not threshold-pass. A run
       # only reports success/partial when at least one issue is verifiably
-      # closed; anything staged-but-unverified or abandoned mid-flight makes
+      # implemented (ENH-3613: cancelled closures do not count, matching
+      # BUG-3449 in auto-refine-and-implement); anything staged-but-unverified or abandoned mid-flight makes
       # it phantom regardless of legitimate skips (decomposed/gate-blocked/
       # decision-unresolved/low-readiness parking is not a failure signal).
-      if [ "$PASSED_COUNT" -gt 0 ] && [ "$UNVERIFIED_COUNT" -eq 0 ] && [ "$ABANDONED" -eq 0 ]; then
+      if [ "$CLOSED_IMPLEMENTED" -gt 0 ] && [ "$UNVERIFIED_COUNT" -eq 0 ] && [ "$ABANDONED" -eq 0 ]; then
         VERDICT=success
-      elif [ "$PASSED_COUNT" -gt 0 ]; then
+      elif [ "$CLOSED_IMPLEMENTED" -gt 0 ]; then
         VERDICT=partial
       elif [ "$UNVERIFIED_COUNT" -gt 0 ] || [ "$ABANDONED" -gt 0 ]; then
         VERDICT=phantom
       elif [ "$NOT_STARTED_COUNT" -gt 0 ]; then
         # ENH-2989: a Phase 1 rejection is a legitimate parking outcome, not
         # an infrastructure failure — distinct from both `phantom` (a real
-        # implementation failure) and `no-op` (nothing happened at all;
-        # refine/wire/confidence-check ran here before the rejection).
+        # implementation failure) and `no-op` (nothing implemented,
+        # including an all-cancelled run; refine/wire/confidence-check ran here
+        # before the rejection).
         VERDICT=not_started
       else
         VERDICT=no-op
@@ -3316,14 +3335,14 @@ states:
         VERDICT=rate_limited
       fi
 
-      printf '{"verdict":"%s","closed":%s,"not_closed":%s,"skipped":%s,"gate_blocked":%s,"decision_unresolved":%s,"not_started":%s,"inflight_unresolved":%s,"abandoned":%s,"stop_reason":"%s","pending":%s,"proof_gate_infra":%s}\n' \
-        "$VERDICT" "$PASSED_COUNT" "$UNVERIFIED_COUNT" "$SKIPPED_COUNT" "$GATE_BLOCKED_COUNT" "$DECISION_UNRESOLVED_COUNT" "$NOT_STARTED_COUNT" "$ABANDONED" "$ABANDONED" "$STOP_REASON" "$PENDING_COUNT" "$PROOF_GATE_INFRA_COUNT" \
+      printf '{"verdict":"%s","closed":%s,"not_closed":%s,"skipped":%s,"gate_blocked":%s,"decision_unresolved":%s,"not_started":%s,"inflight_unresolved":%s,"abandoned":%s,"stop_reason":"%s","pending":%s,"proof_gate_infra":%s,"closed_implemented":%s,"closed_cancelled":%s}\n' \
+        "$VERDICT" "$PASSED_COUNT" "$UNVERIFIED_COUNT" "$SKIPPED_COUNT" "$GATE_BLOCKED_COUNT" "$DECISION_UNRESOLVED_COUNT" "$NOT_STARTED_COUNT" "$ABANDONED" "$ABANDONED" "$STOP_REASON" "$PENDING_COUNT" "$PROOF_GATE_INFRA_COUNT" "$CLOSED_IMPLEMENTED" "$CLOSED_CANCELLED" \
         > ${context.run_dir}/summary.json
 
       # BUG-2908: route the FSM terminal on verified closure, not "reached the
       # end" — mirrors BUG-2636's fix to auto-refine-and-implement.yaml's
       # finalize. Only `phantom` diverts to `failed`; success/partial/no-op
-      # (a genuinely empty or fully-parked backlog) still render `done`.
+      # (a genuinely empty, fully-parked or all-cancelled backlog) still render `done`.
       case "$VERDICT" in
         phantom) exit 1 ;;
         *) exit 0 ;;

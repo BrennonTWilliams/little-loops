@@ -7416,12 +7416,17 @@ class TestAutodevLoop:
         assert state.get("on_yes") == "done"
         assert state.get("on_no") == "failed"
 
-    def _run_finalize_done(self, data: dict, run_dir: Path) -> tuple[dict, str]:
+    def _run_finalize_done(
+        self, data: dict, run_dir: Path, env: dict | None = None
+    ) -> tuple[dict, str]:
         state = data["states"].get("finalize_done", {})
         action = state.get("action", "")
         script = action.replace("${context.run_dir}", str(run_dir))
         script = script.replace("$${", "${")
-        result = subprocess.run(["bash", "-c", script], cwd=run_dir, capture_output=True, text=True)
+        result = subprocess.run(
+            ["bash", "-c", script], cwd=run_dir, capture_output=True, text=True, env=env
+        )
+        self._last_returncode = result.returncode
         summary_path = run_dir / "summary.json"
         summary = json.loads(summary_path.read_text()) if summary_path.exists() else {}
         return summary, result.stdout
@@ -7482,8 +7487,73 @@ class TestAutodevLoop:
         summary = json.loads((run_dir / "summary.json").read_text())
         assert summary["verdict"] == "success"
         assert summary["closed"] == 1
+        assert summary["closed_implemented"] == 1
+        assert summary["closed_cancelled"] == 0
         assert summary["not_closed"] == 0
         assert "FEAT-200" in (run_dir / "autodev-passed.txt").read_text()
+
+    def _stub_statuses(self, run_dir: Path, statuses: dict[str, str]) -> dict:
+        """Per-ID ll-issues stub returning display-cased statuses; returns env."""
+        arms = "".join(f"{i}) echo '{{\"status\":\"{s}\"}}';; " for i, s in statuses.items())
+        stub = run_dir / "ll-issues"
+        stub.write_text(f'#!/bin/sh\nif [ "$1" = "show" ]; then case "$2" in {arms}esac; fi\n')
+        stub.chmod(0o755)
+        return {"PATH": f"{run_dir}:{__import__('os').environ['PATH']}"}
+
+    def test_finalize_done_splits_cancelled_from_implemented(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """ENH-3613: mixed run reports both keys, sum rule, Passed suffix, bare IDs."""
+        (tmp_path / "autodev-staged.txt").write_text("FEAT-1\nFEAT-2\nFEAT-2\nBUG-1\n")
+        env = self._stub_statuses(
+            tmp_path, {"FEAT-1": "Completed", "FEAT-2": "Cancelled", "BUG-1": "Completed"}
+        )
+        summary, out = self._run_finalize_done(data, tmp_path, env)
+        assert summary["closed"] == 3
+        assert summary["closed_implemented"] == 2
+        assert summary["closed_cancelled"] == 1
+        assert summary["closed_implemented"] + summary["closed_cancelled"] == summary["closed"]
+        assert summary["verdict"] == "success"
+        passed = [ln for ln in out.splitlines() if ln.startswith("Passed")]
+        assert passed and "(2 implemented, 1 cancelled: FEAT-2)" in passed[0]
+        ids = (tmp_path / "autodev-passed.txt").read_text().split()
+        assert sorted(ids) == ["BUG-1", "FEAT-1", "FEAT-2"]
+
+    def test_finalize_done_all_implemented_has_no_suffix(self, data: dict, tmp_path: Path) -> None:
+        (tmp_path / "autodev-staged.txt").write_text("FEAT-1\n")
+        env = self._stub_statuses(tmp_path, {"FEAT-1": "Completed"})
+        summary, out = self._run_finalize_done(data, tmp_path, env)
+        assert (summary["closed_implemented"], summary["closed_cancelled"]) == (1, 0)
+        assert "cancelled" not in [ln for ln in out.splitlines() if ln.startswith("Passed")][0]
+
+    def test_finalize_done_all_cancelled_is_no_op(self, data: dict, tmp_path: Path) -> None:
+        """ENH-3613 Option B: an all-cancelled run implemented nothing -> no-op, exit 0."""
+        (tmp_path / "autodev-staged.txt").write_text("FEAT-1\nFEAT-2\n")
+        env = self._stub_statuses(tmp_path, {"FEAT-1": "Cancelled", "FEAT-2": "Cancelled"})
+        summary, _ = self._run_finalize_done(data, tmp_path, env)
+        assert self._last_returncode == 0
+        assert summary["verdict"] == "no-op"
+        assert (summary["closed"], summary["closed_implemented"]) == (2, 0)
+        assert summary["closed_cancelled"] == 2
+
+    def test_finalize_done_all_cancelled_with_not_started(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        (tmp_path / "autodev-staged.txt").write_text("FEAT-1\n")
+        (tmp_path / "autodev-not-started.txt").write_text("FEAT-9  notstarted_x\n")
+        env = self._stub_statuses(tmp_path, {"FEAT-1": "Cancelled"})
+        summary, _ = self._run_finalize_done(data, tmp_path, env)
+        assert summary["verdict"] == "not_started"
+
+    def test_finalize_done_cancelled_plus_unverified_is_phantom(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        (tmp_path / "autodev-staged.txt").write_text("FEAT-1\nFEAT-2\n")
+        env = self._stub_statuses(tmp_path, {"FEAT-1": "Cancelled", "FEAT-2": "Open"})
+        summary, _ = self._run_finalize_done(data, tmp_path, env)
+        assert self._last_returncode == 1
+        assert summary["verdict"] == "phantom"
+        assert summary["closed_cancelled"] == 1
 
     def test_finalize_done_no_op_when_nothing_staged(self, data: dict, tmp_path: Path) -> None:
         """An empty run (nothing staged, nothing in-flight) must report verdict=no-op
@@ -7491,6 +7561,8 @@ class TestAutodevLoop:
         run_dir = tmp_path
         summary, _ = self._run_finalize_done(data, run_dir)
         assert summary["verdict"] == "no-op"
+        assert summary["closed_implemented"] == 0
+        assert summary["closed_cancelled"] == 0
         assert summary["stop_reason"] == "completed"
         assert summary["pending"] == 0
 
