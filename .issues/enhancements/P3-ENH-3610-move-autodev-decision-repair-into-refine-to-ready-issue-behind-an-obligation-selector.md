@@ -81,7 +81,7 @@ refuted-spike leg still uses stays until ENH-3611 removes it.
   | Surviving state | Edge | Removed target | New target |
   |---|---|---|---|
   | `check_status_at_dequeue` | `on_no`, `on_error` | `check_decision_at_dequeue` | `check_blockers_at_dequeue` |
-  | `route_refine_success` | `READY`, `BLOCKED` | `check_decision_after_refine` | `check_passed` |
+  | `route_refine_success` | `READY`, `BLOCKED`, `MISSING`, `_`, `_error` | `check_decision_after_refine` | `check_passed` |
   | `check_passed` | `on_no`, `on_cannot_judge` | `triage_outcome_failure` | `select_obligation_post_refine` |
   | `recheck_scores` | `on_yes` | `decide_current` | `select_obligation_pre_implement` |
   | `recheck_scores` | `on_no`, `on_error`, `on_cannot_judge` | `check_decision_before_size_review` | `run_size_review` |
@@ -171,7 +171,7 @@ Rewrite, don't delete (ENH-3075 AC 8); add stays-deleted guards (pattern:
 ## Impact
 
 - **Priority**: P3, child of ENH-3608 (EPIC-3565 consolidation)
-- **Effort**: Medium-large: −8/+2 autodev states, +2 child states, 13 edge retargets
+- **Effort**: Medium-large: −8/+2 autodev states, +2 child states, 16 edge retargets
 - **Risk**: High: changes where decisions are resolved in the most-used loop; the child
   invariant and the re-entry cap are the safety net
 - **Breaking Change**: No (loop-internal)
@@ -217,3 +217,27 @@ original design rationale.
 ## Status
 
 **Open** | Created: 2026-09-26 | Priority: P3
+
+## Verification Notes
+
+Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the same pass, so the
+issue as it now reads is up to date — this section is a record of what was wrong and fixed, not
+an outstanding action item)
+
+Verified 2026-09-26 against `autodev.yaml` and `refine-to-ready-issue.yaml` at HEAD 5ea867d5c:
+all 8 removed states exist; both selectors are absent as expected (ENH-3609's
+`route_refine_success` has landed); the child's three no-class `done` edges
+(`check_outcome`, `check_missing_artifacts`, `check_scores_from_file`) and `write_broke_down`
+match; every other retarget row, `_error` target, and the `rn-remediate.yaml` and
+`dispatch_pre_deferral_remedy` comment sites match. `ll-verify-evidence`: clean. Decisions
+gate: no violations. Graph: provider=`codegraph` freshness=`stale` (not used to originate a verdict).
+
+- **Fixed**: the `route_refine_success` retarget row listed only `READY`, `BLOCKED`; the state
+  also routes `MISSING`, `_`, and `_error` to `check_decision_after_refine`, so all five
+  edges retarget to `check_passed`. Retarget count updated 13 → 16.
+
+
+
+
+## Session Log
+- `/ll:verify-issues` - 2026-09-26T05:50:13 - `3a196c8d-c8cb-4f09-ab88-54c0f0f49d57.jsonl`

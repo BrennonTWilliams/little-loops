@@ -16,6 +16,12 @@ blocked_by:
 - ENH-3613
 relates_to:
 - ENH-3612
+confidence_score: 75
+outcome_confidence: 71
+score_complexity: 10
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 # FEAT-3573: Autodev code formatting and quality evidence gate before closure credit
@@ -352,18 +358,18 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-09-25_
+_Added by `/ll:confidence-check` on 2026-09-26_
 
-> **Superseded 2026-09-26:** scope changed (split into ENH-3612/ENH-3613, Design Decisions
-> added), so the scores were cleared from frontmatter. Re-run `/ll:confidence-check`.
-> The "decision gap" risk below is resolved by the rewritten Acceptance Criteria.
+**Readiness Score**: 75/100 → STOP — ADDRESS GAPS (Dependencies Hard Override)
+**Outcome Confidence**: 71/100 → MODERATE
 
-**Readiness Score**: 95/100 → PROCEED
-**Outcome Confidence**: 63/100 → MODERATE
+### Gaps to Address
+- Unresolved `blocked_by`: ENH-3613 (open). Its `summary.json` key shape is required by Step 6 (`quality_failed` reason-line filter). Land ENH-3613 first, or remove the dependency if no longer applicable. Without the override the aggregate would be PROCEED WITH CAUTION; all other gates (Program Design, parity, claims, decision, structure, learning tests) are clean.
 
 ### Outcome Risk Factors
-- decision gap — recorded Option B (autodev gate) is not fully applied: Acceptance Criteria still specifies `manage-issue` (rejected Option A identifier). Apply the decision to the AC before implementation so the gate owner is unambiguous (clears via `/ll:decide-issue` or a directive edit).
-- broad enumeration across ~12 sites (oracle + autodev closure states + `skills/manage-issue/SKILL.md` + 3 host mirrors + ~6 docs + frozen test sets); the 9-state oracle freeze, MR11 allowlist, and interpolation baseline all need same-commit updates.
+- broad enumeration across ~8 source/config sites plus ~6 docs and frozen test sets (9-state oracle freeze, MR11 allowlist, interpolation baseline, autodev state-count pin); all need same-commit updates.
+- moderate per-site complexity: `finalize_done` promotion rule, new gate states, and oracle opt-in parameter touch shared closure accounting.
+- open measurement: `test_cmd` wall-clock vs the `run_test` 600s timeout must be measured before wiring (Step 2).
 
 ## Verification Notes
 
@@ -377,6 +383,7 @@ Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the sam
 - `ll-verify-evidence`: clean. Decisions log: no required rules. Graph: provider=`codegraph` freshness=`fresh` (not needed for any verdict).
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-26T05:49:01 - `5966980a-c2ea-49c8-a21f-97ae3fab2cc8.jsonl`
 - `/ll:verify-issues` - 2026-09-26T05:13:24 - `d2d5d28e-c902-43ff-bf33-1a7825d2f036.jsonl`
 - `/ll:confidence-check` - 2026-09-25T21:32:36 - `672e0da1-840e-4b60-a432-7b20e9ebbd01.jsonl`
 - `/ll:wire-issue` - 2026-09-25T20:49:53 - `4a475966-a47c-4657-a3e4-16e6706f4c4d.jsonl`
