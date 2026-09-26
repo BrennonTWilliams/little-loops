@@ -24,7 +24,8 @@ class TestRunLearningGateForIssueTargetsThreading:
     def test_targets_none_omits_targets_csv_context(self, tmp_path: Path) -> None:
         """Default (targets=None) must not append targets_csv (JIT fallback unchanged)."""
         issue_path = tmp_path / "ENH-1.md"
-        issue_path.write_text("---\nid: ENH-1\n---\n")
+        # ENH-3602: declared-but-unproven target keeps the JIT subprocess path live
+        issue_path.write_text("---\nid: ENH-1\nlearning_tests_required: [unproven-target]\n---\n")
 
         with patch(
             "little_loops.learning_tests.gate.subprocess.run", return_value=self._ok_result()
@@ -66,7 +67,9 @@ class TestRunLearningGateForIssueTargetsThreading:
     def test_empty_targets_list_omits_targets_csv_context(self, tmp_path: Path) -> None:
         """An empty (but non-None) list must behave like None — no targets_csv forwarded."""
         issue_path = tmp_path / "ENH-4.md"
-        issue_path.write_text("---\nid: ENH-4\n---\n")
+        # ENH-3602: targets=[] override drops the learning-test leg, so declare a
+        # spike requirement to keep the subprocess path live
+        issue_path.write_text("---\nid: ENH-4\nspike_needed: true\n---\n")
 
         with patch(
             "little_loops.learning_tests.gate.subprocess.run", return_value=self._ok_result()
@@ -120,7 +123,7 @@ class TestRunLearningGateForIssueTerminalDiscrimination:
 
     def test_blocked_terminal_yields_blocked_verdict(self, tmp_path: Path) -> None:
         issue_path = tmp_path / "ENH-6.md"
-        issue_path.write_text("---\nid: ENH-6\n---\n")
+        issue_path.write_text("---\nid: ENH-6\nlearning_tests_required: [unproven-target]\n---\n")
 
         with (
             patch(
@@ -138,7 +141,7 @@ class TestRunLearningGateForIssueTerminalDiscrimination:
 
     def test_impl_failed_terminal_yields_distinct_verdict(self, tmp_path: Path) -> None:
         issue_path = tmp_path / "ENH-7.md"
-        issue_path.write_text("---\nid: ENH-7\n---\n")
+        issue_path.write_text("---\nid: ENH-7\nlearning_tests_required: [unproven-target]\n---\n")
 
         with (
             patch(
@@ -159,7 +162,7 @@ class TestRunLearningGateForIssueTerminalDiscrimination:
         """No archived history to discriminate from — fail safe to the
         generic-failure path rather than mislabeling as a gate block."""
         issue_path = tmp_path / "ENH-8.md"
-        issue_path.write_text("---\nid: ENH-8\n---\n")
+        issue_path.write_text("---\nid: ENH-8\nlearning_tests_required: [unproven-target]\n---\n")
 
         with (
             patch(

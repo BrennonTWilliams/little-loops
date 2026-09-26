@@ -164,3 +164,14 @@ def mark_stale(target_slug: str, *, base_dir: Path | None = None) -> None:
 def check_learning_test(target: str, *, base_dir: Path | None = None) -> LearnTestRecord | None:
     """Look up a record by target name (slugified). Returns None if not found."""
     return read_record(slugify(target), base_dir=base_dir)
+
+
+# Re-exported at the bottom (after the registry API is defined) so that
+# `from little_loops.learning_tests import assess_proof` works regardless of
+# whether this package or little_loops.learning_tests.assess was imported
+# first. assess.py keeps its little_loops.cli / BRConfig imports
+# function-local (see ENH-3602 notes there), so this module-scope re-export
+# cannot introduce an import cycle.
+from little_loops.learning_tests.assess import ProofStatus as ProofStatus  # noqa: E402
+from little_loops.learning_tests.assess import ProofVerdict as ProofVerdict  # noqa: E402
+from little_loops.learning_tests.assess import assess_proof as assess_proof  # noqa: E402

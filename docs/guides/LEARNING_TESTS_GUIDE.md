@@ -340,11 +340,11 @@ learning_tests_required:
   - "GitHub API pagination"
 ```
 
-`/ll:ready-issue` queries each target via `ll-learning-tests check`:
+`/ll:ready-issue` classifies via `ll-learning-tests assess --issue <ID>` (ENH-3602 — the single classification owner; it aggregates the registry targets plus the issue's spike proof and the attempt-budget policy) and maps each target's `ProofStatus`:
 - **Proven** → PASS row in VALIDATION table
-- **Stale** → WARN row: re-run `/ll:explore-api "<target>"`
-- **Refuted** → **auto-invokes** `/ll:explore-api "<target>"`, then re-checks; hard NOT_READY only if still refuted after exploration
-- **Missing** → **auto-invokes** `/ll:explore-api "<target>"`, then re-checks; NOT_READY only if still missing after exploration
+- **Stale** → WARN row: re-run `/ll:explore-api "<target>"` (no provisioning spend)
+- **Refuted** → **auto-invokes** `/ll:explore-api "<target>"` once, then re-runs the assess; hard NOT_READY only if still refuted after exploration
+- **Absent** → **auto-invokes** `/ll:explore-api "<target>"` once, then re-runs the assess; NOT_READY only if still absent after exploration
 
 Issues without `learning_tests_required` are opt-in at the interactive `/ll:ready-issue` layer, but all three automation runners now resolve targets just-in-time via a shared `resolve_learning_targets()` helper (ENH-2319): when the field is absent (`None`), the helper extracts targets from the issue text via LLM, so an unrefined issue routed to any runner still has its external-API assumptions checked rather than silently bypassed. `ll-auto` gates each issue between the ready and implement phases (use `--skip-learning-gate` to bypass); `ll-sprint` gates the whole sprint in a pre-flight batch check; `ll-parallel` gates per worktree (BUG-2320).
 

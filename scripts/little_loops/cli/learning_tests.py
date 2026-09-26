@@ -61,6 +61,39 @@ def cmd_check(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_assess(args: argparse.Namespace) -> int:
+    """Print the issue's proof verdict; exit 0 on proven/not_required, 1 otherwise, 2 unresolvable.
+
+    The prompt-driven consumer surface of ``assess_proof`` (ENH-3602):
+    confidence-check and ready-issue call this instead of re-deriving
+    stale/refuted/missing classification themselves.
+    """
+    from pathlib import Path
+
+    from little_loops.cli.output import print_json
+    from little_loops.learning_tests.assess import assess_proof
+
+    issue_ref = args.issue
+    issue_path = Path(issue_ref)
+    if not issue_path.is_file():
+        from little_loops.cli.issues.show import _resolve_issue_id
+        from little_loops.config import BRConfig
+
+        issue_path = _resolve_issue_id(BRConfig(Path.cwd()), issue_ref) or issue_path
+    if not issue_path.is_file():
+        print(f"Error: Issue '{issue_ref}' not found.", file=sys.stderr)
+        return 2
+
+    verdict = assess_proof(issue_path, cwd=Path.cwd())
+    if getattr(args, "json", False):
+        print_json(verdict.to_dict())
+    else:
+        print(verdict.status)
+        if verdict.reason:
+            print(verdict.reason, file=sys.stderr)
+    return 0 if verdict.status in ("proven", "not_required") else 1
+
+
 def cmd_prove(args: argparse.Namespace) -> int:
     import subprocess
 
@@ -384,6 +417,31 @@ Examples:
             help="Print what would be stamped without writing any record",
         )
 
+        assess_parser = subparsers.add_parser(
+            "assess",
+            help=(
+                "Print an issue's proof verdict; exit 0 if proven/not_required, "
+                "1 if stale/refuted/absent, 2 if unresolvable (ENH-3602)"
+            ),
+            description=(
+                "Single-owner classification of an issue's learning proof: learning-test "
+                "registry targets plus spike proof. Consumers map the ProofStatus verdict "
+                "to their own per-status responses instead of re-deriving classification."
+            ),
+        )
+        assess_parser.add_argument(
+            "--issue",
+            required=True,
+            metavar="ID",
+            help="Issue ID (e.g., 42, ENH-42, P3-ENH-42) or path to the issue file",
+        )
+        assess_parser.add_argument(
+            "--json",
+            "-j",
+            action="store_true",
+            help="Output the full ProofVerdict as JSON (issue_id, status, targets, budget_remaining, reason)",
+        )
+
         parsed = parser.parse_args()
 
         if parsed.command == "check":
@@ -398,6 +456,8 @@ Examples:
             return cmd_prove(parsed)
         elif parsed.command == "backfill-versions":
             return cmd_backfill_versions(parsed)
+        elif parsed.command == "assess":
+            return cmd_assess(parsed)
         else:
             parser.print_help()
             return 1

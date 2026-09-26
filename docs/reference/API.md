@@ -7469,7 +7469,8 @@ proven_version: "0.42.1"
 | `gate.is_record_stale` | `version_drift OR age > threshold` staleness predicate — ENH-3125 |
 | `gate.describe_staleness` | Short reason a record is stale (version transition or age), or `None` if fresh — ENH-3125 |
 | `resolve_learning_targets` | Return targets for an issue (field-first, JIT extraction fallback) — ENH-2319 |
-| `run_learning_gate_for_issue` | Determine the learning-gate verdict for an issue and return `"passed"`, `"blocked"`, `"impl_failed"`, or `"skipped"` — ENH-2319, BUG-2833, ENH-2834 |
+| `assess_proof` | Single-owner classification of an issue's learning proof (learning-test targets + spike proof) into a `ProofVerdict`; owns the attempt-budget policy — ENH-3602 |
+| `run_learning_gate_for_issue` | Determine the learning-gate verdict for an issue and return `"passed"`, `"blocked"`, `"impl_failed"`, or `"skipped"` — ENH-2319, BUG-2833, ENH-2834; `assess_proof` pre-check short-circuits `"passed"` on `proven`/`not_required` — ENH-3602 |
 
 ### write_record
 
@@ -7555,6 +7556,34 @@ Return learning-test targets for an issue (ENH-2319). Returns `issue.learning_te
 
 The `is not None` sentinel is intentional: `[]` means "proven empty — no external deps" and must NOT trigger JIT extraction; `None` means "field not yet populated" and triggers it.
 
+### assess_proof
+
+```python
+def assess_proof(
+    issue_path: Path,
+    *,
+    attempts_used: int | None = None,
+    stale_after_days: int | None = None,
+    cwd: Path | None = None,
+    targets: list[str] | None = None,
+) -> ProofVerdict
+```
+
+The single owner of learning-proof classification and the attempt-budget policy (ENH-3602). Consumers (`confidence-check`, `ready-issue`, the `ll-auto` learning gate) read its verdict and map per-status responses; they do not re-derive stale/refuted/missing classification themselves.
+
+Aggregates both readable proof sources:
+
+- **Learning-test leg** — each declared `learning_tests_required` target against the registry: no record → `absent`; `status: refuted` → `refuted`; stale per `gate.is_record_stale` → `stale`; otherwise `proven`.
+- **Spike leg** — the issue's frontmatter spike flags (`spike_refuted` → `refuted`; `spike_completed` without refutation → `proven`; otherwise `absent`) plus `gate:` entries resolved via `resolve_gate_verdict`: an unsatisfied `proof` gate declares a spike requirement. The `spike` key is omitted when no requirement exists.
+
+`ProofVerdict` (dataclass): `issue_id`, `status` (worst status among targets — `proven < stale < absent < refuted`; `not_required` when nothing is declared), `targets: dict[str, ProofStatus]`, `budget_remaining: int | None`, `reason: str`.
+
+Budget policy: the attempt counter stays run-scoped in the caller's `run_dir`; only the cap lives here — callers pass `attempts_used` and get `max(0, 2 - attempts_used)` back. `attempts_used=None` (standalone skills) means no run-scoped budget, with provisioning capped at one attempt per unproven target per caller invocation by policy.
+
+Staleness knobs: `stale_after_days=None` resolves the `learning_tests` config trio (`stale_after_days`, `version_aware_staleness`, `version_match_backstop_multiplier`); when `learning_tests.enabled` is false, staleness evaluation is off entirely (a proven record counts fresh), matching the FSM learning state. `targets` (caller-resolved registry) takes precedence over the frontmatter field — the shape `run_learning_gate_for_issue` passes.
+
+Prompt-driven consumers call the CLI surface instead: `ll-learning-tests assess --issue <ID> [--json]` (exit 0 = `proven`/`not_required`, 1 otherwise, 2 unresolvable).
+
 ### run_learning_gate_for_issue
 
 ```python
@@ -7568,6 +7597,8 @@ def run_learning_gate_for_issue(
 ```
 
 Determine the learning-gate verdict for an issue and return it (ENH-2319). `skip=True` short-circuits to `"skipped"` without running any loop (honours `--skip-learning-gate`).
+
+Before either subprocess path runs, an `assess_proof` pre-check (ENH-3602) classifies the issue's proof: `proven` (or `not_required`) returns `"passed"` without spawning the gate at all. Any other status takes the existing subprocess path unchanged — the child loop keeps its own stale→re-prove spend, so a stale issue legitimately classifies `stale` at the pre-check yet may still yield `"passed"` after the gate re-proves (classification vs remediation). A pre-check failure fails open to the subprocess path.
 
 Two distinct paths, selected by whether `targets` is non-empty (ENH-2834):
 

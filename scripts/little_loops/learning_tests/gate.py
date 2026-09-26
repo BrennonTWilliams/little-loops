@@ -271,6 +271,30 @@ def run_learning_gate_for_issue(
 
     working_dir = cwd or Path.cwd()
 
+    # ENH-3602 assess_proof pre-check: when the single proof owner already
+    # classifies the issue's evidence as proven (or nothing is required),
+    # "passed" is decided without spawning the subprocess gate. Any other
+    # status (stale/refuted/absent) takes the existing subprocess path
+    # unchanged — the child loop keeps its own stale→re-prove spend, so a
+    # stale fixture legitimately classifies "stale" here yet may still yield
+    # "passed" after the gate re-proves (classification vs remediation).
+    # Caller-resolved targets are assessed, not the frontmatter field, so
+    # the ENH-2834 registry-resolved and JIT-extraction shapes stay correct.
+    # Fail-open: a pre-check failure falls through to the subprocess gate.
+    try:
+        from little_loops.learning_tests.assess import assess_proof
+
+        proof = assess_proof(issue_path, cwd=working_dir, targets=targets)
+        if proof.status in ("proven", "not_required"):
+            logger.info(
+                "Learning gate pre-check: proof %s for %s — skipping subprocess gate",
+                proof.status,
+                proof.issue_id,
+            )
+            return "passed"
+    except Exception:  # noqa: BLE001 — pre-check failure must fail open
+        logger.debug("assess_proof pre-check failed; falling through to gate", exc_info=True)
+
     if targets:
         # BUG-3085: pass the configured queue-wait budget down explicitly so
         # the child's --queue wait *is* the caller's budget, rather than

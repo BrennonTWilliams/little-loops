@@ -5938,6 +5938,7 @@ Query and manage the learning test registry. Skills and loops call this via `Bas
 | Subcommand | Description |
 |------------|-------------|
 | `check <target> [--stale-aware]` | Print record JSON (with a derived `failing_claims` count) and, on stderr, the text of any `result: fail` assertions; exit 1 if not found or (with `--stale-aware`) if the record is stale. A `proven` record only requires one passing assertion, so it can still carry contradicted claims — `failing_claims` surfaces that independent of `status` (BUG-3072) |
+| `assess --issue <ID> [--json]` | Single-owner classification of an issue's learning proof (learning-test targets plus spike proof) into a `ProofStatus` per target and an overall worst-status verdict: exit 0 = `proven`/`not_required` (implementation may proceed), 1 = `stale`/`refuted`/`absent`, 2 = issue unresolvable. `--json` prints the full verdict (`issue_id`, `status`, `targets`, `budget_remaining`, `reason`). Consumers map the verdict to their own per-status responses instead of re-deriving classification (ENH-3602) |
 | `list` | Print all records as a JSON array |
 | `mark-stale <target>` | Set status=stale; exit 1 if not found |
 | `orphans [--mark-stale]` | List records whose target package is not imported by any project file; optionally mark them all stale |
@@ -5948,6 +5949,7 @@ Query and manage the learning test registry. Skills and loops call this via `Bas
 ```bash
 ll-learning-tests check "Anthropic SDK streaming"
 ll-learning-tests check "Anthropic SDK streaming" --stale-aware   # exit 1 if stale
+ll-learning-tests assess --issue ENH-42 --json     # per-target ProofStatus + budget (ENH-3602)
 ll-learning-tests list
 ll-learning-tests list | jq -r '.[] | "\(.status)\t\(.target)"'
 ll-learning-tests mark-stale "Anthropic SDK streaming"

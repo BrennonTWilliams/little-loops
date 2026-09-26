@@ -11,10 +11,10 @@ learning_tests_required:
 - playwright
 - node
 confidence_score: 90
-outcome_confidence: 75
+outcome_confidence: 82
 score_complexity: 14
 score_test_coverage: 25
-score_ambiguity: 18
+score_ambiguity: 25
 score_change_surface: 18
 ---
 
@@ -50,13 +50,13 @@ Copy the thin-wrapper shape of `html-website-generator`:
 plan → run_gen_eval (loop: oracles/generator-evaluator) → smoke_test → viewport_gate → vision_gate → done
 ```
 
-1. **Generator prompt**: require an app-shell layout sized to the viewport (`100dvh`). No document scroll. Internal scroll panes are allowed (message lists, sidebars, tables). Do **not** mandate `overflow: hidden` on `body`: that invites the generator to clip content off-screen to pass the check.
-2. **Rubric**: keep the website-generator criteria and add an app-shell / layout-fit criterion (primary regions visible, no content cut off, sensible pane-level scrolling).
+1. **Generator prompt**: require an app-shell layout sized to the viewport (`100dvh`). No document scroll. Internal scroll panes are allowed (message lists, sidebars, tables). Require responsive collapse at narrow widths (sidebar → off-canvas/hamburger, multi-column grids → single column) so an app shell is feasible at 375x667 — without this the generator fights the viewport gate every round at mobile size. Do **not** mandate `overflow: hidden` on `body`: that invites the generator to clip content off-screen to pass the check.
+2. **Rubrics (both)**: the wrapper passes two rubrics — the oracle `rubric:` binding and vision_gate's inline Python rubric. Keep the website-generator criteria in both and add an app-shell / layout-fit criterion to both (primary regions visible, no content cut off, sensible pane-level scrolling). `viewport_gate` covers geometry deterministically; the rubric criterion catches non-interactive content clipped in non-scrollable panes, which the gate's interactive-element check deliberately does not.
 3. **`viewport_gate`** (new non-LLM shell state, same Playwright pattern as `smoke_test`: `NODE_PATH="$(npm root -g)" node -e ...`). At each viewport size (proposed: 1440x900, 1024x768, 375x667):
    - assert `document.documentElement.scrollHeight <= innerHeight` and `scrollWidth <= innerWidth`. `scrollHeight` counts overflowed content even under `overflow: hidden`, so page-level clipping is still caught.
-   - assert the bounding boxes of key interactive elements (`button`, `a`, `input`, `select`, `textarea`, `[role=button]`) that are visible and not inside a scrollable ancestor lie within the viewport. This catches content clipped inside `overflow: hidden` containers.
+   - assert the bounding boxes of key interactive elements (`button`, `a`, `input`, `select`, `textarea`, `[role=button]`) that are visible and not inside a scrollable ancestor lie within the viewport. This catches content clipped inside `overflow: hidden` containers. Coverage note: interactive elements only — non-interactive content clipped in an `overflow: hidden` (non-scrollable) pane is caught by the rubric layout-fit criterion and the full-page screenshot, not by this gate.
 4. **Feedback on failure**: before routing back to `run_gen_eval`, `viewport_gate` must append the measured dimensions and overflow amounts per viewport to `${context.run_dir}/critique.md` under an `## Issues to Address` heading, as `vision_gate` does. `smoke_test` writes nothing on failure, which would leave the regeneration pass blind to why it failed.
-5. **Exit-code contract** (matches `smoke_test`): an artifact failure prints `FAIL:...` and exits 0 → `on_no: run_gen_eval`. A harness fault (node/Playwright missing, unreadable path) exits non-zero → `on_error: failed`. Bound ping-pong with a per-run round-cap file (like `vision_gate`'s `.vision_rounds`). At the cap, route to `failed` (or accept with a warning: decide during implementation).
+5. **Exit-code contract** (matches `smoke_test`): an artifact failure prints `FAIL:...` and exits 0 → `on_no: run_gen_eval`. A harness fault (node/Playwright missing, unreadable path) exits non-zero → `on_error: failed`. Bound ping-pong with a per-run round-cap file (like `vision_gate`'s `.vision_rounds`). At the cap, accept with a warning (decided 2026-09-25, matches `vision_gate` precedent): print the failing per-viewport measurements in the acceptance line so the violation is recorded in the log and critique.md. Loop docs must say "best-effort enforcement, up to 3 refine rounds", never "never ships an overflowing page".
 
 ### Explicitly out of scope: the shared oracle
 
@@ -75,7 +75,8 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 
 ### Types
 
-- Loop context contract mirrors `html-website-generator` (`pass_threshold`, `design_tokens_context`, `design_guidance_context`) plus `viewports: str` — space-separated `WxH` list, default `"1440x900 1024x768 375x667"`, parsed inside the `viewport_gate` node script.
+- Loop context contract mirrors `html-website-generator` (`pass_threshold`, `design_tokens_context`, `design_guidance_context`) plus `viewports: str` — space-separated `/^\d+x\d+$/` entries, default `"1440x900 1024x768 375x667"`, parsed inside the `viewport_gate` node script. Malformed entries are skipped with a warning on stdout; only a zero-valid-viewports list is a harness fault (non-zero exit → `failed`).
+- Budget: `max_steps` must be raised from the wrapper's `12` — with `viewport_gate` in the chain, the accept-at-cap-3 worst path is `plan(1) + 4×(run_gen_eval, smoke_test, viewport_gate) + vision_gate(1) + done(1) = 15`. Use `max_steps: 16` (or higher); the structure test asserts `max_steps ≥ linear prefix + cap × states-per-round`.
 
 ### Signatures
 
@@ -93,8 +94,8 @@ No Python source changes: the loop is package data picked up by `get_builtin_loo
 
 - `viewport_gate` FAIL condition, evaluated at each viewport in `viewports` (default `1440x900 1024x768 375x667`): document-level scroll present (`document.documentElement.scrollHeight > window.innerHeight` or `scrollWidth > window.innerWidth`), OR any visible interactive element (`button`, `a`, `input`, `select`, `textarea`, `[role=button]`) not inside a scrollable ancestor has a bounding box extending past the viewport edges. Every configured viewport must pass for the gate to pass.
 - Exit-code mapping: artifact failure → exit 0 with `FAIL:` detail lines and no PASS token; harness fault (node/Playwright missing, unreadable artifact path, exit 124 timeout) → non-zero exit → verdict `error` → `on_error: failed`.
-- Round cap: `.viewport_rounds` counter in `${context.run_dir}`, cap `3` (mirrors `.vision_rounds` / `ROUND_CAP = 3`, `html-website-generator.yaml:215`); increment only on gate-fail rounds. Disposition at exhaustion stays the open question in § Open Questions — codebase precedent is accept-at-cap (`html-website-generator.yaml:220-221`).
-- Escape hatch: a per-run `viewports` context value overrides the default viewport list; it is a loop-context value, never a `with:` binding (unknown `with:` keys fail `_validate_with_bindings`).
+- Round cap: `.viewport_rounds` counter file in `${context.run_dir}`, cap `3` (mirrors `.vision_rounds` / `ROUND_CAP = 3`, `html-website-generator.yaml:215`); increment only on gate-fail rounds. Disposition at exhaustion: **accept-at-cap** (decided 2026-09-25, matches `vision_gate` precedent, `html-website-generator.yaml:220-221`) — the acceptance output must print the failing per-viewport measurements so the violation lands in the run log.
+- Escape hatch: a per-run `viewports` context value overrides the default viewport list; it is a loop-context value, never a `with:` binding (unknown `with:` keys fail `_validate_with_bindings`). Malformed entries (not `WxH` integers) are skipped with a warning on stdout; only a zero-valid-viewports list is a harness fault (non-zero exit → `failed`).
 
 ### Codebase Research Findings
 
@@ -167,8 +168,8 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 
 ## Implementation Steps
 
-1. Create `scripts/little_loops/loops/html-webapp-generator.yaml` (new file) from `html-website-generator.yaml` with the app-shell generator prompt and rubric.
-2. Add the `viewport_gate` state (multi-viewport overflow + bounding-box check, critique append, round cap).
+1. Create `scripts/little_loops/loops/html-webapp-generator.yaml` (new file) from `html-website-generator.yaml` with the app-shell generator prompt (including the responsive-collapse requirement) and rubrics. Keep the `generate_prompt` paragraph directing the generator to read `critique.md`'s "Issues to Address" (`html-website-generator.yaml:69-72`) verbatim — it is load-bearing: without it, `viewport_gate`'s critique append is write-only.
+2. Add the `viewport_gate` state (multi-viewport overflow + bounding-box check, critique append, round cap with accept-at-cap disposition). Bump `max_steps` to ≥ 16.
 3. Run `ll-loop validate html-webapp-generator` (MR rules, per-run artifacts under `${context.run_dir}`).
 4. Update the README.md loop count and sync mirrors (`command cp -f README.md scripts/README.md`). Add the loop to the loop docs / catalog alongside `html-website-generator`.
 5. Add tests for the loop's structure/validation, following the existing tests for `html-website-generator`.
@@ -205,8 +206,10 @@ New loop `html-webapp-generator` with `input_key: description` and `required_inp
 
 ## Open Questions
 
-- **Mobile semantics**: a content-rich app shell at 375x667 with zero scrolling is often infeasible. Proposed default: "no document scroll; internal scroll panes allowed". Alternative: exempt the mobile viewport from the gate, or only require no horizontal overflow there.
-- Round-cap exhaustion: fail, or accept with a warning?
+_None remaining — both were resolved during pre-implementation review (2026-09-25):_
+
+- **Mobile semantics → keep 375x667 fully in the gate** ("no document scroll; internal scroll panes allowed"), made feasible by requiring responsive collapse (sidebar → off-canvas/hamburger, grids → single column) in the generator prompt. Exempting mobile would remove the gate's highest-value check — narrow viewports are where overflow breaks most.
+- **Round-cap exhaustion → accept-at-cap** with the failing per-viewport measurements in the acceptance line (see § Decision Rules).
 
 ## Acceptance Criteria
 
@@ -214,6 +217,9 @@ New loop `html-webapp-generator` with `input_key: description` and `required_inp
 - `viewport_gate` fails (exit 0, `FAIL:` output) for a page whose document scrolls at any configured viewport, and appends per-viewport measurements to `critique.md`.
 - `viewport_gate` passes for an app-shell page whose overflow is confined to internal scroll panes.
 - Harness faults route to `failed`, not back to `run_gen_eval`.
+- A per-run `viewports` override is honored (the gate measures at the overridden sizes); malformed entries are skipped with a warning.
+- At the round cap, `viewport_gate` accepts with a warning line carrying the failing per-viewport measurements (accept-at-cap disposition).
+- `max_steps` (≥ 16) covers the accept-at-cap worst path without budget exhaustion.
 - `oracles/generator-evaluator.yaml` is unchanged.
 
 ## Related Key Documentation
@@ -226,6 +232,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-26T00:12:27 - `98da18e9-798f-4617-bd29-6f3941aca3ff.jsonl`
+- pre-implementation review fold-in (Claude review: resolved open questions, max_steps budget, prompt/rubric/AC gaps) - 2026-09-25
 - `/ll:confidence-check` - 2026-09-25T23:27:42 - `d6bd211f-c643-48aa-aeac-10c8d9198fcd.jsonl`
 - `/ll:wire-issue` - 2026-09-25T23:21:15 - `6f19f2e8-c7f6-4ad5-9b57-752e049be6a9.jsonl`
 - `/ll:refine-issue` - 2026-09-25T23:01:04 - `3a51f6da-0505-450c-a253-261a60c5053b.jsonl`

@@ -5782,6 +5782,13 @@ class TestBug3295ContainmentCorpusDifferential:
     # (.issues/, every `.md` file: total report count 569 -> 573).
     _ENH_3449_TOTAL_REPORTS = 573
 
+    # ENH-3602 session (2026-09-25): the corpus grew past
+    # `_ENH_3449_TOTAL_REPORTS` again from mere issue-file editing (the
+    # ENH-3602 Deviations note), not a detector regression -- same
+    # succession pattern as BUG-3448/ENH-3449 above. Measured at fix time
+    # (.issues/, every `.md` file: total report count 573 -> 574).
+    _ENH_3602_TOTAL_REPORTS = 574
+
     def test_previously_spurious_files_now_clear(self) -> None:
         from little_loops.issue_parser import _unapplied_decision
 
@@ -5802,8 +5809,9 @@ class TestBug3295ContainmentCorpusDifferential:
         `_POST_BUG_3413_TOTAL_REPORTS` comment); BUG-3448 lifted it again
         after mere corpus growth (issue creation/editing, not a detector
         regression) tripped it a second time, and the ENH-3449 session
-        lifted it a third time for the same reason. This guards against
-        *further*, unmeasured growth past the current ceiling."""
+        lifted it a third time, and the ENH-3602 session a fourth time, for
+        the same reason. This guards against *further*, unmeasured growth
+        past the current ceiling."""
         from little_loops.issue_parser import _unapplied_decision
 
         issues_dir = Path(__file__).parent.parent.parent / ".issues"
@@ -5815,9 +5823,9 @@ class TestBug3295ContainmentCorpusDifferential:
             content = path.read_text(encoding="utf-8", errors="ignore")
             total += len(_unapplied_decision(content))
 
-        assert total <= self._ENH_3449_TOTAL_REPORTS, (
-            f"corpus report total {total} exceeds post-BUG-3448 baseline "
-            f"{self._ENH_3449_TOTAL_REPORTS} -- detector regressed"
+        assert total <= self._ENH_3602_TOTAL_REPORTS, (
+            f"corpus report total {total} exceeds post-ENH-3449 baseline "
+            f"{self._ENH_3602_TOTAL_REPORTS} -- detector regressed"
         )
 
 
