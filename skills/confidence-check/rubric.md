@@ -107,46 +107,46 @@ After building `ISSUE_FILES`, iterate and evaluate exactly as in Batch Mode. The
 
 ## Phase 1.5 — Pre-Fetch Learning Test Context
 
-Check `learning_tests_required` from issue frontmatter; if present and non-empty, run `ll-learning-tests check` per target and build an injection block.
+Check `learning_tests_required` from issue frontmatter; if present and non-empty, build an injection block. Classification (stale/refuted/absent) is owned by `ll-learning-tests assess` (ENH-3602) — read its per-target `ProofStatus` verdict; do not re-derive it from `check` output or exit codes. `ll-learning-tests check` remains the detail source (failing claims, refutation summary) only.
 
 ```bash
-LT_TARGETS=$(ll-issues show "${ISSUE_ID}" --json 2>/dev/null | python3 -c "
-import json, sys
-d = json.load(sys.stdin)
-v = d.get('learning_tests_required')
-print(v or '')" 2>/dev/null || true)
+LT_ASSESS=$(ll-learning-tests assess --issue "${ISSUE_ID}" --json 2>/dev/null || true)
 
 LT_STOP=false
 LT_ROWS=""
 
-if [ -n "$LT_TARGETS" ]; then
-    IFS=',' read -ra TARGETS <<< "$LT_TARGETS"
-    for target in "${TARGETS[@]}"; do
-        target=$(echo "$target" | xargs)
-        result=$(ll-learning-tests check "$target" 2>/dev/null)
-        if [ $? -eq 0 ] && [ -n "$result" ]; then
-            status=$(echo "$result" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('status','unknown'))")
-            failing_claims=$(echo "$result" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('failing_claims',0))")
-            notes=""
-            if [ "$status" = "refuted" ]; then
-                notes=$(echo "$result" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('refutation_summary',''))")
-                LT_STOP=true
-            elif [ "$status" = "proven" ] && [ "$failing_claims" != "0" ]; then
-                notes="$failing_claims contradicted claim(s) recorded alongside the passing evidence"
+if [ -n "$LT_ASSESS" ]; then
+    # Per-target ProofStatus: proven | stale | refuted | absent (not_required → no targets)
+    while IFS='|' read -r target status; do
+        [ "$target" = "spike" ] && continue   # spike proof is Phase 4.10's /ll:spike territory
+        notes=""
+        failing_claims=0
+        if [ "$status" = "proven" ] || [ "$status" = "refuted" ]; then
+            result=$(ll-learning-tests check "$target" 2>/dev/null)
+            if [ $? -eq 0 ] && [ -n "$result" ]; then
+                failing_claims=$(echo "$result" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('failing_claims',0))")
+                if [ "$status" = "refuted" ]; then
+                    notes=$(echo "$result" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('refutation_summary',''))")
+                elif [ "$failing_claims" != "0" ]; then
+                    notes="$failing_claims contradicted claim(s) recorded alongside the passing evidence"
+                fi
             fi
-        else
-            status="missing"
-            failing_claims=0
+        fi
+        if [ "$status" = "refuted" ] || [ "$status" = "absent" ]; then
             LT_STOP=true
         fi
         LT_ROWS+="| \"$target\" | $status | $notes |\n"
-    done
+    done < <(echo "$LT_ASSESS" | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+for t, s in d.get('targets', {}).items():
+    print(f'{t}|{s}')")
 fi
 ```
 
-`ll-learning-tests check "<target>"` exit semantics: exit 0 + JSON stdout → record found (`status` is `"proven"`, `"stale"`, or `"refuted"`); exit 1 + no stdout → record not found (treat as `"missing"`). Do **not** use `--stale-aware`; that flag collapses stale+missing into a single exit 1 and loses the distinction needed for differential scoring.
+`ll-learning-tests assess --issue` exit semantics (ENH-3602): exit 0 → overall status `proven` or `not_required`; exit 1 → at least one target is `stale`, `refuted`, or `absent`; exit 2 → issue unresolvable. Per-target statuses come from the JSON `targets` map (`absent` = declared target with no registry record — the old "missing" wording). Do **not** use `check --stale-aware` here: it collapses stale+missing into a single exit 1 and, unlike `assess`, ignores the `learning_tests.enabled` staleness switch and the issue's spike proof.
 
-**Auto-provision**: If any target's status is `missing` or `refuted` after the script above, invoke `Skill("explore-api", "<target>")` for each such target before proceeding. After each invocation completes, re-run `ll-learning-tests check "<target>"` and update that target's row in `LT_ROWS` with the refreshed status and notes. Re-evaluate `LT_STOP`: reset to `false`, then set to `true` only if any target is still `missing` or `refuted` after provisioning.
+**Auto-provision**: If any target's status is `absent` or `refuted` after the script above, invoke `Skill("explore-api", "<target>")` for each such target before proceeding — at most one attempt per unproven target per invocation (ENH-3602 budget policy). After each invocation completes, re-run `ll-learning-tests assess --issue "${ISSUE_ID}" --json` and update that target's row in `LT_ROWS` with the refreshed status and notes. Re-evaluate `LT_STOP`: reset to `false`, then set to `true` only if any target is still `absent` or `refuted` after provisioning.
 
 When `LT_ROWS` is non-empty, inject the following **Learning Test Context** block into Phase 2 assessment:
 
@@ -157,7 +157,7 @@ The following external API assumptions are declared in this issue's frontmatter:
 
 | Target | Status | Notes |
 |--------|--------|-------|
-| "<target>" | proven/stale/refuted/missing | [refutation summary if refuted] |
+| "<target>" | proven/stale/refuted/absent | [refutation summary if refuted] |
 ```
 
 If `learning_tests_required` is absent or empty, omit this block entirely (no placeholder).
@@ -172,9 +172,9 @@ These modifiers apply on top of Criterion 1 when `learning_tests_required` is pr
 | proven, ≥1 failing claim (`failing_claims` > 0) | −5 | A contradicted claim coexists with the passing evidence (BUG-3072: `proven` only requires one passing assertion); verify the failing claim before relying on this target |
 | stale | −5 | API may have changed; verify before implementing |
 | refuted | −10 | Assumption disproven; forces STOP — ADDRESS GAPS |
-| missing | −10 | No test record found; forces STOP — ADDRESS GAPS |
+| absent | −10 | No test record found (declared target with no registry record); forces STOP — ADDRESS GAPS |
 
-Any `missing` or `refuted` target triggers the **Phase 3 hard override**: output `STOP — ADDRESS GAPS` regardless of aggregate readiness score (see SKILL.md Phase 3).
+Any `absent` or `refuted` target triggers the **Phase 3 hard override**: output `STOP — ADDRESS GAPS` regardless of aggregate readiness score (see SKILL.md Phase 3).
 
 ---
 

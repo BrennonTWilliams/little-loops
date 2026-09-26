@@ -253,15 +253,31 @@ same `prose_dep_drift`/`stale_prose_dep` taxonomy `/ll:refine-issue` and
 `CORRECTIONS_MADE` as usual, but the top-level verdict must be `BLOCKED`.
 
 #### Learning Test Gate
-- [ ] Check if `learning_tests_required` exists in frontmatter:
-  - If absent or empty: PASS (gate is opt-in; skip this section entirely)
-  - If present: for each target string, run `ll-learning-tests check "<target>"`
-    - `status: proven` → PASS row in VALIDATION table: `Learning Tests | PASS | "<target>" proven`
-    - `status: stale` → WARN row: `Learning Tests | WARN | "<target>" stale — re-run /ll:explore-api "<target>"`
-    - `status: refuted` → **Auto-invoke** `Skill("explore-api", "<target>")` to re-explore the assumption, then re-run `ll-learning-tests check "<target>"`. If still `refuted`: `❌ Refuted assumption: "<target>" — see registry for refutation details` + **Set verdict to NOT_READY**. If now `proven` or `stale`: apply that status and continue.
-    - Record not found (None returned) → **Auto-invoke** `Skill("explore-api", "<target>")` to create the proof record, then re-run `ll-learning-tests check "<target>"` and apply the refreshed status. If still `missing` after exploration: `❌ Unproven assumption: "<target>"` + **Set verdict to NOT_READY**.
-- Refuted or missing targets block readiness and override READY/CORRECTED.
-- Stale targets produce a WARN but do not block.
+Classification is owned by `ll-learning-tests assess` (ENH-3602) — do not re-derive
+stale/refuted/missing yourself; map its `ProofStatus` verdict to the responses below.
+
+- [ ] Run `ll-learning-tests assess --issue [ID] --json`:
+  - `status: not_required` (absent/empty `learning_tests_required`, no spike requirement):
+    PASS (gate is opt-in; skip this section entirely)
+  - Per-target `status` from the `targets` map (learning-test targets and `spike`):
+    - `proven` → PASS row in VALIDATION table: `Learning Tests | PASS | "<target>" proven`
+    - `stale` → WARN row: `Learning Tests | WARN | "<target>" stale — re-run /ll:explore-api "<target>"`
+      (WARN only — no provisioning spend on stale)
+    - `refuted` → **Auto-invoke** `Skill("explore-api", "<target>")` **once** to re-explore the
+      assumption, then re-run `ll-learning-tests assess --issue [ID] --json`. The re-assessment's
+      verdict is final: still `refuted` → `❌ Refuted assumption: "<target>"` + **Set verdict to
+      NOT_READY**; now `proven`/`stale` → apply that status and continue.
+    - `absent` → **Auto-invoke** `Skill("explore-api", "<target>")` **once** to create the proof
+      record, then re-run `ll-learning-tests assess --issue [ID] --json`. Still `absent` after
+      exploration: `❌ Unproven assumption: "<target>"` + **Set verdict to NOT_READY**.
+    - `spike` key `refuted`/`absent` → `❌ Spike proof <status> — run /ll:spike` + **Set verdict to
+      NOT_READY** (no auto-invoke; spike provisioning is `/ll:spike`'s, gated by the issue's
+      spike flags).
+- Budget policy (ENH-3602): at most **one** `/ll:explore-api` provisioning attempt per unproven
+  (`refuted`/`absent`) target per invocation — never retry a target within the same run; the
+  re-assessment decides the final verdict.
+- `refuted` or `absent` targets block readiness and override READY/CORRECTED.
+- `stale` targets produce a WARN but do not block.
 
 #### Decisions Gate
 Gate on the decisions log so its **absence** is the only clean skip; a query

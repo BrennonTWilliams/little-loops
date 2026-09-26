@@ -145,9 +145,24 @@ class TestReadyIssueLearningTestGate:
             "Step 2 must mention that the gate is opt-in (absent/empty field is PASS)"
         )
 
+    def _gate_text(self) -> str:
+        content = COMMAND_FILE.read_text()
+        start = content.index("#### Learning Test Gate")
+        next_heading = content.find("\n####", start + 1)
+        end = next_heading if next_heading != -1 else len(content)
+        return content[start:end]
+
+    def test_classification_owned_by_assess(self) -> None:
+        text = self._gate_text()
+        assert "ll-learning-tests assess" in text, (
+            "Learning Test Gate must classify via ll-learning-tests assess (ENH-3602), "
+            "not re-derive stale/refuted/missing itself"
+        )
+
 
 class TestReadyIssueLearningTestAutoProvision:
-    """commands/ready-issue.md must auto-invoke explore-api for missing/refuted targets (ENH-2242)."""
+    """commands/ready-issue.md must auto-invoke explore-api for absent/refuted targets (ENH-2242),
+    within assess_proof's one-attempt-per-target budget policy (ENH-3602)."""
 
     RUBRIC_FILE = PROJECT_ROOT / "skills" / "confidence-check" / "rubric.md"
 
@@ -179,9 +194,17 @@ class TestReadyIssueLearningTestAutoProvision:
 
     def test_ready_issue_missing_auto_invokes_explore_api(self) -> None:
         text = self._gate_text()
-        # Must not only block — must also describe the auto-invoke path for missing targets
+        # Must not only block — must also describe the auto-invoke path for absent targets
+        # (ProofStatus `absent`, the old "missing", ENH-3602)
         assert "explore-api" in text, (
-            "Learning Test Gate must reference explore-api for missing targets (ENH-2242)"
+            "Learning Test Gate must reference explore-api for absent targets (ENH-2242)"
+        )
+        absent_line = next(
+            (line for line in text.splitlines() if "`absent`" in line and "explore-api" in line),
+            None,
+        )
+        assert absent_line is not None, (
+            "absent (ProofStatus) targets must map to the explore-api provision path (ENH-3602)"
         )
 
     def test_ready_issue_stale_does_not_trigger_auto_invoke(self) -> None:
@@ -194,10 +217,20 @@ class TestReadyIssueLearningTestAutoProvision:
             "stale targets must still produce a WARN row (not trigger auto-invoke) (ENH-2242)"
         )
 
+    def test_provision_capped_at_one_attempt_per_target(self) -> None:
+        text = self._gate_text()
+        assert "once" in text.lower() or "one" in text.lower(), (
+            "Learning Test Gate must cap provisioning at one explore-api attempt per "
+            "unproven target per invocation (ENH-3602 budget policy)"
+        )
+        assert "re-run" in text or "re-assessment" in text or "re-assess" in text, (
+            "the final verdict must come from re-running assess after provisioning (ENH-3602)"
+        )
+
     def test_confidence_check_rubric_has_auto_provision_step(self) -> None:
         content = self.RUBRIC_FILE.read_text()
         assert "Auto-provision" in content, (
-            "confidence-check rubric.md must include an Auto-provision step for missing/refuted targets (ENH-2242)"
+            "confidence-check rubric.md must include an Auto-provision step for absent/refuted targets (ENH-2242)"
         )
 
     def test_confidence_check_rubric_auto_provision_before_lt_rows(self) -> None:

@@ -127,7 +127,7 @@ If invoked within manage-issue: use the research findings already gathered in Ph
 
 ### Phase 1.5: Pre-Fetch Learning Test Context
 
-See [rubric.md](rubric.md) § Phase 1.5 for the full bash invocation pattern, Learning Test Context block format, and `ll-learning-tests check` status semantics.
+See [rubric.md](rubric.md) § Phase 1.5 for the full bash invocation pattern, Learning Test Context block format, and `ll-learning-tests` status semantics. Classification comes from `ll-learning-tests assess --issue` (ENH-3602 single owner — per-target `ProofStatus`: `proven`/`stale`/`refuted`/`absent`); `ll-learning-tests check` supplies detail columns only.
 
 ### Phase 1.6: Pre-Fetch Program Design Gate (ENH-2852)
 
@@ -382,7 +382,7 @@ sites + `verification grep` + automated completeness test).
 
 ### Phase 3: Score and Recommend
 
-**Learning Test Hard Override**: if Phase 1.5 found any `missing` or `refuted` target, output `STOP — ADDRESS GAPS` regardless of aggregate score.
+**Learning Test Hard Override**: if Phase 1.5 found any `absent` or `refuted` target, output `STOP — ADDRESS GAPS` regardless of aggregate score.
 
 **Program Design Hard Override** (ENH-2852/ENH-2967): if Phase 1.6 set `PD_FAIL` to a non-empty value, output `STOP — ADDRESS GAPS` regardless of aggregate score, and include the reason verbatim from `PD_GAP` under **Gaps to Address** (when `PD_GAP` is itself empty — a missing/empty section rather than a non-specific one — state that directly instead). The remedy is to populate `## Program Design` with the concrete types, signatures, and call path (run `/ll:refine-issue` or `/ll:reconcile-issue`), or — for genuinely trivial work — to set `program_design_not_applicable: true` in the issue frontmatter. Both `PD_*` values are empty/inert whenever the gate is off, so this override is inert in unstamped projects.
 

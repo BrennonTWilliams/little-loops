@@ -391,6 +391,12 @@ class TestConfidenceCheckLearningTestPrefetch:
             "rubric.md must include the ll-learning-tests check invocation (ENH-2232)"
         )
 
+    def test_classification_owned_by_assess_in_rubric(self) -> None:
+        assert "ll-learning-tests assess" in RUBRIC_FILE.read_text(), (
+            "rubric.md Phase 1.5 must classify via ll-learning-tests assess (ENH-3602); "
+            "check remains the detail source only"
+        )
+
     def test_learning_test_context_block_in_rubric(self) -> None:
         assert "## Learning Test Context" in RUBRIC_FILE.read_text(), (
             "rubric.md must define the ## Learning Test Context block format (ENH-2232)"
