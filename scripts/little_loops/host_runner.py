@@ -62,6 +62,8 @@ __all__ = [
     "HostNotConfigured",
     "HostRunner",
     "KimiRunner",
+    "MODEL_HINTS",
+    "ModelHintError",
     "OmpRunner",
     "OpenCodeRunner",
     "PiRunner",
@@ -79,6 +81,7 @@ __all__ = [
     "resolve_host",
     "resolve_host_named",
     "resolve_model_alias",
+    "resolve_model_hint",
     "run_blocking_json",
 ]
 
@@ -112,6 +115,81 @@ def resolve_model_alias(model: str) -> str:
     API boundary.
     """
     return MODEL_ALIASES.get(model.strip().lower(), model)
+
+
+# ENH-3527: closed capability-hint vocabulary for loop ``model_hint`` declarations.
+MODEL_HINTS: tuple[str, ...] = ("coding", "reasoning", "burst")
+
+# Backend key for the Anthropic SDK/Batches request path (not a host CLI).
+ANTHROPIC_API_BACKEND = "anthropic-api"
+
+# Hint -> Anthropic alias. Both built-in tables reference this one canonical
+# entry per target; ``anthropic-api`` resolves it through ``MODEL_ALIASES`` at
+# lookup time so concrete IDs live in exactly one place.
+_HINT_ALIASES: dict[str, str] = {"coding": "sonnet", "reasoning": "opus", "burst": "haiku"}
+
+# Built-in defaults exist only where the target is verifiable in this repo.
+# Test-only hosts map each hint to a distinct sentinel so tests can assert
+# *which* hint resolved.
+_BUILTIN_HINT_MAPPINGS: dict[str, dict[str, str]] = {
+    "claude-code": _HINT_ALIASES,
+    "fake": {h: f"fake-{h}" for h in MODEL_HINTS},
+    "fake-minimal": {h: f"fake-{h}" for h in MODEL_HINTS},
+}
+
+# Runtime runners that are unconfigured: hints error regardless of config.
+_HINT_UNSUPPORTED_BACKENDS: frozenset[str] = frozenset({"opencode", "pi"})
+
+
+class ModelHintError(ValueError):
+    """A ``model_hint`` could not be resolved to a backend-valid model."""
+
+
+def hint_backend_keys() -> frozenset[str]:
+    """Return every valid backend key for ``model_hints`` mappings and resolution."""
+    return frozenset(RUNTIME_HOST_CAPABILITIES) | TEST_ONLY_HOSTS | {ANTHROPIC_API_BACKEND}
+
+
+def resolve_model_hint(
+    hint: str,
+    *,
+    backend: str,
+    overrides: dict[str, dict[str, str | Literal[False]]] | None = None,
+) -> str:
+    """Resolve a capability hint to a model selection valid for ``backend``.
+
+    ``overrides`` is the parsed ``orchestration.model_hints`` mapping, merged
+    per hint over the built-in defaults; ``False`` disables a built-in mapping.
+    Config values pass through as literals, except on ``anthropic-api`` where
+    they go through :func:`resolve_model_alias`. Never returns ``None``: a
+    missing mapping or unsupported backend raises :class:`ModelHintError`.
+    """
+    if hint not in MODEL_HINTS:
+        raise ModelHintError(f"unknown model_hint {hint!r}; expected one of {list(MODEL_HINTS)}")
+    if backend not in hint_backend_keys():
+        raise ModelHintError(f"model_hint {hint!r}: unknown backend {backend!r}")
+    if backend in _HINT_UNSUPPORTED_BACKENDS:
+        raise ModelHintError(f"model_hint {hint!r} is not supported on backend {backend!r}")
+
+    configured = (overrides or {}).get(backend, {})
+    if hint in configured:
+        value = configured[hint]
+        if value is False:
+            raise ModelHintError(
+                f"model_hint {hint!r} is disabled for backend {backend!r} "
+                f"(orchestration.model_hints.{backend}.{hint} = false)"
+            )
+        return resolve_model_alias(value) if backend == ANTHROPIC_API_BACKEND else value
+
+    if backend == ANTHROPIC_API_BACKEND:
+        return resolve_model_alias(_HINT_ALIASES[hint])
+    builtin = _BUILTIN_HINT_MAPPINGS.get(backend)
+    if builtin is None:
+        raise ModelHintError(
+            f"model_hint {hint!r} has no mapping for backend {backend!r}; "
+            f"set orchestration.model_hints.{backend}.{hint} in .ll/ll-config.json"
+        )
+    return builtin[hint]
 
 
 # Credential-scope name -> the env-var names it unlocks. This is a *scope*

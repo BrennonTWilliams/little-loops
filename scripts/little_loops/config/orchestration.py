@@ -6,7 +6,7 @@ Covers host CLI selection and related orchestration settings.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 
 @dataclass
@@ -59,6 +59,36 @@ class ComposerConfig:
         )
 
 
+def _validate_model_hints(raw: Any) -> dict[str, dict[str, str | Literal[False]]]:
+    """Validate ``orchestration.model_hints``; raise ``ValueError`` naming the bad path."""
+    from little_loops.host_runner import MODEL_HINTS, hint_backend_keys
+
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict):
+        raise ValueError("orchestration.model_hints must be a mapping")
+    backends = hint_backend_keys()
+    result: dict[str, dict[str, str | Literal[False]]] = {}
+    for backend, mapping in raw.items():
+        path = f"orchestration.model_hints.{backend}"
+        if backend not in backends:
+            raise ValueError(f"{path}: unknown backend key; expected one of {sorted(backends)}")
+        if not isinstance(mapping, dict):
+            raise ValueError(f"{path}: must be a mapping of hint -> model")
+        entry: dict[str, str | Literal[False]] = {}
+        for hint, value in mapping.items():
+            if hint not in MODEL_HINTS:
+                raise ValueError(
+                    f"{path}.{hint}: unknown hint; expected one of {list(MODEL_HINTS)}"
+                )
+            if value is False or (isinstance(value, str) and value.strip()):
+                entry[hint] = value
+            else:
+                raise ValueError(f"{path}.{hint}: must be a non-empty string or false")
+        result[backend] = entry
+    return result
+
+
 @dataclass
 class OrchestrationConfig:
     """Orchestration settings, primarily host CLI selection.
@@ -92,11 +122,16 @@ class OrchestrationConfig:
     composer: ComposerConfig = field(default_factory=ComposerConfig)
     cluster: ClusterConfig = field(default_factory=ClusterConfig)
     disable_background_tasks: bool = False
+    # ENH-3527: backend key -> hint -> model literal; ``False`` disables a
+    # built-in mapping. Validated in ``from_dict`` (config-schema.json is not
+    # enforced at runtime).
+    model_hints: dict[str, dict[str, str | Literal[False]]] = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> OrchestrationConfig:
         """Create OrchestrationConfig from dictionary."""
         return cls(
+            model_hints=_validate_model_hints(data.get("model_hints", {})),
             host_cli=data.get("host_cli"),
             request_path=data.get("request_path", "cli"),
             composer=ComposerConfig.from_dict(data.get("composer", {})),

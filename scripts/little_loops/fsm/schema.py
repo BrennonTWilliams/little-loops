@@ -772,6 +772,9 @@ class StateConfig:
     # payload prefers the host CLI's actually-applied effort observed from the
     # session JSONL over this value when available (ENH-2885).
     effort: str | None = None
+    # ENH-3527: capability hint (coding/reasoning/burst) resolved against the
+    # effective backend at dispatch. Mutually exclusive with ``model``.
+    model_hint: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON/YAML serialization."""
@@ -871,6 +874,8 @@ class StateConfig:
             result["session_mode"] = self.session_mode
         if self.effort is not None:
             result["effort"] = self.effort
+        if self.model_hint is not None:
+            result["model_hint"] = self.model_hint
 
         return result
 
@@ -980,6 +985,7 @@ class StateConfig:
             prepatch_check=data.get("prepatch_check"),
             session_mode=data.get("session_mode"),
             effort=data.get("effort"),
+            model_hint=data.get("model_hint"),
             fragment_name=data.get("fragment_name"),
             fragment_bindings=data.get("fragment_bindings", {}),
             fragment_parameters={
@@ -1052,6 +1058,9 @@ class LLMConfig:
     # effort observed from the session JSONL over this value when available
     # (ENH-2885).
     effort: str | None = None
+    # ENH-3527: capability hint; when set it wins over the (default) ``model``.
+    # Exclusivity with an explicit ``model`` is checked on the raw mapping.
+    model_hint: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON/YAML serialization."""
@@ -1067,18 +1076,23 @@ class LLMConfig:
             result["timeout"] = self.timeout
         if self.effort is not None:
             result["effort"] = self.effort
+        if self.model_hint is not None:
+            result["model_hint"] = self.model_hint
 
         return result if result else {}
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> LLMConfig:
         """Create from dictionary (JSON/YAML deserialization)."""
+        if "model" in data and "model_hint" in data:
+            raise ValueError("llm: 'model' and 'model_hint' are mutually exclusive")
         return cls(
             enabled=data.get("enabled", True),
             model=data.get("model", DEFAULT_LLM_MODEL),
             max_tokens=data.get("max_tokens", 256),
             timeout=data.get("timeout", 1800),
             effort=data.get("effort"),
+            model_hint=data.get("model_hint"),
         )
 
 

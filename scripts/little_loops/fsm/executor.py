@@ -639,6 +639,18 @@ class FSMExecutor:
 
         self._emit("loop_start", self._capture_loop_start_facts())
 
+        # ENH-3527: hint dispatch lands with ENH-3547. Until then a hint-bearing
+        # loop must fail before any state runs rather than silently use the
+        # default model. Child loops build their own executor, so they inherit this.
+        if self.fsm.llm.model_hint is not None or any(
+            st.model_hint is not None for st in self.fsm.states.values()
+        ):
+            return self._finish(
+                "error",
+                error="model_hint dispatch not yet supported (ENH-3547); "
+                "remove model_hint or use a literal model",
+            )
+
         try:
             while True:
                 # Check shutdown request (signal handling)

@@ -3,10 +3,11 @@ id: ENH-3527
 title: Resolve model capability hints for loop execution
 type: ENH
 priority: P2
-status: open
+status: done
 parent: EPIC-3563
 epic: EPIC-3563
 discovered_date: '2026-09-23'
+completed_at: '2026-09-26T04:28:12Z'
 labels:
 - multi-host
 - loops
@@ -328,6 +329,10 @@ Dropped `resolve_model_hint`'s `operation` parameter and the `model_operation` e
 - ENH-3547, ENH-3548 — split pieces 2 and 3 (blocked by this issue).
 - BUG-3541 (done) — refreshed `MODEL_ALIASES` `opus`/`fable` targets; `anthropic-api` hint tests assert current IDs.
 
+## Resolution
+
+Implemented declaration + resolver + config slice: `model_hint` on `StateConfig`/`LLMConfig` (exclusivity, hint-only round trip), `host_runner.resolve_model_hint` with built-in `claude-code`/`anthropic-api`/fake mappings, `orchestration.model_hints` (schema + `from_dict` validation), structural validation (vocabulary, exclusivity, applicability ERROR, `llm.model_hint` WARNING), `--llm-model` clearing the hint, the run-start not-yet-supported guard, `ll-verify-host-map` hint coverage, stale JSON `llm.model` default removed. Tests: `scripts/tests/test_model_hints.py`. Full suite shows the same 10 failures/2 errors as the pre-change baseline (unrelated).
+
 ## Status
 
 **Open** | Created: 2026-09-23 | Priority: P2
@@ -345,6 +350,8 @@ _Added by `/ll:confidence-check` on 2026-09-25_
 - Wide blast radius: `StateConfig`, `LLMConfig`, and `OrchestrationConfig` have many construction/consumer sites, so any change to the no-hint default must be verified against existing tests.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-26T04:28:12 - `e05c42fa-8e94-40d8-afc3-070d288800dc.jsonl`
+- `/ll:ready-issue` - 2026-09-26T04:11:11 - `49b23218-80d0-4854-9d6c-961df46b9ebe.jsonl`
 - `/ll:confidence-check` - 2026-09-26T04:09:34 - `45c56e37-b121-4a66-8c30-965a93c4425e.jsonl`
 - `/ll:verify-issues` - 2026-09-26T04:08:04 - `3c60f1bd-de19-4edd-8506-d4aa11e7800c.jsonl`
 - `/ll:confidence-check` - 2026-09-26T03:44:04 - `ca8c81c6-3907-43f2-b123-5aad7f9c65b9.jsonl`

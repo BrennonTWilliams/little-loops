@@ -71,7 +71,7 @@ from little_loops.fsm.validation.shell_safety import (
     _validate_overescaped_shell,
     _validate_unsafe_context_interpolation,
 )
-from little_loops.host_runner import CREDENTIAL_SCOPES
+from little_loops.host_runner import CREDENTIAL_SCOPES, MODEL_HINTS
 
 logger = logging.getLogger(__name__)
 
@@ -435,6 +435,55 @@ def _is_shell_state(state: StateConfig) -> bool:
     return not (state.action is not None and state.action.startswith("/"))
 
 
+def _consumes_model_hint(state: StateConfig) -> bool:
+    """Return True if a state actually consumes a model at runtime (ENH-3527).
+
+    Narrower than ``_is_llm_judged``: a prompt-mode action (mirrors
+    ``executor._action_mode``) or an explicit ``llm_structured`` evaluator.
+    ``contract``/``advisor_consult``/``check_semantic`` never receive the state model.
+    """
+    if state.action_type in ("prompt", "slash_command"):
+        return True
+    if state.action_type is None and state.action is not None and state.action.startswith("/"):
+        return True
+    return state.evaluate is not None and state.evaluate.type == "llm_structured"
+
+
+def _validate_model_hint_decl(state_name: str, state: StateConfig) -> list[ValidationError]:
+    """Validate a state's ``model_hint``: vocabulary, exclusivity, applicability."""
+    if state.model_hint is None:
+        return []
+    path = f"states.{state_name}.model_hint"
+    errors: list[ValidationError] = []
+    if state.model_hint not in MODEL_HINTS:
+        errors.append(
+            ValidationError(
+                message=(
+                    f"model_hint must be one of {list(MODEL_HINTS)}, got {state.model_hint!r}"
+                ),
+                path=path,
+            )
+        )
+    if state.model is not None:
+        errors.append(
+            ValidationError(
+                message="'model' and 'model_hint' are mutually exclusive",
+                path=path,
+            )
+        )
+    if not _consumes_model_hint(state):
+        errors.append(
+            ValidationError(
+                message=(
+                    "model_hint requires a prompt/slash_command action or an llm_structured "
+                    "evaluator; this state never consumes a model"
+                ),
+                path=path,
+            )
+        )
+    return errors
+
+
 def _validate_state_action(state_name: str, state: StateConfig) -> list[ValidationError]:
     """Validate state action configuration.
 
@@ -447,6 +496,8 @@ def _validate_state_action(state_name: str, state: StateConfig) -> list[Validati
     """
     errors: list[ValidationError] = []
     path = f"states.{state_name}"
+
+    errors.extend(_validate_model_hint_decl(state_name, state))
 
     # append_to_messages must contain at least one ${...} interpolation expression
     if state.append_to_messages is not None:
@@ -1254,6 +1305,26 @@ def validate_fsm(
                 path="llm.timeout",
             )
         )
+
+    if fsm.llm.model_hint is not None:
+        if fsm.llm.model_hint not in MODEL_HINTS:
+            errors.append(
+                ValidationError(
+                    message=(
+                        f"llm.model_hint must be one of {list(MODEL_HINTS)}, "
+                        f"got {fsm.llm.model_hint!r}"
+                    ),
+                    path="llm.model_hint",
+                )
+            )
+        if not any(_consumes_model_hint(st) for st in fsm.states.values()):
+            errors.append(
+                ValidationError(
+                    message="llm.model_hint has no effect: no state consumes a model",
+                    path="llm.model_hint",
+                    severity=ValidationSeverity.WARNING,
+                )
+            )
 
     # Check for unreachable states (warning only)
     reachable = _find_reachable_states(fsm)

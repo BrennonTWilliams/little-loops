@@ -177,6 +177,27 @@ def _check_runtime_contradiction() -> list[str]:
     return errors
 
 
+def _check_hint_backend_coverage() -> list[str]:
+    """Return error strings where model-hint support drifts from the host registry (ENH-3527).
+
+    Every registry host (including ``TEST_ONLY_HOSTS``, which check 2 exempts from the
+    runtime map) must be a valid hint backend, and every built-in hint mapping must
+    cover the full vocabulary and name a valid backend.
+    """
+    keys = _host_runner_module.hint_backend_keys()
+    errors = [
+        f"registry host '{host}' is not a valid model_hint backend"
+        for host in sorted(set(_HOST_RUNNER_REGISTRY) - keys)
+    ]
+    for backend, mapping in _host_runner_module._BUILTIN_HINT_MAPPINGS.items():
+        if backend not in keys:
+            errors.append(f"built-in model_hint mapping for unknown backend '{backend}'")
+        for hint in _host_runner_module.MODEL_HINTS:
+            if not mapping.get(hint):
+                errors.append(f"built-in model_hint mapping for '{backend}' lacks '{hint}'")
+    return errors
+
+
 def _check_emitter_agreement() -> list[str]:
     """Return error strings for internal contradictions within a map entry.
 
@@ -258,6 +279,7 @@ def _run() -> tuple[int, list[str]]:
 
     errors.extend(_check_runtime_contradiction())
     errors.extend(_check_emitter_agreement())
+    errors.extend(_check_hint_backend_coverage())
 
     exit_code = 1 if errors else 0
     return exit_code, errors

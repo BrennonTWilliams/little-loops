@@ -188,6 +188,9 @@ def cmd_run(
         fsm.prompt_size_guard.warn_chars = args.prompt_size_warn_chars
     if args.llm_model:
         fsm.llm.model = args.llm_model
+        # ENH-3527: an explicit model replaces the llm declaration; drop any
+        # inherited hint so the model-plus-hint pair never exists.
+        fsm.llm.model_hint = None
 
     # Seed parameters.<name>.default for unbound optional parameters (BUG-3425).
     # Seeded first so positional input, program.md, and --context (all below)
