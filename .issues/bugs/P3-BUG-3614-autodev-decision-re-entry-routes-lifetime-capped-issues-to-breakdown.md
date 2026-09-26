@@ -42,14 +42,24 @@ decomposed instead of being deferred as `decision_unresolved`.
 
 ## Steps to Reproduce
 
-1. Take an issue with `decision_needed: true` whose session log already records
-   `max_refine_count` (default 5) `/ll:refine-issue` runs.
-2. Run `ll-loop run autodev` so that the issue reaches `select_obligation_pre_implement` or
-   `select_obligation_post_refine`.
-3. The selector prints `DECISION` → `refine_current`. The child's `check_lifetime_limit` exits
-   `on_no` → `breakdown_issue`.
+**Most likely path (count crosses the cap during the first child run):**
+
+1. Take an issue with `decision_needed: true` whose session log records `max_refine_count - 1`
+   (default 4) `/ll:refine-issue` runs.
+2. Run `ll-loop run autodev`. The first `refine_current` passes `check_lifetime_limit`; the
+   child's `refine_issue` takes `refine_count` to the cap, and the child returns with
+   `decision_needed` still set.
+3. The selector (`select_obligation_post_refine` or `select_obligation_pre_implement`) prints
+   `DECISION` → `refine_current`. The re-entered child's `check_lifetime_limit` exits `on_no` →
+   `breakdown_issue`.
 4. Observe: autodev routes `DECOMPOSED` → `detect_children`. The issue is not ledgered as
    `decision_unresolved`.
+
+**Already-capped path:** an issue whose session log already records `max_refine_count` runs
+reaches `select_obligation_pre_implement` via a site that does not run the child first
+(`reopen_waived`, `recheck_scores`, …). Steps 3–4 are the same. (An already-capped issue that
+goes through the first `refine_current` is broken down there, before any selector runs — that
+is existing lifetime-cap behaviour and out of scope.)
 
 ## Expected Behavior
 
@@ -61,7 +71,12 @@ decomposed instead of being deferred as `decision_unresolved`.
   which ledgers `decision_unresolved` and defers the issue. It never reaches `breakdown_issue`
   through a `DECISION` re-entry.
 - The guard mirrors the one ENH-3611 adds for `PROOF` re-entry (ENH-3611 "Shared re-entry
-  guard"). Both selectors should use one idiom or helper, so the two cap checks cannot drift.
+  guard"). No shared helper exists, so drift is prevented by: (a) a structural test asserting
+  the two selectors' `DECISION` blocks stay byte-identical, and (b) ENH-3611 copying this
+  issue's cap snippet verbatim (BUG-3614 lands first).
+- When the cap term fires, the selector writes a diagnostic to **stderr**
+  (`[DECISION_CAPPED] <ID> refine_count=N cap=M`) — `classify` reads stdout only, and
+  `record_reentry_exhausted`'s own message ("after child re-entry") is inaccurate for this case.
 
 ## Motivation
 
@@ -75,6 +90,20 @@ A spurious breakdown creates child issues and hides the real reason, an unresolv
 Add a lifetime-cap term to the `DECISION` branch of both obligation selectors. When the cap is
 reached, reuse the existing `DECISION_EXHAUSTED` → `record_reentry_exhausted` route. No new
 state and no new token are needed.
+
+### Alternatives Considered
+
+- **Fix in the child** (`check_lifetime_limit` routes decision-flagged leaves to decision
+  resolution instead of `breakdown_issue`): rejected — it spends LLM budget past the lifetime
+  cap and changes `refine-to-ready-issue`'s standalone semantics for every caller.
+- **Read the cap with `ll-config get commands.max_refine_count`**: not viable —
+  `max_refine_count` is not modelled in `BRConfig`, so `resolve_variable()` (via `to_dict()`)
+  returns nothing even when the key is set (verified with a temp config of `7`). A raw JSON
+  read of `.ll/ll-config.json` is the only option; like `check_lifetime_limit`, it does not
+  honour `.ll/ll.local.md` overrides (consistent with the child, so acceptable).
+- **Follow-up (not this issue)**: expose `max_refine_count` / `at_lifetime_cap` in
+  `ll-issues refine-status --json` so all four cap sites (`check_lifetime_limit`,
+  `check_attempt_budget`, both selectors, ENH-3611's PROOF guard) share one helper.
 
 ## Integration Map
 
@@ -161,9 +190,11 @@ _Added by `/ll:refine-issue` — 2026-09-26 — based on codebase analysis:_
 
 ### Call Path
 
-`autodev.yaml:select_obligation_pre_implement` -> `cmd_check_flag` -> `cmd_refine_status` -> `autodev.yaml:record_reentry_exhausted`
+Both selectors share the same path; each can reach either target:
 
-`autodev.yaml:select_obligation_post_refine` -> `cmd_check_flag` -> `cmd_refine_status` -> `autodev.yaml:refine_current`
+`autodev.yaml:select_obligation_pre_implement` -> `cmd_check_flag` -> `cmd_refine_status` -> `autodev.yaml:record_reentry_exhausted` (capped or marker set) | `autodev.yaml:refine_current` (under cap, first re-entry)
+
+`autodev.yaml:select_obligation_post_refine` -> `cmd_check_flag` -> `cmd_refine_status` -> `autodev.yaml:record_reentry_exhausted` (capped or marker set) | `autodev.yaml:refine_current` (under cap, first re-entry)
 
 ## Implementation Steps
 
@@ -176,25 +207,36 @@ _Added by `/ll:refine-issue` — 2026-09-26 — based on codebase analysis:_
 2. Keep ENH-3610's exit-code contract: a `refine-status` failure must not break the
    `check-flag` → `next-obligation` fall-through. Treat an unreadable count as "under the cap"
    (current behaviour).
-3. Follow `check_lifetime_limit`'s idiom: a quoted `python3 << 'PYEOF'` heredoc with any
-   fallback passed via env var, never interpolating `${context.*}` (incl. `run_dir`) into Python
-   source (interpolation-baseline ratchet). Write any new bash `${VAR:-x}` as `$${VAR:-x}`.
+3. Match `check_lifetime_limit`'s **resolution rule**, not its heredoc form:
+   - **Do not use an indented `python3 << 'PYEOF'` heredoc.** The `DECISION` branch is nested in
+     an `if`, and an indented terminator never closes the heredoc (verified: bash fails with
+     "unexpected EOF"). Use a single-quoted `python3 -c '…'` that reads `.ll/ll-config.json`
+     (`commands.max_refine_count`) with no FSM interpolation in its body. (If a heredoc is
+     preferred, follow `autodev.yaml` ~409-426: body and terminator at the block's base indent.)
+   - Never interpolate `${context.*}` (incl. `run_dir`) into Python source
+     (interpolation-baseline ratchet).
+   - **Do not write the fallback as `$${CAP:-5}`.** The test harness's `_interp()` regex
+     (`\$\{([^}]+)\}`) matches the inner `${CAP:-5}` and raises `KeyError`. Use the
+     `check_lifetime_limit` form: `[ -z "$CAP" ] && CAP=5`.
+   - Do not use `ll-config get` (see Alternatives Considered).
 4. ENH-3611's guard is prose-only (no shared code artifact), so implement the cap term inline in
-   each selector and keep it aligned with ENH-3611 by matching `check_lifetime_limit`'s
-   resolution rule.
-5. Update the comment above each selector's `DECISION` branch (the re-entry cap now has two
+   each selector (byte-identical blocks). ENH-3611 copies this snippet for `PROOF`.
+5. Emit `[DECISION_CAPPED] <ID> refine_count=N cap=M` to stderr when the cap term fires.
+6. Update the comment above each selector's `DECISION` branch (the re-entry cap now has two
    terms) and add tests in `scripts/tests/test_autodev_decision_gate.py`.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-- Update `scripts/tests/test_autodev_decision_gate.py` — extend `_StubIssues` to answer `refine-status --json`; add `_drive`-based tests (capped → `record_reentry_exhausted`, `breakdown_issue` never visited, for both selectors) and under-cap unchanged
-- Add subprocess selector tests modelled on `test_check_readiness_honors_context_over_config` with a tmp `.ll/ll-config.json` to cover the cap boundary and `commands.max_refine_count` override
+- Update `scripts/tests/test_autodev_decision_gate.py` — extend `_StubIssues` to answer `refine-status --json` (count from a file, so it can change between calls) and give `_StubIssues.run()` a `cwd` parameter (tmp dir) so the selector's `.ll/ll-config.json` read never picks up the repo's own config; add `_drive`-based tests (capped → `record_reentry_exhausted`, `breakdown_issue` never visited, for both selectors) and under-cap unchanged
+- Cover the cap boundary and `commands.max_refine_count` override in the same file via the `cwd`-isolated stub (tmp `.ll/ll-config.json`) — no separate `test_builtin_loops.py` subprocess tests needed
+- Add a structural test asserting the two selectors' `DECISION` blocks are byte-identical (drift guard)
 - Keep `record_reentry_exhausted`, the selector `_`/`_error` routes, and the entry edges unchanged (`test_builtin_loops.py` deferral-parity, `test_ll_issues_check_gate.py`, `test_fsm_topology.py` count of 105)
-- Update `docs/guides/LOOPS_REFERENCE.md` ("Decision handling" ~1081, `max_refine_count` row ~1140) and `docs/reference/CLI.md` (check-flag consumer note ~2269-2275)
-- Update `commands.max_refine_count` wording in `scripts/little_loops/config-schema.json`, `docs/reference/CONFIGURATION.md`, `skills/configure/areas.md`, `skills/configure/show-output.md`, then run `ll-adapt --host <gemini|kimi-code|qwen> --apply`
+- Update `docs/guides/LOOPS_REFERENCE.md` ("Decision handling" ~1081, `max_refine_count` row ~1140)
+- Update the `commands.max_refine_count` description in `scripts/little_loops/config-schema.json` to name autodev `DECISION` re-entry
 - Update the comment above `check_unresolved` in `scripts/little_loops/loops/oracles/resolve-decision.yaml` (~246-253) to mention the lifetime-cap exit
+- **Descoped** (Effort: Small): `docs/reference/CLI.md` check-flag consumer note, `docs/reference/CONFIGURATION.md`, `skills/configure/areas.md`, `skills/configure/show-output.md` (the `skills/` edits would also trip the `ll-adapt` mirror gates)
 - Run `python -m pytest scripts/tests/test_builtin_loops.py -k "InterpSweep or Autodev"` to confirm no new unbaselined interpolation site
 
 ## Impact
@@ -219,6 +261,14 @@ _These touchpoints were identified by wiring analysis and must be included in th
   `select_obligation_pre_implement` and is deferred `decision_unresolved` via
   `record_reentry_exhausted`. `breakdown_issue` never runs.
 - Same for `select_obligation_post_refine`.
+- **Cross-the-cap test** (the realistic path): `refine_count == cap - 1` on entry; the stubbed
+  child bumps it to `cap` and returns with `decision_needed` set; the selector exhausts →
+  `record_reentry_exhausted`, and the `autodev-reentry-DECISION-<ID>` marker is not written.
+- Boundary: `refine_count == cap - 1` at the selector re-enters; `== cap` exhausts.
+  `commands.max_refine_count` override in a tmp `.ll/ll-config.json` is honoured.
+- Unreadable count (stub prints nothing) → treated as under the cap.
+- `[DECISION_CAPPED]` appears on stderr, not stdout.
+- Structural: both selectors' `DECISION` blocks are byte-identical.
 - Under the cap, behaviour is unchanged: one `DECISION` re-entry → `refine_current`.
 
 ### Codebase Research Findings
@@ -235,6 +285,8 @@ _Added by `/ll:refine-issue` — 2026-09-26 — based on codebase analysis:_
 - [ ] Neither selector re-enters the child for `DECISION` once `refine_count` >= `max_refine_count`
 - [ ] A capped decision-flagged issue defers as `decision_unresolved`, never decomposes
 - [ ] Under-cap behaviour and ENH-3610's exit-code contract are unchanged
+- [ ] The cap term is evaluated before the re-entry marker write (a capped issue never consumes the marker)
+- [ ] Both selectors' `DECISION` blocks are byte-identical, pinned by a structural test
 
 ## Related
 
