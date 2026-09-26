@@ -36,12 +36,14 @@ LEGACY_CLASS_STATES = {
     "record_spike_inconclusive": "spike_inconclusive",
     "record_decision_unresolved": "decision_unresolved",
 }
+# ENH-3610: the three done-path gates no longer write; the record write moved to
+# write_done_record, reached only after check_decision_before_done.
 DONE_PATH_GATES = ("check_outcome", "check_scores_from_file", "check_missing_artifacts")
 TERMINAL_BEARING_STATES = (
     *LEGACY_CLASS_STATES,
     "classify_terminal",
     "write_broke_down",
-    *DONE_PATH_GATES,
+    "write_done_record",
 )
 
 RECORD_KEYS = {
@@ -509,12 +511,11 @@ class TestLoopCallSites:
         assert '--legacy-class "$CLASS"' in loop_states["classify_terminal"]["action"]
 
     @pytest.mark.parametrize("gate", DONE_PATH_GATES)
-    def test_done_path_gate_guards_on_rc(self, loop_states: dict, gate: str) -> None:
-        action = loop_states[gate]["action"]
-        write_at = action.index("run-record write")
-        guard_at = action.index('if [ "$RC" -eq 0 ]')
-        exit_at = action.index("exit $RC")
-        assert guard_at < write_at < exit_at, gate
+    def test_done_path_gate_writes_no_record(self, loop_states: dict, gate: str) -> None:
+        """ENH-3610: the gate only routes; check_decision_before_done → write_done_record
+        writes the record, so a record exists only when `done` is really next."""
+        assert "run-record write" not in loop_states[gate]["action"], gate
+        assert loop_states[gate]["on_yes"] == "check_decision_before_done"
 
     def test_write_broke_down_has_no_legacy_class(self, loop_states: dict) -> None:
         action = loop_states["write_broke_down"]["action"]
@@ -584,11 +585,21 @@ class TestTerminalExecution:
         assert (tmp_path / "refine-broke-down").read_text() == "1"
         assert _read_json(tmp_path, "refine-to-ready-issue", ID)["outcome"] == "decomposed"
 
-    def test_check_missing_artifacts_pass_writes_ready(
+    def test_write_done_record_writes_ready(
         self, project: Path, tmp_path: Path, loop_states: dict
     ) -> None:
-        # check-flag exits 0 when the flag IS true — that is the done-bound exit
-        # (the outer loop's run_wire path handles the repair).
+        # ENH-3610: the no-class record is written by write_done_record, which the
+        # done-bound gates reach through check_decision_before_done.
+        _write_issue(project, ID, frontmatter="confidence_score: 90\noutcome_confidence: 70\n")
+        result = _run_state(project, loop_states, "write_done_record", tmp_path, ID)
+        assert result.returncode == 0, result.stderr
+        assert _read_json(tmp_path, "refine-to-ready-issue", ID)["outcome"] == "ready"
+
+    def test_check_missing_artifacts_pass_writes_no_record(
+        self, project: Path, tmp_path: Path, loop_states: dict
+    ) -> None:
+        # check-flag exits 0 when the flag IS true — the done-bound exit; the record
+        # is deferred to write_done_record (ENH-3610).
         _write_issue(
             project,
             ID,
@@ -596,7 +607,9 @@ class TestTerminalExecution:
         )
         result = _run_state(project, loop_states, "check_missing_artifacts", tmp_path, ID)
         assert result.returncode == 0, result.stderr
-        assert _read_json(tmp_path, "refine-to-ready-issue", ID)["outcome"] == "ready"
+        assert not (tmp_path / "run-records").exists() or not list(
+            (tmp_path / "run-records").rglob("*.json")
+        )
 
     def test_check_missing_artifacts_fail_writes_no_record(
         self, project: Path, tmp_path: Path, loop_states: dict
@@ -613,13 +626,15 @@ class TestTerminalExecution:
             (tmp_path / "run-records").rglob("*.json")
         )
 
-    def test_check_outcome_pass_writes_ready(
+    def test_check_outcome_pass_writes_no_record(
         self, project: Path, tmp_path: Path, loop_states: dict
     ) -> None:
         _write_issue(project, ID, frontmatter="confidence_score: 90\noutcome_confidence: 70\n")
         result = _run_state(project, loop_states, "check_outcome", tmp_path, ID)
         assert result.returncode == 0, result.stderr
-        assert _read_json(tmp_path, "refine-to-ready-issue", ID)["outcome"] == "ready"
+        assert not (tmp_path / "run-records").exists() or not list(
+            (tmp_path / "run-records").rglob("*.json")
+        )
 
     def test_check_outcome_fail_writes_no_record(
         self, project: Path, tmp_path: Path, loop_states: dict
@@ -709,9 +724,7 @@ class TestMirror:
 # ---------------------------------------------------------------------------
 
 NO_CLASS_WRITE_STATES = (
-    "check_outcome",
-    "check_missing_artifacts",
-    "check_scores_from_file",
+    "write_done_record",
     "write_broke_down",
 )
 

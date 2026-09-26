@@ -4,10 +4,11 @@ type: ENH
 title: Move autodev decision repair into refine-to-ready-issue behind an obligation
   selector
 priority: P3
-status: open
+status: done
 discovered_by: issue-size-review
 discovered_date: '2026-09-26'
 captured_at: '2026-09-26T03:47:26Z'
+completed_at: '2026-09-26T06:23:53Z'
 parent: EPIC-3565
 decision_needed: false
 blocked_by:
@@ -328,6 +329,21 @@ original design rationale.
 - [ ] `auto-refine-and-implement` and `oracles/resolve-decision` behavior unchanged; full suite
   passes
 
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-09-26
+- **Status**: Completed
+
+### Changes Made
+- `refine-to-ready-issue.yaml`: added `check_decision_before_done` and `write_done_record`; the three no-class `done` edges (`check_outcome`, `check_missing_artifacts`, `check_scores_from_file`) route through the gate, and the no-class run-record write moved into `write_done_record`.
+- `autodev.yaml`: removed the eight decision entry states; added `select_obligation_post_refine`, `select_obligation_pre_implement` (un-stage + one-shot re-entry cap) and `record_reentry_exhausted`; applied the retargets and the `dequeue_next` `autodev-reentry-*` clear; updated comments.
+- `oracles/resolve-decision.yaml`, `rn-remediate.yaml`: comment updates only.
+- Tests rewritten/added (`test_autodev_decision_gate.py` stays-deleted guards, selector route tables, real-action behavior and re-entry walks, child invariant; `test_builtin_loops.py`, `test_run_record.py`, topology, check-gate, scores-freshness, next-obligation parity). Docs: LOOPS_REFERENCE, DECISIONS_LOG_GUIDE, CLI, DEFERRAL_CODES.
+
+### Verification
+Full suite: all green except `test_prose_dep_sweep_gate` (ENH-3547/ENH-3533 → ENH-3527 prose drift, unrelated).
+
 ## Status
 
 **Open** | Created: 2026-09-26 | Priority: P3
@@ -351,6 +367,7 @@ gate: no violations. Graph: provider=`codegraph` freshness=`stale` (not used to 
   edges retarget to `check_passed`. Retarget count updated 13 → 16.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-26T06:23:52 - `bfdc9c6c-2f3f-45d4-bfc2-bd40bf63c34c.jsonl`
 - `/ll:ready-issue` - 2026-09-26T06:04:27 - `ec595975-3769-4082-8e09-cc13cbd0f9b9.jsonl`
 - `/ll:confidence-check` - 2026-09-26T06:01:37 - `95a3ad40-ecc6-4e5c-befd-9be7a282a332.jsonl`
 - `/ll:verify-issues` - 2026-09-26T05:50:13 - `3a196c8d-c8cb-4f09-ab88-54c0f0f49d57.jsonl`

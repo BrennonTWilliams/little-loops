@@ -974,7 +974,7 @@ states:
     on_error: write_done_record
 
   write_done_record:
-    # ENH-3610: the no-class run-record write, moved here from check_outcome /
+    # ENH-3610: the no-class record write, moved here from check_outcome /
     # check_missing_artifacts / check_scores_from_file so a record is written
     # only when `done` is really next (not when a decision gate diverts).
     action: |

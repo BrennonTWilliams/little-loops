@@ -369,7 +369,8 @@ class TestYamlParity:
 
     def test_tier3_order_matches_child(self) -> None:
         states = yaml.safe_load(LOOP.read_text())["states"]
-        assert states["check_outcome"]["on_yes"] == "done"
+        # ENH-3610: the done edge passes through the child's decision gate.
+        assert states["check_outcome"]["on_yes"] == "check_decision_before_done"
         chain = _walk(states, states["check_outcome"]["on_no"], "on_no", {"breakdown_issue"})
         mapping = {
             "check_decision_needed": Obligation.DECISION,
