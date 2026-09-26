@@ -18,7 +18,13 @@ parent: EPIC-3565
 reconcile_attempted: true
 relates_to:
 - ENH-3577
-
+confidence_score: 80
+outcome_confidence: 53
+score_complexity: 0
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 10
+missing_artifacts: true
 ---
 
 # ENH-3599: Move spike and decision repair routing from autodev into refine-to-ready-issue
@@ -259,19 +265,24 @@ Decomposed from ENH-3577: Consolidate autodev issue preparation into a single co
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-09-25_
+_Added by `/ll:confidence-check` on 2026-09-26_
 
-**Readiness Score**: 70/100 → STOP — ADDRESS GAPS
+**Readiness Score**: 80/100 → PROCEED WITH CAUTION
 **Outcome Confidence**: 53/100 → LOW
 
-### Gaps to Address
-- blocked_by ENH-3597, FEAT-3598, BUG-3603 (all open) — `RunRecord`/`read_run_record` and the selector do not exist yet, and the fail-closed proof gate this issue routes through is BUG-3603's deliverable. Land the chain first.
+### Concerns
+- Blockers ENH-3597, FEAT-3598, BUG-3603 are now done (the prior dependency gap is cleared), but the run-record **read path** autodev must route on does not exist (`ll-issues run-record` has only `write`); the issue leaves "CLI subcommand vs shell JSON read" open. Pick one before implementing.
+- The child's `run_spike` lacks autodev's rate-limit handling (`with_rate_limit_handling`, 14400s wait, `on_rate_limit_exhausted`); the child must gain it before autodev's copy is deleted.
+- `TestProofGateFailClosed` asserts `check_proof_gate_before_implement.on_error == mark_proof_gate_infra`; removing that state needs a deliberate rewrite and a named home for first-stage proof classification.
 
 ### Outcome Risk Factors
 - deep per-site complexity — removes ~30 states and rewires routing into `implement_current` in the most-used loop (`autodev.yaml`); marker lifecycles and `spike-runs-<ID>` budget carry-over must survive the rewrite (mitigation: the named behavioral suites + BUG-3603's structural invariant test).
 - broad enumeration across ~20 files (2 loop YAMLs + ~10 test files + ~8 docs/skills mirrors); scope state-name greps to `autodev.yaml` so `spike-gate.yaml` / `rn-remediate.yaml` same-named states survive.
+- wide blast radius — autodev is consumed by `scan-and-implement`, `auto-refine-and-implement`, `oracles/resolve-decision` and `rn-remediate` parity tests; per-test keep-vs-rewrite calls are deferred to implementation time.
 
 ## Session Log
+- `/ll:decide-issue` - 2026-09-26T03:03:21 - `adf3bcb6-785a-49c2-bcb0-e4df8982be33.jsonl`
+- `/ll:confidence-check` - 2026-09-26T03:02:24 - `96fffa1b-0266-4f11-b9f9-a1a22390e086.jsonl`
 - `/ll:reconcile-issue` - 2026-09-26T03:00:00 - `cd46eea7-272d-4c1a-b293-59b630f2e624.jsonl`
 - `/ll:refine-issue` - 2026-09-26T02:53:28 - `545abdda-09d4-4321-83bd-74f9c6ff9067.jsonl`
 - `/ll:confidence-check` - 2026-09-25T21:32:35 - `672e0da1-840e-4b60-a432-7b20e9ebbd01.jsonl`

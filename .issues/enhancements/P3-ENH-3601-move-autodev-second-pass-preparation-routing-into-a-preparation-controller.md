@@ -26,6 +26,7 @@ score_complexity: 0
 score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 18
+size: Very Large
 ---
 
 # ENH-3601: Move autodev second-pass preparation routing into a preparation controller
