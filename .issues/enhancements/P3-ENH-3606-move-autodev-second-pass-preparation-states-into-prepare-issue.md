@@ -7,8 +7,6 @@ status: open
 discovered_by: issue-size-review
 discovered_date: '2026-09-26'
 decision_needed: false
-blocked_by:
-- ENH-3615
 blocks:
 - ENH-3600
 relates_to:
@@ -118,8 +116,8 @@ has changed since.
 | `select_obligation_post_refine._error`, `check_missing_artifacts.on_no` / `on_error` | `detect_children` | wrapper `detect_ladder_children` (see Inner-loop success routing) |
 | `check_parent_resolved_post_size_review.on_yes` | `recover_subloop_children` | `mark_decomposed` terminal (see Queue ownership) |
 | `enqueue_or_skip.on_yes` | `dequeue_next` | `mark_decomposed` terminal |
-| `check_scores_present_{wire,reconcile,atomic}.on_cannot_judge` / `on_error`, `clear_scores_before_{wire,reconcile,atomic}.on_error`, `recheck_after_size_review.on_cannot_judge`, `regate_after_atomic_remediation.on_cannot_judge` | `mark_scores_absent_infra` | `mark_scores_absent` terminal |
-| `on_rate_limit_exhausted` of `run_wire`, `run_refine`, `rerun_confidence_after_{wire,reconcile,atomic_remediation}`, `reconcile_current`, `refine_for_design`, `remediate_oversized_atomic`, `run_go_no_go` | `finalize_rate_limited` | `mark_rate_limited` terminal |
+| `check_scores_present.on_cannot_judge` / `on_error`, `clear_scores.on_error`, `mark_rescore_origin_atomic.on_error`, `recheck_after_size_review.on_cannot_judge`, `regate_after_atomic_remediation.on_cannot_judge` (post-ENH-3615 shared chain; the per-origin `*_wire` / `*_reconcile` / `*_atomic` triplet names no longer exist) | `mark_scores_absent_infra` | `mark_scores_absent` terminal |
+| `on_rate_limit_exhausted` of `run_wire`, `run_refine`, `rerun_confidence` (shared), `reconcile_current`, `refine_for_design`, `remediate_oversized_atomic`, `run_go_no_go` | `finalize_rate_limited` | `mark_rate_limited` terminal |
 | `run_size_review.on_rate_limit_exhausted` | `dequeue_next` | `mark_rate_limited` terminal (decided halt, see Rate limits) |
 | `check_go_no_go_eligible.on_no`, `check_go_no_go_waiver.on_no`, `check_pre_deferral_remedy.on_no`, `record_reentry_exhausted.next` | `dequeue_next` | `failed` (the stop was already ledgered and recorded upstream; see Terminal table) |
 | `on_error` of `check_atomic_design_remedy`, `check_go_no_go_eligible`, `check_go_no_go_waiver`, `check_pre_deferral_remedy`, `enqueue_or_skip`, `recheck_after_size_review`, `regate_after_atomic_remediation`, `reopen_waived`, `record_reentry_exhausted` | `dequeue_next` | `mark_ladder_error` terminal (see Terminal table) |
@@ -864,6 +862,18 @@ Re-parsed `autodev.yaml` (90 states) and `prepare-issue.yaml` (7 states, `max_st
 - `route_refine_success` and `route_refine_outcome` route as the Scope section states (`CANCELLED` → `skip_cancelled`; suffixed stops → `skip_inflight` / `ledger_child_stop`).
 - Proposal check (B6): mechanism stands; no new findings.
 
+### Re-verification (2026-09-26, post-ENH-3615)
+
+Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the same pass, so the issue as it now reads is up to date — this section is a record of what was wrong and fixed, not an outstanding action item)
+
+Re-parsed `autodev.yaml` (86 states) at HEAD `74747fb1e`. `ll-verify-evidence` clean; no decisions rules apply. Graph: provider=`codegraph` freshness=`stale` (not used for any verdict).
+
+- **Blocker resolved**: ENH-3615 is `done` (landed in `74747fb1e`). Removed `blocked_by: ENH-3615` from frontmatter. The Confidence Check Notes' "Unresolved blocker" gap is out of date; a re-score is due.
+- **Edge table rescoring rows corrected**: the shared chain is live (`clear_scores` → `rerun_confidence` → `check_scores_present` → `route_after_rescore`, plus `mark_rescore_origin_atomic`). The per-origin `check_scores_present_*`, `clear_scores_before_*` and `rerun_confidence_after_*` names cited in two edge-table rows no longer exist; rows now name the shared states.
+- **Confirmed at HEAD**: `run_size_review.on_rate_limit_exhausted` → `finalize_rate_limited` (ENH-3615 halt landed); `copy_broke_down` resets `refine-broke-down`; every other "Today" edge in the table still matches (`refine_current.on_success`, `check_passed`, `detect_children`, `check_parent_resolved`, `check_broke_down`, `size_review_snap`, `dispatch_pre_deferral_remedy.on_yes`, `mark_scores_absent_infra`).
+- Integration Map line anchors remain approximate (ENH-3615 shifted them by roughly 10-40 lines).
+- Proposal check (B6): mechanism stands; no new findings.
+
 ## Confidence Check Notes
 
 _Added by `/ll:confidence-check` on 2026-09-26_
@@ -931,6 +941,7 @@ Map:
   - no capture-name collisions.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-26T22:05:24 - `c4864ff1-acf7-4101-a722-b28e5ccfc698.jsonl`
 - `/ll:confidence-check` - 2026-09-26T21:19:22 - `80a78edd-363d-4d79-9451-fe1325611d39.jsonl`
 - `/ll:confidence-check` - 2026-09-26T20:34:15 - `dcc4151f-8515-4923-9336-bb585d1a7e59.jsonl`
 - `/ll:confidence-check` - 2026-09-26T20:20:48 - `6a41b2bc-b016-4ac8-ae48-08305b05403a.jsonl`
