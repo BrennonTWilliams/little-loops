@@ -126,7 +126,27 @@ _Added by `/ll:refine-issue` — 2026-09-26 — based on codebase analysis:_
 - Contested convention: directory readers of per-ID JSON either skip bad files silently (`decisions.py:_load_fragments`, `cli/loop/queue.py`, `cli/harness.py`) or return `None` (`run_record.read_run_record`); `build_summary` sits on the `None` side and must turn `None` into a counted `retryable_error`, not a skip.
 - `docs/ARCHITECTURE.md` has no loop/FSM section or parent/child contract heading; the only parent/child loop prose is a dense paragraph inside `## Parallel Mode (ll-parallel)` (:452-477). The AC "describes the parent/child contract" therefore means adding new prose (placement is the implementer's call), not editing an existing section; the end-user marker account stays in `LOOPS_REFERENCE.md`.
 
+## Sequencing
+
+Three independent steps. Each can land as its own commit, or as its own issue if the
+implementer prefers:
+
+1. **Behavior-identical extraction**: golden fixtures, the `little_loops.autodev_summary`
+   module and a thin `finalize_done`. No record reads and no marker changes. This step
+   does **not** depend on ENH-3606 and may land before it. Rebase the fixtures only if
+   ENH-3606 changes a ledger that `finalize_done` reads.
+2. **Record-driven accounting** (after ENH-3606): the `autodev-prepared.txt` ledger,
+   `record_absent`, the record-vs-ledger disagreement warning, and the dequeued-twice
+   rule.
+3. **Marker cleanup and docs** (after ENH-3606): re-derive the Marker disposition table,
+   add the table-driven grep gate, remove dead references, update `README.md` /
+   `LOOPS_REFERENCE.md` / `ARCHITECTURE.md`, and document the child-ledger exception.
+
 ## Integration Map
+
+_Line anchors throughout this section and the Codebase Research Findings predate
+ENH-3606, which moves about 40 autodev states. Treat them as historical. Refresh them,
+and collapse the layered findings into one current map, when ENH-3606 lands._
 
 ### Files to Modify
 - `scripts/little_loops/loops/autodev.yaml`
@@ -140,6 +160,12 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/loops/README.md` — `autodev` (:34) and `refine-to-ready-issue` (:31) catalog rows describe the run_dir marker pattern; update as markers go [Agent 1 finding]
 
 ### Tests
+- **Golden fixtures first (step 1, before touching `finalize_done`)**: run each existing
+  `_run_finalize_done` scenario (promotion, phantom, no-op, rate-limit, quality split,
+  cancelled split, abandoned in-flight) against the current shell action. Commit the
+  resulting `summary.json` and stdout as fixtures under `scripts/tests/fixtures/`. The
+  Python module must reproduce them exactly, apart from the additive `record_absent` key
+  and report line. This replaces the `bash -c` harness as the behavioral net.
 - New unit tests for summary construction from records
 - `summary.json` truthfulness on every exit (EPIC-3565 AC) incl. rate-limit exits (BUG-3567)
 - Structural, rewrite: `test_builtin_loops.py` `TestAutodevLoop` (:6643; `finalize_done` behavioral coverage via `_run_finalize_done` under `bash -c`, which stops exercising the logic once it moves to Python). `test_autodev_loop.py` has zero `finalize_done` references (per-iteration markers only); `test_fsm_topology.py` only pins the autodev state count (105)
