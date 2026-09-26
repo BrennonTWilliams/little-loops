@@ -14,7 +14,7 @@ blocks:
 blocked_by: []
 relates_to:
 - ENH-3612
-confidence_score: 75
+confidence_score: 95
 outcome_confidence: 71
 score_complexity: 10
 score_test_coverage: 25
@@ -530,15 +530,12 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-09-26_
+_Added by `/ll:confidence-check` on 2026-09-26 (re-scored after ENH-3613 landed and the second design review)_
 
-_Stale as of the 2026-09-26 review: the ENH-3613 hard override no longer applies (landed), and the review added four design decisions (base-dirty subtraction, worktree `PYTHONPATH`, parent `quality_gate` forwarding, oracle timeout budget + `terminated_by` routing). Re-run `/ll:confidence-check` before implementing._
-
-**Readiness Score**: 75/100 → STOP — ADDRESS GAPS (Dependencies Hard Override)
+**Readiness Score**: 95/100 → PROCEED
 **Outcome Confidence**: 71/100 → MODERATE
 
-### Gaps to Address
-- ~~Unresolved `blocked_by`: ENH-3613 (open).~~ Resolved: ENH-3613 is `done` and `blocked_by` is cleared. Without the override the aggregate would be PROCEED WITH CAUTION; all other gates (Program Design, parity, claims, decision, structure, learning tests) are clean.
+All hard-override gates clear (no `blocked_by`, Program Design, parity, claims, decision, structure, learning tests). Readiness deductions: partial precedent exists (`oracles/code-run-gate` extended, not duplicated).
 
 ### Outcome Risk Factors
 - broad enumeration across ~8 source/config sites plus ~6 docs and frozen test sets (9-state oracle freeze, MR11 allowlist, interpolation baseline, autodev state-count pin); all need same-commit updates.
@@ -557,6 +554,7 @@ Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the sam
 - `ll-verify-evidence`: clean. Decisions log: no required rules. Graph: provider=`codegraph` freshness=`fresh` (not needed for any verdict).
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-26T07:29:51 - `47ac16a0-9fcf-4e6d-8f88-4ec1ae6c246a.jsonl`
 - `/ll:ready-issue` - 2026-09-26T07:17:31 - `8bfc06b1-1f9e-46db-8503-f6893c9021c7.jsonl`
 - `/ll:confidence-check` - 2026-09-26T05:49:01 - `5966980a-c2ea-49c8-a21f-97ae3fab2cc8.jsonl`
 - `/ll:verify-issues` - 2026-09-26T05:13:24 - `d2d5d28e-c902-43ff-bf33-1a7825d2f036.jsonl`
