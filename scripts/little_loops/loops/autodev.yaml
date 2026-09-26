@@ -40,6 +40,13 @@ context:
   # Passed down from auto-refine-and-implement via with: so the sprint path honors it too.
   #   ll-loop run autodev <ids> --context skip_learning_gate=1
   skip_learning_gate: ""
+  # FEAT-3573: post-implement quality gate. "true" (default) makes closure credit for
+  # an implemented (done/completed) issue depend on a passing format-check/lint/type/
+  # test run recorded against the commit it produced. Set "false" to fall back to the
+  # old status-only closure check (e.g. a repo whose base branch is already red).
+  #   ll-loop run autodev <ids> --context quality_gate=false
+  # Forwarded from auto-refine-and-implement via with: so the sprint/EPIC path honors it.
+  quality_gate: "true"
 import:
 - lib/common.yaml
 
@@ -1323,6 +1330,14 @@ states:
       # `capture:` value, so the learning-gate/auth-check fragments can grep a
       # file instead of interpolating untrusted Markdown into a shell string.
       # `set -o pipefail` preserves ll-auto's exit code through the `tee` pipe.
+      # FEAT-3573: snapshot the base revision and the pre-existing dirty set BEFORE
+      # ll-auto runs — a later snapshot already contains the deliverable (BUG-2963).
+      # route_quality_gate diffs against these to scope the format stage.
+      QDIR="${context.run_dir}/quality"
+      mkdir -p "$QDIR"
+      git rev-parse HEAD > "$QDIR/$CURRENT.base" 2>/dev/null || true
+      { git diff --name-only HEAD; git ls-files --others --exclude-standard; } 2>/dev/null \
+        | sort -u > "$QDIR/$CURRENT.base-dirty" || true
       set -o pipefail
       ll-auto --only "$CURRENT" $SKIP_FLAG 2>&1 | tee "${context.run_dir}/ll_auto_last.txt"
     action_type: shell
@@ -1358,8 +1373,247 @@ states:
       esac
     fragment: shell_exit
     action_type: shell
-    on_yes: dequeue_next
+    on_yes: route_quality_gate
     on_no: dequeue_next
+    on_error: dequeue_next
+
+  route_quality_gate:
+    # FEAT-3573: decide whether the closure just verified needs the quality gate,
+    # and compute the changed-file set the format stage is scoped to. Exit 1 →
+    # dequeue_next: the gate is disabled (quality_gate=false) or the closure was
+    # `cancelled` (nothing was implemented). Exit 2 (no recorded base revision, git
+    # failure) → mark_quality_infra. verify_impl_closed already cleared
+    # autodev-inflight, so this chain sits outside the inflight-clearing chain.
+    #
+    # Changed set = committed diff <base>..HEAD, plus uncommitted tracked changes and
+    # untracked files MINUS the pre-existing dirty set snapshotted before ll-auto
+    # (the operator's WIP is not the deliverable; mirrors BUG-2963). Deleted files
+    # are dropped (--diff-filter=d). The format stage gets the subset matching
+    # project.format_check_extensions (unset = every file).
+    action: |
+      ID=${captured.input.output:shell}
+      QDIR=${context.run_dir}/quality
+      mkdir -p "$QDIR"
+      rm -f "$QDIR/$ID.json" "$QDIR/$ID.route"
+      GATE=$(printf '%s' ${context.quality_gate:shell:default=true} | tr '[:upper:]' '[:lower:]')
+      case "$GATE" in
+        false|0|no|off)
+          echo "[QUALITY-GATE] $ID: disabled (quality_gate=$GATE) — status-only closure credit"
+          exit 1 ;;
+      esac
+      STATUS=$(ll-issues show "$ID" --json 2>/dev/null \
+        | python3 -c "import json,sys; print((json.load(sys.stdin).get('status') or '').lower())" \
+        2>/dev/null || echo "")
+      if [ "$STATUS" = cancelled ]; then
+        echo "[QUALITY-GATE] $ID: cancelled closure — nothing implemented, gate skipped"
+        exit 1
+      fi
+      BASE=$(tr -d '[:space:]' < "$QDIR/$ID.base" 2>/dev/null || true)
+      if [ -z "$BASE" ]; then
+        echo "[QUALITY-GATE] $ID: no base revision recorded before implement_current" >&2
+        exit 2
+      fi
+      [ -f "$QDIR/$ID.base-dirty" ] || : > "$QDIR/$ID.base-dirty"
+      COMMITTED=$(git diff --name-only --diff-filter=d "$BASE..HEAD") || exit 2
+      UNCOMMITTED=$({ git diff --name-only --diff-filter=d HEAD; git ls-files --others --exclude-standard; } \
+        | sort -u | grep -vxFf "$QDIR/$ID.base-dirty" || true)
+      printf '%s\n' "$UNCOMMITTED" | grep -v '^$' > "$QDIR/$ID.dirtyset" || true
+      { printf '%s\n' "$COMMITTED"; printf '%s\n' "$UNCOMMITTED"; } \
+        | grep -v '^$' | sort -u > "$QDIR/$ID.changed" || true
+      EXTS=$(ll-config get project.format_check_extensions 2>/dev/null || true)
+      LL_ARG_EXTS="$EXTS" python3 -c "
+      import ast, json, os, sys
+      raw = os.environ.get('LL_ARG_EXTS', '').strip()
+      exts = []
+      if raw:
+          try:
+              exts = json.loads(raw)
+          except ValueError:
+              try:
+                  exts = ast.literal_eval(raw)
+              except (ValueError, SyntaxError):
+                  exts = []
+      exts = tuple(exts) if isinstance(exts, (list, tuple)) else ()
+      files = [l.strip() for l in open(sys.argv[1]) if l.strip()]
+      keep = [f for f in files if not exts or f.endswith(exts)]
+      open(sys.argv[2], 'w').write(''.join(f + chr(10) for f in keep))
+      " "$QDIR/$ID.changed" "$QDIR/$ID.format-files" || exit 2
+      echo "[QUALITY-GATE] $ID: gating $(grep -c . "$QDIR/$ID.changed" || true) changed file(s) against base $BASE"
+      exit 0
+    fragment: shell_exit
+    on_yes: run_quality_gate
+    on_no: dequeue_next
+    on_error: mark_quality_infra
+
+  run_quality_gate:
+    # FEAT-3573: the deterministic post-implement verdict — oracles/code-run-gate
+    # with its opt-in format stage (changed_files_path). resolve_via_ll_config makes
+    # the oracle resolve test/lint/type/format-check commands (and src_dir) with
+    # `ll-config get`, so .ll/ll.local.md overrides are honored. min_pass_rate 1.0 is
+    # belt-and-braces: aggregate already fails on any non-zero test exit. The
+    # credited verdict is this state's ROUTE, never the oracle's
+    # subloop_outcome_<ID>.txt (resolve_commands pre-seeds GATE_PASS there).
+    loop: oracles/code-run-gate
+    with:
+      issue_id: "${captured.input.output}"
+      run_dir: "${context.run_dir}/quality/${captured.input.output}"
+      min_pass_rate: 1.0
+      changed_files_path: "${context.run_dir}/quality/${captured.input.output}.format-files"
+      resolve_via_ll_config: "1"
+    on_success: mark_quality_pass
+    on_failure: mark_quality_fail
+    on_error: mark_quality_infra
+
+  mark_quality_pass:
+    action_type: shell
+    action: |
+      printf 'pass' > ${context.run_dir}/quality/${captured.input.output:shell}.route
+    next: record_quality_evidence
+    on_error: dequeue_next
+
+  mark_quality_fail:
+    # An oracle that ends by timeout/signal/interrupt/step-budget routes on_failure
+    # through the compiled on_no → on_failure fallback, which would misreport infra
+    # as a quality verdict. Only terminated_by == "terminal" (the oracle reached its
+    # own `failed` terminal) is a real gate failure; every other class is infra
+    # (ENH-3366 delegate_failed precedent).
+    action_type: shell
+    action: |
+      case ${captured.run_quality_gate.terminated_by:shell?} in
+        terminal) ROUTE=fail ;;
+        *) ROUTE=infra ;;
+      esac
+      printf '%s' "$ROUTE" > ${context.run_dir}/quality/${captured.input.output:shell}.route
+    next: record_quality_evidence
+    on_error: dequeue_next
+
+  mark_quality_infra:
+    # Oracle crash / context-resolution failure (sub-loop on_error), or
+    # route_quality_gate could not compute the changed set.
+    action_type: shell
+    action: |
+      mkdir -p ${context.run_dir}/quality
+      printf 'infra' > ${context.run_dir}/quality/${captured.input.output:shell}.route
+    next: record_quality_evidence
+    on_error: dequeue_next
+
+  record_quality_evidence:
+    # FEAT-3573: write ${run_dir}/quality/<ID>.json — the evidence finalize_done
+    # promotes on — and ledger a failed/infra gate as `ID  quality_gate_failed|
+    # quality_gate_infra` in autodev-unverified.txt. The issue file is never
+    # modified: a quality-failed issue stays `done` and committed. The verdict is
+    # derived from the route (pass|fail|infra); stage outcomes are informational.
+    # head_sha is recorded at gate time — finalize_done must not compare against the
+    # live HEAD, which later queue items move.
+    action_type: shell
+    action: |
+      LL_ARG_ID=${captured.input.output:shell} LL_ARG_RUN_DIR=${context.run_dir:shell} python3 - <<'PYEOF'
+      import json
+      import os
+      import subprocess
+      from pathlib import Path
+
+      issue_id = os.environ["LL_ARG_ID"]
+      run_dir = Path(os.environ["LL_ARG_RUN_DIR"])
+      q = run_dir / "quality"
+      oracle = q / issue_id
+
+      def read(path):
+          try:
+              return Path(path).read_text().strip()
+          except OSError:
+              return ""
+
+      def lines(path):
+          return [x.strip() for x in read(path).splitlines() if x.strip()]
+
+      route = read(q / f"{issue_id}.route")
+      if route not in ("pass", "fail", "infra"):
+          route = "infra"
+      try:
+          cmds = json.loads(read(oracle / "commands.json") or "{}")
+      except ValueError:
+          cmds = {}
+      format_files = lines(q / f"{issue_id}.format-files")
+
+      def stage(sidecar, cmd_key):
+          text = read(oracle / sidecar)
+          if not text:
+              wanted = bool(cmds.get(cmd_key))
+              if cmd_key == "format_check_cmd":
+                  wanted = wanted and bool(format_files)
+              return "absent" if wanted else "skip"
+          if text.splitlines()[0].startswith("SKIP"):
+              return "skip"
+          rc = [x for x in text.splitlines() if x.startswith("exit_code=")]
+          if not rc:
+              return "killed"
+          return "pass" if rc[-1] == "exit_code=0" else "fail"
+
+      stages = {
+          "format_check": stage("format-check.txt", "format_check_cmd"),
+          "lint": stage("lint.txt", "lint_cmd"),
+          "typecheck": stage("typecheck.txt", "typecheck_cmd"),
+          "test": stage("test-results.txt", "test_cmd"),
+      }
+      prepatch = "absent"
+      try:
+          prepatch = json.loads(read(oracle / f"prepatch_evidence_{issue_id}.json")).get(
+              "verdict", "absent"
+          )
+      except (ValueError, AttributeError):
+          pass
+
+      def git(*args):
+          r = subprocess.run(["git", *args], capture_output=True, text=True)
+          return r.stdout.strip() if r.returncode == 0 else ""
+
+      base_sha = read(q / f"{issue_id}.base")
+      history_base = None
+      try:
+          from little_loops.history_reader.runs import read_base_sha
+
+          history_base = read_base_sha(issue_id)
+      except Exception:
+          pass
+
+      if route == "fail":
+          verdict = "GATE_FAILED"
+      elif route == "infra":
+          verdict = "GATE_INFRA"
+      elif all(v == "skip" for v in stages.values()):
+          verdict = "GATE_SKIP"
+      else:
+          verdict = "GATE_PASS"
+
+      record = {
+          "issue_id": issue_id,
+          "base_sha": base_sha,
+          "head_sha": git("rev-parse", "HEAD"),
+          "dirty": bool(lines(q / f"{issue_id}.dirtyset")),
+          "changed_files": lines(q / f"{issue_id}.changed"),
+          "format_check": stages["format_check"],
+          "lint": stages["lint"],
+          "typecheck": stages["typecheck"],
+          "test": stages["test"],
+          "prepatch": prepatch,
+          "route": route,
+          "verdict": verdict,
+      }
+      if history_base and history_base != base_sha:
+          record["history_base_sha"] = history_base
+      (q / f"{issue_id}.json").write_text(json.dumps(record, indent=2) + "\n")
+
+      reason = {"GATE_FAILED": "quality_gate_failed", "GATE_INFRA": "quality_gate_infra"}.get(verdict)
+      if reason:
+          ledger = run_dir / "autodev-unverified.txt"
+          existing = read(ledger)
+          if not any(x.split()[:1] == [issue_id] for x in existing.splitlines()):
+              with ledger.open("a") as f:
+                  f.write(f"{issue_id}  {reason}\n")
+      print(f"[QUALITY-GATE] {issue_id}: {verdict} (route={route}) {stages}")
+      PYEOF
+    next: dequeue_next
     on_error: dequeue_next
 
   check_impl_reached:
@@ -3156,13 +3410,41 @@ states:
       # summary can split them from implemented ones; they still land in
       # autodev-passed.txt as bare IDs.
       CANCELLED_IDS=""
+      # FEAT-3573: with the quality gate on, an implemented (done/completed) ID is
+      # promoted only if quality/<ID>.json records GATE_PASS or GATE_SKIP. A
+      # GATE_FAILED / GATE_INFRA record was already ledgered by
+      # record_quality_evidence (`quality_gate_failed` / `quality_gate_infra`); a
+      # done ID with no record at all is `quality_evidence_missing`. Cancelled
+      # closures are promoted on status alone.
+      QUALITY_GATE=$(printf '%s' ${context.quality_gate:shell:default=true} | tr '[:upper:]' '[:lower:]')
+      QUALITY_DIR=${context.run_dir}/quality
       for ID in $STAGED_IDS; do
         STATUS=$(ll-issues show "$ID" --json 2>/dev/null \
           | python3 -c "import json,sys; print((json.load(sys.stdin).get('status') or '').lower())" \
           2>/dev/null || echo "")
         case "$STATUS" in
           done|completed)
-            echo "$ID" >> ${context.run_dir}/autodev-passed.txt ;;
+            case "$QUALITY_GATE" in
+              false|0|no|off)
+                echo "$ID" >> ${context.run_dir}/autodev-passed.txt ;;
+              *)
+                QUALITY_VERDICT=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('verdict') or '')" \
+                  "$QUALITY_DIR/$ID.json" 2>/dev/null || echo "")
+                case "$QUALITY_VERDICT" in
+                  GATE_PASS|GATE_SKIP)
+                    echo "$ID" >> ${context.run_dir}/autodev-passed.txt ;;
+                  GATE_FAILED) QUALITY_REASON=quality_gate_failed ;;
+                  GATE_INFRA) QUALITY_REASON=quality_gate_infra ;;
+                  *) QUALITY_REASON=quality_evidence_missing ;;
+                esac
+                case "$QUALITY_VERDICT" in
+                  GATE_PASS|GATE_SKIP) ;;
+                  *)
+                    if ! grep -qE "^$ID([[:space:]]|$)" ${context.run_dir}/autodev-unverified.txt 2>/dev/null; then
+                      echo "$ID  $QUALITY_REASON" >> ${context.run_dir}/autodev-unverified.txt
+                    fi ;;
+                esac ;;
+            esac ;;
           cancelled)
             echo "$ID" >> ${context.run_dir}/autodev-passed.txt
             CANCELLED_IDS="$CANCELLED_IDS $ID"
@@ -3262,6 +3544,36 @@ states:
         | grep -v '^[[:space:]]*$' | sort -u || true)
       UNVERIFIED_COUNT=$(echo "$UNVERIFIED_IDS" | grep -c '[^[:space:]]' || true)
       [ -z "$UNVERIFIED_COUNT" ] && UNVERIFIED_COUNT=0
+      # FEAT-3573: quality-gate outcomes are ledgered in the unverified bucket (so they
+      # count in not_closed and feed the verdict ladder) but get their own summary
+      # keys and lines; the generic Unverified "re-queue to retry" hint is wrong for
+      # them — the issue is already `done`, so a rerun skips it as already_done and
+      # will not re-gate it.
+      QUALITY_FAILED_COUNT=$(grep -cE '[[:space:]]quality_gate_failed([[:space:]]|$)' ${context.run_dir}/autodev-unverified.txt 2>/dev/null || true)
+      [ -z "$QUALITY_FAILED_COUNT" ] && QUALITY_FAILED_COUNT=0
+      QUALITY_INFRA_COUNT=$(grep -cE '[[:space:]]quality_gate_infra([[:space:]]|$)' ${context.run_dir}/autodev-unverified.txt 2>/dev/null || true)
+      [ -z "$QUALITY_INFRA_COUNT" ] && QUALITY_INFRA_COUNT=0
+      UNVERIFIED_DISPLAY_IDS=$(echo "$UNVERIFIED_IDS" | grep -vE '[[:space:]]quality_gate_(failed|infra)([[:space:]]|$)' || true)
+      UNVERIFIED_DISPLAY_COUNT=$(echo "$UNVERIFIED_DISPLAY_IDS" | grep -c '[^[:space:]]' || true)
+      [ -z "$UNVERIFIED_DISPLAY_COUNT" ] && UNVERIFIED_DISPLAY_COUNT=0
+      # "ID@<short head_sha>[ (dirty)]" per ID, read from the evidence record.
+      quality_list() {
+        for QID in $(grep -E "[[:space:]]$1([[:space:]]|\$)" ${context.run_dir}/autodev-unverified.txt 2>/dev/null | awk '{print $1}' | sort -u); do
+          python3 -c "
+      import json, sys
+      try:
+          d = json.load(open(sys.argv[1]))
+      except Exception:
+          d = {}
+      sha = (d.get('head_sha') or '')[:8]
+      print(sys.argv[2] + ('@' + sha if sha else '') + (' (dirty)' if d.get('dirty') else ''))
+      " "$QUALITY_DIR/$QID.json" "$QID"
+        done | paste -sd, -
+      }
+      QUALITY_FAILED_LIST=$(quality_list quality_gate_failed)
+      QUALITY_INFRA_LIST=$(quality_list quality_gate_infra)
+      QUALITY_GATED_COUNT=$(find "$QUALITY_DIR" -maxdepth 1 -name '*.json' 2>/dev/null | grep -c . || true)
+      [ -z "$QUALITY_GATED_COUNT" ] && QUALITY_GATED_COUNT=0
 
       PASSED_LIST=$(echo "$PASSED_IDS" | tr '\n' ',' | sed 's/,$//')
       SKIPPED_LIST=$(echo "$SKIPPED_IDS" | tr '\n' ',' | sed 's/,$//')
@@ -3271,7 +3583,7 @@ states:
       GATE_BLOCKED_LIST=$(echo "$GATE_BLOCKED_IDS" | tr '\n' ',' | sed 's/,$//')
       DECISION_UNRESOLVED_LIST=$(echo "$DECISION_UNRESOLVED_IDS" | tr '\n' ',' | sed 's/,$//')
       NOT_STARTED_LIST=$(echo "$NOT_STARTED_IDS" | tr '\n' ',' | sed 's/,$//')
-      UNVERIFIED_LIST=$(echo "$UNVERIFIED_IDS" | tr '\n' ',' | sed 's/,$//')
+      UNVERIFIED_LIST=$(echo "$UNVERIFIED_DISPLAY_IDS" | grep -v '^[[:space:]]*$' | tr '\n' ',' | sed 's/,$//')
 
       printf '\n=== Autodev Summary ===\n\n'
       if [ "$CLOSED_CANCELLED" -gt 0 ]; then
@@ -3314,8 +3626,17 @@ states:
       if [ "$NOT_STARTED_COUNT" -gt 0 ]; then
         printf 'Not-started  (%d): %s  (never reached implementation — Phase 1 rejected)\n' "$NOT_STARTED_COUNT" "$NOT_STARTED_LIST"
       fi
-      if [ "$UNVERIFIED_COUNT" -gt 0 ]; then
-        printf 'Unverified   (%d): %s  (threshold passed; implementation did not close — re-queue to retry)\n' "$UNVERIFIED_COUNT" "$UNVERIFIED_LIST"
+      if [ "$QUALITY_FAILED_COUNT" -gt 0 ]; then
+        printf 'Quality-failed (%d): %s  (marked done but gate failed — review these commits; rerun will not re-gate)\n' "$QUALITY_FAILED_COUNT" "$QUALITY_FAILED_LIST"
+      fi
+      if [ "$QUALITY_INFRA_COUNT" -gt 0 ]; then
+        printf 'Quality-gate-infra [infra] (%d): %s  (gate crashed — re-run the oracle manually)\n' "$QUALITY_INFRA_COUNT" "$QUALITY_INFRA_LIST"
+      fi
+      if [ "$QUALITY_GATED_COUNT" -gt 0 ] && [ $((QUALITY_FAILED_COUNT + QUALITY_INFRA_COUNT)) -eq "$QUALITY_GATED_COUNT" ]; then
+        printf 'Hint: every gated issue failed the quality gate — if the base branch is already red, re-run with --context quality_gate=false (auto-refine-and-implement forwards quality_gate too)\n'
+      fi
+      if [ "$UNVERIFIED_DISPLAY_COUNT" -gt 0 ]; then
+        printf 'Unverified   (%d): %s  (threshold passed; implementation did not close — re-queue to retry)\n' "$UNVERIFIED_DISPLAY_COUNT" "$UNVERIFIED_LIST"
       fi
       # finalize_rate_limited stamps the stop reason; the queue still holds
       # every issue never dequeued, so surface it rather than dropping it.
@@ -3360,8 +3681,8 @@ states:
         VERDICT=rate_limited
       fi
 
-      printf '{"verdict":"%s","closed":%s,"not_closed":%s,"skipped":%s,"gate_blocked":%s,"decision_unresolved":%s,"not_started":%s,"inflight_unresolved":%s,"abandoned":%s,"stop_reason":"%s","pending":%s,"proof_gate_infra":%s,"closed_implemented":%s,"closed_cancelled":%s}\n' \
-        "$VERDICT" "$PASSED_COUNT" "$UNVERIFIED_COUNT" "$SKIPPED_COUNT" "$GATE_BLOCKED_COUNT" "$DECISION_UNRESOLVED_COUNT" "$NOT_STARTED_COUNT" "$ABANDONED" "$ABANDONED" "$STOP_REASON" "$PENDING_COUNT" "$PROOF_GATE_INFRA_COUNT" "$CLOSED_IMPLEMENTED" "$CLOSED_CANCELLED" \
+      printf '{"verdict":"%s","closed":%s,"not_closed":%s,"skipped":%s,"gate_blocked":%s,"decision_unresolved":%s,"not_started":%s,"inflight_unresolved":%s,"abandoned":%s,"stop_reason":"%s","pending":%s,"proof_gate_infra":%s,"closed_implemented":%s,"closed_cancelled":%s,"quality_failed":%s,"quality_gate_infra":%s}\n' \
+        "$VERDICT" "$PASSED_COUNT" "$UNVERIFIED_COUNT" "$SKIPPED_COUNT" "$GATE_BLOCKED_COUNT" "$DECISION_UNRESOLVED_COUNT" "$NOT_STARTED_COUNT" "$ABANDONED" "$ABANDONED" "$STOP_REASON" "$PENDING_COUNT" "$PROOF_GATE_INFRA_COUNT" "$CLOSED_IMPLEMENTED" "$CLOSED_CANCELLED" "$QUALITY_FAILED_COUNT" "$QUALITY_INFRA_COUNT" \
         > ${context.run_dir}/summary.json
 
       # BUG-2908: route the FSM terminal on verified closure, not "reached the

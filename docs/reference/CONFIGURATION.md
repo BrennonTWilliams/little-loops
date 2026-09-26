@@ -303,6 +303,8 @@ Project-level settings for commands:
 | `lint_cmd` | `ruff check .` | Command to run linter. Same absent-vs-null distinction as `test_cmd` (BUG-3269) |
 | `type_cmd` | `mypy` | Command for type checking |
 | `format_cmd` | `ruff format .` | Command to format code |
+| `format_check_cmd` | `null` | Check-only format command with a `{files}` placeholder, run by the `autodev` quality gate on the changed files only, e.g. `ruff format --check --force-exclude {files}`. Unset → the format stage is skipped. Must not contain a `"` character (the oracle's `commands.json` is not JSON-escaped) |
+| `format_check_extensions` | `null` | Extensions the format-check stage is limited to, e.g. `[".py", ".pyi"]`. Unset → every changed file is passed |
 | `build_cmd` | `null` | Optional build command |
 | `run_cmd` | `null` | Optional run/start command (smoke test) |
 | `health_url` | `null` | Optional service health probe URL (FEAT-2551, used by `oracles/code-run-gate` `service_health` state) |

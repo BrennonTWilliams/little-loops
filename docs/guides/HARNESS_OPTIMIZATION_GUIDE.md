@@ -691,7 +691,7 @@ A static mirror-drift gate in little-loops' own test suite asserts no loop YAML 
 that every `${context.test_cmd}`/`${context.lint_cmd}` reference resolves against its loop's
 declared `context:`/`parameters:` block. `oracles/code-run-gate.yaml` is a permanent
 exemption — it implements a different, deliberately non-guessing resolution convention
-(alias pairs, `${context.project_root}`-relative) that predates and is incompatible with this
+(alias pairs, `${context.project_root}`-relative; the `format_check_cmd` stage resolves the same way, or via `ll-config get` when `resolve_via_ll_config` is passed) that predates and is incompatible with this
 one. Two more loops are permanent exemptions: `rn-refine.yaml` and `auto-refine-and-implement.yaml`
 have an absent ≡ null ≡ skip contract that `ll-config get` cannot express — converting either
 would start running `pytest`/`ruff check .` in unconfigured projects instead of skipping. All

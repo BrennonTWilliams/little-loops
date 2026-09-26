@@ -268,7 +268,10 @@ class TestAutodevSmoke:
         # resolve_decision_direct (-8); added select_obligation_post_refine,
         # select_obligation_pre_implement and record_reentry_exhausted (+3),
         # lowering it to 105.
-        assert len(topo["states"]) == 105
+        # FEAT-3573 added route_quality_gate, run_quality_gate, mark_quality_pass,
+        # mark_quality_fail, mark_quality_infra and record_quality_evidence (+6) —
+        # the post-implement quality gate between verify_impl_closed and dequeue_next.
+        assert len(topo["states"]) == 111
 
         # Every edge endpoint is a known state id, or the target of a
         # declared sub-loop (`loop:`) cross-graph edge. `from` may be null

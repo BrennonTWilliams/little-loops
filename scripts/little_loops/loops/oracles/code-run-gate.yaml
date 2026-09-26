@@ -2,8 +2,10 @@ name: code-run-gate
 visibility: internal
 description: |
   Reusable Tier-1 deterministic oracle (FEAT-2551) — runs the project's
-  build / test / typecheck / lint / service_health command matrix and emits
-  GATE_PASS / GATE_FAILED / GATE_SKIP via the parent↔sub-loop token channel.
+  build / test / typecheck / lint / format-check / service_health command
+  matrix and emits GATE_PASS / GATE_FAILED / GATE_SKIP via the parent↔sub-loop
+  token channel. The format-check stage (FEAT-3573) is opt-in: it runs only
+  when the caller passes `changed_files_path`, so existing callers get SKIP.
 
   Resolves commands from `.ll/ll-config.json` `project.*` (with alias support
   per ARCHITECTURE-123: `type_cmd`/`typecheck_cmd`, `run_cmd`/`start_cmd`).
@@ -101,6 +103,39 @@ parameters:
     description: |
       URL to probe for service readiness. When null together with no run_cmd,
       service_health short-circuits to SKIP.
+  format_check_cmd:
+    type: string
+    required: false
+    description: |
+      Check-only format command with a {files} placeholder (FEAT-3573), e.g.
+      `ruff format --check --force-exclude {files}`. Also read from
+      `project.format_check_cmd`. Null → run_format_check skips.
+  changed_files_path:
+    type: string
+    required: false
+    description: |
+      File holding the newline-separated changed-file list the format stage is
+      scoped to (FEAT-3573). The format stage runs ONLY when this is passed;
+      omitting it (every pre-existing caller) makes run_format_check SKIP. An
+      empty or missing file also skips.
+  src_dir:
+    type: string
+    required: false
+    description: |
+      Project source dir (FEAT-3573). When set (here, or via
+      resolve_via_ll_config) and the cwd is a linked git worktree, it is
+      prepended to PYTHONPATH for run_test / run_typecheck so an editable
+      install does not shadow the worktree's package (BUG-2629).
+  resolve_via_ll_config:
+    type: string
+    required: false
+    description: |
+      Opt-in (FEAT-3573). Any non-empty value makes resolve_commands resolve
+      build/test/typecheck/lint/run/health_url/format_check_cmd and src_dir
+      with `ll-config get project.<key>` (which honors `.ll/ll.local.md` and
+      config defaults) instead of reading `.ll/ll-config.json` directly.
+      Explicit per-command caller overrides still win. Unset (every
+      pre-existing caller) keeps the file-only resolution.
 
 states:
   resolve_commands:
@@ -157,6 +192,23 @@ states:
       LINT_CMD=$(get_value "$CFG_PROJECT" "lint_cmd" "lint_cmd")
       RUN_CMD=$(get_value "$CFG_PROJECT" "start_cmd" "run_cmd")
       HEALTH_URL=$(get_value "$CFG_PROJECT" "health_url" "health_url")
+      FORMAT_CHECK_CMD=$(get_value "$CFG_PROJECT" "format_check_cmd" "format_check_cmd")
+
+      # FEAT-3573: opt-in resolution through `ll-config get` (honors ll.local.md and
+      # config defaults). ll-config is authoritative here: an unset/null key blanks
+      # the command so its stage SKIPs. Caller overrides below still win.
+      SRC_DIR=""
+      if [ -n ${context.resolve_via_ll_config:shell:default=} ]; then
+        BUILD_CMD=$(ll-config get project.build_cmd 2>/dev/null | head -1)
+        TEST_CMD=$(ll-config get project.test_cmd 2>/dev/null | head -1)
+        TYPECHECK_CMD=$(ll-config get project.typecheck_cmd 2>/dev/null | head -1)
+        [ -z "$TYPECHECK_CMD" ] && TYPECHECK_CMD=$(ll-config get project.type_cmd 2>/dev/null | head -1)
+        LINT_CMD=$(ll-config get project.lint_cmd 2>/dev/null | head -1)
+        RUN_CMD=$(ll-config get project.run_cmd 2>/dev/null | head -1)
+        HEALTH_URL=$(ll-config get project.health_url 2>/dev/null | head -1)
+        FORMAT_CHECK_CMD=$(ll-config get project.format_check_cmd 2>/dev/null | head -1)
+        SRC_DIR=$(ll-config get project.src_dir 2>/dev/null | head -1)
+      fi
 
       # Honour caller-supplied overrides via parameters (when provided).
       # NOTE: both the guard AND the assignment RHS must carry :default= — the
@@ -185,11 +237,29 @@ states:
       # ll-lint: mr11-ok(context.health_url) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       # ll-lint: mr11-ok(context.health_url) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       [ -n "${context.health_url:default=}" ] && HEALTH_URL="${context.health_url:default=}"
+      # (:shell:default= on both refs — FEAT-3573; quoted so the value is never re-tokenized.)
+      [ -n ${context.format_check_cmd:shell:default=} ] && FORMAT_CHECK_CMD=${context.format_check_cmd:shell:default=}
+      [ -n ${context.src_dir:shell:default=} ] && SRC_DIR=${context.src_dir:shell:default=}
 
-      # Write commands.json sidecar (F2a → F2b contract — canonical names only)
-      cat > "$${ABS_DIR}/commands.json" <<CMDEOF
-      {"build_cmd": "$BUILD_CMD", "test_cmd": "$TEST_CMD", "typecheck_cmd": "$TYPECHECK_CMD", "lint_cmd": "$LINT_CMD", "run_cmd": "$RUN_CMD", "health_url": "$HEALTH_URL"}
-      CMDEOF
+      # Write commands.json sidecar (F2a → F2b contract — canonical names only).
+      # Serialized with json.dumps so a command containing a double quote still
+      # yields valid JSON (FEAT-3573) — the old unescaped heredoc made every
+      # run_* json.load fail and the stage SKIP silently.
+      LL_C_BUILD="$BUILD_CMD" LL_C_TEST="$TEST_CMD" LL_C_TYPECHECK="$TYPECHECK_CMD" \
+        LL_C_LINT="$LINT_CMD" LL_C_RUN="$RUN_CMD" LL_C_HEALTH="$HEALTH_URL" \
+        LL_C_FORMAT="$FORMAT_CHECK_CMD" LL_C_SRC="$SRC_DIR" python3 -c "
+      import json, os
+      print(json.dumps({
+          'build_cmd': os.environ['LL_C_BUILD'],
+          'test_cmd': os.environ['LL_C_TEST'],
+          'typecheck_cmd': os.environ['LL_C_TYPECHECK'],
+          'lint_cmd': os.environ['LL_C_LINT'],
+          'run_cmd': os.environ['LL_C_RUN'],
+          'health_url': os.environ['LL_C_HEALTH'],
+          'format_check_cmd': os.environ['LL_C_FORMAT'],
+          'src_dir': os.environ['LL_C_SRC'],
+      }))
+      " > "$${ABS_DIR}/commands.json"
 
       # Write initial subloop_outcome placeholder. aggregate rewrites this
       # with the final GATE_PASS / GATE_FAILED / GATE_SKIP verdict (F2b reader).
@@ -255,6 +325,18 @@ states:
         *) ABS_DIR="$(pwd)/${context.run_dir}" ;;
       esac
       TEST_CMD=$(python3 -c "import json; print(json.load(open('$${ABS_DIR}/commands.json')).get('test_cmd') or '')")
+      # FEAT-3573 / BUG-2629: in a linked worktree, an editable install would
+      # shadow the worktree's package with the main checkout's. Prepend the
+      # worktree src_dir to PYTHONPATH — only when src_dir resolved (caller param or
+      # resolve_via_ll_config); the value rides commands.json.
+      SRC_DIR=$(python3 -c "import json; print(json.load(open('$${ABS_DIR}/commands.json')).get('src_dir') or '')")
+      if [ -n "$SRC_DIR" ]; then
+        GIT_DIR_ABS=$(cd "$(git rev-parse --absolute-git-dir 2>/dev/null)" 2>/dev/null && pwd -P)
+        GIT_COMMON_ABS=$(cd "$(git rev-parse --git-common-dir 2>/dev/null)" 2>/dev/null && pwd -P)
+        if [ -n "$GIT_DIR_ABS" ] && [ "$GIT_DIR_ABS" != "$GIT_COMMON_ABS" ]; then
+          export PYTHONPATH="$(pwd)/$SRC_DIR$${PYTHONPATH:+:$PYTHONPATH}"
+        fi
+      fi
       if [ -z "$TEST_CMD" ]; then
         echo "SKIP test_cmd=null" > "$${ABS_DIR}/test-results.txt"
         echo "pass_rate=1.0" >> "$${ABS_DIR}/test-results.txt"
@@ -306,6 +388,18 @@ states:
         *) ABS_DIR="$(pwd)/${context.run_dir}" ;;
       esac
       TYPECHECK_CMD=$(python3 -c "import json; print(json.load(open('$${ABS_DIR}/commands.json')).get('typecheck_cmd') or '')")
+      # FEAT-3573 / BUG-2629: in a linked worktree, an editable install would
+      # shadow the worktree's package with the main checkout's. Prepend the
+      # worktree src_dir to PYTHONPATH — only when src_dir resolved (caller param or
+      # resolve_via_ll_config); the value rides commands.json.
+      SRC_DIR=$(python3 -c "import json; print(json.load(open('$${ABS_DIR}/commands.json')).get('src_dir') or '')")
+      if [ -n "$SRC_DIR" ]; then
+        GIT_DIR_ABS=$(cd "$(git rev-parse --absolute-git-dir 2>/dev/null)" 2>/dev/null && pwd -P)
+        GIT_COMMON_ABS=$(cd "$(git rev-parse --git-common-dir 2>/dev/null)" 2>/dev/null && pwd -P)
+        if [ -n "$GIT_DIR_ABS" ] && [ "$GIT_DIR_ABS" != "$GIT_COMMON_ABS" ]; then
+          export PYTHONPATH="$(pwd)/$SRC_DIR$${PYTHONPATH:+:$PYTHONPATH}"
+        fi
+      fi
       if [ -z "$TYPECHECK_CMD" ]; then
         echo "SKIP typecheck_cmd=null" > "$${ABS_DIR}/typecheck.txt"
         echo "SKIP"
@@ -341,6 +435,56 @@ states:
       bash -c "$LINT_CMD" > "$${ABS_DIR}/lint.txt" 2>&1
       RC=$?
       echo "exit_code=$RC" >> "$${ABS_DIR}/lint.txt"
+      echo "exit_code=$RC"
+    evaluate:
+      type: exit_code
+    on_yes: run_format_check
+    on_no: run_format_check
+    on_error: run_format_check
+
+  run_format_check:
+    # FEAT-3573: check-only format stage, scoped to the caller's changed-file
+    # list. Opt-in: SKIPs unless `changed_files_path` is passed, so every
+    # pre-existing caller is unchanged. The {files} placeholder in
+    # format_check_cmd is replaced with the shell-quoted file list read straight
+    # from changed_files_path (never via commands.json). A check-only command
+    # never writes to the working tree.
+    description: |
+      Run format_check_cmd over the changed files (if configured and the caller
+      passed a non-empty changed_files_path) and write output to
+      format-check.txt. All routing outcomes chain to service_health.
+    action_type: shell
+    timeout: 120
+    action: |
+      case "${context.run_dir}" in
+        /*) ABS_DIR="${context.run_dir}" ;;
+        *) ABS_DIR="$(pwd)/${context.run_dir}" ;;
+      esac
+      FILES_PATH=${context.changed_files_path:shell:default=}
+      if [ -z "$FILES_PATH" ]; then
+        echo "SKIP changed_files_path=null" > "$${ABS_DIR}/format-check.txt"
+        echo "SKIP"
+        exit 0
+      fi
+      FULL_CMD=$(python3 -c "
+      import json, shlex, sys
+      cmd = json.load(open(sys.argv[1] + '/commands.json')).get('format_check_cmd') or ''
+      try:
+          files = [l.strip() for l in open(sys.argv[2]) if l.strip()]
+      except OSError:
+          files = []
+      if cmd and files:
+          quoted = ' '.join(shlex.quote(f) for f in files)
+          print(cmd.replace('{files}', quoted) if '{files}' in cmd else cmd + ' ' + quoted)
+      " "$${ABS_DIR}" "$FILES_PATH")
+      if [ -z "$FULL_CMD" ]; then
+        echo "SKIP format_check_cmd=null or no changed files" > "$${ABS_DIR}/format-check.txt"
+        echo "SKIP"
+        exit 0
+      fi
+      bash -c "$FULL_CMD" > "$${ABS_DIR}/format-check.txt" 2>&1
+      RC=$?
+      echo "exit_code=$RC" >> "$${ABS_DIR}/format-check.txt"
       echo "exit_code=$RC"
     evaluate:
       type: exit_code
@@ -408,7 +552,7 @@ states:
 
   aggregate:
     # Reads all sidecar files (build.txt, test-results.txt, typecheck.txt,
-    # lint.txt, health.txt) and computes the final verdict:
+    # lint.txt, format-check.txt, health.txt) and computes the final verdict:
     #   - All SKIP / empty          → GATE_SKIP   (docs-only no-op pass)
     #   - Any non-SKIP with FAIL     → GATE_FAILED
     #   - Otherwise                  → GATE_PASS
@@ -426,12 +570,44 @@ states:
         /*) ABS_DIR="${context.run_dir}" ;;
         *) ABS_DIR="$(pwd)/${context.run_dir}" ;;
       esac
+      # Resolve changed_files_path to an absolute path BEFORE the cd below.
+      FILES_PATH=${context.changed_files_path:shell:default=}
+      case "$FILES_PATH" in
+        ""|/*) ;;
+        *) FILES_PATH="$(pwd)/$FILES_PATH" ;;
+      esac
       cd "$${ABS_DIR}" || true
 
       ALL_SKIP=true
       ANY_FAIL=false
       ANY_RAN=false
-      for f in build.txt test-results.txt typecheck.txt lint.txt health.txt; do
+      # FEAT-3573: a stage whose command is configured but whose sidecar is
+      # absent was killed before its redirect created the file — that is a
+      # failure, not a pass. format-check.txt is required only when the caller
+      # passed changed_files_path AND a non-empty file list AND a command.
+      MISSING=$(python3 -c "
+      import json, os, sys
+      try:
+          cmds = json.load(open('commands.json'))
+      except (OSError, ValueError):
+          cmds = {}
+      need = []
+      for f, k in (('build.txt', 'build_cmd'), ('test-results.txt', 'test_cmd'),
+                   ('typecheck.txt', 'typecheck_cmd'), ('lint.txt', 'lint_cmd'),
+                   ('health.txt', 'health_url')):
+          if cmds.get(k) and not os.path.isfile(f):
+              need.append(f)
+      fp = sys.argv[1]
+      if fp and cmds.get('format_check_cmd') and not os.path.isfile('format-check.txt'):
+          try:
+              if any(l.strip() for l in open(fp)):
+                  need.append('format-check.txt')
+          except OSError:
+              pass
+      print(' '.join(need))
+      " "$FILES_PATH" 2>/dev/null || true)
+      [ -n "$MISSING" ] && ANY_FAIL=true
+      for f in build.txt test-results.txt typecheck.txt lint.txt format-check.txt health.txt; do
         [ -f "$f" ] || continue
         # Detect SKIP vs real run via first-line prefix.
         FIRST=$(head -1 "$f")
@@ -440,6 +616,12 @@ states:
           *)
             ANY_RAN=true
             if grep -q "^exit_code=[1-9]" "$f" 2>/dev/null; then
+              ANY_FAIL=true
+            fi
+            # FEAT-3573: a non-SKIP sidecar with no exit_code= line was killed
+            # at its state timeout (partial output only) — a failure, never a
+            # pass.
+            if ! grep -q "^exit_code=" "$f" 2>/dev/null; then
               ANY_FAIL=true
             fi
             if [ "$f" = "test-results.txt" ]; then

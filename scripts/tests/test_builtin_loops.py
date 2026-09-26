@@ -642,13 +642,16 @@ class TestPrePatchCheckReachability:
 
     # Frozen at the state set code-run-gate had when `prepatch_check` was added.
     # A new entry here means someone added a state to the oracle -- re-read
-    # ENH-2997's Scope Boundaries before updating it.
+    # ENH-2997's Scope Boundaries before updating it. FEAT-3573 re-read them and
+    # added `run_format_check` knowingly: it carries no prepatch_check, so the
+    # cost-preferred single-placement invariant below still holds.
     CODE_RUN_GATE_STATES = {
         "aggregate",
         "done",
         "failed",
         "resolve_commands",
         "run_build",
+        "run_format_check",
         "run_lint",
         "run_test",
         "run_typecheck",
@@ -659,7 +662,7 @@ class TestPrePatchCheckReachability:
         return load_and_validate(BUILTIN_LOOPS_DIR / "oracles" / "code-run-gate.yaml")[0]
 
     def test_code_run_gate_state_set_unchanged(self) -> None:
-        """No *state* was added to the oracle -- the opt-in is a key line only."""
+        """The oracle's state set is frozen (FEAT-3573 added `run_format_check`)."""
         assert set(self._gate().states) == self.CODE_RUN_GATE_STATES
 
     def test_gate_gains_exactly_one_prepatch_check_key(self) -> None:
@@ -6640,6 +6643,12 @@ class TestMergeEpicBranchConfigReadShell:
         assert self._EPIC_BRANCH in self._branches(tmp_path)
 
 
+# FEAT-3573: finalize_done gates promotion on the `quality_gate` context key. The
+# pre-existing finalize tests exercise status-only closure, so their harness pins it
+# off; TestAutodevQualityGate covers the gate-on behavior.
+QUALITY_GATE_REF = "${context.quality_gate:shell:default=true}"
+
+
 class TestAutodevLoop:
     """Structural tests for the autodev FSM loop (ENH-1127: interleaved refine+implement)."""
 
@@ -7343,7 +7352,9 @@ class TestAutodevLoop:
         (run_dir / "autodev-skipped.txt").write_text(
             "ENH-1001  refine_failed\nBUG-2865  already_completed\nFEAT-2001  blocked_by_unmet\n"
         )
-        script = action.replace("${context.run_dir}", str(run_dir))
+        script = action.replace("${context.run_dir}", str(run_dir)).replace(
+            QUALITY_GATE_REF, "false"
+        )
         script = script.replace("$${", "${")
         result = subprocess.run(
             ["bash", "-c", script], cwd=tmp_path, capture_output=True, text=True
@@ -7379,7 +7390,9 @@ class TestAutodevLoop:
             "BUG-2865  already_completed\n"
             "FEAT-1003  already_deferred\n"
         )
-        script = action.replace("${context.run_dir}", str(run_dir))
+        script = action.replace("${context.run_dir}", str(run_dir)).replace(
+            QUALITY_GATE_REF, "false"
+        )
         script = script.replace("$${", "${")
         result = subprocess.run(
             ["bash", "-c", script], cwd=tmp_path, capture_output=True, text=True
@@ -7421,7 +7434,9 @@ class TestAutodevLoop:
     ) -> tuple[dict, str]:
         state = data["states"].get("finalize_done", {})
         action = state.get("action", "")
-        script = action.replace("${context.run_dir}", str(run_dir))
+        script = action.replace("${context.run_dir}", str(run_dir)).replace(
+            QUALITY_GATE_REF, "false"
+        )
         script = script.replace("$${", "${")
         result = subprocess.run(
             ["bash", "-c", script], cwd=run_dir, capture_output=True, text=True, env=env
@@ -7447,7 +7462,9 @@ class TestAutodevLoop:
         script_path.chmod(0o755)
         env = dict(**{"PATH": f"{run_dir}:{__import__('os').environ['PATH']}"})
         state = data["states"].get("finalize_done", {})
-        script = state.get("action", "").replace("${context.run_dir}", str(run_dir))
+        script = state.get("action", "").replace("${context.run_dir}", str(run_dir)).replace(
+            QUALITY_GATE_REF, "false"
+        )
         script = script.replace("$${", "${")
         result = subprocess.run(
             ["bash", "-c", script], cwd=run_dir, capture_output=True, text=True, env=env
@@ -7478,7 +7495,9 @@ class TestAutodevLoop:
         script_path.chmod(0o755)
         env = dict(**{"PATH": f"{run_dir}:{__import__('os').environ['PATH']}"})
         state = data["states"].get("finalize_done", {})
-        script = state.get("action", "").replace("${context.run_dir}", str(run_dir))
+        script = state.get("action", "").replace("${context.run_dir}", str(run_dir)).replace(
+            QUALITY_GATE_REF, "false"
+        )
         script = script.replace("$${", "${")
         result = subprocess.run(
             ["bash", "-c", script], cwd=run_dir, capture_output=True, text=True, env=env
@@ -7595,7 +7614,9 @@ class TestAutodevLoop:
         (run_dir / "autodev-queue.txt").write_text("FEAT-301\nFEAT-302\n")
         (run_dir / "autodev-inflight").write_text("FEAT-300")
         state = data["states"].get("finalize_done", {})
-        script = state.get("action", "").replace("${context.run_dir}", str(run_dir))
+        script = state.get("action", "").replace("${context.run_dir}", str(run_dir)).replace(
+            QUALITY_GATE_REF, "false"
+        )
         script = script.replace("$${", "${")
         result = subprocess.run(["bash", "-c", script], cwd=run_dir, capture_output=True, text=True)
         assert result.returncode == 0, result.stderr
@@ -7848,7 +7869,9 @@ class TestAutodevLoop:
         script_path.chmod(0o755)
         env = dict(**{"PATH": f"{run_dir}:{os.environ['PATH']}"})
         state = data["states"].get("finalize_done", {})
-        script = state.get("action", "").replace("${context.run_dir}", str(run_dir))
+        script = state.get("action", "").replace("${context.run_dir}", str(run_dir)).replace(
+            QUALITY_GATE_REF, "false"
+        )
         script = script.replace("$${", "${")
         result = subprocess.run(
             ["bash", "-c", script], cwd=run_dir, capture_output=True, text=True, env=env
@@ -7878,9 +7901,12 @@ class TestAutodevLoop:
         assert state.get("on_yes") == "verify_impl_closed"
         verify = data["states"].get("verify_impl_closed", {})
         assert verify.get("fragment") == "shell_exit"
-        assert verify.get("on_yes") == "dequeue_next"
+        # FEAT-3573: a verified closure passes through the quality gate first;
+        # route_quality_gate itself returns to dequeue_next for cancelled/disabled.
+        assert verify.get("on_yes") == "route_quality_gate"
         assert verify.get("on_no") == "dequeue_next"
         assert verify.get("on_error") == "dequeue_next"
+        assert data["states"]["route_quality_gate"].get("on_no") == "dequeue_next"
         assert "autodev-inflight" in verify.get("action", "")
         assert "impl_exit0_not_closed" in verify.get("action", "")
 
@@ -7967,6 +7993,7 @@ class TestAutodevLoop:
         assert loop_states == {
             "refine_current",
             "resolve_decision",
+            "run_quality_gate",  # FEAT-3573
         }
         offenders = [
             name
@@ -15101,6 +15128,7 @@ class TestCodeRunGateOracle:
             "run_test",
             "run_typecheck",
             "run_lint",
+            "run_format_check",
             "service_health",
             "aggregate",
         )
@@ -15407,7 +15435,8 @@ class TestCodeRunGateOracle:
             ("run_build", "run_test"),
             ("run_test", "run_typecheck"),
             ("run_typecheck", "run_lint"),
-            ("run_lint", "service_health"),
+            ("run_lint", "run_format_check"),
+            ("run_format_check", "service_health"),
             ("service_health", "aggregate"),
         )
         states = data["states"]

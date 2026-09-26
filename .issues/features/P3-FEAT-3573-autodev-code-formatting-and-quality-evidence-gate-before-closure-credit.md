@@ -3,10 +3,11 @@ id: FEAT-3573
 type: FEAT
 title: Autodev code formatting and quality evidence gate before closure credit
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-24'
 captured_at: '2026-09-24T19:33:13Z'
+completed_at: '2026-09-26T07:55:56Z'
 parent: EPIC-3565
 decision_needed: false
 blocks:
@@ -482,23 +483,28 @@ Today: `autodev.yaml:implement_current` (shells `ll-auto --only`) → `verify_im
 - The gate's verdict vocabulary is already fixed by `code-run-gate`'s `aggregate` state — `GATE_PASS`/`GATE_FAILED`/`GATE_SKIP`, routed via a `classify` evaluator (`GATE_SKIP` routes to `done`, not failure, when no commands are configured). A format stage joins that matrix; it does not introduce a new vocabulary.
 - `code-run-gate` exposes no format parameter today (`oracles/code-run-gate.yaml:52-103`); any added stage must leave the oracle's existing callers (`rn-remediate.yaml:500`, `rn-refine.yaml:480`, `rn-implement.yaml` transitively, tests) behaviorally unchanged unless they opt in.
 
+### Deviations
+
+- _2026-09-26 (FEAT-3573 implementation):_ the design said autodev passes `test_cmd`, `lint_cmd`, `typecheck_cmd` and `format_check_cmd` to the oracle via `with:`, each resolved with `ll-config get`. `with:` can only bind values already in context or a single capture, so implementing that literally needed one capture state per command. Implemented instead as one opt-in oracle parameter, `resolve_via_ll_config`, which makes `resolve_commands` call `ll-config get project.<key>` (honoring `.ll/ll.local.md`) for every command and for `src_dir`; the resolved `src_dir` rides `commands.json` into `run_test` / `run_typecheck` for the worktree `PYTHONPATH` prepend. Existing callers pass none of the new parameters and are unchanged. `commands.json` is now written with `json.dumps`, so a `"` in a config-file command no longer breaks it (caller overrides are still interpolated into a double-quoted shell string).
+- The CHANGELOG callout (default-on gate, `quality_gate: false` workaround) is deferred to release prep, per the no-`[Unreleased]` rule.
+
 ## Acceptance Criteria
 
-- [ ] The autodev gate (extended `oracles/code-run-gate`) is the owner of the post-implement quality verdict
-- [ ] Closure credit for `done|completed` requires a recorded `GATE_PASS`/`GATE_SKIP` evidence record for the commit the implementation produced; `cancelled` closures skip the gate
-- [ ] The format stage is check-only and runs only on the changed files (deleted files dropped, extension filter applied)
-- [ ] The gate passes `min_pass_rate: 1.0`
-- [ ] Gate failure lands in `not_closed` and a `quality_failed` summary key; the issue file is not modified
-- [ ] Gate `on_error` lands in `not_closed` and a `quality_gate_infra` summary key, distinct from `quality_failed`
-- [ ] The credited verdict is taken from the sub-loop route; a test with `subloop_outcome_<ID>.txt` = `GATE_PASS` and route `fail` records `GATE_FAILED`
-- [ ] `aggregate` returns `GATE_FAILED` when a non-SKIP stage sidecar has no `exit_code=` line (killed stage)
-- [ ] Quality-failed IDs print on their own `Quality-failed` summary line with short `head_sha`, not under the `Unverified` "re-queue to retry" line
-- [ ] `auto-refine-and-implement` counts a quality-failed `done` issue as not-closed (not closed) and reports `quality_failed`
-- [ ] Existing `code-run-gate` callers (`rn-remediate`, `rn-refine`, `rn-implement`) are unchanged (format stage SKIPs without `changed_files_path`), except that a killed stage now fails instead of passing
-- [ ] `quality_gate: false` restores status-only closure credit, and is reachable from `auto-refine-and-implement` via its forwarded `quality_gate` context key
-- [ ] Files dirty or untracked before `implement_current` are excluded from the changed-file set and do not set `dirty`
-- [ ] An oracle that ends by timeout, signal, interrupt, or step budget lands as `quality_gate_infra`, not `quality_gate_failed`
-- [ ] In an EPIC-scope worktree run, the gate's test and typecheck stages import the worktree's package, not the main checkout's
+- [x] The autodev gate (extended `oracles/code-run-gate`) is the owner of the post-implement quality verdict
+- [x] Closure credit for `done|completed` requires a recorded `GATE_PASS`/`GATE_SKIP` evidence record for the commit the implementation produced; `cancelled` closures skip the gate
+- [x] The format stage is check-only and runs only on the changed files (deleted files dropped, extension filter applied)
+- [x] The gate passes `min_pass_rate: 1.0`
+- [x] Gate failure lands in `not_closed` and a `quality_failed` summary key; the issue file is not modified
+- [x] Gate `on_error` lands in `not_closed` and a `quality_gate_infra` summary key, distinct from `quality_failed`
+- [x] The credited verdict is taken from the sub-loop route; a test with `subloop_outcome_<ID>.txt` = `GATE_PASS` and route `fail` records `GATE_FAILED`
+- [x] `aggregate` returns `GATE_FAILED` when a non-SKIP stage sidecar has no `exit_code=` line (killed stage)
+- [x] Quality-failed IDs print on their own `Quality-failed` summary line with short `head_sha`, not under the `Unverified` "re-queue to retry" line
+- [x] `auto-refine-and-implement` counts a quality-failed `done` issue as not-closed (not closed) and reports `quality_failed`
+- [x] Existing `code-run-gate` callers (`rn-remediate`, `rn-refine`, `rn-implement`) are unchanged (format stage SKIPs without `changed_files_path`), except that a killed stage now fails instead of passing
+- [x] `quality_gate: false` restores status-only closure credit, and is reachable from `auto-refine-and-implement` via its forwarded `quality_gate` context key
+- [x] Files dirty or untracked before `implement_current` are excluded from the changed-file set and do not set `dirty`
+- [x] An oracle that ends by timeout, signal, interrupt, or step budget lands as `quality_gate_infra`, not `quality_gate_failed`
+- [x] In an EPIC-scope worktree run, the gate's test and typecheck stages import the worktree's package, not the main checkout's
 
 _ENH-3613 landed (status `done`, verified 2026-09-26); `blocked_by` cleared. Line anchors for autodev states refreshed by `/ll:ready-issue`._
 
@@ -524,9 +530,13 @@ _Moved out 2026-09-26:_ the verbatim-commands criterion is now ENH-3612's; the c
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
+## Resolution
+
+**Implemented** 2026-09-26. `oracles/code-run-gate` gains an opt-in check-only format stage (`changed_files_path`, `project.format_check_cmd` / `format_check_extensions`), killed-stage and absent-sidecar failure rules in `aggregate`, a `json.dumps` `commands.json`, and a worktree `PYTHONPATH` prepend. `autodev` snapshots the base revision and pre-existing dirty set before `ll-auto`, then routes every implemented closure through `route_quality_gate` → `run_quality_gate` → `mark_quality_*` → `record_quality_evidence`; `finalize_done` promotes `done`/`completed` IDs only on `GATE_PASS`/`GATE_SKIP` evidence and reports `quality_failed` / `quality_gate_infra`. `auto-refine-and-implement` counts quality-gated IDs as not closed and forwards a `quality_gate` context key (default `true`). Tests: `scripts/tests/test_feat3573_quality_gate.py` plus the updated frozen sets in `test_builtin_loops.py` and `test_fsm_topology.py`. Full suite: 26300 passed; 2 failures (`test_prose_dep_sweep_gate`, `test_issue_parser` corpus ceiling) fail identically on a clean checkout.
+
 ## Status
 
-**Open** | Created: 2026-09-24 | Priority: P3
+**Done** | Created: 2026-09-24 | Priority: P3
 
 ## Confidence Check Notes
 
@@ -554,6 +564,8 @@ Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the sam
 - `ll-verify-evidence`: clean. Decisions log: no required rules. Graph: provider=`codegraph` freshness=`fresh` (not needed for any verdict).
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-26T07:55:56 - `d3d4a7c7-ba77-4c16-b321-8ae6656d6083.jsonl`
+- `/ll:ready-issue` - 2026-09-26T07:32:22 - `c50f7160-2fac-4873-87cc-8abbe10ebb1e.jsonl`
 - `/ll:confidence-check` - 2026-09-26T07:29:51 - `47ac16a0-9fcf-4e6d-8f88-4ec1ae6c246a.jsonl`
 - `/ll:ready-issue` - 2026-09-26T07:17:31 - `8bfc06b1-1f9e-46db-8503-f6893c9021c7.jsonl`
 - `/ll:confidence-check` - 2026-09-26T05:49:01 - `5966980a-c2ea-49c8-a21f-97ae3fab2cc8.jsonl`

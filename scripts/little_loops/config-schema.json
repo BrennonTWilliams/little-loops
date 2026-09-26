@@ -47,6 +47,15 @@
           "description": "Command to format code",
           "default": "ruff format ."
         },
+        "format_check_cmd": {
+          "type": ["string", "null"],
+          "description": "Check-only format command with a {files} placeholder, run by the autodev quality gate on the changed files only (e.g. `ruff format --check --force-exclude {files}`). Unset = the format stage is skipped."
+        },
+        "format_check_extensions": {
+          "type": ["array", "null"],
+          "items": {"type": "string"},
+          "description": "File extensions the format-check stage is limited to (e.g. [\".py\", \".pyi\"]). Unset = every changed file is passed."
+        },
         "build_cmd": {
           "type": ["string", "null"],
           "description": "Command to build project",

@@ -218,6 +218,8 @@ class ProjectConfig:
     lint_cmd: str = "ruff check ."
     type_cmd: str | None = "mypy"
     format_cmd: str | None = "ruff format ."
+    format_check_cmd: str | None = None
+    format_check_extensions: list[str] | None = None
     build_cmd: str | None = None
     run_cmd: str | None = None
     health_url: str | None = None
@@ -242,6 +244,8 @@ class ProjectConfig:
             lint_cmd=data.get("lint_cmd", "ruff check ."),
             type_cmd=data.get("type_cmd", "mypy"),
             format_cmd=data.get("format_cmd", "ruff format ."),
+            format_check_cmd=data.get("format_check_cmd"),
+            format_check_extensions=data.get("format_check_extensions"),
             build_cmd=data.get("build_cmd"),
             run_cmd=data.get("run_cmd"),
             health_url=data.get("health_url"),
@@ -768,6 +772,8 @@ class BRConfig:
                 "lint_cmd": self._project.lint_cmd,
                 "type_cmd": self._project.type_cmd,
                 "format_cmd": self._project.format_cmd,
+                "format_check_cmd": self._project.format_check_cmd,
+                "format_check_extensions": self._project.format_check_extensions,
                 "build_cmd": self._project.build_cmd,
                 "run_cmd": self._project.run_cmd,
                 "health_url": self._project.health_url,

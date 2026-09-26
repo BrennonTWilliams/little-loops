@@ -876,7 +876,7 @@ Imports `lib/common.yaml` for the `parse_tagged_json` fragment used in `parse_en
 **Category**: oracle sub-loop
 **File**: `scripts/little_loops/loops/oracles/code-run-gate.yaml`
 
-Reusable Tier-1 deterministic oracle (FEAT-2551). Runs the project's `build` / `test` / `typecheck` / `lint` / `service_health` command matrix and emits `GATE_PASS` / `GATE_FAILED` / `GATE_SKIP` via the parent↔sub-loop token channel. Resolves commands from `.ll/ll-config.json` `project.*` with alias support per ARCHITECTURE-123 (`type_cmd`/`typecheck_cmd`, `run_cmd`/`start_cmd`). When ALL six command fields are null/empty, the oracle emits `GATE_SKIP` and routes to `done` (docs-only no-op pass). Each individual null command short-circuits its `run_*` state to a SKIP pass-through.
+Reusable Tier-1 deterministic oracle (FEAT-2551). Runs the project's `build` / `test` / `typecheck` / `lint` / `format-check` / `service_health` command matrix and emits `GATE_PASS` / `GATE_FAILED` / `GATE_SKIP` via the parent↔sub-loop token channel. Resolves commands from `.ll/ll-config.json` `project.*` with alias support per ARCHITECTURE-123 (`type_cmd`/`typecheck_cmd`, `run_cmd`/`start_cmd`). When ALL six command fields are null/empty, the oracle emits `GATE_SKIP` and routes to `done` (docs-only no-op pass). Each individual null command short-circuits its `run_*` state to a SKIP pass-through. The `format-check` stage is opt-in: it runs only when the caller passes `changed_files_path`, so existing callers see SKIP. A stage that was killed at its timeout (sidecar has no `exit_code=` line) or whose sidecar is missing although its command is configured fails the gate rather than passing it.
 
 Used by FEAT-2552's wiring into `rn-implement` / `rn-remediate` (F2b). Safe to call directly via `ll-loop run oracles/code-run-gate` with `parameters.run_dir` pointing at a per-invocation absolute path.
 
@@ -894,6 +894,10 @@ Used by FEAT-2552's wiring into `rn-implement` / `rn-remediate` (F2b). Safe to c
 | `lint_cmd` | no | (from config) | Optional lint command — null skips `run_lint` |
 | `run_cmd` | no | (from config) | Optional run/start command — alias of `start_cmd` |
 | `health_url` | no | (from config) | URL to probe for service readiness — null skips `service_health` |
+| `format_check_cmd` | no | (from config) | Check-only format command with a `{files}` placeholder, e.g. `ruff format --check --force-exclude {files}` (`project.format_check_cmd`). Null skips `run_format_check` |
+| `changed_files_path` | no | — | File holding the newline-separated changed-file list the format stage is scoped to. **Opt-in**: without it `run_format_check` always SKIPs. An empty file also skips |
+| `src_dir` | no | (from config with `resolve_via_ll_config`) | Source dir prepended to `PYTHONPATH` for `run_test` / `run_typecheck` when the cwd is a linked git worktree, so an editable install does not shadow the worktree's package |
+| `resolve_via_ll_config` | no | — | Any non-empty value resolves every command and `src_dir` with `ll-config get project.<key>` (honors `.ll/ll.local.md` and config defaults) instead of reading `.ll/ll-config.json` directly. Explicit per-command overrides still win |
 
 ### Internal state machine
 
@@ -908,7 +912,9 @@ resolve_commands ──(writes commands.json + subloop_outcome_<ID>)──> run_
                                                                          ▼
                                               run_typecheck ─(self-skip)─> run_lint
                                                                          ▼
-                                              run_lint   ─(self-skip if null)─> service_health
+                                              run_lint   ─(self-skip if null)─> run_format_check
+                                                                         ▼
+                                              run_format_check ─(SKIP without changed_files_path)─> service_health
                                                                          ▼
                                               service_health (PID + curl --fail) ─> aggregate
                                                                          ▼
@@ -918,7 +924,7 @@ resolve_commands ──(writes commands.json + subloop_outcome_<ID>)──> run_
 ### MR-1 / MR-3 compliance
 
 - **MR-1 (trivial)**: only `exit_code` / `output_numeric` / `classify` evaluators — never `llm_structured` / `comparator` / `contract`. The oracle is not classified as a meta-loop (actions only write under `${context.run_dir}/`, never to harness artifacts), so MR-1 does not fire.
-- **MR-3 (per-run isolation)**: every artifact (`commands.json`, `build.txt`, `test-results.txt`, `pytest.json`, `typecheck.txt`, `lint.txt`, `health.txt`, `service.pid`, `subloop_outcome_<ID>.txt`, `prepatch_evidence_<issue_id>.json` when `prepatch_check:` is set — ENH-2997) lives under `${context.run_dir}/`. No bare `.loops/tmp/` writes.
+- **MR-3 (per-run isolation)**: every artifact (`commands.json`, `build.txt`, `test-results.txt`, `pytest.json`, `typecheck.txt`, `lint.txt`, `format-check.txt`, `health.txt`, `service.pid`, `subloop_outcome_<ID>.txt`, `prepatch_evidence_<issue_id>.json` when `prepatch_check:` is set — ENH-2997) lives under `${context.run_dir}/`. No bare `.loops/tmp/` writes.
 
 ### Invocation (direct, for testing)
 

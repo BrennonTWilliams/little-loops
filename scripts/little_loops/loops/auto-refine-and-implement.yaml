@@ -85,6 +85,11 @@ context:
   # to autodev (→ its inner `ll-auto --only`) via with:. Default empty = the
   # ENH-2319 gate stays active (config-gated by learning_tests.enabled).
   skip_learning_gate: ""
+  # FEAT-3573: post-implement quality gate switch, forwarded to autodev via with:.
+  # Default "true" = an implemented issue earns closure credit only with a passing
+  # recorded gate. "false" restores status-only credit (repos with a red base branch).
+  #   ll-loop run auto-refine-and-implement --context quality_gate=false
+  quality_gate: "true"
 
 states:
   init:
@@ -383,6 +388,7 @@ states:
     with:
       input: "${captured.issue_set.output}"
       skip_learning_gate: "${context.skip_learning_gate}"
+      quality_gate: "${context.quality_gate}"
     on_success: recheck_set
     on_failure: delegate_failed
     on_error: record_error
@@ -1026,7 +1032,22 @@ states:
       # counted as ground truth for "closed during this run".
       cat "$RUN_DIR/$P-completed-new.txt" "$RUN_DIR/$P-done-new.txt" 2>/dev/null \
         | grep '[^[:space:]]' | sort -u > "$RUN_DIR/$P-closed-union.txt"
+      # FEAT-3573: a quality-gate failure/infra ID is `status: done` on disk but is
+      # NOT closed — autodev ledgered it `ID  quality_gate_(failed|infra)` in
+      # autodev-unverified.txt and kept it out of autodev-passed.txt. Without this it
+      # would count as CLOSED here and the parent could report success. Subtract it
+      # from CLOSED and add it to NOT_CLOSED below.
+      grep -E '[[:space:]]quality_gate_(failed|infra)([[:space:]]|$)' \
+        "$RUN_DIR/autodev-unverified.txt" 2>/dev/null | awk '{print $1}' | sort -u \
+        > "$RUN_DIR/$P-quality-failed-ids.txt" || true
+      comm -23 "$RUN_DIR/$P-closed-union.txt" "$RUN_DIR/$P-quality-failed-ids.txt" \
+        > "$RUN_DIR/$P-closed-union.tmp" 2>/dev/null \
+        && mv "$RUN_DIR/$P-closed-union.tmp" "$RUN_DIR/$P-closed-union.txt"
       CLOSED=$(count $P-closed-union.txt)
+      QUALITY_FAILED=$(grep -cE '[[:space:]]quality_gate_failed([[:space:]]|$)' "$RUN_DIR/autodev-unverified.txt" 2>/dev/null || true)
+      [ -z "$QUALITY_FAILED" ] && QUALITY_FAILED=0
+      QUALITY_GATE_INFRA=$(grep -cE '[[:space:]]quality_gate_infra([[:space:]]|$)' "$RUN_DIR/autodev-unverified.txt" 2>/dev/null || true)
+      [ -z "$QUALITY_GATE_INFRA" ] && QUALITY_GATE_INFRA=0
 
       # NOT_CLOSED exclusion uses the FULL current snapshot (completed-now ∪
       # done-now), not just this run's new closures — an issue closed before
@@ -1093,6 +1114,8 @@ states:
           > "$RUN_DIR/$P-not-closed.txt" 2>/dev/null || true
       fi
       NOT_CLOSED=$(count $P-not-closed.txt)
+      # FEAT-3573: quality-gated IDs are done-on-disk but not closed (see above).
+      NOT_CLOSED=$((NOT_CLOSED + QUALITY_FAILED + QUALITY_GATE_INFRA))
 
       # SKIPPED: issues autodev parked (refinement failure, decomposed parent,
       # dead-end leaf). ERRORED: infrastructure crash recorded by record_error.
@@ -1251,8 +1274,8 @@ states:
         VERDICT=no-op
       fi
 
-      printf '{"verdict":"%s","closed":%s,"not_closed":%s,"skipped":%s,"errored":%s,"skipped_breakdown":%s,"closed_via_recovery":%s,"gate_blocked":%s,"decision_unresolved":%s,"inflight_unresolved":%s,"abandoned":%s,"parked_rate":%s,"verify_verdict":"%s","verify_returncode":%s,"epic_merge_verdict":"%s","epic_branch_stale_action":"%s"}\n' \
-        "$VERDICT" "$CLOSED" "$NOT_CLOSED" "$SKIP" "$ERR" "$SKIPPED_BREAKDOWN" "$CLOSED_VIA_RECOVERY" "$GATE_BLOCKED" "$DECISION_UNRESOLVED" "$INFLIGHT_UNRESOLVED" "$ABANDONED" "$PARKED_RATE" "$VERIFY_VERDICT" "$VERIFY_RETURNCODE" "$EPIC_MERGE_VERDICT" "$EPIC_BRANCH_STALE_ACTION" > "$RUN_DIR/summary.json"
+      printf '{"verdict":"%s","closed":%s,"not_closed":%s,"skipped":%s,"errored":%s,"skipped_breakdown":%s,"closed_via_recovery":%s,"gate_blocked":%s,"decision_unresolved":%s,"inflight_unresolved":%s,"abandoned":%s,"parked_rate":%s,"verify_verdict":"%s","verify_returncode":%s,"epic_merge_verdict":"%s","epic_branch_stale_action":"%s","quality_failed":%s,"quality_gate_infra":%s}\n' \
+        "$VERDICT" "$CLOSED" "$NOT_CLOSED" "$SKIP" "$ERR" "$SKIPPED_BREAKDOWN" "$CLOSED_VIA_RECOVERY" "$GATE_BLOCKED" "$DECISION_UNRESOLVED" "$INFLIGHT_UNRESOLVED" "$ABANDONED" "$PARKED_RATE" "$VERIFY_VERDICT" "$VERIFY_RETURNCODE" "$EPIC_MERGE_VERDICT" "$EPIC_BRANCH_STALE_ACTION" "$QUALITY_FAILED" "$QUALITY_GATE_INFRA" > "$RUN_DIR/summary.json"
       # ENH-2005 artifact-channel sidecar: a parent loop (e.g.
       # sprint-refine-and-implement) recovers the real verdict from this token
       # rather than the collapsed done/failed routing verdict.
