@@ -1,10 +1,11 @@
 """Tests for BUG-3588: autodev post-repair rescoring must gate on fresh scores.
 
-Each of the remaining ``rerun_confidence_after_*`` states (wire, atomic
-remediation, reconcile) is bracketed by a ``clear_scores_before_*`` state (clear
-stale scores) and a ``check_scores_present_*`` presence gate (retry once, then
-infra), so a rescoring that writes nothing can never pass on pre-repair scores nor
-surface as a ``low_readiness`` quality deferral.
+The wire, atomic-remediation and reconcile repair origins share one rescoring
+chain (ENH-3615): ``clear_scores`` (clear stale scores) -> ``rerun_confidence``
+-> ``check_scores_present`` (retry once, then infra) -> ``route_after_rescore``,
+which dispatches on the ``autodev-rescore-origin-<ID>`` marker each origin writes.
+A rescoring that writes nothing can never pass on pre-repair scores nor surface
+as a ``low_readiness`` quality deferral.
 
 ENH-3611 removed autodev's ``decide`` and ``spike`` triplets; that freshness
 guarantee now lives in the refine-to-ready-issue child (``route_spike_verdict``
@@ -27,12 +28,13 @@ import yaml
 
 AUTODEV_LOOP_PATH = Path(__file__).parent.parent / "little_loops" / "loops" / "autodev.yaml"
 
-# path key -> (rerun state suffix, successor of the presence gate)
-PATHS = {
-    "wire": ("wire", "enqueue_or_skip"),
-    "atomic": ("atomic_remediation", "regate_after_atomic_remediation"),
-    "reconcile": ("reconcile", "recheck_after_size_review"),
+# origin -> successor of the shared chain (route_after_rescore's route target)
+ORIGINS = {
+    "wire": "enqueue_or_skip",
+    "atomic": "regate_after_atomic_remediation",
+    "reconcile": "recheck_after_size_review",
 }
+_ROUTE_TOKENS = {"wire": "WIRE", "atomic": "ATOMIC", "reconcile": "RECONCILE"}
 
 
 @pytest.fixture(scope="module")
@@ -41,38 +43,79 @@ def states() -> dict[str, Any]:
 
 
 class TestRoutingStructure:
-    @pytest.mark.parametrize("key", PATHS)
-    def test_clear_then_rerun(self, states: dict[str, Any], key: str) -> None:
-        rerun, _ = PATHS[key]
-        clear = states[f"clear_scores_before_{key}"]
+    def test_clear_then_rerun(self, states: dict[str, Any]) -> None:
+        clear = states["clear_scores"]
         assert "set-scores" in clear["action"] and "--clear" in clear["action"]
-        assert clear["next"] == f"rerun_confidence_after_{rerun}"
+        assert clear["next"] == "rerun_confidence"
         assert clear["on_error"] == "mark_scores_absent_infra"
 
-    @pytest.mark.parametrize("key", PATHS)
-    def test_rerun_routes_through_presence_gate(self, states: dict[str, Any], key: str) -> None:
-        rerun, _ = PATHS[key]
-        state = states[f"rerun_confidence_after_{rerun}"]
-        assert state["next"] == f"check_scores_present_{key}"
-        assert state["on_error"] == f"check_scores_present_{key}"
+    def test_rerun_routes_through_presence_gate(self, states: dict[str, Any]) -> None:
+        state = states["rerun_confidence"]
+        assert state["next"] == "check_scores_present"
+        assert state["on_error"] == "check_scores_present"
+        assert state["on_rate_limit_exhausted"] == "finalize_rate_limited"
+        assert state["pruning_profile"]["name"] == "confidence-check-recheck"
 
-    @pytest.mark.parametrize("key", PATHS)
-    def test_presence_gate_routing(self, states: dict[str, Any], key: str) -> None:
-        rerun, successor = PATHS[key]
-        gate = states[f"check_scores_present_{key}"]
+    def test_presence_gate_routing(self, states: dict[str, Any]) -> None:
+        gate = states["check_scores_present"]
         assert gate["fragment"] == "harness_exit"
-        assert gate["on_yes"] == successor
+        assert gate["on_yes"] == "route_after_rescore"
         # First miss retries the rescoring itself (scores are already absent).
-        assert gate["on_no"] == f"rerun_confidence_after_{rerun}"
+        assert gate["on_no"] == "rerun_confidence"
         assert gate["on_cannot_judge"] == "mark_scores_absent_infra"
         assert gate["on_error"] == "mark_scores_absent_infra"
 
-    def test_repair_predecessors_target_clear_states(self, states: dict[str, Any]) -> None:
-        assert states["run_refine"]["next"] == "clear_scores_before_wire"
-        assert states["remediate_oversized_atomic"]["next"] == "clear_scores_before_atomic"
+    def test_route_after_rescore_dispatches_per_origin(self, states: dict[str, Any]) -> None:
+        state = states["route_after_rescore"]
+        assert state["evaluate"]["type"] == "classify"
+        for origin, successor in ORIGINS.items():
+            assert state["route"][_ROUTE_TOKENS[origin]] == successor
+        assert state["route"]["_"] == "mark_scores_absent_infra"
+        assert state["route"]["_error"] == "mark_scores_absent_infra"
+
+    def test_repair_predecessors_target_shared_chain(self, states: dict[str, Any]) -> None:
+        assert states["run_refine"]["next"] == "clear_scores"
+        assert states["run_refine"]["on_error"] == "clear_scores"
+        assert states["remediate_oversized_atomic"]["next"] == "mark_rescore_origin_atomic"
+        assert states["remediate_oversized_atomic"]["on_error"] == "mark_rescore_origin_atomic"
+        assert states["mark_rescore_origin_atomic"]["next"] == "clear_scores"
+        assert states["mark_rescore_origin_atomic"]["on_error"] == "mark_scores_absent_infra"
+        for pred in (
+            "count_repair_cycle_wire",
+            "count_repair_cycle_reconcile",
+            "count_repair_cycle_refine_for_design",
+        ):
+            assert pred in states
         for pred in ("count_repair_cycle_reconcile", "count_repair_cycle_refine_for_design"):
-            assert states[pred]["next"] == "clear_scores_before_reconcile"
-            assert states[pred]["on_error"] == "clear_scores_before_reconcile"
+            assert states[pred]["next"] == "clear_scores"
+            assert states[pred]["on_error"] == "clear_scores"
+
+    @pytest.mark.parametrize(
+        ("state", "origin"),
+        [
+            ("count_repair_cycle_wire", "wire"),
+            ("count_repair_cycle_reconcile", "reconcile"),
+            ("count_repair_cycle_refine_for_design", "reconcile"),
+            ("mark_rescore_origin_atomic", "atomic"),
+        ],
+    )
+    def test_entry_writes_origin_marker(
+        self, states: dict[str, Any], tmp_path: Path, state: str, origin: str
+    ) -> None:
+        result = _run_action(states[state]["action"], tmp_path, {})
+        assert result.returncode == 0, result.stderr
+        assert (tmp_path / "autodev-rescore-origin-BUG-1").read_text() == origin
+
+    def test_exactly_one_shared_chain(self, states: dict[str, Any]) -> None:
+        for name in (
+            "clear_scores",
+            "rerun_confidence",
+            "check_scores_present",
+            "route_after_rescore",
+        ):
+            assert name in states
+        for prefix in ("clear_scores_before_", "rerun_confidence_after_", "check_scores_present_"):
+            assert not [n for n in states if n.startswith(prefix)]
 
     def test_infra_state_is_distinct_and_does_not_defer(self, states: dict[str, Any]) -> None:
         action = states["mark_scores_absent_infra"]["action"]
@@ -84,7 +127,9 @@ class TestRoutingStructure:
         assert states["mark_scores_absent_infra"]["next"] == "dequeue_next"
 
     def test_dequeue_next_clears_retry_markers(self, states: dict[str, Any]) -> None:
-        assert "autodev-rescore-retry-" in states["dequeue_next"]["action"]
+        action = states["dequeue_next"]["action"]
+        assert "autodev-rescore-retry-" in action
+        assert "autodev-rescore-origin-$CURRENT" in action
 
     @pytest.mark.parametrize(
         ("state", "exit3_target"),
@@ -157,29 +202,52 @@ def _run_action(
         )
 
 
+def _seed_origin(run_dir: Path, origin: str, issue_id: str = "BUG-1") -> None:
+    (run_dir / f"autodev-rescore-origin-{issue_id}").write_text(origin)
+
+
 class TestPresenceGateBehavior:
-    @pytest.mark.parametrize("key", PATHS)
-    def test_scores_present_passes(self, states: dict[str, Any], tmp_path: Path, key: str) -> None:
-        action = states[f"check_scores_present_{key}"]["action"]
+    @pytest.mark.parametrize("origin", ORIGINS)
+    def test_scores_present_passes(
+        self, states: dict[str, Any], tmp_path: Path, origin: str
+    ) -> None:
+        _seed_origin(tmp_path, origin)
+        action = states["check_scores_present"]["action"]
         result = _run_action(action, tmp_path, {"confidence": "90", "outcome": "70"})
         assert result.returncode == 0
 
+    @pytest.mark.parametrize("origin", ORIGINS)
     def test_first_miss_retries_second_miss_is_infra(
-        self, states: dict[str, Any], tmp_path: Path
+        self, states: dict[str, Any], tmp_path: Path, origin: str
     ) -> None:
-        action = states["check_scores_present_wire"]["action"]
+        _seed_origin(tmp_path, origin)
+        action = states["check_scores_present"]["action"]
         absent = {"confidence": None, "outcome": None}
         assert _run_action(action, tmp_path, absent).returncode == 1
+        # Retry-marker names are unchanged per origin.
+        assert (tmp_path / f"autodev-rescore-retry-{origin}-BUG-1").exists()
         assert _run_action(action, tmp_path, absent).returncode == 3
 
     def test_retry_then_success_proceeds_and_resets_counter(
         self, states: dict[str, Any], tmp_path: Path
     ) -> None:
-        action = states["check_scores_present_atomic"]["action"]
+        _seed_origin(tmp_path, "atomic")
+        action = states["check_scores_present"]["action"]
         assert _run_action(action, tmp_path, {"confidence": None, "outcome": None}).returncode == 1
         assert _run_action(action, tmp_path, {"confidence": "90", "outcome": "70"}).returncode == 0
         # Counter reset on the pass: a later miss gets its retry again.
         assert _run_action(action, tmp_path, {"confidence": None, "outcome": None}).returncode == 1
+
+    @pytest.mark.parametrize("origin", [None, "", "bogus"])
+    def test_missing_or_unknown_origin_exits_3_without_retry_marker(
+        self, states: dict[str, Any], tmp_path: Path, origin: str | None
+    ) -> None:
+        if origin is not None:
+            _seed_origin(tmp_path, origin)
+        action = states["check_scores_present"]["action"]
+        result = _run_action(action, tmp_path, {"confidence": None, "outcome": None})
+        assert result.returncode == 3
+        assert not list(tmp_path.glob("autodev-rescore-retry-*"))
 
     @pytest.mark.parametrize(
         "issue", [{"confidence": "90", "outcome": None}, {"confidence": None, "outcome": "70"}]
@@ -187,14 +255,16 @@ class TestPresenceGateBehavior:
     def test_either_score_missing_counts_as_absent(
         self, states: dict[str, Any], tmp_path: Path, issue: dict[str, Any]
     ) -> None:
-        action = states["check_scores_present_atomic"]["action"]
+        _seed_origin(tmp_path, "atomic")
+        action = states["check_scores_present"]["action"]
         assert _run_action(action, tmp_path, issue).returncode == 1
 
     def test_unreadable_show_output_is_absent_not_pass(
         self, states: dict[str, Any], tmp_path: Path
     ) -> None:
         """A failing `ll-issues show` must never be read as a pass on old scores."""
-        action = states["check_scores_present_reconcile"]["action"]
+        _seed_origin(tmp_path, "reconcile")
+        action = states["check_scores_present"]["action"]
         with tempfile.TemporaryDirectory() as tmp:
             stub = Path(tmp) / "ll-issues"
             stub.write_text("#!/bin/sh\nexit 1\n")
@@ -212,7 +282,8 @@ class TestPresenceGateBehavior:
     def test_dequeue_clears_markers_for_reentry(
         self, states: dict[str, Any], tmp_path: Path
     ) -> None:
-        gate = states["check_scores_present_wire"]["action"]
+        _seed_origin(tmp_path, "wire")
+        gate = states["check_scores_present"]["action"]
         absent = {"confidence": None, "outcome": None}
         assert _run_action(gate, tmp_path, absent).returncode == 1
         assert list(tmp_path.glob("autodev-rescore-retry-*-BUG-1"))
@@ -220,6 +291,44 @@ class TestPresenceGateBehavior:
         result = _run_action(states["dequeue_next"]["action"], tmp_path, absent)
         assert result.returncode == 0, result.stderr
         assert not list(tmp_path.glob("autodev-rescore-retry-*-BUG-1"))
+        assert not (tmp_path / "autodev-rescore-origin-BUG-1").exists()
+
+
+class TestRouteAfterRescore:
+    @pytest.mark.parametrize("origin", ORIGINS)
+    def test_routes_origin_and_deletes_marker(
+        self, states: dict[str, Any], tmp_path: Path, origin: str
+    ) -> None:
+        _seed_origin(tmp_path, origin)
+        result = _run_action(states["route_after_rescore"]["action"], tmp_path, {})
+        assert result.stdout.strip() == _ROUTE_TOKENS[origin]
+        assert not (tmp_path / "autodev-rescore-origin-BUG-1").exists()
+
+    @pytest.mark.parametrize("origin", [None, "", "bogus"])
+    def test_unknown_or_missing_origin_fails_closed(
+        self, states: dict[str, Any], tmp_path: Path, origin: str | None
+    ) -> None:
+        if origin is not None:
+            _seed_origin(tmp_path, origin)
+        result = _run_action(states["route_after_rescore"]["action"], tmp_path, {})
+        assert result.stdout.strip() == "UNKNOWN"
+        assert states["route_after_rescore"]["route"]["UNKNOWN"] == "mark_scores_absent_infra"
+
+    def test_two_rescorings_in_one_pass_route_to_own_successors(
+        self, states: dict[str, Any], tmp_path: Path
+    ) -> None:
+        route = states["route_after_rescore"]
+        wire = states["count_repair_cycle_wire"]["action"]
+        reconcile = states["count_repair_cycle_reconcile"]["action"]
+        assert _run_action(wire, tmp_path, {}).returncode == 0
+        out = _run_action(route["action"], tmp_path, {}).stdout.strip()
+        assert route["route"][out] == "enqueue_or_skip"
+        assert _run_action(reconcile, tmp_path, {}).returncode == 0
+        out = _run_action(route["action"], tmp_path, {}).stdout.strip()
+        assert route["route"][out] == "recheck_after_size_review"
+        # Marker consumed: a third route without an entry fails closed.
+        out = _run_action(route["action"], tmp_path, {}).stdout.strip()
+        assert route["route"].get(out, route["route"]["_"]) == "mark_scores_absent_infra"
 
 
 @pytest.mark.parametrize("state", ["recheck_after_size_review", "regate_after_atomic_remediation"])

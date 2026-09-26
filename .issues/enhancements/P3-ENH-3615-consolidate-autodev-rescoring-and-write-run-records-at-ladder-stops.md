@@ -4,9 +4,10 @@ type: ENH
 title: Consolidate autodev rescoring, halt on size-review rate limit, write run records
   at ladder stops
 priority: P3
-status: open
+status: done
 discovered_by: manual
 discovered_date: '2026-09-26'
+completed_at: '2026-09-26T22:01:48Z'
 decision_needed: false
 blocks:
 - ENH-3606
@@ -235,15 +236,15 @@ still reports the issue, because `autodev-inflight` is not cleared on this path.
 
 ## Acceptance Criteria
 
-- [ ] `autodev.yaml` has one rescoring chain (`clear_scores` → `rerun_confidence` → `check_scores_present` → `route_after_rescore`) that dispatches per origin through `autodev-rescore-origin-<ID>`; `route_after_rescore` deletes the marker after reading it; unknown or missing origin fails closed to `mark_scores_absent_infra` in both `check_scores_present` and `route_after_rescore`
-- [ ] The only new origin state is `mark_rescore_origin_atomic`; `wire` and `reconcile` write the marker inline in their `count_repair_cycle_*` states
-- [ ] Retry-marker names (`autodev-rescore-retry-<origin>-<ID>`) and the BUG-3588 freshness behavior are unchanged; `dequeue_next` clears the origin marker
-- [ ] `run_size_review` rate-limit exhaustion halts through `finalize_rate_limited`, and its comment describes the halt
-- [ ] Every stop row written by `recheck_after_size_review`, `regate_after_atomic_remediation` and `record_reentry_exhausted` has a `prepare-issue` record matching the table, written in the same action; ledger rows are unchanged
-- [ ] `record_reentry_exhausted` writes no record when the issue is already `done` / `completed` / `cancelled`
-- [ ] `copy_broke_down` resets `refine-broke-down` to `0` after copying it; both broke-down trap cases pass
-- [ ] `reopen_waived` clears the record it undoes
-- [ ] No `autodev.yaml` comment or `LOOPS_REFERENCE.md` line names a removed triplet state
+- [x] `autodev.yaml` has one rescoring chain (`clear_scores` → `rerun_confidence` → `check_scores_present` → `route_after_rescore`) that dispatches per origin through `autodev-rescore-origin-<ID>`; `route_after_rescore` deletes the marker after reading it; unknown or missing origin fails closed to `mark_scores_absent_infra` in both `check_scores_present` and `route_after_rescore`
+- [x] The only new origin state is `mark_rescore_origin_atomic`; `wire` and `reconcile` write the marker inline in their `count_repair_cycle_*` states
+- [x] Retry-marker names (`autodev-rescore-retry-<origin>-<ID>`) and the BUG-3588 freshness behavior are unchanged; `dequeue_next` clears the origin marker
+- [x] `run_size_review` rate-limit exhaustion halts through `finalize_rate_limited`, and its comment describes the halt
+- [x] Every stop row written by `recheck_after_size_review`, `regate_after_atomic_remediation` and `record_reentry_exhausted` has a `prepare-issue` record matching the table, written in the same action; ledger rows are unchanged
+- [x] `record_reentry_exhausted` writes no record when the issue is already `done` / `completed` / `cancelled`
+- [x] `copy_broke_down` resets `refine-broke-down` to `0` after copying it; both broke-down trap cases pass
+- [x] `reopen_waived` clears the record it undoes
+- [x] No `autodev.yaml` comment or `LOOPS_REFERENCE.md` line names a removed triplet state
 
 ## Impact
 
@@ -308,11 +309,31 @@ still reports the issue, because `autodev-inflight` is not cleared on this path.
 
 `autodev.yaml:recheck_after_size_review` -> `outcome_from_legacy_class` -> `record_token`
 
+## Resolution
+
+**Completed** - 2026-09-26
+
+- `autodev.yaml`: collapsed the wire / atomic / reconcile rescoring triplets (9 states) into
+  `clear_scores` → `rerun_confidence` → `check_scores_present` → `route_after_rescore`,
+  dispatching on `autodev-rescore-origin-<ID>` (written inline by the `count_repair_cycle_*`
+  states, plus the new `mark_rescore_origin_atomic`); `dequeue_next` clears the origin marker.
+- `run_size_review.on_rate_limit_exhausted` → `finalize_rate_limited`; comment rewritten.
+- Stop rows in `recheck_after_size_review`, `regate_after_atomic_remediation` and
+  `record_reentry_exhausted` (deferral branch only) write a `prepare-issue` run record;
+  `reopen_waived` clears it; `copy_broke_down` resets `refine-broke-down`.
+- Tests: rewrote `test_autodev_scores_freshness.py`, added `test_autodev_ladder_run_records.py`
+  (real-shell, real `ll-issues`), updated `test_builtin_loops.py`, `test_autodev_decision_gate.py`
+  (+ `_RESCORE_TRIPLET_STATES_REMOVED`) and the topology count (90 → 86).
+- Docs: `LOOPS_REFERENCE.md` autodev rescoring paragraphs and tree.
+- Verification: `ll-loop validate autodev` OK; full suite 26406 passed, 60 skipped.
+
 ## Status
 
 **Open** | Created: 2026-09-26 | Priority: P3
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-26T22:01:47 - `8d40c7cb-bb09-4c40-b8e5-ad04d609aca3.jsonl`
+- `/ll:ready-issue` - 2026-09-26T21:46:29 - `3c008147-a7e9-445f-bfc5-81627068c117.jsonl`
 - `/ll:confidence-check` - 2026-09-26T21:43:19 - `8744a6bb-eecc-4dde-822b-a123b4bb673c.jsonl`
 - `/ll:confidence-check` - 2026-09-26T21:19:03 - `5e32a00e-dc7e-43b0-801a-5a85182b8f1a.jsonl`

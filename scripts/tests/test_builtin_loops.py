@@ -6446,13 +6446,16 @@ class TestAutodevLoop:
             "check_proof_defer_or_implement",  # ENH-3611: the only proof stage
             "run_wire",
             "run_refine",
-            "rerun_confidence_after_wire",
+            "clear_scores",  # ENH-3615: shared rescoring chain
+            "rerun_confidence",
+            "check_scores_present",
+            "route_after_rescore",
             "implement_current",
             # BUG-2734: guard-2 "ready but atomic" earn-the-pass/honest-deferral chain.
             "check_guard2_verdict",
             "check_readiness_for_atomic_remediation",
             "remediate_oversized_atomic",
-            "rerun_confidence_after_atomic_remediation",
+            "mark_rescore_origin_atomic",
             "regate_after_atomic_remediation",
             "done",
         }
@@ -8124,12 +8127,16 @@ class TestAutodevLoop:
         assert readiness_state.get("on_no") == "recheck_after_size_review"
 
         remediate_state = data["states"].get("remediate_oversized_atomic", {})
-        assert remediate_state.get("next") == "clear_scores_before_atomic"
+        assert remediate_state.get("next") == "mark_rescore_origin_atomic"
         assert "/ll:wire-issue" in remediate_state.get("action", "")
 
-        rerun_state = data["states"].get("rerun_confidence_after_atomic_remediation", {})
-        assert rerun_state.get("next") == "check_scores_present_atomic"
+        origin_state = data["states"].get("mark_rescore_origin_atomic", {})
+        assert origin_state.get("next") == "clear_scores"
+        rerun_state = data["states"].get("rerun_confidence", {})
+        assert rerun_state.get("next") == "check_scores_present"
         assert "/ll:confidence-check" in rerun_state.get("action", "")
+        route_state = data["states"].get("route_after_rescore", {})
+        assert route_state["route"]["ATOMIC"] == "regate_after_atomic_remediation"
 
         regate_state = data["states"].get("regate_after_atomic_remediation", {})
         assert regate_state.get("on_yes") == "select_obligation_pre_implement"
@@ -8868,7 +8875,7 @@ class TestAutodevLoop:
         for name in (
             "check_reconcile_needed",
             "reconcile_current",
-            "rerun_confidence_after_reconcile",
+            "rerun_confidence",
         ):
             assert name in states, f"{name} missing from autodev.yaml (ENH-2689)"
 
@@ -8916,16 +8923,16 @@ class TestAutodevLoop:
         assert state.get("on_error") == "count_repair_cycle_reconcile"
         assert state.get("on_rate_limit_exhausted") == "finalize_rate_limited"
         counter_state = data["states"].get("count_repair_cycle_reconcile", {})
-        assert counter_state.get("next") == "clear_scores_before_reconcile"
-        assert counter_state.get("on_error") == "clear_scores_before_reconcile"
+        assert counter_state.get("next") == "clear_scores"
+        assert counter_state.get("on_error") == "clear_scores"
 
-    def test_rerun_confidence_after_reconcile_routing(self, data: dict) -> None:
+    def test_rerun_confidence_reconcile_routing(self, data: dict) -> None:
         """After reconcile, re-score once, then fall to recheck_after_size_review."""
-        state = data["states"].get("rerun_confidence_after_reconcile", {})
+        state = data["states"].get("rerun_confidence", {})
         assert "/ll:confidence-check" in state.get("action", "")
         assert state.get("fragment") == "with_rate_limit_handling"
-        assert state.get("next") == "check_scores_present_reconcile"
-        assert state.get("on_error") == "check_scores_present_reconcile"
+        assert state.get("next") == "check_scores_present"
+        assert state.get("on_error") == "check_scores_present"
         assert state.get("on_rate_limit_exhausted") == "finalize_rate_limited"
 
     def test_check_missing_artifacts_uses_shell_exit_fragment(self, data: dict) -> None:
@@ -9045,74 +9052,69 @@ class TestAutodevLoop:
 
     # BUG-1491: rerun confidence after wire+refine repair path
 
-    def test_run_refine_next_routes_to_rerun_confidence_after_wire(self, data: dict) -> None:
-        """BUG-1491: run_refine.next must route to rerun_confidence_after_wire, not enqueue_or_skip."""
+    def test_run_refine_next_routes_to_shared_rescoring_chain(self, data: dict) -> None:
+        """BUG-1491/ENH-3615: run_refine.next must rescore, not go straight to enqueue_or_skip."""
         state = data["states"].get("run_refine", {})
-        assert state.get("next") == "clear_scores_before_wire", (
-            f"run_refine.next should be 'clear_scores_before_wire', got {state.get('next')!r}"
+        assert state.get("next") == "clear_scores", (
+            f"run_refine.next should be 'clear_scores', got {state.get('next')!r}"
         )
 
-    def test_run_refine_on_error_routes_to_rerun_confidence_after_wire(self, data: dict) -> None:
-        """BUG-1491: run_refine.on_error must route to rerun_confidence_after_wire."""
+    def test_run_refine_on_error_routes_to_shared_rescoring_chain(self, data: dict) -> None:
+        """BUG-1491/ENH-3615: run_refine.on_error must rescore too."""
         state = data["states"].get("run_refine", {})
-        assert state.get("on_error") == "clear_scores_before_wire", (
-            f"run_refine.on_error should be 'clear_scores_before_wire', got {state.get('on_error')!r}"
+        assert state.get("on_error") == "clear_scores", (
+            f"run_refine.on_error should be 'clear_scores', got {state.get('on_error')!r}"
         )
 
-    def test_rerun_confidence_after_wire_state_exists(self, data: dict) -> None:
-        """BUG-1491: rerun_confidence_after_wire must be present in the state machine."""
-        assert "rerun_confidence_after_wire" in data["states"], (
-            "rerun_confidence_after_wire state missing — BUG-1491 fix not applied"
-        )
+    def test_rerun_confidence_state_exists(self, data: dict) -> None:
+        """BUG-1491/ENH-3615: rerun_confidence must be present in the state machine."""
+        assert "rerun_confidence" in data["states"], "rerun_confidence state missing"
 
-    def test_rerun_confidence_after_wire_uses_with_rate_limit_handling_fragment(
-        self, data: dict
-    ) -> None:
-        """rerun_confidence_after_wire must use with_rate_limit_handling fragment."""
-        state = data["states"].get("rerun_confidence_after_wire", {})
+    def test_rerun_confidence_uses_with_rate_limit_handling_fragment(self, data: dict) -> None:
+        """rerun_confidence must use with_rate_limit_handling fragment."""
+        state = data["states"].get("rerun_confidence", {})
         assert state.get("fragment") == "with_rate_limit_handling", (
-            f"rerun_confidence_after_wire.fragment should be 'with_rate_limit_handling', got {state.get('fragment')!r}"
+            f"rerun_confidence.fragment should be 'with_rate_limit_handling', "
+            f"got {state.get('fragment')!r}"
         )
 
-    def test_rerun_confidence_after_wire_action_type_is_slash_command(self, data: dict) -> None:
-        """rerun_confidence_after_wire must use slash_command action_type."""
-        state = data["states"].get("rerun_confidence_after_wire", {})
+    def test_rerun_confidence_action_type_is_slash_command(self, data: dict) -> None:
+        """rerun_confidence must use slash_command action_type."""
+        state = data["states"].get("rerun_confidence", {})
         assert state.get("action_type") == "slash_command", (
-            f"rerun_confidence_after_wire.action_type should be 'slash_command', got {state.get('action_type')!r}"
+            f"rerun_confidence.action_type should be 'slash_command', "
+            f"got {state.get('action_type')!r}"
         )
 
-    def test_rerun_confidence_after_wire_action_contains_confidence_check(self, data: dict) -> None:
-        """rerun_confidence_after_wire action must invoke /ll:confidence-check."""
-        state = data["states"].get("rerun_confidence_after_wire", {})
+    def test_rerun_confidence_action_contains_confidence_check(self, data: dict) -> None:
+        """rerun_confidence action must invoke /ll:confidence-check."""
+        state = data["states"].get("rerun_confidence", {})
         action = state.get("action", "")
         assert "/ll:confidence-check" in action, (
-            f"rerun_confidence_after_wire.action should contain '/ll:confidence-check', got {action!r}"
+            f"rerun_confidence.action should contain '/ll:confidence-check', got {action!r}"
         )
 
-    def test_rerun_confidence_after_wire_next_routes_to_enqueue_or_skip(self, data: dict) -> None:
-        """rerun_confidence_after_wire.next must route to enqueue_or_skip."""
-        state = data["states"].get("rerun_confidence_after_wire", {})
-        assert state.get("next") == "check_scores_present_wire", (
-            f"rerun_confidence_after_wire.next should be 'check_scores_present_wire', got {state.get('next')!r}"
+    def test_rerun_confidence_next_routes_to_presence_gate(self, data: dict) -> None:
+        """rerun_confidence.next must route to check_scores_present."""
+        state = data["states"].get("rerun_confidence", {})
+        assert state.get("next") == "check_scores_present", (
+            f"rerun_confidence.next should be 'check_scores_present', got {state.get('next')!r}"
         )
 
-    def test_rerun_confidence_after_wire_on_error_routes_to_enqueue_or_skip(
-        self, data: dict
-    ) -> None:
-        """rerun_confidence_after_wire.on_error must fall back to enqueue_or_skip."""
-        state = data["states"].get("rerun_confidence_after_wire", {})
-        assert state.get("on_error") == "check_scores_present_wire", (
-            f"rerun_confidence_after_wire.on_error should be 'check_scores_present_wire', got {state.get('on_error')!r}"
+    def test_rerun_confidence_on_error_routes_to_presence_gate(self, data: dict) -> None:
+        """rerun_confidence.on_error must fall through to check_scores_present."""
+        state = data["states"].get("rerun_confidence", {})
+        assert state.get("on_error") == "check_scores_present", (
+            f"rerun_confidence.on_error should be 'check_scores_present', "
+            f"got {state.get('on_error')!r}"
         )
 
-    def test_rerun_confidence_after_wire_on_rate_limit_exhausted_routes_to_finalize(
-        self, data: dict
-    ) -> None:
-        """rerun_confidence_after_wire.on_rate_limit_exhausted must terminate the loop
+    def test_rerun_confidence_on_rate_limit_exhausted_routes_to_finalize(self, data: dict) -> None:
+        """rerun_confidence.on_rate_limit_exhausted must terminate the loop
         through finalize_rate_limited so summary.json is still written."""
-        state = data["states"].get("rerun_confidence_after_wire", {})
+        state = data["states"].get("rerun_confidence", {})
         assert state.get("on_rate_limit_exhausted") == "finalize_rate_limited", (
-            f"rerun_confidence_after_wire.on_rate_limit_exhausted should be "
+            f"rerun_confidence.on_rate_limit_exhausted should be "
             f"'finalize_rate_limited', got {state.get('on_rate_limit_exhausted')!r}"
         )
 

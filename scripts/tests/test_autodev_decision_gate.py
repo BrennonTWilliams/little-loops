@@ -141,6 +141,21 @@ _SPIKE_STATES_REMOVED = (
     "check_proof_gate_before_implement",
 )
 
+#: ENH-3615: the nine wire / atomic / reconcile rescoring-triplet states, replaced by
+#: the shared clear_scores -> rerun_confidence -> check_scores_present ->
+#: route_after_rescore chain.
+_RESCORE_TRIPLET_STATES_REMOVED = (
+    "clear_scores_before_wire",
+    "rerun_confidence_after_wire",
+    "check_scores_present_wire",
+    "clear_scores_before_atomic",
+    "rerun_confidence_after_atomic_remediation",
+    "check_scores_present_atomic",
+    "clear_scores_before_reconcile",
+    "rerun_confidence_after_reconcile",
+    "check_scores_present_reconcile",
+)
+
 _PRE_IMPLEMENT_SITES = (
     ("check_passed", "on_yes"),
     ("recheck_scores", "on_yes"),
@@ -203,6 +218,26 @@ class TestRemovedDecisionEntryPoints:
                 if target in _SPIKE_STATES_REMOVED:
                     dangling.append(f"{name} -> {target}")
         assert not dangling, dangling
+
+    @pytest.mark.parametrize("state", _RESCORE_TRIPLET_STATES_REMOVED)
+    def test_rescore_triplet_state_stays_deleted(self, data: dict[str, Any], state: str) -> None:
+        assert state not in data["states"]
+
+    def test_no_edge_targets_a_removed_rescore_triplet_state(self, data: dict[str, Any]) -> None:
+        dangling: list[str] = []
+        for name, state in data["states"].items():
+            targets = [v for k, v in state.items() if k.startswith("on_") or k == "next"]
+            targets += list((state.get("route") or {}).values())
+            for target in targets:
+                if target in _RESCORE_TRIPLET_STATES_REMOVED:
+                    dangling.append(f"{name} -> {target}")
+        assert not dangling, dangling
+
+    def test_run_size_review_rate_limit_halts_through_finalize(self, data: dict[str, Any]) -> None:
+        """ENH-3615: exhaustion no longer drops the issue silently via dequeue_next."""
+        assert data["states"]["run_size_review"]["on_rate_limit_exhausted"] == (
+            "finalize_rate_limited"
+        )
 
     def test_dequeue_routes_through_status_then_blockers(self, data: dict[str, Any]) -> None:
         state = data["states"]["check_status_at_dequeue"]
@@ -801,7 +836,7 @@ class TestReconcilePlateauStructural:
         for name in (
             "check_reconcile_needed",
             "reconcile_current",
-            "rerun_confidence_after_reconcile",
+            "rerun_confidence",
         ):
             assert name in states, f"{name} missing from autodev.yaml (ENH-2689)"
 
@@ -861,15 +896,19 @@ class TestReconcilePlateauStructural:
         assert state.get("on_error") == "count_repair_cycle_reconcile"
         assert state.get("on_rate_limit_exhausted") == "finalize_rate_limited"
         counter_state = data["states"]["count_repair_cycle_reconcile"]
-        assert counter_state.get("next") == "clear_scores_before_reconcile"
-        assert counter_state.get("on_error") == "clear_scores_before_reconcile"
+        assert counter_state.get("next") == "clear_scores"
+        assert counter_state.get("on_error") == "clear_scores"
 
-    def test_rerun_confidence_after_reconcile_routing(self, data: dict[str, Any]) -> None:
-        state = data["states"]["rerun_confidence_after_reconcile"]
+    def test_rerun_confidence_routing(self, data: dict[str, Any]) -> None:
+        state = data["states"]["rerun_confidence"]
         assert "/ll:confidence-check" in state.get("action", "")
-        # BUG-3588: routes through the presence gate, which forwards to recheck_after_size_review
-        assert state.get("next") == "check_scores_present_reconcile"
-        assert state.get("on_error") == "check_scores_present_reconcile"
+        # BUG-3588/ENH-3615: routes through the presence gate, then route_after_rescore
+        # forwards the reconcile origin to recheck_after_size_review
+        assert state.get("next") == "check_scores_present"
+        assert state.get("on_error") == "check_scores_present"
+        assert data["states"]["route_after_rescore"]["route"]["RECONCILE"] == (
+            "recheck_after_size_review"
+        )
 
 
 class TestReconcilePlateauRouting:
@@ -984,8 +1023,8 @@ class TestDesignGateRefineRemedy:
         assert state.get("on_error") == "count_repair_cycle_refine_for_design"
         assert state.get("on_rate_limit_exhausted") == "finalize_rate_limited"
         counter_state = data["states"]["count_repair_cycle_refine_for_design"]
-        assert counter_state.get("next") == "clear_scores_before_reconcile"
-        assert counter_state.get("on_error") == "clear_scores_before_reconcile"
+        assert counter_state.get("next") == "clear_scores"
+        assert counter_state.get("on_error") == "clear_scores"
 
     def test_counter_state_writes_design_remedy_attempted_marker(
         self, data: dict[str, Any]

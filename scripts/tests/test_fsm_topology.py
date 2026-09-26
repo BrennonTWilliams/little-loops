@@ -281,7 +281,11 @@ class TestAutodevSmoke:
         # recheck_after_decide, check_rearmed_spike_after_decide,
         # record_decision_unresolved, snap_and_size_review,
         # check_proof_gate_before_implement) (-22), lowering it to 90.
-        assert len(topo["states"]) == 90
+        # ENH-3615 collapsed the wire / atomic / reconcile rescoring triplets (9
+        # states) into one shared chain — clear_scores, rerun_confidence,
+        # check_scores_present, route_after_rescore — plus the atomic-only origin
+        # pre-state mark_rescore_origin_atomic (5), net -4, lowering it to 86.
+        assert len(topo["states"]) == 86
 
         # Every edge endpoint is a known state id, or the target of a
         # declared sub-loop (`loop:`) cross-graph edge. `from` may be null
