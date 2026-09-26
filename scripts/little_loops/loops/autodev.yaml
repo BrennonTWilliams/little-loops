@@ -562,10 +562,38 @@ states:
     action_type: shell
     evaluate:
       type: classify
+    # ENH-3609: the child's own ledgered stops go to ledger_child_stop (no
+    # autodev-skipped row; the child already ledgered them in its marker file).
+    # No edge to check_decision_after_refine / check_passed / detect_children: a
+    # failed child never reuses the success path (ENH-1679).
     route:
       RETRYABLE_ERROR:rate_limited: finalize_rate_limited
+      RETRYABLE_ERROR:infra: skip_inflight_infra
+      BLOCKED:decision_unresolved: ledger_child_stop
+      BLOCKED:proposal_unsound: ledger_child_stop
+      DEFERRED:spike_inconclusive: ledger_child_stop
+      BLOCKED:quality: skip_inflight
+      DEFERRED:gate_unmet: skip_inflight
+      READY: skip_inflight
+      BLOCKED: skip_inflight
+      DECOMPOSED: skip_inflight
+      CANCELLED: skip_inflight
+      MISSING: skip_inflight
       _: skip_inflight
       _error: skip_inflight
+
+  ledger_child_stop:
+    # ENH-3609: a child stop already ledgered in its own marker file
+    # (decision_unresolved / proposal_unsound / spike_inconclusive). Clear the
+    # in-flight sentinel and advance WITHOUT an autodev-skipped row so
+    # finalize_done does not double-count it as refine_failed. Same rule as
+    # skip_inflight's marker greps, keyed on the record token instead.
+    action: |
+      rm -f ${context.run_dir}/autodev-inflight
+    fragment: queue_track
+    action_type: shell
+    next: dequeue_next
+    on_error: dequeue_next
 
   skip_inflight:
     # ENH-1679: record the in-flight issue as skipped and clear the inflight
@@ -595,6 +623,9 @@ states:
       if [ "$CLASS" = infra ]; then
         exit 1
       fi
+      # ENH-3609: the three marker greps below are now the fallback for a MISSING
+      # run record (a child stop whose `|| true` record write failed); a present
+      # record routes to ledger_child_stop. ENH-3600 removes them with the markers.
       # BUG-3390: refine-to-ready-issue's record_decision_unresolved writes the ID
       # to autodev-decision-unresolved.txt and exits `failed` WITHOUT passing
       # through classify_terminal, so it lands here with no refine-terminal-class.
@@ -671,8 +702,51 @@ states:
         printf '0' > ${context.run_dir}/autodev-broke-down
       fi
     action_type: shell
-    next: check_decision_after_refine
-    on_error: check_decision_after_refine
+    next: route_refine_success
+    on_error: route_refine_success
+
+  route_refine_success:
+    # ENH-3609: success-path router over the child's typed run record. Tokens
+    # match exactly, so every RUN_RECORD_TOKENS member is listed. READY and
+    # unsuffixed BLOCKED (done, thresholds unmet) keep today's path so the
+    # remediation ladder stays reachable via check_passed.on_no. MISSING / _ /
+    # _error fail open to check_passed (a `|| true` record write may have failed
+    # after a real done). Suffixed tokens cannot occur here; they fail safe.
+    action: >-
+      ll-issues run-record read ${captured.input.output:shell}
+      --run-dir ${context.run_dir} --writer refine-to-ready-issue --format token
+    action_type: shell
+    evaluate:
+      type: classify
+    route:
+      READY: check_decision_after_refine
+      BLOCKED: check_decision_after_refine
+      MISSING: check_decision_after_refine
+      DECOMPOSED: detect_children
+      CANCELLED: skip_cancelled
+      BLOCKED:decision_unresolved: skip_inflight
+      BLOCKED:proposal_unsound: skip_inflight
+      BLOCKED:quality: skip_inflight
+      DEFERRED:gate_unmet: skip_inflight
+      DEFERRED:spike_inconclusive: skip_inflight
+      RETRYABLE_ERROR:infra: skip_inflight
+      RETRYABLE_ERROR:rate_limited: skip_inflight
+      _: check_decision_after_refine
+      _error: check_decision_after_refine
+
+  skip_cancelled:
+    # ENH-3609: the child's record says the issue was cancelled during
+    # refinement. Ledger `cancelled` and clear autodev-inflight (dequeue_next only
+    # overwrites it when the queue is non-empty, so a last-issue cancel would
+    # otherwise report inflight_unresolved). Not skip_already_resolved: that
+    # stem means "closed before refinement".
+    action: |
+      echo "${captured.input.output}  cancelled" >> ${context.run_dir}/autodev-skipped.txt  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      rm -f ${context.run_dir}/autodev-inflight
+    fragment: queue_track
+    action_type: shell
+    next: dequeue_next
+    on_error: dequeue_next
 
   check_decision_after_refine:
     # Check decision_needed immediately after confidence-check (via sub-loop)

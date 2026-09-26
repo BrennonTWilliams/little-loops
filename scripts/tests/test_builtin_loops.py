@@ -7996,6 +7996,73 @@ class TestAutodevLoop:
         skipped = tmp_path / "autodev-skipped.txt"
         assert not skipped.exists() or "refine_failed" not in skipped.read_text()
 
+    @pytest.mark.parametrize(
+        "marker",
+        ["autodev-spike-inconclusive.txt", "autodev-proposal-unsound.txt"],
+    )
+    def test_skip_inflight_marker_fallback_not_counted_refine_failed(
+        self, data: dict, tmp_path: Path, marker: str
+    ) -> None:
+        """ENH-3609: BUG-3593 / BUG-3574 marker greps stay as the MISSING-record fallback."""
+        (tmp_path / marker).write_text("ENH-0009\n")
+        (tmp_path / "autodev-inflight").write_text("ENH-0009")
+        assert self._run_skip_inflight(data, tmp_path, "ENH-0009") == 0
+        assert not (tmp_path / "autodev-inflight").exists()
+        skipped = tmp_path / "autodev-skipped.txt"
+        assert not skipped.exists() or "refine_failed" not in skipped.read_text()
+
+    def _run_state(self, data: dict, name: str, run_dir: Path, issue_id: str) -> int:
+        script = data["states"][name]["action"]
+        script = script.replace("${captured.input.output}", issue_id)
+        script = script.replace("${context.run_dir}", str(run_dir))
+        return subprocess.run(["bash", "-c", script], cwd=run_dir).returncode
+
+    def test_route_tables_cover_every_run_record_token(self, data: dict) -> None:
+        """ENH-3609: both routers list every RUN_RECORD_TOKENS member plus _ / _error."""
+        from little_loops.run_record import RUN_RECORD_TOKENS
+
+        for name in ("route_refine_success", "route_refine_outcome"):
+            route = data["states"][name]["route"]
+            for tok in (*RUN_RECORD_TOKENS, "_", "_error"):
+                assert tok in route, f"{name} missing {tok}"
+
+    def test_route_refine_outcome_has_no_success_path_edge(self, data: dict) -> None:
+        """ENH-3609/ENH-1679: a failed child never reuses the success path."""
+        targets = set(data["states"]["route_refine_outcome"]["route"].values())
+        assert not targets & {"check_decision_after_refine", "check_passed", "detect_children"}
+        route = data["states"]["route_refine_outcome"]["route"]
+        for tok in (
+            "BLOCKED:decision_unresolved",
+            "BLOCKED:proposal_unsound",
+            "DEFERRED:spike_inconclusive",
+        ):
+            assert route[tok] == "ledger_child_stop"
+        assert route["RETRYABLE_ERROR:infra"] == "skip_inflight_infra"
+
+    def test_route_refine_success_targets(self, data: dict) -> None:
+        route = data["states"]["route_refine_success"]["route"]
+        for tok in ("READY", "BLOCKED", "MISSING", "_", "_error"):
+            assert route[tok] == "check_decision_after_refine", tok
+        assert route["DECOMPOSED"] == "detect_children"
+        assert route["CANCELLED"] == "skip_cancelled"
+        for tok, tgt in route.items():
+            if ":" in tok:
+                assert tgt == "skip_inflight", tok
+
+    def test_ledger_child_stop_writes_no_skipped_row(self, data: dict, tmp_path: Path) -> None:
+        (tmp_path / "autodev-inflight").write_text("ENH-0009")
+        assert self._run_state(data, "ledger_child_stop", tmp_path, "ENH-0009") == 0
+        assert not (tmp_path / "autodev-inflight").exists()
+        assert not (tmp_path / "autodev-skipped.txt").exists()
+        assert data["states"]["ledger_child_stop"]["next"] == "dequeue_next"
+
+    def test_skip_cancelled_ledgers_and_clears_inflight(self, data: dict, tmp_path: Path) -> None:
+        (tmp_path / "autodev-inflight").write_text("ENH-0009")
+        assert self._run_state(data, "skip_cancelled", tmp_path, "ENH-0009") == 0
+        assert not (tmp_path / "autodev-inflight").exists()
+        assert "ENH-0009  cancelled" in (tmp_path / "autodev-skipped.txt").read_text()
+        assert data["states"]["skip_cancelled"]["next"] == "dequeue_next"
+
     def test_skip_inflight_decision_ledger_match_is_whole_line(
         self, data: dict, tmp_path: Path
     ) -> None:
@@ -8407,8 +8474,12 @@ class TestAutodevLoop:
         """copy_broke_down must route to check_decision_after_refine so decision_needed is
         checked immediately after confidence-check (via sub-loop) completes."""
         state = data["states"].get("copy_broke_down", {})
-        assert state.get("next") == "check_decision_after_refine", (
-            f"copy_broke_down.next should be 'check_decision_after_refine', got {state.get('next')!r}"
+        # ENH-3609: copy_broke_down now enters route_refine_success, whose
+        # READY/BLOCKED/MISSING routes reach check_decision_after_refine.
+        assert state.get("next") == "route_refine_success"
+        assert state.get("on_error") == "route_refine_success"
+        assert data["states"]["route_refine_success"]["route"]["READY"] == (
+            "check_decision_after_refine"
         )
 
     def test_check_decision_after_refine_routes_correctly(self, data: dict) -> None:

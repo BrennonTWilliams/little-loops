@@ -3,10 +3,11 @@ id: ENH-3609
 type: ENH
 title: Route autodev on the child run record outcome and ledger child stops
 priority: P3
-status: open
+status: done
 discovered_by: issue-size-review
 discovered_date: '2026-09-26'
 captured_at: '2026-09-26T03:47:26Z'
+completed_at: '2026-09-26T05:29:26Z'
 parent: EPIC-3565
 decision_needed: false
 blocked_by:
@@ -307,5 +308,7 @@ Design review before implementation; all findings applied above:
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-26T05:29:26 - `828fb0a9-c564-47c7-ba14-651529ec51a0.jsonl`
+- `/ll:ready-issue` - 2026-09-26T05:16:59 - `fefeebf9-94c0-4290-827d-16f43267d7b9.jsonl`
 - `/ll:confidence-check` - 2026-09-26T04:53:16 - `7eed8935-b54f-432a-8611-fa62522272e9.jsonl`
 - `/ll:verify-issues` - 2026-09-26T04:42:56 - `4d8f5d10-1720-42e8-a014-431353de1c43.jsonl`
