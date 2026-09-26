@@ -245,7 +245,27 @@ _Added by `/ll:confidence-check` on 2026-09-25 (re-scored 2026-09-26)_
 - Broad enumeration across ~15+ sites (3 loop YAMLs, new module, 5+ test files, README, LOOPS_REFERENCE, ARCHITECTURE) with several existing tests that break as markers move.
 - Several design decisions left open (dequeue-ID source, gate scope, child-marker migration vs. documented exception).
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` — 2026-09-26_
+
+Verdict at time of check: **NEEDS_UPDATE** (corrections below are recorded here rather than rewritten into the sections above; the body's older anchors and "still open" statements should be read through them — this section is the current-state record, not an outstanding code defect)
+
+Graph: provider=`codegraph` freshness=`stale` (not used to originate any verdict; findings confirmed by Grep/Read). `ll-verify-evidence`: clean.
+
+- **All `blocked_by` edges are resolved**: ENH-3611, ENH-3601, FEAT-3573, ENH-3613 are all `done`, as are ENH-3597, ENH-3599 and ENH-3577. The Confidence Check Notes' "(all open)" gap and its ENH-3599 blocker mention are stale; the frontmatter `blocked_by` list can be dropped on the next refine. Confidence scores predate this and should be re-scored.
+- **`writer=prepare-issue` producer now exists**: `loops/prepare-issue.yaml` (ENH-3605) forwards the record, and `autodev.yaml` already reads it (`ll-issues run-record read … --writer prepare-issue --format token` at :520, :678). The "no producer / no run-record read in autodev.yaml" finding no longer holds.
+- **`finalize_done` moved**: now `autodev.yaml:2985-3286` (`finalize_rate_limited` :2973, `failed` :3287, `done` :3290); the loop has 90 states (not 105 — ENH-3611 removed the spike/decision states). The `summary.json` printf now emits **sixteen** keys (adds `closed_implemented`, `closed_cancelled`, `quality_failed`, `quality_gate_infra`), so the "twelve keys" finding is superseded by the Scope Boundaries' FEAT-3573-as-of shape.
+- **Markers already gone from autodev.yaml**: `autodev-decide-ran` (0 refs) and `autodev-spike-no-verdict.txt` (0 refs) — ENH-3611 removed their writers/readers. Still present: `autodev-decision-unresolved` (4), `autodev-spike-inconclusive` (3), `autodev-proposal-unsound` (3), `autodev-proof-gate-infra` (4), plus `pre-readiness`, `repair-cycle-count`, `contradiction-reconcile-count`, `new-children` — the grep-gate scope question remains open.
+- **Child writers** in `refine-to-ready-issue.yaml` are now at :692 (`proposal-unsound`), :1235 (`spike-inconclusive`), :1269 (`decision-unresolved`); the `autodev-decide-ran` mention at :907 is a comment only. `auto-refine-and-implement.yaml`'s reader is now :1135 (`DECISION_UNRESOLVED=$(count autodev-decision-unresolved.txt)`), not :1112.
+- **Test anchors drifted**: `TestAutodevLoop` :6409, `_run_finalize_done` :7209, thin-shell gate `test_shell_states_call_helper_module_not_inline_logic` :21017 (earlier :6643/:7475/:21491).
+- **Still accurate**: `autodev_summary.py` / `build_summary` / `record_absent` do not exist; `run_record.py` and `read_run_record` exist; `autodev.yaml` has zero `python3 -m little_loops` calls; the dequeued-ID-source design question is still open (no cumulative dequeue ledger).
+- **B6 (proposal-vs-code)**: no unsound mechanism found; the `record_absent` requirement remains unsatisfiable by enumerating `run-records/prepare-issue/*.json` alone (already flagged).
+
+Remaining: none applied to body sections in this pass (auto mode; anchors left as historical research findings).
+
 ## Session Log
+- `/ll:verify-issues` - 2026-09-26T20:09:35 - `57be1948-59d1-446a-b252-a9b0fec818aa.jsonl`
 - `/ll:confidence-check` - 2026-09-26T02:52:27 - `28baa352-2934-411c-bced-7bb0e7406cbf.jsonl`
 - `/ll:reconcile-issue` - 2026-09-26T02:50:41 - `1a6e3280-98dc-4084-b164-9f1e529dd9fb.jsonl`
 - `/ll:refine-issue` - 2026-09-26T02:45:37 - `972291b5-b9f1-4321-9110-477f6b624b3d.jsonl`
