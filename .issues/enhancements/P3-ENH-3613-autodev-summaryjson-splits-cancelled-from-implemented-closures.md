@@ -25,17 +25,17 @@ that FEAT-3573 extends and ENH-3600 preserves.
 
 ## Current Behavior
 
-`finalize_done` (`scripts/little_loops/loops/autodev.yaml`, state header ~`:3115`) promotes
+`finalize_done` (`scripts/little_loops/loops/autodev.yaml`, state header ~`:3117`) promotes
 every staged ID whose status is `done|completed|cancelled` to `autodev-passed.txt` (the
-promotion `case` arm, ~`:3133`). After the `case` arm the status is discarded. The human
-summary prints one `Passed (N)` line (~`:3237`) and `summary.json` (printf ~`:3317`)
+promotion `case` arm, ~`:3135`). After the `case` arm the status is discarded. The human
+summary prints one `Passed (N)` line (~`:3238`) and `summary.json` (printf ~`:3319`)
 reports one `closed` count. The current keys are `verdict`, `closed`, `not_closed`,
 `skipped`, `gate_blocked`, `decision_unresolved`, `not_started`, `inflight_unresolved`,
 `abandoned`, `stop_reason`, `pending` and `proof_gate_infra` (12 keys; BUG-3603 added
 `proof_gate_infra`).
 
 Cancelled closures reach `finalize_done` when implementation (or `/ll:ready-issue`) closes
-an issue as invalid; `verify_impl_closed` (~`:1198`) accepts `cancelled` as closed for the
+an issue as invalid; `verify_impl_closed` (~`:1308`) accepts `cancelled` as closed for the
 same reason.
 
 ## Expected Behavior
@@ -91,7 +91,7 @@ soon after it landed.
 
 ### Verdict policy (open decision)
 
-The ladder keys on `PASSED_COUNT` (~`:3295-:3315`), so a cancelled-only run currently
+The ladder keys on `PASSED_COUNT` (~`:3296-:3311`), so a cancelled-only run currently
 yields `verdict: success`. This contradicts the precedent set by **BUG-3449** for the
 parent loop: `auto-refine-and-implement` `finalize` counts only `status: done` as closed,
 because counting cancellations "could flip verdict to success on a run that closed nothing"
@@ -180,7 +180,7 @@ _Wiring pass added by `/ll:wire-issue` (Option B verdict change):_
   `closed_implemented > 0`) in the sentence already planned for `closed_implemented`/`closed_cancelled`.
 
 ### Tests
-- `scripts/tests/test_builtin_loops.py` `TestAutodevLoop` (`_run_finalize_done` ~`:7481`):
+- `scripts/tests/test_builtin_loops.py` `TestAutodevLoop` (`_run_finalize_done` ~`:7419`):
   - New tests with a **per-ID** `ll-issues` stub (existing stubs ignore `$2` and return one
     fixed status). Sketch: `case "$2" in FEAT-1) echo '{"status":"Completed"}';;
     FEAT-2) echo '{"status":"Cancelled"}';; esac`. These are the real display values
@@ -190,10 +190,10 @@ _Wiring pass added by `/ll:wire-issue` (Option B verdict change):_
     `Passed` line suffix naming the cancelled ID (absent when none are cancelled), and that
     `autodev-passed.txt` still holds bare IDs matchable by `grep -qxF`.
   - Dedupe: a cancelled ID appended twice to `autodev-staged.txt` counts once.
-  - Nothing staged (extend `test_finalize_done_no_op_when_nothing_staged` ~`:7550`): both
+  - Nothing staged (extend `test_finalize_done_no_op_when_nothing_staged` ~`:7488`): both
     keys are 0.
-  - Extend `test_finalize_done_promotes_verified_closure_to_passed` (~`:7524`) and
-    `test_finalize_done_mixed_run_still_resolves_success` (~`:7828`) to assert
+  - Extend `test_finalize_done_promotes_verified_closure_to_passed` (~`:7462`) and
+    `test_finalize_done_mixed_run_still_resolves_success` (~`:7766`) to assert
     `closed_implemented == 1`, `closed_cancelled == 0`.
   - Verdict: the all-cancelled fixture pins `success` (Option A) or the chosen
     fall-through verdict (Option B).
@@ -233,8 +233,8 @@ _Wiring pass added by `/ll:wire-issue` (Option B verdict change):_
 
 ## Implementation Steps
 
-1. Wait for ENH-3610 to land. Its uncommitted changes to `autodev.yaml` and the
-   `check_decision_at_dequeue` states named in `LOOPS_REFERENCE.md:1081` overlap this edit.
+1. ENH-3610 has landed (working tree clean as of 2026-09-26); no overlap wait needed.
+   Re-read `finalize_done` at edit time, since line numbers above are approximate.
 2. Verdict policy resolved: Option B (see Decision Rationale).
 3. `finalize_done`: split the promotion `case` arm into `done|completed)` and
    `cancelled)` (both append to `autodev-passed.txt`; `cancelled)` also accumulates
@@ -306,12 +306,32 @@ _These touchpoints were identified by wiring analysis and must be included in th
   cancellations from `closed` (BUG-3449).
 - Moving `finalize_done` into Python is ENH-3600.
 
+## Verification Notes
+
+Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the same
+pass, so the issue as it now reads is up to date — this section is a record of
+what was wrong and fixed, not an outstanding action item)
+
+- Line anchors had drifted after ENH-3610 landed; corrected `finalize_done` header
+  (`:3117`), promotion `case` (`:3135`), `Passed` line (`:3238`), printf (`:3319`),
+  ladder (`:3296-:3311`), `verify_impl_closed` (`:1308`), and the `TestAutodevLoop`
+  test anchors (`_run_finalize_done` `:7419`, no-op `:7488`, promotes `:7462`, mixed `:7766`).
+- Implementation Step 1 ("wait for ENH-3610") was stale: it has landed.
+- Confirmed accurate: 12 current `summary.json` keys, `done|completed|cancelled` case arm,
+  ladder keys on `PASSED_COUNT`, exit routing (only `phantom` exits 1), BUG-3449 pin test
+  (`:5364`), `audit-loop-run` SKILL.md 464 lines / BUG-3603 paragraph at `:275`,
+  `LOOPS_REFERENCE.md:1081` BUG-3603 sentence, `show.py` `cmd_show:786`.
+- Proposal-vs-code check (B6): Option B ladder change is consistent with the code; no
+  handler, fixture, or AC-coverage gap found. Evidence-quote check: clean.
+- Graph: provider=`codegraph` freshness=`fresh` (YAML/shell targets; verified by Grep/Read).
+
 ## Status
 
 **Open** | Created: 2026-09-26 | Priority: P3
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-26T06:25:28 - `984378ad-0d20-4d38-bbc9-894028359a45.jsonl`
 - `/ll:wire-issue` - 2026-09-26T06:20:29 - `3f6bcacf-9a24-433d-b1ef-920a7913f4ff.jsonl`
 - `/ll:decide-issue` - 2026-09-26T06:18:44 - `8ade3bc4-e17f-4d10-aa22-4a48a2f01bb0.jsonl`
 - `/ll:wire-issue` - 2026-09-26T06:05:49 - `7d4fe7ad-aaa1-48a1-b0d0-90c193fc70c2.jsonl`
