@@ -2268,8 +2268,8 @@ from confidence-check findings — this command is the gate that reads them back
 
 **Which gate states consume which flag (ENH-3250):** `decision_needed` is read
 by `check_decision_mid_refine`/`check_decision_mid_wire`/`check_decision_needed`
-in `refine-to-ready-issue.yaml` and by `check_decision_before_size_review` in
-`autodev.yaml`. `missing_artifacts` is read by `check_missing_artifacts` in both
+in `refine-to-ready-issue.yaml` and by `select_obligation_post_refine` / `select_obligation_pre_implement`
+in `autodev.yaml` (via `check-flag` then `next-obligation`). `missing_artifacts` is read by `check_missing_artifacts` in both
 loops. `spike_needed` is read by `check_spike_needed` in both loops (paired with
 a `spike_attempted` re-check via an inline `show --json` predicate, not a plain
 `check-flag` call, since the gate is a two-field one-shot guard).

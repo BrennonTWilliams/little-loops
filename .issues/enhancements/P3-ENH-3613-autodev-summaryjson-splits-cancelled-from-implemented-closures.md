@@ -164,6 +164,21 @@ the issue's own citations; no separate per-option agent sweep was run.
   — shape-agnostic `summary.json` consumers. Adding keys is safe. No consumer reads
   autodev's `closed` via `jq` or parses the human `Passed (N):` line.
 
+_Wiring pass added by `/ll:wire-issue` (Option B verdict change):_
+- `scripts/little_loops/loops/autodev.yaml` `finalize_done` exit routing (`case "$VERDICT"`,
+  ~`:3323`) — only `phantom` exits 1; `success`/`partial`/`no-op`/`not_started` exit 0. An
+  all-cancelled run moves `success` → `no-op` (or `not_started`) with the **same exit code
+  (0)**, so the FSM terminal (`done`) and the `shell_exit` fragment routing are unchanged.
+  A mixed cancelled + unverified run moves `partial` → `phantom` (exit 1 → `failed`); this is
+  the only exit-code change Option B introduces.
+- `scripts/little_loops/loops/auto-refine-and-implement.yaml` `finalize` — confirmed it reads
+  `autodev-passed.txt`/`autodev-skipped.txt` and the child exit code, not autodev's
+  `summary.json` `verdict`, so the verdict change does not reach it.
+- `docs/guides/LOOPS_REFERENCE.md` autodev section — no sentence documents autodev's verdict
+  ladder (`success`/`partial`/`phantom`/`no-op`); the only verdict vocabulary listed (~`:1009`)
+  is the parent loop's. Include the Option B rule (`success`/`partial` require
+  `closed_implemented > 0`) in the sentence already planned for `closed_implemented`/`closed_cancelled`.
+
 ### Tests
 - `scripts/tests/test_builtin_loops.py` `TestAutodevLoop` (`_run_finalize_done` ~`:7481`):
   - New tests with a **per-ID** `ll-issues` stub (existing stubs ignore `$2` and return one
@@ -187,6 +202,15 @@ the issue's own citations; no separate per-option agent sweep was run.
   `test_skill_step6a_reads_enh_2404_keys` (~`:144`) /
   `test_skill_step6a_reads_closed_via_recovery_key` (~`:157`): slice `## Step 6:` to
   `## Step 7:`, assert both keys and "additive".
+- _Wiring pass added by `/ll:wire-issue`:_ Option B verdict fixtures to add in
+  `TestAutodevLoop` next to `test_finalize_done_not_started_verdict_and_no_double_count`
+  (~`:7702`) and `test_finalize_done_reports_phantom_when_staged_but_not_closed` (~`:7429`):
+  (a) all-cancelled → `no-op`, exit 0, `closed == closed_cancelled`; (b) all-cancelled plus a
+  not-started ID → `not_started`; (c) cancelled + staged-but-unverified → `phantom`, exit 1;
+  (d) cancelled + implemented → `success`. No existing `finalize_done` fixture in
+  `~:7400-:7860` uses a `Cancelled` stub (the stub at ~`:7440` returns `Open`), so no
+  existing verdict assertion breaks. The `skip_cancelled` tests (~`:7983-:8000`) exercise a
+  different state (`autodev-skipped.txt`) and are unaffected.
 - Will not break: `test_fsm_topology.py` autodev state count (no state is added);
   `TestInterpSweepBaseline` (no baseline entry for `finalize_done`; keep new logic in plain
   shell with `$${...}` escaping, no heredoc or `python3 -c` block containing
@@ -220,6 +244,20 @@ the issue's own citations; no separate per-option agent sweep was run.
 4. Add the `TestAutodevLoop` tests and the `test_audit_loop_run_skill.py` test.
 5. Add the `audit-loop-run` Step 6a paragraph and the `LOOPS_REFERENCE.md` sentence.
 6. Run the full suite plus the gates listed under Tests.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update the comment block above the verdict ladder in `finalize_done` (BUG-2908 comment,
+  ~`:3292`) and the exit-routing comment (~`:3324`) — both say a verdict of `success`/`partial`
+  means "verifiably closed"; reword to "verifiably implemented" under Option B.
+- Add the four Option B verdict fixtures listed under Tests (all-cancelled, all-cancelled +
+  not-started, cancelled + unverified, cancelled + implemented).
+- In the `audit-loop-run` Step 6a paragraph, state the Option B verdict rule and that an
+  all-cancelled run reports `no-op` with `closed > 0`, so readers do not treat `closed > 0`
+  as evidence of `success`.
+- In the `LOOPS_REFERENCE.md` sentence, include the Option B rule alongside the key names.
 
 ## Impact
 
@@ -274,6 +312,7 @@ the issue's own citations; no separate per-option agent sweep was run.
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-26T06:20:29 - `3f6bcacf-9a24-433d-b1ef-920a7913f4ff.jsonl`
 - `/ll:decide-issue` - 2026-09-26T06:18:44 - `8ade3bc4-e17f-4d10-aa22-4a48a2f01bb0.jsonl`
 - `/ll:wire-issue` - 2026-09-26T06:05:49 - `7d4fe7ad-aaa1-48a1-b0d0-90c193fc70c2.jsonl`
 - `/ll:decide-issue` - 2026-09-26T06:01:33 - `95a3ad40-ecc6-4e5c-befd-9be7a282a332.jsonl`
