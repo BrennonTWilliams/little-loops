@@ -1,7 +1,7 @@
 ---
 id: ENH-3605
 type: ENH
-title: Add prepare-issue wrapper loop with wire/refine and reconcile/design remedy
+title: Add prepare-issue pass-through wrapper and route autodev on its run record
 priority: P3
 status: open
 discovered_by: issue-size-review
@@ -16,233 +16,318 @@ blocks:
 relates_to:
 - ENH-3590
 - ENH-3577
+- ENH-3607
+- ENH-3609
 parent: ENH-3601
 ---
 
-# ENH-3605: Add prepare-issue wrapper loop with wire/refine and reconcile/design remedy
+# ENH-3605: Add prepare-issue pass-through wrapper and route autodev on its run record
 
 ## Summary
 
-First half of ENH-3601 (Option B, selected). Create the `prepare-issue` wrapper loop around
-`refine-to-ready-issue` and move autodev's wire/refine and reconcile/design remedy states into
-it, collapsing their rescoring triplets into one shared rescoring path. Autodev calls
-`prepare-issue` and routes only on its `RunRecord.outcome`. Size-review/atomic, go/no-go and
-pre-deferral remedy stay in autodev until ENH-3606.
+First half of ENH-3601 (Option B), re-cut on 2026-09-26. Add `prepare-issue` as a
+pass-through wrapper around `refine-to-ready-issue`, point autodev's `refine_current` at it,
+and switch autodev's two run-record routers from `--writer refine-to-ready-issue` to
+`--writer prepare-issue`. **No autodev state moves here.** ENH-3606 moves the whole
+second-pass cluster in one change. This child proves the three-level passthrough chain,
+record forwarding, the infra/rate-limit terminals and the ledger-ownership rule before any
+routing moves.
+
+## Why the re-cut
+
+The original split moved wire/refine and reconcile/design remedy here, and size-review,
+go/no-go and pre-deferral remedy to ENH-3606. Those states form one strongly connected
+cluster: reconcile → size-review → `recheck_after_size_review` → pre-deferral remedy →
+reconcile. The moved states route into `check_size_review_ran_this_pass`,
+`recheck_after_size_review`, `check_go_no_go_eligible`, `dispatch_pre_deferral_remedy` and
+`enqueue_or_skip`. A `loop:` child cannot route into its parent's states, and no
+`PreparationOutcome` value means "continue with size-review in autodev". So the original
+ENH-3605 could not land alone without dangling edges or a behavior change on `main`, which
+is live in every local-editable project. A plumbing-then-move split gives two
+behavior-preserving changes that can each land on their own.
 
 ## Parent Issue
 
-Decomposed from ENH-3601: Move autodev second-pass preparation routing into a preparation controller.
-See the parent for the full Option B decision rationale, Program Design, Codebase Research
-Findings and wiring/test/doc inventories; the items below are the D1 share.
+Decomposed from ENH-3601: Move autodev second-pass preparation routing into a preparation
+controller. See the parent for the Option B decision rationale.
 
 ## Current Behavior
 
-`autodev.yaml` owns the wire/refine and reconcile/design remedy states inline
-(`check_missing_artifacts`, `run_wire`, `run_refine`, `check_reconcile_needed`,
-`reconcile_current`, `dispatch_design_remedy`, …), each with its own
-`clear_scores_before_*` / `rerun_confidence_after_*` / `check_scores_present_*` rescoring
-triplet. Autodev routes on many per-state sentinels rather than one preparation outcome.
+After ENH-3607 and ENH-3609–3611 land:
+
+- Autodev's `refine_current` is `loop: refine-to-ready-issue` with `context_passthrough: true`.
+- `route_refine_success` (entered from `copy_broke_down`) and `route_refine_outcome` (entered
+  from `refine_current.on_failure`) read
+  `ll-issues run-record read <ID> --run-dir ${context.run_dir} --writer refine-to-ready-issue --format token`.
+- `skip_inflight` writes `ID  refine_failed` for `BLOCKED:quality` / `DEFERRED:gate_unmet`
+  failure stops; `ledger_child_stop` clears `autodev-inflight` without writing a row.
+- `prepare-issue.yaml` does not exist, although `little_loops.run_record` already accepts the
+  `prepare-issue` writer.
 
 ## Expected Behavior
 
-`prepare-issue` (wrapping `refine-to-ready-issue`) owns those states and one shared rescoring
-path. Autodev's `refine_current` is a single `loop: prepare-issue` state that routes only on the
-`RunRecord.outcome` the wrapper writes; ledger buckets in `finalize_done` are unchanged.
+The call chain is `autodev` → `prepare-issue` → `refine-to-ready-issue`. For every token,
+autodev's route and the set of ledger rows it produces match the pre-change behavior. The
+only change autodev sees is the writer it reads.
 
 ## Scope Boundaries
 
-- **In scope**: wire/refine and reconcile/design-remedy states, their shared rescoring path,
-  the `prepare-issue` run-record terminals, and the docs/tests listed below.
-- **Out of scope**: size-review/atomic, go/no-go and pre-deferral remedy (ENH-3606); removing
-  the legacy sentinels (ENH-3600); widening the go/no-go trigger; changes to other callers of
-  `refine-to-ready-issue`.
+- **In scope**: the new wrapper YAML, the `refine_current` retarget, the router writer switch,
+  the wrapper's forward and terminal states, a `run-record forward` CLI subcommand, the
+  ledger-ownership rule, and tests/docs for the new loop.
+- **Out of scope**: moving any autodev state (ENH-3606); removing legacy sentinels
+  (ENH-3600); changes to `refine-to-ready-issue.yaml` or its other caller
+  `recursive-refine.yaml`; widening the go/no-go trigger.
 
-## Scope
+## Proposed Solution
 
-- New `scripts/little_loops/loops/prepare-issue.yaml`: `loop: refine-to-ready-issue` with
-  `context_passthrough: true` (shares autodev's `run_dir`, `spike-runs-<ID>` and
-  `autodev-repair-cycle-count.txt`).
-- Move from `autodev.yaml`:
-  - **wire/refine**: `check_missing_artifacts`, `run_wire`, `run_refine`, `count_repair_cycle_wire`
-  - **reconcile/design**: `check_reconcile_needed`, `reconcile_current`, `refine_for_design`,
-    `check_atomic_design_remedy`, `dispatch_design_remedy`
-  - shared rescoring path replacing the `*_wire` and `*_reconcile` triplets (`clear_scores_before_*`,
-    `rerun_confidence_after_*`, `check_scores_present_*`), keeping BUG-3588 freshness rules;
-    the shared path must be extensible so ENH-3606 can fold in the `*_atomic` triplet
-- Autodev's `refine_current` becomes `loop: prepare-issue`: keep the BUG-2611 shape (no `on_no`;
-  `on_failure` → `skip_inflight`, `on_error` → `skip_inflight_infra`); no
-  `with_rate_limit_handling` on the `loop:` state (BUG-3390). Until ENH-3600 removes them, the
-  wrapper keeps writing the sentinels autodev reads (`refine-terminal-class`,
-  `refine-broke-down`, ledgers) so `finalize_done` buckets do not change.
-- Every wrapper terminal writes `ll-issues run-record write ... --writer prepare-issue`,
-  including rate-limit exhaustion (`outcome: retryable_error`, routed to a wrapper-local
-  terminal, never `finalize_rate_limited`). Outcomes stay within the ENH-3597 six-value
-  `PreparationOutcome` vocabulary.
-- `ready` → autodev's fail-closed proof gate (BUG-3603) → `implement_current`; no
-  `prepare-issue` terminal routes into `implement_current`.
-- Use `select_next_obligation` (FEAT-3598) only for the wire/refine/design-facing subset; it has
-  no obligation for size-review, go/no-go, reconcile or pre-deferral remedy.
-- Decide `ll-loop next-loop` input resolution for `prepare-issue` (`cli/loop/next_loop.py`
-  `_PARAM_RESOLVERS`).
+### `prepare-issue.yaml`
 
-## Tests (in this child)
+1. **`clear_record`** (entry): `ll-issues run-record clear ${context.input:shell} --run-dir
+   ${context.run_dir} --writer prepare-issue || true`. This uses ENH-3607's `clear` with
+   canonical ID resolution, not a raw-ID `rm -f`.
+2. **`run_refine_to_ready`**: `loop: refine-to-ready-issue`, `context_passthrough: true`, no
+   `timeout:` (`TestSubLoopStateTimeoutAudit`), and no `with_rate_limit_handling` /
+   `on_rate_limit_exhausted` (inert on `loop:` states, BUG-3390). Routes: `on_yes` →
+   `forward_done`, `on_failure` → `forward_stop`, `on_error` → `mark_inner_error`.
+3. **`forward_done` / `forward_stop`**: run
+   `ll-issues run-record forward <ID> --run-dir ${context.run_dir} --from refine-to-ready-issue --writer prepare-issue`.
+   This rewrites the inner record under the wrapper's writer and copies `outcome`,
+   `legacy_class`, `child_ids`, `evidence_refs`, `readiness` and `outcome_confidence`
+   unchanged. `forward_done` ends in a success terminal and `forward_stop` in a failure
+   terminal, so the wrapper mirrors the inner terminal type. Autodev therefore still enters
+   `route_refine_success` through `on_yes` and `route_refine_outcome` through `on_failure`.
+   When the inner record is missing, `forward` writes nothing and autodev reads `MISSING` →
+   `skip_inflight`, as today.
+4. **`mark_inner_error`**: the inner loop died (`terminated_by` of `error`, `no_route` or
+   `workdir_vanished`). Write `--legacy-class infra` and end in the failure terminal.
+   Autodev routes `RETRYABLE_ERROR:infra` → `skip_inflight_infra`, which writes the same
+   `refine_failed_infra` row that `refine_current.on_error` produces today. (A wrapper
+   cannot end with `terminated_by: error` on purpose, so this record is how the error
+   reaches autodev.)
+5. **Rate limits**: this child adds no wrapper slash states, so there is no wrapper-local
+   rate-limit terminal. An inner `mark_rate_limit_infra` record carries
+   `evidence_refs: [rate_limit_exhausted]`, is forwarded unchanged, and still sends autodev
+   to `finalize_rate_limited`.
+6. **Mechanics**: declare `scope:` (BUG-3107). Take the ID from `${context.input}`:
+   passthrough flattens autodev's `captured.input` into the child's context
+   (`FSMExecutor._execute_sub_loop`), so `${captured.input.output}` does not resolve in the
+   wrapper. Re-declare no `pruning_profile:` blocks (the wrapper has no slash states yet).
+   Run `ll-loop validate` (MR-3/7/9/11/14, capture reachability, `scope:`).
 
-- Structural: register `prepare-issue` in `test_builtin_loops.py` stem set (~:304-305) and
-  `test_fsm_fragments.py` `migration_targets`; rewrite the affected `test_fsm_topology.py` /
-  `test_autodev_loop.py` pins; move the wire/refine/reconcile/design suites
-  (`TestCheckReconcileNeeded*`, `test_run_wire_*`, `test_check_reconcile_needed_*`,
-  `TestReconcilePlateau*`, `TestDesignGateRefineRemedy`, `TestAtomicDesignRemedyRouting` as applicable).
-- Update `scripts/tests/data/loop_interpolation_baseline.json` (stale autodev entries out,
-  `prepare-issue` sites in, same commit).
-- New: `prepare-issue` rate-limit exhaustion writes `retryable_error` and autodev ledgers it.
-- New: a `ready` outcome never hits `LEARNING_GATE_BLOCKED` for a reason `assess_proof` (ENH-3602) reports.
-- BUG-3603 invariant (no fail-open edge into `implement_current`) still passes.
-- Behavioral tests (`test_autodev_scores_freshness.py` behavior, `test_check_readiness.py`,
-  `test_arm_proposal_revision.py`, `test_format_probe_routing.py`, `test_ll_issues_check_gate.py`) pass;
-  topology pins in `test_autodev_scores_freshness.py:95-96` move with the states.
+### `ll-issues run-record forward` (new)
 
-## Docs (in this child)
+Add `cmd_run_record_forward` to `little_loops.cli.issues.run_record`. It resolves the
+canonical ID like `read` and `clear`, reads the `--from` writer's record, and writes it
+under `--writer` with only `writer` changed. It exits 0 in every case and prints
+`FORWARDED` or `MISSING`. Update the `run-record` dispatch and parser help.
 
-- `scripts/little_loops/loops/README.md`, root `README.md` loop count, mirror to `scripts/README.md`.
-- `docs/ARCHITECTURE.md` loop section (new wrapper); `docs/guides/LOOPS_REFERENCE.md` new
-  `### prepare-issue` section and the wire/reconcile/score-freshness paragraphs moved out of autodev.
-- `commands/reconcile-issue.md` (`check_reconcile_needed` / `reconcile_current` handshake),
-  `docs/reference/COMMANDS.md` (reconcile handshake, `run_wire` repair path), and moved-state
-  citations for these states in `docs/reference/CLI.md` / `API.md`.
-- Run `ll-loop validate` on the new YAML (MR-3/7/9/11/14, capture reachability, `scope:`).
+### Autodev changes
+
+- `refine_current`: `loop: prepare-issue`. Keep `context_passthrough: true` and the BUG-2611
+  shape (no `on_no`; `on_failure` → `route_refine_outcome`; `on_error` →
+  `skip_inflight_infra`), with no rate-limit fragment.
+- `route_refine_success` and `route_refine_outcome` read `--writer prepare-issue`.
+
+### Ledger-ownership rule
+
+State this rule here because ENH-3606 depends on it. After ENH-3606, the wrapper's
+second-pass stops keep writing their own `autodev-skipped.txt` rows (`oversized_atomic`,
+`design_gate_failed`, `readiness_stagnated`, `low_readiness`, `decision_unresolved`,
+`resolved_by_subloop`). They have to, because `finalize_done` and
+`auto-refine-and-implement`'s `SKILL_BREAKDOWN` key on those reason strings until ENH-3600.
+Their records carry `gate_unmet` or `quality`, and ENH-3609 routes those tokens to
+`skip_inflight`, which would add a second `refine_failed` row.
+
+**Rule: the wrapper ledgers every blocked or deferred stop it emits. Autodev routes every
+`BLOCKED:*` and `DEFERRED:*` token it reads from `prepare-issue` to `ledger_child_stop`, which
+writes no row.**
+
+In this child that means:
+
+- `forward_stop` writes `ID  refine_failed` for a forwarded `quality` or `gate_unmet` stop
+  (the row `skip_inflight` writes today).
+- `route_refine_outcome` sends `BLOCKED:quality` and `DEFERRED:gate_unmet` to
+  `ledger_child_stop` instead of `skip_inflight`.
+- `BLOCKED:decision_unresolved`, `BLOCKED:proposal_unsound` and `DEFERRED:spike_inconclusive`
+  already go to `ledger_child_stop`, and the child's marker files remain their ledger.
+- `MISSING`, `_` and `_error` still reach `skip_inflight`, which keeps the evidenced exit-143
+  and `refine-terminal-class` handling (ENH-2727).
+- Net ledger rows are unchanged.
+
+### `next-loop` resolver
+
+No resolver. `prepare-issue` runs only as a sub-loop, so `_scan_history` never sees a
+standalone run. A direct `ll-loop run prepare-issue` gets `{}` from the default, which
+`test_unknown_loop_returns_empty_dict` already covers. This item is settled.
+
+## Tests
+
+- Registration: `test_builtin_loops.py::test_expected_loops_exist` stem set,
+  `test_fsm_fragments.py` `migration_targets`, and
+  `TestConfidenceGateThresholdsNotHardcoded.LOOPS`.
+- Retarget: `test_refine_current_delegates_to_refine_to_ready_issue` now asserts
+  `prepare-issue`, and a new pin asserts that `prepare-issue.run_refine_to_ready` delegates to
+  `refine-to-ready-issue`. Also update `test_context_passthrough_on_refine_current` and the
+  ENH-3607/3609 router tests to assert `--writer prepare-issue`.
+- `scripts/tests/test_prepare_issue.py` (new), modeled on `test_rn_decompose.py` plus the
+  `test_run_record.py` two-layer pattern:
+  - structural: states, `scope:`, no `timeout:` or rate-limit keys on the `loop:` state,
+    terminals, and `--writer prepare-issue` on every write;
+  - execution: `forward` preserves `outcome`, `legacy_class`, `child_ids` and
+    `evidence_refs`, including `rate_limit_exhausted`;
+  - an inner success reaches the success terminal and an inner failure the failure terminal;
+  - an inner error writes an `infra` record;
+  - a missing inner record writes no wrapper record;
+  - entry clears a stale wrapper record.
+- `test_run_record.py`: CLI tests for `run-record forward` (FORWARDED, MISSING, writer
+  override, canonical ID).
+- Real-FSM end to end (autodev → `prepare-issue` → stub refine child), one case per token
+  class:
+  - `READY`;
+  - `DECOMPOSED`;
+  - `BLOCKED:decision_unresolved` (ledgered once);
+  - `BLOCKED:quality` (exactly one `refine_failed` row);
+  - `RETRYABLE_ERROR:rate_limited` → `finalize_rate_limited`;
+  - `RETRYABLE_ERROR:infra` → one `refine_failed_infra` row;
+  - `MISSING` → `skip_inflight`.
+- Rate-limit pin twin: add `prepare-issue.yaml` to
+  `test_no_loop_call_state_declares_on_rate_limit_exhausted` (~`test_builtin_loops.py:3335`).
+- The BUG-3603 invariant still holds: `TestProofGateFailClosed` asserts
+  `implement_current`'s only predecessor is `check_proof_defer_or_implement`.
+- `test_fsm_topology.py::test_autodev_topology`: the autodev state count is unchanged.
+- Global gates run on the new file automatically: `TestBuiltinLoopFiles`,
+  `TestBuiltinLoopReferencesResolve`, `TestMr11MarkerSet`, `TestSubLoopStateTimeoutAudit`,
+  `TestHostRunnerEnvSweep`, the scope-lock tests in `test_concurrency.py`, and
+  `TestInterpSweepBaseline` (add baseline entries for any unbaselined wrapper site in the
+  same commit).
+
+## Docs
+
+- `scripts/little_loops/loops/README.md`; root `README.md` loop count (+1) mirrored with
+  `command cp -f README.md scripts/README.md`.
+- `docs/ARCHITECTURE.md` loop section; `docs/guides/LOOPS_REFERENCE.md`: new
+  `### prepare-issue` section, and the autodev tree shows `refine_current` → `prepare-issue` →
+  `refine-to-ready-issue`. Keep the heading "Typed run record (ENH-3597)", which
+  `test_wiring_reference_docs.py:260` pins.
+- `docs/reference/CLI.md`: the run-record section (`forward`; `prepare-issue` writer now live)
+  and `:1359` (`next-loop` has an autodev-only resolver).
+- `docs/reference/CONFIGURATION.md:456`: add `prepare-issue` to the loops that must not pin
+  confidence thresholds.
+- `docs/guides/LOOPS_GUIDE.md` (`:88`, `:395`) and
+  `docs/guides/RECURSIVE_LOOPS_GUIDE.md:271-302`: add a wrapper row.
+- `skills/audit-loop-run/SKILL.md:119`: `ll-loop show autodev --resolved` now expands
+  `prepare-issue`, one level. Then run `ll-adapt --host <gemini|kimi-code|qwen> --apply`.
 
 ## Acceptance Criteria
 
-- [ ] `prepare-issue.yaml` exists, wraps `refine-to-ready-issue`, and passes `ll-loop validate`
-- [ ] `autodev.yaml` has no wire/refine/reconcile/design-remedy states; wire and reconcile rescoring triplets are gone from autodev
-- [ ] `prepare-issue` has one shared rescoring path with BUG-3588 freshness rules
-- [ ] `prepare-issue` writes a `writer: prepare-issue` run record on every terminal, including rate-limit exhaustion (`retryable_error`)
-- [ ] A `ready` outcome never hits `LEARNING_GATE_BLOCKED` for a reason `assess_proof` could have detected
-- [ ] Autodev ledger buckets in `finalize_done` are unchanged; other callers of `refine-to-ready-issue` untouched
+- [ ] `prepare-issue.yaml` exists, wraps `refine-to-ready-issue` with `context_passthrough: true`, and passes `ll-loop validate`
+- [ ] Autodev's `refine_current` is `loop: prepare-issue`; both routers read `--writer prepare-issue`; no other autodev state is added or removed
+- [ ] Every wrapper terminal writes a `writer: prepare-issue` record that forwards `outcome`, `legacy_class`, `child_ids` and `evidence_refs` unchanged; the one exception is a missing inner record, which deliberately leaves no wrapper record so autodev reads `MISSING`
+- [ ] An inner rate-limit exhaustion still halts autodev through `finalize_rate_limited` (real-FSM test)
+- [ ] For each token class, autodev's route and ledger rows match the pre-change behavior, and no stop is ledgered twice (real-FSM tests)
+- [ ] `route_refine_outcome` routes every `BLOCKED:*` / `DEFERRED:*` token read from `prepare-issue` to `ledger_child_stop`, and the wrapper writes the row for `quality` / `gate_unmet` stops
+- [ ] A stale `prepare-issue` record is cleared on entry through `run-record clear`
+- [ ] `refine-to-ready-issue.yaml` and `recursive-refine.yaml` are untouched
 
 ## Impact
 
-- **Priority**: P3 - structural cleanup that unblocks ENH-3606 and ENH-3600; no user-facing defect
-- **Effort**: Large - moves ~9 states plus rescoring consolidation, with test and doc migration
-- **Risk**: Medium - autodev is live in every local-editable project; mitigated by keeping legacy sentinels and the BUG-3603 proof-gate invariant test
+- **Priority**: P3 - plumbing that unblocks ENH-3606 and ENH-3600; no user-facing defect
+- **Effort**: Medium - one small YAML, one CLI subcommand, a router retarget and tests
+- **Risk**: Low-Medium - autodev is live in every local-editable project; mitigated by per-token real-FSM parity tests and no state moves
 - **Breaking Change**: No
 
 ## Integration Map
 
+_Research below was re-scoped on 2026-09-26 for the plumbing-only cut. Findings about the
+moved states now live in ENH-3606. Line anchors predate ENH-3607 and ENH-3609–3611._
+
 ### Codebase Research Findings
 
-_Added by `/ll:refine-issue` — 2026-09-26 — based on codebase analysis:_
-
-- **Files to modify**: `scripts/little_loops/loops/autodev.yaml` (states listed in Scope; `refine_current` ~:511, `run_wire` ~:1033, `check_missing_artifacts` ~:1871, `check_reconcile_needed` ~:2051, `check_atomic_design_remedy` ~:2411, `refine_for_design` ~:2523, `reconcile_current` ~:2565, `dispatch_design_remedy` ~:2951); new `scripts/little_loops/loops/prepare-issue.yaml` (does not exist yet); `scripts/little_loops/cli/loop/next_loop.py` (`_PARAM_RESOLVERS` has one key, `autodev`; a loop with no resolver gets `{}` — no input on the suggested command).
-- **Already in place (do not re-create)**: `run_record.py` already registers `prepare-issue` in `RunRecordWriter` / `WRITERS`, and `test_run_record.py` already exercises that writer. No caller anywhere outside tests invokes `read_run_record`; autodev reads sentinels and ledgers only.
-- **Rescoring triplets — five exist, not two**: `decide`, `wire`, `spike`, `atomic`, `reconcile` (`clear_scores_before_X` → `rerun_confidence_after_Y` → `check_scores_present_X`; the atomic rerun state is named `rerun_confidence_after_atomic_remediation`). They differ only in entry point, successor, and retry-marker name (`autodev-rescore-retry-X-<ID>`, cleared by `dequeue_next`). `refine_for_design` and `count_repair_cycle_reconcile` both feed `clear_scores_before_reconcile`, so the design remedy shares the reconcile triplet. The `decide` and `spike` triplets belong to states this issue does not list (ENH-3599 owns `check_spike_needed`, `run_spike`, `route_spike_verdict`, `resolve_decision*`, `decide_current`); the `atomic` triplet is ENH-3606's.
-- **Cross-boundary edges (scope constraint)**: the moved states currently route into states that stay in autodev until ENH-3606: `check_scores_present_wire` → `enqueue_or_skip`; `check_reconcile_needed` (on_no) → `check_size_review_ran_this_pass`; `check_scores_present_reconcile` → `recheck_after_size_review`; `check_atomic_design_remedy` (on_no) → `check_go_no_go_eligible`; `dispatch_design_remedy` (on_no/on_error) → `dispatch_pre_deferral_remedy`. A `loop:` child cannot route into its parent's states, so after this issue lands alone every one of these edges needs a defined destination inside `prepare-issue` (or a documented terminal). The split as scoped leaves `refine_for_design`/`check_atomic_design_remedy` on the ENH-3605 side while their partner `regate_after_atomic_remediation` is ENH-3606's; the implementer must decide where that seam sits before either issue is landable independently.
-- **Routing constraint on `loop:` states**: the executor (`fsm/executor.py`, `_execute_sub_loop`) maps only the child's terminal type and `terminated_by` to `on_yes`/`on_no`(→`on_failure`)/`on_error`/timeout routes; it never reads a run record. "Autodev routes only on `RunRecord.outcome`" therefore needs an autodev-side probe state that reads the record after the `loop:` state returns (cf. how `skip_inflight` reads `refine-terminal-class`). ENH-3599 (open, blocks this issue) plans `route_refine_outcome` / `select_obligation` in autodev and changes `refine_current`'s successors — the two issues must agree on who owns that state.
-- **Rate-limit constraint**: `with_rate_limit_handling` and `on_rate_limit_exhausted` are inert on `loop:` states (BUG-3390; pinned by `test_no_loop_call_state_declares_on_rate_limit_exhausted`, ~`test_builtin_loops.py:3335`, currently scoped to `refine-to-ready-issue.yaml`). The repo has two working shapes for exhaustion: a marker-file + probe state (`decide-rate-limited-<ID>` → `check_decide_rate_limited`, in autodev and mirrored in `refine-to-ready-issue.yaml`), and the `subloop_rate_limit_diagnostic` fragment in `lib/common.yaml` (used by `rn-decompose`). `outcome_from_legacy_class` yields `retryable_error` only for `--legacy-class infra`, so a rate-limit terminal record must pass that class.
-- **Sentinels autodev reads (must keep being written until ENH-3600)**: `refine-terminal-class` (read by `skip_inflight`), `refine-broke-down` (→ `autodev-broke-down` via `copy_broke_down`; `check_broke_down` also needs `autodev-new-children.txt`), and the ledgers `finalize_done` reads: `autodev-skipped`, `-gate-blocked`, `-decision-unresolved`, `-not-started`, `-spike-inconclusive`, `-proposal-unsound`, `-spike-no-verdict`, `-proof-gate-infra`, `-unverified`, `autodev-stop-reason`. `autodev-scores-absent.txt` and `autodev-gate-infra.txt` are written but never read by `finalize_done`. Shared per-issue state that must survive the move because states on both sides read it: `autodev-repair-cycle-count.txt`, `autodev-pre-readiness.txt`, `autodev-pre-spike-readiness.txt`, `spike-runs-<ID>`, `autodev-design-gate-failed-<ID>`, `autodev-design-remedy-attempted-<ID>`, `autodev-contradiction-reconcile-*`.
-- **`ready` path / BUG-3603**: `ready` reaches implementation only via `check_passed` → `check_proof_gate_before_implement` → `check_proof_defer_or_implement` (the sole edge into `implement_current`). `check-gate` and `assess_proof` are different code paths: `check_gate` consults `assess_proof` only inside `_spike_status`. `LEARNING_GATE_BLOCKED` is emitted by `issue_manager.py` (~:1216) after `implement_current`, so the AC that a `ready` outcome never hits it for an `assess_proof`-detectable reason is verified against `assess_proof` verdicts, not against `check-gate`. The invariant tests are per-state pins (`test_builtin_loops.py` ~:8119 `test_mark_proof_gate_infra_*`, ~:8423, ~:9277; `test_ll_issues_check_gate.py` ~:313), not a graph-wide "no fail-open edge" test.
-- **`select_next_obligation`** (`cli/issues/next_obligation.py`) has no loop-YAML callers today; tiers are FORMAT/VERIFY/HEDGES/PLACEHOLDERS/ACCEPTANCE_CRITERIA/DESIGN, then scores, then (only when readiness passes and outcome is low) DECISION/PROOF/ARTIFACTS. It is stateless — budget state arrives via `--skip`.
-- **What `refine-to-ready-issue.yaml` already owns**: wire (`check_wire_done`/`wire_issue`), reconcile (`check_reconcile_limit`, one attempt per run, plus `reconcile_revision`), decision, spike, design gate (`check_design`), and `breakdown_issue`. It has no score-freshness triplet and no design remedy / pre-deferral / atomic / go-no-go. It shares `run_dir` under `context_passthrough` (child context = parent context ∪ captured ∪ child context); other caller: `recursive-refine.yaml` (`run_refine`, ~:237).
+- **Already in place (do not re-create)**: `run_record.py` registers `prepare-issue` in
+  `RunRecordWriter` / `WRITERS`, and `test_run_record.py` exercises that writer.
+- **Routing on `loop:` states**: `FSMExecutor._execute_sub_loop` maps only the child's
+  terminal type and `terminated_by` to `on_yes`, `on_no` (→ `on_failure`), `on_error` and
+  timeout routes; it never reads a run record. ENH-3607/3609's routers do the record read, so
+  the wrapper must mirror the inner terminal type for autodev to enter the right router.
+- **Passthrough binding**: under `context_passthrough`, the child context is
+  `{**parent.context, **flatten(parent.captured), **child.context}`. `captured.X` becomes
+  `context.X` as a plain string, and each level re-flattens.
+- **Rate-limit constraint**: `with_rate_limit_handling` and `on_rate_limit_exhausted` are
+  inert on `loop:` states (BUG-3390; pinned by
+  `test_no_loop_call_state_declares_on_rate_limit_exhausted`, ~`test_builtin_loops.py:3335`).
+  `outcome_from_legacy_class` yields `retryable_error` only for `--legacy-class infra`;
+  ENH-3607's token adds `:rate_limited` when `evidence_refs` contains `rate_limit_exhausted`.
+- **`ready` path / BUG-3603**: `ready` reaches implementation only through the fail-closed
+  `check_proof_defer_or_implement`. `LEARNING_GATE_BLOCKED` is emitted by `issue_manager.py`
+  (~:1216) after `implement_current`. The wrapper cannot bypass the proof gate, because it
+  lives in a separate file and emits only records.
+- `select_next_obligation` (`cli/issues/next_obligation.py`): the wrapper uses no selector in
+  this child (ENH-3606 moves ENH-3610/3611's selectors).
 
 ### Conventions in Force
 
-- New top-level loop YAMLs are registered in an exact-set assertion (`test_builtin_loops.py::test_expected_loops_exist`, ~:204-305); `test_fsm_fragments.py::TestBuiltinLoopMigration` `migration_targets` is conventional but non-exhaustive.
-- `TestInterpSweepBaseline::test_completeness_guard` (~`test_builtin_loops.py:21014`) fails in both directions (unbaselined site / stale entry) against `scripts/tests/data/loop_interpolation_baseline.json` — the autodev entries (~:95-122) and `enqueue_or_skip` / `recheck_scores` entries move files with their states.
-- `test_fsm_topology.py::TestAutodevSmoke::test_autodev_topology` (~:233-261) pins autodev's total state count (106 at time of research) and records each change as a commented delta with the issue ID; every state move changes it.
-- Moved-state absence is asserted with a `REMOVED_INLINE_STATES` parametrized test (`TestIssueRefinementSubLoop`, ~`test_builtin_loops.py:1323`); extraction tests live in a per-loop file (`test_rn_decompose.py`). No test gates comment citations of moved state names — those are updated by hand (e.g. `refine-to-ready-issue.yaml` header comments cite autodev states).
-- Terminal convention in `refine-to-ready-issue.yaml`: each terminal writes the legacy sentinel and then `ll-issues run-record write <ID> --run-dir ${context.run_dir} --writer <loop> [--legacy-class X] || true` in a shell state.
-- Two child-loop parameter shapes coexist: passthrough (`autodev` → `refine-to-ready-issue`, input arrives as `context.input`) and `with:` parameters (`rn-implement` → `rn-decompose`). The issue specifies passthrough.
-- README loop count lives at `README.md:185` (`~108 FSM loops`); `doc_counts.py` counts top-level `loops/*.yaml`. Mirrors: `command cp -f README.md scripts/README.md`; `ll-adapt --host <gemini|kimi-code|qwen> --apply` after skills edits.
-- `ll-loop validate` rules relevant here: MR-3, MR-7, MR-9, MR-11 (`# ll-lint: mr11-ok(...)` per-site opt-out), MR-14, static `loop:` refs use the full relative path, `scope:` declared (see `rn-decompose.yaml`).
+- New top-level loop YAMLs are registered in an exact-set assertion
+  (`test_builtin_loops.py::test_expected_loops_exist`, ~:204-305).
+- `TestInterpSweepBaseline::test_completeness_guard` (~`test_builtin_loops.py:21014`) fails in
+  both directions against `scripts/tests/data/loop_interpolation_baseline.json`.
+- Terminal convention in `refine-to-ready-issue.yaml`: each terminal writes the legacy
+  sentinel, then
+  `ll-issues run-record write <ID> --run-dir ${context.run_dir} --writer <loop> [--legacy-class X] || true`
+  in a shell state.
+- README loop count lives at `README.md:185`; `doc_counts.py` counts top-level
+  `loops/*.yaml`.
 
 ### Dependent Files (Callers/Importers)
 
-_Wiring pass added by `/ll:wire-issue`:_
-
-- `scripts/little_loops/loops/auto-refine-and-implement.yaml` — `loop: autodev` (~:381); reads autodev's shared-`run_dir` ledgers (`autodev-queue.txt` ~:477/:1077, `autodev-inflight` ~:1058, `-passed`/`-skipped`/`-gate-blocked`/`-decision-unresolved` ~:1088-1144). Ledger writers must keep writing these until ENH-3600. `scan-and-implement.yaml:79` also calls `loop: autodev` [Agent 1]
-- `scripts/little_loops/loops/recursive-refine.yaml` — second `refine-to-ready-issue` caller (`run_refine` ~:237); shares the `refine-broke-down` file (~:217, :484) and has its **own** `check_missing_artifacts` (~:594-602). Name collision only, not moved [Agent 1/2]
-- `scripts/little_loops/cli/issues/run_record.py` — `add_run_record_parser` (`choices=WRITERS`/`LEGACY_CLASSES`, both already accept `prepare-issue`); `_read_broke_down` reads the shared `<run_dir>/refine-broke-down`, so a wrapper `decomposed` terminal must write it [Agent 1/2]
-- `scripts/little_loops/fsm/validation/reachability.py` — `_validate_loop_references`: `autodev.refine_current` → `prepare-issue` is a load ERROR until `prepare-issue.yaml` exists (land YAML and autodev edit in one commit) [Agent 2]
-- `scripts/little_loops/fsm/executor.py` — `_execute_sub_loop`: with a 3-level passthrough chain, autodev's `captured.refine_current` nests one level deeper; no YAML/Python reads `captured.refine_current` today, so no break [Agent 2]
-- Inbound edges from states that **stay** in autodev into moved states (each needs a new destination): `check_spike_needed` on_no/on_error → `check_missing_artifacts` (~:1704); `check_spike_needed_before_skip` on_no → `check_reconcile_needed` (~:2048); `regate_after_atomic_remediation` on_no → `check_atomic_design_remedy` (~:2407); `check_pre_deferral_remedy` on_yes → `dispatch_design_remedy` (~:2947); `dispatch_pre_deferral_remedy` on_no/on_error → `reconcile_current` (~:3006) [Agent 2]
-- Rate-limit behavior change: moved slash states use `with_rate_limit_handling` with `on_rate_limit_exhausted: finalize_rate_limited` (autodev-only; halts the queue). A wrapper-local `retryable_error` terminal infra-skips one issue instead; decide and document. The wrapper also lacks `${captured.issue_id.output}` / `${context.issue_id}` that `mark_rate_limit_infra` and `subloop_rate_limit_diagnostic` (`lib/common.yaml`) read [Agent 2]
-- Stale-record isolation: `read_run_record` has no run-instance field; `prepare-issue` needs a `resolve_issue`-style delete of its own `run-records/prepare-issue/<ID>.json` on entry (as `refine-to-ready-issue` does, `test_run_record.py:524`) [Agent 2]
-
-### Files to Modify
-
-_Wiring pass added by `/ll:wire-issue`:_
-
-- `scripts/little_loops/loops/prepare-issue.yaml` — re-declare per-state `pruning_profile:` blocks for moved slash states (`run_wire` `wire-issue-auto`, `run_refine`/`refine_for_design` `refine-issue-repair`, `rerun_confidence_after_wire`/`_reconcile` `confidence-check-recheck`, `reconcile_current` `reconcile-issue-auto`) or MR-12 warns; declare `scope:` (BUG-3107) and no `timeout:` on the `loop:` state (`TestSubLoopStateTimeoutAudit`) [Agent 2/3]
-- `docs/guides/LOOPS_REFERENCE.md` — autodev ASCII tree (~:1038-1069, :1184-1186), notes paragraph ~:1083, wire/reconcile paragraph ~:1087, ~:1081 dispatch description; keep heading "Typed run record (ENH-3597)" (pinned by `test_wiring_reference_docs.py:260`) [Agent 2]
-
-### Documentation
-
-_Wiring pass added by `/ll:wire-issue`:_
-
-- `docs/reference/DEFERRAL_CODES.md` — `:26` (`readiness_stagnated` repair-class list), `:27` (`design_gate_failed` cites `refine_for_design`/`reconcile_current`), `:30` (`autodev-scores-absent`/`-gate-infra` ledgers) [Agent 2]
-- `docs/reference/CLI.md` — `:2272` (`missing_artifacts` read by `check_missing_artifacts` "in both" loops), `:2335`, `:2687` (`check_reconcile_needed`), `:1359` (`next-loop` autodev-only resolver), `:2404-2432` (run-record section already names `prepare-issue` writer) [Agent 2]
-- `docs/reference/API.md` — `:983` (`check_reconcile_needed` payload), `:4681` (`refine_for_design`) [Agent 2]
-- `docs/reference/COMMANDS.md` — `:307`, `:311` (reconcile one-shot/plateau), `:366` (`run_wire`) [Agent 2]
-- `docs/reference/ISSUE_TEMPLATE.md` — `:916` (`missing_artifacts` routes autodev to wire-issue), `:919` (`spike_attempted`) [Agent 2]
-- `docs/reference/CONFIGURATION.md:456` — list of loops that must not pin confidence thresholds; add `prepare-issue` (matches `TestConfidenceGateThresholdsNotHardcoded.LOOPS`, `test_builtin_loops.py` ~:21326) [Agent 2]
-- `commands/reconcile-issue.md` — `:83`, `:145`, `:197`, `:368` describe `check_reconcile_needed` routing/one-shot guard and "Called by `reconcile_current`"; `commands/refine-issue.md:1073` cites the `autodev.yaml` remedy [Agent 2]
-- `skills/audit-loop-run/SKILL.md:119` — `ll-loop show <loop> --resolved` expands one sub-loop level (`cli/loop/info.py` `cmd_show`), so autodev will show `prepare-issue`'s states, not `refine-to-ready-issue`'s [Agent 2]
-- `docs/guides/LOOPS_GUIDE.md` (`:88`, `:395`), `docs/ARCHITECTURE.md` (`:463`, `:676`), `docs/guides/RECURSIVE_LOOPS_GUIDE.md:271-302` — loop tables/pickers; add wrapper row [Agent 2]
-- `scripts/little_loops/loops/refine-to-ready-issue.yaml` header comments citing autodev states (comment-only; no gate) [Agent 1]
-
-### Tests
-
-_Wiring pass added by `/ll:wire-issue`:_
-
-- `scripts/tests/test_builtin_loops.py::TestAutodevLoop` — `test_required_states_exist` (~:6659; also lists ENH-3606 states), `test_refine_current_delegates_to_refine_to_ready_issue` (~:6798, asserts `loop == refine-to-ready-issue`; hard break), `test_context_passthrough_on_refine_current` (~:8588), moved-state edge pins: `check_missing_artifacts` (~:9183-9209), `run_wire`/`run_refine` (~:9214-9238, :9519-9531), `rerun_confidence_after_wire` (~:9534-9590), `check_reconcile_needed` (~:8328, :8636-8660, :8839-8872, :9121-9165), `reconcile_current`/`count_repair_cycle_reconcile` (~:9145-9166), `dispatch_design_remedy` (~:8771-8793), `check_atomic_design_remedy` (~:8229). Cross-boundary assertions on staying states change too (`check_spike_needed_before_skip` ~:9081) [Agent 3]
-- `scripts/tests/test_autodev_decision_gate.py` (~64 hits, not in issue) — `TestSpikeTriageStructural` (~:446-447), `TestReconcilePlateauStructural`/`Routing` (~:532-695), `TestDesignGateRefineRemedy` (~:698-770), `TestAtomicDesignRemedyRouting` (~:772-818), `TestGuard2VerdictBypass` (~:820); file loads only `autodev.yaml` via `_load_autodev_yaml`, so moved suites need a `prepare-issue.yaml` loader [Agent 3]
-- `scripts/tests/test_autodev_loop.py::TestRepairCycleCounterStates` (~:450-486; `count_repair_cycle_wire`/`_reconcile`/`_refine_for_design`, `test_refine_current_routes_through_counter_before_copy_broke_down`) and `check_reconcile_needed` tests (~:190-300, :923-961) [Agent 2/3]
-- `scripts/tests/test_spike_verdict_routing.py` — `test_autodev_routing_table` (~:89-106), `test_dispatch_pre_deferral_remedy_*` (~:147, comment `-> reconcile_current`); loop over `("autodev.yaml", "refine-to-ready-issue.yaml")` (~:136); verify no moved key is indexed [Agent 3]
-- `scripts/tests/test_cli_loop_next.py` (~:224-225, :336-344) — add a `prepare-issue` case beside `test_unknown_loop_returns_empty_dict` if a resolver is added [Agent 2/3]
-- Global gates that will run on the new file automatically: `TestBuiltinLoopFiles` (~:66, `test_all_have_scope_field` ~:183, `test_all_failure_terminals_have_diagnostic_action` ~:416, `test_no_failure_edge_routes_to_a_success_terminal` ~:87), `TestBuiltinLoopReferencesResolve`, `TestMr11MarkerSet`, `TestSubLoopStateTimeoutAudit` (~:21377), `TestHostRunnerEnvSweep` (`test_host_runner.py:2720`); `test_concurrency.py` scope-lock tests keyed on loop names (~:738-860) [Agent 3/1]
-- `scripts/tests/data/loop_interpolation_baseline.json` — correction: autodev entries for the moved cluster are `check_reconcile_needed` plus `check_blockers_at_dequeue`, `check_spike_needed`, `check_spike_needed_before_skip` (latter three stay); `enqueue_or_skip`/`recheck_scores` entries are keyed to `recursive-refine.yaml`, not autodev [Agent 3, from ENH-3606 pass]
-- **New**: `scripts/tests/test_prepare_issue.py` modeled on `test_rn_decompose.py` (`_load_loop`, `TestDecompositionChain`, `TestTerminalStates`, `TestFSMHealth`) plus the `test_run_record.py` two-layer run-record pattern (`TestLoopCallSites`-style structural pins incl. `--writer prepare-issue` window check; `TestTerminalExecution`-style `_run_state` execution asserting `retryable_error` for rate-limit exhaustion) [Agent 3]
-- **New**: a `prepare-issue` twin of `test_no_loop_call_state_declares_on_rate_limit_exhausted` (existing at `test_builtin_loops.py` ~:3335 for refine-to-ready-issue and ~:7945 for autodev) [Agent 3]
-- **New**: graph-wide "no `prepare-issue` terminal routes into `implement_current`" test — none exists; BUG-3603 pins are per-state only (~:8119, :8423, :9277) [Agent 3]
-- Unaffected despite name hits: `test_run_record.py` `DONE_PATH_GATES`/`TestLoopCallSites` (target `refine-to-ready-issue.yaml`'s own states), `TestRecursiveRefineLoop`, `test_ll_issues_next_obligation.py:377`, `test_rn_remediate.py` [Agent 3]
+- `scripts/little_loops/loops/auto-refine-and-implement.yaml`: `loop: autodev` (~:381); reads
+  autodev's shared-`run_dir` ledgers. The ledger rows must stay identical.
+  `scan-and-implement.yaml:79` also calls `loop: autodev`.
+- `scripts/little_loops/loops/recursive-refine.yaml`: second `refine-to-ready-issue` caller
+  (`run_refine` ~:237); untouched.
+- `scripts/little_loops/cli/issues/run_record.py`: add `forward`; `_read_broke_down` reads the
+  shared `<run_dir>/refine-broke-down`, which the inner child still writes.
+- `scripts/little_loops/fsm/validation/reachability.py` (`_validate_loop_references`):
+  `autodev.refine_current` → `prepare-issue` is a load ERROR until `prepare-issue.yaml`
+  exists, so land the YAML and the autodev edit in one commit.
+- `scripts/little_loops/fsm/executor.py` (`_execute_sub_loop`): with a three-level
+  passthrough chain, autodev's `captured.refine_current` nests one level deeper. No YAML or
+  Python reads `captured.refine_current` today.
 
 ### Configuration
 
-_Wiring pass added by `/ll:wire-issue`:_
-
-- `scripts/little_loops/cli/loop/next_loop.py` — `_scan_history` reads `.loops/.history/<run_id>-<loop>`; a wrapper run only as a sub-loop never produces one, so the "no resolver" decision matters only for direct `ll-loop run prepare-issue` [Agent 2]
-- No change needed: `pyproject.toml` (`include = ["little_loops/**"]` glob), `.claude-plugin/*.json`, `hooks/`, `config-schema.json` (only `max_refine_count` prose at :542), `fsm/` (no loop-name-keyed logic). README count `README.md:185` is a manual bump [Agent 1/2]
+- `scripts/little_loops/cli/loop/next_loop.py`: no resolver added (see above).
+- No change: `pyproject.toml` (`include = ["little_loops/**"]`), `.claude-plugin/*.json`,
+  `hooks/`, `config-schema.json`, `fsm/`.
 
 ## Implementation Steps
 
-### Wiring Phase (added by `/ll:wire-issue`)
-
-_These touchpoints were identified by wiring analysis and must be included in the implementation:_
-
-- Land `prepare-issue.yaml` and the `refine_current` → `loop: prepare-issue` edit in one commit (static `loop:` ref is a load error otherwise)
-- Give each inbound cross-boundary edge from a staying autodev state (`check_spike_needed`, `check_spike_needed_before_skip`, `regate_after_atomic_remediation`, `check_pre_deferral_remedy`, `dispatch_pre_deferral_remedy`) a defined destination
-- Add an autodev-side probe state after `refine_current` that reads the `prepare-issue` run record (the executor never reads records); reconcile ownership with ENH-3599's `route_refine_outcome`
-- Delete stale `run-records/prepare-issue/<ID>.json` on wrapper entry; write `refine-broke-down` before any `decomposed` terminal
-- Re-declare `pruning_profile:` blocks and `scope:` in the new YAML; no `timeout:` on the `loop:` state
-- Update `test_builtin_loops.py`, `test_autodev_decision_gate.py`, `test_autodev_loop.py`, `test_spike_verdict_routing.py` per the Tests list; add `test_prepare_issue.py`, the rate-limit pin twin and the no-edge-into-`implement_current` test
-- Update `loop_interpolation_baseline.json` (moved `check_reconcile_needed` site → `prepare-issue.yaml`), `test_fsm_topology.py` count, README count and mirror (`command cp -f README.md scripts/README.md`)
-- Update the docs/commands/skill lines in the Documentation list; `ll-adapt --host <gemini|kimi-code|qwen> --apply` if skills change
+1. Add `run-record forward` with CLI tests.
+2. Write `prepare-issue.yaml` and `test_prepare_issue.py`.
+3. In the same commit: retarget `refine_current`, switch both routers to
+   `--writer prepare-issue`, route `BLOCKED:quality` / `DEFERRED:gate_unmet` to
+   `ledger_child_stop`, and move the `refine_failed` row write into `forward_stop`.
+4. Add the real-FSM per-token parity tests; update the registration, retarget and pin tests.
+5. Update the docs, README count and mirror; run `ll-adapt` for the skill edit.
 
 ## Program Design
 
 ### Types
 
 - `PreparationOutcome`: six-value Literal in `little_loops.run_record` (reused, not extended)
-- `prepare-issue.yaml`: FSM loop, `loop: refine-to-ready-issue`, `context_passthrough: true`
+- `RunRecordWriter`: already includes `prepare-issue`
 
 ### Signatures
 
-- `select_next_obligation(config: BRConfig, issue_id: str, *, skip: Iterable[Obligation] = (), ...) -> ObligationResult | None` — reused for the wire/refine/design subset
-- `write_run_record(run_dir: Path, record: RunRecord) -> Path` — reached via `ll-issues run-record write ... --writer prepare-issue` at every wrapper terminal
+- `cmd_run_record_forward(config: BRConfig, args: argparse.Namespace) -> int` — new; copies the `--from` writer's record under `--writer`
+- `read_run_record(run_dir: Path, writer: str, issue_id: str) -> RunRecord | None` — existing (ENH-3597)
+- `write_run_record(run_dir: Path, record: RunRecord) -> Path` — existing (ENH-3597)
 
 ### Call Path
 
-`autodev.yaml:refine_current` -> `prepare-issue.yaml` -> `refine-to-ready-issue.yaml`; wrapper terminal -> `ll-issues run-record write` -> autodev `finalize_done`
+`autodev.yaml:refine_current` -> `prepare-issue.yaml:run_refine_to_ready` -> `refine-to-ready-issue.yaml`
+
+`prepare-issue.yaml:forward_stop` -> `cmd_run_record_forward` -> `write_run_record` -> `autodev.yaml:route_refine_outcome` -> `cmd_run_record_read`
 
 ## Status
 

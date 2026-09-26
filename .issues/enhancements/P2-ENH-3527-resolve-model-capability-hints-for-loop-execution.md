@@ -60,7 +60,12 @@ These are selection preferences, not guarantees of quality, latency, price, or r
 
 Add optional `model_hint` to `StateConfig` and `LLMConfig`; do not overload `model` or existing CLI `--model` strings with hint semantics. At either declaration level, explicitly supplying both `model` and `model_hint` is an error. Unknown values, empty hints, and hints on non-LLM states are errors.
 
-**Applicability.** A state-level hint follows the same reach as `state.model` does today: it applies to a prompt-mode action (`executor.py:2658`, `action_mode == "prompt"`) and to an LLM evaluator (`executor.py:3174,3221`). A state is an "LLM state" if it has either. A shell action with an `llm_structured` evaluator is valid, and its hint governs only the evaluator. A state with neither is a validation error. When a state has both a prompt action and an LLM evaluator, the one declaration is resolved separately for each: the action against its effective request path, the evaluator against the CLI host (see below). The two may resolve to different model strings.
+**Applicability.** A state-level hint applies where a model is *actually consumed at runtime*, which is narrower than where `model:` is accepted today. A state is an "LLM state" if it has either:
+
+- a prompt-mode action — `action_type` `prompt` or `slash_command`, or no `action_type` with an action starting `/` (mirror `executor._action_mode`, `executor.py:2460`); or
+- an explicit `evaluate.type == "llm_structured"`.
+
+Do **not** reuse `_is_llm_judged` (`fsm/validation/_base.py:173`), which the `model:` WARNING rule uses (`structural_rules.py:468`). It also counts `check_semantic` (not in the evaluator enum) and `advisor_consult` (which uses advisor config), but `evaluate()` forwards `model` only to `llm_structured` (`fsm/evaluators.py:2064`). `contract` and `advisor_consult` ignore the state model. A hint on such a state could never be honored, so it is an ERROR. A shell action with an `llm_structured` evaluator is valid, and its hint governs only the evaluator. A state with neither is a validation error. When a state has both a prompt action and an LLM evaluator, the one declaration is resolved separately for each: the action against its effective request path, the evaluator against the CLI host (see below). The two may resolve to different model strings.
 
 - **Evaluators are CLI-only.** `fsm/evaluators.py` has no SDK/batch path and never reads `request_path`: `evaluate_llm_structured` and `evaluate` always dispatch through `resolve_host().build_blocking_json`. An evaluator hint therefore always resolves against the CLI runner `resolve_host()` returns, even on a `request_path: sdk`/`batch` state. Only a prompt *action* follows `request_path` and can reach `anthropic-api`.
 - **Implicit evaluator.** A prompt-mode state with no `evaluate:` block still gets an implicit `evaluate_llm_structured` verdict (`executor.py:3174`). A hint on such a state governs both the action and that implicit verdict. For example, `burst` selects the burst model for the generation and for its verdict.
@@ -74,9 +79,25 @@ Select a model declaration before resolving it, preserving the existing preceden
 | Evaluator (always CLI host) | State model-or-hint → effective `llm` model-or-hint → existing evaluator default |
 | SDK/batch action | State model-or-hint → run `--model` → effective `llm` model-or-hint → existing API default |
 
-`--llm-model` replaces the `llm` declaration and clears an inherited hint. A run `--model` does not gain new precedence over state declarations or evaluator defaults. A hint in `llm` does not become a new CLI-action default.
+`--llm-model` replaces the `llm` declaration and clears an inherited hint. This is in scope here: `cli/loop/run.py:190` currently sets only `fsm.llm.model`, so it must also set `fsm.llm.model_hint = None`, or the override produces the forbidden model-plus-hint pair. A loop whose only hint was in `llm` then runs normally, past the fail-fast guard. A run `--model` does not gain new precedence over state declarations or evaluator defaults. A hint in `llm` does not become a new CLI-action default.
 
 Preserve the distinction between an omitted model and an explicitly supplied model during parsing and serialization. Apply `DEFAULT_LLM_MODEL` only when no declaration exists at the relevant fallback level; never inject it beside `model_hint`. Hint-only round trips must stay hint-only. Existing construction sites and no-hint behavior must remain compatible.
+
+**`LLMConfig` representation (decided 2026-09-25).** Keep `model: str = DEFAULT_LLM_MODEL` and add `model_hint: str | None = None`. Do **not** make `model` nullable, because that would ripple through:
+
+- `_resolve_action_model` (`executor.py:3570`, typed `str` and documented as never empty);
+- the evaluator call sites `state.model or self.fsm.llm.model` (`executor.py:3174,3221`) feeding `model: str` parameters;
+- the header renderers (`run.py:707`, `lifecycle.py:775,854`);
+- `info.py:1528`;
+- 14 `LLMConfig(...)` construction sites.
+
+Rules:
+
+- **Exclusivity** is checked on the raw mapping: `from_dict` raises, and the structural validator errors, when both `"model"` and `"model_hint"` keys are present. A directly constructed `LLMConfig(model="sonnet", model_hint=…)` cannot be distinguished from the default, which is acceptable.
+- **Resolution:** when `model_hint` is set, it wins over `model`. The default `model` value is then inert. ENH-3547 implements this in dispatch.
+- **Serialization:** `to_dict` already omits a default `model`, so a hint-only config round-trips hint-only. `to_dict` emits `model_hint` when set.
+- `StateConfig.model_hint` is a plain nullable field, like `effort`.
+- **`llm.model_hint` with no LLM states:** a WARNING, matching `llm.model`, not an ERROR.
 
 ### Resolve against the effective backend
 
@@ -114,7 +135,14 @@ Ship built-in defaults only where the target is verified against this repo's own
 
 - Keys are runtime backend keys (the `RUNTIME_HOST_CAPABILITIES` host names, `TEST_ONLY_HOSTS`, and `anthropic-api`); an unknown backend key or hint name is a config validation error. Values are non-empty strings passed through as literals (no nested hint resolution), or `false` to disable.
 - JSON-schema shape in `config-schema.json`: `model_hints` is an object with `propertyNames` enumerating the backend keys and `additionalProperties: false`; each backend value is an object with `properties` `coding`/`reasoning`/`burst` and `additionalProperties: false`; each hint value is `{"oneOf": [{"type": "string", "minLength": 1}, {"const": false}]}`. `null` and `true` fail schema validation.
-- Per-hint merge over built-in defaults: a host entry may override one hint and inherit the rest. The value `false` disables a built-in mapping for that hint, which makes the hint error on that backend. `null` is **not** the disable sentinel: `config.core.deep_merge` treats `None` in `ll.local.md` as key removal, which would silently restore the built-in default, and a `null` written directly in `ll-config.json` would reach the resolver as a value — the two files would disagree. A `null` value is therefore a config validation error.
+- Per-hint merge over built-in defaults: a host entry may override one hint and inherit the rest. The value `false` disables a built-in mapping for that hint, which makes the hint error on that backend. `null` is **not** the disable sentinel. `config.core.deep_merge` removes a key set to `None` in `ll.local.md` before parsing (`config/core.py:111`). There, `null` keeps its standard meaning of "unset the `ll-config.json` value", which falls back to the built-in default or to no mapping. It cannot be rejected, and it is not an error. A `null` written directly in `ll-config.json` does reach parsing, and there it is a validation error.
+- **Runtime validation home (decided 2026-09-25).** `config-schema.json` is not enforced at runtime; no jsonschema dependency exists. `OrchestrationConfig` otherwise does no validation (`config/orchestration.py:114`). `model_hints` is the exception, because a malformed entry would otherwise surface only as a confusing resolver error at dispatch. `OrchestrationConfig.from_dict` validates `model_hints` and raises `ValueError` naming the offending path for:
+  - an unknown backend key;
+  - an unknown hint key;
+  - a non-dict backend value;
+  - a `null`/`true`/empty-string hint value.
+
+  Share the backend-key set with `resolve_model_hint`: `RUNTIME_HOST_CAPABILITIES` keys ∪ `TEST_ONLY_HOSTS` ∪ `{"anthropic-api"}`. The JSON-schema shape below remains the editor-time contract.
 - `anthropic-api` values still pass through `resolve_model_alias`, so an alias such as `opus` is valid there.
 - Precedence is unchanged: config supplies only the hint → model table; a literal `model:` or run `--model` beats a hint exactly as in the precedence table above.
 - `ll-loop validate` resolves each declared hint against the configured host (`orchestration.host_cli` / `LL_HOST_CLI`) and emits a WARNING — not an error, because the host can differ at run time — for any hint that would fail to resolve. It checks every request path the declaration could reach, mirroring `FSMExecutor._resolve_request_path`: the state's own `request_path` override if set, else `orchestration.request_path`; plus the CLI fallback for SDK/batch (downgrade re-resolves for the CLI runner). An evaluator hint is checked against the CLI host only, whatever the state's `request_path`. States that `_resolve_request_path` always downgrades to CLI (action invokes a `/ll:` skill per `_SKILL_INVOKE_RE`, or declares `tools:` — BUG-2831) are checked for CLI only; do not warn about an `anthropic-api` mapping they can never reach. The runtime error remains authoritative.
@@ -147,11 +175,12 @@ Keep the observed model reported by the host separate from requested/resolved se
 
 - [ ] State and `llm` hints accept exactly `coding`, `reasoning`, and `burst`; explicit model-plus-hint, invalid hints, and inapplicable states fail validation before execution.
 - [ ] Schema, parsing, serialization, and direct construction cover omitted, literal-only, and hint-only cases; implicit defaults do not create conflicts or mask hints.
-- [ ] Applicability follows `state.model`'s reach: prompt actions and LLM evaluators (explicit or implicit); shell-action + LLM-evaluator states are valid; states with neither fail validation (ERROR, deliberately stricter than `model:`'s WARNING).
+- [ ] Applicability follows the runtime model reach, not `_is_llm_judged`. Prompt/slash-command actions and `llm_structured` evaluators (explicit or implicit) are valid, and shell-action + `llm_structured` states are valid. States with neither fail validation. So do `contract`- and `advisor_consult`-only states: an ERROR, deliberately stricter than `model:`'s WARNING, with tests for both evaluator types. `llm.model_hint` on a loop with no LLM states is a WARNING.
+- [ ] `ll-loop run --llm-model X` on a loop with `llm.model_hint` clears the hint (`fsm.llm.model_hint is None`, `fsm.llm.model == X`), and the loop is not stopped by the guard.
 - [ ] `resolve_model_hint` unit tests cover every backend key × hint (including `fake`/`fake-minimal`), unsupported backends (opencode/pi), and disabled or missing mappings; it never returns `None`.
 - [ ] Canonical mapping targets avoid duplicate model IDs for hints sharing a target, and runtime-map coverage is checked by `ll-verify-host-map` tests.
-- [ ] Until ENH-3547 lands, executing a hint-bearing state fails before dispatch with an explicit not-yet-supported error; no-hint behavior and literal CLI argv are unchanged.
-- [ ] Built-in mappings exist only for `claude-code` and `anthropic-api`, with `anthropic-api` targets derived from `MODEL_ALIASES` (no duplicated concrete IDs). `model_hints` (under `orchestration`) is in `config-schema.json` and `OrchestrationConfig`; tests cover per-hint merge over defaults, `false` disabling a built-in hint (via both `ll-config.json` and `ll.local.md`), `null` rejected, unknown backend/hint keys rejected, `fake`/`fake-minimal` accepted as keys, and `resolve_model_hint("coding", backend="codex", overrides=...)` returning a config-only Codex mapping. The argv assertion belongs to ENH-3547, because this issue's guard stops dispatch.
+- [ ] Until ENH-3547 lands, running a hint-bearing loop fails at the start of `FSMExecutor.run()`, before any state executes, with an explicit not-yet-supported error. A loop is hint-bearing if any state has `model_hint` or `fsm.llm.model_hint` is set. A test proves that a shell state preceding the hinted state never runs. No-hint behavior and literal CLI argv are unchanged.
+- [ ] Built-in mappings exist only for `claude-code` and `anthropic-api`, with `anthropic-api` targets derived from `MODEL_ALIASES` (no duplicated concrete IDs). `model_hints` (under `orchestration`) is in `config-schema.json` and `OrchestrationConfig`; tests cover per-hint merge over defaults, `false` disabling a built-in hint (via both `ll-config.json` and `ll.local.md`), `null` in `ll-config.json` raising in `OrchestrationConfig.from_dict`, `null` in `ll.local.md` unsetting the `ll-config.json` value (falling back to the built-in default, not an error), unknown backend/hint keys raising in `from_dict`, `fake`/`fake-minimal` accepted as keys, and `resolve_model_hint("coding", backend="codex", overrides=...)` returning a config-only Codex mapping. The argv assertion belongs to ENH-3547, because this issue's guard stops dispatch.
 - [ ] The `llm.model` JSON `default` is removed from `fsm-loop-schema.json`; the fallback to `DEFAULT_LLM_MODEL` is described in its `description` instead, and a JSON/Python parity test covers it.
 
 Moved to split issues: precedence/dispatch/lifecycle/diagnostics/portability-proof criteria → ENH-3547; `ll-loop validate` warnings and documentation → ENH-3548.
@@ -173,7 +202,8 @@ This issue's slice only (declaration + resolver + config). Dispatch/lifecycle fi
 - `scripts/little_loops/host_runner.py` — hint mappings, per-backend support, `resolve_model_hint`, public exports; preserve literal CLI forwarding and existing API alias resolution.
 - `scripts/little_loops/fsm/schema.py`, `fsm/fsm-loop-schema.json` — state and `llm` declarations, exclusivity, absent-versus-default handling; remove the stale JSON `llm.model` default.
 - `scripts/little_loops/fsm/validation/structural_rules.py` — declaration errors (vocabulary, exclusivity, inapplicable states).
-- `scripts/little_loops/fsm/executor.py` — only the pre-dispatch not-yet-supported guard.
+- `scripts/little_loops/fsm/executor.py` — only the not-yet-supported guard, at the top of `FSMExecutor.run()` (`executor.py:629`). Child loops construct their own `FSMExecutor` (`executor.py:1260`), so they inherit the check.
+- `scripts/little_loops/cli/loop/run.py` — `--llm-model` override (`run.py:190`) also clears `fsm.llm.model_hint`.
 - `scripts/little_loops/cli/verify_host_map.py`, `fsm/__init__.py` — runtime consistency checks and public exports. Hint-support coverage must include `TEST_ONLY_HOSTS`, which check 2 currently exempts from the runtime map.
 - `scripts/little_loops/config/orchestration.py` (`OrchestrationConfig`), `scripts/little_loops/config-schema.json` — `model_hints` override under `orchestration`; `docs/reference/CONFIGURATION.md` entry for the new key.
 
@@ -191,9 +221,9 @@ This issue's slice only (declaration + resolver + config). Dispatch/lifecycle fi
 
 ## Implementation Steps
 
-1. Add schema/serialization tests for explicit declarations; implement hint fields without changing legacy defaults; remove the JSON `llm.model` default.
-2. Add backend resolution and mapping-coverage tests; implement `resolve_model_hint` and built-in mappings. Add `model_hints` (schema, `OrchestrationConfig`, per-hint merge) in the same step.
-3. Add the pre-dispatch not-yet-supported guard in `FSMExecutor`.
+1. Add schema/serialization tests for explicit declarations; implement hint fields without changing legacy defaults; remove the JSON `llm.model` default. Add the applicability rule as a new predicate in `structural_rules.py`, not a reuse of `_is_llm_judged`.
+2. Add backend resolution and mapping-coverage tests; implement `resolve_model_hint` and built-in mappings. Add `model_hints` (schema, `OrchestrationConfig.from_dict` validation, per-hint merge) in the same step.
+3. Add the not-yet-supported guard at the top of `FSMExecutor.run()`, and make `--llm-model` clear `fsm.llm.model_hint` in `cli/loop/run.py`.
 4. Run focused schema/resolver/config tests, then the required local suite and lint/type checks.
 
 ## Program Design
@@ -201,9 +231,9 @@ This issue's slice only (declaration + resolver + config). Dispatch/lifecycle fi
 ### Types
 
 - `ModelHint = Literal["coding", "reasoning", "burst"]`; FSM fields may use `str | None` with runtime validation to match existing schema conventions.
-- `model_hint: str | None` — new optional field on both `StateConfig` and `LLMConfig`.
-- `model_hints: dict[str, dict[str, str | Literal[False]]]` — new `OrchestrationConfig` field; backend key → hint → model, `False` disables a built-in mapping; `None` is rejected.
-- A model declaration represents exactly one explicit literal or hint, or no selection. It must retain omission until fallback selection; choose its concrete dataclass representation without changing existing no-hint public behavior.
+- `model_hint: str | None` — new optional field on both `StateConfig` and `LLMConfig`. `LLMConfig.model` stays `str = DEFAULT_LLM_MODEL`; see "`LLMConfig` representation (decided 2026-09-25)".
+- `model_hints: dict[str, dict[str, str | Literal[False]]]` — new `OrchestrationConfig` field, validated in `from_dict`; backend key → hint → model, `False` disables a built-in mapping; `None` in `ll-config.json` raises.
+- A model declaration represents exactly one explicit literal or hint, or no selection. Exclusivity is enforced on the raw mapping; when `model_hint` is set, it wins over the default `model`.
 - A resolved selection records requested literal/hint, effective backend, and selected model string. Observed model identity is separate and optional.
 - Runtime hint mappings reference canonical backend model targets. Backend support is explicit, including unsupported backends (opencode/pi).
 
@@ -240,7 +270,7 @@ Split along the three seams, landed in order. The Design sections above stay aut
 2. **ENH-3547** — dispatch + lifecycle + diagnostics: CLI/evaluator/SDK/batch wiring, downgrade re-resolution, sub-loop/detach/resume, event-payload fields, portability proof.
 3. **ENH-3548** — `ll-loop validate` warnings, support-matrix docs, `haiku-gen` guidance.
 
-Until ENH-3547 lands, a declared hint parses and validates, but `FSMExecutor` must fail fast before dispatch with an explicit "model_hint dispatch not yet supported" error. A hint-bearing loop authored in between must not run silently on the default model, which would break the no-silent-fallback rule. ENH-3547 removes this guard.
+Until ENH-3547 lands, a declared hint parses and validates, but `FSMExecutor.run()` must fail fast at run start, before any state executes, with an explicit "model_hint dispatch not yet supported" error. A per-state check is not enough: it would let earlier shell states run their side effects first. A hint-bearing loop authored in between must not run silently on the default model, which would break the no-silent-fallback rule. ENH-3547 removes this guard.
 
 ## Verification Notes
 
@@ -275,6 +305,16 @@ Dropped `resolve_model_hint`'s `operation` parameter and the `model_operation` e
 - The config criterion no longer asserts argv, which this issue's own guard prevents; argv moved to ENH-3547.
 - Documented the implicit-evaluator reach and the deliberate ERROR (vs `model:`'s WARNING) for inapplicable hints.
 - Removed stale `MODEL_ALIASES` text now that BUG-3541 is done.
+
+### Pre-implementation review 2026-09-25 (second pass)
+
+- Applicability now uses the runtime model reach: prompt/slash-command actions and `llm_structured` only. `_is_llm_judged` also admits `advisor_consult` and `check_semantic`, whose evaluators never receive the state model (`evaluators.py:2064`).
+- `model_hints` validation now lives in `OrchestrationConfig.from_dict`, because `config-schema.json` is not enforced at runtime. A `null` in `ll.local.md` is standard "unset" (`deep_merge` removes it), not an error.
+- The guard moved to the top of `FSMExecutor.run()` so no state executes before it fires.
+- `--llm-model` clears `llm.model_hint` (`run.py:190`).
+- Decided the `LLMConfig` representation: `model` stays non-nullable, exclusivity is checked on the raw mapping, and the hint wins when set.
+- `llm.model_hint` with no LLM states is a WARNING.
+- For ENH-3548: `ll-loop show` (`info.py:1528`) should display `model_hint`.
 
 ## Related
 
