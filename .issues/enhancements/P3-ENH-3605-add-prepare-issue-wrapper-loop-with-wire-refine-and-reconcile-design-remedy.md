@@ -35,6 +35,28 @@ Decomposed from ENH-3601: Move autodev second-pass preparation routing into a pr
 See the parent for the full Option B decision rationale, Program Design, Codebase Research
 Findings and wiring/test/doc inventories; the items below are the D1 share.
 
+## Current Behavior
+
+`autodev.yaml` owns the wire/refine and reconcile/design remedy states inline
+(`check_missing_artifacts`, `run_wire`, `run_refine`, `check_reconcile_needed`,
+`reconcile_current`, `dispatch_design_remedy`, …), each with its own
+`clear_scores_before_*` / `rerun_confidence_after_*` / `check_scores_present_*` rescoring
+triplet. Autodev routes on many per-state sentinels rather than one preparation outcome.
+
+## Expected Behavior
+
+`prepare-issue` (wrapping `refine-to-ready-issue`) owns those states and one shared rescoring
+path. Autodev's `refine_current` is a single `loop: prepare-issue` state that routes only on the
+`RunRecord.outcome` the wrapper writes; ledger buckets in `finalize_done` are unchanged.
+
+## Scope Boundaries
+
+- **In scope**: wire/refine and reconcile/design-remedy states, their shared rescoring path,
+  the `prepare-issue` run-record terminals, and the docs/tests listed below.
+- **Out of scope**: size-review/atomic, go/no-go and pre-deferral remedy (ENH-3606); removing
+  the legacy sentinels (ENH-3600); widening the go/no-go trigger; changes to other callers of
+  `refine-to-ready-issue`.
+
 ## Scope
 
 - New `scripts/little_loops/loops/prepare-issue.yaml`: `loop: refine-to-ready-issue` with
@@ -60,7 +82,7 @@ Findings and wiring/test/doc inventories; the items below are the D1 share.
   `prepare-issue` terminal routes into `implement_current`.
 - Use `select_next_obligation` (FEAT-3598) only for the wire/refine/design-facing subset; it has
   no obligation for size-review, go/no-go, reconcile or pre-deferral remedy.
-- Decide `ll-loop next` input resolution for `prepare-issue` (`cli/loop/next_loop.py`
+- Decide `ll-loop next-loop` input resolution for `prepare-issue` (`cli/loop/next_loop.py`
   `_PARAM_RESOLVERS`).
 
 ## Tests (in this child)
@@ -98,8 +120,32 @@ Findings and wiring/test/doc inventories; the items below are the D1 share.
 - [ ] A `ready` outcome never hits `LEARNING_GATE_BLOCKED` for a reason `assess_proof` could have detected
 - [ ] Autodev ledger buckets in `finalize_done` are unchanged; other callers of `refine-to-ready-issue` untouched
 
+## Impact
+
+- **Priority**: P3 - structural cleanup that unblocks ENH-3606 and ENH-3600; no user-facing defect
+- **Effort**: Large - moves ~9 states plus rescoring consolidation, with test and doc migration
+- **Risk**: Medium - autodev is live in every local-editable project; mitigated by keeping legacy sentinels and the BUG-3603 proof-gate invariant test
+- **Breaking Change**: No
+
+## Program Design
+
+### Types
+
+- `PreparationOutcome`: six-value Literal in `little_loops.run_record` (reused, not extended)
+- `prepare-issue.yaml`: FSM loop, `loop: refine-to-ready-issue`, `context_passthrough: true`
+
+### Signatures
+
+- `select_next_obligation(config: BRConfig, issue_id: str, *, skip: Iterable[Obligation] = (), ...) -> ObligationResult | None` — reused for the wire/refine/design subset
+- `write_run_record(run_dir: Path, record: RunRecord) -> Path` — reached via `ll-issues run-record write ... --writer prepare-issue` at every wrapper terminal
+
+### Call Path
+
+`autodev.yaml:refine_current` -> `prepare-issue.yaml` -> `refine-to-ready-issue.yaml`; wrapper terminal -> `ll-issues run-record write` -> autodev `finalize_done`
+
 ## Status
 
 **Open** | Created: 2026-09-26 | Priority: P3
 
 ## Session Log
+- `/ll:format-issue` - 2026-09-26T03:07:12 - `34887897-5e19-4ee2-b656-5f0a00c15f02.jsonl`

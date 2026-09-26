@@ -33,6 +33,23 @@ Decomposed from ENH-3601: Move autodev second-pass preparation routing into a pr
 See the parent for the decision rationale, research findings and inventories; the items below
 are the D2 share.
 
+## Current Behavior
+
+After ENH-3605, `autodev.yaml` still owns the size-review/atomic, go/no-go and pre-deferral
+remedy states, plus the `*_atomic` rescoring triplet, so autodev is not yet queue-only.
+
+## Expected Behavior
+
+Those states live in `prepare-issue.yaml`, the `*_atomic` triplet folds into the shared
+rescoring path, and `autodev.yaml` contains only queue logic. Terminals map to the six-value
+`PreparationOutcome` and each writes a `writer: prepare-issue` run record.
+
+## Scope Boundaries
+
+- **In scope**: moving the listed size-review, go/no-go and pre-deferral states and their tests/docs.
+- **Out of scope**: widening the go/no-go trigger with a risk signal (separate follow-up);
+  removing legacy sentinels (ENH-3600); new `PreparationOutcome` values.
+
 ## Scope
 
 - Move from `autodev.yaml` into `prepare-issue.yaml`:
@@ -86,8 +103,30 @@ are the D2 share.
 - [ ] Every `prepare-issue` terminal (including the new ones) writes a `writer: prepare-issue` run record
 - [ ] Moved behavioral suites pass; BUG-3603 invariant still passes
 
+## Impact
+
+- **Priority**: P3 - completes the ENH-3601 decomposition and unblocks ENH-3600
+- **Effort**: Large - ~20 states plus a large test/doc migration
+- **Risk**: Medium - go/no-go and atomic-remediation routing are subtle; mitigated by leaving the trigger predicate unchanged and reusing existing behavioral suites
+- **Breaking Change**: No
+
+## Program Design
+
+### Types
+
+- `PreparationOutcome`: six-value Literal in `little_loops.run_record` (reused; `deferred`, `blocked`, `decomposed`, `retryable_error` used by the moved terminals)
+
+### Signatures
+
+- `write_run_record(run_dir: Path, record: RunRecord) -> Path` — reached via `ll-issues run-record write ... --writer prepare-issue` at each new terminal
+
+### Call Path
+
+`autodev.yaml:refine_current` -> `prepare-issue.yaml` (size-review / go-no-go / pre-deferral states) -> `ll-issues run-record write` -> autodev `finalize_done`
+
 ## Status
 
 **Open** | Created: 2026-09-26 | Priority: P3
 
 ## Session Log
+- `/ll:format-issue` - 2026-09-26T03:07:12 - `34887897-5e19-4ee2-b656-5f0a00c15f02.jsonl`
