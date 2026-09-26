@@ -286,6 +286,7 @@ _Added by `/ll:refine-issue` — 2026-09-26 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-26T16:10:42 - `8d817553-e0da-4aa6-b754-9a564194f29f.jsonl`
 - `/ll:verify-issues` - 2026-09-26T16:06:58 - `cd2a5969-8672-4f0e-924f-ea543f36e04a.jsonl`
 - `/ll:confidence-check` - 2026-09-26T06:54:48 - `b6236edd-3c2e-4487-b3b9-c892c0144a8f.jsonl`
 - `/ll:refine-issue` - 2026-09-26T06:42:16 - `f4536461-4b4c-49df-b9dd-8cc9f5906a6c.jsonl`
