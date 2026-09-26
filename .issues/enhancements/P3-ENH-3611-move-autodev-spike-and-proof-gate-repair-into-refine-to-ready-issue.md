@@ -10,8 +10,6 @@ captured_at: '2026-09-26T03:47:27Z'
 parent: EPIC-3565
 decision_needed: false
 verify_verdict: VALID
-blocked_by:
-- ENH-3610
 blocks:
 - ENH-3605
 - ENH-3600
@@ -66,9 +64,12 @@ before `implement_current`.
   therefore cycle without a spike ever running.
 - `PROOF` has sources that a spike cannot satisfy. `assess_proof` also reports
   `absent`/`stale`/`refuted` for Learning Test Registry targets that the issue declares in its
-  frontmatter. Only `/ll:explore-api` provisions those. `PROOF:stale` comes **only** from those targets.
-  `PROOF:refuted` implies `spike_attempted` (`route_spike_verdict` requires it). So
-  `PROOF:absent` is the only token a spike can clear.
+  frontmatter. Only `/ll:explore-api` provisions those. `PROOF:stale` comes **only** from those
+  targets. `PROOF:refuted` comes from `spike_refuted` **or** from a refuted registry record
+  (`learning_tests/assess.py`, `_collect_target_statuses`). The token's sub-reason is the
+  worst status across all targets (`_SEVERITY`: `refuted` 3 > `absent` 2 > `stale` 1), so a
+  refuted registry target masks `spike=absent`. The sub-reason therefore cannot tell whether a
+  spike could clear the obligation. Only the spike flags can.
 - `spike_needed` does not depend on readiness. Its `FlagRule` precondition is outcome-only
   (`set_flags.py` `_rules_for_threshold`). Today autodev spikes a `spike_needed` issue at **any**
   readiness: `select_obligation_post_refine`'s `_` catches `SCORES:readiness_below` →
@@ -120,14 +121,29 @@ before `implement_current`.
     check_decision_before_done → check_proof_before_done → write_done_record`) adds ~8 steps.
     The refuted leg (`check_spike_budget → resolve_decision_pre_breakdown → confidence_check →
     …`) adds more. Raise `max_steps` 90 → 100 with a history comment in the file's
-    existing convention. Confirm that `circuit.repeated_failure.recurrent_window: 6` is not
-    tripped by the new `(check_decision_before_done, 0, no)` and `(check_proof_before_done, …)`
-    triples on the worst-case path.
+    existing convention. The history comment must state why +10 is enough: the shared
+    `spike-runs-<ID>` cap (< 2) means a proof spike **replaces** one of the two spikes that
+    BUG-3593's 60 → 70 bump already budgets. It does not add a third. The new cost is the two
+    `check_proof_before_done` hops plus one extra `confidence_check → check_readiness →
+    check_outcome → check_decision_before_done` band pass. Confirm that
+    `circuit.repeated_failure.recurrent_window: 6` is not tripped by the new
+    `(check_decision_before_done, 1, no)` triples (`check-flag` exits 1 when the flag is unset)
+    and the `(check_proof_before_done, …)` triples on the worst-case path.
   - **Accepted:** `check_decision_before_done` is shared by all three no-class done edges, so
     the gate also fires on `check_missing_artifacts.on_yes` (a low-outcome issue exiting for
     autodev to wire). A `structured_proof` spike there runs before wiring and spends the
     shared budget. The proof question is independent of the missing artifacts, and the budget
     cap (< 2) bounds the cost, so the gate is not restricted to the score-pass edges.
+  - **Accepted: contract change for non-autodev callers.** `recursive-refine.yaml`
+    (`refine_issue` state) also runs this child, and so do the loops that wrap it
+    (`issue-refinement`, `sprint-build-and-validate`, `rn-build`, `eval-driven-development`).
+    Those runs now also spike an open `structured_proof` gate before `done`. Today they reach
+    `done` with the gate open, and nothing downstream spikes it. This is intended: it extends
+    ENH-3575's invariant (never "ready" with an unspiked proof gate while budget remains) to
+    every caller. Outside autodev the child owns its own `${context.run_dir}`, so
+    `spike-runs-<ID>` is per child run there. The `spike_attempted` guard still makes the gate
+    one-shot per issue. This differs from widening the spike band (Scope Boundaries). That
+    change would spike low-readiness issues for every caller, and no invariant requires it.
 - **Selectors gain `PROOF`.** Every `PROOF` re-entry routes to `refine_current`, is capped at
   one per issue by `autodev-reentry-PROOF-<ID>` (the `DECISION` idiom; cleared at
   `dequeue_next`), and un-stages the ID from `autodev-staged.txt` before routing (the
@@ -141,7 +157,10 @@ before `implement_current`.
   `select_obligation_post_refine` and `select_obligation_pre_implement`:
   `check-flag decision_needed` first (ENH-3610's exit-code contract), then the `PROOF` probe,
   then `next-obligation`. `select_obligation_post_size_review` has no `check-flag` probe (see
-  below). Route keys are quoted (`"PROOF:absent"`), since `classify` matches the token exactly.
+  below). The selector's shell handles every raw `PROOF:*` token from `next-obligation`
+  itself. When the guard passes, the selector prints its own bare `PROOF` token. Otherwise it
+  re-runs `next-obligation --skip PROOF`. So `PROOF` is the only proof route key, and no
+  `PROOF:<sub_reason>` token ever reaches `classify` routing.
 
   **Shared re-entry guard** (every `PROOF` re-entry, all three selectors): re-enter only when
   all of these hold. Otherwise use `--skip PROOF` (low-outcome sites) or fall through to
@@ -163,14 +182,15 @@ before `implement_current`.
   outcome threshold:
 
   - **Low-outcome sites** (`select_obligation_post_refine`,
-    `select_obligation_post_size_review`): only `"PROOF:absent"` from `next-obligation` is a
-    re-entry candidate. It re-enters only when the child's low-outcome band can actually spike:
-    `spike_needed` true, plus the shared guard above. `PROOF:stale` (learning-test-only) and
-    `PROOF:refuted` (implies `spike_attempted`) can never pass the guard, so the selector
-    handles them in shell with `--skip PROOF` and they get no route key of their own. This
-    closes the cycle risk in Current Behavior: a `PROOF:absent` from `spike_attempted` without
+    `select_obligation_post_size_review`): **any** `PROOF:*` token from `next-obligation` is
+    a re-entry candidate, whatever its sub-reason. The sub-reason is worst-status-wins across
+    all targets, so it cannot identify a spikeable obligation (Current Behavior). The selector
+    re-enters only when the child's low-outcome band can actually spike: `spike_needed` true,
+    plus the shared guard above. Any other `PROOF:*` reading goes to `--skip PROOF`. This
+    closes the cycle risk in Current Behavior. A `PROOF` from `spike_attempted` without
     `spike_completed`, a learning-test-only `PROOF`, or a gate-only `PROOF` that the child would
-    route to `breakdown_issue` rather than spike no longer costs a full child run.
+    route to `breakdown_issue` no longer costs a full child run. A spikeable issue whose
+    `spike=absent` is masked by a refuted registry target is still re-entered.
   - **Pre-implement site** (`select_obligation_pre_implement`): scores pass, so it calls
     `ll-issues check-gate <ID>` itself. On `structured_proof` plus the shared guard above, it
     prints `PROOF` → `refine_current`,
@@ -179,7 +199,7 @@ before `implement_current`.
     fail-closed `check_proof_defer_or_implement`). This covers the four sites that reach the
     selector without a fresh child `done` (`recheck_scores`, `regate_after_atomic_remediation`,
     `reopen_waived`, `recheck_after_size_review`).
-  - **Post-size-review selector routes only `"PROOF:absent"`.** It has no `check-flag` probe.
+  - **Post-size-review selector has no `check-flag` probe.**
     Such a probe would only suppress `PROOF` for a decision-flagged issue, and
     `next-obligation` already does that, because tier 3 checks `DECISION` before `PROOF`.
     `DECISION` goes to `_`, so `recheck_after_size_review`'s ENH-2936 decision branch keeps
@@ -218,8 +238,16 @@ before `implement_current`.
   (`READY`) → `check_passed` → `select_obligation_pre_implement` is one of those routes.
 - **Pre-deferral `spike` remedy.** `dispatch_pre_deferral_remedy`'s `spike` branch drops its
   `spike-runs-<ID>` increment and its `autodev-pre-spike-readiness.txt` write, keeps the
-  budget check (counter >= 2 → exit 1 → `reconcile_current`), and routes `on_yes` →
-  `refine_current`. Must drop the increment: a counter bumped before the child runs makes a
+  budget check (counter >= 2 → exit 1 → `reconcile_current`), adds the lifetime-cap check
+  (below), and routes `on_yes` → `refine_current`.
+  - **Lifetime-cap check.** This leg must also exit 1 → `reconcile_current` when
+    `refine_count` >= the lifetime cap. Use the same `refine-status` read and cap resolution as
+    the shared re-entry guard. The leg runs late, on a low-readiness issue that has already
+    been refined several times. Without the check, a child re-entered at its cap routes to
+    `breakdown_issue`, so the issue is decomposed instead of deferred as
+    `low_readiness`/`readiness_stagnated`. BUG-3614 is the same hazard on `DECISION` re-entry.
+    This edge is new in this issue, so this issue closes it.
+  - **Must drop the increment:** a counter bumped before the child runs makes a
   child spike's refutation see N=2 in `check_spike_budget` and defer as `decision_unresolved`,
   skipping BUG-3593's refute → decide step. **Accepted interim loss until ENH-3606** (which
   moves the whole pre-deferral remedy into `prepare-issue`): the child spikes on re-entry only
@@ -240,8 +268,9 @@ before `implement_current`.
   refine and reconcile passes but no spike, and defers as `low_readiness`/`readiness_stagnated`.
   Accepted until ENH-3606, alongside the pre-deferral `spike` remedy loss above. Record it in
   ENH-3606's scope when this lands. Do **not** widen the child's spike band in this issue:
-  moving `check_spike_needed` ahead of `check_readiness` changes the child's contract for
-  `rn-refine` and `auto-refine-and-implement` callers too.
+  moving `check_spike_needed` ahead of `check_readiness` would spike low-readiness issues for
+  the `recursive-refine` callers too. Unlike `check_proof_before_done`, no invariant requires
+  that change.
 - **Markers.** Autodev never writes `spike-runs-<ID>`. Its surviving consumers
   (`recheck_after_size_review`, `dispatch_pre_deferral_remedy`, the three selectors) only read
   it as the budget signal the child spends. Neither `resolve_issue` nor autodev resets it
@@ -261,7 +290,8 @@ before `implement_current`.
 | Removed autodev state | Behavior | Disposition | Where it lives now |
 |---|---|---|---|
 | `check_proof_gate_before_implement` (`PROOF_SPIKE`) | Spike a high-scoring issue whose `structured_proof` gate is open and budget remains | MOVED | Child: `check_proof_before_done`. Via `check_passed.on_yes` the child's gate has already run; via the other four pre-implement sites, `select_obligation_pre_implement`'s `check-gate` probe re-enters the child |
-| `dispatch_pre_deferral_remedy` `spike` leg | Spike a low-readiness issue before the `low_readiness` deferral (BUG-2803) | CHANGED (interim) | Routes to `refine_current`; the child spikes only on an open `structured_proof` gate at `done` or `spike_needed` in the low-outcome band. Full move in ENH-3606 |
+| `dispatch_pre_deferral_remedy` `spike` leg | Spike a low-readiness issue before the `low_readiness` deferral (BUG-2803) | CHANGED (interim) | Routes to `refine_current` when budget and lifetime cap allow, else `reconcile_current`; the child spikes only on an open `structured_proof` gate at `done` or `spike_needed` in the low-outcome band. Full move in ENH-3606 |
+| (new) child `check_proof_before_done` for `recursive-refine` callers | Reached `done` with an open `structured_proof` gate unspiked | CHANGED (intended) | Child spikes the gate before `done` for every caller (`recursive-refine` and its wrappers), not only autodev |
 | `check_proof_gate_before_implement` (`PROOF_DEFER` / `PROOF_INFRA`) | Defer an open gate; defer on helper failure | PRESERVED | `check_proof_defer_or_implement` (unchanged, fail-closed) |
 | `check_spike_needed` / `run_spike` / `route_spike_verdict` (readiness-passing issues) | Spike on `spike_needed`, four-way verdict routing (BUG-3593) | MOVED | Child's same-named states (already present) |
 | `check_spike_needed` via `select_obligation_post_refine` `_` on `SCORES:readiness_below` | Spike a `spike_needed` issue whose readiness is below threshold | DROPPED (interim) | Nowhere: the child's spike band requires `check_readiness.on_yes`. Accepted until ENH-3606 |
