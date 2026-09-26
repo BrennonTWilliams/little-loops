@@ -122,6 +122,10 @@ ENH-3600. FEAT-3573 blocks only ENH-3600, which rewrites the same closure accoun
 - **ENH-3609** — Route autodev on the child run record outcome and ledger child stops (open)
 - **ENH-3610** — Move autodev decision repair into refine-to-ready-issue behind an obligation selector (open)
 - **ENH-3611** — Move autodev spike and proof-gate repair into refine-to-ready-issue (open)
+- **ENH-3612** — manage-issue Phase 4 runs configured verification commands verbatim (open)
+- **ENH-3613** — Autodev summary.json splits cancelled from implemented closures (open)
+
+
 
 
 
