@@ -113,6 +113,25 @@ def add_run_record_parser(subs: argparse._SubParsersAction) -> argparse.Argument
     c.add_argument("--run-dir", required=True, help="The run's run_dir")
     c.add_argument("--writer", required=True, choices=WRITERS, help="Which loop wrote the record")
     add_config_arg(c)
+
+    f = subsubs.add_parser(
+        "forward",
+        help=(
+            "Copy one writer's record for an issue under another writer and print "
+            "its routing token (MISSING, writing nothing, when the source is absent)"
+        ),
+    )
+    f.add_argument("issue_id", help="Issue ID (e.g., 3597, ENH-3597, P3-ENH-3597)")
+    f.add_argument("--run-dir", required=True, help="The run's run_dir")
+    f.add_argument(
+        "--from",
+        dest="from_writer",
+        required=True,
+        choices=WRITERS,
+        help="Writer whose record is copied",
+    )
+    f.add_argument("--writer", required=True, choices=WRITERS, help="Writer the copy is written as")
+    add_config_arg(f)
     return p
 
 
@@ -177,7 +196,12 @@ def cmd_run_record(config: BRConfig, args: argparse.Namespace) -> int:
         return cmd_run_record_read(config, args)
     if command == "clear":
         return cmd_run_record_clear(config, args)
-    print("Error: run-record requires a subcommand (write, read, clear).", file=sys.stderr)
+    if command == "forward":
+        return cmd_run_record_forward(config, args)
+    print(
+        "Error: run-record requires a subcommand (write, read, clear, forward).",
+        file=sys.stderr,
+    )
     return 2
 
 
@@ -218,6 +242,26 @@ def cmd_run_record_clear(config: BRConfig, args: argparse.Namespace) -> int:
     record_path(Path(args.run_dir), args.writer, canonical_record_id(config, args.issue_id)).unlink(
         missing_ok=True
     )
+    return 0
+
+
+def cmd_run_record_forward(config: BRConfig, args: argparse.Namespace) -> int:
+    """Re-write the ``--from`` writer's record under ``--writer``; always returns 0.
+
+    Only ``writer`` changes (``read_run_record`` rejects a stored writer that
+    differs from the request). Prints the forwarded record's routing token, or
+    ``MISSING`` (writing nothing) when the source record is absent.
+    """
+    from dataclasses import replace
+
+    from little_loops.run_record import read_run_record, record_token
+
+    record = read_run_record(
+        Path(args.run_dir), args.from_writer, canonical_record_id(config, args.issue_id)
+    )
+    if record is not None:
+        write_run_record(Path(args.run_dir), replace(record, writer=args.writer))
+    print(record_token(record))
     return 0
 
 

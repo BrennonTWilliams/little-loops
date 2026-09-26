@@ -2404,8 +2404,8 @@ Exit codes: 0 on any successful assessment (including `NONE`); 2 when the issue 
 Write the typed per-issue preparation run record (ENH-3597): one JSON file at
 `<run_dir>/run-records/<writer>/<ID>.json` carrying
 `{writer, issue_id, outcome, child_ids, evidence_refs, legacy_class, readiness, outcome_confidence}`.
-Called by every terminal-bearing state of the `refine-to-ready-issue` loop (and,
-later, its `prepare-issue` wrapper) so a caller can read one issue's verdict
+Called by every terminal-bearing state of the `refine-to-ready-issue` loop (and
+its `prepare-issue` wrapper on the error path) so a caller can read one issue's verdict
 without re-deriving it from frontmatter. The command itself gathers the issue's
 terminal-time state — frontmatter status and scores, the shared
 `refine-broke-down` counter, children derived from `parent:` frontmatter — and
@@ -2454,6 +2454,12 @@ match tokens exactly, so the vocabulary is closed:
 
 **`run-record clear <ID> --run-dir DIR --writer W`** deletes that record (exit 0 whether or
 not it existed).
+
+**`run-record forward <ID> --run-dir DIR --from W1 --writer W2`** (ENH-3605) re-writes
+`W1`'s record for the issue under writer `W2`, changing only `writer`, and prints the
+forwarded record's routing token (`MISSING`, writing nothing, when `W1` has no record).
+Exit code is always 0. The `prepare-issue` wrapper uses it to republish
+`refine-to-ready-issue`'s verdict under its own writer.
 
 Read the record back from Python with `little_loops.run_record.read_run_record`,
 which returns `None` for a missing, malformed, or writer/issue-mismatched file —

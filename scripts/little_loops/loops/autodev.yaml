@@ -470,36 +470,35 @@ states:
     on_error: dequeue_next
 
   refine_current:
-    # Delegate format → refine → wire → confidence-check for a single issue to
-    # refine-to-ready-issue. context_passthrough forwards captured.input as
-    # context.input to the sub-loop. on_success = sub-loop reached 'done' (true
-    # confidence pass OR breakdown_issue path). on_failure = sub-loop reached
-    # 'failed' terminal (e.g. diagnose → failed) — route to skip_inflight so
-    # the issue is recorded as skipped and the queue advances without passing an
-    # unrefined issue to implement_current. on_error (signal/crash) takes the
-    # same skip path.
+    # Delegate format → refine → wire → confidence-check for a single issue to the
+    # prepare-issue wrapper (ENH-3605), which runs refine-to-ready-issue and forwards
+    # its typed run record under the prepare-issue writer. context_passthrough forwards
+    # captured.input as context.input to the sub-loop. The wrapper mirrors the inner
+    # terminal type: on_success = inner reached 'done' (true confidence pass OR
+    # breakdown_issue path); on_failure = inner reached 'failed' (or died, see on_error
+    # below) — routed through route_refine_outcome so the issue is recorded as skipped
+    # and the queue advances without passing an unrefined issue to implement_current.
     #
     # BUG-2611: do NOT add an `on_no:` key here. `_execute_delegate_state`
     # (executor.py) routes any non-"done" terminal — including a genuine
     # crash — through `on_no`, and schema.py's `on_no = on_no or on_failure`
     # means an explicit `on_no` silently shadows `on_failure`, permanently
     # dead-coding the skip_inflight route above. Leaving on_no unset lets it
-    # fall back to on_failure's value ("skip_inflight"), which is correct for
+    # fall back to on_failure's value ("route_refine_outcome"), which is correct for
     # every failure mode (crash, max_iterations, timeout, signal).
     # ENH-3607: on_failure routes through route_refine_outcome, which reads the
-    # child's run record; only RETRYABLE_ERROR:rate_limited diverts (to
-    # finalize_rate_limited), every other token still reaches skip_inflight.
+    # wrapper's run record; only RETRYABLE_ERROR:rate_limited diverts (to
+    # finalize_rate_limited), every other token still reaches skip_inflight or
+    # ledger_child_stop.
     # BUG-3390: no `fragment: with_rate_limit_handling` / `on_rate_limit_exhausted`
-    # here — both are inert on a `loop:` call state. The executor's 429
-    # interception is gated on an action_result a sub-loop never produces (the
-    # removed decide-rate-limit gate documented this in ENH-3075; see executor.py's `if action_result is not
-    # None:` guard); the child loop's own rate-limit handling writes
-    # refine-terminal-class=infra, which skip_inflight reads.
-    loop: refine-to-ready-issue
+    # here — both are inert on a `loop:` call state. The inner loop's own rate-limit
+    # handling writes refine-terminal-class=infra and a record carrying
+    # rate_limit_exhausted, which prepare-issue forwards unchanged.
+    loop: prepare-issue
     context_passthrough: true
     on_success: count_repair_cycle_refine
     on_failure: route_refine_outcome
-    # ENH-2727: on_error fires when the sub-loop raised a runtime exception / was
+    # ENH-2727: on_error fires when the wrapper itself raised a runtime exception / was
     # signalled (a crash — no refine verdict was produced), which is an infra-class,
     # re-runnable failure by the issue's own definition ("host CLI SIGTERM'd, OOM,
     # crash"). Route it straight to skip_inflight_infra (refine_failed_infra) so it is
@@ -519,7 +518,7 @@ states:
     # everything else keeps the existing skip behavior.
     action: >-
       ll-issues run-record read ${captured.input.output:shell}
-      --run-dir ${context.run_dir} --writer refine-to-ready-issue --format token
+      --run-dir ${context.run_dir} --writer prepare-issue --format token
     action_type: shell
     evaluate:
       type: classify
@@ -533,8 +532,10 @@ states:
       BLOCKED:decision_unresolved: ledger_child_stop
       BLOCKED:proposal_unsound: ledger_child_stop
       DEFERRED:spike_inconclusive: ledger_child_stop
-      BLOCKED:quality: skip_inflight
-      DEFERRED:gate_unmet: skip_inflight
+      # ENH-3605 ledger-ownership rule: prepare-issue's forward_stop already wrote the
+      # refine_failed row for these two, so skip_inflight would double-count them.
+      BLOCKED:quality: ledger_child_stop
+      DEFERRED:gate_unmet: ledger_child_stop
       READY: skip_inflight
       BLOCKED: skip_inflight
       DECOMPOSED: skip_inflight
@@ -675,7 +676,7 @@ states:
     # after a real done). Suffixed tokens cannot occur here; they fail safe.
     action: >-
       ll-issues run-record read ${captured.input.output:shell}
-      --run-dir ${context.run_dir} --writer refine-to-ready-issue --format token
+      --run-dir ${context.run_dir} --writer prepare-issue --format token
     action_type: shell
     evaluate:
       type: classify

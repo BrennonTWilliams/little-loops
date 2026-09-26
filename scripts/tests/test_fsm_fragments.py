@@ -1010,6 +1010,7 @@ class TestBuiltinLoopMigration:
             "prompt-across-issues.yaml",
             "recursive-refine.yaml",
             "refine-to-ready-issue.yaml",
+            "prepare-issue.yaml",
             "sprint-build-and-validate.yaml",
             "svg-image-generator.yaml",
             "test-coverage-improvement.yaml",

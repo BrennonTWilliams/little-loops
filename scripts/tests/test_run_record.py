@@ -866,3 +866,61 @@ class TestEnh3607LoopWiring:
         assert st["route"]["_"] == "skip_inflight"
         assert st["route"]["_error"] == "skip_inflight"
         assert "run-record read ${captured.input.output:shell}" in st["action"]
+
+
+class TestRunRecordForward:
+    """ENH-3605: ``run-record forward`` re-writes one writer's record under another."""
+
+    BASE = ("--from", "refine-to-ready-issue", "--writer", "prepare-issue")
+
+    def test_forwards_record_and_prints_token(self, project: Path, tmp_path: Path) -> None:
+        _write_issue(project, ID)
+        inner = _rec(
+            outcome="blocked",
+            legacy_class="quality",
+            child_ids=("ENH-1", "ENH-2"),
+            evidence_refs=("x",),
+            readiness=80,
+            outcome_confidence=60,
+        )
+        rr = _record_mod()
+        rr.write_run_record(tmp_path, inner)
+        r = _run_sub(project, "forward", ID, "--run-dir", str(tmp_path), *self.BASE)
+        assert r.returncode == 0 and r.stdout.strip() == "BLOCKED:quality"
+        out = _read_json(tmp_path, "prepare-issue", ID)
+        expected = inner.to_dict() | {"writer": "prepare-issue"}
+        assert out == expected
+        # the forwarded record is accepted by `read --writer prepare-issue`
+        r = _run_sub(project, "read", ID, "--run-dir", str(tmp_path), "--writer", "prepare-issue")
+        assert r.stdout.strip() == "BLOCKED:quality"
+
+    def test_rate_limit_evidence_survives(self, project: Path, tmp_path: Path) -> None:
+        _write_issue(project, ID)
+        rr = _record_mod()
+        rr.write_run_record(
+            tmp_path,
+            _rec(
+                outcome="retryable_error",
+                legacy_class="infra",
+                evidence_refs=("rate_limit_exhausted",),
+            ),
+        )
+        r = _run_sub(project, "forward", ID, "--run-dir", str(tmp_path), *self.BASE)
+        assert r.stdout.strip() == "RETRYABLE_ERROR:rate_limited"
+
+    def test_missing_source_prints_missing_and_writes_nothing(
+        self, project: Path, tmp_path: Path
+    ) -> None:
+        _write_issue(project, ID)
+        r = _run_sub(project, "forward", ID, "--run-dir", str(tmp_path), *self.BASE)
+        assert r.returncode == 0 and r.stdout.strip() == "MISSING"
+        assert not (tmp_path / "run-records" / "prepare-issue").exists()
+
+    def test_canonical_id_resolution(self, project: Path, tmp_path: Path) -> None:
+        _write_issue(project, ID)
+        rr = _record_mod()
+        rr.write_run_record(tmp_path, _rec(outcome="ready"))
+        num = re.search(r"\d+", ID).group(0)
+        r = _run_sub(project, "forward", num, "--run-dir", str(tmp_path), *self.BASE)
+        assert r.stdout.strip() == "READY"
+        assert (tmp_path / "run-records" / "prepare-issue" / f"{ID}.json").exists()

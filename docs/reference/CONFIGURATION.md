@@ -455,7 +455,7 @@ Configuration for the `/ll:review-epic` skill:
 When `confidence_gate.enabled` is `true`, `manage-issue` checks the issue's `confidence_score` frontmatter before Phase 3 (Implementation). If the score is below `readiness_threshold`, implementation halts. Use `--force-implement` to bypass.
 
 `readiness_threshold` / `outcome_threshold` also drive the confidence gates inside the
-`autodev`, `recursive-refine`, `eval-driven-development`, `refine-to-ready-issue`,
+`autodev`, `recursive-refine`, `eval-driven-development`, `refine-to-ready-issue`, `prepare-issue`,
 `rn-implement`, and `rn-remediate` built-in loops. Those loops no
 longer hardcode the values: at launch the runner seeds `context.readiness_threshold` and
 `context.outcome_threshold` from `commands.confidence_gate.*` (BUG-2767). Precedence, highest

@@ -102,6 +102,9 @@ class TestBuiltinLoopFiles:
         exempt = {
             ("general-task.yaml", "summarize_success", "on_error"): "ENH-2365",
             ("general-task.yaml", "write_partial_summary", "on_error"): "ENH-2575",
+            # prepare-issue mirrors the inner terminal type: a failed `forward` call
+            # after an inner success must not flip which autodev router runs.
+            ("prepare-issue.yaml", "forward_done", "on_error"): "ENH-3605",
         }
 
         offenders: list[str] = []
@@ -233,6 +236,7 @@ class TestBuiltinLoopFiles:
             "harness-optimize",
             "general-task",
             "refine-to-ready-issue",
+            "prepare-issue",
             "agent-eval-improve",
             "dataset-curation",
             "incremental-refactor",
@@ -6506,10 +6510,36 @@ class TestAutodevLoop:
         assert state.get("capture") == "input"
 
     def test_refine_current_delegates_to_refine_to_ready_issue(self, data: dict) -> None:
-        """refine_current must delegate to refine-to-ready-issue (NOT recursive-refine)."""
+        """refine_current must delegate to prepare-issue (ENH-3605), which wraps
+        refine-to-ready-issue (NOT recursive-refine)."""
         state = data["states"].get("refine_current", {})
-        assert state.get("loop") == "refine-to-ready-issue"
+        assert state.get("loop") == "prepare-issue"
         assert state.get("context_passthrough") is True
+        wrapper = yaml.safe_load((BUILTIN_LOOPS_DIR / "prepare-issue.yaml").read_text())
+        inner = wrapper["states"]["run_refine_to_ready"]
+        assert inner.get("loop") == "refine-to-ready-issue"
+        assert inner.get("context_passthrough") is True
+
+    def test_routers_read_prepare_issue_writer(self, data: dict) -> None:
+        """ENH-3605: both run-record routers read the prepare-issue writer."""
+        for name in ("route_refine_success", "route_refine_outcome"):
+            action = data["states"][name]["action"]
+            assert "--writer prepare-issue" in action, name
+            assert "refine-to-ready-issue" not in action, name
+
+    def test_route_refine_outcome_ledgers_quality_and_gate_unmet_via_wrapper(
+        self, data: dict
+    ) -> None:
+        """ENH-3605 ledger-ownership rule: prepare-issue.forward_stop writes the
+        refine_failed row, so the failure router must not add a second one."""
+        route = data["states"]["route_refine_outcome"]["route"]
+        assert route["BLOCKED:quality"] == "ledger_child_stop"
+        assert route["DEFERRED:gate_unmet"] == "ledger_child_stop"
+        # unsuffixed BLOCKED keeps skip_inflight; success router keeps its routes
+        assert route["BLOCKED"] == "skip_inflight"
+        succ = data["states"]["route_refine_success"]["route"]
+        assert succ["BLOCKED:quality"] == "skip_inflight"
+        assert succ["DEFERRED:gate_unmet"] == "skip_inflight"
 
     def test_refine_current_has_success_and_failure_routes(self, data: dict) -> None:
         """refine_current must define on_success and on_failure routes, and they must differ
@@ -7741,6 +7771,16 @@ class TestAutodevLoop:
         assert summary["not_closed"] == 1
         lines = (run_dir / "autodev-unverified.txt").read_text().splitlines()
         assert lines == ["FEAT-1  impl_exit0_not_closed"]
+
+    def test_prepare_issue_loop_state_declares_no_rate_limit_handling(self) -> None:
+        """ENH-3605: prepare-issue.run_refine_to_ready is a `loop:` state, so
+        on_rate_limit_exhausted / with_rate_limit_handling are inert there (BUG-3390)."""
+        wrapper = yaml.safe_load((BUILTIN_LOOPS_DIR / "prepare-issue.yaml").read_text())
+        loop_states = {n: st for n, st in wrapper["states"].items() if st.get("loop")}
+        assert set(loop_states) == {"run_refine_to_ready"}
+        for name, st in loop_states.items():
+            assert "on_rate_limit_exhausted" not in st, name
+            assert st.get("fragment") != "with_rate_limit_handling", name
 
     def test_no_loop_call_state_declares_on_rate_limit_exhausted(self, data: dict) -> None:
         """BUG-3390: the executor's 429 interception is gated on an action_result a
@@ -20821,6 +20861,7 @@ class TestConfidenceGateThresholdsNotHardcoded:
         "recursive-refine",
         "eval-driven-development",
         "refine-to-ready-issue",
+        "prepare-issue",
         "rn-implement",
         "rn-remediate",
     )

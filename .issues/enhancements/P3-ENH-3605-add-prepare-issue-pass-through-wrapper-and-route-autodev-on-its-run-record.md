@@ -3,7 +3,7 @@ id: ENH-3605
 type: ENH
 title: Add prepare-issue pass-through wrapper and route autodev on its run record
 priority: P3
-status: open
+status: done
 discovered_by: issue-size-review
 discovered_date: '2026-09-26'
 decision_needed: false
@@ -25,6 +25,7 @@ score_complexity: 14
 score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 18
+completed_at: '2026-09-26T18:32:04Z'
 ---
 
 # ENH-3605: Add prepare-issue pass-through wrapper and route autodev on its run record
@@ -442,11 +443,17 @@ Applied to Proposed Solution, Tests, Acceptance Criteria and Implementation Step
 - Parity tests are written first against `main`; `CANCELLED`, `DEFERRED:gate_unmet` and the
   `MISSING`+infra-sentinel fallback were added.
 
+## Resolution
+
+Implemented 2026-09-26: `prepare-issue.yaml` wrapper, `ll-issues run-record forward`, autodev `refine_current` retarget, both routers on `--writer prepare-issue`, and `BLOCKED:quality` / `DEFERRED:gate_unmet` routed to `ledger_child_stop` in `route_refine_outcome` (the wrapper's `forward_stop` writes the row). Parity is proven at the router/ledger level (executing the wrapper states and autodev router actions per token) rather than by a full autodev real-FSM run with a stub child. `skills/audit-loop-run/SKILL.md:119` was not edited (no `--resolved` wording to change), so no `ll-adapt` run.
+
 ## Status
 
-**Open** | Created: 2026-09-26 | Priority: P3
+**Done** | Created: 2026-09-26 | Priority: P3
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-26T18:32:04 - `9a9aae39-54ac-4f95-a7cc-b1334b5443d6.jsonl`
+- `/ll:ready-issue` - 2026-09-26T18:19:31 - `f3bc5ab2-2f9d-4322-ad38-6b659ac426b0.jsonl`
 - `/ll:confidence-check` - 2026-09-26T18:17:23 - `660a1ff7-079b-4927-8755-da62d2de860b.jsonl`
 - `/ll:confidence-check` - 2026-09-26T17:56:17 - `d8dc6ef7-0e36-4417-8999-282f048f8e13.jsonl`
 - `/ll:verify-issues` - 2026-09-26T17:51:03 - `88c2d513-b5ef-46f0-9f72-8998adaef5bb.jsonl`

@@ -1,0 +1,90 @@
+name: "prepare-issue"
+description: "Pass-through wrapper around refine-to-ready-issue for one issue: runs it, forwards its typed run record under the prepare-issue writer, and mirrors its terminal type so autodev's record routers read one stable writer (ENH-3605)."
+category: issue-management
+visibility: internal
+# Call chain: autodev.refine_current -> prepare-issue -> refine-to-ready-issue.
+#   clear_record -> run_refine_to_ready -> (on_yes) forward_done -> done
+#                                       -> (on_failure) forward_stop -> failed
+#                                       -> (on_error) mark_inner_error -> failed
+# The issue ID arrives as ${context.input} (context_passthrough flattens autodev's
+# captured.input), so this file must not declare `input` in its own context: block.
+# Wrapper capture names would flatten into the inner loop's context; none are used.
+# No rate-limit fragment / on_rate_limit_exhausted: both are inert on a `loop:` state
+# (BUG-3390); an inner rate-limit record carries evidence_refs and is forwarded as-is.
+initial: clear_record
+scope:
+  - ".issues/"
+  - "${context.run_dir}"
+max_steps: 20
+on_handoff: spawn
+meta_self_eval_ok: false
+shared_state_ok: false
+
+states:
+  clear_record:
+    # Stale records from a previous pass over the same ID must not be forwarded:
+    # autodev re-enters refine_current for the same issue, and if the inner loop dies
+    # before its own resolve_issue clear, forward would copy the previous pass's record.
+    action: |
+      ll-issues run-record clear ${context.input:shell} --run-dir ${context.run_dir} --writer prepare-issue || true
+      ll-issues run-record clear ${context.input:shell} --run-dir ${context.run_dir} --writer refine-to-ready-issue || true
+    action_type: shell
+    next: run_refine_to_ready
+    on_error: run_refine_to_ready
+
+  run_refine_to_ready:
+    # No `on_no:` (BUG-2611: it would shadow on_failure) and no `timeout:`
+    # (TestSubLoopStateTimeoutAudit).
+    loop: refine-to-ready-issue
+    context_passthrough: true
+    on_yes: forward_done
+    on_failure: forward_stop
+    on_error: mark_inner_error
+
+  forward_done:
+    # A forward error must not flip the terminal type autodev routes on.
+    action: |
+      ll-issues run-record forward ${context.input:shell} --run-dir ${context.run_dir} --from refine-to-ready-issue --writer prepare-issue
+    action_type: shell
+    next: done
+    on_error: done
+
+  forward_stop:
+    # Ledger-ownership rule (ENH-3605): the wrapper ledgers every blocked/deferred stop
+    # it emits through its failure terminal; autodev's route_refine_outcome sends
+    # BLOCKED:* / DEFERRED:* to ledger_child_stop (no row). quality / gate_unmet are the
+    # two stops nothing else ledgers, so the row skip_inflight used to write lands here.
+    # ID is the raw ${context.input}: finalize_done and the grep -x marker checks key on it.
+    action: |
+      ID=${context.input:shell}
+      TOKEN=$(ll-issues run-record forward "$ID" --run-dir ${context.run_dir} --from refine-to-ready-issue --writer prepare-issue)
+      case "$TOKEN" in
+        BLOCKED:quality|DEFERRED:gate_unmet)
+          echo "$ID  refine_failed" >> ${context.run_dir}/autodev-skipped.txt
+          ;;
+      esac
+    action_type: shell
+    next: failed
+    on_error: failed
+
+  mark_inner_error:
+    # The inner loop died (error / no_route / workdir_vanished). A wrapper cannot end
+    # with terminated_by: error on purpose, so this infra record is how the crash
+    # reaches autodev (RETRYABLE_ERROR:infra -> skip_inflight_infra). The sentinel is
+    # required: the record write is `|| true`, and autodev's MISSING fallback reads
+    # refine-terminal-class, which the inner resolve_issue deleted.
+    action: |
+      printf infra > ${context.run_dir}/refine-terminal-class
+      ll-issues run-record write ${context.input:shell} --run-dir ${context.run_dir} --writer prepare-issue --legacy-class infra || true
+    action_type: shell
+    next: failed
+    on_error: failed
+
+  done:
+    terminal: true
+
+  failed:
+    terminal: true
+    # Explicit: autodev's refine_current.on_failure routing depends on this flag,
+    # not on FAILURE_TERMINAL_NAMES name inference.
+    failure: true
