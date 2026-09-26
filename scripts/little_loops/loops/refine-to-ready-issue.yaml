@@ -181,7 +181,7 @@ states:
       printf '0' > ${context.run_dir}/refine-to-ready-format-fallback &&
       ID=$({ [ -n ${context.input:shell} ] && printf '%s' ${context.input:shell} ||
       ll-issues next-issue; } | tr -d '\n\r ') &&
-      rm -f "${context.run_dir}/run-records/refine-to-ready-issue/$${ID}.json" &&
+      { ll-issues run-record clear "$${ID}" --run-dir ${context.run_dir} --writer refine-to-ready-issue || true; } &&
       printf '%s' "$${ID}"
     action_type: shell
     capture: issue_id
@@ -840,8 +840,9 @@ states:
     # actually clear the gate an additive refine_followup cannot. Bare
     # slash-command shape — no fragment: with_rate_limit_handling / no
     # on_rate_limit_exhausted (Decision Rules › Rate-limit fragment follows
-    # the host file: 0/5 sibling slash-command states in this file carry
-    # them, unlike autodev.yaml's reconcile_current).
+    # the host file: run_spike is the one state here that carries them, since
+    # it alone can wait out a long spike 429 (ENH-3607); this state does not,
+    # unlike autodev.yaml's reconcile_current).
     action: "/ll:reconcile-issue ${captured.issue_id.output}"
     action_type: slash_command
     pruning_profile:
@@ -951,7 +952,7 @@ states:
       PYEOF
       RC=$?
       if [ "$RC" -eq 0 ]; then
-        ll-issues run-record write ${captured.issue_id.output:shell} --run-dir ${context.run_dir} --writer refine-to-ready-issue || true
+        ll-issues run-record write ${captured.issue_id.output:shell} --run-dir ${context.run_dir} --writer refine-to-ready-issue --readiness-threshold ${context.readiness_threshold:shell} --outcome-threshold ${context.outcome_threshold:shell} || true
       fi
       exit $RC
     fragment: shell_exit
@@ -1002,8 +1003,8 @@ states:
 
   check_spike_needed:
     # ENH-3250 (B3): mirrors autodev.yaml's check_spike_needed predicate
-    # (autodev additionally snapshots pre-spike readiness and wraps run_spike
-    # in the rate-limit fragment; deliberately not carried here)
+    # (autodev additionally snapshots pre-spike readiness; the rate-limit
+    # fragment IS carried on run_spike below, ENH-3607)
     # — spike_needed is a FlagRule written by apply_flags_from_notes()
     # (set_flags.py) on the same sub-threshold-outcome precondition as
     # decision_needed/missing_artifacts, so it belongs in this gate band. The
@@ -1045,14 +1046,20 @@ states:
     # Non-fatal on error, like wire_issue/reconcile_issue: this gate band's
     # convention is to re-enter the chain rather than dead-end on a repair
     # state's own failure.
+    # ENH-3607: waits out rate limits like autodev's copy; exhaustion ends the
+    # run infra-marked (mark_rate_limit_infra records rate_limit_exhausted) so
+    # autodev halts via finalize_rate_limited instead of skipping the issue.
+    fragment: with_rate_limit_handling
     action: "/ll:spike ${captured.issue_id.output} --auto"
     action_type: slash_command
     pruning_profile:
       enabled: true
       name: spike-auto
       suppress_claude_md: true
+    rate_limit_max_wait_seconds: 14400
     next: route_spike_verdict
     on_error: route_spike_verdict
+    on_rate_limit_exhausted: mark_rate_limit_infra
 
   route_spike_verdict:
     # BUG-3593: four-way spike-outcome router, evaluated in order: refuted,
@@ -1127,7 +1134,7 @@ states:
       ll-issues check-flag ${captured.issue_id.output:shell} missing_artifacts
       RC=$?
       if [ "$RC" -eq 0 ]; then
-        ll-issues run-record write ${captured.issue_id.output:shell} --run-dir ${context.run_dir} --writer refine-to-ready-issue || true
+        ll-issues run-record write ${captured.issue_id.output:shell} --run-dir ${context.run_dir} --writer refine-to-ready-issue --readiness-threshold ${context.readiness_threshold:shell} --outcome-threshold ${context.outcome_threshold:shell} || true
       fi
       exit $RC
     fragment: shell_exit
@@ -1257,7 +1264,7 @@ states:
       PYEOF
       RC=$?
       if [ "$RC" -eq 0 ]; then
-        ll-issues run-record write ${captured.issue_id.output:shell} --run-dir ${context.run_dir} --writer refine-to-ready-issue || true
+        ll-issues run-record write ${captured.issue_id.output:shell} --run-dir ${context.run_dir} --writer refine-to-ready-issue --readiness-threshold ${context.readiness_threshold:shell} --outcome-threshold ${context.outcome_threshold:shell} || true
       fi
       exit $RC
     fragment: shell_exit
@@ -1289,7 +1296,7 @@ states:
   write_broke_down:
     action: |
       printf '1' > ${context.run_dir}/refine-broke-down
-      ll-issues run-record write ${captured.issue_id.output:shell} --run-dir ${context.run_dir} --writer refine-to-ready-issue || true
+      ll-issues run-record write ${captured.issue_id.output:shell} --run-dir ${context.run_dir} --writer refine-to-ready-issue --readiness-threshold ${context.readiness_threshold:shell} --outcome-threshold ${context.outcome_threshold:shell} || true
     next: done
     # ENH-2825: failing to record the decomposition marker loses the signal the
     # parent loop reads — surface it instead of exiting 0.
@@ -1317,7 +1324,7 @@ states:
     # the infra verdict still reaches autodev's skip_inflight contract.
     action: |
       printf 'infra' > ${context.run_dir}/refine-terminal-class
-      ll-issues run-record write ${captured.issue_id.output:shell} --run-dir ${context.run_dir} --writer refine-to-ready-issue --legacy-class infra || true
+      ll-issues run-record write ${captured.issue_id.output:shell} --run-dir ${context.run_dir} --writer refine-to-ready-issue --legacy-class infra --evidence-refs rate_limit_exhausted || true
     action_type: shell
     next: failed
     on_error: failed

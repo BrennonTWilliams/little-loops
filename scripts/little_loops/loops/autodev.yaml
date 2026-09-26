@@ -525,6 +525,9 @@ states:
     # dead-coding the skip_inflight route above. Leaving on_no unset lets it
     # fall back to on_failure's value ("skip_inflight"), which is correct for
     # every failure mode (crash, max_iterations, timeout, signal).
+    # ENH-3607: on_failure routes through route_refine_outcome, which reads the
+    # child's run record; only RETRYABLE_ERROR:rate_limited diverts (to
+    # finalize_rate_limited), every other token still reaches skip_inflight.
     # BUG-3390: no `fragment: with_rate_limit_handling` / `on_rate_limit_exhausted`
     # here — both are inert on a `loop:` call state. The executor's 429
     # interception is gated on an action_result a sub-loop never produces (see
@@ -534,7 +537,7 @@ states:
     loop: refine-to-ready-issue
     context_passthrough: true
     on_success: count_repair_cycle_refine
-    on_failure: skip_inflight
+    on_failure: route_refine_outcome
     # ENH-2727: on_error fires when the sub-loop raised a runtime exception / was
     # signalled (a crash — no refine verdict was produced), which is an infra-class,
     # re-runnable failure by the issue's own definition ("host CLI SIGTERM'd, OOM,
@@ -547,6 +550,22 @@ states:
     # on_failure (skip_inflight), the sentinel-driven path that catches the evidenced
     # kill.
     on_error: skip_inflight_infra
+
+  route_refine_outcome:
+    # ENH-3607: failure-path router over the child's typed run record. Tokens
+    # match exactly (closed RUN_RECORD_TOKENS vocabulary). An exhausted 429 in the
+    # child's spike/decision path halts the run like autodev's own routes;
+    # everything else keeps the existing skip behavior.
+    action: >-
+      ll-issues run-record read ${captured.input.output:shell}
+      --run-dir ${context.run_dir} --writer refine-to-ready-issue --format token
+    action_type: shell
+    evaluate:
+      type: classify
+    route:
+      RETRYABLE_ERROR:rate_limited: finalize_rate_limited
+      _: skip_inflight
+      _error: skip_inflight
 
   skip_inflight:
     # ENH-1679: record the in-flight issue as skipped and clear the inflight
@@ -563,8 +582,9 @@ states:
     # 143/137/124, re-runnable) routes to skip_inflight_infra (reason
     # refine_failed_infra); a genuine quality failure is ledgered HERE as
     # refine_failed. The classification lives INSIDE the skip path so
-    # refine_current.on_failure/on_error stay `skip_inflight` and its compiled
-    # on_no fallback is preserved (BUG-2611) — no refine_current route is diverted.
+    # refine_current.on_failure reaches here via route_refine_outcome (ENH-3607;
+    # every token but RETRYABLE_ERROR:rate_limited defaults to skip_inflight) and
+    # its compiled on_no fallback is preserved (BUG-2611).
     # exit 0 (quality, already ledgered) → on_yes: dequeue_next; exit 1 (infra) →
     # on_no: skip_inflight_infra.
     action: |

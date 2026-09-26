@@ -236,6 +236,8 @@ class TestAutodevSmoke:
         topo = topology_dict(load_fsm(path))
 
         state_ids = {s["id"] for s in topo["states"]}
+        # ENH-3607 added route_refine_outcome (+1), raising it to 107 — failure-path
+        # router over the child run record.
         # ENH-2989 added check_impl_reached + mark_not_started.
         # ENH-3084 added check_learning_gate_infra + mark_gate_infra (+2), raising
         # it to 81 — learning-gate infra-failure discriminator + distinct record.
@@ -258,7 +260,7 @@ class TestAutodevSmoke:
         # check_proof_defer_or_implement (+2).
         # BUG-3603 added mark_proof_gate_infra (+1) — fail-closed infra deferral
         # for the pre-implement proof gate.
-        assert len(topo["states"]) == 106
+        assert len(topo["states"]) == 107
 
         # Every edge endpoint is a known state id, or the target of a
         # declared sub-loop (`loop:`) cross-graph edge. `from` may be null

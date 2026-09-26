@@ -6817,9 +6817,15 @@ class TestAutodevLoop:
         A sub-loop that exits via its failed terminal (e.g. diagnose → failed) should skip
         the issue, not proceed to implement_current as if refinement succeeded."""
         state = data["states"].get("refine_current", {})
-        assert state.get("on_failure") == "skip_inflight", (
-            f"refine_current.on_failure should be 'skip_inflight', got {state.get('on_failure')!r}"
+        # ENH-3607: on_failure goes via route_refine_outcome, whose default still
+        # reaches skip_inflight (only RETRYABLE_ERROR:rate_limited diverts).
+        assert state.get("on_failure") == "route_refine_outcome", (
+            f"refine_current.on_failure should be 'route_refine_outcome', "
+            f"got {state.get('on_failure')!r}"
         )
+        route = data["states"]["route_refine_outcome"]["route"]
+        assert route["_"] == "skip_inflight"
+        assert route["_error"] == "skip_inflight"
 
     def test_refine_current_error_routes_to_skip_inflight_infra(self, data: dict) -> None:
         """refine_current.on_error must route to skip_inflight_infra (ENH-2727).
@@ -6855,8 +6861,8 @@ class TestAutodevLoop:
         from little_loops.fsm.schema import StateConfig
 
         state = StateConfig.from_dict(data["states"]["refine_current"])
-        assert state.on_no == "skip_inflight", (
-            f"refine_current's compiled on_no should resolve to 'skip_inflight' "
+        assert state.on_no == "route_refine_outcome", (
+            f"refine_current's compiled on_no should resolve to 'route_refine_outcome' "
             f"(via the on_failure fallback), got {state.on_no!r} — a crashed "
             f"refine-to-ready-issue sub-loop would silently skip the ledger write"
         )

@@ -2433,6 +2433,26 @@ ll-issues run-record write BUG-42 --run-dir "$RUN_DIR" --writer refine-to-ready-
 ```
 
 Exit 0 once written, 2 when the issue cannot be resolved (nothing is written).
+
+**`run-record read <ID> --run-dir DIR --writer W --format token`** resolves `<ID>` to the
+issue's canonical frontmatter `id` (so `3607`, `ENH-3607` and `P3-ENH-3607` address the
+same record) and prints exactly one token; exit code is always 0. FSM `route:` tables
+match tokens exactly, so the vocabulary is closed:
+
+| Token | When |
+|---|---|
+| `READY` | outcome `ready` |
+| `BLOCKED` | outcome `blocked` with no terminal class (done with thresholds unmet) |
+| `BLOCKED:decision_unresolved` / `BLOCKED:proposal_unsound` / `BLOCKED:quality` | outcome `blocked` with that class |
+| `DEFERRED:spike_inconclusive` / `DEFERRED:gate_unmet` | outcome `deferred` with that class |
+| `RETRYABLE_ERROR:rate_limited` | `retryable_error` whose `evidence_refs` contains `rate_limit_exhausted` |
+| `RETRYABLE_ERROR:infra` | any other `retryable_error` |
+| `DECOMPOSED` / `CANCELLED` | those outcomes (never suffixed) |
+| `MISSING` | no record, unparsable, writer/ID mismatch, or unresolvable ID |
+
+**`run-record clear <ID> --run-dir DIR --writer W`** deletes that record (exit 0 whether or
+not it existed).
+
 Read the record back from Python with `little_loops.run_record.read_run_record`,
 which returns `None` for a missing, malformed, or writer/issue-mismatched file —
 a stale record reads as absent, never as this run's verdict. The per-writer,

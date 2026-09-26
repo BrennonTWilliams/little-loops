@@ -3,10 +3,11 @@ id: ENH-3607
 type: ENH
 title: Add run-record read path and child spike rate-limit handling for autodev routing
 priority: P3
-status: open
+status: done
 discovered_by: issue-size-review
 discovered_date: '2026-09-26'
 captured_at: '2026-09-26T03:19:50Z'
+completed_at: '2026-09-26T04:02:40Z'
 decision_needed: false
 blocks:
 - ENH-3609
@@ -188,23 +189,23 @@ wiring/test/doc inventories; the items below are this child's share.
 
 ## Acceptance Criteria
 
-- [ ] `ll-issues run-record read --format token` prints only tokens in `RUN_RECORD_TOKENS`;
+- [x] `ll-issues run-record read --format token` prints only tokens in `RUN_RECORD_TOKENS`;
   a missing, unparsable or writer/ID-mismatched record, or an unresolvable ID, prints
   `MISSING`, never `READY` (unit tests)
-- [ ] A record written for an issue reads back as the same token whether the ID is passed as
+- [x] A record written for an issue reads back as the same token whether the ID is passed as
   `NNNN`, `TYPE-NNNN` or `PN-TYPE-NNNN`; `run-record clear` removes it for any of those forms
-- [ ] The child's four no-class writes pass `--readiness-threshold` / `--outcome-threshold`
+- [x] The child's four no-class writes pass `--readiness-threshold` / `--outcome-threshold`
   from context (structural test)
-- [ ] The child's `run_spike` has `with_rate_limit_handling`,
+- [x] The child's `run_spike` has `with_rate_limit_handling`,
   `rate_limit_max_wait_seconds: 14400` and `on_rate_limit_exhausted: mark_rate_limit_infra`
   (real-FSM test: a rate-limited spike still waits rather than failing)
-- [ ] `mark_rate_limit_infra`'s record carries `rate_limit_exhausted` in `evidence_refs`
+- [x] `mark_rate_limit_infra`'s record carries `rate_limit_exhausted` in `evidence_refs`
   and still has `legacy_class: infra` / `outcome: retryable_error`
-- [ ] Autodev routes `RETRYABLE_ERROR:rate_limited` from `refine_current.on_failure` to
+- [x] Autodev routes `RETRYABLE_ERROR:rate_limited` from `refine_current.on_failure` to
   `finalize_rate_limited`; every other failure still reaches `skip_inflight` (real-FSM test
   plus structural test)
-- [ ] `refine_current` has no explicit `on_no`; `on_success` and `on_error` are unchanged
-- [ ] No autodev spike/decision state or marker is removed; the full suite passes
+- [x] `refine_current` has no explicit `on_no`; `on_success` and `on_error` are unchanged
+- [x] No autodev spike/decision state or marker is removed; the full suite passes
 
 ## Impact
 
@@ -242,5 +243,7 @@ wiring/test/doc inventories; the items below are this child's share.
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-26T04:02:40 - `7477e084-144a-45d1-9680-cbb2f4f5695b.jsonl`
+- `/ll:ready-issue` - 2026-09-26T03:53:14 - `88a21d66-e8e3-482c-8cdf-08175c7549aa.jsonl`
 - `/ll:confidence-check` - 2026-09-26T03:31:35 - `dc688663-27b9-419d-a204-432e1862504f.jsonl`
 - `/ll:verify-issues` - 2026-09-26T03:26:54 - `0645a9c4-2e38-4d02-9b76-47ae90b8a2ea.jsonl`

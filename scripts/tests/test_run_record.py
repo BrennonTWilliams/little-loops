@@ -523,8 +523,11 @@ class TestLoopCallSites:
 
     def test_resolve_issue_deletes_writer_record_on_entry(self, loop_states: dict) -> None:
         action = loop_states["resolve_issue"]["action"]
-        assert "rm -f" in action
-        assert "run-records/refine-to-ready-issue/$${ID}.json" in action
+        # ENH-3607: canonical-ID clear replaces the raw-ID rm -f.
+        assert (
+            'run-record clear "$${ID}" --run-dir ${context.run_dir} --writer refine-to-ready-issue'
+        ) in action
+        assert "run-records/refine-to-ready-issue/$${ID}.json" not in action
         # BUG-3593 pin: the spike-runs counter must stay untouched.
         assert "spike" not in action
         # The deletion must key on the ID this run resolved, computed in-shell.
@@ -699,3 +702,172 @@ class TestMirror:
         finalize_at = text.index("Finalize")
         write_at = text.index("run-record write")
         assert write_at > finalize_at
+
+
+# ---------------------------------------------------------------------------
+# ENH-3607: read/clear path, token vocabulary, threshold pass-through
+# ---------------------------------------------------------------------------
+
+NO_CLASS_WRITE_STATES = (
+    "check_outcome",
+    "check_missing_artifacts",
+    "check_scores_from_file",
+    "write_broke_down",
+)
+
+
+def _run_sub(project: Path, sub: str, *args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        [*_cli(), "run-record", sub, *args],
+        cwd=str(project),
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+
+
+def _rec(**kw):
+    rr = _record_mod()
+    base = {"writer": "refine-to-ready-issue", "issue_id": ID, "outcome": "ready"}
+    base.update(kw)
+    return rr.RunRecord(**base)
+
+
+class TestRecordToken:
+    @pytest.mark.parametrize(
+        "kw,token",
+        [
+            ({"outcome": "ready"}, "READY"),
+            ({"outcome": "blocked"}, "BLOCKED"),
+            (
+                {"outcome": "blocked", "legacy_class": "decision_unresolved"},
+                "BLOCKED:decision_unresolved",
+            ),
+            (
+                {"outcome": "blocked", "legacy_class": "proposal_unsound"},
+                "BLOCKED:proposal_unsound",
+            ),
+            ({"outcome": "blocked", "legacy_class": "quality"}, "BLOCKED:quality"),
+            (
+                {"outcome": "deferred", "legacy_class": "spike_inconclusive"},
+                "DEFERRED:spike_inconclusive",
+            ),
+            ({"outcome": "deferred", "legacy_class": "gate_unmet"}, "DEFERRED:gate_unmet"),
+            (
+                {
+                    "outcome": "retryable_error",
+                    "legacy_class": "infra",
+                    "evidence_refs": ("rate_limit_exhausted",),
+                },
+                "RETRYABLE_ERROR:rate_limited",
+            ),
+            ({"outcome": "retryable_error", "legacy_class": "infra"}, "RETRYABLE_ERROR:infra"),
+            ({"outcome": "decomposed", "legacy_class": "quality"}, "DECOMPOSED"),
+            ({"outcome": "cancelled", "legacy_class": "quality"}, "CANCELLED"),
+        ],
+    )
+    def test_mapping(self, kw: dict, token: str) -> None:
+        rr = _record_mod()
+        assert rr.record_token(_rec(**kw)) == token
+        assert token in rr.RUN_RECORD_TOKENS
+
+    def test_none_is_missing_and_vocabulary_is_covered(self) -> None:
+        rr = _record_mod()
+        assert rr.record_token(None) == "MISSING"
+        assert len(rr.RUN_RECORD_TOKENS) == 12
+        assert len(set(rr.RUN_RECORD_TOKENS)) == 12
+
+    def test_unknown_class_never_reads_ready(self) -> None:
+        rr = _record_mod()
+        assert rr.record_token(_rec(outcome="blocked", legacy_class="bogus")) == "MISSING"
+
+
+class TestRunRecordReadClear:
+    def test_missing_cases(self, project: Path, tmp_path: Path) -> None:
+        _write_issue(project, ID)
+        base = ("--run-dir", str(tmp_path), "--writer", "refine-to-ready-issue")
+        r = _run_sub(project, "read", ID, *base)
+        assert r.returncode == 0 and r.stdout.strip() == "MISSING"
+        r = _run_sub(project, "read", "ENH-9999999", *base)  # unresolvable
+        assert r.returncode == 0 and r.stdout.strip() == "MISSING"
+        d = tmp_path / "run-records" / "refine-to-ready-issue"
+        d.mkdir(parents=True)
+        (d / f"{ID}.json").write_text("{not json")
+        assert _run_sub(project, "read", ID, *base).stdout.strip() == "MISSING"
+        # writer mismatch and ID mismatch inside the file
+        (d / f"{ID}.json").write_text(json.dumps(_rec(writer="prepare-issue").to_dict()))
+        assert _run_sub(project, "read", ID, *base).stdout.strip() == "MISSING"
+        (d / f"{ID}.json").write_text(json.dumps(_rec(issue_id="ENH-1").to_dict()))
+        assert _run_sub(project, "read", ID, *base).stdout.strip() == "MISSING"
+
+    def test_reads_back_via_any_id_form_and_clear(self, project: Path, tmp_path: Path) -> None:
+        _write_issue(project, ID, frontmatter="confidence_score: 90\noutcome_confidence: 70\n")
+        base = ("--run-dir", str(tmp_path), "--writer", "refine-to-ready-issue")
+        num = re.search(r"\d+", ID).group(0)
+        assert _write_run(project, num, *base).returncode == 0
+        for form in (num, ID, f"P3-{ID}"):
+            r = _run_sub(project, "read", form, *base, "--format", "token")
+            assert r.returncode == 0 and r.stdout.strip() == "READY", form
+        record = tmp_path / "run-records" / "refine-to-ready-issue" / f"{ID}.json"
+        assert record.exists()
+        assert _run_sub(project, "clear", num, *base).returncode == 0
+        assert not record.exists()
+        assert _run_sub(project, "clear", num, *base).returncode == 0  # absent -> still 0
+
+    def test_rate_limited_record_reads_rate_limited(self, project: Path, tmp_path: Path) -> None:
+        _write_issue(project, ID)
+        base = ("--run-dir", str(tmp_path), "--writer", "refine-to-ready-issue")
+        assert (
+            _write_run(
+                project,
+                ID,
+                *base,
+                "--legacy-class",
+                "infra",
+                "--evidence-refs",
+                "rate_limit_exhausted",
+            ).returncode
+            == 0
+        )
+        assert _run_sub(project, "read", ID, *base).stdout.strip() == "RETRYABLE_ERROR:rate_limited"
+
+
+class TestEnh3607LoopWiring:
+    @pytest.mark.parametrize("state", NO_CLASS_WRITE_STATES)
+    def test_no_class_writes_pass_thresholds(self, loop_states: dict, state: str) -> None:
+        action = loop_states[state]["action"]
+        assert "--readiness-threshold ${context.readiness_threshold:shell}" in action, state
+        assert "--outcome-threshold ${context.outcome_threshold:shell}" in action, state
+
+    def test_run_spike_waits_out_rate_limits(self, loop_states: dict) -> None:
+        st = loop_states["run_spike"]
+        assert st["fragment"] == "with_rate_limit_handling"
+        assert st["rate_limit_max_wait_seconds"] == 14400
+        assert st["on_rate_limit_exhausted"] == "mark_rate_limit_infra"
+
+    def test_mark_rate_limit_infra_records_evidence(self, loop_states: dict) -> None:
+        action = loop_states["mark_rate_limit_infra"]["action"]
+        assert "--legacy-class infra" in action
+        assert "--evidence-refs rate_limit_exhausted" in action
+
+    def test_mark_rate_limit_infra_record_reads_rate_limited(
+        self, project: Path, tmp_path: Path, loop_states: dict
+    ) -> None:
+        _write_issue(project, ID)
+        r = _run_state(project, loop_states, "mark_rate_limit_infra", tmp_path, ID)
+        assert r.returncode == 0, r.stderr
+        out = _run_sub(
+            project, "read", ID, "--run-dir", str(tmp_path), "--writer", "refine-to-ready-issue"
+        )
+        assert out.stdout.strip() == "RETRYABLE_ERROR:rate_limited"
+
+    def test_autodev_routes_only_rate_limited_to_finalize(self) -> None:
+        autodev = yaml.safe_load((LOOP.parent / "autodev.yaml").read_text())["states"]
+        assert autodev["refine_current"]["on_failure"] == "route_refine_outcome"
+        assert "on_no" not in autodev["refine_current"]
+        st = autodev["route_refine_outcome"]
+        assert st["evaluate"]["type"] == "classify"
+        assert st["route"]["RETRYABLE_ERROR:rate_limited"] == "finalize_rate_limited"
+        assert st["route"]["_"] == "skip_inflight"
+        assert st["route"]["_error"] == "skip_inflight"
+        assert "run-record read ${captured.input.output:shell}" in st["action"]

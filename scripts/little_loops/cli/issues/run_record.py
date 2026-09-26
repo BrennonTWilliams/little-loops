@@ -35,7 +35,7 @@ def add_run_record_parser(subs: argparse._SubParsersAction) -> argparse.Argument
 
     p = subs.add_parser(
         "run-record",
-        help="Write the typed per-issue preparation run record (ENH-3597)",
+        help="Write/read/clear the typed per-issue preparation run record (ENH-3597)",
     )
     p.set_defaults(command="run-record")
     subsubs = p.add_subparsers(dest="run_record_command", required=True)
@@ -89,6 +89,30 @@ def add_run_record_parser(subs: argparse._SubParsersAction) -> argparse.Argument
         help="Explicit outcome threshold beating config (as check-readiness)",
     )
     add_config_arg(w)
+
+    r = subsubs.add_parser(
+        "read",
+        help="Print the routing token for one issue's run record",
+    )
+    r.add_argument("issue_id", help="Issue ID (e.g., 3597, ENH-3597, P3-ENH-3597)")
+    r.add_argument("--run-dir", required=True, help="The run's run_dir")
+    r.add_argument("--writer", required=True, choices=WRITERS, help="Which loop wrote the record")
+    r.add_argument(
+        "--format",
+        default="token",
+        choices=("token",),
+        help="Output format (only 'token': one RUN_RECORD_TOKENS member)",
+    )
+    add_config_arg(r)
+
+    c = subsubs.add_parser(
+        "clear",
+        help="Delete one issue's run record (exit 0 whether or not it existed)",
+    )
+    c.add_argument("issue_id", help="Issue ID (e.g., 3597, ENH-3597, P3-ENH-3597)")
+    c.add_argument("--run-dir", required=True, help="The run's run_dir")
+    c.add_argument("--writer", required=True, choices=WRITERS, help="Which loop wrote the record")
+    add_config_arg(c)
     return p
 
 
@@ -146,10 +170,55 @@ def _read_broke_down(run_dir: str) -> bool:
 
 def cmd_run_record(config: BRConfig, args: argparse.Namespace) -> int:
     """Dispatch a ``run-record`` sub-subcommand."""
-    if getattr(args, "run_record_command", None) == "write":
+    command = getattr(args, "run_record_command", None)
+    if command == "write":
         return cmd_run_record_write(config, args)
-    print("Error: run-record requires a subcommand (write).", file=sys.stderr)
+    if command == "read":
+        return cmd_run_record_read(config, args)
+    if command == "clear":
+        return cmd_run_record_clear(config, args)
+    print("Error: run-record requires a subcommand (write, read, clear).", file=sys.stderr)
     return 2
+
+
+def canonical_record_id(config: BRConfig, issue_id: str) -> str:
+    """Return the id a record is keyed on: the frontmatter ``id``, else *issue_id*.
+
+    Shared by write, read and clear so ``3607`` / ``ENH-3607`` / ``P3-ENH-3607``
+    all address the same record file.
+    """
+    from little_loops.cli.issues.show import _resolve_issue_id
+    from little_loops.frontmatter import parse_frontmatter
+
+    path = _resolve_issue_id(config, issue_id)
+    if path is None:
+        return issue_id
+    try:
+        fm = parse_frontmatter(path.read_text(), coerce_types=True)
+    except OSError:
+        return issue_id
+    return str(fm.get("id") or issue_id)
+
+
+def cmd_run_record_read(config: BRConfig, args: argparse.Namespace) -> int:
+    """Print the record's routing token (``MISSING`` when absent); always returns 0."""
+    from little_loops.run_record import read_run_record, record_token
+
+    record = read_run_record(
+        Path(args.run_dir), args.writer, canonical_record_id(config, args.issue_id)
+    )
+    print(record_token(record))
+    return 0
+
+
+def cmd_run_record_clear(config: BRConfig, args: argparse.Namespace) -> int:
+    """Delete the canonical record file; returns 0 whether or not it existed."""
+    from little_loops.run_record import record_path
+
+    record_path(Path(args.run_dir), args.writer, canonical_record_id(config, args.issue_id)).unlink(
+        missing_ok=True
+    )
+    return 0
 
 
 def cmd_run_record_write(config: BRConfig, args: argparse.Namespace) -> int:
@@ -174,7 +243,7 @@ def cmd_run_record_write(config: BRConfig, args: argparse.Namespace) -> int:
         return 2
 
     fm = parse_frontmatter(path.read_text(), coerce_types=True)
-    canonical_id = str(fm.get("id") or args.issue_id)
+    canonical_id = canonical_record_id(config, args.issue_id)
     status = str(fm.get("status") or "") or None
 
     rs = readiness_status(

@@ -137,6 +137,54 @@ def read_run_record(run_dir: Path, writer: str, issue_id: str) -> RunRecord | No
         return None
 
 
+#: Closed routing-token vocabulary emitted by ``ll-issues run-record read``.
+#: FSM ``route:`` tables match exactly (no prefix/glob), so consumers enumerate it.
+RUN_RECORD_TOKENS: tuple[str, ...] = (
+    "READY",
+    "BLOCKED",
+    "BLOCKED:decision_unresolved",
+    "BLOCKED:proposal_unsound",
+    "BLOCKED:quality",
+    "DEFERRED:spike_inconclusive",
+    "DEFERRED:gate_unmet",
+    "RETRYABLE_ERROR:rate_limited",
+    "RETRYABLE_ERROR:infra",
+    "DECOMPOSED",
+    "CANCELLED",
+    "MISSING",
+)
+
+#: ``evidence_refs`` entry marking a child run that ended on an exhausted rate limit.
+RATE_LIMIT_EXHAUSTED_REF = "rate_limit_exhausted"
+
+
+def record_token(record: RunRecord | None) -> str:
+    """Map a record (or ``None``) to its member of :data:`RUN_RECORD_TOKENS`.
+
+    Anything unrecognised reads as ``MISSING`` — never ``READY``.
+    """
+    if record is None:
+        return "MISSING"
+    outcome = record.outcome
+    if outcome == "ready":
+        return "READY"
+    if outcome == "decomposed":
+        return "DECOMPOSED"
+    if outcome == "cancelled":
+        return "CANCELLED"
+    if outcome == "retryable_error":
+        if RATE_LIMIT_EXHAUSTED_REF in record.evidence_refs:
+            return "RETRYABLE_ERROR:rate_limited"
+        return "RETRYABLE_ERROR:infra"
+    if outcome in ("blocked", "deferred"):
+        if record.legacy_class is None:
+            token = outcome.upper()
+        else:
+            token = f"{outcome.upper()}:{record.legacy_class}"
+        return token if token in RUN_RECORD_TOKENS else "MISSING"
+    return "MISSING"
+
+
 def outcome_from_legacy_class(
     legacy_class: str | None,
     broke_down: bool,

@@ -186,7 +186,7 @@ Sub-commands:
   clear-verify-verdict       Remove the persisted verify_verdict (run before verify-issues --check)
   rearm-spike                Re-arm a refuted spike (drop spike_attempted/spike_refuted)
   arm-proposal-revision      Mark the selected option refuted + decision_needed (exit 1: no alternative)
-  run-record        Write the typed per-issue preparation run record (ENH-3597)
+  run-record        Write/read/clear the typed per-issue preparation run record (ENH-3597)
 
 Examples:
   %(prog)s next-id
