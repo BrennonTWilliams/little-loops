@@ -3,7 +3,7 @@ id: ENH-3599
 type: ENH
 title: Move spike and decision repair routing from autodev into refine-to-ready-issue
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-25'
 captured_at: '2026-09-25T18:51:50Z'
@@ -12,7 +12,7 @@ blocked_by:
 - FEAT-3598
 - BUG-3603
 blocks:
-- ENH-3601
+- ENH-3605
 - ENH-3600
 parent: EPIC-3565
 reconcile_attempted: true
@@ -25,6 +25,7 @@ score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 10
 missing_artifacts: true
+completed_at: '2026-09-26T03:21:35Z'
 ---
 
 # ENH-3599: Move spike and decision repair routing from autodev into refine-to-ready-issue
@@ -54,14 +55,12 @@ the markers `autodev-decide-ran`, `autodev-spike-inconclusive.txt`,
 
 _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 
-- The eight named states are duplicates in name only. Autodev's copies differ from the child's in ways the removal must account for: autodev reads the ID from `captured.input.output`, the child from `captured.issue_id.output`; autodev's `run_spike` (`autodev.yaml:1662`) carries `with_rate_limit_handling`, `rate_limit_max_wait_seconds: 14400`, `on_rate_limit_exhausted: finalize_rate_limited` and a `count_repair_cycle_spike` successor (FEAT-2751 stagnation counter), none of which the child's `run_spike` (`refine-to-ready-issue.yaml:1031`) has.
-- Both proof-gate states in autodev fail open today: `check_proof_gate_before_implement` (`autodev.yaml:690`) and `check_proof_defer_or_implement` (`autodev.yaml:730`) both set `on_error: implement_current`, and both map unrecognised `ll-issues check-gate` output to `PROOF_CLEAR`. That is BUG-3603, still open; the "fail-closed" route this issue depends on does not exist yet.
-- `spike-runs-<ID>` is written by both loops today: the child increments it in `check_spike_needed` (`refine-to-ready-issue.yaml:1018`), autodev in `check_spike_needed` (`autodev.yaml:1643`), `check_spike_needed_before_skip` (`:1987`), `check_proof_gate_before_implement` (`:703`) and `dispatch_pre_deferral_remedy` (`:2943`). Removing autodev's writers leaves the child as the sole writer, so carry-over across re-entries holds only if `resolve_issue` in the child keeps not touching it (BUG-3593 comment at `:1012`).
-- `RunRecord`, `read_run_record` and `write_run_record` do not exist in `scripts/little_loops` yet (ENH-3597 is open); no code in this issue can be verified against them until that lands.
+- The eight named states are duplicates in name only. Autodev's copies differ from the child's in ways the removal must account for: autodev reads the ID from `captured.input.output`, the child from `captured.issue_id.output`; autodev's `run_spike` carries `with_rate_limit_handling`, `rate_limit_max_wait_seconds: 14400`, `on_rate_limit_exhausted: finalize_rate_limited` and a `count_repair_cycle_spike` successor (FEAT-2751 stagnation counter), none of which the child's `run_spike` has. (Line anchors: see the 2026-09-26 list below.)
+- `spike-runs-<ID>` is written by both loops today: the child increments it in `check_spike_needed`; autodev in `check_spike_needed`, `check_spike_needed_before_skip`, `check_proof_gate_before_implement` and `dispatch_pre_deferral_remedy`. Removing autodev's writers leaves the child as the sole writer, so carry-over across re-entries holds only if `resolve_issue` in the child keeps not touching it (BUG-3593).
 
 _Added by `/ll:refine-issue` — 2026-09-26 — based on codebase analysis:_
 
-- The blockers have landed, so the "does not exist yet" claims above are stale. ENH-3597, FEAT-3598 and BUG-3603 are all `status: done`. `scripts/little_loops/run_record.py` defines `RunRecord`, `write_run_record` and `read_run_record`. `scripts/little_loops/cli/issues/next_obligation.py` provides `ll-issues next-obligation`. The fail-closed proof gate is in `autodev.yaml`.
+- The blockers have landed. ENH-3597, FEAT-3598 and BUG-3603 are all `status: done`. `scripts/little_loops/run_record.py` defines `RunRecord`, `write_run_record` and `read_run_record`. `scripts/little_loops/cli/issues/next_obligation.py` provides `ll-issues next-obligation`. The fail-closed proof gate is in `autodev.yaml`.
 - Proof gate today: `check_proof_gate_before_implement` (`autodev.yaml:691`) sets `on_error: mark_proof_gate_infra` and emits `PROOF_INFRA` on unrecognised output. `check_proof_defer_or_implement` (`:744`) is the only predecessor of `implement_current` (route `PROOF_CLEAR`, `:769`). The earlier finding that both states fail open into `implement_current` no longer holds.
 - Autodev reads no run record. `refine_current` (`:511`) still routes `on_success: count_repair_cycle_refine` → `copy_broke_down` → `check_decision_after_refine` (`:657`) → `check_passed` (`:667`, `ll-issues check-readiness ... --honor-waiver`). `on_failure` goes to `skip_inflight` (`:551`), which greps three child-written markers.
 - The child writes a run record at every terminal: `record_proposal_unsound`, `record_gate_unmet`, `write_broke_down`, `mark_rate_limit_infra`, `mark_evidence_absent_infra`, `mark_spike_no_verdict_infra`, `record_spike_inconclusive`, `record_decision_unresolved` and `classify_terminal` (`refine-to-ready-issue.yaml:1575`). Every write is `|| true`.
@@ -76,14 +75,88 @@ autodev re-enters the child rather than running its own route.
 
 ## Proposed Solution
 
-- Route `refine_current` success by `RunRecord.outcome` instead of `check_passed` for the
-  decision/proof dimensions.
+- Route `refine_current` by `RunRecord.outcome` (on **both** `on_success` and
+  `on_failure`) instead of by the decision/proof triage states. `check_passed` stays as the
+  deterministic readiness threshold on the `ready` path.
 - Remove the dequeue-time decision resolution (BUG-3569 already routes it through the
-  refine pipeline) and the post-refine decision/spike states listed above.
+  refine pipeline) and the post-refine decision/spike states listed above, plus
+  `triage_outcome_failure` (both of its branches target removed states) and
+  `recheck_after_decide` (its only predecessor, `check_scores_present_decide`, is removed).
 - Remove the `decide`/`spike` rescoring triplets; the child's `confidence_check` owns
-  rescoring (BUG-3588 freshness rules must carry over).
+  rescoring (see *Score freshness* below).
 - Stop autodev from reading or writing the listed marker files. Ledger rows
   (`autodev-skipped.txt` etc.) are written from the run record.
+- Adopt the selector (`ll-issues next-obligation`) in autodev for the "does this issue
+  still need a decision or spike?" question that the removed states answered with phrase
+  scans (ENH-3604 leaves autodev adoption to this issue).
+
+### Run-record read path (decided)
+
+Add `ll-issues run-record read <ID> --run-dir <dir> --writer refine-to-ready-issue
+--format token`. It calls `read_run_record` and prints one token for an FSM `route:` table,
+matching the `next-obligation --format token` shape:
+
+- `<OUTCOME>` or `<OUTCOME>:<legacy_class>` — outcome upper-cased (`READY`,
+  `DECOMPOSED`, `CANCELLED`, `BLOCKED`, `DEFERRED`, `RETRYABLE_ERROR`)
+- `RETRYABLE_ERROR:rate_limited` when the record's `evidence_refs` contains
+  `rate_limit_exhausted` (see *Rate-limit exhaustion*)
+- `MISSING` when `read_run_record` returns `None` (no file, bad JSON, writer/ID mismatch)
+
+A shell JSON read was rejected: it would duplicate `read_run_record`'s writer/ID
+validation inside YAML.
+
+### Outcome routing table
+
+New autodev state `route_refine_outcome` (shell, `evaluate: classify`, `route:`) runs the
+read path. `copy_broke_down` (success path) and `refine_current.on_failure` both enter it;
+`refine_current.on_error` stays `skip_inflight_infra`.
+
+| Token | Route |
+|---|---|
+| `READY` | `check_passed` → `on_yes: check_proof_defer_or_implement` |
+| `DECOMPOSED` | `detect_children` |
+| `CANCELLED` | `dequeue_next` |
+| `BLOCKED:*` / `DEFERRED:*` | `ledger_child_stop` (appends the ledger row from the record's `legacy_class`) → `dequeue_next` |
+| `RETRYABLE_ERROR:rate_limited` | `finalize_rate_limited` |
+| `RETRYABLE_ERROR:*` | `skip_inflight_infra` |
+| `MISSING` / `_` / `_error` | `skip_inflight` (keeps its existing evidenced exit-143 / inflight-sentinel handling; with no record, its marker greps find nothing and it lands on `skip_inflight_infra`) |
+
+`check_passed.on_no` / `on_cannot_judge` (formerly `triage_outcome_failure`) go to
+`select_obligation` (below). `ledger_child_stop` replaces the double-count guard that
+`skip_inflight`'s three marker greps provided.
+
+### Selector state for second-pass decision/spike needs
+
+New autodev state `select_obligation` runs `ll-issues next-obligation <ID> --format token`
+and routes: `DECISION*` / `PROOF*` → `refine_current` (re-enter the child, which owns the
+decision and spike routes); anything else → the edge the removed state took on its
+"not needed" branch. The selector is stateless and does not spend `spike-runs-<ID>`; the
+child's `check_spike_budget` still enforces the budget on re-entry.
+
+### Edge retarget table
+
+Every surviving edge into a removed state, and its new target:
+
+| Surviving state | Edge | Removed target | New target |
+|---|---|---|---|
+| `check_status_at_dequeue` | `on_no`, `on_error` | `check_decision_at_dequeue` | `check_blockers_at_dequeue` |
+| `copy_broke_down` | `next`, `on_error` | `check_decision_after_refine` | `route_refine_outcome` |
+| `check_passed` | `on_yes` | `check_proof_gate_before_implement` | `check_proof_defer_or_implement` |
+| `check_passed` | `on_no`, `on_cannot_judge` | `triage_outcome_failure` (removed) | `select_obligation` (not-needed branch → `check_missing_artifacts`) |
+| `recheck_scores` | `on_yes` | `decide_current` | `select_obligation` (not-needed branch → `check_proof_defer_or_implement`) |
+| `recheck_scores` | `on_no`, `on_cannot_judge`, `on_error` | `check_decision_before_size_review` | `run_size_review` |
+| `recheck_after_size_review` | `on_yes` | `decide_current` | `select_obligation` |
+| `regate_after_atomic_remediation` | `on_yes` | `decide_current` | `select_obligation` |
+| `reopen_waived` | `next` | `decide_current` | `select_obligation` |
+| `check_parent_resolved_post_size_review` | `on_no`, `on_error` | `check_spike_needed_before_skip` | `select_obligation` (not-needed branch → `check_reconcile_needed`) |
+| `dispatch_pre_deferral_remedy` | `on_yes` | `run_spike` | `refine_current` |
+
+`select_obligation` has one not-needed successor, so rows that need a different
+not-needed successor get their own selector state (e.g. `select_obligation_post_refine`,
+`select_obligation_pre_implement`, `select_obligation_post_size_review`); pick the names at
+implementation time and list them in the topology history comment. The size-review,
+atomic and pre-deferral states themselves stay until ENH-3606; only their edges into
+removed states change here.
 
 ### Replacement edge into `implement_current`
 
@@ -92,13 +165,51 @@ autodev re-enters the child rather than running its own route.
 implementation that skips the proof gate, which breaks EPIC-3565's AC. The route after
 this change must be:
 
-`refine_current` → read the `RunRecord` → `outcome == ready` →
+`refine_current` → `route_refine_outcome` (`READY`) → `check_passed` →
 `check_proof_defer_or_implement` (fail-closed per BUG-3603) → `implement_current`
 
-The proof gate stays as a cheap deterministic assertion before implementation, even
-though the child now owns spike routing. BUG-3603's structural invariant test (no
-`on_error` edge into `implement_current`; every predecessor is a proof-gate state) must
-keep passing.
+`check_proof_defer_or_implement` becomes the **only** proof stage in autodev. There is no
+surviving first-stage proof classification: the "proof unmet → run a spike" decision that
+`check_proof_gate_before_implement` made now lives in the child (`check_spike_needed`),
+and on the autodev side in `select_obligation` (`PROOF*` → re-enter the child).
+`check_proof_defer_or_implement`'s unmet-proof branch still defers, fail-closed.
+BUG-3603's structural invariant test (no `on_error` edge into `implement_current`; every
+predecessor is a proof-gate state) must keep passing.
+
+### Rate-limit exhaustion
+
+Today autodev's `run_spike`, `rerun_confidence_after_{decide,spike}` and
+`check_decide_rate_limited` send exhausted rate limits to `finalize_rate_limited`, which
+halts the whole run. The child's equivalent ends at `mark_rate_limit_infra → failed` with
+`legacy_class: infra`, indistinguishable from `mark_evidence_absent_infra` and
+`mark_spike_no_verdict_infra`. Without a change, autodev would skip the issue and hand the
+next one straight into the same rate limit.
+
+- The child's `run_spike` gains `fragment: with_rate_limit_handling`,
+  `rate_limit_max_wait_seconds: 14400` and `on_rate_limit_exhausted: mark_rate_limit_infra`.
+- `mark_rate_limit_infra` adds `--evidence-refs rate_limit_exhausted` to its
+  `run-record write` (keeps `legacy_class: infra`, so `outcome_from_legacy_class` is
+  unchanged).
+- The read path emits `RETRYABLE_ERROR:rate_limited` for it, and autodev routes that to
+  `finalize_rate_limited`.
+
+### Repair-cycle stagnation
+
+Deleting autodev's `run_spike` deletes `count_repair_cycle_spike` (FEAT-2751). Spike
+stagnation is instead bounded by re-entry: every re-entry into the child passes
+`refine_current → count_repair_cycle_refine`, so repeated `PROOF`/`DECISION` re-entries
+count against the same stagnation budget. No new counter.
+
+### Score freshness (BUG-3588)
+
+The child does not use `clear_scores_before_*` / `check_scores_present_*`. Its
+post-spike rescoring is `route_spike_verdict` (`PROVEN`) → `confidence_check`
+(`loop: oracles/verify-confidence-scores`), which fails into `mark_evidence_absent_infra`
+when scores are not produced. That is the child-side freshness guard. In
+`test_autodev_scores_freshness.py`, the `decide` and `spike` entries of `PATHS` and the
+`mark_decide_ran` / `route_spike_verdict` assertions in
+`test_repair_predecessors_target_clear_states` are rewritten to assert the child route
+above; the `wire`, `atomic` and `reconcile` cases stay unchanged.
 
 ### Markers the child writes and other loops read
 
@@ -113,6 +224,13 @@ The child itself writes `autodev-decide-ran`, `autodev-decision-unresolved.txt`,
 This issue removes only **autodev's** reads and writes. The child keeps writing these
 files until ENH-3600 migrates `auto-refine-and-implement` to run records.
 
+`finalize_done` stops reading `autodev-decision-unresolved.txt` and
+`autodev-spike-inconclusive.txt` and counts those stops from the rows `ledger_child_stop`
+writes. The row format must not make `auto-refine-and-implement`'s `finalize` count a
+single decision-unresolved stop twice (it counts `autodev-skipped.txt` at `:1099` **and**
+`autodev-decision-unresolved.txt` at `:1112`); either write the row to a ledger file that
+loop does not count, or tag it so its skipped count excludes it.
+
 ### Spike budget across re-entries
 
 `spike-runs-<ID>` lives in the shared `run_dir`, and both loops count against it
@@ -124,7 +242,9 @@ must not be reset. Otherwise every re-entry grants a fresh spike budget.
 ### Files to Modify
 - `scripts/little_loops/loops/autodev.yaml`
 - `scripts/little_loops/loops/refine-to-ready-issue.yaml` — the child's `run_spike` lacks autodev's `with_rate_limit_handling` / `rate_limit_max_wait_seconds: 14400` / `on_rate_limit_exhausted` behavior, so the child must gain it before autodev's copy is deleted (finding: autodev's `run_spike` invariant)
-- `scripts/little_loops/cli/issues/run_record.py` (or a shell JSON read in `autodev.yaml`) — add the run-record read path autodev routes on; only a `write` subcommand exists today, and a missing/mismatched record must route as infra/legacy, never as `ready` (finding: `read_run_record` returns `None`)
+- `scripts/little_loops/cli/issues/run_record.py` — add the `read` subcommand (`cmd_run_record_read`, `--format token`) autodev routes on; only a `write` subcommand exists today, and a missing/mismatched record prints `MISSING`, never `READY` (finding: `read_run_record` returns `None`)
+- `scripts/little_loops/loops/refine-to-ready-issue.yaml` `mark_rate_limit_infra` — add `--evidence-refs rate_limit_exhausted` to its `run-record write`
+- `docs/reference/CLI.md` — document `ll-issues run-record read`
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/loops/oracles/resolve-decision.yaml` (callers change, contract doesn't; relies on the `autodev-decide-ran` marker at line 249)
@@ -217,13 +337,16 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ### Signatures
 
-- `read_run_record(run_dir: Path, writer: RunRecordWriter, issue_id: str) -> RunRecord | None` — (from ENH-3597) read by the state that replaces `check_passed` for decision/proof routing
+- `read_run_record(run_dir: Path, writer: str, issue_id: str) -> RunRecord | None` — (from ENH-3597) called by the new read subcommand
+- `cmd_run_record_read(config: BRConfig, args: argparse.Namespace) -> int` — new; prints the outcome token (`READY`, `BLOCKED:decision_unresolved`, `RETRYABLE_ERROR:rate_limited`, `MISSING`, …) and returns 0
 
 ### Call Path
 
-`autodev.yaml:refine_current` -> `refine-to-ready-issue.yaml:classify_terminal` -> `write_run_record`
+`autodev.yaml:refine_current` -> `refine-to-ready-issue.yaml:classify_terminal` -> `cmd_run_record_write` -> `write_run_record`
 
-`autodev.yaml` (post-refine routing state) -> `read_run_record` -> `autodev.yaml:check_proof_defer_or_implement` -> `cmd_check_gate` -> `autodev.yaml:implement_current`
+`autodev.yaml:route_refine_outcome` -> `cmd_run_record_read` -> `read_run_record` -> `autodev.yaml:check_passed` -> `autodev.yaml:check_proof_defer_or_implement` -> `cmd_check_gate` -> `autodev.yaml:implement_current`
+
+`autodev.yaml:select_obligation` -> `cmd_next_obligation` -> `autodev.yaml:refine_current`
 
 ### Codebase Research Findings
 
@@ -235,7 +358,10 @@ _Added by `/ll:refine-issue` — 2026-09-26 — based on codebase analysis:_
 
 ## Scope Boundaries
 
-- Only the spike and decision families; wire/reconcile/size-review/go-no-go stay until ENH-3601.
+- Only the spike and decision families. Wire/refine and reconcile/design remedy stay until
+  ENH-3605; size-review/atomic, go/no-go and pre-deferral remedy stay until ENH-3606
+  (ENH-3601 was decomposed into those two). Their edges into removed states are retargeted
+  here (see *Edge retarget table*); the states themselves do not move.
 - `oracles/resolve-decision.yaml`'s contract is unchanged.
 - Keep distinct skills for research, wiring, decisions and reconciliation; do not merge them into one prompt (ENH-3577).
 
@@ -244,12 +370,16 @@ _Added by `/ll:refine-issue` — 2026-09-26 — based on codebase analysis:_
 - [ ] No state in `autodev.yaml` runs `/ll:spike` or `oracles/resolve-decision`
 - [ ] The eight duplicated states are gone from `autodev.yaml`
 - [ ] The listed spike/decision marker files are no longer read or written by autodev
-- [ ] The only route into `implement_current` is `outcome == ready` (read from the run record; a missing record routes as infra/legacy, never `ready`) → fail-closed `check_proof_defer_or_implement`; `TestProofGateFailClosed` still asserts `implement_current`'s predecessors are exactly `{"check_proof_defer_or_implement"}` with no `on_error`/`on_cannot_judge` edge, and its `check_proof_gate_before_implement.on_error` assertion is rewritten deliberately for the surviving first-stage proof classification
+- [ ] `triage_outcome_failure`, `recheck_after_decide` and `count_repair_cycle_spike` are also gone, and every row of the *Edge retarget table* holds (structural test: no autodev edge targets a removed state; stays-deleted guards for each removed state)
+- [ ] The only route into `implement_current` is `route_refine_outcome` (`READY`) → `check_passed` → fail-closed `check_proof_defer_or_implement`; `MISSING` never reaches it. `TestProofGateFailClosed` still asserts `implement_current`'s predecessors are exactly `{"check_proof_defer_or_implement"}` with no `on_error`/`on_cannot_judge` edge. Its `check_proof_gate_before_implement.on_error` assertion is replaced by a stays-deleted guard plus an assertion that `check_proof_defer_or_implement` is the only proof stage (no first-stage proof state survives)
+- [ ] `route_refine_outcome` routes every token in the *Outcome routing table* as listed, and is entered from both `copy_broke_down` and `refine_current.on_failure` (structural test per token, plus a real-FSM test that a `BLOCKED:decision_unresolved` child stop is ledgered once and not counted as `refine_failed`)
+- [ ] `select_obligation` (and any variants) route `DECISION*`/`PROOF*` to `refine_current` and everything else to the not-needed successor in the retarget table (structural test)
 - [ ] `spike-runs-<ID>` persists across autodev re-entries into the child (real-FSM test: the spike budget does not reset)
-- [ ] The child's `run_spike` (`refine-to-ready-issue.yaml`) gains `with_rate_limit_handling`, `rate_limit_max_wait_seconds: 14400` and a rate-limit-exhausted route before autodev's `run_spike` is deleted (real-FSM test: a rate-limited spike still waits rather than failing)
-- [ ] A run-record read path exists (a `ll-issues run-record read` subcommand or a shell JSON read) and autodev routes on it; a missing, unparsable or writer/ID-mismatched record routes as infra/legacy, never `ready` (unit test on the read path plus a structural test on the routing state)
-- [ ] `auto-refine-and-implement` and `oracles/resolve-decision` behavior unchanged
-- [ ] `test_autodev_scores_freshness.py` passes unchanged; tests that pinned removed autodev states/markers are rewritten against the child (not deleted); refuted/inconclusive spike routing (BUG-3593) still holds end to end
+- [ ] The child's `run_spike` (`refine-to-ready-issue.yaml`) gains `with_rate_limit_handling`, `rate_limit_max_wait_seconds: 14400` and `on_rate_limit_exhausted: mark_rate_limit_infra` before autodev's `run_spike` is deleted (real-FSM test: a rate-limited spike still waits rather than failing)
+- [ ] An exhausted rate limit anywhere in the child produces `RETRYABLE_ERROR:rate_limited` and autodev routes it to `finalize_rate_limited`, halting the run rather than skipping the issue (real-FSM test)
+- [ ] `ll-issues run-record read --format token` exists and autodev routes on it; a missing, unparsable or writer/ID-mismatched record prints `MISSING`, never `READY` (unit tests on the read path)
+- [ ] `auto-refine-and-implement` and `oracles/resolve-decision` behavior unchanged, including `auto-refine-and-implement`'s `finalize` counts for a decision-unresolved stop
+- [ ] `test_autodev_scores_freshness.py`: `wire`/`atomic`/`reconcile` cases pass unchanged; `decide`/`spike` cases are rewritten to assert the child's `route_spike_verdict` (`PROVEN`) → `confidence_check` → `mark_evidence_absent_infra` freshness route. Other tests that pinned removed autodev states/markers are rewritten against the child (not deleted); refuted/inconclusive spike routing (BUG-3593) still holds end to end
 
 ## Parent Issue
 
@@ -263,7 +393,7 @@ Decomposed from ENH-3577: Consolidate autodev issue preparation into a single co
 
 ## Scope Boundary
 
-**Note** (added by `/ll:audit-issue-conflicts`, applied 2026-09-25): This issue lands before ENH-3601, so autodev reads the child's record (`writer: refine-to-ready-issue`). After ENH-3601, autodev re-enters the `prepare-issue` wrapper and reads the wrapper's record (`writer: prepare-issue`, `run-records/prepare-issue/<ID>.json`; see ENH-3597). FEAT-3573 was removed from `blocked_by`. It changes closure accounting only and blocks ENH-3600.
+**Note** (added by `/ll:audit-issue-conflicts`, applied 2026-09-25): This issue lands before ENH-3605 (ENH-3601 was decomposed into ENH-3605/ENH-3606), so autodev reads the child's record (`writer: refine-to-ready-issue`). After ENH-3605, autodev re-enters the `prepare-issue` wrapper and reads the wrapper's record (`writer: prepare-issue`, `run-records/prepare-issue/<ID>.json`; see ENH-3597). FEAT-3573 was removed from `blocked_by`. It changes closure accounting only and blocks ENH-3600.
 
 ## Confidence Check Notes
 
@@ -302,3 +432,13 @@ Verdict at time of check: **DIRECTIVE_DRIFT** (correction below applied in the s
 - `/ll:wire-issue` - 2026-09-25T20:46:48 - `2b4a714f-91fd-41aa-b2ac-63b11e2476ce.jsonl`
 - `/ll:refine-issue` - 2026-09-25T19:42:47 - `2f63920a-850e-4ac5-bf34-e7b8eb47e2e0.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-09-25T19:09:18 - `dcfdf31c-be65-47ce-9e6e-5b65d63239f2.jsonl`
+
+---
+
+## Resolution
+
+- **Status**: Decomposed
+- **Closed**: 2026-09-26
+- **Decomposed into**: ENH-3607, ENH-3608
+
+Work for ENH-3599 is now carried by its child issues; this parent was closed by rn-decompose.
