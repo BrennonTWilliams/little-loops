@@ -345,6 +345,7 @@ _Added by `/ll:confidence-check` on 2026-09-25_
 - Wide blast radius: `StateConfig`, `LLMConfig`, and `OrchestrationConfig` have many construction/consumer sites, so any change to the no-hint default must be verified against existing tests.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-26T04:09:34 - `45c56e37-b121-4a66-8c30-965a93c4425e.jsonl`
 - `/ll:verify-issues` - 2026-09-26T04:08:04 - `3c60f1bd-de19-4edd-8506-d4aa11e7800c.jsonl`
 - `/ll:confidence-check` - 2026-09-26T03:44:04 - `ca8c81c6-3907-43f2-b123-5aad7f9c65b9.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-09-24T17:53:55 - `5250dd00-ed7b-4310-8dee-527fe13b2b07.jsonl`
