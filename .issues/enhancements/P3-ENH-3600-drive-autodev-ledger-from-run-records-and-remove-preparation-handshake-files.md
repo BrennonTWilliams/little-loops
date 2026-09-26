@@ -15,7 +15,13 @@ parent: EPIC-3565
 relates_to:
 - ENH-3577
 reconcile_attempted: true
-
+confidence_score: 75
+outcome_confidence: 55
+score_complexity: 10
+score_test_coverage: 25
+score_ambiguity: 10
+score_change_surface: 10
+missing_artifacts: true
 ---
 
 # ENH-3600: Drive autodev ledger from run records and remove preparation handshake files
@@ -220,15 +226,26 @@ Decomposed from ENH-3577: Consolidate autodev issue preparation into a single co
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-09-25_
+_Added by `/ll:confidence-check` on 2026-09-25 (re-scored 2026-09-26)_
 
-**Readiness Score**: 75/100 → STOP — ADDRESS GAPS
-**Outcome Confidence**: 71/100 → MODERATE
+**Readiness Score**: 75/100 → STOP — ADDRESS GAPS (Dependencies hard override)
+**Outcome Confidence**: 55/100 → LOW
+
+### Concerns
+- Grep-gate scope is undecided: `autodev-spike-no-verdict.txt`, `autodev-proof-gate-infra.txt`, `autodev-pre-*`, `autodev-repair-cycle-count.txt` etc. may or may not count as "preparation markers"; the AC wording must name its scope.
+- `decide-options-deposited-<ID>` / `decide-rate-limited-<ID>` handshake markers (not `autodev-`-prefixed) are still undecided keep-vs-migrate.
 
 ### Gaps to Address
-- blocked_by ENH-3599, ENH-3601, FEAT-3573 (all open) — the run-record layout, the `prepare-issue` wrapper writer, and the summary-key split this issue preserves all arrive with those issues. Land the chain first.
+- blocked_by ENH-3599, ENH-3601, FEAT-3573 (all open) — ENH-3597's reader exists, but no `writer=prepare-issue` producer (ENH-3601) or FEAT-3573 summary-key split exists yet. Land the chain first.
+- Dequeued-ID source is an open design decision: no cumulative dequeue ledger exists, so `record_absent` is unsatisfiable by enumerating `run-records/prepare-issue/*.json` alone. Choose (enumerate records vs. introduce a dequeue ledger) before implementing.
+
+### Outcome Risk Factors
+- Deep per-site complexity: `finalize_done` (~220 lines of inline shell) rewritten into Python while preserving the 12-key `summary.json` shape and verdict ladder/exit-code routing exactly.
+- Broad enumeration across ~15+ sites (3 loop YAMLs, new module, 5+ test files, README, LOOPS_REFERENCE, ARCHITECTURE) with several existing tests that break as markers move.
+- Several design decisions left open (dequeue-ID source, gate scope, child-marker migration vs. documented exception).
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-26T02:52:27 - `28baa352-2934-411c-bced-7bb0e7406cbf.jsonl`
 - `/ll:reconcile-issue` - 2026-09-26T02:50:41 - `1a6e3280-98dc-4084-b164-9f1e529dd9fb.jsonl`
 - `/ll:refine-issue` - 2026-09-26T02:45:37 - `972291b5-b9f1-4321-9110-477f6b624b3d.jsonl`
 - `/ll:confidence-check` - 2026-09-25T21:32:36 - `672e0da1-840e-4b60-a432-7b20e9ebbd01.jsonl`
