@@ -215,11 +215,9 @@ the ledger row with the same reason string as today, and autodev routes every
   `mark_rate_limited` terminal that writes `--legacy-class infra --evidence-refs
   rate_limit_exhausted`. That preserves today's halt through `finalize_rate_limited`.
 - `run_size_review` is the odd one out today: `on_rate_limit_exhausted: dequeue_next` drops
-  the issue silently, with no row. **Recommended**: halt like the other sites (route to
-  `mark_rate_limited`). Before implementing, check the `run_size_review` history
-  (`git log -S "on_rate_limit_exhausted: dequeue_next" -- scripts/little_loops/loops/autodev.yaml`).
-  If the skip was deliberate, write `infra` without the evidence ref instead. Pin the choice
-  with a test.
+  the issue silently, with no row. **Decided (2026-09-26)**: halt like every other site.
+  `run_size_review`'s `on_rate_limit_exhausted` goes to `mark_rate_limited`, which ends in
+  `finalize_rate_limited` in autodev. A dedicated test pins it.
 
 ### Accepted behavior changes
 
@@ -228,7 +226,8 @@ Document these in `docs/guides/LOOPS_REFERENCE.md`:
 - Scores-absent stops and `on_error → dequeue_next` drops now produce one
   `refine_failed_infra` row. Today they are invisible in `finalize_done`, and
   `autodev-scores-absent.txt` is never read.
-- `run_size_review` rate-limit exhaustion follows whichever option is chosen above.
+- `run_size_review` rate-limit exhaustion now halts the queue through `finalize_rate_limited`
+  instead of silently dropping the issue and moving to the next one.
 
 ### Mechanics
 
@@ -325,7 +324,7 @@ Document these in `docs/guides/LOOPS_REFERENCE.md`:
 - [ ] Autodev is the only writer of `autodev-queue.txt` (`enqueue_children`, `dequeue_next`, `recover_subloop_children`); the wrapper writes none
 - [ ] `prepare-issue` has exactly one rescoring path with per-origin dispatch and the BUG-3588 freshness rules; the retry marker names are unchanged
 - [ ] Every `prepare-issue` terminal writes a `writer: prepare-issue` record matching the terminal table, the ledger rows keep today's reason strings, and no stop is ledgered twice
-- [ ] Rate-limit exhaustion in any moved slash state halts autodev through `finalize_rate_limited`, and `run_size_review`'s behavior matches the pinned choice
+- [ ] Rate-limit exhaustion in any moved slash state halts autodev through `finalize_rate_limited`, including `run_size_review` (no more silent `dequeue_next` drop)
 - [ ] The repair-cycle counter increments on every inner entry, including wrapper re-entries; the stagnation backstop test passes
 - [ ] A `decomposed` record always has non-empty `child_ids` or a resolved parent; size-review children are enqueued through autodev's `enqueue_children`
 - [ ] The go/no-go trigger is the unchanged, deterministic `oversized_atomic` predicate
@@ -404,7 +403,8 @@ reconcile/design) was merged here on 2026-09-26._
   → `spike_inconclusive`/`gate_unmet` → thresholds). The run-record CLI accepts only the six
   `LEGACY_CLASSES`, so `gate_unmet` loses the specific reason in `legacy_class`. The ledger
   row and the `deferred_reason` frontmatter carry it.
-- **Rate-limit**: `run_size_review` uses `on_rate_limit_exhausted: dequeue_next`; the other
+- **Rate-limit**: `run_size_review` uses `on_rate_limit_exhausted: dequeue_next` (to become a
+  halt; see Rate limits); the other
   moved slash states go to `finalize_rate_limited` (`run_go_no_go` is pinned at
   `test_builtin_loops.py:8254-8258`). The `subloop_rate_limit_diagnostic` fragment
   (`lib/common.yaml:446`) needs `operation` through `with:` and `${context.issue_id}`.
@@ -512,8 +512,8 @@ reconcile/design) was merged here on 2026-09-26._
 
 1. Regenerate the boundary edge table against post-ENH-3611 `autodev.yaml` and record it
    here.
-2. Pin the `run_size_review` rate-limit choice and the terminal table (the `TestOutcomeMapping`
-   and CLI rows).
+2. Pin the terminal table (the `TestOutcomeMapping` and CLI rows) and the `run_size_review`
+   halt (`on_rate_limit_exhausted: mark_rate_limited`).
 3. Build the wrapper ladder: the pass gate, the moved states with `${context.input}`
    rewrites, the shared rescoring path, the wrapper terminals, and `count_repair_cycle_refine`
    as the pre-state of the inner loop.
