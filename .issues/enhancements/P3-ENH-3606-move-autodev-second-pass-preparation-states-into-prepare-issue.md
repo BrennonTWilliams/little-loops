@@ -7,9 +7,6 @@ status: open
 discovered_by: issue-size-review
 discovered_date: '2026-09-26'
 decision_needed: false
-blocked_by:
-- ENH-3605
-- ENH-3611
 blocks:
 - ENH-3600
 relates_to:
@@ -141,7 +138,9 @@ wrapper terminal, or retargeted in autodev per the rules below.
   `check_blockers_at_dequeue`, `check_gate_at_dequeue` and their skip/defer states).
 - `refine_current`, `copy_broke_down`, the ENH-3607/3609 routers and `ledger_child_stop`.
 - `check_passed`, kept as a fail-closed double check on `READY`; its `on_no` and
-  `on_cannot_judge` become `skip_inflight`.
+  `on_cannot_judge` become `skip_inflight`. This is a second copy: the wrapper gets its own
+  `check_passed` (see "States that move"), and autodev's copy stays with the retargets in
+  "Boundary edge retargets" below.
 - `check_proof_defer_or_implement`, `implement_current` and the post-implementation states.
 - Queue and ledger states: `skip_inflight*`, `mark_*_infra`, `detect_children`,
   `enqueue_children`, `check_parent_resolved`, `recover_subloop_children`,
@@ -149,6 +148,22 @@ wrapper terminal, or retargeted in autodev per the rules below.
 - `size_review_snap` and `check_broke_down` are only on `detect_children`'s no-children
   fallback. Delete them if the DECOMPOSED guarantee below makes them unreachable, or keep
   them as the fail-safe path; pin whichever you choose.
+
+### Boundary edge retargets (autodev, verified 2026-09-26 against post-ENH-3611)
+
+- `refine_current.on_success` → `copy_broke_down` (was `count_repair_cycle_refine`, which
+  moves into the wrapper).
+- autodev `check_passed.on_yes` → `check_proof_defer_or_implement` (was
+  `select_obligation_pre_implement`, which moves); `on_no` / `on_cannot_judge` →
+  `skip_inflight`; `on_error` stays `detect_children`.
+- `route_refine_success` (ENH-3609) sends `READY` / `BLOCKED` / `MISSING` / `_` →
+  `check_passed`, `DECOMPOSED` → `detect_children`, and every suffixed `BLOCKED:*` /
+  `DEFERRED:*` / `RETRYABLE_ERROR:*` → `skip_inflight`. So the wrapper ends `ready` and
+  `decomposed` in its `done` terminal and **every stop row in its `failed` terminal**, which
+  reaches `route_refine_outcome` → `ledger_child_stop` / `finalize_rate_limited` /
+  `skip_inflight_infra`. A stop ending in `done` would be double-ledgered by `skip_inflight`.
+- `route_refine_outcome` maps `DECOMPOSED` → `skip_inflight`; the wrapper never emits
+  `decomposed` through `failed`, so that route stays a fail-safe.
 
 ### Shared rescoring path
 
@@ -334,6 +349,8 @@ Document these in `docs/guides/LOOPS_REFERENCE.md`:
 - [ ] The repair-cycle counter increments on every inner entry, including wrapper re-entries; the stagnation backstop test passes
 - [ ] A `decomposed` record always has non-empty `child_ids` or a resolved parent; size-review children are enqueued through autodev's `enqueue_children`
 - [ ] The go/no-go trigger is the unchanged, deterministic `oversized_atomic` predicate
+- [ ] Autodev edges are retargeted: `refine_current.on_success` → `copy_broke_down`, `check_passed.on_yes` → `check_proof_defer_or_implement`; a structural test pins both, plus that no autodev state targets a removed state
+- [ ] The wrapper ends only `ready` / `decomposed` in `done` and every `BLOCKED:*` / `DEFERRED:*` / `RETRYABLE_ERROR:*` stop in `failed`; a real-FSM test asserts no stop reaches `route_refine_success`'s `skip_inflight` legs (no double ledger row)
 - [ ] `implement_current`'s only predecessor is `check_proof_defer_or_implement`, and `READY` comes only from the wrapper's pass gate plus `select_obligation_pre_implement`
 - [ ] The relocated behavioral suites pass; `auto-refine-and-implement` summary counts are unchanged in a real-FSM run
 
@@ -523,8 +540,10 @@ reconcile/design) was merged here on 2026-09-26._
 3. Build the wrapper ladder: the pass gate, the moved states with `${context.input}`
    rewrites, the shared rescoring path, the wrapper terminals, and `count_repair_cycle_refine`
    as the pre-state of the inner loop.
-4. In the same commit: delete the moved states from autodev, set `check_passed.on_no` /
-   `on_cannot_judge` → `skip_inflight`, and resolve `size_review_snap` / `check_broke_down`.
+4. In the same commit: delete the moved states from autodev, apply the "Boundary edge
+   retargets" (including `refine_current.on_success` and `check_passed.on_yes`), set
+   `check_passed.on_no` / `on_cannot_judge` → `skip_inflight`, and resolve
+   `size_review_snap` / `check_broke_down`.
 5. Relocate and rewrite the suites; add the absence, queue-writer, terminal-table, rescoring
    dispatch, counter and DECOMPOSED-guarantee tests; update the topology count and the
    baseline JSON.
@@ -570,7 +589,7 @@ Checks: all 40+ named states exist in `autodev.yaml` (3294 lines); no decisions 
   - `route_refine_outcome` maps `DECOMPOSED` → `skip_inflight` (:541); the wrapper `decomposed` must not reach it via the failed terminal.
 - **Proposal check (B6)**: the mechanism stands. No exception-handler or fixture conflicts found.
 
-Remaining: fold the three edge retargets above and the `done`/`failed` terminal placement into Scope and Acceptance Criteria (no AC covers the `route_refine_success` retargets).
+Folded into Scope ("Boundary edge retargets"), Acceptance Criteria and Implementation Step 4 in a follow-up edit the same day, so nothing from this pass remains outstanding except the full edge-table regeneration in Implementation Step 1.
 
 ## Confidence Check Notes
 
