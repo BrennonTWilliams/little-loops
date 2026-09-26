@@ -1,0 +1,11 @@
+{
+  "id": "214d4894-2c3d-401c-a884-9e8ef2410d95",
+  "type": "decision",
+  "timestamp": "2026-09-26T22:32:38Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Detected dirs must exist in the target project; root layouts resolve to '.'",
+  "rule": "Captured: ll-init: detect src/test/focus dirs from real layout, never propose nonexistent dirs",
+  "scope": "issue",
+  "issue": "ENH-3616"
+}
