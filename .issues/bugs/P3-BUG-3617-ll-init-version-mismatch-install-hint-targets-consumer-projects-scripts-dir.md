@@ -65,6 +65,15 @@ Related but separate: `scripts/little_loops/init/tui.py` prints a placeholder `p
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/init/validate.py` — the dependency-check aggregator calls `_check_little_loops_version(plugin_version, project_root)`
 - `scripts/little_loops/init/cli.py` / `init/tui.py` — render `DepWarning.install_hint` as `Install/fix: ...`
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/init/validate.py:validate_deps` — sole caller of `_check_little_loops_version` (gated on `plugin_version is not None and project_root is not None`)
+- `scripts/little_loops/init/cli.py:_report_dependency_warnings` — renders `Install/fix: {w.install_hint}` (~line 984); invoked from both init flows via `validate_deps(config, _plugin_version(), project_root)` (~lines 946, 1181); no change needed, string-only hint
+- `scripts/little_loops/init/tui.py:1294-1295` — second `Install/fix:` renderer of `DepWarning.install_hint`; no change needed
+- `scripts/little_loops/init/proposal.py:143,366` — serializes `install_hint` into the proposal dict via `validate_deps`; hint text flows through unchanged
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/init/tui.py:777` — hardcoded placeholder `pip install -e <editable-path>[dev]` in the `pkg_outdated` / `local-editable` branch (`install_source` already available there); folds into the optional reuse step
+- `scripts/little_loops/init/install_check.py:_editable_install_location()` — **existing resolver** returning the `Editable project location:` from `pip show` (via `sys.executable -m pip`); `detect_installation()` already uses it. Prefer reusing/sharing this over adding a second `direct_url.json` parser, or, if `direct_url.json` is used, keep it spawn-free (see spawn guard below)
 
 ### Similar Patterns
 - `scripts/little_loops/init/cli.py` `--upgrade` path already uses `sys.executable -m pip` for local-editable installs
@@ -72,6 +81,11 @@ Related but separate: `scripts/little_loops/init/tui.py` prints a placeholder `p
 
 ### Tests
 - `scripts/tests/test_init_core.py` — `test_warns_when_package_not_installed`, `test_warns_on_version_mismatch`, `test_silent_on_version_match`
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_init_core.py:test_warns_on_version_mismatch` / `test_warns_when_package_not_installed` — patch only `importlib.metadata.version` and assert only message text; they will not break, but with an unpatched resolver they would read the real dev-machine editable install — patch the new helper in every version-check test for hermeticity
+- `scripts/tests/test_enh3184_spawn_site_guard.py` — `_TASK_PATH_MODULES` budgets `init/install_check.py` at `(5, 5)` spawn sites and does not list `init/validate.py`; adding a `subprocess.run` (e.g. `pip show`) in either module without an `ll-no-project:` marker / budget bump trips this guard. A `direct_url.json` read via `importlib.metadata` avoids it
+- `scripts/tests/test_init_install.py` — covers `detect_installation` / `_editable_install_location`; update if the resolver is shared or refactored
+- `scripts/tests/test_init_proposal.py` (~lines 191-194) — patches `detect_installation` / `plugin_installed` around `validate_deps`; verify unaffected
 
 ### Documentation
 - N/A
@@ -100,6 +114,16 @@ Related but separate: `scripts/little_loops/init/tui.py` prints a placeholder `p
 2. Rewrite both hint branches of `_check_little_loops_version()` to use it plus `sys.executable -m pip`.
 3. Optionally reuse the helper in `init/tui.py`'s outdated-package hint.
 4. Extend the tests in `scripts/tests/test_init_core.py` (next to `test_warns_on_version_mismatch`).
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Decide resolver home: reuse `init/install_check.py:_editable_install_location()` (pip-show based, already `sys.executable`-correct) vs. a new spawn-free `direct_url.json` helper; avoid a duplicate parser
+- Keep `scripts/tests/test_enh3184_spawn_site_guard.py` green — no new unmarked `subprocess` spawn in `init/validate.py`; if reusing the pip-show resolver, import it rather than re-spawning
+- Update `scripts/little_loops/init/tui.py:777` — replace `<editable-path>` placeholder with the resolved path (and `sys.executable -m pip`)
+- Patch the resolver in the existing `test_init_core.py` version-check tests so they don't read the host's real install metadata
+- No doc changes: no `docs/`, `skills/`, or `commands/` file quotes the version-mismatch hint text
 
 ## Impact
 
@@ -151,6 +175,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-26T23:05:55 - `6cddab98-ff74-4434-89de-e1aeb0e2c3bb.jsonl`
 - `/ll:refine-issue` - 2026-09-26T22:52:32 - `242c13c2-daff-4514-b4c7-3c6299f5c0af.jsonl`
 - `/ll:format-issue` - 2026-09-26T22:51:44 - `2d14fe2c-428f-4be0-80df-471f93ad0e5d.jsonl`
 - `/ll:capture-issue` - 2026-09-26T22:48:59 - `58016881-a136-4f55-8da0-640ef93df277.jsonl`
