@@ -74,8 +74,17 @@ before `implement_current`.
   (`set_flags.py` `_rules_for_threshold`). Today autodev spikes a `spike_needed` issue at **any**
   readiness: `select_obligation_post_refine`'s `_` catches `SCORES:readiness_below` →
   `check_spike_needed`, and `check_spike_needed_before_skip` has no score predicate. The
-  child's spike band sits behind `check_readiness.on_yes`, and `next-obligation` reports
-  `PROOF` only when readiness passes.
+  child's spike band sits behind `route_score_obligation`'s `SCORES:outcome_below` route
+  (readiness already passing; ENH-3604 replaced `check_readiness`/`check_outcome` with that
+  selector), and `next-obligation` reports `PROOF` only when readiness passes.
+- The child's score gate ignores the outcome waiver. `route_score_obligation` deliberately
+  omits `--honor-waiver` (ENH-3604). Autodev's pre-implement sites honor it: `check_passed`
+  (`check-readiness --honor-waiver`), `recheck_scores` and `regate_after_atomic_remediation`
+  (inline `outcome_gate_waived` check), and `reopen_waived` (entered only for a waived issue).
+  So an issue with a waived sub-threshold outcome reaches `select_obligation_pre_implement`,
+  but a child run on it reads `SCORES:outcome_below` and goes `check_decision_needed →
+  check_spike_needed → check_missing_artifacts → breakdown_issue`. It never reaches the
+  child's `done` edges.
 - The child has a lifetime refine cap. Every child run passes `check_lifetime_limit`, which
   routes to `breakdown_issue` once `ll-issues refine-status <ID> --json` `refine_count`
   (session-log `/ll:refine-issue` count) reaches `commands.max_refine_count` (default 5). A
@@ -108,7 +117,7 @@ before `implement_current`.
   `ll-issues check-gate <ID>`. On `structured_proof` with `spike_attempted` unset and
   `spike-runs-<ID>` < 2, it increments the counter and routes to `run_spike` (the existing
   `route_spike_verdict` → `PROVEN` → `confidence_check` chain re-scores and returns through
-  `check_outcome`; a proven spike sets `spike_completed`, which flips `check-gate` to
+  `route_score_obligation`; a proven spike sets `spike_completed`, which flips `check-gate` to
   `structured_satisfied`, so the second pass reaches `write_done_record`). Every other
   verdict, and a helper error, → `write_done_record`. This gate is fail-open because autodev's
   `check_proof_defer_or_implement` stays fail-closed downstream (BUG-3603).
@@ -117,21 +126,25 @@ before `implement_current`.
     `structured_proof` exactly (the `case` idiom in `check_proof_gate_before_implement`). A
     bare `shell_exit` on the exit code would spike an external/manual or prose gate.
   - **Step budget.** The proof cycle (`check_proof_before_done → run_spike →
-    route_spike_verdict → confidence_check → check_readiness → check_outcome →
-    check_decision_before_done → check_proof_before_done → write_done_record`) adds ~8 steps.
-    The refuted leg (`check_spike_budget → resolve_decision_pre_breakdown → confidence_check →
-    …`) adds more. Raise `max_steps` 90 → 100 with a history comment in the file's
-    existing convention. The history comment must state why +10 is enough: the shared
-    `spike-runs-<ID>` cap (< 2) means a proof spike **replaces** one of the two spikes that
-    BUG-3593's 60 → 70 bump already budgets. It does not add a third. The new cost is the two
-    `check_proof_before_done` hops plus one extra `confidence_check → check_readiness →
-    check_outcome → check_decision_before_done` band pass. Confirm that
-    `circuit.repeated_failure.recurrent_window: 6` is not tripped by the new
-    `(check_decision_before_done, 1, no)` triples (`check-flag` exits 1 when the flag is unset)
-    and the `(check_proof_before_done, …)` triples on the worst-case path.
-  - **Accepted:** `check_decision_before_done` is shared by all three no-class done edges, so
-    the gate also fires on `check_missing_artifacts.on_yes` (a low-outcome issue exiting for
-    autodev to wire). A `structured_proof` spike there runs before wiring and spends the
+    route_spike_verdict → confidence_check → route_score_obligation →
+    check_decision_before_done → check_proof_before_done → write_done_record`) adds ~7 steps
+    (ENH-3604 collapsed `check_readiness`/`check_outcome` into `route_score_obligation`).
+    The refuted leg (`check_spike_budget → resolve_decision_pre_breakdown →
+    check_proposal_revision → confidence_check → route_score_obligation → …`) adds more. Raise
+    `max_steps` 90 → 100 with a history comment in the file's existing convention (after the
+    ENH-3604 and ENH-3576 entries). The history comment must state why +10 is enough: the
+    shared `spike-runs-<ID>` cap (< 2) means a proof spike **replaces** one of the two spikes
+    that BUG-3593's 60 → 70 bump already budgets. It does not add a third. The new cost is the
+    two `check_proof_before_done` hops plus one extra `confidence_check →
+    route_score_obligation → check_decision_before_done` score pass. Confirm that
+    `circuit.repeated_failure.recurrent_window: 6` is not tripped on the worst-case path by the
+    `(route_score_obligation, 0, NONE)` triple (a classify state, recorded once per score pass),
+    the new `(check_decision_before_done, 1, no)` triples (`check-flag` exits 1 when the flag
+    is unset) or the `(check_proof_before_done, …)` triples.
+  - **Accepted:** `check_decision_before_done` is shared by both no-class done edges
+    (`route_score_obligation` `NONE` and `check_missing_artifacts.on_yes`; ENH-3604 merged the
+    old score-gate edges into the first), so the gate also fires on
+    `check_missing_artifacts.on_yes` (a low-outcome issue exiting for autodev to wire). A `structured_proof` spike there runs before wiring and spends the
     shared budget. The proof question is independent of the missing artifacts, and the budget
     cap (< 2) bounds the cost, so the gate is not restricted to the score-pass edges.
   - **Accepted: contract change for non-autodev callers.** `recursive-refine.yaml`
@@ -172,8 +185,20 @@ before `implement_current`.
     `ll-issues refine-status <ID> --json`. Resolve the cap the way the child's
     `check_lifetime_limit` does: `commands.max_refine_count` in `.ll/ll-config.json`, default 5.
     Autodev has no `max_refine_count` context key, so read the config and do not add one.
-    **Land BUG-3614 first and copy its `DECISION` cap snippet verbatim** (single-quoted
-    `python3 -c`, `[ -z "$CAP" ] && CAP=5` fallback — not an indented heredoc or `$${CAP:-5}`).
+    **BUG-3614 has landed (`af90c3482`): copy its `DECISION` cap snippet verbatim** from
+    `select_obligation_post_refine` (the `CNT=`/`CAP=` lines and their `[ -z … ]` fallbacks:
+    single-quoted `python3 -c`, not an indented heredoc or `$${CAP:-5}`). In
+    `select_obligation_pre_implement` and `select_obligation_post_refine`, where both the
+    `DECISION` and `PROOF` branches need the values, compute `CNT`/`CAP` once near the top of the
+    selector rather than duplicating the snippet per branch.
+  - **Pre-implement site only: `outcome_gate_waived` is unset.** Probe with
+    `ll-issues check-flag <ID> outcome_gate_waived` and re-enter only on exit 1 (unset). Exit 0
+    (waived) or exit 2 (helper error) falls through to `next-obligation`, so the issue is
+    deferred as `blocked_by_gate` by the fail-closed `check_proof_defer_or_implement`. Reason:
+    the child's `route_score_obligation` does not honor the waiver (Current Behavior), so a
+    re-entered waived issue would reach `breakdown_issue`, never `check_proof_before_done`.
+    Low-outcome sites need no waiver term: with `--honor-waiver`, `next-obligation` treats a
+    waived outcome as passing and never reports `PROOF` for it.
 
   Without the cap term, a re-entered child at its lifetime cap routes to `breakdown_issue`
   before it reaches `check_proof_before_done`, so a high-scoring issue would be decomposed
@@ -200,7 +225,10 @@ before `implement_current`.
     error, falls through to `next-obligation` (fail-open here is safe: `_`/`_error` go to the
     fail-closed `check_proof_defer_or_implement`). This covers the four sites that reach the
     selector without a fresh child `done` (`recheck_scores`, `regate_after_atomic_remediation`,
-    `reopen_waived`, `recheck_after_size_review`).
+    `reopen_waived`, `recheck_after_size_review`), for non-waived issues. `reopen_waived` is
+    entered only for a waived issue, so its `PROOF` probe never re-enters; the waiver term also
+    covers a waived issue at `check_passed` whose child exited via `breakdown_issue → done`
+    without passing `check_proof_before_done`.
   - **Post-size-review selector has no `check-flag` probe.**
     Such a probe would only suppress `PROOF` for a decision-flagged issue, and
     `next-obligation` already does that, because tier 3 checks `DECISION` before `PROOF`.
@@ -265,14 +293,22 @@ before `implement_current`.
     defers as `readiness_stagnated`/`low_readiness`. The updated comment must state this path.
 - **Accepted interim loss: low-readiness `spike_needed` issues are no longer spiked.** Today
   autodev spikes a `spike_needed` issue at any readiness (Current Behavior). After this change
-  the child spikes only behind `check_readiness.on_yes`, and `next-obligation` reports `PROOF`
-  only when readiness passes. A low-readiness, low-outcome `spike_needed` issue therefore gets
+  the child spikes only behind `route_score_obligation`'s `SCORES:outcome_below` route, and
+  `next-obligation` reports `PROOF` only when readiness passes. A low-readiness, low-outcome `spike_needed` issue therefore gets
   refine and reconcile passes but no spike, and defers as `low_readiness`/`readiness_stagnated`.
   Accepted until ENH-3606, alongside the pre-deferral `spike` remedy loss above. Record it in
   ENH-3606's scope when this lands. Do **not** widen the child's spike band in this issue:
-  moving `check_spike_needed` ahead of `check_readiness` would spike low-readiness issues for
+  routing `SCORES:readiness_below` to `check_spike_needed` would spike low-readiness issues for
   the `recursive-refine` callers too. Unlike `check_proof_before_done`, no invariant requires
   that change.
+- **Accepted loss: waived-outcome issues with an open `structured_proof` gate are no longer
+  spiked.** Today `check_proof_gate_before_implement` spikes them directly in autodev. After
+  this change the pre-implement selector's waiver term skips re-entry, and
+  `check_proof_defer_or_implement` defers them as `blocked_by_gate`. A spike needs a child run,
+  and the child does not honor the waiver. Do **not** add `--honor-waiver` to the child's
+  `route_score_obligation` here: it would change every `recursive-refine` caller and reverse
+  ENH-3604's deliberate choice. A human who waived the outcome gate can run `/ll:spike` and
+  re-queue the issue.
 - **Markers.** Autodev never writes `spike-runs-<ID>`. Its surviving consumers
   (`recheck_after_size_review`, `dispatch_pre_deferral_remedy`, the three selectors) only read
   it as the budget signal the child spends. Neither `resolve_issue` nor autodev resets it
@@ -291,12 +327,13 @@ before `implement_current`.
 
 | Removed autodev state | Behavior | Disposition | Where it lives now |
 |---|---|---|---|
-| `check_proof_gate_before_implement` (`PROOF_SPIKE`) | Spike a high-scoring issue whose `structured_proof` gate is open and budget remains | MOVED | Child: `check_proof_before_done`. Via `check_passed.on_yes` the child's gate has already run; via the other four pre-implement sites, `select_obligation_pre_implement`'s `check-gate` probe re-enters the child |
+| `check_proof_gate_before_implement` (`PROOF_SPIKE`) | Spike a high-scoring issue whose `structured_proof` gate is open and budget remains | MOVED | Child: `check_proof_before_done`. Via `check_passed.on_yes` the child's gate has already run; via the other four pre-implement sites, `select_obligation_pre_implement`'s `check-gate` probe re-enters the child (non-waived issues only) |
+| `check_proof_gate_before_implement` (`PROOF_SPIKE`) on a waived-outcome issue | Spike an open `structured_proof` gate on an issue whose sub-threshold outcome is waived (`outcome_gate_waived`) | DROPPED (accepted) | Nowhere: the child does not honor the waiver, so a re-entry would reach `breakdown_issue`. The waiver guard term skips re-entry; `check_proof_defer_or_implement` defers as `blocked_by_gate` |
 | `dispatch_pre_deferral_remedy` `spike` leg | Spike a low-readiness issue before the `low_readiness` deferral (BUG-2803) | CHANGED (interim) | Routes to `refine_current` when budget and lifetime cap allow, else `reconcile_current`; the child spikes only on an open `structured_proof` gate at `done` or `spike_needed` in the low-outcome band. Full move in ENH-3606 |
 | (new) child `check_proof_before_done` for `recursive-refine` callers | Reached `done` with an open `structured_proof` gate unspiked | CHANGED (intended) | Child spikes the gate before `done` for every caller (`recursive-refine` and its wrappers), not only autodev |
 | `check_proof_gate_before_implement` (`PROOF_DEFER` / `PROOF_INFRA`) | Defer an open gate; defer on helper failure | PRESERVED | `check_proof_defer_or_implement` (unchanged, fail-closed) |
 | `check_spike_needed` / `run_spike` / `route_spike_verdict` (readiness-passing issues) | Spike on `spike_needed`, four-way verdict routing (BUG-3593) | MOVED | Child's same-named states (already present) |
-| `check_spike_needed` via `select_obligation_post_refine` `_` on `SCORES:readiness_below` | Spike a `spike_needed` issue whose readiness is below threshold | DROPPED (interim) | Nowhere: the child's spike band requires `check_readiness.on_yes`. Accepted until ENH-3606 |
+| `check_spike_needed` via `select_obligation_post_refine` `_` on `SCORES:readiness_below` | Spike a `spike_needed` issue whose readiness is below threshold | DROPPED (interim) | Nowhere: the child's spike band is `route_score_obligation`'s `SCORES:outcome_below` route (readiness passing). Accepted until ENH-3606 |
 | `run_spike` rate-limit handling | Wait up to 14400s, halt the run on exhaustion | MOVED | Child `run_spike` (ENH-3607) → `RETRYABLE_ERROR:rate_limited` → `finalize_rate_limited` |
 | `check_spike_budget` → `resolve_decision` chain | Refuted spike → decide once, second refutation → `decision_unresolved` | MOVED | Child: `check_spike_budget` → `resolve_decision_pre_breakdown` / `record_decision_unresolved`; autodev sees `BLOCKED:decision_unresolved` → `ledger_child_stop` |
 | `record_spike_inconclusive` / `mark_spike_no_verdict_infra` | Defer inconclusive; infra-skip no verdict | MOVED | Child's same-named states → `DEFERRED:spike_inconclusive` / `RETRYABLE_ERROR:infra` |
@@ -324,7 +361,14 @@ before `implement_current`.
   removed states: `check_spike_needed` (ENH-3250 "mirrors autodev.yaml's
   check_spike_needed"), `run_spike` ("mirrors autodev.yaml's run_spike"),
   `check_missing_artifacts` (names the `select_obligation_post_refine → check_spike_needed`
-  ladder), and the top-of-file topology map (add `check_proof_before_done` on the done edges)
+  ladder), and the top-of-file routing summary (ENH-3604 block, lines ~46–56: add
+  `check_proof_before_done` between `check_decision_before_done` and `write_done_record`, and
+  drop "autodev.yaml's two-field one-shot guard" from the `check_spike_needed` line). Also
+  update `route_score_obligation`'s comment ("Tier 3 stays in the child … check_spike_needed
+  owns the shared spike-runs-<ID> budget"; add that `check_proof_before_done` spends the same
+  budget for the `structured_proof` gate) and `check_decision_before_done`'s comment (says
+  "the three done edges" but lists two; name `check_proof_before_done` as its `on_no`/`on_error`
+  successor)
 - Stale comments: `little_loops.cli.issues.show` (ENH-2640), `little_loops.cli.issues.check_gate`
   (module docstring: autodev callers), `little_loops.issue_lifecycle` (deferral-reason comments),
   `scripts/little_loops/loops/oracles/resolve-decision.yaml:147` (comment cites autodev's
@@ -350,20 +394,33 @@ Rewrite, don't delete (ENH-3075 AC 8); stays-deleted guard per removed state.
   replaced by a stays-deleted guard); `TestAutodevRouting` proof legs
 - `test_builtin_loops.py`: spike chains, `AUTODEV_NOT_READY_STATES` (drop
   `record_decision_unresolved`), selector `PROOF` routes, child `check_proof_before_done`
-- `test_autodev_decision_gate.py`: `select_obligation_pre_implement` route assertions
-  (`_`/`_error` → `check_proof_gate_before_implement`, lines ~207–208; the graph walk at ~439;
-  the path list at ~525) retarget to `check_proof_defer_or_implement`. The BUG-2654 class
-  (~653–681) asserts that `check_spike_needed_before_skip` exists and is wired. Rewrite it
-  against `select_obligation_post_size_review`, which is what now protects the post-size-review
-  skip, and add a stays-deleted guard for the old state.
+- `test_autodev_decision_gate.py` (cite by class; line numbers drift):
+  - `TestObligationSelectorStructural` (`_`/`_error` → `check_proof_gate_before_implement`),
+    `TestObligationSelectorBehavior` (graph walk stops at `check_proof_gate_before_implement`)
+    and `TestDecisionReentryFlow` (path list): retarget to `check_proof_defer_or_implement`.
+  - `TestDecidePathSpikeGate` (BUG-2654) asserts that `check_spike_needed_before_skip` exists
+    and is wired. Rewrite it against `select_obligation_post_size_review`, which now protects
+    the post-size-review skip, and add a stays-deleted guard for the old state.
+  - `TestReconcilePlateauStructural` / `TestReconcilePlateauRouting` enter at
+    `check_spike_needed_before_skip` (`.on_no` → reconcile gate; the synthetic FSM's
+    `initial`). Re-root them on `select_obligation_post_size_review`'s `_` route.
+  - `TestAssertDecisionClearedStructural` / `TestAssertDecisionClearedRouting` assert
+    `recheck_after_decide.on_yes == "check_proof_gate_before_implement"`. Replace with
+    stays-deleted guards for `recheck_after_decide` (the ENH-3075 `assert_decision_cleared`
+    absence checks stay).
 - `test_autodev_loop.py`, `test_rn_remediate.py` (parity docstrings), `test_show.py` (docstrings)
 - `test_fsm_topology.py`: autodev −22 +1, child +1, each with a history comment
 - New real-FSM tests:
   - a high-scoring issue with a `structured_proof` gate is spiked in the child, then
     implemented or deferred;
-  - a high-scoring issue with a `structured_proof` gate reaching `select_obligation_pre_implement`
-    via `reopen_waived` (or `recheck_scores`), i.e. not via a fresh child `done`, is re-entered
-    and spiked by the child, not deferred as `blocked_by_gate` with budget unspent;
+  - a high-scoring, non-waived issue with a `structured_proof` gate reaching
+    `select_obligation_pre_implement` via `recheck_scores` (or `regate_after_atomic_remediation`),
+    i.e. not via a fresh child `done`, is re-entered and spiked by the child, not deferred as
+    `blocked_by_gate` with budget unspent;
+  - a waived-outcome issue (`outcome_gate_waived: true`, outcome below threshold) with a
+    `structured_proof` gate reaching `select_obligation_pre_implement` via `reopen_waived` is
+    **not** re-entered (no `refine_current`, no `breakdown_issue`) and defers as
+    `blocked_by_gate`; pins the accepted waiver loss;
   - `spike-runs-<ID>` persists across autodev re-entries (the budget does not reset);
   - `dispatch_pre_deferral_remedy`'s `spike` leg leaves `spike-runs-<ID>` unchanged, and a
     subsequent child spike that is refuted still reaches `resolve_decision_pre_breakdown`;
@@ -408,7 +465,7 @@ Rewrite, don't delete (ENH-3075 AC 8); stays-deleted guard per removed state.
 
 `autodev.yaml:select_obligation_post_refine` -> `cmd_next_obligation` -> `autodev.yaml:refine_current` -> `refine-to-ready-issue.yaml:check_proof_before_done` -> `cmd_check_gate` -> `refine-to-ready-issue.yaml:run_spike`
 
-`autodev.yaml:reopen_waived` -> `autodev.yaml:select_obligation_pre_implement` -> `cmd_check_gate` -> `autodev.yaml:refine_current` -> `refine-to-ready-issue.yaml:check_proof_before_done` -> `refine-to-ready-issue.yaml:run_spike`
+`autodev.yaml:recheck_scores` -> `autodev.yaml:select_obligation_pre_implement` -> `cmd_check_gate` -> `autodev.yaml:refine_current` -> `refine-to-ready-issue.yaml:check_proof_before_done` -> `refine-to-ready-issue.yaml:run_spike`
 
 `autodev.yaml:check_passed` -> `autodev.yaml:select_obligation_pre_implement` -> `autodev.yaml:check_proof_defer_or_implement` -> `cmd_check_gate` -> `autodev.yaml:implement_current`
 
@@ -435,6 +492,12 @@ Rewrite, don't delete (ENH-3075 AC 8); stays-deleted guard per removed state.
 
 - **ENH-3613 has landed** (`dc3668f1d`). Its `finalize_done` edits are on `main`, so this
   issue's `autodev-spike-no-verdict.txt` removal there applies directly.
+- **BUG-3614 has landed** (`af90c3482`): the lifetime-cap snippet to copy is on `main` in
+  both existing selectors.
+- **ENH-3604 has landed** (`1eabec899`): the child's score gate is `route_score_obligation`
+  (no `check_readiness`/`check_outcome`), `max_steps` is still 90, and the done edges are
+  `route_score_obligation` `NONE` and `check_missing_artifacts.on_yes`, both through
+  `check_decision_before_done`.
 - **Two commits.**
   1. *Additive:* child `check_proof_before_done` + `max_steps` bump; `PROOF` probes in the
      existing selectors; new `select_obligation_post_size_review`, wired in but with the old
@@ -490,10 +553,11 @@ ENH-3610's review changed parts of the selector contract that this issue builds 
   survive, so scope state-name greps to `autodev.yaml`); ENH-3600's marker retirement;
   ENH-3605/ENH-3606 remedy moves (only their edges into removed states change here); restoring
   low-readiness `spike_needed` spikes (ENH-3606); moving the child's spike band ahead of
-  `check_readiness`. ENH-3610's `DECISION` re-entry has the same lifetime-cap hazard (a capped
-  issue re-entered for `DECISION` routes to `breakdown_issue`). BUG-3614 tracks it; it is not
-  fixed here. (The new `dispatch_pre_deferral_remedy` → `refine_current` edge has the same
-  hazard and **is** fixed here, because this issue creates that edge.)
+  `route_score_obligation`'s readiness check; adding `--honor-waiver` to the child's
+  `route_score_obligation` (waived issues defer instead, see Expected Behavior). ENH-3610's
+  `DECISION` re-entry had the same lifetime-cap hazard; BUG-3614 fixed it (`af90c3482`). The
+  new `PROOF` re-entries and the `dispatch_pre_deferral_remedy` → `refine_current` edge have
+  the same hazard and are fixed here with the same snippet, because this issue creates them.
 
 ## Acceptance Criteria
 
@@ -506,9 +570,12 @@ ENH-3610's review changed parts of the selector contract that this issue builds 
   child before `done` (real-FSM test); the child never reaches `done` with that gate open and
   budget unspent
 - [ ] No pre-implement site (`check_passed`, `recheck_scores`, `regate_after_atomic_remediation`,
-  `reopen_waived`, `recheck_after_size_review`) defers an open `structured_proof` gate as
-  `blocked_by_gate` while `spike_attempted` is unset, budget remains and the `PROOF` re-entry
-  is unused (real-FSM test through a non-`check_passed` site)
+  `recheck_after_size_review`) defers an open `structured_proof` gate as `blocked_by_gate` on a
+  non-waived issue while `spike_attempted` is unset, budget remains and the `PROOF` re-entry
+  is unused (real-FSM test through `recheck_scores` or `regate_after_atomic_remediation`)
+- [ ] A waived-outcome issue is never re-entered for `PROOF` from any pre-implement site
+  (including `reopen_waived`); it defers as `blocked_by_gate`, never `breakdown_issue`, and the
+  loss is recorded in Behavior Parity (real-FSM test)
 - [ ] `PROOF` re-entry is capped at one per issue, is skipped outright when the child cannot
   spike, and the run terminates when the child cannot satisfy it (real-FSM test)
 - [ ] No `PROOF` re-entry is attempted once `refine_count` >= `max_refine_count`; such an issue
