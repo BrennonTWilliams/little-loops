@@ -220,19 +220,30 @@ The wrapper's inner `done` can no longer go `forward_done` → `done`, because a
 thresholds-unmet inner `done` must run the ladder. Replace it with a wrapper-local router:
 
 - `run_refine_to_ready.on_yes` → `route_inner_success`, which reads
-  `ll-issues run-record read <ID> --writer refine-to-ready-issue --format token`:
+  `ll-issues run-record read <ID> --writer refine-to-ready-issue --format token`, then
+  writes `0` to `refine-broke-down` in the same action before printing the token:
   - `CANCELLED` → `forward_done` → `done` (autodev's `skip_cancelled` ledgers it);
   - `DECOMPOSED` → `detect_ladder_children` (below);
   - `READY` / `BLOCKED` / `MISSING` / `_` / `_error` → wrapper `check_passed`.
+
+  The reset has to happen here, not only in `detect_ladder_children`: `MISSING` / `_` /
+  `_error` fail open to `check_passed` even when the inner loop broke the issue down (its
+  `|| true` record write can fail after `write_broke_down` set the flag to `1`), and from
+  `check_passed` the ladder reaches every stop terminal without passing
+  `detect_ladder_children`. Every inner success passes `route_inner_success`, including
+  the selectors' `DECISION` / `PROOF` re-entries. The routing token comes from the saved
+  record, not the flag, and `detect_ladder_children` diffs issue IDs, so nothing after
+  this state needs the inner loop's flag value. This mirrors ENH-3615's reset in autodev's
+  `copy_broke_down`.
 - `detect_ladder_children` is the wrapper's copy of `detect_children` plus
   `check_parent_resolved`. It diffs against `autodev-pre-ids.txt` (written by
   `dequeue_next`) with BUG-2729 provenance matching:
   - children found → `mark_decomposed` (autodev's `detect_children` finds the same
     children and `enqueue_children` enqueues them);
   - no children, parent resolved → `mark_decomposed`;
-  - no children, parent not resolved → write `0` to `refine-broke-down`, then
-    `recheck_scores`. This keeps the BUG-1183 fallback: an inner breakdown that produced
-    no files still gets the ladder's own size-review.
+  - no children, parent not resolved → `recheck_scores` (the flag is already `0` from
+    `route_inner_success`). This keeps the BUG-1183 fallback: an inner breakdown that
+    produced no files still gets the ladder's own size-review.
 - It is also the target of the ladder's "go to size review" edges
   (`check_missing_artifacts.on_no` / `on_error`, `select_obligation_post_refine._error`,
   wrapper `check_passed.on_error`), replacing today's trip through autodev's
@@ -244,12 +255,14 @@ thresholds-unmet inner `done` must run the ladder. Replace it with a wrapper-loc
   `broke_down` before every legacy class and before thresholds, and `run-record write` reads
   the shared `refine-broke-down`. Any wrapper terminal written while the flag is `1` becomes
   `decomposed`, whatever `--legacy-class` it passes. So:
-  - every path that continues the ladder after an inner breakdown writes `0` first (above);
+  - `route_inner_success` writes `0` after every inner success, so no ladder path starts
+    with the flag at `1` (above);
   - `mark_decomposed` writes `1` before its record write (a resolved parent with no
     children otherwise records `ready` or `blocked`);
-  - no other wrapper terminal runs with the flag at `1`. Pin this with a test: an inner
-    breakdown with no children, followed by a `design_gate_failed` stop, records
-    `DEFERRED:gate_unmet`, not `DECOMPOSED`.
+  - no other wrapper terminal runs with the flag at `1`. Pin this with two tests, both
+    recording `DEFERRED:gate_unmet`, not `DECOMPOSED`: an inner breakdown with no children
+    followed by a `design_gate_failed` stop; and an inner breakdown whose record is
+    `MISSING` (routed to `check_passed`) followed by a stop.
 - Autodev's `copy_broke_down` runs after the wrapper returns, so it copies the wrapper's
   final flag value.
 
@@ -268,9 +281,14 @@ reads the marker and dispatches to that origin's post-ENH-3611 successor. Today 
 successors are `enqueue_or_skip`, `recheck_after_size_review` and
 `regate_after_atomic_remediation`.
 
+- The origin is written inline in `count_repair_cycle_wire`, `count_repair_cycle_reconcile`
+  and `count_repair_cycle_refine_for_design`, and by one new state,
+  `mark_rescore_origin_atomic` (after `remediate_oversized_atomic`).
 - Keep the per-origin retry marker names (`autodev-rescore-retry-<origin>-<ID>`) so
   `dequeue_next`'s clear is unchanged.
-- An unknown or missing origin routes to the scores-absent terminal (fail closed).
+- `route_after_rescore` deletes the origin marker after reading it. An unknown or missing
+  origin routes to the scores-absent terminal (fail closed), in both
+  `check_scores_present` and `route_after_rescore`.
 - Keep the BUG-3588 freshness rules.
 - Re-declare the `confidence-check-recheck` `pruning_profile:` once.
 
@@ -470,10 +488,12 @@ Document these in `docs/guides/LOOPS_REFERENCE.md`:
     unresolved parent);
   - `reopen_waived` removes the row, clears the stop record and re-enters;
   - the go/no-go trigger predicate is unchanged;
-  - inner `DECOMPOSED` with no children and an unresolved parent resets
-    `refine-broke-down` to `0` and reaches `run_size_review` (BUG-1183 fallback);
-  - broke-down trap: inner breakdown with no children, then a `design_gate_failed` stop,
-    records `DEFERRED:gate_unmet`, not `DECOMPOSED`;
+  - `route_inner_success` leaves `refine-broke-down` at `0` for every token;
+  - inner `DECOMPOSED` with no children and an unresolved parent reaches `run_size_review`
+    with the flag at `0` (BUG-1183 fallback);
+  - broke-down trap, two cases, both recording `DEFERRED:gate_unmet`, not `DECOMPOSED`:
+    inner breakdown with no children, then a `design_gate_failed` stop; inner breakdown
+    with a `MISSING` record (→ `check_passed`), then a stop;
   - a resolved parent with no children records `DECOMPOSED` (flag written first);
   - `record_reentry_exhausted` records `BLOCKED:decision_unresolved` with one
     `decision_unresolved` row;
@@ -550,7 +570,7 @@ Document these in `docs/guides/LOOPS_REFERENCE.md`:
 - [ ] `implement_current`'s only predecessor is `check_proof_defer_or_implement`, and `READY` comes only from the wrapper's pass gate plus `select_obligation_pre_implement`
 - [ ] The relocated behavioral suites pass. `auto-refine-and-implement` summary counts in a real-FSM run are unchanged except for the "Accepted behavior changes": scores-absent / `on_error` exits add a `refine_failed_infra` row, `run_size_review` rate-limit exhaustion halts, and a cancelled parent is ledgered `cancelled`. Each difference is pinned by its own test
 - [ ] Every re-entry edge (selectors and `dispatch_pre_deferral_remedy.on_yes`) targets the wrapper's `count_repair_cycle_refine`, never `run_refine_to_ready` directly
-- [ ] An inner `DECOMPOSED` with no children and an unresolved parent continues to the wrapper's size-review (BUG-1183 fallback kept), and no wrapper terminal is written while `refine-broke-down` is `1` except `mark_decomposed`
+- [ ] `route_inner_success` resets `refine-broke-down` to `0` on every inner success; an inner `DECOMPOSED` with no children and an unresolved parent continues to the wrapper's size-review (BUG-1183 fallback kept); and no wrapper terminal is written while `refine-broke-down` is `1` except `mark_decomposed`, including after a `MISSING` inner record
 - [ ] `record_reentry_exhausted` lives in the wrapper and records `BLOCKED:decision_unresolved`
 - [ ] Autodev's `check_passed` is the only writer of `autodev-staged.txt`, and `recover_subloop_children` is the only writer of `resolved_by_subloop` rows
 - [ ] `size_review_snap`, `check_broke_down` and `mark_scores_absent_infra` are deleted from autodev
@@ -570,8 +590,8 @@ Document these in `docs/guides/LOOPS_REFERENCE.md`:
   `autodev.yaml` before the move; none of them depends on the wrapper:
   - the shared rescoring path;
   - the `run_size_review` rate-limit halt (to `finalize_rate_limited`);
-  - record writes next to ledger rows, plus the `refine-broke-down` reset at the ladder
-    entry.
+  - record writes next to ledger rows, plus the `refine-broke-down` reset in
+    `copy_broke_down`.
 
   After ENH-3615, ENH-3606 relocates the shared rescoring chain
   (`clear_scores` / `rerun_confidence` / `check_scores_present` / `route_after_rescore`)
@@ -766,8 +786,13 @@ Research from the original ENH-3605 (wire/refine, reconcile/design) was merged h
 
 ## Implementation Steps
 
-0. Confirm ENH-3615 is `done`. Its shared rescoring chain replaces the three triplets in
-   the move set; its record writes and `refine-broke-down` reset move unchanged.
+0. Confirm ENH-3615 is `done`. Its shared rescoring chain (plus
+   `mark_rescore_origin_atomic` and the inline origin writes in the `count_repair_cycle_*`
+   states) replaces the three triplets in the move set, and its record writes move
+   unchanged. Its `refine-broke-down` reset lives in `copy_broke_down`, which stays in
+   autodev. Once the ladder runs inside the wrapper, that reset no longer protects it:
+   the wrapper's own reset in `route_inner_success` (see "Broke-down flag rule") takes
+   over. Keep the `copy_broke_down` reset anyway; it is harmless after the wrapper returns.
 1. Re-run the boundary edge computation (Scope, "Boundary edge table") and confirm it still
    matches; update the table if `autodev.yaml` has changed.
 2. Pin the terminal table (the `TestOutcomeMapping` and CLI rows) and the `run_size_review`

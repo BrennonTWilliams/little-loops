@@ -36,7 +36,7 @@ against today's topology. That leaves ENH-3606 as mostly relocation.
    `finalize_rate_limited` instead of `dequeue_next`.
 3. **Run records at ladder stops**: each state that writes a stop row to
    `autodev-skipped.txt` also writes a `prepare-issue` run record in the same action. A
-   `refine-broke-down` reset at the ladder entry keeps those records from reading as
+   `refine-broke-down` reset in `copy_broke_down` keeps those records from reading as
    `DECOMPOSED`.
 
 Behavior stays the same except item 2, which is one of ENH-3606's accepted behavior
@@ -73,11 +73,18 @@ changes and now lands here.
 
 ### 1. Shared rescoring path
 
-- Each origin gets a one-line entry that writes `autodev-rescore-origin-<ID>`
-  (`wire` | `reconcile` | `atomic`), then goes to the shared `clear_scores`. `run_refine`
-  and `remediate_oversized_atomic` are slash states, so they need a thin shell pre-state.
-  `count_repair_cycle_reconcile` and `count_repair_cycle_refine_for_design` can write the
-  marker inline.
+- Each origin writes `autodev-rescore-origin-<ID>` (`wire` | `reconcile` | `atomic`)
+  before the shared `clear_scores`:
+  - `wire`: inline in `count_repair_cycle_wire`, which is `run_refine`'s only predecessor
+    (`next` and `on_error`) and already a shell state. `run_refine.next` / `on_error` →
+    `clear_scores`.
+  - `reconcile`: inline in `count_repair_cycle_reconcile` and
+    `count_repair_cycle_refine_for_design`, whose `next` / `on_error` → `clear_scores`.
+  - `atomic`: one new shell state, `mark_rescore_origin_atomic`, between
+    `remediate_oversized_atomic` (`next` / `on_error`) and `clear_scores`. Its predecessor
+    `check_readiness_for_atomic_remediation` is a heredoc predicate, and
+    `remediate_oversized_atomic` is a slash state, so neither can write the marker inline.
+    `mark_rescore_origin_atomic.on_error` → `mark_scores_absent_infra`.
 - The shared chain is `clear_scores` → `rerun_confidence` → `check_scores_present` →
   `route_after_rescore`:
   - `rerun_confidence` keeps `with_rate_limit_handling`, `on_rate_limit_exhausted:
@@ -85,18 +92,29 @@ changes and now lands here.
     once).
   - `check_scores_present` keeps the BUG-3588 freshness rules: it builds the retry marker
     name from the origin, so the names stay `autodev-rescore-retry-<origin>-<ID>`. First
-    miss → `rerun_confidence`; second miss → `mark_scores_absent_infra`.
-  - `route_after_rescore` reads the origin marker and routes `wire` → `enqueue_or_skip`,
-    `reconcile` → `recheck_after_size_review` and `atomic` →
+    miss → `rerun_confidence`; second miss → `mark_scores_absent_infra`. A missing or
+    unknown origin exits 3 → `mark_scores_absent_infra` before any retry marker is built
+    (otherwise the name would be `autodev-rescore-retry--<ID>`).
+  - `route_after_rescore` reads the origin marker, deletes it, and routes `wire` →
+    `enqueue_or_skip`, `reconcile` → `recheck_after_size_review` and `atomic` →
     `regate_after_atomic_remediation`. An unknown or missing origin, and `_error`, go to
-    `mark_scores_absent_infra` (fail closed).
-- `dequeue_next` removes `autodev-rescore-origin-<ID>` explicitly. The existing
+    `mark_scores_absent_infra` (fail closed). Deleting on read matters because one pass can
+    rescore twice (for example `wire`, then `reconcile` through the pre-deferral remedy):
+    a marker left behind would let an entry that forgot to write its own silently reuse
+    the previous origin instead of failing closed.
+  - Read the marker in shell (`cat`), not inside a `python3 -c` body, so the ENH-3338
+    interpolation scanner finds no new site.
+- `dequeue_next` also removes `autodev-rescore-origin-<ID>` explicitly, for passes that
+  leave the chain through `mark_scores_absent_infra` or a rate-limit halt. The existing
   `autodev-rescore-retry-*` glob does not match it.
 
 ### 2. `run_size_review` rate-limit halt
 
 `run_size_review.on_rate_limit_exhausted` → `finalize_rate_limited`. ENH-3606 later
-retargets it to the wrapper's `mark_rate_limited`, which reaches the same halt.
+retargets it to the wrapper's `mark_rate_limited`, which reaches the same halt. Rewrite
+`run_size_review`'s comment (autodev.yaml:1881-1883), which still says exhaustion "skips
+this issue and moves to the next queued one". `finalize_done`'s abandoned-inflight check
+still reports the issue, because `autodev-inflight` is not cleared on this path.
 
 ### 3. Run records at ladder stops
 
@@ -113,14 +131,27 @@ retargets it to the wrapper's `mark_rate_limited`, which reaches the same halt.
 
   `resolved_by_subloop` rows get no record here. ENH-3606 gives that row a single writer
   (`recover_subloop_children`).
+- `record_reentry_exhausted` writes its record only in the `else` branch, next to the
+  `set-status deferred`. Its ledger row is unconditional, but on an issue that is already
+  `done` / `completed` / `cancelled` the record would read `CANCELLED` (rule 1 wins) or
+  `BLOCKED:decision_unresolved` for a done issue. `recheck_after_size_review` and
+  `regate_after_atomic_remediation` need no such guard: a done or cancelled issue leaves
+  both through `resolved_by_subloop` before any stop row.
 - `reopen_waived` clears the record it undoes (`run-record clear --writer prepare-issue`)
   next to its existing `grep -vxF "$ID  oversized_atomic"` removal.
-- `recheck_scores` writes `0` to `refine-broke-down` before anything else. It is the only
-  ladder entry reached with the flag at `1` (inner breakdown, no children, parent not
-  resolved: `check_broke_down.on_yes` → `check_parent_resolved.on_no`). Nothing in autodev
-  reads `refine-broke-down` after `copy_broke_down`, so the reset is safe. Without it,
-  `outcome_from_legacy_class` rule 2 turns every stop record written later in the pass into
-  `DECOMPOSED`.
+- `copy_broke_down` writes `0` to `refine-broke-down` right after copying it to
+  `autodev-broke-down`. Without the reset, `outcome_from_legacy_class` rule 2 turns every
+  stop record written later in the pass into `DECOMPOSED`. Why here and not at
+  `recheck_scores`: `recheck_scores` is not the only ladder entry that can see the flag at
+  `1`. `route_refine_success` fails open to `check_passed` on `MISSING` / `_` / `_error`
+  (a `|| true` record write can fail after a real breakdown), and from `check_passed` an
+  issue reaches `record_reentry_exhausted` (selectors' `DECISION_EXHAUSTED`) and
+  `recheck_after_size_review` (`select_obligation_post_refine` → `check_missing_artifacts` →
+  `run_wire` → … → `enqueue_or_skip`) without passing `recheck_scores`. Every successful
+  `refine_current` passes `copy_broke_down`, and nothing reads `refine-broke-down` after it:
+  `route_refine_success` reads the saved record, and `check_broke_down` reads
+  `autodev-broke-down`. A re-entry through `refine_current` (selector `DECISION` / `PROOF`)
+  re-runs the child, which rewrites the flag, and passes `copy_broke_down` again.
 - Nothing in autodev reads these records yet: the stop states still route to
   `dequeue_next`, and `route_refine_outcome` / `route_refine_success` read only right after
   `refine_current`. The next wrapper run's `clear_record` clears them. That is why this part
@@ -147,52 +178,77 @@ retargets it to the wrapper's `mark_rate_limited`, which reaches the same halt.
 
 - `scripts/tests/test_autodev_scores_freshness.py`: rewrite `PATHS` (:31) and its
   parametrized structural and behavioral tests (:44-70, :161-237) around the shared chain:
-  - each origin's entry writes its marker and reaches `clear_scores`;
-  - `route_after_rescore` routes each origin to its successor, and unknown or missing
-    origin → `mark_scores_absent_infra`;
+  - each origin's entry writes its marker and reaches `clear_scores`
+    (`count_repair_cycle_wire`, `count_repair_cycle_reconcile`,
+    `count_repair_cycle_refine_for_design`, `mark_rescore_origin_atomic`);
+  - `route_after_rescore` routes each origin to its successor and deletes the marker;
+    unknown or missing origin → `mark_scores_absent_infra`;
+  - `check_scores_present` with a missing or unknown origin exits 3 and creates no retry
+    marker;
+  - two rescorings in one pass (`wire`, then `reconcile`) each route to their own
+    successor;
   - retry-marker names are unchanged per origin;
   - `test_dequeue_next_clears_retry_markers` also covers the origin marker.
 - Structural: exactly one `clear_scores` / `rerun_confidence` / `check_scores_present` /
   `route_after_rescore`. No `clear_scores_before_*` / `rerun_confidence_after_*` /
-  `check_scores_present_*` remains; add them to autodev's removed-states list.
-- `run_size_review.on_rate_limit_exhausted == "finalize_rate_limited"`, with a real-FSM
-  test that it halts the queue instead of advancing.
-- Real-FSM, one case per stop row: the record token matches the table, and the ledger rows
-  in `autodev-skipped.txt` are unchanged.
-- Broke-down trap: inner breakdown with no children and an unresolved parent, then a
-  `design_gate_failed` stop, records `DEFERRED:gate_unmet`, not `DECOMPOSED`.
+  `check_scores_present_*` remains. There is no shared autodev removed-states list: add a
+  `_RESCORE_TRIPLET_STATES_REMOVED` tuple in `test_autodev_decision_gate.py` next to
+  `_DECISION_STATES_REMOVED` / `_SPIKE_STATES_REMOVED`, with the same "gone" and "no edge
+  targets it" tests.
+- `run_size_review.on_rate_limit_exhausted == "finalize_rate_limited"` (structural). No
+  real-FSM test: reaching `on_rate_limit_exhausted` means going through the short-tier
+  retries and the 21600s long-wait budget, and the executor's exhaustion routing is already
+  covered in `test_fsm_executor.py`.
+- Real-FSM (the mock-`action_runner` `FSMExecutor` harness in
+  `test_autodev_decision_gate.py`, `_run_decision_chain`), one case per stop row: the record
+  token matches the table, and the ledger rows in `autodev-skipped.txt` are unchanged.
+- `record_reentry_exhausted` on an already `done` or `cancelled` issue writes the ledger row
+  and no record.
+- Broke-down trap, two cases, both recording `DEFERRED:gate_unmet`, not `DECOMPOSED`:
+  - inner breakdown with no children and an unresolved parent, then a `design_gate_failed`
+    stop;
+  - `refine-broke-down` at `1` with a `MISSING` record (`route_refine_success` →
+    `check_passed`), then a stop.
 - `reopen_waived` removes the `oversized_atomic` row and clears the record.
 - Existing suites that pin the triplet names, updated in place:
-  - `test_builtin_loops.py::TestAutodevLoop` (`rerun_confidence_after_wire` ~:9534-9590);
-  - `test_autodev_decision_gate.py`;
-  - `test_autodev_loop.py` (`TestRepairCycleCounterStates`);
+  - `test_builtin_loops.py` (56 references between :6449 and :9115);
+  - `test_autodev_decision_gate.py` (including `count_repair_cycle_reconcile.next ==
+    "clear_scores_before_reconcile"` at :864-865);
   - `test_fsm_topology.py::test_autodev_topology` count, with a delta comment (9 triplet
-    states → 4 shared + up to 2 origin pre-states).
-- `scripts/tests/data/loop_interpolation_baseline.json`: re-key any entries for the renamed
-  states in the same commit (`TestInterpSweepBaseline::test_completeness_guard`).
+    states → 4 shared + 1 origin pre-state, net −4).
+  - `test_autodev_loop.py::TestRepairCycleCounterStates` does not name the triplets; re-run
+    it, since the counter states' actions change.
+- `scripts/tests/data/loop_interpolation_baseline.json` has no entries for these states. The
+  scanner only flags interpolation inside Python bodies, so as long as the origin is read in
+  shell, no baseline change is needed.
 
 ## Docs
 
 - `docs/guides/LOOPS_REFERENCE.md`:
-  - the autodev score-freshness / rescoring paragraphs;
-  - `:579` (`run_size_review`);
+  - the autodev score-freshness / rescoring paragraphs, including the long paragraph at
+    `:1103`, which names all three `rerun_confidence_after_*` states;
+  - `:593` (`run_size_review`);
   - add the rate-limit halt to the behavior-change notes.
-- The autodev ASCII tree, where it names the triplets.
+- The autodev ASCII tree (`LOOPS_REFERENCE.md` ~:1059-1088), where it names the triplets.
+- Comments in `autodev.yaml` that name the triplet states: :127, :1048, :1069, :1093,
+  :1905, :2108-2109, :2215, :2239, :2575, :2604 (pre-change line numbers).
 
 ## Acceptance Criteria
 
-- [ ] `autodev.yaml` has one rescoring chain (`clear_scores` → `rerun_confidence` → `check_scores_present` → `route_after_rescore`) that dispatches per origin through `autodev-rescore-origin-<ID>`; unknown or missing origin fails closed to `mark_scores_absent_infra`
+- [ ] `autodev.yaml` has one rescoring chain (`clear_scores` → `rerun_confidence` → `check_scores_present` → `route_after_rescore`) that dispatches per origin through `autodev-rescore-origin-<ID>`; `route_after_rescore` deletes the marker after reading it; unknown or missing origin fails closed to `mark_scores_absent_infra` in both `check_scores_present` and `route_after_rescore`
+- [ ] The only new origin state is `mark_rescore_origin_atomic`; `wire` and `reconcile` write the marker inline in their `count_repair_cycle_*` states
 - [ ] Retry-marker names (`autodev-rescore-retry-<origin>-<ID>`) and the BUG-3588 freshness behavior are unchanged; `dequeue_next` clears the origin marker
-- [ ] `run_size_review` rate-limit exhaustion halts through `finalize_rate_limited`
+- [ ] `run_size_review` rate-limit exhaustion halts through `finalize_rate_limited`, and its comment describes the halt
 - [ ] Every stop row written by `recheck_after_size_review`, `regate_after_atomic_remediation` and `record_reentry_exhausted` has a `prepare-issue` record matching the table, written in the same action; ledger rows are unchanged
-- [ ] `recheck_scores` resets `refine-broke-down` to `0`; the broke-down trap test passes
+- [ ] `record_reentry_exhausted` writes no record when the issue is already `done` / `completed` / `cancelled`
+- [ ] `copy_broke_down` resets `refine-broke-down` to `0` after copying it; both broke-down trap cases pass
 - [ ] `reopen_waived` clears the record it undoes
-- [ ] `auto-refine-and-implement` summary counts are unchanged in a real-FSM run except for the `run_size_review` halt
+- [ ] No `autodev.yaml` comment or `LOOPS_REFERENCE.md` line names a removed triplet state
 
 ## Impact
 
 - **Priority**: P3. It shrinks ENH-3606, whose outcome confidence was 46.
-- **Effort**: Medium. About 9 states collapse to 6, 7 record-write lines are added, and the
+- **Effort**: Medium. Nine states collapse to five, 7 record-write lines are added, and the
   scores-freshness suite needs a test rewrite.
 - **Risk**: Low to medium. It stays inside autodev's current topology. The records it adds
   are write-only until ENH-3606.
@@ -203,12 +259,17 @@ retargets it to the wrapper's `mark_rate_limited`, which reaches the same halt.
 
 - `scripts/little_loops/loops/autodev.yaml` (post-ENH-3611 anchors):
   - `dequeue_next` retry-marker clear ~:127-129;
-  - `run_refine` ~:1046 and wire retry marker ~:1100;
-  - `mark_scores_absent_infra` ~:1563, `recheck_scores` ~:1831, `run_size_review` ~:1878;
+  - `copy_broke_down` ~:655 (reset), `route_refine_success` ~:670 (fail-open to
+    `check_passed`);
+  - `record_reentry_exhausted` ~:962 (record in the `else` branch);
+  - `count_repair_cycle_wire` ~:1035, `run_refine` ~:1046 and wire retry marker ~:1100;
+  - `mark_scores_absent_infra` ~:1563, `recheck_scores` ~:1831, `run_size_review` ~:1878
+    (comment ~:1881-1883);
+  - `check_readiness_for_atomic_remediation` ~:2171, `remediate_oversized_atomic` ~:2192;
   - atomic retry marker ~:2246, `regate_after_atomic_remediation` ~:2267, `reopen_waived`
     ~:2447;
-  - reconcile retry marker ~:2611, `recheck_after_size_review` ~:2632;
-  - `record_reentry_exhausted`.
+  - `count_repair_cycle_refine_for_design` ~:2494, `count_repair_cycle_reconcile` ~:2533;
+  - reconcile retry marker ~:2611, `recheck_after_size_review` ~:2632.
 - `little_loops.run_record`:
   - `outcome_from_legacy_class` is first-match-wins, and rule 2 (`broke_down`) comes
     before the legacy class;
@@ -219,12 +280,15 @@ retargets it to the wrapper's `mark_rate_limited`, which reaches the same halt.
 
 ## Implementation Steps
 
-1. Add the tests first: shared-chain structure, origin dispatch, the size-review halt, the
-   per-row record tokens and the broke-down trap. Confirm they fail.
-2. Build the shared chain and origin entries, then delete the nine triplet states.
-3. Retarget `run_size_review.on_rate_limit_exhausted`.
-4. Add the record writes, the `reopen_waived` clear and the `recheck_scores` reset.
-5. Update the existing suites, the topology count, the baseline JSON and the docs.
+1. Add the tests first: shared-chain structure, origin dispatch and marker consumption, the
+   size-review halt, the per-row record tokens, the done/cancelled `record_reentry_exhausted`
+   case and both broke-down trap cases. Confirm they fail.
+2. Build the shared chain, the inline origin writes and `mark_rescore_origin_atomic`, then
+   delete the nine triplet states.
+3. Retarget `run_size_review.on_rate_limit_exhausted` and rewrite its comment.
+4. Add the record writes, the `reopen_waived` clear and the `copy_broke_down` reset.
+5. Update the existing suites, the topology count, the `autodev.yaml` comments that name
+   the triplets, and the docs.
 6. Run `ll-loop validate autodev` and `python -m pytest scripts/tests/`.
 
 ## Program Design
@@ -235,7 +299,7 @@ retargets it to the wrapper's `mark_rate_limited`, which reaches the same halt.
 
 ### Signatures
 
-- `outcome_from_legacy_class(legacy_class: str | None, broke_down: bool, thresholds_met: bool, status: str | None) -> PreparationOutcome` — maps each stop's `--legacy-class`; the `refine-broke-down` reset keeps rule 2 from firing
+- `outcome_from_legacy_class(legacy_class: str | None, broke_down: bool, thresholds_met: bool, status: str | None) -> PreparationOutcome` — maps each stop's `--legacy-class`; the `copy_broke_down` reset keeps rule 2 from firing, and writing `record_reentry_exhausted`'s record only on the deferral branch keeps rule 1 from firing
 - `record_token(record: RunRecord | None) -> str` — yields `DEFERRED:gate_unmet` / `BLOCKED:decision_unresolved` for the new records
 
 ### Call Path
