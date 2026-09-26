@@ -22,6 +22,12 @@ relates_to:
 - ENH-3602
 - BUG-3603
 - BUG-3593
+confidence_score: 90
+outcome_confidence: 51
+score_complexity: 5
+score_test_coverage: 18
+score_ambiguity: 18
+score_change_surface: 10
 ---
 
 # ENH-3611: Move autodev spike and proof-gate repair into refine-to-ready-issue
@@ -351,6 +357,25 @@ ENH-3610's review changed parts of the selector contract that this issue builds 
 **Open** | Created: 2026-09-26 | Priority: P3
 
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-26_
+
+**Readiness Score**: 90/100 → PROCEED
+**Outcome Confidence**: 51/100 → LOW
+
+### Concerns
+- Accepted interim behavior loss: a `spike` remedy armed only by the ambiguity heuristic gets another refine pass, not a spike, until ENH-3606.
+- The child's new `check_proof_before_done` also fires on `check_missing_artifacts.on_yes`, spending the shared spike budget before wiring (accepted in the issue).
+
+### Outcome Risk Factors
+- Deep per-site complexity: rewiring control flow across three selectors (one new), a new child gate, and shared-budget/re-entry-cap semantics that interact with `spike-runs-<ID>`.
+- Broad enumeration across 22 removed autodev states plus 6 retargets, marker cleanup in four surviving states, and comment/doc/baseline edits.
+- Wide test rewrite surface (freshness, spike routing, check-gate, topology, builtin loops) with six new real-FSM tests; a missed inbound edge to a removed state would only surface via those tests.
+- Consider landing in two steps (child gate + selectors first, state deletion second) to reduce blast radius.
+
+
 ## Session Log
+- `/ll:confidence-check` - 2026-09-26T06:39:11 - `75e3d2d3-f8ce-4d8d-a1e4-0681793eb55f.jsonl`
 - `/ll:verify-issues` - 2026-09-26T06:35:49 - `d85f5c48-f990-4ff7-8752-05eb266137ea.jsonl`
 - `/ll:ready-issue` - 2026-09-26T06:26:39 - `73daee30-3ee0-41e2-828b-b6ae2b1d133e.jsonl`
