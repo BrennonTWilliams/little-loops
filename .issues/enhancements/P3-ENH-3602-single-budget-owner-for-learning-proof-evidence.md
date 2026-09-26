@@ -3,10 +3,11 @@ id: ENH-3602
 type: ENH
 title: Single budget owner for learning-proof evidence
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-25'
 captured_at: '2026-09-25T18:51:59Z'
+completed_at: '2026-09-26T00:25:21Z'
 decision_needed: false
 relates_to:
 - ENH-3601
