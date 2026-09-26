@@ -12,6 +12,12 @@ relates_to:
 - ENH-3610
 - ENH-3611
 reconcile_attempted: true
+confidence_score: 100
+outcome_confidence: 82
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 # BUG-3614: Autodev DECISION re-entry routes lifetime-capped issues to breakdown
@@ -302,6 +308,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-26T07:14:04 - `1eb03218-20ce-453a-bf86-789e28cb50a6.jsonl`
 - `/ll:wire-issue` - 2026-09-26T07:04:31 - `c8822019-43a9-4d0f-b257-475aeb4ab3ec.jsonl`
 - `/ll:reconcile-issue` - 2026-09-26T07:01:39 - `7d8d5da2-5970-46c4-a7de-295402f96f22.jsonl`
 - `/ll:refine-issue` - 2026-09-26T06:59:52 - `83a53e9a-c833-443d-91cf-22a5699e1980.jsonl`
