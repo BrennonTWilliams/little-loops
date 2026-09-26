@@ -45,14 +45,13 @@ category: issue-management
 #                                                       → (on_failure) mark_evidence_absent_infra
 #   route_score_obligation (next-obligation with the seeded thresholds; tier 1 and
 #   DECISION/PROOF/ARTIFACTS skipped; ENH-3604):
-#     NONE                     → check_decision_before_done (ENH-3610) → write_done_record → done
+#     NONE                     → check_decision_before_done (ENH-3610) → check_proof_before_done (ENH-3611) → write_done_record → done
 #     SCORES:readiness_below, SCORES:absent → check_refine_limit → refine_followup (additive --gap-analysis)
 #     SCORES:outcome_below     → check_decision_needed → (on_yes) check_decide_attempts (BUG-3553: 1/run)
 #                                                        → resolve_decision_pre_breakdown | 2nd: record_decision_unresolved
 #                                                    → (on_no)  check_spike_needed (ENH-3250)
 #     _ / _error               → diagnose
-#                      check_spike_needed (spike_needed AND NOT spike_attempted, autodev.yaml's
-#                      two-field one-shot guard) → (on_yes) run_spike → confidence_check
+#                      check_spike_needed (spike_needed AND NOT spike_attempted, two-field one-shot guard) → (on_yes) run_spike → confidence_check
 #                                                → (on_no)  check_missing_artifacts
 #   BUG-3065: the three decision_needed gates (check_decision_mid_refine,
 #   check_decision_mid_wire, check_decision_needed) no longer exit via done on
@@ -124,7 +123,13 @@ scope:
 # 90 is kept.
 # ENH-3576: 85 -> 90. +1 precheck_format on every run, +1 for the single shared
 # /ll:format-issue fallback (pre or post, one counter), rounded for headroom.
-max_steps: 90
+# ENH-3611: 90 -> 100 for check_proof_before_done. The shared spike-runs-<ID>
+# cap (< 2) means a proof spike REPLACES one of the two spikes BUG-3593's 60 -> 70
+# bump already budgets; it does not add a third. New cost: two
+# check_proof_before_done hops plus one extra confidence_check ->
+# route_score_obligation -> check_decision_before_done score pass (~7 steps; the
+# refuted leg adds more).
+max_steps: 100
 # Step-cap fall-through: the executor runs the named state exactly once at the
 # cap; its `next:` is never followed and terminated_by stays "max_steps".
 # classify_terminal then writes refine-terminal-class so autodev's
@@ -835,11 +840,41 @@ states:
     # decision_needed: true (except via write_broke_down). Sits on the three
     # done edges (route_score_obligation NONE, check_missing_artifacts.on_yes). Flag set → check_decide_attempts (the
     # existing decide budget and path, which re-scores via confidence_check);
-    # otherwise → write_done_record → done. Fail-open on error: a probe failure
+    # otherwise → check_proof_before_done → write_done_record → done. Fail-open on error: a probe failure
     # must not strand a ready issue, and autodev's selectors re-check the flag.
     action: "ll-issues check-flag ${captured.issue_id.output:shell} decision_needed"
     fragment: shell_exit
     on_yes: check_decide_attempts
+    on_no: check_proof_before_done  # ENH-3611 proof gate before the done record
+    on_error: check_proof_before_done
+
+  check_proof_before_done:
+    # ENH-3611: child invariant — this loop never reaches `done` with an open
+    # `structured_proof` gate while spike budget remains (extends ENH-3575 to every
+    # caller). Sits between check_decision_before_done and write_done_record, so it
+    # fires on both no-class done edges (route_score_obligation NONE and
+    # check_missing_artifacts.on_yes). `check-gate` exits 0 for every in-force
+    # verdict, so match the stdout TOKEN (`structured_proof`), never the exit code:
+    # structured_open / prose / none / structured_satisfied all fall through. Spends
+    # the shared `spike-runs-<ID>` budget (< 2), incremented BEFORE run_spike (the
+    # check_spike_needed idiom, so a crashed spike still counts); spike_attempted
+    # unset keeps it one-shot. A proven spike sets spike_completed, flipping
+    # check-gate to structured_satisfied, so the second pass reaches
+    # write_done_record. Fail-open: a helper error (check-gate exit >= 2, or the
+    # spike_attempted probe's exit 2) → write_done_record, never run_spike; autodev's
+    # check_proof_defer_or_implement stays fail-closed downstream (BUG-3603).
+    action: |
+      ID=${captured.issue_id.output:shell}
+      VERDICT=$(ll-issues check-gate "$ID" 2>/dev/null) || exit 1
+      [ "$VERDICT" = "structured_proof" ] || exit 1
+      F="${context.run_dir}/spike-runs-$ID"
+      N=$(cat "$F" 2>/dev/null || echo 0)
+      [ "$N" -lt 2 ] 2>/dev/null || exit 1
+      ll-issues check-flag "$ID" spike_attempted
+      [ "$?" -eq 1 ] || exit 1
+      printf '%s' "$((N + 1))" > "$F"
+    fragment: shell_exit
+    on_yes: run_spike
     on_no: write_done_record
     on_error: write_done_record
 
@@ -891,7 +926,7 @@ states:
     on_error: record_decision_unresolved
 
   check_spike_needed:
-    # ENH-3250 (B3): mirrors autodev.yaml's check_spike_needed predicate
+    # ENH-3250 (B3): was mirrored by autodev.yaml's check_spike_needed (being removed in ENH-3611) predicate
     # (autodev additionally snapshots pre-spike readiness; the rate-limit
     # fragment IS carried on run_spike below, ENH-3607)
     # — spike_needed is a FlagRule written by apply_flags_from_notes()
@@ -927,7 +962,7 @@ states:
     on_error: check_missing_artifacts
 
   run_spike:
-    # ENH-3250 (B3): mirrors autodev.yaml's run_spike — proves the
+    # ENH-3250 (B3): autodev's run_spike (being removed in ENH-3611) was its mirror — proves the
     # unproven internal mechanism via /ll:spike --auto, which writes
     # spike_attempted/spike_completed to frontmatter (arming check_spike_needed's
     # one-shot guard), then re-enters confidence_check so the score reflects the
@@ -1019,8 +1054,8 @@ states:
     # Gate before size-review: if missing_artifacts=true the low outcome score is
     # caused by absent files/unwired components, not scope. Exit via done (through
     # check_decision_before_done) so the outer loop's remediation ladder
-    # (check_passed.on_no → select_obligation_post_refine → check_spike_needed →
-    # check_missing_artifacts → run_wire path) can handle the repair. Mirrors check_decision_needed above and
+    # (check_passed.on_no → select_obligation_post_refine → check_missing_artifacts →
+    # run_wire path; ENH-3611 removes autodev's check_spike_needed) can handle the repair. Mirrors check_decision_needed above and
     # autodev.yaml's check_missing_artifacts state.
     action: "ll-issues check-flag ${captured.issue_id.output:shell} missing_artifacts"
     fragment: shell_exit

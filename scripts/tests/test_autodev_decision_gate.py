@@ -194,6 +194,7 @@ class TestObligationSelectorStructural:
         assert state["route"] == {
             "DECISION": "refine_current",
             "DECISION_EXHAUSTED": "record_reentry_exhausted",
+            "PROOF": "refine_current",
             "_": "check_spike_needed",
             "_error": "detect_children",
         }
@@ -204,6 +205,7 @@ class TestObligationSelectorStructural:
         assert state["route"] == {
             "DECISION": "refine_current",
             "DECISION_EXHAUSTED": "record_reentry_exhausted",
+            "PROOF": "refine_current",
             "_": "check_proof_gate_before_implement",
             "_error": "check_proof_gate_before_implement",
         }
@@ -392,10 +394,17 @@ class TestObligationSelectorBehavior:
         assert result.returncode == 0
         assert result.stdout.strip() == "NONE"
         nxt = [c for c in stub.calls() if c.startswith("next-obligation")]
-        assert nxt == [
+        expected = (
             "next-obligation ENH-3610 --format token --readiness-threshold 85 "
             "--outcome-threshold 65 --honor-waiver"
-        ]
+        )
+        if name == "select_obligation_post_refine":
+            # ENH-3611: the low-outcome selector passes the child's six tier-1 skips.
+            expected += (
+                " --skip FORMAT --skip VERIFY --skip HEDGES --skip PLACEHOLDERS"
+                " --skip ACCEPTANCE_CRITERIA --skip DESIGN"
+            )
+        assert nxt == [expected]
         assert not list(run_dir.glob("autodev-reentry-*"))
 
     @pytest.mark.parametrize(
@@ -469,9 +478,8 @@ class TestObligationSelectorBehavior:
     def test_decision_blocks_byte_identical(self, states: dict[str, Any]) -> None:
         def block(name: str) -> str:
             action = states[name]["action"]
-            return action[
-                action.index('if [ "$RC" -eq 0 ]') : action.index("ll-issues next-obligation")
-            ]
+            start = action.index('if [ "$RC" -eq 0 ]')
+            return action[start : action.index("\nfi\n", start)]
 
         assert block("select_obligation_post_refine") == block("select_obligation_pre_implement")
 
@@ -648,8 +656,13 @@ class TestChildDecisionInvariant:
         gate = child["check_decision_before_done"]
         assert "check-flag" in gate["action"] and "decision_needed" in gate["action"]
         assert gate["on_yes"] == "check_decide_attempts"
-        assert gate["on_no"] == "write_done_record"
-        assert gate["on_error"] == "write_done_record"
+        # ENH-3611: the proof gate sits between the decision gate and the done record.
+        assert gate["on_no"] == "check_proof_before_done"
+        assert gate["on_error"] == "check_proof_before_done"
+        proof = child["check_proof_before_done"]
+        assert proof["on_yes"] == "run_spike"
+        assert proof["on_no"] == "write_done_record"
+        assert proof["on_error"] == "write_done_record"
 
     def test_run_record_write_moved_to_write_done_record(self, child: dict[str, Any]) -> None:
         assert "run-record write" in child["write_done_record"]["action"]
@@ -744,9 +757,13 @@ class TestDecidePathSpikeGate:
             "gate before the spike gate"
         )
         resolved_gate = data["states"]["check_parent_resolved_post_size_review"]
-        assert resolved_gate.get("on_no") == "check_spike_needed_before_skip", (
-            "check_parent_resolved_post_size_review.on_no must preserve the spike "
-            "gate edge (BUG-2654) so pending spikes keep their one shot at run_spike"
+        # ENH-3611: the post-size-review selector fronts the spike gate.
+        assert resolved_gate.get("on_no") == "select_obligation_post_size_review"
+        selector = data["states"]["select_obligation_post_size_review"]
+        assert selector["route"]["PROOF"] == "refine_current"
+        assert selector["route"]["_"] == "check_spike_needed_before_skip", (
+            "the selector's `_` must preserve the spike gate edge (BUG-2654) so "
+            "pending spikes keep their one shot at run_spike"
         )
 
     def test_gate_predicate_reads_both_flags(self, data: dict[str, Any]) -> None:

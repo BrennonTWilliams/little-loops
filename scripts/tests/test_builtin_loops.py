@@ -1865,7 +1865,7 @@ class TestRefineToReadyIssueSubLoop:
         for name in ("format_issue_pre", "format_issue_post"):
             assert states[name]["action"].startswith("/ll:format-issue")
         assert "refine-to-ready-format-fallback" in states["resolve_issue"]["action"]
-        assert data["max_steps"] == 90
+        assert data["max_steps"] == 100  # ENH-3611: 90 -> 100 for check_proof_before_done
 
     def test_resolve_issue_seeds_reconcile_attempts_counter(self, data: dict) -> None:
         """resolve_issue seeds the reconcile-attempts counter alongside its siblings (ENH-3248)."""
@@ -8500,8 +8500,11 @@ class TestAutodevLoop:
             f"got {state.get('on_no')!r}"
         )
         resolved_gate = data["states"].get("check_parent_resolved_post_size_review", {})
-        assert resolved_gate.get("on_no") == "check_spike_needed_before_skip", (
-            "check_parent_resolved_post_size_review must preserve the BUG-2654 spike "
+        # ENH-3611: fronted by the post-size-review selector, whose `_` keeps the gate.
+        assert resolved_gate.get("on_no") == "select_obligation_post_size_review"
+        selector = data["states"]["select_obligation_post_size_review"]
+        assert selector["route"]["_"] == "check_spike_needed_before_skip", (
+            "the post-size-review selector must preserve the BUG-2654 spike "
             "gate on unresolved parents"
         )
         assert resolved_gate.get("on_yes") == "recover_subloop_children", (
@@ -8841,8 +8844,10 @@ class TestAutodevLoop:
             f"got {state.get('on_no')!r}"
         )
         resolved_gate = data["states"].get("check_parent_resolved_post_size_review", {})
-        assert resolved_gate.get("on_no") == "check_spike_needed_before_skip", (
-            "the parent-resolved gate must fall through to check_spike_needed_before_skip "
+        assert resolved_gate.get("on_no") == "select_obligation_post_size_review"
+        selector = data["states"]["select_obligation_post_size_review"]
+        assert selector["route"]["_"] == "check_spike_needed_before_skip", (
+            "the post-size-review selector must fall through to check_spike_needed_before_skip "
             "so spike_needed issues keep their one shot at run_spike"
         )
 

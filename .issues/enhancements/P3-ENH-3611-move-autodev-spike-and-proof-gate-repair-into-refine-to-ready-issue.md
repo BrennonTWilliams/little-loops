@@ -3,7 +3,7 @@ id: ENH-3611
 type: ENH
 title: Move autodev spike and proof-gate repair into refine-to-ready-issue
 priority: P3
-status: open
+status: in_progress
 discovered_by: issue-size-review
 discovered_date: '2026-09-26'
 captured_at: '2026-09-26T03:47:27Z'
@@ -654,6 +654,18 @@ ENH-3610's review changed parts of the selector contract that this issue builds 
 **Open** | Created: 2026-09-26 | Priority: P3
 
 
+## Implementation Progress
+
+- **Commit 1 (additive) — done 2026-09-26**: child `check_proof_before_done` + `max_steps` 90 → 100;
+  `PROOF` probes in `select_obligation_post_refine` / `select_obligation_pre_implement`; new
+  `select_obligation_post_size_review` (`_` → `check_spike_needed_before_skip`), wired from
+  `check_parent_resolved_post_size_review`. Tests: `test_autodev_proof_reentry.py` (new) plus
+  retargeted assertions in `test_autodev_decision_gate.py`, `test_builtin_loops.py`,
+  `test_fsm_topology.py` (112 states).
+- **Commit 2 (subtractive) — pending**: delete the 22 states, retargets, marker cleanup,
+  `dispatch_pre_deferral_remedy` change, stays-deleted guards, topology 112 → 90, baseline
+  entries, stale-comment sweep, docs. The child's header comments already say "being removed".
+
 ## Confidence Check Notes
 
 _Added by `/ll:confidence-check` on 2026-09-26_
@@ -673,6 +685,8 @@ _Added by `/ll:confidence-check` on 2026-09-26_
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-26T17:10:02 - `fc6ed21f-1036-45c5-930f-24dda0d118f9.jsonl`
+- `/ll:ready-issue` - 2026-09-26T17:00:12 - `293bb9d6-9d37-4d7a-a90a-ea910eb1b3da.jsonl`
 - `/ll:confidence-check` - 2026-09-26T16:57:48 - `5fcff031-2163-446c-9deb-45928c03af2c.jsonl`
 - `/ll:confidence-check` - 2026-09-26T16:44:05 - `88765dd3-5ef4-4849-8e4c-9aa5d0526c31.jsonl`
 - `/ll:verify-issues` - 2026-09-26T16:40:20 - `e00101ac-01af-4226-a647-7ed0633c4138.jsonl`

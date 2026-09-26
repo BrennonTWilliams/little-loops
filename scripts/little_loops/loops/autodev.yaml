@@ -752,6 +752,13 @@ states:
     # copies triage_outcome_failure.on_error (detect_children).
     action: |
       ID=${captured.input.output:shell}
+      # ENH-3611: refine_count / lifetime cap read once (BUG-3614 snippet). The child's
+      # check_lifetime_limit routes a capped issue to breakdown_issue, so no re-entry
+      # (DECISION or PROOF) is attempted at the cap; unreadable values fall back to 0/5.
+      CNT=$(ll-issues refine-status "$ID" --json 2>/dev/null | python3 -c 'import json,sys; print(int(json.load(sys.stdin).get("refine_count", 0)))' 2>/dev/null || echo 0)
+      CAP=$(python3 -c 'import json; print(int(json.load(open(".ll/ll-config.json")).get("commands", {}).get("max_refine_count", 5)))' 2>/dev/null || echo 5)
+      [ -z "$CNT" ] && CNT=0
+      [ -z "$CAP" ] && CAP=5
       ll-issues check-flag "$ID" decision_needed
       RC=$?
       if [ "$RC" -eq 0 ]; then
@@ -764,13 +771,7 @@ states:
             > "${context.run_dir}/autodev-staged.tmp" 2>/dev/null || true
           mv "${context.run_dir}/autodev-staged.tmp" "${context.run_dir}/autodev-staged.txt"
         fi
-        # BUG-3614: lifetime-cap term, evaluated before the marker write. The child's
-        # check_lifetime_limit would route a capped issue to breakdown_issue, so never
-        # re-enter it; an unreadable count/cap falls back to 0/5 (under the cap).
-        CNT=$(ll-issues refine-status "$ID" --json 2>/dev/null | python3 -c 'import json,sys; print(int(json.load(sys.stdin).get("refine_count", 0)))' 2>/dev/null || echo 0)
-        CAP=$(python3 -c 'import json; print(int(json.load(open(".ll/ll-config.json")).get("commands", {}).get("max_refine_count", 5)))' 2>/dev/null || echo 5)
-        [ -z "$CNT" ] && CNT=0
-        [ -z "$CAP" ] && CAP=5
+        # BUG-3614: lifetime-cap term (CNT/CAP read above), evaluated before the marker write.
         if [ "$CNT" -ge "$CAP" ] 2>/dev/null; then
           echo "[DECISION_CAPPED] $ID refine_count=$CNT cap=$CAP" >&2
           echo "DECISION_EXHAUSTED"
@@ -786,16 +787,40 @@ states:
         fi
         exit 0
       fi
-      ll-issues next-obligation "$ID" --format token \
+      TOK=$(ll-issues next-obligation "$ID" --format token \
         --readiness-threshold ${context.readiness_threshold:shell} \
         --outcome-threshold ${context.outcome_threshold:shell} \
-        --honor-waiver
+        --honor-waiver --skip FORMAT --skip VERIFY --skip HEDGES --skip PLACEHOLDERS --skip ACCEPTANCE_CRITERIA --skip DESIGN); RC=$?
+      # ENH-3611: any PROOF:* token is a re-entry candidate; the sub-reason is
+      # worst-status-wins across registry targets, so decide from the spike flags.
+      case "$TOK" in
+        PROOF*)
+          SPIKE_N=$(cat "${context.run_dir}/spike-runs-$ID" 2>/dev/null || echo 0)
+          F="${context.run_dir}/autodev-reentry-PROOF-$ID"
+          ll-issues check-flag "$ID" spike_needed >/dev/null 2>&1; NEEDED=$?
+          ll-issues check-flag "$ID" spike_attempted >/dev/null 2>&1; ATT=$?
+          if [ "$NEEDED" -eq 0 ] && [ "$ATT" -eq 1 ] && [ "$SPIKE_N" -lt 2 ] 2>/dev/null \
+             && [ ! -e "$F" ] && [ "$CNT" -lt "$CAP" ] 2>/dev/null; then
+            if [ -f "${context.run_dir}/autodev-staged.txt" ]; then
+              grep -vxF "$ID" "${context.run_dir}/autodev-staged.txt" \
+                > "${context.run_dir}/autodev-staged.tmp" 2>/dev/null || true
+              mv "${context.run_dir}/autodev-staged.tmp" "${context.run_dir}/autodev-staged.txt"
+            fi
+            printf '1' > "$F"
+            echo "PROOF"
+            exit 0
+          fi
+          ;;
+      esac
+      printf '%s\n' "$TOK"
+      exit "$RC"
     action_type: shell
     evaluate:
       type: classify
     route:
       DECISION: refine_current
       DECISION_EXHAUSTED: record_reentry_exhausted
+      PROOF: refine_current  # ENH-3611
       _: check_spike_needed
       _error: detect_children
 
@@ -811,6 +836,13 @@ states:
     # gate (BUG-3603), the removed decide_current's on_no / on_error target.
     action: |
       ID=${captured.input.output:shell}
+      # ENH-3611: refine_count / lifetime cap read once (BUG-3614 snippet). The child's
+      # check_lifetime_limit routes a capped issue to breakdown_issue, so no re-entry
+      # (DECISION or PROOF) is attempted at the cap; unreadable values fall back to 0/5.
+      CNT=$(ll-issues refine-status "$ID" --json 2>/dev/null | python3 -c 'import json,sys; print(int(json.load(sys.stdin).get("refine_count", 0)))' 2>/dev/null || echo 0)
+      CAP=$(python3 -c 'import json; print(int(json.load(open(".ll/ll-config.json")).get("commands", {}).get("max_refine_count", 5)))' 2>/dev/null || echo 5)
+      [ -z "$CNT" ] && CNT=0
+      [ -z "$CAP" ] && CAP=5
       ll-issues check-flag "$ID" decision_needed
       RC=$?
       if [ "$RC" -eq 0 ]; then
@@ -823,13 +855,7 @@ states:
             > "${context.run_dir}/autodev-staged.tmp" 2>/dev/null || true
           mv "${context.run_dir}/autodev-staged.tmp" "${context.run_dir}/autodev-staged.txt"
         fi
-        # BUG-3614: lifetime-cap term, evaluated before the marker write. The child's
-        # check_lifetime_limit would route a capped issue to breakdown_issue, so never
-        # re-enter it; an unreadable count/cap falls back to 0/5 (under the cap).
-        CNT=$(ll-issues refine-status "$ID" --json 2>/dev/null | python3 -c 'import json,sys; print(int(json.load(sys.stdin).get("refine_count", 0)))' 2>/dev/null || echo 0)
-        CAP=$(python3 -c 'import json; print(int(json.load(open(".ll/ll-config.json")).get("commands", {}).get("max_refine_count", 5)))' 2>/dev/null || echo 5)
-        [ -z "$CNT" ] && CNT=0
-        [ -z "$CAP" ] && CAP=5
+        # BUG-3614: lifetime-cap term (CNT/CAP read above), evaluated before the marker write.
         if [ "$CNT" -ge "$CAP" ] 2>/dev/null; then
           echo "[DECISION_CAPPED] $ID refine_count=$CNT cap=$CAP" >&2
           echo "DECISION_EXHAUSTED"
@@ -845,6 +871,29 @@ states:
         fi
         exit 0
       fi
+      # ENH-3611: scores pass, so next-obligation never reports PROOF (tier 3 needs a
+      # low outcome); probe check-gate directly. Re-enter only a non-waived issue (the
+      # child's route_score_obligation does not honor outcome_gate_waived, so a waived
+      # re-entry would reach breakdown_issue). Any other verdict or helper error falls
+      # through; the fail-closed check_proof_defer_or_implement defers it.
+      GATE=$(ll-issues check-gate "$ID" 2>/dev/null) || GATE=""
+      if [ "$GATE" = "structured_proof" ]; then
+        SPIKE_N=$(cat "${context.run_dir}/spike-runs-$ID" 2>/dev/null || echo 0)
+        F="${context.run_dir}/autodev-reentry-PROOF-$ID"
+        ll-issues check-flag "$ID" spike_attempted >/dev/null 2>&1; ATT=$?
+        ll-issues check-flag "$ID" outcome_gate_waived >/dev/null 2>&1; WAIVED=$?
+        if [ "$ATT" -eq 1 ] && [ "$WAIVED" -eq 1 ] && [ "$SPIKE_N" -lt 2 ] 2>/dev/null \
+           && [ ! -e "$F" ] && [ "$CNT" -lt "$CAP" ] 2>/dev/null; then
+          if [ -f "${context.run_dir}/autodev-staged.txt" ]; then
+            grep -vxF "$ID" "${context.run_dir}/autodev-staged.txt" \
+              > "${context.run_dir}/autodev-staged.tmp" 2>/dev/null || true
+            mv "${context.run_dir}/autodev-staged.tmp" "${context.run_dir}/autodev-staged.txt"
+          fi
+          printf '1' > "$F"
+          echo "PROOF"
+          exit 0
+        fi
+      fi
       ll-issues next-obligation "$ID" --format token \
         --readiness-threshold ${context.readiness_threshold:shell} \
         --outcome-threshold ${context.outcome_threshold:shell} \
@@ -855,8 +904,63 @@ states:
     route:
       DECISION: refine_current
       DECISION_EXHAUSTED: record_reentry_exhausted
+      PROOF: refine_current  # ENH-3611
       _: check_proof_gate_before_implement
       _error: check_proof_gate_before_implement
+
+  select_obligation_post_size_review:
+    # ENH-3611: post-size-review obligation selector (check_parent_resolved_post_size_review
+    # on_no / on_error). The last chance to spike before the post-size-review skip:
+    # re-enters refine-to-ready-issue on PROOF:* only when the child's low-outcome band
+    # can actually spike (spike_needed set, spike_attempted unset) plus the shared guard
+    # (spike-runs-<ID> < 2, autodev-reentry-PROOF-<ID> unused, refine_count < lifetime
+    # cap). No decision_needed probe: next-obligation checks DECISION before PROOF and
+    # DECISION falls to `_`, so recheck_after_size_review's ENH-2936 branch keeps that case.
+    # --honor-waiver and the six tier-1 skips as in select_obligation_post_refine. Un-stage
+    # is defensive (an earlier pass may have staged the ID).
+    action: |
+      ID=${captured.input.output:shell}
+      # ENH-3611: refine_count / lifetime cap read once (BUG-3614 snippet). The child's
+      # check_lifetime_limit routes a capped issue to breakdown_issue, so no re-entry
+      # (DECISION or PROOF) is attempted at the cap; unreadable values fall back to 0/5.
+      CNT=$(ll-issues refine-status "$ID" --json 2>/dev/null | python3 -c 'import json,sys; print(int(json.load(sys.stdin).get("refine_count", 0)))' 2>/dev/null || echo 0)
+      CAP=$(python3 -c 'import json; print(int(json.load(open(".ll/ll-config.json")).get("commands", {}).get("max_refine_count", 5)))' 2>/dev/null || echo 5)
+      [ -z "$CNT" ] && CNT=0
+      [ -z "$CAP" ] && CAP=5
+      TOK=$(ll-issues next-obligation "$ID" --format token \
+        --readiness-threshold ${context.readiness_threshold:shell} \
+        --outcome-threshold ${context.outcome_threshold:shell} \
+        --honor-waiver --skip FORMAT --skip VERIFY --skip HEDGES --skip PLACEHOLDERS --skip ACCEPTANCE_CRITERIA --skip DESIGN); RC=$?
+      # ENH-3611: any PROOF:* token is a re-entry candidate; the sub-reason is
+      # worst-status-wins across registry targets, so decide from the spike flags.
+      case "$TOK" in
+        PROOF*)
+          SPIKE_N=$(cat "${context.run_dir}/spike-runs-$ID" 2>/dev/null || echo 0)
+          F="${context.run_dir}/autodev-reentry-PROOF-$ID"
+          ll-issues check-flag "$ID" spike_needed >/dev/null 2>&1; NEEDED=$?
+          ll-issues check-flag "$ID" spike_attempted >/dev/null 2>&1; ATT=$?
+          if [ "$NEEDED" -eq 0 ] && [ "$ATT" -eq 1 ] && [ "$SPIKE_N" -lt 2 ] 2>/dev/null \
+             && [ ! -e "$F" ] && [ "$CNT" -lt "$CAP" ] 2>/dev/null; then
+            if [ -f "${context.run_dir}/autodev-staged.txt" ]; then
+              grep -vxF "$ID" "${context.run_dir}/autodev-staged.txt" \
+                > "${context.run_dir}/autodev-staged.tmp" 2>/dev/null || true
+              mv "${context.run_dir}/autodev-staged.tmp" "${context.run_dir}/autodev-staged.txt"
+            fi
+            printf '1' > "$F"
+            echo "PROOF"
+            exit 0
+          fi
+          ;;
+      esac
+      printf '%s\n' "$TOK"
+      exit "$RC"
+    action_type: shell
+    evaluate:
+      type: classify
+    route:
+      PROOF: refine_current
+      _: check_spike_needed_before_skip  # commit 2 of ENH-3611 retargets to check_reconcile_needed
+      _error: recheck_after_size_review
 
   record_reentry_exhausted:
     # ENH-3610: the obligation selectors' re-entry cap fired (the child was
@@ -2365,7 +2469,7 @@ states:
     # missed; without this gate the chain falls through to
     # recheck_after_size_review, which would defer an already-done issue as
     # low_readiness. On unresolved parents, behaviour is unchanged
-    # (→ check_spike_needed_before_skip).
+    # (→ select_obligation_post_size_review, ENH-3611).
     action: |
       # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       STATUS=$(ll-issues show ${captured.input.output} --json 2>/dev/null \
@@ -2377,8 +2481,8 @@ states:
       exit 1
     fragment: shell_exit
     on_yes: recover_subloop_children
-    on_no: check_spike_needed_before_skip
-    on_error: check_spike_needed_before_skip
+    on_no: select_obligation_post_size_review  # ENH-3611
+    on_error: select_obligation_post_size_review
 
   check_spike_needed_before_skip:
     # BUG-2654: the decide path (recheck_after_decide.on_no → snap_and_size_review

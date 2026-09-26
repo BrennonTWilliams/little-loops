@@ -271,7 +271,9 @@ class TestAutodevSmoke:
         # FEAT-3573 added route_quality_gate, run_quality_gate, mark_quality_pass,
         # mark_quality_fail, mark_quality_infra and record_quality_evidence (+6) —
         # the post-implement quality gate between verify_impl_closed and dequeue_next.
-        assert len(topo["states"]) == 111
+        # ENH-3611 (commit 1) added select_obligation_post_size_review (+1), raising it
+        # to 112.
+        assert len(topo["states"]) == 112
 
         # Every edge endpoint is a known state id, or the target of a
         # declared sub-loop (`loop:`) cross-graph edge. `from` may be null
