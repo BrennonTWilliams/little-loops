@@ -233,7 +233,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - **Priority**: P3 - child of ENH-3577 (EPIC-3565 consolidation)
 - **Effort**: Medium - summary builder moved to Python plus marker removal
 - **Risk**: Medium - summary.json truthfulness is an EPIC-3565 invariant
-- **Breaking Change**: No - summary.json shape preserved
+- **Breaking Change**: No - summary.json keeps its 16 keys; `record_absent` is additive (no consumer asserts an exact key set)
 
 ## Program Design
 
@@ -243,12 +243,14 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ### Signatures
 
-- `build_summary(run_dir: Path) -> AutodevSummary` — reads `run-records/prepare-issue/<ID>.json` for each dequeued ID plus closure files; an absent/malformed record counts as `retryable_error` (`record_absent`)
-- `write_summary(run_dir: Path, summary: AutodevSummary) -> Path` — writes `summary.json`
+- `build_summary(run_dir: Path) -> AutodevSummary` — reads `run-records/prepare-issue/<ID>.json` for each ID in `autodev-prepared.txt` plus the Scope Boundaries files; an absent/malformed record for a prepared, not-in-flight, otherwise-unledgered ID counts as `record_absent`
+- `write_summary(run_dir: Path, summary: AutodevSummary) -> Path` — writes `summary.json` via `atomic_write_json`
+- `render_report(summary: AutodevSummary) -> str` — the stdout report, line-identical to today's plus the `record_absent` line
+- `main(argv: list[str] | None = None) -> int` — `EXIT_OK=0` / `EXIT_PHANTOM=1` / `EXIT_ERROR=2`
 
 ### Call Path
 
-`autodev.yaml:finalize_done` -> `build_summary` -> `read_run_record` -> `write_summary`
+`autodev.yaml:finalize_done` -> `main` -> `build_summary` -> `read_run_record` -> `write_summary` / `render_report`
 
 ### Codebase Research Findings
 
@@ -378,6 +380,21 @@ Graph: provider=`codegraph` freshness=`stale` (not used to originate any verdict
 - **B6 (proposal-vs-code)**: no unsound mechanism found; the `record_absent` requirement remains unsatisfiable by enumerating `run-records/prepare-issue/*.json` alone (already flagged).
 
 Remaining: none applied to body sections in this pass (auto mode; anchors left as historical research findings).
+
+## Review Notes
+
+_Added by manual review — 2026-09-26_
+
+- `blocked_by` now points at ENH-3606, which declares `blocks: [ENH-3600]` and leaves
+  ledger and sentinel removal to this issue. The four previous blockers are all `done`.
+- Resolved the open design questions that held readiness down: the prepared-ID source
+  (`autodev-prepared.txt`), where `record_absent` is reported and how it ranks against
+  the in-flight counts, the grep-gate scope (Marker disposition table), the child-marker
+  handling (documented exception), `max_steps` (out of scope), and records vs. ledgers
+  as the count source (ledgers).
+- Added golden-fixture parity, exit-code and stdout-report criteria, plus a three-step
+  sequencing plan in which step 1 can land before ENH-3606.
+- The confidence scores (75/55) predate these changes. Re-score after ENH-3606 lands.
 
 ## Session Log
 - `/ll:verify-issues` - 2026-09-26T20:09:35 - `57be1948-59d1-446a-b252-a9b0fec818aa.jsonl`
