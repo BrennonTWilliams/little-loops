@@ -10,12 +10,13 @@ captured_at: '2026-09-24T19:31:05Z'
 relates_to:
 - ENH-3597
 - FEAT-3598
-- ENH-3599
 - ENH-3601
 - ENH-3602
 - ENH-3600
 - BUG-3603
 - ENH-3590
+- ENH-3607
+- ENH-3608
 ---
 
 # EPIC-3565: Autodev readiness contract hardening from 2026-09-24 audit
