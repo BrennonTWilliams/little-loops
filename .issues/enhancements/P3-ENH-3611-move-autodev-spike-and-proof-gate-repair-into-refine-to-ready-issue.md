@@ -63,9 +63,9 @@ before `implement_current`.
   `spike_attempted` without `spike_completed`, and it folds in a `structured_proof` gate
   verdict (documented on `Obligation`). A selector that re-enters the child on `PROOF` could
   therefore cycle without a spike ever running.
-- `PROOF` has sources that a spike cannot satisfy. `assess_proof` (`learning_tests/assess.py`)
-  also reports `absent`/`stale`/`refuted` for `learning_tests_required` registry targets, which
-  only `/ll:explore-api` provisions. `PROOF:stale` comes **only** from those targets.
+- `PROOF` has sources that a spike cannot satisfy. `assess_proof` also reports
+  `absent`/`stale`/`refuted` for Learning Test Registry targets that the issue declares in its
+  frontmatter. Only `/ll:explore-api` provisions those. `PROOF:stale` comes **only** from those targets.
   `PROOF:refuted` implies `spike_attempted` (`route_spike_verdict` requires it). So
   `PROOF:absent` is the only token a spike can clear.
 - `spike_needed` does not depend on readiness. Its `FlagRule` precondition is outcome-only
@@ -198,9 +198,9 @@ before `implement_current`.
 
   | Selector | `PROOF` source | Not-needed (`_`) successor | `_error` |
   |---|---|---|---|
-  | `select_obligation_post_refine` | `next-obligation` `PROOF:*` | `check_missing_artifacts` (was `check_spike_needed`) | `detect_children` |
+  | `select_obligation_post_refine` | `next-obligation` `"PROOF:absent"` + guard | `check_missing_artifacts` (was `check_spike_needed`) | `detect_children` |
   | `select_obligation_pre_implement` | `check-gate` `structured_proof` | `check_proof_defer_or_implement` (was `check_proof_gate_before_implement`) | `check_proof_defer_or_implement` |
-  | `select_obligation_post_size_review` (new) | `next-obligation` `PROOF:*` | `check_reconcile_needed` | `recheck_after_size_review` |
+  | `select_obligation_post_size_review` (new) | `next-obligation` `"PROOF:absent"` + guard | `check_reconcile_needed` | `recheck_after_size_review` |
 
 - **Retargets** (the 22 removed states' inbound edges from surviving states):
 
@@ -371,7 +371,29 @@ Rewrite, don't delete (ENH-3075 AC 8); stays-deleted guard per removed state.
   across four surviving states
 - **Risk**: High: removes autodev's spike path; the child proof gate and the fail-closed
   implement gate are the safety net
+- **Accepted cost**: the old path spiked a high-scoring issue with one `/ll:spike` plus
+  rescoring. A `PROOF` re-entry now runs a full child pass (format, `/ll:refine-issue`, wire,
+  verify, confidence-check) before `check_proof_before_done`. That pass costs more tokens and
+  time, spends one lifetime refine, and can move scores that already passed. The re-entry cap
+  (one per issue) and the lifetime-cap guard bound it.
 - **Breaking Change**: No (loop-internal)
+
+## Implementation Sequencing
+
+- **Land after ENH-3613.** ENH-3613 is editing `finalize_done` in the working tree now, and
+  this issue edits the same state (`autodev-spike-no-verdict.txt` removal). Rebase onto it
+  once it is committed.
+- **Two commits.**
+  1. *Additive:* child `check_proof_before_done` + `max_steps` bump; `PROOF` probes in the
+     existing selectors; new `select_obligation_post_size_review`, wired in but with the old
+     states still present. Safe alone: when the child spikes a proof gate, autodev's
+     `check_proof_gate_before_implement` sees `structured_satisfied`, and the shared
+     `spike-runs-<ID>` cap bounds any double spend.
+  2. *Subtractive:* delete the 22 states, apply the retargets, marker cleanup, the
+     `dispatch_pre_deferral_remedy` change, stays-deleted guards, topology counts, baseline
+     entries.
+
+  The full suite passes after each commit.
 
 ## Parent Issue
 
@@ -413,7 +435,11 @@ ENH-3610's review changed parts of the selector contract that this issue builds 
 - **Out of scope**: `oracles/resolve-decision.yaml`'s contract; the child's own spike states
   (they stay; `spike-gate.yaml` and `rn-remediate.yaml` also have same-named states that must
   survive, so scope state-name greps to `autodev.yaml`); ENH-3600's marker retirement;
-  ENH-3605/ENH-3606 remedy moves (only their edges into removed states change here).
+  ENH-3605/ENH-3606 remedy moves (only their edges into removed states change here); restoring
+  low-readiness `spike_needed` spikes (ENH-3606); moving the child's spike band ahead of
+  `check_readiness`. ENH-3610's `DECISION` re-entry has the same lifetime-cap hazard (a capped
+  issue re-entered for `DECISION` routes to `breakdown_issue`). Fix it in a separate bug, not
+  here.
 
 ## Acceptance Criteria
 
@@ -431,6 +457,12 @@ ENH-3610's review changed parts of the selector contract that this issue builds 
   is unused (real-FSM test through a non-`check_passed` site)
 - [ ] `PROOF` re-entry is capped at one per issue, is skipped outright when the child cannot
   spike, and the run terminates when the child cannot satisfy it (real-FSM test)
+- [ ] No `PROOF` re-entry is attempted once `refine_count` >= `max_refine_count`; such an issue
+  defers as `blocked_by_gate`, never `breakdown_issue` (real-FSM test)
+- [ ] The child's `check_proof_before_done` spikes only on the `structured_proof` token; its
+  worst-case path fits the raised `max_steps` without tripping `recurrent_window`
+- [ ] The low-readiness `spike_needed` loss is recorded in the Behavior Parity table and pinned
+  by a test
 - [ ] Autodev never writes `spike-runs-<ID>` (including `dispatch_pre_deferral_remedy`); the
   budget persists across re-entries (real-FSM test); autodev no longer reads or writes
   `autodev-pre-spike-readiness.txt` or `autodev-spike-no-verdict.txt`

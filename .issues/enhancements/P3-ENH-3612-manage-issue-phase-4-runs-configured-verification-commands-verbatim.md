@@ -81,12 +81,36 @@ _Added by `/ll:refine-issue` — 2026-09-26 — based on codebase analysis:_
 - `SKILL.md` is 499 lines (`wc -l`); `test_enh494_skill_companions.py` fails above 500, so there is exactly one line of headroom. Phase 3 (`SKILL.md:213`) also appends args to `test_cmd` (`[newly_written_test_files] -v`); that is a different, intentional targeted run and is not in this issue's scope.
 - No existing test asserts on Phase 4 `tests/ -v` or the `src_dir` lint/type lines, so no test pins the current wrong text.
 
+### Dependent Files (Callers/Importers)
+_Wiring pass added by `/ll:wire-issue`:_
+- `skills/init/SKILL.md` — `### 6. Verify (Smoke Check)` says it mirrors manage-issue Phase 4 (skip-if-null per command); its bash block already uses bare `{{config.project.test_cmd}}`/`lint_cmd`. No edit needed; this edit brings Phase 4 into line with it [Agent 1/2 finding]
+- `scripts/little_loops/issue_manager.py` — `expand_skill("manage-issue", _manage_args, config)` expands Phase 4 at run time; does not parse it, no change [Agent 2 finding]
+- `scripts/.venv/lib/python3.12/site-packages/little_loops/skills/manage-issue/SKILL.md` — untracked installed copy, stale until reinstall; not a source to edit [Agent 1 finding]
+
+### Tests
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_skill_expander.py` — `TestExpandSkillAgainstRealManageIssue.test_manage_issue_expansion_has_no_raw_tokens` expands the real skill and asserts no `{{config.` remains; bare placeholders must still fully expand. Should still pass, re-run it [Agent 1/2/3 finding]
+- New test file `scripts/tests/test_manage_issue_phase4_verify.py` (or a new class in an existing manage-issue skill test) — `test_manage_issue_changelog_gate.py` is the only `test_manage_issue*.py` file and this issue says not to touch it. Follow its `SKILL_FILE = REPO_ROOT / "skills" / "manage-issue" / "SKILL.md"` constant and `Test<Topic>` class naming, and slice `## Phase 4: Verify` up to `## Phase 4.5: Integration Review` (`test_audit_issue_conflicts_skill.py::TestAuditIssueConflictsEpicScoping._phase` is the slicer pattern). Scan the slice line by line (as `_run_in_background_satisfied` in `test_wiring_skills_and_commands.py` does) and exempt the `run_cmd` line (`& pid=$!`) [Agent 3 finding]
+- `scripts/tests/test_wiring_skills_and_commands.py` — `SPAWN_SITE_INVENTORY` pins `("skills/manage-issue/SKILL.md", 110)` and the BUG-2408 rows pin `foreground-blocking`/`scheduled wakeup` in the Headless-Safe section; both are outside the edited lines, so no change [Agent 1/3 finding]
+- `scripts/tests/test_wheel_smoke.py`, `scripts/tests/test_session_log_prose_sweep.py` — presence / whole-file prose checks on manage-issue `SKILL.md`; not Phase 4 specific, no change [Agent 1 finding]
+
+### Documentation
+_Wiring pass added by `/ll:wire-issue`:_
+- No doc states that Phase 4 appends `tests/ -v` or `src_dir`; no doc edit needed. `.ll/decisions.yaml` (lines ~4270, ~4630) cites `manage-issue/SKILL.md:355-356` as historical log text, not a gate [Agent 1/2 finding]
+
 ## Implementation Steps
 
 1. Edit the Phase 4 code block in `skills/manage-issue/SKILL.md` to use the bare configured commands.
 2. Add the regression test.
 3. Regenerate the three host mirrors with `ll-adapt --host <host> --apply`.
 4. Run `python -m pytest scripts/tests/test_wiring_skills_and_commands.py scripts/tests/test_enh494_skill_companions.py scripts/tests/test_manage_issue_changelog_gate.py`.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Add `scripts/tests/test_manage_issue_phase4_verify.py` — new file for the Phase 4 regression test (do not extend `test_manage_issue_changelog_gate.py`)
+- Also run `scripts/tests/test_skill_expander.py` in step 4 — `TestExpandSkillAgainstRealManageIssue` must still pass with bare placeholders
 
 ## Impact
 
@@ -136,4 +160,5 @@ _Added by `/ll:refine-issue` — 2026-09-26 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-26T06:50:01 - `02fec509-62c9-43bc-b938-817b8efa3dab.jsonl`
 - `/ll:refine-issue` - 2026-09-26T06:42:16 - `f4536461-4b4c-49df-b9dd-8cc9f5906a6c.jsonl`
