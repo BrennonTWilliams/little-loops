@@ -12,6 +12,12 @@ decision_needed: false
 blocks:
 - FEAT-3573
 - ENH-3600
+confidence_score: 100
+outcome_confidence: 78
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 10
+score_change_surface: 25
 ---
 
 # ENH-3613: Autodev summary.json splits cancelled from implemented closures
@@ -331,6 +337,7 @@ what was wrong and fixed, not an outstanding action item)
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-26T06:27:09 - `54149cb8-ad12-45b6-badc-4def259c8764.jsonl`
 - `/ll:verify-issues` - 2026-09-26T06:25:28 - `984378ad-0d20-4d38-bbc9-894028359a45.jsonl`
 - `/ll:wire-issue` - 2026-09-26T06:20:29 - `3f6bcacf-9a24-433d-b1ef-920a7913f4ff.jsonl`
 - `/ll:decide-issue` - 2026-09-26T06:18:44 - `8ade3bc4-e17f-4d10-aa22-4a48a2f01bb0.jsonl`
