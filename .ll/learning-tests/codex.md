@@ -1,15 +1,21 @@
 ---
 target: codex
-date: '2026-08-15'
+date: '2026-09-25'
 status: proven
 assertions:
-- claim: Codex MCP server definitions are TOML tables under [mcp_servers.<name>] carrying a command key
+- claim: codex exec takes the prompt as a positional argument
   result: pass
-- claim: Codex MCP server tables support optional args, tool_timeout_sec, and enabled keys
+- claim: codex exec has a --json flag
   result: pass
-- claim: Codex stores MCP server definitions in the single global ~/.codex/config.toml, not scoped per-project
+- claim: codex exec has an --output-schema flag
   result: pass
-- claim: .codex/agents/*.toml is a known project-local read path, contrasting with the absent MCP file precedent
+- claim: codex -p is --profile, not a prompt flag
+  result: pass
+- claim: codex exec resume supports --last
+  result: pass
+- claim: codex exec --sandbox accepts read-only, workspace-write, and danger-full-access
+  result: pass
+- claim: codex exec has no --agent flag
   result: pass
 raw_output_path: .ll/learning-tests/raw/codex.txt
 ---

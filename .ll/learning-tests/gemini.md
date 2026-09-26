@@ -1,30 +1,21 @@
 ---
 target: gemini
-date: '2026-08-16'
+date: '2026-09-25'
 status: proven
 assertions:
-- claim: gemini --version prints a bare semver string (X.Y.Z, no v-prefix) on this
-    machine
+- claim: gemini --version prints a bare semver string (X.Y.Z, no v-prefix)
   result: pass
-- claim: gemini --help documents --approval-mode with a "yolo" choice for auto-approving
-    all tool calls
+- claim: --output-format accepts exactly the choices text, json, stream-json
   result: pass
-- claim: gemini --help documents -r/--resume accepting "latest" or a numeric index/session-id
-    string
+- claim: --approval-mode accepts exactly the choices default, auto_edit, yolo, plan
   result: pass
-- claim: gemini hooks migrate subcommand exists to migrate hooks from Claude Code
-    to Gemini CLI
+- claim: gemini skills subcommand offers list, enable, disable, install, link, uninstall
   result: pass
-- claim: '--approval-mode yolo is silently overridden to "default" when the current
-    working directory is not a trusted workspace, even though yolo was explicitly
-    requested'
+- claim: with no auth configured, headless -p exits with code 41 and writes the JSON error envelope to stderr (stdout empty)
   result: pass
-- claim: headless -p execution exits with code 41 (not one of the previously documented
-    0/1/42/53 codes) when no auth is configured (GEMINI_API_KEY/GOOGLE_API_KEY/Vertex
-    project+location)
+- claim: an invalid --output-format value exits with code 1 and prints usage to stderr
   result: pass
-- claim: on an auth failure, the JSON error envelope is written to stderr, not stdout,
-    even when --output-format json was requested
-  result: pass
+- claim: gemini --list-sessions works without auth (exits 0)
+  result: fail
 raw_output_path: .ll/learning-tests/raw/gemini.txt
 ---
