@@ -26,9 +26,11 @@ missing_artifacts: true
 
 ## Summary
 
-Make autodev's ledger and `finalize_done` read only per-issue run records, and delete the
-remaining preparation handshake files. Final step (F) of the ENH-3577 decomposition, after
-the routing migrations (C, D).
+Move `finalize_done` into a tested Python module. Add per-issue `prepare-issue` run
+records to its inputs so that an issue which crashes during preparation is surfaced
+(`record_absent`). Delete the preparation handshake files left over after ENH-3606. This
+is the final step (F) of the ENH-3577 decomposition, after the routing migrations
+(C, D).
 
 ## Current Behavior
 
@@ -39,11 +41,12 @@ per-ID `*-attempted-*` / `*-retry-*` markers).
 
 ## Expected Behavior
 
-Each dequeued issue produces one preparation run record (from the child) plus one
-implementation/closure entry (from autodev). `finalize_done` builds `summary.json` from
-those records. Queue files (`autodev-queue.txt`, `autodev-inflight`) and closure accounting
-(`autodev-staged.txt`, `autodev-passed.txt`, `autodev-unverified.txt`, FEAT-3573's quality
-evidence) stay; preparation markers go.
+Each issue that enters preparation produces one `prepare-issue` run record plus its
+ledger rows. `finalize_done` is a thin call into `little_loops.autodev_summary`. That
+module builds `summary.json` and the stdout report from those records and from the
+queue, closure and skip ledgers listed in Scope Boundaries. The ledgers stay the count
+source for every existing key. Records add the `record_absent` check. Preparation
+markers that have no remaining reader or writer go (see Marker disposition).
 
 ## Proposed Solution
 
@@ -150,8 +153,9 @@ and collapse the layered findings into one current map, when ENH-3606 lands._
 
 ### Files to Modify
 - `scripts/little_loops/loops/autodev.yaml`
-- `scripts/little_loops/loops/refine-to-ready-issue.yaml` (stop writing `autodev-*` markers once readers migrate)
-- `scripts/little_loops/loops/auto-refine-and-implement.yaml` (reads `autodev-decision-unresolved.txt`)
+- ⚠ Superseded (2026-09-26 review): `scripts/little_loops/loops/refine-to-ready-issue.yaml` needs no change. It keeps writing the three child ledgers as a documented exception (see Marker disposition); only its header comments that cite autodev states may need touching.
+- ⚠ Superseded (2026-09-26 review): `scripts/little_loops/loops/auto-refine-and-implement.yaml` needs no change. It keeps reading `autodev-decision-unresolved.txt`, and its counts must stay unchanged.
+- `scripts/little_loops/loops/autodev.yaml` — new one-line pre-state before `refine_current` that appends to `autodev-prepared.txt`; `init` pre-creates that file
 - new `scripts/little_loops/autodev_summary.py` (or equivalent)
 - `docs/ARCHITECTURE.md` — add new parent/child contract prose (no loop/FSM section exists; placement is the implementer's call)
 - `scripts/little_loops/loops/oracles/resolve-decision.yaml` needs no change: its `autodev-decide-ran` mention (~:249) is a comment only; autodev alone writes/reads that marker (finding: "comments only (verified)")
@@ -262,7 +266,7 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 
 _Added by `/ll:refine-issue` — 2026-09-26 — based on codebase analysis:_
 
-- Reader contract in force: `read_run_record` returns `None` for absent, malformed, and writer/ID-mismatched records (`test_run_record.py:195-212` pins each), so `build_summary` gets `record_absent` from a `None` return over a dequeued-ID set — the ID set's source is the open question recorded under Integration Map.
+- Reader contract in force: `read_run_record` returns `None` for absent, malformed, and writer/ID-mismatched records (`test_run_record.py:195-212` pins each), so `build_summary` gets `record_absent` from a `None` return over a dequeued-ID set — the ID set's source was resolved by the 2026-09-26 review: `autodev-prepared.txt` (see Design decisions).
 - Exit-code convention for the thin-shell call: `fleet_improve.py` names `EXIT_YES=0 / EXIT_NO=1 / EXIT_ERROR=2` (:75-77) and states route `on_yes/on_no/on_error`; `finalize_done` today already routes `phantom` → exit 1 → `on_no: failed` and any error → `on_error: failed`, which a module `main() -> int` must preserve exactly.
 - Decision Rules: N/A — no new decision logic beyond the `record_absent` → `retryable_error` rule already stated in Proposed Solution; the verdict ladder is carried over unchanged.
 
@@ -315,6 +319,24 @@ ENH-3606 moves and renames states.
 | Child-written ledgers (documented exception) | `autodev-decision-unresolved.txt`, `autodev-spike-inconclusive.txt`, `autodev-proposal-unsound.txt` | The child keeps writing them, and `auto-refine-and-implement` keeps reading them. `build_summary` also keeps reading them as closure accounting. The `decision_unresolved` key counts **only** this ledger today; the child's `record_decision_unresolved` writes no `autodev-skipped.txt` row, while autodev's own `decision_unresolved` rows go to `autodev-skipped.txt`. Counting that key from records would pull in the wrapper's `record_reentry_exhausted` stops and change the count. Inside `autodev.yaml`, the only references left are `init` truncation and `skip_inflight`'s grep-before-`refine_failed` (~:597). Remove the grep if a test shows `route_refine_outcome`'s record-token routing already covers it (`BLOCKED:decision_unresolved` → `ledger_child_stop`, ~:532) |
 | Dead | `autodev-scores-absent.txt` (writer deleted by ENH-3606), `autodev-pre-spike-readiness.txt`, and any other file with no writer after ENH-3606 | delete every reference |
 
+## Behavior Parity
+
+What the rewrite of `finalize_done` must preserve, and what is allowed to change:
+
+- **Preserved exactly**: all 16 FEAT-3573-as-of `summary.json` keys and their values;
+  the verdict ladder (success → partial → phantom → not_started → no-op, with the
+  `rate_limit` stop reason overriding to `rate_limited`); the staged → passed/unverified
+  promotion and its writes to `autodev-passed.txt` / `autodev-unverified.txt`; the stdout
+  report lines; and the exit code per verdict. The golden fixtures enforce all of this.
+- **Intentionally changed**: the additive `record_absent` key and its report line; the
+  new `autodev-prepared.txt` ledger; and a warning line when a record and a ledger row
+  disagree. Nothing else in `summary.json` changes.
+- **Unchanged files**: `refine-to-ready-issue.yaml` and
+  `auto-refine-and-implement.yaml` behave the same (the child-ledger exception), and
+  `auto-refine-and-implement`'s summary counts are identical on the same input.
+- **MR-13**: the `abandoned` key requirement moves from the shell-text scan to the
+  module's unit tests, because the printf no longer lives in YAML.
+
 ## Acceptance Criteria
 
 - [ ] `build_summary` reads only `run-records/prepare-issue/*.json` plus the files listed in Scope Boundaries (unit test with a `run_dir` that also contains a decoy unlisted `autodev-*` file, which must have no effect)
@@ -350,12 +372,12 @@ _Added by `/ll:confidence-check` on 2026-09-25 (re-scored 2026-09-26)_
 **Outcome Confidence**: 55/100 → LOW
 
 ### Concerns
-- Grep-gate scope is undecided: `autodev-spike-no-verdict.txt`, `autodev-proof-gate-infra.txt`, `autodev-pre-*`, `autodev-repair-cycle-count.txt` etc. may or may not count as "preparation markers"; the AC wording must name its scope.
-- `decide-options-deposited-<ID>` / `decide-rate-limited-<ID>` handshake markers (not `autodev-`-prefixed) are still undecided keep-vs-migrate.
+- ✅ RESOLVED (2026-09-26 review): Grep-gate scope was undecided: `autodev-spike-no-verdict.txt`, `autodev-proof-gate-infra.txt`, `autodev-pre-*`, `autodev-repair-cycle-count.txt` etc. may or may not count as "preparation markers" — now scoped by the Marker disposition table.
+- ✅ RESOLVED (2026-09-26 review): `decide-options-deposited-<ID>` / `decide-rate-limited-<ID>` handshake markers — kept as the cross-loop contract (Scope Boundaries, out of scope).
 
 ### Gaps to Address
-- blocked_by ENH-3599, ENH-3601, FEAT-3573 (all open) — ENH-3597's reader exists, but no `writer=prepare-issue` producer (ENH-3601) or FEAT-3573 summary-key split exists yet. Land the chain first.
-- Dequeued-ID source is an open design decision: no cumulative dequeue ledger exists, so `record_absent` is unsatisfiable by enumerating `run-records/prepare-issue/*.json` alone. Choose (enumerate records vs. introduce a dequeue ledger) before implementing.
+- ✅ RESOLVED (2026-09-26 review): blocked_by chain — all four earlier blockers are done; the only blocker is now ENH-3606.
+- ✅ RESOLVED (2026-09-26 review): Dequeued-ID source — introduce `autodev-prepared.txt` (Design decisions).
 
 ### Outcome Risk Factors
 - Deep per-site complexity: `finalize_done` (~220 lines of inline shell) rewritten into Python while preserving the `summary.json` key shape (16 keys once ENH-3613 and FEAT-3573 land) and verdict ladder/exit-code routing exactly.
