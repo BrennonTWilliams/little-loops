@@ -1,4 +1,10 @@
-"""Tests for autodev decision_needed gate at dequeue time (BUG-2513).
+"""Tests for autodev's decision routing (BUG-2513, reworked by ENH-3610).
+
+ENH-3610: autodev no longer resolves decisions at its own entry points. The
+refine-to-ready-issue child owns resolution (``check_decision_before_done``) and
+autodev's ``select_obligation_*`` selectors re-enter the child when the flag is
+still set. The BUG-2513 history below is kept for the legacy record.
+
 
 BUG-2513: ``decision_needed`` is only consulted downstream of
 ``refine_current.on_success``. Four of the five exits out of
@@ -19,6 +25,9 @@ and a small FSMExecutor-driven run that confirms the gate fires before
 
 from __future__ import annotations
 
+import os
+import re
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -94,324 +103,486 @@ def _run_decision_chain(fsm: Any, action_runner: Any) -> tuple[Any, list[str]]:
     return executor.run(), visited
 
 
-class TestCheckDecisionAtDequeueStructural:
-    """Structural assertions on autodev.yaml routing shape."""
+_DECISION_STATES_REMOVED = (
+    "check_decision_at_dequeue",
+    "resolve_decision_at_dequeue",
+    "mark_decide_ran_at_dequeue",
+    "check_decision_after_refine",
+    "decide_current",
+    "check_decision_before_size_review",
+    "triage_outcome_failure",
+    "resolve_decision_direct",
+)
+
+_PRE_IMPLEMENT_SITES = (
+    ("check_passed", "on_yes"),
+    ("recheck_scores", "on_yes"),
+    ("recheck_after_size_review", "on_yes"),
+    ("regate_after_atomic_remediation", "on_yes"),
+    ("reopen_waived", "next"),
+)
+
+
+class TestRemovedDecisionEntryPoints:
+    """ENH-3610: autodev's eight decision entry states stay deleted (pattern:
+    ``TestAssertDecisionClearedStructural``) and no edge targets them."""
 
     @pytest.fixture
     def data(self) -> dict[str, Any]:
         return _load_autodev_yaml()
 
-    def test_check_decision_at_dequeue_state_exists(self, data: dict[str, Any]) -> None:
-        """BUG-2513: a check_decision_at_dequeue state must exist in autodev.yaml."""
-        states = data.get("states", {})
-        assert "check_decision_at_dequeue" in states, (
-            "check_decision_at_dequeue state missing from autodev.yaml — "
-            "BUG-2513: decision_needed gate must be checked on first dequeue, "
-            "before refine_current runs"
+    @pytest.mark.parametrize("state", _DECISION_STATES_REMOVED)
+    def test_state_stays_deleted(self, data: dict[str, Any], state: str) -> None:
+        assert state not in data["states"], (
+            f"{state} was removed by ENH-3610 — autodev never resolves a decision itself; "
+            "the refine-to-ready-issue child owns resolution"
         )
 
-    def test_check_decision_at_dequeue_uses_check_flag_predicate(
+    def test_no_edge_targets_a_removed_state(self, data: dict[str, Any]) -> None:
+        dangling: list[str] = []
+        for name, state in data["states"].items():
+            targets = [v for k, v in state.items() if k.startswith("on_") or k == "next"]
+            targets += list((state.get("route") or {}).values())
+            for target in targets:
+                if target in _DECISION_STATES_REMOVED:
+                    dangling.append(f"{name} -> {target}")
+        assert not dangling, dangling
+
+    def test_resolve_decision_is_the_only_oracle_caller(self, data: dict[str, Any]) -> None:
+        callers = [
+            n for n, s in data["states"].items() if s.get("loop") == "oracles/resolve-decision"
+        ]
+        assert callers == ["resolve_decision"]
+
+    def test_resolve_decision_reachable_only_from_check_spike_budget(
         self, data: dict[str, Any]
     ) -> None:
-        """The state must call ``ll-issues check-flag <id> decision_needed``."""
-        state = data["states"]["check_decision_at_dequeue"]
-        action = state.get("action", "")
-        assert "ll-issues check-flag" in action, (
-            f"check_decision_at_dequeue.action must call 'll-issues check-flag', got {action!r}"
-        )
-        assert "decision_needed" in action, (
-            f"check_decision_at_dequeue.action must check the decision_needed "
-            f"frontmatter field, got {action!r}"
-        )
+        inbound = []
+        for name, state in data["states"].items():
+            targets = [v for k, v in state.items() if k.startswith("on_") or k == "next"]
+            targets += list((state.get("route") or {}).values())
+            if "resolve_decision" in targets:
+                inbound.append(name)
+        assert inbound == ["check_spike_budget"]
 
-    def test_check_decision_at_dequeue_uses_shell_exit_fragment(self, data: dict[str, Any]) -> None:
-        """The state must use ``shell_exit`` fragment to route on exit code."""
-        state = data["states"]["check_decision_at_dequeue"]
-        assert state.get("fragment") == "shell_exit", (
-            f"check_decision_at_dequeue.fragment should be 'shell_exit', "
-            f"got {state.get('fragment')!r}"
-        )
-
-    def test_check_decision_at_dequeue_on_yes_routes_to_resolve_decision(
-        self, data: dict[str, Any]
-    ) -> None:
-        """decision_needed=true must route into the resolve-decision oracle
-        (ENH-3075) via the entry-time call state, whose success resumes the
-        preparation pipeline at check_blockers_at_dequeue rather than the
-        shared post-decide chain that ends at implement_current."""
-        state = data["states"]["check_decision_at_dequeue"]
-        assert state.get("on_yes") == "resolve_decision_at_dequeue", (
-            f"check_decision_at_dequeue.on_yes should be 'resolve_decision_at_dequeue', "
-            f"got {state.get('on_yes')!r}"
-        )
-        call = data["states"]["resolve_decision_at_dequeue"]
-        assert call.get("loop") == "oracles/resolve-decision"
-        assert call.get("on_success") == "mark_decide_ran_at_dequeue"
-        assert call.get("on_failure") == "check_decide_rate_limited"
-        assert call.get("on_error") == "check_decide_rate_limited"
-
-    def test_dequeue_decision_resumes_preparation_not_implementation(
-        self, data: dict[str, Any]
-    ) -> None:
-        """A decision resolved at dequeue must continue into blocker/gate
-        preflight and refine, never short-circuit to implement_current; a
-        residual armed flag is held for human review."""
-        mark = data["states"]["mark_decide_ran_at_dequeue"]
-        assert "autodev-decide-ran" in mark.get("action", "")
-        assert "check-flag" in mark.get("action", "")
-        assert mark.get("on_yes") == "record_decision_unresolved"
-        assert mark.get("on_no") == "check_blockers_at_dequeue"
-        assert mark.get("on_error") == "check_blockers_at_dequeue"
-
-    def test_mark_decide_ran_holds_residual_decision(self, data: dict[str, Any]) -> None:
-        """resolve-decision can return done with a residual group still armed;
-        mark_decide_ran must re-check the flag so a passing score cannot send a
-        still-gated issue to implement_current."""
-        mark = data["states"]["mark_decide_ran"]
-        assert "check-flag" in mark.get("action", "")
-        assert "decision_needed" in mark.get("action", "")
-        assert mark.get("on_yes") == "record_decision_unresolved"
-        assert mark.get("on_no") == "clear_scores_before_decide"
-
-    def test_check_decision_at_dequeue_on_no_routes_to_refine_current(
-        self, data: dict[str, Any]
-    ) -> None:
-        """decision_needed=false (or absent) must route to check_blockers_at_dequeue
-        (ENH-2909's blocked_by pre-flight gate, inserted between the decision
-        gate and refine_current)."""
-        state = data["states"]["check_decision_at_dequeue"]
-        assert state.get("on_no") == "check_blockers_at_dequeue", (
-            f"check_decision_at_dequeue.on_no should be 'check_blockers_at_dequeue', "
-            f"got {state.get('on_no')!r}"
-        )
-
-    def test_check_decision_at_dequeue_on_error_routes_to_refine_current(
-        self, data: dict[str, Any]
-    ) -> None:
-        """An ll-issues error (e.g. issue missing) must fall through to
-        check_blockers_at_dequeue (which itself fails open to refine_current)
-        rather than blocking the queue — same fail-open semantics as
-        check_decision_after_refine.on_error."""
-        state = data["states"]["check_decision_at_dequeue"]
-        assert state.get("on_error") == "check_blockers_at_dequeue", (
-            f"check_decision_at_dequeue.on_error should be 'check_blockers_at_dequeue' "
-            f"(fail-open), got {state.get('on_error')!r}"
-        )
-
-    def test_dequeue_next_routes_to_check_decision_at_dequeue(self, data: dict[str, Any]) -> None:
-        """Every dequeue must reach check_decision_at_dequeue before refine_current,
-        so the decision gate fires on each issue.
-
-        ENH-2868 inserted check_status_at_dequeue between dequeue_next and the
-        decision gate. BUG-2513's invariant is that the decision gate is reachable
-        on the processing path (and that dequeue_next never jumps straight to
-        refine_current) — assert the chain, not the literal edge.
-        """
-        states = data["states"]
-        node = states["dequeue_next"].get("on_yes")
-        assert node != "refine_current", "dequeue_next must not bypass the decision gate (BUG-2513)"
-        seen: set[str] = set()
-        while node and node != "check_decision_at_dequeue" and node not in seen:
-            seen.add(node)
-            state = states.get(node, {})
-            assert state, f"dangling route to unknown state {node!r}"
-            node = state.get("on_no") or state.get("next")
-        assert node == "check_decision_at_dequeue", (
-            "the processing path from dequeue_next must reach "
-            f"check_decision_at_dequeue (BUG-2513); chain stalled at {node!r}"
-        )
-
-
-class TestCheckDecisionAtDequeueRouting:
-    """FSMExecutor-driven assertions on the new gate's routing."""
-
-    @pytest.fixture
-    def decision_chain_fsm(self) -> Any:
-        """Minimal autodev-shaped FSM: dequeue_next → check_decision_at_dequeue
-        → run_decide (on_yes) | refine_current (on_no / on_error)."""
-        return _loop(
-            name="autodev-decision-gate-mini",
-            initial="dequeue_next",
-            states={
-                "dequeue_next": _state(
-                    action="echo BUG-2501",
-                    action_type="shell",
-                    on_yes="check_decision_at_dequeue",
-                    on_no="done",
-                    on_error="done",
-                ),
-                "check_decision_at_dequeue": _state(
-                    action="ll-issues check-flag BUG-2501 decision_needed",
-                    action_type="shell",
-                    fragment_name="shell_exit",
-                    on_yes="run_decide",
-                    on_no="refine_current",
-                    on_error="refine_current",
-                ),
-                "run_decide": _state(action="true", action_type="shell", next="done"),
-                "refine_current": _state(action="true", action_type="shell", next="done"),
-                "done": _state(terminal=True),
-            },
-        )
-
-    def test_decision_needed_true_routes_run_decide_before_refine_current(
-        self, decision_chain_fsm: Any
-    ) -> None:
-        """BUG-2513: when decision_needed=true, run_decide is reached
-        before refine_current — the bypass loop is closed."""
-        runner = _StubRunner(results=[("ll-issues check-flag", {"exit_code": 0})])
-
-        result, visited = _run_decision_chain(decision_chain_fsm, runner)
-
-        assert "run_decide" in visited, (
-            f"run_decide must be entered for decision_needed=true; visited={visited!r}"
-        )
-        assert "refine_current" not in visited, (
-            f"refine_current must NOT be entered for decision_needed=true "
-            f"(BUG-2513: gate must short-circuit before refine); "
-            f"visited={visited!r}"
-        )
-        # Order: run_decide must precede refine_current (which must be absent).
-        assert visited.index("run_decide") < (
-            visited.index("refine_current") if "refine_current" in visited else len(visited)
-        )
-
-    def test_decision_needed_false_routes_to_refine_current(self, decision_chain_fsm: Any) -> None:
-        """When decision_needed=false (or absent), the gate falls through to
-        refine_current — no behavioral change for non-decision issues."""
-        runner = _StubRunner(results=[("ll-issues check-flag", {"exit_code": 1})])
-
-        result, visited = _run_decision_chain(decision_chain_fsm, runner)
-
-        assert "refine_current" in visited, (
-            f"refine_current must be entered when decision_needed=false; visited={visited!r}"
-        )
-        assert "run_decide" not in visited, (
-            f"run_decide must NOT be entered when decision_needed=false; visited={visited!r}"
-        )
-
-    def test_check_flag_error_falls_through_to_refine_current(
-        self, decision_chain_fsm: Any
-    ) -> None:
-        """If ll-issues check-flag errors (e.g. issue missing), the gate
-        fail-opens to refine_current rather than blocking the queue."""
-        runner = _StubRunner(
-            results=[("ll-issues check-flag", {"exit_code": 2, "stderr": "issue not found"})]
-        )
-
-        result, visited = _run_decision_chain(decision_chain_fsm, runner)
-
-        assert "refine_current" in visited, (
-            f"refine_current must be entered on check-flag error (fail-open); visited={visited!r}"
-        )
-        assert "run_decide" not in visited, (
-            f"run_decide must NOT be entered on check-flag error; visited={visited!r}"
-        )
-
-
-class TestAutodevValidatesAfterFix:
-    """FSM schema validation on autodev.yaml post-fix."""
+    def test_dequeue_routes_through_status_then_blockers(self, data: dict[str, Any]) -> None:
+        state = data["states"]["check_status_at_dequeue"]
+        assert state["on_no"] == "check_blockers_at_dequeue"
+        assert state["on_error"] == "check_blockers_at_dequeue"
 
     def test_autodev_yaml_loads_and_validates(self) -> None:
-        """load_and_validate must succeed on autodev.yaml — no schema errors
-        (covers Implementation Step 4: ``ll-loop validate autodev`` exits 0)."""
-        from little_loops.fsm.validation import (
-            ValidationSeverity,
-            load_and_validate,
-        )
+        from little_loops.fsm.validation import ValidationSeverity, load_and_validate
 
         fsm, errors = load_and_validate(AUTODEV_LOOP_PATH)
         error_list = [e for e in errors if e.severity == ValidationSeverity.ERROR]
-        assert not error_list, (
-            f"autodev.yaml has validation errors after BUG-2513 fix: {[str(e) for e in error_list]}"
-        )
-        # The new gate must be present after validation.
-        assert "check_decision_at_dequeue" in fsm.states, (
-            "check_decision_at_dequeue state not present after load_and_validate"
-        )
+        assert not error_list, [str(e) for e in error_list]
+        for state in ("select_obligation_post_refine", "select_obligation_pre_implement"):
+            assert state in fsm.states
+        assert "record_reentry_exhausted" in fsm.states
 
 
-class TestCheckDecisionBeforeSizeReviewStructural:
-    """BUG-2519: structural assertions on the pre-size-review decision gate.
-
-    Mirrors ``TestCheckDecisionAtDequeueStructural`` (lines 101-184) for the
-    sibling gate. Most fields are covered in ``test_builtin_loops.py``; only
-    the new ``on_error`` assertion is unique to this class.
-    """
+class TestObligationSelectorStructural:
+    """ENH-3610: both selector route tables and the retarget table."""
 
     @pytest.fixture
     def data(self) -> dict[str, Any]:
         return _load_autodev_yaml()
 
-    def test_check_decision_before_size_review_state_exists(self, data: dict[str, Any]) -> None:
-        """``check_decision_before_size_review`` must exist in autodev.yaml
-        (BUG-1277 origin; BUG-2519 preserves it as defense-in-depth)."""
-        states = data.get("states", {})
-        assert "check_decision_before_size_review" in states, (
-            "check_decision_before_size_review state missing from autodev.yaml — "
-            "BUG-2519: pre-size-review decision gate must remain for flags added "
-            "during refine"
-        )
+    def test_post_refine_route_table(self, data: dict[str, Any]) -> None:
+        state = data["states"]["select_obligation_post_refine"]
+        assert state["evaluate"] == {"type": "classify"}
+        assert state["route"] == {
+            "DECISION": "refine_current",
+            "DECISION_EXHAUSTED": "record_reentry_exhausted",
+            "_": "check_spike_needed",
+            "_error": "detect_children",
+        }
 
-    def test_check_decision_before_size_review_uses_check_flag_predicate(
+    def test_pre_implement_route_table(self, data: dict[str, Any]) -> None:
+        state = data["states"]["select_obligation_pre_implement"]
+        assert state["evaluate"] == {"type": "classify"}
+        assert state["route"] == {
+            "DECISION": "refine_current",
+            "DECISION_EXHAUSTED": "record_reentry_exhausted",
+            "_": "check_proof_gate_before_implement",
+            "_error": "check_proof_gate_before_implement",
+        }
+
+    @pytest.mark.parametrize(
+        "name", ["select_obligation_post_refine", "select_obligation_pre_implement"]
+    )
+    def test_selector_probe_order_and_flags(self, data: dict[str, Any], name: str) -> None:
+        action = data["states"][name]["action"]
+        assert action.index("check-flag") < action.index("next-obligation")
+        assert "decision_needed" in action
+        for token in (
+            "--format token",
+            "--readiness-threshold ${context.readiness_threshold:shell}",
+            "--outcome-threshold ${context.outcome_threshold:shell}",
+            "--honor-waiver",
+            "autodev-reentry-DECISION-",
+            "grep -vxF",
+            "autodev-staged.txt",
+        ):
+            assert token in action, token
+
+    @pytest.mark.parametrize(("state", "edge"), _PRE_IMPLEMENT_SITES)
+    def test_score_pass_sites_route_through_pre_implement_selector(
+        self, data: dict[str, Any], state: str, edge: str
+    ) -> None:
+        assert data["states"][state][edge] == "select_obligation_pre_implement"
+
+    def test_check_passed_failure_edges_route_through_post_refine_selector(
         self, data: dict[str, Any]
     ) -> None:
-        """The state must call ``ll-issues check-flag <id> decision_needed``."""
-        state = data["states"]["check_decision_before_size_review"]
-        action = state.get("action", "")
-        assert "ll-issues check-flag" in action, (
-            f"check_decision_before_size_review.action must call 'll-issues check-flag', "
-            f"got {action!r}"
-        )
-        assert "decision_needed" in action, (
-            f"check_decision_before_size_review.action must check the decision_needed "
-            f"frontmatter field, got {action!r}"
-        )
+        state = data["states"]["check_passed"]
+        assert state["on_no"] == "select_obligation_post_refine"
+        assert state["on_cannot_judge"] == "select_obligation_post_refine"
+        assert state["on_error"] == "detect_children"
 
-    def test_check_decision_before_size_review_uses_shell_exit_fragment(
+    def test_recheck_scores_failure_edges_skip_to_size_review(self, data: dict[str, Any]) -> None:
+        state = data["states"]["recheck_scores"]
+        for edge in ("on_no", "on_error", "on_cannot_judge"):
+            assert state[edge] == "run_size_review"
+
+    def test_route_refine_success_fallthroughs_retarget_to_check_passed(
         self, data: dict[str, Any]
     ) -> None:
-        """The state must use ``shell_exit`` fragment to route on exit code."""
-        state = data["states"]["check_decision_before_size_review"]
-        assert state.get("fragment") == "shell_exit", (
-            f"check_decision_before_size_review.fragment should be 'shell_exit', "
-            f"got {state.get('fragment')!r}"
+        route = data["states"]["route_refine_success"]["route"]
+        for token in ("READY", "BLOCKED", "MISSING", "_", "_error"):
+            assert route[token] == "check_passed"
+
+    def test_dequeue_next_clears_reentry_counters(self, data: dict[str, Any]) -> None:
+        assert "autodev-reentry-*-$CURRENT" in data["states"]["dequeue_next"]["action"]
+
+    def test_record_reentry_exhausted_shape(self, data: dict[str, Any]) -> None:
+        state = data["states"]["record_reentry_exhausted"]
+        action = state["action"]
+        assert "decision_unresolved" in action
+        assert "autodev-skipped.txt" in action
+        assert "rm -f ${context.run_dir}/autodev-inflight" in action
+        assert "set-status" in action and "--reason decision_unresolved" in action
+        assert "refine_failed" not in action
+        assert state["next"] == "dequeue_next"
+
+
+def _interp(action: str, run_dir: Path, issue_id: str) -> str:
+    subs = {
+        "context.run_dir": str(run_dir),
+        "captured.input.output:shell": issue_id,
+        "captured.input.output": issue_id,
+        "context.readiness_threshold:shell": "85",
+        "context.outcome_threshold:shell": "65",
+    }
+    return re.sub(r"\$\{([^}]+)\}", lambda m: subs[m.group(1)], action)
+
+
+class _StubIssues:
+    """Bash stub for ``ll-issues`` driven by files in a temp dir.
+
+    ``flag`` holds the decision_needed value (absent file = unset), ``status`` the
+    issue status; ``next-obligation`` prints ``obligation`` (default NONE) and exits
+    ``next_rc``; ``check-flag`` exits ``flag_rc`` when set (2 simulates an
+    unresolvable ID). Every call is appended to ``calls``.
+    """
+
+    def __init__(self, root: Path) -> None:
+        self.root = root
+        self.bin = root / "bin"
+        self.bin.mkdir()
+        (self.bin / "ll-issues").write_text(
+            "#!/bin/sh\n"
+            f'echo "$@" >> "{root}/calls"\n'
+            'case "$1" in\n'
+            f'  check-flag) if [ -f "{root}/flag_rc" ]; then exit "$(cat "{root}/flag_rc")"; fi\n'
+            f'    [ -f "{root}/flag" ] && exit 0; exit 1;;\n'
+            f'  next-obligation) if [ -f "{root}/obligation" ]; then cat "{root}/obligation"; '
+            f'else echo NONE; fi; exit "$(cat "{root}/next_rc" 2>/dev/null || echo 0)";;\n'
+            f'  show) printf \'{{"status": "%s"}}\' "$(cat "{root}/status" 2>/dev/null || echo open)";;\n'
+            "  *) exit 0;;\n"
+            "esac\n"
+        )
+        (self.bin / "ll-issues").chmod(0o755)
+
+    def set_flag(self, on: bool) -> None:
+        (self.root / "flag").write_text("true") if on else (self.root / "flag").unlink(
+            missing_ok=True
         )
 
-    def test_check_decision_before_size_review_on_yes_routes_to_resolve_decision(
-        self, data: dict[str, Any]
-    ) -> None:
-        """decision_needed=true must route into the shared resolve_decision
-        sub-loop call state (ENH-3075), which owns the decidability probe and
-        deposit-options detour that used to live inline (BUG-2605)."""
-        state = data["states"]["check_decision_before_size_review"]
-        assert state.get("on_yes") == "resolve_decision", (
-            f"check_decision_before_size_review.on_yes should be 'resolve_decision', "
-            f"got {state.get('on_yes')!r}"
+    def calls(self) -> list[str]:
+        f = self.root / "calls"
+        return f.read_text().splitlines() if f.exists() else []
+
+    def run(self, action: str, run_dir: Path, issue_id: str) -> subprocess.CompletedProcess[str]:
+        env = {**os.environ, "PATH": f"{self.bin}{os.pathsep}{os.environ['PATH']}"}
+        return subprocess.run(
+            ["bash", "-c", _interp(action, run_dir, issue_id)],
+            capture_output=True,
+            text=True,
+            check=False,
+            env=env,
         )
 
-    def test_check_decision_before_size_review_on_no_routes_to_run_size_review(
-        self, data: dict[str, Any]
-    ) -> None:
-        """decision_needed=false (or absent) must route to run_size_review."""
-        state = data["states"]["check_decision_before_size_review"]
-        assert state.get("on_no") == "run_size_review", (
-            f"check_decision_before_size_review.on_no should be 'run_size_review', "
-            f"got {state.get('on_no')!r}"
-        )
 
-    def test_check_decision_before_size_review_on_error_routes_to_run_size_review(
-        self, data: dict[str, Any]
+@pytest.fixture
+def run_dir(tmp_path: Path) -> Path:
+    d = tmp_path / "run"
+    d.mkdir()
+    return d
+
+
+@pytest.fixture
+def stub(tmp_path: Path) -> _StubIssues:
+    return _StubIssues(tmp_path)
+
+
+@pytest.fixture
+def states() -> dict[str, Any]:
+    return _load_autodev_yaml()["states"]
+
+
+class TestObligationSelectorBehavior:
+    """ENH-3610: run the real selector actions under bash against a stub ll-issues."""
+
+    @pytest.mark.parametrize(
+        "name", ["select_obligation_post_refine", "select_obligation_pre_implement"]
+    )
+    @pytest.mark.parametrize("issue_id", ["ENH-3610", "3610"])
+    def test_flag_set_prints_decision_then_exhausted(
+        self, states: dict[str, Any], stub: _StubIssues, run_dir: Path, name: str, issue_id: str
     ) -> None:
-        """BUG-2519 (Option B fix): ``ll-issues check-flag`` exit_code 2 (e.g. issue
-        missing) must fall through to ``run_size_review`` rather than dead-ending the
-        FSM. Mirrors the sibling ``check_decision_after_refine.on_error: check_passed``
-        precedent at autodev.yaml:173."""
-        state = data["states"]["check_decision_before_size_review"]
-        assert state.get("on_error") == "run_size_review", (
-            f"check_decision_before_size_review.on_error should be 'run_size_review' "
-            f"(BUG-2519: close latent dead-end), got {state.get('on_error')!r}"
+        stub.set_flag(True)
+        (run_dir / "autodev-staged.txt").write_text(f"OTHER-1\n{issue_id}\n")
+        action = states[name]["action"]
+        first = stub.run(action, run_dir, issue_id)
+        assert first.returncode == 0, first.stderr
+        assert first.stdout.strip() == "DECISION"
+        assert (run_dir / f"autodev-reentry-DECISION-{issue_id}").read_text() == "1"
+        # Un-staged before the token is printed; other IDs untouched.
+        assert (run_dir / "autodev-staged.txt").read_text().splitlines() == ["OTHER-1"]
+        # next-obligation is never consulted when the flag is set.
+        assert not any(c.startswith("next-obligation") for c in stub.calls())
+        second = stub.run(action, run_dir, issue_id)
+        assert second.stdout.strip() == "DECISION_EXHAUSTED"
+
+    @pytest.mark.parametrize(
+        "name", ["select_obligation_post_refine", "select_obligation_pre_implement"]
+    )
+    @pytest.mark.parametrize("flag_rc", [None, "2"])
+    def test_flag_unset_or_unresolvable_falls_to_next_obligation(
+        self,
+        states: dict[str, Any],
+        stub: _StubIssues,
+        run_dir: Path,
+        name: str,
+        flag_rc: str | None,
+    ) -> None:
+        if flag_rc is not None:
+            (stub.root / "flag_rc").write_text(flag_rc)
+        result = stub.run(states[name]["action"], run_dir, "ENH-3610")
+        assert result.returncode == 0
+        assert result.stdout.strip() == "NONE"
+        nxt = [c for c in stub.calls() if c.startswith("next-obligation")]
+        assert nxt == [
+            "next-obligation ENH-3610 --format token --readiness-threshold 85 "
+            "--outcome-threshold 65 --honor-waiver"
+        ]
+        assert not list(run_dir.glob("autodev-reentry-*"))
+
+    @pytest.mark.parametrize(
+        "name", ["select_obligation_post_refine", "select_obligation_pre_implement"]
+    )
+    def test_next_obligation_failure_is_nonzero_for_error_route(
+        self, states: dict[str, Any], stub: _StubIssues, run_dir: Path, name: str
+    ) -> None:
+        (stub.root / "next_rc").write_text("2")
+        result = stub.run(states[name]["action"], run_dir, "ENH-3610")
+        assert result.returncode == 2
+
+    def test_dequeue_next_clears_reentry_counter(
+        self, states: dict[str, Any], stub: _StubIssues, run_dir: Path
+    ) -> None:
+        (run_dir / "autodev-reentry-DECISION-BUG-1").write_text("1")
+        (run_dir / "autodev-reentry-DECISION-BUG-2").write_text("1")
+        (run_dir / "autodev-queue.txt").write_text("BUG-1\n")
+        result = stub.run(states["dequeue_next"]["action"], run_dir, "BUG-1")
+        assert result.returncode == 0, result.stderr
+        assert not (run_dir / "autodev-reentry-DECISION-BUG-1").exists()
+        assert (run_dir / "autodev-reentry-DECISION-BUG-2").exists()
+
+
+def _drive(
+    states: dict[str, Any],
+    stub: _StubIssues,
+    run_dir: Path,
+    start: str,
+    child: Any,
+    issue_id: str = "ENH-3610",
+) -> list[str]:
+    """Walk real selector/exhaustion states; every other state is a stub.
+
+    ``child(stub)`` runs when the walk enters ``refine_current`` and models the
+    refine-to-ready-issue child (it may clear or leave the decision flag). The
+    walk ends at ``implement_current`` or ``dequeue_next``.
+    """
+    visited: list[str] = []
+    node = start
+    for _ in range(20):
+        visited.append(node)
+        if node in ("implement_current", "dequeue_next"):
+            return visited
+        if node == "refine_current":
+            child(stub)
+            (run_dir / "autodev-staged.txt").open("a").write(f"{issue_id}\n")  # check_passed
+            node = "select_obligation_pre_implement"
+            continue
+        if node == "check_proof_gate_before_implement":
+            node = "implement_current"
+            continue
+        state = states[node]
+        result = stub.run(state["action"], run_dir, issue_id)
+        if "route" in state:
+            token = result.stdout.strip().splitlines()[-1] if result.returncode == 0 else "_error"
+            route = state["route"]
+            node = route.get(token, route["_"])
+        else:
+            node = state["next"]
+    raise AssertionError(f"walk did not terminate: {visited}")
+
+
+class TestDecisionReentryFlow:
+    """ENH-3610: real-FSM walks over the selector states."""
+
+    def test_flagged_issue_reenters_child_and_never_implements_with_flag(
+        self, states: dict[str, Any], stub: _StubIssues, run_dir: Path
+    ) -> None:
+        stub.set_flag(True)
+        seen_at_implement: list[bool] = []
+
+        def child(s: _StubIssues) -> None:
+            s.set_flag(False)  # child resolves the decision before done
+
+        visited = _drive(states, stub, run_dir, "select_obligation_pre_implement", child)
+        seen_at_implement.append((stub.root / "flag").exists())
+        assert visited[-1] == "implement_current"
+        assert "refine_current" in visited
+        assert seen_at_implement == [False]
+
+    def test_check_passed_on_yes_catches_child_drift(
+        self, states: dict[str, Any], stub: _StubIssues, run_dir: Path
+    ) -> None:
+        """A drifted child reaches done with the flag set: the selector at
+        check_passed.on_yes still catches it."""
+        stub.set_flag(True)
+        assert states["check_passed"]["on_yes"] == "select_obligation_pre_implement"
+        visited = _drive(states, stub, run_dir, "select_obligation_pre_implement", lambda s: None)
+        assert visited[0] == "select_obligation_pre_implement"
+        assert "refine_current" in visited
+        assert "implement_current" not in visited
+
+    def test_child_leaving_flag_set_twice_exhausts_and_defers(
+        self, states: dict[str, Any], stub: _StubIssues, run_dir: Path
+    ) -> None:
+        stub.set_flag(True)
+        (run_dir / "autodev-inflight").write_text("ENH-3610")
+        visited = _drive(states, stub, run_dir, "select_obligation_pre_implement", lambda s: None)
+        assert visited.count("refine_current") == 1
+        assert visited[-2:] == ["record_reentry_exhausted", "dequeue_next"]
+        assert "implement_current" not in visited
+        stub_calls = stub.calls()
+        assert (
+            "set-status ENH-3610 deferred --by automation --reason decision_unresolved"
+            in stub_calls
         )
+        assert (run_dir / "autodev-skipped.txt").read_text().splitlines() == [
+            "ENH-3610  decision_unresolved"
+        ]
+        assert "refine_failed" not in (run_dir / "autodev-skipped.txt").read_text()
+        assert not (run_dir / "autodev-inflight").exists()
+        assert "ENH-3610" not in (run_dir / "autodev-staged.txt").read_text().splitlines()
+
+    def test_reentered_child_deferral_leaves_issue_unstaged(
+        self, states: dict[str, Any], stub: _StubIssues, run_dir: Path
+    ) -> None:
+        """A staged issue re-entered on DECISION whose child then stops
+        (BLOCKED:decision_unresolved) must not be left staged, or finalize_done
+        lists it in autodev-unverified.txt."""
+        stub.set_flag(True)
+        (run_dir / "autodev-staged.txt").write_text("ENH-3610\n")
+        result = stub.run(states["select_obligation_pre_implement"]["action"], run_dir, "ENH-3610")
+        assert result.stdout.strip() == "DECISION"
+        assert "ENH-3610" not in (run_dir / "autodev-staged.txt").read_text().splitlines()
+        # The finalize_done unverified set is derived from autodev-staged.txt.
+        finalize = states["finalize_done"]["action"]
+        assert "autodev-staged.txt" in finalize
+
+    def test_flag_clear_takes_next_obligation_path_to_proof_gate(
+        self, states: dict[str, Any], stub: _StubIssues, run_dir: Path
+    ) -> None:
+        visited = _drive(states, stub, run_dir, "select_obligation_pre_implement", lambda s: None)
+        assert visited == [
+            "select_obligation_pre_implement",
+            "check_proof_gate_before_implement",
+            "implement_current",
+        ]
+
+    def test_exhaustion_does_not_overwrite_resolved_status(
+        self, states: dict[str, Any], stub: _StubIssues, run_dir: Path
+    ) -> None:
+        """BUG-2729 guard: a done/completed/cancelled issue is left unchanged."""
+        (stub.root / "status").write_text("done")
+        result = stub.run(states["record_reentry_exhausted"]["action"], run_dir, "ENH-3610")
+        assert result.returncode == 0, result.stderr
+        assert not any(c.startswith("set-status") for c in stub.calls())
+        assert (
+            run_dir / "autodev-skipped.txt"
+        ).read_text().strip() == "ENH-3610  decision_unresolved"
+
+
+class TestChildDecisionInvariant:
+    """ENH-3610: refine-to-ready-issue never reaches ``done`` with decision_needed set,
+    except through write_broke_down."""
+
+    @pytest.fixture
+    def child(self) -> dict[str, Any]:
+        path = AUTODEV_LOOP_PATH.parent / "refine-to-ready-issue.yaml"
+        return yaml.safe_load(path.read_text())["states"]
+
+    def test_done_edges_pass_through_decision_gate(self, child: dict[str, Any]) -> None:
+        for state, edge in (
+            ("check_outcome", "on_yes"),
+            ("check_missing_artifacts", "on_yes"),
+            ("check_scores_from_file", "on_yes"),
+        ):
+            assert child[state][edge] == "check_decision_before_done", state
+
+    def test_only_gate_write_done_record_and_class_writers_reach_done(
+        self, child: dict[str, Any]
+    ) -> None:
+        inbound = set()
+        for name, state in child.items():
+            targets = [v for k, v in state.items() if k.startswith("on_") or k == "next"]
+            targets += list((state.get("route") or {}).values())
+            if "done" in targets:
+                inbound.add(name)
+        # write_broke_down is the documented exception; the rest are class-writing stops.
+        assert "write_done_record" in inbound
+        assert "write_broke_down" in inbound
+        for name in ("check_outcome", "check_missing_artifacts", "check_scores_from_file"):
+            assert name not in inbound
+
+    def test_decision_gate_routes(self, child: dict[str, Any]) -> None:
+        gate = child["check_decision_before_done"]
+        assert "check-flag" in gate["action"] and "decision_needed" in gate["action"]
+        assert gate["on_yes"] == "check_decide_attempts"
+        assert gate["on_no"] == "write_done_record"
+        assert gate["on_error"] == "write_done_record"
+
+    def test_run_record_write_moved_to_write_done_record(self, child: dict[str, Any]) -> None:
+        assert "run-record write" in child["write_done_record"]["action"]
+        assert child["write_done_record"]["next"] == "done"
+        for name in ("check_outcome", "check_missing_artifacts", "check_scores_from_file"):
+            assert "run-record write" not in child[name]["action"], name
 
 
 class TestSpikeTriageStructural:
@@ -898,77 +1069,6 @@ class TestGuard2VerdictBypass:
         _result, visited = _run_decision_chain(guard2_bypass_fsm, runner)
         assert "recheck_after_size_review" in visited, f"visited={visited!r}"
         assert "check_guard2_verdict" not in visited, f"visited={visited!r}"
-
-
-class TestCheckDecisionBeforeSizeReviewRouting:
-    """BUG-2519: FSMExecutor-driven assertion on the gate's error-fallthrough.
-
-    Drives ``recheck_scores.on_error → check_decision_before_size_review`` with
-    a check-flag error exit_code, and asserts ``run_size_review`` is reached
-    (not ``run_decide``) — closing the latent dead-end at the FSM-execution
-    layer, not just the YAML-shape layer.
-    """
-
-    @pytest.fixture
-    def size_review_chain_fsm(self) -> Any:
-        """Minimal autodev-shaped FSM: recheck_scores → check_decision_before_size_review
-        → run_decide (on_yes) | run_size_review (on_no / on_error).
-
-        Mirrors the decision_chain_fsm fixture from BUG-2513 but anchored on the
-        pre-size-review path.
-        """
-        return _loop(
-            name="autodev-size-review-decision-gate-mini",
-            initial="recheck_scores",
-            states={
-                "recheck_scores": _state(
-                    action="ll-issues check-readiness BUG-2501 --readiness 85 --outcome 75",
-                    action_type="shell",
-                    fragment_name="shell_exit",
-                    on_yes="decide_current",
-                    on_no="check_decision_before_size_review",
-                    on_error="check_decision_before_size_review",
-                ),
-                "check_decision_before_size_review": _state(
-                    action="ll-issues check-flag BUG-2501 decision_needed",
-                    action_type="shell",
-                    fragment_name="shell_exit",
-                    on_yes="run_decide",
-                    on_no="run_size_review",
-                    on_error="run_size_review",
-                ),
-                "decide_current": _state(action="true", action_type="shell", next="done"),
-                "run_decide": _state(action="true", action_type="shell", next="done"),
-                "run_size_review": _state(action="true", action_type="shell", next="done"),
-                "done": _state(terminal=True),
-            },
-        )
-
-    def test_check_flag_error_falls_through_to_run_size_review(
-        self, size_review_chain_fsm: Any
-    ) -> None:
-        """BUG-2519: When recheck_scores.on_error routes into
-        check_decision_before_size_review AND check-flag exits with code 2
-        (issue not found), the FSM must reach run_size_review rather than
-        dead-ending — proving the new on_error route closes the silent
-        termination defect at the executor layer."""
-        runner = _StubRunner(
-            results=[
-                ("ll-issues check-readiness", {"exit_code": 2, "stderr": "issue not found"}),
-                ("ll-issues check-flag", {"exit_code": 2, "stderr": "issue not found"}),
-            ]
-        )
-
-        result, visited = _run_decision_chain(size_review_chain_fsm, runner)
-
-        assert "run_size_review" in visited, (
-            f"run_size_review must be reached on check-flag error (BUG-2519: "
-            f"close latent dead-end); visited={visited!r}"
-        )
-        assert "run_decide" not in visited, (
-            f"run_decide must NOT be reached when decision_needed is unknown due "
-            f"to check-flag error; visited={visited!r}"
-        )
 
 
 class TestAssertDecisionClearedStructural:

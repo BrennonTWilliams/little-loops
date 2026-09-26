@@ -619,7 +619,7 @@ class TestRecheckAfterSizeReviewDesignGateBranch:
         assert "autodev-design-remedy-attempted-$ID" in branch
 
     def test_pre_fix_bypass_closed_high_score_with_design_gap(self) -> None:
-        """High confidence score alone must not reach decide_current when the
+        """High confidence score alone must not reach select_obligation_pre_implement when the
         design gate marker is present — the GATE AND forces FAIL regardless
         of the persisted numeric score."""
         action = _load_autodev_yaml()["states"]["recheck_after_size_review"]["action"]

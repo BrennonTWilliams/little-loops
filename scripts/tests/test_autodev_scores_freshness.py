@@ -92,8 +92,8 @@ class TestRoutingStructure:
             ("recheck_after_decide", "mark_scores_absent_infra"),
             # Post-sub-loop sites: absence is legitimate (breakdown before
             # scoring) — keep the pre-existing route so detect_children is reached.
-            ("check_passed", "triage_outcome_failure"),
-            ("recheck_scores", "check_decision_before_size_review"),
+            ("check_passed", "select_obligation_post_refine"),
+            ("recheck_scores", "run_size_review"),
             ("recheck_after_size_review", "mark_scores_absent_infra"),
             ("regate_after_atomic_remediation", "mark_scores_absent_infra"),
         ],

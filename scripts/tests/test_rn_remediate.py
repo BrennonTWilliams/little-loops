@@ -276,7 +276,7 @@ class TestResolveDecisionCallStates:
     def test_resolve_decision_direct_binds_skip_probe_true(self) -> None:
         """The two direct entry points (check_decision_needed_post, diagnose's
         DECIDE route) already know a decision is needed and skip the
-        decidability probe, mirroring autodev's resolve_decision_direct."""
+        decidability probe, formerly mirroring autodev's resolve_decision_direct (removed by ENH-3610)."""
         data = _load_loop()
         rdd = data["states"]["resolve_decision_direct"]
         assert rdd["loop"] == "oracles/resolve-decision"

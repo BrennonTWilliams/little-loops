@@ -295,11 +295,18 @@ class TestAutodevRouting:
         )
         for state in ("check_proof_gate_before_implement", "check_proof_defer_or_implement"):
             out = _run_state_proc(project, state, env).stdout
-            assert "PROOF_INFRA" in out, f"{state} must emit PROOF_INFRA on unknown token, got {out!r}"
+            assert "PROOF_INFRA" in out, (
+                f"{state} must emit PROOF_INFRA on unknown token, got {out!r}"
+            )
 
     def test_implement_edges_route_through_guard(self) -> None:
         states = yaml.safe_load(LOOP.read_text())["states"]
-        assert states["check_passed"]["on_yes"] == "check_proof_gate_before_implement"
+        # ENH-3610: check_passed.on_yes goes through the pre-implement obligation
+        # selector, whose `_` / `_error` routes reach the fail-closed proof gate.
+        assert states["check_passed"]["on_yes"] == "select_obligation_pre_implement"
+        selector = states["select_obligation_pre_implement"]
+        assert selector["route"]["_"] == "check_proof_gate_before_implement"
+        assert selector["route"]["_error"] == "check_proof_gate_before_implement"
         assert states["check_proof_gate_before_implement"]["on_yes"] == "run_spike"
         route = states["check_proof_defer_or_implement"].get("route", {})
         assert route.get("PROOF_DEFER") == "defer_gated"
@@ -324,8 +331,7 @@ class TestProofGateFailClosed:
                 if state.get(edge) == "implement_current":
                     offenders.append(f"{name}.{edge}")
         assert not offenders, (
-            "failure edges must not target implement_current (BUG-3603 fail-closed): "
-            f"{offenders}"
+            f"failure edges must not target implement_current (BUG-3603 fail-closed): {offenders}"
         )
 
     def test_implement_current_reachable_only_from_proof_defer_state(

@@ -1533,10 +1533,10 @@ class TestRefineToReadyIssueSubLoop:
         )
 
     def test_check_outcome_on_yes_routes_to_done(self, data: dict) -> None:
-        """check_outcome.on_yes must route directly to done (ENH-2364: restore_best retired, additive refines are non-regressive)."""
+        """check_outcome.on_yes must route through check_decision_before_done (ENH-3610; ENH-2364: restore_best retired, additive refines are non-regressive)."""
         state = data["states"].get("check_outcome", {})
-        assert state.get("on_yes") == "done", (
-            f"check_outcome.on_yes should be 'done', got {state.get('on_yes')!r}"
+        assert state.get("on_yes") == "check_decision_before_done", (
+            f"check_outcome.on_yes should be 'check_decision_before_done', got {state.get('on_yes')!r}"
         )
 
     def test_check_outcome_on_no_routes_to_check_decision_needed(self, data: dict) -> None:
@@ -1554,10 +1554,10 @@ class TestRefineToReadyIssueSubLoop:
         )
 
     def test_check_scores_from_file_routes_to_done(self, data: dict) -> None:
-        """check_scores_from_file.on_yes must route to done when scores meet thresholds."""
+        """check_scores_from_file.on_yes must route through check_decision_before_done when scores meet thresholds (ENH-3610)."""
         state = data["states"].get("check_scores_from_file", {})
-        assert state.get("on_yes") == "done", (
-            f"check_scores_from_file.on_yes should be 'done', got {state.get('on_yes')!r}"
+        assert state.get("on_yes") == "check_decision_before_done", (
+            f"check_scores_from_file.on_yes should be 'check_decision_before_done', got {state.get('on_yes')!r}"
         )
 
     def test_check_scores_from_file_routes_to_breakdown_issue_on_no(self, data: dict) -> None:
@@ -2868,10 +2868,10 @@ class TestRefineToReadyIssueSubLoop:
         )
 
     def test_check_missing_artifacts_on_yes_routes_to_done(self, data: dict) -> None:
-        """check_missing_artifacts.on_yes (missing_artifacts=true) must exit via done so the outer loop owns wire repair."""
+        """check_missing_artifacts.on_yes (missing_artifacts=true) must exit via done (through check_decision_before_done, ENH-3610) so the outer loop owns wire repair."""
         state = data["states"].get("check_missing_artifacts", {})
-        assert state.get("on_yes") == "done", (
-            f"check_missing_artifacts.on_yes should be 'done', got {state.get('on_yes')!r}"
+        assert state.get("on_yes") == "check_decision_before_done", (
+            f"check_missing_artifacts.on_yes should be 'check_decision_before_done', got {state.get('on_yes')!r}"
         )
 
     def test_check_missing_artifacts_on_no_routes_to_breakdown_issue(self, data: dict) -> None:
@@ -6663,22 +6663,20 @@ class TestAutodevLoop:
             "init",
             "dequeue_next",
             "refine_current",
-            "check_decision_after_refine",
             "check_passed",
+            "select_obligation_post_refine",
+            "select_obligation_pre_implement",
+            "record_reentry_exhausted",
             "detect_children",
             "enqueue_children",
             "size_review_snap",
             "check_broke_down",
             "recheck_scores",
-            "check_decision_before_size_review",
-            "triage_outcome_failure",
             "check_missing_artifacts",
             "run_size_review",
             "enqueue_or_skip",
             "recheck_after_size_review",
-            "decide_current",
             "resolve_decision",
-            "resolve_decision_direct",
             "check_decide_rate_limited",
             "mark_decide_ran",
             "rerun_confidence_after_decide",
@@ -6750,50 +6748,6 @@ class TestAutodevLoop:
         """dequeue_next must capture as 'input' for context_passthrough to the sub-loop."""
         state = data["states"].get("dequeue_next", {})
         assert state.get("capture") == "input"
-
-    def test_dequeue_next_routes_to_check_decision_at_dequeue(self, data: dict) -> None:
-        """BUG-2513: every dequeue must reach check_decision_at_dequeue before
-        refine_current, so the decision_needed gate intercepts each issue.
-
-        ENH-2868 inserted check_status_at_dequeue between the two; the BUG-2513
-        invariant is the *reachability* of the decision gate on the processing
-        path (and that dequeue_next never jumps straight to refine_current), not
-        the literal edge. Assert the chain, allowing pre-flight gates that fall
-        through to the decision gate.
-        """
-        states = data["states"]
-        node = states.get("dequeue_next", {}).get("on_yes")
-        assert node != "refine_current", "dequeue_next must not bypass the decision gate (BUG-2513)"
-        # Walk the on_no/on_error fall-through chain of any pre-flight gates.
-        seen: set[str] = set()
-        while node and node != "check_decision_at_dequeue" and node not in seen:
-            seen.add(node)
-            state = states.get(node, {})
-            assert state, f"dangling route to unknown state {node!r}"
-            nxt = state.get("on_no") or state.get("next")
-            assert state.get("on_error") in (nxt, "check_decision_at_dequeue", None), (
-                f"pre-flight gate {node!r} must fail open toward the decision gate"
-            )
-            node = nxt
-        assert node == "check_decision_at_dequeue", (
-            "the processing path from dequeue_next must reach "
-            f"check_decision_at_dequeue (BUG-2513); chain stalled at {node!r}"
-        )
-
-    def test_check_decision_at_dequeue_on_yes_routes_to_resolve_decision(self, data: dict) -> None:
-        """ENH-3075 (was BUG-2605): check_decision_at_dequeue.on_yes (decision_needed=true)
-        must route into the shared resolve_decision sub-loop call state, not directly
-        to a local run_decide, so a fresh dequeue gets the deposit_options detour
-        (now owned by oracles/resolve-decision.yaml) before decide-issue is asked to
-        choose an option. The entry-time call state resumes preflight on success
-        instead of the shared post-decide chain that ends at implement_current."""
-        state = data["states"].get("check_decision_at_dequeue", {})
-        assert state.get("on_yes") == "resolve_decision_at_dequeue", (
-            f"check_decision_at_dequeue.on_yes should be 'resolve_decision_at_dequeue', "
-            f"got {state.get('on_yes')!r}"
-        )
-        call = data["states"]["resolve_decision_at_dequeue"]
-        assert call.get("loop") == "oracles/resolve-decision"
 
     def test_refine_current_delegates_to_refine_to_ready_issue(self, data: dict) -> None:
         """refine_current must delegate to refine-to-ready-issue (NOT recursive-refine)."""
@@ -7052,7 +7006,7 @@ class TestAutodevLoop:
 
     def test_dequeue_next_routes_through_status_gate(self, data: dict) -> None:
         """ENH-2868: dequeue_next must route to the status pre-flight gate, not
-        straight to check_decision_at_dequeue — otherwise a stale (done/cancelled/
+        straight to check_blockers_at_dequeue — otherwise a stale (done/cancelled/
         deferred) ID burns a full refine-to-ready-issue delegation."""
         state = data["states"].get("dequeue_next", {})
         assert state.get("on_yes") == "check_status_at_dequeue", (
@@ -7067,9 +7021,9 @@ class TestAutodevLoop:
         assert state, "check_status_at_dequeue state must exist (ENH-2868)"
         assert state.get("action_type") == "shell"
         assert state.get("on_yes") == "skip_already_resolved"
-        assert state.get("on_no") == "check_decision_at_dequeue"
-        assert state.get("on_error") == "check_decision_at_dequeue", (
-            "on_error must fail open to check_decision_at_dequeue so a gate error "
+        assert state.get("on_no") == "check_blockers_at_dequeue"
+        assert state.get("on_error") == "check_blockers_at_dequeue", (
+            "on_error must fail open to check_blockers_at_dequeue so a gate error "
             f"never blocks the queue, got {state.get('on_error')!r}"
         )
         evaluate = state.get("evaluate", {})
@@ -7193,22 +7147,6 @@ class TestAutodevLoop:
     # ---------------------------------------------------------------
     # ENH-2909: blocked_by pre-flight gate at dequeue
     # ---------------------------------------------------------------
-
-    def test_check_decision_at_dequeue_routes_to_check_blockers_at_dequeue(
-        self, data: dict
-    ) -> None:
-        """ENH-2909: check_decision_at_dequeue's on_no/on_error must route to the
-        new check_blockers_at_dequeue gate (inserted between it and
-        refine_current), not directly to refine_current."""
-        state = data["states"].get("check_decision_at_dequeue", {})
-        assert state.get("on_no") == "check_blockers_at_dequeue", (
-            f"check_decision_at_dequeue.on_no should be 'check_blockers_at_dequeue', "
-            f"got {state.get('on_no')!r}"
-        )
-        assert state.get("on_error") == "check_blockers_at_dequeue", (
-            f"check_decision_at_dequeue.on_error should be 'check_blockers_at_dequeue', "
-            f"got {state.get('on_error')!r}"
-        )
 
     def test_check_blockers_at_dequeue_routing(self, data: dict) -> None:
         """ENH-2909/ENH-3148: BLOCKED -> skip_blocked; otherwise continue to
@@ -7959,8 +7897,6 @@ class TestAutodevLoop:
         assert loop_states == {
             "refine_current",
             "resolve_decision",
-            "resolve_decision_direct",
-            "resolve_decision_at_dequeue",
         }
         offenders = [
             name
@@ -8029,7 +7965,7 @@ class TestAutodevLoop:
     def test_route_refine_outcome_has_no_success_path_edge(self, data: dict) -> None:
         """ENH-3609/ENH-1679: a failed child never reuses the success path."""
         targets = set(data["states"]["route_refine_outcome"]["route"].values())
-        assert not targets & {"check_decision_after_refine", "check_passed", "detect_children"}
+        assert not targets & {"check_passed", "detect_children"}
         route = data["states"]["route_refine_outcome"]["route"]
         for tok in (
             "BLOCKED:decision_unresolved",
@@ -8042,7 +7978,7 @@ class TestAutodevLoop:
     def test_route_refine_success_targets(self, data: dict) -> None:
         route = data["states"]["route_refine_success"]["route"]
         for tok in ("READY", "BLOCKED", "MISSING", "_", "_error"):
-            assert route[tok] == "check_decision_after_refine", tok
+            assert route[tok] == "check_passed", tok
         assert route["DECOMPOSED"] == "detect_children"
         assert route["CANCELLED"] == "skip_cancelled"
         for tok, tgt in route.items():
@@ -8297,7 +8233,7 @@ class TestAutodevLoop:
         assert "/ll:confidence-check" in rerun_state.get("action", "")
 
         regate_state = data["states"].get("regate_after_atomic_remediation", {})
-        assert regate_state.get("on_yes") == "decide_current"
+        assert regate_state.get("on_yes") == "select_obligation_pre_implement"
         # ENH-2870/BUG-3002: on_no now routes through the design-remedy
         # dispatcher (check_atomic_design_remedy), which itself falls through
         # to dequeue_next when no design remedy was armed.
@@ -8311,7 +8247,7 @@ class TestAutodevLoop:
     def test_go_no_go_escalation_chain_shape(self, data: dict) -> None:
         """BUG-3390: after an oversized_atomic deferral, /ll:go-no-go --auto runs once
         per issue per run; a stamped outcome_gate_waived re-opens and stages the
-        issue for implementation via decide_current."""
+        issue for implementation via select_obligation_pre_implement."""
         states = data["states"]
         elig = states["check_go_no_go_eligible"]
         assert elig.get("fragment") == "shell_exit"
@@ -8338,7 +8274,7 @@ class TestAutodevLoop:
 
         reopen = states["reopen_waived"]
         assert "set-status" in reopen["action"] and "open" in reopen["action"]
-        assert reopen.get("next") == "decide_current"
+        assert reopen.get("next") == "select_obligation_pre_implement"
         assert reopen.get("on_error") == "dequeue_next"
 
         # The per-issue attempted marker is filename-scoped and must survive dequeue.
@@ -8470,44 +8406,33 @@ class TestAutodevLoop:
         assert "${context.skip_learning_gate}" in action
         assert "--skip-learning-gate" in action
 
-    def test_copy_broke_down_routes_to_check_decision_after_refine(self, data: dict) -> None:
-        """copy_broke_down must route to check_decision_after_refine so decision_needed is
-        checked immediately after confidence-check (via sub-loop) completes."""
+    def test_copy_broke_down_routes_to_check_passed(self, data: dict) -> None:
+        """copy_broke_down must reach check_passed via route_refine_success (ENH-3610:
+        the child owns decision resolution, so there is no autodev-side decision
+        gate between them)."""
         state = data["states"].get("copy_broke_down", {})
         # ENH-3609: copy_broke_down now enters route_refine_success, whose
-        # READY/BLOCKED/MISSING routes reach check_decision_after_refine.
+        # READY/BLOCKED/MISSING routes reach check_passed.
         assert state.get("next") == "route_refine_success"
         assert state.get("on_error") == "route_refine_success"
-        assert data["states"]["route_refine_success"]["route"]["READY"] == (
-            "check_decision_after_refine"
-        )
-
-    def test_check_decision_after_refine_routes_correctly(self, data: dict) -> None:
-        """check_decision_after_refine must route to resolve_decision (on_yes, ENH-3075
-        — was BUG-2605's check_decision_decidable) and check_passed (on_no/on_error)."""
-        state = data["states"].get("check_decision_after_refine", {})
-        assert state.get("on_yes") == "resolve_decision", (
-            f"check_decision_after_refine.on_yes should be 'resolve_decision', "
-            f"got {state.get('on_yes')!r}"
-        )
-        assert state.get("on_no") == "check_passed", (
-            f"check_decision_after_refine.on_no should be 'check_passed', got {state.get('on_no')!r}"
-        )
-        assert state.get("on_error") == "check_passed", (
-            f"check_decision_after_refine.on_error should be 'check_passed', got {state.get('on_error')!r}"
-        )
+        assert data["states"]["route_refine_success"]["route"]["READY"] == "check_passed"
 
     def test_check_passed_on_yes_routes_to_implement_current(self, data: dict) -> None:
         """On threshold pass, proceed directly to implementation (decision_needed already handled
-        by check_decision_after_refine before scores are evaluated)."""
+        by the child's check_decision_before_done; autodev re-checks the flag in
+        select_obligation_pre_implement)."""
         state = data["states"].get("check_passed", {})
-        # ENH-3575: routes through the proof-gate guard on the way to implementation.
-        assert state.get("on_yes") == "check_proof_gate_before_implement"
+        # ENH-3575/ENH-3610: routes through the pre-implement obligation selector, whose
+        # `_` route reaches the proof-gate guard on the way to implementation.
+        assert state.get("on_yes") == "select_obligation_pre_implement"
+        selector = data["states"]["select_obligation_pre_implement"]
+        assert selector["route"]["_"] == "check_proof_gate_before_implement"
 
-    def test_check_passed_on_no_routes_to_triage_outcome_failure(self, data: dict) -> None:
-        """On threshold fail, triage outcome before routing to size-review or decide."""
+    def test_check_passed_on_no_routes_to_post_refine_selector(self, data: dict) -> None:
+        """On threshold fail, the post-refine obligation selector runs before the
+        spike check / size-review (ENH-3610; was triage_outcome_failure)."""
         state = data["states"].get("check_passed", {})
-        assert state.get("on_no") == "triage_outcome_failure"
+        assert state.get("on_no") == "select_obligation_post_refine"
 
     def test_check_passed_on_error_routes_to_detect_children(self, data: dict) -> None:
         """BUG-3294: an unevaluable readiness check (e.g. unresolvable issue ID) degrades
@@ -8824,11 +8749,14 @@ class TestAutodevLoop:
             f"got {state.get('fragment')!r}"
         )
 
-    def test_recheck_after_size_review_on_yes_routes_to_decide_current(self, data: dict) -> None:
-        """recheck_after_size_review.on_yes (scores pass) must route to decide_current."""
+    def test_recheck_after_size_review_on_yes_routes_to_pre_implement_selector(
+        self, data: dict
+    ) -> None:
+        """recheck_after_size_review.on_yes (scores pass) must route to
+        select_obligation_pre_implement."""
         state = data["states"].get("recheck_after_size_review", {})
-        assert state.get("on_yes") == "decide_current", (
-            f"recheck_after_size_review.on_yes should be 'decide_current', "
+        assert state.get("on_yes") == "select_obligation_pre_implement", (
+            f"recheck_after_size_review.on_yes should be 'select_obligation_pre_implement', "
             f"got {state.get('on_yes')!r}"
         )
 
@@ -8970,100 +8898,20 @@ class TestAutodevLoop:
             "so done does not warn about a stale in-flight entry (BUG-1230)"
         )
 
-    def test_recheck_scores_on_yes_routes_to_decide_current(self, data: dict) -> None:
-        """recheck_scores.on_yes (scores pass) must route to decide_current."""
+    def test_recheck_scores_on_yes_routes_to_pre_implement_selector(self, data: dict) -> None:
+        """recheck_scores.on_yes (scores pass) must route to select_obligation_pre_implement."""
         state = data["states"].get("recheck_scores", {})
-        assert state.get("on_yes") == "decide_current", (
-            f"recheck_scores.on_yes should be 'decide_current', got {state.get('on_yes')!r}"
-        )
-
-    def test_recheck_scores_on_no_routes_to_check_decision_before_size_review(
-        self, data: dict
-    ) -> None:
-        """recheck_scores.on_no (scores fail) must route to check_decision_before_size_review."""
-        state = data["states"].get("recheck_scores", {})
-        assert state.get("on_no") == "check_decision_before_size_review", (
-            f"recheck_scores.on_no should be 'check_decision_before_size_review', got {state.get('on_no')!r}"
-        )
-
-    def test_recheck_scores_on_error_routes_to_check_decision_before_size_review(
-        self, data: dict
-    ) -> None:
-        """BUG-2519: recheck_scores.on_error (check-readiness failure) must route to
-        check_decision_before_size_review — closes the inbound-edge symmetry gap with
-        the on_no edge covered at line 2836."""
-        state = data["states"].get("recheck_scores", {})
-        assert state.get("on_error") == "check_decision_before_size_review", (
-            f"recheck_scores.on_error should be 'check_decision_before_size_review', "
-            f"got {state.get('on_error')!r}"
-        )
-
-    def test_check_decision_before_size_review_uses_shell_exit_fragment(self, data: dict) -> None:
-        """check_decision_before_size_review must use shell_exit fragment to route on exit code."""
-        state = data["states"].get("check_decision_before_size_review", {})
-        assert state.get("fragment") == "shell_exit", (
-            f"check_decision_before_size_review.fragment should be 'shell_exit', got {state.get('fragment')!r}"
-        )
-
-    def test_check_decision_before_size_review_on_yes_routes_to_resolve_decision(
-        self, data: dict
-    ) -> None:
-        """check_decision_before_size_review.on_yes (decision_needed=true) must route into
-        the shared resolve_decision sub-loop call state (ENH-3075, was BUG-2605's
-        check_decision_decidable), not straight to a local run_decide."""
-        state = data["states"].get("check_decision_before_size_review", {})
-        assert state.get("on_yes") == "resolve_decision", (
-            f"check_decision_before_size_review.on_yes should be 'resolve_decision', "
+        assert state.get("on_yes") == "select_obligation_pre_implement", (
+            f"recheck_scores.on_yes should be 'select_obligation_pre_implement', "
             f"got {state.get('on_yes')!r}"
         )
 
-    def test_check_decision_before_size_review_on_no_routes_to_run_size_review(
-        self, data: dict
-    ) -> None:
-        """check_decision_before_size_review.on_no (no decision needed) must route to run_size_review."""
-        state = data["states"].get("check_decision_before_size_review", {})
-        assert state.get("on_no") == "run_size_review", (
-            f"check_decision_before_size_review.on_no should be 'run_size_review', got {state.get('on_no')!r}"
-        )
-
-    def test_check_decision_before_size_review_on_error_routes_to_run_size_review(
-        self, data: dict
-    ) -> None:
-        """BUG-2519: check_decision_before_size_review must define on_error to close the latent
-        dead-end (shell_exit exit_code 2 returns None from _route). Mirrors
-        check_decision_after_refine.on_error precedent at autodev.yaml:173."""
-        state = data["states"].get("check_decision_before_size_review", {})
-        assert state.get("on_error") == "run_size_review", (
-            f"check_decision_before_size_review.on_error should be 'run_size_review', "
-            f"got {state.get('on_error')!r}"
-        )
-
-    def test_triage_outcome_failure_uses_shell_exit_fragment(self, data: dict) -> None:
-        """triage_outcome_failure must use shell_exit fragment to route on exit code."""
-        state = data["states"].get("triage_outcome_failure", {})
-        assert state.get("fragment") == "shell_exit", (
-            f"triage_outcome_failure.fragment should be 'shell_exit', got {state.get('fragment')!r}"
-        )
-
-    def test_triage_outcome_failure_on_yes_routes_to_resolve_decision_direct(
-        self, data: dict
-    ) -> None:
-        """triage_outcome_failure.on_yes (low ambiguity score or decision_needed) must route
-        directly into resolve_decision_direct (ENH-3075's fifth entry point, skip_probe:
-        "true"), bypassing the decidability probe rather than a local run_decide."""
-        state = data["states"].get("triage_outcome_failure", {})
-        assert state.get("on_yes") == "resolve_decision_direct", (
-            f"triage_outcome_failure.on_yes should be 'resolve_decision_direct', "
-            f"got {state.get('on_yes')!r}"
-        )
-
-    def test_triage_outcome_failure_on_no_routes_to_check_spike_needed(self, data: dict) -> None:
-        """ENH-2640: triage_outcome_failure.on_no (not a decision) must route to the
-        check_spike_needed gate, which falls through to check_missing_artifacts on no match."""
-        state = data["states"].get("triage_outcome_failure", {})
-        assert state.get("on_no") == "check_spike_needed", (
-            f"triage_outcome_failure.on_no should be 'check_spike_needed', got {state.get('on_no')!r}"
-        )
+    def test_recheck_scores_failure_edges_route_to_run_size_review(self, data: dict) -> None:
+        """ENH-3610: recheck_scores.on_no / on_error / on_cannot_judge go straight to
+        run_size_review (the pre-size-review decision gate was removed)."""
+        state = data["states"].get("recheck_scores", {})
+        for edge in ("on_no", "on_error", "on_cannot_judge"):
+            assert state.get(edge) == "run_size_review", (edge, state.get(edge))
 
     def test_check_spike_needed_falls_through_to_check_missing_artifacts(self, data: dict) -> None:
         """ENH-2640: check_spike_needed.on_no must preserve the existing wire/size-review
@@ -9242,21 +9090,6 @@ class TestAutodevLoop:
         assert state.get("on_error") == "check_scores_present_reconcile"
         assert state.get("on_rate_limit_exhausted") == "finalize_rate_limited"
 
-    def test_triage_outcome_failure_on_error_routes_to_detect_children(self, data: dict) -> None:
-        """triage_outcome_failure.on_error must fall back safely to detect_children."""
-        state = data["states"].get("triage_outcome_failure", {})
-        assert state.get("on_error") == "detect_children", (
-            f"triage_outcome_failure.on_error should be 'detect_children', got {state.get('on_error')!r}"
-        )
-
-    def test_triage_outcome_failure_action_checks_decision_needed(self, data: dict) -> None:
-        """triage_outcome_failure action must read decision_needed flag, not only score_ambiguity."""
-        state = data["states"].get("triage_outcome_failure", {})
-        action = state.get("action", "")
-        assert "decision_needed" in action, (
-            "triage_outcome_failure action must check 'decision_needed' flag as authoritative routing signal"
-        )
-
     def test_check_missing_artifacts_uses_shell_exit_fragment(self, data: dict) -> None:
         """check_missing_artifacts must use shell_exit fragment to route on exit code."""
         state = data["states"].get("check_missing_artifacts", {})
@@ -9315,24 +9148,6 @@ class TestAutodevLoop:
             f"run_refine.action_type should be 'slash_command', got {state.get('action_type')!r}"
         )
 
-    def test_decide_current_uses_shell_exit_fragment(self, data: dict) -> None:
-        """decide_current must use shell_exit fragment to route on exit code."""
-        state = data["states"].get("decide_current", {})
-        assert state.get("fragment") == "shell_exit", (
-            f"decide_current.fragment should be 'shell_exit', got {state.get('fragment')!r}"
-        )
-
-    def test_decide_current_on_yes_routes_to_resolve_decision(self, data: dict) -> None:
-        """ENH-3075 (was ENH-2443's check_decision_decidable): decide_current.on_yes
-        (decision_needed=true) must route into the shared resolve_decision sub-loop
-        call state, not a local run_decide. The decidability probe and deposit
-        detour now live in oracles/resolve-decision.yaml — see
-        TestResolveDecisionOracle for their coverage."""
-        state = data["states"].get("decide_current", {})
-        assert state.get("on_yes") == "resolve_decision", (
-            f"decide_current.on_yes should be 'resolve_decision', got {state.get('on_yes')!r}"
-        )
-
     def test_dequeue_next_clears_decide_options_deposited_marker(self, data: dict) -> None:
         """ENH-3075: the per-issue deposit-options marker must be cleared on every
         dequeue (mirrors the existing autodev-decide-ran clear) so a re-dequeued
@@ -9351,22 +9166,6 @@ class TestAutodevLoop:
         assert "decide-options-deposited-${captured.input.output}" not in action
         assert "decide-options-deposited-$${CURRENT}" not in action
 
-    def test_decide_current_on_no_routes_to_implement_current(self, data: dict) -> None:
-        """decide_current.on_no (no decision needed) must route to implement_current."""
-        state = data["states"].get("decide_current", {})
-        # ENH-3575: via the proof-gate guard, which forwards to implement_current.
-        assert state.get("on_no") == "check_proof_gate_before_implement", (
-            f"decide_current.on_no should be the proof-gate guard, got {state.get('on_no')!r}"
-        )
-
-    def test_decide_current_on_error_routes_to_implement_current(self, data: dict) -> None:
-        """BUG-3294: an unevaluable decision_needed flag (e.g. unresolvable issue ID)
-        degrades open the same as on_no, rather than aborting the run."""
-        state = data["states"].get("decide_current", {})
-        assert state.get("on_error") == "check_proof_gate_before_implement", (
-            f"decide_current.on_error should be the proof-gate guard, got {state.get('on_error')!r}"
-        )
-
     def test_resolve_decision_call_states_declare_on_error_matching_on_failure(
         self, data: dict
     ) -> None:
@@ -9379,7 +9178,7 @@ class TestAutodevLoop:
         way — _execute_sub_loop()'s on_error dispatch tuple is widened to
         include "no_route" alongside "error", so this on_error target catches
         both classes of child death."""
-        for state_name in ("resolve_decision", "resolve_decision_direct"):
+        for state_name in ("resolve_decision",):
             state = data["states"].get(state_name, {})
             assert state.get("loop") == "oracles/resolve-decision", (
                 f"{state_name}.loop should be 'oracles/resolve-decision', got {state.get('loop')!r}"
@@ -9396,21 +9195,6 @@ class TestAutodevLoop:
                 f"{state_name}.on_error should match on_failure "
                 f"({state.get('on_failure')!r}), got {state.get('on_error')!r}"
             )
-
-    def test_resolve_decision_direct_binds_skip_probe_true(self, data: dict) -> None:
-        """ENH-3075: only resolve_decision_direct (triage_outcome_failure's fifth
-        entry point) binds skip_probe: "true"; the four probe-first entries share
-        resolve_decision, which relies on the sub-loop's "false" default."""
-        direct = data["states"].get("resolve_decision_direct", {})
-        assert direct.get("with", {}).get("skip_probe") == "true", (
-            f"resolve_decision_direct.with.skip_probe should be 'true', got "
-            f"{direct.get('with', {}).get('skip_probe')!r}"
-        )
-        probe_first = data["states"].get("resolve_decision", {})
-        assert "skip_probe" not in probe_first.get("with", {}), (
-            "resolve_decision.with should not bind skip_probe — relies on the "
-            f"sub-loop's default, got {probe_first.get('with')!r}"
-        )
 
     def test_check_decide_rate_limited_gate_routing(self, data: dict) -> None:
         """ENH-3075 Option A: check_decide_rate_limited reads the per-issue
@@ -9571,15 +9355,6 @@ class TestAutodevLoop:
             "check_decision_after_decide_error should be deleted from autodev.yaml — "
             "its ENH-2717 short-circuit collapses into the sub-loop's "
             "assert_decision_cleared"
-        )
-
-    def test_decide_current_checks_decide_ran_flag(self, data: dict) -> None:
-        """ENH-1415: decide_current must check the autodev-decide-ran flag so it short-circuits
-        to implement_current when re-entered from recheck_after_size_review."""
-        state = data["states"].get("decide_current", {})
-        action = state.get("action", "")
-        assert "autodev-decide-ran" in action, (
-            f"decide_current.action must check autodev-decide-ran, got {action!r}"
         )
 
     def test_dequeue_next_clears_autodev_decide_ran(self, data: dict) -> None:
@@ -9826,6 +9601,7 @@ class TestAutodevRnImplementDeferralParity:
     AUTODEV_NOT_READY_STATES = (
         "mark_gate_blocked",
         "record_decision_unresolved",
+        "record_reentry_exhausted",
         "recheck_after_size_review",
     )
 

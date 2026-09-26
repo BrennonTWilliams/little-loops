@@ -262,7 +262,13 @@ class TestAutodevSmoke:
         # check_proof_defer_or_implement (+2).
         # BUG-3603 added mark_proof_gate_infra (+1) — fail-closed infra deferral
         # for the pre-implement proof gate.
-        assert len(topo["states"]) == 110
+        # ENH-3610 removed check_decision_at_dequeue, resolve_decision_at_dequeue,
+        # mark_decide_ran_at_dequeue, check_decision_after_refine, decide_current,
+        # check_decision_before_size_review, triage_outcome_failure and
+        # resolve_decision_direct (-8); added select_obligation_post_refine,
+        # select_obligation_pre_implement and record_reentry_exhausted (+3),
+        # lowering it to 105.
+        assert len(topo["states"]) == 105
 
         # Every edge endpoint is a known state id, or the target of a
         # declared sub-loop (`loop:`) cross-graph edge. `from` may be null
