@@ -11,7 +11,7 @@ relates_to:
 - ENH-3601
 - EPIC-3565
 blocked_by:
-- ENH-3601
+- ENH-3606
 confidence_score: 65
 outcome_confidence: 71
 score_complexity: 18
@@ -24,7 +24,7 @@ score_change_surface: 25
 
 ## Summary
 
-Add an opt-in `ll-advise` (second-model consult) step to autodev's preparation path so autodev gets a review from a stronger or different model. After ENH-3601, the anchor states (`run_go_no_go`, the repair/defer decisions) live in `scripts/little_loops/loops/prepare-issue.yaml`, so the step goes there, not in `autodev.yaml`.
+Add an opt-in `ll-advise` (second-model consult) step to autodev's preparation path so autodev gets a review from a stronger or different model. Once ENH-3606 moves the anchor states (`run_go_no_go`, the repair/defer decisions) into `scripts/little_loops/loops/prepare-issue.yaml` (ENH-3601/ENH-3605 only created the pass-through wrapper), the step goes there, not in `autodev.yaml`.
 
 ## Current Behavior
 
@@ -36,7 +36,7 @@ autodev can, when explicitly enabled, run a non-interactive `/ll:advise` consult
 
 ## Motivation
 
-autodev currently has no review by a stronger or different model. Its only adversarial check is `run_go_no_go` (~line 2244, `/ll:go-no-go --auto`), a same-model (sonnet) `Agent` subagent debate that fires only for `oversized_atomic` deferrals; a GO verdict stamps `outcome_gate_waived: true`. `/ll:confidence-check` and `oracles/resolve-decision` also run on the default model, and neither `autodev.yaml` nor `oracles/resolve-decision.yaml` references `advise`, `ll-advise`, or a `model:` override.
+autodev currently has no review by a stronger or different model. Its only adversarial check is `run_go_no_go` (~line 2420, `/ll:go-no-go --auto`), a same-model (sonnet) `Agent` subagent debate that fires only for `oversized_atomic` deferrals; a GO verdict stamps `outcome_gate_waived: true`. `/ll:confidence-check` and `oracles/resolve-decision` also run on the default model, and neither `autodev.yaml` nor `oracles/resolve-decision.yaml` references `advise`, `ll-advise`, or a `model:` override.
 
 ## Proposed Solution
 
@@ -81,7 +81,7 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/loops/prepare-issue.yaml` (created by ENH-3601) - new advise state near `run_go_no_go`
+- `scripts/little_loops/loops/prepare-issue.yaml` (wrapper created by ENH-3605; anchor states arrive via ENH-3606) - new advise state near `run_go_no_go`
 - `scripts/little_loops/loops/autodev.yaml` - opt-in `context:` flag passed through to `prepare-issue`
 
 ### Dependent Files (Callers/Importers)
@@ -89,7 +89,7 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/issue_manager.py:849` — `process_issue_inplace` calls `consult_for_trigger` with trigger `confidence_gate`; `scripts/little_loops/hooks/pre_done.py:175` calls it with trigger `pre_done` — both spend the same per-task `max_consults_per_task=3` budget the advise state competes with; exhaustion surfaces as exit 2 (`budget_exhausted`) [Agent 1 finding]
-- `scripts/little_loops/cli/loop/runner.py:359` — sets `LL_LOOP_RUN_ID` for the whole run, so a bare shell-state `ll-advise` bills the per-run budget bucket; the per-issue idiom (`LL_ISSUE_ID="$ID" ...`, autodev.yaml:2065) is the alternative — pick deliberately [Agent 2 finding]
+- `scripts/little_loops/cli/loop/runner.py:359` — sets `LL_LOOP_RUN_ID` for the whole run, so a bare shell-state `ll-advise` bills the per-run budget bucket; the per-issue idiom (`LL_ISSUE_ID="$ID" ...`, autodev.yaml:2061) is the alternative — pick deliberately [Agent 2 finding]
 - `scripts/little_loops/cli/loop/run.py:345` — run pre-flight aborts on any `${context.<key>}` without `:default=` that is missing from that loop's `context:` block; the flag must be declared in BOTH `autodev.yaml` and `prepare-issue.yaml` [Agent 2 finding]
 - `scripts/little_loops/cli/loop/next_loop.py:131` — `_resolve_autodev_params` binds only `input` for `ll-loop next`; the new autodev context key must stay optional or this resolver's behavior changes [Agent 1 finding]
 - `scripts/little_loops/init/writers.py:133` — `Bash(ll-advise:*)` is already in consuming projects' permission allowlist (synced by `ll-verify-cli-allowlist`); no change needed — confirms the shell-state route won't hit a permission wall [Agent 1 finding]
@@ -97,7 +97,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_advisor.py:718` — `test_only_consult_for_trigger_calls_consult` pins `consult()`'s single-caller contract; the shell route via `ll-advise` is unaffected, a direct Python call would break it [Agent 1 finding]
 
 ### Similar Patterns
-- `run_go_no_go` (moves to `prepare-issue.yaml` in ENH-3601) - existing adversarial-review state and its `outcome_gate_waived` stamping
+- `run_go_no_go` (moves to `prepare-issue.yaml` in ENH-3606) - existing adversarial-review state and its `outcome_gate_waived` stamping
 
 ### Tests
 - `scripts/tests/test_autodev_loop.py` - state wiring, routing, default-off behavior
@@ -105,9 +105,9 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_advise_skill.py`, `scripts/tests/test_cli_advise.py` - reference for advise invocation contract
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/tests/test_builtin_loops.py` — the anchor-pattern file (not previously listed): `test_go_no_go_escalation_chain_shape` (:8187) + `_run_go_no_go_eligible` (:8223, bash -c with a stub CLI on PATH) are the template for the advise chain; `TestLearningGateConsistency.test_skip_flag_threads_through_sprint_chain` (:18698) is the flag pass-through chain pattern; `TestNoContextParameterKeyDuplication` (:21482) forbids the flag in both `context:` and `parameters:`; `TestBuiltinLoopReferencesResolve` (:17511) fails on any `loop: prepare-issue` reference before ENH-3601 lands [Agent 3 finding]
+- `scripts/tests/test_builtin_loops.py` — the anchor-pattern file (not previously listed): `test_go_no_go_escalation_chain_shape` (:8146) + `_run_go_no_go_eligible` (:8182, bash -c with a stub CLI on PATH) are the template for the advise chain; `TestLearningGateConsistency.test_skip_flag_threads_through_sprint_chain` (:18280) is the flag pass-through chain pattern; `TestNoContextParameterKeyDuplication` (:21059) forbids the flag in both `context:` and `parameters:`; `TestBuiltinLoopReferencesResolve` (:17093) fails on any `loop: prepare-issue` reference before ENH-3601 lands [Agent 3 finding]
 - `scripts/tests/test_cli_advise.py:38` — `_isolate_advisor_budget` isolates `.ll/advisor-budget/` state to tmp_path — reuse it so repeated state-routing tests don't trip the budget; `test_success_prints_exact_json_keys` (:53) pins the 7-key payload the mapping state parses [Agent 3 finding]
-- `scripts/tests/test_autodev_decision_gate.py:315` — `test_autodev_yaml_loads_and_validates` is the in-process `ll-loop validate autodev` equivalent (no subprocess test runs the CLI) [Agent 3 finding]
+- `scripts/tests/test_autodev_decision_gate.py:212` — `test_autodev_yaml_loads_and_validates` is the in-process `ll-loop validate autodev` equivalent (no subprocess test runs the CLI) [Agent 3 finding]
 - `scripts/tests/test_fsm_schema.py:2461` / `scripts/tests/test_fsm_executor.py:7402` — `context_passthrough` schema round-trip and executor merge semantics — the pass-through mechanism's contract tests [Agent 3 finding]
 
 ### Documentation
@@ -123,10 +123,10 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 
-- `scripts/little_loops/loops/prepare-issue.yaml` does not exist yet (repo-wide glob: no match) — it is created by ENH-3601 (open, `blocked_by` edge already present). Until it lands, the anchor states live in `autodev.yaml`: `check_go_no_go_eligible` (one-shot marker `autodev-go-no-go-attempted-$ID`, fail-closed), `run_go_no_go` (`slash_command` `/ll:go-no-go --auto`, `fragment: with_rate_limit_handling`, `on_rate_limit_exhausted: finalize_rate_limited`), `check_go_no_go_waiver` (`ll-issues check-flag … outcome_gate_waived`), `reopen_waived`.
+- `scripts/little_loops/loops/prepare-issue.yaml` exists as the ENH-3605 pass-through wrapper only (`clear_record`, `run_refine_to_ready`, `forward_done`, `forward_stop`, `mark_inner_error`, `done`, `failed`); the anchor states move in via ENH-3606 (open, `blocked_by` edge). Until then they live in `autodev.yaml`: `check_go_no_go_eligible` (one-shot marker `autodev-go-no-go-attempted-$ID`, fail-closed), `run_go_no_go` (`slash_command` `/ll:go-no-go --auto`, `fragment: with_rate_limit_handling`, `on_rate_limit_exhausted: finalize_rate_limited`), `check_go_no_go_waiver` (`ll-issues check-flag … outcome_gate_waived`), `reopen_waived`.
 - `outcome_gate_waived` is stamped by model instruction (`skills/go-no-go/SKILL.md`, outcome_gate_waived escalation section) and read back loop-side via `ll-issues check-flag` (`check_go_no_go_waiver`, whose comment cites MR-1 for reading frontmatter instead of skill stdout) and embedded Python in `regate_after_atomic_remediation` / `recheck_after_size_review` — the persistence-read discipline this issue's verdict file should match.
 - Capability note (no shipped loop wires any second-model consult today, but two seams exist): besides the `ll-advise` CLI, the FSM has a native evaluator route — `evaluate: {type: advisor_consult, question, verdict_map}` (`fsm/evaluators.py:1743`, FEAT-3039) — which reaches the same `consult_for_trigger` with no shell-out and returns a neutral verdict on failure. It is exercised only by test fixtures (`test_fsm_validation_meta_rules.py`). The shell-state design and the evaluator are alternative seams onto the same budget and verdict type; choosing between them is this issue's call, not a gap.
-- Opt-in flag idioms in force (contested — two shapes): `workflow-generator.yaml` declares string `"false"` defaults with a `[ "${context.enable_shrink}" = "true" ]` gate state and `on_no` skip route (`check_shrink_enabled` :657, `promotion_gate` :845), asserted by `test_builtin_loops.py:19074` (`test_shrink_gated_by_context_flag`); `autodev.yaml:42` declares the empty-string default `skip_learning_gate: ""` consumed with `[ -n … ]` to append a CLI flag, overrideable via `ll-loop run autodev <ids> --context skip_learning_gate=1`. Every `${context.*}` interpolation inside a shell action needs an `# ll-lint: mr11-ok(...)` suppression (MR-11).
+- Opt-in flag idioms in force (contested — two shapes): `workflow-generator.yaml` declares string `"false"` defaults with a `[ "${context.enable_shrink}" = "true" ]` gate state and `on_no` skip route (`check_shrink_enabled` :657, `promotion_gate` :845), asserted by `test_builtin_loops.py:18656` (`test_shrink_gated_by_context_flag`); `autodev.yaml:42` declares the empty-string default `skip_learning_gate: ""` consumed with `[ -n … ]` to append a CLI flag, overrideable via `ll-loop run autodev <ids> --context skip_learning_gate=1`. Every `${context.*}` interpolation inside a shell action needs an `# ll-lint: mr11-ok(...)` suppression (MR-11).
 - Default-off wiring assertions live in `test_builtin_loops.py` (the `workflow-generator` tests), not `test_autodev_loop.py` — the latter asserts state routing and extracted predicates only (e.g. `_load_autodev_yaml()` + `on_no`/`on_yes` equality checks, and heredoc execution via `_extract_python_script`/`_run_reconcile_predicate`).
 - Context flags reach child loops via the delegate state's `with:` mapping or `context_passthrough: true` (autodev's `refine_current` forwards `captured.input` as the child's `context.input`) — the pass-through from autodev to the future `prepare-issue` wrapper has both precedents.
 
@@ -145,8 +145,8 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 - Declare the opt-in flag in BOTH `autodev.yaml` and `prepare-issue.yaml` `context:` blocks (run pre-flight `cli/loop/run.py:345` + MR-11); keep it out of `parameters:` (`TestNoContextParameterKeyDuplication`); adding only a context flag avoids the 105-state pin — adding advise *states* to `autodev.yaml` would bump it (states in `prepare-issue.yaml` do not)
 - Match the go-no-go chain shape: gate state (flag check, default-off skip route) → advise state (writes `advise-<ID>.json`; `fragment: with_rate_limit_handling` only on non-`loop:` states, per the `:7913` loop-state pin) → verdict-read state (embedded Python, MR-1)
-- Exit-code routing: exit 2 (incl. `budget_exhausted`) = "no advice" continue or `retryable_error`; any failure edge into a success terminal trips `test_no_failure_edge_routes_to_a_success_terminal`; `retryable_error` exists in no shipped loop — it arrives with ENH-3601 (ordering dependency already in `blocked_by`)
-- Budget billing: decide per-run (`LL_LOOP_RUN_ID` default) vs per-issue (`LL_ISSUE_ID` prefix idiom, autodev.yaml:2065) — the state competes with `issue_manager.py:849` and `hooks/pre_done.py:175` consults for the same cap
+- Exit-code routing: exit 2 (incl. `budget_exhausted`) = "no advice" continue or `retryable_error`; any failure edge into a success terminal trips `test_no_failure_edge_routes_to_a_success_terminal`; `retryable_error` exists in no shipped loop — it arrives with ENH-3606 (ordering dependency now in `blocked_by`)
+- Budget billing: decide per-run (`LL_LOOP_RUN_ID` default) vs per-issue (`LL_ISSUE_ID` prefix idiom, autodev.yaml:2061) — the state competes with `issue_manager.py:849` and `hooks/pre_done.py:175` consults for the same cap
 - Write the new structural tests in `test_builtin_loops.py` alongside the go-no-go chain tests (chain-shape pins + bash -c stub-`ll-advise` execution + default-off), not only in `test_autodev_loop.py`
 
 ## Impact
@@ -204,6 +204,19 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 **Open** | Created: 2026-09-25 | Priority: P3
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` — 2026-09-26_
+
+Verdict at time of check: **NEEDS_UPDATE** (all findings below corrected in the same pass, so the issue as it now reads is up to date — this section is a record of what was wrong and fixed, not an outstanding action item)
+
+- **Stale premise (fixed: Summary, Integration Map, Scope Boundary now cite ENH-3606)**: ENH-3601 is `Completed`, but `scripts/little_loops/loops/prepare-issue.yaml` (90 lines) is only the ENH-3605 pass-through wrapper (`clear_record`, `run_refine_to_ready`, `forward_done`, `forward_stop`, `mark_inner_error`, `done`, `failed`). `run_go_no_go`, `check_go_no_go_waiver`, and the repair/defer states are still in `autodev.yaml` (`run_go_no_go` :2420, `finalize_rate_limited` :2973). They move under ENH-3606 (open). The Summary, Proposed Solution, and Integration Map claim the anchors live in `prepare-issue.yaml` "after ENH-3601"; that is false today.
+- **`blocked_by` (fixed: now ENH-3606)**: `ENH-3601` is satisfied; the real blocker is ENH-3606. `retryable_error` also does not yet exist in any shipped loop.
+- **Corrected**: `run_go_no_go` line ref (~2244 → ~2420); `test_builtin_loops.py` anchors (:8187→:8146, :8223→:8182, :18698→:18280, :21482→:21059, :17511→:17093, :19074→:18656); `autodev.yaml:2065` → :2061; `test_autodev_decision_gate.py:315` → :212.
+- **Verified**: `issue_manager.py:849`, `pre_done.py:175`, `runner.py:359`, `run.py:345`, `evaluators.py:1743`, `Bash(ll-advise:*)` in `init/writers.py:133`, `finalize_rate_limited` present only in `autodev.yaml`. Evidence-quote check clean; no active required decision rules.
+- **Advisory**: no `ll-loop next` claim appears in the issue body; the confidence-check note's `stale_cli_flag` item (`ll-loop next` → subcommand is `next-loop`) does not affect any directive here.
+- **Graph**: provider=`codegraph` freshness=`stale` (not used to originate any verdict; checks were Grep/Read).
+
 ## Confidence Check Notes
 
 _Added by `/ll:confidence-check` on 2026-09-25_
@@ -212,11 +225,12 @@ _Added by `/ll:confidence-check` on 2026-09-25_
 **Outcome Confidence**: 71/100 → MODERATE
 
 ### Gaps to Address
-- blocked_by ENH-3601 (open) — `prepare-issue.yaml` does not exist yet; the advise state anchors to states that live there after ENH-3601.
+- blocked_by ENH-3601 (open) — `prepare-issue.yaml` does not exist yet [stale as of 2026-09-26: ENH-3601 done, blocker is now ENH-3606]; the advise state anchors to states that live there after ENH-3601.
 - Advisory claim gap (`stale_cli_flag`): `ll-loop next` does not resolve as written; re-check the subcommand name before citing it in directives.
 - Three Open Questions unresolved (decision points, advise-vs-go-no-go override, cost budget) plus the verdict-mapping threshold — resolve via `/ll:decide-issue` before implementation.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-26T20:03:20 - `fad4d529-a955-4d85-a909-ec88da4f9e33.jsonl`
 - `/ll:confidence-check` - 2026-09-25T21:32:37 - `672e0da1-840e-4b60-a432-7b20e9ebbd01.jsonl`
 - `/ll:wire-issue` - 2026-09-25T20:49:53 - `4a475966-a47c-4657-a3e4-16e6706f4c4d.jsonl`
 - `/ll:refine-issue` - 2026-09-25T19:53:37 - `52506a27-e6a0-49d9-99b0-9b89990953d8.jsonl`
@@ -229,4 +243,4 @@ _Added by `/ll:confidence-check` on 2026-09-25_
 
 ## Scope Boundary
 
-**Note** (added by `/ll:audit-issue-conflicts`): The consult is opt-in and disabled by default, so it stays off the default path (consistent with EPIC-3565's out-of-scope clause on adding skills to the happy path). Anchor states (`run_go_no_go` etc.) move to `prepare-issue.yaml` under ENH-3601; target that loop after it lands. Open Question to resolve against ENH-3601's deterministic go/no-go predicate: may an advise verdict waive a go-no-go result?
+**Note** (added by `/ll:audit-issue-conflicts`): The consult is opt-in and disabled by default, so it stays off the default path (consistent with EPIC-3565's out-of-scope clause on adding skills to the happy path). Anchor states (`run_go_no_go` etc.) move to `prepare-issue.yaml` under ENH-3606; target that loop after it lands. Open Question to resolve against ENH-3601's deterministic go/no-go predicate: may an advise verdict waive a go-no-go result?

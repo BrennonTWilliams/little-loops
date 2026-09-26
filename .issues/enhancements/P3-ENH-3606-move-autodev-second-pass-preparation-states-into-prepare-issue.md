@@ -89,48 +89,84 @@ stop, `DECOMPOSED`, `CANCELLED` or `RETRYABLE_ERROR:*`. Autodev has no second-pa
 
 ## Scope
 
-### Anchor refresh (first step)
+### Boundary edge table (regenerated 2026-09-26 against post-ENH-3611 `autodev.yaml`)
 
-Every state name, edge and line anchor in this issue was researched against pre-ENH-3609–3611
-`autodev.yaml`, and ENH-3610/3611 rename, add and drop states (for example,
-`snap_and_size_review` is dropped by ENH-3611). Before editing, regenerate the boundary edge
-table against post-ENH-3611 `autodev.yaml`:
+Computed by parsing `autodev.yaml` against the move set below (`on_*`, `next`, `route.*`;
+fragment-supplied edges excluded). Every entry ends internal to the wrapper, as a wrapper
+terminal, or retargeted in autodev. Re-run the computation before editing if `autodev.yaml`
+has changed since.
 
-- every edge from a moving state to a staying state;
-- every edge from a staying state to a moving state.
+**Staying → moving (retarget in autodev):**
 
-Record it in this issue. Each entry must end up either internal to the wrapper, as a
-wrapper terminal, or retargeted in autodev per the rules below.
+| Edge | Today | After |
+|---|---|---|
+| `refine_current.on_success` | `count_repair_cycle_refine` | `copy_broke_down` |
+| `check_passed.on_yes` | `select_obligation_pre_implement` | `check_proof_defer_or_implement` |
+| `check_passed.on_no` / `on_cannot_judge` | `select_obligation_post_refine` | `skip_inflight` |
+| `check_broke_down.on_no` | `enqueue_or_skip` | deleted with `check_broke_down` (see States that stay) |
+| `check_parent_resolved.on_no` / `on_error` | `recheck_scores` | `skip_inflight` (only reachable on a DECOMPOSED-guarantee violation) |
+
+**Moving → staying (becomes wrapper-internal or a wrapper terminal):**
+
+| Edge(s) | Today | In the wrapper |
+|---|---|---|
+| `count_repair_cycle_refine.next` / `on_error` | `copy_broke_down` | `run_refine_to_ready` |
+| `select_obligation_post_refine` `DECISION` / `PROOF`, `select_obligation_post_size_review` `PROOF`, `select_obligation_pre_implement` `DECISION` / `PROOF`, `dispatch_pre_deferral_remedy.on_yes` | `refine_current` | `count_repair_cycle_refine` (never `run_refine_to_ready` directly; see Repair-cycle counter) |
+| `select_obligation_pre_implement` `_` / `_error` | `check_proof_defer_or_implement` | `mark_ready` terminal |
+| `select_obligation_post_refine._error`, `check_missing_artifacts.on_no` / `on_error` | `detect_children` | wrapper `detect_ladder_children` (see Inner-loop success routing) |
+| `check_parent_resolved_post_size_review.on_yes` | `recover_subloop_children` | `mark_decomposed` terminal (see Queue ownership) |
+| `enqueue_or_skip.on_yes` | `dequeue_next` | `mark_decomposed` terminal |
+| `check_scores_present_{wire,reconcile,atomic}.on_cannot_judge` / `on_error`, `clear_scores_before_{wire,reconcile,atomic}.on_error`, `recheck_after_size_review.on_cannot_judge`, `regate_after_atomic_remediation.on_cannot_judge` | `mark_scores_absent_infra` | `mark_scores_absent` terminal |
+| `on_rate_limit_exhausted` of `run_wire`, `run_refine`, `rerun_confidence_after_{wire,reconcile,atomic_remediation}`, `reconcile_current`, `refine_for_design`, `remediate_oversized_atomic`, `run_go_no_go` | `finalize_rate_limited` | `mark_rate_limited` terminal |
+| `run_size_review.on_rate_limit_exhausted` | `dequeue_next` | `mark_rate_limited` terminal (decided halt, see Rate limits) |
+| `check_go_no_go_eligible.on_no`, `check_go_no_go_waiver.on_no`, `check_pre_deferral_remedy.on_no`, `record_reentry_exhausted.next` | `dequeue_next` | `failed` (the stop was already ledgered and recorded upstream; see Terminal table) |
+| `on_error` of `check_atomic_design_remedy`, `check_go_no_go_eligible`, `check_go_no_go_waiver`, `check_pre_deferral_remedy`, `enqueue_or_skip`, `recheck_after_size_review`, `regate_after_atomic_remediation`, `reopen_waived`, `record_reentry_exhausted` | `dequeue_next` | `mark_ladder_error` terminal (see Terminal table) |
 
 ### States that move into `prepare-issue.yaml`
 
-- **Pass gate and selectors**: a wrapper-local `check_passed` (run after the inner loop's
-  done path), `select_obligation_post_refine`, `select_obligation_post_size_review`, and
-  `select_obligation_pre_implement` (ENH-3610/3611).
-  - A selector's `refine_current` re-entry target becomes a loop back to the wrapper's
-    `run_refine_to_ready`.
-  - Its proof-gate target (`check_proof_defer_or_implement`) becomes the wrapper's `ready`
-    terminal.
+- **Pass gate and selectors**: a wrapper-local `check_passed` (reached from
+  `route_inner_success`, see Inner-loop success routing), `select_obligation_post_refine`,
+  `select_obligation_post_size_review`, `select_obligation_pre_implement` (ENH-3610/3611),
+  and `record_reentry_exhausted` (the `DECISION_EXHAUSTED` target of both DECISION-probing
+  selectors).
+  - A selector's `refine_current` re-entry target becomes the wrapper's
+    `count_repair_cycle_refine`, which then runs `run_refine_to_ready`.
+  - Its proof-gate target (`check_proof_defer_or_implement`) becomes the wrapper's
+    `mark_ready` terminal.
+  - The wrapper's `check_passed.on_error` and `select_obligation_post_refine._error` go to
+    `detect_ladder_children` (today's `detect_children` target).
 - **Wire/refine**: `check_missing_artifacts`, `run_wire`, `run_refine`,
-  `count_repair_cycle_wire`.
+  `count_repair_cycle_wire`, and the `wire` rescoring triplet
+  (`rerun_confidence_after_wire`, `clear_scores_before_wire`, `check_scores_present_wire`),
+  which the shared rescoring path replaces.
 - **Reconcile/design remedy**: `check_reconcile_needed`, `reconcile_current`,
   `refine_for_design`, `check_atomic_design_remedy`, `dispatch_design_remedy`,
-  `count_repair_cycle_reconcile`, `count_repair_cycle_refine_for_design`.
+  `count_repair_cycle_reconcile`, `count_repair_cycle_refine_for_design`, and the
+  `reconcile` rescoring triplet (`rerun_confidence_after_reconcile`,
+  `clear_scores_before_reconcile`, `check_scores_present_reconcile`).
 - **Size-review/atomic**: `run_size_review`, `count_repair_cycle_size_review`,
   `check_size_review_ran_this_pass`, `check_guard2_verdict`, `check_guard2_score_fallback`,
   `check_readiness_for_atomic_remediation`, `remediate_oversized_atomic`,
   `regate_after_atomic_remediation`, `recheck_after_size_review`, `recheck_scores`,
-  `check_parent_resolved_post_size_review`, plus the child-detection half of
-  `enqueue_or_skip` (see Queue ownership).
+  `check_parent_resolved_post_size_review`, the `atomic` rescoring triplet
+  (`rerun_confidence_after_atomic_remediation`, `clear_scores_before_atomic`,
+  `check_scores_present_atomic`), plus the child-detection half of `enqueue_or_skip` (see
+  Queue ownership).
 - **Go/no-go**: `check_go_no_go_eligible`, `run_go_no_go`, `check_go_no_go_waiver`,
   `reopen_waived` (only for `deferred_reason: oversized_atomic`).
 - **Pre-deferral remedy**: `check_pre_deferral_remedy`, `dispatch_pre_deferral_remedy`.
 - **Repair-cycle counter**: `count_repair_cycle_refine` moves to become the wrapper's
-  pre-state of `run_refine_to_ready`. After the move, re-entries happen inside the wrapper
-  and no longer pass autodev's `refine_current → count_repair_cycle_refine`. Left in
-  autodev, the counter would undercount, and `recheck_after_size_review`'s stagnation
-  backstop (count ≥ 2) would stop firing. Moving it keeps "every inner entry increments"
-  for the first entry and every re-entry.
+  pre-state of `run_refine_to_ready` (`clear_record` → `count_repair_cycle_refine` →
+  `run_refine_to_ready`). After the move, re-entries happen inside the wrapper and no
+  longer pass autodev's `refine_current → count_repair_cycle_refine`. Left in autodev, the
+  counter would undercount, and `recheck_after_size_review`'s stagnation backstop (count ≥
+  2) would stop firing. Moving it keeps "every inner entry increments" for the first entry
+  and every re-entry. **Every re-entry edge must target `count_repair_cycle_refine`, never
+  `run_refine_to_ready` directly** — that includes `dispatch_pre_deferral_remedy.on_yes`
+  (today → `refine_current`), not only the selectors. Today the counter increments *after*
+  the sub-loop returns; the wrapper increments *before*. The count seen by
+  `recheck_after_size_review` is the same, because both orders complete the increment
+  before any ladder state runs.
 
 ### States that stay in autodev (queue-only)
 
