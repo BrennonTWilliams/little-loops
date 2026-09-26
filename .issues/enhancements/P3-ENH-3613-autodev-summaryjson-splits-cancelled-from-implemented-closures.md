@@ -86,13 +86,34 @@ _Added by `/ll:refine-issue` — 2026-09-26 — based on codebase analysis:_
 - `docs/guides/LOOPS_REFERENCE.md` — `:1079` `finalize_done` bucket list
 - `skills/audit-loop-run/SKILL.md:271` — lists autodev's summary keys; add the two new ones. Mirror regen via `ll-adapt` if this file is mirrored.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/loops/autodev.yaml` — `init` state ledger-truncation block (`printf '' > ${context.run_dir}/autodev-*.txt`, ~`:63-77`): add an `autodev-cancelled.txt` line. Step 1 says "truncated at init" but no Files-to-Modify entry names this site [Agent 1, 3 finding]
+- `skills/audit-loop-run/SKILL.md` — Step 6a: add a bolded per-key paragraph after the BUG-3603 `proof_gate_infra` paragraph (~`:275`). File is 464 lines against the 500 cap (36 lines of headroom; one paragraph plus a blank line fits) [Agent 2, 3 finding]
+
 ### Dependent Files
 - `scripts/little_loops/loops/auto-refine-and-implement.yaml` — `finalize` reads `autodev-passed.txt` (bare IDs) and writes its own `summary.json`. Keep the bare-ID format unchanged. The parent does not need the split.
 - `scripts/little_loops/fsm/persistence.py`, `scripts/little_loops/cli/loop/audit.py`, `scripts/little_loops/cli/loop/evidence.py`, `scripts/little_loops/hooks/pre_compact_handoff.py` — shape-agnostic summary.json consumers. Adding keys is safe.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/loops/autodev.yaml` `finalize_rate_limited` — routes into `finalize_done` (`next`/`on_error`), so early exits also emit the new keys; no separate edit needed [Agent 2 finding]
+- `scripts/little_loops/loops/auto-refine-and-implement.yaml` `finalize` (~`:1088`, `:1254-:1260`) — reads `autodev-passed.txt` and prints its own `closed`; unaffected provided cancelled IDs stay in `autodev-passed.txt` [Agent 1 finding]
+- `scripts/little_loops/loops/refine-to-ready-issue.yaml` `record_decision_unresolved` (~`:1396`) — writes the shared `autodev-decision-unresolved.txt` run_dir ledger; confirms ledgers are shared across loops but has no `autodev-cancelled.txt` writer to add [Agent 1 finding]
+- `docs/guides/LOOPS_REFERENCE.md` (~`:1009`, `auto-refine-and-implement` `finalize`) — depends on `autodev-passed.txt` staying the total closed ledger; no edit needed for Option B [Agent 2 finding]
+- No gate consumer reads autodev's `summary.json` `.closed` via `jq`, and no consumer parses the human `Passed (N):` line. `cli/loop/audit.py` and `evidence.py` treat the dict opaquely [Agent 2 finding]
+
 ### Tests
 - `scripts/tests/test_builtin_loops.py` `TestAutodevLoop` — `_run_finalize_done` harness; the promotion, phantom, no-op and BUG-3390 dedupe tests. Add cases for all implemented, all cancelled, and mixed runs, and assert the new keys and the sum rule.
 - `scripts/tests/data/loop_interpolation_baseline.json` / `TestInterpSweepBaseline` — the `finalize_done` entry stays valid if no new `${...}` refs are added.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_ll_issues_check_gate.py` `test_init_truncates_proof_gate_infra_ledger` (~`:371-381`) and `scripts/tests/test_spike_verdict_routing.py` (~`:112-113`) — per-ledger `init` truncation pins; copy as a new `test_init_truncates_cancelled_ledger`. No test enumerates the full init ledger list, so nothing breaks [Agent 3 finding]
+- `scripts/tests/test_builtin_loops.py` `TestAutodevLoop.test_finalize_done_proof_gate_infra_zero_when_no_ledger_entries` (~`:7818`) and `test_finalize_done_not_started_zero_when_no_ledger_entries` (~`:7785`) — templates for the ledger-absent (resumed-run) test asserting the file does not exist and the key is 0 [Agent 3 finding]
+- `scripts/tests/test_builtin_loops.py` `test_finalize_done_promotes_verified_closure_to_passed` (~`:7524`) and `test_finalize_done_mixed_run_still_resolves_success` (~`:7828`) — stub `Done`, assert `closed == 1`; should keep passing. Extend them to also assert `closed_implemented == 1` and `closed_cancelled == 0` [Agent 3 finding]
+- `scripts/tests/test_builtin_loops.py` `TestAutodevLoop` — new cancelled/mixed tests need a per-ID `ll-issues` stub (existing inline stubs ignore `$2` and return one status). Sketch: `case "$2" in FEAT-1) echo '{"status":"Completed"}';; FEAT-2) echo '{"status":"Cancelled"}';; esac`. `show.py` `_STATUS_DISPLAY` (~`:108`) confirms `show --json` emits `"Cancelled"`/`"Completed"`; existing stubs' `"Done"` is not a real display value [Agent 3 finding]
+- `scripts/tests/test_audit_loop_run_skill.py` `TestAssessLoopSkill.test_skill_step6a_reads_closed_via_recovery_key` (~`:157`) and `test_skill_step6a_reads_enh_2404_keys` (~`:144`) — pattern for a new `test_skill_step6a_reads_closed_implemented_cancelled_keys` (slice `## Step 6:` to `## Step 7:`, assert both keys and "additive") [Agent 3 finding]
+- Will not break: `test_fsm_topology.py` `TestAutodevSmoke.test_autodev_topology` (`len(states) == 110`) if no state is added; `test_fsm_interpolation.py:411` (synthetic `$${PASSED_LIST:-none}` template, not autodev's action); `test_cli_loop_audit.py:170` (synthetic summary). No test pins the autodev `summary.json` key set or the `Passed (N)` text [Agent 3 finding]
+- `TestInterpSweepBaseline` — no baseline entry exists for autodev `init` or `finalize_done`; keep new logic in plain shell and avoid a heredoc/`python3 -c` block with `${context.run_dir}` [Agent 3 finding]
+- `scripts/tests/test_adapt_skills_for_codex.py`, `test_adapters.py`, `test_enh494_skill_companions.py`, `test_docs_audience_gate.py` — run after the SKILL.md and LOOPS_REFERENCE.md edits. No host mirror of `audit-loop-run` was found under `.gemini/`, `.kimi-code/` or `.qwen/` [Agent 2, 3 finding]
 
 ### Codebase Research Findings
 
@@ -132,6 +153,17 @@ _Added by `/ll:refine-issue` — 2026-09-26 — based on codebase analysis:_
 
 - Anchors cited in the steps above resolve by symbol (`finalize_done`, its promotion `case` arm, the `summary.json` printf), not by the older line numbers in Current Behavior — see Integration Map findings.
 - Verification target: the new keys satisfy `closed_implemented + closed_cancelled == closed` for all-implemented, all-cancelled, mixed, and ledger-absent (resumed-run) fixtures, and `autodev-passed.txt` remains bare-ID/`grep -qxF`-matchable.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `scripts/little_loops/loops/autodev.yaml` `init` — add `printf '' > ${context.run_dir}/autodev-cancelled.txt` to the truncation block
+- Update `scripts/little_loops/loops/autodev.yaml` `finalize_done` — read `autodev-cancelled.txt` tolerating an absent file (resumed runs bypass `init`); append `closed_implemented`/`closed_cancelled` at the end of the `summary.json` printf format and args (after `proof_gate_infra`); keep `$${...}` escaping on any new bash expansions
+- Add `test_init_truncates_cancelled_ledger` modeled on `test_init_truncates_proof_gate_infra_ledger`
+- Add per-ID-stub tests in `TestAutodevLoop` for all-implemented, all-cancelled, mixed and ledger-absent fixtures, asserting the sum rule; extend the existing `Done`-stub promotion test with the new keys
+- Add `test_skill_step6a_reads_closed_implemented_cancelled_keys` to `test_audit_loop_run_skill.py` alongside the `skills/audit-loop-run/SKILL.md` Step 6a paragraph
+- Run `test_enh494_skill_companions.py`, `test_docs_audience_gate.py`, `test_fsm_topology.py`, `TestInterpSweepBaseline` and the adapter tests after editing
 
 ## Impact
 
@@ -180,5 +212,6 @@ _Added by `/ll:refine-issue` — 2026-09-26 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-26T06:05:49 - `7d4fe7ad-aaa1-48a1-b0d0-90c193fc70c2.jsonl`
 - `/ll:decide-issue` - 2026-09-26T06:01:33 - `95a3ad40-ecc6-4e5c-befd-9be7a282a332.jsonl`
 - `/ll:refine-issue` - 2026-09-26T05:58:48 - `e3c050f9-1131-496e-87dd-53db8a85423f.jsonl`
