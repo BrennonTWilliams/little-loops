@@ -153,11 +153,23 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_fsm_fragments.py:913` — `test_ll_issues_next_defined()` asserts the `ll_issues_next` fragment action string [Agent 1 finding]
 - `scripts/tests/test_issue_refinement_broke_down.py:39` — `test_alias_passes_next_action_ordering()` asserts issue-refinement binds `order: next-action` [Agent 1 finding]
 - `scripts/tests/test_issue_parser.py:1626` — expectation table pins a `next_action:30` line anchor into `cmd_next_action`; a refactor that moves the function invalidates the entry [Agent 1 finding]
+_Wiring pass added by `/ll:wire-issue` — 2026-09-26 (second pass):_
+- `scripts/little_loops/loops/autodev.yaml` — embeds the refine-to-ready-issue sub-loop (`refine_current`, ~:534; delegation notes at :93/:185/:513); rewriting the child's states changes autodev behavior even though adoption there is out of scope (ENH-3599/ENH-3601) [Agent 1 finding]
+- `scripts/little_loops/loops/issue-refinement.yaml:5` and `scripts/little_loops/loops/recursive-refine.yaml:229` — additional sites in known files: both delegate each issue INTO the sub-loop, so their blast radius is the child's internals, not just next-action tokens [Agent 1 finding]
+- `scripts/little_loops/cli/issues/refine_status.py:372-373` — `cmd_refine_status` independently mirrors next-action's predicate inputs (`is_formatted` + `session_command_counts` refine count); extracting the selector is the seam to keep the copies consistent [Agent 2 finding]
+- `scripts/little_loops/learning_tests/assess.py:154-156` — imports `resolve_gate_verdict` from `cli.issues.check_gate` function-level; a module-level `cli.issues` → `learning_tests` import in `next_obligation.py` inverts that edge — keep the new import function-local [Agent 2 finding]
 
 ### Documentation
 _Wiring pass added by `/ll:wire-issue`:_
 - `docs/reference/API.md:4637` — ll-issues subcommand table needs a `next-obligation` row next to the `next-action` row [Agent 1 finding]
 - `docs/reference/CLI.md:1763` — add a `#### ll-issues next-obligation` section following the `next-action` section pattern (flags table + `**FSM loop use**` attribution), plus a line in the quick-reference examples block (~:2013) [Agent 2 finding]
+_Wiring pass added by `/ll:wire-issue` — 2026-09-26 (second pass):_
+- `docs/guides/LOOPS_REFERENCE.md` — the entire refine-to-ready gate-chain narrative goes stale when named predicate states collapse to dispatch: loop-table row (~:82), claim-verification gate chain (:144), three-stage threshold check + timeout recovery (~:148-154), typed run record (:158), ASCII diagrams naming `check_*` states (~:1050-1184), fragment table rows (~:3582-3583) [Agent 1/2 finding]
+- `docs/reference/CLI.md` — additional state-name prose beyond the new section: check-flag "which gate states consume which flag" (~:2269-2274), run-record "called by every terminal-bearing state" (~:2383-2410), `--proposal-unsound`/`--directive-drift` flag prose (~:2433-2434), check-readiness FSM-loop-use note (~:2872) [Agent 1 finding]
+- `docs/reference/API.md` — `### assess_proof` section (~:7559) and Public Functions rows (~:7472-7473) document its consumer set; next-obligation PROOF becomes a new consumer — extend the list [Agent 2 finding]
+- `docs/reference/DEFERRAL_CODES.md:22-23` — `spike_inconclusive`/`proposal_unsound` rows name the `record_*` states as their source [Agent 1 finding]
+- `commands/verify-issues.md:302-343` — persisted-verdict contract names `check_verify_verdict`/`check_proposal_unsound`; host mirrors (`.gemini`, `.kimi-code`, `.qwen`) follow via `ll-adapt` [Agent 1 finding]
+- `scripts/little_loops/loops/README.md:29,31` — package-shipped loop catalog rows describe the child's gate sequence ("format → refine → wire → confidence-check") [Agent 1 finding]
 
 ### Tests
 - Unit tests per obligation, plus ordering tests (two unmet → first wins)
@@ -174,6 +186,16 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_ll_issues_check_verify_verdict.py:317` — `TestCliRegistration::test_subcommand_in_help()` is the registration-check pattern to copy for `next-obligation` [Agent 3 finding]
 - `scripts/tests/data/loop_interpolation_baseline.json:744` — `check_outcome` baseline entry goes stale if the state is deleted rather than converted; `TestInterpSweepBaseline::test_completeness_guard` fails in both directions [Agent 3 finding]
 - `scripts/tests/test_arm_proposal_revision.py` — direct `cmd_*` + `argparse.Namespace` call pattern for the new `cmd_next_obligation` unit tests [Agent 3 finding]
+_Wiring pass added by `/ll:wire-issue` — 2026-09-26 (second pass):_
+- `scripts/tests/test_run_record.py` — the heaviest child structural gate, missing from the first pass: loads the real YAML (:24), pins `DONE_PATH_GATES` = `check_outcome`/`check_scores_from_file`/`check_missing_artifacts` (:39), asserts RC-guard byte-order inside their actions (`test_done_path_gate_guards_on_rc`, :511), executes state actions under bash (`TestTerminalExecution`, :558-673), and `test_ready_iff_check_passed_would_pass` (:463) pins run-record `ready` ≡ `check-readiness --honor-waiver` — the selector's waiver/absence stance must match `readiness_status()` or this diverges [Agent 1/2/3 finding — will likely break]
+- `scripts/tests/data/loop_interpolation_baseline.json` — refine-to-ready carries THREE baselined entries (`check_outcome`, `check_readiness`, `check_scores_from_file`), not only `check_outcome`; `TestInterpSweepBaseline::test_completeness_guard` (`test_builtin_loops.py:21025`) fails in both directions [Agent 2/3 finding]
+- `scripts/tests/test_builtin_loops.py` — additional pins beyond the first pass's list: `check_readiness.on_error == check_scores_from_file` + `check_scores_from_file` existence/route tests (:1528-1560), `MR11_MARKER_ALLOWLIST` (:21088; refine tuples ~:21180-21218 — rewritten states must carry their `# ll-lint: mr11-ok(...)` markers or the allowlist changes in lockstep, and stale markers fail too), `test_context_fallbacks_match_selector_defaults` (:3350 — asserts seeded 85/65 equals the next-action fallback; move the defaults verbatim into the selector) [Agent 2/3 finding]
+- `scripts/tests/test_format_probe_routing.py:34` — parametrize covers BOTH `normalize_structure` and `precheck_format` and executes their actions; deleting either state KeyErrors the module [Agent 3 finding]
+- `scripts/tests/test_next_action.py` — the full `NEEDS_*`/`ALL_DONE` token/exit-code regression net (the delegation parity gate), plus fixture risk: `_make_issue` builds minimal issues, so once next-action delegates, `test_needs_score`/`test_needs_refine` fixtures trip earlier obligations (VERIFY/SPEC_QUALITY) and must be enriched to pass every preceding gate [Agent 3 finding]
+- `scripts/tests/test_ll_issues_check_gate.py` — canonical new-subcommand test template (ENH-3575): parametrized verdict/exit-code table (:140 — the model for the obligation ordering-parity test), JSON output (:148), exit-2 (:154), help registration (:157), `_run_state_proc`/`_stub_env` fail-closed YAML-state routing (:165/:196) [Agent 3 finding]
+- `scripts/tests/test_check_family_not_found_exit_code.py` — exit-2 family test globs `cli/issues/check_*.py` (:33); `next_obligation.py` is NOT auto-covered — the unresolvable-ID path needs its own exit-2 test [Agent 3 finding]
+- Corpus gates re-validating the edited child: `test_builtin_loop_interpolation.py:100` (bare `${...}` must be `$${...}`), `test_fsm_fragments.py::test_builtin_loops_load_after_migration` (:993), MR-14 sweep `test_fsm_schema.py:1943` [Agent 2/3 finding]
+- No per-gate fixture corpus exists under `scripts/tests/fixtures/` (38 files, none failing exactly one child gate) — the ordering-parity test must build per-obligation fixtures inline (`_write_issue` helper pattern, `test_run_record.py:90`; per-gate frontmatter keys visible in the child's own gate calls) [Agent 3 finding]
 
 ### Codebase Research Findings
 
@@ -207,6 +229,16 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Update `docs/reference/API.md` — add `next-obligation` row to the ll-issues subcommand table
 - Update `docs/reference/CLI.md` — new `#### ll-issues next-obligation` section + quick-reference example line
 - Check `scripts/tests/test_issue_parser.py` `next_action:30` expectation-table anchor if `cmd_next_action` moves within `next_action.py`
+_Wiring pass added by `/ll:wire-issue` — 2026-09-26 (second pass):_
+
+- Update `scripts/tests/test_run_record.py` — re-pin done-path gates, RC-guard ordering, and terminal execution after the state rewrite
+- Update `scripts/tests/data/loop_interpolation_baseline.json` — regenerate/remove ALL THREE refine entries (`check_outcome`, `check_readiness`, `check_scores_from_file`), not just `check_outcome`; baseline any new dispatch state that interpolates `context.run_dir`
+- Update `scripts/tests/test_builtin_loops.py` — carry `# ll-lint: mr11-ok(...)` markers with rewritten state text and move `MR11_MARKER_ALLOWLIST` refine tuples in the same commit
+- Escape bash `${...}` as `$${...}` in any new dispatch-state action (`test_builtin_loop_interpolation.py` bare-reference sweep)
+- Enrich `scripts/tests/test_next_action.py` fixtures so they pass every obligation preceding NEEDS_SCORE/NEEDS_REFINE once next-action delegates
+- Keep the `learning_tests` import in `next_obligation.py` function-local (import-edge inversion vs `assess.py:154`)
+- Add an explicit unresolvable-ID exit-2 test for `next-obligation` (the `check_*.py` family glob does not cover it)
+- Update gate-chain prose: `docs/guides/LOOPS_REFERENCE.md`, `docs/reference/CLI.md` state-name sections, `docs/reference/DEFERRAL_CODES.md`, `commands/verify-issues.md` (+ host mirrors via `ll-adapt`), `docs/reference/API.md` assess_proof consumer list, `scripts/little_loops/loops/README.md` catalog rows
 
 ## Impact
 
@@ -289,6 +321,7 @@ _Added by `/ll:confidence-check` on 2026-09-25_
 - Expected Behavior says `GATE` folds into `PROOF`, but Codebase Research found `check-gate` is not invoked by `refine-to-ready-issue.yaml` today, so the fold adds a check outside the parity claim. Resolve the directive/research tension before implementing.
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-26T00:53:30 - `3a641232-a30c-4668-9080-a790d40c330b.jsonl`
 - `/ll:refine-issue` - 2026-09-26T00:21:08 - `29654aaa-6763-4b73-821b-31710e26b186.jsonl`
 - `/ll:confidence-check` - 2026-09-25T21:32:34 - `672e0da1-840e-4b60-a432-7b20e9ebbd01.jsonl`
 - `/ll:wire-issue` - 2026-09-25T20:46:48 - `2b4a714f-91fd-41aa-b2ac-63b11e2476ce.jsonl`
