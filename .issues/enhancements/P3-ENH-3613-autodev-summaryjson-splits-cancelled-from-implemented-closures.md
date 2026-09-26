@@ -52,7 +52,8 @@ same reason.
 - The human-readable summary shows the split and names the cancelled IDs, for example
   `Passed (3): BUG-1,FEAT-1,FEAT-2  (2 implemented, 1 cancelled: FEAT-2)`. The suffix is
   printed only when `closed_cancelled > 0`.
-- Verdict behavior: see **Verdict policy** below (open decision).
+- Verdict behavior: `success`/`partial` require `closed_implemented > 0`; an all-cancelled
+  run reports `no-op` (see **Verdict policy** below, resolved: Option B).
 
 ## Motivation
 
@@ -95,7 +96,7 @@ soon after it landed.
 `grep -qxF "$INFLIGHT"` check (~`:3210`) and `auto-refine-and-implement.yaml` `finalize`
 (`sort -u` → `comm -23`, ~`:1088-:1095`) read it.
 
-### Verdict policy (open decision)
+### Verdict policy (resolved: Option B)
 
 The ladder keys on `PASSED_COUNT` (~`:3296-:3311`), so a cancelled-only run currently
 yields `verdict: success`. This contradicts the precedent set by **BUG-3449** for the
@@ -115,8 +116,8 @@ implementation. Smallest change; no existing verdict fixture moves.
 are cancellations falls through the ladder: `phantom` if anything is unverified or
 abandoned, otherwise `not_started`/`no-op`. Aligns autodev with BUG-3449. Cost: a verdict
 change visible to `ll-loop audit` and parent loops, plus a new all-cancelled verdict test.
-Cancellation is not an infra failure, so check that `no-op` is the right landing verdict
-rather than adding a dedicated one.
+Cancellation is not an infra failure, so the all-cancelled run lands on `no-op` rather than
+a dedicated verdict (decided; see Decision Rationale).
 
 > **Selected:** Option B — matches the BUG-3449 precedent pinned by `test_finalize_does_not_count_cancelled_as_closed`; a run that implemented nothing must not report `success`.
 
@@ -127,8 +128,13 @@ rather than adding a dedicated one.
 **Reasoning:** The parent loop already refuses to count cancellations as closed (BUG-3449), so
 autodev's `closed_implemented` should carry the same meaning in the verdict. Reporting-only keys
 (Option A) would leave `success` on a run that closed nothing, which is the failure BUG-3449 fixed.
-Implementation must confirm `not_started`/`no-op` is the right landing verdict for an
-all-cancelled run (no dedicated verdict).
+
+**Landing verdict (decided 2026-09-26):** an all-cancelled run with nothing unverified or
+abandoned lands on the existing `no-op` verdict (or `not_started` if any Phase 1 rejection
+exists). No dedicated verdict is added. `no-op` is redefined from "nothing happened at all" to
+"nothing implemented": a cancellation is a legitimate closure, not a failure, and it exits 0
+like `no-op` already does. The ladder comments that define `no-op` must be reworded to match
+(see Wiring Phase).
 
 | Option | Consistency | Simplicity | Testability | Risk | Total |
 |--------|-------------|------------|-------------|------|-------|
@@ -150,9 +156,12 @@ the issue's own citations; no separate per-option agent sweep was run.
   BUG-3603 `proof_gate_infra` paragraph (~`:275`). It must say how to read the keys, not
   just list them: `closed > 0` with `closed_implemented == 0` is "closed without
   implementation", and autodev's `closed_implemented` corresponds to the parent loop's
-  `closed` (BUG-3449). End with "additive; older `summary.json` files will lack them —
-  treat absence as no split data, and fall back to `closed`." File is 464 lines against the
-  500 cap.
+  `closed` (BUG-3449). State that the keys appear only in **standalone** autodev runs: under
+  `auto-refine-and-implement` (and `sprint-refine-and-implement` → auto-refine) the parent
+  overwrites autodev's `summary.json` in the shared run dir (see Scope Boundaries), so their
+  absence on a nested run is expected. End with "additive; older `summary.json` files will
+  lack them — treat absence as no split data, and fall back to `closed`." File is 464 lines
+  against the 500 cap.
 - `docs/guides/LOOPS_REFERENCE.md` — no page lists autodev's `summary.json` keys. The only
   key-level mention is the BUG-3603 sentence at the end of the "Diagram omissions"
   paragraph (~`:1081`: "…surfaces as a dedicated `Proof-gate-infra` summary bucket and
@@ -177,9 +186,17 @@ _Wiring pass added by `/ll:wire-issue` (Option B verdict change):_
   (0)**, so the FSM terminal (`done`) and the `shell_exit` fragment routing are unchanged.
   A mixed cancelled + unverified run moves `partial` → `phantom` (exit 1 → `failed`); this is
   the only exit-code change Option B introduces.
-- `scripts/little_loops/loops/auto-refine-and-implement.yaml` `finalize` — confirmed it reads
-  `autodev-passed.txt`/`autodev-skipped.txt` and the child exit code, not autodev's
-  `summary.json` `verdict`, so the verdict change does not reach it.
+- `scripts/little_loops/loops/auto-refine-and-implement.yaml` `finalize` — reads
+  `autodev-passed.txt`/`autodev-skipped.txt`, not autodev's `summary.json` `verdict`, so the
+  verdict **string** does not reach it. The **exit-code** change does reach the parent:
+  autodev ending on its `failed` terminal makes the parent's `delegate` take `on_failure` →
+  `delegate_failed` (ENH-3366, ~`:390`), which (with `terminated_by == terminal`) appends the
+  set to `auto-refine-and-implement-failed.txt` and routes straight to `finalize`, **skipping
+  `recheck_set`** (EPIC descendant re-resolution and ENH-2686 residual fold-back). Previously a
+  cancelled + unverified run was `partial` → exit 0 → `delegate` `on_success` →
+  `recheck_set`. This is the intended consequence (nothing was implemented and an issue
+  failed, same as any other `phantom` run today), so no parent edit is needed — but it is a
+  behavior change in the parent, not a no-op.
 - `docs/guides/LOOPS_REFERENCE.md` autodev section — no sentence documents autodev's verdict
   ladder (`success`/`partial`/`phantom`/`no-op`); the only verdict vocabulary listed (~`:1009`)
   is the parent loop's. Include the Option B rule (`success`/`partial` require
@@ -187,6 +204,11 @@ _Wiring pass added by `/ll:wire-issue` (Option B verdict change):_
 
 ### Tests
 - `scripts/tests/test_builtin_loops.py` `TestAutodevLoop` (`_run_finalize_done` ~`:7419`):
+  - First, give `_run_finalize_done` an optional `env: dict | None = None` parameter passed
+    through to `subprocess.run`. It currently takes no env, so every stubbed test (e.g.
+    `:7462`, `:7766`) duplicates ~8 lines of `ll-issues`-stub + `PATH` + script-rewrite
+    boilerplate. Use the extended helper for the new split and verdict fixtures instead of
+    adding ~7 more copies.
   - New tests with a **per-ID** `ll-issues` stub (existing stubs ignore `$2` and return one
     fixed status). Sketch: `case "$2" in FEAT-1) echo '{"status":"Completed"}';;
     FEAT-2) echo '{"status":"Cancelled"}';; esac`. These are the real display values
@@ -239,9 +261,13 @@ _Wiring pass added by `/ll:wire-issue` (Option B verdict change):_
 
 ## Implementation Steps
 
-1. ENH-3610 has landed (working tree clean as of 2026-09-26); no overlap wait needed.
-   Re-read `finalize_done` at edit time, since line numbers above are approximate.
-2. Verdict policy resolved: Option B (see Decision Rationale).
+1. ENH-3610 has landed; no wait needed for it. **ENH-3611** (open, in flight) also edits
+   `finalize_done`: it removes the `autodev-spike-no-verdict.txt` read (~`:3264`). The hunks
+   do not overlap and `proof_gate_infra` survives ENH-3611, so "append after
+   `proof_gate_infra`" still holds. Land the two sequentially, not in parallel worktrees, and
+   re-read `finalize_done` at edit time, since line numbers above are approximate.
+2. Verdict policy resolved: Option B, all-cancelled landing verdict `no-op` (see Decision
+   Rationale).
 3. `finalize_done`: split the promotion `case` arm into `done|completed)` and
    `cancelled)` (both append to `autodev-passed.txt`; `cancelled)` also accumulates
    `CANCELLED_IDS`). Derive `CLOSED_CANCELLED` and `CLOSED_IMPLEMENTED`. Add the `Passed`
@@ -258,6 +284,14 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Update the comment block above the verdict ladder in `finalize_done` (BUG-2908 comment,
   ~`:3292`) and the exit-routing comment (~`:3324`) — both say a verdict of `success`/`partial`
   means "verifiably closed"; reword to "verifiably implemented" under Option B.
+- Reword the ENH-2989 comment in the ladder's `not_started` branch (~`:3304-:3307`), which
+  defines `no-op` as "nothing happened at all": under Option B `no-op` means "nothing
+  implemented" (an all-cancelled run has `closed > 0` and still lands here).
+- Extend the exit-routing comment's `no-op` gloss (~`:3325-:3326`, "a genuinely empty or
+  fully-parked backlog") to include "or all-cancelled".
+- In the `audit-loop-run` Step 6a paragraph, note the parent-routing consequence: a
+  cancelled + unverified run is now `phantom`, so a nested run goes through the parent's
+  `delegate_failed` rather than `recheck_set`.
 - Add the four Option B verdict fixtures listed under Tests (all-cancelled, all-cancelled +
   not-started, cancelled + unverified, cancelled + implemented).
 - In the `audit-loop-run` Step 6a paragraph, state the Option B verdict rule and that an
@@ -269,7 +303,8 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 - **Priority**: P3
 - **Effort**: Small
-- **Risk**: Low (Option A) / Low-Medium (Option B changes a verdict)
+- **Risk**: Low-Medium (Option B changes a verdict, and for cancelled + unverified runs the
+  exit code, which changes the parent's `delegate` routing)
 
 ## Program Design
 
@@ -301,8 +336,9 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - [ ] The `Passed` summary line names the cancelled IDs when any exist, and is unchanged when none do
 - [ ] `autodev-passed.txt` format is unchanged (bare IDs, `grep -qxF`-matchable)
 - [ ] No new ledger file and no `init` change
-- [ ] Verdict behavior matches the chosen **Verdict policy** option. Under Option A, the verdict is unchanged for all existing `TestAutodevLoop` fixtures.
-- [ ] `audit-loop-run` Step 6a explains how to read the keys (including closed-without-implementation and the BUG-3449 relationship); `LOOPS_REFERENCE.md` names them
+- [ ] Verdict behavior matches Option B: `success`/`partial` require `closed_implemented > 0`; an all-cancelled run reports `no-op` (exit 0), `not_started` if a Phase 1 rejection exists, and `phantom` (exit 1) if anything is unverified or abandoned
+- [ ] The `no-op` ladder comment (~`:3304-:3307`) and exit-routing comment (~`:3325-:3326`) reflect "nothing implemented", not "nothing happened"
+- [ ] `audit-loop-run` Step 6a explains how to read the keys (including closed-without-implementation, the BUG-3449 relationship, and that they appear only in standalone autodev runs); `LOOPS_REFERENCE.md` names them
 
 ## Scope Boundaries
 
@@ -311,6 +347,13 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - The parent `auto-refine-and-implement` summary is out of scope. It already excludes
   cancellations from `closed` (BUG-3449).
 - Moving `finalize_done` into Python is ENH-3600.
+- **Nested runs do not keep the new keys.** autodev shares its run dir with
+  `auto-refine-and-implement` (`delegate` comment, ~`:352-:354`); the parent `rm -f`s
+  `summary.json` in `init` (~`:95`) and rewrites it in `finalize`, overwriting autodev's. So
+  `closed_implemented`/`closed_cancelled` survive only in standalone autodev runs. In nested
+  runs the parent's `closed` already excludes cancellations (BUG-3449), so cancellations are
+  invisible there. Surfacing a parent-level `closed_cancelled` (or preserving autodev's
+  summary under a child filename) is a follow-up, not part of this issue.
 
 ## Verification Notes
 
