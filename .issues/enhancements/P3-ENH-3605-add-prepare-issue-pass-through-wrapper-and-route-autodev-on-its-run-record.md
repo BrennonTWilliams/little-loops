@@ -192,7 +192,7 @@ standalone run. A direct `ll-loop run prepare-issue` gets `{}` from the default,
   - `RETRYABLE_ERROR:infra` → one `refine_failed_infra` row;
   - `MISSING` → `skip_inflight`.
 - Rate-limit pin twin: add `prepare-issue.yaml` to
-  `test_no_loop_call_state_declares_on_rate_limit_exhausted` (~`test_builtin_loops.py:3335`).
+  `test_no_loop_call_state_declares_on_rate_limit_exhausted` (`test_builtin_loops.py:2892` for refine-to-ready-issue, `:7745` for autodev).
 - The BUG-3603 invariant still holds: `TestProofGateFailClosed` asserts
   `implement_current`'s only predecessor is `check_proof_defer_or_implement`.
 - `test_fsm_topology.py::test_autodev_topology`: the autodev state count is unchanged.
@@ -212,7 +212,7 @@ standalone run. A direct `ll-loop run prepare-issue` gets `{}` from the default,
   `test_wiring_reference_docs.py:260` pins.
 - `docs/reference/CLI.md`: the run-record section (`forward`; `prepare-issue` writer now live)
   and `:1359` (`next-loop` has an autodev-only resolver).
-- `docs/reference/CONFIGURATION.md:456`: add `prepare-issue` to the loops that must not pin
+- `docs/reference/CONFIGURATION.md:458`: add `prepare-issue` to the loops that must not pin
   confidence thresholds.
 - `docs/guides/LOOPS_GUIDE.md` (`:88`, `:395`) and
   `docs/guides/RECURSIVE_LOOPS_GUIDE.md:271-302`: add a wrapper row.
@@ -255,7 +255,7 @@ moved states now live in ENH-3606. Line anchors predate ENH-3607 and ENH-3609–
   `context.X` as a plain string, and each level re-flattens.
 - **Rate-limit constraint**: `with_rate_limit_handling` and `on_rate_limit_exhausted` are
   inert on `loop:` states (BUG-3390; pinned by
-  `test_no_loop_call_state_declares_on_rate_limit_exhausted`, ~`test_builtin_loops.py:3335`).
+  `test_no_loop_call_state_declares_on_rate_limit_exhausted`, `test_builtin_loops.py:2892`/`:7745`).
   `outcome_from_legacy_class` yields `retryable_error` only for `--legacy-class infra`;
   ENH-3607's token adds `:rate_limited` when `evidence_refs` contains `rate_limit_exhausted`.
 - **`ready` path / BUG-3603**: `ready` reaches implementation only through the fail-closed
@@ -269,7 +269,7 @@ moved states now live in ENH-3606. Line anchors predate ENH-3607 and ENH-3609–
 
 - New top-level loop YAMLs are registered in an exact-set assertion
   (`test_builtin_loops.py::test_expected_loops_exist`, ~:204-305).
-- `TestInterpSweepBaseline::test_completeness_guard` (~`test_builtin_loops.py:21014`) fails in
+- `TestInterpSweepBaseline::test_completeness_guard` (~`test_builtin_loops.py:20505`) fails in
   both directions against `scripts/tests/data/loop_interpolation_baseline.json`.
 - Terminal convention in `refine-to-ready-issue.yaml`: each terminal writes the legacy
   sentinel, then
@@ -280,7 +280,7 @@ moved states now live in ENH-3606. Line anchors predate ENH-3607 and ENH-3609–
 
 ### Dependent Files (Callers/Importers)
 
-- `scripts/little_loops/loops/auto-refine-and-implement.yaml`: `loop: autodev` (~:381); reads
+- `scripts/little_loops/loops/auto-refine-and-implement.yaml`: `loop: autodev` (~:386); reads
   autodev's shared-`run_dir` ledgers. The ledger rows must stay identical.
   `scan-and-implement.yaml:79` also calls `loop: autodev`.
 - `scripts/little_loops/loops/recursive-refine.yaml`: second `refine-to-ready-issue` caller
@@ -329,11 +329,35 @@ moved states now live in ENH-3606. Line anchors predate ENH-3607 and ENH-3609–
 
 `prepare-issue.yaml:forward_stop` -> `cmd_run_record_forward` -> `write_run_record` -> `autodev.yaml:route_refine_outcome` -> `cmd_run_record_read`
 
+## Verification Notes
+
+Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the same
+pass, so the issue as it now reads is up to date — this section is a record of
+what was wrong and fixed, not an outstanding action item)
+
+Verified 2026-09-26 against `main` (graph provider `codegraph`, freshness `stale`; graph
+results not used). Blockers ENH-3611/ENH-3602 and ENH-3607/3609/3610 are done;
+`prepare-issue.yaml` and `run-record forward` do not exist yet; `prepare-issue` is already in
+`RunRecordWriter`/`WRITERS`; `refine_current` and both routers match the described pre-change
+state. `ll-verify-evidence` clean.
+
+- Fixed stale anchors: rate-limit pin test is at `test_builtin_loops.py:2892` and `:7745`
+  (was ~:3335); `TestInterpSweepBaseline` is ~:20505 (was ~:21014); `CONFIGURATION.md`
+  confidence-threshold list is :458 (was :456); `auto-refine-and-implement.yaml` `loop: autodev`
+  is ~:386 (was ~:381).
+- Clarification (not a defect): autodev's success path is `refine_current.on_success` →
+  `count_repair_cycle_refine` → `copy_broke_down` → `route_refine_success`; the counter state is
+  unchanged by this child.
+- Implementation note: `run-record forward` prints only `FORWARDED`/`MISSING`, so `forward_stop`
+  must read the forwarded token (`run-record read --writer prepare-issue --format token`) to decide
+  whether to write the `refine_failed` row (`BLOCKED:quality` / `DEFERRED:gate_unmet` only).
+
 ## Status
 
 **Open** | Created: 2026-09-26 | Priority: P3
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-26T17:51:03 - `88c2d513-b5ef-46f0-9f72-8998adaef5bb.jsonl`
 - `/ll:wire-issue` - 2026-09-26T03:36:28 - `e6ad8ea2-14d6-441f-a607-435314c2d056.jsonl`
 - `/ll:refine-issue` - 2026-09-26T03:22:24 - `7612ef86-47f8-4d5d-aa01-e50211538dc3.jsonl`
 - `/ll:format-issue` - 2026-09-26T03:07:12 - `34887897-5e19-4ee2-b656-5f0a00c15f02.jsonl`
