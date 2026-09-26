@@ -770,7 +770,17 @@ Checks: all 40+ named states exist in `autodev.yaml` (3294 lines); no decisions 
   - `route_refine_outcome` maps `DECOMPOSED` → `skip_inflight` (:541); the wrapper `decomposed` must not reach it via the failed terminal.
 - **Proposal check (B6)**: the mechanism stands. No exception-handler or fixture conflicts found.
 
-Folded into Scope ("Boundary edge retargets"), Acceptance Criteria and Implementation Step 4 in a follow-up edit the same day, so nothing from this pass remains outstanding except the full edge-table regeneration in Implementation Step 1.
+Folded into Scope ("Boundary edge retargets"), Acceptance Criteria and Implementation Step 4 in a follow-up edit the same day. The full edge table was later regenerated in Scope, so Implementation Step 1 is now a re-run-if-changed check, not an outstanding item.
+
+### Re-verification (2026-09-26, later pass)
+
+Verdict at time of check: **NEEDS_UPDATE** (the stale sentence above was corrected in the same pass; the issue as it now reads is up to date — this is a record, not an action item)
+
+Re-parsed `autodev.yaml` (90 states) and `prepare-issue.yaml` (7 states, `max_steps: 20`) against the Scope claims; `ll-verify-evidence` clean; no decisions rules apply. Graph: provider=`codegraph` freshness=`stale` (not used for any verdict).
+
+- Confirmed against current edges: `refine_current.on_success` → `count_repair_cycle_refine` → `copy_broke_down`; `check_passed` `on_yes` → `select_obligation_pre_implement`, `on_no`/`on_cannot_judge` → `select_obligation_post_refine`, `on_error` → `detect_children`; `detect_children.on_no`/`on_error` → `size_review_snap` → `check_broke_down`; `check_parent_resolved.on_no`/`on_error` → `recheck_scores`; `check_broke_down.on_no` → `enqueue_or_skip`; `dispatch_pre_deferral_remedy.on_yes` → `refine_current`; `run_size_review.on_rate_limit_exhausted` → `dequeue_next`; `mark_scores_absent_infra` → `dequeue_next`. All match the boundary edge table's "Today" column.
+- `route_refine_success` and `route_refine_outcome` route as the Scope section states (`CANCELLED` → `skip_cancelled`; suffixed stops → `skip_inflight` / `ledger_child_stop`).
+- Proposal check (B6): mechanism stands; no new findings.
 
 ## Confidence Check Notes
 
@@ -815,6 +825,7 @@ Steps and Impact:
 - Broad change surface: autodev consumers (`auto-refine-and-implement`, `scan-and-implement`, run-record, ledger readers) must keep counts unchanged.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-26T20:10:06 - `3c9e6ec9-3d9b-4e64-8ad3-568702407b0a.jsonl`
 - `/ll:verify-issues` - 2026-09-26T19:59:52 - `b7feb4d7-6b74-47e8-9464-2371879b3a6f.jsonl`
 - `/ll:confidence-check` - 2026-09-26T17:56:40 - `1617bd47-448f-4338-8379-3ae73f71f9bc.jsonl`
 - `/ll:verify-issues` - 2026-09-26T17:51:04 - `88c2d513-b5ef-46f0-9f72-8998adaef5bb.jsonl`

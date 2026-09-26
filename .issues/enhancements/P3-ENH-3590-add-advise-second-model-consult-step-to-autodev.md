@@ -32,7 +32,7 @@ Add an opt-in `ll-advise` (second-model consult) step to autodev's preparation p
 
 ## Expected Behavior
 
-autodev can, when explicitly enabled, run a non-interactive `/ll:advise` consult at one or more decision points and route on a verdict persisted to frontmatter/JSON. When disabled (the default), behavior and cost are unchanged.
+When explicitly enabled, autodev's preparation path runs one `ll-advise` CLI consult at a single decision point: after a go-no-go GO verdict has stamped `outcome_gate_waived: true`, and before the waiver re-opens the issue. The consult can **veto** the waiver. It can never grant one. The payload is persisted to `${context.run_dir}/advise-<ID>.json` and read back deterministically. When disabled (the default), or when the consult fails or is skipped, behavior and cost are unchanged.
 
 ## Motivation
 
@@ -40,41 +40,94 @@ autodev currently has no review by a stronger or different model. Its only adver
 
 ## Proposed Solution
 
-Add a shell state in `prepare-issue.yaml` (alongside or after `run_go_no_go`, or before
-repair/defer decisions) that calls the `ll-advise` CLI directly. It does not use the
-`/ll:advise` skill.
+**Design: veto-only consult on the go-no-go waiver, via the `ll-advise` CLI in shell
+states** (not the `/ll:advise` skill, and not the `advisor_consult` evaluator — see
+Resolved Decisions).
 
-- **Persistence**: `/ll:advise` saves nothing. It surfaces the result in the transcript.
-  `ll-advise --json` prints a 7-key payload on stdout (`recommendation`, `risks`,
-  `confidence`, `dissent`, `signal`, `host`, `model`) and has **no verdict field**. The
-  state runs
-  `ll-advise --signal <signal> --question ... --context-file ... --json > ${context.run_dir}/advise-<ID>.json`
-  and a later state reads that file with Python (MR-1: no stdout parsing in `evaluate`).
-- **Verdict mapping**: define a deterministic mapping from the payload to a routing
-  verdict. For example: `confidence` below a threshold, or a non-empty `dissent`,
-  → `ADVISE_CONCERN`; otherwise `ADVISE_OK`. The mapping and the threshold are
-  decisions for this issue.
-- **Rate limits / failure**: a non-zero `ll-advise` exit is infra. Skill-free shell states
-  do not get 429 interception from `with_rate_limit_handling`. Route a non-zero exit to
-  the wrapper's `retryable_error` terminal, or treat it as "no advice" and continue. Do
-  not route to `finalize_rate_limited`: that state exists only in `autodev.yaml`, not in
-  `prepare-issue.yaml`.
-- `ll-advise` already resolves its advisor host independently (`--host`, `advisor.host`);
-  add no new `"claude"` literals.
-- Opt-in through a context flag; off by default, so it adds no cost.
+Chain in `prepare-issue.yaml`, spliced into the existing
+`check_go_no_go_waiver.on_yes` edge (state names are proposals):
+
+```
+check_go_no_go_waiver --on_yes--> check_advise_enabled
+check_advise_enabled  --on_no/on_error--> reopen_waived          # flag off: today's path
+                      --on_yes--> run_advise
+run_advise            --next--> read_advise_verdict              # always exits 0
+read_advise_verdict   --on_yes (PROCEED / SKIPPED)--> reopen_waived
+                      --on_no  (VETO)--> veto_waiver
+                      --on_error--> reopen_waived                 # unreadable = no advice
+veto_waiver           --next--> <same target as check_go_no_go_waiver.on_no>
+                      --on_error--> <wrapper's ladder-error terminal from ENH-3606>
+```
+
+- **Gate (`check_advise_enabled`)**: `[ -n "${context.advise_go_no_go}" ]`, which follows
+  autodev's own empty-string idiom (`skip_learning_gate: ""`, `autodev.yaml:42`). Declare
+  `advise_go_no_go: ""` in the `context:` blocks of both `autodev.yaml` and
+  `prepare-issue.yaml`, and pass it through the delegate state. Enable with
+  `ll-loop run autodev <ids> --context advise_go_no_go=1`.
+- **Consult (`run_advise`)**: a shell state that captures everything and **always exits 0**:
+  ```bash
+  LL_ISSUE_ID="$ID" ll-advise --signal autodev_go_no_go_waiver \
+    --question "<fixed question text; see below>" \
+    --context-file "$ISSUE_FILE" --json \
+    > "${context.run_dir}/advise-$ID.json" 2> "${context.run_dir}/advise-$ID.err"
+  echo $? > "${context.run_dir}/advise-$ID.rc"; exit 0
+  ```
+  - This **deliberately opts out of executor-side 429 interception**, and a comment on the
+    state must say so. Swallowing a host CLI's exit code (`|| true`,
+    `if cmd; then`) disables 429 retry, which is a bug for main-host calls. Here it is intentional: the advisor may run on a different host than
+    the loop (`advisor.host`). If the advisor is rate limited, autodev must not wait in
+    place (up to 6h) or halt the queue. Without the swallow, the executor would also send
+    an advisor auth failure (`NON_RECOVERABLE`) to `on_error`.
+  - Do not use `fragment: with_rate_limit_handling`, and do not route to
+    `retryable_error`, `mark_rate_limited` (ENH-3606's rate-limit terminal), or
+    `finalize_rate_limited`.
+  - `LL_ISSUE_ID="$ID"` bills the per-issue budget bucket, following the
+    `autodev.yaml:2061` idiom. The default `LL_LOOP_RUN_ID` bucket would exhaust
+    `max_consults_per_task=3` after three issues in one run.
+  - `ll-advise` resolves its advisor host itself (`--host`, `advisor.host`). Add no new
+    `"claude"` literals.
+- **Question**: the question asks whether an issue the go-no-go debate approved despite
+  outcome confidence below threshold should proceed. It instructs the advisor to begin
+  `recommendation` with exactly one word, `PROCEED` or `VETO`. The context file is the
+  issue file itself, which carries the go-no-go verdict and the confidence-check notes.
+- **Verdict read (`read_advise_verdict`)**: embedded Python, per MR-1 (no stdout parsing in
+  `evaluate`). It reads `.rc` and `.json` and exits 0 for PROCEED/SKIPPED and 1 for VETO:
+  - `.rc` is missing or non-zero, or the JSON is missing or unparseable → **SKIPPED**
+    (proceed, as if disabled). Log the skip reason from `.err` (one of the 7
+    `_SKIP_MESSAGES`) to stderr and to the issue's session log.
+  - The first word of `recommendation`, uppercased with punctuation stripped, equals
+    `VETO` → **VETO**.
+  - Anything else (`PROCEED`, no decision word, other text) → **PROCEED**.
+  - `confidence` and `dissent` are **logged but not routed on**. `AdvisorVerdict.confidence`
+    is a `float` whose scale neither the schema nor the prompt pins down, and `dissent`
+    is non-empty in almost every response.
+- **Veto (`veto_waiver`)**: removes `outcome_gate_waived` from frontmatter with
+  `little_loops.frontmatter.remove_frontmatter_keys`, because no `ll-issues` subcommand
+  clears a flag. It then appends a session-log line quoting the advisor's
+  `recommendation`, and routes the same way as a NO-GO (`check_go_no_go_waiver.on_no`).
+  The issue stays in its `oversized_atomic` deferral. The key must be removed, not
+  skipped: `check-readiness`, `regate_after_atomic_remediation` (`autodev.yaml:2307`),
+  `recheck_after_size_review` (`autodev.yaml:2642`), and the `:881` sweep all honor a
+  stamped `outcome_gate_waived: true` on later passes.
+- **`not_configured` when the flag is on**: an operator who sets `advise_go_no_go=1` without
+  configuring `advisor.host` would otherwise skip every consult silently.
+  `read_advise_verdict` writes a `WARNING: advise_go_no_go set but advisor host not
+  configured` line to stderr when the skip reason is `not_configured`. It still proceeds
+  and does not fail the issue.
 
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 
-- The claim that skill-free shell states do not get 429 interception from `with_rate_limit_handling` is inaccurate as stated: interception is executor-side and fires for any state that produces an `action_result` with non-zero exit and a TRANSIENT rate-limit/quota classification (`fsm/executor.py`, 429-detection block before interceptors; see also the memory note that wrapping a host CLI in `if cmd; then`/`|| true` disables retry). It applies to shell and slash_command states and is inert only on `loop:` delegate states. What the advise state must still guarantee is that a rate-limited `ll-advise` exits non-zero with a classifiable reason rather than being swallowed by a redirect/`|| true`.
+- The claim that skill-free shell states do not get 429 interception from `with_rate_limit_handling` is inaccurate as stated: interception is executor-side and fires for any state that produces an `action_result` with non-zero exit and a TRANSIENT rate-limit/quota classification (`fsm/executor.py`, 429-detection block before interceptors; see also the memory note that wrapping a host CLI in `if cmd; then`/`|| true` disables retry). It applies to shell and slash_command states and is inert only on `loop:` delegate states. _(Superseded 2026-09-26: the design now swallows the exit code on purpose, so the advisor's rate limit can never stall or halt autodev. See Proposed Solution → Consult.)_ The executor also sends `NON_RECOVERABLE` (auth) failures to `on_error`, so without that swallow, exit codes would not be limited to 0/2.
 - Budget side effect: every `manual=True` consult spends the per-task budget (`record_consult` runs before the host call; `max_consults_per_task=3` default, enforced even with `advisor.enabled: false`). An opt-in advise state therefore competes with skill-path consults for the same budget, and budget exhaustion surfaces as exit 2 with `budget_exhausted` — a skip reason the state's failure routing should treat as "no advice", not infra.
 - Exit-contract fact for the failure route: `ll-advise` exits 0 only on success and 2 on all seven skip reasons (`disabled`, `trigger_not_allowed`, `budget_exhausted`, `not_configured`, `floor_violation`, `failed`, `timeout`), never a traceback. A shell state routing on its exit code sees exactly 0/2 — `on_no` (1) never fires for CLI refusals.
 - MR-1 posture: the consult is LLM-judged and `advisor_consult` is excluded from `NON_LLM_EVALUATOR_TYPES` (`fsm/validation/_base.py`), so the advise state cannot be the loop's only gate; the existing non-LLM routing (readiness thresholds, format-check predicates) must remain the arbiters, matching the `run_go_no_go` → `check_go_no_go_waiver` frontmatter-read pattern.
 
 ## Scope Boundaries
 
-- **In scope**: an opt-in advise state in `prepare-issue.yaml` with a persisted, deterministically-read verdict; infra handling for a failing `ll-advise`; a context flag to enable it, passed through from autodev.
+- **In scope**: the four-state veto chain in `prepare-issue.yaml` (gate → consult → verdict read → veto), with a persisted, deterministically read verdict; fail-open handling for a failing or skipped `ll-advise`; the `advise_go_no_go` context flag, passed through from autodev.
+- **Out of scope (by decision)**: the consult granting a waiver or overriding a NO-GO; consults at other decision points (repair/defer, decision resolution); using `confidence`/`dissent` for routing.
 - **Not part of EPIC-3565**: this is a new capability, not an audit finding (the epic's scope is F1–F10 plus the consolidation). It was moved out of the epic on 2026-09-25 and keeps a `relates_to` link.
 - **Out of scope**: changing `/ll:advise` or `ll-advise` internals; replacing `run_go_no_go`; enabling the consult by default; consult steps in loops other than `autodev` (e.g. `oracles/resolve-decision`) unless the open questions resolve otherwise.
 
@@ -91,7 +144,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/issue_manager.py:849` — `process_issue_inplace` calls `consult_for_trigger` with trigger `confidence_gate`; `scripts/little_loops/hooks/pre_done.py:175` calls it with trigger `pre_done` — both spend the same per-task `max_consults_per_task=3` budget the advise state competes with; exhaustion surfaces as exit 2 (`budget_exhausted`) [Agent 1 finding]
 - `scripts/little_loops/cli/loop/runner.py:359` — sets `LL_LOOP_RUN_ID` for the whole run, so a bare shell-state `ll-advise` bills the per-run budget bucket; the per-issue idiom (`LL_ISSUE_ID="$ID" ...`, autodev.yaml:2061) is the alternative — pick deliberately [Agent 2 finding]
 - `scripts/little_loops/cli/loop/run.py:345` — run pre-flight aborts on any `${context.<key>}` without `:default=` that is missing from that loop's `context:` block; the flag must be declared in BOTH `autodev.yaml` and `prepare-issue.yaml` [Agent 2 finding]
-- `scripts/little_loops/cli/loop/next_loop.py:131` — `_resolve_autodev_params` binds only `input` for `ll-loop next`; the new autodev context key must stay optional or this resolver's behavior changes [Agent 1 finding]
+- `scripts/little_loops/cli/loop/next_loop.py:131` — `_resolve_autodev_params` binds only `input` for `ll-loop next-loop`; the new autodev context key must stay optional or this resolver's behavior changes [Agent 1 finding]
 - `scripts/little_loops/init/writers.py:133` — `Bash(ll-advise:*)` is already in consuming projects' permission allowlist (synced by `ll-verify-cli-allowlist`); no change needed — confirms the shell-state route won't hit a permission wall [Agent 1 finding]
 - `scripts/little_loops/session_store/writers.py:2272` — every consult writes an `advisor_consults` telemetry row (`write_advisor_consult`); enabled advise states generate rows automatically [Agent 1 finding]
 - `scripts/tests/test_advisor.py:718` — `test_only_consult_for_trigger_calls_consult` pins `consult()`'s single-caller contract; the shell route via `ll-advise` is unaffected, a direct Python call would break it [Agent 1 finding]
@@ -114,7 +167,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `docs/reference/CLI.md` - `ll-advise` reference (link only if the new flag is user-facing)
 
 ### Configuration
-- New autodev `context:` flag, default off (name TBD in Open Questions resolution)
+- New `context:` flag `advise_go_no_go: ""` (empty = off), declared in both `autodev.yaml` and `prepare-issue.yaml`
 
 _Wiring pass added by `/ll:wire-issue`:_
 - No new schema keys needed: `fsm-loop-schema.json` top-level `context` is free-form and all `AdvisorConfig` keys already exist (`config-schema.json:1879`); the flag needs only `context:` declarations in both loop files (MR-11) [Agent 2 finding]
@@ -132,21 +185,27 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 
 ## Implementation Steps
 
-1. Decide the decision point(s) and verdict semantics (see Open Questions); confirm how `/ll:advise` persists its verdict to frontmatter/JSON.
-2. Add the opt-in context flag and the advise state to `autodev.yaml` using `with_rate_limit_handling` (`on_rate_limit_exhausted: finalize_rate_limited`), reading the verdict from persisted output, not stdout.
-   > ⚠ Superseded — advise state belongs in prepare-issue.yaml
-3. Route on the verdict; when the flag is off, skip the state so the existing flow is unchanged.
-4. Add tests to `test_autodev_loop.py` covering default-off, enabled routing, and rate-limit exhaustion.
-5. Verify with `ll-loop validate autodev` and `python -m pytest scripts/tests/test_autodev_loop.py scripts/tests/test_fsm_validation_meta_rules.py`.
+1. After ENH-3606 lands, confirm where `check_go_no_go_waiver`'s `on_yes`/`on_no` edges point in `prepare-issue.yaml`, and find the name of the ladder-error terminal.
+2. Declare `advise_go_no_go: ""` in the `context:` blocks of `autodev.yaml` and `prepare-issue.yaml`, and pass it through autodev's `prepare-issue` delegate state. Keep it out of `parameters:`.
+3. Add `check_advise_enabled`, `run_advise`, `read_advise_verdict`, and `veto_waiver` to `prepare-issue.yaml` per the Proposed Solution chain, and retarget `check_go_no_go_waiver.on_yes` to `check_advise_enabled`. Add an `# ll-lint: mr11-ok(...)` suppression on each `${context.*}` interpolation inside a shell action. Add no states to `autodev.yaml`: the 105-state pin must not move.
+4. Tests in `test_builtin_loops.py`, alongside the go-no-go chain tests (`test_go_no_go_escalation_chain_shape`, `_run_go_no_go_eligible`):
+   - chain-shape pin covering every edge in the diagram, including that `check_go_no_go_waiver.on_yes` reaches `reopen_waived` when the flag is empty;
+   - `run_advise` exits 0 when a stub `ll-advise` on PATH exits 2, and when it prints rate-limit text on stderr; `.rc` records 2;
+   - `run_advise` carries no `with_rate_limit_handling` fragment and no `on_rate_limit_exhausted`;
+   - `read_advise_verdict` over fixture `.json`/`.rc` pairs: `VETO …` → exit 1; `PROCEED …`, `veto` embedded mid-text, missing JSON, rc 2, and malformed JSON → exit 0; `not_configured` in `.err` → exit 0 with the WARNING on stderr;
+   - `veto_waiver` removes `outcome_gate_waived` from a tmp issue file, leaves other frontmatter intact, and routes to `check_go_no_go_waiver.on_no`'s target;
+   - flag pass-through from autodev to `prepare-issue`, modeled on `test_skip_flag_threads_through_sprint_chain`.
+   Reuse `_isolate_advisor_budget` (`test_cli_advise.py:38`) for any test that runs the real CLI.
+5. Verify with `ll-loop validate autodev`, `ll-loop validate prepare-issue`, and `python -m pytest scripts/tests/test_builtin_loops.py scripts/tests/test_autodev_loop.py scripts/tests/test_fsm_validation_meta_rules.py scripts/tests/test_autodev_decision_gate.py`.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
 - Declare the opt-in flag in BOTH `autodev.yaml` and `prepare-issue.yaml` `context:` blocks (run pre-flight `cli/loop/run.py:345` + MR-11); keep it out of `parameters:` (`TestNoContextParameterKeyDuplication`); adding only a context flag avoids the 105-state pin — adding advise *states* to `autodev.yaml` would bump it (states in `prepare-issue.yaml` do not)
-- Match the go-no-go chain shape: gate state (flag check, default-off skip route) → advise state (writes `advise-<ID>.json`; `fragment: with_rate_limit_handling` only on non-`loop:` states, per the `:7913` loop-state pin) → verdict-read state (embedded Python, MR-1)
-- Exit-code routing: exit 2 (incl. `budget_exhausted`) = "no advice" continue or `retryable_error`; any failure edge into a success terminal trips `test_no_failure_edge_routes_to_a_success_terminal`; `retryable_error` exists in no shipped loop — it arrives with ENH-3606 (ordering dependency now in `blocked_by`)
-- Budget billing: decide per-run (`LL_LOOP_RUN_ID` default) vs per-issue (`LL_ISSUE_ID` prefix idiom, autodev.yaml:2061) — the state competes with `issue_manager.py:849` and `hooks/pre_done.py:175` consults for the same cap
+- Match the go-no-go chain shape: gate state (flag check, default-off skip route) → advise state (writes `advise-<ID>.json`) → verdict-read state (embedded Python, MR-1). _Superseded 2026-09-26: the advise state deliberately carries **no** `with_rate_limit_handling` fragment; see Proposed Solution._
+- Exit-code routing: _Resolved 2026-09-26: fail open._ `run_advise` always exits 0, and every non-success is SKIPPED → `reopen_waived`. Nothing routes to `retryable_error`. No failure edge enters a success terminal (`test_no_failure_edge_routes_to_a_success_terminal`).
+- Budget billing: _Resolved 2026-09-26: per-issue_ (`LL_ISSUE_ID` prefix idiom, autodev.yaml:2061). The state shares the cap with the `issue_manager.py:849` and `hooks/pre_done.py:175` consults.
 - Write the new structural tests in `test_builtin_loops.py` alongside the go-no-go chain tests (chain-shape pins + bash -c stub-`ll-advise` execution + default-off), not only in `test_autodev_loop.py`
 
 ## Impact
@@ -182,19 +241,26 @@ Shell-state route (what this issue proposes): loop state → `ll-advise --signal
 - Rate-limit interception is executor-side, not fragment-side: it fires when a state produces an `action_result` with `exit_code != 0` and `classify_failure(...)` returns TRANSIENT with "rate limit"/"quota" in the reason (`scripts/little_loops/fsm/executor.py`, 429-detection block before interceptors). This applies to shell and slash_command states; it is inert only on `loop:` delegate states.
 - MR-1: `advisor_consult` is excluded from `NON_LLM_EVALUATOR_TYPES` (`scripts/little_loops/fsm/validation/_base.py`) — an LLM consult never counts as a meta-loop's non-LLM evaluator; the loop's non-LLM gates must remain the routing arbiters.
 
-## Open Questions
+## Resolved Decisions
 
-- Which decision points warrant the consult (oversized_atomic deferral, repair/defer, decision resolution)?
-- Can an advise verdict waive or override a go-no-go result?
-- What cost/latency budget applies per issue and per run?
+_Resolved 2026-09-26 in review; these replace the former Open Questions._
+
+- **Decision point**: exactly one. The consult runs after a go-no-go GO has stamped `outcome_gate_waived: true` on an `oversized_atomic` deferral, and before `reopen_waived`. Repair/defer and decision-resolution consults are out of scope.
+- **Advise vs go-no-go**: veto-only. The consult can block a waiver that go-no-go granted. It can never grant a waiver or override a NO-GO. Because an LLM verdict can only tighten the gate, it never acts as a non-LLM arbiter (MR-1), and the existing deterministic `oversized_atomic` go/no-go trigger (ENH-3601 AC) stays unchanged.
+- **Cost budget**: at most 1 consult per issue per pass, and only on the rare `oversized_atomic` GO path. It bills the per-issue bucket (`LL_ISSUE_ID`), so it shares `max_consults_per_task=3` with the `confidence_gate`/`pre_done` consults for the same issue. `budget_exhausted` is a SKIPPED.
+- **Failure semantics**: fail open to today's behavior. Every non-success (exit 2 with any of the 7 skip reasons, advisor rate limit, advisor auth failure, unreadable output) is SKIPPED, logged, and proceeds exactly as if the flag were off. Disabling the consult cannot make an issue worse off than today, so failing open is safe.
+- **Verdict mapping**: the leading decision word in `recommendation` (`VETO` → veto; everything else → proceed). `confidence` and `dissent` are logged but not routed on, because the confidence scale is unpinned and dissent is almost always non-empty.
+- **Seam**: the `ll-advise` CLI in shell states, not the `advisor_consult` evaluator (`fsm/evaluators.py:1743`). Two reasons: the run_dir JSON file is the audit trail these ACs require, and the CLI's `manual=True` path makes the context flag the single opt-in. The evaluator would also require `advisor.enabled` and a `triggers` allowlist entry, and it would be that evaluator's first shipped use. Revisit if a second loop wants the same consult.
 
 ## Acceptance Criteria
 
-- [ ] `prepare-issue` has an advise state that invokes `ll-advise --json` at the chosen decision point(s)
-- [ ] The payload is written to `${context.run_dir}/advise-<ID>.json` and mapped to a verdict deterministically, without stdout parsing
-- [ ] A failing `ll-advise` never blocks or silently passes an issue; its routing is documented and tested
-- [ ] Disabled by default; enabled via config/context flag
-- [ ] `ll-loop validate autodev` and `ll-loop validate prepare-issue` pass
+- [ ] With `advise_go_no_go` empty (the default), `check_go_no_go_waiver.on_yes` reaches `reopen_waived` without invoking `ll-advise`; state count and routing are otherwise unchanged
+- [ ] With the flag set, a GO waiver invokes `ll-advise --signal autodev_go_no_go_waiver --json` once, billed to the per-issue budget (`LL_ISSUE_ID`)
+- [ ] The payload, stderr, and exit code are written to `${context.run_dir}/advise-<ID>.{json,err,rc}` and mapped to PROCEED/VETO/SKIPPED by embedded Python, without stdout parsing
+- [ ] A `VETO` removes `outcome_gate_waived` from frontmatter, logs the advisor's recommendation to the session log, and routes like a NO-GO
+- [ ] Any `ll-advise` failure (exit 2, advisor rate limit, auth failure, unreadable output) is equivalent to the flag being off: the waiver proceeds, the skip reason is logged, the loop never halts, and it never waits on a rate-limit retry. `not_configured` emits a WARNING line
+- [ ] `run_advise` carries no `with_rate_limit_handling` fragment, and a comment explains the intentional interception opt-out
+- [ ] `ll-loop validate autodev` and `ll-loop validate prepare-issue` pass; the autodev 105-state pin is unchanged
 
 ## Related Key Documentation
 
@@ -214,7 +280,7 @@ Verdict at time of check: **NEEDS_UPDATE** (all findings below corrected in the 
 - **`blocked_by` (fixed: now ENH-3606)**: `ENH-3601` is satisfied; the real blocker is ENH-3606. `retryable_error` also does not yet exist in any shipped loop.
 - **Corrected**: `run_go_no_go` line ref (~2244 → ~2420); `test_builtin_loops.py` anchors (:8187→:8146, :8223→:8182, :18698→:18280, :21482→:21059, :17511→:17093, :19074→:18656); `autodev.yaml:2065` → :2061; `test_autodev_decision_gate.py:315` → :212.
 - **Verified**: `issue_manager.py:849`, `pre_done.py:175`, `runner.py:359`, `run.py:345`, `evaluators.py:1743`, `Bash(ll-advise:*)` in `init/writers.py:133`, `finalize_rate_limited` present only in `autodev.yaml`. Evidence-quote check clean; no active required decision rules.
-- **Advisory**: no `ll-loop next` claim appears in the issue body; the confidence-check note's `stale_cli_flag` item (`ll-loop next` → subcommand is `next-loop`) does not affect any directive here.
+- **Advisory**: the confidence-check note's `stale_cli_flag` item (subcommand is `next-loop`) does not affect any directive here.
 - **Graph**: provider=`codegraph` freshness=`stale` (not used to originate any verdict; checks were Grep/Read).
 
 ## Confidence Check Notes
@@ -225,9 +291,9 @@ _Added by `/ll:confidence-check` on 2026-09-25_
 **Outcome Confidence**: 71/100 → MODERATE
 
 ### Gaps to Address
-- blocked_by ENH-3601 (open) — `prepare-issue.yaml` does not exist yet [stale as of 2026-09-26: ENH-3601 done, blocker is now ENH-3606]; the advise state anchors to states that live there after ENH-3601.
-- Advisory claim gap (`stale_cli_flag`): `ll-loop next` does not resolve as written; re-check the subcommand name before citing it in directives.
-- Three Open Questions unresolved (decision points, advise-vs-go-no-go override, cost budget) plus the verdict-mapping threshold — resolve via `/ll:decide-issue` before implementation.
+- blocked_by ENH-3606 (open) — the go-no-go anchor states move into `prepare-issue.yaml` there. (Originally recorded as ENH-3601, which is now done.)
+- Advisory claim gap (`stale_cli_flag`): the subcommand is `ll-loop next-loop`; citations corrected 2026-09-26.
+- ~~Three Open Questions unresolved plus the verdict-mapping threshold~~ — resolved 2026-09-26; see Resolved Decisions. Re-run `/ll:confidence-check` to rescore.
 
 ## Session Log
 - `/ll:verify-issues` - 2026-09-26T20:03:20 - `fad4d529-a955-4d85-a909-ec88da4f9e33.jsonl`
@@ -243,4 +309,4 @@ _Added by `/ll:confidence-check` on 2026-09-25_
 
 ## Scope Boundary
 
-**Note** (added by `/ll:audit-issue-conflicts`): The consult is opt-in and disabled by default, so it stays off the default path (consistent with EPIC-3565's out-of-scope clause on adding skills to the happy path). Anchor states (`run_go_no_go` etc.) move to `prepare-issue.yaml` under ENH-3606; target that loop after it lands. Open Question to resolve against ENH-3601's deterministic go/no-go predicate: may an advise verdict waive a go-no-go result?
+**Note** (added by `/ll:audit-issue-conflicts`): The consult is opt-in and disabled by default, so it stays off the default path (consistent with EPIC-3565's out-of-scope clause on adding skills to the happy path). Anchor states (`run_go_no_go` etc.) move to `prepare-issue.yaml` under ENH-3606; target that loop after it lands. The question of whether an advise verdict may waive a go-no-go result was resolved as veto-only: it may block a GO waiver but never grant one. ENH-3601's deterministic `oversized_atomic` go/no-go trigger is untouched.
