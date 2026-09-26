@@ -19,6 +19,12 @@ relates_to:
 - ENH-3607
 - ENH-3609
 parent: ENH-3601
+confidence_score: 97
+outcome_confidence: 75
+score_complexity: 14
+score_test_coverage: 22
+score_ambiguity: 22
+score_change_surface: 17
 ---
 
 # ENH-3605: Add prepare-issue pass-through wrapper and route autodev on its run record
@@ -357,6 +363,7 @@ state. `ll-verify-evidence` clean.
 **Open** | Created: 2026-09-26 | Priority: P3
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-26T17:56:17 - `d8dc6ef7-0e36-4417-8999-282f048f8e13.jsonl`
 - `/ll:verify-issues` - 2026-09-26T17:51:03 - `88c2d513-b5ef-46f0-9f72-8998adaef5bb.jsonl`
 - `/ll:wire-issue` - 2026-09-26T03:36:28 - `e6ad8ea2-14d6-441f-a607-435314c2d056.jsonl`
 - `/ll:refine-issue` - 2026-09-26T03:22:24 - `7612ef86-47f8-4d5d-aa01-e50211538dc3.jsonl`

@@ -18,6 +18,12 @@ relates_to:
 - ENH-3609
 - ENH-3610
 parent: ENH-3601
+confidence_score: 70
+outcome_confidence: 46
+score_complexity: 0
+score_test_coverage: 18
+score_ambiguity: 18
+score_change_surface: 10
 ---
 
 # ENH-3606: Move autodev second-pass preparation states into prepare-issue
@@ -547,7 +553,26 @@ reconcile/design) was merged here on 2026-09-26._
 
 **Open** | Created: 2026-09-26 | Priority: P3
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-26_
+
+**Readiness Score**: 70/100 → STOP — ADDRESS GAPS (Dependencies Hard Override)
+**Outcome Confidence**: 46/100 → LOW
+
+### Concerns
+- Anchors and edge names are pre-ENH-3609–3611; the first step (boundary edge table refresh) is unperformed, so the exact move set is unverified.
+
+### Gaps to Address
+- `blocked_by` ENH-3605 is still `open` (ENH-3611 is done). `prepare-issue.yaml` and `test_prepare_issue.py` do not exist yet. Finish ENH-3605, or remove the dependency if it no longer applies.
+
+### Outcome Risk Factors
+- Deep per-site complexity: rewires the strongly connected second-pass cluster, rescoring consolidation and terminal routing.
+- Broad enumeration across ~40 states plus a large test/doc migration (Breadth 0).
+- Broad change surface: autodev consumers (`auto-refine-and-implement`, `scan-and-implement`, run-record, ledger readers) must keep counts unchanged.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-09-26T17:56:40 - `1617bd47-448f-4338-8379-3ae73f71f9bc.jsonl`
 - `/ll:verify-issues` - 2026-09-26T17:51:04 - `88c2d513-b5ef-46f0-9f72-8998adaef5bb.jsonl`
 - `/ll:wire-issue` - 2026-09-26T03:36:28 - `e6ad8ea2-14d6-441f-a607-435314c2d056.jsonl`
 - `/ll:refine-issue` - 2026-09-26T03:22:25 - `7612ef86-47f8-4d5d-aa01-e50211538dc3.jsonl`
