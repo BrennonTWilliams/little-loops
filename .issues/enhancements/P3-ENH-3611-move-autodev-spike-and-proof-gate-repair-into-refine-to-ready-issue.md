@@ -115,11 +115,14 @@ before `implement_current`.
   `check_decision_before_done` and `write_done_record`: both `check_decision_before_done.on_no`
   and `.on_error` retarget to it (today both go to `write_done_record`). It runs
   `ll-issues check-gate <ID>`. On `structured_proof` with `spike_attempted` unset and
-  `spike-runs-<ID>` < 2, it increments the counter and routes to `run_spike` (the existing
+  `spike-runs-<ID>` < 2, it increments the counter **before** routing to `run_spike` (the
+  `check_spike_needed` idiom, so a crashed spike still counts) and routes to `run_spike` (the existing
   `route_spike_verdict` → `PROVEN` → `confidence_check` chain re-scores and returns through
   `route_score_obligation`; a proven spike sets `spike_completed`, which flips `check-gate` to
   `structured_satisfied`, so the second pass reaches `write_done_record`). Every other
-  verdict, and a helper error, → `write_done_record`. This gate is fail-open because autodev's
+  verdict, and a helper error from either probe (`check-gate` exit 2, or the `spike_attempted`
+  probe's `check-flag` exit 2), → `write_done_record`, never `run_spike`. This gate is
+  fail-open because autodev's
   `check_proof_defer_or_implement` stays fail-closed downstream (BUG-3603).
   - **Match the token, not the exit code.** `check-gate` exits 0 for every in-force verdict
     (`structured_open`, `structured_proof`, `prose`). The state must capture stdout and match
@@ -161,8 +164,13 @@ before `implement_current`.
   one per issue by `autodev-reentry-PROOF-<ID>` (the `DECISION` idiom; cleared at
   `dequeue_next`), and un-stages the ID from `autodev-staged.txt` before routing (the
   `grep -vxF` idiom ENH-3610's `DECISION` branch uses). When the cap is spent, or the child
-  cannot act on the obligation (below), the selector re-runs `next-obligation --skip PROOF`
-  and routes that token as usual, so it falls through to its not-needed successor. That
+  cannot act on the obligation (below), the selector prints the original `next-obligation`
+  token unchanged, so it falls through `_` to its not-needed successor. `classify` routing
+  matches route keys exactly (`executor.py` `verdict in routes`), and no route key is
+  `PROOF:<sub_reason>`, so a raw `PROOF:*` token always lands on `_`. Do **not** re-run
+  `next-obligation --skip PROOF`: every token it could print also routes to `_`, and a second
+  call only adds a subprocess and an `_error` path (to `detect_children` /
+  `recheck_after_size_review`) after the first call already succeeded. That
   successor never reaches implementation with an open gate, because
   `check_proof_defer_or_implement` still defers it as `blocked_by_gate`. No `PROOF_EXHAUSTED`
   token and no `record_reentry_exhausted` route for `PROOF` (decided: `blocked_by_gate` is the
@@ -170,14 +178,13 @@ before `implement_current`.
   `select_obligation_post_refine` and `select_obligation_pre_implement`:
   `check-flag decision_needed` first (ENH-3610's exit-code contract), then the `PROOF` probe,
   then `next-obligation`. `select_obligation_post_size_review` has no `check-flag` probe (see
-  below). The selector's shell handles every raw `PROOF:*` token from `next-obligation`
+  below). The selector's shell inspects every raw `PROOF:*` token from `next-obligation`
   itself. When the guard passes, the selector prints its own bare `PROOF` token. Otherwise it
-  re-runs `next-obligation --skip PROOF`. So `PROOF` is the only proof route key, and no
-  `PROOF:<sub_reason>` token ever reaches `classify` routing.
+  prints the raw token, which routes to `_`. So `PROOF` is the only proof route key.
 
   **Shared re-entry guard** (every `PROOF` re-entry, all three selectors): re-enter only when
-  all of these hold. Otherwise use `--skip PROOF` (low-outcome sites) or fall through to
-  `next-obligation` (pre-implement site).
+  all of these hold. Otherwise print the raw `next-obligation` token (low-outcome sites) or
+  fall through to `next-obligation` (pre-implement site).
   - `spike_attempted` is unset.
   - `spike-runs-<ID>` < 2.
   - `autodev-reentry-PROOF-<ID>` is unused.
@@ -213,11 +220,27 @@ before `implement_current`.
     a re-entry candidate, whatever its sub-reason. The sub-reason is worst-status-wins across
     all targets, so it cannot identify a spikeable obligation (Current Behavior). The selector
     re-enters only when the child's low-outcome band can actually spike: `spike_needed` true,
-    plus the shared guard above. Any other `PROOF:*` reading goes to `--skip PROOF`. This
+    plus the shared guard above. Any other `PROOF:*` reading prints the raw token (→ `_`). This
     closes the cycle risk in Current Behavior. A `PROOF` from `spike_attempted` without
     `spike_completed`, a learning-test-only `PROOF`, or a gate-only `PROOF` that the child would
     route to `breakdown_issue` no longer costs a full child run. A spikeable issue whose
     `spike=absent` is masked by a refuted registry target is still re-entered.
+    - **Tier-1 skips (required).** `next-obligation` returns the first unmet tier-1
+      obligation (`FORMAT`, `VERIFY`, `HEDGES`, `PLACEHOLDERS`, `ACCEPTANCE_CRITERIA`,
+      `DESIGN`) before it evaluates scores or tier 3 (`next_obligation.py`,
+      `select_next_obligation`). The existing selector call passes no tier-1 skips, so any
+      unmet tier-1 obligation would mask `PROOF` and the re-entry would never fire. `VERIFY`
+      is especially likely: outside a child run it reads the last persisted
+      `verify_verdict`, which may be stale. Today `_ → check_spike_needed` and
+      `check_spike_needed_before_skip` spike a `spike_needed` issue whatever its tier-1
+      state. So both low-outcome selectors' `next-obligation` call passes the same tier-1
+      skips as the child's `route_score_obligation`: `--skip FORMAT --skip VERIFY --skip
+      HEDGES --skip PLACEHOLDERS --skip ACCEPTANCE_CRITERIA --skip DESIGN`. Routing is
+      unaffected: every non-`PROOF` token already goes to `_`.
+    - **`--honor-waiver` (required).** Both low-outcome selectors pass `--honor-waiver`,
+      including the new `select_obligation_post_size_review`. The "no waiver term" rule
+      above depends on it: without the flag a waived issue could read `PROOF:*` and be
+      re-entered into a child that does not honor the waiver.
   - **Pre-implement site** (`select_obligation_pre_implement`): scores pass, so it calls
     `ll-issues check-gate <ID>` itself. On `structured_proof` plus the shared guard above, it
     prints `PROOF` → `refine_current`,
@@ -249,9 +272,9 @@ before `implement_current`.
 
   | Selector | `PROOF` source | Not-needed (`_`) successor | `_error` |
   |---|---|---|---|
-  | `select_obligation_post_refine` | `next-obligation` `PROOF:*` + `spike_needed` + guard | `check_missing_artifacts` (was `check_spike_needed`) | `detect_children` |
+  | `select_obligation_post_refine` | `next-obligation --honor-waiver` + tier-1 skips → `PROOF:*` + `spike_needed` + guard | `check_missing_artifacts` (was `check_spike_needed`) | `detect_children` |
   | `select_obligation_pre_implement` | `check-gate` `structured_proof` + guard | `check_proof_defer_or_implement` (was `check_proof_gate_before_implement`) | `check_proof_defer_or_implement` |
-  | `select_obligation_post_size_review` (new) | `next-obligation` `PROOF:*` + `spike_needed` + guard | `check_reconcile_needed` | `recheck_after_size_review` |
+  | `select_obligation_post_size_review` (new) | `next-obligation --honor-waiver` + tier-1 skips → `PROOF:*` + `spike_needed` + guard | `check_reconcile_needed` (commit 1: `check_spike_needed_before_skip`; see Implementation Sequencing) | `recheck_after_size_review` |
 
 - **Retargets** (the 22 removed states' inbound edges from surviving states):
 
@@ -354,7 +377,18 @@ before `implement_current`.
   (drop the `spike-runs-<ID>` increment and the pre-spike snapshot write; add the lifetime-cap
   check to the `spike` leg; update its comment),
   the pre-implement selector's `check-gate` probe, and `record_reentry_exhausted`'s comment
-  (stays `DECISION`-only)
+  (stays `DECISION`-only). **Stale-comment sweep of surviving autodev states** that cite
+  removed states (line numbers as of `714e8bb1a`; they drift): `dequeue_next` (~139),
+  `check_status_at_dequeue` (~212), `refine_current` (~499, `check_decide_rate_limited`),
+  `select_obligation_post_refine` / `select_obligation_pre_implement` header comments,
+  `check_proof_defer_or_implement` (~941, "split of check_proof_gate_before_implement's
+  non-spike outcomes"), `rerun_confidence_after_wire` (~1245),
+  `check_parent_resolved_post_size_review` (~2368), `check_reconcile_needed` (~2428-2446, the
+  ENH-2689 and FEAT-2751 paragraphs), `check_size_review_ran_this_pass` (~2534),
+  `check_readiness_for_atomic_remediation` (~2602), `reconcile_current` (~2946),
+  `rerun_confidence_after_reconcile` (~3000), `dispatch_pre_deferral_remedy` (~3352). Rewrite
+  each to name the current path, or mark the reference as history ("removed in ENH-3611").
+  `skip_inflight`'s references (~594/606) name the child's same-named states and stay.
 - `scripts/little_loops/loops/refine-to-ready-issue.yaml`: `check_proof_before_done`;
   `check_decision_before_done.on_no`/`.on_error` retarget; `max_steps` 90 → 100 with a history
   comment; stale comments that cite autodev's
@@ -427,17 +461,24 @@ Rewrite, don't delete (ENH-3075 AC 8); stays-deleted guard per removed state.
   - `dispatch_pre_deferral_remedy`'s `spike` leg with `refine_count` at `max_refine_count`
     routes to `reconcile_current`, never `refine_current` (no `breakdown_issue`);
   - a `PROOF:absent` issue whose child cannot spike (`spike_attempted` set without
-    `spike_completed`) is not re-entered: the selector passes `--skip PROOF` immediately;
+    `spike_completed`) is not re-entered: the selector prints the raw token and routes `_`;
+  - a spikeable low-outcome issue (`spike_needed` set, `spike_attempted` unset, readiness
+    passing) with an unmet tier-1 obligation (an open question, or
+    `verify_verdict: NEEDS_UPDATE`) still reads `PROOF:*` and re-enters once, at both
+    low-outcome selectors (pins the tier-1 skips);
+  - a waived-outcome issue at `select_obligation_post_size_review` is never re-entered for
+    `PROOF` (pins `--honor-waiver` on the new selector);
   - a spikeable issue (`spike_needed` set, `spike_attempted` unset) that also declares a
     refuted Learning Test Registry target reads `PROOF:refuted` and is still re-entered once;
   - a `PROOF` issue the child can spike re-enters once; a second `PROOF` reading falls through
-    via `--skip PROOF`, and an open gate is deferred as `blocked_by_gate`;
+    via `_` (raw token), and an open gate is deferred as `blocked_by_gate`;
   - a high-scoring `structured_proof` issue whose `refine_count` is at `max_refine_count` is not
     re-entered (no `breakdown_issue`) and defers as `blocked_by_gate`;
   - a learning-test-only `PROOF:stale` / `PROOF:refuted` (no spike flags) never re-enters the
-    child (`--skip PROOF` immediately);
+    child (raw token → `_` immediately);
   - the child's `check_proof_before_done` does not spike on `structured_open` or `prose`
-    (token match, not exit code);
+    (token match, not exit code), and does not spike when the `spike_attempted` probe
+    errors (exit 2 → `write_done_record`);
   - `recursive-refine` running the child on a high-scoring issue with an open
     `structured_proof` gate spikes it before `done` (pins the intended caller contract change);
   - child worst-case path (proof spike + refuted → decide) completes under `max_steps` without
@@ -459,7 +500,7 @@ Rewrite, don't delete (ENH-3075 AC 8); stays-deleted guard per removed state.
 ### Signatures
 
 - `cmd_check_gate(config: BRConfig, args: argparse.Namespace) -> int` — existing; the child's new proof gate and autodev's surviving proof stage both call it
-- `cmd_next_obligation(config: BRConfig, args: argparse.Namespace) -> int` — existing (FEAT-3598); the selectors route its `PROOF:*` tokens and pass `--skip PROOF` once capped
+- `cmd_next_obligation(config: BRConfig, args: argparse.Namespace) -> int` — existing (FEAT-3598); the low-outcome selectors call it with `--honor-waiver` and the six tier-1 `--skip` flags, and inspect its `PROOF:*` tokens
 
 ### Call Path
 
@@ -501,7 +542,12 @@ Rewrite, don't delete (ENH-3075 AC 8); stays-deleted guard per removed state.
 - **Two commits.**
   1. *Additive:* child `check_proof_before_done` + `max_steps` bump; `PROOF` probes in the
      existing selectors; new `select_obligation_post_size_review`, wired in but with the old
-     states still present. Safe alone: when the child spikes a proof gate, autodev's
+     states still present. In this commit the new selector's `_` routes to
+     `check_spike_needed_before_skip` (not `check_reconcile_needed`), so that state stays
+     reachable and keeps its behavior; commit 2 retargets `_` → `check_reconcile_needed` when
+     it deletes the state. Routing `_` to `check_reconcile_needed` in commit 1 would orphan
+     `check_spike_needed_before_skip` (an unreachable-state validator warning) and drop its
+     spike one commit early. Safe alone: when the child spikes a proof gate, autodev's
      `check_proof_gate_before_implement` sees `structured_satisfied`, and the shared
      `spike-runs-<ID>` cap bounds any double spend.
   2. *Subtractive:* delete the 22 states, apply the retargets, marker cleanup, the
@@ -527,7 +573,8 @@ ENH-3610's review changed parts of the selector contract that this issue builds 
   of the 22 removed here. It ledgers `<ID>  decision_unresolved` in `autodev-skipped.txt` and
   defers the issue with that reason. `DECISION_EXHAUSTED` targets it, not
   `record_decision_unresolved`, so removing `record_decision_unresolved` here does not affect
-  the selectors. **Decided (2026-09-26 review):** `PROOF` uses the `--skip PROOF` fall-through;
+  the selectors. **Decided (2026-09-26 review):** `PROOF` uses the `_` fall-through (the
+  selector prints the raw `next-obligation` token; see Expected Behavior);
   the fail-closed `check_proof_defer_or_implement` defers an open gate as `blocked_by_gate`.
   No `PROOF_EXHAUSTED` token; `record_reentry_exhausted` stays `DECISION`-only (its comment's
   "so ENH-3611 can reuse it for PROOF" is updated accordingly). Keep it in
@@ -584,6 +631,11 @@ ENH-3610's review changed parts of the selector contract that this issue builds 
   `refine_current` (real-FSM test)
 - [ ] Low-outcome selectors decide `PROOF` re-entry from the spike flags and guard, not the
   `PROOF:<sub_reason>`; a refuted registry target does not mask a spikeable issue (test)
+- [ ] Low-outcome selectors call `next-obligation` with `--honor-waiver` and the six tier-1
+  `--skip` flags; an unmet tier-1 obligation does not mask a spikeable issue's `PROOF`
+  (test at both sites); a guard miss prints the raw token (no second `next-obligation` call)
+- [ ] No comment in a surviving `autodev.yaml` state cites a removed state except as
+  history ("removed in ENH-3611")
 - [ ] The child's `check_proof_before_done` spikes only on the `structured_proof` token; its
   worst-case path fits the raised `max_steps` without tripping `recurrent_window`
 - [ ] The low-readiness `spike_needed` loss is recorded in the Behavior Parity table and pinned
