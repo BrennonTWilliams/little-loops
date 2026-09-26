@@ -19,6 +19,12 @@ relates_to:
 - BUG-3603
 - ENH-3599
 parent: EPIC-3565
+confidence_score: 70
+outcome_confidence: 48
+score_complexity: 5
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 0
 ---
 
 # ENH-3608: Remove autodev spike and decision routes and route on the child run record
@@ -226,6 +232,24 @@ Map.
 
 **Open** | Created: 2026-09-26 | Priority: P3
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-25_
+
+**Readiness Score**: 70/100 → STOP — ADDRESS GAPS (Dependencies Hard Override)
+**Outcome Confidence**: 48/100 → LOW
+
+### Concerns
+- Spec is otherwise clear and gate-clean (Program Design passes, no claim/parity/structure gaps); readiness is 70 before the dependency override.
+
+### Gaps to Address
+- Unresolved `blocked_by`: ENH-3607 (open). `route_refine_outcome` and `run-record read` do not exist in `autodev.yaml` yet; this issue extends them. Land ENH-3607 first, then re-run.
+
+### Outcome Risk Factors
+- broad enumeration across ~24 removed states, 3–5 added, 19 retargeted edges and 8+ test files (very wide blast radius)
+- deep per-site complexity: control-flow restructuring of the most-used loop's routing
+- selector-state count left as "e.g." (3–5) — minor open detail
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-26T03:32:06 - `e6ad8ea2-14d6-441f-a607-435314c2d056.jsonl`
 - `/ll:verify-issues` - 2026-09-26T03:26:55 - `0645a9c4-2e38-4d02-9b76-47ae90b8a2ea.jsonl`
