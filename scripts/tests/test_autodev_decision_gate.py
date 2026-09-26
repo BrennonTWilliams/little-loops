@@ -299,6 +299,8 @@ class _StubIssues:
             f'  next-obligation) if [ -f "{root}/obligation" ]; then cat "{root}/obligation"; '
             f'else echo NONE; fi; exit "$(cat "{root}/next_rc" 2>/dev/null || echo 0)";;\n'
             f'  show) printf \'{{"status": "%s"}}\' "$(cat "{root}/status" 2>/dev/null || echo open)";;\n'
+            f'  refine-status) [ -f "{root}/refine_count" ] && '
+            f'printf \'{{"refine_count": %s}}\' "$(cat "{root}/refine_count")"; exit 0;;\n'
             "  *) exit 0;;\n"
             "esac\n"
         )
@@ -313,14 +315,21 @@ class _StubIssues:
         f = self.root / "calls"
         return f.read_text().splitlines() if f.exists() else []
 
+    def set_refine_count(self, n: int) -> None:
+        (self.root / "refine_count").write_text(str(n))
+
     def run(self, action: str, run_dir: Path, issue_id: str) -> subprocess.CompletedProcess[str]:
         env = {**os.environ, "PATH": f"{self.bin}{os.pathsep}{os.environ['PATH']}"}
+        # cwd is isolated so the selector never reads the repo's own .ll/ll-config.json
+        cwd = self.root / "cwd"
+        cwd.mkdir(exist_ok=True)
         return subprocess.run(
             ["bash", "-c", _interp(action, run_dir, issue_id)],
             capture_output=True,
             text=True,
             check=False,
             env=env,
+            cwd=cwd,
         )
 
 
@@ -398,6 +407,73 @@ class TestObligationSelectorBehavior:
         (stub.root / "next_rc").write_text("2")
         result = stub.run(states[name]["action"], run_dir, "ENH-3610")
         assert result.returncode == 2
+
+    @pytest.mark.parametrize(
+        "name", ["select_obligation_post_refine", "select_obligation_pre_implement"]
+    )
+    @pytest.mark.parametrize(
+        ("count", "expected"), [(3, "DECISION"), (4, "DECISION"), (5, "DECISION_EXHAUSTED")]
+    )
+    def test_lifetime_cap_boundary_default(
+        self,
+        states: dict[str, Any],
+        stub: _StubIssues,
+        run_dir: Path,
+        name: str,
+        count: int,
+        expected: str,
+    ) -> None:
+        stub.set_flag(True)
+        stub.set_refine_count(count)
+        result = stub.run(states[name]["action"], run_dir, "BUG-3614")
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.strip() == expected
+        marker = run_dir / "autodev-reentry-DECISION-BUG-3614"
+        if expected == "DECISION_EXHAUSTED":
+            # Capped issue never consumes the one-shot marker; diagnostic is stderr-only.
+            assert not marker.exists()
+            assert f"[DECISION_CAPPED] BUG-3614 refine_count={count} cap=5" in result.stderr
+            assert "DECISION_CAPPED" not in result.stdout
+        else:
+            assert marker.read_text() == "1"
+            assert "DECISION_CAPPED" not in result.stderr
+
+    @pytest.mark.parametrize(
+        "name", ["select_obligation_post_refine", "select_obligation_pre_implement"]
+    )
+    def test_lifetime_cap_honors_config_override(
+        self, states: dict[str, Any], stub: _StubIssues, run_dir: Path, name: str
+    ) -> None:
+        stub.set_flag(True)
+        (stub.root / "cwd" / ".ll").mkdir(parents=True)
+        (stub.root / "cwd" / ".ll" / "ll-config.json").write_text(
+            '{"commands": {"max_refine_count": 7}}'
+        )
+        stub.set_refine_count(6)
+        assert stub.run(states[name]["action"], run_dir, "BUG-1").stdout.strip() == "DECISION"
+        stub.set_refine_count(7)
+        result = stub.run(states[name]["action"], run_dir, "BUG-2")
+        assert result.stdout.strip() == "DECISION_EXHAUSTED"
+        assert "cap=7" in result.stderr
+
+    @pytest.mark.parametrize(
+        "name", ["select_obligation_post_refine", "select_obligation_pre_implement"]
+    )
+    def test_unreadable_refine_count_is_under_cap(
+        self, states: dict[str, Any], stub: _StubIssues, run_dir: Path, name: str
+    ) -> None:
+        stub.set_flag(True)  # no refine_count file: stub prints nothing
+        result = stub.run(states[name]["action"], run_dir, "BUG-1")
+        assert result.stdout.strip() == "DECISION"
+
+    def test_decision_blocks_byte_identical(self, states: dict[str, Any]) -> None:
+        def block(name: str) -> str:
+            action = states[name]["action"]
+            return action[
+                action.index('if [ "$RC" -eq 0 ]') : action.index("ll-issues next-obligation")
+            ]
+
+        assert block("select_obligation_post_refine") == block("select_obligation_pre_implement")
 
     def test_dequeue_next_clears_reentry_counter(
         self, states: dict[str, Any], stub: _StubIssues, run_dir: Path

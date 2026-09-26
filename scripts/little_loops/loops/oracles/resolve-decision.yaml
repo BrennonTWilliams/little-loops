@@ -250,7 +250,8 @@ states:
     # check_decide_attempts allows one resolve per child entry at
     # check_decision_needed / check_decision_before_done; autodev re-enters the
     # child at most once per issue (autodev-reentry-DECISION-<ID>, ENH-3610)
-    # before record_reentry_exhausted defers it for human review.
+    # (or once refine_count reaches commands.max_refine_count, BUG-3614) before
+    # record_reentry_exhausted defers it for human review.
     action: "ll-issues check-unresolved-decisions ${context.issue_id:shell}"
     fragment: shell_exit
     on_yes: failed

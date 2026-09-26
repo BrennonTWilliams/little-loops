@@ -739,8 +739,9 @@ states:
     # at any score state), then `next-obligation` (its DECISION predicate is the
     # same flag, so it cannot print DECISION here; it is present so ENH-3611 can
     # add PROOF:* routes). Re-entry is capped at one per issue
-    # (autodev-reentry-DECISION-<ID>, cleared at dequeue_next); a second
-    # reading routes DECISION_EXHAUSTED → record_reentry_exhausted. `_error`
+    # (autodev-reentry-DECISION-<ID>, cleared at dequeue_next) and by the lifetime
+    # refine cap (BUG-3614: refine_count >= commands.max_refine_count, default 5);
+    # either term routes DECISION_EXHAUSTED → record_reentry_exhausted. `_error`
     # copies triage_outcome_failure.on_error (detect_children).
     action: |
       ID=${captured.input.output:shell}
@@ -755,6 +756,18 @@ states:
           grep -vxF "$ID" "${context.run_dir}/autodev-staged.txt" \
             > "${context.run_dir}/autodev-staged.tmp" 2>/dev/null || true
           mv "${context.run_dir}/autodev-staged.tmp" "${context.run_dir}/autodev-staged.txt"
+        fi
+        # BUG-3614: lifetime-cap term, evaluated before the marker write. The child's
+        # check_lifetime_limit would route a capped issue to breakdown_issue, so never
+        # re-enter it; an unreadable count/cap falls back to 0/5 (under the cap).
+        CNT=$(ll-issues refine-status "$ID" --json 2>/dev/null | python3 -c 'import json,sys; print(int(json.load(sys.stdin).get("refine_count", 0)))' 2>/dev/null || echo 0)
+        CAP=$(python3 -c 'import json; print(int(json.load(open(".ll/ll-config.json")).get("commands", {}).get("max_refine_count", 5)))' 2>/dev/null || echo 5)
+        [ -z "$CNT" ] && CNT=0
+        [ -z "$CAP" ] && CAP=5
+        if [ "$CNT" -ge "$CAP" ] 2>/dev/null; then
+          echo "[DECISION_CAPPED] $ID refine_count=$CNT cap=$CAP" >&2
+          echo "DECISION_EXHAUSTED"
+          exit 0
         fi
         F="${context.run_dir}/autodev-reentry-DECISION-$ID"
         N=$(cat "$F" 2>/dev/null || echo 0)
@@ -802,6 +815,18 @@ states:
           grep -vxF "$ID" "${context.run_dir}/autodev-staged.txt" \
             > "${context.run_dir}/autodev-staged.tmp" 2>/dev/null || true
           mv "${context.run_dir}/autodev-staged.tmp" "${context.run_dir}/autodev-staged.txt"
+        fi
+        # BUG-3614: lifetime-cap term, evaluated before the marker write. The child's
+        # check_lifetime_limit would route a capped issue to breakdown_issue, so never
+        # re-enter it; an unreadable count/cap falls back to 0/5 (under the cap).
+        CNT=$(ll-issues refine-status "$ID" --json 2>/dev/null | python3 -c 'import json,sys; print(int(json.load(sys.stdin).get("refine_count", 0)))' 2>/dev/null || echo 0)
+        CAP=$(python3 -c 'import json; print(int(json.load(open(".ll/ll-config.json")).get("commands", {}).get("max_refine_count", 5)))' 2>/dev/null || echo 5)
+        [ -z "$CNT" ] && CNT=0
+        [ -z "$CAP" ] && CAP=5
+        if [ "$CNT" -ge "$CAP" ] 2>/dev/null; then
+          echo "[DECISION_CAPPED] $ID refine_count=$CNT cap=$CAP" >&2
+          echo "DECISION_EXHAUSTED"
+          exit 0
         fi
         F="${context.run_dir}/autodev-reentry-DECISION-$ID"
         N=$(cat "$F" 2>/dev/null || echo 0)

@@ -3,10 +3,11 @@ id: BUG-3614
 type: BUG
 title: Autodev DECISION re-entry routes lifetime-capped issues to breakdown
 priority: P3
-status: open
+status: done
 discovered_by: capture-issue
 discovered_date: '2026-09-26'
 captured_at: '2026-09-26T06:53:39Z'
+completed_at: '2026-09-26T07:25:27Z'
 parent: EPIC-3565
 relates_to:
 - ENH-3610
@@ -308,8 +309,14 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-26T07:25:27 - `3b9c53ec-874c-45f2-a9cb-c0daf45348b2.jsonl`
+- `/ll:ready-issue` - 2026-09-26T07:15:37 - `695a1986-4c8d-47aa-9164-d113a4d4b433.jsonl`
 - `/ll:confidence-check` - 2026-09-26T07:14:04 - `1eb03218-20ce-453a-bf86-789e28cb50a6.jsonl`
 - `/ll:wire-issue` - 2026-09-26T07:04:31 - `c8822019-43a9-4d0f-b257-475aeb4ab3ec.jsonl`
 - `/ll:reconcile-issue` - 2026-09-26T07:01:39 - `7d8d5da2-5970-46c4-a7de-295402f96f22.jsonl`
 - `/ll:refine-issue` - 2026-09-26T06:59:52 - `83a53e9a-c833-443d-91cf-22a5699e1980.jsonl`
 - `/ll:capture-issue` - 2026-09-26T06:53:45 - `06522881-acec-4007-9c05-e417309eaff8.jsonl`
+
+## Resolution
+
+Fixed: both `select_obligation_*` selectors now exhaust (`DECISION_EXHAUSTED` → `record_reentry_exhausted`) when `refine_count >= commands.max_refine_count` (default 5), evaluated before the re-entry marker write, with a `[DECISION_CAPPED]` stderr diagnostic. Tests added in `test_autodev_decision_gate.py`.
