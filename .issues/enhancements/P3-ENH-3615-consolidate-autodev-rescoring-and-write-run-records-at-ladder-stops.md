@@ -1,7 +1,8 @@
 ---
 id: ENH-3615
 type: ENH
-title: Consolidate autodev rescoring, halt on size-review rate limit, write run records at ladder stops
+title: Consolidate autodev rescoring, halt on size-review rate limit, write run records
+  at ladder stops
 priority: P3
 status: open
 discovered_by: manual
@@ -12,6 +13,12 @@ blocks:
 relates_to:
 - ENH-3601
 - ENH-3600
+confidence_score: 95
+outcome_confidence: 78
+score_complexity: 10
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 # ENH-3615: Consolidate autodev rescoring, halt on size-review rate limit, write run records at ladder stops
@@ -240,3 +247,7 @@ retargets it to the wrapper's `mark_rate_limited`, which reaches the same halt.
 ## Status
 
 **Open** | Created: 2026-09-26 | Priority: P3
+
+
+## Session Log
+- `/ll:confidence-check` - 2026-09-26T21:19:03 - `5e32a00e-dc7e-43b0-801a-5a85182b8f1a.jsonl`

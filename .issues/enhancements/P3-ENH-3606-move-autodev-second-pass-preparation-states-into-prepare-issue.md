@@ -17,7 +17,7 @@ relates_to:
 - ENH-3609
 - ENH-3610
 parent: ENH-3601
-confidence_score: 95
+confidence_score: 80
 outcome_confidence: 46
 score_complexity: 0
 score_test_coverage: 18
@@ -843,14 +843,17 @@ Re-parsed `autodev.yaml` (90 states) and `prepare-issue.yaml` (7 states, `max_st
 
 _Added by `/ll:confidence-check` on 2026-09-26_
 
-_Re-scored 2026-09-26 after ENH-3605 and ENH-3609–3611 landed and the boundary edge table was regenerated._
+_Re-scored 2026-09-26 after the sequencing decision made ENH-3615 a hard `blocked_by` edge._
 
-**Readiness Score**: 95/100 → PROCEED
+**Readiness Score**: 80/100 → STOP — ADDRESS GAPS (Dependencies Hard Override)
 **Outcome Confidence**: 46/100 → LOW
+
+### Gaps to Address
+- **Unresolved blocker**: `blocked_by: ENH-3615` is `open` (needs `done`/`cancelled`). Land ENH-3615 first, per the Impact sequencing decision, then re-run. Criterion 5 scores 0; the other four readiness criteria score 20 each.
 
 ### Concerns
 - ~~The sequencing option under Impact is still open.~~ Decided 2026-09-26: ENH-3615 lands first.
-- ~~Integration Map line anchors are stale.~~ `autodev.yaml` anchors refreshed 2026-09-26; ENH-3615 shifts them, so they are approximate.
+- ENH-3615 shifts the `autodev.yaml` line anchors in the Integration Map, so they are approximate; re-run the boundary edge computation before editing.
 
 ### Outcome Risk Factors
 - Deep per-site complexity: rewires the strongly connected second-pass cluster, rescoring consolidation and terminal routing.
@@ -903,6 +906,7 @@ Map:
   - no capture-name collisions.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-26T21:19:22 - `80a78edd-363d-4d79-9451-fe1325611d39.jsonl`
 - `/ll:confidence-check` - 2026-09-26T20:34:15 - `dcc4151f-8515-4923-9336-bb585d1a7e59.jsonl`
 - `/ll:confidence-check` - 2026-09-26T20:20:48 - `6a41b2bc-b016-4ac8-ae48-08305b05403a.jsonl`
 - `/ll:verify-issues` - 2026-09-26T20:10:06 - `3c9e6ec9-3d9b-4e64-8ad3-568702407b0a.jsonl`
