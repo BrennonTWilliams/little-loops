@@ -172,6 +172,8 @@ before `implement_current`.
     `ll-issues refine-status <ID> --json`. Resolve the cap the way the child's
     `check_lifetime_limit` does: `commands.max_refine_count` in `.ll/ll-config.json`, default 5.
     Autodev has no `max_refine_count` context key, so read the config and do not add one.
+    **Land BUG-3614 first and copy its `DECISION` cap snippet verbatim** (single-quoted
+    `python3 -c`, `[ -z "$CAP" ] && CAP=5` fallback — not an indented heredoc or `$${CAP:-5}`).
 
   Without the cap term, a re-entered child at its lifetime cap routes to `breakdown_issue`
   before it reaches `check_proof_before_done`, so a high-scoring issue would be decomposed
@@ -552,6 +554,7 @@ _Added by `/ll:confidence-check` on 2026-09-26_
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-09-26T07:11:03 - `0f5fcc02-0a7c-4098-ad48-620bb8d9c553.jsonl`
 - `/ll:confidence-check` - 2026-09-26T07:08:20 - `1eb03218-20ce-453a-bf86-789e28cb50a6.jsonl`
 - `/ll:confidence-check` - 2026-09-26T07:06:41 - `5379bacb-5f74-4671-ad52-5aa01a6817e1.jsonl`
 - `/ll:confidence-check` - 2026-09-26T06:39:11 - `75e3d2d3-f8ce-4d8d-a1e4-0681793eb55f.jsonl`
