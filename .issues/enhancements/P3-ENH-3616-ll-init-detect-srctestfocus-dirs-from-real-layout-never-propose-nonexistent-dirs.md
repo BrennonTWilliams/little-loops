@@ -9,6 +9,12 @@ discovered_by: ll-issues-create
 discovered_date: '2026-09-26'
 captured_at: '2026-09-26T22:32:30Z'
 reconcile_attempted: true
+confidence_score: 95
+outcome_confidence: 56
+score_complexity: 10
+score_test_coverage: 18
+score_ambiguity: 18
+score_change_surface: 10
 ---
 
 # ENH-3616: ll-init: detect src/test/focus dirs from real layout, never propose nonexistent dirs
@@ -234,8 +240,24 @@ Remaining: the AC and Call Path additions above.
 
 **Open** | Created: 2026-09-26 | Priority: P3
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-26_
+
+**Readiness Score**: 95/100 → PROCEED
+**Outcome Confidence**: 56/100 → LOW
+
+### Concerns
+- Program Design Call Path still omits `_introspect_src_dir -> _detect_root_layout` and `_introspect_test_dir -> _existing_dir` (noted in Verification Notes); gate passes, but the path is incomplete.
+- Coordination note on ENH-3612 is stale: ENH-3612 is now completed, so the `_introspect_src_dir` call site should be re-read at HEAD before editing.
+
+### Outcome Risk Factors
+- Broad enumeration across ~10 change sites (introspect, cli, codegraph x2, decisions, two commands, docs, tests) with moderate cross-module depth: a `.` value changes semantics for downstream consumers.
+- Wide change surface: `.`-hostile consumers (`codegraph.py`, `decisions.py:652`, `worker_pool.py:1523`, `auto-refine-and-implement.yaml`) have effects marked "unverified" in the issue; each needs its own check.
+- Several existing tests assert the phantom-default behavior and must be rewritten, and markdown command edits (`manage-release.md`, `run-tests.md`) have no automated validation.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-26T23:01:16 - `2dc3f1af-4938-467b-8164-481af936e116.jsonl`
 - `/ll:reconcile-issue` - 2026-09-26T22:59:39 - `2140791c-2fb1-4f71-ba9c-43289547febe.jsonl`
 - `/ll:verify-issues` - 2026-09-26T22:58:20 - `3fd33dbe-1f15-463a-a944-4883dfb19b30.jsonl`
 - `/ll:wire-issue` - 2026-09-26T22:54:01 - `f54e5d1b-c94c-4496-a128-5bf9edc4c3c0.jsonl`
