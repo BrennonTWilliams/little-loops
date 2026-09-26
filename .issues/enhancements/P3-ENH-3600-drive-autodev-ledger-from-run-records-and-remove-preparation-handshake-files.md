@@ -14,12 +14,8 @@ blocked_by:
 parent: EPIC-3565
 relates_to:
 - ENH-3577
-confidence_score: 75
-outcome_confidence: 71
-score_complexity: 10
-score_test_coverage: 25
-score_ambiguity: 18
-score_change_surface: 18
+reconcile_attempted: true
+
 ---
 
 # ENH-3600: Drive autodev ledger from run records and remove preparation handshake files
@@ -76,15 +72,21 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 - Naming hazard: `write_summary` already exists as inline shell functions inside `rn-refine.yaml`, `rlhf-svg-refine.yaml`, and `rlhf-animated-svg.yaml` (their own unrelated summaries). A Python `little_loops.autodev_summary.write_summary` does not collide at import time, but greps for the name hit both.
 - None of `build_summary`, `read_run_record`, `write_summary` (as Python), `scripts/little_loops/autodev_summary.py`, or the `run-records/` layout exists yet (repo-wide search excluding `.issues/`) — they arrive with ENH-3597/ENH-3601 (both open), matching the `blocked_by` edges. `cli/logs.py`'s `_LoopRunRecord` is an unrelated history-DB concept.
 
+_Added by `/ll:refine-issue` — 2026-09-26 — based on codebase analysis:_
+
+- Conventions for the extraction, with evidence (rules, not templates): (1) a thin shell state is a one-line `python3 -m little_loops.<mod> … --run-dir ${context.run_dir}` routed on the module's exit code — `fleet-loop-improve.yaml` (10 sites) and `oracles/integrate-node.yaml:62,:138`; (2) the positive structural gate asserts the state's action contains the module invocation (`test_builtin_loops.py:21491`) — it is a substring check and does **not** assert inline logic is absent, so absence needs its own assertion; (3) module tests exercise `main(argv)` directly (`test_fleet_improve.py:328`); (4) no Python `summary.json` writer or module-level `summary.json` test exists today — current behavioral coverage runs the shell action under `bash -c` (`_run_finalize_done`, `test_builtin_loops.py` ~:7475; `test_rn_implement.py:418-453`), which stops exercising the logic once it moves.
+- Contested convention: directory readers of per-ID JSON either skip bad files silently (`decisions.py:_load_fragments`, `cli/loop/queue.py`, `cli/harness.py`) or return `None` (`run_record.read_run_record`); `build_summary` sits on the `None` side and must turn `None` into a counted `retryable_error`, not a skip.
+- `docs/ARCHITECTURE.md` has no loop/FSM section or parent/child contract heading; the only parent/child loop prose is a dense paragraph inside `## Parallel Mode (ll-parallel)` (:452-477). The AC "describes the parent/child contract" therefore means adding new prose (placement is the implementer's call), not editing an existing section; the end-user marker account stays in `LOOPS_REFERENCE.md`.
+
 ## Integration Map
 
 ### Files to Modify
 - `scripts/little_loops/loops/autodev.yaml`
 - `scripts/little_loops/loops/refine-to-ready-issue.yaml` (stop writing `autodev-*` markers once readers migrate)
 - `scripts/little_loops/loops/auto-refine-and-implement.yaml` (reads `autodev-decision-unresolved.txt`)
-- `scripts/little_loops/loops/oracles/resolve-decision.yaml` (`autodev-decide-ran` dependency)
 - new `scripts/little_loops/autodev_summary.py` (or equivalent)
-- `docs/ARCHITECTURE.md` loop section
+- `docs/ARCHITECTURE.md` — add new parent/child contract prose (no loop/FSM section exists; placement is the implementer's call)
+- `scripts/little_loops/loops/oracles/resolve-decision.yaml` needs no change: its `autodev-decide-ran` mention (~:249) is a comment only; autodev alone writes/reads that marker (finding: "comments only (verified)")
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/loops/README.md` — `autodev` (:34) and `refine-to-ready-issue` (:31) catalog rows describe the run_dir marker pattern; update as markers go [Agent 1 finding]
@@ -92,7 +94,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 ### Tests
 - New unit tests for summary construction from records
 - `summary.json` truthfulness on every exit (EPIC-3565 AC) incl. rate-limit exits (BUG-3567)
-- Structural, rewrite: `test_autodev_loop.py`, `test_fsm_topology.py`
+- Structural, rewrite: `test_builtin_loops.py` `TestAutodevLoop` (:6643; `finalize_done` behavioral coverage via `_run_finalize_done` under `bash -c`, which stops exercising the logic once it moves to Python). `test_autodev_loop.py` has zero `finalize_done` references (per-iteration markers only); `test_fsm_topology.py` only pins the autodev state count (105)
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_autodev_decision_gate.py` — pins `autodev-decide-ran` in `mark_decide_ran_at_dequeue` (:160), `record_decision_unresolved`'s ledger write (:1028), design-remedy attempted markers (:732, :739), and four `on_rate_limit_exhausted == "finalize_rate_limited"` pins (:459, :471, :606, :727) — breaks as markers/routing move [Agent 1 finding]
@@ -113,6 +115,16 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 - Ledger lifecycle facts: `init` pre-creates 12 ledger files (single `printf '' >` each); `autodev-gate-infra.txt` and `autodev-scores-absent.txt` are append-only and NOT pre-created; `autodev-stop-reason` is written only by `finalize_rate_limited`; `autodev-passed.txt` is written only by `finalize_done` (test-enforced).
 - Test locations differ from the Tests section: `finalize_done` behavioral coverage lives in `test_builtin_loops.py` `TestAutodevLoop` (:6643; `_run_finalize_done` harness :7475 executes the action under `bash -c`; promotion/phantom/no-op/rate-limit tests :7389-:7574; `test_check_passed_stages_instead_of_passes` :7459). `test_autodev_loop.py` has zero `finalize_done` references (it covers per-iteration markers); `test_fsm_topology.py` only pins the autodev state count (105). `scripts/tests/data/loop_interpolation_baseline.json` carries a `finalize_done` interpolation-baseline entry that must stay valid through the rewrite.
 - `summary.json` current key set (single printf at the end of `finalize_done`): `verdict`, `closed`, `not_closed`, `skipped`, `gate_blocked`, `decision_unresolved`, `not_started`, `inflight_unresolved`, `abandoned`, `stop_reason`, `pending`; verdict ladder success → partial → phantom → not_started → no-op, with `rate_limit` stop reason overriding to `rate_limited`, and `phantom` exiting 1 to route `on_no: failed`. This is the FEAT-3573-as-of shape the Scope Boundary pins.
+
+_Added by `/ll:refine-issue` — 2026-09-26 — based on codebase analysis:_
+
+- **Stale premise corrected**: ENH-3597 is `done` and its run-record layer is in the tree — the earlier finding that `read_run_record` / `run-records/` "do not exist yet" no longer holds. `scripts/little_loops/run_record.py`: `RunRecord` (frozen dataclass; `writer, issue_id, outcome, child_ids, evidence_refs, legacy_class, readiness, outcome_confidence`), `read_run_record(run_dir, writer, issue_id) -> RunRecord | None` (`None` on absent/malformed/OSError/non-dict/writer-or-ID mismatch), `write_run_record` (atomic), `record_path`, `RECORD_DIR_NAME = "run-records"`, `PreparationOutcome` (already includes `retryable_error`), `RunRecordWriter` (already includes `prepare-issue`). CLI writer: `scripts/little_loops/cli/issues/run_record.py` (`ll-issues run-record write`). Tests: `scripts/tests/test_run_record.py`.
+- **What still does not exist**: `autodev_summary.py`/`build_summary` (zero hits), any producer of `writer=prepare-issue` records (no loop YAML writes them — that arrives with ENH-3601), and any run-record read in `autodev.yaml`. Only `refine-to-ready-issue.yaml` writes records today (`--writer refine-to-ready-issue`, ~:721, :954, :1130, :1217, :1260, :1292, :1320, :1332, :1343, :1366, :1402, :1640; stale-record clear at :184). The three child ledger writers now also emit a record: `record_proposal_unsound` (~:704), `record_spike_inconclusive` (~:1348), `record_decision_unresolved` (~:1371).
+- **`finalize_done` current anchor**: `autodev.yaml:3021-3240` (routes in at :86-87, :176-177, :1411, :3018-3019; `finalize_rate_limited` :3009; terminals `failed` :3241, `done` :3244). Summary key set is now **twelve** keys — the earlier list lacks `proof_gate_infra` (printf at ~:3223-3225, fed by `autodev-proof-gate-infra.txt`, which the read-set finding also omits). Verdict ladder at ~:3201-3221; `phantom` is the only exit 1.
+- **Dequeued-ID source constraint**: no cumulative "dequeued" ledger exists. `autodev-queue.txt` is head-popped by `dequeue_next` (:96-101), `autodev-inflight` holds only the last ID, `autodev-input.txt` (:56) omits later-enqueued children. `build_summary` must either enumerate `run-records/prepare-issue/*.json` (cannot see a crashed issue with no record) or a dequeue ledger must be introduced — the `record_absent` requirement is unsatisfiable without one of the two, and this is a design decision the implementer must make knowingly.
+- **Marker anchors have shifted** (autodev.yaml): `autodev-decision-unresolved` :68, :579, :584 (read in `skip_inflight`), :997 (autodev's own writer), :3080; `autodev-spike-inconclusive` :69, :591, :1786, :3160; `autodev-proposal-unsound` :70, :597, :3164; `autodev-decide-ran` :109, :249, :283, :782, :863. Child writers in `refine-to-ready-issue.yaml`: `autodev-proposal-unsound` :711, `autodev-spike-inconclusive` :1356, `autodev-decision-unresolved` :1389. The `autodev-decide-ran` mentions at `refine-to-ready-issue.yaml:981` and `oracles/resolve-decision.yaml:249` are **comments only** (verified) — no child or oracle writes or reads that marker; only autodev does.
+- **Other autodev-side markers outside the issue's "preparation" list** still read/written by `autodev.yaml`: `autodev-spike-no-verdict.txt` (:1807), `autodev-proof-gate-infra.txt` (:1354), `autodev-pre-readiness.txt`, `autodev-pre-spike-readiness.txt`, `autodev-pre-deferral-remedy.txt`, `autodev-repair-cycle-count.txt`, `autodev-contradiction-reconcile-count.txt`, `autodev-pre-ids/post-ids/diff-ids/new-children`. Whether these count as "preparation markers" for the AC grep gate is undecided; the gate's wording must name its scope.
+- **Test/doc anchors drifted**: `test_builtin_loops.py` thin-shell gate now `:21491` (was :21440); `autodev-decide-ran` sites `:9261, :9430-9434, :9500-9514`; `autodev-decision-unresolved` `:5133, :5405, :5659-5664, :7986, :7997`; `autodev-proposal-unsound` `:3161`. `LOOPS_REFERENCE.md` marker lines are now `:1035, :1037, :1081, :1083, :1085, :1087`, plus run-record mentions at `:158` and `:1083` the issue does not list. Additional marker-name mentions with no code reader: `CHANGELOG.md`, `.ll/private-refs-baseline.json`, `.ll/decisions.d/daca1e87-…json`.
 
 ### Dependent Files (Callers/Importers)
 
@@ -172,6 +184,12 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 - ENH-3597 specifies `read_run_record(run_dir, writer, issue_id) -> RunRecord | None`; after ENH-3601 the authoritative writer is `prepare-issue` (the wrapper), not `refine-to-ready-issue` — the audit-conflicts Scope Boundary note already reflects this.
 - Serialization conventions for `AutodevSummary`: hand-written `to_dict` on the dataclass is the house style (`state.py:49-86` is the canonical both-directions example with `from_dict`; `queue_store.py:391` emits camelCase keys with `_from_row` :421; `issue_history/models.py` is to_dict-only), sets converted to lists for JSON, writes via `atomic_write_json` (`file_utils.py:70`).
 
+_Added by `/ll:refine-issue` — 2026-09-26 — based on codebase analysis:_
+
+- Reader contract in force: `read_run_record` returns `None` for absent, malformed, and writer/ID-mismatched records (`test_run_record.py:195-212` pins each), so `build_summary` gets `record_absent` from a `None` return over a dequeued-ID set — the ID set's source is the open question recorded under Integration Map.
+- Exit-code convention for the thin-shell call: `fleet_improve.py` names `EXIT_YES=0 / EXIT_NO=1 / EXIT_ERROR=2` (:75-77) and states route `on_yes/on_no/on_error`; `finalize_done` today already routes `phantom` → exit 1 → `on_no: failed` and any error → `on_error: failed`, which a module `main() -> int` must preserve exactly.
+- Decision Rules: N/A — no new decision logic beyond the `record_absent` → `retryable_error` rule already stated in Proposed Solution; the verdict ladder is carried over unchanged.
+
 ## Scope Boundaries
 
 - Queue files and closure accounting (`autodev-queue.txt`, `autodev-inflight`, `autodev-staged.txt`, `autodev-passed.txt`, `autodev-unverified.txt`, FEAT-3573 evidence) stay.
@@ -183,7 +201,7 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 - [ ] No `autodev-*` preparation marker is read or written by `autodev.yaml`
 - [ ] Every autodev exit still writes a truthful `summary.json`
 - [ ] A dequeued issue with no run record is reported as `retryable_error` / `record_absent`, never dropped or passed (unit test)
-- [ ] `auto-refine-and-implement` and `oracles/resolve-decision` read run records, not `autodev-*` markers (or the exception is documented)
+- [ ] `auto-refine-and-implement` reads run records, not `autodev-decision-unresolved.txt` (or the exception is documented); `oracles/resolve-decision` needs no change (its `autodev-decide-ran` mention is a comment only)
 - [ ] `docs/ARCHITECTURE.md` describes the parent/child contract
 
 ## Parent Issue
@@ -211,6 +229,8 @@ _Added by `/ll:confidence-check` on 2026-09-25_
 - blocked_by ENH-3599, ENH-3601, FEAT-3573 (all open) — the run-record layout, the `prepare-issue` wrapper writer, and the summary-key split this issue preserves all arrive with those issues. Land the chain first.
 
 ## Session Log
+- `/ll:reconcile-issue` - 2026-09-26T02:50:41 - `1a6e3280-98dc-4084-b164-9f1e529dd9fb.jsonl`
+- `/ll:refine-issue` - 2026-09-26T02:45:37 - `972291b5-b9f1-4321-9110-477f6b624b3d.jsonl`
 - `/ll:confidence-check` - 2026-09-25T21:32:36 - `672e0da1-840e-4b60-a432-7b20e9ebbd01.jsonl`
 - `/ll:wire-issue` - 2026-09-25T20:49:53 - `4a475966-a47c-4657-a3e4-16e6706f4c4d.jsonl`
 - `/ll:refine-issue` - 2026-09-25T19:53:36 - `52506a27-e6a0-49d9-99b0-9b89990953d8.jsonl`
