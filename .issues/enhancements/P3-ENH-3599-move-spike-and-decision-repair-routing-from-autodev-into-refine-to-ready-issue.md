@@ -18,12 +18,7 @@ parent: EPIC-3565
 reconcile_attempted: true
 relates_to:
 - ENH-3577
-confidence_score: 70
-outcome_confidence: 53
-score_complexity: 0
-score_test_coverage: 25
-score_ambiguity: 18
-score_change_surface: 10
+
 ---
 
 # ENH-3599: Move spike and decision repair routing from autodev into refine-to-ready-issue
@@ -277,6 +272,7 @@ _Added by `/ll:confidence-check` on 2026-09-25_
 - broad enumeration across ~20 files (2 loop YAMLs + ~10 test files + ~8 docs/skills mirrors); scope state-name greps to `autodev.yaml` so `spike-gate.yaml` / `rn-remediate.yaml` same-named states survive.
 
 ## Session Log
+- `/ll:reconcile-issue` - 2026-09-26T03:00:00 - `cd46eea7-272d-4c1a-b293-59b630f2e624.jsonl`
 - `/ll:refine-issue` - 2026-09-26T02:53:28 - `545abdda-09d4-4321-83bd-74f9c6ff9067.jsonl`
 - `/ll:confidence-check` - 2026-09-25T21:32:35 - `672e0da1-840e-4b60-a432-7b20e9ebbd01.jsonl`
 - `/ll:wire-issue` - 2026-09-25T20:46:48 - `2b4a714f-91fd-41aa-b2ac-63b11e2476ce.jsonl`
