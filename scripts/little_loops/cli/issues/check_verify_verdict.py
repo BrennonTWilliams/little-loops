@@ -19,6 +19,25 @@ if TYPE_CHECKING:
     from little_loops.config import BRConfig
 
 
+def classify_verify_verdict(verdict: object) -> str:
+    """Classify a persisted ``verify_verdict`` frontmatter value (FEAT-3598).
+
+    Pure helper shared by :func:`cmd_check_verify_verdict` and
+    ``next_obligation.select_next_obligation`` so the predicate lives in one place.
+
+    Returns:
+        ``"absent"`` for ``None``; ``"VALID"``, ``"EVIDENCE_UNVERIFIED"``,
+        ``"PROPOSAL_UNSOUND"`` or ``"DIRECTIVE_DRIFT"`` (case-insensitive match);
+        ``"other"`` for any other present value.
+    """
+    if verdict is None:
+        return "absent"
+    upper = str(verdict).upper()
+    if upper in ("VALID", "EVIDENCE_UNVERIFIED", "PROPOSAL_UNSOUND", "DIRECTIVE_DRIFT"):
+        return upper
+    return "other"
+
+
 def add_check_verify_verdict_parser(
     subs: argparse._SubParsersAction,
 ) -> argparse.ArgumentParser:
@@ -96,9 +115,10 @@ def cmd_check_verify_verdict(config: BRConfig, args: argparse.Namespace) -> int:
 
     fm = parse_frontmatter(path.read_text(), coerce_types=True)
     verdict = fm.get("verify_verdict")
+    verdict_class = classify_verify_verdict(verdict)
 
     if getattr(args, "evidence_unverified", False):
-        if verdict is not None and str(verdict).upper() == "EVIDENCE_UNVERIFIED":
+        if verdict_class == "EVIDENCE_UNVERIFIED":
             print(f"Verified: {args.issue_id} verify_verdict={verdict!r}")
             return 0
         print(
@@ -108,7 +128,7 @@ def cmd_check_verify_verdict(config: BRConfig, args: argparse.Namespace) -> int:
         return 1
 
     if getattr(args, "proposal_unsound", False):
-        if verdict is not None and str(verdict).upper() == "PROPOSAL_UNSOUND":
+        if verdict_class == "PROPOSAL_UNSOUND":
             print(f"Verified: {args.issue_id} verify_verdict={verdict!r}")
             return 0
         print(
@@ -118,7 +138,7 @@ def cmd_check_verify_verdict(config: BRConfig, args: argparse.Namespace) -> int:
         return 1
 
     if getattr(args, "directive_drift", False):
-        if verdict is not None and str(verdict).upper() == "DIRECTIVE_DRIFT":
+        if verdict_class == "DIRECTIVE_DRIFT":
             print(f"Verified: {args.issue_id} verify_verdict={verdict!r}")
             return 0
         print(
@@ -127,14 +147,14 @@ def cmd_check_verify_verdict(config: BRConfig, args: argparse.Namespace) -> int:
         )
         return 1
 
-    if verdict is None:
+    if verdict_class == "absent":
         print(
             f"VERIFY_VERDICT_ABSENT: {args.issue_id} — no verify_verdict in frontmatter",
             file=sys.stderr,
         )
         return 3
 
-    if str(verdict).upper() == "VALID":
+    if verdict_class == "VALID":
         print(f"Verified: {args.issue_id} verify_verdict={verdict!r}")
         return 0
 

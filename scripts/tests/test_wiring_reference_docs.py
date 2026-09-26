@@ -258,6 +258,10 @@ DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     ("docs/reference/API.md", "| `run-record` |", "ENH-3597"),
     ("docs/reference/API.md", "| `little_loops.run_record` |", "ENH-3597"),
     ("docs/guides/LOOPS_REFERENCE.md", "Typed run record (ENH-3597)", "ENH-3597"),
+    ("docs/reference/CLI.md", "#### `ll-issues next-obligation`", "FEAT-3598"),
+    ("docs/reference/CLI.md", "OBLIGATION[:sub_reason]", "FEAT-3598"),
+    ("docs/reference/API.md", "| `next-obligation` |", "FEAT-3598"),
+    ("docs/reference/API.md", "consumed by `ll-issues next-obligation`", "FEAT-3598"),
 ]
 
 

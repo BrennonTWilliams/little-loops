@@ -2014,6 +2014,7 @@ ll-issues next-action                            # Next refinement action needed
 ll-issues next-action --refine-cap 3             # Lower the refine-cap
 ll-issues next-action --ready-threshold 90       # Stricter readiness threshold
 ll-issues next-action --skip ENH-929,BUG-001     # Exclude specific issues from consideration
+ll-issues next-obligation ENH-929 --format token  # Unmet preparation obligation, e.g. VERIFY:absent
 ll-issues next-issue                             # Highest-confidence issue ID
 ll-issues next-issue --json                      # As JSON: {id, path, outcome_confidence, confidence_score, priority}
 ll-issues next-issue --path                      # File path only (for shell scripting)
@@ -2374,6 +2375,27 @@ ll-issues arm-proposal-revision BUG-3574
 ```
 
 ---
+
+#### `ll-issues next-obligation`
+
+Report the unmet preparation obligation for one issue (FEAT-3598). Deterministic: no LLM calls, no file writes. Composes the existing readiness gates in the order the `refine-to-ready-issue` loop routes on them, in three tiers:
+
+1. **Pre-score gates** (first unmet wins): `FORMAT`, `VERIFY`, `HEDGES`, `PLACEHOLDERS`, `ACCEPTANCE_CRITERIA`, `DESIGN`. `VERIFY` carries a `sub_reason`: `absent`, `EVIDENCE_UNVERIFIED`, `PROPOSAL_UNSOUND`, `DIRECTIVE_DRIFT` or `other`.
+2. **Scores** (`SCORES`): `absent`, `readiness_below`, or (via tier 3) `outcome_below`. Passing scores return `NONE` even when `decision_needed` or spike flags are set.
+3. **Low-outcome diagnosis**, only when readiness passes and outcome is below threshold: `DECISION`, `PROOF` (`sub_reason` = `absent`/`stale`/`refuted`), `ARTIFACTS`; otherwise `SCORES:outcome_below`.
+
+| Flag | Description |
+|------|-------------|
+| `--format {text,json,token}` | `json` emits `{issue_id, obligation, sub_reason, reason, evidence, skipped, probe_errors}`; `token` prints only `OBLIGATION[:sub_reason]` (e.g. `VERIFY:PROPOSAL_UNSOUND`, `NONE`) for an FSM `route:` table |
+| `--skip OBLIGATION` | Treat an obligation as met (repeatable). The selector is stateless; the caller's budget state decides what to tolerate |
+| `--readiness-threshold N` / `--outcome-threshold N` | Override the thresholds (defaults 85/65, or `commands.confidence_gate`) |
+| `--honor-waiver` | Count a waived outcome shortfall (`outcome_gate_waived`) as met |
+
+Exit codes: 0 on any successful assessment (including `NONE`); 2 when the issue can't be resolved or a fail-closed probe (`VERIFY`, `SCORES`) errors. A probe error on any other obligation is listed in `probe_errors` and that obligation counts as met.
+
+`VERIFY` reflects the last *persisted* `verify_verdict`, which may be stale outside a loop run (the loop clears it before every verify).
+
+**Known PROOF departure from loop parity:** `PROOF` delegates to `assess_proof`, so it also reports `absent` for `spike_attempted: true` without `spike_completed`, and folds in a `structured_proof` gate verdict (`check-gate`). The loop's `check_spike_needed` does neither.
 
 #### `ll-issues run-record`
 

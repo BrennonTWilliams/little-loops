@@ -92,6 +92,10 @@ def main_issues() -> int:
         from little_loops.cli.issues.next_id import cmd_next_id
         from little_loops.cli.issues.next_issue import cmd_next_issue
         from little_loops.cli.issues.next_issues import cmd_next_issues
+        from little_loops.cli.issues.next_obligation import (
+            add_next_obligation_parser,
+            cmd_next_obligation,
+        )
         from little_loops.cli.issues.normalize import (
             add_normalize_parser,
             cmd_normalize,
@@ -151,6 +155,7 @@ Sub-commands:
   refine-status  Show refinement depth table sorted by commands touched
   append-log     Append a session log entry to an issue file
   next-action    Print the next refinement action for the highest-priority active issue
+  next-obligation  Print the unmet preparation obligation for an issue (FORMAT/VERIFY/.../SCORES/NONE)
   next-issue     Print the issue ID ranked highest by outcome confidence and readiness
   next-issues    Print all active issues in ranked order (alias: nxs)
   clusters       Visualize issue dependency clusters as box diagrams
@@ -791,6 +796,7 @@ Examples:
         add_rearm_spike_parser(subs)
         add_arm_proposal_revision_parser(subs)
         add_run_record_parser(subs)
+        add_next_obligation_parser(subs)
 
         cr = subs.add_parser(
             "check-readiness",
@@ -1100,6 +1106,8 @@ Examples:
             return cmd_check_unresolved_decisions(config, args)
         if args.command == "check-acceptance-criteria":
             return cmd_check_acceptance_criteria(config, args)
+        if args.command == "next-obligation":
+            return cmd_next_obligation(config, args)
         if args.command == "check-verify-verdict":
             return cmd_check_verify_verdict(config, args)
         if args.command == "clear-verify-verdict":

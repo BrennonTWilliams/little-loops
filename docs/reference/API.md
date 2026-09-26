@@ -4637,6 +4637,7 @@ Entry point for `ll-issues` command. Issue management and visualization utilitie
 | `impact-effort` | Display impact vs effort matrix for active issues |
 | `refine-status` | Refinement depth table sorted by commands touched (`--type`, `--format json`) |
 | `next-action` | Next refinement action needed across all active issues (for FSM loop use) |
+| `next-obligation` | Unmet preparation obligation for one issue (`--format text\|json\|token`, `--skip`) — FEAT-3598 |
 | `next-issue` | Single highest-confidence issue ID (alias: `nx`) |
 | `next-issues` | All active issues in ranked order (alias: `nxs`); optional count argument |
 | `append-log` | Append a session log entry to an issue file |
@@ -7469,7 +7470,7 @@ proven_version: "0.42.1"
 | `gate.is_record_stale` | `version_drift OR age > threshold` staleness predicate — ENH-3125 |
 | `gate.describe_staleness` | Short reason a record is stale (version transition or age), or `None` if fresh — ENH-3125 |
 | `resolve_learning_targets` | Return targets for an issue (field-first, JIT extraction fallback) — ENH-2319 |
-| `assess_proof` | Single-owner classification of an issue's learning proof (learning-test targets + spike proof) into a `ProofVerdict`; owns the attempt-budget policy — ENH-3602 |
+| `assess_proof` | Single-owner classification of an issue's learning proof (learning-test targets + spike proof) into a `ProofVerdict`; owns the attempt-budget policy; consumed by `ll-issues next-obligation` for `PROOF` — ENH-3602, FEAT-3598 |
 | `run_learning_gate_for_issue` | Determine the learning-gate verdict for an issue and return `"passed"`, `"blocked"`, `"impl_failed"`, or `"skipped"` — ENH-2319, BUG-2833, ENH-2834; `assess_proof` pre-check short-circuits `"passed"` on `proven`/`not_required` — ENH-3602 |
 
 ### write_record

@@ -3,10 +3,11 @@ id: FEAT-3598
 type: FEAT
 title: Add ll-issues next-obligation deterministic preparation selector
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-25'
 captured_at: '2026-09-25T18:51:49Z'
+completed_at: '2026-09-26T02:44:13Z'
 blocks:
 - ENH-3599
 - ENH-3601
@@ -561,7 +562,7 @@ Decomposed from ENH-3577: Consolidate autodev issue preparation into a single co
 
 ## Status
 
-**Open** | Created: 2026-09-25 | Priority: P3
+**Done** | Created: 2026-09-25 | Priority: P3
 
 ---
 
@@ -593,6 +594,8 @@ _Added by `/ll:confidence-check` on 2026-09-26_
 - `stale_file_ref` on `.claude/workflows/refine-to-ready.js` is a git-tracking artifact (file exists locally, gitignored) — deferred ENH-3604 scope, no action here.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-26T02:44:13 - `b373454c-6fa5-4700-af11-e9091af11776.jsonl`
+- `/ll:ready-issue` - 2026-09-26T02:28:01 - `0e3744ad-7dc2-4237-b14c-c423bce88397.jsonl`
 - `/ll:confidence-check` - 2026-09-26T02:19:56 - `af650890-b749-4228-9253-ada2de60ad41.jsonl`
 - `/ll:verify-issues` - 2026-09-26T01:58:13 - `299955d0-6fe7-4f63-8308-3ba4f99868ac.jsonl`
 - `/ll:wire-issue` - 2026-09-26T00:53:30 - `3a641232-a30c-4668-9080-a790d40c330b.jsonl`
@@ -601,3 +604,7 @@ _Added by `/ll:confidence-check` on 2026-09-26_
 - `/ll:wire-issue` - 2026-09-25T20:46:48 - `2b4a714f-91fd-41aa-b2ac-63b11e2476ce.jsonl`
 - `/ll:refine-issue` - 2026-09-25T19:42:22 - `2f63920a-850e-4ac5-bf34-e7b8eb47e2e0.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-09-25T19:09:20 - `dcfdf31c-be65-47ce-9e6e-5b65d63239f2.jsonl`
+
+## Resolution
+
+Implemented `ll-issues next-obligation` (`cli/issues/next_obligation.py`), extracted `classify_verify_verdict` from `check_verify_verdict.py`, documented in CLI.md/API.md (pinned in `test_wiring_reference_docs.py`), and added `test_ll_issues_next_obligation.py` (42 tests incl. YAML-walking order parity). Loop adoption and `next-action` delegation remain deferred to ENH-3604.
