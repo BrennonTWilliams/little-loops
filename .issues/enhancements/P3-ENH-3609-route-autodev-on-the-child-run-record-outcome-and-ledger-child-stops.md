@@ -111,7 +111,16 @@ record's `legacy_class` instead of a grep.
   - the failure router has no edge to `check_decision_after_refine` / `check_passed` /
     `detect_children`;
   - rewrite the skip-ledger tests that pin `skip_inflight`'s greps to pin
-    `ledger_child_stop` instead.
+    `ledger_child_stop` instead;
+  - update `test_copy_broke_down_routes_to_check_decision_after_refine` (~line 8406, pins
+    `copy_broke_down.next == check_decision_after_refine`) to expect `route_refine_success`;
+  - update the ENH-3607 route-table assertions at ~lines 6816-6826 (`route_refine_outcome`
+    default-only table) for the extended table.
+- `scripts/tests/test_run_record.py` (~lines 866-868): ENH-3607 assertions on the
+  `route_refine_outcome` table — update for the extended table.
+- `scripts/tests/test_autodev_loop.py:474`
+  (`test_refine_current_routes_through_counter_before_copy_broke_down`): still valid
+  (`count_repair_cycle_refine.next` stays `copy_broke_down`); confirm it passes unchanged.
 - New real-FSM tests:
   - a child ending in `record_decision_unresolved` is ledgered once (in the marker
     file) and never as `refine_failed`;
@@ -178,7 +187,32 @@ child). ENH-3599 holds the original design rationale.
 - [ ] `skip_inflight` no longer greps any marker file; `finalize_done` output is unchanged for
   every existing ledger fixture
 - [ ] No state is removed from `autodev.yaml`; the full suite passes
+- [ ] Existing tests pinning the old routing (`test_builtin_loops.py` copy_broke_down /
+  route_refine_outcome assertions, `test_run_record.py` route-table assertions) are updated
+  to the new topology
+
+## Verification Notes
+
+Verified 2026-09-25 (graph: provider=`codegraph` freshness=`fresh`; not needed for verdict).
+
+Verdict at time of check: **DIRECTIVE_DRIFT** (the Tests / Acceptance Criteria corrections
+below were applied in the same pass, so the issue as it now reads is up to date — this
+section is a record of what was wrong and fixed, not an outstanding action item)
+
+- Claims about current state hold: `route_refine_outcome` (autodev.yaml:554) has only the
+  `rate_limited` route + `_`/`_error`; `skip_inflight` (570) has the three marker greps
+  (604/611/617); `copy_broke_down` (662) → `check_decision_after_refine`; `check_passed.on_error`
+  → `detect_children` (709); `RUN_RECORD_TOKENS` matches the 12 tokens listed; child writes
+  run records with `legacy_class` `decision_unresolved`/`spike_inconclusive`/`proposal_unsound`/
+  `gate_unmet`/`infra`. ENH-3607 (blocker) is done. No required decision rules; no unverifiable
+  evidence quotes.
+- Fixed: Integration Map / ACs omitted existing tests that pin the old routing
+  (`test_builtin_loops.py` ~6816-6826 and ~8406, `test_run_record.py` ~866-868).
 
 ## Status
 
 **Open** | Created: 2026-09-26 | Priority: P3
+
+
+## Session Log
+- `/ll:verify-issues` - 2026-09-26T04:42:56 - `4d8f5d10-1720-42e8-a014-431353de1c43.jsonl`
