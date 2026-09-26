@@ -17,9 +17,9 @@ relates_to:
 - ENH-3602
 blocked_by:
 - ENH-3602
-confidence_score: 60
-outcome_confidence: 71
-score_complexity: 10
+confidence_score: 85
+outcome_confidence: 75
+score_complexity: 14
 score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 18
@@ -580,9 +580,20 @@ _Added by `/ll:confidence-check` on 2026-09-25_
 - ~~blocked_by ENH-3602 (open)~~ **Resolved:** ENH-3602 is done and `assess_proof` exists.
 - Advisory claim gap (`stale_cli_flag`): `ll-issues next-obligation` does not exist yet. It is this issue's own deliverable, so implementing it closes the gap.
 - ~~GATE→PROOF fold vs parity~~ **Resolved (review 2026-09-25):** PROOF delegates to `assess_proof`. The check-gate fold and the `spike_attempted` difference are recorded as known departures from parity, excluded from the parity fixtures and pinned by their own tests.
-- **Scores are stale.** The 60/71 scores predate the 2026-09-25 rescope; re-run `/ll:confidence-check`.
+- ~~**Scores are stale.** The 60/71 scores predate the 2026-09-25 rescope; re-run `/ll:confidence-check`.~~ **Resolved:** re-scored 2026-09-26 (block below).
+
+_Added by `/ll:confidence-check` on 2026-09-26_
+
+**Readiness Score**: 85/100 → PROCEED WITH CAUTION (meets `readiness_threshold: 85`)
+**Outcome Confidence**: 75/100 → MODERATE (≥ `outcome_threshold: 65`)
+
+### Concerns
+- Criterion 4 is capped at 10 by the advisory `stale_cli_flag` gap (`ll-issues next-obligation` does not resolve) — expected, since the subcommand is this issue's own deliverable; the gap closes on implementation.
+- The verify-verdict classifier extraction must stay behavior-neutral: `test_ll_issues_check_verify_verdict.py` passing unchanged is the proof; drift there invalidates the ordering-parity claim.
+- `stale_file_ref` on `.claude/workflows/refine-to-ready.js` is a git-tracking artifact (file exists locally, gitignored) — deferred ENH-3604 scope, no action here.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-26T02:19:56 - `af650890-b749-4228-9253-ada2de60ad41.jsonl`
 - `/ll:verify-issues` - 2026-09-26T01:58:13 - `299955d0-6fe7-4f63-8308-3ba4f99868ac.jsonl`
 - `/ll:wire-issue` - 2026-09-26T00:53:30 - `3a641232-a30c-4668-9080-a790d40c330b.jsonl`
 - `/ll:refine-issue` - 2026-09-26T00:21:08 - `29654aaa-6763-4b73-821b-31710e26b186.jsonl`
