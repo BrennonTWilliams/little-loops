@@ -1,0 +1,12 @@
+{
+  "id": "d9ee47fa-1c8f-4589-96eb-f8480a883324",
+  "type": "decision",
+  "timestamp": "2026-09-26T06:01:33Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Matches one-ledger-per-bucket bare-ID convention; least new parsing",
+  "rule": "Option B: separate autodev-cancelled.txt bucket ledger",
+  "scope": "issue",
+  "alternatives_rejected": "Option A: status sidecar",
+  "issue": "ENH-3613"
+}

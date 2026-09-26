@@ -8,7 +8,7 @@ discovered_by: ll-issues-create
 discovered_date: '2026-09-26'
 captured_at: '2026-09-26T05:02:45Z'
 parent: EPIC-3565
-decision_needed: true
+decision_needed: false
 blocks:
 - FEAT-3573
 - ENH-3600
@@ -62,7 +62,22 @@ _Added by `/ll:refine-issue` — 2026-09-26 — based on codebase analysis:_
 
 **Option B**: Separate bare-ID `autodev-cancelled.txt` bucket ledger (init-truncated, counted via the `grep -c` idiom); `closed_cancelled` is its count and `closed_implemented` is `closed` minus that count. Matches the dominant bare-ID bucket convention and keeps `grep -qxF` usable, but the sum rule holds by construction only if cancelled IDs are always also in `autodev-passed.txt`.
 
+> **Selected:** Option B — one-ledger-per-bucket convention with the least new parsing; bare-ID format keeps `grep -qxF`/`sort -u` readers intact.
+
 **Recommended**: Option B — fits the existing one-ledger-per-bucket convention and the count idiom with the least new parsing; the sum rule must still be asserted by tests, including the resumed-run (ledger-absent) case.
+
+### Decision Rationale
+
+**Selected option:** Option B — separate bare-ID `autodev-cancelled.txt` bucket ledger.
+
+**Reasoning:** Bucket ledgers in `finalize_done` are one bare-ID file per bucket, counted with the `grep -c '[^[:space:]]'` idiom. Option B adds one `echo` in the `cancelled` case arm and one count; Option A introduces a two-column sidecar that needs regex-anchored greps and its own `sort -u` dedupe handling. To keep `closed_implemented + closed_cancelled == closed` by construction, derive `closed_cancelled` from the sorted-unique cancelled IDs that are also present in the deduped `autodev-passed.txt`, and `closed_implemented` as `closed` minus that count.
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| A — status sidecar | 2 | 1 | 2 | 2 | 7/12 |
+| B — cancelled ledger | 3 | 2 | 3 | 2 | 10/12 |
+
+**Key evidence:** `finalize_done` promotion `case` arm (`done|completed|cancelled)`) writes bare IDs; existing bucket ledgers (`-staged`, `-gate-blocked`, `-decision-unresolved`, `-proof-gate-infra`) are bare-ID; `auto-refine-and-implement.yaml` `finalize` requires bare sortable IDs in `autodev-passed.txt`. Tests must cover all-implemented, all-cancelled, mixed, and ledger-absent (resumed-run) fixtures.
 
 ## Integration Map
 
@@ -107,8 +122,8 @@ _Added by `/ll:refine-issue` — 2026-09-26 — based on codebase analysis:_
 
 ## Implementation Steps
 
-1. In the promotion loop, write `ID status` to the status sidecar next to the bare-ID `autodev-passed.txt` append.
-2. Compute `CLOSED_IMPLEMENTED` and `CLOSED_CANCELLED` from the sidecar, and add them to the printf and the human summary.
+1. In the promotion loop, append the bare ID to `autodev-cancelled.txt` (truncated at init) when the status is `cancelled`, next to the bare-ID `autodev-passed.txt` append.
+2. Compute `CLOSED_CANCELLED` from the deduped `autodev-cancelled.txt` IDs that are also in `autodev-passed.txt` (`grep -c` idiom, absent ledger → 0) and `CLOSED_IMPLEMENTED` as `PASSED_COUNT` minus that, and add both to the printf and the human summary.
 3. Add tests; update `LOOPS_REFERENCE.md` and `audit-loop-run` docs.
 
 ### Codebase Research Findings
@@ -129,7 +144,7 @@ _Added by `/ll:refine-issue` — 2026-09-26 — based on codebase analysis:_
 ### Types
 
 - `summary.json` (autodev `finalize_done`) gains two integer keys: `closed_implemented` and `closed_cancelled`. The rule `closed_implemented + closed_cancelled == closed` always holds.
-- Status sidecar `${run_dir}/autodev-closed-status.txt`: `ID status` lines, written next to the bare-ID `autodev-passed.txt`.
+- Cancelled bucket ledger `${run_dir}/autodev-cancelled.txt`: bare IDs, init-truncated, written next to the bare-ID `autodev-passed.txt` (Option B selected; cancelled IDs are always also in `autodev-passed.txt`).
 
 ### Signatures
 
@@ -137,7 +152,7 @@ _Added by `/ll:refine-issue` — 2026-09-26 — based on codebase analysis:_
 
 ### Call Path
 
-`autodev.yaml:finalize_done` (:3041) → per staged ID `ll-issues show --json` (`cmd_show`, `show.py:786`) → lowercased status → `done|completed` counts as implemented, `cancelled` counts as cancelled → `autodev-passed.txt` (bare ID) + `autodev-closed-status.txt` → counts → `summary.json` printf (:3243).
+`autodev.yaml:finalize_done` (:3041) → per staged ID `ll-issues show --json` (`cmd_show`, `show.py:786`) → lowercased status → `done|completed` counts as implemented, `cancelled` counts as cancelled → `autodev-passed.txt` (bare ID) + `autodev-cancelled.txt` (cancelled only) → counts → `summary.json` printf (:3243).
 
 ### Decision Rules
 
@@ -165,4 +180,5 @@ _Added by `/ll:refine-issue` — 2026-09-26 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:decide-issue` - 2026-09-26T06:01:33 - `95a3ad40-ecc6-4e5c-befd-9be7a282a332.jsonl`
 - `/ll:refine-issue` - 2026-09-26T05:58:48 - `e3c050f9-1131-496e-87dd-53db8a85423f.jsonl`
