@@ -246,6 +246,8 @@ _Added by `/ll:refine-issue` — 2026-09-26 — based on codebase analysis:_
 - [ ] The listed spike/decision marker files are no longer read or written by autodev
 - [ ] The only route into `implement_current` is `outcome == ready` (read from the run record; a missing record routes as infra/legacy, never `ready`) → fail-closed `check_proof_defer_or_implement`; `TestProofGateFailClosed` still asserts `implement_current`'s predecessors are exactly `{"check_proof_defer_or_implement"}` with no `on_error`/`on_cannot_judge` edge, and its `check_proof_gate_before_implement.on_error` assertion is rewritten deliberately for the surviving first-stage proof classification
 - [ ] `spike-runs-<ID>` persists across autodev re-entries into the child (real-FSM test: the spike budget does not reset)
+- [ ] The child's `run_spike` (`refine-to-ready-issue.yaml`) gains `with_rate_limit_handling`, `rate_limit_max_wait_seconds: 14400` and a rate-limit-exhausted route before autodev's `run_spike` is deleted (real-FSM test: a rate-limited spike still waits rather than failing)
+- [ ] A run-record read path exists (a `ll-issues run-record read` subcommand or a shell JSON read) and autodev routes on it; a missing, unparsable or writer/ID-mismatched record routes as infra/legacy, never `ready` (unit test on the read path plus a structural test on the routing state)
 - [ ] `auto-refine-and-implement` and `oracles/resolve-decision` behavior unchanged
 - [ ] `test_autodev_scores_freshness.py` passes unchanged; tests that pinned removed autodev states/markers are rewritten against the child (not deleted); refuted/inconclusive spike routing (BUG-3593) still holds end to end
 
@@ -280,7 +282,18 @@ _Added by `/ll:confidence-check` on 2026-09-26_
 - broad enumeration across ~20 files (2 loop YAMLs + ~10 test files + ~8 docs/skills mirrors); scope state-name greps to `autodev.yaml` so `spike-gate.yaml` / `rn-remediate.yaml` same-named states survive.
 - wide blast radius — autodev is consumed by `scan-and-implement`, `auto-refine-and-implement`, `oracles/resolve-decision` and `rn-remediate` parity tests; per-test keep-vs-rewrite calls are deferred to implementation time.
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` — 2026-09-26 (graph: provider=`codegraph`, freshness=`fresh`; anchors confirmed by direct grep)._
+
+Verdict at time of check: **DIRECTIVE_DRIFT** (correction below applied in the same pass, so the issue as it now reads is up to date — this section is a record of what was wrong and fixed, not an outstanding action item)
+
+- Current-state claims hold: autodev anchors (`check_passed:667`, `check_proof_gate_before_implement:691`, `check_proof_defer_or_implement:744`, `implement_current:1134`, `check_spike_needed:1668`, `finalize_done:3021`), child anchors (`check_spike_needed:1003`, `run_spike:1039`, `classify_terminal:1575`), 106-state topology, no `with_rate_limit_handling` on the child's `run_spike`, and a `write`-only `ll-issues run-record`. `ll-verify-evidence` clean; no required decision rules.
+- Proposal-vs-code check (B6): the Integration Map lists two integration points with no Acceptance Criterion — the child gaining rate-limit handling for `run_spike`, and the run-record read path. Both ACs were added. The selected mechanism stands.
+- Minor: `check_proof_gate_before_implement`'s `on_error` sits at `autodev.yaml:742`, not `:728` as the earlier research finding says (the 2026-09-26 anchor list supersedes it).
+
 ## Session Log
+- `/ll:verify-issues` - 2026-09-26T03:05:46 - `a74c849e-e5d9-4651-a6d1-086b67be4393.jsonl`
 - `/ll:decide-issue` - 2026-09-26T03:03:21 - `adf3bcb6-785a-49c2-bcb0-e4df8982be33.jsonl`
 - `/ll:confidence-check` - 2026-09-26T03:02:24 - `96fffa1b-0266-4f11-b9f9-a1a22390e086.jsonl`
 - `/ll:reconcile-issue` - 2026-09-26T03:00:00 - `cd46eea7-272d-4c1a-b293-59b630f2e624.jsonl`
