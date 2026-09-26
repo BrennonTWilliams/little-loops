@@ -84,16 +84,25 @@ After an implemented closure, run a deterministic quality gate (extended
 
 ### Design Decisions (review 2026-09-26)
 
-These close the gaps a pre-implementation review found. They are directive.
+These close the gaps a pre-implementation review found. They are directive. A second
+review the same day (after ENH-3609 landed) added: verdict-from-route, killed-stage
+failure, prepatch-check interaction, `quality_gate_infra`, dirty-tree rule, the
+`Quality-failed` summary line, parent accounting, `commands.json` quoting, and the
+timeout-parameter correction.
 
 - **Format stage is check-only, and it uses a new key.** `format_cmd` changes files and
   carries its own path argument (`ruff format scripts/`), so it cannot be scoped by
   adding files. Add a new, unset-by-default config key `project.format_check_cmd` with a `{files}`
-  placeholder, for example `ruff format --check {files}`. The oracle replaces `{files}`
-  with the shell-quoted changed-file list. When the key is unset, the stage writes
+  placeholder, for example `ruff format --check --force-exclude {files}`
+  (`--force-exclude` makes ruff honor its excludes for explicitly passed paths). The
+  oracle replaces `{files}` with the shell-quoted changed-file list, read directly from
+  `changed_files_path` — the file list never goes through `commands.json` (see
+  *commands.json quoting* below). When the key is unset, the stage writes
   `SKIP format_check_cmd=null`. `format_cmd` stays unread at runtime.
-- **Changed-file set.** `git diff --name-only --diff-filter=d <base>..<head>` plus
-  uncommitted changes. This drops deleted files. Then filter by the unset-by-default
+- **Changed-file set.** `git diff --name-only --diff-filter=d <base>..<head>`, plus
+  uncommitted tracked changes (`git diff --name-only --diff-filter=d HEAD`), plus
+  untracked files (`git ls-files --others --exclude-standard`; plain `git diff` omits
+  them). This drops deleted files. Then filter by the unset-by-default
   `project.format_check_extensions` (for example `[".py", ".pyi"]`). If the key is unset,
   pass every file. If the filtered set is empty, the format stage is SKIP. A formatter
   given a non-source file explicitly (such as a `.md` file) can fail, so the extension
@@ -106,33 +115,107 @@ These close the gaps a pre-implementation review found. They are directive.
 - **Base revision.** `implement_current` writes `git rev-parse HEAD` to
   `${context.run_dir}/quality/<ID>.base` before it runs `ll-auto`. This is a line added
   to the existing action, not a new state, so the routing into `implement_current` does
-  not change.
+  not change. `ll-auto` also stamps a dequeue `base_sha` per issue in the history DB
+  (`issue_manager.py:780`, read by `read_base_sha` at `history_reader/runs.py:181`);
+  the two should agree. `record_quality_evidence` records both when they differ, but the
+  `.base` file is authoritative (it needs no DB and survives a missing stamp).
 - **Placement.** `verify_impl_closed.on_yes` → `route_quality_gate` → `run_quality_gate`
-  (`loop: oracles/code-run-gate`) → `record_quality_evidence` → `dequeue_next`.
+  (`loop: oracles/code-run-gate`) → per-route marker state → `record_quality_evidence` →
+  `dequeue_next`.
   - `route_quality_gate` sends `cancelled` closures straight to `dequeue_next`, because
     nothing was implemented. Every other closure goes to `run_quality_gate`, after the
     state computes the changed-file set.
+  - `run_quality_gate` routes `on_success` → `mark_quality_pass`, `on_failure` →
+    `mark_quality_fail`, `on_error` → `mark_quality_infra`. Each marker writes its route
+    (`pass|fail|infra`) to `${context.run_dir}/quality/<ID>.route` and chains to
+    `record_quality_evidence`. **The verdict comes from the sub-loop route, never from
+    the oracle's `subloop_outcome_<ID>.txt`.** `resolve_commands` pre-writes `GATE_PASS`
+    into that file (`code-run-gate.yaml:196`), and any path that reaches the oracle's
+    `failed` terminal without running `aggregate` (see *Prepatch check* below) leaves the
+    placeholder in place. (The implementer may fold the three markers into one fragment;
+    the contract is "verdict from route".)
   - `verify_impl_closed` has already cleared `autodev-inflight`, so the new states sit
     outside the inflight-clearing chain.
   - `implement_current.on_yes → verify_impl_closed` stays as it is.
-- **Oracle parameters from autodev.** Pass `min_pass_rate: 1.0`, because the oracle
-  default of 0.95 would credit a run with failing tests. Pass `test_cmd`, `lint_cmd` and
-  `typecheck_cmd` resolved with `ll-config get`, which honors `.ll/ll.local.md`. The
-  oracle's own `resolve_commands` reads only `.ll/ll-config.json`. Also pass `issue_id`,
-  `run_dir: ${context.run_dir}/quality/<ID>/` and `changed_files_path`.
+- **Oracle parameters from autodev.** Pass `min_pass_rate: 1.0`. This is
+  belt-and-braces, not load-bearing: `aggregate` already fails on any non-zero test exit
+  (`code-run-gate.yaml:442`), and `pass_rate` only departs from the exit code when a
+  `pytest.json` exists in the oracle run dir, which the configured `test_cmd` never
+  writes. Pass `test_cmd`, `lint_cmd`, `typecheck_cmd` and `format_check_cmd`, all
+  resolved with `ll-config get` (honors `.ll/ll.local.md`; `ll-config get project.type_cmd`
+  works today). The oracle's own `resolve_commands` reads only `.ll/ll-config.json`.
+  Also pass `issue_id`, `run_dir: ${context.run_dir}/quality/<ID>/` and
+  `changed_files_path`.
+- **commands.json quoting.** `resolve_commands` builds `commands.json` with an unescaped
+  heredoc (`code-run-gate.yaml:190-192`). A command containing `"` produces invalid JSON,
+  each `run_*` state's `json.load` fails, the command reads as empty, and the stage
+  SKIPs silently. Caller overrides are also interpolated into a double-quoted shell
+  string (:172-187), so `"`, `$` or backticks in a command break the same way. v1
+  keeps the changed-file list out of this path (read from `changed_files_path`), and
+  `run_format_check` writes its SKIP/exit sidecar like the others. Rewriting
+  `commands.json` via `json.dumps` is recommended in the same change if cheap; otherwise
+  document the no-`"` constraint in `CONFIGURATION.md` next to `format_check_cmd`.
+- **Killed stage is a failure, not a pass.** Every `run_*` state appends `exit_code=N`
+  only after its command returns (e.g. `run_test` :264-281). When the FSM kills a state
+  at its `timeout:` (or an xdist controller wedges until the timeout), the sidecar holds
+  partial output with no `exit_code=` line, and `aggregate` (:434-464) — which fails
+  only on `^exit_code=[1-9]` — returns `GATE_PASS`. Fix in `aggregate`: a sidecar whose
+  first line is not `SKIP` and that has no `exit_code=` line sets `ANY_FAIL=true`. This
+  changes behavior for existing callers only in the killed-stage case, where the current
+  result is a latent false pass; that change is intended. `record_quality_evidence`
+  reports such a stage as `killed`.
+- **Prepatch check now fires on the implementation diff.** `run_test` carries
+  `prepatch_check: fail`. Because the gate passes `issue_id`, the executor reads
+  `ll-auto`'s dequeue `base_sha` stamp, computes the implementation diff, and re-runs new
+  or modified tests in a worktree at the base (`executor.py:1960-2003`). If a new test
+  also passes on the base (`flagged`), the executor routes the oracle straight to its
+  `failed` terminal (`executor.py:2047-2053`), skipping typecheck, lint and `aggregate`.
+  Accepted for v1: a closure whose new tests prove nothing does not earn credit. The
+  route is `fail`, so it lands as `quality_gate_failed`; `record_quality_evidence`
+  reads `quality/<ID>/prepatch_evidence_<ID>.json` when present and records
+  `prepatch: flagged|clean|skipped` so the operator can tell this cause from a red suite.
 - **Evidence record.** `record_quality_evidence` writes `${context.run_dir}/quality/<ID>.json`
-  with these fields: `issue_id`, `base_sha`, `head_sha`, `dirty`, `changed_files`, a
-  per-stage outcome (`format_check`, `lint`, `typecheck`, `test`, each
-  `pass|fail|skip`), and `verdict` (`GATE_PASS|GATE_FAILED|GATE_SKIP`). `head_sha` is
-  recorded at gate time. `finalize_done` must not compare against the live HEAD, because
-  later queue items move it.
+  with these fields: `issue_id`, `base_sha`, `history_base_sha` (only when it differs),
+  `head_sha`, `dirty`, `changed_files`, a per-stage outcome (`format_check`, `lint`,
+  `typecheck`, `test`, each `pass|fail|skip|killed|absent`), `prepatch`
+  (`flagged|clean|skipped|absent`), `route` (`pass|fail|infra`) and `verdict`
+  (`GATE_PASS|GATE_FAILED|GATE_SKIP|GATE_INFRA`). The verdict is derived from `route`
+  (`fail` → `GATE_FAILED`, `infra` → `GATE_INFRA`; `pass` → `GATE_SKIP` when every stage
+  is `skip`, else `GATE_PASS`). Stage outcomes are informational. `head_sha` is recorded
+  at gate time. `finalize_done` must not compare against the live HEAD, because later
+  queue items move it.
+- **Dirty tree.** If tracked or untracked changes remain after `ll-auto`, the gate tested
+  the working tree, not `head_sha`. v1 rule: a dirty tree does not block credit (the
+  uncommitted files are in the changed set and were checked), but the record carries
+  `dirty: true` and the summary line appends `(dirty)` for that ID. Uncommitted leftovers
+  after manage-issue Phase 5 are a separate defect and must not be hidden.
 - **Failure path (no repair in v1).** On `GATE_FAILED`, do not change the issue: it stays
   `done` and committed. Append `ID  quality_gate_failed` to `autodev-unverified.txt`,
-  using the reasoned-line idiom from BUG-3390. The ID then counts in `not_closed` and
-  goes through the existing verdict ladder (partial or phantom). `summary.json` gains
-  `quality_failed`, counted from those reason lines. That is the same filter idiom as
-  `notstarted_`, and it requires ENH-3613's key shape to have landed. Automatic repair/retest is a
-  follow-up, not part of this issue.
+  using the reasoned-line idiom from BUG-3390. On `GATE_INFRA` (sub-loop `on_error`:
+  oracle crash or context-resolution failure, mirroring `rn-remediate`
+  `record_gate_error`), append `ID  quality_gate_infra` instead. Both count in
+  `not_closed` and go through the existing verdict ladder (partial or phantom).
+  `summary.json` gains `quality_failed` (count of `quality_gate_failed` lines) and
+  `quality_gate_infra` (count of `quality_gate_infra` lines). That is the same filter
+  idiom as `notstarted_`, and it requires ENH-3613's key shape to have landed. Automatic
+  repair/retest is a follow-up, not part of this issue.
+- **Summary line and rerun behavior.** A quality-failed issue stays `done`, so a later
+  autodev run skips it at pre-flight as `already_done` — rerunning will **not** re-gate
+  it. The generic `Unverified` hint ("re-queue to retry", `autodev.yaml:3274`) is wrong
+  for these IDs. `finalize_done` excludes `quality_gate_*` lines from the `Unverified`
+  display list (they still count in `UNVERIFIED_COUNT` / `not_closed`) and prints
+  `Quality-failed (N): ID@<short head_sha>[ (dirty)], ...  (marked done but gate failed —
+  review these commits; rerun will not re-gate)` and, when non-zero,
+  `Quality-gate-infra [infra] (N): ...  (gate crashed — re-run the oracle manually)`.
+- **Parent accounting (`auto-refine-and-implement.yaml` `finalize`).** The parent builds
+  `CLOSED` from on-disk status diffs (:1027-1029) and `NOT_CLOSED` as
+  `autodev-passed − closed-now-union` (:1088-1095). A quality-failed issue is `done` on
+  disk and absent from `autodev-passed.txt`, so today it would count as **CLOSED** and
+  the parent could report success. Required edit: read `ID  quality_gate_(failed|infra)`
+  lines from `$RUN_DIR/autodev-unverified.txt`, remove those IDs from
+  `$P-closed-union.txt` before counting `CLOSED`, add them to `NOT_CLOSED`, and emit a
+  `quality_failed` key in the parent `summary.json`. The parent verdict then follows its
+  existing `NOT_CLOSED > 0` branch (:1245).
 - **Promotion rule.** In `finalize_done`, a `done|completed` ID is promoted only if
   `quality/<ID>.json` exists with verdict `GATE_PASS` or `GATE_SKIP`. A `cancelled` ID is
   promoted on status alone. A `done` ID with no evidence record goes to
@@ -141,21 +224,29 @@ These close the gaps a pre-implementation review found. They are directive.
   `false`, closure credit falls back to the old status-only check. Use it for repos
   whose base branch is red: in v1 the gate judges absolute pass/fail, so failures that
   already exist on the base fail every issue in the queue. The run summary prints a
-  one-line hint when every gated issue fails.
+  one-line hint when every gated issue fails. This is a live risk in this repo: recent
+  full-suite runs on `main` show 1 and 12 failures (`.loops/tmp/scratch/` logs,
+  2026-09-26), so with the gate on, a single red or flaky test fails every issue in the
+  run. v1 keeps absolute pass/fail; baseline comparison stays a follow-up (Scope
+  Boundaries), and the hint must name `quality_gate: false` as the workaround.
 - **Suite ownership.** v1 accepts that the suite runs twice: manage-issue Phase 4 still
   runs it, and the gate runs it again. Phase 4 is the only verification on the
   `ll-auto`, `ll-parallel` and `ll-sprint` paths, and the implementing agent needs test
   feedback, so removing it would regress those paths. An autodev-only opt-out (an env
   flag that tells Phase 4 to run only targeted tests) is a follow-up.
-- **Timeouts.** `run_test` has `timeout: 600` and the oracle has `timeout: 1800`. Before
-  wiring, measure this repo's `test_cmd` wall-clock, plus the `prepatch_check: fail`
-  worktree fork on `run_test`. If it exceeds about 80% of 600s, add a caller-set
-  `test_timeout_seconds` oracle parameter instead of raising the default for existing
-  callers.
+- **Timeouts.** `run_test` has `timeout: 600` and the oracle has `timeout: 1800`.
+  Measured 2026-09-26: this repo's full suite takes 250–355s (42–59% of 600s), under the
+  80% threshold, so no timeout change in v1. Still measure the `prepatch_check` worktree
+  fork on a real run. A caller-set `test_timeout_seconds` parameter is **not possible**:
+  state `timeout:` is `int | None` (`fsm/schema.py:718`) and is not interpolated. If the
+  budget is ever exceeded, raise `run_test`'s literal timeout (harmless for existing
+  callers whose suites finish sooner) or add an in-action timeout (no GNU `timeout` on
+  macOS; use a `python3 -c` subprocess wrapper). The *Killed stage* rule above makes a
+  timeout fail rather than pass either way.
 
 **Option A**: `manage-issue` Phase 4 writes a structured result file that autodev reads.
 
-**Option B**: An autodev gate (extended `oracles/code-run-gate`) runs after `implement_current` and is the only place the suite runs.
+**Option B**: An autodev gate (extended `oracles/code-run-gate`) runs after `implement_current` and is the only source of the closure-credit verdict. (manage-issue Phase 4 still runs the suite in v1; see Suite ownership.)
 
 > **Selected:** Option B — the gate is deterministic, FSM-native, and sits outside the opaque `ll-auto` subprocess.
 
@@ -177,8 +268,9 @@ These close the gaps a pre-implementation review found. They are directive.
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/loops/autodev.yaml` — `implement_current` (:1154, base-rev line), `verify_impl_closed` (:1197, `on_yes` retarget), new `route_quality_gate` / `run_quality_gate` / `record_quality_evidence`, `finalize_done` (:3041, promotion rule + `quality_failed` key), `quality_gate` context default
-- `scripts/little_loops/loops/oracles/code-run-gate.yaml` — new `format_check_cmd` / `changed_files_path` / (maybe) `test_timeout_seconds` params, new `run_format_check` state, `aggregate` sidecar list
+- `scripts/little_loops/loops/autodev.yaml` — `implement_current` (:1228, base-rev line), `verify_impl_closed` (:1271, `on_yes` retarget), new `route_quality_gate` / `run_quality_gate` / `mark_quality_pass|fail|infra` / `record_quality_evidence`, `finalize_done` (:3115, promotion rule, `quality_failed` + `quality_gate_infra` keys, `Quality-failed` summary line, `Unverified` display exclusion), `quality_gate` context default (context today holds only `skip_learning_gate`)
+- `scripts/little_loops/loops/oracles/code-run-gate.yaml` — new `format_check_cmd` / `changed_files_path` params, new `run_format_check` state, `aggregate` sidecar list + killed-stage (missing `exit_code=`) → fail rule; optionally `commands.json` via `json.dumps`
+- `scripts/little_loops/loops/auto-refine-and-implement.yaml` — `finalize` (:1027-1095): subtract `quality_gate_*` IDs from `CLOSED`, add to `NOT_CLOSED`, emit `quality_failed` (see Design Decisions → Parent accounting)
 - `scripts/little_loops/config-schema.json` (`project`, near `format_cmd` :45) — add `format_check_cmd` and `format_check_extensions`
 - `scripts/little_loops/config/core.py` — `ProjectConfig` (:220 `format_cmd` neighbour), `from_dict` (:244), `to_dict` (:770)
 - ~~`skills/manage-issue/SKILL.md` — Phase 4 verification commands~~ → moved to ENH-3612
@@ -192,7 +284,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/issue_manager.py` — ll-auto
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/little_loops/loops/auto-refine-and-implement.yaml` — `finalize` derives `NOT_CLOSED`/`SKIPPED`/`GATE_BLOCKED`/`DECISION_UNRESOLVED` from `autodev-passed.txt`/`autodev-skipped.txt`/`autodev-gate-blocked.txt`/`autodev-decision-unresolved.txt`/`autodev-inflight`/`autodev-queue.txt` in the shared run_dir (reads :1058-:1112); under the new gate, a frontmatter-closed issue that fails quality evidence stays out of `autodev-passed.txt` and silently disappears from the parent's `closed`/`not_closed` accounting unless a new ledger or summary key is read there [Agent 1+2 finding]
+- `scripts/little_loops/loops/auto-refine-and-implement.yaml` — `finalize` derives `NOT_CLOSED`/`SKIPPED`/`GATE_BLOCKED`/`DECISION_UNRESOLVED` from `autodev-passed.txt`/`autodev-skipped.txt`/`autodev-gate-blocked.txt`/`autodev-decision-unresolved.txt`/`autodev-inflight`/`autodev-queue.txt` in the shared run_dir (reads :1058-:1112); under the new gate, a frontmatter-closed issue that fails quality evidence stays out of `autodev-passed.txt`. _Corrected 2026-09-26:_ it does not disappear — `CLOSED` comes from on-disk status diffs (:1027-1029), so it is counted as **closed**. Now a Files to Modify entry [Agent 1+2 finding]
 - `scripts/little_loops/parallel/worker_pool.py` — imports `verify_work_was_done` in `_verify_work_was_done` (:43, :1380); the ll-parallel/ll-sprint quality-evidence consumer — consistency overlap, no autodev-path edit [Agent 1 finding]
 - `scripts/little_loops/fsm/persistence.py` (`archive_run` copies `run_dir/summary.json`, :660), `scripts/little_loops/cli/loop/audit.py` (:194), `scripts/little_loops/cli/loop/evidence.py` (:214, :314), `scripts/little_loops/hooks/pre_compact_handoff.py` (:126-:130) — shape-agnostic summary.json consumers (copy/hash/passthrough, no key reads); additive cancelled/implemented keys are safe for all four [Agent 1 finding]
 
@@ -205,16 +297,17 @@ _Wiring pass added by `/ll:wire-issue`:_
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_builtin_loops.py:661` — `TestPrePatchCheckReachability.test_code_run_gate_state_set_unchanged` freezes the oracle's state set to exact equality (9 states); adding a format *state* trips it, and per its own comment requires re-reading ENH-2997's Scope Boundaries [Agent 1 finding]
 - `scripts/tests/test_builtin_loops.py:15174` — `TestCodeRunGateOracle.test_run_states_chain_forward_and_terminate_at_aggregate` and `test_run_states_converging_routing_not_regressed` (:15485) pin the run_* chain edges pairwise; `aggregate`'s sidecar loop (`for f in build.txt test-results.txt typecheck.txt lint.txt health.txt`) must grow the format sidecar [Agent 3 finding]
-- `scripts/tests/test_builtin_loops.py:598` — `TestCodeRunGateOptionalParams.test_resolve_commands_interpolates_without_cmd_overrides` is the `:default=` tripwire: every new `format_cmd` guard AND assignment RHS needs `:default=` or the GATE_FAILED_INFRA laundering regression returns [Agent 1 finding]
-- `scripts/tests/test_builtin_loops.py:21020` — `TestInterpSweepBaseline` and `MR11_MARKER_ALLOWLIST` (asserted :21313): a new `context.format_cmd` ref in the oracle needs both a baseline entry and an allowlist tuple [Agent 1 finding]
-- `scripts/tests/test_bug3269_test_cmd_resolution_gate.py` — `format_cmd` already in `PROJECT_COMMAND_KEYS` (:47); the oracle is a permanent exemption (:58); assertion 2 requires any `${context.format_cmd}` ref in `autodev.yaml` to resolve against a declared `context:`/`parameters:` key [Agent 1 finding]
+- `scripts/tests/test_builtin_loops.py:598` — `TestCodeRunGateOptionalParams.test_resolve_commands_interpolates_without_cmd_overrides` is the `:default=` tripwire: every new `format_check_cmd` / `changed_files_path` guard AND assignment RHS needs `:default=` or the GATE_FAILED_INFRA laundering regression returns [Agent 1 finding]
+- `scripts/tests/test_builtin_loops.py:21020` — `TestInterpSweepBaseline` and `MR11_MARKER_ALLOWLIST` (asserted :21313): new `context.format_check_cmd` / `context.changed_files_path` refs in the oracle, and new `captured.input.output` refs in the autodev gate states, need baseline entries and allowlist tuples (or `ll-lint: mr11-ok(...)` markers per the existing ENH-3358 idiom) [Agent 1 finding]
+- `scripts/tests/test_bug3269_test_cmd_resolution_gate.py` — `format_cmd` already in `PROJECT_COMMAND_KEYS` (:47); the oracle is a permanent exemption (:58); assertion 2 requires any `${context.format_check_cmd}` ref in `autodev.yaml` to resolve against a declared `context:`/`parameters:` key [Agent 1 finding]
 - `scripts/tests/test_builtin_loops.py` — `TestAutodevLoop` promotion/phantom/no-op/mixed-run tests execute `finalize_done` with no quality-evidence artifacts (fixtures must gain them when promotion is gated); `test_implement_current_routes_to_verify_impl_closed` breaks if a gate state is interposed; `TestAutodevAuthGuard.test_autodev_implement_current_failure_chain_clears_inflight` (:18363) requires new states in that region to clear `autodev-inflight` or route only to clearing states [Agent 3 finding]
 - `scripts/tests/test_rn_remediate.py` — `TestRunCodeGate` (:2019) pins the existing call-site contract (`run_code_gate.loop`, `with:` bindings, GATE_PASS/GATE_SKIP routing) that must stay behaviorally unchanged; `scripts/tests/test_rn_refine.py:1648` pins `verify_leaf`'s `oracles/code-run-gate` wiring likewise [Agent 1 finding]
 - ~~`test_manage_issue_changelog_gate.py`, `test_wiring_skills_and_commands.py`, `test_enh494_skill_companions.py`~~ → manage-issue Phase 4 work moved to ENH-3612
 - `scripts/tests/test_builtin_loops.py:15047` — `TestCodeRunGateOracle` parameter test pins "run_dir, issue_id + the six command fields"; new params extend it
-- `scripts/tests/test_bug3269_test_cmd_resolution_gate.py:47` — `PROJECT_COMMAND_KEYS` gains `format_check_cmd` if autodev resolves it via `ll-config get`
-- `scripts/tests/test_fsm_topology.py` `TestAutodevSmoke.test_autodev_topology` — pinned state count (autodev has 107 states as of 2026-09-26; +3 new states)
-- New tests: oracle format stage SKIPs without `changed_files_path` (existing-caller invariance); `{files}` substitution quotes paths and drops deleted/filtered files; `finalize_done` promotion requires evidence for `done` but not `cancelled`; `quality_gate_failed` / `quality_evidence_missing` reason lines feed `not_closed` and `quality_failed`; `quality_gate: false` restores status-only credit
+- `scripts/tests/test_bug3269_test_cmd_resolution_gate.py:47` — `PROJECT_COMMAND_KEYS` gains `format_check_cmd` (autodev resolves it via `ll-config get`)
+- `scripts/tests/test_fsm_topology.py` `TestAutodevSmoke.test_autodev_topology` — pinned state count (autodev has **110** states after ENH-3609 landed 2026-09-26; +6 new states if the three markers stay separate, +4 if folded)
+- `auto-refine-and-implement` `finalize` tests pinning its `summary.json` key set — gain `quality_failed`
+- New tests: oracle format stage SKIPs without `changed_files_path` (existing-caller invariance); `{files}` substitution quotes paths and drops deleted/filtered files and includes untracked files; `aggregate` returns `GATE_FAILED` for a non-SKIP sidecar with no `exit_code=` line (killed stage); `record_quality_evidence` takes the verdict from the route, not `subloop_outcome_<ID>.txt` (fixture: token file says `GATE_PASS`, route is `fail` → `GATE_FAILED`); `on_error` → `quality_gate_infra`; `finalize_done` promotion requires evidence for `done` but not `cancelled`; `quality_gate_failed` / `quality_gate_infra` / `quality_evidence_missing` reason lines feed `not_closed`, the new keys, and are excluded from the `Unverified` display line; parent `finalize` counts a quality-failed `done` ID as not-closed; `quality_gate: false` restores status-only credit
 
 ### Documentation
 - `docs/guides/` loop guide for autodev, if it documents closure semantics
@@ -223,7 +316,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `docs/reference/loops.md:874` — full `oracles/code-run-gate` reference (params table :889, stage flow, direct-call example :927) gains the format stage/param [Agent 1 finding]
 - `docs/guides/LOOPS_REFERENCE.md:1007` — `Closure accounting` documents `autodev-passed.txt`/`autodev-skipped.txt` as auto-refine's sources; `:1079` documents `finalize_done`'s bucket list — the cancelled/implemented split edits both [Agent 2 finding]
 - `docs/guides/RECURSIVE_LOOPS_GUIDE.md:253` — `GATE_FAILED` outcome-token row enumerates "build / test / typecheck / lint / health"; format joins the enumeration [Agent 2 finding]
-- `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md:692` — declares `oracles/code-run-gate.yaml` a permanent exemption for command resolution; the format stage's `format_cmd` resolution follows the same exemption [Agent 2 finding]
+- `docs/guides/HARNESS_OPTIMIZATION_GUIDE.md:692` — declares `oracles/code-run-gate.yaml` a permanent exemption for command resolution; the format stage's `format_check_cmd` resolution follows the same exemption [Agent 2 finding]
 - `docs/reference/CONFIGURATION.md:305` — add `format_check_cmd` (`{files}` placeholder, check-only) and `format_check_extensions` rows beside `format_cmd`; `format_cmd` stays without a runtime reader (amended 2026-09-26)
 - `docs/guides/LOOPS_REFERENCE.md` — autodev `quality_gate` context key and the `quality_failed` summary key
 
@@ -243,7 +336,7 @@ The format stage runs only on that set (see Design Decisions for extension filte
 
 _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 
-- _Line numbers below are as of 2026-09-25; on 2026-09-26 autodev `implement_current` is :1154, `verify_impl_closed` :1197, `finalize_done` :3041, `ProjectConfig.format_cmd` :220, and `summary.json` has 12 keys (BUG-3603 added `proof_gate_infra`)._
+- _Line numbers below are as of 2026-09-25; after ENH-3609 (5ea867d5c, 2026-09-26) autodev `implement_current` is :1228, `verify_impl_closed` :1271, `finalize_done` :3115, autodev has 110 states, `ProjectConfig.format_cmd` :220, and `summary.json` has 12 keys (BUG-3603 added `proof_gate_infra`)._
 - `skills/manage-issue/SKILL.md` Phase 4 confirmed as described (now ENH-3612's scope): lines 354-372 append `tests/ -v` to `{{config.project.test_cmd}}` and `{{config.project.src_dir}}` to the lint/type commands, run `build_cmd`/`run_cmd` bare, and the skill directory contains zero occurrences of `format_cmd` — formatting is never run by manage-issue. The "Headless-Safe Final Test Run" subsection (:376) mandates the scratch-redirect foreground suite run.
 - `oracles/code-run-gate.yaml` current surface: params `run_dir`, `issue_id`, `min_pass_rate` (default 0.95), `health_bound_seconds`, plus optional `build_cmd`/`test_cmd`/`typecheck_cmd`/`lint_cmd`/`run_cmd`/`health_url` overrides (:52-103). Stages `resolve_commands → run_build → run_test → run_typecheck → run_lint → service_health → aggregate`; every stage failure still advances (no MR-4 partial-route dead-end). No format stage or format param exists.
 - Command-resolution convention inside the oracle: `resolve_commands` reads `.ll/ll-config.json` `project.*` with alias handling (`typecheck_cmd`/`type_cmd`, `start_cmd`/`run_cmd`, ARCHITECTURE-123) and honors caller overrides via `${context.<cmd>:default=}`; other loops use `ll-config get project.test_cmd`, which also honors `.ll/ll.local.md`.
@@ -257,17 +350,18 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 
 - **Owner of the quality run** ✅ **RESOLVED** (2026-09-25 by /ll:decide-issue): (b) an
   autodev gate (extended `oracles/code-run-gate`) that runs after `implement_current` and
-  is the only place the suite runs. The full suite runs once per issue.
+  is the only source of the closure-credit verdict. _Amended 2026-09-26:_ the suite runs
+  twice per issue in v1 (Phase 4 + gate); see Design Decisions → Suite ownership.
 
 ## Implementation Steps
 
 1. ~~Decide the single owner of the post-implementation quality run~~ — decided: autodev gate (Option B)
-2. Measure this repo's `test_cmd` wall-clock under the oracle's `run_test` (with `prepatch_check`); add `test_timeout_seconds` only if needed
-3. Add `project.format_check_cmd` / `format_check_extensions` to schema, `ProjectConfig`, and `CONFIGURATION.md`
-4. Extend `oracles/code-run-gate`: `changed_files_path` + `format_check_cmd` params, `run_format_check` state (opt-in, SKIP without a path), `aggregate` sidecar list; update the state-set freeze, baseline and MR11 allowlist
-5. autodev: base-rev line in `implement_current`; `route_quality_gate` → `run_quality_gate` → `record_quality_evidence` after `verify_impl_closed.on_yes`; `quality_gate` context default
-6. `finalize_done`: evidence-gated promotion for `done|completed`, `quality_gate_failed` / `quality_evidence_missing` reason lines, `quality_failed` key (requires ENH-3613's shape)
-7. `auto-refine-and-implement.yaml` `finalize`: confirm quality-failed IDs land in its `not_closed` accounting
+2. ~~Measure this repo's `test_cmd` wall-clock~~ — measured 250–355s (under 80% of 600s); still time the `prepatch_check` fork on the first real run. No `test_timeout_seconds` param (state `timeout:` cannot be interpolated)
+3. Add `project.format_check_cmd` / `format_check_extensions` to schema, `ProjectConfig`, and `CONFIGURATION.md` (note the no-`"` command constraint unless `commands.json` moves to `json.dumps`)
+4. Extend `oracles/code-run-gate`: `changed_files_path` + `format_check_cmd` params, `run_format_check` state (opt-in, SKIP without a path, file list read from `changed_files_path`), `aggregate` sidecar list, **killed-stage (no `exit_code=`) → fail rule**; update the state-set freeze, baseline and MR11 allowlist
+5. autodev: base-rev line in `implement_current`; `route_quality_gate` → `run_quality_gate` → `mark_quality_pass|fail|infra` → `record_quality_evidence` after `verify_impl_closed.on_yes`; verdict from the route, never the token file; `quality_gate` context default
+6. `finalize_done`: evidence-gated promotion for `done|completed`, `quality_gate_failed` / `quality_gate_infra` / `quality_evidence_missing` reason lines, `quality_failed` + `quality_gate_infra` keys (requires ENH-3613's shape), `Quality-failed` summary line with short `head_sha`, exclusion from the `Unverified` display line, all-failed hint naming `quality_gate: false`
+7. `auto-refine-and-implement.yaml` `finalize`: subtract `quality_gate_*` IDs from `CLOSED`, add them to `NOT_CLOSED`, emit `quality_failed` (today they would count as closed)
 8. Docs and tests per Integration Map
 9. ~~Fix manage-issue Phase 4 to use configured commands verbatim~~ → ENH-3612
 10. ~~Split cancelled from implemented closures in `summary.json`~~ → ENH-3613 (blocks this issue)
@@ -278,8 +372,8 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 - Update `aggregate` in `oracles/code-run-gate.yaml` — add the format sidecar to its file list and keep the `SKIP <cmd>=null` first-line convention so `classify` routing survives
 - Handle `TestPrePatchCheckReachability` — a new oracle *state* trips the frozen 9-state exact-set equality; either extend the freeze knowingly (its comment requires re-reading ENH-2997's Scope Boundaries) or add format as a stage of an existing state
-- Route gate-failed closures through the parent — `auto-refine-and-implement.yaml` `finalize` must count them (new ledger or summary key) or they vanish from `closed`/`not_closed`
-- Add baseline + MR11 allowlist entries for the oracle's new `context.format_cmd` refs; keep `:default=` on both guard and RHS in `resolve_commands`
+- Route gate-failed closures through the parent — `auto-refine-and-implement.yaml` `finalize` must subtract them from `CLOSED` (status-diff based) and add them to `NOT_CLOSED`; otherwise they count as closed
+- Add baseline + MR11 allowlist entries for the oracle's new `context.format_check_cmd` / `context.changed_files_path` refs; keep `:default=` on both guard and RHS in `resolve_commands`
 - Update `docs/reference/loops.md`, `docs/guides/LOOPS_REFERENCE.md` (:1007, :1079), `docs/guides/RECURSIVE_LOOPS_GUIDE.md:253`, and `scripts/little_loops/loops/README.md:194` for the format stage
 - ~~Regenerate `skills/manage-issue` mirrors~~ → ENH-3612
 - Update `test_builtin_loops.py` finalize fixtures with quality-evidence artifacts when promotion is gated, and keep new autodev states inside the `autodev-inflight`-clearing chain (`test_autodev_implement_current_failure_chain_clears_inflight`)
@@ -289,8 +383,8 @@ _These touchpoints were identified by wiring analysis and must be included in th
 _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 
 - Constraint: the gate must remain a non-LLM evaluator in the FSM — `code-run-gate` is all-shell with `exit_code`/`output_numeric`/`classify` evaluators, so extending it keeps the autodev meta-loop MR-2-compliant; a shared Python runner preserves the same property only if the FSM routes on its exit code, not on model output.
-- Constraint: the format stage consumes `project.format_cmd`, which today has no runtime reader (`config/core.py:210`; serialized at `:770` only) — there is no existing format-invocation helper to reuse, but the scoping primitives exist (`work_verification.py` diff computations, `filter_excluded_files` :32).
-- Constraint: adding states to `autodev.yaml` bumps the state count pinned by `test_fsm_topology.py` `TestAutodevSmoke.test_autodev_topology` (currently 105 states) and must keep the `loop_interpolation_baseline.json` `finalize_done` entry valid.
+- _Superseded 2026-09-26: the format stage consumes the new `project.format_check_cmd`, not `format_cmd`._ Constraint: the format stage consumes `project.format_cmd`, which today has no runtime reader (`config/core.py:210`; serialized at `:770` only) — there is no existing format-invocation helper to reuse, but the scoping primitives exist (`work_verification.py` diff computations, `filter_excluded_files` :32).
+- Constraint: adding states to `autodev.yaml` bumps the state count pinned by `test_fsm_topology.py` `TestAutodevSmoke.test_autodev_topology` (110 states as of 2026-09-26, post-ENH-3609) and must keep the `loop_interpolation_baseline.json` `finalize_done` entry valid.
 - Verification surface: `python -m pytest scripts/tests/test_builtin_loops.py -k "finalize or verify_impl"` exercises the closure states today; `ll-loop validate` plus `scripts/tests/test_builtin_loops.py` gate classes `TestCodeRunGateOracle` (:14959) / `TestCodeRunGateOracleWiring` (:18851) / `TestCodeRunGateOptionalParams` (:598) cover the oracle side.
 
 ## Impact
@@ -310,16 +404,20 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 - `verify_issue_completed(info: IssueInfo, config: BRConfig, logger: Logger) -> bool` — `scripts/little_loops/issue_lifecycle.py:768`; pure frontmatter check (`done`/`cancelled` → True; missing file → True back-compat). Called only from `issue_manager.py` (:1469, :1560, :2220) — autodev's shell states re-implement the status check via `ll-issues show --json` rather than calling it.
 - `resolve_base_ref(repo_root: Path, base_sha: str | None, base_branch: str) -> tuple[str, str]` — `scripts/little_loops/prepatch_check.py:248`; returns the ref plus a provenance tag (`dequeue-stamp` or `merge-base`).
 - `_detect_meaningful_changes(logger: Logger, changed_files: list[str] | None, baseline_sha: str | None) -> bool` — `scripts/little_loops/work_verification.py:401`; computes `git diff --name-only <baseline>..HEAD` at :470 — the existing baseline→changed-files precedent this issue's scoping parallels.
-- `ProjectConfig.format_cmd: str | None` — `scripts/little_loops/config/core.py:210`; read today only by the `to_dict` serializer (`config/core.py:770`). No runtime consumer exists anywhere.
+- `read_base_sha(issue_id: str, *, run_id: str | None = None, db: Path | str = DEFAULT_DB_PATH) -> str | None` — `scripts/little_loops/history_reader/runs.py:181`; the dequeue-time base stamp `ll-auto` writes per issue. `run_test`'s `prepatch_check` reads it through the oracle's `issue_id`, so the gate's prepatch check runs on the implementation diff.
+- `ProjectConfig.format_cmd: str | None` — `scripts/little_loops/config/core.py:220`; read today only by the `to_dict` serializer (`config/core.py:770`). No runtime consumer exists anywhere.
 
 ### Call Path
 
-Today: `autodev.yaml:implement_current` (:1106, shells `ll-auto --only`) → `verify_impl_closed` (:1149, `ll-issues show --json` status read) → `dequeue_next` → … → `finalize_done` (:2971, sole writer of `autodev-passed.txt`). The gate chain this issue extends is NOT on that path today: `rn-remediate.yaml:run_code_gate` (:500, `loop: oracles/code-run-gate` with `issue_id`/`run_dir`/`min_pass_rate`) → `resolve_commands → run_build → run_test → run_typecheck → run_lint → service_health → aggregate` → `subloop_outcome_<ID>.txt` (`GATE_PASS`/`GATE_FAILED`/`GATE_SKIP`). Baseline-capture precedent one level down: `issue_manager.py:1284-1289` records `git rev-parse HEAD` inside `process_issue_inplace` immediately before implementation; autodev.yaml itself contains no `git` invocation.
+Today: `autodev.yaml:implement_current` (:1228, shells `ll-auto --only`) → `verify_impl_closed` (:1271, `ll-issues show --json` status read) → `dequeue_next` → … → `finalize_done` (:3115, sole writer of `autodev-passed.txt`). The gate chain this issue extends is NOT on that path today: `rn-remediate.yaml:run_code_gate` (:500, `loop: oracles/code-run-gate` with `issue_id`/`run_dir`/`min_pass_rate`) → `resolve_commands → run_build → run_test → run_typecheck → run_lint → service_health → aggregate` → `subloop_outcome_<ID>.txt` (`GATE_PASS`/`GATE_FAILED`/`GATE_SKIP`). Baseline-capture precedent one level down: `issue_manager.py:1284-1289` records `git rev-parse HEAD` inside `process_issue_inplace` immediately before implementation; autodev.yaml itself contains no `git` invocation.
 
 ### Decision Rules
 
 - Closure credit: a `done|completed` ID reaches `autodev-passed.txt` only when `quality/<ID>.json` records `GATE_PASS` or `GATE_SKIP` for the `head_sha` captured at gate time; a `cancelled` ID is promoted on status alone (no gate run); with `quality_gate: false` all closed IDs are promoted on status alone. The cancelled/implemented summary split is ENH-3613's.
-- Gate failure never mutates the issue file; it is recorded as `ID  quality_gate_failed` in `autodev-unverified.txt` and counted in both `not_closed` and `quality_failed`.
+- Gate failure never mutates the issue file; it is recorded as `ID  quality_gate_failed` in `autodev-unverified.txt` and counted in both `not_closed` and `quality_failed`. A sub-loop `on_error` is `ID  quality_gate_infra`, counted in `not_closed` and `quality_gate_infra`.
+- The credited verdict comes from `run_quality_gate`'s route (`on_success`/`on_failure`/`on_error`), never from the oracle's `subloop_outcome_<ID>.txt`, which `resolve_commands` pre-seeds with `GATE_PASS`.
+- A non-SKIP stage sidecar with no `exit_code=` line (stage killed at timeout) is a failure in `aggregate`.
+- A `prepatch_check` `flagged` verdict on `run_test` (new test passes on the base) fails the gate; the evidence records `prepatch: flagged`.
 - The oracle's format stage runs only when `changed_files_path` is passed; it is check-only and never writes to the working tree.
 - The gate's verdict vocabulary is already fixed by `code-run-gate`'s `aggregate` state — `GATE_PASS`/`GATE_FAILED`/`GATE_SKIP`, routed via a `classify` evaluator (`GATE_SKIP` routes to `done`, not failure, when no commands are configured). A format stage joins that matrix; it does not introduce a new vocabulary.
 - `code-run-gate` exposes no format parameter today (`oracles/code-run-gate.yaml:52-103`); any added stage must leave the oracle's existing callers (`rn-remediate.yaml:500`, `rn-refine.yaml:480`, `rn-implement.yaml` transitively, tests) behaviorally unchanged unless they opt in.
@@ -331,7 +429,12 @@ Today: `autodev.yaml:implement_current` (:1106, shells `ll-auto --only`) → `ve
 - [ ] The format stage is check-only and runs only on the changed files (deleted files dropped, extension filter applied)
 - [ ] The gate passes `min_pass_rate: 1.0`
 - [ ] Gate failure lands in `not_closed` and a `quality_failed` summary key; the issue file is not modified
-- [ ] Existing `code-run-gate` callers (`rn-remediate`, `rn-refine`, `rn-implement`) are unchanged (format stage SKIPs without `changed_files_path`)
+- [ ] Gate `on_error` lands in `not_closed` and a `quality_gate_infra` summary key, distinct from `quality_failed`
+- [ ] The credited verdict is taken from the sub-loop route; a test with `subloop_outcome_<ID>.txt` = `GATE_PASS` and route `fail` records `GATE_FAILED`
+- [ ] `aggregate` returns `GATE_FAILED` when a non-SKIP stage sidecar has no `exit_code=` line (killed stage)
+- [ ] Quality-failed IDs print on their own `Quality-failed` summary line with short `head_sha`, not under the `Unverified` "re-queue to retry" line
+- [ ] `auto-refine-and-implement` counts a quality-failed `done` issue as not-closed (not closed) and reports `quality_failed`
+- [ ] Existing `code-run-gate` callers (`rn-remediate`, `rn-refine`, `rn-implement`) are unchanged (format stage SKIPs without `changed_files_path`), except that a killed stage now fails instead of passing
 - [ ] `quality_gate: false` restores status-only closure credit
 
 _Moved out 2026-09-26:_ the verbatim-commands criterion is now ENH-3612's; the cancelled/implemented summary split is now ENH-3613's.
@@ -346,7 +449,11 @@ _Moved out 2026-09-26:_ the verbatim-commands criterion is now ENH-3612's; the c
   ENH-3600). This issue adds only `quality_failed` to that shape.
 - Out of scope (follow-ups): automatic repair/retest after `GATE_FAILED`; an autodev-only
   opt-out so manage-issue Phase 4 skips the full suite when the gate owns it; baseline
-  (pre-existing failure) comparison instead of absolute pass/fail.
+  (pre-existing failure) comparison instead of absolute pass/fail (highest-value
+  follow-up: this repo's `main` is intermittently red, see Escape hatch); a way to
+  re-gate an already-`done` issue on a later run.
+- In scope although it touches existing callers: the `aggregate` killed-stage fix. It
+  corrects a latent false `GATE_PASS` for every `code-run-gate` caller.
 
 ## Related Key Documentation
 

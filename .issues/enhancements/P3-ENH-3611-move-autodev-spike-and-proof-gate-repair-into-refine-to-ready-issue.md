@@ -86,7 +86,6 @@ still spiked (ENH-3575), now inside the child. Autodev's selectors add `PROOF` r
 
   | Surviving state | Edge | Removed target | New target |
   |---|---|---|---|
-  | `check_passed` | `on_yes` | `check_proof_gate_before_implement` | `check_proof_defer_or_implement` |
   | `check_parent_resolved_post_size_review` | `on_no`, `on_error` | `check_spike_needed_before_skip` | `select_obligation_post_size_review` |
   | `dispatch_pre_deferral_remedy` | `on_yes` | `run_spike` | `refine_current` |
   | `select_obligation_post_refine` | `_` | `check_spike_needed` | `check_missing_artifacts` |
@@ -94,7 +93,8 @@ still spiked (ENH-3575), now inside the child. Autodev's selectors add `PROOF` r
 
 - **Proof gate.** `check_proof_defer_or_implement` is the only predecessor of
   `implement_current` and the only proof stage. The only route into implementation is
-  `route_refine_success` (`READY`) → `check_passed` or a selector → `check_proof_defer_or_implement`.
+  a selector → `check_proof_defer_or_implement`. After ENH-3610, `route_refine_success`
+  (`READY`) → `check_passed` → `select_obligation_pre_implement` is one of those routes.
 - **Markers.** Autodev never writes `spike-runs-<ID>`. Its surviving read-only consumers
   (`recheck_after_size_review`, `dispatch_pre_deferral_remedy`) keep reading it as the budget
   signal the child spends. Neither `resolve_issue` nor autodev resets it
@@ -183,13 +183,13 @@ Rewrite, don't delete (ENH-3075 AC 8); stays-deleted guard per removed state.
 
 `autodev.yaml:select_obligation_post_refine` -> `cmd_next_obligation` -> `autodev.yaml:refine_current` -> `refine-to-ready-issue.yaml:check_proof_before_done` -> `cmd_check_gate` -> `refine-to-ready-issue.yaml:run_spike`
 
-`autodev.yaml:check_passed` -> `autodev.yaml:check_proof_defer_or_implement` -> `cmd_check_gate` -> `autodev.yaml:implement_current`
+`autodev.yaml:check_passed` -> `autodev.yaml:select_obligation_pre_implement` -> `autodev.yaml:check_proof_defer_or_implement` -> `cmd_check_gate` -> `autodev.yaml:implement_current`
 
 ## Impact
 
 - **Priority**: P3, child of ENH-3608 (EPIC-3565 consolidation); last blocker for ENH-3605 and
   ENH-3600
-- **Effort**: Large: −22/+1 autodev states, +1 child state, 7 edge retargets, marker cleanup
+- **Effort**: Large: −22/+1 autodev states, +1 child state, 6 edge retargets, marker cleanup
   across four surviving states
 - **Risk**: High: removes autodev's spike path; the child proof gate and the fail-closed
   implement gate are the safety net
@@ -199,6 +199,35 @@ Rewrite, don't delete (ENH-3075 AC 8); stays-deleted guard per removed state.
 
 Decomposed from ENH-3608: Remove autodev spike and decision routes and route on the child run
 record. Lands after ENH-3609 and ENH-3610; uses the selectors and re-entry cap ENH-3610 adds. ENH-3599 holds the original design rationale.
+
+### Carried over from ENH-3610 (review, 2026-09-26)
+
+ENH-3610's review changed parts of the selector contract that this issue builds on:
+
+- **`check_passed.on_yes` already goes to `select_obligation_pre_implement`** (ENH-3610). This
+  issue's old `check_passed.on_yes` retarget row is removed. The pre-implement selector's
+  `_`/`_error` retarget (→ `check_proof_defer_or_implement`) now covers `check_passed` too.
+  Retargets: 7 → 6.
+- **`record_reentry_exhausted` is a surviving autodev state.** ENH-3610 adds it; it is not one
+  of the 22 removed here. It ledgers `<ID>  decision_unresolved` in `autodev-skipped.txt` and
+  defers the issue with that reason. `DECISION_EXHAUSTED` targets it, not
+  `record_decision_unresolved`, so removing `record_decision_unresolved` here does not affect
+  the selectors. For `PROOF`, choose one of these:
+  - keep the `--skip PROOF` fall-through described above. The fail-closed
+    `check_proof_defer_or_implement` then defers an open gate as `blocked_by_gate`;
+  - or route a `PROOF_EXHAUSTED` token to `record_reentry_exhausted`, and make it take its
+    reason from the obligation.
+
+  Either way, keep it in `AUTODEV_NOT_READY_STATES` when `record_decision_unresolved` is
+  dropped from that list.
+- **Selectors un-stage on re-entry.** On `DECISION` / `DECISION_EXHAUSTED`, ENH-3610's selectors
+  remove the ID from `autodev-staged.txt` before routing away from implementation. `PROOF:*`
+  re-entry must do the same; otherwise a staged issue that the re-entered child defers
+  appears in `autodev-unverified.txt`. The new `select_obligation_post_size_review` needs this
+  too: `recheck_after_size_review` stages the ID before its pass route.
+- **Selector exit-code contract.** `check-flag` exit 2 falls through to `next-obligation`, whose
+  exit 2 becomes `_error`. When `PROOF` routes are added, keep that ordering: the `DECISION`
+  check before the `PROOF` check.
 
 ## Scope Boundaries
 
