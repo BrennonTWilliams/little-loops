@@ -63,8 +63,8 @@ After ENH-3605 and ENH-3609–3611, autodev still owns the second-pass ladder be
 `check_passed` gate. That ladder is `select_obligation_post_refine` →
 `check_missing_artifacts` → wire/refine → reconcile/design remedy → size-review/atomic →
 `select_obligation_post_size_review` → go/no-go and pre-deferral remedy →
-`select_obligation_pre_implement`. It also owns the `wire`, `reconcile` and `atomic`
-rescoring triplets. Each ladder exit re-enters `refine_current` or reaches the proof gate
+`select_obligation_pre_implement`. It also owns the shared rescoring chain (ENH-3615)
+that the `wire`, `reconcile` and `atomic` origins use. Each ladder exit re-enters `refine_current` or reaches the proof gate
 inside autodev.
 
 ## Expected Behavior
@@ -111,7 +111,7 @@ has changed since.
 
 | Edge(s) | Today | In the wrapper |
 |---|---|---|
-| `count_repair_cycle_refine.next` / `on_error` | `copy_broke_down` | `run_refine_to_ready` |
+| `count_repair_cycle_refine.next` / `on_error` | `copy_broke_down` | `clear_record` (→ `run_refine_to_ready`; see Repair-cycle counter) |
 | `select_obligation_post_refine` `DECISION` / `PROOF`, `select_obligation_post_size_review` `PROOF`, `select_obligation_pre_implement` `DECISION` / `PROOF`, `dispatch_pre_deferral_remedy.on_yes` | `refine_current` | `count_repair_cycle_refine` (never `run_refine_to_ready` directly; see Repair-cycle counter) |
 | `select_obligation_pre_implement` `_` / `_error` | `check_proof_defer_or_implement` | `mark_ready` terminal |
 | `select_obligation_post_refine._error`, `check_missing_artifacts.on_no` / `on_error` | `detect_children` | wrapper `detect_ladder_children` (see Inner-loop success routing) |
@@ -137,28 +137,52 @@ has changed since.
   - The wrapper's `check_passed.on_error` and `select_obligation_post_refine._error` go to
     `detect_ladder_children` (today's `detect_children` target).
 - **Wire/refine**: `check_missing_artifacts`, `run_wire`, `run_refine`,
-  `count_repair_cycle_wire`, and the `wire` rescoring triplet
-  (`rerun_confidence_after_wire`, `clear_scores_before_wire`, `check_scores_present_wire`),
-  which the shared rescoring path replaces.
+  `count_repair_cycle_wire`.
+- **Shared rescoring chain** (landed by ENH-3615; the per-origin triplets no longer
+  exist): `clear_scores`, `rerun_confidence`, `check_scores_present`,
+  `route_after_rescore`, `mark_rescore_origin_atomic`.
 - **Reconcile/design remedy**: `check_reconcile_needed`, `reconcile_current`,
   `refine_for_design`, `check_atomic_design_remedy`, `dispatch_design_remedy`,
-  `count_repair_cycle_reconcile`, `count_repair_cycle_refine_for_design`, and the
-  `reconcile` rescoring triplet (`rerun_confidence_after_reconcile`,
-  `clear_scores_before_reconcile`, `check_scores_present_reconcile`).
+  `count_repair_cycle_reconcile`, `count_repair_cycle_refine_for_design`.
 - **Size-review/atomic**: `run_size_review`, `count_repair_cycle_size_review`,
   `check_size_review_ran_this_pass`, `check_guard2_verdict`, `check_guard2_score_fallback`,
   `check_readiness_for_atomic_remediation`, `remediate_oversized_atomic`,
   `regate_after_atomic_remediation`, `recheck_after_size_review`, `recheck_scores`,
-  `check_parent_resolved_post_size_review`, the `atomic` rescoring triplet
-  (`rerun_confidence_after_atomic_remediation`, `clear_scores_before_atomic`,
-  `check_scores_present_atomic`), plus the child-detection half of `enqueue_or_skip` (see
-  Queue ownership).
+  `check_parent_resolved_post_size_review`, plus the child-detection half of
+  `enqueue_or_skip` (see Queue ownership).
 - **Go/no-go**: `check_go_no_go_eligible`, `run_go_no_go`, `check_go_no_go_waiver`,
   `reopen_waived` (only for `deferred_reason: oversized_atomic`).
 - **Pre-deferral remedy**: `check_pre_deferral_remedy`, `dispatch_pre_deferral_remedy`.
+- **Verified move set (39 states, at HEAD `513cca9a2`)** — build `REMOVED_INLINE_STATES`
+  from this list, not from the prose groups above: `select_obligation_post_refine`,
+  `select_obligation_pre_implement`, `select_obligation_post_size_review`,
+  `record_reentry_exhausted`, `run_wire`, `count_repair_cycle_wire`, `run_refine`,
+  `clear_scores`, `rerun_confidence`, `check_scores_present`, `route_after_rescore`,
+  `count_repair_cycle_refine`, `recheck_scores`, `check_missing_artifacts`,
+  `run_size_review`, `count_repair_cycle_size_review`, `enqueue_or_skip`,
+  `check_parent_resolved_post_size_review`, `check_reconcile_needed`,
+  `check_size_review_ran_this_pass`, `check_guard2_verdict`,
+  `check_guard2_score_fallback`, `check_readiness_for_atomic_remediation`,
+  `remediate_oversized_atomic`, `mark_rescore_origin_atomic`,
+  `regate_after_atomic_remediation`, `check_atomic_design_remedy`,
+  `check_go_no_go_eligible`, `run_go_no_go`, `check_go_no_go_waiver`, `reopen_waived`,
+  `refine_for_design`, `count_repair_cycle_refine_for_design`, `reconcile_current`,
+  `count_repair_cycle_reconcile`, `recheck_after_size_review`,
+  `check_pre_deferral_remedy`, `dispatch_design_remedy`, `dispatch_pre_deferral_remedy`.
+  With the three deletions below, autodev goes from 86 to 44 states. The wrapper goes
+  from 7 to about 55 (7 + 39 + 9 new: `route_inner_success`, wrapper `check_passed`,
+  `detect_ladder_children`, `route_ladder_stop`, `mark_ready`, `mark_decomposed`,
+  `mark_rate_limited`, `mark_scores_absent`, `mark_ladder_error`).
 - **Repair-cycle counter**: `count_repair_cycle_refine` moves to become the wrapper's
-  pre-state of `run_refine_to_ready` (`clear_record` → `count_repair_cycle_refine` →
-  `run_refine_to_ready`). After the move, re-entries happen inside the wrapper and no
+  entry state and the pre-state of `run_refine_to_ready`: `count_repair_cycle_refine` →
+  `clear_record` → `run_refine_to_ready`, with `initial: count_repair_cycle_refine`.
+  `clear_record` sits between them so that re-entries also clear stale records. It
+  exists because an inner loop that dies before its own `resolve_issue` clear would let
+  `forward_stop` forward the previous inner run's record (for example, a first-pass
+  `READY` forwarded on a re-entry that failed early, ledgered `refine_failed` by
+  `skip_inflight`). Clearing both writers on re-entry is safe: no re-entry edge carries
+  a live `prepare-issue` record (the selectors and the armed pre-deferral remedy write
+  none, and `reopen_waived` clears its own). After the move, re-entries happen inside the wrapper and no
   longer pass autodev's `refine_current → count_repair_cycle_refine`. Left in autodev, the
   counter would undercount, and `recheck_after_size_review`'s stagnation backstop (count ≥
   2) would stop firing. Moving it keeps "every inner entry increments" for the first entry
@@ -286,17 +310,21 @@ thresholds-unmet inner `done` must run the ladder. Replace it with a wrapper-loc
     recording `DEFERRED:gate_unmet`, not `DECOMPOSED`: an inner breakdown with no children
     followed by a `design_gate_failed` stop; and an inner breakdown whose record is
     `MISSING` (routed to `check_passed`) followed by a stop.
-- Autodev's `copy_broke_down` runs after the wrapper returns, so it copies the wrapper's
-  final flag value.
+- After the shrink (States that stay), autodev's `copy_broke_down` copies nothing. It only
+  resets `refine-broke-down` to `0` after the wrapper returns (for example, after
+  `mark_decomposed` set it to `1`). The reset is defensive: after the move no state left
+  in autodev writes a run record, and the next issue's inner `resolve_issue` resets the
+  flag anyway. Deleting the state and pointing `refine_current.on_success` →
+  `route_refine_success` is a possible follow-up cleanup; this issue does not take it.
 
 ### Shared rescoring path
 
-ENH-3615 builds this path in `autodev.yaml` first. This issue then relocates it: its
-unknown-origin exit and `on_error` exits change from `mark_scores_absent_infra` to the
-wrapper's `mark_scores_absent`, and its rate-limit exit from `finalize_rate_limited` to
-`mark_rate_limited`. The design as ENH-3615 implements it:
+ENH-3615 built this path in `autodev.yaml` (landed in `74747fb1e`). This issue relocates
+it: its unknown-origin exit and `on_error` exits change from `mark_scores_absent_infra`
+to the wrapper's `mark_scores_absent`, and its rate-limit exit from
+`finalize_rate_limited` to `mark_rate_limited`. The design as ENH-3615 implemented it:
 
-Replace the `wire`, `reconcile` and `atomic` triplets with one path. Each entry point
+The `wire`, `reconcile` and `atomic` triplets are already replaced by one path. Each entry point
 writes `autodev-rescore-origin-<ID>` (`wire` | `reconcile` | `atomic`; the `autodev-`
 prefix matches the other per-pass markers, and `dequeue_next` clears it) → `clear_scores` →
 `rerun_confidence` → `check_scores_present` → `route_after_rescore`. `route_after_rescore`
@@ -358,7 +386,9 @@ successors are `enqueue_or_skip`, `recheck_after_size_review` and
   `mark_decomposed`, which reaches `recover_subloop_children` through autodev's
   `detect_children` → `check_parent_resolved`. `record_reentry_exhausted`'s
   done/cancelled branch (row, no record) takes the same route; drop its row write in that
-  branch too.
+  branch too. Today that state writes the `decision_unresolved` row *before* the status
+  check (~`autodev.yaml:984`, unconditionally), so this means moving the `echo` into the
+  not-done branch, next to its `set-status` and `run-record write`.
 - **Staging has one writer.** Five moving states append to `autodev-staged.txt`
   (`check_passed`, `recheck_scores`, `recheck_after_size_review`,
   `regate_after_atomic_remediation`, `reopen_waived`), and autodev's `check_passed` appends
@@ -423,11 +453,20 @@ the ledger row with the same reason string as today, and autodev routes every
   stops (`oversized_atomic`, `design_gate_failed`, `readiness_stagnated`, `low_readiness`,
   atomic-remediation failure) already wrote their row, so they call `run-record write`
   directly. `forward_stop` stays only for the inner loop's own `failed` exit.
-- **`mark_ladder_error`** writes `retryable_error` / `infra` only when no `prepare-issue`
-  record exists for this pass. When the failing state had already written its stop row and
-  record (for example `record_reentry_exhausted` erroring after its `set-status`), the
-  existing record stands. An infra record on top would send the issue to
-  `skip_inflight_infra` and add a second row.
+- **`mark_ladder_error`** keeps an existing `prepare-issue` record only when its token is
+  a suffixed stop (`BLOCKED:*` / `DEFERRED:*`). When the failing state had already
+  written its stop row and record (for example `record_reentry_exhausted` erroring after
+  its `set-status`), that record stands. An infra record on top would send the issue to
+  `skip_inflight_infra` and add a second row. In every other case (no record, or a
+  `READY` / unsuffixed `BLOCKED` / `DECOMPOSED` / `CANCELLED` record), it writes
+  `retryable_error` / `infra` over it. A success record can only be present at this point
+  when the step cap fired between the state that wrote it and `done` (see Mechanics,
+  step cap), and keeping it would be wrong: the wrapper then finishes `max_steps`,
+  autodev takes `refine_current.on_failure`, and `route_refine_outcome` sends `READY` /
+  `DECOMPOSED` / `CANCELLED` to `skip_inflight`, which writes a quality `refine_failed`
+  row and never enqueues a `DECOMPOSED` parent's children. An infra record makes the
+  issue a re-runnable `refine_failed_infra` instead. A cancelled issue is then skipped at
+  the next run's dequeue.
 - **Every terminal that ends in `failed` writes `refine-terminal-class` before its record
   write**, as `mark_inner_error` and the inner loop's stop states do. Record writes are
   `|| true`. When one fails, autodev reads `MISSING` and `skip_inflight` falls back to the
@@ -519,11 +558,30 @@ Document these in `docs/guides/LOOPS_REFERENCE.md`:
   `refine_for_design` `refine-issue-repair`, `rerun_confidence` `confidence-check-recheck`,
   `reconcile_current` `reconcile-issue-auto`, `run_size_review` `issue-size-review-auto`,
   and `run_go_no_go` `go-no-go-auto`. Otherwise MR-12 warns.
-- Raise `prepare-issue.yaml`'s `max_steps: 20`. The wrapper grows from 7 states to about
-  45, and one pass can run the ladder several times (selector re-entries, pre-deferral
-  remedy, go/no-go reopen). Size it from the longest path times the re-entry caps (DECISION
-  1, PROOF 1, pre-deferral remedy 1, lifetime `max_refine_count`), and pin the value with a
-  comment showing the arithmetic.
+- Raise `prepare-issue.yaml`'s `max_steps: 20` to **250**. The wrapper grows from 7
+  states to about 55, and one pass can run the ladder several times. Arithmetic (pin it
+  in a comment):
+  - The inner loop's steps do not count: `run_refine_to_ready` is one wrapper step, and
+    the child executor has its own cap (`max_steps: 100`, `on_max_steps:
+    classify_terminal`).
+  - Inner entries per pass ≤ 4: the first entry, one `DECISION` re-entry
+    (`autodev-reentry-DECISION-<ID>`), one `PROOF` re-entry (one
+    `autodev-reentry-PROOF-<ID>` marker shared by all three selectors) and one
+    pre-deferral remedy (`autodev-pre-deferral-remedy-fired`). `reopen_waived` does not
+    re-enter.
+  - Per segment ≤ 4 entry states (`count_repair_cycle_refine`, `clear_record`,
+    `run_refine_to_ready`, `route_inner_success`) + 33, the longest simple ladder path
+    (computed 2026-09-26 over the moved states: `check_passed` →
+    `select_obligation_post_refine` → … → `reopen_waived` →
+    `select_obligation_pre_implement` → `record_reentry_exhausted`) + 18 (a simple path
+    visits the shared rescoring chain once; up to three more traversals at 6 steps each,
+    including one presence-gate retry).
+  - Total 4 × 55 + 2 terminal-side steps (`route_ladder_stop`, `mark_*`) = 222 → 250 with
+    margin.
+
+  A structural test recomputes the longest simple ladder path from the wrapper graph
+  (re-entry edges cut) and asserts `max_steps ≥ 4 × (L + 4 + 18) + 2`. The pinned value
+  then cannot silently fall behind the graph.
 - **Declare `on_max_steps: mark_ladder_error` in `prepare-issue.yaml`.** Without it, a
   wrapper that hits the cap ends with `terminated_by: max_steps`. The executor sends that
   to autodev's `refine_current.on_failure` (`little_loops.fsm.executor`, sub-loop routing:
@@ -537,14 +595,30 @@ Document these in `docs/guides/LOOPS_REFERENCE.md`:
     `next: failed` is not followed. Its writes still happen.
   - It writes the `infra` sentinel and a `retryable_error` / `infra` record, so autodev
     routes `RETRYABLE_ERROR:infra` → `skip_inflight_infra`.
-  - If a stop record already exists for the pass, `mark_ladder_error` leaves it in place
-    (see Terminal table). Autodev then routes that record → `ledger_child_stop`, with no
-    second row.
+  - If a stop record (`BLOCKED:*` / `DEFERRED:*`) already exists for the pass,
+    `mark_ladder_error` leaves it in place (see Terminal table). Autodev then routes that
+    record → `ledger_child_stop`, with no second row.
+  - **The cap can fire after a success record was written.** The executor checks
+    `max_steps` at the top of each iteration, *before* it checks for a terminal state
+    (`little_loops.fsm.executor`, step-limit check ahead of the `terminal` check). If the
+    step that reaches the cap is `mark_ready`, `mark_decomposed` or `forward_done`, the
+    `on_max_steps` handler replaces the pending `done`. `mark_ladder_error` therefore
+    overwrites a `READY` / `DECOMPOSED` / `CANCELLED` record with infra (Terminal table)
+    rather than keeping it.
 - Wrapper capture names flatten into the inner loop's context on every re-entry (header
   comment in `prepare-issue.yaml`). Before adding captures (`size_review_output` and any
   others the moved states use), confirm no name collides with a context key or capture
   that `refine-to-ready-issue.yaml` reads.
 - Update the `prepare-issue.yaml` header call-chain comment to the new graph.
+- Rewrite the stale threshold comments on the moved states. The comments on
+  `check_readiness_for_atomic_remediation` (~`autodev.yaml:2232`) and
+  `recheck_after_size_review` (~:2605) say `ll-issues check-readiness` ignores CLI
+  overrides when config sets thresholds. Since BUG-3390, an explicit `--readiness` /
+  `--outcome` wins (`little_loops.cli.issues.check_readiness.readiness_status`). This
+  matters here: autodev's retained `check_passed` (`check-readiness --honor-waiver` with
+  context thresholds) agrees with the wrapper's inline-Python pass gates only because
+  both now use the same thresholds and waiver rule. Say that in the comments. Keep the
+  inline gates; they also hard-AND the design verdict.
 - Shared per-issue files must keep their names, because both loops read them through the
   shared `run_dir`:
   - `autodev-repair-cycle-count.txt`, `autodev-pre-readiness.txt`,
@@ -561,14 +635,39 @@ Document these in `docs/guides/LOOPS_REFERENCE.md`:
 
 ## Tests
 
+- **Cross-loop harness (build first; Implementation Step 2).** Every "real FSM" case below
+  runs from the wrapper into autodev, and no existing harness does that. Today's tests
+  either drive a small hand-built FSM with a scripted `ActionRunner`
+  (`test_autodev_decision_gate.py`) or run one state's bash in isolation
+  (`test_prepare_issue.py::_run_state`). Build a shared fixture:
+  - `FSMExecutor(..., loops_dir=tmp)`, where `tmp` holds the real `autodev.yaml` and
+    `prepare-issue.yaml` (plus `lib/common.yaml`) and a **stub**
+    `refine-to-ready-issue.yaml`. The stub writes a scenario-chosen
+    `refine-to-ready-issue` record, sets the `refine-broke-down` flag, optionally creates
+    child issue files with `parent:`, and ends `done` / `failed`;
+  - a scripted `ActionRunner` that returns canned output for `slash_command` states
+    (the size-review status line, go/no-go stamping `outcome_gate_waived`, a
+    confidence-check that writes or omits scores) and runs shell states as real bash
+    against a temporary project with a real `.issues/` tree and `.ll/ll-config.json`;
+  - assertion helpers for the final `prepare-issue` record token, the exact
+    `autodev-skipped.txt` rows, `autodev-queue.txt` and `autodev-staged.txt`.
+
+  Land it **before the move** with characterization tests of today's ledger rows for
+  each terminal-table scenario, run against the current `autodev.yaml` (ladder inline).
+  The same scenarios then run after the move, and the only diffs allowed are the
+  "Accepted behavior changes". This is the evidence for the summary-count acceptance
+  criterion.
 - **Queue-only absence**: a `REMOVED_INLINE_STATES`-shaped parametrized test covering every
-  moved state (pattern: `TestIssueRefinementSubLoop` ~`test_builtin_loops.py:1323`/`:1413`).
+  moved state, taken from the verified 39-state move set in Scope, not from the prose
+  groups (pattern: `TestIssueRefinementSubLoop` ~`test_builtin_loops.py:1323`/`:1413`).
   Also assert that `enqueue_children`, `dequeue_next` and `recover_subloop_children` are the
   only writers of `autodev-queue.txt` across both loops.
 - **Wrapper structure** (`test_prepare_issue.py`): the moved states exist; every re-entry
   edge (the five selector routes and `dispatch_pre_deferral_remedy.on_yes`) targets
-  `count_repair_cycle_refine`, and no state other than `count_repair_cycle_refine` targets
-  `run_refine_to_ready`; the proof target is `mark_ready`; every terminal writes
+  `count_repair_cycle_refine`; `initial` is `count_repair_cycle_refine`, whose only
+  successor is `clear_record`; `clear_record` is the only state that targets
+  `run_refine_to_ready`, and only `count_repair_cycle_refine` targets `clear_record`;
+  the proof target is `mark_ready`; every terminal writes
   `--writer prepare-issue`; every moved slash state's `on_rate_limit_exhausted` targets
   `mark_rate_limited`; there is exactly one `clear_scores` / `rerun_confidence` /
   `check_scores_present` / `route_after_rescore` chain; `run_refine_to_ready.on_yes`
@@ -577,8 +676,9 @@ Document these in `docs/guides/LOOPS_REFERENCE.md`:
   `forward_stop`; `check_pre_deferral_remedy.on_no`, `check_go_no_go_eligible.on_no`,
   `check_go_no_go_waiver.on_no` and `record_reentry_exhausted.next` target
   `route_ladder_stop`, and no non-terminal state other than `route_ladder_stop` and the
-  `mark_*` / `forward_*` terminals targets `failed`; `max_steps` matches its pinned
-  arithmetic; the wrapper declares `on_max_steps: mark_ladder_error`; the wrapper imports
+  `mark_*` / `forward_*` terminals targets `failed`; `max_steps ≥ 4 × (L + 4 + 18) + 2`,
+  where `L` is the longest simple ladder path recomputed from the wrapper graph with
+  re-entry edges cut (see Mechanics); the wrapper declares `on_max_steps: mark_ladder_error`; the wrapper imports
   `lib/common.yaml` and sets `capture_reachability_ok: true`; every `failed`-bound
   terminal writes `refine-terminal-class` before its record write; the moved states'
   `autodev-inflight` writes match today's (four `rm -f`, one re-arm in `reopen_waived`).
@@ -623,6 +723,14 @@ Document these in `docs/guides/LOOPS_REFERENCE.md`:
     `skip_inflight_infra` in autodev with one `refine_failed_infra` row and no
     `refine_failed` row. With a stop record already written, that record stands and
     autodev routes it to `ledger_child_stop`;
+  - step cap after a success record: the cap fires with `mark_ready`, `mark_decomposed`
+    or `forward_done` as the last step before `done`. The `READY` / `DECOMPOSED` /
+    `CANCELLED` record is overwritten with `RETRYABLE_ERROR:infra`, and autodev writes
+    one `refine_failed_infra` row and no `refine_failed` row;
+  - re-entry clears a stale record: after a first inner run records `READY` and a
+    selector re-enters, a stub inner loop that ends `failed` without writing a record
+    yields `MISSING` (not the forwarded first-pass `READY`), and `clear_record` ran
+    after `count_repair_cycle_refine`;
   - `detect_ladder_children` order: an inner `DECOMPOSED` whose children exist is
     diffed against the pre-entry baseline (`autodev-pre-ids.txt` unchanged by the state),
     so both the wrapper and autodev's `detect_children` find the children and
@@ -701,7 +809,7 @@ Document these in `docs/guides/LOOPS_REFERENCE.md`:
 - [ ] The wrapper ends only `ready` / `decomposed` in `done` and every `BLOCKED:*` / `DEFERRED:*` / `RETRYABLE_ERROR:*` stop in `failed`; a real-FSM test asserts no stop reaches `route_refine_success`'s `skip_inflight` legs (no double ledger row)
 - [ ] `implement_current`'s only predecessor is `check_proof_defer_or_implement`, and `READY` comes only from the wrapper's pass gate plus `select_obligation_pre_implement`
 - [ ] The relocated behavioral suites pass. `auto-refine-and-implement` summary counts in a real-FSM run are unchanged except for the "Accepted behavior changes": scores-absent / `on_error` exits add a `refine_failed_infra` row, `run_size_review` rate-limit exhaustion halts, a cancelled parent is ledgered `cancelled`, a waived-but-under-readiness `oversized_atomic` issue is deferred `low_readiness`, an autodev `check_passed` or `check_parent_resolved` error is ledgered `refine_failed_infra`, and a wrapper step-cap cutoff is ledgered `refine_failed_infra`. Each difference is pinned by its own test
-- [ ] Every re-entry edge (selectors and `dispatch_pre_deferral_remedy.on_yes`) targets the wrapper's `count_repair_cycle_refine`, never `run_refine_to_ready` directly
+- [ ] Every re-entry edge (selectors and `dispatch_pre_deferral_remedy.on_yes`) targets the wrapper's `count_repair_cycle_refine`, never `clear_record` or `run_refine_to_ready` directly; the entry chain is `count_repair_cycle_refine` → `clear_record` → `run_refine_to_ready`, so every inner entry, re-entries included, clears stale records first
 - [ ] `route_inner_success` resets `refine-broke-down` to `0` on every inner success; an inner `DECOMPOSED` with no children and an unresolved parent continues to the wrapper's size-review (BUG-1183 fallback kept); and no wrapper terminal is written while `refine-broke-down` is `1` except `mark_decomposed`, including after a `MISSING` inner record
 - [ ] `record_reentry_exhausted` lives in the wrapper and records `BLOCKED:decision_unresolved`
 - [ ] Autodev's `check_passed` is the only writer of `autodev-staged.txt`, and `recover_subloop_children` is the only writer of `resolved_by_subloop` rows
@@ -711,7 +819,11 @@ Document these in `docs/guides/LOOPS_REFERENCE.md`:
 - [ ] No ladder exit goes straight to `failed` without a record: the four stop exits go through `route_ladder_stop`, and a resolved parent (from `recheck_after_size_review`, `regate_after_atomic_remediation` or `record_reentry_exhausted`) reaches `recover_subloop_children` with exactly one row and no `refine_failed` row
 - [ ] `reopen_waived` defers `low_readiness` when post-remediation readiness is below threshold; `mark_ready` is never reached with readiness below threshold
 - [ ] Autodev `check_passed.on_error` → `skip_inflight_infra`; `autodev-broke-down` has no remaining writer or reader
-- [ ] `prepare-issue.yaml` declares `on_max_steps: mark_ladder_error`; a step-cap cutoff with no stop record is ledgered `refine_failed_infra` (not `refine_failed`), and one with a stop record keeps that record and gets no second row
+- [ ] `prepare-issue.yaml` declares `on_max_steps: mark_ladder_error`; a step-cap cutoff with no stop record is ledgered `refine_failed_infra` (not `refine_failed`), and one with a `BLOCKED:*` / `DEFERRED:*` stop record keeps that record and gets no second row
+- [ ] A step-cap cutoff after a success record was written (`READY` / `DECOMPOSED` / `CANCELLED`) overwrites that record with `RETRYABLE_ERROR:infra` and is ledgered `refine_failed_infra`, never `refine_failed`
+- [ ] `max_steps` is pinned (250) with its arithmetic in a comment, and a structural test recomputes the bound from the wrapper graph
+- [ ] The cross-loop harness (real `autodev.yaml` + `prepare-issue.yaml`, stub `refine-to-ready-issue.yaml`, scripted slash commands) lands before the move with characterization tests; after the move, the same scenarios differ only by the "Accepted behavior changes"
+- [ ] The absence test covers exactly the verified 39-state move set (shared rescoring chain included; no retired triplet names)
 - [ ] Autodev `check_parent_resolved.on_no` → `skip_inflight` and `on_error` → `skip_inflight_infra`
 - [ ] `detect_ladder_children` diffs before it refreshes `autodev-pre-ids.txt`, and refreshes only on the no-children, unresolved-parent branch; inner-loop children are enqueued by autodev's `enqueue_children`
 - [ ] The moved states' `autodev-inflight` writes are unchanged (no new accepted behavior change for `auto-refine-and-implement`'s ABANDONED / INFLIGHT_UNRESOLVED counts)
@@ -772,13 +884,17 @@ Research from the original ENH-3605 (wire/refine, reconcile/design) was merged h
       ~:2447, `recheck_after_size_review` ~:2632;
     - `check_pre_deferral_remedy` ~:2880, `dispatch_pre_deferral_remedy` ~:2925.
   - `scripts/little_loops/loops/prepare-issue.yaml` (created by ENH-3605; 7 states today).
-- **Rescoring triplets**: five existed (`decide`, `wire`, `spike`, `atomic`, `reconcile`);
-  ENH-3610/3611 remove `decide` and `spike`. The remaining three differ only in entry point,
-  successor and retry-marker name, and are cleared by `dequeue_next`. `refine_for_design`
-  and `count_repair_cycle_reconcile` both feed `clear_scores_before_reconcile`. All three
-  `check_scores_present_*` / `clear_scores_before_*` route failures to
-  `mark_scores_absent_infra`, which writes only `autodev-scores-absent.txt` (no skipped
-  row). It is deleted by this issue (see States that stay).
+- **Rescoring chain** (post-ENH-3615): the per-origin triplets are gone. One chain
+  (`clear_scores` ~:1081 → `rerun_confidence` ~:1094 → `check_scores_present` ~:1110 →
+  `route_after_rescore` ~:1149) serves the `wire`, `reconcile` and `atomic` origins.
+  `count_repair_cycle_wire`, `count_repair_cycle_reconcile` and
+  `count_repair_cycle_refine_for_design` write the origin marker inline, and
+  `mark_rescore_origin_atomic` (~:2270) writes it after `remediate_oversized_atomic`.
+  `route_after_rescore` sends `WIRE` → `enqueue_or_skip`, `RECONCILE` →
+  `recheck_after_size_review` and `ATOMIC` → `regate_after_atomic_remediation`. Every
+  fail-closed exit goes to `mark_scores_absent_infra` (~:1620), which writes only
+  `autodev-scores-absent.txt` (no skipped row; nothing reads that file). This issue
+  deletes it (see States that stay).
 - **Repair-cycle counter**: `count_repair_cycle_{refine,wire,size_review,refine_for_design,reconcile}`
   all write `autodev-repair-cycle-count.txt`. `recheck_after_size_review` reads it for the
   stagnation backstop (count ≥ 2 with confidence not above `autodev-pre-readiness.txt`).
@@ -876,7 +992,8 @@ Research from the original ENH-3605 (wire/refine, reconcile/design) was merged h
     `test_reopen_waived_reopens_stages_and_rearms_inflight`, `test_enqueue_or_skip_*`,
     `test_pre_deferral_remedy_*`, `test_recheck_scores_on_*` (~:8890-8920);
   - wire/reconcile/design pins: `check_missing_artifacts` (~:9183-9209), `run_wire` /
-    `run_refine` (~:9214-9238, :9519-9531), `rerun_confidence_after_wire` (~:9534-9590),
+    `run_refine` (~:9214-9238, :9519-9531), the shared rescoring chain pins that replaced
+    `rerun_confidence_after_wire` (ENH-3615; old anchor ~:9534-9590, re-grep),
     `check_reconcile_needed` (~:8328, :8636-8660, :8839-8872, :9121-9165),
     `reconcile_current` / `count_repair_cycle_reconcile` (~:9145-9166),
     `dispatch_design_remedy` (~:8771-8793), `check_atomic_design_remedy` (~:8229);
@@ -934,26 +1051,30 @@ Research from the original ENH-3605 (wire/refine, reconcile/design) was merged h
    over. Keep the `copy_broke_down` reset anyway; it is harmless after the wrapper returns.
 1. Re-run the boundary edge computation (Scope, "Boundary edge table") and confirm it still
    matches; update the table if `autodev.yaml` has changed.
-2. Pin the terminal table (the `TestOutcomeMapping` and CLI rows) and the `run_size_review`
+2. Build the cross-loop harness (Tests, first bullet) and commit it with characterization
+   tests of today's ledger rows against the current `autodev.yaml`, before any loop edit.
+3. Pin the terminal table (the `TestOutcomeMapping` and CLI rows) and the `run_size_review`
    halt (`on_rate_limit_exhausted: mark_rate_limited`).
-3. Build the wrapper ladder: `route_inner_success`, `detect_ladder_children`, the pass gate,
+4. Build the wrapper ladder: `route_inner_success`, `detect_ladder_children`, the pass gate,
    the moved states with `${context.input}` rewrites, the shared rescoring path, the wrapper
    terminals (`mark_ready`, `mark_decomposed`, `mark_rate_limited`, `mark_scores_absent`,
-   `mark_ladder_error`), `route_ladder_stop`, record writes next to each ledger row, the
-   `reopen_waived` readiness re-check, the broke-down flag rule, and
-   `count_repair_cycle_refine` as the pre-state of the inner loop. Raise `max_steps` and
+   `mark_ladder_error`, which keeps only suffixed stop records), `route_ladder_stop`,
+   record writes next to each ledger row, the `reopen_waived` readiness re-check, the
+   broke-down flag rule, and the `count_repair_cycle_refine` → `clear_record` →
+   `run_refine_to_ready` entry chain. Set `max_steps: 250` with its arithmetic comment and
    declare `on_max_steps: mark_ladder_error`.
-4. In the same commit: delete the moved states from autodev, apply the "Boundary edge
+5. In the same commit: delete the moved states from autodev, apply the "Boundary edge
    retargets" (including `refine_current.on_success` and `check_passed.on_yes`), set
    `check_passed.on_no` / `on_cannot_judge` → `skip_inflight`, delete `size_review_snap`,
    `check_broke_down` and `mark_scores_absent_infra`, retarget `detect_children.on_no`,
    `check_parent_resolved.on_no` / `on_error` and `check_passed.on_error`, and shrink
    `copy_broke_down` to its reset.
-5. Relocate and rewrite the suites; add the absence, queue-writer, terminal-table, rescoring
-   dispatch, counter and DECOMPOSED-guarantee tests; update the topology count and the
-   baseline JSON.
-6. Update the docs and comments; re-anchor the skills; run `ll-adapt` and re-check the line
-   pins.
+6. Relocate and rewrite the suites; add the absence, queue-writer, terminal-table, rescoring
+   dispatch, counter and DECOMPOSED-guarantee tests; re-run the step 2 characterization
+   scenarios and confirm the only diffs are the accepted behavior changes; update the
+   topology count (86 → 44, with a delta comment) and the baseline JSON.
+7. Update the docs and comments (including the stale threshold comments, see Mechanics);
+   re-anchor the skills; run `ll-adapt` and re-check the line pins.
 
 ## Program Design
 
@@ -1143,6 +1264,38 @@ Implementation Steps:
   times (autodev `detect_children`, wrapper `detect_ladder_children`, and the wrapper's
   `enqueue_or_skip` detection half). A shared `lib/common.yaml` fragment would stop them
   drifting apart.
+
+### Fifth review (2026-09-26, against HEAD `513cca9a2`)
+
+Recomputed the boundary edges from `autodev.yaml` (86 states); every "Today" entry
+matches, and the move set is 39 states. Folded into States that move, Inner-loop success
+routing, Queue ownership, Shared rescoring path, Terminal table, Mechanics, Tests,
+Acceptance Criteria, Integration Map and Implementation Steps:
+
+- **Medium**: the step cap can fire after a success record was written, because the
+  executor checks `max_steps` before the terminal check. `mark_ladder_error` would then
+  have kept a `READY` / `DECOMPOSED` / `CANCELLED` record, and autodev's failure-path
+  router would ledger `refine_failed` (and never enqueue a `DECOMPOSED` parent's
+  children). Fixed: `mark_ladder_error` keeps only suffixed stop records.
+- **Medium**: no harness drives the wrapper into autodev end to end. Added a harness step
+  (`loops_dir` + stub inner loop + scripted slash commands) that lands first with
+  characterization tests, so the "counts unchanged except accepted changes" criterion has
+  a before/after comparison.
+- **Low-Medium**: the move-set prose still named the retired ENH-3615 triplets and left
+  out the five live shared-chain states, so an absence test built from it would pass
+  vacuously. Replaced with the verified 39-state list; state counts corrected (autodev 86
+  → 44, wrapper 7 → about 55).
+- **Low**: `max_steps` pinned at 250 with its arithmetic (≤ 4 inner entries per pass;
+  inner steps do not count), plus a structural test that recomputes the bound.
+- **Low**: re-entries bypassed `clear_record`; the entry chain is now
+  `count_repair_cycle_refine` → `clear_record` → `run_refine_to_ready`.
+- Nits: the `copy_broke_down` "copies the final flag" sentence contradicted the shrink
+  decision (rewritten; deleting the state is a possible follow-up, not taken here);
+  `record_reentry_exhausted`'s row write has to move into the not-done branch; stale
+  "check-readiness ignores CLI overrides" comments are rewritten on move.
+- Checked with no change needed: autodev's retained `check_passed` agrees with the
+  wrapper's inline pass gates (explicit thresholds beat config since BUG-3390; both
+  honor the waiver); nothing reads `autodev-scores-absent.txt`.
 
 ## Session Log
 - `/ll:confidence-check` - 2026-09-26T22:49:03 - `58016881-a136-4f55-8da0-640ef93df277.jsonl`

@@ -8,6 +8,7 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-09-26'
 captured_at: '2026-09-26T22:32:30Z'
+reconcile_attempted: true
 ---
 
 # ENH-3616: ll-init: detect src/test/focus dirs from real layout, never propose nonexistent dirs
@@ -63,9 +64,12 @@ _Added by `/ll:refine-issue` — 2026-09-26 — based on codebase analysis:_
 
 ## Integration Map
 
-- `scripts/little_loops/init/introspect.py` — `_introspect_src_dir`, `_introspect_test_dir`, `_introspect_focus_dirs`
-- `scripts/little_loops/init/proposal.py`, `scripts/little_loops/init/core.py`, `scripts/little_loops/init/tui.py`, `scripts/little_loops/init/summary.py`
-- Template defaults under `scripts/little_loops/templates/`
+- `scripts/little_loops/init/introspect.py` — `_introspect_src_dir`, `_introspect_test_dir`, `_introspect_focus_dirs`; new `_existing_dir`, `_detect_root_layout`, `_find_nested_test_dir`
+- `scripts/little_loops/init/cli.py:531` — `_print_introspection_summary` wording
+- `scripts/little_loops/init/proposal.py`, `core.py`, `tui.py`, `summary.py` — verify `.` round-trip (modify only if a test shows a break)
+- `scripts/little_loops/codequery/codegraph.py:121,234` — special-case `.` in `_is_scan_relevant` / `_dotted_candidates`
+- `commands/manage-release.md` (38, 40, 249, 251, 302), `commands/run-tests.md:99` — `.`-safe `src_dir` substitution
+- Template defaults under `scripts/little_loops/templates/` — read-only; filtered at read time, contents unchanged
 
 ### Codebase Research Findings
 
@@ -159,11 +163,13 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Implementation Steps
 
-1. Add an existence filter helper in `little_loops.init.introspect`; apply it to template defaults in `_introspect_src_dir`, `_introspect_test_dir`, `_introspect_focus_dirs`.
-2. Add root-layout detection producing `.` for src and test dirs.
-3. Extend test-dir probing to nested conventional locations.
-4. Check `proposal.py` / `tui.py` / `core.py` (`choices["src_dir"]`, `scan_focus_dirs`) so an empty/`.` value round-trips correctly, and dependent command derivation (e.g. `mypy {src_dir or '.'}` at `introspect.py:302`) stays sane.
-5. Tests: flat-layout repo → `.`; repo with no `src/` → no `src/` proposed; nested `scripts/tests/` detected; template focus_dirs filtered by existence.
+1. Add `_existing_dir` in `little_loops.init.introspect`; apply it to template defaults in `_introspect_src_dir`, `_introspect_test_dir`, `_introspect_focus_dirs`. When no existing dir survives, the fallback is `.` (provenance `default`), never empty — `build_config` (`core.py`/`tui.py`) treats empty as "keep template value" and would re-adopt the phantom dir; focus dirs fall back to `["."]` for the same reason.
+2. Add `_detect_root_layout` producing `.` for src and test dirs. Make sure the `name.startswith(fd)` de-dup in `_introspect_focus_dirs` does not let an adopted `.` swallow real `tests/`/`test/` entries.
+3. Add `_find_nested_test_dir` for nested conventional locations, honoring the module's `_SKIP_DIRS` ignore set.
+4. Round-trip `.` through `proposal.py` / `tui.py` / `core.py` (`choices["src_dir"]`, `scan_focus_dirs`) and `summary_rows`, keeping `mypy {src_dir or '.'}` (`introspect.py:302`) sane. Audit `.`-hostile consumers: special-case `.` in `codegraph.py` `_is_scan_relevant` (`:121`) and `_dotted_candidates` (`:234`); verify `decisions.py:652`, `worker_pool.py:1523`, `auto-refine-and-implement.yaml:626,851`; fix `commands/manage-release.md` (no-separator `src_dir` concatenation) and `commands/run-tests.md:99` (`^.` regex).
+5. Update `cli.py:531` `_print_introspection_summary` wording ("kept template default") to match the filtered/`.` fallback.
+6. Tests: rewrite the three phantom-default tests (`test_no_package_marker_keeps_default`, `test_no_test_dir_keeps_default`, `test_defaults_when_nothing_detected`) and the wiring-listed empty-dir tests; add flat-layout → `.`, no-`src/` → no `src/` proposed, nested `scripts/tests/` detected, template focus_dirs filtered by existence, and `.` round-trip cases.
+7. Review `--force` / "template defaults" wording in the docs listed under `### Documentation`; re-run `ll-adapt` if any `skills/` file changes. Coordinate with ENH-3612 (moves the `_introspect_src_dir` call in `introspect()`).
 
 ### Codebase Research Findings
 
@@ -199,10 +205,30 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - [ ] Root-level source/test layouts are proposed as `.`.
 - [ ] Nested test dirs (e.g. `scripts/tests/`) are detected.
 - [ ] Existing detection (src/ package marker, pyproject/tsconfig/Cargo candidates) unchanged.
+- [ ] When no existing dir is detected the value falls back to `.` (provenance `default`), never empty; the focus-dirs fallback is `["."]`, so `core.py:347` / `tui.py:1090` truthiness guards never re-adopt a phantom template path.
+- [ ] `.` round-trips proposal → `build_config` (`core.py` and `tui.py`) → `summary_rows` unchanged.
+- [ ] `.`-consuming paths behave correctly: `codegraph.py` `_is_scan_relevant` / `_dotted_candidates`, `commands/manage-release.md`, `commands/run-tests.md:99`.
+- [ ] Go (`src_dir: .`) and java (`src/main/java/`) template defaults still survive the filter when those dirs exist.
 
 ## Related Key Documentation
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
+
+## Verification Notes
+
+_Added by `/ll:verify-issues` — 2026-09-26_
+
+Verdict at time of check: **DIRECTIVE_DRIFT** (not corrected in this pass — fix is confined to Acceptance Criteria / Program Design, which `/ll:reconcile-issue` owns; the selected mechanism stands)
+
+- **Claims verified**: all `path:line` anchors match HEAD — `_introspect_src_dir` (`introspect.py:686`), `_introspect_focus_dirs` (`:735`), `_introspect_test_dir` (`:761`), callers (`:152`, `:185`, `:190`), `default_test_dir` (`:189`), `mypy {src_dir or '.'}` (`:302`), `cli.py:531`, `core.py:347`, `tui.py:1090`, `codegraph.py:121`/`:234`, `decisions.py:652`; the four named existing tests exist; quoted `commands/manage-release.md` / `run-tests.md:99` / `skills/spike/SKILL.md:151` strings match. No files in the issue moved.
+- **Decisions rules**: no active required rules — no violation. **Evidence quotes** (`ll-verify-evidence`): clean, 0 findings.
+- **Proposal-vs-code consequence check (B6)**:
+  - *AC coverage gap*: the four Acceptance Criteria cover only detection output. The Integration Map / Wiring Phase list `.`-hostile consumers (`codegraph.py` `_is_scan_relevant` / `_dotted_candidates`, `manage-release.md` no-separator concatenation, `run-tests.md:99` `^.` regex), the `.` round-trip through `build_config`/`tui.py`/`summary_rows`, and the `["."]` focus fallback that keeps the `core.py:347`/`tui.py:1090` truthiness guards effective — none has a corresponding AC. Add ACs for: `.` round-trips proposal → config → summary; `.`-consuming code paths behave correctly; empty focus list is never emitted.
+  - *Program Design gap*: Call Path omits `_detect_root_layout` (named in Proposed Solution / Signatures); add `_introspect_src_dir -> _detect_root_layout` and `_introspect_test_dir -> _existing_dir`.
+  - *Test-fixture invalidation*: already covered by the Tests section (three phantom-default tests + wiring-listed tests).
+- **Graph**: provider=`codegraph` freshness=`stale` (not used to originate any verdict; direct Grep/Read confirmed all anchors).
+
+Remaining: the AC and Call Path additions above.
 
 ## Status
 
@@ -210,6 +236,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:reconcile-issue` - 2026-09-26T22:59:39 - `2140791c-2fb1-4f71-ba9c-43289547febe.jsonl`
+- `/ll:verify-issues` - 2026-09-26T22:58:20 - `3fd33dbe-1f15-463a-a944-4883dfb19b30.jsonl`
 - `/ll:wire-issue` - 2026-09-26T22:54:01 - `f54e5d1b-c94c-4496-a128-5bf9edc4c3c0.jsonl`
 - `/ll:refine-issue` - 2026-09-26T22:50:46 - `4b810b7f-5ecd-426c-a2b1-3149be2063f7.jsonl`
 - `/ll:format-issue` - 2026-09-26T22:33:50 - `f16b1c3d-13dc-4e2c-9a78-1582bd68929b.jsonl`
