@@ -40,7 +40,7 @@
         "type_cmd": {
           "type": ["string", "null"],
           "description": "Command to run type checker",
-          "default": "mypy"
+          "default": "mypy src/"
         },
         "format_cmd": {
           "type": ["string", "null"],

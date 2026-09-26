@@ -71,7 +71,24 @@ class TestPythonCommandDetection:
         result = introspect(tmp_path, python_template)
         iv = result.values["project.type_cmd"]
         assert iv.provenance == "declared"
-        assert iv.value == "mypy"
+        assert iv.value == "mypy src/"
+
+    def test_type_cmd_bare_when_mypy_files_set(
+        self, tmp_path: Path, python_template: object
+    ) -> None:
+        (tmp_path / "pyproject.toml").write_text('[tool.mypy]\nfiles = ["src"]\n')
+        result = introspect(tmp_path, python_template)
+        assert result.values["project.type_cmd"].value == "mypy"
+
+    def test_type_cmd_follows_detected_src_dir(
+        self, tmp_path: Path, python_template: object
+    ) -> None:
+        (tmp_path / "pyproject.toml").write_text("[tool.mypy]\nstrict = true\n")
+        (tmp_path / "mypkg").mkdir()
+        (tmp_path / "mypkg" / "__init__.py").write_text("")
+        result = introspect(tmp_path, python_template)
+        assert result.values["project.src_dir"].value == "mypkg/"
+        assert result.values["project.type_cmd"].value == "mypy mypkg/"
 
     def test_type_cmd_defaults_when_no_mypy_table(
         self, tmp_path: Path, python_template: object
@@ -80,7 +97,7 @@ class TestPythonCommandDetection:
         result = introspect(tmp_path, python_template)
         iv = result.values["project.type_cmd"]
         assert iv.provenance == "default"
-        assert iv.value == "mypy"  # still the template default value
+        assert iv.value == "mypy src/"  # still the template default value
 
     def test_no_pyproject_all_commands_default(
         self, tmp_path: Path, python_template: object
@@ -101,7 +118,7 @@ class TestPythonCommandDetection:
         result = introspect(tmp_path, generic)
         assert result.values["project.lint_cmd"].value == "ruff check ."
         assert result.values["project.format_cmd"].value == "ruff format ."
-        assert result.values["project.type_cmd"].value == "mypy"
+        assert result.values["project.type_cmd"].value == "mypy src/"
 
 
 class TestManifestDiscoveryNesting:

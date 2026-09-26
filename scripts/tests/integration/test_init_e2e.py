@@ -253,7 +253,7 @@ class TestInitHeadlessIntrospection:
         config = json.loads((project / ".ll" / "ll-config.json").read_text())
         assert config["project"]["src_dir"] == "mypkg/"
         assert config["project"]["lint_cmd"] == "ruff check ."
-        assert config["project"]["type_cmd"] == "mypy"
+        assert config["project"]["type_cmd"] == "mypy mypkg/"
 
     def test_yes_prints_provenance_summary(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
@@ -266,7 +266,7 @@ class TestInitHeadlessIntrospection:
 
         out = capsys.readouterr().out
         assert "lint_cmd: ruff check .  (declared: [tool.ruff] present)" in out
-        assert "type_cmd: mypy  (declared: [tool.mypy] present)" in out
+        assert "type_cmd: mypy src/  (declared: [tool.mypy] present)" in out
 
     def test_yes_derives_node_test_cmd_from_package_json(self, tmp_path: Path) -> None:
         project = tmp_path / "node_project"

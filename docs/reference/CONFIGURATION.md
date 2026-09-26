@@ -301,7 +301,7 @@ Project-level settings for commands:
 | `test_dir` | `tests` | Test directory path |
 | `test_cmd` | `pytest` | Command to run tests. Key absent → the default; explicit `null` → opt out of the test gate entirely rather than guessing (BUG-3269) |
 | `lint_cmd` | `ruff check .` | Command to run linter. Same absent-vs-null distinction as `test_cmd` (BUG-3269) |
-| `type_cmd` | `mypy` | Command for type checking |
+| `type_cmd` | `mypy src/` | Command for type checking |
 | `format_cmd` | `ruff format .` | Command to format code |
 | `format_check_cmd` | `null` | Check-only format command with a `{files}` placeholder, run by the `autodev` quality gate on the changed files only, e.g. `ruff format --check --force-exclude {files}`. Unset → the format stage is skipped. Must not contain a `"` character (the oracle's `commands.json` is not JSON-escaped) |
 | `format_check_extensions` | `null` | Extensions the format-check stage is limited to, e.g. `[".py", ".pyi"]`. Unset → every changed file is passed |

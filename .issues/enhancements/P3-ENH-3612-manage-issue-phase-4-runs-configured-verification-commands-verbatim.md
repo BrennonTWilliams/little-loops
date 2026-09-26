@@ -3,10 +3,11 @@ id: ENH-3612
 type: ENH
 title: manage-issue Phase 4 runs configured verification commands verbatim
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-26'
 captured_at: '2026-09-26T05:02:45Z'
+completed_at: '2026-09-26T16:42:22Z'
 parent: EPIC-3565
 relates_to:
 - FEAT-3573
@@ -286,6 +287,8 @@ _Added by `/ll:refine-issue` — 2026-09-26 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-26T16:42:22 - `8fcfc447-610b-4662-891e-2d3e65d9e8cf.jsonl`
+- `/ll:ready-issue` - 2026-09-26T16:26:35 - `79b560ed-ffe7-48ed-9430-ac4a9e756747.jsonl`
 - `/ll:confidence-check` - 2026-09-26T16:10:42 - `8d817553-e0da-4aa6-b754-9a564194f29f.jsonl`
 - `/ll:verify-issues` - 2026-09-26T16:06:58 - `cd2a5969-8672-4f0e-924f-ea543f36e04a.jsonl`
 - `/ll:confidence-check` - 2026-09-26T06:54:48 - `b6236edd-3c2e-4487-b3b9-c892c0144a8f.jsonl`

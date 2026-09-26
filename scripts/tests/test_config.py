@@ -142,7 +142,7 @@ class TestProjectConfig:
         assert config.test_dir == "tests"
         assert config.test_cmd == "pytest"
         assert config.lint_cmd == "ruff check ."
-        assert config.type_cmd == "mypy"
+        assert config.type_cmd == "mypy src/"
         assert config.format_cmd == "ruff format ."
         assert config.build_cmd is None
         assert config.run_cmd is None
@@ -4619,3 +4619,11 @@ class TestBRConfigPrePatchCheckIntegration:
             "timeout_s": 300,
             "modified_hard": False,
         }
+
+
+class TestProjectConfigTypeCmdDerivation:
+    def test_type_cmd_derived_from_src_dir(self) -> None:
+        assert ProjectConfig.from_dict({"src_dir": "lib/"}).type_cmd == "mypy lib/"
+
+    def test_explicit_null_type_cmd_stays_none(self) -> None:
+        assert ProjectConfig.from_dict({"type_cmd": None}).type_cmd is None

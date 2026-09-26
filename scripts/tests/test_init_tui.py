@@ -1478,7 +1478,7 @@ class TestWizardSeedsFromIntrospection:
         assert "inferred" in (text_calls[1].kwargs.get("instruction") or "")
         # "Type-check command (optional):" carries the [tool.mypy] evidence
         type_call = next(c for c in text_calls if c.args and c.args[0].startswith("Type-check"))
-        assert type_call.kwargs["default"] == "mypy"
+        assert type_call.kwargs["default"] == "mypy mypkg/"
         assert "[tool.mypy]" in (type_call.kwargs.get("instruction") or "")
         # Test/Lint commands go through select with the declared value pre-selected
         select_calls = mock_q.select.call_args_list

@@ -71,7 +71,7 @@ class TestBuildProposal:
         pf = proposal.field_for("project.lint_cmd")
         assert pf is not None and pf.provenance == "declared"
         assert "[tool.ruff]" in pf.evidence
-        assert proposal.config["project"]["type_cmd"] == "mypy"
+        assert proposal.config["project"]["type_cmd"] == "mypy mypkg/"
 
     def test_fresh_project_gets_recommended_features(self, python_project: Path) -> None:
         from little_loops.init.core import RECOMMENDED_FEATURES

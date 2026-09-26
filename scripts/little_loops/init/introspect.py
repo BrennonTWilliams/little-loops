@@ -148,12 +148,21 @@ def introspect(root: Path, template: TemplateMatch) -> IntrospectResult:
     # > task-runner target (inferred) > tool config file (inferred)
     # > ecosystem convention (inferred) > template default.
     values: dict[str, IntrospectedValue] = {}
+    default_src_dir = project.get("src_dir") or ""
+    src_dir_iv, ambiguity = _introspect_src_dir(root, py_data, default_src_dir)
     for field_name in _COMMAND_FIELDS:
         default_value = project.get(field_name) or ""
         candidates = command_options.get(field_name)
         iv = None
         if py_data is not None:
-            iv = _python_command(field_name, py_data, manifest_root, candidates, default_value)
+            iv = _python_command(
+                field_name,
+                py_data,
+                manifest_root,
+                candidates,
+                default_value,
+                src_dir=src_dir_iv.value if isinstance(src_dir_iv.value, str) else "",
+            )
         if iv is None and node_data is not None and node_manifest is not None:
             iv = _node_command(field_name, node_data, node_manifest)
         if iv is None:
@@ -170,8 +179,6 @@ def introspect(root: Path, template: TemplateMatch) -> IntrospectResult:
             )
         values[f"project.{field_name}"] = iv
 
-    default_src_dir = project.get("src_dir") or ""
-    src_dir_iv, ambiguity = _introspect_src_dir(root, py_data, default_src_dir)
     values["project.src_dir"] = src_dir_iv
     ambiguities = [ambiguity] if ambiguity is not None else []
 
@@ -255,6 +262,8 @@ def _python_command(
     manifest_root: Path,
     candidates: list[str] | None,
     default_value: str,
+    *,
+    src_dir: str = "",
 ) -> IntrospectedValue | None:
     tool = py_data.get("tool", {})
 
@@ -287,7 +296,10 @@ def _python_command(
 
     if field_name == "type_cmd":
         if "mypy" in tool:
-            return IntrospectedValue("mypy", "declared", "[tool.mypy] present")
+            # A CLI target overrides [tool.mypy] files, so stay bare when it is set.
+            if tool["mypy"].get("files"):
+                return IntrospectedValue("mypy", "declared", "[tool.mypy] present")
+            return IntrospectedValue(f"mypy {src_dir or '.'}", "declared", "[tool.mypy] present")
         if (manifest_root / "pyrightconfig.json").exists():
             return IntrospectedValue("pyright", "declared", "pyrightconfig.json present")
         return None

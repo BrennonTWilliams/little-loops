@@ -412,7 +412,7 @@ class ProjectConfig:
     test_dir: str = "tests"
     test_cmd: str = "pytest"
     lint_cmd: str = "ruff check ."
-    type_cmd: str | None = "mypy"
+    type_cmd: str | None = "mypy src/"
     format_cmd: str | None = "ruff format ."
     build_cmd: str | None = None
     run_cmd: str | None = None

@@ -349,17 +349,16 @@ See [templates.md](templates.md) for mismatch detection and reporting formats.
 
 ## Phase 4: Verify
 
-Run each verification command if configured (non-null). Skip silently if not configured, reporting SKIP status.
+Run each verification command if configured (non-null), exactly as configured, with no paths or flags appended. Skip silently if not configured, reporting SKIP status.
 
 ```bash
-# Run tests if test_cmd is configured (non-null)
-{{config.project.test_cmd}} tests/ -v
+# Run the full test suite once, via the scratch-redirect form in Headless-Safe Final Test Run below
 
 # Run linting if lint_cmd is configured (non-null)
-{{config.project.lint_cmd}} {{config.project.src_dir}}
+{{config.project.lint_cmd}}
 
 # Run type checking if type_cmd is configured (non-null)
-{{config.project.type_cmd}} {{config.project.src_dir}}
+{{config.project.type_cmd}}
 
 # Run build if build_cmd is configured (non-null)
 {{config.project.build_cmd}}

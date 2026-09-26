@@ -334,7 +334,7 @@ If confirmed:
    ## Test Iteration: my-loop
 
    State: check
-   Action: {{config.project.type_cmd}} {{config.project.src_dir}}
+   Action: {{config.project.type_cmd}}
 
    Exit code: 1
    Output:

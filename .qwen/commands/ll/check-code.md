@@ -99,7 +99,7 @@ if [ "$MODE" = "types" ] || [ "$MODE" = "all" ]; then
     echo "========================================"
 
     # Only run if type_cmd is configured (non-null)
-    {{config.project.type_cmd}} {{config.project.src_dir}} --ignore-missing-imports
+    {{config.project.type_cmd}} --ignore-missing-imports
 
     if [ $? -eq 0 ]; then
         echo "[PASS] No type errors found"

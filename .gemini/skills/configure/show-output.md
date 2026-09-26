@@ -12,7 +12,7 @@ Project Configuration
   test_dir:   {{config.project.test_dir}}      (default: tests)
   test_cmd:   {{config.project.test_cmd}}      (default: pytest)
   lint_cmd:   {{config.project.lint_cmd}}      (default: ruff check .)
-  type_cmd:   {{config.project.type_cmd}}      (default: mypy)
+  type_cmd:   {{config.project.type_cmd}}      (default: mypy src/)
   format_cmd: {{config.project.format_cmd}}    (default: ruff format .)
   build_cmd:  {{config.project.build_cmd}}     (default: none)
   run_cmd:    {{config.project.run_cmd}}      (default: none)

@@ -216,7 +216,7 @@ class ProjectConfig:
     test_dir: str = "tests"
     test_cmd: str = "pytest"
     lint_cmd: str = "ruff check ."
-    type_cmd: str | None = "mypy"
+    type_cmd: str | None = "mypy src/"
     format_cmd: str | None = "ruff format ."
     format_check_cmd: str | None = None
     format_check_extensions: list[str] | None = None
@@ -236,13 +236,14 @@ class ProjectConfig:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ProjectConfig:
         """Create ProjectConfig from dictionary."""
+        src_dir = data.get("src_dir", "src/")
         return cls(
             name=data.get("name", ""),
-            src_dir=data.get("src_dir", "src/"),
+            src_dir=src_dir,
             test_dir=data.get("test_dir", "tests"),
             test_cmd=data.get("test_cmd", "pytest"),
             lint_cmd=data.get("lint_cmd", "ruff check ."),
-            type_cmd=data.get("type_cmd", "mypy"),
+            type_cmd=data["type_cmd"] if "type_cmd" in data else f"mypy {src_dir or '.'}",
             format_cmd=data.get("format_cmd", "ruff format ."),
             format_check_cmd=data.get("format_check_cmd"),
             format_check_extensions=data.get("format_check_extensions"),
