@@ -3,7 +3,7 @@ id: ENH-3601
 type: ENH
 title: Move autodev second-pass preparation routing into a preparation controller
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-25'
 captured_at: '2026-09-25T18:51:59Z'
@@ -301,7 +301,7 @@ Decomposed from ENH-3577: Consolidate autodev issue preparation into a single co
 
 ## Status
 
-**Open** | Created: 2026-09-25 | Priority: P3
+**Decomposed** | Created: 2026-09-25 | Priority: P3
 
 ## Confidence Check Notes
 
@@ -317,6 +317,18 @@ _Added by `/ll:confidence-check` on 2026-09-25_
 
 ### Outcome Risk Factors
 - deep per-site complexity — moves ~45 states into a new wrapper loop, collapses five rescoring triplets, and restructures rate-limit handling; `max_steps` tuning, `context_passthrough` run_dir sharing, and BUG-3588 freshness rules must all survive (mitigation: the enumerated structural suites + the new `prepare-issue` rate-limit exhaustion test).
+
+---
+
+## Resolution
+
+- **Status**: Decomposed
+- **Completed**: 2026-09-26
+- **Reason**: Issue too large for single session
+
+### Decomposed Into
+- ENH-3605: Add prepare-issue wrapper loop with wire/refine and reconcile/design remedy
+- ENH-3606: Move size-review/atomic, go/no-go and pre-deferral remedy into prepare-issue
 
 ## Session Log
 - `/ll:refine-issue` - 2026-09-26T02:56:56 - `5de830ea-6e17-4405-ab8f-9d1d38f4397c.jsonl`
