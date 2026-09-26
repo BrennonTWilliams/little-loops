@@ -1018,6 +1018,17 @@ Re-parsed `autodev.yaml` (86 states) at HEAD `74747fb1e`. `ll-verify-evidence` c
 - Integration Map line anchors remain approximate (ENH-3615 shifted them by roughly 10-40 lines).
 - Proposal check (B6): mechanism stands; no new findings.
 
+### Re-verification (2026-09-26, at HEAD `71b7a81ec`)
+
+Verdict at time of check: **VALID** (no edits needed; nothing outstanding)
+
+`autodev.yaml` and `prepare-issue.yaml` are unchanged since `74747fb1e` (only docs commits since). Re-parsed both: `autodev.yaml` has 86 states; `prepare-issue.yaml` has 7 states and `max_steps: 20`. `ll-verify-evidence` clean; no decisions rules apply. Graph: provider=`codegraph` freshness=`stale` (not used for any verdict).
+
+- Every "Today" entry in the boundary edge table matches the current edges, including the shared `route_after_rescore` dispatch and the `route_refine_success` routes.
+- All ~35 named moved states exist in `autodev.yaml`. `capture_reachability_ok: true` is at :25. `autodev-broke-down` is read only by `check_broke_down` (:1810) and written at :81, :114, :666 and :668, so the "loses its only reader" claim holds.
+- ENH-3605, ENH-3609, ENH-3610 and ENH-3615 are all done. `blocked_by` is absent from the frontmatter.
+- Proposal check (B6): mechanism stands; no new findings.
+
 ## Confidence Check Notes
 
 _Added by `/ll:confidence-check` on 2026-09-26_
@@ -1134,6 +1145,7 @@ Implementation Steps:
   drifting apart.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-26T22:47:23 - `353ed5f6-f689-40d9-bf02-e8d708f52045.jsonl`
 - `/ll:confidence-check` - 2026-09-26T22:21:52 - `b7dfb7f1-4ecd-4b66-aee7-106b539c07bc.jsonl`
 - `/ll:verify-issues` - 2026-09-26T22:05:24 - `c4864ff1-acf7-4101-a722-b28e5ccfc698.jsonl`
 - `/ll:confidence-check` - 2026-09-26T21:19:22 - `80a78edd-363d-4d79-9451-fe1325611d39.jsonl`
