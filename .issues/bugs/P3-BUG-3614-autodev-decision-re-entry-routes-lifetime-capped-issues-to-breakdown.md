@@ -88,6 +88,14 @@ state and no new token are needed.
   reference; the cap resolution must match it)
 - `little_loops.cli.issues.refine_status`: source of `refine_count`
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/issues/refine_status.py` — `cmd_refine_status` emits `refine_count` (single object when an ID filter is given; excludes gap-analysis passes per BUG-3356; deferred issues return their real count per BUG-3357) [Agent 2 finding]
+- `scripts/little_loops/loops/recursive-refine.yaml` — `check_attempt_budget` (~169-188) is a second copy of the cap idiom (`max_refine_count` from config, `LL_ARG_MAX_REFINE_COUNT` fallback); keep the selector's resolution rule aligned [Agent 1 finding]
+- `scripts/little_loops/loops/autodev.yaml` — `record_reentry_exhausted` (`DECISION_EXHAUSTED` target; must keep its `set-status deferred --by automation --reason decision_unresolved` shape) and `dequeue_next` (clears `autodev-reentry-*-<ID>` markers) [Agent 1/2 finding]
+- `scripts/little_loops/loops/oracles/resolve-decision.yaml` — comment above `check_unresolved` (~246-253) describes the one-shot re-entry; update wording if it should mention the lifetime-cap exit [Agent 1/2 finding]
+- `scripts/little_loops/config-schema.json` — `commands.max_refine_count` (read-only; source of the cap) [Agent 1 finding]
+- Selector entry edges (read-only, must stay intact): `check_passed`, `recheck_scores`, and the reopen/regate states routing to `select_obligation_pre_implement` in `autodev.yaml` [Agent 1 finding]
+
 ### Similar Patterns
 - ENH-3611's `PROOF` re-entry guard (same cap term; specified as prose only, no shared code)
 - `check_lifetime_limit`'s config read (`commands.max_refine_count`, env-var fallback from
@@ -100,12 +108,33 @@ state and no new token are needed.
 - `scripts/tests/test_autodev_scores_freshness.py::test_dequeue_clears_markers_for_reentry`:
   must keep passing (regression check)
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_autodev_decision_gate.py::TestObligationSelectorStructural` — exact `route` dict equality (~lines 192-206, includes `"DECISION_EXHAUSTED": "record_reentry_exhausted"`) breaks only if a new route key is added; the plan reuses the existing token, so it should pass unchanged [Agent 3 finding]
+- `scripts/tests/test_autodev_decision_gate.py::TestDecisionReentryFlow` (~453) and the `_drive(states, stub, run_dir, start, child)` FSMExecutor harness — model for the new "capped issue never visits `breakdown_issue`" tests; extend `_StubIssues` (~46) to answer `refine-status --json` [Agent 3 finding]
+- New subprocess-level selector tests following `test_builtin_loops.py::test_check_readiness_honors_context_over_config` (~2050: tmp `.ll/ll-config.json`, fake `ll-issues` on `PATH`, `bash -c`) — cover the cap boundary (`refine_count == cap-1` re-enters, `== cap` exhausts) and `commands.max_refine_count` override; compare `test_loops_recursive_refine.py::TestCheckAttemptBudget::test_exactly_max_refine_count_attempts_then_budget_skip` [Agent 3 finding]
+- `scripts/tests/test_builtin_loops.py::TestAutodevRnImplementDeferralParity` (`AUTODEV_NOT_READY_STATES`, ~9671-9676) — requires `record_reentry_exhausted` to keep the rn-implement `mark_deferred` shape; do not alter that state [Agent 2 finding]
+- `scripts/tests/test_builtin_loops.py` `TestInterpSweepBaseline` / `MR11_MARKER_ALLOWLIST` (~21006-21021) and `scripts/tests/data/loop_interpolation_baseline.json` — a new embedded Python body interpolating `${context.*}` in a selector is an unbaselined site; pass values via env var in a quoted heredoc [Agent 1/3 finding]
+- `scripts/tests/test_fsm_interpolation.py` (`test_nested_variable_syntax_raises_interpolation_error`, `test_bash_default_operator_raises_interpolation_error`, BUG-954) — constrains cap syntax: no `${X:-${context.*}}` nesting; write bash defaults as `$${VAR:-x}` [Agent 3 finding]
+- `scripts/tests/test_fsm_topology.py` (`len(topo["states"]) == 105`, ~271) — unaffected while no state is added; breaks if a new terminal state is introduced [Agent 3 finding]
+- `scripts/tests/test_ll_issues_check_gate.py::test_implement_edges_route_through_guard` (~302) — pins `selector["route"]["_"]`/`["_error"]` on `select_obligation_pre_implement`; leave those keys unchanged [Agent 3 finding]
+- `scripts/tests/test_refine_status.py` — existing pins on the `refine_count` JSON field (~950, ~991, ~1627, ~2140-2169); read-only reference [Agent 2 finding]
+
 ### Documentation
 - `docs/guides/LOOPS_REFERENCE.md` (autodev section): mention the lifetime-cap term on
   re-entry, if the selector re-entry cap is documented there
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/LOOPS_REFERENCE.md` — "Decision handling" paragraph (~1081) says the child is re-entered at most once and that exhaustion goes via `record_reentry_exhausted`; add that a lifetime-capped issue also exhausts there. Read long lines ~152 and ~1087 ("Outcome failure triage") before editing [Agent 2 finding]
+- `docs/guides/LOOPS_REFERENCE.md` — `max_refine_count` context-variable row (~1140) says the cap is enforced by `check_attempt_budget`; autodev selectors are now a further consumer [Agent 2 finding]
+- `docs/reference/CLI.md` — `ll-issues check-flag` "Which gate states consume which flag (ENH-3250)" (~2269-2275): selectors now also read `refine-status` after `check-flag` [Agent 2 finding]
+- `docs/reference/DEFERRAL_CODES.md` — `decision_unresolved` row (~21): `record_reentry_exhausted` emitter description still holds; optionally note the lifetime-cap trigger [Agent 2 finding]
+- `docs/reference/CONFIGURATION.md`, `skills/configure/areas.md`, `skills/configure/show-output.md` — `commands.max_refine_count` text says it is enforced by refine-to-ready-issue and `check_attempt_budget`; add autodev DECISION re-entry. Editing `skills/` trips mirror gates: run `ll-adapt --host <gemini|kimi-code|qwen> --apply` afterwards [Agent 2 finding]
+
 ### Configuration
 - N/A (reads the existing `commands.max_refine_count`)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/config-schema.json` — `commands.max_refine_count` description (~540) may need "autodev DECISION re-entry" added; no new key [Agent 2 finding]
 
 ### Codebase Research Findings
 
@@ -155,6 +184,18 @@ _Added by `/ll:refine-issue` — 2026-09-26 — based on codebase analysis:_
    resolution rule.
 5. Update the comment above each selector's `DECISION` branch (the re-entry cap now has two
    terms) and add tests in `scripts/tests/test_autodev_decision_gate.py`.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `scripts/tests/test_autodev_decision_gate.py` — extend `_StubIssues` to answer `refine-status --json`; add `_drive`-based tests (capped → `record_reentry_exhausted`, `breakdown_issue` never visited, for both selectors) and under-cap unchanged
+- Add subprocess selector tests modelled on `test_check_readiness_honors_context_over_config` with a tmp `.ll/ll-config.json` to cover the cap boundary and `commands.max_refine_count` override
+- Keep `record_reentry_exhausted`, the selector `_`/`_error` routes, and the entry edges unchanged (`test_builtin_loops.py` deferral-parity, `test_ll_issues_check_gate.py`, `test_fsm_topology.py` count of 105)
+- Update `docs/guides/LOOPS_REFERENCE.md` ("Decision handling" ~1081, `max_refine_count` row ~1140) and `docs/reference/CLI.md` (check-flag consumer note ~2269-2275)
+- Update `commands.max_refine_count` wording in `scripts/little_loops/config-schema.json`, `docs/reference/CONFIGURATION.md`, `skills/configure/areas.md`, `skills/configure/show-output.md`, then run `ll-adapt --host <gemini|kimi-code|qwen> --apply`
+- Update the comment above `check_unresolved` in `scripts/little_loops/loops/oracles/resolve-decision.yaml` (~246-253) to mention the lifetime-cap exit
+- Run `python -m pytest scripts/tests/test_builtin_loops.py -k "InterpSweep or Autodev"` to confirm no new unbaselined interpolation site
 
 ## Impact
 
@@ -209,6 +250,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-26T07:04:31 - `c8822019-43a9-4d0f-b257-475aeb4ab3ec.jsonl`
 - `/ll:reconcile-issue` - 2026-09-26T07:01:39 - `7d8d5da2-5970-46c4-a7de-295402f96f22.jsonl`
 - `/ll:refine-issue` - 2026-09-26T06:59:52 - `83a53e9a-c833-443d-91cf-22a5699e1980.jsonl`
 - `/ll:capture-issue` - 2026-09-26T06:53:45 - `06522881-acec-4007-9c05-e417309eaff8.jsonl`

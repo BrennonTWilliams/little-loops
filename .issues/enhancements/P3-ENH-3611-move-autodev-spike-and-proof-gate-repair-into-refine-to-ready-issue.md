@@ -66,7 +66,7 @@ before `implement_current`.
   `absent`/`stale`/`refuted` for Learning Test Registry targets that the issue declares in its
   frontmatter. Only `/ll:explore-api` provisions those. `PROOF:stale` comes **only** from those
   targets. `PROOF:refuted` comes from `spike_refuted` **or** from a refuted registry record
-  (`learning_tests/assess.py`, `_collect_target_statuses`). The token's sub-reason is the
+  (`learning_tests/assess.py`, `_learning_test_statuses`). The token's sub-reason is the
   worst status across all targets (`_SEVERITY`: `refuted` 3 > `absent` 2 > `stale` 1), so a
   refuted registry target masks `spike=absent`. The sub-reason therefore cannot tell whether a
   spike could clear the obligation. Only the spike flags can.
@@ -219,9 +219,9 @@ before `implement_current`.
 
   | Selector | `PROOF` source | Not-needed (`_`) successor | `_error` |
   |---|---|---|---|
-  | `select_obligation_post_refine` | `next-obligation` `"PROOF:absent"` + guard | `check_missing_artifacts` (was `check_spike_needed`) | `detect_children` |
-  | `select_obligation_pre_implement` | `check-gate` `structured_proof` | `check_proof_defer_or_implement` (was `check_proof_gate_before_implement`) | `check_proof_defer_or_implement` |
-  | `select_obligation_post_size_review` (new) | `next-obligation` `"PROOF:absent"` + guard | `check_reconcile_needed` | `recheck_after_size_review` |
+  | `select_obligation_post_refine` | `next-obligation` `PROOF:*` + `spike_needed` + guard | `check_missing_artifacts` (was `check_spike_needed`) | `detect_children` |
+  | `select_obligation_pre_implement` | `check-gate` `structured_proof` + guard | `check_proof_defer_or_implement` (was `check_proof_gate_before_implement`) | `check_proof_defer_or_implement` |
+  | `select_obligation_post_size_review` (new) | `next-obligation` `PROOF:*` + `spike_needed` + guard | `check_reconcile_needed` | `recheck_after_size_review` |
 
 - **Retargets** (the 22 removed states' inbound edges from surviving states):
 
@@ -301,7 +301,7 @@ before `implement_current`.
 | `spike` / `decide` rescoring triplets + `recheck_after_decide` | Fresh scores after a spike or decision (BUG-3588) | MOVED | Child: `route_spike_verdict` `PROVEN` → `confidence_check` → `mark_evidence_absent_infra` on missing scores |
 | `check_rearmed_spike_after_decide` | Re-spike once after a decision re-arms the spike | MOVED | Child: `check_spike_needed` with the shared `spike-runs-<ID>` budget (< 2) |
 | `count_repair_cycle_spike` | Count a spike toward the FEAT-2751 stagnation backstop | PRESERVED | Every re-entry passes `count_repair_cycle_refine` |
-| `check_spike_needed_before_skip` | Last spike chance before the post-size-review skip, at any readiness | CHANGED (narrowed) | `select_obligation_post_size_review` `"PROOF:absent"` → child re-entry, only when readiness passes and outcome is below threshold; the low-readiness case is dropped (row above) |
+| `check_spike_needed_before_skip` | Last spike chance before the post-size-review skip, at any readiness | CHANGED (narrowed) | `select_obligation_post_size_review` `PROOF:*` + `spike_needed` + guard → child re-entry, only when readiness passes and outcome is below threshold; the low-readiness case is dropped (row above) |
 | `check_decide_rate_limited` | Halt the run on decide-oracle 429 exhaustion | MOVED | Child `check_decide_rate_limited` → `mark_rate_limit_infra` → `RETRYABLE_ERROR:rate_limited` (ENH-3607) |
 | `snap_and_size_review` | Snapshot active IDs before a post-decision size review | DROPPED | Only reachable from removed states; the main path (`recheck_scores.on_no` → `run_size_review`) never took the snapshot |
 | `autodev-pre-spike-readiness.txt` consumers | Plateau baseline for `check_reconcile_needed` | CHANGED | Uses `autodev-pre-readiness.txt` (pre-refine, written by `dequeue_next`) |
@@ -312,7 +312,8 @@ before `implement_current`.
 - `scripts/little_loops/loops/autodev.yaml`: remove 22 states, add
   `select_obligation_post_size_review`, `PROOF` routes, retargets, `init` / `dequeue_next` /
   `check_reconcile_needed` / `finalize_done` marker edits, `dispatch_pre_deferral_remedy`
-  (drop the `spike-runs-<ID>` increment and the pre-spike snapshot write; update its comment),
+  (drop the `spike-runs-<ID>` increment and the pre-spike snapshot write; add the lifetime-cap
+  check to the `spike` leg; update its comment),
   the pre-implement selector's `check-gate` probe, and `record_reentry_exhausted`'s comment
   (stays `DECISION`-only)
 - `scripts/little_loops/loops/refine-to-ready-issue.yaml`: `check_proof_before_done`;
@@ -323,7 +324,9 @@ before `implement_current`.
   `check_missing_artifacts` (names the `select_obligation_post_refine → check_spike_needed`
   ladder), and the top-of-file topology map (add `check_proof_before_done` on the done edges)
 - Stale comments: `little_loops.cli.issues.show` (ENH-2640), `little_loops.cli.issues.check_gate`
-  (module docstring: autodev callers), `little_loops.issue_lifecycle` (deferral-reason comments)
+  (module docstring: autodev callers), `little_loops.issue_lifecycle` (deferral-reason comments),
+  `scripts/little_loops/loops/oracles/resolve-decision.yaml:147` (comment cites autodev's
+  `recheck_after_decide` chain; comment-only, the oracle's contract is untouched)
 - `scripts/tests/data/loop_interpolation_baseline.json`: delete autodev's `check_spike_needed`
   and `check_spike_needed_before_skip` entries in the same commit. The ratchet forbids adding
   sites, so `check_proof_before_done`, `select_obligation_post_size_review` and the selectors'
@@ -345,6 +348,12 @@ Rewrite, don't delete (ENH-3075 AC 8); stays-deleted guard per removed state.
   replaced by a stays-deleted guard); `TestAutodevRouting` proof legs
 - `test_builtin_loops.py`: spike chains, `AUTODEV_NOT_READY_STATES` (drop
   `record_decision_unresolved`), selector `PROOF` routes, child `check_proof_before_done`
+- `test_autodev_decision_gate.py`: `select_obligation_pre_implement` route assertions
+  (`_`/`_error` → `check_proof_gate_before_implement`, lines ~207–208; the graph walk at ~439;
+  the path list at ~525) retarget to `check_proof_defer_or_implement`. The BUG-2654 class
+  (~653–681) asserts that `check_spike_needed_before_skip` exists and is wired. Rewrite it
+  against `select_obligation_post_size_review`, which is what now protects the post-size-review
+  skip, and add a stays-deleted guard for the old state.
 - `test_autodev_loop.py`, `test_rn_remediate.py` (parity docstrings), `test_show.py` (docstrings)
 - `test_fsm_topology.py`: autodev −22 +1, child +1, each with a history comment
 - New real-FSM tests:
@@ -356,15 +365,22 @@ Rewrite, don't delete (ENH-3075 AC 8); stays-deleted guard per removed state.
   - `spike-runs-<ID>` persists across autodev re-entries (the budget does not reset);
   - `dispatch_pre_deferral_remedy`'s `spike` leg leaves `spike-runs-<ID>` unchanged, and a
     subsequent child spike that is refuted still reaches `resolve_decision_pre_breakdown`;
+  - `dispatch_pre_deferral_remedy`'s `spike` leg with `refine_count` at `max_refine_count`
+    routes to `reconcile_current`, never `refine_current` (no `breakdown_issue`);
   - a `PROOF:absent` issue whose child cannot spike (`spike_attempted` set without
     `spike_completed`) is not re-entered: the selector passes `--skip PROOF` immediately;
+  - a spikeable issue (`spike_needed` set, `spike_attempted` unset) that also declares a
+    refuted Learning Test Registry target reads `PROOF:refuted` and is still re-entered once;
   - a `PROOF` issue the child can spike re-enters once; a second `PROOF` reading falls through
     via `--skip PROOF`, and an open gate is deferred as `blocked_by_gate`;
   - a high-scoring `structured_proof` issue whose `refine_count` is at `max_refine_count` is not
     re-entered (no `breakdown_issue`) and defers as `blocked_by_gate`;
-  - `PROOF:stale` / `PROOF:refuted` never re-enter the child (`--skip PROOF` immediately);
+  - a learning-test-only `PROOF:stale` / `PROOF:refuted` (no spike flags) never re-enters the
+    child (`--skip PROOF` immediately);
   - the child's `check_proof_before_done` does not spike on `structured_open` or `prose`
     (token match, not exit code);
+  - `recursive-refine` running the child on a high-scoring issue with an open
+    `structured_proof` gate spikes it before `done` (pins the intended caller contract change);
   - child worst-case path (proof spike + refuted → decide) completes under `max_steps` without
     tripping `recurrent_window`;
   - a low-readiness `spike_needed` issue is not spiked by autodev (pins the accepted interim
@@ -407,13 +423,16 @@ Rewrite, don't delete (ENH-3075 AC 8); stays-deleted guard per removed state.
   verify, confidence-check) before `check_proof_before_done`. That pass costs more tokens and
   time, spends one lifetime refine, and can move scores that already passed. The re-entry cap
   (one per issue) and the lifetime-cap guard bound it.
+- **Caller contract change**: the child's new proof gate also applies to `recursive-refine`
+  and its wrappers (`issue-refinement`, `sprint-build-and-validate`, `rn-build`,
+  `eval-driven-development`). Those runs may now invoke `/ll:spike` (up to 2 per issue per
+  child run) before `done`.
 - **Breaking Change**: No (loop-internal)
 
 ## Implementation Sequencing
 
-- **Land after ENH-3613.** ENH-3613 is editing `finalize_done` in the working tree now, and
-  this issue edits the same state (`autodev-spike-no-verdict.txt` removal). Rebase onto it
-  once it is committed.
+- **ENH-3613 has landed** (`dc3668f1d`). Its `finalize_done` edits are on `main`, so this
+  issue's `autodev-spike-no-verdict.txt` removal there applies directly.
 - **Two commits.**
   1. *Additive:* child `check_proof_before_done` + `max_steps` bump; `PROOF` probes in the
      existing selectors; new `select_obligation_post_size_review`, wired in but with the old
@@ -463,14 +482,16 @@ ENH-3610's review changed parts of the selector contract that this issue builds 
 - **In scope**: removing the 22 states listed in Current Behavior; the child's
   `check_proof_before_done`; `PROOF` routes and the third selector; the retargets; the marker
   changes above; stale comments; tests and docs.
-- **Out of scope**: `oracles/resolve-decision.yaml`'s contract; the child's own spike states
+- **Out of scope**: `oracles/resolve-decision.yaml`'s contract (its stale comment at :147 is
+  in scope); the child's own spike states
   (they stay; `spike-gate.yaml` and `rn-remediate.yaml` also have same-named states that must
   survive, so scope state-name greps to `autodev.yaml`); ENH-3600's marker retirement;
   ENH-3605/ENH-3606 remedy moves (only their edges into removed states change here); restoring
   low-readiness `spike_needed` spikes (ENH-3606); moving the child's spike band ahead of
   `check_readiness`. ENH-3610's `DECISION` re-entry has the same lifetime-cap hazard (a capped
   issue re-entered for `DECISION` routes to `breakdown_issue`). BUG-3614 tracks it; it is not
-  fixed here.
+  fixed here. (The new `dispatch_pre_deferral_remedy` → `refine_current` edge has the same
+  hazard and **is** fixed here, because this issue creates that edge.)
 
 ## Acceptance Criteria
 
@@ -490,6 +511,10 @@ ENH-3610's review changed parts of the selector contract that this issue builds 
   spike, and the run terminates when the child cannot satisfy it (real-FSM test)
 - [ ] No `PROOF` re-entry is attempted once `refine_count` >= `max_refine_count`; such an issue
   defers as `blocked_by_gate`, never `breakdown_issue` (real-FSM test)
+- [ ] `dispatch_pre_deferral_remedy`'s `spike` leg never routes a lifetime-capped issue to
+  `refine_current` (real-FSM test)
+- [ ] Low-outcome selectors decide `PROOF` re-entry from the spike flags and guard, not the
+  `PROOF:<sub_reason>`; a refuted registry target does not mask a spikeable issue (test)
 - [ ] The child's `check_proof_before_done` spikes only on the `structured_proof` token; its
   worst-case path fits the raised `max_steps` without tripping `recurrent_window`
 - [ ] The low-readiness `spike_needed` loss is recorded in the Behavior Parity table and pinned
@@ -500,6 +525,8 @@ ENH-3610's review changed parts of the selector contract that this issue builds 
 - [ ] `auto-refine-and-implement` and `oracles/resolve-decision` behavior unchanged, including
   `auto-refine-and-implement`'s `finalize` counts for a decision-unresolved stop; full suite
   passes
+- [ ] `recursive-refine` callers' only behavior change is the child's pre-`done` proof spike,
+  recorded in Behavior Parity and pinned by a test
 
 ## Status
 
