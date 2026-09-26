@@ -41,6 +41,15 @@ Individual gates already exist as separate subcommands (`format-check`, `check-d
 `check-acceptance-criteria`, `check-unresolved-decisions`, `check-gate`, `spike-verdict`,
 `check-readiness`), each invoked and interpreted ad hoc.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-26 — based on codebase analysis:_
+
+- Child invocation style per state (`refine-to-ready-issue.yaml`): `precheck_format` (:449) and `normalize_structure` (:388) run `format-check --fix --apply` then a heredoc-JSON `directive_gaps` read behind the one-shot `refine-to-ready-format-fallback` counter, fail-open printing 0; `check_verify_verdict` (:527) uses `fragment: harness_exit` routing exit 3 via `on_cannot_judge`; `check_placeholders` (:760) re-implements `placeholder_count` shell-side (`format-check --format json` piped to python `len()`) because no CLI exposes it — a selector that calls `placeholder_count` (issue_parser.py:2375) removes that workaround for free.
+- `check_readiness` (:876) / `check_outcome` (:918) / `check_scores_from_file` (:1222) in the child are NOT the `check-readiness` CLI: heredoc `ll-issues show --json` subprocess comparing `int(d.get('confidence') or 0)` against `${context.readiness_threshold}` / `${context.outcome_threshold}` seeded by the runner (BUG-3552 — deliberately not a config re-read). A selector that resolves thresholds via `readiness_status` changes where thresholds come from; override parity must be a conscious decision.
+- `cmd_next_action` (`next_action.py:13`) re-sorts `find_issues` output by `(priority_int, -int(id_number))`, reads thresholds via its own raw-JSON read of `commands.confidence_gate` (:37-44 — never consults `enabled`, never uses `readiness_status`), and `refine_cap` comes only from argparse. Its `NEEDS_VERIFY` means "session log lacks /ll:verify-issues", not the verify verdict — the fixture divergence Behavior Parity anticipates.
+- Budget counters interpose between each red gate and its repair state (`check_refine_limit`, `check_gate_refine_limit`, `check_hedge_refine_limit`, `check_reconcile_limit`, `check_hedge_attempts`, `check_decide_attempts`, `check_verify_retries`, `check_proposal_revision_budget`); three share the `refine-to-ready-refine-count` file (BUG-3551). The selector stays stateless; counter states stay.
+
 ## Expected Behavior
 
 `ll-issues next-obligation ID --format json` emits
@@ -104,6 +113,13 @@ and routes on `obligation`.
   where the mapping is 1:1; leave any state whose semantics differ, and note it.
 - Keep distinct skills for research, wiring, decisions and reconciliation — the selector
   only chooses which runs next.
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-26 — based on codebase analysis:_
+
+- The GATE→PROOF fold is already inside the delegate: `assess.py`'s `_spike_status` (:130) adds the `spike` key when a spike flag is set OR `resolve_gate_verdict(...)` returns `structured_proof` — so delegating PROOF to `assess_proof` folds the gate signal without a separate gate check in the selector. The parity caveat stands: the child does not run `check-gate` today, so this remains an added check outside the "reproduce the child's sequence" claim.
+- Compose the function, not the subprocess — precedent: `cmd_run_record_write` calls `readiness_status(...)` directly ("resolved in-process rather than via a subprocess", `run_record.py:180-192`); `cmd_check_design` composes `check_format_gaps` + `design_gate_failed` (`check_design.py:31-40`); fabricating an `argparse.Namespace` to invoke a sibling cmd in-process is also done (`format_check.py:133-147`). Exit-code-only cmd bodies hold their predicates in module bodies — `_find_manual_criteria(content)` is importable though private-named (`check_acceptance_criteria.py:57`); `cmd_check_verify_verdict` has no importable predicate (frontmatter compare is inline in the cmd body, `check_verify_verdict.py:72-146`).
 
 ## Integration Map
 
@@ -173,6 +189,15 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 - Subcommands are registered in `cli/issues/__init__.py` two ways: `add_*_parser(subs)` helpers (e.g. `add_check_gate_parser`, `add_check_verify_verdict_parser`, called near `:781-784`) and inline parser blocks (`next-action` at `:661`, dispatch at `:1073`). Also add the entry to the help epilog list (`:149`).
 - Tests present: `test_next_action.py`, `test_spike_verdict_routing.py`, `test_format_probe_routing.py`, `test_arm_proposal_revision.py`, `test_ll_issues_check_verify_verdict.py`, `test_check_readiness.py` (all under `scripts/tests/`).
 
+_Added by `/ll:refine-issue` — 2026-09-26 — based on codebase analysis:_
+
+- `readiness_status` has two production dependents this map omitted: `issue_manager.py:819-821` calls `readiness_status(config, info.issue_id)` directly, and `run_record.py:180` (`cmd_run_record_write`) resolves it in-process. A signature change for the selector ripples into both, plus ~15 monkeypatch sites in `scripts/tests/test_issue_manager.py:5827-6225`.
+- `fsm/executor.py:1156/:1166` also calls `seed_confidence_thresholds` — a fourth seeder call site beyond the three listed (`cli/loop/run.py`, `cli/loop/lifecycle.py`, `cli/loop/info.py`); `next-action`'s independent threshold read must stay consistent with all four.
+- `loops/lib/cli.yaml` carries a second next-action fragment besides `ll_issues_next` (:40): `ll_issues_next_issue` (:50) — both consume the unchanged output-token contract.
+- API.md anchor drift: the ll-issues subcommand-table `next-action` row sits at `docs/reference/API.md:4639`, not :4637 as cited above; the `next-obligation` row goes adjacent to it.
+- `assess_proof` now exists in the working tree (ENH-3602 deliverable, uncommitted): `learning_tests/assess.py:165` defines it, re-exported at `learning_tests/__init__.py:175-183`, already consumed in-process by `learning_tests/gate.py:285-294` and `cli/learning_tests.py:64-87`, with suite `scripts/tests/test_learning_tests_assess.py`. The earlier finding in this block ("does not exist yet") is superseded by working-tree state; the Blocked by ENH-3602 edge stays until it lands.
+- New-subcommand docs are string-pinned by `scripts/tests/test_wiring_reference_docs.py` DOC_STRINGS_PRESENT (run-record pattern at :256-260): CLI.md heading, stdout token, and both API.md rows must be added as pinned needles, not just prose.
+
 ## Wiring Phase (added by `/ll:wire-issue`)
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
@@ -213,6 +238,15 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 - Each obligation needs a defined `evidence` element type (`list[str]`) and a mapping from the underlying probe's non-pass exit codes; probes that return exit 2 (unresolvable issue) must surface as a read error from `cmd_next_obligation`, not as an unmet obligation.
 - `Obligation` order must be asserted against the child's edge list (`on_yes` chain from `precheck_format` through `check_missing_artifacts`) by the parity test, since the enum is declared in check order and the YAML is the source of truth for the order.
 - Decision Rules: N/A — no new decision logic beyond composing existing gates in the child's order (SCORES before DECISION/PROOF).
+
+_Added by `/ll:refine-issue` — 2026-09-26 — based on codebase analysis:_
+
+- Exact importable surfaces: `resolve_gate_verdict(frontmatter: dict, text: str, spike_proven: bool) -> tuple[GateVerdict, list[GateSpec]]` (`check_gate.py:110`, pure/stdlib-only); `readiness_status(config, issue_id, *, default_readiness=85, default_outcome=65, readiness_override=None, outcome_override=None) -> ReadinessStatus | None` (`check_readiness.py:74`; None = unresolvable ID; exposes `confidence_absent`/`outcome_absent`, `meets_readiness`, `meets_outcome_or_waived`); `locate_unresolved_decisions(content, *, include_approximate_tiers=False) -> list[DecisionGroup]` (`issue_parser.py:3516`, `DecisionGroup.to_dict()`); `locate_unresolved_options(content) -> tuple[int, str | None]` (`issue_parser.py:3085`); `count_open_questions_in_sections(content) -> int` (`issue_parser.py:3702`); `placeholder_count(issue_path, templates_dir=None) -> int` (`issue_parser.py:2375`, fails open); `assess_proof(issue_path: Path, *, attempts_used=None, stale_after_days=None, cwd=None, targets=None) -> ProofVerdict` (`learning_tests/assess.py:165` — takes a resolved path, not an ID; pass `cwd=` for config lookup; `ProofStatus = Literal["proven","stale","refuted","absent","not_required"]`, worst-status-wins via `_SEVERITY` proven < stale < absent < refuted; `_MAX_ATTEMPTS = 2`).
+- Contested convention — ordered closed sets: the Types block above declares `Obligation: Enum`, but this codebase's ordered closed sets are module-level tuples paired with Literal aliases (`AXES`, `issues/research_triage.py:59-85`; `WRITERS`/`LEGACY_CLASSES`, `run_record.py:31-50`; `_IN_FORCE`, `check_gate.py:29`). Zero ordered `list(Enum)` iteration exists in `scripts/little_loops/`, and all 14 enums are plain Enum — no StrEnum (`issue_lifecycle.py:126-128` records the check). Both styles are viable; the implementer picks, and the parity test pins whichever order results.
+- Exit-code conventions: house contract 0 positive / 1 genuine negative / 2 unresolvable / 3 abstention, documented at `check_unresolved_decisions.py:49-55`. The "exit 0 always on a successful assessment, non-zero only on read errors" shape has precedent in `research-triage` (`research_triage.py:50-63` — which returns 1, not 2, for unresolvable IDs); named exit constants precedent at `spike_verdict.py:26-28`. Deviation to absorb: `cmd_format_check` returns 1, not 2, for not-found (`format_check.py:630-631`) — resolve the ID once in `select_next_obligation` rather than trusting each probe's not-found code.
+- Absent scores are a distinct signal: `cmd_check_readiness` exits 3 `SCORES_ABSENT` before any comparison (BUG-3588); explicit zero coerces to 0 with `confidence_absent=False`. Waivers: `outcome_gate_waived` is honored only under `--honor-waiver` (check-readiness) and always in run-record — NOT consulted by next-action or the child's inline heredocs; the selector's waiver stance is a decision to make knowingly.
+- First-match-wins has a documented precedent: `outcome_from_legacy_class` (`run_record.py:140-169`) with a numbered rule list in its docstring. The parity test should assert the Obligation order against the child's on_yes chain in the YAML — the YAML is the source of truth for the order.
+- cmd_*/registration conventions: signature `cmd_next_obligation(config: BRConfig, args: argparse.Namespace) -> int` with BRConfig imported only under `if TYPE_CHECKING:` and heavy imports function-local; module docstring headline `"""ll-issues next-obligation: <desc> (ISSUE-ID)."""`; four registration touchpoints (lazy import, parser registration, hand-written epilog entry `cli/issues/__init__.py:138-184` — no completeness test covers it, dispatch line). Style A `add_next_obligation_parser(subs)` helper in the subcommand module (every subcommand since ~ENH-2971) vs Style B inline block (next-action itself, `:665-696`) — contested, trend is Style A. JSON via `print_json` (`cli/output.py:227`, indent=2); `--format {text,json}` choices style matches format-check (`format_check.py:93-99`).
 
 ## Scope Boundaries
 
@@ -255,6 +289,7 @@ _Added by `/ll:confidence-check` on 2026-09-25_
 - Expected Behavior says `GATE` folds into `PROOF`, but Codebase Research found `check-gate` is not invoked by `refine-to-ready-issue.yaml` today, so the fold adds a check outside the parity claim. Resolve the directive/research tension before implementing.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-26T00:21:08 - `29654aaa-6763-4b73-821b-31710e26b186.jsonl`
 - `/ll:confidence-check` - 2026-09-25T21:32:34 - `672e0da1-840e-4b60-a432-7b20e9ebbd01.jsonl`
 - `/ll:wire-issue` - 2026-09-25T20:46:48 - `2b4a714f-91fd-41aa-b2ac-63b11e2476ce.jsonl`
 - `/ll:refine-issue` - 2026-09-25T19:42:22 - `2f63920a-850e-4ac5-bf34-e7b8eb47e2e0.jsonl`
