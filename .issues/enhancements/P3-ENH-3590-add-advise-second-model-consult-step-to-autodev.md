@@ -12,11 +12,11 @@ relates_to:
 - EPIC-3565
 blocked_by:
 - ENH-3606
-confidence_score: 65
-outcome_confidence: 71
+confidence_score: 75
+outcome_confidence: 79
 score_complexity: 18
 score_test_coverage: 18
-score_ambiguity: 10
+score_ambiguity: 18
 score_change_surface: 25
 ---
 
@@ -285,17 +285,23 @@ Verdict at time of check: **NEEDS_UPDATE** (all findings below corrected in the 
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-09-25_
+_Added by `/ll:confidence-check` on 2026-09-26 (supersedes 2026-09-25 run)_
 
-**Readiness Score**: 65/100 → STOP — ADDRESS GAPS
-**Outcome Confidence**: 71/100 → MODERATE
+**Readiness Score**: 75/100 → STOP — ADDRESS GAPS (Dependencies Hard Override; raw score would be PROCEED WITH CAUTION)
+**Outcome Confidence**: 79/100 → MODERATE
+
+### Concerns
+- Design is fully specified and format-check is clean (no parity, claim, structure, or decision gaps); Program Design gate passes. Only the dependency blocks.
+- Step names in the chain (`check_advise_enabled`, `veto_waiver`, etc.) and the ladder-error terminal are proposals until ENH-3606 lands; the exact edge targets must be re-confirmed then (Implementation Step 1).
 
 ### Gaps to Address
-- blocked_by ENH-3606 (open) — the go-no-go anchor states move into `prepare-issue.yaml` there. (Originally recorded as ENH-3601, which is now done.)
-- Advisory claim gap (`stale_cli_flag`): the subcommand is `ll-loop next-loop`; citations corrected 2026-09-26.
-- ~~Three Open Questions unresolved plus the verdict-mapping threshold~~ — resolved 2026-09-26; see Resolved Decisions. Re-run `/ll:confidence-check` to rescore.
+- blocked_by ENH-3606 (open) — the go-no-go anchor states (`check_go_no_go_waiver`, `reopen_waived`) still live in `autodev.yaml`; they move into `prepare-issue.yaml` there. Wait for or prioritize ENH-3606, then re-run `/ll:confidence-check`.
+
+### Outcome Risk Factors
+- Chain edits depend on states that do not yet exist in the target file (retarget of `check_go_no_go_waiver.on_yes` + error terminal), so tests cannot be written against the real shape until ENH-3606 merges.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-26T20:20:07 - `5304de58-f491-45bb-a965-830806ea2e48.jsonl`
 - `/ll:verify-issues` - 2026-09-26T20:03:20 - `fad4d529-a955-4d85-a909-ec88da4f9e33.jsonl`
 - `/ll:confidence-check` - 2026-09-25T21:32:37 - `672e0da1-840e-4b60-a432-7b20e9ebbd01.jsonl`
 - `/ll:wire-issue` - 2026-09-25T20:49:53 - `4a475966-a47c-4657-a3e4-16e6706f4c4d.jsonl`

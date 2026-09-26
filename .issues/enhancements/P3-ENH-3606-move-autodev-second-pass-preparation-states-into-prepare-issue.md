@@ -15,7 +15,7 @@ relates_to:
 - ENH-3609
 - ENH-3610
 parent: ENH-3601
-confidence_score: 70
+confidence_score: 95
 outcome_confidence: 46
 score_complexity: 0
 score_test_coverage: 18
@@ -786,14 +786,20 @@ Re-parsed `autodev.yaml` (90 states) and `prepare-issue.yaml` (7 states, `max_st
 
 _Added by `/ll:confidence-check` on 2026-09-26_
 
-**Readiness Score**: 70/100 → STOP — ADDRESS GAPS (Dependencies Hard Override)
+_Re-scored 2026-09-26 after ENH-3605 and ENH-3609–3611 landed and the boundary edge table was regenerated._
+
+**Readiness Score**: 95/100 → PROCEED
 **Outcome Confidence**: 46/100 → LOW
 
 ### Concerns
-- Anchors and edge names are pre-ENH-3609–3611; the first step (boundary edge table refresh) is unperformed, so the exact move set is unverified.
+- The sequencing option under Impact ("not yet decided": land the shared rescoring path, `run_size_review` halt, record-next-to-row writes and single-writer rules in `autodev.yaml` first) is still open; the issue says to decide before implementation starts.
+- Integration Map line anchors are stale (Implementation Step 1 refreshes them); the Scope edge table is current.
 
-### Gaps to Address
-- ~~`blocked_by` ENH-3605 is still `open`~~ Resolved: ENH-3605 is `done` (commit 80449dc2f); `prepare-issue.yaml` and `test_prepare_issue.py` exist. Scores above predate that and the 2026-09-26 design review; re-run `/ll:confidence-check`.
+### Outcome Risk Factors
+- Deep per-site complexity: rewires the strongly connected second-pass cluster, rescoring consolidation and terminal routing.
+- Broad enumeration across ~40 states plus a large test/doc migration (Breadth 0).
+- Broad change surface: autodev consumers (`auto-refine-and-implement`, `scan-and-implement`, run-record, ledger readers) must keep counts unchanged.
+- Mitigation: adopt the behavior-preserving prep issue from the sequencing option to shrink the final move.
 
 ## Design Review Notes
 
@@ -819,12 +825,8 @@ Steps and Impact:
   naming, capture-name collisions and `run_go_no_go`'s pruning profile added to Mechanics.
 - Open: the sequencing option under Impact.
 
-### Outcome Risk Factors
-- Deep per-site complexity: rewires the strongly connected second-pass cluster, rescoring consolidation and terminal routing.
-- Broad enumeration across ~40 states plus a large test/doc migration (Breadth 0).
-- Broad change surface: autodev consumers (`auto-refine-and-implement`, `scan-and-implement`, run-record, ledger readers) must keep counts unchanged.
-
 ## Session Log
+- `/ll:confidence-check` - 2026-09-26T20:20:48 - `6a41b2bc-b016-4ac8-ae48-08305b05403a.jsonl`
 - `/ll:verify-issues` - 2026-09-26T20:10:06 - `3c9e6ec9-3d9b-4e64-8ad3-568702407b0a.jsonl`
 - `/ll:verify-issues` - 2026-09-26T19:59:52 - `b7feb4d7-6b74-47e8-9464-2371879b3a6f.jsonl`
 - `/ll:confidence-check` - 2026-09-26T17:56:40 - `1617bd47-448f-4338-8379-3ae73f71f9bc.jsonl`

@@ -8,10 +8,7 @@ discovered_by: ll-issues-create
 discovered_date: '2026-09-25'
 captured_at: '2026-09-25T18:51:51Z'
 blocked_by:
-- ENH-3611
-- ENH-3601
-- FEAT-3573
-- ENH-3613
+- ENH-3606
 parent: EPIC-3565
 relates_to:
 - ENH-3577
@@ -67,6 +64,50 @@ evidence) stay; preparation markers go.
   `autodev-decide-ran`. Migrate those readers to run records (the
   `writer: refine-to-ready-issue` record) before the child stops writing the markers, or
   keep writing the markers and list them as a documented exception.
+  **Decided (2026-09-26)**: keep them as a documented exception (see Marker disposition).
+  `refine-to-ready-issue.yaml` keeps writing the three child ledgers, and
+  `auto-refine-and-implement.yaml` keeps counting `autodev-decision-unresolved.txt`.
+  Migrating those readers is a follow-up, not part of this issue.
+
+### Design decisions (added 2026-09-26 review)
+
+- **Source of the prepared-ID set.** Add an append-only `autodev-prepared.txt`. A
+  one-line pre-state of `refine_current` appends the in-flight ID before the wrapper
+  runs. `init` pre-creates the file, and `dequeue_next` never clears it. `build_summary`
+  applies `record_absent` **only** to IDs in this file. Issues skipped at dequeue
+  (`skip_already_resolved`, `skip_blocked`, `defer_gated`) never enter preparation, so
+  they never produce a `prepare-issue` record and must not be counted as
+  `retryable_error`. The set cannot come from enumerating
+  `run-records/prepare-issue/*.json`: an issue that crashed before writing a record is
+  missing from that directory.
+- **Where `record_absent` is reported.** Add one additive key, `record_absent` (a
+  count), to `summary.json`. It sits beside the 16 FEAT-3573-as-of keys, which are
+  otherwise unchanged. Add the IDs to the stdout report as a new line. The key is
+  additive and no consumer does an exact key-set match, so this is non-breaking.
+  Confirm that claim against `test_auto_refine_closure_accounting.py` and
+  `TestAutoRefineAndImplementLoop` before landing.
+- **Precedence with the in-flight counts.** An issue listed in `autodev-inflight` when
+  finalization runs is already counted as `inflight_unresolved` / `abandoned`. It is
+  **not** also counted as `record_absent`. `record_absent` covers only prepared IDs that
+  are no longer in flight, have no record, and appear in no closure or skip ledger. Each
+  ID is counted in exactly one bucket; a unit test asserts this.
+- **Record lifecycle when an ID is dequeued twice.** The wrapper's `clear_record` runs on
+  every entry, so when an ID is dequeued more than once in a run, the last pass's record
+  wins. A duplicate line in `autodev-prepared.txt` counts once (`sort -u` semantics).
+  Pin both with a test.
+- **Exit codes.** `main(argv) -> int` keeps today's routing exactly: `phantom` → exit 1
+  → `on_no: failed`, and any exception or unreadable input → exit 2 → `on_error: failed`.
+  Every other verdict exits 0. Name them with `EXIT_*` constants (the `fleet_improve.py`
+  pattern).
+- **Stdout report.** `finalize_done` prints a human-readable report to stdout today: the
+  Passed, Skipped, Spike-inconclusive, Proposal-unsound, Unverified, Stopped-early and
+  similar lines. The Python version reproduces it line for line, plus the new
+  `record_absent` line. The golden fixtures (see Tests) pin this.
+- **`max_steps` exit.** Out of scope. The executor's step-cap exit bypasses
+  `finalize_done` (`fsm/executor.py`, no `on_max_steps` handler), so no `summary.json`
+  is written on that path today. The "every exit" AC below names the exits it covers;
+  the step-cap gap stays a known limitation. Document it in `LOOPS_REFERENCE.md`, or
+  capture a follow-up if the implementer finds it cheap to close.
 
 ### Codebase Research Findings
 
@@ -199,8 +240,49 @@ _Added by `/ll:refine-issue` — 2026-09-26 — based on codebase analysis:_
 
 ## Scope Boundaries
 
-- Queue files and closure accounting (`autodev-queue.txt`, `autodev-inflight`, `autodev-staged.txt`, `autodev-passed.txt`, `autodev-unverified.txt`, FEAT-3573 evidence) stay.
-- `summary.json` keys keep their shape **as of FEAT-3573**, which builds on ENH-3613's cancelled/implemented split (`closed_implemented`/`closed_cancelled`, derived in memory in the promotion loop — no ledger file).
+- **Queue and closure-accounting files stay.** These are the only non-record inputs
+  `build_summary` may read:
+  - queue: `autodev-queue.txt`, `autodev-inflight`, `autodev-input.txt`, and the new
+    `autodev-prepared.txt`;
+  - closure: `autodev-staged.txt`, `autodev-passed.txt`, `autodev-unverified.txt`, and
+    `${context.run_dir}/quality/` (the FEAT-3573 evidence);
+  - skip/stop ledgers: `autodev-skipped.txt` (its reason column feeds the `already_*`,
+    `blocked_by_unmet`, `notstarted_` and `refine_failed_infra` buckets, and
+    `auto-refine-and-implement`'s `SKILL_BREAKDOWN`), `autodev-gate-blocked.txt`,
+    `autodev-not-started.txt` / `-attempts.txt`, `autodev-proof-gate-infra.txt` and
+    `autodev-stop-reason`.
+
+  Run records cannot replace the skip reasons: `legacy_class` has six values and
+  `gate_unmet` drops the specific reason (`oversized_atomic`, `design_gate_failed`,
+  `readiness_stagnated`, ...).
+- **Run records add information; they do not replace the ledgers.** Records supply the
+  per-issue preparation outcome and the `record_absent` check. The ledger rows written
+  next to each record (ENH-3605's ledger-ownership rule) stay the count source for
+  every existing key. If a record and a ledger row disagree, the ledger row is used for
+  the count, and `build_summary` emits a warning line naming the ID. It does not
+  reclassify the issue.
+- `summary.json` keys keep their shape **as of FEAT-3573**, which builds on ENH-3613's
+  cancelled/implemented split (`closed_implemented`/`closed_cancelled`, derived in
+  memory in the promotion loop — no ledger file). The one addition is the
+  `record_absent` key (see Design decisions).
+- Out of scope: the `max_steps` exit gap; migrating the child-written ledger readers
+  (documented exception); and the `resolve-decision` handshake markers
+  `decide-options-deposited-<ID>` / `decide-rate-limited-<ID>`, which stay as the
+  cross-loop run-dir contract.
+
+### Marker disposition
+
+The AC grep gate checks against this table, not a bare `autodev-*` prefix. Re-derive the
+table from post-ENH-3606 `autodev.yaml` as the first implementation step, because
+ENH-3606 moves and renames states.
+
+| Class | Files | Disposition |
+|---|---|---|
+| Queue / closure accounting | listed in Scope Boundaries | stay |
+| Shared per-pass state (ENH-3606 keeps the names; the wrapper writes them, and autodev's `dequeue_next` is their only cleaner) | `autodev-repair-cycle-count.txt`, `autodev-pre-readiness.txt`, `autodev-design-gate-failed-<ID>`, `autodev-design-remedy-attempted-<ID>`, `autodev-atomic-design-remedy-pending`, `autodev-contradiction-reconcile-*`, `autodev-go-no-go-attempted-<ID>`, `autodev-pre-deferral-remedy*`, `autodev-size-review-ran-this-pass`, `autodev-rescore-retry-*`, `autodev-rescore-origin-<ID>`, `autodev-reentry-*` | stay. `autodev.yaml` may reference them **only** in `init` / `dequeue_next` clears |
+| Decomposition diff | `autodev-pre-ids.txt`, `-post-ids.txt`, `-diff-ids.txt`, `-new-children.txt`, `autodev-broke-down` | stay (queue-owned child detection) |
+| Child-written ledgers (documented exception) | `autodev-decision-unresolved.txt`, `autodev-spike-inconclusive.txt`, `autodev-proposal-unsound.txt` | the child keeps writing them; `auto-refine-and-implement` keeps reading them. **autodev stops reading them**: `skip_inflight`'s grep-before-`refine_failed` switches to the `prepare-issue` record token, and `finalize_done`'s lists come from records. `init` may still truncate them |
+| Dead | `autodev-scores-absent.txt` (writer deleted by ENH-3606), `autodev-pre-spike-readiness.txt`, and any other file with no writer after ENH-3606 | delete every reference |
 
 ## Acceptance Criteria
 
