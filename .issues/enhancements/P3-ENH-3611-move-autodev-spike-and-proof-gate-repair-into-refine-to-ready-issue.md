@@ -28,6 +28,7 @@ score_complexity: 5
 score_test_coverage: 18
 score_ambiguity: 18
 score_change_surface: 10
+size: Large
 ---
 
 # ENH-3611: Move autodev spike and proof-gate repair into refine-to-ready-issue
@@ -438,8 +439,8 @@ ENH-3610's review changed parts of the selector contract that this issue builds 
   ENH-3605/ENH-3606 remedy moves (only their edges into removed states change here); restoring
   low-readiness `spike_needed` spikes (ENH-3606); moving the child's spike band ahead of
   `check_readiness`. ENH-3610's `DECISION` re-entry has the same lifetime-cap hazard (a capped
-  issue re-entered for `DECISION` routes to `breakdown_issue`). Fix it in a separate bug, not
-  here.
+  issue re-entered for `DECISION` routes to `breakdown_issue`). BUG-3614 tracks it; it is not
+  fixed here.
 
 ## Acceptance Criteria
 
