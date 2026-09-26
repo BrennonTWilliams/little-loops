@@ -62,10 +62,10 @@ Add optional `model_hint` to `StateConfig` and `LLMConfig`; do not overload `mod
 
 **Applicability.** A state-level hint applies where a model is *actually consumed at runtime*, which is narrower than where `model:` is accepted today. A state is an "LLM state" if it has either:
 
-- a prompt-mode action — `action_type` `prompt` or `slash_command`, or no `action_type` with an action starting `/` (mirror `executor._action_mode`, `executor.py:2460`); or
+- a prompt-mode action — `action_type` `prompt` or `slash_command`, or no `action_type` with an action starting `/` (mirror `executor._action_mode`, `executor.py:3427`); or
 - an explicit `evaluate.type == "llm_structured"`.
 
-Do **not** reuse `_is_llm_judged` (`fsm/validation/_base.py:173`), which the `model:` WARNING rule uses (`structural_rules.py:468`). It also counts `check_semantic` (not in the evaluator enum) and `advisor_consult` (which uses advisor config), but `evaluate()` forwards `model` only to `llm_structured` (`fsm/evaluators.py:2064`). `contract` and `advisor_consult` ignore the state model. A hint on such a state could never be honored, so it is an ERROR. A shell action with an `llm_structured` evaluator is valid, and its hint governs only the evaluator. A state with neither is a validation error. When a state has both a prompt action and an LLM evaluator, the one declaration is resolved separately for each: the action against its effective request path, the evaluator against the CLI host (see below). The two may resolve to different model strings.
+Do **not** reuse `_is_llm_judged` (`fsm/validation/_base.py:173`), which the `model:` WARNING rule uses (`structural_rules.py:470`). It also counts `check_semantic` (not in the evaluator enum) and `advisor_consult` (which uses advisor config), but `evaluate()` forwards `model` only to `llm_structured` (`fsm/evaluators.py:2064`). `contract` and `advisor_consult` ignore the state model. A hint on such a state could never be honored, so it is an ERROR. A shell action with an `llm_structured` evaluator is valid, and its hint governs only the evaluator. A state with neither is a validation error. When a state has both a prompt action and an LLM evaluator, the one declaration is resolved separately for each: the action against its effective request path, the evaluator against the CLI host (see below). The two may resolve to different model strings.
 
 - **Evaluators are CLI-only.** `fsm/evaluators.py` has no SDK/batch path and never reads `request_path`: `evaluate_llm_structured` and `evaluate` always dispatch through `resolve_host().build_blocking_json`. An evaluator hint therefore always resolves against the CLI runner `resolve_host()` returns, even on a `request_path: sdk`/`batch` state. Only a prompt *action* follows `request_path` and can reach `anthropic-api`.
 - **Implicit evaluator.** A prompt-mode state with no `evaluate:` block still gets an implicit `evaluate_llm_structured` verdict (`executor.py:3174`). A hint on such a state governs both the action and that implicit verdict. For example, `burst` selects the burst model for the generation and for its verdict.
@@ -85,7 +85,7 @@ Preserve the distinction between an omitted model and an explicitly supplied mod
 
 **`LLMConfig` representation (decided 2026-09-25).** Keep `model: str = DEFAULT_LLM_MODEL` and add `model_hint: str | None = None`. Do **not** make `model` nullable, because that would ripple through:
 
-- `_resolve_action_model` (`executor.py:3570`, typed `str` and documented as never empty);
+- `_resolve_action_model` (`executor.py:3559`, typed `str` and documented as never empty);
 - the evaluator call sites `state.model or self.fsm.llm.model` (`executor.py:3174,3221`) feeding `model: str` parameters;
 - the header renderers (`run.py:707`, `lifecycle.py:775,854`);
 - `info.py:1528`;
@@ -282,6 +282,13 @@ Review follow-up on 2026-09-23: reprioritized P0 → P2 and renamed the file to 
 
 An earlier verify pass recorded Codex `build_streaming` doing `del model` and BUG-3529 as open. Both are obsolete: BUG-3529 is done and `CodexRunner.build_streaming` forwards `--model` (`host_runner.py` ~L1241). Do not act on the earlier record.
 
+### Verify pass 2026-09-26
+
+Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the same pass, so the issue as it now reads is up to date — this section is a record of what was wrong and fixed, not an outstanding action item)
+
+- Line anchors relocated: `executor._action_mode` `executor.py:2460` → `3427`; `_resolve_action_model` `executor.py:3570` → `3559`; `_is_llm_judged` use in the `model:` WARNING rule `structural_rules.py:468` → `470`.
+- Confirmed unchanged: `run.py:190`/`707`, `executor.py:629/1268/3174/3221`, `evaluators.py:1117/1227/1483/2064`, `host_runner.py:2230` (`TEST_ONLY_HOSTS`), `config/core.py:111`, `info.py:1528`, stale JSON `llm.model` default (`fsm-loop-schema.json:1017`), `MODEL_ALIASES` current IDs, no `model_hint` anywhere yet, BUG-3529/BUG-3541 done, ENH-3533/3547/3548 backlinks present. `ll-verify-evidence`: clean. Proposal-vs-code check found no consequence gaps. No decisions-rule conflicts checked beyond the log gate.
+
 ### Pre-implementation review 2026-09-23
 
 BUG-3529 is done: removed the `blocked_by`, and Codex streaming is now a supported row with an argv test. Changed the mapping-disable sentinel from `null` to `false`, because `config.core.deep_merge` removes `None` keys from `ll.local.md`, which would restore the built-in default. Fixed where selection diagnostics live: event payload plus header, no DB columns. Defined which request paths and operations validate-time warnings check.
@@ -338,6 +345,7 @@ _Added by `/ll:confidence-check` on 2026-09-25_
 - Wide blast radius: `StateConfig`, `LLMConfig`, and `OrchestrationConfig` have many construction/consumer sites, so any change to the no-hint default must be verified against existing tests.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-26T04:08:04 - `3c60f1bd-de19-4edd-8506-d4aa11e7800c.jsonl`
 - `/ll:confidence-check` - 2026-09-26T03:44:04 - `ca8c81c6-3907-43f2-b123-5aad7f9c65b9.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-09-24T17:53:55 - `5250dd00-ed7b-4310-8dee-527fe13b2b07.jsonl`
 - `/ll:verify-issues` - 2026-09-24T00:46:08 - `047cda0b-279f-4078-b31f-1d7b1fcc2181.jsonl`
