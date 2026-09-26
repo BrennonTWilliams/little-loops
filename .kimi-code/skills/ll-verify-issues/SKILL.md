@@ -301,34 +301,35 @@ exit code never reaches the host CLI's process exit code — `action_type:
 slash_command` runs through the host session, not a shell whose exit status an
 FSM `fragment: shell_exit` gate can read. Callers that need a deterministic
 gate on this command's verdict (e.g. `refine-to-ready-issue.yaml`'s
-`verify_issue` → `check_verify_verdict` pair) read a persisted artifact
+`verify_issue` → `route_pre_score_obligation` pair) read a persisted artifact
 instead. For **each** issue checked in this mode, use the `Edit` tool to write
 or update a `verify_verdict:` line in that issue's YAML frontmatter block:
 
 - `VALID` verdict → `verify_verdict: VALID`
 - `EVIDENCE_UNVERIFIED` verdict (BUG-3282, check B7) → `verify_verdict:
   EVIDENCE_UNVERIFIED` — persisted as its own value, **not** collapsed into
-  `NON_VALID`, so the `check_evidence_unverified` gate in
-  `refine-to-ready-issue.yaml` can read it. **Outranks `PROPOSAL_UNSOUND`**: an
+  `NON_VALID`, so the `route_pre_score_obligation` dispatch in
+  `refine-to-ready-issue.yaml` (its `VERIFY:EVIDENCE_UNVERIFIED` token) can read it. **Outranks `PROPOSAL_UNSOUND`**: an
   issue can satisfy both, and the fabricated premise must be named before the
   proposal built on top of it is rewritten, or the rewrite re-derives the
   fiction. It still counts as a non-VALID, `exit 1` outcome in `--check` mode
   below — the split is in the persisted value, not the exit-code contract.
 
   **Advisory, not routing (fallback F3, decided 2026-08-21).** The verdict is
-  detected, persisted, and reported, but `check_evidence_unverified` does *not*
-  divert the loop to `reconcile_issue` — every edge falls through to
-  `check_proposal_unsound`. The detector measured ~0.13–0.20 precision on a
+  detected, persisted, and reported, but the `VERIFY:EVIDENCE_UNVERIFIED` route does *not*
+  divert the loop to `reconcile_issue` — it falls through to
+  `check_gate_refine_limit`, like any other non-VALID verdict. The detector measured ~0.13–0.20 precision on a
   hand-labelled 30-finding sample against a 0.30 blocking bar; the residual is
   the *paraphrase* class (spans quoting real code inexactly), which no
   attribution or span-kind rule reaches. Below 0.30 a false verdict sends a
   **correct** issue into a rewrite, so routing is net-negative even when the
-  gate is right. Re-arm — restore `on_yes: check_reconcile_limit` — only once
+  gate is right. Re-arm — route `VERIFY:EVIDENCE_UNVERIFIED` to `check_reconcile_limit` — only once
   precision is measured ≥ 0.30 with recall still 1.00 on labelled true
   fabrications.
 - `PROPOSAL_UNSOUND` verdict (ENH-3250, check B6) → `verify_verdict:
   PROPOSAL_UNSOUND` — persisted as its own value, **not** collapsed into
-  `NON_VALID`, so `check_proposal_unsound` in `refine-to-ready-issue.yaml` can
+  `NON_VALID`, so the `VERIFY:PROPOSAL_UNSOUND` route of `route_pre_score_obligation` in
+  `refine-to-ready-issue.yaml` can
   route it to a bounded design revision (BUG-3574) instead of `reconcile_issue`,
   which cannot edit `## Proposed Solution`. It still counts as a non-VALID,
   `exit 1` outcome in `--check` mode below — the split is in the persisted
@@ -341,7 +342,7 @@ or update a `verify_verdict:` line in that issue's YAML frontmatter block:
   then reads the verdict as absent. Frontmatter only; `--check` makes no body
   edits, and never invents alternatives.
 - `DIRECTIVE_DRIFT` verdict (BUG-3574, check B6) → `verify_verdict:
-  DIRECTIVE_DRIFT` — persisted as its own value so `check_directive_drift` can
+  DIRECTIVE_DRIFT` — persisted as its own value so the `VERIFY:DIRECTIVE_DRIFT` route can
   route it to `reconcile_issue`. Non-VALID, `exit 1` in `--check` mode. Ranks
   below `EVIDENCE_UNVERIFIED` and `PROPOSAL_UNSOUND`.
 - Any other verdict (`OUTDATED`, `RESOLVED`, `INVALID`, `NEEDS_UPDATE`,

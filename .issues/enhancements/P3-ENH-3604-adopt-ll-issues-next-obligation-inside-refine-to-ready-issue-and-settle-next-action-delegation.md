@@ -4,11 +4,12 @@ type: ENH
 title: Adopt ll-issues next-obligation inside refine-to-ready-issue and settle next-action
   delegation
 priority: P3
-status: open
+status: done
 verify_verdict: VALID
 discovered_by: ll-issues-create
 discovered_date: '2026-09-26'
 captured_at: '2026-09-26T01:51:59Z'
+completed_at: '2026-09-26T16:16:43Z'
 parent: EPIC-3565
 blocked_by: []
 relates_to:
@@ -326,9 +327,20 @@ Machine-checkable restatement of the criteria above (the list above is preserved
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
+## Resolution
+
+**Completed** 2026-09-26 via `/ll:manage-issue`.
+
+- `refine-to-ready-issue.yaml`: the eleven per-gate states are replaced by `route_pre_score_obligation`, `route_score_obligation` and `record_hedge_skip`, routing per the two token tables above. The hedge skip file is reset in `resolve_issue`; `diagnose`, `write_failure_evidence` and `classify_terminal` read `captured.route_score_obligation`; header comments rewritten.
+- `next_obligation.py`: the HEDGES probe also counts unresolved option sets (parity with `check-open-questions`).
+- `check_readiness.py` / `next_action.py`: shared `resolve_confidence_thresholds`; `next-action` output unchanged, `seed_confidence_thresholds` untouched.
+- Tests: new `TestRefineToReadyDispatch`, `TestTier1GateParity`, `test_resolve_confidence_thresholds.py`; removed-state tests rewritten, `DONE_PATH_GATES`, MR11 tuples and interpolation baseline moved in lockstep.
+- Docs: `LOOPS_REFERENCE.md`, `CLI.md`, `API.md`, `commands/verify-issues.md` (+ host mirrors).
+- Full suite: 26301 passed; 2 failures (`test_issue_parser` corpus baseline, `test_prose_dep_sweep_gate`) reproduce on a clean `HEAD` worktree and are unrelated.
+
 ## Status
 
-**Open** | Created: 2026-09-26 | Priority: P3
+**Done** | Created: 2026-09-26 | Completed: 2026-09-26 | Priority: P3
 
 
 ## Confidence Check Notes
@@ -347,6 +359,8 @@ _Added by `/ll:confidence-check` on 2026-09-26_
 - Broad lockstep across routing, baseline, MR11 and run-record tests; wide caller surface (5+ loops)
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-26T16:16:43 - `729c2c9b-d4b7-4f65-8181-ececa403978b.jsonl`
+- `/ll:ready-issue` - 2026-09-26T15:57:17 - `a3184101-25df-4d53-a8b1-0eddfdb6e51c.jsonl`
 - `/ll:confidence-check` - 2026-09-26T15:54:36 - `a9534b6c-9684-406d-8b5f-544520483198.jsonl`
 - `/ll:confidence-check` - 2026-09-26T08:23:54 - `a7e1c77c-7aac-49e2-8bc2-8597a74e3698.jsonl`
 - `/ll:verify-issues` - 2026-09-26T08:20:13 - `a7e1c77c-7aac-49e2-8bc2-8597a74e3698.jsonl`

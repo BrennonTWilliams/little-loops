@@ -1403,6 +1403,20 @@ Allocates the next globally unique issue number under a single `acquire_lock` ho
 
 ---
 
+## little_loops.cli.issues.check_readiness
+
+Confidence-threshold helpers shared by `ll-issues check-readiness`, `next-obligation` and `next-action` (ENH-3604).
+
+### resolve_confidence_thresholds
+
+```python
+def resolve_confidence_thresholds(
+    config_path: Path, defaults: tuple[int, int]
+) -> tuple[int, int, bool]
+```
+
+Reads `commands.confidence_gate` from the raw `ll-config.json` key by key and returns `(readiness, outcome, enabled)`. A missing threshold key falls back to the matching entry of `defaults`; an absent file or a parse failure falls back to both defaults with `enabled=False`. `readiness_status` and `next-action` both call it; explicit per-call overrides are layered on by the caller afterwards. It intentionally does not go through `BRConfig`, which always resolves absent thresholds to 85/65.
+
 ## little_loops.cli.issues.scaffold_epic
 
 Creates an EPIC and its pre-wired child stubs atomically (`ll-issues scaffold-epic`).
@@ -4636,7 +4650,7 @@ Entry point for `ll-issues` command. Issue management and visualization utilitie
 | `sequence` | Suggest dependency-ordered implementation sequence |
 | `impact-effort` | Display impact vs effort matrix for active issues |
 | `refine-status` | Refinement depth table sorted by commands touched (`--type`, `--format json`) |
-| `next-action` | Next refinement action needed across all active issues (for FSM loop use) |
+| `next-action` | Next refinement action needed across all active issues (for FSM loop use); thresholds resolved via `little_loops.cli.issues.check_readiness.resolve_confidence_thresholds` (ENH-3604) |
 | `next-obligation` | Unmet preparation obligation for one issue (`--format text\|json\|token`, `--skip`) — FEAT-3598 |
 | `next-issue` | Single highest-confidence issue ID (alias: `nx`) |
 | `next-issues` | All active issues in ranked order (alias: `nxs`); optional count argument |

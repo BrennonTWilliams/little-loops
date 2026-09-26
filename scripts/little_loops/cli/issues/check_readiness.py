@@ -6,6 +6,7 @@ import argparse
 import json
 import sys
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -71,6 +72,29 @@ def _coerce_optional_int(raw: Any) -> int | None:
     return int(raw) if raw is not None and str(raw).isdigit() else None
 
 
+def resolve_confidence_thresholds(
+    config_path: Path, defaults: tuple[int, int]
+) -> tuple[int, int, bool]:
+    """Read ``commands.confidence_gate`` from raw ll-config.json, key by key (ENH-3604).
+
+    Returns ``(readiness, outcome, enabled)``. Each threshold falls back to the matching
+    entry of *defaults* when its key is absent; any read/parse failure falls back to both
+    defaults and ``enabled=False``. Deliberately raw-JSON (not ``BRConfig``) so it stays
+    cheap on the selector's hot path and keeps the caller-supplied default semantics that
+    ``seed_confidence_thresholds`` does not have.
+    """
+    try:
+        raw = json.loads(config_path.read_text())
+        cg = raw.get("commands", {}).get("confidence_gate", {})
+        return (
+            cg.get("readiness_threshold", defaults[0]),
+            cg.get("outcome_threshold", defaults[1]),
+            bool(cg.get("enabled", False)),
+        )
+    except Exception:
+        return defaults[0], defaults[1], False
+
+
 def readiness_status(
     config: BRConfig,
     issue_id: str,
@@ -110,17 +134,9 @@ def readiness_status(
     from little_loops.cli.issues.show import _resolve_issue_id
     from little_loops.frontmatter import parse_frontmatter
 
-    config_path = config.project_root / ".ll" / "ll-config.json"
-    enabled = False
-    try:
-        raw = json.loads(config_path.read_text())
-        cg = raw.get("commands", {}).get("confidence_gate", {})
-        readiness = cg.get("readiness_threshold", default_readiness)
-        outcome = cg.get("outcome_threshold", default_outcome)
-        enabled = bool(cg.get("enabled", False))
-    except Exception:
-        readiness = default_readiness
-        outcome = default_outcome
+    readiness, outcome, enabled = resolve_confidence_thresholds(
+        config.project_root / ".ll" / "ll-config.json", (default_readiness, default_outcome)
+    )
     if readiness_override is not None:
         readiness = readiness_override
     if outcome_override is not None:

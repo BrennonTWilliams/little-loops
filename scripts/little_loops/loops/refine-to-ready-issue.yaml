@@ -12,47 +12,48 @@ category: issue-management
 #   ENH-3248: normalize_structure (ll-issues format-check --fix --apply, no-LLM
 #   pass-through, no evaluate/on_yes/on_no) → verify_issue unconditionally, so
 #   every downstream gate reads a post-normalize file.
-#   verify_issue (/ll:verify-issues --check, non-fatal) → check_verify_verdict
-#     check_verify_verdict (reads persisted verify_verdict) → (on_yes) check_hedges
-#                                                            → (on_no)  check_evidence_unverified (BUG-3282)
-#     check_evidence_unverified (ll-issues check-verify-verdict --evidence-unverified) → (on_yes) check_proposal_unsound (F3: advisory, not routed)
-#                                                                                       → (on_no)  check_proposal_unsound (ENH-3250)
-#     check_proposal_unsound (ll-issues check-verify-verdict --proposal-unsound) → (on_yes) check_proposal_revision_budget (BUG-3574)
-#                                                                                 → (on_no)  check_directive_drift
-#     check_directive_drift (ll-issues check-verify-verdict --directive-drift)  → (on_yes) check_reconcile_limit
-#                                                                                 → (on_no)  check_gate_refine_limit
+#   verify_issue (/ll:verify-issues --check, non-fatal) → route_pre_score_obligation
+#   ENH-3604: route_pre_score_obligation (ll-issues next-obligation --format token,
+#   always --skip FORMAT --skip SCORES plus the per-run skip file) replaces the old
+#   verify-verdict / hedge / placeholder / acceptance-criteria / Program Design gate
+#   states. Every token routes to an existing budget state:
+#     NONE                       → confidence_check
+#     VERIFY:absent              → check_verify_retries (BUG-3571; 2nd absence → infra)
+#     VERIFY:PROPOSAL_UNSOUND    → check_proposal_revision_budget (BUG-3574)
+#     VERIFY:DIRECTIVE_DRIFT     → check_reconcile_limit
+#     VERIFY:EVIDENCE_UNVERIFIED, VERIFY:other → check_gate_refine_limit (BUG-3282 F3: advisory)
+#     HEDGES                     → check_hedge_attempts
+#     PLACEHOLDERS, DESIGN       → check_gate_refine_limit (BUG-3551)
+#     ACCEPTANCE_CRITERIA        → check_reconcile_limit (ENH-3248)
+#     _ / _error (selector exit 2) → mark_evidence_absent_infra
 #     BUG-3574 proposal revision: check_proposal_revision_budget (1/run) → arm_proposal_revision
 #       (ll-issues arm-proposal-revision; exit 1 → record_proposal_unsound) → resolve_decision_pre_breakdown
 #       → check_proposal_revision (consumes marker) → reconcile_revision (unbudgeted) → wire_issue → … → verify_issue
 #       failure → check_decide_rate_limited → check_proposal_revision_failed → record_proposal_unsound | record_decision_unresolved
-#     check_hedges (ll-issues check-open-questions)          → (on_yes) check_placeholders
-#                                                            → (on_no)  check_hedge_attempts
 #     check_hedge_attempts (BUG-3170: one hedge-forced refine per run) → (on_yes, 1st) check_hedge_refine_limit
-#                                                                       → (on_no, 2nd)  check_placeholders
-#     check_placeholders (ENH-3248: template_placeholders class, count via
-#     --format json; no counter, no normalize_structure loopback)      → (on_yes) check_ac_automatable
-#                                                                       → (on_no)  check_gate_refine_limit
-#     check_ac_automatable (ll-issues check-acceptance-criteria)  → (on_yes) check_design (BUG-3249)
-#                                                                  → (on_no)  check_reconcile_limit (ENH-3248; was check_refine_limit)
-#     check_design (BUG-3249: ll-issues check-design)              → (on_yes) confidence_check
-#                                                                    → (on_no)  check_gate_refine_limit
+#                                                                       → (on_no, 2nd)  record_hedge_skip
+#     record_hedge_skip appends HEDGES to refine-to-ready-skip-obligations (reset in
+#     resolve_issue) and re-enters route_pre_score_obligation, which now passes --skip HEDGES.
 #     check_reconcile_limit (ENH-3248: 1 reconcile attempt/run)   → (on_yes, 1st) reconcile_issue → normalize_structure
 #                                                                  → (on_no, 2nd)  check_gate_refine_limit
 #   BUG-3551: three counter states share one refine budget (refine-to-ready-refine-count,
 #   one refine_followup per run) and differ only in where exhaustion goes:
-#     check_refine_limit      (from check_readiness: low score)  → exhausted: breakdown_issue
-#     check_gate_refine_limit (from the structure gates)         → exhausted: record_gate_unmet → failed
-#     check_hedge_refine_limit (from check_hedge_attempts)       → exhausted: check_placeholders
-#   confidence_check (oracle: verify-confidence-scores) → (on_success) check_readiness → (on_yes) check_outcome → (on_yes) done
-#                                                       → (on_failure) diagnose
-#                      check_readiness         → (on_no)  check_refine_limit → refine_followup (additive --gap-analysis)
-#                      check_outcome           → (on_no)  check_decision_needed → (on_yes) check_decide_attempts (BUG-3553: 1/run)
-#                                                                                   → resolve_decision_pre_breakdown | 2nd: record_decision_unresolved
-#                                                                               → (on_no)  check_spike_needed (ENH-3250)
+#     check_refine_limit      (from route_score_obligation: low score) → exhausted: breakdown_issue
+#     check_gate_refine_limit (from the structure gates)               → exhausted: record_gate_unmet → failed
+#     check_hedge_refine_limit (from check_hedge_attempts)             → exhausted: record_hedge_skip
+#   confidence_check (oracle: verify-confidence-scores) → (on_success) route_score_obligation
+#                                                       → (on_failure) mark_evidence_absent_infra
+#   route_score_obligation (next-obligation with the seeded thresholds; tier 1 and
+#   DECISION/PROOF/ARTIFACTS skipped; ENH-3604):
+#     NONE                     → check_decision_before_done (ENH-3610) → write_done_record → done
+#     SCORES:readiness_below, SCORES:absent → check_refine_limit → refine_followup (additive --gap-analysis)
+#     SCORES:outcome_below     → check_decision_needed → (on_yes) check_decide_attempts (BUG-3553: 1/run)
+#                                                        → resolve_decision_pre_breakdown | 2nd: record_decision_unresolved
+#                                                    → (on_no)  check_spike_needed (ENH-3250)
+#     _ / _error               → diagnose
 #                      check_spike_needed (spike_needed AND NOT spike_attempted, autodev.yaml's
 #                      two-field one-shot guard) → (on_yes) run_spike → confidence_check
 #                                                → (on_no)  check_missing_artifacts
-#   check_scores_from_file (error fallback) → (on_yes) done | (on_no) breakdown_issue
 #   BUG-3065: the three decision_needed gates (check_decision_mid_refine,
 #   check_decision_mid_wire, check_decision_needed) no longer exit via done on
 #   on_yes — each routes to its own loop: oracles/resolve-decision call state
@@ -117,6 +118,10 @@ scope:
 # -> normalize_structure -> clear_verify_verdict -> verify_issue ->
 # check_verify_verdict -> check_evidence_unverified -> check_proposal_unsound
 # -> check_directive_drift, plus one hop onward.
+# ENH-3604: the eleven gate states named in the history above were replaced by
+# route_pre_score_obligation / route_score_obligation / record_hedge_skip; the
+# chain is shorter, a hedge skip adds record_hedge_skip plus one re-dispatch, so
+# 90 is kept.
 # ENH-3576: 85 -> 90. +1 precheck_format on every run, +1 for the single shared
 # /ll:format-issue fallback (pre or post, one counter), rounded for headroom.
 max_steps: 90
@@ -173,6 +178,7 @@ states:
       printf '0' > ${context.run_dir}/refine-to-ready-wire-done &&
       printf '0' > ${context.run_dir}/refine-broke-down &&
       printf '0' > ${context.run_dir}/refine-to-ready-hedge-attempts &&
+      rm -f ${context.run_dir}/refine-to-ready-skip-obligations &&
       printf '0' > ${context.run_dir}/refine-to-ready-reconcile-attempts &&
       printf '0' > ${context.run_dir}/refine-to-ready-decide-attempts &&
       printf '0' > ${context.run_dir}/refine-to-ready-proposal-revisions &&
@@ -495,7 +501,7 @@ states:
 
   clear_verify_verdict:
     # BUG-3571: drop any verify_verdict left by an earlier run/revision before
-    # verify_issue, so check_verify_verdict can only ever read evidence produced
+    # verify_issue, so route_pre_score_obligation can only ever read evidence produced
     # by THIS invocation. Absence afterwards means the verify call wrote nothing.
     # Not load-bearing on failure (on_error equals next): a failed clear at worst
     # leaves a stale verdict, the pre-existing behaviour.
@@ -521,26 +527,54 @@ states:
       enabled: true
       name: verify-issues-auto
       suppress_claude_md: true
-    next: check_verify_verdict
-    on_error: check_verify_verdict  # verification failure is non-fatal, like wire_issue
+    next: route_pre_score_obligation
+    on_error: route_pre_score_obligation  # verification failure is non-fatal, like wire_issue
 
-  check_verify_verdict:
-    # verify_issue's --check mode persists verify_verdict: VALID|NON_VALID to
-    # frontmatter rather than relying on the slash command's own process exit
-    # code, which never reaches the host CLI's exit status. This gate reads
-    # that written artifact — the write-verdict/read-verdict shape used
-    # throughout this file (decision_needed / check-flag).
+  route_pre_score_obligation:
+    # ENH-3604: one `ll-issues next-obligation` dispatch replaces the eight-state
+    # pre-score gate chain (verify verdict -> evidence/proposal/drift -> hedges ->
+    # placeholders -> acceptance criteria -> Program Design). The selector is
+    # read-only and stateless: FORMAT stays with normalize_structure/precheck_format
+    # (they write and own the one-shot format-fallback counter) and SCORES belongs
+    # to route_score_obligation (confidence_check clears scores first), so both are
+    # always skipped here. `refine-to-ready-skip-obligations` (one obligation per
+    # line, written by record_hedge_skip, reset in resolve_issue) carries the soft
+    # gates whose budget is spent; it is re-expanded into --skip flags on every
+    # entry because --skip is a caller-owned stateless override.
     #
-    # BUG-3571: the verdict is cleared by clear_verify_verdict before verify_issue,
-    # so an ABSENT verdict (exit 3) means the verify call produced nothing — an
-    # abstention, retried once (check_verify_retries) and then classed infra. It
-    # is never a pass and never a NON_VALID quality verdict.
-    action: "ll-issues check-verify-verdict ${captured.issue_id.output:shell}"
-    fragment: harness_exit
-    on_yes: check_hedges                # exit 0 = verdict VALID
-    on_no: check_evidence_unverified    # exit 1 = VERIFY_VERDICT_NON_VALID → BUG-3282: evidence outranks proposal
-    on_cannot_judge: check_verify_retries  # exit 3 = VERIFY_VERDICT_ABSENT (BUG-3571)
-    on_error: mark_evidence_absent_infra   # an erroring probe is not a pass (BUG-3571)
+    # Every route goes to an existing budget state, never straight to a repair
+    # state. `_` covers the selector's exit-2 path (empty stdout: the error goes to
+    # stderr, and only VERIFY can be fail-closed with SCORES skipped) and any token
+    # leaking past the skips; both end infra-marked, like the old
+    # the old check_verify_verdict.on_error.
+    action: |
+      SKIP=""
+      F="${context.run_dir}/refine-to-ready-skip-obligations"
+      if [ -f "$F" ]; then
+        while IFS= read -r OB; do
+          [ -n "$OB" ] && SKIP="$SKIP --skip $OB"
+        done < "$F"
+      fi
+      ll-issues next-obligation ${captured.issue_id.output:shell} --format token --skip FORMAT --skip SCORES $SKIP
+    action_type: shell
+    capture: route_pre_score_obligation
+    evaluate:
+      type: classify
+    route:
+      NONE: confidence_check
+      "VERIFY:absent": check_verify_retries  # BUG-3571: abstention, retried once then infra
+      "VERIFY:PROPOSAL_UNSOUND": check_proposal_revision_budget  # BUG-3574
+      "VERIFY:DIRECTIVE_DRIFT": check_reconcile_limit
+      # BUG-3282 F3: EVIDENCE_UNVERIFIED is advisory (detected, persisted, not
+      # routed); like any other non-VALID verdict it falls through to the gate budget.
+      "VERIFY:EVIDENCE_UNVERIFIED": check_gate_refine_limit
+      "VERIFY:other": check_gate_refine_limit
+      HEDGES: check_hedge_attempts
+      PLACEHOLDERS: check_gate_refine_limit  # BUG-3551
+      ACCEPTANCE_CRITERIA: check_reconcile_limit  # ENH-3248: ACs are inside reconcile's scope
+      DESIGN: check_gate_refine_limit  # BUG-3551 (shared 1-loopback-per-run budget)
+      _: mark_evidence_absent_infra
+      _error: mark_evidence_absent_infra
 
   check_verify_retries:
     # BUG-3571: one retry of a verify call that left no verdict. Counter is seeded
@@ -562,64 +596,6 @@ states:
     on_yes: clear_verify_verdict        # 1st absence: retry once
     on_no: mark_evidence_absent_infra   # 2nd absence: infra, not quality
     on_error: mark_evidence_absent_infra
-
-  check_evidence_unverified:
-    # BUG-3282: placed ahead of check_proposal_unsound (Decision Rules → Verdict
-    # precedence) — an issue can be both EVIDENCE_UNVERIFIED and
-    # PROPOSAL_UNSOUND (a fabricated premise very often yields an unsound
-    # proposal built on top of it), and refine_followup re-deriving research on
-    # top of a fabricated premise is exactly the failure this issue names.
-    #
-    # ADVISORY, NOT ROUTING (BUG-3282 fallback F3, decided 2026-08-21). The
-    # detector measured ~0.13–0.20 precision on a hand-labelled 30-finding
-    # sample against the plan's 0.30 blocking bar; the residual is the
-    # *paraphrase* class, which no attribution or span-kind rule reaches. A
-    # false EVIDENCE_UNVERIFIED sends a *correct* issue into reconcile_issue,
-    # i.e. below 0.30 the routing is net-negative even when the gate is right.
-    # So on_yes falls through to check_proposal_unsound exactly like on_no:
-    # the verdict is still detected, still persisted to frontmatter by
-    # verify_issue, and still visible in run logs (which is how the fire rate
-    # gets measured in the wild) — it just no longer diverts the loop.
-    #
-    # RE-ARM CONDITION: restore `on_yes: check_reconcile_limit` (the sole edit
-    # needed) once precision is measured ≥ 0.30 with recall still 1.00 on
-    # labelled true-fabrications. Narrowing the scan surface to .md/issue
-    # artifacts (fallback F2) is the most likely way to get there.
-    action: "ll-issues check-verify-verdict ${captured.issue_id.output:shell} --evidence-unverified"
-    fragment: shell_exit
-    on_yes: check_proposal_unsound  # F3: advisory — detected and logged, but not routed
-    on_no: check_proposal_unsound  # any other non-VALID verdict → today's behaviour, unchanged
-    on_error: check_proposal_unsound  # fail-open, matching this file's convention
-
-  check_proposal_unsound:
-    # ENH-3250: check_verify_verdict's on_no bucket previously always went to
-    # check_refine_limit → refine_followup, which repairs *research* — no fix
-    # for a failure kind where the Proposed Solution itself, implemented as
-    # written, contradicts the code it names (widened §B6 of
-    # commands/verify-issues.md). That failure kind is remedied by rewriting
-    # the directive section, which is reconcile_issue's (ENH-3248) documented
-    # scope, not refine_issue's. Every other non-VALID verdict (a false claim
-    # about current state) is unaffected and still falls through on_no to
-    # today's check_refine_limit target.
-    #
-    # BUG-3574: reconcile cannot edit ## Proposed Solution, so a refuted
-    # proposal goes to a bounded design revision instead; directive-only drift
-    # is a separate verdict (DIRECTIVE_DRIFT) routed by check_directive_drift.
-    action: "ll-issues check-verify-verdict ${captured.issue_id.output:shell} --proposal-unsound"
-    fragment: shell_exit
-    on_yes: check_proposal_revision_budget  # BUG-3574: verify_verdict == PROPOSAL_UNSOUND → re-decide
-    on_no: check_directive_drift            # BUG-3574: was check_gate_refine_limit
-    on_error: check_directive_drift         # fail-open, matching this file's convention
-
-  check_directive_drift:
-    # BUG-3574: DIRECTIVE_DRIFT (fix confined to Implementation Steps / Acceptance
-    # Criteria / Integration Map) is inside reconcile_issue's rewrite scope.
-    # Any other non-VALID verdict falls through to today's refine target.
-    action: "ll-issues check-verify-verdict ${captured.issue_id.output:shell} --directive-drift"
-    fragment: shell_exit
-    on_yes: check_reconcile_limit
-    on_no: check_gate_refine_limit      # any other non-VALID verdict → refine (BUG-3551: gate budget)
-    on_error: check_gate_refine_limit   # fail-open, matching this file's convention
 
   check_proposal_revision_budget:
     # BUG-3574: one revision per run. Deliberately bypasses check_decide_attempts
@@ -723,17 +699,6 @@ states:
     next: failed
     on_error: failed
 
-  check_hedges:
-    # Score-independent gate: forces a refine pass on unresolved hedges/open
-    # questions regardless of confidence_score. Widened sections/vocabulary
-    # (ENH-3031) so prose deposited by refine/wire's research findings is
-    # scanned, not just Edge Cases / Confidence Check Notes / Open Questions.
-    action: "ll-issues check-open-questions ${captured.issue_id.output:shell}"
-    fragment: shell_exit
-    on_yes: check_placeholders      # exit 0 = no hedges (ENH-3248: via check_placeholders)
-    on_no: check_hedge_attempts     # exit 1 = OPEN_QUESTIONS_REMAIN → bound the retry
-    on_error: check_placeholders
-
   check_hedge_attempts:
     # BUG-3170: bound how many refine passes the hedge scan may force. The scan
     # is an absolute-zero probe over vocabulary with no answer/hedge
@@ -754,65 +719,25 @@ states:
       operator: lt
       target: 2
     on_yes: check_hedge_refine_limit  # 1st red reading: allowed to ask for a refine (pre-filter, not a private budget)
-    on_no: check_placeholders       # 2nd red reading: proceed rather than exhaust the shared budget (ENH-3248)
-    on_error: check_placeholders    # fail open, matching check_hedges
+    on_no: record_hedge_skip        # 2nd red reading: proceed rather than exhaust the shared budget (ENH-3248)
+    on_error: record_hedge_skip     # fail open: skip the hedge gate
 
-  check_placeholders:
-    # ENH-3248: score-independent gate for the template_placeholders class
-    # ENH-3244 split out of the hedge scan but never gated (its detection
-    # shipped with no repair and no gate). normalize_structure already ran
-    # `--fix --apply` unconditionally before verify_issue, so every
-    # placeholder this gate still sees is by construction one --fix could
-    # not repair — judgment or research-shaped, both of which are refine's.
-    # No attempt counter and no normalize_structure loopback: a loopback
-    # here would be an idempotent re-run and risks phantom convergence
-    # against circuit.repeated_failure for no gain.
-    #
-    # placeholder_count() (issue_parser.py) has no CLI entry point, so this
-    # reads --format json and counts the template_placeholders array itself
-    # — cmd_format_check's own exit code is not usable here (it returns 1
-    # for ANY gap, not just this class, per normalize_structure's note).
-    action: |
-      # ll-lint: mr11-ok(captured.issue_id.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
-      ll-issues format-check ${captured.issue_id.output} --format json 2>/dev/null \
-        | python3 -c "import json,sys; d=json.load(sys.stdin); print(len(d.get('template_placeholders', [])))"
+  record_hedge_skip:
+    # ENH-3604: the hedge budget is spent (2nd red reading, or the shared refine
+    # budget is exhausted / a counter failed open). Hedges are the one soft gate:
+    # record HEDGES so route_pre_score_obligation passes `--skip HEDGES` from now
+    # on, then re-enter it. The re-entered dispatch re-reads tier 1 from VERIFY
+    # onward (read-only; earlier gates were already green).
+    action: printf 'HEDGES\n' >> ${context.run_dir}/refine-to-ready-skip-obligations
     action_type: shell
-    evaluate:
-      type: output_numeric
-      operator: eq
-      target: 0
-    on_yes: check_ac_automatable
-    on_no: check_gate_refine_limit  # BUG-3551
-    on_error: check_ac_automatable
-
-  check_ac_automatable:
-    # Score-independent gate: a manual-verification acceptance criterion scores
-    # well on every confidence-check dimension (specific, unambiguous, small,
-    # testable-by-a-human) yet is exactly the decay mode this loop exists to
-    # prevent — no rubric axis can see it.
-    action: "ll-issues check-acceptance-criteria ${captured.issue_id.output:shell}"
-    fragment: shell_exit
-    on_yes: check_design
-    on_no: check_reconcile_limit  # ENH-3248: ACs are inside reconcile's rewrite scope
-    on_error: check_design  # fail open INTO the next gate, not past it (BUG-3294 made exit 2 reachable)
-
-  check_design:
-    # BUG-3249: the Program Design gate (ENH-2967's design_gate_failed(),
-    # already exposed as `ll-issues check-design`) was never wired into this
-    # loop, so an issue with no `## Program Design` section could reach
-    # `done`. Pure shell, no new predicate copy: reuses the same CLI the
-    # sibling autodev.yaml loop already calls at four sites.
-    action: "ll-issues check-design ${captured.issue_id.output:shell}"
-    fragment: shell_exit
-    on_yes: confidence_check
-    on_no: check_gate_refine_limit  # BUG-3551 (same shared counter). Decision Rationale: Option B — shares the same 1-loopback-per-run budget as the other refine-triggering gates, rather than bypassing check_refine_limit's counter to reach refine_followup directly.
-    on_error: confidence_check  # fail-open, matching check_hedges / check_ac_automatable
+    next: route_pre_score_obligation
+    on_error: route_pre_score_obligation
 
   check_reconcile_limit:
     # ENH-3248: bounds the reconcile_issue rung — independent, scoped counter
     # mirroring check_hedge_attempts/check_refine_limit's shape (Decision
     # Rules › Counter shape), not autodev.yaml's shared+marker layering. A
-    # check_ac_automatable failure the reconcile pass cannot clear escalates
+    # ACCEPTANCE_CRITERIA failure the reconcile pass cannot clear escalates
     # to check_refine_limit rather than spinning.
     action: |
       FILE="${context.run_dir}/refine-to-ready-reconcile-attempts"
@@ -834,7 +759,7 @@ states:
     on_error: check_gate_refine_limit
 
   reconcile_issue:
-    # ENH-3248: self-referential rewrite rung. check_ac_automatable's failure
+    # ENH-3248: self-referential rewrite rung. the ACCEPTANCE_CRITERIA obligation's failure
     # (non-automatable ACs) is inside /ll:reconcile-issue's rewrite scope
     # (commands/reconcile-issue.md: Acceptance Criteria), so this remedy can
     # actually clear the gate an additive refine_followup cannot. Bare
@@ -868,102 +793,47 @@ states:
     # gaining a `capture:` key can never clobber this evidence.
     # terminated_by / failure_terminal still land under `confidence_check`.
     capture: confidence_check_events
-    on_success: check_readiness
+    on_success: route_score_obligation
     # BUG-3571: the oracle clears scores first, so its `failed` terminal means
     # absent evidence after a retry — infra, not something diagnose can classify.
     on_failure: mark_evidence_absent_infra
     on_error: mark_evidence_absent_infra
 
-  check_readiness:
-    # Step 1 of 2: check only technical readiness (confidence_score vs readiness_threshold).
-    # Readiness below threshold → retry refinement (refine-issue can fix technical gaps).
-    # Readiness passes → proceed to check_outcome.
-    action: |
-      cat > "${context.run_dir}/check_readiness-issue_id.txt" << 'LL_RAW_9F3C1A7E_EOF'
-      ${captured.issue_id.output}
-      LL_RAW_9F3C1A7E_EOF
-      LL_ARG_READINESS_THRESHOLD=${context.readiness_threshold:shell} python3 << 'PYEOF'
-      import json, os, sys, subprocess
-      from pathlib import Path
-
-      # BUG-3552: the runner seeds this from commands.confidence_gate unless
-      # --context overrides it; re-reading ll-config here would shadow the override.
-      readiness = int(os.environ['LL_ARG_READINESS_THRESHOLD'])
-
-      issue_id = Path('${context.run_dir}/check_readiness-issue_id.txt').read_text().rstrip("\n")
-      r = subprocess.run(
-          ['ll-issues', 'show', issue_id, '--json'],
-          capture_output=True, text=True
-      )
-      # BUG-2726 guard (was missing here, present in check_outcome /
-      # check_scores_from_file): `ll-issues show` prints its not-found error to
-      # STDOUT and exits 1, so a bare json.loads traceback would exit 1 →
-      # verdict 'no' → check_refine_limit, burning refine budget on an infra
-      # fault. Exit 2 → verdict 'error' → check_scores_from_file, whose own
-      # guard escalates to diagnose with the real stderr.
-      if r.returncode != 0:
-          sys.stderr.write(r.stderr or 'll-issues show exited %d\n' % r.returncode)
-          sys.exit(2)
-      try:
-          d = json.loads(r.stdout)
-      except (json.JSONDecodeError, ValueError):
-          sys.stderr.write(r.stderr or 'll-issues show returned unparseable JSON\n')
-          sys.exit(2)
-      sys.exit(0 if int(d.get('confidence') or 0) >= readiness else 1)
-      PYEOF
-    fragment: shell_exit
-    on_yes: check_outcome
-    on_no: check_refine_limit
-    on_error: check_scores_from_file
-
-  check_outcome:
-    # Step 2 of 2: check outcome confidence (outcome_confidence vs outcome_threshold).
-    # Outcome below threshold → check_decision_needed before falling through to breakdown_issue.
-    # Outcome passes → check_decision_before_done (ENH-3610).
-    action: |
-      cat > "${context.run_dir}/check_outcome-issue_id.txt" << 'LL_RAW_9F3C1A7E_EOF'
-      ${captured.issue_id.output}
-      LL_RAW_9F3C1A7E_EOF
-      LL_ARG_OUTCOME_THRESHOLD=${context.outcome_threshold:shell} python3 << 'PYEOF'
-      import json, os, sys, subprocess
-      from pathlib import Path
-
-      # BUG-3552: seeded context value, not a config re-read (see check_readiness).
-      outcome = int(os.environ['LL_ARG_OUTCOME_THRESHOLD'])
-
-      issue_id = Path('${context.run_dir}/check_outcome-issue_id.txt').read_text().rstrip("\n")
-      r = subprocess.run(
-          ['ll-issues', 'show', issue_id, '--json'],
-          capture_output=True, text=True
-      )
-      # BUG-2726: surface the REAL inner ll-issues failure (not the heredoc
-      # wrapper's own status) and exit 2 → verdict 'error' → on_error: diagnose.
-      # A bare json.loads traceback would exit 1 → verdict 'no' →
-      # check_decision_needed, misclassifying an infra failure as a low score.
-      if r.returncode != 0:
-          sys.stderr.write(r.stderr or 'll-issues show exited %d\n' % r.returncode)
-          sys.exit(2)
-      try:
-          d = json.loads(r.stdout)
-      except (json.JSONDecodeError, ValueError):
-          sys.stderr.write(r.stderr or 'll-issues show returned unparseable JSON\n')
-          sys.exit(2)
-      sys.exit(0 if int(d.get('outcome') or 0) >= outcome else 1)
-      PYEOF
-      exit $?
-    fragment: shell_exit
-    # BUG-2726: capture so ${captured.check_outcome.stderr} carries the inner
-    # ll-issues failure into the diagnose prompt.
-    capture: check_outcome
-    on_yes: check_decision_before_done
-    on_no: check_decision_needed
-    on_error: diagnose
+  route_score_obligation:
+    # ENH-3604: replaces check_readiness + check_outcome + check_scores_from_file.
+    # Thresholds are the seeded context values (BUG-3552: --context overrides win).
+    # Every tier-1 obligation plus tier 3 (DECISION/PROOF/ARTIFACTS) is skipped, so
+    # the only tokens are NONE and SCORES:{absent,readiness_below,outcome_below}.
+    # Tier 3 stays in the child (check_decision_needed -> check_spike_needed ->
+    # check_missing_artifacts): check_spike_needed owns the shared spike-runs-<ID>
+    # budget the selector's PROOF does not. --honor-waiver is deliberately omitted:
+    # the child never consulted outcome_gate_waived at this gate.
+    #
+    # `_` = selector exit 2 (empty stdout) or executor failure: an unreadable issue
+    # is an infra fault, so it goes to diagnose (the old fallback re-read is gone).
+    action: >-
+      ll-issues next-obligation ${captured.issue_id.output:shell} --format token
+      --readiness-threshold ${context.readiness_threshold:shell}
+      --outcome-threshold ${context.outcome_threshold:shell}
+      --skip FORMAT --skip VERIFY --skip HEDGES --skip PLACEHOLDERS
+      --skip ACCEPTANCE_CRITERIA --skip DESIGN --skip DECISION --skip PROOF
+      --skip ARTIFACTS
+    action_type: shell
+    capture: route_score_obligation
+    evaluate:
+      type: classify
+    route:
+      NONE: check_decision_before_done  # ENH-3610 decision gate on the done path
+      "SCORES:readiness_below": check_refine_limit
+      "SCORES:absent": check_refine_limit
+      "SCORES:outcome_below": check_decision_needed
+      _: diagnose
+      _error: diagnose
 
   check_decision_before_done:
     # ENH-3610: child invariant — this loop never reaches `done` with
     # decision_needed: true (except via write_broke_down). Sits on the three
-    # no-class done edges (check_outcome.on_yes, check_missing_artifacts.on_yes,
-    # check_scores_from_file.on_yes). Flag set → check_decide_attempts (the
+    # done edges (route_score_obligation NONE, check_missing_artifacts.on_yes). Flag set → check_decide_attempts (the
     # existing decide budget and path, which re-scores via confidence_check);
     # otherwise → write_done_record → done. Fail-open on error: a probe failure
     # must not strand a ready issue, and autodev's selectors re-check the flag.
@@ -974,8 +844,8 @@ states:
     on_error: write_done_record
 
   write_done_record:
-    # ENH-3610: the no-class record write, moved here from check_outcome /
-    # check_missing_artifacts / check_scores_from_file so a record is written
+    # ENH-3610: the no-class record write, moved here from the score gate /
+    # check_missing_artifacts so a record is written
     # only when `done` is really next (not when a decision gate diverts).
     action: |
       ll-issues run-record write ${captured.issue_id.output:shell} --run-dir ${context.run_dir} --writer refine-to-ready-issue --readiness-threshold ${context.readiness_threshold:shell} --outcome-threshold ${context.outcome_threshold:shell} || true
@@ -1182,9 +1052,9 @@ states:
 
   check_gate_refine_limit:
     # BUG-3551: the structure-gate twin of check_refine_limit. Same counter file,
-    # so the refine budget stays shared (check_design's Decision Rationale
+    # so the refine budget stays shared (the Program Design gate's Decision Rationale
     # Option B) — only the exhaustion target differs. check_refine_limit is
-    # reached from check_readiness (a low *score* after refinement → scope may
+    # reached from route_score_obligation (a low *score* after refinement → scope may
     # be too big → size review). This state is reached from the structure gates
     # (verify verdict, placeholders, Program Design, reconcile exhaustion),
     # where size review is the wrong remedy: decomposing an issue does not give
@@ -1225,8 +1095,8 @@ states:
       operator: lt
       target: 2
     on_yes: refine_followup
-    on_no: check_placeholders
-    on_error: check_placeholders
+    on_no: record_hedge_skip
+    on_error: record_hedge_skip
 
   record_gate_unmet:
     # BUG-3551: a structure gate is still red with the run's refine budget
@@ -1241,51 +1111,6 @@ states:
     action_type: shell
     next: failed
     on_error: failed
-
-  check_scores_from_file:
-    # Error-recovery fallback: reached when check_readiness subprocess fails.
-    # Reads both scores directly from frontmatter without Python eval.
-    # on_no routes to breakdown_issue (not failed) — outcome-only failures here
-    # should not stall the loop; scope reduction is the appropriate intervention.
-    action: |
-      cat > "${context.run_dir}/check_scores_from_file-issue_id.txt" << 'LL_RAW_9F3C1A7E_EOF'
-      ${captured.issue_id.output}
-      LL_RAW_9F3C1A7E_EOF
-      LL_ARG_READINESS_THRESHOLD=${context.readiness_threshold:shell} LL_ARG_OUTCOME_THRESHOLD=${context.outcome_threshold:shell} python3 << 'PYEOF'
-      import json, os, sys, subprocess
-      from pathlib import Path
-
-      # BUG-3552: seeded context values, not a config re-read (see check_readiness).
-      readiness = int(os.environ['LL_ARG_READINESS_THRESHOLD'])
-      outcome = int(os.environ['LL_ARG_OUTCOME_THRESHOLD'])
-
-      issue_id = Path('${context.run_dir}/check_scores_from_file-issue_id.txt').read_text().rstrip("\n")
-      r = subprocess.run(
-          ['ll-issues', 'show', issue_id, '--json'],
-          capture_output=True, text=True
-      )
-      # BUG-2726: surface the REAL inner ll-issues failure (not the heredoc
-      # wrapper's status) and exit 2 → verdict 'error' → on_error: diagnose,
-      # so this state's own captured stderr carries it forward.
-      if r.returncode != 0:
-          sys.stderr.write(r.stderr or 'll-issues show exited %d\n' % r.returncode)
-          sys.exit(2)
-      try:
-          d = json.loads(r.stdout)
-      except (json.JSONDecodeError, ValueError):
-          sys.stderr.write(r.stderr or 'll-issues show returned unparseable JSON\n')
-          sys.exit(2)
-      sys.exit(0 if int(d.get('confidence') or 0) >= readiness
-                 and int(d.get('outcome') or 0) >= outcome else 1)
-      PYEOF
-      exit $?
-    fragment: shell_exit
-    # BUG-2726: capture so ${captured.check_scores_from_file.stderr} carries the
-    # inner ll-issues failure into the diagnose prompt.
-    capture: check_scores_from_file
-    on_yes: check_decision_before_done
-    on_no: breakdown_issue
-    on_error: diagnose
 
   breakdown_issue:
     action: "/ll:issue-size-review ${captured.issue_id.output} --auto"
@@ -1461,12 +1286,11 @@ states:
       - check_lifetime_limit:   ${captured.check_lifetime_limit.stderr?}
       - refine_issue:           ${captured.refine_issue.stderr?}
       - refine_followup:        ${captured.refine_followup.stderr?}
-      - check_outcome:          ${captured.check_outcome.stderr?}
+      - route_score_obligation: ${captured.route_score_obligation.stderr?}
       - check_refine_limit:     ${captured.check_refine_limit.stderr?}
       - check_gate_refine_limit: ${captured.check_gate_refine_limit.stderr?}
       - check_hedge_attempts:   ${captured.check_hedge_attempts.stderr?}
       - check_reconcile_limit:  ${captured.check_reconcile_limit.stderr?}
-      - check_scores_from_file: ${captured.check_scores_from_file.stderr?}
       - breakdown_issue:        ${captured.breakdown_issue.stderr?}
       - confidence_check (sub-loop — no stderr channel; event stream instead):
       The text between the markers below is a CONF_CHECK_EVENTS_1Y6B record of a sub-loop confidence-check run.
@@ -1525,9 +1349,8 @@ states:
         check_lifetime_limit=${captured.check_lifetime_limit.exit_code?:shell} \
         refine_issue=${captured.refine_issue.exit_code?:shell} \
         refine_followup=${captured.refine_followup.exit_code?:shell} \
-        check_outcome=${captured.check_outcome.exit_code?:shell} \
+        route_score_obligation=${captured.route_score_obligation.exit_code?:shell} \
         check_refine_limit=${captured.check_refine_limit.exit_code?:shell} \
-        check_scores_from_file=${captured.check_scores_from_file.exit_code?:shell} \
         breakdown_issue=${captured.breakdown_issue.exit_code?:shell} \
       ; do
         s="$${pair%%=*}"; c="$${pair#*=}"
@@ -1550,22 +1373,20 @@ states:
         printf 'refine_issue: %s\n' '${captured.refine_issue.exit_code?:shell}'
         printf 'refine_followup: %s\n' '${captured.refine_followup.exit_code?:shell}'
         printf 'breakdown_issue: %s\n' '${captured.breakdown_issue.exit_code?:shell}'
-        printf 'check_outcome: %s\n' '${captured.check_outcome.exit_code?:shell}'
+        printf 'route_score_obligation: %s\n' '${captured.route_score_obligation.exit_code?:shell}'
         printf 'check_refine_limit: %s\n' '${captured.check_refine_limit.exit_code?:shell}'
         printf 'check_hedge_attempts: %s\n' '${captured.check_hedge_attempts.exit_code?}'
         printf 'check_reconcile_limit: %s\n' '${captured.check_reconcile_limit.exit_code?}'
-        printf 'check_scores_from_file: %s\n' '${captured.check_scores_from_file.exit_code?:shell}'
         printf 'issue_id: %s\n' '${captured.issue_id.exit_code?:shell}'
         printf 'check_lifetime_limit: %s\n' '${captured.check_lifetime_limit.exit_code?:shell}'
         printf '\n--- classify_failure verdicts (BUG-2826) ---\n'
         printf 'refine_issue: %s\n' '${captured.refine_issue.failure_type?}'
         printf 'refine_followup: %s\n' '${captured.refine_followup.failure_type?}'
         printf 'breakdown_issue: %s\n' '${captured.breakdown_issue.failure_type?}'
-        printf 'check_outcome: %s\n' '${captured.check_outcome.failure_type?}'
+        printf 'route_score_obligation: %s\n' '${captured.route_score_obligation.failure_type?}'
         printf 'check_refine_limit: %s\n' '${captured.check_refine_limit.failure_type?}'
         printf 'check_hedge_attempts: %s\n' '${captured.check_hedge_attempts.failure_type?}'
         printf 'check_reconcile_limit: %s\n' '${captured.check_reconcile_limit.failure_type?}'
-        printf 'check_scores_from_file: %s\n' '${captured.check_scores_from_file.failure_type?}'
         printf 'issue_id: %s\n' '${captured.issue_id.failure_type?}'
         printf 'check_lifetime_limit: %s\n' '${captured.check_lifetime_limit.failure_type?}'
         printf '\n--- stderr tails ---\n'
@@ -1631,12 +1452,11 @@ states:
       # ll-lint: mr11-ok(captured.refine_issue.exit_code) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       # ll-lint: mr11-ok(captured.refine_followup.exit_code) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       # ll-lint: mr11-ok(captured.breakdown_issue.exit_code) ENH-3358 - ENH-3342 widening residual, tracked for conversion
-      # ll-lint: mr11-ok(captured.check_outcome.exit_code) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      # ll-lint: mr11-ok(captured.route_score_obligation.exit_code) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       # ll-lint: mr11-ok(captured.check_refine_limit.exit_code) ENH-3358 - ENH-3342 widening residual, tracked for conversion
-      # ll-lint: mr11-ok(captured.check_scores_from_file.exit_code) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       # ll-lint: mr11-ok(captured.issue_id.exit_code) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       # ll-lint: mr11-ok(captured.check_lifetime_limit.exit_code) ENH-3358 - ENH-3342 widening residual, tracked for conversion
-      for c in ${captured.refine_issue.exit_code?} ${captured.refine_followup.exit_code?} ${captured.breakdown_issue.exit_code?} ${captured.check_outcome.exit_code?} ${captured.check_refine_limit.exit_code?} ${captured.check_scores_from_file.exit_code?} ${captured.issue_id.exit_code?} ${captured.check_lifetime_limit.exit_code?}; do
+      for c in ${captured.refine_issue.exit_code?} ${captured.refine_followup.exit_code?} ${captured.breakdown_issue.exit_code?} ${captured.route_score_obligation.exit_code?} ${captured.check_refine_limit.exit_code?} ${captured.issue_id.exit_code?} ${captured.check_lifetime_limit.exit_code?}; do
         case "$c" in
           143|137|124) CLASS=infra ;;
           -*) CLASS=infra ;;
@@ -1645,12 +1465,11 @@ states:
       # ll-lint: mr11-ok(captured.refine_issue.failure_type) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       # ll-lint: mr11-ok(captured.refine_followup.failure_type) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       # ll-lint: mr11-ok(captured.breakdown_issue.failure_type) ENH-3358 - ENH-3342 widening residual, tracked for conversion
-      # ll-lint: mr11-ok(captured.check_outcome.failure_type) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      # ll-lint: mr11-ok(captured.route_score_obligation.failure_type) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       # ll-lint: mr11-ok(captured.check_refine_limit.failure_type) ENH-3358 - ENH-3342 widening residual, tracked for conversion
-      # ll-lint: mr11-ok(captured.check_scores_from_file.failure_type) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       # ll-lint: mr11-ok(captured.issue_id.failure_type) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       # ll-lint: mr11-ok(captured.check_lifetime_limit.failure_type) ENH-3358 - ENH-3342 widening residual, tracked for conversion
-      for f in ${captured.refine_issue.failure_type?} ${captured.refine_followup.failure_type?} ${captured.breakdown_issue.failure_type?} ${captured.check_outcome.failure_type?} ${captured.check_refine_limit.failure_type?} ${captured.check_scores_from_file.failure_type?} ${captured.issue_id.failure_type?} ${captured.check_lifetime_limit.failure_type?}; do
+      for f in ${captured.refine_issue.failure_type?} ${captured.refine_followup.failure_type?} ${captured.breakdown_issue.failure_type?} ${captured.route_score_obligation.failure_type?} ${captured.check_refine_limit.failure_type?} ${captured.issue_id.failure_type?} ${captured.check_lifetime_limit.failure_type?}; do
         case "$f" in
           transient|non_recoverable|infra_retry) CLASS=infra ;;
         esac

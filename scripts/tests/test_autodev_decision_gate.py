@@ -625,12 +625,9 @@ class TestChildDecisionInvariant:
         return yaml.safe_load(path.read_text())["states"]
 
     def test_done_edges_pass_through_decision_gate(self, child: dict[str, Any]) -> None:
-        for state, edge in (
-            ("check_outcome", "on_yes"),
-            ("check_missing_artifacts", "on_yes"),
-            ("check_scores_from_file", "on_yes"),
-        ):
-            assert child[state][edge] == "check_decision_before_done", state
+        assert child["check_missing_artifacts"]["on_yes"] == "check_decision_before_done"
+        # ENH-3604: the score gates collapsed into the route_score_obligation dispatch.
+        assert child["route_score_obligation"]["route"]["NONE"] == "check_decision_before_done"
 
     def test_only_gate_write_done_record_and_class_writers_reach_done(
         self, child: dict[str, Any]
@@ -644,7 +641,7 @@ class TestChildDecisionInvariant:
         # write_broke_down is the documented exception; the rest are class-writing stops.
         assert "write_done_record" in inbound
         assert "write_broke_down" in inbound
-        for name in ("check_outcome", "check_missing_artifacts", "check_scores_from_file"):
+        for name in ("route_score_obligation", "check_missing_artifacts"):
             assert name not in inbound
 
     def test_decision_gate_routes(self, child: dict[str, Any]) -> None:
@@ -657,7 +654,7 @@ class TestChildDecisionInvariant:
     def test_run_record_write_moved_to_write_done_record(self, child: dict[str, Any]) -> None:
         assert "run-record write" in child["write_done_record"]["action"]
         assert child["write_done_record"]["next"] == "done"
-        for name in ("check_outcome", "check_missing_artifacts", "check_scores_from_file"):
+        for name in ("route_score_obligation", "check_missing_artifacts"):
             assert "run-record write" not in child[name]["action"], name
 
 

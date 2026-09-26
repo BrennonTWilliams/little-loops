@@ -38,7 +38,9 @@ LEGACY_CLASS_STATES = {
 }
 # ENH-3610: the three done-path gates no longer write; the record write moved to
 # write_done_record, reached only after check_decision_before_done.
-DONE_PATH_GATES = ("check_outcome", "check_scores_from_file", "check_missing_artifacts")
+# ENH-3604: check_outcome / check_scores_from_file were replaced by the
+# route_score_obligation dispatch (its NONE route is asserted in test_builtin_loops.py).
+DONE_PATH_GATES = ("check_missing_artifacts",)
 TERMINAL_BEARING_STATES = (
     *LEGACY_CLASS_STATES,
     "classify_terminal",
@@ -621,26 +623,6 @@ class TestTerminalExecution:
             frontmatter="confidence_score: 90\noutcome_confidence: 70\nmissing_artifacts: false\n",
         )
         result = _run_state(project, loop_states, "check_missing_artifacts", tmp_path, ID)
-        assert result.returncode == 1
-        assert not (tmp_path / "run-records").exists() or not list(
-            (tmp_path / "run-records").rglob("*.json")
-        )
-
-    def test_check_outcome_pass_writes_no_record(
-        self, project: Path, tmp_path: Path, loop_states: dict
-    ) -> None:
-        _write_issue(project, ID, frontmatter="confidence_score: 90\noutcome_confidence: 70\n")
-        result = _run_state(project, loop_states, "check_outcome", tmp_path, ID)
-        assert result.returncode == 0, result.stderr
-        assert not (tmp_path / "run-records").exists() or not list(
-            (tmp_path / "run-records").rglob("*.json")
-        )
-
-    def test_check_outcome_fail_writes_no_record(
-        self, project: Path, tmp_path: Path, loop_states: dict
-    ) -> None:
-        _write_issue(project, ID, frontmatter="confidence_score: 90\noutcome_confidence: 10\n")
-        result = _run_state(project, loop_states, "check_outcome", tmp_path, ID)
         assert result.returncode == 1
         assert not (tmp_path / "run-records").exists() or not list(
             (tmp_path / "run-records").rglob("*.json")

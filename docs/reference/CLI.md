@@ -2380,7 +2380,7 @@ ll-issues arm-proposal-revision BUG-3574
 
 Report the unmet preparation obligation for one issue (FEAT-3598). Deterministic: no LLM calls, no file writes. Composes the existing readiness gates in the order the `refine-to-ready-issue` loop routes on them, in three tiers:
 
-1. **Pre-score gates** (first unmet wins): `FORMAT`, `VERIFY`, `HEDGES`, `PLACEHOLDERS`, `ACCEPTANCE_CRITERIA`, `DESIGN`. `VERIFY` carries a `sub_reason`: `absent`, `EVIDENCE_UNVERIFIED`, `PROPOSAL_UNSOUND`, `DIRECTIVE_DRIFT` or `other`.
+1. **Pre-score gates** (first unmet wins): `FORMAT`, `VERIFY`, `HEDGES` (open questions **or** unresolved option sets, the same predicate as `check-open-questions`), `PLACEHOLDERS`, `ACCEPTANCE_CRITERIA`, `DESIGN`. `VERIFY` carries a `sub_reason`: `absent`, `EVIDENCE_UNVERIFIED`, `PROPOSAL_UNSOUND`, `DIRECTIVE_DRIFT` or `other`.
 2. **Scores** (`SCORES`): `absent`, `readiness_below`, or (via tier 3) `outcome_below`. Passing scores return `NONE` even when `decision_needed` or spike flags are set.
 3. **Low-outcome diagnosis**, only when readiness passes and outcome is below threshold: `DECISION`, `PROOF` (`sub_reason` = `absent`/`stale`/`refuted`), `ARTIFACTS`; otherwise `SCORES:outcome_below`.
 
@@ -2394,6 +2394,8 @@ Report the unmet preparation obligation for one issue (FEAT-3598). Deterministic
 Exit codes: 0 on any successful assessment (including `NONE`); 2 when the issue can't be resolved or a fail-closed probe (`VERIFY`, `SCORES`) errors. A probe error on any other obligation is listed in `probe_errors` and that obligation counts as met.
 
 `VERIFY` reflects the last *persisted* `verify_verdict`, which may be stale outside a loop run (the loop clears it before every verify).
+
+**Loop use (ENH-3604):** `refine-to-ready-issue` routes its pre-score chain through `route_pre_score_obligation` (always `--skip FORMAT --skip SCORES`, plus a per-run skip file that currently carries `HEDGES`) and its score check through `route_score_obligation` (seeded thresholds, every other obligation skipped, no `--honor-waiver`).
 
 **Known PROOF departure from loop parity:** `PROOF` delegates to `assess_proof`, so it also reports `absent` for `spike_attempted: true` without `spike_completed`, and folds in a `structured_proof` gate verdict (`check-gate`). The loop's `check_spike_needed` does neither.
 
@@ -2473,7 +2475,7 @@ Exit 0 if the issue's persisted `verify_verdict` is `VALID`, 1 if it is `NON_VAL
 |------|-------------|
 | `--config` | Path to `ll-config.json` |
 | `--proposal-unsound` | Query mode (ENH-3250): exit 0 if `verify_verdict == PROPOSAL_UNSOUND`, 1 otherwise (including when the field is absent). Does not change the default flag's VALID/NON_VALID contract — `PROPOSAL_UNSOUND` still exits 1 without this flag. Used by `refine-to-ready-issue.yaml`'s `check_proposal_unsound` gate to route a refuted proposal to a bounded design revision (BUG-3574). |
-| `--directive-drift` | Query mode (BUG-3574): exit 0 if `verify_verdict == DIRECTIVE_DRIFT`, 1 otherwise. Used by the `check_directive_drift` gate to route directive-only drift to `reconcile_issue`. |
+| `--directive-drift` | Query mode (BUG-3574): exit 0 if `verify_verdict == DIRECTIVE_DRIFT`, 1 otherwise. Superseded in `refine-to-ready-issue` by the `VERIFY:DIRECTIVE_DRIFT` token of `next-obligation` (ENH-3604); still available as a standalone probe. |
 
 **Examples:**
 ```bash

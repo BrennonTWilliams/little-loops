@@ -1448,14 +1448,14 @@ class TestRefineToReadyIssueSubLoop:
         self, data: dict
     ) -> None:
         """confidence_check must delegate score verification to the verify-confidence-scores oracle,
-        routing success to check_readiness (extraction of ENH-1033 guard into reusable child loop)."""
+        routing success to route_score_obligation (ENH-3604; was check_readiness)."""
         confidence_check = data["states"].get("confidence_check", {})
         assert confidence_check.get("loop") == "oracles/verify-confidence-scores", (
             "confidence_check.loop should be 'oracles/verify-confidence-scores' (the oracle lives in "
             f"loops/oracles/ and must be referenced with the prefix), got {confidence_check.get('loop')!r}"
         )
-        assert confidence_check.get("on_success") == "check_readiness", (
-            f"confidence_check.on_success should be 'check_readiness', got {confidence_check.get('on_success')!r}"
+        assert confidence_check.get("on_success") == "route_score_obligation", (
+            f"confidence_check.on_success should be 'route_score_obligation', got {confidence_check.get('on_success')!r}"
         )
 
     def test_confidence_check_has_on_error(self, data: dict) -> None:
@@ -1495,7 +1495,7 @@ class TestRefineToReadyIssueSubLoop:
 
     def test_verify_scores_persisted_on_yes_routes_to_check_readiness(self) -> None:
         """verify_scores_persisted.on_yes must route to done in the child oracle (maps to
-        confidence_check.on_success → check_readiness in the parent)."""
+        confidence_check.on_success → route_score_obligation in the parent)."""
         oracle = yaml.safe_load(
             (BUILTIN_LOOPS_DIR / "oracles" / "verify-confidence-scores.yaml").read_text()
         )
@@ -1514,62 +1514,6 @@ class TestRefineToReadyIssueSubLoop:
             f"verify_scores_persisted.on_no should be 'retry_confidence_check', got {state.get('on_no')!r}"
         )
 
-    def test_check_readiness_on_yes_routes_to_check_outcome(self, data: dict) -> None:
-        """check_readiness.on_yes must route to check_outcome (readiness passed → check outcome next)."""
-        state = data["states"].get("check_readiness", {})
-        assert state.get("on_yes") == "check_outcome", (
-            f"check_readiness.on_yes should be 'check_outcome', got {state.get('on_yes')!r}"
-        )
-
-    def test_check_readiness_on_no_routes_to_check_refine_limit(self, data: dict) -> None:
-        """check_readiness.on_no must route to check_refine_limit (technical gap → retry refinement)."""
-        state = data["states"].get("check_readiness", {})
-        assert state.get("on_no") == "check_refine_limit", (
-            f"check_readiness.on_no should be 'check_refine_limit', got {state.get('on_no')!r}"
-        )
-
-    def test_check_readiness_on_error_is_check_scores_from_file(self, data: dict) -> None:
-        """check_readiness.on_error must route to check_scores_from_file (preserves error fallback)."""
-        state = data["states"].get("check_readiness", {})
-        assert state.get("on_error") == "check_scores_from_file", (
-            f"check_readiness.on_error should be 'check_scores_from_file', got {state.get('on_error')!r}"
-        )
-
-    def test_check_outcome_on_yes_routes_to_done(self, data: dict) -> None:
-        """check_outcome.on_yes must route through check_decision_before_done (ENH-3610; ENH-2364: restore_best retired, additive refines are non-regressive)."""
-        state = data["states"].get("check_outcome", {})
-        assert state.get("on_yes") == "check_decision_before_done", (
-            f"check_outcome.on_yes should be 'check_decision_before_done', got {state.get('on_yes')!r}"
-        )
-
-    def test_check_outcome_on_no_routes_to_check_decision_needed(self, data: dict) -> None:
-        """check_outcome.on_no must route to check_decision_needed (outcome fail → decision check before breakdown)."""
-        state = data["states"].get("check_outcome", {})
-        assert state.get("on_no") == "check_decision_needed", (
-            f"check_outcome.on_no should be 'check_decision_needed', got {state.get('on_no')!r}"
-        )
-
-    def test_check_scores_from_file_state_exists(self, data: dict) -> None:
-        """check_scores_from_file state must exist as the error recovery path for confidence_check."""
-        assert "check_scores_from_file" in data["states"], (
-            "State 'check_scores_from_file' not found in refine-to-ready-issue.yaml — "
-            "required as fallback when confidence_check LLM evaluation times out"
-        )
-
-    def test_check_scores_from_file_routes_to_done(self, data: dict) -> None:
-        """check_scores_from_file.on_yes must route through check_decision_before_done when scores meet thresholds (ENH-3610)."""
-        state = data["states"].get("check_scores_from_file", {})
-        assert state.get("on_yes") == "check_decision_before_done", (
-            f"check_scores_from_file.on_yes should be 'check_decision_before_done', got {state.get('on_yes')!r}"
-        )
-
-    def test_check_scores_from_file_routes_to_breakdown_issue_on_no(self, data: dict) -> None:
-        """check_scores_from_file.on_no must route to breakdown_issue (ENH-1033: outcome-only fails avoid retry)."""
-        state = data["states"].get("check_scores_from_file", {})
-        assert state.get("on_no") == "breakdown_issue", (
-            f"check_scores_from_file.on_no should be 'breakdown_issue', got {state.get('on_no')!r}"
-        )
-
     def test_verify_issue_state_exists(self, data: dict) -> None:
         """verify_issue state exists (ENH-3031) — reintroduced with a different
         purpose than the state ENH-980 removed. ENH-980's verify_issue graded
@@ -1578,62 +1522,12 @@ class TestRefineToReadyIssueSubLoop:
         confidence_check on every path, independent of any score."""
         state = data["states"].get("verify_issue", {})
         assert state, "State 'verify_issue' not found (ENH-3031)"
-        assert state.get("next") == "check_verify_verdict", (
-            f"verify_issue.next should be 'check_verify_verdict', got {state.get('next')!r}"
+        assert state.get("next") == "route_pre_score_obligation", (
+            f"verify_issue.next should be 'route_pre_score_obligation', got {state.get('next')!r}"
         )
-        assert state.get("on_error") == "check_verify_verdict", (
-            f"verify_issue.on_error should be 'check_verify_verdict' (non-fatal), "
+        assert state.get("on_error") == "route_pre_score_obligation", (
+            f"verify_issue.on_error should be 'route_pre_score_obligation' (non-fatal), "
             f"got {state.get('on_error')!r}"
-        )
-
-    def test_check_verify_verdict_state_routing(self, data: dict) -> None:
-        """check_verify_verdict gates on the persisted verify_verdict field (ENH-3031)."""
-        state = data["states"].get("check_verify_verdict", {})
-        assert state, "State 'check_verify_verdict' not found (ENH-3031)"
-        assert state.get("on_yes") == "check_hedges", (
-            f"check_verify_verdict.on_yes should be 'check_hedges', got {state.get('on_yes')!r}"
-        )
-        assert state.get("on_no") == "check_evidence_unverified", (
-            f"check_verify_verdict.on_no should be 'check_evidence_unverified' "
-            f"(BUG-3282: evidence outranks proposal; it falls through to "
-            f"check_proposal_unsound, preserving ENH-3250's triage-before-refine), "
-            f"got {state.get('on_no')!r}"
-        )
-        assert state.get("on_cannot_judge") == "check_verify_retries", (
-            "check_verify_verdict exit 3 (absent verdict) must retry (BUG-3571), "
-            f"got {state.get('on_cannot_judge')!r}"
-        )
-        assert state.get("on_error") == "mark_evidence_absent_infra", (
-            f"check_verify_verdict.on_error must not pass (BUG-3571), got {state.get('on_error')!r}"
-        )
-        retries = data["states"]["check_verify_retries"]
-        assert retries.get("on_yes") == "clear_verify_verdict"
-        assert retries.get("on_no") == "mark_evidence_absent_infra"
-        infra = data["states"]["mark_evidence_absent_infra"]
-        assert "infra" in infra["action"] and "refine-terminal-class" in infra["action"]
-        assert infra.get("next") == "failed"
-
-    def test_check_hedges_state_routing(self, data: dict) -> None:
-        """check_hedges routes on_no through the attempt-bounded gate, not check_refine_limit
-        directly (BUG-3170); on_yes/on_error go through check_placeholders, not straight to
-        check_ac_automatable (ENH-3248)."""
-        state = data["states"].get("check_hedges", {})
-        assert state, "State 'check_hedges' not found (ENH-3031)"
-        assert state.get("on_yes") == "check_placeholders", (
-            f"check_hedges.on_yes should be 'check_placeholders', got {state.get('on_yes')!r}"
-        )
-        assert state.get("on_no") == "check_hedge_attempts", (
-            f"check_hedges.on_no should be 'check_hedge_attempts', got {state.get('on_no')!r}"
-        )
-        assert state.get("on_error") == "check_placeholders", (
-            f"check_hedges.on_error should be 'check_placeholders', got {state.get('on_error')!r}"
-        )
-        assert (
-            state.get("action")
-            == "ll-issues check-open-questions ${captured.issue_id.output:shell}"
-        ), f"check_hedges.action should be unchanged, got {state.get('action')!r}"
-        assert state.get("fragment") == "shell_exit", (
-            f"check_hedges.fragment should be unchanged, got {state.get('fragment')!r}"
         )
 
     def test_check_hedge_attempts_state_routing(self, data: dict) -> None:
@@ -1661,13 +1555,13 @@ class TestRefineToReadyIssueSubLoop:
             f"check_hedge_attempts.on_yes should be 'check_hedge_refine_limit' (pre-filter, "
             f"not a private budget; BUG-3551), got {state.get('on_yes')!r}"
         )
-        assert state.get("on_no") == "check_placeholders", (
-            f"check_hedge_attempts.on_no should be 'check_placeholders' (ENH-3248), "
+        assert state.get("on_no") == "record_hedge_skip", (
+            f"check_hedge_attempts.on_no should be 'record_hedge_skip' (ENH-3604), "
             f"got {state.get('on_no')!r}"
         )
-        assert state.get("on_error") == "check_placeholders", (
-            f"check_hedge_attempts.on_error should be 'check_placeholders' (fail-open, "
-            f"matching check_hedges; ENH-3248), got {state.get('on_error')!r}"
+        assert state.get("on_error") == "record_hedge_skip", (
+            f"check_hedge_attempts.on_error should be 'record_hedge_skip' (fail-open "
+            f"skips the hedge gate; ENH-3604), got {state.get('on_error')!r}"
         )
         assert "${context.run_dir}/refine-to-ready-hedge-attempts" in state.get("action", ""), (
             "check_hedge_attempts.action should target the run-scoped counter file"
@@ -1745,145 +1639,6 @@ class TestRefineToReadyIssueSubLoop:
         assert first_a == "1", f"run-a first entry should emit '1', got {first_a!r}"
         assert first_b == "1", f"run-b first entry should emit '1', got {first_b!r}"
 
-    def test_check_ac_automatable_state_routing(self, data: dict) -> None:
-        """check_ac_automatable force-routes to check_reconcile_limit on failure (ENH-3248: ACs
-        are inside reconcile's rewrite scope, retargeted from check_refine_limit)."""
-        state = data["states"].get("check_ac_automatable", {})
-        assert state, "State 'check_ac_automatable' not found (ENH-3031)"
-        assert state.get("on_yes") == "check_design", (
-            f"check_ac_automatable.on_yes should be 'check_design' (BUG-3249), got {state.get('on_yes')!r}"
-        )
-        assert state.get("on_no") == "check_reconcile_limit", (
-            f"check_ac_automatable.on_no should be 'check_reconcile_limit' (ENH-3248), "
-            f"got {state.get('on_no')!r}"
-        )
-        assert state.get("on_error") == "check_design", (
-            "BUG-3294: check_ac_automatable.on_error should be 'check_design' "
-            f"(fail open INTO the next gate, not past it), got {state.get('on_error')!r}"
-        )
-
-    def test_check_design_state_routing(self, data: dict) -> None:
-        """check_design (BUG-3249) gates the Program Design section: on_yes proceeds to
-        confidence_check, on_no escalates to check_refine_limit (Decision Rationale Option B
-        — shares the existing 1-loopback-per-run budget rather than bypassing it to reach
-        refine_followup directly), on_error fails open to confidence_check."""
-        state = data["states"].get("check_design", {})
-        assert state, "State 'check_design' not found (BUG-3249)"
-        action = state.get("action", "")
-        assert "ll-issues check-design" in action, (
-            f"check_design.action should call 'll-issues check-design', got {action!r}"
-        )
-        assert state.get("on_yes") == "confidence_check", (
-            f"check_design.on_yes should be 'confidence_check', got {state.get('on_yes')!r}"
-        )
-        assert state.get("on_no") == "check_gate_refine_limit", (
-            f"check_design.on_no should be 'check_gate_refine_limit' (BUG-3551), "
-            f"got {state.get('on_no')!r}"
-        )
-        assert state.get("on_error") == "confidence_check", (
-            f"check_design.on_error should be 'confidence_check' (fail-open), "
-            f"got {state.get('on_error')!r}"
-        )
-
-    def test_check_design_gate_blocks_design_less_issue(self, data: dict, tmp_path: Path) -> None:
-        """BUG-3249 regression: an issue with no `## Program Design` section must fail
-        check_design's real `ll-issues check-design` subprocess call (returncode == 1),
-        following the TestRecheckScoresDesignGateEndToEnd pattern (test_autodev_loop.py) —
-        extract the literal action, run it as a real subprocess against a fixture project."""
-        action = data["states"]["check_design"]["action"]
-        script = action.replace("${captured.issue_id.output}", "BUG-9700")
-
-        issues_dir = tmp_path / ".issues" / "bugs"
-        issues_dir.mkdir(parents=True)
-        (issues_dir / "P3-BUG-9700-test-bug.md").write_text(
-            "\n".join(
-                [
-                    "---",
-                    "id: BUG-9700",
-                    "status: open",
-                    "discovered_date: 2026-07-20",
-                    "---",
-                    "",
-                    "# BUG-9700: Something broke",
-                    "",
-                    "## Summary",
-                    "The widget explodes when the input is empty.",
-                    "",
-                    "## Steps to Reproduce",
-                    "1. Open the widget\n2. Submit an empty form",
-                    "",
-                    "## Current Behavior",
-                    "It explodes.",
-                    "",
-                    "## Expected Behavior",
-                    "It should not break.",
-                    "",
-                    "## Actual Behavior",
-                    "It breaks loudly.",
-                    "",
-                    "## Impact",
-                    "- **Priority**: P3 - Minor annoyance for a rare input.",
-                    "",
-                    "## Status",
-                    "**Open** | Created: 2026-07-20 | Priority: P3",
-                    "",
-                ]
-            ),
-            encoding="utf-8",
-        )
-        ll_dir = tmp_path / ".ll"
-        ll_dir.mkdir()
-        (ll_dir / "program-design-cutover.json").write_text(
-            json.dumps({"sha": "0" * 40, "date": "2026-07-01"}), encoding="utf-8"
-        )
-
-        result = subprocess.run(
-            ["bash", "-c", script],
-            cwd=str(tmp_path),
-            capture_output=True,
-            text=True,
-        )
-        assert result.returncode == 1, (
-            f"check_design's action should exit 1 for a design-less issue, "
-            f"got {result.returncode} (stdout={result.stdout!r}, stderr={result.stderr!r})"
-        )
-
-    def test_check_placeholders_state_routing(self, data: dict) -> None:
-        """check_placeholders (ENH-3248) gates the template_placeholders class: on_yes proceeds
-        to check_ac_automatable, on_no escalates straight to check_refine_limit (no counter, no
-        normalize_structure loopback — every remaining placeholder is by construction one --fix
-        could not repair)."""
-        state = data["states"].get("check_placeholders", {})
-        assert state, "State 'check_placeholders' not found (ENH-3248)"
-        assert state.get("on_yes") == "check_ac_automatable", (
-            f"check_placeholders.on_yes should be 'check_ac_automatable', got {state.get('on_yes')!r}"
-        )
-        assert state.get("on_no") == "check_gate_refine_limit", (
-            f"check_placeholders.on_no should be 'check_gate_refine_limit' (BUG-3551), "
-            f"got {state.get('on_no')!r}"
-        )
-        assert state.get("on_error") == "check_ac_automatable", (
-            f"check_placeholders.on_error should be 'check_ac_automatable' (fail-open), "
-            f"got {state.get('on_error')!r}"
-        )
-        assert "attempts" not in state and "capture" not in state, (
-            "check_placeholders must carry no attempt counter (Proposed Solution step 3)"
-        )
-        evaluate = state.get("evaluate", {})
-        assert evaluate.get("type") == "output_numeric", (
-            f"check_placeholders.evaluate.type should be 'output_numeric', got {evaluate.get('type')!r}"
-        )
-        assert evaluate.get("operator") == "eq" and evaluate.get("target") == 0, (
-            "check_placeholders.evaluate should be eq 0 (count of template_placeholders)"
-        )
-        action = state.get("action", "")
-        assert "--format json" in action and "--json" not in action.replace("--format json", ""), (
-            "check_placeholders.action must use --format json, not --json"
-        )
-        assert "template_placeholders" in action, (
-            "check_placeholders.action must count the template_placeholders array"
-        )
-
     def test_check_reconcile_limit_state_routing(self, data: dict) -> None:
         """check_reconcile_limit (ENH-3248) bounds the reconcile_issue rung to one attempt per
         run, mirroring check_hedge_attempts/check_refine_limit's independent scoped-counter
@@ -1958,21 +1713,25 @@ class TestRefineToReadyIssueSubLoop:
         states = data["states"]
         assert states["check_refine_limit"]["on_no"] == "breakdown_issue"
         assert states["check_gate_refine_limit"]["on_no"] == "record_gate_unmet"
-        assert states["check_hedge_refine_limit"]["on_no"] == "check_placeholders"
-        assert states["check_hedge_refine_limit"]["on_error"] == "check_placeholders"
-        assert states["check_readiness"]["on_no"] == "check_refine_limit"
+        assert states["check_hedge_refine_limit"]["on_no"] == "record_hedge_skip"
+        assert states["check_hedge_refine_limit"]["on_error"] == "record_hedge_skip"
+        route = states["route_score_obligation"]["route"]
+        assert route["SCORES:readiness_below"] == "check_refine_limit"
 
     def test_no_structure_gate_routes_to_check_refine_limit(self, data: dict) -> None:
         """check_refine_limit (whose exhaustion decomposes) is reachable only from the
-        score-driven check_readiness gate (BUG-3551)."""
+        score-driven route_score_obligation dispatch (BUG-3551, ENH-3604)."""
         sources = sorted(
             name
             for name, state in data["states"].items()
-            for key in ("on_yes", "on_no", "on_error", "next")
-            if state.get(key) == "check_refine_limit"
+            if any(
+                state.get(key) == "check_refine_limit"
+                for key in ("on_yes", "on_no", "on_error", "next")
+            )
+            or "check_refine_limit" in (state.get("route") or {}).values()
         )
-        assert sources == ["check_readiness"], (
-            f"only check_readiness may route to check_refine_limit, got {sources}"
+        assert sources == ["route_score_obligation"], (
+            f"only route_score_obligation may route to check_refine_limit, got {sources}"
         )
 
     def test_gate_budget_shared_with_readiness_budget(self, data: dict, tmp_path: Path) -> None:
@@ -2049,40 +1808,6 @@ class TestRefineToReadyIssueSubLoop:
         assert third.returncode == 1, "a third spike in the same run must not fire"
 
     # --- BUG-3552: thresholds come from the seeded context only ---
-
-    def test_check_readiness_honors_context_over_config(self, data: dict, tmp_path: Path) -> None:
-        """Config readiness 85, context override 70, issue scored 75 -> passes (BUG-3552)."""
-        (tmp_path / ".ll").mkdir()
-        (tmp_path / ".ll" / "ll-config.json").write_text(
-            json.dumps({"commands": {"confidence_gate": {"readiness_threshold": 85}}})
-        )
-        bin_dir = tmp_path / "bin"
-        bin_dir.mkdir()
-        fake = bin_dir / "ll-issues"
-        fake.write_text('#!/bin/sh\necho \'{"confidence": 75, "outcome": 75}\'\n')
-        fake.chmod(0o755)
-        script = (
-            data["states"]["check_readiness"]["action"]
-            .replace("${context.run_dir}", str(tmp_path))
-            .replace("${captured.issue_id.output}", "BUG-9703")
-            .replace("${context.readiness_threshold:shell}", "70")
-        )
-        assert "${" not in script, script
-        env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"}
-        result = subprocess.run(
-            ["bash", "-c", script], cwd=tmp_path, env=env, capture_output=True, text=True
-        )
-        assert result.returncode == 0, (result.returncode, result.stderr)
-
-    def test_threshold_states_do_not_reread_config(self, data: dict) -> None:
-        """Re-reading ll-config.json inside the state would shadow a --context override
-        that seed_confidence_thresholds already ranked above config (BUG-3552)."""
-        for name in ("check_readiness", "check_outcome", "check_scores_from_file"):
-            action = data["states"][name]["action"]
-            assert "ll-config.json" not in action, f"{name} must not re-read ll-config.json"
-            assert "confidence_gate" not in action.replace("commands.confidence_gate", ""), (
-                f"{name} must take thresholds from ${{context.*}} only"
-            )
 
     def test_reconcile_issue_state_routing(self, data: dict) -> None:
         """reconcile_issue (ENH-3248) is a bare slash-command state — no rate-limit fragment,
@@ -2593,7 +2318,9 @@ class TestRefineToReadyIssueSubLoop:
         return {
             name: st
             for name, st in data["states"].items()
-            if st.get("on_error") == "diagnose" or st.get("on_failure") == "diagnose"
+            if st.get("on_error") == "diagnose"
+            or st.get("on_failure") == "diagnose"
+            or (st.get("route") or {}).get("_") == "diagnose"
         }
 
     def test_diagnose_sources_all_carry_capture(self, data: dict) -> None:
@@ -2608,9 +2335,8 @@ class TestRefineToReadyIssueSubLoop:
             "resolve_issue",
             "check_lifetime_limit",
             "refine_issue",
-            "check_outcome",
+            "route_score_obligation",
             "check_refine_limit",
-            "check_scores_from_file",
             "breakdown_issue",
         }
         assert expected <= set(sources), (
@@ -2640,7 +2366,7 @@ class TestRefineToReadyIssueSubLoop:
         .stderr key) falling back to its .output event stream."""
         action = data["states"].get("diagnose", {}).get("action", "")
         # resolve_issue captures under the `issue_id` key, not `resolve_issue`.
-        for cap in ("issue_id", "refine_issue", "check_outcome", "check_scores_from_file"):
+        for cap in ("issue_id", "refine_issue", "route_score_obligation"):
             assert f"${{captured.{cap}.stderr" in action, (
                 f"diagnose prompt must reference ${{captured.{cap}.stderr}} (BUG-2726)"
             )
@@ -2672,51 +2398,6 @@ class TestRefineToReadyIssueSubLoop:
         assert ".loops/.history" in action or "this run" in action, (
             "diagnose prompt must instruct the session to analyze only the current "
             "run (e.g. name .loops/.history to exclude, or say 'this run') — BUG-2726"
-        )
-
-    def test_check_outcome_surfaces_inner_stderr(self, data: dict) -> None:
-        """BUG-2726 AC4: check_outcome wraps `ll-issues show` in a heredoc; on a
-        real inner failure it must write the inner stderr to sys.stderr and exit
-        with an error code (>=2 → verdict 'error' → on_error: diagnose), not let
-        a bare json.loads traceback exit 1 (verdict 'no' → check_decision_needed,
-        misclassifying an infra failure as a low outcome score)."""
-        action = data["states"].get("check_outcome", {}).get("action", "")
-        assert "r.stderr" in action and "sys.stderr" in action, (
-            "check_outcome heredoc must forward the inner ll-issues stderr to "
-            "sys.stderr so ${captured.check_outcome.stderr} carries the real "
-            "failure (BUG-2726)"
-        )
-        assert "sys.exit(2" in action, (
-            "check_outcome must sys.exit(2+) on inner failure so it routes to "
-            "on_error: diagnose, not on_no (BUG-2726)"
-        )
-
-    def test_check_scores_from_file_surfaces_inner_stderr(self, data: dict) -> None:
-        """BUG-2726 AC4: same inner-stderr surfacing requirement as check_outcome."""
-        action = data["states"].get("check_scores_from_file", {}).get("action", "")
-        assert "r.stderr" in action and "sys.stderr" in action, (
-            "check_scores_from_file heredoc must forward the inner ll-issues "
-            "stderr to sys.stderr (BUG-2726)"
-        )
-        assert "sys.exit(2" in action, (
-            "check_scores_from_file must sys.exit(2+) on inner failure so it "
-            "routes to on_error: diagnose (BUG-2726)"
-        )
-
-    def test_check_readiness_surfaces_inner_stderr(self, data: dict) -> None:
-        """Same BUG-2726 guard as its two siblings (it was originally missed
-        here): a failed `ll-issues show` (error on STDOUT, exit 1) must exit 2
-        → on_error: check_scores_from_file, not raise in json.loads → exit 1 →
-        verdict 'no' → check_refine_limit, which burns refine budget on an
-        infra fault."""
-        action = data["states"].get("check_readiness", {}).get("action", "")
-        assert "r.stderr" in action and "sys.stderr" in action, (
-            "check_readiness heredoc must forward the inner ll-issues stderr "
-            "(BUG-2726 guard, mirrored from check_outcome)"
-        )
-        assert "sys.exit(2" in action, (
-            "check_readiness must sys.exit(2+) on inner failure so it routes to "
-            "on_error: check_scores_from_file, not on_no: check_refine_limit"
         )
 
     def test_diagnose_prompt_renders_sigterm_exit_code(self, data: dict) -> None:
@@ -3076,55 +2757,6 @@ class TestRefineToReadyIssueSubLoop:
 
     # --- ENH-3250: check_proposal_unsound (B2) ---
 
-    def test_check_proposal_unsound_state_exists(self, data: dict) -> None:
-        """check_proposal_unsound state must exist to triage verify_issue's
-        non-VALID verdict by failure kind (ENH-3250)."""
-        assert "check_proposal_unsound" in data["states"], (
-            "State 'check_proposal_unsound' not found in refine-to-ready-issue.yaml"
-        )
-
-    def test_check_proposal_unsound_uses_shell_exit_fragment(self, data: dict) -> None:
-        """check_proposal_unsound must use shell_exit fragment to route on exit code."""
-        state = data["states"].get("check_proposal_unsound", {})
-        assert state.get("fragment") == "shell_exit", (
-            f"check_proposal_unsound.fragment should be 'shell_exit', got {state.get('fragment')!r}"
-        )
-
-    def test_check_proposal_unsound_action_uses_proposal_unsound_flag(self, data: dict) -> None:
-        """check_proposal_unsound's action must call check-verify-verdict with
-        --proposal-unsound, not the default VALID/NON_VALID query."""
-        state = data["states"].get("check_proposal_unsound", {})
-        action = state.get("action", "")
-        assert "check-verify-verdict" in action and "--proposal-unsound" in action, (
-            f"check_proposal_unsound.action should call "
-            f"'ll-issues check-verify-verdict ... --proposal-unsound', got {action!r}"
-        )
-
-    def test_check_proposal_unsound_on_yes_routes_to_check_proposal_revision_budget(
-        self, data: dict
-    ) -> None:
-        """A refuted proposal goes to a bounded design revision, not reconcile, which
-        cannot edit ## Proposed Solution (BUG-3574; supersedes ENH-3250's route)."""
-        state = data["states"].get("check_proposal_unsound", {})
-        assert state.get("on_yes") == "check_proposal_revision_budget"
-
-    def test_check_proposal_unsound_on_no_and_on_error_route_to_check_directive_drift(
-        self, data: dict
-    ) -> None:
-        state = data["states"].get("check_proposal_unsound", {})
-        assert state.get("on_no") == "check_directive_drift"
-        assert state.get("on_error") == "check_directive_drift"
-
-    def test_check_directive_drift_routes_reconcile_else_gate_refine(self, data: dict) -> None:
-        """DIRECTIVE_DRIFT -> reconcile (BUG-3574); any other non-VALID verdict keeps
-        today's structure-gate refine target (BUG-3551)."""
-        state = data["states"].get("check_directive_drift", {})
-        assert state.get("fragment") == "shell_exit"
-        assert "--directive-drift" in state.get("action", "")
-        assert state.get("on_yes") == "check_reconcile_limit"
-        assert state.get("on_no") == "check_gate_refine_limit"
-        assert state.get("on_error") == "check_gate_refine_limit"
-
     def test_proposal_revision_cycle_routing(self, data: dict) -> None:
         """BUG-3574: budget -> arm -> decide -> consume marker -> unbudgeted reconcile -> wire."""
         st = data["states"]
@@ -3172,85 +2804,7 @@ class TestRefineToReadyIssueSubLoop:
     def test_max_steps_covers_proposal_revision_cycle(self, data: dict) -> None:
         assert data["max_steps"] >= 85
 
-    def test_check_verify_verdict_on_no_reaches_check_proposal_unsound(self, data: dict) -> None:
-        """check_verify_verdict.on_no must triage before forcing refine — it must
-        reach check_proposal_unsound, never check_refine_limit directly (ENH-3250).
-
-        BUG-3282 inserted check_evidence_unverified ahead of check_proposal_unsound
-        (Decision Rules -> Verdict precedence: evidence outranks proposal), so the
-        edge is a chain, not adjacency. ENH-3250's invariant is reachability of the
-        triage gate, which the chain preserves.
-        """
-        states = data["states"]
-        first = states.get("check_verify_verdict", {}).get("on_no")
-        assert first == "check_evidence_unverified", (
-            f"check_verify_verdict.on_no should be 'check_evidence_unverified' "
-            f"(BUG-3282 precedence), got {first!r}"
-        )
-        assert states.get(first, {}).get("on_no") == "check_proposal_unsound", (
-            f"{first}.on_no should fall through to 'check_proposal_unsound' so "
-            f"ENH-3250's triage gate stays reachable, got "
-            f"{states.get(first, {}).get('on_no')!r}"
-        )
-
     # --- BUG-3282: check_evidence_unverified ---
-
-    def test_check_evidence_unverified_state_exists_and_probes(self, data: dict) -> None:
-        """check_evidence_unverified sits ahead of check_proposal_unsound and probes the
-        persisted verdict via the shell_exit fragment (BUG-3282)."""
-        state = data["states"].get("check_evidence_unverified", {})
-        assert state, "State 'check_evidence_unverified' not found (BUG-3282)"
-        assert state.get("fragment") == "shell_exit", (
-            f"check_evidence_unverified.fragment should be 'shell_exit', "
-            f"got {state.get('fragment')!r}"
-        )
-        assert "--evidence-unverified" in state.get("action", ""), (
-            f"check_evidence_unverified.action should probe via "
-            f"'ll-issues check-verify-verdict --evidence-unverified', "
-            f"got {state.get('action')!r}"
-        )
-
-    def test_check_evidence_unverified_is_advisory_not_routing(self, data: dict) -> None:
-        """EVIDENCE_UNVERIFIED must NOT divert the loop into reconcile_issue
-        (BUG-3282 fallback F3, decided 2026-08-21; re-measured under ENH-3291).
-
-        Below 0.30 precision a false verdict rewrites a *correct* issue, so routing is
-        net-negative even when the gate is right. Every edge therefore falls through
-        to check_proposal_unsound: detected, persisted, and logged, but not routed.
-
-        ENH-3291 re-measured this on a stratified sample of 65 findings (labels in
-        `.ll/evidence-precision-labels.json`) and it got *worse*, not better:
-        precision **0.070**, 95% CI [0.018, 0.122] — the whole interval sits below
-        half the bar. That measurement also refutes the original diagnosis. The
-        residual is not paraphrase (6.6% of false positives); it is
-        **mis-attribution** (49%) and **not-a-quote** (38%) — spans bound to an issue
-        merely named nearby as a run argument or provenance credit, and spans that are
-        command output or constructed examples rather than evidence quotes. Narrowing
-        the scan surface (fallback F2) was therefore aimed at the wrong class and is
-        not the route to re-arming; the attribution and extraction rules are.
-
-        This test is the guard against a silent re-arm. Re-arming is a deliberate act
-        gated on measurement: restore `on_yes: check_reconcile_limit` and update this
-        test together, only once precision is >= 0.30 with recall still 1.00 on
-        labelled true-fabrications.
-        """
-        state = data["states"].get("check_evidence_unverified", {})
-        assert state, "State 'check_evidence_unverified' not found (BUG-3282)"
-        for edge in ("on_yes", "on_no", "on_error"):
-            assert state.get(edge) == "check_proposal_unsound", (
-                f"check_evidence_unverified.{edge} should be 'check_proposal_unsound' "
-                f"(F3 advisory posture — the verdict is detected and persisted but "
-                f"must not route to reconcile_issue at measured precision), "
-                f"got {state.get(edge)!r}"
-            )
-        assert "check_reconcile_limit" not in (
-            state.get("on_yes"),
-            state.get("on_no"),
-            state.get("on_error"),
-        ), (
-            "check_evidence_unverified must not reach check_reconcile_limit while "
-            "EVIDENCE_UNVERIFIED is advisory (BUG-3282 F3)"
-        )
 
     # --- ENH-3250: check_spike_needed / run_spike (B3) ---
 
@@ -3378,7 +2932,7 @@ class TestRefineToReadyIssueSubLoop:
     def test_restore_best_state_absent(self, data: dict) -> None:
         """restore_best state must not exist — retired by ENH-2364 (additive refines are non-regressive)."""
         assert "restore_best" not in data["states"], (
-            "State 'restore_best' should have been removed; check_outcome.on_yes now routes to 'done'"
+            "State 'restore_best' should have been removed; the score dispatch NONE now routes through check_decision_before_done"
         )
 
     def test_snapshot_issue_state_absent(self, data: dict) -> None:
@@ -3535,6 +3089,205 @@ class TestRefineToReadyIssueSubLoop:
         assert "${context.run_dir}" in scope, (
             f"scope must contain '${{context.run_dir}}' template, got {scope!r}"
         )
+
+
+class TestRefineToReadyDispatch:
+    """ENH-3604: route_pre_score_obligation / route_score_obligation / record_hedge_skip
+    replace the eleven per-gate states in refine-to-ready-issue.yaml."""
+
+    LOOP_FILE = BUILTIN_LOOPS_DIR / "refine-to-ready-issue.yaml"
+
+    REMOVED_STATES = (
+        "check_verify_verdict",
+        "check_evidence_unverified",
+        "check_proposal_unsound",
+        "check_directive_drift",
+        "check_hedges",
+        "check_placeholders",
+        "check_ac_automatable",
+        "check_design",
+        "check_readiness",
+        "check_outcome",
+        "check_scores_from_file",
+    )
+
+    PRE_TABLE = {
+        "NONE": "confidence_check",
+        "VERIFY:absent": "check_verify_retries",
+        "VERIFY:PROPOSAL_UNSOUND": "check_proposal_revision_budget",
+        "VERIFY:DIRECTIVE_DRIFT": "check_reconcile_limit",
+        "VERIFY:EVIDENCE_UNVERIFIED": "check_gate_refine_limit",
+        "VERIFY:other": "check_gate_refine_limit",
+        "HEDGES": "check_hedge_attempts",
+        "PLACEHOLDERS": "check_gate_refine_limit",
+        "ACCEPTANCE_CRITERIA": "check_reconcile_limit",
+        "DESIGN": "check_gate_refine_limit",
+        "_": "mark_evidence_absent_infra",
+        "_error": "mark_evidence_absent_infra",
+    }
+    SCORE_TABLE = {
+        "NONE": "check_decision_before_done",
+        "SCORES:readiness_below": "check_refine_limit",
+        "SCORES:absent": "check_refine_limit",
+        "SCORES:outcome_below": "check_decision_needed",
+        "_": "diagnose",
+        "_error": "diagnose",
+    }
+
+    @pytest.fixture
+    def data(self) -> dict:
+        return yaml.safe_load(self.LOOP_FILE.read_text())
+
+    @staticmethod
+    def _skips(action: str) -> set[str]:
+        return set(re.findall(r"--skip ([A-Z_]+)", action))
+
+    @staticmethod
+    def _tokens(skipped: set[str]) -> set[str]:
+        """Every token the selector can print when *skipped* obligations are met."""
+        from little_loops.cli.issues.next_obligation import Obligation
+
+        sub = {
+            "VERIFY": [
+                "absent",
+                "EVIDENCE_UNVERIFIED",
+                "PROPOSAL_UNSOUND",
+                "DIRECTIVE_DRIFT",
+                "other",
+            ],
+            "SCORES": ["absent", "readiness_below", "outcome_below"],
+        }
+        tier3 = {"DECISION", "PROOF", "ARTIFACTS"}
+        tokens = {"NONE"}
+        for ob in Obligation:
+            if ob is Obligation.NONE or ob.value in skipped:
+                continue
+            if ob.value in tier3 and "SCORES" in skipped:
+                continue  # tier 3 is only reached past the scores tier
+            tokens.update(
+                f"{ob.value}:{r}" for r in sub[ob.value]
+            ) if ob.value in sub else tokens.add(ob.value)
+        return tokens
+
+    def test_removed_states_are_gone(self, data: dict) -> None:
+        for name in self.REMOVED_STATES:
+            assert name not in data["states"], name
+
+    def test_pre_score_routing_table(self, data: dict) -> None:
+        state = data["states"]["route_pre_score_obligation"]
+        assert state["evaluate"] == {"type": "classify"}
+        assert state["capture"] == "route_pre_score_obligation"
+        assert state["route"] == self.PRE_TABLE
+
+    def test_score_routing_table(self, data: dict) -> None:
+        state = data["states"]["route_score_obligation"]
+        assert state["evaluate"] == {"type": "classify"}
+        assert state["capture"] == "route_score_obligation"
+        assert state["route"] == self.SCORE_TABLE
+
+    def test_dispatch_entry_points(self, data: dict) -> None:
+        assert data["states"]["confidence_check"]["on_success"] == "route_score_obligation"
+        assert data["states"]["verify_issue"]["next"] == "route_pre_score_obligation"
+        assert data["states"]["verify_issue"]["on_error"] == "route_pre_score_obligation"
+        assert data["states"]["record_hedge_skip"]["next"] == "route_pre_score_obligation"
+
+    def test_dispatch_tokens_are_complete(self, data: dict) -> None:
+        """A token leaking past the skips must be a table key, not a silent `_` route."""
+        for name in ("route_pre_score_obligation", "route_score_obligation"):
+            skipped = self._skips(data["states"][name]["action"])
+            missing = self._tokens(skipped) - set(data["states"][name]["route"])
+            assert not missing, f"{name}: selector tokens with no route: {missing}"
+
+    def test_pre_score_skips_format_and_scores(self, data: dict) -> None:
+        skipped = self._skips(data["states"]["route_pre_score_obligation"]["action"])
+        assert {"FORMAT", "SCORES"} <= skipped
+
+    def test_score_dispatch_skips_everything_but_scores(self, data: dict) -> None:
+        state = data["states"]["route_score_obligation"]
+        assert self._skips(state["action"]) == {
+            "FORMAT",
+            "VERIFY",
+            "HEDGES",
+            "PLACEHOLDERS",
+            "ACCEPTANCE_CRITERIA",
+            "DESIGN",
+            "DECISION",
+            "PROOF",
+            "ARTIFACTS",
+        }
+        assert "--honor-waiver" not in state["action"]
+        assert "--readiness-threshold ${context.readiness_threshold:shell}" in state["action"]
+        assert "--outcome-threshold ${context.outcome_threshold:shell}" in state["action"]
+        assert "ll-config.json" not in state["action"]  # BUG-3552: seeded context, no re-read
+        assert "run-record write" not in state["action"]
+
+    def _run_pre_action(self, data: dict, tmp_path: Path, skip_file: str | None) -> str:
+        bin_dir = tmp_path / "bin"
+        bin_dir.mkdir()
+        fake = bin_dir / "ll-issues"
+        fake.write_text('#!/bin/sh\necho "$@"\n')
+        fake.chmod(0o755)
+        if skip_file is not None:
+            (tmp_path / "refine-to-ready-skip-obligations").write_text(skip_file)
+        script = (
+            data["states"]["route_pre_score_obligation"]["action"]
+            .replace("${context.run_dir}", str(tmp_path))
+            .replace("${captured.issue_id.output:shell}", "ENH-9999")
+        )
+        assert "${" not in script, script
+        env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"}
+        result = subprocess.run(
+            ["bash", "-c", script], cwd=tmp_path, env=env, capture_output=True, text=True
+        )
+        assert result.returncode == 0, result.stderr
+        return result.stdout.strip()
+
+    def test_skip_flags_empty_file_or_absent(self, data: dict, tmp_path: Path) -> None:
+        expected = "next-obligation ENH-9999 --format token --skip FORMAT --skip SCORES"
+        assert self._run_pre_action(data, tmp_path, None) == expected
+
+    def test_skip_flags_rebuilt_from_file_each_entry(self, data: dict, tmp_path: Path) -> None:
+        out = self._run_pre_action(data, tmp_path, "HEDGES\n")
+        assert (
+            out
+            == "next-obligation ENH-9999 --format token --skip FORMAT --skip SCORES --skip HEDGES"
+        )
+
+    def test_four_hedge_skip_edges_target_record_hedge_skip(self, data: dict) -> None:
+        for name in ("check_hedge_attempts", "check_hedge_refine_limit"):
+            for edge in ("on_no", "on_error"):
+                assert data["states"][name][edge] == "record_hedge_skip", (name, edge)
+        assert "HEDGES" in data["states"]["record_hedge_skip"]["action"]
+        assert "refine-to-ready-skip-obligations" in data["states"]["record_hedge_skip"]["action"]
+
+    def test_record_hedge_skip_appends(self, data: dict, tmp_path: Path) -> None:
+        script = data["states"]["record_hedge_skip"]["action"].replace(
+            "${context.run_dir}", str(tmp_path)
+        )
+        for _ in range(2):
+            assert subprocess.run(["bash", "-c", script]).returncode == 0
+        lines = (tmp_path / "refine-to-ready-skip-obligations").read_text().split()
+        assert lines == ["HEDGES", "HEDGES"]
+
+    def test_resolve_issue_resets_skip_file(self, data: dict) -> None:
+        action = data["states"]["resolve_issue"]["action"]
+        assert "rm -f ${context.run_dir}/refine-to-ready-skip-obligations" in action
+
+    def test_terminal_paths_read_route_score_obligation_capture(self, data: dict) -> None:
+        text = self.LOOP_FILE.read_text()
+        assert "captured.check_outcome" not in text
+        assert "captured.check_scores_from_file" not in text
+        classify = data["states"]["classify_terminal"]["action"]
+        assert "captured.route_score_obligation.exit_code" in classify
+        assert "captured.route_score_obligation.failure_type" in classify
+        assert "captured.route_score_obligation" in data["states"]["diagnose"]["action"]
+        assert (
+            "captured.route_score_obligation" in data["states"]["write_failure_evidence"]["action"]
+        )
+
+    def test_reachability_of_kept_budget_states(self, data: dict) -> None:
+        targets = set(self.PRE_TABLE.values()) | set(self.SCORE_TABLE.values())
+        assert targets <= set(data["states"])
 
 
 class TestGeneralTaskFinalVerifySpinGateShellAction:
@@ -7462,8 +7215,10 @@ class TestAutodevLoop:
         script_path.chmod(0o755)
         env = dict(**{"PATH": f"{run_dir}:{__import__('os').environ['PATH']}"})
         state = data["states"].get("finalize_done", {})
-        script = state.get("action", "").replace("${context.run_dir}", str(run_dir)).replace(
-            QUALITY_GATE_REF, "false"
+        script = (
+            state.get("action", "")
+            .replace("${context.run_dir}", str(run_dir))
+            .replace(QUALITY_GATE_REF, "false")
         )
         script = script.replace("$${", "${")
         result = subprocess.run(
@@ -7495,8 +7250,10 @@ class TestAutodevLoop:
         script_path.chmod(0o755)
         env = dict(**{"PATH": f"{run_dir}:{__import__('os').environ['PATH']}"})
         state = data["states"].get("finalize_done", {})
-        script = state.get("action", "").replace("${context.run_dir}", str(run_dir)).replace(
-            QUALITY_GATE_REF, "false"
+        script = (
+            state.get("action", "")
+            .replace("${context.run_dir}", str(run_dir))
+            .replace(QUALITY_GATE_REF, "false")
         )
         script = script.replace("$${", "${")
         result = subprocess.run(
@@ -7614,8 +7371,10 @@ class TestAutodevLoop:
         (run_dir / "autodev-queue.txt").write_text("FEAT-301\nFEAT-302\n")
         (run_dir / "autodev-inflight").write_text("FEAT-300")
         state = data["states"].get("finalize_done", {})
-        script = state.get("action", "").replace("${context.run_dir}", str(run_dir)).replace(
-            QUALITY_GATE_REF, "false"
+        script = (
+            state.get("action", "")
+            .replace("${context.run_dir}", str(run_dir))
+            .replace(QUALITY_GATE_REF, "false")
         )
         script = script.replace("$${", "${")
         result = subprocess.run(["bash", "-c", script], cwd=run_dir, capture_output=True, text=True)
@@ -7869,8 +7628,10 @@ class TestAutodevLoop:
         script_path.chmod(0o755)
         env = dict(**{"PATH": f"{run_dir}:{os.environ['PATH']}"})
         state = data["states"].get("finalize_done", {})
-        script = state.get("action", "").replace("${context.run_dir}", str(run_dir)).replace(
-            QUALITY_GATE_REF, "false"
+        script = (
+            state.get("action", "")
+            .replace("${context.run_dir}", str(run_dir))
+            .replace(QUALITY_GATE_REF, "false")
         )
         script = script.replace("$${", "${")
         result = subprocess.run(
@@ -21137,22 +20898,16 @@ MR11_MARKER_ALLOWLIST: set[tuple[str, str, str]] = {
         "captured.check_lifetime_limit.failure_type",
         "ENH-3358",
     ),
-    ("loops/refine-to-ready-issue.yaml", "captured.check_outcome.exit_code", "ENH-3358"),
-    ("loops/refine-to-ready-issue.yaml", "captured.check_outcome.failure_type", "ENH-3358"),
+    ("loops/refine-to-ready-issue.yaml", "captured.route_score_obligation.exit_code", "ENH-3358"),
+    (
+        "loops/refine-to-ready-issue.yaml",
+        "captured.route_score_obligation.failure_type",
+        "ENH-3358",
+    ),
     ("loops/refine-to-ready-issue.yaml", "captured.check_refine_limit.exit_code", "ENH-3358"),
     (
         "loops/refine-to-ready-issue.yaml",
         "captured.check_refine_limit.failure_type",
-        "ENH-3358",
-    ),
-    (
-        "loops/refine-to-ready-issue.yaml",
-        "captured.check_scores_from_file.exit_code",
-        "ENH-3358",
-    ),
-    (
-        "loops/refine-to-ready-issue.yaml",
-        "captured.check_scores_from_file.failure_type",
         "ENH-3358",
     ),
     (

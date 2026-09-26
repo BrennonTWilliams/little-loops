@@ -354,24 +354,24 @@ def _walk(states: dict[str, Any], start: str, edge: str, stop: set[str]) -> list
 class TestYamlParity:
     """The child YAML is the source of truth for obligation order."""
 
-    def test_tier1_order_matches_child(self) -> None:
+    def test_tier1_dispatch_covers_selector_tokens(self) -> None:
+        """ENH-3604: the child delegates tier-1 order to the selector; every tier-1
+        obligation the dispatch does not skip must be a route key."""
         states = yaml.safe_load(LOOP.read_text())["states"]
-        chain = _walk(states, "check_verify_verdict", "on_yes", {"confidence_check"})
-        mapping = {
-            "check_verify_verdict": Obligation.VERIFY,
-            "check_hedges": Obligation.HEDGES,
-            "check_placeholders": Obligation.PLACEHOLDERS,
-            "check_ac_automatable": Obligation.ACCEPTANCE_CRITERIA,
-            "check_design": Obligation.DESIGN,
-        }
-        assert [mapping[s] for s in chain] == list(no._TIER1[1:])
+        routes = states["route_pre_score_obligation"]["route"]
         assert no._TIER1[0] is Obligation.FORMAT
+        assert [o.value for o in no._TIER1] == [
+            o.value for o in Obligation if o in no._TIER1
+        ]  # declaration order == check order
+        for ob in no._TIER1[1:]:
+            assert any(k == ob.value or k.startswith(f"{ob.value}:") for k in routes), ob
 
     def test_tier3_order_matches_child(self) -> None:
         states = yaml.safe_load(LOOP.read_text())["states"]
         # ENH-3610: the done edge passes through the child's decision gate.
-        assert states["check_outcome"]["on_yes"] == "check_decision_before_done"
-        chain = _walk(states, states["check_outcome"]["on_no"], "on_no", {"breakdown_issue"})
+        route = states["route_score_obligation"]["route"]
+        assert route["NONE"] == "check_decision_before_done"
+        chain = _walk(states, route["SCORES:outcome_below"], "on_no", {"breakdown_issue"})
         mapping = {
             "check_decision_needed": Obligation.DECISION,
             "check_spike_needed": Obligation.PROOF,
@@ -385,3 +385,77 @@ class TestYamlParity:
         order = list(Obligation)
         assert order.index(Obligation.DECISION) < order.index(Obligation.PROOF)
         assert order.index(Obligation.PROOF) < order.index(Obligation.ARTIFACTS)
+
+
+class TestTier1GateParity:
+    """ENH-3604: each tier-1 probe agrees with the gate CLI it mirrors, so the child
+    can route on the selector instead of the per-gate states."""
+
+    HEDGE_FM = "verify_verdict: VALID\n"
+
+    def _gate_ok(self, project: Path, cmd: list[str]) -> bool:
+        if shutil.which("ll-issues") is None:
+            pytest.skip("ll-issues entry point not on PATH")
+        proc = subprocess.run(
+            ["ll-issues", *cmd],
+            cwd=project,
+            capture_output=True,
+            text=True,
+        )
+        return proc.returncode == 0
+
+    UNRESOLVED_OPTIONS = (
+        "## Proposed Solution\n\n### Option A\n\nDo it one way.\n\n### Option B\n\n"
+        "Do it another way.\n"
+    )
+
+    @pytest.mark.parametrize(
+        "body,expected_hedges",
+        [
+            ("## Summary\n\nPlain.\n", False),
+            ("## Open Questions\n\n- Should we do X?\n", True),
+            (UNRESOLVED_OPTIONS, True),
+        ],
+    )
+    def test_hedges_matches_check_open_questions(
+        self, project: Path, body: str, expected_hedges: bool
+    ) -> None:
+        _write(project, self.HEDGE_FM, body)
+        res = _sel(
+            project,
+            skip=[
+                Obligation.FORMAT,
+                Obligation.PLACEHOLDERS,
+                Obligation.ACCEPTANCE_CRITERIA,
+                Obligation.DESIGN,
+                Obligation.SCORES,
+            ],
+        )
+        assert (res.obligation is Obligation.HEDGES) is expected_hedges
+        gate_clean = self._gate_ok(project, ["check-open-questions", ID])
+        assert gate_clean is (not expected_hedges)
+
+    def test_unresolved_options_evidence_names_both_counts(self, project: Path) -> None:
+        _write(project, self.HEDGE_FM, self.UNRESOLVED_OPTIONS)
+        res = _sel(project, skip=[Obligation.FORMAT])
+        assert res.obligation is Obligation.HEDGES
+        assert any(e.startswith("open_questions=0") for e in res.evidence)
+        assert any(e.startswith("unresolved_options=") for e in res.evidence)
+
+    def test_manual_acceptance_criterion_matches_gate(self, project: Path) -> None:
+        _write(
+            project,
+            self.HEDGE_FM,
+            "## Acceptance Criteria\n\n- [ ] Check this manually in the UI\n",
+        )
+        res = _sel(project, skip=[Obligation.FORMAT, Obligation.PLACEHOLDERS, Obligation.HEDGES])
+        assert res.obligation is Obligation.ACCEPTANCE_CRITERIA
+        assert not self._gate_ok(project, ["check-acceptance-criteria", ID])
+
+    def test_clean_issue_is_clean_for_both(self, project: Path) -> None:
+        _write(project, self.HEDGE_FM, "## Summary\n\nPlain.\n")
+        skip = [Obligation.FORMAT, Obligation.PLACEHOLDERS, Obligation.DESIGN, Obligation.SCORES]
+        res = _sel(project, skip=skip)
+        assert res.obligation is Obligation.NONE
+        assert self._gate_ok(project, ["check-open-questions", ID])
+        assert self._gate_ok(project, ["check-acceptance-criteria", ID])

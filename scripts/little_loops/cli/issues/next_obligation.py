@@ -8,7 +8,8 @@ The child loop's gates form a tree, not a chain, so the selector has three tiers
 1. Pre-score gates, first unmet wins: ``FORMAT``, ``VERIFY``, ``HEDGES``,
    ``PLACEHOLDERS``, ``ACCEPTANCE_CRITERIA``, ``DESIGN``.
 2. Scores (``SCORES``): readiness, then outcome. Passing scores return ``NONE`` even
-   when ``decision_needed`` / spike flags are set (``check_outcome.on_yes = done``).
+   when ``decision_needed`` / spike flags are set (the child routes that ``NONE`` through
+   ``check_decision_before_done``).
 3. Low-outcome diagnosis, only when readiness passes and outcome is below threshold:
    ``DECISION``, ``PROOF``, ``ARTIFACTS``; otherwise ``SCORES/outcome_below``.
 
@@ -242,10 +243,18 @@ def _tier1_probe(ob: Obligation, path: Any, content: str) -> tuple[str, list[str
         directive = directive_gaps(check_format_gaps(path))
         return ("directive format gaps present", list(directive)) if directive else None
     if ob is Obligation.HEDGES:
-        from little_loops.issue_parser import count_open_questions_in_sections
+        from little_loops.issue_parser import (
+            count_open_questions_in_sections,
+            locate_unresolved_options,
+        )
 
+        # Same predicate pair as `check-open-questions` (ENH-3604 parity).
         n = count_open_questions_in_sections(content)
-        return (f"{n} unresolved open question(s)", [f"open_questions={n}"]) if n > 0 else None
+        m, heading = locate_unresolved_options(content)
+        if n <= 0 and m <= 0:
+            return None
+        evidence = [f"open_questions={n}", f"unresolved_options={m} (in {heading!r})"]
+        return (f"{n} unresolved open question(s), {m} unresolved option set(s)", evidence)
     if ob is Obligation.PLACEHOLDERS:
         from little_loops.issue_parser import placeholder_count
 
