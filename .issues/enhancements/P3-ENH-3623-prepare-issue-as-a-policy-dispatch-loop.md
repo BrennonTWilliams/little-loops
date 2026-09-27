@@ -65,10 +65,10 @@ blocks this one; this issue keeps Phases B and C.
    allowance list for the accepted changes (the fixed-on-main semantics, item 6 below, are
    parity there, not allowances, since both sides carry the fixes).
    No loop file changes, so nothing can regress; the dispatch loop lands as a test fixture
-   `scripts/tests/fixtures/prepare-issue-policy.yaml` (new). The spike branch is already tagged
+   `scripts/tests/fixtures/loops/prepare-issue-policy.yaml` (new). The spike branch is already tagged
    (`spike/preparation-policy-a51621302` at `a51621302`), so the port source cannot be pruned.
 2. **Phase B, cutover (atomic).** Replace `prepare-issue.yaml` by moving ENH-3630's
-   fixture `scripts/tests/fixtures/prepare-issue-policy.yaml` into its place (`git mv`,
+   fixture `scripts/tests/fixtures/loops/prepare-issue-policy.yaml` into its place (`git mv`,
    then repoint `preparation_policy_harness.POLICY_YAML` and the fixture validation test
    at the built-in path), apply the autodev
    retargets / 42 deletions / `dequeue_next` pass-id write / `copy_broke_down` shrink, and
@@ -76,7 +76,8 @@ blocks this one; this issue keeps Phases B and C.
    - **In-flight runs**: a persisted autodev run whose `current_state` is one of the 42
      removed states cannot resume after the cutover. `PersistentExecutor.resume()`
      restores `current_state` unchecked and `fsm/executor.py` (~:761) indexes
-     `self.fsm.states[self.current_state]`, a raw `KeyError`. Autodev uses
+     `self.fsm.states[self.current_state]`; the `KeyError` is swallowed by `FSMExecutor.run()`'s
+     blanket handler into an uninformative `error` terminal (see Program Design findings). Autodev uses
      `on_handoff: spawn`, so a detached handoff session can straddle the commit. Phase B
      adds a resume guard: `resume()` fails with a clear "state `<name>` no longer exists
      in `<loop>`; restart the run" error instead of a `KeyError` (generic, so it covers
@@ -395,14 +396,9 @@ exists anywhere in the codebase to build a safe transitional state.
 
 ### Files to Modify
 
-- `scripts/little_loops/preparation_policy.py` (new), or a `preparation_policy/` package
-  (port from branch `spike/preparation-policy`)
-  > ⚠ Superseded — module already landed via ENH-3630 (1381 lines); nothing to port here
-- `scripts/little_loops/cli/issues/__init__.py`: register `prep`
-  > ⚠ Superseded — `prep` already registered via ENH-3630
+_Already landed in ENH-3630 (no work here): `scripts/little_loops/preparation_policy.py` (1381 lines) and the `prep` registration in `scripts/little_loops/cli/issues/__init__.py`._
 - `scripts/little_loops/loops/prepare-issue.yaml`: replaced in place by the dispatch loop,
-  moved from ENH-3630's test fixture `scripts/tests/fixtures/prepare-issue-policy.yaml`
-  > ⚠ Superseded — wrong path; real: `fixtures/loops/prepare-issue-policy.yaml`
+  moved from ENH-3630's test fixture `scripts/tests/fixtures/loops/prepare-issue-policy.yaml`
 - `scripts/little_loops/loops/autodev.yaml`: retargets, 42 deletions, the `dequeue_next`
   pass-id write, and the `copy_broke_down` shrink
 - `scripts/little_loops/run_record.py`: the shared record-writing helper
@@ -518,13 +514,13 @@ _Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
   - **`ll-issues` registration**: subcommand groups register in `cli/issues/__init__.py:main_issues()` via `add_<x>_parser(subs)` plus an `if args.command == …` dispatch chain and an epilog list; `run-record` is the precedent for a group with sub-subcommands (`subsubs = p.add_subparsers(dest="run_record_command", required=True)`). The test harness's fork server (`scripts/tests/autodev_harness.py:_CLI_SERVER`) keys only on `main_issues`/`main_config`, so a group registered in `main_issues` is served without a separate registry.
   - **Record-writing logic is not yet shared**: assembly (path resolution, frontmatter parse, `readiness_status`, `thresholds_met`, `derive_child_ids`, `_read_broke_down`, `RunRecord` build) lives inline in `cmd_run_record_write`; reusable pieces are `derive_child_ids`, `canonical_record_id`, `outcome_from_legacy_class(legacy_class, broke_down, thresholds_met, status)` and `write_run_record`. `run_record.py` `WRITERS` already includes `prepare-issue`.
   - **Snapshot helpers and their real locations**: `select_next_obligation(config, issue_id, *, skip=(), readiness_override=None, outcome_override=None, honor_waiver=False) -> ObligationResult | None` (`cli/issues/next_obligation.py`; raises `ObligationProbeError` fail-closed); `resolve_gate_verdict(frontmatter, text, spike_proven)` (`cli/issues/check_gate.py`); `readiness_status(config, issue_id, *, …) -> ReadinessStatus | None` (`cli/issues/check_readiness.py`); `superseded_marker_count(issue_path)`, `check_format_gaps` and `design_gate_failed(gaps)` (`issue_parser.py`; `cmd_check_design` composes the last two); Program Design grading in `issues/program_design.py`. `session_command_counts` is a **field on the parsed issue dataclass** populated by `count_session_commands(content)` (`session_log.py`), not an `IssueParser` method.
-  - **Spike artifacts**: `thoughts/spikes/preparation-policy-spike.md` exists; branch `spike/preparation-policy` exists at `a5162130240f244ad79ae4354470e903e01769b2` (also checked out in a worktree under `.git/worktrees/`). `little_loops.preparation_policy`, the `prep` group, `test_preparation_policy*.py` and `preparation_policy_harness.py` do not exist; `autodev_harness.py` has no `state#N`, `replay_same` or `inner_calls`.
+  - **Spike artifacts**: `thoughts/spikes/preparation-policy-spike.md` exists; branch `spike/preparation-policy` exists at `a5162130240f244ad79ae4354470e903e01769b2` (also checked out in a worktree under `.git/worktrees/`). `little_loops.preparation_policy`, the `prep` group, `test_preparation_policy*.py` and `preparation_policy_harness.py` do not exist (stale: all landed via ENH-3630 — see the next findings block); `autodev_harness.py` has no `state#N`, `replay_same` or `inner_calls`.
   - **Executor constraints bearing on `record_step` and the dispatch loop** (`fsm/executor.py`): a `loop:` child's captures overwrite `captured[<state>]` only when the child captured something and `context_passthrough`/`with_` is set; `terminated_by` is always set and `failure_terminal` only when the child produced one, so a stale `failure_terminal` from an earlier pass can survive a later child that captured nothing. `on_max_steps` runs exactly one handler state (`_summary_state_executed`), flushing one pending non-loop state first. Since BUG-3622, `next:` states go through `_intercept_transient_failure` (429 retries refund `_throttle_counts`; exhaustion routes `on_rate_limit_exhausted` else `on_error`), but the `loop:` delegate path does not — consistent with the BUG-3390 comments in both YAMLs, so `run_child` stays without rate-limit handling.
 
 _Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
 
 - **ENH-3630 has landed since this issue's last research pass** (commits `1732a39f0`, `7fd86d853`; issue status `done`). This changes the status of several items above:
-  - The fixture the Phasing/Files-to-Modify sections cite lives at `scripts/tests/fixtures/loops/prepare-issue-policy.yaml` — under `loops/`, not bare `fixtures/` as three prose mentions in this issue (Phasing steps 1–2, Files to Modify) currently say. Confirmed via `test_preparation_policy_fixture.py:18` and a repo-wide glob; no file exists at the bare `fixtures/prepare-issue-policy.yaml` path.
+  - The fixture the Phasing/Files-to-Modify sections cite lives at `scripts/tests/fixtures/loops/prepare-issue-policy.yaml` — under `loops/` (Phasing steps 1–2 and Files to Modify now cite it correctly; corrected by `/ll:ready-issue`). Confirmed via `test_preparation_policy_fixture.py:18`.
   - The fixture is already the full 15-state shape this issue specifies: `select_step, run_child, run_wire, run_refine_gap, run_rescore, run_reconcile, run_size_review, classify_guard2, record_guard2, record_step, run_go_no_go, apply_outcome, mark_rate_limited, done, failed`.
   - `scripts/little_loops/loops/prepare-issue.yaml` (90 lines) and `scripts/little_loops/loops/autodev.yaml` (87 states, matching the `test_fsm_topology.py:291` pin) are both still their pre-cutover shape — Phase B/C (this issue's actual scope) has not started.
   - Under `### Tests`, the "New" list (`test_preparation_policy.py`, `test_preparation_policy_parity.py`, `test_preparation_policy_resume.py`, `preparation_policy_harness.py`) already exists on disk (ENH-3630's output), plus three files not previously named in this issue: `scripts/tests/test_preparation_policy_writers.py`, `scripts/tests/test_preparation_policy_fixture.py` (the structural pin on the fixture's `max_steps`/slash-state shape), and `scripts/tests/test_prep_cli.py` (CLI registration/help/failure-path tests for `ll-issues prep`). This issue's remaining test-migration work is the "Extended" and "Rewritten or relocated" lists only.
@@ -533,7 +529,7 @@ _Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-- Register `prep` in `cli/issues/__init__.py`: parser, dispatch branch and epilog entry
+- ~~Register `prep` in `cli/issues/__init__.py`: parser, dispatch branch and epilog entry~~ (done in ENH-3630: `add_prep_parser`, epilog row)
 - Decide whether `ll-issues run-record forward` survives once `forward_done` / `forward_stop` are gone
 - Make `prep apply` (or the `RUN_CHILD` precondition) own the `refine-terminal-class` sentinel writes that `mark_inner_error` does today, until ENH-3600 removes the reader
 - Update the `test_fsm_topology.py` count, the `TestBuiltinLoopFiles` exemption dict, `loop_interpolation_baseline.json` and `MR11_MARKER_ALLOWLIST` together
@@ -559,8 +555,8 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - `next_preparation_step(config: BRConfig, issue_id: str, run_dir: Path, *, readiness_threshold: int, outcome_threshold: int) -> Step` — snapshots the issue, loads the facts, calls `decide`
 - `load_facts(run_dir: Path, issue_id: str) -> Facts` — reads the append-only fact log, deduplicating by `(pass, seq, kind)`
 - `append_fact(run_dir: Path, issue_id: str, fact: Fact) -> bool` — appends one JSONL line unless `(pass, seq, kind)` (obs: content too) already exists; returns whether it wrote
-- `apply_terminal(config: BRConfig, issue_id: str, run_dir: Path, step: Step) -> str` — the sole terminal writer; runs the ledger row (keyed `(pass, seq)`, check-before-append), `set-status`, run record and inflight clear in order, each idempotent, and returns the terminal token
-- `record_step(config: BRConfig, issue_id: str, run_dir: Path, *, guard2: bool = False) -> None` — writes the done fact and repair-cycle projection; classifies the child outcome from `run-records/refine-to-ready-issue/<ID>.json`, never from `captured.run_child`
+- `prep_apply(config: BRConfig, issue_id: str, run_dir: Path, *, readiness_threshold: int, outcome_threshold: int, rate_limited: bool = False) -> int` — the sole terminal writer (delegates to `_apply_outcome`); runs the ledger row (keyed `(pass, seq)`, check-before-append), `set-status`, run record and inflight clear in order, each idempotent; returns 0 (wrapper `done`) or 1 (wrapper `failed`)
+- `prep_record(config: BRConfig, issue_id: str, run_dir: Path, *, guard2: bool = False, child_terminated_by: str = "", child_failure: str = "") -> Fact | None` — writes the done fact and repair-cycle projection; classifies the child outcome from `run-records/refine-to-ready-issue/<ID>.json`, never from `captured.run_child` (called by the YAML `record_step` state via `ll-issues prep record`)
 
 ### Call Path
 
@@ -570,7 +566,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 _Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
 
-- **Signature drift from ENH-3630's landed module** (`scripts/little_loops/preparation_policy.py`, 1381 lines): the names above are provisional/legacy — `apply_terminal` does not exist. The landed terminal-writer is `_apply_outcome(config, issue_id, run_dir, outcome, payload, progress, mark, *, readiness_threshold, outcome_threshold) -> int`, invoked from `prep_apply()`. Likewise `record_step` exists only as a YAML state name (in the dispatch-loop fixture, `scripts/tests/fixtures/loops/prepare-issue-policy.yaml`) — the Python function it calls via `ll-issues prep record` is `prep_record(config, issue_id, run_dir, *, guard2=False, child_terminated_by="", child_failure="") -> Fact | None`. `decide`, `next_preparation_step`, `load_facts`, `append_fact` all match this section's signatures exactly as landed.
+- **Signature drift from ENH-3630's landed module** (`scripts/little_loops/preparation_policy.py`, 1381 lines): the names above were provisional/legacy (`apply_terminal`, `record_step`) and have since been rewritten to the landed names by `/ll:ready-issue`. The landed terminal-writer is `_apply_outcome(config, issue_id, run_dir, outcome, payload, progress, mark, *, readiness_threshold, outcome_threshold) -> int`, invoked from `prep_apply()`. Likewise `record_step` exists only as a YAML state name (in the dispatch-loop fixture, `scripts/tests/fixtures/loops/prepare-issue-policy.yaml`) — the Python function it calls via `ll-issues prep record` is `prep_record(config, issue_id, run_dir, *, guard2=False, child_terminated_by="", child_failure="") -> Fact | None`. `decide`, `next_preparation_step`, `load_facts`, `append_fact` all match this section's signatures exactly as landed.
 - **Resume-guard call chain, confirmed exact site**: `PersistentExecutor.resume()` (`fsm/persistence.py:1388`) restores `self._executor.current_state` from `state.pre_cap_state or state.current_state` with no existence check, then calls `self.run(clear_previous=False)` → `PersistentExecutor.run()` → `FSMExecutor.run()`. The unguarded lookup is `state_config = self.fsm.states[self.current_state]` at `fsm/executor.py:761`, inside the executor's main loop — no `except KeyError` anywhere in the chain guards it (the three existing `except KeyError` blocks in `fsm/` are unrelated: `evaluators.py:355`, `executor.py:2826`, `persistence.py:565`). Nearest existing convention for this shape of check: `fsm/route_table.py:154-161` raises `ValueError(f"Unknown state in edited table: '{state_name}' (known: {sorted(known_states)})")` for an analogous "referenced state must exist" check — a plain `ValueError` with an f-string naming the state, not a dedicated exception class (none exists in `fsm/` for this).
 
 _Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
@@ -581,8 +577,9 @@ _Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
 
 - **Priority**: P3. Completes the second-pass consolidation under EPIC-3565, fixes
   resume for the preparation ladder, and unblocks ENH-3600 and ENH-3590.
-- **Effort**: Large. A ~1,300-line module port with hardening, a 15-state loop, 42
-  autodev deletions, and a large test/doc migration. It is smaller in risk than
+- **Effort**: Large. The ~1,300-line module and the 15-state fixture already landed in
+  ENH-3630; this issue is the cutover (fixture → `prepare-issue.yaml`), 42
+  autodev deletions, the resume guard, and a large test/doc migration. It is smaller in risk than
   ENH-3606's graph move, because the spike already proved parity and resume.
 - **Risk**: Medium. It rewrites the second-pass routing of the most-used loop. Mitigated
   by the ENH-3618 characterization suite, the promoted parity/differential/resume tests
@@ -649,7 +646,8 @@ _Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
   records `RETRYABLE_ERROR:infra` and reaches autodev's `skip_inflight_infra` through
   `route_refine_outcome` (real-FSM test).
 - [ ] Resuming a persisted run whose `current_state` no longer exists in the loop fails
-  with a clear error, not a `KeyError` (test).
+  with a clear error naming the state and loop, not a generic `error` terminal carrying a
+  bare `KeyError` string (test).
 - [ ] Crash injection inside `prep apply` (between each of the ledger row, `set-status`,
   run record and inflight clear writes) followed by resume never double-appends a ledger
   row and ends with one terminal.
@@ -723,6 +721,7 @@ _Added by `/ll:confidence-check` on 2026-09-27; re-scored 2026-09-27T04:31Z (Dep
 Readiness is high (all preconditions — dependencies, well-specification, non-duplication — are met after ENH-3630 landed); the risk is concentrated entirely in outcome confidence, i.e. this is ready to *start*, not low-risk to *land*. Consider `/ll:spike`-style de-risking or splitting Phase B's atomic commit into a more granular internal sequence (even if landed as one commit) before executing the cutover.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-09-27T20:32:21 - `983969c6-a2b0-43ba-9574-ac5a4f020f2a.jsonl`
 - `/ll:confidence-check` - 2026-09-27T20:28:10 - `ccd304ff-fa2b-47fb-9773-08fefc6c9e30.jsonl`
 - `/ll:verify-issues` - 2026-09-27T20:22:00 - `c7f5626c-1fa9-4830-aa8f-e8b6eafe269b.jsonl`
 - `/ll:refine-issue:gap-analysis` - 2026-09-27T16:48:55 - `5e0fa7a0-1306-4e57-9f3f-a8085f6c05a6.jsonl`

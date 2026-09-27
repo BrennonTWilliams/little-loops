@@ -9,12 +9,6 @@ discovered_by: ll-issues-create
 discovered_date: '2026-09-26'
 captured_at: '2026-09-26T22:32:30Z'
 reconcile_attempted: true
-confidence_score: 80
-outcome_confidence: 64
-score_complexity: 10
-score_test_coverage: 18
-score_ambiguity: 18
-score_change_surface: 18
 blocked_by:
 - BUG-3631
 ---
@@ -100,7 +94,7 @@ _Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
 - `scripts/little_loops/init/introspect.py` — `introspect` (reorder: test_dir before focus_dirs), `_introspect_src_dir`, `_introspect_test_dir`, `_introspect_focus_dirs`; new `_existing_dir`, `_detect_root_layout`, `_find_nested_test_dir`
 - `scripts/little_loops/init/cli.py:531` — `_print_introspection_summary` wording
 - `scripts/little_loops/init/proposal.py`, `core.py`, `tui.py`, `summary.py` — verify `.` round-trip (modify only if a test shows a break)
-- **Moved to BUG-3631 (blocks this issue)**: `.`-hostile runtime consumers — `codegraph.py:121` `_is_scan_relevant`, `worker_pool.py:1523` leak detection, `decisions.py:652` export glob, plus `ll-init` introspection emitting `./` / `/` / `**/` for root declarations (`commands/manage-release.md` was later split to BUG-3635, which does not block this issue). These are pre-existing bugs for Go projects (`go.json` ships `src_dir: "."`).
+- **Moved to BUG-3631 (done, commit `85696dc57`)**: `.`-hostile runtime consumers — `codegraph.py:121` `_is_scan_relevant`, `worker_pool.py:1523` leak detection, `decisions.py:652` export glob, plus `ll-init` introspection emitting `./` / `/` / `**/` for root declarations (`commands/manage-release.md` was later split to BUG-3635, which does not block this issue). These were pre-existing bugs for Go projects (`go.json` ships `src_dir: "."`).
 - **Checked, no change needed**: `codegraph.py:234` `_dotted_candidates` (with `.` the prefix strip never applies; returns `[dotted]`, already correct) and `commands/run-tests.md:99` (`^.` matches every changed file, which is correct when src_dir is the whole repo).
 - Template defaults under `scripts/little_loops/templates/` — read-only; filtered at read time, contents unchanged
 
@@ -210,7 +204,7 @@ _Wiring pass added by `/ll:wire-issue`:_
   - Detecting non-conventional test dir names (`__tests__/`, `spec/`).
   - Changing project-type template contents.
   - Non-dir fields (build/lint/test commands), beyond keeping the `{src_dir or '.'}` derivation sane.
-  - Fixing `.`-hostile runtime consumers — **BUG-3631**, which blocks this issue.
+  - Fixing `.`-hostile runtime consumers — **BUG-3631** (done, commit `85696dc57`); those fixes stay in BUG-3631's scope, not this issue's, regardless of blocking status.
   - **Re-init of an existing config**: `proposal.py:build_proposal` pins existing `src_dir`/`test_dir`/`scan.focus_dirs` with provenance `existing`, so a phantom value already in `.ll/ll-config.json` survives a plain re-run of `ll-init`. Only fresh introspection (new install or `--force`) is existence-filtered; revalidating stored values is not part of this issue.
 
 ## Implementation Steps
@@ -255,8 +249,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Acceptance Criteria
 
-- [ ] On a fresh introspection, no `ll-init` proposal contains a Source or Focus dir absent from the target project; no `Ambiguity` lists an absent candidate (e.g. tsconfig `include: ["**/*.ts"]` produces no `**/`).
-  > ⚠ Superseded — glob example fixed by BUG-3631, see Proposed Solution
+- [ ] On a fresh introspection, no `ll-init` proposal contains a Source or Focus dir absent from the target project; no `Ambiguity` lists an absent candidate. (The tsconfig `include: ["**/*.ts"]` → `**/` case is already fixed by BUG-3631's glob-char check in `_tsconfig_src_candidate`; this AC's remaining scope is the general existence filter for every other unfiltered candidate, e.g. a hatch `include`/`packages` branch declaring a nonexistent dir.)
 - [ ] Test dir is never an absent path **except** `tests/` when the project has no test dir and no test files at all (provenance `default`, evidence `"no tests found; conventional location for new tests"`).
 - [ ] Root-level source/test layouts are proposed as `.` with provenance `inferred`; an empty or tooling-only root (`setup.py`, `conftest.py`) yields src_dir `.` with provenance `default`.
 - [ ] Nested test dirs (e.g. `scripts/tests/`) are detected; `<src_dir>/tests/` wins; two unrelated nested test dirs are not adopted; dot-prefixed dirs are never probed.
@@ -334,6 +327,7 @@ _Added by `/ll:confidence-check` on 2026-09-27_
 - Several existing tests assert phantom-default behavior and must be rewritten; docs and markdown edits have no automated validation.
 
 ## Session Log
+- `/ll:reconcile-issue` - 2026-09-27T20:31:03 - `875ff80d-d1f7-4605-9400-e1a7cf094cda.jsonl`
 - `/ll:refine-issue` - 2026-09-27T20:25:47 - `dd64463d-e434-4e56-8ab0-f62c72a4ecea.jsonl`
 - `/ll:confidence-check` - 2026-09-27T05:43:32 - `bf6e1e8c-2c0c-4865-99bf-f1fcae8fc265.jsonl`
 - `/ll:verify-issues` - 2026-09-27T05:36:55 - `e18b63f4-fc4d-4093-b00f-89d5c0e394ec.jsonl`
