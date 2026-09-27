@@ -670,9 +670,13 @@ class TestDecisionReentryFlow:
         result = stub.run(states["select_obligation_pre_implement"]["action"], run_dir, "ENH-3610")
         assert result.stdout.strip() == "DECISION"
         assert "ENH-3610" not in (run_dir / "autodev-staged.txt").read_text().splitlines()
-        # The finalize_done unverified set is derived from autodev-staged.txt.
+        # The finalize_done unverified set is derived from autodev-staged.txt
+        # (read by little_loops.autodev_summary, which finalize_done calls).
+        from little_loops import autodev_summary
+
         finalize = states["finalize_done"]["action"]
-        assert "autodev-staged.txt" in finalize
+        assert "python3 -m little_loops.autodev_summary" in finalize
+        assert autodev_summary.STAGED == "autodev-staged.txt"
 
     def test_flag_clear_takes_next_obligation_path_to_proof_gate(
         self, states: dict[str, Any], stub: _StubIssues, run_dir: Path

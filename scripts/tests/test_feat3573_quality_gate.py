@@ -574,21 +574,36 @@ class TestRecordQualityEvidence:
 
 
 class TestFinalizeDonePromotion:
+    """finalize_done's promotion, run through little_loops.autodev_summary (the
+    module the state calls) against real issue files carrying *statuses*."""
+
     def _run(self, run_dir: Path, statuses: dict[str, str], gate: str = "true") -> tuple[dict, str]:
-        bin_dir = run_dir / "bin"
-        bin_dir.mkdir(exist_ok=True)
-        arms = "".join(f'{i}) echo \'{{"status":"{s}"}}\';; ' for i, s in statuses.items())
-        stub = bin_dir / "ll-issues"
-        stub.write_text(f'#!/bin/sh\nif [ "$1" = "show" ]; then case "$2" in {arms}esac; fi\n')
-        stub.chmod(0o755)
+        import contextlib
+        import io
+
+        from little_loops import autodev_summary
+
         action = AUTODEV["states"]["finalize_done"]["action"]
-        r = bash(
-            render(action, {"run_dir": str(run_dir), "quality_gate": gate}),
-            run_dir,
-            {"PATH": f"{bin_dir}:{os.environ['PATH']}"},
+        assert "python3 -m little_loops.autodev_summary" in action
+        assert "--quality-gate ${context.quality_gate:shell:default=true}" in action
+        project = run_dir / "project"
+        (project / ".ll").mkdir(parents=True, exist_ok=True)
+        (project / ".ll" / "ll-config.json").write_text(
+            json.dumps({"issues": {"base_dir": ".issues"}})
         )
-        self.returncode = r.returncode
-        return json.loads((run_dir / "summary.json").read_text()), r.stdout
+        dirs = {"FEAT": "features", "BUG": "bugs", "ENH": "enhancements"}
+        for issue_id, status in statuses.items():
+            cat = project / ".issues" / dirs[issue_id.split("-")[0]]
+            cat.mkdir(parents=True, exist_ok=True)
+            (cat / f"P3-{issue_id}-t.md").write_text(
+                f"---\nid: {issue_id}\nstatus: {status}\n---\n\n# {issue_id}: t\n"
+            )
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            self.returncode = autodev_summary.main(
+                ["--run-dir", str(run_dir), "--quality-gate", gate, "--project-root", str(project)]
+            )
+        return json.loads((run_dir / "summary.json").read_text()), buf.getvalue()
 
     @staticmethod
     def _evidence(run_dir: Path, id_: str, verdict: str, head: str = "deadbeefcafe", dirty=False):

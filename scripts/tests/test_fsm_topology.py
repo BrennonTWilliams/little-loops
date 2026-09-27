@@ -285,7 +285,10 @@ class TestAutodevSmoke:
         # states) into one shared chain — clear_scores, rerun_confidence,
         # check_scores_present, route_after_rescore — plus the atomic-only origin
         # pre-state mark_rescore_origin_atomic (5), net -4, lowering it to 86.
-        assert len(topo["states"]) == 86
+        # The autodev_summary extraction added finalize_step_capped (+1) — the
+        # on_max_steps handler that writes summary.json at the step cap — raising
+        # it to 87.
+        assert len(topo["states"]) == 87
 
         # Every edge endpoint is a known state id, or the target of a
         # declared sub-loop (`loop:`) cross-graph edge. `from` may be null

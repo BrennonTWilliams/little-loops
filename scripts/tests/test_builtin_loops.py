@@ -6400,10 +6400,13 @@ class TestMergeEpicBranchConfigReadShell:
         assert self._EPIC_BRANCH in self._branches(tmp_path)
 
 
-# FEAT-3573: finalize_done gates promotion on the `quality_gate` context key. The
+# finalize_done / finalize_step_capped run their finalization through
+# little_loops.autodev_summary; the finalize tests below drive that module directly.
+# FEAT-3573: finalization gates promotion on the `quality_gate` context key. The
 # pre-existing finalize tests exercise status-only closure, so their harness pins it
-# off; TestAutodevQualityGate covers the gate-on behavior.
+# off; test_feat3573_quality_gate / test_autodev_summary cover the gate-on behavior.
 QUALITY_GATE_REF = "${context.quality_gate:shell:default=true}"
+AUTODEV_SUMMARY_CMD = "python3 -m little_loops.autodev_summary"
 
 
 class TestAutodevLoop:
@@ -7125,22 +7128,13 @@ class TestAutodevLoop:
         """ENH-2909: blocked_by_unmet skips get their own summary bucket and are
         excluded from both the generic Skipped bucket and Already-resolved
         (mirrors ENH-2868's already_* split)."""
-        state = data["states"].get("finalize_done", {})
-        action = state.get("action", "")
         run_dir = tmp_path / "run"
         run_dir.mkdir(parents=True)
         (run_dir / "autodev-skipped.txt").write_text(
             "ENH-1001  refine_failed\nBUG-2865  already_completed\nFEAT-2001  blocked_by_unmet\n"
         )
-        script = action.replace("${context.run_dir}", str(run_dir)).replace(
-            QUALITY_GATE_REF, "false"
-        )
-        script = script.replace("$${", "${")
-        result = subprocess.run(
-            ["bash", "-c", script], cwd=tmp_path, capture_output=True, text=True
-        )
-        assert result.returncode == 0, f"finalize_done failed: {result.stderr}"
-        out = result.stdout
+        _, out = self._run_finalize_done(data, run_dir)
+        assert self._last_returncode == 0
         blocked_line = [ln for ln in out.splitlines() if ln.startswith("Blocked-by-unmet")]
         assert blocked_line, f"expected a 'Blocked-by-unmet' bucket line, got:\n{out}"
         assert "(1)" in blocked_line[0]
@@ -7160,8 +7154,6 @@ class TestAutodevLoop:
         """ENH-2868: pre-flight skips get their own summary bucket and are excluded
         from the generic Skipped bucket (mirrors ENH-2727's infra split), so a
         closed issue is never misreported as a refinement failure."""
-        state = data["states"].get("finalize_done", {})
-        action = state.get("action", "")
         run_dir = tmp_path / "run"
         run_dir.mkdir(parents=True)
         (run_dir / "autodev-skipped.txt").write_text(
@@ -7170,15 +7162,8 @@ class TestAutodevLoop:
             "BUG-2865  already_completed\n"
             "FEAT-1003  already_deferred\n"
         )
-        script = action.replace("${context.run_dir}", str(run_dir)).replace(
-            QUALITY_GATE_REF, "false"
-        )
-        script = script.replace("$${", "${")
-        result = subprocess.run(
-            ["bash", "-c", script], cwd=tmp_path, capture_output=True, text=True
-        )
-        assert result.returncode == 0, f"finalize_done failed: {result.stderr}"
-        out = result.stdout
+        _, out = self._run_finalize_done(data, run_dir)
+        assert self._last_returncode == 0
         already_line = [ln for ln in out.splitlines() if ln.startswith("Already-resolved")]
         assert already_line, f"expected an 'Already-resolved' bucket line, got:\n{out}"
         assert "(2)" in already_line[0]
@@ -7208,23 +7193,71 @@ class TestAutodevLoop:
         assert state.get("fragment") == "shell_exit"
         assert state.get("on_yes") == "done"
         assert state.get("on_no") == "failed"
+        # ENH-2825: a summary that cannot be written must not report success.
+        assert state.get("on_error") == "failed"
+
+    def test_finalize_states_are_thin_module_calls(self, data: dict) -> None:
+        """finalize_done / finalize_step_capped delegate all logic to
+        little_loops.autodev_summary: one command, no inline bash logic."""
+        for name, extra in (
+            ("finalize_done", ""),
+            ("finalize_step_capped", " --stop-reason max_steps"),
+        ):
+            action = data["states"][name]["action"]
+            code = [
+                ln.strip().rstrip("\\").strip()
+                for ln in action.splitlines()
+                if ln.strip() and not ln.lstrip().startswith("#")
+            ]
+            assert " ".join(code) == (
+                f"{AUTODEV_SUMMARY_CMD} --run-dir ${{context.run_dir}} "
+                f"--quality-gate {QUALITY_GATE_REF}{extra}"
+            ), name
+            for inline in ("printf", "grep", "awk", "sort", "for ", "if ", "case ", "echo", "$("):
+                assert inline not in action, f"{name} carries inline logic: {inline!r}"
+
+    def test_step_cap_routes_through_finalize_step_capped(self, data: dict) -> None:
+        """The max_steps exit runs finalize_step_capped (a single action: the
+        executor never runs the handler's routing target), which writes
+        summary.json with stop_reason max_steps."""
+        assert data.get("on_max_steps") == "finalize_step_capped"
+        state = data["states"]["finalize_step_capped"]
+        assert state.get("fragment") == "shell_exit"
+        assert (state.get("on_yes"), state.get("on_no"), state.get("on_error")) == (
+            "done",
+            "failed",
+            "failed",
+        )
+        assert "--stop-reason max_steps" in state["action"]
 
     def _run_finalize_done(
-        self, data: dict, run_dir: Path, env: dict | None = None
+        self,
+        data: dict,
+        run_dir: Path,
+        statuses: dict[str, str] | None = None,
+        quality_gate: str = "false",
     ) -> tuple[dict, str]:
-        state = data["states"].get("finalize_done", {})
-        action = state.get("action", "")
-        script = action.replace("${context.run_dir}", str(run_dir)).replace(
-            QUALITY_GATE_REF, "false"
-        )
-        script = script.replace("$${", "${")
-        result = subprocess.run(
-            ["bash", "-c", script], cwd=run_dir, capture_output=True, text=True, env=env
-        )
-        self._last_returncode = result.returncode
+        """Run finalize_done's finalization (little_loops.autodev_summary) on run_dir.
+
+        `statuses` maps issue IDs to their (display- or frontmatter-cased)
+        status, standing in for the issue files; unknown IDs resolve to "".
+        """
+        import contextlib
+        import io
+
+        from little_loops import autodev_summary
+
+        assert AUTODEV_SUMMARY_CMD in data["states"]["finalize_done"]["action"]
+        lowered = {k: v.lower() for k, v in (statuses or {}).items()}
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            self._last_returncode = autodev_summary.main(
+                ["--run-dir", str(run_dir), "--quality-gate", quality_gate],
+                status_of=lambda issue_id: lowered.get(issue_id, ""),
+            )
         summary_path = run_dir / "summary.json"
         summary = json.loads(summary_path.read_text()) if summary_path.exists() else {}
-        return summary, result.stdout
+        return summary, buf.getvalue()
 
     def test_finalize_done_reports_phantom_when_staged_but_not_closed(
         self, data: dict, tmp_path: Path
@@ -7235,31 +7268,14 @@ class TestAutodevLoop:
         non-zero exit (so the FSM routes to `failed`, not `done`)."""
         run_dir = tmp_path
         (run_dir / "autodev-staged.txt").write_text("FEAT-108\n")
-        script_path = run_dir / "ll-issues"
-        script_path.write_text(
-            '#!/bin/sh\nif [ "$1" = "show" ]; then echo \'{"status": "Open"}\'; fi\n'
-        )
-        script_path.chmod(0o755)
-        env = dict(**{"PATH": f"{run_dir}:{__import__('os').environ['PATH']}"})
-        state = data["states"].get("finalize_done", {})
-        script = (
-            state.get("action", "")
-            .replace("${context.run_dir}", str(run_dir))
-            .replace(QUALITY_GATE_REF, "false")
-        )
-        script = script.replace("$${", "${")
-        result = subprocess.run(
-            ["bash", "-c", script], cwd=run_dir, capture_output=True, text=True, env=env
-        )
-        assert result.returncode != 0, "phantom verdict must exit non-zero"
-        summary = json.loads((run_dir / "summary.json").read_text())
+        summary, out = self._run_finalize_done(data, run_dir, {"FEAT-108": "Open"})
+        assert self._last_returncode != 0, "phantom verdict must exit non-zero"
         assert summary["verdict"] == "phantom"
         assert summary["closed"] == 0
         assert summary["not_closed"] == 1
         passed_path = run_dir / "autodev-passed.txt"
         assert "FEAT-108" not in (passed_path.read_text() if passed_path.exists() else "")
         assert "FEAT-108" in (run_dir / "autodev-unverified.txt").read_text()
-        out = result.stdout
         unverified_line = [ln for ln in out.splitlines() if ln.startswith("Unverified")]
         assert unverified_line and "FEAT-108" in unverified_line[0]
 
@@ -7270,24 +7286,8 @@ class TestAutodevLoop:
         must be promoted to autodev-passed.txt and the run must report verdict=success."""
         run_dir = tmp_path
         (run_dir / "autodev-staged.txt").write_text("FEAT-200\n")
-        script_path = run_dir / "ll-issues"
-        script_path.write_text(
-            '#!/bin/sh\nif [ "$1" = "show" ]; then echo \'{"status": "Done"}\'; fi\n'
-        )
-        script_path.chmod(0o755)
-        env = dict(**{"PATH": f"{run_dir}:{__import__('os').environ['PATH']}"})
-        state = data["states"].get("finalize_done", {})
-        script = (
-            state.get("action", "")
-            .replace("${context.run_dir}", str(run_dir))
-            .replace(QUALITY_GATE_REF, "false")
-        )
-        script = script.replace("$${", "${")
-        result = subprocess.run(
-            ["bash", "-c", script], cwd=run_dir, capture_output=True, text=True, env=env
-        )
-        assert result.returncode == 0, f"success verdict must exit zero: {result.stderr}"
-        summary = json.loads((run_dir / "summary.json").read_text())
+        summary, _ = self._run_finalize_done(data, run_dir, {"FEAT-200": "Done"})
+        assert self._last_returncode == 0, "success verdict must exit zero"
         assert summary["verdict"] == "success"
         assert summary["closed"] == 1
         assert summary["closed_implemented"] == 1
@@ -7295,23 +7295,14 @@ class TestAutodevLoop:
         assert summary["not_closed"] == 0
         assert "FEAT-200" in (run_dir / "autodev-passed.txt").read_text()
 
-    def _stub_statuses(self, run_dir: Path, statuses: dict[str, str]) -> dict:
-        """Per-ID ll-issues stub returning display-cased statuses; returns env."""
-        arms = "".join(f'{i}) echo \'{{"status":"{s}"}}\';; ' for i, s in statuses.items())
-        stub = run_dir / "ll-issues"
-        stub.write_text(f'#!/bin/sh\nif [ "$1" = "show" ]; then case "$2" in {arms}esac; fi\n')
-        stub.chmod(0o755)
-        return {"PATH": f"{run_dir}:{__import__('os').environ['PATH']}"}
-
     def test_finalize_done_splits_cancelled_from_implemented(
         self, data: dict, tmp_path: Path
     ) -> None:
         """ENH-3613: mixed run reports both keys, sum rule, Passed suffix, bare IDs."""
         (tmp_path / "autodev-staged.txt").write_text("FEAT-1\nFEAT-2\nFEAT-2\nBUG-1\n")
-        env = self._stub_statuses(
-            tmp_path, {"FEAT-1": "Completed", "FEAT-2": "Cancelled", "BUG-1": "Completed"}
+        summary, out = self._run_finalize_done(
+            data, tmp_path, {"FEAT-1": "Completed", "FEAT-2": "Cancelled", "BUG-1": "Completed"}
         )
-        summary, out = self._run_finalize_done(data, tmp_path, env)
         assert summary["closed"] == 3
         assert summary["closed_implemented"] == 2
         assert summary["closed_cancelled"] == 1
@@ -7324,16 +7315,16 @@ class TestAutodevLoop:
 
     def test_finalize_done_all_implemented_has_no_suffix(self, data: dict, tmp_path: Path) -> None:
         (tmp_path / "autodev-staged.txt").write_text("FEAT-1\n")
-        env = self._stub_statuses(tmp_path, {"FEAT-1": "Completed"})
-        summary, out = self._run_finalize_done(data, tmp_path, env)
+        summary, out = self._run_finalize_done(data, tmp_path, {"FEAT-1": "Completed"})
         assert (summary["closed_implemented"], summary["closed_cancelled"]) == (1, 0)
         assert "cancelled" not in [ln for ln in out.splitlines() if ln.startswith("Passed")][0]
 
     def test_finalize_done_all_cancelled_is_no_op(self, data: dict, tmp_path: Path) -> None:
         """ENH-3613 Option B: an all-cancelled run implemented nothing -> no-op, exit 0."""
         (tmp_path / "autodev-staged.txt").write_text("FEAT-1\nFEAT-2\n")
-        env = self._stub_statuses(tmp_path, {"FEAT-1": "Cancelled", "FEAT-2": "Cancelled"})
-        summary, _ = self._run_finalize_done(data, tmp_path, env)
+        summary, _ = self._run_finalize_done(
+            data, tmp_path, {"FEAT-1": "Cancelled", "FEAT-2": "Cancelled"}
+        )
         assert self._last_returncode == 0
         assert summary["verdict"] == "no-op"
         assert (summary["closed"], summary["closed_implemented"]) == (2, 0)
@@ -7342,16 +7333,16 @@ class TestAutodevLoop:
     def test_finalize_done_all_cancelled_with_not_started(self, data: dict, tmp_path: Path) -> None:
         (tmp_path / "autodev-staged.txt").write_text("FEAT-1\n")
         (tmp_path / "autodev-not-started.txt").write_text("FEAT-9  notstarted_x\n")
-        env = self._stub_statuses(tmp_path, {"FEAT-1": "Cancelled"})
-        summary, _ = self._run_finalize_done(data, tmp_path, env)
+        summary, _ = self._run_finalize_done(data, tmp_path, {"FEAT-1": "Cancelled"})
         assert summary["verdict"] == "not_started"
 
     def test_finalize_done_cancelled_plus_unverified_is_phantom(
         self, data: dict, tmp_path: Path
     ) -> None:
         (tmp_path / "autodev-staged.txt").write_text("FEAT-1\nFEAT-2\n")
-        env = self._stub_statuses(tmp_path, {"FEAT-1": "Cancelled", "FEAT-2": "Open"})
-        summary, _ = self._run_finalize_done(data, tmp_path, env)
+        summary, _ = self._run_finalize_done(
+            data, tmp_path, {"FEAT-1": "Cancelled", "FEAT-2": "Open"}
+        )
         assert self._last_returncode == 1
         assert summary["verdict"] == "phantom"
         assert summary["closed_cancelled"] == 1
@@ -7391,7 +7382,9 @@ class TestAutodevLoop:
             for name, st in states.items()
             if "done" in (st.get("next"), st.get("on_yes"), st.get("on_no"), st.get("on_error"))
         ]
-        assert only_done_edge == ["finalize_done"], only_done_edge
+        # finalize_step_capped is the on_max_steps handler: it writes summary.json
+        # itself, and the executor never runs its routing target.
+        assert only_done_edge == ["finalize_done", "finalize_step_capped"], only_done_edge
 
     def test_finalize_done_reports_rate_limited_stop_with_pending(
         self, data: dict, tmp_path: Path
@@ -7402,21 +7395,13 @@ class TestAutodevLoop:
         (run_dir / "autodev-stop-reason").write_text("rate_limit")
         (run_dir / "autodev-queue.txt").write_text("FEAT-301\nFEAT-302\n")
         (run_dir / "autodev-inflight").write_text("FEAT-300")
-        state = data["states"].get("finalize_done", {})
-        script = (
-            state.get("action", "")
-            .replace("${context.run_dir}", str(run_dir))
-            .replace(QUALITY_GATE_REF, "false")
-        )
-        script = script.replace("$${", "${")
-        result = subprocess.run(["bash", "-c", script], cwd=run_dir, capture_output=True, text=True)
-        assert result.returncode == 0, result.stderr
-        summary = json.loads((run_dir / "summary.json").read_text())
+        summary, out = self._run_finalize_done(data, run_dir)
+        assert self._last_returncode == 0
         assert summary["verdict"] == "rate_limited"
         assert summary["stop_reason"] == "rate_limit"
         assert summary["pending"] == 2
         assert summary["abandoned"] == 1
-        assert "FEAT-301,FEAT-302" in result.stdout
+        assert "FEAT-301,FEAT-302" in out
 
     # --- ENH-2989: Phase-1-not-reached discriminator -------------------------
 
@@ -7616,9 +7601,13 @@ class TestAutodevLoop:
     def test_finalize_done_sources_proof_gate_infra_ledger(self, data: dict) -> None:
         """BUG-3603: finalize_done must read autodev-proof-gate-infra.txt — without
         this, a pre-implement gate helper failure vanishes from summary.json with
-        no trace (the same blind spot ENH-2404 fixed for gate_blocked)."""
+        no trace (the same blind spot ENH-2404 fixed for gate_blocked). The read
+        lives in little_loops.autodev_summary, which finalize_done calls."""
+        from little_loops import autodev_summary
+
         action = data["states"].get("finalize_done", {}).get("action", "")
-        assert "autodev-proof-gate-infra.txt" in action, (
+        assert AUTODEV_SUMMARY_CMD in action
+        assert autodev_summary.PROOF_GATE_INFRA == "autodev-proof-gate-infra.txt", (
             "finalize_done must source autodev-proof-gate-infra.txt to surface "
             "proof_gate_infra (BUG-3603)"
         )
@@ -7653,24 +7642,8 @@ class TestAutodevLoop:
         run_dir = tmp_path
         (run_dir / "autodev-staged.txt").write_text("FEAT-200\n")
         (run_dir / "autodev-not-started.txt").write_text("FEAT-1  not_ready\n")
-        script_path = run_dir / "ll-issues"
-        script_path.write_text(
-            '#!/bin/sh\nif [ "$1" = "show" ]; then echo \'{"status": "Done"}\'; fi\n'
-        )
-        script_path.chmod(0o755)
-        env = dict(**{"PATH": f"{run_dir}:{os.environ['PATH']}"})
-        state = data["states"].get("finalize_done", {})
-        script = (
-            state.get("action", "")
-            .replace("${context.run_dir}", str(run_dir))
-            .replace(QUALITY_GATE_REF, "false")
-        )
-        script = script.replace("$${", "${")
-        result = subprocess.run(
-            ["bash", "-c", script], cwd=run_dir, capture_output=True, text=True, env=env
-        )
-        assert result.returncode == 0
-        summary = json.loads((run_dir / "summary.json").read_text())
+        summary, _ = self._run_finalize_done(data, run_dir, {"FEAT-200": "Done"})
+        assert self._last_returncode == 0
         assert summary["verdict"] == "success"
         assert summary["not_started"] == 1
 
@@ -7757,19 +7730,8 @@ class TestAutodevLoop:
         run_dir = tmp_path
         (run_dir / "autodev-staged.txt").write_text("FEAT-1\n")
         (run_dir / "autodev-unverified.txt").write_text("FEAT-1  impl_exit0_not_closed\n")
-        script_path = run_dir / "ll-issues"
-        script_path.write_text(
-            '#!/bin/sh\nif [ "$1" = "show" ]; then echo \'{"status": "Open"}\'; fi\n'
-        )
-        script_path.chmod(0o755)
-        env = {"PATH": f"{run_dir}:{__import__('os').environ['PATH']}"}
-        script = data["states"]["finalize_done"]["action"]
-        script = script.replace("${context.run_dir}", str(run_dir)).replace("$${", "${")
-        result = subprocess.run(
-            ["bash", "-c", script], cwd=run_dir, capture_output=True, text=True, env=env
-        )
-        assert result.returncode != 0
-        summary = json.loads((run_dir / "summary.json").read_text())
+        summary, _ = self._run_finalize_done(data, run_dir, {"FEAT-1": "Open"}, "true")
+        assert self._last_returncode != 0
         assert summary["verdict"] == "phantom"
         assert summary["not_closed"] == 1
         lines = (run_dir / "autodev-unverified.txt").read_text().splitlines()
@@ -8627,18 +8589,23 @@ class TestAutodevLoop:
         assert "--children-file" in children_branch
         assert "git mv" not in action, "the completed/ move is owned by finalize-decomposition now"
 
-    def test_done_surfaces_autodev_inflight_warning(self, data: dict) -> None:
+    def test_done_surfaces_autodev_inflight_warning(self, data: dict, tmp_path: Path) -> None:
         """finalize_done must read autodev-inflight and emit a warning when non-empty.
 
         BUG-2813: the action moved off the bare `done` terminal (never executes)
-        onto the penultimate `finalize_done` state.
+        onto the penultimate `finalize_done` state, whose logic now lives in
+        little_loops.autodev_summary; the warning is the `inflight_at_finalize`
+        Unverified entry.
         """
-        state = data["states"].get("finalize_done", {})
-        action = state.get("action", "")
-        assert "autodev-inflight" in action, (
+        run_dir = tmp_path
+        (run_dir / "autodev-inflight").write_text("FEAT-77\n")
+        summary, out = self._run_finalize_done(data, run_dir)
+        assert summary["abandoned"] == 1, (
             "finalize_done must read autodev-inflight so the user knows which issue "
             "was in-flight at loop termination (BUG-1226)"
         )
+        unverified = [ln for ln in out.splitlines() if ln.startswith("Unverified")]
+        assert unverified and "FEAT-77  inflight_at_finalize" in unverified[0]
 
     # BUG-1230: recheck_after_size_review — score check after size-review
     # declines to decompose. Routes to implement_current on pass so leaf-sized
@@ -17856,18 +17823,20 @@ class TestAutodevAuthGuard:
         run_dir = tmp_path
         (run_dir / "autodev-staged.txt").write_text("FEAT-0001\n")
         (run_dir / "autodev-inflight").write_text("FEAT-0001")
-        script_path = run_dir / "ll-issues"
-        script_path.write_text(
-            '#!/bin/sh\nif [ "$1" = "show" ]; then echo \'{"status": "Open"}\'; fi\n'
-        )
-        script_path.chmod(0o755)
-        env = dict(**{"PATH": f"{run_dir}:{os.environ['PATH']}"})
-        state = data["states"].get("finalize_done", {})
-        script = state.get("action", "").replace("${context.run_dir}", str(run_dir))
-        script = script.replace("$${", "${")
-        result = subprocess.run(
-            ["bash", "-c", script], cwd=run_dir, capture_output=True, text=True, env=env
-        )
+        # finalize_done's logic lives in little_loops.autodev_summary.
+        import contextlib
+        import io
+
+        from little_loops import autodev_summary
+
+        assert AUTODEV_SUMMARY_CMD in data["states"]["finalize_done"]["action"]
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            autodev_summary.main(
+                ["--run-dir", str(run_dir)],
+                status_of=lambda issue_id: "open" if issue_id == "FEAT-0001" else "",
+            )
+        stdout = buf.getvalue()
         unverified_lines = [
             line
             for line in (run_dir / "autodev-unverified.txt").read_text().splitlines()
@@ -17881,10 +17850,9 @@ class TestAutodevAuthGuard:
         assert summary.get("abandoned"), (
             f"abandoned must stay truthy even though the duplicate line was suppressed: {summary!r}"
         )
-        unverified_line = [ln for ln in result.stdout.splitlines() if ln.startswith("Unverified")]
+        unverified_line = [ln for ln in stdout.splitlines() if ln.startswith("Unverified")]
         assert unverified_line and "(1)" in unverified_line[0], (
-            f"UNVERIFIED_COUNT must not double-count the residual sentinel; "
-            f"stdout: {result.stdout!r}"
+            f"UNVERIFIED_COUNT must not double-count the residual sentinel; stdout: {stdout!r}"
         )
 
     def test_autodev_implement_current_failure_chain_clears_inflight(self, data: dict) -> None:
