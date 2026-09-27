@@ -277,6 +277,8 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_audit_loop_run_skill.py` — `test_skill_step6a_reads_closed_implemented_cancelled_keys` (:168) is the pin pattern for a new key paragraph in the skill [Agent 4 finding]
 - `scripts/tests/test_ll_issues_check_gate.py` (:382-392) pins `init` truncation and the proof-gate ledger (the `autodev-prepared.txt` pre-create it would have interacted with is superseded, 2026-09-27 review) [Agent 1 finding]
 - Marker-disposition gate has no direct precedent; template is `TestMr11MarkerSet.test_marker_set_matches_enumeration` (`test_builtin_loops.py` ~:20795, bidirectional set-equality) plus a whole-file `read_text()` check for comment-only references (`test_autodev_loop.py:200-203`). Dead-marker rows that would fail today: `autodev-pre-spike-readiness.txt` (~`autodev.yaml:2076`) and `autodev-design-gate-failed` (~:170), both comment-only [Agent 3 finding]
+- `scripts/tests/test_run_record.py` `TestTerminalExecution::test_mark_rate_limit_infra` (:661-667, assertion `:665`) and `TestTerminalExecution::test_classify_terminal_quality_is_blocked` (:717-744, assertion `:743`) — both assert the literal `refine-terminal-class` file content via subprocess execution of `refine-to-ready-issue.yaml` states; the issue's existing `test_run_record.py (:570, :579, :657)` citation covers only `test_record_gate_unmet` (a different test in the same `TestTerminalExecution` class) — these two were not previously listed and break when the sentinel write is removed [Agent 3 finding, verified by direct read, 2026-09-27]
+- `scripts/tests/test_prepare_issue.py:105-117` (`TestStructure::test_prep_apply_is_the_only_terminal_writer`) — structural gate enumerating which `prepare-issue.yaml` states call `ll-issues prep apply`; distinct from the already-cited `:162`/`:240`/`:280-287` (the `MISSING`-route tests). The call-site set shouldn't change from this issue, but the gate should be checked and kept green [Agent 3 finding, 2026-09-27]
 
 ### Codebase Research Findings
 
@@ -329,6 +331,8 @@ _Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
 ### Dependent Files (Callers/Importers)
 
 _Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/issues/run_record.py:65` — the `--legacy-class` argparse `help=` text names `refine-terminal-class` directly ("The refine-terminal-class token this terminal just wrote... omit on the done paths (no class file is written there)"); once the sentinel file is removed entirely (no path writes a class file anymore), this help string is stale and needs rewording — a source-code touchpoint distinct from its doc mirror at `docs/reference/CLI.md:2426,2432` [Agent 1 finding, 2026-09-27]
+- `scripts/little_loops/loops/prepare-issue.yaml:178,188` — real shell call sites invoking `ll-issues prep apply` (`prep_apply`) in production, not previously listed as a caller anywhere in this Integration Map [Agent 1 finding, 2026-09-27]
 - `scripts/little_loops/loops/auto-refine-and-implement.yaml` — `init` deletes the shared run-dir `summary.json` (:95) and `finalize` overwrites it (:1255), so autodev's summary.json is transient on the sprint path; `finalize` reads six ledger files plus `autodev-queue.txt` (`recheck_set` :477 residual fold-back) — any ledger in the removal set orphans its counts, and if the child stops writing `autodev-decision-unresolved.txt`, `DECISION_UNRESOLVED` undercounts child-side unresolved [Agent 2 finding]
 - `scripts/little_loops/loops/sprint-refine-and-implement.yaml` — `read_outcome` cats and `record_crash` overwrites the same shared `summary.json` path (third writer) [Agent 2 finding]
 - `scripts/little_loops/loops/oracles/resolve-decision.yaml` — writes `decide-options-deposited-<ID>` (:56) and `decide-rate-limited-<ID>` handshake markers autodev reads (`dequeue_next`, `check_decide_rate_limited`); not `autodev-`-prefixed, so the AC's "No `autodev-*` preparation marker" wording does not cover them — they remain the cross-loop run-dir contract after this issue [Agent 2 finding]
@@ -359,6 +363,8 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Update `scripts/little_loops/loops/README.md` rows and `docs/guides/LOOPS_REFERENCE.md` marker references as markers are removed
 - Correct two stale premises above: MR-13 lives in `fsm/validation/evaluator_rules.py` (`_ABANDONED_KEY_EMIT_RE` :146; there is no `fsm/validation.py`) and its shell scan is already vacuous after ENH-3619 (`test_autodev_summary.py:254` covers the `abandoned` key); the interpolation baseline holds two autodev entries (`check_blockers_at_dequeue`, `check_reconcile_needed`), not four, because ENH-3611 removed `check_spike_needed*`
 - ~~Check the `autodev-prepared.txt` pre-state's ID interpolation against MR-11~~ Superseded (2026-09-27 review): no pre-state
+- Update `scripts/little_loops/cli/issues/run_record.py:65` — reword the `--legacy-class` help text once no path writes a `refine-terminal-class` file (added by `/ll:wire-issue`, 2026-09-27)
+- Flip `scripts/tests/test_run_record.py::TestTerminalExecution::test_mark_rate_limit_infra` (:665) and `::test_classify_terminal_quality_is_blocked` (:743) to absence assertions alongside the already-planned `test_record_gate_unmet` flip (added by `/ll:wire-issue`, 2026-09-27)
 - Update the fixtures/`SUMMARY_BASE` key sets and `docs/reference/API.md` in the same commit as the two new keys (no `test_fsm_topology.py` change)
 - Sweep `refine-terminal-class` comment mentions when the sentinel goes: `refine-to-ready-issue.yaml` (:135, :210, :1262, :1293, :1485, :1523), `autodev.yaml` (:501, :576, :599), `prepare-issue.yaml:75-77`
 - Nested runs never surface these keys: `auto-refine-and-implement.yaml` (:100, :1277) overwrites `summary.json` with its own printf and reads no `autodev-prepared` file; `sprint-refine-and-implement.yaml` (:45-59) is key-agnostic; document the "standalone autodev runs only" caveat as ENH-3613 did
@@ -580,6 +586,7 @@ _Added by manual review — 2026-09-26_
 - The confidence scores (75/55) predate these changes. Re-score after ENH-3606 lands.
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-27T23:34:09 - `bfc7c299-f46e-4b01-958a-fe298468cb8a.jsonl`
 - `/ll:refine-issue:gap-analysis` - 2026-09-27T22:55:35 - `a2f463b8-cf83-4388-84d1-2b97de36c16c.jsonl`
 - `/ll:confidence-check` - 2026-09-27T22:40:21 - `a2f463b8-cf83-4388-84d1-2b97de36c16c.jsonl`
 - `/ll:reconcile-issue` - 2026-09-27T22:36:17 - `a2f463b8-cf83-4388-84d1-2b97de36c16c.jsonl`
