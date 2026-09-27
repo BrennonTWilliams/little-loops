@@ -23,6 +23,8 @@ score_change_surface: 25
 
 Add a built-in, general-purpose FSM loop `continue-task` that takes a continuation prompt and keeps working it until done, handling context exhaustion with automatic `/ll:handoff` → spawned `/ll:resume` sessions. Input is optional: with no input, the loop starts from the newest `.ll/ll-continue-prompt.md`.
 
+**Status of scope (review 2026-09-26):** the loop shipped in e4556ec95 (`scripts/little_loops/loops/continue-task.yaml`). Remaining work: (1) a loop-local fingerprint gate for `stall_check` in place of `diff_stall_gate`; (2) clear stale `tests.txt` in `run_tests`; (3) guard `work`'s `/ll:resume` re-entry against foreign handoffs; (4) dedicated tests; (5) the `docs/guides/LOOPS_REFERENCE.md` row. Do NOT re-implement the loop.
+
 ## Current Behavior
 
 Continuing a handed-off session is manual: open a new session, run `/ll:resume`, repeat at every handoff. `general-task` automates handoff/resume but only inside its own plan/DoD pipeline and requires an explicit task input.
@@ -37,16 +39,21 @@ No built-in loop defaults its input to the handoff prompt. `general-task` is the
 
 ## Proposed Solution
 
-A thin loop (~5 states), decoupled from the Issue system:
+### As built (e4556ec95) — keep
 
-1. `load_prompt` (shell) — write `${context.input}` via quoted heredoc (BUG-2622 pattern from `prompt-across-issues.yaml` `init`). If empty, fall back to `.ll/ll-continue-prompt.md`, rejecting it when older than `continuation.prompt_expiry_hours` (default 24, same key `/ll:resume` reads). Print the source, mtime and first line for provenance. Fail clearly if neither is available. Snapshot the starting prompt to `${context.run_dir}/goal.md` — this pins the goal so repeated handoff summaries cannot drift it.
-2. `work` (prompt) — mark the pass start; run `/ll:resume` if the handoff file is newer than the pass marker (general-task's `pass-started.txt` freshness pattern), else work from `goal.md`. Keep `${context.run_dir}/progress.md` current (done / remaining / evidence). On the context-monitor threshold, update progress and run `/ll:handoff`.
-3. `run_tests` (shell, non-LLM signal) — run the resolved test command (explicit `context.test_cmd`, else `ll-config get project.test_cmd`); record exit code. Skip cleanly when none is configured.
-4. `check_done` (prompt + `llm_structured`) — judge `progress.md` evidence and the test exit code against the pinned `goal.md`, re-verifying claims by reading files / running commands. The worker's own "done" claim is never sufficient. A test *regression* (passed at baseline, fails now) forces NO mechanically in `run_tests`, before the LLM check; a suite already failing at baseline is advisory, so a pre-existing failure cannot pin the loop open.
-5. `stall_check` (`diff_stall_gate`, max_stall 3) after `work` — working tree unchanged across 3 passes routes to a partial summary.
-6. Terminals `done` / `partial` (summary via `on_max_steps` or stall) / `failed`.
+Thin loop, decoupled from the Issue system. 8 non-terminal states: `load_prompt` (shell: heredoc input capture per BUG-2622, handoff-file fallback rejected when older than `continuation.prompt_expiry_hours`, pins `goal.md`, resolves test cmd + records baseline exit) → `start_pass` (touches `pass-started.txt`, bumps `pass-count.txt`) → `work` (prompt; `/ll:resume` iff handoff `-nt` `pass-started.txt`; maintains `progress.md`; `/ll:handoff` at threshold) → `stall_check` → `run_tests` (shell; exit 1 only on regression = baseline 0 and now non-zero; pre-existing failure advisory) → `check_done` (prompt; skeptical judge writes one word to `verdict.txt`) → `read_verdict` (shell: `grep -qx 'DONE'`) → `done`, else back to `start_pass`. `summarize_partial` → `partial` on stall or `on_max_steps`. Top level: `on_handoff: spawn`, `max_steps: 150`, no `required_inputs`.
 
-Top level: `on_handoff: spawn`, `max_steps` + `on_max_steps` cap, input NOT in `required_inputs` (otherwise `ll-loop run` rejects the empty-input fallback case before `load_prompt` runs).
+### Changes (review 2026-09-26)
+
+1. **Replace `stall_check`'s `diff_stall_gate`** with a loop-local shell fingerprint gate. `evaluate_diff_stall` keeps its state in `.loops/tmp/ll-diff-stall-_root_.*`, shared across runs and loops and never reset, and snapshots `git diff --stat`, which ignores commits, staged changes, untracked files and same-line-count edits (BUG-3627). Consequences for this loop: a fresh run can stall on pass 1 from a previous run's counter, and a worker that commits each pass is judged stalled. New gate, modeled on `general-task.yaml` `final_verify_spin_gate` (:423):
+   - `load_prompt` records `git rev-parse HEAD` to `${context.run_dir}/baseline-ref.txt` (when in a git repo).
+   - `stall_check` (shell) hashes `git diff <baseline-ref> -- . ':(exclude).loops/'` plus untracked paths + contents (same `untracked()` helper, explicit `.loops/` exclusion since `ll-init` ships no `.loops/` gitignore) into `${context.run_dir}/stall-fingerprint.txt`; identical fingerprint increments `stall-counter.txt`, a change resets it. Emit the count and gate with `output_numeric lt 3` (keep the existing "3 identical passes" budget). Route `yes → run_tests`, `no → summarize_partial`, `on_error → run_tests`.
+   - Non-git fallback: no fingerprint possible — treat every pass as progress (the `max_steps` cap still bounds the run). Say so in a comment.
+   - Local shell vars unbraced (`"$FP"`), per the FSM-interpolates-first rule.
+2. **`run_tests`: clear stale `tests.txt`.** Add `rm -f "$RUN_DIR/tests.txt"` next to the `verdict.txt` removal, so an `on_error` (timeout) route into `check_done` cannot read a previous pass's `PASS`. `check_done`'s prompt already treats a missing `tests.txt` as no test signal only implicitly — add one line: "If tests.txt is missing, the test run did not complete; do not treat tests as passing."
+3. **Guard `work`'s re-entry against foreign handoffs.** `.ll/ll-continue-prompt.md` is shared: any other session's `/ll:handoff` (or the PreCompact hook) during a pass makes the `-nt` check fire and `/ll:resume` load unrelated notes. Tighten the check to also require the run dir in the handoff text:
+   `[ .ll/ll-continue-prompt.md -nt ${context.run_dir}/pass-started.txt ] && grep -qF '${context.run_dir}' .ll/ll-continue-prompt.md && echo RESUME`
+   and tell the worker, in the handoff-chain paragraph, to include the literal run dir path (`${context.run_dir}`) in its handoff notes. Fail-safe: if a handoff omits it, the session works from `goal.md` + `progress.md` + `done-check.md`, which carry the durable state anyway.
 
 ### Codebase Research Findings
 
@@ -60,7 +67,7 @@ As-built deltas vs this section (implementation landed in e4556ec95; constraints
 
 > **Selected:** Option A — `max_steps` + stall gate already bound passes with no distinct failure mode for a second budget; dropping the dead knob restores the declare-then-document convention.
 
-**Option B**: Implement the `max_passes` knob — declare it in the loop's `context:` block and cap passes in `start_pass` against `pass-count.txt` — so the documented example works as written.
+**Option B**: Implement the `max_passes` knob — declare it in the loop's `context:` block and cap passes in the start_pass state against the pass-count.txt counter — so the documented example works as written.
 
 **Recommended**: Option A — `max_steps` and the stall gate already bound runaway passes; a second overlapping budget adds config surface with no distinct failure mode. Option B remains cheap if a per-pass budget is ever wanted.
 
@@ -111,6 +118,14 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_continue_task_loop.py` — NEW dedicated test file (or a `TestContinueTaskLoop` class in `test_builtin_loops.py`, `TestSpikeGateLoop` at :13503 is the shape): `load_prompt` shell-level cases (explicit input → `goal.md` + `PROMPT_SOURCE: input`; fresh handoff + empty input → `PROMPT_MTIME`/`PROMPT_FIRST_LINE` provenance; stale handoff → exit 1 naming `continuation.prompt_expiry_hours`; neither source → exit 1 usage; whitespace-only input falls through; non-numeric/missing expiry defaults to 24), `required_inputs`-absence (`assert not data.get("required_inputs")`, precedent at :6019), and `read_verdict` gate (DONE / NOT_DONE / missing / whitespace vs `grep -qx`). No existing test asserts any of the loop's strings — these establish the contracts [Agent 3 finding]
+
+_Review 2026-09-26 additions:_
+- `run_tests` cases (AC3's mechanism — previously unplanned): baseline `0` + command now fails → exit 1, `TEST_STATUS: REGRESSED`, `done-check.md` overwritten with the output tail; baseline non-zero + fails → exit 0, `FAILING (pre-existing)`; empty `resolved-test-cmd.txt` → exit 0, `SKIP`; passing → `PASS`; `verdict.txt` and `tests.txt` removed at start. Plus `load_prompt` baseline recording: a command exiting 127 leaves `baseline-exit.txt` = `SKIP`.
+- New `stall_check` cases: identical tree across passes → counter 1, 2, 3 → exit 0 with `3` on stdout (gate `no`); a pass that only commits, only adds an untracked file, or makes a same-line-count edit resets to 0; changes under `.loops/` do not reset; non-git dir → progress. Use a real `git init` tmp repo.
+- `work` re-entry guard: assert the action contains the `grep -qF` run-dir clause (string-level; the prompt itself isn't executed).
+- **Harness pitfall — `:shell` refs**: the `_run` helper in `test_spike_verdict_routing.py:36` strips `:shell}` → `}` without quoting. For `CMD=${context.test_cmd:shell}` with `pytest -x`, that yields `CMD=pytest -x` (runs `-x`). Substitute `:shell` refs with `shlex.quote(value)` (and `''` for empty).
+- **Harness pitfall — real test suites**: every `load_prompt` test must set `test_cmd` explicitly (`true` / `false` / `exit 127`) or put a stub `ll-config` first on PATH. Otherwise the baseline step resolves `project.test_cmd` and can run a real pytest suite from inside the suite.
+- **Portability**: CI runs ubuntu + macOS legs. Assert `PROMPT_MTIME:` is present, never its format (`ls -l` columns differ across GNU/BSD and `TIME_STYLE`). Set stale mtimes with `os.utime`.
 
 ### Documentation
 - DONE as of e4556ec95: `scripts/little_loops/loops/README.md`, `docs/guides/LOOPS_GUIDE.md`, README loop count (108). REMAINING: the `docs/guides/LOOPS_REFERENCE.md` General-Purpose row (wiring block below; now an AC).
@@ -167,10 +182,12 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 
 ## Implementation Steps
 
-1. DONE as of e4556ec95 — `scripts/little_loops/loops/continue-task.yaml` exists; as built it has 8 non-terminal states and a `verdict.txt` / `read_verdict` gate instead of `llm_structured` (see findings). Verify against Acceptance Criteria rather than re-implementing.
-2. Registration DONE as of e4556ec95 (expected-set entry `scripts/tests/test_builtin_loops.py:300`, `scripts/little_loops/loops/README.md:93`, `docs/guides/LOOPS_GUIDE.md:391`, README loop count 108). REMAINING: the `docs/guides/LOOPS_REFERENCE.md` General-Purpose row — still missing (GAP finding).
-3. REMAINING: the dedicated tests — `load_prompt` shell-level cases (six), `required_inputs`-absence, `read_verdict` gate (case list in Integration Map → Tests wiring block). `ll-loop validate` coverage already exists (`test_all_validate_as_valid_fsm` + expected-set membership); no `load_prompt` test exists anywhere yet.
-4. Document that `on_handoff: spawn` is detached (`HandoffHandler._spawn_continuation` in `little_loops.fsm.handoff_handler` discards stdout), so the foreground view ends at the first handoff — follow along with `ll-loop status` / run logs.
+1. DONE as of e4556ec95 — `scripts/little_loops/loops/continue-task.yaml` exists; as built it has 8 non-terminal states and a `verdict.txt` / `read_verdict` gate instead of `llm_structured` (see findings). Do not re-implement.
+2. Registration DONE as of e4556ec95 (expected-set entry `scripts/tests/test_builtin_loops.py:300`, `scripts/little_loops/loops/README.md:93`, `docs/guides/LOOPS_GUIDE.md:391`, README loop count 108).
+3. TDD: write the dedicated tests first (`scripts/tests/test_continue_task_loop.py`) — `load_prompt` six cases + baseline-127, `run_tests` cases, new `stall_check` cases, `read_verdict` gate, `required_inputs`-absence, re-entry guard string (Integration Map → Tests). The `stall_check`, `tests.txt` and guard tests fail until step 4.
+4. Apply Proposed Solution → Changes 1–3 to `continue-task.yaml`: fingerprint `stall_check` (+ `baseline-ref.txt` in `load_prompt`), `rm -f tests.txt` + missing-tests line in `check_done`, run-dir-gated re-entry + handoff instruction in `work`. Update the header comment's step count if `stall_check` changes it (it stays 1 step/pass). Run `ll-loop validate continue-task`.
+5. Add the `docs/guides/LOOPS_REFERENCE.md` General-Purpose row (after `stepwise-task`, :79). End-user framing. Cover: input optional (newest `.ll/ll-continue-prompt.md`, rejected when older than `continuation.prompt_expiry_hours` — stricter than `/ll:resume`, which only warns); pinned goal; independent done-check; the spawned continuation is detached, so the foreground view ends at the first handoff — follow with `ll-loop status continue-task`. This closes the former step 4 (detached-spawn documentation); the YAML description already states it.
+6. Run the gates: `python -m pytest scripts/tests/test_continue_task_loop.py scripts/tests/test_builtin_loops.py scripts/tests/test_builtin_loop_interpolation.py scripts/tests/test_builtin_loop_hardcode_gate.py scripts/tests/test_docs_audience_gate.py`, then the full suite.
 
 ### Codebase Research Findings
 
@@ -194,8 +211,8 @@ _These touchpoints were identified by wiring analysis and must be included in th
 ## Impact
 
 - **Priority**: P3 - Workflow convenience; manual `/ll:resume` works today
-- **Effort**: Small - one thin YAML reusing existing handoff machinery, plus registration
-- **Risk**: Low - additive new loop; no changes to executor or existing loops
+- **Effort**: Small - three targeted edits to the shipped YAML, one test file, one doc row
+- **Risk**: Low - changes confined to `continue-task.yaml`; no executor or other-loop changes (the shared evaluator fix is BUG-3627)
 - **Breaking Change**: No
 
 ## Use Case
@@ -220,7 +237,11 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 
 - `ll-loop run continue-task` with no input and a fresh handoff file starts from that file and writes `goal.md`.
 - With no input and no (or stale) handoff file, the run fails at `load_prompt` with an actionable message.
-- `check_done` cannot pass on the worker's self-report alone; a test regression (passed at baseline, fails now) forces NO — pre-existing baseline failures are advisory.
+- The run reaches `done` only via `read_verdict` finding exactly `DONE` in `verdict.txt` (written by the separate `check_done` session); `run_tests` exits 1 (skipping `check_done`) only when the test command passed at baseline and fails now — a failure already present at baseline is reported as `FAILING (pre-existing)` and exits 0.
+- `stall_check` stall state lives only under `${context.run_dir}`: a fresh run never inherits another run's stall count, and a pass that only commits, only adds untracked files, or makes a same-line-count edit counts as progress. Three consecutive passes with an identical fingerprint route to `summarize_partial`.
+- `run_tests` removes `tests.txt` before running, so a timed-out test run cannot leave a previous pass's status for `check_done`.
+- `work` runs `/ll:resume` only when the handoff file is newer than `pass-started.txt` AND mentions this run's run dir.
+- `scripts/tests/test_continue_task_loop.py` covers the `load_prompt`, `run_tests`, `stall_check` and `read_verdict` cases listed under Integration Map → Tests, and passes on both GNU and BSD userlands.
 - Loop validates cleanly and appears in the built-in loop listings/tests.
 - Loop contains no Issue-system coupling.
 - `continue-task` has a row in `docs/guides/LOOPS_REFERENCE.md`'s General-Purpose table.
@@ -248,6 +269,8 @@ Remaining:
 ## Risks
 
 - `.ll/ll-continue-prompt.md` is a single shared file, overwritten by any session's `/ll:handoff` and by the PreCompact hook (`little_loops.hooks.pre_compact_handoff`). Mitigated by the staleness check, provenance printing, and the pinned `goal.md`.
+- The same shared file drives `work`'s mid-pass `/ll:resume` re-entry: an unrelated session's handoff written during a pass would otherwise be resumed into this run. Mitigated by Change 3 (resume only when the handoff mentions this run dir); fail-safe is working from `goal.md` / `progress.md`.
+- The loop previously used `diff_stall_gate`, whose cross-run cache and `--stat` signal produce false stalls (BUG-3627). Change 1 removes that dependency here; BUG-3627 fixes the evaluator for the other 11 loops.
 
 ## References
 
