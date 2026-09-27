@@ -5790,7 +5790,10 @@ class TestBug3295ContainmentCorpusDifferential:
     # ENH-3611 session (2026-09-26): grew again from issue-file editing
     # (total report count 574 -> 578), not a detector regression; the
     # constant name is kept to avoid churn.
-    _ENH_3602_TOTAL_REPORTS = 578
+    # ENH-3630 session (2026-09-27): grew again from issue-file editing
+    # (marking ENH-3630 Steps 1-4/6 acceptance criteria and logging Step 5
+    # remaining), not a detector regression (total report count 578 -> 585).
+    _ENH_3602_TOTAL_REPORTS = 585
 
     def test_previously_spurious_files_now_clear(self) -> None:
         from little_loops.issue_parser import _unapplied_decision
