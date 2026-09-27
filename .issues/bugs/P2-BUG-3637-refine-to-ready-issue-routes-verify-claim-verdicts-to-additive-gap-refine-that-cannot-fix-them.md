@@ -29,7 +29,9 @@ Claim-level verify findings are corrected (or deterministically classified as no
 
 ## Motivation
 
-[Why this issue matters - business value, user impact, technical debt cost]
+- Every `refine-to-ready-issue` run that hits a claim-correctable NON_VALID verdict burns its entire gate-refine budget on a no-op (`refine_followup` cannot touch the flagged facts) and fails `gate_unmet` without ever reaching `confidence_check` — the observed run cost ~50 minutes and ~$5 for zero progress.
+- `autodev.yaml` inherits this router, so the failure mode is not confined to manual `/ll:manage-issue` runs.
+- Fixing it recovers runs that are otherwise correct except for a stale `blocked_by`/status claim that landed mid-flight — a routine occurrence given how many issues resolve dependencies while a long refine run is in progress.
 
 ## Proposed Solution
 
@@ -47,22 +49,50 @@ Fallback (B), only if verify must stay read-only inside the loop: persist verify
 ## Integration Map
 
 ### Files to Modify
-- TBD - requires codebase analysis
+- `scripts/little_loops/cli/issues/check_verify_verdict.py` — `classify_verify_verdict()` gains a `CLAIMS_OUTDATED` branch
+- `scripts/little_loops/cli/issues/next_obligation.py` — `_verify_class()` / `select_next_obligation()` propagate the new token
+- `scripts/little_loops/loops/refine-to-ready-issue.yaml` — `route_pre_score_obligation` route table, new `check_claim_correction_budget` / `correct_claims` states
+- `commands/verify-issues.md` — §2C verdict rule and §2.5 check-mode persistence prose updated to match the new remedy path (no code change to the command itself)
+- `commands/refine-issue.md` — cited only as evidence that the existing additive-only contract (§5c) is unchanged by this fix; not modified
 
 ### Dependent Files (Callers/Importers)
-- TBD - use grep to find references
+- `scripts/little_loops/loops/autodev.yaml` / `scripts/little_loops/loops/prepare-issue.yaml` — check for an equivalent pre-score obligation route table that needs the same `VERIFY:CLAIMS_OUTDATED` branch (Implementation Step 4)
+- `scripts/little_loops/cli/issues/__init__.py` — `next-obligation` token mapping is surfaced through this CLI entry point
 
 ### Similar Patterns
-- TBD - search for consistency
+- `check_evidence_unverified` / `check_proposal_revision_budget` / `check_reconcile_limit` — existing one-shot-budget gate states in `refine-to-ready-issue.yaml` that `check_claim_correction_budget` should mirror (counter seeded in `resolve_issue`, exhaustion falls through to `check_gate_refine_limit`)
 
 ### Tests
-- TBD - identify test files to update
+- `scripts/tests/test_builtin_loops.py` — routing table coverage for the new `VERIFY:CLAIMS_OUTDATED` route and `ll-loop validate refine-to-ready-issue`
+- Unit test for `classify_verify_verdict()` distinguishing `CLAIMS_OUTDATED` from `NON_VALID`/`other`
+- Fixture issue with a stale status claim (e.g. `blocked_by` pointing at a `done` issue) reaching `confidence_check` end-to-end
 
 ### Documentation
-- TBD - docs that need updates
+- `commands/verify-issues.md` §2C / §2.5 prose (see Files to Modify)
 
 ### Configuration
-- N/A or list config files
+- N/A
+
+### Behavior Parity
+
+| File | Status |
+|---|---|
+| `commands/refine-issue.md` | Preserved — the Summary's "cannot delete or rewrite" clause describes `refine_followup`'s existing additive-only contract (§5c) as the *reason* this bug exists, not a change target. This fix does not modify `commands/refine-issue.md`; `refine_followup` keeps running unmodified for genuine research gaps (Proposed Solution A.4). |
+
+## Program Design
+
+### Types
+
+- `verify_verdict: Literal["VALID", "CLAIMS_OUTDATED", "NON_VALID", "EVIDENCE_UNVERIFIED", "PROPOSAL_UNSOUND", "DIRECTIVE_DRIFT"]` — new `CLAIMS_OUTDATED` value carved out of the current `NON_VALID` collapse (frontmatter field written by `/ll:verify-issues --check`)
+
+### Signatures
+
+- `classify_verify_verdict(verdict: object) -> str` (`scripts/little_loops/cli/issues/check_verify_verdict.py`) — extend the upper-value branch to return `"CLAIMS_OUTDATED"` for the OUTDATED/NEEDS_UPDATE case instead of falling through to `"other"`
+- `_verify_class(fm: dict[str, Any]) -> str` / `select_next_obligation(...)` (`scripts/little_loops/cli/issues/next_obligation.py`) — propagate the new class into a `"VERIFY:CLAIMS_OUTDATED"` token distinct from `"VERIFY:other"`
+
+### Call Path
+
+`route_pre_score_obligation` (`scripts/little_loops/loops/refine-to-ready-issue.yaml`) -> `next_obligation.select_next_obligation` -> `next_obligation._verify_class` -> `check_verify_verdict.classify_verify_verdict` -> route `"VERIFY:CLAIMS_OUTDATED"` -> `check_claim_correction_budget` (new state, counter seeded in `resolve_issue`) -> `correct_claims` (new state, `/ll:verify-issues ${issue_id} --auto`) -> `normalize_structure` -> `clear_verify_verdict` -> `route_pre_score_obligation` (re-entry)
 
 ## Implementation Steps
 
@@ -116,4 +146,6 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-27T18:07:47 - `45431681-0957-443f-9bca-12828c2ee935.jsonl`
+- `/ll:format-issue` - 2026-09-27T18:05:46 - `1bdd3eba-088f-4b15-88f8-1d11e0d8cb3b.jsonl`
 - `/ll:capture-issue` - 2026-09-27T17:40:28 - `4759cc5d-e905-4259-b830-49d49c1712bf.jsonl`
