@@ -7,11 +7,11 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-09-26'
 captured_at: '2026-09-26T22:48:52Z'
-confidence_score: 85
-outcome_confidence: 86
+confidence_score: 95
+outcome_confidence: 93
 score_complexity: 18
 score_test_coverage: 25
-score_ambiguity: 18
+score_ambiguity: 25
 score_change_surface: 25
 ---
 
@@ -224,6 +224,7 @@ _All three concerns were resolved in the 2026-09-26 review pass: resolver home i
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-27T01:00:41 - `954a6c66-234e-43ea-a547-7d4b23689c4a.jsonl`
 - `/ll:confidence-check` - 2026-09-27T00:18:55 - `68e35fb0-28ac-4604-989f-2d31cfc587a7.jsonl`
 - `/ll:wire-issue` - 2026-09-26T23:05:55 - `6cddab98-ff74-4434-89de-e1aeb0e2c3bb.jsonl`
 - `/ll:refine-issue` - 2026-09-26T22:52:32 - `242c13c2-daff-4514-b4c7-3c6299f5c0af.jsonl`
