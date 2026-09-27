@@ -229,8 +229,9 @@ class Facts:
     def needs_child_scan(self) -> bool:
         """Whether ``decide()`` might reach DETECT or POST_SIZE_REVIEW this call.
 
-        Both are reached only from a last-done ``RUN_CHILD`` or ``RESCORE`` step (see
-        ``_Decider.run()``'s dispatch); every other last-done kind, and pass start (no
+        DETECT is reached only from a last-done ``RUN_CHILD`` or ``RESCORE`` step;
+        POST_SIZE_REVIEW only from a last-done ``SIZE_REVIEW`` step (see
+        ``_Decider.run()``'s dispatch). Every other last-done kind, and pass start (no
         done fact yet), never reaches either. Used by :func:`snapshot_issue` to skip
         the project-wide child-provenance scan (ENH-3623 § Production additions item
         1: "make the snapshot lazy") on the steps that can't need it. A false
@@ -239,7 +240,11 @@ class Facts:
         real children, so this is a necessary-but-not-sufficient condition by design.
         """
         last = self.last_done()
-        return last is not None and last.step in (StepKind.RUN_CHILD.value, StepKind.RESCORE.value)
+        return last is not None and last.step in (
+            StepKind.RUN_CHILD.value,
+            StepKind.RESCORE.value,
+            StepKind.SIZE_REVIEW.value,
+        )
 
 
 @dataclass(frozen=True)

@@ -204,6 +204,44 @@ def test_inner_decomposed_without_children_falls_back_to_size_review() -> None:
     check(decide(LOW, log(start(), child(1, "DECOMPOSED"))), StepKind.SIZE_REVIEW)
 
 
+def test_post_size_review_finds_children_against_the_pass_baseline() -> None:
+    """ENH-3630 regression (found by the Step 5 parity harness, not a table test):
+
+    ``post_size_review`` reads ``self.children()`` exactly like ``detect``, but the
+    last-done step here is ``SIZE_REVIEW``, not ``RUN_CHILD``/``RESCORE``. Before this
+    fix, ``Facts.needs_child_scan`` didn't recognize that path, so ``snapshot_issue``
+    skipped the project-wide scan and a size-review decomposition's children were
+    silently invisible to ``post_size_review`` -- it fell through to
+    ``reconcile_check`` and rescored a parent that had already been split into
+    children.
+    """
+    snap = replace(LOW, child_candidates=frozenset({"ENH-2", "ENH-3"}))
+    facts = log(start(pre_ids=(ID, "ENH-2")), child(1), *cmd(2, StepKind.SIZE_REVIEW, guard2=False))
+    check(decide(snap, facts), StepKind.FINISH, outcome="decomposed", child_ids=["ENH-3"])
+
+
+@pytest.mark.parametrize(
+    ("kind", "expected"),
+    [
+        (StepKind.RUN_CHILD, True),
+        (StepKind.RESCORE, True),
+        (StepKind.SIZE_REVIEW, True),
+        (StepKind.WIRE, False),
+        (StepKind.RECONCILE, False),
+        (StepKind.GO_NO_GO, False),
+    ],
+)
+def test_needs_child_scan_covers_every_last_done_kind_that_calls_children(
+    kind: StepKind, expected: bool
+) -> None:
+    """Every ``decide()`` branch that calls ``self.children()`` (``detect`` via
+    RUN_CHILD/RESCORE, ``post_size_review`` via SIZE_REVIEW) must be covered here, or
+    ``snapshot_issue`` silently skips the scan and drops real children (see the
+    regression test above)."""
+    facts = log(start(), *cmd(1, kind))
+    assert facts.needs_child_scan() is expected
+
+
 def test_recheck_scores_hard_ands_design_bug3620_current_verdict() -> None:
     """BUG-3620: the design condition reads this visit's verdict; no marker recorded."""
     snap = replace(READY, obligation_post="NONE", design_failed=True)

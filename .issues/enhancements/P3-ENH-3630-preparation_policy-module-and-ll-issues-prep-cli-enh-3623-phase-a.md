@@ -3,10 +3,11 @@ id: ENH-3630
 type: ENH
 title: preparation_policy module and ll-issues prep CLI (ENH-3623 Phase A)
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-27'
 captured_at: '2026-09-27T04:45:18Z'
+completed_at: '2026-09-27T08:55:09Z'
 parent: EPIC-3565
 relates_to:
 - ENH-3621
@@ -365,6 +366,21 @@ before any `prep` code, so a bisect isolates any `run-record write` / `set-score
 
 ## Program Design
 
+### Deviations
+
+- 2026-09-27: Step 5's parity harness (`size_review_decomposition`) caught a real bug
+  in Step 1's `Facts.needs_child_scan()`: it gated the lazy child-provenance scan on
+  the last-done step being `RUN_CHILD`/`RESCORE` (the `detect()` path), but
+  `post_size_review()` also calls `self.children()` when the last-done step is
+  `SIZE_REVIEW` — a case `needs_child_scan()` didn't recognize. A size-review
+  decomposition's children were silently invisible to `post_size_review`, which fell
+  through to `reconcile_check` and rescored a parent that had already been split.
+  Fixed by adding `StepKind.SIZE_REVIEW.value` to `needs_child_scan()`'s tuple; pinned
+  by `test_needs_child_scan_covers_every_last_done_kind_that_calls_children` and
+  `test_post_size_review_finds_children_against_the_pass_baseline`
+  (`test_preparation_policy.py`). Not a signature/type change, so the
+  Types/Signatures below are unaffected.
+
 ### Types
 
 - `StepKind: enum` — `RUN_CHILD`, `WIRE`, `REFINE_GAP`, `RESCORE`, `RECONCILE`, `SIZE_REVIEW`, `GO_NO_GO`, `FINISH`, `STOP`
@@ -404,7 +420,7 @@ before any `prep` code, so a bisect isolates any `run-record write` / `set-score
   rewritten for ENH-3625/BUG-3620 rather than ported verbatim — see their docstrings.)
 - [x] Importing the pure layer (`decide`, `Step`, `StepKind`, `Facts`, `IssueSnapshot`)
   imports no `little_loops.cli` module (test).
-- [ ] Parity/differential tests run the policy (fixture dispatch loop + `policy_transform`
+- [x] Parity/differential tests run the policy (fixture dispatch loop + `policy_transform`
   as `autodev_transform`) against the existing YAML. Every difference is on an explicit
   allowance list, and each allowance names its source: an ENH-3606/ENH-3623 accepted
   change that a scenario actually exercises (today: change 1, scores-absent and
@@ -412,12 +428,27 @@ before any `prep` code, so a bisect isolates any `run-record write` / `set-score
   `READY`, size-review / resolved-parent `DECOMPOSED`, rescore-retry `READY`). Q1,
   BUG-3620 and BUG-3622 are **parity, not allowances** (fixed on main, so both sides
   agree). No vacuous allowances (`test_allowed_diffs_are_real_diffs` stays).
-- [ ] The measured parity/differential wall-clock is recorded in this issue, and the
-  differential set is env-gated if it exceeds 60 s.
-- [ ] The dispatch-loop fixture loads and validates, and its `max_steps` equals the
-  exported constant. **Not done** — ENH-3623 Phase A's Step 5 (dispatch-loop fixture,
-  harness extensions, parity/differential/resume tests) is not implemented in this
-  session; see the Session Log note below.
+  `test_preparation_policy_parity.py`: 21 pinned + 9 differential, all green. One new
+  allowance beyond the spike's four: `ladder_rate_limit_halts` — BUG-3622 fixed the
+  retry loop itself (both sides run it to exhaustion), but the terminal record still
+  differs (today forwards the inner run's stale `BLOCKED`; the policy's
+  `mark_rate_limited` writes a fresh `RETRYABLE_ERROR:rate_limited`). Two scenarios
+  rewritten per the plan: `h2_first_gate_skips_design` → `h2_first_gate_honors_design_then_size_review`
+  (ENH-3625 made *both* sides design-aware, so it stays a differential on the
+  post-size-review path, not a design-gate one) and `contradiction_masked_by_format_gaps`
+  → `contradiction_not_masked_by_format_gaps_bug3624` (Q1 fires the reconcile on both
+  sides now; the spike-era mask no longer exists).
+- [x] The measured parity/differential wall-clock is recorded in this issue, and the
+  differential set is env-gated if it exceeds 60 s. Measured: full `python -m pytest
+  scripts/tests/` (`-n logical`) went from 283.19 s to 306.15 s with
+  `test_preparation_policy_parity.py` added — **+23 s**, under the 60 s budget, so
+  neither the 9 differential tests nor the 21 pinned ones are env-gated; both run by
+  default.
+- [x] The dispatch-loop fixture loads and validates, and its `max_steps` equals the
+  exported constant. Ported to `scripts/tests/fixtures/loops/prepare-issue-policy.yaml`
+  (test-only, not `little_loops/loops/`); `test_preparation_policy_fixture.py` pins
+  `load_and_validate`, `max_steps == MAX_STEPS` (91), every slash state wired to
+  `mark_rate_limited`, and the two terminals.
 - [x] A design-failing `FINISH` records `BLOCKED`, not `READY` (the shared helper carries
   ENH-3625's check-design condition). (`write_typed_run_record` is the shared helper;
   pinned by `test_run_record.py::test_design_gate_failure_makes_done_record_blocked`,
@@ -430,20 +461,36 @@ before any `prep` code, so a bisect isolates any `run-record write` / `set-score
   the extracted reason-vs-status check (test).
 - [x] Fact log: appending the same `(pass, seq, kind)` twice writes one line; a replayed
   `dequeue_next` increment that skips a pass number is harmless (test).
-- [ ] Crash injection inside `prep apply`, between each of the ledger row, `set-status`,
+- [x] Crash injection inside `prep apply`, between each of the ledger row, `set-status`,
   run record and inflight clear writes, followed by a re-run, never double-appends a
-  ledger row and ends with one terminal. **Partial**: one crash point is covered
-  (`test_crash_after_row_before_status_write_then_replay_converges`); the other two
-  splits (status→run-record, run-record→inflight-clear) are not yet pinned.
+  ledger row and ends with one terminal. The `_DEFER_STOPS` branch's real write order is
+  `row → rm_inflight → set-status → run-record` (not the row→status→run-record→inflight
+  order this AC sketched — `rm_inflight` is unconditional with no progress mark of its
+  own, so it shares a boundary with the row→status split, not a separate one). Both real
+  splits are pinned: `test_crash_after_row_before_status_write_then_replay_converges`
+  (row, and inflight, before status) and the new
+  `test_crash_after_status_write_before_run_record_then_replay_converges` (status before
+  run-record). Plus, at the full-loop/resume level (not just the `prep apply` function):
+  `test_preparation_policy_resume.py` kills and resumes at every runner call of every
+  ladder state across six scenarios (232 crash points; 12 run by default, the full
+  matrix opt-in behind `LL_PREP_POLICY_RESUME_FULL=1`) and every one converges on one
+  terminal with no duplicated facts.
 - [x] `prep apply` with no open `FINISH`/`STOP` intent writes `RETRYABLE_ERROR:infra`, and
   writes the `refine-terminal-class` sentinel on every `failed`-bound terminal (pinned for
   the `ladder_error`/no-open-intent case; the `child_stop` terminal's sentinel behavior,
   ported verbatim from the spike, is not separately re-verified here).
-- [ ] `prep record` ignores a seeded stale `failure_terminal` capture and classifies from
-  the child's run record; an absent record means the child errored. **Not independently
-  verified** — `prep_record` structurally never reads a stale capture file (it only takes
-  `child_terminated_by`/`child_failure` as explicit args), but the "absent record ⇒
-  child errored" routing effect described here isn't pinned by a dedicated test.
+- [x] `prep record` ignores a seeded stale `failure_terminal` capture and classifies from
+  the child's run record; an absent record means the child errored. Made exact rather
+  than merely plausible: `prep_record` structurally never reads a stale capture file (no
+  such file exists for it to read — it only takes `child_terminated_by`/`child_failure` as
+  explicit CLI args), so that half holds by construction. The "absent record ⇒ child
+  errored" half only holds when the wrapper itself reports a non-terminal outcome
+  (`child_terminated_by != "terminal"`, e.g. a crash) — that alone drives `terminal="error"`
+  → `decide()`'s `inner_error` stop, independent of the run record. A clean
+  `child_terminated_by="terminal"` with no run record (`token="MISSING"`) is *not* an
+  error — the token only matters for the CANCELLED/DECOMPOSED checks in `after_child`, so
+  it falls through to the normal readiness gate. Both halves pinned in
+  `TestPrepRecordAbsentRunRecord` (`test_preparation_policy_writers.py`).
 - [x] The contradiction trigger reads `superseded_marker_count` even when format-check
   reports blocking gaps. (`test_markers_counted_even_when_format_check_has_a_blocking_gap`
   exercises `snapshot_issue()` itself, not just `decide()`.)
@@ -479,8 +526,55 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 **Open** | Created: 2026-09-27 | Priority: P3
 
+---
+
+## Resolution
+
+- **Action**: implement (Step 5 completion: dispatch-loop fixture, harness extensions,
+  parity/differential tests, resume matrix)
+- **Completed**: 2026-09-27
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/preparation_policy.py`: fixed `Facts.needs_child_scan()` to also
+  cover a last-done `SIZE_REVIEW` step (see Program Design § Deviations) — a real bug the
+  new parity harness caught.
+- `scripts/tests/autodev_harness.py`: ported the ENH-3621 spike's harness extensions
+  (`Crash.replay_same`, `AutodevResult.inner_calls`, `"state#N"` fault points).
+- `scripts/tests/fixtures/loops/prepare-issue-policy.yaml` (new): the dispatch-loop
+  fixture, test-only.
+- `scripts/tests/preparation_policy_harness.py` (new): `policy_transform` +
+  `run_policy`, targeting the fixture path.
+- `scripts/tests/test_preparation_policy_fixture.py` (new): fixture structural pins
+  (loads, `max_steps == MAX_STEPS`, every slash state wired to `mark_rate_limited`).
+- `scripts/tests/test_preparation_policy_parity.py` (new): 21 pinned + 9 differential
+  parity tests against `autodev.yaml`/`prepare-issue.yaml`.
+- `scripts/tests/test_preparation_policy_resume.py` (new): crash/resume matrix (12
+  default, 232 full behind `LL_PREP_POLICY_RESUME_FULL=1`).
+- `scripts/tests/test_preparation_policy.py`: added `test_post_size_review_finds_children_against_the_pass_baseline`
+  and `test_needs_child_scan_covers_every_last_done_kind_that_calls_children`.
+- `scripts/tests/test_preparation_policy_writers.py`: added
+  `test_crash_after_status_write_before_run_record_then_replay_converges` and
+  `TestPrepRecordAbsentRunRecord` (two tests).
+- `scripts/tests/test_issue_parser.py`: bumped the BUG-3295 corpus-report ceiling
+  578 → 585 (routine corpus growth from this session's issue-file edits, not a
+  detector regression — same succession pattern as the prior bumps in that test).
+
+### Verification Results
+- Tests: PASS (`python -m pytest scripts/tests/`: 26710 passed, 60 skipped, plus the
+  opt-in full resume matrix run separately and green)
+- Lint: PASS (`ruff check` / `ruff format --check` on every changed/new file)
+- Types: PASS (`python -m mypy scripts/little_loops/`; the 4 pre-existing
+  `cli/loop/cleanup.py` errors are unrelated and untouched by this issue)
+- Run: N/A (no user-facing CLI surface changed in Step 5; Step 4 already verified
+  `ll-issues prep --help`)
+- Integration: PASS (parity/differential tests are themselves the integration check
+  against the live `autodev.yaml`/`prepare-issue.yaml`)
+
+---
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-27T08:46:54 - `46a9113d-b3b9-4fd7-9b6b-6bd41249e696.jsonl`
 - `/ll:manage-issue` - 2026-09-27T07:17:14 - `ffe83340-64ab-4aa2-8e82-f0a8dee415ca.jsonl`
 - `/ll:manage-issue` - 2026-09-27T07:17:04 - `ffe83340-64ab-4aa2-8e82-f0a8dee415ca.jsonl`
 - `/ll:manage-issue (Steps 1-4, 6 of 6 implemented; Step 5 dispatch-loop fixture/parity/differential/resume tests remains)` - 2026-09-27T07:16:41 - `ffe83340-64ab-4aa2-8e82-f0a8dee415ca.jsonl`

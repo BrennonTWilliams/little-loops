@@ -103,6 +103,58 @@ class TestPrepStepReady:
         assert '"outcome": "ready"' in record
 
 
+class TestPrepRecordAbsentRunRecord:
+    """ENH-3630 Step 5: dedicated pin for the AC's "absent record" claim.
+
+    ``prep_record`` classifies ``terminal`` from ``child_terminated_by`` alone (see its
+    docstring: never from a stale capture file) -- there is no separate
+    ``failure_terminal`` capture file for it to read, seeded stale or otherwise, so that
+    half of the AC holds structurally. The other half ("an absent record means the
+    child errored") only holds when the wrapper itself reports a non-terminal outcome
+    (``child_terminated_by`` != ``"terminal"``, e.g. it crashed or was signalled): that
+    alone drives ``terminal="error"`` -> ``decide()``'s ``inner_error`` stop, regardless
+    of the run record. A clean ``child_terminated_by="terminal"`` with no run record
+    (``token="MISSING"``) is NOT an error -- the token only matters for the
+    CANCELLED/DECOMPOSED checks in ``after_child``, so it falls through to the normal
+    readiness gate. Both halves are pinned here so the claim is exact, not just plausible.
+    """
+
+    def test_non_terminal_wrapper_outcome_with_no_run_record_is_inner_error(
+        self, project: Path
+    ) -> None:
+        _write_issue(project, ID, frontmatter="confidence_score: 90\noutcome_confidence: 80\n")
+        run_dir = project / "run"
+        config = _config(project)
+        prep_step(config, ID, run_dir, readiness_threshold=85, outcome_threshold=65)
+        # No run-record written anywhere, and the wrapper reports it never reached a
+        # terminal (child_terminated_by defaults to "" -- e.g. a crash mid-refine).
+        done = prep_record(config, ID, run_dir, child_terminated_by="", child_failure="")
+        assert done is not None
+        assert done.payload["terminal"] == "error"
+        assert done.payload["token"] == "MISSING"
+        step = prep_step(config, ID, run_dir, readiness_threshold=85, outcome_threshold=65)
+        assert step.kind is StepKind.STOP
+        assert step.payload.get("outcome") == "inner_error"
+
+    def test_clean_terminal_with_no_run_record_is_not_an_error(self, project: Path) -> None:
+        _write_issue(project, ID, frontmatter="confidence_score: 90\noutcome_confidence: 80\n")
+        run_dir = project / "run"
+        config = _config(project)
+        prep_step(config, ID, run_dir, readiness_threshold=85, outcome_threshold=65)
+        # The wrapper says the child reached a real terminal cleanly, but nothing wrote
+        # a run record for it (e.g. a slash-command inner run with no writer).
+        done = prep_record(
+            config, ID, run_dir, child_terminated_by="terminal", child_failure="none"
+        )
+        assert done is not None
+        assert done.payload["terminal"] == "done"
+        assert done.payload["token"] == "MISSING"
+        # READY scores clear the first gate regardless of the (irrelevant) MISSING token.
+        step = prep_step(config, ID, run_dir, readiness_threshold=85, outcome_threshold=65)
+        assert step.kind is StepKind.FINISH
+        assert step.payload.get("outcome") == "ready"
+
+
 class TestPrepApplyDeferredWritesStatus:
     def _oversized_atomic_facts(self, run_dir: Path) -> None:
         """Hand-craft a pass whose open intent is a STOP:oversized_atomic (no waiver).
@@ -194,6 +246,52 @@ class TestPrepApplyCrashInjection:
         assert len(applied) == 1  # exactly one terminal
         content = (project / ".issues" / "enhancements" / f"P3-{ID}-test.md").read_text()
         assert "status: deferred" in content
+
+    def test_crash_after_status_write_before_run_record_then_replay_converges(
+        self, project: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """ENH-3630 Step 5: the second of the two real crash splits in this branch.
+
+        The ``_DEFER_STOPS`` branch's actual write order is ``row -> rm_inflight ->
+        set-status -> run-record`` (not the row->set-status->run-record->inflight-clear
+        order the AC text sketched -- ``rm_inflight`` has no progress mark of its own
+        and runs unconditionally right after the row, so the row-before-status test
+        above already exercises that boundary). This pins the remaining split: a crash
+        after ``mark("status")`` persists but before the run-record write, then a
+        replay that must not re-run ``set-status`` (idempotent) and must still end with
+        exactly one terminal record.
+        """
+        _write_issue(project, ID, frontmatter="confidence_score: 90\noutcome_confidence: 50\n")
+        run_dir = project / "run"
+        config = _config(project)
+        self._oversized_atomic_facts(run_dir)
+
+        import little_loops.cli.issues.run_record as run_record_mod
+
+        monkeypatch.setattr(
+            run_record_mod,
+            "write_typed_run_record",
+            lambda *a, **kw: (_ for _ in ()).throw(OSError("simulated crash")),
+        )
+        with pytest.raises(OSError, match="simulated crash"):
+            prep_apply(config, ID, run_dir, readiness_threshold=85, outcome_threshold=65)
+
+        content_after_crash = (
+            project / ".issues" / "enhancements" / f"P3-{ID}-test.md"
+        ).read_text()
+        assert "status: deferred" in content_after_crash  # set-status ran before the crash
+        assert not (run_dir / "autodev-inflight").exists()
+        assert load_facts(run_dir, ID).dones() == []  # no terminal recorded yet
+
+        monkeypatch.undo()
+        exit_code = prep_apply(config, ID, run_dir, readiness_threshold=85, outcome_threshold=65)
+        assert exit_code == 1
+        # set-status is not re-invoked on replay (mark("status") short-circuits it);
+        # deferred_by / deferred_reason would be stamped twice otherwise.
+        content_final = (project / ".issues" / "enhancements" / f"P3-{ID}-test.md").read_text()
+        assert content_final.count("status: deferred") == 1
+        applied = [f for f in load_facts(run_dir, ID).dones() if f.step in (StepKind.STOP.value,)]
+        assert len(applied) == 1  # exactly one terminal
 
 
 class TestPrepApplyNoOpenIntent:

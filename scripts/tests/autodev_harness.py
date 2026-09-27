@@ -253,6 +253,10 @@ class Crash:
     state: str | None = None
     occurrence: int = 1
     when: Literal["before", "after"] = "before"
+    #: ENH-3630: roll back the last scripted command's consumption (slash
+    #: response / inner run) at the crash, so a resumed replay of that command gets
+    #: the same scripted result (models a deterministic replay of the killed command).
+    replay_same: bool = False
 
 
 @dataclass(frozen=True)
@@ -319,6 +323,8 @@ class AutodevResult:
     resumed_terminated_by: str | None
     run_dir: Path
     project: Path
+    #: Issue id of every stub inner run actually executed (ENH-3630).
+    inner_calls: list[str] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -449,9 +455,12 @@ class ScriptedRunner:
         self.state_calls: dict[str, int] = {}
         self.faults_fired: set[str] = set()
         self.slash_log: list[str] = []
+        self.inner_log: list[str] = []
         self.unscripted: list[str] = []
         self.crash: Crash | None = scenario.crash
         self.crashed_at: dict[str, Any] | None = None
+        #: (counter dict, key) of the last scripted command consumed (Crash.replay_same).
+        self._consumed: tuple[dict[str, int], str] | None = None
 
     # -- crash -------------------------------------------------------------
 
@@ -476,7 +485,11 @@ class ScriptedRunner:
                 "when": when,
                 "action": action.splitlines()[0][:120] if action else "",
             }
+            replay_same = self.crash.replay_same
             self.crash = None  # one crash per run
+            if replay_same and self._consumed is not None:
+                counts, key = self._consumed
+                counts[key] -= 1
             raise HarnessCrash(f"harness crash at step {self.step} ({self.tracker.state})")
 
     # -- ActionRunner protocol ----------------------------------------------
@@ -486,12 +499,21 @@ class ScriptedRunner:
         state = self.tracker.state
         self.state_calls[state] = self.state_calls.get(state, 0) + 1
         self._maybe_crash("before", action)
-        if state in self.scenario.faults and state not in self.faults_fired:
-            self.faults_fired.add(state)
+        # ENH-3630: "state#N" faults the N-th runner call made in that state.
+        fault_key = next(
+            (
+                k
+                for k in (state, f"{state}#{self.state_calls[state]}")
+                if k in self.scenario.faults and k not in self.faults_fired
+            ),
+            None,
+        )
+        if fault_key is not None:
+            self.faults_fired.add(fault_key)
             result = ActionResult(
                 output=f"[HARNESS-FAULT] {state}",
                 stderr="",
-                exit_code=self.scenario.faults[state],
+                exit_code=self.scenario.faults[fault_key],
                 duration_ms=1,
             )
         elif is_slash_command:
@@ -512,6 +534,7 @@ class ScriptedRunner:
         self.slash_log.append(f"{skill} {target}".strip())
         n = self.slash_counts.get(skill, 0)
         self.slash_counts[skill] = n + 1
+        self._consumed = (self.slash_counts, skill)
         responses = self.scenario.slash.get(skill, ())
         if not responses:
             self.unscripted.append(f"slash:{skill}")
@@ -536,6 +559,8 @@ class ScriptedRunner:
         _, run_dir, issue_id, readiness, outcome = parts[:5]
         n = self.inner_counts.get(issue_id, 0)
         self.inner_counts[issue_id] = n + 1
+        self._consumed = (self.inner_counts, issue_id)
+        self.inner_log.append(issue_id)
         runs = self.scenario.inner_runs.get(issue_id, ())
         if not runs:
             self.unscripted.append(f"inner:{issue_id}")
@@ -1041,4 +1066,5 @@ def run_autodev(
         resumed_terminated_by=resumed_terminated_by,
         run_dir=run_dir,
         project=project,
+        inner_calls=list(runner.inner_log),
     )
