@@ -57,6 +57,7 @@ pip install little-loops
 | `little_loops.cli` | CLI entry points (package) |
 | `little_loops.parallel` | Parallel processing subpackage |
 | `little_loops.fsm` | FSM loop system subpackage |
+| `little_loops.autodev_summary` | `autodev` run finalization: staged-issue promotion, the `=== Autodev Summary ===` report, and `summary.json` (`python3 -m little_loops.autodev_summary`) |
 | `little_loops.loops` | Loop YAML utilities subpackage (`yaml_state_editor`: round-trip `extract_action`/`replace_action`) |
 | `little_loops.cli_args` | CLI argument parsing utilities |
 | `little_loops.sprint` | Sprint planning and execution |
@@ -12198,6 +12199,43 @@ def build_retry_command(target: str, config: BRConfig) -> str
 Builds the *differentiated* retry prompt. `expand_skill` now appends the `IMPERATIVE_TAIL` directive itself whenever args are non-empty, so this is a passthrough to the pre-expanded form — always the expanded form regardless of what the first attempt used, so an ll-parallel worker that opened with the slash form still gets the hardened prompt.
 
 Falls back to a plain `/ll:ready-issue <target>` re-roll when `expand_skill` returns `None`.
+
+## little_loops.autodev_summary
+
+Run finalization for the `autodev` built-in loop. Its `finalize_done` state, and the `finalize_step_capped` step-cap handler, run this module as `python3 -m little_loops.autodev_summary`:
+
+```bash
+python3 -m little_loops.autodev_summary --run-dir <run_dir> \
+  [--quality-gate true|false] [--stop-reason <reason>] [--project-root <dir>]
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--run-dir` | required | The loop's `${context.run_dir}` |
+| `--quality-gate` | `true` | The loop's `quality_gate` value. `false`, `0`, `no` and `off` (case-insensitive) switch the gate off |
+| `--stop-reason` | none | Overrides the `autodev-stop-reason` stamp. The step-cap handler passes `max_steps` |
+| `--project-root` | current directory | Project whose issue files supply each staged issue's status |
+
+**What it does**, in order:
+
+1. `promote_staged()` reads each ID in `autodev-staged.txt` and finds its issue file with the same resolver that `ll-issues show` uses. It reads the frontmatter `status` and lower-cases it. An ID with status `done` or `completed` is appended to `autodev-passed.txt`. When the quality gate is on, that happens only when `quality/<ID>.json` records `GATE_PASS` or `GATE_SKIP`. Otherwise the ID is ledgered as `quality_gate_failed`, `quality_gate_infra` or `quality_evidence_missing`. An ID with status `cancelled` is always promoted. Any other ID is appended to `autodev-unverified.txt` as a bare ID. No ID is appended to `autodev-unverified.txt` when a line there already starts with it.
+2. `build_summary()` counts the run-dir ledgers into an `AutodevSummary`. A residual `autodev-inflight` sentinel means the run abandoned that issue. The summary ledgers such an issue as `ID  inflight_at_finalize` unless the issue was promoted.
+3. `render_report()` returns the `=== Autodev Summary ===` block. The module prints this block to stdout.
+4. `write_summary()` writes `summary.json` atomically. The file holds one compact JSON line with the 16 keys of `AutodevSummary.KEYS`, in this order: `verdict`, `closed`, `not_closed`, `skipped`, `gate_blocked`, `decision_unresolved`, `not_started`, `inflight_unresolved`, `abandoned`, `stop_reason`, `pending`, `proof_gate_infra`, `closed_implemented`, `closed_cancelled`, `quality_failed`, `quality_gate_infra`.
+
+**Verdict** (`compute_verdict()`) is the first match in this list:
+
+1. `success`: at least one issue was implemented, nothing is unverified, and nothing was abandoned.
+2. `partial`: at least one issue was implemented.
+3. `phantom`: at least one issue is unverified or was abandoned.
+4. `not_started`: at least one issue was rejected in Phase 1.
+5. `no-op`: none of the above. An all-cancelled run is `no-op`, because cancelled closures count toward `closed` but not toward `closed_implemented`.
+
+The stop reason `rate_limit` then replaces the verdict with `rate_limited`, and the stop reason `max_steps` replaces it with `max_steps`. Any stop reason other than `completed` adds a `Stopped early: <reason> — pending (N): …` line to the report.
+
+**Exit codes**: `EXIT_OK = 0` (any verdict except `phantom`), `EXIT_PHANTOM = 1`, `EXIT_ERROR = 2` (the run directory is missing, or a ledger or `summary.json` cannot be written).
+
+**Python API**: `finalize(run_dir, *, quality_gate, status_of, stop_reason=None) -> (AutodevSummary, report)` runs steps 1 to 3. `issue_status_resolver(project_root)` returns the default `status_of` callable. `main(argv, *, status_of=None)` is the CLI entry point.
 
 ## little_loops.init.install_check
 
