@@ -12,8 +12,8 @@ relates_to:
 - ENH-3636
 - ENH-3623
 confidence_score: 100
-outcome_confidence: 89
-score_complexity: 14
+outcome_confidence: 90
+score_complexity: 15
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 25
@@ -236,6 +236,7 @@ were in effect to check against (`ll-issues decisions list --type rule
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-27T19:23:39 - `617b18f3-202b-4610-be95-e3e7537c77c8.jsonl`
 - `/ll:verify-issues` - 2026-09-27T19:19:41 - `2c6cabf6-8e36-428f-84cd-fbe8dd7ed1ef.jsonl`
 - `/ll:verify-issues` - 2026-09-27T19:13:48 - `77430911-8298-494f-9a26-f51a933d45b2.jsonl`
 - `/ll:confidence-check` - 2026-09-27T18:57:47 - `2c6cabf6-8e36-428f-84cd-fbe8dd7ed1ef.jsonl`
