@@ -43,7 +43,7 @@ The stall gate is the non-LLM progress signal that meta-loop rule (2) requires. 
   - **No-commit repos**: if `HEAD` does not resolve (`git rev-parse --verify HEAD` fails), fall back to `git diff` + `git diff --cached` and an empty `HEAD` component rather than returning `error` (fresh-repo generator loops such as `generative-art`, `canvas-sketch-generator` are the likely case). Non-git dir still returns `error` with the existing `"git diff failed"` string.
   - **Untracked hashing is bounded**: enumerate with `git ls-files -o --exclude-standard -z` (respects gitignore) and hash via `git hash-object` per file (as `final_verify_spin_gate` does) rather than reading contents into Python; skip `.loops/`.
 - Update the fragment description in `loops/lib/common.yaml`; behavior tests go in `TestDiffStallEvaluator` (`scripts/tests/test_fsm_evaluators.py`), not `TestDiffStallGateFragment`, which only checks fragment resolution.
-- File a follow-up issue for `evaluate_action_stall` (same shared `.loops/tmp` cache defect) so it is not lost.
+- Follow-up for `evaluate_action_stall` (same shared `.loops/tmp` cache defect) is tracked as BUG-3629.
 
 ## Program Design
 
@@ -153,7 +153,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Regenerate host skill mirrors (`ll-adapt --host <gemini|kimi-code|qwen> --apply`) after the `skills/` edit; run `ruff format` scoped to changed files only
 - Per-run key collisions: decided — include the state name in the key (see Proposed Solution); add a test with two same-scope diff_stall states in one `run_dir`
 - Sample the loops the research did not open (`vega-viz`, `pixi-data-viz`, `generative-art`, `openscad-model-generator`, `canvas-sketch-generator`, `harness-plan-research-implement-report`, `harness-multi-item`, `oracles/generator-evaluator`) and confirm each writes progress outside `.loops/` (now excluded); note any that do not
-- File the `evaluate_action_stall` follow-up issue
+- Follow-up BUG-3629 (`evaluate_action_stall`) already filed; share a state-dir/key helper with it
 - Docs checklist (do all, in one pass): `docs/generalized-fsm-loop.md`, `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md`, `docs/guides/LOOPS_GUIDE.md`, `docs/guides/LOOPS_REFERENCE.md`, `docs/reference/loops.md`, `docs/reference/API.md`, `docs/test-quality-audit.md`, `skills/create-loop/{loop-types,reference}.md` + `ll-adapt` mirrors
 
 ## Impact
@@ -181,7 +181,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - A repo with no commits does not return `error`; it fingerprints from `git diff` + `--cached` + untracked files.
 - Untracked files are hashed via `git hash-object` (no full-content reads) and `.loops/` is excluded.
 - Existing diff_stall tests updated (`TestDiffStallEvaluator`); new tests cover each case above.
-- Follow-up issue filed for `evaluate_action_stall`.
+- Follow-up issue filed for `evaluate_action_stall` (BUG-3629).
 
 ## Related
 
