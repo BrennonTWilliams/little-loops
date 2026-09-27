@@ -89,6 +89,12 @@ _Added by `/ll:refine-issue` — 2026-09-26 — based on codebase analysis:_
 - **Existing tests that assert the behavior this issue removes** (must be revised, not merely kept passing): `TestSrcDirDetection.test_no_package_marker_keeps_default` (expects `python_template.data["project"]["src_dir"]` i.e. `src/` in an empty tmp dir), `TestTestDirDetection.test_no_test_dir_keeps_default` (expects `"tests"` in an empty dir), `TestFocusDirsDetection.test_defaults_when_nothing_detected` (expects template `["src/","tests/"]` in an empty dir). Ambiguity test `test_two_top_level_package_dirs_ambiguous_keeps_default` expects `provenance == "default"` with candidates `{"scripts/","lib/"}` and must keep passing. Evidence strings `"adopted src_dir"` and `"adopted src_dir + detected tests/ directory"` are asserted verbatim by `TestFocusDirsEvidence` and must be preserved.
 - **Resolved — "left empty" vs `.`**: `build_config` treats empty as "keep template value", re-introducing the phantom dir, so `.` is the no-detection result (Expected Behavior updated). Spelling is `.` (not `./`): the go template already ships `.`, and consumers `rstrip("/")` either way.
 
+_Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
+
+- **AC #1's tsconfig example is now resolved, not open**: `_tsconfig_src_candidate` (`introspect.py:661`) already returns `.` for `include: ["**/*.ts"]` — the glob-char check `if any(ch in first for ch in "*?["): return "."` was added by BUG-3631's commit `85696dc57` and is asserted by `test_tsconfig_include_glob_returns_root` (`test_init_introspect.py:286`). The specific phantom-candidate string (`**/`) the AC names no longer arises from this code path. The general requirement is unaffected: `_introspect_src_dir` still adds `_pyproject_src_candidate`/`_tsconfig_src_candidate` output straight into `candidates` with no existence check, so a manifest naming a real-looking but nonexistent nested dir (e.g. `rootDir: "app"` with no `app/`) still produces an unfiltered candidate today. `_existing_dir` remains necessary for that case and for every template-default fallback, none of which BUG-3631 touched.
+- **Convention confirmation — helper placement**: `_existing_dir`/`_detect_root_layout`/`_find_nested_test_dir` are each called only from `_introspect_src_dir`/`_introspect_test_dir`/`_introspect_focus_dirs`, all within `introspect.py` — matching this module's existing precedent for helpers used only by its own `_introspect_*` functions (e.g. `_iter_candidate_dirs`, `_iter_top_level_package_dirs`, `_read_text`), which stay private module-level functions rather than being extracted to a new leaf module. `canonical_dir`/`dir_prefix` (`config/dirs.py`) were extracted to a separate module only because of a real circular-import constraint between `config/core.py` and `config/features.py` — a condition that does not apply here, so keeping the three new helpers inline in `introspect.py` (as already planned) is the codebase's established choice, not merely one of two equally-valid options.
+- **Skip-set composition idiom for `_find_nested_test_dir`**: `_SRC_CANDIDATE_SKIP_DIRS = _SKIP_DIRS | {"tests", "test"}` (`introspect.py:618`) is the existing pattern for deriving a specialized skip-set from the module's base `_SKIP_DIRS`; a nested-test-dir skip-set can follow the same `_SKIP_DIRS | {...}` composition rather than a new literal.
+
 ## Integration Map
 
 - `scripts/little_loops/init/introspect.py` — `introspect` (reorder: test_dir before focus_dirs), `_introspect_src_dir`, `_introspect_test_dir`, `_introspect_focus_dirs`; new `_existing_dir`, `_detect_root_layout`, `_find_nested_test_dir`
@@ -110,6 +116,15 @@ _Added by `/ll:refine-issue` — 2026-09-26 — based on codebase analysis:_
 - **Focus-dir interaction with `.`** (corrected in review): `_introspect_focus_dirs` de-duplicates test dirs with `name.startswith(fd)`; `"tests/".startswith(".")` is `False`, so an adopted `.` does **not** suppress `tests/`. The actual hazard is the opposite — `[".", "tests/"]` is redundant — so focus dirs are exactly `["."]` when src_dir is `.`.
 - **Downstream consumers of provenance**: `proposal.py` (`provenance_rows` hides default-provenance rows; `scan.focus_dirs` row shown only when non-default), `tui.py` (hints suppressed for `default`), `cli.py:_print_introspection_summary` (skips default values, prints ambiguity candidates). Emitting `.` with provenance `default` therefore stays hidden from the user by design.
 - **`mypy {src_dir or '.'}`** in `_python_command` receives `src_dir_iv.value`; a `.` value yields `mypy .`, an empty string also yields `mypy .`.
+
+_Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
+
+- **BUG-3631 (former blocker) is now done**: commit `85696dc57` ("fix(config): canonicalize root dir spellings so '.' works everywhere", 2026-09-27) landed a new leaf module `little_loops/config/dirs.py` with `canonical_dir(value) -> str` and `dir_prefix(value) -> str` (root spellings `.`, `./`, `.//`, `/` normalize to `.`; stdlib-only, no `little_loops` imports, to avoid a circular import between `config/core.py` and `config/features.py`). `blocked_by: BUG-3631` in this issue's frontmatter now points at a `done` issue — the edge is resolved per the status-based deferral rule, though the frontmatter field itself is not this pass's to remove.
+- **`introspect.py` already reuses `canonical_dir`**: imported at `introspect.py:23` and called inside `_pyproject_src_candidate` (`:649`) and `_tsconfig_src_candidate` (`:671`) to normalize a `where`/`rootDir` root spelling to `.` before this issue's own existence-filter work begins. The planned `_existing_dir` helper calling `canonical_dir(value)` first, then short-circuiting on `"."`, else checking `.is_dir()`, follows the established in-module precedent (same import already present) rather than introducing a new pattern.
+- **`config/core.py:238-244` (`ProjectConfig.from_dict`) and `config/features.py` (`ScanConfig.from_dict`) already canonicalize `src_dir`/`test_dir`/`focus_dirs` at config-*load* time** via the same `canonical_dir()` — an existing downstream safety net for the `.` round-trip, independent of `init/proposal.py`/`init/core.py`/`init/tui.py`. Confirmed by direct file search: none of those three `init/` files import `canonical_dir` or `dir_prefix`.
+- **Anchor drift since this issue's last refine pass** (confirmed via `ll-code` + direct grep against HEAD): `_introspect_src_dir` is now at `introspect.py:693` (issue cites `:686`), `_introspect_focus_dirs` at `:742` (cites `:735`), `_introspect_test_dir` at `:768` (cites `:761`); `introspect()`'s three call sites are now `:153`/`:186`/`:191` (cites `:152`/`:185`/`:190`). Call order itself is unchanged: src_dir -> commands loop -> focus_dirs -> test_dir, confirming the reorder this issue proposes is still needed.
+- **Gap the BUG-3631 fix left standing**: `_pyproject_src_candidate`'s hatch `include`/`packages` branch (`introspect.py:651-657`) does not call `canonical_dir` — only the `setuptools.where` branch does. A hatch-declared root-ish spelling is not yet normalized; existence-filtering it stays in this issue's scope (filter-only, detection unchanged).
+- **Existing dedicated test module for the reused helper**: `scripts/tests/test_config.py` (`test_canonical_dir_table`, `test_dir_prefix_root_is_empty`, `test_dir_prefix_non_root`, `test_dir_prefix_empty_raises`) covers `canonical_dir`/`dir_prefix` directly — a model for this issue's own root-spelling test cases if `_existing_dir` needs equivalent coverage.
 
 ### Dependent Files (Callers/Importers)
 
@@ -200,7 +215,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ## Implementation Steps
 
-0. Land BUG-3631 first (blocker) so a `.` value is safe for downstream consumers.
+0. BUG-3631 is done (commit `85696dc57`) — this step's precondition is already satisfied; proceed directly to Step 1.
 1. Add `_existing_dir` in `little_loops.init.introspect`. In `_introspect_src_dir`, filter the collected candidate set through it before the `len(candidates)` checks, and apply it to the template default on the zero-candidate / ambiguity branches. Source dir with no surviving value → `.` (never empty — `build_config` in `core.py`/`tui.py` treats empty as "keep template value" and would re-adopt the phantom dir).
 2. Add `_detect_root_layout` (ignoring `setup.py`/`conftest.py`/`noxfile.py`/`tasks.py`/`fabfile.py`); it selects provenance `inferred` vs `default` for the `.` result.
 3. Add `_find_nested_test_dir(root, src_dir)` — `<src_dir>/tests|test/` first, else the sole one-level match containing test files; skip `_SKIP_DIRS` and dot-prefixed dirs.
@@ -241,6 +256,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 ## Acceptance Criteria
 
 - [ ] On a fresh introspection, no `ll-init` proposal contains a Source or Focus dir absent from the target project; no `Ambiguity` lists an absent candidate (e.g. tsconfig `include: ["**/*.ts"]` produces no `**/`).
+  > ⚠ Superseded — glob example fixed by BUG-3631, see Proposed Solution
 - [ ] Test dir is never an absent path **except** `tests/` when the project has no test dir and no test files at all (provenance `default`, evidence `"no tests found; conventional location for new tests"`).
 - [ ] Root-level source/test layouts are proposed as `.` with provenance `inferred`; an empty or tooling-only root (`setup.py`, `conftest.py`) yields src_dir `.` with provenance `default`.
 - [ ] Nested test dirs (e.g. `scripts/tests/`) are detected; `<src_dir>/tests/` wins; two unrelated nested test dirs are not adopted; dot-prefixed dirs are never probed.
@@ -318,6 +334,7 @@ _Added by `/ll:confidence-check` on 2026-09-27_
 - Several existing tests assert phantom-default behavior and must be rewritten; docs and markdown edits have no automated validation.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-27T20:25:47 - `dd64463d-e434-4e56-8ab0-f62c72a4ecea.jsonl`
 - `/ll:confidence-check` - 2026-09-27T05:43:32 - `bf6e1e8c-2c0c-4865-99bf-f1fcae8fc265.jsonl`
 - `/ll:verify-issues` - 2026-09-27T05:36:55 - `e18b63f4-fc4d-4093-b00f-89d5c0e394ec.jsonl`
 - `/ll:confidence-check` - 2026-09-27T05:14:52 - `0cc16b1e-d681-4781-832d-b9145e4dc4f5.jsonl`
