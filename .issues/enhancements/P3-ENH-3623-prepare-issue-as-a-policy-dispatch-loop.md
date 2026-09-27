@@ -25,6 +25,7 @@ score_complexity: 5
 score_test_coverage: 25
 score_ambiguity: 18
 score_change_surface: 10
+decision_needed: false
 ---
 
 # ENH-3623: prepare-issue as a policy dispatch loop
@@ -336,15 +337,67 @@ parent's `current_state`, so a mid-ladder resume restarts the `loop:` child from
    ENH-3600's `refine-terminal-class` MISSING-fallback removal gets simpler, because
    every wrapper exit goes through `prep apply`.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
+
+- **"Production additions" §1 sharing is already done**: `write_typed_run_record()` (`scripts/little_loops/cli/issues/run_record.py`) already computes the outcome via one shared `outcome_from_legacy_class()` + `readiness_status()` call, and is already called both by `cmd_run_record_write` (`ll-issues run-record write`) and by `preparation_policy._apply_outcome`'s inner `write()` closure — landed by ENH-3630, not still open. What remains open is narrower than "share one record-writing helper": `_apply_outcome`'s inner `forward()` closure (`preparation_policy.py:1210-1218`) independently re-implements the same read-record → replace-writer → write-record sequence that `cmd_run_record_forward` (`run_record.py:254-271`) already implements for `ll-issues run-record forward`; only that `forward` orchestration is duplicated across the two call sites today.
+
+- **Commit-sequencing decision for Phase B** (surfaced by pattern research, not previously decided in this issue): the codebase's only prior precedent for retargeting FSM edges plus deleting states in this same `autodev.yaml` — ENH-3611 (`−22/+1` states) — did it as two commits (additive: wire new states in alongside the old ones; subtractive: delete old states, retarget, add stays-deleted guards), each landing with a green suite. This issue's own Phasing text instead calls Phase B a single atomic commit. Both shapes exist as intent in this codebase; the choice isn't settled by prior practice alone.
+
+**Option A**: Single atomic commit for Phase B, as currently planned — `git mv` the ENH-3630 fixture into `prepare-issue.yaml`'s place, apply all 42 autodev retargets/deletions, and migrate the affected tests together in one commit.
+
+> **Selected:** Option A — no codebase precedent supports a transitional two-commit coexistence for this cross-coupled shape; atomic avoids the documented double-counting hazard class.
+
+**Option B**: Two-commit split, following the ENH-3611 precedent — Commit 1 lands the loop-file swap plus any test rewiring that can pass with the new dispatch loop live and autodev's old ladder states still present; Commit 2 applies the 42 retargets/deletions and adds stays-deleted guard tests, mirroring ENH-3611's additive/subtractive shape.
+
+**Recommended**: Option A — unlike ENH-3611's independent new states, the new dispatch loop and autodev's old ladder are cross-coupled (autodev's `refine_current` calls `loop: prepare-issue`; the ladder's terminal-table agreement spans both files), so a mid-way commit risks the old ladder and the new dispatch loop double-running the same pass rather than safely coexisting. **Decided (`/ll:decide-issue`, 2026-09-27)**: no such safe coexistence path (e.g. a feature check gating which routing autodev uses) exists in the codebase today, so Phase B lands as the single atomic commit in Option A — see Decision Rationale below.
+
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-09-27.
+
+**Selected**: Option A — Single atomic commit for Phase B
+
+**Reasoning**: No git-history precedent supports a two-commit coexistence split for this specific
+shape. The only prior same-class cutover, ENH-3611, achieved safe additive/subtractive coexistence
+because both the old and new states lived in the *same file* (`autodev.yaml`) and funneled through
+one shared idempotent gate. ENH-3623's cutover instead swaps the entire callee file
+(`prepare-issue.yaml`) out from under `autodev.yaml`'s single `refine_current` dispatch point while
+the ladder's terminal-table agreement spans both files, so a transitional commit risks the old
+ladder and new dispatch loop double-running the same pass. No FSM-level gating primitive exists in
+this codebase to make that transitional window safe (`feature_enabled`/`feature_enabled_for` gate
+Python-level behavior only, never `loop:` targets), and the codebase already has a documented
+double-counting failure mode for exactly this hazard class
+(`test_autodev_characterization.py::after_counter_increment_double_counts`). Atomic avoids the
+transitional risk window entirely.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|--------------|------|-------|
+| Option A (atomic) | 1/3 | 3/3 | 2/3 | 2/3 | 8/12 |
+| Option B (two-commit split) | 2/3 | 0/3 | 1/3 | 0/3 | 3/12 |
+
+**Key evidence**: the atomic shape has no supporting *or* contradicting git-history precedent at
+this scale, but needs no new gating infrastructure and sidesteps the double-counting hazard class
+already pinned in `test_autodev_characterization.py`. The two-commit shape matches ENH-3611's
+surface convention, but ENH-3611's safety mechanism (same-file, shared idempotent gate) does not
+transfer to this cross-file, single-dispatch-point coupling, and no feature-flag/gating primitive
+exists anywhere in the codebase to build a safe transitional state.
+
 ## Integration Map
 
 ### Files to Modify
 
 - `scripts/little_loops/preparation_policy.py` (new), or a `preparation_policy/` package
   (port from branch `spike/preparation-policy`)
+  > ⚠ Superseded — module already landed via ENH-3630 (1382 lines); nothing to port here
 - `scripts/little_loops/cli/issues/__init__.py`: register `prep`
+  > ⚠ Superseded — `prep` already registered via ENH-3630
 - `scripts/little_loops/loops/prepare-issue.yaml`: replaced in place by the dispatch loop,
   moved from ENH-3630's test fixture `scripts/tests/fixtures/prepare-issue-policy.yaml`
+  > ⚠ Superseded — wrong path; real: `fixtures/loops/prepare-issue-policy.yaml`
 - `scripts/little_loops/loops/autodev.yaml`: retargets, 42 deletions, the `dequeue_next`
   pass-id write, and the `copy_broke_down` shrink
 - `scripts/little_loops/run_record.py`: the shared record-writing helper
@@ -460,6 +513,14 @@ _Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
   - **Spike artifacts**: `thoughts/spikes/preparation-policy-spike.md` exists; branch `spike/preparation-policy` exists at `a5162130240f244ad79ae4354470e903e01769b2` (also checked out in a worktree under `.git/worktrees/`). `little_loops.preparation_policy`, the `prep` group, `test_preparation_policy*.py` and `preparation_policy_harness.py` do not exist; `autodev_harness.py` has no `state#N`, `replay_same` or `inner_calls`.
   - **Executor constraints bearing on `record_step` and the dispatch loop** (`fsm/executor.py`): a `loop:` child's captures overwrite `captured[<state>]` only when the child captured something and `context_passthrough`/`with_` is set; `terminated_by` is always set and `failure_terminal` only when the child produced one, so a stale `failure_terminal` from an earlier pass can survive a later child that captured nothing. `on_max_steps` runs exactly one handler state (`_summary_state_executed`), flushing one pending non-loop state first. Since BUG-3622, `next:` states go through `_intercept_transient_failure` (429 retries refund `_throttle_counts`; exhaustion routes `on_rate_limit_exhausted` else `on_error`), but the `loop:` delegate path does not — consistent with the BUG-3390 comments in both YAMLs, so `run_child` stays without rate-limit handling.
 
+_Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
+
+- **ENH-3630 has landed since this issue's last research pass** (commits `1732a39f0`, `7fd86d853`; issue status `done`). This changes the status of several items above:
+  - The fixture the Phasing/Files-to-Modify sections cite lives at `scripts/tests/fixtures/loops/prepare-issue-policy.yaml` — under `loops/`, not bare `fixtures/` as three prose mentions in this issue (Phasing steps 1–2, Files to Modify) currently say. Confirmed via `test_preparation_policy_fixture.py:18` and a repo-wide glob; no file exists at the bare `fixtures/prepare-issue-policy.yaml` path.
+  - The fixture is already the full 15-state shape this issue specifies: `select_step, run_child, run_wire, run_refine_gap, run_rescore, run_reconcile, run_size_review, classify_guard2, record_guard2, record_step, run_go_no_go, apply_outcome, mark_rate_limited, done, failed`.
+  - `scripts/little_loops/loops/prepare-issue.yaml` (91 lines) and `scripts/little_loops/loops/autodev.yaml` (87 states, matching the `test_fsm_topology.py:291` pin) are both still their pre-cutover shape — Phase B/C (this issue's actual scope) has not started.
+  - Under `### Tests`, the "New" list (`test_preparation_policy.py`, `test_preparation_policy_parity.py`, `test_preparation_policy_resume.py`, `preparation_policy_harness.py`) already exists on disk (ENH-3630's output), plus three files not previously named in this issue: `scripts/tests/test_preparation_policy_writers.py`, `scripts/tests/test_preparation_policy_fixture.py` (the structural pin on the fixture's `max_steps`/slash-state shape), and `scripts/tests/test_prep_cli.py` (CLI registration/help/failure-path tests for `ll-issues prep`). This issue's remaining test-migration work is the "Extended" and "Rewritten or relocated" lists only.
+
 ### Wiring Phase (added by `/ll:wire-issue`)
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
@@ -494,6 +555,13 @@ _These touchpoints were identified by wiring analysis and must be included in th
 ### Call Path
 
 `prepare-issue.yaml:select_step` -> `ll-issues prep step` -> `next_preparation_step` -> `select_next_obligation` / `load_facts` -> `decide`
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
+
+- **Signature drift from ENH-3630's landed module** (`scripts/little_loops/preparation_policy.py`, 1382 lines): the names above are provisional/legacy — `apply_terminal` does not exist. The landed terminal-writer is `_apply_outcome(config, issue_id, run_dir, outcome, payload, progress, mark, *, readiness_threshold, outcome_threshold) -> int`, invoked from `prep_apply()`. Likewise `record_step` exists only as a YAML state name (in the dispatch-loop fixture, `scripts/tests/fixtures/loops/prepare-issue-policy.yaml`) — the Python function it calls via `ll-issues prep record` is `prep_record(config, issue_id, run_dir, *, guard2=False, child_terminated_by="", child_failure="") -> Fact | None`. `decide`, `next_preparation_step`, `load_facts`, `append_fact` all match this section's signatures exactly as landed.
+- **Resume-guard call chain, confirmed exact site**: `PersistentExecutor.resume()` (`fsm/persistence.py:1388`) restores `self._executor.current_state` from `state.pre_cap_state or state.current_state` with no existence check, then calls `self.run(clear_previous=False)` → `PersistentExecutor.run()` → `FSMExecutor.run()`. The unguarded lookup is `state_config = self.fsm.states[self.current_state]` at `fsm/executor.py:761`, inside the executor's main loop — no `except KeyError` anywhere in the chain guards it (the three existing `except KeyError` blocks in `fsm/` are unrelated: `evaluators.py:355`, `executor.py:2826`, `persistence.py:565`). Nearest existing convention for this shape of check: `fsm/route_table.py:154-161` raises `ValueError(f"Unknown state in edited table: '{state_name}' (known: {sorted(known_states)})")` for an analogous "referenced state must exist" check — a plain `ValueError` with an f-string naming the state, not a dedicated exception class (none exists in `fsm/` for this).
 
 ## Impact
 
@@ -607,6 +675,8 @@ _Added by `/ll:confidence-check` on 2026-09-27; re-scored 2026-09-27T04:31Z (Dep
 - Broad enumeration across 16+ sites (new module, `cli/issues`, two loop YAMLs, `run_record.py`, ~15 test files, ~8 docs, skill mirrors) and 11+ dependents, with a spike-parity that is coverage-bounded (~25 inline predicates re-implemented).
 
 ## Session Log
+- `/ll:decide-issue` - 2026-09-27T16:23:29 - `34231531-20e2-4a7b-8722-8c12515d7cf7.jsonl`
+- `/ll:refine-issue` - 2026-09-27T16:16:39 - `4ebee706-12f8-499b-9748-b900824ce5e6.jsonl`
 - `/ll:confidence-check` - 2026-09-27T04:31:27 - `783ea3bb-f6c1-4581-a4e3-94421a4eb0f1.jsonl`
 - `/ll:ready-issue` - 2026-09-27T04:16:14 - `cc063681-f3cf-42c2-b056-46a3321df1ee.jsonl`
 - `/ll:confidence-check` - 2026-09-27T03:42:23 - `7853641e-1dad-4830-bad1-b40be31584c3.jsonl`
