@@ -5,6 +5,125 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.166.0] - 2026-09-27
+
+### Added
+
+- **FEAT-3504**: Policy builder connected page and serve routes
+- **FEAT-3505**: Policy builder connected page submission controller and UI
+- **FEAT-3573**: Autodev code formatting and quality evidence gate before closure credit
+- **FEAT-3594**: `continue-task` loop: run a continuation prompt until done with automatic handoff/resume
+- **FEAT-3598**: Add `ll-issues next-obligation` deterministic preparation selector
+- feat: add `ll-loop rename` and `ll-loop cleanup` subcommands (ENH-2943) (#29)
+
+### Fixed
+
+- **BUG-3508**: `/ll:advise` consult fails on claude-code host — verdict schema dropped and `--host` unvalidated
+- **BUG-3509**: Policy builder run-request returns 500 for YAML containing a lone surrogate
+- **BUG-3512**: Policy builder connected panel: focus drops to BODY after Review/Submit and status regions are not live
+- **BUG-3516**: Policy builder: fallback row highlighted as Try-it winner before any sample value is entered
+- **BUG-3517**: `ll-session` backfill under-captures loop history: non-recursive glob misses `.history` state files
+- **BUG-3521**: learning-tests version staleness flakes across UTC midnight
+- **BUG-3522**: policy-builder node conformance gate is dormant in CI and the flake is a JS hash-completion race
+- **BUG-3523**: SSE bridge fan-in test is CI-dormant — `no_parallel` marker with no serial invocation anywhere
+- **BUG-3529**: Codex streaming runner silently drops the per-state model override
+- **BUG-3530**: Session-store rebuild wipes live-only `usage_events` rows on every schema bump
+- **BUG-3531**: Codex live usage stores cache-inclusive `input_tokens` in the uncached-input column
+- **BUG-3536**: Codex resume argv places `-C` and `--sandbox` after `resume`, which `codex exec resume` rejects
+- **BUG-3537**: reconcile-issue leaves resolved Concerns and stale confidence scores uncleared
+- **BUG-3541**: `MODEL_ALIASES` maps `opus` and `fable` to superseded model IDs
+- **BUG-3542**: Raw-event backfill stamps the configured host instead of each handle's source host
+- **BUG-3551**: refine-to-ready-issue decomposes issues when a structure gate exhausts the shared refine budget
+- **BUG-3552**: refine-to-ready-issue threshold states let `ll-config` shadow the `--context` override
+- **BUG-3553**: refine-to-ready-issue decision/spike re-score cycles are bounded only by the circuit breaker
+- **BUG-3564**: `MODEL_PRICING` has stale rates for Sonnet 5, Opus 4.5-4.7 and Haiku 4.5
+- **BUG-3566**: Autodev pre-deferral remedy dispatcher binds env vars to `ll-issues` instead of `python3`
+- **BUG-3567**: Autodev rate-limit exits bypass `finalize_done` and `summary.json`
+- **BUG-3568**: Autodev residual decision group reaches `implement_current` with `decision_needed` armed
+- **BUG-3569**: Autodev dequeue-time decision resolution bypasses preflight and refine pipeline
+- **BUG-3570**: Confidence-check skill misstates format-check `--fix` repair coverage
+- **BUG-3571**: Refine-to-ready accepts stale or absent verify verdict and confidence scores
+- **BUG-3574**: `PROPOSAL_UNSOUND` verdict routed to reconcile, which cannot edit Proposed Solution
+- **BUG-3578**: learning-tests `prove` silently skips version stamping for hyphen-slug targets
+- **BUG-3579**: `estimate_cost_usd` applies intro pricing by today's date, not the event date
+- **BUG-3587**: Invocation consumption is used as context occupancy
+- **BUG-3588**: Autodev post-repair rescoring accepts stale or absent confidence scores
+- **BUG-3591**: Confidence-check suppresses unproven-mechanism cap on attempted-only spikes
+- **BUG-3592**: Spike treats any non-zero Verification exit as a refutation
+- **BUG-3593**: Loops do not route refuted or inconclusive spike verdicts
+- **BUG-3603**: Autodev pre-implement proof gate fails open into `implement_current`
+- **BUG-3614**: Autodev DECISION re-entry routes lifetime-capped issues to breakdown
+- **BUG-3617**: `ll-init` version-mismatch install hint targets consumer project's `scripts/` dir
+- **BUG-3620**: Autodev `design_gate_failed` marker is never cleared, so a fixed design still defers
+- **BUG-3622**: Executor skips rate-limit detection for states routed by `next:`
+- **BUG-3624**: Autodev `check_reconcile_needed` drops the contradiction trigger when format-check exits 1
+- **BUG-3627**: `diff_stall` evaluator shares stall state across runs and misses commits, staged, and untracked changes
+- **BUG-3628**: FSM executor leaves stale `failure_terminal` capture on loop state re-entry
+- **BUG-3629**: `action_stall` evaluator shares stall state across runs and loops via `.loops/tmp`
+- **BUG-3631**: Root-layout `.` `src_dir`/`focus_dirs` breaks prefix matching in codegraph, worker_pool, decisions export, and `ll-init` introspection
+- fix: suppress evidence-gate on BUG-3484 addopts quote (bulk regression fix) (#30)
+
+### Changed
+
+- **ENH-3500**: Policy builder cross-mode design and UX audit
+- **ENH-3506**: Policy builder design-token and theme parity audit and fix
+- **ENH-3507**: Policy builder storage extraction and served-page probe skeleton
+- **ENH-3510**: Policy builder: add empty-state text to dimension, rule, outcome lists and issue selector
+- **ENH-3511**: Policy builder: explain disabled controls (`aria-describedby` / visible reason)
+- **ENH-3513**: Policy builder: validation diagnostics are not announced and reserved-name errors use `alert()`
+- **ENH-3514**: Policy builder: unify status/message class vocabularies and heading/legend conventions
+- **ENH-3515**: Shift-left evidence verification to refine-time and make the pre-commit hook visible
+- **ENH-3518**: Make the `ll-verify-evidence` pre-commit hook visible and label the suite gate neutrally
+- **ENH-3519**: Refine-time delta-scoped evidence verification in `/ll:refine-issue`
+- **ENH-3520**: Replay `ll-verify-evidence` hook over 50 issue commits and flip to blocking if precision is clean
+- **ENH-3525**: Consolidate history-store connections behind a SQLite backend chokepoint (FEAT-3524 Phase A)
+- **ENH-3526**: Route remaining history-store write consumers through the backend chokepoint (ENH-3525 A2)
+- **ENH-3527**: Resolve model capability hints for loop execution
+- **ENH-3528**: Label token provenance per observation in `ll-ctx-stats` and exports
+- **ENH-3538**: Token observation foundation: nullable usage components and per-observation provenance storage
+- **ENH-3539**: Run the deterministic test layer on both macOS and Linux
+- **ENH-3550**: Exclude EPIC issues from `ll-issues refine-status` output
+- **ENH-3554**: Templatize region-context tagging and context-dispatched escaping
+- **ENH-3555**: format-check flags invisible and control characters in issue bodies
+- **ENH-3557**: Script-context-safe JSON and single-pass placeholder substitution
+- **ENH-3558**: Escape-by-default ingest for template data and extract output
+- **ENH-3559**: Symlink-safe artifact writes and umask-preserving `atomic_write`
+- **ENH-3560**: Remove interpolated `innerHTML` sinks from policy builder
+- **ENH-3575**: Structured policy gate field replacing prose gate-phrase grep in autodev
+- **ENH-3576**: Format-check repair coverage for missing and boilerplate sections with format-issue fallback
+- **ENH-3577**: Consolidate autodev issue preparation into a single controller loop
+- **ENH-3580**: Carry `usage_events` provenance columns through `UsageEvent` and shareable export
+- **ENH-3597**: Emit a typed per-issue run record from refine-to-ready-issue
+- **ENH-3599**: Move spike and decision repair routing from autodev into refine-to-ready-issue
+- **ENH-3601**: Move autodev second-pass preparation routing into a preparation controller
+- **ENH-3602**: Single budget owner for learning-proof evidence
+- **ENH-3604**: Adopt `ll-issues next-obligation` inside refine-to-ready-issue and settle next-action delegation
+- **ENH-3605**: Add prepare-issue pass-through wrapper and route autodev on its run record
+- **ENH-3607**: Add run-record read path and child spike rate-limit handling for autodev routing
+- **ENH-3608**: Remove autodev spike and decision routes and route on the child run record
+- **ENH-3609**: Route autodev on the child run record outcome and ledger child stops
+- **ENH-3610**: Move autodev decision repair into refine-to-ready-issue behind an obligation selector
+- **ENH-3611**: Move autodev spike and proof-gate repair into refine-to-ready-issue
+- **ENH-3612**: manage-issue Phase 4 runs configured verification commands verbatim
+- **ENH-3613**: Autodev `summary.json` splits cancelled from implemented closures
+- **ENH-3615**: Consolidate autodev rescoring, halt on size-review rate limit, write run records at ladder stops
+- **ENH-3618**: Cross-loop autodev characterization harness
+- **ENH-3619**: Extract autodev `finalize_done` into `little_loops.autodev_summary` with a step-cap handler
+- **ENH-3621**: Spike: preparation routing policy in Python
+- **ENH-3625**: State the first-gate Program Design rule
+- **ENH-3626**: Add opt-in second-model advise readiness consult to refine-to-ready
+- **ENH-3630**: `preparation_policy` module and `ll-issues prep` CLI (ENH-3623 Phase A)
+- **ENH-3632**: Add `ll-issues advise-consult` helper and shared `parse_lead_word`
+
+### Other
+
+- docs: update guides and references for autodev enhancements (81ccbc9f4)
+- style: format code, fix type annotations, and remove unused imports (df5a8116c)
+- fix: repair three red gates blocking a green CI push (4d6042edef)
+- docs(README): update loop count to 108 (e6a681bbe)
+
+[1.166.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.165.0...v1.166.0
+
 ## [1.165.0] - 2026-09-19
 
 ### Added
