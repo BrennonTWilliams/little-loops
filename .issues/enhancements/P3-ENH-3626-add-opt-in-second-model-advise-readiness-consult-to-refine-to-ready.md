@@ -28,8 +28,10 @@ missing_artifacts: true
 
 Add an opt-in `ll-advise` (second-model) readiness consult as the last gate on
 `refine-to-ready-issue`'s done path, between `check_proof_before_done` and
-`write_done_record`. Every caller gets it: `prepare-issue` (and so autodev),
-`recursive-refine`, and rn-refine. The consult is veto-only and fails open. Scope also
+`write_done_record`. Every caller gets it: `prepare-issue` (and so autodev) and
+`recursive-refine`, the only two loops that invoke `refine-to-ready-issue`
+(`prepare-issue.yaml:38`, `recursive-refine.yaml:237`). rn-refine does not reach it (it goes
+through `oracles/plan-node-refine`). The consult is veto-only and fails open. Scope also
 includes a shared Python helper that calls `consult_for_trigger` in-process (the same
 consult `ll-advise` makes), persists the verdict, and maps it to PROCEED/VETO/SKIPPED, so
 ENH-3590 reuses it instead of carrying a second copy.
@@ -72,7 +74,13 @@ state consults a stronger or different model before the issue is handed back as 
   inherits it too). For that case the helper persists its verdict to
   `<run_dir>/advise-<ID>.verdict` and, when that file exists, **replays** it without
   consulting again. A prior VETO is replayed as VETO, never as a pass. The file is keyed by
-  ID, so it never crosses issues. The file also records a SHA-256 of the issue file (excluding any `## Advisor Veto` section). A replayed **PROCEED or SKIPPED** is honored only while the hash still matches; if the issue was edited since (a decide or spike re-score, say), it is discarded and the helper consults again. A replayed VETO stays sticky regardless of edits.
+  ID, so it never crosses issues. The file also records a SHA-256 of the **trimmed consult
+  context** (the exact text sent to the advisor; see Context trimming), not of the whole
+  file. Frontmatter scores and `## Session Log` change on every refine pass, so a
+  whole-file hash would almost never match. A replayed **PROCEED or SKIPPED** is honored
+  only while the hash still matches; if the content the advisor judged was edited since (a
+  decide or spike re-score, say), it is discarded and the helper consults again. A replayed
+  VETO stays sticky regardless of edits.
 
 ## Motivation
 
@@ -87,15 +95,33 @@ are not redundant.
 
 **Shared helper (land first).** A Python entry point, `ll-issues advise-consult <ID> --run-dir <dir>`, that:
 
-1. **Replays** a prior verdict first: if `<run_dir>/advise-<ID>.verdict` exists (for PROCEED/SKIPPED, only while its recorded issue hash still matches), print its
+1. **Replays** a prior verdict first: if `<run_dir>/advise-<ID>.verdict` exists (for PROCEED/SKIPPED, only while its recorded context hash still matches), print its
    token and exit 0 without consulting (see Expected Behavior, one consult per issue per
    top-level run).
-2. Otherwise calls `little_loops.advisor.consult_for_trigger("refine_ready", question=<q>,
-   context=<issue file text>, manual=True)` **in-process**, with `LL_ISSUE_ID=<ID>` set in
+2. **Preflights the advisor config without spending budget.** `consult_for_trigger`
+   spends a budget unit through `record_consult()` (`advisor.py:541`) *before* `consult()`
+   raises `AdvisorNotConfigured` when `advisor.host` is unset (`advisor.py:256`), and
+   `AdvisorConfig.host` defaults to `None` (`config/orchestration.py:157`). Without a
+   preflight, a project that sets only `advisor.model` (this repo does) would skip every
+   consult *and* use up one of the per-issue consults `pre_done` shares, on each run. So if
+   `config.advisor.host` is empty, the helper logs a WARNING, persists
+   `{"skipped_reason": "not_configured", "preflight": true}`, prints `SKIPPED`, and never
+   calls `consult_for_trigger`. `floor_violation` stays a post-reservation skip (the floor
+   check needs the resolved host and model inside `consult()`); it is a misconfiguration
+   that the WARNING line surfaces.
+3. Otherwise calls `little_loops.advisor.consult_for_trigger("refine_ready", question=<q>,
+   context=<trimmed issue text>, manual=True)` **in-process**, with `LL_ISSUE_ID=<ID>` set in
    `os.environ` before the call so `resolve_task_key()` bills the per-issue budget bucket.
    `manual=True` matches `ll-advise`: it bypasses `advisor.enabled` and the
    `advisor.triggers` allowlist, so the new signal needs no config entry.
-   **Context trimming:** send the issue body with `## Session Log`, `## Confidence Check Notes`, and `### Codebase Research Findings` appendices removed, capped at a fixed character limit chosen during implementation, to bound cost and latency.
+   **Context trimming:** send the issue body with the frontmatter and the `## Session Log`,
+   `## Confidence Check Notes`, `### Codebase Research Findings`, and `## Advisor Veto`
+   sections removed, capped at a fixed character limit chosen during implementation, to
+   bound cost and latency. The same trimmed text is what the replay hash covers. **The
+   advisor never sees its own earlier veto:** stripping `## Advisor Veto` keeps each re-run
+   an independent review rather than one anchored on the prior verdict, and matches the
+   hash, which also excludes it. Whether a vetoed concern was addressed is judged from the
+   edited issue body, not from the note.
    **No helper-side timeout.** The consult is bounded by `advisor.timeout_seconds`
    (default 180, `run_blocking_json(timeout=...)`) and returns `skipped_reason="timeout"`.
    A shorter outer timeout would kill consults that would have succeeded, and each one would
@@ -106,19 +132,22 @@ are not redundant.
    wasted; otherwise PROCEED."_ ("recommendation", not "answer": the advisor returns
    `_VERDICT_SCHEMA` JSON, and the word must lead the `recommendation` field.) ENH-3590
    passes its own signal/question via `--signal` / `--question` overrides.
-3. Writes `<run_dir>/advise-<ID>.json` (the verdict payload, or `{"skipped_reason": ...,
-   "error": ...}` on a skip) and `<run_dir>/advise-<ID>.verdict` (the token).
-4. Maps the `ConsultOutcome` to PROCEED/VETO/SKIPPED. `verdict is None` → SKIPPED, logging
+4. Writes `<run_dir>/advise-<ID>.json` (the verdict payload, or `{"skipped_reason": ...,
+   "error": ...}` on a skip) and `<run_dir>/advise-<ID>.verdict` (the token and the
+   context hash).
+5. Maps the `ConsultOutcome` to PROCEED/VETO/SKIPPED. `verdict is None` → SKIPPED, logging
    `skipped_reason` (a WARNING line for `not_configured` and `floor_violation`). An
    unreadable issue file or any exception inside the helper → SKIPPED. Otherwise the
-   **leading word** of `recommendation` decides: `VETO` → VETO, anything else → PROCEED.
-   There is no whole-word fallback, so "no reason to VETO" does not veto: a false VETO costs
-   more than a false PROCEED. `confidence` and `dissent` are logged but never routed on.
-5. Always exits 0 (a catch-all around `main` prints `SKIPPED`, including on a `BRConfig` load failure) and prints a single routing token (`PROCEED`/`VETO`/`SKIPPED`) that the
+   **leading word** of `recommendation` (via `parse_lead_word`, which skips leading
+   Markdown/punctuation, so `**VETO**`, `VETO—…`, `"VETO"` and `` `VETO` `` all count) decides:
+   `VETO` → VETO, anything else → PROCEED. There is no whole-word fallback, so "no reason to
+   VETO" does not veto: a false VETO costs more than a false PROCEED. `confidence` and
+   `dissent` are logged but never routed on.
+6. Always exits 0 (a catch-all around `main` prints `SKIPPED`, including on a `BRConfig` load failure) and prints a single routing token (`PROCEED`/`VETO`/`SKIPPED`) that the
    loop routes with `classify` + a `route:` table (the `next-obligation --format token`
    shape). No advisor exit code exists to propagate, so executor-side 429 interception
    (which fires only on non-zero exit) cannot stall the loop.
-6. `--write-note`: on VETO, replace any `## Advisor Veto` section in the issue file with
+7. `--write-note`: on VETO, replace any `## Advisor Veto` section in the issue file with
    the recommendation; on PROCEED, remove a stale `## Advisor Veto` section left by an
    earlier run. SKIPPED leaves the file alone. `record_advisor_veto` relies on this (see its
    contract below). The helper owns the note so that one place writes it and clears it.
@@ -148,6 +177,17 @@ it already does verdict-map routing and fail-open `neutral`, but it does not fit
 evaluator keeps its whole-word fallback on top; the helper uses the lead word only. The two
 advisor paths then tokenize a recommendation the same way.
 
+The extracted function also **fixes the tokenizer**. Today's split on `[\s:,.]`
+(`evaluators.py:1735`) turns `**VETO**` into the lead word `**veto**`, `VETO—the…` into
+`veto—the…`, and `"VETO"` into `"veto"`, and none of them match. For the helper that is
+a silent false PROCEED on exactly the formatted vetoes a model tends to emit. So
+`parse_lead_word` skips leading non-word characters and takes the first word-character run
+(e.g. `re.match(r"\W*(\w+)", text)`), then compares it case-insensitively against
+`choices`, returning the matching choice as given in `choices`. For the evaluator this is a
+strictly more permissive lead-word match: every input that matched before still matches,
+and formatted lead words that used to fall through to the whole-word fallback now match
+first.
+
 ENH-3590's consult (a policy step once ENH-3623 lands) calls the same helper with its own
 `--signal`/`--question`.
 
@@ -176,8 +216,11 @@ declared `advise_ready: ""` in `context:`, a parent's `advise_ready=1` would be 
 - `refine-to-ready-issue.yaml` and `recursive-refine.yaml`:
   `parameters: advise_ready: {type: string, required: false, default: ""}`.
   `seed_parameter_defaults` (BUG-3425) uses `setdefault`, so an inherited or `--context`
-  value wins and a standalone run still gets `""`. Check that each loop's `parameters:`
-  block is compatible with its `context_passthrough` callers.
+  value wins and a standalone run still gets `""`. `--context` on a key declared only under
+  `parameters:` works: `cli/loop/run.py:198` seeds parameter defaults *before* positional
+  input and `--context` are applied, so `--context advise_ready=1` overrides the `""`
+  default (verified in review). The sub-loop path seeds after the passthrough merge
+  (`fsm/executor.py:1172`), with the same setdefault precedence.
 - `prepare-issue.yaml`: nothing. It has no `context:` block and passes everything through.
 
 The gate reads `${context.advise_ready}` in a `[ -n ... ]` test, escaped per MR-11.
@@ -246,11 +289,15 @@ _Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
    re-refining without this note changes nothing. A later PROCEED removes the section.
    The edit is **not committed**: the run ends at `failed`, which never reaches a commit
    step, so the note stays in the working tree as a visible change. Say so in the
-   `[ADVISOR_VETO]` echo. **Pre-implementation check:** autodev snapshots a base dirty set
-   and records per-issue uncommitted files (`autodev.yaml` ~1222-1309; `ledger_child_stop` /
-   `skip_inflight`). Confirm a dirty issue file after a veto does not trip those paths or
-   parallel-worktree merges. If it does, drop `--write-note` from v1 and carry the
-   recommendation in `advise-<ID>.json` and the `[ADVISOR_VETO]` echo only.
+   `[ADVISOR_VETO]` echo. **Dirty-tree safety (resolved in review):** a vetoed issue's
+   uncommitted note does not leak into another issue's work. autodev snapshots the
+   pre-existing dirty set into `$QDIR/<ID>.base-dirty` *before* each `ll-auto` run
+   (`autodev.yaml:1228-1229`) and subtracts it from that issue's changed set
+   (`autodev.yaml:1305-1309`), so a note left by an earlier veto is excluded from later
+   issues' `dirtyset` and quality-gate scope. The paths that commit issue files stage
+   explicit paths only, never `git add -A` (`issue_lifecycle.py:641`, BUG-2421;
+   `parallel/orchestrator.py:1354,2027`, BUG-2424). The one loop that does `git add -A`
+   (`rn-refine.yaml:615`) never reaches this gate. `--write-note` stays in v1.
 5. `next: failed`, `on_error: failed`.
 
 **Follow-through (resolved in review):** the class is `gate_unmet` (→ deferred). `record_gate_unmet` itself is not reused: its message is specific to structure gates. A new `record_advisor_veto` state writes the same `gate_unmet` legacy class with an accurate `[ADVISOR_VETO]` message, then `next: failed`. No vocabulary change.
@@ -281,25 +328,26 @@ the follow-up is a separate budget scope for readiness consults, which is a
 
 ### Signatures
 
-- `parse_lead_word(recommendation: str, choices: Iterable[str]) -> str | None` — shared lead-word tokenizer extracted from `_parse_advisor_decision`; returns the lowercased leading word if it is in *choices*, else `None`
-- `map_advise_verdict(outcome: ConsultOutcome) -> tuple[AdviseVerdict, str]` — pure mapping of a consult outcome to a verdict plus a log reason (`verdict is None` → SKIPPED; lead word `veto` → VETO; else PROCEED)
-- `cmd_advise_consult(config: BRConfig, args: argparse.Namespace) -> int` — replays `advise-<ID>.verdict` if present, else sets `LL_ISSUE_ID` and calls `consult_for_trigger(manual=True)`, persists `advise-<ID>.{json,verdict}`, applies `--write-note`, prints the token, always returns 0
+- `parse_lead_word(recommendation: str, choices: Iterable[str]) -> str | None` — shared lead-word tokenizer extracted from `_parse_advisor_decision`; skips leading non-word characters (Markdown emphasis, quotes, backticks), takes the first word-character run, compares it case-insensitively against *choices*, and returns the matching choice as given in *choices*, else `None`
+- `trim_consult_context(issue_text: str) -> str` — strips frontmatter and the `## Session Log`, `## Confidence Check Notes`, `### Codebase Research Findings`, and `## Advisor Veto` sections, then caps the length; its output is both the consult context and the input to the replay hash
+- `map_advise_verdict(outcome: ConsultOutcome) -> tuple[AdviseVerdict, str]` — pure mapping of a consult outcome to a verdict plus a log reason (`verdict is None` → SKIPPED; lead word `VETO` → VETO; else PROCEED)
+- `cmd_advise_consult(config: BRConfig, args: argparse.Namespace) -> int` — replays `advise-<ID>.verdict` if present (PROCEED/SKIPPED only while the context hash matches), else preflights `config.advisor.host` (empty → SKIPPED with no `consult_for_trigger` call and no budget spend), else sets `LL_ISSUE_ID` and calls `consult_for_trigger(manual=True)`, persists `advise-<ID>.{json,verdict}`, applies `--write-note`, prints the token, always returns 0
 
 ### Call Path
 
-`refine-to-ready-issue.yaml:check_proof_before_done` -> `check_advise_ready_enabled` -> `run_advise_ready` -> `cmd_advise_consult` -> `consult_for_trigger` -> `map_advise_verdict` -> `parse_lead_word`
+`refine-to-ready-issue.yaml:check_proof_before_done` -> `check_advise_ready_enabled` -> `run_advise_ready` -> `cmd_advise_consult` -> `trim_consult_context` -> `consult_for_trigger` -> `map_advise_verdict` -> `parse_lead_word`
 
 ## Integration Map
 
 ### Files to Modify
 - `scripts/little_loops/loops/refine-to-ready-issue.yaml` — new gate/consult/veto states on the done path (`check_advise_ready_enabled`, `run_advise_ready`, `record_advisor_veto`); bump `max_steps` from 100 to 103 (gate, consult, veto hops), record it in the history comment, and update the pinned `== 100` assertion in the same change
 - `scripts/little_loops/loops/refine-to-ready-issue.yaml` (again) — declare the flag as `parameters.advise_ready.default: ""`, **not** in `context:` (a `context:` literal overrides the parent's value under `context_passthrough`)
-- `scripts/little_loops/loops/recursive-refine.yaml` — same `parameters.advise_ready.default: ""` declaration (not `context:`), so a flag from `rn-build`/`sprint-build-and-validate`/`issue-refinement` or `--context` still reaches `refine-to-ready-issue` (pass-through only; it does not read run records). It already has `parameters:` (`input`) and `context:` blocks: add the entry to `parameters:` only and pin it absent from `context:`. Also confirm `ll-loop run --context advise_ready=1` accepts a key declared only under `parameters:`
+- `scripts/little_loops/loops/recursive-refine.yaml` — same `parameters.advise_ready.default: ""` declaration (not `context:`), so a flag from `rn-build`/`sprint-build-and-validate`/`issue-refinement` or `--context` still reaches `refine-to-ready-issue` (pass-through only; it does not read run records). It already has `parameters:` (`input`) and `context:` blocks: add the entry to `parameters:` only and pin it absent from `context:`. (`ll-loop run --context advise_ready=1` on a `parameters:`-only key works: `cli/loop/run.py:198` seeds defaults before `--context` applies; verified in review)
 - `scripts/little_loops/loops/prepare-issue.yaml` — no declaration needed (`context_passthrough: true`, no `context:` block); no veto handling needed, `gate_unmet` → deferred is already handled by `forward_stop`
 - `scripts/little_loops/loops/autodev.yaml` — declare the flag in `context:` (`""`; top-level, so the `context:` literal is correct here) and let it pass to `prepare-issue`; no `route_refine_outcome` change
-- `scripts/little_loops/cli/issues/advise_consult.py` (new file) — new helper subcommand (`add_advise_consult_parser`/`cmd_advise_consult`/`map_advise_verdict`)
-- `scripts/little_loops/advisor.py` — new public `parse_lead_word()`
-- `scripts/little_loops/fsm/evaluators.py` — `_parse_advisor_decision` calls `parse_lead_word()` for its lead-word step (behavior unchanged; its whole-word fallback stays)
+- `scripts/little_loops/cli/issues/advise_consult.py` (new file) — new helper subcommand (`add_advise_consult_parser`/`cmd_advise_consult`/`map_advise_verdict`/`trim_consult_context`), including the `advisor.host` preflight
+- `scripts/little_loops/advisor.py` — new public `parse_lead_word()` (skips leading Markdown/punctuation, case-insensitive)
+- `scripts/little_loops/fsm/evaluators.py` — `_parse_advisor_decision` calls `parse_lead_word()` for its lead-word step; its whole-word fallback stays. Strictly more permissive: formatted lead words (`**retry**`) now match at the lead-word step instead of via the fallback
 
 ### Dependent Files (Callers/Importers)
 - `ll-advise` CLI (`little_loops.cli.advise.main_advise`) — not called by the helper; it is the model for the `manual=True` in-process call
@@ -312,7 +360,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/run_record.py` (`outcome_from_legacy_class`, `LEGACY_CLASSES`) — Option B reuses `gate_unmet` → deferred; no vocabulary edit, but this is the mapping the veto route depends on. The new `record_advisor_veto` writer state is a new writer of that class, so `test_run_record.py` sets need entries [Agent 1 finding, corrected in review]
 - `scripts/little_loops/loops/rn-build.yaml:582`, `sprint-build-and-validate.yaml:82,181` — call `recursive-refine` with `context_passthrough: true`, so the flag reaches it (verified in review)
 - `scripts/little_loops/loops/issue-refinement.yaml:21` — calls `recursive-refine` with a `with_:` block and **no** passthrough, so it does **not** forward `advise_ready`; it gets only the `""` default. Unsupported in v1: run `recursive-refine` directly with `--context advise_ready=1` (or add the flag to its `with_:`, out of scope) (verified in review)
-- `scripts/little_loops/loops/rn-remediate.yaml`, `auto-refine-and-implement.yaml`, `oracles/resolve-decision.yaml` — review found no `loop: refine-to-ready-issue` state in any of them (only comments/prose), so no edit and no shadowing risk; re-grep other invocation syntax before dropping them from the wiring list
+- `scripts/little_loops/loops/rn-remediate.yaml`, `auto-refine-and-implement.yaml`, `oracles/resolve-decision.yaml`, `rn-refine.yaml` — none invokes `refine-to-ready-issue`. A grep for `loop:` / `ll-loop run` references finds only `prepare-issue.yaml:38` and `recursive-refine.yaml:237` (verified in review), so no edit and no shadowing risk
 - `scripts/little_loops/hooks/pre_done.py` — existing `consult_for_trigger` consumer; shares the per-issue budget the new consult draws from [Agent 1 finding]
 
 ### Documentation
@@ -326,11 +374,15 @@ _Wiring pass added by `/ll:wire-issue`:_
 ### Configuration
 _Wiring pass added by `/ll:wire-issue`:_
 - No `config-schema.json` change: the helper passes `manual=True` (as `ll-advise` does), so the `refine_ready` signal needs no `advisor.triggers` entry and `advisor.enabled` need not be set. `docs/reference/CONFIGURATION.md` `### advisor` (`max_consults_per_task`, `timeout_seconds`) is the budget and timeout the consult uses. Document the budget contention with `pre_done` next to the flag [Agent 2 finding, updated in review]
+- **`advisor.host` is required for the flag to do anything.** It defaults to `None` (`config/orchestration.py:157`); without it the helper's preflight SKIPs every consult (no budget spent). Document this next to the flag. This repo's own `.ll/ll-config.json` sets only `advisor.model`, so dogfooding needs `advisor.host` added (e.g. `claude-code`)
 
 ### Tests
 - `scripts/tests/test_builtin_loops.py` — chain-shape pins, `recursive-refine` `advise_ready` in `parameters:` and absent from `context:`, `run_advise_ready` default route → `write_done_record`, default-off, flag propagation parent → child (guards against a child `context:` literal shadowing it), stub-`ll-issues advise-consult` execution for routing
-- New helper tests — helper crash (e.g. `BRConfig` load failure) still prints `SKIPPED` and exits 0; replayed PROCEED discarded after the issue changes, replayed VETO sticky; `map_advise_verdict` over fixture `ConsultOutcome`s (each `skipped_reason`, PROCEED/VETO lead words, "no reason to VETO"), replay, `--write-note` write/clear, with `consult_for_trigger` monkeypatched
-- `scripts/tests/test_fsm_evaluators.py` and `scripts/tests/test_advisor.py` (existing `advisor_consult` / advisor tests) — must pass unchanged after `parse_lead_word` extraction
+- New helper tests — helper crash (e.g. `BRConfig` load failure) still prints `SKIPPED` and exits 0; replayed PROCEED discarded after the trimmed context changes but kept when only frontmatter/Session Log/Advisor Veto change, replayed VETO sticky; `map_advise_verdict` over fixture `ConsultOutcome`s (each `skipped_reason`, PROCEED/VETO lead words, "no reason to VETO"), replay, `--write-note` write/clear, with `consult_for_trigger` monkeypatched
+- Preflight test — `advisor.host` unset → `SKIPPED`, `consult_for_trigger` never called, and no `.ll/advisor-budget/issue-<ID>.json` file created or incremented
+- `trim_consult_context` test — frontmatter and the `## Session Log`, `## Confidence Check Notes`, `### Codebase Research Findings`, `## Advisor Veto` sections are absent from the output; length cap applied
+- `parse_lead_word` tests — `**VETO**`, `VETO—reason`, `"VETO"`, `` `VETO` ``, `veto:` → `VETO`; `PROCEED` variants likewise; `no reason to VETO` → `PROCEED` in the helper mapping
+- `scripts/tests/test_fsm_evaluators.py` and `scripts/tests/test_advisor.py` (existing `advisor_consult` / advisor tests) — must pass unchanged after `parse_lead_word` extraction; add one evaluator case showing a bolded decision word now matches at the lead-word step
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_autodev_decision_gate.py::TestChildDecisionInvariant.test_decision_gate_routes` — asserts `check_proof_before_done` `on_no`/`on_error == "write_done_record"`; will break, retarget to `check_advise_ready_enabled` [Agent 3 finding]
@@ -359,13 +411,13 @@ _Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
 
 ## Implementation Steps
 
-1. Extract `parse_lead_word` into `little_loops.advisor` and have `evaluators._parse_advisor_decision` call it (existing evaluator tests must pass unchanged).
-2. Build and test the shared helper `ll-issues advise-consult`: in-process `consult_for_trigger(manual=True)`, `LL_ISSUE_ID` set before the call, verdict replay from `advise-<ID>.verdict`, `advise-<ID>.json` persistence, lead-word-only mapping, always-exit-0 token contract, `--write-note` (write on VETO, clear on PROCEED), unreadable issue file → SKIPPED, no outer timeout, pinned question text.
+1. Extract `parse_lead_word` into `little_loops.advisor` (skip leading non-word characters, case-insensitive match) and have `evaluators._parse_advisor_decision` call it (existing evaluator tests must pass unchanged).
+2. Build and test the shared helper `ll-issues advise-consult`: `advisor.host` preflight (SKIPPED with no budget spend), `trim_consult_context` (also the replay-hash input), in-process `consult_for_trigger(manual=True)`, `LL_ISSUE_ID` set before the call, verdict replay from `advise-<ID>.verdict` (hash-checked for PROCEED/SKIPPED), `advise-<ID>.json` persistence, lead-word-only mapping, always-exit-0 token contract, `--write-note` (write on VETO, clear on PROCEED), unreadable issue file → SKIPPED, no outer timeout, pinned question text.
 3. (Decided) Veto class = `gate_unmet` via a new `record_advisor_veto` state that writes `refine-terminal-class`, the run-record (`|| true`), and the `[ADVISOR_VETO]` echo (the note is already written by the helper); add the state to `LEGACY_CLASS_STATES`/`TERMINAL_BEARING_STATES` in `test_run_record.py`.
 4. Wire `check_advise_ready_enabled` (flag only), `run_advise_ready` (`classify` + `route:`), and `record_advisor_veto` into `refine-to-ready-issue.yaml`; bump `max_steps` and update the header diagram/history. Declare the flag as `advise_ready: ""` in `autodev.yaml` `context:` and as `parameters.advise_ready.default: ""` in `refine-to-ready-issue.yaml` and `recursive-refine.yaml`. **Never** declare it in a child loop's `context:`.
 5. Tests: `budget_exhausted`/`not_configured`/`timeout` outcomes → SKIPPED → `write_done_record`; flag set on autodev/recursive-refine reaches the child gate (propagation test that fails if a child `context:` literal shadows it); replay (same ID twice under a shared `run_dir` → one consult; a replayed VETO still vetoes; two IDs → two consults); veto writes `refine-terminal-class`; the note is written on VETO and cleared on PROCEED; lead-word-only mapping ("no reason to VETO" → PROCEED); default-off chain reaches `write_done_record` without consulting; VETO/PROCEED/SKIPPED routing; `LL_ISSUE_ID` is in `os.environ` at consult time; existing callers treat the veto as a deferred stop.
 6. `ll-loop validate` for every touched loop.
-7. Land steps 1-2 (`parse_lead_word` + helper) as an independently mergeable slice first; ENH-3590 needs it. Before starting, check overlap with ENH-3630 (`preparation_policy` + prep CLI) in `cli/issues/__init__.py` registration and in the policy step ENH-3623 will use to call the helper.
+7. Land steps 1-2 (`parse_lead_word` + helper) as an independently mergeable slice first; ENH-3590 needs it. Consider splitting that slice into its own issue that `blocks: ENH-3590`, leaving the loop wiring (steps 3-6) here. The dependency then points at exactly what ENH-3590 needs, and each half is smaller to score. Before starting, check overlap with ENH-3630 (`preparation_policy` + prep CLI) in `cli/issues/__init__.py` registration and in the policy step ENH-3623 will use to call the helper.
 
 ### Test Conventions (merged from the former `## Tests` section)
 
@@ -432,7 +484,10 @@ _None outstanding._ Resolved in review:
 - [ ] Any consult failure (`budget_exhausted`, `not_configured`, `floor_violation`, `failed`, `timeout`, unreadable issue file, helper exception) behaves exactly like the flag being off; the loop never halts or waits on an advisor rate limit
 - [ ] `record_advisor_veto` writes `refine-terminal-class` = `gate_unmet`; the helper's `--write-note` has already put an `## Advisor Veto` section carrying the recommendation in the issue file, and a later PROCEED removes it
 - [ ] The consult question text ("Begin your recommendation with…") is pinned in the helper, and a fixture test maps the real `_VERDICT_SCHEMA` payload shape to PROCEED/VETO. Only the lead word counts: "no reason to VETO" → PROCEED
+- [ ] A formatted lead word still vetoes: `**VETO**`, `VETO—…`, `"VETO"` and `` `VETO` `` all map to VETO
 - [ ] `parse_lead_word` is shared by the helper and `evaluators._parse_advisor_decision`; the existing `advisor_consult` evaluator tests pass unchanged
+- [ ] With `advisor.host` unset, the helper prints `SKIPPED` without calling `consult_for_trigger` and without creating or incrementing the per-issue budget file
+- [ ] The consult context excludes frontmatter, `## Session Log`, `## Confidence Check Notes`, `### Codebase Research Findings`, and `## Advisor Veto`; the replay hash is computed over that same trimmed context
 - [ ] ENH-3590 can reuse the helper unchanged
 
 ## Related Key Documentation
