@@ -69,6 +69,16 @@ unaffected). Confirm whether the oracle's own captures make that path immune.
 - `scripts/little_loops/loops/prepare-issue.yaml` (ENH-3623 dispatch loop) — deliberately
   does not read the capture; no change needed
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/fsm/executor.py` `_execute_sub_loop` — same-class stale-key sites in the same function: `["error"]` at ~:1223 and ~:1372 and `["verdict"]` at ~:1356 are also conditional `setdefault(...)` writes into the per-state dict and are never cleared on re-entry; decide together with `failure_terminal`. `state.capture` writes at ~:1321 fully replace the dict (not stale-prone) [Agent 1/2 finding]
+- `scripts/little_loops/fsm/persistence.py` — `LoopState.to_dict` (~:407) serializes `captured`; `PersistentExecutor.resume` (~:1413, `self._executor.captured = state.captured`) rehydrates stale keys. The fix acts at re-entry so it covers resumed runs; old state files are not migrated [Agent 1/2 finding]
+- `scripts/little_loops/fsm/interpolation.py` (~:164, `_get_nested(self.captured, path, "captured")`) — resolves `${captured.*}`; an absent key resolves via the `?` default (empty), whereas an unconditional `False` write would render as `False` [Agent 1 finding]
+- `scripts/little_loops/fsm/validation/shell_safety.py` `_scan_state_for_mr11` / `_parse_mr11_marker` — MR-11 markers key on `<namespace>.<key>`; a stale marker is itself a finding, so the `${captured.confidence_check.failure_terminal?}` site text and key names must stay unchanged [Agent 2 finding]
+- `scripts/little_loops/loops/refine-to-ready-issue.yaml` (~:799 comment) — notes `terminated_by`/`failure_terminal` "still land under `confidence_check`"; `confidence_check` uses `with_`/passthrough, so the whole-dict merge already drops a stale `failure_terminal` whenever the child has captures. Stale value survives only for a capture-less child — answers the issue's "confirm immunity" question: partially immune, not fully [Agent 2 finding]
+- `scripts/little_loops/loops/auto-refine-and-implement.yaml` (~:403) — comment cites `executor.py:1170-1175` for `failure_terminal=True`; line reference is stale (block now at ~:1326-1339); ~:419 carries the `mr11-ok(captured.delegate.terminated_by)` marker, ~:1252 mentions `workdir_vanished` [Agent 1 finding]
+- Comment-only mentions (no change): `rn-remediate.yaml:322`, `oracles/resolve-decision.yaml:167`, `recursive-refine.yaml:244,248`, `prepare-issue.yaml:72`, `general-task.yaml:1222`, `html-anything.yaml:281` [Agent 1/2 finding]
+- Readers of the `ExecutionResult` field (not `captured`), unaffected: `cli/loop/runner.py`, `cli/loop/audit.py`, `cli/loop/evidence.py`, `transport.py:1837`, `persistence.py map_final_status`, `history_reader/*`, `session_store/*`. Routing and `state.capture` verdicts read `child_result.failure_terminal` directly, so clearing the captured key does not change routing [Agent 1/2 finding]
+
 ### Similar Patterns
 - `terminated_by` in the same block is already written unconditionally; `failure_terminal`
   should follow it
@@ -79,12 +89,30 @@ unaffected). Confirm whether the oracle's own captures make that path immune.
 - `scripts/tests/test_builtin_loops.py` — any pin on the `confidence_check` evidence action
   should stay green
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_fsm_executor.py::TestSubLoopTimeoutRouting` — `test_cap_routed_child_failure_terminal_propagates` (asserts `captured["run_child"]["failure_terminal"] is True`) and `test_captured_terminated_by_written_for_terminal_result` stay valid; place the new re-entry test class next to this one [Agent 3 finding]
+- `scripts/tests/test_fsm_executor.py` workdir_vanished test (~:15095-15137) — patches `FSMExecutor.run` to return a canned `ExecutionResult`; pattern for a per-entry synthetic child outcome (closure counter returning `failure_terminal=True` first, passing second) [Agent 3 finding]
+- `scripts/tests/test_fsm_executor.py::TestSubLoopWorktree.test_loop_state_reentry_reattaches_worktree` (~:7065) — marker-file `gate` state (`if [ -f marker ]; then exit 1; else touch marker; exit 0; fi`) plus `parent.states["run_child"].on_yes = "gate"` forces one re-entry; alternative: child shell state that touches a marker and exits 1 first time, 0 after, with a `failure: true` terminal (`_write_cap_failure_child`) [Agent 3 finding]
+- New test cases: fail-then-succeed with capture-less child (assert `"failure_terminal" not in captured["run_child"]`, `terminated_by == "terminal"`); same with `with_={}` / `context_passthrough=True` and a child that has captures; fail-then-fail keeps `True`; stale `error` key after error-then-terminal entry; optional `capture=` `verdict` flip pin [Agent 3 finding]
+- `scripts/tests/test_builtin_loops.py` (~:2139-2140, ~:2164-2165) — `test_write_failure_evidence_attributes_sub_loop_failure` / `..._no_route_sub_loop_failure` substitute `${captured.confidence_check.failure_terminal?}` with literals (`True`, empty); insensitive to the executor change, but an unconditional `False` write would make runtime differ from the empty-string case they simulate [Agent 1/3 finding]
+- `scripts/tests/test_builtin_loops.py` (~:4405, ~:4463-4468, ~:20591-20592, ~:20703-20706) — text pins and `mr11-ok` allowlists for `captured.delegate.terminated_by` / `captured.confidence_check.*`; unaffected [Agent 1/3 finding]
+- `scripts/tests/test_fsm_persistence.py` — only relevant if the fix also normalizes `captured` on resume; no existing assertion on stale `captured` keys [Agent 1/3 finding]
+- No integration test covers sub-loop re-entry (`scripts/tests/integration/` has no `loop:` fixtures); `test_enh2814_failure_terminal_e2e.py` is top-level only and unaffected [Agent 3 finding]
+
 ### Documentation
 - `docs/reference/API.md` — check whether the `captured.<state>.failure_terminal` contract
   says anything about re-entry; state "latest child run" if it does not
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/API.md` (~:6392-6417) — documents `failure_terminal`/`terminated_by` only as `ExecutionResult` fields (BUG-3499 semantics); there is no `captured.<state>` contract, so add the "latest child run" statement as a new sentence rather than editing an existing one [Agent 2 finding]
+- `docs/guides/LOOPS_REFERENCE.md` (~:1009, ~:1025) and `docs/ARCHITECTURE.md` (~:463) — describe `${captured.delegate.terminated_by}` only; optional one-line re-entry note [Agent 1/2 finding]
+- No `captured.<state>.failure_terminal` contract exists in `skills/` or `commands/` (`skills/audit-loop-run/SKILL.md` ~:289-299 covers the `loop_complete` event field only) [Agent 2 finding]
+
 ### Configuration
 - N/A
+
+_Wiring pass added by `/ll:wire-issue`:_
+- No config or schema changes: `fsm-loop-schema.json` / `schema.py` mention `terminated_by` only as an `ExecutionResult` concept; MR-11 markers need no edits provided the `${captured.*?}` site text is unchanged [Agent 2 finding]
 
 ### Codebase Research Findings
 
@@ -102,6 +130,16 @@ _Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
 2. Clear `failure_terminal` before the conditional set in `_execute_sub_loop` (or assign it
    unconditionally), and decide the capture-less whole-dict merge case.
 3. Run `python -m pytest scripts/tests/test_fsm_executor.py scripts/tests/test_builtin_loops.py`.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `scripts/little_loops/fsm/executor.py` `_execute_sub_loop` — clear `failure_terminal` (prefer `pop`, so `${captured.<state>.failure_terminal?}` keeps resolving empty) after the merge block and before the conditional set; decide the same for the conditional `error` (~:1223, ~:1372) and `verdict` (~:1356) writes
+- Update `scripts/tests/test_fsm_executor.py` — add the re-entry test class near `TestSubLoopTimeoutRouting` (fail-then-succeed capture-less, `with_`/passthrough variant, fail-then-fail, stale `error`); pin the whole-dict merge decision
+- Keep `${captured.confidence_check.failure_terminal?}` site text and `test_builtin_loops.py` `mr11-ok` allowlist entries unchanged
+- Update `docs/reference/API.md` (~:6392-6417) — add a "latest child run" sentence for `captured.<state>` termination fields
+- Fix stale `executor.py:1170-1175` reference in the `auto-refine-and-implement.yaml` (~:403) comment if touched
 
 ## Impact
 
@@ -161,5 +199,6 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-27T04:02:38 - `b9726386-58c1-4c65-8485-76e226017a2f.jsonl`
 - `/ll:refine-issue` - 2026-09-27T03:55:47 - `0b26d35d-ec12-419a-9599-7aa7bcfe4ed1.jsonl`
 - `/ll:capture-issue` - 2026-09-27T03:35:38 - `2cf44b5a-002b-44e7-a500-5cad45592206.jsonl`

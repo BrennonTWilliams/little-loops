@@ -62,10 +62,27 @@ FSM executor evaluates a state whose `evaluate.type` is `diff_stall` -> `evaluat
 ### Files to Modify
 - `scripts/little_loops/fsm/evaluators.py` — `evaluate_diff_stall()` (cache path, fingerprint)
 - `scripts/little_loops/fsm/executor.py` — whatever dispatches `diff_stall` must pass run context (run dir / run id)
+  > ⚠ Superseded — `evaluate()` already receives `context`; dispatcher branch in evaluators.py suffices
 - `scripts/little_loops/loops/lib/common.yaml` — `diff_stall_gate` fragment description
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/fsm/evaluators.py` — `evaluate()` branch `elif eval_type == "diff_stall"` (~:2012) is the only production call site; derive `state_dir` from `context.context["run_dir"]` here (same pattern as the `score_stall`/`open_question_stall` branches, which resolve `${context.run_dir}` from `context`). Also update the `evaluate_diff_stall` docstring ("State is persisted in /tmp" is already wrong) and the module docstring ("git diff comparison") [Agent 1/2 finding]
+- `scripts/little_loops/fsm/schema.py` — `EvaluateConfig` docstring (~:81-82) says "Paths to limit git diff to"; no new field needed if `state_dir` derives from `context` [Agent 2 finding]
+- `scripts/little_loops/fsm/fsm-loop-schema.json` (~:829) — `scope` description "Paths to limit git diff to"; reword if fingerprint semantics change [Agent 2 finding]
+- `scripts/little_loops/loops/README.md:211` — lists `diff_stall_gate` in the `lib/common.yaml` fragment table; keep description consistent [Agent 1 finding]
+- `scripts/little_loops/loops/harness-single-shot.yaml` (`check_stall` comment, ~:46) — "diff_stall compares the git diff between iterations"; reword [Agent 2 finding]
 
 ### Dependent Files (Callers/Importers)
 - The 12 loops listed under Current Behavior (behavior change only; no YAML edits expected)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/loop/testing.py` — `cmd_test` (~:114-124) is a second `evaluate()` caller and passes a bare `InterpolationContext()` with no `run_dir`; `state_dir` derivation must fall back to the legacy `.loops/tmp` path (or a temp dir) and not raise [Agent 2 finding]
+- `scripts/little_loops/cli/loop/audit.py` — `AuditStats.diff_stall_present` reads only evaluate-event `type`/`verdict` (not `details`); unaffected while those are preserved [Agent 2 finding]
+- `skills/audit-loop-run/SKILL.md` (~:214-237) — consumes `diff_stall_present` as "shallow-iteration" corroboration; meaning shifts slightly once commits count as progress [Agent 1/2 finding]
+- `scripts/little_loops/fsm/validation/structural_rules.py` (`evaluate.type == "diff_stall"` block ~:160) — validates only `max_stall >= 1`; no change unless a new field is added [Agent 1/2 finding]
+- Loops not listed above that also use the gate: `scripts/little_loops/loops/oracles/generator-evaluator.yaml` (`check_diff_stall`, ~:281-287, header comments ~:15-17, ~:268-271), inherited by `oracles/generator-evaluator-flux.yaml`; `harness-multi-item.yaml` (~:81) [Agent 1/2 finding]
+- Behavior interplay: child loops `setdefault` the parent's `run_dir` (`executor.py` ~:1151-1152), so a sub-loop's diff_stall and the parent's share a state dir unless the cache key keeps `md5(scope)`; two diff_stall states with the same scope in one run still collide. Loops that write progress only under `.loops/` (excluded by the fingerprint) will no longer register as progress [Agent 2 finding]
+- `scripts/little_loops/fsm/evaluators.py` `evaluate_action_stall` (~:849) — same shared `.loops/tmp` cache pattern; out of scope, follow-up [Agent 2 finding]
 
 ### Similar Patterns
 - `scripts/little_loops/loops/general-task.yaml` — `final_verify_spin_gate` content fingerprint scoped away from `${context.run_dir}`
@@ -74,11 +91,32 @@ FSM executor evaluates a state whose `evaluate.type` is `diff_stall` -> `evaluat
 - `scripts/tests/test_fsm_fragments.py::TestDiffStallGate`
 - evaluator unit tests for `evaluate_diff_stall` (locate with grep)
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_fsm_evaluators.py::TestDiffStallEvaluator` — the `mock_git` fixture returns the same stdout for every `subprocess.run`, so a multi-command fingerprint breaks: `test_first_iteration_returns_success`, `test_different_diff_returns_success`, `test_identical_diff_at_threshold_returns_failure`, `test_identical_diff_below_threshold_returns_success`, `test_stall_then_progress_resets_counter`, `test_dispatch_diff_stall`, `test_dispatch_diff_stall_with_options`, `test_first_call_resets_stale_count_file` (hardcodes `md5("_root_")[:12]` and `.loops/tmp/ll-diff-stall-<key>.count`). Re-model `mock_git` with an argv-routed `side_effect` or switch to real-git tests [Agent 2/3 finding]
+- `test_scope_passed_to_git` — asserts `mock_run.call_args[0][0]` (last call only); breaks unless the scope-bearing command is last [Agent 3 finding]
+- `test_git_failure_returns_error` / `test_git_timeout_returns_error` — assert `"git diff failed"` / `"timed out"` in `details["error"]`; keep those strings [Agent 2/3 finding]
+- `clean_state_files` autouse fixture + dispatch tests (`test_dispatch_diff_stall*`, `evaluate(config, "", 0, InterpolationContext())`) — no `run_dir`; `run_dir` must stay optional [Agent 3 finding]
+- `scripts/tests/test_grader_coverage.py` (`EXEMPT_GRADERS`, `"evaluate_diff_stall"` ~:48) — `test_all_evaluate_functions_classified` fails if the function is renamed/split into a new `evaluate_*` symbol [Agent 1/3 finding]
+- New tests (real git repo; copy the `git_repo` fixture / `_commit_file` from `scripts/tests/test_prepatch_check.py` and `_init_repo(repo, *, gitignore_loops)` from `test_builtin_loops.py::TestGeneralTaskFinalVerifySpinGateShellAction`; `monkeypatch.chdir(repo)`): same-line-count content edit, commit-only, staged-only, untracked add/edit, `.loops/` state excluded from untracked hashing, `scope` limiting tracked+untracked, two `run_dir`s isolated / fresh `run_dir` first check `yes` with `stall_count` 0, `run_dir` absent fallback, git errors (no-commit repo, non-git dir, later-command timeout) [Agent 3 finding]
+- `scripts/tests/test_fsm_evaluators.py::TestScoreStallEvaluator.test_dispatch_defaults_to_run_dir_history` (~:2100) — template for passing `InterpolationContext(context={"run_dir": ...})` through `evaluate()` [Agent 3 finding]
+- Structural-only, should stay green unless the `common.yaml` fragment shape changes (`evaluate.type`, `max_stall: 2`, description): `test_fsm_fragments.py::TestDiffStallGateFragment` (~:1711-1760), `test_builtin_loops.py::test_check_stall_uses_diff_stall_gate_fragment` (~:3957), `test_flux_image_generator.py` (~:84-97), `test_audit_loop_run_skill.py::test_shallow_iteration_has_diff_stall_evaluator` (~:466), `test_create_loop.py` (~:274), `test_cli_loop_audit.py::test_diff_stall_detected` [Agent 1/3 finding]
+
 ### Documentation
 - `docs/guides/LOOPS_GUIDE.md` / `docs/reference/` entries describing `diff_stall` semantics (grep `diff_stall`)
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/generalized-fsm-loop.md` — `#### diff_stall` section (~:745-764): "comparing `git diff --stat`", `scope` comment, verdict table rows [Agent 2 finding]
+- `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` (~:450-463) — `scope` row "Paths to limit `git diff --stat` to" [Agent 2 finding]
+- `docs/guides/LOOPS_GUIDE.md` (~:418, ~:1032-1038, ~:1352) and `docs/guides/LOOPS_REFERENCE.md` (~:3520-3521 fragment description; "No file changes detected" prose ~:2132, ~:2199, ~:2262, ~:2346, ~:2418) [Agent 2 finding]
+- `docs/reference/loops.md` (~:590-602, ~:687, ~:753-757) and `docs/reference/API.md` (~:6084-6110, `EvaluateConfig.scope`/`max_stall` "git diff" wording) [Agent 1/2 finding]
+- `docs/test-quality-audit.md` (~:23, ~:67) — "stale count file not reset on first call" entry describes the `.count` behavior [Agent 2 finding]
+- `skills/create-loop/loop-types.md` (~:973 "comparing `git diff --stat`") and `skills/create-loop/reference.md` (~:406, ~:1350) — after editing, regenerate the mirrors `.gemini/`, `.kimi-code/`, `.qwen/skills/create-loop/` with `ll-adapt --host <gemini|kimi-code|qwen> --apply` or the mirror gates trip [Agent 2 finding]
+- `CHANGELOG.md` — historical mentions only; no edit (no `[Unreleased]` entries)
+
 ### Configuration
-- N/A
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/fsm/validation/structural_rules.py:365` — `RUNNER_INJECTED` already includes `run_dir`; no schema/config-key addition needed [Agent 2 finding]
+- `scripts/little_loops/fsm/validation/meta_rules.py` (`_SHARED_TMP_PATH_RE`, ~:39-41, ~:186-206) — scans loop action text, not evaluator internals; will not flag the evaluator's own `.loops/tmp` write [Agent 2 finding]
 
 ### Codebase Research Findings
 
@@ -99,6 +137,17 @@ _Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
 1. Pass run context into `evaluate_diff_stall`; store snapshot/count under the run dir.
 2. Replace the `--stat` snapshot with a content fingerprint (`git diff HEAD` + `HEAD` sha + untracked contents), honoring `scope` and excluding the run dir.
 3. Add tests for each Acceptance Criterion; update fragment docs.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `scripts/little_loops/fsm/evaluators.py` `evaluate()` `diff_stall` branch — resolve `state_dir` from `context.context["run_dir"]` (no `executor.py` change needed); tolerate missing/empty `run_dir` (`cli/loop/testing.py::cmd_test` passes a bare `InterpolationContext()`)
+- Update `scripts/tests/test_fsm_evaluators.py::TestDiffStallEvaluator` — re-model `mock_git` (multi-command fingerprint), fix hardcoded count path in `test_first_call_resets_stale_count_file`, fix `test_scope_passed_to_git` argv assertion, keep error strings; add real-git tests for each Acceptance Criterion
+- Update `scripts/tests/test_grader_coverage.py` only if a new `evaluate_*` symbol is introduced
+- Update docs listed under Documentation (`docs/generalized-fsm-loop.md`, `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md`, `LOOPS_GUIDE.md`, `LOOPS_REFERENCE.md`, `docs/reference/loops.md`, `API.md`, `docs/test-quality-audit.md`), `fsm-loop-schema.json` / `schema.py` `scope` wording, and `skills/create-loop/{loop-types,reference}.md`
+- Regenerate host skill mirrors (`ll-adapt --host <gemini|kimi-code|qwen> --apply`) after the `skills/` edit; run `ruff format` scoped to changed files only
+- Decide per-run key collisions: two diff_stall states with the same `scope` in one run (or parent + child sharing `run_dir`) still share `md5(scope)` files
 
 ## Impact
 
@@ -135,4 +184,5 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-27T04:02:38 - `b9726386-58c1-4c65-8485-76e226017a2f.jsonl`
 - `/ll:refine-issue` - 2026-09-27T03:56:26 - `d2d94801-a3bb-4af7-800e-2bfc0ccec8d4.jsonl`
