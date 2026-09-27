@@ -7,8 +7,6 @@ status: open
 discovered_by: ll-issue-size-review
 discovered_date: '2026-09-27'
 parent: ENH-3626
-blocked_by:
-- ENH-3632
 relates_to:
 - ENH-3590
 - ENH-3623
@@ -35,9 +33,9 @@ between `check_proof_before_done` and `write_done_record`, calling the ENH-3632 
 
 Decomposed from ENH-3626: Add opt-in second-model advise readiness consult to refine-to-ready.
 Covers parent Implementation Steps 3-6 (Proposed Solution: "Loop wiring", "Flag declaration",
-`record_advisor_veto` contract, accepted fail-open on re-runs). The helper itself is ENH-3632;
-this issue is blocked by it. Wiring is intentionally kept with the loop change (TDD mode): the
-loop-level tests here drive the wiring.
+`record_advisor_veto` contract, accepted fail-open on re-runs). The helper itself is ENH-3632
+(done — `ll-issues advise-consult` exists). Wiring is intentionally kept with the loop change
+(TDD mode): the loop-level tests here drive the wiring.
 
 ## Current Behavior
 
@@ -164,7 +162,7 @@ _Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
 
 ## Implementation Steps
 
-1. Confirm ENH-3632 has landed (`ll-issues advise-consult --help`).
+1. ~~Confirm ENH-3632 has landed~~ — confirmed (`ll-issues advise-consult --help` resolves).
 2. Add `record_advisor_veto` (mirroring `record_gate_unmet`) and register it in `test_run_record.py` sets.
 3. Add `check_advise_ready_enabled` and `run_advise_ready`; retarget `check_proof_before_done`; bump `max_steps`; update header diagram and history comment.
 4. Declare the flag: `context:` in `autodev.yaml`; `parameters:` in `refine-to-ready-issue.yaml` and `recursive-refine.yaml`. Never in a child loop's `context:`.
@@ -207,8 +205,8 @@ _Added by `/ll:confidence-check` on 2026-09-27_
 **Outcome Confidence**: 75/100 → MODERATE
 
 ### Gaps to Address
-- Blocked by ENH-3632 (open) — the `ll-issues advise-consult` helper this issue wires in does not exist yet; format-check confirms both `ll-issues advise-consult` and `ll-issues advise-consult --help` as `stale_cli_flag` (no such subcommand). Land ENH-3632 first.
-- Criterion 4 (Issue Well-Specified) capped at 10/20 by the same `stale_cli_flag` gap — expected given the blocking dependency, not a specification defect; re-verify once ENH-3632 lands and the subcommand resolves.
+- Resolved — ENH-3632 has landed; `ll-issues advise-consult` and `ll-issues advise-consult --help` now resolve, so the `stale_cli_flag` gap this note originally flagged no longer applies.
+- Criterion 4 (Issue Well-Specified) was capped at 10/20 by that same `stale_cli_flag` gap; re-verify with `/ll:confidence-check` now that ENH-3632 has landed.
 
 ## Session Log
 - `/ll:confidence-check` - 2026-09-27T05:50:16 - `80466a09-7d06-47fd-a22c-3c9fa3353587.jsonl`
