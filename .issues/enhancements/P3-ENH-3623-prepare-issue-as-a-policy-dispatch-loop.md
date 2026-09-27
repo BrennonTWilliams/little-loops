@@ -13,8 +13,12 @@ supersedes:
 relates_to:
 - ENH-3621
 - ENH-3618
+blocked_by:
+- BUG-3624
+- ENH-3625
 blocks:
 - ENH-3600
+- ENH-3590
 ---
 
 # ENH-3623: prepare-issue as a policy dispatch loop
@@ -40,6 +44,27 @@ mechanics are dropped: the ~55-state wrapper, `route_inner_success`,
 `detect_ladder_children`, `route_ladder_stop`, the `mark_*` terminals, the 250-step
 arithmetic, and the `count_repair_cycle_refine` → `clear_record` entry chain. Each of
 those becomes a rule, a precondition or an `apply` outcome.
+
+## Phasing
+
+This is large and touches the most-used loop, and every project on this machine is
+`local-editable`, so a half-landed cutover breaks tooling everywhere. Land it as three
+phases (child issues or separate commits):
+
+1. **Phase A, additive.** `little_loops.preparation_policy` (policy / facts / writers),
+   `ll-issues prep {step,record,apply,explain}`, `decide()` table tests, and the promoted
+   parity/differential tests run against the *existing* YAML. No loop file changes, so
+   nothing can regress. Tag the spike branch first (`git tag
+   spike/preparation-policy-a51621302 a51621302`) so the port source cannot be pruned.
+2. **Phase B, cutover (atomic).** Replace `prepare-issue.yaml`, apply the autodev
+   retargets / 42 deletions / `dequeue_next` pass-id write / `copy_broke_down` shrink, and
+   migrate the affected tests in the same commit.
+3. **Phase C, docs.** CLI/API/LOOPS_REFERENCE/ARCHITECTURE/DEFERRAL_CODES, `ll-adapt`
+   mirrors, and the opt-in slow resume matrix.
+
+**Ordering prerequisites**: BUG-3624 (Q1) and ENH-3625 (Q3) land first, on the current
+YAML, so the ENH-3618 suite pins the fixed behavior and this issue's "accepted behavior
+changes" list stays complete.
 
 ## Current Behavior
 
@@ -188,7 +213,10 @@ parent's `current_state`, so a mid-ladder resume restarts the `loop:` child from
      remedies), and set `max_steps ≈ 3 × cap + 3`. The spike's fixed 15 is below the
      legal worst case.
    - Make `apply`'s row append and its `apply_progress` obs one atomic write, or key the
-     rows by `(pass, seq)`, so a crash inside `apply` cannot double-append a row.
+     rows by `(pass, seq)`, so a crash inside `apply` cannot double-append a row. This is
+     an acceptance criterion with a crash-injection test (see Acceptance Criteria).
+   - `apply` owns the `refine-terminal-class` sentinel writes that `mark_inner_error` does
+     today, until ENH-3600 removes the reader. Pin it with a test.
 2. **CLI and docs.**
    <!-- ll-prose-ok: the prep subcommand group is proposed by this issue, not yet implemented -->
    - `ll-issues prep {step,record,apply,explain}` goes in `docs/reference/CLI.md`, and
@@ -203,7 +231,10 @@ parent's `current_state`, so a mid-ladder resume restarts the `loop:` child from
    - `prepare-issue.yaml` is replaced in place by the dispatch loop.
    - Autodev gets the boundary retargets, the 42 deletions, the `dequeue_next` pass-id
      write and the `copy_broke_down` shrink.
-   - Update the `test_fsm_topology.py` autodev count with a delta comment.
+   - Update the `test_fsm_topology.py` autodev count with a delta comment. Expected
+     target: 87 states minus the 42 deletions (`size_review_snap`, `check_broke_down`,
+     `mark_scores_absent_infra` and the 39 moved), i.e. 45, plus any new autodev state.
+     Record the exact number in the delta comment.
 4. **Test migration.**
    - ENH-3606's "Relocate or rewrite" inventory becomes `decide()` table tests plus
      wrapper-structure tests. That inventory is the `TestAutodevLoop` second-pass
@@ -224,8 +255,12 @@ parent's `current_state`, so a mid-ladder resume restarts the `loop:` child from
      whichever rule it decides.
    - **Run-terminal capture for `record_step`**: the executor merges child captures into
      `captured.run_child` only when the child captured something, so a stale
-     `failure_terminal` can survive. Get a stable executor-provided capture, or spend 2
-     of the ~15 states on three record states.
+     `failure_terminal` can survive. Get a stable executor-provided capture, or spend 3
+     more states on record states. The dispatch loop listed above is already 15 states
+     (`select_step`, 7 `run_*`, `classify_guard2`, `record_guard2`, `record_step`,
+     `apply_outcome`, `done`, `failed`, `mark_rate_limited`), so the record-state option
+     makes it 18. **Decide this first** (in Phase A): either add the executor-provided
+     capture, or relax the "≤ ~15 states" criterion to the real count.
 6. **Fixed on main since the spike; implement the fixed behavior, not parity:**
    - **BUG-3620** (fixed on main): the design branches read the current check-design verdict,
      and no sticky `autodev-design-gate-failed-<ID>` marker exists. In the policy, the
@@ -456,6 +491,16 @@ _These touchpoints were identified by wiring analysis and must be included in th
   whatever `has_blocking_gaps` is, not `markers = 0 if has_blocking_gaps`.
 - [ ] `max_steps` and the per-pass cap are derived from the ladder budgets, with the
   arithmetic in a comment and a structural test.
+- [ ] Crash injection inside `prep apply` (between each of the ledger row, `set-status`,
+  run record and inflight clear writes) followed by resume never double-appends a ledger
+  row and ends with one terminal.
+- [ ] `apply` writes the `refine-terminal-class` sentinel on every `failed`-bound
+  terminal until ENH-3600 removes its reader (test).
+- [ ] The dispatch-loop state count matches the decided run-terminal capture option
+  (15 with an executor-provided capture, otherwise the real count), stated in the YAML
+  comment and pinned by a structural test.
+- [ ] The autodev topology count in `test_fsm_topology.py` equals the number recorded in
+  the delta comment.
 
 ## Status
 

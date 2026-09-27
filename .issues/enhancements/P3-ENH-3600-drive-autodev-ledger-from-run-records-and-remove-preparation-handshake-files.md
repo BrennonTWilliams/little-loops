@@ -9,7 +9,6 @@ discovered_date: '2026-09-25'
 captured_at: '2026-09-25T18:51:51Z'
 blocked_by:
 - ENH-3623
-- ENH-3619
 parent: EPIC-3565
 relates_to:
 - ENH-3577
@@ -166,6 +165,43 @@ _Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
   - Contested: per-ID JSON readers either skip bad files (`decisions.py:_load_fragments`, `cli/loop/queue.py`, `cli/harness.py`) or return `None` (`read_run_record`); `build_summary` must convert `None` into a counted `record_absent`. `record_token(None)` already maps to `MISSING`, never `READY`.
   - No existing gate restricts a marker to named states (the "allowed only in `init`/`dequeue_next` clears" rule); the existing styles are whole-file substring (`test_autodev_loop.py:980-985`, the only one that catches comments), concatenated-action forbidden list (`test_builtin_loops.py:924-956`), per-line state scan (`test_prepare_issue.py:113-118`) and bidirectional set-equality (`TestMr11MarkerSet`, `test_builtin_loops.py` ~:20795). The disposition-table gate is a new shape.
 
+## Review Decisions (2026-09-27)
+
+Resolved from the ENH-3623 / ENH-3600 / ENH-3625 review. These override earlier text in
+this file where they conflict.
+
+- **`refine-terminal-class` scope.** The AC is about `autodev.yaml` only: zero references
+  there, and `skip_inflight` classifies `MISSING` from the record alone. The child's
+  ~8 sentinel writers in `refine-to-ready-issue.yaml` become **dead writes**. They are
+  removed in this issue, which makes `refine-to-ready-issue.yaml` **in scope** for this
+  one change (sentinel writes, the `resolve_issue` clear, and the comments naming it).
+  This supersedes the "needs no change" note in Files to Modify; the three child *ledger*
+  writers still stay (documented exception). Rewrite the positive pins
+  (`test_on_max_steps_is_classify_terminal` and the other sentinel pins listed in the
+  research findings) in the same commit. `prep apply` stops writing the sentinel then too.
+- **`record_ledger_mismatch` is an apply-atomicity detector.** After ENH-3623, `prep apply`
+  writes the ledger row and the run record in one idempotent step, so a mismatch can only
+  come from a crash inside `apply` that resume did not repair. Keep the key, but document
+  it as that detector, expect it to be 0 on healthy runs, and do not build fixtures for a
+  reachable-mismatch case beyond one crash-injection scenario.
+- **`autodev-prepared.txt` stays.** ENH-3623's `prep-pass-<ID>` is written in
+  `dequeue_next`, so it also covers dequeue-time skips, and `prep-facts/<ID>.jsonl` only
+  appears on the first `prep step`. Neither can identify "entered preparation but crashed
+  before the first `prep step`". The one-line `refine_current` pre-state is the only
+  signal for that case.
+- **`decision_unresolved` count.** The summary key stays ledger-only
+  (`autodev-decision-unresolved.txt`, child-written). autodev's own `decision_unresolved`
+  stops stay under `skipped`. The Marker disposition row says so; no change to the count.
+- **`write_summary` serialization.** It keeps compact JSON through
+  `atomic_write(..., shared_mode=True)`, not `atomic_write_json`. The golden fixtures pin
+  the bytes.
+- **Program Design is "extend", not "create".** `build_summary`, `write_summary`,
+  `render_report` and `main` exist from ENH-3619; this issue adds the record reader, the
+  `autodev-prepared.txt` input and the two keys.
+- **Doc refresh.** After ENH-3623 lands, run `/ll:reconcile-issue` to collapse the layered
+  research findings into one current map (state counts, anchors), then re-score
+  confidence. The 90/63 scores predate all of this.
+
 ## Sequencing
 
 The former step 1 (behavior-identical extraction: golden fixtures, the
@@ -303,12 +339,12 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ### Types
 
-- `AutodevSummary: dataclass` — the `summary.json` payload built from run records and closure accounting
+- `AutodevSummary: dataclass` — exists (ENH-3619); this issue appends `record_absent` and `record_ledger_mismatch` to `KEYS`
 
 ### Signatures
 
-- `build_summary(run_dir: Path) -> AutodevSummary` — reads `run-records/prepare-issue/<ID>.json` for each ID in `autodev-prepared.txt` plus the Scope Boundaries files; an absent/malformed record for a prepared, not-in-flight, otherwise-unledgered ID counts as `record_absent`
-- `write_summary(run_dir: Path, summary: AutodevSummary) -> Path` — writes `summary.json` via `atomic_write_json`
+- `build_summary(run_dir: Path) -> AutodevSummary` — exists (ENH-3619); extended to read `run-records/prepare-issue/<ID>.json` for each ID in `autodev-prepared.txt` plus the Scope Boundaries files; an absent/malformed record for a prepared, not-in-flight, otherwise-unledgered ID counts as `record_absent`
+- `write_summary(run_dir: Path, summary: AutodevSummary) -> Path` — exists (ENH-3619); writes compact `summary.json` via `atomic_write(..., shared_mode=True)`, byte-pinned by the golden fixtures
 - `render_report(summary: AutodevSummary) -> str` — the stdout report, line-identical to today's plus the `record_absent` line
 - `main(argv: list[str] | None = None) -> int` — `EXIT_OK=0` / `EXIT_PHANTOM=1` / `EXIT_ERROR=2`
 
@@ -373,7 +409,9 @@ ENH-3606 moves and renames states.
 | Class | Files | Disposition |
 |---|---|---|
 | Queue / closure accounting | listed in Scope Boundaries | stay |
-| Shared per-pass state (ENH-3606 keeps the names; the wrapper writes them, and autodev's `dequeue_next` is their only cleaner) | `autodev-repair-cycle-count.txt`, `autodev-pre-readiness.txt`, `autodev-design-gate-failed-<ID>`, `autodev-design-remedy-attempted-<ID>`, `autodev-atomic-design-remedy-pending`, `autodev-contradiction-reconcile-*`, `autodev-go-no-go-attempted-<ID>`, `autodev-pre-deferral-remedy*`, `autodev-size-review-ran-this-pass`, `autodev-rescore-retry-*`, `autodev-rescore-origin-<ID>`, `autodev-reentry-*` | stay. `autodev.yaml` may reference them **only** in `init` / `dequeue_next` clears |
+| Shared per-pass state (**superseded by ENH-3623**: these fold into `run_dir/prep-facts/<ID>.jsonl`; only the `repair-cycle-count` projection may survive) | `autodev-repair-cycle-count.txt`, `autodev-pre-readiness.txt`, `autodev-design-gate-failed-<ID>` (retired by BUG-3620), `autodev-design-remedy-attempted-<ID>`, `autodev-atomic-design-remedy-pending`, `autodev-contradiction-reconcile-*`, `autodev-go-no-go-attempted-<ID>`, `autodev-pre-deferral-remedy*`, `autodev-size-review-ran-this-pass`, `autodev-rescore-retry-*`, `autodev-rescore-origin-<ID>`, `autodev-reentry-*` | **Re-derive after ENH-3623.** Default: no `autodev.yaml` reference except `init` / `dequeue_next` clears, and only for files that still have a writer. Files whose writer moved into the fact log have zero references |
+| Policy state (ENH-3623) | `run_dir/prep-facts/<ID>.jsonl`, `run_dir/prep-pass-<ID>` | stay. `prep-pass-<ID>` is written only by `dequeue_next`; `prep-facts` only by `ll-issues prep` |
+| Gate-infra ledgers | `autodev-gate-infra.txt` (`mark_gate_infra`), `autodev-scores-absent.txt` | write-only, no reader in `scripts/little_loops`. `autodev-scores-absent.txt` dies with `mark_scores_absent_infra` (ENH-3623). Decide `mark_gate_infra`: drop the ledger, or keep it and list it under Queue / closure accounting |
 | Decomposition diff | `autodev-pre-ids.txt`, `-post-ids.txt`, `-diff-ids.txt`, `-new-children.txt`, `autodev-broke-down` | stay (queue-owned child detection) |
 | Child-written ledgers (documented exception) | `autodev-decision-unresolved.txt`, `autodev-spike-inconclusive.txt`, `autodev-proposal-unsound.txt` | The child keeps writing them, and `auto-refine-and-implement` keeps reading them. `build_summary` also keeps reading them as closure accounting. The `decision_unresolved` key counts **only** this ledger today; the child's `record_decision_unresolved` writes no `autodev-skipped.txt` row, while autodev's own `decision_unresolved` rows go to `autodev-skipped.txt`. Counting that key from records would pull in the wrapper's `record_reentry_exhausted` stops and change the count. Inside `autodev.yaml`, the only references left are `init` truncation and `skip_inflight`'s grep-before-`refine_failed` (~:597). Remove the grep if a test shows `route_refine_outcome`'s record-token routing already covers it (`BLOCKED:decision_unresolved` → `ledger_child_stop`, ~:532) |
 | Dead | `autodev-scores-absent.txt` (writer deleted by ENH-3606), `autodev-pre-spike-readiness.txt`, and any other file with no writer after ENH-3606 | delete every reference |
@@ -409,6 +447,8 @@ What the rewrite of `finalize_done` must preserve, and what is allowed to change
 - [ ] Autodev's `skip_inflight` no longer reads `refine-terminal-class`: a `MISSING` / malformed `prepare-issue` record on the failure path is ledgered `refine_failed_infra` from the record alone, and no wrapper terminal writes the sentinel only to feed that fallback (structural test that `autodev.yaml` has zero `refine-terminal-class` references, plus a behavioral test for the `MISSING` route)
 - [ ] An ID in `autodev-prepared.txt` with no or malformed `prepare-issue` record, not in flight, and in no closure or skip ledger is counted once under `record_absent`, never dropped or passed; dequeue-time skips are never `record_absent`; an in-flight ID counts as `abandoned`, not `record_absent` (unit tests for each)
 - [ ] When an ID is dequeued twice, the last record wins and the ID is counted once (unit test)
+- [ ] `record_ledger_mismatch` is 0 on every healthy characterization scenario, and a single crash-injection-inside-`prep apply` scenario is the only case that exercises a non-zero value
+- [ ] The Marker disposition table is re-derived against post-ENH-3623 `autodev.yaml` (fact-log files, `prep-pass-<ID>`, `mark_gate_infra` all have a row) before the grep gate is written
 - [ ] The child-written ledger exception is documented in `LOOPS_REFERENCE.md`; `auto-refine-and-implement`'s counts are unchanged; `oracles/resolve-decision` needs no change (its `autodev-decide-ran` mention is a comment only)
 - [ ] `docs/ARCHITECTURE.md` describes the parent/child contract (records vs. ledgers, which is the count source, and the prepared-ID set)
 

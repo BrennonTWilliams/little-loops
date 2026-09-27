@@ -2,15 +2,16 @@
 id: ENH-3625
 type: ENH
 title: State the first-gate Program Design rule
-priority: P4
+priority: P3
 status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-09-27'
 captured_at: '2026-09-27T01:48:55Z'
 parent: EPIC-3565
 relates_to:
-- ENH-3623
 - ENH-3621
+blocks:
+- ENH-3623
 ---
 
 # ENH-3625: State the first-gate Program Design rule
@@ -21,8 +22,9 @@ Decide the Program Design rule for autodev's first post-refine gate, and write i
 Today the first gate (`check_passed`) ignores the Program Design verdict, while every
 later gate in the ladder hard-ANDs it. The ENH-3621 spike found this asymmetry as quirk
 Q3 (report `thoughts/spikes/preparation-policy-spike.md`, § "H2 — first gate skips
-check-design" and § Quirks). It is probably intentional, but no comment, doc or test
-states it as a rule. ENH-3623's `decide()` has to encode one rule or the other.
+check-design" and § Quirks). No comment, doc or test states it as a rule. The static trace
+below (see "Trace Evidence") shows an inner `done` can leave `check-design` failing, so
+the default is **option A** unless a real probe proves otherwise. ENH-3623's `decide()` has to encode one rule or the other.
 
 ## Current Behavior
 
@@ -67,8 +69,15 @@ choice should be made on purpose before the port, not inherited.
 1. Trace whether an inner `refine-to-ready-issue` `done` can leave `ll-issues
    check-design` failing. Check the `--skip DESIGN` selector call and the shared
    refine-limit exhaustion path.
+   The existing trace is static. Confirm it with a real run or probe (drive an inner
+   `done` against a failing design gate) before choosing.
 2. If it can, choose A. If it cannot (or only through a documented budget exhaustion
-   that ends `failed`), choose B.
+   that ends `failed`), choose B. **Default: A**, per the static trace.
+   **Verify A's routing first**: `check_passed.on_no` goes to
+   `select_obligation_post_refine`, which also passes `--skip … DESIGN`. Trace whether a
+   first-gate design failure actually reaches the design remedy / `design_gate_failed`
+   from there. If it does not, A also needs a routing change (or a `check_passed`
+   `on_no` retarget), and Effort/Risk below are understated.
 3. Record the rule:
    - a comment on `check_passed`;
    - a line in `docs/guides/LOOPS_REFERENCE.md` (autodev section);
@@ -129,7 +138,8 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 - Put the `check_passed` rule comment above `action:`, not inside the `action: |` block: a comment inside the block is part of the action string and is visible to `yaml.safe_load` tests and MR-11 marker scanning. Do not write the string `autodev-dequeue-sha` in it (`test_autodev_loop.py::test_no_dequeue_sha_run_dir_artifact` scans the raw file)
 - Under A, an added `ll-issues check-design` line must use `"$ID"` from `autodev-inflight` (as `recheck_scores` does), not `${captured.input.output}`, to avoid a new MR-11 marker (`MR11_MARKER_ALLOWLIST` is an exact-set test) and a new `loop_interpolation_baseline.json` entry (its only `check_passed` entry is `recursive-refine.yaml`)
-- Under A, update the run-record `ready` predicate (`run_record.py:28`, `:205`; `cli/issues/run_record.py:271`) with `check_passed`
+- Under A, update the run-record `ready` predicate (`run_record.py:28`, `:205`; `cli/issues/run_record.py:271`) with `check_passed`, and add a parity test across the three places that must agree: `check_passed`, the run-record `ready` predicate and ENH-3623's `decide()` first-gate row
+- State whether the rule also covers `recursive-refine.yaml`'s `check_passed` (same gap, out of scope to change)
 - Add the h2-shaped characterization scenario and the `check_passed` structural pin; add the ENH-3623 `decide()` first-gate table row
 
 ## Program Design
@@ -149,9 +159,9 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Impact
 
-- **Priority**: P4. Probably intended behavior; this issue makes it explicit before the
+- **Priority**: P3 (raised from P4: it blocks ENH-3623). Probably intended behavior; this issue makes it explicit before the
   policy port.
-- **Effort**: Small
+- **Effort**: Small under B. Small-Medium under A (add a routing change if the `on_no` trace fails).
 - **Risk**: Low under B (docs and tests only). Low-Medium under A (more issues take the
   design remedy path).
 - **Breaking Change**: No
@@ -160,18 +170,23 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 - **In scope**: the decision, the comment/doc/test, and, under option A, the
   `check_passed` change and its characterization re-pin.
-- **Out of scope**: changing the later gates, and changing `check-design` itself.
+- **Out of scope**: changing the later gates, changing `check-design` itself, and changing
+  `recursive-refine.yaml`'s `check_passed` (the stated rule may name it).
+- **Ordering**: lands before ENH-3623, so the characterization suite is re-pinned on the
+  YAML and ENH-3623 ports the chosen rule instead of inheriting the asymmetry.
 
 ## Acceptance Criteria
 
-- [ ] The rule (A or B) is chosen, with the trace evidence recorded in this issue
+- [ ] The rule (A or B) is chosen, with the trace evidence recorded in this issue, confirmed by a run or probe (not the static trace alone)
+- [ ] Under A: the first-gate design failure is shown to reach the design remedy / `design_gate_failed` (or the routing is fixed so it does)
+- [ ] Under A: `check_passed`, the run-record `ready` predicate and the `decide()` first-gate row agree (parity test)
 - [ ] `check_passed` carries a comment stating the rule
 - [ ] A test pins the chosen first-gate shape
 - [ ] ENH-3623's `decide()` table tests include the rule
 
 ## Status
 
-**Open** | Created: 2026-09-27 | Priority: P4
+**Open** | Created: 2026-09-27 | Priority: P3
 
 
 ## Session Log
