@@ -133,6 +133,7 @@ def main_issues() -> int:
         )
         from little_loops.cli_args import VALID_PRIORITIES, add_config_arg, add_skip_arg
         from little_loops.config import BRConfig
+        from little_loops.preparation_policy import add_prep_parser, cmd_prep
 
         parser = argparse.ArgumentParser(
             prog="ll-issues",
@@ -187,6 +188,9 @@ Sub-commands:
   rearm-spike                Re-arm a refuted spike (drop spike_attempted/spike_refuted)
   arm-proposal-revision      Mark the selected option refuted + decision_needed (exit 1: no alternative)
   run-record        Write/read/clear the typed per-issue preparation run record (ENH-3597)
+  prep              Preparation policy dispatch (step/record/apply/explain) -- internal loop
+                    plumbing (ENH-3623/ENH-3630); step/apply mutate issue status, not for
+                    manual use
 
 Examples:
   %(prog)s next-id
@@ -797,6 +801,7 @@ Examples:
         add_arm_proposal_revision_parser(subs)
         add_run_record_parser(subs)
         add_next_obligation_parser(subs)
+        add_prep_parser(subs)
 
         cr = subs.add_parser(
             "check-readiness",
@@ -1118,6 +1123,8 @@ Examples:
             return cmd_arm_proposal_revision(config, args)
         if args.command == "run-record":
             return cmd_run_record(config, args)
+        if args.command == "prep":
+            return cmd_prep(config, args)
         if args.command == "check-readiness":
             return cmd_check_readiness(config, args)
         if args.command == "set-scores":
