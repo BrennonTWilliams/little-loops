@@ -10330,6 +10330,232 @@ class TestSubLoopTimeoutRouting:
         assert executor.captured["run_child"]["terminated_by"] == "terminal"
 
 
+class TestSubLoopReentryCaptureReset:
+    """BUG-3628: captured[<loop-state>] termination fields must reflect only the
+    latest child invocation, not a stale value from an earlier entry into the
+    same `loop:` state in one run."""
+
+    def _write_gate(self, tmp_path: Path, on_yes: str, on_no: str) -> StateConfig:
+        marker = tmp_path / "reentry-marker"
+        return StateConfig(
+            action=f'if [ -f "{marker}" ]; then exit 1; else touch "{marker}"; exit 0; fi',
+            action_type="shell",
+            on_yes=on_yes,
+            on_no=on_no,
+        )
+
+    def test_failure_terminal_cleared_on_capture_less_success_reentry(
+        self, tmp_path: Path
+    ) -> None:
+        """First entry's child ends on a `failure: true` terminal; second entry's
+        child succeeds without capturing anything. failure_terminal must be
+        absent (not stale True, not an explicit False) after the second entry."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        # child: first call fails (via a marker file gate inside the child itself
+        # is unnecessary — we drive re-entry via the parent's gate state below and
+        # let the child branch on whether it's been run before, using the same
+        # marker-file idiom as the parent's gate).
+        child_marker = tmp_path / "child-marker"
+        (loops_dir / "child.yaml").write_text(
+            "name: child\ninitial: work\n"
+            "states:\n"
+            "  work:\n"
+            f"    action: 'if [ -f \"{child_marker}\" ]; then exit 0; else touch \"{child_marker}\"; exit 1; fi'\n"
+            "    action_type: shell\n"
+            "    on_yes: done\n"
+            "    on_no: needs_attention\n"
+            "  done:\n    terminal: true\n"
+            "  needs_attention:\n    terminal: true\n    failure: true\n"
+        )
+        parent_fsm = FSMLoop(
+            name="parent",
+            initial="run_child",
+            states={
+                "run_child": StateConfig(
+                    loop="child",
+                    on_yes="gate",
+                    on_no="gate",
+                ),
+                "gate": self._write_gate(tmp_path, on_yes="run_child", on_no="done"),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        executor = FSMExecutor(parent_fsm, loops_dir=loops_dir)
+        result = executor.run()
+        assert result.final_state == "done"
+        assert executor.captured["run_child"]["terminated_by"] == "terminal"
+        assert "failure_terminal" not in executor.captured["run_child"], (
+            "second entry's capture-less success must not carry the first "
+            "entry's stale failure_terminal=True"
+        )
+
+    def test_failure_terminal_persists_across_fail_then_fail_reentry(
+        self, tmp_path: Path
+    ) -> None:
+        """Both entries fail: failure_terminal stays True (not cleared spuriously)."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "child.yaml").write_text(
+            "name: child\ninitial: needs_attention\n"
+            "states:\n  needs_attention:\n    terminal: true\n    failure: true\n"
+        )
+        parent_fsm = FSMLoop(
+            name="parent",
+            initial="run_child",
+            states={
+                "run_child": StateConfig(loop="child", on_yes="gate", on_no="gate"),
+                "gate": self._write_gate(tmp_path, on_yes="run_child", on_no="done"),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        executor = FSMExecutor(parent_fsm, loops_dir=loops_dir)
+        result = executor.run()
+        assert result.final_state == "done"
+        assert executor.captured["run_child"]["terminated_by"] == "terminal"
+        assert executor.captured["run_child"]["failure_terminal"] is True
+
+    def test_error_key_cleared_on_success_reentry(self, tmp_path: Path) -> None:
+        """First entry's child dies with a runtime error (captured under
+        `error`); second entry's child terminates normally. The stale `error`
+        key must not survive into the second entry's capture dict."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "child.yaml").write_text(
+            "name: child\ninitial: done\nstates:\n  done:\n    terminal: true\n"
+        )
+        parent_fsm = FSMLoop(
+            name="parent",
+            initial="run_child",
+            states={
+                "run_child": StateConfig(
+                    loop="child", on_yes="gate", on_no="gate", on_error="gate"
+                ),
+                "gate": self._write_gate(tmp_path, on_yes="run_child", on_no="done"),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        executor = FSMExecutor(parent_fsm, loops_dir=loops_dir)
+        original_run = FSMExecutor.run
+        call_count = {"n": 0}
+
+        def flaky_child_run(self_inner: FSMExecutor) -> ExecutionResult:
+            if self_inner.fsm.name == "child":
+                call_count["n"] += 1
+                if call_count["n"] == 1:
+                    return ExecutionResult(
+                        final_state="work",
+                        iterations=1,
+                        terminated_by="error",
+                        error="boom",
+                        duration_ms=0,
+                        captured={},
+                    )
+            return original_run(self_inner)
+
+        with patch.object(FSMExecutor, "run", flaky_child_run):
+            result = executor.run()
+        assert result.final_state == "done"
+        assert executor.captured["run_child"]["terminated_by"] == "terminal"
+        assert "error" not in executor.captured["run_child"], (
+            "second entry's clean terminal result must not carry the first "
+            "entry's stale error"
+        )
+
+    def test_context_passthrough_reentry_still_sees_own_previous_captures(
+        self, tmp_path: Path
+    ) -> None:
+        """Placement pin: the reset happens after the context_passthrough branch
+        builds captured_as_context, so a re-entered passthrough child still
+        receives its own prior invocation's captures via ${context.<state>}."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        out_file = tmp_path / "seen.txt"
+        (loops_dir / "child.yaml").write_text(
+            "name: child\ninitial: step\n"
+            "states:\n"
+            "  step:\n"
+            f"    action: 'echo \"${{context.run_child?}}\" >> {out_file}'\n"
+            "    action_type: shell\n"
+            "    capture: mark\n"
+            "    next: done\n"
+            "  done:\n    terminal: true\n"
+        )
+        parent_fsm = FSMLoop(
+            name="parent",
+            initial="run_child",
+            states={
+                "run_child": StateConfig(
+                    loop="child",
+                    context_passthrough=True,
+                    on_yes="gate",
+                    on_no="gate",
+                ),
+                "gate": self._write_gate(tmp_path, on_yes="run_child", on_no="done"),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        executor = FSMExecutor(parent_fsm, loops_dir=loops_dir)
+        result = executor.run()
+        assert result.final_state == "done"
+        lines = out_file.read_text().splitlines()
+        assert len(lines) == 2
+        # Second invocation's echo ran while self.captured["run_child"] still held
+        # the first invocation's merged dict (the reset lands after this branch).
+        assert lines[1] != "", (
+            "re-entered passthrough child must still see its own previous "
+            "invocation's captures, per the BUG-3628 placement decision"
+        )
+
+    def test_worktree_error_then_success_reentry_leaves_no_stale_error(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """First entry's worktree setup fails (writes `error` via setdefault);
+        second entry succeeds. The reset must land before the worktree block so
+        the setdefault write always lands in a fresh dict."""
+        monkeypatch.chdir(tmp_path)
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "child.yaml").write_text(
+            "name: child\ninitial: done\nstates:\n  done:\n    terminal: true\n"
+        )
+        parent_fsm = FSMLoop(
+            name="parent",
+            initial="run_child",
+            context={"branch": "epic/test-branch"},
+            states={
+                "run_child": StateConfig(
+                    loop="child",
+                    worktree="${context.branch}",
+                    on_yes="gate",
+                    on_no="gate",
+                    on_error="gate",
+                ),
+                "gate": self._write_gate(tmp_path, on_yes="run_child", on_no="done"),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        call_count = {"n": 0}
+
+        def flaky_setup(**kwargs: Any) -> None:
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                raise RuntimeError("worktree add failed")
+            Path(kwargs["worktree_path"]).mkdir(parents=True, exist_ok=True)
+
+        executor = FSMExecutor(parent_fsm, loops_dir=loops_dir)
+        with (
+            patch("little_loops.worktree_utils.setup_worktree", side_effect=flaky_setup),
+            patch("little_loops.worktree_utils.cleanup_worktree"),
+        ):
+            result = executor.run()
+        assert result.final_state == "done"
+        assert "error" not in executor.captured["run_child"], (
+            "second entry's successful worktree attach + child run must not "
+            "carry the first entry's stale worktree-setup error"
+        )
+
+
 class TestSubLoopWithBindings:
     """Tests for explicit with: parameter bindings on sub-loop states."""
 

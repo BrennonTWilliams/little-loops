@@ -3,10 +3,11 @@ id: BUG-3628
 type: BUG
 title: FSM executor leaves stale failure_terminal capture on loop state re-entry
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-27'
 captured_at: '2026-09-27T03:35:17Z'
+completed_at: '2026-09-27T05:53:31Z'
 relates_to:
 - ENH-3623
 confidence_score: 100
@@ -214,22 +215,22 @@ stale child captures from an earlier invocation also survive.
 
 ## Acceptance Criteria
 
-- [ ] A real-FSM test enters a `loop:` state twice (fail, then succeed with no child
+- [x] A real-FSM test enters a `loop:` state twice (fail, then succeed with no child
   captures) and asserts `"failure_terminal" not in captured[<state>]` after the second
   entry (absent, not `False`).
-- [ ] Reset-at-entry is the chosen behavior for the whole-dict merge (see Proposed
+- [x] Reset-at-entry is the chosen behavior for the whole-dict merge (see Proposed
   Solution) and a capture-less re-entry test pins that no child captures survive.
-- [ ] The reset sits after child-context binding and before worktree setup: a re-entered
+- [x] The reset sits after child-context binding and before worktree setup: a re-entered
   `context_passthrough` child still receives its previous captures, and a
   worktree-error-then-success sequence leaves no stale `error`.
-- [ ] Stale `error` keys are also cleared on re-entry (error-then-terminal test).
+- [x] Stale `error` keys are also cleared on re-entry (error-then-terminal test).
   `verdict` needs no fix (written into `captured[state.capture]` every entry); an optional
   verdict-flip test is a regression pin only.
-- [ ] `delegate` and `run_quality_gate` re-entry checked and noted in the Resolution.
-- [ ] A resumed run (`PersistentExecutor.resume` rehydrating a stale `captured`) exposes
+- [x] `delegate` and `run_quality_gate` re-entry checked and noted in the Resolution.
+- [x] A resumed run (`PersistentExecutor.resume` rehydrating a stale `captured`) exposes
   no stale termination keys after the next re-entry — covered by a test or an explicit
   note that reset-at-entry covers it.
-- [ ] `${captured.confidence_check.failure_terminal?}` site text and the `mr11-ok`
+- [x] `${captured.confidence_check.failure_terminal?}` site text and the `mr11-ok`
   allowlist entries are unchanged.
 
 ## Program Design
@@ -253,8 +254,63 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Status
 
-**Open** | Created: 2026-09-27 | Priority: P3
+**Done** | Created: 2026-09-27 | Priority: P3
 
+## Resolution
+
+Implemented reset-at-entry exactly as decided: `_execute_sub_loop` now does
+`self.captured.pop(self.current_state, None)` right after the child-context
+binding (`derive_input_hash`, `executor.py:1183-1199`) and before the ENH-2609
+worktree block, so `terminated_by`/`failure_terminal`/`error` written after
+the child returns always land in a fresh dict for that invocation, while a
+re-entered `context_passthrough` child still sees its own prior captures
+(reset lands after that branch runs).
+
+Added `TestSubLoopReentryCaptureReset` (`test_fsm_executor.py`) covering:
+capture-less success after a failure terminal (`failure_terminal` absent, not
+`False`), fail-then-fail (`failure_terminal` stays `True`), a runtime-error
+entry followed by a clean terminal (stale `error` cleared), the
+`context_passthrough` placement pin, and a worktree-setup-error entry
+followed by a successful re-entry (stale `error` cleared). `verdict` needed
+no change — it's written into `captured[state.capture]` unconditionally on
+every entry, not the per-state dict this fix resets.
+
+`delegate` / `run_quality_gate` re-entry check (issue's open question):
+- `delegate` (`auto-refine-and-implement.yaml`) is re-entered via the
+  ENH-2615 `recheck_set` cycle (`recheck_set.on_yes: delegate`,
+  `delegate.on_success: recheck_set`). Its two readers,
+  `delegate_failed` (~:421) and the crash-record state (~:668), are both
+  reached directly by that same `delegate` invocation's own `on_failure`/
+  `on_error` routing — the read always happens in the same cycle as the
+  write, before any later re-entry. Not exposed to the stale-value bug today.
+- `run_quality_gate` (`autodev.yaml`) is re-entered once per queued issue in
+  the `dequeue_next` drain loop. Its only reader, `mark_quality_fail`
+  (~:1371), is reached directly by that invocation's own `on_failure` route —
+  read and write are in the same cycle, before the next queued item re-enters
+  the state. Not exposed either.
+- Both match the issue's own finding for `confidence_check`
+  (`refine-to-ready-issue.yaml`): no production loop today reads a `loop:`
+  state's capture from a *later* cycle than the one that wrote it, so this
+  was a latent defect with no live misattribution — the fix closes the gap
+  for any future reader that does.
+
+Resume: reset-at-entry runs on every real `_execute_sub_loop` entry
+regardless of whether `self.captured` was populated fresh or rehydrated by
+`PersistentExecutor.resume`, so a resumed run gets the same guarantee on its
+next re-entry without separate handling. No dedicated resume test was added;
+covered by inspection per the AC's either/or.
+
+`${captured.confidence_check.failure_terminal?}` site text and the
+`mr11-ok` allowlist entries in `test_builtin_loops.py` are unchanged, as
+required.
+
+Verification: `python -m pytest scripts/tests/` — full suite passes except
+two pre-existing failures unrelated to this fix
+(`TestBug3295ContainmentCorpusDifferential::test_total_report_count_does_not_exceed_post_bug_3448_baseline`
+and `TestRepoGate::test_no_new_unverifiable_evidence`, both reproduced on a
+clean `main` with this change stashed out — caused by unrelated uncommitted
+edits to BUG-3631/ENH-3616 already present in the working tree).
+`test_fsm_executor.py` + `test_builtin_loops.py` targeted run: 2507 passed.
 
 ## Verification Notes
 

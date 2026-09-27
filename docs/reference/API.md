@@ -6418,6 +6418,12 @@ decides `failure_terminal` (BUG-3499). It drives `ll-loop run`'s exit code
 (`2`), the persisted `final_status` (`"failed"` rather than `"completed"`),
 and sub-loop `on_no` routing.
 
+For a `loop:` state, `${captured.<state>.terminated_by}` and
+`${captured.<state>.failure_terminal}` reflect only the latest child
+invocation: if the same `loop:` state is re-entered in one run, the executor
+drops its prior capture dict before the child runs, so a later invocation's
+result never inherits an earlier invocation's stale value (BUG-3628).
+
 #### ActionResult
 
 ```python

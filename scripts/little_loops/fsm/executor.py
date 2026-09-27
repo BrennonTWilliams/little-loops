@@ -1183,6 +1183,22 @@ class FSMExecutor:
         # (with:, passthrough, or the child's own context: literals) wins.
         derive_input_hash(child_fsm.context)
 
+        # BUG-3628: drop this state's per-invocation capture dict before the
+        # worktree block below and before the child runs, so termination
+        # fields written after the child returns (`terminated_by`,
+        # `failure_terminal`, `error`) reflect only this invocation rather than
+        # a stale value from an earlier entry into this same `loop:` state.
+        # Placed after the context_passthrough branch above (which reads
+        # self.captured to build captured_as_context for the child) so a
+        # re-entered passthrough child still sees its own previous
+        # invocation's captures; placed before the worktree-error early
+        # return (~:1223, below) so that setdefault write lands in a fresh
+        # dict. If child_executor.run() (or detach_worktree() in its finally)
+        # raises, the key is left absent rather than stale -- the exception
+        # propagates and ends the parent run, so nothing reads it; a resume
+        # re-enters this state and repopulates the dict.
+        self.captured.pop(self.current_state, None)
+
         # ENH-2609: per-state worktree attach. state.worktree is a branch-name
         # template; empty after interpolation is a strict no-op so loop YAMLs can
         # gate it on a captured value (e.g. checkout_epic_branch's output). The
