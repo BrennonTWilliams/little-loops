@@ -9,12 +9,12 @@ discovered_by: ll-issues-create
 discovered_date: '2026-09-26'
 captured_at: '2026-09-26T22:32:30Z'
 reconcile_attempted: true
-confidence_score: 95
-outcome_confidence: 56
+confidence_score: 80
+outcome_confidence: 64
 score_complexity: 10
 score_test_coverage: 18
 score_ambiguity: 18
-score_change_surface: 10
+score_change_surface: 18
 blocked_by:
 - BUG-3631
 ---
@@ -277,19 +277,20 @@ Remaining: the AC and Call Path additions above. _(Addressed in the 2026-09-27 r
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-09-26_
+_Added by `/ll:confidence-check` on 2026-09-27_
 
-**Readiness Score**: 95/100 → PROCEED
-**Outcome Confidence**: 56/100 → LOW
+**Readiness Score**: 80/100 → STOP — ADDRESS GAPS (Dependencies Hard Override)
+**Outcome Confidence**: 64/100 → MODERATE
 
 ### Concerns
-- Program Design Call Path still omits `_introspect_src_dir -> _detect_root_layout` and `_introspect_test_dir -> _existing_dir` (noted in Verification Notes); gate passes, but the path is incomplete.
-- Coordination note on ENH-3612 is stale: ENH-3612 is now completed, so the `_introspect_src_dir` call site should be re-read at HEAD before editing.
+- Program Design Call Path still omits nothing material now; ENH-3612 coordination note is stale (completed) — re-read the `_introspect_src_dir` call site at HEAD before editing.
+
+### Gaps to Address
+- `blocked_by: BUG-3631` is unresolved (status: open). Implementation Step 0 requires it to land first so a `.` value is safe for codegraph, worker_pool, decisions export and manage-release. Remedy: implement BUG-3631 first, or drop the `blocked_by` edge if `.` output is gated until it lands.
 
 ### Outcome Risk Factors
-- Broad enumeration across ~10 change sites (introspect, cli, codegraph x2, decisions, two commands, docs, tests) with moderate cross-module depth: a `.` value changes semantics for downstream consumers.
-- Wide change surface: `.`-hostile consumers (`codegraph.py`, `decisions.py:652`, `worker_pool.py:1523`, `auto-refine-and-implement.yaml`) have effects marked "unverified" in the issue; each needs its own check.
-- Several existing tests assert the phantom-default behavior and must be rewritten, and markdown command edits (`manage-release.md`, `run-tests.md`) have no automated validation.
+- Moderate cross-module depth: signature changes plus a call reorder in `introspect()` and `.` round-trip through proposal/core/tui/summary.
+- Several existing tests assert phantom-default behavior and must be rewritten; docs and markdown edits have no automated validation.
 
 ## Session Log
 - `/ll:confidence-check` - 2026-09-26T23:01:16 - `2dc3f1af-4938-467b-8164-481af936e116.jsonl`
