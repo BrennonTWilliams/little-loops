@@ -35,8 +35,8 @@ therefore appends a second JSON object, `json.loads` fails, and the state reads
 
 ## Current Behavior
 
-`scripts/little_loops/loops/autodev.yaml:2112` (state `check_reconcile_needed`, at
-`2058`):
+`scripts/little_loops/loops/autodev.yaml` (state `check_reconcile_needed`, the
+`FMT_JSON=` line):
 
 ```bash
 FMT_JSON=$(ll-issues format-check "$ID" --format json 2>/dev/null || echo '{}')
@@ -70,20 +70,25 @@ Capture stdout whatever the exit code is, and fall back only on empty output:
 FMT_JSON=$(ll-issues format-check "$ID" --format json 2>/dev/null); [ -n "$FMT_JSON" ] || FMT_JSON='{}'
 ```
 
-Add a test that runs the `check_reconcile_needed` predicate with a stub or real
-`format-check` that prints a payload with `superseded_marker_count: 1` and exits 1. The
-test asserts that the predicate exits 0 and arms `autodev-contradiction-reconcile-armed`.
-Model it on the existing `check_reconcile_needed` tests in
-`scripts/tests/test_autodev_loop.py`.
+A crash that leaves partial or garbage stdout still reaches `json.loads`; that is safe,
+because the embedded `try/except` sets `markers = 0`. Do not add a separate validity check.
+
+Add a full-action regression test: run the state's shell action with a stub
+`ll-issues` on `PATH` whose `format-check` prints a payload with
+`superseded_marker_count: 1` and exits 1. The test asserts that the predicate exits 0 and
+arms `autodev-contradiction-reconcile-armed`. The stub must also answer
+`ll-issues show "$ID" --json`, which the action calls without a stderr redirect. Model it
+on the helpers in `scripts/tests/test_spike_verdict_routing.py`.
 
 **Policy port (ENH-3623)**: the spike keeps parity (`markers = 0 if has_blocking_gaps`)
 in `snapshot_issue`. The production port must use the fixed semantics, meaning markers
-are read from the payload whatever `has_blocking_gaps` is. The spike's parity scenario
-`contradiction_masked_by_format_gaps` flips to "reconcile runs". If this bug lands
-before ENH-3623, the ENH-3618 characterization pin moves with it.
+are read from the payload whatever `has_blocking_gaps` is. This requirement is recorded on
+ENH-3623, since no `snapshot_issue` code exists yet.
 
-Check other `ll-issues … --format json … || echo` captures for the same pattern
-(`grep -rn "format json.*|| echo" scripts/little_loops/loops/`).
+Other `|| echo` captures were checked: `autodev.yaml` 768/852/936/2923 pipe into
+`python3` before `|| echo 0` (a different pattern, unaffected), and 2417
+(`ll-issues show --json`) is unaffected because `cmd_show` returns 0 after
+`print_json`.
 
 ## Integration Map
 
@@ -108,7 +113,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/cli/issues/format_check.py` — `cmd_format_check`: the exit-1-after-print contract producer; no change, but the fix depends on it [Agent 2 finding]
 - `scripts/little_loops/fsm/runners.py` — runs the interpolated action as `bash <tmpfile>` with no `-e`/`pipefail`, so a non-zero `$(...)` assignment does not abort before the `[ -n ]` fallback; the state exit code comes from the trailing `python3 << 'PYEOF'` [Agent 2 finding]
-- `scripts/little_loops/loops/autodev.yaml:2417` — `ISSUE_JSON=$(ll-issues show "$ID" --json 2>/dev/null || echo '{}')`: sibling capture with the same shape; unverified whether `show --json` exits non-zero after printing (see Wiring Phase) [Agent 1 finding]
+- `scripts/little_loops/loops/autodev.yaml` (go-no-go eligibility state) — `ISSUE_JSON=$(ll-issues show "$ID" --json 2>/dev/null || echo '{}')`: sibling capture with the same shape; verified unaffected, since `cmd_show` returns 0 after `print_json` (`cli/issues/show.py`)
 - `skills/confidence-check/SKILL.md:138` — `FC_JSON=$(ll-issues format-check ... --format json 2>/dev/null || true)`: `|| true` yields a single object, so not affected [Agent 1/2 finding]
 - `scripts/little_loops/loops/refine-to-ready-issue.yaml` — reads `format-check --format json` stdout via `subprocess.run(...).stdout` regardless of exit code; not affected [Agent 2 finding]
 - `scripts/little_loops/loops/rn-remediate.yaml` (state `ensure_formatted`) — uses the format-check exit code as the gate, not the JSON; not affected [Agent 2 finding]
@@ -123,21 +128,21 @@ _Wiring pass added by `/ll:wire-issue`:_
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
 - Edit `scripts/little_loops/loops/autodev.yaml` `check_reconcile_needed` — replace the `FMT_JSON=` line with the fixed capture on one physical line (`;`-joined) to preserve baseline `line: 10`; add no `${...}` tokens
-- Add a full-action regression test (stub `ll-issues format-check` printing `{"superseded_marker_count": 1}` and exiting 1, modelled on `test_spike_verdict_routing.py` helpers) asserting exit 0 and `autodev-contradiction-reconcile-armed` created; keep `test_missing_format_check_payload_is_inert` passing
+- Add a full-action regression test (stub `ll-issues format-check` printing `{"superseded_marker_count": 1}` and exiting 1, plus a `show --json` stub answer, modelled on `test_spike_verdict_routing.py` helpers, with its own replace step supplying `LL_ARG_READINESS_THRESHOLD` / `${context.readiness_threshold:shell}`) asserting exit 0 and `autodev-contradiction-reconcile-armed` created; keep `test_missing_format_check_payload_is_inert` passing
 - Add the exit-1 + marker-count case to `TestSupersededMarkerCountKey` in `scripts/tests/test_ll_issues_format_check.py`
 - Verify `scripts/tests/data/loop_interpolation_baseline.json` / `TestInterpSweepBaseline.test_completeness_guard` still pass
-- Check `autodev.yaml:2417` (`ll-issues show --json ... || echo '{}'`): confirm whether `show --json` exits non-zero after printing; fix the same way if so, else leave (documented fail-closed)
+- `autodev.yaml` go-no-go eligibility state (`ll-issues show --json ... || echo '{}'`): verified `show --json` exits 0 after printing; leave as is
 
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
 
-- **Existing test seam does not exercise the bug.** `_run_reconcile_predicate` (`scripts/tests/test_autodev_loop.py`) extracts only the `<< 'PYEOF'` body and injects `LL_FORMAT_CHECK_JSON=json.dumps({"superseded_marker_count": N})` — always one clean object. The shell line (`FMT_JSON=$(...)`) is never run, so a regression test must execute the shell portion (stub `ll-issues` on `PATH` printing a payload and exiting 1) or feed the concatenated `"<payload>\n{}"` string. `TestCheckReconcileNeededContradiction` is the existing class; `test_missing_format_check_payload_is_inert` pins the empty-capture → exit 1 contract that must keep passing.
+- **Existing test seam does not exercise the bug.** `_run_reconcile_predicate` (`scripts/tests/test_autodev_loop.py`) extracts only the `<< 'PYEOF'` body and injects `LL_FORMAT_CHECK_JSON=json.dumps({"superseded_marker_count": N})` — always one clean object. The shell line (`FMT_JSON=$(...)`) is never run, so a regression test must execute the shell portion (stub `ll-issues` on `PATH` printing a payload and exiting 1). `TestCheckReconcileNeededContradiction` is the existing class; `test_missing_format_check_payload_is_inert` pins the empty-capture → exit 1 contract that must keep passing.
 - **Static checks on the action text** in `scripts/tests/test_builtin_loops.py` (`test_check_reconcile_needed_fires_on_contradiction`, `..._predicate_reads_snapshot_and_guard`, `..._routing`) assert on the action string; the fix must keep `superseded_marker_count` in it and leave routing unchanged.
-- **Characterization test has no such scenario today.** `scripts/tests/test_autodev_characterization.py` has no `contradiction_masked_by_format_gaps` scenario and no `format-check` stub; that name exists only in `thoughts/spikes/preparation-policy-spike.md:224` and this issue. "Re-pin" applies only if a scenario is added before this lands.
+- **Characterization test has no such scenario today.** Re-pin `scripts/tests/test_autodev_characterization.py` only if a `contradiction_masked_by_format_gaps` scenario lands first.
 - **`snapshot_issue` parity is prose only.** `markers = 0 if has_blocking_gaps` appears solely in the spike report; no `snapshot_issue` code exists under `scripts/` (ENH-3623's port is not yet written), so this fix has no code to keep in parity.
 - **Exit-code contract**: `cmd_format_check` exit 1 means "blocking gaps", independent of whether the payload printed; `print_json` writes multi-line JSON to stdout, stderr is discarded by the capture. Any capture of this command must treat stdout as authoritative and non-empty stdout as valid.
-- **Sibling captures with the same shape** (`|| echo '{}'` on an `ll-issues` JSON call): `scripts/little_loops/loops/autodev.yaml:2417` (`ll-issues show "$ID" --json`, go-no-go eligibility, documented as fail-closed; whether `show --json` exits non-zero after printing is unverified). `autodev.yaml:2112` is this bug. `auto-refine-and-implement.yaml:1156` is a `python3 -c` read, not an `ll-issues` call. `refine-to-ready-issue.yaml` (~421, 470) calls `format-check --format json` from Python via subprocess; its exit-code handling was not checked. `autodev.yaml` 768/852/936/2923 use `... | python3 -c ... || echo 0`, a different pattern.
+- **Sibling captures were checked.** The go-no-go eligibility state's `ll-issues show "$ID" --json ... || echo '{}'` is unaffected (`cmd_show` returns 0 after printing). `auto-refine-and-implement.yaml` (~1156) is a `python3 -c` read, not an `ll-issues` call. `refine-to-ready-issue.yaml` reads `format-check` stdout regardless of exit code. `autodev.yaml` 768/852/936/2923 use `... | python3 -c ... || echo 0`, a different pattern.
 
 ## Program Design
 
@@ -181,8 +186,7 @@ N/A — no new decision logic (the fix restores the existing `contradiction` pre
 ## Root Cause
 
 - **File**: `scripts/little_loops/loops/autodev.yaml`
-- **Anchor**: state `check_reconcile_needed`, the `FMT_JSON=` line (`:2112` at the time
-  of capture)
+- **Anchor**: state `check_reconcile_needed`, the `FMT_JSON=` line
 - **Cause**: `|| echo '{}'` treats "exit non-zero" as "no output". `format-check`'s exit
   code signals blocking gaps and is independent of whether it printed the payload.
 
@@ -193,7 +197,7 @@ N/A — no new decision logic (the fix restores the existing `contradiction` pre
 - [ ] An empty capture still falls back to `{}` (markers = 0)
 - [ ] A regression test covers "marker present + blocking format gap → contradiction
   reconcile armed"
-- [ ] ENH-3623's policy uses the same semantics
+- [ ] The fixed semantics (markers read whatever `has_blocking_gaps` is) are recorded on ENH-3623
 
 ## Status
 

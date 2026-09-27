@@ -310,6 +310,19 @@ parent's `current_state`, so a mid-ladder resume restarts the `loop:` child from
 | `scripts/little_loops/loops/prepare-issue.yaml` | `max_steps: 20`, `on_handoff: spawn`, `scope`, `shared_state_ok: false` | changed: `max_steps` derived from the ladder budgets; the rest preserved |
 | `scripts/little_loops/loops/prepare-issue.yaml` | no rate-limit handling on the `loop:` state (BUG-3390) | preserved for `run_child`; dropped for slash-command states, which gain `mark_rate_limited` (BUG-3622) |
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
+
+- **Current-state facts for the port** (verified against the tree; `autodev.yaml` has 87 states, pinned by `test_fsm_topology.py`):
+  - `prepare-issue.yaml` has 6 states (`clear_record`, `run_refine_to_ready`, `forward_done`, `forward_stop`, `mark_inner_error`, `done`/`failed`), no `context:` block (the ID arrives through `context_passthrough` as `${context.input}`), no `on_max_steps`, and `max_steps: 20`. `run_refine_to_ready` deliberately has no `on_no` (BUG-2611) and no timeout. `cmd_run_record_forward` (`cli/issues/run_record.py`) rewrites the source record with `replace(record, writer=args.writer)` and prints `MISSING` without writing when the source is absent.
+  - `autodev.yaml` today: `check_passed` uses `fragment: harness_exit` with `on_yes: select_obligation_pre_implement`, `on_no`/`on_cannot_judge: select_obligation_post_refine`, `on_error: detect_children`; `refine_current` is `loop: prepare-issue` (`on_success: count_repair_cycle_refine`, `on_failure: route_refine_outcome`, `on_error: skip_inflight_infra`); `route_refine_success` routes `DECOMPOSED` → `detect_children` and `READY`/`BLOCKED`/`MISSING` → `check_passed`. `check_proof_defer_or_implement`, `size_review_snap`, `check_broke_down`, `check_parent_resolved`, `recover_subloop_children`, `enqueue_children`, `mark_scores_absent_infra`, `skip_inflight`, `skip_inflight_infra`, `ledger_child_stop`, `skip_cancelled` and `finalize_rate_limited` all exist. `capture_reachability_ok: true` is a top-level setting (no state references it) and its comment names `check_guard2_verdict` via `check_broke_down`. `dequeue_next` (`fragment: queue_pop`) already resets the per-issue markers the spike's aggregates table maps to facts; it has no `prep-pass-<ID>` write yet.
+  - **`ll-issues` registration**: subcommand groups register in `cli/issues/__init__.py:main_issues()` via `add_<x>_parser(subs)` plus an `if args.command == …` dispatch chain and an epilog list; `run-record` is the precedent for a group with sub-subcommands (`subsubs = p.add_subparsers(dest="run_record_command", required=True)`). The test harness's fork server (`scripts/tests/autodev_harness.py:_CLI_SERVER`) keys only on `main_issues`/`main_config`, so a group registered in `main_issues` is served without a separate registry.
+  - **Record-writing logic is not yet shared**: assembly (path resolution, frontmatter parse, `readiness_status`, `thresholds_met`, `derive_child_ids`, `_read_broke_down`, `RunRecord` build) lives inline in `cmd_run_record_write`; reusable pieces are `derive_child_ids`, `canonical_record_id`, `outcome_from_legacy_class(legacy_class, broke_down, thresholds_met, status)` and `write_run_record`. `run_record.py` `WRITERS` already includes `prepare-issue`.
+  - **Snapshot helpers and their real locations**: `select_next_obligation(config, issue_id, *, skip=(), readiness_override=None, outcome_override=None, honor_waiver=False) -> ObligationResult | None` (`cli/issues/next_obligation.py`; raises `ObligationProbeError` fail-closed); `resolve_gate_verdict(frontmatter, text, spike_proven)` (`cli/issues/check_gate.py`); `readiness_status(config, issue_id, *, …) -> ReadinessStatus | None` (`cli/issues/check_readiness.py`); `superseded_marker_count(issue_path)`, `check_format_gaps` and `design_gate_failed(gaps)` (`issue_parser.py`; `cmd_check_design` composes the last two); Program Design grading in `issues/program_design.py`. `session_command_counts` is a **field on the parsed issue dataclass** populated by `count_session_commands(content)` (`session_log.py`), not an `IssueParser` method.
+  - **Spike artifacts**: `thoughts/spikes/preparation-policy-spike.md` exists; branch `spike/preparation-policy` exists at `a5162130240f244ad79ae4354470e903e01769b2` (also checked out in a worktree under `.git/worktrees/`). `little_loops.preparation_policy`, the `prep` group, `test_preparation_policy*.py` and `preparation_policy_harness.py` do not exist; `autodev_harness.py` has no `state#N`, `replay_same` or `inner_calls`.
+  - **Executor constraints bearing on `record_step` and the dispatch loop** (`fsm/executor.py`): a `loop:` child's captures overwrite `captured[<state>]` only when the child captured something and `context_passthrough`/`with_` is set; `terminated_by` is always set and `failure_terminal` only when the child produced one, so a stale `failure_terminal` from an earlier pass can survive a later child that captured nothing. `on_max_steps` runs exactly one handler state (`_summary_state_executed`), flushing one pending non-loop state first. Since BUG-3622, `next:` states go through `_intercept_transient_failure` (429 retries refund `_throttle_counts`; exhaustion routes `on_rate_limit_exhausted` else `on_error`), but the `loop:` delegate path does not — consistent with the BUG-3390 comments in both YAMLs, so `run_child` stays without rate-limit handling.
+
 ## Program Design
 
 ### Types
@@ -388,7 +401,8 @@ parent's `current_state`, so a mid-ladder resume restarts the `loop:` child from
 - [ ] The design rule reads the current check-design verdict: a fixed design is never
   deferred `design_gate_failed` (BUG-3620 regression test).
 - [ ] The contradiction trigger reads `superseded_marker_count` even when format-check
-  exits 1 (Q1 semantics).
+  exits 1 (Q1 semantics, BUG-3624): `snapshot_issue` reads markers from the payload
+  whatever `has_blocking_gaps` is, not `markers = 0 if has_blocking_gaps`.
 - [ ] `max_steps` and the per-pass cap are derived from the ladder budgets, with the
   arithmetic in a comment and a structural test.
 
@@ -398,4 +412,5 @@ parent's `current_state`, so a mid-ladder resume restarts the `loop:` child from
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-27T02:22:39 - `e00c47b1-36f2-4288-9df3-a5c841c33968.jsonl`
 - `/ll:format-issue` - 2026-09-27T02:13:30 - `eab069d8-1487-4826-8057-122a54e92dfd.jsonl`
