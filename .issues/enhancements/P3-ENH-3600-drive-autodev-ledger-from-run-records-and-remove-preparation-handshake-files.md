@@ -12,11 +12,11 @@ parent: EPIC-3565
 relates_to:
 - ENH-3577
 reconcile_attempted: true
-confidence_score: 90
-outcome_confidence: 73
+confidence_score: 100
+outcome_confidence: 71
 score_complexity: 10
 score_test_coverage: 25
-score_ambiguity: 20
+score_ambiguity: 18
 score_change_surface: 18
 ---
 

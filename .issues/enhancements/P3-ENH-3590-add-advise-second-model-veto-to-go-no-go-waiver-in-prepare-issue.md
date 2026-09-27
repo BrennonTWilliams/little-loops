@@ -11,6 +11,7 @@ relates_to:
 - ENH-3601
 - EPIC-3565
 - ENH-3626
+- ENH-3633
 blocked_by:
 - ENH-3623
 - ENH-3626
@@ -20,6 +21,7 @@ score_complexity: 18
 score_test_coverage: 18
 score_ambiguity: 18
 score_change_surface: 25
+decision_needed: true
 ---
 
 # ENH-3590: Add advise second-model veto to the go-no-go waiver in prepare-issue
@@ -141,6 +143,32 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 - Exit-contract fact for the failure route: `ll-advise` exits 0 only on success and 2 on all seven skip reasons (`disabled`, `trigger_not_allowed`, `budget_exhausted`, `not_configured`, `floor_violation`, `failed`, `timeout`), never a traceback. A shell state routing on its exit code sees exactly 0/2 — `on_no` (1) never fires for CLI refusals.
 - MR-1 posture: the consult is LLM-judged and `advisor_consult` is excluded from `NON_LLM_EVALUATOR_TYPES` (`fsm/validation/_base.py`), so the advise state cannot be the loop's only gate; the existing non-LLM routing (readiness thresholds, format-check predicates) must remain the arbiters, matching the `run_go_no_go` → `check_go_no_go_waiver` frontmatter-read pattern.
 
+_Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
+
+- **ENH-3623 has now shipped (2026-09-27)**: `prepare-issue.yaml` is a 15-state policy-dispatch loop (`select_step`, `run_child`, `run_wire`, `run_refine_gap`, `run_rescore`, `run_reconcile`, `run_size_review`, `classify_guard2`, `record_guard2`, `record_step`, `run_go_no_go`, `apply_outcome`, `mark_rate_limited`, `done`, `failed` — pinned by `scripts/tests/test_prepare_issue.py::TestStructure.test_exactly_fifteen_states_stated_and_pinned`). `check_go_no_go_waiver`, `reopen_waived`, and `check_go_no_go_eligible` no longer exist anywhere — they were folded into `little_loops.preparation_policy._Decider.after_go_no_go()` (`scripts/little_loops/preparation_policy.py:455-463`), confirmed by `MOVED_STATES` in `scripts/tests/preparation_policy_harness.py:17-57`. The state-chain diagram, state names (`check_advise_enabled`, `run_advise`, `read_advise_verdict`, `veto_waiver`), and the `check_go_no_go_waiver.on_yes` splice point above this note are all obsolete and cannot be built as written.
+- **`after_go_no_go()`'s current shape** (verbatim, `scripts/little_loops/preparation_policy.py:455-463`):
+  ```python
+  def after_go_no_go(self) -> Step:
+      if not self.s.waived:
+          return self.stop("oversized_atomic", "go/no-go did not stamp the waiver", row=True)
+      # ENH-3606 accepted change 4: the waiver covers only the outcome gate.
+      if (self.s.confidence or 0) < self.s.readiness_threshold:
+          return self.stop("low_readiness", "waived but readiness below threshold", row=True)
+      self.carry_preconditions.append("reopen")
+      self.trail.append("GO: reopen")
+      return self.pre_implement()
+  ```
+  The veto consult's insertion point is the third branch (waived + readiness OK), before `self.pre_implement()` is reached. `self.s.waived`/`self.s.confidence` come from `IssueSnapshot`, rebuilt fresh from frontmatter on every `decide()` call (`snapshot_issue()`, `preparation_policy.py:699-826`, `outcome_gate_waived` read via `_flag()`) — unchanged by this cutover. Note also: on the common (`FINISH`) exit of this same waived+ready branch, the `"reopen"` precondition is a documented no-op (`_run_preconditions` only runs on non-terminal steps, `preparation_policy.py:976-997`) — pinned as intentional/BUG-LIKE in `test_autodev_characterization.py:377-381`; unrelated to this issue but adjacent to the same function.
+- **ENH-3626 decomposed into ENH-3632 (done) + ENH-3633 (open)**: the "shared Python helper" this issue's Proposed Solution names is `cmd_advise_consult`/`_cmd_advise_consult_inner` in `scripts/little_loops/cli/issues/advise_consult.py`, registered as `ll-issues advise-consult <issue_id> --run-dir <dir> [--signal ...] [--question ...] [--write-note]`. Its own module docstring names this issue directly: "the go-no-go waiver veto in ENH-3590." It differs from this issue's original hand-written design: it calls `little_loops.advisor.consult_for_trigger` in-process (no `ll-advise` subprocess, no `.json`/`.err`/`.rc` triple — it persists `<run_dir>/advise-<ID>.json` (payload) and `<run_dir>/advise-<ID>.verdict` (`{token, context_hash}`) via `_persist()`), prints exactly one of `PROCEED`/`VETO`/`SKIPPED` to stdout, and always exits 0. It preflights `config.advisor.host` before spending budget (empty host → `SKIPPED`, `"not_configured"`, no consult call). Replay is content-hash-gated: PROCEED/SKIPPED replay only while `trim_consult_context()`'s hash still matches; VETO is sticky regardless of hash. ENH-3633 (open, unblocked) is the sibling issue that wires this same helper into `refine-to-ready-issue.yaml`'s done path — its own (unimplemented) design proposes a loop-state gate→consult→`evaluate:{type:classify}`/`route:` chain calling `ll-issues advise-consult <ID> --run-dir ... --write-note`, which is the only extant design precedent for consuming this helper from a loop.
+- **Layering conflict this issue must resolve**: `preparation_policy.py`'s own docstring (`:29-34`) states the pure decision layer is `little_loops.cli`-free, enforced by an import-boundary test. `advise_consult.py` lives under `little_loops.cli.issues`, so `after_go_no_go()` cannot import `cmd_advise_consult`/`_cmd_advise_consult_inner` directly without breaking that boundary.
+- **The opt-in flag has nowhere to attach today**: `prepare-issue.yaml` declares no `context:` block at all (confirmed reading the full 199-line file) — it is a pure pass-through (`context_passthrough: true` from `autodev.yaml`'s `refine_current` state, `autodev.yaml:454-484`). `decide()`/`after_go_no_go()` is a pure function called via `ll-issues prep step`, which today takes only `issue_id`, `--run-dir`, `--readiness-threshold`, `--outcome-threshold` (no advise-related flag).
+
+**Option A — new `StepKind` returned by `after_go_no_go()`, consult runs as a loop state**: `after_go_no_go()` gains a third exit — when waived+ready and the flag is set, return a new `StepKind` (e.g. `ADVISE_GO_NO_GO`) instead of falling into `pre_implement()`. `prepare-issue.yaml`'s `select_step.route` gets one new entry (`ADVISE_GO_NO_GO: run_advise_go_no_go`), and a new shell state `run_advise_go_no_go` calls `ll-issues advise-consult ${context.input} --run-dir ${context.run_dir} --signal autodev_go_no_go_waiver --question "..."` (the already-shipped, tested CLI surface), then `record_step` records the printed token as a new fact kind so a subsequent `decide()` call reads it back and branches: `VETO` → `stop("oversized_atomic", ...)` (same target as the current no-waiver branch); `PROCEED`/`SKIPPED` → falls through into the existing `carry_preconditions.append("reopen"); pre_implement()` path. Requires declaring `advise_go_no_go: ""` in `autodev.yaml`'s `context:` block only (mirroring `skip_learning_gate`, `autodev.yaml:44`) and adding a new `--advise-go-no-go` flag to `ll-issues prep step` so `decide()` can see it. Reuses the shipped `advise_consult.py` CLI exactly as built, keeps `preparation_policy.py`'s pure layer `cli`-free, and mirrors ENH-3633's own (not-yet-built) design for the sibling consult — the only extant precedent for consuming this helper from a loop.
+
+**Option B — in-process call from the pure layer**: `after_go_no_go()` imports `little_loops.advisor.consult_for_trigger` directly (that module is not under `little_loops.cli`, so this alone does not break the import-boundary test) and re-implements the persistence/verdict-mapping/replay-by-hash logic `advise_consult.py` already has, entirely inside `preparation_policy.py`. No new loop state or `StepKind` is needed; the whole decision resolves within one `decide()` call. This avoids an extra ladder round-trip but duplicates the shipped helper's persistence contract (`.json`/`.verdict`, replay-by-hash, VETO stickiness) rather than reusing it, and gives this issue and ENH-3633 two divergent implementations of what ENH-3632 was decomposed specifically to share.
+
+**Recommended**: Option A for v1 — it reuses the shipped, tested helper byte-for-byte (no duplicated persistence/replay logic), keeps the pure `decide()` layer free of advisor-specific logic and CLI imports, and mirrors the sibling ENH-3633 design, so both consult sites converge on one integration shape instead of two.
+
 ## Scope Boundaries
 
 - **In scope**: the four-state veto chain in `prepare-issue.yaml` (gate → consult → verdict read → veto), with a persisted, deterministically read verdict; fail-open handling for a failing or skipped `ll-advise`; the `advise_go_no_go` context flag, passed through from autodev.
@@ -152,6 +180,7 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 
 ### Files to Modify
 - `scripts/little_loops/loops/prepare-issue.yaml` (wrapper created by ENH-3605; anchor states arrive via ENH-3606) - new advise state near `run_go_no_go`
+  > ⚠ Superseded — ENH-3606 cancelled; anchors now live in preparation_policy.py, see Proposed Solution
 - `scripts/little_loops/loops/autodev.yaml` - opt-in `context:` flag passed through to `prepare-issue`
 
 ### Dependent Files (Callers/Importers)
@@ -200,11 +229,19 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 - Default-off wiring assertions live in `test_builtin_loops.py` (the `workflow-generator` tests), not `test_autodev_loop.py` — the latter asserts state routing and extracted predicates only (e.g. `_load_autodev_yaml()` + `on_no`/`on_yes` equality checks, and heredoc execution via `_extract_python_script`/`_run_reconcile_predicate`).
 - Context flags reach child loops via the delegate state's `with:` mapping or `context_passthrough: true` (autodev's `refine_current` forwards `captured.input` as the child's `context.input`) — the pass-through from autodev to the future `prepare-issue` wrapper has both precedents.
 
+_Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
+
+- **Files to Modify, corrected for post-ENH-3623 shape**: `scripts/little_loops/preparation_policy.py` (`_Decider.after_go_no_go()`, `:455-463` — new branch/StepKind on the waived+ready path) is now the primary file to modify, not `prepare-issue.yaml` states directly. Under Option A (recommended, see Proposed Solution), `scripts/little_loops/loops/prepare-issue.yaml` gets one new `select_step.route` entry and one new shell state (`run_advise_go_no_go`); `scripts/little_loops/loops/autodev.yaml` gains the opt-in `context: advise_go_no_go: ""` declaration (mirroring `skip_learning_gate`, `autodev.yaml:44`); `add_prep_parser`/`cmd_prep` (both defined in `scripts/little_loops/preparation_policy.py` itself, imported by `scripts/little_loops/cli/issues/__init__.py:140,810,1134` — the pure module already owns its own CLI-registration wrapper) need a new `--advise-go-no-go` flag on the `step` subcommand, threaded into `decide()`. `scripts/little_loops/cli/issues/advise_consult.py` (the ENH-3632 shared helper) needs no changes — it is called as-is via its existing `ll-issues advise-consult` CLI surface.
+- **Dependent Files, corrected**: `scripts/tests/preparation_policy_harness.py:17-57` (`MOVED_STATES`) documents the states this issue's original design assumed still existed — now confirmed removed; `scripts/tests/test_preparation_policy.py:606-641` (`test_h4_after_go_no_go`, parametrized on `waived`/`confidence`) is the actual current unit-test template for a change to this decision point (pure-function `decide()` call + `check()` assertion on `Step.kind`/payload), superseding this issue's original `test_go_no_go_escalation_chain_shape`/`_run_go_no_go_eligible` references, neither of which exists anywhere in the codebase (confirmed 0 hits, repo-wide). `scripts/tests/test_prepare_issue.py` (`STATES` tuple + `"Exactly 15 states"` header-comment self-consistency pin) must be updated in lockstep if a new loop state is added (Option A). `.issues/enhancements/P3-ENH-3633-wire-opt-in-advise-ready-gate-into-refine-to-ready-issue-done-path.md` (status: open, unblocked) is the sibling consult-wiring issue and the only extant design precedent for a loop consuming the ENH-3632 helper.
+
 ## Implementation Steps
 
 1. After ENH-3606 lands, confirm where `check_go_no_go_waiver`'s `on_yes`/`on_no` edges point in `prepare-issue.yaml`, and find the name of the ladder-error terminal.
+   > ⚠ Superseded — ENH-3606 was cancelled; the state doesn't exist, see Proposed Solution
 2. Declare `advise_go_no_go: ""` in the `context:` blocks of `autodev.yaml` and `prepare-issue.yaml`, and pass it through autodev's `prepare-issue` delegate state. Keep it out of `parameters:`.
+   > ⚠ Superseded — prepare-issue.yaml has no context: block; the flag must reach decide() via a new CLI arg instead, see Proposed Solution Option A
 3. Add `check_advise_enabled`, `run_advise`, `read_advise_verdict`, and `veto_waiver` to `prepare-issue.yaml` per the Proposed Solution chain, and retarget `check_go_no_go_waiver.on_yes` to `check_advise_enabled`. Add an `# ll-lint: mr11-ok(...)` suppression on each `${context.*}` interpolation inside a shell action. Add no states to `autodev.yaml`.
+   > ⚠ Superseded — target states removed by ENH-3623; see Proposed Solution Option A/B
 4. Tests in `test_builtin_loops.py`, alongside the go-no-go chain tests (`test_go_no_go_escalation_chain_shape`, `_run_go_no_go_eligible`):
    - chain-shape pin covering every edge in the diagram, including that `check_go_no_go_waiver.on_yes` reaches `reopen_waived` when the flag is empty;
    - `run_advise` exits 0 when a stub `ll-advise` on PATH exits 2, and when it prints rate-limit text on stderr; `.rc` records 2;
@@ -213,6 +250,7 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
    - `veto_waiver` removes `outcome_gate_waived` from a tmp issue file, leaves other frontmatter intact, and routes to `check_go_no_go_waiver.on_no`'s target;
    - flag pass-through from autodev to `prepare-issue`, modeled on `test_skip_flag_threads_through_sprint_chain`.
    Reuse `_isolate_advisor_budget` (`test_cli_advise.py:38`) for any test that runs the real CLI.
+   > ⚠ Superseded — `test_go_no_go_escalation_chain_shape`/`_run_go_no_go_eligible` don't exist (0 hits repo-wide); the states named throughout don't exist either. Template is `test_preparation_policy.py:606-641` (pure-function `decide()` tests) plus `test_prepare_issue.py`'s state-count pin, see Integration Map
 5. Verify with `ll-loop validate autodev`, `ll-loop validate prepare-issue`, and `python -m pytest scripts/tests/test_builtin_loops.py scripts/tests/test_autodev_loop.py scripts/tests/test_fsm_validation_meta_rules.py scripts/tests/test_autodev_decision_gate.py`.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
@@ -220,10 +258,14 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
 - Declare the opt-in flag in BOTH `autodev.yaml` and `prepare-issue.yaml` `context:` blocks (run pre-flight `cli/loop/run.py:345` + MR-11); keep it out of `parameters:` (`TestNoContextParameterKeyDuplication`); adding only a context flag adds no states to `autodev.yaml` — advise *states* belong in `prepare-issue.yaml`, never in `autodev.yaml`
+  > ⚠ Superseded — prepare-issue.yaml declares no context: block; flag must reach decide() via a new CLI arg, not context interpolation, see Proposed Solution Option A
 - Match the go-no-go chain shape: gate state (flag check, default-off skip route) → advise state (writes `advise-<ID>.json`) → verdict-read state (embedded Python, MR-1). _Superseded 2026-09-26: the advise state deliberately carries **no** `with_rate_limit_handling` fragment; see Proposed Solution._
+  > ⚠ Superseded — no gate/verdict-read states exist; the decision lives in `after_go_no_go()`, see Proposed Solution Option A
 - Exit-code routing: _Resolved 2026-09-26: fail open._ `run_advise` always exits 0, and every non-success is SKIPPED → `reopen_waived`. Nothing routes to `retryable_error`. No failure edge enters a success terminal (`test_no_failure_edge_routes_to_a_success_terminal`).
+  > ⚠ Superseded — `run_advise`/`reopen_waived` don't exist; routing is now a `StepKind` branch in `after_go_no_go()`, see Proposed Solution
 - Budget billing: _Resolved 2026-09-26: per-issue_ (`LL_ISSUE_ID` prefix idiom, autodev.yaml:2061). The state shares the cap with the `issue_manager.py:849` and `hooks/pre_done.py:175` consults.
 - Write the new structural tests in `test_builtin_loops.py` alongside the go-no-go chain tests (chain-shape pins + bash -c stub-`ll-advise` execution + default-off), not only in `test_autodev_loop.py`
+  > ⚠ Superseded — no go-no-go chain tests exist in test_builtin_loops.py; template is `test_preparation_policy.py:606-641` and `test_prepare_issue.py`, see Integration Map
 
 ## Impact
 
@@ -239,6 +281,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - `AdvisorVerdict` — frozen dataclass, `scripts/little_loops/advisor.py`; exactly the 7 fields the CLI prints (`recommendation`, `risks`, `confidence`, `dissent`, `signal`, `host`, `model`). There is no separate CLI payload dataclass.
 - `ConsultOutcome` — `scripts/little_loops/advisor.py`; fields `task_key`, `verdict: AdvisorVerdict | None`, `skipped_reason` (7-value Literal: `disabled`, `trigger_not_allowed`, `budget_exhausted`, `not_configured`, `floor_violation`, `failed`, `timeout`), `error`.
 - `AdvisorConfig` — `scripts/little_loops/config/orchestration.py`; defaults `enabled=False`, `host=None`, `model="opus"`, `min_tier=None`, `timeout_seconds=180`, `triggers=[]`, `max_consults_per_task=3`, `store_verdict_body=False`.
+- `Step` / `StepKind` — `scripts/little_loops/preparation_policy.py`; `Step` carries `kind: StepKind`, `outcome`/`reason`, `preconditions: list[str]`. A veto branch (Option A) adds a new `StepKind` value (e.g. `ADVISE_GO_NO_GO`) alongside the existing `GO_NO_GO`/`FINISH`/`STOP`/etc.
 
 ### Signatures
 
@@ -247,10 +290,15 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - `consult_for_trigger(trigger, *, question, context="", config=None, main_host=None, main_model=None, manual=False) -> ConsultOutcome` — `scripts/little_loops/advisor.py`; `manual=True` (the CLI path) bypasses `advisor.enabled` and the triggers allowlist but never the budget (`record_consult` runs before the host call).
 - `consult(*, question, signal, context="", config=None, main_host=None, main_model=None) -> AdvisorVerdict` — `scripts/little_loops/advisor.py`; resolves the advisor via `resolve_host_named(advisor_host)` (`scripts/little_loops/host_runner.py`; implemented as `resolve_host({"LL_HOST_CLI": name})` — never PATH-probes, never mutates ambient `LL_HOST_CLI`, unregistered names raise `HostNotConfigured`).
 - `evaluate_advisor_consult(output, *, question, verdict_map, signal, timeout, context_from, state_name, context=None) -> EvaluationResult` — `scripts/little_loops/fsm/evaluators.py:1743` (FEAT-3039); the pre-existing evaluator route to the same `consult_for_trigger`; returns the neutral fallback verdict `"neutral"` on skip/fail/unparseable.
+- `after_go_no_go(self) -> Step` — `scripts/little_loops/preparation_policy.py:455-463`; the pure decision function this issue's veto branch attaches to (see Proposed Solution).
+- `cmd_advise_consult(config: BRConfig, args: argparse.Namespace) -> int` / `_cmd_advise_consult_inner(...)` — `scripts/little_loops/cli/issues/advise_consult.py`; the shipped ENH-3632 helper this issue's consult reuses via its `ll-issues advise-consult` CLI surface (not a direct import — see the layering-conflict finding in Proposed Solution), superseding the original hand-written `run_advise`/`read_advise_verdict` design.
+- `map_advise_verdict(outcome: ConsultOutcome) -> tuple[str, str | None]` — `scripts/little_loops/cli/issues/advise_consult.py`; maps a `ConsultOutcome` to one of `PROCEED`/`VETO`/`SKIPPED` plus a log reason.
 
 ### Call Path
 
-Shell-state route (what this issue proposes): loop state → `ll-advise --signal … --question … --context-file … --json > ${context.run_dir}/advise-<ID>.json` → `main_advise` → `cmd_invoke` → `consult_for_trigger` → `consult` → `resolve_host_named(...).build_blocking_json(...)` → `run_blocking_json`. Evaluator route (already wired in the FSM, used by no shipped loop): state with `evaluate: {type: advisor_consult, question, verdict_map}` → `evaluate_advisor_consult` → `consult_for_trigger`. Both routes spend the same per-task budget.
+Shell-state route (what this issue's original design proposed — obsolete, see Proposed Solution): loop state → `ll-advise --signal … --question … --context-file … --json > ${context.run_dir}/advise-<ID>.json` → `main_advise` → `cmd_invoke` → `consult_for_trigger` → `consult` → `resolve_host_named(...).build_blocking_json(...)` → `run_blocking_json`. Evaluator route (already wired in the FSM, used by no shipped loop): state with `evaluate: {type: advisor_consult, question, verdict_map}` → `evaluate_advisor_consult` → `consult_for_trigger`. Both routes spend the same per-task budget.
+
+Corrected route (post-ENH-3623, Option A recommended): `select_step` → `ll-issues prep step` → `decide()` → `_Decider.after_go_no_go()` → (new `StepKind` branch) → `select_step.route` → new state `run_advise_go_no_go` → `ll-issues advise-consult --signal autodev_go_no_go_waiver --question … --run-dir ${context.run_dir}` → `cmd_advise_consult` → `consult_for_trigger` → `consult` → `resolve_host_named(...)`. The verdict feeds back via `record_step` → `ll-issues prep record` → a fact `decide()` reads on its next call to branch `VETO` (`stop("oversized_atomic", ...)`) vs `PROCEED`/`SKIPPED` (`pre_implement()`).
 
 ### Decision Rules
 
@@ -272,11 +320,15 @@ _Resolved 2026-09-26 in review; these replace the former Open Questions._
 ## Acceptance Criteria
 
 - [ ] With `advise_go_no_go` empty (the default), `check_go_no_go_waiver.on_yes` reaches `reopen_waived` without invoking `ll-advise`; state count and routing are otherwise unchanged
+  > ⚠ Superseded — states don't exist; equivalent is `after_go_no_go()` returning to `pre_implement()` unchanged when the flag is empty
 - [ ] With the flag set, a GO waiver invokes `ll-advise --signal autodev_go_no_go_waiver --json` once, billed to the per-issue budget (`LL_ISSUE_ID`)
+  > ⚠ Superseded — invocation is `ll-issues advise-consult` (the ENH-3632 helper), not raw `ll-advise --json`, see Proposed Solution
 - [ ] The payload, stderr, and exit code are written to `${context.run_dir}/advise-<ID>.{json,err,rc}` and mapped to PROCEED/VETO/SKIPPED by embedded Python, without stdout parsing
+  > ⚠ Superseded — the shipped helper persists `advise-<ID>.json` + `advise-<ID>.verdict` (no `.err`/`.rc`); mapping happens inside the helper, see Proposed Solution
 - [ ] A `VETO` removes `outcome_gate_waived` from frontmatter, logs the advisor's recommendation to the session log, and routes like a NO-GO
 - [ ] Any `ll-advise` failure (exit 2, advisor rate limit, auth failure, unreadable output) is equivalent to the flag being off: the waiver proceeds, the skip reason is logged, the loop never halts, and it never waits on a rate-limit retry. `not_configured` emits a WARNING line
 - [ ] `run_advise` carries no `with_rate_limit_handling` fragment, and a comment explains the intentional interception opt-out
+  > ⚠ Superseded — no `run_advise` state; the shipped advise-consult helper already always exits 0, see Proposed Solution
 - [ ] `ll-loop validate autodev` and `ll-loop validate prepare-issue` pass; this issue adds no states to `autodev.yaml`
 
 ## Related Key Documentation
@@ -318,6 +370,7 @@ _Added by `/ll:confidence-check` on 2026-09-26 (supersedes 2026-09-25 run)_
 - Chain edits depend on states that do not yet exist in the target file (retarget of `check_go_no_go_waiver.on_yes` + error terminal), so tests cannot be written against the real shape until ENH-3606 merges.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-27T23:52:45 - `12973c7a-2ea6-47a2-9451-844e0bbe92d3.jsonl`
 - `/ll:confidence-check` - 2026-09-26T20:20:07 - `5304de58-f491-45bb-a965-830806ea2e48.jsonl`
 - `/ll:verify-issues` - 2026-09-26T20:03:20 - `fad4d529-a955-4d85-a909-ec88da4f9e33.jsonl`
 - `/ll:confidence-check` - 2026-09-25T21:32:37 - `672e0da1-840e-4b60-a432-7b20e9ebbd01.jsonl`
