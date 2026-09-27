@@ -3,10 +3,11 @@ id: ENH-3623
 type: ENH
 title: prepare-issue as a policy dispatch loop
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-27'
 captured_at: '2026-09-27T01:47:29Z'
+completed_at: '2026-09-27T21:53:09Z'
 parent: EPIC-3565
 supersedes:
 - ENH-3606
@@ -625,7 +626,7 @@ _Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
 
 ## Acceptance Criteria
 
-- [ ] Parity with the ENH-3618 characterization suite on every pinned scenario, compared
+- [x] Parity with the ENH-3618 characterization suite on every pinned scenario, compared
   on these fields: skipped rows (order), queue, staged/passed/unverified, dequeue order,
   record tokens, status / `deferred_reason`, `summary.json`, slash-command sequence,
   repair-cycle counter, `ll-auto` calls and ledgers. The only differences allowed are
@@ -633,51 +634,51 @@ _Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
   allowances). The wrapper-shape pins (`wrapper_path` tuples in
   `test_autodev_resume_characterization`, the `prepare-issue.yaml` path pin) are
   remapped onto dispatch-loop state names; that remapping is not a behavior difference.
-- [ ] No autodev state is in the removed set (39 moved + 3 deleted); a parametrized
+- [x] No autodev state is in the removed set (39 moved + 3 deleted); a parametrized
   absence test is built from the verified 39-state list. No autodev edge targets a
   removed state, and no autodev event enters a policy-owned step.
-- [ ] Crash/resume subset: at each covered crash point (before/after every runner call
+- [x] Crash/resume subset: at each covered crash point (before/after every runner call
   of the wrapper and inner action states), `PersistentExecutor.resume()` yields
   artifacts and counters identical to an uncrashed run, with ≤ 1 replayed command. The
   full matrix passes when opted in.
-- [ ] `decide()` has table tests covering every row of the checkpoint → rule-order table,
+- [x] `decide()` has table tests covering every row of the checkpoint → rule-order table,
   H1–H4, the budget rules and the ported shell predicates.
-- [ ] The dispatch loop has exactly 15 states (stated in the YAML comment and pinned by a
+- [x] The dispatch loop has exactly 15 states (stated in the YAML comment and pinned by a
   structural test), contains no `rm`, never appends to
   `autodev-staged.txt`, and `prep apply` is the only writer of ledger rows, status and
   run records inside it.
-- [ ] `ll-loop validate prepare-issue` and `ll-loop validate autodev` pass (autodev
+- [x] `ll-loop validate prepare-issue` and `ll-loop validate autodev` pass (autodev
   without `capture_reachability_ok`).
-- [ ] Rate-limit exhaustion in any wrapper slash-command state halts autodev through
+- [x] Rate-limit exhaustion in any wrapper slash-command state halts autodev through
   `mark_rate_limited` → `finalize_rate_limited`, with a real-FSM test per step kind.
-- [ ] The design rule reads the current check-design verdict: a fixed design is never
+- [x] The design rule reads the current check-design verdict: a fixed design is never
   deferred `design_gate_failed` (BUG-3620 regression test).
-- [ ] The contradiction trigger reads `superseded_marker_count` even when format-check
+- [x] The contradiction trigger reads `superseded_marker_count` even when format-check
   exits 1 (Q1 semantics, BUG-3624): `snapshot_issue` reads markers from the payload
   whatever `has_blocking_gaps` is, not `markers = 0 if has_blocking_gaps`.
-- [ ] `max_steps` and the per-pass cap are derived from the ladder budgets
+- [x] `max_steps` and the per-pass cap are derived from the ladder budgets
   (`max_steps = 4 × cap + 3`, counting 4 states per `SIZE_REVIEW` step), with the
   arithmetic in a comment and a structural test that reads the constant ENH-3630 exports.
-- [ ] A step-cap cutoff (`terminated_by=max_steps` after the `apply_outcome` handler)
+- [x] A step-cap cutoff (`terminated_by=max_steps` after the `apply_outcome` handler)
   records `RETRYABLE_ERROR:infra` and reaches autodev's `skip_inflight_infra` through
   `route_refine_outcome` (real-FSM test).
-- [ ] Resuming a persisted run whose `current_state` no longer exists in the loop fails
+- [x] Resuming a persisted run whose `current_state` no longer exists in the loop fails
   with a clear error naming the state and loop, not a generic `error` terminal carrying a
   bare `KeyError` string (test).
-- [ ] Crash injection inside `prep apply` (between each of the ledger row, `set-status`,
+- [x] Crash injection inside `prep apply` (between each of the ledger row, `set-status`,
   run record and inflight clear writes) followed by resume never double-appends a ledger
   row and ends with one terminal.
-- [ ] `apply` writes the `refine-terminal-class` sentinel on every `failed`-bound
+- [x] `apply` writes the `refine-terminal-class` sentinel on every `failed`-bound
   terminal until ENH-3600 removes its reader (test).
-- [ ] The first-gate Program Design rule chosen by ENH-3625 is encoded in the `decide()`
+- [x] The first-gate Program Design rule chosen by ENH-3625 is encoded in the `decide()`
   row after a `RUN_CHILD` done fact, in autodev's surviving `check_passed`, and in the
   run-record `ready` predicate; ENH-3625's parity test stays green across the cutover.
-- [ ] `prep record` classifies the child outcome from
+- [x] `prep record` classifies the child outcome from
   `run-records/refine-to-ready-issue/<ID>.json`, not from `captured.run_child`; a test
   seeds a stale `failure_terminal` capture and shows it is ignored.
-- [ ] Autodev keeps `max_steps: 500`; accepted change 6 is documented in
+- [x] Autodev keeps `max_steps: 500`; accepted change 6 is documented in
   `LOOPS_REFERENCE.md`.
-- [ ] The autodev topology count in `test_fsm_topology.py` equals the number recorded in
+- [x] The autodev topology count in `test_fsm_topology.py` equals the number recorded in
   the delta comment.
 
 ## Verification Notes
@@ -717,6 +718,29 @@ and fixed, not an outstanding action item).
   invalidation defects found. The issue's own prior refine/wire passes already surface an
   extensive, accurate Integration Map; no additional AC-coverage gaps found.
 
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-09-27
+- **Status**: Completed
+
+### Changes Made
+- **Landing note**: the code, test and doc changes below were committed to `main` in `f7fb66513` by a concurrent session's sweeping commit ("refine: prepare-issue policy rework, …"); the closing commit carries only the issue closure, the ISSUE_TEMPLATE wording and the ENH-893 evidence suppression.
+- `scripts/little_loops/loops/prepare-issue.yaml`: replaced in place (`git mv`) by ENH-3630's 15-state dispatch-loop fixture; `record_step` no longer passes the child capture.
+- `scripts/little_loops/loops/autodev.yaml`: 87 → 45 states (39 moved + `size_review_snap`, `check_broke_down`, `mark_scores_absent_infra` deleted); boundary retargets; `dequeue_next` writes `prep-pass-<ID>` and drops resets of markers that lost their writers; `copy_broke_down` shrunk to the `refine-broke-down` reset; `capture_reachability_ok` dropped.
+- `scripts/little_loops/preparation_policy.py`: `prep_record` classifies a RUN_CHILD step from the child's run record only (see Program Design § Deviations); `apply` writes the sentinel on child stops too, forwards through the shared `forward_run_record`, and gained a `row_pending` mark closing a double-append-on-replay gap.
+- `scripts/little_loops/cli/issues/run_record.py`: `forward_run_record()` shared by `run-record forward` and `prep apply`; `run-record forward` kept as public CLI.
+- `scripts/little_loops/fsm/persistence.py`, `cli/loop/runner.py`: removed-state resume guard (`ValueError` naming state + loop; `ll-loop resume` prints it and exits 1).
+- Tests: characterization pins remapped onto the dispatch loop with accepted changes folded in; parity file now a pre-cutover register + pinned differential scenarios; `test_prepare_issue.py` rewritten (structure, removed-state absence, real-FSM step cap and per-kind rate-limit halts, guard-2 pattern); ~40 new `decide()`/writer tests porting the retired YAML-level predicates; crash injection across every `apply` branch; ~200 obsolete YAML-level tests removed across `test_autodev_loop.py`, `test_autodev_decision_gate.py`, `test_autodev_scores_freshness.py`, `test_builtin_loops.py`, `test_autodev_proof_reentry.py`, `test_spike_verdict_routing.py`; `test_autodev_ladder_run_records.py` and `test_preparation_policy_fixture.py` deleted.
+- Docs: LOOPS_REFERENCE (autodev flow rewritten, new prepare-issue section with terminal table and accepted changes 1-6), CLI, API (new `little_loops.preparation_policy` section), ARCHITECTURE (fact log), DEFERRAL_CODES, COMMANDS, ISSUE_TEMPLATE, loops/README, `commands/reconcile-issue.md`, `commands/refine-issue.md`, `skills/go-no-go`, `skills/audit-loop-run` (+ `ll-adapt` mirrors).
+
+### Verification Results
+- Tests: PASS (26702; `test_verify_evidence.py::TestRepoGate` needed an `ll-evidence-ok` suppression on ENH-893's historical quote, which only ever existed under the loop file's pre-package path)
+- Lint: PASS
+- Types: PASS
+- Run: PASS (`ll-loop validate prepare-issue` / `autodev`)
+- Integration: PASS
+
 ## Status
 
 **Open** | Created: 2026-09-27 | Priority: P3
@@ -737,6 +761,7 @@ _Added by `/ll:confidence-check` on 2026-09-27; re-scored 2026-09-27T04:31Z (Dep
 Readiness is high (all preconditions — dependencies, well-specification, non-duplication — are met after ENH-3630 landed); the risk is concentrated entirely in outcome confidence, i.e. this is ready to *start*, not low-risk to *land*. Consider `/ll:spike`-style de-risking or splitting Phase B's atomic commit into a more granular internal sequence (even if landed as one commit) before executing the cutover.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-27T21:53:09 - `5efcaa9c-6b1d-45ca-9c16-0afb8f3405f3.jsonl`
 - `/ll:ready-issue` - 2026-09-27T20:32:21 - `983969c6-a2b0-43ba-9574-ac5a4f020f2a.jsonl`
 - `/ll:confidence-check` - 2026-09-27T20:28:10 - `ccd304ff-fa2b-47fb-9773-08fefc6c9e30.jsonl`
 - `/ll:verify-issues` - 2026-09-27T20:22:00 - `c7f5626c-1fa9-4830-aa8f-e8b6eafe269b.jsonl`

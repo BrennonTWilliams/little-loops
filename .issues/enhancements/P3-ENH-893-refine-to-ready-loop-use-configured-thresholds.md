@@ -18,6 +18,7 @@ The `refine-to-ready-issue` built-in loop hardcodes threshold values (`readiness
 ## Current Behavior
 
 `scripts/little_loops/loops/refine-to-ready-issue.yaml` at line 33–38 contains a hardcoded LLM evaluation prompt:
+<!-- ll-evidence-ok: historical Current Behavior snapshot; the prompt existed only under the file's pre-package path (moved in 97236ca58) and was removed by this issue's own fix (f065836d5) -->
 
 ```
 Answer YES only if BOTH thresholds are met: (1) Readiness Score > 90, and
