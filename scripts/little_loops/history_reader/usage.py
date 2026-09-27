@@ -257,6 +257,21 @@ _OPTIONAL_USAGE_COLUMNS = (
     "observed_at_basis",
 )
 
+# UsageEvent's trailing fields (ENH-3580) -- a narrower set than
+# _OPTIONAL_USAGE_COLUMNS: excludes `state` (already unconditionally selected
+# below) and `provider_vendor` (out of scope; owned by the ENH-3528 chokepoint).
+_USAGE_EVENT_OPTIONAL_COLUMNS = (
+    "channel",
+    "host",
+    "host_basis",
+    "provenance",
+    "scope_kind",
+    "observed_at",
+    "observed_at_basis",
+    "invocation_id",
+    "run_id",
+)
+
 
 def select_usage_observations(
     conn: sqlite3.Connection,
@@ -528,16 +543,28 @@ def recent_usage_events(
 
     *session_id* / *model* narrow the result; *since* is an ISO 8601 lower bound
     on ``ts``. Returns ``[]`` on any read failure (graceful degradation).
+
+    ENH-3580: also populates ``UsageEvent``'s v54/v55 provenance fields.
+    Columns missing from pre-v54/v55 schemas are selected as ``NULL``; a NULL
+    stored ``provenance`` surfaces as ``"unknown"``, other missing fields
+    surface as ``None``.
     """
     db_path = Path(db)
     conn = _connect_readonly(db_path)
     if conn is None:
         return []
     try:
+        present = {row[1] for row in conn.execute("PRAGMA table_info(usage_events)")}
+        optional = ", ".join(
+            (f"COALESCE({col}, 'unknown') AS {col}" if col == "provenance" else col)
+            if col in present
+            else (f"'unknown' AS {col}" if col == "provenance" else f"NULL AS {col}")
+            for col in _USAGE_EVENT_OPTIONAL_COLUMNS
+        )
         sql = (
             "SELECT ts, session_id, model, state, input_tokens, output_tokens, "
-            "cache_read_input_tokens, cache_creation_input_tokens, cost_usd "
-            "FROM usage_events "
+            "cache_read_input_tokens, cache_creation_input_tokens, cost_usd, "
+            f"{optional} FROM usage_events "  # noqa: S608 - column names are module constants
         )
         clauses: list[str] = []
         params: list[Any] = []

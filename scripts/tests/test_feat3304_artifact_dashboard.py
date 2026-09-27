@@ -66,16 +66,32 @@ SCHEMA_JSON = Path(__file__).parent.parent / "little_loops" / "config-schema.jso
 # ---------------------------------------------------------------------------
 
 
-def _build_history_db(path: Path, *, schema_version: str = str(SCHEMA_VERSION)) -> None:
+def _build_history_db(
+    path: Path,
+    *,
+    schema_version: str = str(SCHEMA_VERSION),
+    include_provenance_columns: bool = True,
+) -> None:
     """Build a synthetic history.db shaped like the real one.
 
     Deliberately not the repo's live multi-GB `.ll/history.db`. Column lists
     match `session_store/schema.py`'s DDL, including the two columns ENH-075
     excludes (`loop_runs.error` free text, `loop_runs.diagnostics_path` path).
+
+    *include_provenance_columns* (ENH-3580): the v53/v54/v55 `usage_events`
+    columns (`channel`, `provenance`, `host`, `scope_kind`, `observed_at`,
+    `observed_at_basis`, `host_basis`). ``False`` simulates a pre-v55 DB to
+    exercise the shareable export's missing-column tolerance.
     """
+    provenance_columns = (
+        ", channel TEXT, host TEXT, host_basis TEXT, provenance TEXT, "
+        "scope_kind TEXT, observed_at TEXT, observed_at_basis TEXT"
+        if include_provenance_columns
+        else ""
+    )
     conn = sqlite3.connect(path)
     conn.executescript(
-        """
+        f"""
         CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT);
         CREATE TABLE loop_runs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -90,6 +106,7 @@ def _build_history_db(path: Path, *, schema_version: str = str(SCHEMA_VERSION)) 
             input_tokens INTEGER, output_tokens INTEGER,
             cache_read_input_tokens INTEGER, cache_creation_input_tokens INTEGER,
             cost_usd REAL, invocation_id TEXT, provider_vendor TEXT, run_id TEXT
+            {provenance_columns}
         );
         CREATE TABLE user_corrections (
             id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT, session_id TEXT, content TEXT
@@ -235,6 +252,30 @@ class TestSnapshotRoundTrip:
         assert "error" not in columns
         assert "diagnostics_path" not in columns
         assert _table_columns(conn, "usage_events") == _SHAREABLE_COLUMNS["usage_events"]
+
+    def test_pre_v55_db_exports_without_error(self, tmp_path: Path) -> None:
+        """ENH-3580: a pre-v55 DB lacks the 7 provenance columns; export must not raise."""
+        project_root = tmp_path / "proj"
+        (project_root / ".ll").mkdir(parents=True)
+        (project_root / ".ll" / "ll-config.json").write_text("{}", encoding="utf-8")
+        _build_history_db(
+            project_root / ".ll" / "history.db", include_provenance_columns=False
+        )
+        code, out = _run(project_root, since="2026-07-01")
+        assert code == 0
+        conn = _recover_snapshot(out.read_text(encoding="utf-8"), tmp_path / "rt-pre-v55.db")
+        columns = _table_columns(conn, "usage_events")
+        provenance_cols = {
+            "channel",
+            "host",
+            "host_basis",
+            "provenance",
+            "scope_kind",
+            "observed_at",
+            "observed_at_basis",
+        }
+        assert not provenance_cols & set(columns)
+        assert columns == [c for c in _SHAREABLE_COLUMNS["usage_events"] if c not in provenance_cols]
 
     def test_non_allowlisted_tables_absent(self, project: Path, tmp_path: Path) -> None:
         code, out = _run(project, since="2026-07-01")
@@ -653,8 +694,8 @@ class TestAllowlistVersionLockstep:
     maintains and the control it exists to provide does not exist.
     """
 
-    PINNED_VERSION = 1
-    PINNED_HASH = "809757f8ee32a1d28aa31a2e8a128f0bcfec3ffa9f35ae27fde8ea6d434280fc"
+    PINNED_VERSION = 2
+    PINNED_HASH = "7c8c1a2737a3eaf3bb53c0f827e83b4df816dc9b683e65506e8a8c0c4f7fe5a3"
 
     def test_allowlist_and_version_change_together(self) -> None:
         digest = hashlib.sha256(

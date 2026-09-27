@@ -5437,6 +5437,8 @@ Rendered as a real `.llat/` template (`theme: design-tokens`) that ships **insid
 
 **Export scope is decided here, not in the page.** In the default `shareable` mode only the ENH-075 column allowlist is copied — `loop_runs` without `error` (free text) or `diagnostics_path` (absolute path), and `usage_events` without anything outside the allowlist — and `--tables` may select only from the types the allowlist covers. `--local` lifts the projection (`SELECT *`) and accepts any `ll-session export` type; the resulting page is stamped `mode: local` so a recipient can always tell.
 
+**`usage_events` provenance columns (ENH-3580, allowlist version 2).** The shareable allowlist also copies `channel`, `host`, `host_basis`, `provenance`, `scope_kind`, `observed_at`, and `observed_at_basis` — raw per-row observation metadata (v54/v55), not a reconciled coverage claim. A source database that predates those migrations is missing the columns entirely; the export copies only the allowlisted columns that actually exist in the source table rather than failing.
+
 **Reading the source database is non-mutating by construction.** The snapshot is built by `ATTACH` + `CREATE TABLE … AS SELECT` over a raw `file:…?mode=ro` connection, never the store's normal open path (which migrates on open) — so generating an artifact cannot alter `.ll/history.db`. The resulting snapshot carries no indexes and no free pages, so no `VACUUM` step is needed.
 
 **Flags:**

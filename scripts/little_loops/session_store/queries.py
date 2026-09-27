@@ -173,10 +173,19 @@ _SHAREABLE_COLUMNS: dict[str, list[str]] = {
         "provider_vendor",
         "run_id",
         "invocation_id",
+        # v54/v55 provenance columns (ENH-3580); absent from pre-v55 source DBs,
+        # in which case _snapshot_select drops them from the projection.
+        "channel",
+        "host",
+        "host_basis",
+        "provenance",
+        "scope_kind",
+        "observed_at",
+        "observed_at_basis",
     ],
 }
 
-_SHAREABLE_ALLOWLIST_VERSION: int = 1
+_SHAREABLE_ALLOWLIST_VERSION: int = 2
 
 # The export types the shareable allowlist covers — the default `--tables` set
 # for `ll-artifact dashboard` in BOTH modes (D16/D22). Deliberately NOT
@@ -216,7 +225,9 @@ def read_schema_version(conn: sqlite3.Connection) -> str | None:
     return None if row[0] is None else str(row[0])
 
 
-def _snapshot_select(table: str, ts_col: str, local_mode: bool, since: str | None) -> str:
+def _snapshot_select(
+    conn: sqlite3.Connection, table: str, ts_col: str, local_mode: bool, since: str | None
+) -> str:
     """Build the ``CREATE TABLE snap.<table> AS SELECT …`` statement for one type."""
     # Local mode lifts the column projection entirely (D22) — it is for personal
     # use, and a half-redacted local export would only be confusing.
@@ -229,7 +240,14 @@ def _snapshot_select(table: str, ts_col: str, local_mode: bool, since: str | Non
                 f"table {table!r} has no shareable column allowlist; "
                 "use --local to export it without a column projection"
             )
-        projection = ", ".join(columns)
+        # ENH-3580: a pre-v54/v55 source DB lacks the newer provenance columns.
+        # Select only allowlisted columns that exist in the source table rather
+        # than raising `sqlite3.OperationalError` on the missing ones.
+        present = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+        selected = [c for c in columns if c in present]
+        if not selected:
+            raise ValueError(f"table {table!r} has none of its allowlisted columns present")
+        projection = ", ".join(selected)
 
     # D13: a loop_runs row that is still executing (or crashed without writing an
     # end timestamp) has ended_at IS NULL and would be silently dropped by any
@@ -292,7 +310,7 @@ def build_snapshot_db(
         try:
             for type_name in tables:
                 table, ts_col = _EXPORT_TABLE_MAP[type_name]
-                sql = _snapshot_select(table, ts_col, local_mode, since)
+                sql = _snapshot_select(conn, table, ts_col, local_mode, since)
                 params = (since,) if since else ()
                 conn.execute(sql, params)
             conn.commit()

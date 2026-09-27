@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
+from unittest.mock import patch
 
 from little_loops.history_reader import (
     aggregate_usage,
@@ -422,6 +424,103 @@ class TestUsageEventReaders:
 
     def test_recent_usage_events_missing_db(self, tmp_path: Path) -> None:
         assert recent_usage_events(db=tmp_path / "no" / "history.db") == []
+
+    def test_recent_usage_events_populates_provenance_fields(self, tmp_path: Path) -> None:
+        """ENH-3580: v54/v55 columns reach UsageEvent."""
+        db = tmp_path / "history.db"
+        ensure_db(db)
+        conn = connect(db)
+        conn.execute(
+            "INSERT INTO usage_events(ts, session_id, model, state, input_tokens, "
+            "output_tokens, cache_read_input_tokens, cache_creation_input_tokens, cost_usd, "
+            "channel, host, host_basis, provenance, scope_kind, observed_at, "
+            "observed_at_basis, invocation_id, run_id) "
+            "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                "2026-09-27T00:00:00Z",
+                "s1",
+                "m1",
+                None,
+                10,
+                1,
+                0,
+                0,
+                0.1,
+                "live",
+                "verified",
+                "measured",
+                "measured",
+                "session",
+                "2026-09-27T00:00:01Z",
+                "measured",
+                "inv-1",
+                "run-1",
+            ),
+        )
+        conn.commit()
+        conn.close()
+        event = recent_usage_events(db=db)[0]
+        assert event.channel == "live"
+        assert event.host == "verified"
+        assert event.host_basis == "measured"
+        assert event.provenance == "measured"
+        assert event.scope_kind == "session"
+        assert event.observed_at == "2026-09-27T00:00:01Z"
+        assert event.observed_at_basis == "measured"
+        assert event.invocation_id == "inv-1"
+        assert event.run_id == "run-1"
+
+    def test_recent_usage_events_null_provenance_surfaces_as_unknown(
+        self, tmp_path: Path
+    ) -> None:
+        """ENH-3580: a NULL stored provenance surfaces as "unknown", not None."""
+        db = tmp_path / "history.db"
+        self._seed(
+            db,
+            [{"ts": "2026-09-27T00:00:00Z", "session_id": "s1", "model": "m1"}],
+        )
+        event = recent_usage_events(db=db)[0]
+        assert event.provenance == "unknown"
+        assert event.host is None
+        assert event.channel is None
+
+    def test_recent_usage_events_pre_v54_schema(self, tmp_path: Path) -> None:
+        """ENH-3580: a DB predating the v54/v55 migrations reads without error.
+
+        ``_connect_readonly`` always migrates on open (``ensure=True``), so a
+        pre-v54 file on a *writable* path never stays pre-v54 by the time the
+        SELECT runs. Patching ``_connect_readonly`` to hand back a raw,
+        unmigrated connection is the only way to exercise the PRAGMA-detected
+        missing-column branch directly, mirroring the read-only-mount /
+        failed-migration case the branch defends against.
+        """
+        db = tmp_path / "history.db"
+        conn = sqlite3.connect(db)
+        conn.row_factory = sqlite3.Row
+        conn.executescript(
+            """
+            CREATE TABLE usage_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts TEXT, session_id TEXT, model TEXT, state TEXT,
+                input_tokens INTEGER, output_tokens INTEGER,
+                cache_read_input_tokens INTEGER, cache_creation_input_tokens INTEGER,
+                cost_usd REAL
+            );
+            """
+        )
+        conn.execute(
+            "INSERT INTO usage_events(ts, session_id, model, input_tokens, output_tokens, "
+            "cost_usd) VALUES(?,?,?,?,?,?)",
+            ("2026-09-27T00:00:00Z", "s1", "m1", 10, 1, 0.1),
+        )
+        conn.commit()
+        with patch("little_loops.history_reader.usage._connect_readonly", return_value=conn):
+            event = recent_usage_events(db=db)[0]
+        assert event.model == "m1"
+        assert event.provenance == "unknown"
+        assert event.channel is None
+        assert event.invocation_id is None
+        assert event.run_id is None
 
     def test_aggregate_usage_by_model(self, tmp_path: Path) -> None:
         import pytest

@@ -8936,6 +8936,50 @@ from older schemas read as `NULL`. `require_run_id=True` keeps only rows with a
 non-NULL `run_id`. Raises `sqlite3.OperationalError` when the table is absent.
 This is the replacement point for a shared coverage selector.
 
+### UsageEvent / recent_usage_events
+
+```python
+@dataclass
+class UsageEvent:
+    ts: str
+    session_id: str | None
+    model: str | None
+    state: str | None
+    input_tokens: int | None
+    output_tokens: int | None
+    cache_read_input_tokens: int | None
+    cache_creation_input_tokens: int | None
+    cost_usd: float | None
+    channel: str | None = None
+    host: str | None = None
+    host_basis: str | None = None
+    provenance: str | None = None
+    scope_kind: str | None = None
+    observed_at: str | None = None
+    observed_at_basis: str | None = None
+    invocation_id: str | None = None
+    run_id: str | None = None
+
+def recent_usage_events(
+    session_id: str | None = None,
+    model: str | None = None,
+    *,
+    since: str | None = None,
+    limit: int = 20,
+    db: Path | str = DEFAULT_DB_PATH,
+) -> list[UsageEvent]
+```
+
+Return recent `usage_events` rows, newest first, optionally filtered by
+`session_id`/`model` (ENH-2461). `UsageEvent`'s nine trailing fields
+(ENH-3580) mirror `select_usage_observations`' `channel`/`host`/`host_basis`/
+`provenance`/`scope_kind`/`observed_at`/`observed_at_basis`/`invocation_id`/
+`run_id` columns, minus `state` (already unconditionally selected) and
+`provider_vendor` (out of scope — owned by the ENH-3528 chokepoint). Columns
+missing from a pre-v54/v55 schema read as `NULL`; a NULL stored `provenance`
+surfaces as `"unknown"` rather than `None`. Returns `[]` on a missing/unreadable
+DB.
+
 ### recent_commit_events
 
 ```python

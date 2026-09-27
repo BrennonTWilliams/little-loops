@@ -258,6 +258,15 @@ class UsageEvent:
     cache_read_input_tokens: int | None
     cache_creation_input_tokens: int | None
     cost_usd: float | None
+    channel: str | None = None
+    host: str | None = None
+    host_basis: str | None = None
+    provenance: str | None = None
+    scope_kind: str | None = None
+    observed_at: str | None = None
+    observed_at_basis: str | None = None
+    invocation_id: str | None = None
+    run_id: str | None = None
 
 
 @dataclass

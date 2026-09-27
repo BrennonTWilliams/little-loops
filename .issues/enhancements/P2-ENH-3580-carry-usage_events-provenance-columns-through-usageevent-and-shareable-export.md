@@ -3,10 +3,11 @@ id: ENH-3580
 type: ENH
 title: Carry usage_events provenance columns through UsageEvent and shareable export
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-24'
 captured_at: '2026-09-24T22:26:39Z'
+completed_at: '2026-09-27T10:15:55Z'
 parent: EPIC-3562
 labels:
 - observability
@@ -96,13 +97,13 @@ This issue remains independently implementable and exports raw observation metad
 
 ## Acceptance Criteria
 
-- [ ] Raw row listings/exports retain their observation semantics; docs do not claim that the seven-column projection reconciles overlap. ENH-3543 owns selected aggregate/export parity and any subsequent allowlist version.
+- [x] Raw row listings/exports retain their observation semantics; docs do not claim that the seven-column projection reconciles overlap. ENH-3543 owns selected aggregate/export parity and any subsequent allowlist version.
 
-- [ ] `UsageEvent` gains the nine trailing fields with `None` defaults; existing positional/keyword constructions and iterator consumers are unchanged.
-- [ ] `recent_usage_events` populates the new fields, surfaces NULL `provenance` as `"unknown"`, and reads pre-v54 and pre-v55 schemas without error.
-- [ ] `_SHAREABLE_COLUMNS["usage_events"]` gains exactly the seven listed columns (a test asserts the exact set); the allowlist version is 2 and the pinned hash is updated; the existing free-text/absolute-path exclusion test still passes.
-- [ ] Shareable dashboard export of a v55 fixture includes the new columns; a pre-v55 DB exports without error.
-- [ ] `docs/reference/API.md` documents the new `UsageEvent` fields; the dashboard/export docs list the shareable additions.
+- [x] `UsageEvent` gains the nine trailing fields with `None` defaults; existing positional/keyword constructions and iterator consumers are unchanged.
+- [x] `recent_usage_events` populates the new fields, surfaces NULL `provenance` as `"unknown"`, and reads pre-v54 and pre-v55 schemas without error.
+- [x] `_SHAREABLE_COLUMNS["usage_events"]` gains exactly the seven listed columns (a test asserts the exact set); the allowlist version is 2 and the pinned hash is updated; the existing free-text/absolute-path exclusion test still passes.
+- [x] Shareable dashboard export of a v55 fixture includes the new columns; a pre-v55 DB exports without error.
+- [x] `docs/reference/API.md` documents the new `UsageEvent` fields; the dashboard/export docs list the shareable additions.
 
 ## Scope Boundaries
 
@@ -114,9 +115,39 @@ This issue remains independently implementable and exports raw observation metad
 - `docs/reference/API.md` — `little_loops.history_reader` (`UsageEvent`, `recent_usage_events`).
 - `docs/guides/HISTORY_SESSION_GUIDE.md` — shareable export columns.
 
+## Resolution
+
+Implemented as specified. `UsageEvent` (`history_reader/models.py`) gains the
+nine trailing `str | None = None` fields. `recent_usage_events`
+(`history_reader/usage.py`) detects present columns via `PRAGMA
+table_info(usage_events)` and selects `NULL`/`COALESCE(provenance, 'unknown')`
+for absent ones via a new `_USAGE_EVENT_OPTIONAL_COLUMNS` tuple (narrower than
+the existing `_OPTIONAL_USAGE_COLUMNS` used by `select_usage_observations` —
+excludes `state` and `provider_vendor`, out of scope here).
+`_SHAREABLE_COLUMNS["usage_events"]` (`session_store/queries.py`) gains the
+seven columns; `_SHAREABLE_ALLOWLIST_VERSION` bumped to 2.
+`_snapshot_select` now takes the open `conn` and intersects the allowlist with
+`PRAGMA table_info(table)` so a pre-v54/v55 source DB exports only the columns
+it actually has, instead of raising `sqlite3.OperationalError`. Tests added to
+`test_history_reader_usage.py::TestUsageEventReaders` (provenance population,
+NULL→`"unknown"`, pre-v54 schema via a patched `_connect_readonly`, since the
+normal read path migrates the DB before every query) and
+`test_feat3304_artifact_dashboard.py` (fixture DDL gains an
+`include_provenance_columns` toggle; new `test_pre_v55_db_exports_without_error`;
+`TestAllowlistVersionLockstep` pinned hash updated). Docs updated:
+`docs/reference/API.md` gains a `UsageEvent` / `recent_usage_events` section;
+`docs/reference/CLI.md`'s `ll-artifact dashboard` section documents the v2
+allowlist columns and pre-v55 tolerance.
+
+Full suite: 26822 passed, 1 pre-existing unrelated failure
+(`test_prose_dep_sweep_gate.py::test_no_prose_dependency_drift_in_repo`,
+confirmed failing on unmodified `main` via `git stash`). `ruff check` clean;
+`mypy` clean except 4 pre-existing errors in untouched
+`cli/loop/cleanup.py`.
+
 ## Status
 
-**Open** | Created: 2026-09-24 | Priority: P2
+**Done** | Created: 2026-09-24 | Priority: P2
 
 
 ## Confidence Check Notes
@@ -130,4 +161,5 @@ _Added by `/ll:confidence-check` on 2026-09-24_
 - Pre-v55 export tolerance is a stated requirement, but `session_store/queries.py` has no `PRAGMA table_info` handling today; check how the shareable export selects columns (Step 2).
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-27T10:14:54 - `5367b437-ba01-4119-ba04-0245b00cfd97.jsonl`
 - `/ll:confidence-check` - 2026-09-25T01:02:59 - `42a934e3-5df9-4ac6-9296-d0ced0bc2261.jsonl`
