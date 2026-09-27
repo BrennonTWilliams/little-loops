@@ -90,6 +90,21 @@ State names are proposals. The flag is an empty-string context key (autodev's
 `skip_learning_gate: ""` idiom, gated with `[ -n ... ]`), declared in every loop that
 passes it down.
 
+## Program Design
+
+### Types
+
+- `AdviseVerdict`: `Literal["PROCEED", "VETO", "SKIPPED"]`
+
+### Signatures
+
+- `map_advise_verdict(rc_text: str | None, payload_text: str | None) -> tuple[AdviseVerdict, str]` — pure mapping of persisted `.rc`/`.json` to a verdict plus a log reason
+- `cmd_advise_consult(config: BRConfig, args: argparse.Namespace) -> int` — runs `ll-advise --json`, persists `advise-<ID>.{json,err,rc}`, returns the routing code (never the advisor's own exit code)
+
+### Call Path
+
+`refine-to-ready-issue.yaml:check_proof_before_done` -> `check_advise_ready_enabled` -> `run_advise_ready` -> `cmd_advise_consult` -> `main_advise` -> `consult_for_trigger`
+
 ## Integration Map
 
 ### Files to Modify
@@ -157,4 +172,5 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:format-issue` - 2026-09-27T03:56:23 - `0b26d35d-ec12-419a-9599-7aa7bcfe4ed1.jsonl`
 - `/ll:capture-issue` - 2026-09-27T01:56:21 - `282c1e7b-289d-4b4c-9b06-d9e617a5b759.jsonl`

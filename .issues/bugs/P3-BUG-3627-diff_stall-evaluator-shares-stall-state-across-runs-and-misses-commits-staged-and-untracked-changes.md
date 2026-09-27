@@ -80,6 +80,20 @@ FSM executor evaluates a state whose `evaluate.type` is `diff_stall` -> `evaluat
 ### Configuration
 - N/A
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
+
+- Current shape: `evaluate_diff_stall(scope, max_stall)` (`fsm/evaluators.py`) runs `git diff --stat [-- scope]` with no `cwd=`, keys state by `md5("|".join(sorted(scope)) or "_root_")[:12]` under `Path.cwd()/.loops/tmp/ll-diff-stall-<key>.{txt,count}`, and nothing in the repo ever deletes those files (no run-start reset, no cleanup). First call (no snapshot) writes count `0` and returns `yes`; equal snapshot increments and returns `no` at `stall_count >= max_stall`; differing snapshot resets to `0`. Git failure/timeout return `error`; file writes are uncaught.
+- Run context gap: the only production caller is the `evaluate()` dispatcher branch `elif eval_type == "diff_stall"`, which passes only `scope=config.scope, max_stall=config.max_stall`. `evaluate()` already receives `context: InterpolationContext`, and `ctx.context["run_dir"]` is populated for CLI runs (`cli/loop/run.py` ~:236, `runs/<instance_id or loop_name>/`; `cli/loop/testing.py` ~:217 for simulate). `InterpolationContext` has no run-id field; the instance id is reachable only through the `run_dir` path. `run_dir` may be absent (direct executor use, older tests), so the no-context path must remain valid.
+- Schema surface: `EvaluateConfig.scope`/`max_stall` (`fsm/schema.py` ~:134-135, parsed ~:249); validation covers only `max_stall >= 1` (`fsm/validation/structural_rules.py`); `scope` is neither validated nor interpolated. `fsm/fsm-loop-schema.json` (~:829) describes `scope` as "Paths to limit git diff to" — update if fingerprint semantics change.
+- Reference fingerprint (`loops/general-task.yaml` `final_verify_spin_gate`): hashes `git diff "$BASELINE_REF" -- . ':(exclude).loops/'` plus sorted untracked paths (`git ls-files -o --exclude-standard -z`) plus `git hash-object` of each untracked file, via `git hash-object --stdin`. It excludes the whole `.loops/` tree, not just the run dir, because `ll-init` ships no `.loops/` gitignore entry to consuming projects; it diffs against a stored baseline ref rather than `HEAD`, and has a looser no-git fallback. Its tests run the real action in a temp git repo (`TestGeneralTaskFinalVerifySpinGateShellAction`, `test_builtin_loops.py`).
+- Constraints from git semantics: `git diff HEAD` errors on a repo with no commits and outside a git repo (today's `--stat` path reports git failure as `error`); a `HEAD`-sha component makes committed progress visible but also means a revert-to-same-content after commits changes the fingerprint; untracked-file hashing must not read the run dir or other `.loops/` state or the fingerprint changes on every evaluation.
+- Affected users: all `fragment: diff_stall_gate` loops (fragment sets `max_stall: 2`; `continue-task` overrides `max_stall: 3`, `on_error: run_tests`) and `oracles/generator-evaluator.yaml` `check_diff_stall`, inherited by `generator-evaluator-flux.yaml`. None of the loops sampled (`continue-task`, `harness-single-shot`, `incremental-refactor`) sets `scope`; the remaining users were not opened.
+- Tests: `TestDiffStallEvaluator` in `scripts/tests/test_fsm_evaluators.py` patches `little_loops.fsm.evaluators.subprocess.run` (`mock_git`) and `chdir`s to `tmp_path`; every test assumes a single `git diff --stat` call and `test_first_call_resets_stale_count_file` hardcodes the `ll-diff-stall-<md5("_root_")[:12]>.count` path, so a multi-command fingerprint or relocated state invalidates that fixture shape. `TestDiffStallGateFragment` (`test_fsm_fragments.py`) — the issue's `TestDiffStallGate` — only checks fragment resolution (`max_stall == 2`, description present) and never exercises the evaluator, so it is not where behavior tests belong. Other references that must keep passing: `test_grader_coverage.py` (lists `evaluate_diff_stall`), `test_fsm_schema_fuzz.py`, `test_cli_loop_audit.py::test_diff_stall_detected`, `test_builtin_loops.py` (`check_stall`, ~:3957).
+- Event consumers keyed on the `diff_stall` evaluate event: `cli/loop/audit.py` (`diff_stall_present` when verdict in `stall`/`no`), `cli/loop/info.py`. The `details` keys (`stall_count`, `max_stall`, `diff_changed`) are part of that surface.
+- Sibling evaluator: `evaluate_action_stall` (`evaluators.py` ~:898) uses the same shared `.loops/tmp` cache directory and likely shares the cross-run defect; out of scope for this issue but worth a follow-up check.
+
 ## Implementation Steps
 
 1. Pass run context into `evaluate_diff_stall`; store snapshot/count under the run dir.
@@ -118,3 +132,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ## Status
 
 **Open** | Created: 2026-09-27 | Priority: P3
+
+
+## Session Log
+- `/ll:refine-issue` - 2026-09-27T03:56:26 - `d2d94801-a3bb-4af7-800e-2bfc0ccec8d4.jsonl`

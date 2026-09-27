@@ -86,6 +86,16 @@ unaffected). Confirm whether the oracle's own captures make that path immune.
 ### Configuration
 - N/A
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
+
+- Convention: `self.captured` has no state-entry reset. Every write site either replaces the whole per-state dict (`_execute_state` capture block ~:2725; `human_approval` handler ~:2875/:2951/:2972) or mutates keys inside the existing dict (`_execute_sub_loop` `terminated_by` :1335, `failure_terminal` :1338-1339, `error` :1223/:1372, `verdict` :1356). Repo-wide grep finds no `captured.pop/clear/del` reset. Only the mutate-in-place sites can leave stale keys; the whole-dict-replace sites cannot.
+- Constraint (ordering): the `terminated_by` write sits after the child-capture merge (:1330-1334, ENH-3019) so the merge cannot clobber it; any new clearing of `failure_terminal` must stay compatible with that ordering and with `with_={}` / `context_passthrough` merges (`test_captured_terminated_by_survives_context_passthrough_overwrite`, `test_fsm_executor.py:10286`).
+- Readers of `captured.<state>.failure_terminal` / `.terminated_by` (all shell interpolations with `?` defaults and `ll-lint: mr11-ok` allowlist entries in `test_builtin_loops.py` ~:20591, ~:20703): `refine-to-ready-issue.yaml:1395-1397` (ENH-3358), `auto-refine-and-implement.yaml:421,668` (ENH-3366, BUG-3375), `autodev.yaml:1365`. Only the `confidence_check` reader is documented as re-entrant; the `delegate` and `run_quality_gate` readers should be checked for re-entry too.
+- Test convention: sub-loop tests use a real `FSMExecutor` + parent `FSMLoop` with `StateConfig(loop=...)` and child YAML written under `tmp_path/.loops` (`TestSubLoopTimeoutRouting`, `test_fsm_executor.py:10149`, helpers `_write_child_loop`/`_write_cap_failure_child`), asserting on `executor.captured[...]`. The only existing test that re-enters a `loop:` state is `TestSubLoopWorktree.test_loop_state_reentry_reattaches_worktree` (:7065), which uses a marker-file shell gate to force exactly one re-entry; no existing test asserts differing child outcomes across entries on `captured`.
+- Documentation: `docs/reference/API.md:6402-6417` documents `failure_terminal`/`terminated_by` only as `ExecutionResult` fields; it has no `captured.<state>` contract and no re-entry statement. `LOOPS_REFERENCE.md:1009,1025` and `ARCHITECTURE.md:463` describe `${captured.delegate.terminated_by}` only.
+
 ## Implementation Steps
 
 1. Write the failing real-FSM re-entry test in `test_fsm_executor.py`.
@@ -151,4 +161,5 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-27T03:55:47 - `0b26d35d-ec12-419a-9599-7aa7bcfe4ed1.jsonl`
 - `/ll:capture-issue` - 2026-09-27T03:35:38 - `2cf44b5a-002b-44e7-a500-5cad45592206.jsonl`
