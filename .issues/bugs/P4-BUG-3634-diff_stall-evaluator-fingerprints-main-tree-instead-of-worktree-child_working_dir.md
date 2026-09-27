@@ -85,6 +85,8 @@ _Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
 
 _Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
 
+Findings from codebase-locator and codebase-pattern-finder, organized below.
+
 ### Files to Modify
 - `scripts/little_loops/fsm/evaluators.py` — `_run_git` (:612), `_diff_stall_fingerprint` (:628), `evaluate_diff_stall` (:667), and the `evaluate()` `diff_stall` dispatch branch (:2105-2112) all need a `cwd`/`working_dir` parameter threaded through; `_diff_stall_fingerprint` also calls `Path.cwd()` directly at :638 to resolve the `run_dir` exclusion pathspec — a second ambient-cwd dependency in the same function, not just the three `_run_git` call sites.
 - `scripts/little_loops/fsm/interpolation.py` — `InterpolationContext` (:110-146) has no `working_dir` field today; the new field is declared here.
@@ -124,6 +126,8 @@ _Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
+
+Findings from codebase-analyzer, organized below.
 
 ### Confirmed Anchors (code graph + analyzer verified)
 - `_run_git` — `fsm/evaluators.py:612-625`; single `subprocess.run(["git", *args], capture_output=True, text=True, timeout=30, input=stdin)` call at :616-618, no `cwd=` today.

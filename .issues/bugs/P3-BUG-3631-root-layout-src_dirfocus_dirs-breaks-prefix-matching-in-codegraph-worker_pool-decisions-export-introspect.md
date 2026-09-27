@@ -12,6 +12,12 @@ captured_at: '2026-09-27T05:09:09Z'
 blocks:
 - ENH-3616
 reconcile_attempted: true
+confidence_score: 100
+outcome_confidence: 92
+score_complexity: 19
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 23
 ---
 
 # BUG-3631: Root-layout '.' src_dir/focus_dirs breaks prefix matching in codegraph, worker_pool, decisions export, and ll-init introspection
@@ -209,6 +215,7 @@ Existing tests that must keep passing: `test_worker_pool.py::test_detect_main_re
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-27T06:24:00 - `d1ce99b0-6533-4a9f-af3f-f35128797a41.jsonl`
 - `/ll:confidence-check` - 2026-09-27T05:57:53 - `d9cc873e-f17d-4bf9-b8ac-9770c6d93a16.jsonl`
 - `/ll:refine-issue:gap-analysis` - 2026-09-27T05:43:06 - `bf6e1e8c-2c0c-4865-99bf-f1fcae8fc265.jsonl`
 - `/ll:reconcile-issue` - 2026-09-27T05:38:00 - `48e27ed8-8bad-43ec-ade3-1d77009a2e15.jsonl`
