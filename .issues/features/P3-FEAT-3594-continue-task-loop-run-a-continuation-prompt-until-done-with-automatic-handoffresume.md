@@ -10,8 +10,8 @@ discovered_by: ll-issues-create
 discovered_date: '2026-09-25'
 captured_at: '2026-09-25T04:27:08Z'
 confidence_score: 100
-outcome_confidence: 96
-score_complexity: 21
+outcome_confidence: 93
+score_complexity: 18
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 25
@@ -266,6 +266,16 @@ Remaining:
 - Add an AC covering the LOOPS_REFERENCE.md row (e.g. "continue-task documented in the LOOPS_REFERENCE General-Purpose table"), or run `/ll:reconcile-issue FEAT-3594` — this is `DIRECTIVE_DRIFT`'s designated remedy; not applied here (auto-mode scope is verification notes only).
 - Implement the Wiring Phase items (doc row + dedicated tests) — still open, accurately tracked by this issue.
 
+_Re-verified by `/ll:verify-issues --auto` — 2026-09-26 (after the 2026-09-26 review rewrite):_
+
+Verdict at time of check: **VALID** (no corrections needed; the 2026-09-25 `DIRECTIVE_DRIFT` finding above is resolved — the LOOPS_REFERENCE.md row is now an Acceptance Criterion, and its "Remaining" AC item is closed).
+
+- `continue-task.yaml` still matches every claim about current state: `stall_check` uses `diff_stall_gate` with `max_stall: 3` (:160-171); `run_tests` removes only `verdict.txt` (:181), so the stale-`tests.txt` gap (Change 2) is real; `work`'s re-entry check is the bare `-nt` test (:129), so the foreign-handoff gap (Change 3) is real; `load_prompt` records no `baseline-ref.txt` (Change 1 prerequisite); `check_done` has no missing-`tests.txt` line.
+- Change 1's premise holds: `evaluate_diff_stall` keeps state in `.loops/tmp/ll-diff-stall-<cache_key>.txt/.count` (`fsm/evaluators.py:629-630`) and snapshots `git diff --stat` (:581). Model anchor `general-task.yaml` `final_verify_spin_gate` (:423) and its `untracked()` helper (:470) exist as described.
+- BUG-3627 exists (open). `scripts/tests/test_continue_task_loop.py` and the LOOPS_REFERENCE row are still absent — accurately tracked as remaining work.
+- Proposal-vs-code check (B6): no exception-handler, fixture, or AC-coverage gaps found; every Change maps to an AC and every Integration Map file is covered.
+- Evidence-quote check (`ll-verify-evidence`): clean, 0 findings. Decisions log: no active required rules. Graph: codegraph, fresh (not needed for the verdict).
+
 ## Risks
 
 - `.ll/ll-continue-prompt.md` is a single shared file, overwritten by any session's `/ll:handoff` and by the PreCompact hook (`little_loops.hooks.pre_compact_handoff`). Mitigated by the staleness check, provenance printing, and the pinned `goal.md`.
@@ -288,6 +298,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-27T03:50:11 - `c4c15e75-d4e1-4ac8-b300-d2fe135d2325.jsonl`
+- `/ll:verify-issues` - 2026-09-27T03:43:20 - `957314ff-4b9b-42e1-b372-a938199f022f.jsonl`
 - `/ll:confidence-check` - 2026-09-25T23:38:00 - `45d43ec4-b840-43ef-b61e-afb3edaab08c.jsonl`
 - `/ll:reconcile-issue` - 2026-09-25T23:26:13 - `8a0a45f1-b52b-4c03-a859-99ea828324c5.jsonl`
 - `/ll:verify-issues` - 2026-09-25T23:12:36 - `95f633b7-5064-467a-9466-762178a1aff0.jsonl`

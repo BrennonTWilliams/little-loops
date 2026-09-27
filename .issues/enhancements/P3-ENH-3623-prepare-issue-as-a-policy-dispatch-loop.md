@@ -19,6 +19,12 @@ blocked_by:
 blocks:
 - ENH-3600
 - ENH-3590
+confidence_score: 70
+outcome_confidence: 58
+score_complexity: 5
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 10
 ---
 
 # ENH-3623: prepare-issue as a policy dispatch loop
@@ -529,8 +535,26 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 **Open** | Created: 2026-09-27 | Priority: P3
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-27_
+
+**Readiness Score**: 70/100 → STOP — ADDRESS GAPS (Dependencies hard override; raw sum is PROCEED WITH CAUTION)
+**Outcome Confidence**: 58/100 → LOW
+
+### Concerns
+- `format-check` flags `ll-issues prep (no such subcommand)` as a stale CLI claim (caps Criterion 4 at 10). It is forward-looking (this issue proposes the group) and already carries `ll-prose-ok` markers at three sites; the flag clears once `prep` is registered. Advisory only.
+- Phase A/B/C phasing is stated, but only Phase A is safe to start alone; the atomic cutover (Phase B) is where the risk sits.
+
+### Gaps to Address
+- `blocked_by: ENH-3625` is `open` (BUG-3624 is done), so the dependency gate forces STOP. Land ENH-3625's first-gate rule first, on the current YAML, or drop the edge if Phase A (additive, no loop changes) is started ahead of it. Phase A does not depend on the Q3 rule; only the Phase B `decide()` row does.
+
+### Outcome Risk Factors
+- Deep per-site complexity: replaces the second-pass routing of the most-used loop (`prepare-issue.yaml` in place, 42 autodev deletions), with all projects on this machine `local-editable`, so a half-landed cutover breaks tooling everywhere.
+- Broad enumeration across 16+ sites (new module, `cli/issues`, two loop YAMLs, `run_record.py`, ~15 test files, ~8 docs, skill mirrors) and 11+ dependents, with a spike-parity that is coverage-bounded (~25 inline predicates re-implemented).
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-27T03:42:23 - `7853641e-1dad-4830-bad1-b40be31584c3.jsonl`
 - `/ll:wire-issue` - 2026-09-27T02:33:29 - `951684ed-7b41-4bf8-9307-a4474a28eb29.jsonl`
 - `/ll:refine-issue` - 2026-09-27T02:22:39 - `e00c47b1-36f2-4288-9df3-a5c841c33968.jsonl`
 - `/ll:format-issue` - 2026-09-27T02:13:30 - `eab069d8-1487-4826-8057-122a54e92dfd.jsonl`

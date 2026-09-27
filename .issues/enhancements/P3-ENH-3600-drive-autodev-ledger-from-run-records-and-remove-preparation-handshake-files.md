@@ -13,7 +13,7 @@ parent: EPIC-3565
 relates_to:
 - ENH-3577
 reconcile_attempted: true
-confidence_score: 90
+confidence_score: 65
 outcome_confidence: 63
 score_complexity: 10
 score_test_coverage: 25
@@ -488,18 +488,21 @@ Decomposed from ENH-3577: Consolidate autodev issue preparation into a single co
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-09-25 (re-scored 2026-09-26, again after the design-decision review)_
+_Added by `/ll:confidence-check` on 2026-09-25 (re-scored 2026-09-26, after the design-decision review, and 2026-09-27 after the ENH-3623 re-point)_
 
-**Readiness Score**: 90/100 → STOP — ADDRESS GAPS (Dependencies hard override; raw sum is PROCEED)
+**Readiness Score**: 65/100 → STOP — ADDRESS GAPS (Dependencies hard override; raw sum is also below 70)
 **Outcome Confidence**: 63/100 → MODERATE
 
 ### Concerns
 - ✅ RESOLVED (2026-09-26 review): Grep-gate scope — now scoped by the Marker disposition table.
 - ✅ RESOLVED (2026-09-26 review): `decide-options-deposited-<ID>` / `decide-rate-limited-<ID>` handshake markers — kept as the cross-loop contract (out of scope).
+- `format-check` flags `ll-issues prep (no such subcommand)` as a stale CLI claim (caps Criterion 4 at 10). It is forward-looking, since `prep` arrives with ENH-3623; add `ll-prose-ok` markers as ENH-3623 does, or accept the flag until `prep` is registered. Advisory only.
+- `missing_artifacts: true` stays justified: `preparation_policy`, `ll-issues prep apply` and `run_dir/prep-pass-<ID>` do not exist yet (ENH-3623 creates them). `autodev_summary.py` does exist (ENH-3619). Clear the flag when ENH-3623 lands.
+- The Marker disposition table still has open rows (`mark_gate_infra`, the `decision_unresolved` count source) and the layered research findings carry stale anchors; both are already scheduled for the post-ENH-3623 `/ll:reconcile-issue` refresh.
 
 ### Gaps to Address
-- `blocked_by: ENH-3606` is `open`, so the dependency gate forces STOP. ✅ RESOLVED (2026-09-26): the former Sequencing step 1 (golden fixtures, `autodev_summary` module, thin `finalize_done`) is now ENH-3619, which can land before ENH-3606; this issue is `blocked_by` both.
-- ✅ RESOLVED (2026-09-26 review): Dequeued-ID source — `autodev-prepared.txt` (Design decisions).
+- `blocked_by: ENH-3623` is `open`, so the dependency gate forces STOP. This is a hard dependency, not a paperwork one: `prep apply`, the `prep-pass-*` dequeued-ID set and the 42-state autodev deletion all come from ENH-3623, and the Marker disposition table cannot be re-derived until then. Wait for it, then run `/ll:reconcile-issue` and re-score.
+- ✅ RESOLVED (2026-09-26 review): Dequeued-ID source — superseded by `prep-pass-<ID>` (2026-09-27 review).
 
 ### Outcome Risk Factors
 - Deep per-site complexity: `finalize_done` (~300 lines of inline shell) rewritten into Python while preserving the 16-key `summary.json` shape, verdict ladder and exit-code routing exactly.
@@ -541,6 +544,7 @@ _Added by manual review — 2026-09-26_
 - The confidence scores (75/55) predate these changes. Re-score after ENH-3606 lands.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-27T03:42:24 - `7853641e-1dad-4830-bad1-b40be31584c3.jsonl`
 - `/ll:wire-issue` - 2026-09-27T02:33:29 - `951684ed-7b41-4bf8-9307-a4474a28eb29.jsonl`
 - `/ll:refine-issue` - 2026-09-27T02:22:06 - `e00c47b1-36f2-4288-9df3-a5c841c33968.jsonl`
 - `/ll:format-issue` - 2026-09-27T02:13:31 - `eab069d8-1487-4826-8057-122a54e92dfd.jsonl`

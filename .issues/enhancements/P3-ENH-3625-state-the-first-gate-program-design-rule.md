@@ -12,6 +12,12 @@ relates_to:
 - ENH-3621
 blocks:
 - ENH-3623
+confidence_score: 95
+outcome_confidence: 75
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 # ENH-3625: State the first-gate Program Design rule
@@ -212,6 +218,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-27T03:42:25 - `7853641e-1dad-4830-bad1-b40be31584c3.jsonl`
 - `/ll:wire-issue` - 2026-09-27T02:33:30 - `951684ed-7b41-4bf8-9307-a4474a28eb29.jsonl`
 - `/ll:refine-issue` - 2026-09-27T02:19:49 - `c775572e-2829-4f8b-9fae-12aeff48a4bc.jsonl`
 - `/ll:format-issue` - 2026-09-27T02:13:31 - `eab069d8-1487-4826-8057-122a54e92dfd.jsonl`
