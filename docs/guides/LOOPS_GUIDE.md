@@ -417,7 +417,7 @@ Evaluators interpret action output and produce a **verdict** string used for rou
 | `convergence` | `target` / `progress` / `stall` | metric-tracking states | Track a metric toward a goal value |
 | `diff_stall` | `yes` / `no` / `error` | — | Detect when consecutive iterations produce no git diff changes (see [Stall Detection](#stall-detection)) |
 | `score_stall` | `yes` / `no` | rubric-scored refine loops | Detect when the aggregate rubric score plateaus (no improvement > epsilon for `max_stall` rounds) even while the file keeps changing; reads a per-round `.score_history` file under `${context.run_dir}/` (see [Stall Detection](#stall-detection)) |
-| `action_stall` | `yes` / `no` | — | Detect when the same action string or context values repeat for N iterations (file-backed, no git required) |
+| `action_stall` | `yes` / `no` | — | Detect when the same action string or context values repeat for N iterations (file-backed, no git required; state is scoped per run and per state under `run_dir`) |
 | `llm_structured` | `yes` / `no` / `blocked` / `partial` | slash commands, prompts | Natural-language judgment via LLM |
 | `mcp_result` | `success` / `tool_error` / `not_found` / `timeout` | `mcp_tool` actions | Evaluate MCP server tool call results |
 | `comparator` | `yes` / `no` / `tie` / `no_baseline` | — | Blind A/B comparison against a stored baseline via LLM judge; requires `baseline_path` |

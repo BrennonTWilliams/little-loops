@@ -3,10 +3,11 @@ id: BUG-3629
 type: BUG
 title: action_stall evaluator shares stall state across runs and loops via .loops/tmp
 priority: P4
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-27'
 captured_at: '2026-09-27T04:29:54Z'
+completed_at: '2026-09-27T06:16:56Z'
 depends_on:
 - BUG-3627
 spike_attempted: true
@@ -204,7 +205,25 @@ _Added by `/ll:verify-issues` — 2026-09-27_
 
 Verdict: **VALID**. `evaluate_action_stall` (`evaluators.py:837`) keys state by `md5(sorted track)` under `Path.cwd()/.loops/tmp` with no run/loop/state scoping; the `evaluate()` branch (`:2044`) passes only `track`/`max_repeat`/`context`; no built-in loop uses `action_stall`; spike dir `scripts/tests/spike/action_stall_run_scope/` exists. `_stall_state_paths` does not exist yet, consistent with `depends_on: BUG-3627`. `ll-verify-evidence`: clean. No decisions-log rules apply.
 
+## Resolution
+
+`evaluate_action_stall` now takes `state_dir`/`state_name`/`loop_name` and keys its
+state files via the shared `_stall_state_paths("action", ...)` helper (already
+introduced by BUG-3627), producing
+`ll-action-stall-<loop_name>-<state_name>-<md5(sorted track)[:12]>` under
+`state_dir` when available. The `evaluate()` `action_stall` branch derives
+`state_dir` from `context.context["run_dir"]` and `state_name`/`loop_name` from
+`context.state_name`/`context.loop_name`, falling back to the legacy
+`.loops/tmp` path when no `run_dir` is present (`cmd_test`'s bare
+`InterpolationContext`). Docstring corrected; docs (`AUTOMATIC_HARNESSING_GUIDE.md`,
+`LOOPS_GUIDE.md`) updated to describe per-run/per-state scoping and the two
+accepted limitations (re-entered child loop, `ll-loop simulate`'s fixed run
+dir). Added evaluator-level tests for sequential runs, same-track states in one
+run, a parent/child sharing a state name, the legacy fallback, and the
+empty-name filename shape, plus an executor-level two-run regression test.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-09-27T06:16:14 - `e8d33a24-d086-49f1-b9a0-d0501956fe96.jsonl`
 - `/ll:ready-issue` - 2026-09-27T05:57:33 - `d9cc873e-f17d-4bf9-b8ac-9770c6d93a16.jsonl`
 - `/ll:verify-issues` - 2026-09-27T05:07:19 - `8dd98d25-9e0a-42d3-8b1b-63a8171e5519.jsonl`
 - `/ll:confidence-check` - 2026-09-27T04:52:55 - `27697508-48d3-40e3-be84-6db81402352c.jsonl`

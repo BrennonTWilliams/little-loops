@@ -466,6 +466,8 @@ check_stall:
 
 Use `action_stall` when you want to detect a loop that keeps emitting the same action or captured output without git changes (e.g., a skill that repeatedly proposes the same fix). Unlike `diff_stall`, it does not require a git repository and works against any context values.
 
+State is scoped per run and per state — keyed by the loop name, state name, and tracked keys under `${context.run_dir}` — so a fresh `ll-loop run` always starts its stall counter at 0, and two states sharing the same `track` (including a parent and child loop sharing `run_dir` with the same state name) never share state. Two accepted exceptions: a child loop re-entered within one parent run shares its earlier invocation's counter, and `ll-loop simulate` reuses a fixed `runs/<loop>-simulate/` directory across invocations of the same loop. Without a `run_dir` in context (e.g. `ll-loop test`), state falls back to the legacy shared `.loops/tmp/` location.
+
 ```yaml
 check_stall:
   action: "echo 'checking action stall'"

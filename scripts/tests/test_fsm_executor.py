@@ -1323,6 +1323,43 @@ class TestActionTypeContract:
         assert executor._action_mode(state) == "contract"
 
 
+class TestActionStallRunScoping:
+    """Executor-level coverage for BUG-3629: action_stall must not leak across runs."""
+
+    @staticmethod
+    def _make_fsm(run_dir: Path) -> FSMLoop:
+        return FSMLoop(
+            name="test",
+            initial="check",
+            context={"action": "same", "run_dir": str(run_dir)},
+            states={
+                "check": StateConfig(
+                    action="echo same",
+                    evaluate=EvaluateConfig(type="action_stall", track=["action"], max_repeat=1),
+                    on_yes="check",
+                    on_no="done",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+
+    def test_second_run_does_not_inherit_first_runs_stall_count(self, tmp_path: Path) -> None:
+        """A fresh run_dir starts its stall counter at 0, unaffected by a prior run's stall."""
+        run1, run2 = tmp_path / "run1", tmp_path / "run2"
+
+        mock_runner = MockActionRunner()
+        mock_runner.always_return(exit_code=0)
+        result1 = FSMExecutor(self._make_fsm(run1), action_runner=mock_runner).run()
+        # Iteration 1: fresh state -> yes (loops back). Iteration 2: same hash -> no (terminal).
+        assert result1.final_state == "done"
+        assert result1.iterations == 2
+
+        result2 = FSMExecutor(self._make_fsm(run2), action_runner=mock_runner).run()
+        # If run2 inherited run1's stall state it would stall (verdict "no") on iteration 1.
+        assert result2.final_state == "done"
+        assert result2.iterations == 2
+
+
 class TestVariableInterpolation:
     """Tests for variable interpolation in executor."""
 
