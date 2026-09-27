@@ -229,6 +229,37 @@ class TestPrepApplyNoOpenIntent:
         assert (run_dir / "refine-terminal-class").read_text() == "infra"
 
 
+class TestSnapshotIssueQ1MarkerReadRegardlessOfBlocking:
+    """BUG-3624 (Q1): superseded_marker_count is read even with blocking format gaps.
+
+    The spike's `0 if blocking else superseded_marker_count(path)` masked the
+    contradiction trigger exactly when a blocking gap coexisted with a marker.
+    Exercises snapshot_issue() itself (not just decide()), since the fix lives in
+    the I/O function, not the pure layer.
+    """
+
+    def test_markers_counted_even_when_format_check_has_a_blocking_gap(
+        self, project: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from little_loops.issue_parser import FormatGaps
+        from little_loops.preparation_policy import snapshot_issue
+
+        _write_issue(project, ID)
+        config = _config(project)
+
+        monkeypatch.setattr(
+            "little_loops.issue_parser.check_format_gaps",
+            lambda path: FormatGaps(missing=["## Summary"]),  # has_blocking_gaps=True
+        )
+        monkeypatch.setattr("little_loops.issue_parser.superseded_marker_count", lambda path: 3)
+
+        snap = snapshot_issue(
+            config, ID, project / "run", readiness_threshold=85, outcome_threshold=65
+        )
+        # The blocking gap ("## Summary" missing) does not zero out the marker count.
+        assert snap.superseded_markers == 3
+
+
 class TestReasonValidationEveryDeferStop:
     """AC: every (status, reason) pair the policy emits passes the reason check."""
 
