@@ -3,10 +3,11 @@ id: BUG-3617
 type: BUG
 title: ll-init version-mismatch install hint targets consumer project's scripts/ dir
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-26'
 captured_at: '2026-09-26T22:48:52Z'
+completed_at: '2026-09-27T02:20:30Z'
 confidence_score: 95
 outcome_confidence: 93
 score_complexity: 18
@@ -60,7 +61,7 @@ In `_check_little_loops_version()`:
 2. Otherwise (PyPI, non-editable, or unreadable metadata), hint `<python> -m pip install --upgrade little-loops`.
 3. For the not-installed branch, drop the `project_root / "scripts"` guess entirely and always hint `<python> -m pip install little-loops`. This branch is nearly unreachable, because `ll-init` runs from the installed package and so `importlib.metadata.version()` succeeds. It does not justify parsing `pyproject.toml`.
 4. Build every hint with `shlex.quote()` on both the interpreter (`sys.executable`) and the path. Do not hand-write mixed `"..."`/`'...'` quoting, which breaks on a path containing `'`.
-5. `_check_pyyaml()` has the same wrong-interpreter bug (`install_hint="pip install pyyaml"`, `validate.py:81`). Fold it in: `<python> -m pip install pyyaml`, built with the same `shlex.quote(sys.executable)`.
+5. `_check_pyyaml()` has the same wrong-interpreter bug (`install_hint="pip install pyyaml"`, `validate.py:82`). Fold it in: `<python> -m pip install pyyaml`, built with the same `shlex.quote(sys.executable)`.
 6. `scripts/little_loops/init/tui.py:777` prints a placeholder `pip install -e <editable-path>[dev]` for outdated local-editable installs. Replace it with the real path and interpreter. The path is already computed: `run_tui` gets `install_path` from `detect_installation()` (`tui.py:879`), so pass it into `_render_install_status()` (call site `tui.py:891`). No second resolver call is needed there.
 
 ### Decisions
@@ -224,9 +225,15 @@ _All three concerns were resolved in the 2026-09-26 review pass: resolver home i
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-27T02:20:30 - `d13d22b9-4f6b-4ac8-9cfd-2da9dc234e04.jsonl`
+- `/ll:ready-issue` - 2026-09-27T02:11:41 - `60e22077-c185-4464-8de3-84e4224fe0fa.jsonl`
 - `/ll:confidence-check` - 2026-09-27T01:00:41 - `954a6c66-234e-43ea-a547-7d4b23689c4a.jsonl`
 - `/ll:confidence-check` - 2026-09-27T00:18:55 - `68e35fb0-28ac-4604-989f-2d31cfc587a7.jsonl`
 - `/ll:wire-issue` - 2026-09-26T23:05:55 - `6cddab98-ff74-4434-89de-e1aeb0e2c3bb.jsonl`
 - `/ll:refine-issue` - 2026-09-26T22:52:32 - `242c13c2-daff-4514-b4c7-3c6299f5c0af.jsonl`
 - `/ll:format-issue` - 2026-09-26T22:51:44 - `2d14fe2c-428f-4be0-80df-471f93ad0e5d.jsonl`
 - `/ll:capture-issue` - 2026-09-26T22:48:59 - `58016881-a136-4f55-8da0-640ef93df277.jsonl`
+
+## Resolution
+
+Fixed. Added spawn-free `_editable_source_dir()` in `init/validate.py` (reads `direct_url.json`, decodes via `url2pathname`); version-mismatch, not-installed, and pyyaml hints now use `shlex.quote(sys.executable) -m pip ...` and no longer guess `<project>/scripts`. The TUI's outdated local-editable "Upgrade:" hint now shows the real `install_path`. Tests added in `test_init_core.py` and `test_init_tui.py`; full suite passes.

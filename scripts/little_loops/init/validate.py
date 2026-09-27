@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import importlib.metadata
+import json
+import shlex
 import shutil
 import subprocess
 import sys
+import urllib.parse
+import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -79,42 +83,62 @@ def _check_pyyaml() -> DepWarning | None:
                     "'pyyaml' not installed — SessionStart config merge will fail silently "
                     "(little_loops.hooks.session_start uses yaml to parse .ll/ll.local.md)"
                 ),
-                install_hint="pip install pyyaml",
+                install_hint=f"{shlex.quote(sys.executable)} -m pip install pyyaml",
             )
     except (subprocess.TimeoutExpired, FileNotFoundError):
         pass
     return None
 
 
+def _editable_source_dir() -> Path | None:
+    """Return the editable-install source dir recorded in ``direct_url.json``, else None.
+
+    Spawn-free (reads distribution metadata only). ``None`` for non-editable installs and
+    for missing or malformed metadata.
+    """
+    try:
+        raw = importlib.metadata.distribution("little-loops").read_text("direct_url.json")
+        if not raw:
+            return None
+        data = json.loads(raw)
+        if not data.get("dir_info", {}).get("editable"):
+            return None
+        parsed = urllib.parse.urlparse(data["url"])
+    except (importlib.metadata.PackageNotFoundError, ValueError, KeyError, AttributeError):
+        return None
+    if parsed.scheme != "file":
+        return None
+    return Path(urllib.request.url2pathname(parsed.path))
+
+
 def _check_little_loops_version(plugin_version: str, project_root: Path) -> DepWarning | None:
     """Check that the installed little-loops pip package matches *plugin_version*."""
+    python = shlex.quote(sys.executable)
     try:
         installed = importlib.metadata.version("little-loops")
     except importlib.metadata.PackageNotFoundError:
-        scripts_dir = project_root / "scripts"
-        hint = (
-            f"pip install -e '{scripts_dir}'"
-            if scripts_dir.exists()
-            else "pip install little-loops"
-        )
         return DepWarning(
             message=("'little-loops' pip package not installed — ll-* CLI tools unavailable."),
-            install_hint=hint,
+            install_hint=f"{python} -m pip install little-loops",
         )
 
     if installed != plugin_version:
-        scripts_dir = project_root / "scripts"
-        hint = (
-            f"pip install -e '{scripts_dir}'"
-            if scripts_dir.exists()
-            else "pip install --upgrade little-loops"
-        )
+        source = _editable_source_dir()
+        if source is not None:
+            return DepWarning(
+                message=(
+                    f"little-loops version mismatch: installed {installed!r}, "
+                    f"plugin expects {plugin_version!r}. Editable install: the code is live, "
+                    "only the recorded version metadata is stale."
+                ),
+                install_hint=f"{python} -m pip install -e {shlex.quote(str(source))}",
+            )
         return DepWarning(
             message=(
                 f"little-loops version mismatch: installed {installed!r}, "
                 f"plugin expects {plugin_version!r}."
             ),
-            install_hint=hint,
+            install_hint=f"{python} -m pip install --upgrade little-loops",
         )
 
     return None

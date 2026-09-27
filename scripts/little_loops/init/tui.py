@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shlex
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -9,6 +10,7 @@ from typing import Any
 
 import questionary
 from rich.console import Console
+from rich.markup import escape as markup_escape
 from rich.panel import Panel
 from rich.table import Table
 
@@ -715,6 +717,7 @@ def _render_install_status(
     *,
     install_source: str | None,
     installed_version: str | None,
+    install_path: str | None = None,
     selected_hosts: frozenset[str],
     project_root: Path,
 ) -> bool | None:
@@ -774,7 +777,12 @@ def _render_install_status(
             f"latest [cyan]{pkg_latest}[/cyan]."
         )
         if install_source == "local-editable":
-            console.print("  Upgrade: [cyan]pip install -e <editable-path>[dev][/cyan]")
+            if install_path is not None:
+                python = shlex.quote(sys.executable)
+                cmd = f"{python} -m pip install -e {shlex.quote(install_path)}[dev]"
+                console.print(f"  Upgrade: [cyan]{markup_escape(cmd)}[/cyan]")
+            else:
+                console.print("  Upgrade: [cyan]pip install -e <editable-path>[dev][/cyan]")
         else:
             console.print("  Upgrade: [cyan]pip install --upgrade little-loops[/cyan]")
     if plugin_outdated:
@@ -892,6 +900,7 @@ def run_tui(
         console,
         install_source=install_source,
         installed_version=installed_version,
+        install_path=install_path,
         selected_hosts=frozenset(hosts),
         project_root=project_root,
     )

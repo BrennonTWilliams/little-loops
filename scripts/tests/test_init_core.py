@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.metadata
 import json
+import shlex
 import shutil
 import subprocess
 import sys
@@ -28,6 +29,7 @@ from little_loops.init.validate import (
     _check_python3,
     _check_pyyaml,
     _check_tool_commands,
+    _editable_source_dir,
     validate_deps,
 )
 from little_loops.init.writers import (
@@ -2129,32 +2131,104 @@ class TestValidateDeps:
             w = _check_pyyaml()
         assert w is not None
         assert "pyyaml" in w.message
-        assert w.install_hint == "pip install pyyaml"
+        assert w.install_hint == f"{shlex.quote(sys.executable)} -m pip install pyyaml"
 
     def test_warns_when_package_not_installed(self, tmp_path: Path) -> None:
         exc = importlib.metadata.PackageNotFoundError("little-loops")
-        with patch(
-            "little_loops.init.validate.importlib.metadata.version",
-            side_effect=exc,
+        with (
+            patch(
+                "little_loops.init.validate.importlib.metadata.version",
+                side_effect=exc,
+            ),
+            patch("little_loops.init.validate._editable_source_dir", return_value=None),
         ):
             w = _check_little_loops_version("1.118.0", tmp_path)
         assert w is not None
         assert "not installed" in w.message
+        assert w.install_hint == f"{shlex.quote(sys.executable)} -m pip install little-loops"
+
+    def test_not_installed_ignores_project_scripts_dir(self, tmp_path: Path) -> None:
+        (tmp_path / "scripts").mkdir()
+        exc = importlib.metadata.PackageNotFoundError("little-loops")
+        with patch("little_loops.init.validate.importlib.metadata.version", side_effect=exc):
+            w = _check_little_loops_version("1.118.0", tmp_path)
+        assert w is not None
+        assert str(tmp_path) not in (w.install_hint or "")
+        assert w.install_hint == f"{shlex.quote(sys.executable)} -m pip install little-loops"
 
     def test_warns_on_version_mismatch(self, tmp_path: Path) -> None:
-        with patch(
-            "little_loops.init.validate.importlib.metadata.version",
-            return_value="1.0.0",
+        with (
+            patch(
+                "little_loops.init.validate.importlib.metadata.version",
+                return_value="1.0.0",
+            ),
+            patch("little_loops.init.validate._editable_source_dir", return_value=None),
         ):
             w = _check_little_loops_version("1.118.0", tmp_path)
         assert w is not None
         assert "mismatch" in w.message
         assert "1.0.0" in w.message
+        assert (
+            w.install_hint == f"{shlex.quote(sys.executable)} -m pip install --upgrade little-loops"
+        )
+
+    def test_mismatch_editable_hint_uses_recorded_source(self, tmp_path: Path) -> None:
+        (tmp_path / "scripts").mkdir()  # unrelated consumer scripts/ dir
+        src = Path("/src/little loops/scripts")
+        with (
+            patch("little_loops.init.validate.importlib.metadata.version", return_value="1.0.0"),
+            patch("little_loops.init.validate._editable_source_dir", return_value=src),
+        ):
+            w = _check_little_loops_version("1.118.0", tmp_path)
+        assert w is not None
+        assert "metadata is stale" in w.message
+        py = shlex.quote(sys.executable)
+        assert w.install_hint == f"{py} -m pip install -e {shlex.quote(str(src))}"
+        assert str(tmp_path) not in w.install_hint
+
+    @staticmethod
+    def _dist_with(direct_url: str | None) -> MagicMock:
+        dist = MagicMock()
+        dist.read_text.return_value = direct_url
+        return dist
+
+    def test_editable_source_dir_decodes_percent_encoding(self) -> None:
+        raw = json.dumps({"dir_info": {"editable": True}, "url": "file:///a%20b/scripts"})
+        with patch(
+            "little_loops.init.validate.importlib.metadata.distribution",
+            return_value=self._dist_with(raw),
+        ):
+            assert _editable_source_dir() == Path("/a b/scripts")
+
+    @pytest.mark.parametrize(
+        "raw",
+        [
+            json.dumps({"dir_info": {"editable": False}, "url": "file:///x"}),
+            json.dumps({"dir_info": {}, "url": "https://example.com/x"}),
+            json.dumps({"dir_info": {"editable": True}, "url": "https://example.com/x"}),
+            "{not json",
+            None,
+        ],
+    )
+    def test_editable_source_dir_none_cases(self, raw: str | None) -> None:
+        with patch(
+            "little_loops.init.validate.importlib.metadata.distribution",
+            return_value=self._dist_with(raw),
+        ):
+            assert _editable_source_dir() is None
+
+    def test_editable_source_dir_none_when_not_installed(self) -> None:
+        exc = importlib.metadata.PackageNotFoundError("little-loops")
+        with patch("little_loops.init.validate.importlib.metadata.distribution", side_effect=exc):
+            assert _editable_source_dir() is None
 
     def test_silent_on_version_match(self, tmp_path: Path) -> None:
-        with patch(
-            "little_loops.init.validate.importlib.metadata.version",
-            return_value="1.118.0",
+        with (
+            patch(
+                "little_loops.init.validate.importlib.metadata.version",
+                return_value="1.118.0",
+            ),
+            patch("little_loops.init.validate._editable_source_dir", return_value=None),
         ):
             w = _check_little_loops_version("1.118.0", tmp_path)
         assert w is None

@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from little_loops.init.tui import _build_final_config, run_tui
+from little_loops.init.tui import _build_final_config, _render_install_status, run_tui
 from little_loops.issue_template import get_bundled_templates_dir
 
 _PROJECT_ROOT = Path(__file__).parent.parent.parent  # little-loops root
@@ -1674,3 +1675,28 @@ class TestAdvancedGate:
         assert config["history"]["session_digest"]["enabled"] is False
         assert config["prompt_optimization"]["enabled"] is True
         assert config["loops"]["run_defaults"] == {"clear": False}
+
+
+class TestRenderInstallStatusEditableHint:
+    """BUG-3617: outdated local-editable hint shows the real path and interpreter."""
+
+    @patch("little_loops.init.tui.questionary")
+    def test_editable_upgrade_hint_uses_install_path(
+        self, mock_q: MagicMock, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from rich.console import Console
+
+        mock_q.confirm.return_value.ask.return_value = True
+        with patch("little_loops.init.install_check.fetch_latest_pypi", return_value="9.9.9"):
+            _render_install_status(
+                Console(width=300),
+                install_source="local-editable",
+                installed_version="1.0.0",
+                install_path="/x/scripts",
+                selected_hosts=frozenset({"claude-code"}),
+                project_root=tmp_path,
+            )
+        out = capsys.readouterr().out
+        assert "/x/scripts[dev]" in out
+        assert sys.executable in out
+        assert "<editable-path>" not in out
