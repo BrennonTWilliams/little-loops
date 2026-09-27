@@ -1,0 +1,12 @@
+{
+  "id": "20bbcee9-7f08-49fa-9866-ff753d7089e5",
+  "type": "decision",
+  "timestamp": "2026-09-27T04:03:18Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Avoids widening closed RUN_RECORD_TOKENS vocabulary across five files; opt-in veto-only consult; promote to Option A if telemetry needed",
+  "rule": "Option B: reuse existing legacy run-record class for advisor veto",
+  "scope": "issue",
+  "alternatives_rejected": "Option A: new advisor_veto run-record class",
+  "issue": "ENH-3626"
+}
