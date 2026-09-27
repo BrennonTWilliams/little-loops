@@ -4,8 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
@@ -13,8 +12,6 @@ from typing import Any
 
 from little_loops.fsm.concurrency import _process_alive
 from little_loops.fsm.persistence import (
-    ACTIVE_RUN_STATUSES,
-    HISTORY_DIR,
     RUNNING_DIR,
     StatePersistence,
     _find_instances,
@@ -77,7 +74,9 @@ def _pid_alive(pid: int | None) -> bool:
     return _process_alive(pid)
 
 
-def _classify(status: str, pid_alive_v: bool, age_minutes_v: float, t: CleanupThresholds) -> RunClass:
+def _classify(
+    status: str, pid_alive_v: bool, age_minutes_v: float, t: CleanupThresholds
+) -> RunClass:
     """Pure classification: status × pid_liveness × age."""
     if status == "running":
         if (pid_alive_v is False) or age_minutes_v > t.running_stale_minutes:
@@ -99,7 +98,9 @@ def _classify(status: str, pid_alive_v: bool, age_minutes_v: float, t: CleanupTh
     return RunClass.HEALTHY
 
 
-def _collect_state(stem: str, running_dir: Path, lock_data: dict | None) -> tuple[str | None, str | None]:
+def _collect_state(
+    stem: str, running_dir: Path, lock_data: dict | None
+) -> tuple[int | None, str | None]:
     """Read pid and lock-data for `stem`. Returns (pid, pid_source) where pid_source is 'pid_file' or 'lock_file'."""
     pid_file = running_dir / f"{stem}.pid"
     pid = _read_pid_file(pid_file)
@@ -133,6 +134,7 @@ def _stop_stuck_running(loop: str, loops_dir: Path, dry_run: bool) -> str:
         return "would_stop"
     # Subprocess the CLI; circular imports prevent direct import here.
     import subprocess
+
     rc = subprocess.run(
         ["ll-loop", "stop", loop], capture_output=True, text=True, cwd=str(loops_dir.parent)
     ).returncode
@@ -164,6 +166,7 @@ def cleanup(
         if lock_file.exists():
             try:
                 import json as _json
+
                 lock_data = _json.loads(lock_file.read_text())
             except (OSError, ValueError):
                 lock_data = None

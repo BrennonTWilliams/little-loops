@@ -27,6 +27,7 @@ def main_loop() -> int:
     """
     with cli_event_context(DEFAULT_DB_PATH, "ll-loop", sys.argv[1:]):
         from little_loops.cli.loop.audit import cmd_audit
+        from little_loops.cli.loop.cleanup import cmd_cleanup
         from little_loops.cli.loop.config_cmds import cmd_install, cmd_validate
         from little_loops.cli.loop.edit_routes import cmd_edit_routes
         from little_loops.cli.loop.evidence import cmd_evidence
@@ -41,10 +42,9 @@ def main_loop() -> int:
             cmd_show,
         )
         from little_loops.cli.loop.lifecycle import cmd_monitor, cmd_resume, cmd_status, cmd_stop
-        from little_loops.cli.loop.cleanup import cmd_cleanup
         from little_loops.cli.loop.next_loop import cmd_next_loop
-        from little_loops.cli.loop.rename import cmd_rename
         from little_loops.cli.loop.queue import cmd_queue_list, cmd_queue_remove
+        from little_loops.cli.loop.rename import cmd_rename
         from little_loops.cli.loop.run import cmd_run
         from little_loops.cli.loop.scaffold_eval import cmd_scaffold_eval
         from little_loops.cli.loop.scaffold_verify import cmd_scaffold_verify
@@ -958,8 +958,12 @@ Examples:
             help="Rename a loop YAML and rewrite all references",
         )
         rename_parser.set_defaults(command="rename")
-        rename_parser.add_argument("old", help="Current loop name (bare identifier, no .yaml extension)")
-        rename_parser.add_argument("new", help="New loop name (bare identifier, no .yaml extension)")
+        rename_parser.add_argument(
+            "old", help="Current loop name (bare identifier, no .yaml extension)"
+        )
+        rename_parser.add_argument(
+            "new", help="New loop name (bare identifier, no .yaml extension)"
+        )
         rename_parser.add_argument(
             "--dry-run",
             action="store_true",

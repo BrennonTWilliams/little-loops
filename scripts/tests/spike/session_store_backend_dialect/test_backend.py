@@ -14,7 +14,6 @@ import threading
 from pathlib import Path
 
 import pytest
-
 from scripts.tests.spike.session_store_backend_dialect.backend import (
     UnsupportedCapability,
     require_capability,
@@ -155,6 +154,7 @@ class TestSpikeIsolation:
                     imported_names.update(alias.name for alias in node.names)
 
             assert not any(
-                name == "little_loops.session_store" or name.startswith("little_loops.session_store.")
+                name == "little_loops.session_store"
+                or name.startswith("little_loops.session_store.")
                 for name in imported_names
             ), f"{source_file} imports production little_loops.session_store: {imported_names}"

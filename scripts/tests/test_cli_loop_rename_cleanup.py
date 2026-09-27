@@ -2,29 +2,22 @@
 
 from __future__ import annotations
 
-import argparse
 import json
-import os
-import subprocess
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
 from little_loops.cli.loop.cleanup import (
-    CleanupEntry,
     CleanupThresholds,
     RunClass,
     _classify,
     cleanup,
 )
 from little_loops.cli.loop.rename import (
-    RenameReport,
     _KO_RE,
     _resolve_loop,
     rename_loop,
 )
-
 
 # ---------- _classify (pure function) ----------
 
@@ -51,9 +44,7 @@ class TestClassifyRun:
         assert cls is RunClass.STALE_INTERRUPTED_AGED
 
     def test_interrupted_no_pid_recent_is_healthy(self) -> None:
-        cls = _classify(
-            "interrupted", pid_alive_v=False, age_minutes_v=10, t=CleanupThresholds()
-        )
+        cls = _classify("interrupted", pid_alive_v=False, age_minutes_v=10, t=CleanupThresholds())
         assert cls is RunClass.HEALTHY
 
     def test_interrupted_alive_pid_is_stale_interrupted(self) -> None:
@@ -65,9 +56,7 @@ class TestClassifyRun:
         assert cls is RunClass.TERMINAL
 
     def test_timed_out_is_terminal(self) -> None:
-        cls = _classify(
-            "timed_out", pid_alive_v=False, age_minutes_v=10, t=CleanupThresholds()
-        )
+        cls = _classify("timed_out", pid_alive_v=False, age_minutes_v=10, t=CleanupThresholds())
         assert cls is RunClass.TERMINAL
 
     def test_awaiting_continuation_fresh_is_healthy(self) -> None:
@@ -139,7 +128,7 @@ class TestRenameLoopHappyPath:
     def test_dry_run_does_not_move_files(self, tmp_path: Path) -> None:
         loops_dir = _setup_loops_dir(tmp_path)
         src = loops_dir / "old.yaml"
-        src.write_text('name: old\ninitial: done\nstates:\n  done:\n    terminal: true\n')
+        src.write_text("name: old\ninitial: done\nstates:\n  done:\n    terminal: true\n")
         report = rename_loop("old", "new", dry_run=True, loops_dir=loops_dir)
         assert report.yaml_moved is True
         assert src.exists()  # not moved
@@ -148,9 +137,7 @@ class TestRenameLoopHappyPath:
     def test_apply_moves_yaml_and_updates_name(self, tmp_path: Path) -> None:
         loops_dir = _setup_loops_dir(tmp_path)
         src = loops_dir / "old.yaml"
-        src.write_text(
-            'name: "old"\ninitial: done\nstates:\n  done:\n    terminal: true\n'
-        )
+        src.write_text('name: "old"\ninitial: done\nstates:\n  done:\n    terminal: true\n')
         rename_loop("old", "new", dry_run=False, loops_dir=loops_dir)
         assert not src.exists()
         dest = loops_dir / "new.yaml"

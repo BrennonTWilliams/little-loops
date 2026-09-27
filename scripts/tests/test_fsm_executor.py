@@ -10381,9 +10381,7 @@ class TestSubLoopReentryCaptureReset:
             on_no=on_no,
         )
 
-    def test_failure_terminal_cleared_on_capture_less_success_reentry(
-        self, tmp_path: Path
-    ) -> None:
+    def test_failure_terminal_cleared_on_capture_less_success_reentry(self, tmp_path: Path) -> None:
         """First entry's child ends on a `failure: true` terminal; second entry's
         child succeeds without capturing anything. failure_terminal must be
         absent (not stale True, not an explicit False) after the second entry."""
@@ -10398,7 +10396,7 @@ class TestSubLoopReentryCaptureReset:
             "name: child\ninitial: work\n"
             "states:\n"
             "  work:\n"
-            f"    action: 'if [ -f \"{child_marker}\" ]; then exit 0; else touch \"{child_marker}\"; exit 1; fi'\n"
+            f'    action: \'if [ -f "{child_marker}" ]; then exit 0; else touch "{child_marker}"; exit 1; fi\'\n'
             "    action_type: shell\n"
             "    on_yes: done\n"
             "    on_no: needs_attention\n"
@@ -10427,9 +10425,7 @@ class TestSubLoopReentryCaptureReset:
             "entry's stale failure_terminal=True"
         )
 
-    def test_failure_terminal_persists_across_fail_then_fail_reentry(
-        self, tmp_path: Path
-    ) -> None:
+    def test_failure_terminal_persists_across_fail_then_fail_reentry(self, tmp_path: Path) -> None:
         """Both entries fail: failure_terminal stays True (not cleared spuriously)."""
         loops_dir = tmp_path / ".loops"
         loops_dir.mkdir()
@@ -10495,8 +10491,7 @@ class TestSubLoopReentryCaptureReset:
         assert result.final_state == "done"
         assert executor.captured["run_child"]["terminated_by"] == "terminal"
         assert "error" not in executor.captured["run_child"], (
-            "second entry's clean terminal result must not carry the first "
-            "entry's stale error"
+            "second entry's clean terminal result must not carry the first entry's stale error"
         )
 
     def test_context_passthrough_reentry_still_sees_own_previous_captures(

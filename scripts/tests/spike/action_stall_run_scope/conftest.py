@@ -14,4 +14,6 @@ def pytest_runtest_makereport(item, call):
     )
     item.user_properties.append(("ll_exc_type", call.excinfo.type.__name__))
     item.user_properties.append(("ll_assertion", "true" if is_assertion else "false"))
+
+
 # <<< ll-spike-verdict hook <<<

@@ -76,9 +76,7 @@ def require_capability(backend: Backend, capability: str) -> None:
     """The degradation path: a clear, catchable error instead of a feature
     failing deep inside a dialect that never claimed to support it."""
     if not backend.supports(capability):
-        raise UnsupportedCapability(
-            f"{capability!r} is not supported by backend {backend.kind!r}"
-        )
+        raise UnsupportedCapability(f"{capability!r} is not supported by backend {backend.kind!r}")
 
 
 def _split_sql_statements(script: str) -> list[str]:

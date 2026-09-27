@@ -258,9 +258,7 @@ class TestSnapshotRoundTrip:
         project_root = tmp_path / "proj"
         (project_root / ".ll").mkdir(parents=True)
         (project_root / ".ll" / "ll-config.json").write_text("{}", encoding="utf-8")
-        _build_history_db(
-            project_root / ".ll" / "history.db", include_provenance_columns=False
-        )
+        _build_history_db(project_root / ".ll" / "history.db", include_provenance_columns=False)
         code, out = _run(project_root, since="2026-07-01")
         assert code == 0
         conn = _recover_snapshot(out.read_text(encoding="utf-8"), tmp_path / "rt-pre-v55.db")
@@ -275,7 +273,9 @@ class TestSnapshotRoundTrip:
             "observed_at_basis",
         }
         assert not provenance_cols & set(columns)
-        assert columns == [c for c in _SHAREABLE_COLUMNS["usage_events"] if c not in provenance_cols]
+        assert columns == [
+            c for c in _SHAREABLE_COLUMNS["usage_events"] if c not in provenance_cols
+        ]
 
     def test_non_allowlisted_tables_absent(self, project: Path, tmp_path: Path) -> None:
         code, out = _run(project, since="2026-07-01")

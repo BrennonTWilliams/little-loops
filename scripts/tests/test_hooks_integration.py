@@ -1292,8 +1292,7 @@ class TestContextMonitor:
         )
         state = json.loads(state_file.read_text())
         assert state["estimated_tokens"] <= 200000, (
-            f"estimated_tokens {state['estimated_tokens']} should be <= 200000. "
-            f"Full state: {state}"
+            f"estimated_tokens {state['estimated_tokens']} should be <= 200000. Full state: {state}"
         )
 
     def test_transcript_baseline_refreshed_on_new_turn(

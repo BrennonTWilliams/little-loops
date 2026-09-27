@@ -12,9 +12,8 @@ from pathlib import Path
 from little_loops.fsm.loop_paths import get_builtin_loops_dir
 from little_loops.logger import Logger
 
-
 _KO_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
-_LOOP_REF_RE = re.compile(rf"(loop:\s+)([\w./-]+)")
+_LOOP_REF_RE = re.compile(r"(loop:\s+)([\w./-]+)")
 
 
 @dataclass
@@ -154,9 +153,7 @@ def rename_loop(
     # Move the YAML: git mv for built-in scope, plain mv for project.
     if not dry_run:
         if scope == "builtin":
-            subprocess.run(
-                ["git", "mv", str(src), str(dest)], check=True
-            )
+            subprocess.run(["git", "mv", str(src), str(dest)], check=True)
         else:
             shutil.move(str(src), str(dest))
     report.yaml_moved = True

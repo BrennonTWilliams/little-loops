@@ -470,9 +470,7 @@ class TestUsageEventReaders:
         assert event.invocation_id == "inv-1"
         assert event.run_id == "run-1"
 
-    def test_recent_usage_events_null_provenance_surfaces_as_unknown(
-        self, tmp_path: Path
-    ) -> None:
+    def test_recent_usage_events_null_provenance_surfaces_as_unknown(self, tmp_path: Path) -> None:
         """ENH-3580: a NULL stored provenance surfaces as "unknown", not None."""
         db = tmp_path / "history.db"
         self._seed(
