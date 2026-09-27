@@ -35,24 +35,35 @@ Claim-level verify findings are corrected (or deterministically classified as no
 
 ## Proposed Solution
 
-**C — deterministic satisfied-edge rule (do first).** Treat a `blocked_by` / `depends_on` edge whose target is `done` or `cancelled` as satisfied, never as a failing verify finding (at most a warning). Prefer a deterministic check (e.g. a `format-check` / gate rule) over verify prose so the verdict is reproducible. `deferred` stays non-terminal. Prose that contradicts the frontmatter remains a legitimate claim finding for A.
+**C — deterministic satisfied-edge rule (do first; independently shippable).** Treat a `blocked_by` / `depends_on` edge whose target is `done` or `cancelled` as satisfied, never as a failing verify finding (at most an informational note). `deferred` stays non-terminal. Prose that contradicts the frontmatter remains a legitimate claim finding for A.
+
+`commands/verify-issues.md` §2E already half-states this rule ("If in completed: note as 'satisfied' (informational, not an error)", `:261-263`), but it keys on the body `## Blocked By` section and on directory location ("in completed"), which is not a status signal — done issues stay in their type dirs. Fix §2E to:
+- read the frontmatter `blocked_by` / `depends_on` lists (body `## Blocked By` as fallback only);
+- resolve each target's status deterministically via `ll-issues show <REF> --json`, lowercasing the value and treating `done` / `completed` / `cancelled` as satisfied (`show --json` status is display-cased, e.g. `"Completed"` for `done`);
+- state explicitly that a satisfied edge never contributes to a non-VALID verdict.
+
+Add `Bash(ll-issues:*)` to `commands/verify-issues.md` `allowed-tools` (currently only `git`, `ll-code`, `ll-verify-evidence`; §4.5's `ll-issues append-log` already depends on it implicitly). **Decision:** C does not wait for ENH-3636 — per-edge `show --json` lookups work today; once ENH-3636 lands, §2E can switch to reading its single-call annotation.
 
 **A — let verify correct its own claim findings.**
-1. Persist a finer check-mode verdict so claim-correctable verdicts are distinguishable: e.g. `verify_verdict: CLAIMS_OUTDATED` for OUTDATED / NEEDS_UPDATE, keeping INVALID / RESOLVED / DECISIONS_VIOLATION as `NON_VALID` (these must never be auto-corrected). Update `check_verify_verdict.py` and `ll-issues next-obligation` token mapping accordingly.
-2. Add `"VERIFY:CLAIMS_OUTDATED": check_claim_correction_budget` → new `correct_claims` state running `/ll:verify-issues <ID> --auto` (non-check mode, which already writes corrections back — see the anchor-relocation and Verification Notes behavior in `commands/verify-issues.md`), then `normalize_structure` → `clear_verify_verdict` → `verify_issue --check`, so an independent check pass re-judges the edit (mitigates self-grading).
-3. Budget: one correction attempt per run, own counter seeded in `resolve_issue`, exhausted → `check_gate_refine_limit` (existing fallback).
-4. Keep `VERIFY:other` → `refine_followup` for genuine research gaps.
-5. Update the verify-issues §2C prose so the remedy it names matches the route.
+1. Persist a finer check-mode verdict so claim-correctable verdicts are distinguishable: `verify_verdict: CLAIMS_OUTDATED` for `OUTDATED` / `NEEDS_UPDATE`. Every other claim verdict stays `NON_VALID` and must never be auto-corrected: `INVALID`, `RESOLVED`, `DECISIONS_VIOLATION`, `REGRESSION_LIKELY`, `POSSIBLE_REGRESSION`, `DEP_ISSUES`. **Precedence** (one persisted value per issue, highest wins):
+   `NON_VALID` (any finding in the never-auto-correct set) > `EVIDENCE_UNVERIFIED` > `CLAIMS_OUTDATED` > `PROPOSAL_UNSOUND` > `DIRECTIVE_DRIFT` > `VALID`.
+   `CLAIMS_OUTDATED` above `PROPOSAL_UNSOUND`/`DIRECTIVE_DRIFT` restates §2C's existing "claim-verdict wins" rule; `EVIDENCE_UNVERIFIED` above it because a fabricated quote is not a stale fact and must not be "corrected" into the file.
+2. **Persist the findings, not just the verdict.** For `CLAIMS_OUTDATED`, `--check` also writes `verify_evidence:` (same single-line double-quoted YAML scalar contract already used for `PROPOSAL_UNSOUND`, `verify-issues.md:337-343`) listing each stale claim and its current truth, `; `-separated. `clear_verify_verdict` already removes `verify_evidence` (`clear_verify_verdict.py:49`), so no new cleanup is needed.
+3. Add `"VERIFY:CLAIMS_OUTDATED": check_claim_correction_budget` → new `correct_claims` state running `/ll:verify-issues <ID> --auto` (non-check mode), which reads `verify_evidence` as its work list, then `normalize_structure` → `clear_verify_verdict` → `verify_issue` (`--check`), so an independent check pass re-judges the edit (mitigates self-grading).
+4. **Widen non-check §4 so it can actually correct claims.** Today §3/§4 (`verify-issues.md:364-376`) authorize only adding `## Verification Notes` and updating paths/line numbers — nothing permits rewriting a stale fact in Confidence Check Notes / Research Findings or dropping a stale frontmatter reference, so `correct_claims` would otherwise be the same additive no-op this bug describes. Add: when a `verify_evidence` work list is present (or the verdict is `OUTDATED`/`NEEDS_UPDATE`), rewrite each stale statement **in place** in whichever section holds it (including frontmatter status/line-count references); a Verification Notes entry alone does not count as a correction. Never-auto-correct verdicts from step 1 stay read-only, and resolved-status changes stay out of auto mode (existing §3 rule).
+5. Budget: one correction attempt per run, own counter (`refine-to-ready-claim-corrections`) seeded in `resolve_issue`. **Exhausted → `record_gate_unmet`**, not `check_gate_refine_limit`: this bug demonstrates `refine_followup` cannot repair this verdict class, so falling back to it spends another ~15 min for nothing.
+6. Keep `VERIFY:other` → `check_gate_refine_limit` → `refine_followup` for genuine research gaps.
+7. Update the verify-issues §2C prose so the remedy it names (`refine_followup`) becomes `correct_claims` for `CLAIMS_OUTDATED`.
 
-Fallback (B), only if verify must stay read-only inside the loop: persist verify findings to `${context.run_dir}/verify-findings` and feed them into `refine_followup`. Weaker: gap-analysis can at most append `⚠ Superseded` markers beside stale claims; whether a later verify accepts that is unproven, and it grows the marker debt reconcile flags.
+Rejected fallback (B) — persist findings to `${context.run_dir}/verify-findings` and feed them into `refine_followup`: gap-analysis can at most append `⚠ Superseded` markers beside stale claims, whether a later verify accepts that is unproven, and it grows the marker debt reconcile flags. A.2 keeps B's one useful idea (findings persisted and handed to the repair state) without the additive-only limitation.
 
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/cli/issues/check_verify_verdict.py` — `classify_verify_verdict()` gains a `CLAIMS_OUTDATED` branch
-- `scripts/little_loops/cli/issues/next_obligation.py` — `_verify_class()` / `select_next_obligation()` propagate the new token
-- `scripts/little_loops/loops/refine-to-ready-issue.yaml` — `route_pre_score_obligation` route table, new `check_claim_correction_budget` / `correct_claims` states
-- `commands/verify-issues.md` — §2C verdict rule and §2.5 check-mode persistence prose updated to match the new remedy path (no code change to the command itself)
+- `scripts/little_loops/cli/issues/check_verify_verdict.py` — add `"CLAIMS_OUTDATED"` to the pass-through tuple in `classify_verify_verdict()` (`:36`); no new `--claims-outdated` query flag is needed (routing goes through `next-obligation`, not this CLI's flags)
+- `scripts/little_loops/cli/issues/next_obligation.py` — no logic change: `_verify_class()` delegates to the classifier and `select_next_obligation()` already emits `VERIFY:<class>`; docstrings only (see Documentation)
+- `scripts/little_loops/loops/refine-to-ready-issue.yaml` — `route_pre_score_obligation` route table, new `check_claim_correction_budget` / `correct_claims` states, counter seed in `resolve_issue`
+- `commands/verify-issues.md` — `allowed-tools` (+`Bash(ll-issues:*)`); §2C verdict rule (remedy name); §2E satisfied-edge rule keyed on frontmatter + `ll-issues show --json` status (Proposed Solution C); §2.5 persistence (`CLAIMS_OUTDATED` + `verify_evidence`, full precedence order); §3/§4 in-place claim correction driven by `verify_evidence` (Proposed Solution A.4); §4.1 frontmatter-sync residual mapping includes `CLAIMS_OUTDATED`
 - `commands/refine-issue.md` — cited only as evidence that the existing additive-only contract (§5c) is unchanged by this fix; not modified
 
 ### Dependent Files (Callers/Importers)
@@ -66,13 +77,13 @@ _Wiring pass added by `/ll:wire-issue`:_ the four items above.
 
 ### Similar Patterns
 - `check_evidence_unverified` / `check_proposal_revision_budget` / `check_reconcile_limit` — existing one-shot-budget gate states in `refine-to-ready-issue.yaml` that `check_claim_correction_budget` should mirror (counter seeded in `resolve_issue`, exhaustion falls through to `check_gate_refine_limit`). Correction from wiring pass: `check_evidence_unverified` was consolidated away by the ENH-3604 dispatch refactor (`test_builtin_loops.py:3106` `REMOVED_STATES`) — `VERIFY:EVIDENCE_UNVERIFIED` now shares `check_gate_refine_limit` directly, no dedicated counter. Only `check_proposal_revision_budget` (states `refine-to-ready-issue.yaml:605-620`) and `check_reconcile_limit` (`test_builtin_loops.py:1646-1684`, `:1882-1922`) have the seeded-counter shape to mirror [Agent 3 finding]
-- `scripts/tests/test_dependency_graph.py` `TestGetBlockingIssues.test_completed_blockers_excluded` / `test_completed_blocker_not_added` (lines 128-140, 333-363) with shared `make_issue()` fixture — `DependencyGraph.get_blocking_issues(issue_id, completed=...)` (`scripts/little_loops/dependency_graph.py:283`) already implements "an edge to a `done`/`cancelled` target is never a live blocker" at the graph layer; model Proposed Solution C's deterministic satisfied-edge rule test after this shape [Agent 3 finding]
+- `scripts/tests/test_dependency_graph.py` `TestGetBlockingIssues.test_completed_blockers_excluded` (lines 333-363) and `TestDependencyGraphConstruction.test_completed_blocker_not_added` (lines 128-140, a different class than the first test) with shared `make_issue()` fixture — `DependencyGraph.get_blocking_issues(issue_id, completed=...)` (`scripts/little_loops/dependency_graph.py:283`) already implements "an edge to a `done`/`cancelled` target is never a live blocker" at the graph layer; model Proposed Solution C's deterministic satisfied-edge rule test after this shape [Agent 3 finding]
 
 ### Tests
 - `scripts/tests/test_builtin_loops.py` — routing table coverage for the new `VERIFY:CLAIMS_OUTDATED` route and `ll-loop validate refine-to-ready-issue`. Specific sites that must update in lockstep or they fail: `TestRefineToReadyDispatch.PRE_TABLE` dict (`:3118-3131`, exact-equality assertion in `test_pre_score_routing_table` `:3180-3184`); `_tokens()`'s `sub["VERIFY"]` list (`:3154-3161`, consumed by `test_dispatch_tokens_are_complete` `:3198-3203` — a silent under-verification gap, not a red test, if missed); `test_reachability_of_kept_budget_states` (`:3292-3294`) requires `check_claim_correction_budget`/`correct_claims` to exist once referenced in `PRE_TABLE` [Agent 3 finding]
-- `scripts/tests/test_ll_issues_next_obligation.py` — `TestVerify.test_classifier` (`:63-77`, parametrized over `classify_verify_verdict()` value/expected pairs) and `TestVerify.test_sub_reasons` (`:85-95`, parametrized `verdict` list asserting `res.token()`) — both need new `OUTDATED`/`NEEDS_UPDATE` → `CLAIMS_OUTDATED` cases; neither currently asserts the old collapse, so this is additive, not breaking [Agent 3 finding]
+- `scripts/tests/test_ll_issues_next_obligation.py` — `TestVerify.test_classifier` (`:63-77`, parametrized over `classify_verify_verdict()` value/expected pairs): add `("CLAIMS_OUTDATED", "CLAIMS_OUTDATED")`, `("claims_outdated", "CLAIMS_OUTDATED")`, and pin `("OUTDATED", "other")` / `("NEEDS_UPDATE", "other")` — raw §2C labels are never persisted, so they must not be silently accepted as aliases. `TestVerify.test_sub_reasons` (`:85-95`): add `"CLAIMS_OUTDATED"` to the `verdict` list (expects `VERIFY:CLAIMS_OUTDATED`). Additive, not breaking [Agent 3 finding, corrected in review]
 - `scripts/tests/test_ll_issues_check_verify_verdict.py` — existing CLI-contract suite for `cmd_check_verify_verdict()`; does not yet construct `OUTDATED`/`NEEDS_UPDATE`/`CLAIMS_OUTDATED` frontmatter — add coverage for the new class falling through the same non-`VALID` exit-1 branch (lines 150-166 of the source) [Agent 2/3 finding]
-- `scripts/tests/test_enh3250_verify_issues_proposal_vs_code.py` — established precedent module for prose-level verdict carve-outs: `TestProposalUnsoundVerdict.test_verdict_table_has_proposal_unsound` / `test_persistence_carves_out_proposal_unsound` / `test_persistence_still_exits_1_in_check_mode` (`:78-110`), and `TestDirectiveDriftVerdict` (`:114-125`) for BUG-3574's carve-out. `CLAIMS_OUTDATED` is the same shape — per this repo's own precedent, add an equivalent `TestClaimsOutdatedVerdict` class here (not a new file) asserting §2C's verdict table and §2.5's persistence text name `CLAIMS_OUTDATED` distinctly from `NON_VALID` [Agent 2/3 finding]
+- `scripts/tests/test_enh3250_verify_issues_proposal_vs_code.py` — established precedent module for prose-level verdict carve-outs: `TestProposalUnsoundVerdict.test_verdict_table_has_proposal_unsound` / `test_persistence_carves_out_proposal_unsound` / `test_persistence_still_exits_1_in_check_mode` (`:78-110`), and `TestDirectiveDriftVerdict` (`:114-125`) for BUG-3574's carve-out. `CLAIMS_OUTDATED` is the same shape — per this repo's own precedent, add an equivalent `TestClaimsOutdatedVerdict` class here (not a new file) asserting: §2.5 names `CLAIMS_OUTDATED` distinctly from `NON_VALID`, writes `verify_evidence` for it, and keeps `INVALID`/`RESOLVED`/`DECISIONS_VIOLATION`/`REGRESSION_*`/`DEP_ISSUES` in `NON_VALID`; §2.5 states the precedence order; §4 contains the in-place-correction rule; §2E names frontmatter `blocked_by`/`depends_on` and `ll-issues show` (not "in completed"); `allowed-tools` includes `Bash(ll-issues:*)` [Agent 2/3 finding, extended in review]
 - Unit test for `classify_verify_verdict()` distinguishing `CLAIMS_OUTDATED` from `NON_VALID`/`other` — resolved: see `test_ll_issues_next_obligation.py` entry above (no separate new file needed)
 - Fixture issue with a stale status claim (e.g. `blocked_by` pointing at a `done` issue) reaching `confidence_check` end-to-end — closest existing harness is `TestTier1GateParity.test_clean_issue_is_clean_for_both` (`test_ll_issues_next_obligation.py:455-461`, builds a `.issues/` fixture project and asserts selector + `ll-issues` gate CLI agree); no full FSM-driven end-to-end run of `refine-to-ready-issue.yaml` exists anywhere in the suite — searched `scripts/tests/integration/test_loop_run_e2e.py` (no hits) — so this new test is selector-level (Pattern 6), not a real FSM run [Agent 3 finding]
 
@@ -99,32 +110,33 @@ _Wiring pass added by `/ll:wire-issue`:_ the four items above.
 
 ### Signatures
 
-- `classify_verify_verdict(verdict: object) -> str` (`scripts/little_loops/cli/issues/check_verify_verdict.py`) — extend the upper-value branch to return `"CLAIMS_OUTDATED"` for the OUTDATED/NEEDS_UPDATE case instead of falling through to `"other"`
-- `_verify_class(fm: dict[str, Any]) -> str` / `select_next_obligation(...)` (`scripts/little_loops/cli/issues/next_obligation.py`) — propagate the new class into a `"VERIFY:CLAIMS_OUTDATED"` token distinct from `"VERIFY:other"`
+- `classify_verify_verdict(verdict: object) -> str` (`scripts/little_loops/cli/issues/check_verify_verdict.py`) — the classifier reads the *persisted* value, which is `CLAIMS_OUTDATED` (never raw `OUTDATED`/`NEEDS_UPDATE`); add `"CLAIMS_OUTDATED"` to the upper-value pass-through tuple so it returns `"CLAIMS_OUTDATED"` instead of `"other"`
+- `_verify_class(fm: dict[str, Any]) -> str` / `select_next_obligation(...)` (`scripts/little_loops/cli/issues/next_obligation.py`) — unchanged; the new class flows through to a `"VERIFY:CLAIMS_OUTDATED"` token distinct from `"VERIFY:other"` with no code edit
 
 ### Call Path
 
-`route_pre_score_obligation` (`scripts/little_loops/loops/refine-to-ready-issue.yaml`) -> `next_obligation.select_next_obligation` -> `next_obligation._verify_class` -> `check_verify_verdict.classify_verify_verdict` -> route `"VERIFY:CLAIMS_OUTDATED"` -> `check_claim_correction_budget` (new state, counter seeded in `resolve_issue`) -> `correct_claims` (new state, `/ll:verify-issues ${issue_id} --auto`) -> `normalize_structure` -> `clear_verify_verdict` -> `route_pre_score_obligation` (re-entry)
+`route_pre_score_obligation` (`scripts/little_loops/loops/refine-to-ready-issue.yaml`) -> `next_obligation.select_next_obligation` -> `next_obligation._verify_class` -> `check_verify_verdict.classify_verify_verdict` -> route `"VERIFY:CLAIMS_OUTDATED"` -> `check_claim_correction_budget` (new state, counter seeded in `resolve_issue`; exhausted -> `record_gate_unmet`) -> `correct_claims` (new state, `/ll:verify-issues ${issue_id} --auto`, consumes `verify_evidence`) -> `normalize_structure` -> `clear_verify_verdict` -> `verify_issue` (`--check`) -> `route_pre_score_obligation` (re-entry)
 
 ## Implementation Steps
 
-1. Implement C (deterministic satisfied-edge rule) and add verify-issues prose deferring to it.
-2. Add the finer check-mode verdict + `next-obligation` token + `check_verify_verdict` classification.
-3. Add `check_claim_correction_budget` / `correct_claims` states and the route; seed the counter in `resolve_issue`.
-4. Mirror the route in any caller that reuses the pre-score obligation map (check `autodev.yaml` / `prepare-issue.yaml` for equivalents).
-5. Tests: routing table in `test_builtin_loops.py`; verdict classification; a fixture issue with a stale status claim reaching `confidence_check`.
+1. Implement C: rewrite `commands/verify-issues.md` §2E to key on frontmatter `blocked_by`/`depends_on` and `ll-issues show <REF> --json` status (lowercased; `done`/`completed`/`cancelled` = satisfied); add `Bash(ll-issues:*)` to `allowed-tools`. Independently shippable — can land (and be split out) before A.
+2. Add the `CLAIMS_OUTDATED` persisted verdict + `verify_evidence` findings write + precedence order to §2.5; add `"CLAIMS_OUTDATED"` to `classify_verify_verdict()`'s pass-through tuple.
+3. Widen §3/§4 (non-check mode) to rewrite stale claims in place from the `verify_evidence` work list; update §2C's remedy name and §4.1's residual mapping.
+4. Add `check_claim_correction_budget` (exhausted → `record_gate_unmet`) / `correct_claims` states and the route; seed `refine-to-ready-claim-corrections` in `resolve_issue`.
+5. ~~Mirror the route in `autodev.yaml` / `prepare-issue.yaml`~~ — N/A, confirmed in Dependent Files: neither has its own pre-score route table.
+6. Tests: routing table in `test_builtin_loops.py`; verdict classification; `TestClaimsOutdatedVerdict` prose assertions; a fixture issue with a stale status claim reaching `confidence_check` (selector-level).
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
 - Update `test_builtin_loops.py` — add `"VERIFY:CLAIMS_OUTDATED": "check_claim_correction_budget"` to `TestRefineToReadyDispatch.PRE_TABLE` (`:3118-3131`) and `"CLAIMS_OUTDATED"` to `_tokens()`'s `sub["VERIFY"]` list (`:3154-3161`) in the same change as the YAML route, or `test_pre_score_routing_table` / `test_dispatch_tokens_are_complete` fail or silently under-verify
-- Update `test_ll_issues_next_obligation.py` — add `OUTDATED`/`NEEDS_UPDATE` → `CLAIMS_OUTDATED` cases to `TestVerify.test_classifier` (`:63-77`) and `TestVerify.test_sub_reasons` (`:85-95`)
+- Update `test_ll_issues_next_obligation.py` — add `CLAIMS_OUTDATED` → `CLAIMS_OUTDATED` (and pin raw `OUTDATED`/`NEEDS_UPDATE` → `other`) to `TestVerify.test_classifier` (`:63-77`); add `CLAIMS_OUTDATED` to `TestVerify.test_sub_reasons` (`:85-95`)
 - Add `TestClaimsOutdatedVerdict` to `test_enh3250_verify_issues_proposal_vs_code.py` (alongside `TestProposalUnsoundVerdict`/`TestDirectiveDriftVerdict`) asserting §2C's verdict table and §2.5's persistence text name `CLAIMS_OUTDATED` distinctly from `NON_VALID`
 - Update `docs/guides/LOOPS_REFERENCE.md:146-158` — add `VERIFY:CLAIMS_OUTDATED → check_claim_correction_budget` row to the claim-verification gate chain table
 - Update `docs/reference/CLI.md:2384-2405,2577-2597` — add `CLAIMS_OUTDATED` to the `next-obligation` and `check-verify-verdict` vocabulary lists
 - Update docstrings: `check_verify_verdict.py` `classify_verify_verdict()` (`:29-31`); `next_obligation.py` module docstring (`:1-18`) and `Obligation` class docstring (`:34-45`)
-- Update `refine-to-ready-issue.yaml` — seed a new counter (e.g. `refine-to-ready-claim-corrections`) in `resolve_issue` (`:178-197`, mirroring `check_proposal_revision_budget`'s counter at `:611-616`); add a routing-summary header line (`:24`) for `VERIFY:CLAIMS_OUTDATED`; bump `max_steps` (`:132`) with a dated ledger comment entry per the file's established convention (see prior ENH-3031/BUG-3065/ENH-3248/etc. entries)
+- Update `refine-to-ready-issue.yaml` — seed `refine-to-ready-claim-corrections` in `resolve_issue` (`:178-197`, mirroring `check_proposal_revision_budget`'s counter at `:611-616`); `check_claim_correction_budget` `on_no`/`on_error` → `record_gate_unmet`; `correct_claims` uses `pruning_profile: verify-issues-auto` and `on_error: normalize_structure`; add a routing-summary header line (`:24`) for `VERIFY:CLAIMS_OUTDATED`; bump `max_steps` (`:132`) with a dated ledger comment entry per the file's established convention (see prior ENH-3031/BUG-3065/ENH-3248/etc. entries)
 - After editing `commands/verify-issues.md`, run `ll-adapt --host gemini --apply`, `ll-adapt --host kimi-code --apply`, `ll-adapt --host qwen --apply` to resync `.gemini/commands/verify-issues.toml`, `.kimi-code/skills/ll-verify-issues/SKILL.md`, `.qwen/commands/ll/verify-issues.md` — `test_wiring_skills_and_commands.py` gates staleness
 - Add a new test module/class exercising `DependencyGraph.get_blocking_issues(completed=...)`-style satisfied-edge semantics for Proposed Solution C, modeled on `test_dependency_graph.py:TestGetBlockingIssues` (`:128-140,333-363`), in whichever module ends up hosting the deterministic check
 - No change needed at `preparation_policy.py:749-766` (VERIFY is in its `skip=tier1` set) or `clear_verify_verdict.py:49` (value-agnostic key removal) — verified, not touchpoints
@@ -133,7 +145,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 - **Priority**: P2 — every refine-to-ready run on an issue whose dependencies landed mid-flight can fail `gate_unmet` after ~50 min regardless of research quality; autodev inherits this.
 - **Effort**: Medium
-- **Risk**: Medium — changes the verify verdict enum consumed by multiple loops.
+- **Risk**: Medium — the verdict enum is consumed only by `refine-to-ready-issue.yaml` (grep: no other `VERIFY:` route table, `preparation_policy.py` skips VERIFY), so the enum change itself is low-risk; the real risk is A.4 widening verify's non-check write authority to in-place rewrites of issue prose/frontmatter, bounded by the never-auto-correct set and the independent `--check` re-pass.
 
 ## Steps to Reproduce
 
@@ -158,14 +170,50 @@ A contributing cause: verify's treatment of a `blocked_by` edge to a `done`/`can
 
 ## Acceptance Criteria
 
-- A verify finding limited to stale status/line-count claims is corrected within the run and the loop reaches `confidence_check`.
-- A `blocked_by` edge to a `done`/`cancelled` issue never produces a non-VALID verdict on its own.
-- INVALID / RESOLVED verdicts are never routed to auto-correction.
+- A verify finding limited to stale status/line-count claims is corrected **in place** (the stale statement is rewritten, not merely annotated in `## Verification Notes`) within the run and the loop reaches `confidence_check`.
+- `--check` persists `verify_verdict: CLAIMS_OUTDATED` plus a single-line `verify_evidence:` naming each stale claim for `OUTDATED`/`NEEDS_UPDATE`, and `correct_claims` consumes that evidence.
+- `commands/verify-issues.md` §2E resolves `blocked_by`/`depends_on` target status via frontmatter (`ll-issues show --json`, lowercased), not directory location, and states that an edge to a `done`/`cancelled` target is satisfied and never contributes to a non-VALID verdict (asserted by a prose test in `test_enh3250_verify_issues_proposal_vs_code.py`).
+- `INVALID` / `RESOLVED` / `DECISIONS_VIOLATION` / `REGRESSION_*` / `DEP_ISSUES` persist as `NON_VALID` and outrank `CLAIMS_OUTDATED`, so they are never routed to auto-correction.
+- A second `CLAIMS_OUTDATED` after the one correction attempt terminates via `record_gate_unmet` without re-entering `refine_followup`.
 - `ll-loop validate refine-to-ready-issue` passes.
 
 ## Related Key Documentation
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
+
+## Verification Notes
+
+Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the same
+pass, so the issue as it now reads is up to date — this section is a record of
+what was wrong and fixed, not an outstanding action item).
+
+Extensive cross-check against the current codebase (~40+ discrete file/line
+citations across `commands/verify-issues.md`, `scripts/little_loops/cli/issues/
+{check_verify_verdict,next_obligation,clear_verify_verdict}.py`,
+`scripts/little_loops/{preparation_policy,dependency_graph}.py`,
+`scripts/little_loops/loops/refine-to-ready-issue.yaml`, three test modules, and
+two docs files) confirmed every anchor exact except two minor citation
+inaccuracies, both corrected in place:
+
+- **Proposed Solution C**: the `:256-261` line citation for the quoted
+  `commands/verify-issues.md` §2E text ("If in completed: note as 'satisfied'...")
+  was off by two lines — the quote is at `:263` (with `:261-262` being the
+  preceding `## Blocked By` list-item and "in active issues or completed"
+  context). Corrected to `:261-263`.
+- **Similar Patterns**: `test_completed_blocker_not_added` was attributed to
+  `TestGetBlockingIssues`, but it is actually a method of the earlier
+  `TestDependencyGraphConstruction` class (lines 128-140); `TestGetBlockingIssues`
+  (which does contain `test_completed_blockers_excluded`, lines 333-363) starts
+  at line 333. Corrected to attribute each test to its actual class.
+
+Also independently confirmed: the `refine-to-ready-issue-20260927T160415` run
+cited in Steps to Reproduce (`ll-loop history refine-to-ready-issue
+2026-09-27T160415`) matches exactly — iter 18 `refine_followup` session
+`5e0fa7a0…`, iter 23 `verify_issue` session `71473c3f…`, 26 total iterations,
+terminating `record_gate_unmet` → `failed`. No active required decision rules
+were in effect to check against (`ll-issues decisions list --type rule
+--enforcement required --active-only` returned none). `ll-verify-evidence
+--json` reported no unverifiable evidence spans.
 
 ## Status
 
@@ -173,6 +221,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-27T18:41:47 - `faf37470-642a-4009-8ad8-fa55667af3ab.jsonl`
 - `/ll:wire-issue` - 2026-09-27T18:20:18 - `a542cb1a-fb64-418c-96c1-dffa8cf6d60f.jsonl`
 - `/ll:refine-issue` - 2026-09-27T18:07:47 - `45431681-0957-443f-9bca-12828c2ee935.jsonl`
 - `/ll:format-issue` - 2026-09-27T18:05:46 - `1bdd3eba-088f-4b15-88f8-1d11e0d8cb3b.jsonl`
