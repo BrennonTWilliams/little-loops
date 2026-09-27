@@ -312,3 +312,40 @@ class TestSetScoresClear:
         before = issue_file.read_text()
         assert self._run(temp_project_dir, sample_config, "--clear", "--outcome", "50") == 1
         assert issue_file.read_text() == before
+
+
+class TestClearScoresHelper:
+    """ENH-3630: direct unit tests of the extracted clear_scores(path) helper."""
+
+    def test_removes_all_six_keys_and_reports_changed(self, issues_dir: Path) -> None:
+        from little_loops.cli.issues.set_scores import clear_scores
+
+        issue_file = issues_dir / "bugs" / "P0-BUG-001-critical-crash.md"
+        content = issue_file.read_text()
+        assert content.startswith("---\n")
+        header_end = content.index("\n---\n", 4)
+        new_header = content[:header_end] + (
+            "\nconfidence_score: 95\noutcome_confidence: 80\nscore_complexity: 1\n"
+            "score_test_coverage: 1\nscore_ambiguity: 1\nscore_change_surface: 1"
+        )
+        issue_file.write_text(new_header + content[header_end:])
+
+        assert clear_scores(issue_file) is True
+        after = issue_file.read_text()
+        for key in (
+            "confidence_score",
+            "outcome_confidence",
+            "score_complexity",
+            "score_test_coverage",
+            "score_ambiguity",
+            "score_change_surface",
+        ):
+            assert f"{key}:" not in after
+
+    def test_no_keys_present_reports_unchanged(self, issues_dir: Path) -> None:
+        from little_loops.cli.issues.set_scores import clear_scores
+
+        issue_file = issues_dir / "bugs" / "P0-BUG-001-critical-crash.md"
+        before = issue_file.read_text()
+        assert clear_scores(issue_file) is False
+        assert issue_file.read_text() == before

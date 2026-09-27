@@ -1357,3 +1357,67 @@ class TestSetStatusHistoryDbErrorHandling:
             from little_loops.cli import main_issues
 
             main_issues()
+
+
+class TestReasonErrorForStatusHelper:
+    """ENH-3630: direct unit tests of the extracted reason_error_for_status() check."""
+
+    def test_none_or_empty_reason_is_valid_for_any_status(self) -> None:
+        from little_loops.cli.issues.set_status import reason_error_for_status
+
+        assert reason_error_for_status("open", None) is None
+        assert reason_error_for_status("done", "") is None
+
+    def test_deferral_code_valid_only_on_deferred(self) -> None:
+        from little_loops.cli.issues.set_status import reason_error_for_status
+
+        assert reason_error_for_status("deferred", "low_readiness") is None
+        error = reason_error_for_status("done", "low_readiness")
+        assert error is not None
+        assert "deferral reason code" in error and "deferred" in error
+
+    def test_closure_code_valid_only_on_done_or_cancelled(self) -> None:
+        from little_loops.cli.issues.set_status import reason_error_for_status
+
+        assert reason_error_for_status("done", "already_fixed") is None
+        assert reason_error_for_status("cancelled", "already_fixed") is None
+        error = reason_error_for_status("open", "already_fixed")
+        assert error is not None
+        assert "closure reason code" in error
+
+    def test_error_text_matches_cmd_set_status_cli(
+        self, temp_project_dir: Path, sample_config: dict[str, Any], issues_dir: Path
+    ) -> None:
+        """The extraction must not change cmd_set_status's stderr text or exit code."""
+        from little_loops.cli.issues.set_status import reason_error_for_status
+
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        issue_file = issues_dir / "bugs" / "P0-BUG-001-critical-crash.md"
+        issue_file.write_text("---\nid: BUG-001\nstatus: open\n---\n# BUG-001\n")
+
+        import io
+        from contextlib import redirect_stderr
+
+        expected = reason_error_for_status("open", "low_readiness")
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "set-status",
+                "BUG-001",
+                "open",
+                "--reason",
+                "low_readiness",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            stderr = io.StringIO()
+            with redirect_stderr(stderr):
+                exit_code = main_issues()
+        assert exit_code == 1
+        assert expected in stderr.getvalue()

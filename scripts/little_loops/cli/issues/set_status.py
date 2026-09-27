@@ -90,6 +90,32 @@ def status_frontmatter_updates(
     return updates
 
 
+def reason_error_for_status(status: str, reason: str | None) -> str | None:
+    """Validate ``--reason`` against the target *status*; ``None`` when valid.
+
+    Deferral codes only apply to a ``deferred`` transition; closure codes
+    only apply to ``done``/``cancelled``. Extracted (ENH-3630) out of
+    :func:`cmd_set_status` so the preparation policy's in-process
+    ``apply_status_transition`` calls run the same check before writing
+    instead of assuming a valid transition (as :func:`apply_status_transition`
+    itself does). Same error text and exit-code contract as before: the
+    caller prints the returned message to stderr and exits 1.
+    """
+    if not reason:
+        return None
+    if reason in _DEFERRAL_REASON_CODES and status != "deferred":
+        return (
+            f"Error: --reason '{reason}' is a deferral reason code and only "
+            f"valid when target status is deferred, got '{status}'."
+        )
+    if reason in _CLOSED_REASON_CODES and status not in ("done", "cancelled"):
+        return (
+            f"Error: --reason '{reason}' is a closure reason code and only "
+            f"valid when target status is done or cancelled, got '{status}'."
+        )
+    return None
+
+
 def apply_status_transition(
     config: BRConfig,
     path: Path,
@@ -276,21 +302,10 @@ def cmd_set_status(config: BRConfig, args: argparse.Namespace) -> int:
     # Validate --reason against the target status: deferral codes only apply to
     # a `deferred` transition, closure codes only apply to `done`/`cancelled`.
     reason = getattr(args, "reason", None)
-    if reason:
-        if reason in _DEFERRAL_REASON_CODES and args.status != "deferred":
-            print(
-                f"Error: --reason '{reason}' is a deferral reason code and only "
-                f"valid when target status is deferred, got '{args.status}'.",
-                file=sys.stderr,
-            )
-            return 1
-        if reason in _CLOSED_REASON_CODES and args.status not in ("done", "cancelled"):
-            print(
-                f"Error: --reason '{reason}' is a closure reason code and only "
-                f"valid when target status is done or cancelled, got '{args.status}'.",
-                file=sys.stderr,
-            )
-            return 1
+    reason_error = reason_error_for_status(args.status, reason)
+    if reason_error:
+        print(reason_error, file=sys.stderr)
+        return 1
 
     result = apply_status_transition(
         config,

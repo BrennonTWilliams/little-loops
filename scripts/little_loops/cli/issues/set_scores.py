@@ -7,6 +7,8 @@ import sys
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from little_loops.config import BRConfig
 
 SCORE_KEYS = (
@@ -27,6 +29,27 @@ _SCORE_ARG_DESTS = (
 )
 
 
+def clear_scores(path: Path) -> bool:
+    """Remove all six score keys from *path*'s frontmatter; returns whether anything changed.
+
+    Locked and atomic — matching :func:`apply_status_transition`
+    (``cli/issues/set_status.py``) — unlike ``cmd_set_scores``'s previous
+    inline ``--clear`` branch, which read-modified-wrote unlocked with plain
+    ``write_text``. Extracted (ENH-3630) so ``set-scores --clear`` and the
+    preparation policy's ``clear_scores`` precondition share one writer.
+    """
+    from little_loops.file_utils import acquire_lock, atomic_write, issue_lock_path
+    from little_loops.frontmatter import remove_frontmatter_keys
+
+    with acquire_lock(issue_lock_path(path)):
+        content = path.read_text()
+        new_content = remove_frontmatter_keys(content, SCORE_KEYS)
+        changed = new_content != content
+        if changed:
+            atomic_write(path, new_content)
+    return changed
+
+
 def cmd_set_scores(config: BRConfig, args: argparse.Namespace) -> int:
     """Write confidence and outcome scores into an issue's YAML frontmatter.
 
@@ -43,7 +66,7 @@ def cmd_set_scores(config: BRConfig, args: argparse.Namespace) -> int:
         Exit code (0 = success, 1 = error)
     """
     from little_loops.cli.issues.show import _resolve_issue_id
-    from little_loops.frontmatter import remove_frontmatter_keys, update_frontmatter
+    from little_loops.frontmatter import update_frontmatter
 
     path = _resolve_issue_id(config, args.issue_id)
     if path is None:
@@ -54,10 +77,7 @@ def cmd_set_scores(config: BRConfig, args: argparse.Namespace) -> int:
         if any(getattr(args, dest, None) is not None for dest in _SCORE_ARG_DESTS):
             print("Error: --clear cannot be combined with score arguments.", file=sys.stderr)
             return 1
-        content = path.read_text()
-        new_content = remove_frontmatter_keys(content, SCORE_KEYS)
-        if new_content != content:
-            path.write_text(new_content)
+        clear_scores(path)
         return 0
 
     updates: dict[str, str | int] = {}
