@@ -8,6 +8,12 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-09-27'
 captured_at: '2026-09-27T03:35:14Z'
+confidence_score: 100
+outcome_confidence: 88
+score_complexity: 13
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # BUG-3627: diff_stall evaluator shares stall state across runs and misses commits, staged, and untracked changes
@@ -209,5 +215,6 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-27T04:51:22 - `7d0784ac-24a4-4b7a-af8c-3b3e14cec5c4.jsonl`
 - `/ll:wire-issue` - 2026-09-27T04:02:38 - `b9726386-58c1-4c65-8485-76e226017a2f.jsonl`
 - `/ll:refine-issue` - 2026-09-27T03:56:26 - `d2d94801-a3bb-4af7-800e-2bfc0ccec8d4.jsonl`

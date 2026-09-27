@@ -9,6 +9,12 @@ discovered_date: '2026-09-27'
 captured_at: '2026-09-27T03:35:17Z'
 relates_to:
 - ENH-3623
+confidence_score: 100
+outcome_confidence: 89
+score_complexity: 21
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 # BUG-3628: FSM executor leaves stale failure_terminal capture on loop state re-entry
@@ -244,6 +250,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-27T04:50:43 - `b1d961f1-bb2d-4afe-8b30-594899eeede4.jsonl`
 - `/ll:wire-issue` - 2026-09-27T04:02:38 - `b9726386-58c1-4c65-8485-76e226017a2f.jsonl`
 - `/ll:refine-issue` - 2026-09-27T03:55:47 - `0b26d35d-ec12-419a-9599-7aa7bcfe4ed1.jsonl`
 - `/ll:capture-issue` - 2026-09-27T03:35:38 - `2cf44b5a-002b-44e7-a500-5cad45592206.jsonl`

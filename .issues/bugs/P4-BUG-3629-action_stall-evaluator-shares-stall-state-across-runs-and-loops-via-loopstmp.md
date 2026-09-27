@@ -72,17 +72,44 @@ Mirror the BUG-3627 approach:
 - `scripts/little_loops/cli/loop/testing.py` — `cmd_test` passes a bare `InterpolationContext()` (must hit the `.loops/tmp` fallback)
 - `scripts/little_loops/fsm/schema.py` — `track` / `max_repeat` evaluator fields (unchanged)
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/fsm/executor.py` — `FSMExecutor._evaluate()` calls `evaluate(config=..., output=..., exit_code=..., context=ctx)` (~:3196); `ctx` is built with `state_name=self.current_state` (~:2353) and `context=self.fsm.context` (incl. `run_dir`), so `state_name` for the file key comes from `context.state_name` with no new `evaluate()` parameter (same source `evaluate()` already uses for the `advisor_consult` branch, ~:2094) [Agent 1 + 2 finding]
+- `scripts/little_loops/cli/loop/run.py` — injects `fsm.context["run_dir"]` as `runs/<instance_id or loop_name>/` (~:236) and `mkdir`s it before evaluation (~:614); `--context run_dir=` overrides. `run_dir` is a trailing-slash string, so wrap in `Path()` [Agent 2 finding]
+- `scripts/little_loops/cli/loop/lifecycle.py` — resume path sets `run_dir` to `runs/<instance_id>/` (~:681), so a resumed run keeps its stall state (desired) [Agent 2 finding]
+- `scripts/little_loops/cli/loop/testing.py::cmd_simulate` — sets `run_dir` to `<loops_dir>/runs/<loop>-simulate/` on every invocation, so stall state persists across successive `ll-loop simulate` runs of the same loop (same `-simulate` dir); decide whether to accept or clear it [Agent 2 finding]
+- `scripts/little_loops/cli/loop/testing.py::cmd_test` — bare `InterpolationContext()` has `state_name == ""` as well as no `run_dir`; the legacy-path fallback must not require a non-empty `state_name`. Its docstring (~:189) says the state file is "normally under `.loops/tmp/`" — update [Agent 2 finding]
+- `scripts/little_loops/fsm/executor.py` sub-loop handling (~:1152, ~:1238) — `child_fsm.context.setdefault("run_dir", ...)` makes parent and child share `run_dir`; confirms `state_name` must be in the file key [Agent 2 finding]
+- `scripts/little_loops/persistence.py::archive_run` — archives `run_dir`; stall files moved under it are now archived with the run (today's `.loops/tmp` files are outside it) [Agent 2 finding]
+- `scripts/little_loops/fsm/validation/meta_rules.py` — MR-1 counts `action_stall` as a non-LLM evaluator by type only; `_SHARED_TMP_PATH_RE` scans state actions, not evaluator internals, so the `.loops/tmp` fallback is not linted. No change [Agent 2 finding]
+
 ### Similar Patterns
 - `evaluate_diff_stall()` (BUG-3627), `evaluate_score_stall`, `evaluate_open_question_stall` — `run_dir`-scoped state; share one state-dir/key helper with BUG-3627
 
 ### Tests
 - `scripts/tests/test_fsm_evaluators.py` — action_stall test class (~:2118); its `clean_state_files` fixture relies on cwd `.loops/tmp`, add run_dir cases
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_fsm_evaluators.py::TestActionStallEvaluator` — the six direct-call tests (`test_first_iteration_returns_yes`, `test_different_action_returns_yes`, `test_identical_at_threshold_returns_no`, `test_identical_below_threshold_returns_yes`, `test_stall_then_progress_resets`, multi-key test) call `evaluate_action_stall(context=ctx)` with no `state_dir`; keep them unchanged as fallback-path regression coverage (new params must default to `None` / `""`) [Agent 3 finding]
+- `scripts/tests/test_fsm_evaluators.py::_ctx` — extend or add a variant accepting `run_dir` and `state_name`; `state_name` is an `InterpolationContext` field, not a `context` key, so it needs `InterpolationContext(state_name=...)` [Agent 3 finding]
+- `scripts/tests/test_fsm_evaluators.py::test_dispatch_action_stall`, `test_dispatch_action_stall_with_options` — bare context, exercise the fallback; add sibling dispatch tests with `InterpolationContext(context={"run_dir": str(tmp_path/"run")}, state_name="s")` asserting the files land under `run_dir` and a second `run_dir` starts fresh (model: `test_dispatch_defaults_to_run_dir_history`) [Agent 3 finding]
+- `scripts/tests/test_fsm_evaluators.py::test_dispatch_nonzero_exit_does_not_affect_exit_code_aware_evaluators[action_stall]` (~:942) — runs the real evaluator with a bare context and **no chdir isolation**, so it writes to the real cwd `.loops/tmp`; stays green via fallback, but must never start raising on a missing `state_dir` [Agent 3 finding]
+- `scripts/tests/test_grader_coverage.py` — `EXEMPT_GRADERS` lists `"evaluate_action_stall"` (~:51); `test_all_evaluate_functions_classified` requires the function name unchanged. No change [Agent 1 + 3 finding]
+- `scripts/tests/test_fsm_schema.py` (`test_action_stall_round_trips_through_dict`, `test_action_stall_to_dict_omits_defaults`) — break only if new `EvaluateConfig` fields are added; none are planned. No change [Agent 3 finding]
+- `scripts/tests/spike/action_stall_run_scope/test_run_scoped_stall.py` — promote the behavioural tests into `TestActionStallEvaluator`, rewriting `_check(...)` to call `evaluate_action_stall(track=..., max_repeat=..., context=ctx, state_dir=..., state_name=...)` and mapping `(verdict, count)` to `result.verdict` / `result.details["stall_count"]`; drop `test_guard_spike_does_not_import_production_evaluators`; also assert no `.loops/` is created under cwd when `state_dir` is set [Agent 3 finding]
+- **New (none exist):** executor-level two-run test in `scripts/tests/test_fsm_executor.py` — `FSMLoop` with a `StateConfig` carrying `evaluate: action_stall`, run twice with different `fsm.context["run_dir"]`, assert the second run does not inherit the first's stall count (model FSM construction on the blocks at ~:2066-2280) [Agent 3 finding]
+- **New:** `state_dir` set with empty `state_name` case (the `cmd_test` shape once `run_dir` is present) [Agent 3 finding]
+
 ### Documentation
 - `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md` — `action_stall` section (~:465), document per-run scoping
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/LOOPS_GUIDE.md` — evaluator table row `action_stall` (~:420) says only "file-backed, no git required"; note per-run/per-state scoping [Agent 2 finding]
+- `docs/reference/API.md` — `EvaluateConfig` listing (~:6086, ~:6113) lists type/fields only, not the function signature; update only if it documents `evaluate_action_stall` params [Agent 2 + 3 finding]
+- `docs/reference/EVENT-SCHEMA.md` — `action_stall` evaluator detail fields (~:315-332); unchanged as long as `details` keys stay stable [Agent 2 finding]
+- `scripts/little_loops/fsm/evaluators.py::evaluate_diff_stall` docstring — says state lives in "/tmp" but writes `.loops/tmp`; fix in passing (already noted in research findings) [Agent 2 finding]
+
 ### Configuration
-- N/A
+- N/A — wiring pass confirmed no changes needed to `fsm-loop-schema.json`, `schema.py` (`EvaluateConfig`), `validation/structural_rules.py`, `validation/_base.py`, `cli/loop/info.py`, `.gitignore` (blanket `.loops/tmp/` entry), or any hook/scratch-cleanup script (they touch only `.loops/tmp/scratch`). No loop YAML, hook, skill or command references `ll-action-stall-*` files.
 
 ### Codebase Research Findings
 
@@ -102,6 +129,16 @@ _Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
 2. Derive `state_dir` from `context.context["run_dir"]` in the `evaluate()` `action_stall` branch, falling back to `.loops/tmp` when absent; fix the docstring.
 3. Update existing action_stall tests and add cases for sequential runs, same-`track` states in one run, shared parent/child `run_dir`, and missing `run_dir`.
 4. Run `python -m pytest scripts/tests/test_fsm_evaluators.py` and `ll-loop validate` on a sample loop.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- In the `evaluate()` `action_stall` branch, read `state_name` from `context.state_name` (no new `evaluate()` parameter; `FSMExecutor._evaluate` already populates it) and `run_dir` from `context.context.get("run_dir", "")`, treating empty as absent
+- Update `scripts/little_loops/cli/loop/testing.py` — fix the `cmd_test` docstring (~:189); decide whether `cmd_simulate`'s fixed `runs/<loop>-simulate/` dir should clear stall files between invocations
+- Update `scripts/tests/test_fsm_evaluators.py` — extend `_ctx()` for `run_dir`/`state_name`, add dispatch tests with `run_dir`, promote spike tests (drop the import-guard test)
+- Add executor-level two-run test in `scripts/tests/test_fsm_executor.py`
+- Update `docs/guides/LOOPS_GUIDE.md` (~:420) alongside `AUTOMATIC_HARNESSING_GUIDE.md`
 
 ## Impact
 
@@ -148,6 +185,7 @@ _Added by `/ll:spike` on 2026-09-26_
 **Promotion**: fold into `evaluate_action_stall` under `project.src_dir` and its test under `project.test_dir`, in a separate PR.
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-27T04:50:04 - `cedcb440-51cb-42b2-9a38-b12a6ea640a7.jsonl`
 - `/ll:spike` - 2026-09-27T04:46:25 - `a9f61bee-9049-4d2c-bd00-adce91a7501c.jsonl`
 - `/ll:refine-issue` - 2026-09-27T04:35:38 - `7d85ed80-1899-46ba-9e99-00eacba73eb5.jsonl`
 - `/ll:format-issue` - 2026-09-27T04:32:29 - `79da1788-ca93-44d9-aace-4d2e47c2197b.jsonl`
