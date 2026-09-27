@@ -76,6 +76,13 @@ i.e. after `seed_parameter_defaults` / `seed_confidence_thresholds` / `derive_in
 - **Not later** (after `child_executor.run()`): the worktree-error early return (~:1223)
   writes `error` via `setdefault` into `captured[<state>]`; it must land in a fresh dict.
 
+**Exception edge (noted in review 2026-09-27, no change needed)**: if anything between the
+reset and the `terminated_by` write raises (`child_executor.run()`, or `detach_worktree()`
+in its `finally`), `captured[<state>]` is left **absent** rather than stale. The exception
+propagates out of `_execute_sub_loop` and ends the parent run, so no downstream state reads
+it. Only a resume could observe the absence, and resume re-enters the `loop:` state, which
+repopulates the dict.
+
 `verdict` is **not** stale-prone and is outside this fix: ~:1356 writes it into
 `captured[state.capture]` (not `captured[<state>]`), and assigns it on every entry whenever
 `state.capture` is set.

@@ -72,7 +72,7 @@ state consults a stronger or different model before the issue is handed back as 
   inherits it too). For that case the helper persists its verdict to
   `<run_dir>/advise-<ID>.verdict` and, when that file exists, **replays** it without
   consulting again. A prior VETO is replayed as VETO, never as a pass. The file is keyed by
-  ID, so it never crosses issues.
+  ID, so it never crosses issues. The file also records a SHA-256 of the issue file (excluding any `## Advisor Veto` section). A replayed **PROCEED or SKIPPED** is honored only while the hash still matches; if the issue was edited since (a decide or spike re-score, say), it is discarded and the helper consults again. A replayed VETO stays sticky regardless of edits.
 
 ## Motivation
 
@@ -87,7 +87,7 @@ are not redundant.
 
 **Shared helper (land first).** A Python entry point, `ll-issues advise-consult <ID> --run-dir <dir>`, that:
 
-1. **Replays** a prior verdict first: if `<run_dir>/advise-<ID>.verdict` exists, print its
+1. **Replays** a prior verdict first: if `<run_dir>/advise-<ID>.verdict` exists (for PROCEED/SKIPPED, only while its recorded issue hash still matches), print its
    token and exit 0 without consulting (see Expected Behavior, one consult per issue per
    top-level run).
 2. Otherwise calls `little_loops.advisor.consult_for_trigger("refine_ready", question=<q>,
@@ -95,6 +95,7 @@ are not redundant.
    `os.environ` before the call so `resolve_task_key()` bills the per-issue budget bucket.
    `manual=True` matches `ll-advise`: it bypasses `advisor.enabled` and the
    `advisor.triggers` allowlist, so the new signal needs no config entry.
+   **Context trimming:** send the issue body with `## Session Log`, `## Confidence Check Notes`, and `### Codebase Research Findings` appendices removed, capped at a fixed character limit chosen during implementation, to bound cost and latency.
    **No helper-side timeout.** The consult is bounded by `advisor.timeout_seconds`
    (default 180, `run_blocking_json(timeout=...)`) and returns `skipped_reason="timeout"`.
    A shorter outer timeout would kill consults that would have succeeded, and each one would
@@ -113,7 +114,7 @@ are not redundant.
    **leading word** of `recommendation` decides: `VETO` → VETO, anything else → PROCEED.
    There is no whole-word fallback, so "no reason to VETO" does not veto: a false VETO costs
    more than a false PROCEED. `confidence` and `dissent` are logged but never routed on.
-5. Always exits 0 and prints a single routing token (`PROCEED`/`VETO`/`SKIPPED`) that the
+5. Always exits 0 (a catch-all around `main` prints `SKIPPED`, including on a `BRConfig` load failure) and prints a single routing token (`PROCEED`/`VETO`/`SKIPPED`) that the
    loop routes with `classify` + a `route:` table (the `next-obligation --format token`
    shape). No advisor exit code exists to propagate, so executor-side 429 interception
    (which fires only on non-zero exit) cannot stall the loop.
@@ -157,6 +158,7 @@ check_proof_before_done --on_no/on_error--> check_advise_ready_enabled   # was w
 check_advise_ready_enabled --on_no/on_error--> write_done_record          # flag `advise_ready` empty
                            --on_yes--> run_advise_ready
 run_advise_ready --PROCEED/SKIPPED--> write_done_record   # helper replays a prior verdict itself
+                 --default (empty/unknown token, no_route, error)--> write_done_record  # fail-open
                  --VETO--> record_advisor_veto  # writes gate_unmet, echoes [ADVISOR_VETO], next: failed
 ```
 
@@ -211,9 +213,9 @@ _Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
   not used; see "Why not the existing `advisor_consult` evaluator". Its lead-word parser is
   shared instead.
 
-**Option A**: New run-record class `advisor_veto` mapped to a `blocked` outcome, with its own token in `RUN_RECORD_TOKENS`, a recording state in `refine-to-ready-issue.yaml`, a `forward_stop` case in `prepare-issue.yaml`, and an explicit `route_refine_outcome` route in `autodev.yaml`. Distinguishes vetoes in telemetry and lets each caller route them independently; widens a closed vocabulary across five files.
+**Option A (rejected)**: New run-record class `advisor_veto` mapped to a `blocked` outcome, with its own token in `RUN_RECORD_TOKENS`, a recording state in `refine-to-ready-issue.yaml`, a `forward_stop` case in `prepare-issue.yaml`, and an explicit `route_refine_outcome` route in `autodev.yaml`. Distinguishes vetoes in telemetry and lets each caller route them independently; widens a closed vocabulary across five files.
 
-**Option B**: Reuse an existing legacy class (e.g. `gate_unmet` → `deferred`, or `quality` → `blocked`) with the advisor recommendation carried in the session log only. No vocabulary change and callers already handle it; a veto becomes indistinguishable from other gate failures in run records.
+**Option B (selected)**: Reuse an existing legacy class (e.g. `gate_unmet` → `deferred`, or `quality` → `blocked`) with the advisor recommendation carried in the session log only. No vocabulary change and callers already handle it; a veto becomes indistinguishable from other gate failures in run records.
 
 > **Selected:** Option B — reuses the existing `gate_unmet`/`quality` legacy classes; no closed-vocabulary change.
 
@@ -244,7 +246,11 @@ _Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
    re-refining without this note changes nothing. A later PROCEED removes the section.
    The edit is **not committed**: the run ends at `failed`, which never reaches a commit
    step, so the note stays in the working tree as a visible change. Say so in the
-   `[ADVISOR_VETO]` echo.
+   `[ADVISOR_VETO]` echo. **Pre-implementation check:** autodev snapshots a base dirty set
+   and records per-issue uncommitted files (`autodev.yaml` ~1222-1309; `ledger_child_stop` /
+   `skip_inflight`). Confirm a dirty issue file after a veto does not trip those paths or
+   parallel-worktree merges. If it does, drop `--write-note` from v1 and carry the
+   recommendation in `advise-<ID>.json` and the `[ADVISOR_VETO]` echo only.
 5. `next: failed`, `on_error: failed`.
 
 **Follow-through (resolved in review):** the class is `gate_unmet` (→ deferred). `record_gate_unmet` itself is not reused: its message is specific to structure gates. A new `record_advisor_veto` state writes the same `gate_unmet` legacy class with an accurate `[ADVISOR_VETO]` message, then `next: failed`. No vocabulary change.
@@ -286,9 +292,9 @@ the follow-up is a separate budget scope for readiness consults, which is a
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/loops/refine-to-ready-issue.yaml` — new gate/consult/veto states on the done path (`check_advise_ready_enabled`, `run_advise_ready`, `record_advisor_veto`); bump `max_steps` (currently 100) for the two extra hops and record it in the history comment
+- `scripts/little_loops/loops/refine-to-ready-issue.yaml` — new gate/consult/veto states on the done path (`check_advise_ready_enabled`, `run_advise_ready`, `record_advisor_veto`); bump `max_steps` from 100 to 103 (gate, consult, veto hops), record it in the history comment, and update the pinned `== 100` assertion in the same change
 - `scripts/little_loops/loops/refine-to-ready-issue.yaml` (again) — declare the flag as `parameters.advise_ready.default: ""`, **not** in `context:` (a `context:` literal overrides the parent's value under `context_passthrough`)
-- `scripts/little_loops/loops/recursive-refine.yaml` — same `parameters.advise_ready.default: ""` declaration (not `context:`), so a flag from `rn-build`/`sprint-build-and-validate`/`issue-refinement` or `--context` still reaches `refine-to-ready-issue` (pass-through only; it does not read run records)
+- `scripts/little_loops/loops/recursive-refine.yaml` — same `parameters.advise_ready.default: ""` declaration (not `context:`), so a flag from `rn-build`/`sprint-build-and-validate`/`issue-refinement` or `--context` still reaches `refine-to-ready-issue` (pass-through only; it does not read run records). It already has `parameters:` (`input`) and `context:` blocks: add the entry to `parameters:` only and pin it absent from `context:`. Also confirm `ll-loop run --context advise_ready=1` accepts a key declared only under `parameters:`
 - `scripts/little_loops/loops/prepare-issue.yaml` — no declaration needed (`context_passthrough: true`, no `context:` block); no veto handling needed, `gate_unmet` → deferred is already handled by `forward_stop`
 - `scripts/little_loops/loops/autodev.yaml` — declare the flag in `context:` (`""`; top-level, so the `context:` literal is correct here) and let it pass to `prepare-issue`; no `route_refine_outcome` change
 - `scripts/little_loops/cli/issues/advise_consult.py` (new file) — new helper subcommand (`add_advise_consult_parser`/`cmd_advise_consult`/`map_advise_verdict`)
@@ -304,8 +310,9 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/cli/issues/__init__.py` — four registration sites for the new subcommand: lazy import block, epilog listing (next to `next-obligation`/`run-record`), `add_*_parser(subs)` block, `args.command` dispatch [Agent 1/2 finding]
 - `scripts/little_loops/cli/issues/next_obligation.py` (`register(subs)`), `check_verify_verdict.py`, `run_record.py` — sibling helper modules; models for the new module's `add_<name>_parser`/`cmd_<name>` shape [Agent 1 finding]
 - `scripts/little_loops/run_record.py` (`outcome_from_legacy_class`, `LEGACY_CLASSES`) — Option B reuses `gate_unmet` → deferred; no vocabulary edit, but this is the mapping the veto route depends on. The new `record_advisor_veto` writer state is a new writer of that class, so `test_run_record.py` sets need entries [Agent 1 finding, corrected in review]
-- `scripts/little_loops/loops/rn-build.yaml:582`, `sprint-build-and-validate.yaml:82,181`, `issue-refinement.yaml:21` — call `recursive-refine`; inherit the empty default, need edits only if they should forward the flag [Agent 2 finding]
-- `scripts/little_loops/loops/rn-remediate.yaml`, `auto-refine-and-implement.yaml`, `oracles/resolve-decision.yaml` — other `refine-to-ready-issue` callers; confirm they pass no `context:` that would shadow the flag, and that the flag-off path is unchanged for them [Agent 1 finding]
+- `scripts/little_loops/loops/rn-build.yaml:582`, `sprint-build-and-validate.yaml:82,181` — call `recursive-refine` with `context_passthrough: true`, so the flag reaches it (verified in review)
+- `scripts/little_loops/loops/issue-refinement.yaml:21` — calls `recursive-refine` with a `with_:` block and **no** passthrough, so it does **not** forward `advise_ready`; it gets only the `""` default. Unsupported in v1: run `recursive-refine` directly with `--context advise_ready=1` (or add the flag to its `with_:`, out of scope) (verified in review)
+- `scripts/little_loops/loops/rn-remediate.yaml`, `auto-refine-and-implement.yaml`, `oracles/resolve-decision.yaml` — review found no `loop: refine-to-ready-issue` state in any of them (only comments/prose), so no edit and no shadowing risk; re-grep other invocation syntax before dropping them from the wiring list
 - `scripts/little_loops/hooks/pre_done.py` — existing `consult_for_trigger` consumer; shares the per-issue budget the new consult draws from [Agent 1 finding]
 
 ### Documentation
@@ -321,8 +328,8 @@ _Wiring pass added by `/ll:wire-issue`:_
 - No `config-schema.json` change: the helper passes `manual=True` (as `ll-advise` does), so the `refine_ready` signal needs no `advisor.triggers` entry and `advisor.enabled` need not be set. `docs/reference/CONFIGURATION.md` `### advisor` (`max_consults_per_task`, `timeout_seconds`) is the budget and timeout the consult uses. Document the budget contention with `pre_done` next to the flag [Agent 2 finding, updated in review]
 
 ### Tests
-- `scripts/tests/test_builtin_loops.py` — chain-shape pins, default-off, flag propagation parent → child (guards against a child `context:` literal shadowing it), stub-`ll-issues advise-consult` execution for routing
-- New helper tests — `map_advise_verdict` over fixture `ConsultOutcome`s (each `skipped_reason`, PROCEED/VETO lead words, "no reason to VETO"), replay, `--write-note` write/clear, with `consult_for_trigger` monkeypatched
+- `scripts/tests/test_builtin_loops.py` — chain-shape pins, `recursive-refine` `advise_ready` in `parameters:` and absent from `context:`, `run_advise_ready` default route → `write_done_record`, default-off, flag propagation parent → child (guards against a child `context:` literal shadowing it), stub-`ll-issues advise-consult` execution for routing
+- New helper tests — helper crash (e.g. `BRConfig` load failure) still prints `SKIPPED` and exits 0; replayed PROCEED discarded after the issue changes, replayed VETO sticky; `map_advise_verdict` over fixture `ConsultOutcome`s (each `skipped_reason`, PROCEED/VETO lead words, "no reason to VETO"), replay, `--write-note` write/clear, with `consult_for_trigger` monkeypatched
 - `scripts/tests/test_fsm_evaluators.py` and `scripts/tests/test_advisor.py` (existing `advisor_consult` / advisor tests) — must pass unchanged after `parse_lead_word` extraction
 
 _Wiring pass added by `/ll:wire-issue`:_
@@ -358,6 +365,13 @@ _Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
 4. Wire `check_advise_ready_enabled` (flag only), `run_advise_ready` (`classify` + `route:`), and `record_advisor_veto` into `refine-to-ready-issue.yaml`; bump `max_steps` and update the header diagram/history. Declare the flag as `advise_ready: ""` in `autodev.yaml` `context:` and as `parameters.advise_ready.default: ""` in `refine-to-ready-issue.yaml` and `recursive-refine.yaml`. **Never** declare it in a child loop's `context:`.
 5. Tests: `budget_exhausted`/`not_configured`/`timeout` outcomes → SKIPPED → `write_done_record`; flag set on autodev/recursive-refine reaches the child gate (propagation test that fails if a child `context:` literal shadows it); replay (same ID twice under a shared `run_dir` → one consult; a replayed VETO still vetoes; two IDs → two consults); veto writes `refine-terminal-class`; the note is written on VETO and cleared on PROCEED; lead-word-only mapping ("no reason to VETO" → PROCEED); default-off chain reaches `write_done_record` without consulting; VETO/PROCEED/SKIPPED routing; `LL_ISSUE_ID` is in `os.environ` at consult time; existing callers treat the veto as a deferred stop.
 6. `ll-loop validate` for every touched loop.
+7. Land steps 1-2 (`parse_lead_word` + helper) as an independently mergeable slice first; ENH-3590 needs it. Before starting, check overlap with ENH-3630 (`preparation_policy` + prep CLI) in `cli/issues/__init__.py` registration and in the policy step ENH-3623 will use to call the helper.
+
+### Test Conventions (merged from the former `## Tests` section)
+
+- Conventions in force: helper verdict mapping is a pure function separate from `cmd_*` and returns a safe token for unrecognized input (`check_verify_verdict.classify_verify_verdict`, `run_record.record_token`); tests parametrize over cases (`test_run_record.py::TestOutcomeMapping.CASES`) and add a subprocess exit-code test (`test_ll_issues_next_obligation.py::TestCli`). Advisor CLI tests patch `sys.argv` and call `main_advise()` (`test_cli_advise.py::TestMainAdvise`).
+- Loop tests pin chain shape with static edge assertions on the loaded YAML plus stub-binary execution (`test_builtin_loops.py`: stub `ll-issues`/`ll-advise` on `PATH`, textual `${context.run_dir}` substitution, `"${" not in script`, `$${` restored to `${`). Default-off flags are pinned as `parameters.<k>.default == ""` / `context` value `== ""`. Sub-loop states must not carry `on_no` or `timeout` (`TestSubLoopStateTimeoutAudit`).
+- Any new `ll-issues` subcommand needs a `test_wiring_reference_docs.py` entry (`docs/reference/CLI.md` heading and `docs/reference/API.md` row) or the docs gate fails.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -369,7 +383,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Add `context.<flag>` registry rows and empty-default/pass-through pins in `scripts/tests/test_builtin_loops.py`, modelled on `skip_learning_gate` (note: `skip_learning_gate` is only read in the loop that declares it, so it never had the child-shadowing problem; the `advise_ready` pins must also assert child loops use `parameters.advise_ready.default`, not `context:`)
 - Add `scripts/tests/test_wiring_reference_docs.py` rows plus `docs/reference/CLI.md` and `docs/reference/API.md` entries for the new subcommand
 - Update `docs/guides/LOOPS_REFERENCE.md` (Score dispatch `NONE` bullet, `refine-to-ready-issue` row) and the `refine-to-ready-issue.yaml` header diagram comment
-- Confirm the other `refine-to-ready-issue` / `recursive-refine` callers (`rn-remediate`, `auto-refine-and-implement`, `oracles/resolve-decision`, `rn-build`, `sprint-build-and-validate`, `issue-refinement`) are unaffected by the empty default
+- Confirm the other `recursive-refine` callers (`rn-build`, `sprint-build-and-validate`, `issue-refinement`) are unaffected by the empty default; `issue-refinement` does not forward the flag (`with_:`, no passthrough), so document that. `rn-remediate`, `auto-refine-and-implement`, `oracles/resolve-decision` have no `loop: refine-to-ready-issue` state
 
 ## Impact
 
@@ -451,13 +465,3 @@ _Added by `/ll:confidence-check` on 2026-09-26_
 - `/ll:refine-issue` - 2026-09-27T04:01:53 - `b9726386-58c1-4c65-8485-76e226017a2f.jsonl`
 - `/ll:format-issue` - 2026-09-27T03:56:23 - `0b26d35d-ec12-419a-9599-7aa7bcfe4ed1.jsonl`
 - `/ll:capture-issue` - 2026-09-27T01:56:21 - `282c1e7b-289d-4b4c-9b06-d9e617a5b759.jsonl`
-
-## Tests
-
-### Codebase Research Findings
-
-_Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
-
-- Conventions in force: helper verdict mapping is a pure function separate from `cmd_*` and returns a safe token for unrecognized input (`check_verify_verdict.classify_verify_verdict`, `run_record.record_token`); tests parametrize over cases (`test_run_record.py::TestOutcomeMapping.CASES`) and add a subprocess exit-code test (`test_ll_issues_next_obligation.py::TestCli`). Advisor CLI tests patch `sys.argv` and call `main_advise()` (`test_cli_advise.py::TestMainAdvise`).
-- Loop tests pin chain shape with static edge assertions on the loaded YAML plus stub-binary execution (`test_builtin_loops.py`: stub `ll-issues`/`ll-advise` on `PATH`, textual `${context.run_dir}` substitution, `"${" not in script`, `$${` restored to `${`). Default-off flags are pinned as `parameters.<k>.default == ""` / `context` value `== ""`. Sub-loop states must not carry `on_no` or `timeout` (`TestSubLoopStateTimeoutAudit`).
-- Any new `ll-issues` subcommand needs a `test_wiring_reference_docs.py` entry (`docs/reference/CLI.md` heading and `docs/reference/API.md` row) or the docs gate fails.

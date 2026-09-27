@@ -127,7 +127,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
 
-- **BUG-3627 did not produce a shared helper.** Its fix landed as a shell-based `stall_check` state in `scripts/little_loops/loops/continue-task.yaml` (`${context.run_dir}/stall-counter.txt`, `stall-fingerprint.txt`); the Python `evaluate_diff_stall` is unchanged and still cwd-scoped, and `evaluators.py` has no shared stall-state helper (each evaluator inlines the md5-key + `.txt`/`.count` logic). The "share one state-dir/key helper with BUG-3627" constraint therefore has nothing to reuse today; a shared helper would have to be introduced (and `diff_stall`, still used via the `diff_stall_gate` fragment in `loops/lib/common.yaml`, has the same defect).
+- **No shared helper exists yet — BUG-3627 is still open** (corrected 2026-09-27). The shell-based `stall_check` state in `scripts/little_loops/loops/continue-task.yaml` (`${context.run_dir}/stall-counter.txt`, `stall-fingerprint.txt`) is FEAT-3594's loop-local replacement, not BUG-3627's fix. The Python `evaluate_diff_stall` is unchanged and still cwd-scoped, and `evaluators.py` has no shared stall-state helper (each evaluator inlines the md5-key + `.txt`/`.count` logic). BUG-3627 now specifies `_stall_state_paths`, which this issue reuses (`depends_on: BUG-3627`).
 - **Convention: per-run scoping is done by path default, not by evaluator identity.** `score_stall` / `open_question_stall` resolve `history_file` (default `${context.run_dir}/.score_history` / `.open_questions_history`) in the `evaluate()` dispatch (`evaluators.py` ~:2018-2042); the evaluator functions only read it and the loop writes it. Those two have no `.loops/tmp` fallback (an unresolved `${context.run_dir}` degrades to an empty-history `yes`). `action_stall` is the writer of its own state, so it needs both a run-scoped directory and a fallback for `cmd_test`.
 - `run_dir` origin: `cli/loop/run.py` injects `fsm.context["run_dir"]`; `cli/loop/testing.py::cmd_simulate` sets `<loops_dir>/runs/<loop>-simulate/`; `cmd_test` passes a bare `InterpolationContext()` (no `run_dir`, empty `state_name`) and must keep working via the legacy path. `run_dir` elsewhere is read with a `""` default and treated as absent when empty (`persistence.py`, `executor.py`).
 - `"action_stall"` is in `_EXIT_CODE_AWARE_EVALUATORS`; `details` keys (`stall_count`, `max_repeat`, `hash_changed`, `tracked_keys`, plus `repeated_hash` on `no`) are documented in `docs/reference/EVENT-SCHEMA.md:315-332` and must stay stable.
@@ -137,7 +137,7 @@ _Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
 
 ## Implementation Steps
 
-1. Land or reuse the shared state-dir/key helper from BUG-3627, then add `state_dir` / `state_name` params to `evaluate_action_stall` and key files `<state_name>-<md5(track)[:12]>`.
+1. After BUG-3627 lands `_stall_state_paths` (or in the same change), add `state_dir` / `state_name` / `loop_name` params to `evaluate_action_stall` and key files `ll-action-stall-<loop_name>-<state_name>-<md5(track)[:12]>` via the helper.
 2. Derive `state_dir` from `context.context["run_dir"]` in the `evaluate()` `action_stall` branch, falling back to `.loops/tmp` when absent; fix the docstring.
 3. Update existing action_stall tests and add cases for sequential runs, same-`track` states in one run, shared parent/child `run_dir`, and missing `run_dir`.
 4. Run `python -m pytest scripts/tests/test_fsm_evaluators.py` and `ll-loop validate` on a sample loop.
@@ -161,8 +161,10 @@ _These touchpoints were identified by wiring analysis and must be included in th
 ## Acceptance Criteria
 
 - Two sequential runs do not share stall state; a fresh run's first check returns `yes`.
-- Two states with the same `track` in one run, and a parent/child sharing `run_dir`, do not share stall state.
+- Two states with the same `track` in one run, and a parent/child sharing `run_dir`, do not share stall state, **including a parent and child that both use the same state name**.
+- State files in `run_dir` carry the `ll-action-stall-` prefix and come from BUG-3627's shared `_stall_state_paths` helper; an empty `state_name` does not produce a bare `-<key>` file name.
 - Missing `run_dir` falls back to `.loops/tmp` without raising.
+- The docstring states the accepted limitations (re-entered child loop, `ll-loop simulate` fixed run dir).
 - Existing `action_stall` evaluator tests updated; new tests cover each case.
 
 ## Related
