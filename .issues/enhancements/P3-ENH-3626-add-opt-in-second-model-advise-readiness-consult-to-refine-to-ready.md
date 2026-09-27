@@ -3,7 +3,7 @@ id: ENH-3626
 type: ENH
 title: Add opt-in second-model advise readiness consult to refine-to-ready
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-27'
 captured_at: '2026-09-27T01:56:15Z'
@@ -510,6 +510,7 @@ _Added by `/ll:confidence-check` on 2026-09-27_
 - Broad enumeration across 8+ files plus 6+ dependent loop callers and existing tests that pin the `check_proof_before_done` edges and `max_steps`.
 
 ## Session Log
+- `/ll:issue-size-review` - 2026-09-27T05:15:41 - `682a095a-efe4-40ac-8619-962c00f444e7.jsonl`
 - `/ll:reconcile-issue` - 2026-09-27T05:11:49 - `35e57f90-baaf-4d54-9265-0ee824a95599.jsonl`
 - `/ll:confidence-check` - 2026-09-27T05:10:27 - `9af90ba4-93eb-40fc-b795-28057736aefe.jsonl`
 - `/ll:confidence-check` - 2026-09-27T05:00:16 - `4c1392cc-1c62-4566-82e2-3e5bd0bae446.jsonl`
@@ -518,3 +519,15 @@ _Added by `/ll:confidence-check` on 2026-09-27_
 - `/ll:refine-issue` - 2026-09-27T04:01:53 - `b9726386-58c1-4c65-8485-76e226017a2f.jsonl`
 - `/ll:format-issue` - 2026-09-27T03:56:23 - `0b26d35d-ec12-419a-9599-7aa7bcfe4ed1.jsonl`
 - `/ll:capture-issue` - 2026-09-27T01:56:21 - `282c1e7b-289d-4b4c-9b06-d9e617a5b759.jsonl`
+
+---
+
+## Resolution
+
+- **Status**: Decomposed
+- **Completed**: 2026-09-27
+- **Reason**: Issue too large for single session
+
+### Decomposed Into
+- ENH-3632: Add `ll-issues advise-consult` helper and shared `parse_lead_word` (blocks ENH-3633, ENH-3590)
+- ENH-3633: Wire opt-in advise_ready consult gate into refine-to-ready-issue done path (blocked by ENH-3632)
