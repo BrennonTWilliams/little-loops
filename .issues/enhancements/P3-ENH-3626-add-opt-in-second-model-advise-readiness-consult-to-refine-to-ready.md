@@ -13,6 +13,13 @@ relates_to:
 blocks:
 - ENH-3590
 decision_needed: false
+confidence_score: 85
+outcome_confidence: 55
+score_complexity: 10
+score_test_coverage: 25
+score_ambiguity: 10
+score_change_surface: 10
+missing_artifacts: true
 ---
 
 # ENH-3626: Add opt-in second-model advise readiness consult to refine-to-ready
@@ -422,8 +429,23 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 **Open** | Created: 2026-09-27 | Priority: P3
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-26_
+
+**Readiness Score**: 85/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 55/100 → LOW
+
+### Concerns
+- `format-check` flags `stale_cli_flag`: `ll-issues advise-consult` does not exist yet. Expected for a forward-looking design (the helper is built by this issue); caps Criterion 4 at 10 per the rubric.
+- `format-check` flags `unapplied_decision` (7 hits: `autodev.yaml`, `prepare-issue.yaml`, `refine-to-ready-issue.yaml`, `forward_stop`, `route_refine_outcome`). These identifiers are also used by the selected Option B (flag wiring, the `gate_unmet` reuse). Likely a false positive from the identifier overlap, but it caps Criterion C at 10 until the rejected-option mentions are marked as such.
+
+### Outcome Risk Factors
+- Moderate per-site complexity: new in-process helper, `parse_lead_word` extraction across `advisor.py` and `evaluators.py`, and done-path rewiring in `refine-to-ready-issue.yaml`.
+- Broad enumeration across 8+ files plus 6+ dependent loop callers and existing tests that pin the `check_proof_before_done` edges and `max_steps`.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-27T05:00:16 - `4c1392cc-1c62-4566-82e2-3e5bd0bae446.jsonl`
 - `/ll:wire-issue` - 2026-09-27T04:18:11 - `b81845df-148e-4cb8-8d11-cc360743e07f.jsonl`
 - `/ll:decide-issue` - 2026-09-27T04:03:27 - `4b1c5ade-bd97-4871-b4cf-1f3dcd7cc5d1.jsonl`
 - `/ll:refine-issue` - 2026-09-27T04:01:53 - `b9726386-58c1-4c65-8485-76e226017a2f.jsonl`

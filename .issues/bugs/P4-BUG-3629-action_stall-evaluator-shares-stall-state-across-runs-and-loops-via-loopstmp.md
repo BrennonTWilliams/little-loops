@@ -7,6 +7,8 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-09-27'
 captured_at: '2026-09-27T04:29:54Z'
+depends_on:
+- BUG-3627
 spike_attempted: true
 spike_completed: true
 confidence_score: 100
@@ -49,25 +51,29 @@ Stall state is scoped per run instance and per state. A fresh run's first check 
 
 Mirror the BUG-3627 approach:
 
-- Derive `state_dir` from `context.context["run_dir"]` (the function already receives `context`), keying files `<state_name>-<md5(track)[:12]>`; fall back to the current `.loops/tmp` path only when no run context exists (`cli/loop/testing.py::cmd_test` passes a bare `InterpolationContext()`).
+- Derive `state_dir` from `context.context["run_dir"]` (the function already receives `context`), keying files `ll-action-stall-<loop_name>-<state_name>-<md5(sorted track)[:12]>.{txt,count}`. Fall back to the current `.loops/tmp/ll-action-stall-<md5(track)[:12]>` path only when no run context exists (`cli/loop/testing.py::cmd_test` passes a bare `InterpolationContext()`).
+- **Key includes loop name, not only state name** (review 2026-09-27, aligns with BUG-3627): child loops `setdefault` the parent's `run_dir`, and state names repeat across loops. A parent and child that both name the state `check_stall` with the same `track` would collide under a `<state_name>-<hash>` key. The spike's `test_parent_child_sharing_run_dir_isolated` passed only because it used different state names. Read `context.loop_name` alongside `context.state_name`.
+- **File names keep the `ll-action-stall-` prefix inside `run_dir`**: the spike's `<state_name>-<key>` stem drops it and becomes `-<key>` when `state_name` is empty (the `cmd_test` shape). Use BUG-3627's shared `_stall_state_paths("action", state_dir, loop_name, state_name, track)` helper, which prefixes, sanitizes names (`/` in loop names such as `oracles/…`), and handles empty names.
 - Keep `details` keys (`stall_count`, `max_repeat`, `hash_changed`, `tracked_keys`) unchanged.
 - Correct the docstring ("different states/loops maintain independent stall counters").
-- Coordinate with BUG-3627 so both evaluators share one state-dir/key helper rather than duplicating it.
+- **Implementation order**: BUG-3627 introduces `_stall_state_paths`; this issue reuses it (`depends_on: BUG-3627`). Implementing both in one change is also fine.
+- **Accepted limitations, same decisions as BUG-3627 (2026-09-27)**: a child loop re-entered within one parent run shares `run_dir` and key, so it inherits the prior invocation's stall state. `ll-loop simulate` uses a fixed `runs/<loop>-simulate/` dir, so stall state carries across simulate runs. Neither is covered by the fresh-run guarantee; document both in the docstring and `cmd_simulate` docstring rather than clearing files.
 
 ## Program Design
 
 ### Types
 
 - `state_dir: Path | None` — per-run directory for snapshot/count files; `None` keeps the legacy `.loops/tmp` location
-- `state_name: str` — state identifier used as the file-key prefix
+- `state_name: str` — state identifier, part of the file key
+- `loop_name: str` — loop identifier, part of the file key (separates parent/child states with the same name)
 
 ### Signatures
 
-- `evaluate_action_stall(track: list[str] | None = None, max_repeat: int = 2, context: InterpolationContext | None = None, state_dir: Path | None = None, state_name: str = "") -> EvaluationResult` — state files keyed `<state_name>-<md5(sorted track)[:12]>`; `details` keys unchanged
+- `evaluate_action_stall(track: list[str] | None = None, max_repeat: int = 2, context: InterpolationContext | None = None, state_dir: Path | None = None, state_name: str = "", loop_name: str = "") -> EvaluationResult` — state files from `_stall_state_paths("action", ...)`: `ll-action-stall-<loop_name>-<state_name>-<md5(sorted track)[:12]>`; `details` keys unchanged
 
 ### Call Path
 
-`evaluate` (`elif eval_type == "action_stall"` branch) -> `evaluate_action_stall(..., state_dir=<context.context["run_dir"]>)` -> `EvaluationResult` verdict `yes` / `no` -> state routing
+`evaluate` (`elif eval_type == "action_stall"` branch) -> `evaluate_action_stall(..., state_dir=<context.context["run_dir"]>, state_name=context.state_name, loop_name=context.loop_name)` -> `EvaluationResult` verdict `yes` / `no` -> state routing
 
 ## Integration Map
 
@@ -82,7 +88,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/fsm/executor.py` — `FSMExecutor._evaluate()` calls `evaluate(config=..., output=..., exit_code=..., context=ctx)` (~:3196); `ctx` is built with `state_name=self.current_state` (~:2353) and `context=self.fsm.context` (incl. `run_dir`), so `state_name` for the file key comes from `context.state_name` with no new `evaluate()` parameter (same source `evaluate()` already uses for the `advisor_consult` branch, ~:2094) [Agent 1 + 2 finding]
 - `scripts/little_loops/cli/loop/run.py` — injects `fsm.context["run_dir"]` as `runs/<instance_id or loop_name>/` (~:236) and `mkdir`s it before evaluation (~:614); `--context run_dir=` overrides. `run_dir` is a trailing-slash string, so wrap in `Path()` [Agent 2 finding]
 - `scripts/little_loops/cli/loop/lifecycle.py` — resume path sets `run_dir` to `runs/<instance_id>/` (~:681), so a resumed run keeps its stall state (desired) [Agent 2 finding]
-- `scripts/little_loops/cli/loop/testing.py::cmd_simulate` — sets `run_dir` to `<loops_dir>/runs/<loop>-simulate/` on every invocation, so stall state persists across successive `ll-loop simulate` runs of the same loop (same `-simulate` dir); decide whether to accept or clear it [Agent 2 finding]
+- `scripts/little_loops/cli/loop/testing.py::cmd_simulate` — sets `run_dir` to `<loops_dir>/runs/<loop>-simulate/` on every invocation, so stall state persists across successive `ll-loop simulate` runs of the same loop (same `-simulate` dir). Decided (2026-09-27, shared with BUG-3627): accept and document in the `cmd_simulate` docstring [Agent 2 finding]
 - `scripts/little_loops/cli/loop/testing.py::cmd_test` — bare `InterpolationContext()` has `state_name == ""` as well as no `run_dir`; the legacy-path fallback must not require a non-empty `state_name`. Its docstring (~:189) says the state file is "normally under `.loops/tmp/`" — update [Agent 2 finding]
 - `scripts/little_loops/fsm/executor.py` sub-loop handling (~:1152, ~:1238) — `child_fsm.context.setdefault("run_dir", ...)` makes parent and child share `run_dir`; confirms `state_name` must be in the file key [Agent 2 finding]
 - `scripts/little_loops/persistence.py::archive_run` — archives `run_dir`; stall files moved under it are now archived with the run (today's `.loops/tmp` files are outside it) [Agent 2 finding]

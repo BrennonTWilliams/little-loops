@@ -61,10 +61,15 @@ blocks this one; this issue keeps Phases B and C.
 1. **Phase A, additive (ENH-3630).** `little_loops.preparation_policy` (policy / facts /
    writers), `ll-issues prep {step,record,apply,explain}`, `decide()` table tests, and the
    promoted parity/differential tests run against the *existing* YAML, with an explicit
-   allowance list for the accepted changes and the fixed-on-main semantics (item 6 below).
-   No loop file changes, so nothing can regress. The spike branch is already tagged
+   allowance list for the accepted changes (the fixed-on-main semantics, item 6 below, are
+   parity there, not allowances, since both sides carry the fixes).
+   No loop file changes, so nothing can regress; the dispatch loop lands as a test fixture
+   `scripts/tests/fixtures/prepare-issue-policy.yaml` (new). The spike branch is already tagged
    (`spike/preparation-policy-a51621302` at `a51621302`), so the port source cannot be pruned.
-2. **Phase B, cutover (atomic).** Replace `prepare-issue.yaml`, apply the autodev
+2. **Phase B, cutover (atomic).** Replace `prepare-issue.yaml` by moving ENH-3630's
+   fixture `scripts/tests/fixtures/prepare-issue-policy.yaml` into its place (`git mv`,
+   then repoint `preparation_policy_harness.POLICY_YAML` and the fixture validation test
+   at the built-in path), apply the autodev
    retargets / 42 deletions / `dequeue_next` pass-id write / `copy_broke_down` shrink, and
    migrate the affected tests in the same commit.
    - **In-flight runs**: a persisted autodev run whose `current_state` is one of the 42
@@ -341,7 +346,8 @@ parent's `current_state`, so a mid-ladder resume restarts the `loop:` child from
 - `scripts/little_loops/preparation_policy.py` (new), or a `preparation_policy/` package
   (port from branch `spike/preparation-policy`)
 - `scripts/little_loops/cli/issues/__init__.py`: register `prep`
-- `scripts/little_loops/loops/prepare-issue.yaml`: replaced in place by the dispatch loop
+- `scripts/little_loops/loops/prepare-issue.yaml`: replaced in place by the dispatch loop,
+  moved from ENH-3630's test fixture `scripts/tests/fixtures/prepare-issue-policy.yaml`
 - `scripts/little_loops/loops/autodev.yaml`: retargets, 42 deletions, the `dequeue_next`
   pass-id write, and the `copy_broke_down` shrink
 - `scripts/little_loops/run_record.py`: the shared record-writing helper
