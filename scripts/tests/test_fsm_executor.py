@@ -1502,9 +1502,18 @@ class TestCapture:
             exit_code=1,
         )
 
-        executor = FSMExecutor(fsm, action_runner=mock_runner)
-        result = executor.run()
+        # BUG-3622: a 429 on a `next:` state now runs the rate-limit ladder;
+        # collapse it so the state exhausts immediately and routes on_error.
+        with patch.multiple(
+            "little_loops.fsm.executor",
+            _DEFAULT_RATE_LIMIT_BACKOFF_BASE=0,
+            _DEFAULT_RATE_LIMIT_LONG_WAIT_LADDER=[0],
+            _DEFAULT_RATE_LIMIT_MAX_WAIT_SECONDS=0,
+        ):
+            executor = FSMExecutor(fsm, action_runner=mock_runner)
+            result = executor.run()
 
+        assert result.final_state == "done"
         assert result.captured["refine_issue"]["failure_type"] == "transient"
 
     def test_capture_failure_type_empty_on_success(self) -> None:
@@ -8631,6 +8640,144 @@ class TestRateLimitRetries:
             f"Expected 4 calls (1 rl + 3 error) but got {runner.calls.count('work.sh')}; "
             "with rate-limit retry not counting, 3 action-error retries exhaust max_retries=2"
         )
+
+
+class TestNextRoutedTransientFailures:
+    """BUG-3622: states routed by ``next:`` get the same transient-failure handling
+    (429 retry ladder, ``on_rate_limit_exhausted``, API-error retry) as
+    evaluate-routed states. Previously the ``next:`` branch followed ``on_error``
+    on a 429 and the rate-limit handler never ran.
+    """
+
+    _EXHAUST = {
+        "_DEFAULT_RATE_LIMIT_BACKOFF_BASE": 0,
+        "_DEFAULT_RATE_LIMIT_LONG_WAIT_LADDER": [0],
+        "_DEFAULT_RATE_LIMIT_MAX_WAIT_SECONDS": 0,
+    }
+
+    def _make_fsm(
+        self, *, on_error: str | None = "fallback", on_rate_limit_exhausted: str | None = None
+    ) -> FSMLoop:
+        return FSMLoop(
+            name="next-rl-test",
+            initial="execute",
+            states={
+                "execute": StateConfig(
+                    action="work.sh",
+                    next="done",
+                    on_error=on_error,
+                    on_rate_limit_exhausted=on_rate_limit_exhausted,
+                ),
+                "done": StateConfig(terminal=True),
+                "fallback": StateConfig(terminal=True),
+                "exhausted": StateConfig(terminal=True),
+            },
+        )
+
+    def _rl_result(self) -> dict:
+        return {"output": "Error: 429 Too Many Requests rate limit exceeded", "exit_code": 1}
+
+    def _run(self, fsm: FSMLoop, results: list[dict], **patches: object) -> tuple:
+        runner = MockActionRunner()
+        runner.results = [("work.sh", r) for r in results]
+        runner.use_indexed_order = True
+        with patch.multiple("little_loops.fsm.executor", **{**self._EXHAUST, **patches}):
+            executor = FSMExecutor(fsm, action_runner=runner)
+            result = executor.run()
+        return result, runner, executor
+
+    def test_rate_limit_retries_in_place_then_follows_next(self) -> None:
+        result, runner, executor = self._run(
+            self._make_fsm(), [self._rl_result(), {"output": "ok", "exit_code": 0}]
+        )
+        assert result.final_state == "done"
+        assert runner.calls.count("work.sh") == 2
+        assert "execute" not in executor._rate_limit_retries
+
+    def test_rate_limit_exhausted_routes_to_on_rate_limit_exhausted(self) -> None:
+        from little_loops.fsm.executor import _DEFAULT_RATE_LIMIT_RETRIES
+
+        result, _, _ = self._run(
+            self._make_fsm(on_rate_limit_exhausted="exhausted"),
+            [self._rl_result()] * (_DEFAULT_RATE_LIMIT_RETRIES + 3),
+        )
+        assert result.final_state == "exhausted"
+        assert result.terminated_by == "terminal"
+
+    def test_rate_limit_exhausted_falls_back_to_on_error(self) -> None:
+        from little_loops.fsm.executor import _DEFAULT_RATE_LIMIT_RETRIES
+
+        result, runner, _ = self._run(
+            self._make_fsm(), [self._rl_result()] * (_DEFAULT_RATE_LIMIT_RETRIES + 3)
+        )
+        assert result.final_state == "fallback"
+        assert runner.calls.count("work.sh") > 1
+
+    def test_non_transient_failure_still_follows_on_error_once(self) -> None:
+        result, runner, _ = self._run(
+            self._make_fsm(), [{"output": "unrelated error: file not found", "exit_code": 1}]
+        )
+        assert result.final_state == "fallback"
+        assert runner.calls.count("work.sh") == 1
+
+    def test_success_with_rate_limit_text_is_not_intercepted(self) -> None:
+        result, runner, _ = self._run(
+            self._make_fsm(), [{"output": "Recovered from rate limit, done.", "exit_code": 0}]
+        )
+        assert result.final_state == "done"
+        assert runner.calls.count("work.sh") == 1
+
+    @pytest.mark.parametrize("routing", ["next", "evaluate"])
+    def test_long_rate_limit_ladder_not_cut_short_by_throttle(self, routing: str) -> None:
+        """In-place rate-limit retries are infrastructure pauses, not tool-call
+        runaway: a ladder needing more attempts than the throttle's hard_max (12)
+        still reaches on_rate_limit_exhausted instead of on_throttle_hard/on_error.
+        """
+        routes: dict = (
+            {"next": "done"} if routing == "next" else {"on_yes": "done", "on_no": "done"}
+        )
+        fsm = FSMLoop(
+            name="long-ladder",
+            initial="execute",
+            states={
+                "execute": StateConfig(
+                    action="work.sh",
+                    on_error="fallback",
+                    on_rate_limit_exhausted="exhausted",
+                    max_rate_limit_retries=3,
+                    rate_limit_backoff_base_seconds=0,
+                    rate_limit_long_wait_ladder=[1],
+                    rate_limit_max_wait_seconds=14,
+                    **routes,
+                ),
+                "done": StateConfig(terminal=True),
+                "fallback": StateConfig(terminal=True),
+                "exhausted": StateConfig(terminal=True),
+            },
+        )
+        runner = MockActionRunner()
+        runner.results = [("work.sh", self._rl_result())] * 40
+        runner.use_indexed_order = True
+        with patch.object(
+            FSMExecutor, "_interruptible_sleep", lambda self, d, on_heartbeat=None: float(d)
+        ):
+            executor = FSMExecutor(fsm, action_runner=runner)
+            result = executor.run()
+        assert runner.calls.count("work.sh") > 12
+        assert result.final_state == "exhausted"
+
+    def test_api_server_error_retries_in_place(self) -> None:
+        server_error = {
+            "output": "API Error: The server had an error while processing your request",
+            "exit_code": 1,
+        }
+        result, runner, _ = self._run(
+            self._make_fsm(),
+            [server_error, {"output": "ok", "exit_code": 0}],
+            _DEFAULT_API_ERROR_BACKOFF=0,
+        )
+        assert result.final_state == "done"
+        assert runner.calls.count("work.sh") == 2
 
 
 class TestRateLimitStorm:

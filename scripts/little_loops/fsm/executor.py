@@ -2164,6 +2164,14 @@ class FSMExecutor:
                     return _tamper_next
                 if _prepatch_next is not None:
                     return _prepatch_next
+                # BUG-3622: same transient-failure handling (429 retry ladder,
+                # on_rate_limit_exhausted, API-error / infra retry) as the
+                # evaluate path below.
+                _handled, _target = self._intercept_transient_failure(
+                    state, self.current_state, result
+                )
+                if _handled:
+                    return _target
                 if result.exit_code is not None and result.exit_code < 0:
                     # Process killed by signal — do not silently advance via next
                     if state.on_error:
@@ -2352,52 +2360,12 @@ class FSMExecutor:
         )
         # 429 / rate-limit detection — runs before interceptors so an in-place retry
         # returns early without dispatching to registered before_route hooks.
-        # BUG-2065 Fix 1: guard on exit_code != 0 so that successful actions whose
-        # output incidentally contains "rate limit" text are never intercepted.
         if action_result is not None:
-            _combined = (action_result.output or "") + "\n" + (action_result.stderr or "")
-            _failure_type, _reason = classify_failure(
-                _combined, action_result.exit_code, result_seen=action_result.result_seen
+            _handled, _target = self._intercept_transient_failure(
+                state, route_ctx.state_name, action_result
             )
-            if (
-                action_result.exit_code != 0
-                and _failure_type == FailureType.TRANSIENT
-                and ("rate limit" in _reason.lower() or "quota" in _reason.lower())
-            ):
-                _handled, _target = self._handle_rate_limit(state, route_ctx.state_name)
-                if _handled:
-                    self._rate_limit_in_flight.add(route_ctx.state_name)
-                    return _target
-            elif (
-                action_result.exit_code != 0
-                and _failure_type == FailureType.TRANSIENT
-                and "api server error" in _reason.lower()
-            ):
-                _handled, _target = self._handle_api_error(state, route_ctx.state_name)
-                if _handled:
-                    return _target
-                # exhausted — fall through to normal verdict routing
-            elif action_result.exit_code != 0 and _failure_type == FailureType.INFRA_RETRY:
-                # BUG-2731: exit-143-after-result infra teardown — re-run in place
-                # rather than discarding the in-flight work as a terminal failure.
-                _handled, _target = self._handle_infra_retry(state, route_ctx.state_name)
-                if _handled:
-                    return _target
-                # exhausted — fall through to normal verdict routing
-            elif action_result.exit_code != 0 and _failure_type == FailureType.NON_RECOVERABLE:
-                # Auth/credential failure — abort immediately, do not retry.
-                # Route to on_error if defined, otherwise let normal verdict routing handle it.
-                _on_error = state.on_error
-                if _on_error:
-                    return _on_error
-                # No on_error: fall through to verdict routing (will produce non-zero exit verdict)
-            else:
-                # Not rate-limited or server-error (or exit_code=0): reset counters so
-                # future transients start fresh.
-                self._rate_limit_retries.pop(route_ctx.state_name, None)
-                self._consecutive_rate_limit_exhaustions = 0
-                self._api_error_retries.pop(route_ctx.state_name, None)
-                self._infra_retry_retries.pop(route_ctx.state_name, None)
+            if _handled:
+                return _target
 
         # Stall-route override: if the detector elected to route to a recovery
         # state, honor it now (bypass interceptors and _route) so the
@@ -3949,6 +3917,72 @@ class FSMExecutor:
                 **data,
             }
         )
+
+    def _intercept_transient_failure(
+        self, state: StateConfig, state_name: str, action_result: ActionResult
+    ) -> tuple[bool, str | None]:
+        """Classify a failed action and apply the transient-failure handlers.
+
+        Shared by the ``next:`` and evaluate routing paths (BUG-3622: the
+        ``next:`` path previously skipped this, so a 429 followed ``on_error``
+        and ``on_rate_limit_exhausted`` was unreachable).
+
+        BUG-2065 Fix 1: only non-zero exits are classified, so a successful
+        action whose output mentions "rate limit" is never intercepted.
+
+        Returns:
+            (handled, target). ``handled=True`` means the caller should return
+            ``target`` directly (an in-place retry, an exhaustion route, or
+            ``on_error`` for a non-recoverable failure). ``handled=False``
+            means the caller continues with its normal routing.
+        """
+        _combined = (action_result.output or "") + "\n" + (action_result.stderr or "")
+        _failure_type, _reason = classify_failure(
+            _combined, action_result.exit_code, result_seen=action_result.result_seen
+        )
+        if (
+            action_result.exit_code != 0
+            and _failure_type == FailureType.TRANSIENT
+            and ("rate limit" in _reason.lower() or "quota" in _reason.lower())
+        ):
+            _handled, _target = self._handle_rate_limit(state, state_name)
+            if _handled:
+                self._rate_limit_in_flight.add(state_name)
+                if _target == state_name:
+                    # BUG-3622: an in-place rate-limit retry is an infrastructure
+                    # pause, not tool-call runaway — refund its throttle count
+                    # (mirrors the max_retries exemption, BUG-2065 Fix 2) so a long
+                    # wait ladder is not cut short by hard_max and can still reach
+                    # on_rate_limit_exhausted.
+                    self._throttle_counts[state_name] = max(
+                        0, self._throttle_counts.get(state_name, 0) - 1
+                    )
+            return _handled, _target
+        if (
+            action_result.exit_code != 0
+            and _failure_type == FailureType.TRANSIENT
+            and "api server error" in _reason.lower()
+        ):
+            # Exhausted (handled=False) falls through to normal routing.
+            return self._handle_api_error(state, state_name)
+        if action_result.exit_code != 0 and _failure_type == FailureType.INFRA_RETRY:
+            # BUG-2731: exit-143-after-result infra teardown — re-run in place
+            # rather than discarding the in-flight work as a terminal failure.
+            # Exhausted (handled=False) falls through to normal routing.
+            return self._handle_infra_retry(state, state_name)
+        if action_result.exit_code != 0 and _failure_type == FailureType.NON_RECOVERABLE:
+            # Auth/credential failure — abort immediately, do not retry. Without
+            # on_error, normal routing handles the non-zero exit.
+            if state.on_error:
+                return True, state.on_error
+            return False, None
+        # Not a transient failure (or exit_code=0): reset counters so future
+        # transients start fresh.
+        self._rate_limit_retries.pop(state_name, None)
+        self._consecutive_rate_limit_exhaustions = 0
+        self._api_error_retries.pop(state_name, None)
+        self._infra_retry_retries.pop(state_name, None)
+        return False, None
 
     def _handle_rate_limit(self, state: StateConfig, state_name: str) -> tuple[bool, str | None]:
         """Handle a detected 429/rate-limit action outcome.

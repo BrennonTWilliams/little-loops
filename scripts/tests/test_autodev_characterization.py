@@ -192,6 +192,9 @@ class Expected:
     ledgers: dict[str, list[str]] = field(default_factory=dict)
     terminated_by: str = "terminal"
     final_state: str = "done"
+    # Number of rate-limit/backoff waits the scenario is expected to request
+    # (instant under the harness). 0 means any wait is a hermeticity failure.
+    rate_limit_waits: int = 0
 
 
 def observed(r: AutodevResult) -> dict[str, Any]:
@@ -651,31 +654,42 @@ SCENARIOS: list[tuple[Scenario, Expected]] = [
     # -- rate-limit exhaustion on a ladder slash state -----------------------------
     (
         Scenario(
-            name="ladder_rate_limit_is_inert",
+            name="ladder_rate_limit_halts",
             frontmatter=LOW_READINESS,
             inner_runs={ID: (done(),)},
             slash={
                 "issue-size-review": (
                     SlashResponse(output="API Error: 429 rate limit exceeded", exit_code=1),
                 ),
-                "reconcile-issue": (RECONCILE,),
-                "confidence-check": (confidence(70, 80),),
             },
         ),
         Expected(
-            # BUG-LIKE: every ladder slash state is `next:`-shaped, and
-            # FSMExecutor._execute_state's `state.next` branch never runs the 429
-            # classifier, so with_rate_limit_handling / on_rate_limit_exhausted
-            # (finalize_rate_limited) are dead: the 429 routes to on_error (the same
-            # target as next) and the ladder carries on as if size-review ran. ENH-3606's
-            # "rate-limit exhaustion (mark_rate_limited)" row is unreachable today.
-            path=LADDER_RECONCILE_PATH,
-            skipped=(f"{ID}  readiness_stagnated",),
-            records={ID: "DEFERRED:gate_unmet"},
-            issues={ID: ("deferred", "readiness_stagnated")},
-            summary=summary(skipped=1),
-            slash=(f"issue-size-review {ID}", f"reconcile-issue {ID}", f"confidence-check {ID}"),
-            repair_cycle="3",
+            # BUG-3622 (fixed): `next:`-routed ladder slash states now run the 429
+            # classifier, and in-place rate-limit retries no longer count toward the
+            # throttle hard_max, so the with_rate_limit_handling ladder runs to its
+            # 21600 s budget (12 attempts, 12 instant waits) and halts the queue
+            # through on_rate_limit_exhausted -> finalize_rate_limited.
+            # Still BUG-LIKE: the issue stays in flight (inflight_at_finalize) with the
+            # inner run's forwarded BLOCKED record; ENH-3606's mark_rate_limited
+            # terminal records RETRYABLE_ERROR:rate_limited instead.
+            path=(
+                *LADDER_RECONCILE_PATH[: LADDER_RECONCILE_PATH.index("run_size_review")],
+                *("run_size_review",) * 12,
+                "finalize_rate_limited",
+                "finalize_done",
+            ),
+            unverified=(f"{ID}  inflight_at_finalize",),
+            records={ID: "BLOCKED"},
+            issues={ID: ("open", None)},
+            summary=summary(
+                verdict="rate_limited",
+                not_closed=1,
+                inflight_unresolved=1,
+                abandoned=1,
+                stop_reason="rate_limit",
+            ),
+            slash=(f"issue-size-review {ID}",) * 12,
+            rate_limit_waits=12,
         ),
     ),
     # -- inner DECOMPOSED with children (detect_children -> enqueue_children) ------
@@ -801,9 +815,11 @@ SCENARIOS: list[tuple[Scenario, Expected]] = [
 ]
 
 
-def _assert_hermetic(r: AutodevResult) -> None:
+def _assert_hermetic(r: AutodevResult, rate_limit_waits: int = 0) -> None:
     assert r.unscripted == [], f"scenario reached unscripted calls: {r.unscripted}"
-    assert r.sleeps == [], f"scenario requested rate-limit/backoff waits: {r.sleeps}"
+    assert len(r.sleeps) == rate_limit_waits, (
+        f"expected {rate_limit_waits} rate-limit/backoff waits, got: {r.sleeps}"
+    )
     assert r.cli_failures == [], f"ll-issues fork-server calls lost: {r.cli_failures}"
 
 
@@ -819,7 +835,7 @@ def test_autodev_characterization(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     r = run_autodev(scenario, tmp_path, monkeypatch)
-    _assert_hermetic(r)
+    _assert_hermetic(r, expected.rate_limit_waits)
     assert observed(r) == expected_view(expected)
 
 

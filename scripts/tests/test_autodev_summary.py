@@ -43,7 +43,13 @@ def _setup(tmp_path: Path, scenario: str) -> tuple[Path, Path, dict]:
     meta = json.loads((FIXTURES / scenario / "scenario.json").read_text())
     project = GEN.make_project(tmp_path, meta["statuses"])
     run_dir = project / "run"
-    shutil.copytree(FIXTURES / scenario / "inputs", run_dir)
+    inputs = FIXTURES / scenario / "inputs"
+    # git does not track empty directories, so a scenario with no run-dir
+    # inputs (e.g. no_op_empty_*) has no inputs/ dir in a fresh checkout.
+    if inputs.is_dir():
+        shutil.copytree(inputs, run_dir)
+    else:
+        run_dir.mkdir(parents=True)
     return project, run_dir, meta
 
 
