@@ -196,6 +196,39 @@ class TestPrepApplyCrashInjection:
         assert "status: deferred" in content
 
 
+class TestPrepApplyNoOpenIntent:
+    """AC: no open FINISH/STOP intent writes RETRYABLE_ERROR:infra."""
+
+    def test_no_open_intent_is_ladder_error_and_writes_retryable_infra(self, project: Path) -> None:
+        _write_issue(project, ID, frontmatter="confidence_score: 90\noutcome_confidence: 80\n")
+        run_dir = project / "run"
+        config = _config(project)
+        # A pass with a done RUN_CHILD but no follow-up intent at all (e.g. the
+        # wrapper crashed between record and the next step) -- open_intent() is None.
+        append_fact(
+            run_dir, ID, Fact("0", 0, "obs", "pass_start", {"pre_readiness": "", "pre_ids": []})
+        )
+        append_fact(
+            run_dir, ID, Fact("0", 1, "intent", StepKind.RUN_CHILD.value, {"role": "first"})
+        )
+        append_fact(
+            run_dir,
+            ID,
+            Fact("0", 1, "done", StepKind.RUN_CHILD.value, {"terminal": "done", "token": "READY"}),
+        )
+
+        exit_code = prep_apply(config, ID, run_dir, readiness_threshold=85, outcome_threshold=65)
+        assert exit_code == 1
+
+        from little_loops.cli.issues.run_record import canonical_record_id
+        from little_loops.run_record import read_run_record, record_token
+
+        rid = canonical_record_id(config, ID)
+        token = record_token(read_run_record(run_dir, "prepare-issue", rid))
+        assert token == "RETRYABLE_ERROR:infra"
+        assert (run_dir / "refine-terminal-class").read_text() == "infra"
+
+
 class TestReasonValidationEveryDeferStop:
     """AC: every (status, reason) pair the policy emits passes the reason check."""
 
