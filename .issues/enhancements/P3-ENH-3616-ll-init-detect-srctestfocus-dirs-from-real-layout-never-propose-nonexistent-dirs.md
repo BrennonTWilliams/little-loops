@@ -15,13 +15,15 @@ score_complexity: 10
 score_test_coverage: 18
 score_ambiguity: 18
 score_change_surface: 10
+blocked_by:
+- BUG-3631
 ---
 
 # ENH-3616: ll-init: detect src/test/focus dirs from real layout, never propose nonexistent dirs
 
 ## Summary
 
-`ll-init`'s detected **Source dir**, **Test dir**, and **Focus dirs** should be (1) detected from the target project's actual layout — including `.` when code or tests live at the repo root — and (2) never pre-filled with a directory that does not exist in the target project.
+`ll-init`'s detected **Source dir**, **Test dir**, and **Focus dirs** should be (1) detected from the target project's actual layout — including `.` when code or tests live at the repo root — and (2) never pre-filled with a directory that does not exist in the target project. The one deliberate exception is Test dir `tests/` for a project with no tests at all, because `test_dir` is where new tests get written.
 
 ## Current Behavior
 
@@ -35,12 +37,13 @@ None of these paths can produce `.` — a flat-layout project (modules or `test_
 
 ## Expected Behavior
 
-- Every proposed dir value exists in the target project (`(root / value).is_dir()`), or is `.`.
-- Root-level layouts resolve to `.`: e.g. top-level `*.py` modules / `main.go` / `index.ts` with no package subdir → Source dir `.`; `test_*.py` / `*_test.go` / `*.test.ts` at root → Test dir `.`.
+- Every proposed Source dir and Focus dir value exists in the target project (`(root / value).is_dir()`), or is `.`. This covers template defaults **and** detected candidates (pyproject / tsconfig / Cargo), which today are not existence-checked (e.g. tsconfig `include: ["**/*.ts"]` yields the phantom candidate `**/`).
+- Root-level layouts resolve to `.` with provenance `inferred`: e.g. top-level `*.py` modules / `main.go` / `index.ts` with no package subdir → Source dir `.`; `test_*.py` / `*_test.go` / `*.test.ts` at root → Test dir `.`.
 - Test-dir detection also finds nested conventional dirs (e.g. `<src>/tests/`, `scripts/tests/`), not just top-level `tests/`/`test/`.
-- When no existing dir can be determined, the field is left empty / falls back to `.` (with provenance `default` and evidence saying so) — never a template path that doesn't exist.
-- Focus dirs are built only from dirs that exist; template `focus_dirs` entries are filtered by existence.
-- Ambiguity prompts still offer only existing candidates.
+- When no existing Source dir can be determined, the value is `.` with provenance `default` and evidence saying so — never empty (see Codebase Research Findings: empty re-adopts the template path) and never a template path that doesn't exist.
+- **Test dir exception — no tests anywhere**: when the project contains no test dir and no test files at all, Test dir is `tests/` (provenance `default`, evidence `"no tests found; conventional location for new tests"`) even though it does not exist. Rationale: `test_dir` is a *write target* — the spike skill (`TEST_DIR=$(ll-config get project.test_dir)`) and TDD-mode implementation create new tests there, and `.` would scatter them across the repo root. `.` is proposed only when root-level test files actually exist.
+- Focus dirs are built only from dirs that exist; template `focus_dirs` entries are filtered by existence. When Source dir is `.`, focus dirs are exactly `["."]` (no redundant `tests/` entry).
+- Ambiguity prompts offer only existing candidates.
 
 ## Motivation
 
@@ -51,10 +54,28 @@ A phantom `src_dir`/`test_dir`/`focus_dirs` silently misdirects `scan-codebase`,
 Add an existence filter in `little_loops.init.introspect` and route every template-default fallback through it:
 
 - `_existing_dir(root, value)` returns `value` only if `(root / value).is_dir()` (or `value` is `.`), else `None`.
-- `_introspect_src_dir`: on zero candidates or ambiguity, use the filtered template default; if that is `None`, detect a root-level layout (top-level `*.py` modules, `main.go`, `index.ts` with no package subdir) and return `.`, else `.` with provenance `default` and evidence "no existing src dir detected".
-- `_introspect_test_dir`: probe top-level `tests/`/`test/`, then nested conventional dirs (`<src>/tests/`, `*/tests/`, `*/test/` one level deep), then root-level `test_*.py` / `*_test.go` / `*.test.ts` → `.`; template default only if it exists.
-- `_introspect_focus_dirs`: filter template `focus_dirs` by existence; fall back to `["."]` if none survive.
-- Keep the ambiguity path offering only existing candidates.
+- `_introspect_src_dir`:
+  - Pass every collected candidate (package-marker, pyproject, tsconfig, Cargo) through `_existing_dir` **before** counting, so a nonexistent candidate can neither be adopted nor appear in an `Ambiguity`. Detection logic itself is unchanged.
+  - On zero surviving candidates or ambiguity, use the filtered template default. If that is `None`, call `_detect_root_layout`: `True` → `.` with provenance `inferred`; `False` → `.` with provenance `default` and evidence `"no existing src dir detected"`.
+  - **Why `_detect_root_layout` exists even though both branches yield `.`**: it only changes provenance/evidence, and that is deliberate — `inferred` values are shown to the user (`provenance_rows`, TUI hints, `_print_introspection_summary` all hide `default`), and `_introspect_focus_dirs` adopts src_dir only when `provenance != "default"` (`introspect.py:740`). A detected flat layout is a real finding; an empty repo falling back to `.` is not.
+  - `_detect_root_layout` ignores common root tooling files that appear in src-layout projects too (`setup.py`, `conftest.py`, `noxfile.py`, `tasks.py`, `fabfile.py`), so they alone do not count as a root layout.
+- `_introspect_test_dir(root, src_dir, default_value)`, in order:
+  1. top-level `tests/` / `test/`;
+  2. `_find_nested_test_dir(root, src_dir)` — see below;
+  3. root-level `test_*.py` / `*_test.py` / `*_test.go` / `*.test.ts` / `*.test.js` → `.` (provenance `inferred`);
+  4. template default only if `_existing_dir` accepts it;
+  5. otherwise `tests/` (provenance `default`, evidence `"no tests found; conventional location for new tests"`) — the one deliberate nonexistent value; see Expected Behavior.
+- `_find_nested_test_dir(root, src_dir)`:
+  - Prefer `<src_dir>/tests/` then `<src_dir>/test/` when `src_dir` is a real subdir (not `.`).
+  - Otherwise probe `*/tests/` and `*/test/` one level deep; return the match only if exactly one exists. Several matches (e.g. `frontend/test/` + `backend/tests/`) → `None`, falling through to step 3.
+  - Skip `_SKIP_DIRS` **and any dot-prefixed dir** (`.claude/`, `.tox/`, `.worktrees/`, `.mypy_cache/` — `_SKIP_DIRS` covers none of these).
+  - Require at least one test file inside the dir (`test_*.py`, `*_test.py`, `conftest.py`, `*_test.go`, `*.test.*`, `*.spec.*`), so fixture/data dirs named `test/` are not picked up.
+- `_introspect_focus_dirs(root, src_dir_iv, test_dir_iv, default_focus_dirs)`:
+  - **Reorder `introspect()`** so `project.test_dir` is computed *before* `scan.focus_dirs` and passed in; delete the duplicated `("tests/", "test/")` `is_dir()` probe in `_introspect_focus_dirs` and use `test_dir_iv` instead (only when its provenance is not `default`, i.e. it exists). This also lets a nested test dir reach focus dirs when src_dir is ambiguous.
+  - When adopted src_dir is `.`, return exactly `["."]` — adding `tests/` would be redundant. (The `name.startswith(fd)` de-dup does **not** swallow `tests/` under `.` — `"tests/".startswith(".")` is `False` — so redundancy, not suppression, is the real hazard.)
+  - Keep the existing prefix de-dup for a test dir nested under src_dir (e.g. `scripts/tests/` under `scripts/`).
+  - Nothing inferred → filter template `focus_dirs` by existence; fall back to `["."]` if none survive (never an empty list — see `core.py:347` / `tui.py:1090` truthiness guards).
+- Evidence strings `"adopted src_dir"` and `"adopted src_dir + detected tests/ directory"` must stay verbatim (asserted by `TestFocusDirsEvidence`); build the test-dir evidence part from `test_dir_iv.value` so a top-level `tests/` still yields `"detected tests/ directory"`.
 
 ### Codebase Research Findings
 
@@ -66,15 +87,15 @@ _Added by `/ll:refine-issue` — 2026-09-26 — based on codebase analysis:_
   - Skip-dir handling: `_SKIP_DIRS` / `_SRC_CANDIDATE_SKIP_DIRS` are the module's ignore sets and `_find_manifest` (`root.glob("*/<file>")` filtered by `_SKIP_DIRS`) is the existing one-level-nested probe; a nested test-dir probe should honor the same ignore set. `detect.py` keeps a separate, differing `_EXCLUDE_DIRS` (contested — no shared constant exists).
   - The `("tests/", "test/")` literal and `is_dir()` probe are duplicated in `_introspect_focus_dirs` and `_introspect_test_dir`; no shared existence-filter helper exists.
 - **Existing tests that assert the behavior this issue removes** (must be revised, not merely kept passing): `TestSrcDirDetection.test_no_package_marker_keeps_default` (expects `python_template.data["project"]["src_dir"]` i.e. `src/` in an empty tmp dir), `TestTestDirDetection.test_no_test_dir_keeps_default` (expects `"tests"` in an empty dir), `TestFocusDirsDetection.test_defaults_when_nothing_detected` (expects template `["src/","tests/"]` in an empty dir). Ambiguity test `test_two_top_level_package_dirs_ambiguous_keeps_default` expects `provenance == "default"` with candidates `{"scripts/","lib/"}` and must keep passing. Evidence strings `"adopted src_dir"` and `"adopted src_dir + detected tests/ directory"` are asserted verbatim by `TestFocusDirsEvidence` and must be preserved.
-- **Contested point — "left empty" vs `.`**: Expected Behavior allows "left empty / falls back to `.`", but `build_config` treats empty as "keep template value", re-introducing the phantom dir. The round-trip constraint above makes `.` the only self-consistent no-detection result.
+- **Resolved — "left empty" vs `.`**: `build_config` treats empty as "keep template value", re-introducing the phantom dir, so `.` is the no-detection result (Expected Behavior updated). Spelling is `.` (not `./`): the go template already ships `.`, and consumers `rstrip("/")` either way.
 
 ## Integration Map
 
-- `scripts/little_loops/init/introspect.py` — `_introspect_src_dir`, `_introspect_test_dir`, `_introspect_focus_dirs`; new `_existing_dir`, `_detect_root_layout`, `_find_nested_test_dir`
+- `scripts/little_loops/init/introspect.py` — `introspect` (reorder: test_dir before focus_dirs), `_introspect_src_dir`, `_introspect_test_dir`, `_introspect_focus_dirs`; new `_existing_dir`, `_detect_root_layout`, `_find_nested_test_dir`
 - `scripts/little_loops/init/cli.py:531` — `_print_introspection_summary` wording
 - `scripts/little_loops/init/proposal.py`, `core.py`, `tui.py`, `summary.py` — verify `.` round-trip (modify only if a test shows a break)
-- `scripts/little_loops/codequery/codegraph.py:121,234` — special-case `.` in `_is_scan_relevant` / `_dotted_candidates`
-- `commands/manage-release.md` (38, 40, 249, 251, 302), `commands/run-tests.md:99` — `.`-safe `src_dir` substitution
+- **Moved to BUG-3631 (blocks this issue)**: `.`-hostile runtime consumers — `codegraph.py:121` `_is_scan_relevant`, `worker_pool.py:1523` leak detection, `decisions.py:652` export glob, `commands/manage-release.md`. These are pre-existing bugs for Go projects (`go.json` ships `src_dir: "."`).
+- **Checked, no change needed**: `codegraph.py:234` `_dotted_candidates` (with `.` the prefix strip never applies; returns `[dotted]`, already correct) and `commands/run-tests.md:99` (`^.` matches every changed file, which is correct when src_dir is the whole repo).
 - Template defaults under `scripts/little_loops/templates/` — read-only; filtered at read time, contents unchanged
 
 ### Codebase Research Findings
@@ -86,7 +107,7 @@ _Added by `/ll:refine-issue` — 2026-09-26 — based on codebase analysis:_
 - **Template defaults that would be filtered**: `project.src_dir` is `src/` in generic/python-generic/typescript/javascript/rust/dotnet, `src/main/java/` in java-maven/java-gradle, and `.` in go (a valid value that must survive filtering). `scan.focus_dirs` lists include non-conventional entries (`lib/`, `cmd/`, `pkg/`, `internal/`, `benches/`, `src/test/java/`) — every one is subject to the existence filter.
 - **Unverified candidates**: pyproject (`_pyproject_src_candidate`), tsconfig (`_tsconfig_src_candidate`) and Cargo candidates are not existence-checked today; the issue's Scope Boundaries leave them unchanged, so "no proposal contains an absent dir" holds for defaults only unless that boundary is revisited.
 - **Downstream round-trip constraint**: `core.py:build_config` and `tui.py:build_config` skip falsy `src_dir`/`test_dir`/`scan_focus_dirs` choices, so an *empty* value silently re-adopts the template's (possibly phantom) path; `tui.py:_answers_from_proposal` `_seed()` likewise falls back to `"src/"`/`"tests"` on a falsy choice, and seeds focus dirs to `["src/"]` when the choice is empty. `.` is truthy and passes through `summary.py:summary_rows` ("Source dir" row) unchanged. Consequence: the "left empty" alternative in Expected Behavior cannot round-trip; only `.` (or an existing dir) does.
-- **Focus-dir interaction with `.`**: `_introspect_focus_dirs` de-duplicates tests dirs with `name.startswith(fd)`; an adopted src_dir of `.` would suppress `tests/`/`test/` entries. Whatever value `.` takes, this prefix guard must not swallow real test dirs.
+- **Focus-dir interaction with `.`** (corrected in review): `_introspect_focus_dirs` de-duplicates test dirs with `name.startswith(fd)`; `"tests/".startswith(".")` is `False`, so an adopted `.` does **not** suppress `tests/`. The actual hazard is the opposite — `[".", "tests/"]` is redundant — so focus dirs are exactly `["."]` when src_dir is `.`.
 - **Downstream consumers of provenance**: `proposal.py` (`provenance_rows` hides default-provenance rows; `scan.focus_dirs` row shown only when non-default), `tui.py` (hints suppressed for `default`), `cli.py:_print_introspection_summary` (skips default values, prints ambiguity candidates). Emitting `.` with provenance `default` therefore stays hidden from the user by design.
 - **`mypy {src_dir or '.'}`** in `_python_command` receives `src_dir_iv.value`; a `.` value yields `mypy .`, an empty string also yields `mypy .`.
 
@@ -100,7 +121,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/init/tui.py:1090` `build_config` wrapper — same `if scan_focus_dirs:` truthiness guard
 - `scripts/little_loops/init/proposal.py:296-312` `build_proposal` — existing-config branch pins `src_dir`/`test_dir`/`scan.focus_dirs` with provenance `existing`, so a re-init keeps prior (possibly phantom) values; existence filtering applies to fresh introspection only
 - `scripts/little_loops/init/proposal.py:122` plan-JSON serializer — docstring promises `values`/`ambiguities` shapes stay stable for `skills/init/SKILL.md`; new evidence strings must not alter the shape
-- **Runtime consumers of a `.` value** (read what init writes; `go.json` already ships `src_dir: "."` so `.` is not new, but the Python/JS/generic paths would now emit it):
+- **Runtime consumers of a `.` value** — _review 2026-09-27: the broken ones are now tracked in BUG-3631 (blocks this issue); `_dotted_candidates` and `run-tests.md:99` were checked and need no change. List kept for reference._ (read what init writes; `go.json` already ships `src_dir: "."` so `.` is not new, but the Python/JS/generic paths would now emit it):
   - `scripts/little_loops/codequery/codegraph.py:121` `_is_scan_relevant` — `path == d.rstrip("/") or path.startswith(d.rstrip("/") + "/")` yields `path == "."` / `startswith("./")` for `d="."`; repo-relative paths match neither, so `focus_dirs: ["."]` would exclude every file from the scan-relevant filter
   - `scripts/little_loops/codequery/codegraph.py:234` `_dotted_candidates` — `prefix = src_dir.rstrip("/") + "/"` becomes `./`; no repo-relative path starts with it, so no src-relative dotted candidates are produced
   - `scripts/little_loops/cli/issues/decisions.py:652` — `scope_globs = [f"{src_dir.rstrip('/')}/**/*"]` becomes `./**/*` for `.`; matcher behavior against repo-relative paths unverified
@@ -154,34 +175,47 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 ### Signatures
 
-- `_existing_dir(root: Path, value: str) -> str | None`
-- `_detect_root_layout(root: Path) -> bool`
-- `_find_nested_test_dir(root: Path) -> str | None`
+- `_existing_dir(root: Path, value: str) -> str | None` — `value` if `(root / value).is_dir()` or `value == "."`, else `None`
+- `_detect_root_layout(root: Path) -> bool` — `True` when root holds source modules / entry files with no package subdir; drives provenance only (value is `.` either way)
+- `_find_nested_test_dir(root: Path, src_dir: str) -> str | None` — `<src_dir>/tests|test/` first, else the sole one-level `*/tests|test/` containing test files; skips `_SKIP_DIRS` and dot-dirs
+- `_introspect_test_dir(root: Path, src_dir: str, default_value: str) -> IntrospectedValue` — gains `src_dir`
+- `_introspect_focus_dirs(root: Path, src_dir_iv: IntrospectedValue, test_dir_iv: IntrospectedValue, default_focus_dirs: list[str]) -> IntrospectedValue` — gains `test_dir_iv`
 
 ### Call Path
 
-`introspect` -> `_introspect_src_dir` -> `_existing_dir`; `introspect` -> `_introspect_test_dir` -> `_find_nested_test_dir`; `introspect` -> `_introspect_focus_dirs` -> `_existing_dir`
+`introspect` -> `_introspect_src_dir` -> `_existing_dir`; `_introspect_src_dir` -> `_detect_root_layout`; `introspect` -> `_introspect_test_dir` -> `_find_nested_test_dir`; `_introspect_test_dir` -> `_existing_dir`; `introspect` -> `_introspect_focus_dirs` -> `_existing_dir`
+
+`introspect()` order changes: src_dir → commands → test_dir → focus_dirs (test_dir moves ahead of focus_dirs and is passed in).
 
 ## Scope Boundaries
 
-- **In scope**: existence filtering of src/test/focus dir defaults, root-layout (`.`) detection, nested test-dir probing in `little_loops.init.introspect`, and round-tripping `.` through the init proposal/TUI/core.
-- **Out of scope**: changing existing package-marker/pyproject/tsconfig/Cargo candidate detection; detecting non-conventional test dir names; changing project-type template contents; non-dir fields (build/lint/test commands) beyond keeping `{src_dir or '.'}` derivation sane.
+- **In scope**: existence filtering of src/test/focus dir defaults **and of detected src_dir candidates** (filter only — detection logic unchanged), root-layout (`.`) detection, nested test-dir probing, the `introspect()` reorder in `little_loops.init.introspect`, and round-tripping `.` through the init proposal/TUI/core.
+- **Out of scope**:
+  - Changing how package-marker/pyproject/tsconfig/Cargo candidates are *detected* (they are only existence-filtered).
+  - Detecting non-conventional test dir names (`__tests__/`, `spec/`).
+  - Changing project-type template contents.
+  - Non-dir fields (build/lint/test commands), beyond keeping the `{src_dir or '.'}` derivation sane.
+  - Fixing `.`-hostile runtime consumers — **BUG-3631**, which blocks this issue.
+  - **Re-init of an existing config**: `proposal.py:build_proposal` pins existing `src_dir`/`test_dir`/`scan.focus_dirs` with provenance `existing`, so a phantom value already in `.ll/ll-config.json` survives a plain re-run of `ll-init`. Only fresh introspection (new install or `--force`) is existence-filtered; revalidating stored values is not part of this issue.
 
 ## Implementation Steps
 
-1. Add `_existing_dir` in `little_loops.init.introspect`; apply it to template defaults in `_introspect_src_dir`, `_introspect_test_dir`, `_introspect_focus_dirs`. When no existing dir survives, the fallback is `.` (provenance `default`), never empty — `build_config` (`core.py`/`tui.py`) treats empty as "keep template value" and would re-adopt the phantom dir; focus dirs fall back to `["."]` for the same reason.
-2. Add `_detect_root_layout` producing `.` for src and test dirs. Make sure the `name.startswith(fd)` de-dup in `_introspect_focus_dirs` does not let an adopted `.` swallow real `tests/`/`test/` entries.
-3. Add `_find_nested_test_dir` for nested conventional locations, honoring the module's `_SKIP_DIRS` ignore set.
-4. Round-trip `.` through `proposal.py` / `tui.py` / `core.py` (`choices["src_dir"]`, `scan_focus_dirs`) and `summary_rows`, keeping `mypy {src_dir or '.'}` (`introspect.py:302`) sane. Audit `.`-hostile consumers: special-case `.` in `codegraph.py` `_is_scan_relevant` (`:121`) and `_dotted_candidates` (`:234`); verify `decisions.py:652`, `worker_pool.py:1523`, `auto-refine-and-implement.yaml:626,851`; fix `commands/manage-release.md` (no-separator `src_dir` concatenation) and `commands/run-tests.md:99` (`^.` regex).
-5. Update `cli.py:531` `_print_introspection_summary` wording ("kept template default") to match the filtered/`.` fallback.
-6. Tests: rewrite the three phantom-default tests (`test_no_package_marker_keeps_default`, `test_no_test_dir_keeps_default`, `test_defaults_when_nothing_detected`) and the wiring-listed empty-dir tests; add flat-layout → `.`, no-`src/` → no `src/` proposed, nested `scripts/tests/` detected, template focus_dirs filtered by existence, and `.` round-trip cases.
-7. Review `--force` / "template defaults" wording in the docs listed under `### Documentation`; re-run `ll-adapt` if any `skills/` file changes. Coordinate with ENH-3612 (moves the `_introspect_src_dir` call in `introspect()`).
+0. Land BUG-3631 first (blocker) so a `.` value is safe for downstream consumers.
+1. Add `_existing_dir` in `little_loops.init.introspect`. In `_introspect_src_dir`, filter the collected candidate set through it before the `len(candidates)` checks, and apply it to the template default on the zero-candidate / ambiguity branches. Source dir with no surviving value → `.` (never empty — `build_config` in `core.py`/`tui.py` treats empty as "keep template value" and would re-adopt the phantom dir).
+2. Add `_detect_root_layout` (ignoring `setup.py`/`conftest.py`/`noxfile.py`/`tasks.py`/`fabfile.py`); it selects provenance `inferred` vs `default` for the `.` result.
+3. Add `_find_nested_test_dir(root, src_dir)` — `<src_dir>/tests|test/` first, else the sole one-level match containing test files; skip `_SKIP_DIRS` and dot-prefixed dirs.
+4. Extend `_introspect_test_dir(root, src_dir, default_value)` with the probe order in Proposed Solution; final fallback is `tests/` (provenance `default`, evidence `"no tests found; conventional location for new tests"`), not `.`.
+5. Reorder `introspect()`: compute test_dir before focus_dirs and pass `test_dir_iv` to `_introspect_focus_dirs`; drop its duplicated `("tests/", "test/")` probe. Return exactly `["."]` when src_dir is `.`; filter template `focus_dirs` by existence; fall back to `["."]`, never an empty list. Keep the `"adopted src_dir"` / `"... + detected tests/ directory"` evidence strings verbatim.
+6. Round-trip `.` through `proposal.py` / `tui.py` / `core.py` (`choices["src_dir"]`, `scan_focus_dirs`) and `summary_rows`, keeping `mypy {src_dir or '.'}` (`introspect.py:302`) sane. Verify `auto-refine-and-implement.yaml:626,851` pass-through of `.` (the other consumers are in BUG-3631).
+7. Update `cli.py:531` `_print_introspection_summary` wording ("kept template default") — on ambiguity the value is now the existence-filtered default or `.`.
+8. Tests: rewrite the three phantom-default tests (`test_no_package_marker_keeps_default` → `.`, `test_no_test_dir_keeps_default` → `tests/` with the new evidence, `test_defaults_when_nothing_detected` → `["."]`) and the wiring-listed empty-dir tests. Add: flat-layout → `.` (inferred); root with only `setup.py`/`conftest.py` → `.` (default); tsconfig `include: ["**/*.ts"]` → no `**/` candidate; nested `scripts/tests/` detected; two nested test dirs → not adopted; test dir under `.claude/` ignored; template focus_dirs filtered by existence; src `.` → focus `["."]`; `.` round-trip.
+9. Review `--force` / "template defaults" wording in the docs listed under `### Documentation`; re-run `ll-adapt` if any `skills/` file changes.
 
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-09-26 — based on codebase analysis:_
 
-- Outcome: no `IntrospectedValue` from the three helpers holds a path absent from the target root (other than `.`); verified by a test per helper in `test_init_introspect.py` using `tmp_path` layouts.
+- Outcome: no `IntrospectedValue` from the three helpers holds a path absent from the target root (other than `.`, and the no-tests `tests/` test_dir exception); verified by a test per helper in `test_init_introspect.py` using `tmp_path` layouts.
 - Outcome: the three tests listed under Proposed Solution → Codebase Research Findings that hard-code phantom defaults are rewritten to the new contract; `pytest scripts/tests/test_init_introspect.py scripts/tests/test_init_proposal.py scripts/tests/test_init_core.py scripts/tests/test_init_tui.py scripts/tests/test_init_skill_fixtures.py` passes.
 - Outcome: `.` round-trips through `build_proposal` → `build_config` (`core.py` and `tui.py` variants) → `summary_rows`; verified by an added case alongside `test_init_core.py`/`test_init_proposal.py`.
 - Outcome: go template (`src_dir: .`) and java templates (`src/main/java/`) still yield existing-dir results when those dirs exist; an integration check in `scripts/tests/integration/test_init_e2e.py` still passes.
@@ -190,30 +224,31 @@ _Added by `/ll:refine-issue` — 2026-09-26 — based on codebase analysis:_
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-- Decide the `.` spelling and audit `.`-hostile consumers: fix `codegraph.py:121` `_is_scan_relevant` and `:234` `_dotted_candidates` (special-case `.`), verify `decisions.py:652` glob, `worker_pool.py:1523`, `auto-refine-and-implement.yaml:626,851`
-- Update `commands/manage-release.md` (lines 38, 40, 249, 251, 302) — src_dir concatenated without separator breaks for `.`; and `commands/run-tests.md:99` — `^.` regex matches all
+- `.` spelling decided: `.`. `.`-hostile consumers (`codegraph.py:121`, `worker_pool.py:1523`, `decisions.py:652`, `commands/manage-release.md`) moved to BUG-3631 (blocker); `_dotted_candidates` and `run-tests.md:99` need no change. Still verify `auto-refine-and-implement.yaml:626,851` here.
 - Update `cli.py:531` `_print_introspection_summary` wording ("kept template default") to match the new fallback
 - Keep `core.py:347` / `tui.py:1090` truthiness guards safe by never returning an empty focus list (`["."]` fallback)
 - Update the tests listed under `### Tests` (empty-dir assumptions in `test_init_introspect.py`, `test_init_audit_fixes.py`, `test_init_e2e.py`, `test_init_core.py`, `test_init_tui.py`) and add the new tests
 - Review `--force` / "template defaults" wording in `docs/reference/CONFIGURATION.md`, `docs/guides/GETTING_STARTED.md`, `docs/reference/CLI.md`, `skills/init/SKILL.md`; run `ll-adapt` mirrors if any `skills/` file changes
-- Coordinate with ENH-3612, which plans to move the `_introspect_src_dir` call above the command loop in `introspect.py`
+- ENH-3612 is done; the `_introspect_src_dir` call already sits above the command loop (`introspect.py:152`) at HEAD — no coordination needed
 
 ## Impact
 
 - **Priority**: P3 - phantom dirs misdirect downstream tooling but the user can correct them in the TUI/config
-- **Effort**: Small - three localized helpers in one module plus tests
+- **Effort**: Small - three new helpers and a call reorder in one module, plus tests (downstream consumer fixes split out to BUG-3631)
 - **Risk**: Low - only changes fallback paths where detection was already inconclusive
 - **Breaking Change**: No
 
 ## Acceptance Criteria
 
-- [ ] No `ll-init` proposal contains a Source/Test/Focus dir absent from the target project.
-- [ ] Root-level source/test layouts are proposed as `.`.
-- [ ] Nested test dirs (e.g. `scripts/tests/`) are detected.
-- [ ] Existing detection (src/ package marker, pyproject/tsconfig/Cargo candidates) unchanged.
-- [ ] When no existing dir is detected the value falls back to `.` (provenance `default`), never empty; the focus-dirs fallback is `["."]`, so `core.py:347` / `tui.py:1090` truthiness guards never re-adopt a phantom template path.
+- [ ] On a fresh introspection, no `ll-init` proposal contains a Source or Focus dir absent from the target project; no `Ambiguity` lists an absent candidate (e.g. tsconfig `include: ["**/*.ts"]` produces no `**/`).
+- [ ] Test dir is never an absent path **except** `tests/` when the project has no test dir and no test files at all (provenance `default`, evidence `"no tests found; conventional location for new tests"`).
+- [ ] Root-level source/test layouts are proposed as `.` with provenance `inferred`; an empty or tooling-only root (`setup.py`, `conftest.py`) yields src_dir `.` with provenance `default`.
+- [ ] Nested test dirs (e.g. `scripts/tests/`) are detected; `<src_dir>/tests/` wins; two unrelated nested test dirs are not adopted; dot-prefixed dirs are never probed.
+- [ ] Existing detection of src_dir candidates is unchanged whenever the candidate dir exists.
+- [ ] Source dir never falls back to empty; the focus-dirs value is never an empty list (`["."]` fallback), so `core.py:347` / `tui.py:1090` truthiness guards never re-adopt a phantom template path.
+- [ ] When src_dir is `.`, focus dirs are exactly `["."]`.
+- [ ] `introspect()` computes test_dir before focus_dirs, and `_introspect_focus_dirs` has no duplicated `tests/`/`test/` probe; `TestFocusDirsEvidence` evidence strings unchanged.
 - [ ] `.` round-trips proposal → `build_config` (`core.py` and `tui.py`) → `summary_rows` unchanged.
-- [ ] `.`-consuming paths behave correctly: `codegraph.py` `_is_scan_relevant` / `_dotted_candidates`, `commands/manage-release.md`, `commands/run-tests.md:99`.
 - [ ] Go (`src_dir: .`) and java (`src/main/java/`) template defaults still survive the filter when those dirs exist.
 
 ## Related Key Documentation
@@ -234,7 +269,7 @@ Verdict at time of check: **DIRECTIVE_DRIFT** (not corrected in this pass — fi
   - *Test-fixture invalidation*: already covered by the Tests section (three phantom-default tests + wiring-listed tests).
 - **Graph**: provider=`codegraph` freshness=`stale` (not used to originate any verdict; direct Grep/Read confirmed all anchors).
 
-Remaining: the AC and Call Path additions above.
+Remaining: the AC and Call Path additions above. _(Addressed in the 2026-09-27 review: ACs cover round-trip, the `["."]` fallback and the non-empty guard; `.`-consumer ACs moved to BUG-3631; Call Path now includes `_detect_root_layout` and `_introspect_test_dir -> _existing_dir`.)_
 
 ## Status
 
