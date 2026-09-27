@@ -11,6 +11,12 @@ captured_at: '2026-09-27T17:40:15Z'
 relates_to:
 - ENH-3636
 - ENH-3623
+confidence_score: 100
+outcome_confidence: 89
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # BUG-3637: refine-to-ready-issue routes verify claim verdicts to additive gap-refine that cannot fix them
@@ -221,6 +227,7 @@ were in effect to check against (`ll-issues decisions list --type rule
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-27T18:57:47 - `2c6cabf6-8e36-428f-84cd-fbe8dd7ed1ef.jsonl`
 - `/ll:verify-issues` - 2026-09-27T18:41:47 - `faf37470-642a-4009-8ad8-fa55667af3ab.jsonl`
 - `/ll:wire-issue` - 2026-09-27T18:20:18 - `a542cb1a-fb64-418c-96c1-dffa8cf6d60f.jsonl`
 - `/ll:refine-issue` - 2026-09-27T18:07:47 - `45431681-0957-443f-9bca-12828c2ee935.jsonl`
