@@ -1,0 +1,12 @@
+{
+  "id": "4f1b2175-8bd5-40d7-b376-62b5d330340f",
+  "type": "decision",
+  "timestamp": "2026-09-27T16:22:30Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "No git-history precedent supports a two-commit coexistence split for this cross-file, single-dispatch-point cutover; ENH-3611's two-commit safety mechanism (same-file shared idempotent gate) does not transfer, no FSM-level gating primitive exists, and the codebase already has a documented double-counting hazard for this class of transitional risk.",
+  "rule": "Single atomic commit for Phase B (Option A)",
+  "scope": "issue",
+  "alternatives_rejected": "Option B: two-commit split mirroring ENH-3611 (additive coexistence commit, then subtractive cutover commit)",
+  "issue": "ENH-3623"
+}

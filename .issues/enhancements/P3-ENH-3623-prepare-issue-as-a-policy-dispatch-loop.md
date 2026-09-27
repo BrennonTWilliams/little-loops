@@ -20,6 +20,7 @@ blocks:
 - ENH-3600
 - ENH-3590
 confidence_score: 85
+verify_verdict: NON_VALID
 outcome_confidence: 58
 score_complexity: 5
 score_test_coverage: 25
@@ -353,6 +354,10 @@ _Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
 
 **Recommended**: Option A — unlike ENH-3611's independent new states, the new dispatch loop and autodev's old ladder are cross-coupled (autodev's `refine_current` calls `loop: prepare-issue`; the ladder's terminal-table agreement spans both files), so a mid-way commit risks the old ladder and the new dispatch loop double-running the same pass rather than safely coexisting. **Decided (`/ll:decide-issue`, 2026-09-27)**: no such safe coexistence path (e.g. a feature check gating which routing autodev uses) exists in the codebase today, so Phase B lands as the single atomic commit in Option A — see Decision Rationale below.
 
+_Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
+
+- **Production additions §1's crash-safety hardening is already landed, not still open work**: `_apply_outcome` (`scripts/little_loops/preparation_policy.py:1156-1272`) already makes each of the four writes independently idempotent — the ledger row and set-status writes are gated by a `progress`-set check-before-append (`mark(part)`; `:1181-1186`, `:1264`), the run-record write (`write_typed_run_record`, `cli/issues/run_record.py:274`) is a deterministic full recompute-and-overwrite so replay cannot diverge, and the inflight-clear uses `unlink(missing_ok=True)` (`:1220-1221`). `prep_apply` (`:1097-1153`) short-circuits on an existing terminal `done` fact before re-invoking `_apply_outcome` at all. Crash-injection coverage is partial, not absent: `TestPrepApplyCrashInjection` (`scripts/tests/test_preparation_policy_writers.py:203-294`) already pins the row→status and status→run-record boundaries, but only for the `_DEFER_STOPS`/`oversized_atomic` outcome branch. Not yet covered by any test: the row→`rm_inflight` boundary, the run-record→final-done-fact boundary, and crash injection for any outcome branch other than `_DEFER_STOPS` (`ready`, `cancelled`, `decomposed`, `child_stop`, `rate_limited`, `_INFRA_STOPS`, `:1223-1251`, `:1269-1272`).
+
 ### Decision Rationale
 
 Decided by `/ll:decide-issue` on 2026-09-27.
@@ -423,6 +428,8 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/cli/issues/__init__.py` `main_issues()` — the epilog list (`next-obligation` :158, `check-gate` :166, `run-record` :189) and the dispatch chain (`check-gate` :1101, `next-obligation` :1109, `run-record` :1119) both need a `prep` entry [Agent 2 finding]
 - `scripts/little_loops/cli/issues/run_record.py` — `cmd_run_record_forward` loses its only production callers (`forward_done` / `forward_stop`); keep or retire it deliberately [Agent 2 finding]
 - `scripts/little_loops/cli/issues/check_gate.py:10` and `issue_parser.py` (:655, :2181) — docstrings/comments citing `select_obligation_pre_implement` and `check_reconcile_needed`; refresh [Agent 2 finding]
+- `scripts/little_loops/cli/loop/runner.py:472` (`run_foreground`, `mode="resume"` branch) calls `executor.resume()` inside a bare `try/finally` (opened :371, `finally` :589-593) with no `except`; `cmd_resume` (`cli/loop/lifecycle.py:764`) and the `main_loop()` dispatch (`cli/loop/__init__.py:1160`) also have no handler in the chain. Contrast `run_background`'s own `except (FileNotFoundError, ValueError) as e: print(f"Error loading loop '{loop_name}': {e}", file=sys.stderr); return 1` (`runner.py:169-173`). A `ValueError` from the new resume guard (`fsm/persistence.py`) would surface as a raw traceback through `ll-loop resume <name>` today, not a clean CLI error [wiring pass finding, confirmed by 3 agents]
+- `scripts/tests/autodev_harness.py:981` — `run_autodev()`'s `except HarnessCrash:` block calls `_executor().resume()` directly with no exception handling; per `test_autodev_characterization.py:245-247` this harness (with `autodev_transform=...`) is the designated vehicle for exercising ENH-3623's autodev state deletions, making it a second concrete site that hits the new guard's `ValueError` [Agent 1+2 finding]
 
 ### Similar Patterns
 
@@ -466,6 +473,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_cli_claims.py` / `test_cli_surface.py` (:158) — prose claims about `ll-issues prep …` are checked against the scraped real `--help`; register the group before docs cite it (the `ll-prose-ok` markers cover the interim) [Agent 2+3 finding]
 - New tests to add: `prep` help/epilog test (copy `test_run_record.py::test_subcommand_in_help` :450 and the one-class-per-subcommand layout, `TestCmdRunRecordWrite` :296); `decide()` table tests (nearest precedent `test_ll_issues_next_obligation.py` parametrized classes; no pure `decide(snapshot, facts)` test exists); parametrized removed-state absence test (`TestConfidenceGateThresholdsNotHardcoded` shape); "no `rm`" / "never appends `autodev-staged.txt`" wrapper scans (`test_builtin_loops.py` ~:3226 `not in state["action"]` style); `capture_reachability_ok` absence test; `max_steps` arithmetic structural test
 - Resume-matrix opt-in: `slow` is not deselected by default (`scripts/pyproject.toml` ~:296-302; `addopts` has `--timeout=120 -n logical --dist loadfile`), so "opt-in" needs `slow` plus an env-var or `skipif` gate and `@pytest.mark.timeout` as in `test_autodev_characterization.py:919`; a single >120 s shell-out test orphans its xdist worker [Agent 3 finding]
+- No test today exercises the resume guard's CLI-level surfacing: `test_cli_loop_lifecycle.py`'s `test_cmd_resume_close_transports_runs_on_exception` (~:2512) only proves `cmd_resume` has no internal handler (using `KeyboardInterrupt`, not the new guard's exception) and `test_ll_loop_display.py`'s `TestRunForegroundResumeMode` (~:2924-3036) covers `None`-return, dispatch and the `mode="bogus"` `ValueError`, but no test mocks `resume()` raising. Add a test asserting the new guard's error prints cleanly and returns exit 1 through `cmd_resume`/`run_foreground`, following the (also untested) `run_background` precedent at `runner.py:169-173`. Also add coverage for `autodev_harness.py:981`'s crash-injection `resume()` call under an `autodev_transform` that deletes the crashed-at state [wiring pass finding, confirmed by 3 agents]
 
 ### Documentation
 
@@ -533,6 +541,8 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Add `test_wiring_reference_docs.py` rows for the new CLI.md / API.md sections
 - Refresh comments naming removed autodev states in `refine-to-ready-issue.yaml`, `oracles/resolve-decision.yaml`, `check_gate.py`, `issue_parser.py`
 - Run `ll-adapt --host <gemini|kimi-code|qwen> --apply` after the skill edits
+- Catch the new `PersistentExecutor.resume()` missing-state error at its CLI call sites (`run_foreground` in `cli/loop/runner.py:472`, and/or its caller `cmd_resume` in `cli/loop/lifecycle.py:764`) and print a clean message + `return 1`, matching the `run_background` precedent (`runner.py:169-173`) — otherwise `ll-loop resume <name>` surfaces a raw traceback instead of the intended clear error
+- Handle (or explicitly accept and document) the same `resume()` exception at `scripts/tests/autodev_harness.py:981`'s crash-injection call site, since it is the harness this issue's own characterization suite uses to exercise `autodev_transform`-deleted states
 
 ## Program Design
 
@@ -562,6 +572,10 @@ _Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
 
 - **Signature drift from ENH-3630's landed module** (`scripts/little_loops/preparation_policy.py`, 1382 lines): the names above are provisional/legacy — `apply_terminal` does not exist. The landed terminal-writer is `_apply_outcome(config, issue_id, run_dir, outcome, payload, progress, mark, *, readiness_threshold, outcome_threshold) -> int`, invoked from `prep_apply()`. Likewise `record_step` exists only as a YAML state name (in the dispatch-loop fixture, `scripts/tests/fixtures/loops/prepare-issue-policy.yaml`) — the Python function it calls via `ll-issues prep record` is `prep_record(config, issue_id, run_dir, *, guard2=False, child_terminated_by="", child_failure="") -> Fact | None`. `decide`, `next_preparation_step`, `load_facts`, `append_fact` all match this section's signatures exactly as landed.
 - **Resume-guard call chain, confirmed exact site**: `PersistentExecutor.resume()` (`fsm/persistence.py:1388`) restores `self._executor.current_state` from `state.pre_cap_state or state.current_state` with no existence check, then calls `self.run(clear_previous=False)` → `PersistentExecutor.run()` → `FSMExecutor.run()`. The unguarded lookup is `state_config = self.fsm.states[self.current_state]` at `fsm/executor.py:761`, inside the executor's main loop — no `except KeyError` anywhere in the chain guards it (the three existing `except KeyError` blocks in `fsm/` are unrelated: `evaluators.py:355`, `executor.py:2826`, `persistence.py:565`). Nearest existing convention for this shape of check: `fsm/route_table.py:154-161` raises `ValueError(f"Unknown state in edited table: '{state_name}' (known: {sorted(known_states)})")` for an analogous "referenced state must exist" check — a plain `ValueError` with an f-string naming the state, not a dedicated exception class (none exists in `fsm/` for this).
+
+_Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
+
+- **Resume-guard failure mode, traced end to end**: the stale-`current_state` `KeyError` at `PersistentExecutor.resume()` (`fsm/persistence.py:1388-1463` → `run()` → `FSMExecutor.run()`, unguarded lookup `self.fsm.states[self.current_state]` at `fsm/executor.py:761`) does not propagate out of `resume()` as an unhandled exception. `FSMExecutor.run()`'s main loop (`:654-1087`) wraps the lookup in a blanket `except Exception as exc:` (`:1081-1087`) that calls `self._finish("error", error=str(exc))` and returns a normal `ExecutionResult(terminated_by="error", failure_terminal=False, error=str(exc), ...)` — `str(KeyError(...))` yields only the bare quoted key. No exception reaches either production caller (`cli/loop/runner.py:472`, `scripts/tests/autodev_harness.py:981`). The "no `except KeyError` anywhere in the chain guards it" claim above is accurate; "a raw KeyError" is not, in the sense of propagating to a caller — the actual defect this issue's resume guard fixes is a **silent misclassification** into a generic, uninformative `"error"`/`"failed"` terminal (not a crash), with the persisted `LoopState.current_state` left pointing at a name no longer present in the loop file. No existing test exercises this path: `test_resume_returns_none_for_missing_state` (`scripts/tests/test_fsm_persistence.py:1203`) covers the no-state-file early return (`persistence.py:1397-1398`), not a `current_state` absent from `self.fsm.states`.
 
 ## Impact
 
@@ -675,6 +689,9 @@ _Added by `/ll:confidence-check` on 2026-09-27; re-scored 2026-09-27T04:31Z (Dep
 - Broad enumeration across 16+ sites (new module, `cli/issues`, two loop YAMLs, `run_record.py`, ~15 test files, ~8 docs, skill mirrors) and 11+ dependents, with a spike-parity that is coverage-bounded (~25 inline predicates re-implemented).
 
 ## Session Log
+- `/ll:refine-issue:gap-analysis` - 2026-09-27T16:48:55 - `5e0fa7a0-1306-4e57-9f3f-a8085f6c05a6.jsonl`
+- `/ll:verify-issues` - 2026-09-27T16:38:06 - `c66e52ca-e03a-452d-8d40-451ada76518d.jsonl`
+- `/ll:wire-issue` - 2026-09-27T16:33:19 - `627f48af-8f89-4b82-9339-fd655c67dfe7.jsonl`
 - `/ll:decide-issue` - 2026-09-27T16:23:29 - `34231531-20e2-4a7b-8722-8c12515d7cf7.jsonl`
 - `/ll:refine-issue` - 2026-09-27T16:16:39 - `4ebee706-12f8-499b-9748-b900824ce5e6.jsonl`
 - `/ll:confidence-check` - 2026-09-27T04:31:27 - `783ea3bb-f6c1-4581-a4e3-94421a4eb0f1.jsonl`
