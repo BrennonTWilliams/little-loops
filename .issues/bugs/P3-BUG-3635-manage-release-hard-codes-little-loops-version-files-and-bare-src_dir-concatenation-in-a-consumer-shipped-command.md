@@ -8,6 +8,12 @@ status: open
 discovered_by: ll-issues-create
 discovered_date: '2026-09-27'
 captured_at: '2026-09-27T06:09:13Z'
+confidence_score: 100
+outcome_confidence: 80
+score_complexity: 18
+score_test_coverage: 20
+score_ambiguity: 22
+score_change_surface: 20
 ---
 
 # BUG-3635: manage-release hard-codes little-loops version files and bare src_dir concatenation in a consumer-shipped command
@@ -204,4 +210,5 @@ record of what was wrong and fixed, not an outstanding action item)
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-27T20:19:56 - `c758ef8d-094a-49af-b905-13aeada69b25.jsonl`
 - `/ll:verify-issues` - 2026-09-27T20:08:13 - `7e522036-3dd2-4d72-a54c-33d788eff962.jsonl`
