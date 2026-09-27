@@ -18,12 +18,12 @@ relates_to:
 - ENH-3533
 learning_tests_required:
 - anthropic
-confidence_score: 95
-outcome_confidence: 46
+confidence_score: 100
+outcome_confidence: 56
 score_complexity: 10
 score_test_coverage: 18
 score_ambiguity: 18
-score_change_surface: 0
+score_change_surface: 10
 ---
 
 # ENH-3547: Wire model hint resolution through loop dispatch and lifecycle
@@ -250,15 +250,18 @@ Third pre-implementation review 2026-09-27 made these changes:
 
 _Added by `/ll:confidence-check` on 2026-09-27_
 
-**Readiness Score**: 95/100 → PROCEED
-**Outcome Confidence**: 46/100 → LOW
+**Readiness Score**: 100/100 → PROCEED
+**Outcome Confidence**: 56/100 → LOW
 
 ### Outcome Risk Factors
-- Wide blast radius: 11+ distinct dispatch/display call sites (executor.py CLI/evaluator/SDK dispatch, host_runner.py argv, cli/loop/{feed,lifecycle,runner,info}.py, evaluators.py), and each path has distinct precedence semantics rather than a uniform mechanical fix — mitigate by implementing and testing one dispatch path at a time against its own precedence row.
-- Moderate cross-module complexity: model resolution threads shared state (resolved selection, display string) through executor state dispatch, evaluator resolution, and header/event rendering across ~10-12 files — mitigate by landing the `ModelSelection`/`_resolve_model`/`_preflight_model_hints` core first, then wiring display sites.
+- Broad-but-narrowed surface: ~8-10 change sites concentrated in `executor.py` (guard removal, new `_preflight_model_hints`/`_resolve_model`/`_compute_request_path`, `_dispatch_live`'s new `selection` param, `ModelHintError` handling at four call sites, `_execute_sub_loop` propagation) plus `host_runner.py`'s two fake-runner classes and `fsm/types.py` — narrower than the prior assessment now that the header/display work split to ENH-3638, but still a control-flow change (exception routing) rather than a uniform substitution — mitigate by landing the `ModelSelection`/`_resolve_model`/`_preflight_model_hints` core and its exception routing first, verified in isolation, before wiring the remaining dispatch call sites.
+- Moderate depth: threading a single resolved `ModelSelection` through `_run_action`/`_dispatch_live` and re-routing `ModelHintError` around four different exception handlers (`run()`, `_run_action_or_route`, `_execute_state`'s sub-loop catch, `_execute_sub_loop`) is cross-function/cross-module logic with shared state, not a mechanical edit — get the routing tests (AC13/AC15) green before extending to the remaining paths.
 - Issue itself flags zero test coverage today for AC3 (evaluator hint on an `sdk` state resolving against the CLI host) and a from-scratch fixture gap for AC11 (portability proof) — write these tests before or alongside the corresponding code change, not after.
 
+_Verified 2026-09-27: all deterministic gates clean (learning test target "anthropic" proven, Program Design gate passes, `blocked_by: ENH-3527` resolved/done, zero format-check gap findings). Spot-checked every cited `executor.py`/`host_runner.py`/`fsm/types.py` anchor against current source — all resolve to the exact lines the issue cites, confirming the guard and inline fallback expressions are still unimplemented and the codebase-research claims still hold.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-09-27T21:59:52 - `f000b0e2-afd6-484c-86d4-f9adb2596b9a.jsonl`
 - `/ll:confidence-check` - 2026-09-27T21:02:32 - `75a0f181-d47d-4633-992b-de27bddbd43d.jsonl`
 - `/ll:wire-issue` - 2026-09-27T20:39:53 - `e3045b14-86be-4cd8-801e-cb4a91f14a76.jsonl`
 - `/ll:refine-issue` - 2026-09-27T20:25:25 - `b7c94eba-e7a8-40c2-a5f2-39f525e86d43.jsonl`
