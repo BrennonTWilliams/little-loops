@@ -96,7 +96,7 @@ repopulates the dict.
   `failure_terminal` and `error` plus a whole-dict reset only of merge-owned keys.
 - Also check the other `captured.<state>.terminated_by` / `.failure_terminal` readers for
   re-entry: `delegate` (`auto-refine-and-implement.yaml` ~:421, ~:668) and
-  `run_quality_gate` (`autodev.yaml` ~:1365). Record in the Resolution whether each can be
+  `run_quality_gate` (`autodev.yaml` ~:1371). Record in the Resolution whether each can be
   re-entered in one run; no YAML change is expected either way.
 
 ## Integration Map
@@ -162,7 +162,7 @@ _Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
 
 - Convention: `self.captured` has no state-entry reset. Every write site either replaces the whole per-state dict (`_execute_state` capture block ~:2725; `human_approval` handler ~:2875/:2951/:2972) or mutates keys inside the existing dict (`_execute_sub_loop` `terminated_by` :1335, `failure_terminal` :1338-1339, `error` :1223/:1372, `verdict` :1356 — the last into `captured[state.capture]`, assigned every entry, so not stale-prone). Repo-wide grep finds no `captured.pop/clear/del` reset. Only the mutate-in-place sites can leave stale keys; the whole-dict-replace sites cannot.
 - Constraint (ordering): the `terminated_by` write sits after the child-capture merge (:1330-1334, ENH-3019) so the merge cannot clobber it; any new clearing of `failure_terminal` must stay compatible with that ordering and with `with_={}` / `context_passthrough` merges (`test_captured_terminated_by_survives_context_passthrough_overwrite`, `test_fsm_executor.py:10286`).
-- Readers of `captured.<state>.failure_terminal` / `.terminated_by` (all shell interpolations with `?` defaults and `ll-lint: mr11-ok` allowlist entries in `test_builtin_loops.py` ~:20591, ~:20703): `refine-to-ready-issue.yaml:1395-1397` (ENH-3358), `auto-refine-and-implement.yaml:421,668` (ENH-3366, BUG-3375), `autodev.yaml:1365`. Only the `confidence_check` reader is documented as re-entrant; the `delegate` and `run_quality_gate` readers should be checked for re-entry too.
+- Readers of `captured.<state>.failure_terminal` / `.terminated_by` (all shell interpolations with `?` defaults and `ll-lint: mr11-ok` allowlist entries in `test_builtin_loops.py` ~:20591, ~:20703): `refine-to-ready-issue.yaml:1395-1397` (ENH-3358), `auto-refine-and-implement.yaml:421,668` (ENH-3366, BUG-3375), `autodev.yaml:1371`. Only the `confidence_check` reader is documented as re-entrant; the `delegate` and `run_quality_gate` readers should be checked for re-entry too.
 - Test convention: sub-loop tests use a real `FSMExecutor` + parent `FSMLoop` with `StateConfig(loop=...)` and child YAML written under `tmp_path/.loops` (`TestSubLoopTimeoutRouting`, `test_fsm_executor.py:10149`, helpers `_write_child_loop`/`_write_cap_failure_child`), asserting on `executor.captured[...]`. The only existing test that re-enters a `loop:` state is `TestSubLoopWorktree.test_loop_state_reentry_reattaches_worktree` (:7065), which uses a marker-file shell gate to force exactly one re-entry; no existing test asserts differing child outcomes across entries on `captured`.
 - Documentation: `docs/reference/API.md:6402-6417` documents `failure_terminal`/`terminated_by` only as `ExecutionResult` fields; it has no `captured.<state>` contract and no re-entry statement. `LOOPS_REFERENCE.md:1009,1025` and `ARCHITECTURE.md:463` describe `${captured.delegate.terminated_by}` only.
 
@@ -256,7 +256,18 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 **Open** | Created: 2026-09-27 | Priority: P3
 
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` — 2026-09-27_
+
+Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the same pass, so the issue as it now reads is up to date — this section is a record of what was wrong and fixed, not an outstanding action item)
+
+- Code claims verified against HEAD: post-child block at `executor.py:1326-1339` matches (merge only when `(context_passthrough or with_) and child_executor.captured`; `terminated_by` via `setdefault`; `failure_terminal` only when truthy); `captured_as_context` at `:1156`, seed calls `:1172-1184`, worktree block `:1186`, worktree-error `error` write `:1223`, `error` write `:1372`, `verdict` into `captured[state.capture]` `:1356` — the proposed reset placement (after `:1184`, before `:1186`) is consistent with all of them. `ll-verify-evidence`: clean. No decisions-log rules apply.
+- Fixed: `autodev.yaml` `run_quality_gate` reader line drifted (`~:1365` → `~:1371`).
+- Not verified here (left as the issue's own pre-implementation step): that no writer targets `captured[<loop-state>]` before `_execute_sub_loop`.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-09-27T05:07:18 - `8dd98d25-9e0a-42d3-8b1b-63a8171e5519.jsonl`
 - `/ll:confidence-check` - 2026-09-27T04:50:43 - `b1d961f1-bb2d-4afe-8b30-594899eeede4.jsonl`
 - `/ll:wire-issue` - 2026-09-27T04:02:38 - `b9726386-58c1-4c65-8485-76e226017a2f.jsonl`
 - `/ll:refine-issue` - 2026-09-27T03:55:47 - `0b26d35d-ec12-419a-9599-7aa7bcfe4ed1.jsonl`

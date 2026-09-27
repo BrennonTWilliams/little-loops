@@ -109,7 +109,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/fsm/validation/structural_rules.py` (`evaluate.type == "diff_stall"` block ~:160) — validates only `max_stall >= 1`; no change unless a new field is added [Agent 1/2 finding]
 - Loops not listed above that also use the gate: `scripts/little_loops/loops/oracles/generator-evaluator.yaml` (`check_diff_stall`, ~:281-287, header comments ~:15-17, ~:268-271), inherited by `oracles/generator-evaluator-flux.yaml`; `harness-multi-item.yaml` (~:81) [Agent 1/2 finding]
 - Behavior interplay: child loops `setdefault` the parent's `run_dir` (`executor.py` ~:1151-1152), so a sub-loop's diff_stall and the parent's share a state dir; `md5(scope)` alone does not separate them, and two diff_stall states with the same scope in one run still collide (resolved: key includes loop name + state name, see Proposed Solution). Loops that write progress only under `.loops/` (excluded by the fingerprint) will no longer register as progress [Agent 2 finding]
-- `scripts/little_loops/fsm/evaluators.py` `evaluate_action_stall` (~:849) — same shared `.loops/tmp` cache pattern; out of scope, follow-up [Agent 2 finding]
+- `scripts/little_loops/fsm/evaluators.py` `evaluate_action_stall` (~:837) — same shared `.loops/tmp` cache pattern; out of scope, follow-up [Agent 2 finding]
 
 ### Similar Patterns
 - `scripts/little_loops/loops/general-task.yaml` — `final_verify_spin_gate` content fingerprint scoped away from `${context.run_dir}`
@@ -203,6 +203,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - A same-line-count content edit counts as progress.
 - With `scope` set, changes and commits outside `scope` do not count as progress.
 - A parent and child loop sharing a `run_dir` (including both naming the state `check_stall`), or two same-scope diff_stall states in one run, do not share stall state.
+- Without a `run_dir` in context (e.g. `cmd_test`'s bare `InterpolationContext()`), the evaluator falls back to the legacy `.loops/tmp` path and does not raise.
 - A repo with no commits does not return `error`; it fingerprints from `git diff --cached` + `git diff` + untracked files.
 - Untracked regular files are hashed in one `git hash-object --stdin-paths` call (no full-content reads in Python); untracked symlinks, including dangling ones, are fingerprinted by link target and do not return `error`; `.loops/` and the resolved run dir are excluded.
 - The committed-content component (`ls-tree`) excludes `.loops/` without passing `:(exclude)` to `git ls-tree`: a test with a committed file under `.loops/` changing between checks is a stall tick, not progress.
@@ -228,7 +229,18 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 **Open** | Created: 2026-09-27 | Priority: P3
 
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` — 2026-09-27_
+
+Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the same pass, so the issue as it now reads is up to date — this section is a record of what was wrong and fixed, not an outstanding action item)
+
+- Code claims verified against HEAD: `evaluate_diff_stall` (`evaluators.py:577`) runs bare `git diff --stat`, keys state by `md5(scope)` under `Path.cwd()/.loops/tmp`, and a carried-over count ≥ `max_stall` yields `no` on a new run's first check; `evaluate()` `diff_stall` branch (`:2012`) passes only `scope`/`max_stall`; `InterpolationContext.state_name`/`loop_name` exist; `run_dir` is injected at `cli/loop/run.py:236`; child `run_dir` `setdefault` at `executor.py:1152`; all 12 listed loops use `diff_stall`. `ll-verify-evidence`: clean. No decisions-log rules apply.
+- Fixed: stale `evaluate_action_stall` line (`~:849` → `~:837`).
+- Fixed (proposal-consequence check, AC gap): the Integration Map lists `cmd_test`'s bare-context fallback but no Acceptance Criterion covered it; added one.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-09-27T05:07:18 - `8dd98d25-9e0a-42d3-8b1b-63a8171e5519.jsonl`
 - `/ll:confidence-check` - 2026-09-27T04:51:22 - `7d0784ac-24a4-4b7a-af8c-3b3e14cec5c4.jsonl`
 - `/ll:wire-issue` - 2026-09-27T04:02:38 - `b9726386-58c1-4c65-8485-76e226017a2f.jsonl`
 - `/ll:refine-issue` - 2026-09-27T03:56:26 - `d2d94801-a3bb-4af7-800e-2bfc0ccec8d4.jsonl`

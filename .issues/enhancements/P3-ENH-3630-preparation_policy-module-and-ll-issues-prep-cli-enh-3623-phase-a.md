@@ -131,7 +131,32 @@ semantics rather than spike parity:
 - `docs/reference/API.md`: `prep` row beside `run-record`, `little_loops.preparation_policy` section
 - Once `prep` is registered, remove the `ll-prose-ok` markers in this issue and ENH-3623
 
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `scripts/little_loops/mcp_server/tools.py` — imports `_load_issues_with_status` (~:88; docstring ~:84 also names it); update if promoted
+- `scripts/little_loops/cli/loop/next_loop.py` — `from little_loops.cli.issues.search import _load_issues_with_status` (~:136)
+- `scripts/little_loops/cli/issues/count_cmd.py` — imports/calls `_load_issues_with_status` (~:24)
+- `scripts/little_loops/cli/issues/list_cmd.py` — imports/calls `_load_issues_with_status` (~:33)
+- `scripts/little_loops/cli/issues/search.py` — defines `_load_issues_with_status` (~:125) and calls it internally (~:312)
+- `_resolve_issue_id` (`cli/issues/show.py`) has ~26 importers under `cli/issues/` plus `cli/loop/_scaffold_core.py`, `cli/learning_tests.py`, `cli/history_context.py` and `mcp_server/tools.py`. Using public `issue_parser.resolve_issue_path` from the policy leaves all of them untouched; do **not** rename `_resolve_issue_id`
+- `scripts/little_loops/loops/autodev.yaml` (7 sites), `refine-to-ready-issue.yaml` (12), `prepare-issue.yaml` (1) — shell out to `ll-issues run-record write ... || true`; depend only on flags and exit code, so the helper extraction must not change either (no edits)
+
 ### Tests
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `scripts/tests/test_issues_search.py` — 4 tests (~:1371-1420) do `from little_loops.cli.issues.search import _load_issues_with_status`; will break if the private name is removed. Update the imports, or keep a private alias
+- `scripts/tests/test_arm_proposal_revision.py` — patches `"little_loops.cli.issues.show._resolve_issue_id"` by string; breaks on any rename of that symbol (another reason not to rename it)
+- `scripts/tests/test_run_record.py` — asserts the `[RUN_RECORD_WRITTEN] <id> <outcome> <path>` stdout line (~:308), the `Error: Issue '<id>' not found.` stderr + exit 2 path, and `ValueError("unknown run-record writer: ...")`; all three must survive the helper extraction. New direct unit tests for the extracted helper belong here
+- `scripts/tests/test_builtin_loops.py` — `test_route_tables_cover_every_run_record_token` and the ~:3226 assertion `"run-record write" not in state["action"]`; unaffected while no loop YAML changes
+- `scripts/tests/test_set_scores_cli.py` (`TestIssuesCLISetScores`, `TestSetScoresClear`) — must stay green if score-clearing is extracted from `cmd_set_scores`; `scripts/tests/test_feat_3149_mcp_mutation_tools.py` — only coverage of `apply_status_transition`; add in-process failure-path tests for `prep` alongside it
+- `scripts/tests/test_cli_surface.py` — scrapes the installed CLI (`cli_surface_accepts(idx, "ll-issues", ...)`); a `prep` flags assertion can go here
+- `scripts/tests/test_docs_audience_gate.py` — the new CLI.md / API.md sections must not cite `scripts/tests/…` (fixture path) or "this repo"; describe in reader terms or add `ll-audience-ok:`
+- `scripts/tests/test_enh2776_no_loop_helpers_module.py` — not read; confirm the `preparation_policy` name is not caught by its pattern
+- `scripts/tests/test_streaming_cache_parity.py` — iterates `fixtures.iterdir()` directories; confirm it does not target `scripts/tests/fixtures/` (the new top-level YAML would be the first there)
+- Pattern sources for new tests: `test_prepare_issue.py:86` (`load_and_validate(WRAPPER)`) for the fixture-validation test; `test_autodev_characterization.py` (`pytestmark = pytest.mark.slow`, `@pytest.mark.timeout(300)`) and `test_research_triage.py:646-647` for slow gating; `test_ll_issues_format_check.py::test_fix_apply_is_idempotent` for idempotency; conftest `make_project` / `issues_dir` / `temp_project` fixtures
 
 - New (none exist on `main` yet; port from the spike branch):
   `test_preparation_policy.py` (`decide()` table tests),
@@ -167,6 +192,14 @@ semantics rather than spike parity:
 - Must stay green: `test_run_record.py` (`test_ready_iff_check_passed_would_pass`,
   `TestOutcomeMapping`, `TestRunRecordForward`)
 
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `docs/reference/CLI.md` — `#### ll-issues run-record` and `#### ll-issues next-obligation` are the section templates for `#### ll-issues prep`
+- `docs/reference/API.md` — CLI subcommand table (~:4655-4667, beside the `next-obligation` / `run-record` rows) gets a `prep` row; module table (~:74, beside `little_loops.cli.issues.run_record`) gets a `little_loops.preparation_policy` row; the `little_loops.run_record` section should mention the new shared helper
+- `docs/guides/LOOPS_REFERENCE.md` — "Typed run record (ENH-3597)" / "Score dispatch (ENH-3604)" mention `run-record` and `next-obligation`; no edit in Phase A (no loop changes), revisit in ENH-3623 Phase B/C
+
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
@@ -200,6 +233,48 @@ _Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
 - **Doc gates**: `test_wiring_reference_docs.py:DOC_STRINGS_PRESENT` rows are `(doc, needle, issue_id)` tuples (existing `run-record` rows: the CLI.md section heading, the `RUN_RECORD_WRITTEN` marker, the API.md subcommand-table row and the module row). `test_cli_claims.py` only unit-tests the claim extractor (`extract_cli_flag_claims`, `ll-prose-ok` suppression); it does not enumerate subcommands, so the AC's mention of it is really about `ll-prose-ok` markers, not a group-registration check.
 - **Spike facts confirmed on the tag** (`scripts/little_loops/preparation_policy.py`, ~1,230 lines): `MAX_DONE_PER_PASS = 15` at line 46; `_ll_issues` at line 876 with call sites in `_run_preconditions` (~893-905) and `_apply_outcome` (~1170); `prep_step` / `prep_record` / `prep_apply` at 908 / 947 / 1000; `_apply_outcome` at 1051. The issue's `~:1095` inline-`ready` reference falls inside `_apply_outcome` and could not be independently confirmed as the exact line. Also `decide()` at 631, `snapshot_issue()` at 654, `current_pass` at 783, `add_prep_parser` / `cmd_prep` at 1186 / 1209. On `main`, `prepare-issue.yaml` has `max_steps: 20`.
 
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `scripts/little_loops/cli/loop/next_loop.py` — lazy-imports `_load_issues_with_status` inside a function; a third consumer beyond `mcp_server/tools.py`, breaks on a rename [Agent 1 finding]
+- `scripts/little_loops/cli/issues/list_cmd.py` — top-level import, called in `cmd_list` [Agent 1 finding]
+- `scripts/little_loops/cli/issues/count_cmd.py` — lazy import of `_load_issues_with_status` [Agent 1 finding]
+- `scripts/little_loops/cli/issues/search.py` — defines it and calls it in `cmd_search`; keep a backward-compatible alias if promoting [Agent 1 finding]
+- `scripts/little_loops/loops/refine-to-ready-issue.yaml` — ~10 `run-record write` states (all `|| true`, `--legacy-class` values incl. `proposal_unsound`, `gate_unmet`, `infra`, `spike_inconclusive`, `decision_unresolved`); behavior must not change under the helper extraction [Agent 2 finding]
+- `scripts/little_loops/loops/autodev.yaml` — `run-record write --writer prepare-issue` (~8 sites), `clear`, `read` (~lines 526, 691) [Agent 2 finding]
+- `scripts/little_loops/loops/prepare-issue.yaml` — `clear`, `forward` (stdout captured via `TOKEN=$(...)`), `write --legacy-class infra` [Agent 2 finding]
+- `cli/issues/run_record.py:cmd_run_record_write` contract to preserve: `[RUN_RECORD_WRITTEN] <canonical_id> <outcome> <path>` on stdout with exit 0; unresolved issue prints `Error: Issue '...' not found.` to stderr with exit 2. `read`/`clear`/`forward` reuse `canonical_record_id`, `derive_child_ids`, `_read_broke_down`, so those must stay importable from `cli/issues/run_record.py` (or be re-exported) [Agent 2 finding]
+- Markers to remove once `prep` exists: `ll-prose-ok` also appears in ENH-3600 (not only ENH-3630 and ENH-3623). Readers: `issues/cli_claims.py:_SUPPRESS_RE`, `issues/symbol_claims.py:_SUPPRESS_RE`, `cli/verify_skill_prose.py:_SUPPRESS_RE` [Agent 2 finding]
+
+### Documentation
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `docs/reference/API.md` — module table needs a `little_loops.preparation_policy` row beside `little_loops.run_record` / `little_loops.cli.issues.run_record`; the existing `search.py:_load_issues_with_status` cite (for `list --status done --json`) goes stale if the helper is renamed [Agent 2 finding]
+- `docs/reference/CLI.md` and `docs/reference/API.md` new text falls under `scripts/tests/test_docs_audience_gate.py`: cite `little_loops.<module>`, never `scripts/little_loops/` or `scripts/tests/` paths [Agent 2 finding]
+- `docs/guides/LOOPS_REFERENCE.md` ("Typed run record (ENH-3597)") and `scripts/little_loops/loops/README.md` mention `run-record`; neighbours only, ENH-3623 Phase C scope [Agent 2 finding]
+
+### Configuration
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `scripts/pyproject.toml` `[tool.pytest.ini_options]` — `--strict-markers` is on, `--timeout=120`, `-n logical`, `--dist loadfile`; any new marker for the gated resume matrix must be registered there (registered today: `integration`, `slow`, `conformance`, `no_parallel`, `grader_case`) [Agent 3 finding]
+- `scripts/little_loops/config-schema.json` — no change needed; thresholds already live at `commands.confidence_gate.{readiness,outcome}_threshold` (`config/automation.py:ConfidenceGateConfig`) [Agent 1/2 finding]
+
+### Tests (wiring additions)
+
+_Wiring pass added by `/ll:wire-issue`:_
+
+- `scripts/tests/test_issues_search.py` — 4 tests import `_load_issues_with_status` by name (class near line 1377); update or keep an alias if promoted [Agent 1/3 finding]
+- `scripts/tests/test_set_scores_cli.py` (`test_clear_removes_all_six_keys_and_is_idempotent`, `test_set_scores_writes_all_fields`, …), `test_set_status_cli.py`, `test_feat_3149_mcp_mutation_tools.py`, `test_bug3150_issue_mutator_atomicity.py` — must stay green if scores writing is extracted from `cmd_set_scores` or status callers change [Agent 3 finding]
+- `scripts/tests/test_builtin_loops.py` (`run-record write` assertions ~line 3226, router check ~6530, `test_route_tables_cover_every_run_record_token` ~7818), `test_autodev_ladder_run_records.py`, `test_autodev_characterization.py`, `test_prepare_issue.py`, `test_ll_logs.py` — assert the `[RUN_RECORD_WRITTEN]` marker / run-record wiring; must stay green [Agent 2/3 finding]
+- `scripts/tests/test_autodev_characterization.py::test_harness_accepts_replacement_prepare_issue_and_autodev_transform` (~:962) — existing pattern for copying a replacement `prepare-issue` YAML into the harness `loops_dir`; model for the fixture parity tests [Agent 3 finding]
+- `scripts/tests/test_autodev_characterization.py::test_autodev_resume_characterization` (~:939) — crash/resume pattern (`_with_crash`, `_replayed`, `_assert_hermetic`, `Crash(state, when=…)`) to extend for `state#N` fault points [Agent 3 finding]
+- Fixture-validation pattern for the "loads and validates" test: `load_and_validate(path)` (see `test_fsm_schema.py::test_evaluate_unknown_key_sweep_builtin_loops_clean` ~:1943); `scripts/tests/fixtures/` and `conftest.py:fixtures_dir` already exist. No loop-count or enumeration test globs `scripts/tests/fixtures/`, so the fixture does not trip `test_doc_counts.py` or `test_builtin_loops.py` [Agent 3 finding]
+- Gating caveat: there is no env-var `skipif` precedent in `scripts/tests`. Do **not** use `no_parallel` for the resume matrix (skipped outright under `-n logical`; runs only in `-n 0` via `test_no_parallel_serial_gate.py`). Use `@pytest.mark.slow` + a module `skipif` on an env var, plus `@pytest.mark.timeout` (precedent: `test_autodev_characterization.py:908`, 300 s) [Agent 3 finding]
+- New `prep` help test: copy `test_run_record.py::test_subcommand_in_help` (~:450); no test asserts the `Sub-commands:` epilog text or full subcommand set, so the epilog line is untested unless added [Agent 2/3 finding]
+
 ## Implementation Steps
 
 1. Port the policy (`decide`, `StepKind`, `Step`, lazy `IssueSnapshot`) and the fact log
@@ -216,6 +291,27 @@ _Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
    gate the full matrix as opt-in and settle the parity/differential runtime budget.
 5. Add the CLI.md / API.md entries and the `test_wiring_reference_docs.py` rows; run the
    full suite, `ruff`, and `mypy`.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- If `_load_issues_with_status` is promoted: update `cli/issues/search.py`, `cli/issues/count_cmd.py`, `cli/issues/list_cmd.py`, `cli/loop/next_loop.py`, `mcp_server/tools.py` (import + docstring) and the 4 imports in `test_issues_search.py` in the same change; otherwise keep the private import and record the layering note
+- Do not rename `_resolve_issue_id`; use `issue_parser.resolve_issue_path` from the policy (avoids ~30 importers and the `test_arm_proposal_revision.py` string patch)
+- Preserve the `cmd_run_record_write` CLI contract when extracting the helper: `[RUN_RECORD_WRITTEN]` stdout line, unresolved-issue stderr + exit 2, `ValueError("unknown run-record writer: ...")`; add direct helper unit tests to `test_run_record.py`
+- Add a `prep` flags assertion to `test_cli_surface.py` and keep CLI.md / API.md wording clear of `scripts/tests/…` paths (`test_docs_audience_gate.py`)
+- Before adding the fixture and module, check `test_enh2776_no_loop_helpers_module.py` and `test_streaming_cache_parity.py` do not trip on `preparation_policy` or a top-level `scripts/tests/fixtures/*.yaml`
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Update `scripts/little_loops/cli/loop/next_loop.py`, `cli/issues/list_cmd.py`, `cli/issues/count_cmd.py`, `scripts/tests/test_issues_search.py` — if `_load_issues_with_status` is promoted, switch to the public name (or keep an alias in `search.py`)
+- Update `docs/reference/API.md` — refresh the `search.py:_load_issues_with_status` cite if renamed
+- Register any new pytest marker in `scripts/pyproject.toml` (`--strict-markers`)
+- Preserve the `run-record write` stdout marker and exit-2 contract; re-run `test_run_record.py`, `test_builtin_loops.py`, `test_autodev_ladder_run_records.py`, `test_prepare_issue.py` after the helper extraction
+- Keep `canonical_record_id`, `derive_child_ids`, `_read_broke_down` importable from `cli/issues/run_record.py` (used by `read`/`clear`/`forward`)
+- Remove `ll-prose-ok` markers from ENH-3600 as well as ENH-3630 and ENH-3623 once `prep` is registered
 
 ## Program Design
 
@@ -307,6 +403,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-27T05:06:41 - `cf12f410-e7b8-47d0-a1c7-8e4aef01c5e6.jsonl`
+- `/ll:wire-issue` - 2026-09-27T05:06:04 - `0fc58fe0-1f4f-488e-b945-c21a1df29f1e.jsonl`
 - `/ll:refine-issue` - 2026-09-27T05:03:00 - `b6aefbf4-4b7a-4b60-a3b0-f13fdc7a3e01.jsonl`
 - `/ll:refine-issue` - 2026-09-27T05:01:48 - `399ba9ba-cae5-4abc-9ec9-beebb2989847.jsonl`
 - `/ll:format-issue` - 2026-09-27T04:48:28 - `92da6ad0-e100-4b8d-bcc9-de840c7a338f.jsonl`

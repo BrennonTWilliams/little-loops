@@ -198,7 +198,14 @@ _Added by `/ll:spike` on 2026-09-26_
 **Verification**: 7 spike tests (incl. 2 guards) + 291 `test_fsm_evaluators.py` tests pass across 2 commands.
 **Promotion**: fold into `evaluate_action_stall` under `project.src_dir` and its test under `project.test_dir`, in a separate PR.
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` — 2026-09-27_
+
+Verdict: **VALID**. `evaluate_action_stall` (`evaluators.py:837`) keys state by `md5(sorted track)` under `Path.cwd()/.loops/tmp` with no run/loop/state scoping; the `evaluate()` branch (`:2044`) passes only `track`/`max_repeat`/`context`; no built-in loop uses `action_stall`; spike dir `scripts/tests/spike/action_stall_run_scope/` exists. `_stall_state_paths` does not exist yet, consistent with `depends_on: BUG-3627`. `ll-verify-evidence`: clean. No decisions-log rules apply.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-09-27T05:07:19 - `8dd98d25-9e0a-42d3-8b1b-63a8171e5519.jsonl`
 - `/ll:confidence-check` - 2026-09-27T04:52:55 - `27697508-48d3-40e3-be84-6db81402352c.jsonl`
 - `/ll:wire-issue` - 2026-09-27T04:50:04 - `cedcb440-51cb-42b2-9a38-b12a6ea640a7.jsonl`
 - `/ll:spike` - 2026-09-27T04:46:25 - `a9f61bee-9049-4d2c-bd00-adce91a7501c.jsonl`
