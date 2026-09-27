@@ -3292,7 +3292,7 @@ No additional flags. Analyzes `decision` entries and clusters them by category a
 |------|-------------|
 | `--target {ocr}` | Export target (required) |
 | `--output-dir DIR` | Directory the target's rule file is written under (default: `.`) |
-| `--scope-glob GLOB` | Repeatable glob(s) that repo-wide required rules are scoped to. Precedence: `--scope-glob` → `decisions.export.scope_globs` config → `project.src_dir` (trailing slash stripped) → `**/*` (warns on stderr; a bare `**/*` catch-all replaces OCR's built-in language rules for every matched file) |
+| `--scope-glob GLOB` | Repeatable glob(s) that repo-wide required rules are scoped to. Precedence: `--scope-glob` → `decisions.export.scope_globs` config → `project.src_dir` (trailing slash stripped; a root `src_dir` of `.`/`./` emits `**/*` with no warning) → `**/*` when `src_dir` is unset (warns on stderr; a bare `**/*` catch-all replaces OCR's built-in language rules for every matched file) |
 
 Writes `.opencodereview/rule.json` (OCR's project-layer rule file) from all active
 (non-superseded) required rules. Re-running over an unchanged decision set is a

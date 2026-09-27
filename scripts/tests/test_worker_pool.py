@@ -1853,6 +1853,60 @@ class TestWorkerPoolHelpers:
         assert "scripts/new_module.py" in leaks
         assert "custom_tests/test_new.py" in leaks
 
+    def test_detect_main_repo_leaks_root_layout_warns_not_discards(
+        self,
+        default_parallel_config: ParallelConfig,
+        mock_logger: MagicMock,
+        mock_git_lock: GitLock,
+        tmp_path: Path,
+    ) -> None:
+        """BUG-3631: src_dir/test_dir '.' warns on root-level leaks, never auto-discards."""
+        ll_dir = tmp_path / ".ll"
+        ll_dir.mkdir(exist_ok=True)
+        (ll_dir / "ll-config.json").write_text(
+            json.dumps({"project": {"src_dir": ".", "test_dir": "."}})
+        )
+        (tmp_path / ".worktrees").mkdir(exist_ok=True)
+
+        br_config = BRConfig(tmp_path)
+        pool = WorkerPool(
+            parallel_config=default_parallel_config,
+            br_config=br_config,
+            logger=mock_logger,
+            repo_path=tmp_path,
+            git_lock=mock_git_lock,
+        )
+
+        baseline_status: set[str] = set()
+
+        def mock_git_run(
+            args: list[str], cwd: Path, **kwargs: Any
+        ) -> subprocess.CompletedProcess[str]:
+            if args[:2] == ["status", "--porcelain"]:
+                return subprocess.CompletedProcess(
+                    args,
+                    0,
+                    "?? main.go\n"
+                    "?? src/new_module.py\n"
+                    "?? .issues/bugs/P1-BUG-001-this-workers-file.md\n"
+                    "?? issues/enhancements/P2-ENH-002-other-workers-file.md\n",
+                    "",
+                )
+            return subprocess.CompletedProcess(args, 0, "", "")
+
+        with patch.object(pool._git_lock, "run", side_effect=mock_git_run):
+            leaks = pool._detect_main_repo_leaks("BUG-001", baseline_status)
+
+        # Root-layout-only match: not auto-discarded, but named in a warning.
+        assert "main.go" not in leaks
+        assert any("main.go" in str(call.args) for call in mock_logger.warning.call_args_list)
+        # Hardcoded fallback prefix "src/" still catches files under it.
+        assert "src/new_module.py" in leaks
+        # This worker's own issue file is still returned.
+        assert ".issues/bugs/P1-BUG-001-this-workers-file.md" in leaks
+        # Other worker's issue file is still excluded (cross-worker isolation).
+        assert "issues/enhancements/P2-ENH-002-other-workers-file.md" not in leaks
+
     def test_has_other_issue_id(self, worker_pool: WorkerPool) -> None:
         """_has_other_issue_id() correctly identifies files with other issue IDs."""
         # No issue ID in filename

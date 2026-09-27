@@ -297,8 +297,8 @@ Project-level settings for commands:
 | Key | Default | Description |
 |-----|---------|-------------|
 | `name` | Directory name | Project name |
-| `src_dir` | `src/` | Source code directory |
-| `test_dir` | `tests` | Test directory path |
+| `src_dir` | `src/` | Source code directory. `.` means the repo root; every other root spelling (`./`, `.//`, `/`) is normalized to `.`, and a leading `./` is dropped (`./src/` -> `src/`) |
+| `test_dir` | `tests` | Test directory path. Same root/`./`-dropping normalization as `src_dir` |
 | `test_cmd` | `pytest` | Command to run tests. Key absent → the default; explicit `null` → opt out of the test gate entirely rather than guessing (BUG-3269) |
 | `lint_cmd` | `ruff check .` | Command to run linter. Same absent-vs-null distinction as `test_cmd` (BUG-3269) |
 | `type_cmd` | `mypy src/` | Command for type checking |
@@ -480,7 +480,7 @@ Codebase scanning configuration:
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `focus_dirs` | `["src/", "tests/"]` | Directories to scan |
+| `focus_dirs` | `["src/", "tests/"]` | Directories to scan. Each entry gets the same root/`./`-dropping normalization as `project.src_dir`; a `.` entry matches the whole repo |
 | `exclude_patterns` | Standard patterns | Paths to exclude from scanning |
 | `custom_agents` | `[]` | Custom scanning agents to include |
 

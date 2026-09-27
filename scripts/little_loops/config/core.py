@@ -22,6 +22,7 @@ from little_loops.config.automation import (
     ParallelAutomationConfig,
 )
 from little_loops.config.cli import CliConfig, RefineStatusConfig
+from little_loops.config.dirs import canonical_dir
 from little_loops.config.features import (
     AnalyticsCaptureConfig,
     ArtifactsConfig,
@@ -236,11 +237,11 @@ class ProjectConfig:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ProjectConfig:
         """Create ProjectConfig from dictionary."""
-        src_dir = data.get("src_dir", "src/")
+        src_dir = canonical_dir(data.get("src_dir", "src/"))
         return cls(
             name=data.get("name", ""),
             src_dir=src_dir,
-            test_dir=data.get("test_dir", "tests"),
+            test_dir=canonical_dir(data.get("test_dir", "tests")),
             test_cmd=data.get("test_cmd", "pytest"),
             lint_cmd=data.get("lint_cmd", "ruff check ."),
             type_cmd=data["type_cmd"] if "type_cmd" in data else f"mypy {src_dir or '.'}",

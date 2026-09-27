@@ -649,7 +649,9 @@ def _cmd_export(config, args, path) -> int:
         else:
             src_dir = getattr(config.project, "src_dir", None)
             if src_dir:
-                scope_globs = [f"{src_dir.rstrip('/')}/**/*"]
+                from little_loops.config.dirs import dir_prefix
+
+                scope_globs = [f"{dir_prefix(src_dir)}**/*"]
             else:
                 print(
                     "Warning: no project.src_dir or decisions.export.scope_globs configured; "

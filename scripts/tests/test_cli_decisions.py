@@ -947,6 +947,48 @@ class TestDecisionsCLIExport:
         )
         assert any(e["path"] == "configured/**/*" for e in data["rules"])
 
+    def test_root_src_dir_emits_bare_glob_no_warning(
+        self,
+        temp_project_dir: Path,
+        decisions_path: Path,
+        sample_rule: RuleEntry,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """BUG-3631: root src_dir '.' emits '**/*' with no stderr warning."""
+        config: dict[str, Any] = {
+            "project": {"src_dir": "."},
+            "decisions": {"enabled": True, "log_path": ".ll/decisions.yaml"},
+        }
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(config))
+        save_decisions([sample_rule], decisions_path)
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "decisions",
+                "export",
+                "--target",
+                "ocr",
+                "--output-dir",
+                str(temp_project_dir),
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        data = json.loads(
+            (temp_project_dir / ".opencodereview" / "rule.json").read_text(encoding="utf-8")
+        )
+        assert any(e["path"] == "**/*" for e in data["rules"])
+        assert "Warning" not in capsys.readouterr().err
+
     def test_bad_output_path_returns_1(
         self,
         temp_project_dir: Path,

@@ -112,13 +112,20 @@ def _is_scan_relevant(path: str, focus_dirs: list[str], exclude_patterns: list[s
     ``focus_dirs`` is treated as "no scope restriction", preserving prior
     repo-wide behavior) and doesn't match any ``exclude_patterns`` entry.
     """
+    from little_loops.config.dirs import dir_prefix
     from little_loops.git_operations import file_matches_pattern
 
     if any(file_matches_pattern(path, pattern) for pattern in exclude_patterns):
         return False
     if not focus_dirs:
         return True
-    return any(path == d.rstrip("/") or path.startswith(d.rstrip("/") + "/") for d in focus_dirs)
+    for d in focus_dirs:
+        if not d:
+            continue
+        prefix = dir_prefix(d)
+        if prefix == "" or path == prefix[:-1] or path.startswith(prefix):
+            return True
+    return False
 
 
 def _sha256_file(path: Path) -> str | None:

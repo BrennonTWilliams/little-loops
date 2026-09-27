@@ -250,6 +250,52 @@ class TestSrcDirDetection:
         assert iv.value == python_template.data["project"]["src_dir"]
 
 
+class TestPyprojectSrcCandidateRootSpellings:
+    """BUG-3631: setuptools 'where' and tsconfig rootDir/include root spellings."""
+
+    def test_setuptools_where_dot_returns_root(self) -> None:
+        from little_loops.init.introspect import _pyproject_src_candidate
+
+        py_data = {"tool": {"setuptools": {"packages": {"find": {"where": ["."]}}}}}
+        assert _pyproject_src_candidate(py_data) == "."
+
+    def test_setuptools_where_nested_unchanged(self) -> None:
+        from little_loops.init.introspect import _pyproject_src_candidate
+
+        py_data = {"tool": {"setuptools": {"packages": {"find": {"where": ["src"]}}}}}
+        assert _pyproject_src_candidate(py_data) == "src/"
+
+    def test_tsconfig_root_dir_dot_returns_root(self, tmp_path: Path) -> None:
+        from little_loops.init.introspect import _tsconfig_src_candidate
+
+        (tmp_path / "tsconfig.json").write_text(json.dumps({"compilerOptions": {"rootDir": "."}}))
+        assert _tsconfig_src_candidate(tmp_path) == "."
+
+    def test_tsconfig_root_dir_dot_slash_returns_root(self, tmp_path: Path) -> None:
+        from little_loops.init.introspect import _tsconfig_src_candidate
+
+        (tmp_path / "tsconfig.json").write_text(json.dumps({"compilerOptions": {"rootDir": "./"}}))
+        assert _tsconfig_src_candidate(tmp_path) == "."
+
+    def test_tsconfig_root_dir_src_unchanged(self, tmp_path: Path) -> None:
+        from little_loops.init.introspect import _tsconfig_src_candidate
+
+        (tmp_path / "tsconfig.json").write_text(json.dumps({"compilerOptions": {"rootDir": "src"}}))
+        assert _tsconfig_src_candidate(tmp_path) == "src/"
+
+    def test_tsconfig_include_glob_returns_root(self, tmp_path: Path) -> None:
+        from little_loops.init.introspect import _tsconfig_src_candidate
+
+        (tmp_path / "tsconfig.json").write_text(json.dumps({"include": ["**/*.ts"]}))
+        assert _tsconfig_src_candidate(tmp_path) == "."
+
+    def test_tsconfig_include_src_dir_unchanged(self, tmp_path: Path) -> None:
+        from little_loops.init.introspect import _tsconfig_src_candidate
+
+        (tmp_path / "tsconfig.json").write_text(json.dumps({"include": ["src/**/*"]}))
+        assert _tsconfig_src_candidate(tmp_path) == "src/"
+
+
 class TestTestDirDetection:
     """ENH-3495: project.test_dir must be introspected next to src_dir."""
 

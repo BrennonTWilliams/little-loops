@@ -1514,15 +1514,26 @@ class WorkerPool:
         # Find new files that appeared during worker execution
         new_files = current_files - baseline_status
 
+        from little_loops.config.dirs import dir_prefix
+
         # Filter to files likely related to this issue
         issue_id_lower = issue_id.lower()
         leaked_files: list[str] = []
+        root_layout_matches: list[str] = []
+
+        # A root src_dir/test_dir ('.') means "the whole repo" and must NOT be
+        # added to source_prefixes: an empty prefix would match every path via
+        # startswith(""), bypassing the .issues/ cross-worker check below and
+        # widening _cleanup_leaked_files (git checkout/unlink) to any file in
+        # the shared main checkout. Root matches are reported, never cleaned.
+        configured_dirs = [self.br_config.project.src_dir, self.br_config.project.test_dir]
+        root_layout = any(d and dir_prefix(d) == "" for d in configured_dirs)
 
         # Build source prefix list: start with common fallbacks, then add configured dirs
         source_prefixes = ["backend/", "src/", "lib/", "tests/"]
-        for dir_path in [self.br_config.project.src_dir, self.br_config.project.test_dir]:
-            if dir_path:
-                normalized = dir_path.rstrip("/") + "/"
+        for dir_path in configured_dirs:
+            if dir_path and dir_prefix(dir_path):
+                normalized = dir_prefix(dir_path)
                 if normalized not in source_prefixes:
                     source_prefixes.append(normalized)
 
@@ -1551,6 +1562,14 @@ class WorkerPool:
             elif file_path.startswith((".issues/", "issues/")):
                 if not self._has_other_issue_id(file_lower, issue_id_lower):
                     leaked_files.append(file_path)
+            elif root_layout:
+                root_layout_matches.append(file_path)
+
+        if root_layout_matches:
+            self.logger.warning(
+                f"{issue_id}: {len(root_layout_matches)} new file(s) match root-layout "
+                f"src_dir/test_dir, not auto-discarded: {root_layout_matches}"
+            )
 
         return leaked_files
 

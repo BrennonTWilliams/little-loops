@@ -410,7 +410,9 @@ start repo-wide (`paths=[]`); scope them afterward by editing the fragment.
 
 **Repo-wide scope.** Rules with no `paths` are scoped to `project.src_dir` by
 default (not `**/*`), overridable via `--scope-glob` (repeatable) or the
-`decisions.export.scope_globs` config key:
+`decisions.export.scope_globs` config key. A root `src_dir` (`.` or `./`)
+emits `**/*` with no stderr warning — the warning is reserved for an
+*unset* `src_dir`:
 
 ```bash
 ll-issues decisions export --target ocr --scope-glob 'scripts/**/*'
@@ -590,7 +592,7 @@ The decisions feature has a small config namespace in `.ll/ll-config.json`. Defa
 | `decisions.enabled` | `false` | Feature gate for the decisions log and its CLI surface. It does **not** gate the automation pause: neither `ll-auto` nor `ll-parallel` reads this key, and an issue with `decision_needed: true` in its frontmatter pauses automation whether or not this is set |
 | `decisions.log_path` | `".ll/decisions.yaml"` | Path to the legacy flat file. The per-entry fragment directory is **derived** from this — always `log_path`'s sibling with a `.d` suffix (`.ll/decisions.d/`) — and is not independently configurable (BUG-2647, Option A) |
 | `decisions.auto_generate` | `[]` | Issue type prefixes to auto-generate entries from when `ll-issues decisions generate` runs (e.g., `["FEAT", "ENH"]` skips BUG entries) |
-| `decisions.export.scope_globs` | `[]` | Target-agnostic glob(s) that repo-wide required rules are scoped to on `ll-issues decisions export` (FEAT-3485). Empty falls through to `project.src_dir`, then `**/*`. Overridable per-invocation with `--scope-glob` |
+| `decisions.export.scope_globs` | `[]` | Target-agnostic glob(s) that repo-wide required rules are scoped to on `ll-issues decisions export` (FEAT-3485). Empty falls through to `project.src_dir` (a root `src_dir` of `.`/`./` emits `**/*`), then `**/*` if `src_dir` is unset. Overridable per-invocation with `--scope-glob` |
 
 ---
 

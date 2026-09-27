@@ -10,6 +10,7 @@ import fnmatch
 from dataclasses import dataclass, field
 from typing import Any
 
+from little_loops.config.dirs import canonical_dir
 from little_loops.text_utils import DEFAULT_UNTRACKED_BY_DESIGN
 
 
@@ -351,7 +352,7 @@ class ScanConfig:
     def from_dict(cls, data: dict[str, Any]) -> ScanConfig:
         """Create ScanConfig from dictionary."""
         return cls(
-            focus_dirs=data.get("focus_dirs", ["src/", "tests/"]),
+            focus_dirs=[canonical_dir(d) for d in data.get("focus_dirs", ["src/", "tests/"])],
             exclude_patterns=data.get(
                 "exclude_patterns",
                 ["**/node_modules/**", "**/__pycache__/**", "**/.git/**"],

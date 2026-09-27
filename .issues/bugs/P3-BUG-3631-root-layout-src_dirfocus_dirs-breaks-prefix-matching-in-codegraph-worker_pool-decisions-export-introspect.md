@@ -4,11 +4,12 @@ type: BUG
 title: Root-layout '.' src_dir/focus_dirs breaks prefix matching in codegraph, worker_pool,
   decisions export, and ll-init introspection
 priority: P3
-status: open
+status: done
 verify_verdict: EVIDENCE_UNVERIFIED
 discovered_by: ll-issues-create
 discovered_date: '2026-09-27'
 captured_at: '2026-09-27T05:09:09Z'
+completed_at: '2026-09-27T09:23:44Z'
 blocks:
 - ENH-3616
 reconcile_attempted: true
@@ -192,22 +193,38 @@ Existing tests that must keep passing: `test_worker_pool.py::test_detect_main_re
 
 ## Acceptance Criteria
 
-- [ ] `canonical_dir`: `.`, `./`, `.//`, `/` → `.`; `./src/` → `src/`; `./src` → `src`; `src/` → `src/`; `src` → `src`; `""` → `""`; `..` → `..`; `../x` → `../x`.
-- [ ] `dir_prefix`: `.`, `./`, `/` → `""`; `src`, `src/`, `./src` → `src/`; `""` raises `ValueError`.
-- [ ] `ProjectConfig.from_dict` and `ScanConfig.from_dict` store canonical values; `src/`, `scripts/`, `tests` round-trip unchanged.
-- [ ] `_is_scan_relevant` returns True for a root file (`main.go`) and a file nested one dir deep, with `focus_dirs` `["."]` and `["./"]`; False when an exclude pattern matches; `["src/"]` still matches the bare path `src` and a file under it but not a file under a sibling dir named `srcx`; `[""]` matches nothing.
-- [ ] `_dotted_candidates("pkg/b.py", ".")` returns `["pkg.b"]` (pin).
-- [ ] With `src_dir: "."`, a new root-level `main.go` is NOT in `_detect_main_repo_leaks`' return value and IS named in a `logger.warning` call; same with `test_dir: "."`.
-- [ ] With `src_dir: "."`, a new issue file under `.issues/bugs` whose name carries a different issue ID is not returned; a new file containing the worker's own issue ID is returned; a new `.py` file under the `src` fallback prefix is returned.
-- [ ] Decisions export with no configured scope globs emits `["**/*"]` and no stderr warning for `src_dir` `.` and `./`; `src/` and `src` emit `["src/**/*"]`.
-- [ ] Introspection: pyproject `where = ["."]` → `src_dir` `"."`; tsconfig `rootDir` `"."` and `"./"` → `"."`; tsconfig `include: ["**/*.ts"]` → `"."`; `include: ["src/**/*"]` → `"src/"`; `rootDir: "src"` → `"src/"`.
-- [ ] API.md, CONFIGURATION.md (`src_dir`, `test_dir`, `focus_dirs` rows), DECISIONS_LOG_GUIDE.md (`:411-413`, `:593`) and CLI.md `:3238` describe `.` as repo root.
-- [ ] `python -m pytest scripts/tests/` exits 0.
+- [x] `canonical_dir`: `.`, `./`, `.//`, `/` → `.`; `./src/` → `src/`; `./src` → `src`; `src/` → `src/`; `src` → `src`; `""` → `""`; `..` → `..`; `../x` → `../x`.
+- [x] `dir_prefix`: `.`, `./`, `/` → `""`; `src`, `src/`, `./src` → `src/`; `""` raises `ValueError`.
+- [x] `ProjectConfig.from_dict` and `ScanConfig.from_dict` store canonical values; `src/`, `scripts/`, `tests` round-trip unchanged.
+- [x] `_is_scan_relevant` returns True for a root file (`main.go`) and a file nested one dir deep, with `focus_dirs` `["."]` and `["./"]`; False when an exclude pattern matches; `["src/"]` still matches the bare path `src` and a file under it but not a file under a sibling dir named `srcx`; `[""]` matches nothing.
+- [x] `_dotted_candidates("pkg/b.py", ".")` returns `["pkg.b"]` (pin).
+- [x] With `src_dir: "."`, a new root-level `main.go` is NOT in `_detect_main_repo_leaks`' return value and IS named in a `logger.warning` call; same with `test_dir: "."`.
+- [x] With `src_dir: "."`, a new issue file under `.issues/bugs` whose name carries a different issue ID is not returned; a new file containing the worker's own issue ID is returned; a new `.py` file under the `src` fallback prefix is returned.
+- [x] Decisions export with no configured scope globs emits `["**/*"]` and no stderr warning for `src_dir` `.` and `./`; `src/` and `src` emit `["src/**/*"]`.
+- [x] Introspection: pyproject `where = ["."]` → `src_dir` `"."`; tsconfig `rootDir` `"."` and `"./"` → `"."`; tsconfig `include: ["**/*.ts"]` → `"."`; `include: ["src/**/*"]` → `"src/"`; `rootDir: "src"` → `"src/"`.
+- [x] API.md, CONFIGURATION.md (`src_dir`, `test_dir`, `focus_dirs` rows), DECISIONS_LOG_GUIDE.md (`:411-413`, `:593`) and CLI.md `:3238` describe `.` as repo root.
+- [x] `python -m pytest scripts/tests/` exits 0.
 
 ## Related
 
 - Blocks ENH-3616 (which will emit `.` for Python/JS/generic flat layouts and owns the `_introspect_focus_dirs` rework).
 - BUG-3635 — `commands/manage-release.md` version-file paths (split out of this issue).
+
+## Resolution
+
+Implemented exactly per the issue's Proposed Solution / Integration Map / Program Design,
+TDD (Red confirmed via `AssertionError`, then Green) for each of the six steps:
+
+1. New `little_loops.config.dirs` module: `canonical_dir` / `dir_prefix`.
+2. `ProjectConfig.from_dict` / `ScanConfig.from_dict` canonicalize `src_dir`/`test_dir`/`focus_dirs`.
+3. `codegraph._is_scan_relevant` uses `dir_prefix`; root focus dir matches all non-excluded paths.
+4. `WorkerPool._detect_main_repo_leaks`: root-layout matches are logged via `self.logger.warning` and excluded from the returned/cleaned list; non-root behavior unchanged.
+5. `decisions._cmd_export`: root `src_dir` emits `**/*` via `dir_prefix`, no stderr warning.
+6. `init.introspect._pyproject_src_candidate` / `_tsconfig_src_candidate`: root spellings (`where=["."]`, `rootDir="."`/`"./"`, glob-only `include`) now yield `"."` instead of `"./"`, `"/"`, or `"**/"`.
+
+Docs updated: API.md, CONFIGURATION.md, DECISIONS_LOG_GUIDE.md, CLI.md. No `## Program Design` deviations — implementation matched signatures and call path exactly.
+
+`python -m pytest scripts/tests/` — 26774 passed, 292 skipped, 0 failed. `ruff check` / `ruff format` clean on all touched files. `mypy` clean on all touched files (4 pre-existing unrelated errors in `cli/loop/cleanup.py`, not touched by this change).
 
 ## Status
 
@@ -215,6 +232,8 @@ Existing tests that must keep passing: `test_worker_pool.py::test_detect_main_re
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-27T09:23:29 - `db33ed95-0e89-4759-8500-fe1504603e16.jsonl`
+- `/ll:ready-issue` - 2026-09-27T08:58:41 - `ea2ab64e-2a96-4f57-af40-01b5a89fd3bc.jsonl`
 - `/ll:confidence-check` - 2026-09-27T06:24:00 - `d1ce99b0-6533-4a9f-af3f-f35128797a41.jsonl`
 - `/ll:confidence-check` - 2026-09-27T05:57:53 - `d9cc873e-f17d-4bf9-b8ac-9770c6d93a16.jsonl`
 - `/ll:refine-issue:gap-analysis` - 2026-09-27T05:43:06 - `bf6e1e8c-2c0c-4865-99bf-f1fcae8fc265.jsonl`

@@ -149,6 +149,74 @@ class TestProjectConfig:
         assert config.health_url is None
         assert "conftest.py" in config.test_patterns
 
+    @pytest.mark.parametrize("root_spelling", [".", "./", ".//", "/"])
+    def test_from_dict_canonicalizes_root_src_dir(self, root_spelling: str) -> None:
+        """BUG-3631: any root spelling of src_dir/test_dir stores as '.'."""
+        config = ProjectConfig.from_dict({"src_dir": root_spelling, "test_dir": root_spelling})
+        assert config.src_dir == "."
+        assert config.test_dir == "."
+
+    def test_from_dict_root_src_dir_type_cmd_default(self) -> None:
+        """BUG-3631: type_cmd default derives from the canonical root src_dir."""
+        config = ProjectConfig.from_dict({"src_dir": "."})
+        assert config.type_cmd == "mypy ."
+
+    @pytest.mark.parametrize(
+        "src_dir",
+        ["src/", "scripts/", "tests"],
+    )
+    def test_from_dict_non_root_src_dir_round_trips(self, src_dir: str) -> None:
+        """BUG-3631: non-root src_dir values are unchanged by canonicalization."""
+        config = ProjectConfig.from_dict({"src_dir": src_dir})
+        assert config.src_dir == src_dir
+
+
+class TestDirsCanonicalDir:
+    """BUG-3631: little_loops.config.dirs.canonical_dir."""
+
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [
+            (".", "."),
+            ("./", "."),
+            (".//", "."),
+            ("/", "."),
+            ("./src/", "src/"),
+            ("./src", "src"),
+            ("src/", "src/"),
+            ("src", "src"),
+            ("", ""),
+            ("..", ".."),
+            ("../x", "../x"),
+        ],
+    )
+    def test_canonical_dir_table(self, value: str, expected: str) -> None:
+        from little_loops.config.dirs import canonical_dir
+
+        assert canonical_dir(value) == expected
+
+
+class TestDirsDirPrefix:
+    """BUG-3631: little_loops.config.dirs.dir_prefix."""
+
+    @pytest.mark.parametrize("value", [".", "./", "/"])
+    def test_dir_prefix_root_is_empty(self, value: str) -> None:
+        from little_loops.config.dirs import dir_prefix
+
+        assert dir_prefix(value) == ""
+
+    @pytest.mark.parametrize("value", ["src", "src/", "./src"])
+    def test_dir_prefix_non_root(self, value: str) -> None:
+        from little_loops.config.dirs import dir_prefix
+
+        assert dir_prefix(value) == "src/"
+
+    def test_dir_prefix_empty_raises(self) -> None:
+        from little_loops.config.dirs import dir_prefix
+
+        with pytest.raises(ValueError, match="dir_prefix"):
+            dir_prefix("")
+
 
 class TestIssuesConfig:
     """Tests for IssuesConfig dataclass."""
@@ -740,6 +808,11 @@ class TestScanConfig:
         assert "**/node_modules/**" in config.exclude_patterns
         assert "**/__pycache__/**" in config.exclude_patterns
         assert config.custom_agents == []
+
+    def test_from_dict_canonicalizes_focus_dirs(self) -> None:
+        """BUG-3631: root spellings and leading './' in focus_dirs are canonicalized."""
+        config = ScanConfig.from_dict({"focus_dirs": ["./", "./src/", "tests/"]})
+        assert config.focus_dirs == [".", "src/", "tests/"]
 
 
 class TestSprintsConfig:

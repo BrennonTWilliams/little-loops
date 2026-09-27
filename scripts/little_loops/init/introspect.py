@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
+from little_loops.config.dirs import canonical_dir
 from little_loops.init.detect import TemplateMatch
 
 Provenance = Literal["declared", "inferred", "default"]
@@ -645,7 +646,8 @@ def _pyproject_src_candidate(py_data: dict[str, Any] | None) -> str | None:
     setuptools = tool.get("setuptools", {}).get("packages", {}).get("find", {})
     where = setuptools.get("where")
     if where:
-        return f"{where[0].rstrip('/')}/"
+        c = canonical_dir(str(where[0]))
+        return "." if c == "." else f"{c.rstrip('/')}/"
     hatch = tool.get("hatch", {}).get("build", {})
     for key in ("include", "packages"):
         entries = hatch.get(key)
@@ -666,10 +668,15 @@ def _tsconfig_src_candidate(root: Path) -> str | None:
     compiler_options = data.get("compilerOptions", {})
     root_dir = compiler_options.get("rootDir")
     if root_dir:
-        return f"{root_dir.strip('./').split('/')[0]}/"
+        c = canonical_dir(root_dir)
+        if c == ".":
+            return "."
+        return f"{c.split('/')[0]}/"
     include = data.get("include")
     if include:
         first = str(include[0]).lstrip("./").split("/")[0]
+        if any(ch in first for ch in "*?["):
+            return "."
         if first:
             return f"{first}/"
     return None

@@ -221,6 +221,55 @@ def _write_config(repo: Path, staleness: str = "warn", src_dir: str | None = Non
     (ll_dir / "ll-config.json").write_text(json.dumps(config), encoding="utf-8")
 
 
+class TestIsScanRelevant:
+    """BUG-3631: _is_scan_relevant with root ('.'/'./') focus_dirs."""
+
+    def test_root_focus_dir_matches_root_file(self) -> None:
+        from little_loops.codequery.codegraph import _is_scan_relevant
+
+        assert _is_scan_relevant("main.go", ["."], []) is True
+
+    def test_root_focus_dir_dot_slash_matches_root_file(self) -> None:
+        from little_loops.codequery.codegraph import _is_scan_relevant
+
+        assert _is_scan_relevant("main.go", ["./"], []) is True
+
+    def test_root_focus_dir_matches_nested_file(self) -> None:
+        from little_loops.codequery.codegraph import _is_scan_relevant
+
+        assert _is_scan_relevant("pkg/sub/file.go", ["."], []) is True
+
+    def test_root_focus_dir_still_honors_exclude(self) -> None:
+        from little_loops.codequery.codegraph import _is_scan_relevant
+
+        assert _is_scan_relevant("vendor/lib.go", ["."], ["vendor/"]) is False
+
+    def test_non_root_focus_dir_matches_bare_dir_and_nested_file(self) -> None:
+        from little_loops.codequery.codegraph import _is_scan_relevant
+
+        assert _is_scan_relevant("src", ["src/"], []) is True
+        assert _is_scan_relevant("src/file.py", ["src/"], []) is True
+
+    def test_non_root_focus_dir_does_not_match_sibling_prefix(self) -> None:
+        from little_loops.codequery.codegraph import _is_scan_relevant
+
+        assert _is_scan_relevant("srcx/file.py", ["src/"], []) is False
+
+    def test_empty_string_focus_dir_matches_nothing(self) -> None:
+        from little_loops.codequery.codegraph import _is_scan_relevant
+
+        assert _is_scan_relevant("main.go", [""], []) is False
+
+
+class TestDottedCandidatesRootSrcDir:
+    """BUG-3631 pin: _dotted_candidates already correct for root src_dir '.'."""
+
+    def test_dotted_candidates_root_src_dir(self) -> None:
+        from little_loops.codequery.codegraph import _dotted_candidates
+
+        assert _dotted_candidates("pkg/b.py", ".") == ["pkg.b"]
+
+
 class TestSchemaGuard:
     def test_pinned_columns_present_in_fixture(self, tmp_path: Path) -> None:
         db_path = tmp_path / "codegraph.db"
