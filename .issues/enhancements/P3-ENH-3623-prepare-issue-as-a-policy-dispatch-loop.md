@@ -17,7 +17,7 @@ relates_to:
 blocks:
 - ENH-3600
 - ENH-3590
-confidence_score: 70
+confidence_score: 85
 outcome_confidence: 58
 score_complexity: 5
 score_test_coverage: 25
@@ -544,9 +544,9 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-09-27_
+_Added by `/ll:confidence-check` on 2026-09-27; re-scored 2026-09-26 (Dependencies override cleared)_
 
-**Readiness Score**: 70/100 → STOP — ADDRESS GAPS (Dependencies hard override; raw sum is PROCEED WITH CAUTION)
+**Readiness Score**: 85/100 → PROCEED WITH CAUTION
 **Outcome Confidence**: 58/100 → LOW
 
 ### Concerns
@@ -554,13 +554,14 @@ _Added by `/ll:confidence-check` on 2026-09-27_
 - Phase A/B/C phasing is stated, but only Phase A is safe to start alone; the atomic cutover (Phase B) is where the risk sits.
 
 ### Gaps to Address
-- ~~`blocked_by: ENH-3625` is `open`~~ Stale: BUG-3624 and ENH-3625 are both `done`, and the `blocked_by` edges were removed (2026-09-27 review). Re-run `/ll:confidence-check` to clear the Dependencies override.
+- None blocking. The prior Dependencies override is cleared: no `blocked_by` remains, and BUG-3624, ENH-3625, ENH-3621, BUG-3620 and BUG-3622 are all `done` (BUG-3628 is `open` but only `relates_to`).
 
 ### Outcome Risk Factors
 - Deep per-site complexity: replaces the second-pass routing of the most-used loop (`prepare-issue.yaml` in place, 42 autodev deletions), with all projects on this machine `local-editable`, so a half-landed cutover breaks tooling everywhere.
 - Broad enumeration across 16+ sites (new module, `cli/issues`, two loop YAMLs, `run_record.py`, ~15 test files, ~8 docs, skill mirrors) and 11+ dependents, with a spike-parity that is coverage-bounded (~25 inline predicates re-implemented).
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-27T04:31:27 - `783ea3bb-f6c1-4581-a4e3-94421a4eb0f1.jsonl`
 - `/ll:ready-issue` - 2026-09-27T04:16:14 - `cc063681-f3cf-42c2-b056-46a3321df1ee.jsonl`
 - `/ll:confidence-check` - 2026-09-27T03:42:23 - `7853641e-1dad-4830-bad1-b40be31584c3.jsonl`
 - `/ll:wire-issue` - 2026-09-27T02:33:29 - `951684ed-7b41-4bf8-9307-a4474a28eb29.jsonl`

@@ -52,7 +52,11 @@ state consults a stronger or different model before the issue is handed back as 
   for the advisor.
 - **One consult per run.** The done chain can be re-entered after `run_spike` or a decide
   re-score; a per-run marker (`${context.run_dir}/advise-consulted-<ID>`) makes the gate skip
-  a second consult, so an issue is never consulted twice in one run.
+  a second consult, so an issue is never consulted twice in one run. **Scope note:** a child
+  loop inherits the parent's `run_dir` (`fsm/executor.py:1151-1152`, `setdefault`), so under
+  `recursive-refine`/`prepare-issue` the marker lives in the parent's run directory and the
+  guarantee is "once per issue per top-level run". This is intended (the ID-keyed marker never
+  crosses issues) and is pinned by a test.
 
 ## Motivation
 
@@ -65,15 +69,21 @@ are not redundant.
 
 ## Proposed Solution
 
-**Shared helper (land first).** A Python entry point (e.g. an `ll-issues` subcommand;
-name TBD) that:
+**Shared helper (land first).** A Python entry point, `ll-issues advise-consult <ID> --run-dir <dir>`, that:
 
-1. Runs `ll-advise --signal <signal> --question <q> --context-file <issue> --json` with
-   `LL_ISSUE_ID=<ID>` so it bills the per-issue budget bucket.
+1. Runs `ll-advise --signal refine_ready --question <q> --context-file <issue> --json` with
+   `LL_ISSUE_ID=<ID>` so it bills the per-issue budget bucket, under a hard subprocess
+   timeout (default 120s, `--timeout` override). A timeout kills the child and maps to
+   SKIPPED (`rc` file records `timeout`).
+   **Question text (pinned; the mapping depends on it):** _"Is this issue ready to implement
+   as written? Begin your answer with exactly one word, PROCEED or VETO, then give the
+   reason. VETO only for a concrete defect that would make implementation fail or be
+   wasted; otherwise PROCEED."_ ENH-3590 passes its own signal/question via `--signal` /
+   `--question` overrides.
 2. Writes `<run_dir>/advise-<ID>.{json,err,rc}`.
 3. Maps the result to PROCEED/VETO/SKIPPED: missing or non-zero rc, or missing or
    unparseable JSON → SKIPPED (log the skip reason; emit a WARNING line for
-   `not_configured`); the leading word of `recommendation`, uppercased with punctuation
+   `not_configured`; log `timeout`); the leading word of `recommendation`, uppercased with punctuation
    stripped, equal to `VETO` → VETO; anything else → PROCEED. `confidence` and `dissent`
    are logged but never routed on.
 4. Always exits 0 and prints a single routing token (`PROCEED`/`VETO`/`SKIPPED`) that the
@@ -83,19 +93,19 @@ name TBD) that:
    advisor's own stdout.
 
 ENH-3590's consult (a policy step once ENH-3623 lands) calls the same helper with its own
-signal and question.
+`--signal`/`--question`.
 
 **Loop wiring in `refine-to-ready-issue.yaml`:**
 
 ```
 check_proof_before_done --on_no/on_error--> check_advise_ready_enabled   # was write_done_record
-check_advise_ready_enabled --on_no/on_error--> write_done_record          # flag off, or already consulted this run
+check_advise_ready_enabled --on_no/on_error--> write_done_record          # flag `advise_ready` empty, or already consulted this run
                            --on_yes--> run_advise_ready   # touches advise-consulted-<ID> first
 run_advise_ready --PROCEED/SKIPPED--> write_done_record
                  --VETO--> record_advisor_veto  # writes gate_unmet, echoes [ADVISOR_VETO], next: failed
 ```
 
-State names are proposals. The flag is an empty-string context key (autodev's
+State names are proposals. The flag is the empty-string context key `advise_ready` (autodev's
 `skip_learning_gate: ""` idiom, gated with `[ -n ... ]`), declared in every loop that
 passes it down.
 
@@ -129,6 +139,17 @@ _Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
 | B — reuse legacy class | 3 | 3 | 2 | 3 | 11/12 |
 
 **Key evidence:** `run_record.py:46-50,215-217` (existing `gate_unmet`/`quality` mapping); `autodev.yaml:685` (classify table enumerates the full closed vocabulary); the issue's own **Recommended** marker for Option B.
+
+**`record_advisor_veto` contract (mirror `record_gate_unmet`, `refine-to-ready-issue.yaml:1136-1148`):**
+1. `printf 'gate_unmet' > ${context.run_dir}/refine-terminal-class` — required: autodev's
+   MISSING fallback reads this file, so omitting it loses the class.
+2. `ll-issues run-record write <ID> --run-dir ... --writer refine-to-ready-issue --legacy-class gate_unmet || true`.
+3. Echo `[ADVISOR_VETO] <ID> - <recommendation>`.
+4. **Make the veto actionable:** append the advisor's recommendation to the issue file as an
+   `## Advisor Veto` note (replace any prior one; `ll-issues` writer or the helper's
+   `--write-note`), so a human or the next refine pass sees why. The issue already passed every
+   deterministic gate, so re-refining without this note changes nothing.
+5. `next: failed`, `on_error: failed`.
 
 **Follow-through (resolved in review):** the class is `gate_unmet` (→ deferred). `record_gate_unmet` itself is not reused: its message is specific to structure gates. A new `record_advisor_veto` state writes the same `gate_unmet` legacy class with an accurate `[ADVISOR_VETO]` message, then `next: failed`. No vocabulary change.
 
@@ -213,10 +234,10 @@ _Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
 
 ## Implementation Steps
 
-1. Build and test the shared helper (verdict mapping, persistence, always-exit-0 token contract, `LL_ISSUE_ID` on the child env, unreadable `--context-file` → SKIPPED).
-2. (Decided) Veto class = `gate_unmet` via a new `record_advisor_veto` state; recommendation surfaced as an `[ADVISOR_VETO]` echo plus the persisted payload.
-3. Wire `check_advise_ready_enabled` (flag + one-shot marker), `run_advise_ready` (`classify` + `route:`), and `record_advisor_veto` into `refine-to-ready-issue.yaml`; bump `max_steps` and update the header diagram/history; add the flag to `autodev.yaml` and `recursive-refine.yaml` `context:` and `refine-to-ready-issue.yaml` `context:`.
-4. Tests: default-off chain reaches `write_done_record` without invoking `ll-advise`; VETO/PROCEED/SKIPPED routing; failure = flag off; second done-chain pass does not re-consult; subprocess env carries `LL_ISSUE_ID`; existing callers treat the veto as deferred.
+1. Build and test the shared helper `ll-issues advise-consult` (verdict mapping, persistence, always-exit-0 token contract, `LL_ISSUE_ID` on the child env, unreadable `--context-file` → SKIPPED, subprocess timeout → SKIPPED, pinned question text).
+2. (Decided) Veto class = `gate_unmet` via a new `record_advisor_veto` state that writes `refine-terminal-class`, the run-record (`|| true`), the `[ADVISOR_VETO]` echo, and an `## Advisor Veto` note on the issue; add the state to `LEGACY_CLASS_STATES`/`TERMINAL_BEARING_STATES` in `test_run_record.py`.
+3. Wire `check_advise_ready_enabled` (flag + one-shot marker), `run_advise_ready` (`classify` + `route:`), and `record_advisor_veto` into `refine-to-ready-issue.yaml`; bump `max_steps` and update the header diagram/history; add the `advise_ready: ""` flag to `autodev.yaml` and `recursive-refine.yaml` `context:` and `refine-to-ready-issue.yaml` `context:`.
+4. Tests: budget exhausted (`ll-advise` exit 2) → SKIPPED → `write_done_record`; helper timeout → SKIPPED; marker scope (same ID twice under a shared `run_dir` → one consult; two IDs → two); veto writes `refine-terminal-class`; veto adds the note; default-off chain reaches `write_done_record` without invoking `ll-advise`; VETO/PROCEED/SKIPPED routing; failure = flag off; second done-chain pass does not re-consult; subprocess env carries `LL_ISSUE_ID`; existing callers treat the veto as deferred.
 5. `ll-loop validate` for every touched loop.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
@@ -265,7 +286,9 @@ _None outstanding._ Resolved in review:
 - [ ] With the flag set, a threshold-passing issue gets exactly one consult per run (including when the done chain is re-entered after `run_spike` or a decide re-score), billed to the per-issue budget via `LL_ISSUE_ID` set by the helper on the child process
 - [ ] The payload, stderr, and exit code are persisted to `<run_dir>/advise-<ID>.{json,err,rc}` and mapped by the shared helper; the loop routes on the helper's token, never on the advisor's stdout
 - [ ] VETO keeps the issue out of `done`, records `gate_unmet` (→ deferred) via `record_advisor_veto`, echoes an `[ADVISOR_VETO]` line with the recommendation, and existing callers handle it with no edits
-- [ ] Any `ll-advise` failure behaves exactly like the flag being off; the loop never halts or waits on an advisor rate limit
+- [ ] Any `ll-advise` failure (non-zero exit, timeout, budget exhaustion, unparseable output) behaves exactly like the flag being off; the loop never halts or waits on an advisor rate limit
+- [ ] `record_advisor_veto` writes `refine-terminal-class` = `gate_unmet` and appends an `## Advisor Veto` note carrying the recommendation
+- [ ] The consult question text is pinned in the helper and a fixture test maps the real `ll-advise --json` output shape to PROCEED/VETO
 - [ ] ENH-3590 can reuse the helper unchanged
 
 ## Related Key Documentation
