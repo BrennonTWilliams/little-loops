@@ -2385,7 +2385,7 @@ ll-issues arm-proposal-revision BUG-3574
 
 Report the unmet preparation obligation for one issue (FEAT-3598). Deterministic: no LLM calls, no file writes. Composes the existing readiness gates in the order the `refine-to-ready-issue` loop routes on them, in three tiers:
 
-1. **Pre-score gates** (first unmet wins): `FORMAT`, `VERIFY`, `HEDGES` (open questions **or** unresolved option sets, the same predicate as `check-open-questions`), `PLACEHOLDERS`, `ACCEPTANCE_CRITERIA`, `DESIGN`. `VERIFY` carries a `sub_reason`: `absent`, `EVIDENCE_UNVERIFIED`, `PROPOSAL_UNSOUND`, `DIRECTIVE_DRIFT` or `other`.
+1. **Pre-score gates** (first unmet wins): `FORMAT`, `VERIFY`, `HEDGES` (open questions **or** unresolved option sets, the same predicate as `check-open-questions`), `PLACEHOLDERS`, `ACCEPTANCE_CRITERIA`, `DESIGN`. `VERIFY` carries a `sub_reason`: `absent`, `EVIDENCE_UNVERIFIED`, `PROPOSAL_UNSOUND`, `DIRECTIVE_DRIFT`, `CLAIMS_OUTDATED` (BUG-3637: a claim-correctable `OUTDATED`/`NEEDS_UPDATE` finding, distinct from the `other` collapse) or `other`.
 2. **Scores** (`SCORES`): `absent`, `readiness_below`, or (via tier 3) `outcome_below`. Passing scores return `NONE` even when `decision_needed` or spike flags are set.
 3. **Low-outcome diagnosis**, only when readiness passes and outcome is below threshold: `DECISION`, `PROOF` (`sub_reason` = `absent`/`stale`/`refuted`), `ARTIFACTS`; otherwise `SCORES:outcome_below`.
 
@@ -2574,7 +2574,7 @@ ENH-3623 Phase B wires it into `prepare-issue.yaml`.
 
 #### `ll-issues check-verify-verdict`
 
-Exit 0 if the issue's persisted `verify_verdict` is `VALID`, 1 if it is `NON_VALID` (ENH-3031), 3 if it is **absent** (BUG-3571 — no evidence, an abstention rather than a pass). It writes `VERIFY_VERDICT_NON_VALID` / `VERIFY_VERDICT_ABSENT` to stderr so an FSM evaluator can route on the reason rather than the bare exit code. Pair it with `ll-issues clear-verify-verdict <ID>`, which removes the field before `/ll:verify-issues --check` so only a verdict from the current call can pass.
+Exit 0 if the issue's persisted `verify_verdict` is `VALID`, 1 if it is `NON_VALID` (ENH-3031) — which also covers `EVIDENCE_UNVERIFIED`, `PROPOSAL_UNSOUND`, `DIRECTIVE_DRIFT`, and `CLAIMS_OUTDATED` (BUG-3637) in the default mode, each of which has its own query flag or is read via `ll-issues next-obligation` instead — 3 if it is **absent** (BUG-3571 — no evidence, an abstention rather than a pass). It writes `VERIFY_VERDICT_NON_VALID` / `VERIFY_VERDICT_ABSENT` to stderr so an FSM evaluator can route on the reason rather than the bare exit code. Pair it with `ll-issues clear-verify-verdict <ID>`, which removes the field before `/ll:verify-issues --check` so only a verdict from the current call can pass.
 
 | Argument | Description |
 |----------|-------------|

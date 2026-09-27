@@ -151,6 +151,7 @@ To apply project-wide defaults, set `commands.confidence_gate.readiness_threshol
 | `VERIFY:absent` | `check_verify_retries` (one retry, then `mark_evidence_absent_infra`, terminal class `infra`) |
 | `VERIFY:PROPOSAL_UNSOUND` | `check_proposal_revision_budget` (BUG-3574) |
 | `VERIFY:DIRECTIVE_DRIFT`, `ACCEPTANCE_CRITERIA` | `check_reconcile_limit` (one `reconcile_issue` pass) |
+| `VERIFY:CLAIMS_OUTDATED` | `check_claim_correction_budget` (BUG-3637; one `correct_claims` pass, own counter — exhausted routes directly to `record_gate_unmet`, never `check_gate_refine_limit`, since `refine_followup` is additive-only and cannot fix a stale claim) |
 | `VERIFY:EVIDENCE_UNVERIFIED`, `VERIFY:other`, `PLACEHOLDERS`, `DESIGN` | `check_gate_refine_limit` |
 | `HEDGES` | `check_hedge_attempts` |
 | empty output (selector exit 2) or executor error | `mark_evidence_absent_infra` |

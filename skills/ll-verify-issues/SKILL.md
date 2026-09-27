@@ -10,6 +10,7 @@ allowed-tools:
   - Bash(git:*)
   - Bash(ll-code:*)
   - Bash(ll-verify-evidence:*)
+  - Bash(ll-issues:*)
 disable-model-invocation: true
 metadata:
   short-description: Verify issue files for accuracy, relevance, and completeness by testing...

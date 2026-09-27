@@ -239,5 +239,5 @@ class TestChildProofBeforeDone:
 
     def test_max_steps_raised(self) -> None:
         assert (
-            yaml.safe_load((LOOPS / "refine-to-ready-issue.yaml").read_text())["max_steps"] == 100
+            yaml.safe_load((LOOPS / "refine-to-ready-issue.yaml").read_text())["max_steps"] == 110
         )

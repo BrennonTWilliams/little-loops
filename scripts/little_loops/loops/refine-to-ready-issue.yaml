@@ -22,6 +22,10 @@ category: issue-management
 #     VERIFY:PROPOSAL_UNSOUND    → check_proposal_revision_budget (BUG-3574)
 #     VERIFY:DIRECTIVE_DRIFT     → check_reconcile_limit
 #     VERIFY:EVIDENCE_UNVERIFIED, VERIFY:other → check_gate_refine_limit (BUG-3282 F3: advisory)
+#     VERIFY:CLAIMS_OUTDATED     → check_claim_correction_budget (BUG-3637; 1/run,
+#       own counter — exhausted → record_gate_unmet directly, never
+#       check_gate_refine_limit, since refine_followup cannot fix a stale claim)
+#       → correct_claims (/ll:verify-issues --auto --from-evidence) → normalize_structure
 #     HEDGES                     → check_hedge_attempts
 #     PLACEHOLDERS, DESIGN       → check_gate_refine_limit (BUG-3551)
 #     ACCEPTANCE_CRITERIA        → check_reconcile_limit (ENH-3248)
@@ -129,7 +133,14 @@ scope:
 # check_proof_before_done hops plus one extra confidence_check ->
 # route_score_obligation -> check_decision_before_done score pass (~7 steps; the
 # refuted leg adds more).
-max_steps: 100
+# BUG-3637: 100 -> 110 for the claim-correction cycle:
+# check_claim_correction_budget -> correct_claims -> normalize_structure ->
+# clear_verify_verdict -> verify_issue -> route_pre_score_obligation (6 steps,
+# 7 if normalize_structure falls back to format_issue_post), rounded up for
+# headroom. Bounded at one cycle by check_claim_correction_budget's own
+# counter (target: 2); exhaustion routes straight to record_gate_unmet, never
+# back through this cycle or into check_gate_refine_limit.
+max_steps: 110
 # Step-cap fall-through: the executor runs the named state exactly once at the
 # cap; its `next:` is never followed and terminated_by stays "max_steps".
 # classify_terminal then writes refine-terminal-class so autodev's
@@ -190,6 +201,7 @@ states:
       rm -f ${context.run_dir}/refine-to-ready-proposal-revision &&
       printf '0' > ${context.run_dir}/refine-to-ready-verify-retries &&
       printf '0' > ${context.run_dir}/refine-to-ready-format-fallback &&
+      printf '0' > ${context.run_dir}/refine-to-ready-claim-corrections &&
       ID=$({ [ -n ${context.input:shell} ] && printf '%s' ${context.input:shell} ||
       ll-issues next-issue; } | tr -d '\n\r ') &&
       { ll-issues run-record clear "$${ID}" --run-dir ${context.run_dir} --writer refine-to-ready-issue || true; } &&
@@ -573,6 +585,7 @@ states:
       # BUG-3282 F3: EVIDENCE_UNVERIFIED is advisory (detected, persisted, not
       # routed); like any other non-VALID verdict it falls through to the gate budget.
       "VERIFY:EVIDENCE_UNVERIFIED": check_gate_refine_limit
+      "VERIFY:CLAIMS_OUTDATED": check_claim_correction_budget  # BUG-3637
       "VERIFY:other": check_gate_refine_limit
       HEDGES: check_hedge_attempts
       PLACEHOLDERS: check_gate_refine_limit  # BUG-3551
@@ -601,6 +614,45 @@ states:
     on_yes: clear_verify_verdict        # 1st absence: retry once
     on_no: mark_evidence_absent_infra   # 2nd absence: infra, not quality
     on_error: mark_evidence_absent_infra
+
+  check_claim_correction_budget:
+    # BUG-3637: one correction attempt per run, own counter (mirrors
+    # check_proposal_revision_budget's shape). Deliberately does NOT fall
+    # through to check_gate_refine_limit on exhaustion — refine_followup is
+    # additive-only (commands/refine-issue.md §5c) and cannot fix a stale
+    # fact, so spending that budget too would be the same no-op this bug
+    # describes. Exhausted -> record_gate_unmet directly.
+    action: |
+      FILE="${context.run_dir}/refine-to-ready-claim-corrections"
+      N=$(cat "$FILE" 2>/dev/null || echo 0)
+      N=$((N + 1))
+      printf '%s' "$N" > "$FILE"
+      echo "$N"
+    action_type: shell
+    capture: check_claim_correction_budget
+    evaluate:
+      type: output_numeric
+      operator: lt
+      target: 2
+    on_yes: correct_claims
+    on_no: record_gate_unmet
+    on_error: record_gate_unmet
+
+  correct_claims:
+    # BUG-3637: targeted repair of a CLAIMS_OUTDATED verdict. --from-evidence
+    # reads the issue's verify_evidence frontmatter (written by the preceding
+    # verify_issue --check pass) and rewrites only the listed stale claims in
+    # place, then normalize_structure -> clear_verify_verdict -> verify_issue
+    # re-checks independently so this state never self-grades its own fix.
+    action: "/ll:verify-issues ${captured.issue_id.output} --auto --from-evidence"
+    action_type: slash_command
+    pruning_profile:
+      enabled: true
+      name: verify-issues-auto
+      suppress_claude_md: true
+    capture: correct_claims
+    next: normalize_structure
+    on_error: normalize_structure  # non-fatal, like wire_issue
 
   check_proposal_revision_budget:
     # BUG-3574: one revision per run. Deliberately bypasses check_decide_attempts

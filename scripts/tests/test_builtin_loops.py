@@ -1869,7 +1869,7 @@ class TestRefineToReadyIssueSubLoop:
         for name in ("format_issue_pre", "format_issue_post"):
             assert states[name]["action"].startswith("/ll:format-issue")
         assert "refine-to-ready-format-fallback" in states["resolve_issue"]["action"]
-        assert data["max_steps"] == 100  # ENH-3611: 90 -> 100 for check_proof_before_done
+        assert data["max_steps"] == 110  # BUG-3637: 100 -> 110 for the claim-correction cycle
 
     def test_resolve_issue_seeds_reconcile_attempts_counter(self, data: dict) -> None:
         """resolve_issue seeds the reconcile-attempts counter alongside its siblings (ENH-3248)."""
@@ -3121,6 +3121,7 @@ class TestRefineToReadyDispatch:
         "VERIFY:PROPOSAL_UNSOUND": "check_proposal_revision_budget",
         "VERIFY:DIRECTIVE_DRIFT": "check_reconcile_limit",
         "VERIFY:EVIDENCE_UNVERIFIED": "check_gate_refine_limit",
+        "VERIFY:CLAIMS_OUTDATED": "check_claim_correction_budget",
         "VERIFY:other": "check_gate_refine_limit",
         "HEDGES": "check_hedge_attempts",
         "PLACEHOLDERS": "check_gate_refine_limit",
@@ -3157,6 +3158,7 @@ class TestRefineToReadyDispatch:
                 "EVIDENCE_UNVERIFIED",
                 "PROPOSAL_UNSOUND",
                 "DIRECTIVE_DRIFT",
+                "CLAIMS_OUTDATED",
                 "other",
             ],
             "SCORES": ["absent", "readiness_below", "outcome_below"],

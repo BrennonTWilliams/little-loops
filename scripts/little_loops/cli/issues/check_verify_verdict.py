@@ -27,13 +27,21 @@ def classify_verify_verdict(verdict: object) -> str:
 
     Returns:
         ``"absent"`` for ``None``; ``"VALID"``, ``"EVIDENCE_UNVERIFIED"``,
-        ``"PROPOSAL_UNSOUND"`` or ``"DIRECTIVE_DRIFT"`` (case-insensitive match);
-        ``"other"`` for any other present value.
+        ``"PROPOSAL_UNSOUND"``, ``"DIRECTIVE_DRIFT"`` or ``"CLAIMS_OUTDATED"``
+        (case-insensitive match); ``"other"`` for any other present value
+        (including raw ``OUTDATED``/``NEEDS_UPDATE``, which are never persisted
+        as such — only the collapsed ``CLAIMS_OUTDATED``/``NON_VALID`` values are).
     """
     if verdict is None:
         return "absent"
     upper = str(verdict).upper()
-    if upper in ("VALID", "EVIDENCE_UNVERIFIED", "PROPOSAL_UNSOUND", "DIRECTIVE_DRIFT"):
+    if upper in (
+        "VALID",
+        "EVIDENCE_UNVERIFIED",
+        "PROPOSAL_UNSOUND",
+        "DIRECTIVE_DRIFT",
+        "CLAIMS_OUTDATED",
+    ):
         return upper
     return "other"
 

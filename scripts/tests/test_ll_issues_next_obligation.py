@@ -70,7 +70,14 @@ class TestVerify:
             ("EVIDENCE_UNVERIFIED", "EVIDENCE_UNVERIFIED"),
             ("PROPOSAL_UNSOUND", "PROPOSAL_UNSOUND"),
             ("DIRECTIVE_DRIFT", "DIRECTIVE_DRIFT"),
+            ("CLAIMS_OUTDATED", "CLAIMS_OUTDATED"),
+            ("claims_outdated", "CLAIMS_OUTDATED"),
             ("NON_VALID", "other"),
+            # BUG-3637: raw §2C labels are never persisted — only the collapsed
+            # CLAIMS_OUTDATED/NON_VALID values are — so they must not be
+            # silently accepted as CLAIMS_OUTDATED aliases.
+            ("OUTDATED", "other"),
+            ("NEEDS_UPDATE", "other"),
         ],
     )
     def test_classifier(self, value: object, expected: str) -> None:
@@ -83,7 +90,14 @@ class TestVerify:
         assert (res.obligation, res.sub_reason) == (Obligation.VERIFY, "absent")
 
     @pytest.mark.parametrize(
-        "verdict", ["EVIDENCE_UNVERIFIED", "PROPOSAL_UNSOUND", "DIRECTIVE_DRIFT", "NON_VALID"]
+        "verdict",
+        [
+            "EVIDENCE_UNVERIFIED",
+            "PROPOSAL_UNSOUND",
+            "DIRECTIVE_DRIFT",
+            "CLAIMS_OUTDATED",
+            "NON_VALID",
+        ],
     )
     def test_sub_reasons(
         self, project: Path, monkeypatch: pytest.MonkeyPatch, verdict: str

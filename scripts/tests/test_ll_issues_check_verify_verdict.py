@@ -164,6 +164,34 @@ class TestCheckVerifyVerdictNonValid:
         assert "FEAT-9203" in result.stderr
 
 
+class TestCheckVerifyVerdictClaimsOutdated:
+    """BUG-3637: CLAIMS_OUTDATED falls through the same non-VALID exit-1 branch
+    as any other non-VALID value — no dedicated query flag (routing goes
+    through `ll-issues next-obligation`, not this CLI's flags)."""
+
+    def test_claims_outdated_verdict_exits_one(self, temp_project_dir: Path) -> None:
+        body = _feature("FEAT-9296", "verify_verdict: CLAIMS_OUTDATED\n")
+        _write_issue(temp_project_dir, body)
+        result = _invoke(temp_project_dir, "check-verify-verdict", "FEAT-9296")
+        assert result.returncode == 1, (
+            f"CLAIMS_OUTDATED verdict must exit 1, got {result.returncode}: "
+            f"stdout={result.stdout!r} stderr={result.stderr!r}"
+        )
+        assert "VERIFY_VERDICT_NON_VALID" in result.stderr
+
+    def test_raw_outdated_and_needs_update_are_never_persisted_aliases(
+        self, temp_project_dir: Path
+    ) -> None:
+        """Raw §2C labels (OUTDATED/NEEDS_UPDATE) are collapsed to
+        CLAIMS_OUTDATED or NON_VALID before persistence — they must still
+        fall through to the non-VALID branch like any other unrecognized value."""
+        for verdict, issue_id in (("OUTDATED", "FEAT-9297"), ("NEEDS_UPDATE", "FEAT-9298")):
+            body = _feature(issue_id, f"verify_verdict: {verdict}\n")
+            _write_issue(temp_project_dir, body)
+            result = _invoke(temp_project_dir, "check-verify-verdict", issue_id)
+            assert result.returncode == 1, (verdict, result.stdout, result.stderr)
+
+
 class TestCheckVerifyVerdictProposalUnsound:
     """ENH-3250: --proposal-unsound is a distinct query mode."""
 

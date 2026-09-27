@@ -4,10 +4,11 @@ type: BUG
 title: refine-to-ready-issue routes verify claim verdicts to additive gap-refine that
   cannot fix them
 priority: P2
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-27'
 captured_at: '2026-09-27T17:40:15Z'
+completed_at: '2026-09-27T19:56:54Z'
 relates_to:
 - ENH-3636
 - ENH-3623
@@ -234,8 +235,29 @@ were in effect to check against (`ll-issues decisions list --type rule
 
 **Open** | Created: 2026-09-27 | Priority: P2
 
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-09-27
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/cli/issues/check_verify_verdict.py`: added `CLAIMS_OUTDATED` to `classify_verify_verdict()`'s pass-through tuple.
+- `commands/verify-issues.md`: added `Bash(ll-issues:*)` to `allowed-tools`; rewrote §2E to key satisfied dependency edges on frontmatter `blocked_by`/`depends_on` + `ll-issues show --json` status (not directory location), exempting satisfied edges from `MISSING_BACKLINK` and consuming `format-check`'s `stale_prose_dep`/`prose_dep_drift`; added the `CLAIMS_OUTDATED` verdict, correctable-scope rule, `verify_evidence` persistence format, and full verdict precedence to §2C/§2.5; added `--from-evidence` flag parsing, frontmatter/`argument-hint`, and §Arguments/§Examples entries; widened §4 to rewrite stale claims in place under `--from-evidence` or for in-scope findings in a normal non-check run; updated §4.1's residual mapping and the §B6 claim-verdict-wins remedy name.
+- `scripts/little_loops/loops/refine-to-ready-issue.yaml`: added `"VERIFY:CLAIMS_OUTDATED": check_claim_correction_budget` to `route_pre_score_obligation`; added `check_claim_correction_budget` / `correct_claims` states (own one-shot counter, exhaustion routes directly to `record_gate_unmet`); seeded `refine-to-ready-claim-corrections` in `resolve_issue`; bumped `max_steps` 100 → 110 with a dated ledger comment; updated the routing-summary header comment.
+- `.gemini/commands/verify-issues.toml`, `.kimi-code/skills/ll-verify-issues/SKILL.md`, `.qwen/commands/ll/verify-issues.md`, `.codex/...` (via `ll-adapt --host {gemini,kimi-code,qwen,codex} --apply`): resynced host mirrors of `commands/verify-issues.md`.
+- `docs/guides/LOOPS_REFERENCE.md`, `docs/reference/CLI.md`: added `VERIFY:CLAIMS_OUTDATED` to the gate-chain table and the two vocabulary lists.
+- Tests: `test_builtin_loops.py` (`PRE_TABLE`, `_tokens()`, and the pre-existing `test_precheck_format_and_fallback_routing` max_steps assertion), `test_ll_issues_next_obligation.py` (`TestVerify.test_classifier`/`test_sub_reasons`), `test_ll_issues_check_verify_verdict.py` (new `TestCheckVerifyVerdictClaimsOutdated`), `test_enh3250_verify_issues_proposal_vs_code.py` (new `TestClaimsOutdatedVerdict`), `test_autodev_proof_reentry.py` (pre-existing max_steps assertion).
+
+### Verification Results
+- Tests: PASS (26837 passed, 292 skipped; one pre-existing, unrelated failure — `test_issue_parser.py::TestBug3295ContainmentCorpusDifferential::test_total_report_count_does_not_exceed_post_bug_3448_baseline`, confirmed via `git stash` to fail identically before this change — organic `.issues/` corpus growth, not a regression from this fix)
+- Lint: PASS (`ruff check scripts/`)
+- Types: PASS (`python -m mypy scripts/little_loops/`)
+- Loop validate: PASS (`ll-loop validate refine-to-ready-issue`)
+- Integration: PASS
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-27T19:56:28 - `72ea62d1-5a95-4180-ac18-7f2fb9647b5b.jsonl`
 - `/ll:confidence-check` - 2026-09-27T19:23:39 - `617b18f3-202b-4610-be95-e3e7537c77c8.jsonl`
 - `/ll:verify-issues` - 2026-09-27T19:19:41 - `2c6cabf6-8e36-428f-84cd-fbe8dd7ed1ef.jsonl`
 - `/ll:verify-issues` - 2026-09-27T19:13:48 - `77430911-8298-494f-9a26-f51a933d45b2.jsonl`

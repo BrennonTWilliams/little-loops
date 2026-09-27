@@ -28,6 +28,13 @@ fi
 
 if [[ "$FLAGS" == *"--auto"* ]]; then AUTO_MODE=true; fi
 if [[ "$FLAGS" == *"--check"* ]]; then CHECK_MODE=true; AUTO_MODE=true; fi
+
+# BUG-3637: --from-evidence is a non-check-mode-only targeted correction pass.
+# Parsed here so downstream section 3/4 logic can branch on it, but it has no
+# effect when CHECK_MODE is true (--check always runs the full 2A-2E sweep;
+# it is the producer of verify_evidence, never a consumer of it).
+FROM_EVIDENCE=false
+if [[ "$FLAGS" == *"--from-evidence"* ]]; then FROM_EVIDENCE=true; fi
 ```
 
 ### 1. Find Issues to Verify
@@ -174,9 +181,10 @@ Program Design gate's arming.
    → `PROPOSAL_UNSOUND` (§C). When both kinds of finding exist,
    `PROPOSAL_UNSOUND` wins (a refuted proposal makes directive drift moot). If checks 1-4 *also*
    find a claim about current state to be false, the claim-verdict wins
-   (`OUTDATED`/`INVALID`/`NEEDS_UPDATE`/etc.) — the existing `refine_followup`
-   remedy repairs the research the proposal check itself depends on, so it must
-   run first. Only assign `PROPOSAL_UNSOUND` / `DIRECTIVE_DRIFT` when every claim about current state
+   (`OUTDATED`/`INVALID`/`NEEDS_UPDATE`/etc.) — its remedy repairs the research
+   the proposal check itself depends on, so it must run first: `correct_claims`
+   for an in-scope `CLAIMS_OUTDATED` finding (BUG-3637), `refine_followup` for
+   any other claim defect. Only assign `PROPOSAL_UNSOUND` / `DIRECTIVE_DRIFT` when every claim about current state
    holds and the defect is purely in the proposal's consequences.
 7. **Evidence-quote existence check (BUG-3282)** — deterministic, run via the CLI
    rather than LLM judgment. A quote attributed to a named artifact (another
@@ -236,21 +244,64 @@ verification output.
 | PROPOSAL_UNSOUND | The Proposed Solution, implemented as written, contradicts the code it names (check B6) and the selected option must change — a claim-verification defect, not a claim, so it is not remedied by `refine_followup` or `reconcile-issue` |
 | DIRECTIVE_DRIFT | Check B6 finding whose fix is confined to Implementation Steps / Acceptance Criteria / Integration Map; the selected mechanism stands (BUG-3574) — remedied by `reconcile-issue` |
 | EVIDENCE_UNVERIFIED | A quoted evidence span attributed to a named artifact (check B7) exists in no revision of that artifact — outranks `PROPOSAL_UNSOUND` when both apply |
+| CLAIMS_OUTDATED | An `OUTDATED`/`NEEDS_UPDATE` finding (checks 1-4) whose fix is a **factual metadata correction** only (BUG-3637; see correctable-scope rule below) — remedied by `correct_claims`, not `refine_followup` |
+
+**Correctable scope for `CLAIMS_OUTDATED` (BUG-3637).** Classify an `OUTDATED`/
+`NEEDS_UPDATE` finding by **which section its fix touches**, the same
+principle §B6 already applies to split `PROPOSAL_UNSOUND` from
+`DIRECTIVE_DRIFT`. A finding is `CLAIMS_OUTDATED` only when its fix is
+confined to Codebase Research Findings, Confidence Check Notes, Verification
+Notes, Integration Map citations, Similar Patterns/Tests citations, or
+frontmatter references, and is one of: another issue's status, a file path, a
+line number/range, a count (line/state/test counts), or a citation
+anchor/symbol location. `OUTDATED` also covers a *premise* change (bug
+partially fixed, targeted code refactored) — auto-rewriting a premise in
+place is unsafe because an independent `--check` re-pass cannot catch it (the
+rewritten issue would be internally consistent), so any finding whose fix
+requires changing Summary, Current Behavior, Expected Behavior, Root Cause,
+Motivation, Steps to Reproduce, or Proposed Solution stays `NON_VALID`, never
+`CLAIMS_OUTDATED`, regardless of how narrow the actual text change looks.
+`INVALID`, `RESOLVED`, `DECISIONS_VIOLATION`, `REGRESSION_LIKELY`,
+`POSSIBLE_REGRESSION`, and `DEP_ISSUES` are never `CLAIMS_OUTDATED` — they
+always persist as `NON_VALID` (never-auto-correct set). When an issue has
+findings in both scopes, `NON_VALID` wins (see verdict precedence in §2.5).
 
 #### E. Validate Dependency References
 
-For each issue, check dependency integrity:
+For each issue, check dependency integrity. Resolve target status from
+**frontmatter**, not directory location — `done`/`cancelled` issues stay in
+their type directories, so "in completed" is not a status signal (BUG-3637):
 
-1. **Blocked By references**: For each ID in `## Blocked By`:
-   - Verify the referenced issue exists (in active issues or completed)
-   - If in completed: note as "satisfied" (informational, not an error)
-   - If missing entirely: flag as BROKEN_REF
+1. **Blocked By / Depends On references**: Read the issue's frontmatter
+   `blocked_by` and `depends_on` lists (fall back to the body `## Blocked By`
+   section only if frontmatter is absent). For each referenced ID:
+   - Verify the referenced issue exists. If missing entirely: flag as
+     BROKEN_REF.
+   - Resolve its status via `ll-issues show <REF> --json` and lowercase the
+     value (the field is display-cased, e.g. `"Completed"` for `done`). An
+     edge whose target status is `done`/`completed`/`cancelled` is
+     **satisfied** — note it informationally, never as an error, and it never
+     contributes to a non-VALID verdict on its own. `deferred` is
+     non-terminal (stays an open blocker, like `open`/`in_progress`/`blocked`).
+   - **Skip the backlink check below for satisfied edges** — a satisfied edge
+     whose target lacks a `## Blocks` backlink is not a defect; requiring one
+     would route a satisfied dependency into `DEP_ISSUES` → `NON_VALID`, which
+     the correctable-claims rule (§2C) can never auto-correct.
 
-2. **Blocks backlinks**: For each ID in `## Blocked By`:
+2. **Blocks backlinks**: For each *unsatisfied* ID from step 1:
    - Check that the referenced issue has this issue in its `## Blocks` section
    - If missing: flag as MISSING_BACKLINK
 
-3. **Cycle check**: After processing all issues, build a dependency graph and check for cycles
+3. **Prose dependency claims**: Consume `ll-issues format-check <ID> --format
+   json`'s `stale_prose_dep` / `prose_dep_drift` output (already computed from
+   issue statuses and already run by `normalize_structure` before every verify
+   in `refine-to-ready-issue.yaml`) instead of re-deriving the same judgment by
+   reading prose. Prose asserting that a dependency is resolved, satisfied, or
+   no longer present is **consistent** with a satisfied edge from step 1, not a
+   contradiction — only prose asserting a satisfied target is still
+   *open/active* is a claim finding (route through §2C's claim-verdict checks).
+
+4. **Cycle check**: After processing all issues, build a dependency graph and check for cycles
 
 #### D. Regression Detection (for matches to completed issues)
 
@@ -327,9 +378,39 @@ or update a `verify_verdict:` line in that issue's YAML frontmatter block:
   DIRECTIVE_DRIFT` — persisted as its own value so the `VERIFY:DIRECTIVE_DRIFT` route can
   route it to `reconcile_issue`. Non-VALID, `exit 1` in `--check` mode. Ranks
   below `EVIDENCE_UNVERIFIED` and `PROPOSAL_UNSOUND`.
-- Any other verdict (`OUTDATED`, `RESOLVED`, `INVALID`, `NEEDS_UPDATE`,
-  `REGRESSION_LIKELY`, `POSSIBLE_REGRESSION`, `DEP_ISSUES`,
-  `DECISIONS_VIOLATION`) → `verify_verdict: NON_VALID`
+- `CLAIMS_OUTDATED` verdict (BUG-3637): when every `OUTDATED`/`NEEDS_UPDATE`
+  finding is in the correctable scope defined in §2C (and no finding from the
+  never-auto-correct set below applies) → `verify_verdict: CLAIMS_OUTDATED` —
+  persisted as its own value, **not** collapsed into `NON_VALID`, so the
+  `VERIFY:CLAIMS_OUTDATED` route of `route_pre_score_obligation` in
+  `refine-to-ready-issue.yaml` can route it to `correct_claims` instead of
+  `refine_followup`, which cannot delete or rewrite a stale fact (additive
+  only, `commands/refine-issue.md` §5c). Non-VALID, `exit 1` in `--check` mode
+  — the split is in the persisted value, not the exit-code contract. Also
+  write a one-line `verify_evidence:` field as a **double-quoted YAML
+  scalar** on a single line (no newlines, `"` and `\` escaped), one item per
+  stale claim, `; `-separated, each item shaped `<section>: '<stale text>' ->
+  <current truth>` (single quotes inside an item avoid `"` escaping), e.g.
+  `verify_evidence: "Confidence Check Notes: 'BUG-3628 is open' -> BUG-3628 is
+  done; Integration Map: 'prepare-issue.yaml (91 lines)' -> 90 lines"`. Naming
+  the section lets `correct_claims` apply the fix without re-locating the
+  claim. `clear_verify_verdict` already removes `verify_evidence` by key name
+  (value-agnostic), so no new cleanup is needed.
+- Any other verdict — `OUTDATED`/`NEEDS_UPDATE` with at least one finding
+  outside the correctable scope, `RESOLVED`, `INVALID`,
+  `REGRESSION_LIKELY`, `POSSIBLE_REGRESSION`, `DEP_ISSUES`, or
+  `DECISIONS_VIOLATION` (the never-auto-correct set) → `verify_verdict:
+  NON_VALID`. These are never assigned `CLAIMS_OUTDATED`, even when only one
+  finding drives the verdict.
+
+**Full verdict precedence (one persisted value per issue, highest wins):**
+`NON_VALID` > `EVIDENCE_UNVERIFIED` > `CLAIMS_OUTDATED` > `PROPOSAL_UNSOUND` >
+`DIRECTIVE_DRIFT` > `VALID`. `EVIDENCE_UNVERIFIED` outranks `CLAIMS_OUTDATED`
+because a fabricated quote is not a stale fact and must not be "corrected"
+into the file as if it were true. `CLAIMS_OUTDATED` outranks
+`PROPOSAL_UNSOUND`/`DIRECTIVE_DRIFT` per §B6's existing "claim-verdict wins"
+rule — a proposal built on an outdated premise must have that premise
+corrected first, or the proposal-repair path re-derives the same fiction.
 
 If the field already exists in the frontmatter, replace its value in place;
 otherwise insert it alongside the issue's other single-line frontmatter
@@ -362,6 +443,26 @@ For resolved issues:
 - Add resolution note
 - Consider setting `status: done` in frontmatter
 
+**In-place claim correction (BUG-3637).** A Verification Notes entry alone
+does not count as a correction of a stale claim — it must also be rewritten
+**in place** in whichever section holds it (including a stale frontmatter
+status/line-count reference), bounded by §2C's correctable-scope rule (never
+rewrite Summary / Current Behavior / Expected Behavior / Root Cause /
+Motivation / Steps to Reproduce / Proposed Solution here; those verdicts stay
+`NON_VALID` and read-only). This applies:
+- **Under `--from-evidence`** (non-check mode): read the issue's
+  `verify_evidence` frontmatter field. If absent or empty, make no edits and
+  exit — the following `--check` re-pass then decides. Otherwise, re-check
+  **only** the listed claims against the codebase and rewrite each confirmed
+  stale claim in place; do not run the full 2A-2E sweep and do not apply
+  fixes beyond the `verify_evidence` work list.
+- **In a normal (non-`--from-evidence`) non-check run**, for any in-scope
+  `OUTDATED`/`NEEDS_UPDATE` finding the 2A-2E sweep itself surfaces: rewrite it
+  in place the same way, in addition to the full sweep's other work. A plain
+  `/ll:verify-issues <ID>` run (no `--from-evidence`) keeps its normal
+  full-sweep behavior regardless of any `verify_evidence` a prior run left
+  behind — the flag is explicit, never inferred from the field's presence.
+
 ### 4.1 Verdict Phrasing When Fixes Are Applied in the Same Pass
 
 **Applies whenever this run is not `CHECK_MODE`** (i.e. `--auto` or interactive) **and**
@@ -390,9 +491,10 @@ instead:
 
 **Frontmatter sync**: if `verify_verdict:` already exists in the issue's frontmatter,
 rewrite it in place to reflect the post-fix state — `VALID` if this pass resolved
-everything, otherwise the 2.5 mapping applied to the residual (unfixed) verdict. Do
-not insert the field if it is absent; inserting it remains `--check` mode's
-responsibility (2.5).
+everything, otherwise the 2.5 mapping applied to the residual (unfixed) verdict
+(including `CLAIMS_OUTDATED` when the residual findings are still all in the
+correctable scope). Do not insert the field if it is absent; inserting it remains
+`--check` mode's responsibility (2.5).
 
 ### 4.5 Append Session Log Entries
 
@@ -490,6 +592,7 @@ $ARGUMENTS
 - **flags** (optional): Command behavior flags
   - `--auto` - Non-interactive mode: apply all non-destructive changes (verification notes, line number updates) without prompting. Skips setting resolved issue status (requires explicit approval).
   - `--check` — Check-only mode for FSM loop evaluators. Run verification without applying changes, print `[ID] verify: [verdict]` per non-VALID issue, exit 1 if any non-VALID, exit 0 if all valid. Implies `--auto`.
+  - `--from-evidence` (BUG-3637) — Non-check mode only. Read the target issue's `verify_evidence` frontmatter field and re-check/correct only the claims it lists, skipping the full 2A-2E sweep; no-op (no edits) when `verify_evidence` is absent or empty. Used by `refine-to-ready-issue.yaml`'s `correct_claims` state to repair a `CLAIMS_OUTDATED` verdict without a second full verify session.
 
 ---
 
@@ -511,6 +614,9 @@ $ARGUMENTS
 # Check-only mode for FSM loop evaluators (exit 0 if all pass, exit 1 if any fail)
 /ll:verify-issues --check
 /ll:verify-issues BUG-042 --check
+
+# Targeted correction of a CLAIMS_OUTDATED verdict's flagged claims only
+/ll:verify-issues BUG-042 --auto --from-evidence
 
 # After verification, process resolved issues
 /ll:manage-issue bug fix RESOLVED-ISSUE-ID
