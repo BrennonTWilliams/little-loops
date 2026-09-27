@@ -236,6 +236,7 @@ were in effect to check against (`ll-issues decisions list --type rule
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-27T19:19:41 - `2c6cabf6-8e36-428f-84cd-fbe8dd7ed1ef.jsonl`
 - `/ll:verify-issues` - 2026-09-27T19:13:48 - `77430911-8298-494f-9a26-f51a933d45b2.jsonl`
 - `/ll:confidence-check` - 2026-09-27T18:57:47 - `2c6cabf6-8e36-428f-84cd-fbe8dd7ed1ef.jsonl`
 - `/ll:verify-issues` - 2026-09-27T18:41:47 - `faf37470-642a-4009-8ad8-fa55667af3ab.jsonl`
