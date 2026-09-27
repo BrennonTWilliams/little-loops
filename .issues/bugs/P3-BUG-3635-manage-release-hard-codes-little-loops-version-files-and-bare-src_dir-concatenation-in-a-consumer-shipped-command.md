@@ -22,7 +22,10 @@ Split out of BUG-3631 (root-layout prefix handling), where fixing only the separ
 
 - Nine concatenation sites in `commands/manage-release.md`: the "Version is tracked in these files" list (lines 38, 40), the Agent 3 version-discovery prompt (249, 251), the `bump` action's Edit comments and `git add` (302, 304, 310), and the dry-run "Version Files" example (453, 455).
 - The same nine sites exist in the git-tracked host mirrors: `.gemini/commands/manage-release.toml`, `.qwen/commands/ll/manage-release.md`, `.kimi-code/skills/ll-manage-release/SKILL.md`.
+- A tenth hard-coded spot, not a concatenation site: the dry-run preview's `[bump]      Update version in 3 files` (line 437) assumes little-loops' file count.
 - The Agent 3 prompt already has a catch-all ("4. Any other files containing the current version string"), so discovery partly works in consuming projects, but the `bump` action's `git add` line stages the hard-coded paths, which fails (`pathspec did not match`) when they don't exist.
+- The catch-all is unfiltered: in the little-loops source repository the current version string (`1.166.0`) matches `CHANGELOG.md` as well as the real manifests, and in consuming projects it can match lockfile entries for dependencies that share the version number. It is harmless today only because `git add` ignores it; once staging follows Agent 3's results, it would bump historical changelog entries or lockfiles.
+- The hard-coded list also omits `.claude-plugin/marketplace.json`, which carries the version twice (lines 3 and 12) and which the source-repo-only `.claude/commands/publish.md` bumps; today it is reached only through the catch-all.
 - In the little-loops source repository `src_dir` is `scripts/`, so all three paths happen to resolve and the defect is invisible here.
 
 ## Steps to Reproduce
@@ -33,10 +36,11 @@ Split out of BUG-3631 (root-layout prefix handling), where fixing only the separ
 
 ## Expected Behavior
 
-- The version-file list is discovered per project, not hard-coded to little-loops' layout. Common manifests (`pyproject.toml`, `package.json`, `Cargo.toml`, `.claude-plugin/plugin.json`, a package `__init__.py` / `__version__` holder) are candidates, resolved relative to repo root and `project.src_dir`.
+- The version-file list is discovered per project, not hard-coded to little-loops' layout. Common manifests (`pyproject.toml`, `package.json`, `Cargo.toml`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, a package `__init__.py` / `__version__` holder) are candidates, resolved relative to repo root and `project.src_dir`.
 - Paths join `src_dir` with exactly one separator; `src_dir` of `.` / `./` resolves to repo root; `src/`, `scripts/` and no-slash `src` all resolve correctly.
-- The `bump` action stages exactly the files Agent 3 found and edited, not a hard-coded list.
-- Behavior in the little-loops source repository is unchanged (it still bumps `scripts/pyproject.toml`, `.claude-plugin/plugin.json`, `scripts/little_loops/__init__.py`).
+- Agent 3 reports only **version declarations** (a manifest `version` field or a `__version__ =` assignment) as bump targets. Incidental matches of the version string (`CHANGELOG.md`, lockfiles, `node_modules/`, `.issues/`, docs) are excluded, or reported as info-only and never edited or staged.
+- The `bump` action edits and stages exactly the declaration files Agent 3 found, not a hard-coded list.
+- Behavior in the little-loops source repository still bumps `scripts/pyproject.toml`, `.claude-plugin/plugin.json`, `scripts/little_loops/__init__.py`, and now also `.claude-plugin/marketplace.json` (both version fields) as a first-class candidate rather than via the catch-all. `CHANGELOG.md` is never edited by `bump`.
 
 ## Proposed Solution
 
@@ -55,24 +59,60 @@ Implementation notes for Option 1:
   Rather than teaching the prose a rule for joining `src_dir` + filename with
   exactly one `/` (the same class of mistake the current hard-coded prompt
   already makes), have Agent 3's `Explore` subagent **Glob-search** for
-  candidate filenames (`pyproject.toml`, `package.json`, `Cargo.toml`,
-  `.claude-plugin/plugin.json`, a package `__init__.py`/`__version__` holder)
-  under the repo root and under `{{config.project.src_dir}}`, using the Glob
-  tool it already has. This never constructs a literal joined path string in
-  the prompt, so the separator bug (`.` → `.pyproject.toml`, no-slash `src` →
+  candidate manifest filenames (`pyproject.toml`, `package.json`,
+  `Cargo.toml`, `.claude-plugin/plugin.json`,
+  `.claude-plugin/marketplace.json`) under the repo root and under
+  `{{config.project.src_dir}}`, using the Glob tool it already has. This
+  never constructs a literal joined path string in the prompt, so the
+  separator bug (`.` → `.pyproject.toml`, no-slash `src` →
   `srcpyproject.toml`) can't recur — a stronger fix than a prose join-rule,
   which an LLM could flub the same way.
-- **Fix the `bump` action's `git add`** (line 310) to stage exactly the files
-  Agent 3 found and the prior step edited, not the hardcoded three paths —
-  e.g. "stage exactly the files you just edited above," consistent with the
+- **Globs must be non-recursive: repo-root and `src_dir` top level only,
+  never `**/`.** A recursive `pyproject.toml` glob in the little-loops source
+  repository returns 8 hits, including `.claude/worktrees/agent-*/scripts/pyproject.toml`
+  (stale agent worktrees) and vendored copies under
+  `.claude/skills/excalidraw-diagram/references/` and `.agents/skills/`.
+  Consuming projects have the same hazard (worktrees, vendored deps,
+  fixtures).
+- **Find the `__version__` holder with Grep, not Glob.** Globbing for
+  `__init__.py` matches every package in the tree. Instead, Grep for
+  `^__version__\s*=` scoped to `{{config.project.src_dir}}`.
+- **Filter the catch-all to declarations.** Keep "4. Any other files
+  containing the current version string" for visibility, but the prompt must
+  have Agent 3 classify each hit as a *declaration* (manifest `version`
+  field, `__version__ =`) or *incidental* (`CHANGELOG.md`, lockfiles such as
+  `package-lock.json`/`uv.lock`/`Cargo.lock`, `node_modules/`, `.issues/`,
+  docs). Only declarations are bump targets. This matters because the fix
+  makes Agent 3's result the source of truth for both the Edit and `git add`;
+  unfiltered, it would rewrite the version in historical `CHANGELOG.md`
+  entries (the current version `1.166.0` appears there in this repo) and in
+  lockfile entries for dependencies that share the number.
+- **Fix the `bump` action's `git add`** (line 310) to stage exactly the
+  declaration files Agent 3 found and the prior step edited, not the
+  hardcoded three paths — e.g. "stage exactly the files you just edited
+  above" (explicit paths, never `git add -A`/`-u`), consistent with the
   existing instruction at line 298.
 - **Lines 38–40** (the "Version is tracked in these files" list) become
-  generic candidate guidance instead of a little-loops-specific hard list;
-  little-loops' own three files still surface naturally via discovery since
-  they exist in this repo (satisfies AC re: unchanged source-repo behavior).
+  generic candidate guidance instead of a little-loops-specific hard list.
+  Phrase it as examples ("e.g. `pyproject.toml`, `package.json`,
+  `Cargo.toml`, `.claude-plugin/*.json`, a `__version__` assignment") so the
+  model does not treat it as a required checklist. Replace the three lines
+  with exactly three lines to stay line-count-neutral above the line-134 pin
+  (see below). Little-loops' own files still surface naturally via discovery
+  since they exist in this repo (satisfies AC re: unchanged source-repo
+  behavior).
+- **Line 437** (dry-run `[bump] Update version in 3 files`) → "Update
+  version in N files".
 - **Lines 453/455** (dry-run example) are illustrative, not functional —
   genericize them or add a one-line caveat that the example paths are
   little-loops-specific.
+- **Add a regression test** so AC1/AC2 are enforced, not hand-checked once:
+  a static test that fails if `{{config.project.src_dir}}` is immediately
+  followed by `[A-Za-z_.]` in `commands/manage-release.md`, and if any
+  `little_loops/` path remains in it. Consider widening the concatenation
+  check to all of `commands/` and `skills/`, since that is the BUG-3631 bug
+  class (currently only `manage-release.md` has hits, so a corpus-wide gate
+  passes after this fix).
 - **Spawn-site line pin**: `scripts/tests/test_wiring_skills_and_commands.py:754`
   does not pin the file's total length (it is 558 lines, not 134) — it pins
   `("commands/manage-release.md", 134)` in `SPAWN_SITE_INVENTORY`, asserting
@@ -84,9 +124,12 @@ Implementation notes for Option 1:
 
 ## Integration Map
 
-- `commands/manage-release.md` — the nine sites above.
+- `commands/manage-release.md` — the nine sites above, plus line 437 (`Update version in 3 files`).
 - Mirrors: regenerate with `ll-adapt --host gemini --apply`, `ll-adapt --host qwen --apply`, `ll-adapt --host kimi-code --apply`; mirror gates fail otherwise.
 - `scripts/tests/test_wiring_skills_and_commands.py`'s `SPAWN_SITE_INVENTORY` pins `("commands/manage-release.md", 134)` — the line of the "Spawn all 3 agents..." instruction, not a total-file-line-count pin (the file is 558 lines); edits above line 134 (sites 38, 40) must be line-count-neutral or update the pinned line number in the same change.
+- New regression test (e.g. in `scripts/tests/test_wiring_skills_and_commands.py`, alongside the existing `manage-release.md` pins at lines 59–60 and 429) for the no-concatenation and no-`little_loops/` checks.
+- Not affected: `skills/ll-manage-release/SKILL.md` is a 24-line frontmatter shim with no `src_dir` or version-file references — no change needed, not a missed mirror.
+- Reference only: `.claude/commands/publish.md` (source-repo-only) is the authoritative list of little-loops' version files (`plugin.json`, `marketplace.json`, `pyproject.toml`, `__init__.py`); `/ll:manage-release` in this repo should discover the same four.
 
 ## Program Design
 
@@ -103,7 +146,7 @@ No Python signatures change.
 
 ### Call Path
 
-`expand_skill` -> `_substitute_config` (placeholder interpolation of the rewritten version-file lines); in the command itself: Agent 3 (`Explore` subagent) Glob-searches candidate manifests under repo root and `{{config.project.src_dir}}` -> `bump` Edit of discovered files -> `git add` of exactly those edited files (not a hard-coded list)
+`expand_skill` -> `_substitute_config` (placeholder interpolation of the rewritten version-file lines); in the command itself: Agent 3 (`Explore` subagent) non-recursively Glob-searches candidate manifests at repo-root and `{{config.project.src_dir}}` top level, Greps `^__version__\s*=` under `{{config.project.src_dir}}`, and classifies catch-all hits as declaration vs incidental -> `bump` Edit of declaration files only -> `git add` of exactly those edited files (not a hard-coded list)
 
 ## Impact
 
@@ -116,8 +159,14 @@ No Python signatures change.
 
 - [ ] No `{{config.project.src_dir}}` placeholder is directly followed by a filename in `commands/manage-release.md` or its three mirrors.
 - [ ] No hard-coded `little_loops/__init__.py` path remains in `commands/manage-release.md` or its mirrors.
-- [ ] Agent 3's version-file discovery uses Glob search over candidate manifest names (relative to repo root and `src_dir`), not string concatenation.
-- [ ] The `bump` action's `git add` (line 310) stages exactly the files Agent 3 found and the prior step edited, not a hard-coded list.
+- [ ] Agent 3's version-file discovery uses Glob search over candidate manifest names (including `.claude-plugin/marketplace.json`) at repo-root and `src_dir` top level only — no recursive `**/` glob — not string concatenation.
+- [ ] The `__version__` holder is found by Grep for `^__version__\s*=` scoped to `src_dir`, not by globbing `__init__.py`.
+- [ ] Agent 3 classifies hits as declarations vs incidental matches; `CHANGELOG.md`, lockfiles, `node_modules/`, `.issues/` and docs are never bump targets.
+- [ ] The `bump` action's `git add` (line 310) stages exactly the declaration files Agent 3 found and the prior step edited (explicit paths, not `-A`/`-u`), not a hard-coded list.
+- [ ] Lines 38–40 read as example candidates ("e.g. …"), not a fixed checklist, and are replaced line-count-neutrally.
+- [ ] The dry-run preview no longer says "Update version in 3 files" (line 437); it reports the discovered count.
+- [ ] A regression test fails if `{{config.project.src_dir}}` is directly followed by `[A-Za-z_.]` or a `little_loops/` path appears in `commands/manage-release.md`.
+- [ ] In the little-loops source repository, discovery yields exactly `scripts/pyproject.toml`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json` and `scripts/little_loops/__init__.py` as bump targets (matching `.claude/commands/publish.md`), with `CHANGELOG.md` reported as incidental at most.
 - [ ] `test_wiring_skills_and_commands.py`'s `SPAWN_SITE_INVENTORY` entry `("commands/manage-release.md", 134)` (the "Spawn all 3 agents..." line, not a total-line-count pin) still points at the correct line, or is updated to the new one in the same commit.
 - [ ] Mirrors match after `ll-adapt --apply` for gemini, qwen and kimi-code.
 - [ ] `python -m pytest scripts/tests/` exits 0 (mirror gates and the `test_wiring_skills_and_commands.py` line pin included).
