@@ -82,6 +82,9 @@ states:
         echo "   or: run /ll:handoff in a session first, then ll-loop run continue-task"
         exit 1
       fi
+      # Baseline ref for stall_check's fingerprint (absent outside a git repo).
+      rm -f "$RUN_DIR/baseline-ref.txt"
+      git rev-parse HEAD > "$RUN_DIR/baseline-ref.txt" 2>/dev/null || rm -f "$RUN_DIR/baseline-ref.txt"
       : > "$RUN_DIR/resolved-test-cmd.txt"
       echo "SKIP" > "$RUN_DIR/baseline-exit.txt"
       # :shell shlex-quotes the override so it lands in CMD verbatim (MR-11);
@@ -126,9 +129,10 @@ states:
       goal.md wins on any conflict.
 
       Re-entry check — run this shell test before anything else:
-        [ .ll/ll-continue-prompt.md -nt ${context.run_dir}/pass-started.txt ] && echo RESUME
+        [ .ll/ll-continue-prompt.md -nt ${context.run_dir}/pass-started.txt ] && grep -qF '${context.run_dir}' .ll/ll-continue-prompt.md && echo RESUME
       If it prints RESUME, a previous session of THIS pass handed off: run
-      /ll:resume to load its notes before continuing.
+      /ll:resume to load its notes before continuing. (The run-dir match keeps
+      an unrelated session's handoff from being resumed into this run.)
 
       Also read, if they exist:
       - ${context.run_dir}/progress.md — the running progress log (done /
@@ -146,7 +150,8 @@ states:
       Handoff chain — if the context monitor reports usage at or above the
       handoff threshold ("[ll] Context ~N% used ... Run /ll:handoff"), stop
       starting new work. Bring progress.md up to date, then run /ll:handoff
-      and end your turn. The loop spawns a fresh session that re-enters this
+      — include the literal path ${context.run_dir} in your handoff notes so
+      the next session recognizes them as this run's — and end your turn. The loop spawns a fresh session that re-enters this
       state and resumes from your handoff.
 
       When you believe the goal is fully met, make sure progress.md's
@@ -158,14 +163,48 @@ states:
     timeout: 3600
 
   stall_check:
-    # Non-LLM progress signal: if the working-tree diff is byte-identical
-    # across 3 consecutive passes, further passes are unlikely to help —
-    # stop with a partial summary instead of burning the step budget.
-    fragment: diff_stall_gate
-    action: echo "stall check"
+    # Non-LLM progress signal, scoped to this run (BUG-3627: the shared
+    # diff_stall_gate keeps cross-run state and ignores commits, untracked files
+    # and same-line-count edits). Fingerprints everything that differs from the
+    # ref recorded by load_prompt: tracked diff content plus untracked paths and
+    # contents. An identical fingerprint across 3 consecutive passes means
+    # further passes are unlikely to help, so stop with a partial summary. The
+    # .loops/ tree is excluded by explicit pathspec because ll-init ships no
+    # .loops/ gitignore, and this gate's own files would otherwise make every
+    # fingerprint differ. Emits the identical-pass count for the gate below.
+    # Outside a git repo no fingerprint is possible: every pass counts as
+    # progress and only max_steps bounds the run.
+    # Local shell vars stay unbraced: the FSM interpolates this whole string
+    # (comments included) before bash sees it.
+    action: |
+      COUNTER="${context.run_dir}/stall-counter.txt"
+      FP_FILE="${context.run_dir}/stall-fingerprint.txt"
+      BASELINE_REF=$(cat "${context.run_dir}/baseline-ref.txt" 2>/dev/null || echo "")
+      if [ -z "$BASELINE_REF" ] || ! git rev-parse --git-dir >/dev/null 2>&1; then
+        echo 0
+        exit 0
+      fi
+      untracked() { git ls-files -o --exclude-standard -z -- . ':(exclude).loops/'; }
+      FP=$( { git diff "$BASELINE_REF" -- . ':(exclude).loops/'
+              untracked | sort -z | tr '\0' '\n'
+              untracked | sort -z | xargs -0 -r git hash-object
+            } | git hash-object --stdin )
+      PREV_FP=$(cat "$FP_FILE" 2>/dev/null || echo "")
+      if [ -z "$PREV_FP" ] || [ "$FP" != "$PREV_FP" ]; then
+        printf '%s' "$FP" > "$FP_FILE"
+        rm -f "$COUNTER"
+        echo 0
+      else
+        N=$(cat "$COUNTER" 2>/dev/null || echo 0)
+        N=$((N + 1))
+        printf '%s' "$N" > "$COUNTER"
+        echo "$N"
+      fi
     action_type: shell
     evaluate:
-      max_stall: 3
+      type: output_numeric
+      operator: lt
+      target: 3
     on_yes: run_tests
     on_no: summarize_partial
     on_error: run_tests
@@ -178,7 +217,7 @@ states:
     # cannot pin the loop open forever.
     action: |
       RUN_DIR="${context.run_dir}"
-      rm -f "$RUN_DIR/verdict.txt"
+      rm -f "$RUN_DIR/verdict.txt" "$RUN_DIR/tests.txt"
       CMD=$(cat "$RUN_DIR/resolved-test-cmd.txt" 2>/dev/null)
       BASE=$(cat "$RUN_DIR/baseline-exit.txt" 2>/dev/null || echo SKIP)
       if [ -z "$CMD" ]; then
@@ -220,6 +259,8 @@ states:
       - ${context.run_dir}/goal.md — the pinned goal (authoritative)
       - ${context.run_dir}/progress.md — the worker's progress log and evidence
       - ${context.run_dir}/tests.txt — the test command's status
+        If tests.txt is missing, the test run did not complete; do not treat
+        tests as passing.
 
       Verify by evidence, not by the worker's description: for every
       requirement in goal.md, read the files / run the commands the Evidence
@@ -248,7 +289,7 @@ states:
     on_error: start_pass
 
   summarize_partial:
-    # Reached from stall_check (no diff progress) and the on_max_steps cap.
+    # Reached from stall_check (no tree progress) and the on_max_steps cap.
     action: |
       The continue-task loop has stopped before its done-check passed —
       either the working tree stopped changing across passes or the step

@@ -3,12 +3,13 @@ id: FEAT-3594
 type: FEAT
 title: 'continue-task loop: run a continuation prompt until done with automatic handoff/resume'
 priority: P3
-status: open
+status: done
 decision_needed: false
 reconcile_attempted: true
 discovered_by: ll-issues-create
 discovered_date: '2026-09-25'
 captured_at: '2026-09-25T04:27:08Z'
+completed_at: '2026-09-27T04:18:10Z'
 confidence_score: 100
 outcome_confidence: 93
 score_complexity: 18
@@ -292,12 +293,18 @@ Verdict at time of check: **VALID** (no corrections needed; the 2026-09-25 `DIRE
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
+## Resolution
+
+Implemented 2026-09-27: loop-local fingerprint `stall_check` (+ `baseline-ref.txt`), stale `tests.txt` cleared in `run_tests`, run-dir-guarded `/ll:resume` re-entry, `scripts/tests/test_continue_task_loop.py` (30 tests), LOOPS_REFERENCE row.
+
 ## Status
 
 **Open** | Created: 2026-09-25 | Priority: P3
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-27T04:18:10 - `90d0b0d8-6a56-424d-9ab1-1657abf73790.jsonl`
+- `/ll:ready-issue` - 2026-09-27T04:11:13 - `eaddcf85-90ff-4c37-836f-a664fa4ec1d1.jsonl`
 - `/ll:confidence-check` - 2026-09-27T03:50:11 - `c4c15e75-d4e1-4ac8-b300-d2fe135d2325.jsonl`
 - `/ll:verify-issues` - 2026-09-27T03:43:20 - `957314ff-4b9b-42e1-b372-a938199f022f.jsonl`
 - `/ll:confidence-check` - 2026-09-25T23:38:00 - `45d43ec4-b840-43ef-b61e-afb3edaab08c.jsonl`
