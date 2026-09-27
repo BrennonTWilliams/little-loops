@@ -42,11 +42,17 @@ state consults a stronger or different model before the issue is handed back as 
 - With the flag set, an issue that has cleared every deterministic gate gets one
   `ll-advise --json` consult before `write_done_record`.
   - **PROCEED** or **SKIPPED** → `write_done_record` → `done`, as today.
-  - **VETO** → the issue does not reach `done`. It routes to a new non-done outcome
-    (see Open Questions) with the advisor's `recommendation` logged to the session log.
-- Any `ll-advise` failure (exit 2 with any of the 7 skip reasons, advisor rate limit,
-  advisor auth failure, unreadable output) is SKIPPED: logged, then treated exactly as if
-  the flag were off. The loop never waits on a 429 retry for the advisor.
+  - **VETO** → the issue does not reach `done`. `record_advisor_veto` writes the existing
+    `gate_unmet` legacy class (→ `deferred`, per the Option B decision) and echoes an
+    `[ADVISOR_VETO]` line carrying the advisor's `recommendation`; the full payload stays in
+    `<run_dir>/advise-<ID>.json`.
+- Any `ll-advise` failure (any non-zero exit, including budget exhaustion and an unreadable
+  `--context-file`; advisor rate limit; advisor auth failure; unreadable output) is SKIPPED:
+  logged, then treated exactly as if the flag were off. The loop never waits on a 429 retry
+  for the advisor.
+- **One consult per run.** The done chain can be re-entered after `run_spike` or a decide
+  re-score; a per-run marker (`${context.run_dir}/advise-consulted-<ID>`) makes the gate skip
+  a second consult, so an issue is never consulted twice in one run.
 
 ## Motivation
 
@@ -70,9 +76,11 @@ name TBD) that:
    `not_configured`); the leading word of `recommendation`, uppercased with punctuation
    stripped, equal to `VETO` → VETO; anything else → PROCEED. `confidence` and `dissent`
    are logged but never routed on.
-4. Always exits with a routing code the loop reads (no stdout parsing, MR-1), and never
-   propagates the advisor's exit code, so executor-side 429 interception cannot stall
-   the loop.
+4. Always exits 0 and prints a single routing token (`PROCEED`/`VETO`/`SKIPPED`) that the
+   loop routes with `classify` + a `route:` table (the `next-obligation --format token`
+   shape). It never propagates the advisor's exit code, so executor-side 429 interception
+   (which fires only on non-zero exit) cannot stall the loop. The loop never parses the
+   advisor's own stdout.
 
 ENH-3590's consult (a policy step once ENH-3623 lands) calls the same helper with its own
 signal and question.
@@ -81,10 +89,10 @@ signal and question.
 
 ```
 check_proof_before_done --on_no/on_error--> check_advise_ready_enabled   # was write_done_record
-check_advise_ready_enabled --on_no/on_error--> write_done_record          # flag off: today's path
-                           --on_yes--> run_advise_ready
+check_advise_ready_enabled --on_no/on_error--> write_done_record          # flag off, or already consulted this run
+                           --on_yes--> run_advise_ready   # touches advise-consulted-<ID> first
 run_advise_ready --PROCEED/SKIPPED--> write_done_record
-                 --VETO--> record_advisor_veto
+                 --VETO--> record_advisor_veto  # writes gate_unmet, echoes [ADVISOR_VETO], next: failed
 ```
 
 State names are proposals. The flag is an empty-string context key (autodev's
@@ -122,7 +130,9 @@ _Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
 
 **Key evidence:** `run_record.py:46-50,215-217` (existing `gate_unmet`/`quality` mapping); `autodev.yaml:685` (classify table enumerates the full closed vocabulary); the issue's own **Recommended** marker for Option B.
 
-**Follow-through:** Pick the concrete legacy class (`gate_unmet` → deferred is the likelier fit, since a veto is a gate not met rather than a quality failure) during implementation step 2.
+**Follow-through (resolved in review):** the class is `gate_unmet` (→ deferred). `record_gate_unmet` itself is not reused: its message is specific to structure gates. A new `record_advisor_veto` state writes the same `gate_unmet` legacy class with an accurate `[ADVISOR_VETO]` message, then `next: failed`. No vocabulary change.
+
+**Accepted fail-open on re-runs:** autodev re-refines a deferred issue, and each pass consults again against the per-issue budget (`max_consults_per_task=3`). Once spent, `ll-advise` exits 2 → SKIPPED → the issue passes, so a veto can be outwaited by repeated runs. Accepted for v1: the consult is opt-in and veto-only. The one-shot marker is per run (`run_dir` is per instance), so a prior veto does not force a re-consult beyond what the budget allows.
 
 ## Program Design
 
@@ -137,14 +147,15 @@ _Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
 
 ### Call Path
 
-`refine-to-ready-issue.yaml:check_proof_before_done` -> `check_advise_ready_enabled` -> `run_advise_ready` -> `cmd_advise_consult` -> `main_advise` -> `consult_for_trigger`
+`refine-to-ready-issue.yaml:check_proof_before_done` -> `check_advise_ready_enabled` -> `run_advise_ready` -> `cmd_advise_consult` -> (subprocess `ll-advise`) `main_advise` -> `consult_for_trigger`
 
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/loops/refine-to-ready-issue.yaml` — new gate/consult/veto states on the done path
-- `scripts/little_loops/loops/prepare-issue.yaml`, `scripts/little_loops/loops/recursive-refine.yaml` — declare and pass through the flag; handle the veto outcome
-- `scripts/little_loops/loops/autodev.yaml` — declare and pass the flag to `prepare-issue`
+- `scripts/little_loops/loops/refine-to-ready-issue.yaml` — new gate/consult/veto states on the done path (`check_advise_ready_enabled`, `run_advise_ready`, `record_advisor_veto`); bump `max_steps` (currently 100) for the two extra hops and record it in the history comment
+- `scripts/little_loops/loops/recursive-refine.yaml` — declare the flag in `context:` and pass it to `refine-to-ready-issue` (pass-through only; it does not read run records)
+- `scripts/little_loops/loops/prepare-issue.yaml` — no declaration needed (`context_passthrough: true`); no veto handling needed, `gate_unmet` → deferred is already handled by `forward_stop`
+- `scripts/little_loops/loops/autodev.yaml` — declare the flag in `context:` (`""`) and let it pass to `prepare-issue`; no `route_refine_outcome` change
 - `scripts/little_loops/cli/issues/` — new helper subcommand (location TBD)
 
 ### Dependent Files (Callers/Importers)
@@ -154,7 +165,7 @@ _Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/cli/issues/__init__.py` — four registration sites for the new subcommand: lazy import block, epilog listing (next to `next-obligation`/`run-record`), `add_*_parser(subs)` block, `args.command` dispatch [Agent 1/2 finding]
 - `scripts/little_loops/cli/issues/next_obligation.py` (`register(subs)`), `check_verify_verdict.py`, `run_record.py` — sibling helper modules; models for the new module's `add_<name>_parser`/`cmd_<name>` shape [Agent 1 finding]
-- `scripts/little_loops/run_record.py` (`outcome_from_legacy_class`, `LEGACY_CLASSES`) — Option B reuses `gate_unmet` → deferred; no vocabulary edit, but this is the mapping the veto route depends on [Agent 1 finding]
+- `scripts/little_loops/run_record.py` (`outcome_from_legacy_class`, `LEGACY_CLASSES`) — Option B reuses `gate_unmet` → deferred; no vocabulary edit, but this is the mapping the veto route depends on. The new `record_advisor_veto` writer state is a new writer of that class, so `test_run_record.py` sets need entries [Agent 1 finding, corrected in review]
 - `scripts/little_loops/loops/rn-build.yaml:582`, `sprint-build-and-validate.yaml:82,181`, `issue-refinement.yaml:21` — call `recursive-refine`; inherit the empty default, need edits only if they should forward the flag [Agent 2 finding]
 - `scripts/little_loops/loops/rn-remediate.yaml`, `auto-refine-and-implement.yaml`, `oracles/resolve-decision.yaml` — other `refine-to-ready-issue` callers; confirm they pass no `context:` that would shadow the flag, and that the flag-off path is unchanged for them [Agent 1 finding]
 - `scripts/little_loops/hooks/pre_done.py` — existing `consult_for_trigger` consumer; shares the per-issue budget the new consult draws from [Agent 1 finding]
@@ -181,7 +192,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_autodev_decision_gate.py::TestChildDecisionInvariant.test_only_gate_write_done_record_and_class_writers_reach_done` — inbound-edges-to-`done` check; should survive, re-verify [Agent 3 finding]
 - `scripts/tests/test_builtin_loops.py` (`max_steps == 100` assertion, ~line 1872) — update if the two extra hops force a `max_steps` bump [Agent 3 finding]
 - `scripts/tests/test_fsm_topology.py` (state-count asserts at ~lines 291, 322) — unconfirmed whether they cover `refine-to-ready-issue`; read before editing the loop [Agent 3 finding]
-- `scripts/tests/test_run_record.py` (`LEGACY_CLASS_STATES`, `DONE_PATH_GATES`, `TERMINAL_BEARING_STATES`, `NO_CLASS_WRITE_STATES`) — no change if VETO reuses `record_gate_unmet`; add entries only if a new writer state is introduced [Agent 3 finding]
+- `scripts/tests/test_run_record.py` (`LEGACY_CLASS_STATES`, `TERMINAL_BEARING_STATES`, and the done-path gate sets) — `record_advisor_veto` is a new writer of `gate_unmet`: add it to the class-writer sets, and add the new gate/consult states to whichever done-path sets apply [Agent 3 finding, corrected in review]
 - `scripts/tests/test_builtin_loops.py` (`skip_learning_gate` block, ~lines 18023-18264; registry tuples ~lines 20599-20763, e.g. `("loops/autodev.yaml", "context.skip_learning_gate", "ENH-3358")`) — model for the flag's empty-default and pass-through pins; a new `context.<flag>` reference likely needs a matching registry row [Agent 3 finding]
 - `scripts/tests/test_wiring_reference_docs.py` (tuple table, ~lines 256-264) — add `("docs/reference/CLI.md", "#### \`ll-issues <name>\`", "ENH-3626")` and the `API.md` row, or the docs gate fails [Agent 3 finding]
 - New `scripts/tests/test_ll_issues_<name>.py` — model on `test_ll_issues_next_obligation.py::TestCli` (`_cli()` helper, `--help` registration, exit codes) and `test_run_record.py::TestRecordToken` (parametrized `map_advise_verdict` cases); no existing test stubs `ll-advise` on `PATH`, so use the `chmod(0o755)` stub pattern from `test_builtin_loops.py` [Agent 3 finding]
@@ -202,10 +213,10 @@ _Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
 
 ## Implementation Steps
 
-1. Build and test the shared helper (verdict mapping, persistence, exit contract).
-2. Decide the veto outcome's run-record class and how each caller routes it.
-3. Wire the gate/consult/veto states into `refine-to-ready-issue.yaml`; add the flag to every loop in the pass-through chain.
-4. Tests: default-off chain reaches `write_done_record` without invoking `ll-advise`; VETO/PROCEED/SKIPPED routing; failure = flag off; callers handle the veto class.
+1. Build and test the shared helper (verdict mapping, persistence, always-exit-0 token contract, `LL_ISSUE_ID` on the child env, unreadable `--context-file` → SKIPPED).
+2. (Decided) Veto class = `gate_unmet` via a new `record_advisor_veto` state; recommendation surfaced as an `[ADVISOR_VETO]` echo plus the persisted payload.
+3. Wire `check_advise_ready_enabled` (flag + one-shot marker), `run_advise_ready` (`classify` + `route:`), and `record_advisor_veto` into `refine-to-ready-issue.yaml`; bump `max_steps` and update the header diagram/history; add the flag to `autodev.yaml` and `recursive-refine.yaml` `context:` and `refine-to-ready-issue.yaml` `context:`.
+4. Tests: default-off chain reaches `write_done_record` without invoking `ll-advise`; VETO/PROCEED/SKIPPED routing; failure = flag off; second done-chain pass does not re-consult; subprocess env carries `LL_ISSUE_ID`; existing callers treat the veto as deferred.
 5. `ll-loop validate` for every touched loop.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
@@ -223,33 +234,37 @@ _These touchpoints were identified by wiring analysis and must be included in th
 ## Impact
 
 - **Priority**: P3 - opt-in quality improvement, not blocking
-- **Effort**: Medium - one helper, a few states, a new outcome class across callers
+- **Effort**: Medium - one helper, three loop states, flag pass-through; no new run-record class
 - **Risk**: Low - off by default, fail-open
 - **Breaking Change**: No
 
 ## Scope Boundaries
 
-- **In scope**: the shared helper; the opt-in done-path gate in `refine-to-ready-issue`;
-  a veto outcome and its handling in callers; context-flag pass-through.
+- **In scope**: the shared helper; the opt-in done-path gate in `refine-to-ready-issue`
+  with a one-shot-per-run marker; a `record_advisor_veto` state reusing the `gate_unmet`
+  class; context-flag pass-through.
+- **Out of scope (added in review)**: a new run-record class or `RUN_RECORD_TOKENS` change
+  (Option B); caller edits for veto handling; cross-run veto persistence.
 - **Out of scope**: the go-no-go waiver veto (ENH-3590); letting a consult grant
   readiness or override a failing gate; routing on `confidence`/`dissent`; enabling the
   consult by default; changing `ll-advise` internals.
 
 ## Open Questions
 
-- **Where does a veto route?** A threshold-passing issue that the advisor vetoes needs a
-  non-done outcome. Likely a new run-record class (e.g. `advisor_veto`), which
-  `prepare-issue`/autodev and `recursive-refine` must each handle (defer? send back to
-  refine with the advisor's risks?).
-- **Does a veto persist across passes?** If the issue is re-refined later, should a prior
-  veto force another consult, or is one consult per pass enough?
+_None outstanding._ Resolved in review:
+
+- **Where does a veto route?** `record_advisor_veto` writes the existing `gate_unmet` class
+  (→ deferred) and goes to `failed`; existing callers already handle it (Option B).
+- **Does a veto persist across passes?** No. The one-shot marker is per run. A later run
+  re-consults until the per-issue budget is spent, after which the consult is SKIPPED
+  (accepted fail-open; see Decision Rationale).
 
 ## Acceptance Criteria
 
 - [ ] With the flag empty (default), the done path reaches `write_done_record` without invoking `ll-advise`
-- [ ] With the flag set, a threshold-passing issue gets exactly one consult, billed to the per-issue budget
-- [ ] The payload, stderr, and exit code are persisted to `<run_dir>/advise-<ID>.{json,err,rc}` and mapped by the shared helper, with no stdout parsing
-- [ ] VETO keeps the issue out of `done`, logs the advisor's recommendation, and every caller handles the new outcome
+- [ ] With the flag set, a threshold-passing issue gets exactly one consult per run (including when the done chain is re-entered after `run_spike` or a decide re-score), billed to the per-issue budget via `LL_ISSUE_ID` set by the helper on the child process
+- [ ] The payload, stderr, and exit code are persisted to `<run_dir>/advise-<ID>.{json,err,rc}` and mapped by the shared helper; the loop routes on the helper's token, never on the advisor's stdout
+- [ ] VETO keeps the issue out of `done`, records `gate_unmet` (→ deferred) via `record_advisor_veto`, echoes an `[ADVISOR_VETO]` line with the recommendation, and existing callers handle it with no edits
 - [ ] Any `ll-advise` failure behaves exactly like the flag being off; the loop never halts or waits on an advisor rate limit
 - [ ] ENH-3590 can reuse the helper unchanged
 

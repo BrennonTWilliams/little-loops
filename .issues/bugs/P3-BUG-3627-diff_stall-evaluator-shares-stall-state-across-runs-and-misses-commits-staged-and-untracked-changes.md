@@ -37,9 +37,13 @@ The stall gate is the non-LLM progress signal that meta-loop rule (2) requires. 
 
 ## Proposed Solution
 
-- Thread the run dir (or run id) into `evaluate_diff_stall` and store state there; fall back to the current `.loops/tmp` path only when no run context exists.
-- Replace `git diff --stat` with a content hash of `git diff HEAD` + `HEAD` sha + untracked file contents (`git ls-files --others --exclude-standard`), honoring `scope`.
-- Update the fragment description in `loops/lib/common.yaml` and `TestDiffStallGate` in `scripts/tests/test_fsm_fragments.py`.
+- Thread the run dir into `evaluate_diff_stall` and store state there; fall back to the current `.loops/tmp` path only when no run context exists.
+- **Key includes the state name** (review 2026-09-27): child loops `setdefault` the parent's `run_dir`, so a parent and child both using root-scope `diff_stall` would share `ll-diff-stall-_root_.*` inside one run dir. Key files as `<state>-<md5(scope)[:12]>` and pass the state name into the evaluator (via `evaluate()`'s context or a new arg). This also separates two same-scope diff_stall states in one run.
+- Replace `git diff --stat` with a content fingerprint: hash of `git diff HEAD` + `HEAD` sha + untracked files, honoring `scope` and excluding `.loops/`.
+  - **No-commit repos**: if `HEAD` does not resolve (`git rev-parse --verify HEAD` fails), fall back to `git diff` + `git diff --cached` and an empty `HEAD` component rather than returning `error` (fresh-repo generator loops such as `generative-art`, `canvas-sketch-generator` are the likely case). Non-git dir still returns `error` with the existing `"git diff failed"` string.
+  - **Untracked hashing is bounded**: enumerate with `git ls-files -o --exclude-standard -z` (respects gitignore) and hash via `git hash-object` per file (as `final_verify_spin_gate` does) rather than reading contents into Python; skip `.loops/`.
+- Update the fragment description in `loops/lib/common.yaml`; behavior tests go in `TestDiffStallEvaluator` (`scripts/tests/test_fsm_evaluators.py`), not `TestDiffStallGateFragment`, which only checks fragment resolution.
+- File a follow-up issue for `evaluate_action_stall` (same shared `.loops/tmp` cache defect) so it is not lost.
 
 ## Program Design
 
@@ -51,7 +55,7 @@ The stall gate is the non-LLM progress signal that meta-loop rule (2) requires. 
 
 ### Signatures
 
-- `evaluate_diff_stall(scope: list[str] | None = None, max_stall: int = 1, state_dir: Path | None = None) -> EvaluationResult` — fingerprint = hash of `git diff HEAD` + `HEAD` sha + untracked paths and contents, scoped and excluding `.loops/`
+- `evaluate_diff_stall(scope: list[str] | None = None, max_stall: int = 1, state_dir: Path | None = None, state_name: str = "") -> EvaluationResult` — fingerprint = hash of `git diff HEAD` (or `git diff` + `--cached` when no commits) + `HEAD` sha + untracked paths and `git hash-object` digests, scoped and excluding `.loops/`; state files keyed `<state_name>-<md5(scope)[:12]>`
 
 ### Call Path
 
@@ -147,13 +151,19 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Update `scripts/tests/test_grader_coverage.py` only if a new `evaluate_*` symbol is introduced
 - Update docs listed under Documentation (`docs/generalized-fsm-loop.md`, `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md`, `LOOPS_GUIDE.md`, `LOOPS_REFERENCE.md`, `docs/reference/loops.md`, `API.md`, `docs/test-quality-audit.md`), `fsm-loop-schema.json` / `schema.py` `scope` wording, and `skills/create-loop/{loop-types,reference}.md`
 - Regenerate host skill mirrors (`ll-adapt --host <gemini|kimi-code|qwen> --apply`) after the `skills/` edit; run `ruff format` scoped to changed files only
-- Decide per-run key collisions: two diff_stall states with the same `scope` in one run (or parent + child sharing `run_dir`) still share `md5(scope)` files
+- Per-run key collisions: decided — include the state name in the key (see Proposed Solution); add a test with two same-scope diff_stall states in one `run_dir`
+- Sample the loops the research did not open (`vega-viz`, `pixi-data-viz`, `generative-art`, `openscad-model-generator`, `canvas-sketch-generator`, `harness-plan-research-implement-report`, `harness-multi-item`, `oracles/generator-evaluator`) and confirm each writes progress outside `.loops/` (now excluded); note any that do not
+- File the `evaluate_action_stall` follow-up issue
+- Docs checklist (do all, in one pass): `docs/generalized-fsm-loop.md`, `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md`, `docs/guides/LOOPS_GUIDE.md`, `docs/guides/LOOPS_REFERENCE.md`, `docs/reference/loops.md`, `docs/reference/API.md`, `docs/test-quality-audit.md`, `skills/create-loop/{loop-types,reference}.md` + `ll-adapt` mirrors
 
 ## Impact
 
 - **Priority**: P3 — false `partial`/stall terminals waste runs; no data loss.
 - **Effort**: Small–Medium — one evaluator plus tests.
-- **Risk**: Low–Medium — 12 built-in loops change stall sensitivity (stalls will trip less often).
+- **Risk**: Medium — 12 built-in loops change stall sensitivity, in both directions:
+  - Commits now count as progress and `HEAD` sha is in the fingerprint, so a loop that commits every pass can never stall on this gate (stalls trip less often).
+  - Loops whose only progress is written under `.loops/` (now excluded) will stall where they previously did not.
+  - A revert-to-same-content after commits changes the fingerprint (`HEAD` differs).
 - **Breaking Change**: No
 
 ## Steps to Reproduce
@@ -167,7 +177,11 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Two sequential runs of the same loop do not share stall state; a fresh run's first check always returns `yes`.
 - A pass that only commits, only stages, or only adds untracked files counts as progress.
 - A same-line-count content edit counts as progress.
-- Existing diff_stall tests updated; new tests cover each case above.
+- A parent and child loop sharing a `run_dir`, or two same-scope diff_stall states in one run, do not share stall state.
+- A repo with no commits does not return `error`; it fingerprints from `git diff` + `--cached` + untracked files.
+- Untracked files are hashed via `git hash-object` (no full-content reads) and `.loops/` is excluded.
+- Existing diff_stall tests updated (`TestDiffStallEvaluator`); new tests cover each case above.
+- Follow-up issue filed for `evaluate_action_stall`.
 
 ## Related
 

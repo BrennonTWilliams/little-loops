@@ -13,9 +13,7 @@ supersedes:
 relates_to:
 - ENH-3621
 - ENH-3618
-blocked_by:
-- BUG-3624
-- ENH-3625
+- BUG-3628
 blocks:
 - ENH-3600
 - ENH-3590
@@ -41,7 +39,7 @@ second-pass preparation ladder (the verified 39-state move set plus `size_review
   config and an append-only per-issue fact log;
 <!-- ll-prose-ok: the prep subcommand group is proposed by this issue, not yet implemented -->
 - writers kept separate from decisions, behind `ll-issues prep {step,record,apply,explain}`;
-- a ~15-state dispatch loop that replaces `prepare-issue.yaml` in place.
+- a 15-state dispatch loop that replaces `prepare-issue.yaml` in place.
 
 This issue supersedes ENH-3606. ENH-3606's still-valid decisions carry over (terminal
 table, ledger ownership, DECOMPOSED guarantee, queue ownership, accepted behavior
@@ -89,7 +87,7 @@ parent's `current_state`, so a mid-ladder resume restarts the `loop:` child from
 
 ## Expected Behavior
 
-- `prepare-issue.yaml` is a dispatch loop of at most ~15 states. It asks the policy for
+- `prepare-issue.yaml` is a dispatch loop of exactly 15 states. It asks the policy for
   the next step, runs that one command (inner `refine-to-ready-issue` run or one slash
   command), records a done fact, and repeats. It ends in `apply_outcome`, which writes
   exactly one terminal: `READY`, a ledgered `BLOCKED:*` / `DEFERRED:*` stop,
@@ -119,7 +117,8 @@ parent's `current_state`, so a mid-ladder resume restarts the `loop:` child from
     outcome_threshold) = decide(snapshot_issue(...), load_facts(...))`. The snapshot
     reuses `select_next_obligation` (tier-1 skipped), `resolve_gate_verdict`, the
     check-design / format-gap helpers, `readiness_status` semantics,
-    `superseded_marker_count` and `IssueParser.session_command_counts`.
+    `superseded_marker_count` and the `session_command_counts` field of the parsed issue
+    (populated by `count_session_commands`).
 - **Fact log** `run_dir/prep-facts/<ID>.jsonl`, with lines `{pass, seq, kind:
   intent|done|obs, step, payload}`. It is append-only and idempotent by
   `(pass, seq, kind)` (obs lines also by content). It replaces the handshake files; the
@@ -226,9 +225,12 @@ parent's `current_state`, so a mid-ladder resume restarts the `loop:` child from
      with its wire/rescore/size-review/reconcile legs, plus the atomic and design
      remedies), and set `max_steps ≈ 3 × cap + 3`. The spike's fixed 15 is below the
      legal worst case.
-   - Make `apply`'s row append and its `apply_progress` obs one atomic write, or key the
-     rows by `(pass, seq)`, so a crash inside `apply` cannot double-append a row. This is
-     an acceptance criterion with a crash-injection test (see Acceptance Criteria).
+   - Make `apply` crash-safe by keying ledger rows by `(pass, seq)` with a
+     check-before-append (the row and the `apply_progress` obs live in two files, so one
+     atomic write is not available). Each of the four writes (ledger row, `set-status`,
+     run record, inflight clear) must be independently idempotent, so replaying `apply`
+     from any crash point converges on one terminal. This is an acceptance criterion with a
+     crash-injection test (see Acceptance Criteria).
    - `apply` owns the `refine-terminal-class` sentinel writes that `mark_inner_error` does
      today, until ENH-3600 removes the reader. Pin it with a test.
 2. **CLI and docs.**
@@ -265,10 +267,13 @@ parent's `current_state`, so a mid-ladder resume restarts the `loop:` child from
    - **Q1**: the format-check exit code masks the contradiction trigger. Captured as its
      own BUG. The port must use the fixed semantics: markers are read from the payload
      whatever the exit code.
-   - **Q3**: the first-gate Program Design rule (ENH-3625). Implement whichever rule it
-     decides, in all three places that must agree after the cutover: the `decide()` row
-     after a `RUN_CHILD` done fact, autodev's surviving `check_passed` (the post-READY
-     gate), and the run-record `ready` predicate.
+   - **Q3**: the first-gate Program Design rule (ENH-3625, `done`). **Rule A**: the first
+     gate runs check-design too, so `check_passed` hard-ANDs `ll-issues check-design "$ID"`
+     after `check-readiness`, and the run-record `ready` predicate carries the same design
+     condition (a design-failing child `done` records `BLOCKED`). Encode it in all three
+     places that must agree after the cutover: the `decide()` row after a `RUN_CHILD` done
+     fact, autodev's surviving `check_passed` (the post-READY gate), and the run-record
+     `ready` predicate.
    - **Run-terminal capture for `record_step`**: the executor merges child captures into
      `captured.run_child` only when the child captured something, and writes
      `failure_terminal` only when it is truthy (`fsm/executor.py:1338`), so a stale
@@ -443,6 +448,9 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - `decide(snapshot: IssueSnapshot, facts: Facts) -> Step` — pure; checkpoint → rule-order table, no I/O
 - `next_preparation_step(config: BRConfig, issue_id: str, run_dir: Path, *, readiness_threshold: int, outcome_threshold: int) -> Step` — snapshots the issue, loads the facts, calls `decide`
 - `load_facts(run_dir: Path, issue_id: str) -> Facts` — reads the append-only fact log, deduplicating by `(pass, seq, kind)`
+- `append_fact(run_dir: Path, issue_id: str, fact: Fact) -> bool` — appends one JSONL line unless `(pass, seq, kind)` (obs: content too) already exists; returns whether it wrote
+- `apply_terminal(config: BRConfig, issue_id: str, run_dir: Path, step: Step) -> str` — the sole terminal writer; runs the ledger row (keyed `(pass, seq)`, check-before-append), `set-status`, run record and inflight clear in order, each idempotent, and returns the terminal token
+- `record_step(config: BRConfig, issue_id: str, run_dir: Path, *, guard2: bool = False) -> None` — writes the done fact and repair-cycle projection; classifies the child outcome from `run-records/refine-to-ready-issue/<ID>.json`, never from `captured.run_child`
 
 ### Call Path
 
@@ -499,7 +507,8 @@ _These touchpoints were identified by wiring analysis and must be included in th
   full matrix passes when opted in.
 - [ ] `decide()` has table tests covering every row of the checkpoint → rule-order table,
   H1–H4, the budget rules and the ported shell predicates.
-- [ ] The dispatch loop has ≤ ~15 states, contains no `rm`, never appends to
+- [ ] The dispatch loop has exactly 15 states (stated in the YAML comment and pinned by a
+  structural test), contains no `rm`, never appends to
   `autodev-staged.txt`, and `prep apply` is the only writer of ledger rows, status and
   run records inside it.
 - [ ] `ll-loop validate prepare-issue` and `ll-loop validate autodev` pass (autodev
@@ -524,8 +533,6 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - [ ] `prep record` classifies the child outcome from
   `run-records/refine-to-ready-issue/<ID>.json`, not from `captured.run_child`; a test
   seeds a stale `failure_terminal` capture and shows it is ignored.
-- [ ] The dispatch loop has 15 states, stated in the YAML comment and pinned by a
-  structural test.
 - [ ] Autodev keeps `max_steps: 500`; accepted change 6 is documented in
   `LOOPS_REFERENCE.md`.
 - [ ] The autodev topology count in `test_fsm_topology.py` equals the number recorded in
@@ -547,7 +554,7 @@ _Added by `/ll:confidence-check` on 2026-09-27_
 - Phase A/B/C phasing is stated, but only Phase A is safe to start alone; the atomic cutover (Phase B) is where the risk sits.
 
 ### Gaps to Address
-- `blocked_by: ENH-3625` is `open` (BUG-3624 is done), so the dependency gate forces STOP. Land ENH-3625's first-gate rule first, on the current YAML, or drop the edge if Phase A (additive, no loop changes) is started ahead of it. Phase A does not depend on the Q3 rule; only the Phase B `decide()` row does.
+- ~~`blocked_by: ENH-3625` is `open`~~ Stale: BUG-3624 and ENH-3625 are both `done`, and the `blocked_by` edges were removed (2026-09-27 review). Re-run `/ll:confidence-check` to clear the Dependencies override.
 
 ### Outcome Risk Factors
 - Deep per-site complexity: replaces the second-pass routing of the most-used loop (`prepare-issue.yaml` in place, 42 autodev deletions), with all projects on this machine `local-editable`, so a half-landed cutover breaks tooling everywhere.

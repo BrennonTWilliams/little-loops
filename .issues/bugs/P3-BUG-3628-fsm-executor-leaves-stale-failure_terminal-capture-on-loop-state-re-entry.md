@@ -53,10 +53,19 @@ unaffected). Confirm whether the oracle's own captures make that path immune.
 
 ## Proposed Solution
 
-- Clear the key before the conditional set (`pop("failure_terminal", None)`), or assign it
-  unconditionally, so it always reflects the latest child.
-- Decide whether the child-capture merge should also reset `captured[<state>]` when the
-  child captured nothing on a re-entry (a stale child capture is the same class of bug).
+**Decision (review 2026-09-27): reset at entry.** At the start of each `_execute_sub_loop`
+entry, drop the state's previous per-invocation dict (`self.captured.pop(self.current_state, None)`),
+then let the existing merge, `terminated_by`, `failure_terminal`, `error` and `verdict`
+writes repopulate it. This fixes `failure_terminal`, `error`, `verdict` and stale child
+captures in one place and needs no per-key upkeep.
+
+- Do **not** assign `failure_terminal` unconditionally: a `False` write makes
+  `${captured.<state>.failure_terminal?}` render `False` instead of empty, changing
+  shell-condition behavior in `refine-to-ready-issue.yaml`. Absent key is the contract.
+- Before implementing, verify nothing writes `captured[<state>]` for a `loop:` state
+  *before* `_execute_sub_loop` runs (e.g. a `state.capture` key equal to the state name);
+  a blanket reset would clobber it. If something does, fall back to per-key `pop` for
+  `failure_terminal`, `error`, `verdict` plus a whole-dict reset only of merge-owned keys.
 
 ## Integration Map
 
@@ -75,8 +84,8 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/fsm/interpolation.py` (~:164, `_get_nested(self.captured, path, "captured")`) — resolves `${captured.*}`; an absent key resolves via the `?` default (empty), whereas an unconditional `False` write would render as `False` [Agent 1 finding]
 - `scripts/little_loops/fsm/validation/shell_safety.py` `_scan_state_for_mr11` / `_parse_mr11_marker` — MR-11 markers key on `<namespace>.<key>`; a stale marker is itself a finding, so the `${captured.confidence_check.failure_terminal?}` site text and key names must stay unchanged [Agent 2 finding]
 - `scripts/little_loops/loops/refine-to-ready-issue.yaml` (~:799 comment) — notes `terminated_by`/`failure_terminal` "still land under `confidence_check`"; `confidence_check` uses `with_`/passthrough, so the whole-dict merge already drops a stale `failure_terminal` whenever the child has captures. Stale value survives only for a capture-less child — answers the issue's "confirm immunity" question: partially immune, not fully [Agent 2 finding]
-- `scripts/little_loops/loops/auto-refine-and-implement.yaml` (~:403) — comment cites `executor.py:1170-1175` for `failure_terminal=True`; line reference is stale (block now at ~:1326-1339); ~:419 carries the `mr11-ok(captured.delegate.terminated_by)` marker, ~:1252 mentions `workdir_vanished` [Agent 1 finding]
-- Comment-only mentions (no change): `rn-remediate.yaml:322`, `oracles/resolve-decision.yaml:167`, `recursive-refine.yaml:244,248`, `prepare-issue.yaml:72`, `general-task.yaml:1222`, `html-anything.yaml:281` [Agent 1/2 finding]
+- `scripts/little_loops/loops/auto-refine-and-implement.yaml` (~:419) — carries the `mr11-ok(captured.delegate.terminated_by)` marker; keep unchanged (its ~:403 comment cites a stale `executor.py:1170-1175` line — separate cleanup) [Agent 1 finding]
+- Comment-only mentions (no change): `rn-remediate.yaml`, `oracles/resolve-decision.yaml`, `recursive-refine.yaml`, `prepare-issue.yaml`, `general-task.yaml`, `html-anything.yaml`
 - Readers of the `ExecutionResult` field (not `captured`), unaffected: `cli/loop/runner.py`, `cli/loop/audit.py`, `cli/loop/evidence.py`, `transport.py:1837`, `persistence.py map_final_status`, `history_reader/*`, `session_store/*`. Routing and `state.capture` verdicts read `child_result.failure_terminal` directly, so clearing the captured key does not change routing [Agent 1/2 finding]
 
 ### Similar Patterns
@@ -127,19 +136,20 @@ _Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
 ## Implementation Steps
 
 1. Write the failing real-FSM re-entry test in `test_fsm_executor.py`.
-2. Clear `failure_terminal` before the conditional set in `_execute_sub_loop` (or assign it
-   unconditionally), and decide the capture-less whole-dict merge case.
+2. Verify no pre-`_execute_sub_loop` writer targets `captured[<loop-state>]`, then reset
+   `captured[<state>]` at `_execute_sub_loop` entry (never assign `failure_terminal`
+   unconditionally).
 3. Run `python -m pytest scripts/tests/test_fsm_executor.py scripts/tests/test_builtin_loops.py`.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-- Update `scripts/little_loops/fsm/executor.py` `_execute_sub_loop` — clear `failure_terminal` (prefer `pop`, so `${captured.<state>.failure_terminal?}` keeps resolving empty) after the merge block and before the conditional set; decide the same for the conditional `error` (~:1223, ~:1372) and `verdict` (~:1356) writes
+- Update `scripts/little_loops/fsm/executor.py` `_execute_sub_loop` — reset `captured[<state>]` at entry so `failure_terminal`, `error` (~:1223, ~:1372) and `verdict` (~:1356) are all cleared; absent key keeps `${captured.<state>.failure_terminal?}` resolving empty
 - Update `scripts/tests/test_fsm_executor.py` — add the re-entry test class near `TestSubLoopTimeoutRouting` (fail-then-succeed capture-less, `with_`/passthrough variant, fail-then-fail, stale `error`); pin the whole-dict merge decision
 - Keep `${captured.confidence_check.failure_terminal?}` site text and `test_builtin_loops.py` `mr11-ok` allowlist entries unchanged
 - Update `docs/reference/API.md` (~:6392-6417) — add a "latest child run" sentence for `captured.<state>` termination fields
-- Fix stale `executor.py:1170-1175` reference in the `auto-refine-and-implement.yaml` (~:403) comment if touched
+- (Optional, separate cleanup — not part of this fix) stale `executor.py:1170-1175` reference in the `auto-refine-and-implement.yaml` (~:403) comment
 
 ## Impact
 
@@ -171,8 +181,15 @@ stale child captures from an earlier invocation also survive.
 
 - [ ] A real-FSM test enters a `loop:` state twice (fail, then succeed with no child
   captures) and asserts `failure_terminal` is absent or falsy after the second entry.
-- [ ] The whole-dict merge behavior on a capture-less re-entry is decided and pinned by a
-  test.
+- [ ] Reset-at-entry is the chosen behavior for the whole-dict merge (see Proposed
+  Solution) and a capture-less re-entry test pins that no child captures survive.
+- [ ] Stale `error` and `verdict` keys are also cleared on re-entry (error-then-terminal
+  and verdict-flip tests).
+- [ ] A resumed run (`PersistentExecutor.resume` rehydrating a stale `captured`) exposes
+  no stale termination keys after the next re-entry — covered by a test or an explicit
+  note that reset-at-entry covers it.
+- [ ] `${captured.confidence_check.failure_terminal?}` site text and the `mr11-ok`
+  allowlist entries are unchanged.
 
 ## Program Design
 
@@ -183,7 +200,7 @@ stale child captures from an earlier invocation also survive.
 ### Signatures
 
 - `FSMExecutor.run(self) -> ExecutionResult` — unchanged public entry point
-- `FSMExecutor._execute_sub_loop(self, state: StateConfig, ctx: InterpolationContext) -> str | None` — the capture block clears `failure_terminal` before the conditional set
+- `FSMExecutor._execute_sub_loop(self, state: StateConfig, ctx: InterpolationContext) -> str | None` — resets `captured[<state>]` at entry so termination keys reflect only the latest child
 
 ### Call Path
 
