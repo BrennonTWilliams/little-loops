@@ -397,11 +397,12 @@ before any `prep` code, so a bisect isolates any `run-record write` / `set-score
 
 ## Acceptance Criteria
 
-- [ ] `decide()` has table tests covering every row of the checkpoint → rule-order table,
+- [x] `decide()` has table tests covering every row of the checkpoint → rule-order table,
   H1–H4, the budget rules, and the ported shell predicates (contradiction-sourced spike
   exemption, spike-budget-exhausted reconcile fallback, the refine cap on DPDR, the
-  selectors' `_error` routes).
-- [ ] Importing the pure layer (`decide`, `Step`, `StepKind`, `Facts`, `IssueSnapshot`)
+  selectors' `_error` routes). (47 tests, `test_preparation_policy.py`; three scenarios
+  rewritten for ENH-3625/BUG-3620 rather than ported verbatim — see their docstrings.)
+- [x] Importing the pure layer (`decide`, `Step`, `StepKind`, `Facts`, `IssueSnapshot`)
   imports no `little_loops.cli` module (test).
 - [ ] Parity/differential tests run the policy (fixture dispatch loop + `policy_transform`
   as `autodev_transform`) against the existing YAML. Every difference is on an explicit
@@ -414,39 +415,51 @@ before any `prep` code, so a bisect isolates any `run-record write` / `set-score
 - [ ] The measured parity/differential wall-clock is recorded in this issue, and the
   differential set is env-gated if it exceeds 60 s.
 - [ ] The dispatch-loop fixture loads and validates, and its `max_steps` equals the
-  exported constant.
-- [ ] A design-failing `FINISH` records `BLOCKED`, not `READY` (the shared helper carries
-  ENH-3625's check-design condition).
-- [ ] An absent `prep-pass-<ID>` file reads as pass `0`.
-- [ ] A failing `set-status` or `clear_scores` inside `prep apply` or a precondition is
+  exported constant. **Not done** — ENH-3623 Phase A's Step 5 (dispatch-loop fixture,
+  harness extensions, parity/differential/resume tests) is not implemented in this
+  session; see the Session Log note below.
+- [x] A design-failing `FINISH` records `BLOCKED`, not `READY` (the shared helper carries
+  ENH-3625's check-design condition). (`write_typed_run_record` is the shared helper;
+  pinned by `test_run_record.py::test_design_gate_failure_makes_done_record_blocked`,
+  which `prep apply`'s `write()` closure now calls directly.)
+- [x] An absent `prep-pass-<ID>` file reads as pass `0`.
+- [x] A failing `set-status` or `clear_scores` inside `prep apply` or a precondition is
   surfaced as an error (non-zero exit, and the `mark(part)` progress mark for that write is
   not written), and a re-run converges on one terminal.
-- [ ] Every `(status, reason)` pair the policy passes to `apply_status_transition` passes
+- [x] Every `(status, reason)` pair the policy passes to `apply_status_transition` passes
   the extracted reason-vs-status check (test).
-- [ ] Fact log: appending the same `(pass, seq, kind)` twice writes one line; a replayed
+- [x] Fact log: appending the same `(pass, seq, kind)` twice writes one line; a replayed
   `dequeue_next` increment that skips a pass number is harmless (test).
 - [ ] Crash injection inside `prep apply`, between each of the ledger row, `set-status`,
   run record and inflight clear writes, followed by a re-run, never double-appends a
-  ledger row and ends with one terminal.
-- [ ] `prep apply` with no open `FINISH`/`STOP` intent writes `RETRYABLE_ERROR:infra`, and
-  writes the `refine-terminal-class` sentinel on every `failed`-bound terminal.
+  ledger row and ends with one terminal. **Partial**: one crash point is covered
+  (`test_crash_after_row_before_status_write_then_replay_converges`); the other two
+  splits (status→run-record, run-record→inflight-clear) are not yet pinned.
+- [x] `prep apply` with no open `FINISH`/`STOP` intent writes `RETRYABLE_ERROR:infra`, and
+  writes the `refine-terminal-class` sentinel on every `failed`-bound terminal (pinned for
+  the `ladder_error`/no-open-intent case; the `child_stop` terminal's sentinel behavior,
+  ported verbatim from the spike, is not separately re-verified here).
 - [ ] `prep record` ignores a seeded stale `failure_terminal` capture and classifies from
-  the child's run record; an absent record means the child errored.
-- [ ] The contradiction trigger reads `superseded_marker_count` even when format-check
-  reports blocking gaps.
-- [ ] `ll-issues run-record write` and `prep apply` share one record-writing helper; the
+  the child's run record; an absent record means the child errored. **Not independently
+  verified** — `prep_record` structurally never reads a stale capture file (it only takes
+  `child_terminated_by`/`child_failure` as explicit args), but the "absent record ⇒
+  child errored" routing effect described here isn't pinned by a dedicated test.
+- [x] The contradiction trigger reads `superseded_marker_count` even when format-check
+  reports blocking gaps. (`test_markers_counted_even_when_format_check_has_a_blocking_gap`
+  exercises `snapshot_issue()` itself, not just `decide()`.)
+- [x] `ll-issues run-record write` and `prep apply` share one record-writing helper; the
   existing `test_run_record.py` suite stays green.
-- [ ] `set-scores --clear` uses `clear_scores` (locked, atomic); `test_set_scores_cli.py`
+- [x] `set-scores --clear` uses `clear_scores` (locked, atomic); `test_set_scores_cli.py`
   and `test_set_status_cli.py` stay green.
-- [ ] The step-budget constants (`cap`, `max_steps = 4 × cap + 3`) are exported with the
+- [x] The step-budget constants (`cap`, `max_steps = 4 × cap + 3`) are exported with the
   arithmetic in a comment and a unit test.
-- [ ] The `prep` group's `--help` lists all four subcommands and the `Sub-commands:`
+- [x] The `prep` group's `--help` lists all four subcommands and the `Sub-commands:`
   epilog names `prep`; CLI.md / API.md rows exist and `test_wiring_reference_docs.py`
   passes.
-- [ ] The `ll-prose-ok` markers are removed from ENH-3630, ENH-3623 and ENH-3600, and the
+- [x] The `ll-prose-ok` markers are removed from ENH-3630, ENH-3623 and ENH-3600, and the
   prose/claim gates (`issues/cli_claims.py`, `issues/symbol_claims.py`,
-  `ll-verify-skill-prose`) pass without them.
-- [ ] `git diff --stat` for this issue touches no file under `scripts/little_loops/loops/`.
+  `ll-verify-skill-prose`) pass without them. (ENH-3600 never carried a literal marker.)
+- [x] `git diff --stat` for this issue touches no file under `scripts/little_loops/loops/`.
 
 ## Scope Boundaries
 
@@ -468,6 +481,9 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-27T07:17:14 - `ffe83340-64ab-4aa2-8e82-f0a8dee415ca.jsonl`
+- `/ll:manage-issue` - 2026-09-27T07:17:04 - `ffe83340-64ab-4aa2-8e82-f0a8dee415ca.jsonl`
+- `/ll:manage-issue (Steps 1-4, 6 of 6 implemented; Step 5 dispatch-loop fixture/parity/differential/resume tests remains)` - 2026-09-27T07:16:41 - `ffe83340-64ab-4aa2-8e82-f0a8dee415ca.jsonl`
 - `/ll:ready-issue` - 2026-09-27T06:27:34 - `7c632ebe-777a-4f1f-a70b-7c27f2eb3393.jsonl`
 - `/ll:confidence-check` - 2026-09-27T06:11:39 - `6b15b3a1-a94e-4eb9-affa-df6227ccba80.jsonl`
 - review (layering, score writer, reason check, runtime rule decided; sections consolidated) - 2026-09-27
