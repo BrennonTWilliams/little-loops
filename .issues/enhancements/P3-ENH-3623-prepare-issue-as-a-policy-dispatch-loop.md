@@ -39,7 +39,6 @@ second-pass preparation ladder (the verified 39-state move set plus `size_review
 
 - a pure Python policy `decide(IssueSnapshot, Facts) -> Step` over the issue file,
   config and an append-only per-issue fact log;
-<!-- ll-prose-ok: the prep subcommand group is proposed by this issue, not yet implemented -->
 - writers kept separate from decisions, behind `ll-issues prep {step,record,apply,explain}`;
 - a 15-state dispatch loop that replaces `prepare-issue.yaml` in place.
 
@@ -147,7 +146,6 @@ parent's `current_state`, so a mid-ladder resume restarts the `loop:` child from
   ENH-3600 needs no separate prepared-ID ledger. A crash inside `dequeue_next` after the
   increment replays it and skips a pass number; that is harmless (the skipped pass has
   no facts) and needs no idempotency guard, but pin it with a test.
-<!-- ll-prose-ok: the prep subcommand group is proposed by this issue, not yet implemented -->
 - **Writers** (`ll-issues prep …`, registered in `little_loops.cli.issues` so the harness
   fork server serves them):
   - `prep step`: if an applied terminal exists, replay it. If an intent is open,
@@ -271,7 +269,6 @@ parent's `current_state`, so a mid-ladder resume restarts the `loop:` child from
    - `apply` owns the `refine-terminal-class` sentinel writes that `mark_inner_error` does
      today, until ENH-3600 removes the reader. Pin it with a test.
 2. **CLI and docs.**
-   <!-- ll-prose-ok: the prep subcommand group is proposed by this issue, not yet implemented -->
    - `ll-issues prep {step,record,apply,explain}` goes in `docs/reference/CLI.md`, and
      the module goes in `docs/reference/API.md`.
    - `docs/guides/LOOPS_REFERENCE.md`: the autodev tree, the prepare-issue section and

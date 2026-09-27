@@ -2469,6 +2469,63 @@ issue's exit when a parent loop reuses one run_dir.
 
 ---
 
+#### `ll-issues prep`
+
+**Internal loop plumbing, not for manual use.** Dispatches the preparation
+routing policy (`step`/`record`/`apply`/`explain`) that expresses the second-pass
+preparation ladder as a pure function over an issue snapshot and an append-only
+per-issue fact log (`<run_dir>/prep-facts/<ID>.jsonl`). `step` and `apply` mutate
+issue status/scores as a side effect of routing; running them outside a loop can
+change an issue's `status`, `confidence_score`/`outcome_confidence`, or
+`deferred_reason`. See `little_loops.preparation_policy` in
+[API.md](API.md#little_loopspreparation_policy) for the module the CLI wraps.
+
+| Argument | Description |
+|----------|-------------|
+| `issue_id` | Issue ID (e.g., `3630`, `ENH-3630`, `P3-ENH-3630`) |
+
+| Flag | Description |
+|------|-------------|
+| `--run-dir DIR` | **Required.** The run's run_dir (an FSM state passes `${context.run_dir}`) |
+| `--readiness-threshold N` / `--outcome-threshold N` | Override the thresholds (defaults 85/65) |
+| `--guard2` (`record` only) | Mark the just-recorded `SIZE_REVIEW` done fact as guard-2 |
+| `--child-terminated-by` / `--child-failure` (`record` only) | Classify the inner run's outcome from the loop's terminal capture |
+| `--rate-limited` (`apply` only) | Route this pass to the `rate_limited` terminal instead of the open intent |
+
+- **`prep step <ID> --run-dir DIR`** replays the pass's open intent if one exists
+  (idempotent resume), else decides the next `StepKind` (`RUN_CHILD`, `WIRE`,
+  `REFINE_GAP`, `RESCORE`, `RECONCILE`, `SIZE_REVIEW`, `GO_NO_GO`, `FINISH`, `STOP`),
+  appends its intent fact, runs the step's idempotent preconditions (clearing
+  records/scores, deferring for a go/no-go, reopening after one), and prints the
+  token on stdout for an FSM `route:` table (a `[PREP]` diagnostic line goes to
+  stderr). Exit 0.
+- **`prep record <ID> --run-dir DIR`** appends the `done` fact for the currently
+  open (non-terminal) intent; a no-op if there is none. Classifies a `RUN_CHILD`
+  step's outcome from `run-records/refine-to-ready-issue/<ID>.json`, never from a
+  loop capture that can go stale across a child run that captured nothing. Exit 0.
+- **`prep apply <ID> --run-dir DIR`** is the sole terminal writer: a
+  `(pass, seq)`-keyed ledger row, `set-status` (deferral only), the shared typed
+  run record (see `run-record` above), and the run_dir's inflight marker, each
+  independently idempotent, so a crash between any two of them converges on one
+  terminal on replay. Exit 0 (wrapper `done`) or 1 (wrapper `failed`).
+- **`prep explain <ID> --run-dir DIR`** prints the next decision as JSON
+  (`{kind, payload, reason, evidence}`) without writing anything — for inspecting
+  what the policy would do next.
+
+**Examples:**
+```bash
+ll-issues prep step ENH-3630 --run-dir "$RUN_DIR"
+ll-issues prep record ENH-3630 --run-dir "$RUN_DIR" --child-terminated-by terminal --child-failure none
+ll-issues prep apply ENH-3630 --run-dir "$RUN_DIR"
+ll-issues prep explain ENH-3630 --run-dir "$RUN_DIR"
+```
+
+As of ENH-3630, no built-in loop calls `prep` yet — the dispatch loop that drives
+it through a full preparation pass exists only as an internal test fixture.
+ENH-3623 Phase B wires it into `prepare-issue.yaml`.
+
+---
+
 #### `ll-issues check-verify-verdict`
 
 Exit 0 if the issue's persisted `verify_verdict` is `VALID`, 1 if it is `NON_VALID` (ENH-3031), 3 if it is **absent** (BUG-3571 — no evidence, an abstention rather than a pass). It writes `VERIFY_VERDICT_NON_VALID` / `VERIFY_VERDICT_ABSENT` to stderr so an FSM evaluator can route on the reason rather than the bare exit code. Pair it with `ll-issues clear-verify-verdict <ID>`, which removes the field before `/ll:verify-issues --check` so only a verdict from the current call can pass.

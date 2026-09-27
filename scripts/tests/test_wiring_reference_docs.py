@@ -262,6 +262,10 @@ DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     ("docs/reference/CLI.md", "OBLIGATION[:sub_reason]", "FEAT-3598"),
     ("docs/reference/API.md", "| `next-obligation` |", "FEAT-3598"),
     ("docs/reference/API.md", "consumed by `ll-issues next-obligation`", "FEAT-3598"),
+    ("docs/reference/CLI.md", "#### `ll-issues prep`", "ENH-3630"),
+    ("docs/reference/CLI.md", "not for manual use", "ENH-3630"),
+    ("docs/reference/API.md", "| `prep` |", "ENH-3630"),
+    ("docs/reference/API.md", "| `little_loops.preparation_policy` |", "ENH-3630"),
 ]
 
 

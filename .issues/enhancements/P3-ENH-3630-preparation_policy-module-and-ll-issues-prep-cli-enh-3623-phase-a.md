@@ -27,7 +27,6 @@ score_change_surface: 18
 Phase A of ENH-3623, split out so it lands on its own. It is additive: port
 `little_loops.preparation_policy` (policy / facts / writers) from the ENH-3621 spike
 (tag `spike/preparation-policy-a51621302`, report `thoughts/spikes/preparation-policy-spike.md`),
-<!-- ll-prose-ok: the prep subcommand group is proposed by this issue, not yet implemented -->
 register `ll-issues prep {step,record,apply,explain}`, and add the `decide()` table tests
 and the promoted parity/differential tests, which compare the policy against the *existing*
 `prepare-issue.yaml` and `autodev.yaml`. The policy side runs the dispatch loop from a
@@ -42,7 +41,6 @@ in ENH-3623 § Proposed Solution; this issue implements the module/CLI half of i
 ## Current Behavior
 
 The second-pass preparation ladder is encoded only as autodev graph shape plus ~15
-<!-- ll-prose-ok: the prep subcommand group is proposed by this issue, not yet implemented -->
 `run_dir` handshake files. No pure policy, fact log or `ll-issues prep` group exists, so
 the ladder's routing cannot be table-tested or replayed.
 
@@ -170,7 +168,6 @@ semantics rather than spike parity:
   `cmd_set_status` into a function
 - `scripts/tests/fixtures/loops/prepare-issue-policy.yaml` (new): the dispatch loop,
   test-only until ENH-3623 Phase B
-<!-- ll-prose-ok: the prep subcommand group is proposed by this issue, not yet implemented -->
 - `docs/reference/CLI.md`: `#### \`ll-issues prep\`` section, labelled as internal loop
   plumbing (`prep step` preconditions change issue status; not for manual use)
 - `docs/reference/API.md`: `prep` row beside `run-record`, `little_loops.preparation_policy` section
@@ -387,7 +384,6 @@ before any `prep` code, so a bisect isolates any `run-record write` / `set-score
 
 ### Call Path
 
-<!-- ll-prose-ok: the prep subcommand group is proposed by this issue, not yet implemented -->
 `ll-issues prep step` -> `next_preparation_step` -> `select_next_obligation` / `load_facts` -> `decide`
 
 ## Impact
@@ -444,7 +440,6 @@ before any `prep` code, so a bisect isolates any `run-record write` / `set-score
   and `test_set_status_cli.py` stay green.
 - [ ] The step-budget constants (`cap`, `max_steps = 4 × cap + 3`) are exported with the
   arithmetic in a comment and a unit test.
-<!-- ll-prose-ok: the prep subcommand group is proposed by this issue, not yet implemented -->
 - [ ] The `prep` group's `--help` lists all four subcommands and the `Sub-commands:`
   epilog names `prep`; CLI.md / API.md rows exist and `test_wiring_reference_docs.py`
   passes.
@@ -473,6 +468,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-09-27T06:27:34 - `7c632ebe-777a-4f1f-a70b-7c27f2eb3393.jsonl`
 - `/ll:confidence-check` - 2026-09-27T06:11:39 - `6b15b3a1-a94e-4eb9-affa-df6227ccba80.jsonl`
 - review (layering, score writer, reason check, runtime rule decided; sections consolidated) - 2026-09-27
 - `/ll:wire-issue` - 2026-09-27T05:06:41 - `cf12f410-e7b8-47d0-a1c7-8e4aef01c5e6.jsonl`
