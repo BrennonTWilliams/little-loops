@@ -444,3 +444,11 @@ _Added by manual review — 2026-09-26_
 - `/ll:wire-issue` - 2026-09-25T20:49:53 - `4a475966-a47c-4657-a3e4-16e6706f4c4d.jsonl`
 - `/ll:refine-issue` - 2026-09-25T19:53:36 - `52506a27-e6a0-49d9-99b0-9b89990953d8.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-09-25T19:09:18 - `dcfdf31c-be65-47ce-9e6e-5b65d63239f2.jsonl`
+
+## Characterization findings (ENH-3618, 2026-09-26)
+
+- autodev's own `decision_unresolved` stops (written to `autodev-skipped.txt`) are counted under
+  `skipped`, while the `decision_unresolved` summary key stays 0 — it reads only the child-written
+  `autodev-decision-unresolved.txt`. `record_ledger_mismatch` / the Marker disposition row should decide
+  whether that key counts both sources.
+- Scores-absent stops write no skipped row and leave the verdict `no-op` (ENH-3606 accepted change 1).

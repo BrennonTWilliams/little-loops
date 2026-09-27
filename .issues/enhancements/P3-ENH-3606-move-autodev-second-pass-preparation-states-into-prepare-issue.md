@@ -1352,3 +1352,18 @@ Acceptance Criteria, Integration Map and Implementation Steps:
 - `/ll:wire-issue` - 2026-09-26T03:36:28 - `e6ad8ea2-14d6-441f-a607-435314c2d056.jsonl`
 - `/ll:refine-issue` - 2026-09-26T03:22:25 - `7612ef86-47f8-4d5d-aa01-e50211538dc3.jsonl`
 - `/ll:format-issue` - 2026-09-26T03:07:12 - `34887897-5e19-4ee2-b656-5f0a00c15f02.jsonl`
+
+## Characterization findings (ENH-3618, 2026-09-26)
+
+Pinned as current behavior by `test_autodev_characterization.py`; the terminal table must account for each:
+- **Rate-limit rows are unreachable today** (BUG-3622): every ladder slash state routes by `next:`, and the
+  executor's `next:` branch skips 429 detection, so a 429 follows `on_error` and the ladder continues. The
+  `mark_rate_limited` terminal and the "rate-limit exhaustion halts" AC depend on BUG-3622.
+- An `on_error` drop leaves `autodev-inflight` set, so the run ends `phantom` → `failed`.
+- On the go/no-go GO path the implemented issue ends with no `prepare-issue` record (MISSING) and keeps
+  `deferred_reason: oversized_atomic` after `reopen_waived` sets it open.
+- After a size-review decomposition, and on the recheck resolved-parent branch, the parent keeps a stale
+  forwarded `BLOCKED` record; nothing records `DECOMPOSED` (the `mark_decomposed` terminal addresses this).
+- Resume: a crash after a `count_repair_cycle_*` state re-runs it on resume (state is persisted on entry), so
+  the counter over-counts by one even today; a crash inside the inner loop re-runs the whole wrapper.
+- No current path exists for the "atomic-remediation failure" row or the wrapper `on_max_steps` cap.

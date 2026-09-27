@@ -4,13 +4,14 @@ type: ENH
 title: Extract autodev finalize_done into little_loops.autodev_summary with a step-cap
   handler
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-27'
 captured_at: '2026-09-27T00:15:46Z'
 parent: EPIC-3565
 blocks:
 - ENH-3600
+completed_at: '2026-09-27T00:48:42Z'
 ---
 
 # ENH-3619: Extract autodev finalize_done into little_loops.autodev_summary with a step-cap handler
@@ -152,3 +153,11 @@ TDD order:
 ## Status
 
 **Open** | Created: 2026-09-27 | Priority: P3
+
+## Resolution
+
+Landed in `21eaca8ed` (38 golden fixtures from the legacy shell action), `74657c660` (module, thin
+`finalize_done`, `on_max_steps: finalize_step_capped`, test conversions) and `25343f700` (docs).
+Intentional non-fixture deltas: literal (not regex) ID matching, byte-order sorting, JSON-escaped string
+values, exit 2 on unwritable run_dir/ledgers (was silent 0), new `max_steps` verdict. No consumer branches on
+the `rate_limited` verdict, so none needed changes.

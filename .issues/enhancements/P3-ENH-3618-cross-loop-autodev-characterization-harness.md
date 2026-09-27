@@ -3,7 +3,7 @@ id: ENH-3618
 type: ENH
 title: Cross-loop autodev characterization harness
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-27'
 captured_at: '2026-09-27T00:15:46Z'
@@ -11,6 +11,7 @@ parent: EPIC-3565
 blocks:
 - ENH-3606
 - ENH-3621
+completed_at: '2026-09-27T00:48:41Z'
 ---
 
 # ENH-3618: Cross-loop autodev characterization harness
@@ -135,3 +136,13 @@ different `prepare-issue.yaml` and a transformed `autodev.yaml`.
 ## Status
 
 **Open** | Created: 2026-09-27 | Priority: P3
+
+## Resolution
+
+Landed in `8a79afb16`: `scripts/tests/autodev_harness.py` + `scripts/tests/test_autodev_characterization.py`
+(19 terminal scenarios, 3 resume cases, 1 parametrization smoke test; ~50 s). `run_autodev()` takes
+`prepare_issue_yaml=` and `autodev_transform=`, supports crash injection + `PersistentExecutor.resume()`.
+Limitations: slash responses queue per skill name (`run_wire` and `remediate_oversized_atomic` share
+`wire-issue`); injected faults fire on first visit only; stub refine count is always 0; quality gate off.
+Bug-like current behaviors are pinned and marked `BUG-LIKE` in the table (see BUG-3622, ENH-3606,
+ENH-3600 notes).
