@@ -74,7 +74,7 @@ Add an existence filter in `little_loops.init.introspect` and route every templa
   - **Reorder `introspect()`** so `project.test_dir` is computed *before* `scan.focus_dirs` and passed in; delete the duplicated `("tests/", "test/")` `is_dir()` probe in `_introspect_focus_dirs` and use `test_dir_iv` instead (only when its provenance is not `default`, i.e. it exists). This also lets a nested test dir reach focus dirs when src_dir is ambiguous.
   - When adopted src_dir is `.`, return exactly `["."]` — adding `tests/` would be redundant. (The `name.startswith(fd)` de-dup does **not** swallow `tests/` under `.` — `"tests/".startswith(".")` is `False` — so redundancy, not suppression, is the real hazard.)
   - Keep the existing prefix de-dup for a test dir nested under src_dir (e.g. `scripts/tests/` under `scripts/`).
-  - Nothing inferred → filter template `focus_dirs` by existence; fall back to `["."]` if none survive (never an empty list — see `core.py:347` / `tui.py:1090` truthiness guards).
+  - Nothing inferred → filter template `focus_dirs` by existence; fall back to `["."]` if none survive (never an empty list — see `core.py:347` / `tui.py:1099` truthiness guards).
 - Evidence strings `"adopted src_dir"` and `"adopted src_dir + detected tests/ directory"` must stay verbatim (asserted by `TestFocusDirsEvidence`); build the test-dir evidence part from `test_dir_iv.value` so a top-level `tests/` still yields `"detected tests/ directory"`.
 
 ### Codebase Research Findings
@@ -118,7 +118,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/init/__init__.py` — re-exports `IntrospectedValue`, `introspect`, `IntrospectResult`, `Ambiguity` (public symbols; shape unchanged, values change)
 - `scripts/little_loops/init/cli.py:531` `_print_introspection_summary` — prints "kept template default — N candidates found"; wording becomes inaccurate if the ambiguity fallback is now a filtered default / `.`
 - `scripts/little_loops/init/core.py:347` `build_config` — `if choices.get("scan_focus_dirs")` skips an empty list and re-adopts the unfiltered template `focus_dirs`; the `["."]` fallback in `_introspect_focus_dirs` is what keeps the filter effective
-- `scripts/little_loops/init/tui.py:1090` `build_config` wrapper — same `if scan_focus_dirs:` truthiness guard
+- `scripts/little_loops/init/tui.py:1099` `build_config` wrapper — same `if scan_focus_dirs:` truthiness guard
 - `scripts/little_loops/init/proposal.py:296-312` `build_proposal` — existing-config branch pins `src_dir`/`test_dir`/`scan.focus_dirs` with provenance `existing`, so a re-init keeps prior (possibly phantom) values; existence filtering applies to fresh introspection only
 - `scripts/little_loops/init/proposal.py:122` plan-JSON serializer — docstring promises `values`/`ambiguities` shapes stay stable for `skills/init/SKILL.md`; new evidence strings must not alter the shape
 - **Runtime consumers of a `.` value** — _review 2026-09-27: the broken ones are now tracked in BUG-3631 (blocks this issue); `_dotted_candidates` and `run-tests.md:99` were checked and need no change. List kept for reference._ (read what init writes; `go.json` already ships `src_dir: "."` so `.` is not new, but the Python/JS/generic paths would now emit it):
@@ -226,7 +226,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 - `.` spelling decided: `.`. `.`-hostile consumers (`codegraph.py:121`, `worker_pool.py:1523`, `decisions.py:652`, `commands/manage-release.md`) moved to BUG-3631 (blocker); `_dotted_candidates` and `run-tests.md:99` need no change. Still verify `auto-refine-and-implement.yaml:626,851` here.
 - Update `cli.py:531` `_print_introspection_summary` wording ("kept template default") to match the new fallback
-- Keep `core.py:347` / `tui.py:1090` truthiness guards safe by never returning an empty focus list (`["."]` fallback)
+- Keep `core.py:347` / `tui.py:1099` truthiness guards safe by never returning an empty focus list (`["."]` fallback)
 - Update the tests listed under `### Tests` (empty-dir assumptions in `test_init_introspect.py`, `test_init_audit_fixes.py`, `test_init_e2e.py`, `test_init_core.py`, `test_init_tui.py`) and add the new tests
 - Review `--force` / "template defaults" wording in `docs/reference/CONFIGURATION.md`, `docs/guides/GETTING_STARTED.md`, `docs/reference/CLI.md`, `skills/init/SKILL.md`; run `ll-adapt` mirrors if any `skills/` file changes
 - ENH-3612 is done; the `_introspect_src_dir` call already sits above the command loop (`introspect.py:152`) at HEAD — no coordination needed
@@ -245,7 +245,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - [ ] Root-level source/test layouts are proposed as `.` with provenance `inferred`; an empty or tooling-only root (`setup.py`, `conftest.py`) yields src_dir `.` with provenance `default`.
 - [ ] Nested test dirs (e.g. `scripts/tests/`) are detected; `<src_dir>/tests/` wins; two unrelated nested test dirs are not adopted; dot-prefixed dirs are never probed.
 - [ ] Existing detection of src_dir candidates is unchanged whenever the candidate dir exists.
-- [ ] Source dir never falls back to empty; the focus-dirs value is never an empty list (`["."]` fallback), so `core.py:347` / `tui.py:1090` truthiness guards never re-adopt a phantom template path.
+- [ ] Source dir never falls back to empty; the focus-dirs value is never an empty list (`["."]` fallback), so `core.py:347` / `tui.py:1099` truthiness guards never re-adopt a phantom template path.
 - [ ] When src_dir is `.`, focus dirs are exactly `["."]`.
 - [ ] `introspect()` computes test_dir before focus_dirs, and `_introspect_focus_dirs` has no duplicated `tests/`/`test/` probe; `TestFocusDirsEvidence` evidence strings unchanged.
 - [ ] `.` round-trips proposal → `build_config` (`core.py` and `tui.py`) → `summary_rows` unchanged.
@@ -271,6 +271,17 @@ Verdict at time of check: **DIRECTIVE_DRIFT** (not corrected in this pass — fi
 
 Remaining: the AC and Call Path additions above. _(Addressed in the 2026-09-27 review: ACs cover round-trip, the `["."]` fallback and the non-empty guard; `.`-consumer ACs moved to BUG-3631; Call Path now includes `_detect_root_layout` and `_introspect_test_dir -> _existing_dir`.)_
 
+_Added by `/ll:verify-issues` — 2026-09-27_
+
+Verdict at time of check: **NEEDS_UPDATE** (one anchor had drifted; corrected in the same pass, so the issue as it now reads is up to date — this section is a record of what was wrong and fixed, not an outstanding action item).
+
+- **Anchors re-verified against HEAD**: all `path:line` citations checked (`introspect.py:686/735/761/152/185/189/190/302`, `cli.py:531`, `core.py:347`, `codegraph.py:121/234`, `decisions.py:652`) match exactly, **except** `tui.py:1090` — the `if scan_focus_dirs:` truthiness guard now sits at `tui.py:1099` (9-line drift from unrelated edits above it in the file). Fixed in place at all four live citations (lines 77, 121, 229, 248 pre-edit); the historical `2026-09-26` Verification Notes entry above is left as-is (a record of that pass, not a live claim).
+- **Dependencies**: `blocked_by: BUG-3631` remains **open** (unresolved) — matches the gap already recorded in the 2026-09-27 Confidence Check Notes; not re-flagged as new.
+- **DEP_ISSUES (MISSING_BACKLINK, informational)**: BUG-3631 references this issue only under its `## Related` section ("Blocks ENH-3616 ...", `.issues/bugs/P3-BUG-3631-...md:213`), not a formal `## Blocks` heading. Not corrected here (out of scope for a single-issue verify pass to edit another issue file); flagging for awareness.
+- **Evidence quotes** (`ll-verify-evidence --json`): clean, 0 findings. **Decisions log**: `.ll/decisions.d` present, query ran, 0 active required rules — no violation.
+- **Graph**: provider=`codegraph` freshness=`stale` — not used to originate the anchor-drift finding; confirmed directly via `sed`/`grep` against HEAD.
+- **ENH-3612 coordination note** (Wiring Phase): re-confirmed done (`status: done`); no action needed.
+
 ## Status
 
 **Open** | Created: 2026-09-26 | Priority: P3
@@ -293,6 +304,7 @@ _Added by `/ll:confidence-check` on 2026-09-27_
 - Several existing tests assert phantom-default behavior and must be rewritten; docs and markdown edits have no automated validation.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-27T05:36:55 - `e18b63f4-fc4d-4093-b00f-89d5c0e394ec.jsonl`
 - `/ll:confidence-check` - 2026-09-27T05:14:52 - `0cc16b1e-d681-4781-832d-b9145e4dc4f5.jsonl`
 - `/ll:confidence-check` - 2026-09-26T23:01:16 - `2dc3f1af-4938-467b-8164-481af936e116.jsonl`
 - `/ll:reconcile-issue` - 2026-09-26T22:59:39 - `2140791c-2fb1-4f71-ba9c-43289547febe.jsonl`
