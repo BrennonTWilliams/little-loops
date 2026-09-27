@@ -1,0 +1,7 @@
+{
+  "description": "FEAT-3573: gate off restores status-only credit",
+  "quality_gate": "false",
+  "statuses": {
+    "FEAT-1": "done"
+  }
+}

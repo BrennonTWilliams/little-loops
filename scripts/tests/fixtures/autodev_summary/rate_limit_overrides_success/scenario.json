@@ -1,0 +1,7 @@
+{
+  "description": "rate_limit stop reason overrides a success verdict; empty queue prints none",
+  "quality_gate": "false",
+  "statuses": {
+    "FEAT-1": "done"
+  }
+}

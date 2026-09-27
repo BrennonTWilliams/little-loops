@@ -1,0 +1,8 @@
+
+=== Autodev Summary ===
+
+Passed       (0): none
+Skipped      (0): none
+Quality-failed (1): FEAT-1@deadbeef  (marked done but gate failed — review these commits; rerun will not re-gate)
+Hint: every gated issue failed the quality gate — if the base branch is already red, re-run with --context quality_gate=false (auto-refine-and-implement forwards quality_gate too)
+

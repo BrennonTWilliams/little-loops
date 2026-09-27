@@ -1,0 +1,5 @@
+{
+  "description": "BUG-2908 step 4: residual inflight sentinel -> inflight_at_finalize, phantom",
+  "quality_gate": "true",
+  "statuses": {}
+}

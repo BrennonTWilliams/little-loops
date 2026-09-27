@@ -1,0 +1,8 @@
+{
+  "description": "staged lines are word-split after sort -u (trailing space / two IDs per line)",
+  "quality_gate": "false",
+  "statuses": {
+    "FEAT-1": "done",
+    "BUG-9": "cancelled"
+  }
+}

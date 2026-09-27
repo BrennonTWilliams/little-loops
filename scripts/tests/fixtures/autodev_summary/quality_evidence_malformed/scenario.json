@@ -1,0 +1,8 @@
+{
+  "description": "malformed / odd evidence records tolerated exactly like the shell",
+  "quality_gate": "true",
+  "statuses": {
+    "FEAT-6": "done",
+    "FEAT-7": "done"
+  }
+}

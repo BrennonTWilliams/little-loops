@@ -1,0 +1,5 @@
+{
+  "description": "ENH-2868: pre-flight already_* skips get their own bucket; infra split out",
+  "quality_gate": "false",
+  "statuses": {}
+}

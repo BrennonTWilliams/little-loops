@@ -1,0 +1,7 @@
+{
+  "description": "BUG-2908: staged and done -> promoted, success",
+  "quality_gate": "false",
+  "statuses": {
+    "FEAT-200": "done"
+  }
+}

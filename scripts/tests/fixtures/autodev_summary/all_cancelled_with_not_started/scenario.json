@@ -1,0 +1,7 @@
+{
+  "description": "ENH-3613: all-cancelled plus a not-started ID -> not_started",
+  "quality_gate": "false",
+  "statuses": {
+    "FEAT-1": "cancelled"
+  }
+}

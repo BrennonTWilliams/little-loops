@@ -1,0 +1,6 @@
+
+=== Autodev Summary ===
+
+Passed       (3): BUG-1,FEAT-1,FEAT-2  (2 implemented, 1 cancelled: FEAT-2)
+Skipped      (0): none
+

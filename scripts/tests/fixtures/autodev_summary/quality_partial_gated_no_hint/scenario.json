@@ -1,0 +1,8 @@
+{
+  "description": "one of two gated issues failed -> no all-failed hint",
+  "quality_gate": "true",
+  "statuses": {
+    "FEAT-1": "done",
+    "FEAT-2": "done"
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "description": "FEAT-3573: done without evidence -> quality_evidence_missing",
+  "quality_gate": "true",
+  "statuses": {
+    "FEAT-1": "done"
+  }
+}

@@ -1,0 +1,5 @@
+{
+  "description": "a staged ID with no issue file resolves to an empty status -> unverified",
+  "quality_gate": "false",
+  "statuses": {}
+}

@@ -1,0 +1,5 @@
+{
+  "description": "a non-empty queue with no stop reason counts pending but prints no Stopped line",
+  "quality_gate": "false",
+  "statuses": {}
+}

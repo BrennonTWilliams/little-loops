@@ -1,0 +1,7 @@
+{
+  "description": "FEAT-3573: every gated issue failed -> quality_gate=false hint",
+  "quality_gate": "true",
+  "statuses": {
+    "FEAT-1": "done"
+  }
+}

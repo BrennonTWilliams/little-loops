@@ -1,0 +1,7 @@
+
+=== Autodev Summary ===
+
+Passed       (0): none
+Skipped      (0): none
+Not-started  (1): FEAT-1 (not_ready)  (never reached implementation — Phase 1 rejected)
+

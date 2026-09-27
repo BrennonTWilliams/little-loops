@@ -1,0 +1,5 @@
+{
+  "description": "empty run dir -> no-op, completed, pending 0",
+  "quality_gate": "false",
+  "statuses": {}
+}

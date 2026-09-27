@@ -1,0 +1,18 @@
+
+=== Autodev Summary ===
+
+Passed       (2): FEAT-10,FEAT-12  (1 implemented, 1 cancelled: FEAT-12)
+Skipped      (1): ENH-1  refine_failed
+Infra-skipped (1): ENH-2  (transient kill — just re-run)
+Already-resolved (2): BUG-3 (done),BUG-6 (refine_failed)  (pre-flight skip — no refinement attempted)
+Blocked-by-unmet (1): BUG-4  (unmet blocked_by deps — resolve them, then re-run)
+Gate-blocked (2): FEAT-40,FEAT-41  (prove deps with /ll:explore-api, then re-run)
+Decision-unresolved (1): ENH-50  (resolve with /ll:decide-issue, then re-run)
+Spike-inconclusive (2): ENH-70,ENH-71  (fix the cause, run /ll:spike <ID> --force, then re-run)
+Proposal-unsound (1): ENH-80  (selected proposal refuted, no alternative; revise ## Proposed Solution, then re-run)
+Proof-gate-infra [infra] (2): FEAT-60  (check-gate produced no verdict before implement; retry later)
+Not-started  (1): BUG-5 (x)  (never reached implementation — Phase 1 rejected)
+Quality-failed (1): FEAT-11@abcdef01  (marked done but gate failed — review these commits; rerun will not re-gate)
+Unverified   (3): BUG-20,ENH-30,FEAT-99  inflight_at_finalize  (threshold passed; implementation did not close — re-queue to retry)
+Stopped early: manual — pending (3): FEAT-90,FEAT-91,FEAT-90  (re-run to continue)
+

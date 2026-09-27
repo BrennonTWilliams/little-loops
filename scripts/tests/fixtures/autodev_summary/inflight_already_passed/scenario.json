@@ -1,0 +1,7 @@
+{
+  "description": "inflight ID promoted this finalize -> not abandoned",
+  "quality_gate": "true",
+  "statuses": {
+    "FEAT-5": "done"
+  }
+}

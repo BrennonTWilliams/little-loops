@@ -1,0 +1,6 @@
+
+=== Autodev Summary ===
+
+Passed       (2): BUG-9,FEAT-1  (0 implemented, 2 cancelled: BUG-9,BUG-9)
+Skipped      (0): none
+

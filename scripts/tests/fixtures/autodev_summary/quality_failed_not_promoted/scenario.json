@@ -1,0 +1,8 @@
+{
+  "description": "FEAT-3573: GATE_FAILED is not promoted and is listed with sha/dirty",
+  "quality_gate": "true",
+  "statuses": {
+    "FEAT-1": "done",
+    "FEAT-2": "done"
+  }
+}

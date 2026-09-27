@@ -1,0 +1,7 @@
+{
+  "description": "FEAT-3573: GATE_PASS evidence promotes a done issue",
+  "quality_gate": "true",
+  "statuses": {
+    "FEAT-1": "done"
+  }
+}

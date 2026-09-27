@@ -1,0 +1,7 @@
+{
+  "description": "success still wins over a not-started entry",
+  "quality_gate": "false",
+  "statuses": {
+    "FEAT-200": "done"
+  }
+}

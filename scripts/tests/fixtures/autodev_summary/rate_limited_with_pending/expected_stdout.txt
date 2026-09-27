@@ -1,0 +1,8 @@
+
+=== Autodev Summary ===
+
+Passed       (0): none
+Skipped      (0): none
+Unverified   (1): FEAT-300  inflight_at_finalize  (threshold passed; implementation did not close — re-queue to retry)
+Stopped early: rate_limit — pending (2): FEAT-301,FEAT-302  (re-run to continue)
+

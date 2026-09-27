@@ -1,0 +1,7 @@
+{
+  "description": "an empty quality_gate value leaves the gate on",
+  "quality_gate": "",
+  "statuses": {
+    "FEAT-1": "done"
+  }
+}

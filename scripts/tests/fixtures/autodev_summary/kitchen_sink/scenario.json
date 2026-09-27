@@ -1,0 +1,11 @@
+{
+  "description": "every bucket populated at once, with duplicates, blank lines and a manual stop",
+  "quality_gate": "true",
+  "statuses": {
+    "FEAT-10": "done",
+    "FEAT-11": "done",
+    "FEAT-12": "cancelled",
+    "BUG-20": "open",
+    "ENH-30": "in_progress"
+  }
+}

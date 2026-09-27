@@ -1,0 +1,8 @@
+
+=== Autodev Summary ===
+
+Passed       (0): none
+Skipped      (1): ENH-1001  refine_failed
+Infra-skipped (1): ENH-1002  (transient kill — just re-run)
+Already-resolved (2): BUG-2865 (completed),FEAT-1003 (deferred)  (pre-flight skip — no refinement attempted)
+

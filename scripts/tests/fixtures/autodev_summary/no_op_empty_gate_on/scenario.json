@@ -1,0 +1,5 @@
+{
+  "description": "empty run dir with the gate on (summary key shape)",
+  "quality_gate": "true",
+  "statuses": {}
+}

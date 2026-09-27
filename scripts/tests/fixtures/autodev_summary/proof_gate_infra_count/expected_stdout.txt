@@ -1,0 +1,7 @@
+
+=== Autodev Summary ===
+
+Passed       (0): none
+Skipped      (0): none
+Proof-gate-infra [infra] (2): FEAT-701,FEAT-702  (check-gate produced no verdict before implement; retry later)
+

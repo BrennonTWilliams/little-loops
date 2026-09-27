@@ -1,0 +1,8 @@
+
+=== Autodev Summary ===
+
+Passed       (0): none
+Skipped      (0): none
+Quality-gate-infra [infra] (1): FEAT-1@deadbeef  (gate crashed — re-run the oracle manually)
+Hint: every gated issue failed the quality gate — if the base branch is already red, re-run with --context quality_gate=false (auto-refine-and-implement forwards quality_gate too)
+

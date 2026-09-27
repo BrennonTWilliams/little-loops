@@ -1,0 +1,5 @@
+{
+  "description": "BUG-3603: proof-gate infra ledger surfaces as its own bucket",
+  "quality_gate": "false",
+  "statuses": {}
+}

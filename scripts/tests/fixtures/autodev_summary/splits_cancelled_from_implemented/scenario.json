@@ -1,0 +1,9 @@
+{
+  "description": "ENH-3613: mixed implemented/cancelled closure; duplicate staged line",
+  "quality_gate": "false",
+  "statuses": {
+    "FEAT-1": "done",
+    "FEAT-2": "cancelled",
+    "BUG-1": "completed"
+  }
+}

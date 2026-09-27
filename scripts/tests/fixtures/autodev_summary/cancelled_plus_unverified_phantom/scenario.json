@@ -1,0 +1,8 @@
+{
+  "description": "ENH-3613: cancelled + unverified -> phantom",
+  "quality_gate": "false",
+  "statuses": {
+    "FEAT-1": "cancelled",
+    "FEAT-2": "open"
+  }
+}

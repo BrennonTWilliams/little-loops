@@ -1,0 +1,9 @@
+
+=== Autodev Summary ===
+
+Passed       (0): none
+Skipped      (0): none
+Quality-failed (3): FEAT-3,FEAT-5,FEAT-8  (marked done but gate failed — review these commits; rerun will not re-gate)
+Quality-gate-infra [infra] (1):   (gate crashed — re-run the oracle manually)
+Unverified   (2): FEAT-6  quality_evidence_missing,FEAT-7  quality_evidence_missing  (threshold passed; implementation did not close — re-queue to retry)
+

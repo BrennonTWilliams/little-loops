@@ -1,0 +1,7 @@
+
+=== Autodev Summary ===
+
+Passed       (0): none
+Skipped      (0): none
+Unverified   (1): FEAT-1  quality_evidence_missing  (threshold passed; implementation did not close — re-queue to retry)
+

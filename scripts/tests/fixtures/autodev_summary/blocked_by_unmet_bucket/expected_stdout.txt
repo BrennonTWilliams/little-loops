@@ -1,0 +1,8 @@
+
+=== Autodev Summary ===
+
+Passed       (0): none
+Skipped      (1): ENH-1001  refine_failed
+Already-resolved (1): BUG-2865 (completed)  (pre-flight skip — no refinement attempted)
+Blocked-by-unmet (1): FEAT-2001  (unmet blocked_by deps — resolve them, then re-run)
+

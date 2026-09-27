@@ -1,0 +1,7 @@
+{
+  "description": "appending to an unverified ledger that lacks a trailing newline",
+  "quality_gate": "false",
+  "statuses": {
+    "FEAT-2": "open"
+  }
+}

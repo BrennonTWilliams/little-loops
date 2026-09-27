@@ -1,0 +1,7 @@
+
+=== Autodev Summary ===
+
+Passed       (0): none
+Skipped      (0): none
+Unverified   (1): FEAT-1  impl_exit0_not_closedFEAT-2  (threshold passed; implementation did not close — re-queue to retry)
+

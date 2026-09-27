@@ -1,0 +1,7 @@
+{
+  "description": "BUG-3390: a reasoned unverified line is not duplicated by a bare ID",
+  "quality_gate": "true",
+  "statuses": {
+    "FEAT-1": "open"
+  }
+}

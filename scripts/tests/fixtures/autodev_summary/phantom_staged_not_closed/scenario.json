@@ -1,0 +1,7 @@
+{
+  "description": "BUG-2908: staged but still open -> unverified, phantom, exit 1",
+  "quality_gate": "false",
+  "statuses": {
+    "FEAT-108": "open"
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "description": "FEAT-3573: cancelled closure promoted on status alone",
+  "quality_gate": "true",
+  "statuses": {
+    "FEAT-1": "cancelled"
+  }
+}

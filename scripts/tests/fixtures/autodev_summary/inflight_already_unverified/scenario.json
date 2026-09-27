@@ -1,0 +1,5 @@
+{
+  "description": "BUG-2981 D2: inflight already recorded -> abandoned but not re-appended",
+  "quality_gate": "false",
+  "statuses": {}
+}

@@ -1,0 +1,7 @@
+{
+  "description": "ENH-3613: no cancelled suffix on the Passed line",
+  "quality_gate": "false",
+  "statuses": {
+    "FEAT-1": "Done"
+  }
+}

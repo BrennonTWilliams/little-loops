@@ -1,0 +1,5 @@
+{
+  "description": "rate-limit stop -> rate_limited, pending listed, inflight abandoned",
+  "quality_gate": "false",
+  "statuses": {}
+}

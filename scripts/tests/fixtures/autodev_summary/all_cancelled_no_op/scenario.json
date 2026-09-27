@@ -1,0 +1,8 @@
+{
+  "description": "ENH-3613: an all-cancelled run is no-op",
+  "quality_gate": "false",
+  "statuses": {
+    "FEAT-1": "cancelled",
+    "FEAT-2": "Cancelled"
+  }
+}

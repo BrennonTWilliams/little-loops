@@ -1,0 +1,7 @@
+
+=== Autodev Summary ===
+
+Passed       (1): FEAT-1
+Skipped      (0): none
+Quality-failed (1): FEAT-2@01234567 (dirty)  (marked done but gate failed — review these commits; rerun will not re-gate)
+

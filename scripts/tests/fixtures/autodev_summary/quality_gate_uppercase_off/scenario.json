@@ -1,0 +1,7 @@
+{
+  "description": "quality_gate value is case-folded: OFF disables the gate",
+  "quality_gate": "OFF",
+  "statuses": {
+    "FEAT-1": "done"
+  }
+}
