@@ -627,17 +627,17 @@ Decomposed from ENH-3577: Consolidate autodev issue preparation into a single co
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-09-25 (re-scored 2026-09-26, after the design-decision review; 2026-09-27 after the ENH-3623 re-point; and 2026-09-27 after ENH-3623 landed and closed)_
+_Added by `/ll:confidence-check` on 2026-09-25 (re-scored 2026-09-26, after the design-decision review; 2026-09-27 after the ENH-3623 re-point; 2026-09-27 after ENH-3623 landed and closed; and 2026-09-27 after the `/ll:wire-issue` pass added the Dependent Files and Documentation wiring targets)_
 
-**Readiness Score**: 90/100 → PROCEED
-**Outcome Confidence**: 73/100 → MODERATE
+**Readiness Score**: 100/100 → PROCEED
+**Outcome Confidence**: 71/100 → MODERATE
 
 ### Concerns
-- None open. The `decision_unresolved` count source was resolved as ledger-only (Review Decisions, 2026-09-27); `mark_gate_infra` resolved to **keep**; the `record_ledger_mismatch` definition, the `skip_inflight` mechanism, the child-ledger greps, verdict impact and golden-fixture regeneration were resolved by the third review (2026-09-27). Re-score after these edits.
+- None open. `blocked_by` is now empty (ENH-3623 confirmed done and unlinked), `format-check` reports no `missing_behavior_parity` / `stale_symbol_ref` / `stale_cli_flag` / `unapplied_decision` gaps, and `check-design` passes — all five readiness criteria score full marks. `format-check` still flags `unmarked_superseded_directive` (a report-only keyword heuristic on the layered Codebase Research Findings blocks) and one `stale_file_ref` hit on `fsm/validation.py` — both inert here: the file reference sits inside a sentence that itself states "there is no `fsm/validation.py`" (a correction, not a stale claim), and the directive sections carry no unresolved contradiction. Neither is one of the four hard-override/cap gaps this skill acts on.
 
 ### Outcome Risk Factors
-- Deep per-site complexity remains on the `refine-terminal-class` removal: it is a control-flow change to `skip_inflight`'s `MISSING`-record classification (not a mechanical deletion), touching `autodev.yaml`, ~8 sites in `refine-to-ready-issue.yaml`, and `preparation_policy.py`'s `_apply_outcome`.
-- Broad enumeration across confirmed sites: 4 core implementation files plus ~10 test files with specific breaking assertions already pinned in Integration Map → Tests, plus 6 documentation files.
+- Deep-to-moderate per-site complexity remains on the `refine-terminal-class` removal: it is a control-flow change to `skip_inflight`'s `MISSING`-record classification (not a mechanical deletion), touching `autodev.yaml`, ~8 sites in `refine-to-ready-issue.yaml`, and `preparation_policy.py`'s `_apply_outcome`.
+- Broad enumeration across confirmed sites: 4 core implementation files, ~10-15 test files with specific breaking assertions already pinned in Integration Map → Tests, plus 6 documentation files — a single `AutodevSummary.KEYS` change trips ~30+ golden fixture scenarios simultaneously.
 
 ## Resolved Concerns
 - [resolved 2026-09-27] `blocked_by: ENH-3623` forced a Dependencies hard override (STOP) — ENH-3623 landed and closed (confirmed `done`); the edge was unlinked via `ll-issues link ENH-3600 --blocked-by ENH-3623 --unlink`.
@@ -655,6 +655,7 @@ current state is recorded in Review Decisions (both 2026-09-27 blocks), the Mark
 disposition table and the Integration Map. Git history holds the original text.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-27T23:54:58 - `4498bd70-2a17-4806-80cb-9c7b98782d4a.jsonl`
 - `/ll:wire-issue` - 2026-09-27T23:34:09 - `bfc7c299-f46e-4b01-958a-fe298468cb8a.jsonl`
 - `/ll:refine-issue:gap-analysis` - 2026-09-27T22:55:35 - `a2f463b8-cf83-4388-84d1-2b97de36c16c.jsonl`
 - `/ll:confidence-check` - 2026-09-27T22:40:21 - `a2f463b8-cf83-4388-84d1-2b97de36c16c.jsonl`
