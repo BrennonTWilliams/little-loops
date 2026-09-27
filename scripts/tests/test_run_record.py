@@ -453,6 +453,62 @@ class TestCmdRunRecordWrite:
         )
         assert "run-record" in result.stdout
 
+
+class TestWriteTypedRunRecordHelper:
+    """ENH-3630: direct in-process tests of the shared helper.
+
+    ``cmd_run_record_write`` is a thin wrapper (see the class above); these
+    call ``write_typed_run_record`` itself, the entry point ``prep apply``
+    also uses, so both writers are pinned to one contract.
+    """
+
+    def _config(self, project: Path):
+        from little_loops.config import BRConfig
+
+        return BRConfig(project)
+
+    def test_unresolved_issue_returns_none(self, project: Path, tmp_path: Path) -> None:
+        from little_loops.cli.issues.run_record import write_typed_run_record
+
+        record = write_typed_run_record(
+            self._config(project), "ENH-4242", tmp_path, "refine-to-ready-issue"
+        )
+        assert record is None
+
+    def test_ready_matches_cli(self, project: Path, tmp_path: Path) -> None:
+        from little_loops.cli.issues.run_record import write_typed_run_record
+
+        _write_issue(project, ID, frontmatter="confidence_score: 90\noutcome_confidence: 70\n")
+        record = write_typed_run_record(
+            self._config(project), ID, tmp_path, "refine-to-ready-issue"
+        )
+        assert record is not None
+        assert record.outcome == "ready"
+        assert record.readiness == 90
+        assert record.outcome_confidence == 70
+        assert _read_json(tmp_path, "refine-to-ready-issue", ID)["outcome"] == "ready"
+
+    def test_broke_down_param_drives_decomposed_without_the_file(
+        self, project: Path, tmp_path: Path
+    ) -> None:
+        """The helper takes ``broke_down`` as an in-process value (Program Design)."""
+        from little_loops.cli.issues.run_record import write_typed_run_record
+
+        parent = _write_issue(project, ID)
+        parent.write_text(parent.read_text().replace("status: open", "status: done"))
+        _write_issue(project, "ENH-9702", frontmatter=f"parent: {ID}\nstatus: open\n")
+        record = write_typed_run_record(
+            self._config(project),
+            ID,
+            tmp_path,
+            "refine-to-ready-issue",
+            broke_down=True,
+        )
+        assert record is not None
+        assert record.outcome == "decomposed"
+        assert record.child_ids == ("ENH-9702",)
+        assert not (tmp_path / "refine-broke-down").exists()
+
     @pytest.mark.parametrize(
         "frontmatter,legacy",
         [

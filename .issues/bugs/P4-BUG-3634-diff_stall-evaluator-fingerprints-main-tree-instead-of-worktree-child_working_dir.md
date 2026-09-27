@@ -92,10 +92,21 @@ Findings from codebase-locator and codebase-pattern-finder, organized below.
 - `scripts/little_loops/fsm/interpolation.py` — `InterpolationContext` (:110-146) has no `working_dir` field today; the new field is declared here.
 - `scripts/little_loops/fsm/executor.py` — `_build_context()` (:3881-3900) is the single site that constructs `InterpolationContext` and would need to pass `self.working_dir` into the new field. `self.working_dir` already resolves to `child_working_dir` for `worktree:` children (:1208-1294) — no other executor-side change is needed.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/fsm/evaluators.py:654-658` — inside `_diff_stall_fingerprint`, `os.path.islink(path)` / `os.readlink(path)` / `os.path.isfile(path)` resolve the relative paths returned by `git ls-files` against the actual process `os.getcwd()`, not the threaded `cwd`/`working_dir` parameter. Once `_run_git` runs against a worktree's `cwd`, these three plain `os`-level calls need the same `cwd` joined onto `path` (e.g. `(cwd or Path.cwd()) / path`) or symlink/file-type detection silently resolves against the wrong tree even after the `subprocess.run` sites are fixed. The Acceptance Criteria's "every `subprocess.run` call" wording doesn't literally cover these three lines since they are `os.path`/`os.readlink` calls, not `subprocess.run`.
+
 ### Dependent Files (Callers/Importers)
 - `scripts/tests/test_fsm_evaluators.py:14` (imports `fsm.evaluators`) — `TestDiffStallEvaluator` calls `evaluate_diff_stall` directly (:1877, :1998, :2003, :2013-2016, :2021, :2044) via a `_check()` pass-through wrapper (:1874-1877) that forwards `**kw`, so a new `cwd=` kwarg flows through without a wrapper-signature change; dispatcher-level tests (`test_dispatch_diff_stall_bare_context` :2048, `test_dispatch_diff_stall_uses_run_dir_and_names` :2055-2064) go through `evaluate(config, "", 0, InterpolationContext(...))` instead.
 - `scripts/tests/test_fsm_interpolation.py` — exercises every existing `InterpolationContext` field individually; a new `working_dir` field needs the same per-field coverage.
 - `scripts/little_loops/fsm/executor.py:41` (imports `fsm.evaluators`) — the sole `evaluate(...)` call site is inside `FSMExecutor._evaluate` (~:3212), fed by `ctx = self._build_context()`.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/cli/loop/testing.py:115` — `ll-loop test`'s single-state runner constructs `InterpolationContext()` directly, outside `FSMExecutor._build_context()`. This CLI path has no worktree wrapper and always evaluates at the process's own cwd, so leaving `working_dir` unset here preserves today's behavior — no change required for this issue.
+- `scripts/tests/test_fsm_evaluators.py::test_dispatch_diff_stall_bare_context` (:2048) and `::test_dispatch_diff_stall_uses_run_dir_and_names` (:2055) — existing dispatcher-level tests that build `InterpolationContext(...)` but set no `working_dir`; neither currently exercises the new field once it's threaded into the `diff_stall` branch.
+
+### Documentation
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/API.md:6484-6501` — `#### InterpolationContext` hand-mirrors the dataclass's field list verbatim (not generated from source); needs a `working_dir` line added alongside `messages`/`messages_summary`/`param` or it goes stale once the field is added.
 
 ### Conventions in Force
 - Both existing stall evaluators already accept executor-derived state as additive, default-`None` parameters (`evaluate_diff_stall`'s `state_dir: Path | None = None` and `evaluate_action_stall`'s matching `state_dir`/`context: InterpolationContext | None = None`, `evaluators.py:667`, `:920`) — evidence that a new `cwd`/`working_dir` parameter following the same default-`None` shape is consistent with how this pair of evaluators already extends.
@@ -106,6 +117,10 @@ Findings from codebase-locator and codebase-pattern-finder, organized below.
 ### Tests
 - `scripts/tests/test_fsm_evaluators.py::TestDiffStallEvaluator` (:1843) — `repo` fixture (:1846-1867) uses `monkeypatch.chdir(repo)` for every existing test, since no `cwd` parameter exists today to pass explicitly instead; a new test passing `cwd=` explicitly (per this issue's Acceptance Criteria) can point at a directory other than the fixture's `monkeypatch`-chdir'd one to prove the parameter is honored.
 - `scripts/tests/test_fsm_executor.py:6964+` — the ENH-2609/BUG-3112 `worktree:` per-state tests (`test_worktree_attach_runs_child_inside_and_detaches` :7008-7050, `test_shell_action_in_worktree_resolves_main_repo_history_db` :7197-7231) are the existing precedent for asserting a worktree-child action runs with the worktree as `cwd`; none of them cover a `diff_stall` evaluator inside a worktree child today.
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_fsm_evaluators.py::test_dispatch_diff_stall_bare_context` (:2048) and `::test_dispatch_diff_stall_uses_run_dir_and_names` (:2055) — extend one with a sibling case passing `InterpolationContext(..., working_dir=<dir>)` to prove the `evaluate()` dispatcher threads it into `evaluate_diff_stall`'s new `cwd` param.
+- `scripts/tests/test_fsm_executor.py::TestExecutorWorkingDir::test_shell_action_in_worktree_resolves_main_repo_history_db` (:7197) is the closer end-to-end template for a new worktree/`diff_stall` test than `test_worktree_attach_runs_child_inside_and_detaches` (:7008): it drives `FSMExecutor(fsm, working_dir=X).run()` directly with a single evaluate state and no `setup_worktree`/`cleanup_worktree` mocking, matching this fix's actual mechanism (`_build_context()` reading `self.working_dir`) without needing sub-loop worktree-attach machinery.
 
 ## Program Design
 
@@ -164,5 +179,6 @@ Findings from codebase-analyzer, organized below.
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-27T06:33:10 - `de835f3b-4603-4a08-b7dc-82329ffec1ac.jsonl`
 - `/ll:refine-issue` - 2026-09-27T06:18:36 - `d1ce99b0-6533-4a9f-af3f-f35128797a41.jsonl`
 - `/ll:format-issue` - 2026-09-27T06:06:19 - `5a2b9f7a-3ce6-4168-b70d-09170927290e.jsonl`

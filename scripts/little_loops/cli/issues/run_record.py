@@ -19,7 +19,13 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from little_loops.config import BRConfig
 
-from little_loops.run_record import LEGACY_CLASSES, WRITERS, RunRecord, write_run_record
+from little_loops.run_record import (
+    LEGACY_CLASSES,
+    WRITERS,
+    RunRecord,
+    RunRecordWriter,
+    write_run_record,
+)
 
 _BROKE_DOWN_FILENAME = "refine-broke-down"
 
@@ -265,17 +271,32 @@ def cmd_run_record_forward(config: BRConfig, args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_run_record_write(config: BRConfig, args: argparse.Namespace) -> int:
-    """Write the typed run record; prints ``[RUN_RECORD_WRITTEN] <ID> <outcome>``.
+def write_typed_run_record(
+    config: BRConfig,
+    issue_id: str,
+    run_dir: Path | str,
+    writer: RunRecordWriter,
+    *,
+    legacy_class: str | None = None,
+    child_ids: list[str] | None = None,
+    evidence_refs: tuple[str, ...] | list[str] = (),
+    readiness_threshold: int | None = None,
+    outcome_threshold: int | None = None,
+    broke_down: bool = False,
+) -> RunRecord | None:
+    """Resolve *issue_id*, compute its typed outcome and write the run record.
 
-    The ``ready`` predicate is autodev ``check_passed``'s exact one —
-    ``readiness_status`` with the waiver honored, scores-absent
-    (check-readiness exit 3) counting as not-met, and the Program Design gate
-    (``check-design``) passing (ENH-3625) — resolved in-process rather than
-    via a subprocess.
+    Shared by ``ll-issues run-record write`` and ``prep apply`` (ENH-3630) so
+    both writers agree on the ``ready`` predicate: ``readiness_status`` with
+    the waiver honored, scores-absent (check-readiness exit 3) counting as
+    not-met, and the Program Design gate (``check-design``) passing
+    (ENH-3625). Unlike ``_read_broke_down(run_dir)`` (the CLI's file-based
+    default), callers that already know the decomposition outcome pass
+    *broke_down* directly.
 
     Returns:
-        0 record written, 2 when the issue cannot be resolved.
+        The written :class:`RunRecord`, or ``None`` when *issue_id* cannot be
+        resolved (the caller decides how to report that).
     """
     from little_loops.cli.issues.check_readiness import readiness_status
     from little_loops.cli.issues.show import _resolve_issue_id
@@ -283,20 +304,19 @@ def cmd_run_record_write(config: BRConfig, args: argparse.Namespace) -> int:
     from little_loops.issue_parser import check_format_gaps, design_gate_failed
     from little_loops.run_record import outcome_from_legacy_class
 
-    path = _resolve_issue_id(config, args.issue_id)
+    path = _resolve_issue_id(config, issue_id)
     if path is None:
-        print(f"Error: Issue '{args.issue_id}' not found.", file=sys.stderr)
-        return 2
+        return None
 
     fm = parse_frontmatter(path.read_text(), coerce_types=True)
-    canonical_id = canonical_record_id(config, args.issue_id)
+    canonical_id = canonical_record_id(config, issue_id)
     status = str(fm.get("status") or "") or None
 
     rs = readiness_status(
         config,
-        args.issue_id,
-        readiness_override=getattr(args, "readiness_threshold", None),
-        outcome_override=getattr(args, "outcome_threshold", None),
+        issue_id,
+        readiness_override=readiness_threshold,
+        outcome_override=outcome_threshold,
     )
     thresholds_met = bool(
         rs is not None
@@ -307,24 +327,50 @@ def cmd_run_record_write(config: BRConfig, args: argparse.Namespace) -> int:
         and not design_gate_failed(check_format_gaps(path))
     )
 
-    child_ids = (
-        list(args.child_ids)
-        if args.child_ids is not None
-        else derive_child_ids(config, args.issue_id)
+    resolved_child_ids = (
+        list(child_ids) if child_ids is not None else derive_child_ids(config, issue_id)
     )
-    outcome = outcome_from_legacy_class(
-        args.legacy_class, _read_broke_down(args.run_dir), thresholds_met, status
-    )
+    outcome = outcome_from_legacy_class(legacy_class, broke_down, thresholds_met, status)
     record = RunRecord(
-        writer=args.writer,
+        writer=writer,
         issue_id=canonical_id,
         outcome=outcome,
-        child_ids=tuple(child_ids),
-        evidence_refs=tuple(args.evidence_refs),
-        legacy_class=args.legacy_class,
+        child_ids=tuple(resolved_child_ids),
+        evidence_refs=tuple(evidence_refs),
+        legacy_class=legacy_class,
         readiness=rs.raw_confidence if rs is not None else None,
         outcome_confidence=rs.raw_outcome if rs is not None else None,
     )
-    written = write_run_record(Path(args.run_dir), record)
-    print(f"[RUN_RECORD_WRITTEN] {canonical_id} {outcome} {written}")
+    write_run_record(Path(run_dir), record)
+    return record
+
+
+def cmd_run_record_write(config: BRConfig, args: argparse.Namespace) -> int:
+    """Write the typed run record; prints ``[RUN_RECORD_WRITTEN] <ID> <outcome>``.
+
+    Thin CLI wrapper around :func:`write_typed_run_record`: resolves args,
+    reports the not-found error, and prints the stdout marker.
+
+    Returns:
+        0 record written, 2 when the issue cannot be resolved.
+    """
+    from little_loops.run_record import record_path
+
+    record = write_typed_run_record(
+        config,
+        args.issue_id,
+        args.run_dir,
+        args.writer,
+        legacy_class=args.legacy_class,
+        child_ids=args.child_ids,
+        evidence_refs=args.evidence_refs,
+        readiness_threshold=getattr(args, "readiness_threshold", None),
+        outcome_threshold=getattr(args, "outcome_threshold", None),
+        broke_down=_read_broke_down(args.run_dir),
+    )
+    if record is None:
+        print(f"Error: Issue '{args.issue_id}' not found.", file=sys.stderr)
+        return 2
+    written = record_path(Path(args.run_dir), record.writer, record.issue_id)
+    print(f"[RUN_RECORD_WRITTEN] {record.issue_id} {record.outcome} {written}")
     return 0
