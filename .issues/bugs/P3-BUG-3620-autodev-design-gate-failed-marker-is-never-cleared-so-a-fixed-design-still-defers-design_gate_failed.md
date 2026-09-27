@@ -4,7 +4,7 @@ type: BUG
 title: Autodev design-gate-failed marker is never cleared, so a fixed design still
   defers design_gate_failed
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-27'
 captured_at: '2026-09-27T00:16:53Z'
@@ -12,6 +12,7 @@ parent: EPIC-3565
 relates_to:
 - ENH-3606
 - ENH-2870
+completed_at: '2026-09-27T01:48:10Z'
 ---
 
 # BUG-3620: Autodev design-gate-failed marker is never cleared, so a fixed design still defers design_gate_failed
@@ -75,6 +76,28 @@ returns 0. Add a test for the trace above (design fixed, readiness still low →
 or `readiness_stagnated`, not `design_gate_failed`). If ENH-3606 moves these states first,
 apply the fix in `prepare-issue.yaml`; the marker keeps its name either way.
 
+## Program Design
+
+### Types
+
+- `DESIGN_FAIL: "true" | "false"` — shell variable recomputed on every visit from `ll-issues check-design` exit code (rc 1 → `true`) inside `recheck_after_size_review` and `regate_after_atomic_remediation`; today it is computed but not consulted by the marker readers.
+- `autodev-design-gate-failed-$ID` — per-issue marker file under `${context.run_dir}`; cross-state signal only, no content.
+
+### Signatures
+
+- `cmd_check_design(config: BRConfig, args: argparse.Namespace) -> int` — `scripts/little_loops/cli/issues/check_design.py:19`; returns 1 on Program Design failure, 0 on pass. Unchanged.
+- FSM states `recheck_scores`, `regate_after_atomic_remediation`, `recheck_after_size_review` in `scripts/little_loops/loops/autodev.yaml` — writers `touch` the marker on rc 1; the two latter also read it. Fix: readers branch on `"$DESIGN_FAIL" = "true"` (or writers `rm -f` the marker on rc 0).
+
+### Call Path
+
+`recheck_after_size_review` -> `dispatch_design_remedy` -> `refine_for_design` -> `count_repair_cycle_refine_for_design` -> `route_after_rescore` -> `recheck_after_size_review` (visit 2); `regate_after_atomic_remediation` reads the marker left by an earlier `recheck_scores` visit.
+
+### Decision Rules
+
+- Marker present and `DESIGN_FAIL=false` → fall through to the `decision_needed` / `readiness_stagnated` / `low_readiness` / `oversized_atomic` branches; never defer `design_gate_failed`.
+- `DESIGN_FAIL=true` → unchanged (arm one-shot design remedy, then defer `design_gate_failed`).
+- Do not clear the marker at `dequeue_next`; `count_repair_cycle_refine_for_design` documents that the per-issue one-shot state must survive within a run.
+
 ## Integration Map
 
 ### Files to Modify
@@ -120,4 +143,27 @@ apply the fix in `prepare-issue.yaml`; the marker keeps its name either way.
 
 ## Status
 
-**Open** | Created: 2026-09-27 | Priority: P3
+**Done** | Created: 2026-09-27 | Priority: P3
+
+
+## Session Log
+- `/ll:format-issue` - 2026-09-27T00:56:28 - `c713d0fd-fd1c-4fb0-805d-c404b608bb7c.jsonl`
+
+## Resolution
+
+Fixed in `scripts/little_loops/loops/autodev.yaml`: the `autodev-design-gate-failed-<ID>` marker is
+retired. `recheck_after_size_review` and `regate_after_atomic_remediation` branch on this visit's
+`DESIGN_FAIL` (from `ll-issues check-design`) instead of the file; no state writes the marker any more,
+and `recheck_scores` drops its redundant first `check-design` call (its `&&`-chained call still gates
+staging). A design fixed by the remedy now falls through to the decision / stagnation / low-readiness /
+oversized_atomic branches; a current design failure still arms the one-shot design remedy, then defers
+`design_gate_failed`.
+
+Tests: `TestStaleDesignGateMarker` in `test_autodev_ladder_run_records.py` (stale marker + passing design
+→ `low_readiness` at recheck, `oversized_atomic` at regate with no remedy armed; a current failure still
+arms the remedy; no state writes the marker). The design stop rows there now arm a real check-design
+failure (Program Design cutover) instead of touching the marker. Structural pins in
+`test_autodev_loop.py` re-anchored on the `DESIGN_FAIL` reader. Full suite: 26515 passed.
+
+Not added: an end-to-end characterization scenario for the trace, because the harness cannot make a
+Program Design section pass the call-path gate (it needs git-tracked symbols in the temp project).

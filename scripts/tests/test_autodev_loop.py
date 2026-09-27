@@ -527,7 +527,8 @@ class TestDesignGateStep0Detection:
     def test_recheck_scores_calls_check_design(self) -> None:
         action = _load_autodev_yaml()["states"]["recheck_scores"]["action"]
         assert "ll-issues check-design" in action
-        assert "autodev-design-gate-failed-$ID" in action
+        # BUG-3620: the sticky marker is retired; the verdict is per-visit.
+        assert "autodev-design-gate-failed" not in action
         assert "format-check" not in action
         assert "program_design_nonspecific" not in action
 
@@ -577,7 +578,7 @@ class TestRecheckAfterSizeReviewDesignGateBranch:
         stagnation branch — required order is after resolved_by_subloop,
         before readiness_stagnated."""
         action = _load_autodev_yaml()["states"]["recheck_after_size_review"]["action"]
-        design_idx = action.index("if [ -f ${context.run_dir}/autodev-design-gate-failed-$ID ]")
+        design_idx = action.index('if [ "$DESIGN_FAIL" = "true" ]; then  # BUG-3620')
         resolved_idx = action.index('echo "$ID  resolved_by_subloop"')
         stagnated_idx = action.index('echo "$ID  readiness_stagnated"')
         assert resolved_idx < design_idx < stagnated_idx
@@ -587,7 +588,7 @@ class TestRecheckAfterSizeReviewDesignGateBranch:
         heuristic entirely — it always selects refine_design (BUG-3002:
         retargeted from reconcile, whose contract excludes Program Design)."""
         action = _load_autodev_yaml()["states"]["recheck_after_size_review"]["action"]
-        design_section = action[action.index("autodev-design-gate-failed-$ID") :]
+        design_section = action[action.index('if [ "$DESIGN_FAIL" = "true" ]; then  # BUG-3620') :]
         pre_deferral_idx = design_section.index("design_gate_failed")
         branch = design_section[:pre_deferral_idx]
         assert 'REMEDY="refine_design"' in branch
@@ -600,7 +601,7 @@ class TestRecheckAfterSizeReviewDesignGateBranch:
         fall-through must land on design_gate_failed, never low_readiness."""
         action = _load_autodev_yaml()["states"]["recheck_after_size_review"]["action"]
         assert "autodev-design-remedy-attempted-$ID" in action
-        design_idx = action.index("autodev-design-gate-failed-$ID")
+        design_idx = action.index('if [ "$DESIGN_FAIL" = "true" ]; then  # BUG-3620')
         design_defer_idx = action.index('echo "$ID  design_gate_failed"')
         low_readiness_idx = action.index('echo "$ID  low_readiness"')
         assert design_idx < design_defer_idx < low_readiness_idx
@@ -610,7 +611,7 @@ class TestRecheckAfterSizeReviewDesignGateBranch:
         files; also gains the BUG-3002 design-remedy-attempted marker as the
         cross-route one-shot guard replacing the reconcile_attempted read."""
         action = _load_autodev_yaml()["states"]["recheck_after_size_review"]["action"]
-        design_section = action[action.index("autodev-design-gate-failed-$ID") :]
+        design_section = action[action.index('if [ "$DESIGN_FAIL" = "true" ]; then  # BUG-3620') :]
         branch = design_section[: design_section.index('echo "$ID  design_gate_failed"')]
         assert "autodev-pre-deferral-remedy-fired" in branch
         assert "autodev-pre-deferral-remedy.txt" in branch
@@ -920,7 +921,7 @@ class TestRegateAfterAtomicRemediationDesignGateBranch:
 
     def test_design_marker_check_precedes_oversized_atomic_write(self) -> None:
         action = _load_autodev_yaml()["states"]["regate_after_atomic_remediation"]["action"]
-        design_idx = action.index("autodev-design-gate-failed-$ID")
+        design_idx = action.index('if [ "$DESIGN_FAIL" = "true" ]; then  # BUG-3620')
         oversized_idx = action.index('echo "$ID  oversized_atomic"')
         assert design_idx < oversized_idx
 
@@ -928,9 +929,7 @@ class TestRegateAfterAtomicRemediationDesignGateBranch:
         """Everything within the design-marker branch must return before
         reaching the unconditional oversized_atomic write below it."""
         action = _load_autodev_yaml()["states"]["regate_after_atomic_remediation"]["action"]
-        design_section = action[
-            action.index("if [ -f ${context.run_dir}/autodev-design-gate-failed-$ID ]")
-        ]
+        design_section = action[action.index('if [ "$DESIGN_FAIL" = "true" ]; then  # BUG-3620')]
         assert design_section is not None  # marker branch exists at all
 
     def test_on_no_routes_through_check_atomic_design_remedy_dispatcher(self) -> None:
@@ -952,7 +951,7 @@ class TestRegateAfterAtomicRemediationDesignGateBranch:
         reconcile_attempted frontmatter flag (which /ll:refine-issue never
         writes, so the old guard would leave this branch unreachable)."""
         action = _load_autodev_yaml()["states"]["regate_after_atomic_remediation"]["action"]
-        design_section = action[action.index("autodev-design-gate-failed-$ID") :]
+        design_section = action[action.index('if [ "$DESIGN_FAIL" = "true" ]; then  # BUG-3620') :]
         assert "autodev-design-remedy-attempted-$ID" in design_section
         assert "reconcile_attempted" not in design_section
 
@@ -1080,7 +1079,6 @@ class TestRecheckScoresDesignGateEndToEnd:
 
         _run_recheck_scores(tmp_path, "BUG-9700")
 
-        assert (tmp_path / "autodev-design-gate-failed-BUG-9700").exists()
         staged = tmp_path / "autodev-staged.txt"
         assert not staged.exists() or "BUG-9700" not in staged.read_text()
 
@@ -1104,6 +1102,5 @@ class TestRecheckScoresDesignGateEndToEnd:
 
         _run_recheck_scores(tmp_path, "BUG-9700")
 
-        assert not (tmp_path / "autodev-design-gate-failed-BUG-9700").exists()
         staged = tmp_path / "autodev-staged.txt"
         assert staged.exists() and "BUG-9700" in staged.read_text()

@@ -167,8 +167,8 @@ states:
       rm -f ${context.run_dir}/autodev-pre-deferral-remedy-fired
       # ENH-2870: clear the atomic-remediation design-remedy handshake so a
       # prior issue's armed-but-unconsumed remedy never leaks into this
-      # issue's decision (the design-gate-failed-<ID> marker is already
-      # per-issue-scoped by filename, so it self-isolates without cleanup).
+      # issue's decision. (BUG-3620 retired the design-gate-failed-<ID> marker;
+      # the design branches read each visit's own check-design verdict.)
       rm -f ${context.run_dir}/autodev-atomic-design-remedy-pending
 
       (ll-issues list --json | python3 -c "
@@ -1903,12 +1903,6 @@ states:
     # recheck_after_size_review, which owns the design_gate_failed deferral.
     action: |
       ID="${captured.input.output}"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
-      ll-issues check-design "$ID"; rc=$?
-      # BUG-3294: only a genuine gate failure (rc=1) files the design-gate-failed
-      # marker; rc>=2 (unresolvable ID) must not defer a nonexistent issue.
-      if [ "$rc" -eq 1 ]; then
-        touch ${context.run_dir}/autodev-design-gate-failed-$ID
-      fi
       ll-issues check-readiness "$ID" \
         --readiness ${context.readiness_threshold:shell} \
         --outcome ${context.outcome_threshold:shell} \
@@ -2302,13 +2296,15 @@ states:
     action: |
       ID="${captured.input.output}"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       ll-issues check-design "$ID"; rc=$?
-      # BUG-3294: only a genuine gate failure (rc=1) files the design-gate-failed
-      # marker; rc>=2 (unresolvable ID) must not defer a nonexistent issue.
+      # BUG-3294: only a genuine gate failure (rc=1) counts as a design failure;
+      # rc>=2 (unresolvable ID) must not defer a nonexistent issue.
+      # BUG-3620: this visit's verdict drives the design branch below; there is
+      # no sticky marker, so a design fixed by the remedy falls through to the
+      # score-based deferral branches.
       if [ "$rc" -eq 0 ]; then
         DESIGN_FAIL="false"
       elif [ "$rc" -eq 1 ]; then
         DESIGN_FAIL="true"
-        touch ${context.run_dir}/autodev-design-gate-failed-$ID
       else
         DESIGN_FAIL="false"
       fi
@@ -2353,7 +2349,7 @@ states:
           echo "[SCORES_ABSENT] $ID — confidence/outcome score absent at gate"
           exit 3
         fi
-        if [ -f ${context.run_dir}/autodev-design-gate-failed-$ID ]; then
+        if [ "$DESIGN_FAIL" = "true" ]; then  # BUG-3620: current verdict
           if [ ! -f ${context.run_dir}/autodev-design-remedy-attempted-$ID ]; then
             touch ${context.run_dir}/autodev-atomic-design-remedy-pending
             exit 1
@@ -2518,10 +2514,9 @@ states:
     # marker — the reconcile_attempted-frontmatter replacement described at
     # check_atomic_design_remedy / recheck_after_size_review — so both design
     # routes see the same one-shot state and an issue cannot burn one refine
-    # pass per route. Per-issue-scoped by filename like
-    # autodev-design-gate-failed-$ID, so it is intentionally NOT cleared at
-    # dequeue_next (clearing it there would let one issue take two refine
-    # passes within a single run).
+    # pass per route. Per-issue-scoped by filename, so it is intentionally NOT
+    # cleared at dequeue_next (clearing it there would let one issue take two
+    # refine passes within a single run).
     action: |
       ID="${captured.input.output}"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       N=$(cat ${context.run_dir}/autodev-repair-cycle-count.txt 2>/dev/null || echo 0)
@@ -2628,13 +2623,15 @@ states:
     action: |
       ID="${captured.input.output}"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       ll-issues check-design "$ID"; rc=$?
-      # BUG-3294: only a genuine gate failure (rc=1) files the design-gate-failed
-      # marker; rc>=2 (unresolvable ID) must not defer a nonexistent issue.
+      # BUG-3294: only a genuine gate failure (rc=1) counts as a design failure;
+      # rc>=2 (unresolvable ID) must not defer a nonexistent issue.
+      # BUG-3620: this visit's verdict drives the design branch below; there is
+      # no sticky marker, so a design fixed by the remedy falls through to the
+      # score-based deferral branches.
       if [ "$rc" -eq 0 ]; then
         DESIGN_FAIL="false"
       elif [ "$rc" -eq 1 ]; then
         DESIGN_FAIL="true"
-        touch ${context.run_dir}/autodev-design-gate-failed-$ID
       else
         DESIGN_FAIL="false"
       fi
@@ -2689,7 +2686,7 @@ states:
       import json, sys
       d = json.load(sys.stdin)
       print(int(d.get('confidence') or 0))" 2>/dev/null || echo 0)
-        if [ -f ${context.run_dir}/autodev-design-gate-failed-$ID ]; then
+        if [ "$DESIGN_FAIL" = "true" ]; then  # BUG-3620: current verdict
           FIRED=${context.run_dir}/autodev-pre-deferral-remedy-fired
           if [ ! -f "$FIRED" ]; then
             if [ -f ${context.run_dir}/autodev-design-remedy-attempted-$ID ]; then

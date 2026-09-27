@@ -1038,7 +1038,7 @@ class TestDesignGateRefineRemedy:
         assert "autodev-design-remedy-attempted-$ID" in action
 
     def test_marker_not_cleared_at_dequeue_next(self, data: dict[str, Any]) -> None:
-        """Per-issue-scoped by filename, like autodev-design-gate-failed-$ID —
+        """Per-issue-scoped by filename —
         clearing it per dequeue would let one issue take two refine passes."""
         action = data["states"]["dequeue_next"]["action"]
         assert "autodev-design-remedy-attempted" not in action

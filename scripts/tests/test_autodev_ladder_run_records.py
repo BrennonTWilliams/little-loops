@@ -100,7 +100,11 @@ def _arm_stagnation(project: Path) -> None:
 
 
 def _arm_design_gate(project: Path) -> None:
-    _touch(project, f"autodev-design-gate-failed-{ISSUE_ID}")
+    """Make this visit's ``ll-issues check-design`` fail (BUG-3620: the deferral
+    branch keys on the current verdict, not a sticky marker file): the cutover
+    arms the Program Design gate and the demo issue has no ``## Program Design``.
+    The design remedy is already spent, so the branch defers."""
+    (project / ".ll" / "program-design-cutover.json").write_text('{"date": "2000-01-01"}')
     _touch(project, f"autodev-design-remedy-attempted-{ISSUE_ID}")
 
 
@@ -189,6 +193,50 @@ class TestStopRowRunRecords:
         _run(states, state, project)
         assert _ledger(project) == f"{ISSUE_ID}  resolved_by_subloop\n"
         assert _token(project) in ("", "MISSING")
+
+
+class TestStaleDesignGateMarker:
+    """BUG-3620: a design-gate-failed marker left by an earlier visit (the design
+    has since been fixed, so check-design passes now) must not defer the issue as
+    design_gate_failed or re-arm the design remedy; the score branches decide."""
+
+    def _stale(self, project: Path) -> None:
+        # No program-design cutover -> check-design passes on this visit.
+        _touch(project, f"autodev-design-gate-failed-{ISSUE_ID}")
+        _touch(project, f"autodev-design-remedy-attempted-{ISSUE_ID}")
+
+    def test_recheck_defers_on_scores_not_stale_design_marker(
+        self, states: dict[str, Any], project: Path
+    ) -> None:
+        _write_issue(project)
+        self._stale(project)
+        _arm_low_readiness(project)
+        _run(states, "recheck_after_size_review", project)
+        assert _ledger(project) == f"{ISSUE_ID}  low_readiness\n"
+
+    def test_regate_defers_oversized_atomic_not_stale_design_marker(
+        self, states: dict[str, Any], project: Path
+    ) -> None:
+        _write_issue(project, confidence_score=90, outcome_confidence=10)
+        self._stale(project)
+        _run(states, "regate_after_atomic_remediation", project)
+        assert _ledger(project) == f"{ISSUE_ID}  oversized_atomic\n"
+        assert not (project / "run" / "autodev-atomic-design-remedy-pending").exists()
+
+    def test_regate_current_design_failure_still_arms_remedy_first(
+        self, states: dict[str, Any], project: Path
+    ) -> None:
+        _write_issue(project, confidence_score=90, outcome_confidence=10)
+        (project / ".ll" / "program-design-cutover.json").write_text('{"date": "2000-01-01"}')
+        _run(states, "regate_after_atomic_remediation", project)
+        assert (project / "run" / "autodev-atomic-design-remedy-pending").exists()
+        assert _ledger(project) == ""
+
+    @pytest.mark.parametrize(
+        "state", ["recheck_scores", "regate_after_atomic_remediation", "recheck_after_size_review"]
+    )
+    def test_no_state_writes_the_retired_marker(self, states: dict[str, Any], state: str) -> None:
+        assert "autodev-design-gate-failed" not in states[state]["action"]
 
 
 class TestBrokeDownTrap:
