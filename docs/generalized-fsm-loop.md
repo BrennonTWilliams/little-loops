@@ -744,12 +744,12 @@ Result details: `{ current: <number>, previous: <number>, target: <number>, delt
 
 #### `diff_stall`
 
-Detect when a fix loop is spinning without making filesystem changes by comparing `git diff --stat` between iterations.
+Detect when a fix loop is spinning without making filesystem changes by comparing a working-tree content fingerprint (tracked + untracked files, commits included) between iterations; state is per run.
 
 ```yaml
 evaluate:
   type: diff_stall
-  scope: ["src/", "tests/"]    # Optional: paths to pass to git diff --stat (default: entire repo)
+  scope: ["src/", "tests/"]    # Optional: paths to limit the fingerprint to (default: entire repo)
   max_stall: 1                  # Optional: consecutive no-change iterations before `no` verdict
 ```
 

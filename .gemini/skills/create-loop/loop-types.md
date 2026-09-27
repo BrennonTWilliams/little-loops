@@ -970,7 +970,7 @@ states:
 
 **Stall Detection (native `diff_stall` evaluator)**
 
-Use the `diff_stall` evaluator to automatically terminate retries when no code changes are being produced. Unlike `convergence` (which tracks numeric metrics), `diff_stall` works with any action type by comparing `git diff --stat` between iterations.
+Use the `diff_stall` evaluator to automatically terminate retries when no code changes are being produced. Unlike `convergence` (which tracks numeric metrics), `diff_stall` works with any action type by comparing a working-tree content fingerprint (tracked + untracked files, commits included) between iterations.
 
 Add a `check_stall` state after the action that retries — if the working tree is unchanged for `max_stall` consecutive iterations, the loop skips to the next item instead of retrying indefinitely:
 
@@ -993,7 +993,7 @@ check_stall:
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `scope` | `list[str]` | *(entire repo)* | Paths to limit `git diff --stat` to |
+| `scope` | `list[str]` | *(entire repo)* | Paths to limit the content fingerprint to |
 | `max_stall` | `int` | `1` | Consecutive no-change iterations before `failure` verdict |
 
 **Verdicts:** `success` (progress or below threshold), `failure` (stalled at max_stall), `error` (git unavailable)

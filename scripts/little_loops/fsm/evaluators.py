@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import random
 import re
 import subprocess
@@ -574,60 +575,142 @@ def evaluate_classify(
     )
 
 
+class _GitFingerprintError(Exception):
+    """Raised when a git command needed for the diff_stall fingerprint fails."""
+
+    def __init__(self, error: str) -> None:
+        super().__init__(error)
+        self.error = error
+
+
+def _stall_state_paths(
+    kind: str,
+    state_dir: Path | None,
+    loop_name: str,
+    state_name: str,
+    key_parts: list[str],
+) -> tuple[Path, Path]:
+    """Return ``(snapshot_file, count_file)`` for a stall evaluator.
+
+    With a ``state_dir`` (the per-run directory) files are named
+    ``ll-<kind>-stall-<loop>-<state>-<md5(key_parts)[:12]>``. Without one, the legacy
+    shared ``.loops/tmp/ll-<kind>-stall-<md5(key_parts)[:12]>`` location is used.
+    """
+    digest = hashlib.md5(("|".join(sorted(key_parts)) or "_root_").encode()).hexdigest()[:12]
+    if state_dir is None:
+        directory = Path.cwd() / ".loops" / "tmp"
+        stem = f"ll-{kind}-stall-{digest}"
+    else:
+        directory = state_dir
+        loop = re.sub(r"[^A-Za-z0-9_.-]", "_", loop_name)
+        state = re.sub(r"[^A-Za-z0-9_.-]", "_", state_name)
+        stem = "-".join(p for p in (f"ll-{kind}-stall", loop, state, digest) if p)
+    directory.mkdir(parents=True, exist_ok=True)
+    return directory / f"{stem}.txt", directory / f"{stem}.count"
+
+
+def _run_git(args: list[str], stdin: str | None = None) -> str:
+    """Run a git command for the diff_stall fingerprint, raising on any failure."""
+    try:
+        # ll-no-project: local git plumbing, no host CLI/credentials in play (ENH-3184 AC2/AC3)
+        proc = subprocess.run(
+            ["git", *args], capture_output=True, text=True, timeout=30, input=stdin
+        )
+    except subprocess.TimeoutExpired:
+        raise _GitFingerprintError("git diff timed out") from None
+    except FileNotFoundError:
+        raise _GitFingerprintError("git not found in PATH") from None
+    if proc.returncode != 0:
+        raise _GitFingerprintError(f"git diff failed: {proc.stderr[:200]}")
+    return proc.stdout
+
+
+def _diff_stall_fingerprint(scope: list[str] | None, run_dir: Path | None) -> str:
+    """Content fingerprint of the scoped working state (committed, staged, unstaged, untracked).
+
+    Raises:
+        _GitFingerprintError: A git command failed or timed out.
+    """
+    paths = list(scope) if scope else ["."]
+    excludes = [":(exclude).loops/"]
+    toplevel = Path(_run_git(["rev-parse", "--show-toplevel"]).strip()).resolve()
+    if run_dir is not None:
+        resolved = (Path.cwd() / run_dir).resolve()
+        try:
+            rel_top = resolved.relative_to(toplevel).as_posix()
+        except ValueError:
+            rel_top = None  # outside the repo: an out-of-repo :(exclude) makes git exit 128
+        if rel_top and rel_top != ".":
+            excludes.append(f":(top,exclude){rel_top}")
+    pathspec = ["--", *paths, *excludes]
+
+    # Working-tree content of every tracked + untracked (non-ignored) file in scope. Hashing
+    # the working tree (not HEAD/diff parts) makes commits neutral: edit-then-commit is
+    # progress, a commit of already-present changes is a stall tick.
+    listing = _run_git(["ls-files", "-c", "-o", "--exclude-standard", "-z", *pathspec])
+    files = sorted({p for p in listing.split("\0") if p})
+    h = hashlib.sha256()
+    regular: list[str] = []
+    for path in files:
+        if os.path.islink(path):
+            h.update(f"{path}\0->{os.readlink(path)}\0".encode())
+        elif os.path.isfile(path):
+            regular.append(path)
+        # else: deleted tracked file or gitlink directory - absence is part of the state
+    if regular:
+        digests = _run_git(["hash-object", "--stdin-paths"], stdin="\n".join(regular) + "\n")
+        for path, digest in zip(regular, digests.split(), strict=False):
+            h.update(f"{path}\0{digest}\0".encode())
+    return h.hexdigest()
+
+
 def evaluate_diff_stall(
     scope: list[str] | None = None,
     max_stall: int = 1,
+    state_dir: Path | None = None,
+    state_key: str = "",
 ) -> EvaluationResult:
-    """Detect stalled iterations by comparing git diff --stat between runs.
+    """Detect stalled iterations by comparing a content fingerprint between runs.
 
-    On first call, snapshots the current diff and returns 'yes'.
-    On subsequent calls, compares current diff to the previous snapshot.
-    If the diff is identical for max_stall consecutive iterations, returns
-    'no' (stalled). If different, resets the stall counter and returns
-    'yes' (progress).
+    The fingerprint hashes the working-tree content (blob hashes, symlink targets) of
+    every tracked and untracked non-ignored file in scope, excluding ``.loops/`` and the
+    run directory. It changes on any real content change, staged, committed or not, and
+    honors ``scope``. A pass that only commits already-present changes is a stall tick.
 
-    State is persisted in /tmp using a key derived from the scope argument,
-    so different loops with different scopes maintain independent stall counters.
+    On first call, snapshots the fingerprint and returns 'yes'. On subsequent calls,
+    if the fingerprint is identical for max_stall consecutive iterations, returns
+    'no' (stalled); otherwise resets the counter and returns 'yes' (progress).
+
+    State lives in ``state_dir`` (the per-run directory) keyed by ``state_key``
+    (``<loop_name>-<state_name>``) and scope, so a fresh CLI run starts at count 0.
+    Without ``state_dir`` the legacy shared ``.loops/tmp`` location is used and
+    isolation between runs is not guaranteed. Accepted limitations: a child loop
+    re-entered within one parent run, and ``ll-loop simulate`` (fixed run dir), share
+    state with their earlier invocation.
 
     Args:
-        scope: Optional list of paths to limit the git diff to. Defaults to
+        scope: Optional list of paths to limit the fingerprint to. Defaults to
             the entire working tree.
         max_stall: Number of consecutive no-change iterations before stall
             verdict. Defaults to 1.
+        state_dir: Per-run directory for snapshot/count files; None uses the
+            legacy ``.loops/tmp`` location.
+        state_key: ``<loop_name>-<state_name>`` prefix for the state files.
 
     Returns:
         EvaluationResult with verdict:
-            - yes: diff changed since last iteration (progress made)
-            - no: diff unchanged for max_stall iterations (stalled)
+            - yes: fingerprint changed since last iteration (progress made)
+            - no: fingerprint unchanged for max_stall iterations (stalled)
             - error: git command failed or timed out
     """
-    cmd = ["git", "diff", "--stat"]
-    if scope:
-        cmd += ["--"] + scope
-
     try:
-        # ll-no-project: local git plumbing, no host CLI/credentials in play (ENH-3184 AC2/AC3)
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-    except subprocess.TimeoutExpired:
-        return EvaluationResult(verdict="error", details={"error": "git diff timed out"})
-    except FileNotFoundError:
-        return EvaluationResult(verdict="error", details={"error": "git not found in PATH"})
+        current_diff = _diff_stall_fingerprint(scope, state_dir)
+    except _GitFingerprintError as exc:
+        return EvaluationResult(verdict="error", details={"error": exc.error})
 
-    if proc.returncode != 0:
-        return EvaluationResult(
-            verdict="error",
-            details={"error": f"git diff failed: {proc.stderr[:200]}"},
-        )
-
-    current_diff = proc.stdout
-
-    # Derive a stable cache key from the scope so independent loops don't collide
-    scope_str = "|".join(sorted(scope)) if scope else "_root_"
-    cache_key = hashlib.md5(scope_str.encode()).hexdigest()[:12]
-    loops_tmp = Path.cwd() / ".loops" / "tmp"
-    loops_tmp.mkdir(parents=True, exist_ok=True)
-    state_file = loops_tmp / f"ll-diff-stall-{cache_key}.txt"
-    count_file = loops_tmp / f"ll-diff-stall-{cache_key}.count"
+    state_file, count_file = _stall_state_paths(
+        "diff", state_dir, state_key, "", list(scope) if scope else []
+    )
 
     # Read previous snapshot and stall count
     previous_diff: str | None = None
@@ -2010,9 +2093,12 @@ def evaluate(
         )
 
     elif eval_type == "diff_stall":
+        run_dir = context.context.get("run_dir") if context else None
         return evaluate_diff_stall(
             scope=config.scope,
             max_stall=config.max_stall,
+            state_dir=Path(str(run_dir)) if run_dir else None,
+            state_key=f"{context.loop_name}-{context.state_name}" if context else "",
         )
 
     elif eval_type == "score_stall":

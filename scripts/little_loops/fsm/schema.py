@@ -78,7 +78,7 @@ class EvaluateConfig:
             that is set but fails to resolve to a float is a fail-closed error,
             not a silent fallback (unlike previous).
         direction: Optimization direction for convergence (minimize/maximize)
-        scope: Paths to limit git diff to for diff_stall evaluator
+        scope: Paths to limit the content fingerprint to for diff_stall evaluator
         max_stall: Consecutive no-change iterations before failure (diff_stall/score_stall)
         history_file: Path to the per-round score-history file for score_stall
             (default: ${context.run_dir}/.score_history)
@@ -131,7 +131,7 @@ class EvaluateConfig:
     previous: str | None = None
     reference: str | None = None  # for convergence: frozen baseline (ENH-3421)
     direction: Literal["minimize", "maximize"] = "minimize"
-    scope: list[str] | None = None  # for diff_stall: limit git diff to these paths
+    scope: list[str] | None = None  # for diff_stall: limit fingerprint to these paths
     max_stall: int = 1  # for diff_stall/score_stall: consecutive no-progress rounds before failure
     history_file: str | None = None  # for score_stall: path to per-round score-history file
     epsilon: float = 0.5  # for score_stall: minimum score improvement counted as progress

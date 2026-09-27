@@ -183,12 +183,14 @@ fragments:
   diff_stall_gate:
     description: |
       Evaluator-only fragment that supplies evaluate.type: diff_stall and
-      evaluate.max_stall: 2. Checks whether git diff has changed since the
-      last iteration; returns yes on progress, no on stall (max_stall
-      consecutive identical diffs).
+      evaluate.max_stall: 2. Checks whether the working-tree content
+      fingerprint (tracked + untracked files, commits included, .loops/
+      excluded) has changed since the last iteration; returns yes on progress,
+      no on stall (max_stall consecutive identical fingerprints). Stall state
+      is per run (${context.run_dir}), keyed by loop and state name.
       State must supply: action, action_type, and routing (on_yes, on_no);
       optionally on_error and evaluate.scope (list of paths) to limit the
-      diff to specific subtrees. Default max_stall: 2 (EvaluateConfig default
+      fingerprint to specific subtrees. Default max_stall: 2 (EvaluateConfig default
       is 1; override per-state if needed).
     evaluate:
       type: diff_stall

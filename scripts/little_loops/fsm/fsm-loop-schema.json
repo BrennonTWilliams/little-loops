@@ -826,7 +826,7 @@
         },
         "scope": {
           "type": "array",
-          "description": "Paths to limit git diff to (for diff_stall evaluator)",
+          "description": "Paths to limit the content fingerprint to (for diff_stall evaluator)",
           "items": { "type": "string" }
         },
         "max_stall": {

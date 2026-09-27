@@ -451,7 +451,7 @@ check_stall:
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `scope` | `list[str]` | *(entire repo)* | Paths to limit `git diff --stat` to |
+| `scope` | `list[str]` | *(entire repo)* | Paths to limit the content fingerprint to |
 | `max_stall` | `int` | `1` | Consecutive no-change iterations before failure verdict |
 
 **Verdicts:**

@@ -4,10 +4,11 @@ type: BUG
 title: diff_stall evaluator shares stall state across runs and misses commits, staged,
   and untracked changes
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-27'
 captured_at: '2026-09-27T03:35:14Z'
+completed_at: '2026-09-27T05:29:26Z'
 confidence_score: 100
 outcome_confidence: 88
 score_complexity: 13
@@ -69,6 +70,26 @@ The stall gate is the non-LLM progress signal that meta-loop rule (2) requires. 
 - Follow-up for `evaluate_action_stall` (same shared `.loops/tmp` cache defect) is tracked as BUG-3629.
 
 ## Program Design
+
+### Deviations
+
+- 2026-09-27, `/ll:manage-issue`: the design's three-component fingerprint (`git
+  ls-tree -r HEAD` + `git diff --no-ext-diff --no-textconv HEAD` + untracked
+  hashes, with a no-HEAD `--cached`/plain-diff fallback) was implemented instead
+  as a single `git ls-files -c -o --exclude-standard -z <pathspec>` listing (all
+  tracked + untracked non-ignored paths in scope) hashed via one
+  `git hash-object --stdin-paths` call for regular files and `os.readlink()` for
+  symlinks. This fingerprints working-tree content directly rather than
+  reconstructing it from a committed-tree/diff split, so it needs no `HEAD`
+  presence check, no `ls-tree`/`:(exclude)` workaround, and no separate no-commit
+  branch — `ls-files` and `hash-object` behave identically with or without
+  commits. All Acceptance Criteria still hold under this shape (verified by the
+  added tests): edit-then-commit and commit-only-no-change still resolve
+  correctly because content, not diff-against-HEAD, drives the hash; `scope`,
+  `.loops/`/run-dir exclusion (via `:(exclude)`/`:(top,exclude)` pathspec magic,
+  same as the design), binary files, dangling symlinks, and no-commit repos are
+  all covered. The `state_dir`/`state_key` shape and `_stall_state_paths` helper
+  match the design as specified.
 
 ### Types
 
@@ -219,6 +240,8 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 - FEAT-3594 (`continue-task`) — discovered during its review; that loop replaces its stall gate with a loop-local fingerprint independently.
 - BUG-3270 — `general-task` `final_verify_spin_gate` fingerprint pattern.
+- BUG-3629 — `evaluate_action_stall` follow-up (same shared `.loops/tmp` cache defect).
+- BUG-3634 — follow-up filed for the worktree `cwd` gap (out of scope here; see Proposed Solution → Working directory).
 
 ## Related Key Documentation
 
@@ -239,7 +262,34 @@ Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the sam
 - Fixed: stale `evaluate_action_stall` line (`~:849` → `~:837`).
 - Fixed (proposal-consequence check, AC gap): the Integration Map lists `cmd_test`'s bare-context fallback but no Acceptance Criterion covered it; added one.
 
+## Resolution
+
+Implemented per Acceptance Criteria (with a documented deviation — see Program
+Design → Deviations). `evaluate_diff_stall` now takes `state_dir`/`state_key`,
+keys stall state under `<loop_name>-<state_name>-<md5(scope)[:12]>` inside the
+run's `run_dir` (falling back to the legacy `.loops/tmp` path when absent), and
+fingerprints working-tree content (`git ls-files -c -o --exclude-standard` +
+`git hash-object --stdin-paths` for regular files, `os.readlink()` for
+symlinks) instead of `git diff --stat`, scoped and excluding `.loops/`/the run
+dir. `evaluate()`'s `diff_stall` branch derives `state_dir`/`state_key` from
+`context`. `TestDiffStallEvaluator` rewritten against a real git repo covering
+every Acceptance Criterion (fresh-run isolation, edit/commit/stage/untracked
+progress, commit-only stall tick, scope, parent/child key isolation, no-`run_dir`
+fallback, no-commit repo, `diff.external`, binary files, dangling symlinks,
+out-of-repo run dir). Docs/schema/skill-mirror wording updated
+(`common.yaml`, `fsm-loop-schema.json`, `schema.py`,
+`docs/generalized-fsm-loop.md`, `AUTOMATIC_HARNESSING_GUIDE.md`,
+`skills/create-loop/loop-types.md` + `.gemini`/`.kimi-code`/`.qwen` mirrors).
+Follow-up BUG-3634 filed for the worktree `cwd` gap (BUG-3629 already covers
+`evaluate_action_stall`). Full suite: 26580 passed, 60 skipped; 2 pre-existing
+failures unrelated to this change (issue-corpus/evidence gates tripped by other
+pending `.issues/` edits already present before this session) and one flaky
+process test that passes in isolation. `ruff check`/`mypy` clean on touched
+files.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-09-27T05:29:26 - `2bf90db8-8241-42d1-a2f3-16851c36676b.jsonl`
+- `/ll:ready-issue` - 2026-09-27T05:18:10 - `09cdddd4-4608-4727-809d-efaaa771aaf2.jsonl`
 - `/ll:verify-issues` - 2026-09-27T05:07:18 - `8dd98d25-9e0a-42d3-8b1b-63a8171e5519.jsonl`
 - `/ll:confidence-check` - 2026-09-27T04:51:22 - `7d0784ac-24a4-4b7a-af8c-3b3e14cec5c4.jsonl`
 - `/ll:wire-issue` - 2026-09-27T04:02:38 - `b9726386-58c1-4c65-8485-76e226017a2f.jsonl`

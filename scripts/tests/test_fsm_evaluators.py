@@ -1841,117 +1841,202 @@ class TestEvaluateDispatcherLLM:
 
 
 class TestDiffStallEvaluator:
-    """Tests for diff_stall evaluator."""
+    """Tests for diff_stall evaluator (content fingerprint, per-run state)."""
 
     @pytest.fixture
-    def mock_git(self):
-        """Patch subprocess.run for git diff commands."""
-        with patch("little_loops.fsm.evaluators.subprocess.run") as mock_run:
-            mock_result = MagicMock()
-            mock_result.returncode = 0
-            mock_result.stderr = ""
-            mock_run.return_value = mock_result
-            yield mock_run, mock_result
+    def repo(self, tmp_path, monkeypatch) -> Path:
+        """Real git repo with one commit; cwd is the repo root."""
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        monkeypatch.chdir(repo)
+        env = {
+            "GIT_CONFIG_GLOBAL": str(tmp_path / "gitconfig"),
+            "GIT_CONFIG_SYSTEM": "/dev/null",
+        }
+        for k, v in env.items():
+            monkeypatch.setenv(k, v)
+        for args in (
+            ["init", "-q"],
+            ["config", "user.email", "t@t"],
+            ["config", "user.name", "t"],
+            ["config", "commit.gpgsign", "false"],
+        ):
+            subprocess.run(["git", *args], cwd=repo, check=True)
+        (repo / "a.txt").write_text("one\n")
+        self._commit(repo, "init")
+        return repo
 
-    @pytest.fixture(autouse=True)
-    def clean_state_files(self, tmp_path, monkeypatch):
-        """Redirect state files to a temp directory for test isolation."""
-        loops_tmp = tmp_path / ".loops" / "tmp"
-        loops_tmp.mkdir(parents=True, exist_ok=True)
-        monkeypatch.chdir(tmp_path)
+    @staticmethod
+    def _commit(repo: Path, msg: str = "c") -> None:
+        subprocess.run(["git", "add", "-A", "--", ".", ":(exclude).loops"], cwd=repo, check=True)
+        subprocess.run(["git", "commit", "-q", "--allow-empty", "-m", msg], cwd=repo, check=True)
 
-    def test_first_iteration_returns_success(self, mock_git) -> None:
-        """First call always returns success (no previous snapshot)."""
-        _, mock_result = mock_git
-        mock_result.stdout = "scripts/foo.py | 3 +++"
+    def _check(self, repo: Path, run: str = "run1", **kw: Any) -> EvaluationResult:
+        kw.setdefault("state_dir", repo / ".loops" / "runs" / run)
+        kw.setdefault("state_key", "loop-check_stall")
+        return evaluate_diff_stall(**kw)
 
-        result = evaluate_diff_stall()
+    def test_first_iteration_returns_success(self, repo) -> None:
+        result = self._check(repo)
         assert result.verdict == "yes"
         assert result.details["stall_count"] == 0
         assert result.details["diff_changed"] is True
 
-    def test_different_diff_returns_success(self, mock_git) -> None:
-        """Progress (diff changed) returns success and resets stall counter."""
-        _, mock_result = mock_git
-        mock_result.stdout = "scripts/foo.py | 3 +++"
-
-        # First call (baseline)
-        evaluate_diff_stall()
-
-        # Second call with different diff
-        mock_result.stdout = "scripts/bar.py | 5 +++++"
-        result = evaluate_diff_stall()
-        assert result.verdict == "yes"
-        assert result.details["diff_changed"] is True
-        assert result.details["stall_count"] == 0
-
-    def test_identical_diff_at_threshold_returns_failure(self, mock_git) -> None:
-        """Identical diff for max_stall consecutive iterations returns failure."""
-        _, mock_result = mock_git
-        mock_result.stdout = "scripts/foo.py | 3 +++"
-
-        # First call (baseline)
-        evaluate_diff_stall(max_stall=1)
-
-        # Second call — same diff, max_stall=1 triggers failure
-        result = evaluate_diff_stall(max_stall=1)
+    def test_identical_state_at_threshold_returns_failure(self, repo) -> None:
+        self._check(repo, max_stall=1)
+        result = self._check(repo, max_stall=1)
         assert result.verdict == "no"
         assert result.details["stall_count"] == 1
         assert result.details["diff_changed"] is False
 
-    def test_identical_diff_below_threshold_returns_success(self, mock_git) -> None:
-        """Identical diff below max_stall threshold still returns success."""
-        _, mock_result = mock_git
-        mock_result.stdout = "scripts/foo.py | 3 +++"
-
-        # First call (baseline)
-        evaluate_diff_stall(max_stall=2)
-
-        # Second call — same diff, but max_stall=2 so not yet at threshold
-        result = evaluate_diff_stall(max_stall=2)
+    def test_identical_state_below_threshold_returns_success(self, repo) -> None:
+        self._check(repo, max_stall=2)
+        result = self._check(repo, max_stall=2)
         assert result.verdict == "yes"
         assert result.details["stall_count"] == 1
-        assert result.details["diff_changed"] is False
 
-    def test_stall_then_progress_resets_counter(self, mock_git) -> None:
-        """After stall, a diff change resets stall count."""
-        _, mock_result = mock_git
-        mock_result.stdout = "scripts/foo.py | 3 +++"
-
-        # Baseline
-        evaluate_diff_stall(max_stall=3)
-        # Same diff (stall_count -> 1)
-        evaluate_diff_stall(max_stall=3)
-        # Progress: diff changes, counter resets
-        mock_result.stdout = "scripts/bar.py | 5 +++++"
-        result = evaluate_diff_stall(max_stall=3)
+    def test_stall_then_progress_resets_counter(self, repo) -> None:
+        self._check(repo, max_stall=3)
+        self._check(repo, max_stall=3)
+        (repo / "a.txt").write_text("two\n")
+        result = self._check(repo, max_stall=3)
         assert result.verdict == "yes"
         assert result.details["stall_count"] == 0
         assert result.details["diff_changed"] is True
 
-    def test_scope_passed_to_git(self, mock_git) -> None:
-        """scope parameter is forwarded to git diff command."""
-        mock_run, mock_result = mock_git
-        mock_result.stdout = ""
+    def test_same_line_count_edit_is_progress(self, repo) -> None:
+        (repo / "a.txt").write_text("aaa\n")
+        self._check(repo)
+        (repo / "a.txt").write_text("bbb\n")
+        assert self._check(repo).details["diff_changed"] is True
 
-        evaluate_diff_stall(scope=["scripts/"])
+    def test_edit_then_commit_is_progress(self, repo) -> None:
+        self._check(repo)
+        (repo / "a.txt").write_text("two\n")
+        self._commit(repo)
+        assert self._check(repo).details["diff_changed"] is True
 
-        call_args = mock_run.call_args[0][0]
-        assert "--" in call_args
-        assert "scripts/" in call_args
+    def test_commit_only_is_stall_tick(self, repo) -> None:
+        (repo / "a.txt").write_text("two\n")
+        self._check(repo, max_stall=1)
+        self._commit(repo)
+        result = self._check(repo, max_stall=1)
+        assert result.verdict == "no"
 
-    def test_git_failure_returns_error(self, mock_git) -> None:
-        """Non-zero git exit code returns error verdict."""
-        mock_run, mock_result = mock_git
-        mock_result.returncode = 128
-        mock_result.stderr = "not a git repository"
+    def test_trivial_empty_commit_is_stall_tick(self, repo) -> None:
+        self._check(repo, max_stall=1)
+        self._commit(repo, "empty")
+        assert self._check(repo, max_stall=1).verdict == "no"
 
+    def test_staged_only_is_progress(self, repo) -> None:
+        self._check(repo)
+        (repo / "a.txt").write_text("two\n")
+        subprocess.run(["git", "add", "a.txt"], cwd=repo, check=True)
+        assert self._check(repo).details["diff_changed"] is True
+
+    def test_untracked_add_and_edit_is_progress(self, repo) -> None:
+        self._check(repo)
+        (repo / "new.txt").write_text("x\n")
+        assert self._check(repo).details["diff_changed"] is True
+        (repo / "new.txt").write_text("y\n")
+        assert self._check(repo).details["diff_changed"] is True
+
+    def test_dangling_untracked_symlink_does_not_error(self, repo) -> None:
+        (repo / "dl").symlink_to("missing-target")
+        assert self._check(repo).verdict == "yes"
+        (repo / "dl").unlink()
+        (repo / "dl").symlink_to("other-target")
+        assert self._check(repo).details["diff_changed"] is True
+
+    def test_loops_dir_excluded(self, repo) -> None:
+        self._check(repo, max_stall=1)
+        (repo / ".loops" / "tmp").mkdir(parents=True, exist_ok=True)
+        (repo / ".loops" / "tmp" / "noise.txt").write_text("n\n")
+        assert self._check(repo, max_stall=1).verdict == "no"
+
+    def test_committed_loops_file_change_is_stall_tick(self, repo) -> None:
+        (repo / ".loops").mkdir()
+        (repo / ".loops" / "x.txt").write_text("1\n")
+        subprocess.run(["git", "add", "-f", ".loops/x.txt"], cwd=repo, check=True)
+        self._commit(repo)
+        self._check(repo, max_stall=1)
+        (repo / ".loops" / "x.txt").write_text("2\n")
+        subprocess.run(["git", "add", "-f", ".loops/x.txt"], cwd=repo, check=True)
+        subprocess.run(["git", "commit", "-q", "-m", "l"], cwd=repo, check=True)
+        assert self._check(repo, max_stall=1).verdict == "no"
+
+    def test_scope_limits_changes_and_commits(self, repo) -> None:
+        (repo / "sub").mkdir()
+        (repo / "sub" / "s.txt").write_text("s\n")
+        self._commit(repo)
+        self._check(repo, scope=["sub/"], max_stall=1)
+        (repo / "a.txt").write_text("outside\n")
+        (repo / "out-untracked.txt").write_text("o\n")
+        self._commit(repo)
+        assert self._check(repo, scope=["sub/"], max_stall=1).verdict == "no"
+        (repo / "sub" / "s.txt").write_text("changed\n")
+        assert self._check(repo, scope=["sub/"], max_stall=1).verdict == "yes"
+
+    def test_fresh_run_dir_starts_clean(self, repo) -> None:
+        self._check(repo, run="r1", max_stall=1)
+        assert self._check(repo, run="r1", max_stall=1).verdict == "no"
+        result = self._check(repo, run="r2", max_stall=1)
+        assert result.verdict == "yes"
+        assert result.details["stall_count"] == 0
+
+    def test_state_keys_isolated_in_shared_run_dir(self, repo) -> None:
+        self._check(repo, state_key="parent-check_stall", max_stall=1)
+        assert self._check(repo, state_key="parent-check_stall", max_stall=1).verdict == "no"
+        first_child = self._check(repo, state_key="child-check_stall", max_stall=1)
+        assert first_child.verdict == "yes"
+
+    def test_loop_name_with_slash_is_sanitized(self, repo) -> None:
+        result = self._check(repo, state_key="oracles/generator-evaluator-check")
+        assert result.verdict == "yes"
+
+    def test_no_state_dir_uses_legacy_path(self, repo) -> None:
+        result = evaluate_diff_stall()
+        assert result.verdict == "yes"
+        assert list((repo / ".loops" / "tmp").glob("ll-diff-stall-*.count"))
+
+    def test_run_dir_outside_repo_does_not_error(self, repo, tmp_path) -> None:
+        result = evaluate_diff_stall(state_dir=tmp_path / "elsewhere", state_key="l-s")
+        assert result.verdict == "yes"
+
+    def test_no_commit_repo_fingerprints(self, tmp_path, monkeypatch) -> None:
+        empty = tmp_path / "empty"
+        empty.mkdir()
+        monkeypatch.chdir(empty)
+        subprocess.run(["git", "init", "-q"], cwd=empty, check=True)
+        (empty / "f.txt").write_text("1\n")
+        state = empty / ".loops" / "runs" / "r"
+        assert evaluate_diff_stall(state_dir=state, state_key="l-s", max_stall=1).verdict == "yes"
+        assert evaluate_diff_stall(state_dir=state, state_key="l-s", max_stall=1).verdict == "no"
+        (empty / "f.txt").write_text("2\n")
+        assert evaluate_diff_stall(state_dir=state, state_key="l-s", max_stall=1).verdict == "yes"
+
+    def test_non_git_dir_returns_error(self, tmp_path, monkeypatch) -> None:
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("GIT_CEILING_DIRECTORIES", str(tmp_path.parent))
         result = evaluate_diff_stall()
         assert result.verdict == "error"
         assert "git diff failed" in result.details["error"]
 
+    def test_diff_external_configured(self, repo) -> None:
+        subprocess.run(["git", "config", "diff.external", "false"], cwd=repo, check=True)
+        (repo / "a.txt").write_text("two\n")
+        assert self._check(repo).verdict == "yes"
+
+    def test_binary_edits_are_progress(self, repo) -> None:
+        (repo / "b.bin").write_bytes(b"\x00\x01\x02")
+        self._commit(repo)
+        self._check(repo)
+        (repo / "b.bin").write_bytes(b"\x00\x01\x03")
+        assert self._check(repo).details["diff_changed"] is True
+        (repo / "b.bin").write_bytes(b"\x00\x01\x04")
+        assert self._check(repo).details["diff_changed"] is True
+
     def test_git_timeout_returns_error(self) -> None:
-        """Subprocess timeout returns error verdict."""
         with patch(
             "little_loops.fsm.evaluators.subprocess.run",
             side_effect=subprocess.TimeoutExpired("git", 30),
@@ -1960,61 +2045,23 @@ class TestDiffStallEvaluator:
         assert result.verdict == "error"
         assert "timed out" in result.details["error"]
 
-    def test_dispatch_diff_stall(self, mock_git) -> None:
-        """evaluate() dispatcher routes diff_stall type correctly."""
-        _, mock_result = mock_git
-        mock_result.stdout = ""
-
+    def test_dispatch_diff_stall_bare_context(self, repo) -> None:
+        """No run_dir in context (cmd_test) falls back to legacy path without raising."""
         config = EvaluateConfig(type="diff_stall")
-        ctx = InterpolationContext()
-        result = evaluate(config, "", 0, ctx)
-
+        result = evaluate(config, "", 0, InterpolationContext())
         assert result.verdict == "yes"
         assert "stall_count" in result.details
 
-    def test_dispatch_diff_stall_with_options(self, mock_git) -> None:
-        """evaluate() passes scope and max_stall to diff_stall evaluator."""
-        _, mock_result = mock_git
-        mock_result.stdout = "scripts/foo.py | 1 +"
-
-        config = EvaluateConfig(type="diff_stall", scope=["scripts/"], max_stall=2)
-        ctx = InterpolationContext()
+    def test_dispatch_diff_stall_uses_run_dir_and_names(self, repo) -> None:
+        config = EvaluateConfig(type="diff_stall", scope=["."], max_stall=2)
+        run_dir = repo / ".loops" / "runs" / "abc"
+        ctx = InterpolationContext(
+            context={"run_dir": str(run_dir)}, loop_name="myloop", state_name="check_stall"
+        )
         result = evaluate(config, "", 0, ctx)
-
         assert result.verdict == "yes"
         assert result.details["max_stall"] == 2
-
-    def test_first_call_resets_stale_count_file(self, mock_git, tmp_path) -> None:
-        """First call resets a stale count file to 0 even if it had a non-zero value.
-
-        If the state file was deleted (e.g., partial cleanup) but the count file
-        survived from a previous stalled loop, the next call should re-baseline
-        rather than carrying forward the stale stall count.
-        """
-        _, mock_result = mock_git
-        mock_result.stdout = "scripts/foo.py | 1 +"
-
-        # Pre-populate the count file with a stale non-zero value (stall_count = 3)
-        loops_tmp = tmp_path / ".loops" / "tmp"
-        loops_tmp.mkdir(parents=True, exist_ok=True)
-
-        import hashlib
-
-        scope_str = "_root_"
-        cache_key = hashlib.md5(scope_str.encode()).hexdigest()[:12]
-        count_file = loops_tmp / f"ll-diff-stall-{cache_key}.count"
-        count_file.write_text("3")
-        # Do NOT write the state file — simulates partial cleanup
-
-        result = evaluate_diff_stall()
-
-        # First call should treat this as baseline: return yes, stall_count = 0
-        assert result.verdict == "yes"
-        assert result.details["stall_count"] == 0
-        assert result.details["diff_changed"] is True
-
-        # Count file should now be reset to 0
-        assert count_file.read_text().strip() == "0"
+        assert list(run_dir.glob("ll-diff-stall-myloop-check_stall-*.count"))
 
 
 class TestScoreStallEvaluator:
