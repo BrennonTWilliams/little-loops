@@ -14,6 +14,12 @@ blocks:
 - ENH-3633
 - ENH-3590
 decision_needed: false
+confidence_score: 90
+outcome_confidence: 93
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-3632: Add `ll-issues advise-consult` helper and shared `parse_lead_word`
@@ -210,6 +216,7 @@ _Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-27T05:51:03 - `31b574d3-e27d-406a-af09-b87f5dcd980e.jsonl`
 - `/ll:refine-issue` - 2026-09-27T05:30:08 - `aae621bb-c067-4881-b3ce-b0e08bc3edb0.jsonl`
 - `/ll:format-issue` - 2026-09-27T05:18:24 - `456ac708-7949-4003-8fee-84b53705067e.jsonl`
 - `/ll:issue-size-review` - 2026-09-27T05:15:41 - `682a095a-efe4-40ac-8619-962c00f444e7.jsonl`

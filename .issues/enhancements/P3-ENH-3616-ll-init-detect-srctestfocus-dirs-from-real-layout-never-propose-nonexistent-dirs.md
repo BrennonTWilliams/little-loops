@@ -303,7 +303,22 @@ _Added by `/ll:confidence-check` on 2026-09-27_
 - Moderate cross-module depth: signature changes plus a call reorder in `introspect()` and `.` round-trip through proposal/core/tui/summary.
 - Several existing tests assert phantom-default behavior and must be rewritten; docs and markdown edits have no automated validation.
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-27_
+
+**Readiness Score**: 80/100 → STOP — ADDRESS GAPS (Dependencies Hard Override)
+**Outcome Confidence**: 64/100 → MODERATE
+
+### Gaps to Address
+- `blocked_by: BUG-3631` is still unresolved (status: open) — re-checked directly via `ll-issues show BUG-3631 --json`. Implementation Step 0 still requires it to land first. No change since the prior pass.
+
+### Outcome Risk Factors
+- Moderate cross-module depth: signature changes plus a call reorder in `introspect()` and `.` round-trip through proposal/core/tui/summary.
+- Several existing tests assert phantom-default behavior and must be rewritten; docs and markdown edits have no automated validation.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-09-27T05:43:32 - `bf6e1e8c-2c0c-4865-99bf-f1fcae8fc265.jsonl`
 - `/ll:verify-issues` - 2026-09-27T05:36:55 - `e18b63f4-fc4d-4093-b00f-89d5c0e394ec.jsonl`
 - `/ll:confidence-check` - 2026-09-27T05:14:52 - `0cc16b1e-d681-4781-832d-b9145e4dc4f5.jsonl`
 - `/ll:confidence-check` - 2026-09-26T23:01:16 - `2dc3f1af-4938-467b-8164-481af936e116.jsonl`

@@ -13,6 +13,12 @@ relates_to:
 - ENH-3590
 - ENH-3623
 decision_needed: false
+confidence_score: 70
+outcome_confidence: 75
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 18
 ---
 
 # ENH-3633: Wire opt-in advise_ready consult gate into refine-to-ready-issue done path
@@ -193,7 +199,19 @@ _Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
 **Open** | Created: 2026-09-27 | Priority: P3
 
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-27_
+
+**Readiness Score**: 70/100 → STOP — ADDRESS GAPS
+**Outcome Confidence**: 75/100 → MODERATE
+
+### Gaps to Address
+- Blocked by ENH-3632 (open) — the `ll-issues advise-consult` helper this issue wires in does not exist yet; format-check confirms both `ll-issues advise-consult` and `ll-issues advise-consult --help` as `stale_cli_flag` (no such subcommand). Land ENH-3632 first.
+- Criterion 4 (Issue Well-Specified) capped at 10/20 by the same `stale_cli_flag` gap — expected given the blocking dependency, not a specification defect; re-verify once ENH-3632 lands and the subcommand resolves.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-09-27T05:50:16 - `80466a09-7d06-47fd-a22c-3c9fa3353587.jsonl`
 - `/ll:refine-issue` - 2026-09-27T05:30:09 - `aae621bb-c067-4881-b3ce-b0e08bc3edb0.jsonl`
 - `/ll:format-issue` - 2026-09-27T05:18:24 - `456ac708-7949-4003-8fee-84b53705067e.jsonl`
 - `/ll:issue-size-review` - 2026-09-27T05:15:41 - `682a095a-efe4-40ac-8619-962c00f444e7.jsonl`
