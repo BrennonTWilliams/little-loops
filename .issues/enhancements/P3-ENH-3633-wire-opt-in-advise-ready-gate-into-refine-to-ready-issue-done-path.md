@@ -104,10 +104,23 @@ a veto once `max_consults_per_task=3` is spent → `budget_exhausted` → SKIPPE
 with `pre_done` / `confidence_gate` consults is documented next to the flag (in ENH-3632's
 CONFIGURATION.md note).
 
+## Program Design
+
+### Types
+- `advise_ready: str` — loop parameter/context flag; empty = off, non-empty = on
+
+### Signatures
+- `cmd_advise_consult(config: BRConfig, args: argparse.Namespace) -> int` — ENH-3632 helper; prints one `PROCEED`/`VETO`/`SKIPPED` token, always returns 0
+- `check_advise_ready_enabled` / `run_advise_ready` / `record_advisor_veto` — new states in `refine-to-ready-issue.yaml`
+
+### Call Path
+`check_proof_before_done` -> `check_advise_ready_enabled` -> `run_advise_ready` -> `cmd_advise_consult`; VETO -> `record_advisor_veto` -> `failed`, otherwise `write_done_record`
+
 ## Integration Map
 
 ### Files to Modify
 - `scripts/little_loops/loops/refine-to-ready-issue.yaml` — new states `check_advise_ready_enabled`, `run_advise_ready`, `record_advisor_veto`; retarget `check_proof_before_done` `on_no`/`on_error`; bump `max_steps` 100 → 103, record in the history comment (~lines 120-132); update header done-path diagram (~line 48, also add the missing `check_proof_before_done`); declare `parameters.advise_ready.default: ""`
+  > ⚠ Superseded — check_proof_before_done already in diagram, not missing
 - `scripts/little_loops/loops/recursive-refine.yaml` — `parameters.advise_ready` only (already has `parameters:` and `context:`; pin it absent from `context:`)
 - `scripts/little_loops/loops/autodev.yaml` — `context: advise_ready: ""`; no `route_refine_outcome` change
 - `scripts/little_loops/loops/prepare-issue.yaml` — none; `gate_unmet` → deferred already handled by `forward_stop`
@@ -131,6 +144,18 @@ CONFIGURATION.md note).
 - `scripts/tests/test_fsm_validation_shell_safety.py` (MR-11) / `test_fsm_validation_evaluator_rules.py` (MR-10) — new shell actions escape `$${...}` and don't swallow failures with exit 0
 - Sub-loop states must not carry `on_no` or `timeout` (`TestSubLoopStateTimeoutAudit`)
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
+
+- **Header diagram correction**: `refine-to-ready-issue.yaml:48` already reads `NONE → check_decision_before_done (ENH-3610) → check_proof_before_done (ENH-3611) → write_done_record → done` — `check_proof_before_done` is not missing there (added by ENH-3611). The diagram still needs editing to insert the new `check_advise_ready_enabled` → `run_advise_ready` → (`record_advisor_veto` | `write_done_record`) hop, but not because a state is "missing" — see the marker on the Files to Modify bullet above.
+- **Opt-in flag threading convention confirmed** (`skip_learning_gate` precedent): a top-level loop declares the flag `""` in `context:`; each delegating child threads it via `with: { flag: "${context.flag}" }`; tests pin three things per hop. Evidence: `test_builtin_loops.py:18250-18266` (`test_skip_flag_threads_through_sprint_chain`, chains sprint-refine-and-implement → auto-refine-and-implement → autodev), `:18117-18123` (`test_rn_remediate_threads_skip_flag`, pins the literal CLI flag string in the shell action and confirms a non-top-level loop keeps the flag out of `context:`), registry tuples at `:20599`, `:20739`, `:20763` (shape `(loop_file, "context.flag", issue_id)`).
+- **`max_steps` bump convention**: a single hardcoded equality with an inline comment naming the issue and added state — `test_builtin_loops.py:1872`: `assert data["max_steps"] == 100  # ENH-3611: 90 -> 100 for check_proof_before_done`. The ENH-3633 bump should follow the same comment shape (`# ENH-3633: 100 -> 103 for advise_ready gate`).
+- **Stub `ll-issues` test precedent for the new loop states**: `test_autodev_proof_reentry.py:25-73`'s `_Stub` class (dispatches on `$1` subcommand, logs calls, exposes `.flag()`/`.put()`/`.calls()`, substitutes `${...}` via regex before invoking bash with `PATH` prefixed) is the closer model for stubbing `ll-issues advise-consult` than the lighter `test_builtin_loops.py:3228-3247` `_run_pre_action` (single-command `echo "$@"` stub). No existing stub targets `advise-consult` — it doesn't exist yet.
+- **Done-path retargeting pins are duplicated, not shared**: `test_autodev_decision_gate.py:733-743` and `test_autodev_proof_reentry.py:200-210` each independently assert the same three `check_proof_before_done` edges (`on_yes`/`on_no`/`on_error`) rather than sharing one assertion helper — both need the retarget edit.
+- **`LEGACY_CLASS_STATES`/`TERMINAL_BEARING_STATES` is a fixed enumeration, not a corpus scan** (`test_run_record.py:30-49`): `record_advisor_veto` must be added to both dicts/tuples plus the parametrized checks at `:528-531` and `:533-540`, or the new state's `run-record write --legacy-class gate_unmet` call goes unverified.
+- **Correction to the Tests section's sub-loop claim**: `TestSubLoopStateTimeoutAudit` (`test_builtin_loops.py:20873-20900`) audits only `timeout` on `loop:`-type states, not `on_no` — no test or validator enforces an `on_no` prohibition on sub-loop states. The new states here are shell (`ll-issues advise-consult`), not `loop:`-type, so this doesn't block ENH-3633, but the Tests bullet overstates existing coverage.
+
 ## Implementation Steps
 
 1. Confirm ENH-3632 has landed (`ll-issues advise-consult --help`).
@@ -151,6 +176,13 @@ CONFIGURATION.md note).
 - [ ] Any helper failure (empty/unknown token, non-zero rc, no route) behaves exactly like the flag being off
 - [ ] `ll-loop validate` passes for every touched loop; existing callers' tests pass with only the retargeted edge assertions changed
 
+## Impact
+
+- **Priority**: P3 - opt-in quality improvement, not blocking
+- **Effort**: Medium - three loop states, flag pass-through across four loops, and several retargeted test pins; no new run-record class
+- **Risk**: Low - off by default and fail-open; VETO reuses the existing `gate_unmet` path that callers already handle
+- **Breaking Change**: No
+
 ## Scope Boundaries
 
 - **In scope**: the done-path gate/consult/veto states, flag declaration and pass-through, `max_steps`, loop tests, `LOOPS_REFERENCE.md`.
@@ -162,4 +194,6 @@ CONFIGURATION.md note).
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-27T05:30:09 - `aae621bb-c067-4881-b3ce-b0e08bc3edb0.jsonl`
+- `/ll:format-issue` - 2026-09-27T05:18:24 - `456ac708-7949-4003-8fee-84b53705067e.jsonl`
 - `/ll:issue-size-review` - 2026-09-27T05:15:41 - `682a095a-efe4-40ac-8619-962c00f444e7.jsonl`

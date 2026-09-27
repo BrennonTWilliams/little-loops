@@ -40,6 +40,24 @@ evaluator".
 second-model consult with the same budget, replay, and verdict-mapping semantics. One helper
 avoids carrying two copies.
 
+## Current Behavior
+
+No shared entry point runs a second-model readiness consult. `little_loops.advisor.consult_for_trigger`
+is reachable only from `ll-advise`, the confidence gate in `issue_manager.py`, and the
+pre-done hook, and the
+lead-word parsing in `_parse_advisor_decision` (`fsm/evaluators.py`) is private and tokenizes on
+`[\s:,.]`, so formatted decision words (`**VETO**`, `VETO—…`, `"VETO"`) silently fall through to a
+false PROCEED.
+
+## Expected Behavior
+
+- `ll-issues advise-consult <ID> --run-dir <dir>` runs one in-process consult, persists the
+  verdict under `<run_dir>`, prints exactly one token (`PROCEED`/`VETO`/`SKIPPED`), and always
+  exits 0.
+- A repeat invocation for the same ID and `run_dir` replays the persisted verdict (VETO sticky).
+- With `advisor.host` unset, the helper prints `SKIPPED` without spending budget.
+- `little_loops.advisor.parse_lead_word` is public and shared; formatted lead words match.
+
 ## Proposed Solution
 
 **Helper** (`scripts/little_loops/cli/issues/advise_consult.py`, new):
@@ -91,6 +109,12 @@ false PROCEED). New behavior: skip leading non-word characters, take the first w
 (`re.match(r"\W*(\w+)", text)`), compare case-insensitively to `choices`, return the choice as
 given. The evaluator keeps its whole-word fallback on top; strictly more permissive.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
+
+- **Stale anchors**: `_parse_advisor_decision` is at `fsm/evaluators.py:1809` (not `:1726`), and its lead-word split is at `evaluators.py:1817` (not `:1735`) — `lead_word = re.split(r"[\s:,.]", lowered, maxsplit=1)[0]`. The whole-word fallback described in the issue is confirmed present immediately after, at `evaluators.py:1820-1822`.
+
 ## Program Design
 
 ### Types
@@ -135,6 +159,17 @@ given. The evaluator keeps its whole-word fallback on top; strictly more permiss
 - `scripts/tests/test_fsm_evaluators.py`, `scripts/tests/test_advisor.py` — pass unchanged; add one evaluator case showing a bolded decision word matches at the lead-word step
 - `scripts/tests/test_wiring_reference_docs.py` — add `("docs/reference/CLI.md", "#### \`ll-issues advise-consult\`", "ENH-3632")` and the `API.md` row
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
+
+- **Sibling helper module shape** (all three sibling `ll-issues` helpers share it): module docstring citing the originating issue, `from __future__ import annotations`, `if TYPE_CHECKING: from little_loops.config import BRConfig`, pure classify/select/derive functions kept separate from `add_*_parser(subs)`/`cmd_*(config, args)`, heavy imports deferred inside function bodies — `scripts/little_loops/cli/issues/next_obligation.py`, `check_verify_verdict.py`, `run_record.py`.
+- **Always-exit-0 / single-token contract has two precedents, and they disagree.** `run_record.cmd_run_record_read`/`cmd_run_record_forward` (`run_record.py:227-235`, `:248-265`) always `print(token); return 0` — the shape ENH-3632 wants. `check_verify_verdict.cmd_check_verify_verdict` (`check_verify_verdict.py:91-166`) and `next_obligation.cmd_next_obligation` (`next_obligation.py:357-368`) do **not** — they return 1/2/3 on failure/not-found. Model the helper on `run-record`, not on `next-obligation` or `check-verify-verdict`.
+- **`consult_for_trigger` is monkeypatched at one source-module attribute across all three existing callers' tests** — `patch("little_loops.advisor.consult_for_trigger", ...)`, regardless of whether the caller imports it top-level (`cli/advise.py:9`) or locally (`issue_manager.py:841`, `hooks/pre_done.py:152`). Tests: `test_issue_manager.py:5964`, `test_pre_done.py:78,94,117,134,151,169,192,209,225`.
+- **No existing helper strips an arbitrary named `##` section wholesale** the way `trim_consult_context` needs to. The closest precedent is single-purpose: `issue_parser._strip_codebase_research_findings` (`issue_parser.py:1708-1730`) walks a `### Codebase Research Findings` heading span to the next `#{1,3}` heading or EOF. `trim_consult_context` will need equivalent per-heading span logic generalized to a list of section names, not a reusable existing utility.
+- **Hash-then-persist-then-compare-to-skip-rework precedent**: `hooks/pre_done.py:162` computes `hashlib.sha256(capped_diff.encode("utf-8")).hexdigest()` and compares against a previously persisted hash to decide whether to re-consult — the one existing analog for the replay-hash design (`_record_diff_sha`).
+- **Docs-row pin convention** (`test_wiring_reference_docs.py`): sibling rows are `("docs/reference/CLI.md", "#### \`ll-issues run-record\`", "ENH-3597")` / `("docs/reference/API.md", "| \`run-record\` |", "ENH-3597")` (`:256,258`) and the `next-obligation` pair (`:261,263-264`) — follow the same 2-tuple-per-doc shape for `advise-consult`.
+
 ## Implementation Steps
 
 1. Extract `parse_lead_word` into `little_loops.advisor`; have `_parse_advisor_decision` call it (existing evaluator tests pass unchanged).
@@ -157,6 +192,13 @@ given. The evaluator keeps its whole-word fallback on top; strictly more permiss
 - [ ] `--write-note` writes `## Advisor Veto` on VETO and removes a stale one on PROCEED
 - [ ] ENH-3590 can reuse the helper unchanged (`--signal` / `--question` overrides)
 
+## Impact
+
+- **Priority**: P3 - opt-in quality improvement; unblocks ENH-3633 and ENH-3590, not itself blocking
+- **Effort**: Medium - one new helper module plus a small `parse_lead_word` extraction, following existing sibling-helper shapes
+- **Risk**: Low - nothing calls the helper until ENH-3633 wires it; the evaluator change is strictly more permissive and covered by existing tests
+- **Breaking Change**: No
+
 ## Scope Boundaries
 
 - **In scope**: helper, `parse_lead_word` extraction, CLI registration, docs, helper tests.
@@ -168,4 +210,6 @@ given. The evaluator keeps its whole-word fallback on top; strictly more permiss
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-27T05:30:08 - `aae621bb-c067-4881-b3ce-b0e08bc3edb0.jsonl`
+- `/ll:format-issue` - 2026-09-27T05:18:24 - `456ac708-7949-4003-8fee-84b53705067e.jsonl`
 - `/ll:issue-size-review` - 2026-09-27T05:15:41 - `682a095a-efe4-40ac-8619-962c00f444e7.jsonl`
