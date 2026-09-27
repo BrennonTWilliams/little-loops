@@ -29,6 +29,7 @@ second-pass preparation ladder (the verified 39-state move set plus `size_review
 
 - a pure Python policy `decide(IssueSnapshot, Facts) -> Step` over the issue file,
   config and an append-only per-issue fact log;
+<!-- ll-prose-ok: the prep subcommand group is proposed by this issue, not yet implemented -->
 - writers kept separate from decisions, behind `ll-issues prep {step,record,apply,explain}`;
 - a ~15-state dispatch loop that replaces `prepare-issue.yaml` in place.
 
@@ -95,6 +96,7 @@ parent's `current_state`, so a mid-ladder resume restarts the `loop:` child from
   facts; the file stays only as a projection.
 - **Pass id**: autodev's `dequeue_next` increments `run_dir/prep-pass-<ID>`. That is the
   only new autodev write.
+<!-- ll-prose-ok: the prep subcommand group is proposed by this issue, not yet implemented -->
 - **Writers** (`ll-issues prep …`, registered in `little_loops.cli.issues` so the harness
   fork server serves them):
   - `prep step`: if an applied terminal exists, replay it. If an intent is open,
@@ -188,6 +190,7 @@ parent's `current_state`, so a mid-ladder resume restarts the `loop:` child from
    - Make `apply`'s row append and its `apply_progress` obs one atomic write, or key the
      rows by `(pass, seq)`, so a crash inside `apply` cannot double-append a row.
 2. **CLI and docs.**
+   <!-- ll-prose-ok: the prep subcommand group is proposed by this issue, not yet implemented -->
    - `ll-issues prep {step,record,apply,explain}` goes in `docs/reference/CLI.md`, and
      the module goes in `docs/reference/API.md`.
    - `docs/guides/LOOPS_REFERENCE.md`: the autodev tree, the prepare-issue section and
@@ -242,8 +245,8 @@ parent's `current_state`, so a mid-ladder resume restarts the `loop:` child from
 
 ### Files to Modify
 
-- `scripts/little_loops/preparation_policy.py`, or a `preparation_policy/` package
-  (new; port from branch `spike/preparation-policy`)
+- `scripts/little_loops/preparation_policy.py` (new), or a `preparation_policy/` package
+  (port from branch `spike/preparation-policy`)
 - `scripts/little_loops/cli/issues/__init__.py`: register `prep`
 - `scripts/little_loops/loops/prepare-issue.yaml`: replaced in place by the dispatch loop
 - `scripts/little_loops/loops/autodev.yaml`: retargets, 42 deletions, the `dequeue_next`
@@ -266,7 +269,7 @@ parent's `current_state`, so a mid-ladder resume restarts the `loop:` child from
 ### Tests
 
 - New:
-  - `scripts/tests/test_preparation_policy.py` (`decide()` table tests)
+  - `scripts/tests/test_preparation_policy.py` (new): `decide()` table tests
   - `test_preparation_policy_parity.py` (pinned + differential)
   - `test_preparation_policy_resume.py` (subset by default; full matrix opt-in/slow)
   - `preparation_policy_harness.py`
@@ -293,6 +296,39 @@ parent's `current_state`, so a mid-ladder resume restarts the `loop:` child from
 - N/A. No schema or config change; `run_record.py` already accepts the `prepare-issue`
   writer.
 
+### Behavior Parity
+
+`prepare-issue.yaml` is replaced in place, so its current behaviors are enumerated here.
+
+| Artifact | Behavior | Disposition |
+|---|---|---|
+| `scripts/little_loops/loops/prepare-issue.yaml` | `clear_record` clears stale `prepare-issue` and `refine-to-ready-issue` records on every entry | changed: becomes the `RUN_CHILD` precondition in `prep step` |
+| `scripts/little_loops/loops/prepare-issue.yaml` | `run_refine_to_ready` runs `refine-to-ready-issue` as a `loop:` child with `context_passthrough` | preserved: the `run_child` state |
+| `scripts/little_loops/loops/prepare-issue.yaml` | `forward_done` forwards the child's typed record under the `prepare-issue` writer | changed: `prep apply` writes the terminal record |
+| `scripts/little_loops/loops/prepare-issue.yaml` | `forward_stop` forwards the record and ledgers `refine_failed` for `BLOCKED:quality` / `DEFERRED:gate_unmet` | changed: `prep apply` writes the ledger row per the terminal table |
+| `scripts/little_loops/loops/prepare-issue.yaml` | `mark_inner_error` writes an infra record plus the `refine-terminal-class` sentinel | changed: `RETRYABLE_ERROR:infra` through `prep apply`; the sentinel stays until ENH-3600 removes its reader |
+| `scripts/little_loops/loops/prepare-issue.yaml` | `max_steps: 20`, `on_handoff: spawn`, `scope`, `shared_state_ok: false` | changed: `max_steps` derived from the ladder budgets; the rest preserved |
+| `scripts/little_loops/loops/prepare-issue.yaml` | no rate-limit handling on the `loop:` state (BUG-3390) | preserved for `run_child`; dropped for slash-command states, which gain `mark_rate_limited` (BUG-3622) |
+
+## Program Design
+
+### Types
+
+- `StepKind: enum` — `RUN_CHILD`, `WIRE`, `REFINE_GAP`, `RESCORE`, `RECONCILE`, `SIZE_REVIEW`, `GO_NO_GO`, `FINISH`, `STOP`
+- `Step: dataclass` — frozen; `(kind, seq, payload, reason, evidence, observations)`, the next action `decide()` returns
+- `IssueSnapshot: dataclass` — read-only view of the issue file, config and gate verdicts, built lazily
+- `Facts: dataclass` — parsed `run_dir/prep-facts/<ID>.jsonl` (intent / done / obs lines, keyed by `(pass, seq, kind)`)
+
+### Signatures
+
+- `decide(snapshot: IssueSnapshot, facts: Facts) -> Step` — pure; checkpoint → rule-order table, no I/O
+- `next_preparation_step(config: BRConfig, issue_id: str, run_dir: Path, *, readiness_threshold: int, outcome_threshold: int) -> Step` — snapshots the issue, loads the facts, calls `decide`
+- `load_facts(run_dir: Path, issue_id: str) -> Facts` — reads the append-only fact log, deduplicating by `(pass, seq, kind)`
+
+### Call Path
+
+`prepare-issue.yaml:clear_record` (replaced by `select_step`) -> `next_preparation_step` -> `select_next_obligation` / `load_facts` -> `decide`
+
 ## Impact
 
 - **Priority**: P3. Completes the second-pass consolidation under EPIC-3565, fixes
@@ -310,7 +346,7 @@ parent's `current_state`, so a mid-ladder resume restarts the `loop:` child from
 
 ## Scope Boundaries
 
-- **In scope**: `little_loops.preparation_policy` and `ll-issues prep`; the dispatch
+- **In scope**: `little_loops.preparation_policy` and the `prep` subcommand group; the dispatch
   loop replacing `prepare-issue.yaml`; the autodev retargets, deletions and pass-id
   write; test migration; docs; the Q1/Q3/run-terminal-capture decisions insofar as the
   port depends on them.
@@ -359,3 +395,7 @@ parent's `current_state`, so a mid-ladder resume restarts the `loop:` child from
 ## Status
 
 **Open** | Created: 2026-09-27 | Priority: P3
+
+
+## Session Log
+- `/ll:format-issue` - 2026-09-27T02:13:30 - `eab069d8-1487-4826-8057-122a54e92dfd.jsonl`

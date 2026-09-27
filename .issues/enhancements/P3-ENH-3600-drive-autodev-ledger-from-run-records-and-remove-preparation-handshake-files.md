@@ -230,7 +230,7 @@ _Added by `/ll:refine-issue` — 2026-09-26 — based on codebase analysis:_
 ### Dependent Files (Callers/Importers)
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/little_loops/loops/auto-refine-and-implement.yaml` — `init` deletes the shared `run_dir/summary.json` (:95) and `finalize` overwrites it (:1255), so autodev's summary.json is transient on the sprint path; `finalize` reads six ledger files plus `autodev-queue.txt` (`recheck_set` :477 residual fold-back) — any ledger in the removal set orphans its counts, and if the child stops writing `autodev-decision-unresolved.txt`, `DECISION_UNRESOLVED` undercounts child-side unresolved [Agent 2 finding]
+- `scripts/little_loops/loops/auto-refine-and-implement.yaml` — `init` deletes the shared run-dir `summary.json` (:95) and `finalize` overwrites it (:1255), so autodev's summary.json is transient on the sprint path; `finalize` reads six ledger files plus `autodev-queue.txt` (`recheck_set` :477 residual fold-back) — any ledger in the removal set orphans its counts, and if the child stops writing `autodev-decision-unresolved.txt`, `DECISION_UNRESOLVED` undercounts child-side unresolved [Agent 2 finding]
 - `scripts/little_loops/loops/sprint-refine-and-implement.yaml` — `read_outcome` cats and `record_crash` overwrites the same shared `summary.json` path (third writer) [Agent 2 finding]
 - `scripts/little_loops/loops/oracles/resolve-decision.yaml` — writes `decide-options-deposited-<ID>` (:56) and `decide-rate-limited-<ID>` handshake markers autodev reads (`dequeue_next`, `check_decide_rate_limited`); not `autodev-`-prefixed, so the AC's "No `autodev-*` preparation marker" wording does not cover them — they remain the cross-loop run-dir contract after this issue [Agent 2 finding]
 - `scripts/little_loops/fsm/executor.py:653` — autodev declares no `on_max_steps` handler today, so the step-cap exit calls `_finish("max_steps")` without passing through `finalize_done` [Agent 2 finding]. Closed by ENH-3619 (`finalize_step_capped`), not a limitation of this issue
@@ -444,6 +444,7 @@ _Added by manual review — 2026-09-26_
 - The confidence scores (75/55) predate these changes. Re-score after ENH-3606 lands.
 
 ## Session Log
+- `/ll:format-issue` - 2026-09-27T02:13:31 - `eab069d8-1487-4826-8057-122a54e92dfd.jsonl`
 - `/ll:confidence-check` - 2026-09-26T20:41:31 - `b6e9bba8-3f37-46ef-bab4-0e3a573a871f.jsonl`
 - `/ll:verify-issues` - 2026-09-26T20:09:35 - `57be1948-59d1-446a-b252-a9b0fec818aa.jsonl`
 - `/ll:confidence-check` - 2026-09-26T02:52:27 - `28baa352-2934-411c-bced-7bb0e7406cbf.jsonl`

@@ -93,6 +93,21 @@ choice should be made on purpose before the port, not inherited.
 
 - `docs/guides/LOOPS_REFERENCE.md`
 
+## Program Design
+
+### Types
+
+- N/A — no new types; the rule is a gate shape in `autodev.yaml` and one row in ENH-3623's `decide()` table
+
+### Signatures
+
+- `cmd_check_design(config: BRConfig, args: argparse.Namespace) -> int` — the existing Program Design gate; exit 0 passes. Under option A, `check_passed` calls it; unchanged either way
+- `decide(snapshot: IssueSnapshot, facts: Facts) -> Step` — ENH-3623's pure policy; gains one first-gate row encoding the chosen rule
+
+### Call Path
+
+`autodev.yaml:check_passed` -> `ll-issues check-readiness` -> `cmd_check_readiness`; under option A, then `ll-issues check-design` -> `cmd_check_design`
+
 ## Impact
 
 - **Priority**: P4. Probably intended behavior; this issue makes it explicit before the
@@ -118,3 +133,7 @@ choice should be made on purpose before the port, not inherited.
 ## Status
 
 **Open** | Created: 2026-09-27 | Priority: P4
+
+
+## Session Log
+- `/ll:format-issue` - 2026-09-27T02:13:31 - `eab069d8-1487-4826-8057-122a54e92dfd.jsonl`
