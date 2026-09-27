@@ -8,7 +8,7 @@ discovered_by: ll-issues-create
 discovered_date: '2026-09-25'
 captured_at: '2026-09-25T18:51:51Z'
 blocked_by:
-- ENH-3606
+- ENH-3623
 - ENH-3619
 parent: EPIC-3565
 relates_to:
@@ -50,6 +50,15 @@ source for every existing key. Records add the `record_absent` check. Preparatio
 markers that have no remaining reader or writer go (see Marker disposition).
 
 ## Proposed Solution
+
+- **Re-pointed to ENH-3623 (2026-09-26)**: ENH-3606 was cancelled. ENH-3623, the policy
+  dispatch loop, supersedes it, so read "ENH-3606" below as ENH-3623. Two effects:
+  - Removing the `refine-terminal-class` MISSING fallback is simpler, because every
+    wrapper exit goes through `ll-issues prep apply`, the sole terminal writer.
+  - Re-derive the Marker disposition table against the policy design. Most per-pass
+    `autodev-*` handshake files (repair-cycle count, rescore origin and retry markers,
+    re-entry caps, contradiction/remedy/pending markers, size-review-ran-this-pass)
+    disappear into the `prep-facts/<ID>.jsonl` fact log.
 
 - Read per-issue run records directly from `${context.run_dir}/run-records/prepare-issue/<ID>.json`
   (ENH-3597 layout; the wrapper record is authoritative). No copy step.

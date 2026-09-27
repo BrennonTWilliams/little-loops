@@ -24,6 +24,10 @@ relates_to:
 - ENH-3619
 - BUG-3620
 - ENH-3621
+- BUG-3622
+- ENH-3623
+- BUG-3624
+- ENH-3625
 ---
 
 # EPIC-3565: Autodev readiness contract hardening from 2026-09-24 audit
@@ -95,7 +99,7 @@ measurement.
 
 ## Children
 
-Statuses read from each child's frontmatter on 2026-09-26.
+Statuses read from each child's frontmatter on 2026-09-26 (updated after the ENH-3621 spike).
 
 - **BUG-3566** — Autodev pre-deferral remedy dispatcher binds env vars to ll-issues instead of python3 (done)
 - **BUG-3567** — Autodev rate-limit exits bypass finalize_done and summary.json (done)
@@ -128,22 +132,28 @@ Statuses read from each child's frontmatter on 2026-09-26.
 - **ENH-3612** — manage-issue Phase 4 runs configured verification commands verbatim (done)
 - **ENH-3613** — Autodev summary.json splits cancelled from implemented closures (done)
 - **BUG-3614** — Autodev DECISION re-entry routes lifetime-capped issues to breakdown (done)
-- **ENH-3600** — Drive autodev ledger from run records and remove preparation handshake files (open)
-- **ENH-3606** — Move autodev second-pass preparation states into prepare-issue (open; child of ENH-3601, linked here through `relates_to`)
-- **ENH-3618** — Cross-loop autodev characterization harness (open)
-- **ENH-3619** — Extract autodev finalize_done into little_loops.autodev_summary with a step-cap handler (open)
-- **BUG-3620** — Autodev design-gate-failed marker is never cleared, so a fixed design still defers design_gate_failed (open)
-- **ENH-3621** — Spike: preparation routing policy in Python (open)
+- **ENH-3600** — Drive autodev ledger from run records and remove preparation handshake files (open; now `blocked_by` ENH-3623)
+- **ENH-3606** — Move autodev second-pass preparation states into prepare-issue (cancelled — superseded by ENH-3623 after the ENH-3621 spike passed; child of ENH-3601, linked here through `relates_to`)
+- **ENH-3618** — Cross-loop autodev characterization harness (done)
+- **ENH-3619** — Extract autodev finalize_done into little_loops.autodev_summary with a step-cap handler (done)
+- **BUG-3620** — Autodev design-gate-failed marker is never cleared, so a fixed design still defers design_gate_failed (done)
+- **ENH-3621** — Spike: preparation routing policy in Python (done — verdict PASS; report `thoughts/spikes/preparation-policy-spike.md`)
+- **BUG-3622** — Executor skips rate-limit detection for states routed by `next:` (done; linked through `relates_to`)
+- **ENH-3623** — prepare-issue as a policy dispatch loop (open; supersedes ENH-3606)
+- **BUG-3624** — Autodev check_reconcile_needed drops the contradiction trigger when format-check exits 1 (open; spike quirk Q1)
+- **ENH-3625** — State the first-gate Program Design rule (open; spike quirk Q3)
 
 Moved out 2026-09-25: **ENH-3590** (advise consult) is a new capability, not an audit
 finding. It stays linked through `relates_to`.
 
 ### Implementation order
 
-ENH-3618 (harness) ∥ ENH-3619 (finalize_done extraction + step-cap handler) → ENH-3621
-(spike) → ENH-3606 (shape decided by the spike) → ENH-3600 → ENH-3590. ENH-3590 remains
-outside the epic, linked through `relates_to`. BUG-3620 is independent and can land at any
-point; if ENH-3606 lands first, fix it in `prepare-issue.yaml`.
+Done: ENH-3618 (harness) ∥ ENH-3619 (finalize_done extraction + step-cap handler) →
+ENH-3621 (spike, PASS); BUG-3620 and BUG-3622 are fixed on `main`.
+
+Remaining: **ENH-3623** (policy dispatch loop; decide BUG-3624 (Q1) and ENH-3625 (Q3)
+inside it or land them before it) → **ENH-3600** → **ENH-3590** (outside the epic, linked
+through `relates_to`). ENH-3606 is cancelled (superseded by ENH-3623).
 
 ## Acceptance Criteria
 

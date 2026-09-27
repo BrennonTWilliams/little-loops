@@ -11,7 +11,7 @@ relates_to:
 - ENH-3601
 - EPIC-3565
 blocked_by:
-- ENH-3606
+- ENH-3623
 confidence_score: 75
 outcome_confidence: 79
 score_complexity: 18
@@ -39,6 +39,14 @@ When explicitly enabled, autodev's preparation path runs one `ll-advise` CLI con
 autodev currently has no review by a stronger or different model. Its only adversarial check is `run_go_no_go` (~line 2420, `/ll:go-no-go --auto`), a same-model (sonnet) `Agent` subagent debate that fires only for `oversized_atomic` deferrals; a GO verdict stamps `outcome_gate_waived: true`. `/ll:confidence-check` and `oracles/resolve-decision` also run on the default model, and neither `autodev.yaml` nor `oracles/resolve-decision.yaml` references `advise`, `ll-advise`, or a `model:` override.
 
 ## Proposed Solution
+
+- **Re-cut required after ENH-3623 (2026-09-26)**: ENH-3606 was cancelled and superseded
+  by ENH-3623 (prepare-issue as a policy dispatch loop). Under that design the anchor
+  states `check_go_no_go_waiver` and `reopen_waived` no longer exist. Go/no-go becomes a
+  `GO_NO_GO` policy step, and the reopen becomes a precondition of the step after a GO.
+  The veto consult therefore becomes a policy step after `GO_NO_GO`, or a precondition on
+  the reopen. Re-cut the state chain below after ENH-3623 lands. The Resolved Decisions
+  still hold: veto-only, fail-open, per-issue billing, and the `ll-advise` CLI seam.
 
 **Design: veto-only consult on the go-no-go waiver, via the `ll-advise` CLI in shell
 states** (not the `/ll:advise` skill, and not the `advisor_consult` evaluator — see

@@ -3,7 +3,7 @@ id: ENH-3621
 type: ENH
 title: 'Spike: preparation routing policy in Python'
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-27'
 captured_at: '2026-09-27T00:17:01Z'
@@ -14,8 +14,10 @@ blocked_by:
 - ENH-3618
 relates_to:
 - ENH-3606
+- ENH-3623
 blocks:
 - ENH-3606
+completed_at: '2026-09-27T01:49:47Z'
 ---
 
 # ENH-3621: Spike: preparation routing policy in Python
@@ -136,11 +138,41 @@ end of day 1.
 
 ## Acceptance Criteria
 
-- [ ] Checkpoint → rule-order table for the four hardest scenarios exists before coding
-- [ ] Report at `thoughts/spikes/preparation-policy-spike.md` with per-scenario parity table, resume matrix, checkpoint/rule table, quirks found, LOC, and a recommendation versus ENH-3606
-- [ ] The verdict is stated as PASS or FAIL against the criteria above, with evidence per criterion
-- [ ] No spike code is merged to `main`
+- [x] Checkpoint → rule-order table for the four hardest scenarios exists before coding
+- [x] Report at `thoughts/spikes/preparation-policy-spike.md` with per-scenario parity table, resume matrix, checkpoint/rule table, quirks found, LOC, and a recommendation versus ENH-3606
+- [x] The verdict is stated as PASS or FAIL against the criteria above, with evidence per criterion
+- [x] No spike code is merged to `main`
+
+## Resolution
+
+- **Verdict**: **PASS**, on all four criteria. No FAIL condition was hit.
+- **Report**: `thoughts/spikes/preparation-policy-spike.md`
+- **Spike code**: branch `spike/preparation-policy`, head `a51621302`. It is not merged to
+  `main`.
+- **Evidence**:
+  - **Parity**: 19/19 pinned ENH-3618 scenarios pass. 14 are identical on every parity
+    field. The other 5 differ only by enumerated, justified diffs (ENH-3606 accepted
+    changes, or fixes of BUG-LIKE record pins); 0 diffs are unexplained. 9 extra
+    differential scenarios (today vs policy on the same input) match, and the four
+    hardest shapes, H1–H4, are at parity.
+  - **No moved-state entry**: every parity run asserts that the autodev path avoids the
+    39 moved + 3 deleted states. The transform asserts that no autodev edge targets a
+    removed state.
+  - **Resume**: 232/232 crash points (6 scenarios, before and after every runner call)
+    resume through `PersistentExecutor.resume()` to identical artifacts and counters.
+    180 points replay 0 commands and 52 replay exactly 1. Today, a resume
+    double-counts the repair-cycle counter.
+  - **Shape**: 44 `decide()` table tests. `prepare-issue-policy.yaml` has 15 states and
+    no `rm`, and `ll-loop validate` is clean. No rule needed a program counter beyond
+    the last done fact.
+- **Follow-ups**:
+  - ENH-3623 (the production issue; supersedes ENH-3606);
+  - BUG-3624 (Q1: format-check exit code masks the contradiction trigger);
+  - ENH-3625 (Q3: first-gate Program Design rule).
+  - Since the spike branched, BUG-3622 and BUG-3620 were fixed on `main`, so ENH-3623
+    implements live rate-limit rows and the current-verdict design rule, not the spike's
+    parity versions.
 
 ## Status
 
-**Open** | Created: 2026-09-27 | Priority: P3
+**Done** | Created: 2026-09-27 | Priority: P3

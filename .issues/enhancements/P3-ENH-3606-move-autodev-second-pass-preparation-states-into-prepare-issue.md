@@ -3,12 +3,10 @@ id: ENH-3606
 type: ENH
 title: Move autodev second-pass preparation states into prepare-issue
 priority: P3
-status: open
+status: cancelled
 discovered_by: issue-size-review
 discovered_date: '2026-09-26'
 decision_needed: false
-blocks:
-- ENH-3600
 blocked_by:
 - ENH-3618
 - ENH-3621
@@ -1133,9 +1131,33 @@ Research from the original ENH-3605 (wire/refine, reconcile/design) was merged h
 
 `prepare-issue.yaml:run_size_review` -> `prepare-issue.yaml:recheck_after_size_review` -> `write_run_record` -> `autodev.yaml:route_refine_outcome` -> `autodev.yaml:ledger_child_stop`
 
+## Resolution
+
+- **Status**: Cancelled (superseded) on 2026-09-26
+- **Superseded by**: ENH-3623 (prepare-issue as a policy dispatch loop). The ENH-3621
+  spike passed all four criteria (report: `thoughts/spikes/preparation-policy-spike.md`;
+  spike code on branch `spike/preparation-policy`, `a51621302`, not merged). A pure
+  `decide()` policy over a per-issue fact log, driven by a 15-state dispatch loop, matched
+  today's behavior and resumed exactly. This graph relocation would have regressed resume.
+- **Carried over into ENH-3623**:
+  - the terminal table;
+  - ledger ownership and the single-writer rules;
+  - the DECOMPOSED guarantee and queue ownership;
+  - the accepted behavior changes;
+  - the autodev boundary retargets;
+  - the three autodev deletions (`size_review_snap`, `check_broke_down`,
+    `mark_scores_absent_infra`).
+- **Dropped**:
+  - the ~55-state wrapper and its routers and terminals (`route_inner_success`,
+    `detect_ladder_children`, `route_ladder_stop`, `mark_*`);
+  - the 250-step arithmetic;
+  - the `count_repair_cycle_refine` → `clear_record` entry chain.
+
+  The body above is kept as the design record.
+
 ## Status
 
-**Open** | Created: 2026-09-26 | Priority: P3
+**Cancelled** | Created: 2026-09-26 | Priority: P3
 
 ## Verification Notes
 
