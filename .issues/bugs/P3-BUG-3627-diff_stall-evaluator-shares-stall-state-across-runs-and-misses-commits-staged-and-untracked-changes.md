@@ -19,7 +19,7 @@ captured_at: '2026-09-27T03:35:14Z'
 ## Current Behavior
 
 - **Cross-run / cross-loop cache**: state lives at `.loops/tmp/ll-diff-stall-<md5(scope)>.txt` / `.count`. The key is derived only from `evaluate.scope`; every loop using root scope shares `ll-diff-stall-_root_.*`. Nothing resets it at run start, so a new run inherits the previous run's snapshot and stall count. If the prior run ended stalled (count ≥ max_stall) and the tree still matches its snapshot (e.g. empty diff because everything was committed), the new run's first check increments past the threshold and returns `no` immediately.
-- **Commits look like no progress**: `git diff --stat` shows unstaged tracked changes only. A worker that commits each pass produces an empty diff every time → counted as stalled.
+- **Commits look like no progress**: `git diff --stat` shows unstaged tracked changes only. A worker that edits and commits each pass produces an empty diff every time → counted as stalled.
 - **Staged and untracked changes are invisible**: new files and `git add`-ed edits never change the snapshot.
 - **`--stat` is insensitive to same-line-count edits**: replacing content while keeping per-file +/- counts yields an identical snapshot.
 - Concurrent runs of different loops in the same project clobber each other's counters.
@@ -28,8 +28,8 @@ Affected loops (import `diff_stall_gate` / `type: diff_stall`): `continue-task`,
 
 ## Expected Behavior
 
-- Stall state is scoped per run instance (under `${context.run_dir}` or keyed by run id), so a fresh run always starts at count 0 with no prior snapshot.
-- The progress fingerprint changes on any real change: tracked diff (full content, not `--stat`), staged changes, untracked file contents, and `HEAD` sha — excluding the run dir itself. `general-task`'s `final_verify_spin_gate` (BUG-3270) already implements this fingerprint shape in shell.
+- Stall state is scoped per run instance (under `${context.run_dir}`), so a fresh CLI run always starts at count 0 with no prior snapshot.
+- The progress fingerprint is a **content** fingerprint of the scoped working state: committed tree content (`git ls-tree -r HEAD`), tracked delta (`git diff HEAD`, full content, not `--stat` — covers staged and unstaged), and untracked file contents — excluding `.loops/` and the resolved `run_dir`. It changes on any real content change, whether or not it was committed, and honors `scope`. `general-task`'s `final_verify_spin_gate` (BUG-3270) implements a similar shape in shell (it diffs against a stored baseline ref instead of `ls-tree`).
 
 ## Motivation
 
@@ -38,10 +38,19 @@ The stall gate is the non-LLM progress signal that meta-loop rule (2) requires. 
 ## Proposed Solution
 
 - Thread the run dir into `evaluate_diff_stall` and store state there; fall back to the current `.loops/tmp` path only when no run context exists.
-- **Key includes the state name** (review 2026-09-27): child loops `setdefault` the parent's `run_dir`, so a parent and child both using root-scope `diff_stall` would share `ll-diff-stall-_root_.*` inside one run dir. Key files as `<state>-<md5(scope)[:12]>` and pass the state name into the evaluator (via `evaluate()`'s context or a new arg). This also separates two same-scope diff_stall states in one run.
-- Replace `git diff --stat` with a content fingerprint: hash of `git diff HEAD` + `HEAD` sha + untracked files, honoring `scope` and excluding `.loops/`.
-  - **No-commit repos**: if `HEAD` does not resolve (`git rev-parse --verify HEAD` fails), fall back to `git diff` + `git diff --cached` and an empty `HEAD` component rather than returning `error` (fresh-repo generator loops such as `generative-art`, `canvas-sketch-generator` are the likely case). Non-git dir still returns `error` with the existing `"git diff failed"` string.
-  - **Untracked hashing is bounded**: enumerate with `git ls-files -o --exclude-standard -z` (respects gitignore) and hash via `git hash-object` per file (as `final_verify_spin_gate` does) rather than reading contents into Python; skip `.loops/`.
+  - "Fresh run" holds because `cli/loop/run.py` (~:227-236) always derives `run_dir` from a newly generated `instance_id`. It does **not** hold for `--context run_dir=<fixed path>` or direct `FSMExecutor` use without `run_dir` (the legacy `.loops/tmp` fallback); tests must not expect isolation there. Resume reuses the same `run_dir`, so stall state correctly survives a resume.
+- **Key includes loop name and state name** (review 2026-09-27): child loops `setdefault` the parent's `run_dir`, so a parent and child both using root-scope `diff_stall` would share `ll-diff-stall-_root_.*` inside one run dir. The state name alone is not enough: nearly every user names the state `check_stall` (`harness-multi-item`, `vega-viz`, `generative-art`, `harness-single-shot`, `harness-plan-research-implement-report`, `openscad-model-generator`, `canvas-sketch-generator`, `pixi-data-viz`, `oracles/generator-evaluator`). Key files as `<loop_name>-<state_name>-<md5(scope)[:12]>`, reading `context.loop_name` and `context.state_name` (both already on `InterpolationContext`, `fsm/interpolation.py` ~:127-129) in the `evaluate()` branch. This also separates two same-scope diff_stall states in one run.
+- Replace `git diff --stat` with a **content fingerprint** (decision, review 2026-09-27 — no `HEAD` sha): hash of
+  1. `git ls-tree -r HEAD -- <pathspec>` (committed content in scope),
+  2. `git diff HEAD -- <pathspec>` (staged + unstaged delta, full content),
+  3. sorted untracked paths + their blob hashes,
+
+  where `<pathspec>` = `scope` (or `.`) plus `':(exclude).loops/'` and an exclude for the resolved `run_dir` when it lies outside `.loops/` (`--context run_dir=` override).
+  - **Why not the `HEAD` sha**: a sha component changes on any commit anywhere, so a scoped gate would count unrelated commits as progress, and a loop that makes trivial commits every pass could never stall. The content fingerprint honors `scope` and still catches edit-then-commit passes. Tradeoff: a pass that *only* commits already-present changes (no content change) is a stall tick — acceptable, and harmless at the fragment's `max_stall: 2`.
+  - **No-commit repos**: if `HEAD` does not resolve (`git rev-parse --verify HEAD` fails), skip the `ls-tree` component and use `git diff --cached` (compares against the empty tree) + `git diff` instead of `git diff HEAD`, rather than returning `error` (fresh-repo generator loops such as `generative-art`, `canvas-sketch-generator` are the likely case). Non-git dir still returns `error` with the existing `"git diff failed"` string.
+  - **Untracked hashing is bounded**: enumerate with `git ls-files -o --exclude-standard -z -- <pathspec>` (respects gitignore) and hash in one call via `git hash-object --stdin-paths` rather than reading contents into Python or spawning one process per file.
+- **Working directory**: today the git commands run with no `cwd=`, so a diff_stall state inside a `worktree:` child (`executor.py` ~:1232, `child_working_dir`) fingerprints the main tree instead of the worktree. Out of scope for this fix — file a follow-up issue (the evaluator needs the executor's working dir threaded through `evaluate()`); do not leave it unrecorded.
+- Legacy `.loops/tmp/ll-diff-stall-*` files left by earlier runs need no cleanup; the new keys never read them.
 - Update the fragment description in `loops/lib/common.yaml`; behavior tests go in `TestDiffStallEvaluator` (`scripts/tests/test_fsm_evaluators.py`), not `TestDiffStallGateFragment`, which only checks fragment resolution.
 - Follow-up for `evaluate_action_stall` (same shared `.loops/tmp` cache defect) is tracked as BUG-3629.
 
@@ -52,21 +61,20 @@ The stall gate is the non-LLM progress signal that meta-loop rule (2) requires. 
 - `scope: list[str] | None` — optional pathspecs limiting the fingerprint (unchanged)
 - `max_stall: int` — consecutive identical fingerprints before a `no` verdict (unchanged)
 - `state_dir: Path | None` — NEW: per-run directory for snapshot/count files; `None` keeps the legacy `.loops/tmp` location
+- `state_key: str` — NEW: `<loop_name>-<state_name>` prefix for the state files; `""` keeps the legacy scope-only key
 
 ### Signatures
 
-- `evaluate_diff_stall(scope: list[str] | None = None, max_stall: int = 1, state_dir: Path | None = None, state_name: str = "") -> EvaluationResult` — fingerprint = hash of `git diff HEAD` (or `git diff` + `--cached` when no commits) + `HEAD` sha + untracked paths and `git hash-object` digests, scoped and excluding `.loops/`; state files keyed `<state_name>-<md5(scope)[:12]>`
+- `evaluate_diff_stall(scope: list[str] | None = None, max_stall: int = 1, state_dir: Path | None = None, state_key: str = "") -> EvaluationResult` — fingerprint = hash of `git ls-tree -r HEAD` + `git diff HEAD` (or `git diff --cached` + `git diff`, no `ls-tree`, when there are no commits) + sorted untracked paths with `git hash-object --stdin-paths` digests, all over the scoped pathspec excluding `.loops/` and the resolved run dir; state files keyed `ll-diff-stall-<state_key>-<md5(scope)[:12]>`
 
 ### Call Path
 
-FSM executor evaluates a state whose `evaluate.type` is `diff_stall` -> `evaluate_diff_stall(scope, max_stall, state_dir=<run dir>)` -> `EvaluationResult` verdict `yes` / `no` / `error` -> state routing
+FSM executor `_evaluate` -> `evaluate(config, output, exit_code, context)` `diff_stall` branch derives `state_dir` from `context.context["run_dir"]` (absent/empty -> `None`) and `state_key` from `context.loop_name` + `context.state_name` -> `evaluate_diff_stall(scope, max_stall, state_dir=..., state_key=...)` -> `EvaluationResult` verdict `yes` / `no` / `error` -> state routing
 
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/fsm/evaluators.py` — `evaluate_diff_stall()` (cache path, fingerprint)
-- `scripts/little_loops/fsm/executor.py` — whatever dispatches `diff_stall` must pass run context (run dir / run id)
-  > ⚠ Superseded — `evaluate()` already receives `context`; dispatcher branch in evaluators.py suffices
+- `scripts/little_loops/fsm/evaluators.py` — `evaluate_diff_stall()` (cache path, fingerprint); no `executor.py` change — `evaluate()` already receives `context`
 - `scripts/little_loops/loops/lib/common.yaml` — `diff_stall_gate` fragment description
 
 _Wiring pass added by `/ll:wire-issue`:_
@@ -85,15 +93,15 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `skills/audit-loop-run/SKILL.md` (~:214-237) — consumes `diff_stall_present` as "shallow-iteration" corroboration; meaning shifts slightly once commits count as progress [Agent 1/2 finding]
 - `scripts/little_loops/fsm/validation/structural_rules.py` (`evaluate.type == "diff_stall"` block ~:160) — validates only `max_stall >= 1`; no change unless a new field is added [Agent 1/2 finding]
 - Loops not listed above that also use the gate: `scripts/little_loops/loops/oracles/generator-evaluator.yaml` (`check_diff_stall`, ~:281-287, header comments ~:15-17, ~:268-271), inherited by `oracles/generator-evaluator-flux.yaml`; `harness-multi-item.yaml` (~:81) [Agent 1/2 finding]
-- Behavior interplay: child loops `setdefault` the parent's `run_dir` (`executor.py` ~:1151-1152), so a sub-loop's diff_stall and the parent's share a state dir unless the cache key keeps `md5(scope)`; two diff_stall states with the same scope in one run still collide. Loops that write progress only under `.loops/` (excluded by the fingerprint) will no longer register as progress [Agent 2 finding]
+- Behavior interplay: child loops `setdefault` the parent's `run_dir` (`executor.py` ~:1151-1152), so a sub-loop's diff_stall and the parent's share a state dir; `md5(scope)` alone does not separate them, and two diff_stall states with the same scope in one run still collide (resolved: key includes loop name + state name, see Proposed Solution). Loops that write progress only under `.loops/` (excluded by the fingerprint) will no longer register as progress [Agent 2 finding]
 - `scripts/little_loops/fsm/evaluators.py` `evaluate_action_stall` (~:849) — same shared `.loops/tmp` cache pattern; out of scope, follow-up [Agent 2 finding]
 
 ### Similar Patterns
 - `scripts/little_loops/loops/general-task.yaml` — `final_verify_spin_gate` content fingerprint scoped away from `${context.run_dir}`
 
 ### Tests
-- `scripts/tests/test_fsm_fragments.py::TestDiffStallGate`
-- evaluator unit tests for `evaluate_diff_stall` (locate with grep)
+- `scripts/tests/test_fsm_evaluators.py::TestDiffStallEvaluator` — behavior tests (see wiring notes below)
+- `scripts/tests/test_fsm_fragments.py::TestDiffStallGateFragment` — structural only (fragment resolution); should stay green
 
 _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_fsm_evaluators.py::TestDiffStallEvaluator` — the `mock_git` fixture returns the same stdout for every `subprocess.run`, so a multi-command fingerprint breaks: `test_first_iteration_returns_success`, `test_different_diff_returns_success`, `test_identical_diff_at_threshold_returns_failure`, `test_identical_diff_below_threshold_returns_success`, `test_stall_then_progress_resets_counter`, `test_dispatch_diff_stall`, `test_dispatch_diff_stall_with_options`, `test_first_call_resets_stale_count_file` (hardcodes `md5("_root_")[:12]` and `.loops/tmp/ll-diff-stall-<key>.count`). Re-model `mock_git` with an argv-routed `side_effect` or switch to real-git tests [Agent 2/3 finding]
@@ -101,7 +109,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `test_git_failure_returns_error` / `test_git_timeout_returns_error` — assert `"git diff failed"` / `"timed out"` in `details["error"]`; keep those strings [Agent 2/3 finding]
 - `clean_state_files` autouse fixture + dispatch tests (`test_dispatch_diff_stall*`, `evaluate(config, "", 0, InterpolationContext())`) — no `run_dir`; `run_dir` must stay optional [Agent 3 finding]
 - `scripts/tests/test_grader_coverage.py` (`EXEMPT_GRADERS`, `"evaluate_diff_stall"` ~:48) — `test_all_evaluate_functions_classified` fails if the function is renamed/split into a new `evaluate_*` symbol [Agent 1/3 finding]
-- New tests (real git repo; copy the `git_repo` fixture / `_commit_file` from `scripts/tests/test_prepatch_check.py` and `_init_repo(repo, *, gitignore_loops)` from `test_builtin_loops.py::TestGeneralTaskFinalVerifySpinGateShellAction`; `monkeypatch.chdir(repo)`): same-line-count content edit, commit-only, staged-only, untracked add/edit, `.loops/` state excluded from untracked hashing, `scope` limiting tracked+untracked, two `run_dir`s isolated / fresh `run_dir` first check `yes` with `stall_count` 0, `run_dir` absent fallback, git errors (no-commit repo, non-git dir, later-command timeout) [Agent 3 finding]
+- New tests (real git repo; copy the `git_repo` fixture / `_commit_file` from `scripts/tests/test_prepatch_check.py` and `_init_repo(repo, *, gitignore_loops)` from `test_builtin_loops.py::TestGeneralTaskFinalVerifySpinGateShellAction`; `monkeypatch.chdir(repo)`): same-line-count content edit, edit-then-commit, commit-only with no content change (stall tick), staged-only, untracked add/edit, `.loops/` state excluded from untracked hashing, `scope` limiting tracked+untracked, commit outside `scope` is not progress, two `run_dir`s isolated / fresh `run_dir` first check `yes` with `stall_count` 0, parent+child `check_stall` states sharing a `run_dir` isolated, `run_dir` absent fallback, git errors (no-commit repo, non-git dir, later-command timeout) [Agent 3 finding]
 - `scripts/tests/test_fsm_evaluators.py::TestScoreStallEvaluator.test_dispatch_defaults_to_run_dir_history` (~:2100) — template for passing `InterpolationContext(context={"run_dir": ...})` through `evaluate()` [Agent 3 finding]
 - Structural-only, should stay green unless the `common.yaml` fragment shape changes (`evaluate.type`, `max_stall: 2`, description): `test_fsm_fragments.py::TestDiffStallGateFragment` (~:1711-1760), `test_builtin_loops.py::test_check_stall_uses_diff_stall_gate_fragment` (~:3957), `test_flux_image_generator.py` (~:84-97), `test_audit_loop_run_skill.py::test_shallow_iteration_has_diff_stall_evaluator` (~:466), `test_create_loop.py` (~:274), `test_cli_loop_audit.py::test_diff_stall_detected` [Agent 1/3 finding]
 
@@ -130,7 +138,7 @@ _Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
 - Run context gap: the only production caller is the `evaluate()` dispatcher branch `elif eval_type == "diff_stall"`, which passes only `scope=config.scope, max_stall=config.max_stall`. `evaluate()` already receives `context: InterpolationContext`, and `ctx.context["run_dir"]` is populated for CLI runs (`cli/loop/run.py` ~:236, `runs/<instance_id or loop_name>/`; `cli/loop/testing.py` ~:217 for simulate). `InterpolationContext` has no run-id field; the instance id is reachable only through the `run_dir` path. `run_dir` may be absent (direct executor use, older tests), so the no-context path must remain valid.
 - Schema surface: `EvaluateConfig.scope`/`max_stall` (`fsm/schema.py` ~:134-135, parsed ~:249); validation covers only `max_stall >= 1` (`fsm/validation/structural_rules.py`); `scope` is neither validated nor interpolated. `fsm/fsm-loop-schema.json` (~:829) describes `scope` as "Paths to limit git diff to" — update if fingerprint semantics change.
 - Reference fingerprint (`loops/general-task.yaml` `final_verify_spin_gate`): hashes `git diff "$BASELINE_REF" -- . ':(exclude).loops/'` plus sorted untracked paths (`git ls-files -o --exclude-standard -z`) plus `git hash-object` of each untracked file, via `git hash-object --stdin`. It excludes the whole `.loops/` tree, not just the run dir, because `ll-init` ships no `.loops/` gitignore entry to consuming projects; it diffs against a stored baseline ref rather than `HEAD`, and has a looser no-git fallback. Its tests run the real action in a temp git repo (`TestGeneralTaskFinalVerifySpinGateShellAction`, `test_builtin_loops.py`).
-- Constraints from git semantics: `git diff HEAD` errors on a repo with no commits and outside a git repo (today's `--stat` path reports git failure as `error`); a `HEAD`-sha component makes committed progress visible but also means a revert-to-same-content after commits changes the fingerprint; untracked-file hashing must not read the run dir or other `.loops/` state or the fingerprint changes on every evaluation.
+- Constraints from git semantics: `git diff HEAD` errors on a repo with no commits and outside a git repo (today's `--stat` path reports git failure as `error`); a `HEAD`-sha component makes committed progress visible but also means a revert-to-same-content after commits changes the fingerprint (superseded 2026-09-27: no `HEAD` sha; `git ls-tree -r HEAD` content is used instead — see Proposed Solution); untracked-file hashing must not read the run dir or other `.loops/` state or the fingerprint changes on every evaluation.
 - Affected users: all `fragment: diff_stall_gate` loops (fragment sets `max_stall: 2`; `continue-task` overrides `max_stall: 3`, `on_error: run_tests`) and `oracles/generator-evaluator.yaml` `check_diff_stall`, inherited by `generator-evaluator-flux.yaml`. None of the loops sampled (`continue-task`, `harness-single-shot`, `incremental-refactor`) sets `scope`; the remaining users were not opened.
 - Tests: `TestDiffStallEvaluator` in `scripts/tests/test_fsm_evaluators.py` patches `little_loops.fsm.evaluators.subprocess.run` (`mock_git`) and `chdir`s to `tmp_path`; every test assumes a single `git diff --stat` call and `test_first_call_resets_stale_count_file` hardcodes the `ll-diff-stall-<md5("_root_")[:12]>.count` path, so a multi-command fingerprint or relocated state invalidates that fixture shape. `TestDiffStallGateFragment` (`test_fsm_fragments.py`) — the issue's `TestDiffStallGate` — only checks fragment resolution (`max_stall == 2`, description present) and never exercises the evaluator, so it is not where behavior tests belong. Other references that must keep passing: `test_grader_coverage.py` (lists `evaluate_diff_stall`), `test_fsm_schema_fuzz.py`, `test_cli_loop_audit.py::test_diff_stall_detected`, `test_builtin_loops.py` (`check_stall`, ~:3957).
 - Event consumers keyed on the `diff_stall` evaluate event: `cli/loop/audit.py` (`diff_stall_present` when verdict in `stall`/`no`), `cli/loop/info.py`. The `details` keys (`stall_count`, `max_stall`, `diff_changed`) are part of that surface.
@@ -138,9 +146,10 @@ _Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
 
 ## Implementation Steps
 
-1. Pass run context into `evaluate_diff_stall`; store snapshot/count under the run dir.
-2. Replace the `--stat` snapshot with a content fingerprint (`git diff HEAD` + `HEAD` sha + untracked contents), honoring `scope` and excluding the run dir.
+1. Pass run context into `evaluate_diff_stall`; store snapshot/count under the run dir, keyed `<loop_name>-<state_name>-<md5(scope)[:12]>`.
+2. Replace the `--stat` snapshot with the content fingerprint (`git ls-tree -r HEAD` + `git diff HEAD` + untracked paths/blob hashes via `git hash-object --stdin-paths`), honoring `scope` and excluding `.loops/` and the resolved run dir.
 3. Add tests for each Acceptance Criterion; update fragment docs.
+4. File the follow-up issue for the worktree `cwd` gap (see Proposed Solution → Working directory).
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -151,7 +160,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Update `scripts/tests/test_grader_coverage.py` only if a new `evaluate_*` symbol is introduced
 - Update docs listed under Documentation (`docs/generalized-fsm-loop.md`, `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md`, `LOOPS_GUIDE.md`, `LOOPS_REFERENCE.md`, `docs/reference/loops.md`, `API.md`, `docs/test-quality-audit.md`), `fsm-loop-schema.json` / `schema.py` `scope` wording, and `skills/create-loop/{loop-types,reference}.md`
 - Regenerate host skill mirrors (`ll-adapt --host <gemini|kimi-code|qwen> --apply`) after the `skills/` edit; run `ruff format` scoped to changed files only
-- Per-run key collisions: decided — include the state name in the key (see Proposed Solution); add a test with two same-scope diff_stall states in one `run_dir`
+- Per-run key collisions: decided — include loop name + state name in the key (see Proposed Solution); add tests with two same-scope diff_stall states in one `run_dir`, and with parent and child loops that both name the state `check_stall`
 - Sample the loops the research did not open (`vega-viz`, `pixi-data-viz`, `generative-art`, `openscad-model-generator`, `canvas-sketch-generator`, `harness-plan-research-implement-report`, `harness-multi-item`, `oracles/generator-evaluator`) and confirm each writes progress outside `.loops/` (now excluded); note any that do not
 - Follow-up BUG-3629 (`evaluate_action_stall`) already filed; share a state-dir/key helper with it
 - Docs checklist (do all, in one pass): `docs/generalized-fsm-loop.md`, `docs/guides/AUTOMATIC_HARNESSING_GUIDE.md`, `docs/guides/LOOPS_GUIDE.md`, `docs/guides/LOOPS_REFERENCE.md`, `docs/reference/loops.md`, `docs/reference/API.md`, `docs/test-quality-audit.md`, `skills/create-loop/{loop-types,reference}.md` + `ll-adapt` mirrors
@@ -161,9 +170,9 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - **Priority**: P3 — false `partial`/stall terminals waste runs; no data loss.
 - **Effort**: Small–Medium — one evaluator plus tests.
 - **Risk**: Medium — 12 built-in loops change stall sensitivity, in both directions:
-  - Commits now count as progress and `HEAD` sha is in the fingerprint, so a loop that commits every pass can never stall on this gate (stalls trip less often).
+  - Edit-then-commit passes now count as progress (stalls trip less often for committing workers). A pass that only commits with no content change is still a stall tick, and trivial commits cannot keep a gate alive (no `HEAD` sha in the fingerprint).
   - Loops whose only progress is written under `.loops/` (now excluded) will stall where they previously did not.
-  - A revert-to-same-content after commits changes the fingerprint (`HEAD` differs).
+  - Commits outside `scope` no longer register as progress for a scoped gate.
 - **Breaking Change**: No
 
 ## Steps to Reproduce
@@ -174,12 +183,14 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Acceptance Criteria
 
-- Two sequential runs of the same loop do not share stall state; a fresh run's first check always returns `yes`.
-- A pass that only commits, only stages, or only adds untracked files counts as progress.
+- Two sequential CLI runs of the same loop do not share stall state; a fresh run's first check always returns `yes` (not required for a fixed `--context run_dir=` or the no-`run_dir` fallback).
+- A pass that edits then commits, only stages, or only adds untracked files counts as progress. A pass that only commits already-present changes (no content change) is a stall tick.
 - A same-line-count content edit counts as progress.
-- A parent and child loop sharing a `run_dir`, or two same-scope diff_stall states in one run, do not share stall state.
-- A repo with no commits does not return `error`; it fingerprints from `git diff` + `--cached` + untracked files.
-- Untracked files are hashed via `git hash-object` (no full-content reads) and `.loops/` is excluded.
+- With `scope` set, changes and commits outside `scope` do not count as progress.
+- A parent and child loop sharing a `run_dir` (including both naming the state `check_stall`), or two same-scope diff_stall states in one run, do not share stall state.
+- A repo with no commits does not return `error`; it fingerprints from `git diff --cached` + `git diff` + untracked files.
+- Untracked files are hashed in one `git hash-object --stdin-paths` call (no full-content reads in Python); `.loops/` and the resolved run dir are excluded.
+- Follow-up issue filed for the worktree `cwd` gap.
 - Existing diff_stall tests updated (`TestDiffStallEvaluator`); new tests cover each case above.
 - Follow-up issue filed for `evaluate_action_stall` (BUG-3629).
 

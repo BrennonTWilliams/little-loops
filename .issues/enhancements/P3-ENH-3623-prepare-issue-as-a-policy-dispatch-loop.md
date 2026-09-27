@@ -14,6 +14,8 @@ relates_to:
 - ENH-3621
 - ENH-3618
 - BUG-3628
+blocked_by:
+- ENH-3630
 blocks:
 - ENH-3600
 - ENH-3590
@@ -53,16 +55,27 @@ those becomes a rule, a precondition or an `apply` outcome.
 
 This is large and touches the most-used loop, and every project on this machine is
 `local-editable`, so a half-landed cutover breaks tooling everywhere. Land it as three
-phases (child issues or separate commits):
+phases. **Decided (2026-09-27 review)**: Phase A is its own issue, **ENH-3630**, which
+blocks this one; this issue keeps Phases B and C.
 
-1. **Phase A, additive.** `little_loops.preparation_policy` (policy / facts / writers),
-   `ll-issues prep {step,record,apply,explain}`, `decide()` table tests, and the promoted
-   parity/differential tests run against the *existing* YAML. No loop file changes, so
-   nothing can regress. The spike branch is already tagged
+1. **Phase A, additive (ENH-3630).** `little_loops.preparation_policy` (policy / facts /
+   writers), `ll-issues prep {step,record,apply,explain}`, `decide()` table tests, and the
+   promoted parity/differential tests run against the *existing* YAML, with an explicit
+   allowance list for the accepted changes and the fixed-on-main semantics (item 6 below).
+   No loop file changes, so nothing can regress. The spike branch is already tagged
    (`spike/preparation-policy-a51621302` at `a51621302`), so the port source cannot be pruned.
 2. **Phase B, cutover (atomic).** Replace `prepare-issue.yaml`, apply the autodev
    retargets / 42 deletions / `dequeue_next` pass-id write / `copy_broke_down` shrink, and
    migrate the affected tests in the same commit.
+   - **In-flight runs**: a persisted autodev run whose `current_state` is one of the 42
+     removed states cannot resume after the cutover. `PersistentExecutor.resume()`
+     restores `current_state` unchecked and `fsm/executor.py` (~:761) indexes
+     `self.fsm.states[self.current_state]`, a raw `KeyError`. Autodev uses
+     `on_handoff: spawn`, so a detached handoff session can straddle the commit. Phase B
+     adds a resume guard: `resume()` fails with a clear "state `<name>` no longer exists
+     in `<loop>`; restart the run" error instead of a `KeyError` (generic, so it covers
+     any loop edit). Before landing, drain or stop running autodev loops in the
+     `local-editable` projects.
 3. **Phase C, docs.** CLI/API/LOOPS_REFERENCE/ARCHITECTURE/DEFERRAL_CODES, `ll-adapt`
    mirrors, and the opt-in slow resume matrix.
 
@@ -151,7 +164,11 @@ parent's `current_state`, so a mid-ladder resume restarts the `loop:` child from
   - FINISH / STOP → `apply_outcome` → `done` / `failed`;
   - `mark_rate_limited`, with `on_max_steps: apply_outcome`;
   - no `rm` anywhere in the wrapper, and the wrapper never stages (autodev's
-    `check_passed` is the only writer of `autodev-staged.txt`).
+    `check_passed` is the only writer of `autodev-staged.txt`);
+  - the wrapper keeps `capture_reachability_ok: true` (as in the spike):
+    `classify_guard2` reads `captured.size_review_output`, which only `run_size_review`
+    writes, and the policy reaches `classify_guard2` only from there. Only autodev drops
+    the key.
 
 ### Carried over from ENH-3606 (still valid)
 
@@ -169,7 +186,17 @@ parent's `current_state`, so a mid-ladder resume restarts the `loop:` child from
   - A completed ladder records `ready`, and autodev routes it to `check_passed` →
     `check_proof_defer_or_implement`.
   - `ready`, `decomposed` and `cancelled` end in the wrapper's `done`. Every stop ends in
-    `failed`.
+    `failed`, except the step cap (below).
+  - **No-terminal-intent fallback**: `apply_outcome` is also the `on_max_steps` handler
+    and the `select_step` `_error` / `_` target. When `prep apply` finds no open
+    `FINISH` / `STOP` intent for the current pass, it writes `RETRYABLE_ERROR:infra`
+    (ENH-3606 `mark_ladder_error`). If the cap fires with a `FINISH` / `STOP` intent
+    already open, `apply` applies that terminal normally.
+  - **Step-cap exit shape**: the executor runs the `on_max_steps` handler once and then
+    finishes with `terminated_by=max_steps` without taking `apply_outcome`'s
+    `done`/`failed` transition. Autodev's `refine_current` routes that `on_no` →
+    `on_failure` → `route_refine_outcome`, which reads the infra record and goes to
+    `skip_inflight_infra`. Pin this with a real-FSM test.
 - **Ledger ownership**: the wrapper writes its own stop rows (only in `apply`), and
   autodev routes every `BLOCKED:*` / `DEFERRED:*` to `ledger_child_stop` (no second
   row). `recover_subloop_children` is the only writer of `resolved_by_subloop` rows, and
@@ -223,8 +250,13 @@ parent's `current_state`, so a mid-ladder resume restarts the `loop:` child from
    - Make the snapshot lazy: scan children only in DETECT / POST_SIZE_REVIEW.
    - Derive the per-pass done-fact cap from the ladder budgets (≤ 4 inner epochs, each
      with its wire/rescore/size-review/reconcile legs, plus the atomic and design
-     remedies), and set `max_steps ≈ 3 × cap + 3`. The spike's fixed 15 is below the
-     legal worst case.
+     remedies), and set `max_steps = 4 × cap + 3` (or itemize: 3 states per command
+     step, 4 per `SIZE_REVIEW` step, plus the `select_step → apply_outcome → done`
+     tail). A command step visits `select_step → run_* → record_step` (3 states), but a
+     size-review step visits `select_step → run_size_review → classify_guard2 →
+     record_guard2|record_step` (4 states), so `3 × cap + 3` undercounts and would cut a
+     legal worst-case ladder off as a false `refine_failed_infra`. The spike's fixed 15
+     is below the legal worst case.
    - Make `apply` crash-safe by keying ledger rows by `(pass, seq)` with a
      check-before-append (the row and the `apply_progress` obs live in two files, so one
      atomic write is not available). Each of the four writes (ledger row, `set-status`,
@@ -263,17 +295,18 @@ parent's `current_state`, so a mid-ladder resume restarts the `loop:` child from
    - Promote the spike's parity tests (19 pinned) and differential tests (9), plus a
      representative subset of the resume matrix. The full ~240-point matrix (~35 min at
      `-n 4`) stays opt-in (slow marker).
-5. **Decisions to take in this issue, or before it:**
-   - **Q1**: the format-check exit code masks the contradiction trigger. Captured as its
-     own BUG. The port must use the fixed semantics: markers are read from the payload
+5. **Settled decisions:**
+   - **Q1** (BUG-3624, `done`): the format-check exit code masked the contradiction
+     trigger. The port must use the fixed semantics: markers are read from the payload
      whatever the exit code.
-   - **Q3**: the first-gate Program Design rule (ENH-3625, `done`). **Rule A**: the first
+   - **Q3** (ENH-3625, `done`): the first-gate Program Design rule. **Rule A**: the first
      gate runs check-design too, so `check_passed` hard-ANDs `ll-issues check-design "$ID"`
      after `check-readiness`, and the run-record `ready` predicate carries the same design
-     condition (a design-failing child `done` records `BLOCKED`). Encode it in all three
-     places that must agree after the cutover: the `decide()` row after a `RUN_CHILD` done
-     fact, autodev's surviving `check_passed` (the post-READY gate), and the run-record
-     `ready` predicate.
+     condition (a design-failing child `done` records `BLOCKED`). Two of the three places
+     that must agree after the cutover already carry it on main: autodev's `check_passed`
+     (`autodev.yaml` ~:745) and the run-record `ready` predicate (`run_record.py` ~:29).
+     **Keep** both through the cutover, and **encode** it in the one new place: the
+     `decide()` row after a `RUN_CHILD` done fact.
    - **Run-terminal capture for `record_step`**: the executor merges child captures into
      `captured.run_child` only when the child captured something, and writes
      `failure_terminal` only when it is truthy (`fsm/executor.py:1338`), so a stale
@@ -312,6 +345,9 @@ parent's `current_state`, so a mid-ladder resume restarts the `loop:` child from
 - `scripts/little_loops/loops/autodev.yaml`: retargets, 42 deletions, the `dequeue_next`
   pass-id write, and the `copy_broke_down` shrink
 - `scripts/little_loops/run_record.py`: the shared record-writing helper
+  (the module, `prep` registration and shared helper land in ENH-3630)
+- `scripts/little_loops/fsm/persistence.py` (`PersistentExecutor.resume()`): the
+  removed-state resume guard
 
 ### Dependent Files (Callers/Importers)
 
@@ -473,8 +509,9 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Scope Boundaries
 
-- **In scope**: `little_loops.preparation_policy` and the `prep` subcommand group; the dispatch
-  loop replacing `prepare-issue.yaml`; the autodev retargets, deletions and pass-id
+- **In scope**: consuming ENH-3630's `little_loops.preparation_policy` and `prep`
+  subcommand group (built there, not here); the resume guard for removed states; the
+  dispatch loop replacing `prepare-issue.yaml`; the autodev retargets, deletions and pass-id
   write; test migration; docs; the Q1/Q3/run-terminal-capture decisions insofar as the
   port depends on them.
 - **Out of scope**:
@@ -520,8 +557,14 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - [ ] The contradiction trigger reads `superseded_marker_count` even when format-check
   exits 1 (Q1 semantics, BUG-3624): `snapshot_issue` reads markers from the payload
   whatever `has_blocking_gaps` is, not `markers = 0 if has_blocking_gaps`.
-- [ ] `max_steps` and the per-pass cap are derived from the ladder budgets, with the
-  arithmetic in a comment and a structural test.
+- [ ] `max_steps` and the per-pass cap are derived from the ladder budgets
+  (`max_steps = 4 × cap + 3`, counting 4 states per `SIZE_REVIEW` step), with the
+  arithmetic in a comment and a structural test that reads the constant ENH-3630 exports.
+- [ ] A step-cap cutoff (`terminated_by=max_steps` after the `apply_outcome` handler)
+  records `RETRYABLE_ERROR:infra` and reaches autodev's `skip_inflight_infra` through
+  `route_refine_outcome` (real-FSM test).
+- [ ] Resuming a persisted run whose `current_state` no longer exists in the loop fails
+  with a clear error, not a `KeyError` (test).
 - [ ] Crash injection inside `prep apply` (between each of the ledger row, `set-status`,
   run record and inflight clear writes) followed by resume never double-appends a ledger
   row and ends with one terminal.
@@ -544,7 +587,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-09-27; re-scored 2026-09-26 (Dependencies override cleared)_
+_Added by `/ll:confidence-check` on 2026-09-27; re-scored 2026-09-27T04:31Z (Dependencies override cleared). Superseded in part by the 2026-09-27 review: Phase A split into ENH-3630 (`blocked_by`), so re-score after that lands._
 
 **Readiness Score**: 85/100 → PROCEED WITH CAUTION
 **Outcome Confidence**: 58/100 → LOW

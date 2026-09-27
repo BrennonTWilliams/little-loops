@@ -139,9 +139,10 @@ Statuses read from each child's frontmatter on 2026-09-26 (updated after the ENH
 - **BUG-3620** — Autodev design-gate-failed marker is never cleared, so a fixed design still defers design_gate_failed (done)
 - **ENH-3621** — Spike: preparation routing policy in Python (done — verdict PASS; report `thoughts/spikes/preparation-policy-spike.md`)
 - **BUG-3622** — Executor skips rate-limit detection for states routed by `next:` (done; linked through `relates_to`)
-- **ENH-3623** — prepare-issue as a policy dispatch loop (open; supersedes ENH-3606)
-- **BUG-3624** — Autodev check_reconcile_needed drops the contradiction trigger when format-check exits 1 (open; spike quirk Q1)
-- **ENH-3625** — State the first-gate Program Design rule (open; spike quirk Q3)
+- **ENH-3623** — prepare-issue as a policy dispatch loop (open; supersedes ENH-3606; Phase B cutover + Phase C docs, `blocked_by` ENH-3630)
+- **BUG-3624** — Autodev check_reconcile_needed drops the contradiction trigger when format-check exits 1 (done; spike quirk Q1)
+- **ENH-3625** — State the first-gate Program Design rule (done; spike quirk Q3)
+- **ENH-3630** — preparation_policy module and ll-issues prep CLI (open; ENH-3623 Phase A, additive)
 
 Moved out 2026-09-25: **ENH-3590** (advise consult) is a new capability, not an audit
 finding. It stays linked through `relates_to`.
@@ -151,9 +152,10 @@ finding. It stays linked through `relates_to`.
 Done: ENH-3618 (harness) ∥ ENH-3619 (finalize_done extraction + step-cap handler) →
 ENH-3621 (spike, PASS); BUG-3620 and BUG-3622 are fixed on `main`.
 
-Remaining: **ENH-3623** (policy dispatch loop; decide BUG-3624 (Q1) and ENH-3625 (Q3)
-inside it or land them before it) → **ENH-3600** → **ENH-3590** (outside the epic, linked
-through `relates_to`). ENH-3606 is cancelled (superseded by ENH-3623).
+Remaining: **ENH-3630** (ENH-3623 Phase A: module + `ll-issues prep`, additive) →
+**ENH-3623** (Phase B cutover + Phase C docs) → **ENH-3600** → **ENH-3590** (outside the
+epic, linked through `relates_to`). BUG-3624 (Q1) and ENH-3625 (Q3) landed first.
+ENH-3606 is cancelled (superseded by ENH-3623).
 
 ## Acceptance Criteria
 
