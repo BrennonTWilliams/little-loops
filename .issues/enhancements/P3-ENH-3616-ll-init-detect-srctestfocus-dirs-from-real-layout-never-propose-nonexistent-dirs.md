@@ -94,7 +94,7 @@ _Added by `/ll:refine-issue` — 2026-09-26 — based on codebase analysis:_
 - `scripts/little_loops/init/introspect.py` — `introspect` (reorder: test_dir before focus_dirs), `_introspect_src_dir`, `_introspect_test_dir`, `_introspect_focus_dirs`; new `_existing_dir`, `_detect_root_layout`, `_find_nested_test_dir`
 - `scripts/little_loops/init/cli.py:531` — `_print_introspection_summary` wording
 - `scripts/little_loops/init/proposal.py`, `core.py`, `tui.py`, `summary.py` — verify `.` round-trip (modify only if a test shows a break)
-- **Moved to BUG-3631 (blocks this issue)**: `.`-hostile runtime consumers — `codegraph.py:121` `_is_scan_relevant`, `worker_pool.py:1523` leak detection, `decisions.py:652` export glob, `commands/manage-release.md`. These are pre-existing bugs for Go projects (`go.json` ships `src_dir: "."`).
+- **Moved to BUG-3631 (blocks this issue)**: `.`-hostile runtime consumers — `codegraph.py:121` `_is_scan_relevant`, `worker_pool.py:1523` leak detection, `decisions.py:652` export glob, plus `ll-init` introspection emitting `./` / `/` / `**/` for root declarations (`commands/manage-release.md` was later split to BUG-3635, which does not block this issue). These are pre-existing bugs for Go projects (`go.json` ships `src_dir: "."`).
 - **Checked, no change needed**: `codegraph.py:234` `_dotted_candidates` (with `.` the prefix strip never applies; returns `[dotted]`, already correct) and `commands/run-tests.md:99` (`^.` matches every changed file, which is correct when src_dir is the whole repo).
 - Template defaults under `scripts/little_loops/templates/` — read-only; filtered at read time, contents unchanged
 
@@ -224,7 +224,7 @@ _Added by `/ll:refine-issue` — 2026-09-26 — based on codebase analysis:_
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-- `.` spelling decided: `.`. `.`-hostile consumers (`codegraph.py:121`, `worker_pool.py:1523`, `decisions.py:652`, `commands/manage-release.md`) moved to BUG-3631 (blocker); `_dotted_candidates` and `run-tests.md:99` need no change. Still verify `auto-refine-and-implement.yaml:626,851` here.
+- `.` spelling decided: `.`. `.`-hostile consumers (`codegraph.py:121`, `worker_pool.py:1523`, `decisions.py:652`) moved to BUG-3631 (blocker); `commands/manage-release.md` split further to BUG-3635 (non-blocking); `_dotted_candidates` and `run-tests.md:99` need no change. Still verify `auto-refine-and-implement.yaml:626,851` here.
 - Update `cli.py:531` `_print_introspection_summary` wording ("kept template default") to match the new fallback
 - Keep `core.py:347` / `tui.py:1099` truthiness guards safe by never returning an empty focus list (`["."]` fallback)
 - Update the tests listed under `### Tests` (empty-dir assumptions in `test_init_introspect.py`, `test_init_audit_fixes.py`, `test_init_e2e.py`, `test_init_core.py`, `test_init_tui.py`) and add the new tests
@@ -297,7 +297,7 @@ _Added by `/ll:confidence-check` on 2026-09-27_
 - Program Design Call Path still omits nothing material now; ENH-3612 coordination note is stale (completed) — re-read the `_introspect_src_dir` call site at HEAD before editing.
 
 ### Gaps to Address
-- `blocked_by: BUG-3631` is unresolved (status: open). Implementation Step 0 requires it to land first so a `.` value is safe for codegraph, worker_pool, decisions export and manage-release. Remedy: implement BUG-3631 first, or drop the `blocked_by` edge if `.` output is gated until it lands.
+- `blocked_by: BUG-3631` is unresolved (status: open). Implementation Step 0 requires it to land first so a `.` value is safe for codegraph, worker_pool and decisions export (manage-release moved to BUG-3635). Remedy: implement BUG-3631 first, or drop the `blocked_by` edge if `.` output is gated until it lands.
 
 ### Outcome Risk Factors
 - Moderate cross-module depth: signature changes plus a call reorder in `introspect()` and `.` round-trip through proposal/core/tui/summary.
