@@ -33,6 +33,7 @@ in ENH-3623 § Proposed Solution; this issue implements the module/CLI half of i
 ## Current Behavior
 
 The second-pass preparation ladder is encoded only as autodev graph shape plus ~15
+<!-- ll-prose-ok: the prep subcommand group is proposed by this issue, not yet implemented -->
 `run_dir` handshake files. No pure policy, fact log or `ll-issues prep` group exists, so
 the ladder's routing cannot be table-tested or replayed.
 
@@ -95,6 +96,7 @@ semantics rather than spike parity:
 - `scripts/little_loops/cli/issues/__init__.py`: `prep` parser, dispatch branch, epilog entry
 - `scripts/little_loops/cli/issues/run_record.py` and `scripts/little_loops/run_record.py`:
   the shared record-writing helper
+<!-- ll-prose-ok: the prep subcommand group is proposed by this issue, not yet implemented -->
 - `docs/reference/CLI.md`: `#### \`ll-issues prep\`` section
 - `docs/reference/API.md`: `prep` row beside `run-record`, `little_loops.preparation_policy` section
 
@@ -149,6 +151,7 @@ semantics rather than spike parity:
 
 ### Call Path
 
+<!-- ll-prose-ok: the prep subcommand group is proposed by this issue, not yet implemented -->
 `ll-issues prep step` -> `next_preparation_step` -> `select_next_obligation` / `load_facts` -> `decide`
 
 ## Impact
@@ -206,3 +209,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ## Status
 
 **Open** | Created: 2026-09-27 | Priority: P3
+
+
+## Session Log
+- `/ll:format-issue` - 2026-09-27T04:48:28 - `92da6ad0-e100-4b8d-bcc9-de840c7a338f.jsonl`
