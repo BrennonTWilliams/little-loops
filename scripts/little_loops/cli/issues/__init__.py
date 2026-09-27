@@ -19,6 +19,10 @@ def main_issues() -> int:
         Exit code (0 = success, 1 = error)
     """
     with cli_event_context(DEFAULT_DB_PATH, "ll-issues", sys.argv[1:]):
+        from little_loops.cli.issues.advise_consult import (
+            add_advise_consult_parser,
+            cmd_advise_consult,
+        )
         from little_loops.cli.issues.anchor_sweep import cmd_anchor_sweep
         from little_loops.cli.issues.append_log import cmd_append_log
         from little_loops.cli.issues.arm_proposal_revision import (
@@ -188,6 +192,7 @@ Sub-commands:
   rearm-spike                Re-arm a refuted spike (drop spike_attempted/spike_refuted)
   arm-proposal-revision      Mark the selected option refuted + decision_needed (exit 1: no alternative)
   run-record        Write/read/clear the typed per-issue preparation run record (ENH-3597)
+  advise-consult    Run one in-process second-model readiness consult; prints PROCEED/VETO/SKIPPED (ENH-3632)
   prep              Preparation policy dispatch (step/record/apply/explain) -- internal loop
                     plumbing (ENH-3623/ENH-3630); step/apply mutate issue status, not for
                     manual use
@@ -801,6 +806,7 @@ Examples:
         add_arm_proposal_revision_parser(subs)
         add_run_record_parser(subs)
         add_next_obligation_parser(subs)
+        add_advise_consult_parser(subs)
         add_prep_parser(subs)
 
         cr = subs.add_parser(
@@ -1123,6 +1129,8 @@ Examples:
             return cmd_arm_proposal_revision(config, args)
         if args.command == "run-record":
             return cmd_run_record(config, args)
+        if args.command == "advise-consult":
+            return cmd_advise_consult(config, args)
         if args.command == "prep":
             return cmd_prep(config, args)
         if args.command == "check-readiness":

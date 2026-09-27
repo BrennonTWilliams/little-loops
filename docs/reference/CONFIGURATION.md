@@ -1484,6 +1484,17 @@ and `triggers`, but is still budget-counted — see FEAT-3116).
 | `max_consults_per_task` | `3` | Per-task cap on advisor consults, enforced by `should_consult()`/`consult_for_trigger()`. A task is identified by `resolve_task_key()` (issue ID, loop run ID, or session ID) — applies to both auto and manual consults. |
 | `store_verdict_body` | `false` | Opt-in to persisting the consult verdict body in the `advisor_consults` telemetry row (FEAT-3300). Absent or `false` means the verdict body is never written to `.ll/history.db`, since it can quote private code. |
 
+`host` is required for [`ll-issues advise-consult`](CLI.md#ll-issues-advise-consult)
+(ENH-3632) to do anything — with it unset, the helper preflights the check itself
+and prints `SKIPPED` without spending any of `max_consults_per_task`'s budget. Setting
+only `model` (without `host`) is not sufficient. `advise-consult`, `confidence_gate`
+(`issue_manager.py`), and the `pre_done` hook all draw from the same per-task budget
+file (`.ll/advisor-budget/<kind>-<value>.json`), which never expires — a busy task
+that exhausts its 3 consults across all three call sites sees every later consult
+(from any of them) skip with `budget_exhausted` until a new task key is resolved. A
+separate budget scope for readiness consults specifically (rather than sharing the
+per-task bucket) is a possible follow-up, not implemented here.
+
 ### `hooks`
 
 Settings for hook adapter selection.

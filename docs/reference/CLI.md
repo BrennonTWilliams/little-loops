@@ -209,6 +209,11 @@ ll-advise --signal score_stall --question "..." --context-file notes.md
 ll-advise --signal user_requested --question "..." --host codex --model gpt-5.1 --json
 ```
 
+For a readiness-style consult from inside an FSM loop, prefer
+[`ll-issues advise-consult`](#ll-issues-advise-consult) — it wraps the same
+`consult_for_trigger()` call with replay, a no-budget preflight, and a single
+`PROCEED`/`VETO`/`SKIPPED` routing token instead of raw JSON.
+
 ### ll-harness
 
 Runner evaluation CLI that invokes a skill, shell command, MCP tool, or raw Claude prompt, captures its output, and exits `0` (PASS) / `1` (FAIL) / `2` (error/timeout) based on optional criteria. Stochastic (LLM-driven) subjects are graded over N samples by default rather than one-shot (ENH-3415; see `--samples` below).
@@ -2466,6 +2471,47 @@ which returns `None` for a missing, malformed, or writer/issue-mismatched file �
 a stale record reads as absent, never as this run's verdict. The per-writer,
 per-issue path is what keeps one issue's record from leaking into the next
 issue's exit when a parent loop reuses one run_dir.
+
+---
+
+#### `ll-issues advise-consult`
+
+Shared second-model readiness consult helper (ENH-3632): calls
+`little_loops.advisor.consult_for_trigger(..., manual=True)` in-process,
+persists the verdict under `--run-dir`, and prints exactly one token —
+`PROCEED`, `VETO`, or `SKIPPED`. Always exits 0, so it can never stall an
+FSM `route:` table the way a non-zero exit would (matching `run-record read`'s
+"single token, always exit 0" contract, cross-referenced from
+[`ll-advise`](#ll-advise) above). `refine-to-ready-issue`'s loop wiring is
+ENH-3633; the go-no-go waiver veto reusing this helper unchanged is ENH-3590.
+
+| Argument | Description |
+|----------|-------------|
+| `issue_id` | Issue ID (e.g., `3632`, `ENH-3632`, `P3-ENH-3632`) |
+
+| Flag | Description |
+|------|-------------|
+| `--run-dir DIR` | **Required.** The run's run_dir (an FSM state passes `${context.run_dir}`); the verdict persists at `<run_dir>/advise-<ID>.{json,verdict}` |
+| `--signal NAME` | Consult trigger/signal (default: `refine_ready`) |
+| `--question TEXT` | Override the pinned readiness question (ENH-3590's waiver veto uses its own) |
+| `--write-note` | On `VETO`, write/replace the issue's `## Advisor Veto` section with the recommendation; on `PROCEED`, remove a stale one; `SKIPPED` leaves the file alone |
+
+**Replay:** a second invocation for the same ID under the same `--run-dir` replays the
+persisted verdict instead of consulting again. A replayed `PROCEED`/`SKIPPED` is honored
+only while the SHA-256 of the trimmed consult context (frontmatter, `## Session Log`,
+`## Confidence Check Notes`, `### Codebase Research Findings`, and `## Advisor Veto`
+stripped) still matches the issue file; a replayed `VETO` is sticky regardless of edits.
+
+**Preflight:** with `advisor.host` unset in `.ll/ll-config.json`, the helper prints
+`SKIPPED` without calling `consult_for_trigger` and without spending any of
+`advisor.max_consults_per_task`'s budget — `consult_for_trigger` otherwise reserves
+budget *before* it can detect the missing host.
+
+**Examples:**
+```bash
+ll-issues advise-consult ENH-3632 --run-dir "$RUN_DIR"
+ll-issues advise-consult ENH-3632 --run-dir "$RUN_DIR" --write-note
+```
 
 ---
 

@@ -1821,12 +1821,15 @@ def _parse_advisor_decision(recommendation: str, verdict_map: dict[str, str]) ->
 
     ``AdvisorVerdict`` has no closed-set decision field (FEAT-3116's schema is
     fixed), so the evaluator asks the advisor to lead with the decision word
-    and falls back to a whole-word search anywhere in the text.
+    (via the shared ``parse_lead_word``, ENH-3632) and falls back to a
+    whole-word search anywhere in the text.
     """
-    lowered = recommendation.strip().lower()
-    lead_word = re.split(r"[\s:,.]", lowered, maxsplit=1)[0]
-    if lead_word in verdict_map:
+    from little_loops.advisor import parse_lead_word
+
+    lead_word = parse_lead_word(recommendation, verdict_map.keys())
+    if lead_word is not None:
         return lead_word
+    lowered = recommendation.strip().lower()
     for decision in verdict_map:
         if re.search(rf"\b{re.escape(decision.lower())}\b", lowered):
             return decision

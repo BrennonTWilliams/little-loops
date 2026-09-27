@@ -3,9 +3,10 @@ id: ENH-3632
 type: ENH
 title: Add `ll-issues advise-consult` helper and shared `parse_lead_word`
 priority: P3
-status: open
+status: done
 discovered_by: ll-issue-size-review
 discovered_date: '2026-09-27'
+completed_at: '2026-09-27T09:52:10Z'
 parent: ENH-3626
 relates_to:
 - ENH-3623
@@ -119,7 +120,7 @@ given. The evaluator keeps its whole-word fallback on top; strictly more permiss
 
 _Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
 
-- **Stale anchors**: `_parse_advisor_decision` is at `fsm/evaluators.py:1809` (not `:1726`), and its lead-word split is at `evaluators.py:1817` (not `:1735`) — `lead_word = re.split(r"[\s:,.]", lowered, maxsplit=1)[0]`. The whole-word fallback described in the issue is confirmed present immediately after, at `evaluators.py:1820-1822`.
+- **Stale anchors**: `_parse_advisor_decision` is at `fsm/evaluators.py:1819` (not `:1726`), and its lead-word split is at `evaluators.py:1827` (not `:1735`) — `lead_word = re.split(r"[\s:,.]", lowered, maxsplit=1)[0]`. The whole-word fallback described in the issue is confirmed present immediately after, at `evaluators.py:1830-1832`.
 
 ## Program Design
 
@@ -154,7 +155,7 @@ _Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
 - `docs/reference/CONFIGURATION.md` `### advisor` — document that `advisor.host` is required for the consult to do anything (this repo's `.ll/ll-config.json` sets only `advisor.model`), and the accepted budget contention with `pre_done`/`confidence_gate` consults (per-issue file `.ll/advisor-budget/issue-<ID>.json` never expires; follow-up would be a `resolve_task_key` budget scope)
 
 ### Tests
-- New `scripts/tests/test_ll_issues_advise_consult.py` — model on `test_ll_issues_next_obligation.py::TestCli` and `test_run_record.py::TestRecordToken`; monkeypatch `consult_for_trigger`
+- `scripts/tests/test_ll_issues_advise_consult.py` (new) — model on `test_ll_issues_next_obligation.py::TestCli` and `test_run_record.py::TestRecordToken`; monkeypatch `consult_for_trigger`
   - crash (e.g. `BRConfig` load failure) still prints `SKIPPED`, exit 0
   - replay: same ID twice under a shared `run_dir` → one consult; replayed PROCEED discarded after trimmed context changes but kept when only frontmatter/Session Log/Advisor Veto change; replayed VETO sticky; two IDs → two consults
   - preflight: `advisor.host` unset → `SKIPPED`, `consult_for_trigger` never called, no budget file created/incremented
@@ -185,18 +186,18 @@ _Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
 
 ## Acceptance Criteria
 
-- [ ] With `advisor.host` unset, the helper prints `SKIPPED` without calling `consult_for_trigger` and without creating or incrementing the per-issue budget file
-- [ ] `LL_ISSUE_ID` is set by the helper before calling `consult_for_trigger`, billing the per-issue budget
-- [ ] The helper sets no outer timeout; a consult slower than `advisor.timeout_seconds` maps to SKIPPED via `skipped_reason="timeout"`
-- [ ] Any consult failure (`budget_exhausted`, `not_configured`, `floor_violation`, `failed`, `timeout`, unreadable issue file, helper exception) prints `SKIPPED` and exits 0
-- [ ] A second invocation for the same ID under the same `run_dir` replays the persisted verdict without consulting; a replayed VETO stays VETO
-- [ ] Payload (or skip record) and token persist to `<run_dir>/advise-<ID>.{json,verdict}`
-- [ ] The consult question text is pinned in the helper; a fixture test maps the real `_VERDICT_SCHEMA` payload shape to PROCEED/VETO; only the lead word counts ("no reason to VETO" → PROCEED)
-- [ ] Formatted lead words still veto: `**VETO**`, `VETO—…`, `"VETO"`, `` `VETO` ``
-- [ ] `parse_lead_word` is shared by the helper and `_parse_advisor_decision`; existing `advisor_consult` evaluator tests pass unchanged
-- [ ] The consult context excludes frontmatter, `## Session Log`, `## Confidence Check Notes`, `### Codebase Research Findings`, `## Advisor Veto`; the replay hash covers that same trimmed context
-- [ ] `--write-note` writes `## Advisor Veto` on VETO and removes a stale one on PROCEED
-- [ ] ENH-3590 can reuse the helper unchanged (`--signal` / `--question` overrides)
+- [x] With `advisor.host` unset, the helper prints `SKIPPED` without calling `consult_for_trigger` and without creating or incrementing the per-issue budget file
+- [x] `LL_ISSUE_ID` is set by the helper before calling `consult_for_trigger`, billing the per-issue budget
+- [x] The helper sets no outer timeout; a consult slower than `advisor.timeout_seconds` maps to SKIPPED via `skipped_reason="timeout"`
+- [x] Any consult failure (`budget_exhausted`, `not_configured`, `floor_violation`, `failed`, `timeout`, unreadable issue file, helper exception) prints `SKIPPED` and exits 0
+- [x] A second invocation for the same ID under the same `run_dir` replays the persisted verdict without consulting; a replayed VETO stays VETO
+- [x] Payload (or skip record) and token persist to `<run_dir>/advise-<ID>.{json,verdict}`
+- [x] The consult question text is pinned in the helper; a fixture test maps the real `_VERDICT_SCHEMA` payload shape to PROCEED/VETO; only the lead word counts ("no reason to VETO" → PROCEED)
+- [x] Formatted lead words still veto: `**VETO**`, `VETO—…`, `"VETO"`, `` `VETO` ``
+- [x] `parse_lead_word` is shared by the helper and `_parse_advisor_decision`; existing `advisor_consult` evaluator tests pass unchanged
+- [x] The consult context excludes frontmatter, `## Session Log`, `## Confidence Check Notes`, `### Codebase Research Findings`, `## Advisor Veto`; the replay hash covers that same trimmed context
+- [x] `--write-note` writes `## Advisor Veto` on VETO and removes a stale one on PROCEED
+- [x] ENH-3590 can reuse the helper unchanged (`--signal` / `--question` overrides)
 
 ## Impact
 
@@ -210,12 +211,32 @@ _Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
 - **In scope**: helper, `parse_lead_word` extraction, CLI registration, docs, helper tests.
 - **Out of scope**: any `refine-to-ready-issue` / caller loop change (ENH-3633); the go-no-go waiver veto (ENH-3590); changing `ll-advise` internals; a separate budget scope for readiness consults.
 
+## Resolution
+
+- **Action**: improve (implement)
+- **Completed**: 2026-09-27
+- **Status**: Completed
+
+### Changes Made
+
+- `scripts/little_loops/advisor.py`: new public `parse_lead_word(recommendation, choices) -> str | None` — skips leading non-word characters before taking the first word-character run (`\W*(\w+)`), compares case-insensitively, returns the matching entry from `choices` as given.
+- `scripts/little_loops/fsm/evaluators.py`: `_parse_advisor_decision` now calls `parse_lead_word` for its lead-word step, keeping its whole-word fallback on top (strictly more permissive than the old `re.split(r"[\s:,.]", ...)`).
+- `scripts/little_loops/cli/issues/advise_consult.py` (new): `trim_consult_context` (strips frontmatter via `frontmatter.strip_frontmatter` plus `## Session Log`/`## Confidence Check Notes`/`### Codebase Research Findings`/`## Advisor Veto` via a generalized heading-span walk, with boundary-whitespace normalization so a removed trailing section doesn't perturb the replay hash; caps at 20,000 chars), `map_advise_verdict` (pure `ConsultOutcome` → `PROCEED`/`VETO`/`SKIPPED` mapping), `cmd_advise_consult` (replay via persisted SHA-256 context hash with VETO sticky, host-unset preflight that never spends budget, in-process `consult_for_trigger(..., manual=True)` with `LL_ISSUE_ID` set first, `.json`/`.verdict` persistence, `--write-note` VETO/PROCEED section handling, catch-all always-exit-0 guard), `add_advise_consult_parser`.
+- `scripts/little_loops/cli/issues/__init__.py`: registered `advise-consult` at all four sites (lazy import, epilog line, `add_advise_consult_parser(subs)`, dispatch).
+- `scripts/tests/test_advisor.py`: `TestParseLeadWord` (formatted/plain lead words, no-match, casing).
+- `scripts/tests/test_fsm_evaluators.py`: one added case confirming a bolded decision word (`**proceed**`) still routes correctly through `evaluate_advisor_consult`.
+- `scripts/tests/test_ll_issues_advise_consult.py` (new, 28 tests): `trim_consult_context`, `map_advise_verdict`, and `cmd_advise_consult` (preflight, consult, replay incl. hash-mismatch/VETO-sticky/two-IDs, `--write-note`, crash guard).
+- `scripts/tests/test_wiring_reference_docs.py`: five rows for the new docs.
+- `docs/reference/CLI.md`, `docs/reference/API.md`, `docs/reference/CONFIGURATION.md`: `ll-issues advise-consult` section + tables + cross-reference from `ll-advise`, plus the `advisor.host` requirement/shared-budget note under `### advisor`.
+
 ## Status
 
-**Open** | Created: 2026-09-27 | Priority: P3
+**Done** | Created: 2026-09-27 | Priority: P3
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-27T09:51:39 - `8891d11c-609e-45db-91e0-6348fdc4961e.jsonl`
+- `/ll:ready-issue` - 2026-09-27T09:29:15 - `0d5f4389-d868-48f7-a989-921683c68ff7.jsonl`
 - `/ll:confidence-check` - 2026-09-27T05:51:03 - `31b574d3-e27d-406a-af09-b87f5dcd980e.jsonl`
 - `/ll:refine-issue` - 2026-09-27T05:30:08 - `aae621bb-c067-4881-b3ce-b0e08bc3edb0.jsonl`
 - `/ll:format-issue` - 2026-09-27T05:18:24 - `456ac708-7949-4003-8fee-84b53705067e.jsonl`

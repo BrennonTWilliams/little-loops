@@ -23,8 +23,10 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import sys
 import time
+from collections.abc import Iterable
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
@@ -80,6 +82,30 @@ class FloorResult:
 
     status: Literal["ok", "violation", "advisory", "unknown"]
     detail: str
+
+
+def parse_lead_word(recommendation: str, choices: Iterable[str]) -> str | None:
+    """Extract the leading decision word of *recommendation*, matched against *choices*.
+
+    Shared by `fsm.evaluators._parse_advisor_decision` and `ll-issues
+    advise-consult` (ENH-3632). Skips leading non-word characters before
+    taking the first word-character run, so formatted decision words
+    (`**VETO**`, `VETO—the reason`, `"VETO"`) match instead of silently
+    falling through — a plain `str.split` on `[\\s:,.]` treats markdown/
+    punctuation wrapping as part of the word and never matches.
+
+    Comparison is case-insensitive; the matching entry from *choices* is
+    returned as given (not lowercased), so callers keep their own casing
+    convention. Returns `None` when nothing leads or nothing matches.
+    """
+    match = re.match(r"\W*(\w+)", recommendation)
+    if not match:
+        return None
+    lead = match.group(1).lower()
+    for choice in choices:
+        if choice.lower() == lead:
+            return choice
+    return None
 
 
 def rank_model(host: str, model: str) -> int | None:

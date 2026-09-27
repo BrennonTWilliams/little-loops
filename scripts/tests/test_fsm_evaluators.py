@@ -2295,9 +2295,7 @@ class TestActionStallEvaluator:
         ctx = self._ctx(action="same")
         evaluate_action_stall(max_repeat=1, context=ctx, state_dir=run, state_name="a")
         assert (
-            evaluate_action_stall(
-                max_repeat=1, context=ctx, state_dir=run, state_name="a"
-            ).verdict
+            evaluate_action_stall(max_repeat=1, context=ctx, state_dir=run, state_name="a").verdict
             == "no"
         )
         result = evaluate_action_stall(max_repeat=1, context=ctx, state_dir=run, state_name="b")
@@ -3145,6 +3143,24 @@ class TestAdvisorConsultEvaluator:
         assert result.details["state"] == "score_check"
         mock_consult.assert_called_once()
         assert mock_consult.call_args.args[0] == "loop_stall"
+
+    def test_matches_bolded_lead_decision_word(self) -> None:
+        """A formatted lead word (ENH-3632's parse_lead_word) still matches at this step."""
+        with patch("little_loops.advisor.consult_for_trigger") as mock_consult:
+            mock_consult.return_value = self._outcome(
+                verdict=self._verdict("**proceed** — the criteria look fine")
+            )
+            result = evaluate_advisor_consult(
+                output="",
+                question="are we stuck?",
+                verdict_map={"proceed": "yes", "revise": "no"},
+                signal=None,
+                timeout=None,
+                context_from=None,
+                state_name="score_check",
+            )
+
+        assert result.verdict == "yes"
 
     def test_signal_override_used_as_trigger(self) -> None:
         with patch("little_loops.advisor.consult_for_trigger") as mock_consult:

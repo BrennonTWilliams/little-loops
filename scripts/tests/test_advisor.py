@@ -17,6 +17,7 @@ from little_loops.advisor import (
     check_floor,
     consult,
     consult_for_trigger,
+    parse_lead_word,
     rank_model,
     record_consult,
     resolve_task_key,
@@ -24,6 +25,39 @@ from little_loops.advisor import (
 )
 from little_loops.config.orchestration import AdvisorConfig
 from little_loops.host_runner import BlockingJsonError, HostInvocation, HostNotConfigured
+
+
+class TestParseLeadWord:
+    """Shared lead-word tokenizer (ENH-3632), extracted from _parse_advisor_decision.
+
+    Skips leading non-word characters so formatted decision words match instead of
+    silently falling through to PROCEED.
+    """
+
+    @pytest.mark.parametrize(
+        "recommendation,expected",
+        [
+            ("**VETO**", "VETO"),
+            ("VETO—the reason is concrete", "VETO"),
+            ('"VETO"', "VETO"),
+            ("`VETO`", "VETO"),
+            ("veto: this is broken", "VETO"),
+            ("PROCEED because criteria hold", "PROCEED"),
+            ("proceed", "PROCEED"),
+            ("Proceed.", "PROCEED"),
+        ],
+    )
+    def test_matches_formatted_and_plain_lead_words(self, recommendation, expected) -> None:
+        assert parse_lead_word(recommendation, ["PROCEED", "VETO"]) == expected
+
+    def test_no_lead_match_returns_none(self) -> None:
+        assert parse_lead_word("no reason to VETO here", ["PROCEED", "VETO"]) is None
+
+    def test_empty_string_returns_none(self) -> None:
+        assert parse_lead_word("", ["PROCEED", "VETO"]) is None
+
+    def test_returns_choice_as_given_not_input_casing(self) -> None:
+        assert parse_lead_word("veto", ["PROCEED", "VETO"]) == "VETO"
 
 
 class TestModelRanks:
