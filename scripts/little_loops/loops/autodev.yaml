@@ -2109,7 +2109,7 @@ states:
     # recheck_after_size_review.
     action: |
       ID="${captured.input.output}"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
-      FMT_JSON=$(ll-issues format-check "$ID" --format json 2>/dev/null || echo '{}')
+      FMT_JSON=$(ll-issues format-check "$ID" --format json 2>/dev/null); [ -n "$FMT_JSON" ] || FMT_JSON='{}'  # BUG-3624: exit 1 = blocking gaps, payload still printed
       ISSUE_JSON=$(ll-issues show "$ID" --json)
       READINESS_THRESHOLD=${context.readiness_threshold:shell}
       LL_ISSUE_ID="$ID" LL_FORMAT_CHECK_JSON="$FMT_JSON" LL_ISSUE_JSON="$ISSUE_JSON" LL_ARG_READINESS_THRESHOLD="$READINESS_THRESHOLD" python3 << 'PYEOF'

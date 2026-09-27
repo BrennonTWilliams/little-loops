@@ -377,6 +377,53 @@ class TestCheckReconcileNeededContradiction:
 
             assert exit_code == expected, f"{fires} prior contradiction fires"
 
+    def _run_full_action(self, tmp_path: Path, format_check_stub: str) -> int:
+        """Run the whole shell action with a stub ``ll-issues`` on PATH."""
+        bin_dir = tmp_path / "bin"
+        bin_dir.mkdir()
+        fake = bin_dir / "ll-issues"
+        fake.write_text(
+            "#!/bin/sh\n"
+            'if [ "$1" = "format-check" ]; then\n'
+            f"{format_check_stub}\n"
+            "else\n"
+            '  echo \'{"confidence": "90", "reconcile_attempted": "false"}\'\n'
+            "fi\n"
+        )
+        fake.chmod(0o755)
+        (tmp_path / "autodev-pre-readiness.txt").write_text("70")
+        action = _load_autodev_yaml()["states"]["check_reconcile_needed"]["action"]
+        script = (
+            action.replace("${context.run_dir}", str(tmp_path))
+            .replace("${captured.input.output}", "BUG-9999")
+            .replace("${context.readiness_threshold:shell}", "85")
+        )
+        result = subprocess.run(
+            ["bash", "-c", script],
+            capture_output=True,
+            text=True,
+            check=False,
+            env={**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"},
+        )
+        return result.returncode
+
+    def test_marker_read_when_format_check_exits_1_with_payload(self, tmp_path: Path) -> None:
+        """BUG-3624: format-check prints its payload AND exits 1 on blocking
+        gaps; the capture must keep that payload (no second `{}` appended)."""
+        exit_code = self._run_full_action(
+            tmp_path, "  echo '{\"superseded_marker_count\": 1}'; exit 1"
+        )
+
+        assert exit_code == 0
+        assert (tmp_path / self.ARMED).exists()
+
+    def test_empty_format_check_capture_is_inert(self, tmp_path: Path) -> None:
+        """BUG-3624: a command that fails before printing falls back to `{}`."""
+        exit_code = self._run_full_action(tmp_path, "  exit 2")
+
+        assert exit_code == 1
+        assert not (tmp_path / self.ARMED).exists()
+
     def test_arms_handshake_marker_on_contradiction_only_fire(self, tmp_path: Path) -> None:
         """count_repair_cycle_reconcile consumes this marker to increment the
         reconcile-scoped counter and stamp the per-issue exemption file."""

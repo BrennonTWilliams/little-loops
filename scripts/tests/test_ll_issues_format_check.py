@@ -1748,6 +1748,34 @@ class TestSupersededMarkerCountKey(TestUnmarkedSupersededDirective):
         # structurally compliant and must exit 0.
         assert payload["exit"] == 0
 
+    def test_marker_count_still_emitted_when_blocking_gap_exits_1(
+        self,
+        temp_project_dir: Path,
+        format_check_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """BUG-3624: a blocking gap makes the command exit 1 but the payload —
+        including the marker count autodev reads — must still be printed."""
+        steps_block = (
+            "## Implementation Steps\n\n"
+            "1. Add `pending_file` to the loop's `context:` block\n"
+            "   > ⚠ Superseded — omit entirely; see § Codebase Research Findings\n\n"
+            "### Codebase Research Findings\n\n"
+            "_Added by `/ll:refine-issue`:_\n\n"
+            "- Step 1 is wrong — context template resolution omits this field.\n"
+        )
+        path = self._write_bug_with_steps(format_check_dir, "BUG-9609", steps_block)
+        # Drop the required `## Impact` section to create a blocking structural gap.
+        text = path.read_text()
+        start = text.index("## Impact")
+        end = text.index("## Status")
+        path.write_text(text[:start] + text[end:])
+
+        payload = self._json_for(temp_project_dir, "BUG-9609", capsys)
+
+        assert payload["exit"] == 1
+        assert payload["superseded_marker_count"] == 1
+
 
 # ---------------------------------------------------------------------------
 # TestFormatCheckAll (FEAT-2850)

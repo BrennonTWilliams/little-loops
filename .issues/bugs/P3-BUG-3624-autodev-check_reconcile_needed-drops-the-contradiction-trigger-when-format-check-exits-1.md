@@ -4,7 +4,7 @@ type: BUG
 title: Autodev check_reconcile_needed drops the contradiction trigger when format-check
   exits 1
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-27'
 captured_at: '2026-09-27T01:48:54Z'
@@ -12,6 +12,7 @@ parent: EPIC-3565
 relates_to:
 - ENH-3623
 - ENH-3621
+completed_at: '2026-09-27T02:41:22Z'
 verify_verdict: VALID
 confidence_score: 100
 outcome_confidence: 97
@@ -192,12 +193,12 @@ N/A — no new decision logic (the fix restores the existing `contradiction` pre
 
 ## Acceptance Criteria
 
-- [ ] `check_reconcile_needed` reads `superseded_marker_count` when format-check exits 1
+- [x] `check_reconcile_needed` reads `superseded_marker_count` when format-check exits 1
   with a payload
-- [ ] An empty capture still falls back to `{}` (markers = 0)
-- [ ] A regression test covers "marker present + blocking format gap → contradiction
+- [x] An empty capture still falls back to `{}` (markers = 0)
+- [x] A regression test covers "marker present + blocking format gap → contradiction
   reconcile armed"
-- [ ] The fixed semantics (markers read whatever `has_blocking_gaps` is) are recorded on ENH-3623
+- [x] The fixed semantics (markers read whatever `has_blocking_gaps` is) are recorded on ENH-3623
 
 ## Status
 
@@ -205,6 +206,8 @@ N/A — no new decision logic (the fix restores the existing `contradiction` pre
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-27T02:41:22 - `68edfbd1-1d7a-4418-9288-f9ab34cd8207.jsonl`
+- `/ll:ready-issue` - 2026-09-27T02:35:43 - `a0a7d547-d013-49fe-a7de-decc607a0e30.jsonl`
 - `/ll:confidence-check` - 2026-09-27T02:30:19 - `951684ed-7b41-4bf8-9307-a4474a28eb29.jsonl`
 - `/ll:confidence-check` - 2026-09-27T02:15:49 - `5c8dc844-d82e-462d-9610-24d025987ba4.jsonl`
 - `/ll:verify-issues` - 2026-09-27T02:14:53 - `3143f6e8-9395-4f72-8d86-84d59317dfae.jsonl`
