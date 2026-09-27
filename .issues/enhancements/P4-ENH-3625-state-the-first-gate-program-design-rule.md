@@ -136,4 +136,5 @@ choice should be made on purpose before the port, not inherited.
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-27T02:19:49 - `c775572e-2829-4f8b-9fae-12aeff48a4bc.jsonl`
 - `/ll:format-issue` - 2026-09-27T02:13:31 - `eab069d8-1487-4826-8057-122a54e92dfd.jsonl`
