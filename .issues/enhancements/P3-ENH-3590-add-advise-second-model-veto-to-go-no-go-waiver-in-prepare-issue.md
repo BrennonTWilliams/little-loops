@@ -1,7 +1,7 @@
 ---
 id: ENH-3590
 type: ENH
-title: Add advise second-model consult step to autodev
+title: Add advise second-model veto to the go-no-go waiver in prepare-issue
 priority: P3
 status: open
 discovered_by: ll-issues-create
@@ -10,8 +10,10 @@ captured_at: '2026-09-25T03:36:09Z'
 relates_to:
 - ENH-3601
 - EPIC-3565
+- ENH-3626
 blocked_by:
 - ENH-3623
+- ENH-3626
 confidence_score: 75
 outcome_confidence: 79
 score_complexity: 18
@@ -20,7 +22,7 @@ score_ambiguity: 18
 score_change_surface: 25
 ---
 
-# ENH-3590: Add advise second-model consult step to autodev
+# ENH-3590: Add advise second-model veto to the go-no-go waiver in prepare-issue
 
 ## Summary
 
@@ -47,6 +49,13 @@ autodev currently has no review by a stronger or different model. Its only adver
   The veto consult therefore becomes a policy step after `GO_NO_GO`, or a precondition on
   the reopen. Re-cut the state chain below after ENH-3623 lands. The Resolved Decisions
   still hold: veto-only, fail-open, per-issue billing, and the `ll-advise` CLI seam.
+- **Shared helper from ENH-3626 (2026-09-27)**: ENH-3626 adds the complementary
+  done-path consult to `refine-to-ready-issue` and builds a shared Python helper that
+  runs `ll-advise`, persists `advise-<ID>.{json,err,rc}`, and maps the payload to
+  PROCEED/VETO/SKIPPED. This issue's consult calls that helper with its own signal and
+  question instead of the hand-written `run_advise`/`read_advise_verdict` pair below.
+  The two consults are not redundant: this one covers issues that fail the outcome
+  threshold and are waived by a GO; ENH-3626 covers issues that pass the thresholds.
 
 **Design: veto-only consult on the go-no-go waiver, via the `ll-advise` CLI in shell
 states** (not the `/ll:advise` skill, and not the `advisor_consult` evaluator — see
