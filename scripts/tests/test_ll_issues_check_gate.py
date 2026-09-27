@@ -304,13 +304,12 @@ class TestAutodevRouting:
 
     def test_implement_edges_route_through_guard(self) -> None:
         states = yaml.safe_load(LOOP.read_text())["states"]
-        # ENH-3610: check_passed.on_yes goes through the pre-implement obligation
-        # selector, whose `_` / `_error` routes reach the fail-closed proof gate.
-        assert states["check_passed"]["on_yes"] == "select_obligation_pre_implement"
-        selector = states["select_obligation_pre_implement"]
-        # ENH-3611: check_proof_defer_or_implement is the only proof stage.
-        assert selector["route"]["_"] == "check_proof_defer_or_implement"
-        assert selector["route"]["_error"] == "check_proof_defer_or_implement"
+        # ENH-3623: the pre-implement obligation selector moved into the
+        # prepare-issue policy; check_passed.on_yes reaches the fail-closed proof
+        # gate directly. ENH-3611: check_proof_defer_or_implement is the only proof
+        # stage, and the only edge into implement_current.
+        assert states["check_passed"]["on_yes"] == "check_proof_defer_or_implement"
+        assert "select_obligation_pre_implement" not in states
         assert "check_proof_gate_before_implement" not in states
         route = states["check_proof_defer_or_implement"].get("route", {})
         assert route.get("PROOF_DEFER") == "defer_gated"

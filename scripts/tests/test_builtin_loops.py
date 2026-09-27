@@ -102,9 +102,6 @@ class TestBuiltinLoopFiles:
         exempt = {
             ("general-task.yaml", "summarize_success", "on_error"): "ENH-2365",
             ("general-task.yaml", "write_partial_summary", "on_error"): "ENH-2575",
-            # prepare-issue mirrors the inner terminal type: a failed `forward` call
-            # after an inner success must not flip which autodev router runs.
-            ("prepare-issue.yaml", "forward_done", "on_error"): "ENH-3605",
         }
 
         offenders: list[str] = []
@@ -6434,34 +6431,16 @@ class TestAutodevLoop:
             "init",
             "dequeue_next",
             "refine_current",
+            "copy_broke_down",
+            "route_refine_success",
+            "route_refine_outcome",
             "check_passed",
-            "select_obligation_post_refine",
-            "select_obligation_pre_implement",
-            "record_reentry_exhausted",
             "detect_children",
             "enqueue_children",
-            "size_review_snap",
-            "check_broke_down",
-            "recheck_scores",
-            "check_missing_artifacts",
-            "run_size_review",
-            "enqueue_or_skip",
-            "recheck_after_size_review",
-            "select_obligation_post_size_review",  # ENH-3611
+            "check_parent_resolved",
+            "recover_subloop_children",
             "check_proof_defer_or_implement",  # ENH-3611: the only proof stage
-            "run_wire",
-            "run_refine",
-            "clear_scores",  # ENH-3615: shared rescoring chain
-            "rerun_confidence",
-            "check_scores_present",
-            "route_after_rescore",
             "implement_current",
-            # BUG-2734: guard-2 "ready but atomic" earn-the-pass/honest-deferral chain.
-            "check_guard2_verdict",
-            "check_readiness_for_atomic_remediation",
-            "remediate_oversized_atomic",
-            "mark_rescore_origin_atomic",
-            "regate_after_atomic_remediation",
             "done",
         }
         actual = set(data["states"].keys())
@@ -6524,7 +6503,8 @@ class TestAutodevLoop:
         assert state.get("loop") == "prepare-issue"
         assert state.get("context_passthrough") is True
         wrapper = yaml.safe_load((BUILTIN_LOOPS_DIR / "prepare-issue.yaml").read_text())
-        inner = wrapper["states"]["run_refine_to_ready"]
+        # ENH-3623: the policy-driven dispatch loop runs the child from run_child.
+        inner = wrapper["states"]["run_child"]
         assert inner.get("loop") == "refine-to-ready-issue"
         assert inner.get("context_passthrough") is True
 
@@ -6538,8 +6518,9 @@ class TestAutodevLoop:
     def test_route_refine_outcome_ledgers_quality_and_gate_unmet_via_wrapper(
         self, data: dict
     ) -> None:
-        """ENH-3605 ledger-ownership rule: prepare-issue.forward_stop writes the
-        refine_failed row, so the failure router must not add a second one."""
+        """ENH-3605 ledger-ownership rule: prepare-issue's terminal writer
+        (`ll-issues prep apply`, ENH-3623) writes the refine_failed row, so the
+        failure router must not add a second one."""
         route = data["states"]["route_refine_outcome"]["route"]
         assert route["BLOCKED:quality"] == "ledger_child_stop"
         assert route["DEFERRED:gate_unmet"] == "ledger_child_stop"
@@ -7740,11 +7721,13 @@ class TestAutodevLoop:
         assert lines == ["FEAT-1  impl_exit0_not_closed"]
 
     def test_prepare_issue_loop_state_declares_no_rate_limit_handling(self) -> None:
-        """ENH-3605: prepare-issue.run_refine_to_ready is a `loop:` state, so
-        on_rate_limit_exhausted / with_rate_limit_handling are inert there (BUG-3390)."""
+        """ENH-3605/ENH-3623: prepare-issue.run_child is its only `loop:` state, so
+        on_rate_limit_exhausted / with_rate_limit_handling are inert there (BUG-3390).
+        The slash-command dispatch states (run_wire, run_rescore, ...) legitimately
+        carry with_rate_limit_handling and are out of scope here."""
         wrapper = yaml.safe_load((BUILTIN_LOOPS_DIR / "prepare-issue.yaml").read_text())
         loop_states = {n: st for n, st in wrapper["states"].items() if st.get("loop")}
-        assert set(loop_states) == {"run_refine_to_ready"}
+        assert set(loop_states) == {"run_child"}
         for name, st in loop_states.items():
             assert "on_rate_limit_exhausted" not in st, name
             assert st.get("fragment") != "with_rate_limit_handling", name
@@ -7772,8 +7755,14 @@ class TestAutodevLoop:
 
     def test_check_readiness_call_sites_pass_honor_waiver(self, data: dict) -> None:
         """BUG-3390: every `ll-issues check-readiness` gate honors outcome_gate_waived so
-        the CLI gates agree with the inline-python gates (which read show --json)."""
-        for name in ("check_passed", "recheck_scores"):
+        the CLI gates agree with the inline-python gates (which read show --json).
+        ENH-3623: recheck_scores moved into the preparation policy; check_passed is
+        autodev's sole remaining check-readiness call site."""
+        sites = [
+            n for n, s in data["states"].items() if "check-readiness" in (s.get("action") or "")
+        ]
+        assert sites == ["check_passed"], sites
+        for name in sites:
             action = data["states"][name].get("action", "")
             assert "check-readiness" in action, name
             assert "--honor-waiver" in action, name
@@ -8008,266 +7997,6 @@ class TestAutodevLoop:
         assert state.get("next") == "dequeue_next"
         assert state.get("on_error") == "dequeue_next"
 
-    def test_record_reentry_exhausted_defers_via_set_status(self, data: dict) -> None:
-        """ENH-2666/ENH-3611: the surviving decision deferral (record_reentry_exhausted;
-        record_decision_unresolved was removed) aligns to rn-implement's mark_deferred
-        model — stamps an automation deferral instead of leaving the issue open."""
-        assert "record_decision_unresolved" not in data["states"]
-        action = data["states"].get("record_reentry_exhausted", {}).get("action", "")
-        assert "ll-issues set-status" in action and "deferred" in action
-        assert "--by automation" in action
-        assert "--reason decision_unresolved" in action
-
-    def test_recheck_after_size_review_defers_low_readiness_via_set_status(
-        self, data: dict
-    ) -> None:
-        """ENH-2666: recheck_after_size_review's low_readiness skip path aligns to
-        rn-implement's mark_deferred model — stamps an automation deferral instead of
-        leaving the issue open for retry."""
-        action = data["states"].get("recheck_after_size_review", {}).get("action", "")
-        assert "ll-issues set-status" in action and "deferred" in action
-        assert "--by automation" in action
-        assert "--reason low_readiness" in action
-
-    def test_recheck_after_size_review_honors_outcome_gate_waived(self, data: dict) -> None:
-        """BUG-2734: recheck_after_size_review must bypass the outcome half of the gate
-        when the issue's frontmatter carries outcome_gate_waived: true."""
-        action = data["states"].get("recheck_after_size_review", {}).get("action", "")
-        assert "outcome_gate_waived" in action
-
-    def test_regate_after_atomic_remediation_defers_oversized_atomic_via_set_status(
-        self, data: dict
-    ) -> None:
-        """BUG-2734: a still-failing outcome gate after the earn-the-pass remediation
-        attempt defers with the oversized_atomic reason code, never low_readiness —
-        readiness already passed to reach this state."""
-        action = data["states"].get("regate_after_atomic_remediation", {}).get("action", "")
-        assert "ll-issues set-status" in action and "deferred" in action
-        assert "--by automation" in action
-        assert "--reason oversized_atomic" in action
-        assert "low_readiness" not in action
-
-    def test_regate_after_atomic_remediation_honors_outcome_gate_waived(self, data: dict) -> None:
-        """BUG-2734: the remediation re-gate must also honor outcome_gate_waived."""
-        action = data["states"].get("regate_after_atomic_remediation", {}).get("action", "")
-        assert "outcome_gate_waived" in action
-
-    def test_check_guard2_verdict_detects_guard2_marker_not_guard1(self, data: dict) -> None:
-        """BUG-2734: check_guard2_verdict's pattern must match guard-2's
-        '[ID] skipped: score X (ambiguous)' verdict (X >= 8) but not guard-1's
-        qualitative-skip line, which uses different wording ('structural score N
-        ... qualitative')."""
-        import re
-
-        state = data["states"].get("check_guard2_verdict", {})
-        evaluate = state.get("evaluate", {})
-        pattern = evaluate.get("pattern", "")
-        assert evaluate.get("source") == "${captured.size_review_output.output}"
-        assert re.search(pattern, "[BUG-2731] skipped: score 11 (ambiguous)")
-        assert re.search(pattern, "[BUG-2731] skipped: score 8 (ambiguous)")
-        assert not re.search(pattern, "[BUG-2731] skipped: score 6 (ambiguous)")
-        assert not re.search(
-            pattern,
-            "[BUG-2731] skipped: structural score 12 but outcome_confidence low is "
-            "qualitative (ambiguity: 18, complexity: 20) — suggest /ll:refine-issue",
-        )
-
-    def test_check_guard2_verdict_routes_to_remediation_chain(self, data: dict) -> None:
-        """BUG-2734: guard-2 verdict routes to the readiness gate before remediation;
-        no-match falls through to the BUG-2752 fallback probe, which itself falls
-        through unchanged to recheck_after_size_review."""
-        state = data["states"].get("check_guard2_verdict", {})
-        assert state.get("on_yes") == "check_readiness_for_atomic_remediation"
-        assert state.get("on_no") == "check_guard2_score_fallback"
-        assert state.get("on_error") == "recheck_after_size_review"
-
-        fallback_state = data["states"].get("check_guard2_score_fallback", {})
-        assert fallback_state.get("on_yes") == "check_readiness_for_atomic_remediation"
-        assert fallback_state.get("on_no") == "recheck_after_size_review"
-        assert fallback_state.get("on_error") == "recheck_after_size_review"
-
-        readiness_state = data["states"].get("check_readiness_for_atomic_remediation", {})
-        assert readiness_state.get("on_yes") == "remediate_oversized_atomic"
-        assert readiness_state.get("on_no") == "recheck_after_size_review"
-
-        remediate_state = data["states"].get("remediate_oversized_atomic", {})
-        assert remediate_state.get("next") == "mark_rescore_origin_atomic"
-        assert "/ll:wire-issue" in remediate_state.get("action", "")
-
-        origin_state = data["states"].get("mark_rescore_origin_atomic", {})
-        assert origin_state.get("next") == "clear_scores"
-        rerun_state = data["states"].get("rerun_confidence", {})
-        assert rerun_state.get("next") == "check_scores_present"
-        assert "/ll:confidence-check" in rerun_state.get("action", "")
-        route_state = data["states"].get("route_after_rescore", {})
-        assert route_state["route"]["ATOMIC"] == "regate_after_atomic_remediation"
-
-        regate_state = data["states"].get("regate_after_atomic_remediation", {})
-        assert regate_state.get("on_yes") == "select_obligation_pre_implement"
-        # ENH-2870/BUG-3002: on_no now routes through the design-remedy
-        # dispatcher (check_atomic_design_remedy), which itself falls through
-        # to dequeue_next when no design remedy was armed.
-        assert regate_state.get("on_no") == "check_atomic_design_remedy"
-        dispatcher_state = data["states"].get("check_atomic_design_remedy", {})
-        # BUG-3390: the no-design-remedy leg passes through the go-no-go
-        # eligibility gate (which advances the queue unless the issue was just
-        # deferred oversized_atomic).
-        assert dispatcher_state.get("on_no") == "check_go_no_go_eligible"
-
-    def test_go_no_go_escalation_chain_shape(self, data: dict) -> None:
-        """BUG-3390: after an oversized_atomic deferral, /ll:go-no-go --auto runs once
-        per issue per run; a stamped outcome_gate_waived re-opens and stages the
-        issue for implementation via select_obligation_pre_implement."""
-        states = data["states"]
-        elig = states["check_go_no_go_eligible"]
-        assert elig.get("fragment") == "shell_exit"
-        assert elig.get("on_yes") == "run_go_no_go"
-        assert elig.get("on_no") == "dequeue_next"
-        assert elig.get("on_error") == "dequeue_next"
-        assert "autodev-go-no-go-attempted" in elig["action"]
-        assert "oversized_atomic" in elig["action"]
-
-        run = states["run_go_no_go"]
-        assert "/ll:go-no-go" in run["action"] and "--auto" in run["action"]
-        assert run.get("action_type") == "slash_command"
-        assert run.get("fragment") == "with_rate_limit_handling"
-        assert run.get("pruning_profile", {}).get("enabled") is True
-        assert run.get("next") == "check_go_no_go_waiver"
-        assert run.get("on_error") == "check_go_no_go_waiver"
-        assert run.get("on_rate_limit_exhausted") == "finalize_rate_limited"
-
-        waiver = states["check_go_no_go_waiver"]
-        assert "check-flag" in waiver["action"] and "outcome_gate_waived" in waiver["action"]
-        assert waiver.get("on_yes") == "reopen_waived"
-        assert waiver.get("on_no") == "dequeue_next"
-        assert waiver.get("on_error") == "dequeue_next"
-
-        reopen = states["reopen_waived"]
-        assert "set-status" in reopen["action"] and "open" in reopen["action"]
-        assert reopen.get("next") == "select_obligation_pre_implement"
-        assert reopen.get("on_error") == "dequeue_next"
-
-        # The per-issue attempted marker is filename-scoped and must survive dequeue.
-        assert "autodev-go-no-go-attempted" not in states["dequeue_next"]["action"]
-
-    def _run_go_no_go_eligible(
-        self, data: dict, run_dir: Path, issue_id: str, show_json: str
-    ) -> int:
-        import os
-
-        script_path = run_dir / "ll-issues"
-        script_path.write_text(
-            '#!/bin/sh\nif [ "$1" = "show" ]; then echo \'' + show_json + "'; fi\n"
-        )
-        script_path.chmod(0o755)
-        env = {"PATH": f"{run_dir}:{os.environ['PATH']}"}
-        script = data["states"]["check_go_no_go_eligible"]["action"]
-        script = script.replace("${captured.input.output}", issue_id)
-        script = script.replace("${context.run_dir}", str(run_dir))
-        return subprocess.run(["bash", "-c", script], cwd=run_dir, env=env).returncode
-
-    def test_check_go_no_go_eligible_one_shot_and_reason_scoped(
-        self, data: dict, tmp_path: Path
-    ) -> None:
-        """BUG-3390: fires only for a deferred/oversized_atomic issue, exactly once."""
-        deferred = '{"raw_status": "deferred", "deferred_reason": "oversized_atomic"}'
-        marker = tmp_path / "autodev-go-no-go-attempted-FEAT-1"
-        assert self._run_go_no_go_eligible(data, tmp_path, "FEAT-1", deferred) == 0
-        assert marker.exists()
-        assert self._run_go_no_go_eligible(data, tmp_path, "FEAT-1", deferred) == 1
-        other = '{"raw_status": "deferred", "deferred_reason": "design_gate_failed"}'
-        assert self._run_go_no_go_eligible(data, tmp_path, "FEAT-2", other) == 1
-        assert not (tmp_path / "autodev-go-no-go-attempted-FEAT-2").exists()
-
-    def test_reopen_waived_reopens_stages_and_rearms_inflight(
-        self, data: dict, tmp_path: Path
-    ) -> None:
-        """BUG-3390: on a stamped waiver the oversized_atomic ledger line is dropped,
-        the issue is staged, and the inflight sentinel is re-armed."""
-        import os
-
-        script_path = tmp_path / "ll-issues"
-        script_path.write_text("#!/bin/sh\nexit 0\n")
-        script_path.chmod(0o755)
-        env = {"PATH": f"{tmp_path}:{os.environ['PATH']}"}
-        (tmp_path / "autodev-skipped.txt").write_text(
-            "FEAT-1  oversized_atomic\nFEAT-2  low_readiness\n"
-        )
-        script = data["states"]["reopen_waived"]["action"]
-        script = script.replace("${captured.input.output}", "FEAT-1")
-        script = script.replace("${context.run_dir}", str(tmp_path))
-        result = subprocess.run(
-            ["bash", "-c", script], cwd=tmp_path, capture_output=True, text=True, env=env
-        )
-        assert result.returncode == 0, result.stderr
-        assert (tmp_path / "autodev-skipped.txt").read_text() == "FEAT-2  low_readiness\n"
-        assert "FEAT-1" in (tmp_path / "autodev-staged.txt").read_text()
-        assert (tmp_path / "autodev-inflight").read_text() == "FEAT-1"
-
-    def test_check_reconcile_needed_routes_through_guard2_verdict(self, data: dict) -> None:
-        """BUG-2734: check_reconcile_needed's on_no must now route towards
-        check_guard2_verdict instead of straight to recheck_after_size_review, so
-        the guard-2 shape gets a chance at remediation before the low_readiness
-        skip. BUG-2744 interposed check_size_review_ran_this_pass, a runtime
-        marker gate that bypasses check_guard2_verdict when run_size_review
-        didn't execute for the current issue this pass — assert the full chain."""
-        state = data["states"].get("check_reconcile_needed", {})
-        assert state.get("on_no") == "check_size_review_ran_this_pass"
-
-        gate_state = data["states"].get("check_size_review_ran_this_pass", {})
-        assert gate_state.get("on_yes") == "check_guard2_verdict"
-        assert gate_state.get("on_no") == "recheck_after_size_review"
-        # BUG-3390: fails CLOSED on a marker-check error.
-        assert gate_state.get("on_error") == "recheck_after_size_review"
-
-    def test_size_review_ran_marker_provenance(self, data: dict) -> None:
-        """BUG-3390: guard-2 may only evaluate captured.size_review_output when
-        run_size_review ran THIS pass. Only its sole successor writes the positive
-        marker, the gate requires it, dequeue_next clears it, and the old negative
-        marker (which the wire/spike provenances never wrote) is gone."""
-        states = data["states"]
-        marker = "autodev-size-review-ran-this-pass"
-        writers = [
-            name
-            for name, s in states.items()
-            if f"touch ${{context.run_dir}}/{marker}" in s.get("action", "")
-        ]
-        assert writers == ["count_repair_cycle_size_review"]
-        size_review = states["run_size_review"]
-        assert size_review.get("next") == "count_repair_cycle_size_review"
-        assert size_review.get("on_error") == "count_repair_cycle_size_review"
-        assert marker in states["check_size_review_ran_this_pass"]["action"]
-        assert f"rm -f ${{context.run_dir}}/{marker}" in states["dequeue_next"]["action"]
-        stale = [
-            name
-            for name, s in states.items()
-            if "size-review-skipped-this-pass" in s.get("action", "")
-        ]
-        assert not stale, stale
-
-    def test_check_size_review_ran_this_pass_requires_positive_marker(
-        self, data: dict, tmp_path: Path
-    ) -> None:
-        """BUG-3390: absent marker → exit 1 (recheck); present → exit 0 and the marker
-        is left in place for a same-pass re-entry."""
-        script = data["states"]["check_size_review_ran_this_pass"]["action"]
-        script = script.replace("${context.run_dir}", str(tmp_path))
-        assert subprocess.run(["bash", "-c", script], cwd=tmp_path).returncode == 1
-        marker = tmp_path / "autodev-size-review-ran-this-pass"
-        marker.touch()
-        assert subprocess.run(["bash", "-c", script], cwd=tmp_path).returncode == 0
-        assert marker.exists()
-
-    def test_run_size_review_captures_output(self, data: dict) -> None:
-        """BUG-2734: run_size_review must capture its status-line output so
-        check_guard2_verdict can detect the guard-2 verdict without re-running
-        size-review."""
-        state = data["states"].get("run_size_review", {})
-        assert state.get("capture") == "size_review_output"
-        assert state.get("action_type") == "slash_command"
-        assert "/ll:issue-size-review" in state.get("action", "")
-        assert "--auto" in state.get("action", "")
-
     def test_implement_current_threads_skip_learning_gate(self, data: dict) -> None:
         """implement_current must append --skip-learning-gate when the skip context is set,
         for parity with `ll-auto --skip-learning-gate`."""
@@ -8288,28 +8017,27 @@ class TestAutodevLoop:
         assert data["states"]["route_refine_success"]["route"]["READY"] == "check_passed"
 
     def test_check_passed_on_yes_routes_to_implement_current(self, data: dict) -> None:
-        """On threshold pass, proceed directly to implementation (decision_needed already handled
-        by the child's check_decision_before_done; autodev re-checks the flag in
-        select_obligation_pre_implement)."""
+        """On threshold pass, proceed to implementation through the proof-gate guard
+        (ENH-3623: the pre-implement obligation selector moved into the preparation
+        policy, so check_passed routes straight to check_proof_defer_or_implement)."""
         state = data["states"].get("check_passed", {})
-        # ENH-3575/ENH-3610: routes through the pre-implement obligation selector, whose
-        # `_` route reaches the proof-gate guard on the way to implementation.
-        assert state.get("on_yes") == "select_obligation_pre_implement"
-        selector = data["states"]["select_obligation_pre_implement"]
-        assert selector["route"]["_"] == "check_proof_defer_or_implement"
+        assert state.get("on_yes") == "check_proof_defer_or_implement"
+        guard = data["states"]["check_proof_defer_or_implement"]
+        assert guard["route"]["PROOF_CLEAR"] == "implement_current"
 
-    def test_check_passed_on_no_routes_to_post_refine_selector(self, data: dict) -> None:
-        """On threshold fail, the post-refine obligation selector runs before the
-        spike check / size-review (ENH-3610; was triage_outcome_failure)."""
+    def test_check_passed_on_no_routes_to_skip_inflight(self, data: dict) -> None:
+        """ENH-3623: on threshold fail the issue is skipped (the second-pass ladder
+        that used to follow now runs inside prepare-issue before check_passed)."""
         state = data["states"].get("check_passed", {})
-        assert state.get("on_no") == "select_obligation_post_refine"
+        assert state.get("on_no") == "skip_inflight"
+        assert state.get("on_cannot_judge") == "skip_inflight"
 
-    def test_check_passed_on_error_routes_to_detect_children(self, data: dict) -> None:
-        """BUG-3294: an unevaluable readiness check (e.g. unresolvable issue ID) degrades
-        open to the size-review path rather than aborting the run."""
+    def test_check_passed_on_error_routes_to_skip_inflight_infra(self, data: dict) -> None:
+        """BUG-3294/ENH-3623: an unevaluable readiness check (e.g. unresolvable issue ID)
+        ledgers an infra skip and advances the queue rather than aborting the run."""
         state = data["states"].get("check_passed", {})
-        assert state.get("on_error") == "detect_children", (
-            f"check_passed.on_error should be 'detect_children', got {state.get('on_error')!r}"
+        assert state.get("on_error") == "skip_inflight_infra", (
+            f"check_passed.on_error should be 'skip_inflight_infra', got {state.get('on_error')!r}"
         )
 
     def test_enqueue_children_prepends_to_autodev_queue(self, data: dict) -> None:
@@ -8326,74 +8054,6 @@ class TestAutodevLoop:
         detect_action = data["states"].get("detect_children", {}).get("action", "")
         assert "Decomposed from" in detect_action
 
-    def test_broke_down_flag_copied_to_autodev_namespace(self, data: dict) -> None:
-        """autodev must copy refine-broke-down to autodev-broke-down after the sub-loop
-        returns, and read the copy for its own routing."""
-        # Some state must cp the source file to autodev-broke-down.
-        copied = any(
-            "autodev-broke-down" in s.get("action", "")
-            and "refine-broke-down" in s.get("action", "")
-            for s in data["states"].values()
-        )
-        assert copied, (
-            "No state copies refine-broke-down to autodev-broke-down; "
-            "cross-loop handshake must be namespaced into autodev-*"
-        )
-
-    def test_check_broke_down_reads_autodev_namespaced_flag(self, data: dict) -> None:
-        """check_broke_down must read the autodev-namespaced copy, not the source file."""
-        state = data["states"].get("check_broke_down", {})
-        action = state.get("action", "")
-        assert "autodev-broke-down" in action
-        # BUG-1183: the shortcut must also depend on a non-empty children file,
-        # not the flag alone.
-        assert "autodev-new-children.txt" in action
-
-    def test_check_broke_down_evaluate_output_numeric_lt_1(self, data: dict) -> None:
-        """check_broke_down must use output_numeric lt 1 to gate the shortcut."""
-        state = data["states"].get("check_broke_down", {})
-        evaluate = state.get("evaluate", {})
-        assert evaluate.get("type") == "output_numeric", (
-            f"check_broke_down evaluate.type should be 'output_numeric', got {evaluate.get('type')!r}"
-        )
-        assert evaluate.get("operator") == "lt", (
-            f"check_broke_down evaluate.operator should be 'lt', got {evaluate.get('operator')!r}"
-        )
-        assert evaluate.get("target") == 1, (
-            f"check_broke_down evaluate.target should be 1, got {evaluate.get('target')!r}"
-        )
-
-    def test_check_broke_down_on_yes_routes_to_recheck_scores(self, data: dict) -> None:
-        """check_broke_down.on_yes (flag=0 OR no children) routes through the
-        BUG-2729 parent-resolved gate, which falls through to recheck_scores on
-        unresolved parents and recovers sub-loop children on resolved ones."""
-        state = data["states"].get("check_broke_down", {})
-        assert state.get("on_yes") == "check_parent_resolved", (
-            f"check_broke_down.on_yes should be 'check_parent_resolved', got {state.get('on_yes')!r}"
-        )
-        gate = data["states"].get("check_parent_resolved", {})
-        assert gate.get("on_no") == "recheck_scores", (
-            "check_parent_resolved must fall through to recheck_scores on unresolved parents"
-        )
-        assert gate.get("on_yes") == "recover_subloop_children", (
-            "check_parent_resolved.on_yes must route to recover_subloop_children"
-        )
-
-    def test_check_broke_down_on_no_routes_to_enqueue_or_skip(self, data: dict) -> None:
-        """check_broke_down.on_no (flag=1 AND children exist) must route to enqueue_or_skip."""
-        state = data["states"].get("check_broke_down", {})
-        assert state.get("on_no") == "enqueue_or_skip", (
-            f"check_broke_down.on_no should be 'enqueue_or_skip', got {state.get('on_no')!r}"
-        )
-
-    def test_check_broke_down_on_error_routes_to_recheck_scores(self, data: dict) -> None:
-        """check_broke_down.on_error must route through the parent-resolved gate
-        (fail-safe: treat as not broken down)."""
-        state = data["states"].get("check_broke_down", {})
-        assert state.get("on_error") == "check_parent_resolved", (
-            f"check_broke_down.on_error should be 'check_parent_resolved', got {state.get('on_error')!r}"
-        )
-
     def test_recover_subloop_children_recovers_by_parent_frontmatter(self, data: dict) -> None:
         """BUG-2729: recover_subloop_children must match children by frontmatter
         parent field, prepend them to the queue, and never set-status the parent."""
@@ -8409,10 +8069,11 @@ class TestAutodevLoop:
         assert state.get("next") == "dequeue_next"
 
     def test_child_detection_matches_parent_frontmatter(self, data: dict) -> None:
-        """BUG-2729: detect_children and enqueue_or_skip must match provenance on
-        the frontmatter parent: line (deterministic), not only the exact prose
-        marker — 'Decomposed from [[ID]]' wiki-link drift defeated the literal grep."""
-        for name in ("detect_children", "enqueue_or_skip"):
+        """BUG-2729: detect_children must match provenance on the frontmatter parent:
+        line (deterministic), not only the exact prose marker — 'Decomposed from
+        [[ID]]' wiki-link drift defeated the literal grep. (ENH-3623 removed
+        enqueue_or_skip; the preparation policy owns the size-review child scan.)"""
+        for name in ("detect_children",):
             action = data["states"].get(name, {}).get("action", "")
             assert "^parent:" in action, (
                 f"{name} must grep the frontmatter parent: line for child provenance"
@@ -8424,10 +8085,11 @@ class TestAutodevLoop:
     def test_defer_sites_guard_resolved_status(self, data: dict) -> None:
         """BUG-2729: every automation defer site must check current status and
         never flip an already done/cancelled issue to deferred."""
+        # ENH-3623: the ladder's deferrals (low_readiness, decision_unresolved, ...)
+        # are written by `ll-issues prep apply` in prepare-issue.
         for name in (
-            "recheck_after_size_review",
             "mark_gate_blocked",
-            "record_reentry_exhausted",  # ENH-3611: replaced record_decision_unresolved
+            "defer_gated",
         ):
             action = data["states"].get(name, {}).get("action", "")
             assert "set-status" in action, f"{name} should still own its defer transition"
@@ -8464,7 +8126,7 @@ class TestAutodevLoop:
 
     # BUG-1226: autodev-inflight handshake covers timeouts outside the
     # executor flush race window (Part 1). dequeue_next records the in-flight
-    # issue ID; enqueue_or_skip and enqueue_children clear it on resolution;
+    # issue ID; enqueue_children (among others) clears it on resolution;
     # init resets it at loop start; done surfaces it when non-empty so the
     # user knows which issue to re-queue.
 
@@ -8484,80 +8146,6 @@ class TestAutodevLoop:
         assert "autodev-inflight" in action, (
             "dequeue_next must write the dequeued issue ID to autodev-inflight "
             "so the loop can surface mid-flight issues on timeout (BUG-1226)"
-        )
-
-    def test_enqueue_or_skip_uses_shell_exit_fragment(self, data: dict) -> None:
-        """enqueue_or_skip must use shell_exit fragment for conditional routing (BUG-1230)."""
-        state = data["states"].get("enqueue_or_skip", {})
-        assert state.get("fragment") == "shell_exit", (
-            f"enqueue_or_skip.fragment should be 'shell_exit', got {state.get('fragment')!r}"
-        )
-
-    def test_enqueue_or_skip_on_yes_routes_to_dequeue_next(self, data: dict) -> None:
-        """enqueue_or_skip.on_yes (children found) must route to dequeue_next."""
-        state = data["states"].get("enqueue_or_skip", {})
-        assert state.get("on_yes") == "dequeue_next", (
-            f"enqueue_or_skip.on_yes should be 'dequeue_next', got {state.get('on_yes')!r}"
-        )
-
-    def test_enqueue_or_skip_on_no_routes_to_recheck_after_size_review(self, data: dict) -> None:
-        """enqueue_or_skip.on_no (no children) routes through the BUG-2729
-        parent-resolved gate, then the post-size-review obligation selector (ENH-3611;
-        it replaced BUG-2654's check_spike_needed_before_skip), before
-        recheck_after_size_review (BUG-1230 skip path; the selector's `_` falls through
-        to recheck_after_size_review via check_reconcile_needed)."""
-        state = data["states"].get("enqueue_or_skip", {})
-        assert state.get("on_no") == "check_parent_resolved_post_size_review", (
-            f"enqueue_or_skip.on_no should be 'check_parent_resolved_post_size_review', "
-            f"got {state.get('on_no')!r}"
-        )
-        resolved_gate = data["states"].get("check_parent_resolved_post_size_review", {})
-        # ENH-3611: fronted by the post-size-review selector, whose `_` keeps the gate.
-        assert resolved_gate.get("on_no") == "select_obligation_post_size_review"
-        selector = data["states"]["select_obligation_post_size_review"]
-        assert selector["route"]["_"] == "check_reconcile_needed", (
-            "the post-size-review selector's `_` must reach the ENH-2689 reconcile gate"
-        )
-        assert "check_spike_needed_before_skip" not in data["states"]
-        assert resolved_gate.get("on_yes") == "recover_subloop_children", (
-            "check_parent_resolved_post_size_review.on_yes must route to recover_subloop_children"
-        )
-        reconcile_gate = data["states"].get("check_reconcile_needed", {})
-        assert reconcile_gate.get("on_no") == "check_size_review_ran_this_pass", (
-            "BUG-2734: check_reconcile_needed's no-plateau edge now routes through "
-            "check_guard2_verdict (which itself falls through to "
-            "recheck_after_size_review on no guard-2 match) before the BUG-1230 leaf-skip. "
-            "BUG-2744: check_size_review_ran_this_pass is now interposed to bypass "
-            "check_guard2_verdict when run_size_review didn't run this pass"
-        )
-        marker_gate = data["states"].get("check_size_review_ran_this_pass", {})
-        assert marker_gate.get("on_yes") == "check_guard2_verdict", (
-            "check_size_review_ran_this_pass.on_yes (no shortcut marker) must still "
-            "reach check_guard2_verdict"
-        )
-        assert marker_gate.get("on_no") == "recheck_after_size_review", (
-            "check_size_review_ran_this_pass.on_no (shortcut marker present) must "
-            "bypass check_guard2_verdict straight to recheck_after_size_review"
-        )
-        guard2_gate = data["states"].get("check_guard2_verdict", {})
-        assert guard2_gate.get("on_no") == "check_guard2_score_fallback", (
-            "BUG-2752: check_guard2_verdict's no-match edge now routes through the "
-            "score-only fallback probe before falling through to recheck_after_size_review"
-        )
-        fallback_gate = data["states"].get("check_guard2_score_fallback", {})
-        assert fallback_gate.get("on_no") == "recheck_after_size_review", (
-            "check_guard2_score_fallback must preserve the BUG-1230 leaf-skip by "
-            "falling through to recheck_after_size_review on no score match"
-        )
-
-    def test_enqueue_or_skip_clears_autodev_inflight(self, data: dict) -> None:
-        """enqueue_or_skip must clear autodev-inflight in the children-found branch (BUG-1226/1230).
-        The skip-path inflight clear moved to recheck_after_size_review (BUG-1230)."""
-        state = data["states"].get("enqueue_or_skip", {})
-        action = state.get("action", "")
-        assert "autodev-inflight" in action, (
-            "enqueue_or_skip must clear autodev-inflight in the children-found branch (BUG-1226); "
-            "the skip-path clear is handled by recheck_after_size_review (BUG-1230)"
         )
 
     def test_enqueue_children_clears_autodev_inflight(self, data: dict) -> None:
@@ -8582,15 +8170,6 @@ class TestAutodevLoop:
         assert "git mv" not in action, "the completed/ move is owned by finalize-decomposition now"
         assert "WARN" in action, "CLI failure must degrade to a WARN, not fail the state"
 
-    def test_enqueue_or_skip_calls_finalize_decomposition(self, data: dict) -> None:
-        """ENH-2615: enqueue_or_skip's children-found branch must finalize the
-        decomposed parent via the CLI, same as enqueue_children."""
-        action = data["states"].get("enqueue_or_skip", {}).get("action", "")
-        children_branch = action.split("else")[0] if "else" in action else action
-        assert "ll-issues finalize-decomposition" in children_branch
-        assert "--children-file" in children_branch
-        assert "git mv" not in action, "the completed/ move is owned by finalize-decomposition now"
-
     def test_done_surfaces_autodev_inflight_warning(self, data: dict, tmp_path: Path) -> None:
         """finalize_done must read autodev-inflight and emit a warning when non-empty.
 
@@ -8608,181 +8187,6 @@ class TestAutodevLoop:
         )
         unverified = [ln for ln in out.splitlines() if ln.startswith("Unverified")]
         assert unverified and "FEAT-77  inflight_at_finalize" in unverified[0]
-
-    # BUG-1230: recheck_after_size_review — score check after size-review
-    # declines to decompose. Routes to implement_current on pass so leaf-sized
-    # ready issues are not silently skipped.
-
-    def test_recheck_after_size_review_uses_shell_exit_fragment(self, data: dict) -> None:
-        """recheck_after_size_review must use shell_exit fragment."""
-        state = data["states"].get("recheck_after_size_review", {})
-        assert state.get("fragment") == "harness_exit", (
-            f"recheck_after_size_review.fragment should be 'harness_exit', "
-            f"got {state.get('fragment')!r}"
-        )
-
-    def test_recheck_after_size_review_on_yes_routes_to_pre_implement_selector(
-        self, data: dict
-    ) -> None:
-        """recheck_after_size_review.on_yes (scores pass) must route to
-        select_obligation_pre_implement."""
-        state = data["states"].get("recheck_after_size_review", {})
-        assert state.get("on_yes") == "select_obligation_pre_implement", (
-            f"recheck_after_size_review.on_yes should be 'select_obligation_pre_implement', "
-            f"got {state.get('on_yes')!r}"
-        )
-
-    def test_recheck_after_size_review_on_no_routes_to_pre_deferral_gate(self, data: dict) -> None:
-        """BUG-2803: recheck_after_size_review.on_no (scores fail) must route through
-        check_pre_deferral_remedy so an armed-but-undeferred issue gets its remedy
-        dispatched instead of the queue silently advancing."""
-        state = data["states"].get("recheck_after_size_review", {})
-        assert state.get("on_no") == "check_pre_deferral_remedy", (
-            f"recheck_after_size_review.on_no should be 'check_pre_deferral_remedy', "
-            f"got {state.get('on_no')!r}"
-        )
-
-    def test_pre_deferral_remedy_gate_routing(self, data: dict) -> None:
-        """BUG-2803: check_pre_deferral_remedy dispatches an armed remedy and
-        otherwise preserves the pre-fix advance-the-queue behaviour.
-        BUG-3002: on_yes now routes through dispatch_design_remedy first so
-        the refine_design token can reach refine_for_design."""
-        gate = data["states"].get("check_pre_deferral_remedy", {})
-        assert gate.get("fragment") == "shell_exit"
-        assert "autodev-pre-deferral-remedy.txt" in gate.get("action", "")
-        assert gate.get("on_yes") == "dispatch_design_remedy"
-        assert gate.get("on_no") == "dequeue_next"
-        assert gate.get("on_error") == "dequeue_next"
-
-    def test_pre_deferral_remedy_dispatch_routing(self, data: dict) -> None:
-        """BUG-2803: dispatch_pre_deferral_remedy consumes the remedy handshake
-        file and routes spike → refine_current (ENH-3611: child re-entry; no spike
-        counter increment, no pre-spike snapshot) and anything else → reconcile_current."""
-        state = data["states"].get("dispatch_pre_deferral_remedy", {})
-        action = state.get("action", "")
-        assert "autodev-pre-deferral-remedy.txt" in action
-        assert "rm -f" in action, "dispatch must consume the remedy handshake file"
-        assert "autodev-pre-spike-readiness.txt" not in action
-        assert "refine-status" in action, "spike leg must check the lifetime refine cap"
-        assert state.get("on_yes") == "refine_current"
-        assert state.get("on_no") == "reconcile_current"
-        assert state.get("on_error") == "reconcile_current"
-
-    def test_recheck_after_size_review_arms_remedy_before_low_readiness(self, data: dict) -> None:
-        """BUG-2803: the low_readiness write must be preceded by a one-shot guard
-        that arms a spike/reconcile remedy when neither spike_attempted nor
-        reconcile_attempted is set, bounded by a run-dir fired marker and
-        backfilling an empty pre-readiness snapshot so the post-remedy revisit
-        defers as readiness_stagnated (FEAT-2751), not low_readiness."""
-        action = data["states"].get("recheck_after_size_review", {}).get("action", "")
-        assert "autodev-pre-deferral-remedy-fired" in action
-        assert "spike_attempted" in action and "reconcile_attempted" in action
-        assert "score_ambiguity" in action, (
-            "remedy selection must be ambiguity-aware (spike when ambiguity-dominant)"
-        )
-        assert action.index("autodev-pre-deferral-remedy-fired") < action.index(
-            "--reason low_readiness"
-        ), "the remedy guard must run BEFORE the low_readiness deferral write"
-        # Snapshot backfill so AC-3 (readiness_stagnated on repeat failure) holds
-        # for fresh issues whose dequeue-time snapshot was empty.
-        assert (
-            "printf '%s' \"$CUR_CONFIDENCE\" > ${context.run_dir}/autodev-pre-readiness.txt"
-            in action
-        )
-
-    def test_recheck_after_size_review_measurement_gate_precedes_ambiguity_fallback(
-        self, data: dict
-    ) -> None:
-        """ENH-2978: the unresolved measurement/proof-gate body-text check must
-        run before the score_ambiguity subscore fallback within the BUG-2803
-        remedy-arming block, and its marker literals must be present."""
-        action = data["states"].get("recheck_after_size_review", {}).get("action", "")
-        assert "GATE_MARKER" in action
-        # ENH-3575: the phrase literals live once, in cli/issues/check_gate.py
-        # (asserted in test_autodev_loop.py); the state just calls the helper.
-        assert "ll-issues check-gate" in action
-        assert action.index("GATE_MARKER") < action.index("amb = int(d.get('score_ambiguity')"), (
-            "the measurement-gate check must run before the ambiguity-subscore fallback"
-        )
-
-    def test_dequeue_next_clears_pre_deferral_remedy_files(self, data: dict) -> None:
-        """BUG-2803: dequeue_next must clear the pre-deferral remedy handshake and
-        fired-marker files so they never leak across issues within a run."""
-        action = data["states"].get("dequeue_next", {}).get("action", "")
-        assert "autodev-pre-deferral-remedy.txt" in action
-        assert "autodev-pre-deferral-remedy-fired" in action
-
-    def test_check_reconcile_needed_fires_for_fresh_below_threshold(self, data: dict) -> None:
-        """BUG-2803: check_reconcile_needed must treat an empty pre-readiness
-        snapshot with a below-threshold current score as reconcile-eligible
-        (fresh issues are no longer excluded by the pre != '' plateau guard),
-        and backfill the snapshot so the stagnation discriminator can apply."""
-        action = data["states"].get("check_reconcile_needed", {}).get("action", "")
-        assert "fresh_below" in action
-        # BUG-3339: the raw `${context.readiness_threshold}` literal was
-        # replaced by a shell-quoted env binding read via os.environ, closing
-        # the class-A shell/Python-literal injection surface.
-        assert "${context.readiness_threshold:shell}" in action
-        assert "LL_ARG_READINESS_THRESHOLD" in action
-        # ENH-2992 OR'd a third `contradiction` term onto this expression; the
-        # BUG-2803 pair must still be present and still be OR'd together.
-        assert "plateau or fresh_below" in action
-
-    def test_check_reconcile_needed_fires_on_contradiction(self, data: dict) -> None:
-        """ENH-2992: the gate also fires on a standing `⚠ Superseded` marker in
-        a directive section, read from `ll-issues format-check --format json`'s
-        public `superseded_marker_count` key — deterministic Python, no LLM in
-        the routing chain (MR-1). The term is deliberately NOT gated by
-        `reconcile_attempted`, and is bounded by a reconcile-scoped counter."""
-        action = data["states"].get("check_reconcile_needed", {}).get("action", "")
-        assert "ll-issues format-check" in action
-        assert "superseded_marker_count" in action
-        assert "plateau or fresh_below or contradiction" in action
-        assert "autodev-contradiction-reconcile-count.txt" in action
-        assert "autodev-contradiction-reconcile-armed" in action
-
-    def test_count_repair_cycle_reconcile_maintains_contradiction_budget(self, data: dict) -> None:
-        """ENH-2992: the shared FEAT-2751 increment is untouched (the stagnation
-        backstop still needs it) and a reconcile-scoped counter plus per-issue
-        stamp ride alongside it, consumed from the predicate's armed marker."""
-        action = data["states"].get("count_repair_cycle_reconcile", {}).get("action", "")
-        assert "autodev-repair-cycle-count.txt" in action, "shared counter must stay"
-        assert "autodev-contradiction-reconcile-armed" in action
-        assert "autodev-contradiction-reconcile-count.txt" in action
-        assert "autodev-contradiction-reconcile-$ID" in action
-
-    def test_dequeue_next_resets_contradiction_budget(self, data: dict) -> None:
-        """ENH-2992: the cap of 2 is per-issue-per-run. Without a reset here the
-        queue-head issue's fires would exhaust every later issue's budget. The
-        per-issue `-$ID` stamp is filename-scoped and deliberately NOT reset."""
-        action = data["states"].get("dequeue_next", {}).get("action", "")
-        assert "autodev-contradiction-reconcile-count.txt" in action
-        assert "rm -f ${context.run_dir}/autodev-contradiction-reconcile-armed" in action
-        assert "rm -f ${context.run_dir}/autodev-contradiction-reconcile-$ID" not in action
-
-    def test_recheck_after_size_review_clears_autodev_inflight(self, data: dict) -> None:
-        """recheck_after_size_review must clear autodev-inflight on the skip path."""
-        state = data["states"].get("recheck_after_size_review", {})
-        action = state.get("action", "")
-        assert "autodev-inflight" in action, (
-            "recheck_after_size_review must clear autodev-inflight when scores fail "
-            "so done does not warn about a stale in-flight entry (BUG-1230)"
-        )
-
-    def test_recheck_scores_on_yes_routes_to_pre_implement_selector(self, data: dict) -> None:
-        """recheck_scores.on_yes (scores pass) must route to select_obligation_pre_implement."""
-        state = data["states"].get("recheck_scores", {})
-        assert state.get("on_yes") == "select_obligation_pre_implement", (
-            f"recheck_scores.on_yes should be 'select_obligation_pre_implement', "
-            f"got {state.get('on_yes')!r}"
-        )
-
-    def test_recheck_scores_failure_edges_route_to_run_size_review(self, data: dict) -> None:
-        """ENH-3610: recheck_scores.on_no / on_error / on_cannot_judge go straight to
-        run_size_review (the pre-size-review decision gate was removed)."""
-        state = data["states"].get("recheck_scores", {})
-        for edge in ("on_no", "on_error", "on_cannot_judge"):
-            assert state.get(edge) == "run_size_review", (edge, state.get(edge))
 
     def test_spike_states_stay_deleted_from_autodev(self, data: dict) -> None:
         """ENH-3611: the spike triage (check_spike_needed -> run_spike -> verdict router
@@ -8804,12 +8208,6 @@ class TestAutodevLoop:
         ):
             assert name not in data["states"], f"{name} was removed from autodev by ENH-3611"
 
-    def test_check_missing_artifacts_is_post_refine_selector_fallthrough(self, data: dict) -> None:
-        """ENH-3611: select_obligation_post_refine's `_` route (formerly
-        check_spike_needed) now lands on check_missing_artifacts directly."""
-        selector = data["states"]["select_obligation_post_refine"]
-        assert selector["route"]["_"] == "check_missing_artifacts"
-
     def test_child_owns_spike_chain(self) -> None:
         """The child's spike states keep ENH-2640's contract."""
         child = yaml.safe_load((BUILTIN_LOOPS_DIR / "refine-to-ready-issue.yaml").read_text())
@@ -8821,33 +8219,6 @@ class TestAutodevLoop:
         assert states["run_spike"]["fragment"] == "with_rate_limit_handling"
         assert states["route_spike_verdict"]["route"]["PROVEN"] == "confidence_check"
 
-    def test_enqueue_or_skip_on_no_routes_to_post_size_review_selector(self, data: dict) -> None:
-        """BUG-2654 (reworked by ENH-3611): enqueue_or_skip.on_no (no children) reaches the
-        post-size-review selector - via the BUG-2729 parent-resolved gate - before any
-        low_readiness skip; its `_` falls through to the ENH-2689 reconcile gate."""
-        state = data["states"].get("enqueue_or_skip", {})
-        assert state.get("on_no") == "check_parent_resolved_post_size_review"
-        resolved_gate = data["states"].get("check_parent_resolved_post_size_review", {})
-        assert resolved_gate.get("on_no") == "select_obligation_post_size_review"
-        selector = data["states"]["select_obligation_post_size_review"]
-        assert selector["route"]["PROOF"] == "refine_current"
-        assert selector["route"]["_"] == "check_reconcile_needed"
-        assert selector["route"]["_error"] == "recheck_after_size_review"
-
-    # ENH-2689: post-spike reconcile plateau states — check_reconcile_needed
-    # detects a bit-identical pre/post-spike Readiness plateau and routes one
-    # /ll:reconcile-issue pass before the low_readiness deferral.
-
-    def test_reconcile_states_exist(self, data: dict) -> None:
-        """The three ENH-2689 reconcile states must be present."""
-        states = data.get("states", {})
-        for name in (
-            "check_reconcile_needed",
-            "reconcile_current",
-            "rerun_confidence",
-        ):
-            assert name in states, f"{name} missing from autodev.yaml (ENH-2689)"
-
     def test_spike_gates_no_longer_snapshot_pre_spike_readiness(self, data: dict) -> None:
         """ENH-3611: the spike guards that wrote autodev-pre-spike-readiness.txt are
         removed; no autodev state reads or writes that snapshot any more."""
@@ -8855,112 +8226,6 @@ class TestAutodevLoop:
             assert gate not in data["states"]
         for name, state in data["states"].items():
             assert "autodev-pre-spike-readiness.txt" not in state.get("action", ""), name
-
-    def test_check_reconcile_needed_predicate_reads_snapshot_and_guard(self, data: dict) -> None:
-        """Predicate is a two-condition one-shot: pre-refine snapshot (ENH-3611: the
-        dequeue-time autodev-pre-readiness.txt is now the only baseline) == current
-        Readiness AND NOT reconcile_attempted."""
-        state = data["states"].get("check_reconcile_needed", {})
-        action = state.get("action", "")
-        assert state.get("fragment") == "shell_exit"
-        assert "autodev-pre-readiness.txt" in action, (
-            "check_reconcile_needed must read the pre-refine snapshot"
-        )
-        assert "confidence" in action, "must compare against current confidence"
-        assert "reconcile_attempted" in action, (
-            "check_reconcile_needed must read reconcile_attempted for the one-shot guard"
-        )
-
-    def test_check_reconcile_needed_routing(self, data: dict) -> None:
-        """on_yes → reconcile_current; on_no → check_size_review_ran_this_pass
-        (BUG-2744, gating check_guard2_verdict, BUG-2734, itself falling through
-        to recheck_after_size_review); on_error → recheck_after_size_review
-        directly (non-plateau issues fall through unchanged, AC 4)."""
-        state = data["states"].get("check_reconcile_needed", {})
-        assert state.get("on_yes") == "reconcile_current"
-        assert state.get("on_no") == "check_size_review_ran_this_pass"
-        assert state.get("on_error") == "recheck_after_size_review"
-
-    def test_reconcile_current_invokes_reconcile_skill(self, data: dict) -> None:
-        """reconcile_current calls /ll:reconcile-issue and routes to the rerun via the
-        FEAT-2751 repair-cycle counter state."""
-        state = data["states"].get("reconcile_current", {})
-        assert "/ll:reconcile-issue" in state.get("action", "")
-        assert state.get("action_type") == "slash_command"
-        assert state.get("fragment") == "with_rate_limit_handling"
-        assert state.get("next") == "count_repair_cycle_reconcile"
-        assert state.get("on_error") == "count_repair_cycle_reconcile"
-        assert state.get("on_rate_limit_exhausted") == "finalize_rate_limited"
-        counter_state = data["states"].get("count_repair_cycle_reconcile", {})
-        assert counter_state.get("next") == "clear_scores"
-        assert counter_state.get("on_error") == "clear_scores"
-
-    def test_rerun_confidence_reconcile_routing(self, data: dict) -> None:
-        """After reconcile, re-score once, then fall to recheck_after_size_review."""
-        state = data["states"].get("rerun_confidence", {})
-        assert "/ll:confidence-check" in state.get("action", "")
-        assert state.get("fragment") == "with_rate_limit_handling"
-        assert state.get("next") == "check_scores_present"
-        assert state.get("on_error") == "check_scores_present"
-        assert state.get("on_rate_limit_exhausted") == "finalize_rate_limited"
-
-    def test_check_missing_artifacts_uses_shell_exit_fragment(self, data: dict) -> None:
-        """check_missing_artifacts must use shell_exit fragment to route on exit code."""
-        state = data["states"].get("check_missing_artifacts", {})
-        assert state.get("fragment") == "shell_exit", (
-            f"check_missing_artifacts.fragment should be 'shell_exit', got {state.get('fragment')!r}"
-        )
-
-    def test_check_missing_artifacts_on_yes_routes_to_run_wire(self, data: dict) -> None:
-        """check_missing_artifacts.on_yes (missing_artifacts=true) must route to run_wire."""
-        state = data["states"].get("check_missing_artifacts", {})
-        assert state.get("on_yes") == "run_wire", (
-            f"check_missing_artifacts.on_yes should be 'run_wire', got {state.get('on_yes')!r}"
-        )
-
-    def test_check_missing_artifacts_on_no_routes_to_detect_children(self, data: dict) -> None:
-        """check_missing_artifacts.on_no (no missing artifacts) must route to detect_children."""
-        state = data["states"].get("check_missing_artifacts", {})
-        assert state.get("on_no") == "detect_children", (
-            f"check_missing_artifacts.on_no should be 'detect_children', got {state.get('on_no')!r}"
-        )
-
-    def test_check_missing_artifacts_on_error_routes_to_detect_children(self, data: dict) -> None:
-        """BUG-3294: an unevaluable missing_artifacts flag degrades open to the size-review
-        path (mirrors on_no) rather than aborting the run."""
-        state = data["states"].get("check_missing_artifacts", {})
-        assert state.get("on_error") == "detect_children", (
-            f"check_missing_artifacts.on_error should be 'detect_children', got "
-            f"{state.get('on_error')!r}"
-        )
-
-    def test_run_wire_uses_with_rate_limit_handling_fragment(self, data: dict) -> None:
-        """run_wire must use with_rate_limit_handling fragment (mirrors run_decide)."""
-        state = data["states"].get("run_wire", {})
-        assert state.get("fragment") == "with_rate_limit_handling", (
-            f"run_wire.fragment should be 'with_rate_limit_handling', got {state.get('fragment')!r}"
-        )
-
-    def test_run_wire_action_type_is_slash_command(self, data: dict) -> None:
-        """run_wire must use slash_command action_type."""
-        state = data["states"].get("run_wire", {})
-        assert state.get("action_type") == "slash_command", (
-            f"run_wire.action_type should be 'slash_command', got {state.get('action_type')!r}"
-        )
-
-    def test_run_refine_uses_with_rate_limit_handling_fragment(self, data: dict) -> None:
-        """run_refine must use with_rate_limit_handling fragment (mirrors run_decide)."""
-        state = data["states"].get("run_refine", {})
-        assert state.get("fragment") == "with_rate_limit_handling", (
-            f"run_refine.fragment should be 'with_rate_limit_handling', got {state.get('fragment')!r}"
-        )
-
-    def test_run_refine_action_type_is_slash_command(self, data: dict) -> None:
-        """run_refine must use slash_command action_type."""
-        state = data["states"].get("run_refine", {})
-        assert state.get("action_type") == "slash_command", (
-            f"run_refine.action_type should be 'slash_command', got {state.get('action_type')!r}"
-        )
 
     def test_dequeue_next_clears_decide_options_deposited_marker(self, data: dict) -> None:
         """ENH-3075: the per-issue deposit-options marker must be cleared on every
@@ -9018,74 +8283,6 @@ class TestAutodevLoop:
         its dequeue_next clear are gone; the child-side marker persists until ENH-3600."""
         action = data["states"].get("dequeue_next", {}).get("action", "")
         assert "autodev-decide-ran" not in action
-
-    # BUG-1491: rerun confidence after wire+refine repair path
-
-    def test_run_refine_next_routes_to_shared_rescoring_chain(self, data: dict) -> None:
-        """BUG-1491/ENH-3615: run_refine.next must rescore, not go straight to enqueue_or_skip."""
-        state = data["states"].get("run_refine", {})
-        assert state.get("next") == "clear_scores", (
-            f"run_refine.next should be 'clear_scores', got {state.get('next')!r}"
-        )
-
-    def test_run_refine_on_error_routes_to_shared_rescoring_chain(self, data: dict) -> None:
-        """BUG-1491/ENH-3615: run_refine.on_error must rescore too."""
-        state = data["states"].get("run_refine", {})
-        assert state.get("on_error") == "clear_scores", (
-            f"run_refine.on_error should be 'clear_scores', got {state.get('on_error')!r}"
-        )
-
-    def test_rerun_confidence_state_exists(self, data: dict) -> None:
-        """BUG-1491/ENH-3615: rerun_confidence must be present in the state machine."""
-        assert "rerun_confidence" in data["states"], "rerun_confidence state missing"
-
-    def test_rerun_confidence_uses_with_rate_limit_handling_fragment(self, data: dict) -> None:
-        """rerun_confidence must use with_rate_limit_handling fragment."""
-        state = data["states"].get("rerun_confidence", {})
-        assert state.get("fragment") == "with_rate_limit_handling", (
-            f"rerun_confidence.fragment should be 'with_rate_limit_handling', "
-            f"got {state.get('fragment')!r}"
-        )
-
-    def test_rerun_confidence_action_type_is_slash_command(self, data: dict) -> None:
-        """rerun_confidence must use slash_command action_type."""
-        state = data["states"].get("rerun_confidence", {})
-        assert state.get("action_type") == "slash_command", (
-            f"rerun_confidence.action_type should be 'slash_command', "
-            f"got {state.get('action_type')!r}"
-        )
-
-    def test_rerun_confidence_action_contains_confidence_check(self, data: dict) -> None:
-        """rerun_confidence action must invoke /ll:confidence-check."""
-        state = data["states"].get("rerun_confidence", {})
-        action = state.get("action", "")
-        assert "/ll:confidence-check" in action, (
-            f"rerun_confidence.action should contain '/ll:confidence-check', got {action!r}"
-        )
-
-    def test_rerun_confidence_next_routes_to_presence_gate(self, data: dict) -> None:
-        """rerun_confidence.next must route to check_scores_present."""
-        state = data["states"].get("rerun_confidence", {})
-        assert state.get("next") == "check_scores_present", (
-            f"rerun_confidence.next should be 'check_scores_present', got {state.get('next')!r}"
-        )
-
-    def test_rerun_confidence_on_error_routes_to_presence_gate(self, data: dict) -> None:
-        """rerun_confidence.on_error must fall through to check_scores_present."""
-        state = data["states"].get("rerun_confidence", {})
-        assert state.get("on_error") == "check_scores_present", (
-            f"rerun_confidence.on_error should be 'check_scores_present', "
-            f"got {state.get('on_error')!r}"
-        )
-
-    def test_rerun_confidence_on_rate_limit_exhausted_routes_to_finalize(self, data: dict) -> None:
-        """rerun_confidence.on_rate_limit_exhausted must terminate the loop
-        through finalize_rate_limited so summary.json is still written."""
-        state = data["states"].get("rerun_confidence", {})
-        assert state.get("on_rate_limit_exhausted") == "finalize_rate_limited", (
-            f"rerun_confidence.on_rate_limit_exhausted should be "
-            f"'finalize_rate_limited', got {state.get('on_rate_limit_exhausted')!r}"
-        )
 
     def test_skip_inflight_shell_action_writes_skipped_and_clears_inflight(
         self, data: dict, tmp_path: Path
@@ -9242,14 +8439,15 @@ class TestAutodevRnImplementDeferralParity:
     AUTODEV_FILE = BUILTIN_LOOPS_DIR / "autodev.yaml"
     RN_IMPLEMENT_FILE = BUILTIN_LOOPS_DIR / "rn-implement.yaml"
 
-    # autodev's three not-ready exits that were aligned to rn-implement's
-    # mark_deferred model; excludes `decomposed` exits (already close via
-    # finalize-decomposition → status: done) and skip_inflight's
-    # refine_failed (a sub-loop failure, not a not-ready reason).
+    # autodev's not-ready exits aligned to rn-implement's mark_deferred model;
+    # excludes `decomposed` exits (already close via finalize-decomposition →
+    # status: done) and skip_inflight's refine_failed (a sub-loop failure, not a
+    # not-ready reason). ENH-3623: the preparation-ladder deferrals
+    # (record_reentry_exhausted, recheck_after_size_review) moved into
+    # prepare-issue, whose sole terminal writer is `ll-issues prep apply`.
     AUTODEV_NOT_READY_STATES = (
         "mark_gate_blocked",
-        "record_reentry_exhausted",
-        "recheck_after_size_review",
+        "defer_gated",
     )
 
     @pytest.fixture

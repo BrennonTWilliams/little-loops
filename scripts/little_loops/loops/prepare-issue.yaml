@@ -1,81 +1,191 @@
 name: "prepare-issue"
-description: "Pass-through wrapper around refine-to-ready-issue for one issue: runs it, forwards its typed run record under the prepare-issue writer, and mirrors its terminal type so autodev's record routers read one stable writer (ENH-3605)."
+description: "Preparation dispatch loop for one issue (ENH-3623): little_loops.preparation_policy decides every step from the issue and an append-only fact log; this loop only runs the chosen command (refine-to-ready-issue or one slash command), records it, and ends through `ll-issues prep apply`, the sole terminal writer."
 category: issue-management
 visibility: internal
-# Call chain: autodev.refine_current -> prepare-issue -> refine-to-ready-issue.
-#   clear_record -> run_refine_to_ready -> (on_yes) forward_done -> done
-#                                       -> (on_failure) forward_stop -> failed
-#                                       -> (on_error) mark_inner_error -> failed
+# Exactly 15 states (pinned by test_prepare_issue.py): select_step, 7 run_* states
+# (run_child, run_wire, run_refine_gap, run_rescore, run_reconcile, run_size_review,
+# run_go_no_go), classify_guard2, record_guard2, record_step, apply_outcome,
+# mark_rate_limited, done, failed. Call chain:
+#   autodev.refine_current -> prepare-issue -> {refine-to-ready-issue | one slash command}
+#   select_step -> run_<kind> -> record_step -> select_step ... -> apply_outcome -> done|failed
+# Every decision lives in `ll-issues prep step` (little_loops.preparation_policy.decide);
+# every terminal write (ledger row, set-status, run record, inflight clear) lives in
+# `ll-issues prep apply`. The loop owns no routing predicate, no file handshake, no
+# `rm`, and never writes autodev-staged.txt (autodev's check_passed owns it). A
+# resume/handoff restart re-enters select_step, which replays the open intent of the
+# pass (at most one command re-runs) or decides the next.
 # The issue ID arrives as ${context.input} (context_passthrough flattens autodev's
-# captured.input), so this file must not declare `input` in its own context: block.
-# Wrapper capture names would flatten into the inner loop's context; none are used.
-# No rate-limit fragment / on_rate_limit_exhausted: both are inert on a `loop:` state
-# (BUG-3390); an inner rate-limit record carries evidence_refs and is forwarded as-is.
-initial: clear_record
+# captured.input); readiness/outcome thresholds arrive the same way (seeded at launch
+# from commands.confidence_gate), so this file declares no `context:` block.
+# Slash states are `next:`-shaped, so an exhausted 429 routes on_rate_limit_exhausted
+# -> mark_rate_limited (BUG-3622), which autodev turns into finalize_rate_limited.
+# max_steps mirrors little_loops.preparation_policy.MAX_STEPS = 4 * DONE_FACT_CAP + 3:
+# a command step visits 3 states (select_step, run_*, record_step), a size-review
+# step 4 (+ classify_guard2), plus the select_step -> apply_outcome -> done tail.
+# A structural test asserts the two stay equal. on_max_steps runs apply_outcome once,
+# which writes RETRYABLE_ERROR:infra when no FINISH/STOP intent is open.
+initial: select_step
+max_steps: 91
+on_max_steps: apply_outcome
+on_handoff: spawn
+# classify_guard2 reads captured.size_review_output, which only run_size_review writes;
+# the policy only reaches classify_guard2 from run_size_review.
+capture_reachability_ok: true
 scope:
   - ".issues/"
   - "${context.run_dir}"
-max_steps: 20
-on_handoff: spawn
-meta_self_eval_ok: false
-shared_state_ok: false
+import:
+  - lib/common.yaml
 
 states:
-  clear_record:
-    # Stale records from a previous pass over the same ID must not be forwarded:
-    # autodev re-enters refine_current for the same issue, and if the inner loop dies
-    # before its own resolve_issue clear, forward would copy the previous pass's record.
-    action: |
-      ll-issues run-record clear ${context.input:shell} --run-dir ${context.run_dir} --writer prepare-issue || true
-      ll-issues run-record clear ${context.input:shell} --run-dir ${context.run_dir} --writer refine-to-ready-issue || true
+  select_step:
+    action: >-
+      ll-issues prep step ${context.input:shell} --run-dir ${context.run_dir}
+      --readiness-threshold ${context.readiness_threshold:shell}
+      --outcome-threshold ${context.outcome_threshold:shell}
     action_type: shell
-    next: run_refine_to_ready
-    on_error: run_refine_to_ready
+    evaluate:
+      type: classify
+    route:
+      RUN_CHILD: run_child
+      WIRE: run_wire
+      REFINE_GAP: run_refine_gap
+      RESCORE: run_rescore
+      RECONCILE: run_reconcile
+      SIZE_REVIEW: run_size_review
+      GO_NO_GO: run_go_no_go
+      FINISH: apply_outcome
+      STOP: apply_outcome
+      _: apply_outcome
+      _error: apply_outcome
 
-  run_refine_to_ready:
-    # No `on_no:` (BUG-2611: it would shadow on_failure) and no `timeout:`
-    # (TestSubLoopStateTimeoutAudit).
+  run_child:
+    # No `on_no:` (BUG-2611), no `timeout:` (TestSubLoopStateTimeoutAudit) and no
+    # rate-limit fragment (inert on a `loop:` state, BUG-3390): the inner loop's own
+    # rate-limit record reaches autodev as RETRYABLE_ERROR:rate_limited via apply.
     loop: refine-to-ready-issue
     context_passthrough: true
-    on_yes: forward_done
-    on_failure: forward_stop
-    on_error: mark_inner_error
+    on_yes: record_step
+    on_failure: record_step
+    on_error: record_step
 
-  forward_done:
-    # A forward error must not flip the terminal type autodev routes on.
-    action: |
-      ll-issues run-record forward ${context.input:shell} --run-dir ${context.run_dir} --from refine-to-ready-issue --writer prepare-issue
-    action_type: shell
-    next: done
-    on_error: done
+  run_wire:
+    fragment: with_rate_limit_handling
+    action: "/ll:wire-issue ${context.input} --auto"
+    action_type: slash_command
+    pruning_profile:
+      enabled: true
+      name: wire-issue-auto
+      suppress_claude_md: true
+    next: record_step
+    on_error: record_step
+    on_rate_limit_exhausted: mark_rate_limited
 
-  forward_stop:
-    # Ledger-ownership rule (ENH-3605): the wrapper ledgers every blocked/deferred stop
-    # it emits through its failure terminal; autodev's route_refine_outcome sends
-    # BLOCKED:* / DEFERRED:* to ledger_child_stop (no row). quality / gate_unmet are the
-    # two stops nothing else ledgers, so the row skip_inflight used to write lands here.
-    # ID is the raw ${context.input}: finalize_done and the grep -x marker checks key on it.
-    action: |
-      ID=${context.input:shell}
-      TOKEN=$(ll-issues run-record forward "$ID" --run-dir ${context.run_dir} --from refine-to-ready-issue --writer prepare-issue)
-      case "$TOKEN" in
-        BLOCKED:quality|DEFERRED:gate_unmet)
-          echo "$ID  refine_failed" >> ${context.run_dir}/autodev-skipped.txt
-          ;;
-      esac
+  run_refine_gap:
+    fragment: with_rate_limit_handling
+    action: "/ll:refine-issue ${context.input} --auto --gap-analysis"
+    action_type: slash_command
+    pruning_profile:
+      enabled: true
+      name: refine-issue-repair
+      suppress_claude_md: true
+    next: record_step
+    on_error: record_step
+    on_rate_limit_exhausted: mark_rate_limited
+
+  run_rescore:
+    fragment: with_rate_limit_handling
+    action: "/ll:confidence-check ${context.input}"
+    action_type: slash_command
+    pruning_profile:
+      enabled: true
+      name: confidence-check-recheck
+      suppress_claude_md: true
+    next: record_step
+    on_error: record_step
+    on_rate_limit_exhausted: mark_rate_limited
+
+  run_reconcile:
+    fragment: with_rate_limit_handling
+    action: "/ll:reconcile-issue ${context.input}"
+    action_type: slash_command
+    pruning_profile:
+      enabled: true
+      name: reconcile-issue-auto
+      suppress_claude_md: true
+    next: record_step
+    on_error: record_step
+    on_rate_limit_exhausted: mark_rate_limited
+
+  run_size_review:
+    fragment: with_rate_limit_handling
+    action: "/ll:issue-size-review ${context.input} --auto"
+    action_type: slash_command
+    pruning_profile:
+      enabled: true
+      name: issue-size-review-auto
+      suppress_claude_md: true
+    capture: size_review_output
+    next: classify_guard2
+    on_error: classify_guard2
+    on_rate_limit_exhausted: mark_rate_limited
+
+  classify_guard2:
+    # BUG-2734/BUG-2752: guard-2 (Very Large, decomposition declined) matched on the
+    # captured status line through evaluate.source, never interpolated into shell
+    # (BUG-2594). "score (8|9|10|11)" subsumes both of today's patterns.
+    evaluate:
+      type: output_contains
+      source: "${captured.size_review_output.output}"
+      pattern: "score (8|9|10|11)\\b"
+    on_yes: record_guard2
+    on_no: record_step
+    on_error: record_step
+
+  record_guard2:
+    action: >-
+      ll-issues prep record ${context.input:shell} --run-dir ${context.run_dir} --guard2
     action_type: shell
-    next: failed
+    next: select_step
+    on_error: select_step
+
+  record_step:
+    # Never reads captured.run_child: prep record classifies a RUN_CHILD step from
+    # the child's own run record (cleared by the RUN_CHILD precondition; absent means
+    # the inner loop errored).
+    action: >-
+      ll-issues prep record ${context.input:shell} --run-dir ${context.run_dir}
+    action_type: shell
+    next: select_step
+    on_error: select_step
+
+  run_go_no_go:
+    fragment: with_rate_limit_handling
+    action: "/ll:go-no-go ${context.input} --auto"
+    action_type: slash_command
+    pruning_profile:
+      enabled: true
+      name: go-no-go-auto
+      suppress_claude_md: true
+    next: record_step
+    on_error: record_step
+    on_rate_limit_exhausted: mark_rate_limited
+
+  apply_outcome:
+    # Sole terminal writer. Also the step-cap handler: with no open FINISH/STOP intent
+    # it writes the ladder-error infra record (ENH-3606 mark_ladder_error).
+    action: >-
+      ll-issues prep apply ${context.input:shell} --run-dir ${context.run_dir}
+      --readiness-threshold ${context.readiness_threshold:shell}
+      --outcome-threshold ${context.outcome_threshold:shell}
+    fragment: shell_exit
+    on_yes: done
+    on_no: failed
     on_error: failed
 
-  mark_inner_error:
-    # The inner loop died (error / no_route / workdir_vanished). A wrapper cannot end
-    # with terminated_by: error on purpose, so this infra record is how the crash
-    # reaches autodev (RETRYABLE_ERROR:infra -> skip_inflight_infra). The sentinel is
-    # required: the record write is `|| true`, and autodev's MISSING fallback reads
-    # refine-terminal-class, which the inner resolve_issue deleted.
-    action: |
-      printf infra > ${context.run_dir}/refine-terminal-class
-      ll-issues run-record write ${context.input:shell} --run-dir ${context.run_dir} --writer prepare-issue --legacy-class infra || true
+  mark_rate_limited:
+    action: >-
+      ll-issues prep apply ${context.input:shell} --run-dir ${context.run_dir} --rate-limited
     action_type: shell
     next: failed
     on_error: failed
@@ -85,6 +195,4 @@ states:
 
   failed:
     terminal: true
-    # Explicit: autodev's refine_current.on_failure routing depends on this flag,
-    # not on FAILURE_TERMINAL_NAMES name inference.
     failure: true

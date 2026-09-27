@@ -469,7 +469,12 @@ def run_foreground(
 
         try:
             if mode == "resume":
-                result = executor.resume()
+                try:
+                    result = executor.resume()
+                except ValueError as e:
+                    # ENH-3623: the persisted state was removed from the loop file.
+                    print(f"Error resuming loop '{fsm.name}': {e}", file=sys.stderr)
+                    return 1
                 # "Nothing to resume" path: no run actually executed, so don't fall
                 # through to completion-line formatting. Exit cleanly with code 1.
                 if result is None:

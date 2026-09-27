@@ -1,29 +1,67 @@
-"""Tests for the prepare-issue pass-through wrapper (ENH-3605).
+"""Tests for the prepare-issue dispatch loop and its autodev boundary (ENH-3623).
 
-Structural pins on ``prepare-issue.yaml``, execution of its shell states against a real
-``ll-issues run-record`` CLI, and a per-token parity table proving the wrapper plus the
-retargeted autodev routers reproduce the pre-change route and ledger rows.
+Structural pins on ``prepare-issue.yaml`` (the 15-state dispatch loop over
+``little_loops.preparation_policy``), the autodev side of the cutover (the 42 removed
+states, the boundary retargets, the pass-id write), and real-FSM runs of the step
+cap and of rate-limit exhaustion in every wrapper slash state.
 """
 
 from __future__ import annotations
 
-import os
-import shutil
-import subprocess
+import re
+from dataclasses import replace
 from pathlib import Path
+from typing import Any
 
 import pytest
 import yaml
 
 from little_loops.fsm.validation import load_and_validate
-from little_loops.run_record import RunRecord, read_run_record, write_run_record
+from little_loops.preparation_policy import DONE_FACT_CAP, MAX_STEPS
+from tests.autodev_harness import SlashResponse, run_autodev
+from tests.preparation_policy_harness import DELETED_STATES, MOVED_STATES, state_targets
+from tests.test_autodev_characterization import (
+    APPLY,
+    CHILD,
+    INFRA_PATH,
+    LOW_READINESS,
+    RATE_LIMITED_PATH,
+    SCENARIOS,
+    _assert_hermetic,
+    done,
+    step,
+)
 
 LOOPS_DIR = Path(__file__).parent.parent / "little_loops" / "loops"
 WRAPPER = LOOPS_DIR / "prepare-issue.yaml"
 AUTODEV = LOOPS_DIR / "autodev.yaml"
-ID = "ENH-9705"
-INNER = "refine-to-ready-issue"
-OUTER = "prepare-issue"
+ID = "ENH-9001"
+
+STATES = (
+    "select_step",
+    "run_child",
+    "run_wire",
+    "run_refine_gap",
+    "run_rescore",
+    "run_reconcile",
+    "run_size_review",
+    "classify_guard2",
+    "record_guard2",
+    "record_step",
+    "run_go_no_go",
+    "apply_outcome",
+    "mark_rate_limited",
+    "done",
+    "failed",
+)
+SLASH_STATES = {
+    "run_wire": "wire-issue",
+    "run_refine_gap": "refine-issue",
+    "run_rescore": "confidence-check",
+    "run_reconcile": "reconcile-issue",
+    "run_size_review": "issue-size-review",
+    "run_go_no_go": "go-no-go",
+}
 
 
 @pytest.fixture(scope="module")
@@ -36,253 +74,280 @@ def autodev() -> dict:
     return yaml.safe_load(AUTODEV.read_text())
 
 
-@pytest.fixture
-def project(tmp_path: Path) -> Path:
-    for kind in ("bugs", "features", "enhancements", "epics"):
-        (tmp_path / ".issues" / kind).mkdir(parents=True, exist_ok=True)
-    (tmp_path / ".issues" / "enhancements" / f"P3-{ID}-t.md").write_text(
-        f"---\nid: {ID}\ntitle: T\ntype: enhancement\nstatus: open\npriority: P3\n---\n\n# {ID}: T\n"
-    )
-    return tmp_path
-
-
-@pytest.fixture
-def run_dir(tmp_path: Path) -> Path:
-    d = tmp_path / "run"
-    d.mkdir()
-    return d
-
-
-def _run_state(
-    project: Path, states: dict, state: str, run_dir: Path
-) -> subprocess.CompletedProcess:
-    action = (
-        states[state]["action"]
-        .replace("${context.run_dir}", str(run_dir))
-        .replace("${context.input:shell}", f"'{ID}'")
-    )
-    env = dict(os.environ)
-    ll = shutil.which("ll-issues")
-    if ll:
-        env["PATH"] = f"{Path(ll).parent}:{env['PATH']}"
-    else:  # pragma: no cover - editable installs always ship the entry point
-        pytest.skip("ll-issues not on PATH")
-    return subprocess.run(
-        ["bash", "-c", action],
-        cwd=str(project),
-        env=env,
-        capture_output=True,
-        text=True,
-        timeout=60,
-    )
-
-
-def _inner(run_dir: Path, **kw) -> None:
-    write_run_record(run_dir, RunRecord(writer=INNER, issue_id=ID, **kw))
+def _actions(data: dict) -> dict[str, str]:
+    return {n: s["action"] for n, s in data["states"].items() if isinstance(s.get("action"), str)}
 
 
 class TestStructure:
     def test_validates(self) -> None:
-        fsm, _ = load_and_validate(WRAPPER)
-        assert fsm.initial == "clear_record"
+        fsm, errors = load_and_validate(WRAPPER, raise_on_error=False)
+        assert errors == []
+        assert fsm.initial == "select_step"
 
-    def test_scope_declared_and_no_input_in_context(self, data: dict) -> None:
-        assert data["scope"]
-        assert "input" not in (data.get("context") or {})
+    def test_exactly_fifteen_states_stated_and_pinned(self, data: dict) -> None:
+        assert tuple(data["states"]) == STATES
+        assert "Exactly 15 states" in WRAPPER.read_text()
 
-    def test_loop_state_has_no_timeout_or_rate_limit_keys(self, data: dict) -> None:
-        state = data["states"]["run_refine_to_ready"]
-        assert state["loop"] == INNER
+    def test_max_steps_is_derived_from_the_ladder_budget(self, data: dict) -> None:
+        """4 states per SIZE_REVIEW step (3 per command step) plus the 3-state tail."""
+        assert MAX_STEPS == 4 * DONE_FACT_CAP + 3
+        assert data["max_steps"] == MAX_STEPS
+        assert data["on_max_steps"] == "apply_outcome"
+
+    def test_no_rm_anywhere(self, data: dict) -> None:
+        for name, action in _actions(data).items():
+            assert not re.search(r"(^|[\s;&|(])rm\s", action), name
+
+    def test_never_writes_the_staged_ledger(self, data: dict) -> None:
+        for name, action in _actions(data).items():
+            assert "autodev-staged" not in action, name
+
+    def test_prep_apply_is_the_only_terminal_writer(self, data: dict) -> None:
+        """Every shell action is one `ll-issues prep` call; only apply_outcome and
+        mark_rate_limited call `prep apply` (ledger row, status, run record)."""
+        writers = set()
+        for name, action in _actions(data).items():
+            if data["states"][name].get("action_type") == "slash_command":
+                continue
+            assert action.startswith("ll-issues prep "), name
+            assert ">" not in action and "set-status" not in action, name
+            assert "run-record" not in action, name
+            if action.startswith("ll-issues prep apply"):
+                writers.add(name)
+        assert writers == {"apply_outcome", "mark_rate_limited"}
+
+    def test_record_step_never_reads_the_child_capture(self, data: dict) -> None:
+        """prep record classifies from the child's run record, not captured.run_child
+        (a stale failure_terminal capture cannot reach it)."""
+        assert "captured" not in data["states"]["record_step"]["action"]
+        assert "captured" not in data["states"]["record_guard2"]["action"]
+
+    def test_every_slash_state_halts_through_mark_rate_limited(self, data: dict) -> None:
+        slash = {n for n, s in data["states"].items() if s.get("action_type") == "slash_command"}
+        assert slash == set(SLASH_STATES)
+        for name in slash:
+            state = data["states"][name]
+            assert state["fragment"] == "with_rate_limit_handling", name
+            assert state["on_rate_limit_exhausted"] == "mark_rate_limited", name
+        assert "--rate-limited" in data["states"]["mark_rate_limited"]["action"]
+
+    def test_run_child_is_a_plain_loop_state(self, data: dict) -> None:
+        state = data["states"]["run_child"]
+        assert state["loop"] == "refine-to-ready-issue"
         assert state["context_passthrough"] is True
         for key in ("timeout", "fragment", "on_rate_limit_exhausted", "on_no"):
             assert key not in state, key
-        assert state["on_yes"] == "forward_done"
-        assert state["on_failure"] == "forward_stop"
-        assert state["on_error"] == "mark_inner_error"
+        assert state["on_yes"] == state["on_failure"] == state["on_error"] == "record_step"
 
-    def test_terminals_mirror_inner_type(self, data: dict) -> None:
-        states = data["states"]
-        assert states["failed"]["terminal"] is True and states["failed"]["failure"] is True
-        assert states["done"]["terminal"] is True and "failure" not in states["done"]
-        assert states["forward_done"]["next"] == "done"
-        assert states["forward_done"]["on_error"] == "done"
-        assert states["forward_stop"]["next"] == "failed"
-        assert states["forward_stop"]["on_error"] == "failed"
-        assert states["mark_inner_error"]["next"] == "failed"
+    def test_every_step_kind_routes_and_errors_fall_to_apply(self, data: dict) -> None:
+        route = data["states"]["select_step"]["route"]
+        assert route["_"] == route["_error"] == route["FINISH"] == route["STOP"] == "apply_outcome"
+        for kind in ("RUN_CHILD", "WIRE", "REFINE_GAP", "RESCORE", "RECONCILE", "SIZE_REVIEW"):
+            assert route[kind] in data["states"]
 
-    def test_every_write_uses_prepare_issue_writer(self, data: dict) -> None:
-        for name, state in data["states"].items():
-            action = state.get("action", "")
-            for line in action.splitlines():
-                if "run-record write" in line or "run-record forward" in line:
-                    assert "--writer prepare-issue" in line, (name, line)
-
-    def test_entry_clears_both_writers(self, data: dict) -> None:
-        action = data["states"]["clear_record"]["action"]
-        assert "run-record clear" in action
-        assert f"--writer {OUTER}" in action and f"--writer {INNER}" in action
-
-
-class TestExecution:
-    def test_forward_preserves_record_fields(
-        self, project: Path, run_dir: Path, data: dict
-    ) -> None:
-        _inner(
-            run_dir,
-            outcome="retryable_error",
-            legacy_class="infra",
-            child_ids=("ENH-1",),
-            evidence_refs=("rate_limit_exhausted",),
-            readiness=90,
-            outcome_confidence=70,
+    def test_classify_guard2_reads_the_capture_through_evaluate_source(self, data: dict) -> None:
+        """BUG-2594: the size-review output is matched via evaluate.source, never
+        interpolated into a shell action."""
+        state = data["states"]["classify_guard2"]
+        assert "action" not in state
+        assert state["evaluate"]["type"] == "output_contains"
+        assert state["evaluate"]["source"] == "${captured.size_review_output.output}"
+        assert (state["on_yes"], state["on_no"], state["on_error"]) == (
+            "record_guard2",
+            "record_step",
+            "record_step",
         )
-        assert _run_state(project, data["states"], "forward_done", run_dir).returncode == 0
-        out = read_run_record(run_dir, OUTER, ID)
-        assert out is not None
-        assert (out.outcome, out.legacy_class, out.child_ids, out.evidence_refs) == (
-            "retryable_error",
-            "infra",
-            ("ENH-1",),
-            ("rate_limit_exhausted",),
-        )
-        assert (out.readiness, out.outcome_confidence) == (90, 70)
-
-    def test_missing_inner_record_writes_nothing(
-        self, project: Path, run_dir: Path, data: dict
-    ) -> None:
-        for state in ("forward_done", "forward_stop"):
-            _run_state(project, data["states"], state, run_dir)
-        assert read_run_record(run_dir, OUTER, ID) is None
-        assert not (run_dir / "autodev-skipped.txt").exists()
-
-    def test_inner_error_writes_infra_record_and_sentinel(
-        self, project: Path, run_dir: Path, data: dict
-    ) -> None:
-        _run_state(project, data["states"], "mark_inner_error", run_dir)
-        assert (run_dir / "refine-terminal-class").read_text() == "infra"
-        rec = read_run_record(run_dir, OUTER, ID)
-        assert rec is not None and rec.outcome == "retryable_error" and rec.legacy_class == "infra"
-
-    def test_entry_clears_stale_records(self, project: Path, run_dir: Path, data: dict) -> None:
-        _inner(run_dir, outcome="ready")
-        write_run_record(run_dir, RunRecord(writer=OUTER, issue_id=ID, outcome="ready"))
-        _run_state(project, data["states"], "clear_record", run_dir)
-        assert read_run_record(run_dir, OUTER, ID) is None
-        assert read_run_record(run_dir, INNER, ID) is None
 
     @pytest.mark.parametrize(
-        "outcome,legacy,rows",
+        ("output", "guard2"),
         [
-            ("blocked", "quality", [f"{ID}  refine_failed"]),
-            ("deferred", "gate_unmet", [f"{ID}  refine_failed"]),
-            ("blocked", "decision_unresolved", []),
-            ("blocked", "proposal_unsound", []),
-            ("deferred", "spike_inconclusive", []),
-            ("retryable_error", "infra", []),
-            ("blocked", None, []),
+            ("[ENH-1] skipped: score 9 (Very Large) - atomic", True),
+            ("FEAT-021 skipped: score 11 (Very Large) — single atomic change", True),
+            ("declined decomposition: score 9", True),
+            ("score 8 (Very Large)", True),
+            ("score 10", True),
+            ("[ENH-1] skipped: structural score 6 (Medium)", False),
+            ("score 5", False),
+            ("[ENH-1] skipped: structural score 3 (Small) - leaf-sized", False),
+            ("score 80 points", False),
         ],
     )
-    def test_forward_stop_row_only_for_quality_and_gate_unmet(
-        self, project: Path, run_dir: Path, data: dict, outcome: str, legacy: str | None, rows: list
-    ) -> None:
-        _inner(run_dir, outcome=outcome, legacy_class=legacy)
-        assert _run_state(project, data["states"], "forward_stop", run_dir).returncode == 0
-        ledger = run_dir / "autodev-skipped.txt"
-        assert (ledger.read_text().splitlines() if ledger.exists() else []) == rows
+    def test_classify_guard2_pattern(self, data: dict, output: str, guard2: bool) -> None:
+        """BUG-2734/BUG-2752: guard-2 = a Very Large (8-11) score, whatever the wording."""
+        pattern = data["states"]["classify_guard2"]["evaluate"]["pattern"]
+        assert bool(re.search(pattern, output)) is guard2
+
+    def test_terminals(self, data: dict) -> None:
+        states = data["states"]
+        assert states["done"] == {"terminal": True}
+        assert states["failed"] == {"terminal": True, "failure": True}
+        assert states["apply_outcome"]["on_yes"] == "done"
+        assert states["apply_outcome"]["on_no"] == states["apply_outcome"]["on_error"] == "failed"
+
+    def test_scope_declared_and_no_context_block(self, data: dict) -> None:
+        assert data["scope"]
+        assert "context" not in data
 
 
-# (inner record kwargs, terminal) -> (router state, token routed to, net refine_failed rows)
-_PARITY = [
-    ({"outcome": "ready"}, "done", "route_refine_success", "READY", "check_passed", 0),
-    ({"outcome": "decomposed"}, "done", "route_refine_success", "DECOMPOSED", "detect_children", 0),
-    ({"outcome": "cancelled"}, "done", "route_refine_success", "CANCELLED", "skip_cancelled", 0),
-    (
-        {"outcome": "blocked", "legacy_class": "decision_unresolved"},
-        "failed",
-        "route_refine_outcome",
-        "BLOCKED:decision_unresolved",
-        "ledger_child_stop",
-        0,
-    ),
-    (
-        {"outcome": "blocked", "legacy_class": "quality"},
-        "failed",
-        "route_refine_outcome",
-        "BLOCKED:quality",
-        "ledger_child_stop",
-        1,
-    ),
-    (
-        {"outcome": "deferred", "legacy_class": "gate_unmet"},
-        "failed",
-        "route_refine_outcome",
-        "DEFERRED:gate_unmet",
-        "ledger_child_stop",
-        1,
-    ),
-    (
-        {
-            "outcome": "retryable_error",
-            "legacy_class": "infra",
-            "evidence_refs": ("rate_limit_exhausted",),
-        },
-        "failed",
-        "route_refine_outcome",
-        "RETRYABLE_ERROR:rate_limited",
-        "finalize_rate_limited",
-        0,
-    ),
-    (
-        {"outcome": "retryable_error", "legacy_class": "infra"},
-        "failed",
-        "route_refine_outcome",
-        "RETRYABLE_ERROR:infra",
-        "skip_inflight_infra",
-        0,
-    ),
-]
+class TestAutodevBoundary:
+    def test_move_set_size(self) -> None:
+        assert len(MOVED_STATES) == 39
+        assert len(DELETED_STATES) == len(set(DELETED_STATES)) == 42
+
+    @pytest.mark.parametrize("state", DELETED_STATES)
+    def test_removed_state_is_absent(self, autodev: dict, state: str) -> None:
+        assert state not in autodev["states"]
+
+    def test_no_edge_targets_a_removed_or_missing_state(self, autodev: dict) -> None:
+        st = autodev["states"]
+        dangling = sorted({(n, t) for n, s in st.items() for t in state_targets(s) if t not in st})
+        assert dangling == []
+
+    def test_boundary_retargets(self, autodev: dict) -> None:
+        st = autodev["states"]
+        assert st["refine_current"]["loop"] == "prepare-issue"
+        assert st["refine_current"]["on_success"] == "copy_broke_down"
+        assert st["refine_current"]["on_failure"] == "route_refine_outcome"
+        assert st["refine_current"]["on_error"] == "skip_inflight_infra"
+        assert "on_no" not in st["refine_current"]  # BUG-2611
+        cp = st["check_passed"]
+        assert cp["on_yes"] == "check_proof_defer_or_implement"
+        assert cp["on_no"] == cp["on_cannot_judge"] == "skip_inflight"
+        assert cp["on_error"] == "skip_inflight_infra"
+        assert "check-design" in cp["action"]  # ENH-3625 Rule A stays
+        assert st["detect_children"]["on_no"] == "check_parent_resolved"
+        assert st["detect_children"]["on_error"] == "check_parent_resolved"
+        assert st["check_parent_resolved"]["on_no"] == "skip_inflight"
+        assert st["check_parent_resolved"]["on_error"] == "skip_inflight_infra"
+
+    def test_capture_reachability_ok_dropped_and_step_cap_kept(self, autodev: dict) -> None:
+        assert "capture_reachability_ok" not in autodev
+        assert autodev["max_steps"] == 500
+
+    def test_dequeue_next_writes_the_pass_id(self, autodev: dict) -> None:
+        action = autodev["states"]["dequeue_next"]["action"]
+        assert "prep-pass-$CURRENT" in action
+        assert action.index("autodev-inflight") < action.index("prep-pass-$CURRENT")
+
+    def test_copy_broke_down_only_resets_the_child_flag(self, autodev: dict) -> None:
+        action = autodev["states"]["copy_broke_down"]["action"]
+        assert action.strip() == "printf '0' > ${context.run_dir}/refine-broke-down"
+        assert "autodev-broke-down" not in AUTODEV.read_text()
+
+    def test_no_autodev_state_runs_a_ladder_command(self, autodev: dict) -> None:
+        """No autodev event enters a policy-owned step: the ladder's slash commands
+        run only inside prepare-issue."""
+        for name, state in autodev["states"].items():
+            action = state.get("action") or ""
+            for skill in SLASH_STATES.values():
+                assert f"/ll:{skill}" not in action, (name, skill)
+
+    def test_every_characterization_path_avoids_removed_states(self) -> None:
+        for scenario, expected in SCENARIOS:
+            assert not set(expected.path) & set(DELETED_STATES), scenario.name
 
 
-class TestAutodevParity:
-    """The wrapper + retargeted routers reproduce the pre-change route and ledger rows."""
+# ---------------------------------------------------------------------------
+# Real-FSM runs (autodev -> prepare-issue -> stub refine-to-ready-issue)
+# ---------------------------------------------------------------------------
 
-    @pytest.mark.parametrize("kw,terminal,router,token,target,rows", _PARITY)
-    def test_token_route_and_ledger(
-        self,
-        project: Path,
-        run_dir: Path,
-        data: dict,
-        autodev: dict,
-        kw: dict,
-        terminal: str,
-        router: str,
-        token: str,
-        target: str,
-        rows: int,
-    ) -> None:
-        _inner(run_dir, **kw)
-        state = "forward_done" if terminal == "done" else "forward_stop"
-        _run_state(project, data["states"], state, run_dir)
-        # the router reads the forwarded record and prints the expected token
-        action = autodev["states"][router]["action"].replace("\n", " ")
-        cmd = action.replace("${captured.input.output:shell}", f"'{ID}'").replace(
-            "${context.run_dir}", str(run_dir)
+_RATE_LIMITED = SlashResponse(output="API Error: 429 rate limit exceeded", exit_code=1)
+_BASE = next(s for s, _ in SCENARIOS if s.name == "readiness_stagnated")
+
+
+def _slash_upto(kind: str) -> tuple[dict[str, tuple[SlashResponse, ...]], dict[str, Any], str]:
+    """Scripted responses that reach *kind*'s slash command first, then 429 it."""
+    from tests.test_autodev_characterization import (
+        LADDER_TO_RECONCILE,
+        LOW_OUTCOME,
+        NOOP,
+        SIZE_REVIEW_GUARD2,
+        confidence,
+    )
+
+    if kind == "run_size_review":
+        return {"issue-size-review": (_RATE_LIMITED,)}, LOW_READINESS, "issue-size-review"
+    if kind == "run_reconcile":
+        return (
+            {**LADDER_TO_RECONCILE, "reconcile-issue": (_RATE_LIMITED,)},
+            LOW_READINESS,
+            "reconcile-issue",
         )
-        r = subprocess.run(
-            ["bash", "-c", cmd], cwd=str(project), capture_output=True, text=True, timeout=60
+    if kind == "run_rescore":
+        return (
+            {**LADDER_TO_RECONCILE, "confidence-check": (_RATE_LIMITED,)},
+            LOW_READINESS,
+            "confidence-check",
         )
-        assert r.stdout.strip() == token
-        assert autodev["states"][router]["route"][token] == target
-        ledger = run_dir / "autodev-skipped.txt"
-        lines = ledger.read_text().splitlines() if ledger.exists() else []
-        assert lines == [f"{ID}  refine_failed"] * rows
+    if kind == "run_wire":
+        slash = {"issue-size-review": (SIZE_REVIEW_GUARD2,), "wire-issue": (_RATE_LIMITED,)}
+        return slash, LOW_OUTCOME, "wire-issue"
+    if kind == "run_go_no_go":
+        slash = {
+            "issue-size-review": (SIZE_REVIEW_GUARD2,),
+            "wire-issue": (NOOP,),
+            "confidence-check": (confidence(90, 50),),
+            "go-no-go": (_RATE_LIMITED,),
+        }
+        return slash, LOW_OUTCOME, "go-no-go"
+    if kind == "run_refine_gap":
+        slash = {"wire-issue": (NOOP,), "refine-issue": (_RATE_LIMITED,)}
+        return slash, {**LOW_READINESS, "missing_artifacts": True}, "refine-issue"
+    raise AssertionError(kind)  # pragma: no cover
 
-    def test_missing_routes_to_skip_inflight(self, autodev: dict) -> None:
-        assert autodev["states"]["route_refine_outcome"]["route"]["MISSING"] == "skip_inflight"
-        assert autodev["states"]["route_refine_success"]["route"]["MISSING"] == "check_passed"
 
-    def test_state_count_unchanged(self, autodev: dict) -> None:
-        assert autodev["states"]["refine_current"]["loop"] == OUTER
-        assert autodev["states"]["refine_current"]["on_failure"] == "route_refine_outcome"
-        assert autodev["states"]["refine_current"]["on_error"] == "skip_inflight_infra"
-        assert "on_no" not in autodev["states"]["refine_current"]
+@pytest.mark.slow
+@pytest.mark.timeout(300)
+@pytest.mark.parametrize("kind", sorted(SLASH_STATES))
+def test_rate_limit_exhaustion_halts_autodev_per_step_kind(
+    kind: str, tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Rate-limit exhaustion in any wrapper slash state halts autodev through
+    mark_rate_limited -> finalize_rate_limited (BUG-3622 + terminal table)."""
+    slash, frontmatter, skill = _slash_upto(kind)
+    scenario = replace(_BASE, name=f"rate_limit_{kind}", frontmatter=frontmatter, slash=slash)
+    r = run_autodev(scenario, tmp_path, monkeypatch)
+    assert r.unscripted == []
+    assert r.cli_failures == []
+    assert tuple(r.path) == RATE_LIMITED_PATH
+    assert r.wrapper_path[-1] == "mark_rate_limited"
+    assert r.wrapper_path.count(kind) == 12  # the retry loop ran to exhaustion
+    assert r.slash_commands.count(f"{skill} {ID}") == 12
+    assert r.records == {ID: "RETRYABLE_ERROR:rate_limited"}
+    assert r.summary["stop_reason"] == "rate_limit"
+
+
+@pytest.mark.slow
+@pytest.mark.timeout(300)
+def test_step_cap_records_infra_and_reaches_skip_inflight_infra(
+    tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A wrapper step-cap cutoff runs apply_outcome once as the on_max_steps handler
+    (no open FINISH/STOP intent -> RETRYABLE_ERROR:infra), finishes
+    terminated_by=max_steps, and autodev routes on_failure -> route_refine_outcome ->
+    skip_inflight_infra (accepted change 5: refine_failed_infra)."""
+    wrapper = tmp_path / "prepare-issue-capped.yaml"
+    wrapper.write_text(re.sub(r"(?m)^max_steps: \d+$", "max_steps: 4", WRAPPER.read_text()))
+    root = tmp_path / "run"
+    root.mkdir()
+    scenario = replace(_BASE, name="wrapper_step_cap", inner_runs={ID: (done(),)})
+    r = run_autodev(scenario, root, monkeypatch, prepare_issue_yaml=wrapper)
+    _assert_hermetic(r)
+    # select_step -> run_child -> record_step -> select_step hits the cap; the
+    # handler runs apply_outcome without taking its done/failed edge.
+    assert tuple(r.wrapper_path) == (*CHILD, "select_step", "apply_outcome")
+    assert tuple(r.path) == INFRA_PATH
+    assert r.records == {ID: "RETRYABLE_ERROR:infra"}
+    assert tuple(r.skipped) == (f"{ID}  refine_failed_infra",)
+    assert r.slash_commands == []
+
+
+def test_segment_helpers() -> None:
+    assert (*CHILD, *APPLY) == (
+        "select_step",
+        "run_child",
+        "record_step",
+        "select_step",
+        "apply_outcome",
+    )
+    assert step("wire") == ("select_step", "run_wire", "record_step")

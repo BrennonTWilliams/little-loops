@@ -764,8 +764,8 @@ def cmd_format_check(config: BRConfig, args: argparse.Namespace) -> int:
     if fmt == "json":
         # ENH-2992: the single-issue payload also carries marker *presence* —
         # the inverse of the unmarked_superseded_directive gap class — so
-        # autodev.yaml's check_reconcile_needed can read its contradiction
-        # predicate from the same call it already makes. Deliberately not a
+        # a caller can read the contradiction predicate from the same call (the
+        # preparation policy calls superseded_marker_count directly, ENH-3623). Deliberately not a
         # FormatGaps field: a standing marker is not a structural gap, so it
         # must not feed has_gaps (and hence the exit code) or widen
         # to_dict()'s dict[str, list[str]] contract. The --all payload is

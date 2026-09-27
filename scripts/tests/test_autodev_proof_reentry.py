@@ -1,6 +1,9 @@
-"""ENH-3611: PROOF re-entry in autodev's obligation selectors + the child's proof gate.
+"""ENH-3611: the refine-to-ready-issue child's proof gate (``check_proof_before_done``).
 
-Runs the real selector / gate shell actions under bash against a stub ``ll-issues``.
+Runs the real gate shell action under bash against a stub ``ll-issues``. The
+autodev half (PROOF re-entry from the obligation selectors) moved into
+``little_loops.preparation_policy`` with ENH-3623; its predicates are table-tested
+in ``test_preparation_policy.py`` (``test_post_refine_*`` / ``test_pre_implement_*``).
 """
 
 from __future__ import annotations
@@ -15,10 +18,8 @@ import pytest
 import yaml
 
 LOOPS = Path(__file__).parent.parent / "little_loops" / "loops"
-AUTODEV: dict[str, Any] = yaml.safe_load((LOOPS / "autodev.yaml").read_text())["states"]
 CHILD: dict[str, Any] = yaml.safe_load((LOOPS / "refine-to-ready-issue.yaml").read_text())["states"]
 
-LOW_OUTCOME = ["select_obligation_post_refine", "select_obligation_post_size_review"]
 ID = "ENH-1"
 
 
@@ -83,118 +84,6 @@ def run_dir(tmp_path: Path) -> Path:
     d = tmp_path / "run"
     d.mkdir()
     return d
-
-
-def _spikeable(stub: _Stub) -> None:
-    stub.flag("spike_needed", 0)  # set; spike_attempted stays unset (exit 1)
-    stub.put("obligation", "PROOF:absent\n")
-
-
-@pytest.mark.parametrize("name", LOW_OUTCOME)
-class TestLowOutcomeProofReentry:
-    def test_reenters_once_then_falls_through(self, stub: _Stub, run_dir: Path, name: str) -> None:
-        _spikeable(stub)
-        (run_dir / "autodev-staged.txt").write_text(f"OTHER-1\n{ID}\n")
-        first = stub.run(AUTODEV[name]["action"], run_dir)
-        assert first.stdout.strip() == "PROOF", first.stderr
-        assert (run_dir / f"autodev-reentry-PROOF-{ID}").read_text() == "1"
-        assert (run_dir / "autodev-staged.txt").read_text().splitlines() == ["OTHER-1"]
-        second = stub.run(AUTODEV[name]["action"], run_dir)
-        assert second.stdout.strip() == "PROOF:absent"  # raw token → `_`
-
-    def test_refuted_registry_target_does_not_mask_spikeable(
-        self, stub: _Stub, run_dir: Path, name: str
-    ) -> None:
-        _spikeable(stub)
-        stub.put("obligation", "PROOF:refuted\n")
-        assert stub.run(AUTODEV[name]["action"], run_dir).stdout.strip() == "PROOF"
-
-    @pytest.mark.parametrize("setup", ["attempted", "not_needed", "budget", "capped"])
-    def test_child_cannot_spike_is_not_reentered(
-        self, stub: _Stub, run_dir: Path, name: str, setup: str
-    ) -> None:
-        _spikeable(stub)
-        if setup == "attempted":
-            stub.flag("spike_attempted", 0)
-        elif setup == "not_needed":
-            stub.flag("spike_needed", 1)
-        elif setup == "budget":
-            (run_dir / f"spike-runs-{ID}").write_text("2")
-        else:
-            stub.put("refine_count", "5")
-        result = stub.run(AUTODEV[name]["action"], run_dir)
-        assert result.stdout.strip() == "PROOF:absent"
-        assert not list(run_dir.glob("autodev-reentry-*"))
-
-    def test_next_obligation_gets_waiver_and_tier1_skips_once(
-        self, stub: _Stub, run_dir: Path, name: str
-    ) -> None:
-        _spikeable(stub)
-        stub.run(AUTODEV[name]["action"], run_dir)
-        nxt = [c for c in stub.calls() if c.startswith("next-obligation")]
-        assert len(nxt) == 1
-        assert "--honor-waiver" in nxt[0]
-        for tier1 in (
-            "FORMAT",
-            "VERIFY",
-            "HEDGES",
-            "PLACEHOLDERS",
-            "ACCEPTANCE_CRITERIA",
-            "DESIGN",
-        ):
-            assert f"--skip {tier1}" in nxt[0]
-
-    def test_non_proof_token_passes_through(self, stub: _Stub, run_dir: Path, name: str) -> None:
-        stub.put("obligation", "SCORES:outcome_below\n")
-        stub.flag("spike_needed", 0)
-        assert stub.run(AUTODEV[name]["action"], run_dir).stdout.strip() == "SCORES:outcome_below"
-
-
-class TestPreImplementProofReentry:
-    ACTION = AUTODEV["select_obligation_pre_implement"]["action"]
-
-    def test_open_gate_reenters_once(self, stub: _Stub, run_dir: Path) -> None:
-        stub.put("gate", "structured_proof")
-        (run_dir / "autodev-staged.txt").write_text(f"{ID}\n")
-        assert stub.run(self.ACTION, run_dir).stdout.strip() == "PROOF"
-        assert (run_dir / "autodev-staged.txt").read_text() == ""
-        again = stub.run(self.ACTION, run_dir)
-        assert again.stdout.strip() == "NONE"  # marker spent → next-obligation
-
-    @pytest.mark.parametrize("setup", ["waived", "attempted", "budget", "capped"])
-    def test_guard_terms_fall_through(self, stub: _Stub, run_dir: Path, setup: str) -> None:
-        stub.put("gate", "structured_proof")
-        if setup == "waived":
-            stub.flag("outcome_gate_waived", 0)
-        elif setup == "attempted":
-            stub.flag("spike_attempted", 0)
-        elif setup == "budget":
-            (run_dir / f"spike-runs-{ID}").write_text("2")
-        else:
-            stub.put("refine_count", "5")
-        assert stub.run(self.ACTION, run_dir).stdout.strip() == "NONE"
-
-    def test_waiver_helper_error_falls_through(self, stub: _Stub, run_dir: Path) -> None:
-        stub.put("gate", "structured_proof")
-        stub.flag("outcome_gate_waived", 2)
-        assert stub.run(self.ACTION, run_dir).stdout.strip() == "NONE"
-
-    @pytest.mark.parametrize(
-        "verdict", ["structured_open", "prose", "none", "structured_satisfied"]
-    )
-    def test_other_verdicts_fall_through(self, stub: _Stub, run_dir: Path, verdict: str) -> None:
-        stub.put("gate", verdict)
-        assert stub.run(self.ACTION, run_dir).stdout.strip() == "NONE"
-
-    def test_gate_helper_error_falls_through(self, stub: _Stub, run_dir: Path) -> None:
-        stub.put("gate", "structured_proof")
-        stub.put("gate_rc", "2")
-        assert stub.run(self.ACTION, run_dir).stdout.strip() == "NONE"
-
-    def test_decision_flag_wins_over_proof(self, stub: _Stub, run_dir: Path) -> None:
-        stub.put("gate", "structured_proof")
-        stub.flag("decision_needed", 0)
-        assert stub.run(self.ACTION, run_dir).stdout.strip() == "DECISION"
 
 
 class TestChildProofBeforeDone:

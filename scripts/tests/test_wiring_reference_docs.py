@@ -266,6 +266,13 @@ DOC_STRINGS_PRESENT: list[tuple[str, str, str]] = [
     ("docs/reference/CLI.md", "not for manual use", "ENH-3630"),
     ("docs/reference/API.md", "| `prep` |", "ENH-3630"),
     ("docs/reference/API.md", "| `little_loops.preparation_policy` |", "ENH-3630"),
+    ("docs/reference/API.md", "## little_loops.preparation_policy", "ENH-3623"),
+    (
+        "docs/guides/LOOPS_REFERENCE.md",
+        "### `prepare-issue` — Preparation Dispatch Loop",
+        "ENH-3623",
+    ),
+    ("docs/ARCHITECTURE.md", "### Preparation Fact Log", "ENH-3623"),
     ("docs/reference/CLI.md", "#### `ll-issues advise-consult`", "ENH-3632"),
     ("docs/reference/CLI.md", "PROCEED`, `VETO`, or `SKIPPED", "ENH-3632"),
     ("docs/reference/API.md", "| `advise-consult` |", "ENH-3632"),

@@ -2273,9 +2273,10 @@ from confidence-check findings — this command is the gate that reads them back
 
 **Which gate states consume which flag (ENH-3250):** `decision_needed` is read
 by `check_decision_mid_refine`/`check_decision_mid_wire`/`check_decision_needed`
-in `refine-to-ready-issue.yaml` and by `select_obligation_post_refine` / `select_obligation_pre_implement`
-in `autodev.yaml` (via `check-flag` then `next-obligation`). `missing_artifacts` is read by `check_missing_artifacts` in both
-loops. `spike_needed` is read by the `refine-to-ready-issue.yaml` child's `check_spike_needed` (ENH-3611 removed autodev's copy; autodev's selectors re-enter the child on `PROOF`) (paired with
+in `refine-to-ready-issue.yaml`, and by the `prepare-issue` preparation policy's
+obligation selectors (ENH-3623; `little_loops.preparation_policy` reads the frontmatter
+directly). `missing_artifacts` is read by `check_missing_artifacts` in `refine-to-ready-issue.yaml`
+and by the policy's missing-artifacts repair. `spike_needed` is read by the `refine-to-ready-issue.yaml` child's `check_spike_needed` (the policy re-enters the child on `PROOF`) (paired with
 a `spike_attempted` re-check via an inline `show --json` predicate, not a plain
 `check-flag` call, since the gate is a two-field one-shot guard).
 `implementation_order_risk` is written by `set-flags` but **consumed by no gate
@@ -2321,7 +2322,7 @@ ll-issues check-gate ENH-3575 --json   # {"verdict": ..., "gates": [...]}
 
 Verdicts: `structured_open` (an unsatisfied `external`/`manual` gate), `structured_proof` (an unsatisfied `proof` gate with no proven spike), `structured_satisfied`, `prose` (legacy phrase match), `none`. Exit 0 when a gate is in force (`structured_open`, `structured_proof`, `prose`), 1 when not, 2 when the issue is not found (BUG-3294).
 
-**FSM loop use**: `autodev.yaml`'s `check_gate_at_dequeue`, `recheck_after_size_review` and `select_obligation_pre_implement` states read the verdict token from stdout (the selector re-enters `refine-to-ready-issue` on `structured_proof`, whose `check_proof_before_done` reads the same token; ENH-3611). The pre-implement proof gate `check_proof_defer_or_implement` — the only proof stage before `implement_current` since ENH-3611 removed `check_proof_gate_before_implement` — additionally consumes the exit code to tell a real verdict (exit 0 or 1 with a recognized token) from a helper failure (exit ≥ 2, empty stdout, or an unrecognized token), routing the latter to an infra deferral instead of implementation (BUG-3603). The dequeue and recheck consumers remain fail-open on the stdout token alone — later gates still apply on their paths.
+**FSM loop use**: `autodev.yaml`'s `check_gate_at_dequeue` reads the verdict token from stdout, and the `prepare-issue` preparation policy reads the same verdict (`resolve_gate_verdict`) to re-enter `refine-to-ready-issue` on `structured_proof`, whose `check_proof_before_done` reads the same token (ENH-3611, ENH-3623). The pre-implement proof gate `check_proof_defer_or_implement` — the only proof stage before `implement_current` since ENH-3611 removed `check_proof_gate_before_implement` — additionally consumes the exit code to tell a real verdict (exit 0 or 1 with a recognized token) from a helper failure (exit ≥ 2, empty stdout, or an unrecognized token), routing the latter to an infra deferral instead of implementation (BUG-3603). The dequeue and recheck consumers remain fail-open on the stdout token alone — later gates still apply on their paths.
 
 #### `ll-issues check-design`
 
@@ -2337,7 +2338,7 @@ ll-issues check-design BUG-2967   # Exit 0 — gate passes or is inert
 ll-issues check-design BUG-9999   # Exit 2 — issue not found (BUG-3294)
 ```
 
-**FSM loop use**: `autodev.yaml`'s `check_passed`, `recheck_scores`, `regate_after_atomic_remediation`, and `recheck_after_size_review` states each call `ll-issues check-design "$ID"` in place of the old inline JSON-parsing block, chaining its exit code into the surrounding readiness/outcome gate exactly like the `check-readiness` idiom.
+**FSM loop use**: `autodev.yaml`'s `check_passed` calls `ll-issues check-design "$ID"`, chaining its exit code into the readiness/outcome gate exactly like the `check-readiness` idiom (ENH-3625). The `prepare-issue` preparation policy applies the same verdict at every gate of its ladder (ENH-3623).
 
 ---
 
@@ -2463,8 +2464,9 @@ not it existed).
 **`run-record forward <ID> --run-dir DIR --from W1 --writer W2`** (ENH-3605) re-writes
 `W1`'s record for the issue under writer `W2`, changing only `writer`, and prints the
 forwarded record's routing token (`MISSING`, writing nothing, when `W1` has no record).
-Exit code is always 0. The `prepare-issue` wrapper uses it to republish
-`refine-to-ready-issue`'s verdict under its own writer.
+Exit code is always 0. `ll-issues prep apply` performs the same forward (shared helper)
+for the cancelled and inner-stop terminals; no built-in loop calls `run-record forward`
+directly since ENH-3623.
 
 Read the record back from Python with `little_loops.run_record.read_run_record`,
 which returns `None` for a missing, malformed, or writer/issue-mismatched file —
@@ -2535,7 +2537,6 @@ change an issue's `status`, `confidence_score`/`outcome_confidence`, or
 | `--run-dir DIR` | **Required.** The run's run_dir (an FSM state passes `${context.run_dir}`) |
 | `--readiness-threshold N` / `--outcome-threshold N` | Override the thresholds (defaults 85/65) |
 | `--guard2` (`record` only) | Mark the just-recorded `SIZE_REVIEW` done fact as guard-2 |
-| `--child-terminated-by` / `--child-failure` (`record` only) | Classify the inner run's outcome from the loop's terminal capture |
 | `--rate-limited` (`apply` only) | Route this pass to the `rate_limited` terminal instead of the open intent |
 
 - **`prep step <ID> --run-dir DIR`** replays the pass's open intent if one exists
@@ -2547,8 +2548,10 @@ change an issue's `status`, `confidence_score`/`outcome_confidence`, or
   stderr). Exit 0.
 - **`prep record <ID> --run-dir DIR`** appends the `done` fact for the currently
   open (non-terminal) intent; a no-op if there is none. Classifies a `RUN_CHILD`
-  step's outcome from `run-records/refine-to-ready-issue/<ID>.json`, never from a
-  loop capture that can go stale across a child run that captured nothing. Exit 0.
+  step's outcome from `run-records/refine-to-ready-issue/<ID>.json` alone (the
+  `RUN_CHILD` precondition cleared it): absent means the inner loop errored, a
+  legacy class means it ended `failed`, otherwise it ended `done`. It never reads the
+  loop's capture of the child run. Exit 0.
 - **`prep apply <ID> --run-dir DIR`** is the sole terminal writer: a
   `(pass, seq)`-keyed ledger row, `set-status` (deferral only), the shared typed
   run record (see `run-record` above), and the run_dir's inflight marker, each
@@ -2561,13 +2564,15 @@ change an issue's `status`, `confidence_score`/`outcome_confidence`, or
 **Examples:**
 ```bash
 ll-issues prep step ENH-3630 --run-dir "$RUN_DIR"
-ll-issues prep record ENH-3630 --run-dir "$RUN_DIR" --child-terminated-by terminal --child-failure none
+ll-issues prep record ENH-3630 --run-dir "$RUN_DIR"
 ll-issues prep apply ENH-3630 --run-dir "$RUN_DIR"
 ll-issues prep explain ENH-3630 --run-dir "$RUN_DIR"
 ```
 
-As of ENH-3630, no built-in loop calls `prep` yet — the dispatch loop that drives
-it through a full preparation pass exists only as an internal test fixture.
+The built-in `prepare-issue` loop (ENH-3623) is the only caller: `select_step` runs
+`prep step`, `record_step` / `record_guard2` run `prep record`, and `apply_outcome` /
+`mark_rate_limited` run `prep apply`. See
+[LOOPS_REFERENCE.md § prepare-issue](../guides/LOOPS_REFERENCE.md#prepare-issue--preparation-dispatch-loop-internal).
 ENH-3623 Phase B wires it into `prepare-issue.yaml`.
 
 ---
@@ -2814,8 +2819,8 @@ markers actually present in those same three directive sections — the inverse
 of `unmarked_superseded_directive` above, which reports the
 refine-did-not-mark defect. Backed by the public helper
 `issue_parser.superseded_marker_count()`. Marker presence is not a structural
-gap, so it never affects `has_gaps` or the exit code; `autodev.yaml`'s
-`check_reconcile_needed` reads this key as its contradiction predicate. Not
+gap, so it never affects `has_gaps` or the exit code; it is the contradiction
+predicate the `prepare-issue` reconcile rule uses (via the same helper). Not
 emitted on the `--all` payload, which maps `issue_id → gaps`.
 
 Also reports `duplicate_heading` (ENH-3247) — the same `###` heading text
@@ -3022,7 +3027,7 @@ ll-issues check-readiness 518 --readiness 80 --outcome 70
 ll-issues check-readiness 518 --honor-waiver   # outcome half satisfied by outcome_gate_waived: true
 ```
 
-**FSM loop use**: Use as a shell gate in `refine-to-ready-issue`-style loops to branch without an LLM call. `autodev.yaml`'s `check_passed` and `recheck_scores` (and the `select_obligation_post_refine` / `select_obligation_post_size_review` selectors' `next-obligation` calls) pass `--honor-waiver` so the CLI gates agree with the loop's inline gates (which read `outcome_gate_waived` from `ll-issues show --json`). Pair with `ll-issues show --json` when you need the raw scores.
+**FSM loop use**: Use as a shell gate in `refine-to-ready-issue`-style loops to branch without an LLM call. `autodev.yaml`'s `check_passed` (and the `prepare-issue` policy's `next-obligation` probe) pass `--honor-waiver` so the CLI gates agree with the loop's inline gates (which read `outcome_gate_waived` from `ll-issues show --json`). Pair with `ll-issues show --json` when you need the raw scores.
 
 #### `ll-issues set-scores` / `ll-issues ss`
 

@@ -48,6 +48,16 @@ def _config(project: Path) -> BRConfig:
     return BRConfig(project)
 
 
+def _inner_record(config: BRConfig, run_dir: Path, **kw: object) -> str:
+    """Write the inner ``refine-to-ready-issue`` run record; return the record id."""
+    from little_loops.cli.issues.run_record import canonical_record_id
+    from little_loops.run_record import RunRecord, write_run_record
+
+    rid = canonical_record_id(config, ID)
+    write_run_record(run_dir, RunRecord(writer="refine-to-ready-issue", issue_id=rid, **kw))  # type: ignore[arg-type]
+    return rid
+
+
 class TestFactLogIdempotency:
     def test_appending_same_key_twice_writes_one_line(self, tmp_path: Path) -> None:
         fact = Fact("1", 1, "intent", StepKind.RUN_CHILD.value, {"role": "first"})
@@ -84,15 +94,9 @@ class TestPrepStepReady:
         run_dir = project / "run"
         config = _config(project)
         prep_step(config, ID, run_dir, readiness_threshold=85, outcome_threshold=65)
-        prep_record(config, ID, run_dir, child_terminated_by="terminal", child_failure="none")
-        # Fake the inner run's record so record_token() sees READY.
-        from little_loops.cli.issues.run_record import canonical_record_id
-        from little_loops.run_record import RunRecord, write_run_record
-
-        rid = canonical_record_id(config, ID)
-        write_run_record(
-            run_dir, RunRecord(writer="refine-to-ready-issue", issue_id=rid, outcome="ready")
-        )
+        # Fake the inner run's record (written after the RUN_CHILD precondition clear).
+        rid = _inner_record(config, run_dir, outcome="ready")
+        prep_record(config, ID, run_dir)
         step = prep_step(config, ID, run_dir, readiness_threshold=85, outcome_threshold=65)
         assert step.kind is StepKind.FINISH
         assert step.payload.get("outcome") == "ready"
@@ -103,56 +107,92 @@ class TestPrepStepReady:
         assert '"outcome": "ready"' in record
 
 
-class TestPrepRecordAbsentRunRecord:
-    """ENH-3630 Step 5: dedicated pin for the AC's "absent record" claim.
+class TestPrepRecordClassifiesFromRunRecord:
+    """ENH-3623: ``prep record`` classifies a RUN_CHILD step from the child's run record.
 
-    ``prep_record`` classifies ``terminal`` from ``child_terminated_by`` alone (see its
-    docstring: never from a stale capture file) -- there is no separate
-    ``failure_terminal`` capture file for it to read, seeded stale or otherwise, so that
-    half of the AC holds structurally. The other half ("an absent record means the
-    child errored") only holds when the wrapper itself reports a non-terminal outcome
-    (``child_terminated_by`` != ``"terminal"``, e.g. it crashed or was signalled): that
-    alone drives ``terminal="error"`` -> ``decide()``'s ``inner_error`` stop, regardless
-    of the run record. A clean ``child_terminated_by="terminal"`` with no run record
-    (``token="MISSING"``) is NOT an error -- the token only matters for the
-    CANCELLED/DECOMPOSED checks in ``after_child``, so it falls through to the normal
-    readiness gate. Both halves are pinned here so the claim is exact, not just plausible.
+    The ``RUN_CHILD`` precondition clears ``run-records/refine-to-ready-issue/<ID>.json``
+    and every inner terminal writes it, so: absent -> the inner loop errored; a legacy
+    class -> it ended ``failed``; otherwise it ended ``done``. The loop's
+    ``captured.run_child`` (whose ``failure_terminal`` can outlive the run that set it)
+    is never consulted -- ``record_step`` does not even pass it
+    (``test_prepare_issue.py::TestStructure::test_record_step_never_reads_the_child_capture``).
     """
 
-    def test_non_terminal_wrapper_outcome_with_no_run_record_is_inner_error(
-        self, project: Path
-    ) -> None:
+    def _first_step(self, project: Path) -> tuple[BRConfig, Path]:
         _write_issue(project, ID, frontmatter="confidence_score: 90\noutcome_confidence: 80\n")
         run_dir = project / "run"
         config = _config(project)
         prep_step(config, ID, run_dir, readiness_threshold=85, outcome_threshold=65)
-        # No run-record written anywhere, and the wrapper reports it never reached a
-        # terminal (child_terminated_by defaults to "" -- e.g. a crash mid-refine).
-        done = prep_record(config, ID, run_dir, child_terminated_by="", child_failure="")
+        return config, run_dir
+
+    def test_absent_record_is_inner_error(self, project: Path) -> None:
+        config, run_dir = self._first_step(project)
+        done = prep_record(config, ID, run_dir)
         assert done is not None
-        assert done.payload["terminal"] == "error"
-        assert done.payload["token"] == "MISSING"
+        assert (done.payload["terminal"], done.payload["token"]) == ("error", "MISSING")
         step = prep_step(config, ID, run_dir, readiness_threshold=85, outcome_threshold=65)
         assert step.kind is StepKind.STOP
         assert step.payload.get("outcome") == "inner_error"
 
-    def test_clean_terminal_with_no_run_record_is_not_an_error(self, project: Path) -> None:
-        _write_issue(project, ID, frontmatter="confidence_score: 90\noutcome_confidence: 80\n")
-        run_dir = project / "run"
-        config = _config(project)
-        prep_step(config, ID, run_dir, readiness_threshold=85, outcome_threshold=65)
-        # The wrapper says the child reached a real terminal cleanly, but nothing wrote
-        # a run record for it (e.g. a slash-command inner run with no writer).
-        done = prep_record(
-            config, ID, run_dir, child_terminated_by="terminal", child_failure="none"
-        )
+    def test_legacy_class_record_is_a_child_stop(self, project: Path) -> None:
+        config, run_dir = self._first_step(project)
+        _inner_record(config, run_dir, outcome="blocked", legacy_class="quality")
+        done = prep_record(config, ID, run_dir)
         assert done is not None
-        assert done.payload["terminal"] == "done"
-        assert done.payload["token"] == "MISSING"
-        # READY scores clear the first gate regardless of the (irrelevant) MISSING token.
+        assert (done.payload["terminal"], done.payload["token"]) == ("failed", "BLOCKED:quality")
+        step = prep_step(config, ID, run_dir, readiness_threshold=85, outcome_threshold=65)
+        assert step.kind is StepKind.STOP
+        assert step.payload.get("outcome") == "child_stop"
+
+    def test_done_record_ignores_a_stale_failure_capture(self, project: Path) -> None:
+        """A previous run_child that ended `failed` cannot flip this pass: the record
+        (fresh, the precondition cleared the old one) is the only input."""
+        config, run_dir = self._first_step(project)
+        _inner_record(config, run_dir, outcome="ready")
+        done = prep_record(config, ID, run_dir)
+        assert done is not None
+        assert (done.payload["terminal"], done.payload["token"]) == ("done", "READY")
         step = prep_step(config, ID, run_dir, readiness_threshold=85, outcome_threshold=65)
         assert step.kind is StepKind.FINISH
         assert step.payload.get("outcome") == "ready"
+
+    def test_run_child_precondition_clears_the_previous_record(self, project: Path) -> None:
+        """A stale record from a previous pass cannot be classified as this pass's run."""
+        _write_issue(project, ID, frontmatter="confidence_score: 90\noutcome_confidence: 80\n")
+        run_dir = project / "run"
+        config = _config(project)
+        _inner_record(config, run_dir, outcome="blocked", legacy_class="quality")
+        prep_step(config, ID, run_dir, readiness_threshold=85, outcome_threshold=65)
+        done = prep_record(config, ID, run_dir)
+        assert done is not None and done.payload["terminal"] == "error"
+
+
+class TestRescorePrecondition:
+    """BUG-3588 / ENH-3623: the first RESCORE of an origin clears the stale scores
+    before the slash command runs, so a rescoring that writes nothing reads absent."""
+
+    def test_first_rescore_clears_scores_and_retry_does_not(self, project: Path) -> None:
+        path = _write_issue(
+            project,
+            ID,
+            frontmatter="confidence_score: 70\noutcome_confidence: 80\nmissing_artifacts: true\n",
+        )
+        run_dir = project / "run"
+        config = _config(project)
+        for kind in (StepKind.RUN_CHILD, StepKind.WIRE, StepKind.REFINE_GAP):
+            step = prep_step(config, ID, run_dir, readiness_threshold=85, outcome_threshold=65)
+            assert step.kind is kind
+            if kind is StepKind.RUN_CHILD:
+                _inner_record(config, run_dir, outcome="blocked")
+            prep_record(config, ID, run_dir)
+        step = prep_step(config, ID, run_dir, readiness_threshold=85, outcome_threshold=65)
+        assert step.kind is StepKind.RESCORE and step.payload.get("attempt") == 1
+        assert "confidence_score" not in path.read_text()
+        assert "outcome_confidence" not in path.read_text()
+        prep_record(config, ID, run_dir)
+        retry = prep_step(config, ID, run_dir, readiness_threshold=85, outcome_threshold=65)
+        assert retry.kind is StepKind.RESCORE and retry.payload.get("attempt") == 2
+        assert "preconditions" not in retry.payload
 
 
 class TestPrepApplyDeferredWritesStatus:
@@ -367,3 +407,286 @@ class TestReasonValidationEveryDeferStop:
 
         for _outcome, (reason, _legacy) in _DEFER_STOPS.items():
             assert reason_error_for_status("deferred", reason) is None
+
+
+# ---------------------------------------------------------------------------
+# ENH-3623: crash injection for every apply outcome branch, and the
+# refine-terminal-class sentinel on every failed-bound terminal.
+# ---------------------------------------------------------------------------
+
+#: outcome -> (issue frontmatter, inner record kwargs or None, expected exit, token)
+_APPLY_BRANCHES: dict[str, tuple[str, dict[str, object] | None, int, str]] = {
+    "ready": ("confidence_score: 90\noutcome_confidence: 80\n", None, 0, "READY"),
+    "cancelled": (
+        "confidence_score: 90\noutcome_confidence: 80\n",
+        {"outcome": "cancelled"},
+        0,
+        "CANCELLED",
+    ),
+    "decomposed": ("", None, 0, "DECOMPOSED"),
+    "child_stop": (
+        "",
+        {"outcome": "blocked", "legacy_class": "quality"},
+        1,
+        "BLOCKED:quality",
+    ),
+    "rate_limited": ("", None, 1, "RETRYABLE_ERROR:rate_limited"),
+    "scores_absent": ("", None, 1, "RETRYABLE_ERROR:infra"),
+    "inner_error": ("", None, 1, "RETRYABLE_ERROR:infra"),
+    "ladder_error": ("", None, 1, "RETRYABLE_ERROR:infra"),
+    "low_readiness": (
+        "confidence_score: 70\noutcome_confidence: 80\n",
+        None,
+        1,
+        "DEFERRED:gate_unmet",
+    ),
+    "decision_unresolved": ("", None, 1, "BLOCKED:decision_unresolved"),
+}
+
+
+def _open_terminal(project: Path, outcome: str) -> tuple[BRConfig, Path]:
+    frontmatter, inner, _code, _token = _APPLY_BRANCHES[outcome]
+    _write_issue(project, ID, frontmatter=frontmatter)
+    run_dir = project / "run"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    (run_dir / "autodev-inflight").write_text(ID)
+    config = _config(project)
+    if inner is not None:
+        _inner_record(config, run_dir, **inner)
+    append_fact(
+        run_dir, ID, Fact("0", 0, "obs", "pass_start", {"pre_readiness": "", "pre_ids": []})
+    )
+    if outcome not in ("rate_limited", "ladder_error"):
+        kind = StepKind.FINISH if outcome in ("ready", "cancelled", "decomposed") else StepKind.STOP
+        append_fact(run_dir, ID, Fact("0", 1, "intent", kind.value, {"outcome": outcome}))
+    return config, run_dir
+
+
+def _apply(config: BRConfig, run_dir: Path, outcome: str) -> int:
+    return prep_apply(
+        config,
+        ID,
+        run_dir,
+        readiness_threshold=85,
+        outcome_threshold=65,
+        rate_limited=outcome == "rate_limited",
+    )
+
+
+def _token(config: BRConfig, run_dir: Path) -> str:
+    from little_loops.cli.issues.run_record import canonical_record_id
+    from little_loops.run_record import read_run_record, record_token
+
+    return record_token(read_run_record(run_dir, "prepare-issue", canonical_record_id(config, ID)))
+
+
+def _rows(run_dir: Path) -> list[str]:
+    ledger = run_dir / "autodev-skipped.txt"
+    return ledger.read_text().splitlines() if ledger.exists() else []
+
+
+class TestPrepApplyEveryBranch:
+    @pytest.mark.parametrize("outcome", sorted(_APPLY_BRANCHES))
+    def test_apply_writes_one_terminal_record(self, project: Path, outcome: str) -> None:
+        config, run_dir = _open_terminal(project, outcome)
+        _frontmatter, _inner, code, token = _APPLY_BRANCHES[outcome]
+        assert _apply(config, run_dir, outcome) == code
+        assert _token(config, run_dir) == token
+        applied = [f for f in load_facts(run_dir, ID).dones() if f.step in ("FINISH", "STOP")]
+        assert len(applied) == 1
+
+    @pytest.mark.parametrize(
+        "outcome", sorted(o for o, (_f, _i, code, _t) in _APPLY_BRANCHES.items() if code == 1)
+    )
+    def test_failed_bound_terminal_writes_the_sentinel(self, project: Path, outcome: str) -> None:
+        """Until ENH-3600 removes its reader (autodev's skip_inflight), every
+        failed-bound terminal leaves refine-terminal-class (was mark_inner_error's job)."""
+        config, run_dir = _open_terminal(project, outcome)
+        (run_dir / "refine-terminal-class").unlink(missing_ok=True)
+        assert _apply(config, run_dir, outcome) == 1
+        sentinel = (run_dir / "refine-terminal-class").read_text()
+        infra = outcome in ("rate_limited", "scores_absent", "inner_error", "ladder_error")
+        assert (sentinel == "infra") is infra, sentinel
+
+
+def _crash(target: str) -> object:
+    def boom(*_a: object, **_kw: object) -> None:
+        raise OSError(f"simulated crash in {target}")
+
+    return boom
+
+
+#: Where a crash lands: after the ledger row (before its progress mark), in
+#: set-status, in the run-record write, or after every write but before the
+#: terminal done fact. The inflight clear is an idempotent unlink between the row
+#: and set-status.
+_CRASH_POINTS = ("ledger_row", "set_status", "run_record", "done_fact")
+
+
+class TestPrepApplyCrashEveryBranch:
+    """AC: a crash between any two of apply's writes, then a replay, never
+    double-appends a ledger row and ends with exactly one terminal."""
+
+    @pytest.mark.parametrize("point", sorted(_CRASH_POINTS))
+    @pytest.mark.parametrize("outcome", sorted(_APPLY_BRANCHES))
+    def test_crash_then_replay_converges(
+        self, project: Path, monkeypatch: pytest.MonkeyPatch, outcome: str, point: str
+    ) -> None:
+        import little_loops.cli.issues.run_record as run_record_mod
+        import little_loops.preparation_policy as pp
+
+        clean_root = project / "clean"
+        clean_root.mkdir()
+        for kind in ("bugs", "features", "enhancements", "epics"):
+            (clean_root / ".issues" / kind).mkdir(parents=True)
+        clean_cfg, clean_dir = _open_terminal(clean_root, outcome)
+        clean_code = _apply(clean_cfg, clean_dir, outcome)
+        clean_rows = _rows(clean_dir)
+
+        config, run_dir = _open_terminal(project, outcome)
+        real_append = pp.append_fact
+        if point == "ledger_row":
+            # crash right after the row landed, before its `row` progress mark
+            def append(rd: Path, iid: str, fact: Fact) -> bool:
+                if fact.step == "apply_progress" and fact.payload.get("value") == "row":
+                    raise OSError("simulated crash after the ledger row")
+                return real_append(rd, iid, fact)
+
+            monkeypatch.setattr(pp, "append_fact", append)
+        elif point == "set_status":
+            monkeypatch.setattr(pp, "_set_status_checked", _crash(point))
+        elif point == "run_record":
+            monkeypatch.setattr(run_record_mod, "write_typed_run_record", _crash(point))
+            monkeypatch.setattr(run_record_mod, "forward_run_record", _crash(point))
+        else:  # every write landed; the terminal done fact did not
+
+            def append(rd: Path, iid: str, fact: Fact) -> bool:
+                if fact.kind == "done" and fact.step in ("FINISH", "STOP"):
+                    raise OSError("simulated crash before the done fact")
+                return real_append(rd, iid, fact)
+
+            monkeypatch.setattr(pp, "append_fact", append)
+        try:
+            _apply(config, run_dir, outcome)
+        except OSError:
+            pass  # not every branch reaches every crash point
+        monkeypatch.undo()
+
+        assert _apply(config, run_dir, outcome) == clean_code
+        assert _apply(config, run_dir, outcome) == clean_code  # and replay is stable
+        assert _rows(run_dir) == clean_rows
+        assert _token(config, run_dir) == _token(clean_cfg, clean_dir)
+        assert (run_dir / "autodev-inflight").exists() == (clean_dir / "autodev-inflight").exists()
+        applied = [f for f in load_facts(run_dir, ID).dones() if f.step in ("FINISH", "STOP")]
+        assert len(applied) == 1
+
+
+class TestSnapshotProbes:
+    """ENH-3623: probe semantics the retired autodev selector tests pinned."""
+
+    def test_refine_cap_honors_config_and_defaults_to_five(self, project: Path) -> None:
+        from little_loops.preparation_policy import snapshot_issue
+
+        _write_issue(project, ID)
+        run_dir = project / "run"
+        snap = snapshot_issue(
+            _config(project), ID, run_dir, readiness_threshold=85, outcome_threshold=65
+        )
+        assert (snap.refine_cap, snap.refine_count) == (5, 0)
+        (project / ".ll" / "ll-config.json").write_text('{"commands": {"max_refine_count": 3}}')
+        snap = snapshot_issue(
+            _config(project), ID, run_dir, readiness_threshold=85, outcome_threshold=65
+        )
+        assert snap.refine_cap == 3
+
+    def test_next_obligation_probe_skips_tier1_and_honors_the_waiver(
+        self, project: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import little_loops.cli.issues.next_obligation as nob
+        from little_loops.preparation_policy import snapshot_issue
+
+        seen: dict[str, object] = {}
+
+        def fake(config: object, issue_id: str, **kw: object) -> None:
+            seen.update(kw)
+            return None
+
+        monkeypatch.setattr(nob, "select_next_obligation", fake)
+        _write_issue(project, ID)
+        snap = snapshot_issue(
+            _config(project), ID, project / "run", readiness_threshold=85, outcome_threshold=65
+        )
+        assert seen["honor_waiver"] is True
+        skip = set(seen["skip"])  # type: ignore[arg-type]
+        for tier1 in (
+            "FORMAT",
+            "VERIFY",
+            "HEDGES",
+            "PLACEHOLDERS",
+            "ACCEPTANCE_CRITERIA",
+            "DESIGN",
+        ):
+            assert any(getattr(o, "name", o) == tier1 for o in skip), tier1
+        assert snap.obligation_post == "ERROR"  # a None probe result reads as _error
+
+    def test_probe_exception_reads_as_error(
+        self, project: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import little_loops.cli.issues.next_obligation as nob
+        from little_loops.preparation_policy import snapshot_issue
+
+        def boom(*_a: object, **_kw: object) -> None:
+            raise RuntimeError("probe failed")
+
+        monkeypatch.setattr(nob, "select_next_obligation", boom)
+        _write_issue(project, ID)
+        snap = snapshot_issue(
+            _config(project), ID, project / "run", readiness_threshold=85, outcome_threshold=65
+        )
+        assert snap.obligation_post == "ERROR"
+
+
+class TestDecisionExhausted:
+    def test_open_issue_is_deferred_and_ledgered(self, project: Path) -> None:
+        _write_issue(project, ID)
+        run_dir = project / "run"
+        run_dir.mkdir()
+        (run_dir / "autodev-inflight").write_text(ID)
+        config = _config(project)
+        append_fact(
+            run_dir, ID, Fact("0", 0, "obs", "pass_start", {"pre_readiness": "", "pre_ids": []})
+        )
+        append_fact(
+            run_dir,
+            ID,
+            Fact("0", 1, "intent", StepKind.STOP.value, {"outcome": "decision_exhausted"}),
+        )
+        assert _apply(config, run_dir, "decision_exhausted") == 1
+        assert _rows(run_dir) == [f"{ID}  decision_unresolved"]
+        assert _token(config, run_dir) == "BLOCKED:decision_unresolved"
+        content = (project / ".issues" / "enhancements" / f"P3-{ID}-test.md").read_text()
+        assert "status: deferred" in content and "deferred_reason: decision_unresolved" in content
+        assert not (run_dir / "autodev-inflight").exists()
+
+    @pytest.mark.parametrize(
+        ("status", "token"), [("done", "DECOMPOSED"), ("cancelled", "CANCELLED")]
+    )
+    def test_resolved_issue_is_never_deferred(self, project: Path, status: str, token: str) -> None:
+        """BUG-2729: a resolved issue at decision exhaustion is never deferred; it ends
+        DECOMPOSED (a cancelled one records CANCELLED, outcome_from_legacy_class rule 1)."""
+        path = _write_issue(project, ID)
+        path.write_text(path.read_text().replace("status: open", f"status: {status}"))
+        run_dir = project / "run"
+        config = _config(project)
+        append_fact(
+            run_dir, ID, Fact("0", 0, "obs", "pass_start", {"pre_readiness": "", "pre_ids": []})
+        )
+        append_fact(
+            run_dir,
+            ID,
+            Fact("0", 1, "intent", StepKind.STOP.value, {"outcome": "decision_exhausted"}),
+        )
+        assert _apply(config, run_dir, "decision_exhausted") == 0
+        assert _rows(run_dir) == []
+        assert _token(config, run_dir) == token
+        assert f"status: {status}" in path.read_text()

@@ -1,27 +1,17 @@
-"""ENH-3630: run the characterization scenarios against the policy wrapper.
+"""ENH-3623: the preparation-policy cutover's removed-state register.
 
-``policy_transform`` applies ENH-3606's boundary-edge retargets to a parsed
-``autodev.yaml``, deletes the verified 39-state move set plus
-``size_review_snap`` / ``check_broke_down`` / ``mark_scores_absent_infra``, and adds
-the ``prep-pass-<ID>`` write to ``dequeue_next``. ``run_policy`` runs a scenario
-through :func:`tests.autodev_harness.run_autodev` with
-``fixtures/loops/prepare-issue-policy.yaml`` as ``prepare-issue``.
-
-Ported from the ``spike/preparation-policy-a51621302`` tag
-(``preparation_policy_harness.py``); this module targets the fixture path (not
-``BUILTIN_LOOPS_DIR``, ENH-3630 § Dispatch-loop fixture) and no longer needs the
-``mark_rate_limited`` "wired for when BUG-3622 lands" caveat -- BUG-3622 is
-fixed on main.
+ENH-3630 ran the characterization scenarios against a dispatch-loop fixture plus an
+in-memory ``autodev.yaml`` transform; ENH-3623 landed both as the built-in
+``prepare-issue.yaml`` and ``autodev.yaml``, so :func:`tests.autodev_harness.run_autodev`
+now runs the policy directly and this module only keeps what the cutover removed:
+the verified 39-state move set (``MOVED_STATES``) plus ``size_review_snap`` /
+``check_broke_down`` / ``mark_scores_absent_infra`` (``DELETED_STATES``), and
+:func:`state_targets` for edge checks.
 """
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
-
-from tests.autodev_harness import AutodevResult, Scenario, run_autodev
-
-POLICY_YAML = Path(__file__).parent / "fixtures" / "loops" / "prepare-issue-policy.yaml"
 
 #: ENH-3606 "Verified move set (39 states)".
 MOVED_STATES: tuple[str, ...] = (
@@ -72,13 +62,6 @@ DELETED_STATES: tuple[str, ...] = (
     "mark_scores_absent_infra",
 )
 
-_INFLIGHT_LINE = "printf '%s' \"$CURRENT\" > ${context.run_dir}/autodev-inflight\n"
-_PASS_WRITE = (
-    "# ENH-3630: per-issue pass id for the preparation fact log\n"
-    "P=$(cat ${context.run_dir}/prep-pass-$CURRENT 2>/dev/null || echo 0)\n"
-    "printf '%s' \"$((P + 1))\" > ${context.run_dir}/prep-pass-$CURRENT\n"
-)
-
 _EDGE_KEYS = (
     "next",
     "on_yes",
@@ -100,37 +83,3 @@ def state_targets(state: dict[str, Any]) -> list[str]:
     if isinstance(route, dict):
         out.extend(v for v in route.values() if isinstance(v, str))
     return out
-
-
-def policy_transform(data: dict[str, Any]) -> dict[str, Any]:
-    """ENH-3606 boundary retargets + deletions + the dequeue_next pass-id write."""
-    st = data["states"]
-    for name in DELETED_STATES:
-        del st[name]
-    st["refine_current"]["on_success"] = "copy_broke_down"
-    cp = st["check_passed"]
-    cp["on_yes"] = "check_proof_defer_or_implement"
-    cp["on_no"] = "skip_inflight"
-    cp["on_cannot_judge"] = "skip_inflight"
-    cp["on_error"] = "skip_inflight_infra"
-    st["detect_children"]["on_no"] = "check_parent_resolved"
-    st["detect_children"]["on_error"] = "check_parent_resolved"
-    st["check_parent_resolved"]["on_no"] = "skip_inflight"
-    st["check_parent_resolved"]["on_error"] = "skip_inflight_infra"
-    data.pop("capture_reachability_ok", None)
-    action = st["dequeue_next"]["action"]
-    assert _INFLIGHT_LINE in action, "dequeue_next inflight write moved; update the transform"
-    st["dequeue_next"]["action"] = action.replace(_INFLIGHT_LINE, _INFLIGHT_LINE + _PASS_WRITE)
-    dangling = sorted({(n, t) for n, s in st.items() for t in state_targets(s) if t not in st})
-    assert not dangling, f"autodev edges into removed states: {dangling}"
-    return data
-
-
-def run_policy(scenario: Scenario, tmp_path: Path, monkeypatch: Any) -> AutodevResult:
-    return run_autodev(
-        scenario,
-        tmp_path,
-        monkeypatch,
-        prepare_issue_yaml=POLICY_YAML,
-        autodev_transform=policy_transform,
-    )

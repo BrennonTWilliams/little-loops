@@ -1052,8 +1052,9 @@ keys:
   `/ll:reconcile-issue` rewrites the section. Do not attempt the rewrite here.
   Surface it: report the count in Step 8's output and name
   `/ll:reconcile-issue [ISSUE-ID]` in the Next Steps block. This is the human
-  path into a remedy that was previously reachable only via `autodev.yaml`'s
-  plateau gate (measured at capture: 1,703 issues refined, 19 reconciled).
+  path into a remedy that was previously reachable only via autodev's plateau
+  gate, now the `prepare-issue` loop's reconcile rule (measured at capture:
+  1,703 issues refined, 19 reconciled).
 - **`unproven_mechanism: true` set this pass** (ENH-3350): this pass deposited
   a `⚠ Unproven mechanism` marker (see § Writing Findings Blocks) because a
   finding it recorded found no confirming precedent for a proposed remedy's

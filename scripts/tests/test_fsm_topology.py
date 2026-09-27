@@ -288,7 +288,16 @@ class TestAutodevSmoke:
         # The autodev_summary extraction added finalize_step_capped (+1) — the
         # on_max_steps handler that writes summary.json at the step cap — raising
         # it to 87.
-        assert len(topo["states"]) == 87
+        # ENH-3623 moved the second-pass preparation ladder into the prepare-issue
+        # dispatch loop: removed the verified 39-state move set plus
+        # size_review_snap, check_broke_down and mark_scores_absent_infra (-42), and
+        # added no autodev state, lowering it to 45.
+        assert len(topo["states"]) == 45
+        # None of the 42 removed states may come back as an edge target either.
+        from tests.preparation_policy_harness import DELETED_STATES
+
+        assert not state_ids & set(DELETED_STATES)
+        assert not {e["to"] for e in topo["edges"]} & set(DELETED_STATES)
 
         # Every edge endpoint is a known state id, or the target of a
         # declared sub-loop (`loop:`) cross-graph edge. `from` may be null

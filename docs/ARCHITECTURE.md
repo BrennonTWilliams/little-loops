@@ -1317,6 +1317,39 @@ Both modes save state for resume capability:
 }
 ```
 
+### Preparation Fact Log (autodev → prepare-issue)
+
+FSM loops persist only the executor's `current_state` and captures, so routing
+policy that lives in graph shape plus `run_dir` handshake files cannot resume
+mid-chain exactly (a resume re-runs the whole `loop:` child from `initial`). The
+`prepare-issue` dispatch loop (ENH-3623) avoids that by moving autodev's
+second-pass preparation ladder into `little_loops.preparation_policy`:
+
+```
+autodev.dequeue_next ──increments──▶ <run_dir>/prep-pass-<ID>
+autodev.refine_current ─loop:─▶ prepare-issue
+   select_step ─▶ ll-issues prep step ─▶ snapshot_issue + load_facts ─▶ decide() ─▶ intent fact
+   run_<kind>  ─▶ one command (refine-to-ready-issue child or one slash command)
+   record_step ─▶ ll-issues prep record ─▶ done fact (+ repair-cycle projection)
+   apply_outcome ─▶ ll-issues prep apply ─▶ ledger row, set-status, run record, inflight clear
+```
+
+- **Fact log** — `<run_dir>/prep-facts/<ID>.jsonl`, one line per fact
+  `{pass, seq, kind: intent|done|obs, step, payload}`, append-only and idempotent by
+  `(pass, seq, kind)`. It replaces about fifteen handshake files (repair-cycle
+  counter, rescore origin/retry markers, re-entry caps, contradiction and remedy
+  markers, guard-2 provenance). Every budget is derived from the facts; the
+  repair-cycle file is a projection kept for readers.
+- **Decisions are pure** — `decide(IssueSnapshot, Facts) -> Step`; the checkpoint is
+  the pass's last `done` fact, so each chain of the old shell/classify states between
+  two commands is one `decide()` call. Writers are separate from decisions.
+- **Resume is exact** — a restart re-enters `select_step`, which replays the pass's
+  open intent (at most one command re-runs) or decides the next step; `prep apply`'s
+  four writes are each idempotent, so replay never double-applies bookkeeping.
+- **Removed-state guard** — `PersistentExecutor.resume()` raises a `ValueError`
+  naming the state and loop when a loop edit removed the persisted `current_state`;
+  `ll-loop resume` prints it and exits 1.
+
 ### Merge Strategy
 
 The merge coordinator is a sophisticated git operations state machine that handles:

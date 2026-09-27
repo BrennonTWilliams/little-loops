@@ -1,20 +1,22 @@
-"""Characterization pins for autodev's second-pass ladder (ENH-3606, plan item 1C).
+"""Characterization pins for autodev's preparation ladder (ENH-3618, remapped by ENH-3623).
 
 Each scenario runs the REAL ``autodev.yaml`` -> ``prepare-issue.yaml`` chain under
 ``PersistentExecutor`` with a stub ``refine-to-ready-issue`` and scripted slash
-commands (``tests.autodev_harness``), and pins TODAY's artifacts: the autodev
-state path, ``autodev-skipped.txt`` rows, queue, staged/passed/unverified, the
-``prepare-issue`` run-record token per issue, issue status/deferred_reason,
-``summary.json``, the slash-command sequence and the repair-cycle counter.
+commands (``tests.autodev_harness``), and pins the artifacts: the autodev state
+path, the prepare-issue dispatch-loop path, ``autodev-skipped.txt`` rows, queue,
+staged/passed/unverified, the ``prepare-issue`` run-record token per issue, issue
+status/deferred_reason, ``summary.json``, the slash-command sequence and the
+repair-cycle counter.
 
-These are characterization pins, not a spec: where today's behavior looks wrong
-the scenario says so in a ``# BUG-LIKE:`` comment instead of asserting the
-"right" answer. ENH-3606 (or the preparation-policy spike that may replace it)
-re-runs the same ``SCENARIOS`` table against a relocated ladder; the only diffs
-it may show are its enumerated accepted behavior changes.
+These are characterization pins, not a spec: where the behavior looks wrong the
+scenario says so in a ``# BUG-LIKE:`` comment instead of asserting the "right"
+answer. ENH-3623 moved the second-pass ladder from autodev into the prepare-issue
+dispatch loop; it remapped every path and changed only the enumerated accepted
+behavior changes (``# ENH-3623`` comments; the replaced values live in
+``test_preparation_policy_parity.PRE_CUTOVER_PINS``).
 
-One scenario per ENH-3606 "Terminal table" row, plus the prepare-issue wrapper's
-own terminals, a resume characterization, and a harness smoke test.
+One scenario per terminal-table row, plus the wrapper's own terminals, a resume
+characterization, and a harness smoke test.
 """
 
 from __future__ import annotations
@@ -89,63 +91,66 @@ DEQUEUE = (
     "refine_current",
 )
 PREFIX = ("init", *DEQUEUE)
-REFINE_OK = ("count_repair_cycle_refine", "copy_broke_down", "route_refine_success")
+REFINE_OK = ("copy_broke_down", "route_refine_success")
 IMPLEMENT = (
     "check_proof_defer_or_implement",
     "implement_current",
     "verify_impl_closed",
     "route_quality_gate",
 )
-TO_SIZE_REVIEW = (
-    "check_passed",
-    "select_obligation_post_refine",
-    "check_missing_artifacts",
-    "detect_children",
-    "size_review_snap",
-    "check_broke_down",
-    "check_parent_resolved",
-    "recheck_scores",
-    "run_size_review",
-    "count_repair_cycle_size_review",
-    "enqueue_or_skip",
-)
-POST_SIZE_REVIEW = (
-    "check_parent_resolved_post_size_review",
-    "select_obligation_post_size_review",
-    "check_reconcile_needed",
-)
-RESCORE = ("clear_scores", "rerun_confidence", "check_scores_present", "route_after_rescore")
-RECONCILE_TO_RECHECK = (
-    "reconcile_current",
-    "count_repair_cycle_reconcile",
-    *RESCORE,
-    "recheck_after_size_review",
-    "check_pre_deferral_remedy",
-)
-GUARD2_TO_GO_NO_GO = (
-    "check_size_review_ran_this_pass",
-    "check_guard2_verdict",
-    "check_readiness_for_atomic_remediation",
-    "remediate_oversized_atomic",
-    "mark_rescore_origin_atomic",
-    *RESCORE,
-    "regate_after_atomic_remediation",
-    "check_atomic_design_remedy",
-    "check_go_no_go_eligible",
-    "run_go_no_go",
-    "check_go_no_go_waiver",
-)
 END = ("dequeue_next", "finalize_done")
-LADDER_RECONCILE_PATH = (
-    *PREFIX,
-    *REFINE_OK,
-    *TO_SIZE_REVIEW,
-    *POST_SIZE_REVIEW,
-    *RECONCILE_TO_RECHECK,
-    *END,
+#: ENH-3623: autodev has no second-pass state; every ladder outcome is one wrapper
+#: terminal, so the autodev paths collapse to these four shapes.
+READY_PATH = (*PREFIX, *REFINE_OK, "check_passed", *IMPLEMENT, *END)
+STOP_PATH = (*PREFIX, "route_refine_outcome", "ledger_child_stop", *END)
+INFRA_PATH = (*PREFIX, "route_refine_outcome", "skip_inflight_infra", *END)
+RATE_LIMITED_PATH = (*PREFIX, "route_refine_outcome", "finalize_rate_limited", "finalize_done")
+
+# ---------------------------------------------------------------------------
+# Expected-path segments (prepare-issue dispatch loop, depth 1)
+# ---------------------------------------------------------------------------
+
+
+def step(kind: str) -> tuple[str, ...]:
+    """One dispatched command step: ``select_step -> run_<kind> -> record_step``."""
+    return ("select_step", f"run_{kind}", "record_step")
+
+
+CHILD = step("child")
+SIZE_REVIEW = ("select_step", "run_size_review", "classify_guard2", "record_step")
+SIZE_REVIEW_G2 = ("select_step", "run_size_review", "classify_guard2", "record_guard2")
+APPLY = ("select_step", "apply_outcome")
+WRAPPER_DONE = (*CHILD, *APPLY)
+#: size review -> reconcile -> rescore -> terminal (the readiness-plateau ladder).
+WRAPPER_RECONCILE = (*CHILD, *SIZE_REVIEW, *step("reconcile"), *step("rescore"), *APPLY)
+#: ...then the design remedy (refine gap + rescore) before design_gate_failed.
+WRAPPER_DESIGN_REMEDY = (
+    *CHILD,
+    *SIZE_REVIEW,
+    *step("reconcile"),
+    *step("rescore"),
+    *step("refine_gap"),
+    *step("rescore"),
+    *APPLY,
 )
-WRAPPER_DONE = ("clear_record", "run_refine_to_ready", "forward_done")
-WRAPPER_STOP = ("clear_record", "run_refine_to_ready", "forward_stop")
+#: guard-2 (atomic) -> wire remediation -> rescore -> go/no-go.
+WRAPPER_GO_NO_GO = (
+    *CHILD,
+    *SIZE_REVIEW_G2,
+    *step("wire"),
+    *step("rescore"),
+    *step("go_no_go"),
+    *APPLY,
+)
+#: missing-artifacts repair: wire -> refine gap -> rescore -> rescore retry.
+WRAPPER_RESCORE_RETRY = (
+    *CHILD,
+    *step("wire"),
+    *step("refine_gap"),
+    *step("rescore"),
+    *step("rescore"),
+    *APPLY,
+)
 
 SUMMARY_BASE: dict[str, Any] = {
     "verdict": "no-op",
@@ -243,23 +248,17 @@ def expected_view(e: Expected) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# The table. Phase 2 re-runs every Scenario here against a replacement
-# prepare-issue (run_autodev(..., prepare_issue_yaml=..., autodev_transform=...)).
+# The table. ENH-3623 remapped every path onto the dispatch loop and folded in the
+# accepted behavior changes; each changed field says so in an ``# ENH-3623`` comment
+# and ``test_preparation_policy_parity.PRE_CUTOVER_PINS`` keeps the value it replaced.
 # ---------------------------------------------------------------------------
 
 SCENARIOS: list[tuple[Scenario, Expected]] = [
-    # -- ladder complete, gates pass (ENH-3606 row: mark_ready) -------------------
+    # -- ladder complete, gates pass (terminal table: ready) ----------------------
     (
         Scenario(name="ready_implement_closed", frontmatter=READY, inner_runs={ID: (done(),)}),
         Expected(
-            path=(
-                *PREFIX,
-                *REFINE_OK,
-                "check_passed",
-                "select_obligation_pre_implement",
-                *IMPLEMENT,
-                *END,
-            ),
+            path=READY_PATH,
             staged=(ID,),
             passed=(ID,),
             records={ID: "READY"},
@@ -278,24 +277,12 @@ SCENARIOS: list[tuple[Scenario, Expected]] = [
             slash={
                 **LADDER_TO_RECONCILE,
                 "confidence-check": (confidence(70, 80),),
-                "refine-issue": (NOOP,),  # refine_for_design does not fix the section
+                "refine-issue": (NOOP,),  # the design remedy does not fix the section
             },
         ),
         Expected(
-            path=(
-                *PREFIX,
-                *REFINE_OK,
-                *TO_SIZE_REVIEW,
-                *POST_SIZE_REVIEW,
-                *RECONCILE_TO_RECHECK,
-                "dispatch_design_remedy",
-                "refine_for_design",
-                "count_repair_cycle_refine_for_design",
-                *RESCORE,
-                "recheck_after_size_review",
-                "check_pre_deferral_remedy",
-                *END,
-            ),
+            path=STOP_PATH,
+            wrapper_path=WRAPPER_DESIGN_REMEDY,
             skipped=(f"{ID}  design_gate_failed",),
             records={ID: "DEFERRED:gate_unmet"},
             issues={ID: ("deferred", "design_gate_failed")},
@@ -310,7 +297,7 @@ SCENARIOS: list[tuple[Scenario, Expected]] = [
             repair_cycle="4",
         ),
     ),
-    # -- ENH-3625: first gate (check_passed) hard-ANDs check-design --------------
+    # -- ENH-3625: first gate hard-ANDs check-design -----------------------------
     (
         Scenario(
             name="first_gate_design_failure",
@@ -324,20 +311,8 @@ SCENARIOS: list[tuple[Scenario, Expected]] = [
             },
         ),
         Expected(
-            path=(
-                *PREFIX,
-                *REFINE_OK,
-                *TO_SIZE_REVIEW,
-                *POST_SIZE_REVIEW,
-                *RECONCILE_TO_RECHECK,
-                "dispatch_design_remedy",
-                "refine_for_design",
-                "count_repair_cycle_refine_for_design",
-                *RESCORE,
-                "recheck_after_size_review",
-                "check_pre_deferral_remedy",
-                *END,
-            ),
+            path=STOP_PATH,
+            wrapper_path=WRAPPER_DESIGN_REMEDY,
             skipped=(f"{ID}  design_gate_failed",),
             records={ID: "DEFERRED:gate_unmet"},
             issues={ID: ("deferred", "design_gate_failed")},
@@ -366,14 +341,8 @@ SCENARIOS: list[tuple[Scenario, Expected]] = [
             },
         ),
         Expected(
-            path=(
-                *PREFIX,
-                *REFINE_OK,
-                *TO_SIZE_REVIEW,
-                *POST_SIZE_REVIEW,
-                *GUARD2_TO_GO_NO_GO,
-                *END,
-            ),
+            path=STOP_PATH,
+            wrapper_path=WRAPPER_GO_NO_GO,
             skipped=(f"{ID}  oversized_atomic",),
             records={ID: "DEFERRED:gate_unmet"},
             issues={ID: ("deferred", "oversized_atomic")},
@@ -387,7 +356,7 @@ SCENARIOS: list[tuple[Scenario, Expected]] = [
             repair_cycle="2",
         ),
     ),
-    # -- oversized_atomic, GO -> reopen_waived -> implement ----------------------
+    # -- oversized_atomic, GO -> reopen -> implement ------------------------------
     (
         Scenario(
             name="oversized_atomic_go_reopen_implement",
@@ -401,24 +370,14 @@ SCENARIOS: list[tuple[Scenario, Expected]] = [
             },
         ),
         Expected(
-            path=(
-                *PREFIX,
-                *REFINE_OK,
-                *TO_SIZE_REVIEW,
-                *POST_SIZE_REVIEW,
-                *GUARD2_TO_GO_NO_GO,
-                "reopen_waived",
-                "select_obligation_pre_implement",
-                *IMPLEMENT,
-                *END,
-            ),
+            path=READY_PATH,
+            wrapper_path=WRAPPER_GO_NO_GO,
             staged=(ID,),
             passed=(ID,),
-            # BUG-LIKE: reopen_waived clears the oversized_atomic record and nothing
-            # writes a success record, so an implemented issue ends with no
-            # prepare-issue record (MISSING); set-status open also leaves
+            # ENH-3623 (BUG-LIKE pin fixed, terminal table `ready`): the GO path ends
+            # with a READY record (was MISSING). Still BUG-LIKE: the reopen leaves
             # deferred_reason: oversized_atomic on the now-done issue.
-            records={ID: "MISSING"},
+            records={ID: "READY"},
             issues={ID: ("done", "oversized_atomic")},
             summary=summary(verdict="success", closed=1, closed_implemented=1),
             slash=(
@@ -440,7 +399,8 @@ SCENARIOS: list[tuple[Scenario, Expected]] = [
             slash={**LADDER_TO_RECONCILE, "confidence-check": (confidence(70, 80),)},
         ),
         Expected(
-            path=LADDER_RECONCILE_PATH,
+            path=STOP_PATH,
+            wrapper_path=WRAPPER_RECONCILE,
             skipped=(f"{ID}  readiness_stagnated",),
             records={ID: "DEFERRED:gate_unmet"},
             issues={ID: ("deferred", "readiness_stagnated")},
@@ -458,7 +418,8 @@ SCENARIOS: list[tuple[Scenario, Expected]] = [
             slash={**LADDER_TO_RECONCILE, "confidence-check": (confidence(80, 80),)},
         ),
         Expected(
-            path=LADDER_RECONCILE_PATH,
+            path=STOP_PATH,
+            wrapper_path=WRAPPER_RECONCILE,
             skipped=(f"{ID}  low_readiness",),
             records={ID: "DEFERRED:gate_unmet"},
             issues={ID: ("deferred", "low_readiness")},
@@ -467,7 +428,7 @@ SCENARIOS: list[tuple[Scenario, Expected]] = [
             repair_cycle="3",
         ),
     ),
-    # -- decision_unresolved from recheck_after_size_review (ENH-2936 branch) -----
+    # -- decision_unresolved after the post-size-review rescore -------------------
     (
         Scenario(
             name="decision_unresolved_at_recheck",
@@ -479,12 +440,13 @@ SCENARIOS: list[tuple[Scenario, Expected]] = [
             },
         ),
         Expected(
-            path=LADDER_RECONCILE_PATH,
+            path=STOP_PATH,
+            wrapper_path=WRAPPER_RECONCILE,
             skipped=(f"{ID}  decision_unresolved",),
             records={ID: "BLOCKED:decision_unresolved"},
             issues={ID: ("deferred", "decision_unresolved")},
             # BUG-LIKE: finalize_done's decision_unresolved bucket counts only the
-            # child's autodev-decision-unresolved.txt ledger, so autodev's own
+            # child's autodev-decision-unresolved.txt ledger, so the wrapper's own
             # decision_unresolved row lands in the generic `skipped` count (1) and
             # `decision_unresolved` stays 0.
             summary=summary(skipped=1),
@@ -492,7 +454,7 @@ SCENARIOS: list[tuple[Scenario, Expected]] = [
             repair_cycle="3",
         ),
     ),
-    # -- decision_unresolved from record_reentry_exhausted (selector re-entry cap) --
+    # -- decision_unresolved from the selector re-entry cap -----------------------
     (
         Scenario(
             name="decision_reentry_exhausted",
@@ -500,19 +462,9 @@ SCENARIOS: list[tuple[Scenario, Expected]] = [
             inner_runs={ID: (done(), done())},
         ),
         Expected(
-            path=(
-                *PREFIX,
-                *REFINE_OK,
-                "check_passed",
-                "select_obligation_pre_implement",
-                "refine_current",
-                *REFINE_OK,
-                "check_passed",
-                "select_obligation_pre_implement",
-                "record_reentry_exhausted",
-                *END,
-            ),
-            wrapper_path=WRAPPER_DONE * 2,
+            path=STOP_PATH,
+            # the DECISION re-entry is a second RUN_CHILD step inside one wrapper run
+            wrapper_path=(*CHILD, *CHILD, *APPLY),
             skipped=(f"{ID}  decision_unresolved",),
             records={ID: "BLOCKED:decision_unresolved"},
             issues={ID: ("deferred", "decision_unresolved")},
@@ -521,7 +473,7 @@ SCENARIOS: list[tuple[Scenario, Expected]] = [
             repair_cycle="2",
         ),
     ),
-    # -- size-review decomposition (children enqueued by enqueue_or_skip) ----------
+    # -- size-review decomposition (children enqueued by autodev) -----------------
     (
         Scenario(
             name="size_review_decomposition",
@@ -549,25 +501,25 @@ SCENARIOS: list[tuple[Scenario, Expected]] = [
             path=(
                 *PREFIX,
                 *REFINE_OK,
-                *TO_SIZE_REVIEW,
+                "detect_children",
+                "enqueue_children",
                 *DEQUEUE,
                 *REFINE_OK,
                 "check_passed",
-                "select_obligation_pre_implement",
                 *IMPLEMENT,
                 *DEQUEUE,
                 "route_refine_outcome",
                 "ledger_child_stop",
                 *END,
             ),
-            wrapper_path=(*WRAPPER_DONE, *WRAPPER_DONE, *WRAPPER_STOP),
+            wrapper_path=(*CHILD, *SIZE_REVIEW, *APPLY, *WRAPPER_DONE, *WRAPPER_DONE),
             skipped=(f"{ID}  decomposed", "ENH-9003  refine_failed"),
             staged=("ENH-9002",),
             passed=("ENH-9002",),
             dequeued=(ID, "ENH-9002", "ENH-9003"),
-            # BUG-LIKE: the decomposed parent keeps the inner run's forwarded BLOCKED
-            # record; nothing on the size-review path records DECOMPOSED.
-            records={ID: "BLOCKED", "ENH-9002": "READY", "ENH-9003": "BLOCKED:quality"},
+            # ENH-3623 (BUG-LIKE pin fixed, terminal table `decomposed`): the parent
+            # records DECOMPOSED with child_ids (was the inner run's stale BLOCKED).
+            records={ID: "DECOMPOSED", "ENH-9002": "READY", "ENH-9003": "BLOCKED:quality"},
             issues={ID: ("done", None), "ENH-9002": ("done", None), "ENH-9003": ("open", None)},
             summary=summary(verdict="success", closed=1, skipped=2, closed_implemented=1),
             slash=(f"issue-size-review {ID}",),
@@ -576,7 +528,7 @@ SCENARIOS: list[tuple[Scenario, Expected]] = [
             ledgers={"autodev-new-children.txt": ["ENH-9002", "ENH-9003"]},
         ),
     ),
-    # -- resolved parent: recheck_after_size_review's done-issue branch ------------
+    # -- resolved parent: the reconcile resolves the issue mid-ladder --------------
     (
         Scenario(
             name="resolved_parent_at_recheck",
@@ -594,11 +546,20 @@ SCENARIOS: list[tuple[Scenario, Expected]] = [
             },
         ),
         Expected(
-            path=LADDER_RECONCILE_PATH,
+            path=(
+                *PREFIX,
+                *REFINE_OK,
+                "detect_children",
+                "check_parent_resolved",
+                "recover_subloop_children",
+                *END,
+            ),
+            wrapper_path=WRAPPER_RECONCILE,
             skipped=(f"{ID}  resolved_by_subloop",),
-            # BUG-LIKE: no record is written on this branch; the inner run's forwarded
-            # BLOCKED record is what a record reader sees.
-            records={ID: "BLOCKED"},
+            # ENH-3623 (BUG-LIKE pin fixed, DECOMPOSED guarantee): a resolved parent
+            # records DECOMPOSED (was the inner run's forwarded BLOCKED);
+            # recover_subloop_children still writes the resolved_by_subloop row.
+            records={ID: "DECOMPOSED"},
             issues={ID: ("done", None)},
             summary=summary(skipped=1),
             slash=(f"issue-size-review {ID}", f"reconcile-issue {ID}", f"confidence-check {ID}"),
@@ -617,8 +578,6 @@ SCENARIOS: list[tuple[Scenario, Expected]] = [
                 *PREFIX,
                 *REFINE_OK,
                 "detect_children",
-                "size_review_snap",
-                "check_broke_down",
                 "check_parent_resolved",
                 "recover_subloop_children",
                 *END,
@@ -638,26 +597,14 @@ SCENARIOS: list[tuple[Scenario, Expected]] = [
             slash={"wire-issue": (NOOP,), "refine-issue": (NOOP,), "confidence-check": (NOOP,)},
         ),
         Expected(
-            path=(
-                *PREFIX,
-                *REFINE_OK,
-                "check_passed",
-                "select_obligation_post_refine",
-                "check_missing_artifacts",
-                "run_wire",
-                "count_repair_cycle_wire",
-                "run_refine",
-                "clear_scores",
-                "rerun_confidence",
-                "check_scores_present",
-                "rerun_confidence",
-                "check_scores_present",
-                "mark_scores_absent_infra",
-                *END,
-            ),
-            # ENH-3606 accepted change 1: today a scores-absent stop writes no
-            # autodev-skipped row and is invisible in summary.json (verdict no-op).
-            records={ID: "BLOCKED"},
+            path=INFRA_PATH,
+            wrapper_path=WRAPPER_RESCORE_RETRY,
+            # ENH-3623 accepted change 1: a scores-absent stop ledgers one
+            # refine_failed_infra row and records RETRYABLE_ERROR:infra (was no row, a
+            # forwarded BLOCKED record and an autodev-scores-absent.txt entry, which
+            # lost its only writer with mark_scores_absent_infra).
+            skipped=(f"{ID}  refine_failed_infra",),
+            records={ID: "RETRYABLE_ERROR:infra"},
             issues={ID: ("open", None)},
             summary=summary(),
             slash=(
@@ -667,30 +614,30 @@ SCENARIOS: list[tuple[Scenario, Expected]] = [
                 f"confidence-check {ID}",
             ),
             repair_cycle="2",
-            ledgers={"autodev-scores-absent.txt": [ID]},
         ),
     ),
-    # -- an on_error -> dequeue_next drop (enqueue_or_skip harness fault, exit 2) ----
+    # -- an on_error drop: prep step exits 2 on the size-review follow-up decision --
     (
         Scenario(
             name="on_error_drop",
             frontmatter=LOW_READINESS,
             inner_runs={ID: (done(),)},
             slash={"issue-size-review": (SIZE_REVIEW_LEAF,)},
-            faults={"enqueue_or_skip": 2},
+            # the 3rd select_step is the post-size-review decision (was enqueue_or_skip)
+            faults={"select_step#3": 2},
         ),
         Expected(
-            path=(*PREFIX, *REFINE_OK, *TO_SIZE_REVIEW, *END),
-            # BUG-LIKE: the drop leaves autodev-inflight set, so finalize_done files
-            # the never-staged issue as `inflight_at_finalize` and the run ends
-            # `phantom` in the `failed` terminal.
-            unverified=(f"{ID}  inflight_at_finalize",),
-            records={ID: "BLOCKED"},
+            path=INFRA_PATH,
+            wrapper_path=(*CHILD, *SIZE_REVIEW, *APPLY),
+            # ENH-3623 accepted change 1: the drop ledgers refine_failed_infra through
+            # the no-terminal-intent fallback and clears autodev-inflight, so the run
+            # no longer ends `phantom` in `failed` (was inflight_at_finalize).
+            skipped=(f"{ID}  refine_failed_infra",),
+            records={ID: "RETRYABLE_ERROR:infra"},
             issues={ID: ("open", None)},
-            summary=summary(verdict="phantom", not_closed=1, inflight_unresolved=1, abandoned=1),
+            summary=summary(),
             slash=(f"issue-size-review {ID}",),
             repair_cycle="2",
-            final_state="failed",
         ),
     ),
     # -- rate-limit exhaustion on a ladder slash state -----------------------------
@@ -706,22 +653,20 @@ SCENARIOS: list[tuple[Scenario, Expected]] = [
             },
         ),
         Expected(
-            # BUG-3622 (fixed): `next:`-routed ladder slash states now run the 429
-            # classifier, and in-place rate-limit retries no longer count toward the
-            # throttle hard_max, so the with_rate_limit_handling ladder runs to its
-            # 21600 s budget (12 attempts, 12 instant waits) and halts the queue
-            # through on_rate_limit_exhausted -> finalize_rate_limited.
-            # Still BUG-LIKE: the issue stays in flight (inflight_at_finalize) with the
-            # inner run's forwarded BLOCKED record; ENH-3606's mark_rate_limited
-            # terminal records RETRYABLE_ERROR:rate_limited instead.
-            path=(
-                *LADDER_RECONCILE_PATH[: LADDER_RECONCILE_PATH.index("run_size_review")],
+            # BUG-3622: the with_rate_limit_handling slash state runs to its 21600 s
+            # budget (12 attempts, 12 instant waits), then on_rate_limit_exhausted ->
+            # mark_rate_limited halts the queue through finalize_rate_limited.
+            path=RATE_LIMITED_PATH,
+            wrapper_path=(
+                *CHILD,
+                "select_step",
                 *("run_size_review",) * 12,
-                "finalize_rate_limited",
-                "finalize_done",
+                "mark_rate_limited",
             ),
             unverified=(f"{ID}  inflight_at_finalize",),
-            records={ID: "BLOCKED"},
+            # ENH-3623 (terminal table `rate_limited`): mark_rate_limited records a
+            # fresh RETRYABLE_ERROR:rate_limited (was the inner run's stale BLOCKED).
+            records={ID: "RETRYABLE_ERROR:rate_limited"},
             issues={ID: ("open", None)},
             summary=summary(
                 verdict="rate_limited",
@@ -766,7 +711,7 @@ SCENARIOS: list[tuple[Scenario, Expected]] = [
                 "ledger_child_stop",
                 *END,
             ),
-            wrapper_path=(*WRAPPER_DONE, *WRAPPER_STOP, *WRAPPER_STOP),
+            wrapper_path=WRAPPER_DONE * 3,
             skipped=(f"{ID}  decomposed", "ENH-9002  refine_failed", "ENH-9003  refine_failed"),
             dequeued=(ID, "ENH-9002", "ENH-9003"),
             records={
@@ -803,9 +748,8 @@ SCENARIOS: list[tuple[Scenario, Expected]] = [
             inner_runs={ID: (stop("gate_unmet"),)},
         ),
         Expected(
-            path=(*PREFIX, "route_refine_outcome", "ledger_child_stop", *END),
-            wrapper_path=WRAPPER_STOP,
-            skipped=(f"{ID}  refine_failed",),  # written by prepare-issue's forward_stop
+            path=STOP_PATH,
+            skipped=(f"{ID}  refine_failed",),  # written by prepare-issue's `prep apply`
             records={ID: "DEFERRED:gate_unmet"},
             issues={ID: ("open", None)},
             summary=summary(skipped=1),
@@ -819,8 +763,7 @@ SCENARIOS: list[tuple[Scenario, Expected]] = [
             inner_runs={ID: (InnerRun(terminal="error", write_record=False),)},
         ),
         Expected(
-            path=(*PREFIX, "route_refine_outcome", "skip_inflight_infra", *END),
-            wrapper_path=("clear_record", "run_refine_to_ready", "mark_inner_error"),
+            path=INFRA_PATH,
             skipped=(f"{ID}  refine_failed_infra",),
             records={ID: "RETRYABLE_ERROR:infra"},
             issues={ID: ("open", None)},
@@ -837,8 +780,7 @@ SCENARIOS: list[tuple[Scenario, Expected]] = [
             inner_runs={ID: (stop("infra", evidence_refs=("rate_limit_exhausted",)),)},
         ),
         Expected(
-            path=(*PREFIX, "route_refine_outcome", "finalize_rate_limited", "finalize_done"),
-            wrapper_path=WRAPPER_STOP,
+            path=RATE_LIMITED_PATH,
             queue=("ENH-9004",),
             unverified=(f"{ID}  inflight_at_finalize",),
             records={ID: "RETRYABLE_ERROR:rate_limited", "ENH-9004": "MISSING"},
@@ -910,29 +852,41 @@ def _replayed(state: str, path: tuple[str, ...]) -> tuple[str, ...]:
     ("crash", "path", "wrapper_path", "repair_cycle"),
     [
         pytest.param(
-            Crash(state="count_repair_cycle_reconcile", when="after"),
-            _replayed("count_repair_cycle_reconcile", LADDER_RECONCILE_PATH),
-            WRAPPER_DONE,
-            # BUG-LIKE: state is persisted at state_enter, so a kill after the
-            # increment re-runs count_repair_cycle_reconcile on resume and the
-            # repair-cycle counter double-counts one reconcile pass (4, not 3).
-            "4",
-            id="after_counter_increment_double_counts",
+            # the 3rd record_step records the reconcile's done fact
+            Crash(state="record_step", occurrence=3, when="after"),
+            _replayed("refine_current", STOP_PATH),
+            # autodev persisted refine_current, so the wrapper restarts at select_step,
+            # which decides the next step from the fact log (no replayed command)
+            (*CHILD, *SIZE_REVIEW, *step("reconcile"), *step("rescore"), *APPLY),
+            # ENH-3623: the counter is a projection of done facts, so a kill after
+            # the write no longer double-counts (ENH-3618 pinned "4" here).
+            "3",
+            id="after_counter_increment_counts_once",
         ),
         pytest.param(
-            Crash(state="reconcile_current", when="before"),
-            _replayed("reconcile_current", LADDER_RECONCILE_PATH),
-            WRAPPER_DONE,
-            "3",  # the slash never ran before the kill: one call, clean count
+            Crash(state="run_reconcile", when="before"),
+            _replayed("refine_current", STOP_PATH),
+            # the open RECONCILE intent is replayed: one reconcile call in total
+            (
+                *CHILD,
+                *SIZE_REVIEW,
+                "select_step",
+                "run_reconcile",
+                *step("reconcile"),
+                *step("rescore"),
+                *APPLY,
+            ),
+            "3",
             id="before_ladder_slash_is_clean",
         ),
         pytest.param(
             Crash(state="scripted_run", when="after"),
-            _replayed("refine_current", LADDER_RECONCILE_PATH),
-            # the parent persisted refine_current, so the whole wrapper re-runs
-            ("clear_record", "run_refine_to_ready", *WRAPPER_DONE),
+            _replayed("refine_current", STOP_PATH),
+            # the inner run finished but its done fact was never recorded: the open
+            # RUN_CHILD intent is replayed (one replayed command)
+            ("select_step", "run_child", *WRAPPER_RECONCILE),
             "3",
-            id="inside_inner_loop_reruns_wrapper",
+            id="inside_inner_loop_replays_one_child_run",
         ),
     ],
 )
@@ -973,6 +927,7 @@ def test_harness_accepts_replacement_prepare_issue_and_autodev_transform(
 
     run_root = tmp_path / "run"
     run_root.mkdir()
+    # a replacement prepare-issue and an identity transform change nothing
     r = run_autodev(
         scenario,
         run_root,

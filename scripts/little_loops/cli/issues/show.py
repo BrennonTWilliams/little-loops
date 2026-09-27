@@ -141,13 +141,12 @@ def _parse_card_fields(path: Path, config: BRConfig) -> dict[str, str | None]:
     spike_completed_raw = frontmatter.get("spike_completed")
     # BUG-3592: refuted verdict (spike_attempted + spike_refuted), written by /ll:spike.
     spike_refuted_raw = frontmatter.get("spike_refuted")
-    # ENH-2689: reconcile one-shot guard read by autodev's check_reconcile_needed.
+    # ENH-2689: reconcile one-shot guard (the preparation policy's reconcile rule).
     # Written by /ll:reconcile-issue. Surfaced as a lowercased boolean string,
     # mirroring spike_attempted.
     reconcile_attempted_raw = frontmatter.get("reconcile_attempted")
-    # BUG-3390: outcome-gate waiver stamped by /ll:go-no-go (BUG-2734). autodev's
-    # regate_after_atomic_remediation / recheck_after_size_review read it from
-    # this payload; it was never emitted, so the waiver was dead end-to-end.
+    # BUG-3390: outcome-gate waiver stamped by /ll:go-no-go (BUG-2734). It was
+    # never emitted, so the waiver was dead end-to-end for payload readers.
     outcome_gate_waived_raw = frontmatter.get("outcome_gate_waived")
     implementation_order_risk_raw = frontmatter.get("implementation_order_risk")
     learning_tests_raw = frontmatter.get("learning_tests_required")
@@ -346,7 +345,7 @@ def _parse_card_fields(path: Path, config: BRConfig) -> dict[str, str | None]:
         if spike_completed_raw is not None
         else None,
         "spike_refuted": str(spike_refuted_raw).lower() if spike_refuted_raw is not None else None,
-        # ENH-2689: reconcile one-shot guard for autodev check_reconcile_needed.
+        # ENH-2689: reconcile one-shot guard (preparation policy reconcile rule).
         "reconcile_attempted": str(reconcile_attempted_raw).lower()
         if reconcile_attempted_raw is not None
         else None,

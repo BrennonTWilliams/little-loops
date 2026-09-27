@@ -4881,10 +4881,10 @@ class TestPriorityRegexCompletenessAllowlist:
             "frontmatter directly by design — drift IS the comparison, not a resolution",
             2072: "_DEP_ID_RE (BUG-3059): dependency-ID shape validation; optional prefix "
             "group discarded",
-            4324: "comment describing the P[0-5]-NNN- filename shape",
-            4328: "_parse_type_and_id's directory-fallback number extraction; priority digit "
+            4325: "comment describing the P[0-5]-NNN- filename shape",
+            4329: "_parse_type_and_id's directory-fallback number extraction; priority digit "
             "skipped over, not read as a value",
-            4349: "_generate_id_from_filename strips a leading priority token before "
+            4350: "_generate_id_from_filename strips a leading priority token before "
             "digit-scanning for ID generation",
         },
         "issues/prose_deps.py": {
@@ -5793,7 +5793,10 @@ class TestBug3295ContainmentCorpusDifferential:
     # ENH-3630 session (2026-09-27): grew again from issue-file editing
     # (marking ENH-3630 Steps 1-4/6 acceptance criteria and logging Step 5
     # remaining), not a detector regression (total report count 578 -> 585).
-    _ENH_3602_TOTAL_REPORTS = 585
+    # ENH-3623 session (2026-09-27): grew again from the ENH-3623 refinement
+    # commits (its Verification Notes trace the 7 flagged FSM state/outcome
+    # names as false positives), not a detector regression (585 -> 594).
+    _ENH_3602_TOTAL_REPORTS = 594
 
     def test_previously_spurious_files_now_clear(self) -> None:
         from little_loops.issue_parser import _unapplied_decision

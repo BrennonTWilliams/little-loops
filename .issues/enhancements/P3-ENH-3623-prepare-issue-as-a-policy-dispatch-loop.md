@@ -562,6 +562,22 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 `prepare-issue.yaml:select_step` -> `ll-issues prep step` -> `next_preparation_step` -> `select_next_obligation` / `load_facts` -> `decide`
 
+### Deviations
+
+- **2026-09-27 (`/ll:manage-issue`)** — `prep_record`: the design listed
+  `prep_record(config, issue_id, run_dir, *, guard2=False, child_terminated_by="", child_failure="") -> Fact | None`.
+  Implemented `prep_record(config, issue_id, run_dir, *, guard2=False) -> Fact | None`, and the
+  `--child-terminated-by` / `--child-failure` CLI flags were removed with it. Why: the landed
+  ENH-3630 body still classified `failed` vs `done` from `child_failure` (the loop's
+  `captured.run_child.failure_terminal`), contradicting this issue's decision that `prep record`
+  never reads the capture. It now classifies from the child's run record alone (absent → the inner
+  loop errored; legacy class → `failed`; otherwise `done`); every refine-to-ready-issue terminal
+  writes that record and the `RUN_CHILD` precondition clears it first.
+- **2026-09-27** — `_apply_outcome`'s ledger-row write gained a `row_pending` progress mark
+  (pre-append row count) so a crash between the append and its `row` mark cannot double-append on
+  replay; the design only named check-before-append, and the landed body relied on the `row` mark
+  alone.
+
 ### Codebase Research Findings
 
 _Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_

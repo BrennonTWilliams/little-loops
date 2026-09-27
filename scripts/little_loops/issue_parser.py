@@ -2178,7 +2178,8 @@ def superseded_marker_count(issue_path: Path) -> int:
     ENH-2992: the public marker-*presence* surface. :func:`check_format_gaps`
     reports only the inverse (``unmarked_superseded_directive`` — correction
     language present, marker missing), which is a refine-did-not-mark defect.
-    ``autodev.yaml``'s ``check_reconcile_needed`` needs the opposite signal:
+    The preparation policy's contradiction-reconcile rule (ENH-3623; formerly
+    ``autodev.yaml``'s ``check_reconcile_needed``) needs the opposite signal:
     a marker standing in a directive section means this issue's own findings
     refute a directive line, which is exactly the condition
     ``/ll:reconcile-issue`` exists to clear.

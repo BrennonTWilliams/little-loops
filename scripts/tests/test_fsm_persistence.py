@@ -1210,6 +1210,39 @@ class TestPersistentExecutor:
         result = executor.resume()
         assert result is None
 
+    def test_resume_rejects_a_state_removed_from_the_loop(
+        self, simple_fsm: FSMLoop, tmp_loops_dir: Path
+    ) -> None:
+        """ENH-3623: a persisted current_state the loop no longer has raises a clear
+        error naming the state and loop, instead of an `error` terminal with a bare
+        KeyError string."""
+        persistence = StatePersistence("test-loop", tmp_loops_dir)
+        persistence.initialize()
+        persistence.save_state(
+            LoopState(
+                loop_name="test-loop",
+                current_state="count_repair_cycle_refine",
+                iteration=3,
+                captured={},
+                prev_result=None,
+                last_result=None,
+                started_at="2024-01-15T10:30:00Z",
+                updated_at="",
+                status="running",
+            )
+        )
+        runner = MockActionRunner()
+        executor = PersistentExecutor(simple_fsm, persistence=persistence, action_runner=runner)
+        with pytest.raises(ValueError) as exc:
+            executor.resume()
+        message = str(exc.value)
+        assert "'count_repair_cycle_refine'" in message
+        assert f"'{simple_fsm.name}'" in message
+        assert "restart the run" in message
+        assert runner.calls == []  # nothing ran
+        loaded = persistence.load_state()
+        assert loaded is not None and loaded.status == "running"  # left for a restart
+
     def test_resume_returns_none_for_completed(
         self, simple_fsm: FSMLoop, tmp_loops_dir: Path
     ) -> None:

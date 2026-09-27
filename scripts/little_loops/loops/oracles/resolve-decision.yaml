@@ -249,10 +249,10 @@ states:
     # Verified non-spinning: a multi-decision issue is bounded by the callers,
     # not by a retry loop here. Under refine-to-ready-issue,
     # check_decide_attempts allows one resolve per child entry at
-    # check_decision_needed / check_decision_before_done; autodev re-enters the
-    # child at most once per issue (autodev-reentry-DECISION-<ID>, ENH-3610)
-    # (or once refine_count reaches commands.max_refine_count, BUG-3614) before
-    # record_reentry_exhausted defers it for human review.
+    # check_decision_needed / check_decision_before_done; autodev's prepare-issue
+    # policy re-enters the child at most once per pass (a `decision` RUN_CHILD
+    # fact, ENH-3623) or until refine_count reaches commands.max_refine_count
+    # (BUG-3614), then stops decision_exhausted for human review.
     action: "ll-issues check-unresolved-decisions ${context.issue_id:shell}"
     fragment: shell_exit
     on_yes: failed

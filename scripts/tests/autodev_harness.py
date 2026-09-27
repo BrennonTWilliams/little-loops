@@ -118,7 +118,8 @@ The widget is fast.
 #: resets (terminal-class sentinel, broke-down flag, own record); the scripted
 #: state then prints DONE / FAILED / ERROR. ERROR reaches ``die``, whose
 #: undefined context reference raises ``InterpolationError`` so the child
-#: finishes ``terminated_by: error`` (prepare-issue's ``mark_inner_error`` edge).
+#: finishes ``terminated_by: error`` without a run record (prepare-issue's
+#: ``prep record`` classifies an absent record as an inner error).
 STUB_REFINE_TO_READY = """\
 name: refine-to-ready-issue
 description: "autodev characterization harness stub (scripted by ScriptedRunner)"
@@ -978,6 +979,8 @@ def run_autodev(
             result = _executor().run()
         except HarnessCrash:
             crashed_at = runner.crashed_at
+            # A persisted state missing from the (same) loop file makes resume() raise
+            # ValueError (ENH-3623 resume guard); it propagates as a test failure.
             resumed = _executor().resume()
             assert resumed is not None, "harness: persisted state was not resumable"
             result = resumed

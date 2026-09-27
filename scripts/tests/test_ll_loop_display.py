@@ -3022,6 +3022,29 @@ class TestRunForegroundResumeMode:
         assert "Resumed and completed" in out
         assert "Loop completed" not in out
 
+    def test_resume_of_a_removed_state_prints_a_clean_error(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """ENH-3623: the resume guard's ValueError becomes a stderr line + exit 1,
+        not a traceback, and the alt-screen is never left entered."""
+
+        class _Executor:
+            def __init__(self) -> None:
+                self._on_event: Any = None
+
+            def resume(self) -> ExecutionResult:
+                raise ValueError(
+                    "state 'check_broke_down' no longer exists in loop 'autodev'; restart the run"
+                )
+
+        rc = run_foreground(_Executor(), self._make_fsm(), self._make_args(), mode="resume")
+        captured = capsys.readouterr()
+        assert rc == 1
+        assert "Error resuming loop" in captured.err
+        assert "'check_broke_down' no longer exists in loop 'autodev'" in captured.err
+        assert "Traceback" not in captured.err
+        assert "\033[?1049h" not in captured.out
+
     def test_invalid_mode_raises_value_error(self) -> None:
         """Unknown mode strings are rejected up-front."""
 

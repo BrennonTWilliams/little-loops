@@ -46,6 +46,8 @@ In: loop state/`llm` hint declarations, the resolver with built-in `claude-code`
 - **ENH-3547** — Wire model hint resolution through loop dispatch and lifecycle (open)
 - **ENH-3548** — Validate-time model hint warnings and hint documentation (open)
 - **BUG-3541** — Model aliases table maps opus and fable to superseded model IDs (done)
+- **ENH-3638** — Show hint-resolved model selection in ll-loop header and info (open)
+
 
 ## Sequence
 

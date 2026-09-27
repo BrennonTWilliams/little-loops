@@ -258,17 +258,32 @@ def cmd_run_record_forward(config: BRConfig, args: argparse.Namespace) -> int:
     differs from the request). Prints the forwarded record's routing token, or
     ``MISSING`` (writing nothing) when the source record is absent.
     """
-    from dataclasses import replace
+    from little_loops.run_record import record_token
 
-    from little_loops.run_record import read_run_record, record_token
-
-    record = read_run_record(
-        Path(args.run_dir), args.from_writer, canonical_record_id(config, args.issue_id)
+    record = forward_run_record(
+        config, args.issue_id, Path(args.run_dir), source=args.from_writer, writer=args.writer
     )
-    if record is not None:
-        write_run_record(Path(args.run_dir), replace(record, writer=args.writer))
     print(record_token(record))
     return 0
+
+
+def forward_run_record(
+    config: BRConfig, issue_id: str, run_dir: Path, *, source: str, writer: RunRecordWriter
+) -> RunRecord | None:
+    """Re-write *source*'s record for *issue_id* under *writer*; return it (``None`` if absent).
+
+    Shared by ``ll-issues run-record forward`` and ``ll-issues prep apply`` (ENH-3623),
+    which forwards the inner ``refine-to-ready-issue`` record for the cancelled and
+    child-stop terminals. Only ``writer`` changes; an absent source writes nothing.
+    """
+    from dataclasses import replace
+
+    from little_loops.run_record import read_run_record
+
+    record = read_run_record(run_dir, source, canonical_record_id(config, issue_id))
+    if record is not None:
+        write_run_record(run_dir, replace(record, writer=writer))
+    return record
 
 
 def write_typed_run_record(

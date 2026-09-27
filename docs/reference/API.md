@@ -73,7 +73,7 @@ pip install little-loops
 | `little_loops.run_record` | Typed per-issue preparation run records (ENH-3597). Provides the `RunRecord` dataclass, `PreparationOutcome`/`RunRecordWriter` Literals, atomic `write_run_record`, tolerant `read_run_record`, the `outcome_from_legacy_class` mapping, and the closed routing-token vocabulary `RUN_RECORD_TOKENS` with `record_token(record) -> str` (ENH-3607). |
 | `little_loops.cli.issues.run_record` | `ll-issues run-record write` / `read` / `clear` — the CLI writer/reader the refine-to-ready-issue terminal states call (ENH-3597). `write_typed_run_record()` is the shared, non-printing core `run-record write` and `ll-issues prep apply` both call, so both writers resolve the same `ready`/`decomposed` outcome (ENH-3630). |
 | `little_loops.cli.issues.advise_consult` | `ll-issues advise-consult` (ENH-3632) — shared second-model readiness consult helper. `trim_consult_context()` strips frontmatter and process-trail sections (also the replay-hash input); `map_advise_verdict()` maps a `ConsultOutcome` to `PROCEED`/`VETO`/`SKIPPED` via `little_loops.advisor.parse_lead_word()`; `cmd_advise_consult()` replays, preflights `advisor.host` without spending budget, consults in-process, persists `<run_dir>/advise-<ID>.{json,verdict}`, and always returns 0. See [`ll-issues advise-consult`](CLI.md#ll-issues-advise-consult). |
-| `little_loops.preparation_policy` | Preparation routing policy for autodev's second pass (ENH-3623 Phase A / ENH-3630): a pure `decide(IssueSnapshot, Facts) -> Step` over an append-only per-issue fact log, backing `ll-issues prep {step,record,apply,explain}`. See [`ll-issues prep`](CLI.md#ll-issues-prep). |
+| `little_loops.preparation_policy` | Preparation policy behind the built-in `prepare-issue` dispatch loop (ENH-3630, ENH-3623): a pure `decide(IssueSnapshot, Facts) -> Step` over an append-only per-issue fact log, backing `ll-issues prep {step,record,apply,explain}`. See [below](#little_loopspreparation_policy) and [`ll-issues prep`](CLI.md#ll-issues-prep). |
 | `little_loops.cache_marking_oracle` | Cache-marking cost oracle (FEAT-2673, EPIC-2456 F1) — decides whether a stable prompt block is safe to mark `cache_control: ephemeral` via a per-model token-floor gate plus a `FragmentStore` reuse-repeat gate. |
 | `little_loops.analytics` | Analytics subpackage — association-rule mining (lift/PMI) and per-evaluator Bernoulli variance for loop diagnostics. |
 | `little_loops.design_tokens` | Multi-layer token loader (primitives → semantic → typography → spacing → theme) with profile-aware resolution (ENH-1768). Renders `{token.reference}` aliases for prompts and CSS. Also reads a root `DESIGN.md` as an alternate import source (`design_tokens.source: auto\|profile\|design_md`, ENH-3264); see [CONFIGURATION.md → DESIGN.md import source](CONFIGURATION.md#designmd-import-source-enh-3264). When neither a materialized project profile mirror nor (on the `auto` path) a root `DESIGN.md` exists, `load_design_tokens` falls back to the packaged built-in profile matching `active` instead of returning `None` (ENH-3441), so clean checkouts — CI, a fresh `ll-init`, a fresh clone — render token-aware without a setup step; the fallback logs a once-per-`(root, active)` notice. `render_as_design_md(tokens: DesignTokens) -> str` (ENH-3268) is the write side — a lossy, single-theme DESIGN.md export via `ll-artifact design-md export`. Primitives are excluded structurally; semantic colors export under classifier-recognized names (`color.<role>.<leaf>` → a name `_classify_design_md_color_role` re-derives back into `<role>`, so re-import recovers the role though not the original leaf key); typography is synthesized into the spec's role-organized shape from a pinned axis→role table. Dropped groups (`shadow.*`, `border.width.*`, unused typography axes, `components:` on a DESIGN.md → DESIGN.md round trip) are computed by `_design_md_dropped_groups(tokens)`, which the CLI layer writes to stderr — the renderer itself does no I/O, matching `render_as_css_vars`'s shape. |
@@ -985,8 +985,8 @@ as a marker (the `count_open_questions_in_sections()` private-helper/
 public-wrapper pairing).
 
 Surfaced as the `superseded_marker_count` key on `ll-issues format-check
-<ID> --format json`, which `autodev.yaml`'s `check_reconcile_needed` reads as
-its contradiction predicate. Returns `0` for a missing or unreadable file —
+<ID> --format json`. The `prepare-issue` preparation policy calls it directly as
+its contradiction-reconcile predicate. Returns `0` for a missing or unreadable file —
 the FSM predicate must never fail the loop on a vanished issue.
 
 **Parameters:**
@@ -4684,22 +4684,19 @@ ll-issues dt [--format text|json|markdown]
 
 Lists `status: deferred` issues with `deferred_by: automation` — the discriminator stamped by
 `ll-issues set-status <ID> deferred --by automation --reason <code>` (see `mark_deferred` in
-`loops/rn-implement.yaml`, and the equivalent not-ready exits in `loops/autodev.yaml` —
-`mark_gate_blocked`, `record_decision_unresolved`, `recheck_after_size_review`,
-`regate_after_atomic_remediation` (BUG-2734) — added by ENH-2666 to align autodev's not-ready
-handling to the same model) — showing `deferred_reason` and age-since-`deferred_date`.
-`recheck_after_size_review` writes `decision_unresolved` itself (ENH-2936, not just
-`design_gate_failed`/`readiness_stagnated`/`low_readiness`) when its own re-check of
-`decision_needed` on the score-failing path finds the flag still armed — a fourth
-`decision_unresolved` source alongside `assert_decision_cleared` and
-`check_decision_after_decide_error`.
+`loops/rn-implement.yaml`, and the equivalent not-ready exits of the autodev path —
+autodev's `mark_gate_blocked` / `defer_gated`, and `prepare-issue`'s `ll-issues prep
+apply` for `design_gate_failed`, `readiness_stagnated`, `low_readiness`,
+`oversized_atomic` (BUG-2734) and `decision_unresolved` (ENH-2936, ENH-3623) — added by
+ENH-2666 to align autodev's not-ready handling to the same model) — showing
+`deferred_reason` and age-since-`deferred_date`.
 `deferred_by: human` (or absent) issues are excluded.
 `remediation_stalled` entries rank above `blocked_by_unmet`, above `gate_blocked`, above
 `decision_unresolved`, above `oversized_atomic` (BUG-2734: readiness passed but a Very Large,
 atomic issue's outcome risk failed even after Pattern-B rescoring), above `readiness_stagnated`
 (FEAT-2751: every repair remedy including reconcile was attempted and Readiness never moved),
 above `design_gate_failed` (ENH-2870: the deterministic `## Program Design` gate failed even
-after the one-shot `refine_for_design` remedy — BUG-3002: retargeted from reconcile, whose
+after the one-shot design remedy (`/ll:refine-issue --gap-analysis`) — BUG-3002: retargeted from reconcile, whose
 contract excludes that section), above `blocked_by_gate` (ENH-3148: caught by autodev's
 pre-dequeue `check_gate_at_dequeue` state before the remediation ladder ever runs), above
 `low_readiness`; ties break oldest-first. This
@@ -12292,6 +12289,50 @@ The stop reason `rate_limit` then replaces the verdict with `rate_limited`, and 
 **Exit codes**: `EXIT_OK = 0` (any verdict except `phantom`), `EXIT_PHANTOM = 1`, `EXIT_ERROR = 2` (the run directory is missing, or a ledger or `summary.json` cannot be written).
 
 **Python API**: `finalize(run_dir, *, quality_gate, status_of, stop_reason=None) -> (AutodevSummary, report)` runs steps 1 to 3. `issue_status_resolver(project_root)` returns the default `status_of` callable. `main(argv, *, status_of=None)` is the CLI entry point.
+
+## little_loops.preparation_policy
+
+The preparation policy behind the built-in `prepare-issue` loop (ENH-3623): one
+issue's second-pass preparation ladder expressed as a pure function over an issue
+snapshot and an append-only per-issue fact log. The loop calls it only through
+[`ll-issues prep`](CLI.md#ll-issues-prep); import it directly to inspect or test a
+decision.
+
+```python
+from little_loops.preparation_policy import (
+    Fact, Facts, IssueSnapshot, Step, StepKind,
+    decide, load_facts, next_preparation_step, snapshot_issue,
+    DONE_FACT_CAP, MAX_STEPS,
+)
+```
+
+| Name | Description |
+|------|-------------|
+| `StepKind` | Enum of the next step: `RUN_CHILD`, `WIRE`, `REFINE_GAP`, `RESCORE`, `RECONCILE`, `SIZE_REVIEW`, `GO_NO_GO`, `FINISH`, `STOP` |
+| `Step` | Frozen dataclass `(kind, seq, payload, reason, evidence, observations)` — the decision `decide()` returns |
+| `IssueSnapshot` | Read-only view of the issue file, config and gate verdicts (scores, flags, obligation probe, design verdict, refine count/cap, spike budget, child candidates) |
+| `Fact` / `Facts` | One JSONL line `{pass, seq, kind: intent\|done\|obs, step, payload}` / the parsed log for the current pass |
+| `decide(snapshot, facts) -> Step` | Pure: the checkpoint (last `done` fact of the pass) selects the rule chain; no I/O |
+| `snapshot_issue(config, issue_id, run_dir, *, readiness_threshold, outcome_threshold, facts=None) -> IssueSnapshot` | Reads everything `decide()` needs; the project-wide child scan runs only when the facts say the ladder may reach child detection |
+| `load_facts(run_dir, issue_id) -> Facts` | Reads `<run_dir>/prep-facts/<ID>.jsonl` for the pass named in `<run_dir>/prep-pass-<ID>` |
+| `append_fact(run_dir, issue_id, fact) -> bool` | Appends one line unless `(pass, seq, kind)` (and, for `obs`, the content) already exists |
+| `next_preparation_step(config, issue_id, run_dir, *, readiness_threshold, outcome_threshold) -> Step` | `decide(snapshot_issue(...), load_facts(...))` — what `ll-issues prep explain` prints |
+| `prep_step(...)` / `prep_record(...)` / `prep_apply(...)` | The writers behind `ll-issues prep step` / `record` / `apply`. `prep_record` classifies a `RUN_CHILD` step from the child's `refine-to-ready-issue` run record only; `prep_apply` is the sole terminal writer (ledger row, `set-status`, run record, in-flight clear — each idempotent) and returns 0 (loop `done`) or 1 (loop `failed`) |
+| `DONE_FACT_CAP` / `MAX_STEPS` | Per-pass done-fact cap derived from the ladder budgets, and `prepare-issue`'s `max_steps` (`4 × DONE_FACT_CAP + 3`) |
+
+```python
+from pathlib import Path
+from little_loops.config import BRConfig
+from little_loops.preparation_policy import next_preparation_step
+
+step = next_preparation_step(
+    BRConfig(Path.cwd()), "ENH-42", Path(".loops/runs/autodev-20260927/"),
+    readiness_threshold=85, outcome_threshold=65,
+)
+print(step.kind.value, step.reason)
+```
+
+See [LOOPS_REFERENCE.md § prepare-issue](../guides/LOOPS_REFERENCE.md#prepare-issue--preparation-dispatch-loop-internal) for the terminal table and the accepted behavior changes.
 
 ## little_loops.init.install_check
 

@@ -1392,6 +1392,10 @@ class PersistentExecutor:
 
         Returns:
             ExecutionResult if resumed and completed, None if no resumable state
+
+        Raises:
+            ValueError: The persisted state no longer exists in the loop (the loop
+                file was edited since the run started); restart the run instead.
         """
         state = self.persistence.load_state()
         if state is None:
@@ -1408,6 +1412,15 @@ class PersistentExecutor:
         # deliberately left False (this executor's __init__ default) so a
         # later genuine terminal isn't misreported as another cap hit.
         restored_current_state = state.pre_cap_state or state.current_state
+        # ENH-3623: fail loudly when a loop edit removed the persisted state.
+        # Without this check the executor's main loop hits a KeyError on the state
+        # lookup, which its blanket handler turns into an uninformative `error`
+        # terminal carrying only the bare state name.
+        if restored_current_state and restored_current_state not in self.fsm.states:
+            raise ValueError(
+                f"state '{restored_current_state}' no longer exists in loop "
+                f"'{self.fsm.name}'; restart the run"
+            )
         self._executor.current_state = restored_current_state
         self._executor.iteration = state.iteration
         self._executor.captured = state.captured

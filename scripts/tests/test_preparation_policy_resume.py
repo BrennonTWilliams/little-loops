@@ -1,4 +1,4 @@
-"""ENH-3630: resume matrix for the preparation-policy dispatch loop.
+"""ENH-3630/ENH-3623: resume matrix for the prepare-issue dispatch loop.
 
 For each matrix scenario, kill the process (``HarnessCrash``) at every runner call of
 every wrapper action state (and of the stub inner loop), both *before* the action
@@ -36,10 +36,9 @@ from typing import Any
 import pytest
 
 from little_loops.preparation_policy import load_facts
-from tests.autodev_harness import AutodevResult, Crash, Scenario
-from tests.preparation_policy_harness import run_policy
+from tests.autodev_harness import AutodevResult, Crash, Scenario, run_autodev
 from tests.test_autodev_characterization import SCENARIOS, _assert_hermetic
-from tests.test_preparation_policy_parity import DIFF_SCENARIOS, _observed_parity, _scenario
+from tests.test_preparation_policy_parity import DIFF_SCENARIOS, _observed_parity
 
 _ALL = {s.name: s for s, _ in SCENARIOS} | {s.name: s for s in DIFF_SCENARIOS}
 
@@ -167,7 +166,7 @@ def _fact_counts(r: AutodevResult) -> dict[str, int]:
 def _clean(name: str, tmp_path: Any, monkeypatch: pytest.MonkeyPatch) -> AutodevResult:
     root = tmp_path / "clean"
     root.mkdir()
-    r = run_policy(_scenario(_ALL[name]), root, monkeypatch)
+    r = run_autodev(_ALL[name], root, monkeypatch)
     _assert_hermetic(r)
     return r
 
@@ -209,8 +208,8 @@ def _crash_and_resume(
         when=when,  # type: ignore[arg-type]
         replay_same=ran_unrecorded,
     )
-    scenario: Scenario = replace(_scenario(_ALL[name]), crash=crash)
-    r = run_policy(scenario, root, monkeypatch)
+    scenario: Scenario = replace(_ALL[name], crash=crash)
+    r = run_autodev(scenario, root, monkeypatch)
     _assert_hermetic(r)
     assert r.crashed_at is not None and r.crashed_at["state"] == state
     assert r.resumed_terminated_by == "terminal"

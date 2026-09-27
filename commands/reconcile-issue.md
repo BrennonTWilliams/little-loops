@@ -80,9 +80,10 @@ line and every other line stay untouchable), silent deletion, no tombstone, no
 `## CORRECTIONS_MADE` entry. Do not invent a second, differently-shaped marker
 lifecycle.
 
-`autodev.yaml`'s `check_reconcile_needed` routes on marker *presence*, so a
-marker that survives a completed reconcile pass re-fires the gate on every
-subsequent pass.
+`prepare-issue`'s reconcile rule (the `little_loops.preparation_policy` step
+that autodev's preparation runs) routes on marker *presence*, so a marker that
+survives a completed reconcile pass re-fires the rule until its cap of 2
+contradiction-only reconciles per pass is spent.
 
 **Preserve untouched — never edit, reorder, or delete:**
 - `## Summary`, `## Motivation`, `## Current Behavior`, `## Expected Behavior`
@@ -142,9 +143,11 @@ If no file is found, print `## VERDICT` / `NOT_READY` and stop.
 **Immediately** (before any rewrite, and even in `--check` mode's absence),
 set `reconcile_attempted: true` in the issue's YAML frontmatter using the Edit
 tool. This mirrors `/ll:spike`'s `spike_attempted` convention and arms
-`autodev.yaml`'s `check_reconcile_needed` one-shot guard so reconcile runs at
-most once per issue per autodev run — set it whether or not any section actually
-needs rewriting, so a no-op reconcile still disarms the guard.
+the one-shot guard on `prepare-issue`'s reconcile rule, so its readiness-driven
+fires (plateau, fresh-below-threshold) run at most once per issue — set it
+whether or not any section actually needs rewriting, so a no-op reconcile still
+disarms the guard. (The contradiction fire is not gated by this flag; it is
+bounded by marker clearing plus its per-pass cap of 2.)
 
 Skip this write only when `CHECK_MODE` is true (check mode never writes).
 
@@ -194,8 +197,8 @@ three sections above — you have just adjudicated those lines against the
 findings and confirmed they still hold, which consumes the annotation. On this
 branch marker removal is the pass's only edit; `## CORRECTIONS_MADE` still
 reports `None` (a cleared marker is never a correction). Skipping this leaves
-`autodev.yaml`'s `check_reconcile_needed` re-firing on the same marker every
-pass.
+`prepare-issue`'s reconcile rule re-firing on the same marker until its
+per-pass cap is spent.
 
 ### 5. Rewrite the stale sections in place
 
@@ -365,12 +368,15 @@ $ARGUMENTS
 
 ## Integration
 
-- Called by `autodev.yaml`'s `reconcile_current` state when
-  `check_reconcile_needed` detects a post-spike Readiness plateau (ENH-2689) —
-  or, since ENH-2992, a **contradiction**: a `⚠ Superseded` marker standing in
-  one of the three directive sections, regardless of what the readiness score
-  did. That branch is bounded by this command clearing the markers it evaluated
-  (see the Contract) plus a reconcile-scoped per-issue cap of 2.
+- Called by the `prepare-issue` loop (autodev's preparation step) when the
+  preparation policy's reconcile rule (`little_loops.preparation_policy`)
+  detects a post-spike Readiness plateau (ENH-2689) or a fresh issue scored
+  below the readiness threshold — or, since ENH-2992, a **contradiction**: a
+  `⚠ Superseded` marker standing in one of the three directive sections,
+  regardless of what the readiness score did. That branch is bounded by this
+  command clearing the markers it evaluated (see the Contract) plus a cap of 2
+  contradiction-only reconciles per pass. The policy also uses this command as
+  a pre-deferral remedy before deferring an issue `low_readiness`.
 - User-invocable directly to unstick an issue whose directive sections have
   drifted from its accumulated research.
 - Distinct from `/ll:refine-issue` (appends research), `/ll:ready-issue`

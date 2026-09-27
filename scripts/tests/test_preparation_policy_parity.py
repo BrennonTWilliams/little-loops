@@ -1,34 +1,22 @@
-"""ENH-3630: characterization parity for the preparation-policy dispatch loop.
+"""ENH-3623: the preparation-policy cutover's parity record.
 
-Re-runs every ``test_autodev_characterization.SCENARIOS`` entry with
-``fixtures/loops/prepare-issue-policy.yaml`` as ``prepare-issue`` and ENH-3606's
-boundary retargets applied to ``autodev.yaml``. The comparison covers the parity
-fields (ledgers, queue, staging, records, issue status, summary.json, slash
-sequence, repair-cycle projection, ll-auto calls); the autodev *path* legitimately
-changes (the ladder states are gone) and is checked separately for moved-state
-absence.
+ENH-3630 proved parity two ways before the cutover: every
+``test_autodev_characterization.SCENARIOS`` entry ran against the dispatch-loop
+fixture (with an enumerated diff list), and nine differential scenarios ran BOTH the
+old autodev ladder and the policy on the same input and compared. ENH-3623 removed
+the old ladder, so neither comparison can run any more. What survives:
 
-Every difference from today's pin is listed in ``ALLOWED_DIFFS`` with the reason;
-nothing else may differ.
-
-Ported from the ``spike/preparation-policy-a51621302`` tag
-(``test_preparation_policy_parity.py``), rewritten rather than ported verbatim for
-two scenarios that branched before ENH-3625/BUG-3622 landed on main (see their
-comments below): ``h2_first_gate_skips_design`` (ENH-3625 Rule A made *both*
-today's ladder and the policy design-aware, so this is no longer a design-gate
-differential -- it stays as a plain post-size-review differential) and
-``contradiction_masked_by_format_gaps`` (Q1 now reads markers unconditionally, so
-the reconcile fires on both sides where the spike-era mask suppressed it). A new
-``ladder_rate_limit_halts`` allowance was added: BUG-3622 fixed today's ladder to
-run the rate-limit retry loop to exhaustion (matching the policy), but the
-*terminal record* still differs -- today forwards the inner run's stale BLOCKED,
-while the policy's ``mark_rate_limited`` writes a fresh
-``RETRYABLE_ERROR:rate_limited`` (ENH-3606 terminal table).
+- ``PRE_CUTOVER_PINS``: for every accepted behavior change, the value the ENH-3618
+  pin held before the cutover. ``test_accepted_changes_are_real_diffs`` asserts the
+  current pin differs from it (no vacuous allowance), so each accepted change keeps
+  its own pinned scenario in ``SCENARIOS``.
+- ``DIFF_SCENARIOS`` / ``DIFF_EXPECTED``: the differential scenarios (the four
+  hardest routing shapes, H1-H4, plus ladder paths the table does not reach), pinned
+  at the values the cutover-time comparison verified (old ladder + ``DIFF_ALLOWED``).
 """
 
 from __future__ import annotations
 
-from dataclasses import replace
 from typing import Any
 
 import pytest
@@ -42,22 +30,32 @@ from tests.autodev_harness import (
     SlashResponse,
     run_autodev,
 )
-from tests.preparation_policy_harness import DELETED_STATES, run_policy
+from tests.preparation_policy_harness import DELETED_STATES
 from tests.test_autodev_characterization import (
+    APPLY,
+    CHILD,
     DESIGN_GATE_ARMED,
     GO,
     NO_GO,
     NOOP,
     READY,
+    READY_PATH,
     SCENARIOS,
+    SIZE_REVIEW,
+    SIZE_REVIEW_G2,
     SIZE_REVIEW_GUARD2,
     SIZE_REVIEW_LEAF,
+    STOP_PATH,
+    WRAPPER_DESIGN_REMEDY,
+    WRAPPER_RECONCILE,
+    WRAPPER_RESCORE_RETRY,
     Expected,
     _assert_hermetic,
     confidence,
     done,
     expected_view,
     observed,
+    step,
     summary,
 )
 
@@ -83,84 +81,69 @@ PARITY_FIELDS = (
     "ledgers",
 )
 
-#: Scenario-level fault remaps: today's fault points are states that no longer exist.
-FAULT_REMAP: dict[str, dict[str, int]] = {
-    # enqueue_or_skip (the EOS decision after size review) == the 3rd select_step.
-    "on_error_drop": {"select_step#3": 2},
-}
-
-#: ``{scenario: {field: (new_value, justification)}}`` -- the enumerated diff list.
-ALLOWED_DIFFS: dict[str, dict[str, tuple[Any, str]]] = {
+#: ``{scenario: {field: (pre-cutover pin, justification)}}`` -- every accepted
+#: behavior change (ENH-3623 § Accepted behavior changes + the record-token fixes).
+PRE_CUTOVER_PINS: dict[str, dict[str, tuple[Any, str]]] = {
     "oversized_atomic_go_reopen_implement": {
         "records": (
-            {ID: "READY"},
-            "BUG-LIKE pin fixed per ENH-3606 terminal table (mark_ready): the GO path "
-            "now ends with a READY record instead of MISSING",
+            {ID: "MISSING"},
+            "BUG-LIKE pin fixed per the terminal table (ready): the GO path now ends "
+            "with a READY record instead of MISSING",
         ),
     },
     "size_review_decomposition": {
         "records": (
-            {ID: "DECOMPOSED", "ENH-9002": "READY", "ENH-9003": "BLOCKED:quality"},
-            "BUG-LIKE pin fixed per ENH-3606 terminal table (size-review decomposition "
-            "-> decomposed + child_ids); was the stale forwarded BLOCKED",
+            {ID: "BLOCKED", "ENH-9002": "READY", "ENH-9003": "BLOCKED:quality"},
+            "BUG-LIKE pin fixed per the terminal table (size-review decomposition -> "
+            "decomposed + child_ids); was the stale forwarded BLOCKED",
         ),
     },
     "resolved_parent_at_recheck": {
         "records": (
-            {ID: "DECOMPOSED"},
-            "BUG-LIKE pin fixed per ENH-3606 (route_ladder_stop: resolved parent -> "
-            "mark_decomposed); autodev's recover_subloop_children still writes the "
-            "same resolved_by_subloop row",
+            {ID: "BLOCKED"},
+            "BUG-LIKE pin fixed per the DECOMPOSED guarantee (resolved parent -> "
+            "decomposed); recover_subloop_children still writes resolved_by_subloop",
         ),
     },
     "scores_absent_after_repair": {
-        "skipped": (
-            (f"{ID}  refine_failed_infra",),
-            "ENH-3606 accepted change 1: scores-absent stop now ledgered refine_failed_infra",
-        ),
-        "records": ({ID: "RETRYABLE_ERROR:infra"}, "ENH-3606 terminal table: mark_scores_absent"),
+        "skipped": ((), "accepted change 1: scores-absent stop ledgered refine_failed_infra"),
+        "records": ({ID: "BLOCKED"}, "terminal table: scores absent -> RETRYABLE_ERROR:infra"),
         "ledgers": (
-            {},
-            "ENH-3606 decided: autodev-scores-absent.txt loses its only writer "
-            "(mark_scores_absent_infra deleted)",
+            {"autodev-scores-absent.txt": [ID]},
+            "autodev-scores-absent.txt lost its only writer (mark_scores_absent_infra)",
         ),
     },
     "on_error_drop": {
-        "skipped": (
-            (f"{ID}  refine_failed_infra",),
-            "ENH-3606 accepted change 1: an on_error drop now ledgers refine_failed_infra",
+        "skipped": ((), "accepted change 1: an on_error drop ledgers refine_failed_infra"),
+        "unverified": (
+            (f"{ID}  inflight_at_finalize",),
+            "same: prep apply's no-terminal-intent fallback clears autodev-inflight",
         ),
-        "unverified": ((), "same: skip_inflight_infra clears autodev-inflight"),
-        "records": ({ID: "RETRYABLE_ERROR:infra"}, "ENH-3606 terminal table: mark_ladder_error"),
+        "records": ({ID: "BLOCKED"}, "terminal table: no-terminal-intent fallback -> infra"),
         "summary": (
-            summary(),
-            "same: no phantom inflight; verdict no-op like scores_absent (the "
-            "refine_failed_infra bucket is not counted as skipped by autodev_summary)",
+            summary(verdict="phantom", not_closed=1, inflight_unresolved=1, abandoned=1),
+            "same: no phantom inflight (refine_failed_infra is not counted as skipped)",
         ),
-        "final_state": ("done", "same: finalize_done no longer sees a phantom inflight"),
+        "final_state": ("failed", "same: finalize_done no longer sees a phantom inflight"),
     },
     "ladder_rate_limit_halts": {
         "records": (
-            {ID: "RETRYABLE_ERROR:rate_limited"},
-            "BUG-3622 fixed the retry loop itself (both sides run it to exhaustion, "
-            "same 12 waits), but ENH-3606's mark_rate_limited terminal writes a fresh "
-            "RETRYABLE_ERROR:rate_limited record; today's finalize_rate_limited still "
-            "leaves the inner run's stale forwarded BLOCKED",
+            {ID: "BLOCKED"},
+            "terminal table (rate_limited): mark_rate_limited writes a fresh "
+            "RETRYABLE_ERROR:rate_limited record instead of the stale forwarded BLOCKED",
         ),
     },
 }
 
 
-def _scenario(s: Scenario) -> Scenario:
-    return replace(s, faults=FAULT_REMAP.get(s.name, dict(s.faults)))
-
-
-def _expected_parity(s: Scenario, e: Expected) -> dict[str, Any]:
-    view = expected_view(e)
-    out = {k: view[k] for k in PARITY_FIELDS}
-    for fieldname, (value, _why) in ALLOWED_DIFFS.get(s.name, {}).items():
-        out[fieldname] = value
-    return out
+def test_accepted_changes_are_real_diffs() -> None:
+    """Every accepted change must differ from its pre-cutover pin (no vacuous allowance)."""
+    pinned = {s.name: expected_view(e) for s, e in SCENARIOS}
+    for name, fields in PRE_CUTOVER_PINS.items():
+        assert name in pinned, f"{name}: accepted change has no pinned scenario"
+        for fieldname, (old, _why) in fields.items():
+            assert fieldname in PARITY_FIELDS, (name, fieldname)
+            assert pinned[name][fieldname] != old, f"{name}.{fieldname} is not a change"
 
 
 def _observed_parity(r: AutodevResult) -> dict[str, Any]:
@@ -168,34 +151,9 @@ def _observed_parity(r: AutodevResult) -> dict[str, Any]:
     return {k: view[k] for k in PARITY_FIELDS}
 
 
-@pytest.mark.timeout(300)
-@pytest.mark.parametrize(
-    ("scenario", "expected"),
-    [pytest.param(s, e, id=s.name) for s, e in SCENARIOS],
-)
-def test_policy_parity(
-    scenario: Scenario, expected: Expected, tmp_path: Any, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    r = run_policy(_scenario(scenario), tmp_path, monkeypatch)
-    _assert_hermetic(r, expected.rate_limit_waits)
-    assert _observed_parity(r) == _expected_parity(scenario, expected)
-    # PASS criterion 2: no autodev event enters a moved (or deleted) state.
-    entered = set(r.path) & set(DELETED_STATES)
-    assert not entered, f"autodev entered moved states: {sorted(entered)}"
-
-
-def test_allowed_diffs_are_real_diffs() -> None:
-    """Every ALLOWED_DIFFS entry must differ from today's pin (no vacuous allowances)."""
-    pinned = {s.name: expected_view(e) for s, e in SCENARIOS}
-    for name, fields in ALLOWED_DIFFS.items():
-        for fieldname, (value, _why) in fields.items():
-            assert pinned[name][fieldname] != value, f"{name}.{fieldname} allowance is a no-op"
-
-
 # ---------------------------------------------------------------------------
-# Differential scenarios: run BOTH today's ladder and the policy on the same
-# scenario and compare. These cover the four hardest routing shapes (H1-H4 in
-# the spike report) and ladder paths the pinned table does not reach.
+# Differential scenarios (H1-H4 in the spike report and ladder paths the pinned
+# table does not reach), pinned at their cutover-verified values.
 # ---------------------------------------------------------------------------
 
 _SUPERSEDED_BODY = (
@@ -250,11 +208,9 @@ DIFF_SCENARIOS: list[Scenario] = [
         inner_runs=_H1_INNER,
         slash=_h1_slash(GO),
     ),
-    # H2 (rewritten, ENH-3625): both today's `check_passed` and the policy's first
-    # gate are now design-aware (Rule A), so a design-failing first pass no longer
-    # skips straight to FINISH on either side -- it falls through to SIZE_REVIEW.
-    # This stays a differential (not folded into the pinned table) because the
-    # *post-size-review* path is where the 39 moved states legitimately diverge.
+    # H2 (ENH-3625 Rule A): the policy's first gate is design-aware, so a
+    # design-failing first pass does not FINISH -- it falls through to SIZE_REVIEW
+    # and the design remedy.
     Scenario(
         name="h2_first_gate_honors_design_then_size_review",
         frontmatter=READY,
@@ -331,10 +287,8 @@ DIFF_SCENARIOS: list[Scenario] = [
             "confidence-check": (confidence(90, 50),),
         },
     ),
-    # Q1 (BUG-3624, fixed on main): the same marker on an issue with blocking format
-    # gaps now DOES fire the reconcile (markers are read unconditionally); the
-    # spike-era mask this scenario characterized no longer exists on either side, so
-    # this is plain parity with contradiction_reconcile's shape, not the masked one.
+    # Q1 (BUG-3624): the same marker on an issue with blocking format gaps still
+    # fires the reconcile (markers are read whatever format-check's exit code).
     Scenario(
         name="contradiction_not_masked_by_format_gaps_bug3624",
         frontmatter={"confidence_score": 90, "outcome_confidence": 50, "reconcile_attempted": True},
@@ -348,45 +302,6 @@ DIFF_SCENARIOS: list[Scenario] = [
     ),
 ]
 
-#: Per-scenario diffs vs today in the differential runs (same shape as ALLOWED_DIFFS).
-DIFF_ALLOWED: dict[str, dict[str, tuple[Any, str]]] = {
-    "h1_guard2_across_epochs_go": {
-        "records": ({ID: "READY"}, "as oversized_atomic_go_reopen_implement (mark_ready)"),
-    },
-    "rescore_retry_recovers": {
-        "records": (
-            {ID: "READY"},
-            "BUG-LIKE today: an issue implemented off the RASR pass keeps the forwarded "
-            "BLOCKED inner record; the policy's FINISH(ready) writes READY",
-        ),
-    },
-}
-
-
-@pytest.mark.timeout(600)
-@pytest.mark.parametrize("scenario", [pytest.param(s, id=s.name) for s in DIFF_SCENARIOS])
-def test_policy_matches_today_differential(
-    scenario: Scenario, tmp_path: Any, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    (tmp_path / "today").mkdir()
-    (tmp_path / "policy").mkdir()
-    today = run_autodev(scenario, tmp_path / "today", monkeypatch)
-    _assert_hermetic(today)
-    policy = run_policy(scenario, tmp_path / "policy", monkeypatch)
-    _assert_hermetic(policy)
-    want = _observed_parity(today)
-    for fieldname, (value, _why) in DIFF_ALLOWED.get(scenario.name, {}).items():
-        assert want[fieldname] != value, f"{scenario.name}.{fieldname}: allowed diff is a no-op"
-        want[fieldname] = value
-    assert _observed_parity(policy) == want, f"today path: {today.path}"
-    assert not set(policy.path) & set(DELETED_STATES)
-    # The scenario must actually exercise the shape it names (non-vacuous parity).
-    slash = tuple(policy.slash_commands)
-    inner_runs = sum(1 for p in policy.full_path if p.endswith(":scripted_run"))
-    shape = DIFF_SHAPES.get(scenario.name)
-    if shape is not None:
-        assert shape(slash, inner_runs), (scenario.name, slash, inner_runs)
-
 
 _W, _R, _C, _S, _G, _RC = (
     f"wire-issue {ID}",
@@ -396,16 +311,128 @@ _W, _R, _C, _S, _G, _RC = (
     f"go-no-go {ID}",
     f"reconcile-issue {ID}",
 )
-DIFF_SHAPES: dict[str, Any] = {
-    "h1_guard2_across_epochs": lambda s, n: s == (_S, _W, _R, _C, _W, _C, _G) and n == 2,
-    "h1_guard2_across_epochs_go": lambda s, n: s == (_S, _W, _R, _C, _W, _C, _G) and n == 2,
-    "h2_first_gate_honors_design_then_size_review": lambda s, n: (
-        s == (_S, _RC, _C, _R, _C) and n == 1
-    ),
-    "h3_proof_reentry_then_ready": lambda s, n: n == 2,
-    "h3_decision_reentry_resolves": lambda s, n: n == 2,
-    "pre_deferral_reconcile_remedy": lambda s, n: s == (_S, _RC, _C, _RC, _C),
-    "rescore_retry_recovers": lambda s, n: s == (_W, _R, _C, _C),
-    "contradiction_reconcile": lambda s, n: s == (_S, _RC, _C),
-    "contradiction_not_masked_by_format_gaps_bug3624": lambda s, n: s == (_S, _RC, _C),
+_H1_WRAPPER = (
+    *CHILD,
+    *SIZE_REVIEW_G2,
+    *CHILD,
+    *step("wire"),
+    *step("refine_gap"),
+    *step("rescore"),
+    *step("wire"),
+    *step("rescore"),
+    *step("go_no_go"),
+    *APPLY,
+)
+_IMPLEMENTED: dict[str, Any] = {
+    "path": READY_PATH,
+    "staged": (ID,),
+    "passed": (ID,),
+    "records": {ID: "READY"},
+    "summary": summary(verdict="success", closed=1, closed_implemented=1),
+    "ll_auto": (ID,),
 }
+
+DIFF_EXPECTED: dict[str, Expected] = {
+    "h1_guard2_across_epochs": Expected(
+        path=STOP_PATH,
+        wrapper_path=_H1_WRAPPER,
+        skipped=(f"{ID}  oversized_atomic",),
+        records={ID: "DEFERRED:gate_unmet"},
+        issues={ID: ("deferred", "oversized_atomic")},
+        summary=summary(skipped=1),
+        slash=(_S, _W, _R, _C, _W, _C, _G),
+        repair_cycle="4",
+    ),
+    # was a DIFF_ALLOWED record: READY (the old ladder left MISSING), as
+    # oversized_atomic_go_reopen_implement
+    "h1_guard2_across_epochs_go": Expected(
+        **_IMPLEMENTED,
+        wrapper_path=_H1_WRAPPER,
+        issues={ID: ("done", "oversized_atomic")},
+        slash=(_S, _W, _R, _C, _W, _C, _G),
+        repair_cycle="4",
+    ),
+    "h2_first_gate_honors_design_then_size_review": Expected(
+        path=STOP_PATH,
+        wrapper_path=WRAPPER_DESIGN_REMEDY,
+        skipped=(f"{ID}  design_gate_failed",),
+        records={ID: "DEFERRED:gate_unmet"},
+        issues={ID: ("deferred", "design_gate_failed")},
+        summary=summary(skipped=1),
+        slash=(_S, _RC, _C, _R, _C),
+        repair_cycle="4",
+    ),
+    "h3_proof_reentry_then_ready": Expected(
+        **_IMPLEMENTED,
+        wrapper_path=(*CHILD, *CHILD, *APPLY),
+        issues={ID: ("done", None)},
+        repair_cycle="2",
+    ),
+    "h3_decision_reentry_resolves": Expected(
+        **_IMPLEMENTED,
+        wrapper_path=(*CHILD, *CHILD, *APPLY),
+        issues={ID: ("done", None)},
+        repair_cycle="2",
+    ),
+    "pre_deferral_reconcile_remedy": Expected(
+        path=STOP_PATH,
+        wrapper_path=(
+            *CHILD,
+            *SIZE_REVIEW,
+            *step("reconcile"),
+            *step("rescore"),
+            *step("reconcile"),
+            *step("rescore"),
+            *APPLY,
+        ),
+        skipped=(f"{ID}  low_readiness",),
+        records={ID: "DEFERRED:gate_unmet"},
+        issues={ID: ("deferred", "low_readiness")},
+        summary=summary(skipped=1),
+        slash=(_S, _RC, _C, _RC, _C),
+        repair_cycle="4",
+    ),
+    # was a DIFF_ALLOWED record: READY (the old ladder kept the forwarded BLOCKED)
+    "rescore_retry_recovers": Expected(
+        **_IMPLEMENTED,
+        wrapper_path=WRAPPER_RESCORE_RETRY,
+        issues={ID: ("done", None)},
+        slash=(_W, _R, _C, _C),
+        repair_cycle="2",
+    ),
+    "contradiction_reconcile": Expected(
+        path=STOP_PATH,
+        wrapper_path=WRAPPER_RECONCILE,
+        skipped=(f"{ID}  readiness_stagnated",),
+        records={ID: "DEFERRED:gate_unmet"},
+        issues={ID: ("deferred", "readiness_stagnated")},
+        summary=summary(skipped=1),
+        slash=(_S, _RC, _C),
+        repair_cycle="3",
+    ),
+    "contradiction_not_masked_by_format_gaps_bug3624": Expected(
+        path=STOP_PATH,
+        wrapper_path=WRAPPER_RECONCILE,
+        skipped=(f"{ID}  readiness_stagnated",),
+        records={ID: "DEFERRED:gate_unmet"},
+        issues={ID: ("deferred", "readiness_stagnated")},
+        summary=summary(skipped=1),
+        slash=(_S, _RC, _C),
+        repair_cycle="3",
+    ),
+}
+
+
+def test_every_differential_scenario_is_pinned() -> None:
+    assert sorted(DIFF_EXPECTED) == sorted(s.name for s in DIFF_SCENARIOS)
+
+
+@pytest.mark.timeout(300)
+@pytest.mark.parametrize("scenario", [pytest.param(s, id=s.name) for s in DIFF_SCENARIOS])
+def test_differential_scenario(
+    scenario: Scenario, tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    r = run_autodev(scenario, tmp_path, monkeypatch)
+    _assert_hermetic(r)
+    assert observed(r) == expected_view(DIFF_EXPECTED[scenario.name])
+    assert not set(r.path) & set(DELETED_STATES)

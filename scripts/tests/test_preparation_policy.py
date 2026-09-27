@@ -163,6 +163,67 @@ def test_pre_implement_proof_gate_reentry() -> None:
     check(decide(waived, log(start(), child(1, "READY"))), StepKind.FINISH, outcome="ready")
 
 
+# ENH-3623: the shell-level selector predicates ported from
+# test_autodev_proof_reentry.py (the selectors moved into decide()).
+_SPIKEABLE = replace(LOW_OUTCOME, obligation_post="PROOF:absent", spike_needed=True)
+
+
+@pytest.mark.parametrize("token", ["PROOF:absent", "PROOF:refuted"])
+def test_post_refine_proof_token_is_spikeable(token: str) -> None:
+    """A refuted registry target does not mask a spikeable issue."""
+    snap = replace(_SPIKEABLE, obligation_post=token)
+    check(decide(snap, log(start(), child(1))), StepKind.RUN_CHILD, role="proof")
+
+
+@pytest.mark.parametrize(
+    "snap",
+    [
+        pytest.param(replace(_SPIKEABLE, spike_attempted=True), id="attempted"),
+        pytest.param(replace(_SPIKEABLE, spike_needed=False), id="not_needed"),
+        pytest.param(replace(_SPIKEABLE, spike_runs=2), id="budget"),
+        pytest.param(replace(_SPIKEABLE, refine_count=5, refine_cap=5), id="capped"),
+    ],
+)
+def test_post_refine_child_that_cannot_spike_is_not_reentered(snap: IssueSnapshot) -> None:
+    s = decide(snap, log(start(), child(1)))
+    assert not (s.kind is StepKind.RUN_CHILD and s.payload.get("role") == "proof"), s
+
+
+def test_post_refine_non_proof_token_passes_through() -> None:
+    snap = replace(LOW_OUTCOME, obligation_post="SCORES:outcome_below", spike_needed=True)
+    check(decide(snap, log(start(), child(1))), StepKind.SIZE_REVIEW)
+
+
+_GATED = replace(READY, gate_verdict="structured_proof")
+
+
+@pytest.mark.parametrize(
+    "snap",
+    [
+        pytest.param(replace(_GATED, waived=True), id="waived"),
+        pytest.param(replace(_GATED, spike_attempted=True), id="attempted"),
+        pytest.param(replace(_GATED, spike_runs=2), id="budget"),
+        pytest.param(replace(_GATED, refine_count=5, refine_cap=5), id="capped"),
+        *(
+            pytest.param(replace(READY, gate_verdict=v), id=v)
+            for v in ("structured_open", "prose", "none", "structured_satisfied")
+        ),
+    ],
+)
+def test_pre_implement_proof_guard_terms_fall_through(snap: IssueSnapshot) -> None:
+    check(decide(snap, log(start(), child(1, "READY"))), StepKind.FINISH, outcome="ready")
+
+
+def test_pre_implement_proof_reentry_is_once_per_pass() -> None:
+    used = log(start(), child(1, "READY"), child(2, "READY", role="proof"))
+    check(decide(_GATED, used), StepKind.FINISH, outcome="ready")
+
+
+def test_pre_implement_decision_wins_over_proof() -> None:
+    snap = replace(_GATED, decision_needed=True)
+    check(decide(snap, log(start(), child(1, "READY"))), StepKind.RUN_CHILD, role="decision")
+
+
 def test_missing_artifacts_wire_chain() -> None:
     snap = replace(LOW, missing_artifacts=True)
     check(decide(snap, log(start(), child(1))), StepKind.WIRE, role="artifacts")
@@ -265,6 +326,19 @@ def test_rescore_retry_then_scores_absent() -> None:
     check(s, StepKind.RESCORE, origin="reconcile", attempt=2)
     assert "preconditions" not in s.payload  # no second clear before the retry
     check(decide(absent, _rescored("reconcile", 2)), StepKind.STOP, outcome="scores_absent")
+
+
+@pytest.mark.parametrize(
+    "snap",
+    [
+        replace(LOW, confidence=None),
+        replace(LOW, outcome=None),
+        replace(LOW, confidence=None, outcome=None),
+    ],
+)
+def test_either_score_missing_counts_as_absent(snap: IssueSnapshot) -> None:
+    """BUG-3588: a rescore that wrote only one score is still absent (retry, not pass)."""
+    check(decide(snap, _rescored("wire")), StepKind.RESCORE, origin="wire", attempt=2)
 
 
 @pytest.mark.parametrize(
@@ -434,6 +508,70 @@ def test_pre_deferral_remedy_spike_or_reconcile() -> None:
     check(decide(fresh, fired_rasr), StepKind.STOP, outcome="low_readiness")
 
 
+_REMEDY_SPIKE = replace(
+    LOW, score_ambiguity=5, score_complexity=20, score_test_coverage=20, score_change_surface=20
+)
+
+
+@pytest.mark.parametrize(
+    ("refine_count", "cap", "kind"),
+    [
+        (4, 5, StepKind.RUN_CHILD),  # one refine left -> re-enter the child
+        (5, 5, StepKind.RECONCILE),  # at the cap -> reconcile, never the child
+        (7, 5, StepKind.RECONCILE),
+        (3, 3, StepKind.RECONCILE),  # configured commands.max_refine_count honored
+        (2, 3, StepKind.RUN_CHILD),
+    ],
+)
+def test_pre_deferral_spike_remedy_respects_lifetime_refine_cap(
+    refine_count: int, cap: int, kind: StepKind
+) -> None:
+    """ENH-3611 (ported from dispatch_pre_deferral_remedy): a lifetime-capped child
+    would route to breakdown_issue, so the spike leg falls back to reconcile."""
+    snap = replace(_REMEDY_SPIKE, refine_count=refine_count, refine_cap=cap)
+    check(decide(snap, _after_sr(pre="60")), kind, pre_deferral=True)
+
+
+@pytest.mark.parametrize(
+    ("spike_runs", "kind"),
+    [(0, StepKind.RUN_CHILD), (1, StepKind.RUN_CHILD), (2, StepKind.RECONCILE)],
+)
+def test_pre_deferral_spike_leg_reads_the_shared_budget(spike_runs: int, kind: StepKind) -> None:
+    """The spike leg only reads spike-runs-<ID> (the child increments it)."""
+    check(decide(replace(_REMEDY_SPIKE, spike_runs=spike_runs), _after_sr(pre="60")), kind)
+
+
+def test_contradiction_sourced_reconcile_still_arms_the_spike_remedy() -> None:
+    """ENH-2992 exemption: reconcile_attempted from a contradiction-only reconcile does
+    not suppress the pre-deferral spike remedy (a plateau-sourced one does)."""
+    snap = replace(LOW, reconcile_attempted=True)
+    rescored = cmd(4, StepKind.RESCORE, origin="reconcile", attempt=1)
+    contra = _after_sr(*cmd(3, StepKind.RECONCILE, contradiction_only=True), *rescored, pre="60")
+    check(decide(snap, contra), StepKind.RUN_CHILD, role="spike_remedy", pre_deferral=True)
+    plateau = _after_sr(*cmd(3, StepKind.RECONCILE, contradiction_only=False), *rescored, pre="60")
+    check(decide(snap, plateau), StepKind.STOP, outcome="low_readiness")
+    spent = replace(snap, spike_runs=2)
+    check(decide(spent, contra), StepKind.STOP, outcome="low_readiness")
+    attempted = replace(snap, spike_attempted=True)
+    check(decide(attempted, contra), StepKind.STOP, outcome="low_readiness")
+
+
+def test_gate_marker_prefers_the_spike_remedy() -> None:
+    snap = replace(LOW, gate_verdict="prose", score_ambiguity=20, score_complexity=5)
+    check(decide(snap, _after_sr(pre="60")), StepKind.RUN_CHILD, role="spike_remedy")
+
+
+def test_policy_never_writes_the_spike_counter() -> None:
+    """spike-runs-<ID> is written only by the child's spike states."""
+    import inspect
+
+    import little_loops.preparation_policy as pp
+
+    src = inspect.getsource(pp)
+    assert "spike-runs-" in src  # read by snapshot_issue
+    assert not any("spike-runs" in line and "write" in line for line in src.splitlines())
+
+
 def test_resolved_parent_at_recheck_finishes_decomposed() -> None:
     f = _after_sr(
         *cmd(3, StepKind.RECONCILE), *cmd(4, StepKind.RESCORE, origin="reconcile", attempt=1)
@@ -577,3 +715,166 @@ def test_pure_layer_imports_no_cli_module() -> None:
         [sys.executable, "-c", code], capture_output=True, text=True, timeout=30
     )
     assert result.returncode == 0, result.stderr
+
+
+# ---------------------------------------------------------------------------
+# ENH-3623: rules ported from the retired autodev YAML-level tests
+# (test_autodev_loop.py / test_autodev_decision_gate.py), one per former
+# shell predicate or routing pin.
+# ---------------------------------------------------------------------------
+
+_RECONCILED = (
+    *cmd(3, StepKind.RECONCILE),
+    *cmd(4, StepKind.RESCORE, origin="reconcile", attempt=1),
+)
+
+
+@pytest.mark.parametrize(
+    ("scores", "kind"),
+    [
+        pytest.param((20, 5, 20, 20), StepKind.RECONCILE, id="ambiguity_not_weakest"),
+        pytest.param((5, 5, 20, 20), StepKind.RECONCILE, id="ambiguity_ties_weakest_bug3146"),
+        pytest.param((5, 20, 20, 20), StepKind.RUN_CHILD, id="ambiguity_strictly_weakest"),
+    ],
+)
+def test_pick_remedy_needs_ambiguity_strictly_weakest(
+    scores: tuple[int, int, int, int], kind: StepKind
+) -> None:
+    amb, cplx, cov, surf = scores
+    snap = replace(
+        LOW,
+        score_ambiguity=amb,
+        score_complexity=cplx,
+        score_test_coverage=cov,
+        score_change_surface=surf,
+    )
+    check(decide(snap, _after_sr(pre="60")), kind, pre_deferral=True)
+
+
+def test_gate_marker_never_beats_spike_attempted() -> None:
+    snap = replace(LOW, gate_verdict="prose", spike_attempted=True)
+    check(decide(snap, _after_sr(pre="60")), StepKind.STOP, outcome="low_readiness")
+
+
+def test_plateau_fire_with_a_standing_marker_is_not_contradiction_only() -> None:
+    snap = replace(LOW, superseded_markers=1)
+    check(decide(snap, _after_sr(pre="70")), StepKind.RECONCILE, contradiction_only=False)
+
+
+def test_one_prior_contradiction_fire_is_still_eligible() -> None:
+    snap = replace(LOW_OUTCOME, reconcile_attempted=True, superseded_markers=1)
+    once = [
+        *cmd(3, StepKind.RECONCILE, contradiction_only=True),
+        *cmd(4, StepKind.SIZE_REVIEW, guard2=False),
+    ]
+    check(decide(snap, _after_sr(*once, pre="90")), StepKind.RECONCILE, contradiction_only=True)
+
+
+def test_unscored_issue_does_not_fire_fresh_below_and_stops_scores_absent() -> None:
+    snap = replace(LOW, confidence=None, outcome=None)
+    check(decide(snap, _after_sr(pre="")), StepKind.STOP, outcome="scores_absent")
+
+
+def test_readiness_stagnated_needs_two_repair_cycles() -> None:
+    one_cycle = log(
+        start(pre_readiness="70"), cmd(1, StepKind.RESCORE, origin="reconcile", attempt=1)
+    )
+    snap = replace(LOW, reconcile_attempted=True)
+    check(decide(snap, one_cycle), StepKind.STOP, outcome="low_readiness")
+
+
+def test_fired_pre_deferral_remedy_blocks_the_design_remedy() -> None:
+    snap = replace(LOW, design_failed=True)
+    fired = _after_sr(
+        *cmd(3, StepKind.RECONCILE, pre_deferral=True, contradiction_only=False),
+        *cmd(4, StepKind.RESCORE, origin="reconcile", attempt=1),
+    )
+    check(decide(snap, fired), StepKind.STOP, outcome="design_gate_failed")
+
+
+def test_design_remedy_is_once_per_run_not_per_pass() -> None:
+    snap = replace(LOW, design_failed=True)
+    facts = log(
+        cmd(5, StepKind.REFINE_GAP, pass_id="1", role="design", pre_deferral=True),
+        start(pre_readiness="70", pass_id="2"),
+        child(1, pass_id="2"),
+        cmd(2, StepKind.SIZE_REVIEW, "2", guard2=False),
+        cmd(3, StepKind.RECONCILE, "2"),
+        cmd(4, StepKind.RESCORE, "2", origin="reconcile", attempt=1),
+        pass_id="2",
+    )
+    check(decide(snap, facts), StepKind.STOP, outcome="design_gate_failed")
+
+
+def test_passing_scores_with_a_design_gap_never_reach_implementation() -> None:
+    """Pre-fix bypass (ENH-2967): readiness and outcome pass, design fails."""
+    snap = replace(READY, design_failed=True)
+    check(decide(snap, _after_sr(*_RECONCILED)), StepKind.REFINE_GAP, role="design")
+    high = replace(LOW_OUTCOME, confidence=95, outcome=90, design_failed=True)
+    check(decide(high, _after_atomic()), StepKind.REFINE_GAP, role="design")
+
+
+def test_design_branch_is_checked_before_the_decision_branch() -> None:
+    snap = replace(LOW, design_failed=True, decision_needed=True)
+    check(decide(snap, _after_sr(*_RECONCILED)), StepKind.REFINE_GAP, role="design")
+
+
+def test_regate_design_failure_after_the_remedy_stops_design_gate_failed() -> None:
+    snap = replace(LOW_OUTCOME, design_failed=True)
+    earlier = cmd(9, StepKind.REFINE_GAP, pass_id="0", role="design")
+    facts = Facts("1", (*earlier, *_after_atomic().facts))
+    check(decide(snap, facts), StepKind.STOP, outcome="design_gate_failed")
+
+
+def test_child_done_with_passing_scores_but_decision_needed_reenters() -> None:
+    snap = replace(READY, decision_needed=True)
+    check(decide(snap, log(start(), child(1, "READY"))), StepKind.RUN_CHILD, role="decision")
+
+
+@pytest.mark.parametrize(
+    ("snap", "facts", "role"),
+    [
+        pytest.param(
+            replace(READY, gate_verdict="structured_proof"),
+            log(start(), child(1, "DECOMPOSED")),
+            "proof",
+            id="recheck_scores",
+        ),
+        pytest.param(
+            replace(READY, decision_needed=True), _after_sr(*_RECONCILED), "decision", id="rasr"
+        ),
+        pytest.param(
+            replace(LOW_OUTCOME, outcome=80, decision_needed=True),
+            _after_atomic(),
+            "decision",
+            id="raar",
+        ),
+    ],
+)
+def test_every_score_pass_site_goes_through_pre_implement(
+    snap: IssueSnapshot, facts: Facts, role: str
+) -> None:
+    check(decide(snap, facts), StepKind.RUN_CHILD, role=role)
+
+
+def test_post_size_review_selector_error_goes_straight_to_the_recheck() -> None:
+    """SPSR `_error` -> recheck_after_size_review: no reconcile even on a plateau."""
+    snap = replace(LOW, obligation_post="ERROR")
+    check(decide(snap, _after_sr(pre="70")), StepKind.STOP, outcome="readiness_stagnated")
+    check(decide(replace(snap, obligation_post="NONE"), _after_sr(pre="70")), StepKind.RECONCILE)
+
+
+def test_post_size_review_resolved_parent_and_proof_reentry() -> None:
+    check(decide(replace(LOW, status="done"), _after_sr()), StepKind.FINISH, outcome="decomposed")
+    check(decide(_SPIKEABLE, _after_sr(pre="90")), StepKind.RUN_CHILD, role="proof")
+
+
+def test_guard2_below_readiness_threshold_skips_atomic_remediation() -> None:
+    snap = replace(LOW, reconcile_attempted=True)
+    check(decide(snap, _after_sr(guard2=True, pre="60")), StepKind.STOP, outcome="low_readiness")
+
+
+@pytest.mark.parametrize(("count", "kind"), [(4, StepKind.RUN_CHILD), (5, StepKind.STOP)])
+def test_decision_reentry_lifetime_cap_boundary(count: int, kind: StepKind) -> None:
+    snap = replace(LOW, decision_needed=True, refine_count=count, refine_cap=5)
+    check(decide(snap, log(start(), child(1))), kind)

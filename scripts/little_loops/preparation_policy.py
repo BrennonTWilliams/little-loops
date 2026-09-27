@@ -58,6 +58,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from little_loops.config import BRConfig
+    from little_loops.run_record import RunRecord
 
 FACTS_DIR = "prep-facts"
 PASS_PREFIX = "prep-pass-"
@@ -1041,15 +1042,15 @@ def prep_record(
     run_dir: Path,
     *,
     guard2: bool = False,
-    child_terminated_by: str = "",
-    child_failure: str = "",
 ) -> Fact | None:
     """Append the done fact for the open (non-terminal) intent; no-op if none.
 
     Classifies the child outcome from ``run-records/refine-to-ready-issue/<ID>.json``
-    (``read_run_record`` / ``record_token``) -- never from a stale ``captured.run_child``
-    handshake, which can survive a child that captured nothing on a later run
-    (Program Design § Codebase Research Findings: "Executor constraints").
+    alone -- never from the loop's ``captured.run_child`` (ENH-3623 decision: a
+    ``failure_terminal`` capture can outlive the run that set it). The ``RUN_CHILD``
+    precondition cleared that record, and every inner terminal writes one, so:
+    absent -> the inner loop errored; a legacy class -> it ended ``failed`` (the
+    failure paths always pass ``--legacy-class``); otherwise it ended ``done``.
     """
     from little_loops.cli.issues.run_record import canonical_record_id
     from little_loops.run_record import read_run_record, record_token
@@ -1061,13 +1062,15 @@ def prep_record(
         return None
     payload = {k: v for k, v in open_.payload.items() if k not in ("preconditions", "reason")}
     if open_.step == StepKind.RUN_CHILD.value:
-        if child_terminated_by == "terminal":
-            terminal = "failed" if child_failure not in ("", "none") else "done"
-        else:
+        rec = read_run_record(
+            run_dir, "refine-to-ready-issue", canonical_record_id(config, issue_id)
+        )
+        if rec is None:
             terminal = "error"
-        rid = canonical_record_id(config, issue_id)
+        else:
+            terminal = "failed" if rec.legacy_class else "done"
         payload["terminal"] = terminal
-        payload["token"] = record_token(read_run_record(run_dir, "refine-to-ready-issue", rid))
+        payload["token"] = record_token(rec)
         if terminal == "done":
             # route_inner_success (ENH-3606): no ladder path starts with the flag at 1.
             (run_dir / "refine-broke-down").write_text("0")
@@ -1129,10 +1132,13 @@ def prep_apply(
         outcome, kind, seq = "ladder_error", StepKind.STOP, facts.next_seq()
         payload = {"outcome": outcome, "open_step": open_.step if open_ else None}
         append_fact(run_dir, issue_id, Fact(pass_id, seq, "intent", kind.value, payload))
-    progress = {str(f.payload.get("value")) for f in facts.obs("apply_progress") if f.seq == seq}
+    progress = {
+        str(f.payload.get("value")): f.payload for f in facts.obs("apply_progress") if f.seq == seq
+    }
 
-    def mark(part: str) -> None:
-        append_fact(run_dir, issue_id, Fact(pass_id, seq, "obs", "apply_progress", {"value": part}))
+    def mark(part: str, **extra: Any) -> None:
+        fact = Fact(pass_id, seq, "obs", "apply_progress", {"value": part, **extra})
+        append_fact(run_dir, issue_id, fact)
 
     code = _apply_outcome(
         config,
@@ -1159,15 +1165,17 @@ def _apply_outcome(
     run_dir: Path,
     outcome: str,
     payload: Mapping[str, Any],
-    progress: set[str],
+    progress: Mapping[str, Mapping[str, Any]],
     mark: Any,
     *,
     readiness_threshold: int,
     outcome_threshold: int,
 ) -> int:
-    from dataclasses import replace as dc_replace
-
-    from little_loops.cli.issues.run_record import derive_child_ids, write_typed_run_record
+    from little_loops.cli.issues.run_record import (
+        derive_child_ids,
+        forward_run_record,
+        write_typed_run_record,
+    )
     from little_loops.cli.issues.show import _resolve_issue_id
     from little_loops.frontmatter import parse_frontmatter
     from little_loops.run_record import RATE_LIMIT_EXHAUSTED_REF, read_run_record, record_token
@@ -1179,10 +1187,21 @@ def _apply_outcome(
         status = str(parse_frontmatter(path.read_text(), coerce_types=True).get("status") or "")
 
     def row(reason: str) -> None:
+        # Check-before-append across two files (ENH-3623): the ledger has no key of
+        # its own, so a `row_pending` mark records how many identical rows existed
+        # before the append. A replay after a crash between the append and the `row`
+        # mark sees one more than that and skips the append.
         if "row" in progress:
             return
-        with skipped.open("a") as fh:
-            fh.write(f"{issue_id}  {reason}\n")
+        line = f"{issue_id}  {reason}"
+        existing = skipped.read_text().splitlines().count(line) if skipped.exists() else 0
+        pending = progress.get("row_pending")
+        before = existing if pending is None else int(pending.get("before", 0))
+        if pending is None:
+            mark("row_pending", before=before)
+        if existing <= before:
+            with skipped.open("a") as fh:
+                fh.write(f"{line}\n")
         mark("row")
 
     def sentinel(cls: str) -> None:
@@ -1207,15 +1226,11 @@ def _apply_outcome(
             broke_down=broke_down,
         )
 
-    def forward() -> str:
-        from little_loops.cli.issues.run_record import canonical_record_id
-        from little_loops.run_record import write_run_record
-
-        rid = canonical_record_id(config, issue_id)
-        rec = read_run_record(run_dir, "refine-to-ready-issue", rid)
-        if rec is not None:
-            write_run_record(run_dir, dc_replace(rec, writer="prepare-issue"))
-        return record_token(rec)
+    def forward() -> RunRecord | None:
+        # Same read -> re-writer -> write as `ll-issues run-record forward`.
+        return forward_run_record(
+            config, issue_id, run_dir, source="refine-to-ready-issue", writer="prepare-issue"
+        )
 
     def rm_inflight() -> None:
         (run_dir / "autodev-inflight").unlink(missing_ok=True)
@@ -1231,8 +1246,12 @@ def _apply_outcome(
         write(None, broke_down=True, child_ids=kids)
         return 0
     if outcome == "child_stop":
-        token = forward()
-        if token in ("BLOCKED:quality", "DEFERRED:gate_unmet"):
+        rec = forward()
+        # Every failed-bound terminal leaves the sentinel (read by autodev's
+        # skip_inflight until ENH-3600 removes it); the child's own class stands.
+        if rec is not None and rec.legacy_class:
+            sentinel(rec.legacy_class)
+        if record_token(rec) in ("BLOCKED:quality", "DEFERRED:gate_unmet"):
             row("refine_failed")
         return 1
     if outcome == "rate_limited":
@@ -1296,8 +1315,6 @@ def add_prep_parser(subs: argparse._SubParsersAction) -> argparse.ArgumentParser
         sp.add_argument("--outcome-threshold", type=int, default=65)
         if name == "record":
             sp.add_argument("--guard2", action="store_true")
-            sp.add_argument("--child-terminated-by", default="")
-            sp.add_argument("--child-failure", default="")
         if name == "apply":
             sp.add_argument("--rate-limited", action="store_true")
         add_config_arg(sp)
@@ -1324,14 +1341,7 @@ def cmd_prep(config: BRConfig, args: argparse.Namespace) -> int:
         print(step.kind.value)
         return 0
     if cmd == "record":
-        done = prep_record(
-            config,
-            iid,
-            run_dir,
-            guard2=args.guard2,
-            child_terminated_by=args.child_terminated_by,
-            child_failure=args.child_failure,
-        )
+        done = prep_record(config, iid, run_dir, guard2=args.guard2)
         print(f"[PREP] recorded {done.step if done else 'nothing'}", file=sys.stderr)
         return 0
     if cmd == "apply":
