@@ -120,7 +120,10 @@ parent's `current_state`, so a mid-ladder resume restarts the `loop:` child from
   mapping is the spike's aggregates table. The repair-cycle count is derived from done
   facts; the file stays only as a projection.
 - **Pass id**: autodev's `dequeue_next` increments `run_dir/prep-pass-<ID>`. That is the
-  only new autodev write.
+  only new autodev write. It is also ENH-3600's dequeued-ID set (`glob prep-pass-*`), so
+  ENH-3600 needs no separate prepared-ID ledger. A crash inside `dequeue_next` after the
+  increment replays it and skips a pass number; that is harmless (the skipped pass has
+  no facts) and needs no idempotency guard, but pin it with a test.
 <!-- ll-prose-ok: the prep subcommand group is proposed by this issue, not yet implemented -->
 - **Writers** (`ll-issues prep …`, registered in `little_loops.cli.issues` so the harness
   fork server serves them):
@@ -183,7 +186,12 @@ parent's `current_state`, so a mid-ladder resume restarts the `loop:` child from
      `low_readiness`;
   4. an error in autodev's `check_passed` or `check_parent_resolved` ledgers
      `refine_failed_infra`;
-  5. a wrapper step-cap cutoff ledgers `refine_failed_infra`.
+  5. a wrapper step-cap cutoff ledgers `refine_failed_infra`;
+  6. autodev's `max_steps: 500` stays, but the 42 moved states' steps now count against
+     the wrapper's own cap, not autodev's, so one run reaches more issues before
+     `finalize_step_capped`. **Decided**: keep 500 (the wrapper cap now bounds each
+     issue's ladder) and document it; re-pin any ENH-3618 step-cap scenario whose issue
+     count changes.
 
   The spike also measured these record-token fixes of BUG-LIKE pins:
   - `READY` on the go/no-go GO → implement path (was `MISSING`);
@@ -251,16 +259,22 @@ parent's `current_state`, so a mid-ladder resume restarts the `loop:` child from
    - **Q1**: the format-check exit code masks the contradiction trigger. Captured as its
      own BUG. The port must use the fixed semantics: markers are read from the payload
      whatever the exit code.
-   - **Q3**: the first-gate Program Design rule. Captured as its own ENH. Implement
-     whichever rule it decides.
+   - **Q3**: the first-gate Program Design rule (ENH-3625). Implement whichever rule it
+     decides, in all three places that must agree after the cutover: the `decide()` row
+     after a `RUN_CHILD` done fact, autodev's surviving `check_passed` (the post-READY
+     gate), and the run-record `ready` predicate.
    - **Run-terminal capture for `record_step`**: the executor merges child captures into
-     `captured.run_child` only when the child captured something, so a stale
-     `failure_terminal` can survive. Get a stable executor-provided capture, or spend 3
-     more states on record states. The dispatch loop listed above is already 15 states
-     (`select_step`, 7 `run_*`, `classify_guard2`, `record_guard2`, `record_step`,
-     `apply_outcome`, `done`, `failed`, `mark_rate_limited`), so the record-state option
-     makes it 18. **Decide this first** (in Phase A): either add the executor-provided
-     capture, or relax the "≤ ~15 states" criterion to the real count.
+     `captured.run_child` only when the child captured something, and writes
+     `failure_terminal` only when it is truthy (`fsm/executor.py:1338`), so a stale
+     `failure_terminal` can survive. **Decided (2026-09-27 review)**: `prep record` does
+     not read the capture. It reads the child's
+     `run-records/refine-to-ready-issue/<ID>.json`, which the `RUN_CHILD` precondition
+     clears, so an absent record after `run_child` means the child errored. This keeps
+     the loop at 15 states (`select_step`, 7 `run_*`, `classify_guard2`,
+     `record_guard2`, `record_step`, `apply_outcome`, `done`, `failed`,
+     `mark_rate_limited`) without an executor change. The executor's conditional write is
+     still a latent bug for any loop that re-enters a `loop:` state; it is captured as
+     BUG-3628 and not fixed here.
 6. **Fixed on main since the spike; implement the fixed behavior, not parity:**
    - **BUG-3620** (fixed on main): the design branches read the current check-design verdict,
      and no sticky `autodev-design-gate-failed-<ID>` marker exists. In the policy, the
@@ -426,7 +440,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ### Call Path
 
-`prepare-issue.yaml:clear_record` (replaced by `select_step`) -> `next_preparation_step` -> `select_next_obligation` / `load_facts` -> `decide`
+`prepare-issue.yaml:select_step` -> `ll-issues prep step` -> `next_preparation_step` -> `select_next_obligation` / `load_facts` -> `decide`
 
 ## Impact
 
@@ -467,7 +481,9 @@ _These touchpoints were identified by wiring analysis and must be included in th
   record tokens, status / `deferred_reason`, `summary.json`, slash-command sequence,
   repair-cycle counter, `ll-auto` calls and ledgers. The only differences allowed are
   the enumerated accepted changes above, and each one has its own test (no vacuous
-  allowances).
+  allowances). The wrapper-shape pins (`wrapper_path` tuples in
+  `test_autodev_resume_characterization`, the `prepare-issue.yaml` path pin) are
+  remapped onto dispatch-loop state names; that remapping is not a behavior difference.
 - [ ] No autodev state is in the removed set (39 moved + 3 deleted); a parametrized
   absence test is built from the verified 39-state list. No autodev edge targets a
   removed state, and no autodev event enters a policy-owned step.
@@ -496,9 +512,16 @@ _These touchpoints were identified by wiring analysis and must be included in th
   row and ends with one terminal.
 - [ ] `apply` writes the `refine-terminal-class` sentinel on every `failed`-bound
   terminal until ENH-3600 removes its reader (test).
-- [ ] The dispatch-loop state count matches the decided run-terminal capture option
-  (15 with an executor-provided capture, otherwise the real count), stated in the YAML
-  comment and pinned by a structural test.
+- [ ] The first-gate Program Design rule chosen by ENH-3625 is encoded in the `decide()`
+  row after a `RUN_CHILD` done fact, in autodev's surviving `check_passed`, and in the
+  run-record `ready` predicate; ENH-3625's parity test stays green across the cutover.
+- [ ] `prep record` classifies the child outcome from
+  `run-records/refine-to-ready-issue/<ID>.json`, not from `captured.run_child`; a test
+  seeds a stale `failure_terminal` capture and shows it is ignored.
+- [ ] The dispatch loop has 15 states, stated in the YAML comment and pinned by a
+  structural test.
+- [ ] Autodev keeps `max_steps: 500`; accepted change 6 is documented in
+  `LOOPS_REFERENCE.md`.
 - [ ] The autodev topology count in `test_fsm_topology.py` equals the number recorded in
   the delta comment.
 

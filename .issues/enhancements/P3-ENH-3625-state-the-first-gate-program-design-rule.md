@@ -73,12 +73,20 @@ choice should be made on purpose before the port, not inherited.
    `done` against a failing design gate) before choosing.
 2. If it can, choose A. If it cannot (or only through a documented budget exhaustion
    that ends `failed`), choose B. **Default: A**, per the static trace.
-   **Verify A's routing first**: `check_passed.on_no` goes to
-   `select_obligation_post_refine`, which also passes `--skip … DESIGN`. Trace whether a
-   first-gate design failure actually reaches the design remedy / `design_gate_failed`
-   from there. If it does not, A also needs a routing change (or a `check_passed`
-   `on_no` retarget), and Effort/Risk below are understated.
-3. Record the rule:
+   **A's routing is traced (2026-09-27 review) and needs no retarget.** `check_passed.on_no`
+   → `select_obligation_post_refine`, whose `next-obligation` call skips `DESIGN` and
+   prints `NONE` once scores pass → `_: check_missing_artifacts`:
+   - `on_yes` → `run_wire` → rescore → `recheck_scores`, which ANDs `check-design`;
+   - `on_no` → `detect_children` → `run_size_review` → `recheck_after_size_review`,
+     which owns the design remedy and the `design_gate_failed` deferral.
+
+   The cost is that a design-only first-gate failure runs size-review before the design
+   remedy. That matches what `recheck_scores` already does on a design failure, so it is
+   accepted, not new. The probe must confirm this route on a real FSM run.
+3. **Post-ENH-3623 placement.** `check_passed` survives ENH-3623 as autodev's gate after
+   the wrapper returns READY. The chosen rule must hold in three places: that gate, the
+   `decide()` row after a `RUN_CHILD` done fact, and the run-record `ready` predicate.
+4. Record the rule:
    - a comment on `check_passed`;
    - a line in `docs/guides/LOOPS_REFERENCE.md` (autodev section);
    - a structural test pinning the chosen gate shape;
@@ -91,6 +99,17 @@ choice should be made on purpose before the port, not inherited.
 - `scripts/little_loops/loops/autodev.yaml`: `check_passed` (comment, or a gate
   change under A)
 - `docs/guides/LOOPS_REFERENCE.md`: state the rule
+- Under A: `scripts/little_loops/cli/issues/run_record.py` `cmd_run_record_write` gains the
+  design check for the `ready` predicate (`check_format_gaps` + `design_gate_failed`
+  from `issue_parser.py`), and `scripts/little_loops/run_record.py` updates the
+  predicate's documentation (:28, :205)
+
+**Behavior change under A (record tokens).** The run-record `ready` predicate is shared
+by every writer, including `refine-to-ready-issue`. A child `done` record whose design
+gate fails becomes `BLOCKED`, not `READY`. autodev's `route_refine_success` sends
+`READY`, `BLOCKED` and `MISSING` all to `check_passed`, so routing does not change, but
+record tokens are a field the ENH-3618 characterization suite compares. Pin the new
+token in the h2-shaped scenario and list it as an accepted change.
 
 ### Dependent Files (Callers/Importers)
 
@@ -128,7 +147,8 @@ _Wiring pass added by `/ll:wire-issue`:_
 _Static trace of `refine-to-ready-issue.yaml` and `next_obligation.py`, not a run; confirm before choosing:_
 - The Program Design gate is checked once inside the inner loop, at `route_pre_score_obligation` (tier-1 `DESIGN` → `check_gate_refine_limit`). A DESIGN failure seen there with the refine budget spent goes `record_gate_unmet` → `failed`, never `done`.
 - `route_score_obligation` passes `--skip DESIGN`, so nothing re-checks the gate after scoring. Edits made after the pre-score check (`check_decide_attempts` → `resolve-decision`, `check_spike_needed` / `run_spike`) come back through `route_score_obligation` without re-reading DESIGN.
-- A low score with the refine budget exhausted goes `check_refine_limit.on_no` → `breakdown_issue` → `write_broke_down` → `done`, also without a DESIGN check. `check_missing_artifacts.on_yes` → `check_decision_before_done` → `check_proof_before_done` → `write_done_record` → `done` likewise skips it.
+- A low score with the refine budget exhausted goes `check_refine_limit.on_no` → `breakdown_issue` → `write_broke_down` → `done`, also without a DESIGN check. **Correction (2026-09-27 review)**: this path writes `broke_down`, so the record is `DECOMPOSED` and autodev routes it to `detect_children`, never to `check_passed.on_yes`; it is not an exposure. `check_missing_artifacts.on_yes` → `check_decision_before_done` → `check_proof_before_done` → `write_done_record` → `done` does skip it and is an exposure.
+- **The real exposure**: edits made after the pre-score DESIGN check (`check_decide_attempts` → `resolve-decision`, `check_spike_needed` → `run_spike`) return through `route_score_obligation`, which skips DESIGN, and reach `done`. The probe should drive exactly this: an issue that is READY on scores, DESIGN-armed after the pre-score check, and whose inner run ends `done`.
 - Downstream, `select_obligation_pre_implement` passes no `--skip`, so its `next-obligation` call can emit `DESIGN`, but its route table has no `DESIGN` entry and `_` falls to `check_proof_defer_or_implement`. Nothing after `check_passed.on_yes` blocks on a failing design gate.
 - Reading: an inner `done` can leave `check-design` failing, which points to option A per Proposed Solution step 2. Not read in this pass: `check_wire_done`, `wire_issue` and `verify_issue` bodies, and the `PROOF_CLEAR` route block of `check_proof_defer_or_implement`.
 
@@ -161,9 +181,10 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 - **Priority**: P3 (raised from P4: it blocks ENH-3623). Probably intended behavior; this issue makes it explicit before the
   policy port.
-- **Effort**: Small under B. Small-Medium under A (add a routing change if the `on_no` trace fails).
+- **Effort**: Small under B. Small-Medium under A (no routing change needed; the
+  run-record predicate change and the characterization re-pin are the extra work).
 - **Risk**: Low under B (docs and tests only). Low-Medium under A (more issues take the
-  design remedy path).
+  size-review → design-remedy path, and child record tokens change for design failures).
 - **Breaking Change**: No
 
 ## Scope Boundaries
@@ -178,8 +199,9 @@ _These touchpoints were identified by wiring analysis and must be included in th
 ## Acceptance Criteria
 
 - [ ] The rule (A or B) is chosen, with the trace evidence recorded in this issue, confirmed by a run or probe (not the static trace alone)
-- [ ] Under A: the first-gate design failure is shown to reach the design remedy / `design_gate_failed` (or the routing is fixed so it does)
+- [ ] Under A: a real-FSM test shows a first-gate design failure reaching the design remedy / `design_gate_failed` through `select_obligation_post_refine` → `check_missing_artifacts` → size-review (the traced route; no retarget)
 - [ ] Under A: `check_passed`, the run-record `ready` predicate and the `decide()` first-gate row agree (parity test)
+- [ ] Under A: a `refine-to-ready-issue` `done` record with a failing design gate is `BLOCKED`, not `READY`; the h2-shaped characterization scenario pins the token as an accepted change
 - [ ] `check_passed` carries a comment stating the rule
 - [ ] A test pins the chosen first-gate shape
 - [ ] ENH-3623's `decide()` table tests include the rule
