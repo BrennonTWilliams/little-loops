@@ -60,15 +60,15 @@ phases (child issues or separate commits):
 1. **Phase A, additive.** `little_loops.preparation_policy` (policy / facts / writers),
    `ll-issues prep {step,record,apply,explain}`, `decide()` table tests, and the promoted
    parity/differential tests run against the *existing* YAML. No loop file changes, so
-   nothing can regress. Tag the spike branch first (`git tag
-   spike/preparation-policy-a51621302 a51621302`) so the port source cannot be pruned.
+   nothing can regress. The spike branch is already tagged
+   (`spike/preparation-policy-a51621302` at `a51621302`), so the port source cannot be pruned.
 2. **Phase B, cutover (atomic).** Replace `prepare-issue.yaml`, apply the autodev
    retargets / 42 deletions / `dequeue_next` pass-id write / `copy_broke_down` shrink, and
    migrate the affected tests in the same commit.
 3. **Phase C, docs.** CLI/API/LOOPS_REFERENCE/ARCHITECTURE/DEFERRAL_CODES, `ll-adapt`
    mirrors, and the opt-in slow resume matrix.
 
-**Ordering prerequisites**: BUG-3624 (Q1) and ENH-3625 (Q3) land first, on the current
+**Ordering prerequisites**: BUG-3624 (Q1) and ENH-3625 (Q3) landed first (both `done`), on the current
 YAML, so the ENH-3618 suite pins the fixed behavior and this issue's "accepted behavior
 changes" list stays complete.
 
@@ -554,6 +554,7 @@ _Added by `/ll:confidence-check` on 2026-09-27_
 - Broad enumeration across 16+ sites (new module, `cli/issues`, two loop YAMLs, `run_record.py`, ~15 test files, ~8 docs, skill mirrors) and 11+ dependents, with a spike-parity that is coverage-bounded (~25 inline predicates re-implemented).
 
 ## Session Log
+- `/ll:ready-issue` - 2026-09-27T04:16:14 - `cc063681-f3cf-42c2-b056-46a3321df1ee.jsonl`
 - `/ll:confidence-check` - 2026-09-27T03:42:23 - `7853641e-1dad-4830-bad1-b40be31584c3.jsonl`
 - `/ll:wire-issue` - 2026-09-27T02:33:29 - `951684ed-7b41-4bf8-9307-a4474a28eb29.jsonl`
 - `/ll:refine-issue` - 2026-09-27T02:22:39 - `e00c47b1-36f2-4288-9df3-a5c841c33968.jsonl`
