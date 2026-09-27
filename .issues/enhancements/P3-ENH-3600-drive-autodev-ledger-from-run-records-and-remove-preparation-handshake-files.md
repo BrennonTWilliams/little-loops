@@ -9,6 +9,7 @@ discovered_date: '2026-09-25'
 captured_at: '2026-09-25T18:51:51Z'
 blocked_by:
 - ENH-3606
+- ENH-3619
 parent: EPIC-3565
 relates_to:
 - ENH-3577
@@ -26,9 +27,9 @@ missing_artifacts: true
 
 ## Summary
 
-Move `finalize_done` into a tested Python module. Add per-issue `prepare-issue` run
-records to its inputs so that an issue which crashes during preparation is surfaced
-(`record_absent`). Delete the preparation handshake files left over after ENH-3606. This
+Build on the `little_loops.autodev_summary` module that ENH-3619 extracts from
+`finalize_done`. Add per-issue `prepare-issue` run records to its inputs so that an issue
+which crashes during preparation is surfaced (`record_absent`). Delete the preparation handshake files left over after ENH-3606. This
 is the final step (F) of the ENH-3577 decomposition, after the routing migrations
 (C, D).
 
@@ -52,8 +53,9 @@ markers that have no remaining reader or writer go (see Marker disposition).
 
 - Read per-issue run records directly from `${context.run_dir}/run-records/prepare-issue/<ID>.json`
   (ENH-3597 layout; the wrapper record is authoritative). No copy step.
-- Move `finalize_done`'s logic into a Python function (e.g. `little_loops.autodev_summary`)
-  with a thin shell state calling it; unit-test it directly.
+- `finalize_done`'s logic already lives in `little_loops.autodev_summary` behind a thin
+  shell state (ENH-3619, which also adds the `finalize_step_capped` `on_max_steps`
+  handler). This issue extends that module; it does not re-extract it.
 - **Missing or malformed record**: a dequeued issue may have no record if it crashed,
   hit `max_steps`, exhausted its rate-limit retries (BUG-3567) or was interrupted by a
   handoff. `build_summary` counts such an issue as `retryable_error` with reason
@@ -106,11 +108,28 @@ markers that have no remaining reader or writer go (see Marker disposition).
   Passed, Skipped, Spike-inconclusive, Proposal-unsound, Unverified, Stopped-early and
   similar lines. The Python version reproduces it line for line, plus the new
   `record_absent` line. The golden fixtures (see Tests) pin this.
-- **`max_steps` exit.** Out of scope. The executor's step-cap exit bypasses
-  `finalize_done` (`fsm/executor.py`, no `on_max_steps` handler), so no `summary.json`
-  is written on that path today. The "every exit" AC below names the exits it covers;
-  the step-cap gap stays a known limitation. Document it in `LOOPS_REFERENCE.md`, or
-  capture a follow-up if the implementer finds it cheap to close.
+- **`max_steps` exit.** Closed by ENH-3619: autodev's `on_max_steps:
+  finalize_step_capped` runs the module with `--stop-reason max_steps`. `build_summary`
+  applies the `record_absent` and `record_ledger_mismatch` rules on that path exactly as
+  on `finalize_done`.
+- **Record/ledger disagreement is counted, not printed as a warning.** When a
+  `prepare-issue` record and the ledger row for the same ID disagree, the ledger row
+  stays the count source (Scope Boundaries). `build_summary` adds one to an additive
+  `record_ledger_mismatch` key in `summary.json` and lists the IDs on a report line. It
+  never reclassifies the issue. A counted key is machine-checkable by `ll-loop audit`
+  and by tests; a free-text warning line is not.
+- **Removing the `refine-terminal-class` MISSING-record fallback is this issue's job.**
+  ENH-3606 keeps the sentinel correct on every wrapper `failed` terminal and explicitly
+  leaves its removal here. Today autodev's `skip_inflight` (~`autodev.yaml:584-591`)
+  reads `${context.run_dir}/refine-terminal-class` to classify an issue whose
+  `prepare-issue` record is `MISSING` (a `|| true` record write failed, or the wrapper
+  died before writing one). Replace that read with a record-only rule: a `MISSING` /
+  malformed record on the failure path is an infra outcome (`refine_failed_infra`), the
+  same "absent record is never a quality verdict" rule as `record_absent`. Then delete the
+  wrapper-side sentinel writes that exist only to feed the fallback (`mark_inner_error`
+  and the ENH-3606 `failed`-bound terminals). Whether `refine-to-ready-issue.yaml`'s
+  `classify_terminal` keeps writing it depends on its remaining readers; grep before
+  removing.
 
 ### Codebase Research Findings
 
@@ -131,18 +150,16 @@ _Added by `/ll:refine-issue` — 2026-09-26 — based on codebase analysis:_
 
 ## Sequencing
 
-Three independent steps. Each can land as its own commit, or as its own issue if the
-implementer prefers:
+The former step 1 (behavior-identical extraction: golden fixtures, the
+`little_loops.autodev_summary` module and a thin `finalize_done`) is now **ENH-3619**,
+which this issue is `blocked_by`. ENH-3619 also closes the `max_steps` summary gap. Two
+steps remain, both after ENH-3606 and ENH-3619. Each can land as its own commit:
 
-1. **Behavior-identical extraction**: golden fixtures, the `little_loops.autodev_summary`
-   module and a thin `finalize_done`. No record reads and no marker changes. This step
-   does **not** depend on ENH-3606 and may land before it. Rebase the fixtures only if
-   ENH-3606 changes a ledger that `finalize_done` reads.
-2. **Record-driven accounting** (after ENH-3606): the `autodev-prepared.txt` ledger,
-   `record_absent`, the record-vs-ledger disagreement warning, and the dequeued-twice
-   rule.
-3. **Marker cleanup and docs** (after ENH-3606): re-derive the Marker disposition table,
-   add the table-driven grep gate, remove dead references, update `README.md` /
+1. **Record-driven accounting**: the `autodev-prepared.txt` ledger, `record_absent`, the
+   counted `record_ledger_mismatch` key, the dequeued-twice rule, and removal of the
+   `refine-terminal-class` MISSING-record fallback.
+2. **Marker cleanup and docs**: re-derive the Marker disposition table, add the
+   table-driven grep gate, remove dead references, update `README.md` /
    `LOOPS_REFERENCE.md` / `ARCHITECTURE.md`, and document the child-ledger exception.
 
 ## Integration Map
@@ -164,12 +181,9 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/loops/README.md` — `autodev` (:34) and `refine-to-ready-issue` (:31) catalog rows describe the run_dir marker pattern; update as markers go [Agent 1 finding]
 
 ### Tests
-- **Golden fixtures first (step 1, before touching `finalize_done`)**: run each existing
-  `_run_finalize_done` scenario (promotion, phantom, no-op, rate-limit, quality split,
-  cancelled split, abandoned in-flight) against the current shell action. Commit the
-  resulting `summary.json` and stdout as fixtures under `scripts/tests/fixtures/`. The
-  Python module must reproduce them exactly, apart from the additive `record_absent` key
-  and report line. This replaces the `bash -c` harness as the behavioral net.
+- **Golden fixtures** come from ENH-3619 (`scripts/tests/fixtures/autodev_summary/`). They
+  must keep passing, apart from the additive `record_absent` / `record_ledger_mismatch`
+  keys and their report lines.
 - New unit tests for summary construction from records
 - `summary.json` truthfulness on every exit (EPIC-3565 AC) incl. rate-limit exits (BUG-3567)
 - Structural, rewrite: `test_builtin_loops.py` `TestAutodevLoop` (:6643; `finalize_done` behavioral coverage via `_run_finalize_done` under `bash -c`, which stops exercising the logic once it moves to Python). `test_autodev_loop.py` has zero `finalize_done` references (per-iteration markers only); `test_fsm_topology.py` only pins the autodev state count (105)
@@ -210,7 +224,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/loops/auto-refine-and-implement.yaml` — `init` deletes the shared `run_dir/summary.json` (:95) and `finalize` overwrites it (:1255), so autodev's summary.json is transient on the sprint path; `finalize` reads six ledger files plus `autodev-queue.txt` (`recheck_set` :477 residual fold-back) — any ledger in the removal set orphans its counts, and if the child stops writing `autodev-decision-unresolved.txt`, `DECISION_UNRESOLVED` undercounts child-side unresolved [Agent 2 finding]
 - `scripts/little_loops/loops/sprint-refine-and-implement.yaml` — `read_outcome` cats and `record_crash` overwrites the same shared `summary.json` path (third writer) [Agent 2 finding]
 - `scripts/little_loops/loops/oracles/resolve-decision.yaml` — writes `decide-options-deposited-<ID>` (:56) and `decide-rate-limited-<ID>` handshake markers autodev reads (`dequeue_next`, `check_decide_rate_limited`); not `autodev-`-prefixed, so the AC's "No `autodev-*` preparation marker" wording does not cover them — they remain the cross-loop run-dir contract after this issue [Agent 2 finding]
-- `scripts/little_loops/fsm/executor.py:653` — no `on_max_steps` handler exists, so the step-cap exit calls `_finish("max_steps")` without passing through `finalize_done`: no summary.json on that path today (the parent compensates on the sprint path only) — the every-exit AC's known gap [Agent 2 finding]
+- `scripts/little_loops/fsm/executor.py:653` — autodev declares no `on_max_steps` handler today, so the step-cap exit calls `_finish("max_steps")` without passing through `finalize_done` [Agent 2 finding]. Closed by ENH-3619 (`finalize_step_capped`), not a limitation of this issue
 - `scripts/little_loops/fsm/persistence.py` (`archive_run`), `scripts/little_loops/cli/loop/audit.py`, `scripts/little_loops/cli/loop/evidence.py`, `scripts/little_loops/hooks/pre_compact_handoff.py` — shape-agnostic summary.json consumers; safe under key-shape preservation [Agent 2 finding]
 
 ### Documentation
@@ -229,7 +243,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Keep autodev's four interpolation-baseline entries valid (`check_blockers_at_dequeue`, `check_reconcile_needed`, `check_spike_needed`, `check_spike_needed_before_skip`); the thin `python3 -m little_loops.autodev_summary --run-dir ${context.run_dir}` call is plain interpolation and needs no new entry
 - Migrate `auto-refine-and-implement.yaml`'s `autodev-decision-unresolved.txt` count together with the child's writer, or document the closure-ledger exception — the six ledger reads plus `recheck_set`'s queue read stay by Scope Boundaries
 - Decide `decide-options-deposited-<ID>` / `decide-rate-limited-<ID>` (resolve-decision handshake, not `autodev-`-prefixed) — keep or migrate; the AC grep gate's wording must name what it covers
-- Add the thin-shell structural gate (`test_shell_states_call_helper_module_not_inline_logic` pattern, :21440) for the rewritten `finalize_done`
+- Thin-shell structural gate for the rewritten `finalize_done` (`test_shell_states_call_helper_module_not_inline_logic` pattern, :21440) — lands with ENH-3619; keep it green
 - Update `scripts/little_loops/loops/README.md` rows and `docs/guides/LOOPS_REFERENCE.md` marker references as markers are removed
 
 ## Impact
@@ -237,7 +251,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - **Priority**: P3 - child of ENH-3577 (EPIC-3565 consolidation)
 - **Effort**: Medium - summary builder moved to Python plus marker removal
 - **Risk**: Medium - summary.json truthfulness is an EPIC-3565 invariant
-- **Breaking Change**: No - summary.json keeps its 16 keys; `record_absent` is additive (no consumer asserts an exact key set)
+- **Breaking Change**: No - summary.json keeps its 16 keys; `record_absent` and `record_ledger_mismatch` are additive (no consumer asserts an exact key set)
 
 ## Program Design
 
@@ -294,14 +308,13 @@ _Added by `/ll:refine-issue` — 2026-09-26 — based on codebase analysis:_
   per-issue preparation outcome and the `record_absent` check. The ledger rows written
   next to each record (ENH-3605's ledger-ownership rule) stay the count source for
   every existing key. If a record and a ledger row disagree, the ledger row is used for
-  the count, and `build_summary` emits a warning line naming the ID. It does not
-  reclassify the issue.
+  the count, and `build_summary` increments the additive `record_ledger_mismatch` key and
+  lists the ID on a report line. It does not reclassify the issue.
 - `summary.json` keys keep their shape **as of FEAT-3573**, which builds on ENH-3613's
   cancelled/implemented split (`closed_implemented`/`closed_cancelled`, derived in
-  memory in the promotion loop — no ledger file). The one addition is the
-  `record_absent` key (see Design decisions).
-- Out of scope: the `max_steps` exit gap; migrating the child-written ledger readers
-  (documented exception); and the `resolve-decision` handshake markers
+  memory in the promotion loop — no ledger file). The additions are the
+  `record_absent` and `record_ledger_mismatch` keys (see Design decisions).
+- Out of scope: migrating the child-written ledger readers (documented exception); and the `resolve-decision` handshake markers
   `decide-options-deposited-<ID>` / `decide-rate-limited-<ID>`, which stay as the
   cross-loop run-dir contract.
 
@@ -328,9 +341,10 @@ What the rewrite of `finalize_done` must preserve, and what is allowed to change
   `rate_limit` stop reason overriding to `rate_limited`); the staged → passed/unverified
   promotion and its writes to `autodev-passed.txt` / `autodev-unverified.txt`; the stdout
   report lines; and the exit code per verdict. The golden fixtures enforce all of this.
-- **Intentionally changed**: the additive `record_absent` key and its report line; the
-  new `autodev-prepared.txt` ledger; and a warning line when a record and a ledger row
-  disagree. Nothing else in `summary.json` changes.
+- **Intentionally changed**: the additive `record_absent` and `record_ledger_mismatch`
+  keys and their report lines; the new `autodev-prepared.txt` ledger; and a `MISSING`
+  failure-path record classified from the record alone (no `refine-terminal-class`
+  read). Nothing else in `summary.json` changes.
 - **Unchanged files**: `refine-to-ready-issue.yaml` and
   `auto-refine-and-implement.yaml` behave the same (the child-ledger exception), and
   `auto-refine-and-implement`'s summary counts are identical on the same input.
@@ -340,11 +354,13 @@ What the rewrite of `finalize_done` must preserve, and what is allowed to change
 ## Acceptance Criteria
 
 - [ ] `build_summary` reads only `run-records/prepare-issue/*.json` plus the files listed in Scope Boundaries (unit test with a `run_dir` that also contains a decoy unlisted `autodev-*` file, which must have no effect)
-- [ ] `finalize_done` is a thin shell state calling `python3 -m little_loops.autodev_summary … --run-dir ${context.run_dir}`, with no inline summary logic (structural gate modelled on `test_shell_states_call_helper_module_not_inline_logic`, plus an explicit absence assertion)
-- [ ] Golden parity: for every existing `_run_finalize_done` scenario, the Python module's `summary.json` (minus the new `record_absent` key) and stdout report match fixtures captured from the pre-change shell `finalize_done`
-- [ ] Exit codes are unchanged: `phantom` → 1, error → 2, every other verdict → 0 (unit test per verdict)
+- [ ] `finalize_done` stays the thin ENH-3619 call and ENH-3619's structural gate stays green
+- [ ] Golden parity: ENH-3619's fixtures still match, minus the new `record_absent` / `record_ledger_mismatch` keys and report lines
+- [ ] Exit codes are unchanged from ENH-3619: `phantom` → 1, error → 2, every other verdict → 0
 - [ ] `autodev.yaml` references only markers the Marker disposition table allows, in the positions it allows (grep gate driven by that table; dead markers have zero references, including comments)
-- [ ] The `finalize_done` path (`init`-empty queue, normal drain, `finalize_rate_limited`) writes a truthful `summary.json`; the `max_steps` gap is documented as a known limitation
+- [ ] Every autodev exit (`init`-empty queue, normal drain, `finalize_rate_limited`, and the `max_steps` cap through ENH-3619's `finalize_step_capped`) writes a truthful `summary.json` that includes `record_absent` (unit test for the `--stop-reason max_steps` path)
+- [ ] When a `prepare-issue` record and the ledger row for the same ID disagree, the ledger row is the count source, `summary.json`'s additive `record_ledger_mismatch` key counts the ID once, and the report lists it; the issue is not reclassified (unit test)
+- [ ] Autodev's `skip_inflight` no longer reads `refine-terminal-class`: a `MISSING` / malformed `prepare-issue` record on the failure path is ledgered `refine_failed_infra` from the record alone, and no wrapper terminal writes the sentinel only to feed that fallback (structural test that `autodev.yaml` has zero `refine-terminal-class` references, plus a behavioral test for the `MISSING` route)
 - [ ] An ID in `autodev-prepared.txt` with no or malformed `prepare-issue` record, not in flight, and in no closure or skip ledger is counted once under `record_absent`, never dropped or passed; dequeue-time skips are never `record_absent`; an in-flight ID counts as `abandoned`, not `record_absent` (unit tests for each)
 - [ ] When an ID is dequeued twice, the last record wins and the ID is counted once (unit test)
 - [ ] The child-written ledger exception is documented in `LOOPS_REFERENCE.md`; `auto-refine-and-implement`'s counts are unchanged; `oracles/resolve-decision` needs no change (its `autodev-decide-ran` mention is a comment only)
@@ -376,7 +392,7 @@ _Added by `/ll:confidence-check` on 2026-09-25 (re-scored 2026-09-26, again afte
 - ✅ RESOLVED (2026-09-26 review): `decide-options-deposited-<ID>` / `decide-rate-limited-<ID>` handshake markers — kept as the cross-loop contract (out of scope).
 
 ### Gaps to Address
-- `blocked_by: ENH-3606` is `open`, so the dependency gate forces STOP. Sequencing step 1 (golden fixtures, `autodev_summary` module, thin `finalize_done`) does not depend on ENH-3606. Either land ENH-3606 first, or drop/relax `blocked_by` and implement only step 1 now (steps 2–3 need ENH-3606).
+- `blocked_by: ENH-3606` is `open`, so the dependency gate forces STOP. ✅ RESOLVED (2026-09-26): the former Sequencing step 1 (golden fixtures, `autodev_summary` module, thin `finalize_done`) is now ENH-3619, which can land before ENH-3606; this issue is `blocked_by` both.
 - ✅ RESOLVED (2026-09-26 review): Dequeued-ID source — `autodev-prepared.txt` (Design decisions).
 
 ### Outcome Risk Factors
@@ -411,10 +427,11 @@ _Added by manual review — 2026-09-26_
 - Resolved the open design questions that held readiness down: the prepared-ID source
   (`autodev-prepared.txt`), where `record_absent` is reported and how it ranks against
   the in-flight counts, the grep-gate scope (Marker disposition table), the child-marker
-  handling (documented exception), `max_steps` (out of scope), and records vs. ledgers
-  as the count source (ledgers).
+  handling (documented exception), `max_steps` (then out of scope; since closed by
+  ENH-3619), and records vs. ledgers as the count source (ledgers).
 - Added golden-fixture parity, exit-code and stdout-report criteria, plus a three-step
-  sequencing plan in which step 1 can land before ENH-3606.
+  sequencing plan in which step 1 can land before ENH-3606. (Step 1 was later split out
+  as ENH-3619.)
 - The confidence scores (75/55) predate these changes. Re-score after ENH-3606 lands.
 
 ## Session Log

@@ -187,7 +187,7 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 
 1. After ENH-3606 lands, confirm where `check_go_no_go_waiver`'s `on_yes`/`on_no` edges point in `prepare-issue.yaml`, and find the name of the ladder-error terminal.
 2. Declare `advise_go_no_go: ""` in the `context:` blocks of `autodev.yaml` and `prepare-issue.yaml`, and pass it through autodev's `prepare-issue` delegate state. Keep it out of `parameters:`.
-3. Add `check_advise_enabled`, `run_advise`, `read_advise_verdict`, and `veto_waiver` to `prepare-issue.yaml` per the Proposed Solution chain, and retarget `check_go_no_go_waiver.on_yes` to `check_advise_enabled`. Add an `# ll-lint: mr11-ok(...)` suppression on each `${context.*}` interpolation inside a shell action. Add no states to `autodev.yaml`: the 105-state pin must not move.
+3. Add `check_advise_enabled`, `run_advise`, `read_advise_verdict`, and `veto_waiver` to `prepare-issue.yaml` per the Proposed Solution chain, and retarget `check_go_no_go_waiver.on_yes` to `check_advise_enabled`. Add an `# ll-lint: mr11-ok(...)` suppression on each `${context.*}` interpolation inside a shell action. Add no states to `autodev.yaml`.
 4. Tests in `test_builtin_loops.py`, alongside the go-no-go chain tests (`test_go_no_go_escalation_chain_shape`, `_run_go_no_go_eligible`):
    - chain-shape pin covering every edge in the diagram, including that `check_go_no_go_waiver.on_yes` reaches `reopen_waived` when the flag is empty;
    - `run_advise` exits 0 when a stub `ll-advise` on PATH exits 2, and when it prints rate-limit text on stderr; `.rc` records 2;
@@ -202,7 +202,7 @@ _Added by `/ll:refine-issue` — 2026-09-25 — based on codebase analysis:_
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
-- Declare the opt-in flag in BOTH `autodev.yaml` and `prepare-issue.yaml` `context:` blocks (run pre-flight `cli/loop/run.py:345` + MR-11); keep it out of `parameters:` (`TestNoContextParameterKeyDuplication`); adding only a context flag avoids the 105-state pin — adding advise *states* to `autodev.yaml` would bump it (states in `prepare-issue.yaml` do not)
+- Declare the opt-in flag in BOTH `autodev.yaml` and `prepare-issue.yaml` `context:` blocks (run pre-flight `cli/loop/run.py:345` + MR-11); keep it out of `parameters:` (`TestNoContextParameterKeyDuplication`); adding only a context flag adds no states to `autodev.yaml` — advise *states* belong in `prepare-issue.yaml`, never in `autodev.yaml`
 - Match the go-no-go chain shape: gate state (flag check, default-off skip route) → advise state (writes `advise-<ID>.json`) → verdict-read state (embedded Python, MR-1). _Superseded 2026-09-26: the advise state deliberately carries **no** `with_rate_limit_handling` fragment; see Proposed Solution._
 - Exit-code routing: _Resolved 2026-09-26: fail open._ `run_advise` always exits 0, and every non-success is SKIPPED → `reopen_waived`. Nothing routes to `retryable_error`. No failure edge enters a success terminal (`test_no_failure_edge_routes_to_a_success_terminal`).
 - Budget billing: _Resolved 2026-09-26: per-issue_ (`LL_ISSUE_ID` prefix idiom, autodev.yaml:2061). The state shares the cap with the `issue_manager.py:849` and `hooks/pre_done.py:175` consults.
@@ -260,7 +260,7 @@ _Resolved 2026-09-26 in review; these replace the former Open Questions._
 - [ ] A `VETO` removes `outcome_gate_waived` from frontmatter, logs the advisor's recommendation to the session log, and routes like a NO-GO
 - [ ] Any `ll-advise` failure (exit 2, advisor rate limit, auth failure, unreadable output) is equivalent to the flag being off: the waiver proceeds, the skip reason is logged, the loop never halts, and it never waits on a rate-limit retry. `not_configured` emits a WARNING line
 - [ ] `run_advise` carries no `with_rate_limit_handling` fragment, and a comment explains the intentional interception opt-out
-- [ ] `ll-loop validate autodev` and `ll-loop validate prepare-issue` pass; the autodev 105-state pin is unchanged
+- [ ] `ll-loop validate autodev` and `ll-loop validate prepare-issue` pass; this issue adds no states to `autodev.yaml`
 
 ## Related Key Documentation
 

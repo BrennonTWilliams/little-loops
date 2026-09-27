@@ -9,11 +9,15 @@ discovered_date: '2026-09-26'
 decision_needed: false
 blocks:
 - ENH-3600
+blocked_by:
+- ENH-3618
+- ENH-3621
 relates_to:
 - ENH-3590
 - ENH-3577
 - ENH-3609
 - ENH-3610
+- BUG-3620
 parent: ENH-3601
 confidence_score: 100
 outcome_confidence: 46
@@ -118,8 +122,7 @@ has changed since.
 | `check_parent_resolved_post_size_review.on_yes` | `recover_subloop_children` | `mark_decomposed` terminal (see Queue ownership) |
 | `enqueue_or_skip.on_yes` | `dequeue_next` | `mark_decomposed` terminal |
 | `check_scores_present.on_cannot_judge` / `on_error`, `clear_scores.on_error`, `mark_rescore_origin_atomic.on_error`, `recheck_after_size_review.on_cannot_judge`, `regate_after_atomic_remediation.on_cannot_judge`, `route_after_rescore` `UNKNOWN` / `_` / `_error` (post-ENH-3615 shared chain; the per-origin `*_wire` / `*_reconcile` / `*_atomic` triplet names no longer exist) | `mark_scores_absent_infra` | `mark_scores_absent` terminal |
-| `on_rate_limit_exhausted` of `run_wire`, `run_refine`, `rerun_confidence` (shared), `reconcile_current`, `refine_for_design`, `remediate_oversized_atomic`, `run_go_no_go` | `finalize_rate_limited` | `mark_rate_limited` terminal |
-| `run_size_review.on_rate_limit_exhausted` | `dequeue_next` | `mark_rate_limited` terminal (decided halt, see Rate limits) |
+| `on_rate_limit_exhausted` of `run_wire`, `run_refine`, `rerun_confidence` (shared), `reconcile_current`, `refine_for_design`, `remediate_oversized_atomic`, `run_go_no_go`, `run_size_review` (halt since ENH-3615) | `finalize_rate_limited` | `mark_rate_limited` terminal |
 | `check_go_no_go_eligible.on_no`, `check_go_no_go_waiver.on_no`, `check_pre_deferral_remedy.on_no`, `record_reentry_exhausted.next` | `dequeue_next` | `route_ladder_stop` (reads the status and the stop record; see Terminal table). Not `failed` directly: the resolved-parent branches reach these exits with no record |
 | `on_error` of `check_atomic_design_remedy`, `check_go_no_go_eligible`, `check_go_no_go_waiver`, `check_pre_deferral_remedy`, `enqueue_or_skip`, `recheck_after_size_review`, `regate_after_atomic_remediation`, `reopen_waived`, `record_reentry_exhausted` | `dequeue_next` | `mark_ladder_error` terminal (see Terminal table) |
 
@@ -505,10 +508,11 @@ the ledger row with the same reason string as today, and autodev routes every
   `with_rate_limit_handling`. Its `on_rate_limit_exhausted` goes to a wrapper-local
   `mark_rate_limited` terminal that writes `--legacy-class infra --evidence-refs
   rate_limit_exhausted`. That preserves today's halt through `finalize_rate_limited`.
-- `run_size_review` is the odd one out today: `on_rate_limit_exhausted: dequeue_next` drops
-  the issue silently, with no row. **Decided (2026-09-26)**: halt like every other site.
-  `run_size_review`'s `on_rate_limit_exhausted` goes to `mark_rate_limited`, which ends in
-  `finalize_rate_limited` in autodev. A dedicated test pins it.
+- `run_size_review` already halts like every other site: ENH-3615 retargeted its
+  `on_rate_limit_exhausted` from `dequeue_next` to `finalize_rate_limited`
+  (~`autodev.yaml:1957`). The move retargets it to `mark_rate_limited`, which ends in
+  `finalize_rate_limited` in autodev, like the other moved slash states. A dedicated test
+  pins it. This is not a behavior change.
 
 ### Accepted behavior changes
 
@@ -517,8 +521,6 @@ Document these in `docs/guides/LOOPS_REFERENCE.md`:
 - Scores-absent stops and `on_error → dequeue_next` drops now produce one
   `refine_failed_infra` row. Today they are invisible in `finalize_done`, and
   `autodev-scores-absent.txt` is never read.
-- `run_size_review` rate-limit exhaustion now halts the queue through `finalize_rate_limited`
-  instead of silently dropping the issue and moving to the next one.
 - A parent that the ladder finds already `cancelled` now records `CANCELLED` (rule 1 of
   `outcome_from_legacy_class`) and is ledgered `cancelled` by autodev's `skip_cancelled`,
   instead of `resolved_by_subloop`. A `done` parent keeps today's `decomposed` /
@@ -632,10 +634,48 @@ Document these in `docs/guides/LOOPS_REFERENCE.md`:
   - `autodev-pre-ids.txt` / `-post-ids.txt` / `-diff-ids.txt` / `-new-children.txt`
     (`detect_ladder_children` and autodev's `detect_children` share the baseline);
   - `autodev-inflight` (see Queue ownership), `autodev-skipped.txt`.
+- `autodev-design-gate-failed-<ID>` is never cleared (no `rm` in `init`, `dequeue_next` or
+  any state), and `recheck_after_size_review` / `regate_after_atomic_remediation` branch on
+  the file rather than this visit's check-design result, so a fixed design can still be
+  deferred `design_gate_failed`. Captured as BUG-3620; the move carries the marker
+  unchanged, and the fix lands in whichever file owns those states at the time.
+
+## Resume and handoff (pending spike outcome)
+
+The move silently changes what a resume or handoff does mid-ladder. Today the ladder runs in
+autodev, so a resume restores the exact ladder state. After the move it does not:
+
+- `PersistentExecutor.resume` (`little_loops.fsm.persistence`, ~:1388–1411) restores only
+  the parent's `pre_cap_state or current_state`. A `loop:` child executor is in memory
+  only; `active_sub_loop` is persisted for observability and nothing reads it back. A
+  resume or `on_handoff` restart mid-ladder therefore re-enters autodev's `refine_current`,
+  which starts `prepare-issue` from `initial`.
+- `initial` is `count_repair_cycle_refine`, so the repair-cycle counter increments again.
+  That can trip `recheck_after_size_review`'s count ≥ 2 stagnation backstop
+  (`readiness_stagnated`) on a pass that did not actually repeat a remedy.
+- The inner `refine-to-ready-issue` run and the ladder's LLM steps (wire, reconcile,
+  size-review, go/no-go) replay.
+- Once-per-pass markers are already set from the interrupted run
+  (`autodev-reentry-*-<ID>`, `autodev-pre-deferral-remedy-fired`,
+  `autodev-go-no-go-attempted-<ID>`), so the replayed pass sees its budgets spent and can
+  defer where the original pass would have re-entered or remedied.
+
+Options (the final shape depends on the ENH-3621 spike):
+
+- make the counter idempotent: count once per inner run, not once per wrapper entry;
+- define what each once-per-pass marker means when the wrapper restarts (reset, keep, or
+  key it to a pass id written by `dequeue_next`);
+- add a mid-ladder resume test on the ENH-3618 harness (its resume characterization pins
+  today's behavior as the baseline).
+
+If the spike passes, a policy/fact-log design replaces this issue and addresses resume
+directly; if it fails, fold these fixes into this issue before implementation.
 
 ## Tests
 
-- **Cross-loop harness (build first; Implementation Step 2).** Every "real FSM" case below
+- **Cross-loop harness (build first; Implementation Step 2).** Extracted to **ENH-3618**,
+  which this issue is `blocked_by`; the description below is kept as the requirement.
+  Every "real FSM" case below
   runs from the wrapper into autodev, and no existing harness does that. Today's tests
   either drive a small hand-built FSM with a scripted `ActionRunner`
   (`test_autodev_decision_gate.py`) or run one state's bash in isolation
@@ -801,14 +841,14 @@ Document these in `docs/guides/LOOPS_REFERENCE.md`:
 - [ ] Autodev is the only writer of `autodev-queue.txt` (`enqueue_children`, `dequeue_next`, `recover_subloop_children`); the wrapper writes none
 - [ ] `prepare-issue` has exactly one rescoring path with per-origin dispatch and the BUG-3588 freshness rules; the retry marker names are unchanged
 - [ ] Every `prepare-issue` terminal writes a `writer: prepare-issue` record matching the terminal table, the ledger rows keep today's reason strings, and no stop is ledgered twice
-- [ ] Rate-limit exhaustion in any moved slash state halts autodev through `finalize_rate_limited`, including `run_size_review` (no more silent `dequeue_next` drop)
+- [ ] Rate-limit exhaustion in any moved slash state, including `run_size_review`, halts autodev through the wrapper's `mark_rate_limited` → `finalize_rate_limited`
 - [ ] The repair-cycle counter increments on every inner entry, including wrapper re-entries; the stagnation backstop test passes
 - [ ] A `decomposed` record always has non-empty `child_ids` or a resolved parent; size-review children are enqueued through autodev's `enqueue_children`
 - [ ] The go/no-go trigger is the unchanged, deterministic `oversized_atomic` predicate
 - [ ] Autodev edges are retargeted: `refine_current.on_success` → `copy_broke_down`, `check_passed.on_yes` → `check_proof_defer_or_implement`; a structural test pins both, plus that no autodev state targets a removed state
 - [ ] The wrapper ends only `ready` / `decomposed` in `done` and every `BLOCKED:*` / `DEFERRED:*` / `RETRYABLE_ERROR:*` stop in `failed`; a real-FSM test asserts no stop reaches `route_refine_success`'s `skip_inflight` legs (no double ledger row)
 - [ ] `implement_current`'s only predecessor is `check_proof_defer_or_implement`, and `READY` comes only from the wrapper's pass gate plus `select_obligation_pre_implement`
-- [ ] The relocated behavioral suites pass. `auto-refine-and-implement` summary counts in a real-FSM run are unchanged except for the "Accepted behavior changes": scores-absent / `on_error` exits add a `refine_failed_infra` row, `run_size_review` rate-limit exhaustion halts, a cancelled parent is ledgered `cancelled`, a waived-but-under-readiness `oversized_atomic` issue is deferred `low_readiness`, an autodev `check_passed` or `check_parent_resolved` error is ledgered `refine_failed_infra`, and a wrapper step-cap cutoff is ledgered `refine_failed_infra`. Each difference is pinned by its own test
+- [ ] The relocated behavioral suites pass. `auto-refine-and-implement` summary counts in a real-FSM run are unchanged except for the "Accepted behavior changes": scores-absent / `on_error` exits add a `refine_failed_infra` row, a cancelled parent is ledgered `cancelled`, a waived-but-under-readiness `oversized_atomic` issue is deferred `low_readiness`, an autodev `check_passed` or `check_parent_resolved` error is ledgered `refine_failed_infra`, and a wrapper step-cap cutoff is ledgered `refine_failed_infra`. Each difference is pinned by its own test
 - [ ] Every re-entry edge (selectors and `dispatch_pre_deferral_remedy.on_yes`) targets the wrapper's `count_repair_cycle_refine`, never `clear_record` or `run_refine_to_ready` directly; the entry chain is `count_repair_cycle_refine` → `clear_record` → `run_refine_to_ready`, so every inner entry, re-entries included, clears stale records first
 - [ ] `route_inner_success` resets `refine-broke-down` to `0` on every inner success; an inner `DECOMPOSED` with no children and an unresolved parent continues to the wrapper's size-review (BUG-1183 fallback kept); and no wrapper terminal is written while `refine-broke-down` is `1` except `mark_decomposed`, including after a `MISSING` inner record
 - [ ] `record_reentry_exhausted` lives in the wrapper and records `BLOCKED:decision_unresolved`
@@ -833,10 +873,9 @@ Document these in `docs/guides/LOOPS_REFERENCE.md`:
 - **Priority**: P3 - completes the ENH-3601 decomposition and unblocks ENH-3600
 - **Effort**: Very Large - ~40 states plus the selectors, a rescoring consolidation and a large test/doc migration; not splittable further because the cluster is strongly connected
 - **Risk**: High - rewrites the second-pass routing of the most-used loop; mitigated by ENH-3605's plumbing and ledger rule landing first, per-row terminal tests, and an unchanged go/no-go predicate
-- **Breaking Change**: No public interface changes. There is one control-flow change:
-  `run_size_review` rate-limit exhaustion now halts the whole autodev queue through
-  `finalize_rate_limited` instead of skipping the issue. The other accepted behavior
-  changes add ledger rows only. All of them are listed under "Accepted behavior changes".
+- **Breaking Change**: No public interface changes. The accepted behavior changes add or
+  reclassify ledger rows only; all are listed under "Accepted behavior changes". (The
+  `run_size_review` rate-limit halt already landed with ENH-3615 and is not a change here.)
 - **Sequencing (decided 2026-09-26)**: land ENH-3615 first. It lands three parts in
   `autodev.yaml` before the move; none of them depends on the wrapper:
   - the shared rescoring path;
@@ -934,9 +973,9 @@ Research from the original ENH-3605 (wire/refine, reconcile/design) was merged h
   → `spike_inconclusive`/`gate_unmet` → thresholds). The run-record CLI accepts only the six
   `LEGACY_CLASSES`, so `gate_unmet` loses the specific reason in `legacy_class`. The ledger
   row and the `deferred_reason` frontmatter carry it.
-- **Rate-limit**: `run_size_review` uses `on_rate_limit_exhausted: dequeue_next` (to become a
-  halt; see Rate limits); the other
-  moved slash states go to `finalize_rate_limited` (`run_go_no_go` is pinned at
+- **Rate-limit**: `run_size_review` and the other moved slash states all use
+  `on_rate_limit_exhausted: finalize_rate_limited` today (`run_size_review` since ENH-3615,
+  ~`autodev.yaml:1957`) (`run_go_no_go` is pinned at
   `test_builtin_loops.py:8254-8258`). The `subloop_rate_limit_diagnostic` fragment
   (`lib/common.yaml:446`) needs `operation` through `with:` and `${context.issue_id}`.
   `rn-decompose.yaml`'s `run_size_review` → `rate_limit_diagnostic` is the existing
@@ -1051,8 +1090,8 @@ Research from the original ENH-3605 (wire/refine, reconcile/design) was merged h
    over. Keep the `copy_broke_down` reset anyway; it is harmless after the wrapper returns.
 1. Re-run the boundary edge computation (Scope, "Boundary edge table") and confirm it still
    matches; update the table if `autodev.yaml` has changed.
-2. Build the cross-loop harness (Tests, first bullet) and commit it with characterization
-   tests of today's ledger rows against the current `autodev.yaml`, before any loop edit.
+2. Confirm ENH-3618 (cross-loop harness + characterization tests of today's ledger rows
+   against the current `autodev.yaml`) is `done` before any loop edit.
 3. Pin the terminal table (the `TestOutcomeMapping` and CLI rows) and the `run_size_review`
    halt (`on_rate_limit_exhausted: mark_rate_limited`).
 4. Build the wrapper ladder: `route_inner_success`, `detect_ladder_children`, the pass gate,

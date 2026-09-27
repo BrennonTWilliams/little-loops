@@ -19,6 +19,11 @@ relates_to:
 - ENH-3609
 - ENH-3610
 - ENH-3611
+- ENH-3606
+- ENH-3618
+- ENH-3619
+- BUG-3620
+- ENH-3621
 ---
 
 # EPIC-3565: Autodev readiness contract hardening from 2026-09-24 audit
@@ -41,7 +46,9 @@ covered by regression tests.
 
 ## Goal
 
-Every route into implementation passes the same current-evidence readiness contract as autodev's normal path, and every run ends with truthful accounting. Then consolidate the duplicated preparation routing behind regression tests.
+Every route into implementation **within autodev** passes the same current-evidence readiness contract as autodev's normal path, and every autodev run ends with truthful accounting. Then consolidate autodev's duplicated preparation routing behind regression tests.
+
+This epic is autodev-scoped. Unifying preparation across `recursive-refine` and the `rn-*` loops is a follow-up, not part of this epic.
 
 ## Motivation
 
@@ -87,6 +94,9 @@ that. Also out of scope: the audit's composite scorecard, which is a judgment, n
 measurement.
 
 ## Children
+
+Statuses read from each child's frontmatter on 2026-09-26.
+
 - **BUG-3566** — Autodev pre-deferral remedy dispatcher binds env vars to ll-issues instead of python3 (done)
 - **BUG-3567** — Autodev rate-limit exits bypass finalize_done and summary.json (done)
 - **BUG-3568** — Autodev residual decision group reaches implement_current with decision_needed armed (done)
@@ -94,7 +104,7 @@ measurement.
 - **BUG-3570** — Confidence-check skill misstates format-check --fix repair coverage (done)
 - **BUG-3571** — Refine-to-ready accepts stale or absent verify verdict and confidence scores (done)
 - **BUG-3572** — Failed spike suppresses unproven-mechanism outcome cap in confidence-check (cancelled — split into BUG-3591, BUG-3592, BUG-3593)
-- **FEAT-3573** — Autodev code formatting and quality evidence gate before closure credit (open)
+- **FEAT-3573** — Autodev code formatting and quality evidence gate before closure credit (done)
 - **BUG-3574** — PROPOSAL_UNSOUND verdict routed to reconcile, which cannot edit Proposed Solution (done)
 - **ENH-3575** — Structured policy gate field replacing prose gate-phrase grep in autodev (done)
 - **ENH-3576** — Format-check repair coverage for missing and boilerplate sections with format-issue fallback (done)
@@ -103,35 +113,37 @@ measurement.
 - **BUG-3591** — Confidence-check suppresses unproven-mechanism cap on attempted-only spikes (done)
 - **BUG-3592** — Spike treats any non-zero Verification exit as a refutation (done)
 - **BUG-3593** — Loops do not route refuted or inconclusive spike verdicts (done)
-- **ENH-3597** — Emit a typed per-issue run record from refine-to-ready-issue (open)
-- **FEAT-3598** — Add ll-issues next-obligation deterministic preparation selector (open)
-- **ENH-3599** — Move spike and decision repair routing from autodev into refine-to-ready-issue (open)
-- **ENH-3601** — Move autodev second-pass preparation routing into a preparation controller (open)
-- **ENH-3602** — Single budget owner for learning-proof evidence (open)
+- **ENH-3597** — Emit a typed per-issue run record from refine-to-ready-issue (done)
+- **FEAT-3598** — Add ll-issues next-obligation deterministic preparation selector (done)
+- **ENH-3599** — Move spike and decision repair routing from autodev into refine-to-ready-issue (done)
+- **ENH-3601** — Move autodev second-pass preparation routing into a preparation controller (done — decomposed into ENH-3605 (done) and ENH-3606 (open))
+- **ENH-3602** — Single budget owner for learning-proof evidence (done)
+- **BUG-3603** — Autodev pre-implement proof gate fails open into implement_current (done)
+- **ENH-3604** — Adopt ll-issues next-obligation inside refine-to-ready-issue and settle next-action delegation (done)
+- **ENH-3607** — Add run-record read path and child spike rate-limit handling for autodev routing (done)
+- **ENH-3608** — Remove autodev spike and decision routes and route on the child run record (done)
+- **ENH-3609** — Route autodev on the child run record outcome and ledger child stops (done)
+- **ENH-3610** — Move autodev decision repair into refine-to-ready-issue behind an obligation selector (done)
+- **ENH-3611** — Move autodev spike and proof-gate repair into refine-to-ready-issue (done)
+- **ENH-3612** — manage-issue Phase 4 runs configured verification commands verbatim (done)
+- **ENH-3613** — Autodev summary.json splits cancelled from implemented closures (done)
+- **BUG-3614** — Autodev DECISION re-entry routes lifetime-capped issues to breakdown (done)
 - **ENH-3600** — Drive autodev ledger from run records and remove preparation handshake files (open)
-- **BUG-3603** — Autodev pre-implement proof gate fails open into implement_current (open)
+- **ENH-3606** — Move autodev second-pass preparation states into prepare-issue (open; child of ENH-3601, linked here through `relates_to`)
+- **ENH-3618** — Cross-loop autodev characterization harness (open)
+- **ENH-3619** — Extract autodev finalize_done into little_loops.autodev_summary with a step-cap handler (open)
+- **BUG-3620** — Autodev design-gate-failed marker is never cleared, so a fixed design still defers design_gate_failed (open)
+- **ENH-3621** — Spike: preparation routing policy in Python (open)
 
 Moved out 2026-09-25: **ENH-3590** (advise consult) is a new capability, not an audit
 finding. It stays linked through `relates_to`.
 
 ### Implementation order
 
-BUG-3603, ENH-3597, ENH-3602 (independent) → FEAT-3598 → ENH-3599 → ENH-3601 → FEAT-3573 →
-ENH-3600. FEAT-3573 blocks only ENH-3600, which rewrites the same closure accounting.
-- **ENH-3604** — Adopt ll-issues next-obligation inside refine-to-ready-issue and settle next-action delegation (open)
-- **ENH-3609** — Route autodev on the child run record outcome and ledger child stops (open)
-- **ENH-3610** — Move autodev decision repair into refine-to-ready-issue behind an obligation selector (open)
-- **ENH-3611** — Move autodev spike and proof-gate repair into refine-to-ready-issue (open)
-- **ENH-3612** — manage-issue Phase 4 runs configured verification commands verbatim (open)
-- **ENH-3613** — Autodev summary.json splits cancelled from implemented closures (open)
-- **BUG-3614** — Autodev DECISION re-entry routes lifetime-capped issues to breakdown (open)
-
-
-
-
-
-
-
+ENH-3618 (harness) ∥ ENH-3619 (finalize_done extraction + step-cap handler) → ENH-3621
+(spike) → ENH-3606 (shape decided by the spike) → ENH-3600 → ENH-3590. ENH-3590 remains
+outside the epic, linked through `relates_to`. BUG-3620 is independent and can land at any
+point; if ENH-3606 lands first, fix it in `prepare-issue.yaml`.
 
 ## Acceptance Criteria
 
