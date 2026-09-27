@@ -20,7 +20,7 @@ blocks:
 - ENH-3600
 - ENH-3590
 confidence_score: 85
-verify_verdict: NON_VALID
+verify_verdict: VALID
 outcome_confidence: 58
 score_complexity: 5
 score_test_coverage: 25
@@ -397,7 +397,7 @@ exists anywhere in the codebase to build a safe transitional state.
 
 - `scripts/little_loops/preparation_policy.py` (new), or a `preparation_policy/` package
   (port from branch `spike/preparation-policy`)
-  > ⚠ Superseded — module already landed via ENH-3630 (1382 lines); nothing to port here
+  > ⚠ Superseded — module already landed via ENH-3630 (1381 lines); nothing to port here
 - `scripts/little_loops/cli/issues/__init__.py`: register `prep`
   > ⚠ Superseded — `prep` already registered via ENH-3630
 - `scripts/little_loops/loops/prepare-issue.yaml`: replaced in place by the dispatch loop,
@@ -526,7 +526,7 @@ _Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
 - **ENH-3630 has landed since this issue's last research pass** (commits `1732a39f0`, `7fd86d853`; issue status `done`). This changes the status of several items above:
   - The fixture the Phasing/Files-to-Modify sections cite lives at `scripts/tests/fixtures/loops/prepare-issue-policy.yaml` — under `loops/`, not bare `fixtures/` as three prose mentions in this issue (Phasing steps 1–2, Files to Modify) currently say. Confirmed via `test_preparation_policy_fixture.py:18` and a repo-wide glob; no file exists at the bare `fixtures/prepare-issue-policy.yaml` path.
   - The fixture is already the full 15-state shape this issue specifies: `select_step, run_child, run_wire, run_refine_gap, run_rescore, run_reconcile, run_size_review, classify_guard2, record_guard2, record_step, run_go_no_go, apply_outcome, mark_rate_limited, done, failed`.
-  - `scripts/little_loops/loops/prepare-issue.yaml` (91 lines) and `scripts/little_loops/loops/autodev.yaml` (87 states, matching the `test_fsm_topology.py:291` pin) are both still their pre-cutover shape — Phase B/C (this issue's actual scope) has not started.
+  - `scripts/little_loops/loops/prepare-issue.yaml` (90 lines) and `scripts/little_loops/loops/autodev.yaml` (87 states, matching the `test_fsm_topology.py:291` pin) are both still their pre-cutover shape — Phase B/C (this issue's actual scope) has not started.
   - Under `### Tests`, the "New" list (`test_preparation_policy.py`, `test_preparation_policy_parity.py`, `test_preparation_policy_resume.py`, `preparation_policy_harness.py`) already exists on disk (ENH-3630's output), plus three files not previously named in this issue: `scripts/tests/test_preparation_policy_writers.py`, `scripts/tests/test_preparation_policy_fixture.py` (the structural pin on the fixture's `max_steps`/slash-state shape), and `scripts/tests/test_prep_cli.py` (CLI registration/help/failure-path tests for `ll-issues prep`). This issue's remaining test-migration work is the "Extended" and "Rewritten or relocated" lists only.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
@@ -570,7 +570,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 _Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
 
-- **Signature drift from ENH-3630's landed module** (`scripts/little_loops/preparation_policy.py`, 1382 lines): the names above are provisional/legacy — `apply_terminal` does not exist. The landed terminal-writer is `_apply_outcome(config, issue_id, run_dir, outcome, payload, progress, mark, *, readiness_threshold, outcome_threshold) -> int`, invoked from `prep_apply()`. Likewise `record_step` exists only as a YAML state name (in the dispatch-loop fixture, `scripts/tests/fixtures/loops/prepare-issue-policy.yaml`) — the Python function it calls via `ll-issues prep record` is `prep_record(config, issue_id, run_dir, *, guard2=False, child_terminated_by="", child_failure="") -> Fact | None`. `decide`, `next_preparation_step`, `load_facts`, `append_fact` all match this section's signatures exactly as landed.
+- **Signature drift from ENH-3630's landed module** (`scripts/little_loops/preparation_policy.py`, 1381 lines): the names above are provisional/legacy — `apply_terminal` does not exist. The landed terminal-writer is `_apply_outcome(config, issue_id, run_dir, outcome, payload, progress, mark, *, readiness_threshold, outcome_threshold) -> int`, invoked from `prep_apply()`. Likewise `record_step` exists only as a YAML state name (in the dispatch-loop fixture, `scripts/tests/fixtures/loops/prepare-issue-policy.yaml`) — the Python function it calls via `ll-issues prep record` is `prep_record(config, issue_id, run_dir, *, guard2=False, child_terminated_by="", child_failure="") -> Fact | None`. `decide`, `next_preparation_step`, `load_facts`, `append_fact` all match this section's signatures exactly as landed.
 - **Resume-guard call chain, confirmed exact site**: `PersistentExecutor.resume()` (`fsm/persistence.py:1388`) restores `self._executor.current_state` from `state.pre_cap_state or state.current_state` with no existence check, then calls `self.run(clear_previous=False)` → `PersistentExecutor.run()` → `FSMExecutor.run()`. The unguarded lookup is `state_config = self.fsm.states[self.current_state]` at `fsm/executor.py:761`, inside the executor's main loop — no `except KeyError` anywhere in the chain guards it (the three existing `except KeyError` blocks in `fsm/` are unrelated: `evaluators.py:355`, `executor.py:2826`, `persistence.py:565`). Nearest existing convention for this shape of check: `fsm/route_table.py:154-161` raises `ValueError(f"Unknown state in edited table: '{state_name}' (known: {sorted(known_states)})")` for an analogous "referenced state must exist" check — a plain `ValueError` with an f-string naming the state, not a dedicated exception class (none exists in `fsm/` for this).
 
 _Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
@@ -666,6 +666,43 @@ _Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
 - [ ] The autodev topology count in `test_fsm_topology.py` equals the number recorded in
   the delta comment.
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` — 2026-09-27:_
+
+Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the same pass,
+so the issue as it now reads is up to date — this section is a record of what was wrong
+and fixed, not an outstanding action item).
+
+- **Evidence-quote check**: `ll-verify-evidence` reports clean (0 findings) — no
+  fabricated evidence spans.
+- **Decisions log**: `.ll/decisions.yaml`/`.ll/decisions.d` present;
+  `ll-issues decisions list --type rule --enforcement required --active-only` returned
+  no entries — no active required rules to check against. The Phase B atomic-commit
+  choice is recorded as a plain `decision` entry (`.ll/decisions.d/43748442-...json`),
+  matching this issue's own Decision Rationale exactly.
+- **Dependency refs**: `blocked_by: ENH-3630` is satisfied (status `done`); ENH-3600 and
+  ENH-3590 both carry the reverse `blocked_by: ENH-3623` backlink; ENH-3606 carries
+  `superseded_by: ENH-3623`. No broken refs, missing backlinks, or cycles.
+- **Citation spot-check**: sampled ~15 precise `path:line`/line-count claims across the
+  Program Design, Integration Map, and Codebase Research Findings sections
+  (`preparation_policy.py` function starts, `fsm/persistence.py:1388`,
+  `fsm/executor.py:761`, `fsm/route_table.py:154-161`, `run_record.py` function starts,
+  `cli/loop/runner.py:169-173`/`:472`, `cli/loop/lifecycle.py:764`, `check_gate.py:10`,
+  `issue_parser.py:655`/`:2181`, `autodev.yaml` state count, `test_fsm_topology.py:291`).
+  All confirmed exact. Three stale factual claims found and corrected in place: two
+  off-by-one line counts (`preparation_policy.py` cited as 1382 lines, actually 1381;
+  `prepare-issue.yaml` cited as 91 lines, actually 90) and one stale dependency status in
+  Confidence Check Notes (BUG-3628 cited as `open`, now `done`).
+- `format-check`'s `unapplied_decision` finding (flags "cancelled"/"decomposed"/"ready"/
+  "oversized_atomic"/"refine_current" in Proposed Solution/Acceptance Criteria as
+  "rejected options") is a false positive: those tokens are FSM state/outcome names this
+  issue itself defines, not rejected alternatives from any decision entry — traced every
+  matching decisions.d fragment and none is scoped to ENH-3623 or ENH-3606.
+- Proposal-vs-code consequence check (B6): no exception-handler or test-fixture-
+  invalidation defects found. The issue's own prior refine/wire passes already surface an
+  extensive, accurate Integration Map; no additional AC-coverage gaps found.
+
 ## Status
 
 **Open** | Created: 2026-09-27 | Priority: P3
@@ -682,13 +719,14 @@ _Added by `/ll:confidence-check` on 2026-09-27; re-scored 2026-09-27T04:31Z (Dep
 - Phase A/B/C phasing is stated, but only Phase A is safe to start alone; the atomic cutover (Phase B) is where the risk sits.
 
 ### Gaps to Address
-- None blocking. The prior Dependencies override is cleared: no `blocked_by` remains, and BUG-3624, ENH-3625, ENH-3621, BUG-3620 and BUG-3622 are all `done` (BUG-3628 is `open` but only `relates_to`).
+- None blocking. The prior Dependencies override is cleared: no `blocked_by` remains, and BUG-3624, ENH-3625, ENH-3621, BUG-3620, BUG-3622 and BUG-3628 are all `done` (BUG-3628 is only `relates_to`, not a blocker).
 
 ### Outcome Risk Factors
 - Deep per-site complexity: replaces the second-pass routing of the most-used loop (`prepare-issue.yaml` in place, 42 autodev deletions), with all projects on this machine `local-editable`, so a half-landed cutover breaks tooling everywhere.
 - Broad enumeration across 16+ sites (new module, `cli/issues`, two loop YAMLs, `run_record.py`, ~15 test files, ~8 docs, skill mirrors) and 11+ dependents, with a spike-parity that is coverage-bounded (~25 inline predicates re-implemented).
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-27T20:22:00 - `c7f5626c-1fa9-4830-aa8f-e8b6eafe269b.jsonl`
 - `/ll:refine-issue:gap-analysis` - 2026-09-27T16:48:55 - `5e0fa7a0-1306-4e57-9f3f-a8085f6c05a6.jsonl`
 - `/ll:verify-issues` - 2026-09-27T16:38:06 - `c66e52ca-e03a-452d-8d40-451ada76518d.jsonl`
 - `/ll:wire-issue` - 2026-09-27T16:33:19 - `627f48af-8f89-4b82-9339-fd655c67dfe7.jsonl`
