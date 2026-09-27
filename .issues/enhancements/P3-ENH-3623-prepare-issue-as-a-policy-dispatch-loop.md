@@ -19,13 +19,13 @@ blocked_by:
 blocks:
 - ENH-3600
 - ENH-3590
-confidence_score: 85
+confidence_score: 95
 verify_verdict: VALID
-outcome_confidence: 58
-score_complexity: 5
+outcome_confidence: 35
+score_complexity: 0
 score_test_coverage: 25
-score_ambiguity: 18
-score_change_surface: 10
+score_ambiguity: 10
+score_change_surface: 0
 decision_needed: false
 ---
 
@@ -709,23 +709,21 @@ and fixed, not an outstanding action item).
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-09-27; re-scored 2026-09-27T04:31Z (Dependencies override cleared). Superseded in part by the 2026-09-27 review: Phase A split into ENH-3630 (`blocked_by`), so re-score after that lands._
+_Added by `/ll:confidence-check` on 2026-09-27; re-scored 2026-09-27T04:31Z (Dependencies override cleared); re-scored again 2026-09-27 after ENH-3630 landed (`done`) and the `/ll:decide-issue`/`/ll:wire-issue`/`/ll:verify-issues` passes completed._
 
-**Readiness Score**: 85/100 → PROCEED WITH CAUTION
-**Outcome Confidence**: 58/100 → LOW
-
-### Concerns
-- `format-check` flags `ll-issues prep (no such subcommand)` as a stale CLI claim (caps Criterion 4 at 10). It is forward-looking (this issue proposes the group) and already carries `ll-prose-ok` markers at three sites; the flag clears once `prep` is registered. Advisory only.
-- Phase A/B/C phasing is stated, but only Phase A is safe to start alone; the atomic cutover (Phase B) is where the risk sits.
-
-### Gaps to Address
-- None blocking. The prior Dependencies override is cleared: no `blocked_by` remains, and BUG-3624, ENH-3625, ENH-3621, BUG-3620, BUG-3622 and BUG-3628 are all `done` (BUG-3628 is only `relates_to`, not a blocker).
+**Readiness Score**: 95/100 → PROCEED
+**Outcome Confidence**: 35/100 → VERY LOW
 
 ### Outcome Risk Factors
-- Deep per-site complexity: replaces the second-pass routing of the most-used loop (`prepare-issue.yaml` in place, 42 autodev deletions), with all projects on this machine `local-editable`, so a half-landed cutover breaks tooling everywhere.
-- Broad enumeration across 16+ sites (new module, `cli/issues`, two loop YAMLs, `run_record.py`, ~15 test files, ~8 docs, skill mirrors) and 11+ dependents, with a spike-parity that is coverage-bounded (~25 inline predicates re-implemented).
+- Complexity (0/25): Breadth is 16+ distinct change sites (`prepare-issue.yaml`, `autodev.yaml`, `fsm/persistence.py`, ~15 test files, ~8 docs, skill mirrors) and Depth is architectural — the dispatch loop wholesale-replaces the most-used loop's routing plus 42 autodev retargets/deletions, with every project on this machine `local-editable`, so a half-landed cutover breaks tooling everywhere.
+- Change Surface (0/25): Pattern A blast radius with 11+ dependents (`auto-refine-and-implement.yaml`, `scan-and-implement.yaml`, `autodev_summary`, `refine-to-ready-issue.yaml`, `oracles/resolve-decision.yaml`, `cli/loop/runner.py`, `cli/loop/lifecycle.py`, `autodev_harness.py`, plus the `cli/issues` snapshot-helper callers) — not a uniform mechanical sweep, so each site needs individual judgment.
+- Ambiguity capped at 10/25: `format-check`'s `unapplied_decision` finding still flags 7 identifiers (`cancelled`, `decomposed`, `done`, `oversized_atomic`, `ready`, `refine_current`, `ready`) in Proposed Solution / Acceptance Criteria. The issue's own Verification Notes trace this as a false positive (the tokens are FSM state/outcome names this issue defines, not rejected decision options, and no `decisions.d` fragment is scoped to ENH-3623/3606) — but per ENH-3256 the CLI finding is the single source of truth for this cap regardless, so it is recorded here rather than re-judged.
+- Mitigated by: `decide()` table tests, the promoted ENH-3618 parity/differential/resume tests, and crash-injection coverage already landed for the terminal writer (ENH-3630) — Test Coverage scores 25/25.
+
+Readiness is high (all preconditions — dependencies, well-specification, non-duplication — are met after ENH-3630 landed); the risk is concentrated entirely in outcome confidence, i.e. this is ready to *start*, not low-risk to *land*. Consider `/ll:spike`-style de-risking or splitting Phase B's atomic commit into a more granular internal sequence (even if landed as one commit) before executing the cutover.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-27T20:28:10 - `ccd304ff-fa2b-47fb-9773-08fefc6c9e30.jsonl`
 - `/ll:verify-issues` - 2026-09-27T20:22:00 - `c7f5626c-1fa9-4830-aa8f-e8b6eafe269b.jsonl`
 - `/ll:refine-issue:gap-analysis` - 2026-09-27T16:48:55 - `5e0fa7a0-1306-4e57-9f3f-a8085f6c05a6.jsonl`
 - `/ll:verify-issues` - 2026-09-27T16:38:06 - `c66e52ca-e03a-452d-8d40-451ada76518d.jsonl`

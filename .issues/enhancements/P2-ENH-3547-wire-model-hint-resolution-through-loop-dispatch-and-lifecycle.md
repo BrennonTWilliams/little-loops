@@ -16,6 +16,8 @@ blocked_by:
 - ENH-3527
 relates_to:
 - ENH-3533
+learning_tests_required:
+- anthropic
 ---
 
 # ENH-3547: Wire model hint resolution through loop dispatch and lifecycle
@@ -72,6 +74,21 @@ Everything below is specified in ENH-3527 (Design → Declaration and precedence
 - `scripts/little_loops/host_runner.py` — `FakeHostRunner` / `FakeMinimalHostRunner` forward `--model`; `scripts/little_loops/fake_host` if the executable must accept the flag.
 - Tests: `test_fsm_executor.py`, `test_fsm_evaluators.py`, `test_fsm_runners.py`, `test_ll_loop_execution.py`, `test_host_runner_dispatch.py`, `test_fake_host.py`.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
+
+- Existing dispatch seams that resolve a value per-backend do so via a private `FSMExecutor` method mirroring an existing fallback chain, not an inline expression: `_resolve_action_model()` (`executor.py:3555-3566`) explicitly mirrors `state.model or self.run_model`, and `_resolve_request_path()` (`executor.py:3446-3514`) resolves per-backend with a one-shot downgrade warning via `_warn_request_path_downgrade()` (`executor.py:3546-3553`). The CLI action dispatch site (`executor.py:2654`) is the one seam still inline (`state.model or self.run_model`) rather than delegated — a pre-existing inconsistency, not a convention to preserve.
+- The not-yet-supported guard this issue removes lives in `FSMExecutor.run()` (`executor.py:640-652`) and is pinned by `test_model_hints.py::TestPreDispatchGuard` (lines 269-306), which asserts `result.terminated_by == "error"` and `runner.calls == []`; those tests need updating alongside the guard's removal.
+- Event payloads have no shared builder — every event type builds its own `dict[str, Any]` literal at its `self._emit(...)` call site (`_emit` at `executor.py:3925`; `action_complete` payload at `2667-2716`; `evaluate` payload at `3178-3227`). Conditional-diagnostic fields follow `if value is not None: payload[key] = value` (e.g. `effort`, `is_batch`). `payload["model"]` is already occupied by the *observed* model from `usage_events[-1].model` — distinct from the requested/resolved/backend fields this issue adds, which need their own keys.
+- The console run header (`cli/loop/header.py:_render_artifact_header_lines`, line 109) is a separate concept from the event payload; no persisted "header" exists in `fsm/persistence.py` (zero matches for the term). The one existing precedent for adding a diagnostic to the console header (ENH-2869's `effort`) appends onto the single `model:` display value via an `effort: str | None` kwarg threaded through every call site, not a new row — that precedent covers appending one value, not three at once.
+- Every real host runner shares one idiom for conditional argv, at nine call sites in `host_runner.py`: `if model: args += ["--model", model]`. `FakeHostRunner`/`FakeMinimalHostRunner` already accept `model` in their signatures but drop it in the body (`host_runner.py:2173-2209`, `2252-2284`), matching this issue's own Current Behavior claim.
+- Dispatch-level argv assertions follow one test method per runner class, named `test_build_streaming_with_model` (`test_host_runner.py:661-667` for `ClaudeCodeRunner`; `:800-823` for `CodexRunner`, with exact-count and exact-position assertions), paired with a `test_build_streaming_without_model_omits_flag` absence test. `TestFakeHostRunner`/`TestFakeMinimalHostRunner` (`test_host_runner.py:1178-1250`, `1253-1326`) exist as test classes but have no model test today.
+- The "same script across multiple hosts, assert identical behavior" shape already exists as `TestFakesAreDivergent`/`TestCompositionThroughExecutor` (`scripts/tests/conformance/test_host_composition.py:285-396`) — drives both fakes through the real `run_claude_command`/`run_blocking_json` path and asserts equal `Observed` results across hosts.
+- `ll-fake-host`'s `main()` (`fake_host.py:331`) never parses argv as flags — it scans for the one element containing the `@@fake` fence and ignores everything else positionally, so it already tolerates an extra `--model X` pair without change.
+- Sub-loop children are already constructed with `run_model`/`run_effort` forwarded explicitly but not the parent's per-state `model_hint` (`executor.py:1288-1302`) — the child gets its own freshly-loaded `child_fsm`, so state-level declarations already don't propagate today. That half of the sub-loop AC needs a test, not a code change.
+- `cmd_resume` (`cli/loop/lifecycle.py:564,639`) re-parses the loop YAML via `load_loop()` and restores only the persisted FSM *context* on top of it (`lifecycle.py:663-671`); it never reads `args.run_model`/`args.llm_model` (zero matches). `cmd_run` (`run.py:189-193`) has the "explicit model clears inherited hint" rule for the initial run path (`fsm.llm.model = args.llm_model; fsm.llm.model_hint = None`) — `cmd_resume` has no counterpart, confirming this issue's Current Behavior claim about lost run-level overrides on resume.
+
 ## Impact
 
 - **Priority**: P2.
@@ -117,4 +134,5 @@ Pre-implementation review 2026-09-25 made these changes:
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-27T20:25:25 - `b7c94eba-e7a8-40c2-a5f2-39f525e86d43.jsonl`
 - `/ll:audit-issue-conflicts` - 2026-09-24T17:53:56 - `5250dd00-ed7b-4310-8dee-527fe13b2b07.jsonl`
