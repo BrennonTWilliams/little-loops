@@ -262,6 +262,16 @@ parent's `current_state`, so a mid-ladder resume restarts the `loop:` child from
 - `little_loops.cli.issues` `next-obligation`, `check-design`, `check-gate`,
   `check-readiness` and `format-check`: the snapshot reuses their helpers.
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/loops/autodev.yaml` is the only `loop: prepare-issue` caller (`refine_current`, ~:503). Its `--writer prepare-issue` record reads (~:527, ~:692), the ladder-stop ledger writes (`--writer prepare-issue --legacy-class`, ~:995, :2360, :2366, :2710, :2732, :2739, :2834) and a `run-record clear` (~:2481) all move into `prep apply` or the `RUN_CHILD` precondition [Agent 1 finding]
+- `scripts/little_loops/loops/refine-to-ready-issue.yaml` — `resolve_issue` `rm -f`s `refine-terminal-class` (:181) on every child entry, overlapping the `RUN_CHILD` "clear records" precondition; the file's comments naming autodev states (:1057, :1485, :1523) go stale [Agent 1+2 finding]
+- `scripts/little_loops/loops/oracles/resolve-decision.yaml` — comments naming autodev states (:4, :53, :72, :145, :190) and the `autodev-reentry-DECISION-<ID>` / `decide-options-deposited` markers (:92, :253); the markers stay (ENH-3600 scope), the comments go stale [Agent 1+2 finding]
+- `scripts/little_loops/loops/recursive-refine.yaml` has its own same-named `size_review_snap` / `check_broke_down` states (:213, :356, :391-392, :461-474): out of scope, but any state-name absence test must be scoped to `autodev.yaml` [Agent 2 finding]
+- `scripts/little_loops/fsm/validation/_base.py:133`, `fsm/schema.py` (:1496, :1645, :1769) and `fsm/validation/reachability.py:431-435` — `capture_reachability_ok` is a schema-accepted key suppressing the reachability warning; it stays in the schema (`goal-cluster.yaml:24`, `examples-miner.yaml:25` use it), only autodev drops it [Agent 2 finding]
+- `scripts/little_loops/cli/issues/__init__.py` `main_issues()` — the epilog list (`next-obligation` :158, `check-gate` :166, `run-record` :189) and the dispatch chain (`check-gate` :1101, `next-obligation` :1109, `run-record` :1119) both need a `prep` entry [Agent 2 finding]
+- `scripts/little_loops/cli/issues/run_record.py` — `cmd_run_record_forward` loses its only production callers (`forward_done` / `forward_stop`); keep or retire it deliberately [Agent 2 finding]
+- `scripts/little_loops/cli/issues/check_gate.py:10` and `issue_parser.py` (:655, :2181) — docstrings/comments citing `select_obligation_pre_implement` and `check_reconcile_needed`; refresh [Agent 2 finding]
+
 ### Similar Patterns
 
 - `little_loops.fleet_improve` (thin shell → module)
@@ -285,11 +295,39 @@ parent's `current_state`, so a mid-ladder resume restarts the `loop:` child from
 - Must pass unchanged except for the accepted changes:
   - `test_autodev_characterization.py` (ENH-3618)
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_autodev_characterization.py` — "unchanged" does not hold for the wrapper-shape pins: `test_autodev_resume_characterization` (~:897) parametrizes `wrapper_path` tuples such as `("clear_record", "run_refine_to_ready", *WRAPPER_DONE)`, and `test_harness_accepts_replacement_prepare_issue_and_autodev_transform` (~:920) pins the `prepare-issue.yaml` path. Define a `wrapper_path` mapping onto dispatch-loop states; the file is `slow`-marked (:39) [Agent 3 finding]
+- `scripts/tests/test_builtin_loops.py` — beyond the `TestAutodevLoop` cluster [Agent 2+3 finding]:
+  - `TestBuiltinLoopFiles` exemption dict (:102-107) `("prepare-issue.yaml", "forward_done", "on_error"): "ENH-3605"` goes stale when `forward_done` is deleted
+  - `test_prepare_issue_loop_state_declares_no_rate_limit_handling` (~:7740) must stay scoped to `run_child`, since the slash-command states gain rate-limit handling
+  - `TestConfidenceGateThresholdsNotHardcoded` (~:20821, `LOOPS` includes `prepare-issue`) requires no threshold literals in `context:`; pass thresholds through `seed_confidence_thresholds`
+  - `TestInterpSweepBaseline.test_completeness_guard` (~:20515) fails both ways as states are deleted and added
+  - `TestBuiltinLoopReferencesResolve` (~:17062) must resolve `loop: refine-to-ready-issue`; `TestAutodevAuthGuard` (~:17712), `TestLearningGateConsistency` (~:18019) and `TestAutodevRnImplementDeferralParity` (~:9234) load `autodev.yaml` and may name removed states
+- `scripts/tests/test_prepare_issue.py` — `test_every_write_uses_prepare_issue_writer` (:113) conflicts with `prep apply` as sole writer; `mark_inner_error` sentinel pin (:162) requires `prep apply` to keep writing `refine-terminal-class` [Agent 2+3 finding]
+- `scripts/tests/test_fsm_topology.py:291` — `test_autodev_topology` pins `len(topo["states"]) == 87`; add the delta comment near :239-290 and extend the edge-endpoint check (:297-302) with removed-target assertions [Agent 2+3 finding]
+- `scripts/tests/test_fsm_fragments.py` (~:998-1013) — `test_builtin_loops_load_after_migration` lists `prepare-issue.yaml`; the new YAML must still validate with fragment shell exits [Agent 1+3 finding]
+- `scripts/tests/test_fsm_validation_reachability.py` — 12 `capture_reachability_ok` hits; add a case for autodev without it [Agent 2 finding]
+- `scripts/tests/test_feat3573_quality_gate.py` (:24) and `test_ll_issues_check_gate.py` (:22, :168-192, :382-391) — load real autodev state actions; they break if they name a moved state [Agent 1+3 finding]
+- `scripts/tests/test_run_record.py` — `test_ready_iff_check_passed_would_pass` (:456-467) and `TestOutcomeMapping` (:238) pin `outcome_from_legacy_class`; keep green through the shared-helper refactor. `TestRunRecordForward` (:871+) stays valid unless `forward` is retired [Agent 2+3 finding]
+- `scripts/tests/autodev_harness.py` — `PREPARE_ISSUE_YAML` (:77), the `mark_inner_error` comment (:121), fixture `rm -f refine-terminal-class` (:133), `wrapper_path` detection from `loop == "prepare-issue"` (:895-896, :968) and `_read_token` (:1022-1024); `_CLI_SERVER` (:599-603) serves a `prep` group registered in `main_issues` automatically [Agent 1+2+3 finding]
+- `scripts/tests/test_wiring_reference_docs.py` — `DOC_STRINGS_PRESENT` (:256-264) needs rows for a `#### \`ll-issues prep\`` heading and API.md `| \`prep\` |` / `little_loops.preparation_policy` rows (`run-record` ENH-3597 rows are the precedent) [Agent 3 finding]
+- `scripts/tests/test_cli_claims.py` / `test_cli_surface.py` (:158) — prose claims about `ll-issues prep …` are checked against the scraped real `--help`; register the group before docs cite it (the `ll-prose-ok` markers cover the interim) [Agent 2+3 finding]
+- New tests to add: `prep` help/epilog test (copy `test_run_record.py::test_subcommand_in_help` :450 and the one-class-per-subcommand layout, `TestCmdRunRecordWrite` :296); `decide()` table tests (nearest precedent `test_ll_issues_next_obligation.py` parametrized classes; no pure `decide(snapshot, facts)` test exists); parametrized removed-state absence test (`TestConfidenceGateThresholdsNotHardcoded` shape); "no `rm`" / "never appends `autodev-staged.txt`" wrapper scans (`test_builtin_loops.py` ~:3226 `not in state["action"]` style); `capture_reachability_ok` absence test; `max_steps` arithmetic structural test
+- Resume-matrix opt-in: `slow` is not deselected by default (`scripts/pyproject.toml` ~:296-302; `addopts` has `--timeout=120 -n logical --dist loadfile`), so "opt-in" needs `slow` plus an env-var or `skipif` gate and `@pytest.mark.timeout` as in `test_autodev_characterization.py:919`; a single >120 s shell-out test orphans its xdist worker [Agent 3 finding]
+
 ### Documentation
 
 - `docs/reference/CLI.md`, `docs/reference/API.md`, `docs/guides/LOOPS_REFERENCE.md`,
   `docs/ARCHITECTURE.md`, `docs/reference/DEFERRAL_CODES.md`, plus the ENH-3606 § Docs
   list
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/reference/CLI.md` — `ll-issues prep` section, plus stale state names in the `next-obligation` (~:2271) and `check-readiness` (~:2922) sections and the `run-record write` `--legacy-class` row (~:2426) [Agent 2 finding]
+- `docs/reference/API.md` — `prep` row beside `run-record` (~:4667), `little_loops.preparation_policy` section, and the `run_record` module row (~:74) [Agent 2 finding]
+- `docs/guides/LOOPS_REFERENCE.md` — two copies of the autodev tree (~:1070, ~:1198), `Score gate` prose (~:1148) naming `check_broke_down`, and the `prepare-issue` row (:82) describing the old forwarding behavior [Agent 2 finding]
+- `docs/reference/CONFIGURATION.md:458` — lists `prepare-issue` among the loops using the confidence-gate thresholds [Agent 1 finding]
+- `scripts/little_loops/loops/README.md` — `prepare-issue` (:31) and `autodev` (:35) catalog rows [Agent 1+2 finding]
+- `skills/audit-loop-run/SKILL.md` (:271, :277) and `skills/go-no-go/SKILL.md` (:154, :402) — name `check_go_no_go_eligible`, `run_go_no_go`, `check_go_no_go_waiver`, `recheck_set`; `commands/reconcile-issue.md` (:83, :145-146, :197, :368) cites the `check_reconcile_needed` one-shot guard, which becomes a fact-log rule; regenerate host mirrors with `ll-adapt` after skill edits [Agent 2 finding]
 
 ### Configuration
 
@@ -322,6 +360,19 @@ _Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
   - **Snapshot helpers and their real locations**: `select_next_obligation(config, issue_id, *, skip=(), readiness_override=None, outcome_override=None, honor_waiver=False) -> ObligationResult | None` (`cli/issues/next_obligation.py`; raises `ObligationProbeError` fail-closed); `resolve_gate_verdict(frontmatter, text, spike_proven)` (`cli/issues/check_gate.py`); `readiness_status(config, issue_id, *, …) -> ReadinessStatus | None` (`cli/issues/check_readiness.py`); `superseded_marker_count(issue_path)`, `check_format_gaps` and `design_gate_failed(gaps)` (`issue_parser.py`; `cmd_check_design` composes the last two); Program Design grading in `issues/program_design.py`. `session_command_counts` is a **field on the parsed issue dataclass** populated by `count_session_commands(content)` (`session_log.py`), not an `IssueParser` method.
   - **Spike artifacts**: `thoughts/spikes/preparation-policy-spike.md` exists; branch `spike/preparation-policy` exists at `a5162130240f244ad79ae4354470e903e01769b2` (also checked out in a worktree under `.git/worktrees/`). `little_loops.preparation_policy`, the `prep` group, `test_preparation_policy*.py` and `preparation_policy_harness.py` do not exist; `autodev_harness.py` has no `state#N`, `replay_same` or `inner_calls`.
   - **Executor constraints bearing on `record_step` and the dispatch loop** (`fsm/executor.py`): a `loop:` child's captures overwrite `captured[<state>]` only when the child captured something and `context_passthrough`/`with_` is set; `terminated_by` is always set and `failure_terminal` only when the child produced one, so a stale `failure_terminal` from an earlier pass can survive a later child that captured nothing. `on_max_steps` runs exactly one handler state (`_summary_state_executed`), flushing one pending non-loop state first. Since BUG-3622, `next:` states go through `_intercept_transient_failure` (429 retries refund `_throttle_counts`; exhaustion routes `on_rate_limit_exhausted` else `on_error`), but the `loop:` delegate path does not — consistent with the BUG-3390 comments in both YAMLs, so `run_child` stays without rate-limit handling.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Register `prep` in `cli/issues/__init__.py`: parser, dispatch branch and epilog entry
+- Decide whether `ll-issues run-record forward` survives once `forward_done` / `forward_stop` are gone
+- Make `prep apply` (or the `RUN_CHILD` precondition) own the `refine-terminal-class` sentinel writes that `mark_inner_error` does today, until ENH-3600 removes the reader
+- Update the `test_fsm_topology.py` count, the `TestBuiltinLoopFiles` exemption dict, `loop_interpolation_baseline.json` and `MR11_MARKER_ALLOWLIST` together
+- Rework the characterization suite's `wrapper_path` fields for the dispatch-loop state names
+- Add `test_wiring_reference_docs.py` rows for the new CLI.md / API.md sections
+- Refresh comments naming removed autodev states in `refine-to-ready-issue.yaml`, `oracles/resolve-decision.yaml`, `check_gate.py`, `issue_parser.py`
+- Run `ll-adapt --host <gemini|kimi-code|qwen> --apply` after the skill edits
 
 ## Program Design
 
@@ -412,5 +463,6 @@ _Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-27T02:33:29 - `951684ed-7b41-4bf8-9307-a4474a28eb29.jsonl`
 - `/ll:refine-issue` - 2026-09-27T02:22:39 - `e00c47b1-36f2-4288-9df3-a5c841c33968.jsonl`
 - `/ll:format-issue` - 2026-09-27T02:13:30 - `eab069d8-1487-4826-8057-122a54e92dfd.jsonl`

@@ -213,6 +213,15 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_recursive_finalize.py:134` — seeds `autodev-new-children.txt` [Agent 1 finding]
 - `scripts/tests/test_builtin_loops.py` — breaking sites beyond `TestAutodevLoop`: `TestRefineToReadyIssueSubLoop.test_proposal_revision_failure_routing` (:3161, `autodev-proposal-unsound.txt` in action), the `autodev-decide-ran` trio (:9378, :9448, :9457), the `skip_inflight` ledger pair (:7949, :7961), `TestAutoRefineAndImplementLoop._run_finalize` harness (:5018) + literal-filename gates (:5634, :5663), the loop-state set pin (:7913), `MR11_MARKER_ALLOWLIST` (:21037, asserted :21249), and the `TestInterpSweepBaseline` bidirectional ratchet (:20974) [Agent 3 finding]
 - `scripts/tests/test_fleet_improve.py` — the module-test pattern for `autodev_summary`: `main(argv)` + `EXIT_*` constants, malformed-JSON → `EXIT_ERROR` (`test_cmd_select_bad_sidecar_exit_2` :328); plus `TestFleetLoopImproveLoop.test_shell_states_call_helper_module_not_inline_logic` (:21440 in test_builtin_loops.py) — the thin-shell structural gate to imitate for the rewritten `finalize_done` [Agent 3 finding]
+- `scripts/tests/fixtures/autodev_summary/_generate.py` — `generate()` records expected output by running the frozen `_legacy_finalize_done.sh` (`run_legacy`, no `record_absent` / `record_ledger_mismatch`), so re-running it overwrites the additive-key updates. Pick one: hand-patch the ~42 `expected_summary.json` / `expected_stdout.txt`, add a module-driven generator mode, or freeze the legacy oracle and put record-driven scenarios in a separate set. `SCENARIOS` has no slot for records, but `write_inputs` handles nested paths (`run-records/prepare-issue/<ID>.json`, `autodev-prepared.txt`). `test_fixture_set_is_populated` (:70) requires set equality with `SCENARIOS` [Agent 3 finding]
+- `scripts/tests/test_autodev_summary.py` — `test_matches_legacy_shell_action` (:75, byte-compares summary and stdout), `test_summary_key_order` (:262; pins `len == 16` and the last four keys, so append the new keys or change the tail pin) and `list(summary) == list(ads.AutodevSummary.KEYS)` (:92) all change; `test_step_cap_runs_finalize_step_capped_and_writes_summary` (~:278) is the real-FSM probe to extend with an unrecorded `autodev-prepared.txt` ID for the `max_steps` AC; no helper yet seeds a `run-records/prepare-issue/<ID>.json` (use `run_record.write_run_record`) [Agent 3+4 finding]
+- `scripts/tests/test_autodev_characterization.py` — `SUMMARY_BASE` (:150-171) is compared whole, so both new keys must be added there or every scenario fails; `inner_error` (~:773-788, `InnerRun(terminal="error", write_record=False)`) and `inner_rate_limited` (~:790-810, queued `MISSING` record that must not count as `record_absent`) are the harness precedents for the `MISSING` route; `reopen_waived` (~:375-380) has `records={ID: "MISSING"}` on an implemented issue and needs the "in a closure ledger" precedence assertion [Agent 3+4 finding]
+- `scripts/tests/test_builtin_loops.py` — `test_skip_inflight_infra_sentinel_routes_to_on_no` (~:6747) is rewritten for the record-only rule; `test_skip_inflight_quality_path_writes_refine_failed` (~:6721) seeds no sentinel and now hits the `MISSING` route, so it must seed a record; `test_on_max_steps_is_classify_terminal` (~:2670) positively pins the sentinel writer in `refine-to-ready-issue` [Agent 3 finding]
+- `scripts/tests/test_prepare_issue.py` (:240, :280-287 `test_missing_routes_to_skip_inflight`) and `test_run_record.py` (:866-867) — pin the `MISSING` route to `skip_inflight` [Agent 3 finding]
+- `scripts/tests/test_fsm_topology.py:291` — `len(topo["states"]) == 87`; the `refine_current` pre-state adds one (88), with a delta comment near :239-290. `refine_current` route-target pins need retargeting [Agent 4 finding]
+- `scripts/tests/test_audit_loop_run_skill.py` — `test_skill_step6a_reads_closed_implemented_cancelled_keys` (:168) is the pin pattern for a new key paragraph in the skill [Agent 4 finding]
+- `scripts/tests/test_ll_issues_check_gate.py` (:382-392) pins `init` truncation and the proof-gate ledger; a new `autodev-prepared.txt` pre-create in `init` may interact [Agent 1 finding]
+- Marker-disposition gate has no direct precedent; template is `TestMr11MarkerSet.test_marker_set_matches_enumeration` (`test_builtin_loops.py` ~:20795, bidirectional set-equality) plus a whole-file `read_text()` check for comment-only references (`test_autodev_loop.py:200-203`). Dead-marker rows that would fail today: `autodev-pre-spike-readiness.txt` (~`autodev.yaml:2076`) and `autodev-design-gate-failed` (~:170), both comment-only [Agent 3 finding]
 
 ### Codebase Research Findings
 
@@ -262,6 +271,10 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `docs/reference/DEFERRAL_CODES.md:30` — names `autodev-scores-absent.txt` / `autodev-gate-infra.txt` by filename [Agent 1 finding]
 - `docs/reference/COMMANDS.md:944` — `ll-loop audit` phantom/honest-failure classification keyed on summary.json presence and claimed-success counters [Agent 2 finding]
 - `skills/audit-loop-run/SKILL.md:271` — documents autodev's summary keys (`not_started`, `notstarted_*`, `refine_failed_infra`, `oversized_atomic`); update for the FEAT-3573 key split [Agent 2 finding]
+- `docs/reference/API.md` — `## little_loops.autodev_summary` enumerates the 16 keys in order ("holds one compact JSON line with the 16 keys of `AutodevSummary.KEYS`", ~:12222-12224) and says `build_summary()` "counts the run-dir ledgers"; add the two new keys, the record reader and `autodev-prepared.txt`. Module table row at :60 [Agent 1+4 finding]
+- `docs/reference/CLI.md:2426` — the `ll-issues run-record write` `--legacy-class` row documents the `refine-terminal-class` sentinel [Agent 1+4 finding]
+- `docs/guides/LOOPS_REFERENCE.md` — long lines at :172, :1023, :1097, :1101 also match the key/sentinel names and were not enumerated above [Agent 1+4 finding]
+- `skills/audit-loop-run/SKILL.md` Step 6a (:271-283) has one additive-key paragraph per ticket; add one for `record_absent` / `record_ledger_mismatch` (edit triggers the `ll-adapt` mirror regeneration) [Agent 4 finding]
 
 ### Wiring Phase (added by `/ll:wire-issue`)
 
@@ -273,6 +286,11 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - Decide `decide-options-deposited-<ID>` / `decide-rate-limited-<ID>` (resolve-decision handshake, not `autodev-`-prefixed) — keep or migrate; the AC grep gate's wording must name what it covers
 - Thin-shell structural gate for the rewritten `finalize_done` (`test_shell_states_call_helper_module_not_inline_logic` pattern, :21440) — lands with ENH-3619; keep it green
 - Update `scripts/little_loops/loops/README.md` rows and `docs/guides/LOOPS_REFERENCE.md` marker references as markers are removed
+- Correct two stale premises above: MR-13 lives in `fsm/validation/evaluator_rules.py` (`_ABANDONED_KEY_EMIT_RE` :146; there is no `fsm/validation.py`) and its shell scan is already vacuous after ENH-3619 (`test_autodev_summary.py:254` covers the `abandoned` key); the interpolation baseline holds two autodev entries (`check_blockers_at_dequeue`, `check_reconcile_needed`), not four, because ENH-3611 removed `check_spike_needed*`
+- Check the `autodev-prepared.txt` pre-state's ID interpolation against the MR-11 shell-safety rule (`fsm/validation/shell_safety.py`) and `TestInterpSweepBaseline`; source the ID from `autodev-inflight` rather than a nullable namespace to avoid a new baseline entry
+- Update `test_fsm_topology.py` (87 → 88), the fixtures/`SUMMARY_BASE` key sets, and `docs/reference/API.md` in the same commit as the two new keys
+- Sweep `refine-terminal-class` comment mentions when the sentinel goes: `refine-to-ready-issue.yaml` (:135, :210, :1262, :1293, :1485, :1523), `autodev.yaml` (:501, :576, :599), `prepare-issue.yaml:75-77`
+- Nested runs never surface these keys: `auto-refine-and-implement.yaml` (:100, :1277) overwrites `summary.json` with its own printf and reads no `autodev-prepared` file; `sprint-refine-and-implement.yaml` (:45-59) is key-agnostic; document the "standalone autodev runs only" caveat as ENH-3613 did
 
 ## Impact
 
@@ -463,6 +481,7 @@ _Added by manual review — 2026-09-26_
 - The confidence scores (75/55) predate these changes. Re-score after ENH-3606 lands.
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-27T02:33:29 - `951684ed-7b41-4bf8-9307-a4474a28eb29.jsonl`
 - `/ll:refine-issue` - 2026-09-27T02:22:06 - `e00c47b1-36f2-4288-9df3-a5c841c33968.jsonl`
 - `/ll:format-issue` - 2026-09-27T02:13:31 - `eab069d8-1487-4826-8057-122a54e92dfd.jsonl`
 - `/ll:confidence-check` - 2026-09-26T20:41:31 - `b6e9bba8-3f37-46ef-bab4-0e3a573a871f.jsonl`

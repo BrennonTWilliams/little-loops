@@ -83,15 +83,54 @@ choice should be made on purpose before the port, not inherited.
   change under A)
 - `docs/guides/LOOPS_REFERENCE.md`: state the rule
 
+### Dependent Files (Callers/Importers)
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/little_loops/loops/autodev.yaml` `select_obligation_pre_implement` (~:943) ends with `next-obligation` passing `--skip … DESIGN`, and `select_obligation_post_refine` (~:803) has the same skip list. Neither can catch a design failure at the first gate, so they do not backstop `check_passed` [Agent 2+4 finding]
+- `scripts/little_loops/loops/refine-to-ready-issue.yaml` — `route_pre_score_obligation` (DESIGN → `check_gate_refine_limit`, BUG-3551) and `route_score_obligation` (`--skip … DESIGN`, ~:825) are the two inner selector calls the trace turns on [Agent 1+4 finding]
+- `scripts/little_loops/loops/recursive-refine.yaml` `check_passed` (~:256, recheck copy ~:502 "Mirrors check_passed logic exactly") has no `check-design` either; out of scope, but decide whether the stated rule should name it [Agent 1 finding]
+- `scripts/little_loops/cli/issues/check_design.py:19` (`cmd_check_design`), dispatched at `cli/issues/__init__.py:1096`; `cli/issues/next_obligation.py` `_tier1_probe()` is the tier-1 `DESIGN` branch [Agent 1+4 finding]
+- `scripts/little_loops/run_record.py` (:28, :205) and `cli/issues/run_record.py:271` — the run-record `ready` predicate is documented as "`check_passed`'s exact one"; under option A it must gain the design condition too, or `test_run_record.py::test_ready_iff_check_passed_would_pass` (:330, :467) flags the drift [Agent 1+3 finding]
+
 ### Tests
 
 - `scripts/tests/test_autodev_characterization.py`: re-pin `h2`-shaped behavior under A
 - `scripts/tests/test_autodev_loop.py` or `test_autodev_scores_freshness.py`: a
   structural pin of the first gate
 
+_Wiring pass added by `/ll:wire-issue`:_
+- `scripts/tests/test_autodev_loop.py` `TestDesignGateStep0Detection` (:522-557) — the closest convention: `test_recheck_scores_calls_check_design` (:527) and `test_recheck_scores_composes_design_fail_with_check_readiness_exit_code` (:535, asserts `"&& ll-issues check-design" in action`). Add `check_passed` as a fourth method or extend the three-state loop at :557. Under B assert `"ll-issues check-readiness" in action` and `"check-design" not in action`; under A assert the AND [Agent 3 finding]
+- `scripts/tests/test_builtin_loops.py` — no test pins `check_passed`'s action for `check-readiness` / `check-design`; `test_check_readiness_call_sites_pass_honor_waiver` (loops `("check_passed", "recheck_scores")`), `test_check_passed_stages_instead_of_passes` (~:7181) and the edge pins `test_check_passed_on_yes_routes_to_implement_current` / `_on_no_routes_to_post_refine_selector` / `_on_error_routes_to_detect_children` (~:8277-8310) stay green under either option if edges are kept [Agent 2+3 finding]
+- `scripts/tests/test_autodev_characterization.py` — no h2-shaped scenario exists (`h2_first_gate_skips_design` and `test_h2_first_gate_ignores_design_and_files_no_marker` are cited only in this issue and the spike report). Add one: `frontmatter=READY`, `DESIGN_GATE_ARMED` (:51-52), `inner_runs=done()`. Only `design_gate_failed` (:274) arms the gate today, and it uses `LOW_READINESS`, so it never reaches `check_passed.on_yes`. Under A the scenario routes to the ladder; the four unarmed scenarios (~:253, :458, :513, :595) may break if the harness `check-design` fake fails unarmed [Agent 3 finding]
+- `scripts/tests/test_run_record.py::test_ready_iff_check_passed_would_pass` (:330, :467) — see Dependent Files; A must update the run-record `ready` predicate together with `check_passed` [Agent 3 finding]
+- `scripts/tests/test_autodev_scores_freshness.py:181-189` — its `ll-issues` shim already answers `check-design` (exit 0) [Agent 3 finding]
+- No test drives an inner `refine-to-ready-issue` `done` against the design gate; under B the "cannot happen or accepted exception" test is new [Agent 3 finding]
+
 ### Documentation
 
 - `docs/guides/LOOPS_REFERENCE.md`
+
+_Wiring pass added by `/ll:wire-issue`:_
+- `docs/guides/LOOPS_REFERENCE.md` — `check_passed → [thresholds met?]` diagram lines (~:1053, :1057, :1189) and long lines :1101, :1107; no existing "first gate" or `check-design` text in the autodev section, so the rule is new prose [Agent 1+4 finding]
+- `docs/reference/CLI.md` — `ll-issues check-design` section (~:2335) lists `recheck_scores`, `regate_after_atomic_remediation`, `recheck_after_size_review` as callers (not `check_passed`); ~:2922 says `check_passed` and `recheck_scores` pass `--honor-waiver`. Update the caller list under A, or state the exception under B [Agent 1 finding]
+
+### Trace Evidence for Step 1 (added by `/ll:wire-issue`)
+
+_Static trace of `refine-to-ready-issue.yaml` and `next_obligation.py`, not a run; confirm before choosing:_
+- The Program Design gate is checked once inside the inner loop, at `route_pre_score_obligation` (tier-1 `DESIGN` → `check_gate_refine_limit`). A DESIGN failure seen there with the refine budget spent goes `record_gate_unmet` → `failed`, never `done`.
+- `route_score_obligation` passes `--skip DESIGN`, so nothing re-checks the gate after scoring. Edits made after the pre-score check (`check_decide_attempts` → `resolve-decision`, `check_spike_needed` / `run_spike`) come back through `route_score_obligation` without re-reading DESIGN.
+- A low score with the refine budget exhausted goes `check_refine_limit.on_no` → `breakdown_issue` → `write_broke_down` → `done`, also without a DESIGN check. `check_missing_artifacts.on_yes` → `check_decision_before_done` → `check_proof_before_done` → `write_done_record` → `done` likewise skips it.
+- Downstream, `select_obligation_pre_implement` passes no `--skip`, so its `next-obligation` call can emit `DESIGN`, but its route table has no `DESIGN` entry and `_` falls to `check_proof_defer_or_implement`. Nothing after `check_passed.on_yes` blocks on a failing design gate.
+- Reading: an inner `done` can leave `check-design` failing, which points to option A per Proposed Solution step 2. Not read in this pass: `check_wire_done`, `wire_issue` and `verify_issue` bodies, and the `PROOF_CLEAR` route block of `check_proof_defer_or_implement`.
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation:_
+
+- Put the `check_passed` rule comment above `action:`, not inside the `action: |` block: a comment inside the block is part of the action string and is visible to `yaml.safe_load` tests and MR-11 marker scanning. Do not write the string `autodev-dequeue-sha` in it (`test_autodev_loop.py::test_no_dequeue_sha_run_dir_artifact` scans the raw file)
+- Under A, an added `ll-issues check-design` line must use `"$ID"` from `autodev-inflight` (as `recheck_scores` does), not `${captured.input.output}`, to avoid a new MR-11 marker (`MR11_MARKER_ALLOWLIST` is an exact-set test) and a new `loop_interpolation_baseline.json` entry (its only `check_passed` entry is `recursive-refine.yaml`)
+- Under A, update the run-record `ready` predicate (`run_record.py:28`, `:205`; `cli/issues/run_record.py:271`) with `check_passed`
+- Add the h2-shaped characterization scenario and the `check_passed` structural pin; add the ENH-3623 `decide()` first-gate table row
 
 ## Program Design
 
@@ -136,5 +175,6 @@ choice should be made on purpose before the port, not inherited.
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-27T02:33:30 - `951684ed-7b41-4bf8-9307-a4474a28eb29.jsonl`
 - `/ll:refine-issue` - 2026-09-27T02:19:49 - `c775572e-2829-4f8b-9fae-12aeff48a4bc.jsonl`
 - `/ll:format-issue` - 2026-09-27T02:13:31 - `eab069d8-1487-4826-8057-122a54e92dfd.jsonl`
