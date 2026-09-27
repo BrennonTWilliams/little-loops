@@ -91,7 +91,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/little_loops/cli/loop/testing.py::cmd_simulate` — sets `run_dir` to `<loops_dir>/runs/<loop>-simulate/` on every invocation, so stall state persists across successive `ll-loop simulate` runs of the same loop (same `-simulate` dir). Decided (2026-09-27, shared with BUG-3627): accept and document in the `cmd_simulate` docstring [Agent 2 finding]
 - `scripts/little_loops/cli/loop/testing.py::cmd_test` — bare `InterpolationContext()` has `state_name == ""` as well as no `run_dir`; the legacy-path fallback must not require a non-empty `state_name`. Its docstring (~:189) says the state file is "normally under `.loops/tmp/`" — update [Agent 2 finding]
 - `scripts/little_loops/fsm/executor.py` sub-loop handling (~:1152, ~:1238) — `child_fsm.context.setdefault("run_dir", ...)` makes parent and child share `run_dir`; confirms `state_name` must be in the file key [Agent 2 finding]
-- `scripts/little_loops/persistence.py::archive_run` — archives `run_dir`; stall files moved under it are now archived with the run (today's `.loops/tmp` files are outside it) [Agent 2 finding]
+- `scripts/little_loops/fsm/persistence.py::archive_run` — archives `run_dir`; stall files moved under it are now archived with the run (today's `.loops/tmp` files are outside it) [Agent 2 finding]
 - `scripts/little_loops/fsm/validation/meta_rules.py` — MR-1 counts `action_stall` as a non-LLM evaluator by type only; `_SHARED_TMP_PATH_RE` scans state actions, not evaluator internals, so the `.loops/tmp` fallback is not linted. No change [Agent 2 finding]
 
 ### Similar Patterns
@@ -205,6 +205,7 @@ _Added by `/ll:verify-issues` — 2026-09-27_
 Verdict: **VALID**. `evaluate_action_stall` (`evaluators.py:837`) keys state by `md5(sorted track)` under `Path.cwd()/.loops/tmp` with no run/loop/state scoping; the `evaluate()` branch (`:2044`) passes only `track`/`max_repeat`/`context`; no built-in loop uses `action_stall`; spike dir `scripts/tests/spike/action_stall_run_scope/` exists. `_stall_state_paths` does not exist yet, consistent with `depends_on: BUG-3627`. `ll-verify-evidence`: clean. No decisions-log rules apply.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-09-27T05:57:33 - `d9cc873e-f17d-4bf9-b8ac-9770c6d93a16.jsonl`
 - `/ll:verify-issues` - 2026-09-27T05:07:19 - `8dd98d25-9e0a-42d3-8b1b-63a8171e5519.jsonl`
 - `/ll:confidence-check` - 2026-09-27T04:52:55 - `27697508-48d3-40e3-be84-6db81402352c.jsonl`
 - `/ll:wire-issue` - 2026-09-27T04:50:04 - `cedcb440-51cb-42b2-9a38-b12a6ea640a7.jsonl`

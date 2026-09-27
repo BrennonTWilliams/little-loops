@@ -2277,6 +2277,93 @@ class TestActionStallEvaluator:
         assert result.details["max_repeat"] == 3
         assert result.details["tracked_keys"] == ["action", "output"]
 
+    def test_sequential_runs_do_not_share_state(self, tmp_path) -> None:
+        """A fresh run_dir starts clean even after the previous run stalled."""
+        run1, run2 = tmp_path / "run1", tmp_path / "run2"
+        ctx = self._ctx(action="same")
+        evaluate_action_stall(max_repeat=1, context=ctx, state_dir=run1, state_name="s")
+        stalled = evaluate_action_stall(max_repeat=1, context=ctx, state_dir=run1, state_name="s")
+        assert stalled.verdict == "no"
+
+        fresh = evaluate_action_stall(max_repeat=1, context=ctx, state_dir=run2, state_name="s")
+        assert fresh.verdict == "yes"
+        assert fresh.details["stall_count"] == 0
+
+    def test_same_track_states_in_one_run_isolated(self, tmp_path) -> None:
+        """Two states sharing a run_dir and the same track keep independent counters."""
+        run = tmp_path / "run"
+        ctx = self._ctx(action="same")
+        evaluate_action_stall(max_repeat=1, context=ctx, state_dir=run, state_name="a")
+        assert (
+            evaluate_action_stall(
+                max_repeat=1, context=ctx, state_dir=run, state_name="a"
+            ).verdict
+            == "no"
+        )
+        result = evaluate_action_stall(max_repeat=1, context=ctx, state_dir=run, state_name="b")
+        assert result.verdict == "yes"
+
+    def test_parent_child_same_state_name_isolated_by_loop_name(self, tmp_path) -> None:
+        """A parent and child that both name the state the same are isolated by loop_name.
+
+        Sub-loops inherit the parent's run_dir, so state_name alone would collide
+        if a parent and child use the same state name; loop_name must be part of
+        the key too.
+        """
+        run = tmp_path / "run"
+        ctx = self._ctx(action="same")
+        evaluate_action_stall(
+            max_repeat=1, context=ctx, state_dir=run, state_name="check_stall", loop_name="parent"
+        )
+        stalled = evaluate_action_stall(
+            max_repeat=1, context=ctx, state_dir=run, state_name="check_stall", loop_name="parent"
+        )
+        assert stalled.verdict == "no"
+
+        child = evaluate_action_stall(
+            max_repeat=1, context=ctx, state_dir=run, state_name="check_stall", loop_name="child"
+        )
+        assert child.verdict == "yes"
+        assert child.details["stall_count"] == 0
+
+    def test_missing_state_dir_falls_back_to_cwd_loops_tmp(self, tmp_path) -> None:
+        """No state_dir (cmd_test's bare InterpolationContext) uses the legacy path."""
+        result = evaluate_action_stall(context=self._ctx(action="x"))
+        assert result.verdict == "yes"
+        assert list((tmp_path / ".loops" / "tmp").glob("ll-action-stall-*.txt"))
+
+    def test_state_dir_with_empty_names_has_no_bare_key_filename(self, tmp_path) -> None:
+        """An empty state_name/loop_name still keeps the ll-action-stall- prefix."""
+        run = tmp_path / "run"
+        evaluate_action_stall(context=self._ctx(action="x"), state_dir=run)
+        names = [p.name for p in run.glob("*.txt")]
+        assert names
+        for name in names:
+            assert name.startswith("ll-action-stall-")
+            assert not name.startswith("ll-action-stall--")
+
+    def test_dispatch_action_stall_uses_run_dir_and_names(self, tmp_path) -> None:
+        """evaluate() derives state_dir/state_name/loop_name from the context for scoping."""
+        run_dir = tmp_path / "run"
+        config = EvaluateConfig(type="action_stall")
+        ctx = InterpolationContext(
+            context={"run_dir": str(run_dir), "action": "cmd"},
+            loop_name="myloop",
+            state_name="check_stall",
+        )
+        result = evaluate(config, "", 0, ctx)
+        assert result.verdict == "yes"
+        assert list(run_dir.glob("ll-action-stall-myloop-check_stall-*.txt"))
+
+    def test_dispatch_action_stall_bare_context_falls_back(self, tmp_path) -> None:
+        """No run_dir in context (cmd_test) falls back to the legacy path without raising."""
+        config = EvaluateConfig(type="action_stall")
+        ctx = InterpolationContext()
+        ctx.context["action"] = "cmd"
+        result = evaluate(config, "", 0, ctx)
+        assert result.verdict == "yes"
+        assert list((tmp_path / ".loops" / "tmp").glob("ll-action-stall-*.txt"))
+
 
 class TestMcpResultEvaluator:
     """Tests for the mcp_result evaluator."""

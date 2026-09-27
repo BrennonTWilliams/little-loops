@@ -921,6 +921,9 @@ def evaluate_action_stall(
     track: list[str] | None = None,
     max_repeat: int = 2,
     context: InterpolationContext | None = None,
+    state_dir: Path | None = None,
+    state_name: str = "",
+    loop_name: str = "",
 ) -> EvaluationResult:
     """Detect when the same action string or output repeats for N consecutive iterations.
 
@@ -929,14 +932,25 @@ def evaluate_action_stall(
     If the hash is identical for max_repeat consecutive iterations, returns 'no'
     (stalled). If different, resets the stall counter and returns 'yes' (progress).
 
-    State is persisted in .loops/tmp using a key derived from the tracked keys,
-    so different states/loops maintain independent stall counters.
+    State lives in ``state_dir`` (the per-run directory) keyed by ``loop_name``,
+    ``state_name`` and the tracked keys, so a fresh CLI run starts at count 0 and
+    two states with the same ``track`` (including a parent/child sharing ``run_dir``
+    with the same state name) maintain independent counters. Without ``state_dir``
+    the legacy shared ``.loops/tmp`` location is used and isolation between runs is
+    not guaranteed. Accepted limitations: a child loop re-entered within one parent
+    run, and ``ll-loop simulate`` (fixed run dir), share state with their earlier
+    invocation.
 
     Args:
         track: Context keys to track. Defaults to ["action"] when None.
         max_repeat: Number of consecutive identical-hash iterations before stall verdict.
             Defaults to 2.
         context: Runtime interpolation context for resolving tracked keys.
+        state_dir: Per-run directory for snapshot/count files; None uses the
+            legacy ``.loops/tmp`` location.
+        state_name: Current state identifier, part of the state file key.
+        loop_name: Current loop identifier, part of the state file key (separates
+            parent/child states that share a state name).
 
     Returns:
         EvaluationResult with verdict:
@@ -975,13 +989,9 @@ def evaluate_action_stall(
     combined = "|".join(parts)
     current_hash = hashlib.md5(combined.encode()).hexdigest()
 
-    # Derive a stable cache key from the tracked keys
-    track_str = "|".join(sorted(effective_track))
-    cache_key = hashlib.md5(track_str.encode()).hexdigest()[:12]
-    loops_tmp = Path.cwd() / ".loops" / "tmp"
-    loops_tmp.mkdir(parents=True, exist_ok=True)
-    state_file = loops_tmp / f"ll-action-stall-{cache_key}.txt"
-    count_file = loops_tmp / f"ll-action-stall-{cache_key}.count"
+    state_file, count_file = _stall_state_paths(
+        "action", state_dir, loop_name, state_name, effective_track
+    )
 
     # Read previous hash and stall count
     previous_hash: str | None = None
@@ -2128,10 +2138,14 @@ def evaluate(
         )
 
     elif eval_type == "action_stall":
+        run_dir = context.context.get("run_dir") if context else None
         return evaluate_action_stall(
             track=config.track,
             max_repeat=config.max_repeat,
             context=context,
+            state_dir=Path(str(run_dir)) if run_dir else None,
+            state_name=context.state_name if context else "",
+            loop_name=context.loop_name if context else "",
         )
 
     elif eval_type == "llm_structured":
