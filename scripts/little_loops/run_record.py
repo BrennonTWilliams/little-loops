@@ -26,8 +26,9 @@ from typing import Any, Literal
 from little_loops.file_utils import atomic_write_json
 
 #: Per-issue preparation verdict. ``ready`` means autodev's ``check_passed``
-#: predicate (``ll-issues check-readiness --honor-waiver``) would pass for the
-#: issue's current state; everything else names why preparation stopped.
+#: predicate (``ll-issues check-readiness --honor-waiver`` and ``check-design``)
+#: would pass for the issue's current state; everything else names why
+#: preparation stopped.
 PreparationOutcome = Literal[
     "ready", "decomposed", "cancelled", "blocked", "deferred", "retryable_error"
 ]
@@ -202,7 +203,8 @@ def outcome_from_legacy_class(
     4. ``decision_unresolved``/``proposal_unsound``/``quality`` → ``blocked``.
     5. ``spike_inconclusive``/``gate_unmet`` → ``deferred``.
     6. no legacy class (the done paths) → ``ready`` only when the autodev
-       ``check_passed`` predicate passes with fresh scores, else ``blocked``.
+       ``check_passed`` predicate (readiness and Program Design gate) passes with
+       fresh scores, else ``blocked``.
     """
     if status is not None and status.strip().lower() == "cancelled":
         return "cancelled"

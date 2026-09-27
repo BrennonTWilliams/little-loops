@@ -2332,7 +2332,7 @@ ll-issues check-design BUG-2967   # Exit 0 — gate passes or is inert
 ll-issues check-design BUG-9999   # Exit 2 — issue not found (BUG-3294)
 ```
 
-**FSM loop use**: `autodev.yaml`'s `recheck_scores`, `regate_after_atomic_remediation`, and `recheck_after_size_review` states each call `ll-issues check-design "$ID"` in place of the old inline JSON-parsing block, chaining its exit code into the surrounding readiness/outcome gate exactly like the `check-readiness` idiom.
+**FSM loop use**: `autodev.yaml`'s `check_passed`, `recheck_scores`, `regate_after_atomic_remediation`, and `recheck_after_size_review` states each call `ll-issues check-design "$ID"` in place of the old inline JSON-parsing block, chaining its exit code into the surrounding readiness/outcome gate exactly like the `check-readiness` idiom.
 
 ---
 

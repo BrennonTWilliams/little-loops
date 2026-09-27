@@ -269,9 +269,10 @@ def cmd_run_record_write(config: BRConfig, args: argparse.Namespace) -> int:
     """Write the typed run record; prints ``[RUN_RECORD_WRITTEN] <ID> <outcome>``.
 
     The ``ready`` predicate is autodev ``check_passed``'s exact one —
-    ``readiness_status`` with the waiver honored, and scores-absent
-    (check-readiness exit 3) counting as not-met — resolved in-process rather
-    than via a subprocess.
+    ``readiness_status`` with the waiver honored, scores-absent
+    (check-readiness exit 3) counting as not-met, and the Program Design gate
+    (``check-design``) passing (ENH-3625) — resolved in-process rather than
+    via a subprocess.
 
     Returns:
         0 record written, 2 when the issue cannot be resolved.
@@ -279,6 +280,7 @@ def cmd_run_record_write(config: BRConfig, args: argparse.Namespace) -> int:
     from little_loops.cli.issues.check_readiness import readiness_status
     from little_loops.cli.issues.show import _resolve_issue_id
     from little_loops.frontmatter import parse_frontmatter
+    from little_loops.issue_parser import check_format_gaps, design_gate_failed
     from little_loops.run_record import outcome_from_legacy_class
 
     path = _resolve_issue_id(config, args.issue_id)
@@ -302,6 +304,7 @@ def cmd_run_record_write(config: BRConfig, args: argparse.Namespace) -> int:
         and not rs.outcome_absent
         and rs.meets_readiness
         and rs.meets_outcome_or_waived
+        and not design_gate_failed(check_format_gaps(path))
     )
 
     child_ids = (

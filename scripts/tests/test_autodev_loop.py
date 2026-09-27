@@ -587,6 +587,14 @@ class TestDesignGateStep0Detection:
         assert "ll-issues check-readiness" in action
         assert "&& ll-issues check-design" in action
 
+    def test_check_passed_composes_check_design_after_check_readiness(self) -> None:
+        """ENH-3625: the first gate hard-ANDs check-design like the later gates."""
+        action = _load_autodev_yaml()["states"]["check_passed"]["action"]
+        assert "ll-issues check-readiness" in action
+        assert "&& ll-issues check-design" in action
+        assert action.index("check-readiness") < action.index("check-design")
+        assert action.index("check-design") < action.index("autodev-staged.txt")
+
     def test_regate_after_atomic_remediation_calls_check_design(self) -> None:
         action = _load_autodev_yaml()["states"]["regate_after_atomic_remediation"]["action"]
         assert "ll-issues check-design" in action

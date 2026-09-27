@@ -310,6 +310,48 @@ SCENARIOS: list[tuple[Scenario, Expected]] = [
             repair_cycle="4",
         ),
     ),
+    # -- ENH-3625: first gate (check_passed) hard-ANDs check-design --------------
+    (
+        Scenario(
+            name="first_gate_design_failure",
+            frontmatter=READY,
+            project_files=DESIGN_GATE_ARMED,
+            inner_runs={ID: (done(),)},
+            slash={
+                **LADDER_TO_RECONCILE,
+                "confidence-check": (confidence(90, 80),),
+                "refine-issue": (NOOP,),
+            },
+        ),
+        Expected(
+            path=(
+                *PREFIX,
+                *REFINE_OK,
+                *TO_SIZE_REVIEW,
+                *POST_SIZE_REVIEW,
+                *RECONCILE_TO_RECHECK,
+                "dispatch_design_remedy",
+                "refine_for_design",
+                "count_repair_cycle_refine_for_design",
+                *RESCORE,
+                "recheck_after_size_review",
+                "check_pre_deferral_remedy",
+                *END,
+            ),
+            skipped=(f"{ID}  design_gate_failed",),
+            records={ID: "DEFERRED:gate_unmet"},
+            issues={ID: ("deferred", "design_gate_failed")},
+            summary=summary(skipped=1),
+            slash=(
+                f"issue-size-review {ID}",
+                f"reconcile-issue {ID}",
+                f"confidence-check {ID}",
+                f"refine-issue {ID}",
+                f"confidence-check {ID}",
+            ),
+            repair_cycle="4",
+        ),
+    ),
     # -- oversized_atomic, go/no-go escalation, waiver declined -----------------
     (
         Scenario(

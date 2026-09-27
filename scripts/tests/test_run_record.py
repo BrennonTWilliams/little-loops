@@ -467,10 +467,17 @@ class TestCmdRunRecordWrite:
     def test_ready_iff_check_passed_would_pass(
         self, project: Path, tmp_path: Path, frontmatter: str, legacy: str | None
     ) -> None:
-        """AC2: outcome == ready iff `ll-issues check-readiness --honor-waiver` exits 0."""
+        """AC2: outcome == ready iff `check-readiness --honor-waiver` and `check-design` exit 0."""
         _write_issue(project, ID, frontmatter=frontmatter)
         check = subprocess.run(
             [*_cli(), "check-readiness", ID, "--honor-waiver"],
+            cwd=str(project),
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        design = subprocess.run(
+            [*_cli(), "check-design", ID],
             cwd=str(project),
             capture_output=True,
             text=True,
@@ -485,9 +492,32 @@ class TestCmdRunRecordWrite:
         if legacy is not None:
             assert outcome != "ready"  # classed exits are never ready
         else:
-            assert (outcome == "ready") == (check.returncode == 0), (
-                f"outcome={outcome} but check-readiness exit={check.returncode}"
+            passes = check.returncode == 0 and design.returncode == 0
+            assert (outcome == "ready") == passes, (
+                f"outcome={outcome} but check-readiness exit={check.returncode}, "
+                f"check-design exit={design.returncode}"
             )
+
+    def test_design_gate_failure_makes_done_record_blocked(
+        self, project: Path, tmp_path: Path
+    ) -> None:
+        """ENH-3625: READY scores but a failing Program Design gate → BLOCKED."""
+        (project / ".ll").mkdir(exist_ok=True)
+        (project / ".ll" / "program-design-cutover.json").write_text('{"date": "2000-01-01"}')
+        _write_issue(project, ID, frontmatter="confidence_score: 90\noutcome_confidence: 70\n")
+        check = subprocess.run(
+            [*_cli(), "check-design", ID],
+            cwd=str(project),
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        assert check.returncode == 1
+        result = _write_run(
+            project, ID, "--run-dir", str(tmp_path), "--writer", "refine-to-ready-issue"
+        )
+        assert result.returncode == 0, result.stderr
+        assert _read_json(tmp_path, "refine-to-ready-issue", ID)["outcome"] == "blocked"
 
 
 # ---------------------------------------------------------------------------

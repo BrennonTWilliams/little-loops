@@ -724,20 +724,26 @@ states:
     on_error: dequeue_next
 
   check_passed:
-    # Verify confidence and outcome scores meet project thresholds. Even on
-    # sub-loop success the issue may not have met thresholds —
-    # refine-to-ready-issue can exit via breakdown_issue → done rather than a
-    # genuine confidence pass. BUG-2908: records staged (not yet
-    # closure-verified) issues in autodev-staged.txt — finalize_done promotes
-    # only those it can verify closed to autodev-passed.txt.
-    # and routes to implement_current to interleave implementation.
+    # ENH-3625 first-gate rule: hard-AND the Program Design verdict
+    # (`ll-issues check-design`) with the readiness/outcome gate, exactly as the
+    # later gates (recheck_scores, regate_after_atomic_remediation,
+    # recheck_after_size_review) do. An inner refine-to-ready-issue `done` does
+    # not guarantee a passing design gate (its post-score selector skips DESIGN),
+    # so a design failure goes on_no to the second-pass ladder (size-review, then
+    # the design remedy / design_gate_failed deferral), never to implementation.
+    # check-design exits 0 (pass or not armed), 1 (fails) or 2 (unresolved ID);
+    # never 3, so it cannot collide with the harness_exit abstain code.
+    # BUG-2908: records staged (not yet closure-verified) issues in
+    # autodev-staged.txt — finalize_done promotes only those it can verify
+    # closed to autodev-passed.txt.
     action: |
-      # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
-      ll-issues check-readiness ${captured.input.output} \
+      ID="${captured.input.output}"  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+      ll-issues check-readiness "$ID" \
         --readiness ${context.readiness_threshold:shell} \
         --outcome ${context.outcome_threshold:shell} \
         --honor-waiver \
-        && echo "${captured.input.output}" >> ${context.run_dir}/autodev-staged.txt  # ll-lint: mr11-ok(captured.input.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
+        && ll-issues check-design "$ID" \
+        && echo "$ID" >> ${context.run_dir}/autodev-staged.txt
     # BUG-3588: exit 3 = scores absent. Reached after the refine-to-ready
     # sub-loop, which can break the issue down before scoring — absence is
     # legitimate here, so keep the pre-existing exit-1 path (→ detect_children).

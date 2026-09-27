@@ -3,10 +3,11 @@ id: ENH-3625
 type: ENH
 title: State the first-gate Program Design rule
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-27'
 captured_at: '2026-09-27T01:48:55Z'
+completed_at: '2026-09-27T04:10:16Z'
 parent: EPIC-3565
 relates_to:
 - ENH-3621
@@ -149,6 +150,10 @@ in `test_run_record.py`, not the characterization suite: the existing
 (`DEFERRED:gate_unmet`), not the child's `done` record, so the `READY`→`BLOCKED` change
 may not be visible there. List it as an accepted change.
 
+### Behavior Parity
+
+`scripts/little_loops/loops/autodev.yaml`: the `check_passed` change is additive (one `&& ll-issues check-design` clause). Preserved: readiness/`--honor-waiver` semantics, `on_yes`/`on_no`/`on_error` edges, staging append, MR-11 marker triple. Changed (accepted): a design-failing issue with READY scores now goes `on_no` → `select_obligation_post_refine` → size-review → design remedy instead of implementation; a child `done` record with a failing design gate becomes `BLOCKED` (not `READY`) — routing unchanged since `route_refine_success` sends both to `check_passed`.
+
 ### Dependent Files (Callers/Importers)
 
 _Wiring pass added by `/ll:wire-issue`:_
@@ -165,7 +170,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `scripts/tests/test_run_record.py`: update the parity test and pin the `BLOCKED` token
 
 _Wiring pass added by `/ll:wire-issue`:_
-- `scripts/tests/test_autodev_loop.py` `TestDesignGateStep0Detection` (:522-557) — the closest convention: `test_recheck_scores_calls_check_design` (:527) and `test_recheck_scores_composes_design_fail_with_check_readiness_exit_code` (:535, asserts `"&& ll-issues check-design" in action`). Add `check_passed` as a fourth method or extend the three-state loop at :557, asserting `"&& ll-issues check-design" in action` [Agent 3 finding]
+- `scripts/tests/test_autodev_loop.py` `TestDesignGateStep0Detection` (:569; locate by name — earlier anchors drifted) — the closest convention: `test_recheck_scores_calls_check_design` (:527) and `test_recheck_scores_composes_design_fail_with_check_readiness_exit_code` (:535, asserts `"&& ll-issues check-design" in action`). Add `check_passed` as a fourth method or extend the three-state loop at :557, asserting `"&& ll-issues check-design" in action` [Agent 3 finding]
 - `scripts/tests/test_builtin_loops.py` — no test pins `check_passed`'s action for `check-readiness` / `check-design`; `test_check_readiness_call_sites_pass_honor_waiver` (loops `("check_passed", "recheck_scores")`), `test_check_passed_stages_instead_of_passes` (~:7181) and the edge pins `test_check_passed_on_yes_routes_to_implement_current` / `_on_no_routes_to_post_refine_selector` / `_on_error_routes_to_detect_children` (~:8277-8310) stay green under either option if edges are kept [Agent 2+3 finding]
 - `scripts/tests/test_autodev_characterization.py` — no h2-shaped scenario exists (`h2_first_gate_skips_design` and `test_h2_first_gate_ignores_design_and_files_no_marker` are cited only in this issue and the spike report). Add one: `frontmatter=READY`, `DESIGN_GATE_ARMED` (:51-52), `inner_runs=done()`. Only `design_gate_failed` (:274) arms the gate today, and it uses `LOW_READINESS`, so it never reaches `check_passed.on_yes`. The new scenario routes `check_passed` → `select_obligation_post_refine` → `check_missing_artifacts` → size-review → `recheck_after_size_review` → design remedy. **Correction (2026-09-27 review):** the unarmed scenarios (~:253, :458, :513, :595) cannot change path. The harness shims the real `ll-issues` (`autodev_harness.py:724`), not a fake, and `check-design` passes automatically (exit 0) when `.ll/program-design-cutover.json` is absent [Agent 3 finding]
 - `scripts/tests/test_run_record.py::test_ready_iff_check_passed_would_pass` (:467) — make the reference command match the new gate: run `check-readiness --honor-waiver` and then `check-design`, and treat `ready` as both exiting 0. Add a case with the design gate on: READY scores, `.ll/program-design-cutover.json` present, no `## Program Design` section → outcome `blocked` (token `BLOCKED`). This is the accepted token change [Agent 3 finding, corrected]
@@ -238,17 +243,17 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 ## Acceptance Criteria
 
-- [ ] `check_passed` hard-ANDs `ll-issues check-design "$ID"` after `check-readiness`, mirroring `recheck_scores`' action shape and MR-11 marker (rule A)
+- [x] `check_passed` hard-ANDs `ll-issues check-design "$ID"` after `check-readiness`, mirroring `recheck_scores`' action shape and MR-11 marker (rule A)
 - [ ] A real-FSM characterization scenario (READY scores, `DESIGN_GATE_ARMED`, inner `done()`) shows a first-gate design failure reaching the design remedy / `design_gate_failed` through `select_obligation_post_refine` → `check_missing_artifacts` → size-review (the traced route; no retarget)
-- [ ] `check_passed` and the run-record `ready` predicate agree: `test_ready_iff_check_passed_would_pass` uses `check-readiness` and then `check-design` as its reference and has a case with the design gate on
+- [x] `check_passed` and the run-record `ready` predicate agree: `test_ready_iff_check_passed_would_pass` uses `check-readiness` and then `check-design` as its reference and has a case with the design gate on
 - [ ] A `refine-to-ready-issue` `done` record with a failing design gate is `BLOCKED`, not `READY`, pinned in `test_run_record.py` as an accepted change
-- [ ] `check_passed` carries a rewritten comment stating the rule, with the stale `breakdown_issue → done` and `implement_current` text removed
+- [x] `check_passed` carries a rewritten comment stating the rule, with the stale `breakdown_issue → done` and `implement_current` text removed
 - [ ] A structural test pins the first-gate shape (`"&& ll-issues check-design" in action`)
-- [ ] `docs/guides/LOOPS_REFERENCE.md` states the rule and names `recursive-refine.yaml` as a known gap; `docs/reference/CLI.md` lists `check_passed` as a `check-design` caller
+- [x] `docs/guides/LOOPS_REFERENCE.md` states the rule and names `recursive-refine.yaml` as a known gap; `docs/reference/CLI.md` lists `check_passed` as a `check-design` caller
 
 ## Status
 
-**Open** | Created: 2026-09-27 | Priority: P3
+**Done** | Created: 2026-09-27 | Priority: P3
 
 
 ## Confidence Check Notes
@@ -267,8 +272,14 @@ _Added by `/ll:confidence-check` on 2026-09-26_
 - Breadth across ~8 sites (YAML, run-record CLI + module, 3 test files, 2 docs)
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-27T04:10:16 - `4b1c5ade-bd97-4871-b4cf-1f3dcd7cc5d1.jsonl`
+- `/ll:ready-issue` - 2026-09-27T04:00:52 - `be769a1d-f85c-4a8c-bc10-519b325dfa77.jsonl`
 - `/ll:confidence-check` - 2026-09-27T03:55:48 - `3ba31817-1733-43ed-8c15-8642253df06f.jsonl`
 - `/ll:confidence-check` - 2026-09-27T03:42:25 - `7853641e-1dad-4830-bad1-b40be31584c3.jsonl`
 - `/ll:wire-issue` - 2026-09-27T02:33:30 - `951684ed-7b41-4bf8-9307-a4474a28eb29.jsonl`
 - `/ll:refine-issue` - 2026-09-27T02:19:49 - `c775572e-2829-4f8b-9fae-12aeff48a4bc.jsonl`
 - `/ll:format-issue` - 2026-09-27T02:13:31 - `eab069d8-1487-4826-8057-122a54e92dfd.jsonl`
+
+## Resolution
+
+Implemented rule A: `check_passed` hard-ANDs `ll-issues check-design`; run-record `ready` predicate gained the design condition (design-failing child `done` → `BLOCKED`); comment rewritten; LOOPS_REFERENCE/CLI docs updated; structural pin, run-record parity/BLOCKED tests, and `first_gate_design_failure` characterization scenario added.
