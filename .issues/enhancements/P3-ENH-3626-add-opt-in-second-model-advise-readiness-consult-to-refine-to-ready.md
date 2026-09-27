@@ -13,13 +13,9 @@ relates_to:
 blocks:
 - ENH-3590
 decision_needed: false
-confidence_score: 85
-outcome_confidence: 55
-score_complexity: 10
-score_test_coverage: 25
-score_ambiguity: 10
-score_change_surface: 10
 missing_artifacts: true
+reconcile_attempted: true
+size: Very Large
 ---
 
 # ENH-3626: Add opt-in second-model advise readiness consult to refine-to-ready
@@ -422,7 +418,7 @@ _Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
 ### Test Conventions (merged from the former `## Tests` section)
 
 - Conventions in force: helper verdict mapping is a pure function separate from `cmd_*` and returns a safe token for unrecognized input (`check_verify_verdict.classify_verify_verdict`, `run_record.record_token`); tests parametrize over cases (`test_run_record.py::TestOutcomeMapping.CASES`) and add a subprocess exit-code test (`test_ll_issues_next_obligation.py::TestCli`). Advisor CLI tests patch `sys.argv` and call `main_advise()` (`test_cli_advise.py::TestMainAdvise`).
-- Loop tests pin chain shape with static edge assertions on the loaded YAML plus stub-binary execution (`test_builtin_loops.py`: stub `ll-issues`/`ll-advise` on `PATH`, textual `${context.run_dir}` substitution, `"${" not in script`, `$${` restored to `${`). Default-off flags are pinned as `parameters.<k>.default == ""` / `context` value `== ""`. Sub-loop states must not carry `on_no` or `timeout` (`TestSubLoopStateTimeoutAudit`).
+- Loop tests pin chain shape with static edge assertions on the loaded YAML plus stub-binary execution (`test_builtin_loops.py`: stub `ll-issues` on `PATH`; the helper is in-process, so `consult_for_trigger` is monkeypatched in helper tests rather than stubbing `ll-advise`, textual `${context.run_dir}` substitution, `"${" not in script`, `$${` restored to `${`). Default-off flags are pinned as `parameters.<k>.default == ""` / `context` value `== ""`. Sub-loop states must not carry `on_no` or `timeout` (`TestSubLoopStateTimeoutAudit`).
 - Any new `ll-issues` subcommand needs a `test_wiring_reference_docs.py` entry (`docs/reference/CLI.md` heading and `docs/reference/API.md` row) or the docs gate fails.
 
 ### Wiring Phase (added by `/ll:wire-issue`)
@@ -514,6 +510,8 @@ _Added by `/ll:confidence-check` on 2026-09-27_
 - Broad enumeration across 8+ files plus 6+ dependent loop callers and existing tests that pin the `check_proof_before_done` edges and `max_steps`.
 
 ## Session Log
+- `/ll:reconcile-issue` - 2026-09-27T05:11:49 - `35e57f90-baaf-4d54-9265-0ee824a95599.jsonl`
+- `/ll:confidence-check` - 2026-09-27T05:10:27 - `9af90ba4-93eb-40fc-b795-28057736aefe.jsonl`
 - `/ll:confidence-check` - 2026-09-27T05:00:16 - `4c1392cc-1c62-4566-82e2-3e5bd0bae446.jsonl`
 - `/ll:wire-issue` - 2026-09-27T04:18:11 - `b81845df-148e-4cb8-8d11-cc360743e07f.jsonl`
 - `/ll:decide-issue` - 2026-09-27T04:03:27 - `4b1c5ade-bd97-4871-b4cf-1f3dcd7cc5d1.jsonl`
