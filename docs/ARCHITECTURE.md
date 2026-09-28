@@ -581,6 +581,43 @@ sequenceDiagram
 
 ---
 
+## Loop Parent/Child Preparation Contract (autodev / prepare-issue)
+
+Distinct from the EPIC-branch parent/child concept above: `autodev` is a
+parent loop that delegates each dequeued issue to the `prepare-issue`
+dispatch loop (child), which in turn drives `refine-to-ready-issue`
+(grandchild) through the preparation ladder (ENH-3601/ENH-3623).
+
+Two kinds of state cross that boundary, and only one is authoritative for
+counting:
+
+- **Run records** (`run_dir/run-records/<writer>/<ID>.json`, ENH-3597) are the
+  typed, per-issue *outcome* — `ready` / `blocked` / `deferred` / `cancelled` /
+  `decomposed` / `retryable_error`, plus a legacy classification and score
+  snapshot. `prepare-issue`'s `prep apply` is the sole terminal writer; autodev
+  reads the record's routing token (`ll-issues run-record read --format
+  token`) to classify a stop without re-deriving it.
+- **Ledgers** (`autodev-skipped.txt` and friends) are the *count source* for
+  every `summary.json` key. Records add information on top — the
+  `record_absent` invariant (an ID that left preparation with no record and no
+  ledger row) and `record_ledger_mismatch` (a record whose token disagrees
+  with its ledger evidence) — but never replace or reclassify a ledger count
+  (ENH-3600).
+
+The run's dequeued-ID set is `run_dir/prep-pass-<ID>` (one file per ID,
+rewritten — not appended — on re-entry, so a re-dequeued ID still counts
+once): `dequeue_next` writes it for every ID popped from the queue, including
+one skipped before `prepare-issue` ever runs. `little_loops.autodev_summary`
+enumerates these files by name to know which IDs this run is accountable for.
+
+See [docs/reference/API.md § little_loops.autodev_summary](reference/API.md#little_loopsautodev_summary)
+(records the `record_absent`/`record_ledger_mismatch` accounting) and the
+`little_loops.run_record` row in [docs/reference/API.md's Module
+Overview](reference/API.md#module-overview) (the `RunRecord` schema and token
+vocabulary).
+
+---
+
 ## Extension Architecture & Event Flow
 
 little-loops includes an extension architecture built on a structured event bus. Extensions implement the `LLExtension` protocol and receive `LLEvent` notifications from core subsystems. Topic-based filtering lets extensions subscribe only to the event namespaces they care about.

@@ -169,6 +169,8 @@ SUMMARY_BASE: dict[str, Any] = {
     "closed_cancelled": 0,
     "quality_failed": 0,
     "quality_gate_infra": 0,
+    "record_absent": 0,
+    "record_ledger_mismatch": 0,
 }
 
 

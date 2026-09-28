@@ -6701,17 +6701,29 @@ class TestAutodevLoop:
             f"skip_inflight_infra.on_error should be 'dequeue_next', got {state.get('on_error')!r}"
         )
 
+    @staticmethod
+    def _write_prepare_issue_record(
+        run_dir: Path, issue_id: str, outcome: str, **kw: object
+    ) -> None:
+        from little_loops.run_record import RunRecord, write_run_record
+
+        write_run_record(
+            run_dir, RunRecord(writer="prepare-issue", issue_id=issue_id, outcome=outcome, **kw)
+        )
+
     def test_skip_inflight_quality_path_writes_refine_failed(
         self, data: dict, tmp_path: Path
     ) -> None:
-        """ENH-2727: with no termination-class sentinel (or class=quality), skip_inflight
-        writes refine_failed, clears autodev-inflight, and exits 0 (→ on_yes: dequeue_next)."""
+        """ENH-2727/ENH-3600: with a present, non-infra prepare-issue record,
+        skip_inflight writes refine_failed, clears autodev-inflight, and exits 0
+        (→ on_yes: dequeue_next). Classification is record-only now — no sentinel."""
         state = data["states"].get("skip_inflight", {})
         action = state.get("action", "")
         run_dir = tmp_path / "run"
         run_dir.mkdir(parents=True)
         (run_dir / "autodev-inflight").write_text("ENH-0007")
         (run_dir / "autodev-skipped.txt").write_text("")
+        self._write_prepare_issue_record(run_dir, "ENH-0007", "blocked", legacy_class="quality")
         script = action.replace("${captured.input.output}", "ENH-0007")
         script = script.replace("${context.run_dir}", str(run_dir))
         result = subprocess.run(
@@ -6727,29 +6739,51 @@ class TestAutodevLoop:
         )
         assert not (run_dir / "autodev-inflight").exists()
 
-    def test_skip_inflight_infra_sentinel_routes_to_on_no(self, data: dict, tmp_path: Path) -> None:
-        """ENH-2727: when refine-terminal-class == 'infra', skip_inflight exits 1
-        (→ on_no: skip_inflight_infra) WITHOUT writing refine_failed itself — the
-        infra ledger write is deferred to skip_inflight_infra."""
+    def test_skip_inflight_missing_record_routes_to_on_no(self, data: dict, tmp_path: Path) -> None:
+        """ENH-3600: classification is record-only now (the legacy termination-class
+        sentinel has no reader here). A MISSING run-record token — no record at all —
+        exits 1 (→ on_no: skip_inflight_infra) WITHOUT writing refine_failed itself;
+        the infra ledger write is deferred to skip_inflight_infra."""
         state = data["states"].get("skip_inflight", {})
         action = state.get("action", "")
         run_dir = tmp_path / "run"
         run_dir.mkdir(parents=True)
         (run_dir / "autodev-inflight").write_text("ENH-0008")
         (run_dir / "autodev-skipped.txt").write_text("")
-        (run_dir / "refine-terminal-class").write_text("infra")
         script = action.replace("${captured.input.output}", "ENH-0008")
         script = script.replace("${context.run_dir}", str(run_dir))
         result = subprocess.run(
             ["bash", "-c", script], cwd=tmp_path, capture_output=True, text=True
         )
         assert result.returncode == 1, (
-            f"infra path must exit 1 (on_no → skip_inflight_infra), got {result.returncode}"
+            f"MISSING-record path must exit 1 (on_no → skip_inflight_infra), got {result.returncode}"
         )
         skipped = (run_dir / "autodev-skipped.txt").read_text()
         assert skipped.strip() == "", (
             f"infra path must defer the ledger write to skip_inflight_infra, got {skipped!r}"
         )
+
+    def test_skip_inflight_failed_record_read_routes_to_on_no(
+        self, data: dict, tmp_path: Path
+    ) -> None:
+        """ENH-3600: a record file that fails to read (malformed JSON) reads as
+        MISSING too (read_run_record's tolerant-read contract) and routes the same way."""
+        state = data["states"].get("skip_inflight", {})
+        action = state.get("action", "")
+        run_dir = tmp_path / "run"
+        run_dir.mkdir(parents=True)
+        (run_dir / "autodev-inflight").write_text("ENH-0008")
+        (run_dir / "autodev-skipped.txt").write_text("")
+        record_dir = run_dir / "run-records" / "prepare-issue"
+        record_dir.mkdir(parents=True)
+        (record_dir / "ENH-0008.json").write_text("not valid json{")
+        script = action.replace("${captured.input.output}", "ENH-0008")
+        script = script.replace("${context.run_dir}", str(run_dir))
+        result = subprocess.run(
+            ["bash", "-c", script], cwd=tmp_path, capture_output=True, text=True
+        )
+        assert result.returncode == 1
+        assert (run_dir / "autodev-skipped.txt").read_text().strip() == ""
 
     def test_skip_inflight_infra_shell_action_writes_infra_reason(
         self, data: dict, tmp_path: Path
@@ -7857,6 +7891,7 @@ class TestAutodevLoop:
     ) -> None:
         """BUG-3390: a ledgered ENH-00090 must not suppress ENH-0009's refine_failed."""
         (tmp_path / "autodev-decision-unresolved.txt").write_text("ENH-00090\n")
+        self._write_prepare_issue_record(tmp_path, "ENH-0009", "blocked", legacy_class="quality")
         assert self._run_skip_inflight(data, tmp_path, "ENH-0009") == 0
         assert "ENH-0009  refine_failed" in (tmp_path / "autodev-skipped.txt").read_text()
 
@@ -8296,6 +8331,7 @@ class TestAutodevLoop:
         run_dir.mkdir(parents=True)
         (run_dir / "autodev-inflight").write_text("ENH-0001")
         (run_dir / "autodev-skipped.txt").write_text("")
+        self._write_prepare_issue_record(run_dir, "ENH-0001", "blocked", legacy_class="quality")
         # Substitute template variables with concrete values before running
         script = action.replace("${captured.input.output}", "ENH-0001")
         script = script.replace("${context.run_dir}", str(run_dir))

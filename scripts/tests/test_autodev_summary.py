@@ -262,13 +262,15 @@ def test_summary_emits_abandoned_key(tmp_path: Path) -> None:
 def test_summary_key_order() -> None:
     keys = list(ads.AutodevSummary(verdict="no-op").to_dict())
     assert keys == list(ads.AutodevSummary.KEYS)
-    assert len(keys) == 16
+    assert len(keys) == 18
     assert keys[:2] == ["verdict", "closed"]
-    assert keys[-4:] == [
+    assert keys[-6:] == [
         "closed_implemented",
         "closed_cancelled",
         "quality_failed",
         "quality_gate_infra",
+        "record_absent",
+        "record_ledger_mismatch",
     ]
 
 
@@ -325,6 +327,192 @@ def test_step_cap_runs_finalize_step_capped_and_writes_summary(
     assert summary["verdict"] == "max_steps"
     assert (summary["closed"], summary["pending"]) == (1, 2)
     assert (run_dir / ads.PASSED).read_text() == "FEAT-1\n"
+
+
+# --------------------------------------------------- record-driven accounting
+# (ENH-3600: record_absent / record_ledger_mismatch)
+
+
+def _write_record(run_dir: Path, issue_id: str, outcome: str, **kwargs: object) -> None:
+    from little_loops.run_record import RunRecord, write_run_record
+
+    write_run_record(
+        run_dir, RunRecord(writer="prepare-issue", issue_id=issue_id, outcome=outcome, **kwargs)
+    )
+
+
+def _prep_pass(run_dir: Path, issue_id: str) -> None:
+    (run_dir / f"{ads.PREP_PASS_PREFIX}{issue_id}").write_text("1")
+
+
+def test_record_absent_when_no_record_and_no_ledger_row(tmp_path: Path) -> None:
+    _prep_pass(tmp_path, "ENH-1")
+    summary = ads.build_summary(tmp_path, cancelled_ids=[])
+    assert summary.record_absent == 1
+    assert summary.record_absent_ids == ["ENH-1"]
+    assert summary.record_ledger_mismatch == 0
+    assert summary.verdict == "no-op"  # never changes verdict
+
+
+def test_record_absent_excludes_dequeue_time_skip(tmp_path: Path) -> None:
+    """A dequeue-time skip has both a prep-pass file and a skipped row; excluded."""
+    _prep_pass(tmp_path, "ENH-1")
+    (tmp_path / ads.SKIPPED).write_text("ENH-1  already_done\n")
+    summary = ads.build_summary(tmp_path, cancelled_ids=[])
+    assert summary.record_absent == 0
+    assert summary.record_ledger_mismatch == 0
+
+
+def test_record_absent_excludes_inflight_id(tmp_path: Path) -> None:
+    """An abandoned in-flight ID is folded into UNVERIFIED first; never record_absent."""
+    _prep_pass(tmp_path, "ENH-1")
+    (tmp_path / ads.INFLIGHT).write_text("ENH-1")
+    summary = ads.build_summary(tmp_path, cancelled_ids=[])
+    assert summary.abandoned == 1
+    assert summary.record_absent == 0
+
+
+def test_record_absent_zero_on_healthy_run_with_prepared_ready_issue(tmp_path: Path) -> None:
+    _prep_pass(tmp_path, "ENH-1")
+    _write_record(tmp_path, "ENH-1", "ready")
+    (tmp_path / ads.PASSED).write_text("ENH-1\n")
+    summary = ads.build_summary(tmp_path, cancelled_ids=[])
+    assert summary.record_absent == 0
+    assert summary.record_ledger_mismatch == 0
+
+
+def test_dequeued_twice_counts_once(tmp_path: Path) -> None:
+    """The prep-pass-<ID> file is rewritten, not appended, so a re-dequeued ID
+    has exactly one file and the last pass's record wins."""
+    _prep_pass(tmp_path, "ENH-1")
+    (tmp_path / f"{ads.PREP_PASS_PREFIX}ENH-1").write_text("2")  # second pass, same file
+    summary = ads.build_summary(tmp_path, cancelled_ids=[])
+    assert summary.record_absent == 1
+    assert summary.record_absent_ids == ["ENH-1"]
+
+
+@pytest.mark.parametrize(
+    ("outcome", "kwargs", "ledger_setup", "expect_mismatch"),
+    [
+        ("blocked", {"legacy_class": "quality"}, lambda rd: None, True),
+        (
+            "blocked",
+            {"legacy_class": "quality"},
+            lambda rd: (rd / ads.SKIPPED).write_text("ENH-1  refine_failed\n"),
+            False,
+        ),
+        ("deferred", {"legacy_class": "gate_unmet"}, lambda rd: None, True),
+        (
+            "deferred",
+            {"legacy_class": "gate_unmet"},
+            lambda rd: (rd / ads.SKIPPED).write_text("ENH-1  oversized_atomic\n"),
+            False,
+        ),
+        (
+            "blocked",
+            {"legacy_class": "decision_unresolved"},
+            lambda rd: None,
+            True,
+        ),
+        (
+            "blocked",
+            {"legacy_class": "decision_unresolved"},
+            lambda rd: (rd / ads.DECISION_UNRESOLVED).write_text("ENH-1\n"),
+            False,
+        ),
+        ("deferred", {"legacy_class": "spike_inconclusive"}, lambda rd: None, True),
+        (
+            "deferred",
+            {"legacy_class": "spike_inconclusive"},
+            lambda rd: (rd / ads.SPIKE_INCONCLUSIVE).write_text("ENH-1\n"),
+            False,
+        ),
+        ("blocked", {"legacy_class": "proposal_unsound"}, lambda rd: None, True),
+        (
+            "blocked",
+            {"legacy_class": "proposal_unsound"},
+            lambda rd: (rd / ads.PROPOSAL_UNSOUND).write_text("ENH-1\n"),
+            False,
+        ),
+        ("retryable_error", {}, lambda rd: None, True),
+        (
+            "retryable_error",
+            {},
+            lambda rd: (rd / ads.SKIPPED).write_text("ENH-1  refine_failed_infra\n"),
+            False,
+        ),
+        ("cancelled", {}, lambda rd: None, True),
+        (
+            "cancelled",
+            {},
+            lambda rd: (rd / ads.SKIPPED).write_text("ENH-1  cancelled\n"),
+            False,
+        ),
+        ("decomposed", {}, lambda rd: None, True),
+        (
+            "decomposed",
+            {},
+            lambda rd: (rd / ads.SKIPPED).write_text("ENH-1  decomposed\n"),
+            False,
+        ),
+        # READY and rate-limited accept "any or none": never a mismatch.
+        ("ready", {}, lambda rd: None, False),
+        (
+            "retryable_error",
+            {"evidence_refs": ("rate_limit_exhausted",)},
+            lambda rd: None,
+            False,
+        ),
+    ],
+)
+def test_record_ledger_mismatch_per_correspondence_table_row(
+    tmp_path: Path, outcome: str, kwargs: dict, ledger_setup: object, expect_mismatch: bool
+) -> None:
+    _prep_pass(tmp_path, "ENH-1")
+    _write_record(tmp_path, "ENH-1", outcome, **kwargs)
+    ledger_setup(tmp_path)  # type: ignore[operator]
+    summary = ads.build_summary(tmp_path, cancelled_ids=[])
+    assert summary.record_ledger_mismatch == (1 if expect_mismatch else 0)
+    assert summary.record_absent == 0
+    # Never reclassifies the issue or changes verdict/exit code.
+    assert summary.verdict in ("no-op", "phantom")
+    assert summary.exit_code in (ads.EXIT_OK, ads.EXIT_PHANTOM)
+
+
+def test_row_present_but_record_missing_is_a_mismatch_not_absent(tmp_path: Path) -> None:
+    """The correspondence table's inverse case: a skipped row exists but the
+    prepare-issue record is MISSING (a crash inside prep apply)."""
+    _prep_pass(tmp_path, "ENH-1")
+    (tmp_path / ads.SKIPPED).write_text("ENH-1  refine_failed\n")
+    summary = ads.build_summary(tmp_path, cancelled_ids=[])
+    assert summary.record_absent == 0
+    assert summary.record_ledger_mismatch == 1
+    assert summary.record_ledger_mismatch_ids == ["ENH-1"]
+
+
+def test_decoy_unlisted_ledger_file_has_no_effect(tmp_path: Path) -> None:
+    """build_summary reads only run-records/prepare-issue/*.json plus the Scope
+    Boundaries files; an unlisted autodev-* file must never feed any count."""
+    _prep_pass(tmp_path, "ENH-1")
+    (tmp_path / "autodev-scores-absent.txt").write_text("ENH-1\n")  # dead ledger, retired ENH-3623
+    summary = ads.build_summary(tmp_path, cancelled_ids=[])
+    assert summary.record_absent == 1  # the decoy file did not excuse the missing record
+
+
+def test_record_lines_print_only_when_nonzero(tmp_path: Path) -> None:
+    _prep_pass(tmp_path, "ENH-1")
+    summary = ads.build_summary(tmp_path, cancelled_ids=[])
+    report = ads.render_report(summary)
+    assert "Record-absent [invariant] (1): ENH-1" in report
+    assert "Record-ledger-mismatch" not in report
+
+
+def test_no_record_lines_when_no_prep_pass_files(tmp_path: Path) -> None:
+    summary = ads.build_summary(tmp_path, cancelled_ids=[])
+    assert summary.record_absent == 0
+    assert summary.record_ledger_mismatch == 0
+    assert "Record-absent" not in ads.render_report(summary)
+    assert "Record-ledger-mismatch" not in ads.render_report(summary)
 
 
 # -------------------------------------------------------------- status lookup

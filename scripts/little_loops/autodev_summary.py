@@ -15,9 +15,18 @@ handler) call ``python3 -m little_loops.autodev_summary`` to:
 2. **Build the summary** (:func:`build_summary`) from the run-dir ledgers,
    folding a residual ``autodev-inflight`` sentinel into the unverified bucket
    as ``ID  inflight_at_finalize`` (the run abandoned that issue mid-flight).
-3. **Print the operator report** (:func:`render_report`) and **write
+3. **Account for every dequeued ID** (ENH-3600): each ``run_dir/prep-pass-<ID>``
+   file (``dequeue_next`` writes one per dequeue) names an ID this run
+   prepared. One with no ``prepare-issue`` run record, not in flight, and in
+   no closure/skip ledger counts once under the additive ``record_absent`` key
+   -- an invariant expected to stay 0 (every known exit path lands a record, a
+   ledger row, or both). A record whose token disagrees with its ledger
+   evidence counts once under ``record_ledger_mismatch`` instead; the ledger
+   row stays the count source and the issue is never reclassified. Neither key
+   changes ``verdict`` or the exit code.
+4. **Print the operator report** (:func:`render_report`) and **write
    ``summary.json``** (:func:`write_summary`) -- one compact JSON line whose
-   16 keys keep a fixed order that downstream tooling reads.
+   18 keys keep a fixed order that downstream tooling reads.
 
 The verdict ladder is ``success`` -> ``partial`` -> ``phantom`` ->
 ``not_started`` -> ``no-op``; a ``rate_limit`` stop reason overrides it to
@@ -52,6 +61,7 @@ from pathlib import Path
 from typing import Any
 
 from little_loops.file_utils import atomic_write
+from little_loops.run_record import read_run_record, record_token
 
 EXIT_OK = 0
 EXIT_PHANTOM = 1
@@ -73,6 +83,42 @@ STOP_REASON = "autodev-stop-reason"
 QUEUE = "autodev-queue.txt"
 QUALITY_DIR = "quality"
 SUMMARY = "summary.json"
+
+#: ENH-3623's per-pass fact-log stamp; every dequeued ID gets exactly one of
+#: these files (rewritten, not appended, on re-entry), so enumerating them by
+#: name is the run's dequeued-ID set (ENH-3600 Design decisions).
+PREP_PASS_PREFIX = "prep-pass-"
+
+#: The writer whose record ENH-3600's ledger-driven checks read.
+PREPARE_ISSUE_WRITER = "prepare-issue"
+
+#: Ledgers a dequeued ID's presence in excludes it from ``record_absent``
+#: (Scope Boundaries: closure + skip/stop ledgers, plus the child-written
+#: exception ledgers). ``UNVERIFIED`` already carries a folded-in in-flight ID
+#: by the time this is consulted (:func:`record_abandoned_inflight` runs first).
+_CLOSURE_AND_SKIP_LEDGERS = (
+    PASSED,
+    UNVERIFIED,
+    SKIPPED,
+    GATE_BLOCKED,
+    DECISION_UNRESOLVED,
+    SPIKE_INCONCLUSIVE,
+    PROPOSAL_UNSOUND,
+    NOT_STARTED,
+    PROOF_GATE_INFRA,
+)
+
+#: ``_DEFER_STOPS`` reasons (``preparation_policy.py``) that satisfy a
+#: ``DEFERRED:gate_unmet`` record alongside a plain ``refine_failed`` row.
+_GATE_UNMET_SKIPPED_REASONS = frozenset(
+    {
+        "refine_failed",
+        "design_gate_failed",
+        "oversized_atomic",
+        "readiness_stagnated",
+        "low_readiness",
+    }
+)
 
 #: ``--quality-gate`` values (case-insensitive) that switch the gate off.
 QUALITY_GATE_OFF = frozenset({"false", "0", "no", "off"})
@@ -109,7 +155,7 @@ class AutodevSummaryError(Exception):
 class AutodevSummary:
     """Counts and display lists for one autodev run.
 
-    The first 16 fields are the ``summary.json`` payload in its published key
+    The first 18 fields are the ``summary.json`` payload in its published key
     order (see :meth:`to_dict`); the remaining fields only feed the report.
     """
 
@@ -129,6 +175,11 @@ class AutodevSummary:
     closed_cancelled: int = 0
     quality_failed: int = 0
     quality_gate_infra: int = 0
+    # ENH-3600: additive, invariant-detector keys — expected 0 on every
+    # healthy run (see module docstring and Marker disposition table in
+    # ENH-3600). Neither ever changes verdict or exit_code.
+    record_absent: int = 0
+    record_ledger_mismatch: int = 0
     # --- report-only -------------------------------------------------------
     passed_ids: list[str] = field(default_factory=list)
     cancelled_ids: list[str] = field(default_factory=list)
@@ -147,6 +198,8 @@ class AutodevSummary:
     quality_gated: int = 0
     unverified_display_ids: list[str] = field(default_factory=list)
     pending_ids: list[str] = field(default_factory=list)
+    record_absent_ids: list[str] = field(default_factory=list)
+    record_ledger_mismatch_ids: list[str] = field(default_factory=list)
 
     #: ``summary.json`` keys, in order.
     KEYS = (
@@ -166,6 +219,8 @@ class AutodevSummary:
         "closed_cancelled",
         "quality_failed",
         "quality_gate_infra",
+        "record_absent",
+        "record_ledger_mismatch",
     )
 
     def to_dict(self) -> dict[str, Any]:
@@ -355,6 +410,137 @@ def record_abandoned_inflight(run_dir: Path) -> bool:
 # ------------------------------------------------------------------- summary
 
 
+def _dequeued_ids(run_dir: Path) -> list[str]:
+    """IDs with a ``prep-pass-<ID>`` file: every ID ``dequeue_next`` popped this run."""
+    try:
+        names = os.listdir(run_dir)
+    except OSError:
+        return []
+    return _sorted_unique(
+        name[len(PREP_PASS_PREFIX) :] for name in names if name.startswith(PREP_PASS_PREFIX)
+    )
+
+
+#: ``autodev-skipped.txt`` reasons written before ``refine_current`` ever runs
+#: (``check_status_at_dequeue``/``check_blockers_at_dequeue``/
+#: ``check_gate_at_dequeue``): no ``prepare-issue`` record is ever expected for
+#: these, so a ``MISSING`` token backed only by one of them is neither
+#: ``record_absent`` nor ``record_ledger_mismatch`` (Proposed Solution's
+#: exit-path table: "its autodev-skipped.txt row" is the whole story).
+_PRE_WRAPPER_SKIP_REASONS = frozenset({"blocked_by_unmet", "blocked_by_gate"})
+
+
+def _is_pre_wrapper_skip_reason(reason: str) -> bool:
+    return reason in _PRE_WRAPPER_SKIP_REASONS or reason.startswith("already_")
+
+
+def _non_skipped_ledgered_ids(run_dir: Path) -> set[str]:
+    """IDs with a row in a closure/skip/stop ledger other than ``autodev-skipped.txt``."""
+    ids: set[str] = set()
+    for name in _CLOSURE_AND_SKIP_LEDGERS:
+        if name == SKIPPED:
+            continue
+        for line in _nonblank(_records(_read(run_dir / name))):
+            first = _field(line, 0)
+            if first:
+                ids.add(first)
+    return ids
+
+
+def _skipped_reasons(run_dir: Path) -> dict[str, set[str]]:
+    """Map an ``autodev-skipped.txt`` ID to the set of reasons ledgered for it."""
+    reasons: dict[str, set[str]] = {}
+    for line in _nonblank(_records(_read(run_dir / SKIPPED))):
+        issue_id, reason = _field(line, 0), _field(line, 1)
+        if issue_id:
+            reasons.setdefault(issue_id, set()).add(reason)
+    return reasons
+
+
+def _record_evidence_missing(
+    token: str,
+    issue_id: str,
+    *,
+    skipped_reasons: dict[str, set[str]],
+    decision_ids: set[str],
+    spike_ids: set[str],
+    proposal_ids: set[str],
+) -> bool:
+    """True when *token* requires ledger evidence *issue_id* does not have.
+
+    The record ↔ ledger correspondence table (ENH-3600 Review Decisions, third
+    review). ``READY``/``RETRYABLE_ERROR:rate_limited`` accept "any or none"
+    and never mismatch here.
+    """
+    reasons = skipped_reasons.get(issue_id, set())
+    if token == "BLOCKED:quality":
+        return "refine_failed" not in reasons
+    if token == "DEFERRED:gate_unmet":
+        return not (reasons & _GATE_UNMET_SKIPPED_REASONS)
+    if token == "BLOCKED:decision_unresolved":
+        return issue_id not in decision_ids and not (
+            reasons & {"decision_unresolved", "decision_exhausted"}
+        )
+    if token == "DEFERRED:spike_inconclusive":
+        return issue_id not in spike_ids
+    if token == "BLOCKED:proposal_unsound":
+        return issue_id not in proposal_ids
+    if token == "RETRYABLE_ERROR:infra":
+        return "refine_failed_infra" not in reasons
+    if token == "DECOMPOSED":
+        return not (reasons & {"decomposed", "resolved_by_subloop", "refine_failed"})
+    if token == "CANCELLED":
+        return "cancelled" not in reasons
+    return False  # READY, RETRYABLE_ERROR:rate_limited, BLOCKED, MISSING: any or none
+
+
+def _record_accounting(
+    run_dir: Path,
+    *,
+    decision_ids: list[str],
+    spike_ids: list[str],
+    proposal_ids: list[str],
+) -> tuple[list[str], list[str]]:
+    """Return (``record_absent`` IDs, ``record_ledger_mismatch`` IDs), each sorted.
+
+    Must run after :func:`record_abandoned_inflight` has folded any residual
+    in-flight ID into ``UNVERIFIED`` (ENH-3600 Review Decisions, third review),
+    so an abandoned ID is excluded by ``_non_skipped_ledgered_ids`` and never
+    double-counted as ``record_absent``.
+    """
+    non_skipped_ledgered = _non_skipped_ledgered_ids(run_dir)
+    skipped_reasons = _skipped_reasons(run_dir)
+    decision_set, spike_set, proposal_set = set(decision_ids), set(spike_ids), set(proposal_ids)
+    absent: list[str] = []
+    mismatched: list[str] = []
+    for issue_id in _dequeued_ids(run_dir):
+        record = read_run_record(run_dir, PREPARE_ISSUE_WRITER, issue_id)
+        token = record_token(record)
+        if token == "MISSING":
+            reasons = skipped_reasons.get(issue_id, set())
+            if (
+                issue_id not in non_skipped_ledgered
+                and reasons
+                and all(_is_pre_wrapper_skip_reason(r) for r in reasons)
+            ):
+                continue  # dequeue-time skip: never entered refine_current
+            if issue_id in non_skipped_ledgered or reasons:
+                mismatched.append(issue_id)
+            else:
+                absent.append(issue_id)
+            continue
+        if _record_evidence_missing(
+            token,
+            issue_id,
+            skipped_reasons=skipped_reasons,
+            decision_ids=decision_set,
+            spike_ids=spike_set,
+            proposal_ids=proposal_set,
+        ):
+            mismatched.append(issue_id)
+    return _sorted_unique(absent), _sorted_unique(mismatched)
+
+
 def _quality_entry(path: Path, issue_id: str) -> str | None:
     """``ID@<short sha>[ (dirty)]`` from an evidence record; ``None`` if malformed."""
     try:
@@ -464,6 +650,15 @@ def build_summary(
     closed_cancelled = len(cancelled_ids)
     closed_implemented = closed - closed_cancelled
     not_started = len(not_started_ids)
+    decision_unresolved_ids = _ledger(run_dir, DECISION_UNRESOLVED)
+    spike_inconclusive_ids = _ledger(run_dir, SPIKE_INCONCLUSIVE)
+    proposal_unsound_ids = _ledger(run_dir, PROPOSAL_UNSOUND)
+    record_absent_ids, record_ledger_mismatch_ids = _record_accounting(
+        run_dir,
+        decision_ids=decision_unresolved_ids,
+        spike_ids=spike_inconclusive_ids,
+        proposal_ids=proposal_unsound_ids,
+    )
 
     summary = AutodevSummary(
         verdict=compute_verdict(
@@ -483,6 +678,8 @@ def build_summary(
         closed_cancelled=closed_cancelled,
         quality_failed=_count_matching(run_dir, UNVERIFIED, "quality_gate_failed"),
         quality_gate_infra=_count_matching(run_dir, UNVERIFIED, "quality_gate_infra"),
+        record_absent=len(record_absent_ids),
+        record_ledger_mismatch=len(record_ledger_mismatch_ids),
         passed_ids=passed_ids,
         cancelled_ids=list(cancelled_ids),
         skipped_ids=skipped_ids,
@@ -490,16 +687,18 @@ def build_summary(
         already_resolved_ids=already_resolved_ids,
         blocked_by_unmet_ids=blocked_by_unmet_ids,
         gate_blocked_ids=_ledger(run_dir, GATE_BLOCKED),
-        decision_unresolved_ids=_ledger(run_dir, DECISION_UNRESOLVED),
+        decision_unresolved_ids=decision_unresolved_ids,
         not_started_ids=not_started_ids,
-        spike_inconclusive=",".join(_ledger(run_dir, SPIKE_INCONCLUSIVE)),
-        proposal_unsound=",".join(_ledger(run_dir, PROPOSAL_UNSOUND)),
+        spike_inconclusive=",".join(spike_inconclusive_ids),
+        proposal_unsound=",".join(proposal_unsound_ids),
         proof_gate_infra_ids=_sorted_unique(proof_gate_lines),
         quality_failed_list=_quality_list(run_dir, "quality_gate_failed"),
         quality_gate_infra_list=_quality_list(run_dir, "quality_gate_infra"),
         quality_gated=_quality_gated(run_dir),
         unverified_display_ids=[i for i in unverified_ids if not _QUALITY_REASON_RE.search(i)],
         pending_ids=_nonblank(_records(_read(run_dir / QUEUE))),
+        record_absent_ids=record_absent_ids,
+        record_ledger_mismatch_ids=record_ledger_mismatch_ids,
     )
     summary.gate_blocked = len(summary.gate_blocked_ids)
     summary.decision_unresolved = len(summary.decision_unresolved_ids)
@@ -598,6 +797,17 @@ def render_report(summary: AutodevSummary) -> str:
             f"Unverified   ({len(s.unverified_display_ids)}): "
             f"{','.join(s.unverified_display_ids)}"
             "  (threshold passed; implementation did not close — re-queue to retry)\n"
+        )
+    if s.record_absent > 0:
+        out.append(
+            f"Record-absent [invariant] ({s.record_absent}): {','.join(s.record_absent_ids)}"
+            "  (prepared with no run record and no ledger row — should never happen; file a bug)\n"
+        )
+    if s.record_ledger_mismatch > 0:
+        out.append(
+            f"Record-ledger-mismatch [invariant] ({s.record_ledger_mismatch}): "
+            f"{','.join(s.record_ledger_mismatch_ids)}"
+            "  (record and ledger evidence disagree; the ledger row was used — file a bug)\n"
         )
     if s.stop_reason != STOP_COMPLETED:
         out.append(

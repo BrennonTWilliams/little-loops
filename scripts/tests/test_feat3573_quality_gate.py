@@ -683,11 +683,13 @@ class TestFinalizeDonePromotion:
     def test_summary_key_shape(self, tmp_path: Path) -> None:
         summary, _ = self._run(tmp_path, {})
         keys = list(summary)
-        assert keys[-4:] == [
+        assert keys[-6:] == [
             "closed_implemented",
             "closed_cancelled",
             "quality_failed",
             "quality_gate_infra",
+            "record_absent",
+            "record_ledger_mismatch",
         ]
 
 

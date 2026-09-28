@@ -1533,8 +1533,10 @@ states:
     # 143/137/124 in any populated capture unambiguously marks the terminating
     # failure. The `?` nullable suffix leaves un-run states as '' (word-split away).
     #
-    # Written to the shared run_dir (context_passthrough); autodev's skip_inflight
-    # reads refine-terminal-class and routes infra kills to skip_inflight_infra.
+    # Written to the shared run_dir (context_passthrough) and, since ENH-3600,
+    # also carried as --legacy-class on this state's record write below: autodev's
+    # skip_inflight now classifies from the record's routing token alone (a
+    # MISSING/failed read routes to skip_inflight_infra), not this sentinel.
     action: |
       CLASS=quality
       # ll-lint: mr11-ok(captured.refine_issue.exit_code) ENH-3358 - ENH-3342 widening residual, tracked for conversion

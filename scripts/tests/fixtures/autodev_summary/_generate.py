@@ -455,7 +455,16 @@ def generate(name: str) -> None:
         _ll_issues_shim(root / "bin")
         code, stdout = run_legacy(project, run_dir, gate, root / "bin")
         summary = run_dir / "summary.json"
-        (out / "expected_summary.json").write_bytes(summary.read_bytes())
+        # ENH-3600: the legacy oracle predates record_absent/record_ledger_mismatch
+        # (both additive, always 0 in these fixtures — none seed a prep-pass-<ID>
+        # file). Post-process rather than touch the frozen shell oracle, so
+        # regeneration stays idempotent.
+        legacy_text = summary.read_bytes().decode("utf-8")
+        assert legacy_text.endswith("}\n"), legacy_text
+        patched_text = (
+            legacy_text[: -len("}\n")] + ',"record_absent":0,"record_ledger_mismatch":0}\n'
+        )
+        (out / "expected_summary.json").write_bytes(patched_text.encode("utf-8"))
         (out / "expected_stdout.txt").write_text(stdout)
         (out / "expected_exit").write_text(f"{code}\n")
         ledgers = {
