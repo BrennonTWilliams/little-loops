@@ -832,12 +832,16 @@ def _introspect_focus_dirs(
     src_value = src_dir_iv.value if isinstance(src_dir_iv.value, str) else None
     test_value = test_dir_iv.value if isinstance(test_dir_iv.value, str) else None
     test_candidate = (
-        test_value if (test_dir_iv.provenance != "default" and test_value not in (None, ".")) else None
+        test_value
+        if (test_dir_iv.provenance != "default" and test_value not in (None, "."))
+        else None
     )
 
     if src_value == ".":
         evidence = (
-            "adopted src_dir" if src_dir_iv.provenance != "default" else "no existing src dir detected"
+            "adopted src_dir"
+            if src_dir_iv.provenance != "default"
+            else "no existing src dir detected"
         )
         return IntrospectedValue(["."], src_dir_iv.provenance, evidence)
 

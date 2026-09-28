@@ -7259,7 +7259,10 @@ class TestExecutorWorkingDir:
         (worktree_path / "w.txt").write_text("w0\n")
         subprocess.run(["git", "add", "."], cwd=worktree_path, check=True, capture_output=True)
         subprocess.run(
-            ["git", "commit", "-q", "-m", "init"], cwd=worktree_path, check=True, capture_output=True
+            ["git", "commit", "-q", "-m", "init"],
+            cwd=worktree_path,
+            check=True,
+            capture_output=True,
         )
 
         run_dir = tmp_path / "runs" / "r1"

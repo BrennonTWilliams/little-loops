@@ -722,9 +722,7 @@ class TestSrcDirRootLayout:
         self, tmp_path: Path, templates_dir: Path
     ) -> None:
         template = _template_for(tmp_path, "tsconfig.json", templates_dir)
-        (tmp_path / "tsconfig.json").write_text(
-            json.dumps({"compilerOptions": {"rootDir": "app"}})
-        )
+        (tmp_path / "tsconfig.json").write_text(json.dumps({"compilerOptions": {"rootDir": "app"}}))
         result = introspect(tmp_path, template)
         iv = result.values["project.src_dir"]
         assert iv.value == "."

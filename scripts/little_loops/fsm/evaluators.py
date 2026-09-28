@@ -622,7 +622,9 @@ def _run_git(args: list[str], stdin: str | None = None, cwd: Path | None = None)
         raise _GitFingerprintError("git diff timed out") from None
     except FileNotFoundError as exc:
         if exc.filename:
-            raise _GitFingerprintError(f"working directory does not exist: {exc.filename}") from None
+            raise _GitFingerprintError(
+                f"working directory does not exist: {exc.filename}"
+            ) from None
         raise _GitFingerprintError("git not found in PATH") from None
     if proc.returncode != 0:
         raise _GitFingerprintError(f"git diff failed: {proc.stderr[:200]}")

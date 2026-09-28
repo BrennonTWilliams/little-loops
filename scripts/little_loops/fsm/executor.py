@@ -3742,9 +3742,7 @@ class FSMExecutor:
                 return f"state '{name}': {exc}"
         return None
 
-    def _model_consumer_paths(
-        self, state: StateConfig
-    ) -> list[Literal["cli", "sdk", "evaluator"]]:
+    def _model_consumer_paths(self, state: StateConfig) -> list[Literal["cli", "sdk", "evaluator"]]:
         """The model-consuming dispatch paths *state* will take (ENH-3547 preflight).
 
         Mirrors :meth:`_execute_state`'s dispatch: sub-loop, human-approval
