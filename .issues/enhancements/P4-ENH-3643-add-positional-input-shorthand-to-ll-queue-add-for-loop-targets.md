@@ -91,6 +91,13 @@ In `scripts/little_loops/cli/queue.py`:
    only; `--input` keeps its current permissive behaviour so existing invocations are
    unaffected.
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-28 — based on codebase analysis:_
+
+- **Argparse placement constraint (verified)**: an optional positional (`nargs="?"`) declared after `target` binds correctly when it directly follows `target` (`add L X --priority P2`) on both Python 3.11.11 and 3.12.10, but the interleaved form `add L --priority P2 X` parses on 3.12.10 and fails with `unrecognized arguments: X` on 3.11.11. The project floor is Python 3.11 (`pip` here resolves to pyenv 3.11), so the documented and tested form must be the positional-immediately-after-target shape, and docs must not imply the interleaved form works.
+- **Ambiguity check must compare against `args.input` after parsing**: because positional and `--input` land in different Namespace attributes (`loop_input` vs `input`), argparse itself cannot make them mutually exclusive; the exit-2 check has to live in `cmd_add` and return the code (matching the existing `return 2` contract), not raise `SystemExit`.
+
 ## Program Design
 
 ### Types
@@ -128,6 +135,18 @@ In `scripts/little_loops/cli/queue.py`:
 
 ### Configuration
 - N/A
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-28 — based on codebase analysis:_
+
+- **Second caller of `_classify_action`**: `scripts/little_loops/mcp_server/tools.py:_tool_queue_add` calls `_classify_action(..., input_value=str(input_value) if input_value is not None else None)` directly, with no `try/except ValueError`. Invariant: the positional-vs-runner restriction must not be added inside `_classify_action` (it would surface as an unhandled exception in the MCP tool, and would change `--input`'s deliberately permissive behaviour); it belongs in the argparse-facing `cmd_add`. `scripts/tests/test_enh_3444_mcp_skills_list.py` also calls `_classify_action` directly with the current keyword set, so its signature must stay as-is.
+- **`--input` is accepted for every runner today**: `_classify_action` builds `args_dict["loop_input"]` before classification and passes it into every `ActionSpec` branch (override, LOOP, SKILL, CMD); `_format_args_summary` renders `input=...` for any runner. No existing test passes `input_value` with a non-loop runner, so the "`--input` unchanged" criterion has no current pin for the non-loop case.
+- **Runner availability in `cmd_add`**: `spec.runner` is a `RunnerType` (`scripts/little_loops/runner_spec.py`) on the returned frozen `ActionSpec`. Without `--runner`, classification order is loop-file lookup (`resolve_loop_path`) → skill/command lookup → `CMD` fallback, so a bare loop name that has no `.loops/<name>.yaml` (or built-in) resolves to a non-`LOOP` runner and the positional would be rejected. `--runner` choices are `skill|cmd|mcp|prompt|loop` (`dsl` is not selectable).
+- **Dest collision confirmed**: the `add` subparser already has `dest="input"` (from `--input`); `loop_input` is not a parser dest anywhere (it appears only as the `args` dict key), so it is free. `ll-loop run` declares its second positional as `input` (`scripts/little_loops/cli/loop/__init__.py`, `run_parser`) — there is no sibling `--input` there, which is why the naming differs.
+- **Error-path contract in `cmd_add`**: the only existing error path is `except ValueError as exc: print(f"Error: {exc}", file=sys.stderr); return 2` — a returned code, not `SystemExit`. Tests assert it that way (`test_add_with_bad_arg_pair_exits_2` asserts `result == 2` and does not inspect stderr); argparse-level failures are the ones tested with `pytest.raises(SystemExit)`.
+- **Test harness convention**: tests invoke `with patch("sys.argv", [...]): main_queue()` under an autouse `_isolate_cwd` fixture (chdir to `tmp_path`, so `.ll/queue.db` and `.loops/` are per-test). `scripts/tests/test_cli_queue_run.py` uses `ll-queue add <target> --runner cmd|loop --json` with a single bare token and is unaffected.
+- **Docs anchors (verified current)**: `docs/reference/CLI.md` — subcommand table row `` `add TARGET` `` (line ~4583), `TARGET` flag-table row (~4595), `--input INPUT` row (~4599), Examples `--input` line (~4672). The subcommand-table and `TARGET` rows also describe the signature and need to reflect the optional second token. The `main_queue` epilog `Examples:` block has no `--input` example either.
 
 ## Implementation Steps
 
@@ -174,5 +193,6 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-09-28T22:17:13 - `ddb9c068-0ba1-4e5f-bc15-cadeb7d03857.jsonl`
 - `/ll:format-issue` - 2026-09-28T22:12:07 - `00e1806e-99df-47db-8e10-d56d6eca502a.jsonl`
 - `/ll:capture-issue` - 2026-09-28T21:07:32 - `7f294095-d1d9-4ee9-9b43-311d4ce2c57c.jsonl`

@@ -13,6 +13,12 @@ verify_verdict: VALID
 labels:
 - multi-host
 - loops
+confidence_score: 85
+outcome_confidence: 67
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 18
+score_change_surface: 10
 ---
 
 # ENH-3548: Validate-time model hint warnings and hint documentation
@@ -24,20 +30,38 @@ Add `ll-loop validate` warnings for model hints that will not resolve, and docum
 ## Current Behavior
 
 - `ll-loop validate` checks `model_hint` vocabulary and exclusivity (ENH-3527) but does not check whether a hint resolves for the configured host.
-- No docs describe the hint vocabulary, support matrix or precedence.
+- No doc describes the hint vocabulary, support matrix and precedence together. Partial coverage exists in `docs/reference/CONFIGURATION.md`, `docs/reference/CLI.md` and `docs/reference/EVENT-SCHEMA.md` (see Integration Research).
 
 ## Expected Behavior
 
-- For each declared hint, `ll-loop validate` resolves it against the configured host (`orchestration.host_cli` / `LL_HOST_CLI`) and emits a WARNING, not an error, for any hint that cannot resolve on a reachable request path. For a prompt action, the reachable paths are the state's `request_path` if set, else `orchestration.request_path`, plus the CLI fallback for SDK/batch.
-- An evaluator hint (explicit `evaluate:` or the implicit `llm_structured` verdict on a prompt state) is checked against the CLI host only. `fsm/evaluators.py` has no SDK path, so a shell action + `llm_structured` state with `request_path: sdk` must not warn about `anthropic-api`.
+- `ll-loop validate` mirrors the run-start preflight (`FSMExecutor._preflight_model_hints`) per state, not per declared hint: for each state, take the consumer paths `_model_consumer_paths` would return (static downgrade causes only), select the declaration `_resolve_model` would select for each path, resolve it with `resolve_model_hint`, and emit a WARNING (not an error) on `ModelHintError`.
+- **Host source**: the CLI backend is `resolve_host().name` — the same call `_resolve_model` makes at run time (`LL_HOST_CLI`, `LL_HOOK_HOST`, then the `_PROBE_ORDER` PATH probe). Validate does **not** read `orchestration.host_cli` directly, so `validate` and `run` always agree about the same loop. If `resolve_host()` raises `HostNotConfigured`, validate passes `host_cli=None` and skips resolution warnings. (That `ll-loop run` ignores `orchestration.host_cli` is tracked separately as BUG-3644; once that is fixed, validate follows automatically because it calls the same function.)
+- **Declaration selection per path** (mirrors `_resolve_model`; `--model` is unknowable at validate time and treated as absent):
+  - `cli` path (prompt action on `cli`, or the CLI fallback of an `sdk`/`batch` state): the state's `model_hint` only. `llm.model_hint` is never a CLI-action default, so it is **not** checked on the CLI fallback.
+  - `sdk` path (effective `request_path` `sdk`/`batch` — the state's `request_path` if set, else `orchestration.request_path`): the state's `model_hint`, else `llm.model_hint` when the state declares no `model`. Resolved against `anthropic-api`.
+  - `evaluator` path (explicit `llm_structured`, or the implicit verdict on a prompt state, only when `next` is unset and `llm.enabled`): the state's `model_hint`, else `llm.model_hint`. Resolved against the CLI host only — `fsm/evaluators.py` has no SDK path, so a shell action + `llm_structured` state with `request_path: sdk` must not warn about `anthropic-api`.
+- An `sdk`/`batch` state is checked against both `anthropic-api` and (for a state-level hint) the CLI host, because the environmental downgrades (`anthropic` not importable, no credentials) are unknowable at validate time. The CLI-fallback warning text says so ("if the sdk path downgrades to cli").
 - States that always downgrade to CLI (a `/ll:` skill action per `_SKILL_INVOKE_RE`, or `tools:` per BUG-2831) are checked for CLI only.
-- When no host or `model_hints` is supplied to validation (the in-process callers below), resolution warnings are skipped. Vocabulary and exclusivity errors from ENH-3527 still fire.
-- `haiku-gen` guidance covers hint-only `burst` generation without rejecting valid `burst` verdict states.
+- Terminal, sub-loop (`loop:`) and `human_approval` states consume no model and are never checked. A `type: learning` state is checked as a slash-command prompt action.
+- An unresolvable `llm.model_hint` warns **once per (hint, backend)** at `path=llm.model_hint`, not once per consuming state. State-level warnings use `path=states.<name>.model_hint` with the `[state: <name>]` prefix and an `(ENH-3548)` tag.
+- When `host_cli` is `None` (the in-process callers below, or no host found), resolution warnings are skipped. Vocabulary and exclusivity errors from ENH-3527 still fire. `model_hints=None` means built-in mappings only; it does not by itself skip warnings.
+- `haiku-gen` (`_validate_haiku_pinned_generator`) also flags a generator state whose own `model_hint` is `burst`, keeping the `_is_llm_judged` skip and `haiku_generator_ok` suppression. This check is host-independent (the `burst` intent is "cheap/fast" on every backend), so it also fires for in-process callers.
+
+### Known limitations (document, do not fix)
+
+- A run-time `--model` overrides state/`llm` hints on the `cli` and `sdk` paths; validate cannot see it, so it may warn about a hint that the actual run never resolves.
+- A plugin-contributed evaluator registered under the name `llm_structured` (`_contributed_evaluators`) is invisible to validation, which checks it as the built-in evaluator.
+- Not covered by `haiku-gen`: `llm.model_hint: burst` reaching `sdk` generator states, and `llm.model` naming haiku. The existing rule does not inspect `llm.model` either; both remain out of scope.
 
 ## Scope Boundaries
 
 - **In scope**: validate-time WARNINGs, `haiku-gen` guidance, documentation.
-- **Out of scope**: runtime dispatch (ENH-3547); new vocabulary; `cli/doctor.py`'s fleet-wide `load_and_validate` sweep (deferred — see Call Path).
+- **Out of scope**: runtime dispatch (ENH-3547); new vocabulary; `cli/doctor.py`'s fleet-wide `load_and_validate` sweep (deferred — see Call Path); making `ll-loop run` honor `orchestration.host_cli` (BUG-3644).
+
+## Decisions
+
+- **Host source** — `resolve_host()` (env + probe), identical to run time. Rationale: validate-time warnings must predict what `_preflight_model_hints` will do; reading `orchestration.host_cli` directly would make `validate` and `run` disagree while BUG-3644 is open.
+- **ARCH-121 exemption** — no `*_ok` suppression flag for hint-resolution warnings. Rationale: the warning depends on the machine's host and config, so a flag in the loop file would hide it on every host rather than the one where it fires; the fix is in `orchestration.model_hints`, not the loop file; ENH-3527's hint rules set the same precedent. The extended `haiku-gen` rule keeps its existing `haiku_generator_ok` flag. Recorded in `.ll/decisions` (see Session Log).
 
 ## Program Design
 
@@ -193,7 +217,25 @@ _These touchpoints were identified by wiring analysis and must be included in th
 **Note** (added by `/ll:audit-issue-conflicts`): This issue covers validate-time WARNINGs, `haiku-gen` guidance, and documentation only. Resolver/config is ENH-3527 (done) and dispatch wiring is ENH-3547 (done). ENH-3527 dropped the `operation` parameter (2026-09-24). ENH-3547 proved the support matrix with tests that this issue's docs describe; both prerequisites have since landed, so this issue is no longer blocked.
 
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-28_
+
+**Readiness Score**: 85/100 → PROCEED WITH CAUTION
+**Outcome Confidence**: 67/100 → MODERATE
+
+### Concerns
+- Host source for `cmd_validate` is undecided: `resolve_host()` reads only `LL_HOST_CLI`/`LL_HOOK_HOST`/probe, not `orchestration.host_cli`, so the issue's Call Path is wrong as written. Validate-time warnings must agree with `FSMExecutor._preflight_model_hints` or `validate` and `run` will disagree on the same loop.
+- ARCH-121 (advisory) requires a named `*_ok` suppression flag for every new validate rule; the issue neither adds one nor records the exemption.
+- Cited line anchors have drifted (`load_and_validate` now `structural_rules.py:1944`, not `:2035`; `cmd_validate` now `config_cmds.py:14`, not `:25`); re-confirm at implementation time.
+
+### Outcome Risk Factors
+- Broad enumeration across ~8 code sites, ~8 docs and ~7 test files, plus moderate per-site complexity in mirroring executor request-path predicates (`_model_consumer_paths`, `_compute_request_path`) inside validation.
+- Wide dependent surface (~11 `load_and_validate` callers, `fleet_improve.gate()` and `workflow-generator.yaml` warning-count comparisons); new kwargs need defaults, and the pinned parameter set in `spike/enh3342_scan_action_file_param` must be updated deliberately.
+- Two open design decisions (host source, ARCH-121 flag) should be settled before coding.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-09-28T22:14:19 - `87ecf78a-2679-4eab-bd2f-bc0befce52dd.jsonl`
 - `/ll:verify-issues` - 2026-09-28T22:12:49 - `a3a4c5a4-ab00-427b-b444-3be5a159c7cf.jsonl`
 - `/ll:wire-issue` - 2026-09-28T22:10:45 - `d53bc120-f664-4e90-8dfa-617508184f55.jsonl`
 - `/ll:refine-issue` - 2026-09-28T21:58:46 - `313f4024-8fcf-4417-9f15-70ffc98e80d7.jsonl`
