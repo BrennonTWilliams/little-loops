@@ -932,27 +932,40 @@ will now see `2` on failure runs. A terminal's `failure` flag defaults to true
 for states named `failed`, `error`, `aborted`, or `finalize_aborted`; any other
 failure-shaped terminal must declare `failure: true` to exit nonzero.
 
-##### Model Header Display (ENH-1805)
+##### Model Header Display (ENH-1805, ENH-3638)
 
-`ll-loop run` and `ll-loop monitor` print a header line showing the active LLM model name on startup, detected from the Claude CLI `stream-json` init event (same mechanism as `ll-auto`). The model name appears in the first output line after the logo banner:
+`ll-loop run`, `ll-loop resume` and `ll-loop monitor` print a `model:` header line showing the model the loop's actions run on.
+
+**Before the first dispatch**, the value comes from the loop declaration and run flags, in precedence order:
+
+1. `--model` — shown as given.
+2. `llm.model_hint` — resolved against the host CLI and shown as `<hint> → <resolved> (<backend>)`.
+3. `llm.model` (which `--llm-model` sets) — shown bare.
+
+If an `llm.model_hint` has no mapping on the host (disabled, or an unsupported backend such as opencode), the header shows `<hint> (unresolved on <backend>)`; with no host CLI it shows `<hint> (unresolved: no host CLI)`. The header never fails the run.
+
+**After each action**, the header switches to what that action actually ran on: the observed model, prefixed with the hint (`coding → claude-sonnet-5 (claude-code)`) when the action's model was selected by a `model_hint`. In a loop where only some states declare a hint, the header follows the most recent action.
 
 ```
 ll-loop run general-task "fix the lint warnings"
-  model: claude-sonnet-4-6
+  model: claude-sonnet-5
+  [state transitions follow]
+
+ll-loop run hinted-loop
+  model: coding → sonnet (claude-code)
   [state transitions follow]
 ```
 
-When `--llm-model` is passed, the header reflects the override model. When the detection fails (e.g., non-Claude host), the field shows `unknown`.
-
-When an effort level is set (state override, `--effort` run override, or loop-level `llm.effort` default), it's appended directly onto the `model:` value — bracketed, upper-cased, one space after the model name, no separate label (ENH-2869):
+When an effort level is set (state override, `--effort` run override, or loop-level `llm.effort` default), its code is appended after the whole `model:` value — one space, no separate label, abbreviated to `L`/`M`/`H`/`XH`/`MX` for low/medium/high/xhigh/max (ENH-2869):
 
 ```
-ll-loop run general-task "fix the lint warnings"
-  model: claude-sonnet-4-6 [LOW]
-  [state transitions follow]
+  model: claude-sonnet-5 L
+  model: coding → sonnet (claude-code) H
 ```
 
 When no effort level is set anywhere in that chain, the `model:` value is unchanged (bare).
+
+**Limits.** `ll-loop resume` recomputes the header from the reloaded YAML without `--model` or `--llm-model`, so a run started with `--llm-model` (which clears a YAML `llm.model_hint`) shows the reactivated hint. `ll-loop resume` and `ll-loop monitor` show only `llm.effort` until the first action. `ll-loop monitor` cannot see run-start overrides; it corrects on the next action. The pre-dispatch backend is always the host CLI, so a hint consumed by SDK/batch prompt actions may change to its `anthropic-api` resolution after the first action.
 
 ##### Per-State Token/Cost Summary (ENH-1797)
 

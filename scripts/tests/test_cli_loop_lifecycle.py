@@ -818,6 +818,31 @@ class TestCmdResume:
         assert "2m" in out
         assert "Resumed and completed" in out
 
+    def test_resume_passes_initial_model_display(self, tmp_path: Path) -> None:
+        """ENH-3638: resume computes the header string via initial_model_display (no --model)."""
+        logger = MagicMock()
+        args = argparse.Namespace()
+        mock_fsm = MagicMock()
+        mock_fsm.name = "test-loop"
+        mock_fsm.max_steps = 10
+
+        with (
+            patch("little_loops.cli.loop.lifecycle.load_loop", return_value=mock_fsm),
+            patch("little_loops.fsm.persistence.StatePersistence"),
+            patch("little_loops.fsm.persistence.PersistentExecutor"),
+            patch(
+                "little_loops.cli.loop.header.initial_model_display",
+                return_value="coding → sonnet (claude-code)",
+            ) as mock_init,
+            patch("little_loops.cli.loop.runner.run_foreground") as mock_rf,
+        ):
+            mock_rf.return_value = 0
+            cmd_resume("test-loop", args, tmp_path, logger)
+
+        assert mock_init.call_args.args[1] is None
+        assert mock_rf.call_args.kwargs["model_display"] == "coding → sonnet (claude-code)"
+        assert "model" not in mock_rf.call_args.kwargs
+
     def test_resume_awaiting_continuation(self, tmp_path: Path) -> None:
         """Shows context when resuming from awaiting_continuation."""
         logger = MagicMock()

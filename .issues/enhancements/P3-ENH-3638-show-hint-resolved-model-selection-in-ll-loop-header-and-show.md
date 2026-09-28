@@ -3,10 +3,11 @@ id: ENH-3638
 type: ENH
 title: Show hint-resolved model selection in ll-loop header and show
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-27'
 captured_at: '2026-09-27T21:28:20Z'
+completed_at: '2026-09-28T21:54:26Z'
 parent: EPIC-3563
 labels:
 - multi-host
@@ -207,11 +208,26 @@ Compute the initial string at each entry point and pass it wherever `model=` is 
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
+## Resolution
+
+- **Status**: Completed
+- **Completed**: 2026-09-28T21:54:26Z
+- **Action**: improve
+- Added `format_model_selection`, `compose_model_line`, `initial_model_display` to `cli/loop/header.py`; both header render paths now use `compose_model_line`.
+- Renamed `model` → `model_display` along the render chain (`run_foreground`, `StateFeedRenderer`, `_render_pinned_pane`, `_build_pinned_pane`, `_render_artifact_header_lines`).
+- `cmd_run` / `cmd_resume` / `cmd_monitor` pass `initial_model_display(...)`; `cmd_run` passes `run_effort or fsm.llm.effort`.
+- `StateFeedRenderer` `action_complete` rebuilds the display from `model_requested`/`model_resolved`/`model_backend` (observed model wins).
+- `ll-loop show` prints `model_hint=` and compares against `DEFAULT_LLM_MODEL`.
+- Rewrote `docs/reference/CLI.md` § Model Header Display.
+- Tests: golden header tests, `test_loop_model_display.py`, resume wiring, `show` model_hint.
+
 ## Status
 
-**Open** | Created: 2026-09-27 | Priority: P3
+**Completed** | Created: 2026-09-27 | Completed: 2026-09-28T21:54:26Z | Priority: P3
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-28T21:54:26 - `58b447bf-2fdf-4de7-a511-a87e3ccf565b.jsonl`
+- `/ll:ready-issue` - 2026-09-28T21:45:03 - `c36a34a2-b7a4-4553-812b-bece1a7c96ac.jsonl`
 - `/ll:confidence-check` - 2026-09-28T20:24:41 - `c4c78c52-d947-4bd2-b3a6-6c632bd38fd7.jsonl`
 - `/ll:confidence-check` - 2026-09-28T19:39:10 - `af11844b-bc48-4035-9869-d5e630b26c85.jsonl`

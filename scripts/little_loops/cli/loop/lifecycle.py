@@ -719,6 +719,7 @@ def cmd_resume(
             print(f"Context: {prompt_preview}")
             print()
 
+    from little_loops.cli.loop.header import initial_model_display
     from little_loops.config import BRConfig
     from little_loops.extension import wire_extensions
     from little_loops.fsm.rate_limit_circuit import RateLimitCircuit
@@ -772,7 +773,7 @@ def cmd_resume(
             instance_id=instance_id,
             running_dir=running_dir,
             loop_path=loop_path,
-            model=fsm.llm.model,
+            model_display=initial_model_display(fsm, None, config.orchestration.model_hints),
             effort=fsm.llm.effort,
         )
     finally:
@@ -842,6 +843,7 @@ def cmd_monitor(args: argparse.Namespace, loops_dir: Path) -> int:
     # (little_loops.cli.loop.feed.StateFeedRenderer); using a function-local
     # import ensures the patch takes effect at call time.
     from little_loops.cli.loop.feed import StateFeedRenderer
+    from little_loops.cli.loop.header import initial_model_display
     from little_loops.cli.loop.signals import _install_sigwinch_handler, _restore_sigwinch_handler
     from little_loops.config import BRConfig
 
@@ -851,7 +853,7 @@ def cmd_monitor(args: argparse.Namespace, loops_dir: Path) -> int:
         args,
         loops_dir=loops_dir,
         loop_path=loop_path,
-        model=fsm.llm.model,
+        model_display=initial_model_display(fsm, None, _config.orchestration.model_hints),
         effort=fsm.llm.effort,
         show_input=_config.loops.run_defaults.show_input,
     )

@@ -6,11 +6,18 @@ Relocated from ``cli/loop/_helpers.py`` (ENH-2776).
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from little_loops.cli.loop.layout import _display_width, _truncate_to_width_ansi
 from little_loops.cli.output import colorize
 from little_loops.fsm.loop_paths import get_builtin_loops_dir
+from little_loops.host_runner import (
+    MODEL_HINTS,
+    HostNotConfigured,
+    ModelHintError,
+    resolve_host,
+    resolve_model_hint,
+)
 
 if TYPE_CHECKING:
     from little_loops.fsm.schema import FSMLoop
@@ -106,10 +113,60 @@ def _effort_code(effort: str) -> str:
     return _EFFORT_CODES.get(effort.lower(), effort.upper())
 
 
+def format_model_selection(
+    requested: str | None, resolved: str | None, backend: str | None
+) -> str | None:
+    """Render a model selection for the header (ENH-3638).
+
+    A selection is a hint iff ``requested`` is in ``MODEL_HINTS`` (never inferred
+    from ``requested != resolved``: the SDK path resolves a literal ``sonnet`` to
+    ``claude-sonnet-5``). A hint renders ``<requested> → <resolved> (<backend>)``
+    (no suffix when ``backend`` is ``None``); a literal renders the bare
+    resolved value, falling back to ``requested``. ``None`` when both are ``None``.
+    """
+    if requested in MODEL_HINTS and resolved is not None:
+        shown = f"{requested} → {resolved}"
+        return shown if backend is None else f"{shown} ({backend})"
+    return resolved if resolved is not None else requested
+
+
+def compose_model_line(display: str | None, effort: str | None) -> str | None:
+    """Append the effort code after the whole model display string."""
+    if display is None or effort is None:
+        return display
+    return f"{display} {_effort_code(effort)}"
+
+
+def initial_model_display(
+    fsm: FSMLoop,
+    run_model: str | None,
+    overrides: dict[str, dict[str, str | Literal[False]]] | None,
+) -> str | None:
+    """Model display before the first dispatch (ENH-3638). Never raises.
+
+    Precedence: ``--model`` (bare), then ``llm.model_hint`` resolved against the
+    CLI host, then ``fsm.llm.model`` (bare).
+    """
+    if run_model:
+        return run_model
+    hint = fsm.llm.model_hint
+    if hint is None:
+        return fsm.llm.model
+    try:
+        backend = resolve_host().name
+    except HostNotConfigured:
+        return f"{hint} (unresolved: no host CLI)"
+    try:
+        resolved = resolve_model_hint(hint, backend=backend, overrides=overrides)
+    except ModelHintError:
+        return f"{hint} (unresolved on {backend})"
+    return format_model_selection(hint, resolved, backend)
+
+
 def _render_artifact_header_lines(
     fsm: FSMLoop,
     loop_path: Path | None,
-    model: str | None,
+    model_display: str | None,
     input_value: str | None,
     cols: int,
     *,
@@ -133,7 +190,7 @@ def _render_artifact_header_lines(
     ``_truncate_to_width_ansi`` as a safety net for a single value too long
     to fit even alone.
     """
-    model_display = model if model is None or effort is None else f"{model} {_effort_code(effort)}"
+    model_line = compose_model_line(model_display, effort)
 
     artifact_pairs = _artifact_lines(fsm, loop_path)
     run_dir_present = any(key == "run_dir" for key, _ in artifact_pairs)
@@ -142,11 +199,11 @@ def _render_artifact_header_lines(
         line = f"  {key}: {colorize(value, '2')}"
         if key == "loop" and input_value:
             line += f"  input: {colorize(input_value, '2')}"
-        elif key == "run_dir" and model_display is not None:
-            line += f"  model: {colorize(model_display, '2')}"
+        elif key == "run_dir" and model_line is not None:
+            line += f"  model: {colorize(model_line, '2')}"
         rows.append(line)
-    if model_display is not None and not run_dir_present:
-        rows.append(f"  model: {colorize(model_display, '2')}")
+    if model_line is not None and not run_dir_present:
+        rows.append(f"  model: {colorize(model_line, '2')}")
 
     if not rows:
         return []

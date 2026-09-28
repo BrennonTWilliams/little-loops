@@ -540,7 +540,7 @@ def test_pinned_header_wide_input_does_not_collapse_box(
             edge_label_colors=None,
             badges=None,
             loop_path=loop_path,
-            model="sonnet",
+            model_display="sonnet",
             rows=rows,
             min_action_rows=3,
         )

@@ -2801,10 +2801,25 @@ class TestDisplayProgressEvents:
         events: list[dict[str, Any]] = []
         executor = MockExecutor(events)
         fsm = self._make_fsm()
-        run_foreground(executor, fsm, self._make_args(), model="claude-opus-4-7")
+        run_foreground(executor, fsm, self._make_args(), model_display="claude-opus-4-7")
         captured = capsys.readouterr()
         assert "  model:" in captured.out
         assert "claude-opus-4-7" in captured.out
+
+    def test_run_foreground_startup_model_line_golden(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """ENH-3638 golden: inline model line, bare and with effort (pre-refactor pin)."""
+        from little_loops.cli.output import strip_ansi
+
+        for kwargs, expected in (
+            ({"model_display": "claude-opus-4-7"}, "  model: claude-opus-4-7"),
+            ({"model_display": "claude-opus-4-7", "effort": "high"}, "  model: claude-opus-4-7 H"),
+        ):
+            executor = MockExecutor([])
+            run_foreground(executor, self._make_fsm(), self._make_args(), **kwargs)
+            out = strip_ansi(capsys.readouterr().out)
+            assert expected in out.splitlines()
 
     def test_run_foreground_startup_omits_model_when_none(
         self, capsys: pytest.CaptureFixture[str]

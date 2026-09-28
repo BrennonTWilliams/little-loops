@@ -23,7 +23,11 @@ from typing import TYPE_CHECKING, Any
 from little_loops.cli import output as _output
 from little_loops.cli.loop import signals
 from little_loops.cli.loop.diagram_modes import TOPOLOGY_TO_DETAIL, DiagramFacets, resolve_facets
-from little_loops.cli.loop.header import _render_artifact_header_lines, _resolve_input_value
+from little_loops.cli.loop.header import (
+    _render_artifact_header_lines,
+    _resolve_input_value,
+    format_model_selection,
+)
 from little_loops.cli.loop.layout import (
     TopologyDetector,
     _bfs_order,
@@ -240,7 +244,7 @@ def _build_pinned_pane(
     prev_highlight: str | None = None,
     prev_state_at_depth: dict[int, str] | None = None,
     loop_path: Path | None = None,
-    model: str | None = None,
+    model_display: str | None = None,
     effort: str | None = None,
     show_input: bool = True,
     rows: int | None = None,
@@ -365,7 +369,12 @@ def _build_pinned_pane(
     # variants and collapses to the single-line `fsm:` floor (BUG: general-task).
     lines.extend(
         _render_artifact_header_lines(
-            fsm, loop_path, model, _resolve_input_value(fsm, show_input), cols, effort=effort
+            fsm,
+            loop_path,
+            model_display,
+            _resolve_input_value(fsm, show_input),
+            cols,
+            effort=effort,
         )
     )
 
@@ -402,7 +411,7 @@ def _render_pinned_pane(
     min_action_rows: int = MIN_ACTION_ROWS,
     prev_state_at_depth: dict[int, str] | None = None,
     loop_path: Path | None = None,
-    model: str | None = None,
+    model_display: str | None = None,
     effort: str | None = None,
     show_input: bool = True,
 ) -> int:
@@ -443,7 +452,7 @@ def _render_pinned_pane(
             prev_highlight=prev_map.get(0),
             prev_state_at_depth=prev_map,
             loop_path=loop_path,
-            model=model,
+            model_display=model_display,
             effort=effort,
             show_input=show_input,
             rows=rows,
@@ -608,7 +617,7 @@ class StateFeedRenderer:
         badges: dict[str, str] | None = None,
         loops_dir: Path | None = None,
         loop_path: Path | None = None,
-        model: str | None = None,
+        model_display: str | None = None,
         effort: str | None = None,
         show_input: bool = True,
     ) -> None:
@@ -619,7 +628,7 @@ class StateFeedRenderer:
         self.badges = badges
         self.loops_dir = loops_dir or Path(".")
         self.loop_path = loop_path
-        self.model = model
+        self.model_display = model_display
         self.effort = effort
         self.show_input = show_input
 
@@ -664,7 +673,7 @@ class StateFeedRenderer:
             badges=self.badges,
             prev_state_at_depth=self.prev_state_at_depth,
             loop_path=self.loop_path,
-            model=self.model,
+            model_display=self.model_display,
             effort=self.effort,
             show_input=self.show_input,
         )
@@ -787,7 +796,7 @@ class StateFeedRenderer:
                 for line in _render_artifact_header_lines(
                     self.fsm,
                     self.loop_path,
-                    self.model,
+                    self.model_display,
                     _resolve_input_value(self.fsm, self.show_input),
                     tw,
                     effort=self.effort,
@@ -842,8 +851,14 @@ class StateFeedRenderer:
 
         elif event_type == "action_complete":
             actual_model = event.get("model")
-            if actual_model:
-                self.model = actual_model
+            requested = event.get("model_requested")
+            resolved = actual_model or event.get("model_resolved")
+            if requested is not None and resolved is not None:
+                self.model_display = format_model_selection(
+                    requested, resolved, event.get("model_backend")
+                )
+            elif actual_model:
+                self.model_display = actual_model
             actual_effort = event.get("effort")
             if actual_effort:
                 self.effort = actual_effort

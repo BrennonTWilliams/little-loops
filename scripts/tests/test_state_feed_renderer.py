@@ -159,11 +159,11 @@ class TestStateFeedRendererHandleEvent:
         assert "exit: 1" in captured.out
 
     def test_action_complete_updates_model(self, capsys: pytest.CaptureFixture[str]) -> None:
-        """action_complete with 'model' field updates self.model for future renders."""
+        """action_complete with 'model' field updates self.model_display for future renders."""
         fsm = _make_test_fsm()
         args = _make_args(show_diagrams=True)
-        renderer = StateFeedRenderer(fsm, args, model="sonnet")
-        assert renderer.model == "sonnet"
+        renderer = StateFeedRenderer(fsm, args, model_display="sonnet")
+        assert renderer.model_display == "sonnet"
         renderer.handle_event(
             {
                 "event": "action_complete",
@@ -173,7 +173,7 @@ class TestStateFeedRendererHandleEvent:
                 "model": "claude-sonnet-4-6",
             }
         )
-        assert renderer.model == "claude-sonnet-4-6"
+        assert renderer.model_display == "claude-sonnet-4-6"
         renderer.handle_event(
             {"event": "state_enter", "state": "start", "iteration": 1, "depth": 0}
         )
@@ -319,7 +319,7 @@ class TestStateFeedRendererHandleEvent:
         """Non-pinned handle_event renders model line when model kwarg is set."""
         fsm = _make_test_fsm()
         args = _make_args(show_diagrams=True)
-        renderer = StateFeedRenderer(fsm, args, model="claude-opus-4-7")
+        renderer = StateFeedRenderer(fsm, args, model_display="claude-opus-4-7")
         renderer.handle_event(
             {"event": "state_enter", "state": "start", "iteration": 1, "depth": 0}
         )
@@ -682,6 +682,27 @@ class TestRenderArtifactHeaderLines:
         model_line = next(ln for ln in lines if "model:" in ln)
         assert "claude-opus-4-8 L" in model_line
         assert "effort:" not in model_line
+
+    def test_model_line_golden_with_and_without_effort(self) -> None:
+        """ENH-3638 golden: exact model: value for a plain model, bare and with effort."""
+        from little_loops.cli.loop.header import _render_artifact_header_lines
+        from little_loops.cli.output import strip_ansi
+
+        fsm = _make_test_fsm()
+        bare = _render_artifact_header_lines(fsm, None, "claude-opus-4-8", None, 200)
+        with_effort = _render_artifact_header_lines(
+            fsm, None, "claude-opus-4-8", None, 200, effort="high"
+        )
+        assert (
+            strip_ansi(next(ln for ln in bare if "model:" in ln))
+            .strip()
+            .endswith("model: claude-opus-4-8")
+        )
+        assert (
+            strip_ansi(next(ln for ln in with_effort if "model:" in ln))
+            .strip()
+            .endswith("model: claude-opus-4-8 H")
+        )
 
     def test_no_effort_suffix_when_effort_is_none(self) -> None:
         """When effort is None, the model: value is unchanged (bare)."""

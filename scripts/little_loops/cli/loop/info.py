@@ -47,7 +47,7 @@ from little_loops.fsm.loop_paths import (
     load_loop_with_spec,
     resolve_loop_path,
 )
-from little_loops.fsm.schema import FSMLoop, StateConfig
+from little_loops.fsm.schema import DEFAULT_LLM_MODEL, FSMLoop, StateConfig
 from little_loops.fsm.validation import load_and_validate
 from little_loops.logger import Logger
 
@@ -1525,8 +1525,10 @@ def cmd_show(
         config_parts.append(f"scope: {', '.join(effective_scope)} (default)")
     llm = fsm.llm
     llm_parts = []
-    if llm.model != "sonnet":
+    if llm.model != DEFAULT_LLM_MODEL:
         llm_parts.append(f"model={llm.model}")
+    if llm.model_hint is not None:
+        llm_parts.append(f"model_hint={llm.model_hint}")
     if llm.max_tokens != 256:
         llm_parts.append(f"max_tokens={llm.max_tokens}")
     if llm.timeout != 30:

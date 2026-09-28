@@ -4834,6 +4834,38 @@ class TestCmdShow:
         assert "model=opus" in out
         assert "max_tokens=512" in out
 
+    def test_show_llm_config_block_model_hint(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """ENH-3638: a hint-only llm block prints model_hint= and no model=."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "my-loop.yaml").write_text(
+            "name: my-loop\n"
+            "initial: check\n"
+            "llm:\n"
+            "  model_hint: coding\n"
+            "states:\n"
+            "  check:\n"
+            '    action: "echo hello"\n'
+            "    on_yes: done\n"
+            "  done:\n"
+            "    terminal: true\n"
+        )
+        monkeypatch.chdir(tmp_path)
+        with patch.object(sys, "argv", ["ll-loop", "show", "my-loop", "--verbose"]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "model_hint=coding" in out
+        assert "model=" not in out.replace("model_hint=", "")
+
     def test_show_llm_config_block_hidden_when_default(
         self,
         tmp_path: Path,

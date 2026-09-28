@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING, Any
 
 from little_loops.cli.loop import signals
 from little_loops.cli.loop.feed import StateFeedRenderer, _format_history_event
-from little_loops.cli.loop.header import _artifact_lines, _effort_code, _relativize_to_cwd
+from little_loops.cli.loop.header import _artifact_lines, _relativize_to_cwd, compose_model_line
 from little_loops.cli.loop.summary import (
     _print_ab_summary,
     _print_usage_summary,
@@ -321,7 +321,7 @@ def run_foreground(
     instance_id: str | None = None,
     running_dir: Path | None = None,
     loop_path: Path | None = None,
-    model: str | None = None,
+    model_display: str | None = None,
     effort: str | None = None,
     show_input: bool = True,
     cost_output_json: Path | None = None,
@@ -378,7 +378,7 @@ def run_foreground(
             badges=badges,
             loops_dir=getattr(executor, "loops_dir", Path(".")),
             loop_path=loop_path,
-            model=model,
+            model_display=model_display,
             effort=effort,
             show_input=show_input,
         )
@@ -389,8 +389,8 @@ def run_foreground(
                 print(f"Max iterations: {colorize(str(fsm.max_iterations), '2')}")
             for key, value in _artifact_lines(fsm, loop_path):
                 print(f"  {key}: {colorize(value, '2')}")
-            if model is not None:
-                model_line = model if effort is None else f"{model} {_effort_code(effort)}"
+            model_line = compose_model_line(model_display, effort)
+            if model_line is not None:
                 print(f"  model: {colorize(model_line, '2')}")
             print()
 

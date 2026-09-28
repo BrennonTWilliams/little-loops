@@ -16,6 +16,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from little_loops.cli.loop.feed import with_diagram_color
+from little_loops.cli.loop.header import initial_model_display
 from little_loops.cli.loop.queue import _is_earliest_waiter
 from little_loops.cli.loop.runner import (
     _make_instance_id,
@@ -707,8 +708,12 @@ def cmd_run(
             instance_id=instance_id,
             loop_path=path,
             running_dir=running_dir,
-            model=fsm.llm.model,
-            effort=fsm.llm.effort,
+            model_display=initial_model_display(
+                fsm,
+                getattr(args, "run_model", None) or None,
+                _config.orchestration.model_hints,
+            ),
+            effort=getattr(args, "run_effort", None) or fsm.llm.effort,
             show_input=_config.loops.run_defaults.show_input,
             cost_output_json=getattr(args, "cost_output_json", None),
         )
