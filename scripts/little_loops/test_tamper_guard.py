@@ -49,6 +49,8 @@ class TamperReport:
 
 @dataclass
 class TestStrength:
+    __test__ = False  # not a pytest test class despite the Test* name
+
     assertions: int
     test_functions: int
     skip_markers: int
