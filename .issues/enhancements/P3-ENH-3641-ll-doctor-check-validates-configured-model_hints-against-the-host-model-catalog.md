@@ -46,9 +46,30 @@ Follow the advisor section pattern in `little_loops.cli.doctor` (`_advisor_data`
 - `_model_hints_data() -> list[dict]` — no-arg, sources `BRConfig(Path.cwd()).orchestration.model_hints`; per catalog-capable backend, calls a probe; emits rows with `name`, `status`, `severity`, `note`.
 - `_probe_codex_catalog() -> dict[str, dict] | None` — runs the Codex binary via `resolve_host_named("codex")` (never a `"codex"` literal; see Host CLI Abstraction) with args `debug models`, short timeout, returns `{slug: entry}` or `None` on any failure. Memoize like `_probe_advisor_version`.
 - Keep the probe table keyed by backend so a second host can register a catalog probe later without touching the row logic.
-- Severity: WARN rows are `warning`; unavailable rows are `informational`.
+- Severity: `CheckResult.severity` is only `error`/`informational` (no `warning`), so every row is `informational` — WARN rows use `status="partial"`, OK rows `status="full"`, unavailable rows `status="unsupported"`. That keeps the doctor exit code untouched (`_exit_code_for` fails only on `error` + `unsupported`).
 
 `codex debug` is a debug subcommand with no stability promise. The probe must treat any schema surprise as "catalog unavailable", and tests must pin the parsed fields (`slug`, `visibility`, `upgrade.model`, `upgrade.retirement_at`) with a fixture, not the live binary.
+
+## Program Design
+
+### Types
+
+- `model_hints: dict[str, dict[str, str | Literal[False]]]` — `BRConfig.orchestration.model_hints`, already validated by `_validate_model_hints`; `False` values mean "no model" and are skipped
+- `catalog: dict[str, dict[str, Any]]` — Codex `slug` → catalog entry (`visibility`, `upgrade.model`, `upgrade.retirement_at`)
+- `_CATALOG_PROBES: dict[str, Callable[[], dict[str, dict[str, Any]] | None]]` — backend name → probe; only `"codex"` registered
+
+### Signatures
+
+- `_probe_codex_catalog() -> dict[str, dict[str, Any]] | None` — `@lru_cache`; runs `[invocation.binary, "debug", "models"]` from `resolve_host_named("codex").build_version_check()` with a short timeout; `None` on `HostNotConfigured`, `FileNotFoundError`, `OSError`, `TimeoutExpired`, non-zero exit, bad JSON, or missing `models` key
+- `_model_hints_data() -> list[dict[str, Any]]` — no-arg; builds `BRConfig(Path.cwd())`, emits rows with `name`, `status`, `severity`, `note`
+- `_print_model_hints_section() -> None` — prints the "Model hints" section using `_STATUS_SYMBOLS`
+- `_model_hints_check() -> list[CheckResult]` — `@register_check`; maps `_model_hints_data()` rows to `CheckResult`
+
+### Call Path
+
+`main_doctor` -> `_print_model_hints_section` -> `_model_hints_data` -> `_probe_codex_catalog` -> `resolve_host_named`
+
+`main_doctor` -> `_run_registered_checks` -> `_model_hints_check` -> `_model_hints_data`
 
 ## Impact
 
@@ -72,3 +93,7 @@ Follow the advisor section pattern in `little_loops.cli.doctor` (`_advisor_data`
 ## Status
 
 **Open** | Created: 2026-09-28 | Priority: P3
+
+
+## Session Log
+- `/ll:format-issue` - 2026-09-28T22:12:20 - `3482ce67-14f8-4ba7-ad30-d5a96bb26e45.jsonl`
