@@ -17,6 +17,12 @@ blocked_by:
 - ENH-3626
 decision_needed: false
 reconcile_attempted: true
+confidence_score: 100
+outcome_confidence: 67
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 10
+score_change_surface: 18
 ---
 
 # ENH-3590: Add advise second-model veto to the go-no-go waiver in prepare-issue
@@ -441,6 +447,7 @@ _Added by `/ll:confidence-check` on 2026-09-26 (supersedes 2026-09-25 run)_
 - [resolved 2026-09-27 by /ll:reconcile-issue] Step names in the chain (`check_advise_enabled`, `veto_waiver`, etc.) and the ladder-error terminal are proposals until ENH-3606 lands; the exact edge targets must be re-confirmed then (Implementation Step 1). — ENH-3606 was cancelled/superseded by ENH-3623; Implementation Steps and Integration Map were rewritten to the fully-specified Option A design (`ADVISE_GO_NO_GO` StepKind branch in `preparation_policy.py` + one new `run_advise_go_no_go` state), with no remaining dependency on speculative state names.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-28T00:38:02 - `e29865f8-09e5-4d4f-b1e0-044306603141.jsonl`
 - `/ll:verify-issues` - 2026-09-28T00:34:18 - `b12c7494-c6d6-4c3e-bad8-04922e18aa22.jsonl`
 - `/ll:reconcile-issue` - 2026-09-28T00:28:01 - `c9e5a680-5288-484b-9789-01a430facd71.jsonl`
 - `/ll:wire-issue` - 2026-09-28T00:17:35 - `1c278270-e2ba-4e4c-99ea-a1e85ca8ec50.jsonl`
