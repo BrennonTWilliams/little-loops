@@ -1867,7 +1867,7 @@ class TestRefineToReadyIssueSubLoop:
         for name in ("format_issue_pre", "format_issue_post"):
             assert states[name]["action"].startswith("/ll:format-issue")
         assert "refine-to-ready-format-fallback" in states["resolve_issue"]["action"]
-        assert data["max_steps"] == 110  # BUG-3637: 100 -> 110 for the claim-correction cycle
+        assert data["max_steps"] == 113  # ENH-3633: 110 -> 113 for advise_ready gate
 
     def test_resolve_issue_seeds_reconcile_attempts_counter(self, data: dict) -> None:
         """resolve_issue seeds the reconcile-attempts counter alongside its siblings (ENH-3248)."""
@@ -19910,6 +19910,7 @@ MR11_MARKER_ALLOWLIST: set[tuple[str, str, str]] = {
     ("loops/prompt-across-issues.yaml", "context.parent", "ENH-3358"),
     ("loops/prompt-across-issues.yaml", "context.type", "ENH-3358"),
     ("loops/recursive-refine.yaml", "captured.input.output", "ENH-3358"),
+    ("loops/recursive-refine.yaml", "captured.input.output", "ENH-3633"),
     ("loops/recursive-refine.yaml", "context.commit_every", "ENH-3358"),
     ("loops/recursive-refine.yaml", "context.max_depth", "ENH-3358"),
     ("loops/recursive-refine.yaml", "context.no_recursion", "ENH-3358"),

@@ -93,8 +93,8 @@ class TestChildProofBeforeDone:
     def test_routing(self) -> None:
         assert self.STATE["fragment"] == "shell_exit"
         assert self.STATE["on_yes"] == "run_spike"
-        assert self.STATE["on_no"] == "write_done_record"
-        assert self.STATE["on_error"] == "write_done_record"
+        assert self.STATE["on_no"] == "check_advise_ready_enabled"
+        assert self.STATE["on_error"] == "check_advise_ready_enabled"
         assert CHILD["check_decision_before_done"]["on_no"] == "check_proof_before_done"
         assert CHILD["check_decision_before_done"]["on_error"] == "check_proof_before_done"
 
@@ -128,5 +128,5 @@ class TestChildProofBeforeDone:
 
     def test_max_steps_raised(self) -> None:
         assert (
-            yaml.safe_load((LOOPS / "refine-to-ready-issue.yaml").read_text())["max_steps"] == 110
+            yaml.safe_load((LOOPS / "refine-to-ready-issue.yaml").read_text())["max_steps"] == 113
         )

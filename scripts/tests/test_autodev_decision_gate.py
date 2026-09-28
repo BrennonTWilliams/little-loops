@@ -261,8 +261,8 @@ class TestChildDecisionInvariant:
         assert gate["on_error"] == "check_proof_before_done"
         proof = child["check_proof_before_done"]
         assert proof["on_yes"] == "run_spike"
-        assert proof["on_no"] == "write_done_record"
-        assert proof["on_error"] == "write_done_record"
+        assert proof["on_no"] == "check_advise_ready_enabled"
+        assert proof["on_error"] == "check_advise_ready_enabled"
 
     def test_run_record_write_moved_to_write_done_record(self, child: dict[str, Any]) -> None:
         assert "run-record write" in child["write_done_record"]["action"]

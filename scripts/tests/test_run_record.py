@@ -35,6 +35,7 @@ LEGACY_CLASS_STATES = {
     "mark_spike_no_verdict_infra": "infra",
     "record_spike_inconclusive": "spike_inconclusive",
     "record_decision_unresolved": "decision_unresolved",
+    "record_advisor_veto": "gate_unmet",  # ENH-3633
 }
 # ENH-3610: the three done-path gates no longer write; the record write moved to
 # write_done_record, reached only after check_decision_before_done.

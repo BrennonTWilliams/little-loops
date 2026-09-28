@@ -49,7 +49,7 @@ category: issue-management
 #                                                       → (on_failure) mark_evidence_absent_infra
 #   route_score_obligation (next-obligation with the seeded thresholds; tier 1 and
 #   DECISION/PROOF/ARTIFACTS skipped; ENH-3604):
-#     NONE                     → check_decision_before_done (ENH-3610) → check_proof_before_done (ENH-3611) → write_done_record → done
+#     NONE                     → check_decision_before_done (ENH-3610) → check_proof_before_done (ENH-3611) → check_advise_ready_enabled (ENH-3633, opt-in) → write_done_record → done
 #     SCORES:readiness_below, SCORES:absent → check_refine_limit → refine_followup (additive --gap-analysis)
 #     SCORES:outcome_below     → check_decision_needed → (on_yes) check_decide_attempts (BUG-3553: 1/run)
 #                                                        → resolve_decision_pre_breakdown | 2nd: record_decision_unresolved
@@ -140,7 +140,11 @@ scope:
 # headroom. Bounded at one cycle by check_claim_correction_budget's own
 # counter (target: 2); exhaustion routes straight to record_gate_unmet, never
 # back through this cycle or into check_gate_refine_limit.
-max_steps: 110
+# ENH-3633: 110 -> 113 for the opt-in advise_ready consult gate:
+# check_advise_ready_enabled -> run_advise_ready -> write_done_record (or
+# record_advisor_veto -> failed on VETO). Off by default; the +3 states only
+# execute when the flag is set, so this is headroom, not a recurring cycle.
+max_steps: 113
 # Step-cap fall-through: the executor runs the named state exactly once at the
 # cap; its `next:` is never followed and terminated_by stays "max_steps".
 # classify_terminal then writes a fresh run record so autodev's skip_inflight
@@ -150,6 +154,12 @@ max_steps: 110
 # would likely recur.
 on_max_steps: classify_terminal
 on_handoff: spawn
+parameters:
+  advise_ready:
+    type: string
+    required: false
+    default: ""
+    description: Opt-in second-model readiness consult before write_done_record (ENH-3633).
 context:
   # readiness_threshold / outcome_threshold are seeded at launch from
   # commands.confidence_gate.{readiness,outcome}_threshold in ll-config.json
@@ -922,8 +932,67 @@ states:
       printf '%s' "$((N + 1))" > "$F"
     fragment: shell_exit
     on_yes: run_spike
+    on_no: check_advise_ready_enabled
+    on_error: check_advise_ready_enabled
+
+  check_advise_ready_enabled:
+    # ENH-3633: opt-in second-model readiness consult, the last gate before
+    # write_done_record. Flag empty (default) -> done path unchanged, no
+    # consult. Fail-open on error: a probe failure must not strand a ready
+    # issue. Uses the resolve_issue `:shell` idiom (line ~205), no MR-11
+    # suppression marker needed.
+    action: "[ -n ${context.advise_ready:shell} ]"
+    fragment: shell_exit
+    on_yes: run_advise_ready
     on_no: write_done_record
     on_error: write_done_record
+
+  run_advise_ready:
+    # Calls the ENH-3632 helper (`ll-issues advise-consult`), which persists
+    # the verdict per run_dir (so a VETO sticks on replay), writes/removes the
+    # issue's ## Advisor Veto note, and preflights advisor.host without
+    # spending budget -- the native advisor_consult evaluator does none of
+    # these. Explicit timeout: the consult blocks up to
+    # advisor.timeout_seconds (default 180s) plus host startup; a timeout
+    # must land on write_done_record, never diagnose/failed.
+    action: >-
+      ll-issues advise-consult ${captured.issue_id.output:shell}
+      --run-dir ${context.run_dir} --write-note
+    action_type: shell
+    capture: run_advise_ready
+    evaluate:
+      type: classify
+    timeout: 300
+    route:
+      PROCEED: write_done_record
+      SKIPPED: write_done_record
+      VETO: record_advisor_veto
+      _: write_done_record
+      _error: write_done_record
+
+  record_advisor_veto:
+    # Mirrors record_gate_unmet: a VETO keeps the issue out of done, recorded
+    # as gate_unmet (run-record outcome deferred; issue status: unchanged)
+    # with evidence_refs naming the helper's payload file. Resolves the
+    # canonical ID because captured.issue_id is the raw input (3633 /
+    # ENH-3633 / P3-ENH-3633 all possible) but the helper keys its files by
+    # frontmatter id.
+    action: |
+      ID=${captured.issue_id.output:shell}
+      CID=$(ll-issues show "$ID" --json 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin).get("issue_id") or "")' 2>/dev/null)
+      [ -n "$CID" ] || CID="$ID"
+      ll-issues run-record write "$ID" --run-dir ${context.run_dir} --writer refine-to-ready-issue --legacy-class gate_unmet --evidence-refs "advise-$CID.json" || true
+      printf '%s\n' "$ID" >> ${context.run_dir}/advisor-vetoed
+      FILE="${context.run_dir}/advise-$CID.json"
+      REC=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("recommendation") or "")' "$FILE" 2>/dev/null)
+      if [ -n "$REC" ]; then
+        echo "[ADVISOR_VETO] $ID - $REC"
+      else
+        echo "[ADVISOR_VETO] $ID"
+      fi
+    action_type: shell
+    next: failed
+    on_error: failed
 
   write_done_record:
     # ENH-3610: the no-class record write, moved here from the score gate /

@@ -42,6 +42,11 @@ context:
   # Passed down from auto-refine-and-implement via with: so the sprint path honors it too.
   #   ll-loop run autodev <ids> --context skip_learning_gate=1
   skip_learning_gate: ""
+  # ENH-3633: opt-in second-model readiness consult on the refine-to-ready-issue
+  # done path, reached via prepare-issue's context_passthrough. Default empty =
+  # off. Veto-only, fails open on any helper error/timeout.
+  #   ll-loop run autodev <ids> --context advise_ready=1
+  advise_ready: ""
   # FEAT-3573: post-implement quality gate. "true" (default) makes closure credit for
   # an implemented (done/completed) issue depend on a passing format-check/lint/type/
   # test run recorded against the commit it produced. Set "false" to fall back to the

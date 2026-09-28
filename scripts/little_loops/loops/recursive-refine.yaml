@@ -32,6 +32,11 @@ parameters:
     required: false
     default: ""
     description: Issue ID(s) to refine (comma-separated). Required when order=queue.
+  advise_ready:
+    type: string
+    required: false
+    default: ""
+    description: Opt-in second-model readiness consult in the refine-to-ready-issue child (ENH-3633).
 context:
   # readiness_threshold / outcome_threshold are seeded at launch from
   # commands.confidence_gate.{readiness,outcome}_threshold in ll-config.json
@@ -237,8 +242,8 @@ states:
     loop: refine-to-ready-issue
     context_passthrough: true
     on_success: check_passed
-    on_failure: gate_recursion
-    on_error: gate_recursion
+    on_failure: check_advisor_veto
+    on_error: check_advisor_veto
     # BUG-3065: on_rate_limit_exhausted is DEAD CONFIG on a loop: state — it reads
     # as working and silently never fires. _execute_sub_loop (executor.py:820)
     # returns a routing target straight from child_result.terminated_by and never
@@ -300,6 +305,31 @@ states:
     on_yes: maybe_commit
     on_no: gate_recursion
     on_error: gate_recursion
+
+  check_advisor_veto:
+    # ENH-3633: without this gate a vetoed issue counts as PASSED -- a veto
+    # only fires after refine-to-ready-issue's check_proof_before_done, so
+    # check_passed / recheck_scores would otherwise append it to
+    # recursive-refine-passed.txt once scores happen to clear. Fail-open
+    # (on_no/on_error -> gate_recursion) preserves today's path for every
+    # other on_failure/on_error cause; the marker file is never written when
+    # the flag is off.
+    action: "grep -qxF -- ${captured.input.output:shell} ${context.run_dir}/advisor-vetoed"
+    fragment: shell_exit
+    on_yes: skip_advisor_veto
+    on_no: gate_recursion
+    on_error: gate_recursion
+
+  skip_advisor_veto:
+    # A veto is not a scope signal -- never runs run_size_review. Appends to
+    # recursive-refine-skipped.txt so the SKIPPED summary count includes it,
+    # plus its own -skipped-vetoed.txt for downstream classification.
+    action: |
+      echo "${captured.input.output}" >> ${context.run_dir}/recursive-refine-skipped-vetoed.txt  # ll-lint: mr11-ok(captured.input.output) ENH-3633 - ENH-3342 widening residual, tracked for conversion
+      echo "${captured.input.output}" >> ${context.run_dir}/recursive-refine-skipped.txt  # ll-lint: mr11-ok(captured.input.output) ENH-3633 - ENH-3342 widening residual, tracked for conversion
+      echo "Skipped:" ${captured.input.output:shell} "(advisor veto)"
+    action_type: shell
+    next: dequeue_next
 
   gate_recursion:
     # Short-circuit child detection when no_recursion=true (flat alias mode).

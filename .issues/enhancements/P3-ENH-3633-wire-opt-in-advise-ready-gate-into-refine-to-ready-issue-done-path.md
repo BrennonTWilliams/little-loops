@@ -3,9 +3,10 @@ id: ENH-3633
 type: ENH
 title: Wire opt-in advise_ready consult gate into refine-to-ready-issue done path
 priority: P3
-status: open
+status: done
 discovered_by: ll-issue-size-review
 discovered_date: '2026-09-27'
+completed_at: '2026-09-28T03:18:48Z'
 parent: ENH-3626
 relates_to:
 - ENH-3590
@@ -170,6 +171,19 @@ expires, so once an issue has had 3 consults from any call site (including PROCE
 ### Call Path
 `check_proof_before_done` -> `check_advise_ready_enabled` -> `run_advise_ready` -> `cmd_advise_consult`; VETO -> `record_advisor_veto` -> `failed`, otherwise `write_done_record`. In recursive-refine: `run_refine` (failed) -> `check_advisor_veto` -> `skip_advisor_veto` -> `dequeue_next`, otherwise `gate_recursion`
 
+### Deviations
+
+- 2026-09-27: the `record_advisor_veto` contract's step 1 (`printf 'gate_unmet' >
+  ${context.run_dir}/refine-terminal-class`, "autodev's MISSING fallback reads it")
+  was dropped. Between this issue's drafting and implementation,
+  `feat(autodev): retire the refine-terminal-class preparation handshake sentinel`
+  (same-day commit) removed that sentinel file entirely (ENH-3600) — the
+  `--legacy-class gate_unmet` argument on the `run-record write` call (contract
+  step 3) now carries the outcome on its own, with no separate sentinel writer/
+  reader left in any loop (`test_autodev_loop.py::TestRetiredPreparationHandshakeMarkers`
+  asserts no loop contains the string `refine-terminal-class`). `record_advisor_veto`
+  never wrote that file; steps 2-6 are implemented as specified.
+
 ## Integration Map
 
 ### Files to Modify
@@ -222,15 +236,15 @@ _Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
 
 ## Acceptance Criteria
 
-- [ ] With the flag empty (default), the done path reaches `write_done_record` without invoking the helper
-- [ ] A flag set on a parent (`autodev --context advise_ready=1` → prepare-issue → refine-to-ready-issue; `recursive-refine --context advise_ready=1` → refine-to-ready-issue) reaches the child gate as `1`; no child loop declares `advise_ready` in `context:`
-- [ ] With the flag set, a threshold-passing issue gets at most one consult per top-level run
-- [ ] A replayed VETO (second invocation, same ID, same `run_dir`) routes to `record_advisor_veto`, never `write_done_record`
-- [ ] VETO keeps the issue out of `done`, records `gate_unmet` (run-record outcome `deferred`; issue `status:` unchanged) with `evidence_refs` naming `advise-<ID>.json` via `record_advisor_veto`, and echoes `[ADVISOR_VETO]` with the recommendation (looked up by canonical ID, so a `3633`-style input works); autodev/prepare-issue handle it with no edits
-- [ ] `record_advisor_veto` writes `refine-terminal-class` = `gate_unmet` and appends the ID to `advisor-vetoed`; the `## Advisor Veto` section is already in the issue file, and a later PROCEED removes it
-- [ ] recursive-refine lists a vetoed issue in `recursive-refine-skipped.txt` (and `-skipped-vetoed.txt`), never in `recursive-refine-passed.txt`, and never runs `run_size_review` for it
-- [ ] Any helper failure (empty/unknown token, non-zero rc, no route, state timeout) behaves exactly like the flag being off
-- [ ] `ll-loop validate` passes for every touched loop; existing callers' tests pass with only the retargeted edge assertions changed
+- [x] With the flag empty (default), the done path reaches `write_done_record` without invoking the helper
+- [x] A flag set on a parent (`autodev --context advise_ready=1` → prepare-issue → refine-to-ready-issue; `recursive-refine --context advise_ready=1` → refine-to-ready-issue) reaches the child gate as `1`; no child loop declares `advise_ready` in `context:`
+- [x] With the flag set, a threshold-passing issue gets at most one consult per top-level run
+- [x] A replayed VETO (second invocation, same ID, same `run_dir`) routes to `record_advisor_veto`, never `write_done_record`
+- [x] VETO keeps the issue out of `done`, records `gate_unmet` (run-record outcome `deferred`; issue `status:` unchanged) with `evidence_refs` naming `advise-<ID>.json` via `record_advisor_veto`, and echoes `[ADVISOR_VETO]` with the recommendation (looked up by canonical ID, so a `3633`-style input works); autodev/prepare-issue handle it with no edits
+- [x] `record_advisor_veto` records `gate_unmet` via `--legacy-class gate_unmet` on the run-record write (not a `refine-terminal-class` sentinel — that mechanism was retired by same-day ENH-3600; see Program Design → Deviations) and appends the ID to `advisor-vetoed`; the `## Advisor Veto` section is already in the issue file, and a later PROCEED removes it
+- [x] recursive-refine lists a vetoed issue in `recursive-refine-skipped.txt` (and `-skipped-vetoed.txt`), never in `recursive-refine-passed.txt`, and never runs `run_size_review` for it
+- [x] Any helper failure (empty/unknown token, non-zero rc, no route, state timeout) behaves exactly like the flag being off
+- [x] `ll-loop validate` passes for every touched loop; existing callers' tests pass with only the retargeted edge assertions changed
 
 ## Impact
 
@@ -243,6 +257,21 @@ _Added by `/ll:refine-issue` — 2026-09-27 — based on codebase analysis:_
 
 - **In scope**: the done-path gate/consult/veto states, the recursive-refine veto skip, flag declaration and pass-through, `max_steps`, loop tests, `LOOPS_REFERENCE.md`.
 - **Out of scope**: the helper (ENH-3632); a new run-record class or `RUN_RECORD_TOKENS` change (Option B); veto-handling edits in autodev/prepare-issue; generalizing recursive-refine's failure path to skip on every `gate_unmet` (today's pass-if-scores-pass fallback for other terminal classes is unchanged); cross-run veto persistence; forwarding the flag through `issue-refinement`; the go-no-go waiver veto (ENH-3590); enabling the consult by default.
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-09-28
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/loops/refine-to-ready-issue.yaml`: new `parameters.advise_ready` (default `""`); retargeted `check_proof_before_done.on_no`/`.on_error` to the new `check_advise_ready_enabled`; added `check_advise_ready_enabled` / `run_advise_ready` / `record_advisor_veto`; bumped `max_steps` 110 → 113; updated the header done-path diagram
+- `scripts/little_loops/loops/recursive-refine.yaml`: new `parameters.advise_ready`; added `check_advisor_veto` / `skip_advisor_veto`; retargeted `run_refine.on_failure`/`.on_error` to `check_advisor_veto`
+- `scripts/little_loops/loops/autodev.yaml`: `context.advise_ready: ""`
+- `scripts/tests/test_advise_ready_gate.py` (new): stub-`ll-issues` coverage of the new states' routing and shell logic in both loops
+- `scripts/tests/test_autodev_decision_gate.py`, `test_autodev_proof_reentry.py`, `test_builtin_loops.py`, `test_run_record.py`: retargeted the `check_proof_before_done` edge pins, `max_steps` pin, and `LEGACY_CLASS_STATES`/MR-11 marker allowlist for the new states
+- `docs/guides/LOOPS_REFERENCE.md`: documented the flag, its fail-open behavior, the advisor budget interaction, and `issue-refinement`'s non-forwarding
+- **Deviation**: dropped the `refine-terminal-class` sentinel write from `record_advisor_veto` — that mechanism was retired same-day by ENH-3600 (see the issue's Program Design → Deviations note)
 
 ## Status
 
@@ -262,6 +291,8 @@ _Added by `/ll:confidence-check` on 2026-09-27_
 - Stale: the scores above (and `confidence_score`/`outcome_confidence` in frontmatter) predate the 2026-09-27 pre-implementation review, which added the recursive-refine veto skip, canonical-ID recommendation lookup, `--evidence-refs`, explicit route keys, and a consult timeout. Re-run `/ll:confidence-check`.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-28T03:17:53 - `e3ba6c17-e945-4049-81cb-561b43c91031.jsonl`
+- `/ll:ready-issue` - 2026-09-28T02:47:21 - `ee876d51-704c-4cd3-ad43-f4694282e83a.jsonl`
 - `/ll:confidence-check` - 2026-09-28T00:03:10 - `83cc6850-d1e9-4d1d-9048-aea88b662846.jsonl`
 - `/ll:confidence-check` - 2026-09-27T05:50:16 - `80466a09-7d06-47fd-a22c-3c9fa3353587.jsonl`
 - `/ll:refine-issue` - 2026-09-27T05:30:09 - `aae621bb-c067-4881-b3ce-b0e08bc3edb0.jsonl`
