@@ -10,6 +10,7 @@ import subprocess
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import UTC
 from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
@@ -862,6 +863,234 @@ def _advisor_check() -> list[CheckResult]:
     ]
 
 
+def _parse_codex_catalog(stdout: str) -> dict[str, dict[str, Any]] | None:
+    """Parse ``codex debug models`` stdout into ``{slug: entry}``.
+
+    Reads only ``slug``, ``visibility``, ``upgrade.model`` and
+    ``upgrade.retirement_at`` (entries carry ~35 unrelated large fields).
+    ``upgrade: null`` means "no upgrade". Returns None on bad JSON or a
+    missing/non-list ``models`` — ``codex debug`` has no stability promise.
+    """
+    try:
+        payload = json.loads(stdout)
+    except ValueError:
+        return None
+    models = payload.get("models") if isinstance(payload, dict) else None
+    if not isinstance(models, list):
+        return None
+    catalog: dict[str, dict[str, Any]] = {}
+    for entry in models:
+        if not isinstance(entry, dict) or not isinstance(entry.get("slug"), str):
+            continue
+        upgrade = entry.get("upgrade")
+        upgrade = upgrade if isinstance(upgrade, dict) else {}
+        catalog[entry["slug"]] = {
+            "visibility": entry.get("visibility"),
+            "upgrade_model": upgrade.get("model"),
+            "retirement_at": upgrade.get("retirement_at"),
+        }
+    return catalog
+
+
+# backend -> (catalog args appended to the host binary, stdout parser). Codex uses the
+# refreshed catalog (not `--bundled`): the bundled one is frozen at the binary's release
+# date and misses exactly the retirements this check exists to catch.
+_CATALOG_PARSERS: dict[str, tuple[list[str], Callable[[str], dict[str, dict[str, Any]] | None]]] = {
+    "codex": (["debug", "models"], _parse_codex_catalog),
+}
+
+
+@lru_cache
+def _probe_catalog(backend: str) -> tuple[dict[str, dict[str, Any]] | None, str]:
+    """Memoized catalog probe for *backend*, keyed on backend name.
+
+    Returns ``(catalog, "")`` on success or ``(None, reason)`` on any failure
+    (missing binary, non-zero exit, timeout, unparseable output). Never raises.
+    """
+    from little_loops.host_runner import resolve_host_named
+
+    try:
+        args, parser = _CATALOG_PARSERS[backend]
+        runner = resolve_host_named(backend)
+        if not runner.detect():
+            return None, f"{backend} binary not detected"
+        binary = runner.build_version_check().binary
+        # ll-no-project: detection probe, no task payload (ENH-3184 AC2)
+        result = subprocess.run(
+            [binary, *args],
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+        if result.returncode != 0:
+            return None, f"{backend} {' '.join(args)} exited {result.returncode}"
+        catalog = parser(result.stdout)
+        if catalog is None:
+            return None, f"unparseable {backend} catalog output"
+        return catalog, ""
+    except subprocess.TimeoutExpired:
+        return None, f"{backend} {' '.join(_CATALOG_PARSERS[backend][0])} timed out"
+    except Exception as exc:  # defensive: doctor must never crash on a probe
+        return None, f"{type(exc).__name__}: {exc}"
+
+
+def _codex_model_provider() -> str | None:
+    """Top-level ``model_provider`` from Codex's ``config.toml``; None if absent/unreadable."""
+    import os
+    import tomllib
+
+    try:
+        home = Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex")
+        with open(home / "config.toml", "rb") as fh:
+            value = tomllib.load(fh).get("model_provider")
+    except Exception:
+        return None
+    return value if isinstance(value, str) and value else None
+
+
+def _retirement_phrase(retirement_at: str | None) -> str:
+    """'retires YYYY-MM-DD' (future) or 'retired on YYYY-MM-DD' (past); '' when unknown."""
+    from datetime import datetime
+
+    if not isinstance(retirement_at, str) or len(retirement_at) < 10:
+        return ""
+    day = retirement_at[:10]
+    try:
+        when = datetime.fromisoformat(retirement_at)
+        if when.tzinfo is None:
+            when = when.replace(tzinfo=UTC)
+        past = when <= datetime.now(UTC)
+    except ValueError:
+        past = False
+    return f"retired on {day}" if past else f"retires {day}"
+
+
+def _model_hint_row(name: str, status: str, note: str, *, checked: bool = True) -> dict[str, Any]:
+    return {
+        "name": name,
+        "status": status,
+        "severity": "informational",
+        "checked": checked,
+        "note": note,
+    }
+
+
+def _model_hints_data() -> list[dict[str, Any]]:
+    """Rows validating ``orchestration.model_hints`` against the host model catalog.
+
+    No-arg (per ``register_check``) — sources its own ``BRConfig(Path.cwd())``. A
+    catalog-capable backend yields one ``<backend>.<hint>`` row per configured hint
+    (OK/WARN); every other outcome yields one row per backend. Always informational
+    severity and never raises. Runs only in ``ll-doctor``, never on the loop run path.
+    """
+    from little_loops.config import BRConfig
+    from little_loops.host_runner import ANTHROPIC_API_BACKEND, TEST_ONLY_HOSTS
+
+    try:
+        model_hints = BRConfig(Path.cwd()).orchestration.model_hints
+    except Exception:  # defensive: doctor must never crash on a probe
+        model_hints = None
+    if not isinstance(model_hints, dict):
+        model_hints = {}
+
+    rows: list[dict[str, Any]] = []
+    for backend, hints in model_hints.items():
+        if backend == ANTHROPIC_API_BACKEND or backend in TEST_ONLY_HOSTS:
+            continue
+        if not isinstance(hints, dict):
+            continue
+        configured = {h: m for h, m in hints.items() if isinstance(m, str)}
+        if not configured:
+            continue
+
+        if backend not in _CATALOG_PARSERS:
+            rows.append(
+                _model_hint_row(
+                    backend,
+                    "unsupported",
+                    f"not checked: no model catalog for {backend}",
+                    checked=False,
+                )
+            )
+            continue
+
+        provider = _codex_model_provider() if backend == "codex" else None
+        if provider is not None and provider != "openai":
+            rows.append(
+                _model_hint_row(
+                    backend,
+                    "unsupported",
+                    f"not checked: custom model_provider {provider}",
+                    checked=False,
+                )
+            )
+            continue
+
+        catalog, reason = _probe_catalog(backend)
+        if catalog is None:
+            rows.append(_model_hint_row(backend, "unsupported", f"catalog unavailable: {reason}"))
+            continue
+
+        for hint, slug in configured.items():
+            name = f"{backend}.{hint}"
+            entry = catalog.get(slug)
+            hidden = entry is not None and entry.get("visibility") == "hide"
+            if entry is not None and entry.get("upgrade_model"):
+                replacement = entry["upgrade_model"]
+                when = _retirement_phrase(entry.get("retirement_at"))
+                note = f"{slug} is superseded by {replacement}"
+                if when:
+                    note += f" ({when})"
+                note += (
+                    f"; set orchestration.model_hints.{backend}.{hint} to {json.dumps(replacement)}"
+                )
+                if hidden:
+                    note += f"; also hidden in {backend} catalog"
+                rows.append(_model_hint_row(name, "partial", note))
+            elif hidden:
+                rows.append(_model_hint_row(name, "partial", f"{slug} hidden in {backend} catalog"))
+            elif entry is None:
+                rows.append(
+                    _model_hint_row(
+                        name,
+                        "partial",
+                        f"{slug} not listed in {backend} catalog "
+                        "(retired, or a custom-provider model)",
+                    )
+                )
+            else:
+                rows.append(_model_hint_row(name, "full", slug))
+
+    if not rows:
+        return [_model_hint_row("model_hints", "unsupported", "none configured", checked=False)]
+    return rows
+
+
+def _print_model_hints_section() -> None:
+    """Print the Model hints section (`–` for rows that were not checked)."""
+    print()
+    print("Model hints")
+    print("─" * 40)
+    for row in _model_hints_data():
+        symbol = _STATUS_SYMBOLS.get(row["status"], "?") if row["checked"] else "–"
+        note = f"  {row['note']}" if row["note"] else ""
+        print(f"  {symbol}  {row['name']}{note}")
+
+
+@register_check
+def _model_hints_check() -> list[CheckResult]:
+    """Registered check: model-hint findings are always informational severity."""
+    return [
+        CheckResult(
+            name=row["name"],
+            status=row["status"],
+            note=row["note"],
+            severity=row["severity"],
+        )
+        for row in _model_hints_data()
+    ]
+
+
 # --full-gated checks: one adapter per ll-verify-* / ll-check-links checker,
 # aggregating the FEAT-2795 target family. Kept separate from `_CHECKS` so the
 # default (non-`--full`) run never executes them.
@@ -1350,6 +1579,7 @@ def _print_report(
             "loop_validity": _loop_validity_data(),
             "advisor": _advisor_data(),
             "code_query": _code_query_data(),
+            "model_hints": _model_hints_data(),
         }
         if full:
             data["full"] = _full_section_data()
@@ -1467,6 +1697,7 @@ not a broken install.
             _print_loop_validity_section()
             _print_advisor_section()
             _print_code_query_section()
+            _print_model_hints_section()
             if args.full:
                 _print_full_section()
             if trim_report is not None:

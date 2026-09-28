@@ -39,7 +39,7 @@ _TASK_PATH_MODULES: dict[str, tuple[int, int]] = {
     "little_loops/cli/loop/summary.py": (1, 0),
     "little_loops/cli/issues/decisions.py": (1, 0),
     "little_loops/cli/action.py": (1, 1),
-    "little_loops/cli/doctor.py": (1, 1),
+    "little_loops/cli/doctor.py": (2, 2),
     "little_loops/init/install_check.py": (5, 5),
     # Holds the helper itself plus run_blocking_json's spawn (FEAT-3042 moved
     # evaluate_llm_structured's subprocess.run here; it routes through

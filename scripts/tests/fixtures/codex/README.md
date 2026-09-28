@@ -166,3 +166,17 @@ length 17,730 chars). `ll-verify-private-refs` → PASS.
   `_codex_cache_usage` docstring records that `total_token_usage` resets across
   a compaction; if so, a compacted invocation's live total undercounts (it can
   only omit tokens, never double-count them).
+
+# `models-catalog.json` (ENH-3641)
+
+Shape of `codex debug models` (refreshed catalog) as of `codex-cli 0.152.1`,
+captured 2026-09-28: `{"models": [...]}` where each entry carries `slug`,
+`priority`, `visibility` (`list`/`hide`) and `upgrade` (`null`, or
+`{model, migration_markdown, retirement_at}`). **Synthetic, not a verbatim
+capture**: slugs are placeholders, `base_instructions`/`migration_markdown` are
+elided (the live entries carry ~35 unrelated large fields), and the
+retirement dates are pinned to 2999/2020 so tests are time-stable. It is the
+contract for `little_loops.cli.doctor._parse_codex_catalog`, which reads only
+`slug`, `visibility`, `upgrade.model` and `upgrade.retirement_at`. `codex debug`
+has no stability promise: re-check the live shape when `codex --version`
+differs from `0.152.1`.

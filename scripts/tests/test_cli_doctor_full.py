@@ -28,6 +28,23 @@ from little_loops.cli.doctor import (
 
 
 @pytest.fixture(autouse=True)
+def _canned_model_hints(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep the model_hints check from probing a real host binary in doctor tests."""
+    monkeypatch.setattr(
+        "little_loops.cli.doctor._model_hints_data",
+        lambda: [
+            {
+                "name": "model_hints",
+                "status": "unsupported",
+                "severity": "informational",
+                "checked": False,
+                "note": "canned",
+            }
+        ],
+    )
+
+
+@pytest.fixture(autouse=True)
 def _canned_code_query(monkeypatch: pytest.MonkeyPatch) -> None:
     """Keep the code_query check off the real repo index (slow) in doctor tests."""
     monkeypatch.setattr(

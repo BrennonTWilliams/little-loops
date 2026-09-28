@@ -3,10 +3,11 @@ id: ENH-3641
 type: ENH
 title: ll-doctor check validates configured model_hints against the host model catalog
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-28'
 captured_at: '2026-09-28T20:53:36Z'
+completed_at: '2026-09-28T23:49:14Z'
 parent: EPIC-3563
 labels:
 - multi-host
@@ -98,7 +99,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 - `docs/reference/HOST_COMPATIBILITY.md:767` — section list "Entry Points, Skills & Commands, Decisions Store, History DB, FSM Loop Validity, Schema Drift, and Advisor" in the `ll-doctor` install-surface paragraph; append "Model hints" [Agent 2 finding]
 - `docs/ARCHITECTURE.md:922` — `--json` key enumeration (`entry_points`, …, `schema_drift`, `advisor`, `full`) in the `CapabilityReport` table row; add `model_hints` [Agent 2 finding]
 - `scripts/little_loops/cli/doctor.py:1351` — add `"model_hints": _model_hints_data()` to the `--json` dict in `_print_report`, beside `"advisor": _advisor_data()` [Agent 1 finding]
-- `scripts/little_loops/cli/doctor.py:1468` — call `_print_model_hints_section()` in `main_doctor`'s `if not args.json:` block after `_print_code_query_section()` [Agent 1 finding]
+- `scripts/little_loops/cli/doctor.py:1469` — call `_print_model_hints_section()` in `main_doctor`'s `if not args.json:` block after `_print_code_query_section()` [Agent 1 finding]
 - `scripts/little_loops/cli/doctor.py:1296` — `_probe_version` cannot be reused for the catalog call (no `returncode` check, drops `invocation.args`, single spawn site pinned at `(1, 1)`); the new probe gets its own `subprocess.run` with `# ll-no-project:` marker and the pin in `test_enh3184_spawn_site_guard.py` updated to `(2, 2)` (decided in review 2026-09-28; the shared-helper alternative would change the working version probe) [Agent 3 finding]
 
 ### Dependent Files (Callers/Importers)
@@ -162,6 +163,10 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 `main_doctor` -> `_run_registered_checks` -> `_model_hints_check` -> `_model_hints_data`
 
+### Deviations
+
+- 2026-09-28: Design said `_probe_catalog(backend) -> dict | None`. Implemented as `-> tuple[dict | None, str]` (catalog, failure reason) so the "catalog unavailable: <reason>" row can name the actual cause (missing binary, non-zero exit, timeout, unparseable output) without a second probe. Cache key, spawn site, timeout and failure containment are as designed.
+
 ## Implementation Steps
 
 ### Wiring Phase (added by `/ll:wire-issue`)
@@ -197,12 +202,21 @@ _These touchpoints were identified by wiring analysis and must be included in th
 - [ ] No failure path raises out of the check or changes the doctor exit code.
 - [ ] Codex binary resolved through `host_runner`, not a string literal.
 
+## Resolution
+
+- Added the "Model hints" section to `ll-doctor` (`_model_hints_data`, `_print_model_hints_section`, `_model_hints_check`, `--json` key `model_hints`) in `scripts/little_loops/cli/doctor.py`, with a `codex debug models` probe (`_probe_catalog`, `_parse_codex_catalog`, `_codex_model_provider`), refreshed catalog, `timeout=20`.
+- Tests: `scripts/tests/test_cli_doctor_model_hints.py` plus wiring test in `test_cli_doctor.py`; fixture `fixtures/codex/models-catalog.json` (+ README provenance); autouse `_probe_catalog` cache reset in `conftest.py`; spawn-site pin moved to `(2, 2)`.
+- Docs: `CLI.md`, `CONFIGURATION.md`, `HOST_COMPATIBILITY.md`, `ARCHITECTURE.md`, `config-schema.json` (also replaced stale `doctor.py:536-555` citation).
+- Full suite: 27014 passed; one unrelated flaky test (`test_no_parallel_serial_gate::test_kills_grandchild_in_same_group`) failed in the full run and passed in isolation.
+
 ## Status
 
-**Open** | Created: 2026-09-28 | Priority: P3
+**Completed** | Created: 2026-09-28 | Priority: P3
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-28T23:49:14 - `fd7c3832-2146-4b09-99dc-6ad0df6ab561.jsonl`
+- `/ll:ready-issue` - 2026-09-28T23:38:07 - `277e085e-c58d-42a1-a12f-c40e5674a1f9.jsonl`
 - `/ll:confidence-check` - 2026-09-28T22:45:21 - `77c339e9-8806-4a53-a734-a18593a275bb.jsonl`
 - `/ll:wire-issue` - 2026-09-28T22:36:29 - `29b6f7a1-cbe3-4641-a1f5-b4e98b2d2120.jsonl`
 - `/ll:refine-issue` - 2026-09-28T22:17:13 - `6f422968-702e-4b64-aab8-1417160db4d7.jsonl`

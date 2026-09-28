@@ -22,6 +22,23 @@ from little_loops.host_runner import (
 
 
 @pytest.fixture(autouse=True)
+def _canned_model_hints(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep the model_hints check from probing a real host binary in doctor tests."""
+    monkeypatch.setattr(
+        "little_loops.cli.doctor._model_hints_data",
+        lambda: [
+            {
+                "name": "model_hints",
+                "status": "unsupported",
+                "severity": "informational",
+                "checked": False,
+                "note": "canned",
+            }
+        ],
+    )
+
+
+@pytest.fixture(autouse=True)
 def _canned_code_query(monkeypatch: pytest.MonkeyPatch) -> None:
     """Keep the code_query check off the real repo index (slow) in doctor tests."""
     monkeypatch.setattr(
@@ -795,6 +812,23 @@ class TestCheckRegistry:
         assert "advisor" in captured
         assert len(captured["advisor"]) == 2
         assert {row["name"] for row in captured["advisor"]} == {"advisor_host", "advisor_floor"}
+
+    def test_json_payload_includes_model_hints_key(self) -> None:
+        """ll-doctor --json includes a 'model_hints' key carrying the rows (ENH-3641)."""
+        report = CapabilityReport(host="claude-code", binary="claude", version="", capabilities=[])
+        runner = _make_runner(report)
+        captured: dict = {}
+
+        with (
+            patch("sys.argv", ["ll-doctor", "--json"]),
+            patch("little_loops.host_runner.resolve_host", return_value=runner),
+            patch("little_loops.host_runner.apply_host_cli_from_config"),
+            patch("little_loops.config.BRConfig", return_value=_json_safe_config()),
+            patch("little_loops.cli.doctor.print_json", side_effect=captured.update),
+        ):
+            main_doctor()
+
+        assert captured["model_hints"][0]["name"] == "model_hints"
 
     def test_text_mode_prints_advisor_section(self) -> None:
         """ll-doctor text mode prints a matching Advisor section (FEAT-3122 AC4)."""

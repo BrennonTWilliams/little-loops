@@ -1,0 +1,27 @@
+{
+  "models": [
+    {"slug": "gpt-ok", "priority": 1, "visibility": "list", "upgrade": null, "base_instructions": "elided"},
+    {"slug": "gpt-hidden", "priority": 2, "visibility": "hide", "upgrade": null, "base_instructions": "elided"},
+    {
+      "slug": "gpt-future-retire",
+      "priority": 3,
+      "visibility": "list",
+      "upgrade": {"model": "gpt-next", "migration_markdown": "elided", "retirement_at": "2999-01-01T00:00:00Z"},
+      "base_instructions": "elided"
+    },
+    {
+      "slug": "gpt-past-retire",
+      "priority": 4,
+      "visibility": "list",
+      "upgrade": {"model": "gpt-next", "migration_markdown": "elided", "retirement_at": "2020-01-01T00:00:00Z"},
+      "base_instructions": "elided"
+    },
+    {
+      "slug": "gpt-hidden-upgraded",
+      "priority": 5,
+      "visibility": "hide",
+      "upgrade": {"model": "gpt-next", "migration_markdown": "elided", "retirement_at": null},
+      "base_instructions": "elided"
+    }
+  ]
+}

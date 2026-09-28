@@ -466,6 +466,16 @@ def _fail_on_live_host_cli() -> Generator[None, None, None]:
         pytest.fail(msg)
 
 
+@pytest.fixture(autouse=True)
+def _clear_doctor_catalog_probe_cache() -> Generator[None, None, None]:
+    """Reset ``cli.doctor._probe_catalog``'s lru_cache so probe results never leak across tests."""
+    from little_loops.cli.doctor import _probe_catalog
+
+    _probe_catalog.cache_clear()
+    yield
+    _probe_catalog.cache_clear()
+
+
 def _live_conformance_allowed(marker: pytest.Mark | None) -> bool:
     """Pure predicate for ``live_conformance`` (FEAT-3455): env var AND marker.
 

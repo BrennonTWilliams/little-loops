@@ -1818,7 +1818,7 @@
         },
         "model_hints": {
           "type": "object",
-          "description": "ENH-3527: per-backend override of the model_hint (coding/reasoning/burst) -> model mapping, merged per hint over built-in defaults (built-ins exist only for claude-code and anthropic-api). A string is passed through as a literal model; false disables the built-in mapping for that hint. Keys are runtime backend keys; anthropic-api values also accept aliases such as 'opus'.",
+          "description": "ENH-3527: per-backend override of the model_hint (coding/reasoning/burst) -> model mapping, merged per hint over built-in defaults (built-ins exist only for claude-code and anthropic-api). A string is passed through as a literal model; false disables the built-in mapping for that hint. Keys are runtime backend keys; anthropic-api values also accept aliases such as 'opus'. ll-doctor checks configured values against the host model catalog (ENH-3641).",
           "propertyNames": {"enum": ["claude-code", "codex", "opencode", "pi", "gemini", "omp", "kimi-code", "qwen", "anthropic-api", "fake", "fake-minimal"]},
           "additionalProperties": {
             "type": "object",
@@ -2340,7 +2340,7 @@
     },
     "skill_budget": {
       "type": "object",
-      "description": "Skill file token-budget enforcement, consumed by ll-verify-skill-budget / ll-doctor's skill-budget check (cli/docs.py, cli/doctor.py:536-555). Precedence: --threshold CLI flag > skill_budget.threshold_tokens here > built-in default.",
+      "description": "Skill file token-budget enforcement, consumed by ll-verify-skill-budget / ll-doctor's skill-budget check (cli/docs.py, cli/doctor.py:_full_skill_budget_data). Precedence: --threshold CLI flag > skill_budget.threshold_tokens here > built-in default.",
       "properties": {
         "threshold_tokens": {
           "type": "integer",
