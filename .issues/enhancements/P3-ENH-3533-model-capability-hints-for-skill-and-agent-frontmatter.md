@@ -14,6 +14,12 @@ labels:
 blocked_by:
 - BUG-3640
 decision_needed: false
+confidence_score: 80
+outcome_confidence: 86
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 18
 ---
 
 # ENH-3533: Model capability hints for skill and agent frontmatter
@@ -183,7 +189,18 @@ Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the sam
 **Open** | Created: 2026-09-24 | Priority: P3
 
 
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on 2026-09-28_
+
+**Readiness Score**: 80/100 → STOP — ADDRESS GAPS (hard override)
+**Outcome Confidence**: 86/100 → HIGH CONFIDENCE
+
+### Gaps to Address
+- Unresolved `blocked_by` dependency: BUG-3640 (status: open). This issue's Option A design and the frontmatter model-rewrite seam it reuses depend on BUG-3640 landing first (Implementation Step 1). Land BUG-3640, or re-check its status, before starting implementation.
+
 ## Session Log
+- `/ll:confidence-check` - 2026-09-28T21:08:24 - `7f294095-d1d9-4ee9-9b43-311d4ce2c57c.jsonl`
 - `/ll:verify-issues` - 2026-09-28T21:01:34 - `6ee1f8dc-4aaf-4326-9a2c-971c5336e607.jsonl`
 - `/ll:wire-issue` - 2026-09-28T20:07:49 - `05090d65-2eac-41cf-a99d-d360b8ff23dc.jsonl`
 - `/ll:decide-issue` - 2026-09-28T19:46:46 - `c582b1ca-9355-4bc0-b38c-78d8f0f2eb3d.jsonl`

@@ -1,0 +1,11 @@
+{
+  "id": "e515ee10-9e3e-4ddd-9eac-b2c89ef4aaec",
+  "type": "decision",
+  "timestamp": "2026-09-28T21:07:32Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Users fanning out multiple issue IDs to a loop-runner queue entry currently must type --input for every entry; a second positional consistent with ll-loop run would shorten the common case.",
+  "rule": "Captured: Add positional [input] shorthand to ll-queue add for LOOP targets",
+  "scope": "issue",
+  "issue": "ENH-3643"
+}

@@ -27,6 +27,22 @@ Resolved edges (target status `done` or `cancelled`) are visibly annotated in th
 
 `blocked_by` / `depends_on` edges are durable by design — nothing prunes them when the target completes (`set_status.py:268` documents that these association edges never cascade). Resolution is computed at read time: `DependencyGraph.get_blocking_issues()` returns `blockers - completed` (`dependency_graph.py:283`), so schedulers (`next-issue`, sprints, autodev) already treat ENH-3623 as unblocked. Only the display disagrees, which prompted a false "is refine-to-ready-issue broken?" investigation on 2026-09-27 after a refine-to-ready-issue run on ENH-3623 (the run's `gate_unmet` failure was unrelated).
 
+## Program Design
+
+### Types
+
+- No new types — annotated fields stay `str | None`, same as the existing `blocked_by` / `depends_on` keys.
+
+### Signatures
+
+- `_parse_card_fields(path: Path, config: BRConfig) -> dict[str, str | None]` (`show.py:63`, unchanged signature) — return dict gains four keys: `blocked_by_display`, `depends_on_display`, `unresolved_blocked_by`, `unresolved_depends_on`.
+- `_id_matches(candidate: str, pattern: str) -> bool` (`cli_args.py:408`) — reused as-is to resolve bare-numeric edge IDs against loaded issue IDs.
+- `_render_relationships_block(fields: dict[str, str | None]) -> list[tuple[str, str]]` (`show.py:535`, unchanged signature) — reads `_RELATIONSHIP_KEYS` (repointed to the `*_display` keys) and applies `_dim(text: str) -> str` (`show.py:401`) to resolved entries.
+
+### Call Path
+
+`ll-issues show` CLI entry -> `_parse_card_fields` -> `_id_matches` (per edge ID, against `_all = find_issues(...)`) -> `_render_relationships_block` -> `_dim`
+
 ## Proposed Solution
 
 Display-side only — do not mutate frontmatter, and do not change the existing `blocked_by` / `depends_on` field values.
@@ -75,6 +91,11 @@ Design decisions (settled):
 5. Update `docs/reference/CLI.md` (see Documentation).
 6. Tests (see Acceptance Criteria).
 
+## Scope Boundaries
+
+- **In scope**: Annotating `blocked_by` / `depends_on` display in `ll-issues show` (text card and `--json`) with resolved status; adding the additive `unresolved_blocked_by` / `unresolved_depends_on` JSON keys.
+- **Out of scope**: Migrating `skills/confidence-check/SKILL.md` to consume `unresolved_blocked_by` instead of parsing raw `blocked_by` (noted as a follow-up in Integration Map); changing `DependencyGraph.get_blocking_issues()` or any scheduler logic — resolution computation is untouched, only the `show` display; annotating `parent` or other relationship fields beyond `blocked_by` / `depends_on`.
+
 ## Impact
 
 - **Priority**: P4 - Cosmetic/diagnostic; schedulers already compute resolution correctly, but the misleading display has already caused one false investigation.
@@ -103,4 +124,5 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:format-issue` - 2026-09-28T21:10:25 - `98bade11-bd68-4a4b-be5c-a80038f306cd.jsonl`
 - `/ll:capture-issue` - 2026-09-27T17:29:56 - `4759cc5d-e905-4259-b830-49d49c1712bf.jsonl`
