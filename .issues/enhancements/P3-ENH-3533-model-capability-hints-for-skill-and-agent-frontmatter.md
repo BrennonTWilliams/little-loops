@@ -105,40 +105,44 @@ Added in the 2026-09-28 third review:
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/adapters/core.py` — add `_validate_model_decl(fm: dict) -> None` (unknown-hint + pin-agreement check, raises `AdapterError`) and `_resolve_frontmatter_model(fm: dict, backend: str) -> str | None` (hint → host model via `resolve_model_hint(..., overrides=None)`; `None` + warning on missing mapping; falls back to BUG-3640's literal-`model` rule when no hint). Call `_validate_model_decl` in `process_agents` (`:565`) and `process_skills` (`:435`) right after `_read_frontmatter`. Convert `ModelHintError` → `AdapterError` in both.
+- `scripts/little_loops/adapters/core.py` — add `_validate_model_decl(fm: dict) -> None` (unknown-hint + exact-alias pin check per refinement 11, raises `AdapterError`) and `_resolve_frontmatter_model(fm: dict, backend: str) -> str | None` (hint → host model via `resolve_model_hint(..., overrides=None)`; `None` + recorded omission on `ModelHintUnmappedError`; falls back to BUG-3640's literal-`model` rule when no hint). Callers consult it only for artifacts that read `model` (refinement 15). `process_agents`/`process_skills` print the aggregated warning summary to stderr after the walk unless `quiet` (refinement 18). Call `_validate_model_decl` in `process_agents` (`:565`) and `process_skills` (`:435`) right after `_read_frontmatter`. Convert `ModelHintError` → `AdapterError` in both.
 - `scripts/little_loops/host_runner.py:~180` — add `ModelHintUnmappedError(ModelHintError)`, raised where `_BUILTIN_HINT_MAPPINGS.get(backend)` is `None` (refinement 9).
-- `scripts/little_loops/adapters/core.py:120` — `_select_frontmatter_fields` (with the BUG-3640 `_is_claude_model` alias-strip already inside it): gains an optional resolved-model parameter (refinement 10); strips `model_hint:` and writes the resolved `model:` (or none) for the target host.
+- `scripts/little_loops/adapters/core.py:120` — `_select_frontmatter_fields` (with the BUG-3640 `_is_claude_model` alias-strip already inside it): gains an optional resolved-model parameter (refinement 10); strips `model_hint:` **unconditionally** (refinement 16) and writes the resolved `model:` only when one is passed in.
 - `scripts/little_loops/adapters/omp.py:62-73,109-122` — route skill and agent emission through the same rewrite (refinement 14).
-- `scripts/little_loops/adapters/codex.py:430` — `CodexEmitter.emit_agent`: `model = _resolve_frontmatter_model(fm, "codex") or ""`; `_format_agent_toml` omits the line when empty (from BUG-3640).
-- `scripts/little_loops/adapters/kimi.py:111-126`, `qwen.py:128-145` — `emit_agent`/`emit_skill` pass the host backend key to the shared rewrite.
+- `scripts/little_loops/adapters/codex.py:430` — `CodexEmitter.emit_agent`: `model = _resolve_frontmatter_model(fm, "codex") or ""`; `_format_agent_toml` omits the line when empty (from BUG-3640). This is the only artifact that receives a resolved model today (refinement 15).
+- `scripts/little_loops/adapters/codex.py:105` — Codex skill mirrors go through `_select_frontmatter_fields`, so the unconditional strip covers them. No model is written because `model` is not in Codex's `fields_read` (refinement 16).
+- `scripts/little_loops/adapters/kimi.py:111-126`, `qwen.py:128-145` — `emit_agent`/`emit_skill` pass the host backend key to the shared rewrite. The resolved model is written only when `"model" in fields_read` (not today).
 - `scripts/little_loops/adapters/gemini.py:81` — `emit_skill` via the shared rewrite. `emit_agent` (`:131-138`, degraded) needs no change.
+- `scripts/tests/test_wiring_skills_and_commands.py:474-524` — `test_host_artifacts_are_not_stale`: add `assert errors == 0` (refinement 17).
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/host_runner.py:153` — `resolve_model_hint`, `ModelHintError`, `hint_backend_keys()`; signature unchanged. Existing callers: `fsm/executor.py:3687,3704`.
 - `scripts/little_loops/cli/adapt.py:132`, `cli/adapt_agents_for_codex.py:125-127` — call `process_agents`; covered by the `AdapterError` conversion (refinement 7), no edit.
-- `scripts/little_loops/adapters/capabilities.py` — `frontmatter_fields_read` per host. Add `model` for hosts that now receive a managed model field.
+- `scripts/little_loops/adapters/capabilities.py` — `frontmatter_fields_read` per host. **No change**: it becomes the gate for writing a resolved model (refinement 15), and no host is verified to read `model` today.
 - `scripts/little_loops/cli/verify_triggers.py:24,347` — imports `_is_model_invocation_disabled` from `adapters.core`; must be undisturbed by the new helpers.
 - `scripts/little_loops/adapters/omp.py` — excluded from `process_agents` degraded emission (`core.py:589-593` comment; degraded-emission gate in `process_agents`), so it emits agents verbatim via `emit_agent`. Both skill and agent emission must go through the shared rewrite (refinement 14).
 
 ### Documentation
-- `docs/reference/HOST_COMPATIBILITY.md` — new row/column: which hosts resolve a frontmatter `model_hint` (all generated hosts: omitted until a built-in mapping exists; Gemini agents: unsupported).
+- `docs/reference/HOST_COMPATIBILITY.md` — new row/column: which hosts resolve a frontmatter `model_hint` (Codex agents: resolved, omitted + warning until a built-in mapping exists; skill mirrors: omitted until the host is verified to read `model`; Gemini agents: unsupported).
 - `docs/reference/CLI.md:5827` — `ll-adapt-agents-for-codex` TOML output: `model` is resolved from `model_hint` or omitted.
 - `docs/reference/CONFIGURATION.md` (`orchestration.model_hints`, ~line 1370) — state explicitly that frontmatter hints ignore this override (built-in mappings only).
 - `docs/reference/API.md` (~11330-11385, `little_loops.adapters`) — `model_hint` handling in the per-emitter table; `ModelHintError` surfaces as `AdapterError`.
 - `CONTRIBUTING.md` — authoring note: `model_hint` + optional agreeing `model:` pin.
 
 ### Tests
-- `scripts/tests/test_adapters.py` — per emitter (Codex agent, Kimi agent/skill, Qwen agent/skill, Gemini skill): hint resolves on a fake-host-mapped backend; omitted + warning on an unmapped backend; `model_hint` never emitted. `TestGeminiEmitterEmitAgent` `_meta()` (`:1046-1056`): assert no model in degraded output.
+- `scripts/tests/test_adapters.py` — per emitter (Codex agent + skill, Kimi agent/skill/command, Qwen agent/skill, Gemini skill, omp skill/agent): `model_hint` never emitted. Codex agent: hint resolves on a monkeypatched mapping; omitted + aggregated warning when unmapped. Skill mirrors: no `model` written with the real `fields_read`, and no warning. With `model` monkeypatched into a host's `fields_read` plus a mapping, the resolved `model:` is written (proves the refinement 15 gate opens). `TestGeminiEmitterEmitAgent` `_meta()` (`:1046-1056`): assert no model in degraded output.
 - `scripts/tests/fixtures/adapt/agent_cases.json` + `test_adapt_golden_corpus.py:156-176` — add a `model_hint` case without perturbing the existing byte-identical cases.
 - New validation tests for `_validate_model_decl`: unknown hint → error; `model_hint: coding` + `model: sonnet` → ok; `model_hint: coding` + `model: haiku` → error. Template: `test_model_hints.py::TestStructuralValidation.test_invalid_vocabulary_and_exclusivity` (`:260-266`).
 - A pytest walking real `agents/*.md` and `skills/*/SKILL.md` that runs `_validate_model_decl` on each (the in-repo gate for refinement 6).
 - `process_agents`/`process_skills`: an unknown hint yields an `errors` count increment, not a traceback.
-- Resolution-reaches-artifact matrix: mirror `test_model_hints.py::TestHostArgv` (`:953-1023`) / `TestPortabilityProof` (`:1039-1091`). Emitters hard-code their backend, so the `fake` backend never reaches them. For the positive path use `monkeypatch.setitem(_BUILTIN_HINT_MAPPINGS, "<host>", {h: f"x-{h}" for h in MODEL_HINTS})` per host (codex, gemini skills, kimi-code, qwen, omp). Negative path: leave the host unmapped and assert omission plus the aggregated warning.
-- Pin-normalization cases for `_validate_model_decl`: `Sonnet`, `claude-sonnet-*`, `inherit` (error), and a hint with no pin (valid).
+- Resolution-reaches-artifact matrix: mirror `test_model_hints.py::TestHostArgv` (`:953-1023`) / `TestPortabilityProof` (`:1039-1091`). Emitters hard-code their backend, so the `fake` backend never reaches them. For the positive path use `monkeypatch.setitem(_BUILTIN_HINT_MAPPINGS, "<host>", {h: f"x-{h}" for h in MODEL_HINTS})` per host (codex, gemini skills, kimi-code, qwen, omp). Skill-mirror hosts also need `model` monkeypatched into their `frontmatter_fields_read` (refinement 15). Negative path: leave the host unmapped and assert omission; the aggregated warning appears only for artifacts that read `model`.
+- Pin cases for `_validate_model_decl` (refinement 11): `Sonnet` (ok, case-insensitive), `claude-sonnet-5` and `claude-sonnet-5-5` next to `model_hint: coding` (**error**: concrete IDs are rejected), `inherit` (error), and a hint with no pin (valid).
+- Warning plumbing (refinement 18): two Codex agents with the same unmapped hint → exactly one stderr summary line with count 2; `quiet=True` → no output; `process_*` return shape unchanged.
+- `test_host_artifacts_are_not_stale`: a fixture tree with an invalid hint makes the gate fail through the new `errors == 0` assertion (refinement 17).
 - Real-tree walker additionally asserts a pin is present wherever a shipped file declares `model_hint` (refinement 12).
 - Ordering test: a `disable-model-invocation: true` skill with an unknown hint still yields an error (refinement 13).
 - `ModelHintUnmappedError` is raised for a missing mapping only; unknown/unsupported backend and config-disabled hints raise plain `ModelHintError` and surface as `AdapterError`.
-- `test_wiring_skills_and_commands.py:474-524` (`test_host_artifacts_are_not_stale`) — existing staleness gate; must pass after regeneration.
+- `test_wiring_skills_and_commands.py:474-524` (`test_host_artifacts_are_not_stale`) — existing staleness gate, now also asserting `errors == 0`; must pass after regeneration.
 
 ### Dropped touchpoints (from earlier wiring passes)
 Refinements 6 and 7 remove these: `cli/docs.py` `main_verify_skills` + its help text, `doc_counts.py:_parse_skill_frontmatter`, `frontmatter.py:parse_skill_frontmatter`, `cli/doctor.py:943`, `init/writers.py:238`, `CONTRIBUTING.md:691,707` (verify-skills wording), `skills/configure/areas.md:862`, `scripts/little_loops/loops/mechanize-skills.yaml:503`, `scripts/pyproject.toml:92`, `cli/__init__.py:64,156`, `test_cli_docs.py::TestMainVerifySkills`, `test_skill_size_checker.py`, `test_doc_counts.py::TestCheckSkillBudget`, and CLI-level try/except in `cli/adapt.py`/`cli/adapt_agents_for_codex.py`. Refinement 2 removes `config-schema.json:1819-1832` (no new consumer of `orchestration.model_hints`).
@@ -146,15 +150,15 @@ Refinements 6 and 7 remove these: `cli/docs.py` `main_verify_skills` + its help 
 ## Implementation Steps
 
 0. **Pre-implementation checks (before writing code).**
-   - Settle the uncommitted working-tree change that removes `model: sonnet` from 10 `skills/*/SKILL.md` files (audit-issue-conflicts, confidence-check, spike, and others). Land or revert it first, since it decides which skills carry a pin.
+   - Settle the uncommitted working-tree change that removes `model: sonnet` from 10 `skills/*/SKILL.md` files (audit-issue-conflicts, confidence-check, spike, and others). Land or revert it first, since it decides which skills carry a pin. Either way, `skills/map-dependencies/SKILL.md` (`model: sonnet`) keeps its pin and is a safe Step 7 target.
    - Confirm Claude Code tolerates an unknown `model_hint:` key: put it on a scratch agent and a scratch skill, run `claude plugin validate`, and check that both register and run on their `model:` pin. If Claude Code rejects the key, stop and re-scope; do not ship migrated files.
 1. BUG-3640 is done (`4bd11c089`); build on its `_is_claude_model` predicate, omit-when-empty Codex TOML rule, and the `model:` strip in `_select_frontmatter_fields`.
 2. Add `ModelHintUnmappedError` to `host_runner.py`. Add `_validate_model_decl` and `_resolve_frontmatter_model` to `adapters/core.py`. Wire validation into `process_agents`/`process_skills` (in `process_skills`, before the `disable-model-invocation` skip) with `ModelHintError` → `AdapterError`.
-3. Route every generated-host emitter through `_resolve_frontmatter_model` (Codex agent; Kimi/Qwen/omp agent + skill; Gemini skill), passing the result into `_select_frontmatter_fields`, which strips `model_hint:` from output. Aggregate unmapped-host warnings per host per hint.
-4. Add `model` to `frontmatter_fields_read` where it is now a managed field.
+3. Make the `model_hint:` strip in `_select_frontmatter_fields` unconditional (covers Codex skills and all commands). Route every generated-host emitter through `_resolve_frontmatter_model` (Codex agent; Kimi/Qwen/omp agent + skill; Gemini skill). Pass the result into `_select_frontmatter_fields` only when the artifact reads `model` (refinement 15). Collect unmapped omissions on the emitter and print one stderr summary per host per hint unless `quiet` (refinement 18).
+4. Leave `frontmatter_fields_read` unchanged (refinement 15). Add `assert errors == 0` to `test_host_artifacts_are_not_stale` (refinement 17).
 5. Tests per the Tests list (TDD: write the failing tests first).
 6. Docs per the Documentation list.
-7. **Mandatory:** migrate one agent (e.g. `agents/codebase-locator.md` → `model_hint: coding` + `model: sonnet`) and one skill that keeps a pin, then `ll-adapt --host <codex|gemini|kimi-code|qwen|omp> --apply` so the committed mirrors match. This is the only real-tree proof of tolerance, pin agreement and staleness.
+7. **Mandatory:** migrate one agent (e.g. `agents/codebase-locator.md` → `model_hint: coding` + `model: sonnet`) and one skill that keeps a pin (e.g. `skills/map-dependencies/SKILL.md` → `model_hint: coding` + `model: sonnet`), then `ll-adapt --host <codex|gemini|kimi-code|qwen> --apply` so the committed mirrors match. **Not omp**: this repo tracks no `.omp/` mirror (refinement 14). This is the only real-tree proof of tolerance, pin agreement and staleness.
 
 ## Impact
 
@@ -171,19 +175,20 @@ Refinements 6 and 7 remove these: `cli/docs.py` `main_verify_skills` + its help 
 ## Acceptance Criteria
 
 - [ ] Every artifact/host combination claimed as supported has an executable test proving the resolved model reaches the host artifact, or that the field is omitted with a warning where no mapping exists.
-- [ ] Unknown hints are errors. A `model:` that disagrees with `model_hint`'s `claude-code` resolution is an error. An agreeing `model:` pin is allowed.
+- [ ] Unknown hints are errors. A `model:` next to `model_hint` must be the exact `claude-code` alias (case-insensitive); a different alias, a concrete `claude-*` ID or `inherit` is an error.
 - [ ] Generated-mirror resolution never reads `orchestration.model_hints` / `.ll/ll.local.md` (test: an override in config does not change emitted output).
-- [ ] `model_hint` never appears in any generated mirror.
+- [ ] `model_hint` never appears in any generated mirror, commands and Codex skills included.
+- [ ] A resolved `model:` is written only into artifacts whose host reads `model` (`frontmatter_fields_read`, or Codex agent TOML); `frontmatter_fields_read` is unchanged.
 - [ ] An unresolvable hint surfaces as a per-file `ll-adapt` error, not a traceback.
-- [ ] Generated-file staleness after a mapping change is caught by `test_host_artifacts_are_not_stale`.
+- [ ] Generated-file staleness after a mapping change is caught by `test_host_artifacts_are_not_stale`, which also asserts `errors == 0`.
 - [ ] Migration of at least one shipped agent and one shipped skill is done with mirrors regenerated (`ll-adapt --apply`), and the real-tree walker passes (pin present and agreeing).
 - [ ] omp skill and agent mirrors strip `model_hint` and emit no model (covered by the "never emitted" test).
-- [ ] Unmapped-host warnings are aggregated per host per hint; only a missing mapping (`ModelHintUnmappedError`) is downgraded to omit + warn.
+- [ ] Unmapped-host warnings are aggregated per host per hint, go to stderr, are silent under `quiet=True`, and fire only for artifacts that read `model`. Only a missing mapping (`ModelHintUnmappedError`) is downgraded to omit + warn.
 - [ ] Claude Code tolerance of an unknown `model_hint:` key is confirmed before implementation and recorded under Resolved Questions.
 
 ## Scope Boundaries
 
-- **In scope**: `model_hint` in skill and agent frontmatter; generation-time resolution for codex, gemini (skills), kimi-code, qwen, omp; pin-agreement validation; tests per claimed combination.
+- **In scope**: `model_hint` in skill and agent frontmatter; generation-time resolution for codex, gemini (skills), kimi-code, qwen, omp, written only where the host reads `model`; pin-agreement validation; tests per claimed combination.
 - **Prerequisites**: ENH-3527 (done — resolver); BUG-3640 (alias stripping + model-rewrite seam).
 - **Out of scope**: new hint vocabulary; built-in hint mappings for non-Claude hosts (ENH-3642 for Codex; concrete non-Claude model IDs are out per EPIC-3563); consumer-project config overrides for shipped mirrors; resolution at Claude Code native invocation; migrating every shipped skill/agent.
 
@@ -192,7 +197,7 @@ Refinements 6 and 7 remove these: `cli/docs.py` `main_verify_skills` + its help 
 ### Types
 
 - `model_hint: str | None` — optional frontmatter key; value in `host_runner.MODEL_HINTS`.
-- `model: str | None` — when present with `model_hint`, must equal `resolve_model_hint(model_hint, backend="claude-code")`.
+- `model: str | None` — when present with `model_hint`, `model.strip().lower()` must equal `resolve_model_hint(model_hint, backend="claude-code")` (exact alias, no `resolve_model_alias` normalization).
 
 ### Signatures
 
