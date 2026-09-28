@@ -75,7 +75,7 @@ Add `ll-loop validate` warnings for model hints that will not resolve, and docum
 - `validate_fsm(fsm: FSMLoop, orchestration_request_path: str | None = None, *, host_cli: str | None = None, model_hints: dict[str, dict[str, str | Literal[False]]] | None = None) -> list[ValidationError]` — extends the existing signature in `structural_rules.py` with the two keyword args; `host_cli=None` skips resolution warnings.
 - `load_and_validate(...)` — gains the same two keyword args and forwards them, mirroring how `orchestration_request_path` is threaded today.
 - `cli/logs.py`'s `_validate_builtin_loop(...)` helper — the fleet-review call site in `_cmd_fleet_review()` does not call `load_and_validate` directly; it goes through this wrapper. The wrapper's own signature must also gain `host_cli`/`model_hints` (with defaults) and forward them to its `load_and_validate` call, or the two new kwargs stop at the wrapper boundary.
-- A new `_validate_model_hint_resolution(fsm, *, orchestration_request_path, host_cli, model_hints) -> list[ValidationError]` in `structural_rules.py`, called from `validate_fsm` — mirrors `FSMExecutor._model_consumer_paths` (static downgrade causes only) and `_resolve_model`'s declaration selection; dedupes `llm.model_hint` warnings per (hint, backend). Name is a suggestion; line anchors throughout this issue drift — locate by symbol name.
+- A new `_validate_model_hint_resolution(fsm, *, orchestration_request_path, host_cli, model_hints) -> list[ValidationError]` in `structural_rules.py`, called from `validate_fsm` — mirrors `FSMExecutor._model_consumer_paths` (static downgrade causes only) and `_resolve_model`'s declaration selection; dedupes `llm.model_hint` warnings per (hint, backend). The predicates are duplicated from the executor on purpose (validation does not import `executor`); nothing shares them, so the validate-vs-`_preflight_model_hints` agreement test is what catches divergence. Name is a suggestion; line anchors throughout this issue drift — locate by symbol name.
 
 ### Call Path
 
@@ -182,6 +182,7 @@ _Wiring pass added by `/ll:wire-issue`:_
 
 _These touchpoints were identified by wiring analysis and must be included in the implementation:_
 
+- **Write first (tdd_mode)**: the agreement test from the `cmd_validate` acceptance criterion — pin the host via `LL_HOST_CLI`, then assert that `validate` and `FSMExecutor._preflight_model_hints` agree on the same loop across the resolution matrix (`cli`/`sdk`/`evaluator` paths, `/ll:` skill and `tools:` downgrades). It is the only guard against drift between the validation mirror and the executor predicates, so it lands before `_validate_model_hint_resolution`.
 - Update `scripts/little_loops/fsm/validation/structural_rules.py` `load_and_validate()` (`:2035`) — add `host_cli`/`model_hints` keyword params and forward them to `validate_fsm`
 - Update `scripts/little_loops/cli/logs.py` `_validate_builtin_loop()` (`:2326`) and `_cmd_fleet_review()` (`:2761`) — new kwargs with defaults; read both values where `orchestration.request_path` is read
 - Update `scripts/little_loops/cli/loop/config_cmds.py` `cmd_validate()` — read `model_hints`, derive `host_cli` via `resolve_host().name` (catch `HostNotConfigured` → `None`; see Decisions), guard the pre-`try:` config load
@@ -197,7 +198,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 ## Impact
 
 - **Priority**: P3.
-- **Effort**: Small (warnings plus `validate_fsm`/`load_and_validate` plumbing) plus a docs pass across ~6 files.
+- **Effort**: Medium — ~8 code sites (warnings plus `validate_fsm`/`load_and_validate` plumbing), ~7 test files and a docs pass across ~8 files.
 - **Risk**: Low.
 
 ## Acceptance Criteria
@@ -226,18 +227,20 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 _Added by `/ll:confidence-check` on 2026-09-28_
 
-**Readiness Score**: 85/100 → PROCEED WITH CAUTION
+**Readiness Score**: 90/100 → PROCEED
 **Outcome Confidence**: 67/100 → MODERATE
 
 ### Concerns
-- Host source for `cmd_validate` is undecided: `resolve_host()` reads only `LL_HOST_CLI`/`LL_HOOK_HOST`/probe, not `orchestration.host_cli`, so the issue's Call Path is wrong as written. Validate-time warnings must agree with `FSMExecutor._preflight_model_hints` or `validate` and `run` will disagree on the same loop.
-- ARCH-121 (advisory) requires a named `*_ok` suppression flag for every new validate rule; the issue neither adds one nor records the exemption.
 - Cited line anchors have drifted (`load_and_validate` now `structural_rules.py:1944`, not `:2035`; `cmd_validate` now `config_cmds.py:14`, not `:25`); re-confirm at implementation time.
 
 ### Outcome Risk Factors
 - Broad enumeration across ~8 code sites, ~8 docs and ~7 test files, plus moderate per-site complexity in mirroring executor request-path predicates (`_model_consumer_paths`, `_compute_request_path`) inside validation.
 - Wide dependent surface (~11 `load_and_validate` callers, `fleet_improve.gate()` and `workflow-generator.yaml` warning-count comparisons); new kwargs need defaults, and the pinned parameter set in `spike/enh3342_scan_action_file_param` must be updated deliberately.
-- Two open design decisions (host source, ARCH-121 flag) should be settled before coding.
+
+## Resolved Concerns
+
+- [resolved 2026-09-28 by manual review] Host source for `cmd_validate` was undecided (`resolve_host()` ignores `orchestration.host_cli`) — decided: `resolve_host()` (env + probe), identical to run time; see Decisions and BUG-3644.
+- [resolved 2026-09-28 by manual review] ARCH-121 requires a `*_ok` suppression flag for every new validate rule — decided: exemption for host-dependent hint-resolution warnings, recorded as decisions entry `514b7ae3-90e7-4894-af36-460b00bb1278`.
 
 ## Session Log
 - `/ll:confidence-check` - 2026-09-28T22:35:13 - `f9845aee-2566-463f-90fc-0809b301aae7.jsonl`
