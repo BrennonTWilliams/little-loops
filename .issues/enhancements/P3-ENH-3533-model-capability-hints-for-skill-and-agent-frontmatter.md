@@ -98,6 +98,21 @@ The spike does not need ENH-3527's resolver: it probes Claude Code's frontmatter
 - **Prerequisite**: ENH-3527 (resolver and `orchestration` hint mappings).
 - **Out of scope**: new hint vocabulary; migrating every shipped skill/agent in the same change unless trivial.
 
+## Implementation Steps
+
+### Wiring Phase (added by `/ll:wire-issue`)
+
+_These touchpoints were identified by wiring analysis and must be included in the implementation. This issue is gated by the Open Questions above — this phase records the discovered surface for whichever resolution-timing option is chosen, not a sequenced plan:_
+
+- Update `scripts/little_loops/adapters/codex.py:444` — `emit_agent`'s `model = str(fm.get("model") or "")` must add a `model_hint` branch (calling `resolve_model_hint` from `little_loops.host_runner`, not a separate module as the Program Design section's citation implies) alongside the existing literal-`model` passthrough.
+- Update `scripts/little_loops/adapters/kimi.py:111-126` and `scripts/little_loops/adapters/qwen.py:128-145` — `emit_agent` currently passes any `model_hint:` frontmatter line through unresolved and meaningless to those hosts' native CLIs; add resolution or an explicit unsupported-host error per the Expected Behavior clause ("unsupported hosts fail or warn explicitly").
+- Update `scripts/little_loops/adapters/gemini.py:131` / `core._emit_degraded_agent()` (`core.py:225`) — decide and implement how (or whether) `model_hint` surfaces through gemini's frontmatter-stripping degraded-mode path.
+- Update `scripts/little_loops/adapters/capabilities.py` — add `model`/`model_hint` to `frontmatter_fields_read` for any host where it should be an actively managed field rather than incidental verbatim passthrough.
+- Add validation — extend `main_verify_skills` (`cli/docs.py:244`) or a new check, mirroring `_validate_model_hint_decl`'s vocabulary + mutual-exclusivity shape (`fsm/validation/structural_rules.py:452-484`), for skill/agent frontmatter. Requires picking which of the three existing frontmatter parsers (`adapters/core.py:_read_frontmatter`, `little_loops/frontmatter.py:parse_skill_frontmatter`, `doc_counts.py:_parse_skill_frontmatter`) the check runs against.
+- Update `docs/reference/CLI.md:5827`, `docs/reference/HOST_COMPATIBILITY.md`, `docs/reference/CONFIGURATION.md` (~line 1370), `scripts/little_loops/config-schema.json:1819-1832` — document the new frontmatter consumer of `orchestration.model_hints` alongside the existing loop-state one.
+- Add test coverage — extend `scripts/tests/test_adapters.py`, `scripts/tests/fixtures/adapt/agent_cases.json`, and `scripts/tests/test_adapt_golden_corpus.py` with `model_hint` cases; add a new test class mirroring `scripts/tests/test_model_hints.py`'s `TestHostArgv`/`TestPortabilityProof` shape for the "resolved model reaches the host artifact" AC.
+- Migration candidates (out of scope per Scope Boundaries unless trivial, recorded for the deciding option): 9 `agents/*.md` files and 20 `skills/*/SKILL.md` files hard-code `model: sonnet` or `model: haiku` today (e.g. `agents/codebase-analyzer.md:13`, `skills/analyze-history/SKILL.md:5`, `skills/wire-issue/SKILL.md:4`); each has mirrors under `.gemini/`, `.kimi-code/`, `.qwen/` needing `ll-adapt --apply` regeneration if migrated.
+
 ## Program Design
 
 ### Types
@@ -125,4 +140,5 @@ Checked 2026-09-24: `CodexAdapter.emit_agent(self, agent_meta: dict) -> str` exi
 
 
 ## Session Log
+- `/ll:wire-issue` - 2026-09-28T19:35:30 - `f552ed04-ad08-4162-b169-daaec37f3df4.jsonl`
 - `/ll:verify-issues` - 2026-09-24T00:46:09 - `047cda0b-279f-4078-b31f-1d7b1fcc2181.jsonl`
