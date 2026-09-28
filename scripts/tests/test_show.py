@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 from little_loops.cli.issues.show import (
     _ljust,
@@ -642,6 +643,86 @@ class TestParseCardFields:
         fields = _parse_card_fields(path, config)
         assert fields["missing_artifacts"] == "docs/REF.md, src/foo.py"
 
+    # -- ENH-3636 resolved-edge annotation --
+
+    def _edge_fixture(self, tmp_path: Path, edges_fm: str) -> tuple[Path, Any]:
+        path, config = self._write_issue(
+            tmp_path,
+            f"---\nstatus: open\n{edges_fm}---\n# ENH-5200: Subject\n",
+            "P3-ENH-5200-subject.md",
+        )
+        enh_dir = tmp_path / ".issues" / "enhancements"
+        for num, status in (
+            (5201, "done"),
+            (5202, "cancelled"),
+            (5203, "deferred"),
+            (5204, "open"),
+            (5205, "in_progress"),
+            (5206, "blocked"),
+        ):
+            (enh_dir / f"P3-ENH-{num}-t.md").write_text(
+                f"---\nstatus: {status}\n---\n# ENH-{num}: T\n"
+            )
+        return path, config
+
+    def test_edge_annotation_by_target_status(self, tmp_path: Path) -> None:
+        """Only done/cancelled targets are annotated; live and unknown IDs stay plain."""
+        path, config = self._edge_fixture(
+            tmp_path,
+            "blocked_by: [ENH-5201, ENH-5202, ENH-5203, ENH-5204, ENH-5205, ENH-5206, ENH-9999]\n",
+        )
+        fields = _parse_card_fields(path, config)
+        assert fields["blocked_by_display"] == (
+            "ENH-5203, ENH-5204, ENH-5205, ENH-5206, ENH-9999, ENH-5201 (done), ENH-5202 (cancelled)"
+        )
+        assert fields["unresolved_blocked_by"] == (
+            "ENH-5203, ENH-5204, ENH-5205, ENH-5206, ENH-9999"
+        )
+        # raw value untouched and in original order
+        assert fields["blocked_by"] == (
+            "ENH-5201, ENH-5202, ENH-5203, ENH-5204, ENH-5205, ENH-5206, ENH-9999"
+        )
+
+    def test_edge_annotation_depends_on_comma_string_form(self, tmp_path: Path) -> None:
+        """depends_on accepts the quoted comma-string form and is annotated too."""
+        path, config = self._edge_fixture(tmp_path, "depends_on: 'ENH-5201, ENH-5204'\n")
+        fields = _parse_card_fields(path, config)
+        assert fields["depends_on_display"] == "ENH-5204, ENH-5201 (done)"
+        assert fields["unresolved_depends_on"] == "ENH-5204"
+        assert fields["depends_on"] == "ENH-5201, ENH-5204"
+
+    def test_edge_annotation_all_resolved_has_no_unresolved(self, tmp_path: Path) -> None:
+        """unresolved_* is None when every edge target is resolved."""
+        path, config = self._edge_fixture(tmp_path, "blocked_by: [ENH-5201]\n")
+        fields = _parse_card_fields(path, config)
+        assert fields["blocked_by_display"] == "ENH-5201 (done)"
+        assert fields["unresolved_blocked_by"] is None
+
+    def test_edge_annotation_bare_numeric_id_resolves(self, tmp_path: Path) -> None:
+        """A bare-numeric frontmatter ID resolves to its target's status (display only)."""
+        path, config = self._edge_fixture(tmp_path, "blocked_by: [5201]\n")
+        fields = _parse_card_fields(path, config)
+        assert fields["blocked_by_display"] == "5201 (done)"
+        assert fields["blocked_by"] == "5201"
+
+    def test_edge_annotation_fails_open_when_scan_raises(self, tmp_path: Path) -> None:
+        """If the issue scan raises, edges render unannotated and unresolved == raw."""
+        path, config = self._edge_fixture(tmp_path, "blocked_by: [ENH-5201, ENH-5204]\n")
+        with patch("little_loops.issue_parser.find_issues", side_effect=RuntimeError("boom")):
+            fields = _parse_card_fields(path, config)
+        assert fields["blocked_by_display"] == "ENH-5201, ENH-5204"
+        assert fields["unresolved_blocked_by"] == "ENH-5201, ENH-5204"
+        assert fields["depends_on_display"] is None
+        assert fields["unresolved_depends_on"] is None
+
+    def test_edge_fields_contain_no_ansi(self, tmp_path: Path, monkeypatch: Any) -> None:
+        """Annotated fields are plain text even with color enabled (JSON/MCP safety)."""
+        monkeypatch.setattr("little_loops.cli.output._USE_COLOR", True, raising=False)
+        path, config = self._edge_fixture(tmp_path, "blocked_by: [ENH-5201, ENH-5204]\n")
+        fields = _parse_card_fields(path, config)
+        for key in ("blocked_by_display", "unresolved_blocked_by"):
+            assert "\033[" not in str(fields[key])
+
     def test_regression_no_new_fields_renders_identically(self, tmp_path: Path) -> None:
         """Issue with NO new fields extracts identically to pre-change baseline.
 
@@ -677,6 +758,10 @@ class TestParseCardFields:
             "relates_to",
             "depends_on",
             "blocked_by",
+            "blocked_by_display",
+            "unresolved_blocked_by",
+            "depends_on_display",
+            "unresolved_depends_on",
             "blocks",
             "supersedes",
             "superseded_by",
@@ -805,6 +890,7 @@ class TestRenderCard:
             "issue_id": "ENH-1",
             "title": "T",
             "blocked_by": "BUG-9",
+            "blocked_by_display": "BUG-9",
             "path": ".issues/enhancements/P3-ENH-1.md",
         }
         card = _render_card(fields)
@@ -817,6 +903,7 @@ class TestRenderCard:
             "title": "T",
             "status": "Blocked",
             "blocked_by": "BUG-9, BUG-10",
+            "blocked_by_display": "BUG-9, BUG-10",
             "path": ".issues/enhancements/P3-ENH-1.md",
         }
         card = _render_card(fields)
@@ -921,6 +1008,52 @@ class TestRenderCard:
 
     # -- ENH-2574 status coloring (item 3) --
 
+    # -- ENH-3636 resolved-edge rendering --
+
+    def test_resolved_edges_dimmed_only_in_text_card(self, monkeypatch: Any) -> None:
+        """Resolved entries are gray; live entries stay uncolored."""
+        monkeypatch.setattr("little_loops.cli.output._USE_COLOR", True, raising=False)
+        monkeypatch.setattr("little_loops.cli.output.terminal_width", lambda **_kw: 120)
+        fields: dict[str, str | None] = {
+            "issue_id": "ENH-1",
+            "title": "T",
+            "blocked_by_display": "BUG-9, BUG-1 (done)",
+            "path": ".issues/enhancements/P3-ENH-1.md",
+        }
+        card = _render_card(fields)
+        assert "\033[90mBUG-1 (done)\033[0m" in card
+        assert "\033[90mBUG-9" not in card
+        assert "BUG-9, \033[90mBUG-1 (done)" in card
+
+    def test_resolved_edges_plain_without_color(self, stable_snapshot_env: None) -> None:
+        """With color off the annotation is plain text."""
+        fields: dict[str, str | None] = {
+            "issue_id": "ENH-1",
+            "title": "T",
+            "depends_on_display": "BUG-9, BUG-1 (cancelled)",
+            "path": ".issues/enhancements/P3-ENH-1.md",
+        }
+        card = _render_card(fields)
+        assert "Depends on: BUG-9, BUG-1 (cancelled)" in card
+        assert "\033[" not in card
+
+    def test_clipped_edge_row_keeps_live_ids(self, monkeypatch: Any) -> None:
+        """A long mixed row that gets clipped loses resolved entries, not live IDs."""
+        monkeypatch.setattr("little_loops.cli.output._USE_COLOR", True, raising=False)
+        monkeypatch.setattr("little_loops.cli.output.terminal_width", lambda **_kw: 60)
+        resolved = ", ".join(f"ENH-{n} (done)" for n in range(7000, 7010))
+        fields: dict[str, str | None] = {
+            "issue_id": "ENH-1",
+            "title": "T",
+            "blocked_by_display": f"ENH-6999, {resolved}",
+            "path": ".issues/enhancements/P3-ENH-1.md",
+        }
+        card = _render_card(fields)
+        row = next(ln for ln in card.splitlines() if "Blocked by:" in ln)
+        assert "ENH-6999" in row
+        assert "…" in row
+        assert "\033[90mENH-" not in row  # clipped row carries no dimming
+
     def test_status_colors_applied_per_state(self, monkeypatch: Any) -> None:
         """Each non-Open, non-Completed status gets its own SGR color code."""
         monkeypatch.setattr("little_loops.cli.output._USE_COLOR", True, raising=False)
@@ -977,6 +1110,7 @@ class TestRenderCard:
             "issue_id": "ENH-1",
             "title": "T",
             "blocked_by": "BUG-1",
+            "blocked_by_display": "BUG-1",
             "discovered_date": "2026-01-01",
             "discovered_branch": "main",
             "history": "capture",
@@ -998,6 +1132,7 @@ class TestRenderCard:
             "issue_id": "ENH-1",
             "title": "T",
             "blocked_by": "BUG-9",
+            "blocked_by_display": "BUG-9",
             "path": ".issues/enhancements/P3-ENH-1.md",
         }
         card = _render_card(fields)

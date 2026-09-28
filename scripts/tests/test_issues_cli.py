@@ -3116,6 +3116,72 @@ class TestIssuesCLIShow:
         data = json.loads(captured.out)
         assert isinstance(data, dict)
 
+    def _write_edge_issues(self, issues_dir: Path) -> None:
+        enh_dir = issues_dir / "enhancements"
+        enh_dir.mkdir(parents=True, exist_ok=True)
+        (enh_dir / "P3-ENH-020-subject.md").write_text(
+            "---\nstatus: open\nblocked_by: [ENH-021, ENH-022]\n---\n# ENH-020: Subject\n"
+        )
+        (enh_dir / "P3-ENH-021-done-target.md").write_text(
+            "---\nstatus: done\n---\n# ENH-021: Done target\n"
+        )
+        (enh_dir / "P3-ENH-022-open-target.md").write_text(
+            "---\nstatus: open\n---\n# ENH-022: Open target\n"
+        )
+
+    def test_show_json_resolved_edges(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """show --json keeps raw blocked_by and adds unresolved_blocked_by (ENH-3636)."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        self._write_edge_issues(issues_dir)
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "show", "--json", "ENH-020", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "\033[" not in captured.out
+        data = json.loads(captured.out)
+        assert data["blocked_by"] == "ENH-021, ENH-022"
+        assert data["blocked_by_display"] == "ENH-022, ENH-021 (done)"
+        assert data["unresolved_blocked_by"] == "ENH-022"
+
+    def test_show_text_card_annotates_resolved_edge(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """The text card annotates a done blocker with (done) (ENH-3636)."""
+        config_path = temp_project_dir / ".ll" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        self._write_edge_issues(issues_dir)
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "show", "ENH-020", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        assert "ENH-021 (done)" in capsys.readouterr().out
+
     def test_show_json_not_found(
         self,
         temp_project_dir: Path,

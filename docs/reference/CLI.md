@@ -1669,13 +1669,13 @@ Rendering is scanning-first (ENH-2574): the title is bold, borders/field labels/
 The card also surfaces, when present in frontmatter (ENH-2535):
 
 - **Closure context** — `closing_note` / `cancelled_reason` / `deferred_reason` plus `closed_by`, `closed_at`, `deferred_date` (only when status is `done`, `cancelled`, or `deferred`). Under `deferred_by: automation` (ENH-2664), `deferred_reason` holds a machine enum code (`blocked_by_unmet`, `remediation_stalled`, or — ENH-2666, autodev's not-ready exits — `low_readiness`, `gate_blocked`, `decision_unresolved`, `oversized_atomic` (BUG-2734), `readiness_stagnated` (FEAT-2751)) instead of free-text prose — rendered as-is.
-- **Relationships** — `parent` (with epic title when resolvable), `relates_to`, `depends_on`, `blocked_by`, `blocks`, `supersedes`, `superseded_by` (derived reverse edge; ENH-2829), `decomposed_into`, `affects`, `focus_area`.
+- **Relationships** — `parent` (with epic title when resolvable), `relates_to`, `depends_on`, `blocked_by`, `blocks`, `supersedes`, `superseded_by` (derived reverse edge; ENH-2829), `decomposed_into`, `affects`, `focus_area`. `blocked_by` / `depends_on` targets already resolved (`done` or `cancelled`) are annotated `ID (done)` / `ID (cancelled)` and dimmed; live and unknown IDs are listed first, resolved ones last, so a clipped row loses resolved entries first (ENH-3636).
 - **Discovery** — `discovered_date` (distinct from `captured_at`), `discovered_commit` (short-SHA, first 7 chars), `discovered_branch`, `discovered_source`, `discovered_external_repo`.
 - **Decision coupling** — when `decision_needed: true` is paired with `decision_ref` (e.g., `ARCHITECTURE-049`), the card renders `Decision needed → ARCHITECTURE-049`; explicit `Decision needed: no` for `decision_needed: false`.
 
 | Flag | Description |
 |------|-------------|
-| `--json` / `-j` | Output issue fields as JSON (includes `source`, `norm`, `fmt` keys) |
+| `--json` / `-j` | Output issue fields as JSON (includes `source`, `norm`, `fmt` keys). `blocked_by` / `depends_on` stay raw; `blocked_by_display` / `depends_on_display` carry the annotated text and `unresolved_blocked_by` / `unresolved_depends_on` list targets not resolved as `done`/`cancelled`, including IDs not found in the project |
 
 #### `ll-issues path <issue_id>` / `ll-issues p <issue_id>`
 

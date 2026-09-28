@@ -3,7 +3,7 @@ id: ENH-3636
 type: ENH
 title: 'll-issues show: annotate resolved blocked_by/depends_on edges with status'
 priority: P4
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-27'
 captured_at: '2026-09-27T17:29:51Z'
@@ -15,6 +15,7 @@ score_complexity: 18
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 18
+completed_at: '2026-09-28T23:22:38Z'
 ---
 
 # ENH-3636: ll-issues show: annotate resolved blocked_by/depends_on edges with status
@@ -33,7 +34,7 @@ Resolved edges (target status `done` or `cancelled`) are visibly annotated in th
 
 ## Motivation
 
-`blocked_by` / `depends_on` edges are durable by design — nothing prunes them when the target completes (`set_status.py:268` documents that these association edges never cascade). Resolution is computed at read time: `DependencyGraph.get_blocking_issues()` returns `blockers - completed` (`dependency_graph.py:283`), so schedulers (`next-issue`, sprints, autodev) already treat ENH-3623 as unblocked. Only the display disagrees, which prompted a false "is refine-to-ready-issue broken?" investigation on 2026-09-27 after a refine-to-ready-issue run on ENH-3623 (the run's `gate_unmet` failure was unrelated).
+`blocked_by` / `depends_on` edges are durable by design — nothing prunes them when the target completes (`set_status.py:268` documents that these association edges never cascade). Resolution is computed at read time: `DependencyGraph.get_blocking_issues()` returns `blockers - completed` (`dependency_graph.py:295`), so schedulers (`next-issue`, sprints, autodev) already treat ENH-3623 as unblocked. Only the display disagrees, which prompted a false "is refine-to-ready-issue broken?" investigation on 2026-09-27 after a refine-to-ready-issue run on ENH-3623 (the run's `gate_unmet` failure was unrelated).
 
 ## Program Design
 
@@ -133,7 +134,7 @@ _Added by `/ll:refine-issue` — 2026-09-28 — based on codebase analysis:_
 ## Implementation Steps
 
 1. In `_parse_card_fields`, initialize `blocked_by_display = _join_ids(blocked_by_raw)`, `depends_on_display = _join_ids(depends_on_raw)`, and `unresolved_* = ` the same raw joins, before the `try` block.
-2. Inside the `try` (after `_all` is loaded), build an `{issue_id: status}` dict once; resolve each edge ID by exact dict lookup and fall back to `_id_matches` (scan) only for bare-numeric edge IDs. Resolved = status in `{"done", "cancelled"}` — **do not reuse `show.py`'s local `_TERMINAL_STATUSES` (line 455, `{"done", "cancelled", "deferred", "closed"}`)**; that set is for closure-note rendering and treats `deferred` as terminal. Import `issue_progress._TERMINAL_STATUSES` (`issue_progress.py:14`) under an alias (`as _RESOLVED_EDGE_STATUSES`) to avoid shadowing the local set; this is consistent with `dependency_graph.py:283`.
+2. Inside the `try` (after `_all` is loaded), build an `{issue_id: status}` dict once; resolve each edge ID by exact dict lookup and fall back to `_id_matches` (scan) only for bare-numeric edge IDs. Resolved = status in `{"done", "cancelled"}` — **do not reuse `show.py`'s local `_TERMINAL_STATUSES` (line 455, `{"done", "cancelled", "deferred", "closed"}`)**; that set is for closure-note rendering and treats `deferred` as terminal. Import `issue_progress._TERMINAL_STATUSES` (`issue_progress.py:14`) under an alias (`as _RESOLVED_EDGE_STATUSES`) to avoid shadowing the local set; this is consistent with `dependency_graph.py:295`.
 3. Build the display strings as **plain text** (no ANSI — the fields dict is emitted verbatim by `--json` and MCP): resolved IDs → `f"{id} ({status})"`, others unchanged; emit live (incl. unknown) IDs first, then resolved entries, each group in raw order. Build `unresolved_*` from the non-resolved IDs (including unknown IDs, in raw order), `None` if empty.
 4. Add the four keys to the returned dict; repoint `_RELATIONSHIP_KEYS` at the `*_display` keys. Apply the gray `_dim` to resolved entries in `_render_relationships_block` (text card only), e.g. by dimming each comma-separated item ending in ` (done)` / ` (cancelled)`.
 5. Update `docs/reference/CLI.md`, `docs/reference/API.md` (`#### show` `--json` fields) and `docs/reference/OUTPUT_STYLING.md` (Relationship rows table) — see Documentation.
@@ -197,12 +198,22 @@ Remaining (out of correctable scope — Motivation is not auto-rewritten):
 
 Verified accurate: `_parse_card_fields` (`show.py:63`), `_dim` (401), `_TERMINAL_STATUSES` (455, includes `deferred`), `_RELATIONSHIP_KEYS` (521), `_render_relationships_block` (535), `_id_matches` (`cli_args.py:408`), `issue_progress._TERMINAL_STATUSES` (`{"done","cancelled"}`, line 14), `issue_parser` `open`+`completed_at` → `done` mapping (line 4198), scheduler call sites `issue_manager.py:1882,1972`, MCP `tools.py:138/146` and `resources.py:264/267`, all four hand-built-fixture test names, host-mirror lines (`.gemini/.qwen/.kimi-code` `:161`), `rn-remediate`/`rn-decompose` snapshot lines, and the Proposed Solution's consequences (no exception-handler, fixture-invalidation, or AC-coverage defects found).
 
+## Resolution
+
+**Completed** | 2026-09-28
+
+- `_parse_card_fields` now emits `blocked_by_display` / `depends_on_display` (live IDs first, resolved as `ID (done|cancelled)`) and `unresolved_blocked_by` / `unresolved_depends_on`; raw `blocked_by` / `depends_on` unchanged; fail-open on scan error.
+- `_render_relationships_block` dims resolved entries in the text card only.
+- Docs updated: `CLI.md`, `API.md`, `OUTPUT_STYLING.md`. Tests added in `test_show.py` and `test_issues_cli.py`.
+
 ## Status
 
 **Open** | Created: 2026-09-27 | Priority: P4
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-28T23:27:32 - `5eea9021-caa4-4916-aa6c-efbbceceb090.jsonl`
+- `/ll:ready-issue` - 2026-09-28T23:19:42 - `2c45ed8b-f353-4c87-9fd0-38be39917609.jsonl`
 - `/ll:confidence-check` - 2026-09-28T21:57:00 - `5d91eb51-54e9-48f2-8c6c-bd0f06305c43.jsonl`
 - `/ll:verify-issues` - 2026-09-28T21:55:40 - `a1acb612-8e7a-4230-9d9e-0d5963f5dea9.jsonl`
 - `/ll:ready-issue` - 2026-09-28T21:46:09 - `d5d8a3f8-64b9-4c39-8b6b-ecd85fd5da80.jsonl`

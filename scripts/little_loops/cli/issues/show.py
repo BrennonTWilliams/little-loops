@@ -258,13 +258,15 @@ def _parse_card_fields(path: Path, config: BRConfig) -> dict[str, str | None]:
     # List-or-string normalization helper for relationship frontmatter (ENH-2535).
     # Accepts a YAML list, a quoted comma-string, or a bare scalar; returns a
     # comma-joined string of the trimmed IDs or None when empty.
-    def _join_ids(raw: object) -> str | None:
+    def _id_list(raw: object) -> list[str]:
         if not raw:
-            return None
+            return []
         if isinstance(raw, list):
-            items = [str(t).strip() for t in raw if str(t).strip()]
-        else:
-            items = [t.strip() for t in str(raw).strip("\"'").split(",") if t.strip()]
+            return [str(t).strip() for t in raw if str(t).strip()]
+        return [t.strip() for t in str(raw).strip("\"'").split(",") if t.strip()]
+
+    def _join_ids(raw: object) -> str | None:
+        items = _id_list(raw)
         return ", ".join(items) if items else None
 
     # Resolve parent title for parent display (ENH-2535).
@@ -277,11 +279,45 @@ def _parse_card_fields(path: Path, config: BRConfig) -> dict[str, str | None]:
             parent_str = ps
     parent_display: str | None = None
     superseded_by_str: str | None = None
+    # ENH-3636: annotate resolved blocked_by/depends_on edges. Defaults are the
+    # unannotated raw joins so the fail-open path below needs no extra handling.
+    edge_display: dict[str, str | None] = {
+        "blocked_by": _join_ids(blocked_by_raw),
+        "depends_on": _join_ids(depends_on_raw),
+    }
+    edge_unresolved: dict[str, str | None] = dict(edge_display)
     try:
+        from little_loops.cli_args import _id_matches
         from little_loops.issue_parser import find_issues, superseded_by
         from little_loops.issue_progress import _ALL_STATUSES
+        from little_loops.issue_progress import _TERMINAL_STATUSES as _RESOLVED_EDGE_STATUSES
 
         _all = find_issues(config, status_filter=set(_ALL_STATUSES))
+
+        _status_by_id = {i.issue_id: i.status for i in _all}
+
+        def _edge_status(edge_id: str) -> str | None:
+            found = _status_by_id.get(edge_id)
+            if found is None and edge_id.isdigit():
+                found = next((i.status for i in _all if _id_matches(i.issue_id, edge_id)), None)
+            return found
+
+        for _edge_key, _edge_raw in (
+            ("blocked_by", blocked_by_raw),
+            ("depends_on", depends_on_raw),
+        ):
+            _live: list[str] = []
+            _resolved: list[str] = []
+            for _eid in _id_list(_edge_raw):
+                _st = _edge_status(_eid)
+                if _st in _RESOLVED_EDGE_STATUSES:
+                    _resolved.append(f"{_eid} ({_st})")
+                else:
+                    _live.append(_eid)
+            # Live (incl. unknown) IDs first so a clipped card row eats resolved
+            # entries before it can hide a real blocker.
+            edge_display[_edge_key] = ", ".join(_live + _resolved) or None
+            edge_unresolved[_edge_key] = ", ".join(_live) or None
         if parent_str:
             _title = next((i.title for i in _all if i.issue_id == parent_str), None)
             parent_display = f"{parent_str} ({_title})" if _title else parent_str
@@ -380,7 +416,11 @@ def _parse_card_fields(path: Path, config: BRConfig) -> dict[str, str | None]:
         "parent_display": parent_display,
         "relates_to": _join_ids(relates_to_raw),
         "depends_on": _join_ids(depends_on_raw),
+        "depends_on_display": edge_display["depends_on"],
+        "unresolved_depends_on": edge_unresolved["depends_on"],
         "blocked_by": _join_ids(blocked_by_raw),
+        "blocked_by_display": edge_display["blocked_by"],
+        "unresolved_blocked_by": edge_unresolved["blocked_by"],
         "blocks": _join_ids(blocks_raw),
         "supersedes": _join_ids(supersedes_raw),
         "superseded_by": superseded_by_str,
@@ -521,8 +561,8 @@ def _render_discovery_block(fields: dict[str, str | None]) -> list[tuple[str, st
 _RELATIONSHIP_KEYS: tuple[tuple[str, str], ...] = (
     ("parent_display", "Parent"),
     ("blocks", "Blocks"),
-    ("blocked_by", "Blocked by"),
-    ("depends_on", "Depends on"),
+    ("blocked_by_display", "Blocked by"),
+    ("depends_on_display", "Depends on"),
     ("relates_to", "Relates to"),
     ("supersedes", "Supersedes"),
     ("superseded_by", "Superseded by"),
@@ -532,13 +572,24 @@ _RELATIONSHIP_KEYS: tuple[tuple[str, str], ...] = (
 )
 
 
+_EDGE_DISPLAY_KEYS = frozenset({"blocked_by_display", "depends_on_display"})
+_RESOLVED_ITEM_RE = re.compile(r" \((?:done|cancelled)\)$")
+
+
 def _render_relationships_block(fields: dict[str, str | None]) -> list[tuple[str, str]]:
     """Render relationship edges as a list of (label, value) rows (ENH-2535)."""
     out: list[tuple[str, str]] = []
     for key, label in _RELATIONSHIP_KEYS:
         val = fields.get(key)
         if val:
-            out.append((label, str(val)))
+            text = str(val)
+            if key in _EDGE_DISPLAY_KEYS:
+                # ENH-3636: gray out resolved entries (`ID (done)` / `ID (cancelled)`).
+                text = ", ".join(
+                    _dim(item) if _RESOLVED_ITEM_RE.search(item) else item
+                    for item in text.split(", ")
+                )
+            out.append((label, text))
     return out
 
 
