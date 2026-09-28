@@ -238,3 +238,51 @@ class TestCheckPassedDesignGateEndToEnd:
 
         staged = tmp_path / "autodev-staged.txt"
         assert staged.exists() and "BUG-9700" in staged.read_text()
+
+
+REFINE_TO_READY_LOOP_PATH = (
+    Path(__file__).parent.parent / "little_loops" / "loops" / "refine-to-ready-issue.yaml"
+)
+
+#: ENH-3600: markers confirmed dead post-ENH-3623 (zero writer, zero reader
+#: anywhere in scripts/little_loops/) — the Marker disposition table's "Dead"
+#: row. ``refine-terminal-class`` (this issue's own retirement) is checked
+#: separately below because it still has one legitimate historical mention
+#: (an explanatory comment in run_record.py naming what was removed).
+_DEAD_MARKERS = (
+    "autodev-pre-spike-readiness.txt",
+    "autodev-design-gate-failed",
+    "autodev-design-remedy-attempted",
+    "autodev-atomic-design-remedy-pending",
+    "autodev-contradiction-reconcile",
+    "autodev-go-no-go-attempted",
+    "autodev-pre-deferral-remedy",
+    "autodev-size-review-ran-this-pass",
+    "autodev-rescore-retry",
+    "autodev-rescore-origin",
+    "autodev-reentry",
+    "autodev-scores-absent.txt",
+    "autodev-broke-down",
+    "autodev-decide-ran",
+    "autodev-spike-no-verdict.txt",
+)
+
+
+class TestRetiredPreparationHandshakeMarkers:
+    """ENH-3600: the sentinel this issue retires, and the markers ENH-3623 already
+    made dead, must stay gone from every loop YAML — including comments, so a
+    stray copy-paste cannot silently resurrect the read/write contract."""
+
+    def test_refine_terminal_class_has_no_writers_or_readers_in_loops(self) -> None:
+        for path in (AUTODEV_LOOP_PATH, REFINE_TO_READY_LOOP_PATH):
+            assert "refine-terminal-class" not in path.read_text(), path
+
+    def test_dead_markers_stay_dead_in_autodev(self) -> None:
+        raw = AUTODEV_LOOP_PATH.read_text()
+        found = [m for m in _DEAD_MARKERS if m in raw]
+        assert not found, f"dead markers resurfaced in autodev.yaml: {found}"
+
+    def test_dead_markers_stay_dead_in_refine_to_ready_issue(self) -> None:
+        raw = REFINE_TO_READY_LOOP_PATH.read_text()
+        found = [m for m in _DEAD_MARKERS if m in raw]
+        assert not found, f"dead markers resurfaced in refine-to-ready-issue.yaml: {found}"

@@ -143,11 +143,11 @@ scope:
 max_steps: 110
 # Step-cap fall-through: the executor runs the named state exactly once at the
 # cap; its `next:` is never followed and terminated_by stays "max_steps".
-# classify_terminal then writes refine-terminal-class so autodev's
-# skip_inflight reads a fresh class instead of a missing (or stale) one. At
-# the cap no capture carries a kill signature (those route to diagnose
-# immediately), so the class is `quality` — correct for budget churn: a
-# from-scratch re-run would likely recur.
+# classify_terminal then writes a fresh run record so autodev's skip_inflight
+# reads a current token instead of a missing (or stale) one. At the cap no
+# capture carries a kill signature (those route to diagnose immediately), so
+# the class is `quality` — correct for budget churn: a from-scratch re-run
+# would likely recur.
 on_max_steps: classify_terminal
 on_handoff: spawn
 context:
@@ -189,7 +189,6 @@ states:
   resolve_issue:
     action: >-
       mkdir -p ${context.run_dir} &&
-      rm -f ${context.run_dir}/refine-terminal-class &&
       printf '0' > ${context.run_dir}/refine-to-ready-refine-count &&
       printf '0' > ${context.run_dir}/refine-to-ready-wire-done &&
       printf '0' > ${context.run_dir}/refine-broke-down &&
@@ -219,10 +218,6 @@ states:
     # no-work condition, not a failure: under autodev/recursive-refine
     # context.input is always non-empty, and next-issue's exit 1 covers both
     # "no issues" and misconfig, so this gate keys on the captured id itself.
-    # The `rm -f refine-terminal-class` in resolve_issue pairs with this fix:
-    # nothing else ever clears that sentinel, so a stale `infra` from a
-    # previous issue in autodev's shared run_dir would otherwise leak into
-    # the next issue's skip_inflight classification.
     action: "[ -n \"${captured.issue_id.output:shell}\" ]"
     fragment: shell_exit
     on_yes: check_epic_id
@@ -739,7 +734,6 @@ states:
     # revision budget) remains. Defers with a named human-needed code; writes the
     # ledger autodev's skip_inflight reads (same pattern as record_spike_inconclusive).
     action: |
-      printf 'proposal_unsound' > ${context.run_dir}/refine-terminal-class
       ID=${captured.issue_id.output:shell}
       echo "$ID" >> ${context.run_dir}/autodev-proposal-unsound.txt
       STATUS=$(ll-issues show "$ID" --json 2>/dev/null \
@@ -955,8 +949,9 @@ states:
     on_error: check_spike_needed
 
   check_decide_attempts:
-    # BUG-3553: one pre-breakdown resolve attempt per run, matching autodev's
-    # write-once autodev-decide-ran marker. Post-BUG-3278 oracles/resolve-decision
+    # BUG-3553: one pre-breakdown resolve attempt per run, matching the
+    # preparation policy's own per-pass decide budget (ENH-3623). Post-BUG-3278
+    # oracles/resolve-decision
     # can reach `done` with decision_needed legitimately still set (a residual
     # lower-tier group is a defined human-review exit), so the flag alone never
     # broke the check_decision_needed -> resolve -> confidence_check cycle; only
@@ -1187,12 +1182,11 @@ states:
 
   record_gate_unmet:
     # BUG-3551: a structure gate is still red with the run's refine budget
-    # spent. Writes its own terminal class (mirroring mark_rate_limit_infra /
+    # spent. Writes its own record legacy_class (mirroring mark_rate_limit_infra /
     # record_decision_unresolved) so callers see "not ready, needs a human"
     # rather than a size-review decomposition. autodev's skip_inflight ledgers
-    # any non-infra class as refine_failed.
+    # any non-infra token as refine_failed.
     action: |
-      printf 'gate_unmet' > ${context.run_dir}/refine-terminal-class
       echo "[GATE_UNMET]" ${captured.issue_id.output:shell} "- a structure gate (verify verdict, placeholders, Program Design, or acceptance criteria) still fails after this run's refine budget; not decomposing. Fix the gate finding, then re-run."
       ll-issues run-record write ${captured.issue_id.output:shell} --run-dir ${context.run_dir} --writer refine-to-ready-issue --legacy-class gate_unmet || true
     action_type: shell
@@ -1243,11 +1237,10 @@ states:
     on_error: check_proposal_revision_failed
 
   mark_rate_limit_infra:
-    # Writes the terminal class directly, bypassing diagnose/classify_terminal
+    # Writes the record directly, bypassing diagnose/classify_terminal
     # (which key off per-state captures a sub-loop failure never populates), so
     # the infra verdict still reaches autodev's skip_inflight contract.
     action: |
-      printf 'infra' > ${context.run_dir}/refine-terminal-class
       ll-issues run-record write ${captured.issue_id.output:shell} --run-dir ${context.run_dir} --writer refine-to-ready-issue --legacy-class infra --evidence-refs rate_limit_exhausted || true
     action_type: shell
     next: failed
@@ -1255,10 +1248,9 @@ states:
 
   mark_evidence_absent_infra:
     # BUG-3571: a verify/confidence-check call left no verdict/scores even after a
-    # retry. Writes the terminal class directly (like mark_rate_limit_infra, which
+    # retry. Writes the record directly (like mark_rate_limit_infra, which
     # is rate-limit-specific) so postmortems can tell an evidence outage from a 429.
     action: |
-      printf 'infra' > ${context.run_dir}/refine-terminal-class
       echo "[VERIFY_VERDICT_ABSENT] or [SCORES_ABSENT]: readiness evidence missing after retry; classified infra"
       ll-issues run-record write ${captured.issue_id.output:shell} --run-dir ${context.run_dir} --writer refine-to-ready-issue --legacy-class infra || true
     action_type: shell
@@ -1269,7 +1261,6 @@ states:
     # BUG-3593: the spike wrote no verdict (crash/kill before write-back) —
     # infra, not inconclusive or refuted. Modeled on mark_evidence_absent_infra.
     action: |
-      printf 'infra' > ${context.run_dir}/refine-terminal-class
       echo "[SPIKE_NO_VERDICT] ${captured.issue_id.output:shell}"
       ll-issues run-record write ${captured.issue_id.output:shell} --run-dir ${context.run_dir} --writer refine-to-ready-issue --legacy-class infra || true
     action_type: shell
@@ -1282,7 +1273,6 @@ states:
     # ledger autodev's skip_inflight reads so a nested stop is not re-ledgered
     # as refine_failed (same pattern as record_decision_unresolved, BUG-3390).
     action: |
-      printf 'spike_inconclusive' > ${context.run_dir}/refine-terminal-class
       ID=${captured.issue_id.output:shell}
       echo "$ID" >> ${context.run_dir}/autodev-spike-inconclusive.txt
       STATUS=$(ll-issues show "$ID" --json 2>/dev/null \
@@ -1311,12 +1301,11 @@ states:
     # rather than exiting via done, which would reproduce the exact
     # silent-success bug this issue exists to fix (### refine-to-ready-issue's
     # handling of the failed terminal).
-    # BUG-3390: writes refine-terminal-class directly (mirroring
-    # mark_rate_limit_infra above), bypassing diagnose/classify_terminal, so a
-    # decision-unresolved exit is distinguishable from a genuine `quality`
-    # verdict without relying solely on autodev's ledger-grep suppression.
+    # BUG-3390: writes its run record directly (mirroring mark_rate_limit_infra
+    # above), bypassing diagnose/classify_terminal, so a decision-unresolved
+    # exit is distinguishable from a genuine `quality` verdict without relying
+    # solely on autodev's ledger-grep suppression.
     action: |
-      printf 'decision_unresolved' > ${context.run_dir}/refine-terminal-class
       ID="${captured.issue_id.output}"  # ll-lint: mr11-ok(captured.issue_id.output) ENH-3358 - ENH-3342 widening residual, tracked for conversion
       echo "$ID" >> ${context.run_dir}/autodev-decision-unresolved.txt
       # BUG-2729 postmortem: never flip an already-resolved issue to deferred.
@@ -1342,8 +1331,7 @@ states:
   no_work:
     # Clean empty-backlog exit (check_issue_resolved.on_no): the run found no
     # issue to refine. Success terminal — not a failure edge target — so
-    # callers do not ledger it and refine-terminal-class stays unwritten
-    # (resolve_issue already cleared any stale copy).
+    # callers do not ledger it and no run record is written.
     terminal: true
 
   diagnose:
@@ -1501,13 +1489,14 @@ states:
     on_error: classify_terminal
 
   classify_terminal:
-    # ENH-2727: emit a machine-readable termination-class sentinel for autodev's
-    # skip path to consume. Reached from the diagnose path and as the
+    # ENH-2727: classify this run's failure and write a machine-readable
+    # `legacy_class` into the run record autodev's skip_inflight reads (ENH-3600:
+    # record-only — no sentinel file). Reached from the diagnose path and as the
     # on_max_steps fall-through (one execution at the step cap; `next: failed`
     # does not run on that path). The other routes to `failed`
     # (record_decision_unresolved, record_proposal_unsound,
     # write_broke_down.on_error, mark_rate_limit_infra, record_gate_unmet) bypass this state —
-    # write_broke_down.on_error writes no class, the others write their own. Never runs on the done path.
+    # write_broke_down.on_error writes no record, the others write their own. Never runs on the done path.
     # Classifies THIS run's failure as `infra` when the failing state
     # was killed externally (exit 143/137/124 = SIGTERM/OOM/timeout, or a
     # negative signal code) — a re-runnable transient — else `quality` (a genuine
@@ -1533,10 +1522,9 @@ states:
     # 143/137/124 in any populated capture unambiguously marks the terminating
     # failure. The `?` nullable suffix leaves un-run states as '' (word-split away).
     #
-    # Written to the shared run_dir (context_passthrough) and, since ENH-3600,
-    # also carried as --legacy-class on this state's record write below: autodev's
-    # skip_inflight now classifies from the record's routing token alone (a
-    # MISSING/failed read routes to skip_inflight_infra), not this sentinel.
+    # Carried as --legacy-class on this state's record write below: autodev's
+    # skip_inflight classifies from the record's routing token alone (ENH-3600;
+    # a MISSING/failed read routes to skip_inflight_infra).
     action: |
       CLASS=quality
       # ll-lint: mr11-ok(captured.refine_issue.exit_code) ENH-3358 - ENH-3342 widening residual, tracked for conversion
@@ -1564,7 +1552,6 @@ states:
           transient|non_recoverable|infra_retry) CLASS=infra ;;
         esac
       done
-      printf '%s' "$CLASS" > ${context.run_dir}/refine-terminal-class
       ll-issues run-record write '${captured.issue_id.output?}' --run-dir ${context.run_dir} --writer refine-to-ready-issue --legacy-class "$CLASS" || true
     action_type: shell
     next: failed
@@ -1574,6 +1561,6 @@ states:
     terminal: true
     # Explicit rather than relying on the FAILURE_TERMINAL_NAMES name-inference
     # default (fsm/schema.py): autodev's refine_current.on_failure routing and
-    # the refine-terminal-class contract both hang off this flag surviving any
+    # the run-record legacy_class contract both hang off this flag surviving any
     # future rename.
     failure: true

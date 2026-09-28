@@ -2429,7 +2429,7 @@ counting as not-met. Prints `[RUN_RECORD_WRITTEN] <ID> <outcome> <path>`.
 |------|-------------|
 | `--run-dir DIR` | **Required.** The run's run_dir (an FSM state passes `${context.run_dir}`) |
 | `--writer NAME` | **Required.** `refine-to-ready-issue` or `prepare-issue` — the per-writer record subdirectory |
-| `--legacy-class CLASS` | The `refine-terminal-class` token this terminal just wrote (`proposal_unsound`, `gate_unmet`, `infra`, `spike_inconclusive`, `decision_unresolved`, `quality`); omit on the done paths, which write no class file |
+| `--legacy-class CLASS` | The termination class this terminal is classifying (`proposal_unsound`, `gate_unmet`, `infra`, `spike_inconclusive`, `decision_unresolved`, `quality`); omit on the done paths |
 | `--child-ids ID...` | Override child derivation with an explicit list (default: derive from `parent:` frontmatter) |
 | `--evidence-refs REF...` | Run artifacts evidencing the outcome (recorded verbatim) |
 | `--readiness-threshold N` / `--outcome-threshold N` | Explicit thresholds beating `ll-config.json`, as on `check-readiness` |

@@ -1204,9 +1204,6 @@ def _apply_outcome(
                 fh.write(f"{line}\n")
         mark("row")
 
-    def sentinel(cls: str) -> None:
-        (run_dir / "refine-terminal-class").write_text(cls)
-
     def write(legacy_class: str | None, *, broke_down: bool = False, **kw: Any) -> None:
         # Shared with `ll-issues run-record write` (ENH-3630 Step 2): the same
         # ready/decomposed predicate, including ENH-3625's check-design condition
@@ -1247,15 +1244,12 @@ def _apply_outcome(
         return 0
     if outcome == "child_stop":
         rec = forward()
-        # Every failed-bound terminal leaves the sentinel (read by autodev's
-        # skip_inflight until ENH-3600 removes it); the child's own class stands.
-        if rec is not None and rec.legacy_class:
-            sentinel(rec.legacy_class)
+        # The child's own class stands (autodev's skip_inflight classifies from
+        # the record's routing token alone since ENH-3600; no sentinel file).
         if record_token(rec) in ("BLOCKED:quality", "DEFERRED:gate_unmet"):
             row("refine_failed")
         return 1
     if outcome == "rate_limited":
-        sentinel("infra")
         write("infra", evidence_refs=[RATE_LIMIT_EXHAUSTED_REF])
         return 1
     if outcome in _INFRA_STOPS:
@@ -1263,7 +1257,6 @@ def _apply_outcome(
 
         rid = canonical_record_id(config, issue_id)
         existing = record_token(read_run_record(run_dir, "prepare-issue", rid))
-        sentinel("infra")
         if outcome == "ladder_error" and existing.startswith(("BLOCKED:", "DEFERRED:")):
             return 1  # a stop record for this pass stands (ENH-3606 mark_ladder_error)
         write("infra")
@@ -1282,11 +1275,9 @@ def _apply_outcome(
         if "status" not in progress and path is not None:
             _set_status_checked(config, path, issue_id, "deferred", reason=reason, by="automation")
             mark("status")
-        sentinel(legacy)
         write(legacy)
         return 1
     # Unknown outcome: fail closed as infra.
-    sentinel("infra")
     write("infra")
     return 1
 

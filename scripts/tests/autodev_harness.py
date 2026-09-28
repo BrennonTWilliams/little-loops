@@ -115,11 +115,11 @@ The widget is fast.
 """
 
 #: Stub ``refine-to-ready-issue.yaml``. ``resolve_issue`` mirrors the real loop's
-#: resets (terminal-class sentinel, broke-down flag, own record); the scripted
-#: state then prints DONE / FAILED / ERROR. ERROR reaches ``die``, whose
-#: undefined context reference raises ``InterpolationError`` so the child
-#: finishes ``terminated_by: error`` without a run record (prepare-issue's
-#: ``prep record`` classifies an absent record as an inner error).
+#: resets (broke-down flag, own record); the scripted state then prints DONE /
+#: FAILED / ERROR. ERROR reaches ``die``, whose undefined context reference
+#: raises ``InterpolationError`` so the child finishes ``terminated_by: error``
+#: without a run record (prepare-issue's ``prep record`` classifies an absent
+#: record as an inner error).
 STUB_REFINE_TO_READY = """\
 name: refine-to-ready-issue
 description: "autodev characterization harness stub (scripted by ScriptedRunner)"
@@ -131,7 +131,6 @@ states:
   resolve_issue:
     action: >-
       mkdir -p ${context.run_dir} &&
-      rm -f ${context.run_dir}/refine-terminal-class &&
       printf '0' > ${context.run_dir}/refine-broke-down &&
       ID=$(printf '%s' ${context.input:shell} | tr -d '\\n\\r ') &&
       { ll-issues run-record clear "$${ID}" --run-dir ${context.run_dir} --writer refine-to-ready-issue || true; } &&
@@ -206,8 +205,9 @@ class InnerRun:
 
     ``terminal``: ``done`` / ``failed`` end in the matching stub terminal;
     ``error`` makes the child die (``terminated_by: error``). ``legacy_class``
-    is written to ``refine-terminal-class`` and passed as ``--legacy-class``
-    (the real loop's stop states do both). ``broke_down`` writes ``1`` to
+    is passed as ``--legacy-class`` on the record write (the real loop's stop
+    states do the same; ENH-3600 removed the ``refine-terminal-class`` sentinel
+    file this once also wrote). ``broke_down`` writes ``1`` to
     ``refine-broke-down`` before the record write (``write_broke_down``).
     ``write_record=False`` models a failed ``|| true`` record write.
     """
@@ -572,8 +572,6 @@ class ScriptedRunner:
         self.hctx.apply(issue_id, spec.effects)
         if spec.broke_down:
             (rd / "refine-broke-down").write_text("1")
-        if spec.legacy_class is not None:
-            (rd / "refine-terminal-class").write_text(spec.legacy_class)
         out = ""
         if spec.write_record:
             cmd = [

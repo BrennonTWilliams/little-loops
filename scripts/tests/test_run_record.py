@@ -652,8 +652,8 @@ class TestTerminalExecution:
         _write_issue(project, ID, frontmatter="confidence_score: 90\noutcome_confidence: 70\n")
         result = _run_state(project, loop_states, "record_gate_unmet", tmp_path, ID)
         assert result.returncode == 0, result.stderr
-        # Legacy byte-identity (AC5).
-        assert (tmp_path / "refine-terminal-class").read_text() == "gate_unmet"
+        # ENH-3600: no refine-terminal-class sentinel — the record alone carries it.
+        assert not (tmp_path / "refine-terminal-class").exists()
         data = _read_json(tmp_path, "refine-to-ready-issue", ID)
         assert data["outcome"] == "deferred"
         assert data["legacy_class"] == "gate_unmet"
@@ -662,7 +662,7 @@ class TestTerminalExecution:
         _write_issue(project, ID)
         result = _run_state(project, loop_states, "mark_rate_limit_infra", tmp_path, ID)
         assert result.returncode == 0, result.stderr
-        assert (tmp_path / "refine-terminal-class").read_text() == "infra"
+        assert not (tmp_path / "refine-terminal-class").exists()
         data = _read_json(tmp_path, "refine-to-ready-issue", ID)
         assert data["outcome"] == "retryable_error"
 
@@ -740,8 +740,10 @@ class TestTerminalExecution:
             timeout=60,
         )
         assert result.returncode == 0, result.stderr
-        assert (tmp_path / "refine-terminal-class").read_text() == "quality"
-        assert _read_json(tmp_path, "refine-to-ready-issue", ID)["outcome"] == "blocked"
+        assert not (tmp_path / "refine-terminal-class").exists()
+        data = _read_json(tmp_path, "refine-to-ready-issue", ID)
+        assert data["outcome"] == "blocked"
+        assert data["legacy_class"] == "quality"
 
     def test_two_issues_one_run_dir_via_states(
         self, project: Path, tmp_path: Path, loop_states: dict

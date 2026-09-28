@@ -364,7 +364,6 @@ class TestPrepApplyNoOpenIntent:
         rid = canonical_record_id(config, ID)
         token = record_token(read_run_record(run_dir, "prepare-issue", rid))
         assert token == "RETRYABLE_ERROR:infra"
-        assert (run_dir / "refine-terminal-class").read_text() == "infra"
 
 
 class TestSnapshotIssueQ1MarkerReadRegardlessOfBlocking:
@@ -410,8 +409,8 @@ class TestReasonValidationEveryDeferStop:
 
 
 # ---------------------------------------------------------------------------
-# ENH-3623: crash injection for every apply outcome branch, and the
-# refine-terminal-class sentinel on every failed-bound terminal.
+# ENH-3623: crash injection for every apply outcome branch. ENH-3600: no
+# failed-bound terminal writes the retired refine-terminal-class sentinel.
 # ---------------------------------------------------------------------------
 
 #: outcome -> (issue frontmatter, inner record kwargs or None, expected exit, token)
@@ -498,15 +497,13 @@ class TestPrepApplyEveryBranch:
     @pytest.mark.parametrize(
         "outcome", sorted(o for o, (_f, _i, code, _t) in _APPLY_BRANCHES.items() if code == 1)
     )
-    def test_failed_bound_terminal_writes_the_sentinel(self, project: Path, outcome: str) -> None:
-        """Until ENH-3600 removes its reader (autodev's skip_inflight), every
-        failed-bound terminal leaves refine-terminal-class (was mark_inner_error's job)."""
+    def test_failed_bound_terminal_writes_no_sentinel(self, project: Path, outcome: str) -> None:
+        """ENH-3600: no failed-bound terminal writes refine-terminal-class anymore —
+        autodev's skip_inflight classifies from the run record's routing token alone."""
         config, run_dir = _open_terminal(project, outcome)
         (run_dir / "refine-terminal-class").unlink(missing_ok=True)
         assert _apply(config, run_dir, outcome) == 1
-        sentinel = (run_dir / "refine-terminal-class").read_text()
-        infra = outcome in ("rate_limited", "scores_absent", "inner_error", "ladder_error")
-        assert (sentinel == "infra") is infra, sentinel
+        assert not (run_dir / "refine-terminal-class").exists()
 
 
 def _crash(target: str) -> object:

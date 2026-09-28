@@ -1,14 +1,14 @@
 """Typed per-issue preparation run records (ENH-3597).
 
-``refine-to-ready-issue`` (and, per ENH-3601, the ``prepare-issue`` wrapper that
-will subsume it) write one JSON record per issue per run under
-``<run_dir>/run-records/<writer>/<ID>.json``, alongside — never replacing — the
-legacy ``refine-terminal-class`` / ``refine-broke-down`` files autodev's
-``skip_inflight`` still consumes. The per-writer, per-issue path is the
-isolation contract: a child re-running in autodev's shared ``run_dir`` can never
-leak one issue's record into the next issue's exit, and the two writers'
-records never collide (ENH-3600 reads the ``prepare-issue`` record from this
-exact layout).
+``refine-to-ready-issue`` and the ``prepare-issue`` wrapper write one JSON
+record per issue per run under ``<run_dir>/run-records/<writer>/<ID>.json``.
+Autodev's ``skip_inflight`` reads the ``prepare-issue`` record's routing token
+alone to classify a stop (ENH-3600 removed the ``refine-terminal-class``
+sentinel file this once shared with; the shared ``refine-broke-down`` counter
+still lives alongside it). The per-writer, per-issue path is the isolation
+contract: a child re-running in autodev's shared ``run_dir`` can never leak one
+issue's record into the next issue's exit, and the two writers' records never
+collide.
 
 Readers treat a missing record as absent: ``read_run_record`` returns ``None``
 for a missing file, malformed JSON, an OSError, or a stored writer/issue_id that
@@ -40,7 +40,9 @@ RunRecordWriter = Literal["refine-to-ready-issue", "prepare-issue"]
 
 WRITERS: tuple[str, ...] = ("refine-to-ready-issue", "prepare-issue")
 
-#: Legacy ``refine-terminal-class`` tokens the mapping knows how to translate.
+#: Legacy termination-class tokens the mapping knows how to translate (formerly
+#: written to a ``refine-terminal-class`` sentinel file; now carried only as
+#: ``--legacy-class`` on the record write, ENH-3600).
 LEGACY_CLASSES: tuple[str, ...] = (
     "proposal_unsound",
     "gate_unmet",
@@ -57,8 +59,8 @@ RECORD_DIR_NAME = "run-records"
 class RunRecord:
     """One issue's preparation outcome for one loop run.
 
-    ``legacy_class`` is ``None`` exactly when no ``refine-terminal-class`` was
-    written — the done paths — which is what distinguishes them from
+    ``legacy_class`` is ``None`` exactly when the terminal wrote no
+    ``--legacy-class`` — the done paths — which is what distinguishes them from
     ``classify_terminal``'s explicit ``quality`` in the mapping.
     ``readiness``/``outcome_confidence`` snapshot the issue's scores at terminal
     time (``None`` when never scored).

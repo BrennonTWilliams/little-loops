@@ -1743,9 +1743,10 @@ class TestRefineToReadyIssueSubLoop:
         assert self._run_counter_state(data, "check_refine_limit", run_dir) == "2"
 
     def test_record_gate_unmet_writes_class_and_fails(self, data: dict, tmp_path: Path) -> None:
-        """record_gate_unmet writes terminal class gate_unmet and exits via failed."""
+        """record_gate_unmet reports terminal class gate_unmet and exits via failed."""
         state = data["states"].get("record_gate_unmet", {})
         assert state.get("next") == "failed" and state.get("on_error") == "failed"
+        assert "--legacy-class gate_unmet" in state.get("action", "")
         script = (
             state["action"]
             .replace("${context.run_dir}", str(tmp_path))
@@ -1753,7 +1754,7 @@ class TestRefineToReadyIssueSubLoop:
         )
         result = subprocess.run(["bash", "-c", script], capture_output=True, text=True)
         assert result.returncode == 0, result.stderr
-        assert (tmp_path / "refine-terminal-class").read_text() == "gate_unmet"
+        assert not (tmp_path / "refine-terminal-class").exists()
         assert "BUG-9701" in result.stdout
 
     # --- BUG-3553: decision / spike cycles bounded in-loop ---
@@ -1934,15 +1935,12 @@ class TestRefineToReadyIssueSubLoop:
             f"resolve_issue.next should be 'check_issue_resolved', got {state.get('next')!r}"
         )
 
-    def test_resolve_issue_clears_stale_terminal_class(self, data: dict) -> None:
-        """resolve_issue must rm the refine-terminal-class sentinel at run start: nothing
-        else ever clears it, so a stale `infra` from a previous issue in autodev's shared
-        run_dir would leak into the next issue's skip_inflight classification."""
+    def test_resolve_issue_does_not_reference_retired_sentinel(self, data: dict) -> None:
+        """ENH-3600: the refine-terminal-class sentinel is retired. Per-issue keying of
+        the prepare-issue run record (not a shared run-dir file) means no cross-issue
+        leak is possible, so resolve_issue no longer needs to clear anything for it."""
         action = data["states"].get("resolve_issue", {}).get("action", "")
-        assert "rm -f" in action and "refine-terminal-class" in action, (
-            "resolve_issue.action should clear ${context.run_dir}/refine-terminal-class "
-            f"with rm -f, got {action!r}"
-        )
+        assert "refine-terminal-class" not in action, action
 
     def test_check_issue_resolved_routes_empty_id_to_no_work(self, data: dict) -> None:
         """check_issue_resolved gates on the captured id: blank id (empty backlog) is a
@@ -2204,13 +2202,13 @@ class TestRefineToReadyIssueSubLoop:
         state = data["states"].get("classify_terminal", {})
         assert state.get("action_type") == "shell"
 
-    def test_classify_terminal_writes_sentinel(self, data: dict) -> None:
-        """ENH-2727: classify_terminal must write refine-terminal-class under the
-        shared run_dir so autodev's skip_inflight can consume it."""
+    def test_classify_terminal_writes_no_sentinel(self, data: dict) -> None:
+        """ENH-3600: classify_terminal carries its class only via --legacy-class on
+        the run-record write; no refine-terminal-class sentinel file."""
         state = data["states"].get("classify_terminal", {})
         action = state.get("action", "")
-        assert "refine-terminal-class" in action
-        assert "${context.run_dir}" in action
+        assert "refine-terminal-class" not in action
+        assert "--legacy-class" in action and "${context.run_dir}" in action
 
     @pytest.mark.parametrize(
         "exit_codes,expected",
@@ -2262,11 +2260,15 @@ class TestRefineToReadyIssueSubLoop:
         )
         script = script.replace("${context.run_dir}", str(run_dir))
         assert "${" not in script, f"unsubstituted interpolation token remains: {script}"
+        # ENH-3600: no sentinel file to read back; echo $CLASS (still set at the
+        # point the old sentinel write used to fire) so the test can observe it.
+        script += '\necho "CLASS=$CLASS"'
         result = subprocess.run(
             ["bash", "-c", script], cwd=tmp_path, capture_output=True, text=True
         )
         assert result.returncode == 0, f"classify_terminal failed: {result.stderr}"
-        return (run_dir / "refine-terminal-class").read_text().strip()
+        (line,) = [ln for ln in result.stdout.splitlines() if ln.startswith("CLASS=")]
+        return line.removeprefix("CLASS=")
 
     @pytest.mark.parametrize(
         "failure_type,expected",
@@ -2652,23 +2654,24 @@ class TestRefineToReadyIssueSubLoop:
         assert state.get("on_error") == "check_proposal_revision_failed"
 
     def test_mark_rate_limit_infra_writes_class_and_exits_failed(self, data: dict) -> None:
-        """mark_rate_limit_infra must write class `infra` to refine-terminal-class
-        (autodev's skip_inflight contract) and exit via the failed terminal so
-        the parent's on_failure route still fires."""
+        """mark_rate_limit_infra must record legacy_class `infra` (autodev's
+        skip_inflight contract, ENH-3600: via the run record, no sentinel file)
+        and exit via the failed terminal so the parent's on_failure route still
+        fires."""
         state = data["states"].get("mark_rate_limit_infra", {})
         assert state, "State 'mark_rate_limit_infra' not found"
         action = state.get("action", "")
-        assert "infra" in action and "refine-terminal-class" in action, (
-            f"mark_rate_limit_infra must write 'infra' to refine-terminal-class, got {action!r}"
+        assert "--legacy-class infra" in action, (
+            f"mark_rate_limit_infra must record legacy_class infra, got {action!r}"
         )
+        assert "refine-terminal-class" not in action
         assert state.get("next") == "failed"
         assert state.get("on_error") == "failed"
 
     def test_on_max_steps_is_classify_terminal(self, data: dict) -> None:
-        """A step-cap exit must still write refine-terminal-class: on_max_steps
-        runs classify_terminal exactly once at the cap (its `next:` never
-        follows; terminated_by stays max_steps), so autodev's skip_inflight
-        reads a fresh class instead of a missing or stale one."""
+        """A step-cap exit must still run classify_terminal exactly once at the cap
+        (its `next:` never follows; terminated_by stays max_steps), so autodev's
+        skip_inflight reads a fresh run record instead of a missing or stale one."""
         assert data.get("on_max_steps") == "classify_terminal", (
             f"on_max_steps should be 'classify_terminal', got {data.get('on_max_steps')!r}"
         )
@@ -2736,18 +2739,16 @@ class TestRefineToReadyIssueSubLoop:
             f"record_decision_unresolved.next should be 'failed', got {state.get('next')!r}"
         )
 
-    def test_record_decision_unresolved_writes_refine_terminal_class(self, data: dict) -> None:
-        """record_decision_unresolved must write class `decision_unresolved` to
-        refine-terminal-class directly (BUG-3390, mirroring mark_rate_limit_infra),
-        so a decision-unresolved exit is distinguishable from a genuine `quality`
-        classify_terminal verdict rather than relying solely on autodev's
-        ledger-grep suppression in skip_inflight."""
+    def test_record_decision_unresolved_writes_run_record_legacy_class(self, data: dict) -> None:
+        """record_decision_unresolved must record legacy_class `decision_unresolved`
+        directly (BUG-3390, mirroring mark_rate_limit_infra), so a decision-unresolved
+        exit is distinguishable from a genuine `quality` classify_terminal verdict
+        rather than relying solely on autodev's ledger-grep suppression in
+        skip_inflight. ENH-3600: no refine-terminal-class sentinel file."""
         state = data["states"].get("record_decision_unresolved", {})
         action = state.get("action", "")
-        assert "decision_unresolved" in action and "refine-terminal-class" in action, (
-            f"record_decision_unresolved must write 'decision_unresolved' to "
-            f"refine-terminal-class, got {action!r}"
-        )
+        assert "--legacy-class decision_unresolved" in action, action
+        assert "refine-terminal-class" not in action
 
     def test_max_steps_at_least_40(self, data: dict) -> None:
         """max_steps must be >= 40 (BUG-3065: the check_decision_needed re-entry

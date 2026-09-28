@@ -62,8 +62,9 @@ def add_run_record_parser(subs: argparse._SubParsersAction) -> argparse.Argument
         default=None,
         choices=LEGACY_CLASSES,
         help=(
-            "The refine-terminal-class token this terminal just wrote; omit on the "
-            "done paths (no class file is written there)"
+            "The termination class this terminal is classifying (proposal_unsound, "
+            "gate_unmet, infra, spike_inconclusive, decision_unresolved, quality); "
+            "omit on the done paths"
         ),
     )
     w.add_argument(

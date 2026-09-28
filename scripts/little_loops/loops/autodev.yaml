@@ -476,10 +476,10 @@ states:
     # ledger_child_stop.
     # BUG-3390: no `fragment: with_rate_limit_handling` / `on_rate_limit_exhausted`
     # here — both are inert on a `loop:` call state. The inner loop's own rate-limit
-    # handling writes refine-terminal-class=infra and a record carrying
-    # rate_limit_exhausted, which prepare-issue's apply turns into
-    # RETRYABLE_ERROR:rate_limited; the wrapper's own slash states halt through its
-    # mark_rate_limited terminal (same token).
+    # handling writes a record with legacy_class=infra carrying rate_limit_exhausted,
+    # which prepare-issue's apply turns into RETRYABLE_ERROR:rate_limited; the
+    # wrapper's own slash states halt through its mark_rate_limited terminal
+    # (same token).
     loop: prepare-issue
     context_passthrough: true
     on_success: copy_broke_down
