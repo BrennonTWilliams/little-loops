@@ -14,9 +14,9 @@ labels:
 blocked_by:
 - BUG-3640
 decision_needed: false
-confidence_score: 80
-outcome_confidence: 86
-score_complexity: 18
+confidence_score: 90
+outcome_confidence: 82
+score_complexity: 14
 score_test_coverage: 25
 score_ambiguity: 25
 score_change_surface: 18
@@ -201,9 +201,12 @@ Refinements 6 and 7 remove these: `cli/docs.py` `main_verify_skills` + its help 
 
 ## Verification Notes
 
-Refreshed 2026-09-28 (supersedes the 2026-09-24 check): ENH-3527 is done; `resolve_model_hint`, `ModelHintError`, `MODEL_HINTS`, `_BUILTIN_HINT_MAPPINGS` exist in `host_runner.py` (`:121-192`). The Codex emitter class is `CodexEmitter` (`codex.py:328`), not `CodexAdapter`. `ll-adapt` output lands under the plugin root (`cli/adapt.py`). Committed mirrors confirm the alias leak (`.codex/agents/codebase-analyzer.toml:4` `model = "sonnet"`), now tracked as BUG-3640.
+Refreshed 2026-09-28 (supersedes the 2026-09-24 check): ENH-3527 is done; `resolve_model_hint`, `ModelHintError`, `MODEL_HINTS`, `_BUILTIN_HINT_MAPPINGS` exist in `host_runner.py` (`:121-192`). The Codex emitter class is `CodexEmitter` (`codex.py:329`), not `CodexAdapter`. `ll-adapt` output lands under the plugin root (`cli/adapt.py`). Committed mirrors confirm the alias leak (`.codex/agents/codebase-analyzer.toml:4` `model = "sonnet"`), now tracked as BUG-3640.
 
-Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the same pass, so the issue as it now reads is up to date — this section is a record of what was wrong and fixed, not an outstanding action item). `/ll:verify-issues ENH-3533 --auto`, 2026-09-28: every `file:line` citation in the Codebase Research Findings, Integration Map, Program Design, and Dropped-touchpoints list was checked against the current tree (all `adapters/*.py`, `host_runner.py`, `cli/*.py`, `capabilities.py`, doc/schema files, and the cited test classes/functions) — all confirmed accurate except two stale citations in the Dropped-touchpoints line, now corrected in place: `loops/mechanize-skills.yaml:503` → `scripts/little_loops/loops/mechanize-skills.yaml:503` (the file lives under `scripts/little_loops/loops/`, not a top-level `loops/`); `cli/doctor.py:238,943` → `cli/doctor.py:943` (line 238 is an unrelated `print("  (none found)")`; only line 943, the `check_skill_sizes()`/`ll-verify-skills` adapter docstring, is a real touchpoint). `ll-verify-evidence` found no fabricated quotes. No active required decision rules. Dependency check (§2E) found `blocked_by: BUG-3640` (status: open, correctly unsatisfied) had no reciprocal `## Blocks` entry on BUG-3640 — fixed by adding one there in this pass. B6 proposal-vs-code check: the planned `ModelHintError` → `AdapterError` conversion lands inside `process_agents`/`process_skills`' existing per-file `except AdapterError` blocks (`core.py:477,550,628,670`), so no exception-handler gap.
+Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the same pass, so the issue as it now reads is up to date — this section is a record of what was wrong and fixed, not an outstanding action item). `/ll:verify-issues ENH-3533 --auto`, 2026-09-28: every `file:line` citation in the Codebase Research Findings, Integration Map, Program Design, and Dropped-touchpoints list was checked against the current tree (all `adapters/*.py`, `host_runner.py`, `cli/*.py`, `capabilities.py`, doc/schema files, and the cited test classes/functions) — all confirmed accurate except two stale citations in the Dropped-touchpoints line, now corrected in place: `loops/mechanize-skills.yaml:503` → `scripts/little_loops/loops/mechanize-skills.yaml:503` (the file lives under `scripts/little_loops/loops/`, not a top-level `loops/`); `cli/doctor.py:238,943` → `cli/doctor.py:943` (line 238 is an unrelated `print("  (none found)")`; only line 943, the `check_skill_sizes()`/`ll-verify-skills` adapter docstring, is a real touchpoint). `ll-verify-evidence` found no fabricated quotes. No active required decision rules. Dependency check (§2E) found `blocked_by: BUG-3640` (status was open at that time, so unsatisfied) had no reciprocal `## Blocks` entry on BUG-3640 — fixed by adding one there in this pass. BUG-3640 has since completed (`4bd11c089`), so that edge is now satisfied (see the 2026-09-28 re-check below). B6 proposal-vs-code check: the planned `ModelHintError` → `AdapterError` conversion lands inside `process_agents`/`process_skills`' existing per-file `except AdapterError` blocks (`core.py:477,550,628,670`), so no exception-handler gap.
+
+Re-check 2026-09-28 (after BUG-3640 landed), `/ll:verify-issues ENH-3533 --auto`: verdict at time of check **NEEDS_UPDATE** (corrections below applied in the same pass, so the issue as it now reads is up to date — this section is a record of what was wrong and fixed, not an outstanding action item). Re-checked every `file:line` citation against the current tree: `codex.py:430` (`CodexEmitter.emit_agent`), `host_runner.py:134-138`/`:153`/`:186` (`_BUILTIN_HINT_MAPPINGS`, `resolve_model_hint`, the `builtin is None` branch the new `ModelHintUnmappedError` attaches to), `core.py:120,435,565` and the four `except AdapterError` sites (`:477,550,628,670`), `kimi.py:111-126`, `qwen.py:128-145`, `omp.py:62-73,109-122`, `gemini.py:81,131-138`, `fsm/executor.py:3687,3704` — all accurate. Two stale items corrected in place: the `CodexEmitter` class line (`codex.py:328` → `:329`), and the prior note's "BUG-3640 status: open" claim (BUG-3640 is now `done`). The frontmatter `blocked_by: BUG-3640` edge is a satisfied edge (`done`), so it is informational and needs no backlink. The Step 0 working-tree premise still holds (10 `skills/*/SKILL.md` modified, uncommitted). `ll-verify-evidence` clean; no active required decision rules; no new B6 findings.
+Graph: `ll-code` provider=`codegraph` freshness=`fresh` (used only to cross-check anchors; all confirmed by direct Grep).
 
 ## Status
 
@@ -212,15 +215,16 @@ Verdict at time of check: **NEEDS_UPDATE** (corrections below applied in the sam
 
 ## Confidence Check Notes
 
-_Added by `/ll:confidence-check` on 2026-09-28_
+_Added by `/ll:confidence-check` on 2026-09-28 (re-scored after BUG-3640 landed)_
 
-**Readiness Score**: 80/100 → STOP — ADDRESS GAPS (hard override)
-**Outcome Confidence**: 86/100 → HIGH CONFIDENCE
+**Readiness Score**: 90/100 → PROCEED
+**Outcome Confidence**: 82/100 → HIGH CONFIDENCE
 
 ### Gaps to Address
 - ~~Unresolved `blocked_by` dependency: BUG-3640~~ — resolved: BUG-3640 is done (`4bd11c089`), verified by `/ll:ready-issue` 2026-09-28.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-28T21:55:16 - `5f779b40-d61a-4af9-929a-1df2e6a1dc35.jsonl`
 - `/ll:ready-issue` - 2026-09-28T21:47:46 - `fbc10432-1400-4e81-b8f4-4b69027756de.jsonl`
 - `/ll:confidence-check` - 2026-09-28T21:08:24 - `7f294095-d1d9-4ee9-9b43-311d4ce2c57c.jsonl`
 - `/ll:verify-issues` - 2026-09-28T21:01:34 - `6ee1f8dc-4aaf-4326-9a2c-971c5336e607.jsonl`
