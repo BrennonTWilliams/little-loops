@@ -4879,12 +4879,15 @@ class TestPriorityRegexCompletenessAllowlist:
             351: "docstring for is_normalized",
             1155: "BUG-3286 step 6: priority_drift gap detection compares filename vs. "
             "frontmatter directly by design — drift IS the comparison, not a resolution",
-            2072: "_DEP_ID_RE (BUG-3059): dependency-ID shape validation; optional prefix "
+            # Line numbers below re-measured after the ENH-3623 option-span
+            # boundary fix added 44 lines above this block -- the shift this
+            # guard exists to catch, so they move together with it.
+            2116: "_DEP_ID_RE (BUG-3059): dependency-ID shape validation; optional prefix "
             "group discarded",
-            4325: "comment describing the P[0-5]-NNN- filename shape",
-            4329: "_parse_type_and_id's directory-fallback number extraction; priority digit "
+            4369: "comment describing the P[0-5]-NNN- filename shape",
+            4373: "_parse_type_and_id's directory-fallback number extraction; priority digit "
             "skipped over, not read as a value",
-            4350: "_generate_id_from_filename strips a leading priority token before "
+            4394: "_generate_id_from_filename strips a leading priority token before "
             "digit-scanning for ID generation",
         },
         "issues/prose_deps.py": {
@@ -5536,6 +5539,51 @@ class TestUnappliedDecision:
         reasons = _unapplied_decision(content)
         assert any("check_refine_limit" in r for r in reasons)
 
+    def test_trailing_labelled_paragraph_is_not_harvested_into_rejected_option(
+        self,
+    ) -> None:
+        """ENH-3623 shape: an option pair followed by bold-labelled directive
+        paragraphs (`**Recommended**:`, `**Decided (...)**:`) instead of a
+        heading. `_option_block_spans` ended a span only at the next qualifying
+        *heading*, so those paragraphs leaked into the rejected option's span
+        and their backticked identifiers were harvested as rejected
+        identifiers. A shared code fact named there (here `refine_current`,
+        autodev.yaml's state name) then fired a false `Proposed Solution still
+        specifies ...` report.
+
+        Asserted at the boundary layer (`_option_block_spans` +
+        `_decision_identifiers`) as well as the report layer: the boundary
+        assertion is the one this fix owns.
+        """
+        from little_loops.issue_parser import (
+            _decision_identifiers,
+            _option_block_spans,
+            _section_body,
+            _unapplied_decision,
+        )
+
+        content = self._issue(
+            "Autodev's `refine_current` dispatches that pass today.\n\n"
+            "**Option A**: Single atomic commit (`prepare_issue`).\n\n"
+            "**Option B**: Two-commit split (`two_commit_shape`).\n\n"
+            "> **Selected:** Option A\n\n"
+            "**Recommended**: Option A -- autodev's `refine_current` calls "
+            "`loop: prepare-issue`.\n\n"
+            "**Decided (`/ll:decide-issue`, 2026-09-27)**: no coexistence path, so "
+            "Option A.\n",
+        )
+
+        proposed_body = _section_body(content, "Proposed Solution")
+        assert proposed_body is not None
+        spans = _option_block_spans(proposed_body)
+        assert len(spans) == 2
+
+        rejected_span = next(s for s in spans if "Option B" in s[2])
+        rejected_text = proposed_body[rejected_span[0] : rejected_span[1]]
+        assert "refine_current" not in _decision_identifiers(rejected_text)
+
+        assert _unapplied_decision(content) == []
+
     def test_bare_key_subsumed_by_selected_compound_literal_does_not_fire(self) -> None:
         """BUG-3295: the ENH-3292 shape. Option A (selected) writes the
         compound literal `scope: ["."]`; Option B (rejected) mentions only
@@ -5800,7 +5848,25 @@ class TestBug3295ContainmentCorpusDifferential:
     # editing (ENH-3616/ENH-3633/ENH-3600/BUG-3635/BUG-3634 completing the
     # same day), diffusely spread across many pre-existing files rather than
     # concentrated in the touched ones, not a detector regression (594 -> 595).
-    _ENH_3602_TOTAL_REPORTS = 595
+    # ENH-3623 session (2026-09-27): the first move DOWNWARD, and the first
+    # caused by a *detector* fix rather than corpus growth.
+    # `_option_block_spans` ended an option block only at the next qualifying
+    # heading, so a trailing bold-labelled directive paragraph
+    # (`**Recommended**: ...`, `**Decided (...)**: ...`) leaked into the
+    # preceding option's span and its backticked identifiers were harvested as
+    # that option's -- typically the rejected one, since a Recommended
+    # paragraph is what follows a loser's block. That fired
+    # `still specifies ... (rejected option)` reports for identifiers belonging
+    # to the *winning* option's rationale. A/B over the corpus at fix time,
+    # same files, boundary fix in place: 586 -> 409 (120 -> 107 files, 29
+    # changed, 14 zeroed, 1 surfaced -- shrinking the winner's span also shrinks `sel_ids`,
+    # promoting a previously-masked identifier into `discriminating`).
+    # Classified by sampling the largest site: P2-FEAT-3308's 36 reports all
+    # came from the `**Recommended**:` paragraph that followed its Option B
+    # span (3578 -> 533 chars, span 1). Re-measured after rebasing onto a
+    # main whose ceiling had grown to 595 (.issues/, every `.md` file):
+    # 595 -> 410.
+    _ENH_3602_TOTAL_REPORTS = 410
 
     def test_previously_spurious_files_now_clear(self) -> None:
         from little_loops.issue_parser import _unapplied_decision
@@ -5824,7 +5890,12 @@ class TestBug3295ContainmentCorpusDifferential:
         regression) tripped it a second time, and the ENH-3449 session
         lifted it a third time, and the ENH-3602 session a fourth time, for
         the same reason. This guards against *further*, unmeasured growth
-        past the current ceiling."""
+        past the current ceiling.
+
+        ENH-3623 is the first session to move the ceiling *down*: the
+        bold-labelled-paragraph boundary added to `_option_block_spans`
+        removed a false-positive class, dropping the corpus total 595 -> 410.
+        See the `_ENH_3602_TOTAL_REPORTS` comment for the A/B measurement."""
         from little_loops.issue_parser import _unapplied_decision
 
         issues_dir = Path(__file__).parent.parent.parent / ".issues"

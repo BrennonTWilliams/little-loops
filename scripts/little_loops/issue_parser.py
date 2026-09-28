@@ -1660,6 +1660,16 @@ _DECISION_RATIONALE_SECTION_MARKER_RE = re.compile(r"^\s*###\s+Decision Rational
 # A backticked code span of length >= 3 -- the identifier unit both SEL and
 # REJ are built from (Program Design § Decision Rules, Identifier extraction).
 _DECISION_IDENTIFIER_RE = re.compile(r"`([^`\n]{3,})`")
+# ENH-3623: a bold-labelled directive paragraph line (`**Recommended**: ...`,
+# `**Decided (...)**: ...`) is a directive paragraph, not option content, but it
+# is not a heading -- so the heading-only span boundary in
+# :func:`_option_block_spans` let it leak into the preceding option's span and
+# its backticked identifiers were harvested as that option's, firing a false
+# `still specifies ... (rejected option)` report for shared code facts.
+# Excludes an option label itself (`**Option B**:`), which starts a span rather
+# than ending one. Requires the `**` at line start, so a `> **Selected:**`
+# callout never matches and its option keeps the attribution.
+_LABELLED_PARAGRAPH_RE = re.compile(r"^\*\*(?![Oo]ption\s)[^*\n]{1,80}\*\*[^\S\n]*:", re.MULTILINE)
 
 
 def _selected_option_title(section_body: str) -> str | None:
@@ -1754,6 +1764,29 @@ def _option_span_boundary(
         return m.start()
 
 
+def _labelled_paragraph_boundary(
+    text: str, search_start: int, fences: list[tuple[int, int]]
+) -> int | None:
+    """First fence-excluded bold-labelled paragraph line at/after *search_start*, or None.
+
+    ENH-3623 sibling of :func:`_option_span_boundary`: the heading rule alone
+    leaves a trailing ``**Recommended**:`` / ``**Decided (...)**:`` paragraph
+    inside the preceding option's span, because such a line is a
+    :data:`_LABELLED_PARAGRAPH_RE` directive paragraph, not a heading.
+    """
+    from little_loops.text_utils import in_fence
+
+    pos = search_start
+    while True:
+        m = _LABELLED_PARAGRAPH_RE.search(text, pos)
+        if m is None:
+            return None
+        if in_fence(m.start(), m.end(), fences):
+            pos = m.end()
+            continue
+        return m.start()
+
+
 def _option_block_spans(text: str) -> list[tuple[int, int, str]]:
     """``(start, end, heading_line)`` for each option block in *text*.
 
@@ -1770,6 +1803,14 @@ def _option_block_spans(text: str) -> list[tuple[int, int, str]]:
     marker is not a heading, so any depth (<=6) is a boundary. Markers matched
     inside a fenced code block are excluded (Rule 1) — this makes ``count`` (via
     :func:`_iter_option_blocks`) fence-aware too, not just the boundary.
+
+    ENH-3623: each block also ends at the next fence-excluded bold-labelled
+    directive paragraph (:data:`_LABELLED_PARAGRAPH_RE`) -- a boundary the
+    heading rule above cannot see, since ``**Recommended**:`` is not a heading.
+    Only this offset-carrying sibling gains that rule: it is the window
+    :func:`_unapplied_decision` harvests identifiers from, whereas widening the
+    shared :func:`_option_span_boundary` would change option *counts* in
+    :func:`_locate_options_in_text` / :func:`_iter_option_blocks`.
     """
     from little_loops.text_utils import fence_spans, in_fence
 
@@ -1787,11 +1828,14 @@ def _option_block_spans(text: str) -> list[tuple[int, int, str]]:
             line_end = len(text)
         search_start = line_end + 1 if line_end < len(text) else len(text)
         heading_boundary = _option_span_boundary(text, search_start, max_depth, fences)
+        label_boundary = _labelled_paragraph_boundary(text, search_start, fences)
         end_candidates = [len(text)]
         if i + 1 < len(matches):
             end_candidates.append(matches[i + 1].start())
         if heading_boundary is not None:
             end_candidates.append(heading_boundary)
+        if label_boundary is not None:
+            end_candidates.append(label_boundary)
         end = min(end_candidates)
         heading_line = text[start:line_end].strip()
         spans.append((start, end, heading_line))
