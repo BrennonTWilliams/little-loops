@@ -5120,10 +5120,10 @@ def main_queue() -> int
 
 Entry point for `ll-queue` command (FEAT-2682). Persisted work-item queue backed by `.ll/queue.db` (`little_loops.queue_store`) — distinct from `ll-loop queue`'s PID-liveness marker mechanism.
 
-**Returns:** 0 on success, 1 on not-found/ambiguous id, 2 on a malformed `--arg`
+**Returns:** 0 on success, 1 on not-found/ambiguous id, 2 on a malformed `--arg`, on a positional `input` combined with `--input`, or on a positional `input` for a non-loop target
 
 **Subcommands:**
-- `add TARGET` — Classify and persist a new entry. Without `--runner`, `TARGET` is classified in order: an FSM loop name (resolves via `resolve_loop_path`), a skill/command name (resolves via `skills/<name>/SKILL.md` / `commands/<name>.md`), else a raw CLI invocation. Optional `--priority {P0..P5}` (default `P3`), `--runner {skill,cmd,mcp,prompt,loop}` (skip classification), `--arg KEY=VALUE` (repeatable), `--timeout N` (default 120), `--json`
+- `add TARGET [input]` — Classify and persist a new entry. Without `--runner`, `TARGET` is classified in order: an FSM loop name (resolves via `resolve_loop_path`), a skill/command name (resolves via `skills/<name>/SKILL.md` / `commands/<name>.md`), else a raw CLI invocation. Optional `--priority {P0..P5}` (default `P3`), `--runner {skill,cmd,mcp,prompt,loop}` (skip classification), `--arg KEY=VALUE` (repeatable), `--timeout N` (default 120), `--input VALUE` (loop-runner input), `--json`. The optional positional `input` is shorthand for `--input`; it is mutually exclusive with `--input` and valid only for loop targets
 - `list` — List all entries ordered by priority tier then FIFO within tier; optional `--json`, `--wide` (untruncated args/timeout/elapsed summary, ENH-2931)
 - `status ID` — Show one entry by full id or 8+-char prefix; optional `--json`
 - `remove ID` — Delete a `pending` entry by full id or 8+-char prefix; `--force` removes a non-pending entry too; optional `--json`

@@ -173,6 +173,88 @@ class TestCmdAdd:
         entries = list_entries()
         assert entries[0].action.args["loop_input"] == '{"issue_id": "BUG-1"}'
 
+    def _make_loop(self, tmp_path: Path, name: str = "my-loop") -> None:
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir(exist_ok=True)
+        (loops_dir / f"{name}.yaml").write_text(f"name: {name}\n")
+
+    def test_add_positional_input_matches_input_flag(self, tmp_path: Path) -> None:
+        self._make_loop(tmp_path)
+        with patch("sys.argv", ["ll-queue", "add", "my-loop", "BUG-3354", "--priority", "P2"]):
+            assert main_queue() == 0
+        with patch("sys.argv", ["ll-queue", "add", "my-loop", "--input", "BUG-3354"]):
+            assert main_queue() == 0
+
+        positional, flagged = sorted(list_entries(), key=lambda e: e.priority)
+        assert positional.action.runner == RunnerType.LOOP
+        assert positional.action.args["loop_input"] == "BUG-3354"
+        assert positional.action.runner == flagged.action.runner
+        assert positional.action.args == flagged.action.args
+        assert positional.action.timeout == flagged.action.timeout
+
+    def test_add_positional_input_with_flags_first(self, tmp_path: Path) -> None:
+        self._make_loop(tmp_path)
+        with patch("sys.argv", ["ll-queue", "add", "--priority", "P2", "my-loop", "X"]):
+            assert main_queue() == 0
+        assert list_entries()[0].action.args["loop_input"] == "X"
+
+    def test_add_positional_input_with_loop_runner_override(self) -> None:
+        with patch("sys.argv", ["ll-queue", "add", "some-loop", "X", "--runner", "loop"]):
+            assert main_queue() == 0
+        assert list_entries()[0].action.args["loop_input"] == "X"
+
+    def test_add_positional_and_input_flag_exits_2(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        self._make_loop(tmp_path)
+        with patch("sys.argv", ["ll-queue", "add", "my-loop", "A", "--input", "B"]):
+            assert main_queue() == 2
+        assert "given both positionally and via --input" in capsys.readouterr().err
+        assert list_entries() == []
+
+    def test_add_empty_positional_counts_as_given(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        self._make_loop(tmp_path)
+        with patch("sys.argv", ["ll-queue", "add", "my-loop", "", "--input", "B"]):
+            assert main_queue() == 2
+        assert "given both positionally and via --input" in capsys.readouterr().err
+
+    def test_add_positional_with_non_loop_runner_exits_2(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        with patch("sys.argv", ["ll-queue", "add", "x", "Y", "--runner", "cmd"]):
+            assert main_queue() == 2
+        err = capsys.readouterr().err
+        assert "only valid for loop targets" in err
+        assert "classified as cmd" in err
+        assert list_entries() == []
+
+    def test_add_positional_with_unresolved_loop_name_exits_2(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        with patch("sys.argv", ["ll-queue", "add", "no-such-loop-xyz", "Y"]):
+            assert main_queue() == 2
+        err = capsys.readouterr().err
+        assert "only valid for loop targets" in err
+        assert "'no-such-loop-xyz' classified as cmd" in err
+        assert list_entries() == []
+
+    def test_add_raw_command_with_stray_word_exits_2(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        with patch("sys.argv", ["ll-queue", "add", "pytest tests/", "extra", "--runner", "cmd"]):
+            assert main_queue() == 2
+        assert "only valid for loop targets" in capsys.readouterr().err
+        assert list_entries() == []
+
+    def test_add_input_flag_with_non_loop_runner_unchanged(self) -> None:
+        with patch("sys.argv", ["ll-queue", "add", "x", "--runner", "cmd", "--input", "Y"]):
+            assert main_queue() == 0
+        entries = list_entries()
+        assert entries[0].action.runner == RunnerType.CMD
+        assert entries[0].action.args["loop_input"] == "Y"
+
     def test_add_with_bad_arg_pair_exits_2(self) -> None:
         with patch(
             "sys.argv", ["ll-queue", "add", "target", "--arg", "malformed", "--runner", "cmd"]

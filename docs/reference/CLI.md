@@ -4580,7 +4580,7 @@ Persisted work-item queue, backed by a dedicated `.ll/queue.db` (FEAT-2682) — 
 
 | Subcommand | Description |
 |------------|-------------|
-| `add TARGET` | Classify and persist a new entry |
+| `add TARGET [input]` | Classify and persist a new entry; the optional `input` is shorthand for `--input` on a loop target |
 | `list` | List all entries, ordered by priority then FIFO |
 | `status ID` | Show one entry's state and result by full id or 8+-char prefix |
 | `remove ID` | Delete a `pending` entry by full id or 8+-char prefix |
@@ -4593,6 +4593,7 @@ Persisted work-item queue, backed by a dedicated `.ll/queue.db` (FEAT-2682) — 
 | Flag | Description |
 |------|-------------|
 | `TARGET` | FSM loop name, skill/command name, or raw CLI invocation (required, positional) |
+| `input` | Optional second positional; shorthand for `--input` on a loop target (`add <loop> <input> [flags]`). Mutually exclusive with `--input` (exit 2 if both are given). Valid only when `TARGET` classifies as (or is forced to) the `loop` runner — otherwise exit 2; quote a raw command that contains spaces, or use `--input` |
 | `--priority {P0,P1,P2,P3,P4,P5}` | Priority tier (default: `P3`) |
 | `--runner {skill,cmd,mcp,prompt,loop}` | Force a specific runner kind instead of classifying `TARGET` |
 | `--arg KEY=VALUE` | Extra `ActionSpec` arg (repeatable) |
@@ -4670,6 +4671,7 @@ Without `--watch`, this behavior is unchanged: drain what's eligible, then exit.
 ll-queue add audit-docs                                  # Enqueue a skill (classified automatically)
 ll-queue add "pytest tests/" --runner cmd --priority P1
 ll-queue add rn-refine --input '{"issue_id": "FEAT-2900"}' --priority P1
+ll-queue add refine-to-ready-issue FEAT-2900 --priority P1   # positional shorthand for --input
 ll-queue list --json
 ll-queue list --wide                                      # Untruncated args/timeout summary
 ll-queue status abcd1234

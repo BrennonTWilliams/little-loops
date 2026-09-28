@@ -3,10 +3,11 @@ id: ENH-3643
 type: ENH
 title: Add positional [input] shorthand to ll-queue add for LOOP targets
 priority: P4
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-28'
 captured_at: '2026-09-28T21:07:23Z'
+completed_at: '2026-09-28T23:36:53Z'
 confidence_score: 100
 outcome_confidence: 97
 score_complexity: 22
@@ -22,7 +23,7 @@ score_change_surface: 25
 `ll-queue add` has no positional counterpart to `ll-loop run <loop> [input]`'s second
 positional. Queuing a LOOP-runner target with input always requires `--input`, even
 though the CLI help text for that flag already describes it as having "the same
-semantics as `ll-loop run <loop> [input]`" (`scripts/little_loops/cli/queue.py:1218-1220`).
+semantics as `ll-loop run <loop> [input]`" (`scripts/little_loops/cli/queue.py:1219-1222`).
 
 ## Current Behavior
 
@@ -34,7 +35,7 @@ add_parser.add_argument(
 )
 ```
 
-(`scripts/little_loops/cli/queue.py:1190-1192`)
+(`scripts/little_loops/cli/queue.py:1191-1193`)
 
 There is no second positional, so the shortest form of queuing a loop with an argument is:
 
@@ -274,8 +275,14 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-28T23:36:53 - `83ac1e49-6b2b-4760-949f-e5772941f97a.jsonl`
+- `/ll:ready-issue` - 2026-09-28T23:29:03 - `6b3e8a79-8bfd-4e04-88fb-db485036db20.jsonl`
 - `/ll:confidence-check` - 2026-09-28T22:41:59 - `567c9044-53d9-466d-a31f-6021ef77a649.jsonl`
 - `/ll:wire-issue` - 2026-09-28T22:36:29 - `29b6f7a1-cbe3-4641-a1f5-b4e98b2d2120.jsonl`
 - `/ll:refine-issue` - 2026-09-28T22:17:13 - `ddb9c068-0ba1-4e5f-bc15-cadeb7d03857.jsonl`
 - `/ll:format-issue` - 2026-09-28T22:12:07 - `00e1806e-99df-47db-8e10-d56d6eca502a.jsonl`
 - `/ll:capture-issue` - 2026-09-28T21:07:32 - `7f294095-d1d9-4ee9-9b43-311d4ce2c57c.jsonl`
+
+## Resolution
+
+**Implemented** 2026-09-28. Added an optional second positional (`dest="loop_input"`, `metavar="input"`) to `ll-queue add`. `cmd_add` rejects positional + `--input` (exit 2) and rejects the positional for non-`loop` runners (exit 2, naming the classified runner); `_classify_action` is unchanged. Tests added in `TestCmdAdd`; `docs/reference/CLI.md` and `API.md` updated.

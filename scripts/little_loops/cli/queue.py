@@ -229,6 +229,12 @@ def _classify_action(
 def cmd_add(args: argparse.Namespace) -> int:
     from little_loops.cli.output import colorize, print_json
     from little_loops.queue_store import add_entry
+    from little_loops.runner_spec import RunnerType
+
+    positional_input = getattr(args, "loop_input", None)
+    if positional_input is not None and args.input is not None:
+        print("Error: input given both positionally and via --input; use one", file=sys.stderr)
+        return 2
 
     try:
         spec = _classify_action(
@@ -236,10 +242,19 @@ def cmd_add(args: argparse.Namespace) -> int:
             runner_override=args.runner,
             timeout=args.timeout,
             arg_pairs=args.arg,
-            input_value=args.input,
+            input_value=positional_input if positional_input is not None else args.input,
         )
     except ValueError as exc:
         print(f"Error: {exc}", file=sys.stderr)
+        return 2
+
+    if positional_input is not None and spec.runner is not RunnerType.LOOP:
+        print(
+            f"Error: positional input is only valid for loop targets "
+            f"('{args.target}' classified as {spec.runner.value}); "
+            f"use --input, or quote the full command",
+            file=sys.stderr,
+        )
         return 2
 
     entry = add_entry(spec, args.priority, db_path=QUEUE_DB_PATH)
@@ -1169,6 +1184,7 @@ def main_queue() -> int:
             epilog="""
 Examples:
   ll-queue add audit-docs
+  ll-queue add refine-to-ready-issue "ENH-1" --priority P2
   ll-queue add "pytest scripts/tests/" --runner cmd --priority P1
   ll-queue list --json
   ll-queue status abcd1234
@@ -1190,6 +1206,13 @@ Examples:
         )
         add_parser.add_argument(
             "target", help="Loop name, skill/command name, or raw CLI invocation"
+        )
+        add_parser.add_argument(
+            "loop_input",
+            nargs="?",
+            default=None,
+            metavar="input",
+            help="Input for a LOOP-runner target (shorthand for --input)",
         )
         add_parser.add_argument(
             "--priority",
