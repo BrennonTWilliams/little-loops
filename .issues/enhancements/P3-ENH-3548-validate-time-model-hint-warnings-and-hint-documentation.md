@@ -254,6 +254,7 @@ Verdict at time of check: **NEEDS_UPDATE** (correction below applied in the same
 - [resolved 2026-09-28 by manual review] ARCH-121 requires a `*_ok` suppression flag for every new validate rule — decided: exemption for host-dependent hint-resolution warnings, recorded as decisions entry `514b7ae3-90e7-4894-af36-460b00bb1278`.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-28T22:43:47 - `9b0a9144-bbd1-46a6-aca5-08f4cec9c484.jsonl`
 - `/ll:verify-issues` - 2026-09-28T22:41:26 - `5fafe6c4-1e0c-4610-a069-76b4dd11d35b.jsonl`
 - `/ll:confidence-check` - 2026-09-28T22:35:13 - `f9845aee-2566-463f-90fc-0809b301aae7.jsonl`
 - `manual review` - 2026-09-28 - resolved host source (`resolve_host()`), corrected `llm.model_hint` path rules, added dedupe/limitations/ACs; filed BUG-3644; ARCH-121 exception recorded as decisions entry `514b7ae3-90e7-4894-af36-460b00bb1278`

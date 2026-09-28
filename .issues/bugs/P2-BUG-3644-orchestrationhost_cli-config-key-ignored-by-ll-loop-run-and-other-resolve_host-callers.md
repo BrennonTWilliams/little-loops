@@ -11,6 +11,7 @@ captured_at: '2026-09-28T22:31:27Z'
 labels:
 - multi-host
 - host-runner
+decision_needed: true
 ---
 
 # BUG-3644: orchestration.host_cli config key ignored by ll-loop run and other resolve_host() callers
@@ -40,6 +41,21 @@ Precedence everywhere a host is resolved: `LL_HOST_CLI` env var > `orchestration
 ## Proposed Solution
 
 Apply the config key at CLI entry for every automation tool that resolves a host (at minimum `ll-loop run`/`validate`, `ll-auto`, `ll-parallel`, `ll-sprint`, `ll-logs fleet-review`), or fold the config lookup into `resolve_host()` itself behind the env var. Prefer a single choke point over per-CLI calls so new entry points cannot regress. Decide whether in-process `os.environ` mutation (current `apply_host_cli_from_config` approach) is acceptable given it leaks into descendants (compare the `LL_AUTOMATION` descendant-leak incident).
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — 2026-09-28 — based on codebase analysis:_
+
+**Option A**: Per-entry-point `apply_host_cli_from_config(config)` calls in each `main_*` after `BRConfig` construction (`main_loop`, `main_auto`, `main_parallel`, `main_sprint`, plus any other host-resolving entry). Matches the `main_doctor` precedent and the `LL_HANDOFF_THRESHOLD` per-entry writes; carries the env-mutation leak into descendants and gives no structural guard against a new entry point omitting it (needs the enumeration gate).
+
+**Option B**: Fold the config lookup into `resolve_host()` itself, consumer-side and behind the env vars, reading `ll-config.json` without raising (precedent: `session_store/db.py::resolve_history_db`). Single choke point, no env mutation. Constraints: `resolve_host_named()` passes an explicit `env` and must stay config-independent, so the lookup can only apply on the `env is None` path; `host_runner.py` has no top-level `little_loops.config` import (a lazy import or a raw JSON read avoids a cycle); `LL_HOOK_HOST` ordering vs config must be decided.
+
+**Option C**: Export `LL_HOST_CLI` from config inside `BRConfig.__init__`, alongside the existing `load_env_fallback` side effect, so every entry that builds a `BRConfig` is covered. Constraints: ~62 files construct `BRConfig` (including `cli/advise.py`, whose test pins `LL_HOST_CLI` unchanged after `main_advise()`); it widens the env-mutation leak the FEAT-3060 decision rejected; `cmd_run` builds a second `BRConfig` at `cli/loop/run.py:269` after `main_loop` already built one.
+
+**Recommended**: Option B — the issue's own stated preference for a single choke point that new entry points cannot regress; final selection belongs to `/ll:decide-issue`.
+
+- Scope note: `ll-logs fleet-review` and `ll-loop validate` do not call `host_runner.resolve_host()` today. `fleet-review --host` resolves a session-log host through `user_messages._resolve_host` (flag > `LL_HOOK_HOST` > default), unrelated to host-CLI selection, and `cmd_validate` (`cli/loop/config_cmds.py`) has no `resolve_host` call until ENH-3548 adds one. Acceptance Criterion 1 is vacuous for those two until then; they are only affected through ENH-3548's hint warnings.
+- Related latent inconsistency: `cli/doctor.py:815` hand-rolls env > config for the advisor floor row and then calls `resolve_host_named(name)` or `resolve_host()`; a choke-point fix should let it collapse to one resolution path.
 
 ## Integration Map
 
@@ -133,3 +149,7 @@ Apply the config key at CLI entry for every automation tool that resolves a host
 ## Status
 
 **Open** | Created: 2026-09-28 | Priority: P2
+
+
+## Session Log
+- `/ll:refine-issue` - 2026-09-28T22:43:07 - `29b6f7a1-cbe3-4641-a1f5-b4e98b2d2120.jsonl`
