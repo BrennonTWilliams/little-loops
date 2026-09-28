@@ -11,6 +11,12 @@ parent: EPIC-3563
 labels:
 - multi-host
 verify_verdict: VALID
+confidence_score: 100
+outcome_confidence: 85
+score_complexity: 20
+score_test_coverage: 23
+score_ambiguity: 24
+score_change_surface: 18
 ---
 
 # BUG-3640: Generated host mirrors ship Claude model aliases as the model
@@ -76,4 +82,5 @@ A Claude Code model alias (a key of `host_runner.MODEL_ALIASES`: `fable`, `opus`
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-28T20:42:58 - `8c20e11f-c92c-4edc-8c38-39bebd1ef326.jsonl`
 - `/ll:verify-issues` - 2026-09-28T20:26:37 - `ad55cfa6-adc7-4f43-81d2-899456dc7a54.jsonl`
