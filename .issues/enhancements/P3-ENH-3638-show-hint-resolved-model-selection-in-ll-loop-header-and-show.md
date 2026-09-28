@@ -53,13 +53,20 @@ The `model:` line shows **the model the loop's actions run on**. Before the firs
   1. If `--model` (`run_model`) is set, show it bare. This is an intentional change from today, which shows `fsm.llm.model`; `--model` is what CLI actions dispatch with.
   2. Else, if `llm.model_hint` is set, resolve it against `resolve_host().name` with the `orchestration.model_hints` overrides and render it as a hint.
   3. Else show `fsm.llm.model` bare. This is byte-identical to today.
+- **Pre-dispatch backend limitation (accepted).** Step 2 always resolves `llm.model_hint` against the CLI host (`resolve_host().name`). The CLI host is right for `llm_structured` evaluators. It is wrong for a loop whose hint consumers are SDK/batch prompt actions, which resolve against `anthropic-api`. For such a loop the pre-dispatch header can show `coding → sonnet (claude-code)` and then change to `coding → claude-sonnet-5 (anthropic-api)` after the first action. On a host where the hint is disabled (`False` mapping), it can also show `(unresolved on <host>)` for a run that succeeds. This is accepted, not fixed here, for the same reason as the monitor limitation: the first `action_complete` corrects the header. Resolving per the initial state's request path would need `FSMExecutor._compute_request_path`, which `cmd_monitor` does not have.
 - **Never raise.** A loop whose `llm.model_hint` nothing consumes (all-shell states, or `--no-llm`) passes the ENH-3547 preflight, but its hint may have no mapping on the CLI host. `initial_model_display` must never raise from `run.py` or `lifecycle.py`:
   - On `ModelHintError` it renders `<hint> (unresolved on <backend>)`.
   - On `HostNotConfigured` from `resolve_host()` it renders `<hint> (unresolved: no host CLI)`.
 - **Live update.** `StateFeedRenderer.handle_event`'s `action_complete` branch works as follows:
   - **Selection fields present:** rebuild with `format_model_selection(model_requested, <observed model or model_resolved>, model_backend)`. The observed `model` wins over `model_resolved` in the resolved slot, which matches ENH-2885's observed-over-config precedence for effort.
   - **Selection fields absent:** keep today's behavior, a bare observed `model`. For a hint-only loop on a CLI host, the header changes from the pre-dispatch hint label to the host-default model after the first CLI action. That is correct: the action did run on the host default.
-- **All entry points.** `cmd_run`, `cmd_resume` and `cmd_monitor` build the initial string through `initial_model_display`. `run_foreground` passes the string to both its inline header (`runner.py:393`) and `StateFeedRenderer`. `feed.py:367` and `feed.py:787` pass it through to `_render_artifact_header_lines`.
+  - **Expected changes, not regressions.** Tests must not assert that the header text stays the same across these changes:
+    - The resolved slot changes from the pre-dispatch alias to the full observed ID. For example, `coding → sonnet (claude-code)` becomes `coding → claude-sonnet-5 (claude-code)`.
+    - The header always reflects the most recent `action_complete`. In a mixed loop (some states hinted, some undeclared), it changes on each action between a hint display and a bare host default.
+- **Parameter rename: `model` → `model_display`.** After this change, the value passed through the render chain is a display string (`coding → sonnet (claude-code)`), not a model ID. Rename the `model` parameter to `model_display` on `run_foreground`, `StateFeedRenderer.__init__` (and its `self.model` attribute), `_build_pinned_pane` and `_render_artifact_header_lines`. The rename stops later code from using the value as a model ID for pricing or dispatch. The churn is small: `tests/test_state_feed_renderer.py:162-176,322` and `tests/test_ll_loop_display.py:2804`.
+- **All entry points.** `cmd_run`, `cmd_resume` and `cmd_monitor` build the initial string through `initial_model_display`. `run_foreground` passes the string to both its inline header (`runner.py:393`) and `StateFeedRenderer`. Inside `feed.py` the string reaches `_render_artifact_header_lines` on two paths:
+  - `StateFeedRenderer` → `feed.py:667` (`model=self.model` into `_build_pinned_pane`) → `feed.py:367`;
+  - `StateFeedRenderer` → `feed.py:787` directly.
 - **Resume.** `cmd_resume` never re-applies `--llm-model` or `--model`: its `PersistentExecutor` (`lifecycle.py:737`) takes no `run_model`, and it reloads the YAML. A resumed run that was started with `--llm-model X` (which cleared a YAML `llm.model_hint`) therefore reactivates the hint. The header must show the hint selection, not `X`. This falls out of computing from the reloaded `fsm` with `run_model=None`, so no extra plumbing is needed.
 - **Monitor limitation.** `cmd_monitor` loads the YAML fresh and seeks to the end of the events file (no replay). Its initial header cannot reflect any `--model` or `--llm-model` the monitored run was started with. The header corrects itself on the next `action_complete`. This is accepted, not fixed here.
 - **`ll-loop show`.** The `llm:` summary prints `model_hint=<hint>` when it is set. The `model=` comparison uses `DEFAULT_LLM_MODEL` instead of the hardcoded `"sonnet"`.
@@ -76,7 +83,7 @@ Add three pure helpers to `cli/loop/header.py`:
 - `compose_model_line`, which appends effort.
 - `initial_model_display`, which applies the pre-dispatch precedence and never raises.
 
-Compute the initial string at each entry point and pass it wherever `model=` is passed today. Replace the duplicated composition at `runner.py:393` and `header.py:136` with `compose_model_line`. Extend the `feed.py` `action_complete` hook to rebuild the string from the event fields.
+Compute the initial string at each entry point and pass it wherever `model=` is passed today, renamed to `model_display=`. Replace the duplicated composition at `runner.py:393` and `header.py:136` with `compose_model_line`. Extend the `feed.py` `action_complete` hook to rebuild the string from the event fields.
 
 ## Program Design
 
@@ -89,35 +96,52 @@ Compute the initial string at each entry point and pass it wherever `model=` is 
 - `format_model_selection(requested: str | None, resolved: str | None, backend: str | None) -> str | None` — new pure helper in `cli/loop/header.py`; treats the selection as a hint iff `requested in MODEL_HINTS`; returns `<requested> → <resolved> (<backend>)` for a hint (without the backend suffix when `backend` is `None`), the bare `resolved` (else `requested`) for a literal, and `None` when both are `None`.
 - `compose_model_line(display: str | None, effort: str | None) -> str | None` — new pure helper in `cli/loop/header.py`; appends `_effort_code(effort)` after the whole display string; replaces the inline composition in `header.py` and `runner.py`.
 - `initial_model_display(fsm: FSMLoop, run_model: str | None, overrides: dict[str, dict[str, str | Literal[False]]] | None) -> str | None` — new helper in `cli/loop/header.py`; applies the pre-dispatch precedence (`run_model`, then `llm.model_hint` resolved against `resolve_host().name`, then `fsm.llm.model`); catches `ModelHintError` and `HostNotConfigured`, never raises.
+- `run_foreground(..., model_display: str | None = None, ...)`, `StateFeedRenderer.__init__(..., model_display: str | None = None, ...)`, `_build_pinned_pane(..., model_display=...)` and `_render_artifact_header_lines(fsm, loop_path, model_display, ...)` — existing functions whose `model` parameter is renamed; behavior is unchanged except that the value is a display string.
 
 ### Call Path
 
 - `cmd_run` / `cmd_resume` / `cmd_monitor` → `initial_model_display` → `run_foreground` / `StateFeedRenderer` → `compose_model_line` → header render
+- `StateFeedRenderer` → `_build_pinned_pane` (`feed.py:667`) → `_render_artifact_header_lines` (`feed.py:367`) → `compose_model_line`
 - `StateFeedRenderer.handle_event` (`action_complete`) → `format_model_selection` → `compose_model_line` → header redraw
 
 ## Integration Map
 
-- `scripts/little_loops/cli/loop/header.py`: the three helpers, and `_render_artifact_header_lines` switched to `compose_model_line`.
-- `scripts/little_loops/cli/loop/runner.py`: `run_foreground` switched to `compose_model_line`.
-- `scripts/little_loops/cli/loop/feed.py`: the live-update hook.
+- `scripts/little_loops/cli/loop/header.py`: the three helpers, and `_render_artifact_header_lines` switched to `compose_model_line` (parameter renamed to `model_display`).
+- `scripts/little_loops/cli/loop/runner.py`: `run_foreground` switched to `compose_model_line` (parameter renamed to `model_display`).
+- `scripts/little_loops/cli/loop/feed.py`: the live-update hook; the `StateFeedRenderer` `model` → `model_display` rename; and the pass-through sites `feed.py:667` (`_build_pinned_pane`), `feed.py:367` and `feed.py:787`.
 - `scripts/little_loops/cli/loop/run.py`: `cmd_run` passes `run_model` and `_config.orchestration.model_hints`.
 - `scripts/little_loops/cli/loop/lifecycle.py`: `cmd_resume` passes `run_model=None` and `config.orchestration.model_hints`; `cmd_monitor` passes `run_model=None` and `_config.orchestration.model_hints`.
 - `scripts/little_loops/cli/loop/info.py`: `model_hint=`, and the `DEFAULT_LLM_MODEL` comparison.
-- `docs/reference/CLI.md` § "Model Header Display (ENH-1805)".
-- Tests: `test_ll_loop_display.py`, `test_cli_loop_lifecycle.py` (`TestCmdResume`), `test_cli_loop_dispatch.py`, plus the existing header and `info` tests.
+- `docs/reference/CLI.md` § "Model Header Display (ENH-1805)": a rewrite of the section, not just its example (see step 7).
+- Tests: `test_ll_loop_display.py`, `test_state_feed_renderer.py` (the `model` → `model_display` rename), `test_cli_loop_lifecycle.py` (`TestCmdResume`), `test_cli_loop_dispatch.py`, plus the existing header and `info` tests.
 
 ## Implementation Steps
 
+0. **Golden tests first (TDD).** Before any refactor, add golden tests that pin today's rendered header for a no-hint loop without `--model`:
+   - the `_render_artifact_header_lines` output, both with and without effort;
+   - the inline `run_foreground` `model:` line, both with and without effort.
+
+   They must pass on the unchanged code. They make the byte-identical AC something a test can check through the `compose_model_line` refactor.
 1. Add `format_model_selection`, `compose_model_line` and `initial_model_display` with unit tests:
    - hint, literal, SDK-literal alias (`sonnet`/`claude-sonnet-5` renders as a literal), and `backend=None`;
    - unresolved hint, and no host CLI;
    - effort composition;
    - the `--model` precedence.
 2. Switch `header.py:136` and `runner.py:393` to `compose_model_line`.
-3. Wire `initial_model_display` through `cmd_run`, `cmd_resume` and `cmd_monitor`, then pass the string through `run_foreground` and both `feed.py` call sites.
-4. Extend the `feed.py:843-849` live-update hook with the two branches: selection fields present (observed model wins over `model_resolved`), and selection fields absent (today's behavior).
-5. Add `model_hint=` to `info.py` and replace the hardcoded `"sonnet"` with `DEFAULT_LLM_MODEL`.
-6. Update the `docs/reference/CLI.md` header example: add a hint example, show the `L`/`H` effort codes instead of the stale `[LOW]`, and use a current model ID instead of `claude-sonnet-4-6`. Then run the display and lifecycle tests.
+3. Rename the `model` parameter to `model_display` on `run_foreground`, `StateFeedRenderer`, `_build_pinned_pane` and `_render_artifact_header_lines`, and update the affected tests.
+4. Wire `initial_model_display` through `cmd_run`, `cmd_resume` and `cmd_monitor`. Then pass the string through `run_foreground` and the `feed.py` sites (`667` → `367`, and `787`).
+5. Extend the `feed.py:843-849` live-update hook with the two branches: selection fields present (observed model wins over `model_resolved`), and selection fields absent (today's behavior).
+6. Add `model_hint=` to `info.py` and replace the hardcoded `"sonnet"` with `DEFAULT_LLM_MODEL`.
+7. Rewrite `docs/reference/CLI.md` § "Model Header Display (ENH-1805)". The current section has several wrong claims:
+   - **Wrong model source.** It says the model is "detected from the Claude CLI `stream-json` init event". The pre-dispatch value actually comes from the loop declaration and run flags, and later values come from the observed model on `action_complete`. Replace the claim.
+   - **Nonexistent fallback.** It says that when detection fails "the field shows `unknown`". No such fallback exists. Remove the sentence.
+   - **Incomplete precedence.** It says "`--llm-model` reflects the override". Replace this with the full pre-dispatch precedence: `--model` → `llm.model_hint` (as `<hint> → <resolved> (<backend>)`) → `llm.model` (which `--llm-model` sets).
+   - **Missing notes.** Add two:
+     - `ll-loop resume` reactivates a YAML `llm.model_hint` that `--llm-model` cleared at run start.
+     - After the first dispatch, the header shows the observed model of the most recent action.
+   - **Examples.** Add a hint example, show the `L`/`H` effort codes instead of the stale `[LOW]`, and use a current model ID instead of `claude-sonnet-4-6`.
+
+   Then run the display, feed-renderer and lifecycle tests.
 
 ## Impact
 
@@ -133,18 +157,23 @@ Compute the initial string at each entry point and pass it wherever `model=` is 
   - the three entry points (`cmd_run`, `cmd_resume`, `cmd_monitor`) and `run_foreground`;
   - the feed live update;
   - `info.py`;
-  - updating the "Model Header Display (ENH-1805)" example in `docs/reference/CLI.md`.
+  - the `model` → `model_display` parameter rename along the render chain;
+  - rewriting the "Model Header Display (ENH-1805)" section in `docs/reference/CLI.md`.
 - **Out of scope**:
   - Event payload fields and dispatch resolution (ENH-3547).
   - Validate warnings and the remaining hint docs (ENH-3548).
   - Displaying the evaluator's selection. `evaluate` events also carry the three selection fields (`executor.py:3249,3301`), and for a CLI-host loop that is where `llm.model_hint` actually shows up. It is possible later work, for example as a separate `eval:` header segment.
   - `cmd_resume` dropping the run's `--model`. This is a pre-existing gap: resume constructs `PersistentExecutor` without `run_model`.
   - Monitor replay of run-start overrides.
+  - Resolving the pre-dispatch hint against the initial state's request path (`anthropic-api` for SDK/batch consumers). This is an accepted limitation; see Expected Behavior.
   - Extending the `evidence.py:269,460-489` `assemble_bundle` allowlist with the three selection fields. Also possible later work.
 
 ## Acceptance Criteria
 
+- [ ] Golden tests that pin today's no-hint header, with and without effort, on both `_render_artifact_header_lines` and the `run_foreground` inline line, are added before the refactor and pass both before and after it.
 - [ ] Before the first dispatch, a hint-only loop's header shows `<hint> → <resolved> (<backend>)`. A no-declaration or literal header without `--model` is byte-identical to today's.
+- [ ] The render-chain parameter is named `model_display` on `run_foreground`, `StateFeedRenderer`, `_build_pinned_pane` and `_render_artifact_header_lines`. No `model=` kwarg that carries the display string remains.
+- [ ] No test asserts that the header text stays the same across the alias → observed-ID change (`coding → sonnet` → `coding → claude-sonnet-5`) or across actions in a mixed hinted/undeclared loop.
 - [ ] With `--model X`, the `cmd_run` header shows `X` before the first dispatch. This is an intentional change from `fsm.llm.model`.
 - [ ] Hint detection uses `MODEL_HINTS` membership. An SDK-path literal (`requested=sonnet`, `resolved=claude-sonnet-5`) renders bare, not as a hint.
 - [ ] Effort composes after the display string through `compose_model_line` on both `header.py` and `runner.py`. No duplicated composition remains.
@@ -154,7 +183,12 @@ Compute the initial string at each entry point and pass it wherever `model=` is 
 - [ ] An `action_complete` event without selection fields shows the bare observed `model` (today's behavior). This includes the change from the pre-dispatch hint label to the host default for a hint-only CLI loop.
 - [ ] A resume of a run started with `--llm-model X` shows the reactivated `llm.model_hint` selection, not `X`.
 - [ ] `ll-loop show` shows `model_hint=<hint>` for a hint-only `llm` block, and compares `model=` against `DEFAULT_LLM_MODEL`.
-- [ ] The `docs/reference/CLI.md` header example includes a hint example and matches the rendered effort-code format.
+- [ ] The `docs/reference/CLI.md` "Model Header Display" section:
+  - no longer claims `stream-json` init-event detection or an `unknown` fallback;
+  - documents the `--model` → `llm.model_hint` → `llm.model` pre-dispatch precedence;
+  - documents resume reactivating the hint and the switch to the observed model after dispatch;
+  - includes a hint example;
+  - matches the rendered effort-code format.
 
 ## Related Key Documentation
 
