@@ -47,6 +47,8 @@ In: loop state/`llm` hint declarations, the resolver with built-in `claude-code`
 - **ENH-3548** — Validate-time model hint warnings and hint documentation (open)
 - **BUG-3541** — Model aliases table maps opus and fable to superseded model IDs (done)
 - **ENH-3638** — Show hint-resolved model selection in ll-loop header and info (open)
+- **BUG-3640** — Generated host mirrors ship Claude model aliases as the model (open)
+
 
 
 ## Sequence
@@ -55,7 +57,8 @@ In: loop state/`llm` hint declarations, the resolver with built-in `claude-code`
 2. ENH-3527 — declaration, resolver, config (including test-only `fake`/`fake-minimal` mappings)
 3. ENH-3547 — dispatch, lifecycle, diagnostics
 4. ENH-3548 — validate warnings and docs. The warnings half needs only ENH-3527 and can start once it lands; the docs half waits for ENH-3547's tested support matrix
-5. ENH-3533 — skill/agent frontmatter; needs a spike/decision first and is **not** required for epic closure. Its spike (does Claude Code tolerate or honor a `model_hint` frontmatter key?) does not depend on ENH-3527 and can run now
+5. BUG-3640 — stop generated host mirrors shipping Claude aliases (`model = "sonnet"`) as the model; independent of the other children, can run any time
+6. ENH-3533 — skill/agent frontmatter hints, generation-time only (Option A decided); blocked by BUG-3640 and **not** required for epic closure
 
 ## Closure Criteria
 
