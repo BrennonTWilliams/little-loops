@@ -39,29 +39,32 @@ Display-side only — do not mutate frontmatter:
 ## Integration Map
 
 ### Files to Modify
-- TBD - requires codebase analysis
+- `scripts/little_loops/cli/issues/show.py`:
+  - `_parse_card_fields` (~261-392): reuse the already-loaded `_all = find_issues(config, status_filter=set(_ALL_STATUSES))` (line 284) to build an ID → status map, mirroring the existing `parent_display` ID→title resolution (BUG-3392 pattern, same function).
+  - `_RELATIONSHIP_KEYS` (521-532) / `_render_relationships_block` (535-542): annotate resolved `blocked_by`/`depends_on` entries.
 
 ### Dependent Files (Callers/Importers)
-- TBD - use grep to find references
+- None. `dep_graph.get_blocking_issues()` is otherwise only used by scheduler logic (`issue_manager.py:1882,1972`), which already excludes completed blockers and is untouched by this display-only change.
 
 ### Similar Patterns
-- TBD - search for consistency
+- `parent_display` resolution at `show.py:270-292` (BUG-3392) — same "resolve ID via already-loaded issue list" shape; follow it rather than adding a new lookup helper.
 
 ### Tests
-- TBD - identify test files to update
+- Model after `test_relationships_fields_extracted` (`test_show.py:509`), `test_parent_display_resolves_title_when_parent_is_done` (`test_show.py:559`), and `test_relationships_block_renders_blocked_by` (`test_show.py:802`).
 
 ### Documentation
-- TBD - docs that need updates
+- N/A (display-only CLI output change; no doc claims to update).
 
 ### Configuration
-- N/A or list config files
+- N/A
 
 ## Implementation Steps
 
-1. Reuse existing status lookup (issue index / `find_issues` or the dependency graph's completed set) to map edge target IDs → status.
-2. Annotate or split resolved edges in the text renderer for `blocked_by` and `depends_on`.
-3. Add the structured field to `--json` output if chosen.
-4. Tests: resolved (`done`, `cancelled`), unresolved (`open`, `deferred`), and missing targets.
+1. Reuse the issue list already loaded in `_parse_card_fields` (`_all`, show.py:284) to build an ID → raw status map — no extra scan needed.
+2. **Do not reuse `show.py`'s local `_TERMINAL_STATUSES` (line 455, `{"done", "cancelled", "deferred", "closed"}`) to decide "resolved"** — that set is for closure-note rendering and treats `deferred` as terminal, which is wrong here. Use `{"done", "cancelled"}` explicitly (matching `issue_progress._TERMINAL_STATUSES`, `issue_progress.py:14`), consistent with `deferred` staying non-terminal for dependency edges per `dependency_graph.py:283`.
+3. Annotate or split resolved edges in the text renderer for `blocked_by` and `depends_on`.
+4. Add the structured field to `--json` output if chosen (purely additive — current `show.py:806` just does `print_json(fields)`, so a new key like `blocked_by_status` is non-breaking).
+5. Tests: resolved (`done`, `cancelled`), unresolved (`open`, `deferred`), and missing targets.
 
 ## Impact
 
