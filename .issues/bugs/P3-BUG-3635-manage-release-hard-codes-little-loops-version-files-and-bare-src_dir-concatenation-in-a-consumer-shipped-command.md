@@ -4,10 +4,11 @@ type: BUG
 title: manage-release hard-codes little-loops version files and bare src_dir concatenation
   in a consumer-shipped command
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-27'
 captured_at: '2026-09-27T06:09:13Z'
+completed_at: '2026-09-28T01:21:18Z'
 confidence_score: 100
 outcome_confidence: 80
 score_complexity: 18
@@ -204,11 +205,46 @@ record of what was wrong and fixed, not an outstanding action item)
 
 - Split from BUG-3631 (root-layout `src_dir` / `focus_dirs` prefix handling).
 
+## Resolution
+
+Implemented Option 1 (discovery-only prose change) in `commands/manage-release.md`:
+
+- Lines 37–40 ("Version is tracked in these files") rewritten as illustrative
+  candidates (manifest `version` fields, a `__version__` assignment,
+  "discovered per-project by Agent 3") instead of a fixed little-loops
+  checklist — replaced line-count-neutrally (3 lines for 3), keeping the
+  `SPAWN_SITE_INVENTORY` pin at line 134 intact.
+- Agent 3's prompt now Glob-searches (non-recursive, repo-root + `src_dir`
+  top level only) for candidate manifests including
+  `.claude-plugin/marketplace.json`, Greps `^__version__\s*=` scoped to
+  `src_dir` instead of globbing `__init__.py`, and classifies catch-all hits
+  as declaration vs incidental (`CHANGELOG.md`, lockfiles, `node_modules/`,
+  `.issues/`, docs never become bump targets).
+- The `bump` action now edits and `git add`s exactly the declaration files
+  Agent 3 found (explicit paths, never `-A`/`-u`), removing the three
+  hard-coded paths from both the Edit comments and `git add` line.
+- Dry-run preview: `[bump] Update version in 3 files` → `... N files`; the
+  "Version Files" example section genericized to `<declaration file>:<line>`
+  placeholders (no more little-loops-specific paths).
+- Regenerated all three mirrors (`ll-adapt --host gemini/qwen/kimi-code
+  --only manage-release --apply`).
+- Added `test_manage_release_has_no_hardcoded_version_file_paths` to
+  `scripts/tests/test_wiring_skills_and_commands.py`, asserting no
+  `{{config.project.src_dir}}` + filename concatenation and no literal
+  `little_loops/` path remain in `commands/manage-release.md`.
+- Full suite: `python -m pytest scripts/tests/` — 3 pre-existing failures
+  unrelated to this change (`test_total_report_count_does_not_exceed_post_bug_3448_baseline`,
+  `test_no_new_unverifiable_evidence`, `test_no_prose_dependency_drift_in_repo`
+  for ENH-3548/ENH-3547) reproduce identically on `main` with this change
+  stashed out; confirmed not introduced by this fix.
+
 ## Status
 
 **Open** | Created: 2026-09-27 | Priority: P3
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-28T01:20:46 - `2d9d4f05-be13-45cb-87a9-5f0e14ca3565.jsonl`
+- `/ll:ready-issue` - 2026-09-28T01:03:25 - `64f213a7-09c5-4c87-9adc-94a3d9c71d7c.jsonl`
 - `/ll:confidence-check` - 2026-09-27T20:19:56 - `c758ef8d-094a-49af-b905-13aeada69b25.jsonl`
 - `/ll:verify-issues` - 2026-09-27T20:08:13 - `7e522036-3dd2-4d72-a54c-33d788eff962.jsonl`

@@ -15,10 +15,10 @@ Read settings from `.ll/ll-config.json`:
 
 - **Issues base**: `{{config.issues.base_dir}}` (default: `.issues`)
 
-Version is tracked in these files:
-- `{{config.project.src_dir}}pyproject.toml` — `version = "X.Y.Z"`
-- `.claude-plugin/plugin.json` — `"version": "X.Y.Z"`
-- `{{config.project.src_dir}}little_loops/__init__.py` — `__version__ = "X.Y.Z"`
+Version is tracked in files like these (discovered per-project by Agent 3, not a fixed checklist):
+- Manifest `version` fields — e.g. `pyproject.toml`, `package.json`, `Cargo.toml`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`
+- A `__version__ = "X.Y.Z"` assignment, if the project has one
+- Any other declaration Agent 3 finds under the project's actual layout
 
 Changelog: `CHANGELOG.md` (follows [Keep a Changelog](https://keepachangelog.com/) format)
 
@@ -224,20 +224,29 @@ Return: categorized list of issues, count per category.
 Use Task tool with subagent_type="Explore"
 
 Prompt:
-Find all version references in the project.
+Find all version declarations in the project.
 
-Search for version strings in these files:
-1. {{config.project.src_dir}}pyproject.toml — look for: version = "X.Y.Z"
-2. .claude-plugin/plugin.json — look for: "version": "X.Y.Z"
-3. {{config.project.src_dir}}little_loops/__init__.py — look for: __version__ = "X.Y.Z"
-4. Any other files containing the current version string
+1. Glob (non-recursive, top-level only — never `**/`) for manifest files at
+   the repo root and at `{{config.project.src_dir}}`: `pyproject.toml`,
+   `package.json`, `Cargo.toml`, `.claude-plugin/plugin.json`,
+   `.claude-plugin/marketplace.json`. For each match, report its `version`
+   field(s) — some files (e.g. `marketplace.json`) may declare it more than once.
+2. Grep for `^__version__\s*=` scoped to `{{config.project.src_dir}}` — do
+   not Glob for `__init__.py`, which matches every package in the tree.
+3. Grep the project for the current version string and classify each hit as
+   a **declaration** (a manifest `version` field or `__version__ =`
+   assignment — already covered by steps 1–2) or **incidental** (e.g.
+   `CHANGELOG.md`, lockfiles, `node_modules/`, `.issues/`, docs). Report
+   incidental hits separately, for visibility only — they are never bump
+   targets.
 
-For each file found, report:
+For each declaration found, report:
 - File path and line number
 - Current version value
 - The exact line content (for precise editing)
 
-Return: list of version locations with current values.
+Return: list of version declarations with current values, plus a separate
+list of incidental matches (informational only).
 ```
 
 ### 5. Wave 2: Synthesis and Execution
@@ -276,19 +285,20 @@ tagged tree).
 
 ##### Action: `bump`
 
-Update version in all files found by Agent 3:
+Update version in exactly the declaration files Agent 3 found — never the
+incidental matches:
 
 ```bash
-# For each version file, use Edit tool to update version string
-# {{config.project.src_dir}}pyproject.toml: version = "X.Y.Z" → version = "NEW_VERSION"
-# .claude-plugin/plugin.json: "version": "X.Y.Z" → "version": "NEW_VERSION"
-# {{config.project.src_dir}}little_loops/__init__.py: __version__ = "X.Y.Z" → __version__ = "NEW_VERSION"
+# For each version declaration Agent 3 reported, use Edit tool to update the
+# version string in place (e.g. version = "X.Y.Z" → version = "NEW_VERSION",
+# or __version__ = "X.Y.Z" → __version__ = "NEW_VERSION").
 ```
 
-After bumping, commit the version change:
+After bumping, commit the version change, staging exactly the files you just
+edited above (explicit paths — never `git add -A` or `git add -u`):
 
 ```bash
-git add {{config.project.src_dir}}pyproject.toml .claude-plugin/plugin.json {{config.project.src_dir}}little_loops/__init__.py
+git add <declaration files edited above>
 git commit -m "chore(release): bump version to NEW_VERSION"
 ```
 
@@ -415,7 +425,7 @@ Target version:  X.Y.Z
 Last tag:        vA.B.C
 
 Actions to perform:
-  [bump]      Update version in 3 files
+  [bump]      Update version in N files
   [tag]       Create annotated tag vX.Y.Z
   [changelog] Add changelog entry with N issues and M commits
   [release]   Create GitHub release vX.Y.Z
@@ -431,9 +441,10 @@ Actions to perform:
 - ...
 
 --- Version Files ---
-  {{config.project.src_dir}}pyproject.toml:7 → version = "X.Y.Z"
-  .claude-plugin/plugin.json:3 → "version": "X.Y.Z"
-  {{config.project.src_dir}}little_loops/__init__.py:25 → __version__ = "X.Y.Z"
+  <declaration file>:<line> → version = "X.Y.Z"
+  <declaration file>:<line> → version = "X.Y.Z"
+  ... (one line per version declaration Agent 3 found — paths and count are
+  project-specific, not fixed)
 
 === END DRY RUN (no changes made) ===
 ```

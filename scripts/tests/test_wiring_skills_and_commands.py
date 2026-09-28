@@ -889,3 +889,20 @@ def test_spawn_detector_does_not_flag_confidence_check(project_root: Path) -> No
     descriptive checklist prose and must stay exempted, not become a false positive."""
     path = project_root / "skills" / "confidence-check" / "SKILL.md"
     assert _find_spawn_candidates(path, project_root) == []
+
+
+def test_manage_release_has_no_hardcoded_version_file_paths(project_root: Path) -> None:
+    """BUG-3635: `commands/manage-release.md` ships to every consuming project, so it
+    must not hard-code little-loops' own version-file layout. Two regressions this
+    guards against: (1) bare `{{config.project.src_dir}}` + filename concatenation,
+    which breaks for any src_dir that isn't a trailing-slash string like `scripts/`
+    (e.g. `.` -> `.pyproject.toml`); (2) a literal `little_loops/` path, which does
+    not exist in a consuming project's layout at all."""
+    content = (project_root / "commands" / "manage-release.md").read_text()
+    concatenations = re.findall(r"\{\{config\.project\.src_dir\}\}[A-Za-z_.]", content)
+    assert not concatenations, (
+        f"[BUG-3635] {{config.project.src_dir}} directly abuts a filename: {concatenations}"
+    )
+    assert "little_loops/" not in content, (
+        "[BUG-3635] commands/manage-release.md must not hard-code a little_loops/ path"
+    )
