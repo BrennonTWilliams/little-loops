@@ -61,6 +61,18 @@ class TestPrepHelpSurface:
         assert result.returncode == 0, result.stderr
         assert "--rate-limited" in result.stdout
 
+    def test_prep_step_help_lists_advise_go_no_go_flag(self, project: Path) -> None:
+        """ENH-3590: opt-in veto consult flag, threaded into decide()."""
+        result = subprocess.run(
+            [*_cli(), "prep", "step", "--help"],
+            cwd=str(project),
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        assert result.returncode == 0, result.stderr
+        assert "--advise-go-no-go" in result.stdout
+
 
 class TestPrepCliSurfaceIndex:
     def test_cli_surface_recognizes_prep(self) -> None:

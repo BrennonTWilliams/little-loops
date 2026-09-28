@@ -47,6 +47,12 @@ context:
   # off. Veto-only, fails open on any helper error/timeout.
   #   ll-loop run autodev <ids> --context advise_ready=1
   advise_ready: ""
+  # ENH-3590: opt-in second-model veto consult on the go/no-go waiver (the
+  # oversized_atomic GO path only), reached via prepare-issue's select_step.
+  # Default empty = off, today's behavior unchanged. Veto-only: it can block a
+  # waiver go/no-go granted, never grant one. Fails open on any helper error.
+  #   ll-loop run autodev <ids> --context advise_go_no_go=1
+  advise_go_no_go: ""
   # FEAT-3573: post-implement quality gate. "true" (default) makes closure credit for
   # an implemented (done/completed) issue depend on a passing format-check/lint/type/
   # test run recorded against the commit it produced. Set "false" to fall back to the

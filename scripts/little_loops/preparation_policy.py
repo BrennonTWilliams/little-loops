@@ -94,6 +94,7 @@ class StepKind(str, Enum):
     RECONCILE = "RECONCILE"
     SIZE_REVIEW = "SIZE_REVIEW"
     GO_NO_GO = "GO_NO_GO"
+    ADVISE_GO_NO_GO = "ADVISE_GO_NO_GO"
     FINISH = "FINISH"
     STOP = "STOP"
 
@@ -278,6 +279,8 @@ class IssueSnapshot:
     spike_runs: int = 0
     readiness_threshold: int = 85
     outcome_threshold: int = 65
+    #: ENH-3590 opt-in veto consult on the go/no-go waiver; off (False) by default.
+    advise_go_no_go: bool = False
     #: Active issues whose file carries ``parent: <ID>`` / "Decomposed from <ID>".
     #: Populated only when :meth:`Facts.needs_child_scan` says the ladder might reach
     #: DETECT / POST_SIZE_REVIEW this call (lazy: see :func:`snapshot_issue`).
@@ -403,6 +406,8 @@ class _Decider:
             return self.rescore("reconcile")
         if kind == StepKind.GO_NO_GO.value:
             return self.after_go_no_go()
+        if kind == StepKind.ADVISE_GO_NO_GO.value:
+            return self.after_advise_go_no_go(p)
         if kind in (StepKind.FINISH.value, StepKind.STOP.value):
             return self.step(StepKind(kind), "pass already applied", outcome=p.get("outcome"))
         return self.stop("ladder_error", f"no continuation after {kind}")
@@ -458,8 +463,30 @@ class _Decider:
         # ENH-3606 accepted change 4: the waiver covers only the outcome gate.
         if (self.s.confidence or 0) < self.s.readiness_threshold:
             return self.stop("low_readiness", "waived but readiness below threshold", row=True)
+        if self.s.advise_go_no_go:
+            # ENH-3590: consult before reopening. No "reopen" precondition here —
+            # it would fire immediately (preconditions run at intent-creation
+            # time, prep_step():1034-1035), reopening the issue before the
+            # advisor even runs and making a VETO a no-op. It moves to
+            # after_advise_go_no_go()'s PROCEED/SKIPPED branch instead.
+            self.trail.append("GO: advise veto consult")
+            return self.step(StepKind.ADVISE_GO_NO_GO, "waived+ready: consult before reopen")
         self.carry_preconditions.append("reopen")
         self.trail.append("GO: reopen")
+        return self.pre_implement()
+
+    def after_advise_go_no_go(self, p: Mapping[str, Any]) -> Step:
+        if str(p.get("token") or "SKIPPED") == "VETO":
+            # No precondition here: preconditions on a terminal (FINISH/STOP)
+            # step never run (prep_step() only calls _run_preconditions() for
+            # non-terminal kinds -- the same quirk that makes "reopen" on the
+            # ready FINISH a no-op, test_autodev_characterization.py:379-381).
+            # prep_record() clears outcome_gate_waived directly when it
+            # classifies this token as VETO instead.
+            self.trail.append("ADVISE: VETO")
+            return self.stop("oversized_atomic", "advisor vetoed the go/no-go waiver", row=True)
+        self.trail.append(f"ADVISE: {p.get('token')} -> reopen")
+        self.carry_preconditions.append("reopen")
         return self.pre_implement()
 
     # -- chains (today's shell/classify states between two commands) ------------
@@ -704,6 +731,7 @@ def snapshot_issue(
     readiness_threshold: int,
     outcome_threshold: int,
     facts: Facts | None = None,
+    advise_go_no_go: bool = False,
 ) -> IssueSnapshot:
     """Read everything :func:`decide` needs, with today's probe semantics.
 
@@ -823,6 +851,7 @@ def snapshot_issue(
         readiness_threshold=readiness_threshold,
         outcome_threshold=outcome_threshold,
         child_candidates=frozenset(candidates),
+        advise_go_no_go=advise_go_no_go,
     )
 
 
@@ -900,6 +929,7 @@ def next_preparation_step(
     *,
     readiness_threshold: int,
     outcome_threshold: int,
+    advise_go_no_go: bool = False,
 ) -> Step:
     """``decide(snapshot_issue(...), load_facts(...))``."""
     facts = load_facts(run_dir, issue_id)
@@ -910,6 +940,7 @@ def next_preparation_step(
         readiness_threshold=readiness_threshold,
         outcome_threshold=outcome_threshold,
         facts=facts,
+        advise_go_no_go=advise_go_no_go,
     )
     return decide(snap, facts)
 
@@ -1004,6 +1035,7 @@ def prep_step(
     *,
     readiness_threshold: int,
     outcome_threshold: int,
+    advise_go_no_go: bool = False,
 ) -> Step:
     """Replay the open intent, else decide and append (see module docstring)."""
     run_dir = Path(run_dir)
@@ -1026,6 +1058,7 @@ def prep_step(
         run_dir,
         readiness_threshold=readiness_threshold,
         outcome_threshold=outcome_threshold,
+        advise_go_no_go=advise_go_no_go,
     )
     for name, value in step.observations:
         append_fact(run_dir, issue_id, Fact(pass_id, step.seq, "obs", name, {"value": value}))
@@ -1076,6 +1109,34 @@ def prep_record(
             (run_dir / "refine-broke-down").write_text("0")
     elif open_.step == StepKind.SIZE_REVIEW.value:
         payload["guard2"] = guard2
+    elif open_.step == StepKind.ADVISE_GO_NO_GO.value:
+        # Reads the ENH-3632 helper's persisted verdict file directly (MR-1: no
+        # stdout parsing); duplicates the path construction rather than importing
+        # `advise_consult._verdict_path`, which is private with zero external
+        # importers.
+        verdict_path = run_dir / f"advise-{issue_id}.verdict"
+        try:
+            token = str(json.loads(verdict_path.read_text()).get("token") or "SKIPPED")
+        except (OSError, ValueError, AttributeError):
+            token = "SKIPPED"
+        payload["token"] = token
+        if token == "VETO":
+            # Revokes the waiver here, not as a "preconditions" entry on the
+            # STOP step after_advise_go_no_go() returns: preconditions on a
+            # terminal step never run (see that method's comment). Later
+            # passes (check-readiness, regate_after_atomic_remediation,
+            # recheck_after_size_review) must stop honoring the waiver; no
+            # `ll-issues` subcommand clears a single flag, so this removes it
+            # directly. Idempotent: a replay never re-enters this branch
+            # (prep_record() no-ops once the done fact closes the intent).
+            from little_loops.cli.issues.show import _resolve_issue_id
+            from little_loops.frontmatter import remove_frontmatter_keys
+
+            issue_path = _resolve_issue_id(config, issue_id)
+            if issue_path is not None:
+                issue_path.write_text(
+                    remove_frontmatter_keys(issue_path.read_text(), ("outcome_gate_waived",))
+                )
     done = Fact(facts.pass_id, open_.seq, "done", open_.step, payload)
     append_fact(run_dir, issue_id, done)
     # Projection kept for today's readers/pins (dequeue_next still resets it).
@@ -1304,6 +1365,7 @@ def add_prep_parser(subs: argparse._SubParsersAction) -> argparse.ArgumentParser
         sp.add_argument("--run-dir", required=True)
         sp.add_argument("--readiness-threshold", type=int, default=85)
         sp.add_argument("--outcome-threshold", type=int, default=65)
+        sp.add_argument("--advise-go-no-go", action="store_true")
         if name == "record":
             sp.add_argument("--guard2", action="store_true")
         if name == "apply":
@@ -1324,6 +1386,7 @@ def cmd_prep(config: BRConfig, args: argparse.Namespace) -> int:
             run_dir,
             readiness_threshold=args.readiness_threshold,
             outcome_threshold=args.outcome_threshold,
+            advise_go_no_go=args.advise_go_no_go,
         )
         print(
             f"[PREP] {iid} #{step.seq} {step.kind.value} {dict(step.payload)} — {step.reason}",
@@ -1351,6 +1414,7 @@ def cmd_prep(config: BRConfig, args: argparse.Namespace) -> int:
             run_dir,
             readiness_threshold=args.readiness_threshold,
             outcome_threshold=args.outcome_threshold,
+            advise_go_no_go=args.advise_go_no_go,
         )
         print(
             json.dumps(

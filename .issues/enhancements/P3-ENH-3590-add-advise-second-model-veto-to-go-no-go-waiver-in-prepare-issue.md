@@ -3,7 +3,8 @@ id: ENH-3590
 type: ENH
 title: Add advise second-model veto to the go-no-go waiver in prepare-issue
 priority: P3
-status: open
+status: done
+completed_at: '2026-09-27T00:00:00Z'
 discovered_by: ll-issues-create
 discovered_date: '2026-09-25'
 captured_at: '2026-09-25T03:36:09Z'

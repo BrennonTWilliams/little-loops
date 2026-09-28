@@ -2538,14 +2538,15 @@ change an issue's `status`, `confidence_score`/`outcome_confidence`, or
 | `--readiness-threshold N` / `--outcome-threshold N` | Override the thresholds (defaults 85/65) |
 | `--guard2` (`record` only) | Mark the just-recorded `SIZE_REVIEW` done fact as guard-2 |
 | `--rate-limited` (`apply` only) | Route this pass to the `rate_limited` terminal instead of the open intent |
+| `--advise-go-no-go` | ENH-3590: opt-in veto consult on a go/no-go waiver (the `oversized_atomic` GO path only). Default off; a `VETO` verdict clears the waiver and stops the pass instead of reopening it. |
 
 - **`prep step <ID> --run-dir DIR`** replays the pass's open intent if one exists
   (idempotent resume), else decides the next `StepKind` (`RUN_CHILD`, `WIRE`,
-  `REFINE_GAP`, `RESCORE`, `RECONCILE`, `SIZE_REVIEW`, `GO_NO_GO`, `FINISH`, `STOP`),
-  appends its intent fact, runs the step's idempotent preconditions (clearing
-  records/scores, deferring for a go/no-go, reopening after one), and prints the
-  token on stdout for an FSM `route:` table (a `[PREP]` diagnostic line goes to
-  stderr). Exit 0.
+  `REFINE_GAP`, `RESCORE`, `RECONCILE`, `SIZE_REVIEW`, `GO_NO_GO`,
+  `ADVISE_GO_NO_GO`, `FINISH`, `STOP`), appends its intent fact, runs the step's
+  idempotent preconditions (clearing records/scores, deferring for a go/no-go,
+  reopening after one), and prints the token on stdout for an FSM `route:` table
+  (a `[PREP]` diagnostic line goes to stderr). Exit 0.
 - **`prep record <ID> --run-dir DIR`** appends the `done` fact for the currently
   open (non-terminal) intent; a no-op if there is none. Classifies a `RUN_CHILD`
   step's outcome from `run-records/refine-to-ready-issue/<ID>.json` alone (the

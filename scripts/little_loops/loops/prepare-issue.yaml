@@ -2,10 +2,10 @@ name: "prepare-issue"
 description: "Preparation dispatch loop for one issue (ENH-3623): little_loops.preparation_policy decides every step from the issue and an append-only fact log; this loop only runs the chosen command (refine-to-ready-issue or one slash command), records it, and ends through `ll-issues prep apply`, the sole terminal writer."
 category: issue-management
 visibility: internal
-# Exactly 15 states (pinned by test_prepare_issue.py): select_step, 7 run_* states
+# Exactly 16 states (pinned by test_prepare_issue.py): select_step, 8 run_* states
 # (run_child, run_wire, run_refine_gap, run_rescore, run_reconcile, run_size_review,
-# run_go_no_go), classify_guard2, record_guard2, record_step, apply_outcome,
-# mark_rate_limited, done, failed. Call chain:
+# run_go_no_go, run_advise_go_no_go), classify_guard2, record_guard2, record_step,
+# apply_outcome, mark_rate_limited, done, failed. Call chain:
 #   autodev.refine_current -> prepare-issue -> {refine-to-ready-issue | one slash command}
 #   select_step -> run_<kind> -> record_step -> select_step ... -> apply_outcome -> done|failed
 # Every decision lives in `ll-issues prep step` (little_loops.preparation_policy.decide);
@@ -39,10 +39,17 @@ import:
 
 states:
   select_step:
-    action: >-
-      ll-issues prep step ${context.input:shell} --run-dir ${context.run_dir}
-      --readiness-threshold ${context.readiness_threshold:shell}
-      --outcome-threshold ${context.outcome_threshold:shell}
+    # ENH-3590: ADVISE_FLAG mirrors autodev.yaml's SKIP_FLAG idiom for
+    # skip_learning_gate — a context flag threaded into a CLI flag only when set.
+    action: |
+      ADVISE_FLAG=""
+      if [ -n "${context.advise_go_no_go}" ]; then  # ll-lint: mr11-ok(context.advise_go_no_go) ENH-3590 - opt-in veto consult flag, empty/absent is falsy
+        ADVISE_FLAG="--advise-go-no-go"
+      fi
+      ll-issues prep step ${context.input:shell} --run-dir ${context.run_dir} \
+        --readiness-threshold ${context.readiness_threshold:shell} \
+        --outcome-threshold ${context.outcome_threshold:shell} \
+        $ADVISE_FLAG
     action_type: shell
     evaluate:
       type: classify
@@ -54,6 +61,7 @@ states:
       RECONCILE: run_reconcile
       SIZE_REVIEW: run_size_review
       GO_NO_GO: run_go_no_go
+      ADVISE_GO_NO_GO: run_advise_go_no_go
       FINISH: apply_outcome
       STOP: apply_outcome
       _: apply_outcome
@@ -170,6 +178,29 @@ states:
     next: record_step
     on_error: record_step
     on_rate_limit_exhausted: mark_rate_limited
+
+  run_advise_go_no_go:
+    # ENH-3590: veto-only second-model consult on a go/no-go waiver, reached
+    # only when advise_go_no_go is set. Calls the shipped ENH-3632 helper
+    # (`ll-issues advise-consult`), which always exits 0 (never a traceback,
+    # SKIPPED on any failure) and persists advise-<ID>.json/.verdict under
+    # run_dir; record_step's `ll-issues prep record` reads the verdict back
+    # (embedded Python, no stdout parsing). No `with_rate_limit_handling`: the
+    # helper's own consult never trips the executor's rate-limit detection
+    # because it always exits 0. `--write-note` mirrors ENH-3633's
+    # run_advise_ready, recording the recommendation on the issue itself.
+    action: >-
+      ll-issues advise-consult ${context.input:shell} --run-dir ${context.run_dir}
+      --signal autodev_go_no_go_waiver --write-note
+      --question "An adversarial go/no-go review approved this oversized_atomic
+      issue for implementation despite its outcome confidence falling below
+      threshold, and stamped a waiver. Should the waiver stand? Begin your
+      recommendation with exactly one word, PROCEED or VETO, then give the
+      reason. VETO only for a concrete defect the go/no-go review missed that
+      would make implementation fail or be wasted; otherwise PROCEED."
+    action_type: shell
+    next: record_step
+    on_error: record_step
 
   apply_outcome:
     # Sole terminal writer. Also the step-cap handler: with no open FINISH/STOP intent

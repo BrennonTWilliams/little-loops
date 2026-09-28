@@ -167,6 +167,77 @@ class TestPrepRecordClassifiesFromRunRecord:
         assert done is not None and done.payload["terminal"] == "error"
 
 
+class TestAdviseGoNoGoVeto:
+    """ENH-3590: the veto-only consult on a go/no-go waiver, via a real
+    ``.issues/`` tree and run_dir. Seeds a completed GO_NO_GO pass directly
+    (the go-no-go skill's own model-driven waiver stamp is not under test
+    here); exercises the new ADVISE_GO_NO_GO leg end to end."""
+
+    def _to_advise_step(self, project: Path) -> tuple[BRConfig, Path]:
+        _write_issue(
+            project,
+            ID,
+            frontmatter=(
+                "confidence_score: 90\noutcome_confidence: 50\n"
+                "status: deferred\ndeferred_reason: oversized_atomic\n"
+                "outcome_gate_waived: true\n"
+            ),
+        )
+        run_dir = project / "run"
+        # current_pass() reads pass "0" until ENH-3623 Phase B's dequeue_next
+        # writes prep-pass-<ID> (module docstring); match it so the seeded
+        # facts are visible to prep_step/prep_record's own load_facts() calls.
+        append_fact(run_dir, ID, Fact("0", 1, "intent", StepKind.GO_NO_GO.value, {}))
+        append_fact(run_dir, ID, Fact("0", 1, "done", StepKind.GO_NO_GO.value, {}))
+        return _config(project), run_dir
+
+    def _issue_text(self, project: Path) -> str:
+        return (project / ".issues" / "enhancements" / f"P3-{ID}-test.md").read_text()
+
+    def test_flag_on_reaches_advise_step_without_reopening(self, project: Path) -> None:
+        config, run_dir = self._to_advise_step(project)
+        step = prep_step(
+            config,
+            ID,
+            run_dir,
+            readiness_threshold=85,
+            outcome_threshold=65,
+            advise_go_no_go=True,
+        )
+        assert step.kind is StepKind.ADVISE_GO_NO_GO
+        assert "preconditions" not in step.payload
+        assert "status: deferred" in self._issue_text(project)
+
+    def test_veto_clears_the_waiver_and_stops(self, project: Path) -> None:
+        config, run_dir = self._to_advise_step(project)
+        prep_step(
+            config, ID, run_dir, readiness_threshold=85, outcome_threshold=65, advise_go_no_go=True
+        )
+        (run_dir / f"advise-{ID}.verdict").write_text('{"token": "VETO", "context_hash": "x"}')
+        done = prep_record(config, ID, run_dir)
+        assert done is not None and done.payload["token"] == "VETO"
+        assert "outcome_gate_waived" not in self._issue_text(project)
+        step = prep_step(
+            config, ID, run_dir, readiness_threshold=85, outcome_threshold=65, advise_go_no_go=True
+        )
+        assert step.kind is StepKind.STOP
+        assert step.payload.get("outcome") == "oversized_atomic"
+
+    def test_proceed_reopens_and_continues(self, project: Path) -> None:
+        config, run_dir = self._to_advise_step(project)
+        prep_step(
+            config, ID, run_dir, readiness_threshold=85, outcome_threshold=65, advise_go_no_go=True
+        )
+        (run_dir / f"advise-{ID}.verdict").write_text('{"token": "PROCEED", "context_hash": "x"}')
+        prep_record(config, ID, run_dir)
+        assert "outcome_gate_waived: true" in self._issue_text(project)  # untouched by PROCEED
+        step = prep_step(
+            config, ID, run_dir, readiness_threshold=85, outcome_threshold=65, advise_go_no_go=True
+        )
+        assert step.kind is StepKind.FINISH
+        assert step.payload.get("outcome") == "ready"
+
+
 class TestRescorePrecondition:
     """BUG-3588 / ENH-3623: the first RESCORE of an origin clears the stale scores
     before the slash command runs, so a rescoring that writes nothing reads absent."""

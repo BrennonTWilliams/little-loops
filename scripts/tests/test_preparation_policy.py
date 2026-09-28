@@ -635,6 +635,39 @@ def test_h4_after_go_no_go(snap: IssueSnapshot, kind: StepKind, payload: dict[st
     check(decide(snap, _after_atomic(*cmd(5, StepKind.GO_NO_GO))), kind, **payload)
 
 
+def test_h4_advise_flag_defers_reopen_to_a_consult() -> None:
+    """ENH-3590: with the flag on, a waived+ready GO returns ADVISE_GO_NO_GO with
+    no "reopen" precondition -- appending it here would reopen the issue before
+    the consult even runs, before ADVISE_GO_NO_GO's own preconditions run at
+    intent-creation time (prep_step(), sequencing fix)."""
+    snap = replace(LOW_OUTCOME, waived=True, advise_go_no_go=True)
+    s = decide(snap, _after_atomic(*cmd(5, StepKind.GO_NO_GO)))
+    check(s, StepKind.ADVISE_GO_NO_GO)
+    assert "preconditions" not in s.payload
+
+
+@pytest.mark.parametrize(
+    ("token", "kind", "payload"),
+    [
+        ("PROCEED", StepKind.FINISH, {"outcome": "ready", "preconditions": ["reopen"]}),
+        ("SKIPPED", StepKind.FINISH, {"outcome": "ready", "preconditions": ["reopen"]}),
+        ("VETO", StepKind.STOP, {"outcome": "oversized_atomic"}),
+    ],
+)
+def test_h4_after_advise_go_no_go(token: str, kind: StepKind, payload: dict[str, Any]) -> None:
+    """ENH-3590: PROCEED/SKIPPED reopen and continue; VETO routes like a plain
+    NO-GO (the waiver clear is prep_record()'s side effect, not a
+    "preconditions" entry -- see after_advise_go_no_go()'s VETO branch)."""
+    facts = _after_atomic(
+        *cmd(5, StepKind.GO_NO_GO),
+        *cmd(6, StepKind.ADVISE_GO_NO_GO, token=token),
+    )
+    step = decide(LOW_OUTCOME, facts)
+    check(step, kind, **payload)
+    if token == "VETO":
+        assert "preconditions" not in step.payload
+
+
 def test_h4_reopen_rides_on_a_decision_reentry_too() -> None:
     snap = replace(LOW_OUTCOME, waived=True, decision_needed=True)
     s = decide(snap, _after_atomic(*cmd(5, StepKind.GO_NO_GO)))

@@ -1099,23 +1099,37 @@ Omitted for brevity: `implement_current.on_no → check_impl_reached` (a Phase 1
 
 ### `prepare-issue` — Preparation Dispatch Loop (internal)
 
-**Technique**: `autodev`'s `refine_current` runs this loop for one issue. It is a 15-state **dispatch loop** over the Python policy `little_loops.preparation_policy`: `select_step` asks `ll-issues prep step` for the next step, the loop runs exactly that one command, `record_step` records it with `ll-issues prep record`, and the loop asks again. It ends in `apply_outcome` (`ll-issues prep apply`), the only writer of the terminal effects. The loop owns no routing predicate and no file handshake, contains no `rm`, and never writes `autodev-staged.txt` (autodev's `check_passed` owns it). Not meant to be run by hand.
+**Technique**: `autodev`'s `refine_current` runs this loop for one issue. It is a 16-state **dispatch loop** over the Python policy `little_loops.preparation_policy`: `select_step` asks `ll-issues prep step` for the next step, the loop runs exactly that one command, `record_step` records it with `ll-issues prep record`, and the loop asks again. It ends in `apply_outcome` (`ll-issues prep apply`), the only writer of the terminal effects. The loop owns no routing predicate and no file handshake, contains no `rm`, and never writes `autodev-staged.txt` (autodev's `check_passed` owns it). Not meant to be run by hand.
 
 **FSM flow**:
 ```
 select_step (ll-issues prep step) → [step kind]
-  ├─ RUN_CHILD   → run_child (sub-loop: refine-to-ready-issue) ─┐
-  ├─ WIRE        → run_wire (/ll:wire-issue --auto) ────────────┤
-  ├─ REFINE_GAP  → run_refine_gap (/ll:refine-issue --gap-analysis)
-  ├─ RESCORE     → run_rescore (/ll:confidence-check) ──────────┤→ record_step → select_step
-  ├─ RECONCILE   → run_reconcile (/ll:reconcile-issue) ─────────┤
-  ├─ GO_NO_GO    → run_go_no_go (/ll:go-no-go --auto) ──────────┘
-  ├─ SIZE_REVIEW → run_size_review (/ll:issue-size-review --auto) → classify_guard2
-  │                   ├─ Very Large score (8-11) → record_guard2 → select_step
-  │                   └─ otherwise → record_step → select_step
+  ├─ RUN_CHILD        → run_child (sub-loop: refine-to-ready-issue) ─┐
+  ├─ WIRE             → run_wire (/ll:wire-issue --auto) ────────────┤
+  ├─ REFINE_GAP       → run_refine_gap (/ll:refine-issue --gap-analysis)
+  ├─ RESCORE          → run_rescore (/ll:confidence-check) ──────────┤→ record_step → select_step
+  ├─ RECONCILE        → run_reconcile (/ll:reconcile-issue) ─────────┤
+  ├─ GO_NO_GO         → run_go_no_go (/ll:go-no-go --auto) ──────────┤
+  ├─ ADVISE_GO_NO_GO  → run_advise_go_no_go (ll-issues advise-consult) ┘
+  ├─ SIZE_REVIEW      → run_size_review (/ll:issue-size-review --auto) → classify_guard2
+  │                        ├─ Very Large score (8-11) → record_guard2 → select_step
+  │                        └─ otherwise → record_step → select_step
   └─ FINISH / STOP / error → apply_outcome (ll-issues prep apply) → done | failed
 any slash state, 429 exhausted → mark_rate_limited → failed      (on_max_steps → apply_outcome)
 ```
+
+**Opt-in go/no-go veto consult (ENH-3590)**: reached only when `advise_go_no_go` is
+set (empty by default, threaded from `autodev`'s own `advise_go_no_go` context flag
+via `select_step`'s `--advise-go-no-go` flag — `prepare-issue.yaml` declares no
+`context:` block of its own). It fires once, only on the `oversized_atomic` GO path
+after a go/no-go waiver, before the issue reopens. `run_advise_go_no_go` calls the
+shipped `ll-issues advise-consult` helper (ENH-3632); `record_step`'s `ll-issues prep
+record` reads its persisted `advise-<ID>.verdict` back (no stdout parsing). `PROCEED`
+and `SKIPPED` (any consult failure — fail-open, same as `advise_ready`) reopen the
+issue and continue exactly like the flag being off; `VETO` clears
+`outcome_gate_waived` from the issue's frontmatter and routes like a plain NO-GO
+(`DEFERRED:gate_unmet`, `oversized_atomic`). It can only tighten the go/no-go gate,
+never loosen it.
 
 **The ladder it runs** (one issue, one pass): the inner `refine-to-ready-issue` run; then, if the first gate (readiness + outcome + Program Design) fails, the post-refine selector (decision or proof re-entry into the child, else the missing-artifacts repair `wire → refine gap → rescore`), child detection, size review, the reconcile rule (readiness plateau, a fresh below-threshold issue, or a contradiction marker — at most two contradiction-only reconciles per pass), guard-2 oversized-atomic remediation (`wire → rescore → regate`) with one go/no-go per run, the design remedy (once per run), the pre-deferral spike-or-reconcile remedy, and finally a deferral. A rescore that writes no scores retries once, then stops `scores_absent`. The whole decision table is in `little_loops.preparation_policy.decide` and `ll-issues prep explain <ID> --run-dir <dir>` prints the next decision without writing anything.
 

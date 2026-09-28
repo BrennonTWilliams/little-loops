@@ -1,6 +1,6 @@
 """Tests for the prepare-issue dispatch loop and its autodev boundary (ENH-3623).
 
-Structural pins on ``prepare-issue.yaml`` (the 15-state dispatch loop over
+Structural pins on ``prepare-issue.yaml`` (the 16-state dispatch loop over
 ``little_loops.preparation_policy``), the autodev side of the cutover (the 42 removed
 states, the boundary retargets, the pass-id write), and real-FSM runs of the step
 cap and of rate-limit exhaustion in every wrapper slash state.
@@ -49,6 +49,7 @@ STATES = (
     "record_guard2",
     "record_step",
     "run_go_no_go",
+    "run_advise_go_no_go",
     "apply_outcome",
     "mark_rate_limited",
     "done",
@@ -84,9 +85,9 @@ class TestStructure:
         assert errors == []
         assert fsm.initial == "select_step"
 
-    def test_exactly_fifteen_states_stated_and_pinned(self, data: dict) -> None:
+    def test_exactly_sixteen_states_stated_and_pinned(self, data: dict) -> None:
         assert tuple(data["states"]) == STATES
-        assert "Exactly 15 states" in WRAPPER.read_text()
+        assert "Exactly 16 states" in WRAPPER.read_text()
 
     def test_max_steps_is_derived_from_the_ladder_budget(self, data: dict) -> None:
         """4 states per SIZE_REVIEW step (3 per command step) plus the 3-state tail."""
@@ -103,16 +104,21 @@ class TestStructure:
             assert "autodev-staged" not in action, name
 
     def test_prep_apply_is_the_only_terminal_writer(self, data: dict) -> None:
-        """Every shell action is one `ll-issues prep` call; only apply_outcome and
-        mark_rate_limited call `prep apply` (ledger row, status, run record)."""
+        """Every shell action calls `ll-issues prep` — except (ENH-3590)
+        run_advise_go_no_go, which calls the shipped `ll-issues advise-consult`
+        helper directly — and only apply_outcome / mark_rate_limited call
+        `prep apply` (ledger row, status, run record)."""
         writers = set()
         for name, action in _actions(data).items():
             if data["states"][name].get("action_type") == "slash_command":
                 continue
-            assert action.startswith("ll-issues prep "), name
+            if name == "run_advise_go_no_go":
+                assert "ll-issues advise-consult " in action, name
+            else:
+                assert "ll-issues prep " in action, name
             assert ">" not in action and "set-status" not in action, name
             assert "run-record" not in action, name
-            if action.startswith("ll-issues prep apply"):
+            if "ll-issues prep apply" in action:
                 writers.add(name)
         assert writers == {"apply_outcome", "mark_rate_limited"}
 
@@ -142,7 +148,15 @@ class TestStructure:
     def test_every_step_kind_routes_and_errors_fall_to_apply(self, data: dict) -> None:
         route = data["states"]["select_step"]["route"]
         assert route["_"] == route["_error"] == route["FINISH"] == route["STOP"] == "apply_outcome"
-        for kind in ("RUN_CHILD", "WIRE", "REFINE_GAP", "RESCORE", "RECONCILE", "SIZE_REVIEW"):
+        for kind in (
+            "RUN_CHILD",
+            "WIRE",
+            "REFINE_GAP",
+            "RESCORE",
+            "RECONCILE",
+            "SIZE_REVIEW",
+            "ADVISE_GO_NO_GO",
+        ):
             assert route[kind] in data["states"]
 
     def test_classify_guard2_reads_the_capture_through_evaluate_source(self, data: dict) -> None:

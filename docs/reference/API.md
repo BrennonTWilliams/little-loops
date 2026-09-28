@@ -12310,7 +12310,7 @@ from little_loops.preparation_policy import (
 
 | Name | Description |
 |------|-------------|
-| `StepKind` | Enum of the next step: `RUN_CHILD`, `WIRE`, `REFINE_GAP`, `RESCORE`, `RECONCILE`, `SIZE_REVIEW`, `GO_NO_GO`, `FINISH`, `STOP` |
+| `StepKind` | Enum of the next step: `RUN_CHILD`, `WIRE`, `REFINE_GAP`, `RESCORE`, `RECONCILE`, `SIZE_REVIEW`, `GO_NO_GO`, `ADVISE_GO_NO_GO` (ENH-3590: opt-in veto consult on a go/no-go waiver), `FINISH`, `STOP` |
 | `Step` | Frozen dataclass `(kind, seq, payload, reason, evidence, observations)` — the decision `decide()` returns |
 | `IssueSnapshot` | Read-only view of the issue file, config and gate verdicts (scores, flags, obligation probe, design verdict, refine count/cap, spike budget, child candidates) |
 | `Fact` / `Facts` | One JSONL line `{pass, seq, kind: intent\|done\|obs, step, payload}` / the parsed log for the current pass |
