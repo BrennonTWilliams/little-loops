@@ -38,7 +38,7 @@ Extend ENH-3527's `model_hint` vocabulary (`coding`, `reasoning`, `burst`) from 
 - Gemini's reduced-mode agent output (`_emit_degraded_agent`) carries no frontmatter, so Gemini agents are "unsupported, omitted" by construction. Gemini *skill* mirrors follow the general rule.
 - `model_hint` itself is never emitted into a generated mirror.
 
-**What this delivers today:** a portable declaration plus an enforced Claude-pin consistency check. With no built-in non-Claude mappings, generated hosts currently resolve to "omitted + warning". The payoff for those hosts arrives when a verified built-in mapping is added to `_BUILTIN_HINT_MAPPINGS` (a separate issue). The mirrors then pick it up on the next `ll-adapt --apply`, and the staleness gate forces that regeneration.
+**What this delivers today:** a portable declaration plus an enforced Claude-pin consistency check. With no built-in non-Claude mappings, generated hosts currently resolve to "omitted + warning". The payoff for those hosts arrives when a built-in mapping is added to `_BUILTIN_HINT_MAPPINGS`. ENH-3642 (deferred) proposes one for Codex that uses host-default model plus reasoning effort, not a concrete ID; its spike decides whether Codex agent TOML can carry that selection. The mirrors then pick it up on the next `ll-adapt --apply`, and the staleness gate forces that regeneration.
 
 ## Proposed Solution
 
@@ -150,7 +150,7 @@ Refinements 6 and 7 remove these: `cli/docs.py` `main_verify_skills` + its help 
 
 - **In scope**: `model_hint` in skill and agent frontmatter; generation-time resolution for codex, gemini (skills), kimi-code, qwen; pin-agreement validation; tests per claimed combination.
 - **Prerequisites**: ENH-3527 (done — resolver); BUG-3640 (alias stripping + model-rewrite seam).
-- **Out of scope**: new hint vocabulary; built-in hint mappings for non-Claude hosts (separate issue, needs verified model IDs); consumer-project config overrides for shipped mirrors; resolution at Claude Code native invocation; migrating every shipped skill/agent.
+- **Out of scope**: new hint vocabulary; built-in hint mappings for non-Claude hosts (ENH-3642 for Codex; concrete non-Claude model IDs are out per EPIC-3563); consumer-project config overrides for shipped mirrors; resolution at Claude Code native invocation; migrating every shipped skill/agent.
 
 ## Program Design
 

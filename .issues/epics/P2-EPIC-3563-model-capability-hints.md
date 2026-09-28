@@ -22,11 +22,11 @@ Loop states, and later skills/agents, should be able to declare *what kind* of m
 
 ## Goal
 
-A loop can declare `model_hint: coding|reasoning|burst` on a state or its `llm` block. The hint resolves to a model the effective backend can use, on every supported loop dispatch path. An unsupported combination fails explicitly, and the same loop runs unedited across supported hosts.
+A loop can declare `model_hint: coding|reasoning|burst` on a state or its `llm` block. The hint resolves to a model the effective backend can use, on every supported loop dispatch path. An unsupported combination fails explicitly. The same loop runs unedited on hosts with a built-in mapping (`claude-code`, `anthropic-api`); every other supported host needs a one-time `orchestration.model_hints` entry, validated by `ll-doctor` (ENH-3641).
 
 ## Scope
 
-In: loop state/`llm` hint declarations, the resolver with built-in `claude-code`/`anthropic-api` (and test-only fake-host) mappings, the `orchestration.model_hints` override, dispatch/lifecycle wiring with selection diagnostics, validate-time warnings, and docs. Deferred: skill/agent frontmatter hints (ENH-3533). Out: new hint vocabulary, run-level hint flags, built-in mappings for non-Claude hosts, cost routing.
+In: loop state/`llm` hint declarations, the resolver with built-in `claude-code`/`anthropic-api` (and test-only fake-host) mappings, the `orchestration.model_hints` override, dispatch/lifecycle wiring with selection diagnostics, validate-time warnings, and docs. Deferred: skill/agent frontmatter hints (ENH-3533). Out: new hint vocabulary, run-level hint flags, concrete model IDs for non-Claude hosts, run-time catalog probes or heuristics (e.g. models.dev, `codex debug models` at dispatch), cost routing. Follow-ups: ENH-3641 (doctor-time catalog check, not required for closure); ENH-3642 (Codex effort-based built-in, deferred until a shipped loop declares `model_hint`).
 
 ## Impact
 
@@ -48,7 +48,8 @@ In: loop state/`llm` hint declarations, the resolver with built-in `claude-code`
 - **BUG-3541** — Model aliases table maps opus and fable to superseded model IDs (done)
 - **ENH-3638** — Show hint-resolved model selection in ll-loop header and info (open)
 - **BUG-3640** — Generated host mirrors ship Claude model aliases as the model (open)
-
+- **ENH-3641** — ll-doctor check validates configured model_hints against the host model catalog (open)
+- **ENH-3642** — Built-in Codex model_hint mapping via host-default model and reasoning effort (deferred)
 
 
 ## Sequence
@@ -59,6 +60,8 @@ In: loop state/`llm` hint declarations, the resolver with built-in `claude-code`
 4. ENH-3548 — validate warnings and docs. The warnings half needs only ENH-3527 and can start once it lands; the docs half waits for ENH-3547's tested support matrix
 5. BUG-3640 — stop generated host mirrors shipping Claude aliases (`model = "sonnet"`) as the model; independent of the other children, can run any time
 6. ENH-3533 — skill/agent frontmatter hints, generation-time only (Option A decided); blocked by BUG-3640 and **not** required for epic closure
+7. ENH-3641 — `ll-doctor` model-hints check; independent, can run once ENH-3527 has landed (it has)
+8. ENH-3642 — deferred; Codex effort-based built-in, starts with a spike when a shipped loop declares `model_hint`
 
 ## Closure Criteria
 
@@ -75,3 +78,5 @@ Pre-implementation review 2026-09-25 found these gaps and fixed them in the chil
 - An ENH-3527 criterion asserted argv behind its own not-yet-supported guard; moved to ENH-3547.
 - `validate_fsm` receives no host or `model_hints`; the plumbing is now specified in ENH-3548.
 - Resume scope decided in ENH-3547.
+
+Non-Claude mapping review 2026-09-28 (web research plus a second-model consult via `/ll:advise`, Fable 5.1, confidence 0.8): no shared cross-tool role registry exists, and tools that pick models by role (opencode, Crush) still hard-code role lists over their catalogs. A run-time catalog probe or heuristic was rejected as a silent fallback that breaks run reproducibility. Decision: keep config-only for non-Claude hosts, detect stale config values at doctor time (ENH-3641), and pursue only host-owned stable knobs for built-ins, never concrete model IDs (ENH-3642).
