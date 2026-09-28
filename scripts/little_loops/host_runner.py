@@ -2141,6 +2141,11 @@ class QwenRunner:
         return render_capability_report(load_runtime_capabilities(self.name))
 
 
+def _fake_model_args(model: str | None) -> list[str]:
+    """``["--model", model]`` for the test-only fakes, or ``[]`` when unset (ENH-3547)."""
+    return ["--model", model] if model else []
+
+
 class FakeHostRunner:
     """``HostRunner`` for the test-only ``ll-fake-host`` executable (FEAT-3454).
 
@@ -2187,9 +2192,12 @@ class FakeHostRunner:
         automation = resolve_automation(automation, automation_profile, disable_background_tasks)
         env: dict[str, str] = {}
         _apply_automation_env(env, automation)
+        # ENH-3547: ``--model`` goes *before* the prompt — ``ll-fake-host``
+        # falls back to ``args[-1]`` as the script when no element carries the
+        # ``@@fake`` fence, so an appended flag would be parsed as the script.
         return HostInvocation(
             binary="ll-fake-host",
-            args=[prompt],
+            args=[*_fake_model_args(model), prompt],
             env=env,
             capabilities=self.capabilities,
         )
@@ -2204,7 +2212,7 @@ class FakeHostRunner:
         _ = json_schema
         return HostInvocation(
             binary="ll-fake-host",
-            args=[prompt],
+            args=[*_fake_model_args(model), prompt],
             capabilities=self.capabilities,
         )
 
@@ -2265,7 +2273,7 @@ class FakeMinimalHostRunner:
     ) -> HostInvocation:
         return HostInvocation(
             binary="ll-fake-host",
-            args=["run", prompt],
+            args=["run", *_fake_model_args(model), prompt],
             capabilities=self.capabilities,
         )
 
@@ -2279,7 +2287,7 @@ class FakeMinimalHostRunner:
         _ = json_schema
         return HostInvocation(
             binary="ll-fake-host",
-            args=["run", prompt],
+            args=["run", *_fake_model_args(model), prompt],
             capabilities=self.capabilities,
         )
 

@@ -226,6 +226,9 @@ Emitted after the action finishes, regardless of success or failure.
 | `model` | `str` | prompt only | Model ID reported by the host CLI (e.g. `claude-sonnet-4-5`) |
 | `effort` | `str` | prompt only | Reasoning effort level applied to the invocation (ENH-2885) |
 | `is_batch` | `bool` | prompt only | `true` if the host CLI invocation was a batch request (FEAT-2716) |
+| `model_requested` | `str` | prompt only, when a model was passed | The model selection as declared: a literal model or a `model_hint` (`coding`, `reasoning`, `burst`). Absent when a CLI action declares no model and the host CLI applies its own default; always present on `sdk`/`batch` actions |
+| `model_resolved` | `str` | same as `model_requested` | The exact model string sent to the host CLI or API request (e.g. `sonnet` on `claude-code`, `claude-sonnet-5` on `anthropic-api`). Distinct from `model`, which is the model the host *reported* using |
+| `model_backend` | `str` | same as `model_requested` | Backend the selection was resolved for: the host CLI name (e.g. `claude-code`, `codex`) or `anthropic-api`. Omitted for a literal model when no host CLI can be detected |
 
 **Example (shell command):**
 ```json
@@ -311,6 +314,7 @@ Emitted after the evaluator runs to determine the next routing decision.
 | `type` | `str` | Evaluation type: `"default"` (exit-code based) or the custom type declared in the state's `evaluate` config (e.g. `"llm"`) |
 | `verdict` | `str` | Evaluator verdict (e.g. `"pass"`, `"fail"`, `"yes"`, `"no"`, `"retry"`, `"error"`) |
 | *(detail fields)* | varies | Additional evaluator-specific fields (e.g. `score`, `reason` for LLM evaluators) |
+| `model_requested` / `model_resolved` / `model_backend` | `str` | `llm_structured` evaluations only (explicit, or the default verdict for a prompt action), when LLM evaluation is enabled. Same meaning as on `action_complete`; the evaluator always resolves against the host CLI, even on an `sdk`/`batch` state. Absent on every other evaluator type and under `--no-llm` |
 
 **`action_stall` evaluator detail fields:**
 

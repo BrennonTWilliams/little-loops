@@ -41,7 +41,7 @@ from little_loops.fsm.schema import (
     StateConfig,
 )
 from little_loops.fsm.validation import load_and_validate
-from little_loops.host_runner import AutomationContext
+from little_loops.host_runner import AutomationContext, resolve_model_alias
 from little_loops.subprocess_utils import TokenUsage
 
 
@@ -9534,7 +9534,8 @@ class TestRateLimitCircuitIntegration:
             )
             executor.run()
 
-        assert mock_dispatch.call_args.kwargs["model"] == "haiku"
+        # ENH-3547: the SDK selection is alias-resolved before dispatch.
+        assert mock_dispatch.call_args.kwargs["model"] == resolve_model_alias("haiku")
 
     def test_sub_loop_state_level_request_path_override_still_wins(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -12752,8 +12753,8 @@ class TestRequestPathDispatchWiring:
         assert executor.prev_result is not None
         assert executor.prev_result["output"] == "hi from sdk"
         # BUG-2818: no state.model/run_model set — must fall back to fsm.llm.model,
-        # never send an empty string.
-        assert mock_dispatch.call_args.kwargs["model"] == fsm.llm.model
+        # never send an empty string (ENH-3547: alias-resolved before dispatch).
+        assert mock_dispatch.call_args.kwargs["model"] == resolve_model_alias(fsm.llm.model)
         assert mock_dispatch.call_args.kwargs["model"]
 
     def test_state_level_request_path_overrides_orchestration_default(
@@ -12800,7 +12801,7 @@ class TestRequestPathDispatchWiring:
         assert mock_dispatch.called
         assert mock_runner.calls == []
         # BUG-2818: neither state.model nor run_model set — falls back to fsm.llm.model.
-        assert mock_dispatch.call_args.kwargs["model"] == fsm.llm.model
+        assert mock_dispatch.call_args.kwargs["model"] == resolve_model_alias(fsm.llm.model)
 
     def test_request_path_cli_default_unaffected(self) -> None:
         """No orchestration_config and no state override: byte-identical CLI dispatch."""
@@ -12864,7 +12865,7 @@ class TestRequestPathDispatchWiring:
         assert mock_runner.calls == []
         assert not (run_dir / "batch_id.json").exists()
         # BUG-2818: batch path shares the same model fallback chain as sdk.
-        assert mock_submit.call_args.kwargs["model"] == fsm.llm.model
+        assert mock_submit.call_args.kwargs["model"] == resolve_model_alias(fsm.llm.model)
 
     def test_request_path_batch_resumes_without_double_submit(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

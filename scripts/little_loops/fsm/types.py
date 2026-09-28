@@ -66,6 +66,11 @@ class ExecutionResult:
             unless a handler-routed cap fired. PersistentExecutor.resume() reads
             this so a resumed run restarts the salvaged work, not the handler
             chain's terminal endpoint.
+        model_hint_error: ENH-3547 — True when the run ended because a
+            ``model_hint`` could not be resolved (the run-start preflight or a
+            dispatch-time ``ModelHintError``). A parent ``loop:`` state reads it
+            to end the parent run instead of routing the child's failure to
+            ``on_error``/``on_no``.
     """
 
     final_state: str
@@ -79,6 +84,7 @@ class ExecutionResult:
     continuation_prompt: str | None = None
     messages: list[str] = field(default_factory=list)
     pre_cap_state: str | None = None
+    model_hint_error: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -101,6 +107,8 @@ class ExecutionResult:
             result["messages"] = self.messages
         if self.pre_cap_state is not None:
             result["pre_cap_state"] = self.pre_cap_state
+        if self.model_hint_error:
+            result["model_hint_error"] = self.model_hint_error
         return result
 
 

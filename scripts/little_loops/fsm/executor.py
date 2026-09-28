@@ -78,7 +78,16 @@ from little_loops.fsm.stall_detector import Stall, StallDetector
 from little_loops.fsm.types import ActionResult, Evaluator, EventCallback, ExecutionResult
 from little_loops.fsm.validation import _SKILL_INVOKE_RE, _effective_session_mode
 from little_loops.fsm.verdicts import is_abstention_verdict
-from little_loops.host_runner import AutomationContext, resolve_automation, resolve_scopes
+from little_loops.host_runner import (
+    ANTHROPIC_API_BACKEND,
+    AutomationContext,
+    HostNotConfigured,
+    ModelHintError,
+    resolve_automation,
+    resolve_model_alias,
+    resolve_model_hint,
+    resolve_scopes,
+)
 from little_loops.issue_lifecycle import FailureType, classify_failure
 from little_loops.prompts import FragmentStore, fragment_key
 from little_loops.session_log import (
@@ -203,6 +212,30 @@ class RouteDecision:
     """
 
     next_state: str | None  # str → redirect; None → veto
+
+
+@dataclass(frozen=True)
+class ModelSelection:
+    """A model declaration selected for one dispatch and resolved for its backend.
+
+    ENH-3547. ``requested`` is the literal or hint as declared; ``resolved`` is
+    the exact string passed to the runner or request; ``backend`` is the
+    resolution backend (``resolve_host().name`` or ``anthropic-api``), or
+    ``None`` for a literal CLI selection when no host CLI can be found — a
+    diagnostic field must never end a run.
+    """
+
+    requested: str
+    resolved: str
+    backend: str | None
+    is_hint: bool
+
+    def payload_fields(self) -> dict[str, str]:
+        """The ``model_requested``/``model_resolved``/``model_backend`` event fields."""
+        fields = {"model_requested": self.requested, "model_resolved": self.resolved}
+        if self.backend is not None:
+            fields["model_backend"] = self.backend
+        return fields
 
 
 class FSMExecutor:
@@ -639,17 +672,13 @@ class FSMExecutor:
 
         self._emit("loop_start", self._capture_loop_start_facts())
 
-        # ENH-3527: hint dispatch lands with ENH-3547. Until then a hint-bearing
-        # loop must fail before any state runs rather than silently use the
-        # default model. Child loops build their own executor, so they inherit this.
-        if self.fsm.llm.model_hint is not None or any(
-            st.model_hint is not None for st in self.fsm.states.values()
-        ):
-            return self._finish(
-                "error",
-                error="model_hint dispatch not yet supported (ENH-3547); "
-                "remove model_hint or use a literal model",
-            )
+        # ENH-3547: run-start preflight — every model_hint a state will consume
+        # must resolve on the backend that state will actually use, so an
+        # unmapped hint fails before any state runs instead of mid-run. Child
+        # loops build their own executor, so they run their own preflight.
+        hint_error = self._preflight_model_hints()
+        if hint_error is not None:
+            return self._finish("error", error=hint_error, model_hint_error=True)
 
         try:
             while True:
@@ -1058,6 +1087,12 @@ class FSMExecutor:
                             break
                         time.sleep(min(0.1, deadline - time.time()))
 
+        except ModelHintError as exc:
+            # ENH-3547: a hint that cannot resolve at dispatch time (action,
+            # evaluator, learning remedy, or a child loop's preflight) is a
+            # configuration error — always "error", whatever self._phase is, and
+            # never routed to on_error or a default model.
+            return self._finish("error", error=str(exc), model_hint_error=True)
         except HeredocCollisionError as exc:
             # ENH-3471: heredoc collisions only ever originate in action
             # execution, so self._phase is always "action" here — consulting
@@ -1329,6 +1364,11 @@ class FSMExecutor:
         finally:
             if detach_worktree is not None:
                 detach_worktree()
+
+        # ENH-3547: a child's unresolvable model_hint is a configuration error,
+        # not a child verdict — end the parent run rather than route it.
+        if child_result.model_hint_error:
+            raise ModelHintError(f"sub-loop '{loop_name}': {child_result.error}")
 
         # Capture child event stream as a JSON-lines string if the state declares a capture key
         if state.capture and child_events:
@@ -2093,6 +2133,10 @@ class FSMExecutor:
         if state.loop is not None:
             try:
                 return self._execute_sub_loop(state, ctx)
+            except ModelHintError:
+                # ENH-3547: ModelHintError subclasses ValueError; never let the
+                # clause below route a child's hint failure to on_error.
+                raise
             except (FileNotFoundError, ValueError, InterpolationError):
                 if state.on_error:
                     return interpolate(state.on_error, ctx)
@@ -2514,6 +2558,9 @@ class FSMExecutor:
         if cc is not None and not cc.heuristic_underperforms and action_mode == "prompt":
             from little_loops.compression import compress_action_text
 
+            # ENH-3547: the window is sized against the run model, not the
+            # state's (possibly hint-resolved) effective model — older behavior,
+            # out of scope for hint dispatch.
             action = compress_action_text(
                 action,
                 model=self.run_model,
@@ -2524,6 +2571,15 @@ class FSMExecutor:
             )
 
         self._emit("action_start", {"action": action, "is_prompt": action_mode == "prompt"})
+
+        # ENH-3547: resolve the request path and model selection once per
+        # action, so the dispatched model and the action_complete fields agree.
+        request_path = self._resolve_request_path(state) if action_mode == "prompt" else "cli"
+        selection = (
+            self._resolve_model(state, "sdk" if request_path in ("sdk", "batch") else "cli")
+            if action_mode == "prompt"
+            else None
+        )
 
         def _on_line(line: str) -> None:
             self._emit("action_output", {"line": line})
@@ -2560,8 +2616,9 @@ class FSMExecutor:
                 on_usage=on_usage,
                 **_contrib_extra,
             )
-        elif action_mode == "prompt" and self._resolve_request_path(state) in ("sdk", "batch"):
-            result = self._dispatch_live(state, action, ctx)
+        elif action_mode == "prompt" and request_path in ("sdk", "batch"):
+            assert selection is not None  # the sdk path always resolves a model
+            result = self._dispatch_live(state, action, ctx, selection, request_path)
         else:
             # working_dir is kwarg-gated (only passed when set) so ActionRunner
             # implementations predating ENH-2609 — including third-party
@@ -2651,7 +2708,7 @@ class FSMExecutor:
                 # state.scopes is None here for every mode but shell.
                 scopes=state.scopes,
                 on_usage=on_usage,
-                model=(state.model or self.run_model) if action_mode == "prompt" else None,
+                model=selection.resolved if selection is not None else None,
                 **extra_kwargs,
             )
 
@@ -2689,6 +2746,10 @@ class FSMExecutor:
                     effort_value = observed_effort
         if effort_value is not None:
             payload["effort"] = effort_value
+        # ENH-3547: requested/resolved/backend whenever a model was passed; a
+        # no-declaration CLI action (host default) carries none of them.
+        if selection is not None:
+            payload.update(selection.payload_fields())
         # Aggregate token usage from host-CLI invocations (prompt / slash_command only)
         if result.usage_events:
             # ENH-3538: sum only the known contributors per component; None when
@@ -3149,6 +3210,8 @@ class FSMExecutor:
         Returns:
             EvaluationResult, or None if no evaluation needed
         """
+        # ENH-3547: set only where an llm_structured evaluator consumes a model.
+        selection: ModelSelection | None = None
         if state.evaluate is None:
             # Default evaluation based on action type
             if action_result:
@@ -3165,9 +3228,11 @@ class FSMExecutor:
                             details={"error": "LLM evaluation disabled via --no-llm"},
                         )
                     else:
+                        selection = self._resolve_model(state, "evaluator")
+                        assert selection is not None  # evaluator path never returns None
                         result = evaluate_llm_structured(
                             action_result.output,
-                            model=state.model or self.fsm.llm.model,
+                            model=selection.resolved,
                             max_tokens=self.fsm.llm.max_tokens,
                             timeout=self.fsm.llm.timeout,
                         )
@@ -3181,6 +3246,7 @@ class FSMExecutor:
                         "type": "default",
                         "verdict": result.verdict,
                         **result.details,
+                        **(selection.payload_fields() if selection is not None else {}),
                     },
                 )
                 return result
@@ -3209,12 +3275,20 @@ class FSMExecutor:
                 details={"error": "LLM evaluation disabled via --no-llm"},
             )
         else:
+            # ENH-3547: resolve only for llm_structured — every other type
+            # ignores ``model``, so a hint must not be resolved (or raise) there.
+            if state.evaluate.type == "llm_structured":
+                selection = self._resolve_model(state, "evaluator")
             result = evaluate(
                 config=state.evaluate,
                 output=eval_input,
                 exit_code=action_result.exit_code if action_result else 0,
                 context=ctx,
-                model=state.model or self.fsm.llm.model,
+                model=(
+                    selection.resolved
+                    if selection is not None
+                    else (state.model or self.fsm.llm.model)
+                ),
             )
 
         self._emit(
@@ -3223,6 +3297,7 @@ class FSMExecutor:
                 "type": state.evaluate.type,
                 "verdict": result.verdict,
                 **result.details,
+                **(selection.payload_fields() if selection is not None else {}),
             },
         )
 
@@ -3411,9 +3486,10 @@ class FSMExecutor:
         ctx = self._build_context()
         try:
             self._run_action(state.action, state, ctx)
-        except HeredocCollisionError:
+        except (HeredocCollisionError, ModelHintError):
             # BUG-3354: never silently swallow a terminator-collision halt —
-            # let it propagate to run()'s top-level handler.
+            # let it propagate to run()'s top-level handler (ENH-3547: nor an
+            # unresolvable model_hint).
             raise
         except Exception:
             # Deliberately swallow — the timeout is being honored regardless
@@ -3475,43 +3551,52 @@ class FSMExecutor:
         author who opted in without realizing the path can't serve agentic
         actions.
         """
+        path, reason = self._compute_request_path(state)
+        if reason is not None:
+            self._warn_request_path_downgrade(self._configured_request_path(state), reason)
+        return path
+
+    def _configured_request_path(self, state: StateConfig) -> str:
+        """The declared request_path before any downgrade: state, config, else ``"cli"``."""
         if state.request_path:
-            resolved = state.request_path
-        elif self.orchestration_config is not None:
-            resolved = self.orchestration_config.request_path
-        else:
-            resolved = "cli"
+            return state.request_path
+        if self.orchestration_config is not None:
+            return self.orchestration_config.request_path
+        return "cli"
+
+    def _compute_request_path(self, state: StateConfig) -> tuple[str, str | None]:
+        """Side-effect-free core of :meth:`_resolve_request_path` (ENH-3547).
+
+        Returns the effective path and the downgrade reason (``None`` when the
+        declared path stands). Emits no event and writes nothing, so the
+        run-start model-hint preflight can call it without consuming the
+        one-shot ``request_path_downgrade`` warning.
+        """
+        resolved = self._configured_request_path(state)
 
         if resolved in ("sdk", "batch"):
             if state.action and _SKILL_INVOKE_RE.search(state.action):
-                self._warn_request_path_downgrade(
-                    resolved,
+                return "cli", (
                     "state action invokes a /ll: skill, which requires the host "
                     "CLI's agentic tool loop — the sdk/batch path sends a bare "
-                    "tool-less single-turn call and would silently no-op",
+                    "tool-less single-turn call and would silently no-op"
                 )
-                return "cli"
             if state.tools:
-                self._warn_request_path_downgrade(
-                    resolved,
+                return "cli", (
                     "state declares tools:, which the sdk/batch path cannot "
-                    "supply — _dispatch_live sends system_prompt=None, tools=None",
+                    "supply — _dispatch_live sends system_prompt=None, tools=None"
                 )
-                return "cli"
             try:
                 import anthropic  # noqa: F401
             except ImportError:
-                self._warn_request_path_downgrade(resolved, "anthropic package not importable")
-                return "cli"
+                return "cli", "anthropic package not importable"
             if not self._sdk_credentials_available():
-                self._warn_request_path_downgrade(
-                    resolved,
+                return "cli", (
                     "no Anthropic credential resolvable (set ANTHROPIC_API_KEY, "
-                    "ANTHROPIC_AUTH_TOKEN, or CLAUDE_CODE_OAUTH_TOKEN via `claude setup-token`)",
+                    "ANTHROPIC_AUTH_TOKEN, or CLAUDE_CODE_OAUTH_TOKEN via `claude setup-token`)"
                 )
-                return "cli"
 
-        return resolved
+        return resolved, None
 
     @staticmethod
     def _sdk_credentials_available() -> bool:
@@ -3552,24 +3637,150 @@ class FSMExecutor:
         self._emit("request_path_downgrade", {"requested": requested, "reason": reason})
         print(f"Warning: {message}", file=sys.stderr)
 
-    def _resolve_action_model(self, state: StateConfig) -> str:
-        """Resolve the action-dispatch model: state override, run override, else
-        ``fsm.llm.model`` (never empty — ``LLMConfig.model`` defaults to
-        ``DEFAULT_LLM_MODEL``).
+    def _resolve_model(
+        self, state: StateConfig, path: Literal["cli", "sdk", "evaluator"]
+    ) -> ModelSelection | None:
+        """Select the model declaration for one dispatch path and resolve it (ENH-3547).
 
-        Mirrors the CLI path (``state.model or self.run_model``), extended with
-        the ``fsm.llm.model`` fallback the CLI path doesn't need — the host CLI
-        binary applies its own default when ``model=None`` is passed, but the
-        SDK/Batches API has no such downstream default and rejects an empty
-        string outright (BUG-2818).
+        Precedence, highest first (``--model`` is ``self.run_model``):
+
+        - ``"cli"`` action: state model-or-hint → run ``--model`` → ``None``
+          (host default; the only case that returns ``None``).
+        - ``"evaluator"`` (always the CLI host, even on an sdk/batch state):
+          state model-or-hint → ``llm`` model-or-hint.
+        - ``"sdk"`` (SDK/batch action): state model-or-hint → run ``--model``
+          → ``llm`` model-or-hint.
+
+        ``llm.model_hint`` wins over ``llm.model`` (whose value is always
+        ``DEFAULT_LLM_MODEL`` when unset), and an ``llm`` declaration is never a
+        CLI-action default. The ``"sdk"`` path resolves against
+        ``anthropic-api`` and alias-resolves literals too, so ``resolved`` is
+        the concrete ID the request carries (BUG-2828 applies the same map).
+
+        Raises:
+            ModelHintError: a hint has no valid mapping on the path's backend,
+                or needs the CLI host and none can be found.
         """
-        return state.model or self.run_model or self.fsm.llm.model
+        declared: tuple[str, bool] | None
+        if state.model:
+            declared = (state.model, False)
+        elif state.model_hint:
+            declared = (state.model_hint, True)
+        elif path != "evaluator" and self.run_model:
+            declared = (self.run_model, False)
+        elif path == "cli":
+            declared = None
+        elif self.fsm.llm.model_hint:
+            declared = (self.fsm.llm.model_hint, True)
+        else:
+            declared = (self.fsm.llm.model, False)
+        if declared is None:
+            return None
+
+        requested, is_hint = declared
+        overrides = (
+            self.orchestration_config.model_hints if self.orchestration_config is not None else None
+        )
+        if path == "sdk":
+            resolved = (
+                resolve_model_hint(requested, backend=ANTHROPIC_API_BACKEND, overrides=overrides)
+                if is_hint
+                else resolve_model_alias(requested)
+            )
+            return ModelSelection(requested, resolved, ANTHROPIC_API_BACKEND, is_hint)
+
+        if not is_hint:
+            return ModelSelection(requested, requested, self._cli_backend_name(), False)
+        from little_loops import host_runner
+
+        try:
+            backend = host_runner.resolve_host().name
+        except HostNotConfigured as exc:
+            raise ModelHintError(
+                f"model_hint {requested!r} needs the host CLI to resolve, but no host "
+                f"CLI was found: {exc}"
+            ) from exc
+        resolved = resolve_model_hint(requested, backend=backend, overrides=overrides)
+        return ModelSelection(requested, resolved, backend, True)
+
+    @staticmethod
+    def _cli_backend_name() -> str | None:
+        """The active host CLI's name, or ``None`` when none is configured or on PATH.
+
+        Non-raising: it only fills the ``model_backend`` diagnostic for a
+        literal selection, which must never end a run (ENH-3547 AC13).
+        """
+        from little_loops import host_runner
+
+        try:
+            return host_runner.resolve_host().name
+        except HostNotConfigured:
+            return None
+
+    def _preflight_model_hints(self) -> str | None:
+        """Resolve every consumed ``model_hint`` before any state runs (ENH-3547).
+
+        Resolves each declaration against the backend its state will actually
+        use — the CLI host for prompt-mode CLI actions, ``type: learning``
+        remedies and consuming evaluators; ``anthropic-api`` for prompt
+        actions whose effective path (:meth:`_compute_request_path`) is
+        sdk/batch. Only consumers resolve: a shell + ``exit_code`` state under
+        ``llm.model_hint`` never touches the hint. Returns an error message,
+        or ``None`` when every reachable declaration resolves (or no hint is
+        declared at all, keeping hint-free loops' behavior unchanged).
+        """
+        if self.fsm.llm.model_hint is None and not any(
+            st.model_hint is not None for st in self.fsm.states.values()
+        ):
+            return None
+        for name, state in self.fsm.states.items():
+            try:
+                for path in self._model_consumer_paths(state):
+                    self._resolve_model(state, path)
+            except ModelHintError as exc:
+                return f"state '{name}': {exc}"
+        return None
+
+    def _model_consumer_paths(
+        self, state: StateConfig
+    ) -> list[Literal["cli", "sdk", "evaluator"]]:
+        """The model-consuming dispatch paths *state* will take (ENH-3547 preflight).
+
+        Mirrors :meth:`_execute_state`'s dispatch: sub-loop, human-approval
+        and terminal states consume no model; a learning state's
+        ``/ll:explore-api`` remedy is a prompt-mode action on a
+        ``slash_command`` copy of the state; ``next:`` states are never
+        evaluated.
+        """
+        if state.terminal or state.loop is not None or state.action_type == "human_approval":
+            return []
+        if state.type == "learning" and state.learning is not None:
+            remedy = _dc_replace(state, action_type="slash_command")
+            path, _ = self._compute_request_path(remedy)
+            return ["sdk" if path in ("sdk", "batch") else "cli"]
+
+        paths: list[Literal["cli", "sdk", "evaluator"]] = []
+        is_prompt = state.action is not None and self._action_mode(state) == "prompt"
+        if is_prompt:
+            path, _ = self._compute_request_path(state)
+            paths.append("sdk" if path in ("sdk", "batch") else "cli")
+        if state.next or not self.fsm.llm.enabled:
+            return paths
+        if state.evaluate is None:
+            if is_prompt:
+                paths.append("evaluator")
+        elif (
+            state.evaluate.type == "llm_structured"
+            and state.evaluate.type not in self._contributed_evaluators
+        ):
+            paths.append("evaluator")
+        return paths
 
     def _resolve_action_effort(self, state: StateConfig) -> str | None:
         """Resolve the action-dispatch reasoning-effort level: state override,
         run override, else ``fsm.llm.effort`` (ENH-2869).
 
-        Mirrors ``_resolve_action_model()``'s precedence chain, but ``effort``
+        Mirrors the SDK path's model precedence chain (``_resolve_model``), but ``effort``
         has no forced default (``LLMConfig.effort`` defaults to ``None``) —
         the header only appends a suffix when a value is actually set. This is
         the config-resolved *fallback*; the ``action_complete`` payload prefers
@@ -3579,7 +3790,12 @@ class FSMExecutor:
         return state.effort or self.run_effort or self.fsm.llm.effort
 
     def _dispatch_live(
-        self, state: StateConfig, action: str, ctx: InterpolationContext
+        self,
+        state: StateConfig,
+        action: str,
+        ctx: InterpolationContext,
+        selection: ModelSelection,
+        request_path: str,
     ) -> ActionResult:
         """Dispatch a prompt-mode action via the live SDK or Batches API path.
 
@@ -3590,14 +3806,17 @@ class FSMExecutor:
         same :class:`ActionResult` shape the CLI path produces, so the rest of
         ``_run_action`` (preview extraction, event emission, usage
         aggregation) works unchanged.
+
+        ENH-3547: ``selection`` and ``request_path`` are resolved once by
+        ``_run_action`` so the request's model is exactly the
+        ``model_resolved`` its ``action_complete`` event reports.
         """
         from little_loops import host_runner
         from little_loops.fsm.batch_tracker import BatchTracker
         from little_loops.prompts import FragmentStore
 
-        model = self._resolve_action_model(state)
+        model = selection.resolved
         fragment_store = FragmentStore()
-        request_path = self._resolve_request_path(state)
         br_config = self._get_br_config()
 
         if request_path == "sdk":
@@ -3861,9 +4080,10 @@ class FSMExecutor:
         assert state.action is not None  # caller-guarded
         try:
             return self._run_action(state.action, state, ctx), None
-        except HeredocCollisionError:
+        except (HeredocCollisionError, ModelHintError):
             # BUG-3354: never reroute a terminator-collision halt to
-            # on_error — it must reach run()'s top-level handler.
+            # on_error — it must reach run()'s top-level handler. ENH-3547:
+            # the same holds for an unresolvable model_hint.
             raise
         except Exception as exc:
             if state.on_error:
@@ -4405,7 +4625,13 @@ class FSMExecutor:
         )
         return True, state_name
 
-    def _finish(self, terminated_by: str, error: str | None = None) -> ExecutionResult:
+    def _finish(
+        self,
+        terminated_by: str,
+        error: str | None = None,
+        *,
+        model_hint_error: bool = False,
+    ) -> ExecutionResult:
         """Finalize execution and return result."""
         # ENH-2814: single source of truth for "did this run fail?" — the
         # terminal state's own `failure:` flag, not its name. BUG-3499:
@@ -4523,6 +4749,7 @@ class FSMExecutor:
             error=error,
             messages=list(self.messages),
             pre_cap_state=self._pre_cap_state,
+            model_hint_error=model_hint_error,
         )
 
     def _handle_handoff(self, signal: DetectedSignal) -> ExecutionResult:

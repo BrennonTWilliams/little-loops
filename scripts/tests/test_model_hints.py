@@ -1,32 +1,42 @@
-"""Tests for ENH-3527: model_hint declarations, resolver, config, and pre-dispatch guard."""
+"""Tests for ENH-3527/ENH-3547: model_hint declarations, resolver, config, and dispatch wiring."""
 
 from __future__ import annotations
 
 import json
+import sys
+from dataclasses import dataclass, field
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from little_loops.cli.verify_host_map import _check_hint_backend_coverage
 from little_loops.config.core import deep_merge
 from little_loops.config.orchestration import OrchestrationConfig
+from little_loops.fsm.evaluators import EvaluationResult
 from little_loops.fsm.executor import FSMExecutor
+from little_loops.fsm.persistence import LoopState, PersistentExecutor, StatePersistence
 from little_loops.fsm.schema import (
     DEFAULT_LLM_MODEL,
     EvaluateConfig,
     FSMLoop,
+    LearningConfig,
     LLMConfig,
     StateConfig,
 )
-from little_loops.fsm.validation import ValidationSeverity, validate_fsm
+from little_loops.fsm.validation import ValidationSeverity, load_and_validate, validate_fsm
 from little_loops.host_runner import (
     _HOST_RUNNER_REGISTRY,
     MODEL_ALIASES,
     MODEL_HINTS,
     RUNTIME_HOST_CAPABILITIES,
     TEST_ONLY_HOSTS,
+    FakeHostRunner,
+    FakeMinimalHostRunner,
     ModelHintError,
+    resolve_host,
     resolve_model_hint,
 )
 from tests.test_fsm_executor import MockActionRunner
@@ -266,41 +276,816 @@ class TestStructuralValidation:
         assert any("llm.model_hint must be one of" in m for m in _errors(bad))
 
 
-class TestPreDispatchGuard:
-    def _run(self, fsm: FSMLoop) -> tuple[Any, MockActionRunner]:
-        runner = MockActionRunner()
-        return FSMExecutor(fsm, action_runner=runner, event_callback=lambda _: None).run(), runner
+@dataclass
+class ModelRunner(MockActionRunner):
+    """MockActionRunner that records the ``model`` each dispatch received."""
 
-    def test_state_hint_blocks_before_any_state(self) -> None:
+    models: list[str | None] = field(default_factory=list)
+
+    def run(self, action: str, timeout: int, is_slash_command: bool, **kw: Any) -> Any:
+        self.models.append(kw.get("model"))
+        return super().run(action, timeout, is_slash_command, **kw)
+
+
+@dataclass
+class ArgvRunner(ModelRunner):
+    """Builds the active host's real streaming argv for each prompt dispatch."""
+
+    argv: list[list[str]] = field(default_factory=list)
+
+    def run(self, action: str, timeout: int, is_slash_command: bool, **kw: Any) -> Any:
+        if is_slash_command:
+            inv = resolve_host().build_streaming(prompt=action, model=kw.get("model"))
+            self.argv.append(list(inv.args))
+        return super().run(action, timeout, is_slash_command, **kw)
+
+
+def _model_after_flag(args: list[str]) -> str:
+    return args[args.index("--model") + 1]
+
+
+_SELECTION_KEYS = ("model_requested", "model_resolved", "model_backend")
+
+
+def _prompt(**kw: Any) -> StateConfig:
+    """A prompt state that consumes no evaluator model (output_contains)."""
+    kw.setdefault("on_yes", "done")
+    kw.setdefault("on_no", "done")
+    return StateConfig(
+        action=kw.pop("action", "do it"),
+        action_type="prompt",
+        evaluate=EvaluateConfig(type="output_contains", pattern=""),
+        **kw,
+    )
+
+
+def _execute(
+    fsm: FSMLoop, runner: MockActionRunner | None = None, **kw: Any
+) -> tuple[Any, MockActionRunner, list[dict[str, Any]]]:
+    runner = runner if runner is not None else ModelRunner()
+    events: list[dict[str, Any]] = []
+    ex = FSMExecutor(fsm, action_runner=runner, event_callback=events.append, **kw)
+    return ex.run(), runner, events
+
+
+def _of(events: list[dict[str, Any]], name: str) -> list[dict[str, Any]]:
+    return [e for e in events if e["event"] == name]
+
+
+class _EvalSpy:
+    """Stands in for evaluate_llm_structured and records the model it received."""
+
+    def __init__(self) -> None:
+        self.models: list[str] = []
+
+    def __call__(self, *args: Any, model: str = "", **kw: Any) -> EvaluationResult:
+        self.models.append(model)
+        return EvaluationResult(verdict="yes", details={"llm_model": model})
+
+
+@pytest.fixture
+def eval_spy() -> Any:
+    spy = _EvalSpy()
+    with (
+        patch("little_loops.fsm.executor.evaluate_llm_structured", side_effect=spy),
+        patch("little_loops.fsm.evaluators.evaluate_llm_structured", side_effect=spy),
+    ):
+        yield spy
+
+
+@pytest.fixture
+def no_host(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("LL_HOST_CLI", raising=False)
+    monkeypatch.delenv("LL_HOOK_HOST", raising=False)
+    monkeypatch.setattr("little_loops.host_runner.shutil.which", lambda _b: None)
+
+
+def _sdk_env(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
+    """Make the sdk path live and return the mocked SDK client."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    client = MagicMock()
+    client.messages.create.return_value = SimpleNamespace(
+        content=[SimpleNamespace(type="text", text="ok")],
+        model="m",
+        usage=SimpleNamespace(
+            input_tokens=1,
+            output_tokens=1,
+            cache_read_input_tokens=0,
+            cache_creation_input_tokens=0,
+        ),
+    )
+    return client
+
+
+class TestPreflight:
+    """ENH-3547 run-start preflight (AC11, AC15, AC18, AC19)."""
+
+    def test_unmapped_state_hint_fails_before_any_state(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("LL_HOST_CLI", "codex")
         fsm = FSMLoop(
             name="t",
             initial="pre",
             states={
                 "pre": StateConfig(action="echo pre", action_type="shell", next="hinted"),
-                "hinted": StateConfig(
-                    action="x",
-                    action_type="prompt",
-                    model_hint="coding",
+                "hinted": _prompt(model_hint="coding"),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        result, runner, events = _execute(fsm)
+        assert result.terminated_by == "error"
+        assert result.model_hint_error is True
+        assert "'coding'" in (result.error or "") and "codex" in (result.error or "")
+        assert runner.calls == []
+        assert _of(events, "loop_start")
+        assert not _of(events, "request_path_downgrade")
+
+    def test_host_not_configured_fails_preflight(self, no_host: None) -> None:
+        result, runner, _ = _execute(_fsm(_prompt(model_hint="burst")))
+        assert result.terminated_by == "error" and result.model_hint_error
+        assert "'burst'" in (result.error or "")
+        assert "no host CLI was found" in (result.error or "")
+        assert runner.calls == []
+
+    def test_preflight_emits_no_downgrade_event(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from little_loops.config.orchestration import OrchestrationConfig
+
+        monkeypatch.setenv("LL_HOST_CLI", "codex")
+        monkeypatch.setattr(FSMExecutor, "_sdk_credentials_available", staticmethod(lambda: False))
+        result, runner, events = _execute(
+            _fsm(_prompt(model_hint="coding")),
+            orchestration_config=OrchestrationConfig(request_path="sdk"),
+        )
+        # Downgraded to cli, where codex has no mapping — but no warning at run start.
+        assert result.terminated_by == "error" and "codex" in (result.error or "")
+        assert not _of(events, "request_path_downgrade")
+        assert runner.calls == []
+
+    def test_unconsumed_llm_hint_runs(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Flipped from the ENH-3527 guard: shell + exit_code never resolves llm.model_hint."""
+        monkeypatch.setenv("LL_HOST_CLI", "codex")
+        fsm = _fsm(
+            StateConfig(action="echo", action_type="shell", on_yes="done", on_no="done"),
+            llm=LLMConfig(model_hint="coding"),
+        )
+        result, runner, _ = _execute(fsm)
+        assert result.terminated_by == "terminal" and runner.calls == ["echo"]
+        assert result.model_hint_error is False
+
+    def test_non_llm_structured_evaluator_skips_llm_hint(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("LL_HOST_CLI", "codex")
+        fsm = _fsm(_prompt(), llm=LLMConfig(model_hint="coding"))
+        result, runner, _ = _execute(fsm)
+        assert result.terminated_by == "terminal" and runner.calls == ["do it"]
+        assert runner.models == [None]  # an llm declaration is never a CLI-action default
+
+    def test_no_llm_skips_evaluator_resolution(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("LL_HOST_CLI", "codex")
+        state = StateConfig(action="do it", action_type="prompt", on_yes="done", on_no="done")
+        fsm = _fsm(state, llm=LLMConfig(model_hint="coding", enabled=False))
+        result, runner, events = _execute(fsm)
+        assert not result.model_hint_error and runner.calls == ["do it"]
+        (ev,) = _of(events, "evaluate")
+        assert not any(k in ev for k in _SELECTION_KEYS)
+
+    def test_no_hint_unaffected(self) -> None:
+        fsm = _fsm(StateConfig(action="echo", action_type="shell", next="done"))
+        result, runner, _ = _execute(fsm)
+        assert result.terminated_by == "terminal" and runner.calls == ["echo"]
+
+    def test_non_hint_error_leaves_flag_false(self) -> None:
+        class Boom(ModelRunner):
+            def run(self, *a: Any, **kw: Any) -> Any:
+                raise RuntimeError("boom")
+
+        result, _, _ = _execute(_fsm(_prompt()), runner=Boom())
+        assert result.terminated_by == "error" and result.model_hint_error is False
+        assert "model_hint_error" not in result.to_dict()
+
+
+class TestLearningState:
+    """AC18: the /ll:explore-api remedy consumes the learning state's declaration."""
+
+    def _fsm(self, hint: str) -> FSMLoop:
+        return FSMLoop(
+            name="t",
+            initial="pre",
+            states={
+                "pre": StateConfig(action="echo pre", action_type="shell", next="learn"),
+                "learn": StateConfig(
+                    type="learning",
+                    learning=LearningConfig(targets=["x"], max_retries=1),
+                    model_hint=hint,
                     on_yes="done",
                     on_no="done",
                 ),
                 "done": StateConfig(terminal=True),
             },
         )
-        result, runner = self._run(fsm)
-        assert result.terminated_by == "error"
-        assert "model_hint dispatch not yet supported" in (result.error or "")
+
+    def test_unmapped_hint_fails_preflight(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("LL_HOST_CLI", "codex")
+        result, runner, _ = _execute(self._fsm("coding"))
+        assert result.terminated_by == "error" and result.model_hint_error
+        assert "'learn'" in (result.error or "")
         assert runner.calls == []
 
-    def test_llm_hint_blocks(self) -> None:
-        fsm = _fsm(
-            StateConfig(action="echo", action_type="shell", on_yes="done", on_no="done"),
+    def test_resolved_hint_reaches_remedy(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("LL_HOST_CLI", "claude-code")
+        with (
+            patch(
+                "little_loops.learning_tests.check_learning_test",
+                side_effect=[None, SimpleNamespace(status="proven")],
+            ),
+            patch("little_loops.learning_tests.gate.is_record_stale", return_value=False),
+        ):
+            result, runner, events = _execute(self._fsm("burst"))
+        assert result.terminated_by == "terminal"
+        assert runner.calls == ["echo pre", "/ll:explore-api x"]
+        assert runner.models == [None, "haiku"]
+        remedy = _of(events, "action_complete")[-1]
+        assert remedy["model_requested"] == "burst"
+        assert remedy["model_resolved"] == "haiku"
+        assert remedy["model_backend"] == "claude-code"
+
+
+class TestCliActionDispatch:
+    """AC1/AC16: CLI-action precedence and event fields."""
+
+    def test_state_hint_resolves_for_host(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("LL_HOST_CLI", "claude-code")
+        result, runner, events = _execute(_fsm(_prompt(model_hint="burst")), run_model="opus")
+        assert runner.models == ["haiku"]
+        (ev,) = _of(events, "action_complete")
+        assert (ev["model_requested"], ev["model_resolved"], ev["model_backend"]) == (
+            "burst",
+            "haiku",
+            "claude-code",
+        )
+
+    def test_literal_state_model_argv_unchanged(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("LL_HOST_CLI", "claude-code")
+        _, runner, events = _execute(_fsm(_prompt(model="opus")), run_model="haiku")
+        assert runner.models == ["opus"]
+        (ev,) = _of(events, "action_complete")
+        assert ev["model_requested"] == ev["model_resolved"] == "opus"
+        assert ev["model_backend"] == "claude-code"
+
+    def test_run_model_below_state(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("LL_HOST_CLI", "claude-code")
+        _, runner, _ = _execute(_fsm(_prompt()), run_model="opus")
+        assert runner.models == ["opus"]
+
+    def test_no_declaration_emits_no_selection_fields(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("LL_HOST_CLI", "claude-code")
+        fsm = _fsm(_prompt(), llm=LLMConfig(model_hint="coding"))
+        _, runner, events = _execute(fsm)
+        assert runner.models == [None]
+        (ev,) = _of(events, "action_complete")
+        assert not any(k in ev for k in _SELECTION_KEYS)
+
+    def test_literal_without_host_runs_and_omits_backend(
+        self, no_host: None, eval_spy: Any
+    ) -> None:
+        """AC13: a literal selection never needs the host; model_backend is left out."""
+        state = StateConfig(
+            action="do it", action_type="prompt", model="opus", on_yes="done", on_no="done"
+        )
+        result, runner, events = _execute(_fsm(state))
+        assert result.terminated_by == "terminal" and runner.models == ["opus"]
+        (ac,) = _of(events, "action_complete")
+        assert ac["model_resolved"] == "opus" and "model_backend" not in ac
+        (ev,) = _of(events, "evaluate")
+        assert ev["model_resolved"] == "opus" and "model_backend" not in ev
+
+    def test_downgrade_re_resolves_for_cli_host(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from little_loops.config.orchestration import OrchestrationConfig
+
+        monkeypatch.setenv("LL_HOST_CLI", "fake")
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+        state = _prompt(model_hint="coding", tools=["Read"])
+        _, runner, events = _execute(
+            _fsm(state), orchestration_config=OrchestrationConfig(request_path="sdk")
+        )
+        assert runner.models == ["fake-coding"]
+        assert _of(events, "request_path_downgrade")
+        (ev,) = _of(events, "action_complete")
+        assert ev["model_backend"] == "fake"
+
+
+class TestEvaluatorDispatch:
+    """AC1/AC3/AC8/AC15/AC16: evaluator precedence, backend and event fields."""
+
+    def _state(self, **kw: Any) -> StateConfig:
+        return StateConfig(
+            action="echo hi",
+            action_type="shell",
+            evaluate=EvaluateConfig(type="llm_structured", prompt="ok?"),
+            on_yes="done",
+            on_no="done",
+            **kw,
+        )
+
+    @pytest.mark.parametrize(
+        "state_kw,llm,expected",
+        [
+            ({"model_hint": "burst"}, LLMConfig(model="opus"), "haiku"),
+            ({"model": "opus"}, LLMConfig(model_hint="burst"), "opus"),
+            ({}, LLMConfig(model_hint="reasoning"), "opus"),
+            ({}, LLMConfig(model="haiku"), "haiku"),
+            ({}, LLMConfig(), DEFAULT_LLM_MODEL),
+        ],
+    )
+    def test_precedence(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        eval_spy: Any,
+        state_kw: dict[str, Any],
+        llm: LLMConfig,
+        expected: str,
+    ) -> None:
+        monkeypatch.setenv("LL_HOST_CLI", "claude-code")
+        # run --model never feeds the evaluator.
+        _execute(_fsm(self._state(**state_kw), llm=llm), run_model="fable")
+        assert eval_spy.models == [expected]
+
+    def test_llm_structured_event_carries_fields(
+        self, monkeypatch: pytest.MonkeyPatch, eval_spy: Any
+    ) -> None:
+        monkeypatch.setenv("LL_HOST_CLI", "claude-code")
+        _, _, events = _execute(_fsm(self._state(model_hint="coding")))
+        (ev,) = _of(events, "evaluate")
+        assert (ev["model_requested"], ev["model_resolved"], ev["model_backend"]) == (
+            "coding",
+            "sonnet",
+            "claude-code",
+        )
+        assert ev["llm_model"] == "sonnet"
+
+    def test_non_llm_evaluate_events_carry_no_fields(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("LL_HOST_CLI", "claude-code")
+        state = StateConfig(action="echo", action_type="shell", on_yes="done", on_no="done")
+        _, _, events = _execute(_fsm(state, llm=LLMConfig(model_hint="coding")))
+        (ev,) = _of(events, "evaluate")
+        assert not any(k in ev for k in _SELECTION_KEYS)
+
+    def test_llm_structured_under_no_llm_carries_no_fields(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("LL_HOST_CLI", "codex")
+        fsm = _fsm(self._state(model_hint="coding"), llm=LLMConfig(enabled=False))
+        result, _, events = _execute(fsm)
+        assert not result.model_hint_error
+        (ev,) = _of(events, "evaluate")
+        assert not any(k in ev for k in _SELECTION_KEYS)
+
+    def test_sdk_state_evaluator_uses_cli_host_and_action_uses_api(
+        self, monkeypatch: pytest.MonkeyPatch, eval_spy: Any
+    ) -> None:
+        """AC3 + AC8: one declaration, two backends, two model strings."""
+        from little_loops.config.orchestration import OrchestrationConfig
+
+        monkeypatch.setenv("LL_HOST_CLI", "claude-code")
+        client = _sdk_env(monkeypatch)
+        state = StateConfig(
+            action="do it",
+            action_type="prompt",
+            model_hint="coding",
+            on_yes="done",
+            on_no="done",
+        )
+        with patch("anthropic.Anthropic", return_value=client):
+            _, runner, events = _execute(
+                _fsm(state), orchestration_config=OrchestrationConfig(request_path="sdk")
+            )
+        assert runner.calls == []
+        assert client.messages.create.call_args.kwargs["model"] == MODEL_ALIASES["sonnet"]
+        assert eval_spy.models == ["sonnet"]
+        (ev,) = _of(events, "evaluate")
+        assert ev["model_backend"] == "claude-code"
+
+    def test_foreign_cli_host_never_supplies_api_model(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """AC2: an sdk action resolves on anthropic-api even under an unmapped CLI host."""
+        from little_loops.config.orchestration import OrchestrationConfig
+
+        monkeypatch.setenv("LL_HOST_CLI", "codex")
+        client = _sdk_env(monkeypatch)
+        with patch("anthropic.Anthropic", return_value=client):
+            result, _, events = _execute(
+                _fsm(_prompt(model_hint="burst")),
+                orchestration_config=OrchestrationConfig(
+                    request_path="sdk", model_hints={"codex": {"burst": "gpt-mini"}}
+                ),
+            )
+        assert result.terminated_by == "terminal"
+        assert client.messages.create.call_args.kwargs["model"] == MODEL_ALIASES["haiku"]
+        (ev,) = _of(events, "action_complete")
+        assert ev["model_backend"] == "anthropic-api"
+
+
+class TestSdkDispatch:
+    """AC1/AC16: SDK precedence; model_resolved is what the SDK client received."""
+
+    @pytest.mark.parametrize(
+        "state_kw,run_model,llm,expected_alias",
+        [
+            ({"model": "sonnet"}, "opus", LLMConfig(), "sonnet"),
+            ({"model_hint": "burst"}, "opus", LLMConfig(), "haiku"),
+            ({}, "opus", LLMConfig(model_hint="burst"), "opus"),
+            ({}, None, LLMConfig(model_hint="reasoning"), "opus"),
+            ({}, None, LLMConfig(model="haiku"), "haiku"),
+        ],
+    )
+    def test_precedence_and_payload_match_client(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        state_kw: dict[str, Any],
+        run_model: str | None,
+        llm: LLMConfig,
+        expected_alias: str,
+    ) -> None:
+        from little_loops.config.orchestration import OrchestrationConfig
+
+        client = _sdk_env(monkeypatch)
+        with patch("anthropic.Anthropic", return_value=client):
+            _, _, events = _execute(
+                _fsm(_prompt(**state_kw), llm=llm),
+                run_model=run_model,
+                orchestration_config=OrchestrationConfig(request_path="sdk"),
+            )
+        sent = client.messages.create.call_args.kwargs["model"]
+        assert sent == MODEL_ALIASES[expected_alias]
+        (ev,) = _of(events, "action_complete")
+        assert ev["model_resolved"] == sent
+        assert ev["model_backend"] == "anthropic-api"
+
+
+class TestDispatchTimeErrors:
+    """AC12/AC14: a ModelHintError ends the run with "error", never on_error."""
+
+    def test_action_path_ignores_on_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("LL_HOST_CLI", "codex")
+        monkeypatch.setattr(FSMExecutor, "_preflight_model_hints", lambda self: None)
+        fsm = FSMLoop(
+            name="t",
+            initial="s",
+            states={
+                "s": _prompt(model_hint="coding", on_error="handler"),
+                "handler": StateConfig(terminal=True),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        result, runner, events = _execute(fsm)
+        assert result.terminated_by == "error" and result.model_hint_error
+        assert result.final_state == "s"
+        assert runner.calls == []
+        assert not _of(events, "action_error")
+
+    def test_evaluator_path_skips_post_evaluation(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("LL_HOST_CLI", "codex")
+        monkeypatch.setattr(FSMExecutor, "_preflight_model_hints", lambda self: None)
+        fsm = FSMLoop(
+            name="t",
+            initial="s",
+            states={
+                "s": StateConfig(
+                    action="echo",
+                    action_type="shell",
+                    model_hint="coding",
+                    evaluate=EvaluateConfig(type="llm_structured", prompt="ok?"),
+                    capture="cap",
+                    on_yes="done",
+                    on_no="done",
+                    on_error="handler",
+                ),
+                "handler": StateConfig(terminal=True),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        result, runner, events = _execute(fsm)
+        assert result.terminated_by == "error"  # not no_route
+        assert result.model_hint_error and result.final_state == "s"
+        assert runner.calls == ["echo"]
+        assert "verdict" not in result.captured.get("cap", {})
+        assert not _of(events, "evaluate") and not _of(events, "route")
+
+    def test_child_hint_failure_ends_parent(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        monkeypatch.setenv("LL_HOST_CLI", "codex")
+        (tmp_path / "child.yaml").write_text(
+            """
+name: child
+initial: work
+states:
+  work:
+    action: "do it"
+    action_type: prompt
+    model_hint: coding
+    evaluate:
+      type: output_contains
+      pattern: ""
+    on_yes: done
+    on_no: done
+  done:
+    terminal: true
+"""
+        )
+        parent = FSMLoop(
+            name="parent",
+            initial="call",
+            states={
+                "call": StateConfig(
+                    loop="child", on_yes="done", on_no="handler", on_error="handler"
+                ),
+                "handler": StateConfig(terminal=True),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        result, runner, _ = _execute(parent, loops_dir=tmp_path)
+        assert result.terminated_by == "error" and result.model_hint_error
+        assert result.final_state == "call"
+        assert "sub-loop 'child'" in (result.error or "")
+        assert runner.calls == []
+
+
+class TestSubLoopSemantics:
+    """AC7: run --model inherits; children resolve against their own llm."""
+
+    def test_child_resolves_own_llm_hint(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, eval_spy: Any
+    ) -> None:
+        monkeypatch.setenv("LL_HOST_CLI", "claude-code")
+        (tmp_path / "child.yaml").write_text(
+            """
+name: child
+initial: work
+llm:
+  model_hint: burst
+states:
+  work:
+    action: "do it"
+    action_type: prompt
+    on_yes: done
+    on_no: done
+  done:
+    terminal: true
+"""
+        )
+        parent = FSMLoop(
+            name="parent",
+            initial="call",
+            llm=LLMConfig(model="opus"),
+            states={
+                "call": StateConfig(loop="child", on_yes="done", on_no="done"),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        result, runner, _ = _execute(parent, loops_dir=tmp_path, run_model="fable")
+        assert result.terminated_by == "terminal"
+        assert runner.models == ["fable"]  # run --model inherits into the child's CLI action
+        assert eval_spy.models == ["haiku"]  # child llm.model_hint, not the parent's llm
+
+
+class TestResume:
+    """AC6/AC10: resume re-reads declarations and resolves afresh."""
+
+    def _fsm(self) -> FSMLoop:
+        return _fsm(
+            StateConfig(action="do it", action_type="prompt", on_yes="done", on_no="done"),
             llm=LLMConfig(model_hint="coding"),
         )
-        result, runner = self._run(fsm)
-        assert result.terminated_by == "error" and runner.calls == []
 
-    def test_no_hint_unaffected(self) -> None:
-        fsm = _fsm(StateConfig(action="echo", action_type="shell", next="done"))
-        result, runner = self._run(fsm)
-        assert result.terminated_by == "terminal" and runner.calls == ["echo"]
+    def _resume(self, tmp_path: Path, fsm: FSMLoop, **kw: Any) -> list[dict[str, Any]]:
+        persistence = StatePersistence("t", tmp_path / ".loops")
+        persistence.initialize()
+        persistence.save_state(
+            LoopState(
+                loop_name="t",
+                current_state="s",
+                iteration=1,
+                captured={},
+                prev_result=None,
+                last_result=None,
+                started_at="2026-09-27T00:00:00Z",
+                updated_at="",
+                status="interrupted",
+            )
+        )
+        events: list[dict[str, Any]] = []
+        ex = PersistentExecutor(fsm, persistence=persistence, action_runner=ModelRunner(), **kw)
+        ex.event_bus.register(events.append)
+        assert ex.resume() is not None
+        return events
+
+    def test_resume_reactivates_yaml_hint(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, eval_spy: Any
+    ) -> None:
+        """A resume without --llm-model sees the YAML llm.model_hint again."""
+        monkeypatch.setenv("LL_HOST_CLI", "claude-code")
+        (ev,) = _of(self._resume(tmp_path, self._fsm()), "evaluate")
+        assert (ev["model_requested"], ev["model_resolved"]) == ("coding", "sonnet")
+
+    def test_resume_under_changed_mapping_and_host(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, eval_spy: Any
+    ) -> None:
+        from little_loops.config.orchestration import OrchestrationConfig
+
+        monkeypatch.setenv("LL_HOST_CLI", "codex")
+        events = self._resume(
+            tmp_path,
+            self._fsm(),
+            orchestration_config=OrchestrationConfig(model_hints={"codex": {"coding": "gpt-x"}}),
+        )
+        (ev,) = _of(events, "evaluate")
+        assert (ev["model_resolved"], ev["model_backend"]) == ("gpt-x", "codex")
+        assert eval_spy.models == ["gpt-x"]
+
+
+class TestLlmModelFlag:
+    """AC9 (test only): --llm-model replaces the llm declaration and clears the hint."""
+
+    def test_llm_model_clears_inherited_hint(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "hinted.yaml").write_text(
+            """
+name: hinted
+initial: s
+llm:
+  model_hint: coding
+states:
+  s:
+    action: "echo hi"
+    action_type: shell
+    next: done
+  done:
+    terminal: true
+"""
+        )
+        monkeypatch.chdir(tmp_path)
+        seen: list[FSMLoop] = []
+        original = FSMExecutor.__init__
+
+        def spy_init(self: Any, fsm: FSMLoop, **kw: Any) -> None:
+            seen.append(fsm)
+            original(self, fsm, **kw)
+
+        with (
+            patch.object(FSMExecutor, "__init__", spy_init),
+            patch.object(sys, "argv", ["ll-loop", "run", "hinted", "--llm-model", "opus"]),
+        ):
+            from little_loops.cli import main_loop
+
+            main_loop()
+        assert seen and seen[0].llm.model == "opus" and seen[0].llm.model_hint is None
+
+
+class TestHostArgv:
+    """AC4/AC5: every advertised host/operation reaches --model argv or errors."""
+
+    def _run(self, monkeypatch: pytest.MonkeyPatch, host: str, **kw: Any) -> Any:
+        monkeypatch.setenv("LL_HOST_CLI", host)
+        runner = ArgvRunner()
+        result, _, _ = _execute(_fsm(_prompt(model_hint="coding")), runner=runner, **kw)
+        return result, runner
+
+    @pytest.mark.parametrize(
+        "host,expected",
+        [("claude-code", "sonnet"), ("fake", "fake-coding"), ("fake-minimal", "fake-coding")],
+    )
+    def test_builtin_mappings_reach_argv(
+        self, monkeypatch: pytest.MonkeyPatch, host: str, expected: str
+    ) -> None:
+        result, runner = self._run(monkeypatch, host)
+        assert result.terminated_by == "terminal"
+        (args,) = runner.argv
+        assert _model_after_flag(args) == expected
+
+    @pytest.mark.parametrize("host", ["codex", "gemini", "omp", "kimi-code", "qwen"])
+    def test_config_only_hosts_reach_argv(self, monkeypatch: pytest.MonkeyPatch, host: str) -> None:
+        from little_loops.config.orchestration import OrchestrationConfig
+
+        cfg = OrchestrationConfig(model_hints={host: {"coding": f"{host}-model"}})
+        result, runner = self._run(monkeypatch, host, orchestration_config=cfg)
+        assert result.terminated_by == "terminal"
+        (args,) = runner.argv
+        assert _model_after_flag(args) == f"{host}-model"
+        try:
+            blocking = resolve_host().build_blocking_json(prompt="p", model=f"{host}-model")
+        except (NotImplementedError, RuntimeError):
+            return  # host exposes no blocking-JSON build
+        assert _model_after_flag(list(blocking.args)) == f"{host}-model"
+
+    @pytest.mark.parametrize(
+        "host,overrides,match",
+        [
+            ("opencode", None, "not supported"),
+            ("pi", None, "not supported"),
+            ("codex", None, "no mapping"),
+            ("claude-code", {"claude-code": {"coding": False}}, "disabled"),
+        ],
+    )
+    def test_missing_or_disabled_mapping_errors(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        host: str,
+        overrides: dict[str, Any] | None,
+        match: str,
+    ) -> None:
+        from little_loops.config.orchestration import OrchestrationConfig
+
+        cfg = OrchestrationConfig(model_hints=overrides or {})
+        result, runner = self._run(monkeypatch, host, orchestration_config=cfg)
+        assert result.terminated_by == "error" and match in (result.error or "")
+        assert runner.argv == []
+
+    @pytest.mark.parametrize("runner_cls", [FakeHostRunner, FakeMinimalHostRunner])
+    def test_fakes_put_model_before_prompt(self, runner_cls: Any) -> None:
+        r = runner_cls()
+        for inv in (
+            r.build_streaming(prompt="P", model="fake-burst"),
+            r.build_blocking_json(prompt="P", model="fake-burst"),
+        ):
+            args = list(inv.args)
+            assert args[-1] == "P" and _model_after_flag(args) == "fake-burst"
+            assert args.index("--model") < args.index("P")
+        assert "--model" not in r.build_streaming(prompt="P").args
+        assert "--model" not in r.build_blocking_json(prompt="P").args
+
+    @pytest.mark.parametrize("runner_cls", [FakeHostRunner, FakeMinimalHostRunner])
+    def test_fence_less_prompt_unaffected_by_model(
+        self, runner_cls: Any, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from little_loops.fake_host import main
+
+        prompt = "plain prompt with no fence"
+        plain_rc = main(runner_cls().build_streaming(prompt=prompt).args)
+        plain = capsys.readouterr()
+        model_rc = main(runner_cls().build_streaming(prompt=prompt, model="fake-coding").args)
+        with_model = capsys.readouterr()
+        assert (model_rc, with_model.out, with_model.err) == (plain_rc, plain.out, plain.err)
+
+
+class TestPortabilityProof:
+    """AC17: one loop with coding/burst states runs unedited on every backend."""
+
+    LOOP = """
+name: portable
+initial: write
+states:
+  write:
+    action: "write the code"
+    action_type: prompt
+    model_hint: coding
+    next: summarize
+  summarize:
+    action: "summarize it"
+    action_type: prompt
+    model_hint: burst
+    next: done
+  done:
+    terminal: true
+"""
+
+    def _load(self, tmp_path: Path) -> FSMLoop:
+        path = tmp_path / "portable.yaml"
+        path.write_text(self.LOOP)
+        fsm, _ = load_and_validate(path)
+        return fsm
+
+    @pytest.mark.parametrize(
+        "host,expected",
+        [("fake", ["fake-coding", "fake-burst"]), ("claude-code", ["sonnet", "haiku"])],
+    )
+    def test_cli_hosts(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, host: str, expected: list[str]
+    ) -> None:
+        monkeypatch.setenv("LL_HOST_CLI", host)
+        runner = ArgvRunner()
+        result, _, _ = _execute(self._load(tmp_path), runner=runner)
+        assert result.terminated_by == "terminal"
+        assert [_model_after_flag(a) for a in runner.argv] == expected
+
+    def test_anthropic_api(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        from little_loops.config.orchestration import OrchestrationConfig
+
+        monkeypatch.setenv("LL_HOST_CLI", "fake")
+        client = _sdk_env(monkeypatch)
+        with patch("anthropic.Anthropic", return_value=client):
+            result, runner, _ = _execute(
+                self._load(tmp_path),
+                orchestration_config=OrchestrationConfig(request_path="sdk"),
+            )
+        assert result.terminated_by == "terminal" and runner.calls == []
+        sent = [c.kwargs["model"] for c in client.messages.create.call_args_list]
+        assert sent == [MODEL_ALIASES["sonnet"], MODEL_ALIASES["haiku"]]

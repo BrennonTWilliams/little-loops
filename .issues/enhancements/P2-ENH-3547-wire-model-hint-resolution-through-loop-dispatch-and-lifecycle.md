@@ -3,12 +3,13 @@ id: ENH-3547
 type: ENH
 title: Wire model hint resolution through loop dispatch and lifecycle
 priority: P2
-status: open
+status: done
 parent: EPIC-3563
 epic: EPIC-3563
 discovered_by: ll-issues-create
 discovered_date: '2026-09-24'
 captured_at: '2026-09-24T17:40:15Z'
+completed_at: '2026-09-28T00:18:35Z'
 labels:
 - multi-host
 - loops
@@ -109,6 +110,13 @@ Everything below is specified in ENH-3527 (Design → Declaration and precedence
 - `FSMExecutor.run` → `FSMExecutor._preflight_model_hints` → `FSMExecutor._compute_request_path` → `resolve_model_hint`
 - `FSMExecutor._execute_learning_state` → `FSMExecutor._run_action` → `FSMExecutor._resolve_model` → `resolve_model_hint` (learning remedy, always CLI)
 
+### Deviations
+
+- **2026-09-27 (`/ll:manage-issue`)** — `ModelSelection.backend` was designed as `str`; it is implemented as `str | None`, because AC13 requires a literal CLI selection with no detectable host to omit `model_backend`, and `None` is how that is represented.
+- **2026-09-27** — `_dispatch_live` was designed to take only `selection`. It also takes `request_path`: it still has to choose between the SDK and Batches calls, and re-running `_resolve_request_path` there is the second resolution the design removes.
+- **2026-09-27** — The preflight does not catch `HostNotConfigured` separately. `_resolve_model` converts `HostNotConfigured` into a `ModelHintError` that names the hint and says no host CLI was found, so the preflight and the dispatch-time handler share one exception type. Added private helpers `_configured_request_path`, `_cli_backend_name` and `_model_consumer_paths`.
+- **2026-09-27** — Learning remedy request path: the design says it is always `cli` because `/ll:explore-api` matches `_SKILL_INVOKE_RE`. At dispatch, the regex is tested against `state.action`, which is `None` on a learning state. So the preflight computes the path on the same `slash_command` copy of the state that dispatch uses, and mirrors dispatch exactly rather than hard-coding `cli`. Dispatch behavior is unchanged.
+
 ## Integration Map
 
 - `scripts/little_loops/fsm/{executor,evaluators,runners,persistence,types}.py`, `subprocess_utils.py`. The `cli/loop/{run,lifecycle,runner,header,feed,info}.py` display work moved to ENH-3638.
@@ -180,33 +188,53 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 Carried over from ENH-3527's original criteria (stated inline; ENH-3527's numbering has since changed):
 
-- [ ] **AC1.** Tests cover every precedence row; no-hint behavior and literal CLI argv are unchanged.
-- [ ] **AC2.** CLI action, blocking evaluator, SDK and batch paths share declaration semantics; a foreign configured CLI host never supplies an Anthropic request model; downgrade re-resolves.
-- [ ] **AC3.** An evaluator hint on a `request_path: sdk` state resolves against the CLI host, not `anthropic-api`.
-- [ ] **AC4.** Every advertised host/operation combination has a dispatch-level argv test (moved from ENH-3527):
+- [x] **AC1.** Tests cover every precedence row; no-hint behavior and literal CLI argv are unchanged.
+- [x] **AC2.** CLI action, blocking evaluator, SDK and batch paths share declaration semantics; a foreign configured CLI host never supplies an Anthropic request model; downgrade re-resolves.
+- [x] **AC3.** An evaluator hint on a `request_path: sdk` state resolves against the CLI host, not `anthropic-api`.
+- [x] **AC4.** Every advertised host/operation combination has a dispatch-level argv test (moved from ENH-3527):
   - `claude-code` with built-in mappings;
   - `fake`/`fake-minimal` with sentinel mappings;
   - one parametrized test for the config-only hosts `codex`, `gemini`, `omp`, `kimi-code` and `qwen`, showing an `orchestration.model_hints.<host>` mapping reaching `--model` argv on the streaming build, and on the blocking-JSON build where that host exposes one. Each runner already appends `--model` when `model` is set;
   - `opencode`/`pi`, and missing/disabled mappings, error explicitly.
-- [ ] **AC5.** `FakeHostRunner` forwards `--model`; a fake-host dispatch test asserts the resolved sentinel in argv. Both fakes place `--model <m>` before the prompt, on the streaming and blocking-JSON builds. A test runs `ll-fake-host`'s `main()` on the built argv for a **fence-less** prompt with `model` set, and asserts it gives the same result as the same prompt with no model.
-- [ ] **AC6.** Sub-loop/detach/resume preserve requested declarations (resume via YAML re-read; run-level literal flags are out of scope); event payloads carry the three selection fields (`model_requested`, `model_resolved`, `model_backend`).
-- [ ] **AC7.** Sub-loops follow ENH-3527's decided semantics: run `--model` inherits into children; a parent state's declaration does not propagate; children resolve against their own `llm`.
-- [ ] **AC8.** A state with both a prompt action and an LLM evaluator resolves its single declaration separately for each and may yield two different model strings.
-- [ ] **AC9.** `--llm-model` replaces the `llm` declaration and clears an inherited hint. **Test only:** already implemented at `run.py:189-193` (ENH-3527); do not rewrite it.
-- [ ] **AC10.** Resuming under a changed mapping or host resolves afresh, and the resumed run's dispatch events show the new selection. This includes a resume that drops an earlier `--llm-model` override and reactivates a YAML `llm.model_hint`. The console header is ENH-3638.
-- [ ] **AC11.** A hint that cannot resolve on its effective backend fails the run-start preflight with `terminated_by == "error"`, an error naming the hint and backend, and no runner call. The failed run still emits `loop_start`, and the preflight emits no `request_path_downgrade` event. A hint that needs the CLI host when no host CLI can be found (`HostNotConfigured`) fails the preflight the same way.
-- [ ] **AC12.** A dispatch-time `ModelHintError` ends the run with `terminated_by == "error"` (not `no_route`) on both the action path and the evaluator path, even when the state declares `on_error`. It never falls back to a default model. On the evaluator path, no post-evaluation step runs (tamper guard, prepatch check, `captured` verdict write, stall detection, routing).
-- [ ] **AC13.** With `LL_HOST_CLI`/`LL_HOOK_HOST` unset and no host binary on PATH, a loop using literal models and mocked runners/evaluators runs exactly as it does today. The literal selection's `model_backend` is left out; the run does not fail.
-- [ ] **AC14.** A child loop whose hint fails its preflight ends the **parent** run with `terminated_by == "error"`, and the error names the sub-loop. The parent's `on_error`/`on_no` does not fire.
-- [ ] **AC15.** Hints resolve only where a model is consumed: a shell + `exit_code` state under `llm.model_hint`, and a prompt + non-`llm_structured` evaluator state, never resolve an evaluator hint, even on a host with no mapping. `--no-llm` skips evaluator resolution.
-- [ ] **AC16.** A CLI action with no declaration (`model=None`) emits none of the three selection fields, and its `action_complete` payload is byte-identical to today's. `llm_structured` `evaluate` events (LLM enabled) and SDK/batch `action_complete` events always carry all three. Other `evaluate` events, including `llm_structured` under `--no-llm`, carry none. An SDK/batch event's `model_resolved` equals the `model` the mocked **SDK client** received (the concrete ID), for a literal (`sonnet` → `claude-sonnet-5`) as well as a hint.
-- [ ] **AC17.** Portability proof: a fixture loop with `coding`/`burst` states runs unedited under the fake host (argv shows `fake-coding`/`fake-burst`), `claude-code` (argv shows `sonnet`/`haiku`), and `anthropic-api` (mocked SDK client receives `MODEL_ALIASES` IDs).
-- [ ] **AC18.** A `type: learning` state whose `model_hint` cannot resolve on the CLI host fails the run-start preflight (AC11), with no runner call and without running any earlier state. When it resolves, the `/ll:explore-api` remedy dispatch receives the resolved model and its `action_complete` carries the three selection fields.
-- [ ] **AC19.** The preflight and the `run()` `ModelHintError` clause return an `ExecutionResult` with `model_hint_error == True`. Every other termination, including a non-hint `"error"`, leaves it `False`.
+- [x] **AC5.** `FakeHostRunner` forwards `--model`; a fake-host dispatch test asserts the resolved sentinel in argv. Both fakes place `--model <m>` before the prompt, on the streaming and blocking-JSON builds. A test runs `ll-fake-host`'s `main()` on the built argv for a **fence-less** prompt with `model` set, and asserts it gives the same result as the same prompt with no model.
+- [x] **AC6.** Sub-loop/detach/resume preserve requested declarations (resume via YAML re-read; run-level literal flags are out of scope); event payloads carry the three selection fields (`model_requested`, `model_resolved`, `model_backend`).
+- [x] **AC7.** Sub-loops follow ENH-3527's decided semantics: run `--model` inherits into children; a parent state's declaration does not propagate; children resolve against their own `llm`.
+- [x] **AC8.** A state with both a prompt action and an LLM evaluator resolves its single declaration separately for each and may yield two different model strings.
+- [x] **AC9.** `--llm-model` replaces the `llm` declaration and clears an inherited hint. **Test only:** already implemented at `run.py:189-193` (ENH-3527); do not rewrite it.
+- [x] **AC10.** Resuming under a changed mapping or host resolves afresh, and the resumed run's dispatch events show the new selection. This includes a resume that drops an earlier `--llm-model` override and reactivates a YAML `llm.model_hint`. The console header is ENH-3638.
+- [x] **AC11.** A hint that cannot resolve on its effective backend fails the run-start preflight with `terminated_by == "error"`, an error naming the hint and backend, and no runner call. The failed run still emits `loop_start`, and the preflight emits no `request_path_downgrade` event. A hint that needs the CLI host when no host CLI can be found (`HostNotConfigured`) fails the preflight the same way.
+- [x] **AC12.** A dispatch-time `ModelHintError` ends the run with `terminated_by == "error"` (not `no_route`) on both the action path and the evaluator path, even when the state declares `on_error`. It never falls back to a default model. On the evaluator path, no post-evaluation step runs (tamper guard, prepatch check, `captured` verdict write, stall detection, routing).
+- [x] **AC13.** With `LL_HOST_CLI`/`LL_HOOK_HOST` unset and no host binary on PATH, a loop using literal models and mocked runners/evaluators runs exactly as it does today. The literal selection's `model_backend` is left out; the run does not fail.
+- [x] **AC14.** A child loop whose hint fails its preflight ends the **parent** run with `terminated_by == "error"`, and the error names the sub-loop. The parent's `on_error`/`on_no` does not fire.
+- [x] **AC15.** Hints resolve only where a model is consumed: a shell + `exit_code` state under `llm.model_hint`, and a prompt + non-`llm_structured` evaluator state, never resolve an evaluator hint, even on a host with no mapping. `--no-llm` skips evaluator resolution.
+- [x] **AC16.** A CLI action with no declaration (`model=None`) emits none of the three selection fields, and its `action_complete` payload is byte-identical to today's. `llm_structured` `evaluate` events (LLM enabled) and SDK/batch `action_complete` events always carry all three. Other `evaluate` events, including `llm_structured` under `--no-llm`, carry none. An SDK/batch event's `model_resolved` equals the `model` the mocked **SDK client** received (the concrete ID), for a literal (`sonnet` → `claude-sonnet-5`) as well as a hint.
+- [x] **AC17.** Portability proof: a fixture loop with `coding`/`burst` states runs unedited under the fake host (argv shows `fake-coding`/`fake-burst`), `claude-code` (argv shows `sonnet`/`haiku`), and `anthropic-api` (mocked SDK client receives `MODEL_ALIASES` IDs).
+- [x] **AC18.** A `type: learning` state whose `model_hint` cannot resolve on the CLI host fails the run-start preflight (AC11), with no runner call and without running any earlier state. When it resolves, the `/ll:explore-api` remedy dispatch receives the resolved model and its `action_complete` carries the three selection fields.
+- [x] **AC19.** The preflight and the `run()` `ModelHintError` clause return an `ExecutionResult` with `model_hint_error == True`. Every other termination, including a non-hint `"error"`, leaves it `False`.
+
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-09-27
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/fsm/executor.py`: new `ModelSelection`. `_resolve_model` implements the three-row precedence; the SDK path alias-resolves literals. `_preflight_model_hints` and `_model_consumer_paths` replace the ENH-3527 guard and resolve a hint only where a model is consumed, including learning states. Pure `_compute_request_path` split out of `_resolve_request_path`. `ModelHintError` routing: a `run()` clause that always ends with `"error"`, plus re-raises in `_run_action_or_route`, the timeout flush and the sub-loop catch. `_execute_sub_loop` propagates a child's hint failure. `_finish(model_hint_error=)`. `_run_action` resolves once and passes the selection to `_dispatch_live`. `model_requested`/`model_resolved`/`model_backend` added to `action_complete` and `llm_structured` `evaluate` events.
+- `scripts/little_loops/fsm/types.py`: `ExecutionResult.model_hint_error`.
+- `scripts/little_loops/host_runner.py`: `FakeHostRunner`/`FakeMinimalHostRunner` forward `--model` before the prompt.
+- `scripts/tests/test_model_hints.py`: replaced `TestPreDispatchGuard` with AC1–AC19 coverage: preflight, learning, CLI/evaluator/SDK precedence and event fields, dispatch-time errors, sub-loops, resume, `--llm-model`, host argv, fake-host fence-less parity, and the portability proof. `test_llm_hint_blocks` now expects the run to succeed.
+- `scripts/tests/test_fsm_executor.py`: four SDK/batch tests now assert the alias-resolved wire model.
+- `docs/reference/CONFIGURATION.md`, `docs/reference/EVENT-SCHEMA.md`: removed the "not yet wired" sentence; documented the three event fields.
+
+### Verification Results
+- Tests: PASS for this change. The full suite had 26754 passed and 2 failed. Both failures are issue-corpus gates (`test_issue_parser` corpus-count baseline and `test_verify_evidence` repo gate) set off by ENH-3633 text a concurrent session committed (`a310a5010`). No source file in this change affects them.
+- Lint: PASS
+- Types: PASS
+- Red check: 50 of the new tests fail against the pre-change source.
 
 ## Status
 
-**Open** | Created: 2026-09-24 | Priority: P2
+**Done** | Created: 2026-09-24 | Priority: P2
 
 ---
 
@@ -276,6 +304,7 @@ _Added by `/ll:confidence-check` on 2026-09-27_
 _Verified 2026-09-27: all deterministic gates clean (learning test target "anthropic" proven, Program Design gate passes, `blocked_by: ENH-3527` resolved/done, zero format-check gap findings). Spot-checked every cited `executor.py`/`host_runner.py`/`fsm/types.py` anchor against current source — all resolve to the exact lines the issue cites, confirming the guard and inline fallback expressions are still unimplemented and the codebase-research claims still hold.
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-28T00:18:28 - `83cc6850-d1e9-4d1d-9048-aea88b662846.jsonl`
 - `/ll:ready-issue` - 2026-09-27T23:55:39 - `24f07fc1-031e-41a5-8165-8c96d2add302.jsonl`
 - `/ll:confidence-check` - 2026-09-27T23:51:56 - `9ec66b6d-aabf-4e14-8dd4-76aef25da24d.jsonl`
 - `/ll:confidence-check` - 2026-09-27T21:59:52 - `f000b0e2-afd6-484c-86d4-f9adb2596b9a.jsonl`
