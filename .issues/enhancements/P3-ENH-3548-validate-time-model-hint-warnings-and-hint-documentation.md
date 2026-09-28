@@ -36,7 +36,7 @@ Add `ll-loop validate` warnings for model hints that will not resolve, and docum
 ## Scope Boundaries
 
 - **In scope**: validate-time WARNINGs, `haiku-gen` guidance, documentation.
-- **Out of scope**: runtime dispatch (ENH-3547); new vocabulary.
+- **Out of scope**: runtime dispatch (ENH-3547); new vocabulary; `cli/doctor.py`'s fleet-wide `load_and_validate` sweep (deferred — see Call Path).
 
 ## Program Design
 
@@ -47,14 +47,16 @@ Add `ll-loop validate` warnings for model hints that will not resolve, and docum
 ### Signatures
 
 - `resolve_model_hint(hint, *, backend, overrides=None) -> str` — from ENH-3527; validation catches its error and emits a WARNING.
-- `validate_fsm(fsm: FSMLoop, orchestration_request_path: str | None = None, *, host_cli: str | None = None, model_hints: dict[str, dict[str, str | Literal[False]]] | None = None) -> list[ValidationError]` — extends the existing signature (`structural_rules.py:1118`) with the two keyword args; `host_cli=None` skips resolution warnings.
+- `validate_fsm(fsm: FSMLoop, orchestration_request_path: str | None = None, *, host_cli: str | None = None, model_hints: dict[str, dict[str, str | Literal[False]]] | None = None) -> list[ValidationError]` — extends the existing signature (`structural_rules.py:1169`, drifts with the file — confirm at implementation time) with the two keyword args; `host_cli=None` skips resolution warnings.
 - `load_and_validate(...)` — gains the same two keyword args and forwards them, mirroring how `orchestration_request_path` is threaded today.
+- `cli/logs.py`'s `_validate_builtin_loop(...)` helper (`logs.py:2326`) — the fleet-review call site at `logs.py:2761` does not call `load_and_validate` directly; it goes through this wrapper. The wrapper's own signature must also gain `host_cli`/`model_hints` and forward them to its `load_and_validate` call, or the two new kwargs stop at the wrapper boundary.
 
 ### Call Path
 
 - `ll-loop validate` (`cli/loop/config_cmds.py:25`) → `load_and_validate(..., orchestration_request_path=, host_cli=, model_hints=)` → `validate_fsm` → structural rules → `resolve_model_hint` (per reachable request path) → WARNING
 - `host_cli` comes from the host `resolve_host()` would select (`LL_HOST_CLI` / `orchestration.host_cli` / probe order). `model_hints` comes from `BRConfig(...).orchestration.model_hints`. Both are read at the same site that reads `.orchestration.request_path` today.
-- The `cli/logs.py:2761` caller passes the same values. In-process callers `cli/loop/scaffold_eval.py:278` and `scaffold_verify.py:340` stay unchanged and skip resolution warnings.
+- `cli/logs.py:2761` (fleet-review) → `_validate_builtin_loop` (`logs.py:2326`, gains the same two kwargs) → `load_and_validate(..., host_cli=, model_hints=)`. In-process callers `cli/loop/scaffold_eval.py:278` and `scaffold_verify.py:340` stay unchanged and skip resolution warnings.
+- Other `load_and_validate` callers (`cli/doctor.py:688`'s fleet-wide validate, `cli/loop/run.py:146`, `cli/loop/info.py:1472`, `cli/loop/edit_routes.py:51`, `fsm/loop_paths.py:104,128`, `fsm/executor.py:1163`) are **not** touched by this issue; they keep calling without `host_cli`/`model_hints`, so `host_cli=None`'s default skips resolution warnings there and behavior is unchanged. `cli/doctor.py` in particular validates every runnable built-in loop and is a plausible second surface for these warnings — deliberately deferred here, not an oversight; revisit as a fast-follow if fleet-wide hint-resolution coverage is wanted.
 
 ## Integration Map
 
