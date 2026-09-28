@@ -9,6 +9,7 @@ discovered_by: ll-issues-create
 discovered_date: '2026-09-28'
 captured_at: '2026-09-28T19:18:02Z'
 confidence_score: 100
+verify_verdict: VALID
 outcome_confidence: 95
 score_complexity: 22
 score_test_coverage: 23
@@ -49,7 +50,7 @@ The guard mixes two concerns, detector correctness (code) and corpus hygiene (da
 
 ## Proposed Solution
 
-1. Build three frozen fixture corpora, one subdirectory per originating class, under `scripts/tests/fixtures/issues/`. Name the files by bare ID (`FEAT-3308.md`), matching the `bug3287_corpus/` precedent. Do **not** put them flat in `fixtures/issues/`: `TestParseFrontmatterCorpus._fixture_files` (`scripts/tests/test_frontmatter.py:291`) globs `fixtures/issues/*.md` non-recursively and would pick them up.
+1. Build three frozen fixture corpora, one subdirectory per originating class, under `scripts/tests/fixtures/issues/`. Name the files by bare ID (`FEAT-3308.md`), matching the `bug3287_corpus/` precedent. Do **not** put them flat in `fixtures/issues/`: `TestParseFrontmatterCorpus._fixture_files` (`scripts/tests/test_frontmatter.py:290`) globs `fixtures/issues/*.md` non-recursively and would pick them up.
    - `bug3295_corpus/` (8 files): BUG-1616, ENH-1717, ENH-3292 (the `_PINNED_CLEARED` set); FEAT-3308, BUG-3380, FEAT-2576, ENH-3346 (the largest sites from the PR #37 A/B); ENH-2657 (the detection PR #37 surfaced). The five zero-report members serve as negative controls, so no separate zero-report sample is needed.
    - `bug3285_corpus/` (11 files): the union of `TestBug3285CorpusDifferential`'s four pin dicts: BUG-1484, ENH-2967, ENH-1555, FEAT-1244, FEAT-2186, BUG-3177, BUG-3253, FEAT-2339, BUG-2735, ENH-2226, FEAT-1076.
    - `bug3293_corpus/` (5 files): BUG-3232, BUG-3285, BUG-3293, ENH-3045, BUG-3356.
@@ -162,12 +163,44 @@ _Added by `/ll:refine-issue` — 2026-09-28 — based on codebase analysis:_
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
+## Verification Notes
+
+Verdict at time of check: **NEEDS_UPDATE** (correction below applied in the same
+pass, so the issue as it now reads is up to date — this section is a record of
+what was wrong and fixed, not an outstanding action item)
+
+- Graph: provider=`codegraph` freshness=`fresh` (not used — this issue names concrete
+  line-number anchors that a direct `grep -n` verifies more precisely than the
+  graph's symbol-level queries).
+- All file/line anchors checked against current `scripts/tests/test_issue_parser.py`
+  (6984 lines), `test_bug_3287_option_patterns_widening.py`, and
+  `test_decide_issue_skill.py` matched exactly, except one: the Integration Map's
+  `test_frontmatter.py:291` citation for `TestParseFrontmatterCorpus._fixture_files`
+  was off by one line (the `def` is at :290, not :291) — corrected in place.
+- All 24 source files named for the three fixture corpora (`bug3295_corpus`,
+  `bug3285_corpus`, `bug3293_corpus`) confirmed present in the live `.issues/` tree.
+  The stated 11-file union for `bug3285_corpus` (across `_LOCATE_PINS`,
+  `_UNCHANGED_LOCATE_PINS`, `_UNAPPLIED_PINS`, `_UNRESOLVED_PINS`) recomputed and
+  matches exactly.
+- `ll-verify-evidence` reported no unverifiable quotes.
+- No active required decision rules (`ll-issues decisions list --type rule
+  --enforcement required --active-only` returned empty) — no `DECISIONS_VIOLATION`
+  possible.
+- `TestBug3295ContainmentCorpusDifferential` currently passes (`total <= 410` still
+  holds), consistent with the issue's framing that the fragility is a future-tripwire,
+  not an existing failure.
+- Git history (`4ab4db2bc`, `d507bb3d5`) corroborates the described repeated
+  ceiling-bump pattern.
+- No dependency references (`blocked_by`/`depends_on`) to validate; `ll-issues
+  format-check` returned no findings.
+
 ## Status
 
 **Open** | Created: 2026-09-28 | Priority: P3
 
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-28T20:28:02 - `0f088f48-6054-46e9-87e4-3ca70313bf56.jsonl`
 - `/ll:confidence-check` - 2026-09-28T20:06:36 - `17025306-364a-4143-b659-80dee88f61b2.jsonl`
 - `/ll:refine-issue` - 2026-09-28T19:30:00 - `f3afff3d-0f77-4821-a4f6-45be74a7a00e.jsonl`
 - `/ll:format-issue` - 2026-09-28T19:21:18 - `ddc7b8ed-4e52-4365-b63d-32d433349fbb.jsonl`
