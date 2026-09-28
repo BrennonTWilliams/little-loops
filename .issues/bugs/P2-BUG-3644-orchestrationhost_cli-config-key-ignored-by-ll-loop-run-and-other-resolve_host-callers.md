@@ -11,7 +11,7 @@ captured_at: '2026-09-28T22:31:27Z'
 labels:
 - multi-host
 - host-runner
-decision_needed: true
+decision_needed: false
 ---
 
 # BUG-3644: orchestration.host_cli config key ignored by ll-loop run and other resolve_host() callers
@@ -48,7 +48,9 @@ _Added by `/ll:refine-issue` — 2026-09-28 — based on codebase analysis:_
 
 **Option A**: Per-entry-point `apply_host_cli_from_config(config)` calls in each `main_*` after `BRConfig` construction (`main_loop`, `main_auto`, `main_parallel`, `main_sprint`, plus any other host-resolving entry). Matches the `main_doctor` precedent and the `LL_HANDOFF_THRESHOLD` per-entry writes; carries the env-mutation leak into descendants and gives no structural guard against a new entry point omitting it (needs the enumeration gate).
 
-**Option B**: Fold the config lookup into `resolve_host()` itself, consumer-side and behind the env vars, reading `ll-config.json` without raising (precedent: `session_store/db.py::resolve_history_db`). Single choke point, no env mutation. Constraints: `resolve_host_named()` passes an explicit `env` and must stay config-independent, so the lookup can only apply on the `env is None` path; `host_runner.py` has no top-level `little_loops.config` import (a lazy import or a raw JSON read avoids a cycle); `LL_HOOK_HOST` ordering vs config must be decided.
+**Option B**: Fold the config lookup into `resolve_host()` itself, consumer-side and behind the env vars, reading `ll-config.json` without raising (precedent: `session_store/db.py::resolve_history_db`). Single choke point, no env mutation. Constraints: `resolve_host_named()` passes an explicit `env` and must stay config-independent, so the lookup can only apply on the `env is None` path; `host_runner.py` has no top-level `little_loops.config` import (a lazy import or a raw JSON read avoids a cycle); `LL_HOOK_HOST` ordering vs config **RESOLVED** — `LL_HOOK_HOST` stays above config (env-level signals beat config), decided 2026-09-28 by /ll:decide-issue.
+
+> **Selected:** Option B — single choke point reaching ~45 `resolve_host()` callers with no env mutation, consistent with the `resolve_history_db` env > config > default precedent and the FEAT-3060 rejection of env-mutating helpers.
 
 **Option C**: Export `LL_HOST_CLI` from config inside `BRConfig.__init__`, alongside the existing `load_env_fallback` side effect, so every entry that builds a `BRConfig` is covered. Constraints: ~62 files construct `BRConfig` (including `cli/advise.py`, whose test pins `LL_HOST_CLI` unchanged after `main_advise()`); it widens the env-mutation leak the FEAT-3060 decision rejected; `cmd_run` builds a second `BRConfig` at `cli/loop/run.py:269` after `main_loop` already built one.
 
@@ -57,12 +59,36 @@ _Added by `/ll:refine-issue` — 2026-09-28 — based on codebase analysis:_
 - Scope note: `ll-logs fleet-review` and `ll-loop validate` do not call `host_runner.resolve_host()` today. `fleet-review --host` resolves a session-log host through `user_messages._resolve_host` (flag > `LL_HOOK_HOST` > default), unrelated to host-CLI selection, and `cmd_validate` (`cli/loop/config_cmds.py`) has no `resolve_host` call until ENH-3548 adds one. Acceptance Criterion 1 is vacuous for those two until then; they are only affected through ENH-3548's hint warnings.
 - Related latent inconsistency: `cli/doctor.py:815` hand-rolls env > config for the advisor floor row and then calls `resolve_host_named(name)` or `resolve_host()`; a choke-point fix should let it collapse to one resolution path.
 
+### Decision Rationale
+
+Decided by `/ll:decide-issue` on 2026-09-28.
+
+**Selected**: Option B
+
+**Reasoning**: Folding the config lookup into `resolve_host()` (on the `env is None` path only) fixes every ambient-env caller at once with no `os.environ` mutation, matching the `session_store/db.py::resolve_history_db` precedent (`test_env_wins_over_config`). Options A and C both export `LL_HOST_CLI` into the process, which the FEAT-3060 decision rejected and which leaks to descendants via `project_child_env`; C additionally breaks `test_advisor_host_env_independent_of_orchestration_host_cli` and A leaves ~20 non-enumerated entry points uncovered.
+
+**Implementation cautions for B**: `_config_db_path` reads only base `ll-config.json`; `ll.local.md` frontmatter overrides (deep-merged in `BRConfig`) must also be honored, so reuse the config-merge helper (lazy import, never raise) rather than a raw JSON read. `env=None` tests in other files run from the repo cwd and could pick up the repo's own config — guard with a fixture or an isolated cwd. `LL_HOOK_HOST` keeps precedence over config.
+
+#### Scoring Summary
+
+| Option | Consistency | Simplicity | Testability | Risk | Total |
+|--------|-------------|------------|-------------|------|-------|
+| Option A | 2/3 | 2/3 | 2/3 | 1/3 | 7/12 |
+| Option B | 3/3 | 2/3 | 2/3 | 2/3 | 9/12 |
+| Option C | 1/3 | 3/3 | 1/3 | 0/3 | 5/12 |
+
+**Key evidence**:
+- Option A: only `main_doctor` calls `apply_host_cli_from_config` (`cli/doctor.py:1438`); `LL_HANDOFF_THRESHOLD` per-entry writes are precedent, but ~20 `resolve_host()` entry points (`cli/action.py`, `cli/harness.py`, `cli/artifact/*`, `mcp_server/tools.py`, …) would each need the call, and it re-creates the FEAT-3060-rejected env leak.
+- Option B: `db.py::_resolve_db_path` (l.105-117) is a direct env > config > default template; `host_runner.py` has no top-level config import so a lazy import avoids a cycle; `resolve_host_named` passes explicit `env` and stays independent.
+  > **Selected:** Option B — per the Decision Rationale above
+- Option C: `BRConfig.__init__` → `load_env_fallback` (`config/core.py:293`) is a wiring point, but ~55 source-file constructions (incl. `cli/advise.py`) would export `LL_HOST_CLI`, failing `test_cli_advise.py:153` and widening the leak.
+
 ## Integration Map
 
 ### Files to Modify
 - `scripts/little_loops/host_runner.py` — owns `resolve_host()`, `resolve_host_named()`, `apply_host_cli_from_config()`; the choke-point candidate.
-- `scripts/little_loops/config/core.py` — `BRConfig.__init__` already runs `load_env_fallback(self.project_root)` before parsing, the only construction-time `os.environ` side effect (alternative choke-point site).
-- `scripts/little_loops/cli/loop/__init__.py` (`main_loop`, `BRConfig(Path.cwd())` at ~56), `cli/auto.py` (`main_auto`, ~77), `cli/parallel.py` (`main_parallel`, ~196), `cli/sprint/__init__.py` (`main_sprint`, ~242) — per-CLI sites if the fix is entry-point-scoped.
+- `scripts/little_loops/config/core.py` — `BRConfig.__init__` already runs `load_env_fallback(self.project_root)` before parsing, the only construction-time `os.environ` side effect (Option C site — not selected; see Decision Rationale).
+- `scripts/little_loops/cli/loop/__init__.py` (`main_loop`, `BRConfig(Path.cwd())` at ~56), `cli/auto.py` (`main_auto`, ~77), `cli/parallel.py` (`main_parallel`, ~196), `cli/sprint/__init__.py` (`main_sprint`, ~242) — per-CLI sites (Option A — not selected; no edits required under Option B).
 - `scripts/little_loops/init/cli.py` — comment at ~266 claims `resolve_host()` honors the config key; must be true or corrected after the fix.
 - `scripts/little_loops/cli/doctor.py` — `main_doctor` (`apply_host_cli_from_config` at ~1438) and a hand-rolled `os.environ.get("LL_HOST_CLI") or cfg.orchestration.host_cli` at ~815; must stay consistent with whatever becomes canonical.
 
@@ -110,7 +136,7 @@ _Added by `/ll:refine-issue` — 2026-09-28 — based on codebase analysis:_
 `main_parallel` -> `WorkerPool` -> `resolve_host`
 
 ### Decision Rules
-- Precedence: non-empty `LL_HOST_CLI` > non-empty `orchestration.host_cli` > `LL_HOOK_HOST` vs config ordering is **undecided** (the issue's stated order omits `LL_HOOK_HOST`; today `resolve_host` ranks `LL_HOOK_HOST` directly after `LL_HOST_CLI`, above the probe) > `_PROBE_ORDER` probe.
+- Precedence: non-empty `LL_HOST_CLI` > `LL_HOOK_HOST` (decided 2026-09-28: stays directly after `LL_HOST_CLI`, above config) > non-empty `orchestration.host_cli` > `_PROBE_ORDER` probe.
 - Empty-string values are treated as unset (matches `resolve_host` and `apply_host_cli_from_config`).
 - An unregistered config value raises `HostNotConfigured` in `resolve_host` (no fallback to probe), same as an unregistered `LL_HOST_CLI`.
 - `resolve_host_named` and `ll-advise`/`advisor.consult` stay config-independent.
@@ -152,4 +178,5 @@ _Added by `/ll:refine-issue` — 2026-09-28 — based on codebase analysis:_
 
 
 ## Session Log
+- `/ll:decide-issue` - 2026-09-28T22:46:35 - `77c339e9-8806-4a53-a734-a18593a275bb.jsonl`
 - `/ll:refine-issue` - 2026-09-28T22:43:07 - `29b6f7a1-cbe3-4641-a1f5-b4e98b2d2120.jsonl`

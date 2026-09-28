@@ -1,0 +1,12 @@
+{
+  "id": "442e5fa7-c760-4cc1-bc0e-e52af1d59dae",
+  "type": "decision",
+  "timestamp": "2026-09-28T22:46:35Z",
+  "category": "architecture",
+  "labels": [],
+  "rationale": "Single choke point reaching ~45 callers with no os.environ mutation; matches resolve_history_db precedent; A leaves ~20 entry points uncovered and C breaks advisor independence test; both A/C re-create the env leak FEAT-3060 rejected.",
+  "rule": "Option B: fold orchestration.host_cli lookup into resolve_host() (env is None path, LL_HOOK_HOST above config)",
+  "scope": "issue",
+  "alternatives_rejected": "Option A (per-entry apply_host_cli_from_config); Option C (export in BRConfig.__init__)",
+  "issue": "BUG-3644"
+}

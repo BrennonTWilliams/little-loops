@@ -12,6 +12,12 @@ labels:
 - multi-host
 learning_tests_required:
 - codex
+confidence_score: 100
+outcome_confidence: 89
+score_complexity: 14
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # ENH-3641: ll-doctor check validates configured model_hints against the host model catalog
@@ -197,6 +203,7 @@ _These touchpoints were identified by wiring analysis and must be included in th
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-28T22:45:21 - `77c339e9-8806-4a53-a734-a18593a275bb.jsonl`
 - `/ll:wire-issue` - 2026-09-28T22:36:29 - `29b6f7a1-cbe3-4641-a1f5-b4e98b2d2120.jsonl`
 - `/ll:refine-issue` - 2026-09-28T22:17:13 - `6f422968-702e-4b64-aab8-1417160db4d7.jsonl`
 - `/ll:format-issue` - 2026-09-28T22:12:20 - `3482ce67-14f8-4ba7-ad30-d5a96bb26e45.jsonl`
