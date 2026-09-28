@@ -393,6 +393,26 @@ Verdict at time of check: **NEEDS_UPDATE** (all findings below corrected in the 
 - **Advisory**: the confidence-check note's `stale_cli_flag` item (subcommand is `next-loop`) does not affect any directive here.
 - **Graph**: provider=`codegraph` freshness=`stale` (not used to originate any verdict; checks were Grep/Read).
 
+## Verification Notes
+
+_Added by `/ll:verify-issues` — 2026-09-28_
+
+Verdict at time of check: **NEEDS_UPDATE** (correction below applied in the same
+pass, so the issue as it now reads is up to date — this section is a record of
+what was wrong and fixed, not an outstanding action item)
+
+- **Stale dependency claim (fixed: Confidence Check Notes' Gaps to Address and
+  Outcome Risk Factors)**: `blocked_by` is `[ENH-3623, ENH-3626]`; both are now
+  `status: Completed` (confirmed via `ll-issues show`). The 2026-09-26 Confidence
+  Check Notes still cited the cancelled ENH-3606 as the open blocker and claimed
+  the target states didn't exist yet — both stale. Struck through and corrected
+  in place; a full score recompute is out of scope for this command (`/ll:confidence-check`
+  should be re-run).
+- **Codebase citations verified accurate against `main` (2026-09-28)**: `_Decider.after_go_no_go()` at `preparation_policy.py:455-463` (exact); `run()` ladder's `GO_NO_GO` branch at `:404`; `prep_step()`'s `TERMINAL_KINDS` precondition-skip at `:1034`; `prep_record()`'s `RUN_CHILD`/`SIZE_REVIEW` branches at `:1064/:1077-1078`; `StepKind` enum (9 values, no `ADVISE_GO_NO_GO` yet, as expected pre-implementation); `add_prep_parser`/`cmd_prep` at `:1299/:1324`; `test_h4_after_go_no_go`/`test_h4_reopen_rides_on_a_decision_reentry_too` at `test_preparation_policy.py:634/638`; `docs/reference/API.md`'s `StepKind` table row (9 values, verbatim); `docs/reference/DEFERRAL_CODES.md:25`'s `oversized_atomic` single-step framing; `skills/go-no-go/SKILL.md`'s `outcome_gate_waived` escalation paragraph; `docs/guides/LOOPS_REFERENCE.md`'s pinned heading (`test_wiring_reference_docs.py:271-274`); `scripts/little_loops/loops/README.md:31`'s "15 states" `prepare-issue` row.
+- **Negative-claim corroboration**: `ll-code callers-of`/`references` on `_verdict_path` (`advise_consult.py`) returns hits only inside `advise_consult.py` itself (lines 187, 235) — confirms the issue's "zero external importers repo-wide" claim; no public accessor exists today.
+- **Verified clean**: `ll-verify-evidence` (0 findings, all evidence quotes exist in their attributed artifacts); no active required decision rules (`ll-issues decisions list --type rule --enforcement required --active-only` empty); `blocked_by` backlinks present (`## Blocks` sections in both ENH-3623 and ENH-3626 name this issue).
+- **Graph**: provider=`codegraph` freshness=`fresh`.
+
 ## Confidence Check Notes
 
 _Added by `/ll:confidence-check` on 2026-09-26 (supersedes 2026-09-25 run)_
@@ -400,19 +420,28 @@ _Added by `/ll:confidence-check` on 2026-09-26 (supersedes 2026-09-25 run)_
 **Readiness Score**: 75/100 → STOP — ADDRESS GAPS (Dependencies Hard Override; raw score would be PROCEED WITH CAUTION)
 **Outcome Confidence**: 79/100 → MODERATE
 
+> **Stale as of 2026-09-28 (`/ll:verify-issues`)**: this run's Dependencies Hard
+> Override was keyed on ENH-3606, which was cancelled and superseded by ENH-3623
+> before this run recorded. The issue's actual `blocked_by` (ENH-3623, ENH-3626)
+> are now both `Completed` — the dependency block no longer applies. See the Gaps
+> to Address and Outcome Risk Factors corrections below; the numeric scores above
+> are frozen from the 2026-09-26 run and were not recomputed here. Re-run
+> `/ll:confidence-check` for a current score.
+
 ### Concerns
 - Design is fully specified and format-check is clean (no parity, claim, structure, or decision gaps); Program Design gate passes. Only the dependency blocks.
 
 ### Gaps to Address
-- blocked_by ENH-3606 (open) — the go-no-go anchor states (`check_go_no_go_waiver`, `reopen_waived`) still live in `autodev.yaml`; they move into `prepare-issue.yaml` there. Wait for or prioritize ENH-3606, then re-run `/ll:confidence-check`.
+- ~~blocked_by ENH-3606 (open)~~ — **resolved**: ENH-3606 was cancelled/superseded by ENH-3623 (2026-09-26), and the issue's `blocked_by` was updated to ENH-3623 + ENH-3626. Both are now `Completed` (verified 2026-09-28). No open dependency blocks this issue.
 
 ### Outcome Risk Factors
-- Chain edits depend on states that do not yet exist in the target file (retarget of `check_go_no_go_waiver.on_yes` + error terminal), so tests cannot be written against the real shape until ENH-3606 merges.
+- ~~Chain edits depend on states that do not yet exist in the target file...until ENH-3606 merges~~ — **resolved**: `check_go_no_go_waiver`/`reopen_waived` never existed in `prepare-issue.yaml`; the real shape (`_Decider.after_go_no_go()`, `preparation_policy.py:455-463`) already exists on `main` and was verified line-for-line on 2026-09-28. Tests can be written against the real shape now.
 
 ## Resolved Concerns
 - [resolved 2026-09-27 by /ll:reconcile-issue] Step names in the chain (`check_advise_enabled`, `veto_waiver`, etc.) and the ladder-error terminal are proposals until ENH-3606 lands; the exact edge targets must be re-confirmed then (Implementation Step 1). — ENH-3606 was cancelled/superseded by ENH-3623; Implementation Steps and Integration Map were rewritten to the fully-specified Option A design (`ADVISE_GO_NO_GO` StepKind branch in `preparation_policy.py` + one new `run_advise_go_no_go` state), with no remaining dependency on speculative state names.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-09-28T00:34:18 - `b12c7494-c6d6-4c3e-bad8-04922e18aa22.jsonl`
 - `/ll:reconcile-issue` - 2026-09-28T00:28:01 - `c9e5a680-5288-484b-9789-01a430facd71.jsonl`
 - `/ll:wire-issue` - 2026-09-28T00:17:35 - `1c278270-e2ba-4e4c-99ea-a1e85ca8ec50.jsonl`
 - `/ll:decide-issue` - 2026-09-28T00:01:05 - `6f83d493-add8-470b-8556-2eaf26136968.jsonl`
