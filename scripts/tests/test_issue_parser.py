@@ -5785,131 +5785,63 @@ class TestBug3295ContainmentCorpusDifferential:
     subsumption filter added ahead of `discriminating = rej_ids - sel_ids`
     (`issue_parser.py`, `_unapplied_decision`). The filter is provably
     one-directional (a pre-subtraction exclusion can only shrink
-    `discriminating`), per BUG-3289's decided test-strength precedent this
-    is measured as a report-count ceiling rather than a stored per-file
-    snapshot diff. A corpus sweep at fix time (.issues/, every `.md` file)
-    found the total `unapplied_decision` report count drop from 525 (121
-    files) to 490 (118 files) -- zero files gained reports, and three files
-    lost all of theirs, including the motivating ENH-3292 case from this
-    issue's Steps to Reproduce.
+    `discriminating`). At fix time a corpus sweep found the total
+    `unapplied_decision` report count drop from 525 to 490 -- zero files gained
+    reports, and three files lost all of theirs, including the motivating
+    ENH-3292 case from that issue's Steps to Reproduce.
+
+    ENH-3639: this used to be a live-`.issues/` total-count ceiling, which
+    ordinary issue refinement tripped repeatedly. It is now an exact per-file
+    pin over frozen verbatim copies under `fixtures/issues/bug3295_corpus/`
+    (keyed by bare ID). Any change, up or down, fails and needs an intentional
+    re-pin, so detector fixes are as visible as regressions. Counts are pinned,
+    not report strings, so message rewording does not force a re-pin. Five of
+    the eight members pin zero and serve as negative controls.
+
+    Guards: the ENH-3623 bold-labelled-paragraph boundary in
+    `_option_block_spans` is guarded by `test_pinned_report_counts` (FEAT-3308,
+    BUG-3380, FEAT-2576, ENH-3346 move sharply when it is disabled); the
+    BUG-3413 per-decision-point grouping is guarded by
+    `test_decide_issue_skill.py::TestPhase7cFixtures`.
     """
 
-    _PINNED_CLEARED = frozenset(
-        {
-            "P3-BUG-1616-six-bridge-skills-have-broken-pipe-descriptions.md",
-            "P3-ENH-1717-auto-commit-hooks-on-issue-file-crud-operations.md",
-            "P3-ENH-3292-dead-code-cleanupyaml-hardcodes-this-repos-scope-scripts.md",
-        }
-    )
+    _FIXTURE_DIR = Path(__file__).parent / "fixtures" / "issues" / "bug3295_corpus"
 
-    _PRE_FIX_TOTAL_REPORTS = 525  # measured before this fix landed
+    _PINNED_CLEARED = frozenset({"BUG-1616", "ENH-1717", "ENH-3292"})
 
-    # BUG-3413: per-decision-point grouping is a *second*, orthogonal
-    # widening of the corpus total on top of the BUG-3295 ceiling above --
-    # unlike the one-directional subsumption filter, grouping both removes
-    # false-positive reports (a later decision point's winner no longer
-    # misclassified as decision point 1's rejected option) and *adds*
-    # true-positive reports on issues the pre-fix `len(matching) != 1` check
-    # silently disabled entirely (see this issue's Corpus Impact). The
-    # `_PRE_FIX_TOTAL_REPORTS` ceiling above no longer holds; this is a
-    # second, independent post-BUG-3413 ceiling measured at fix time
-    # (.issues/, every `.md` file: total report count 535 -> 562).
-    _POST_BUG_3413_TOTAL_REPORTS = 562
+    # fixture ID -> exact `_unapplied_decision` report count
+    _PINNED = {
+        "BUG-1616": 0,
+        "ENH-1717": 0,
+        "ENH-3292": 0,
+        "FEAT-3308": 0,
+        "BUG-3380": 10,
+        "FEAT-2576": 0,
+        "ENH-3346": 6,
+        "ENH-2657": 1,
+    }
 
-    # BUG-3448: the corpus grew past `_POST_BUG_3413_TOTAL_REPORTS` from mere
-    # issue-file creation/editing, not a detector regression -- same
-    # succession pattern as BUG-3413 above (new bug-named ceiling, old
-    # ceiling retained as documented history). Measured at fix time
-    # (.issues/, every `.md` file: total report count 562 -> 569).
-    _POST_BUG_3448_TOTAL_REPORTS = 569
-
-    # ENH-3449 session: the corpus grew past `_POST_BUG_3448_TOTAL_REPORTS`
-    # again from mere issue-file editing (the 2026-09-11 ENH-3449/ENH-3450
-    # refinement session-log/review commits), not a detector regression --
-    # same succession pattern as BUG-3448 above. Measured at fix time
-    # (.issues/, every `.md` file: total report count 569 -> 573).
-    _ENH_3449_TOTAL_REPORTS = 573
-
-    # ENH-3602 session (2026-09-25): the corpus grew past
-    # `_ENH_3449_TOTAL_REPORTS` again from mere issue-file editing (the
-    # ENH-3602 Deviations note), not a detector regression -- same
-    # succession pattern as BUG-3448/ENH-3449 above. Measured at fix time
-    # (.issues/, every `.md` file: total report count 573 -> 574).
-    # ENH-3611 session (2026-09-26): grew again from issue-file editing
-    # (total report count 574 -> 578), not a detector regression; the
-    # constant name is kept to avoid churn.
-    # ENH-3630 session (2026-09-27): grew again from issue-file editing
-    # (marking ENH-3630 Steps 1-4/6 acceptance criteria and logging Step 5
-    # remaining), not a detector regression (total report count 578 -> 585).
-    # ENH-3623 session (2026-09-27): grew again from the ENH-3623 refinement
-    # commits (its Verification Notes trace the 7 flagged FSM state/outcome
-    # names as false positives), not a detector regression (585 -> 594).
-    # ENH-3633 session (2026-09-27/28): grew again from ordinary corpus
-    # editing (ENH-3616/ENH-3633/ENH-3600/BUG-3635/BUG-3634 completing the
-    # same day), diffusely spread across many pre-existing files rather than
-    # concentrated in the touched ones, not a detector regression (594 -> 595).
-    # ENH-3623 session (2026-09-27): the first move DOWNWARD, and the first
-    # caused by a *detector* fix rather than corpus growth.
-    # `_option_block_spans` ended an option block only at the next qualifying
-    # heading, so a trailing bold-labelled directive paragraph
-    # (`**Recommended**: ...`, `**Decided (...)**: ...`) leaked into the
-    # preceding option's span and its backticked identifiers were harvested as
-    # that option's -- typically the rejected one, since a Recommended
-    # paragraph is what follows a loser's block. That fired
-    # `still specifies ... (rejected option)` reports for identifiers belonging
-    # to the *winning* option's rationale. A/B over the corpus at fix time,
-    # same files, boundary fix in place: 586 -> 409 (120 -> 107 files, 29
-    # changed, 14 zeroed, 1 surfaced -- shrinking the winner's span also shrinks `sel_ids`,
-    # promoting a previously-masked identifier into `discriminating`).
-    # Classified by sampling the largest site: P2-FEAT-3308's 36 reports all
-    # came from the `**Recommended**:` paragraph that followed its Option B
-    # span (3578 -> 533 chars, span 1). Re-measured after rebasing onto a
-    # main whose ceiling had grown to 595 (.issues/, every `.md` file):
-    # 595 -> 410.
-    _ENH_3602_TOTAL_REPORTS = 410
+    def _read(self, fixture_id: str) -> str:
+        path = self._FIXTURE_DIR / f"{fixture_id}.md"
+        assert path.exists(), f"missing frozen fixture: {path}"
+        return path.read_text(encoding="utf-8", errors="ignore")
 
     def test_previously_spurious_files_now_clear(self) -> None:
         from little_loops.issue_parser import _unapplied_decision
 
-        issues_dir = Path(__file__).parent.parent.parent / ".issues"
-        if not issues_dir.exists():
-            pytest.skip("no .issues/ corpus in this checkout")
+        for fixture_id in sorted(self._PINNED_CLEARED):
+            assert _unapplied_decision(self._read(fixture_id)) == [], (
+                f"{fixture_id} regained a spurious gap"
+            )
 
-        found = {p.name: p for p in issues_dir.rglob("*.md")}
-        missing = self._PINNED_CLEARED - found.keys()
-        assert not missing, f"pinned files missing from corpus: {missing}"
-
-        for name in self._PINNED_CLEARED:
-            content = found[name].read_text(encoding="utf-8", errors="ignore")
-            assert _unapplied_decision(content) == [], f"{name} regained a spurious gap"
-
-    def test_total_report_count_does_not_exceed_post_bug_3448_baseline(self) -> None:
-        """BUG-3413 lifted the BUG-3295-era ceiling by design (see the
-        `_POST_BUG_3413_TOTAL_REPORTS` comment); BUG-3448 lifted it again
-        after mere corpus growth (issue creation/editing, not a detector
-        regression) tripped it a second time, and the ENH-3449 session
-        lifted it a third time, and the ENH-3602 session a fourth time, for
-        the same reason. This guards against *further*, unmeasured growth
-        past the current ceiling.
-
-        ENH-3623 is the first session to move the ceiling *down*: the
-        bold-labelled-paragraph boundary added to `_option_block_spans`
-        removed a false-positive class, dropping the corpus total 595 -> 410.
-        See the `_ENH_3602_TOTAL_REPORTS` comment for the A/B measurement."""
+    @pytest.mark.parametrize("fixture_id", sorted(_PINNED))
+    def test_pinned_report_counts(self, fixture_id: str) -> None:
         from little_loops.issue_parser import _unapplied_decision
 
-        issues_dir = Path(__file__).parent.parent.parent / ".issues"
-        if not issues_dir.exists():
-            pytest.skip("no .issues/ corpus in this checkout")
-
-        total = 0
-        for path in issues_dir.rglob("*.md"):
-            content = path.read_text(encoding="utf-8", errors="ignore")
-            total += len(_unapplied_decision(content))
-
-        assert total <= self._ENH_3602_TOTAL_REPORTS, (
-            f"corpus report total {total} exceeds post-ENH-3449 baseline "
-            f"{self._ENH_3602_TOTAL_REPORTS} -- detector regressed"
+        reports = _unapplied_decision(self._read(fixture_id))
+        assert len(reports) == self._PINNED[fixture_id], (
+            f"{fixture_id}: {len(reports)} reports != pinned {self._PINNED[fixture_id]} "
+            f"-- detector behaviour changed; re-pin intentionally if expected: {reports}"
         )
 
 
@@ -5923,64 +5855,37 @@ class TestBug3293DecisionRulesCorpusDifferential:
     every pre-existing tier and the whole-document fallback have already
     returned nothing, so they can only ever move a file's count from 0 to
     non-zero — never decrease a count or change a heading `locate_enumerable_options`
-    already resolved another way. That structural guarantee is what lets this
-    test assert "no unpinned file is affected" without needing a stored
-    pre-fix snapshot: it pins the exact 4 files a full `.issues/` sweep found
-    affected at fix time (measured 2026-08-22, 3198-file corpus) and asserts
-    no other file returns `decision_rules_numbered`, and no other file gains a
-    `provisional_e` match under the new "Program Design" heading.
+    already resolved another way. That structural guarantee was checked by a
+    one-time `.issues/` sweep at fix time (measured 2026-08-22, 3198-file
+    corpus), which found exactly the 5 files pinned here.
+
+    ENH-3639: the pins read frozen verbatim copies under
+    `fixtures/issues/bug3293_corpus/` (keyed by bare ID), not the live
+    `.issues/` tree. The former "no unpinned live file gains a match" sweep
+    was dropped: it was a whole-live-corpus assertion that failed on ordinary
+    issue capture, not on detector changes.
     """
 
+    _FIXTURE_DIR = Path(__file__).parent / "fixtures" / "issues" / "bug3293_corpus"
+
+    # fixture ID -> (pattern, count)
     _PINNED = {
-        "P2-BUG-3232-ll-loop-list-running-applies-no-status-filter-so-completed-and-interrupted-runs-are-reported-as-running.md": (
-            "decision_rules_numbered",
-            3,
-        ),
-        "P3-BUG-3285-option-marker-regexes-match-bold-prose-so-analysis-text-is-counted-as-an-option-block.md": (
-            "decision_rules_numbered",
-            3,
-        ),
-        "P3-BUG-3293-bold-numbered-decision-points-under-program-design-are-invisible-to-both-the-tier-scan-and-pattern-e.md": (
-            "provisional_e",
-            2,
-        ),
-        "P2-ENH-3045-replacement-parity-and-negative-claim-doctrine-for-wire-and-refine.md": (
-            "decision_rules_numbered",
-            4,
-        ),
-        "P3-BUG-3356-gap-analysis-refine-passes-consume-max_refine_count-despite-documented-exemption.md": (
-            "decision_rules_numbered",
-            2,
-        ),
+        "BUG-3232": ("decision_rules_numbered", 3),
+        "BUG-3285": ("decision_rules_numbered", 3),
+        "BUG-3293": ("provisional_e", 2),
+        "ENH-3045": ("decision_rules_numbered", 4),
+        "BUG-3356": ("decision_rules_numbered", 2),
     }
 
-    def test_only_pinned_files_gain_program_design_options(self) -> None:
+    @pytest.mark.parametrize("fixture_id", sorted(_PINNED))
+    def test_pinned_program_design_surfaces(self, fixture_id: str) -> None:
         from little_loops.issue_parser import locate_enumerable_options
 
-        issues_dir = Path(__file__).parent.parent.parent / ".issues"
-        if not issues_dir.exists():
-            pytest.skip("no .issues/ corpus in this checkout")
-
-        unexpected = []
-        pinned_seen = {}
-        for path in issues_dir.rglob("*.md"):
-            content = path.read_text(encoding="utf-8", errors="ignore")
-            located = locate_enumerable_options(content)
-            is_new_surface = located.pattern == "decision_rules_numbered" or (
-                located.pattern == "provisional_e" and located.heading == "Program Design"
-            )
-            if not is_new_surface:
-                continue
-            if path.name in self._PINNED:
-                pinned_seen[path.name] = (located.pattern, located.count)
-            else:
-                unexpected.append((str(path), located.pattern, located.count))
-
-        assert unexpected == [], (
-            f"Unpinned files newly matched by the Program Design decision surfaces: {unexpected}"
-        )
-        assert pinned_seen == self._PINNED, (
-            f"Pinned files diverged from expected (pattern, count): {pinned_seen} != {self._PINNED}"
+        path = self._FIXTURE_DIR / f"{fixture_id}.md"
+        assert path.exists(), f"missing frozen fixture: {path}"
+        located = locate_enumerable_options(path.read_text(encoding="utf-8", errors="ignore"))
+        assert (located.pattern, located.count) == self._PINNED[fixture_id], (
+            f"{fixture_id} diverged from pinned (pattern, count)"
         )
 
 
@@ -6337,131 +6242,123 @@ class TestBug3285CorpusDifferential:
     through to the bullet tier, finds the two real options), not just
     quieter output. `BUG-3177`, `BUG-3253` (variant-suffix survivors) and
     `FEAT-2339` (glob-in-title survivors) are pinned unchanged.
+
+    ENH-3639: the pins read frozen verbatim copies of those 11 files under
+    `fixtures/issues/bug3285_corpus/` (keyed by bare ID), not the live
+    `.issues/` tree, so ordinary issue edits cannot fail them.
     """
 
-    _ISSUES_ROOT = Path(__file__).parent.parent.parent / ".issues"
+    _FIXTURE_DIR = Path(__file__).parent / "fixtures" / "issues" / "bug3285_corpus"
 
-    # relative path -> (count, pattern, heading) after the fix
+    # fixture ID -> (count, pattern, heading) after the fix
     _LOCATE_PINS = {
-        "bugs/P2-BUG-1484-config-init-imports-orchestrationconfig-clconfig-before-defined-in-core.md": (
+        "BUG-1484": (
             2,
             "bold_label",
             "Proposed Solution",
         ),
-        "enhancements/P3-ENH-2967-autodev-redderives-design-fail-predicate-in-three-blocks.md": (
+        "ENH-2967": (
             2,
             "bold_label",
             "Proposed Solution",
         ),
-        "enhancements/P4-ENH-1555-harness-optimize-trajectory-path-refactor.md": (
+        "ENH-1555": (
             2,
             "bold_label",
             "Implementation Steps",
         ),
-        "features/P2-FEAT-1244-benchmark-fragment-core.md": (
+        "FEAT-1244": (
             2,
             "bold_label",
             "Design Decision Required",
         ),
-        "features/P4-FEAT-2186-gemini-hook-adapter.md": (
+        "FEAT-2186": (
             2,
             "bullet",
             "Decision — RATIFIED 2026-06-24 (Option A; see ARCHITECTURE-046)",
         ),
     }
 
-    # relative path -> (count, pattern) unchanged by the fix
+    # fixture ID -> (count, pattern) unchanged by the fix
     _UNCHANGED_LOCATE_PINS = {
-        "bugs/P2-BUG-3177-ll-mcp-serves-zero-prompts-on-a-non-editable-install-skills-is-not-package-data-and-_find_plugin_root-falls-back-to-the-site-packages-parent.md": (
+        "BUG-3177": (
             3,
             "bold_label",
         ),
-        "bugs/P3-BUG-3253-auto-correction-rate-denominator-includes-pre-phase1-gate-blocked-issues.md": (
+        "BUG-3253": (
             4,
             "bold_label",
         ),
-        "features/P3-FEAT-2339-per-epic-integration-branch-strategy.md": (2, "bold_label"),
+        "FEAT-2339": (2, "bold_label"),
     }
 
-    # relative path -> unapplied_decision report count after the fix
+    # fixture ID -> unapplied_decision report count after the fix
     _UNAPPLIED_PINS = {
         # BUG-3289: 3 -> 2. `CLConfig` is named in the title ("Imports
         # `OrchestrationConfig` and `CLConfig` Before They Exist in
         # `core.py`"), so it is the issue's shared subject, not a
         # rejected-option-discriminating identifier -- correctly suppressed.
-        "bugs/P2-BUG-1484-config-init-imports-orchestrationconfig-clconfig-before-defined-in-core.md": 2,
+        "BUG-1484": 2,
         # BUG-3289: 5 -> 3. `issue_parser.py` is named in the title/Summary
         # (shared subject), correctly suppressed.
-        "enhancements/P3-ENH-2967-autodev-redderives-design-fail-predicate-in-three-blocks.md": 3,
-        "bugs/P2-BUG-2735-evaluation-quality-sample-reads-nonexistent-list-json-fields.md": 0,
+        "ENH-2967": 3,
+        "BUG-2735": 0,
         # BUG-3289: 14 -> 11. `base_branch` is named in the title/Summary
         # (shared subject), correctly suppressed. No longer unchanged.
-        "features/P3-FEAT-2339-per-epic-integration-branch-strategy.md": 11,
+        "FEAT-2339": 11,
     }
 
-    # relative path -> count_unresolved_options after the fix
+    # fixture ID -> count_unresolved_options after the fix
     _UNRESOLVED_PINS = {
-        "enhancements/P3-ENH-2226-external-runtime-configurable-fsm-route-decision-tables.md": 0,
-        "enhancements/P4-ENH-1555-harness-optimize-trajectory-path-refactor.md": 0,
-        "features/P2-FEAT-1076-parallel-state-executor-dispatch.md": 0,
-        "features/P4-FEAT-2186-gemini-hook-adapter.md": 0,
+        "ENH-2226": 0,
+        "ENH-1555": 0,
+        "FEAT-1076": 0,
+        "FEAT-2186": 0,
     }
 
-    def _read(self, relpath: str) -> str:
-        path = self._ISSUES_ROOT / relpath
-        if not path.exists():
-            pytest.skip(f"no {relpath} in this checkout's .issues/ corpus")
+    def _read(self, issue_id: str) -> str:
+        path = self._FIXTURE_DIR / f"{issue_id}.md"
+        assert path.exists(), f"missing frozen fixture: {path}"
         return path.read_text(encoding="utf-8", errors="ignore")
 
     def test_locate_enumerable_options_pins(self) -> None:
         from little_loops.issue_parser import locate_enumerable_options
 
-        if not self._ISSUES_ROOT.exists():
-            pytest.skip("no .issues/ corpus in this checkout")
-
-        for relpath, expected in self._LOCATE_PINS.items():
-            located = locate_enumerable_options(self._read(relpath))
-            assert (located.count, located.pattern, located.heading) == expected, relpath
+        for issue_id, expected in self._LOCATE_PINS.items():
+            located = locate_enumerable_options(self._read(issue_id))
+            assert (located.count, located.pattern, located.heading) == expected, issue_id
 
     def test_locate_enumerable_options_unchanged_pins(self) -> None:
         from little_loops.issue_parser import locate_enumerable_options
 
-        if not self._ISSUES_ROOT.exists():
-            pytest.skip("no .issues/ corpus in this checkout")
-
-        for relpath, expected in self._UNCHANGED_LOCATE_PINS.items():
-            located = locate_enumerable_options(self._read(relpath))
-            assert (located.count, located.pattern) == expected, relpath
+        for issue_id, expected in self._UNCHANGED_LOCATE_PINS.items():
+            located = locate_enumerable_options(self._read(issue_id))
+            assert (located.count, located.pattern) == expected, issue_id
 
     def test_unapplied_decision_pins(self) -> None:
         from little_loops.issue_parser import _unapplied_decision
 
-        if not self._ISSUES_ROOT.exists():
-            pytest.skip("no .issues/ corpus in this checkout")
-
-        for relpath, expected in self._UNAPPLIED_PINS.items():
-            reasons = _unapplied_decision(self._read(relpath))
-            assert len(reasons) == expected, (relpath, reasons)
+        for issue_id, expected in self._UNAPPLIED_PINS.items():
+            reasons = _unapplied_decision(self._read(issue_id))
+            assert len(reasons) == expected, (issue_id, reasons)
 
     def test_count_unresolved_options_pins(self) -> None:
         from little_loops.issue_parser import count_unresolved_options
 
-        if not self._ISSUES_ROOT.exists():
-            pytest.skip("no .issues/ corpus in this checkout")
-
-        for relpath, expected in self._UNRESOLVED_PINS.items():
-            n = count_unresolved_options(self._read(relpath))
-            assert n == expected, relpath
+        for issue_id, expected in self._UNRESOLVED_PINS.items():
+            n = count_unresolved_options(self._read(issue_id))
+            assert n == expected, issue_id
 
     def test_corpus_sweep_does_not_crash(self) -> None:
         """Mirrors TestUnappliedDecisionLiveCorpusSweep's idiom for the two
         newly-touched observables."""
         from little_loops.issue_parser import count_unresolved_options, locate_enumerable_options
 
-        if not self._ISSUES_ROOT.exists():
+        issues_dir = Path(__file__).parent.parent.parent / ".issues"
+        if not issues_dir.exists():
             pytest.skip("no .issues/ corpus in this checkout")
 
-        for path in self._ISSUES_ROOT.rglob("*.md"):
+        for path in issues_dir.rglob("*.md"):
             content = path.read_text(encoding="utf-8", errors="ignore")
             located = locate_enumerable_options(content)
             assert isinstance(located.count, int)

@@ -4,10 +4,11 @@ type: ENH
 title: Pin unapplied_decision corpus test to a frozen fixture corpus instead of live
   .issues/
 priority: P3
-status: open
+status: done
 discovered_by: ll-issues-create
 discovered_date: '2026-09-28'
 captured_at: '2026-09-28T19:18:02Z'
+completed_at: '2026-09-28T22:04:49Z'
 confidence_score: 100
 verify_verdict: VALID
 outcome_confidence: 96
@@ -58,7 +59,7 @@ The guard mixes two concerns, detector correctness (code) and corpus hygiene (da
 3. Point `test_previously_spurious_files_now_clear` at the `bug3295_corpus/` copies.
 4. `TestBug3285CorpusDifferential`: point `_ISSUES_ROOT` (renamed `_FIXTURE_DIR`) at `bug3285_corpus/` and rekey the four dicts to bare IDs. Change `_read` from `pytest.skip` to a failing `assert path.exists()`, because a missing frozen fixture is a defect, not an absent corpus.
 5. `TestBug3293DecisionRulesCorpusDifferential`: rewrite as a per-fixture pin of `(pattern, count)` over `bug3293_corpus/`. Drop the "no unpinned file gains a match" half. It is a whole-live-corpus assertion, the same shape as the ceiling. The additive-only property it guarded is structural (documented in the class docstring) and was checked by the one-time sweep at fix time.
-6. The optional live-corpus non-failing scan is **already satisfied** by `TestUnappliedDecisionLiveCorpusSweep` (`scripts/tests/test_issue_parser.py:6009`). Add no new test.
+6. The optional live-corpus non-failing scan is **already satisfied** by `TestUnappliedDecisionLiveCorpusSweep` (`scripts/tests/test_issue_parser.py:5987`). Add no new test.
 
 **Measured A/B (2026-09-28 review, live files, `_LABELLED_PARAGRAPH_RE` boundary in place vs disabled):**
 
@@ -102,7 +103,7 @@ _Added by `/ll:refine-issue` — 2026-09-28 — based on codebase analysis:_
 
 - `scripts/tests/test_issue_parser.py:5783` — `TestBug3295ContainmentCorpusDifferential` class start; `_PINNED_CLEARED` frozenset at `:5797` (3 entries), `_ENH_3602_TOTAL_REPORTS = 410` at `:5869`, `test_previously_spurious_files_now_clear` at `:5871`, `test_total_report_count_does_not_exceed_post_bug_3448_baseline` at `:5886` (the `<=` ceiling assertion is at `:5910`) — these are the exact anchors the Files to Modify entry above refers to.
 - An existing module, `scripts/tests/test_bug_3287_option_patterns_widening.py`, already implements the shape this issue proposes end-to-end for a sibling detector: `TestCorpusDifferentialFrozenFixtures` (`:83`) reads a frozen fixture directory (`FIXTURE_DIR` at `:33`, `fixtures/issues/bug3287_corpus/`), pins exact per-issue-ID `(before, after)` tuples in a `_PINNED` dict (`:97`), and asserts equality (not a ceiling) in `test_pinned_before_after` (`:150`). Its module docstring (`:1-25`) states the rule this issue's Motivation also states — "The live `.issues/` corpus is not a stable fixture -- it grows and edits daily, so a full corpus-wide before/after diff cannot be a permanent, pinned assertion" — and documents that a full live-corpus differential was run once as a manual landing-gate check during implementation and deliberately not committed. This is a closer precedent than `TestPhase7cFixtures` for the specific "replace a live ceiling with a frozen exact-pin dict" move.
-- That same module also already carries the "optional live-corpus scan as a non-failing report" this issue's Proposed Solution point 6 asks for: `TestOptionPatternsLiveCorpusSweepDoesNotCrash` (`:173`), mirroring `TestUnappliedDecisionLiveCorpusSweep.test_corpus_sweep_does_not_crash` (`scripts/tests/test_issue_parser.py:6009`) — both assert only that the detector does not raise over the live tree, no value comparison, so ordinary issue edits cannot turn them red. `TestUnappliedDecisionLiveCorpusSweep` already exists today as a class separate from `TestBug3295ContainmentCorpusDifferential`, so Proposed Solution point 6 is already satisfied by existing code for `_unapplied_decision` specifically — no new sweep test is needed for that observable.
+- That same module also already carries the "optional live-corpus scan as a non-failing report" this issue's Proposed Solution point 6 asks for: `TestOptionPatternsLiveCorpusSweepDoesNotCrash` (`:173`), mirroring `TestUnappliedDecisionLiveCorpusSweep.test_corpus_sweep_does_not_crash` (`scripts/tests/test_issue_parser.py:5987`) — both assert only that the detector does not raise over the live tree, no value comparison, so ordinary issue edits cannot turn them red. `TestUnappliedDecisionLiveCorpusSweep` already exists today as a class separate from `TestBug3295ContainmentCorpusDifferential`, so Proposed Solution point 6 is already satisfied by existing code for `_unapplied_decision` specifically — no new sweep test is needed for that observable.
 - Three other test methods in the same file read the live `.issues/` tree with the same exact-per-file-pin shape and share the identical developer-edit fragility this issue targets: `TestBug3285CorpusDifferential` (`:6324`) — `_UNAPPLIED_PINS` (`:6387`, 4 entries) drives `test_unapplied_decision_pins` (`:6436`, `_unapplied_decision`, exact `==` at `:6444`), `_UNRESOLVED_PINS` (`:6403`, 4 entries) drives `test_count_unresolved_options_pins` (`:6446`, `count_unresolved_options`, exact `==` at `:6453`); and `TestBug3293DecisionRulesCorpusDifferential` (`:5916`) whose `_PINNED` dict (`:5934`) drives `test_only_pinned_files_gain_program_design_options` (`:5957`) against live-tree content by filename. None of these three pinned dicts' filenames overlap with `_PINNED_CLEARED` or with the five files this issue names for seeding (P2-FEAT-3308, P3-BUG-3380, P3-FEAT-2576, P3-ENH-3346, P2-ENH-2657) — none of those five are pinned by any existing test today. _Folded into scope 2026-09-28 (review): `test_unapplied_decision_pins` is itself an `_unapplied_decision` corpus check reading `.issues/`, so Acceptance Criterion 1 could not hold with these classes left out._
 
 ## Implementation Steps
@@ -194,12 +195,23 @@ what was wrong and fixed, not an outstanding action item)
 - No dependency references (`blocked_by`/`depends_on`) to validate; `ll-issues
   format-check` returned no findings.
 
+## Resolution
+
+**Completed** 2026-09-28. `TestBug3295ContainmentCorpusDifferential`, `TestBug3285CorpusDifferential`, and `TestBug3293DecisionRulesCorpusDifferential` now read 24 frozen verbatim fixtures under `scripts/tests/fixtures/issues/{bug3295,bug3285,bug3293}_corpus/` (bare-ID names).
+
+- The five `_*_TOTAL_REPORTS` ceilings are replaced by an exact per-fixture `_PINNED` dict (`test_pinned_report_counts`, parametrized). Measured pins: BUG-3380=10, ENH-3346=6, ENH-2657=1, all others 0.
+- `TestBug3285CorpusDifferential._read` asserts fixture existence instead of skipping; `test_only_pinned_files_gain_program_design_options` became the per-fixture `test_pinned_program_design_surfaces`.
+- Verified: disabling `_LABELLED_PARAGRAPH_RE` fails 5 fixtures (FEAT-3308 0 -> 36); disabling the BUG-3295 subsumption filter (`group_subsumed`, in `_unapplied_decision_pairs`) fails `test_previously_spurious_files_now_clear` and 4 count pins; BUG-3413 grouping remains guarded by `TestPhase7cFixtures` and the `test_bug_3413_*` tests.
+- Full suite: 26914 passed, 1 failed (`test_spawn_detector_candidate_set_is_superset_of_known_inventory`) — unrelated, driven by pre-existing uncommitted edits under `skills/`.
+
 ## Status
 
-**Open** | Created: 2026-09-28 | Priority: P3
+**Done** | Created: 2026-09-28 | Completed: 2026-09-28 | Priority: P3
 
 
 ## Session Log
+- `/ll:manage-issue` - 2026-09-28T22:04:49 - `d3002b14-bdac-43c9-bb0f-4da11acf14ff.jsonl`
+- `/ll:ready-issue` - 2026-09-28T21:55:30 - `a9ef90c9-e329-4f34-8d85-08b681d90ddf.jsonl`
 - `/ll:confidence-check` - 2026-09-28T20:43:01 - `8425236c-10d8-40e3-962d-fa3ece9bacbb.jsonl`
 - `/ll:verify-issues` - 2026-09-28T20:28:02 - `0f088f48-6054-46e9-87e4-3ca70313bf56.jsonl`
 - `/ll:confidence-check` - 2026-09-28T20:06:36 - `17025306-364a-4143-b659-80dee88f61b2.jsonl`
