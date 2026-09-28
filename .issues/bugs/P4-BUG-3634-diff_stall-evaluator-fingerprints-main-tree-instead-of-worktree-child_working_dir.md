@@ -8,6 +8,12 @@ discovered_by: ll-issues-create
 discovered_date: '2026-09-27'
 captured_at: '2026-09-27T05:28:45Z'
 verify_verdict: VALID
+confidence_score: 100
+outcome_confidence: 93
+score_complexity: 18
+score_test_coverage: 25
+score_ambiguity: 25
+score_change_surface: 25
 ---
 
 # BUG-3634: diff_stall evaluator fingerprints main tree instead of worktree child_working_dir
@@ -225,6 +231,7 @@ Findings from codebase-analyzer, organized below.
 
 
 ## Session Log
+- `/ll:confidence-check` - 2026-09-28T00:22:39 - `350c84d2-7d71-4aaf-b81d-f6ca349c5726.jsonl`
 - `/ll:verify-issues` - 2026-09-28T00:19:54 - `776b6a7c-b6d7-48e6-8471-3662e71e1b89.jsonl`
 - `/ll:wire-issue` - 2026-09-27T06:33:10 - `de835f3b-4603-4a08-b7dc-82329ffec1ac.jsonl`
 - `/ll:refine-issue` - 2026-09-27T06:18:36 - `d1ce99b0-6533-4a9f-af3f-f35128797a41.jsonl`
